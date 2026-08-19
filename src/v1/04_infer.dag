@@ -1839,6 +1839,9 @@ fn type_name_transparently_aliases_to(
   }
 }
 
+// The peeling entry point, retained for the record-literal FIELD site, which has
+// no prepared call plan to carry a peeled formal. It peels inside the ExprRecordLit
+// arm exactly as before, so a non-record-literal actual still pays nothing.
 fn structured_application_site_type_mismatch(
   formal: Node,
   actual_expr: Node,
@@ -1846,8 +1849,32 @@ fn structured_application_site_type_mismatch(
 ) -> Bool {
   match actual_expr.expr_data {
     ExprRecordLit { parent_enum: _ } =>
+      structured_application_site_type_mismatch_with_peeled(
+        formal: formal,
+        formal_peeled: peel_nominal_alias_identity(n: formal, env: scope.type_env, module_name: scope.module_name),
+        actual_expr: actual_expr,
+        scope: scope
+      )
+    _ => false
+  }
+}
+
+// Takes the peeled formal the caller ALREADY HAS instead of recomputing it. At the
+// direct-call seam build_call_application_plan stores peel(formal_subst) as
+// CallFormalApplication.formal, and this predicate was handed formal_subst and then
+// recomputed exactly that peel -- the same function on the same node, once per
+// structured record-literal argument. #8431 built the value and left this consumer
+// recomputing it. Both formals are carried because the body still needs the unpeeled
+// one for structured_application_lit_is_declared_optional_variant.
+fn structured_application_site_type_mismatch_with_peeled(
+  formal: Node,
+  formal_peeled: Node,
+  actual_expr: Node,
+  scope: InferScope
+) -> Bool {
+  match actual_expr.expr_data {
+    ExprRecordLit { parent_enum: _ } =>
       let source_indices = scope.type_env.source_indices
-      let formal_peeled = peel_nominal_alias_identity(n: formal, env: scope.type_env, module_name: scope.module_name)
       if type_node_is_callable(n: formal_peeled) {
         false
       } else {
@@ -2033,7 +2060,7 @@ fn direct_call_structured_application_mismatch_diags(
       match app.matched_arg {
         Present { value: ta } =>
           let actual_expr = arg_value(n: ta)
-          if structured_application_site_type_mismatch(formal: formal_subst, actual_expr: actual_expr, scope: scope)
+          if structured_application_site_type_mismatch_with_peeled(formal: formal_subst, formal_peeled: formal, actual_expr: actual_expr, scope: scope)
             || direct_call_structured_record_literal_resolved_type_mismatch(
               formal: formal, actual_expr: actual_expr, type_env: type_env, module_name: module_name, source_indices: source_indices) {
             let actual_raw = resolved_type(n: actual_expr)
