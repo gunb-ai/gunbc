@@ -1,0 +1,105 @@
+module test.claim.belt_tick_receipt_home_witness
+
+
+// THE KEYSTONE. The srv1 pair is DispatchStateHostShared, so both instances resolve the dispatch
+// attempt-state root to ONE path. A receipt homed there would be a single file answering for two
+// instances — blue's tick would overwrite green's and the UI would render one slot's state as the
+// other's. Asserted as an inequality against the ACTUAL shared value rather than against a literal,
+// so it keeps discriminating if that root is ever re-pointed.
+// The first conjunct is the PREMISE this witness defends: the two instances really do share one
+// attempt-state root. If that ever stops being true the rest is no longer the interesting claim,
+// and it going red is the signal to re-read the note rather than to relax the assertion.
+test fn the_receipt_is_not_homed_in_the_shared_attempt_state_root() -> std.types.Bool {
+  let shared_blue = gunbc.roadmap_dashboard_instance.dashboard_instance_dispatch_attempt_state_root(instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance()) as std.types.String
+  let shared_green = gunbc.roadmap_dashboard_instance.dashboard_instance_dispatch_attempt_state_root(instance: gunbc.roadmap_dashboard_instance.srv1_green_dashboard_instance()) as std.types.String
+  let blue = gunbc.roadmap_belt_actuate.belt_tick_receipt_path_for_instance(instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance())
+  let green = gunbc.roadmap_belt_actuate.belt_tick_receipt_path_for_instance(instance: gunbc.roadmap_dashboard_instance.srv1_green_dashboard_instance())
+  shared_blue == shared_green && blue != shared_blue && green != shared_green
+}
+
+// Two slots on one host must not fuse. The receipt is per-instance by construction because it
+// derives from instance_root, which is the one root the shared-dispatch pair does not share.
+test fn two_slots_on_one_host_get_distinct_receipts() -> std.types.Bool {
+  let blue = gunbc.roadmap_belt_actuate.belt_tick_receipt_path_for_instance(instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance())
+  let green = gunbc.roadmap_belt_actuate.belt_tick_receipt_path_for_instance(instance: gunbc.roadmap_dashboard_instance.srv1_green_dashboard_instance())
+  blue != green
+}
+
+// The receipt sits INSIDE the instance's receipts directory — the directory the deploy bootstraps
+// with install -d -o <service-user>. A receipt written anywhere else is written into a root-owned
+// directory and fails EACCES, which is the defect this change repairs.
+test fn the_receipt_sits_in_the_instance_receipts_directory() -> std.types.Bool {
+  let green = gunbc.roadmap_belt_actuate.belt_tick_receipt_path_for_instance(instance: gunbc.roadmap_dashboard_instance.srv1_green_dashboard_instance())
+  let dir = gunbc.host_layout.instance_receipts_dir(instance_root: "/opt/gunbc-green")
+  green == join([dir, "/belt-last-tick.json"], "")
+}
+
+// The exact bytes, both instances. Pinned because the deploy's install -d and the tick's write must
+// agree on one path: a derivation that drifted would create the directory in one place and write
+// the receipt in another, and both halves would look correct in isolation.
+test fn the_receipt_paths_are_the_expected_bytes() -> std.types.Bool {
+  let blue = gunbc.roadmap_belt_actuate.belt_tick_receipt_path_for_instance(instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance())
+  let green = gunbc.roadmap_belt_actuate.belt_tick_receipt_path_for_instance(instance: gunbc.roadmap_dashboard_instance.srv1_green_dashboard_instance())
+  blue == "/opt/gunbc/receipts/belt-last-tick.json"
+    && green == "/opt/gunbc-green/receipts/belt-last-tick.json"
+}
+
+// The directory projection is a function of its argument, not a literal wearing a parameter.
+// A body that ignored instance_root and returned production's path would pass every claim above
+// that only reads green, so both directions are asserted here.
+test fn the_receipts_directory_derives_from_its_instance_root() -> std.types.Bool {
+  gunbc.host_layout.instance_receipts_dir(instance_root: "/opt/gunbc") == "/opt/gunbc/receipts"
+    && gunbc.host_layout.instance_receipts_dir(instance_root: "/opt/gunbc-green") == "/opt/gunbc-green/receipts"
+    && gunbc.host_layout.instance_receipts_dir(instance_root: "/srv/elsewhere") == "/srv/elsewhere/receipts"
+}
+
+
+// ── The deploy-side half: the directory is actually created, and owned by the service user ─────
+//
+// Without this the tick half above is a path that still cannot be written. These two claims are
+// the pair — where the receipt goes, and who owns the directory it goes in — and either alone
+// leaves the defect intact.
+
+fn step_commands(steps: std.types.List<v2.std.orchestration.PipelineStep>) -> std.types.List<std.types.String> {
+  fold(steps, init: [], f: (acc, s) => match s {
+    Do { run: r } => concat(acc, [r.command])
+    _ => acc
+  })
+}
+
+fn has_command(cmds: std.types.List<std.types.String>, want: std.types.String) -> std.types.Bool {
+  fold(cmds, init: false, f: (acc, c) => acc || c == want)
+}
+
+fn belt_upsert_commands() -> std.types.List<std.types.String> {
+  let spec = gunbc.live_deploy.spec.deployment_spec_srv1_green()
+  let art = gunbc.live_deploy.spec.DeploymentArtifactStep {
+    kind: gunbc.live_deploy.spec.BeltTimerUnit,
+    path: gunbc.live_deploy.spec.deployment_belt_timer_unit_path(
+      names: gunbc.live_deploy.spec.srv1_green_deployment_names(instance: gunbc.roadmap_dashboard_instance.srv1_green_dashboard_instance()),
+    ) as std.types.String as std.types.NonEmptyStr,
+  }
+  step_commands(steps: gunbc.live_deploy.emit.emit_artifact_upsert(
+    art: art,
+    spec: spec,
+    revision: gunbc.live_deploy.emit.RevisionBoundAtEmission { revision: "0000000000000000000000000000000000000000" as std.types.CommitSha },
+  ))
+}
+
+// The bootstrap is emitted, it targets THIS instance's receipts directory, and it carries the
+// service-user ownership. Asserted as exact bytes because all three facts live in one command and
+// a witness that only checked for "install -d" would pass on production's path or on a root-owned
+// directory — the two ways this fix can be silently wrong.
+test fn the_belt_member_bootstraps_its_own_receipts_directory() -> std.types.Bool {
+  has_command(cmds: belt_upsert_commands(), want: "sudo -n install -d -m 0755 -o briansrls -g briansrls /opt/gunbc-green/receipts")
+}
+
+// The directory the deploy creates is the directory the tick writes into. Stated as a join between
+// the two derivations rather than as two literals, so a drift in either one reds here instead of
+// producing a created-but-unused directory beside an unwritable receipt.
+test fn the_bootstrapped_directory_is_where_the_receipt_goes() -> std.types.Bool {
+  let dir = gunbc.host_layout.instance_receipts_dir(instance_root: "/opt/gunbc-green")
+  let receipt = gunbc.roadmap_belt_actuate.belt_tick_receipt_path_for_instance(instance: gunbc.roadmap_dashboard_instance.srv1_green_dashboard_instance())
+  has_command(cmds: belt_upsert_commands(), want: join(["sudo -n install -d -m 0755 -o briansrls -g briansrls ", dir], ""))
+    && receipt == join([dir, "/belt-last-tick.json"], "")
+}

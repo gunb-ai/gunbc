@@ -97,6 +97,8 @@ test fn witness_dispatch_bijection_real_roster_falsifier_wet_consumer_holds() ->
   }
 }
 
+data witness_infer_transform_add_vertical_flip_note: String = "POLARITY FLIPPED, not weakened or deleted (dashboard node adhoc-1eb1a9f9-ad9). Before 611fd02770/#8283 deleted falsifier.yml, this identity's cadence (FalsifierSubstrateLongLane) had a real scheduled route and witness_has_executing_consumer_for_row held. That route no longer exists — falsifier.yml is gone and no replacement executor exists — so witness_execution_standing_for_live_row now derives DeclaredCadenceUnrealized for this exact identity rather than WitnessHasExecutingConsumer. The identity is inside the derived population witness_cadence_has_scheduled_route names as unrealized, not beside it: this test now certifies the honest gap rather than the coverage claim that stopped being true at 611fd02770."
+
 test fn witness_infer_transform_add_vertical_substrate_long_consumer_holds() -> Bool {
   match v2.workflow.witness_admission.witness_consumer_cadence_for_row(
     entry: "src/v2/test/claim/long/infer_transform_binary_infix_witness_test.dag",
@@ -106,10 +108,13 @@ test fn witness_infer_transform_add_vertical_substrate_long_consumer_holds() -> 
     std.witness_admission.FalsifierSubstrateLongLane => true
     _ => false
   }
-    && v2.workflow.witness_admission.witness_has_executing_consumer_for_row(
+    && match witness_execution_standing_for_live_row(
       entry: "src/v2/test/claim/long/infer_transform_binary_infix_witness_test.dag",
       function: "infer_transform_add_vertical_witness_holds"
-    )
+    ) {
+      DeclaredCadenceUnrealized { cadence: _, entry: _, function: _ } => true
+      _ => false
+    }
 }
 
 test fn witness_complement_wet_falsifier_consumer_holds() -> Bool {

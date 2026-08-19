@@ -115,7 +115,7 @@ fn witness_consumer_cadence_for_row(
 
 data witness_path_policy_admission_wall_note: String = "THE ARM THIS WALL CLOSED, and why it needed a wall rather than a stronger reconciliation. witness_consumer_cadence_for_row answers WHICH policy claims a row; this function answers whether that policy is an admissible answer, and until 2026-08-04 it conflated the two by refusing only NoConsumer. So OfflineLocalRecipe — the verdict a broad directory pattern produces — was accepted unconditionally, and moving a file under such a directory both removed it from per-PR discovery and satisfied admission. The exact-admission authority already forbids exactly this shape: explicit_witness_admission_cadence_executes refuses OfflineLocalRecipe on an admission row so that an admission cannot execute nowhere. The path side now meets the same bar, with the frozen legacy population (gunbc.witness_deferral_freeze) as the only exemption and that exemption itself joined by identity in both directions.
 
-READING ORDER IS LOAD-BEARING. The explicit rosters are consulted FIRST and are total for the rows they cover, so this path-policy fold decides only rows no roster claims — the same precedence witness_row_excluded_two_kinds_note states for exclusion. One consequence is deliberate and is NOT closed here: consumer_for_explicit_rosters maps a falsifier_self_host_wet row to OfflineLocalRecipe while falsifier_self_host_wet_cadence_active is false, and that reaches WitnessHasExecutingConsumer through the explicit arm. That is the same shape one layer in — a declared cadence that currently executes nothing — but it is a counted roster with a named owner and a dated trigger (falsifier_self_host_wet_build_verification_cadence_note) rather than a directory admitting silently, so it is adjacent scope, named here so it is not mistaken for covered."
+READING ORDER IS LOAD-BEARING. The explicit rosters are consulted FIRST and are total for the rows they cover, so this path-policy fold decides only rows no roster claims — the same precedence witness_row_excluded_two_kinds_note states for exclusion. One consequence is deliberate and is NOT closed here: consumer_for_explicit_rosters maps a falsifier_self_host_wet row to OfflineLocalRecipe while falsifier_self_host_wet_cadence_active is false, and that reaches WitnessHasExecutingConsumer through the explicit arm rather than through this path-policy fold — the falsifier-cadence coverage misclassification is closed at witness_execution_standing_for_row (DeclaredCadenceUnrealized, dashboard node adhoc-1eb1a9f9-ad9), not here; it is adjacent scope, named here so it is not mistaken for covered."
 
 fn witness_path_policy_execution_standing_in(
   entry: String,
@@ -191,7 +191,12 @@ fn witness_execution_standing_for_row(
           excluded_from_discovery: excluded_from_discovery
         )
       }
-    _ => std.witness_admission.WitnessHasExecutingConsumer { cadence: explicit }
+    _ =>
+      if witness_cadence_has_scheduled_route(cadence: explicit) {
+        WitnessHasExecutingConsumer { cadence: explicit }
+      } else {
+        DeclaredCadenceUnrealized { cadence: explicit, entry: entry, function: function }
+      }
   }
 }
 
@@ -203,6 +208,7 @@ fn witness_has_executing_consumer(standing: std.witness_admission.WitnessExecuti
     LegacyFrozenPathDeferral { entry: _, function: _ } => false
     UnclassifiedPathDeferral { entry: _, function: _ } => false
     UnexecutedDeferredWitness { entry: _, function: _ } => false
+    DeclaredCadenceUnrealized { cadence: _, entry: _, function: _ } => false
   }
 }
 
@@ -225,6 +231,7 @@ fn witness_floor_admission_holds(
       frozen_baseline_permits_legacy_debt(baseline: baseline)
     UnclassifiedPathDeferral { entry: _, function: _ } => false
     UnexecutedDeferredWitness { entry: _, function: _ } => false
+    DeclaredCadenceUnrealized { cadence: _, entry: _, function: _ } => false
   }
 }
 

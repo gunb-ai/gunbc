@@ -46,6 +46,7 @@ fn standing_is_unclassified_path_deferral(r: std.witness_admission.WitnessExecut
     UnexecutedDeferredWitness { entry: _, function: _ } => false
     LegacyFrozenPathDeferral { entry: _, function: _ } => false
     WitnessHasExecutingConsumer { cadence: _ } => false
+    DeclaredCadenceUnrealized { cadence: _, entry: _, function: _ } => false
   }
 }
 
@@ -55,6 +56,7 @@ fn standing_is_unexecuted_deferred(r: std.witness_admission.WitnessExecutionStan
     UnclassifiedPathDeferral { entry: _, function: _ } => false
     LegacyFrozenPathDeferral { entry: _, function: _ } => false
     WitnessHasExecutingConsumer { cadence: _ } => false
+    DeclaredCadenceUnrealized { cadence: _, entry: _, function: _ } => false
   }
 }
 
@@ -64,6 +66,7 @@ fn standing_is_legacy_frozen(r: std.witness_admission.WitnessExecutionStanding) 
     UnexecutedDeferredWitness { entry: _, function: _ } => false
     UnclassifiedPathDeferral { entry: _, function: _ } => false
     WitnessHasExecutingConsumer { cadence: _ } => false
+    DeclaredCadenceUnrealized { cadence: _, entry: _, function: _ } => false
   }
 }
 

@@ -15,7 +15,7 @@ WHAT THIS ROSTER IS, AND WHAT IT IS NOT. It is the exact identity-grain populati
 
 THE RATCHET, and why it is a freeze rather than a sweep. Classifying every historical resident in one pass would either red the repo or produce 701 guesses at purposes nobody measured; both are worse than the debt. So the population is frozen as-is and the FORWARD hole closes immediately: a new or relocated witness under any OfflineLocalRecipe path must carry an exact admission naming an executing cadence, which is the same bar every other deferral already meets. Legacy rows migrate as their files are touched or as a cadence enrolls them. DISSOLVE-ON: this roster reaching empty — at which point the path-policy pass-through arm in both v2.workflow.witness_admission and the host projection deletes with it, and OfflineLocalRecipe stops being an admission answer at all."
 
-data witness_deferral_freeze_shrink_log_note: String = "SHRINK LOG. The 701-identity / 152-entry figures the notes around this one quote are the FREEZE-POINT BASELINE and are deliberately not restated as the roster's current size — a hand-maintained live count is the change detector DESIGN section 5's oracle rule rejects, and the roster below is the authority for what the population is right now. This row records migrations OUT, which is the only direction permitted, so that the baseline stays legible as history rather than decaying into a false present-tense claim. 2026-08-19 — src/v2/test/claim/execution/long/add_arrow_eval_by_execution_test.dag, 4 identities, and src/v2/test/claim/execution/long/pick_ingested_probe_test.dag, 1 identity, DELETED as subsumed or duplicate coverage, none migrated and none exempted. add_arrow_eval_tokenize_holds, add_arrow_eval_parse_holds and add_arrow_eval_normalize_holds were the shallow steps of a staircase whose deepest step, add_arrow_eval_resolve_holds, cannot reach resolve unless all three stages accepted, so four stages were costing ten stage-runs across four frames to assert what one row asserts; the survivor reds on exactly the refusals they redded on and what is lost is which stage failed. add_arrow_eval_produced_add_body_executes_holds had a body byte-identical to add_arrow_eval_source_driven_add_executes_holds — and BOTH ARE CURRENTLY RED, which is stated rather than left for a reader to assume a green row was removed: main head 5ee2572 fails the pair identically, along with add_arrow_eval_direct_runtime_holds, add_arrow_eval_generality_executes_holds and add_arrow_eval_lazy_arm_branch_suppression_holds, the five identities floor_expected_red already documents as enrolled-and-correctly-red before this module relocated. The surviving twin carries the red; deleting a duplicate of a failing claim removes a second report of one failure, not the report of it. pick_probe_resolved_else_arm_has_magnitude_child_holds differed from its then-arm sibling only in an arm index over one source at one stage, and both arms are now asserted against one bound resolved module; both passed on main and the merged row passes. In every case the assertion survives on a row that keeps it; none of this coverage is relocated because none of it was ever separate. 2026-08-19 — src/v2/test/claim/execution/dag_add_emit_round_trip_test.dag, 1 identity (dag_add_emit_add_fn_accepts_holds), DELETED as duplicate coverage, not migrated and not exempted: its whole body was a call to its sibling dag_add_emit_matches_serialize_holds, so it asserted nothing that sibling did not already assert and paid a second full emit-and-serialize crossing to assert it, each claim evaluating in its own frame. Deleting it removes a crossing and no fact. This is a shrink by deletion of the witness, and the coverage it named is not relocated because it was never separate from the sibling row that keeps it. 2026-08-11 — dag/test/claim/long/inert_lens_hygiene_witness_test.dag, 2 identities, DELETED not migrated and not exempted: the inert-lens census the two witnesses read is gone from the tree entirely, along with the v2.lens.inert_lens module, its two host builtins and the registry/contract rows that obligated it, so the witnesses have no subject to execute against. A frozen row naming a witness the tree no longer carries is a StaleFrozenPathDeferral refusal, which is why the row deletes in the same change rather than after it. This is a shrink by deletion of the subject, NOT by a cadence enrolling the rows — the coverage those two witnesses provided is not relocated anywhere and the scope narrowing is declared in DESIGN §6. 2026-08-06 — src/v2/test/claim/long/realization_vocabulary_containment_witness_test.dag, 1 identity, MIGRATED not exempted: TS-0/LANG-2 enrolled realization_vocab_live_corpus_receipt_holds on falsifier_substrate_long_lane_rows (FalsifierSubstrateLongLane cadence), so the freeze row deletes and the live-corpus receipt executes on the scheduled lane. 2026-08-05 — src/v2/test/claim/long/orchestration_while_emit_test.dag, 14 identities, MIGRATED not exempted: the file returned to src/v2/workflow/orchestration_while_emit_test.dag, the per-PR-discovered path it occupied before gunbc#7098 relocated it, so its rows now classify as WitnessHasExecutingConsumer and the freeze row had to go — a row naming a witness the tree no longer carries at that entry is a StaleFrozenPathDeferral refusal, and its diagnostic says to delete it in the change that moved the witness. Measured eval justifying the return, on a load-average-28 host: 94 / 54 / 36 / 8 ms per witness against the 5000ms gunbc_ci_fast_lane_witness_eval_budget; those are wall figures against a thread-CPU budget, and cpu <= wall for one witness thread, so the bound runs the safe way. Rationale and the receipt live with the witness in orch_while_unfreeze_note."
+data witness_deferral_freeze_shrink_log_note: String = "SHRINK LOG. The 701-identity / 152-entry figures the notes around this one quote are the FREEZE-POINT BASELINE and are deliberately not restated as the roster's current size — a hand-maintained live count is the change detector DESIGN section 5's oracle rule rejects, and the roster below is the authority for what the population is right now. This row records migrations OUT, which is the only direction permitted, so that the baseline stays legible as history rather than decaying into a false present-tense claim. 2026-08-19 — 24 entries (dag/test/claim/ci_exclusion_proof_test.dag, dag/test/claim/deploy_access_privilege_witness_test.dag [partial], dag/test/claim/host_effect_apply_witness_test.dag [partial], dag/test/claim/interp_recorded_fixture_witness_test.dag, dag/test/claim/random_bytes_csprng_witness_test.dag, dag/test/claim/self_host_00_compile_behavioral_witness_test.dag, dag/test/claim/self_host_01_tokenize_behavioral_witness_test.dag, dag/test/claim/self_host_02_parse_behavioral_witness_test.dag, dag/test/claim/self_host_03_ingest_behavioral_witness_test.dag, dag/test/claim/self_host_03_resolve_behavioral_witness_test.dag, dag/test/claim/self_host_04_infer_behavioral_witness_test.dag, dag/test/claim/self_host_materialization_carriers_behavioral_witness_test.dag, dag/test/claim/self_host_program_assembly_behavioral_witness_test.dag, dag/test/claim/self_host_program_partition_behavioral_witness_test.dag, dag/test/claim/self_host_source_authority_behavioral_witness_test.dag, dag/test/claim/srv3_host_effect_apply_witness_test.dag [partial], src/v2/test/claim/execution/dag_add_emit_round_trip_test.dag [partial], src/v2/test/claim/execution/emit_host_complement_equals_eval_test.dag, src/v2/test/claim/execution/emit_host_variant_construct_equals_eval_test.dag, src/v2/test/claim/execution/emit_ingest_python_same_language_round_trip_test.dag [partial], src/v2/test/claim/execution/emit_ingest_type_decl_round_trip_test.dag [partial], src/v2/test/claim/execution/emit_ingest_typescript_same_language_round_trip_test.dag [partial], src/v2/test/claim/execution/floor_diff_observe_witness_test.dag, src/v2/test/claim/execution/proactive_verification_ledger_overlap_execution_test.dag), 38 identities, DELETED not exempted: these identities were simultaneously enrolled in v2.workflow.floor_expected_red's known-red roster (removable only by observing a pass) and path-deferred here as LegacyFrozenPathDeferral (declared never-executed) — a contradictory intersection, because the required floor already treats each of these identities as an executing, known-red subject, so their freeze classification was stale rather than load-bearing; a frozen row naming a witness the required floor already runs has no LegacyFrozenPathDeferral standing left to protect. Computed by joining floor_expected_red_roster against this file's frozen_path_deferrals, qualifying every frozen row through its own entry's module line (not its path string), at commit 063a604e0099c56c3e0a1f72af60d7a6199d1f0b: 38 of 669 qualified freeze identities across 24 entries collided. All 24 entries carry an independently executing consumer already (WitnessHasExecutingConsumer via floor_expected_red), so retirement here removes no coverage — 15 entries had every one of their functions collide and are deleted whole; 9 entries had only some functions collide and keep their remaining, non-colliding functions frozen. A construction wall (expected_red_freeze_intersection, wired into run_required_floor in src/v1/stage0/src/cli_run.rs) now refuses this exact contradiction going forward: any future frozen row whose qualified identity re-enters floor_expected_red_roster fails the required floor with a located, counted refusal naming the exact colliding identities and the git head the collision was observed at, rather than silently coexisting. 2026-08-19 — src/v2/test/claim/execution/long/add_arrow_eval_by_execution_test.dag, 4 identities, and src/v2/test/claim/execution/long/pick_ingested_probe_test.dag, 1 identity, DELETED as subsumed or duplicate coverage, none migrated and none exempted. add_arrow_eval_tokenize_holds, add_arrow_eval_parse_holds and add_arrow_eval_normalize_holds were the shallow steps of a staircase whose deepest step, add_arrow_eval_resolve_holds, cannot reach resolve unless all three stages accepted, so four stages were costing ten stage-runs across four frames to assert what one row asserts; the survivor reds on exactly the refusals they redded on and what is lost is which stage failed. add_arrow_eval_produced_add_body_executes_holds had a body byte-identical to add_arrow_eval_source_driven_add_executes_holds — and BOTH ARE CURRENTLY RED, which is stated rather than left for a reader to assume a green row was removed: main head 5ee2572 fails the pair identically, along with add_arrow_eval_direct_runtime_holds, add_arrow_eval_generality_executes_holds and add_arrow_eval_lazy_arm_branch_suppression_holds, the five identities floor_expected_red already documents as enrolled-and-correctly-red before this module relocated. The surviving twin carries the red; deleting a duplicate of a failing claim removes a second report of one failure, not the report of it. pick_probe_resolved_else_arm_has_magnitude_child_holds differed from its then-arm sibling only in an arm index over one source at one stage, and both arms are now asserted against one bound resolved module; both passed on main and the merged row passes. In every case the assertion survives on a row that keeps it; none of this coverage is relocated because none of it was ever separate. 2026-08-19 — src/v2/test/claim/execution/dag_add_emit_round_trip_test.dag, 1 identity (dag_add_emit_add_fn_accepts_holds), DELETED as duplicate coverage, not migrated and not exempted: its whole body was a call to its sibling dag_add_emit_matches_serialize_holds, so it asserted nothing that sibling did not already assert and paid a second full emit-and-serialize crossing to assert it, each claim evaluating in its own frame. Deleting it removes a crossing and no fact. This is a shrink by deletion of the witness, and the coverage it named is not relocated because it was never separate from the sibling row that keeps it. 2026-08-11 — dag/test/claim/long/inert_lens_hygiene_witness_test.dag, 2 identities, DELETED not migrated and not exempted: the inert-lens census the two witnesses read is gone from the tree entirely, along with the v2.lens.inert_lens module, its two host builtins and the registry/contract rows that obligated it, so the witnesses have no subject to execute against. A frozen row naming a witness the tree no longer carries is a StaleFrozenPathDeferral refusal, which is why the row deletes in the same change rather than after it. This is a shrink by deletion of the subject, NOT by a cadence enrolling the rows — the coverage those two witnesses provided is not relocated anywhere and the scope narrowing is declared in DESIGN §6. 2026-08-06 — src/v2/test/claim/long/realization_vocabulary_containment_witness_test.dag, 1 identity, MIGRATED not exempted: TS-0/LANG-2 enrolled realization_vocab_live_corpus_receipt_holds on falsifier_substrate_long_lane_rows (FalsifierSubstrateLongLane cadence), so the freeze row deletes and the live-corpus receipt executes on the scheduled lane. 2026-08-05 — src/v2/test/claim/long/orchestration_while_emit_test.dag, 14 identities, MIGRATED not exempted: the file returned to src/v2/workflow/orchestration_while_emit_test.dag, the per-PR-discovered path it occupied before gunbc#7098 relocated it, so its rows now classify as WitnessHasExecutingConsumer and the freeze row had to go — a row naming a witness the tree no longer carries at that entry is a StaleFrozenPathDeferral refusal, and its diagnostic says to delete it in the change that moved the witness. Measured eval justifying the return, on a load-average-28 host: 94 / 54 / 36 / 8 ms per witness against the 5000ms gunbc_ci_fast_lane_witness_eval_budget; those are wall figures against a thread-CPU budget, and cpu <= wall for one witness thread, so the bound runs the safe way. Rationale and the receipt live with the witness in orch_while_unfreeze_note."
 
 data witness_deferral_freeze_purpose_frontier_note: String = "WHAT THIS FREEZE DELIBERATELY DOES NOT CARRY, so its coverage is not overread. A frozen row records IDENTITY only — that this exact (entry, function) was already deferred by path policy when the wall landed. It records no purpose, no measured cost, and no consumer, because it has none: the whole point of the freeze is that these 701 identities (152 entries, measured at the freeze point) were admitted without any of the three. The purpose taxonomy (which boundary, population, external effect, or resource contract justifies the size) and the per-witness cost envelope are the NEXT slice, and a frozen row is the debt marker that one is owed.
 
@@ -53,14 +53,13 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     ]
   },
   FrozenPathDeferral { entry: "dag/test/claim/ci_deploy_observed_wet_test.dag", functions: ["ci_deploy_observed_wet_witnesses"] },
-  FrozenPathDeferral { entry: "dag/test/claim/ci_exclusion_proof_test.dag", functions: ["ci_exclusion_proof_sentinel"] },
   FrozenPathDeferral {
     entry: "dag/test/claim/deploy_access_privilege_witness_test.dag",
     functions: [
       "witness_modeled_unprivileged_fixture_is_denied",
       "witness_unprivileged_mutation_refused_before_shell",
       "witness_unprivileged_mutation_directive_is_refused_terminal",
-      "witness_privileged_fixture_mutation_applies", "witness_privileged_fixture_surfaces_stdout"
+      "witness_privileged_fixture_mutation_applies"
     ]
   },
   FrozenPathDeferral { entry: "dag/test/claim/direct_rust_door_write_compile_witness_test.dag", functions: ["direct_rust_door_emit_write_compile_holds"] },
@@ -74,13 +73,12 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
   FrozenPathDeferral {
     entry: "dag/test/claim/host_effect_apply_witness_test.dag",
     functions: [
-      "witness_shell_on_host_success_converges", "witness_shell_on_host_failure_fails_closed",
+      "witness_shell_on_host_success_converges",
       "witness_redfish_on_bmc_unimplemented_fails_closed",
       "witness_redfish_on_hostos_typed_mismatch", "witness_shell_on_bmc_typed_mismatch",
-      "witness_converge_policy_redrives_not_converged",
       "witness_oneshot_policy_terminal_not_converged", "witness_incompatible_is_refused_terminal",
-      "witness_converged_is_settled", "witness_ssh_shell_unreachable_fails_closed",
-      "witness_ssh_empty_script_fails_closed", "witness_shell_failure_surfaces_captured_stdout",
+      "witness_converged_is_settled",
+      "witness_ssh_empty_script_fails_closed",
       "witness_identity_evidence_derives_oneshot_drive",
       "witness_converge_loop_evidence_derives_converge_drive",
       "witness_arbitrary_non_idempotent_derives_oneshot_not_redrive",
@@ -89,7 +87,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "witness_converge_plan_on_bmc_typed_mismatch", "witness_converge_plan_redrives_on_frontier"
     ]
   },
-  FrozenPathDeferral { entry: "dag/test/claim/interp_recorded_fixture_witness_test.dag", functions: ["interp_recorded_fixture_keystone_holds"] },
   FrozenPathDeferral { entry: "dag/test/claim/lever_a_local_receipt_witness_test.dag", functions: ["lever_a_local_receipts_hold"] },
   FrozenPathDeferral {
     entry: "dag/test/claim/long/cited_symbol_resolution_witness_test.dag",
@@ -111,24 +108,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
   FrozenPathDeferral { entry: "dag/test/claim/long/commit_witness_claim_roster_witness_test.dag", functions: ["commit_witness_claim_roster_holds"] },
   FrozenPathDeferral { entry: "dag/test/claim/long/import_closure_live_test.dag", functions: ["dag_import_closure_live_witness_bundle_holds"] },
   FrozenPathDeferral { entry: "dag/test/claim/long/reference_closure_equivalence_test.dag", functions: ["reference_closure_b2_safety_wall_holds"] },
-  FrozenPathDeferral {
-    entry: "dag/test/claim/random_bytes_csprng_witness_test.dag",
-    functions: [
-      "random_bytes_count_holds", "random_bytes_zero_holds",
-      "random_bytes_base64url_mint_16_length_holds", "random_bytes_base64url_mint_20_length_holds"
-    ]
-  },
-  FrozenPathDeferral { entry: "dag/test/claim/self_host_00_compile_behavioral_witness_test.dag", functions: ["self_host_00_compile_behavioral_receipt_holds"] },
-  FrozenPathDeferral { entry: "dag/test/claim/self_host_01_tokenize_behavioral_witness_test.dag", functions: ["self_host_01_tokenize_behavioral_receipt_holds"] },
-  FrozenPathDeferral { entry: "dag/test/claim/self_host_02_parse_behavioral_witness_test.dag", functions: ["self_host_02_parse_behavioral_receipt_holds"] },
-  FrozenPathDeferral { entry: "dag/test/claim/self_host_03_ingest_behavioral_witness_test.dag", functions: ["self_host_03_ingest_behavioral_receipt_holds"] },
-  FrozenPathDeferral { entry: "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag", functions: ["self_host_03_normalize_declared_source_refs_complete_holds"] },
-  FrozenPathDeferral { entry: "dag/test/claim/self_host_03_resolve_behavioral_witness_test.dag", functions: ["self_host_03_resolve_behavioral_receipt_holds"] },
-  FrozenPathDeferral { entry: "dag/test/claim/self_host_04_infer_behavioral_witness_test.dag", functions: ["self_host_04_infer_behavioral_receipt_holds"] },
-  FrozenPathDeferral { entry: "dag/test/claim/self_host_materialization_carriers_behavioral_witness_test.dag", functions: ["self_host_materialization_carriers_behavioral_receipt_holds"] },
-  FrozenPathDeferral { entry: "dag/test/claim/self_host_program_assembly_behavioral_witness_test.dag", functions: ["self_host_program_assembly_behavioral_receipt_holds"] },
-  FrozenPathDeferral { entry: "dag/test/claim/self_host_program_partition_behavioral_witness_test.dag", functions: ["self_host_program_partition_behavioral_receipt_holds"] },
-  FrozenPathDeferral { entry: "dag/test/claim/self_host_source_authority_behavioral_witness_test.dag", functions: ["self_host_source_authority_behavioral_receipt_holds"] },
   FrozenPathDeferral { entry: "dag/test/claim/served_surface_browser_artifact_integrity_witness_test.dag", functions: ["witness_checked_in_screenshots_match_receipts"] },
   FrozenPathDeferral {
     entry: "dag/test/claim/srv3_host_effect_apply_witness_test.dag",
@@ -136,9 +115,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "witness_srv3_receipt_emit_apply_converges_in_process",
       "witness_bmcweb_token_extract_ssh_transport_refuses_typed",
       "witness_bmcweb_session_login_argv_uses_curl_authority_not_serialize_bash",
-      "witness_srv3_apply_shell_failure_refuses_typed",
-      "witness_srv3_apply_failure_surfaces_captured_stdout_not_fabricated",
-      "witness_srv3_apply_failure_no_fabricated_stdout",
       "witness_srv3_typed_effect_on_bmc_refuses_typed",
       "witness_srv3_typed_reconcile_ssh_transport_refuses_typed",
       "witness_srv3_nbd_proxy_apply_foreign_port_refuses_at_apply_time",
@@ -318,8 +294,8 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     entry: "src/v2/test/claim/execution/dag_add_emit_round_trip_test.dag",
     functions: [
       "dag_add_emit_matches_serialize_holds", "dag_add_grammar_inverse_holds",
-      "dag_add_ingest_via_coerce_matches_canonical", "dag_add_domain_coerce_accepts_holds",
-      "dag_add_domain_translate_accepts_holds", "dag_add_translate_accepts_holds"
+      "dag_add_ingest_via_coerce_matches_canonical",
+      "dag_add_translate_accepts_holds"
     ]
   },
   FrozenPathDeferral { entry: "src/v2/test/claim/execution/effect_io_eval_by_execution_test.dag", functions: ["effect_io_eval_roundtrip_holds", "effect_io_eval_unbound_fail_closed_holds"] },
@@ -335,7 +311,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "ingested_classical_not_arrow_empty_domain_infer_refuses_holds"
     ]
   },
-  FrozenPathDeferral { entry: "src/v2/test/claim/execution/emit_host_complement_equals_eval_test.dag", functions: ["emit_host_complement_wrong_fixture_refuses_holds"] },
   FrozenPathDeferral { entry: "src/v2/test/claim/execution/emit_host_field_access_equals_eval_test.dag", functions: ["emit_host_field_access_wrong_fixture_refuses_holds"] },
   FrozenPathDeferral {
     entry: "src/v2/test/claim/execution/emit_host_filesystem_read_equals_eval_test.dag",
@@ -391,7 +366,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "emit_host_row_bound_executable_identity_discriminates_holds"
     ]
   },
-  FrozenPathDeferral { entry: "src/v2/test/claim/execution/emit_host_variant_construct_equals_eval_test.dag", functions: ["emit_host_variant_construct_wrong_fixture_refuses_holds"] },
   FrozenPathDeferral {
     entry: "src/v2/test/claim/execution/emit_ingest_grammar_relation_round_trip_test.dag",
     functions: [
@@ -411,12 +385,10 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "emit_ingest_python_perturbed_frontier_fails_closed",
       "ingest_python_forward_fails_closed_off_frontier_holds",
       "emit_python_backward_fails_closed_on_foreign_emitted_holds",
-      "python_same_language_parse_bridge_holds",
-      "python_same_language_source_emit_round_trip_holds",
-      "emit_ingest_python_same_language_round_trip_holds"
+      "python_same_language_parse_bridge_holds"
     ]
   },
-  FrozenPathDeferral { entry: "src/v2/test/claim/execution/emit_ingest_type_decl_round_trip_test.dag", functions: ["type_decl_real_source_round_trip_holds", "emit_ingest_type_decl_round_trip_holds"] },
+  FrozenPathDeferral { entry: "src/v2/test/claim/execution/emit_ingest_type_decl_round_trip_test.dag", functions: ["emit_ingest_type_decl_round_trip_holds"] },
   FrozenPathDeferral {
     entry: "src/v2/test/claim/execution/emit_ingest_typescript_same_language_round_trip_test.dag",
     functions: [
@@ -427,20 +399,10 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "emit_ingest_typescript_perturbed_frontier_fails_closed",
       "ingest_typescript_forward_fails_closed_off_frontier_holds",
       "emit_typescript_backward_fails_closed_on_foreign_emitted_holds",
-      "typescript_same_language_parse_bridge_holds",
-      "typescript_same_language_source_emit_round_trip_holds",
-      "emit_ingest_typescript_same_language_round_trip_holds"
+      "typescript_same_language_parse_bridge_holds"
     ]
   },
   FrozenPathDeferral { entry: "src/v2/test/claim/execution/eval_bind_non_bind_interpreter_rejects_test.dag", functions: ["eval_bind_node_eval_rejects_value_interpreter_holds"] },
-  FrozenPathDeferral {
-    entry: "src/v2/test/claim/execution/floor_diff_observe_witness_test.dag",
-    functions: [
-      "witness_ci_policy_observation_succeeds", "witness_invalid_base_fails_closed",
-      "witness_ci_policy_name_status_observation_succeeds",
-      "witness_invalid_base_name_status_fails_closed"
-    ]
-  },
   FrozenPathDeferral {
     entry: "src/v2/test/claim/execution/fold_assembly_round_trip_test.dag",
     functions: [
@@ -534,7 +496,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "pick2_ingested_pick_false_executes_holds", "pick2_ingested_swapped_arms_red_holds"
     ]
   },
-  FrozenPathDeferral { entry: "src/v2/test/claim/execution/proactive_verification_ledger_overlap_execution_test.dag", functions: ["proactive_verification_ledger_overlap_execution_holds"] },
   FrozenPathDeferral {
     entry: "src/v2/test/claim/execution/rust_emit_host_call_equals_eval_test.dag",
     functions: [
