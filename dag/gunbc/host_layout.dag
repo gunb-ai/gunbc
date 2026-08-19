@@ -112,8 +112,7 @@ data fleet_converge_receipt_dir: String = "/opt/gunbc/receipts"
 
 // THE PER-INSTANCE RECEIPTS DIRECTORY, derived from an instance root rather than spelled.
 // Every instance publishes its receipts beside its own root, so two slots on one host cannot
-// fuse their receipts under one path — the same identity separation the deployed-tree remote
-// member keeps for `origin` (gunbc.deployed_tree_remote). That matters here specifically
+// fuse their receipts under one path. That matters here specifically
 // because the srv1 pair is DispatchStateHostShared: blue and green share one dispatch
 // attempt-state root, so the attempt-state root is NOT available as a per-instance home and a
 // receipt written there would be one file answering for two instances.
