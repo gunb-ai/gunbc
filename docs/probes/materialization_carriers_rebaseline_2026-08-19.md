@@ -57,19 +57,44 @@ than by trusting the total alone.
 
 | # | mechanism | pop | unchanged? |
 |---|---|---:|---|
-| 1a | Clone bound missing on generic **derived impls** | 12 | yes — same 10 E0277 (`im::Vector<T>` Debug/Serialize/Deserialize) + 2 E0369 (derived `PartialEq`) at `v2_std_algebra.rs:43,45,84,88` |
-| 1b | Clone bound missing on generated **fn/inherent-impl signatures** | 16 | yes — same 6 E0277 + 6 E0599 (`v2_std_staging.rs`, `v2_compiler_materialization_carriers.rs`) + 2 E0599 `CacheLookupResult<T>` (`std_cache_interface.rs:564,580`) + 2 E0308 (`v2_std_algebra.rs:118`, `v2_std_staging.rs:31`) |
+| 1a | Clone bound missing on generic **derived impls** | 14 | **corrected 2026-08-19, see §4a** — 10 E0277 (`im::Vector<T>` Debug/Serialize/Deserialize, `v2_std_algebra.rs:43,45,84,88`) + 2 E0369 (derived `PartialEq`, `v2_std_algebra.rs:45,88`) + 2 E0599 `CacheLookupResult<T>` (`std_cache_interface.rs:564,580`) |
+| 1b | Clone bound missing on generated **fn/inherent-impl signatures** | 14 | **corrected 2026-08-19, see §4a** — 6 E0277 (`bind_outcome`/`resolve_probe` bounds, `v2_std_staging.rs`, `v2_compiler_materialization_carriers.rs`) + 6 E0599 (`no method clone for type parameter A`, same two files) + 2 E0308 (`v2_std_algebra.rs:118`, `v2_std_staging.rs:31`) |
 | 2 | Optional carrier fork | 6 | yes — same 4 E0308 `std_cache_interface.rs:638,695,699,703` + 2 E0308 `extdeps_uri.rs:752,756` |
 | 3 | Unsynthesized use-line (root K) | 5 | yes — same 2 E0422 `ProviderRetention` + 3 E0425 `NonEmptyStr` |
 | 4 | Int literal into branded-string field | 4 | yes — same 4 E0308, `compile_stage_memo.rs:95,101`, `parse_table_memo.rs:116,122` |
 | 5 | Type alias materialised twice | 3 | yes — same 3 E0308, `v2_std_node.rs:69,78,84` |
 | 6 | Nested coproduct pattern flattened | 2 | yes — same 2 `unreachable_patterns`, `v2_std_node.rs:533,537` |
-| 7 | ContentHash carrier vs `String` (T7) | 1 | yes — same 1 E0599 `partial_cmp`, `v2_std_node.rs:1334` — **owned by `calm-lynx-547`, untouched** |
+| 7 | ContentHash carrier vs `String` (T7) | 1 | yes — same 1 E0599 `partial_cmp`, `v2_std_node.rs:1334` — attributed to `calm-lynx-547`, **who is archived; see §5** |
 | 8 | Record literal through shared-wrapped alias | 1 | yes — same 1 E0560, `std_verification.rs:22` |
 | 9 | Type annotations needed | 1 | yes — same 1 E0282, `std_realization_measurement.rs:197` |
 
-`12+16+6+5+4+3+2+1+1+1 = 51`. Every row's specimen file:line:col was re-checked against this
+`14+14+6+5+4+3+2+1+1+1 = 51`. Every row's specimen file:line:col was re-checked against this
 run's JSON, not assumed carried forward.
+
+### 4a. 1a/1b split correction (flagged by `smart-ram-730`, 2026-08-19)
+
+This section originally split 1a/1b as 12/16, disagreeing with #8460 §10.3's settled 14/14.
+Settled by re-reading the JSON `message`/`children` text for the two disputed sites
+(`std_cache_interface.rs:564,580`, both `E0599 CacheLookupResult<T> clone`), not by re-asserting
+either total:
+
+- Those two sites read *"the method `clone` exists for enum `CacheLookupResult<T>`, but its
+  trait bounds were not satisfied"* / *"trait bound `T: Clone` was not satisfied"* — the
+  **derived-impl-with-unsatisfiable-bound** shape (`#[derive(Clone)]` emits `impl<T: Clone> Clone
+  for CacheLookupResult<T>`; calling `.clone()` on `T`-not-`Clone` fails through that generated
+  impl). Same species as the `im::Vector<T>` Debug/Serialize/Deserialize/PartialEq sites in 1a —
+  a derived trait implementation whose bound the emitter didn't add, not a fn signature.
+- The genuine 1b E0599 sites (`v2_std_staging.rs`, `v2_compiler_materialization_carriers.rs`)
+  read *"no method named `clone` found for type parameter `A` in the current scope"* — a bare
+  generic fn/inherent-impl body calling `.clone()` on an unbounded type parameter, no derive
+  involved. A structurally different mechanism from the `CacheLookupResult<T>` sites.
+
+Verdict: the two `CacheLookupResult<T>` sites belong in **1a**, not 1b. §4's table above is
+corrected to 14/14, matching #8460 §10.3 exactly. This was **arm (ii) — a categorization slip in
+this session's re-derivation**, not genuine movement between bases (consistent with §3's
+site-for-site match: nothing about *which* 51 sites exist changed, only which row two of them were
+filed under). #8460's board was right; this document's first draft was wrong and is now corrected
+in place rather than left standing beside a second, disagreeing account.
 
 ## 5. T7 / "99 E0308 sites" — resolved for `stern-fox-619`, restated against this base
 
@@ -81,9 +106,23 @@ sites (per #8460 §11.2, measured across `11254b04fc` = 8 T7 rows, `2c65eeacf3` 
 different, larger population than any one module's reachable-today count. `stern-fox-619`'s task
 title quoting "99 E0308 sites" is quoting that whole-corpus census, not this module: scoping the
 NARROW T7 repair to `materialization_carriers` alone will dent this module's board by at most the
-1 E0599 row above (and even that is `calm-lynx-547`'s row, out of scope for a table-absent-names
-NARROW fix per prediction B below) — the "99 sites" headline is a corpus-wide claim, not something
-this module's build can deliver on its own.
+1 E0599 row above (and that row's own ownership is stale — see below), out of scope for a
+table-absent-names NARROW fix per prediction B below — the "99 sites" headline is a corpus-wide
+claim, not something this module's build can deliver on its own.
+
+**On T7's local yield, said loudly (per `smart-ram-730`'s request):** the reshaping is real. If
+this module's entire live T7 footprint is one row, and #8410 already retired the other eight, then
+T7 is not a `materialization_carriers` blocker — it is a corpus-wide class (99/408 sites, 11 entry
+modules) whose yield in *this* module is one E0599 site. `stern-fox-619`'s repair's value is the
+class fix across the corpus, not a dent in this board.
+
+**Ownership check (per `smart-ram-730`'s ask):** row 7 was attributed to `calm-lynx-547`, checked
+via `dashboard-ops` — that session is **archived**. This row's owner is stale, not confirmed live.
+Flagging here rather than silently carrying the attribution forward: if no lane has since picked up
+T7-for-this-module, row 7 is currently **unowned**, and it is exactly the kind of single leftover
+row that goes unnoticed until someone else drives the board to zero and finds it still there. Not
+claiming it myself (out of this session's scope, and `smart-ram-730` should route it), but naming
+it as open rather than "owned, untouched."
 
 ## 6. Predictions, restated against this base, before the causing PRs land
 
