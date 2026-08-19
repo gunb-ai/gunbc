@@ -676,7 +676,7 @@ exists to keep peripheral. So the wall belongs on the **input**, not on the seri
 serializer total over it. That is **not built**, and the design of its mint is genuinely open —
 whatever seals it faces the same recursion one level up. Until it lands, provenance sits at
 *mitigatable*, and the practical containment is that the only public jq entry point is
-`jq_invocation_cli_arguments`, which is a convention, not a wall.
+`jq_invocation_process_plan`, which is a convention, not a wall.
 
 **Application-argument typechecking is not the terminal trigger.** The `04_infer` gap is real —
 `explicit_return_conformance_note` records that conformance is judged only by the

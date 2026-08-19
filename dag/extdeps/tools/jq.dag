@@ -56,9 +56,12 @@ service jq.Json {
 // WAVE 1A: the semantic invocation, and the two-level derivation from it to argv.
 // docs/plans/cli-invocation-emission-design.md
 //
-// The caller describes WHAT IT WANTS OF JQ. It never names a flag. Nothing below is reachable
-// from a domain module except through jq_invocation_cli_arguments, and that function emits the
-// spellings rather than accepting them.
+// The caller describes WHAT IT WANTS OF JQ. It never names a flag. A domain module reaches this
+// module through jq_invocation_process_plan -- the complete result, carrying tool, argv and stdin
+// -- and those functions emit the spellings rather than accepting them. jq_invocation_cli_arguments
+// remains beside it as the argv-only projection the boundary witness asserts over; it is NOT the
+// handler's entry point, because a handler that took it would have to reopen the JqInvocation to
+// recover stdin, giving the process projection two authorities.
 
 // A jq program is opaque HERE on purpose. Modeling jq's expression language is a separate
 // vertical from modeling its invocation structure, and conflating them would make this wave

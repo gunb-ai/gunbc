@@ -77,7 +77,7 @@ import v2.std.optional { Absent, Present }
 //
 // NOT BUILT, and its mint's design is genuinely open, because whatever seals AdmittedCliInvocation
 // faces the same recursion one level up. Until it lands, provenance sits at MITIGATABLE and the
-// only containment is that jq's single public entry point is jq_invocation_cli_arguments -- a
+// only containment is that jq's complete public entry point is jq_invocation_process_plan -- a
 // convention, not a wall. DISSOLVES WITH: that sealed input carrier, not with "the first
 // production consumer", which was the previous trigger and would have fired without closing this.
 
