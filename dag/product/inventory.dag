@@ -104,47 +104,121 @@ type ProcurementReceipt {
   vendor: DeclarationRef
 }
 
-data landed_cost_is_aggregate_note: String = "Landed cost is stored ONCE, as an aggregate at LOT grain, and there is no per-unit field. Two reasons, and both are structural rather than stylistic. First, division does not close at money-micro grain: 100 units landing at 1,000,003 micros has no exact per-unit quotient, so a stored per-unit average is a fabricated number that no longer sums back to what was paid — DESIGN section 5's fabricated-plausible-output, wearing a currency. Second, assigning cost to individual units is a POLICY (specific identification, average, FIFO, LIFO), and a policy has to be named by whoever applies it; baking one silently into a field would make the model answer a question nobody asked it. So this module carries the fact — what the lot cost to land — and any per-unit figure is a derived projection that names its policy at the point of derivation. lot_landed_cost_micros is the only reader, and it takes no event list, which is what makes the historical basis structurally immune to consumption."
+data landed_cost_is_aggregate_note: String = "Landed cost is stored ONCE, as an aggregate at LOT grain, and there is no per-unit field. Two reasons, and both are structural rather than stylistic. First, division does not close at money-micro grain: 100 units landing at 1,000,003 micros has no exact per-unit quotient, so a stored per-unit average is a fabricated number that no longer sums back to what was paid — DESIGN section 5's fabricated-plausible-output, wearing a currency. Second, assigning cost to individual units is a POLICY (specific identification, average, FIFO, LIFO), and a policy has to be named by whoever applies it; baking one silently into a field would make the model answer a question nobody asked it. So this module carries the fact — what the lot cost to land — and any per-unit figure is a derived projection that names its policy at the point of derivation. lot_landed_cost_reading is the only reader, and it takes no event list, which is what makes the historical basis structurally immune to consumption; it is three-valued because a lot's cost may be unsettled or held privately, and a reader that answered zero micros for either would report the lot as free."
+
+data landed_cost_is_three_states_note: String = "A lot's landed cost was a bare MoneyOnce, which made 'what did this cost' a question the type insisted had an answer. It does not always have one, and the two ways it can be missing are not the same fact. A lot in transit has no landed cost because none has been incurred yet — nothing is hidden and the figure will exist later. A settled lot whose cost is recorded off-public HAS a cost; the public model simply does not carry it, per the operator's 2026-08-19 privacy ruling, and it never will. Those send a reader in opposite directions: one waits, the other stops asking. Collapsing them into a single Withheld arm carrying a reason string would put prose where a coproduct belongs — the same defect review 53528 caught on LandedCostSumRefused's cause field one layer down — so the arm IS the reason and there is no string to parse. Note what this is NOT: it is not a privacy mechanism bolted onto an economics model. LandedCostUnsettled earns its place with no privacy ruling in play at all, because in-transit-with-no-cost-yet is a real state of a real lot; the ruling supplies the third arm, not the split."
+
+type LandedCost
+  = LandedCostRecorded { cost: MoneyOnce }
+  | LandedCostUnsettled
+  | LandedCostHeldPrivately
+
+type LotReceipt
+  = ReceiptRecorded { receipt: ProcurementReceiptIdentity }
+  | ReceiptHeldPrivately
+
+// EVERY READER OF A COST IS NOW PARTIAL, and that is the point rather than a cost of the change.
+// A reader that answered zero micros for an unrecorded cost would report that the lot was free —
+// the fabricated plausible output, denominated in currency — and every sum built on it would be
+// quietly wrong in the direction that looks like thrift. So the reading is three-valued, the two
+// unreadable arms are distinguishable, and a consumer must decide what to do about each.
+type LandedCostReading
+  = LandedCostReadingMicros { micros: Nat }
+  | LandedCostReadingUnsettled
+  | LandedCostReadingHeldPrivately
+
+type LandedCostCurrencyReading
+  = LandedCostCurrencyKnown { currency: CurrencyCode }
+  | LandedCostCurrencyUnrecorded
 
 type ProcurementLot {
   identity: InventoryLotIdentity
-  receipt: ProcurementReceiptIdentity
+  receipt: LotReceipt
   catalog: LotCatalogIdentity
   display_label: NonEmptyStr
   quantity_acquired: Nat
-  landed_cost: MoneyOnce
+  landed_cost: LandedCost
 }
 
-fn lot_landed_cost_micros(lot: ProcurementLot) -> Nat {
-  money_once_micros(q: lot.landed_cost)
+fn lot_receipt_is_recorded(lot: ProcurementLot) -> Bool {
+  match lot.receipt {
+    ReceiptRecorded { receipt: _ } => true
+    ReceiptHeldPrivately => false
+  }
 }
 
-fn lot_landed_cost_currency(lot: ProcurementLot) -> CurrencyCode {
-  lot.landed_cost.currency
+fn lot_landed_cost_reading(lot: ProcurementLot) -> LandedCostReading {
+  match lot.landed_cost {
+    LandedCostRecorded { cost: c } => LandedCostReadingMicros { micros: money_once_micros(q: c) }
+    LandedCostUnsettled => LandedCostReadingUnsettled
+    LandedCostHeldPrivately => LandedCostReadingHeldPrivately
+  }
+}
+
+fn lot_landed_cost_currency(lot: ProcurementLot) -> LandedCostCurrencyReading {
+  match lot.landed_cost {
+    LandedCostRecorded { cost: c } => LandedCostCurrencyKnown { currency: c.currency }
+    LandedCostUnsettled => LandedCostCurrencyUnrecorded
+    LandedCostHeldPrivately => LandedCostCurrencyUnrecorded
+  }
 }
 
 data landed_cost_empty_is_its_own_state_note: String = "LandedCostEmpty is a THIRD arm, not a refusal carrying a sentinel. An earlier revision seeded the fold with LandedCostSumRefused { cause: \"no_lots\" } and told the empty accumulator apart from a genuine currency mismatch by comparing that String — which is the DESIGN section 5 state-space conflation exactly, one level down: two states with completely different remedies (supply lots versus reconcile currencies) shared one constructor, and any consumer wanting to tell them apart had to parse prose out of a diagnostic field. Summing nothing is not a failure and must not be reported as one; it is the empty case, and it has its own inhabitant. Caught by review 53528."
 
+type LandedCostSumRefusalCause
+  = CurrencyMismatchAcrossLots { left: CurrencyCode, right: CurrencyCode }
+  | LotLandedCostUnsettled { lot: InventoryLotIdentity }
+  | LotLandedCostHeldPrivately { lot: InventoryLotIdentity }
+
 type LandedCostSum
   = LandedCostEmpty
   | LandedCostTotal { total: MoneyOnce }
-  | LandedCostSumRefused { cause: NonEmptyStr }
+  | LandedCostSumRefused { cause: LandedCostSumRefusalCause }
 
+// THE CAUSE IS TYPED, AND THE UNREADABLE LOT IS NAMED. The refusal previously carried a
+// NonEmptyStr with exactly one inhabitant, which was already prose standing where a coproduct
+// belonged; adding two more causes made that undeniable, and a consumer that had to tell an
+// unsettled lot from a private one by comparing strings would be parsing diagnostics to make a
+// decision. Each cause now names the lot it came from, so the refusal is located rather than
+// merely typed.
+//
+// A LOT WHOSE COST IS UNREADABLE REFUSES THE WHOLE SUM. It does not contribute zero and it is not
+// skipped. Skipping is the seductive one - the total would still be a real sum of the readable
+// lots - but nothing in the result would say a lot had been left out of it, so a partial total
+// would be indistinguishable from a complete one and would understate spend by however much was
+// hidden. Refusing keeps the deficit countable, which is what makes it possible to notice that
+// public totals are unavailable and to go ask the private ledger for them.
 fn sum_landed_cost(lots: List<ProcurementLot>) -> LandedCostSum {
   fold(lots, init: LandedCostEmpty, f: fn(acc, lot) {
     match acc {
       LandedCostSumRefused { cause: c } => LandedCostSumRefused { cause: c }
-      LandedCostEmpty => LandedCostTotal { total: lot.landed_cost }
+      LandedCostEmpty =>
+        match lot.landed_cost {
+          LandedCostRecorded { cost: c } => LandedCostTotal { total: c }
+          LandedCostUnsettled =>
+            LandedCostSumRefused { cause: LotLandedCostUnsettled { lot: lot.identity } }
+          LandedCostHeldPrivately =>
+            LandedCostSumRefused { cause: LotLandedCostHeldPrivately { lot: lot.identity } }
+        }
       LandedCostTotal { total: t } =>
-        if t.currency == lot.landed_cost.currency {
-          LandedCostTotal {
-            total: MoneyOnce {
-              amount: money_amount_micro(count: money_once_micros(q: t) + lot_landed_cost_micros(lot: lot)),
-              currency: t.currency,
-            },
-          }
-        } else {
-          LandedCostSumRefused { cause: "currency_mismatch_across_lots" as NonEmptyStr }
+        match lot.landed_cost {
+          LandedCostUnsettled =>
+            LandedCostSumRefused { cause: LotLandedCostUnsettled { lot: lot.identity } }
+          LandedCostHeldPrivately =>
+            LandedCostSumRefused { cause: LotLandedCostHeldPrivately { lot: lot.identity } }
+          LandedCostRecorded { cost: c } =>
+            if t.currency == c.currency {
+              LandedCostTotal {
+                total: MoneyOnce {
+                  amount: money_amount_micro(count: money_once_micros(q: t) + money_once_micros(q: c)),
+                  currency: t.currency,
+                },
+              }
+            } else {
+              LandedCostSumRefused {
+                cause: CurrencyMismatchAcrossLots { left: t.currency, right: c.currency },
+              }
+            }
         }
     }
   })
@@ -855,15 +929,19 @@ fn admit_consumption(
 
 // --- two projections, one fact: basis versus incremental cash ------------------------------------
 
-data basis_and_cash_are_two_projections_note: String = "Landed basis and incremental purchase cash are two READINGS of the same fact, and neither is stored as a running figure. The basis is what the lot cost to land and it is read from the ProcurementLot alone — lot_landed_cost_micros takes no event list, so no sequence of consumption events can reach it; rewriting history is not merely forbidden here, it is unwritable. Incremental purchase cash is what a ledger CAUSED to be spent, and only LotAcquired contributes: consuming stock already owned reports zero, because the money left the building when the lot was acquired and spending it twice is exactly the error this split exists to prevent. Appending consumption events to a ledger therefore leaves both readings unchanged — the same value from the same fact, read two ways."
+data basis_and_cash_are_two_projections_note: String = "Landed basis and incremental purchase cash are two READINGS of the same fact, and neither is stored as a running figure. The basis is what the lot cost to land and it is read from the ProcurementLot alone — lot_landed_cost_reading takes no event list, so no sequence of consumption events can reach it; rewriting history is not merely forbidden here, it is unwritable. Incremental purchase cash is what a ledger CAUSED to be spent, and only LotAcquired contributes: consuming stock already owned reports zero, because the money left the building when the lot was acquired and spending it twice is exactly the error this split exists to prevent. Appending consumption events to a ledger therefore leaves both readings unchanged — the same value from the same fact, read two ways."
 
-fn ledger_incremental_purchase_cash_micros(
+// The cash reading is three-valued for the same reason the basis is: an acquisition of a lot whose
+// landed cost is not recorded caused SOME money to move, and answering zero would state that it
+// caused none. A ledger with no acquisition event genuinely caused no spend, so that case reads a
+// real zero and is not conflated with the unreadable ones.
+fn ledger_incremental_purchase_cash(
   lot: ProcurementLot,
   events: List<InventoryEvent>,
-) -> Nat {
-  fold(events, init: 0, f: fn(acc, event) {
+) -> LandedCostReading {
+  let acquisitions = fold(events, init: 0, f: fn(acc, event) {
     match event {
-      LotAcquired { lot: _ } => acc + lot_landed_cost_micros(lot: lot)
+      LotAcquired { lot: _ } => acc + 1
       LotReceived { lot: _, quantity: _ } => acc
       QuantityQualified { lot: _, quantity: _ } => acc
       QuantityQuarantined { lot: _, quantity: _ } => acc
@@ -876,4 +954,13 @@ fn ledger_incremental_purchase_cash_micros(
       QuantityDisposed { lot: _, quantity: _, origin: _ } => acc
     }
   })
+  if acquisitions == 0 {
+    LandedCostReadingMicros { micros: 0 }
+  } else {
+    match lot_landed_cost_reading(lot: lot) {
+      LandedCostReadingMicros { micros: m } => LandedCostReadingMicros { micros: acquisitions * m }
+      LandedCostReadingUnsettled => LandedCostReadingUnsettled
+      LandedCostReadingHeldPrivately => LandedCostReadingHeldPrivately
+    }
+  }
 }
