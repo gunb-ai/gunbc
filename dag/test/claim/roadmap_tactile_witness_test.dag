@@ -1,4 +1,4 @@
-module test.claim.long.roadmap_tactile_witness
+module test.claim.roadmap_tactile_witness
 
 import std.types { Int, String, Bool }
 import std.markup { Fragment, Element, FragmentText, RawNode, Attribute, attr }
