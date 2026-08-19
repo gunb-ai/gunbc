@@ -809,7 +809,46 @@ General argument typechecking strengthens the boundary; it does not prove that p
    refusal has another cause this bisect did not separate, is unestablished — and a §5 line-stop
    is owed on it before anything else in this lane relies on the distinction.
 
-9. **A downstream typed verdict may be the redundant lower rung, not a peer** (raised by
+9. **The spelling-seam extraction is right, but its obvious shape is forbidden — corrected
+   2026-08-19.** The static-dependency finding stands: at execution grain the jq fold reaches no
+   compiler machinery, but at dependency grain `cli_surface` imports `v2.std.compilers.target_model`,
+   whose closure carries target-representation, host-runtime and node-query machinery. The
+   property worth having is not *nobody calls translate* but *this fold cannot acquire that
+   dependency accidentally*.
+
+   The proposed repair — extract a shared `spell_concrete_syntax_fragments -> Outcome<String>`
+   below `target_model`, and have the TargetText serializer wrap its result — **violates an
+   operator ruling carried in the file it would edit.** `target_model` `target_text_carrier_scaffold_note`
+   (operator, 2026-07-15) places `TargetText` beside `bound_tokens_source_text` so that fold is
+   *carrier-native*: the single `String -> TargetText` introduction is `text_atom` applied to one
+   grammar-classified token **inside** the fold, the only join is `target_text_seq`, the only exit
+   is `render_target_text`, and it states there is deliberately **no** `String -> TargetText` lift
+   of an already-composed unit, "that direction is the smuggle the wall closes." Wrapping a
+   composed `String` is precisely that lift.
+
+   **The corrected decomposition, and it is the better one anyway.** The shared authority is
+   *what is this token's spelling* — `lex_rules_literal_for_class` and `bound_spelling_from_map`,
+   both token-grain — **not** *how are spellings concatenated*. Concatenation is carrier-specific
+   by construction: emitted source composes through `TargetText`, an argv argument composes into a
+   `CliArgument`, and those are different media. So the extraction moves the token type and the two
+   token-grain lookups into `v2.std.compilers.concrete_syntax`, `target_model` imports them back
+   (re-export is proven to work — see below), and each carrier keeps its own fold. No composed
+   `String` is ever lifted, `cli_surface` stops importing `target_model`, and one lookup authority
+   still serves both.
+
+   **Re-export is measured, not assumed.** A three-module probe showed a consumer importing a
+   symbol from a module that merely imported it resolves and executes. That result alone proves
+   nothing, because this resolver can bind by *pool-membership coincidence* (DESIGN's Class B
+   finding). The discriminating control settles it: importing the same symbol from a bystander
+   module that never saw it **refuses**, located — `name 'ProbeToken' not found in module
+   '...bystander'` — even with the defining module in the pool. Qualified-import resolution is
+   import-list-driven, so `target_model` importing the seam back keeps its 167 other importers
+   untouched.
+
+   **Not performed.** `target_model` is load-bearing and carries the ruling above, so the move is
+   its own increment under its own review, not a rider on this one.
+
+10. **A downstream typed verdict may be the redundant lower rung, not a peer** (raised by
    `eager-wren-138`, 2026-08-18). `gunbc.host_effect_realize` `bmcweb_token_extraction_verdict`
    refuses blank stdout as its own decode — the wall that actually closed that fail-open, with
    `jq -e` only ever loudness beside it. If the semantic layer makes *absence-is-a-value*
