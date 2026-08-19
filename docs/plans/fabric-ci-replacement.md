@@ -388,5 +388,33 @@ the one-motion cutover.
 I think that reading is right and the distinction is real — my §6 pre-merge argument was too thin,
 because a green Actions run proves the tree resolves and its witnesses pass, and proves **nothing**
 about token minting, Check Run creation, durable state recovery, grant acceptance, materialization
-outside Actions, or artifact publication. But it is a reinterpretation of an operator instruction
-rather than a technical finding, so it goes back to the operator rather than being adopted by me.
+outside Actions, or artifact publication.
+
+**Operator ruling, 2026-08-19 — and it is better than either proposal:** *"wet proof before merge
+can just come from the same PR that implements it — i.e. we make another job → confirm it works →
+cutover/delete the first job."*
+
+So the wet proof is **a second job in the existing workflow**, not a hand-deployed canary. That
+resolves condition 15 and improves on it in three ways the canary could not:
+
+- it is **automated and re-runs on every push to the PR**, so it cannot rot between the proof and
+  the merge — a manually deployed canary proves a moment, a job proves the current commit;
+- it needs no separate pre-merge deployment step and no human remembering to disable intake;
+- the evidence is a **green CI run on a commit in the PR's own history**, citable by SHA, rather
+  than a claim about something that happened on a control node.
+
+The sequence within the one PR: add job B exercising the fabric path alongside job A (`witnesses`)
+→ push, both run, B green → same PR then deletes job A, the workflow, and the emitter. The final
+diff has no workflow at all; the wet proof lives in the PR's history, not its head.
+
+**Verified as safe:** the required context is produced by the *job*, not the workflow — the live
+check run on main is named `witnesses` from app `github-actions`, and the job id is `witnesses`. A
+second job publishes its **own** check under its own name, which is not required and therefore
+cannot disturb the gate. So the two-job phase is gate-neutral by construction.
+
+**The naming constraint from §11 becomes load-bearing here.** The context that gates is the job
+named `witnesses`; deleting that job is precisely what removes the gate. Since the required check
+carries no `integration_id` pin, the fabric's Check Run named `witnesses` satisfies the same rule
+from a different source — so the gate never has a gap. **Job B must therefore NOT be named
+`witnesses`** during the two-job phase (that name is still the live gate), and the fabric claims it
+only at the cutover commit.
