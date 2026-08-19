@@ -107,8 +107,34 @@ test fn rest_path_reaches_no_target_ast_vocabulary() -> Bool {
 // need it and must not silently become two.
 data cli_vocab_definition_edges: List<String> = [
   "dag/extdeps/tools/jq.dag",
-  "src/v2/std/compilers/cli_surface.dag"
+  "src/v2/std/compilers/cli_surface.dag",
+  // Added when shell.Exec.RunArgv landed, and worth recording HOW rather than just
+  // that it was: this witness redded on the change that introduced the edge. The
+  // module is itself a member of cli_process_vocab_modules, so its reach into
+  // cli_surface is internal to the vocabulary rather than a leak out of anywhere --
+  // the same footing as jq's module, which also defines a CLI surface for the tool
+  // it wraps. A roster entry added because a real scan refused is a different thing
+  // from one added in anticipation, and only the first kind has been tested.
+  "dag/extdeps/shell/exec.dag"
 ]
+
+// ---------------------------------------------------------------------------
+// THE GENERAL RULE FOR WIDENING, written down because the next person to add a root
+// will reach for the inherited control and it will pass while proving nothing.
+//
+// RE-ESTABLISH DISCRIMINATION AT THE NEW SCOPE. DO NOT INHERIT IT.
+//
+// A narrow root's RED control proves the scan discriminates over THAT root. Widen the
+// root and it proves nothing about the new subtrees: a nonzero fact count shows the
+// scan read something, not that it descended where the dirty modules live. This was
+// caught here under a green -- dag/extdeps reported clean and would have reported
+// clean had bmc/ never been reached at all.
+//
+// So every root added carries, at its own scope: a withdrawal control with an exact
+// expected count, and a roster-drop control asserting the count RISES. The second is
+// the same question aimed at the roster instead of the scan, and it matters because
+// an edge roster that no fact matches is indistinguishable from a correct one.
+// ---------------------------------------------------------------------------
 
 // ROOT: all of dag/extdeps. Widens past bmc/ and transports/ to every cited
 // upstream module. Lands with exactly one admitted edge -- the fan control jq
@@ -290,21 +316,3 @@ test fn test_corpus_reaches_cli_vocabulary_only_as_declared_exercise() -> Bool {
     exempt_edges: no_admitted_cli_edges
   ) == 0
 }
-
-// ---------------------------------------------------------------------------
-// THE GENERAL RULE FOR WIDENING, written down because the next person to add a root
-// will reach for the inherited control and it will pass while proving nothing.
-//
-// RE-ESTABLISH DISCRIMINATION AT THE NEW SCOPE. DO NOT INHERIT IT.
-//
-// A narrow root's RED control proves the scan discriminates over THAT root. Widen the
-// root and it proves nothing about the new subtrees: a nonzero fact count shows the
-// scan read something, not that it descended where the dirty modules live. This was
-// caught here under a green -- dag/extdeps reported clean and would have reported
-// clean had bmc/ never been reached at all.
-//
-// So every root added carries, at its own scope: a withdrawal control with an exact
-// expected count, and a roster-drop control asserting the count RISES. The second is
-// the same question aimed at the roster instead of the scan, and it matters because
-// an edge roster that no fact matches is indistinguishable from a correct one.
-// ---------------------------------------------------------------------------
