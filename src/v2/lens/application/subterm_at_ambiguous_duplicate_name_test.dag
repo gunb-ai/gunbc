@@ -1,0 +1,43 @@
+module v2.test.lens_application.subterm_at_ambiguous_duplicate_name
+
+import v2.lens.application { subterm_at }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Conj, Edge, Named, Node, Path, Symbol, TypeNode, SyntheticOccurrence }
+
+data ambiguous_leaf_a: Node = v2.std.node.Node {
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^ambiguous_leaf_a_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data ambiguous_leaf_b: Node = v2.std.node.Node {
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^ambiguous_leaf_b_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data ambiguous_duplicate_name_root: Node = v2.std.node.Node {
+  kind: v2.std.node.TypeNode { connective: Conj },
+  children: [
+    v2.std.node.Edge {
+      label: Named { name: ^ambiguous_dup_step },
+      target: ambiguous_leaf_a
+    },
+    v2.std.node.Edge {
+      label: Named { name: ^ambiguous_dup_step },
+      target: ambiguous_leaf_b
+    }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+test fn subterm_at_ambiguous_duplicate_name_claim_holds() -> Bool {
+  match subterm_at(
+    root: ambiguous_duplicate_name_root,
+    path: v2.std.node.Path { steps: [^ambiguous_dup_step] }
+  ) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}

@@ -1,0 +1,51 @@
+module v2.test.lens_cost.loop_illegal_named
+
+import v2.lens.cost { cost_lens }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  ComputationNode,
+  Edge,
+  Loop,
+  Named,
+  Node,
+  Positional,
+  TypeNode,
+  SyntheticOccurrence
+}
+import v2.std.witness { Violates }
+
+data loop_illegal_named_body_leaf: Node = v2.std.node.Node {
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^loop_illegal_named_body_atom } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data loop_illegal_named_measure_leaf: Node = v2.std.node.Node {
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^loop_illegal_named_measure_atom } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data loop_illegal_named_extra_leaf: Node = v2.std.node.Node {
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^loop_illegal_named_extra_atom } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data loop_illegal_named_input: Node = v2.std.node.Node {
+  kind: v2.std.node.ComputationNode { behavior: Loop },
+  children: [
+    v2.std.node.Edge { label: Positional, target: loop_illegal_named_body_leaf },
+    v2.std.node.Edge { label: Named { name: ^loop_bound_edge }, target: loop_illegal_named_measure_leaf },
+    v2.std.node.Edge { label: Named { name: ^loop_illegal_named_extra_atom }, target: loop_illegal_named_extra_leaf }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+test fn loop_illegal_named_claim_holds() -> Bool {
+  match cost_lens(n: loop_illegal_named_input) {
+    Violates { diagnostic: d } => d.reason == ^cardinality_loop_bound_malformed
+    _ => false
+  }
+}

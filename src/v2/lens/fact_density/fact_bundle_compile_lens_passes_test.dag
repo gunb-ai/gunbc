@@ -1,0 +1,57 @@
+module v2.test.lens_fact_density.fact_bundle_compile_lens_passes
+
+import v2.compiler.compile {
+  CompileLensEnforce,
+  apply_compile_lens,
+  fact_density_lens
+}
+import v2.compiler.infer { InferredTree }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.test.lens_common.infer_fixture {
+  claim_atom_node,
+  claim_inferred_facts,
+  claim_inferred_tree
+}
+
+data fact_bundle_cl_child: Node = v2.std.node.Node {
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^fact_bundle_cl_child_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data fact_bundle_cl_root: Node = v2.std.node.Node {
+  kind: v2.std.node.TypeNode { connective: Conj },
+  children: [
+    v2.std.node.Edge {
+      label: Named { name: ^fact_bundle_cl_field_name },
+      target: fact_bundle_cl_child
+    }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data fact_bundle_cl_authority: Node = claim_atom_node(s: ^fact_bundle_cl_symbol)
+
+fn fact_bundle_cl_tree() -> v2.compiler.inferred_tree.InferredTree {
+  claim_inferred_tree(
+    root: fact_bundle_cl_root,
+    facts: claim_inferred_facts(
+      type_symbol: ^fact_bundle_cl_type_sym,
+      algebra_symbol: ^fact_bundle_cl_algebra_sym,
+      descent_symbol: ^fact_bundle_cl_descent_sym
+    )
+  )
+}
+
+test fn fact_bundle_compile_lens_passes_holds() -> Bool {
+  match apply_compile_lens(
+    lens: fact_density_lens,
+    inferred: fact_bundle_cl_tree(),
+    mode: CompileLensEnforce
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}

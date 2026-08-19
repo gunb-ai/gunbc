@@ -1785,39 +1785,39 @@ mod compiler_tests {
     fn coercion_rust_checkpoint_resolves_primitives() {
         use crate::v1_compiler_coercion::*;
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "Int".into()),
+            coerce_primitive_type(RenderTarget::Rust, "Int".into(), "".into()),
             "i64"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "Float".into()),
+            coerce_primitive_type(RenderTarget::Rust, "Float".into(), "".into()),
             "f64"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "Bool".into()),
+            coerce_primitive_type(RenderTarget::Rust, "Bool".into(), "".into()),
             "bool"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "Symbol".into()),
+            coerce_primitive_type(RenderTarget::Rust, "Symbol".into(), "".into()),
             "String"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "Unit".into()),
+            coerce_primitive_type(RenderTarget::Rust, "Unit".into(), "".into()),
             "()"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "String".into()),
+            coerce_primitive_type(RenderTarget::Rust, "String".into(), "".into()),
             "String"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "Bytes".into()),
+            coerce_primitive_type(RenderTarget::Rust, "Bytes".into(), "".into()),
             "Vec<u8>"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "Secret".into()),
+            coerce_primitive_type(RenderTarget::Rust, "Secret".into(), "".into()),
             "String"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "Json".into()),
+            coerce_primitive_type(RenderTarget::Rust, "Json".into(), "".into()),
             "serde_json::Value"
         );
         assert_eq!(
@@ -1830,35 +1830,35 @@ mod compiler_tests {
     fn coercion_python_checkpoint_resolves_primitives() {
         use crate::v1_compiler_coercion::*;
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Python, "Int".into()),
+            coerce_primitive_type(RenderTarget::Python, "Int".into(), "".into()),
             "int"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Python, "Float".into()),
+            coerce_primitive_type(RenderTarget::Python, "Float".into(), "".into()),
             "float"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Python, "Bool".into()),
+            coerce_primitive_type(RenderTarget::Python, "Bool".into(), "".into()),
             "bool"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Python, "Unit".into()),
+            coerce_primitive_type(RenderTarget::Python, "Unit".into(), "".into()),
             "None"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Python, "String".into()),
+            coerce_primitive_type(RenderTarget::Python, "String".into(), "".into()),
             "str"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Python, "Bytes".into()),
+            coerce_primitive_type(RenderTarget::Python, "Bytes".into(), "".into()),
             "bytes"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Python, "Secret".into()),
+            coerce_primitive_type(RenderTarget::Python, "Secret".into(), "".into()),
             "str"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Python, "Json".into()),
+            coerce_primitive_type(RenderTarget::Python, "Json".into(), "".into()),
             "dict"
         );
     }
@@ -1867,35 +1867,35 @@ mod compiler_tests {
     fn coercion_go_checkpoint_resolves_primitives() {
         use crate::v1_compiler_coercion::*;
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Go, "Int".into()),
+            coerce_primitive_type(RenderTarget::Go, "Int".into(), "".into()),
             "int64"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Go, "Float".into()),
+            coerce_primitive_type(RenderTarget::Go, "Float".into(), "".into()),
             "float64"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Go, "Bool".into()),
+            coerce_primitive_type(RenderTarget::Go, "Bool".into(), "".into()),
             "bool"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Go, "Unit".into()),
+            coerce_primitive_type(RenderTarget::Go, "Unit".into(), "".into()),
             "struct{}"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Go, "String".into()),
+            coerce_primitive_type(RenderTarget::Go, "String".into(), "".into()),
             "string"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Go, "Bytes".into()),
+            coerce_primitive_type(RenderTarget::Go, "Bytes".into(), "".into()),
             "[]byte"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Go, "Secret".into()),
+            coerce_primitive_type(RenderTarget::Go, "Secret".into(), "".into()),
             "string"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Go, "Json".into()),
+            coerce_primitive_type(RenderTarget::Go, "Json".into(), "".into()),
             "interface{}"
         );
     }
@@ -2002,16 +2002,42 @@ mod compiler_tests {
     #[test]
     fn coercion_is_copy_from_checkpoint() {
         use crate::v1_compiler_coercion::*;
-        assert_eq!(is_copy(RenderTarget::Rust, "Int".into()), Some(true));
-        assert_eq!(is_copy(RenderTarget::Rust, "Float".into()), Some(true));
-        assert_eq!(is_copy(RenderTarget::Rust, "Bool".into()), Some(true));
-        assert_eq!(is_copy(RenderTarget::Rust, "Symbol".into()), Some(false));
-        assert_eq!(is_copy(RenderTarget::Rust, "Unit".into()), Some(true));
-        assert_eq!(is_copy(RenderTarget::Rust, "String".into()), Some(false));
-        assert_eq!(is_copy(RenderTarget::Rust, "Bytes".into()), Some(false));
-        assert_eq!(is_copy(RenderTarget::Rust, "Secret".into()), Some(false));
-        assert_eq!(is_copy(RenderTarget::Rust, "Json".into()), Some(false));
-        assert_eq!(is_copy(RenderTarget::Rust, "Hash".into()), Some(false));
+        assert_eq!(
+            is_copy(RenderTarget::Rust, "Int".into(), "".into()),
+            Some(true)
+        );
+        assert_eq!(
+            is_copy(RenderTarget::Rust, "Float".into(), "".into()),
+            Some(true)
+        );
+        assert_eq!(
+            is_copy(RenderTarget::Rust, "Bool".into(), "".into()),
+            Some(true)
+        );
+        assert_eq!(
+            is_copy(RenderTarget::Rust, "Symbol".into(), "".into()),
+            Some(false)
+        );
+        assert_eq!(
+            is_copy(RenderTarget::Rust, "Unit".into(), "".into()),
+            Some(true)
+        );
+        assert_eq!(
+            is_copy(RenderTarget::Rust, "String".into(), "".into()),
+            Some(false)
+        );
+        assert_eq!(
+            is_copy(RenderTarget::Rust, "Bytes".into(), "".into()),
+            Some(false)
+        );
+        assert_eq!(
+            is_copy(RenderTarget::Rust, "Secret".into(), "".into()),
+            Some(false)
+        );
+        assert_eq!(
+            is_copy(RenderTarget::Rust, "Json".into(), "".into()),
+            Some(false)
+        );
     }
 
     #[test]

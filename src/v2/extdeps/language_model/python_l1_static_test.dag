@@ -1,0 +1,122 @@
+module v2.test.language_model.python_l1_static
+
+test fn python_l1_static_fixture_pair_wired() -> Bool {
+  python_l1_static_fixture().claim_id == leaf_model_claim_python_l1_static_return_type
+    && python_l1_static_fixture().surface_spelling_fact == ^python_surface_spelling_int
+    && match leaf_model_python_static_happy_invocation(c: python_l1_static_fixture().happy).analysis_role {
+         BlockingForRung => true
+         Advisory => false
+       }
+    && match leaf_model_python_static_falsification_invocation(c: python_l1_static_fixture().falsification).analysis_role {
+         BlockingForRung => true
+         Advisory => false
+       }
+    && leaf_model_python_static_happy_invocation(c: python_l1_static_fixture().happy).tool_profile_ref == ^pyright_profile_l1_id
+    && leaf_model_python_static_falsification_invocation(c: python_l1_static_fixture().falsification).tool_profile_ref == ^pyright_profile_l1_id
+}
+
+test fn python_l1_static_expected_verdicts_wired() -> Bool {
+  match leaf_model_python_static_happy_verdict(c: python_l1_static_fixture().happy) {
+    StaticAnalysisAccepted => true
+    StaticAnalysisRejected { tool_id: _, diagnostic_code: _ } => false
+    StaticAnalysisAdvisory { tool_id: _, diagnostic_code: _ } => false
+  }
+  && match leaf_model_python_static_falsification_verdict(c: python_l1_static_fixture().falsification) {
+       StaticAnalysisAccepted => false
+       StaticAnalysisRejected { tool_id: t, diagnostic_code: d } =>
+         t == ^pyright_tool_id && d == ^pyright_diag_report_return_type
+       StaticAnalysisAdvisory { tool_id: _, diagnostic_code: _ } => false
+     }
+}
+
+fn python_l1_static_roster_pair_wired(
+  p: v2.std.leaf_model_verification.LeafModelPythonStaticFixturePair,
+  expected_claim_id: v2.std.node.Symbol
+) -> Bool {
+  p.claim_id == expected_claim_id
+    && p.surface_spelling_fact == ^python_surface_spelling_int
+    && match leaf_model_python_static_happy_invocation(c: p.happy).analysis_role {
+         BlockingForRung => true
+         Advisory => false
+       }
+    && match leaf_model_python_static_falsification_invocation(c: p.falsification).analysis_role {
+         BlockingForRung => true
+         Advisory => false
+       }
+    && leaf_model_python_static_happy_invocation(c: p.happy).tool_profile_ref == ^pyright_profile_l1_id
+    && leaf_model_python_static_falsification_invocation(c: p.falsification).tool_profile_ref == ^pyright_profile_l1_id
+}
+
+fn python_l1_static_roster_pair_verdicts_wired(
+  p: v2.std.leaf_model_verification.LeafModelPythonStaticFixturePair,
+  expected_diag_code: v2.std.node.Symbol
+) -> Bool {
+  match leaf_model_python_static_happy_verdict(c: p.happy) {
+    StaticAnalysisAccepted => true
+    StaticAnalysisRejected { tool_id: _, diagnostic_code: _ } => false
+    StaticAnalysisAdvisory { tool_id: _, diagnostic_code: _ } => false
+  }
+  && match leaf_model_python_static_falsification_verdict(c: p.falsification) {
+       StaticAnalysisAccepted => false
+       StaticAnalysisRejected { tool_id: t, diagnostic_code: d } =>
+         t == ^pyright_tool_id && d == expected_diag_code
+       StaticAnalysisAdvisory { tool_id: _, diagnostic_code: _ } => false
+     }
+}
+
+test fn python_l1_static_undefined_variable_pair_wired() -> Bool {
+  python_l1_static_roster_pair_wired(
+    p: python_l1_static_undefined_variable_fixture_pair(),
+    expected_claim_id: leaf_model_claim_python_l1_static_undefined_variable
+  )
+}
+
+test fn python_l1_static_undefined_variable_verdicts_wired() -> Bool {
+  python_l1_static_roster_pair_verdicts_wired(
+    p: python_l1_static_undefined_variable_fixture_pair(),
+    expected_diag_code: ^pyright_diag_report_undefined_variable
+  )
+}
+
+test fn python_l1_static_missing_import_pair_wired() -> Bool {
+  python_l1_static_roster_pair_wired(
+    p: python_l1_static_missing_import_fixture_pair(),
+    expected_claim_id: leaf_model_claim_python_l1_static_missing_import
+  )
+}
+
+test fn python_l1_static_missing_import_verdicts_wired() -> Bool {
+  python_l1_static_roster_pair_verdicts_wired(
+    p: python_l1_static_missing_import_fixture_pair(),
+    expected_diag_code: ^pyright_diag_report_missing_imports
+  )
+}
+
+test fn python_l1_static_mypy_fixture_pair_wired() -> Bool {
+  python_l1_static_mypy_fixture().claim_id == leaf_model_claim_python_l1_static_return_type
+    && python_l1_static_mypy_fixture().surface_spelling_fact == ^python_surface_spelling_int
+    && match leaf_model_python_static_happy_invocation(c: python_l1_static_mypy_fixture().happy).analysis_role {
+         BlockingForRung => true
+         Advisory => false
+       }
+    && match leaf_model_python_static_falsification_invocation(c: python_l1_static_mypy_fixture().falsification).analysis_role {
+         BlockingForRung => true
+         Advisory => false
+       }
+    && leaf_model_python_static_happy_invocation(c: python_l1_static_mypy_fixture().happy).tool_profile_ref == ^mypy_profile_l1_id
+    && leaf_model_python_static_falsification_invocation(c: python_l1_static_mypy_fixture().falsification).tool_profile_ref == ^mypy_profile_l1_id
+}
+
+test fn python_l1_static_mypy_expected_verdicts_wired() -> Bool {
+  match leaf_model_python_static_happy_verdict(c: python_l1_static_mypy_fixture().happy) {
+    StaticAnalysisAccepted => true
+    StaticAnalysisRejected { tool_id: _, diagnostic_code: _ } => false
+    StaticAnalysisAdvisory { tool_id: _, diagnostic_code: _ } => false
+  }
+  && match leaf_model_python_static_falsification_verdict(c: python_l1_static_mypy_fixture().falsification) {
+       StaticAnalysisAccepted => false
+       StaticAnalysisRejected { tool_id: t, diagnostic_code: d } =>
+         t == ^mypy_tool_id && d == ^mypy_diag_return_value
+       StaticAnalysisAdvisory { tool_id: _, diagnostic_code: _ } => false
+     }
+}

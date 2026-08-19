@@ -1568,7 +1568,7 @@ fn byte_offset_cache_key_fingerprint(key: v2.std.node.ByteOffsetCacheKey) -> v2.
 
 fn bag_hash_digest(empty: v2.std.node.Hash, xs: List<v2.std.node.Hash>) -> v2.std.node.Hash {
   fold(
-    sort_by(xs, fn(h) { h }),
+    sort_by(xs, fn(h) { h.digest }),
     init: empty,
     f: fn(acc, h) {
       combine_hash(a: acc, b: h)

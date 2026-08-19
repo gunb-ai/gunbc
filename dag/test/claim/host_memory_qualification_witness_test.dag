@@ -1,5 +1,57 @@
 module test.claim.host_memory_qualification_witness_test
 
+import std.types { Bool, List, NonEmptyStr }
+import extdeps.boards.types {
+  AsrockRackAltrad8ud1l2t,
+  DimmPopulation,
+  PopulationSupported,
+  PopulationUnsupported,
+  admit_population,
+}
+import extdeps.boards.asrock_rack { asrock_altrad8ud_documented_dimm_populations }
+import extdeps.vendor.samsung { samsung }
+import extdeps.memory.types {
+  DramModuleCatalogRow,
+  LoadReduced,
+  Registered,
+  bit_width,
+  dram_generation_ddr4,
+}
+import extdeps.memory.training { LrdimmDataBufferMrep, module_executes_step }
+import std.measure { ByteSize, byte_size }
+import extdeps.cpu.ampere { ampere_altra_avl_authority }
+import extdeps.ampere.scp_diagnostic {
+  AmpereScpConsoleToken,
+  ScpECode,
+  ScpPCode,
+  ReadSnapshot,
+  ReadConsumesOldestRecord,
+  ampere_smpro_boot_progress_interface,
+  ReadAcknowledgesBootProgress,
+  scp_token_is_error_class,
+}
+import gunbc.host_memory_qualification {
+  BootReachedOperatingSystem,
+  ClassSupportedByBoard,
+  HostMemoryStanding,
+  HostBootOutcome,
+  NotListedInVendorAvl,
+  RepeatingFirmwareReset,
+  TrainingOperational,
+  host_boot_is_established,
+  DecodedFromPlatformSyndrome,
+  EvidenceUnobserved,
+  PartImplicatedByFailingStep,
+  PartNotImplicated,
+  PartSampleQualificationRequired,
+  PlatformTrainingFailure,
+  altrad8ud_mrep_failure_observation,
+  part_implication,
+}
+import gunbc.host_diagnostic_channel {
+  projection_absence_establishes_source_absence,
+  redfish_only_observation_is_complete,
+}
 
 // A four-module ALTRAD8UD population must be exactly A1+B1+E1+F1. The
 // one-per-channel population that was about to be tested on 2026-08-11 is
@@ -163,4 +215,145 @@ test fn a_duplicated_documented_row_still_admits_its_own_multiset() -> Bool {
     candidate: ["A1", "A1"],
     documented: [duplicated_documented_population],
   ) == PopulationSupported
+}
+
+
+// --- RELOCATED 2026-08-19: the training-implication claims -----------------------------------------
+//
+// These five claims came from test.claim.memory_part_selection_witness when
+// gunbc.memory_part_selection was deleted at the root. They test the evidence
+// grading, which moved INTACT to gunbc.host_memory_qualification, so they are
+// re-enrolled here rather than retired.
+//
+// RETIRED WITH THIS RECEIPT, and not re-enrolled anywhere, because they tested
+// behaviour the replacement pipeline deliberately does not have:
+//   cross_currency_candidate_is_refused_not_ranked and
+//   same_candidate_in_declared_currency_is_admissible tested PartCandidate's
+//   local currency admission. The pipeline still refuses a cross-currency
+//   comparison, in the two places that now compare: build_fulfillment's
+//   incremental_cash_now (w_cross_currency_purchase_refuses_rather_than_summing)
+//   and build_selection's cash axis (a candidate priced in an undeclared
+//   currency declares a missing input). The CLAIM survives; the carrier it was
+//   written against does not.
+//   an_association_leaves_both_candidates_on_the_frontier and
+//   a_decoded_refusal_does_drop_the_candidate_from_the_frontier tested the
+//   deleted local pareto_frontier over PartCandidate rows with authored stick
+//   counts and prices. Their content — an association must not remove a part
+//   from the market, a decoded syndrome must — is re-enrolled against the
+//   replacement in test.claim.build_fulfillment_witness, where a sample-required
+//   verdict resolves to pending evidence and a decoded refusal stops the line.
+
+data stick_32g: ByteSize = byte_size(count: 34359738368)
+
+// The family observed failing MREP on this board: load-reduced, so it must
+// execute the data-buffer step.
+data lrdimm_32g: DramModuleCatalogRow = DramModuleCatalogRow {
+  part_number: "M386A4G40DM0-CPB",
+  manufacturer: samsung,
+  generation: dram_generation_ddr4,
+  capacity_bytes: stick_32g,
+  data_rate_mts: 2133,
+  ecc: true,
+  buffering: LoadReduced,
+  chip_width: bit_width(count: 4),
+  rank_count: 4,
+}
+
+// Same capacity, same vendor, same generation — registered rather than load
+// reduced. The ONLY axis that differs is the one the rule reads.
+data rdimm_32g: DramModuleCatalogRow = DramModuleCatalogRow {
+  part_number: "M393A4K40DB2-CTD",
+  manufacturer: samsung,
+  generation: dram_generation_ddr4,
+  capacity_bytes: stick_32g,
+  data_rate_mts: 2666,
+  ecc: true,
+  buffering: Registered,
+  chip_width: bit_width(count: 4),
+  rank_count: 2,
+}
+
+data observed_failures: List<PlatformTrainingFailure> = [altrad8ud_mrep_failure_observation]
+
+// The same failure at DECODED standing. Only the evidence differs, which is
+// what makes the severity comparison below discriminating.
+data decoded_failure: PlatformTrainingFailure = PlatformTrainingFailure {
+  board: AsrockRackAltrad8ud1l2t,
+  step: LrdimmDataBufferMrep,
+  standing: DecodedFromPlatformSyndrome { register: "B5" },
+  observed_population: ["A1"],
+  observed_at: 1786590000000,
+}
+
+// The same failure with NO evidence behind it.
+data unobserved_failure: PlatformTrainingFailure = PlatformTrainingFailure {
+  board: AsrockRackAltrad8ud1l2t,
+  step: LrdimmDataBufferMrep,
+  standing: EvidenceUnobserved,
+  observed_population: ["A1"],
+  observed_at: 1786590000000,
+}
+
+
+// WHAT AN ASSOCIATION LICENSES. gunbc holds MREP at
+// AssociatedByIdenticalSignature, so another load-reduced module is a
+// buy-one-and-test candidate — NOT a refusal. An earlier revision answered
+// PartImplicatedByFailingStep here, which is how a single association
+// removed most of the 64GB DDR4 market by construction.
+test fn an_association_requires_a_sample_rather_than_refusing() -> Bool {
+  match part_implication(
+    candidate: lrdimm_32g,
+    failures: observed_failures,
+    target_board: AsrockRackAltrad8ud1l2t,
+  ) {
+    PartSampleQualificationRequired { step: _, standing: _ } => true
+    PartImplicatedByFailingStep { step: _, standing: _ } => false
+    PartNotImplicated => false
+  }
+}
+
+// The severity is a function of EVIDENCE, not of the step. Same board, same
+// step, same module — decoded from this platform's own syndrome register, so
+// the refusal is earned.
+test fn a_decoded_syndrome_does_refuse() -> Bool {
+  match part_implication(
+    candidate: lrdimm_32g,
+    failures: [decoded_failure],
+    target_board: AsrockRackAltrad8ud1l2t,
+  ) {
+    PartImplicatedByFailingStep { step: _, standing: _ } => true
+    _ => false
+  }
+}
+
+// FAIL-OPEN CONTROL IN THE OTHER DIRECTION: an unevidenced row must not
+// implicate anything at all. Refusing on EvidenceUnobserved would let a row
+// nobody measured remove parts from the market.
+test fn an_unobserved_standing_implicates_nothing() -> Bool {
+  match part_implication(
+    candidate: lrdimm_32g,
+    failures: [unobserved_failure],
+    target_board: AsrockRackAltrad8ud1l2t,
+  ) {
+    PartNotImplicated => true
+    _ => false
+  }
+}
+
+// RED control on the structural axis: an otherwise identical registered module
+// has no data buffer, cannot execute MREP, and is untouched at ANY standing.
+test fn registered_module_is_untouched_even_by_a_decoded_failure() -> Bool {
+  match part_implication(
+    candidate: rdimm_32g,
+    failures: [decoded_failure],
+    target_board: AsrockRackAltrad8ud1l2t,
+  ) {
+    PartNotImplicated => true
+    _ => false
+  }
+}
+
+test fn only_the_load_reduced_module_executes_mrep() -> Bool {
+  module_executes_step(module: lrdimm_32g, step: LrdimmDataBufferMrep)
+    && !module_executes_step(module: rdimm_32g, step: LrdimmDataBufferMrep)
 }

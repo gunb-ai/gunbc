@@ -1,6 +1,110 @@
 module extdeps.bmc.openbmc_fan_control
 
+import std.algebra { Empty, trim }
+import v2.std.diagnostic { Accepted, Rejected }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Https, Uri }
+import extdeps.ssh.password_session {
+  PasswordSshExecResult,
+  PasswordSshSession,
+  password_ssh_session_copy_file,
+}
+import extdeps.crypto.hash { Digest, sha256_digest }
+import extdeps.languages.json.emit {
+  json_array,
+  json_int,
+  json_kv,
+  json_object,
+  json_string,
+  serialize_json,
+}
+import extdeps.tools.jq {
+  JqInputStdin,
+  JqInvocation,
+  JqProgram,
+  JqProgramExit,
+  JqRawOutput,
+  jq_authority,
+  JqOutcome,
+  JqOutputAbsent,
+  JqOutputPresent,
+  JqExecutionRefused,
+  jq_classify_observation,
+  jq_execute_admitted_plan,
+  jq_invocation_process_plan
+}
+import extdeps.systemd.systemctl { systemctl_authority }
+import extdeps.bmc.openbmc_operation {
+  OpenBmcCopyFilePreservingMetadata,
+  OpenBmcDiskUsageKib,
+  OpenBmcFanConfigDesired,
+  OpenBmcFanConfigQuery,
+  OpenBmcFanConfigScalar,
+  OpenBmcFanConfigValidate,
+  OpenBmcFanConfigVerify,
+  OpenBmcFanControllerCount,
+  OpenBmcFanControllerNameAt,
+  OpenBmcFanInputAt,
+  OpenBmcFanInputCountAt,
+  OpenBmcFileSha256,
+  OpenBmcMakeDirectory,
+  OpenBmcMinimumDuty,
+  OpenBmcNegativeHysteresis,
+  OpenBmcOperation,
+  OpenBmcOutputCount,
+  OpenBmcOutputAt,
+  OpenBmcParentDirectory,
+  OpenBmcPathExists,
+  OpenBmcPathIsNonemptyFile,
+  OpenBmcPathIsWritable,
+  OpenBmcPositiveHysteresis,
+  OpenBmcReadFile,
+  OpenBmcReadingAt,
+  OpenBmcReadingCount,
+  OpenBmcRemoveDirectory,
+  OpenBmcRemoveFile,
+  OpenBmcRenameReplace,
+  OpenBmcResolvePath,
+  OpenBmcSensorFailsafeDuty,
+  OpenBmcSensorServices,
+  OpenBmcSensorThreshold,
+  OpenBmcSensorValue,
+  OpenBmcStepwiseCount,
+  OpenBmcSynchronizeFilesystems,
+  OpenBmcSystemdIsActive,
+  OpenBmcSystemdRestart,
+  OpenBmcThresholdProperty,
+  OpenBmcUtcTimestamp,
+  OpenBmcWaitSeconds,
+  OpenBmcWarningLow,
+  OpenBmcCriticalLow,
+  OpenBmcZoneFailsafe,
+  OpenBmcZoneFailsafeDuty,
+  openbmc_busctl_authority,
+}
+import extdeps.bmc.openbmc_password_ssh_transport {
+  openbmc_password_ssh_transport_note,
+}
+import std.measure {
+  ByteSize,
+  Celsius,
+  CelsiusDelta,
+  Percent,
+  RevolutionsPerMinute,
+  Second,
+  celsius,
+  celsius_count,
+  celsius_delta,
+  celsius_delta_count,
+  byte_size,
+  percent,
+  percent_count,
+  rpm,
+  rpm_count,
+  second_count,
+}
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
@@ -703,23 +807,6 @@ service openbmc.JsonProjection {
     }
   }
 
-  operation SensorIntegerValue {
-    input { content: String }
-    output {
-      value: String from "stdout"
-      success: Bool from "exit_success"
-      stderr: String from "stderr"
-    }
-    readonly
-    transport shell {
-      argv: ["jq", "-r", "if (.data | type) == \"number\" then (.data | round) else empty end"]
-      stdin: content
-    }
-    exit {
-      0 => Unit
-      nonzero => String "sensor integer projection failed"
-    }
-  }
 }
 
 fn openbmc_read_file(
@@ -792,23 +879,56 @@ type OpenBmcSensorValueResult
   | OpenBmcSensorValueAbsent
   | OpenBmcSensorValueRefused { reason: String }
 
-fn openbmc_sensor_integer_projection_result(
-  success: Bool,
-  value: String,
-  stderr: String,
-) -> OpenBmcSensorValueResult {
-  if !success {
-    OpenBmcSensorValueRefused { reason: stderr }
-  } else if trim(value) == "" {
-    OpenBmcSensorValueAbsent
-  } else {
-    match parse_int(s: trim(value)) {
-      Absent =>
-        OpenBmcSensorValueRefused {
-          reason: "sensor value projection is not an integer",
-        }
-      Present { value: parsed } => OpenBmcSensorValueObserved { value: parsed }
+// exit_code, not `success: Bool`. Two fields for one fact is a second representation: success is
+// exactly exit_code == 0, derived here where the three states are decided rather than carried
+// alongside them.
+// THE PROGRAM IS THE DOMAIN'S, THE FLAGS ARE JQ'S. This module states what it wants extracted;
+// it never spells -r, --raw-output or an argv position. `else empty end` is deliberate and
+// load-bearing: a non-numeric reading emits NOTHING and exits zero, which the decoder below reads
+// as OpenBmcSensorValueAbsent -- a real third state beside Refused and Observed. That is why this
+// path must NOT carry jq's --exit-status: it would collapse Absent into Refused on a live sensor.
+data openbmc_sensor_integer_program: String = "if (.data | type) == \"number\" then (.data | round) else empty end"
+
+// One place builds the sensor projection invocation, so both call sites cannot drift apart.
+fn openbmc_sensor_integer_projection(content: String) -> OpenBmcSensorValueResult {
+  match jq_invocation_process_plan(invocation: JqInvocation {
+    program: JqProgram { source: openbmc_sensor_integer_program },
+    bindings: Empty,
+    input: JqInputStdin { content: content },
+    output_encoding: JqRawOutput,
+    exit_policy: JqProgramExit,
+  }) {
+    Rejected { diagnostics: _ } =>
+      OpenBmcSensorValueRefused { reason: "sensor value projection could not be lowered to a jq invocation" }
+    Accepted { value: plan, diagnostics: _ } => {
+      let observed = jq_execute_admitted_plan(plan: plan)
+      openbmc_sensor_integer_projection_result(
+        outcome: jq_classify_observation(plan: plan, observation: observed),
+      )
     }
+  }
+}
+
+// THIS DECODER NO LONGER READS AN EXIT CODE, and that is the point of the arm it matches instead.
+// It previously took exit_code/stdout/stderr and mapped every nonzero exit to a refusal -- correct
+// under JqProgramExit, silently wrong under any other exit policy, and nothing connected the two.
+// jq_classify_observation now owns that reading, against the policy carried on the plan, so this
+// function decides only what OpenBMC alone can decide: whether a present projection is an integer.
+fn openbmc_sensor_integer_projection_result(
+  outcome: JqOutcome,
+) -> OpenBmcSensorValueResult {
+  match outcome {
+    JqExecutionRefused { exit_code: _, stderr: stderr } =>
+      OpenBmcSensorValueRefused { reason: stderr }
+    JqOutputAbsent => OpenBmcSensorValueAbsent
+    JqOutputPresent { text: text } =>
+      match parse_int(s: trim(text)) {
+        Absent =>
+          OpenBmcSensorValueRefused {
+            reason: "sensor value projection is not an integer",
+          }
+        Present { value: parsed } => OpenBmcSensorValueObserved { value: parsed }
+      }
   }
 }
 
@@ -936,14 +1056,7 @@ fn openbmc_sensor_value(
   if !remote.success {
     OpenBmcSensorValueRefused { reason: remote.stderr }
   } else {
-    let extracted = openbmc.JsonProjection.SensorIntegerValue(
-      content: remote.stdout,
-    )
-    openbmc_sensor_integer_projection_result(
-      success: extracted.success,
-      value: extracted.value,
-      stderr: extracted.stderr,
-    )
+    openbmc_sensor_integer_projection(content: remote.stdout)
   }
 }
 
@@ -970,12 +1083,7 @@ fn openbmc_sensor_threshold_result(
   if !remote.success {
     OpenBmcSensorValueRefused { reason: remote.stderr }
   } else {
-    let extracted = openbmc.JsonProjection.SensorIntegerValue(content: remote.stdout)
-    openbmc_sensor_integer_projection_result(
-      success: extracted.success,
-      value: extracted.value,
-      stderr: extracted.stderr,
-    )
+    openbmc_sensor_integer_projection(content: remote.stdout)
   }
 }
 

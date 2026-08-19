@@ -1,0 +1,32 @@
+module v2.test.manual.sg_collection_projection
+
+data sg_collection_expected_vec_rc_node: String = "Vec<Rc<Node>>"
+
+fn sg_collection_free_monoid_node_source_type() -> Node {
+  v2.std.node.Node {
+    kind: v2.std.node.TypeNode { connective: Instantiation },
+    children: [
+      v2.std.node.Edge { label: Positional, target: target_carrier_free_monoid_node() },
+      v2.std.node.Edge { label: Positional, target: target_carrier_node_node() }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+test fn sg_collection_free_monoid_vec_rc_projection_holds() -> Bool {
+  match translate_type_expression_project(
+    node: sg_collection_free_monoid_node_source_type(),
+    target: rust_sg2_type_expr_target_model(),
+    projection: rust_type_expression_projection()
+  ) {
+    Accepted { value: projected, diagnostics: _ } =>
+      match target_serialize_source_from_model(
+        target: rust_sg2_type_expr_target_model(),
+        emitted: projected
+      ) {
+        Accepted { value: source, diagnostics: _ } => source.carried == sg_collection_expected_vec_rc_node
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}

@@ -1,0 +1,48 @@
+module v2.test.lens_cost.nested_product
+
+import v2.lens.cost { LinearCost, ProductCost, SizeVariable, cost_lens }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Cardinality,
+  ComputationNode,
+  Edge,
+  Node,
+  Positional,
+  Transform,
+  TypeNode,
+  SyntheticOccurrence
+}
+import v2.std.witness { Holds }
+
+data nested_product_body: Node = v2.std.node.Node {
+  kind: v2.std.node.ComputationNode { behavior: Transform },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data nested_product_inner: Node = v2.std.node.Node {
+  kind: v2.std.node.TypeNode { connective: Cardinality },
+  children: [
+    v2.std.node.Edge { label: Positional, target: nested_product_body }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data nested_product_input: Node = v2.std.node.Node {
+  kind: v2.std.node.TypeNode { connective: Cardinality },
+  children: [
+    v2.std.node.Edge { label: Positional, target: nested_product_inner }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+test fn nested_product_claim_holds() -> Bool {
+  match cost_lens(n: nested_product_input) {
+    Holds { value: actual } =>
+      actual == v2.lens.cost.ProductCost {
+        lhs: v2.lens.cost.LinearCost { variable: v2.lens.cost.SizeVariable { source: nested_product_input } },
+        rhs: v2.lens.cost.LinearCost { variable: v2.lens.cost.SizeVariable { source: nested_product_inner } }
+      }
+    _ => false
+  }
+}

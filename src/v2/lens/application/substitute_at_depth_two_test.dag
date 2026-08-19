@@ -1,0 +1,71 @@
+module v2.test.lens_application.substitute_at_depth_two
+
+import v2.lens.application { substitute_at }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Conj, Edge, Named, Node, Path, Symbol, TypeNode, SyntheticOccurrence }
+
+data substitute_original_leaf: Node = v2.std.node.Node {
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^substitute_original_leaf_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data substitute_replacement_leaf: Node = v2.std.node.Node {
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^substitute_replacement_leaf_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data substitute_middle: Node = v2.std.node.Node {
+  kind: v2.std.node.TypeNode { connective: Conj },
+  children: [
+    v2.std.node.Edge {
+      label: Named { name: ^substitute_step_b },
+      target: substitute_original_leaf
+    }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data substitute_root: Node = v2.std.node.Node {
+  kind: v2.std.node.TypeNode { connective: Conj },
+  children: [
+    v2.std.node.Edge {
+      label: Named { name: ^substitute_step_a },
+      target: substitute_middle
+    }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data substitute_expected_root: Node = v2.std.node.Node {
+  kind: v2.std.node.TypeNode { connective: Conj },
+  children: [
+    v2.std.node.Edge {
+      label: Named { name: ^substitute_step_a },
+      target: v2.std.node.Node {
+        kind: v2.std.node.TypeNode { connective: Conj },
+        children: [
+          v2.std.node.Edge {
+            label: Named { name: ^substitute_step_b },
+            target: substitute_replacement_leaf
+          }
+        ],
+        occurrence_id: SyntheticOccurrence
+}
+    }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+test fn substitute_at_depth_two_claim_holds() -> Bool {
+  match substitute_at(
+    root: substitute_root,
+    path: v2.std.node.Path { steps: [^substitute_step_a, ^substitute_step_b] },
+    replacement: substitute_replacement_leaf
+  ) {
+    Accepted { value: n, diagnostics: _ } => n == substitute_expected_root
+    Rejected { diagnostics: _ } => false
+  }
+}

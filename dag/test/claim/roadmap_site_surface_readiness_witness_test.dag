@@ -1,0 +1,8 @@
+module test.claim.roadmap_site_surface_readiness
+
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+
+test fn witness_roadmap_site_surface_readiness_materialized_batch_holds() -> Bool {
+  roadmap_site_surface_readiness_group_holds(release_revision: deploy_witness_release_revision)
+}

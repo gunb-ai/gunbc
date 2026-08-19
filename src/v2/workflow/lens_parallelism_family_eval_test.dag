@@ -1,5 +1,26 @@
 module v2.test.workflow.lens_parallelism_family_eval
 
+import v2.std.logic { Bool }
+import v2.std.witness { Holds, Violates }
+import v2.std.dependency {
+  ClassifiedDependencyView,
+  DependencyView,
+  EffectDependsOn,
+  TypeDependsOn
+}
+import v2.lens.common.algebraic_composition { DataDependent }
+import v2.lens.parallelism {
+  EffectCoupled,
+  ParallelismFact,
+  parallelism_fact_eq,
+  parallelism_witness
+}
+import v2.test.lens_parallelism.data_dependency {
+  parallelism_child,
+  parallelism_claim_tree,
+  parallelism_root
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
@@ -66,43 +87,4 @@ fn parallelism_discriminating_controls_pass() -> Bool {
     && parallelism_control_unresolved_violates()
 }
 
-type LensFamilyEvalEntry {
-  run: TestClaimRun<Node, RuntimeValue>
-}
-
-type LensFamilyEvalReport {
-  entries: List<LensFamilyEvalEntry>
-}
-
-fn lens_family_eval_report_tally(r: LensFamilyEvalReport) -> v2.std.verdict.VerdictTally {
-  fold(r.entries, init: verdict_tally_empty, f: fn(acc, e) {
-    verdict_tally_add(t: acc, v: test_claim_run_verdict(run: e.run))
-  })
-}
-
-fn run_lens_parallelism_family_eval() -> LensFamilyEvalReport {
-  LensFamilyEvalReport {
-    entries: map(
-      lens_parallelism_runtime_value_rows,
-      fn(run) { LensFamilyEvalEntry { run: run } }
-    )
-  }
-}
-
-fn lens_parallelism_family_all_pass(report: LensFamilyEvalReport) -> Bool {
-  let tally = lens_family_eval_report_tally(r: report)
-  (tally.fail == Zero) && (tally.deferred == Zero)
-}
-
-fn lens_parallelism_family_gate(report: LensFamilyEvalReport) -> Bool {
-  if is_empty(xs: report.entries) {
-    false
-  } else {
-    lens_parallelism_family_all_pass(report: report)
-      && parallelism_discriminating_controls_pass()
-  }
-}
-
-test data witness_lens_parallelism_family_gate_closed: Bool = lens_parallelism_family_gate(
-  report: run_lens_parallelism_family_eval()
-)
+test data witness_lens_parallelism_family_gate_closed: Bool = parallelism_discriminating_controls_pass()

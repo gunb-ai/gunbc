@@ -1,0 +1,137 @@
+module v2.test.manual.content_hash_loop_bound_edge_order
+
+import v2.std.node {
+  Atom,
+  ComputationNode,
+  Edge,
+  Loop,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  content_hash,
+  SyntheticOccurrence
+}
+fn content_hash_loop_body_leaf() -> Node {
+  v2.std.node.Node {
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^content_hash_loop_body_sym } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn content_hash_loop_measure_leaf() -> Node {
+  v2.std.node.Node {
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^content_hash_loop_measure_sym } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn content_hash_loop_body() -> Node {
+  v2.std.node.Node {
+    kind: v2.std.node.ComputationNode { behavior: Transform },
+    children: [
+      v2.std.node.Edge { label: Positional, target: content_hash_loop_body_leaf() }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn content_hash_loop_body_two() -> Node {
+  v2.std.node.Node {
+    kind: v2.std.node.ComputationNode { behavior: Transform },
+    children: [
+      v2.std.node.Edge { label: Positional, target: content_hash_loop_body_leaf() },
+      v2.std.node.Edge { label: Positional, target: content_hash_loop_body_leaf() }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn content_hash_loop_bound_last() -> Node {
+  v2.std.node.Node {
+    kind: v2.std.node.ComputationNode { behavior: Loop },
+    children: [
+      v2.std.node.Edge { label: Positional, target: content_hash_loop_body() },
+      v2.std.node.Edge {
+        label: Named { name: ^loop_bound_edge },
+        target: content_hash_loop_measure_leaf()
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn content_hash_loop_bound_first() -> Node {
+  v2.std.node.Node {
+    kind: v2.std.node.ComputationNode { behavior: Loop },
+    children: [
+      v2.std.node.Edge {
+        label: Named { name: ^loop_bound_edge },
+        target: content_hash_loop_measure_leaf()
+      },
+      v2.std.node.Edge { label: Positional, target: content_hash_loop_body() }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn content_hash_loop_bound_middle() -> Node {
+  v2.std.node.Node {
+    kind: v2.std.node.ComputationNode { behavior: Loop },
+    children: [
+      v2.std.node.Edge { label: Positional, target: content_hash_loop_body_two() },
+      v2.std.node.Edge {
+        label: Named { name: ^loop_bound_edge },
+        target: content_hash_loop_measure_leaf()
+      },
+      v2.std.node.Edge { label: Positional, target: content_hash_loop_body_two() }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn content_hash_loop_bound_last_two_body() -> Node {
+  v2.std.node.Node {
+    kind: v2.std.node.ComputationNode { behavior: Loop },
+    children: [
+      v2.std.node.Edge { label: Positional, target: content_hash_loop_body_two() },
+      v2.std.node.Edge { label: Positional, target: content_hash_loop_body_two() },
+      v2.std.node.Edge {
+        label: Named { name: ^loop_bound_edge },
+        target: content_hash_loop_measure_leaf()
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn content_hash_loop_with_extra_named() -> Node {
+  v2.std.node.Node {
+    kind: v2.std.node.ComputationNode { behavior: Loop },
+    children: [
+      v2.std.node.Edge { label: Positional, target: content_hash_loop_body() },
+      v2.std.node.Edge {
+        label: Named { name: ^loop_bound_edge },
+        target: content_hash_loop_measure_leaf()
+      },
+      v2.std.node.Edge {
+        label: Named { name: ^content_hash_loop_extra_named_sym },
+        target: content_hash_loop_body_leaf()
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+test fn content_hash_loop_bound_edge_order_holds() -> Bool {
+  content_hash(n: content_hash_loop_bound_last()) ==
+    content_hash(n: content_hash_loop_bound_first())
+  && content_hash(n: content_hash_loop_bound_last_two_body()) ==
+    content_hash(n: content_hash_loop_bound_middle())
+  && content_hash(n: content_hash_loop_bound_last()) !=
+    content_hash(n: content_hash_loop_with_extra_named())
+}

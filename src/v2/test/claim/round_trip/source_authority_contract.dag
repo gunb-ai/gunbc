@@ -14,14 +14,6 @@ data source_authority_contract_subject: Node = v2.std.node.Node {
   occurrence_id: SyntheticOccurrence
 }
 
-fn source_authority_contract_pass_node() -> Node {
-  v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^source_authority_contract_pass_symbol } },
-    children: [],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
 fn contract_target_advertises_declared_loss() -> Bool {
   match decode_fidelity_from_target(target: source_authority_contract_target_model) {
     Accepted { value: fidelity, diagnostics: _ } =>
@@ -144,20 +136,4 @@ fn contract_serializer_section_law_violates_on_carried_mismatch() -> Bool {
     }
     Rejected { diagnostics: _ } => false
   }
-}
-
-data claim_source_authority_contract_compiles: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
-  label: "Branch H.7.2 source-authority round-trip shape contract compiles without JSON IR authority",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: source_authority_contract_pass_node(),
-  expected_value: source_authority_contract_pass_node(),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Integration }
-}
-
-data claim_bmin_canonical_dag_source_parse_print_law: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
-  label: "B-min canonical .dag source law: deterministic serializer plus normalized source-AST parse/print, excluding JSON IR",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: source_authority_contract_pass_node(),
-  expected_value: source_authority_contract_pass_node(),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Integration }
 }

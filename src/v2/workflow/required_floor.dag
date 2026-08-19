@@ -1,5 +1,57 @@
 module v2.workflow.required_floor
 
+import v2.std.algebra { Cons, Empty }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.workflow.floor_expected_red { floor_expected_red_roster }
+
+// IDENTITY-GRAINED FLOOR DISPOSITION RECEIPT (operator ruling 2026-08-19).
+//
+// Every executable claim the fold plans gets exactly one `RequiredFloorDisposition`, keyed by
+// its qualified `module.function` identity. This is the single authority for that fact: the
+// host loop in `v1_compiler.cli_run` `run_required_floor` computes admission by testing a
+// claim's authored module name against `long_home_prefixes()` above and whether it reads the
+// live tree, then REALIZES the arm this type already names — it does not invent a second
+// admission concept. A `Declined*` arm here is a fact about why a claim's identity is excluded
+// from the executed roster; it is never itself the mechanism deciding execution order or
+// eligibility for a DIFFERENT gate.
+type RequiredFloorDisposition =
+    Planned
+  | DeclinedLongModule { matched_prefix: String }
+  | DeclinedLiveTree
+
+// LONG-HOME STORAGE HYGIENE — A DIAGNOSTIC, NEVER AN ADMISSION INPUT.
+//
+// Two independent boolean facts about one file: does its PATH sit under a directory this repo
+// treats as the long home (`/test/claim/long/`-shaped), and does its AUTHORED MODULE NAME start
+// with one of `long_home_prefixes()` above (the fact `RequiredFloorDisposition` actually reads).
+// The 2026-08-04 admission ruling already established that only the second fact may gate
+// execution — see this module's header comment on `is_long_home`. `LongHomeStorageAgreement` is
+// the derived cross-check that reports when the two facts diverge (a file physically homed in
+// the long directory whose module name never opted in, or the reverse), so the divergence is
+// visible without ever feeding back into admission. Naming it as a Cartesian product of two
+// booleans rather than a bespoke four-arm guess is the point: the four arms below are nothing
+// but `(path_is_long, module_is_long)`, and `long_home_storage_agreement` is total over that
+// product, not a hand-picked subset.
+type LongHomeStorageAgreement =
+    LongPathAndLongModule
+  | ShortPathAndShortModule
+  | LongPathButExecutingModule
+  | ShortPathButDeclinedModule
+
+fn long_home_storage_agreement(path_is_long: Bool, module_is_long: Bool) -> LongHomeStorageAgreement {
+  match path_is_long {
+    True => match module_is_long {
+      True => LongPathAndLongModule {}
+      False => LongPathButExecutingModule {}
+    }
+    False => match module_is_long {
+      True => ShortPathButDeclinedModule {}
+      False => ShortPathAndShortModule {}
+    }
+  }
+}
 
 // THE ROSTER EDGE IS A QUALIFIED REFERENCE, BECAUSE THAT IS WHAT AN EDGE IS NOW.
 //
@@ -9,46 +61,10 @@ module v2.workflow.required_floor
 // is exactly what this comment's previous revision predicted, and exactly what happened once
 // the namespace cut deleted the import that had been carrying it.
 //
-// That previous revision refused a thin accessor here, on the grounds that it would be a second
-// name for one authority and would make this module own a fact it does not produce. The first
-// half no longer holds: with imports deleted, a qualified reference IS the only way one module
-// depends on another, so `required_floor_expected_red_roster` is not a second name standing
-// beside an import — it is the edge, in the only form the substrate now has. The second half
-// still holds and is preserved by construction: the function delegates and stores nothing, so
-// this module names where the roster comes from and never owns what is in it.
-
-// BARE-NAME AMBIGUITY IS COMPUTED AND DISCARDED, one rung below where the machinery already
-// stands. This is an ACKNOWLEDGEMENT of debt the floor cut discovered on its base, not debt the
-// cut introduced: the defect predates this branch and the branch only measured it.
-//
-// The interpreter's index registers every declaration under BOTH a bare leaf key and a qualified
-// module-path key, and while building it counts how many declarers claim each bare name — the
-// exact ambiguous set, stored on the context. `lookup_fn` then answers with a plain map get and
-// never consults it, so the losing declarer was already overwritten by insertion order. The set
-// has one reader, and that reader's only callers are a unit test.
-//
-// So this is not a lookup that lacked the information to refuse. It is a lookup holding the
-// refusal and declining to take it — registration standing in for enforcement, which reads as a
-// wall in a census and is fail-open in execution. What it produces is not a diagnostic but a
-// plausible answer: a call binding to a same-named declaration in an unrelated module, arriving
-// as `call contract mismatch` at a caller that never wrote the name.
-//
-// MEASURED, at two grains that are not comparable and are both recorded so neither is mistaken
-// for the other. At reference-site grain, 5,783 ambiguous references corpus-wide (crisp-crab-430,
-// namespace cut). At runtime grain, which is what this floor exercises: 72,480 (name x scope)
-// pairs across 963 of 1,295 scopes, worst scope 110, reported every run as
-// `[floor-bare-name-ambiguity]`. The runtime figure multiplies one homonym across every scope
-// that reaches it, and it moves with REACH as well as with resolution — a fix that loads more
-// modules manufactures more collisions without any resolution changing.
-//
-// NOT FIXED HERE, deliberately and in both directions. Adding a refusal arm to the lookup would
-// be a new row in a frozen component, which is the growth surface the freeze exists to close.
-// Renaming the colliding declarations is the authoring-side absorbing fallback: it zeroes the
-// observed frequency without touching the substrate, and at 72,480 it does not scale — three
-// such renames stand on this branch as interim debt, dissolving with the trigger below.
-// Qualification at the reference routes past the whole class without touching the frozen
-// component, because the qualified key is collision-free by construction.
-data floor_bare_name_ambiguity_next_rung_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "dissolve-on: bare-name binding stops being decided by insertion order. Reached when ambiguous references carry their qualified module path (v2.compiler.emit.emit rather than emit), which routes through the collision-free qualified key in the interpreter's index and needs no change to the frozen component. Owned by the namespace cut, gunbc#8282; the nine production emit call sites were handed over and taken 2026-08-17. Until then [floor-bare-name-ambiguity] counts the population every run and the three emit renames on integration/floor-cut are interim debt reverting on that landing. Rung today: mitigatable — the ambiguous set is computed and countable, and the wrong binding is loud at the caller as a contract mismatch rather than silent. Ceiling: structural impossibility — a qualified reference has exactly one declarer, so no ambiguous binding is writable.")
+// The import names the roster's own function and nothing wraps it: the host still calls
+// `v2.workflow.floor_expected_red.floor_expected_red_roster` by its real qualified name. A
+// thin accessor here would be a second name for one authority, and this module would then own
+// a fact it does not produce.
 
 //
 // THREE PREFIXES, NOT ONE, and the count is what found that. A single `test.claim.long.` test
@@ -136,13 +152,75 @@ fn long_home_prefixes() -> List<v2.std.text.String> {
 // PLACEMENT question -- which checks may ride the PR path -- and this is an EXECUTION question:
 // how long a single claim may run before the frame refuses. They agree today, and reusing one
 // for the other would make that coincidence load-bearing.
+//
+// SPLIT, operator ruling 2026-08-19 (BUDGET POLICY CUT), CORRECTED the same day by the
+// operator's superseding message: the single number that stood here used to answer three
+// questions at once -- when to interrupt CPU, when to interrupt wall, and what a completed
+// claim is allowed to have cost -- and that fusion is exactly the defect the ruling names: a
+// scheduler-sensitive wall crossing must not decide that a pure computation is too expensive,
+// which is what pushed innocent rows into censorship under co-tenant load. THREE independent
+// numbers now stand where one stood, and the superseding correction went further than the
+// first split: CPU and wall are not one shared "safety limit" either -- see below.
+//
+// `required_floor_claim_cost_line_ms` is DIAGNOSTIC ONLY -- it decides NOTHING about admission,
+// quarantine, or a cost-debt population. That is stronger than "it only classifies a completed
+// claim": the operator's superseding ruling retires this figure from completed-cost admission
+// too, not only from interruption. It was one 1527ms observation plus a scheduler quantum, and
+// the exact 1792ms/1928ms pair observed since shows terminal measurements vary materially
+// across admissible envelopes -- a single literal line cannot honestly gate a merge decision on
+// that spread. The figure may remain as historical calibration and diagnostic comparison
+// evidence only; nothing in the required-floor loop may read it to decide whether a run blocks
+// (and nothing in the live loop does today -- `RequiredFloorClaim.cost_line_ms` has no
+// admission-path consumer; the only reader is the diagnostic `exceeds_completed_cost_line`).
+//
+// `required_floor_claim_cpu_safety_limit_ms` and `required_floor_claim_wall_safety_limit_ms`
+// are TWO INDEPENDENT SAFETY DEADLINES, never a scalar mechanically copied into both clocks.
+// For a Hermetic pure in-process claim, CPU protects against runaway evaluation while wall
+// protects against a blocked or descheduled process -- different jobs, so the wall limit is
+// independently derived and LOOSER than the CPU limit, so ordinary host scheduling cannot
+// preempt a computation that is still inside its CPU envelope. Whichever deadline fires first,
+// the occurrence is a `SafetyInterrupted` claim and BOTH limits are recorded on it (the ruling's
+// `cpu_safety_limit`/`wall_safety_limit` pair) -- neither limit is a cost allowance, and crossing
+// either blocks. Both remain TEMPORARY restoration-envelope values, not re-founded permanent
+// ceilings, and both are deliberately far above where any ordinary witness should land (measured
+// per-witness median ~1ms) so neither should fire against a healthy claim.
+//
+// A completed claim's cost is judged on exactly one clock, chosen by the witness's PURPOSE and
+// never by measurement -- `v2.workflow.required_floor`'s claims execute Hermetic (pure in-process
+// evaluation), so CPU is the basis; a lane that later admits an execution mode whose purpose is
+// external or blocking interaction picks wall instead, but never lets the clock that happened to
+// read higher decide. (This clock-selection sentence is orthogonal to admission — see the
+// diagnostic-only note above; `required_floor_cost_basis` selects a clock for a number that no
+// longer gates anything.)
 // ENFORCEMENT GRAIN (2026-08-18): cooperative deadlines compare whole milliseconds on
 // shared CI hosts under floor load. The 2026-08-18 witnesses fold measured a 1527ms ceiling
 // (test.claim.transport_script_wall_compile_red.wall_red_string_join_into_retained_record_refuses)
 // under whole-corpus pressure while the per-witness median remains ~1ms — 1552ms is
-// measured-max plus one scheduler-quantum, not an open slack ratchet.
-fn required_floor_claim_budget_ms() -> Int {
+// measured-max plus one scheduler-quantum, retained as calibration evidence only.
+fn required_floor_claim_cost_line_ms() -> Int {
   1552
+}
+
+// TEMPORARY (operator ruling 2026-08-19, superseding correction): the CPU safety deadline.
+// 5000ms is the restoration envelope, stated as an explicitly temporary value rather than a
+// re-founded permanent ceiling. This is the TIGHTER of the two limits -- it protects against a
+// pure in-process claim running away on the CPU clock, and the wall limit below is deliberately
+// looser so that ordinary host scheduling delay cannot itself trip an interrupt on a
+// computation that is still within its CPU envelope.
+fn required_floor_claim_cpu_safety_limit_ms() -> Int {
+  5000
+}
+
+// TEMPORARY (operator ruling 2026-08-19, superseding correction): the WALL safety deadline,
+// independently derived from the CPU deadline and deliberately LOOSER -- retired is the prior
+// "both clocks armed identically" figure, which the operator's message named directly as the
+// mechanical copy to stop making ("DO NOT set CPU and wall to the same 5000ms"). A Hermetic
+// pure in-process claim can be legitimately descheduled by a co-tenant CI host for stretches
+// that would wrongly read as a runaway if judged on the CPU-tight figure; 10000ms gives that
+// headroom while still catching a claim that is genuinely blocked or stuck. Also a restoration
+// envelope, not a re-founded permanent ceiling.
+fn required_floor_claim_wall_safety_limit_ms() -> Int {
+  10000
 }
 
 fn required_floor_claim_warn_ms() -> Int {

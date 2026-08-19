@@ -1256,7 +1256,19 @@ fn expr_literal_string_optional(expr: v1.std.core.Node) -> String? {
   }
 }
 
-fn record_lit_expr_optional(expr: v1.std.core.Node) -> v1.std.core.Node? {
+fn expr_is_any_literal(expr: Node) -> Bool {
+  match expr.expr_data {
+    ExprLiteral { value: lit } =>
+      match lit {
+        LitNull => false
+        _ => true
+      }
+    ExprUnaryOp { op: Neg } => expr_is_any_literal(expr: unaryop_operand(texpr: expr))
+    _ => false
+  }
+}
+
+fn record_lit_expr_optional(expr: Node) -> Node? {
   match expr.expr_data {
     ExprRecordLit { parent_enum: _ } => Present { value: expr }
     _ => none

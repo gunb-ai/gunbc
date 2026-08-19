@@ -20,7 +20,7 @@ pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};
 pub use crate::v1_compiler_coercion::{
     can_cast, coerce_container_template, coerce_primitive_type, literal_suffix, render_cast,
-    target_callable, target_optional_template,
+    target_callable, target_optional_template, type_reference_decl_file,
 };
 pub use crate::v1_compiler_emit_core_support::{
     apply_named_template, apply_named_template_nested, apply_type_template1, apply_type_template2,
@@ -1143,7 +1143,8 @@ pub fn emit_keyword(key: String, target: RenderTarget) -> String {
 pub fn emit_literal(value: Rc<LiteralValue>, target: RenderTarget) -> String {
     match (*value.clone()).clone() {
         LiteralValue::LitStr { value: s, .. } => {
-            let suffix = match literal_suffix(target.clone(), "String".to_string()) {
+            let suffix = match literal_suffix(target.clone(), "String".to_string(), "".to_string())
+            {
                 Some(sfx) => sfx.clone(),
                 None => emit_error_expr(
                     "missing TypeCheckpoint for String literal suffix".to_string(),
@@ -1163,15 +1164,18 @@ pub fn emit_literal(value: Rc<LiteralValue>, target: RenderTarget) -> String {
         }
         LiteralValue::LitNull => emit_keyword("null".to_string(), target.clone()),
         LiteralValue::LitSymbol { value: s, .. } => {
-            let suffix = match literal_suffix(target.clone(), "Symbol".to_string()) {
+            let suffix = match literal_suffix(target.clone(), "Symbol".to_string(), "".to_string())
+            {
                 Some(sfx) => sfx.clone(),
-                None => match literal_suffix(target.clone(), "String".to_string()) {
-                    Some(sfx) => sfx.clone(),
-                    None => emit_error_expr(
-                        "missing TypeCheckpoint for Symbol literal suffix".to_string(),
-                        target.clone(),
-                    ),
-                },
+                None => {
+                    match literal_suffix(target.clone(), "String".to_string(), "".to_string()) {
+                        Some(sfx) => sfx.clone(),
+                        None => emit_error_expr(
+                            "missing TypeCheckpoint for Symbol literal suffix".to_string(),
+                            target.clone(),
+                        ),
+                    }
+                }
             };
             emit_string_literal(s.clone(), suffix.clone())
         }
@@ -1286,7 +1290,11 @@ pub fn render_named_type_base(
 ) -> String {
     {
         let tn = authored_name_at(source_indices.clone(), n.clone());
-        let base = coerce_primitive_type(target.clone(), tn.clone());
+        let base = coerce_primitive_type(
+            target.clone(),
+            tn.clone(),
+            type_reference_decl_file(n.clone()),
+        );
         let explicit_params = Rc::new({
             let mut __result = Vec::new();
             for p in n.params.clone().iter().cloned() {
@@ -1351,7 +1359,11 @@ pub fn render_node_type(
                     _ => false,
                 };
                 if (n_is_type_var.clone() && is_named_type_var.clone()) {
-                    return coerce_primitive_type(target.clone(), tn.clone());
+                    return coerce_primitive_type(
+                        target.clone(),
+                        tn.clone(),
+                        type_reference_decl_file(n.clone()),
+                    );
                 }
                 let label = if n_is_error.clone() {
                     "CompilerError".to_string()
@@ -1481,7 +1493,11 @@ pub fn render_node_type(
                                 shared_types.clone(),
                                 source_indices.clone(),
                             ),
-                            None => coerce_primitive_type(target.clone(), "Refined".to_string()),
+                            None => coerce_primitive_type(
+                                target.clone(),
+                                "Refined".to_string(),
+                                "".to_string(),
+                            ),
                         };
                         return refined_str;
                     }
@@ -1640,7 +1656,11 @@ pub fn render_node_type(
                                     v1_rt::concat(
                                         v1_rt::concat(
                                             v1_rt::concat(
-                                                coerce_primitive_type(target.clone(), tn.clone()),
+                                                coerce_primitive_type(
+                                                    target.clone(),
+                                                    tn.clone(),
+                                                    type_reference_decl_file(n.clone()),
+                                                ),
                                                 spec.type_arg_open.clone(),
                                             ),
                                             param_strs.clone().join(&", ".to_string()),
@@ -1652,7 +1672,11 @@ pub fn render_node_type(
                                 if (tn.clone() == tuple_type_name()) {
                                     render_tuple_parts(Rc::new(vec![]), target.clone())
                                 } else {
-                                    coerce_primitive_type(target.clone(), tn.clone())
+                                    coerce_primitive_type(
+                                        target.clone(),
+                                        tn.clone(),
+                                        type_reference_decl_file(n.clone()),
+                                    )
                                 }
                             }
                         }
@@ -1712,7 +1736,11 @@ pub fn render_node_type(
                     emit_container(to_snake(tn.clone()), child_str.clone(), target.clone())
                 } else {
                     {
-                        let type_base = coerce_primitive_type(target.clone(), tn.clone());
+                        let type_base = coerce_primitive_type(
+                            target.clone(),
+                            tn.clone(),
+                            type_reference_decl_file(n.clone()),
+                        );
                         let spec = language_spec(target.clone());
                         v1_rt::concat(
                             v1_rt::concat(
@@ -1749,7 +1777,11 @@ pub fn render_node_type(
                 return multi_tuple_str;
             }
         }
-        let type_base = coerce_primitive_type(target.clone(), tn.clone());
+        let type_base = coerce_primitive_type(
+            target.clone(),
+            tn.clone(),
+            type_reference_decl_file(n.clone()),
+        );
         let args_joined = child_strs.clone().join(&", ".to_string());
         let spec = language_spec(target.clone());
         let base = v1_rt::concat(

@@ -1,6 +1,122 @@
 module gunbc.live_deploy.emit
 
 
+import std.types { String, List, Bool, NonEmptyStr, Int, FilePath, CommitSha }
+import gunbc.managed_directory {
+  ManagedDirectory,
+  managed_directory_mode_octal,
+  attempt_state_directory_at,
+}
+import extdeps.tailscale.serve {
+  tailscale_serve_enable_argv,
+  tailscale_serve_off_argv,
+  TailscaleServeCapability,
+  ScopedRemovalSupported,
+  ScopedRemovalUnsupported,
+  ScopedRemovalUnobserved,
+}
+import extdeps.systemd.systemctl {
+  systemctl_disable_now_argv,
+  systemctl_show_load_state_argv,
+}
+import extdeps.systemd { systemd_unit_load_state_not_found_wire }
+import gunbc.live_deploy.deployed_tree_scope { deployed_tree_rsync_exclude_flags }
+import extdeps.version.semver { semver_version_label }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.layout {
+  Doc,
+  LayoutProtocol,
+  doc_text,
+  render
+}
+import extdeps.systemd.unit_file {
+  SystemdUnitFile, ServiceUnitFile, TimerUnitFile,
+  SystemdInstallSection, NotInstallable, Installable,
+  SystemdUnitDirective, Description, After, Wants,
+  SystemdServiceDirective, ServiceType, ExecStart, Restart,
+  Environment, EnvironmentFile, WorkingDirectory, ServiceUser, ServiceGroup,
+  SystemdTimerDirective, TimerUnit, OnCalendar, OnBootSec, OnUnitInactiveSec,
+  AccuracySec, RandomizedDelaySec, Persistent,
+  SystemdInstallDirective, WantedBy,
+  serialize_systemd_unit_file,
+}
+import gunbc.live_deploy.spec {
+  DeploymentSpec,
+  DeploymentStep, ArtifactStep, Dependency,
+  DeploymentDependencyStep,
+  EnsuredSubject, EnsuredPackage, EnsuredHostDirectory, ensured_subject_identity,
+  DeploymentArtifactStep,
+  ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, SystemdUnit, BeltTimerUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit,
+  deployment_belt_service_unit_name,
+  deployment_tree_remote_unit_name,
+  deployment_belt_timer_unit_name,
+  deployment_belt_service_unit_path,
+  deployment_fleet_converge_service_unit_name,
+  deployment_fleet_converge_timer_unit_name,
+  deployment_fleet_converge_service_unit_path,
+  deployment_spec_srv1,
+  deployment_plan_listen_port,
+  deployment_owned_steps_retract_order,
+  deployment_step_ownership,
+  deployment_step_teardown_disposition,
+  TeardownDisposition, TeardownActs, TeardownRefuses,
+  tree_sync_unit_path,
+}
+import gunbc.host_layout { belt_spawn_workdir_env_var, instance_receipts_dir }
+import gunbc.host_axis_caps {
+  deploy_memory_cap_apply_script_for_host,
+  deploy_memory_cap_script_author_precedes_shadow_revert,
+  host_axis_caps_author_before_revert_enforced,
+  runner_slot_service_units_for_host,
+}
+import gunbc.ownership { Ownership }
+import v2.std.algebra { list_tail, TailFound, TailAbsent }
+import gunbc.membership_reconcile {
+  MembershipPlan,
+  MemberEffect, EffectAdd, EffectReplace, EffectRemove,
+  MemberRefusal,
+  EffectsOrRefusal, EffectsReady, ApplyRefused,
+  membership_reconcile,
+  membership_plan_admitting_outcome,
+  membership_effects,
+}
+import gunbc.live_deploy.operations {
+  dpkg_status_command,
+  apt_install_command,
+  systemctl_daemon_reload_command,
+  systemctl_enable_command,
+  systemctl_restart_command,
+}
+import gunbc.live_deploy.intent { live_deploy_unit_status_tail_command }
+import v2.std.orchestration {
+  Pipeline, PipelineStep,
+  Do, If, Run,
+  FailFast, ExitZero, Not, DiscardAll
+}
+import v2.std.collection { Absent, Present }
+import v2.std.diagnostic { Accepted, Rejected, None }
+import v2.compiler.emit_orchestration { orch_emit_pipeline }
+import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
+import v2.extdeps.languages.bash_build {
+  bash_build_assign,
+  bash_build_command_from_lits,
+  bash_build_if_from_stmts,
+  bash_build_test_bracket,
+  bash_build_word_cmdsubst,
+  bash_build_word_lit,
+  bash_build_word_var,
+}
+import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node }
+import v2.std.node { Node }
+import gunbc.ci_deploy_access {
+  DeployAccess,
+  ci_deploy_srv1_access_or_refusal,
+  DeployAccessReady,
+  DeployAccessJobPrincipalRefused,
+  deploy_access_job_principal_refused_emit_poison,
+}
+import gunbc.ci_deploy_sudoers { deploy_sudoers_install_shell }
 
 data live_deploy_protocol: std.layout.LayoutProtocol = std.layout.LayoutProtocol { indent_unit: "" }
 
@@ -144,31 +260,30 @@ fn emit_systemd_unit_doc(spec: gunbc.live_deploy.spec.DeploymentSpec, revision: 
   let svc = spec.service
   let port = to_string(svc.listen.port)
   let host = svc.listen.host
-  std.layout.doc_concat(parts: [
-    std.layout.doc_line_of(text: "[Unit]"),
-    std.layout.doc_line_of(text: "extdeps.systemd.unit_file.Description=gunbc roadmap HTTP server (gunbc serve)"),
-    std.layout.doc_line_of(text: "After=network-online.target tailscaled.service"),
-    std.layout.doc_line_of(text: "Wants=network-online.target"),
-    std.layout.doc_line_of(text: ""),
-    std.layout.doc_line_of(text: "[Service]"),
-    std.layout.doc_line_of(text: "Type=simple"),
-    std.layout.doc_line_of(text: concat("User=", svc.service_user)),
-    std.layout.doc_line_of(text: concat("Group=", svc.service_user)),
-    std.layout.doc_line_of(text: concat("extdeps.systemd.unit_file.WorkingDirectory=", svc.repo_root)),
-    std.layout.doc_line_of(text: join([
-      "extdeps.systemd.unit_file.ExecStart=", svc.serve_binary,
-      " serve --source-root dag --source-root src/v2",
-      " --entry dag/gunbc/roadmap_serve.dag --function ", svc.serve_function as String,
-      " --host ", host, " --port ", port,
-      " --release-revision ", release_revision_execstart_text(binding: revision),
-      eval_budget_flag_text(flag: "--eval-budget-cpu-ms", limit: svc.serve_cpu_limit),
-      eval_budget_flag_text(flag: "--eval-budget-wall-ms", limit: svc.serve_wall_limit),
-    ], "")),
-    std.layout.doc_line_of(text: "Restart=on-failure"),
-    std.layout.doc_line_of(text: ""),
-    std.layout.doc_line_of(text: "[Install]"),
-    std.layout.doc_line_of(text: "WantedBy=multi-user.target"),
-  ])
+  doc_text(text: serialize_systemd_unit_file(file: ServiceUnitFile {
+    unit: [
+      Description { text: "gunbc roadmap HTTP server (gunbc serve)" as NonEmptyStr },
+      After { target: "network-online.target tailscaled.service" as NonEmptyStr },
+      Wants { target: "network-online.target" as NonEmptyStr },
+    ],
+    service: [
+      ServiceType { mode: "simple" as NonEmptyStr },
+      ServiceUser { name: svc.service_user },
+      ServiceGroup { name: svc.service_user },
+      WorkingDirectory { path: svc.repo_root },
+      ExecStart { command: join([
+        svc.serve_binary as String,
+        " serve --source-root dag --source-root src/v2",
+        " --entry dag/gunbc/roadmap_serve.dag --function ", svc.serve_function as String,
+        " --host ", host, " --port ", port,
+        " --release-revision ", release_revision_execstart_text(binding: revision),
+        eval_budget_flag_text(flag: "--eval-budget-cpu-ms", limit: svc.serve_cpu_limit),
+        eval_budget_flag_text(flag: "--eval-budget-wall-ms", limit: svc.serve_wall_limit),
+      ], "") as NonEmptyStr },
+      Restart { policy: "on-failure" as NonEmptyStr },
+    ],
+    install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
+  }))
 }
 
 data belt_tick_cadence_note: String = "OnUnitInactiveSec, NOT OnUnitActiveSec, and the difference is a fail-closed choice rather than a formatting one. OnUnitActiveSec measures from when the tick STARTED, so a tick that runs longer than the cadence schedules its successor while it is still running and ticks pile up back-to-back — for a unit whose job is spawning agent sessions, that converts a slow tick into overlapping spawns. OnUnitInactiveSec measures from when the previous tick FINISHED, so the gap is real regardless of how long a tick takes and the belt can never outrun itself. systemd additionally refuses to start a Type=oneshot unit that is already active, so the two together make overlap unwritable rather than unlikely.\\n\\n60s is the operator's stated default for this lane and is deliberately not tuned against anything: a tick against an unchanged frontier is an idempotent reconcile that observes live tmux sessions and does nothing (belt_run_once_note), so the cost of a too-fast cadence is an observation, not an action. AccuracySec=5s keeps systemd from coalescing the timer into a distant wakeup window, which is the default behavior and would otherwise make the effective cadence unpredictable.\\n\\nOnBootSec=2min rather than firing immediately: at boot the tree sync, the serve unit and tailscale are all converging, and a belt tick that spawns before the repo tree is in place produces SpawnFailed rows for a condition that resolves itself within seconds. The delay costs one cadence period and removes a class of self-inflicted refusals from the receipt."
@@ -177,42 +292,41 @@ data belt_tick_cadence: String = "60s"
 
 fn emit_belt_service_unit_doc(spec: gunbc.live_deploy.spec.DeploymentSpec) -> std.layout.Doc {
   let svc = spec.service
-  std.layout.doc_concat(parts: [
-    std.layout.doc_line_of(text: "[Unit]"),
-    std.layout.doc_line_of(text: "extdeps.systemd.unit_file.Description=gunbc roadmap belt tick (one reconcile pass over the ready frontier)"),
-    std.layout.doc_line_of(text: "After=network-online.target"),
-    std.layout.doc_line_of(text: "Wants=network-online.target"),
-    std.layout.doc_line_of(text: ""),
-    std.layout.doc_line_of(text: "[Service]"),
-    std.layout.doc_line_of(text: "Type=oneshot"),
-    std.layout.doc_line_of(text: concat("User=", svc.service_user)),
-    std.layout.doc_line_of(text: concat("Group=", svc.service_user)),
-    std.layout.doc_line_of(text: concat("extdeps.systemd.unit_file.WorkingDirectory=", svc.repo_root)),
-    std.layout.doc_line_of(text: join([
-      "Environment=", gunbc.host_layout.belt_spawn_workdir_env_var as String, "=", svc.repo_root,
-    ], "")),
-    std.layout.doc_line_of(text: join([
-      "extdeps.systemd.unit_file.ExecStart=", svc.serve_binary,
-      " run --source-root dag --source-root src/v2",
-      " --entry dag/gunbc/roadmap_belt_actuate.dag --function belt_run_once_cli",
-    ], "")),
-  ])
+  doc_text(text: serialize_systemd_unit_file(file: ServiceUnitFile {
+    unit: [
+      Description { text: "gunbc roadmap belt tick (one reconcile pass over the ready frontier)" as NonEmptyStr },
+      After { target: "network-online.target" as NonEmptyStr },
+      Wants { target: "network-online.target" as NonEmptyStr },
+    ],
+    service: [
+      ServiceType { mode: "oneshot" as NonEmptyStr },
+      ServiceUser { name: svc.service_user },
+      ServiceGroup { name: svc.service_user },
+      WorkingDirectory { path: svc.repo_root },
+      Environment { assignment: join([
+        belt_spawn_workdir_env_var as String, "=", svc.repo_root as String,
+      ], "") as NonEmptyStr },
+      ExecStart { command: join([
+        svc.serve_binary as String,
+        " run --source-root dag --source-root src/v2",
+        " --entry dag/gunbc/roadmap_belt_actuate.dag --function belt_run_once_cli",
+      ], "") as NonEmptyStr },
+    ],
+    install: NotInstallable,
+  }))
 }
 
-fn emit_belt_timer_unit_doc(spec: gunbc.live_deploy.spec.DeploymentSpec) -> std.layout.Doc {
-  std.layout.doc_concat(parts: [
-    std.layout.doc_line_of(text: "[Unit]"),
-    std.layout.doc_line_of(text: "extdeps.systemd.unit_file.Description=gunbc roadmap belt tick cadence"),
-    std.layout.doc_line_of(text: ""),
-    std.layout.doc_line_of(text: "[Timer]"),
-    std.layout.doc_line_of(text: concat("Unit=", gunbc.live_deploy.spec.deployment_belt_service_unit_name(names: spec.names) as String)),
-    std.layout.doc_line_of(text: "OnBootSec=2min"),
-    std.layout.doc_line_of(text: concat("OnUnitInactiveSec=", belt_tick_cadence)),
-    std.layout.doc_line_of(text: "AccuracySec=5s"),
-    std.layout.doc_line_of(text: ""),
-    std.layout.doc_line_of(text: "[Install]"),
-    std.layout.doc_line_of(text: "WantedBy=timers.target"),
-  ])
+fn emit_belt_timer_unit_doc(spec: DeploymentSpec) -> Doc {
+  doc_text(text: serialize_systemd_unit_file(file: TimerUnitFile {
+    unit: [Description { text: "gunbc roadmap belt tick cadence" as NonEmptyStr }],
+    timer: [
+      TimerUnit { target: deployment_belt_service_unit_name(names: spec.names) },
+      OnBootSec { duration: "2min" as NonEmptyStr },
+      OnUnitInactiveSec { duration: belt_tick_cadence as NonEmptyStr },
+      AccuracySec { duration: "5s" as NonEmptyStr },
+    ],
+    install: Installable { directives: [WantedBy { target: "timers.target" as NonEmptyStr }] },
+  }))
 }
 
 // THE DEPLOYED TREE'S REMOTE, CONVERGED BY ITS OWNER.
@@ -286,41 +400,44 @@ fn apply_belt_service_unit_write_step(spec: gunbc.live_deploy.spec.DeploymentSpe
 // (emit_systemd_unit_doc / emit_belt_service_unit_doc: User=+Group=svc.service_user).
 // Receipt *publication* (superseding a stale root-owned file) is atomic rename in
 // gunbc.fleet_converge_cli (gunbc.host_layout fleet_converge_receipt_atomic_publish_note).
-// Receipt *directory bootstrap* (existence + service-principal ownership) stays on deploy
-// via install_d_owned_command on gunbc.host_layout.fleet_converge_receipt_dir — orthogonal problems.
-fn emit_fleet_converge_service_unit_doc(spec: gunbc.live_deploy.spec.DeploymentSpec) -> std.layout.Doc {
+// Receipt *directory bootstrap* (existence + service-principal ownership) is on deploy, but NOT
+// here: this member's apply arm is a retirement poison (the cadence is on-demand via
+// fleet-converge.yml plan/apply, sleek-heron-218), so the bootstrap it used to carry has not run
+// on any fresh instance root since that retirement. It rides BeltTimerUnit apply against the
+// per-instance receipts directory instead — see belt_receipt_dir_bootstrap_note. Publication and
+// bootstrap remain orthogonal problems; only the bootstrap's home moved.
+fn emit_fleet_converge_service_unit_doc(spec: DeploymentSpec) -> Doc {
   let svc = spec.service
-  std.layout.doc_concat(parts: [
-    std.layout.doc_line_of(text: "[Unit]"),
-    std.layout.doc_line_of(text: "extdeps.systemd.unit_file.Description=gunbc fleet converge (self)"),
-    std.layout.doc_line_of(text: "After=network-online.target"),
-    std.layout.doc_line_of(text: "Wants=network-online.target"),
-    std.layout.doc_line_of(text: ""),
-    std.layout.doc_line_of(text: "[Service]"),
-    std.layout.doc_line_of(text: "Type=oneshot"),
-    std.layout.doc_line_of(text: concat("User=", svc.service_user)),
-    std.layout.doc_line_of(text: concat("Group=", svc.service_user)),
-    std.layout.doc_line_of(text: concat("extdeps.systemd.unit_file.WorkingDirectory=", svc.repo_root)),
-    std.layout.doc_line_of(text: join([
-      "extdeps.systemd.unit_file.ExecStart=", svc.serve_binary, " converge --host self",
-    ], "")),
-  ])
+  doc_text(text: serialize_systemd_unit_file(file: ServiceUnitFile {
+    unit: [
+      Description { text: "gunbc fleet converge (self)" as NonEmptyStr },
+      After { target: "network-online.target" as NonEmptyStr },
+      Wants { target: "network-online.target" as NonEmptyStr },
+    ],
+    service: [
+      ServiceType { mode: "oneshot" as NonEmptyStr },
+      ServiceUser { name: svc.service_user },
+      ServiceGroup { name: svc.service_user },
+      WorkingDirectory { path: svc.repo_root },
+      ExecStart { command: join([svc.serve_binary as String, " converge --host self"], "") as NonEmptyStr },
+    ],
+    install: NotInstallable,
+  }))
 }
 
-fn emit_fleet_converge_timer_unit_doc(spec: gunbc.live_deploy.spec.DeploymentSpec) -> std.layout.Doc {
-  std.layout.doc_concat(parts: [
-    std.layout.doc_line_of(text: "[Unit]"),
-    std.layout.doc_line_of(text: "extdeps.systemd.unit_file.Description=gunbc fleet converge cadence"),
-    std.layout.doc_line_of(text: ""),
-    std.layout.doc_line_of(text: "[Timer]"),
-    std.layout.doc_line_of(text: concat("Unit=", gunbc.live_deploy.spec.deployment_fleet_converge_service_unit_name(names: spec.names) as String)),
-    std.layout.doc_line_of(text: concat("OnCalendar=", gunbc.fleet_converge_timer.fleet_converge_timer_on_calendar)),
-    std.layout.doc_line_of(text: "Persistent=true"),
-    std.layout.doc_line_of(text: concat("RandomizedDelaySec=", to_string(std.measure.second_count(s: gunbc.fleet_converge_timer.fleet_converge_timer_randomized_delay)))),
-    std.layout.doc_line_of(text: ""),
-    std.layout.doc_line_of(text: "[Install]"),
-    std.layout.doc_line_of(text: "WantedBy=timers.target"),
-  ])
+fn emit_fleet_converge_timer_unit_doc(spec: DeploymentSpec) -> Doc {
+  doc_text(text: serialize_systemd_unit_file(file: TimerUnitFile {
+    unit: [Description { text: "gunbc fleet converge cadence" as NonEmptyStr }],
+    timer: [
+      TimerUnit { target: deployment_fleet_converge_service_unit_name(names: spec.names) },
+      OnCalendar { expression: fleet_converge_timer_on_calendar as NonEmptyStr },
+      Persistent { enabled: true },
+      RandomizedDelaySec {
+        duration: to_string(second_count(s: fleet_converge_timer_randomized_delay)) as NonEmptyStr,
+      },
+    ],
+    install: Installable { directives: [WantedBy { target: "timers.target" as NonEmptyStr }] },
+  }))
 }
 
 fn apply_fleet_converge_service_unit_write_step(spec: gunbc.live_deploy.spec.DeploymentSpec) -> v2.std.orchestration.PipelineStep {
@@ -408,22 +525,26 @@ data tree_sync_git_whitelist_note: String = "The .git/ leg is a WHITELIST sync (
 
 fn emit_tree_sync_unit_doc(spec: gunbc.live_deploy.spec.DeploymentSpec, tree_path: String) -> std.layout.Doc {
   let user = spec.service.service_user
-  std.layout.doc_concat(parts: [
-    std.layout.doc_line_of(text: "[Unit]"),
-    std.layout.doc_line_of(text: "extdeps.systemd.unit_file.Description=gunbc source tree sync (service-user-principal rsync from CI runner checkout)"),
-    std.layout.doc_line_of(text: ""),
-    std.layout.doc_line_of(text: "[Service]"),
-    std.layout.doc_line_of(text: "Type=oneshot"),
-    std.layout.doc_line_of(text: concat("User=", user)),
-    std.layout.doc_line_of(text: concat("Group=", user)),
-    std.layout.doc_line_of(text: concat("EnvironmentFile=", spec.names.tree_sync_env_path as String)),
-    std.layout.doc_line_of(text: join([
-      "extdeps.systemd.unit_file.ExecStart=/usr/bin/rsync -rlpt --delete ", gunbc.live_deploy.deployed_tree_scope.deployed_tree_rsync_exclude_flags(), " \"$\{GUNBC_TREE_SRC\}/\" ", tree_path, "/",
-    ], "")),
-    std.layout.doc_line_of(text: join([
-      "extdeps.systemd.unit_file.ExecStart=/usr/bin/rsync -rlpt --exclude=objects/pack/*.keep --exclude=objects/pack/tmp_pack_* --include=/HEAD --include=/objects/*** --include=/packed-refs --include=/refs/*** --exclude=* \"$\{GUNBC_TREE_SRC\}/.git/\" ", tree_path, "/.git/",
-    ], "")),
-  ])
+  doc_text(text: serialize_systemd_unit_file(file: ServiceUnitFile {
+    unit: [Description {
+      text: "gunbc source tree sync (service-user-principal rsync from CI runner checkout)" as NonEmptyStr,
+    }],
+    service: [
+      ServiceType { mode: "oneshot" as NonEmptyStr },
+      ServiceUser { name: user },
+      ServiceGroup { name: user },
+      EnvironmentFile { path: spec.names.tree_sync_env_path },
+      ExecStart { command: join([
+        "/usr/bin/rsync -rlpt --delete ", deployed_tree_rsync_exclude_flags(),
+        " \"$\{GUNBC_TREE_SRC\}/\" ", tree_path, "/",
+      ], "") as NonEmptyStr },
+      ExecStart { command: join([
+        "/usr/bin/rsync -rlpt --exclude=objects/pack/*.keep --exclude=objects/pack/tmp_pack_* --include=/HEAD --include=/objects/*** --include=/packed-refs --include=/refs/*** --exclude=* \"$\{GUNBC_TREE_SRC\}/.git/\" ",
+        tree_path, "/.git/",
+      ], "") as NonEmptyStr },
+    ],
+    install: NotInstallable,
+  }))
 }
 
 fn apply_tree_sync_unit_write_step(spec: gunbc.live_deploy.spec.DeploymentSpec, tree_path: String) -> v2.std.orchestration.PipelineStep {
@@ -899,4 +1020,4 @@ data live_deploy_intent_dependency_graph_emit_dissolution_trigger: std.dispositi
   }
 }
 
-data live_deploy_golden_freeze_note: String = "The apply/retract scripts are now ONE orchestration-intent Pipeline each, built from the two degenerate POLES of the grain-agnostic gunbc.membership_reconcile (apply = reconcile desired=all-members/observed=none => all Upsert; retract = reconcile desired=none/observed=owned-artifacts => all Teardown) — apply_intent_from_effects / retract_intent_from_effects fold the resulting MemberEffects into the Pipeline via the per-kind emit_deploy_member_effect handler (share the diff, dispatch the apply), framing (preamble/receipt) wrapping OUTSIDE the reconcile. A refusal (a non-owned/unknown member) refuses the WHOLE fold before emit (EffectsOrRefusal sum — un-emittable by type; never reached by the degenerate poles). The Pipeline is emitted through the signed v2.compiler.emit_orchestration.orch_emit_pipeline path over the bash_orchestration_emit medium — NOT assembled by workflow-code string concat. The smuggled-program class (control flow / sequencing joins built by concat in this module — the former ensure_apt_package function-def, the deployment_ensure_dependency_script nested if/then concat, the tailscale if/fi) is dissolved: dependency-ensure is inline If-Not-ExitZero(dpkg -s) then Do(sudo -n apt-get install) intent (DESIGN §2 CUT: desugar inline, no minted verb), and the emission JOIN lives in extdeps/languages/bash_orchestration_emit, not here (no-smuggled-programs wall: a string literal is an ATOM, joins live in extdeps/languages rows). An emission refusal returns a poison marker (live_deploy_*_emit_refused_poison) so the marker reaches a consumer instead of a hand-spelled fallback (DESIGN §5: refuse, never widen). THE COMMITTED GOLDEN ARTIFACTS ARE DELETED: nothing executed .github/live-deploy-srv1-apply.sh or -retract.sh, and their registry rows named a HostReconciler consumer that does not exist — the real deploy runs live_deploy_apply_srv1_wet through gunbc run. A committed artifact nobody reads is not coverage. The byte oracle those goldens provided now lives where a fixture revision is legitimate, in test.claim.long.live_deploy.emit against RevisionBoundAtEmission, and it is strictly stronger there: the goldens compared whole files and located nothing, while the witnesses pin the exact extdeps.systemd.unit_file.ExecStart line with three REDs (flag absent, wrong candidate's value, flag duplicated). RESIDUE (named, not this slice): Run.command is still a String leaf (v2.std.orchestration.Run), so the heredoc file bodies (server.js, systemd unit) and per-command argv interpolation ride inside command: strings as the anemic-leaf residue — they dissolve when Do-effect gains a typed file-write leaf (heredoc file bodies as typed orchestration intent, live_deploy_intent_dependency_graph_emit_dissolution_trigger binds orch_emit_pipeline). Transport-aware remote-mutation service-op realization (live_deploy runs shell, not yet a transport-realized service op) is OUT OF SCOPE — live_deploy_remote_mutation_service_op_realization_dissolution_trigger. Healthz readiness and digest read-back run on the DAG reconcile spine after mutation (live_deploy.readiness transport curl poll, then live_deploy.apply digest read-back); the apply script ships mutation only (no in-script curl read-back)."
+data live_deploy_golden_freeze_note: String = "The apply/retract scripts are now ONE orchestration-intent Pipeline each, built from the two degenerate POLES of the grain-agnostic gunbc.membership_reconcile (apply = reconcile desired=all-members/observed=none => all Upsert; retract = reconcile desired=none/observed=owned-artifacts => all Teardown) — apply_intent_from_effects / retract_intent_from_effects fold the resulting MemberEffects into the Pipeline via the per-kind emit_deploy_member_effect handler (share the diff, dispatch the apply), framing (preamble/receipt) wrapping OUTSIDE the reconcile. A refusal (a non-owned/unknown member) refuses the WHOLE fold before emit (EffectsOrRefusal sum — un-emittable by type; never reached by the degenerate poles). The Pipeline is emitted through the signed v2.compiler.emit_orchestration.orch_emit_pipeline path over the bash_orchestration_emit medium — NOT assembled by workflow-code string concat. The smuggled-program class (control flow / sequencing joins built by concat in this module — the former ensure_apt_package function-def, the deployment_ensure_dependency_script nested if/then concat, the tailscale if/fi) is dissolved: dependency-ensure is inline If-Not-ExitZero(dpkg -s) then Do(sudo -n apt-get install) intent (DESIGN §2 CUT: desugar inline, no minted verb), and the emission JOIN lives in extdeps/languages/bash_orchestration_emit, not here (no-smuggled-programs wall: a string literal is an ATOM, joins live in extdeps/languages rows). An emission refusal returns a poison marker (live_deploy_*_emit_refused_poison) so the marker reaches a consumer instead of a hand-spelled fallback (DESIGN §5: refuse, never widen). THE COMMITTED GOLDEN ARTIFACTS ARE DELETED: nothing executed .github/live-deploy-srv1-apply.sh or -retract.sh, and their registry rows named a HostReconciler consumer that does not exist — the real deploy runs live_deploy_apply_srv1_wet through gunbc run. A committed artifact nobody reads is not coverage. The byte oracle those goldens provided now lives where a fixture revision is legitimate, in test.claim.live_deploy.emit against RevisionBoundAtEmission, and it is strictly stronger there: the goldens compared whole files and located nothing, while the witnesses pin the exact ExecStart line with three REDs (flag absent, wrong candidate's value, flag duplicated). RESIDUE (named, not this slice): Run.command is still a String leaf (v2.std.orchestration.Run), so the heredoc file bodies (server.js, systemd unit) and per-command argv interpolation ride inside command: strings as the anemic-leaf residue — they dissolve when Do-effect gains a typed file-write leaf (heredoc file bodies as typed orchestration intent, live_deploy_intent_dependency_graph_emit_dissolution_trigger binds orch_emit_pipeline). Transport-aware remote-mutation service-op realization (live_deploy runs shell, not yet a transport-realized service op) is OUT OF SCOPE — live_deploy_remote_mutation_service_op_realization_dissolution_trigger. Healthz readiness and digest read-back run on the DAG reconcile spine after mutation (live_deploy.readiness transport curl poll, then live_deploy.apply digest read-back); the apply script ships mutation only (no in-script curl read-back)."

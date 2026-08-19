@@ -1,5 +1,29 @@
 module v1.compiler.coercion
 
+import v1.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
+
+import v1.std.core { qualified_last_segment, Node, Resolved }
+
+import std.coercion { TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax }
+
+import std.types { container_template_algebra, canonical_container_names }
+
+import extdeps.languages.rust.types {
+  rust_type_checkpoints, rust_algebra_inhabitants, rust_callable,
+  rust_optional_template, rust_cast_syntax
+}
+
+import extdeps.languages.python.types {
+  python_type_checkpoints, python_algebra_inhabitants, python_callable,
+  python_optional_template, python_cast_syntax
+}
+
+import extdeps.languages.go.types {
+  go_type_checkpoints, go_algebra_inhabitants, go_callable,
+  go_optional_template, go_cast_syntax
+}
+
+import extdeps.languages.dag.types { dag_type_checkpoints }
 
 
 
@@ -74,28 +98,65 @@ fn render_cast(expr_str: String, type_str: String, target: v1.compiler.artifact.
   replace(replace(syntax.template, "\{expr\}", expr_str), "\{type\}", type_str)
 }
 
-fn lookup_checkpoint(target: v1.compiler.artifact.RenderTarget, dag_name: String) -> std.coercion.TypeCheckpoint? {
-  target_checkpoints(target: target) |> filter(cp => cp.dag_name == dag_name) |> first
+fn decl_identity_file(item: Node) -> String {
+  match item.ident_span {
+    Present { value: sp } => sp.file
+    Absent => ""
+  }
+}
+
+fn type_reference_decl_file(n: Node) -> String {
+  match n.inferred {
+    Present { value: Resolved { node: rt } } => decl_identity_file(item: rt)
+    _ => decl_identity_file(item: n)
+  }
+}
+
+data type_reference_identity_note: String = "A realization decision is made at REFERENCE sites, not only at the declaration site, so every site that asks what a named type realizes as must supply that name's resolved declaring module. decl_identity_file reads a DECLARATION's own ident_span; type_reference_decl_file is its reference-site counterpart, projecting the resolved node inference bound to the reference and falling back to the node's own ident_span when the reference IS the declaration. Passing the empty string here is not a neutral default: the empty string means identity is unknown, which yields NO realization, so a reference site that omits identity silently renders structurally. That is exactly the regression this function exists to prevent -- the seed's own dag/std/integer.dag aliases rendered as crate::std_nat::Nat instead of i64 because eight reference sites were passing an empty identity. Homed in v1.compiler.coercion, not v1.compiler.emit_rust, because lookup_checkpoint -- the identity-gated consumer -- is target-generic and shared by v1.compiler.emit as well as v1.compiler.emit_rust; the helper lived beside one caller only because that caller was written first."
+
+fn structural_declaration_modules_for(dag_name: String) -> List<String> {
+  match dag_name {
+    "Hash" => ["src/v2/std/node.dag"]
+    _ => []
+  }
+}
+
+data structural_declaration_gate_note: String = "Companion to checkpoint_table_bypasses_identity_note (v1.compiler.emit_rust): a checkpoint row states how a target spells a name, never which declaration that name resolves to at a given reference site, so a bare-name-keyed table cannot by itself discriminate a name with two competing declarations. structural_declaration_modules_for is the corpus-side half DESIGN section 3 requires kept OUT of the extdeps row -- a row per colliding dag_name naming the module(s) whose declaration of that name is a structural (non-checkpoint-eligible) realization, never a positive roster of every module that realizes natively (that shape already exists for Nat/Int as numeric_realization_declaring_modules, in v1.compiler.emit_rust, because those two have a genuine native declaring module to match against). Hash has no native dag declaration anywhere -- lookup_checkpoint's row for Hash exists only because the seed's own runtime type happens to share the spelling -- so the correct gate is inverted: refuse the row when the reference resolves to the KNOWN structural declaration, and let every other decl_file (including unknown, the empty string) continue to answer from the row exactly as before. Widening this roster is bound by the same discipline numeric_realization_roster_extension_note states for the positive form: a name is added here because its structural declaration is a fact already true, never to silence a diagnostic at some call site by declaring victory over it."
+
+fn decl_file_declares_structurally(dag_name: String, decl_file: String) -> Bool {
+  if decl_file == "" {
+    false
+  } else {
+    structural_declaration_modules_for(dag_name: dag_name) |> any(m => contains(decl_file, m))
+  }
+}
+
+fn lookup_checkpoint(target: RenderTarget, dag_name: String, decl_file: String) -> TypeCheckpoint? {
+  if decl_file_declares_structurally(dag_name: dag_name, decl_file: decl_file) {
+    none
+  } else {
+    target_checkpoints(target: target) |> filter(cp => cp.dag_name == dag_name) |> first
+  }
 }
 
 data coerce_primitive_type_dotted_fallback_note: String = "Construction wall for the dotted-render class in TYPE position (sibling of variant_pattern_dotted_qualification_note, which covers PATTERN position, in v1.compiler.05_emit_rust). Every target's checkpoint dag_names are bare (Int, String, ...), so a namespace-QUALIFIED type name (post source_authority, e.g. v2.std.node.Edge) never matches a checkpoint and previously fell through this Absent arm verbatim, dots and all -- not a valid identifier in any target language, a PARSE error masking every later diagnostic in the module. Rendering a type never needs a crate::-qualified path here (this fn is target-agnostic, shared by Rust/v1.compiler.artifact.Python/Go/Dag, and the existing convention across all of them is a bare type name; qualification, where a target needs it, is a separate import-line-synthesis seam) so the fix is to route the fallback through qualified_last_segment (v1.std.core, the same single authority variant_pattern_qualified_path reuses) instead of forking a second dotted-name fallback. Every already-bare dag_name renders exactly as before (qualified_last_segment is the identity on an unqualified name)."
 
-fn coerce_primitive_type(target: v1.compiler.artifact.RenderTarget, dag_name: String) -> String {
-  match lookup_checkpoint(target: target, dag_name: dag_name) {
+fn coerce_primitive_type(target: RenderTarget, dag_name: String, decl_file: String) -> String {
+  match lookup_checkpoint(target: target, dag_name: dag_name, decl_file: decl_file) {
     Present { value: cp } => cp.target_type
     Absent => qualified_last_segment(name: dag_name)
   }
 }
 
-fn is_copy(target: v1.compiler.artifact.RenderTarget, dag_name: String) -> Bool? {
-  match lookup_checkpoint(target: target, dag_name: dag_name) {
+fn is_copy(target: RenderTarget, dag_name: String, decl_file: String) -> Bool? {
+  match lookup_checkpoint(target: target, dag_name: dag_name, decl_file: decl_file) {
     Present { value: cp } => cp.is_copy
     Absent => none
   }
 }
 
-fn literal_suffix(target: v1.compiler.artifact.RenderTarget, dag_name: String) -> String? {
-  match lookup_checkpoint(target: target, dag_name: dag_name) {
+fn literal_suffix(target: RenderTarget, dag_name: String, decl_file: String) -> String? {
+  match lookup_checkpoint(target: target, dag_name: dag_name, decl_file: decl_file) {
     Present { value: cp } => match cp.literal_suffix {
       Present { value: s } => Present { value: s }
       Absent => Present { value: "" }
@@ -206,8 +267,8 @@ fn template_application_tests() -> List<CoercionTestEntry> {
   let targets = [Rust, v1.compiler.artifact.Python, Go]
   let assertions = targets |> flat_map(t =>
     let inhs = unique_inhabitants_for_template_tests(inhs: target_inhabitants(target: t))
-    let int_target = coerce_primitive_type(target: t, dag_name: "Int")
-    let str_target = coerce_primitive_type(target: t, dag_name: "String")
+    let int_target = coerce_primitive_type(target: t, dag_name: "Int", decl_file: "")
+    let str_target = coerce_primitive_type(target: t, dag_name: "String", decl_file: "")
     inhs |> flat_map(inh =>
       if inh.arity == 1 {
         let expected = apply_inhabitant_template1(template: inh.template, inner: int_target)

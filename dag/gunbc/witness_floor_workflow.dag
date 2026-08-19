@@ -83,7 +83,8 @@ data witness_floor_concurrency_group: String = "witness-floor-${{ github.event.p
 // `gunbc` is the CLI the repository's own tooling invokes. The predecessor build job named
 // nineteen binaries, most of which this cut deleted; naming a binary that no step runs buys
 // nothing and costs a compile.
-data witness_floor_required_bins: List<String> = ["claim_executor", "gunbc"]
+// `v1_src_dag_parse` ADDED 2026-08-19 for the step below, which is the only thing that runs it.
+data witness_floor_required_bins: List<String> = ["claim_executor", "gunbc", "v1_src_dag_parse"]
 
 fn witness_floor_checkout_step() -> extdeps.github.actions.Step {
   extdeps.github.actions.UsesStep {
@@ -208,8 +209,65 @@ fn witness_floor_run_script() -> String {
   )
 }
 
-fn witness_floor_run_step() -> extdeps.github.actions.Step {
-  extdeps.github.actions.RunStep {
+// src/v1's .dag SOURCES HAVE NO REQUIRED GATE, AND THE REASON IS STRUCTURAL RATHER THAN AN
+// OVERSIGHT. Two things were tried before this step, and both were measured wrong.
+//
+// (1) `--source-root src/v1` on the fold refuses. Measured, CI run 32219326621: one flat
+// namespace over both trees yields 12 last-segment collisions -- `tokenize`, `parse`, `resolve`,
+// `emit`, `infer`, `normalize` and six more -- because the v1 and v2 compilers name their stages
+// identically. All 532 diagnostics that run produced were in src/v2 and dag/test; ZERO in src/v1.
+// The blocker is bare cross-module reference binding, and it dissolves with namespace-only
+// resolution rather than with a flag.
+//
+// (2) `test.claim.v1_dag_parse_witness.v1_dag_parse_witnesses` EXISTS and is discovered by the
+// fold, which looks like the gate already being present. It is not, and the reason is the one
+// `gunbc.ci_layer_roots` `excl_bin_wet_reason` states: this fold is HERMETIC, the witness reaches
+// `shell.Test.IsExecutable` through `tools.host_prelude`, and the hermetic envelope refuses host
+// effects by construction. Measured, CI run 32223611085:
+//
+//   FAIL test.claim.v1_dag_parse_witness.v1_dag_parse_witnesses errored:
+//     type error: hermetic mode: no mock_response for operation IsExecutable
+//     -- refusing to fabricate Unit
+//
+// That refusal is CORRECT and the witness cannot be made hermetic -- its subject is a subprocess
+// exit status, which no in-process assertion can observe, and mocking it would let the witness
+// pass against a fabricated status. So the row stays on `floor_expected_red`. What is actually
+// missing is its executing consumer: `bin_witness_wet_entries` was the declared per-PR wet batch
+// for this whole class, and it died with the old floor. The class has had no executor since.
+//
+// THIS STEP IS THAT EXECUTOR, for one member of the class, and it runs OUTSIDE the fold because
+// outside the fold is the only place a host effect can happen. It is not a second authority over
+// the witness: the witness cannot execute, so there is no verdict for this to duplicate.
+//
+// WHAT IT CLAIMS. Each src/v1 .dag file parses INDEPENDENTLY -- no shared pool, no cross-module
+// resolution -- so (1)'s collision class never arises. One rung: a parse error cannot land
+// silently. NOTHING about resolution, types, or whether those modules mean anything.
+// `tests/fixtures/` is excluded; those are deliberately malformed inputs authored FOR the
+// parser's own tests, and the existing corpus discovery in `compiler_tests` excludes them on the
+// same grounds.
+//
+// THE BINARY IS A REGISTERED SCAFFOLD AND STAYS ONE. Its dissolve-on is the modeled pipeline
+// parsing src/v1; wiring the scaffold does not satisfy that. Ordered BEFORE the fold because it
+// costs 0.7 seconds against the fold's tens of minutes, and a stopped line is cheapest early.
+fn witness_floor_v1_parse_step() -> Step {
+  RunStep {
+    name: Present { value: "src/v1 .dag sources parse" },
+    id: none,
+    run: concat(
+      concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
+      "cd \"$ROOT\" && \"$ROOT/target/release/v1_src_dag_parse\"\n"
+    ),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn witness_floor_run_step() -> Step {
+  RunStep {
     name: Present { value: "All witnesses (one prepared subject, one fold)" },
     id: none,
     run: witness_floor_run_script(),
@@ -251,6 +309,7 @@ fn witness_floor_job() -> extdeps.github.actions.Job {
       witness_floor_checkout_step(),
       witness_floor_toolchain_step(),
       witness_floor_build_step(),
+      witness_floor_v1_parse_step(),
       witness_floor_run_step()
     ],
     needs: [],

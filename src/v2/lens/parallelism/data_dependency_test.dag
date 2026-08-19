@@ -1,0 +1,78 @@
+module v2.test.lens_parallelism.data_dependency
+
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.lens.common.algebraic_composition { DataDependent }
+import v2.lens.parallelism {
+  ParallelismFact,
+  parallelism_fact_eq,
+  parallelism_witness
+}
+import v2.std.dependency {
+  ClassifiedDependencyView,
+  DataDependsOn,
+  DependencyView
+}
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Edge, Named, Node, TypeNode, SyntheticOccurrence }
+import v2.std.witness { Holds, Witness }
+import v2.test.lens_common.infer_fixture {
+  claim_atom_node,
+  claim_inferred_facts,
+  claim_inferred_tree
+}
+
+data parallelism_child: Node = claim_atom_node(s: ^parallelism_child_symbol)
+
+data parallelism_root: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^parallelism_root_symbol } },
+  children: [
+    Edge { label: Named { name: ^parallelism_edge_symbol }, target: parallelism_child }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data parallelism_dependency: DependencyView = DependencyView {
+  source: parallelism_root,
+  dependent: parallelism_child,
+  kind: DataDependsOn,
+  usage_site: parallelism_child
+}
+
+fn parallelism_claim_facts() -> InferredFacts {
+  claim_inferred_facts(
+    type_symbol: ^parallelism_type_symbol,
+    algebra_symbol: ^parallelism_algebra_symbol,
+    descent_symbol: ^parallelism_descent_symbol,
+  )
+}
+
+fn parallelism_claim_tree() -> InferredTree {
+  claim_inferred_tree(root: parallelism_root, facts: parallelism_claim_facts())
+}
+
+type LensParallelismClaim {
+  input: InferredTree
+  expected: ParallelismFact
+  actual: Witness<ParallelismFact>
+}
+
+data parallelism_data_dependency_claim: LensParallelismClaim = LensParallelismClaim {
+  input: parallelism_claim_tree(),
+  expected: ParallelismFact {
+    dependencies: [
+      ClassifiedDependencyView {
+        dependency: parallelism_dependency,
+        classification: DataDependent
+      }
+    ]
+  },
+  actual: parallelism_witness(tree: parallelism_claim_tree(), dependencies: [parallelism_dependency])
+}
+
+test fn parallelism_data_dependency_claim_holds() -> Bool {
+  match parallelism_data_dependency_claim.actual {
+    Holds { value: actual } =>
+      parallelism_fact_eq(a: actual, b: parallelism_data_dependency_claim.expected)
+    _ => false
+  }
+}

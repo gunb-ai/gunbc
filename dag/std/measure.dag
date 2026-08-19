@@ -111,11 +111,22 @@ fn minutes_per_hour() -> std.nat.Nat {
   extdeps.units.iso8601.iso8601_minutes_per_hour()
 }
 
-fn milliseconds_per_second() -> std.nat.Nat {
+fn milliseconds_per_second() -> Nat {
+  milli_per_unit()
+}
+
+// The decimal scale factors, declared once beside kibi_factor for the same
+// reason: a consumer writing * 1000000 to turn megatransfers into transfers is
+// re-stating the Mega scale the Scale coproduct above already carries.
+fn milli_per_unit() -> Nat {
   1000
 }
 
-fn time_scale_factor_seconds(s: Scale) -> std.nat.Nat? {
+fn mega_factor() -> Nat {
+  1000 * 1000
+}
+
+fn time_scale_factor_seconds(s: Scale) -> Nat? {
   match s {
     One => Present { value: 1 }
     ArcsecondAngle => none
@@ -522,7 +533,16 @@ fn milliwatt(count: std.nat.Nat) -> Milliwatt {
   Measure { count: count }
 }
 
-fn milliwatt_count(w: Milliwatt) -> std.nat.Nat {
+// MILLI -> ONE, ONCE, HERE. A consumer dividing a milliwatt count by a literal
+// 1000 is re-stating the Milli scale this module already declares, and the
+// division is FLOOR — 1,999 mW is one watt and the 999 is dropped, which is a
+// property of the conversion the name says out loud rather than a rounding a
+// caller has to remember.
+fn milliwatt_to_watt_floor(w: Milliwatt) -> Watt {
+  watt(count: milliwatt_count(w: w) / milli_per_unit())
+}
+
+fn milliwatt_count(w: Milliwatt) -> Nat {
   measure_count(w)
 }
 
@@ -639,6 +659,8 @@ fn money_amount_micro_count(m: MoneyAmountMicro) -> std.nat.Nat {
 
 data money_rate_billing_unit_note: String = "Billing unit is part of the fact: per-minute, per-hour, and per-month are distinct carriers — never folded into a bare amount with the unit in the field name. Cross-vendor normalization is a derived projection at read time, never a stored catalog field."
 
+type PerSecond
+
 type PerMinute
 
 type PerHour
@@ -651,6 +673,8 @@ type MoneyRate<P> {
   amount: MoneyAmountMicro
   currency: std.currency.CurrencyCode
 }
+
+type MoneyPerSecond = MoneyRate<PerSecond>
 
 type MoneyPerMinute = MoneyRate<PerMinute>
 

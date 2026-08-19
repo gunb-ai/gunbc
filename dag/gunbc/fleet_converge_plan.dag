@@ -1,9 +1,78 @@
 module gunbc.fleet_converge_plan
 
+import std.types { String, List, Bool, Int, NonEmptyStr }
+import std.measure { byte_size_count }
+import std.algebra { trim }
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.content_hash {
+  content_hash_of_value,
+  serialize_content_hash,
+  compare_content_hash,
+  ContentHashEqual,
+  Fnv1a64StructuralDigestHex,
+  Fnv1a64Structural,
+  Fnv1a64,
+  ContentHash,
+  content_hash_combine_structural,
+}
+import std.temporal_effect { HeldLease, HeldLeaseObservedState, LeaseAbsent, LeaseEpoch, held_lease }
+import extdeps.exec.command { ArgvCommand }
+import gunbc.membership_reconcile {
+  MembershipPlan,
+  MemberAction,
+  MemberAdded,
+  MemberChanged,
+  MemberRemoved,
+  MemberRemovalRefused,
+  MemberRosterDuplicateKeyRefused,
+  TeardownRefusalCause,
+  MemberNotOwned,
+  OwnershipUnknown,
+  RosterDuplicateKey,
+  membership_reconcile,
+  membership_plan_admitting_outcome,
+  membership_refusal_count,
+}
+import gunbc.ownership { Ownership, Owned }
+import gunbc.fleet_converge_timer {
+  fleet_converge_service_unit_name,
+  fleet_converge_timer_unit_name,
+}
+import gunbc.live_deploy.spec {
+  deployment_spec_srv1,
+  deployment_fleet_converge_service_unit_name,
+  deployment_fleet_converge_timer_unit_name,
+}
+import gunbc.host_axis_caps {
+  CapMember,
+  CapMemberAt,
+  caps_reconcile,
+  desired_cap_member,
+  cap_upsert_script,
+}
+import gunbc.host_converge {
+  gunbc_runner_per_slot_dropin_path,
+  gunbc_runner_per_slot_swap_dropin_path,
+  gunbc_runner_per_slot_high_dropin_path,
+  gunbc_runner_per_slot_tasks_dropin_path,
+  systemd_memory_max_property,
+  systemd_memory_high_property,
+  systemd_memory_swap_max_property,
+  systemd_tasks_max_property,
+}
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import gunbc.spark_serving_membership {
+  SparkServingMember,
+  SparkServingMemberAt,
+  spark_serving_member_key,
+}
+import gunbc.spark_serving_realization { ServingInstallEffect, EnableLingerForOwnAccount }
 
 type TimerRetirementMemberAt = std.types.NonEmptyStr
 
-data fleet_converge_plan_authority_note: String = "On-demand fleet converge PLAN authority (operator directive 2026-08-13, sleek-heron-218): membership_reconcile computes the typed hunks — MemberAdded, MemberChanged, MemberRemoved, MemberRemovalRefused — that a human reviews BEFORE apply. Plan and apply are the same spine at different poles; this module owns serialization, the content-addressed artifact, subject identity, std.temporal_effect HeldLease generation protection, and the observed baseline fingerprint apply must CAS against. A plan names its subject (host + member-set fingerprint) and mints a generation-scoped lease so two applies against the same observed baseline cannot both act. Timer retirement: desired has NO fleet-converge timers; observed lists legacy units still on the host. MemberRemovalRefused arms are rendered in plan output and never filtered — they are precisely what a reviewer needs to see before approving."
+data fleet_converge_plan_authority_note: String = "On-demand fleet converge PLAN authority (operator directive 2026-08-13, sleek-heron-218): membership_reconcile computes the typed hunks — MemberAdded, MemberChanged, MemberRemoved, MemberRemovalRefused — that a human reviews BEFORE apply. Plan and apply are the same spine at different poles; this module owns serialization, the content-addressed artifact, subject identity, std.temporal_effect LeaseEpoch generation protection, and the observed baseline fingerprint apply must CAS against. A plan names its subject (host + member-set fingerprint) and mints a generation-scoped lease so two applies against the same observed baseline cannot both act. Timer retirement: desired has NO fleet-converge timers; observed lists legacy units still on the host. MemberRemovalRefused arms are rendered in plan output and never filtered — they are precisely what a reviewer needs to see before approving."
 
 type FleetConvergePlanSubject {
   host: std.types.NonEmptyStr
@@ -74,15 +143,17 @@ fn fleet_converge_apply_subject_admits(
 fn fleet_converge_plan_held_lease(
   subject: FleetConvergePlanSubject,
   prior_generation: Int,
-  owner_fingerprint: std.content_hash.ContentHash,
-) -> std.temporal_effect.HeldLease {
-  std.temporal_effect.HeldLease {
-    lease_key: fleet_converge_plan_lease_key(host: subject.host),
-    resource_fingerprint: fleet_converge_plan_resource_fingerprint(subject: subject),
-    owner_fingerprint: owner_fingerprint,
-    generation: prior_generation + 1,
-    observed: std.temporal_effect.LeaseAbsent,
-  }
+  owner_fingerprint: ContentHash,
+) -> HeldLease {
+  held_lease(
+    epoch: LeaseEpoch {
+      lease_key: fleet_converge_plan_lease_key(host: subject.host),
+      resource_fingerprint: fleet_converge_plan_resource_fingerprint(subject: subject),
+      owner_fingerprint: owner_fingerprint,
+      generation: prior_generation + 1,
+    },
+    observed: LeaseAbsent,
+  )
 }
 
 fn fleet_converge_apply_generation_admits(prior_generation: Int, store_generation: Int) -> std.types.Bool {

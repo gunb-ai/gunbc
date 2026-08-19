@@ -1,0 +1,46 @@
+module v2.test.lens_application.enforce_rejecting_gate_fires
+
+import v2.compiler.compile {
+  CompileLens,
+  CompileLensEnforce,
+  apply_compile_lens,
+  compile_lens_gate_rejected_diagnostic
+}
+import v2.compiler.infer { InferredTree }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_rejected, port_locus }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Node, Symbol }
+import v2.std.witness { Witness }
+import v2.test.lens_common.infer_fixture {
+  claim_atom_node,
+  claim_inferred_facts,
+  claim_inferred_tree
+}
+
+data enforce_reject_root: Node = claim_atom_node(s: ^enforce_reject_symbol)
+
+fn enforce_reject_tree() -> v2.compiler.inferred_tree.InferredTree {
+  claim_inferred_tree(
+    root: enforce_reject_root,
+    facts: claim_inferred_facts(
+      type_symbol: ^enforce_reject_type_symbol,
+      algebra_symbol: ^enforce_reject_algebra_symbol,
+      descent_symbol: ^enforce_reject_descent_symbol,
+    )
+  )
+}
+
+fn enforce_rejecting_gate(_tree: v2.compiler.inferred_tree.InferredTree) -> Outcome<Witness<Node>> {
+  outcome_rejected(
+    compile_lens_gate_rejected_diagnostic(at: port_locus(port: ^enforce_reject_gate_at))
+  )
+}
+
+data enforce_rejecting_lens: v2.compiler.compile.CompileLens = v2.compiler.compile.CompileLens { gate: enforce_rejecting_gate }
+
+test fn enforce_rejecting_gate_fires_claim_holds() -> Bool {
+  match apply_compile_lens(lens: enforce_rejecting_lens, inferred: enforce_reject_tree(), mode: CompileLensEnforce) {
+    Rejected { diagnostics: r } => r.head.reason == ^compile_lens_gate_rejected
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}

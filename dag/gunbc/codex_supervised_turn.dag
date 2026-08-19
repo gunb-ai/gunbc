@@ -1,6 +1,84 @@
 module gunbc.codex_supervised_turn
 
-data codex_supervised_turn_authority_note: String = "SUPERVISED-RUNNER REALIZATION (continuity receipt 2026-08-13). In-flight turns do NOT survive client death — tool calls execute in the local app-server process, so one supervised process must fence each WorkerTurn attempt. std.temporal_effect HeldLease is the execution lease (lease_key, resource_fingerprint, owner_fingerprint, generation, observed); do not mint a parallel session carrier.\n\nTHREE LAYERS STAY SEPARATE (reviewer ruling):\n  durable goal — WorkerTurn reaching a terminal disposition with an observed head\n  execution lease — HeldLease over the supervised app-server process, fenced by generation\n  controller — belt tick reconciling desired vs observed thread state\n\nTHE TRAP: an abandoned turn leaves thread status idle with partial work on disk. Thread idle alone NEVER authorizes turn/start; turn identity plus a runner-written terminal receipt is required. CodexRunnerTurnTerminalReceipt is written ONLY by the supervised runner when the process ends — nothing else writes one on crash.\n\nExactly-once: client_command_id is carried on the terminal receipt so a lost turn/start reply does not collapse into absent."
+import std.types { String, NonEmptyStr, Int, Bool, FilePath, List }
+import std.algebra { trim }
+import std.content_hash { ContentHash, content_hash_of_value }
+import std.temporal_effect {
+  HeldLease,
+  LeaseEpoch,
+  held_lease,
+  held_lease_with_observed,
+  HeldLeaseObservedState,
+  LeaseAbsent,
+  LeaseRunningExpected,
+  LeaseRunningStale,
+  LeasePortForeign,
+  LeaseInaccessible,
+  TemporalEffectPolicy,
+  HeldSessionLease,
+}
+import gunbc.roadmap_workflow_command { WorkerTurn, AttemptKey }
+import gunbc.provider_turn_adjudication {
+  ProviderTurnDisposition,
+  ProviderTurnCompleted,
+  ProviderTurnFailed,
+  ProviderTurnNotObserved,
+  ProviderNativeCauseUnknown,
+  press_display_finished,
+}
+import gunbc.codex_app_server_press {
+  CodexAccountStandingReceipt,
+  AmbientCodexCredentialContext,
+  ProviderProcessReceipt,
+  ProviderProcessObservationFailed,
+  parse_account_trip_session,
+  AccountTripDigestRetainPrivateSha512,
+  AccountStandingClassification,
+  AccountStandingAuthenticatedRateLimitsReadable,
+  AccountStandingLoginRequired,
+  AccountStandingQuotaReached,
+  AccountStandingInitializeMissing,
+  AccountStandingIncomplete,
+}
+import extdeps.filesystem.filesystem_io
+import extdeps.shell
+import gunbc.provider_standing_probe_bridge {
+  provider_standing_bundle_from_codex_press_receipt,
+}
+import gunbc.provider_standing { ProviderStandingBundle }
+import gunbc.provider_wire_evidence {
+  ProviderWireEvidenceReceipt,
+  ProviderWireCaptureOk,
+  ProviderWireCaptureRefused,
+  retain_provider_wire_capture,
+}
+import extdeps.llm.codex_app_server {
+  codex_supervised_thread_start_id,
+  codex_supervised_turn_start_wire_id,
+  codex_thread_start_result_thread_key,
+  codex_turn_start_result_turn_key,
+  codex_entity_id_key,
+  codex_app_server_turn_start_request_line,
+}
+import extdeps.languages.json.emit {
+  JsonValue,
+  JsonObject,
+  JsonString,
+  JsonNumber,
+  JsonBool,
+  JsonArray,
+  JsonNull,
+}
+import extdeps.languages.json.parse {
+  parse_json,
+  json_object_unique_member,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject,
+}
+
+data codex_supervised_turn_authority_note: String = "SUPERVISED-RUNNER REALIZATION (continuity receipt 2026-08-13). In-flight turns do NOT survive client death — tool calls execute in the local app-server process, so one supervised process must fence each WorkerTurn attempt. std.temporal_effect HeldLease is the execution lease — an issued LeaseEpoch (lease_key, resource_fingerprint, owner_fingerprint, generation) plus the observed reading of it; do not mint a parallel session carrier. Update the observation through held_lease_with_observed, never by respelling the epoch fields.\n\nTHREE LAYERS STAY SEPARATE (reviewer ruling):\n  durable goal — WorkerTurn reaching a terminal disposition with an observed head\n  execution lease — HeldLease over the supervised app-server process, fenced by generation\n  controller — belt tick reconciling desired vs observed thread state\n\nTHE TRAP: an abandoned turn leaves thread status idle with partial work on disk. Thread idle alone NEVER authorizes turn/start; turn identity plus a runner-written terminal receipt is required. CodexRunnerTurnTerminalReceipt is written ONLY by the supervised runner when the process ends — nothing else writes one on crash.\n\nExactly-once: client_command_id is carried on the terminal receipt so a lost turn/start reply does not collapse into absent."
 
 data codex_supervised_process_supervision_note: String = "PROCESS SUPERVISION (srv1 receipt 2026-08-13). The lease fences the bundled native executable from CodexRuntimeBundle projection — NEVER /usr/bin/codex, which is a Node shim that spawns the platform binary. Killing the shim orphans the agent and produces a false 'work continued' reading. thread/start and turn/start share one held-open app-server stdin session realized through host_effect_apply CodexSupervisedWorkerTurn (gunbc.codex_supervised_turn_run). In-flight turns do NOT survive process death; thread/resume is the recovery path on a surviving thread."
 
@@ -115,16 +193,18 @@ fn codex_supervised_turn_binding(
   )
   CodexSupervisedTurnBinding {
     turn: turn,
-    lease: std.temporal_effect.HeldLease {
-      lease_key: lease_key,
-      resource_fingerprint: codex_supervised_turn_resource_fingerprint(
-        credential: credential,
-        attempt_key: turn.attempt_key,
-      ),
-      owner_fingerprint: codex_supervised_turn_owner_fingerprint(turn: turn),
-      generation: prior_generation + 1,
+    lease: held_lease(
+      epoch: LeaseEpoch {
+        lease_key: lease_key,
+        resource_fingerprint: codex_supervised_turn_resource_fingerprint(
+          credential: credential,
+          attempt_key: turn.attempt_key,
+        ),
+        owner_fingerprint: codex_supervised_turn_owner_fingerprint(turn: turn),
+        generation: prior_generation + 1,
+      },
       observed: observed,
-    },
+    ),
     execution_policy: codex_supervised_turn_session_policy(lease_key: lease_key),
     standing_receipt: standing_receipt,
   }
@@ -136,13 +216,7 @@ fn codex_supervised_turn_binding_with_observed(
 ) -> CodexSupervisedTurnBinding {
   CodexSupervisedTurnBinding {
     turn: binding.turn,
-    lease: std.temporal_effect.HeldLease {
-      lease_key: binding.lease.lease_key,
-      resource_fingerprint: binding.lease.resource_fingerprint,
-      owner_fingerprint: binding.lease.owner_fingerprint,
-      generation: binding.lease.generation,
-      observed: observed,
-    },
+    lease: held_lease_with_observed(lease: binding.lease, observed: observed),
     execution_policy: binding.execution_policy,
     standing_receipt: binding.standing_receipt,
   }
@@ -654,7 +728,7 @@ fn codex_supervised_turn_outcome_from_capture(
     )
     if persist_codex_supervised_turn_generation(
       evidence_root: evidence_root,
-      generation: terminal_binding.lease.generation,
+      generation: terminal_binding.lease.epoch.generation,
     ) == false {
       CodexSupervisedTurnRefused {
         reason: "failed to persist supervised turn generation fence" as std.types.NonEmptyStr,
