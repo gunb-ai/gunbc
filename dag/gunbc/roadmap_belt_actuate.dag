@@ -142,7 +142,7 @@ import gunbc.worker_lifecycle {
   terminal_outcome_evidence_label,
 }
 import gunbc.dispatch_selection { default_provider_selection_request }
-import gunbc.host_layout { srv1_gunbc_repo_root, belt_spawn_workdir_env_var }
+import gunbc.host_layout { srv1_gunbc_repo_root, belt_spawn_workdir_env_var, instance_receipts_dir }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
   DashboardObserveOnly,
@@ -1780,8 +1780,30 @@ data belt_tick_receipt_note: String = "THE PERSISTED TICK RECEIPT IS WHAT THE WO
 
 data belt_tick_receipt_schema: String = "roadmap-belt-tick-receipt/v2"
 
+// THE RECEIPT HAD NO WRITABLE HOME AND THEREFORE HAS NEVER BEEN WRITTEN ON ANY INSTANCE.
+// This path was <instance_root>/belt-last-tick.json, and every instance_root on srv1 is
+// root:root 0755 while the belt runs as the service user — so the write was EACCES on blue and
+// green alike, and `belt-last-tick.json` was absent from both when read on 2026-08-19. The
+// workflow UI reads this receipt to say whether a tick ran, deferred, refused or failed, so its
+// absence is exactly the "nothing seems to be changing" the operator observed: the belt could
+// run and still leave the row with nothing to render.
+//
+// The fix is a home the service principal owns, not an elevation at write time. It is the
+// instance's own receipts directory — bootstrapped by the deploy through the granted
+// install -d -o <service-user> (live_deploy.emit BeltTimerUnit apply), which is the same
+// mechanism and the same reasoning fleet_converge_receipt_atomic_publish_note already records
+// for the converge receipt beside it.
+//
+// NOT the dispatch attempt-state root, though it is already service-user-owned and looks like
+// the closer home: the srv1 pair is DispatchStateHostShared, so blue and green resolve
+// dashboard_instance_dispatch_attempt_state_root to ONE path, and a receipt written there would
+// be a single file answering for two instances. Deriving from instance_root keeps the receipt
+// per-instance by construction.
 fn belt_tick_receipt_path_for_instance(instance: HostDashboardInstance) -> String {
-  join([instance.instance_root as String, "/belt-last-tick.json"], "")
+  join([
+    instance_receipts_dir(instance_root: instance.instance_root as String),
+    "/belt-last-tick.json",
+  ], "")
 }
 
 fn belt_pass_outcome_key(o: BeltPassOutcome) -> String {
