@@ -2101,7 +2101,7 @@ impl ExpectedRedDisposition {
             // — is exactly what that arm means, and it is the half a consumer of this tally
             // acts on. The cost half is NOT represented here: this surface has one channel per
             // row, where `run_required_floor` reports such a row to both `stale_quarantine`
-            // and `budget_refused`. Minting a `StaleAndOverBudget` arm to carry it would be
+            // and `completed_over_cost_requirement`. Minting a `StaleAndOverBudget` arm to carry it would be
             // growth on a surface the floor cut is retiring — `--required-floor` returns
             // before any caller of `run_batch_unit`, so CI does not execute this path at all.
             // Losing a cost signal on a retiring surface is the right trade; reporting a
@@ -10522,7 +10522,8 @@ fn run() -> Result<ExitCode, ExitCode> {
                 );
                 eprintln!(
                     "required-floor: planned={} executed={} terminal={} passed={} \
-                     known_red_held={} failed={} stale_quarantine={} budget_refused={} \
+                     known_red_held={} failed={} stale_quarantine={} \
+                     interrupted_before_verdict={} completed_over_cost_requirement={} \
                      host_tool_unresolved={}",
                     outcome.claims_planned,
                     outcome.claims_executed,
@@ -10531,32 +10532,44 @@ fn run() -> Result<ExitCode, ExitCode> {
                     outcome.known_red_held,
                     outcome.failures.len(),
                     outcome.stale_quarantine.len(),
-                    outcome.budget_refused.len(),
+                    outcome.interrupted_before_verdict.len(),
+                    outcome.completed_over_cost_requirement.len(),
                     outcome.host_tool_unresolved.len()
                 );
                 for failure in &outcome.failures {
                     eprintln!("required-floor: FAIL {failure}");
                 }
-                // FOUR CAUSES, FOUR COUNTS, ONE STOPPED LINE. All four refuse the run, and
+                // FIVE CAUSES, FIVE COUNTS, ONE STOPPED LINE. All five refuse the run, and
                 // they are reported apart because their remedies differ: a FAIL is a defect to
                 // fix, a STALE-QUARANTINE is a fix that already landed and a roster row to
-                // delete, a BUDGET-REFUSED is a cost to reduce, a HOST-TOOL-UNRESOLVED is an
-                // infra gap to provision (never a witness-cost chase). Summing them into
-                // `failed` would make an un-quarantine indistinguishable from a regression in
-                // the alert signature, which is the conflation `std.witness_admission` rules
-                // out.
+                // delete, an INTERRUPTED-BEFORE-VERDICT is an undecided claim whose real cost
+                // is unmeasured (operator ruling 2026-08-19, BUDGET POLICY CUT), a
+                // COMPLETED-OVER-COST-REQUIREMENT is a claim that reached a verdict and then
+                // was found to cost too much (an exact measurement, not a bound), and a
+                // HOST-TOOL-UNRESOLVED is an infra gap to provision (never a witness-cost
+                // chase). Summing them into `failed` would make an un-quarantine
+                // indistinguishable from a regression in the alert signature, which is the
+                // conflation `std.witness_admission` rules out. Splitting the former
+                // `budget_refused` collection in two makes it visible whether a stopped run
+                // is a cost debt on a claim that actually finished, or a claim the safety
+                // deadline preempted before it could answer at all — but both still stop the
+                // line: an interruption is NotEvaluated, and NotEvaluated is never green.
                 for stale in &outcome.stale_quarantine {
                     eprintln!("required-floor: STALE-QUARANTINE {stale}");
                 }
-                for refused in &outcome.budget_refused {
-                    eprintln!("required-floor: BUDGET-REFUSED {refused}");
+                for refused in &outcome.interrupted_before_verdict {
+                    eprintln!("required-floor: INTERRUPTED-BEFORE-VERDICT {refused}");
+                }
+                for over_cost in &outcome.completed_over_cost_requirement {
+                    eprintln!("required-floor: COMPLETED-OVER-COST-REQUIREMENT {over_cost}");
                 }
                 for unresolved in &outcome.host_tool_unresolved {
                     eprintln!("required-floor: HOST-TOOL-UNRESOLVED {unresolved}");
                 }
                 if outcome.failures.is_empty()
                     && outcome.stale_quarantine.is_empty()
-                    && outcome.budget_refused.is_empty()
+                    && outcome.interrupted_before_verdict.is_empty()
+                    && outcome.completed_over_cost_requirement.is_empty()
                     && outcome.host_tool_unresolved.is_empty()
                 {
                     Ok(ExitCode::SUCCESS)

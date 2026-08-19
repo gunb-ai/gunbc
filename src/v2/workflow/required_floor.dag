@@ -137,13 +137,51 @@ fn long_home_prefixes() -> List<String> {
 // PLACEMENT question -- which checks may ride the PR path -- and this is an EXECUTION question:
 // how long a single claim may run before the frame refuses. They agree today, and reusing one
 // for the other would make that coincidence load-bearing.
+//
+// SPLIT, operator ruling 2026-08-19 (BUDGET POLICY CUT): the single number above used to answer
+// three questions at once -- when to interrupt CPU, when to interrupt wall, and what a completed
+// claim is allowed to have cost -- and that fusion is exactly the defect the ruling names: a
+// scheduler-sensitive wall crossing must not decide that a pure computation is too expensive,
+// which is what pushed innocent rows into censorship under co-tenant load. Two independent
+// numbers now stand where one stood:
+//
+// `required_floor_claim_safety_limit_ms` is the SAFETY DEADLINE -- it arms BOTH the CPU and the
+// wall interrupt clock, identically, because a runaway on either clock is the same emergency: a
+// witness that has not answered by this point is interrupted before it reaches a verdict, and
+// the figure recorded is a LOWER BOUND on its real cost, never an exact measurement. It is
+// TEMPORARILY 5000ms -- the restoration envelope the ruling names, not a re-founded permanent
+// ceiling -- and it is deliberately far above where any ordinary witness should land, so it
+// almost never fires against a healthy claim.
+//
+// `required_floor_claim_cost_line_ms` is the COMPLETED-COST LINE -- it is evaluated ONLY once a
+// claim has reached a verdict (Pass, Fail, or any other genuine outcome), never against an
+// interrupted claim, because an interrupted claim's cost is unmeasured and comparing a lower
+// bound against a line is not the question this line answers. It carries forward the prior
+// measured-max-plus-one-scheduler-quantum figure (1527ms observed under whole-corpus pressure,
+// per-witness median ~1ms) unchanged in VALUE, but changed in ROLE: it no longer arms an
+// interrupt, it only classifies a claim that already has a verdict as within or over cost.
+//
+// A completed claim's cost is judged on exactly one clock, chosen by the witness's PURPOSE and
+// never by measurement -- `v2.workflow.required_floor`'s claims execute Hermetic (pure in-process
+// evaluation), so CPU is the basis; a lane that later admits an execution mode whose purpose is
+// external or blocking interaction picks wall instead, but never lets the clock that happened to
+// read higher decide.
 // ENFORCEMENT GRAIN (2026-08-18): cooperative deadlines compare whole milliseconds on
 // shared CI hosts under floor load. The 2026-08-18 witnesses fold measured a 1527ms ceiling
 // (test.claim.transport_script_wall_compile_red.wall_red_string_join_into_retained_record_refuses)
 // under whole-corpus pressure while the per-witness median remains ~1ms — 1552ms is
 // measured-max plus one scheduler-quantum, not an open slack ratchet.
-fn required_floor_claim_budget_ms() -> Int {
+fn required_floor_claim_cost_line_ms() -> Int {
   1552
+}
+
+// TEMPORARY (operator ruling 2026-08-19): 5000ms is the restoration envelope, stated here as an
+// explicitly temporary value rather than a re-founded permanent ceiling. It replaces the old
+// fused constant's interrupt-arming role only -- both the CPU and the wall clock are armed with
+// this same figure, because either clock crossing it is the identical emergency: a witness that
+// has not answered.
+fn required_floor_claim_safety_limit_ms() -> Int {
+  5000
 }
 
 fn required_floor_claim_warn_ms() -> Int {
