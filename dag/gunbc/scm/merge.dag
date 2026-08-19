@@ -1,0 +1,86 @@
+module gunbc.scm.merge
+
+import std.types { Bool }
+
+import gunbc.scm.object_store { ObjectId, object_id_eq }
+import gunbc.scm.checkout { Commit, commit_of_root }
+
+// MERGE IS A DECISION ABOUT IDENTITY, NOT A TEXT OPERATION. Two commits are compared against the
+// base they were both proposed from, and every arm below is settled by comparing three object
+// identities -- never by aligning, diffing or patching anything. There is no merge base SEARCH
+// either: the base is supplied, because it is a fact about what the two proposals were made
+// FROM, and reconstructing it from a history walk is exactly the git-shaped assumption
+// docs/plans/dag-native-scm-design.md §1 refuses.
+//
+// SLICE 2 IS WHOLE-NODE GRAIN. The unit of agreement here is the entire program identity: if both
+// sides changed anything at all, that is a divergence requiring a choice. Recursing into named
+// edges -- so that two people editing DIFFERENT functions in one module both land -- is slice 3,
+// and it is the actual differentiator. Slice 2 exists to fix the decision vocabulary first, and
+// deliberately claims nothing about independent edits.
+//
+// WHY THERE IS NO CONFLICT MARKER. A marker is a fabricated program: it is not something the
+// substrate can typecheck, and writing one would be §5's plausible-output failure with the
+// user asked to repair it afterwards. A divergence is instead a typed value that names all three
+// identities and is not a program at all until somebody accepts a side.
+
+type MergeOutcome
+  = Merged { root: ObjectId }
+  | ChoiceRequired { base: ObjectId, left: ObjectId, right: ObjectId }
+
+// The four arms are exhaustive over the three identities and mutually exclusive, so this is a
+// total decision procedure with no default and no fallback.
+fn merge(base: ObjectId, left: ObjectId, right: ObjectId) -> MergeOutcome {
+  if object_id_eq(left: left, right: right) {
+    // Both sides propose the same program. Content addressing makes this true however the two
+    // were arrived at, so convergent work deduplicates instead of colliding.
+    Merged { root: left }
+  } else {
+    if object_id_eq(left: base, right: left) {
+      // The left side did not move, so the right side's proposal is the whole answer.
+      Merged { root: right }
+    } else {
+      if object_id_eq(left: base, right: right) {
+        Merged { root: left }
+      } else {
+        // Both sides moved, and they moved apart. Nothing here can be resolved by looking at
+        // identities alone, so the outcome refuses to be a program and says exactly which three
+        // identities disagree.
+        ChoiceRequired { base: base, left: left, right: right }
+      }
+    }
+  }
+}
+
+fn merge_commits(base: Commit, left: Commit, right: Commit) -> MergeOutcome {
+  merge(base: base.root, left: left.root, right: right.root)
+}
+
+// ACCEPTANCE IS A SEPARATE FACT FROM MERGING. Merging says what the identities imply; accepting is
+// somebody deciding. Keeping them apart is what stops a merge from silently picking a side --
+// there is no "ours"/"theirs" default anywhere in this module, because a default is precisely the
+// silent wrong answer §5 forbids.
+type Side = TakeLeft | TakeRight
+
+type AcceptRefusal
+  = NothingToChoose { root: ObjectId }
+
+type AcceptOutcome
+  = Accepted { root: ObjectId }
+  | AcceptRefused { cause: AcceptRefusal }
+
+// Accepting a side of an outcome that HAS no sides is not a no-op to be waved through: it means the
+// caller believes there was a disagreement when there was none, and proceeding would hide that.
+fn accept(outcome: MergeOutcome, side: Side) -> AcceptOutcome {
+  match outcome {
+    Merged { root: root } => AcceptRefused { cause: NothingToChoose { root: root } }
+    ChoiceRequired { base: _, left: left, right: right } =>
+      match side {
+        TakeLeft => Accepted { root: left }
+        TakeRight => Accepted { root: right }
+      }
+  }
+}
+
+fn accepted_commit(root: ObjectId) -> Commit {
+  commit_of_root(root: root)
+}

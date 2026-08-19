@@ -1,0 +1,229 @@
+module test.claim.scm_merge_witness
+
+// Slice 2 of NATIVE-COMMIT-0 (docs/plans/dag-native-scm-design.md §7): merge decides, acceptance
+// chooses, and the two are separate facts. Every claim is settled by comparing object identities
+// produced by slice 1's store -- nothing here diffs, aligns or patches.
+//
+// SCOPE, stated so a green run is not read as more than it is: this is WHOLE-NODE grain. It claims
+// nothing about two people editing different functions in one module; that is slice 3, and it is
+// the differentiator. What slice 2 fixes is the decision vocabulary and its refusals.
+
+import std.types { Bool, List }
+
+import v2.std.node {
+  Node,
+  NodeKind,
+  TypeNode,
+  Connective,
+  Atom,
+  Conj,
+  Edge,
+  EdgeLabel,
+  Named,
+  Symbol,
+  node_synthetic,
+}
+
+import gunbc.scm.object_store {
+  ObjectId,
+  ObjectStore,
+  empty_store,
+  store_node,
+  object_id_eq,
+  StoreResult,
+}
+import gunbc.scm.merge {
+  MergeOutcome,
+  Merged,
+  ChoiceRequired,
+  merge,
+  Side,
+  TakeLeft,
+  TakeRight,
+  AcceptOutcome,
+  Accepted,
+  AcceptRefused,
+  AcceptRefusal,
+  NothingToChoose,
+  accept,
+}
+
+fn atom_node(identity: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: identity } }, children: [])
+}
+
+fn named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+fn conj(children: List<Edge>) -> Node {
+  node_synthetic(kind: TypeNode { connective: Conj }, children: children)
+}
+
+// Three programs standing for a base and two divergent proposals from it, plus a second, separately
+// built copy of one proposal used to show convergence deduplicates.
+fn program_base() -> Node {
+  conj(children: [named_edge(name: ^left, target: atom_node(identity: ^L))])
+}
+
+fn program_left() -> Node {
+  conj(children: [
+    named_edge(name: ^left, target: atom_node(identity: ^L)),
+    named_edge(name: ^right, target: atom_node(identity: ^R)),
+  ])
+}
+
+fn program_right() -> Node {
+  conj(children: [
+    named_edge(name: ^left, target: atom_node(identity: ^L)),
+    named_edge(name: ^other, target: atom_node(identity: ^O)),
+  ])
+}
+
+fn id_of(n: Node) -> ObjectId {
+  store_node(store: empty_store(), n: n).identity
+}
+
+fn base_id() -> ObjectId { id_of(n: program_base()) }
+fn left_id() -> ObjectId { id_of(n: program_left()) }
+fn right_id() -> ObjectId { id_of(n: program_right()) }
+
+fn merged_to(outcome: MergeOutcome, expected: ObjectId) -> Bool {
+  match outcome {
+    ChoiceRequired { base: _, left: _, right: _ } => false
+    Merged { root: root } => object_id_eq(left: root, right: expected)
+  }
+}
+
+fn needs_a_choice(outcome: MergeOutcome) -> Bool {
+  match outcome {
+    ChoiceRequired { base: _, left: _, right: _ } => true
+    Merged { root: _ } => false
+  }
+}
+
+fn accepted_to(outcome: AcceptOutcome, expected: ObjectId) -> Bool {
+  match outcome {
+    AcceptRefused { cause: _ } => false
+    Accepted { root: root } => object_id_eq(left: root, right: expected)
+  }
+}
+
+fn accept_refuses(outcome: AcceptOutcome) -> Bool {
+  match outcome {
+    AcceptRefused { cause: _ } => true
+    Accepted { root: _ } => false
+  }
+}
+
+// CONVERGENCE DEDUPLICATES. The two sides are stored from independently constructed programs, so
+// nothing correlates them except their content -- which is the whole point of content addressing.
+test fn identical_proposals_merge_without_a_choice() -> Bool {
+  let one = id_of(n: program_left())
+  let two = id_of(n: program_left())
+  merged_to(outcome: merge(base: base_id(), left: one, right: two), expected: left_id())
+}
+
+// ONE SIDE MOVED. The unmoved side contributes nothing, so the answer is the side that moved -- and
+// no choice is required, because there is no disagreement to settle.
+test fn only_the_right_side_moved_takes_the_right() -> Bool {
+  merged_to(
+    outcome: merge(base: base_id(), left: base_id(), right: right_id()),
+    expected: right_id(),
+  )
+}
+
+test fn only_the_left_side_moved_takes_the_left() -> Bool {
+  merged_to(
+    outcome: merge(base: base_id(), left: left_id(), right: base_id()),
+    expected: left_id(),
+  )
+}
+
+// BOTH SIDES MOVED APART. This must not resolve itself. A merge that silently picked a side here is
+// exactly the fabricated plausible output DESIGN §5 forbids, and it is the arm the two controls
+// above make non-vacuous.
+test fn divergent_proposals_require_a_choice() -> Bool {
+  needs_a_choice(outcome: merge(base: base_id(), left: left_id(), right: right_id()))
+}
+
+// The divergence names all three identities. Without this, ChoiceRequired could be an empty signal
+// and the caller would have to rediscover what disagreed -- a refusal that is typed but not located.
+test fn a_divergence_names_all_three_identities() -> Bool {
+  match merge(base: base_id(), left: left_id(), right: right_id()) {
+    Merged { root: _ } => false
+    ChoiceRequired { base: b, left: l, right: r } =>
+      object_id_eq(left: b, right: base_id())
+        && object_id_eq(left: l, right: left_id())
+        && object_id_eq(left: r, right: right_id())
+  }
+}
+
+// ORDER INDEPENDENCE. Which proposal is named first is an accident of the caller, never a fact
+// about the programs, so it cannot change whether a choice is needed or what a settled merge says.
+test fn a_settled_merge_is_order_independent() -> Bool {
+  merged_to(
+    outcome: merge(base: base_id(), left: base_id(), right: right_id()),
+    expected: right_id(),
+  ) && merged_to(
+    outcome: merge(base: base_id(), left: right_id(), right: base_id()),
+    expected: right_id(),
+  )
+}
+
+test fn a_divergence_is_order_independent() -> Bool {
+  needs_a_choice(outcome: merge(base: base_id(), left: left_id(), right: right_id()))
+    && needs_a_choice(outcome: merge(base: base_id(), left: right_id(), right: left_id()))
+}
+
+// ACCEPTANCE CHOOSES, AND BOTH CHOICES ARE REACHABLE. Two claims rather than one: a single one would
+// pass against an accept that always answered the same side.
+test fn accepting_the_left_side_yields_the_left() -> Bool {
+  accepted_to(
+    outcome: accept(
+      outcome: merge(base: base_id(), left: left_id(), right: right_id()),
+      side: TakeLeft,
+    ),
+    expected: left_id(),
+  )
+}
+
+test fn accepting_the_right_side_yields_the_right() -> Bool {
+  accepted_to(
+    outcome: accept(
+      outcome: merge(base: base_id(), left: left_id(), right: right_id()),
+      side: TakeRight,
+    ),
+    expected: right_id(),
+  )
+}
+
+// ACCEPTING WHAT WAS NEVER IN DISPUTE REFUSES. The caller believed there was a disagreement and
+// there was none; answering anyway would hide that the caller's model of the merge was wrong.
+test fn accepting_a_settled_merge_refuses() -> Bool {
+  accept_refuses(
+    outcome: accept(
+      outcome: merge(base: base_id(), left: base_id(), right: right_id()),
+      side: TakeLeft,
+    )
+  )
+}
+
+// CONTROL for the claim above: acceptance is not unconditionally refusing.
+test fn accepting_a_divergence_does_not_refuse() -> Bool {
+  !accept_refuses(
+    outcome: accept(
+      outcome: merge(base: base_id(), left: left_id(), right: right_id()),
+      side: TakeLeft,
+    )
+  )
+}
+
+// CONTROL for the whole fixture: the three programs really are three distinct identities. If any two
+// coincided, several claims above would hold for the wrong reason -- a divergence test whose sides
+// were secretly equal is testing the dedup arm.
+test fn the_fixture_programs_are_three_distinct_identities() -> Bool {
+  !object_id_eq(left: base_id(), right: left_id())
+    && !object_id_eq(left: base_id(), right: right_id())
+    && !object_id_eq(left: left_id(), right: right_id())
+}
