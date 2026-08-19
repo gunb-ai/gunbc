@@ -1171,6 +1171,30 @@ The same shape produced the two earlier defects: an unimported-reference sweep r
 last addition rather than after it, and a grep whose zero result was accepted without a control
 that must hit. In each case the mechanism was sound and the **denominator** was authored.
 
+**A third instance, one level up, caught by CI after the above was written.** The rule below fixed
+the witness denominator and was still not enough: I minted `type ExpectedOutcome` in the jq witness,
+colliding with `gunbc.output_policy`'s load-bearing carrier of the same name, and the failure landed
+in `output_policy_witness_test.dag` — **a file that references none of my symbols and that this
+branch never touched.** Bare-reference resolution is corpus-global, so a new top-level name can red
+a file no per-file closure of mine would ever load. Every local run passed; the whole-corpus strict
+resolve is what caught it.
+
+Two rules follow, and both are mechanical because the authored version keeps failing:
+
+```
+# every top-level name the branch ADDS, from the diff -- not from memory
+git diff main...HEAD -- '*.dag' | grep "^+"   | grep -oE "^\+\s*(type|fn|data)\s+[A-Za-z_][A-Za-z0-9_]*" | awk '{print $NF}' | sort -u
+# each one must have exactly ONE declaration corpus-wide
+
+# and run what CI runs, before pushing, not after it fails
+claim_executor --required-floor --source-root dag --source-root src/v2
+```
+
+The second is the one that matters: **a per-file run and the floor are different universes**, and
+only the floor is the acceptance path. Reporting a per-file green as though it were the floor is
+rung inflation against a declared boundary (§4b) — the same error as citing the strongest path while
+another stays silent, committed against my own change.
+
 **The rule adopted for the rest of the lane:** verification enumerates test functions from the
 FILE, never from memory —
 

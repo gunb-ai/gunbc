@@ -229,9 +229,16 @@ test fn unlowered_file_input_refuses_with_the_file_cause() -> Bool {
 // the sensor path did before this landed -- cannot make all four true at once: it must answer
 // Refused for exit 1 under both policies, and the second assertion below would go red.
 
-type ExpectedOutcome = ExpectPresent | ExpectAbsent | ExpectRefused
+// NAMED JqOutcomeExpectation, NOT ExpectedOutcome, and the first attempt taught the reason the
+// hard way. gunbc.output_policy already declares a type under that name
+// (ExpectSuccess | ExpectFailure | OutcomeIsData) -- the load-bearing carrier the interpreter's
+// expectation frontier consumes. Minting a second one did not merely shadow it: it made the
+// PRE-EXISTING bare reference in output_policy_witness_test.dag unresolvable, so a file this branch
+// never touched went red under the whole-corpus strict resolve. Names are corpus-global to bare
+// reference resolution, and a witness-local helper must be named as one.
+type JqOutcomeExpectation = ExpectPresent | ExpectAbsent | ExpectRefused
 
-fn outcome_matches(outcome: JqOutcome, expected: ExpectedOutcome) -> Bool {
+fn outcome_matches(outcome: JqOutcome, expected: JqOutcomeExpectation) -> Bool {
   match expected {
     ExpectPresent =>
       match outcome {
@@ -259,7 +266,7 @@ fn outcome_matches(outcome: JqOutcome, expected: ExpectedOutcome) -> Bool {
 fn classifies_as(
   policy: JqExitPolicy,
   observation: JqProcessObservation,
-  expected: ExpectedOutcome,
+  expected: JqOutcomeExpectation,
 ) -> Bool {
   match jq_invocation_process_plan(invocation: JqInvocation {
     program: JqProgram { source: sensor_program },
