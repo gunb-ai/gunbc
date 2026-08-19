@@ -714,8 +714,10 @@ fn realize_bmcweb_session_login_on_host(
 }
 
 // THE VERDICT IS PRODUCED BEFORE THE WRITE, NOT CHECKED AFTER IT (DESIGN §5).
-// This extraction ran `jq -r '.token // empty'`, and jq's `//` alternative makes an ABSENT
-// or NULL `.token` a run that prints nothing and exits 0 — indistinguishable, at the exit
+// This extraction ran a `jq -r` filter of `.token` falling back to `empty` via jq's
+// alternative operator (two literal slashes in the filter text, elided here so this
+// comment itself stays parseable), and that alternative makes an ABSENT or NULL
+// `.token` a run that prints nothing and exits 0 — indistinguishable, at the exit
 // status the caller reads, from a token that was found. The realization then wrote
 // jq_run.stdout to srv3_bmcweb_token_path unconditionally and reconciled on the WRITE's
 // success, so a rejected or malformed BMC login produced an EMPTY CREDENTIAL FILE reported
