@@ -50,6 +50,25 @@ type CpuEntitlement
 // This is why the arm carries a bare numeral and the others do not: a numeral
 // under an unstated basis is precisely not yet a magnitude, and dressing it in
 // a Measure type would assert the basis the arm exists to deny.
+//
+// ON THE RELATIONSHIP TO extdeps.pricing.object_storage ByteBasis, because the
+// two encode the same three states and a reader should not have to work out
+// whether this is a second vocabulary for one axis. ByteBasis tags the unit
+// LABEL a vendor quoted a RATE in, at a boundary where the vendor's ambiguity
+// is itself the fact being recorded; it qualifies a price, and the magnitude
+// it qualifies is supplied separately. This carrier is the MAGNITUDE, and it
+// carries the distinction in its type rather than beside it, which is what
+// makes a cross-basis comparison unwritable instead of merely detectable.
+//
+// They are not merged here, and the reason is a scope judgement rather than a
+// claim that the overlap is imaginary: the single-authority form would be
+// ByteBasis re-homed onto std.measure — which that module's own ClockBasis
+// note already argues for, on the ground that an authority half the corpus
+// cannot reach is not an authority — and that migration crosses
+// object_storage, gunbc.econ.scm_serving_model and three witnesses. Doing it
+// under a provisioning brief would be a load-bearing edit nobody reviewed for
+// its own sake. Recorded here so the next author meets the question instead of
+// rediscovering it.
 type QuotedByteMagnitude
   = QuotedDecimalGigabytes { value: Gigabyte }
   | QuotedBinaryGibibytes { value: Gibibyte }

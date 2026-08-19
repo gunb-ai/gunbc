@@ -33,7 +33,7 @@ data blacksmith_provider_identity: DeclarationRef = decl_ref(
 // families are modelled: the subject is arm64-versus-x64 server provisioning,
 // and the Windows and macOS families answer a different question. The vendor
 // writes memory as a bare "GB" with no basis definition anywhere on the page,
-// so every row is ByteBasisUnstated.
+// so every row takes QuotedWithoutBasis.
 //
 // The vendor describes these runners as bare metal but does not state a
 // per-vCPU core entitlement, so the entitlement axis is Unstated rather than
