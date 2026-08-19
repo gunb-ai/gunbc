@@ -540,18 +540,40 @@ fn full_channel_shapes(g: MemoryChannelGeometry) -> List<PopulationShape> {
 // The coverage a documented module count produces. A count that happens to
 // equal a full-channel count IS full channel and is reported as such, so the
 // two shape sources agree rather than double-counting the eight-module row.
+//
+// The search runs over the topologies the BOARD admits, not over the whole
+// coproduct. Matching against every topology unconditionally would let a
+// sixteen-module population on a one-DIMM-per-channel board report
+// FullChannel{TwoDimmsPerChannel} — a coverage claim citing a topology that
+// board's platform does not admit. No current row can reach that state, which
+// is exactly why it is worth closing by construction rather than leaving for
+// the first board that can.
+type CoverageSearch = CoverageFound { topology: DimmsPerChannelTopology } | CoverageNotFound
+
+fn coverage_search_step(acc: CoverageSearch, g: MemoryChannelGeometry, dimm_count: Nat, topology: DimmsPerChannelTopology) -> CoverageSearch {
+  match acc {
+    CoverageFound { topology } => CoverageFound { topology: topology }
+    CoverageNotFound =>
+      if dimm_count == g.channels * dimms_per_channel_count(topology: topology) {
+        CoverageFound { topology: topology }
+      } else {
+        CoverageNotFound
+      }
+  }
+}
+
 fn documented_coverage(g: MemoryChannelGeometry, dimm_count: Nat) -> ChannelCoverage {
-  if dimm_count == g.channels * dimms_per_channel_count(topology: OneDimmPerChannel) {
-    FullChannel { topology: OneDimmPerChannel }
-  } else {
-    if dimm_count == g.channels * dimms_per_channel_count(topology: TwoDimmsPerChannel) {
-      FullChannel { topology: TwoDimmsPerChannel }
-    } else {
+  match fold(
+    admitted_topologies(g: g),
+    init: CoverageNotFound,
+    f: (a, t) => coverage_search_step(acc: a, g: g, dimm_count: dimm_count, topology: t),
+  ) {
+    CoverageFound { topology } => FullChannel { topology: topology }
+    CoverageNotFound =>
       PartialChannel {
         channels_populated: nat_min(a: dimm_count, b: g.channels),
         channels_dark: g.channels - nat_min(a: dimm_count, b: g.channels),
       }
-    }
   }
 }
 
