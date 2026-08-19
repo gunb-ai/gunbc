@@ -12,7 +12,12 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data im_15_1_0_vector_debug_impl_authority: ExternalAuthority = extdeps_external_authority_anchor
+data im_15_1_0_vector_debug_impl_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.rs/im/15.1.0/im/vector/struct.Vector.html#impl-Debug-for-Vector%3CA%3E"
+  }
+}
 
 data im_15_1_0_vector_clone_impl_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {

@@ -256,7 +256,7 @@ test fn fn_nested_value_wrapper_positive_control() -> Bool {
   w_fn_nested_value_wrapper_gets_clone()
 }
 
-data freemonoid_supplemental_impl_witness_note: String = "Row 1a target shapes (FreeMonoidUniqueState<T>, ListTailResult<T> in src/v2/std/algebra.dag), exercising v1_emit_struct_from_capability_table / v1_emit_enum_supplemental_impls end to end rather than the pre-existing structural/WF fixpoint above: a struct or enum whose only Clone-requiring field is FreeMonoid<T> keeps a BARE item-level header (the derive/WF triggers above never fire for an undeclared external container), Debug and PartialEq are realized as hand-written impls carrying a supplemental T: Clone bound instead of #[derive(..)] (v1_exclude_hand_written_freemonoid_traits drops them from the derive list), and Serialize/Deserialize stay #[derive(..)] with a #[serde(bound(..))] override naming every item generic param. w_freemonoid_supplemental_struct_hand_written_impls and w_freemonoid_supplemental_enum_hand_written_impls assert all three facts positively (bare header, hand-written impl headers, serde bound attr) and negatively (no bounded header, no naive #[derive(Debug...)] reintroducing the excluded traits)."
+data freemonoid_supplemental_impl_witness_note: String = "Row 1a target shapes (FreeMonoidUniqueState<T>, ListTailResult<T> in src/v2/std/algebra.dag), exercising v1_emit_struct_from_capability_table / v1_emit_enum_supplemental_impls end to end rather than the pre-existing structural/WF fixpoint above: a struct or enum whose only Clone-requiring field is FreeMonoid<T> keeps a BARE item-level header (the derive/WF triggers above never fire for an undeclared external container), Debug and PartialEq are realized as hand-written impls instead of #[derive(..)] (v1_exclude_hand_written_freemonoid_traits drops them from the derive list), each impl header carrying the UNION of the supplemental T: Clone bound and the structural bound its own body needs (T: Clone + Debug for the hand-written Debug impl, T: Clone + PartialEq for the hand-written PartialEq impl — bare, not path-qualified, since Clone/Debug/PartialEq are prelude traits already in scope), and Serialize/Deserialize stay #[derive(..)] with a #[serde(bound(..))] override naming every item generic param against the fully-qualified serde::Serialize / serde::Deserialize<'de> paths (unlike Debug/PartialEq, serde's traits are not in the emitted module's scope by bare name, so an unqualified bound string would fail to resolve). w_freemonoid_supplemental_struct_hand_written_impls and w_freemonoid_supplemental_enum_hand_written_impls assert all three facts positively (bare item header, hand-written impl headers carrying the full bound union, fully-qualified serde bound attr) and negatively (no bounded item header, no naive #[derive(Debug...)] reintroducing the excluded traits)."
 
 fn w_freemonoid_supplemental_struct_hand_written_impls() -> Bool {
   compile_dag_rust_emit_check(
@@ -264,9 +264,9 @@ fn w_freemonoid_supplemental_struct_hand_written_impls() -> Bool {
     "src/generic_item_witness_freemonoid_supplemental_struct.rs",
     [
       "struct FreeMonoidSupplementalStruct<T>",
-      "#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]\n#[serde(bound(serialize = \"T: Clone + Serialize\", deserialize = \"T: Clone + Deserialize<'de>\"))]",
-      "impl<T: Clone> std::fmt::Debug for FreeMonoidSupplementalStruct<T>",
-      "impl<T: Clone> PartialEq for FreeMonoidSupplementalStruct<T>"
+      "#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]\n#[serde(bound(serialize = \"T: Clone + serde::Serialize\", deserialize = \"T: Clone + serde::Deserialize<'de>\"))]",
+      "impl<T: Clone + Debug> std::fmt::Debug for FreeMonoidSupplementalStruct<T>",
+      "impl<T: Clone + PartialEq> PartialEq for FreeMonoidSupplementalStruct<T>"
     ],
     [
       "struct FreeMonoidSupplementalStruct<T: Clone>",
@@ -282,9 +282,9 @@ fn w_freemonoid_supplemental_enum_hand_written_impls() -> Bool {
     "src/generic_item_witness_freemonoid_supplemental_enum.rs",
     [
       "enum ListTailResultLike<T>",
-      "#[derive(Clone, serde::Serialize, serde::Deserialize)]\n#[serde(bound(serialize = \"T: Clone + Serialize\", deserialize = \"T: Clone + Deserialize<'de>\"))]",
-      "impl<T: Clone> std::fmt::Debug for ListTailResultLike<T>",
-      "impl<T: Clone> PartialEq for ListTailResultLike<T>",
+      "#[derive(Clone, serde::Serialize, serde::Deserialize)]\n#[serde(bound(serialize = \"T: Clone + serde::Serialize\", deserialize = \"T: Clone + serde::Deserialize<'de>\"))]",
+      "impl<T: Clone + Debug> std::fmt::Debug for ListTailResultLike<T>",
+      "impl<T: Clone + PartialEq> PartialEq for ListTailResultLike<T>",
       "Self::TailFound { tail } => f.debug_struct(\"TailFound\").field(\"tail\", tail).finish(),",
       "(Self::TailFound { tail: a_tail }, Self::TailFound { tail: b_tail }) => a_tail == b_tail,"
     ],
