@@ -1563,10 +1563,15 @@ fn where_refinement_diags_for_predicate(
               )]
             }
         }
-      Absent => [where_refinement_unenforced_error(
-        predicate: pname, formal: formal, reason: "non-literal value at refined position",
-        span: span, module_name: module_name, source_indices: source_indices
-      )]
+      Absent =>
+        if expr_is_any_literal(expr: value_expr) {
+          refinement_refusal
+        } else {
+          [where_refinement_unenforced_error(
+            predicate: pname, formal: formal, reason: "non-literal value at refined position",
+            span: span, module_name: module_name, source_indices: source_indices
+          )]
+        }
     }
   } else if where_refinement_is_string_literal_predicate(pred_name: pname) {
     match expr_literal_string_optional(expr: value_expr) {
@@ -1579,10 +1584,15 @@ fn where_refinement_diags_for_predicate(
             span: span, module_name: module_name, source_indices: source_indices
           )]
         }
-      Absent => [where_refinement_unenforced_error(
-        predicate: pname, formal: formal, reason: "non-literal value at refined position",
-        span: span, module_name: module_name, source_indices: source_indices
-      )]
+      Absent =>
+        if expr_is_any_literal(expr: value_expr) {
+          refinement_refusal
+        } else {
+          [where_refinement_unenforced_error(
+            predicate: pname, formal: formal, reason: "non-literal value at refined position",
+            span: span, module_name: module_name, source_indices: source_indices
+          )]
+        }
     }
   } else if where_refinement_is_deferred_predicate(pred_name: pname) {
     [where_refinement_unenforced_error(
@@ -1688,12 +1698,7 @@ fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: Typ
   if formal.connective == Arrow || actual.connective == Arrow || (actual.children |> count) > 0 {
     false
   } else {
-    let formal_base = if formal.connective == Conj && formal.type_annotation != none && (formal.children |> count) == 1 {
-      match formal.children |> first {
-        Present { value: refinement_base } => refinement_base
-        Absent => formal
-      }
-    } else { formal }
+    let formal_base = peel_where_refinement_base(ty: formal, type_env: type_env)
     let actual_name = authored_name_at(source_indices: source_indices, node: actual)
     if is_kernel_type(name: actual_name) == false || actual_name == "Unit" {
       false
