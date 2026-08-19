@@ -173,7 +173,7 @@ pub fn render_coercion_assertion_rust(a: Rc<CoercionAssertion>) -> String {
                         ),
                         name.clone(),
                     ),
-                    "\".into()), \"".to_string(),
+                    "\".into(), \"\".into()), \"".to_string(),
                 ),
                 expected.clone(),
             ),
@@ -221,7 +221,7 @@ pub fn render_coercion_assertion_rust(a: Rc<CoercionAssertion>) -> String {
                         ),
                         name.clone(),
                     ),
-                    "\".into()), Some(".to_string(),
+                    "\".into(), \"\".into()), Some(".to_string(),
                 ),
                 if expected.clone() {
                     "true".to_string()
