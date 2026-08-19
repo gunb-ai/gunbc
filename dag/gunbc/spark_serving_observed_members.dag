@@ -375,8 +375,24 @@ fn spark_serving_projection_supports_empty_replan(
 // observer reads LoadState and is-active, and neither answers what this member is keyed on: a unit
 // can be loaded and active while its file on disk differs from the desired spec, which is precisely
 // the drift the member exists to catch.
+// IT READS THEM BASE64-ENCODED, because the channel that carries the answer trims.
+//
+// `cat` was correct about intent and impossible in practice. The shell transport delivers stdout
+// through `retained_utf8_lossy_trimmed`, so the bytes of any file ending in whitespace cannot arrive
+// intact -- and a systemd unit always ends in a newline. Measured on srv6: the destination held
+// exactly the declared 500 bytes and the observation saw 499, so the content member compared unequal
+// to itself and planned a rewrite on every run, forever. That is worse than a failure: the host was
+// right, the observation was wrong, and the plan could never admit convergence.
+//
+// base64 -w 0 emits one line whose only trailing whitespace is the newline the trim removes, so the
+// payload survives the channel exactly. The identity is still taken over the file's bytes on both
+// sides -- the desired side encodes the same way -- so this is a wire encoding, not a change of what
+// is being identified. No verdict semantics, no identity relative to desired, no second domain.
+//
+// If base64 is absent or rejects -w, the leg fails and the state is Unobserved, which refuses the
+// plan. That is the correct arm: an unreadable unit must not be planned as an absent one.
 fn spark_serving_user_unit_read_argv() -> List<String> {
-  ["cat", spark_serving_user_unit_path() as String]
+  ["base64", "-w", "0", spark_serving_user_unit_path() as String]
 }
 
 fn spark_serving_user_unit_is_enabled_argv() -> List<String> {
@@ -441,7 +457,7 @@ fn classify_observed_user_unit(
 ) -> SparkServingObservedUnitState {
   if read_succeeded {
     UserUnitStateObserved {
-      unit_state_digest: spark_serving_user_unit_content_identity(bytes: read_stdout),
+      unit_state_digest: spark_serving_user_unit_content_identity(wire_base64: read_stdout),
     }
   } else {
     if file_absent { UserUnitStateAbsent } else { UserUnitStateUnobserved }

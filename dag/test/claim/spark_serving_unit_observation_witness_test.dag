@@ -17,8 +17,13 @@ import gunbc.spark_serving_observed_members {
   spark_serving_unit_state_was_observed,
 }
 import gunbc.spark_serving_membership { spark_serving_user_unit_state_digest }
-import gunbc.spark_serving_unit_render { spark_serving_user_unit_content_identity }
-import gunbc.spark_serving_unit_render { spark_serving_desired_user_unit_text }
+import gunbc.spark_serving_unit_render {
+  spark_serving_user_unit_content_identity,
+  spark_serving_user_unit_content_wire,
+  spark_serving_desired_user_unit_content_identity,
+  spark_serving_desired_user_unit_text,
+}
+import std.materialization_ladder { string_list_contains }
 import gunbc.spark_serving_install_paths { spark_serving_user_unit_path }
 
 fn digest_of(state: SparkServingObservedUnitState) -> String {
@@ -40,7 +45,7 @@ test fn a_unit_matching_the_rendering_observes_the_desired_digest() -> Bool {
   digest_of(
     state: classify_observed_user_unit(
       read_succeeded: true,
-      read_stdout: spark_serving_desired_user_unit_text(),
+      read_stdout: spark_serving_user_unit_content_wire(text: spark_serving_desired_user_unit_text()),
       file_absent: false,
     ),
   ) == (spark_serving_user_unit_state_digest() as String)
@@ -55,7 +60,7 @@ test fn a_drifted_unit_does_not_observe_the_desired_digest() -> Bool {
   digest_of(
     state: classify_observed_user_unit(
       read_succeeded: true,
-      read_stdout: "[Unit]\nDescription=something else\n",
+      read_stdout: spark_serving_user_unit_content_wire(text: "[Unit]\nDescription=something else\n"),
       file_absent: false,
     ),
   ) != (spark_serving_user_unit_state_digest() as String)
@@ -67,7 +72,7 @@ test fn a_drifted_unit_is_still_observed() -> Bool {
   spark_serving_unit_state_was_observed(
     unit: classify_observed_user_unit(
       read_succeeded: true,
-      read_stdout: "[Unit]\nDescription=something else\n",
+      read_stdout: spark_serving_user_unit_content_wire(text: "[Unit]\nDescription=something else\n"),
       file_absent: false,
     ),
   )
@@ -80,7 +85,7 @@ test fn a_unit_differing_only_in_its_trailing_newline_is_drift() -> Bool {
   digest_of(
     state: classify_observed_user_unit(
       read_succeeded: true,
-      read_stdout: "[Unit]\nDescription=x",
+      read_stdout: spark_serving_user_unit_content_wire(text: "[Unit]\nDescription=x"),
       file_absent: false,
     ),
   ) != (spark_serving_user_unit_state_digest() as String)
@@ -127,7 +132,19 @@ test fn an_empty_successful_read_is_drift_not_absence() -> Bool {
 
 test fn the_unit_read_probe_reads_the_modeled_unit_path() -> Bool {
   spark_serving_user_unit_read_argv()
-    == ["cat", spark_serving_user_unit_path() as String]
+    == ["base64", "-w", "0", spark_serving_user_unit_path() as String]
+}
+
+// THE PROBE MUST NOT READ RAW BYTES, and this is the claim that keeps it from drifting back. `cat`
+// is the obvious spelling and it cannot work: the channel trims trailing whitespace, so a unit file
+// -- which always ends in a newline -- arrives one byte short and compares unequal to itself.
+// -w 0 is load-bearing too; without it base64 wraps at 76 columns and the wire gains newlines whose
+// last one the trim would eat.
+test fn the_unit_read_probe_does_not_ask_for_raw_bytes() -> Bool {
+  let argv = spark_serving_user_unit_read_argv()
+  !string_list_contains(xs: argv, wanted: "cat")
+    && string_list_contains(xs: argv, wanted: "-w")
+    && string_list_contains(xs: argv, wanted: "0")
 }
 
 // `is-enabled` is the INSTALL state, a different question from is-active. It is asked of the USER
@@ -149,10 +166,52 @@ test fn the_observed_identity_is_taken_over_bytes_on_both_sides() -> Bool {
   digest_of(
     state: classify_observed_user_unit(
       read_succeeded: true,
-      read_stdout: spark_serving_desired_user_unit_text(),
+      read_stdout: spark_serving_user_unit_content_wire(text: spark_serving_desired_user_unit_text()),
       file_absent: false,
     ),
-  ) == (spark_serving_user_unit_content_identity(bytes: spark_serving_desired_user_unit_text()) as String)
+  ) == (spark_serving_desired_user_unit_content_identity() as String)
+}
+
+// THE REGRESSION FOR THE UNCONVERGEABLE MEMBER, and it is a round trip rather than a restatement.
+//
+// A host holding exactly the declared unit must observe as exactly the declared identity. It did not:
+// the observation read raw bytes through a trimming channel, so a 500-byte file was identified as its
+// own first 499 bytes and the content member compared unequal to itself on every run. The host was
+// correct and the plan could never say so.
+//
+// The discriminating part is the trailing newline specifically -- the byte the channel eats. The
+// desired text ends in one, so encoding it, handing it to the classifier as the probe would, and
+// requiring the desired identity back is exactly the path that was broken.
+test fn a_host_holding_the_declared_unit_observes_as_the_declared_identity() -> Bool {
+  let text = spark_serving_desired_user_unit_text()
+  string_contains(text, "WantedBy")
+    && digest_of(
+         state: classify_observed_user_unit(
+           read_succeeded: true,
+           read_stdout: spark_serving_user_unit_content_wire(text: text),
+           file_absent: false,
+         ),
+       ) == (spark_serving_desired_user_unit_content_identity() as String)
+}
+
+// The wire is NOT the raw text: if these were equal the claim above would hold vacuously on an
+// encoder that returned its input, and the trim would still be eating the newline.
+test fn the_wire_form_is_an_encoding_and_not_the_text() -> Bool {
+  let text = spark_serving_desired_user_unit_text()
+  spark_serving_user_unit_content_wire(text: text) != text
+    && !string_contains(spark_serving_user_unit_content_wire(text: text), "WantedBy")
+}
+
+// A HOST HOLDING SOMETHING ELSE STILL DIFFERS. The encoding must not make everything match -- this is
+// the control that the round trip above is discriminating rather than an identity function.
+test fn a_host_holding_other_bytes_observes_as_a_different_identity() -> Bool {
+  digest_of(
+    state: classify_observed_user_unit(
+      read_succeeded: true,
+      read_stdout: spark_serving_user_unit_content_wire(text: "[Unit]\nDescription=something else\n"),
+      file_absent: false,
+    ),
+  ) != (spark_serving_desired_user_unit_content_identity() as String)
 }
 
 // AN EMPTY FILE IS DRIFT, not an impossible state. The identity is taken over `String`, so `""` needs
@@ -177,7 +236,7 @@ test fn exact_bytes_that_are_disabled_still_match_the_desired_content() -> Bool 
   digest_of(
     state: classify_observed_user_unit(
       read_succeeded: true,
-      read_stdout: spark_serving_desired_user_unit_text(),
+      read_stdout: spark_serving_user_unit_content_wire(text: spark_serving_desired_user_unit_text()),
       file_absent: false,
     ),
   ) == (spark_serving_user_unit_state_digest() as String)
@@ -201,7 +260,7 @@ test fn a_not_found_enablement_is_distinct_from_disabled() -> Bool {
 test fn an_unobserved_enablement_leaves_the_read_content_observed() -> Bool {
   match classify_observed_user_unit(
     read_succeeded: true,
-    read_stdout: spark_serving_desired_user_unit_text(),
+    read_stdout: spark_serving_user_unit_content_wire(text: spark_serving_desired_user_unit_text()),
     file_absent: false,
   ) {
     UserUnitStateObserved { unit_state_digest: d } =>

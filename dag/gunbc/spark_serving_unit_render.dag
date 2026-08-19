@@ -2,6 +2,8 @@ module gunbc.spark_serving_unit_render
 
 import std.types { String, NonEmptyStr, FilePath }
 import std.content_hash { serialize_content_hash, content_hash_of_value }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import std.encoding { base64_encode, Standard }
 import extdeps.systemd.unit_file {
   SystemdUnitFile,
   ServiceUnitFile,
@@ -103,14 +105,33 @@ fn spark_serving_desired_user_unit_text() -> String {
 // Taking the identity over `String` rather than `NonEmptyStr` is deliberate: an empty file is a real
 // observation and ordinary drift, not an impossible state, and casting `""` to `NonEmptyStr` to
 // force it through a hash would be a lie about what was read.
-fn spark_serving_user_unit_content_identity(bytes: String) -> NonEmptyStr {
+// THE IDENTITY IS TAKEN OVER THE BASE64 WIRE FORM OF THE BYTES, on both sides.
+//
+// Not because base64 is meaningful here, but because the observation channel trims trailing
+// whitespace and therefore cannot deliver raw bytes. Encoding both sides identically keeps this an
+// identity of the file's content -- the same function of the same bytes -- while making it survive
+// a transport that would otherwise silently shorten it. The alternative was to make the observed
+// state a verdict relative to desired, which would have put the identity in a different domain
+// whenever desired state changed; this keeps one domain.
+fn spark_serving_user_unit_content_identity(wire_base64: String) -> NonEmptyStr {
   serialize_content_hash(
     hash: content_hash_of_value(
-      value: join(["unit-content:", bytes], "") as NonEmptyStr,
+      value: join(["unit-content:", wire_base64], "") as NonEmptyStr,
     ),
   ) as NonEmptyStr
 }
 
+// The desired side's wire form, encoded here so the two sides cannot drift into different encodings
+// of one spec -- the same reason spark_serving_user_unit_text is one function.
+fn spark_serving_user_unit_content_wire(text: String) -> String {
+  base64_encode(
+    octets: bytes_octets(b: utf8_encode_bytes(s: text)),
+    variant: Standard,
+  )
+}
+
 fn spark_serving_desired_user_unit_content_identity() -> NonEmptyStr {
-  spark_serving_user_unit_content_identity(bytes: spark_serving_desired_user_unit_text())
+  spark_serving_user_unit_content_identity(
+    wire_base64: spark_serving_user_unit_content_wire(text: spark_serving_desired_user_unit_text()),
+  )
 }

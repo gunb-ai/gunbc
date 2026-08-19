@@ -414,8 +414,22 @@ fn scheduler_remaining_nodes(nodes: List<Node>, scheduled: List<Node>) -> List<N
   scheduler_remaining_subjects(subjects: nodes, scheduled: scheduled, eq: scheduler_node_eq)
 }
 
-fn scheduler_append_node_once(nodes: List<Node>, candidate: Node) -> List<Node> {
-  scheduler_append_subject_once(xs: nodes, item: candidate, eq: scheduler_node_eq)
+fn scheduler_append_node_once(nodes: List<Node>, node: Node) -> List<Node> {
+  scheduler_append_subject_once(xs: nodes, item: node, eq: scheduler_node_eq)
+}
+
+// The Node-subject view filter, kept at its established name and signature. Consumers ask which
+// dependencies order execution and get DependencyViews back, because that is what they hold and what
+// carries their usage_site; the generic kernel answers the same question over relations.
+fn scheduler_execution_dependencies(dependencies: List<DependencyView>) -> List<DependencyView> {
+  filter(xs: dependencies, predicate: scheduler_dependency_orders_execution)
+}
+
+fn scheduler_dependency_orders_execution(dependency: DependencyView) -> Bool {
+  classify_dependency_kind(
+    classifier: scheduler_execution_dependency_kind_classifier(),
+    kind: dependency.kind
+  )
 }
 
 fn scheduler_step_plan_from_dependencies(
