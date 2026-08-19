@@ -135,6 +135,42 @@ import v2.std.text { String }
 // returns to the floor WHOLE and its healthy siblings return with it, so the collateral
 // dissolves with work already scheduled rather than needing its own cleanup. This declaration
 // is deleted when the relocated population reaches zero.
+//
+// FIRST RESTORATION DECISION, 2026-08-19: NOT YET, and the module returns WHOLE when it does.
+// Recorded here because the session that declared this trigger is archived, so the next reader
+// would otherwise find a trigger with no one holding it and no account of what was already
+// decided against.
+//
+// The evidence offered was dag_arrow_lambda_witness_test, the densest parse-bearing module in
+// the relocated population: same instrument, same flags, same budget, merge base 2c65eeacf32
+// against a sync-token change. 12 of its 14 rows go 12237-14143ms to 193-555ms, 24x to 69x; the
+// module total goes 228167ms to 27876ms; rows under the 1552ms ceiling go 0 of 14 to 12 of 14.
+// The BEFORE column is the finding rather than the AFTER: fourteen rows parsing fourteen
+// DIFFERENT sources agreed within 14% of each other, which is not fourteen expensive witnesses,
+// it is one defect wearing fourteen names.
+//
+// Refused on two grounds, neither of them doubt about that measurement.
+//
+// FIRST, the AFTER column was measured on an unmerged branch head. Restoring against it would
+// baseline the roster on a tree that does not exist, and if that branch changes before it lands
+// the restoration rests on numbers nothing can reproduce. The trigger is repaired cost, and
+// cost is repaired when the repair is IN main.
+//
+// SECOND, and this one is the trigger's own words: a module "returns to the floor WHOLE". Two
+// of the fourteen are still over budget -- the first row pays the surviving preparation, and
+// pre_repair pays two because it builds a MODIFIED grammar and so legitimately owes a second.
+// Restoring twelve would split one file across two homes and mint a second module whose only
+// membership rule is a cost threshold, which is the directory deciding an admission question
+// (the 2026-08-04 ruling this file already cites). The correct wait is for the first-row
+// constant to fall, after which all fourteen clear together and the module moves once.
+//
+// AND THE MEASUREMENT THAT SHOULD PRECEDE THE NEXT ONE, for the other 37 modules rather than
+// this one: at least nine of the 38 were free riders that merely touched a shared corpus fill
+// first, so quarantining them relocated the bill to the next module instead of removing it --
+// watched changing hands on one cache key at identity grain. Floor observation noise is
+// RELATIVE and flat at 4-5%, p95 13.5%, so the audit question for a quarantine decision is
+// whether its observation sat within ~13.5% of the ceiling. Both decision runs behind the
+// second wave clear that test by a wide margin, at 27x and 30x the ceiling.
 
 // The rows are carried in fixed-size chunks and flattened, because one Cons chain 820 deep is a
 // parse-depth hazard, not because the chunk boundaries mean anything. They do not: a chunk is a
