@@ -69,16 +69,17 @@ test fn a_path_that_is_not_a_repository_is_unusable_not_absent() -> Bool {
 
 // The pair asserted together, because each alone passes under a decoder that answers one constant.
 test fn absent_and_unusable_are_distinct_observations() -> Bool {
-  observed_url(o: git_remote_url_observation_of(at: green_at(), exit_code: 2, stderr: "", url: ""))
-    != observed_url(o: git_remote_url_observation_of(at: green_at(), exit_code: 128, stderr: "", url: ""))
+  let absent = observed_url(o: git_remote_url_observation_of(at: green_at(), exit_code: 2, stderr: "", url: ""))
+  let unusable = observed_url(o: git_remote_url_observation_of(at: green_at(), exit_code: 128, stderr: "", url: ""))
+  absent != unusable
 }
 
 // A zero exit with empty stdout is UNREADABLE, not an observed empty URL: git can exit zero and
 // print nothing, and an empty string is not an address. Precedent: the same rule in
 // `gunbc.roadmap_publish_observe` `worktree_head_observation_note`.
 test fn a_zero_exit_with_no_output_is_refused_not_an_empty_url() -> Bool {
-  observed_url(o: git_remote_url_observation_of(at: green_at(), exit_code: 0, stderr: "", url: "   "))
-    == "<refused>"
+  let blank = observed_url(o: git_remote_url_observation_of(at: green_at(), exit_code: 0, stderr: "", url: "   "))
+  blank == "<refused>"
 }
 
 test fn an_observed_url_is_trimmed() -> Bool {
@@ -89,8 +90,8 @@ test fn an_observed_url_is_trimmed() -> Bool {
 
 // An unrecognised nonzero exit refuses rather than guessing which of the two known causes it was.
 test fn an_unknown_exit_code_is_refused() -> Bool {
-  observed_url(o: git_remote_url_observation_of(at: green_at(), exit_code: 7, stderr: "?", url: ""))
-    == "<refused>"
+  let unknown = observed_url(o: git_remote_url_observation_of(at: green_at(), exit_code: 7, stderr: "?", url: ""))
+  unknown == "<refused>"
 }
 
 // ── The property, not a hand-spelled key ────────────────────────────────────────────────────────
