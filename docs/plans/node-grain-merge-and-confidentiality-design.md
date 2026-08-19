@@ -173,23 +173,32 @@ public repository this is not merely expensive but *ineffective* — the objects
 distributed. The answer practitioners actually use is "rotate the credential and assume the bytes
 are permanently public." We must not build a better version of that theater.
 
-**Four operations git fuses into one:**
+**Five independent facts git fuses into one.** Prevention, current-state retraction,
+audience-history retraction, credential invalidation, and bounded erasure are separate, and the
+distinction between the two retractions is load-bearing rather than pedantic:
 
-- **Prevention** — bytes never reach the public store. *The only one that delivers confidentiality.*
-- **Retraction** — authoritative history no longer carries the material going forward: new clones do
-  not receive it, the projection no longer contains it, the material is marked revoked. **Not
-  erasure.**
-- **Erasure** — bytes unrecoverable. Claimable only for material that never left a fully controlled
-  store, and then only when every key, wrap, backup, cache, derivative, index and recovery path is
-  inside the sanitization scope. Never "delete one key."
-- **Invalidation** — rotate the credential so leaked bytes are worthless. **This repository already
-  models it**: `gunbc.auth.secret_rotation` is a subject-agnostic kernel with exactly-once walls,
-  receipt-backed retirement, and no stored payload digest.
+- **Prevention** — bytes never reach the public store. *The only operation that preserves
+  confidentiality.*
+- **Current-state retraction** — the head no longer contains the material. **This is not enough**:
+  a clone that replays from the original root still recovers it.
+- **Audience-history retraction** — new readers begin from a sanitized anchor and never receive the
+  material at all. This is what people mean by redaction, and it is a different fact from the above.
+- **Invalidation** — rotate the credential so leaked bytes are worthless. **Already modeled**:
+  `gunbc.auth.secret_rotation`, with exactly-once walls, receipt-backed retirement, and no stored
+  payload digest.
+- **Erasure** — bytes unrecoverable. Claimable only inside a closed sanitization scope covering every
+  key, wrap, backup, cache, derivative, index and recovery path. Never "delete one key."
 
-**Derived rule:** on a committed secret, SCM performs *retraction*, the rotation kernel performs
-*invalidation*, and *erasure* is claimable only in the private realm. **The SCM must never report
-retraction as if it were erasure**, and `PubliclyIrrecoverable` must be a state the system can
-*report*, not a failure it hides.
+**Derived rule:** on a committed secret, SCM performs retraction, the rotation kernel performs
+invalidation, and erasure is claimable only in the private realm. **The SCM must never report
+retraction as erasure.** Once disclosure escapes a controlled scope, `UncontrolledCopiesMayRemain` is
+a **terminal standing** and **no global-erasure constructor exists** — the impossible claim is made
+unwritable rather than merely discouraged.
+
+Two consequences that are easy to get wrong in opposite directions. Invalidation is **not**
+established by the secret manager disabling a version: the underlying service may still accept the
+leaked token, so invalidation needs a subject-specific negative authentication probe. And a rewrite
+that lacks a complete sanitization receipt is `PrivateHistoryReanchored`, **not** erased.
 
 **Where the wall sits.** Merge-time or CI-time checking is structurally incapable of confidentiality
 — the deleted Stage-0 placement gate established exactly this: a required check could refuse `main`,
@@ -197,16 +206,39 @@ but pushed objects had already reached public storage. The chronology must be pr
 private merge and admission → derive an audience-authorized projection → serialize → write public
 storage. The public writer must not accept an arbitrary `Node`, blob or patch, only a projection
 minted by the authoritative private context. **Corollary:** a public PR branch cannot safely carry
-secret bytes on the theory that squash-landing removes them.
+secret bytes on the theory that squash-landing removes them. And the surface is wider than file
+content: a secret in a commit message, path, diagnostic, workflow log, or projection metadata is the
+same disclosure.
 
 **Retraction without rewriting.** Where a commit is *accepted parent plus sparse transformation*,
-retraction can be an ordinary **appended transformation** rather than a rewrite — no existing
-identity changes and no downstream clone is invalidated. **This holds only if public history is an
-audience projection rather than a replayable copy of private transitions**; otherwise a reader
-replaying from an early checkpoint reconstructs the secret on the way to the head. The proposed
-resolution is an **audience-specific projection epoch with a sanitized anchor**: re-anchor the
-*public projection*, never the authoritative history, accepting an explicit compatibility boundary
-for older projections. *(Proposed — this is the least settled part of the note.)*
+retraction can be an ordinary **appended transformation** — no existing identity changes, no
+downstream clone is invalidated. **This holds only if public history is an audience projection rather
+than a replayable copy of private transitions**; otherwise replay from an early checkpoint
+reconstructs the secret on the way to the head, and what was achieved is current-state retraction
+only. The resolution is an **audience-specific projection epoch with a sanitized anchor**: re-anchor
+the *public projection*, never the authoritative history.
+
+Three constraints on that epoch, each of which an earlier draft of this note got wrong by being
+vague. The sanitized epoch must have **no public predecessor relation** to the contaminated one — a
+tombstone naming the old root, the path, or the incident reason is itself the leak, so the mapping is
+retained privately or not at all. The old epoch must be **retired from authoritative service**, since
+a clean head while the old refs are still advertised is not retraction. And **hiding a ref is not
+retraction** if direct object retrieval still serves the bytes. *(Proposed — the least settled part
+of this note.)*
+
+**No confidentiality receipt carries secret bytes or a secret-derived digest**, following the
+rotation kernel's existing rule. Receipts retain opaque incident identity, subject references,
+non-secret-derived transition identities, verification verdicts, audience standings, and bounded
+sanitization evidence.
+
+**Diagnostics are an information-flow surface.** If an old-root lookup answers "retracted" where a
+nonexistent root answers "unknown", that difference is an existence oracle; where existence is
+confidential the unauthorized responses must be indistinguishable. Over-redaction is the paired
+failure — an authorized responder must still receive located detail — so both directions need
+controls.
+
+**At the user boundary:** "keep the revoked secret" is never offered as a `ChoiceRequired`. It is a
+hard `CouldNotLand`.
 
 **`.env` does not belong in the graph.** Secret *values* live in a secret store; the graph holds
 `SecretRef` nodes, schema, and required binding identities, and `.env` becomes a local
@@ -253,22 +285,42 @@ No merge kernel should be built without these. Each is a RED unless marked other
 | occurrence ids collide numerically across allocator scopes | result reminted or remapped |
 | comment or annotation absent from `Node` capture | opaque residue or capture refusal, never silent loss |
 
-**Confidentiality**
+**Confidentiality.** Every refusal needs a nearby positive control, so that "always refuse" cannot
+satisfy the suite.
 
 | scenario | required result |
 |---|---|
-| secret bytes in a private candidate | the public writer never receives them |
-| secret-content edit plus audience broadening | separate authority required |
-| hidden-node conflict diagnostic to an unauthorized actor | authorized redaction, no existence leak |
-| retraction reported to a user | never phrased as erasure |
-| proposal authored against pre-retraction state | typed refusal, with a stated user-facing sentence |
+| raw payload reaches the public writer before policy evaluation | writer invocation count stays zero; `PublicationPrevented` |
+| publication authority unavailable | refuse before write; never classify as clean |
+| secret inside opaque/unparsed file residue | capture-fidelity refusal before serialization |
+| secret in commit message, path, diagnostic, log, or projection metadata | refuse or redact; no public object carries it |
+| bytes already public but lifecycle reports `PublicationPrevented` | impossible state |
+| append a retraction, then clone by replaying from the original root | secret recovered — only `CurrentStateRetracted`, never audience retraction |
+| sanitized epoch names the contaminated predecessor | commitment/existence leak |
+| old ref hidden but direct object retrieval still serves the bytes | retraction incomplete |
+| clean head while the old epoch is still advertised | retraction incomplete |
+| any receipt stores a payload digest | type uninhabitable |
+| one backup, cache, wrap, derivative or recovery path unobserved | `ErasureUnestablished` |
+| rewrite succeeds without a sanitization receipt | `PrivateHistoryReanchored`, not erased |
+| private realm erased after public exposure | private erasure **plus** `UncontrolledCopiesMayRemain` |
+| secret-manager version disabled but the service still accepts the token | not invalidated |
+| unauthorized diagnostic names retracted path, secret kind, or incident time | audience-projection refusal |
+| authorized responder denied located detail | over-redaction control |
+| retracted-vs-nonexistent lookups distinguishable to an unauthorized reader | existence oracle |
+| public graph retains a dangling reference to retracted material | public projection refuses |
+| proposal from a revoked epoch persisted publicly before inspection | ingress wall |
+| proposal independent of revoked material blanket-refused | recovery-expectation failure |
+| proposal relying on revoked material lands via ordinary stale-parent retry | admission failure |
+| "keep the revoked secret" offered as a choice | user-boundary failure — must be `CouldNotLand` |
+| retraction reported to a user as erasure | never |
 
 ## 10. Open questions
 
 1. **Diff-and-patch versus transformation capture** (§7). The largest fork. Capture requires an
    authoring surface; the operator's stated present reality is that the interface is files.
 2. **Retraction epochs** (§8) — the sanitized-anchor proposal is unverified and is the note's weakest
-   claim.
+   claim. In particular: what an *authorized* reader may still replay across a sanitized anchor, and
+   whether the private old→new epoch mapping is itself confidential.
 3. **The symmetric merge verdict** (§6) — owed, small, and a prerequisite for anything executable.
 4. **Positional append** — whether two appends are a legitimate commuting case. Special-casing it
    risks reintroducing the line-merge heuristic through the back door.
