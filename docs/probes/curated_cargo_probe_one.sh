@@ -44,6 +44,12 @@
 #   never "proceed anyway" — there is deliberately no override arm. Same shape as the stale-binary
 #   check this probe's now-deleted predecessor (fast_probe.sh) named requirement (1): both failure
 #   modes are a confident number computed against the wrong thing, so both refuse rather than warn.
+#   RUNG (2026-08-19, smart-ram-730 review): mechanically preventable WHEN ARMED, not mechanically
+#   preventable — a caller that never sets PROBE_EXPECT_BASE_SHA gets no protection and that failure
+#   is silent, so the check's existence is not coverage. Next-rung trigger, named rather than
+#   stalled: DERIVE the expected base (this worktree's merge-base against origin/main) instead of
+#   requiring it be declared, so there is nothing to remember and nothing to forget. Not tonight's
+#   work; do not bundle it into an unrelated change.
 set -euo pipefail
 
 if [[ $# -lt 1 ]]; then
