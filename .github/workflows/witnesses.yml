@@ -42,7 +42,7 @@ jobs:
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/claim_executor" --required-regen --source-root "$ROOT/dag" --source-root "$ROOT/src/v2"
-      - name: "Regen fixed point: second generation reproduces the first"
+      - name: "Regen determinism: G0 emit reproduces itself on a second pass"
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/claim_executor" --required-regen-fixed-point --source-root "$ROOT/dag" --source-root "$ROOT/src/v2"

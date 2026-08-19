@@ -295,24 +295,32 @@ fn witness_floor_run_step() -> Step {
 // `--source-root` flags are the same fold over gunbc.ci_layer_roots witness_layer_roots (DESIGN
 // §3 -- one authority, not a second literal roster), and each mode decides its own subject in
 // .dag; this step passes only the source roots. `--required-regen` proves the fold's first
-// generation matches the committed candidate; `--required-regen-fixed-point` additionally proves
-// a second generation from that candidate reproduces it, so the emit is at a fixed point rather
-// than merely agreeing once by coincidence. Both currently require at least one --source-root
-// flag to pass claim_executor's own CLI gate even though neither mode's function consumes it
-// (src/v1/stage0/src/bin/claim_executor.rs, the empty-source-roots check runs ahead of all three
-// mode dispatches) -- fixing that gate is out of scope here; supplying the flag is the correct
-// interim, not a workaround, since the flag is otherwise meaningful for every other mode this
-// binary serves.
+// generation matches the committed candidate -- a genuine committed-vs-emitted staleness probe.
+// Both currently require at least one --source-root flag to pass claim_executor's own CLI gate
+// even though neither mode's function consumes it (src/v1/stage0/src/bin/claim_executor.rs, the
+// empty-source-roots check runs ahead of all three mode dispatches) -- fixing that gate is out
+// of scope here; supplying the flag is the correct interim, not a workaround, since the flag is
+// otherwise meaningful for every other mode this binary serves.
 //
-// WHAT THESE TWO STEPS ARE, NAMED HONESTLY: claim_executor (required_regen_host.rs, hand-
-// maintained stage0 seed, not emitted from any .dag) is currently the SOLE answer to the
-// self-host fixed point -- the regen cut deleted the only other machinery that ever answered
-// it. A modeled v2 route (src/v2/compiler/self_host.dag) exists but has zero production
-// consumers and sits in gunbc.witness_deferral_freeze, so it cannot hold this boundary today.
-// This is therefore a frozen-X invocation on the declared re-add queue (DESIGN §3's frozen-X
-// carve-out), not the intended end state -- the terminal answer is that modeled route, and the
-// cutover this enrollment should cost later is swapping the command below, not restructuring
-// the job around it.
+// WHAT `--required-regen-fixed-point` ACTUALLY MEASURES, CORRECTED (2026-08-19, fierce-ram-721
+// review + operator verification, both against the source rather than the flag's name): despite
+// its name, `run_required_regen_fixed_point` (required_regen_host.rs) never builds or invokes a
+// candidate binary. `compile_stage0` calls `compile_sources`, a Rust fn linked into the SAME
+// running claim_executor process that already emitted pass 1 -- there is no `Command::new` for
+// cargo or a candidate executable anywhere in that path. So `fixed_point_equal` compares two
+// emissions from the same in-process G0, not G0's emission against a rebuilt G1's. That is
+// EMISSION REPEATABILITY (the compiler emits the same bytes twice), a real and useful property,
+// but it is not a self-host fixed point, which requires G0 emit R1, BUILD G1 from R1, run G1 to
+// emit R2, and compare R1 to R2 -- the build-and-run leg does not exist in this binary. The step
+// below is named for what it measures, not for the CLI flag's name, to avoid publishing an
+// authoritative CI green for a proposition nothing here evaluates (DESIGN §4b: a carrier named
+// for a guarantee it does not hold is rung inflation, and ranks worse than sitting low, because
+// it never gets fixed). The real self-host fixed point -- G0 builds and invokes G1 -- remains
+// unanswered; a modeled v2 route (src/v2/compiler/self_host.dag) exists but has zero production
+// consumers and sits in gunbc.witness_deferral_freeze, so it cannot hold that boundary today
+// either. Whoever builds the real G0->G1->R2 chain should prove it with a candidate-use canary:
+// swap the built candidate for a binary that prints a marker and exits nonzero, and confirm the
+// boundary observes it -- a mechanism that only recomputes through G0 stays green and is caught.
 fn witness_required_regen_script() -> String {
   concat(
     concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
@@ -349,7 +357,7 @@ fn witness_required_regen_fixed_point_script() -> String {
 
 fn witness_required_regen_fixed_point_step() -> Step {
   RunStep {
-    name: Present { value: "Regen fixed point: second generation reproduces the first" },
+    name: Present { value: "Regen determinism: G0 emit reproduces itself on a second pass" },
     id: none,
     run: witness_required_regen_fixed_point_script(),
     shell: none,
