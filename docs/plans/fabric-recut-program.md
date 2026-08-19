@@ -189,15 +189,48 @@ mentions on main are **inside string literals** — `gunbc.host_standup` names
 which is prose, not a code dependency. So there is no production *decision* consumer and it is
 deleted outright, needing no terminal market Y first — only that #8413 stop importing its `Shape`.
 
-Two things the deletion must handle, found while verifying rather than assumed:
-- **Five witnesses live inside the production module** (`fn witness_*` in `compute_fabric.dag`), so
-  the deletion is not a single file removal.
-- **`src/v2/test/claim/grounding_lens_test.dag` cites `product.compute_fabric.Endpoint`, which does
-  not exist** — zero occurrences in the module. A fabricated citation inside a lens test, the §3
-  class, and it will not surface as a compile refusal when the module is deleted because it is a
-  qualified-name string. Filed here so the deletion does not silently leave it.
-- `host_standup`'s two prose strings become false on deletion and must be updated in the same
-  change; a `refusal:` message naming a deleted authority is a stale claim in a live diagnostic.
+**The census, re-measured at `origin/main` and corrected — the first version of this section was
+both too narrow and wrong in one place.**
+
+*Structural consumers: zero.* Every reference to `product.compute_fabric` anywhere in the corpus is
+**a string literal**. There is no `import` of it. That is the finding that shapes Cut B, and it is
+uncomfortable: the replacement doctrine's "the deletion is the census" **does not apply here**,
+because nothing refuses when the module is gone. Deleting it is silent by construction, so the
+census must be done by reading before the deletion, not discovered by it. A cut that relies on
+compile refusals to find its dependents will find none and conclude, wrongly, that it is finished.
+
+*What actually references it, by class:*
+
+| class | sites | breaks loudly on deletion? |
+| --- | --- | --- |
+| the module itself, 139 lines, 7 types | `dag/product/compute_fabric.dag` | — |
+| **5 witnesses inside the production module** (`witness_need_is_only_fabric_plus_program`, `witness_shape_is_derived_from_program`, `witness_fabric_binds_need_to_opportunity`, `witness_exec_and_ci_are_just_programs`, `witness_hard_requirement_unmet_is_unmet`) | same file | no — they die with it |
+| a separate witness file | `dag/test/claim/compute_fabric_resource_witness_test.dag` | no |
+| two `refusal:` / `authority_or_interim:` prose strings | `gunbc.host_standup` | no — and they become false |
+| five plan documents | `bounded_input_cost_envelope_scheduling`, `compute_envelope_model`, `dag_v2_defork_audit`, `inert_layer_lens`, `realization_measurement_loop` | no |
+| DESIGN §2's storage-decomposition example | fixed separately in #8559 | no |
+| #8413's `Shape` import | the branch | yes — the only one |
+
+Several of the plan documents cite types the module **no longer has** (`WorkDemand`,
+`ParallelismShape`, `ResourceEnvelope`, `execution_receipt_digest`); its own
+`compute_fabric_resource_model_dissolution_receipt` records them as dissolved in #5904. So the
+prose was already stale before this cut, and the cut is not what makes it wrong.
+
+**Correction — the `Endpoint` claim in the first version of this section was itself wrong.** I
+wrote that `src/v2/test/claim/grounding_lens_test.dag` "cites `product.compute_fabric.Endpoint`,
+which does not exist — a fabricated citation, the §3 class". It is not a citation. It is a
+**controlled fixture**: `product_namespace_fixture_decls()` hand-builds two `concept_decl` rows to
+test that a `product.*` namespace is not layer-excluded, and the sibling row names
+`product.network_topology.Url`, which also does not exist. The test needs a string *shaped like* a
+product-namespace qualified name; whether it resolves is irrelevant to what it asserts, and DESIGN
+§5 names an independently authored fixture as a legitimate oracle. I read a fixture as a citation
+because the string looked like one — the same confident-answer-to-the-adjacent-question failure
+this document keeps charging elsewhere, and it is recorded rather than quietly deleted because a
+plan that silently drops its own false claims teaches nothing.
+
+*Nothing in Cut B is required to change that fixture.* If it is touched at all, the reason is
+legibility (after the deletion it names a module that no longer exists and will read as a stale
+citation to the next person), not correctness.
 
 **Do not evolve `Shape`.** Do not grow it into memory, storage, topology, network or isolation to
 make anything compile. At the terminal-carrier grain use `ExecutionClassRef` / `ResourceSupplyRef`
