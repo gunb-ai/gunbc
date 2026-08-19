@@ -59,7 +59,10 @@ data seed_retained_intrinsic_registrations: List<SeedRetainedIntrinsicRegistrati
   SeedRetainedIntrinsicRegistration { basename: "bootstrap_stage0_crate_layout_generated", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "cssl_seed_linked_closure_assembly", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "required_regen_host", has_pub_mod: false, is_dir: false },
-  SeedRetainedIntrinsicRegistration { basename: "compiler_tests", has_pub_mod: false, is_dir: false }
+  SeedRetainedIntrinsicRegistration { basename: "compiler_tests", has_pub_mod: false, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_compile", has_pub_mod: false, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_program_assembly", has_pub_mod: false, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_source_authority", has_pub_mod: false, is_dir: false }
 ]
 
 data data_initializer_identity_seed_retained_note: String = "SeedRetained hand-Rust for resolved data-initializer projection marshaling (decl_facts initializer identity lane, PR #7924). Reason: marshal requires InterpContext typechecked subjects, inferred Node stamps, and owning type-item lookup not yet modeled in .dag. Migration trigger: v2.std.data_initializer_identity projection carriers self-emit and coproduct_reflection routes through the modeled marshal surface; then this module deletes with its SeedRetainedIntrinsicRegistration row. Frontier row schema lacks reason/trigger fields — this note is the counted scaffold until the schema lands."
@@ -85,13 +88,10 @@ data seed_retained_scaffold_registrations: List<SeedRetainedScaffoldRegistration
   SeedRetainedScaffoldRegistration { basename: "v2_compiler_program_partition" },
   SeedRetainedScaffoldRegistration { basename: "v2_compiler_tokenize" },
   SeedRetainedScaffoldRegistration { basename: "v2_compiler_infer" },
-  SeedRetainedScaffoldRegistration { basename: "v1_interpreter_dispatch_generated" },
-  SeedRetainedScaffoldRegistration { basename: "v2_compiler_compile" },
-  SeedRetainedScaffoldRegistration { basename: "v2_compiler_program_assembly" },
-  SeedRetainedScaffoldRegistration { basename: "v2_compiler_source_authority" }
+  SeedRetainedScaffoldRegistration { basename: "v1_interpreter_dispatch_generated" }
 ]
 
-data gate_a_flip_lane_seed_retained_note: String = "v2_compiler_compile.rs / v2_compiler_program_assembly.rs / v2_compiler_source_authority.rs (Wave 2 / Gate-A flip lane, PR #6812) are hand-retained Rust oracles mirroring their .dag data notes (required_lens_grain_note in src/v2/compiler/00_compile.dag, program_assembly_prepare_once_note in src/v2/compiler/program_assembly.dag, source_authority_module_note in src/v2/compiler/source_authority.dag) — independent of the self-emitted artifact under test, exactly like their already-registered v2_compiler_resolve/program_partition/tokenize/infer siblings above. #6812 landed the .rs files and their per-module dissolution triggers (sc_scaffold_dissolution_trigger / spa_scaffold_dissolution_trigger / ssa_scaffold_dissolution_trigger, still governing individual retirement) but never added their SeedRetainedScaffoldRegistration rows, so required_regen only ever saw them as three committed-but-unregistered basenames with no crate-layout membership and no lib.rs pub mod — an incomplete integration, not a designed gap. This registration is the missing half of that landing, matching the sibling pattern exactly; it does not shortcut a fresh disposition decision, it completes one already approved."
+data gate_a_flip_lane_seed_retained_note: String = "CORRECTED (2026-08-19, msg_6f205102): v2_compiler_compile.rs / v2_compiler_program_assembly.rs / v2_compiler_source_authority.rs (Wave 2 / Gate-A flip lane, PR #6812) are hand-retained Rust oracles mirroring their .dag data notes (required_lens_grain_note in src/v2/compiler/00_compile.dag, program_assembly_prepare_once_note in src/v2/compiler/program_assembly.dag, source_authority_module_note in src/v2/compiler/source_authority.dag) — independent of the self-emitted artifact under test. A prior revision of this note claimed they were 'exactly like their already-registered v2_compiler_resolve/program_partition/tokenize/infer siblings' and registered them as SeedRetainedScaffoldRegistration (implicit pub mod). That claim was measured false: grepping src/v1/stage0/src/lib.rs on origin/main shows the four true siblings each carry exactly one `pub mod <name>;` line (control: v1_interpreter also 1), while these three carry zero, and no #[path] wiring exists for them anywhere in the crate — they are standalone CSSL oracles compiled via tools.self_host_curated_seed_linked_harness, never wired into the crate's mod tree, matching cssl_seed_linked_closure_assembly and required_regen_host above rather than the wired siblings. Reclassified as SeedRetainedIntrinsicRegistration, has_pub_mod: false to match the measured lib.rs state. #6812's per-module dissolution triggers (sc_scaffold_dissolution_trigger / spa_scaffold_dissolution_trigger / ssa_scaffold_dissolution_trigger) still govern individual retirement; only the crate-layout registration shape was wrong, not the retention decision itself."
 
 fn intrinsic_pub_mod_basename_from_row(row: SeedRetainedIntrinsicRegistration) -> List<String> {
   if row.has_pub_mod {
