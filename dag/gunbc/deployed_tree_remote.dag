@@ -186,9 +186,18 @@ fn deployed_tree_remote_exit(outcome: DeployedTreeRemoteOutcome) -> ProcessExit 
 }
 
 // THE UNIT'S ENTRY. The repository path is supplied by the caller rather than derived from an
-// instance roster, because the executor is the tree-sync unit of ONE instance and it already knows
-// which tree it just synced -- deriving it here would mean this module re-answering a question the
-// unit is the authority for, and getting it wrong on a host running two slots.
+// instance roster, because the executor is a unit belonging to ONE instance and its ExecStart
+// already names the tree it converges -- deriving it here would mean this module re-answering a
+// question the unit is the authority for, and getting it wrong on a host running two slots.
+//
+// CORRECTED 2026-08-19: this said the executor is "the tree-sync unit". It is not, and the
+// difference is the whole reason a separate member exists. Tree-sync is started inside the
+// GunbcSourceTree step, which is FIRST in deployment_owned_steps while ServeBinary is second, so
+// on a fresh instance the gunbc binary this entry needs does not exist yet and the leg would red
+// the first deploy of every new slot. The executor is the dedicated DeployedTreeRemoteUnit
+// (live_deploy.spec deployment_tree_remote_unit_name), ordered third so the binary is a
+// precondition the membership itself establishes. The argument above survives the correction --
+// the caller still knows its own tree -- but the sentence named the wrong caller.
 func ensure_deployed_tree_remote_wet(repository_path: String) -> ProcessExit {
   deployed_tree_remote_exit(
     outcome: ensure_deployed_tree_remote(repository_path: repository_path as FilePath),
