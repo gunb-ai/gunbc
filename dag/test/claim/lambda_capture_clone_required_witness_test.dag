@@ -8,7 +8,7 @@ data lambda_capture_clone_required_witness_note: String = "Executing floor witne
 
 fn w_direct_single_use_param_moves_bare() -> Bool {
   compile_dag_rust_emit_check(
-    "module lambda_capture_witness.direct\n\ntype Widget {\n  tag: Int\n}\n\nfn identity_direct(w: Widget) -> Widget {\n  w\n}\n",
+    "module lambda_capture_witness.direct\n\ntype Widget {\n  tag: String\n}\n\nfn identity_direct(w: Widget) -> Widget {\n  w\n}\n",
     "src/lambda_capture_witness_direct.rs",
     ["fn identity_direct", "struct Widget"],
     ["w.clone()"]
@@ -17,7 +17,7 @@ fn w_direct_single_use_param_moves_bare() -> Bool {
 
 fn w_lambda_captured_single_use_param_requires_clone() -> Bool {
   compile_dag_rust_emit_check(
-    "module lambda_capture_witness.lambda_capture\n\ntype Widget {\n  tag: Int\n}\n\nfn identity_lambda(w: Widget) -> fn(Int) -> Widget {\n  fn(u) { w }\n}\n",
+    "module lambda_capture_witness.lambda_capture\n\ntype Widget {\n  tag: String\n}\n\nfn identity_lambda(w: Widget) -> fn(Int) -> Widget {\n  fn(u) { w }\n}\n",
     "src/lambda_capture_witness_lambda_capture.rs",
     ["fn identity_lambda", "struct Widget", "w.clone()"],
     []
