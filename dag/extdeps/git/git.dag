@@ -1066,26 +1066,26 @@ service git.Worktree {
 // that competes with `GitRemote.url` for the same question, because a `GitRemoteUrlAt` names a
 // remote IN A REPOSITORY and `GitRemote` names a remote in the abstract.
 
-type GitRemoteName = NonEmptyStr
+type GitRemoteName = std.types.NonEmptyStr
 
 // Identity is repository x remote NAME, and neither half is optional. Keying on the name alone
 // would fuse every deployment's `origin` into one member; keying on the URL would make a URL
 // correction read as a remove plus an add rather than the change it is.
 type GitRemoteUrlAt {
-  repository_path: FilePath
+  repository_path: std.types.FilePath
   name: GitRemoteName
 }
 
 type GitRemoteUrlMember {
   at: GitRemoteUrlAt
-  url: NonEmptyStr
+  url: std.types.NonEmptyStr
 }
 
 // The config key is spelled ONCE, here, so no consumer writes the literal `remote.origin.url`.
 // git's configuration grammar is git's, and a product module that spells a config key is a second
 // authority for it in exactly the way a product module spelling `[Service]` is one for systemd.
-fn git_remote_url_config_key(name: GitRemoteName) -> NonEmptyStr {
-  join(["remote.", name as String, ".url"], "") as NonEmptyStr
+fn git_remote_url_config_key(name: GitRemoteName) -> std.types.NonEmptyStr {
+  join(["remote.", name as String, ".url"], "") as std.types.NonEmptyStr
 }
 
 // FOUR OUTCOMES, BECAUSE THREE OF THEM DEMAND DIFFERENT ACTIONS.
@@ -1128,7 +1128,7 @@ fn git_remote_url_observation_of(
       GitRemoteUrlReadRefused { at: at, exit_code: exit_code, stderr: stderr }
     } else {
       GitRemoteUrlObserved {
-        member: GitRemoteUrlMember { at: at, url: observed as NonEmptyStr },
+        member: GitRemoteUrlMember { at: at, url: observed as std.types.NonEmptyStr },
       }
     }
   } else if exit_code == git_remote_get_url_no_such_remote_exit {
