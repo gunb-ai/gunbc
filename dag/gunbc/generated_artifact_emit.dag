@@ -8,7 +8,6 @@ import gunbc.generated_artifact {
   AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
   Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
   Stage0CratePartitionGeneratedDagArtifact,
-  Stage0EmitPlanGeneratedDagArtifact,
   V1InterpreterDispatchGeneratedRsArtifact,
   artifact_path
 }
@@ -33,11 +32,6 @@ import gunbc.stage0_crate_layout_emit {
 }
 import gunbc.stage0_crate_partition_emit {
   expected_stage0_crate_partition_generated_dag
-}
-import gunbc.stage0_emit_plan_emit {
-  Stage0EmitPlanGenerated,
-  Stage0EmitPlanGenerationRefused,
-  expected_stage0_emit_plan_generated_dag
 }
 import gunbc.v1_interpreter_dispatch_emit {
   expected_v1_interpreter_dispatch_generated_rs,
@@ -71,10 +65,6 @@ fn artifact_generate(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
     Stage0CrateLayoutGeneratedDagArtifact => artifact_generated(content: expected_stage0_crate_layout_generated_dag())
     Stage0CrateLayoutGeneratedRsArtifact => artifact_generated(content: expected_stage0_crate_layout_generated_rs())
     Stage0CratePartitionGeneratedDagArtifact => artifact_generated(content: expected_stage0_crate_partition_generated_dag())
-    Stage0EmitPlanGeneratedDagArtifact => match expected_stage0_emit_plan_generated_dag() {
-      Stage0EmitPlanGenerated { content } => artifact_generated(content: content)
-      Stage0EmitPlanGenerationRefused => ArtifactGenerationRefused { reason: "stage0 emission plan refused" }
-    }
     V1InterpreterDispatchGeneratedRsArtifact => match expected_v1_interpreter_dispatch_generated_rs() {
       V1InterpreterDispatchGenerated { content } => artifact_generated(content: content)
       V1InterpreterDispatchGenerationRefused { reason } =>
@@ -103,10 +93,6 @@ fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutco
     Stage0CrateLayoutGeneratedDagArtifact => true
     Stage0CrateLayoutGeneratedRsArtifact => true
     Stage0CratePartitionGeneratedDagArtifact => true
-    Stage0EmitPlanGeneratedDagArtifact => match generated {
-      ArtifactGenerated { content: _ } => true
-      ArtifactGenerationRefused { reason: _ } => false
-    }
     V1InterpreterDispatchGeneratedRsArtifact => match generated {
       ArtifactGenerated { content: _ } => true
       ArtifactGenerationRefused { reason: _ } => false
