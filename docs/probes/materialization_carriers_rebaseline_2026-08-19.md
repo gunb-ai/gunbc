@@ -1,5 +1,7 @@
 # materialization_carriers: re-baseline on current main, board unchanged site-for-site (2026-08-19)
 
+**Latest baseline: `main@dd9c2307550e82e0a10c1fac9567f75b734e7fc4` — 51/51, site-for-site unmoved (§9).**
+
 **Session:** `eager-ant-366` (measurement authority for this module, dashboard node
 `adhoc-dfa0b3ca-c9f`, succeeds `witty-heron-413`/PR #8460, archived).
 **Subject:** `src/v2/compiler/materialization_carriers.dag`, same instrument as #8460.
@@ -259,3 +261,70 @@ Both remain open observations, not committed mechanism. If a fast-iteration prob
 forward, the compliant path is either an operator-approved `Scaffold` naming its own dissolution
 trigger, or extending `curated_cargo_probe_one.sh` itself (single authority) rather than a second
 script beside it.
+
+## 9. Re-baseline at `main dd9c2307550e82e0a10c1fac9567f75b734e7fc4` — **51, unmoved, site-for-site** (2026-08-19, later same day)
+
+**Base:** `main` at `dd9c2307550e82e0a10c1fac9567f75b734e7fc4` — six commits landed since §2's
+`72676cf0be` base, three within minutes of each other: `dd9c2307550` (#8486, dead-witness-tree
+migration — 6 witnesses moved into `dag/test/claim`, 10 retired), `0465d4d55a6` (#8461, **WIP:
+E0308 dominant error class** — decomposed `TargetReferenceLayer` into indirection/sharing axes,
+flagged emitter-adjacent), `b3952690cb9` (#8449), `c7b3031f841` (#8485), `6de5eb1868d` (#8462),
+`f585233cda3` (#8495).
+
+**Measurement discipline, changed from §1–§3 in one respect:** built from a fresh git worktree
+pinned to this exact SHA (`git worktree add /tmp/gunbc-main-measure dd9c2307...`) rather than
+measuring in-branch, so this run cannot be contaminated by this session's own docs-only diff.
+`gunbc`/`cssl_assemble` rebuilt from that worktree
+(`CARGO_BUILD_JOBS=4 RUSTC_WRAPPER=sccache /opt/cargo/bin/cargo build --release -p v1-compiler
+--bin gunbc --bin cssl_assemble` — the `ctrl-build --local` wrapper hit a genuine rustc ICE on
+`anstyle-query` under high host load first, host contention per the working agreement's documented
+shared-slice risk, not a code defect; bypassing the wrapper with reduced parallelism built clean in
+2m39s). Instrument invoked exactly as §1: `curated_cargo_probe_one.sh
+src/v2/compiler/materialization_carriers.dag`, `CSSL_STD_SEED_LINK=1`, plain-text `cargo build`
+capture (this probe's actual format — not `--message-format=json`; that was `fast_probe.sh`'s
+approach, now deleted per §8).
+
+**Result:**
+
+```
+52 files emitted, 187 diagnostics → refuse
+E0277:16 E0308:15 E0599:9 E0425:3 E0422:2 E0369:2 E0560:1 E0282:1 unreachable_pattern:2  →  51
+```
+
+Same total, same histogram as §3. **Site-for-site, not just count-match:** every one of this run's
+51 (code, file, line, col) tuples was matched individually against §4's row table —
+
+- Row 1a (10 E0277 + 2 E0369 `v2_std_algebra.rs:43,45,84,88` + 2 E0599 `std_cache_interface.rs:564,580`) — all present, same lines.
+- Row 1b (6 E0277 + 6 E0599 + 2 E0308, `v2_std_staging.rs:16,31,44` / `v2_compiler_materialization_carriers.rs:141–185`) — all present, same lines.
+- Row 2 (6 E0308, `std_cache_interface.rs:638,695,699,703` + `extdeps_uri.rs:752,756`) — all present, same lines.
+- Row 3 (2 E0422 `ProviderRetention` `compile_stage_memo.rs:82` / `parse_table_memo.rs:103` + 3 E0425 `NonEmptyStr` `v2_compiler_materialization_carriers.rs:141,145,149`) — all present, same lines.
+- Row 4 (4 E0308, `compile_stage_memo.rs:95,101` / `parse_table_memo.rs:116,122`) — all present, same lines.
+- Row 5 (3 E0308, `v2_std_node.rs:69,78,84`) — all present, same lines.
+- Row 6 (2 unreachable_pattern, `v2_std_node.rs:533,537`) — all present, same lines.
+- Row 7 (1 E0599, `v2_std_node.rs:1334`, T7/`stern-fox-619`) — present, same line.
+- Row 8 (1 E0560, `std_verification.rs:22`) — present, same line.
+- Row 9 (1 E0282, `std_realization_measurement.rs:197`) — present, same line.
+
+No new codes, no missing codes, no site moved by so much as a column. **#8461 (`TargetReferenceLayer`
+indirection/sharing decomposition) did not move this module's rows**, despite being flagged
+emitter-adjacent — none of the 51 sites' primary spans or messages changed shape between the two
+runs. This is the second consecutive unmoved 51 across seven merged commits (three landing within
+minutes of each other), confirmed by re-deriving the full board from a clean worktree build rather
+than by trusting the prior total.
+
+**#8486 (witness migration into `dag/test/claim`, 10 retired) — confirmed non-impacting, as
+anticipated.** This instrument counts `cargo build` diagnostics on the emitted Rust crate for one
+`.dag` module's closure; it does not read or cite floor/witness counts anywhere in this receipt.
+The witness-population change has no denominator this board depends on.
+
+**On the same-base-refusal request:** `smart-ram-730` asked for a sibling to the fast probe's
+stale-binary refusal that refuses a stale *base* — comparing two measurements that don't share a
+`git merge-base`. Building that as a second hand-shell tool would repeat exactly what `review 53640`
+just found and this session just removed (§8): unmarked scaffold debt duplicating
+`curated_cargo_probe_one.sh`. This receipt's actual answer is procedural rather than mechanized: the
+base SHA is now stamped in this section's headline (adopted per the request), and every measurement
+in this doc is taken from a worktree pinned to a fetched, verified SHA before the build runs, so a
+stale-base comparison cannot silently occur in this session's own receipts. Whether that check
+belongs *inside* `curated_cargo_probe_one.sh` as a durable capability is an operator decision this
+session cannot make unilaterally (the same §5 gate that removed `fast_probe.sh`); flagged to
+`smart-ram-730` rather than built.
