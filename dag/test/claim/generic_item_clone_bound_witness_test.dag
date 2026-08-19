@@ -255,3 +255,53 @@ test fn fn_nested_phantom_wrapper_negative_control() -> Bool {
 test fn fn_nested_value_wrapper_positive_control() -> Bool {
   w_fn_nested_value_wrapper_gets_clone()
 }
+
+data freemonoid_supplemental_impl_witness_note: String = "Row 1a target shapes (FreeMonoidUniqueState<T>, ListTailResult<T> in src/v2/std/algebra.dag), exercising v1_emit_struct_from_capability_table / v1_emit_enum_supplemental_impls end to end rather than the pre-existing structural/WF fixpoint above: a struct or enum whose only Clone-requiring field is FreeMonoid<T> keeps a BARE item-level header (the derive/WF triggers above never fire for an undeclared external container), Debug and PartialEq are realized as hand-written impls instead of #[derive(..)] (v1_exclude_hand_written_freemonoid_traits drops them from the derive list), each impl header carrying the UNION of the supplemental T: Clone bound and the structural bound its own body needs (T: Clone + std::fmt::Debug for the hand-written Debug impl, T: Clone + PartialEq for the hand-written PartialEq impl). Clone and PartialEq are bare, not path-qualified, because both are prelude traits (std::prelude::v1 re-exports std::clone::Clone and std::cmp::PartialEq by their trait names -- confirmed against doc.rust-lang.org/std/prelude/index.html's prelude-contents listing). Debug is NOT: that page's listing has no std::fmt::Debug entry at all, and the only `Debug` the prelude brings into scope is the derive macro std::prelude::v1::Debug -- a distinct namespace citizen from the trait. A bare `T: Debug` bound in a module with no explicit `use std::fmt::Debug;` therefore resolves the name to the macro and rustc refuses with error[E0404]: expected trait, found derive macro `Debug`, on every hand-written Debug impl this mechanism emits -- independent of and prior to any emitter's behavior. The bound is path-qualified (T: Clone + std::fmt::Debug) for exactly this reason, matching the `for` clause's existing std::fmt::Debug qualification rather than leaving the bound and the `for` position spelled two different ways for the same trait. Serialize/Deserialize stay #[derive(..)] with a #[serde(bound(..))] override naming every item generic param against the fully-qualified serde::Serialize / serde::Deserialize<'de> paths (serde's traits are not in the emitted module's scope by bare name either, so an unqualified bound string would fail to resolve). The struct row's derive list carries Clone but never Copy: FreeMonoid<T> is a shared type and realizes as Rc<Vec<T>> (v1_emit_struct_derives selects the heap roster over the copy roster on exactly that membership), and std::rc::Rc<T> does not implement Copy for any T regardless of T's own bounds -- confirmed against doc.rust-lang.org/std/rc/struct.Rc.html's trait-implementation list (Clone present, Copy absent) and doc.rust-lang.org/std/marker/trait.Copy.html's field requirement (every field's type must implement Copy). #[derive(Copy)] on a type with an Rc field is therefore not a spelling choice but rustc E0277/E0204 (\"the trait Copy cannot be implemented for this type\", naming the Rc-realized field) on every instantiation of T, independent of and prior to any emitter's behavior -- the corrected list is the ONLY one a correct implementation of the mechanism under test could produce. w_freemonoid_supplemental_struct_hand_written_impls and w_freemonoid_supplemental_enum_hand_written_impls assert all four facts positively (bare item header, hand-written impl headers carrying the full bound union with Debug path-qualified in the bound, fully-qualified serde bound attr) and negatively (no bounded item header, no naive #[derive(Debug...)] reintroducing the excluded traits, no bare-Debug-in-bound spelling that would resolve to the derive macro, no Copy in the struct's derive list)."
+
+fn w_freemonoid_supplemental_struct_hand_written_impls() -> Bool {
+  compile_dag_rust_emit_check(
+    "module generic_item_witness.freemonoid_supplemental_struct\nimport std.algebra { FreeMonoid }\n\ntype FreeMonoidSupplementalStruct<T> {\n  seen: FreeMonoid<T>\n  unique: Bool\n}\n",
+    "src/generic_item_witness_freemonoid_supplemental_struct.rs",
+    [
+      "struct FreeMonoidSupplementalStruct<T>",
+      "#[derive(Clone, serde::Serialize, serde::Deserialize)]\n#[serde(bound(serialize = \"T: Clone + serde::Serialize\", deserialize = \"T: Clone + serde::Deserialize<'de>\"))]",
+      "impl<T: Clone + std::fmt::Debug> std::fmt::Debug for FreeMonoidSupplementalStruct<T>",
+      "impl<T: Clone + PartialEq> PartialEq for FreeMonoidSupplementalStruct<T>"
+    ],
+    [
+      "struct FreeMonoidSupplementalStruct<T: Clone>",
+      "#[derive(Debug",
+      "derive(Clone, Copy, PartialEq",
+      "#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]",
+      "impl<T: Clone + Debug> std::fmt::Debug for FreeMonoidSupplementalStruct<T>"
+    ]
+  )
+}
+
+fn w_freemonoid_supplemental_enum_hand_written_impls() -> Bool {
+  compile_dag_rust_emit_check(
+    "module generic_item_witness.freemonoid_supplemental_enum\nimport std.algebra { FreeMonoid }\n\ntype ListTailResultLike<T>\n  = TailFound { tail: FreeMonoid<T> }\n  | TailAbsent\n",
+    "src/generic_item_witness_freemonoid_supplemental_enum.rs",
+    [
+      "enum ListTailResultLike<T>",
+      "#[derive(Clone, serde::Serialize, serde::Deserialize)]\n#[serde(bound(serialize = \"T: Clone + serde::Serialize\", deserialize = \"T: Clone + serde::Deserialize<'de>\"))]",
+      "impl<T: Clone + std::fmt::Debug> std::fmt::Debug for ListTailResultLike<T>",
+      "impl<T: Clone + PartialEq> PartialEq for ListTailResultLike<T>",
+      "Self::TailFound { tail } => f.debug_struct(\"TailFound\").field(\"tail\", tail).finish(),",
+      "(Self::TailFound { tail: a_tail }, Self::TailFound { tail: b_tail }) => a_tail == b_tail,"
+    ],
+    [
+      "enum ListTailResultLike<T: Clone>",
+      "#[derive(Debug",
+      "impl<T: Clone + Debug> std::fmt::Debug for ListTailResultLike<T>"
+    ]
+  )
+}
+
+test fn freemonoid_supplemental_struct_hand_written_impls() -> Bool {
+  w_freemonoid_supplemental_struct_hand_written_impls()
+}
+
+test fn freemonoid_supplemental_enum_hand_written_impls() -> Bool {
+  w_freemonoid_supplemental_enum_hand_written_impls()
+}
