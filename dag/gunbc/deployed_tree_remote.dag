@@ -1,0 +1,196 @@
+module gunbc.deployed_tree_remote
+
+import std.types { String, NonEmptyStr, FilePath, Int, Bool }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import extdeps.git {
+  GitRemoteName,
+  GitRemoteUrlAt,
+  GitRemoteUrlMember,
+  GitRemoteUrlObservation,
+  GitRemoteUrlObserved,
+  GitRemoteUrlAbsent,
+  GitRemoteUrlRepositoryUnusable,
+  GitRemoteUrlReadRefused,
+  git_remote_url_observation_of,
+  git_remote_url_config_key,
+}
+import extdeps.github.github { github_https_clone_url }
+import gunbc.repository { gunbc_repository }
+
+// WHY A DEPLOYED TREE NEEDS A REMOTE AT ALL, since it never fetches.
+//
+// `gunbc.fleet_desired_observe` reads refs/fleet/desired with `git ls-remote origin`, which is a
+// network call THROUGH A CONFIGURED REMOTE. The belt performs that observation on every tick, so a
+// deployed tree with no remote cannot answer it and the belt refuses -- spawn and reap withheld,
+// every roadmap node rendering a fault. Measured on srv1 2026-08-18: `/opt/gunbc-green/gunbc`
+// carried no `.git/config` at all, while `/opt/gunbc/gunbc` carried a working one because it
+// predates the sync whitelist and was cloned by hand.
+//
+// THE REMOTE IS ABSENT BY DESIGN, NOT BY ACCIDENT, and that is why it is written rather than
+// synced. `live_deploy.emit` `tree_sync_git_whitelist_note` excludes `.git/config` from the tree
+// sync because a blanket sync was once found carrying a live Actions extraheader token into the
+// service tree. That exclusion is correct and untouched here. What the whitelist's reasoning
+// enumerated was the belt's SPAWN path -- `git worktree add` resolves origin/main from
+// refs/remotes/origin/*, which do sync and need no configured remote -- and the observation path
+// was never checked against it. So the deploy produced a tree structurally incapable of an
+// observation the belt makes every sixty seconds.
+//
+// Writing one derived key cannot reintroduce the leak the whitelist closed: the value is projected
+// from `gunbc_repository` through `github_https_clone_url`, a public HTTPS URL that is a function
+// of owner and name. Nothing upstream of it is a secret, and no file is copied from the runner.
+
+data deployed_tree_remote_name: GitRemoteName = "origin" as GitRemoteName
+
+// NO FETCH REFSPEC IS WRITTEN, DELIBERATELY. `ls-remote` needs the URL alone, and
+// `live_deploy.emit` `apply_tree_split_sync_note` records that this host performs no fetch -- its
+// remote-tracking refs arrive through the additive .git sync, which is their authority. A refspec
+// would advertise a fetch that must not happen, and a fetch here would overwrite exactly those refs.
+fn deployed_tree_remote_desired(repository_path: FilePath) -> GitRemoteUrlMember {
+  GitRemoteUrlMember {
+    at: GitRemoteUrlAt { repository_path: repository_path, name: deployed_tree_remote_name },
+    url: github_https_clone_url(repo: gunbc_repository),
+  }
+}
+
+fn observe_deployed_tree_remote(at: GitRemoteUrlAt) -> GitRemoteUrlObservation {
+  let result = git.Core.RemoteUrlIn(
+    repository_path: at.repository_path as String,
+    remote: at.name as String,
+  )
+  git_remote_url_observation_of(
+    at: at,
+    exit_code: result.exit_code,
+    stderr: result.stderr,
+    url: result.url,
+  )
+}
+
+// A ZERO EXIT FROM THE SETTER IS NOT CONVERGENCE. `git config` answering 0 says the command was
+// accepted, not that the repository now holds the value -- and the whole reason this module exists
+// is that a plausible-looking success masked a tree that could not answer. So `Converged` is
+// reachable only through an INDEPENDENT read-back whose observed URL equals the desired one
+// exactly. Every other path is a distinct, located refusal rather than a shrug.
+type DeployedTreeRemoteOutcome
+  = RemoteAlreadyConverged { member: GitRemoteUrlMember }
+  | RemoteConverged { member: GitRemoteUrlMember, previous: GitRemoteUrlObservation }
+  | RemoteSetRefused { at: GitRemoteUrlAt, stderr: String }
+  | RemoteReadBackAbsent { at: GitRemoteUrlAt }
+  | RemoteReadBackMismatched { at: GitRemoteUrlAt, expected: NonEmptyStr, observed: NonEmptyStr }
+  | RemoteReadBackRefused { at: GitRemoteUrlAt, exit_code: Int, stderr: String }
+  | RemoteRepositoryUnusable { at: GitRemoteUrlAt, exit_code: Int, stderr: String }
+
+fn deployed_tree_remote_read_back(
+  desired: GitRemoteUrlMember,
+  previous: GitRemoteUrlObservation,
+) -> DeployedTreeRemoteOutcome {
+  match observe_deployed_tree_remote(at: desired.at) {
+    GitRemoteUrlObserved { member: observed } => {
+      let seen = observed.url as String
+      let want = desired.url as String
+      if seen == want {
+        RemoteConverged { member: desired, previous: previous }
+      } else {
+        RemoteReadBackMismatched {
+          at: desired.at,
+          expected: desired.url,
+          observed: observed.url,
+        }
+      }
+    }
+    GitRemoteUrlAbsent { at: at } => RemoteReadBackAbsent { at: at }
+    GitRemoteUrlRepositoryUnusable { at: at, exit_code: c, stderr: e } =>
+      RemoteRepositoryUnusable { at: at, exit_code: c, stderr: e }
+    GitRemoteUrlReadRefused { at: at, exit_code: c, stderr: e } =>
+      RemoteReadBackRefused { at: at, exit_code: c, stderr: e }
+  }
+}
+
+fn deployed_tree_remote_write(
+  desired: GitRemoteUrlMember,
+  previous: GitRemoteUrlObservation,
+) -> DeployedTreeRemoteOutcome {
+  let set = git.Core.ConfigLocalSetInRepo(
+    repo: desired.at.repository_path,
+    key: git_remote_url_config_key(name: desired.at.name) as String,
+    value: desired.url as String,
+  )
+  if set.success {
+    deployed_tree_remote_read_back(desired: desired, previous: previous)
+  } else {
+    RemoteSetRefused { at: desired.at, stderr: set.stderr }
+  }
+}
+
+// NO WRITE HAPPENS AGAINST STATE THAT WAS NOT OBSERVED. An unusable repository and a refused read
+// return without touching anything: rendering either as "the remote is simply absent" would be the
+// empty-observation narrow -- a read that could not answer, reported as the answer -- and it would
+// license a config write into a path the planner never established was a repository.
+fn ensure_deployed_tree_remote(repository_path: FilePath) -> DeployedTreeRemoteOutcome {
+  let desired = deployed_tree_remote_desired(repository_path: repository_path)
+  let observed = observe_deployed_tree_remote(at: desired.at)
+  match observed {
+    GitRemoteUrlObserved { member: current } => {
+      let seen = current.url as String
+      let want = desired.url as String
+      if seen == want {
+        RemoteAlreadyConverged { member: desired }
+      } else {
+        deployed_tree_remote_write(desired: desired, previous: observed)
+      }
+    }
+    GitRemoteUrlAbsent { at: _ } => deployed_tree_remote_write(desired: desired, previous: observed)
+    GitRemoteUrlRepositoryUnusable { at: at, exit_code: c, stderr: e } =>
+      RemoteRepositoryUnusable { at: at, exit_code: c, stderr: e }
+    GitRemoteUrlReadRefused { at: at, exit_code: c, stderr: e } =>
+      RemoteReadBackRefused { at: at, exit_code: c, stderr: e }
+  }
+}
+
+fn deployed_tree_remote_outcome_text(outcome: DeployedTreeRemoteOutcome) -> String {
+  match outcome {
+    RemoteAlreadyConverged { member: m } =>
+      join(["remote already converged: ", m.at.name as String, " -> ", m.url as String], "")
+    RemoteConverged { member: m, previous: _ } =>
+      join(["remote converged: ", m.at.name as String, " -> ", m.url as String], "")
+    RemoteSetRefused { at: at, stderr: e } =>
+      join(["git config refused for ", at.repository_path as String, ": ", e], "")
+    RemoteReadBackAbsent { at: at } =>
+      join(["read-back found no remote after a successful write in ", at.repository_path as String], "")
+    RemoteReadBackMismatched { at: at, expected: x, observed: o } =>
+      join([
+        "read-back mismatched in ", at.repository_path as String,
+        ": expected ", x as String, ", observed ", o as String,
+      ], "")
+    RemoteReadBackRefused { at: at, exit_code: c, stderr: e } =>
+      join(["read-back refused in ", at.repository_path as String, ": ", e], "")
+    RemoteRepositoryUnusable { at: at, exit_code: c, stderr: e } =>
+      join(["not a usable repository at ", at.repository_path as String, ": ", e], "")
+  }
+}
+
+fn deployed_tree_remote_exit(outcome: DeployedTreeRemoteOutcome) -> ProcessExit {
+  match outcome {
+    RemoteAlreadyConverged { member: _ } => ExitSuccess
+    RemoteConverged { member: _, previous: _ } => ExitSuccess
+    RemoteSetRefused { at: _, stderr: _ } =>
+      ExitFailure { code: 1, reason: deployed_tree_remote_outcome_text(outcome: outcome) }
+    RemoteReadBackAbsent { at: _ } =>
+      ExitFailure { code: 1, reason: deployed_tree_remote_outcome_text(outcome: outcome) }
+    RemoteReadBackMismatched { at: _, expected: _, observed: _ } =>
+      ExitFailure { code: 1, reason: deployed_tree_remote_outcome_text(outcome: outcome) }
+    RemoteReadBackRefused { at: _, exit_code: _, stderr: _ } =>
+      ExitFailure { code: 1, reason: deployed_tree_remote_outcome_text(outcome: outcome) }
+    RemoteRepositoryUnusable { at: _, exit_code: _, stderr: _ } =>
+      ExitFailure { code: 1, reason: deployed_tree_remote_outcome_text(outcome: outcome) }
+  }
+}
+
+// THE UNIT'S ENTRY. The repository path is supplied by the caller rather than derived from an
+// instance roster, because the executor is the tree-sync unit of ONE instance and it already knows
+// which tree it just synced -- deriving it here would mean this module re-answering a question the
+// unit is the authority for, and getting it wrong on a host running two slots.
+func ensure_deployed_tree_remote_wet(repository_path: String) -> ProcessExit {
+  deployed_tree_remote_exit(
+    outcome: ensure_deployed_tree_remote(repository_path: repository_path as FilePath),
+  )
+}

@@ -64,6 +64,7 @@ type OwnedArtifactKind =
   | BeltTimerUnit
   | FleetConvergeTimerUnit
   | TailscaleServeMapping
+  | DeployedTreeRemoteUnit
 
 type EnsuredDependencyKind =
     TailscalePackage
@@ -117,6 +118,7 @@ type TeardownDisposition
 fn owned_artifact_teardown_disposition(kind: OwnedArtifactKind) -> TeardownDisposition {
   match kind {
     ServeBinary => TeardownActs
+    DeployedTreeRemoteUnit => TeardownActs
     GunbcSourceTree => TeardownActs
     DispatchWorktreeRoot => TeardownActs
     AttemptStateRoot => TeardownActs
@@ -225,6 +227,25 @@ fn deployment_belt_service_unit_name(names: DeploymentNames) -> NonEmptyStr {
 
 fn deployment_belt_timer_unit_name(names: DeploymentNames) -> NonEmptyStr {
   join([deployment_belt_unit_stem(names: names), "-belt.timer"], "") as NonEmptyStr
+}
+
+// THE DEPLOYED TREE'S REMOTE IS A MEMBER, and it needs a unit of its own for an ordering reason
+// rather than an aesthetic one. The convergence must run AS THE SERVICE USER -- the tree is
+// service-user-owned and the deploy principal is the unprivileged ci-runner (emit_deploy_principal_note),
+// so a `git config` from the apply is EACCES on one side and outside the six sudo grants on the
+// other. That argues for the tree-sync unit, which already has the right principal.
+//
+// It cannot be the tree-sync unit. That unit is installed and started inside the GunbcSourceTree
+// step, which is FIRST in deployment_owned_steps, while ServeBinary is second -- so on a fresh
+// instance the gunbc binary the convergence invokes does not exist yet, and the leg would red the
+// first deploy of every new slot. Ordering the member last is what makes the binary a precondition
+// the membership itself establishes.
+fn deployment_tree_remote_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-tree-remote.service"], "") as NonEmptyStr
+}
+
+fn deployment_tree_remote_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_tree_remote_unit_name(names: names) as String], "") as NonEmptyStr
 }
 
 fn deployment_belt_service_unit_path(names: DeploymentNames) -> NonEmptyStr {
@@ -357,6 +378,10 @@ fn deployment_owned_steps(
     DeploymentArtifactStep {
       kind: TailscaleServeMapping,
       path: tailscale_serve_route_member_path(endpoint: names.tailscale_serve_endpoint),
+    },
+    DeploymentArtifactStep {
+      kind: DeployedTreeRemoteUnit,
+      path: deployment_tree_remote_unit_path(names: names),
     },
   ]
 }
@@ -513,6 +538,7 @@ fn owned_artifact_retirement_disposition(kind: OwnedArtifactKind) -> RetirementD
     BeltTimerUnit => RetiresRuntime
     FleetConvergeTimerUnit => RetiresRuntime
     TailscaleServeMapping => RetirementPreserves
+    DeployedTreeRemoteUnit => RetiresRuntime
   }
 }
 
