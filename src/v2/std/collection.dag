@@ -9,7 +9,7 @@ fn optional_absent_unwrap_diagnostic() -> v2.std.diagnostic.Diagnostic {
   }
 }
 
-fn optional_present_witness<T>(opt: v2.std.optional.Optional<T>) -> v2.std.witness.Witness<T> {
+fn optional_present_witness<T>(opt: Optional<T>) -> Witness<T> {
   witness_from_optional(opt: opt, absent: optional_absent_unwrap_diagnostic())
 }
 
@@ -20,7 +20,7 @@ data map_insert_host_binding: std.primitives.PrimitiveContract = map_insert_cont
 
 type IndexedLookup<T> {
   index: Int
-  value: v2.std.witness.Witness<T>
+  value: Witness<T>
 }
 
 type ListAtLookup<T>
@@ -52,14 +52,14 @@ fn map_insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
 // caller's own domain answers — so the unreachable arm gets bound to whichever domain answer is
 // nearest, and a substrate failure would report as a domain fact. Exposing the total lookup
 // removes the arm rather than asking every caller to dispose of it honestly.
-fn map_lookup<K, V>(m: Map<K, V>, key: K) -> v2.std.optional.Optional<V> {
+fn map_lookup<K, V>(m: Map<K, V>, key: K) -> Optional<V> {
   m.lookup(key)
 }
 
-fn map_get<K, V>(m: Map<K, V>, key: K) -> Outcome<v2.std.optional.Optional<V>> {
+fn map_get<K, V>(m: Map<K, V>, key: K) -> Outcome<Optional<V>> {
   outcome_accepted(value: map_lookup(m: m, key: key))
 }
-fn list_nth<T>(xs: v2.std.collection.List<T>, wanted: Int, absent: v2.std.diagnostic.Diagnostic) -> v2.std.witness.Witness<T> {
+fn list_nth<T>(xs: v2.std.collection.List<T>, wanted: Int, absent: v2.std.diagnostic.Diagnostic) -> Witness<T> {
   fold_list(
     xs: xs,
     empty: v2.std.collection.IndexedLookup {
@@ -78,7 +78,7 @@ fn list_nth<T>(xs: v2.std.collection.List<T>, wanted: Int, absent: v2.std.diagno
     }
   ).value
 }
-fn list_at_optional<T>(xs: v2.std.collection.List<T>, index: Int) -> v2.std.optional.Optional<T> {
+fn list_at_optional<T>(xs: v2.std.collection.List<T>, index: Int) -> Optional<T> {
   match fold_list(
     xs: xs,
     empty: ListAtMissing { remaining: index },

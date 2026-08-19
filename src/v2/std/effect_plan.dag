@@ -4,9 +4,9 @@ module v2.std.effect_plan
 
 type EffectPlanStep<E>
   = Do { effect: E }
-  | If { cond: v2.std.orchestration.Predicate, then_: EffectPlan<E>, else_: Optional<EffectPlan<E>> }
-  | For { binder: v2.std.node.Symbol, over: v2.std.orchestration.ValueSource, body: EffectPlan<E> }
-  | While { cond: v2.std.orchestration.Predicate, body: EffectPlan<E> }
+  | If { cond: v2.std.orchestration.Predicate, then_: v2.std.effect_plan.EffectPlan<E>, else_: Optional<EffectPlan<E>> }
+  | For { binder: v2.std.node.Symbol, over: v2.std.orchestration.ValueSource, body: v2.std.effect_plan.EffectPlan<E> }
+  | While { cond: v2.std.orchestration.Predicate, body: v2.std.effect_plan.EffectPlan<E> }
   | Retry {
       body: v2.std.effect_plan.EffectPlan<E>,
       escalations: FreeMonoid<v2.std.orchestration.EscalationLevel>,

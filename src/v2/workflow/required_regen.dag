@@ -41,7 +41,7 @@ type RequiredRegenAttempt {
 }
 
 type RequiredRegenSyncAdmission
-  = RequiredRegenSyncRunnable { attempt: RequiredRegenAttempt }
+  = RequiredRegenSyncRunnable { attempt: v2.workflow.required_regen.RequiredRegenAttempt }
   | RequiredRegenSyncRefused { refusals: v2.std.collection.List<RequiredRegenRefusal> }
 
 data no_regen_refusals: v2.std.collection.List<RequiredRegenRefusal> = []

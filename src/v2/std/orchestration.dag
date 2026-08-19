@@ -33,12 +33,12 @@ type Run {
 }
 
 type ValueSource
-  = CmdSubstLines { run: Run }
+  = CmdSubstLines { run: v2.std.orchestration.Run }
   | Glob { pattern: String }
   | ModeledList { items: FreeMonoid<String> }
 
 type Predicate
-  = ExitZero { run: Run }
+  = ExitZero { run: v2.std.orchestration.Run }
   | LogMatches { source: String, pattern: String }
   | StrEq { lhs: String, rhs: String }
   | StrEmpty { operand: String }
@@ -71,7 +71,7 @@ type Procedure {
 }
 
 type PipelineStep
-  = Do { run: Run }
+  = Do { run: v2.std.orchestration.Run }
   | Comment { text: String }
   | Exit { status: String }
   | If { cond: Predicate, then_: Pipeline, else_: Optional<Pipeline> }

@@ -264,7 +264,7 @@ type ValidatedGrammarRoot {
 
 type ParseGrammar
   = VoidGrammar
-  | ModeledGrammar { root: GrammarRoot }
+  | ModeledGrammar { root: v2.std.grammar.GrammarRoot }
 
 type GrammarSchema {
   lex: v2.std.compilers.lexing.LexRules
