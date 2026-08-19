@@ -3,7 +3,6 @@ module gunbc.spark_serving_converge_plan
 import gunbc.spark_serving_observed_members {
   SparkServingObservedMemberProjection,
   SparkServingObservedMembers,
-  SparkServingObservedMembersRefused,
 }
 
 import std.types { String, List, Bool, NonEmptyStr, Int }
@@ -469,8 +468,6 @@ fn spark_serving_full_membership_plan(
   projection: SparkServingObservedMemberProjection,
 ) -> SparkServingFullMembershipPlan {
   match projection {
-    SparkServingObservedMembersRefused { cause: cause } =>
-      SparkServingFullMembershipPlanRefused { cause: cause }
     SparkServingObservedMembers {
       members: observed,
       runtime_observed: runtime_observed,

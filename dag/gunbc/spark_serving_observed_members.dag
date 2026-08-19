@@ -93,7 +93,7 @@ type SparkServingObservedLingerState
 
 type SparkServingObservedMemberProjection
   = SparkServingObservedMembers { members: List<SparkServingMember>, runtime_observed: Bool, model_observed: Bool, unit_observed: Bool, enablement_observed: Bool, linger_observed: Bool }
-  | SparkServingObservedMembersRefused { cause: String }
+
 
 // A member is present in the OBSERVED list only when something was actually observed to be there.
 // Absence from the list is what makes `membership_reconcile` plan an addition, so an unobserved
@@ -220,45 +220,48 @@ fn spark_serving_observed_model_members(
 //
 // `unit_observed` travels beside the members so a consumer can tell a plan built on a complete
 // observation from one built on a partial one, without inferring it from list length.
-// THE TWO REACHED ARMS ARE ONE ARM, and that is the point rather than an accident.
+// MEMBERSHIP TAKES A HOST, NOT A SERVING OBSERVATION, and removing that parameter is the fix.
 //
-// They used to differ: the observed arm added a model member from `loaded.model.identity`. With
-// every member now projected from the evidence for its own address, the serving observation
-// contributes exactly two things to this population -- which host, and whether we reached it --
-// and `SparkServingObserved` versus `SparkServingAbsent` decides nothing here. Keeping them
-// written out separately would have implied a distinction the code no longer makes, and the next
-// reader would look for it.
+// This took the aggregate SparkServingObservation and refused the WHOLE projection on
+// SparkServingObservationRefused. That looked fail-closed and was not: the serving observation is
+// about whether the API answers, and an unavailable API says nothing whatever about bytes on disk.
+// So an inactive unit or an unreachable endpoint erased runtime, model, unit, enablement and linger
+// facts that had each been independently established -- and with the members gone, ordinary
+// reconciliation could not select the start or enable that would have fixed it. The state
 //
-// Note what this does NOT say. Whether a server answers is still a real and necessary fact; it is
-// simply not a fact about membership. It belongs to terminal health -- /api/version agreement,
-// loaded-model agreement, a generation completing -- which is asked after convergence, of the
-// running system, not of the addresses a plan acts on. Conflating the two is what let a running
-// server vouch for bytes on disk in the first place.
+//     resources converged, serving unhealthy
+//
+// is real and common, and it was unrepresentable: the observation that proves it is the one that
+// deleted the evidence.
+//
+// The parameter is gone rather than its refusal arm being softened, and that follows from something
+// already true here: once every member came from the evidence for its own address, the Observed and
+// Absent arms produced identical populations. The observation was contributing exactly one fact --
+// which host -- so it is now asked for exactly that.
+//
+// WHAT STILL REFUSES, because this must not read as removing a wall. Each subject carries its own
+// refusal: an SSH leg that could not run yields RuntimeMaterializationObservationRefused,
+// ModelStoreObservationRefused, or an Unobserved unit/enablement/linger state, and the plan refuses
+// on those. Host unreachability therefore still stops actuation -- through the probes that actually
+// looked, rather than through an API check that never did.
+//
+// Serving health does not disappear; it moves to where it belongs. Whether /api/version agrees,
+// whether the planned model is loaded, whether a generation returns exactly "pong" -- those are
+// terminal evidence asked AFTER the resource plan is empty, of the running system. Conflating them
+// with membership is what let a process vouch for a filesystem, and then veto it.
 fn spark_serving_observed_members(
-  observation: SparkServingObservation,
+  host: HostIdentity,
   runtime: RuntimeMaterializationObservation,
   store: ModelStoreObservation,
   unit: SparkServingObservedUnitState,
   enablement: SparkServingUnitEnablement,
   linger: SparkServingObservedLingerState,
 ) -> SparkServingObservedMemberProjection {
-  match observation {
-    SparkServingObservationRefused { host: h, cause: cause } =>
-      SparkServingObservedMembersRefused {
-        cause: join([
-          "spark serving observed members refused for host=", h as String,
-          ": the observation itself was refused (", cause as String,
-          "), and an observation that could not be made must not be rendered as an empty population",
-        ], ""),
-      }
-    SparkServingAbsent { host: h } => spark_serving_reached_host_members(
-      host: h, runtime: runtime, store: store, unit: unit, enablement: enablement, linger: linger,
-    )
-    SparkServingObserved { host: h, loaded_release: _ } => spark_serving_reached_host_members(
-      host: h, runtime: runtime, store: store, unit: unit, enablement: enablement, linger: linger,
-    )
-  }
+  spark_serving_reached_host_members(
+    host: host, runtime: runtime, store: store, unit: unit, enablement: enablement, linger: linger,
+  )
 }
+
 
 fn spark_serving_reached_host_members(
   host: HostIdentity,
@@ -335,7 +338,6 @@ fn spark_serving_projection_supports_empty_replan(
   projection: SparkServingObservedMemberProjection,
 ) -> Bool {
   match projection {
-    SparkServingObservedMembersRefused { cause: _ } => false
     SparkServingObservedMembers {
       members: _,
       runtime_observed: rt_seen,

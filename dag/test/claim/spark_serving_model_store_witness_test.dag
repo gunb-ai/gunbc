@@ -27,8 +27,6 @@ import gunbc.ollama_runtime_bundle {
 }
 import gunbc.spark_serving_release {
   SparkServingRelease,
-  SparkServingAbsent,
-  SparkServingObservation,
 }
 import gunbc.spark_serving_desired {
   spark_serving_desired_admission,
@@ -39,7 +37,6 @@ import gunbc.spark_serving_observed_members {
   spark_serving_observed_members,
   spark_serving_projection_supports_empty_replan,
   SparkServingObservedMembers,
-  SparkServingObservedMembersRefused,
   UserUnitStateObserved,
   UserUnitEnabled,
   LingerObservedEnabled,
@@ -269,7 +266,7 @@ test fn an_unobserved_store_blocks_the_empty_replan_bar() -> Bool {
     Absent => false
     Present { value: r } => {
       let with_store = spark_serving_observed_members(
-        observation: SparkServingAbsent { host: subject_host },
+        host: subject_host,
         runtime: complete_runtime_stub(),
         store: ModelStoreComplete {
           manifest_identity: serialize_content_hash(hash: r.model.identity) as NonEmptyStr,
@@ -280,7 +277,7 @@ test fn an_unobserved_store_blocks_the_empty_replan_bar() -> Bool {
         linger: LingerObservedEnabled,
       )
       let without = spark_serving_observed_members(
-        observation: SparkServingAbsent { host: subject_host },
+        host: subject_host,
         runtime: complete_runtime_stub(),
         store: ModelStoreObservationRefused { cause: "leg did not run" as NonEmptyStr },
         unit: UserUnitStateObserved { unit_state_digest: "u" as NonEmptyStr },

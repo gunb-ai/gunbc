@@ -29,7 +29,6 @@ import gunbc.spark_serving_converge_plan {
 }
 import gunbc.spark_serving_release {
   SparkServingRelease,
-  SparkServingObserved,
 }
 import gunbc.spark_serving_desired {
   SparkServingDesiredAdmitted,
@@ -183,7 +182,7 @@ fn slice_release() -> SparkServingRelease? {
 
 fn slice_projection_linger(r: SparkServingRelease, linger_enabled: Bool) -> SparkServingObservedMemberProjection {
   spark_serving_observed_members(
-    observation: SparkServingObserved { host: witness_host_srv5 as HostIdentity, loaded_release: r },
+    host: witness_host_srv5 as HostIdentity,
     runtime: RuntimeMaterializationComplete {
       identity: ollama_runtime_materialization_identity_for_required_release(),
     },

@@ -1277,14 +1277,14 @@ fn spark_serving_observe_runtime_materialization(
 // enablement read at another. Two facts about one unit taken from two different observations is not
 // an observation of that unit. This takes the bound pair so the join is structural.
 fn spark_serving_observed_members_for_unit(
-  observation: SparkServingObservation,
+  host: HostIdentity,
   runtime: RuntimeMaterializationObservation,
   store: ModelStoreObservation,
   observed_unit: SparkServingObservedUnit,
   linger: SparkServingObservedLingerState,
 ) -> SparkServingObservedMemberProjection {
   spark_serving_observed_members(
-    observation: observation,
+    host: host,
     runtime: runtime,
     store: store,
     unit: observed_unit.state,
