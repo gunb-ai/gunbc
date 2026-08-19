@@ -1541,16 +1541,6 @@ mod cross_claim_memo_tests {
 struct ParseTableMemo {
     map: HashMap<(String, String, i64, Symbol), Value>,
     keepalive: Vec<Value>,
-    lookups: u64,
-    hits: u64,
-    inserts: u64,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct ParseTableMemoStats {
-    pub lookups: u64,
-    pub hits: u64,
-    pub inserts: u64,
 }
 
 // Recompute-trace ledger (diagnostic READ mode: reports, never gates — DESIGN §5
@@ -2217,15 +2207,6 @@ impl InterpContext {
 
     pub fn interner_stats_snapshot(&self) -> InternStats {
         self.symbols.borrow().stats()
-    }
-
-    pub fn parse_table_memo_stats_snapshot(&self) -> ParseTableMemoStats {
-        let st = self.parse_table_memo.borrow();
-        ParseTableMemoStats {
-            lookups: st.lookups,
-            hits: st.hits,
-            inserts: st.inserts,
-        }
     }
 
     pub fn account_retained_memory(&self, extra_roots: &[&Value]) -> MemoryAccounting {
@@ -5128,10 +5109,8 @@ macro_rules! v1_parse_table_arms {
                     };
                     let allows_memo = parse_table_materialization_allows_memo($ctx, table);
                     let mut st = $ctx.parse_table_memo.borrow_mut();
-                    st.lookups += 1;
                     if allows_memo {
                         if let Some(v) = st.map.get(&memo_key).cloned() {
-                            st.hits += 1;
                             drop(st);
                             record_parse_memo_lookup(&memo_key, true);
                             return Ok(Some(witness_holds(v, $ctx)));
@@ -5156,7 +5135,6 @@ macro_rules! v1_parse_table_arms {
                             st.keepalive.push((*key).clone());
                             st.keepalive.push((*value).clone());
                             st.map.insert(memo_key, (*value).clone());
-                            st.inserts += 1;
                         }
                     }
                     Ok(Some(result))

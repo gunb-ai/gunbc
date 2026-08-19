@@ -1,0 +1,90 @@
+module v2.test.manual.content_hash_named_edge_order
+
+import v2.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Symbol,
+  TypeNode,
+  content_hash,
+  SyntheticOccurrence
+}
+fn content_hash_order_leaf() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^content_hash_order_leaf_sym } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn content_hash_order_conj_ab() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: ^content_hash_order_field_a },
+        target: content_hash_order_leaf()
+      },
+      Edge {
+        label: Named { name: ^content_hash_order_field_b },
+        target: content_hash_order_leaf()
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn content_hash_order_conj_ba() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: ^content_hash_order_field_b },
+        target: content_hash_order_leaf()
+      },
+      Edge {
+        label: Named { name: ^content_hash_order_field_a },
+        target: content_hash_order_leaf()
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+test fn content_hash_named_edge_order_holds() -> Bool {
+  content_hash(n: content_hash_order_conj_ab()) ==
+    content_hash(n: content_hash_order_conj_ba())
+}
+
+fn content_hash_nested_conj_ab() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: ^content_hash_order_field_a },
+        target: content_hash_order_conj_ab()
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn content_hash_nested_conj_ba() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: ^content_hash_order_field_a },
+        target: content_hash_order_conj_ba()
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+test fn content_hash_nested_named_edge_order_holds() -> Bool {
+  content_hash(n: content_hash_nested_conj_ab()) ==
+    content_hash(n: content_hash_nested_conj_ba())
+}
