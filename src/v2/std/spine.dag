@@ -15,7 +15,7 @@ fn int_max(a: Int, b: Int) -> Int {
   if a < b { b } else { a }
 }
 
-fn add_profiles(a: List<Int>, b: List<Int>) -> List<Int> {
+fn add_profiles(a: std.algebra.FreeMonoid<Int>, b: List<Int>) -> List<Int> {
   match a {
     Empty => b
     Cons { head: ha, tail: ta } =>

@@ -70,7 +70,7 @@ fn family_crate_member_digest(member: v2.compiler.emit_module.EmitFamilyMember) 
   inferred_tree_digest(tree: member.tree)
 }
 
-fn family_crate_member_digests(members: List<v2.compiler.emit_module.EmitFamilyMember>) -> List<std.content_hash.Fnv1a64Structural> {
+fn family_crate_member_digests(members: std.algebra.FreeMonoid<v2.compiler.emit_module.EmitFamilyMember>) -> List<std.content_hash.Fnv1a64Structural> {
   match members {
     Empty => []
     Cons { head: m, tail: t } =>

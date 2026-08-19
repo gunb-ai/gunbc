@@ -21,8 +21,8 @@ fn finding_diagnostic(f: Finding) -> v2.std.diagnostic.Diagnostic {
 }
 
 type GateLedger {
-  suspects: List<v2.std.diagnostic.Diagnostic>
-  refusals: List<v2.std.diagnostic.Diagnostic>
+  suspects: std.algebra.FreeMonoid<v2.std.diagnostic.Diagnostic>
+  refusals: std.algebra.FreeMonoid<v2.std.diagnostic.Diagnostic>
 }
 
 fn gate_ledger(findings: List<Finding>) -> GateLedger {

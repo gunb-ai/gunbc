@@ -131,7 +131,7 @@ fn machine_shape_topdown_algebra() -> NodeFoldTopDown<MachineShapeWalkCtx, Machi
   }
 }
 
-fn machine_shape_construction_findings(root: Node) -> List<v2.std.diagnostic.Diagnostic> {
+fn machine_shape_construction_findings(root: Node) -> std.algebra.FreeMonoid<v2.std.diagnostic.Diagnostic> {
   match fold_node_topdown(
     n: root,
     ctx: MachineShapeWalkCtx { module_qn: optional_absent() },

@@ -105,7 +105,7 @@ fn runtime_value_signed_i32_le_as_int(value: v2.std.runtime.RuntimeValue) -> v2.
   }
 }
 
-fn emit_host_list_map<T, U>(xs: List<T>, f: fn(T) -> U) -> List<U> {
+fn emit_host_list_map<T, U>(xs: std.algebra.FreeMonoid<T>, f: fn(T) -> U) -> List<U> {
   match xs {
     Empty => []
     Cons { head: h, tail: t } => concat([f(h)], emit_host_list_map(xs: t, f: f))
@@ -152,7 +152,7 @@ fn empty_argv_lists() -> List<List<String>> {
   []
 }
 
-fn build_invocation_argvs(builds: List<v2.std.host_transport.ProcessInvocation>) -> v2.std.diagnostic.Outcome<List<List<String>>> {
+fn build_invocation_argvs(builds: std.algebra.FreeMonoid<v2.std.host_transport.ProcessInvocation>) -> v2.std.diagnostic.Outcome<List<List<String>>> {
   match builds {
     Empty => v2.std.diagnostic.Accepted { value: empty_argv_lists(), diagnostics: v2.std.diagnostic.None }
     Cons { head: inv, tail: rest } =>
@@ -219,7 +219,7 @@ fn emit_host_workspace_realization_inputs(
 }
 
 fn emit_host_build_realization_inputs(
-  builds: List<List<String>>
+  builds: std.algebra.FreeMonoid<List<String>>
 ) -> List<std.artifact_store.ArtifactRealizationInput> {
   match builds {
     Empty => []

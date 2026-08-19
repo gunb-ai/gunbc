@@ -63,7 +63,7 @@ fn env_bind(env: CostValuationEnv, binding: CostValuationBinding) -> CostValuati
 }
 
 fn lookup_bindings(
-  bindings: List<CostValuationBinding>,
+  bindings: std.algebra.FreeMonoid<CostValuationBinding>,
   variable: SizeVariable
 ) -> Optional<v2.std.nat.Nat> {
   match bindings {

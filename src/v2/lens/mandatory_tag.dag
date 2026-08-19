@@ -58,7 +58,7 @@ fn mandatory_tag_region_applies(region: v2.lens.mandatory_tag.MandatoryTagRegion
     && !mandatory_tag_any_suffix(xs: region.exempt_module_suffixes, dotted: dotted)
 }
 
-fn mandatory_tag_subtree_atoms(n: v2.std.node.Node) -> List<v2.std.node.Symbol> {
+fn mandatory_tag_subtree_atoms(n: v2.std.node.Node) -> std.algebra.FreeMonoid<v2.std.node.Symbol> {
   v2.std.node.fold_node(
     n: n,
     algebra: v2.std.node.NodeFold {
@@ -305,7 +305,7 @@ fn mandatory_tag_type_findings(d: v2.std.node.Node, region: v2.lens.mandatory_ta
   }
 }
 
-fn mandatory_tag_vocabulary_hits(atoms: List<v2.std.node.Symbol>, vocabulary: List<v2.std.node.Symbol>) -> List<v2.std.node.Symbol> {
+fn mandatory_tag_vocabulary_hits(atoms: std.algebra.FreeMonoid<v2.std.node.Symbol>, vocabulary: List<v2.std.node.Symbol>) -> List<v2.std.node.Symbol> {
   fold(atoms, init: [], f: fn(acc, a) {
     if mandatory_tag_symbols_contain(xs: vocabulary, s: a) {
       concat(acc, [a])
@@ -394,7 +394,7 @@ fn mandatory_tag_module_findings(n: v2.std.node.Node) -> List<v2.std.diagnostic.
 }
 
 // A dag_surface_module wrapper whose qualified name cannot be read contributes no region findings here - machine_shape parity, not an absorbing arm: name resolution over the same tree refuses malformed module headers upstream of every root lens, so the nameless-wrapper arm is unreachable on a tree that reached the lens roster; keying region membership on a fabricated name would be the fabricated-plausible-output trap the arm avoids.
-fn mandatory_tag_findings(root: v2.std.node.Node) -> List<v2.std.diagnostic.Diagnostic> {
+fn mandatory_tag_findings(root: v2.std.node.Node) -> std.algebra.FreeMonoid<v2.std.diagnostic.Diagnostic> {
   v2.std.node.fold_node(
     n: root,
     algebra: v2.std.node.NodeFold {

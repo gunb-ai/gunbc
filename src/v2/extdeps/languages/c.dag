@@ -1192,7 +1192,7 @@ fn c_produced_one_param_tokens(edge: v2.std.node.Edge) -> v2.std.diagnostic.Outc
   }
 }
 
-fn c_produced_params_tail_tokens(params: List<v2.std.node.Edge>) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+fn c_produced_params_tail_tokens(params: std.algebra.FreeMonoid<v2.std.node.Edge>) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match params {
     std.algebra.Empty => v2.std.diagnostic.outcome_accepted(value: std.algebra.Empty)
     Cons { head: e, tail: rest } =>
@@ -1215,7 +1215,7 @@ fn c_produced_params_tail_tokens(params: List<v2.std.node.Edge>) -> v2.std.diagn
   }
 }
 
-fn c_produced_params_tokens(params: List<v2.std.node.Edge>) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+fn c_produced_params_tokens(params: std.algebra.FreeMonoid<v2.std.node.Edge>) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match params {
     std.algebra.Empty => v2.std.diagnostic.outcome_accepted(value: std.algebra.Empty)
     Cons { head: e, tail: rest } =>

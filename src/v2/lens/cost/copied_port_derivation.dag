@@ -56,7 +56,7 @@ fn int_list_prepend(item: Int, xs: List<Int>) -> List<Int> {
   std.algebra.Cons { head: item, tail: xs }
 }
 
-fn linear_param_indices(cost: SymbolicCost, params: List<v2.std.node.Node>, idx: Int, acc: List<Int>) -> List<Int> {
+fn linear_param_indices(cost: SymbolicCost, params: std.algebra.FreeMonoid<v2.std.node.Node>, idx: Int, acc: List<Int>) -> List<Int> {
   match params {
     Empty => acc
     Cons { head: param, tail: rest } =>

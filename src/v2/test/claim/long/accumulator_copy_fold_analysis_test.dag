@@ -59,7 +59,7 @@ fn findings_of(source_text: String, file: v2.std.node.Symbol) -> v2.std.optional
   }
 }
 
-fn is_empty_findings(fs: List<v2.lens.complexity_accumulator_copy.Finding>) -> Bool {
+fn is_empty_findings(fs: std.algebra.FreeMonoid<v2.lens.complexity_accumulator_copy.Finding>) -> Bool {
   match fs {
     std.algebra.Empty => true
     Cons { head: _, tail: _ } => false

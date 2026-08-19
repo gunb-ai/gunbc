@@ -119,7 +119,7 @@ fn local_determinism_findings(n: Node) -> List<v2.std.diagnostic.Diagnostic> {
   }
 }
 
-fn determinism_findings(root: Node) -> List<v2.std.diagnostic.Diagnostic> {
+fn determinism_findings(root: Node) -> std.algebra.FreeMonoid<v2.std.diagnostic.Diagnostic> {
   fold_node(
     n: root,
     algebra: v2.std.node.NodeFold {

@@ -50,7 +50,7 @@ fn format_native_agreement_divergence(d: NativeAgreementDivergence) -> String {
 }
 
 fn first_native_agreement_divergence(
-  divergences: List<NativeAgreementDivergence>
+  divergences: std.algebra.FreeMonoid<NativeAgreementDivergence>
 ) -> Optional<NativeAgreementDivergence> {
   match divergences {
     Empty => Absent

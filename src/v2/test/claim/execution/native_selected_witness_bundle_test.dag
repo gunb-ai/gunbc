@@ -263,7 +263,7 @@ fn selected_logic_equivalence_rows(
   plan: std.selected_witness_bundle.SelectedWitnessPlan,
   interpreted: SelectedLogicVerdicts,
   native: SelectedLogicVerdicts
-) -> List<std.selected_witness_bundle.NativeBundleMemberEquivalence> {
+) -> std.algebra.FreeMonoid<std.selected_witness_bundle.NativeBundleMemberEquivalence> {
   let meet_tree = match plan.members {
     Cons { head: NativeSelected { witness: witness, realization: _ }, tail: _ } => witness
     _ => selected_logic_identity(function_name: "meet", tree: family_crate_meet_tree())
