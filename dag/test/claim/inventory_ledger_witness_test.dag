@@ -647,7 +647,7 @@ test fn w_cash_separates_a_real_zero_from_an_unreadable_cost() -> Bool {
   )
   let acquired = match ledger_incremental_purchase_cash(
     lot: unsettled_lot(),
-    events: [LotAcquired { lot: first_lot_identity() }],
+    events: [product.inventory.LotAcquired { lot: first_lot_identity() }],
   ) {
     LandedCostReadingUnsettled => true
     LandedCostReadingMicros { micros: _ } => false

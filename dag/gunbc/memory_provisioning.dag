@@ -1086,8 +1086,8 @@ fn derived_channel_count(dimm_slots_total: std.nat.Nat, dimms_per_channel: std.n
 data asrock_altrad8ud_1l2t_geometry: MemoryChannelGeometry = MemoryChannelGeometry {
   board_label: "ASRock Rack ALTRAD8UD-1L2T",
   channels: derived_channel_count(
-    dimm_slots_total: asrock_altrad8ud_1l2t_mechanical.dimm_slots_total,
-    dimms_per_channel: asrock_altrad8ud_1l2t_mechanical.dimms_per_channel,
+    dimm_slots_total: extdeps.boards.asrock_rack.asrock_altrad8ud_1l2t_mechanical.dimm_slots_total,
+    dimms_per_channel: extdeps.boards.asrock_rack.asrock_altrad8ud_1l2t_mechanical.dimms_per_channel,
   ),
   max_topology: OneDimmPerChannel,
   memory_generation: altra_platform_memory_generation,

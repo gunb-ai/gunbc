@@ -351,9 +351,9 @@ test fn realized_sequence_preserves_frozen_effect_order() -> Bool {
   ) {
     SparkServingInstallRemoteCommandsPresent { operations: ops } =>
       gunbc.remote_operation.remote_operations_argv_only(operations: ops).length() == 2
-        && join(gunbc.remote_operation.remote_operations_argv_only(operations: ops)[0], "\0") == join(["systemctl", "--user", "daemon-reload"], "\0")
-        && join(gunbc.remote_operation.remote_operations_argv_only(operations: ops)[1], "\0")
-          == join(["systemctl", "--user", "enable", "--now", gunbc.spark_serving_unit_identity.spark_serving_unit_name], "\0")
+        && (gunbc.remote_operation.remote_operations_argv_only(operations: ops)[0] |> join(separator: "\0")) == (["systemctl", "--user", "daemon-reload"] |> join(separator: "\0"))
+        && (gunbc.remote_operation.remote_operations_argv_only(operations: ops)[1] |> join(separator: "\0"))
+          == (["systemctl", "--user", "enable", "--now", gunbc.spark_serving_unit_identity.spark_serving_unit_name] |> join(separator: "\0"))
     SparkServingInstallRemoteCommandsRefused { reason: _ } => false
   }
 }

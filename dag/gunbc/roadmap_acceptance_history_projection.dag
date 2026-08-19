@@ -11,7 +11,7 @@ fn project_roadmap_acceptance_event_history_from_authority_text(authority_text: 
   project_roadmap_acceptance_event_history_from_authority_text_host(authority_text: authority_text)
 }
 
-data roadmap_acceptance_history_projection_seed_scaffold: std.disposition.Disposition = Scaffold {
+data roadmap_acceptance_history_projection_seed_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v1_compiler.cli_run",

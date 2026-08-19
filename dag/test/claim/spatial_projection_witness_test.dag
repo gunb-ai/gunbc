@@ -117,14 +117,14 @@ fn scene_of(w: product.spatial_world.World?, kind: std.planar_projection.Project
   }
 }
 
-fn ordered_names(s: product.spatial_projection.ProjectedScene) -> List<String> {
+fn ordered_names(s: product.spatial_projection.ProjectedScene) -> std.algebra.FreeMonoid<String> {
   match painter_order(s: s) {
     SceneRefused { cause: _ } => []
     SceneReady { value: rooms } => fold(rooms, init: [], f: (acc, r) => concat(acc, [(r.identity as String)]))
   }
 }
 
-fn names_are(actual: List<String>, first: String, second: String) -> Bool {
+fn names_are(actual: std.algebra.FreeMonoid<String>, first: String, second: String) -> Bool {
   match actual {
     Empty => false
     Cons { head: a, tail: rest } =>

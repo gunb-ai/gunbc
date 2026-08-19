@@ -36,7 +36,7 @@ fn load_roadmap_acceptance_event_history(path: String) -> RoadmapAcceptanceEvent
   }
 }
 
-data roadmap_acceptance_event_history_jsonl_parser_seed_scaffold: std.disposition.Disposition = Scaffold {
+data roadmap_acceptance_event_history_jsonl_parser_seed_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v1_compiler.cli_run.roadmap_acceptance_history_carrier",
