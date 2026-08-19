@@ -1631,10 +1631,10 @@ fn structured_application_site_type_mismatch(
 // recomputing it. Both formals are carried because the body still needs the unpeeled
 // one for structured_application_lit_is_declared_optional_variant.
 fn structured_application_site_type_mismatch_with_peeled(
-  formal: Node,
-  formal_peeled: Node,
-  actual_expr: Node,
-  scope: InferScope
+  formal: v1.std.core.Node,
+  formal_peeled: v1.std.core.Node,
+  actual_expr: v1.std.core.Node,
+  scope: v1.compiler.infer.InferScope
 ) -> Bool {
   match actual_expr.expr_data {
     ExprRecordLit { parent_enum: _ } =>
@@ -4806,6 +4806,24 @@ fn infer_record_lit(type_name: String?, field_inits: List<v1.std.core.Node>, spa
   }
 }
 
+// The predicate is named rather than written inline because a lambda parameter
+// carries no declared type: bound inside the filter, sf arrived as Unit and
+// neither .inferred nor .body resolved on it. A declared parameter is what gives
+// the field reads a surface.
+fn presence_field_is_missing(
+  sf: v1.std.core.Node,
+  field_inits: List<v1.std.core.Node>,
+  source_indices: Map<String, v1.std.core.NewlineIndex>,
+) -> Bool {
+  let sf_type = match sf.inferred {
+    Present { value: v1.std.core.Resolved { node: rt } } => rt
+    _ => field_node_type_expr(n: sf)
+  }
+  sf_type.return_cardinality != CardOptional
+    && sf.body == none
+    && (field_inits |> any(fi => field_init_node_name_at(n: fi, source_indices: source_indices) == authored_name_at(source_indices: source_indices, node: sf))) == false
+}
+
 fn infer_record_lit_structural(type_name: String?, field_inits: List<v1.std.core.Node>, span: std.types.SourceSpan, name_span: std.types.SourceSpan, scope: v1.compiler.infer.InferScope, expected: v1.std.core.Node?) -> v1.compiler.infer.InferResult {
   let instantiated_struct_fields = record_lit_instantiated_fields(type_name: type_name, expected: expected, scope: scope)
   let expected_struct_fields = if instantiated_struct_fields == none {
@@ -4916,14 +4934,11 @@ fn infer_record_lit_structural(type_name: String?, field_inits: List<v1.std.core
       []
     } else {
       presence_fields
-        |> filter(sf =>
-          let sf_type = match sf.inferred {
-            Present { value: v1.std.core.Resolved { node: rt } } => rt
-            _ => field_node_type_expr(n: sf)
-          }
-          sf_type.return_cardinality != CardOptional
-            && sf.body == none
-            && (field_inits |> any(fi => field_init_node_name_at(n: fi, source_indices: si_presence) == authored_name_at(source_indices: si_presence, node: sf))) == false)
+        |> filter(sf => presence_field_is_missing(
+          sf: sf,
+          field_inits: field_inits,
+          source_indices: si_presence,
+        ))
         |> map(sf => make_error_node(
           diagnostic: v1.std.core.MissingField {
             field: authored_name_at(source_indices: si_presence, node: sf),

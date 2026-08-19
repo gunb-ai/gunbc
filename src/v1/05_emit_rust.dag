@@ -2761,13 +2761,9 @@ fn collect_value_ref_names(n: v1.std.core.Node, source_indices: Map<String, v1.s
     )
   )
   let body_names = match n.body { Present { value: b } => collect_value_ref_names(n: b, source_indices: source_indices, type_summaries: type_summaries, variant_to_enum: variant_to_enum)  Absent => [] }
-  let opt_fields = concat(
-    body_names,
-    concat(
-      match n.transport { Present { value: t } => collect_value_ref_names(n: t, source_indices: source_indices, type_summaries: type_summaries, variant_to_enum: variant_to_enum)  Absent => [] },
-      match n.type_annotation { Present { value: t } => collect_value_ref_names(n: t, source_indices: source_indices, type_summaries: type_summaries, variant_to_enum: variant_to_enum)  Absent => [] }
-    )
-  )
+  let transport_names = match n.transport { Present { value: t } => collect_value_ref_names(n: t, source_indices: source_indices, type_summaries: type_summaries, variant_to_enum: variant_to_enum)  Absent => [] }
+  let annotation_names = match n.type_annotation { Present { value: t } => collect_value_ref_names(n: t, source_indices: source_indices, type_summaries: type_summaries, variant_to_enum: variant_to_enum)  Absent => [] }
+  let opt_fields = concat(body_names, concat(transport_names, annotation_names))
   concat(self_name, concat(list_fields, opt_fields))
 }
 
