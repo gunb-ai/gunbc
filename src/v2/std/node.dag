@@ -29,7 +29,7 @@ fn node_occurrence_id_from_shared(
   match occurrence {
     std.occurrence_identity.OccurrenceSynthetic =>
       SyntheticOccurrence
-    std.occurrence_identity.OccurrenceMinted { id: id } =>
+    OccurrenceMinted { id: id } =>
       MintedOccurrence { id: id }
   }
 }
@@ -767,39 +767,39 @@ fn fold_node_content_hash<R>(n: v2.std.node.Node, algebra: v2.std.node.NodeFold<
 fn canonical_hash_of_connective(c: v2.std.node.Connective) -> std.content_hash.Fnv1a64Structural {
   match c {
     Atom { identity: sym } =>
-      content_hash_combine_structural(
-        left: content_hash_atom(value: ^canonical_tag_atom),
-        right: content_hash_atom(value: sym)
+      std.content_hash.content_hash_combine_structural(
+        left: std.content_hash.content_hash_atom(value: ^canonical_tag_atom),
+        right: std.content_hash.content_hash_atom(value: sym)
       )
-    Conj => content_hash_atom(value: ^canonical_tag_conj)
-    Disj => content_hash_atom(value: ^canonical_tag_disj)
-    Arrow => content_hash_atom(value: ^canonical_tag_arrow)
-    Cardinality => content_hash_atom(value: ^canonical_tag_cardinality)
-    Instantiation => content_hash_atom(value: ^canonical_tag_instantiation)
+    Conj => std.content_hash.content_hash_atom(value: ^canonical_tag_conj)
+    Disj => std.content_hash.content_hash_atom(value: ^canonical_tag_disj)
+    Arrow => std.content_hash.content_hash_atom(value: ^canonical_tag_arrow)
+    Cardinality => std.content_hash.content_hash_atom(value: ^canonical_tag_cardinality)
+    Instantiation => std.content_hash.content_hash_atom(value: ^canonical_tag_instantiation)
   }
 }
 
 fn canonical_hash_of_behavior(b: v2.std.node.Behavior) -> std.content_hash.Fnv1a64Structural {
   match b {
-    Value => content_hash_atom(value: ^canonical_tag_value)
-    Transform => content_hash_atom(value: ^canonical_tag_transform)
-    Branch => content_hash_atom(value: ^canonical_tag_branch)
-    Loop => content_hash_atom(value: ^canonical_tag_loop)
-    Bind => content_hash_atom(value: ^canonical_tag_bind)
-    Match => content_hash_atom(value: ^canonical_tag_match)
+    Value => std.content_hash.content_hash_atom(value: ^canonical_tag_value)
+    Transform => std.content_hash.content_hash_atom(value: ^canonical_tag_transform)
+    Branch => std.content_hash.content_hash_atom(value: ^canonical_tag_branch)
+    Loop => std.content_hash.content_hash_atom(value: ^canonical_tag_loop)
+    Bind => std.content_hash.content_hash_atom(value: ^canonical_tag_bind)
+    Match => std.content_hash.content_hash_atom(value: ^canonical_tag_match)
   }
 }
 
 fn canonical_hash_of_node_kind(kind: v2.std.node.NodeKind) -> std.content_hash.Fnv1a64Structural {
   match kind {
     TypeNode { connective: c } =>
-      content_hash_combine_structural(
-        left: content_hash_atom(value: ^canonical_tag_type_node),
+      std.content_hash.content_hash_combine_structural(
+        left: std.content_hash.content_hash_atom(value: ^canonical_tag_type_node),
         right: canonical_hash_of_connective(c: c)
       )
     ComputationNode { behavior: b } =>
-      content_hash_combine_structural(
-        left: content_hash_atom(value: ^canonical_tag_computation_node),
+      std.content_hash.content_hash_combine_structural(
+        left: std.content_hash.content_hash_atom(value: ^canonical_tag_computation_node),
         right: canonical_hash_of_behavior(b: b)
       )
   }
@@ -808,20 +808,20 @@ fn canonical_hash_of_node_kind(kind: v2.std.node.NodeKind) -> std.content_hash.F
 fn canonical_hash_of_edge_label(label: v2.std.node.EdgeLabel) -> std.content_hash.Fnv1a64Structural {
   match label {
     Named { name: sym } =>
-      content_hash_combine_structural(
-        left: content_hash_atom(value: ^canonical_tag_named_edge),
-        right: content_hash_atom(value: sym)
+      std.content_hash.content_hash_combine_structural(
+        left: std.content_hash.content_hash_atom(value: ^canonical_tag_named_edge),
+        right: std.content_hash.content_hash_atom(value: sym)
       )
-    Positional => content_hash_atom(value: ^canonical_tag_positional_edge)
+    Positional => std.content_hash.content_hash_atom(value: ^canonical_tag_positional_edge)
   }
 }
 
 fn combine_hash(a: std.content_hash.Fnv1a64Structural, b: std.content_hash.Fnv1a64Structural) -> std.content_hash.Fnv1a64Structural {
-  content_hash_combine_structural(left: a, right: b)
+  std.content_hash.content_hash_combine_structural(left: a, right: b)
 }
 
 fn symbol_identity_digest(sym: v2.std.node.Symbol) -> v2.std.node.Hash {
-  content_hash_atom(value: sym)
+  std.content_hash.content_hash_atom(value: sym)
 }
 
 data byte_offset_residual_quotient_magnitude_shift_limbs: Int = 4
@@ -852,15 +852,15 @@ type ByteOffsetCacheKey
 
 fn byte_limb_hash_peano_digest(limb: Int) -> std.content_hash.Fnv1a64Structural {
   if limb < 0 || limb > 255 {
-    content_hash_atom(value: ^canonical_tag_byte_limb_out_of_range)
+    std.content_hash.content_hash_atom(value: ^canonical_tag_byte_limb_out_of_range)
   } else if limb == 0 {
-    content_hash_atom(value: ^canonical_tag_scalar_int_zero)
+    std.content_hash.content_hash_atom(value: ^canonical_tag_scalar_int_zero)
   } else {
     if limb == 1 {
-      content_hash_atom(value: ^canonical_tag_scalar_int_one)
+      std.content_hash.content_hash_atom(value: ^canonical_tag_scalar_int_one)
     } else {
       combine_hash(
-        a: content_hash_atom(value: ^canonical_tag_scalar_int_succ),
+        a: std.content_hash.content_hash_atom(value: ^canonical_tag_scalar_int_succ),
         b: byte_limb_hash_peano_digest(limb: limb - 1)
       )
     }
@@ -869,7 +869,7 @@ fn byte_limb_hash_peano_digest(limb: Int) -> std.content_hash.Fnv1a64Structural 
 
 fn byte_offset_byte_digest(b: Int) -> std.content_hash.Fnv1a64Structural {
   combine_hash(
-    a: content_hash_atom(value: ^canonical_tag_byte_offset_byte),
+    a: std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_byte),
     b: byte_limb_hash_peano_digest(limb: b)
   )
 }
@@ -900,7 +900,7 @@ fn byte_offset_residual_quotient_magnitude_window_digest(quotient: Int, shift_st
 fn byte_offset_residual_quotient_limb_pair_digest(quotient: Int) -> std.content_hash.Fnv1a64Structural {
   if quotient < 256 * 256 {
     combine_hash(
-      a: content_hash_atom(value: ^canonical_tag_byte_offset_residual_quotient_limb_pair),
+      a: std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_residual_quotient_limb_pair),
       b: combine_hash(
         a: byte_offset_byte_digest(b: quotient - (quotient / 256) * 256),
         b: byte_offset_byte_digest(b: quotient / 256)
@@ -908,7 +908,7 @@ fn byte_offset_residual_quotient_limb_pair_digest(quotient: Int) -> std.content_
     )
   } else {
     combine_hash(
-      a: content_hash_atom(value: ^canonical_tag_byte_offset_overflow_residual_discarded_high_truncated),
+      a: std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_overflow_residual_discarded_high_truncated),
       b: combine_hash(
         a: byte_offset_byte_digest(b: quotient - (quotient / 256) * 256),
         b: byte_offset_byte_digest(b: (quotient / 256) - (quotient / 65536) * 256)
@@ -919,7 +919,7 @@ fn byte_offset_residual_quotient_limb_pair_digest(quotient: Int) -> std.content_
 
 fn byte_offset_residual_quotient_magnitude_digest(quotient: Int) -> std.content_hash.Fnv1a64Structural {
   combine_hash(
-    a: content_hash_atom(value: ^canonical_tag_byte_offset_residual_quotient_magnitude),
+    a: std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_residual_quotient_magnitude),
     b: combine_hash(
       a: byte_offset_residual_quotient_magnitude_window_digest(quotient: quotient, shift_steps: 0),
       b: combine_hash(
@@ -954,10 +954,10 @@ fn byte_offset_residual_quotient_magnitude_digest(quotient: Int) -> std.content_
 fn byte_offset_overflow_quotient_high_band_terminal_digest(quotient: Int, limbs_remaining: Int) -> std.content_hash.Fnv1a64Structural {
   if limbs_remaining == 0 {
     if quotient == 0 {
-      content_hash_atom(value: ^canonical_tag_byte_offset_zero)
+      std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_zero)
     } else if quotient < 256 * 256 {
       combine_hash(
-        a: content_hash_atom(value: ^canonical_tag_byte_offset_overflow_peel_exhausted),
+        a: std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_overflow_peel_exhausted),
         b: combine_hash(
           a: byte_offset_byte_digest(b: quotient - (quotient / 256) * 256),
           b: byte_offset_byte_digest(b: quotient / 256)
@@ -967,7 +967,7 @@ fn byte_offset_overflow_quotient_high_band_terminal_digest(quotient: Int, limbs_
       byte_offset_residual_quotient_limb_pair_digest(quotient: quotient)
     }
   } else if quotient == 0 {
-    content_hash_atom(value: ^canonical_tag_byte_offset_zero)
+    std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_zero)
   } else {
     combine_hash(
       a: byte_offset_byte_digest(b: quotient - (quotient / 256) * 256),
@@ -982,10 +982,10 @@ fn byte_offset_overflow_quotient_high_band_terminal_digest(quotient: Int, limbs_
 fn byte_offset_overflow_quotient_high_band_digest(quotient: Int, limbs_remaining: Int) -> std.content_hash.Fnv1a64Structural {
   if limbs_remaining == 0 {
     if quotient == 0 {
-      content_hash_atom(value: ^canonical_tag_byte_offset_zero)
+      std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_zero)
     } else if quotient < 256 * 256 {
       combine_hash(
-        a: content_hash_atom(value: ^canonical_tag_byte_offset_overflow_peel_exhausted),
+        a: std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_overflow_peel_exhausted),
         b: combine_hash(
           a: byte_offset_byte_digest(b: quotient - (quotient / 256) * 256),
           b: byte_offset_byte_digest(b: quotient / 256)
@@ -998,7 +998,7 @@ fn byte_offset_overflow_quotient_high_band_digest(quotient: Int, limbs_remaining
       )
     }
   } else if quotient == 0 {
-    content_hash_atom(value: ^canonical_tag_byte_offset_zero)
+    std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_zero)
   } else {
     combine_hash(
       a: byte_offset_byte_digest(b: quotient - (quotient / 256) * 256),
@@ -1012,10 +1012,10 @@ fn byte_offset_overflow_quotient_high_band_digest(quotient: Int, limbs_remaining
 
 fn byte_offset_overflow_residual_discarded_high_digest(quotient: Int) -> std.content_hash.Fnv1a64Structural {
   if quotient < 65536 {
-    content_hash_atom(value: ^canonical_tag_byte_offset_overflow_residual_discarded_high_zero)
+    std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_overflow_residual_discarded_high_zero)
   } else {
     combine_hash(
-      a: content_hash_atom(value: ^canonical_tag_byte_offset_overflow_residual_discarded_high_band),
+      a: std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_overflow_residual_discarded_high_band),
       b: byte_offset_overflow_quotient_high_band_digest(
         quotient: quotient / 65536,
         limbs_remaining: byte_offset_cache_digest_overflow_limbs
@@ -1053,10 +1053,10 @@ fn byte_offset_cache_digest_ineligible_hash(
   boundary_tag: v2.std.node.Symbol
 ) -> std.content_hash.Fnv1a64Structural {
   combine_hash(
-    a: content_hash_atom(value: ^canonical_tag_byte_offset_cache_digest_ineligible),
+    a: std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_cache_digest_ineligible),
     b: combine_hash(
       a: within_ceiling_digest,
-      b: content_hash_atom(value: boundary_tag)
+      b: std.content_hash.content_hash_atom(value: boundary_tag)
     )
   )
 }
@@ -1068,12 +1068,12 @@ fn byte_offset_cache_digest_overflow_quotient_peel_bounded_authority(
   if limbs_remaining == 0 {
     if quotient == 0 {
       ByteOffsetWithinCeiling {
-        digest: content_hash_atom(value: ^canonical_tag_byte_offset_zero)
+        digest: std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_zero)
       }
     } else if quotient < 256 * 256 {
       ByteOffsetWithinCeiling {
         digest: combine_hash(
-          a: content_hash_atom(value: ^canonical_tag_byte_offset_overflow_peel_exhausted),
+          a: std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_overflow_peel_exhausted),
           b: combine_hash(
             a: byte_offset_byte_digest(b: quotient - (quotient / 256) * 256),
             b: byte_offset_byte_digest(b: quotient / 256)
@@ -1083,7 +1083,7 @@ fn byte_offset_cache_digest_overflow_quotient_peel_bounded_authority(
     } else {
       ByteOffsetCacheDigestIneligible {
         within_ceiling_digest: combine_hash(
-          a: content_hash_atom(value: ^canonical_tag_byte_offset_overflow_peel_exhausted),
+          a: std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_overflow_peel_exhausted),
           b: combine_hash(
             a: byte_offset_byte_digest(b: quotient - (quotient / 256) * 256),
             b: byte_offset_byte_digest(b: (quotient / 256) - (quotient / 65536) * 256)
@@ -1095,7 +1095,7 @@ fn byte_offset_cache_digest_overflow_quotient_peel_bounded_authority(
     }
   } else if quotient == 0 {
     ByteOffsetWithinCeiling {
-      digest: content_hash_atom(value: ^canonical_tag_byte_offset_zero)
+      digest: std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_zero)
     }
   } else {
     match byte_offset_cache_digest_overflow_quotient_peel_bounded_authority(
@@ -1234,7 +1234,7 @@ fn byte_offset_cache_key_from_authority(auth: v2.std.node.ByteOffsetCacheDigestA
         ByteOffsetWithinCeiling { digest: tail_digest } =>
           ByteOffsetCacheEligible {
             digest: combine_hash(
-              a: content_hash_atom(value: ^canonical_tag_byte_offset_out_of_ceiling),
+              a: std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_out_of_ceiling),
               b: combine_hash(
                 a: within_ceiling_digest,
                 b: tail_digest
@@ -1267,17 +1267,17 @@ fn byte_offset_cache_digest_nonneg_bounded_authority(
   if limbs_remaining == 0 {
     if i == 0 {
       ByteOffsetWithinCeiling {
-        digest: content_hash_atom(value: ^canonical_tag_byte_offset_zero)
+        digest: std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_zero)
       }
     } else {
       ByteOffsetOverCeiling {
-        within_ceiling_digest: content_hash_atom(value: ^canonical_tag_byte_offset_zero),
+        within_ceiling_digest: std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_zero),
         quotient: i
       }
     }
   } else if i == 0 {
     ByteOffsetWithinCeiling {
-      digest: content_hash_atom(value: ^canonical_tag_byte_offset_zero)
+      digest: std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_zero)
     }
   } else {
     match byte_offset_cache_digest_nonneg_bounded_authority(
@@ -1332,7 +1332,7 @@ fn byte_offset_cache_digest_authority(i: Int) -> v2.std.node.ByteOffsetCacheDige
       ByteOffsetWithinCeiling { digest: digest } =>
         ByteOffsetWithinCeiling {
           digest: combine_hash(
-            a: content_hash_atom(value: ^canonical_tag_byte_offset_neg),
+            a: std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_neg),
             b: digest
           )
         }
@@ -1342,7 +1342,7 @@ fn byte_offset_cache_digest_authority(i: Int) -> v2.std.node.ByteOffsetCacheDige
       } =>
         ByteOffsetOverCeiling {
           within_ceiling_digest: combine_hash(
-            a: content_hash_atom(value: ^canonical_tag_byte_offset_neg),
+            a: std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_neg),
             b: within_ceiling_digest
           ),
           quotient: quotient
@@ -1354,7 +1354,7 @@ fn byte_offset_cache_digest_authority(i: Int) -> v2.std.node.ByteOffsetCacheDige
       } =>
         ByteOffsetCacheDigestIneligible {
           within_ceiling_digest: combine_hash(
-            a: content_hash_atom(value: ^canonical_tag_byte_offset_neg),
+            a: std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_neg),
             b: within_ceiling_digest
           ),
           boundary_tag: boundary_tag,
@@ -1549,7 +1549,7 @@ fn byte_offset_cache_key_fingerprint(key: v2.std.node.ByteOffsetCacheKey) -> v2.
   match key {
     ByteOffsetCacheEligible { digest: digest } =>
       combine_hash(
-        a: content_hash_atom(value: ^canonical_tag_byte_offset_cache_key_eligible),
+        a: std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_cache_key_eligible),
         b: digest
       )
     ByteOffsetCacheIneligible {
@@ -1557,9 +1557,9 @@ fn byte_offset_cache_key_fingerprint(key: v2.std.node.ByteOffsetCacheKey) -> v2.
       witness: witness
     } =>
       combine_hash(
-        a: content_hash_atom(value: ^canonical_tag_byte_offset_cache_key_ineligible),
+        a: std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_cache_key_ineligible),
         b: combine_hash(
-          a: content_hash_atom(value: boundary_tag),
+          a: std.content_hash.content_hash_atom(value: boundary_tag),
           b: witness
         )
       )
@@ -1609,4 +1609,4 @@ type Diff {
   edits: List<v2.std.node.Edit>
 }
 
-data node_occurrence_id_v2_facade_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: the counted v2.std.node imports of NodeOccurrenceId, SyntheticOccurrence, and MintedOccurrence reach zero after the bounded v2 import migration; then delete this compatibility coproduct and its two conversions.")
+data node_occurrence_id_v2_facade_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "DISSOLVE-ON: the counted v2.std.node imports of NodeOccurrenceId, SyntheticOccurrence, and MintedOccurrence reach zero after the bounded v2 import migration; then delete this compatibility coproduct and its two conversions.")

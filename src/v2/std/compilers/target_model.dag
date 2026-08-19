@@ -458,7 +458,7 @@ fn fixed_token_spelling_from_model(
     o: lex_rules_literal_for_class(rules: target.lex, token_class: token_class),
     f: fn(spelling) {
       match v2.std.collection.map_get(target.token_class_emit_transforms, token_class) {
-        v2.std.diagnostic.Accepted { value: Present { value: transform }, diagnostics: d } =>
+        Accepted { value: Present { value: transform }, diagnostics: d } =>
           outcome_with_diagnostics(
             value: apply_emit_spelling_transform(transform: transform, spelling: spelling),
             diagnostics: d
@@ -480,7 +480,7 @@ fn bound_token_spelling_from_model(
     o: target_binding_spelling_lookup(target: target, binding: binding),
     f: fn(spelling) {
       match v2.std.collection.map_get(target.token_class_emit_transforms, token_class) {
-        v2.std.diagnostic.Accepted { value: Present { value: transform }, diagnostics: d } =>
+        Accepted { value: Present { value: transform }, diagnostics: d } =>
           outcome_with_diagnostics(
             value: apply_emit_spelling_transform(transform: transform, spelling: spelling),
             diagnostics: d
@@ -12506,7 +12506,7 @@ fn target_value_expr_branch_bool_gate(
 
 data target_value_expr_int_literal_predicate_dissolution_note: String = "See target_value_expr_int_literal_predicate_dissolution_note_dissolve_on for the lifecycle condition this row's rationale accompanies."
 
-data target_value_expr_int_literal_predicate_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: target_value_expr_is_int_literal_atom and target_value_expr_int_literal_magnitude_node_optional duplicate dag_node_is_int_literal_atom / dag_int_literal_magnitude_node_optional in extdeps/languages/dag.dag — std/compilers cannot import extdeps (layer DAG); DISSOLVES WHEN int-literal atom predicates live in std as single authority both compiler and extdeps import.")
+data target_value_expr_int_literal_predicate_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: target_value_expr_is_int_literal_atom and target_value_expr_int_literal_magnitude_node_optional duplicate dag_node_is_int_literal_atom / dag_int_literal_magnitude_node_optional in extdeps/languages/dag.dag — std/compilers cannot import extdeps (layer DAG); DISSOLVES WHEN int-literal atom predicates live in std as single authority both compiler and extdeps import.")
 
 fn target_value_expr_is_int_literal_atom(node: v2.std.node.Node) -> Bool {
   match node.kind {
@@ -13514,4 +13514,4 @@ fn target_project_arrow_body_to_value_expression(
   }
 }
 
-data target_value_expr_int_bool_octet_channel_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "the modeled octet-to-bool codec authority is inhabited over the \{0,1} domain (NOT general nonzero), at which point this inline `x != 0` scrutinee staging bridge at the match seam grounds on it and deletes")
+data target_value_expr_int_bool_octet_channel_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "the modeled octet-to-bool codec authority is inhabited over the \{0,1} domain (NOT general nonzero), at which point this inline `x != 0` scrutinee staging bridge at the match seam grounds on it and deletes")
