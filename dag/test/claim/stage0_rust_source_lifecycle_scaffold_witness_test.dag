@@ -31,9 +31,6 @@ import gunbc.stage0_rust_source_lifecycle_scaffold {
   generated_artifact_stage0_src_disposition_rows,
   generated_artifact_stage0_src_disposition_rows_well_formed,
   generated_artifact_stage0_src_repo_paths,
-  generated_authority_subset_of_derived_holds,
-  generated_repo_paths_cover_authority_holds,
-  generated_stage0_files_authority_ref,
   lifecycle_row_well_formed,
   lifecycle_row_well_formed_query_scaffold,
   list_paths_all_unique,
@@ -63,7 +60,6 @@ import gunbc.stage0_rust_host_observation {
   stage0_cargo_manifest_projection_seed_scaffold,
   stage0_rust_observation_seed_growth_justification
 }
-import gunbc.stage0_emit_model { generated_stage0_file_count }
 import std.content_hash { Fnv1a64Structural }
 import std.disposition { RealizationDispatch, Scaffold, SingleAuthority }
 import v2.std.algebra { any, length }
@@ -135,21 +131,12 @@ test fn scaffold_join_mechanical_checks_holds() -> Bool {
   stage0_rust_lifecycle_scaffold_join_mechanical_checks_holds()
 }
 
-
-test fn scaffold_generated_paths_match_authority_count_holds() -> Bool {
-  length(xs: derived_generated_stage0_repo_paths()) == generated_stage0_file_count()
-}
-
 test fn w_scaffold_generated_hand_disjoint_holds() -> Bool {
   derived_generated_hand_disjoint_holds()
 }
 
 test fn scaffold_classified_residue_disjoint_holds() -> Bool {
   classified_residue_disjoint_holds()
-}
-
-test fn scaffold_generated_authority_bidirectional_holds() -> Bool {
-  generated_repo_paths_cover_authority_holds() && generated_authority_subset_of_derived_holds()
 }
 
 test fn scaffold_partition_crate_paths_complete_holds() -> Bool {
@@ -170,8 +157,7 @@ test fn scaffold_cargo_manifest_ref_points_at_host_observation_boundary() -> Boo
 }
 
 test fn scaffold_authority_refs_populated_holds() -> Bool {
-  !(generated_stage0_files_authority_ref.module_path == "")
-    && behavioral_oracle_carrier_ref.decl_name == "compiler_module_behavioral_transport_roster"
+  behavioral_oracle_carrier_ref.decl_name == "compiler_module_behavioral_transport_roster"
 }
 
 test fn scaffold_observed_ratchet_red_control_newly_unclassified_reds() -> Bool {

@@ -606,8 +606,6 @@ fn builtin_registry_surface_names() -> List<String> {
     "witness_layer_roots_compile_clean_emit_check",
     "consume_floor_compile_clean_gate_verdict",
     "consume_floor_compile_clean_gate_failure_detail",
-    "record_regen_verify_gate_failure_detail",
-    "consume_regen_verify_gate_failure_detail",
     "record_generated_artifact_drift_gate_failure_detail",
     "consume_generated_artifact_drift_gate_failure_detail",
     "witness_compile_clean_cli_floor_verdicts_agree",
