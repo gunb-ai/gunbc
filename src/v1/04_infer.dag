@@ -3165,6 +3165,14 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
   )
 }
 
+// Interim classification standing in for a per-method parameter contract
+// that does not yet exist anywhere in the tree (the corpus run this fix
+// shipped with found no such authority to cite). The terminal shape is one
+// authority naming each builtin method's parameter shape once -- arity,
+// per-position type -- which this function and every other consumer reads,
+// replacing this inline name list. Dissolves when that authority lands and
+// this match is rewritten to look each method up in it instead of naming
+// five methods by string.
 fn scalar_shaped_builtin_method_arg_type(method_name: String?) -> Node? {
   match method_name {
     Present { value: mn } =>
@@ -3177,9 +3185,6 @@ fn scalar_shaped_builtin_method_arg_type(method_name: String?) -> Node? {
   }
 }
 
-// defaulting to element_type, so the corpus run enumerates every non-lambda
-// builtin-method-call argument this bridge currently mistypes -- the
-// above). Separating the two populations is the point of the run.
 fn unclassified_method_arg_refusal(method_name: String?, arg: Node, scope: InferScope) -> ArgInferResult {
   let mn = match method_name {
     Present { value: v } => v
