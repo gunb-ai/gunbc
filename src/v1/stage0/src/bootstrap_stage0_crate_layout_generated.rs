@@ -26,7 +26,6 @@ pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "v2_compiler_discovery_enumeration.rs",
     "v2_compiler_parse_engine_hooks.rs",
     "v2_compiler_use_site_verdict.rs",
-    "expected_red_roster_join.rs",
     "required_regen_host.rs",
     "bootstrap_stage0_crate_layout_generated.rs",
     "cssl_seed_linked_closure_assembly.rs",

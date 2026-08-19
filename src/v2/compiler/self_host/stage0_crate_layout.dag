@@ -56,7 +56,6 @@ data seed_retained_intrinsic_registrations: List<SeedRetainedIntrinsicRegistrati
   SeedRetainedIntrinsicRegistration { basename: "v2_compiler_discovery_enumeration", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "v2_compiler_parse_engine_hooks", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "v2_compiler_use_site_verdict", has_pub_mod: false, is_dir: false },
-  SeedRetainedIntrinsicRegistration { basename: "expected_red_roster_join", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "required_regen_host", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "bootstrap_stage0_crate_layout_generated", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "cssl_seed_linked_closure_assembly", has_pub_mod: false, is_dir: false },
