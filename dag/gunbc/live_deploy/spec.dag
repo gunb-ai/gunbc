@@ -1,7 +1,5 @@
 module gunbc.live_deploy.spec
 
-
-
 data live_deploy_spec_belt_b_note: String = "Belt B membership (docs/plans/gunbc-served-dashboard-design.md section 5): the service is `gunbc serve` (the seed binary), not an emitted node server.js, so the members flip — ServeBinary + GunbcSourceTree + DispatchWorktreeRoot in (paths from the ONE gunbc.host_layout authority the belt also projects), ServerScript and the NodeJsPackage dependency out (the Ensured nodejs is never torn down — R5; the stale /opt/gunbc/server.js file is left inert on disk and reaped when belt A's interim retires). Deploy principal is ghrunner (DeployRunnerPrincipal.job_user; unit_user=root is NOT the authorization principal). #7011 realization: tree sync AS service user via gunbc-tree-sync.service; six roster sudo grants (Wave C adds visudo for dropin gate). Wave C envelope: in-script preflight + roster-emitted sudoers dropin (gunbc.live_deploy.emit deploy_apply_preamble_shell)."
 
 data gunbc_service_user: std.types.NonEmptyStr = "briansrls"
@@ -149,7 +147,7 @@ fn dashboard_serve_wall_limit() -> std.evaluation_budget.EvaluationLimit {
   std.evaluation_budget.LimitSet { limit: std.measure.positive_millisecond(count: std.measure.positive_measure_count(predecessor: 29999)) }
 }
 
-data deployment_spec_carries_no_release_note: String = "THE SPEC ANSWERS WHERE, THE CANDIDATE ANSWERS WHAT, AND THE FIELD THAT FUSED THEM IS GONE. DeploymentServiceConfig briefly carried release_revision, which put a per-invocation fact inside the slot topology — and the tell was visible on the retract path: a retract installs no release, yet it had to construct a gunbc.live_deploy.spec.DeploymentSpec and therefore had to name a revision it never read. A field that is meaningful on one path and merely along for the ride on another is not a model of either.\\n\\nEvery field that remains here is stable across deploys of this slot: which unit name, which binary, which handler, which root, which principal, which port. Deploying blue twice at two different commits produces the SAME DeploymentServiceConfig both times, which is what makes it a topology rather than a log.\\n\\nThe launch identity now travels beside the spec as gunbc.live_deploy.emit ReleaseRevisionBinding, supplied at the apply seam and read only where ExecStart is rendered. The retract fold passes RevisionNotInstalled and can therefore not name a revision even by accident — the arm that would render one refuses loudly instead of emitting a plausible line."
+data deployment_spec_carries_no_release_note: String = "THE SPEC ANSWERS WHERE, THE CANDIDATE ANSWERS WHAT, AND THE FIELD THAT FUSED THEM IS GONE. DeploymentServiceConfig briefly carried release_revision, which put a per-invocation fact inside the slot topology — and the tell was visible on the retract path: a retract installs no release, yet it had to construct a DeploymentSpec and therefore had to name a revision it never read. A field that is meaningful on one path and merely along for the ride on another is not a model of either.\\n\\nEvery field that remains here is stable across deploys of this slot: which unit name, which binary, which handler, which root, which principal, which port. Deploying blue twice at two different commits produces the SAME DeploymentServiceConfig both times, which is what makes it a topology rather than a log.\\n\\nThe launch identity now travels beside the spec as gunbc.live_deploy.emit ReleaseRevisionBinding, supplied at the apply seam and read only where ExecStart is rendered. The retract fold passes RevisionNotInstalled and can therefore not name a revision even by accident — the arm that would render one refuses loudly instead of emitting a plausible line."
 
 data deployment_placement_axis_note: String = "A DEPLOYMENT IS (WHAT × WHERE), AND THIS MODULE USED TO FUSE THEM. deployment_owned_steps and deployment_service_config were NULLARY — zero arguments — so they returned THE deployment rather than A deployment, and gunbc_roadmap_unit_name was a single value naming the only unit that could ever exist. The consequence is sharper than 'srv1 is hardcoded': a second deployment was not hard to add, it was UNEXPRESSIBLE. A twin on srv1 would have collided on the unit name, the unit path, the binary path, the repo root and port 8080, every one of them a lone data row.\\n\\nThat framing hid the real axis. Host is not what varies — INSTANCE is, and host is one of its fields. Deploying twice on one machine and once on each of two machines are the same operation with different arguments, and any model where the first is impossible has picked the wrong parameter.\\n\\nThe correct placement model already existed and this module referenced it zero times. HostDashboardInstance carries instance_root, repo_root, serve_binary, dispatch_worktree_root, listen_host, listen_port, serve_function and instance_id, and it already proves the point: srv1_live on 8080 and srv1_lab on 18081 are two instances on ONE host with disjoint roots and distinct named tmux servers. So this is a de-fork onto an existing authority, not new modeling — two placement models existed, one was right, and the deploy path consumed neither.\\n\\nUnit and tailscale-mapping names travel together as DeploymentNames, supplied by the caller. deployment_unit_naming_note explains why they are passed rather than derived, and why that is a deliberate stop short of the stronger model rather than the model itself."
 
@@ -247,7 +245,7 @@ fn deployment_fleet_converge_timer_unit_path(names: DeploymentNames) -> std.type
   join(["/etc/systemd/system/", deployment_fleet_converge_timer_unit_name(names: names) as String], "") as std.types.NonEmptyStr
 }
 
-data tailscale_default_https_port: std.types.Port = 443
+data tailscale_default_https_port: Port = 443
 
 data derived_mount_is_the_instance_namespace_note: String = "THE MOUNT PATH IS NAMESPACED BY instance_id, which is the same axis that already namespaces the instance root, the repo root, the serve binary, the listen port, the worktree root, the unit name and the tmux session. The twin's endpoint is /srv1-lab because the twin IS srv1-lab, so two instances cannot produce one endpoint without sharing an identity the instance registry already forbids — the collision is unwritable rather than merely witnessed (operator: use literal namespacing in the repo, 2026-07-30).\\n\\nHand-picking a mount would have re-created the defect this replaces. tailscale_serve_path was hand-picked too, and being distinct is precisely what it was: distinct, unconsumed, and unrelated to the thing tailscale keys on. A second hand-picked string differs only in being the right KIND of string, and the next instance would re-litigate it.\\n\\nDISSOLVES ON the containment tree becoming the naming authority (namespace-only resolution): instance_id is itself a flat identifier, so this derivation is namespacing by string prefix where namespacing by position is the end state. The mount then projects from the instance's position rather than from its name, and this function stops spelling a separator."
 
@@ -282,22 +280,6 @@ fn srv1_live_deployment_names(instance: gunbc.roadmap_dashboard_instance.HostDas
   }
 }
 
-data srv1_green_deployment_names_note: String = "The green slot owns distinct unit and tree-sync names, but it deliberately shares production's ROOT Tailscale endpoint. Endpoint identity excludes backend (extdeps.tailscale.serve): changing 8080 to 18080 is a re-point of one owned route, not a second route. That distinction is load-bearing for blue/green — the candidate footprint stays invisible until readiness proves THIS tree, then one scoped endpoint replay performs the cutover."
-
-fn srv1_green_deployment_names(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> DeploymentNames {
-  let derived = derived_deployment_names(instance: instance)
-  DeploymentNames {
-    unit_name: derived.unit_name,
-    tailscale_serve_endpoint: extdeps.tailscale.serve.TailscaleServeEndpoint {
-      https_port: tailscale_default_https_port,
-      mount: extdeps.tailscale.serve.ServeRootMount,
-      backend: to_string(instance.listen_port) as std.types.NonEmptyStr,
-    },
-    tree_sync_unit_name: derived.tree_sync_unit_name,
-    tree_sync_env_path: derived.tree_sync_env_path,
-  }
-}
-
 data gunbc_tree_sync_note: String = "gunbc-tree-sync.service is the GunbcSourceTree member's sync TRANSPORT, not an independent member: a oneshot unit running AS the service user (the tree's owner writes its own tree — ownership by construction, no chown), installed/started by the deploy through the granted install+systemctl channel because the ci-runner principal holds no rsync grant and no write access to the service-user-owned tree (emit_deploy_principal_note). Its EnvironmentFile carries the runner checkout path (varies per runner slot), written by the apply at run time. Both files are owned host state and are torn down with the tree in the GunbcSourceTree teardown arm."
 data tree_sync_was_a_host_singleton_note: String = "THE SYNC TRANSPORT WAS ONE SET OF FILES FOR THE WHOLE HOST, and it never appeared in the five-member footprint the twin witness compares. gunbc-tree-sync.service and /etc/gunbc-tree-sync.env were fixed literals, so a twin apply OVERWROTE both with its own tree destination and restarted the shared unit — pointing production's sync at the lab's tree — and a twin retract DELETED both, disabling production's sync entirely. Neither effect is a path in DeploymentArtifactStep, so a claim over declared members could not see either (review, 2026-07-30).\\n\\nThey are derived from the deployment identity now, for the same reason the unit and binary are: the collision becomes unwritable rather than unlikely, because two deployments cannot produce one filename without sharing an identity the registry already forbids. gunbc_tree_sync_note calls these files owned host state torn down with the tree; that description is only true once they are per-deployment, and it was describing an intent the literals contradicted.\\n\\nThe names still derive from the SERVICE unit name rather than from instance_id directly, so srv1-live's migration-debt unit name carries through to its sync files and its emitted paths stay byte-identical."
 
@@ -319,19 +301,17 @@ data deployment_apply_order_note: String = "Apply order is dependency-honest: th
 
 type DeploymentSpec {
   target: DeploymentHostTarget
-  steps: List<DeploymentStep>
+  steps: std.types.List<DeploymentStep>
   service: DeploymentServiceConfig
   names: DeploymentNames
 }
 
-
-
-data deployment_artifact_route_identity_note: String = "TWO CONSUMERS, ONE SCOPE-FREE ROUTE LABEL (KEYING-0 follow-on, node://adhoc-907f1da5-c20): TailscaleServeMapping.path is tailscale_serve_route_member_path — tailscale_serve_route_key_label(tailscale_serve_route_key(endpoint)), the route key WITHOUT its TailscaleServeScope node. deployment_step_key and spec_owned_paths both read art.path, so the serve_route_key Optional field and its emit dispatch are deleted from DeploymentArtifactStep.\\n\\nHONEST PRECONDITION (not a defect today): a gunbc.live_deploy.spec.DeploymentSpec is bound to one host, so within a spec the node is constant and a node-free route label is sufficient for membership reconcile and twin disjointness. The twin-safety witnesses pin deployment_plan_host_identity(live) == deployment_plan_host_identity(twin), so owned-path disjointness is same-host by construction. This path is NOT node-qualified: the first consumer that compares owned paths ACROSS hosts — fleet-wide reconcile, multi-host teardown — will treat two hosts serving the same listener×mount as one identity and report a collision that is not one. extdeps.tailscale.serve scopes the relation; live_deploy does not yet thread scope into art.path.\\n\\nDELIBERATE DECISION: art.path stays scope-free for this PR. Scoped identity in art.path would require deployment_step_key (and emit's plain membership_reconcile) to carry ScopedKey rather than std.types.NonEmptyStr — a wider change than unifying the two projections. Document the precondition now; revisit scoped art.path when a cross-host consumer exists."
+data deployment_artifact_route_identity_note: String = "TWO CONSUMERS, ONE SCOPE-FREE ROUTE LABEL (KEYING-0 follow-on, node://adhoc-907f1da5-c20): TailscaleServeMapping.path is tailscale_serve_route_member_path — tailscale_serve_route_key_label(tailscale_serve_route_key(endpoint)), the route key WITHOUT its TailscaleServeScope node. deployment_step_key and spec_owned_paths both read art.path, so the serve_route_key Optional field and its emit dispatch are deleted from DeploymentArtifactStep.\\n\\nHONEST PRECONDITION (not a defect today): a DeploymentSpec is bound to one host, so within a spec the node is constant and a node-free route label is sufficient for membership reconcile and twin disjointness. The twin-safety witnesses pin deployment_plan_host_identity(live) == deployment_plan_host_identity(twin), so owned-path disjointness is same-host by construction. This path is NOT node-qualified: the first consumer that compares owned paths ACROSS hosts — fleet-wide reconcile, multi-host teardown — will treat two hosts serving the same listener×mount as one identity and report a collision that is not one. extdeps.tailscale.serve scopes the relation; live_deploy does not yet thread scope into art.path.\\n\\nDELIBERATE DECISION: art.path stays scope-free for this PR. Scoped identity in art.path would require deployment_step_key (and emit's plain membership_reconcile) to carry ScopedKey rather than NonEmptyStr — a wider change than unifying the two projections. Document the precondition now; revisit scoped art.path when a cross-host consumer exists."
 
 fn deployment_owned_steps(
   instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   names: DeploymentNames,
-) -> List<DeploymentArtifactStep> {
+) -> std.types.List<DeploymentArtifactStep> {
   [
     DeploymentArtifactStep { kind: GunbcSourceTree, path: instance.repo_root as String as std.types.NonEmptyStr },
     DeploymentArtifactStep { kind: ServeBinary, path: instance.serve_binary as String as std.types.NonEmptyStr },
@@ -339,22 +319,20 @@ fn deployment_owned_steps(
       kind: DeployedTreeRemoteUnit,
       path: deployment_tree_remote_unit_path(names: names),
     },
-    DeploymentArtifactStep { kind: DispatchWorktreeRoot, path: dashboard_instance_dispatch_worktree_root(instance: instance) as String as std.types.NonEmptyStr },
-    DeploymentArtifactStep { kind: AttemptStateRoot, path: dashboard_instance_dispatch_attempt_state_root(instance: instance) as String as std.types.NonEmptyStr },
+    DeploymentArtifactStep { kind: DispatchWorktreeRoot, path: gunbc.roadmap_dashboard_instance.dashboard_instance_dispatch_worktree_root(instance: instance) as String as std.types.NonEmptyStr },
+    DeploymentArtifactStep { kind: AttemptStateRoot, path: gunbc.roadmap_dashboard_instance.dashboard_instance_dispatch_attempt_state_root(instance: instance) as String as std.types.NonEmptyStr },
     DeploymentArtifactStep { kind: SystemdUnit, path: deployment_systemd_unit_path(names: names) },
     DeploymentArtifactStep { kind: BeltTimerUnit, path: deployment_belt_timer_unit_path(names: names) },
     DeploymentArtifactStep {
       kind: TailscaleServeMapping,
-      path: tailscale_serve_route_member_path(endpoint: names.tailscale_serve_endpoint),
+      path: extdeps.tailscale.serve.tailscale_serve_route_member_path(endpoint: names.tailscale_serve_endpoint),
     },
   ]
 }
 
-
 data devboot_root_membership_note: String = "THE BUILD SERVICE'S ROOTS ARE MEMBERSHIP, PROJECTED, AND SEPARATE FROM THE PER-INSTANCE STEPS -- three claims, and the third is the one that took a correction. Membership: these are directories the service WRITES, which is the same property that makes DispatchWorktreeRoot and AttemptStateRoot owned members, and attempt_state_root_member_note records what it cost to learn that a written path outside the roster is a path nothing creates. Projected: the paths come from the gunbc.host_layout rows, never spelled here, so the belt and the deploy cannot drift to two spellings of one directory.\\n\\nSEPARATE, because the first cut put them in deployment_owned_steps beside the dashboard's own members and that was wrong in a way the srv1-only scope hides. Those steps are built PER INSTANCE, and every instance would then have received srv1's literal paths under its own name -- srv2's preview slot creating /var/lib/gunbc directories for a service that does not run there. gunbc_host_layout_note names that exact defect for the exact reason it is dangerous: no value is visibly wrong, so nothing surfaces, and the first host whose layout genuinely diverged would silently inherit srv1's body.\\n\\nSo the projection is its own function, called for the host that actually runs the build service, rather than folded into a per-instance list that would answer for hosts nobody asked about. Dissolve-on: devboot deployed to a second host. At that point the roots become fields of a host layout resolved through a total host-identity lookup -- the next-rung trigger dispatch_state_scope_carries_its_roots_note already names -- and this srv1-shaped function retires into that derivation."
 
-
-fn deployment_ensured_steps() -> List<DeploymentDependencyStep> {
+fn deployment_ensured_steps() -> std.types.List<DeploymentDependencyStep> {
   [
     DeploymentDependencyStep {
       kind: TailscalePackage,
@@ -384,7 +362,7 @@ fn deployment_ensured_steps() -> List<DeploymentDependencyStep> {
 fn deployment_steps_apply_order(
   instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   names: DeploymentNames,
-) -> List<DeploymentStep> {
+) -> std.types.List<DeploymentStep> {
   concat(
     map(deployment_ensured_steps(), s => Dependency { step: s }),
     map(
@@ -398,7 +376,7 @@ data devboot_root_apply_membership_note: String = "THE STORE ROOT IS AN ENSURED 
 
 data deployment_retract_order_derivation_note: String = "RETRACT IS THE REVERSE OF WHAT THIS SPEC APPLIES, derived from the spec rather than transcribed beside it. It used to be a second hand-written list repeating the same five steps in opposite order — one fact in two places, so editing either alone makes them disagree, and the disagreement surfaces as a teardown that removes the binary while the unit still references it. deployment_apply_order_note states the ordering law in prose; this computes it.\\n\\nDeriving from spec.steps rather than re-deriving from instance and identity matters: it makes the retract order the reverse of THE ORDER THIS SPEC ACTUALLY APPLIED, not the reverse of what a freshly built spec would apply. Those differ exactly when a spec is constructed with something other than the standard order, which is the case a hand-mirrored list gets wrong. Ensured dependencies drop out because they are never torn down (R5) — the filter states that, rather than a comment claiming it."
 
-fn deployment_owned_steps_retract_order(spec: gunbc.live_deploy.spec.DeploymentSpec) -> List<DeploymentArtifactStep> {
+fn deployment_owned_steps_retract_order(spec: DeploymentSpec) -> std.types.List<DeploymentArtifactStep> {
   reverse(
     spec.steps |> flat_map(s => match s {
       ArtifactStep { step } => [step]
@@ -450,14 +428,14 @@ fn deployment_service_config(
   }
 }
 
-data deployment_spec_for_note: String = "THE CONSTRUCTOR THE MODULE WAS MISSING. Everything downstream of gunbc.live_deploy.spec.DeploymentSpec — deployment_plan_host_identity, deployment_plan_ssh_host, deployment_plan_listen_port, deployment_tailnet_url, and the whole emit/apply chain — was ALREADY parameterized over the spec value. Only construction was fused, which is why the defect survived: reading any consumer shows a clean function of its argument, and the single point where the argument gets invented is three nullary calls in one file.\\n\\nThe three parameters are the three genuinely independent axes. instance says WHAT is placed and at which root and port; target says WHICH machine and how to reach it; identity says which names the deployment owns in the host's unit and tailscale namespaces. Twins on one host share a target and differ in the other two; the same instance on two machines shares instance and identity and differs in target. Neither case needs a new function, which is the property that was missing."
+data deployment_spec_for_note: String = "THE CONSTRUCTOR THE MODULE WAS MISSING. Everything downstream of DeploymentSpec — deployment_plan_host_identity, deployment_plan_ssh_host, deployment_plan_listen_port, deployment_tailnet_url, and the whole emit/apply chain — was ALREADY parameterized over the spec value. Only construction was fused, which is why the defect survived: reading any consumer shows a clean function of its argument, and the single point where the argument gets invented is three nullary calls in one file.\\n\\nThe three parameters are the three genuinely independent axes. instance says WHAT is placed and at which root and port; target says WHICH machine and how to reach it; identity says which names the deployment owns in the host's unit and tailscale namespaces. Twins on one host share a target and differ in the other two; the same instance on two machines shares instance and identity and differs in target. Neither case needs a new function, which is the property that was missing."
 
 fn deployment_spec_for(
   instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   target: DeploymentHostTarget,
   names: DeploymentNames,
-) -> gunbc.live_deploy.spec.DeploymentSpec {
-  gunbc.live_deploy.spec.DeploymentSpec {
+) -> DeploymentSpec {
+  DeploymentSpec {
     target: target,
     steps: deployment_steps_apply_order(instance: instance, names: names),
     service: deployment_service_config(
@@ -468,7 +446,7 @@ fn deployment_spec_for(
   }
 }
 
-fn deployment_spec_srv1() -> gunbc.live_deploy.spec.DeploymentSpec {
+fn deployment_spec_srv1() -> DeploymentSpec {
   deployment_spec_for(
     instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance(),
     target: deployment_srv1_target(),
@@ -476,89 +454,21 @@ fn deployment_spec_srv1() -> gunbc.live_deploy.spec.DeploymentSpec {
   )
 }
 
-fn deployment_spec_srv1_green() -> gunbc.live_deploy.spec.DeploymentSpec {
-  deployment_spec_for(
-    instance: gunbc.roadmap_dashboard_instance.srv1_green_dashboard_instance(),
-    target: deployment_srv1_target(),
-    names: srv1_green_deployment_names(instance: gunbc.roadmap_dashboard_instance.srv1_green_dashboard_instance()),
-  )
-}
+data alternating_state_roots_dissolved_note: String = "THE ALTERNATING-STATE-ROOTS SCAFFOLD IS DISSOLVED BY DELETION, WHICH IS THE CONDITION IT NAMED. It read: dissolves when dispatch worktree and attempt-state roots are no longer a second copy provisioned per candidate, leaving two alternating state roots. Blue/green was deleted at the root on 2026-08-19, so there is one deployment, one dispatch-worktree root and one attempt-state root -- not two shared ones, but one, which satisfies the condition more completely than the host-scoped-sharing shape it anticipated. The bounded outage repair it accompanied (deployment_retiring_slot_spec) went with it: retirement of an old slot is not an operation this model has any more.\n\nRecorded rather than silently dropped because a scaffold row that vanishes with its subject leaves no evidence the obligation was DISCHARGED as opposed to forgotten (DESIGN 4b: dissolution on climb deletes the production machinery, never the receipt).\n\nRetirement classification went with it. RetirementDisposition and owned_artifact_retirement_disposition -- a coproduct and the total fold over OwnedArtifactKind that answered which members a retiring slot stops and which it preserves -- had exactly one consumer, deployment_retiring_slot_spec, and no other. With no retiring slot there is nothing to classify, so they are deleted here rather than left as a total fold nobody calls. Review caught them: the first cut of this change claimed zero production residue and this was part of what refuted it."
 
-data blue_green_spec_partition_note: String = "Slot convergence, public routing, and retirement are three effects with required edges: candidate slot -> healthz digest readiness -> route replay -> old runtime retirement. The old gunbc.live_deploy.spec.DeploymentSpec roster fused them, so LiveDeployApply replayed Tailscale before the post-mutation readiness gate and recreated the 502 window on the candidate port. The first projections do not mint new operations; they partition the existing modeled members. Retirement is deliberately narrower than full slot retract: it stops the old serve unit and belt timer, while preserving the reusable tree and binary plus dispatch worktrees and published attempt evidence. Full retract remains the ownership boundary that refuses non-empty roots. Using full retract for retirement stopped the old runtime before its empty-directory refusal, leaving a silently half-retracted slot until its next candidate apply reinstalled the runtime members; every cutover still reported failure after the successful route flip. Route teardown is excluded because replaying `off` from the old spec after the flip addresses the SAME root endpoint and would remove the newly installed route."
-data blue_green_retirement_stateful_root_scaffold_note: String = "See blue_green_retirement_stateful_root_scaffold_note_dissolve_on for the lifecycle condition this row's rationale accompanies."
-
-data blue_green_retirement_stateful_root_scaffold_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: deployment_retiring_slot_spec is the bounded outage repair while blue and green each carry instance-scoped DispatchWorktreeRoot and AttemptStateRoot members. Those roots hold host-lifetime user work and published evidence, not replaceable serve-slot payload, so retirement preserves them instead of pretending successful cutover requires their deletion. This leaves two alternating state roots and therefore remains a declared scaffold. The operator selected the host-scoped stateful-roots shape as the required end-state; neat-wolf-573 owns that follow-on, coordinated with the GunbcHostLayout / host-placement lane established by #7455 and building on this repair's post-merge baseline. DISSOLVES WHEN dispatch worktree and attempt-state roots are modeled as host-scoped stateful resources shared by both blue/green runtime slots, candidate convergence no longer provisions a second copy, and full host teardown owns their one fail-closed non-empty removal boundary.")
-
-type RetirementDisposition
-  = RetiresRuntime
-  | RetirementPreserves
-
-fn owned_artifact_retirement_disposition(kind: OwnedArtifactKind) -> RetirementDisposition {
-  match kind {
-    ServeBinary => RetirementPreserves
-    GunbcSourceTree => RetirementPreserves
-    DispatchWorktreeRoot => RetirementPreserves
-    AttemptStateRoot => RetirementPreserves
-    SystemdUnit => RetiresRuntime
-    BeltTimerUnit => RetiresRuntime
-    FleetConvergeTimerUnit => RetiresRuntime
-    TailscaleServeMapping => RetirementPreserves
-    DeployedTreeRemoteUnit => RetiresRuntime
-  }
-}
-
-fn deployment_slot_spec(spec: gunbc.live_deploy.spec.DeploymentSpec) -> gunbc.live_deploy.spec.DeploymentSpec {
-  gunbc.live_deploy.spec.DeploymentSpec {
-    target: spec.target,
-    steps: filter(spec.steps, s => match s {
-      ArtifactStep { step: art } => art.kind != TailscaleServeMapping
-      Dependency { step: _ } => true
-    }),
-    service: spec.service,
-    names: spec.names,
-  }
-}
-
-fn deployment_retiring_slot_spec(spec: gunbc.live_deploy.spec.DeploymentSpec) -> gunbc.live_deploy.spec.DeploymentSpec {
-  gunbc.live_deploy.spec.DeploymentSpec {
-    target: spec.target,
-    steps: filter(spec.steps, s => match s {
-      ArtifactStep { step: art } => match owned_artifact_retirement_disposition(kind: art.kind) {
-        RetiresRuntime => true
-        RetirementPreserves => false
-      }
-      Dependency { step: _ } => false
-    }),
-    service: spec.service,
-    names: spec.names,
-  }
-}
-
-fn deployment_route_spec(spec: gunbc.live_deploy.spec.DeploymentSpec) -> gunbc.live_deploy.spec.DeploymentSpec {
-  gunbc.live_deploy.spec.DeploymentSpec {
-    target: spec.target,
-    steps: filter(spec.steps, s => match s {
-      ArtifactStep { step: art } => art.kind == TailscaleServeMapping
-      Dependency { step: _ } => false
-    }),
-    service: spec.service,
-    names: spec.names,
-  }
-}
-
-fn deployment_plan_host_identity(spec: gunbc.live_deploy.spec.DeploymentSpec) -> String {
+fn deployment_plan_host_identity(spec: DeploymentSpec) -> String {
   spec.target.host.identity
 }
 
-fn deployment_plan_ssh_host(spec: gunbc.live_deploy.spec.DeploymentSpec) -> std.types.NonEmptyStr {
+fn deployment_plan_ssh_host(spec: DeploymentSpec) -> std.types.NonEmptyStr {
   spec.target.ssh_host
 }
 
-fn deployment_plan_listen_port(spec: gunbc.live_deploy.spec.DeploymentSpec) -> Int {
+fn deployment_plan_listen_port(spec: DeploymentSpec) -> Int {
   spec.service.listen.port
 }
 
-fn deployment_tailnet_url(spec: gunbc.live_deploy.spec.DeploymentSpec) -> String? {
+fn deployment_tailnet_url(spec: DeploymentSpec) -> String? {
   match spec.target.tailnet_domain {
     Present { value: domain } =>
       Present {

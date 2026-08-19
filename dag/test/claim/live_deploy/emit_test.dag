@@ -15,49 +15,36 @@ fn witness_retract_script() -> String {
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn spec_artifact_kind_count(spec: gunbc.live_deploy.spec.DeploymentSpec, kind: gunbc.live_deploy.spec.OwnedArtifactKind) -> Int {
-  count(filter(spec.steps, step => match step {
-    ArtifactStep { step: art } => art.kind == kind
-    Dependency { step: _ } => false
-  }))
-}
-
-test fn witness_blue_green_slots_are_disjoint_but_share_one_route_identity() -> Bool {
-  let blue = gunbc.live_deploy.spec.deployment_spec_srv1()
-  let green = gunbc.live_deploy.spec.deployment_spec_srv1_green()
-  gunbc.live_deploy.spec.deployment_plan_listen_port(spec: blue) == 8080
-    && gunbc.live_deploy.spec.deployment_plan_listen_port(spec: green) == 18080
-    && blue.service.unit_name != green.service.unit_name
-    && blue.service.repo_root != green.service.repo_root
-    && blue.names.tailscale_serve_endpoint.https_port == green.names.tailscale_serve_endpoint.https_port
-    && blue.names.tailscale_serve_endpoint.mount == green.names.tailscale_serve_endpoint.mount
-}
-
-test fn witness_slot_and_route_specs_make_preflip_mapping_mutation_unwritable() -> Bool {
-  let green = gunbc.live_deploy.spec.deployment_spec_srv1_green()
-  let slot = gunbc.live_deploy.spec.deployment_slot_spec(spec: green)
-  let route = gunbc.live_deploy.spec.deployment_route_spec(spec: green)
-  spec_artifact_kind_count(spec: slot, kind: gunbc.live_deploy.spec.TailscaleServeMapping) == 0
-    && spec_artifact_kind_count(spec: route, kind: gunbc.live_deploy.spec.TailscaleServeMapping) == 1
-    && count(route.steps) == 1
-}
-
-fn retiring_slot_stops_only_runtime_and_preserves_reusable_dispatch_state(spec: gunbc.live_deploy.spec.DeploymentSpec) -> Bool {
-  let retiring = gunbc.live_deploy.spec.deployment_retiring_slot_spec(spec: spec)
-  spec_artifact_kind_count(spec: retiring, kind: gunbc.live_deploy.spec.SystemdUnit) == 1
-    && spec_artifact_kind_count(spec: retiring, kind: gunbc.live_deploy.spec.BeltTimerUnit) == 1
-    && spec_artifact_kind_count(spec: retiring, kind: gunbc.live_deploy.spec.GunbcSourceTree) == 0
-    && spec_artifact_kind_count(spec: retiring, kind: gunbc.live_deploy.spec.ServeBinary) == 0
-    && spec_artifact_kind_count(spec: retiring, kind: gunbc.live_deploy.spec.DispatchWorktreeRoot) == 0
-    && spec_artifact_kind_count(spec: retiring, kind: gunbc.live_deploy.spec.AttemptStateRoot) == 0
-    && spec_artifact_kind_count(spec: retiring, kind: gunbc.live_deploy.spec.TailscaleServeMapping) == 0
-}
-
-test fn witness_blue_and_green_retirement_both_preserve_reusable_dispatch_state() -> Bool {
-  retiring_slot_stops_only_runtime_and_preserves_reusable_dispatch_state(spec: gunbc.live_deploy.spec.deployment_spec_srv1())
-    && retiring_slot_stops_only_runtime_and_preserves_reusable_dispatch_state(spec: gunbc.live_deploy.spec.deployment_spec_srv1_green())
-    && witness_retract_attempt_state_root_refuses_when_nonempty()
-}
+// ── RETIRED WITH THE BLUE/GREEN PARTITION ──────────────────────────────────────────────────────
+//
+// Three claims and one helper lived here:
+// witness_blue_green_slots_are_disjoint_but_share_one_route_identity,
+// witness_slot_and_route_specs_make_preflip_mapping_mutation_unwritable,
+// witness_blue_and_green_retirement_both_preserve_reusable_dispatch_state, and
+// retiring_slot_stops_only_runtime_and_preserves_reusable_dispatch_state. All four read the spec
+// PARTITION — deployment_slot_spec, deployment_route_spec, deployment_retiring_slot_spec — which
+// existed so a deploy could touch an idle slot's units without touching the shared route, then flip
+// the route separately. One deployment has nothing to partition: its slot IS its route, and the
+// three functions are deleted, so these claims have no subject rather than a changed one.
+//
+// The middle claim is the one that deserves its reason stated, because it was a construction wall:
+// it asserted that a pre-flip mutation of the tailscale mapping was UNWRITABLE, by showing the slot
+// spec carried zero mapping artifacts and the route spec carried exactly one. That wall guarded
+// against mutating the live route while staging the idle slot. With no staging step there is no
+// pre-flip window to protect — the deploy's only mapping write is its own, on the only slot. The
+// guarantee is not weakened here, it is vacuous, and a claim kept alive over a vacuous subject is
+// the specification-without-execution shape DESIGN section 5 names.
+//
+// Retired with them, and MISSED on the first pass: spec_artifact_kind_count, the helper all three
+// read through. The receipt below enumerated the other dead helper and not this one, which is the
+// residue class this cut kept tripping over — review found it as an orphan with a single occurrence
+// (its own definition). Its OwnedArtifactKind imports go with it, keeping only the variants the
+// surviving claims still name.
+//
+// NOT retired with them: witness_retract_attempt_state_root_refuses_when_nonempty, which the third
+// claim called as a conjunct. It is independently enrolled as its own test fn below, so removing
+// its caller costs no coverage — checked rather than assumed, since a conjunct that exists only
+// inside a retired claim would disappear silently with it.
 
 test fn witness_spec_targets_srv1() -> Bool {
   gunbc.live_deploy.spec.deployment_plan_host_identity(spec: gunbc.live_deploy.spec.deployment_spec_srv1()) == "srv1"

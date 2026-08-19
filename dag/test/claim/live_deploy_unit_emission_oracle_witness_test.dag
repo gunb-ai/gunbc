@@ -1,6 +1,5 @@
 module test.claim.live_deploy_unit_emission_oracle_witness
 
-
 // A DATED, INDEPENDENTLY TRANSCRIBED REALIZATION FIXTURE — NOT LIVE DRIFT DETECTION.
 //
 // Read this claim precisely, because an earlier revision of this note overstated it and the
@@ -31,36 +30,60 @@ module test.claim.live_deploy_unit_emission_oracle_witness
 //
 // Live drift detection is a DIFFERENT mechanism this fixture does not provide: it would have to
 // observe the host at run time and would belong with the fleet observation lane, not here.
-
-fn green_spec() -> gunbc.live_deploy.spec.DeploymentSpec {
-  gunbc.live_deploy.spec.deployment_spec_srv1_green()
+//
+// ── RETIRED WITH THEIR MEMBER, NOT PENDING AN OBSERVATION ──────────────────────────────────────
+//
+// the_fleet_converge_service_unit_matches_the_deployed_bytes and
+// the_fleet_converge_timer_unit_matches_the_deployed_bytes were transcribed from
+// gunbc-srv1-green-fleet-converge.{service,timer}, which existed only on the deleted slot. srv1's
+// surviving deployment carries no fleet-converge units — checked on the host 2026-08-19.
+//
+// THE FIRST VERSION OF THIS RECEIPT GAVE A FALSE REASON, and the correction matters more than the
+// rows. It said the members were still in deployment_spec_srv1's step list and would appear at the
+// next apply, so the oracle would re-arm then. They are not. gunbc.live_deploy.spec
+// deployment_owned_steps lists eight members and FleetConvergeTimerUnit is not among them —
+// deployment_apply_order_note in that module records it as RETIRED from deployment membership by
+// operator directive 2026-08-13, and test.claim.live_deploy.emit carries an enrolled claim
+// asserting exactly that absence. So the re-arm trigger I wrote could never fire: no apply will
+// ever install those units. That is the stalled-trigger shape DESIGN section 4b names, a `cannot
+// climb` wearing the label `can climb after one event`, and it would have sent a later session
+// waiting on an apply that cannot deliver.
+//
+// WHAT IS ACTUALLY TRUE: gunbc.live_deploy.emit emit_fleet_converge_service_unit_doc and
+// emit_fleet_converge_timer_unit_doc now have no member, no spec consumer, and no oracle. They are
+// orphaned emitters, and under delete-first they are the NEXT root to cut rather than evidence to
+// re-arm. This is recorded as an observation for that cut, not as an obligation on this one — no
+// trigger is declared here, because there is no event that would discharge it.
+//
+fn live_spec() -> gunbc.live_deploy.spec.DeploymentSpec {
+  gunbc.live_deploy.spec.deployment_spec_srv1()
 }
 
-// The revision the green slot is actually serving, read from its live ExecStart on the same date.
+// The revision the live slot is actually serving, read from its ExecStart on the same date.
 // Bound rather than synthesised because it appears verbatim in the emitted unit.
-fn green_revision() -> gunbc.live_deploy.emit.ReleaseRevisionBinding {
-  gunbc.live_deploy.emit.RevisionBoundAtEmission { revision: "7d06e3783e112abe351045cf8903705b55e633bd" as std.types.CommitSha }
+fn live_revision() -> gunbc.live_deploy.emit.ReleaseRevisionBinding {
+  gunbc.live_deploy.emit.RevisionBoundAtEmission { revision: "b2dd729f92954e50e3d8d9bbd65022c2d58f14dd" as std.types.CommitSha }
 }
 
-// gunbc-srv1-green-belt.service, as deployed on srv1 2026-08-19.
+// gunbc-roadmap-belt.service, as deployed on srv1 2026-08-19.
 test fn the_belt_service_unit_matches_the_deployed_bytes() -> Bool {
-  let emitted = std.layout.render(doc: gunbc.live_deploy.emit.emit_belt_service_unit_doc(spec: green_spec()), proto: gunbc.live_deploy.emit.live_deploy_protocol)
-  emitted == "[Unit]\nDescription=gunbc roadmap belt tick (one reconcile pass over the ready frontier)\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=oneshot\nUser=briansrls\nGroup=briansrls\nWorkingDirectory=/opt/gunbc-green/gunbc\nEnvironment=GUNBC_BELT_SPAWN_WORKDIR=/opt/gunbc-green/gunbc\nExecStart=/opt/gunbc-green/bin/gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap_belt_actuate.dag --function belt_run_once_cli\n"
+  let emitted = std.layout.render(doc: gunbc.live_deploy.emit.emit_belt_service_unit_doc(spec: live_spec()), proto: gunbc.live_deploy.emit.live_deploy_protocol)
+  emitted == "[Unit]\nDescription=gunbc roadmap belt tick (one reconcile pass over the ready frontier)\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=oneshot\nUser=briansrls\nGroup=briansrls\nWorkingDirectory=/opt/gunbc/gunbc\nEnvironment=GUNBC_BELT_SPAWN_WORKDIR=/opt/gunbc/gunbc\nExecStart=/opt/gunbc/bin/gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap_belt_actuate.dag --function belt_run_once_cli\n"
 }
 
-// gunbc-srv1-green-belt.timer, as deployed on srv1 2026-08-19.
+// gunbc-roadmap-belt.timer, as deployed on srv1 2026-08-19.
 test fn the_belt_timer_unit_matches_the_deployed_bytes() -> Bool {
-  let emitted = std.layout.render(doc: gunbc.live_deploy.emit.emit_belt_timer_unit_doc(spec: green_spec()), proto: gunbc.live_deploy.emit.live_deploy_protocol)
-  emitted == "[Unit]\nDescription=gunbc roadmap belt tick cadence\n\n[Timer]\nUnit=gunbc-srv1-green-belt.service\nOnBootSec=2min\nOnUnitInactiveSec=60s\nAccuracySec=5s\n\n[Install]\nWantedBy=timers.target\n"
+  let emitted = std.layout.render(doc: gunbc.live_deploy.emit.emit_belt_timer_unit_doc(spec: live_spec()), proto: gunbc.live_deploy.emit.live_deploy_protocol)
+  emitted == "[Unit]\nDescription=gunbc roadmap belt tick cadence\n\n[Timer]\nUnit=gunbc-roadmap-belt.service\nOnBootSec=2min\nOnUnitInactiveSec=60s\nAccuracySec=5s\n\n[Install]\nWantedBy=timers.target\n"
 }
 
-// gunbc-srv1-green.service, as deployed on srv1 2026-08-19.
+// gunbc-roadmap.service, as deployed on srv1 2026-08-19.
 test fn the_serve_unit_matches_the_deployed_bytes() -> Bool {
-  let emitted = std.layout.render(doc: gunbc.live_deploy.emit.emit_systemd_unit_doc(spec: green_spec(), revision: green_revision()), proto: gunbc.live_deploy.emit.live_deploy_protocol)
-  emitted == "[Unit]\nDescription=gunbc roadmap HTTP server (gunbc serve)\nAfter=network-online.target tailscaled.service\nWants=network-online.target\n\n[Service]\nType=simple\nUser=briansrls\nGroup=briansrls\nWorkingDirectory=/opt/gunbc-green/gunbc\nExecStart=/opt/gunbc-green/bin/gunbc serve --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap_serve.dag --function roadmap_serve_handle_srv1_green --host 0.0.0.0 --port 18080 --release-revision 7d06e3783e112abe351045cf8903705b55e633bd --eval-budget-cpu-ms 30000 --eval-budget-wall-ms 30000\nRestart=on-failure\n\n[Install]\nWantedBy=multi-user.target\n"
+  let emitted = std.layout.render(doc: gunbc.live_deploy.emit.emit_systemd_unit_doc(spec: live_spec(), revision: live_revision()), proto: gunbc.live_deploy.emit.live_deploy_protocol)
+  emitted == "[Unit]\nDescription=gunbc roadmap HTTP server (gunbc serve)\nAfter=network-online.target tailscaled.service\nWants=network-online.target\n\n[Service]\nType=simple\nUser=briansrls\nGroup=briansrls\nWorkingDirectory=/opt/gunbc/gunbc\nExecStart=/opt/gunbc/bin/gunbc serve --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap_serve.dag --function roadmap_serve_handle --host 0.0.0.0 --port 8080 --release-revision b2dd729f92954e50e3d8d9bbd65022c2d58f14dd --eval-budget-cpu-ms 30000 --eval-budget-wall-ms 30000\nRestart=on-failure\n\n[Install]\nWantedBy=multi-user.target\n"
 }
 
-// gunbc-srv1-green-tree-sync.service. Base transcription: srv1, 2026-08-19, like its siblings — but this
+// gunbc-tree-sync.service. Base transcription: srv1, 2026-08-19, like its siblings — but this
 // row is the ONE in the family whose expectation intentionally diverges from the bytes currently on the
 // host, so it is named for what it actually asserts rather than for the family it belongs to.
 //
@@ -74,18 +97,6 @@ test fn the_serve_unit_matches_the_deployed_bytes() -> Bool {
 // not read the exclusion list, so a change to that list must not move it. Its bytes staying byte-identical
 // here is the control that says the widening reached the leg it should and no other.
 test fn the_tree_sync_unit_matches_the_deployed_bytes_plus_the_exclusion_widening() -> Bool {
-  let emitted = render(doc: emit_tree_sync_unit_doc(spec: green_spec(), tree_path: green_spec().service.repo_root as String), proto: live_deploy_protocol)
-  emitted == "[Unit]\nDescription=gunbc source tree sync (service-user-principal rsync from CI runner checkout)\n\n[Service]\nType=oneshot\nUser=briansrls\nGroup=briansrls\nEnvironmentFile=/etc/gunbc-srv1-green-tree-sync.env\nExecStart=/usr/bin/rsync -rlpt --delete --exclude /target --exclude /.git --exclude /.claude --exclude /.gunbc --exclude /target-codex --exclude /.cargo-home \"$\{GUNBC_TREE_SRC}/\" /opt/gunbc-green/gunbc/\nExecStart=/usr/bin/rsync -rlpt --exclude=objects/pack/*.keep --exclude=objects/pack/tmp_pack_* --include=/HEAD --include=/objects/*** --include=/packed-refs --include=/refs/*** --exclude=* \"$\{GUNBC_TREE_SRC}/.git/\" /opt/gunbc-green/gunbc/.git/\n"
-}
-
-// gunbc-srv1-green-fleet-converge.service, as deployed on srv1 2026-08-19.
-test fn the_fleet_converge_service_unit_matches_the_deployed_bytes() -> Bool {
-  let emitted = std.layout.render(doc: gunbc.live_deploy.emit.emit_fleet_converge_service_unit_doc(spec: green_spec()), proto: gunbc.live_deploy.emit.live_deploy_protocol)
-  emitted == "[Unit]\nDescription=gunbc fleet converge (self)\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=oneshot\nUser=briansrls\nGroup=briansrls\nWorkingDirectory=/opt/gunbc-green/gunbc\nExecStart=/opt/gunbc-green/bin/gunbc converge --host self\n"
-}
-
-// gunbc-srv1-green-fleet-converge.timer, as deployed on srv1 2026-08-19.
-test fn the_fleet_converge_timer_unit_matches_the_deployed_bytes() -> Bool {
-  let emitted = std.layout.render(doc: gunbc.live_deploy.emit.emit_fleet_converge_timer_unit_doc(spec: green_spec()), proto: gunbc.live_deploy.emit.live_deploy_protocol)
-  emitted == "[Unit]\nDescription=gunbc fleet converge cadence\n\n[Timer]\nUnit=gunbc-srv1-green-fleet-converge.service\nOnCalendar=*:0/15\nPersistent=true\nRandomizedDelaySec=90\n\n[Install]\nWantedBy=timers.target\n"
+  let emitted = std.layout.render(doc: gunbc.live_deploy.emit.emit_tree_sync_unit_doc(spec: live_spec(), tree_path: live_spec().service.repo_root as String), proto: gunbc.live_deploy.emit.live_deploy_protocol)
+  emitted == "[Unit]\nDescription=gunbc source tree sync (service-user-principal rsync from CI runner checkout)\n\n[Service]\nType=oneshot\nUser=briansrls\nGroup=briansrls\nEnvironmentFile=/etc/gunbc-tree-sync.env\nExecStart=/usr/bin/rsync -rlpt --delete --exclude /target --exclude /.git --exclude /.claude --exclude /.gunbc --exclude /target-codex --exclude /.cargo-home \"$\{GUNBC_TREE_SRC}/\" /opt/gunbc/gunbc/\nExecStart=/usr/bin/rsync -rlpt --exclude=objects/pack/*.keep --exclude=objects/pack/tmp_pack_* --include=/HEAD --include=/objects/*** --include=/packed-refs --include=/refs/*** --exclude=* \"$\{GUNBC_TREE_SRC}/.git/\" /opt/gunbc/gunbc/.git/\n"
 }

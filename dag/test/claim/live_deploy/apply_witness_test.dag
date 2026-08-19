@@ -1,50 +1,30 @@
 module test.claim.live_deploy.apply
 
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+// ── RETIRED WITH THE SECOND SLOT ───────────────────────────────────────────────────────────────
+//
+// Three claims lived here — witness_blue_active_selects_green_idle,
+// witness_green_active_selects_blue_idle and
+// witness_unknown_or_unparseable_route_refuses_before_slot_selection — over
+// srv1_blue_green_slot_selection and the tailscale status fixture that fed it. They are retired
+// rather than repointed because their subject was the SELECTOR: which of two slots is currently
+// serving, so the other may be deployed into. With one deployment there is no idle slot to pick
+// and the function is gone, so every one of them would have to be re-pointed at a question nobody
+// asks. DESIGN section 4b's dissolution rule keeps evidence for surviving claims, not evidence
+// whose only subject is retired, and the third claim is the one worth naming: it asserted that an
+// unknown or unparseable route REFUSES instead of guessing a slot. That refusal has no subject
+// either — nothing selects — but the property it protected did not vanish, it moved: the deploy now
+// targets one declared spec, so the route is never inferred from observed state at all. The class
+// is closed by construction rather than by a check, which is the strictly better end state and the
+// reason this retires clean instead of leaving a gap.
+//
+// HONESTLY LOST with them: idle-slot discovery. A deploy into the live slot has no idle twin to
+// stage in, so a bad release is downtime rather than a held-back cutover. That is stated in
+// gunbc.live_deploy.apply single_deployment_note as the accepted cost of the operator's
+// single-deployment ruling, not papered over here.
 
-fn tailscale_status_fixture(proxy: String) -> String {
-  join([
-    "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"",
-    proxy,
-    "\"}}}}}",
-  ], "")
-}
-
-test fn witness_blue_active_selects_green_idle() -> Bool {
-  match srv1_blue_green_slot_selection(status_json: tailscale_status_fixture(proxy: "http://127.0.0.1:8080")) {
-    BlueGreenSlotsSelected { active, idle } =>
-      deployment_plan_listen_port(spec: active) == 8080
-        && deployment_plan_listen_port(spec: idle) == 18080
-    BlueGreenSlotSelectionRefused { reason: _ } => false
-  }
-}
-
-test fn witness_green_active_selects_blue_idle() -> Bool {
-  match srv1_blue_green_slot_selection(status_json: tailscale_status_fixture(proxy: "http://127.0.0.1:18080")) {
-    BlueGreenSlotsSelected { active, idle } =>
-      deployment_plan_listen_port(spec: active) == 18080
-        && deployment_plan_listen_port(spec: idle) == 8080
-    BlueGreenSlotSelectionRefused { reason: _ } => false
-  }
-}
-
-test fn witness_unknown_or_unparseable_route_refuses_before_slot_selection() -> Bool {
-  let unknown = srv1_blue_green_slot_selection(status_json: tailscale_status_fixture(proxy: "http://127.0.0.1:9999"))
-  let malformed = srv1_blue_green_slot_selection(status_json: "not-json")
-  match unknown {
-    BlueGreenSlotsSelected { active: _, idle: _ } => false
-    BlueGreenSlotSelectionRefused { reason: a } =>
-      match malformed {
-        BlueGreenSlotsSelected { active: _, idle: _ } => false
-        BlueGreenSlotSelectionRefused { reason: b } =>
-          string_contains(s: a, pattern: "refused")
-            && string_contains(s: b, pattern: "refused")
-      }
-  }
-}
-
-fn fixture_converged_mutation() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn fixture_converged_mutation() -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   std.realization_reconcile.Converged {
     evidence: gunbc.host_effect.ShellEffectApplied {
       exit_code: 0,
@@ -52,31 +32,31 @@ fn fixture_converged_mutation() -> Reconciliation<HostEffectIntent, HostEffectEv
       stderr: "",
     },
     applied: gunbc.host_effect.HostEffectIntent {
-      target: gunbc.host_effect.HostOs { node: srv1_host },
+      target: gunbc.host_effect.HostOs { node: gunbc.fleet_intent.srv1_host },
       effect: gunbc.host_effect.ShellCommand { script: "mutation-marker" },
-      evidence: host_effect_identity_evidence,
-      transport: LocalShell,
+      evidence: gunbc.host_effect.host_effect_identity_evidence,
+      transport: gunbc.host_effect.LocalShell,
       privilege_denial: none,
     },
   }
 }
 
-fn fixture_service_not_ready_readiness() -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
+fn fixture_service_not_ready_readiness() -> std.realization_reconcile.Reconciliation<gunbc.live_deploy.readiness.ServiceReadyApplyEffect, gunbc.live_deploy.readiness.ServiceReadyEvidence> {
   std.realization_reconcile.NotConverged {
-    reason: service_not_ready_reason(refusal: gunbc.live_deploy.service_ready.ServiceNotReady {
-      unit: live_deploy_service_ready_unit_authority,
-      endpoint: live_deploy_service_ready_endpoint_authority,
-      waited: live_deploy_service_ready_poll_bound,
+    reason: gunbc.live_deploy.service_ready.service_not_ready_reason(refusal: gunbc.live_deploy.service_ready.ServiceNotReady {
+      unit: gunbc.live_deploy.service_ready.live_deploy_service_ready_unit_authority,
+      endpoint: gunbc.live_deploy.service_ready.live_deploy_service_ready_endpoint_authority,
+      waited: gunbc.live_deploy.service_ready.live_deploy_service_ready_poll_bound,
       last_probe: "health probe never succeeded",
-      unit_diagnosis: UnitDiagnosisUnavailable,
+      unit_diagnosis: gunbc.live_deploy.service_ready.UnitDiagnosisUnavailable,
     }),
-    applied: service_ready_apply_effect(),
+    applied: gunbc.live_deploy.readiness.service_ready_apply_effect(),
   }
 }
 
 test fn witness_red_control_mutation_without_readiness_cannot_converge() -> Bool {
-  !reconciliation_converged(
-    r: live_deploy_apply_readiness_gate_with_readiness(
+  !std.realization_reconcile.reconciliation_converged(
+    r: gunbc.live_deploy.apply.live_deploy_apply_readiness_gate_with_readiness(
       mutation: fixture_converged_mutation(),
       readiness: fixture_service_not_ready_readiness(),
     )
@@ -84,7 +64,7 @@ test fn witness_red_control_mutation_without_readiness_cannot_converge() -> Bool
 }
 
 test fn witness_red_control_service_not_ready_reason_surfaces_on_blocked_apply() -> Bool {
-  match live_deploy_apply_readiness_gate_with_readiness(
+  match gunbc.live_deploy.apply.live_deploy_apply_readiness_gate_with_readiness(
     mutation: fixture_converged_mutation(),
     readiness: fixture_service_not_ready_readiness(),
   ) {
@@ -96,10 +76,10 @@ test fn witness_red_control_service_not_ready_reason_surfaces_on_blocked_apply()
 }
 
 test fn witness_digest_readback_script_is_bounded_and_post_mutation() -> Bool {
-  let port = deployment_plan_listen_port(spec: deployment_spec_srv1())
-  let script = roadmap_site_digest_readback_script(port: port)
-  string_contains(s: script, pattern: roadmap_site_roadmap_url_path)
-    && string_contains(s: script, pattern: roadmap_site_dispatch_url_path)
+  let port = gunbc.live_deploy.spec.deployment_plan_listen_port(spec: gunbc.live_deploy.spec.deployment_spec_srv1())
+  let script = gunbc.roadmap_static_site.roadmap_site_digest_readback_script(port: port)
+  string_contains(s: script, pattern: gunbc.roadmap_static_site.roadmap_site_roadmap_url_path)
+    && string_contains(s: script, pattern: gunbc.roadmap_static_site.roadmap_site_dispatch_url_path)
     && string_contains(s: script, pattern: "roadmap-site-readback")
     && string_contains(s: script, pattern: "--connect-timeout")
     && string_contains(s: script, pattern: "--max-time")

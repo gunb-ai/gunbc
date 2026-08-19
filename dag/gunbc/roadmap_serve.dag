@@ -1,19 +1,17 @@
 module gunbc.roadmap_serve
 
-
 data roadmap_serve_note: String = "The gunbc-served dashboard instantiation (docs/plans/gunbc-served-dashboard-design.md; belt B, parent-approved 2026-07-20). H = RoadmapServeHandler: every row is a DynamicRoute whose handler calls the SAME authority the static-site artifacts call (roadmap_page, roadmap_static_site) — the artifact table and this serve table are two projections of one authority set, never two copies of content, and every body is computed at request time so the served page is the LIVE roadmap, not a deploy-frozen snapshot (the section-3 dual-representation cost this module exists to remove). Dispatch: POST /dispatch/NODE_ID invokes gunbc.roadmap_belt_actuate.belt_dispatch_node IN-PROCESS — the single dispatch authority (#6914), no emitted JS, no subprocess exec, no env-var channel. The launch button that POSTs here is transport-agnostic and lands with belt A in roadmap_page (lane agreement 2026-07-20): the page never knows which backend answers."
 
 data roadmap_serve_interpreted_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: RealizationDispatch,
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.roadmap_serve",
     decl_name: "roadmap_serve_handle",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
 data roadmap_serve_interpreted_scaffold_note: String = "ROADMAP section-4 rules a NEW long-running interpreted workload a review reject, routed through emit-on-demand. gunbc serve under the tree-walker is exactly that workload, so it lands as this DECLARED scaffold: dissolution = emit-on-demand of the serve closure (emit -> build -> run native, artifact shared by content-hash — the same lane as the S1 parse census receipt). Interim cost is bounded and strictly better than the belt-A alternative it supersedes: A pays a full CLI startup (load + compile + resolve) per dispatch click; this process pays it once at bind time."
-
 
 data roadmap_serve_seam_restoration_note: String = "THE SOCKET SEAM WAS RESTORED ON 2026-08-19, AND THIS ROW RECORDS WHY THAT IS A REPAIR RATHER THAN NEW DEBT. #8286 deleted the cli_run driver surface and took `serve` and `converge` out as ONE population; the two are not the same case, and deleting them together is what made it wrong. Converge has a successor that EXISTS -- the modeled convergence spine, fleet_converge_timer -> fleet_converge_apply -> host_effect_realize -- so its verb can refuse and route there. Serve's declared successor is the scaffold ABOVE, roadmap_serve_interpreted_scaffold, dissolving to emit-on-demand of the serve closure, and it was never built. So the deletion removed a live outward-facing production route with no minimal Y able to hold the boundary, which is precisely the case DESIGN section 3 carves out: a gap-intolerant boundary keeps the staged form, and where no Y can hold it at all X stays but stays FROZEN. What the restore does is put X back and freeze it.\n\nMEASURED, NOT ASSUMED, because the cost of the repair turned on one fact. The retained engine still evaluates this module completely: roadmap_serve_witness_test runs 16/16 green against a binary built from the post-deletion tree, covering route selection, 404 and 501 folding, and dispatch-refuses-before-effects. What #8286 removed was the SOCKET SEAM only -- accept, minimal HTTP/1.1 parse, response write -- which its own surviving doc comment still described after the code was gone. The deletion left the prose and took the machinery, so the restore is a quarry revert into comments that already marked the insertion points, not new authoring.\n\nNO SECOND OBLIGATION IS REGISTERED, DELIBERATELY. The scaffold above already binds roadmap_serve_handle and already names the correct terminal, so its dissolution IS this seam's restoration trigger; a fresh row beside it would be two obligations over one independently removable unit, which DESIGN section 5 forbids. FROZEN MEANS: no new options, no new verbs, no new routes into the interpreter, no completion work, no flag or environment gate re-opening it -- an escape hatch is refused outright and would be a NewEscapeHatchOrAdmissionRow under gunbc.v1_maintenance_standing besides.\n\nTHE DELETED REFUSAL'S SUBSTANTIVE CLAIM IS NOT RETRACTED. Serve remains a desired SERVICE OCCURRENCE that convergence should observe and reconcile rather than a command, and it cannot be modeled that way today because gunbc.host_effect carries only the LiveDeployApply / LiveDeployRetract / LiveDeployEnsureDependency triple and the runner-slot family -- no generic service-occurrence member exists. That absence is why BOTH bring-up paths must name a command: the systemd unit through gunbc.live_deploy.emit, and the tmux path through gunbc.roadmap_dashboard_instance dashboard_instance_serve_argv. Registering that member is separate work and is the thing that stops this recurring.\n\nTHE ENGINE OBJECTION IS RECORDED RATHER THAN ARGUED AWAY. This does make the interpreter load-bearing for a capability two lanes are deleting -- the propagation consequence DESIGN section 3 names. It is not a NEW dependency; it is the one that stood until #8286. But if this route begins attracting completion work or performance work on the interpreted loop, the freeze has been repealed by drift, which is the standing danger gunbc.v1_maintenance_standing v1_seed_standing already warns about for the active-maintenance arm."
 
@@ -51,46 +49,46 @@ type RoadmapServeRouteSpec {
 }
 
 type RoadmapServeTableBuild
-  = RoadmapServeTable { table: ServedRouteTable<RoadmapServeHandler> }
+  = RoadmapServeTable { table: extdeps.http.server.ServedRouteTable<RoadmapServeHandler> }
   | RoadmapServeTableRefused { raw: String, segment: String, reason: String }
 
-fn roadmap_serve_route_specs() -> List<RoadmapServeRouteSpec> {
+fn roadmap_serve_route_specs() -> std.types.List<RoadmapServeRouteSpec> {
   [
-    RoadmapServeRouteSpec { method: GET, raw: "/", handler: RoadmapDailyPageHandler },
-    RoadmapServeRouteSpec { method: GET, raw: "/roadmap", handler: RoadmapFullPageHandler },
-    RoadmapServeRouteSpec { method: GET, raw: "/ROADMAP.md", handler: RoadmapMdHandler },
-    RoadmapServeRouteSpec { method: GET, raw: "/target/roadmap-dispatch.json", handler: DispatchJsonHandler },
-    RoadmapServeRouteSpec { method: GET, raw: "/healthz", handler: HealthzHandler },
-    RoadmapServeRouteSpec { method: GET, raw: "/instance.json", handler: DashboardInstanceHandler },
-    RoadmapServeRouteSpec { method: GET, raw: "/provider.json", handler: ProviderReadinessHandler },
-    RoadmapServeRouteSpec { method: GET, raw: "/sessions.json", handler: SessionsJsonHandler },
-    RoadmapServeRouteSpec { method: GET, raw: "/attempts.json", handler: AttemptsJsonHandler },
-    RoadmapServeRouteSpec { method: GET, raw: "/workflow.json", handler: WorkflowJsonHandler },
-    RoadmapServeRouteSpec { method: GET, raw: roadmap_dispatch_asset_path, handler: DispatchAssetHandler },
-    RoadmapServeRouteSpec { method: GET, raw: "/sandbox", handler: SandboxPageHandler },
-    RoadmapServeRouteSpec { method: GET, raw: instrument_sandbox_page_path, handler: InstrumentSandboxPageHandler },
-    RoadmapServeRouteSpec { method: GET, raw: instrument_tuner_page_path, handler: InstrumentTunerPageHandler },
-    RoadmapServeRouteSpec { method: GET, raw: instrument_tuner_asset_path, handler: InstrumentTunerAssetHandler },
-    RoadmapServeRouteSpec { method: GET, raw: instrument_motion_page_path, handler: InstrumentMotionPageHandler },
-    RoadmapServeRouteSpec { method: GET, raw: instrument_motion_asset_path, handler: InstrumentMotionAssetHandler },
-    RoadmapServeRouteSpec { method: GET, raw: repo_atlas_page_path, handler: RepoAtlasPageHandler },
-    RoadmapServeRouteSpec { method: GET, raw: sandbox_asset_path, handler: SandboxAssetHandler },
-    RoadmapServeRouteSpec { method: POST, raw: "/sandbox/echo", handler: SandboxEchoHandler },
-    RoadmapServeRouteSpec { method: POST, raw: "/dispatch/\{node_id\}", handler: BeltDispatchHandler },
-    RoadmapServeRouteSpec { method: POST, raw: "/publish/\{node_id\}", handler: BeltPublishHandler },
-    RoadmapServeRouteSpec { method: POST, raw: "/cleanup/\{node_id\}", handler: BeltStopHandler },
-    RoadmapServeRouteSpec { method: POST, raw: "/stop/\{node_id\}", handler: BeltStopHandler },
+    RoadmapServeRouteSpec { method: std.types.GET, raw: "/", handler: RoadmapDailyPageHandler },
+    RoadmapServeRouteSpec { method: std.types.GET, raw: "/roadmap", handler: RoadmapFullPageHandler },
+    RoadmapServeRouteSpec { method: std.types.GET, raw: "/ROADMAP.md", handler: RoadmapMdHandler },
+    RoadmapServeRouteSpec { method: std.types.GET, raw: "/target/roadmap-dispatch.json", handler: DispatchJsonHandler },
+    RoadmapServeRouteSpec { method: std.types.GET, raw: "/healthz", handler: HealthzHandler },
+    RoadmapServeRouteSpec { method: std.types.GET, raw: "/instance.json", handler: DashboardInstanceHandler },
+    RoadmapServeRouteSpec { method: std.types.GET, raw: "/provider.json", handler: ProviderReadinessHandler },
+    RoadmapServeRouteSpec { method: std.types.GET, raw: "/sessions.json", handler: SessionsJsonHandler },
+    RoadmapServeRouteSpec { method: std.types.GET, raw: "/attempts.json", handler: AttemptsJsonHandler },
+    RoadmapServeRouteSpec { method: std.types.GET, raw: "/workflow.json", handler: WorkflowJsonHandler },
+    RoadmapServeRouteSpec { method: std.types.GET, raw: gunbc.roadmap_component.roadmap_dispatch_asset_path, handler: DispatchAssetHandler },
+    RoadmapServeRouteSpec { method: std.types.GET, raw: "/sandbox", handler: SandboxPageHandler },
+    RoadmapServeRouteSpec { method: std.types.GET, raw: gunbc.roadmap_component.instrument_sandbox_page_path, handler: InstrumentSandboxPageHandler },
+    RoadmapServeRouteSpec { method: std.types.GET, raw: gunbc.roadmap_component.instrument_tuner_page_path, handler: InstrumentTunerPageHandler },
+    RoadmapServeRouteSpec { method: std.types.GET, raw: gunbc.roadmap_component.instrument_tuner_asset_path, handler: InstrumentTunerAssetHandler },
+    RoadmapServeRouteSpec { method: std.types.GET, raw: gunbc.roadmap_component.instrument_motion_page_path, handler: InstrumentMotionPageHandler },
+    RoadmapServeRouteSpec { method: std.types.GET, raw: gunbc.roadmap_component.instrument_motion_asset_path, handler: InstrumentMotionAssetHandler },
+    RoadmapServeRouteSpec { method: std.types.GET, raw: gunbc.roadmap_component.repo_atlas_page_path, handler: RepoAtlasPageHandler },
+    RoadmapServeRouteSpec { method: std.types.GET, raw: gunbc.roadmap_component.sandbox_asset_path, handler: SandboxAssetHandler },
+    RoadmapServeRouteSpec { method: std.types.POST, raw: "/sandbox/echo", handler: SandboxEchoHandler },
+    RoadmapServeRouteSpec { method: std.types.POST, raw: "/dispatch/\{node_id\}", handler: BeltDispatchHandler },
+    RoadmapServeRouteSpec { method: std.types.POST, raw: "/publish/\{node_id\}", handler: BeltPublishHandler },
+    RoadmapServeRouteSpec { method: std.types.POST, raw: "/cleanup/\{node_id\}", handler: BeltStopHandler },
+    RoadmapServeRouteSpec { method: std.types.POST, raw: "/stop/\{node_id\}", handler: BeltStopHandler },
   ]
 }
 
 type RoadmapServeRouteRow
-  = RouteRow { route: ServedRoute<RoadmapServeHandler> }
+  = RouteRow { route: extdeps.http.server.ServedRoute<RoadmapServeHandler> }
   | RouteRowRefused { raw: String, segment: String, reason: String }
 
 data roadmap_serve_build_shape_note: String = "Cost-shape per DESIGN §6 bare-minimum-cost (review 40297 note: the first cut grew the route list by concat inside a fold — the copied-accumulator class that is always fixed regardless of realized n): the build is now map (per-spec row sum) + a scalar first-refusal fold (no list accumulation) + flat_map projection — linear by construction. The projection's RouteRowRefused arm contributes nothing and is reached only in the refusal-free branch (the scalar fold structurally excludes refused rows there), so it is a projection, never a fabricated value."
 
 fn roadmap_serve_route_row(spec: RoadmapServeRouteSpec) -> RoadmapServeRouteRow {
-  match parse_path_template(raw: spec.raw) {
+  match extdeps.uri_path.parse_path_template(raw: spec.raw) {
     MalformedPathTemplate { raw: r, segment: s, reason: why } =>
       RouteRowRefused { raw: r, segment: s, reason: why }
     ParsedPathTemplate { template: tpl } =>
@@ -98,7 +96,7 @@ fn roadmap_serve_route_row(spec: RoadmapServeRouteSpec) -> RoadmapServeRouteRow 
   }
 }
 
-fn roadmap_serve_build_from_specs(specs: List<RoadmapServeRouteSpec>) -> RoadmapServeTableBuild {
+fn roadmap_serve_build_from_specs(specs: std.types.List<RoadmapServeRouteSpec>) -> RoadmapServeTableBuild {
   let rows = map(specs, spec => roadmap_serve_route_row(spec: spec))
   let first_refusal = fold(rows, init: none, f: (acc, r) =>
     match acc {
@@ -136,25 +134,25 @@ fn serve_text_response(status: std.types.HttpStatus, content_type: extdeps.http.
 data serve_page_response_note: String = "A page render refusal is a TYPED 500 carrying the emitter's reason — never an empty page and never a dropped route (the EmitRejected => [] route-drop in node_http_server_emit is a silent widen this path deliberately does not copy; DESIGN 5). The BODY of both arms is roadmap_static_site.served_page_body, shared with the healthz digest map rather than spelled twice: healthz publishes the digest of the served surface so a deploy can prove the running process is serving THIS tree, and a digest taken over a body that is merely supposed to match the route's would be validation standing where construction was available — the check would go green while the route lied. Only the STATUS split lives here, because a digest has no status."
 
 fn serve_page_response(page: std.markup.Fragment) -> extdeps.http.server.ServeHttpResponse {
-  match try_serialize_html_source(node: page) {
+  match extdeps.languages.html.try_serialize_html_source(node: page) {
     EmitOk { html: h } =>
-      serve_text_response(status: 200, content_type: text_html_utf8, body: h)
+      serve_text_response(status: 200, content_type: extdeps.http.server.text_html_utf8, body: h)
     EmitRejected { reason: r } =>
       serve_text_response(
         status: 500,
-        content_type: text_plain_utf8,
-        body: page_render_refusal_body(reason: r),
+        content_type: extdeps.http.server.text_plain_utf8,
+        body: gunbc.roadmap_site_surface_render.page_render_refusal_body(reason: r),
       )
   }
 }
 
 fn serve_page_response_with_status(page: std.markup.Fragment, status: std.types.HttpStatus) -> extdeps.http.server.ServeHttpResponse {
-  match try_serialize_html_source(node: page) {
-    EmitOk { html } => serve_text_response(status: status, content_type: text_html_utf8, body: html)
+  match extdeps.languages.html.try_serialize_html_source(node: page) {
+    EmitOk { html } => serve_text_response(status: status, content_type: extdeps.http.server.text_html_utf8, body: html)
     EmitRejected { reason } => serve_text_response(
       status: 500,
-      content_type: text_plain_utf8,
-      body: page_render_refusal_body(reason: reason),
+      content_type: extdeps.http.server.text_plain_utf8,
+      body: gunbc.roadmap_site_surface_render.page_render_refusal_body(reason: reason),
     )
   }
 }
@@ -182,8 +180,8 @@ fn belt_dispatch_status(r: gunbc.roadmap_belt_actuate.BeltDispatchResult) -> std
 fn belt_dispatch_response(r: gunbc.roadmap_belt_actuate.BeltDispatchResult) -> extdeps.http.server.ServeHttpResponse {
   serve_text_response(
     status: belt_dispatch_status(r: r),
-    content_type: application_json_utf8,
-    body: serialize_json(v: belt_dispatch_result_json_value(r: r)),
+    content_type: extdeps.http.server.application_json_utf8,
+    body: extdeps.languages.json.emit.serialize_json(v: gunbc.roadmap_belt_actuate.belt_dispatch_result_json_value(r: r)),
   )
 }
 
@@ -191,18 +189,18 @@ data serve_dispatch_param_note: String = "The node_id param is bound by the rout
 
 fn serve_dispatch_handler_response_for_instance(
   instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
-  params: List<std.http_path.PathParamBinding>,
+  params: std.types.List<std.http_path.PathParamBinding>,
 ) -> extdeps.http.server.ServeHttpResponse {
-  let node_id = path_param_value(params: params, name: "node_id")
+  let node_id = std.http_path.path_param_value(params: params, name: "node_id")
   if node_id == "" {
     serve_text_response(
       status: 400,
-      content_type: text_plain_utf8,
+      content_type: extdeps.http.server.text_plain_utf8,
       body: "dispatch requires a node id path segment (fail-closed; empty binding is unreachable by construction)\n",
     )
   } else {
     belt_dispatch_response(
-      r: belt_dispatch_node_for_instance(instance: instance, node_id: node_id),
+      r: gunbc.roadmap_belt_actuate.belt_dispatch_node_for_instance(instance: instance, node_id: node_id),
     )
   }
 }
@@ -211,66 +209,66 @@ data serve_publish_note: String = "POST /publish/NODE_ID is the publication prod
 
 fn serve_publish_handler_response_for_instance(
   instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
-  params: List<std.http_path.PathParamBinding>,
+  params: std.types.List<std.http_path.PathParamBinding>,
 ) -> extdeps.http.server.ServeHttpResponse {
-  let node_id = path_param_value(params: params, name: "node_id")
+  let node_id = std.http_path.path_param_value(params: params, name: "node_id")
   if node_id == "" {
     serve_text_response(
       status: 400,
-      content_type: text_plain_utf8,
+      content_type: extdeps.http.server.text_plain_utf8,
       body: "publish requires a node id path segment (fail-closed; empty binding is unreachable by construction)\n",
     )
   } else {
-    let outcome = belt_publish_node_for_instance(instance: instance, node_id: node_id)
+    let outcome = gunbc.roadmap_belt_actuate.belt_publish_node_for_instance(instance: instance, node_id: node_id)
     serve_text_response(
-      status: belt_publish_outcome_http_status(o: outcome),
-      content_type: application_json_utf8,
-      body: serialize_json(v: belt_publish_outcome_json_value(o: outcome)),
+      status: gunbc.roadmap_belt_actuate.belt_publish_outcome_http_status(o: outcome),
+      content_type: extdeps.http.server.application_json_utf8,
+      body: extdeps.languages.json.emit.serialize_json(v: gunbc.roadmap_belt_actuate.belt_publish_outcome_json_value(o: outcome)),
     )
   }
 }
 
-fn serve_dispatch_handler_response(params: List<std.http_path.PathParamBinding>) -> extdeps.http.server.ServeHttpResponse {
+fn serve_dispatch_handler_response(params: std.types.List<std.http_path.PathParamBinding>) -> extdeps.http.server.ServeHttpResponse {
   serve_dispatch_handler_response_for_instance(
-    instance: srv1_live_dashboard_instance(),
+    instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance(),
     params: params,
   )
 }
 
 fn dashboard_instance_json(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> String {
-  let plan = dashboard_instance_provision_plan_rows(instance: instance)
-  serialize_json(v: json_object(members: [
-    json_kv(key: "schema", value: json_string(s: dashboard_instance_health_schema)),
-    json_kv(key: "instance_id", value: json_string(s: instance.instance_id as String)),
-    json_kv(key: "host_identity", value: json_string(s: instance.host_identity as String)),
-    json_kv(
+  let plan = gunbc.roadmap_dashboard_instance.dashboard_instance_provision_plan_rows(instance: instance)
+  extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_object(members: [
+    extdeps.languages.json.emit.json_kv(key: "schema", value: extdeps.languages.json.emit.json_string(s: gunbc.roadmap_dashboard_instance.dashboard_instance_health_schema)),
+    extdeps.languages.json.emit.json_kv(key: "instance_id", value: extdeps.languages.json.emit.json_string(s: instance.instance_id as String)),
+    extdeps.languages.json.emit.json_kv(key: "host_identity", value: extdeps.languages.json.emit.json_string(s: instance.host_identity as String)),
+    extdeps.languages.json.emit.json_kv(
       key: "actuation",
-      value: json_string(s: dashboard_actuation_posture_label(posture: instance.actuation)),
+      value: extdeps.languages.json.emit.json_string(s: gunbc.roadmap_dashboard_instance.dashboard_actuation_posture_label(posture: instance.actuation)),
     ),
-    json_kv(key: "repo_root", value: json_string(s: instance.repo_root as String)),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(key: "repo_root", value: extdeps.languages.json.emit.json_string(s: instance.repo_root as String)),
+    extdeps.languages.json.emit.json_kv(
       key: "dispatch_worktree_root",
-      value: json_string(s: dashboard_instance_dispatch_worktree_root(instance: instance) as String),
+      value: extdeps.languages.json.emit.json_string(s: gunbc.roadmap_dashboard_instance.dashboard_instance_dispatch_worktree_root(instance: instance) as String),
     ),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(
       key: "dispatch_attempt_state_root",
-      value: json_string(s: dashboard_instance_dispatch_attempt_state_root(instance: instance) as String),
+      value: extdeps.languages.json.emit.json_string(s: gunbc.roadmap_dashboard_instance.dashboard_instance_dispatch_attempt_state_root(instance: instance) as String),
     ),
-    json_kv(key: "listen_port", value: json_int(n: instance.listen_port)),
-    json_kv(key: "serve_function", value: json_string(s: instance.serve_function as String)),
-    json_kv(key: "dispatch_base_ref", value: json_string(s: instance.dispatch_base_ref as String)),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(key: "listen_port", value: extdeps.languages.json.emit.json_int(n: instance.listen_port)),
+    extdeps.languages.json.emit.json_kv(key: "serve_function", value: extdeps.languages.json.emit.json_string(s: instance.serve_function as String)),
+    extdeps.languages.json.emit.json_kv(key: "dispatch_base_ref", value: extdeps.languages.json.emit.json_string(s: instance.dispatch_base_ref as String)),
+    extdeps.languages.json.emit.json_kv(
       key: "provision_transport",
-      value: json_string(s: dashboard_provision_transport_label(
+      value: extdeps.languages.json.emit.json_string(s: gunbc.roadmap_dashboard_instance.dashboard_provision_transport_label(
         transport: instance.provision_transport,
       )),
     ),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(
       key: "desired_provision_plan",
-      value: json_array(elements: plan |> map(row => json_object(members: [
-        json_kv(key: "kind", value: json_string(s: row.kind as String)),
-        json_kv(key: "target", value: json_string(s: row.target)),
-        json_kv(key: "detail", value: json_string(s: row.detail)),
+      value: extdeps.languages.json.emit.json_array(elements: plan |> map(row => extdeps.languages.json.emit.json_object(members: [
+        extdeps.languages.json.emit.json_kv(key: "kind", value: extdeps.languages.json.emit.json_string(s: row.kind as String)),
+        extdeps.languages.json.emit.json_kv(key: "target", value: extdeps.languages.json.emit.json_string(s: row.target)),
+        extdeps.languages.json.emit.json_kv(key: "detail", value: extdeps.languages.json.emit.json_string(s: row.detail)),
       ]))),
     ),
   ]))
@@ -279,21 +277,21 @@ fn dashboard_instance_json(instance: gunbc.roadmap_dashboard_instance.HostDashbo
 data sandbox_echo_note: String = "The /sandbox echo handler answers ANY wire arm on demand so every dispatch state is pressable without spawning a session (P4). It reads ?status=LABEL from the request path (uri_query_param — the query survives in request.path; match_path_template strips it only for routing) and maps it to the belt result exemplar via belt_dispatch_result_for_label, serializing the SAME belt_dispatch_result_json_value the real dispatch returns — so the sandbox JSON shape is identical to production, never a mock. Fail-closed: an unknown or missing status refuses with a 400 that names the valid label set, never a fabricated arm."
 
 fn sandbox_echo_response(request: extdeps.http.server.ServeHttpRequest) -> extdeps.http.server.ServeHttpResponse {
-  let status = uri_query_param(path: request.path, key: "status")
-  match belt_dispatch_result_for_label(wire_label: status) {
+  let status = extdeps.uri_path.uri_query_param(path: request.path, key: "status")
+  match gunbc.roadmap_belt_actuate.belt_dispatch_result_for_label(wire_label: status) {
     Present { value: r } =>
       serve_text_response(
         status: 200,
-        content_type: application_json_utf8,
-        body: serialize_json(v: belt_dispatch_result_json_value(r: r)),
+        content_type: extdeps.http.server.application_json_utf8,
+        body: extdeps.languages.json.emit.serialize_json(v: gunbc.roadmap_belt_actuate.belt_dispatch_result_json_value(r: r)),
       )
     Absent =>
       serve_text_response(
         status: 400,
-        content_type: text_plain_utf8,
+        content_type: extdeps.http.server.text_plain_utf8,
         body: join([
           "unknown status label: ", status,
-          " (fail-closed; valid: ", join(belt_dispatch_all_status_labels(), ", "), ")\n",
+          " (fail-closed; valid: ", join(gunbc.roadmap_belt_actuate.belt_dispatch_all_status_labels(), ", "), ")\n",
         ], ""),
       )
   }
@@ -304,39 +302,39 @@ data serve_invoke_request_note: String = "Every handler receives the FULL modele
 fn roadmap_serve_invoke_for_instance(
   instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   handler: RoadmapServeHandler,
-  params: List<std.http_path.PathParamBinding>,
+  params: std.types.List<std.http_path.PathParamBinding>,
   request: extdeps.http.server.ServeHttpRequest,
   release_revision: std.types.CommitSha,
 ) -> extdeps.http.server.ServeHttpResponse {
   match handler {
     RoadmapDailyPageHandler => serve_daily_page_response_for_instance(instance: instance)
-    RoadmapFullPageHandler => serve_page_response(page: roadmap_page_for_authority())
-    RoadmapMdHandler => serve_text_response(status: 200, content_type: text_plain_utf8, body: roadmap_site_roadmap_md_body())
-    DispatchJsonHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_dispatch_json_body())
-    HealthzHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_healthz_body_for_release(release_revision: release_revision))
+    RoadmapFullPageHandler => serve_page_response(page: gunbc.roadmap_page.roadmap_page_for_authority())
+    RoadmapMdHandler => serve_text_response(status: 200, content_type: extdeps.http.server.text_plain_utf8, body: gunbc.roadmap_static_site.roadmap_site_roadmap_md_body())
+    DispatchJsonHandler => serve_text_response(status: 200, content_type: extdeps.http.server.application_json_utf8, body: gunbc.roadmap_static_site.roadmap_site_dispatch_json_body())
+    HealthzHandler => serve_text_response(status: 200, content_type: extdeps.http.server.application_json_utf8, body: gunbc.roadmap_static_site.roadmap_site_healthz_body_for_release(release_revision: release_revision))
     DashboardInstanceHandler =>
       serve_text_response(
         status: 200,
-        content_type: application_json_utf8,
+        content_type: extdeps.http.server.application_json_utf8,
         body: dashboard_instance_json(instance: instance),
       )
     ProviderReadinessHandler =>
       serve_text_response(
         status: 200,
-        content_type: application_json_utf8,
-        body: dashboard_provider_readiness_json(instance: instance),
+        content_type: extdeps.http.server.application_json_utf8,
+        body: gunbc.roadmap_dashboard_instance_apply.dashboard_provider_readiness_json(instance: instance),
       )
     BeltDispatchHandler =>
       serve_dispatch_handler_response_for_instance(instance: instance, params: params)
-    DispatchAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: dispatch_client_js_source())
-    SandboxPageHandler => serve_page_response(page: sandbox_page())
-    InstrumentSandboxPageHandler => serve_page_response(page: instrument_sandbox_page())
-    InstrumentTunerPageHandler => serve_page_response(page: instrument_tuner_page())
-    InstrumentTunerAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: instrument_tuner_client_js_source())
-    InstrumentMotionPageHandler => serve_page_response(page: instrument_motion_page())
-    InstrumentMotionAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: instrument_motion_client_js_source())
-    RepoAtlasPageHandler => serve_page_response(page: repo_atlas_page())
-    SandboxAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: sandbox_client_js_source())
+    DispatchAssetHandler => serve_text_response(status: 200, content_type: extdeps.http.server.text_javascript_utf8, body: gunbc.roadmap_component.dispatch_client_js_source())
+    SandboxPageHandler => serve_page_response(page: gunbc.roadmap_sandbox.sandbox_page())
+    InstrumentSandboxPageHandler => serve_page_response(page: gunbc.roadmap_instrument_sandbox.instrument_sandbox_page())
+    InstrumentTunerPageHandler => serve_page_response(page: gunbc.roadmap_instrument_tuner.instrument_tuner_page())
+    InstrumentTunerAssetHandler => serve_text_response(status: 200, content_type: extdeps.http.server.text_javascript_utf8, body: gunbc.roadmap_component.instrument_tuner_client_js_source())
+    InstrumentMotionPageHandler => serve_page_response(page: gunbc.roadmap_instrument_motion.instrument_motion_page())
+    InstrumentMotionAssetHandler => serve_text_response(status: 200, content_type: extdeps.http.server.text_javascript_utf8, body: gunbc.roadmap_component.instrument_motion_client_js_source())
+    RepoAtlasPageHandler => serve_page_response(page: gunbc.roadmap_repo_atlas_sandbox.repo_atlas_page())
+    SandboxAssetHandler => serve_text_response(status: 200, content_type: extdeps.http.server.text_javascript_utf8, body: gunbc.roadmap_component.sandbox_client_js_source())
     SandboxEchoHandler => sandbox_echo_response(request: request)
     SessionsJsonHandler => serve_sessions_response_for_instance(instance: instance)
     AttemptsJsonHandler => serve_attempts_response_for_instance(instance: instance)
@@ -348,12 +346,12 @@ fn roadmap_serve_invoke_for_instance(
 
 fn roadmap_serve_invoke(
   handler: RoadmapServeHandler,
-  params: List<std.http_path.PathParamBinding>,
+  params: std.types.List<std.http_path.PathParamBinding>,
   request: extdeps.http.server.ServeHttpRequest,
   release_revision: std.types.CommitSha,
 ) -> extdeps.http.server.ServeHttpResponse {
   roadmap_serve_invoke_for_instance(
-    instance: srv1_live_dashboard_instance(),
+    instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance(),
     handler: handler,
     params: params,
     request: request,
@@ -363,27 +361,27 @@ fn roadmap_serve_invoke(
 
 fn serve_stop_handler_response_for_instance(
   instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
-  params: List<std.http_path.PathParamBinding>,
+  params: std.types.List<std.http_path.PathParamBinding>,
 ) -> extdeps.http.server.ServeHttpResponse {
-  let node_id = path_param_value(params: params, name: "node_id")
+  let node_id = std.http_path.path_param_value(params: params, name: "node_id")
   if node_id == "" {
     serve_text_response(
       status: 400,
-      content_type: text_plain_utf8,
+      content_type: extdeps.http.server.text_plain_utf8,
       body: "cleanup requires a node id path segment (fail-closed; empty binding is unreachable by construction)\n",
     )
   } else {
-    let r = belt_stop_node_for_instance(instance: instance, node_id: node_id)
+    let r = gunbc.roadmap_belt_actuate.belt_stop_node_for_instance(instance: instance, node_id: node_id)
     serve_text_response(
-      status: belt_stop_http_status(r: r),
-      content_type: application_json_utf8,
-      body: serialize_json(v: belt_stop_result_json_value(r: r)))
+      status: gunbc.roadmap_belt_actuate.belt_stop_http_status(r: r),
+      content_type: extdeps.http.server.application_json_utf8,
+      body: extdeps.languages.json.emit.serialize_json(v: gunbc.roadmap_belt_actuate.belt_stop_result_json_value(r: r)))
   }
 }
 
-fn serve_stop_handler_response(params: List<std.http_path.PathParamBinding>) -> extdeps.http.server.ServeHttpResponse {
+fn serve_stop_handler_response(params: std.types.List<std.http_path.PathParamBinding>) -> extdeps.http.server.ServeHttpResponse {
   serve_stop_handler_response_for_instance(
-    instance: srv1_live_dashboard_instance(),
+    instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance(),
     params: params,
   )
 }
@@ -391,15 +389,15 @@ fn serve_stop_handler_response(params: List<std.http_path.PathParamBinding>) -> 
 fn serve_attempts_response_for_instance(
   instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
 ) -> extdeps.http.server.ServeHttpResponse {
-  let a = belt_attempts_observe_for_instance(instance: instance)
+  let a = gunbc.roadmap_belt_actuate.belt_attempts_observe_for_instance(instance: instance)
   serve_text_response(
-    status: belt_attempts_http_status(a: a),
-    content_type: application_json_utf8,
-    body: belt_attempts_observed_json(a: a))
+    status: gunbc.roadmap_belt_actuate.belt_attempts_http_status(a: a),
+    content_type: extdeps.http.server.application_json_utf8,
+    body: gunbc.roadmap_belt_actuate.belt_attempts_observed_json(a: a))
 }
 
 fn serve_attempts_response() -> extdeps.http.server.ServeHttpResponse {
-  serve_attempts_response_for_instance(instance: srv1_live_dashboard_instance())
+  serve_attempts_response_for_instance(instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance())
 }
 
 data serve_workflow_note: String = "GET /workflow.json is the evidence-derived attempt pipeline. One observation joins current modeled state, a bounded jq projection of complete Codex attempt evidence, retained process exit, and the node's declared validation contract. The exact projector executable is an ensured platform capability. It validates each raw JSON value while omitting unbounded command payloads from the synchronous interpreted handler; projector absence or malformed input remains an explicit per-attempt refusal. The observed facts reconcile by fold against the shared desired obligation roster and expose desired/observed/remaining counts plus distinct observed-failure, observed-refusal, and unsafe-plan-refusal counts; they never upgrade provider completion into verification, publication, review, or goal audit. A refused attempts ledger returns 503; per-attempt event/process refusals remain explicit segment states in a 200 body so one damaged attempt cannot erase evidence from every other row."
@@ -411,11 +409,11 @@ data roadmap_serve_host_shell_bounded_drain_receipt_note: String = "HOST-BOUNDAR
 fn serve_daily_page_response_for_instance(
   instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
 ) -> extdeps.http.server.ServeHttpResponse {
-  let page = match belt_workflow_attempts_observe_for_instance(instance: instance) {
+  let page = match gunbc.roadmap_belt_actuate.belt_workflow_attempts_observe_for_instance(instance: instance) {
     WorkflowAttemptsObserved { attempts } =>
-      roadmap_daily_workspace_page_for_authority_observed(attempts: attempts, attempts_refused: none)
+      gunbc.roadmap_page.roadmap_daily_workspace_page_for_authority_observed(attempts: attempts, attempts_refused: none)
     WorkflowAttemptsRefused { reason } =>
-      roadmap_daily_workspace_page_for_authority_observed(attempts: [], attempts_refused: Present { value: reason })
+      gunbc.roadmap_page.roadmap_daily_workspace_page_for_authority_observed(attempts: [], attempts_refused: Present { value: reason })
   }
   serve_page_response(page: page)
 }
@@ -423,13 +421,13 @@ fn serve_daily_page_response_for_instance(
 fn serve_workflow_response_for_instance(
   instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
 ) -> extdeps.http.server.ServeHttpResponse {
-  let observed = belt_workflow_attempts_observe_for_instance(
+  let observed = gunbc.roadmap_belt_actuate.belt_workflow_attempts_observe_for_instance(
     instance: instance,
   )
   serve_text_response(
-    status: belt_workflow_attempts_http_status(observed: observed),
-    content_type: application_json_utf8,
-    body: belt_workflow_attempts_observed_json_for_instance(
+    status: gunbc.roadmap_belt_actuate.belt_workflow_attempts_http_status(observed: observed),
+    content_type: extdeps.http.server.application_json_utf8,
+    body: gunbc.roadmap_belt_actuate.belt_workflow_attempts_observed_json_for_instance(
       instance: instance,
       observed: observed,
     ),
@@ -437,7 +435,7 @@ fn serve_workflow_response_for_instance(
 }
 
 fn serve_workflow_response() -> extdeps.http.server.ServeHttpResponse {
-  serve_workflow_response_for_instance(instance: srv1_live_dashboard_instance())
+  serve_workflow_response_for_instance(instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance())
 }
 
 data serve_sessions_note: String = "GET /sessions.json performs one session-container observation and one independently adjudicated pane/process observation. Session-list refusal serves 503 because container presence is unknowable. Pane refusal stays in each known session as process unobserved and cleanup unavailable; it cannot erase session presence. The same combined observation feeds both status and body so the route never races two reads."
@@ -445,18 +443,18 @@ data serve_sessions_note: String = "GET /sessions.json performs one session-cont
 fn serve_sessions_response_for_instance(
   instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
 ) -> extdeps.http.server.ServeHttpResponse {
-  let o = belt_sessions_observe_for_instance(instance: instance)
+  let o = gunbc.roadmap_belt_actuate.belt_sessions_observe_for_instance(instance: instance)
   serve_text_response(
-    status: belt_sessions_http_status(o: o),
-    content_type: application_json_utf8,
-    body: belt_sessions_observed_json(o: o))
+    status: gunbc.roadmap_belt_actuate.belt_sessions_http_status(o: o),
+    content_type: extdeps.http.server.application_json_utf8,
+    body: gunbc.roadmap_belt_actuate.belt_sessions_observed_json(o: o))
 }
 
 fn serve_sessions_response() -> extdeps.http.server.ServeHttpResponse {
-  serve_sessions_response_for_instance(instance: srv1_live_dashboard_instance())
+  serve_sessions_response_for_instance(instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance())
 }
 
-fn http_method_label_join(methods: List<std.types.HttpMethod>) -> String {
+fn http_method_label_join(methods: std.types.List<std.types.HttpMethod>) -> String {
   join(map(methods, m => match m {
     GET => "GET"
     POST => "POST"
@@ -488,11 +486,11 @@ fn roadmap_serve_selection_response_for_instance(
     MethodNotAllowed { allowed: ms } =>
       serve_text_response(
         status: 405,
-        content_type: text_plain_utf8,
+        content_type: extdeps.http.server.text_plain_utf8,
         body: join(["method not allowed; allowed: ", http_method_label_join(methods: ms), "\n"], ""),
       )
-    extdeps.http.server.NoRouteMatched =>
-      serve_text_response(status: 404, content_type: text_plain_utf8, body: "not found\n")
+    NoRouteMatched =>
+      serve_text_response(status: 404, content_type: extdeps.http.server.text_plain_utf8, body: "not found\n")
   }
 }
 
@@ -502,7 +500,7 @@ fn roadmap_serve_selection_response(
   release_revision: std.types.CommitSha,
 ) -> extdeps.http.server.ServeHttpResponse {
   roadmap_serve_selection_response_for_instance(
-    instance: srv1_live_dashboard_instance(),
+    instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance(),
     sel: sel,
     request: request,
     release_revision: release_revision,
@@ -516,11 +514,11 @@ fn roadmap_serve_respond_for_instance(
   body: String,
   release_revision: std.types.CommitSha,
 ) -> extdeps.http.server.ServeHttpResponse {
-  match parse_http_method_label(label: method_label) {
+  match extdeps.http.server.parse_http_method_label(label: method_label) {
     UnknownMethod { label: l } =>
       serve_text_response(
         status: 501,
-        content_type: text_plain_utf8,
+        content_type: extdeps.http.server.text_plain_utf8,
         body: join(["unrecognized method: ", l, "\n"], ""),
       )
     KnownMethod { method: m } =>
@@ -528,7 +526,7 @@ fn roadmap_serve_respond_for_instance(
         RoadmapServeTableRefused { raw: r, segment: s, reason: why } =>
           serve_text_response(
             status: 500,
-            content_type: text_plain_utf8,
+            content_type: extdeps.http.server.text_plain_utf8,
             body: join([
               "route table refused: malformed route literal raw=", r,
               " segment=", s,
@@ -539,7 +537,7 @@ fn roadmap_serve_respond_for_instance(
         RoadmapServeTable { table: t } =>
           roadmap_serve_selection_response_for_instance(
             instance: instance,
-            sel: serve_select_route(table: t, method: m, path: path),
+            sel: extdeps.http.server.serve_select_route(table: t, method: m, path: path),
             request: extdeps.http.server.ServeHttpRequest { method: m, path: path, body: body },
             release_revision: release_revision,
           )
@@ -554,7 +552,7 @@ fn roadmap_serve_respond(
   release_revision: std.types.CommitSha,
 ) -> extdeps.http.server.ServeHttpResponse {
   roadmap_serve_respond_for_instance(
-    instance: srv1_live_dashboard_instance(),
+    instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance(),
     method_label: method_label,
     path: path,
     body: body,
@@ -568,23 +566,8 @@ fn roadmap_serve_handle(
   body: String,
   release_revision: std.types.CommitSha,
 ) -> extdeps.http.server.ServeWireResponse {
-  serve_wire_response(r: roadmap_serve_respond_for_instance(
-    instance: srv1_live_dashboard_instance(),
-    method_label: method,
-    path: path,
-    body: body,
-    release_revision: release_revision,
-  ))
-}
-
-fn roadmap_serve_handle_srv1_green(
-  method: String,
-  path: String,
-  body: String,
-  release_revision: std.types.CommitSha,
-) -> extdeps.http.server.ServeWireResponse {
-  serve_wire_response(r: roadmap_serve_respond_for_instance(
-    instance: srv1_green_dashboard_instance(),
+  extdeps.http.server.serve_wire_response(r: roadmap_serve_respond_for_instance(
+    instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance(),
     method_label: method,
     path: path,
     body: body,
@@ -598,8 +581,8 @@ fn roadmap_serve_handle_srv1_lab(
   body: String,
   release_revision: std.types.CommitSha,
 ) -> extdeps.http.server.ServeWireResponse {
-  serve_wire_response(r: roadmap_serve_respond_for_instance(
-    instance: srv1_lab_dashboard_instance(),
+  extdeps.http.server.serve_wire_response(r: roadmap_serve_respond_for_instance(
+    instance: gunbc.roadmap_dashboard_instance.srv1_lab_dashboard_instance(),
     method_label: method,
     path: path,
     body: body,
@@ -613,8 +596,8 @@ fn roadmap_serve_handle_srv2_preview(
   body: String,
   release_revision: std.types.CommitSha,
 ) -> extdeps.http.server.ServeWireResponse {
-  serve_wire_response(r: roadmap_serve_respond_for_instance(
-    instance: srv2_preview_dashboard_instance(),
+  extdeps.http.server.serve_wire_response(r: roadmap_serve_respond_for_instance(
+    instance: gunbc.roadmap_dashboard_instance.srv2_preview_dashboard_instance(),
     method_label: method,
     path: path,
     body: body,
@@ -628,8 +611,8 @@ fn roadmap_serve_handle_srv2_lab(
   body: String,
   release_revision: std.types.CommitSha,
 ) -> extdeps.http.server.ServeWireResponse {
-  serve_wire_response(r: roadmap_serve_respond_for_instance(
-    instance: srv2_lab_dashboard_instance(),
+  extdeps.http.server.serve_wire_response(r: roadmap_serve_respond_for_instance(
+    instance: gunbc.roadmap_dashboard_instance.srv2_lab_dashboard_instance(),
     method_label: method,
     path: path,
     body: body,

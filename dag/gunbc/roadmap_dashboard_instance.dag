@@ -1,6 +1,5 @@
 module gunbc.roadmap_dashboard_instance
 
-
 type DashboardActuationPosture
   = DashboardObserveOnly
   | DashboardActuating
@@ -27,7 +26,7 @@ type DashboardProviderStateBinding
       binding: gunbc.provider_account.AdmittedAccountBinding,
     }
 
-data dispatch_state_scope_note: String = "WHOSE STATE THE DISPATCH ROOTS ARE IS A DECLARATION, NOT AN INFERENCE, and it is the axis this record was missing when blue/green landed. An instance owns two roots a dispatch WRITES — the worktree root and the published attempt-state root — and until now both were derived from instance_root for every instance, which silently answered a question nobody had asked: that dispatch evidence belongs to the SLOT.\\n\\nFor an isolated lab that answer is right and load-bearing. A lab exists to be disjoint from production, and handing it the host-shared roots would let one lab's apply or retract disturb another lab's live worktrees and published attempts. For a production blue/green SLOT the same answer is wrong, and wrong in two directions at once. The cutover retracts the retiring slot, so slot-scoped roots put a teardown of live dispatch evidence on the per-push path — the empty-directory wall then refuses, correctly, and every main push reds (measured 2026-08-01: seven consecutive deploy jobs, alternating by candidate, both directions failing once each slot had served long enough to accumulate evidence). And because each slot reads its OWN roots, a flip moves the dashboard to a process that cannot see the attempts dispatched under its predecessor.\\n\\nThe defect is not that either answer is wrong. It is that ONE derivation answered for both kinds of instance, so the two could not disagree. Making it a field with no default means an instance cannot come into existence without stating which it is, and the two laws below read the declaration rather than guessing from instance_root, instance_id, or actuation posture — none of which separate a lab from a production slot, since labs and slots are both DashboardActuating.\\n\\nTHIS DOES NOT REOPEN isolated_instance_own_binary_note (operator ruling, 2026-07-30). That ruling is about serve_binary and its argument is mutual exclusion of PROCESSES: a lab testing a new seed must not overwrite the binary production executes, and retract tears Owned members down. Nothing here touches serve_binary, which stays instance-derived for labs and instance-declared for production under both scopes. The two rulings partition cleanly because they are about different members with opposite sharing requirements — the binary must NOT be shared because a retract would delete a running program, and the dispatch state MUST be shared across production slots because a flip would otherwise orphan live agent sessions."
+data dispatch_state_scope_note: String = "WHOSE STATE THE DISPATCH ROOTS ARE IS A DECLARATION, NOT AN INFERENCE, and it is the axis this record was missing when blue/green landed. An instance owns two roots a dispatch WRITES — the worktree root and the published attempt-state root — and until now both were derived from instance_root for every instance, which silently answered a question nobody had asked: that dispatch evidence belongs to the SLOT.\\n\\nFor an isolated lab that answer is right and load-bearing. A lab exists to be disjoint from production, and handing it the host-shared roots would let one lab's apply or retract disturb another lab's live worktrees and published attempts. For a production blue/green SLOT the same answer is wrong, and wrong in two directions at once. The cutover retracts the retiring slot, so slot-scoped roots put a teardown of live dispatch evidence on the per-push path — the empty-directory wall then refuses, correctly, and every main push reds (measured 2026-08-01: seven consecutive deploy jobs, alternating by candidate, both directions failing once each slot had served long enough to accumulate evidence). And because each slot reads its OWN roots, a flip moves the dashboard to a process that cannot see the attempts dispatched under its predecessor.\\n\\nThe defect is not that either answer is wrong. It is that ONE derivation answered for both kinds of instance, so the two could not disagree. Making it a field with no default means an instance cannot come into existence without stating which it is, and the two laws below read the declaration rather than guessing from instance_root, instance_id, or actuation posture — none of which separate a lab from a production slot, since labs and slots are both DashboardActuating.\\n\\nTHIS DOES NOT REOPEN isolated_instance_own_binary_note (operator ruling, 2026-07-30). That ruling is about serve_binary and its argument is mutual exclusion of PROCESSES: a lab testing a new seed must not overwrite the binary production executes, and retract tears Owned members down. Nothing here touches serve_binary, which stays instance-derived for labs and instance-declared for production under both scopes. The two rulings partition cleanly because they are about different members with opposite sharing requirements — the binary must NOT be shared because a retract would delete a running program, and the dispatch state MUST be shared across production slots because a flip would otherwise orphan live agent sessions.\n\nWHAT THE 2026-08-19 SINGLE-DEPLOYMENT CUT DID TO THIS NOTE, recorded here rather than left as prose arguing from a mechanism that no longer exists. Everything above about the CUTOVER -- the retiring slot, the per-push teardown of live dispatch evidence, the flip that moves the dashboard to a process blind to its predecessor's attempts -- describes events that can no longer occur: blue/green was deleted at the root and there is one deployment. The seven-deploy measurement stands as the history that produced the field and is kept for that reason, not as a live hazard.\n\nThe FIELD survives with a real meaning, which is why this is prose repair and not a model change: it still separates an isolated lab from a production instance, and that distinction is load-bearing for exactly the reason the lab paragraph gives. But one consequence must be declared rather than discovered. For srv1_live_dashboard_instance the host-shared roots /opt/gunbc/dispatch-worktrees and /opt/gunbc/attempt-state are UNDER its own instance_root /opt/gunbc, so DispatchStateHostShared and DispatchStateInstanceOwned are now observationally identical on the only production instance. The containment-exemption law therefore holds over ZERO declared subjects, and its witness (host_shared_slots_are_exempt_from_containment_but_labs_are_not) had to move to a counterfactual slot to stay discriminating. That is honest but weak: the law is enforced only against a constructed instance, so a real production instance whose roots stopped being host-shared would not be caught by it. NEXT-RUNG TRIGGER: a second production instance on any host, at which point the exemption regains a declared subject and the witness returns to the live population."
 
 data dispatch_state_scope_carries_its_roots_note: String = "THE SCOPE AND THE ROOTS TRAVEL TOGETHER, because as three independent fields they could disagree and the model could only NOTICE that afterwards (codex review 47405, #7637 follow-up). The first cut declared a bare two-variant scope beside dispatch_worktree_root and dispatch_attempt_state_root, so a slot could be labelled host-shared while carrying roots derived from its own instance root — exactly the state the change existed to eliminate. The tell was in the evidence: the RED witness had to CONSTRUCT that combination to prove the law caught it, which is DESIGN §4b rung two, mechanically preventable, standing where rung four was available.\\n\\nCarrying the roots in the variant moves it up. An instance-owned scope carries the CHILD NAMES its roots hang under, and the roots are derived beneath instance_root; a host-shared scope carries the layout roots themselves. There is no third field to contradict either, so the MISLABELLED slot — host-shared in name while its roots derive from its own instance root — has no representation rather than a check that finds it.\n\nBE EXACT ABOUT WHAT THIS DOES NOT CLOSE, because overstating a rung is worse than sitting at it (DESIGN §4b rung honesty). A host-shared variant still carries two free FilePath values, so a production slot CAN be authored with roots that are not the layout rows. That state remains representable and dashboard_instances_dispatch_state_is_consistent is what refuses it — mechanically preventable, not structurally impossible — and a_production_slot_keeping_its_own_dispatch_state_is_refused is the live discriminating red proving the law still executes. What DID climb is the instance-owned side, which carries child names only and therefore cannot reach outside its instance root at all. Next-rung trigger, so this is a tracked stall rather than a silent one: host-shared roots DERIVED from a total host-identity-to-layout lookup instead of carried. Dissolve-on feature:host-dispatch-roots-derived.\\n\\nTHE CHILD NAMES ARE CARRIED RATHER THAN FIXED, and that is not incidental: production hangs its worktrees under dispatch-worktrees while isolated labs use attempts. A uniform derivation would have silently RENAMED production's live worktree root — the kind of quiet migration a refactor produces when it assumes regularity the corpus does not have."
 
@@ -66,7 +65,6 @@ type HostDashboardInstance {
 data dashboard_instance_note: String = "A dashboard is an explicit host instance, not an ambient serve process. One value moves the source repository, local Git origin, attempt-worktree root, semantic execution-capability realizations, provider state binding, tmux server, listen address, handler entrypoint, and actuation posture together. Selection is by the serve entry function that receives this value; no environment variable may replace one projection independently. Production uses the user's default tmux server for compatibility. Labs and previews use named tmux servers and roots disjoint from production. Provider credentials remain pre-existing user-authored state and are referenced, never copied into a deployment payload. Capability realizations name exact executable paths and identity probes; observe-only means absence refuses admission until a separate capability-specific provisioner exists, never that generic Ensure guesses an installer."
 
 data srv1_dashboard_live_id: std.types.NonEmptyStr = "srv1-live" as std.types.NonEmptyStr
-data srv1_dashboard_green_id: std.types.NonEmptyStr = "srv1-green" as std.types.NonEmptyStr
 data srv1_dashboard_lab_id: std.types.NonEmptyStr = "srv1-lab-codex-feedback-v0" as std.types.NonEmptyStr
 data srv2_dashboard_preview_id: std.types.NonEmptyStr = "srv2-preview-codex-feedback-v0" as std.types.NonEmptyStr
 
@@ -78,13 +76,13 @@ fn dashboard_instance_child(root: std.types.FilePath, child: String) -> std.type
   join([root as String, "/", child], "") as std.types.FilePath
 }
 
-fn dashboard_instance_provider_state_root(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> std.types.FilePath {
+fn dashboard_instance_provider_state_root(instance: HostDashboardInstance) -> std.types.FilePath {
   match instance.provider_state {
     DashboardExistingProviderState { root, executable: _, binding: _ } => root
   }
 }
 
-fn dashboard_instance_provider_executable(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> std.types.FilePath? {
+fn dashboard_instance_provider_executable(instance: HostDashboardInstance) -> std.types.FilePath? {
   match instance.provider_state {
     DashboardExistingProviderState { root: _, executable, binding: _ } => executable
   }
@@ -92,7 +90,7 @@ fn dashboard_instance_provider_executable(instance: gunbc.roadmap_dashboard_inst
 
 fn dashboard_instance_provider_executable_matches(
   executable: std.types.FilePath,
-  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  instance: HostDashboardInstance,
 ) -> Bool {
   match dashboard_instance_provider_executable(instance: instance) {
     Present { value: expected } => executable == expected
@@ -100,7 +98,7 @@ fn dashboard_instance_provider_executable_matches(
   }
 }
 
-fn dashboard_instance_provider_executable_refusal_detail(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> String {
+fn dashboard_instance_provider_executable_refusal_detail(instance: HostDashboardInstance) -> String {
   join([
     "bundled Codex executable path unavailable for host ",
     instance.host_identity as String,
@@ -109,10 +107,10 @@ fn dashboard_instance_provider_executable_refusal_detail(instance: gunbc.roadmap
 }
 
 fn dashboard_instance_capability_executable(
-  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  instance: HostDashboardInstance,
   cap: gunbc.roadmap_execution_contract.ExecutionCapability,
 ) -> std.types.FilePath? {
-  match dispatch_host_realization(
+  match gunbc.roadmap_execution_contract.dispatch_host_realization(
     environment: instance.execution_environment,
     capability: cap,
   ) {
@@ -123,9 +121,9 @@ fn dashboard_instance_capability_executable(
 }
 
 fn dashboard_instance_dispatch_platform_executables(
-  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
-) -> List<std.types.FilePath> {
-  dispatch_platform_required_capabilities()
+  instance: HostDashboardInstance,
+) -> std.types.List<std.types.FilePath> {
+  gunbc.roadmap_execution_contract.dispatch_platform_required_capabilities()
     |> flat_map(cap =>
       match dashboard_instance_capability_executable(
         instance: instance,
@@ -136,18 +134,18 @@ fn dashboard_instance_dispatch_platform_executables(
       })
 }
 
-fn dashboard_instance_ownership_marker_path(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> std.types.FilePath {
+fn dashboard_instance_ownership_marker_path(instance: HostDashboardInstance) -> std.types.FilePath {
   dashboard_instance_child(
     root: instance.instance_root,
     child: join([".gunbc-dashboard-instance-", instance.instance_id as String], ""),
   )
 }
 
-fn dashboard_instance_service_session_name(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> std.types.NonEmptyStr {
+fn dashboard_instance_service_session_name(instance: HostDashboardInstance) -> std.types.NonEmptyStr {
   join(["gunbc-dashboard-", instance.instance_id as String], "") as std.types.NonEmptyStr
 }
 
-fn dashboard_instance_checkout_branch(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> std.types.NonEmptyStr {
+fn dashboard_instance_checkout_branch(instance: HostDashboardInstance) -> std.types.NonEmptyStr {
   replace(
     s: instance.local_origin_publish_ref as String,
     from: "refs/heads/",
@@ -155,7 +153,7 @@ fn dashboard_instance_checkout_branch(instance: gunbc.roadmap_dashboard_instance
   ) as std.types.NonEmptyStr
 }
 
-fn dashboard_instance_controller_workdir(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> std.types.FilePath {
+fn dashboard_instance_controller_workdir(instance: HostDashboardInstance) -> std.types.FilePath {
   match instance.source_seed {
     DashboardExistingRepo { anchor_ref: _ } => instance.repo_root
     DashboardGitBundle {
@@ -168,7 +166,7 @@ fn dashboard_instance_controller_workdir(instance: gunbc.roadmap_dashboard_insta
   }
 }
 
-fn dashboard_instance_serve_argv(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> List<String> {
+fn dashboard_instance_serve_argv(instance: HostDashboardInstance) -> std.types.List<String> {
   [
     "serve",
     "--source-root", "dag",
@@ -199,9 +197,9 @@ data dashboard_instance_health_schema: String = "roadmap-dashboard-instance/v1"
 data dashboard_instance_health_identity_note: String = "The served health document leads with schema then instance_id, so a reader can identify it POSITIONALLY instead of scanning the body — the same rule dispatch_environment_receipt_identity_prefix states for the admission receipt. A health reader that scanned for an instance_id fragment would accept any document carrying it in any nested value, which is how a foreign or stale server on the polled port fabricates a converged apply."
 
 fn dashboard_instance_health_identity_prefix(instance_id: String) -> String {
-  serialize_json_object_prefix(members: [
-    json_kv(key: "schema", value: json_string(s: dashboard_instance_health_schema)),
-    json_kv(key: "instance_id", value: json_string(s: instance_id)),
+  extdeps.languages.json.emit.serialize_json_object_prefix(members: [
+    extdeps.languages.json.emit.json_kv(key: "schema", value: extdeps.languages.json.emit.json_string(s: dashboard_instance_health_schema)),
+    extdeps.languages.json.emit.json_kv(key: "instance_id", value: extdeps.languages.json.emit.json_string(s: instance_id)),
   ])
 }
 
@@ -215,161 +213,123 @@ fn dashboard_execution_environment(
   gunbc.roadmap_execution_contract.DispatchHostEnvironment {
     realizations: [
       gunbc.roadmap_execution_contract.CapabilityRealization {
-        capability: GitWorkspaceCapability,
+        capability: gunbc.roadmap_execution_contract.GitWorkspaceCapability,
         executable: "/usr/bin/git" as std.types.FilePath,
         identity_args: ["--version"],
         identity_contains: "git version" as std.types.NonEmptyStr,
-        ensure_policy: EnsureObserveOnly,
+        ensure_policy: gunbc.ensure.EnsureObserveOnly,
       },
       gunbc.roadmap_execution_contract.CapabilityRealization {
-        capability: TmuxSessionCapability,
+        capability: gunbc.roadmap_execution_contract.TmuxSessionCapability,
         executable: "/usr/bin/tmux" as std.types.FilePath,
         identity_args: ["-V"],
         identity_contains: "tmux" as std.types.NonEmptyStr,
-        ensure_policy: EnsureObserveOnly,
+        ensure_policy: gunbc.ensure.EnsureObserveOnly,
       },
       gunbc.roadmap_execution_contract.CapabilityRealization {
-        capability: TmuxPipeShellCapability,
+        capability: gunbc.roadmap_execution_contract.TmuxPipeShellCapability,
         executable: "/usr/bin/sh" as std.types.FilePath,
         identity_args: ["-c", "printf gunbc-tmux-pipe-shell"],
         identity_contains: "gunbc-tmux-pipe-shell" as std.types.NonEmptyStr,
-        ensure_policy: EnsureObserveOnly,
+        ensure_policy: gunbc.ensure.EnsureObserveOnly,
       },
       gunbc.roadmap_execution_contract.CapabilityRealization {
-        capability: TeeEventCaptureCapability,
+        capability: gunbc.roadmap_execution_contract.TeeEventCaptureCapability,
         executable: "/usr/bin/tee" as std.types.FilePath,
         identity_args: ["--version"],
         identity_contains: "coreutils" as std.types.NonEmptyStr,
-        ensure_policy: EnsureObserveOnly,
+        ensure_policy: gunbc.ensure.EnsureObserveOnly,
       },
       gunbc.roadmap_execution_contract.CapabilityRealization {
-        capability: ProviderEventProjectionCapability,
+        capability: gunbc.roadmap_execution_contract.ProviderEventProjectionCapability,
         executable: "/usr/bin/jq" as std.types.FilePath,
         identity_args: ["--version"],
         identity_contains: "jq-" as std.types.NonEmptyStr,
-        ensure_policy: EnsureObserveOnly,
+        ensure_policy: gunbc.ensure.EnsureObserveOnly,
       },
       gunbc.roadmap_execution_contract.CapabilityRealization {
-        capability: EnvironmentBindingCapability,
+        capability: gunbc.roadmap_execution_contract.EnvironmentBindingCapability,
         executable: dashboard_environment_binding_executable,
         identity_args: ["--version"],
         identity_contains: "coreutils" as std.types.NonEmptyStr,
-        ensure_policy: EnsureObserveOnly,
+        ensure_policy: gunbc.ensure.EnsureObserveOnly,
       },
       gunbc.roadmap_execution_contract.CapabilityRealization {
-        capability: AttemptStateDirectoryCapability,
+        capability: gunbc.roadmap_execution_contract.AttemptStateDirectoryCapability,
         executable: "/usr/bin/install" as std.types.FilePath,
         identity_args: ["--version"],
         identity_contains: "coreutils" as std.types.NonEmptyStr,
-        ensure_policy: EnsureObserveOnly,
+        ensure_policy: gunbc.ensure.EnsureObserveOnly,
       },
       gunbc.roadmap_execution_contract.CapabilityRealization {
-        capability: AttemptCurrentPointerCapability,
+        capability: gunbc.roadmap_execution_contract.AttemptCurrentPointerCapability,
         executable: "/usr/bin/ln" as std.types.FilePath,
         identity_args: ["--version"],
         identity_contains: "coreutils" as std.types.NonEmptyStr,
-        ensure_policy: EnsureObserveOnly,
+        ensure_policy: gunbc.ensure.EnsureObserveOnly,
       },
       gunbc.roadmap_execution_contract.CapabilityRealization {
-        capability: GunbcClaimRunnerCapability,
+        capability: gunbc.roadmap_execution_contract.GunbcClaimRunnerCapability,
         executable: serve_binary,
         identity_args: ["--help"],
         identity_contains: "A causal compiler" as std.types.NonEmptyStr,
-        ensure_policy: EnsureObserveOnly,
+        ensure_policy: gunbc.ensure.EnsureObserveOnly,
       },
       gunbc.roadmap_execution_contract.CapabilityRealization {
-        capability: CargoCapability,
+        capability: gunbc.roadmap_execution_contract.CargoCapability,
         executable: "/home/briansrls/.cargo/bin/cargo" as std.types.FilePath,
         identity_args: ["--version"],
         identity_contains: "cargo" as std.types.NonEmptyStr,
-        ensure_policy: EnsureObserveOnly,
+        ensure_policy: gunbc.ensure.EnsureObserveOnly,
       },
       gunbc.roadmap_execution_contract.CapabilityRealization {
-        capability: RustcCapability,
+        capability: gunbc.roadmap_execution_contract.RustcCapability,
         executable: "/home/briansrls/.cargo/bin/rustc" as std.types.FilePath,
         identity_args: ["--version"],
         identity_contains: "rustc" as std.types.NonEmptyStr,
-        ensure_policy: EnsureObserveOnly,
+        ensure_policy: gunbc.ensure.EnsureObserveOnly,
       },
       gunbc.roadmap_execution_contract.CapabilityRealization {
-        capability: RustfmtCapability,
+        capability: gunbc.roadmap_execution_contract.RustfmtCapability,
         executable: "/home/briansrls/.cargo/bin/rustfmt" as std.types.FilePath,
         identity_args: ["--version"],
         identity_contains: "rustfmt" as std.types.NonEmptyStr,
-        ensure_policy: EnsureObserveOnly,
+        ensure_policy: gunbc.ensure.EnsureObserveOnly,
       },
     ],
   }
 }
 
-fn srv1_live_dashboard_instance() -> gunbc.roadmap_dashboard_instance.HostDashboardInstance {
-  gunbc.roadmap_dashboard_instance.HostDashboardInstance {
+fn srv1_live_dashboard_instance() -> HostDashboardInstance {
+  HostDashboardInstance {
     instance_id: srv1_dashboard_live_id,
     host_identity: "srv1" as std.types.NonEmptyStr,
     provision_parent_root: "/opt/gunbc" as std.types.FilePath,
     instance_root: "/opt/gunbc" as std.types.FilePath,
-    local_origin_root: srv1_gunbc_repo_root,
+    local_origin_root: gunbc.host_layout.srv1_gunbc_repo_root,
     local_origin_publish_ref: "refs/heads/main" as std.types.NonEmptyStr,
-    repo_root: srv1_gunbc_repo_root,
+    repo_root: gunbc.host_layout.srv1_gunbc_repo_root,
     dispatch_base_ref: "origin/main" as std.types.NonEmptyStr,
     dispatch_state_scope: DispatchStateHostShared {
-      worktree_root: srv1_dispatch_worktree_root,
-      attempt_state_root: srv1_dispatch_attempt_state_root,
+      worktree_root: gunbc.host_layout.srv1_dispatch_worktree_root,
+      attempt_state_root: gunbc.host_layout.srv1_dispatch_attempt_state_root,
     },
     execution_environment: dashboard_execution_environment(
-      serve_binary: srv1_gunbc_serve_binary,
+      serve_binary: gunbc.host_layout.srv1_gunbc_serve_binary,
     ),
     provider_state: DashboardExistingProviderState {
-      root: srv1_roadmap_codex_home,
-      executable: srv1_codex_bundled_executable(),
-      binding: admitted_single_session_binding(
-        selection: codex_roadmap_account_selection(),
-        evidence: codex_roadmap_account_evidence,
+      root: gunbc.host_layout.srv1_roadmap_codex_home,
+      executable: gunbc.host_layout.srv1_codex_bundled_executable(),
+      binding: gunbc.provider_account.admitted_single_session_binding(
+        selection: gunbc.provider_account.codex_roadmap_account_selection(),
+        evidence: gunbc.provider_account.codex_roadmap_account_evidence,
       ),
     },
-    serve_binary: srv1_gunbc_serve_binary,
+    serve_binary: gunbc.host_layout.srv1_gunbc_serve_binary,
     serve_function: "roadmap_serve_handle" as std.types.NonEmptyStr,
     listen_host: "0.0.0.0" as std.types.NonEmptyStr,
     listen_port: 8080,
-    tmux_server: DefaultTmuxServer,
-    actuation: DashboardActuating,
-    provision_transport: DashboardSshProvision { host: "srv1" as std.types.NonEmptyStr },
-    source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as std.types.NonEmptyStr },
-  }
-}
-
-data srv1_green_dashboard_instance_note: String = "The second production slot for the operator-signed 2026-08-01 blue/green cutover. It is a full gunbc.roadmap_dashboard_instance.HostDashboardInstance rather than a port override: source, binary, unit handler and listen port move together, so preparing this idle slot cannot mutate the instance that Tailscale still serves. Provider credentials are referenced from the same admitted account binding, never copied. The slot is actuating and serves the production handler surface; it is not the pre-existing feedback lab, whose source ref and handler intentionally describe a different product.\\n\\nDISPATCH STATE AND THE TMUX SERVER DELIBERATELY DO NOT MOVE WITH THE SLOT, and an earlier revision of this note listed dispatch worktrees, attempt evidence and the tmux server among the things that do (operator ruling, 2026-08-01). Moving them was wrong twice over. It put a teardown of live dispatch evidence on the per-push cutover path, where the empty-directory wall correctly refused and reded every main push; and it meant a flip handed the dashboard to a process reading an empty attempt-state root and a differently-named tmux server, so attempts dispatched under the predecessor went invisible and their sessions unmanageable. Blue/green is sound for a stateless server, and this instance is stateful — so the stateful members are host-shared and the slot carries only what a slot may safely own."
-
-fn srv1_green_dashboard_instance() -> gunbc.roadmap_dashboard_instance.HostDashboardInstance {
-  let root = "/opt/gunbc-green" as std.types.FilePath
-  let binary = dashboard_instance_child(root: root, child: "bin/gunbc")
-  gunbc.roadmap_dashboard_instance.HostDashboardInstance {
-    instance_id: srv1_dashboard_green_id,
-    host_identity: "srv1" as std.types.NonEmptyStr,
-    provision_parent_root: "/opt" as std.types.FilePath,
-    instance_root: root,
-    local_origin_root: dashboard_instance_child(root: root, child: "gunbc"),
-    local_origin_publish_ref: "refs/heads/main" as std.types.NonEmptyStr,
-    repo_root: dashboard_instance_child(root: root, child: "gunbc"),
-    dispatch_base_ref: "origin/main" as std.types.NonEmptyStr,
-    dispatch_state_scope: DispatchStateHostShared {
-      worktree_root: srv1_dispatch_worktree_root,
-      attempt_state_root: srv1_dispatch_attempt_state_root,
-    },
-    execution_environment: dashboard_execution_environment(serve_binary: binary),
-    provider_state: DashboardExistingProviderState {
-      root: srv1_roadmap_codex_home,
-      executable: srv1_codex_bundled_executable(),
-      binding: admitted_single_session_binding(
-        selection: codex_roadmap_account_selection(),
-        evidence: codex_roadmap_account_evidence,
-      ),
-    },
-    serve_binary: binary,
-    serve_function: "roadmap_serve_handle_srv1_green" as std.types.NonEmptyStr,
-    listen_host: "0.0.0.0" as std.types.NonEmptyStr,
-    listen_port: 18080,
-    tmux_server: DefaultTmuxServer,
+    tmux_server: extdeps.tmux.DefaultTmuxServer,
     actuation: DashboardActuating,
     provision_transport: DashboardSshProvision { host: "srv1" as std.types.NonEmptyStr },
     source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as std.types.NonEmptyStr },
@@ -391,8 +351,8 @@ fn isolated_dashboard_instance(
   source_anchor_ref: std.types.NonEmptyStr,
   actuation: DashboardActuationPosture,
   provision_transport: DashboardProvisionTransport,
-) -> gunbc.roadmap_dashboard_instance.HostDashboardInstance {
-  gunbc.roadmap_dashboard_instance.HostDashboardInstance {
+) -> HostDashboardInstance {
+  HostDashboardInstance {
     instance_id: instance_id,
     host_identity: layout.host_identity,
     provision_parent_root: "/home/briansrls/.local/share" as std.types.FilePath,
@@ -411,9 +371,9 @@ fn isolated_dashboard_instance(
     provider_state: DashboardExistingProviderState {
       root: layout.roadmap_codex_home,
       executable: layout.codex_bundled_executable,
-      binding: admitted_single_session_binding(
-        selection: codex_roadmap_account_selection(),
-        evidence: codex_roadmap_account_evidence,
+      binding: gunbc.provider_account.admitted_single_session_binding(
+        selection: gunbc.provider_account.codex_roadmap_account_selection(),
+        evidence: gunbc.provider_account.codex_roadmap_account_evidence,
       ),
     },
     serve_binary: dashboard_instance_child(root: root, child: "bin/gunbc"),
@@ -432,10 +392,10 @@ fn isolated_dashboard_instance(
   }
 }
 
-fn srv1_lab_dashboard_instance() -> gunbc.roadmap_dashboard_instance.HostDashboardInstance {
+fn srv1_lab_dashboard_instance() -> HostDashboardInstance {
   isolated_dashboard_instance(
     instance_id: srv1_dashboard_lab_id,
-    layout: srv1_host_layout(),
+    layout: gunbc.host_layout.srv1_host_layout(),
     root: srv1_dashboard_lab_root,
     serve_function: "roadmap_serve_handle_srv1_lab" as std.types.NonEmptyStr,
     listen_port: 18081,
@@ -445,10 +405,10 @@ fn srv1_lab_dashboard_instance() -> gunbc.roadmap_dashboard_instance.HostDashboa
   )
 }
 
-fn srv2_preview_dashboard_instance() -> gunbc.roadmap_dashboard_instance.HostDashboardInstance {
+fn srv2_preview_dashboard_instance() -> HostDashboardInstance {
   isolated_dashboard_instance(
     instance_id: srv2_dashboard_preview_id,
-    layout: srv2_host_layout(),
+    layout: gunbc.host_layout.srv2_host_layout(),
     root: srv2_dashboard_preview_root,
     serve_function: "roadmap_serve_handle_srv2_preview" as std.types.NonEmptyStr,
     listen_port: 18080,
@@ -464,10 +424,10 @@ data srv2_dashboard_lab_id: std.types.NonEmptyStr = "srv2-lab-v1-deletion" as st
 
 data srv2_dashboard_lab_root: std.types.FilePath = "/home/briansrls/.local/share/gunbc-dashboard-instances/srv2-lab-v1-deletion" as std.types.FilePath
 
-fn srv2_lab_dashboard_instance() -> gunbc.roadmap_dashboard_instance.HostDashboardInstance {
+fn srv2_lab_dashboard_instance() -> HostDashboardInstance {
   isolated_dashboard_instance(
     instance_id: srv2_dashboard_lab_id,
-    layout: srv2_host_layout(),
+    layout: gunbc.host_layout.srv2_host_layout(),
     root: srv2_dashboard_lab_root,
     serve_function: "roadmap_serve_handle_srv2_lab" as std.types.NonEmptyStr,
     listen_port: 18082,
@@ -485,7 +445,7 @@ data owned_paths_omitted_the_binary_note: String = "serve_binary WAS MISSING FRO
 
 data owned_paths_split_by_scope_note: String = "ONE ROSTER USED TO CARRY TWO KINDS OF MEMBER, and the disjointness law could not be right about both once production slots began sharing dispatch state. The roster mixed paths that are the instance's own FOOTPRINT — its origin, its source tree, its binary — with paths that hold DISPATCH EVIDENCE, and then applied a single rule to the union: every path sits under instance_root, and no two instances share any path.\\n\\nThat rule is exactly right for the footprint and exactly wrong for host-shared dispatch state, whose whole purpose is to be the same path in two slots. Weakening the law to admit overlap would have been the cheap fix and the wrong one: overlap is precisely the hazard owned_paths_omitted_the_binary_note records, where a lab's retract would have deleted the binary production was executing. So the roster splits and each half keeps the law that is true of it, rather than one roster keeping a law that is true of neither.\\n\\nFootprint paths keep BOTH original laws at full strength, for every instance and every scope. Dispatch-state paths get the law their scope declares: instance-owned must sit under instance_root and stay disjoint from every other instance, which is the old behaviour preserved for labs; host-shared must EQUAL the layout rows and therefore agree with every other host-shared instance on the same host. Agreement is a stronger statement than the absence of a check — it goes red if a production slot is given its own attempt-state root, which is the regression this change exists to prevent recurring."
 
-fn dashboard_instance_footprint_paths(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> List<std.types.FilePath> {
+fn dashboard_instance_footprint_paths(instance: HostDashboardInstance) -> std.types.List<std.types.FilePath> {
   [
     instance.local_origin_root,
     instance.repo_root,
@@ -493,7 +453,7 @@ fn dashboard_instance_footprint_paths(instance: gunbc.roadmap_dashboard_instance
   ]
 }
 
-fn dashboard_instance_dispatch_worktree_root(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> std.types.FilePath {
+fn dashboard_instance_dispatch_worktree_root(instance: HostDashboardInstance) -> std.types.FilePath {
   match instance.dispatch_state_scope {
     DispatchStateInstanceOwned { worktree_child, attempt_state_child: _ } =>
       dashboard_instance_child(root: instance.instance_root, child: worktree_child)
@@ -501,7 +461,7 @@ fn dashboard_instance_dispatch_worktree_root(instance: gunbc.roadmap_dashboard_i
   }
 }
 
-fn dashboard_instance_dispatch_attempt_state_root(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> std.types.FilePath {
+fn dashboard_instance_dispatch_attempt_state_root(instance: HostDashboardInstance) -> std.types.FilePath {
   match instance.dispatch_state_scope {
     DispatchStateInstanceOwned { worktree_child: _, attempt_state_child } =>
       dashboard_instance_child(root: instance.instance_root, child: attempt_state_child)
@@ -509,18 +469,18 @@ fn dashboard_instance_dispatch_attempt_state_root(instance: gunbc.roadmap_dashbo
   }
 }
 
-fn dashboard_instance_dispatch_state_paths(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> List<std.types.FilePath> {
+fn dashboard_instance_dispatch_state_paths(instance: HostDashboardInstance) -> std.types.List<std.types.FilePath> {
   [
     dashboard_instance_dispatch_worktree_root(instance: instance),
     dashboard_instance_dispatch_attempt_state_root(instance: instance),
   ]
 }
 
-fn dashboard_paths_all_under(paths: List<std.types.FilePath>, root: std.types.FilePath) -> Bool {
+fn dashboard_paths_all_under(paths: std.types.List<std.types.FilePath>, root: std.types.FilePath) -> Bool {
   all(paths, path => dashboard_path_is_under(path: path, root: root))
 }
 
-fn dashboard_instance_paths_are_owned(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> Bool {
+fn dashboard_instance_paths_are_owned(instance: HostDashboardInstance) -> Bool {
   dashboard_paths_all_under(
     paths: dashboard_instance_footprint_paths(instance: instance),
     root: instance.instance_root,
@@ -535,7 +495,7 @@ fn dashboard_instance_paths_are_owned(instance: gunbc.roadmap_dashboard_instance
     }
 }
 
-fn dashboard_paths_are_disjoint(a: List<std.types.FilePath>, b: List<std.types.FilePath>) -> Bool {
+fn dashboard_paths_are_disjoint(a: std.types.List<std.types.FilePath>, b: std.types.List<std.types.FilePath>) -> Bool {
   all(
     a,
     ap => all(
@@ -549,8 +509,8 @@ fn dashboard_paths_are_disjoint(a: List<std.types.FilePath>, b: List<std.types.F
 }
 
 fn dashboard_instances_have_disjoint_owned_paths(
-  a: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
-  b: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  a: HostDashboardInstance,
+  b: HostDashboardInstance,
 ) -> Bool {
   dashboard_paths_are_disjoint(
     a: dashboard_instance_footprint_paths(instance: a),
@@ -562,8 +522,8 @@ fn dashboard_instances_have_disjoint_owned_paths(
 data dispatch_state_agreement_is_the_law_note: String = "THE REPLACEMENT FOR BLANKET DISJOINTNESS IS AGREEMENT, NOT ABSENCE. Two production slots on one host must resolve dispatch state to the SAME roots, and that is a checkable claim rather than a hole where a check used to be — a slot given its own attempt-state root fails this, which is precisely the shape that put a teardown of live dispatch evidence on the per-push path.\\n\\nTHE DIFFERENT-HOST ARM IS EXPLICIT BECAUSE THE FIRST CUT GOT IT WRONG (codex review 47405). This note already argued that two host-shared instances on different machines describe different directories and that disjointness is not the question their scope asks — and then the code routed exactly that pair into the disjointness branch anyway, where srv1 and srv2 layout paths, which gunbc_host_layout_note states are byte-identical by convention, would compare EQUAL and refuse a legitimate configuration. The prose was right and the fold contradicted it, which is the §3 stale-citation class turned inward: no live pair exercised it, so it stayed green. The arm now returns a valid outcome by name rather than by falling through.\\n\\nThe remaining pairings say which is which rather than defaulting: a host-shared instance beside an instance-owned one is a production slot beside a lab, and the lab exists to keep its dispatch evidence away from production, so disjointness is exactly right there.\\n\\nThis is the pairwise law. The population law it serves — every production slot on a host agrees with every other — is what the witness asserts over the declared slots, because a pairwise predicate cannot quantify over a roster it does not receive."
 
 fn dashboard_instances_dispatch_state_is_consistent(
-  a: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
-  b: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  a: HostDashboardInstance,
+  b: HostDashboardInstance,
 ) -> Bool {
   match a.dispatch_state_scope {
     DispatchStateInstanceOwned { worktree_child: _, attempt_state_child: _ } =>
@@ -646,7 +606,7 @@ type DashboardInstanceProvisionOp
     }
   | DashboardVerifyHealth { host: std.types.NonEmptyStr, port: std.types.Port }
 
-fn dashboard_instance_provision_plan(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> List<DashboardInstanceProvisionOp> {
+fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> std.types.List<DashboardInstanceProvisionOp> {
   let controller_source_ops = match instance.source_seed {
     DashboardExistingRepo { anchor_ref: _ } => []
     DashboardGitBundle {
@@ -731,8 +691,8 @@ fn dashboard_instance_provision_plan(instance: gunbc.roadmap_dashboard_instance.
 }
 
 fn dashboard_instance_provider_verification_ops(
-  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
-) -> List<DashboardInstanceProvisionOp> {
+  instance: HostDashboardInstance,
+) -> std.types.List<DashboardInstanceProvisionOp> {
   match dashboard_instance_provider_executable(instance: instance) {
     Present { value: executable } => [
       DashboardVerifyProviderRuntime {
@@ -879,8 +839,8 @@ fn dashboard_instance_provision_op_row(
 }
 
 fn dashboard_instance_provision_plan_rows(
-  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
-) -> List<DashboardInstanceProvisionPlanRow> {
+  instance: HostDashboardInstance,
+) -> std.types.List<DashboardInstanceProvisionPlanRow> {
   map(
     dashboard_instance_provision_plan(instance: instance),
     op => dashboard_instance_provision_op_row(op: op),
@@ -890,7 +850,7 @@ fn dashboard_instance_provision_plan_rows(
 data observation_refusal_channel_note: String = "A REFUSED PROBE IS NOT A NEGATIVE FACT, and every Bool in this record used to say it was. dashboard_target_path_present reduced its probe to .success, so an SSH transport refusal, a missing test binary, or an unreachable host all arrived here as 'the path is absent' — and the same collapse fed provider_runtime_ready and provider_authenticated, so a broken transport reported as an unauthenticated provider. The SSH arm even HAD the distinction: typed_argv_probe_over_ssh returns TypedArgvExecRefused with a reason, which was thrown away converting to the two-state carrier (review, 2026-07-30).\\n\\nThat is the fabricated-verdict class this session kept producing at every layer — a missing cargo reported as rustfmt drift, an idle socket as a malformed request, a foreign server's health as convergence. Here it is worse than a wrong label, because the wrong label is ACTIONABLE: an operator told the state root is absent creates it, when the truth is that nothing could be observed at all.\\n\\nThe refusals ride ALONGSIDE the fields rather than converting each Bool to a tri-state, because a transport failure does not invalidate one field — it invalidates the whole observation. Ten probes feed one record; if any could not run, no Bool here is evidence of anything, and consumers must refuse on the channel BEFORE reading a single one. Per-field tri-states would let a caller keep trusting the nine that happened to answer, which is exactly the reasoning that makes a partial observation look complete."
 
 type DashboardInstanceObserved {
-  observation_refusals: List<String>
+  observation_refusals: std.types.List<String>
   root_present: Bool
   ownership_marker_present: Bool
   bundle_present: Bool
@@ -914,7 +874,7 @@ type DashboardInstanceObserved {
 data dashboard_source_revision_convergence_note: String = "Source convergence has two independent equalities. source_anchor_matches compares the target checkout HEAD with its target-local origin/base ref; that proves the owned checkout is cleanly resettable and prevents overwriting a divergent worktree. source_revision_current compares that HEAD with the exact controller CommitSha captured by preflight; that proves the running lab is this requested source revision rather than merely self-consistent at an older revision. A clean stale revision derives Apply, an unreadable revision refuses, and only both equalities can converge. The split is load-bearing: the first lab refresh after a controller rebase exposed that HEAD == old origin/main was true while HEAD == requested commit was false."
 
 fn dashboard_source_seed_ready(
-  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  instance: HostDashboardInstance,
   observed: DashboardInstanceObserved,
 ) -> Bool {
   match instance.source_seed {
@@ -931,12 +891,12 @@ fn dashboard_source_seed_ready(
 
 type DashboardInstanceReconcile
   = DashboardInstanceConverged
-  | DashboardInstanceApply { plan: List<DashboardInstanceProvisionOp> }
+  | DashboardInstanceApply { plan: std.types.List<DashboardInstanceProvisionOp> }
   | DashboardInstanceRefused { reason: std.types.NonEmptyStr }
 
 // THE REFUSAL CHANNEL IS READ BEFORE ANY FIELD, because after a refused probe no field in the record is evidence. Every branch below reasons from Bools — origin present, source present, health current — and each of those is false when the probe could not run just as surely as when the thing is genuinely missing. Reaching them with an unread refusal means deriving a plan from an observation that never happened.\n\nThe order is the whole point. Placing this check second, after the ownership law, would already be too late for anything the ownership law consults; placing it first means a transport failure produces one refusal naming what could not be observed, rather than a confident Apply plan built to create files that may well already exist.\n\nIt refuses rather than retrying or widening. A probe that could not run is not a slow probe, and a reconcile that responded by planning the superset — create everything, it is safe if it already exists — would be the absorbing fallback wearing a plausible justification.
 fn dashboard_instance_reconcile(
-  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  instance: HostDashboardInstance,
   observed: DashboardInstanceObserved,
 ) -> DashboardInstanceReconcile {
   if count(observed.observation_refusals) > 0 {
@@ -1000,13 +960,13 @@ type DashboardInstanceRetractOp
   | DashboardPreserveSourceBundle { path: std.types.FilePath }
 
 type DashboardInstanceRetract
-  = DashboardInstanceRetractPlan { plan: List<DashboardInstanceRetractOp> }
+  = DashboardInstanceRetractPlan { plan: std.types.List<DashboardInstanceRetractOp> }
   | DashboardInstanceRetractRefused { reason: std.types.NonEmptyStr }
 
 data dashboard_instance_retract_note: String = "Retraction is modeled independently from provisioning and is deliberately narrower than recursive deletion. Existing-repo instances (including production) are not owned by this model and refuse retraction. Isolated bundle-seeded instances stop only their named service, refuse while any attempt worktree remains, remove the reproducible source clone and local origin, and preserve the staged bundle as the recovery anchor. Provider state is referenced secret state and is never in the retract plan."
 
 fn dashboard_instance_retract_plan(
-  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  instance: HostDashboardInstance,
 ) -> DashboardInstanceRetract {
   if !dashboard_instance_paths_are_owned(instance: instance) {
     DashboardInstanceRetractRefused {

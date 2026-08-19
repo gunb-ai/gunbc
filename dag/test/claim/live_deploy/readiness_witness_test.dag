@@ -1,7 +1,6 @@
 module test.claim.live_deploy.readiness
 
-
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data witness_ssh_mock_stdout: String = "mock ssh stdin script executed"
 
@@ -18,42 +17,57 @@ fn witness_expected_surface_identity() -> std.content_hash.Fnv1a64Structural {
 
 fn witness_candidate_release() -> gunbc.live_deploy.candidate.CandidateRelease {
   gunbc.live_deploy.candidate.CandidateRelease {
-    revision: deploy_witness_release_revision,
+    revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision,
     expected_surface_identity: witness_expected_surface_identity(),
   }
 }
 
-test fn witness_green_readiness_names_the_green_unit() -> Bool {
-  let spec = deployment_spec_srv1_green()
-  let effect = service_ready_apply_effect_for_deploy(spec: spec)
+// The readiness effect names the unit of the spec it was HANDED, not production's unit. The second
+// conjunct is what makes that discriminating: an implementation that ignored its argument and
+// returned gunbc_roadmap_unit_name would satisfy the first conjunct on production's own spec and
+// fail only against a spec whose unit differs.
+// RE-ENROLLED against a derived non-production spec. The deleted green slot used to supply that
+// second unit name; with one deployment, asserting this on deployment_spec_srv1 alone would make
+// the second conjunct FALSE (production's spec unit IS gunbc_roadmap_unit_name), so repointing was
+// not available and dropping the conjunct would have deleted the whole discrimination. A spec built
+// from srv1-lab through derived_deployment_names supplies a genuinely different unit name off the
+// production constructor path, so the anti-hardwire check survives the slot it was written against.
+test fn witness_readiness_names_the_unit_of_the_spec_it_is_given() -> Bool {
+  let lab = gunbc.roadmap_dashboard_instance.srv1_lab_dashboard_instance()
+  let spec = gunbc.live_deploy.spec.deployment_spec_for(
+    instance: lab,
+    target: gunbc.live_deploy.spec.deployment_srv1_target(),
+    names: gunbc.live_deploy.spec.derived_deployment_names(instance: lab),
+  )
+  let effect = gunbc.live_deploy.readiness.service_ready_apply_effect_for_deploy(spec: spec)
   effect.unit == spec.service.unit_name
-    && effect.unit != gunbc_roadmap_unit_name
+    && effect.unit != gunbc.live_deploy.spec.gunbc_roadmap_unit_name
 }
 
 test fn witness_healthz_mock_body_groundable() -> Bool {
-  healthz_body_groundable(body: "{\"status\":\"ok\"}")
+  gunbc.live_deploy.readiness.healthz_body_groundable(body: "{\"status\":\"ok\"}")
 }
 
 test fn witness_healthz_trailing_lf_body_groundable() -> Bool {
-  healthz_body_groundable(body: concat("{\"status\":\"ok\"}", "\n"))
+  gunbc.live_deploy.readiness.healthz_body_groundable(body: concat("{\"status\":\"ok\"}", "\n"))
 }
 
 test fn witness_healthz_malformed_extension_not_groundable() -> Bool {
-  !healthz_body_groundable(body: concat("{\"status\":\"ok\"}", "}"))
+  !gunbc.live_deploy.readiness.healthz_body_groundable(body: concat("{\"status\":\"ok\"}", "}"))
 }
 
 test fn witness_healthz_bad_body_not_groundable() -> Bool {
-  !healthz_body_groundable(body: "")
+  !gunbc.live_deploy.readiness.healthz_body_groundable(body: "")
 }
 
 test fn witness_ssh_mock_stdout_is_discriminating_red() -> Bool {
-  !healthz_body_groundable(body: witness_ssh_mock_stdout)
-    && match ground_service_ready_from_healthz(
-      read: gunbc.roadmap_site_surface_types.HealthzEffectiveRead {
+  !gunbc.live_deploy.readiness.healthz_body_groundable(body: witness_ssh_mock_stdout)
+    && match gunbc.live_deploy.readiness.ground_service_ready_from_healthz(
+      read: gunbc.live_deploy.readiness.HealthzEffectiveRead {
         body: witness_ssh_mock_stdout,
         probe_error: "",
       },
-      expected_revision: deploy_witness_release_revision,
+      expected_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision,
       expected_surface_identity: witness_expected_surface_identity(),
     ) {
       DoesNotGround { reason: _ } => true
@@ -61,8 +75,8 @@ test fn witness_ssh_mock_stdout_is_discriminating_red() -> Bool {
     }
 }
 
-fn witness_argv_join(argv: List<String>) -> String {
-  v2.std.algebra.fold_list(
+fn witness_argv_join(argv: std.types.List<String>) -> String {
+  fold_list(
     xs: argv,
     empty: "",
     cons: (acc, word) => if acc == "" { word } else { concat(acc, concat(" ", word)) },
@@ -70,26 +84,26 @@ fn witness_argv_join(argv: List<String>) -> String {
 }
 
 test fn witness_transport_probe_targets_localhost_healthz() -> Bool {
-  let port = deployment_plan_listen_port(spec: deployment_spec_srv1())
+  let port = gunbc.live_deploy.spec.deployment_plan_listen_port(spec: gunbc.live_deploy.spec.deployment_spec_srv1())
   let url = live_deploy_health_url_for_port(port: port)
-  let argv = http_client_get_argv(url: url)
+  let argv = extdeps.http.client.http_client_get_argv(url: url)
   let surface = witness_argv_join(argv: argv)
   string_contains(s: surface, pattern: "curl")
     && string_contains(s: surface, pattern: "--connect-timeout")
-    && string_contains(s: surface, pattern: to_string(second_count(s: curl_localhost_connect_timeout)))
+    && string_contains(s: surface, pattern: to_string(std.measure.second_count(s: extdeps.tools.curl.curl_localhost_connect_timeout)))
     && string_contains(s: surface, pattern: "--max-time")
-    && string_contains(s: surface, pattern: to_string(second_count(s: curl_localhost_max_time)))
+    && string_contains(s: surface, pattern: to_string(std.measure.second_count(s: extdeps.tools.curl.curl_localhost_max_time)))
     && string_contains(s: url as String, pattern: "127.0.0.1:")
     && string_contains(s: url as String, pattern: "/healthz")
 }
 
 test fn witness_accept_no_response_probe_fails_fast_not_hangs() -> Bool {
-  match ground_service_ready_from_healthz(
-    read: gunbc.roadmap_site_surface_types.HealthzEffectiveRead {
+  match gunbc.live_deploy.readiness.ground_service_ready_from_healthz(
+    read: gunbc.live_deploy.readiness.HealthzEffectiveRead {
       body: "",
       probe_error: "curl: (28) Operation timed out after 5000 milliseconds with 0 bytes received",
     },
-    expected_revision: deploy_witness_release_revision,
+    expected_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision,
     expected_surface_identity: witness_expected_surface_identity(),
   ) {
     DoesNotGround { reason: _ } => true
@@ -98,40 +112,40 @@ test fn witness_accept_no_response_probe_fails_fast_not_hangs() -> Bool {
 }
 
 test fn witness_transport_status_probe_uses_typed_systemctl_argv() -> Bool {
-  systemctl_status_operation_argv_matches_authority(
-    unit: live_deploy_service_ready_unit_authority
+  gunbc.systemctl_status_read.systemctl_status_operation_argv_matches_authority(
+    unit: gunbc.live_deploy.service_ready.live_deploy_service_ready_unit_authority
   )
 }
 
 test fn witness_transport_status_probe_realizes_hermetically() -> Bool {
-  let r = systemd.Systemctl.Status(unit: live_deploy_service_ready_unit_authority)
+  let r = systemd.Systemctl.Status(unit: gunbc.live_deploy.service_ready.live_deploy_service_ready_unit_authority)
   r.stdout != ""
 }
 
 test fn witness_transport_get_probe_over_ssh_does_not_ground_mock_stdout() -> Bool {
-  let port = deployment_plan_listen_port(spec: deployment_spec_srv1())
-  let read = live_deploy_healthz_get_for_port(
+  let port = gunbc.live_deploy.spec.deployment_plan_listen_port(spec: gunbc.live_deploy.spec.deployment_spec_srv1())
+  let read = gunbc.live_deploy.readiness.live_deploy_healthz_get_for_port(
     port: port,
     transport: gunbc.host_effect.SshShell { ssh_host: "srv1" as std.types.NonEmptyStr },
   )
-  !reconciliation_converged(
-    r: reconcile_service_ready_read(
+  !std.realization_reconcile.reconciliation_converged(
+    r: gunbc.live_deploy.readiness.reconcile_service_ready_read(
       read: std.realization_reconcile.ReadObserved { value: read },
-      expected_revision: deploy_witness_release_revision,
+      expected_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision,
       expected_surface_identity: witness_expected_surface_identity(),
     )
   )
 }
 
 test fn witness_sleep_second_carrier_projection_paces_poll() -> Bool {
-  sleep_delay_seconds_second_carrier_projection(duration: live_deploy_service_ready_poll_cadence_seconds())
+  extdeps.tools.sleep.sleep_delay_seconds_second_carrier_projection(duration: gunbc.live_deploy.service_ready.live_deploy_service_ready_poll_cadence_seconds())
 }
 
 test fn witness_sleep_flat_scalar_dissolution_trigger_tracked() -> Bool {
-  match sleep_delay_seconds_flat_scalar_dissolution_trigger {
+  match extdeps.tools.sleep.sleep_delay_seconds_flat_scalar_dissolution_trigger {
     Scaffold {
-      dissolves_to: RealizationDispatch,
-      bind: DeclarationRef { module_path: m, decl_name: n, field: WholeDeclaration },
+      dissolves_to: std.disposition.RealizationDispatch,
+      bind: std.decl_ref.DeclarationRef { module_path: m, decl_name: n, field: std.decl_ref.WholeDeclaration },
     } =>
       m == "extdeps.tools.sleep" && n == "sleep_delay_seconds_second_carrier_projection"
     Terminal { reason: _ } => false
@@ -139,34 +153,34 @@ test fn witness_sleep_flat_scalar_dissolution_trigger_tracked() -> Bool {
 }
 
 test fn witness_bounded_poll_one_iteration_composes_probe_and_modeled_sleep() -> Bool {
-  let spec = deployment_spec_srv1()
-  let probe = live_deploy_service_ready_once_for_deploy(
+  let spec = gunbc.live_deploy.spec.deployment_spec_srv1()
+  let probe = gunbc.live_deploy.readiness.live_deploy_service_ready_once_for_deploy(
     spec: spec,
     candidate: witness_candidate_release(),
-    transport: ci_deploy_srv1_access.transport,
-    access: ci_deploy_srv1_access,
+    transport: gunbc.ci_deploy_access.ci_deploy_srv1_access.transport,
+    access: gunbc.ci_deploy_access.ci_deploy_srv1_access,
   )
-  let delay = sleep_delay_seconds_second_carrier_projection(duration: live_deploy_service_ready_poll_cadence_seconds())
-  !reconciliation_converged(r: probe) && delay
+  let delay = extdeps.tools.sleep.sleep_delay_seconds_second_carrier_projection(duration: gunbc.live_deploy.service_ready.live_deploy_service_ready_poll_cadence_seconds())
+  !std.realization_reconcile.reconciliation_converged(r: probe) && delay
 }
 
 test fn witness_bounded_poll_early_exit_on_grounded_read() -> Bool {
-  reconciliation_converged(
-    r: reconcile_service_ready_read(
-      read: show_healthz_read_fixture_healthy_live(release_revision: deploy_witness_release_revision),
-      expected_revision: deploy_witness_release_revision,
-      expected_surface_identity: materialize_live_roadmap_site_surface_bundle().bundle_identity,
+  std.realization_reconcile.reconciliation_converged(
+    r: gunbc.live_deploy.readiness.reconcile_service_ready_read(
+      read: gunbc.live_deploy.readiness.show_healthz_read_fixture_healthy_live(release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision),
+      expected_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision,
+      expected_surface_identity: gunbc.roadmap_site_surface_observe.materialize_live_roadmap_site_surface_bundle().bundle_identity,
     )
   )
 }
 
 test fn witness_red_control_never_ready_refuses_at_poll_bound() -> Bool {
-  let max_attempts = live_deploy_service_ready_poll_max_attempts()
-  let r = live_deploy_poll_service_ready_after_attempts(
-    spec: deployment_spec_srv1(),
+  let max_attempts = gunbc.live_deploy.service_ready.live_deploy_service_ready_poll_max_attempts()
+  let r = gunbc.live_deploy.readiness.live_deploy_poll_service_ready_after_attempts(
+    spec: gunbc.live_deploy.spec.deployment_spec_srv1(),
     candidate: witness_candidate_release(),
-    transport: ci_deploy_srv1_access.transport,
-    access: ci_deploy_srv1_access,
+    transport: gunbc.ci_deploy_access.ci_deploy_srv1_access.transport,
+    access: gunbc.ci_deploy_access.ci_deploy_srv1_access,
     attempt: max_attempts,
     last_probe: "health probe never succeeded"
   )
@@ -181,14 +195,14 @@ test fn witness_red_control_never_ready_refuses_at_poll_bound() -> Bool {
 }
 
 test fn witness_bounded_poll_max_attempts_derived_from_bound_over_cadence() -> Bool {
-  live_deploy_service_ready_poll_max_attempts() == measure_fit_count_floor(capacity: live_deploy_service_ready_poll_bound, each: live_deploy_service_ready_poll_cadence_seconds())
+  gunbc.live_deploy.service_ready.live_deploy_service_ready_poll_max_attempts() == std.measure.measure_fit_count_floor(capacity: gunbc.live_deploy.service_ready.live_deploy_service_ready_poll_bound, each: gunbc.live_deploy.service_ready.live_deploy_service_ready_poll_cadence_seconds())
 }
 
 test fn witness_service_not_ready_refusal_shape_matches_contract() -> Bool {
-  let reason = service_not_ready_reason(refusal: gunbc.live_deploy.service_ready.ServiceNotReady {
-    unit: live_deploy_service_ready_unit_authority,
-    endpoint: live_deploy_service_ready_endpoint_authority,
-    waited: live_deploy_service_ready_poll_bound,
+  let reason = gunbc.live_deploy.service_ready.service_not_ready_reason(refusal: gunbc.live_deploy.service_ready.ServiceNotReady {
+    unit: gunbc.live_deploy.service_ready.live_deploy_service_ready_unit_authority,
+    endpoint: gunbc.live_deploy.service_ready.live_deploy_service_ready_endpoint_authority,
+    waited: gunbc.live_deploy.service_ready.live_deploy_service_ready_poll_bound,
     last_probe: "connection refused",
     unit_diagnosis: gunbc.live_deploy.service_ready.UnitDiagnosisCaptured { text: "Active: failed (Result: exit-code)" },
   })
