@@ -110,6 +110,9 @@ pub use crate::v1_compiler_ownership::{
 };
 pub use crate::v1_compiler_resolve::get_exported_names;
 pub use crate::v1_compiler_runtime_rust::rust_runtime_source;
+pub use crate::v1_compiler_trait_bound_witness::{
+    v1_rc_match_scrutinee_clone_bound_param_names, v1_union_clone_param_names,
+};
 pub use crate::v1_compiler_trait_derive_emit::{
     rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible,
     trait_derive_emit_fn_clone_bound_keyed_carrier_module, v1_clone_bounded_type_params,
@@ -14629,13 +14632,49 @@ pub fn emit_fn_def(
                     emit_info.type_decl_items.clone(),
                     si.clone(),
                 );
+                let rc_match_clone_param_names = match (*body.expr_data.clone()).clone() {
+                    ExprData::ExprMatch => {
+                        let scrutinee = match_scrutinee(body.clone());
+                        match scrutinee.inferred.clone().as_deref().cloned() {
+                            Some(InferredNode::Resolved { node: rt, .. }) => {
+                                let scrut_type = authored_name_at(si.clone(), rt.clone());
+                                let arms = match_arm_nodes(body.clone());
+                                let rc_match = analyze_rc_match(
+                                    scrutinee.clone(),
+                                    arms.clone(),
+                                    scrut_type.clone(),
+                                    shared_types.clone(),
+                                    emit_info.clone(),
+                                    si.clone(),
+                                );
+                                v1_rc_match_scrutinee_clone_bound_param_names(
+                                    generic_param_names.clone(),
+                                    Rc::new({
+                                        let mut __result = Vec::new();
+                                        for c in rt.children.clone().iter().cloned() {
+                                            __result.push(authored_name_at(si.clone(), c.clone()));
+                                        }
+                                        __result
+                                    }),
+                                    rc_match.needs_deref.clone(),
+                                )
+                            }
+                            _ => Rc::new(vec![]),
+                        }
+                    }
+                    _ => Rc::new(vec![]),
+                };
+                let derived_clone_param_names_with_rc_match = v1_union_clone_param_names(
+                    derived_clone_param_names.clone(),
+                    rc_match_clone_param_names.clone(),
+                );
                 let module_path = scope.type_env.clone().module_path.clone();
                 let clone_param_names = if (((generic_param_names.clone().len() as i64) > 0)
                     && trait_derive_emit_fn_clone_bound_keyed_carrier_module(module_path.clone()))
                 {
                     generic_param_names.clone()
                 } else {
-                    derived_clone_param_names.clone()
+                    derived_clone_param_names_with_rc_match.clone()
                 };
                 let needs_clone_bound = ((clone_param_names.clone().len() as i64) > 0);
                 let type_params_str = if needs_clone_bound.clone() {
