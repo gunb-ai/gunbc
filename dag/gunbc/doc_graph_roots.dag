@@ -127,6 +127,15 @@ data mock_corpus_prefilter_control_note: String = "LIVE CONTROL FOR THE MOCK-COR
 data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "floor-expected-red-shrink-monotonicity-design",
+    primary_work: DeclarationRef { module_path: "v2.workflow.floor_expected_red", decl_name: "floor_expected_red_roster", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "gunbc.witness_deferral_freeze", decl_name: "FrozenPathDeferral", field: WholeDeclaration },
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the undispositioned-SHRINK wall lands on floor_expected_red_roster and its subject describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "ci-minutes-product-design",
     primary_work: DeclarationRef { module_path: "gunbc.ci_fleet", decl_name: "ComputeOffer", field: WholeDeclaration },
     additional_works: [

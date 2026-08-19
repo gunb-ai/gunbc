@@ -5,7 +5,6 @@ import extdeps.git.inspect
 import extdeps.shell
 import gunbc.ci_layer_roots { witness_layer_roots }
 import gunbc.class_b_import_closure_overlay {
-  class_b_entry_rel,
   class_b_materialize_stripped_entry_overlay,
   class_b_declared_import_pool_roots,
   OverlayMaterialized,
@@ -17,30 +16,21 @@ import gunbc.declared_import_closure_binding {
   BindingNotRunnable,
   ObservationProduced,
   ObservationProductionRefused,
-  binding_source_is_listed_import,
   row3_stripped_refuses_binding,
   row4_stripped_pool_coincidence_or_refuse
+}
+import v2.workflow.class_b_import_closure_probe {
+  class_b_perturbation_overlay_rel,
+  class_b_observe_with_overlay,
+  class_b_declared_import_closure_lists_rust_import,
+  class_b_ambient_pool_provider_preserves_listed_import
 }
 import std.logic { Bool }
 import std.types { String, List, NonEmptyStr }
 
-data class_b_transport_note: String = "Class B import-closure transport (#6985). All four rows are ordinary funcs on this module. NO REQUIRED-FLOOR CONSUMER TODAY: rows 1-2 sit in test.claim.long.rust_test_fixtures_import_closure_witness, quarantined by #8457 because they PASS over the 1552ms ceiling (Cpu 25816ms and 36536ms); required_floor.dag excludes them by authored module name via long_home_prefixes. Their FalsifierSubstrateLongLane exclusion and long-lane enrollment rows are deleted (2026-08-18): the floor never consulted witness_exclusion_frontier, and the falsifier cadence died in the floor cut, so neither had an executing consumer. Rows 1-2 are unwitnessed until the cost is fixed and they leave long/. WET INTEGRATION CONSUMER (not on required floor yet): run_class_b_import_closure_gate on source_root_ingest_gate_passes — rows 1-4 together when that gate is re-enrolled on claim_executor --required-floor. Rows 1-2 use class_b_declared_import_pool_roots (minimal declared-import footprint). Rows 3-4 use witness_layer_roots for stripped-entry pool-coincidence pressure. Rows 3-4 accept ONLY ObservationProduced carrying a successfully ingested BindingObserved outcome; every ObservationProductionRefused (overlay read/strip/mkdir/mktemp/write/cleanup/compile) reds the gate — compile graph:None is P1(b), not a seam refusal. Predicate unit controls stay in class_b_import_closure_binding_refusal_witness_test.dag and class_b_strip_receipt_witness_test.dag. Affected-set skip: class_b_import_closure_gate_not_affected_skip (cli_run::class_b_import_closure_gate_skip_label_for_ci) skips the ~2.3min gate on pull_request when the merge-base diff is provably disjoint from the gate input closure; empty diff / departed non-docs / observation or closure failure runs the full gate (fail-closed); push-to-main always runs the full gate as cold control."
+data class_b_transport_note: String = "Class B import-closure transport (#6985). All four rows are ordinary funcs on this module or its v2.workflow.class_b_import_closure_probe companion. NO REQUIRED-FLOOR CONSUMER TODAY: rows 1-2 sit in test.claim.long.rust_test_fixtures_import_closure_witness, quarantined by #8457 because they PASS over the 1552ms ceiling (Cpu 25816ms and 36536ms); required_floor.dag excludes them by authored module name via long_home_prefixes. Their FalsifierSubstrateLongLane exclusion and long-lane enrollment rows are deleted (2026-08-18): the floor never consulted witness_exclusion_frontier, and the falsifier cadence died in the floor cut, so neither had an executing consumer. Rows 1-2 SHAPE AND CALL are relocated to class_b_import_closure_probe (this module imports them back) because their own resolve closure does not need extdeps.git / extdeps.git.inspect / gunbc.ci_layer_roots -- only rows 3-4 below do, for stripped-entry pool-coincidence pressure -- and a witness entry's resolve context is driven by its whole transitive import closure, not by which of a module's functions its test bodies call (the same signature extdeps_scope_placement_gate_loudness_witness's 718-to-62-module repair fixed). Rows 1-2's shape/call were relocated for genuine dependency-narrowing reasons (relocation-not-refork, DESIGN.md §3) but the relocation was MEASURED 2026-08-19 to NOT reduce witness wall-clock cost: a paired same-dispatch, same-host comparison found declared_import_closure_lists_rust_import through the narrow probe entry (70.0s/69.4s) statistically indistinguishable from the identical function reached directly through this heavy module (69.98s) -- see rust_test_fixtures_import_closure_witness_test.dag's class_b_witness_note for the full measurement. The floor's own [floor-witness-slow] line for these same two identities (24674ms declared_import_closure_lists_rust_import, 31603ms ambient_pool_provider_preserves_listed_import) is the citable magnitude -- the standalone 70.0-80.8s figures above are ~2-3x inflated because a standalone claim run pays the corpus-wide load/index term once per claim rather than once per MultiEntryIndex, but both sources agree narrow and heavy did not diverge. Neither figure is attributable to entry-closure resolution (compile.frontend/normalize/reconcile/analyses total ~1-2s in the same run) and most plausibly reflects a fixed corpus-wide load cost independent of entry closure size (see DESIGN.md's floor-shared-compute-memoization open thread on build_both_closure_edge_index). Rows 1-2 therefore stay in long/, and this split is retained as a correctness/modeling improvement, not claimed as a witness-cost repair. WET INTEGRATION CONSUMER (not on required floor yet): run_class_b_import_closure_gate on source_root_ingest_gate_passes — rows 1-4 together when that gate is re-enrolled on claim_executor --required-floor. Rows 1-2 use class_b_declared_import_pool_roots (minimal declared-import footprint). Rows 3-4 use witness_layer_roots for stripped-entry pool-coincidence pressure. Rows 3-4 accept ONLY ObservationProduced carrying a successfully ingested BindingObserved outcome; every ObservationProductionRefused (overlay read/strip/mkdir/mktemp/write/cleanup/compile) reds the gate — compile graph:None is P1(b), not a seam refusal. Predicate unit controls stay in class_b_import_closure_binding_refusal_witness_test.dag and class_b_strip_receipt_witness_test.dag. Affected-set skip: class_b_import_closure_gate_not_affected_skip (cli_run::class_b_import_closure_gate_skip_label_for_ci) skips the ~2.3min gate on pull_request when the merge-base diff is provably disjoint from the gate input closure; empty diff / departed non-docs / observation or closure failure runs the full gate (fail-closed); push-to-main always runs the full gate as cold control."
 
-data class_b_consumer_module: String = "v2.extdeps.languages.rust_test"
-data class_b_symbol: String = "rust_selection_policy_node"
-data class_b_perturbation_overlay_rel: String = "fixtures/class_b_import_closure/perturbation_overlay"
 data class_b_overlay_template: String = "/target/class_b_stripped_XXXXXX"
-
-fn class_b_observe_with_overlay(
-  pool_roots: List<String>
-) -> DeclaredImportClosureBindingObservation {
-  observe_declared_import_closure_symbol_binding(
-    pool_roots: pool_roots,
-    entry_path: class_b_entry_rel,
-    consumer_module: class_b_consumer_module,
-    symbol: class_b_symbol
-  )
-}
 
 fn class_b_outcome_from_observation(
   obs: DeclaredImportClosureBindingObservation
@@ -52,21 +42,6 @@ fn class_b_outcome_from_observation(
     }
     observation => ObservationProduced { observation: observation }
   }
-}
-
-func class_b_declared_import_closure_lists_rust_import() -> Bool {
-  binding_source_is_listed_import(
-    obs: class_b_observe_with_overlay(pool_roots: class_b_declared_import_pool_roots)
-  )
-}
-
-func class_b_ambient_pool_provider_preserves_listed_import() -> Bool {
-  let baseline = class_b_observe_with_overlay(pool_roots: class_b_declared_import_pool_roots)
-  let perturbed = class_b_observe_with_overlay(
-    pool_roots: concat([class_b_perturbation_overlay_rel], class_b_declared_import_pool_roots)
-  )
-  binding_source_is_listed_import(obs: baseline)
-    && binding_source_is_listed_import(obs: perturbed)
 }
 
 func class_b_observe_with_derived_stripped_overlay(

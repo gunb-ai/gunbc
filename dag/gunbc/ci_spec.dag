@@ -34,7 +34,6 @@ import gunbc.cli_invoke {
 import gunbc.commit_workflow {
   commit_gate_roster,
   project_ci_floor_gates,
-  project_ci_regen_job_gates,
   project_falsifier_gates,
   project_ci_floor_witness_entries
 }
@@ -149,7 +148,6 @@ type CiSpec {
 
 data gunbc_ci_floor_gates: List<Gate> = project_ci_floor_gates(roster: commit_gate_roster)
 
-data gunbc_ci_regen_floor_gates: List<Gate> = project_ci_regen_job_gates(roster: commit_gate_roster)
 
 data gunbc_ci_falsifier_gates_note: String = "The THIRD executing gate surface, projected here beside the floor and regen lists so the coproduct-totality witness can see it. It is not decoration: v2.test.claim.ci_spec_witness witness_gate_roster_matches_coproduct_arms asserts BAG-EQUALITY between the enrolled gates and every arm of the Gate coproduct, which is the construction-shaped form of 'no gate is unenrolled' — strictly stronger than the per-row detection wall in gunbc.commit_workflow, because it reds when a gate is enrolled NOWHERE even if no roster row was edited (a newly added Gate arm, for instance). When the cadence lane gained gates on 2026-07-26 that witness went red for exactly the right reason: its universe of executing surfaces was two, and there were now three. Adding this projection to the bag EXTENDS the totality check to the new surface — it does not relax it. The distinction matters because the tempting alternative, dropping the two flipped arms from the comparison or slackening bag-equality to subset, would have silenced the wall in the same motion that made it informative, which is the absorbing-fallback shape DESIGN §5 forbids."
 
@@ -185,19 +183,6 @@ data gunbc_ci_spec: CiSpec = {
   },
   notice_title: "v2 claim corpus",
   deploy_stages: gunbc_ci_deploy_stages,
-}
-
-data gunbc_ci_regen_spec: CiSpec = {
-  gates: gunbc_ci_regen_floor_gates,
-  witness_entries: [],
-  discovery_scan_dirs: [],
-  diff_policy: {
-    base: gunbc_merge_target_ref as String,
-    head: "HEAD",
-    mode: DiffMergeBase
-  },
-  notice_title: "self-host fixed-point (regen + staleness) — required; own regen job upstream of ci",
-  deploy_stages: [],
 }
 
 fn ci_spec_with_witness_entries(spec: CiSpec, entries: List<ScheduleWitnessEntry>) -> CiSpec {
