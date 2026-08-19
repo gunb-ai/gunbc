@@ -1,6 +1,5 @@
 module test.claim.stage0_regen_convergence_real_execution_witness
 
-import extdeps.cargo_build
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 

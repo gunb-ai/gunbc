@@ -65,548 +65,548 @@ data excl_install_media_reason: String = "real host-effect execution witness (sh
 
 data excl_install_media_dissolve: std.dissolution.DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands and assertions are re-checked under a fixed mock; then the fns re-enroll as ordinary hermetic discovery rows and this row deletes (install_media_real_execution_wet_note)")
 
-data witness_exclusion_frontier: List<WitnessExclusionRow> = [
-  WitnessExclusionRow {
+data witness_exclusion_frontier: List<gunbc.ci_layer_roots.WitnessExclusionRow> = [
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "stage0_partition_closure_live_census_test.dag",
     classification: FalsifierSubstrateLongLane,
     reason: "PARTITION-CLOSURE LIVE CENSUS: partition_closure_verdict derives dependency_resolution_facts_live and module_declaration_facts_live over pool roots dag and src/v2 and asks whether the live crate roster holds against the live corpus. Its subject IS the corpus breadth, so it cannot be shrunk without measuring less, and narrowing the pool roots would under-approximate the edges — the fail-open gunbc.stage0_partition_closure partition_closure_authority_note refuses. MEASURED 173.6s and 177.6s thread CPU against the 5s fast-lane budget; CI only ever reported 5040ms, which is where the budget INTERRUPTS and is a lower bound on cost, never the cost. The mechanism half is fixture-shaped and stays per-PR in test.claim.stage0_partition_closure_witness_test at 1-4ms (three REDs plus the extent row, through partition_closure_verdict_over), so this row carries the census and not the discrimination — and the census lives in its OWN file precisely so this file-grain pattern does not drag those four fixtures off per-PR discovery with it.",
     dissolution: unbound_dissolution(description: "the live fact producers stop dominating the verdict — they are already host-memoized, and two cost-shape defects removed here (a per-edge re-read of the importer's emitted source, and duplicate live scans) measurably did NOT move it, 177.6s against a 173.6s baseline, so the remaining cost is theirs and not this gate's folds — OR v2 self-host gains compile-graph access (gunbc#5364) so the closure derives at closure cost rather than a corpus walk. Then the row's eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run, the census re-enrolls per-PR discovery beside its fixture siblings, and this classification flips back to DiscoverySelection.")
   },
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "lifecycle_survivor_corpus_census_test.dag",
     classification: FalsifierSubstrateLongLane,
     reason: "LIFECYCLE-CARRIER COMPLETENESS CENSUS: derives every top-level data declaration in the corpus with its declared type (data_decl_type_facts over both roots, 16975 declarations / 3475 modules) and gates the raw-string lifecycle survivor population at zero. Its subject IS the corpus breadth, so it cannot be shrunk without measuring less. MEASURED 18482ms eval against the 5s fast-lane budget. The mechanism half is fixture-shaped and stays per-PR in test.claim.lifecycle_survivor_scan_witness (planted survivor selected, migrated control and out-of-class String rejected, ~0ms), so this row carries only the irreducible census — not the discrimination.",
     dissolution: unbound_dissolution(description: "v2 self-host gains compile-graph access (gunbc#5364, the trigger concept_index carries) so the declared type is reachable from the substrate without a host walk and the census derives at closure cost; then this re-enrolls per-PR discovery and the row deletes")
   },
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "roadmap_program_view_live_corpus_receipt_test.dag",
     classification: FalsifierSubstrateLongLane,
     reason: "LIVE-AUTHORITY INTEGRATION RECEIPT (operator verdict 2026-08-05, PR #7822): live_roadmap_program_view_corpus_projection_receipt exercises the full declared roadmap closure through gunbc.roadmap_program_view — evidentiary wiring receipt, not ordinary business logic. Business witnesses stay on planted fixtures in test.claim.roadmap_program_view_witness.",
     dissolution: unbound_dissolution(description: "replaced by a cheaper structural wiring receipt that covers the same live-authority join, or live roadmap projection integration receipts become unnecessary")
   },
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "roadmap_receipt_continuity_live_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: "SUBSTANTIATED per-row: live_roadmap_acceptance_history_integrity_holds reaches git.Inspect.HeadCommit, git.Inspect.MergeBase, and git.Core.Show without mock_response, so the hermetic discovery envelope REFUSES rather than skipping. The hermetic closing contract in roadmap_receipt_continuity_acceptance_test.dag keeps planted red controls only; this file executes the live git-observed integrity path on the per-PR wet corpora batch.",
     dissolution: unbound_dissolution(description: "mock_response coverage lands for the git revision-addressed operations used by roadmap_acceptance_history_observation AND live assertions are re-checked under a fixed mock; or merge-base revision evaluation lands so hermetic fixtures can supply observed prior_history without live git. Either way this row deletes.")
   },
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "stage0_rust_host_observation_live_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: "SUBSTANTIATED per-row: every fn in this file reaches git.Inspect.HeadCommit and git.Inspect.MergeBase without mock_response, so the hermetic discovery envelope REFUSES rather than skipping (a refusing discovery member fails its whole batch — CI receipt on PR 7562). Publishing mocks was tried and reverted: it only moves the refusal to the next unmocked operation, and mocking the whole revision-addressed chain would let a liveness witness pass against a constant sha. The closing contract `live_rust_observation_matches_actions_subject` is enrolled in bin_witness_wet_entries for the per-PR wet corpora batch (GITHUB_SHA supplied by the runner, not hand-set); per-row wet outcomes are not yet observable in Actions job logs (bin_witness_wet_per_row_actions_log_observation_gap_note). The three scaffold witnesses in this file remain offline-local: they are not on the bin roster and the wet cadence they would otherwise need is not scheduled (falsifier_self_host_wet_cadence_active is false).",
     dissolution: unbound_dissolution(description: "mock_response coverage lands for the git.Inspect revision-addressed operations AND scaffold assertions are re-checked under a fixed mock; or the scaffold fns enroll on a scheduled wet lane. Either way this row deletes.")
   },
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "stage0_rust_maintenance_census_report_live_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: "SUBSTANTIATED per-row (found 2026-08-06, PR #7894 CI red, run 31069215347): maintenance_census_report_positive_control_derives_from_current_head calls current_rust_maintenance_census_report(), which reaches current_stage0_rust_source_observation() and therefore git.Inspect.HeadCommit without mock_response — the same class stage0_rust_host_observation_live_witness_test.dag documents above; a refusing hermetic discovery member fails its whole batch (batch 3 discovery-corpus, 7298-row corpus). This row alone would only remove the function from hermetic discovery, which is not an executing consumer by itself (DESIGN.md 'witness cost derives from purpose', operator ruling 2026-08-04) — so, mirroring stage0_rust_host_observation_live_witness_test.dag's closing contract, the function is ALSO enrolled in bin_witness_wet_entries below (GITHUB_SHA supplied by the runner, not hand-set), which is its real per-PR executing consumer under WitnessHasExecutingConsumer standing; this exclusion row only keeps it off the hermetic per-PR discovery batch it cannot pass. This origin file has only the one witness, so no scaffold-witness residue remains offline-only.",
     dissolution: unbound_dissolution(description: "mock_response coverage lands for the git.Inspect revision-addressed operations used by current_stage0_rust_source_observation AND this assertion is re-checked under a fixed mock; or the fn enrolls on a scheduled wet lane. Either way this row deletes.")
   },
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "claim/long/mandatory_tag_extdeps_corpus",
     classification: OfflineLocalRecipe,
     reason: "interpreted corpus walk prices out of every CI lane (measured ~33s/module parse, hours full run; see corpus_witness_note in the test file); the CI-cadence corpus consumer is the retained host projection v2.lens.mandatory_tag.corpus_scan",
     dissolution: unbound_dissolution(description: "witness realization executes the corpus walk at native speed; then the witness enrolls and this row deletes")
   },
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "long/cited_symbol_resolution_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: "G1 feature:cited-symbol-resolution (operator 2026-08-03): sixteen witnesses in dag/test/claim/long/cited_symbol_resolution_witness_test.dag pay compile_clean_source_roots decl_facts + module_declaration_facts scans — corpus-scale census witnesses measured ~20-47s eval each (enrolled_population_refusal_proves_gate_not_vacuous ~143s); excluded at test/claim/long/ dir grain, not per-PR discovery. Local recipe: claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/long/cited_symbol_resolution_witness_test.dag --functions cited_symbol_hand_authored_binds_all_resolve,cited_symbol_hand_authored_census_is_zero_refusals,cited_symbol_resolution_lens_is_green_on_live_corpus,doc_graph_works_refs_all_resolve,cited_symbol_post7688_production_census_is_zero_violations,cited_symbol_refusal_count_red_on_dangling_fixture,cited_symbol_planted_doc_graph_controls_all_refuse,cited_symbol_enrolled_population_refusal_proves_gate_not_vacuous,cited_symbol_planted_ambiguous_control_refuses_via_resolver,cited_symbol_production_census_ambiguous_count_is_zero,cited_symbol_resolves_node_kind_authority,cited_symbol_resolves_decl_ref_constructor,cited_symbol_refuses_module_absent,cited_symbol_refuses_declaration_absent,cited_symbol_refuses_ambiguous_binding,cited_symbol_refuses_named_field_absent",
     dissolution: unbound_dissolution(description: "per-witness declared cost envelopes subsume test/claim/long/ dir grain (long_lane_exclusion_note trigger), or falsifier_substrate_long_lane enrolls rows with measured eval under gunbc_ci_fast_lane_witness_eval_budget; row deletes when per-PR discovery runs them")
   },
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "impossible_bug",
     classification: OfflineLocalRecipe,
     reason: excl_predates_per_row_reason,
     dissolution: excl_predates_per_row_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "artifact_store_fs_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: "SUBSTANTIATED per-row (codex review 44306 on PR 7407, replacing the grandfathered excl_predates_per_row_reason this row inherited): every fn in this file performs genuinely live filesystem effects — Filesystem.Write/Read/Delete/List against a real store root — which is precisely the integration-style class the operator's 2026-07-11 hermetic-floor posture rules out of regular CI (see wet_integration_offline_note; the floor runs hermetic/mocked behavior checks). Hermetic mode does not merely skip them, it REFUSES: with no mock_response for Write the run stops rather than fabricating Unit, so there is no hermetic dual to discover for the put/delete/list path. The two remaining routes were both checked and neither is available today. Per-PR enrollment contradicts the operator posture above. Enrollment in the falsifier wet cadence would be enrollment into a roster that does not run — falsifier_self_host_wet_cadence_active is false, the rows are an INTERIM unscheduled home owned by the #7199 lane, and .github/workflows/falsifier-alert.yml exists to alert on exactly that non-execution; adding a row there would satisfy a coverage argument while executing nowhere, which is the coverage-by-illusion this repo already treats as a lie. So the honest state is: excluded, with the reason stated rather than inherited, and the gap counted.",
     dissolution: unbound_dissolution(description: "the wet lane un-darkens and admits live-filesystem integration rows under its own budget — falsifier_self_host_wet_cadence_active flips true, or a build-verification workflow enrolls the wet rosters — at which point this file's fns enroll there as declared execution rows and this exclusion deletes. Same trigger as the four wet_integration_offline_note rows; this row joins that class rather than minting a second one. Local recipe until then: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/artifact_store_fs_witness_test.dag --functions <csv> (store roots under /tmp must pre-exist; Filesystem.Write does not create parents).")
   },
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "direct_rust_door_write_compile_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: "wet-integration class (wet_integration_offline_note posture), substantiated per-row: direct_rust_door_emit_write_compile_holds runs tools.direct_rust_door_transport.run_direct_rust_door_emit_write_compile_smoke, which performs live shell.Mktemp.Dir, Filesystem.Write, and cargo.Build.BuildManifest effects with no hermetic mock_response coverage. Hermetic discovery REFUSES rather than fabricating Unit, so per-PR discovery cannot exercise the write-to-disk + compile receipt. Ingest-path provenance and closing-contract witnesses live in src/v2/test/claim/long/ (5s budget rule); fast closure witnesses stay per-PR in src/v2/test/claim/self_host/.",
     dissolution: unbound_dissolution(description: "the wet lane un-darkens and admits live cargo compile smokes under its own budget; this witness enrolls there as a declared execution row and this exclusion deletes. Local recipe until then: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/direct_rust_door_write_compile_witness_test.dag --function direct_rust_door_emit_write_compile_holds")
   },
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "external_model_scope_live_cover_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: "wet-integration class (wet_integration_offline_note posture), substantiated per-row at enrollment (the d4bef96 floor red is the receipt): every test fn in this file performs genuinely live host effects — a Filesystem.List directory walk of dag/extdeps and a git.Core.DiffNameStatus diff from the pinned legacy_manifest_freeze_sha to HEAD — and hermetic discovery REFUSES them (no published mock operation for either), so there is no hermetic dual to discover. The discriminating pure logic is NOT excluded: scope_cover_holds / manifest_freeze_holds / carrier_content_declares_scope RED controls and all roster/manifest accounting stay discovery-enrolled in external_model_scope_witness_test.dag per-PR; only the live observations run here.",
     dissolution: unbound_dissolution(description: "TWO triggers, either deletes this row: (a) the wet lane un-darkens and admits live integration rows under its own budget (the wet_integration_offline_note trigger) — this file's fns enroll there as declared execution rows; or (b) the ExternalModelScope requirement is promoted to its v2.lens.mandatory_tag region (gunbc.extdeps_scope_frontier legacy_manifest_shape_note dissolve-on) — the storage-grain cover deletes outright, file and row together. Local recipe until then: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/external_model_scope_live_cover_witness_test.dag --functions frontier_cover_of_live_extdeps_tree_holds,red_cover_walker_refuses_missing_root,manifest_rows_all_predate_freeze_sha")
   },
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "served_surface_browser_artifact_integrity_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: "wet-integration class (wet_integration_offline_note posture), substantiated by CI run 30719890594: witness_checked_in_screenshots_match_receipts executes sha256sum and wc shell transports against checked-in PNG bytes; their real execution reaches shell.Mktemp.Dir and other host effects with no mock_response, so hermetic discovery correctly REFUSES rather than fabricating a temporary directory or file result. The pure FileByteCountVerification coproduct controls are split into wc_byte_count_verification_witness_test.dag and remain ordinary per-PR discovery; only the live artifact observation is excluded.",
     dissolution: unbound_dissolution(description: "the wet lane un-darkens and admits live checked-in-artifact integrity rows under its own budget; this witness enrolls there as a declared execution row and this exclusion deletes. Local recipe until then: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/served_surface_browser_artifact_integrity_witness_test.dag --function witness_checked_in_screenshots_match_receipts")
   },
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "emit_source_store_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_predates_per_row_reason,
     dissolution: excl_predates_per_row_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "test/manual/",
     classification: OfflineLocalRecipe,
     reason: "manual-test home at dir grain: fns run by local recipe only, never per-PR discovery",
     dissolution: unbound_dissolution(description: "manual suites migrate under test/claim with declared consumers; row deletes")
   },
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "glob_discovery.dag",
     classification: OfflineLocalRecipe,
     reason: excl_probe_universe_carrier_reason,
     dissolution: excl_probe_universe_carrier_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "glob_discovery_law.dag",
     classification: OfflineLocalRecipe,
     reason: excl_probe_universe_carrier_reason,
     dissolution: excl_probe_universe_carrier_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "host_discovered_owned_data_manifest.dag",
     classification: OfflineLocalRecipe,
     reason: excl_probe_universe_carrier_reason,
     dissolution: excl_probe_universe_carrier_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "host_source_root_ingest_manifest.dag",
     classification: OfflineLocalRecipe,
     reason: excl_probe_universe_carrier_reason,
     dissolution: excl_probe_universe_carrier_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "program_assembly/real_ingest_test.dag",
     classification: OfflineLocalRecipe,
     reason: "transport-run witness consumed by v2.workflow.module_binding_supply_transport (same posture as crate_layout; see crate_layout_transport_exclusion_note)",
     dissolution: unbound_dissolution(description: "the crate-layout artifact moves to host-driven generation with the index supplied at the boundary; rows delete together (crate_layout_transport_exclusion_note)")
   },
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "self_host/compiler_closure_emit_from_ingest_test.dag",
     classification: OfflineLocalRecipe,
     reason: "transport-run witness (crate_layout_transport_exclusion_note). One of its five fns is separately quarantined known-red at function grain (gunbc.explicit_witness_admission); that is a different fact about that fn, not a restatement of this file-grain transport exclusion",
     dissolution: unbound_dissolution(description: "the crate-layout artifact moves to host-driven generation; rows delete together (crate_layout_transport_exclusion_note)")
   },
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "self_host/compiler_closure_ingest_boundary_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: "transport-run witness consumed by v2.workflow.compiler_closure_ingest_transport (07_target_carriers overlay; same posture as compiler_closure_emit_from_ingest_test.dag)",
     dissolution: unbound_dissolution(description: "the crate-layout artifact moves to host-driven generation; rows delete together (crate_layout_transport_exclusion_note)")
   },
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "self_host/crate_layout_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: "transport-run witness: hermetic runs read host_module_bindings = Empty and REFUSE; do NOT give it bin_witness_wet_entries rows (see crate_layout_transport_exclusion_note)",
     dissolution: unbound_dissolution(description: "the crate-layout artifact moves to host-driven generation with the index supplied at the boundary; the hand rows, the parity witness, and this row delete together")
   },
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "unified_test_claim_substrate_equivalence.dag",
     classification: OfflineLocalRecipe,
     reason: excl_probe_universe_carrier_reason,
     dissolution: excl_probe_universe_carrier_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "ci_exclusion_proof_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_predates_per_row_reason,
     dissolution: excl_predates_per_row_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "test/claim/execution/",
     classification: OfflineLocalRecipe,
     reason: "emit-vs-eval execution corpus home at dir grain: pure subtests are OfflineLocalRecipe; agreement legs run through explicit rosters (family crate, native routing frontier) checked before this classification",
     dissolution: unbound_dissolution(description: "witness-cost-locality admission or native routing enrolls rows per-family; the dir row deletes")
   },
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "claim/complexity/accumulator_copy_roster_gate",
     classification: OfflineLocalRecipe,
     reason: "operator-ruled OFFLINE roster gate (~15m serial interpreted resolve; runtime filesystem_read data deps invisible to closure attribution — see accumulator_copy_roster_gate_exclusion_note)",
     dissolution: excl_roster_gate_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "claim/identity_captured_navigation/roster_gate",
     classification: OfflineLocalRecipe,
     reason: "operator-ruled OFFLINE roster gate, identical structural reason as accumulator_copy (see identity_captured_navigation_roster_gate_exclusion_note)",
     dissolution: excl_roster_gate_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "test/claim/enforcement/",
     classification: OfflineLocalRecipe,
     reason: "corpus-denominated enforcement coverage witnesses, operator-ruled OFFLINE (22min/35 percent of floor budget; see enforcement_coverage_exclusion_note)",
     dissolution: unbound_dissolution(description: "witness rows declare InputEnvelope/CostEnvelope and the scheduled lane admits corpus-input rows; re-enroll through the floor owner (enforcement_coverage_exclusion_note)")
   },
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "enforcement_live_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: "corpus-denominated enforcement witness, operator-ruled OFFLINE (see enforcement_coverage_exclusion_note; its explicit CommitCheckEnrollment was deleted, never exclusion-vetoed)",
     dissolution: unbound_dissolution(description: "witness rows declare InputEnvelope/CostEnvelope and the scheduled lane admits corpus-input rows; re-enroll through the floor owner (enforcement_coverage_exclusion_note)")
   },
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "enforcement_inventory_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: "corpus-denominated lens enforcement inventory witnesses (lens_enforcement_inventory_live reads decl_facts); operator-ruled OFFLINE same posture as enforcement_live_witness_test.dag (see enforcement_coverage_exclusion_note)",
     dissolution: unbound_dissolution(description: "witness rows declare InputEnvelope/CostEnvelope and the scheduled lane admits corpus-input rows; re-enroll through the floor owner (enforcement_coverage_exclusion_note)")
   },
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "lever_a_local_receipt_witness",
     classification: OfflineLocalRecipe,
     reason: "operator-ruled OFFLINE: O(rows) full entry-tree walks, 85m+ CI timeout (see lever_a_local_receipt_witness_exclusion_note, which carries the local recipe verbatim)",
     dissolution: unbound_dissolution(description: "single-roster memo in tools.dag_compile_clean_scope lands AND G2 path-intersection is wired into floor admission axis (iv); re-enroll through the floor owner")
   },
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "host_effect_apply_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_wet_integration_reason,
     dissolution: excl_wet_integration_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "host_effect_plan_real_execution_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: "wet-integration class (wet_integration_offline_note posture); its shell witness fn runs via bin_witness_wet_entries, checked before this classification",
     dissolution: excl_wet_integration_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "deploy_access_privilege_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_wet_integration_reason,
     dissolution: excl_wet_integration_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "ci_deploy_observed_wet_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_wet_integration_reason,
     dissolution: excl_wet_integration_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "random_bytes_csprng_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_wet_integration_reason,
     dissolution: excl_wet_integration_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "self_host_artifact_materialization_real_execution_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
     dissolution: excl_bin_wet_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "stage0_regen_convergence_real_execution_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
     dissolution: excl_bin_wet_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "typed_witness_invocation_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
     dissolution: excl_bin_wet_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "namespace_structural_root_exposure_generated_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
     dissolution: excl_bin_wet_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "emit_host_typed_smoke_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
     dissolution: excl_bin_wet_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "build_artifact_corruption_probe_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
     dissolution: excl_bin_wet_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "self_host_logic_behavioral_witness_test.dag",
     classification: FalsifierSelfHostWet,
     reason: "REHOME fulfilled 2026-08-06 (Lane D): falsifier_self_host_wet_cadence_active true; dag/test/claim/self_host_logic_behavioral_witness_test.dag::self_host_logic_behavioral_receipt_holds enrolled on falsifier_self_host_wet_template_entries; path policy keeps the wet receipt out of per-PR hermetic discovery. CADENCE STANDING (2026-08-19, dashboard node adhoc-1eb1a9f9-ad9): falsifier batch 2 no longer executes anything — falsifier.yml was deleted at 611fd02770/#8283 (2026-08-15); see falsifier_substrate_long_lane_note.",
     dissolution: excl_behavioral_receipt_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "namespace_import_closure_witness_test.dag",
     classification: FalsifierSelfHostWet,
     reason: "REHOME fulfilled 2026-08-06 (Lane D): falsifier_self_host_wet_cadence_active true; dag/test/claim/namespace_import_closure_witness_test.dag::namespace_import_closure_receipt_holds enrolled on falsifier_self_host_wet_template_entries; path policy keeps the wet receipt out of per-PR hermetic discovery. CADENCE STANDING (2026-08-19, dashboard node adhoc-1eb1a9f9-ad9): falsifier batch 2 no longer executes anything — falsifier.yml was deleted at 611fd02770/#8283 (2026-08-15); see falsifier_substrate_long_lane_note.",
     dissolution: excl_behavioral_receipt_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "interpreter_dispatch_bijection_real_roster_witness_test.dag",
     classification: FalsifierSelfHostWet,
     reason: "R1 real-crate bijection wet receipt (gunbc#7825): cargo-integration witness (git clone, gunbc run main_wet, cold cargo build in clone) enrolled on falsifier_self_host_wet_template_entries; must not enter per-PR hermetic discovery. CADENCE STANDING (2026-08-19, dashboard node adhoc-1eb1a9f9-ad9): falsifier batch 2 no longer executes anything — falsifier.yml was deleted at 611fd02770/#8283 (2026-08-15); see falsifier_substrate_long_lane_note.",
     dissolution: excl_behavioral_receipt_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "self_host_03_resolve_behavioral_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_behavioral_receipt_reason,
     dissolution: excl_behavioral_receipt_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "self_host_01_tokenize_behavioral_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_behavioral_receipt_reason,
     dissolution: excl_behavioral_receipt_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "self_host_program_assembly_behavioral_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_behavioral_receipt_reason,
     dissolution: excl_behavioral_receipt_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "self_host_program_partition_behavioral_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_behavioral_receipt_reason,
     dissolution: excl_behavioral_receipt_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "self_host_source_authority_behavioral_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_behavioral_receipt_reason,
     dissolution: excl_behavioral_receipt_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "self_host_00_compile_behavioral_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_behavioral_receipt_reason,
     dissolution: excl_behavioral_receipt_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "self_host_04_infer_behavioral_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_behavioral_receipt_reason,
     dissolution: excl_behavioral_receipt_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "self_host_03_normalize_behavioral_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: "PATH POLICY for the file's remaining witness only. Its behavioral receipt is exact-admitted as a wet expect-red quarantine on gunbc.explicit_witness_admission and is not governed by this row; the sibling declared_source_refs_complete_holds has no admission and runs by local recipe, which is what this row states. Until 2026-08-03 this row's reason instead recorded a WORKAROUND — that classifying the FILE QuarantineProbeExpectRed would orphan that sibling, so the file was downgraded to OfflineLocalRecipe — which is the file-grain absorption the exact admission authority removed. Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag --function self_host_03_normalize_declared_source_refs_complete_holds",
     dissolution: unbound_dissolution(description: "the sibling gains a scheduled consumer or the file's receipt greens and both facts collapse to ordinary discovery; then this row deletes")
   },
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "self_host_02_parse_behavioral_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_behavioral_receipt_reason,
     dissolution: excl_behavioral_receipt_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "self_host_03_ingest_behavioral_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_behavioral_receipt_reason,
     dissolution: excl_behavioral_receipt_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "self_host_materialization_carriers_behavioral_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_behavioral_receipt_reason,
     dissolution: excl_behavioral_receipt_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "dag_collect_fingerprint_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
     dissolution: excl_bin_wet_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "dag_compile_clean_perturb_receipts_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
     dissolution: excl_bin_wet_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "test/claim/diagnostics_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
     dissolution: excl_bin_wet_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "effects_rest_transport_parse_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
     dissolution: excl_bin_wet_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "atom_body_discriminator_witness_test.dag",
     classification: FalsifierSubstrateLongLane,
     reason: excl_substrate_long_lane_reason,
     dissolution: excl_substrate_long_lane_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "affected_set_provenance_producer_witness_test.dag",
     classification: FalsifierSubstrateLongLane,
     reason: excl_substrate_long_lane_reason,
     dissolution: excl_substrate_long_lane_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "edit_locus_source_provenance_witness_test.dag",
     classification: FalsifierSubstrateLongLane,
     reason: excl_substrate_long_lane_reason,
     dissolution: excl_substrate_long_lane_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "long/wave1_gate1_d_mvp_subsumption_witness_test.dag",
     classification: FalsifierSubstrateLongLane,
     reason: excl_substrate_long_lane_reason,
     dissolution: excl_substrate_long_lane_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "long/v1_complexity_capability_census_resolution_test.dag",
     classification: FalsifierSubstrateLongLane,
     reason: excl_substrate_long_lane_reason,
     dissolution: excl_substrate_long_lane_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "long/v1_complexity_decl_classification_totality_test.dag",
     classification: FalsifierSubstrateLongLane,
     reason: excl_substrate_long_lane_reason,
     dissolution: excl_substrate_long_lane_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "fallback_arm_census_witness_test.dag",
     classification: FalsifierSubstrateLongLane,
     reason: excl_substrate_long_lane_reason,
     dissolution: excl_substrate_long_lane_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "long/instrument_sandbox_live_witness_test.dag",
     classification: FalsifierSubstrateLongLane,
     reason: excl_substrate_long_lane_reason,
     dissolution: excl_substrate_long_lane_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "synthetic_orphan_admission_witness_test.dag",
     classification: NoConsumer,
     reason: "deliberate no-consumer synthetic path: the admission RED control keys on this reserved (nonexistent) entry to prove enrolled-with-zero-consumers refuses (witness_admission_test, cli_run admission tests)",
     dissolution: unbound_dissolution(description: "the admission RED control keys on a typed fixture instead of a reserved path substring; row deletes")
   },
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "interp_recorded_fixture_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: "PER-PR ENROLLMENT REVERTED 2026-07-23 (the cold-child class, measured): the witness drives ~13+ claim_batch children each given --source-root <workspace root> — every child indexes the ENTIRE repo cold, serially — 2556s (42.6min) on run 29995111208's wet batch, the dominating row of the 53.2min batch-4 wall. That is a cold corpus-scan on the merge path (the record->replay lifecycle it witnesses is real coverage, but its transport class is the exact disease the pooled-child lever removes elsewhere). Too heavy for the falsifier wet lane's 600s per-receipt wall budget as-is, so it reverts to local recipe rather than enshrining a nightly refusal. Local recipe: target/release/interp_recorded_fixture_witness (builds claim_batch on demand).",
     dissolution: unbound_dissolution(description: "re-enrolls (falsifier wet or per-PR) when its claim_batch children are pooled/scoped (fixture-dir source roots instead of the workspace root, or one pooled child per lifecycle phase) and a measured run fits the destination lane's budget; the enrollment flip cites that receipt")
   },
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "test/claim/parse_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
     dissolution: excl_bin_wet_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "v1_dag_parse_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
     dissolution: excl_bin_wet_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "auth_declared_but_unwired_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
     dissolution: excl_bin_wet_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "test/claim/bootstrap_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
     dissolution: excl_bin_wet_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "infer_semantics_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
     dissolution: excl_bin_wet_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "dag_compile_clean_shard_a_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
     dissolution: excl_bin_wet_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "dag_compile_clean_shard_totality_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
     dissolution: excl_bin_wet_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "dag_compile_clean_seam_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
     dissolution: excl_bin_wet_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "test/fixture/walk_plan_stage/",
     classification: FixtureExplicitRoster,
     reason: "walk_plan_stage production-path fixtures at dir grain: Wet typed-service controls driven only by plan.dag claim_executor recipes, never hermetic discovery witnesses (walk_plan_stage_control_fixture_exclusion_note, witness_admission_fixture_note)",
     dissolution: unbound_dissolution(description: "fixture-home policy changes (witness_admission_fixture_note); row deletes")
   },
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "frontier_probe_closure_matrix_integration_test.dag",
     classification: FalsifierRehomedBinWet,
     reason: "PR #7762 frontier probe closure integration matrix (operator msg_b51df9e7): frontier_probe_below_cap_complete_population_gates_pass_holds and frontier_probe_second_source_root_population_gates_pass_holds execute full receipt_for_subject with observed SourceRef rows through assemble — measured claim_batch --wet eval wall: below_cap 784772ms, second_root 742109ms (130x and 123x bin_witness_wet_per_row_wall_budget_seconds). Scheduled consumer: FalsifierCadenceJob enrollment plus falsifier_rehomed_bin_wet_rows. Cheap wet controls (read_failure 3ms, hash_mismatch 2ms, elision boundary 3ms measured eval) run per-PR on GithubActionsCiJob via src/v2/test/claim/workflow/frontier_probe_closure_readthrough_test.dag — not 523ms/181ms (those were erroneous full-resolve figures from an earlier exclusion row before read-through was split out).",
     dissolution: unbound_dissolution(description: "measured eval for below_cap and second_root lands under bin_witness_wet_per_row_wall_budget_seconds on a measured run — then re-enroll per-PR discovery consciously, or delete when emit-stage positives are no longer full-pipeline priced")
   },
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "frontier_probe_closure_readthrough_test.dag",
     classification: OfflineLocalRecipe,
     reason: "PR #7762 wet read-through controls (ReadsLiveTree + frontier_probe_receipt_for_subject Filesystem.Read): hermetic discovery refuses without mock_response. Scheduled per-PR wet on GithubActionsCiJob execution corpus via commit_gate_roster SpanEnrolled rows (read_failure ~3ms, hash_mismatch ~2ms, elision boundary ~3ms measured eval on claim_batch --wet). Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry src/v2/test/claim/workflow/frontier_probe_closure_readthrough_test.dag --functions <fn>",
     dissolution: unbound_dissolution(description: "filesystem_read mock_response covers probe read paths and witnesses re-enroll as hermetic discovery rows, or per-witness exact admission subsumes path exclusion")
   },
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "test/claim/long/",
     classification: OfflineLocalRecipe,
     reason: "the LONG-test home at dir grain (operator 5-second rule). It removes these entries from per-PR discovery and NOTHING MORE: since 2026-08-04 it no longer answers the admission question, because the eval-deadline backstop it was blessed on is disarmed by the very relocation it was supposed to govern (long_lane_exclusion_note carries the retraction and the gunbc#7762 receipt). Admission is decided at identity grain by gunbc.witness_deferral_freeze plus gunbc.explicit_witness_admission",
     dissolution: unbound_dissolution(description: "the frozen path-deferral population reaches empty — every resident carrying an exact admission with a declared purpose, cost and executing cadence — then this row and the path-policy pass-through arm delete together")
   },
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "no_fake_anomalies_witness_test.dag",
     classification: FalsifierRehomedBinWet,
     reason: excl_no_fake_anomalies_reason,
     dissolution: excl_no_fake_anomalies_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "expectation_frontier_witness_test.dag",
     classification: FalsifierRehomedBinWet,
     reason: excl_expectation_frontier_reason,
     dissolution: excl_expectation_frontier_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "run_verdict_exit_status_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_run_verdict_exit_status_reason,
     dissolution: excl_run_verdict_exit_status_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "srv3_install_media_fetch_real_execution_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_install_media_reason,
     dissolution: excl_install_media_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "srv3_seeded_install_media_real_execution_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_install_media_reason,
     dissolution: excl_install_media_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "http_client_get_real_execution_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_install_media_reason,
     dissolution: excl_install_media_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "roadmap_belt_actuate_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
     dissolution: excl_bin_wet_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "host_build_cache_provision_real_execution_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_install_media_reason,
     dissolution: excl_install_media_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "materialized_ssh_key_file_real_execution_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_install_media_reason,
     dissolution: excl_install_media_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "generated_artifact_merge_driver_real_execution_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_install_media_reason,
     dissolution: excl_install_media_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "proc_self_cgroup_real_execution_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_install_media_reason,
     dissolution: excl_install_media_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "repo_local_git_config_real_execution_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_install_media_reason,
     dissolution: excl_install_media_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "commit_writer_heal_admission_real_execution_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_install_media_reason,
     dissolution: excl_install_media_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "effect_plan_bash_materialize_real_execution_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
     dissolution: excl_bin_wet_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "claude_sdk_parser_drop_live_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_install_media_reason,
     dissolution: excl_install_media_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "transport_script_stdin_byte_fidelity_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
     dissolution: excl_bin_wet_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "push_event_witness_wet_test.dag",
     classification: BinWitnessWet,
     reason: excl_install_media_reason,
     dissolution: excl_install_media_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "host_cli_dependency_wet_witness_test.dag",
     classification: BinWitnessWet,
     reason: "WET shell.Which.Check probes for observe_host_cli_dependency: hermetic discovery refuses host effects (no mock_response for operation Check). Enrolled on bin-witness wet roster; falsifier Codex materialization reuses the same Which.Check.exists path.",
     dissolution: excl_bin_wet_dissolve},
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "codex_package_delivery_wet_witness_test.dag",
     classification: FalsifierRehomedBinWet,
     reason: "wet real-execution class re-homed off the per-PR floor (witness-time ruling + wet_integration posture): DownloadToFile + sha512sum + npm cache add of admitted bytes + npm ci --offline + content-addressed release publish. Measured claim_batch --wet materialize wall ~150s (> bin_witness_wet_per_row_wall_budget_seconds). Exact fns enroll in falsifier_rehomed_bin_wet_rows (falsifier batch 5). OfflineLocalRecipe alone is UnclassifiedPathDeferral since 2026-08-04.",
     dissolution: unbound_dissolution(description: "a dedicated integration workflow enrolls these exact fns with durable receipts, or measured wall lands under bin_witness_wet_per_row_wall_budget_seconds and re-enrolls per-PR consciously")
   },
-  WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "codex_app_server_press_wet_witness_test.dag",
     classification: FalsifierRehomedBinWet,
     reason: "wet real-execution class re-homed off the per-PR floor: materialize Codex runtime then typed app-server account-standing session. Measured wall >> bin_witness_wet_per_row_wall_budget_seconds. Exact fn enrolls in falsifier_rehomed_bin_wet_rows. OfflineLocalRecipe alone is UnclassifiedPathDeferral since 2026-08-04.",
@@ -614,7 +614,7 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   }
 ]
 
-fn witness_exclusion_row_is_offline(row: WitnessExclusionRow) -> Bool {
+fn witness_exclusion_row_is_offline(row: gunbc.ci_layer_roots.WitnessExclusionRow) -> Bool {
   match row.classification {
     OfflineLocalRecipe => true
     DiscoverySelection => false
@@ -628,7 +628,7 @@ fn witness_exclusion_row_is_offline(row: WitnessExclusionRow) -> Bool {
   }
 }
 
-fn witness_exclusion_row_is_fixture(row: WitnessExclusionRow) -> Bool {
+fn witness_exclusion_row_is_fixture(row: gunbc.ci_layer_roots.WitnessExclusionRow) -> Bool {
   match row.classification {
     FixtureExplicitRoster => true
     DiscoverySelection => false
@@ -642,7 +642,7 @@ fn witness_exclusion_row_is_fixture(row: WitnessExclusionRow) -> Bool {
   }
 }
 
-fn witness_exclusion_row_is_discovery_selection(row: WitnessExclusionRow) -> Bool {
+fn witness_exclusion_row_is_discovery_selection(row: gunbc.ci_layer_roots.WitnessExclusionRow) -> Bool {
   match row.classification {
     DiscoverySelection => true
     FalsifierSelfHostWet => false
@@ -656,7 +656,7 @@ fn witness_exclusion_row_is_discovery_selection(row: WitnessExclusionRow) -> Boo
   }
 }
 
-fn witness_exclusion_row_is_rehomed_bin_wet(row: WitnessExclusionRow) -> Bool {
+fn witness_exclusion_row_is_rehomed_bin_wet(row: gunbc.ci_layer_roots.WitnessExclusionRow) -> Bool {
   match row.classification {
     FalsifierRehomedBinWet => true
     FalsifierSubstrateLongLane => false
@@ -670,7 +670,7 @@ fn witness_exclusion_row_is_rehomed_bin_wet(row: WitnessExclusionRow) -> Bool {
   }
 }
 
-fn witness_exclusion_row_is_substrate_long_lane(row: WitnessExclusionRow) -> Bool {
+fn witness_exclusion_row_is_substrate_long_lane(row: gunbc.ci_layer_roots.WitnessExclusionRow) -> Bool {
   match row.classification {
     FalsifierSubstrateLongLane => true
     FalsifierRehomedBinWet => false
@@ -684,7 +684,7 @@ fn witness_exclusion_row_is_substrate_long_lane(row: WitnessExclusionRow) -> Boo
   }
 }
 
-fn witness_exclusion_row_is_bin_witness_wet(row: WitnessExclusionRow) -> Bool {
+fn witness_exclusion_row_is_bin_witness_wet(row: gunbc.ci_layer_roots.WitnessExclusionRow) -> Bool {
   match row.classification {
     BinWitnessWet => true
     DiscoverySelection => false
@@ -698,7 +698,7 @@ fn witness_exclusion_row_is_bin_witness_wet(row: WitnessExclusionRow) -> Bool {
   }
 }
 
-fn witness_exclusion_row_is_known_red(row: WitnessExclusionRow) -> Bool {
+fn witness_exclusion_row_is_known_red(row: gunbc.ci_layer_roots.WitnessExclusionRow) -> Bool {
   match row.classification {
     QuarantineProbeExpectRed => true
     DiscoverySelection => false
@@ -712,7 +712,7 @@ fn witness_exclusion_row_is_known_red(row: WitnessExclusionRow) -> Bool {
   }
 }
 
-fn witness_exclusion_row_is_falsifier_wet(row: WitnessExclusionRow) -> Bool {
+fn witness_exclusion_row_is_falsifier_wet(row: gunbc.ci_layer_roots.WitnessExclusionRow) -> Bool {
   match row.classification {
     FalsifierSelfHostWet => true
     FalsifierRehomedBinWet => false
@@ -726,7 +726,7 @@ fn witness_exclusion_row_is_falsifier_wet(row: WitnessExclusionRow) -> Bool {
   }
 }
 
-fn witness_exclusion_row_is_no_consumer(row: WitnessExclusionRow) -> Bool {
+fn witness_exclusion_row_is_no_consumer(row: gunbc.ci_layer_roots.WitnessExclusionRow) -> Bool {
   match row.classification {
     NoConsumer => true
     DiscoverySelection => false
@@ -740,11 +740,11 @@ fn witness_exclusion_row_is_no_consumer(row: WitnessExclusionRow) -> Bool {
   }
 }
 
-fn witness_exclusion_patterns(rows: List<WitnessExclusionRow>) -> List<String> {
+fn witness_exclusion_patterns(rows: List<gunbc.ci_layer_roots.WitnessExclusionRow>) -> List<String> {
   fold(rows, init: [], f: fn(acc, row) { concat(acc, [row.pattern]) })
 }
 
-fn witness_exclusion_row_waits_on_wet_lane_undarken(row: WitnessExclusionRow) -> Bool {
+fn witness_exclusion_row_waits_on_wet_lane_undarken(row: gunbc.ci_layer_roots.WitnessExclusionRow) -> Bool {
   string_contains(s: dissolution_description(condition: row.dissolution), pattern: "falsifier_self_host_wet_cadence_active")
     || (dissolution_description(condition: row.dissolution) == dissolution_description(condition: excl_wet_integration_dissolve))
     || (dissolution_description(condition: row.dissolution) == dissolution_description(condition: excl_behavioral_receipt_dissolve))
@@ -754,12 +754,12 @@ fn witness_exclusion_row_waits_on_wet_lane_undarken(row: WitnessExclusionRow) ->
 
 data witness_exclusion_row_mentions_wet_lane_dark_state_note: String = "witness_exclusion_row_mentions_wet_lane_dark_state is a broader candidate net than witness_exclusion_row_waits_on_wet_lane_undarken's positive arms: any row whose dissolve_on names the falsifier_self_host_wet lane, the cadence flag, or an un-darken trigger in ANY spelling. A row caught by this net but not matched by the positive predicate is a THIRD spelling the positive predicate has not learned yet -- surfaced via falsifier_self_host_wet_dark_lane_unclassified_rows, not silently dropped (still-bat-561 review, 2026-08-05: a derived count is only as good as its predicate, and a predicate with an unclassified residue silently deflates exactly like a hand-typed ordinal goes stale). This is a candidate net, not a second authority: false positives here (a row that mentions the wet lane only as one arm of an unrelated OR-condition) are expected and are why v2.test.claim.witness_exclusion_reconciliation_test asserts the PROPERTY -- every candidate is claimed by exactly one arm -- rather than asserting any specific count."
 
-fn witness_exclusion_row_mentions_wet_lane_dark_state(row: WitnessExclusionRow) -> Bool {
+fn witness_exclusion_row_mentions_wet_lane_dark_state(row: gunbc.ci_layer_roots.WitnessExclusionRow) -> Bool {
   string_contains(s: dissolution_description(condition: row.dissolution), pattern: "falsifier_self_host_wet")
     || string_contains(s: dissolution_description(condition: row.dissolution), pattern: "un-darken")
 }
 
-fn falsifier_self_host_wet_dark_lane_waiting_rows() -> List<WitnessExclusionRow> {
+fn falsifier_self_host_wet_dark_lane_waiting_rows() -> List<gunbc.ci_layer_roots.WitnessExclusionRow> {
   fold(
     witness_exclusion_frontier,
     init: [],
@@ -777,7 +777,7 @@ fn falsifier_self_host_wet_dark_lane_population() -> Int {
   falsifier_self_host_wet_dark_lane_waiting_patterns().length()
 }
 
-fn falsifier_self_host_wet_dark_lane_unclassified_rows() -> List<WitnessExclusionRow> {
+fn falsifier_self_host_wet_dark_lane_unclassified_rows() -> List<gunbc.ci_layer_roots.WitnessExclusionRow> {
   fold(
     witness_exclusion_frontier,
     init: [],
@@ -843,7 +843,7 @@ Dissolve-on: the crate-layout artifact moves to host-driven generation with the 
 
 data witness_admission_fixture_note: String = "Phase 0(b) admitted control fixtures excluded from tree-wide discovery at dir grain: their consumers are explicit rosters, never the discovery corpus. The floor_skip fixture home was deleted with affected-set selection itself (the rows it controlled no longer exist); walk_plan_stage remains. Dissolves when fixture-home policy changes."
 
-data known_red_probe_note: String = "Phase 0(b) quarantine probe cadence (module-identity-storage-binding): known-red frontier witnesses that EXPECT RED on main — the falsifier probe batch's designed shape runs them SelectionApplied; greening is a counted un-quarantine event (per-row dissolve_on on the authority). Distinct from falsifier_self_host_wet (green-only SelfEmitted receipts). SINGLE AUTHORITY (2026-08-03): the rows live at function grain in gunbc.explicit_witness_admission explicit_witness_admissions and BOTH consumers derive from them — this roster is the falsifier batch's projection, and v2.workflow.floor_discovery_producer drops exactly the same (entry, function) pairs from per-PR discovery. The former shape was a dual representation: a QuarantineProbeExpectRed WitnessExclusionRow removing the whole FILE plus a probe_red(entry, f) row enrolling one FUNCTION, reconciled by a check instead of by construction. Those pattern rows are deleted; a pattern row that re-states a quarantine is now refused by witness_exclusion_row_well_formed. CADENCE STANDING (2026-08-19, dashboard node adhoc-1eb1a9f9-ad9): 'runs them' describes the batch's designed ordering, not a currently running schedule — falsifier.yml was deleted at 611fd02770/#8283 (2026-08-15), so nothing currently runs this probe batch and witness_execution_standing_for_row derives DeclaredCadenceUnrealized for QuarantineProbeExpectRed rows too (see falsifier_substrate_long_lane_note)."
+data known_red_probe_note: String = "Phase 0(b) quarantine probe cadence (module-identity-storage-binding): known-red frontier witnesses that EXPECT RED on main — the falsifier probe batch's designed shape runs them SelectionApplied; greening is a counted un-quarantine event (per-row dissolve_on on the authority). Distinct from falsifier_self_host_wet (green-only SelfEmitted receipts). SINGLE AUTHORITY (2026-08-03): the rows live at function grain in gunbc.explicit_witness_admission explicit_witness_admissions and BOTH consumers derive from them — this roster is the falsifier batch's projection, and v2.workflow.floor_discovery_producer drops exactly the same (entry, function) pairs from per-PR discovery. The former shape was a dual representation: a QuarantineProbeExpectRed gunbc.ci_layer_roots.WitnessExclusionRow removing the whole FILE plus a probe_red(entry, f) row enrolling one FUNCTION, reconciled by a check instead of by construction. Those pattern rows are deleted; a pattern row that re-states a quarantine is now refused by witness_exclusion_row_well_formed. CADENCE STANDING (2026-08-19, dashboard node adhoc-1eb1a9f9-ad9): 'runs them' describes the batch's designed ordering, not a currently running schedule — falsifier.yml was deleted at 611fd02770/#8283 (2026-08-15), so nothing currently runs this probe batch and witness_execution_standing_for_row derives DeclaredCadenceUnrealized for QuarantineProbeExpectRed rows too (see falsifier_substrate_long_lane_note)."
 
 fn known_red_probe_roster() -> List<std.realization_schedule.ScheduleWitnessEntry> {
   concat(

@@ -110,7 +110,7 @@ data emitted_effect_family_boundary_note: String = "Boundary citation, not a sha
 
 data interpreter_wet_surface_decl_ref_frontier_note: String = "Every current member is DeclaredFrontier because field-granular declaration-Node enumeration does not yet exist (the std.decl_ref / gunbc#5364 wall-after-grounding). Each row still names the closest .dag authorities plus its own reason and dissolution route; none is silently omitted. A row graduates to NodeTreeDerived when the compile graph can resolve its exact declaration reference. interpreter_surviving_roles is derived from this membership and drops wet-effect-surfaces when the roster reaches zero."
 
-data gunbc_serve_wet_surface: InterpreterWetSurface = InterpreterWetSurface {
+data gunbc_serve_wet_surface: std.emit_on_demand.InterpreterWetSurface = std.emit_on_demand.InterpreterWetSurface {
   id: "gunbc-serve-accept-loop-and-belt-dispatch",
   membership: DeclaredFrontier {
     authorities: [
@@ -122,7 +122,7 @@ data gunbc_serve_wet_surface: InterpreterWetSurface = InterpreterWetSurface {
   }
 }
 
-data main_wet_regen_surface: InterpreterWetSurface = InterpreterWetSurface {
+data main_wet_regen_surface: std.emit_on_demand.InterpreterWetSurface = std.emit_on_demand.InterpreterWetSurface {
   id: "main-wet-generated-artifact-emission",
   membership: DeclaredFrontier {
     authorities: [
@@ -133,7 +133,7 @@ data main_wet_regen_surface: InterpreterWetSurface = InterpreterWetSurface {
   }
 }
 
-data gunbc_ci_emission_surface: InterpreterWetSurface = InterpreterWetSurface {
+data gunbc_ci_emission_surface: std.emit_on_demand.InterpreterWetSurface = std.emit_on_demand.InterpreterWetSurface {
   id: "gunbc-ci-emission",
   membership: DeclaredFrontier {
     authorities: [
@@ -144,7 +144,7 @@ data gunbc_ci_emission_surface: InterpreterWetSurface = InterpreterWetSurface {
   }
 }
 
-data pre_push_transport_surface: InterpreterWetSurface = InterpreterWetSurface {
+data pre_push_transport_surface: std.emit_on_demand.InterpreterWetSurface = std.emit_on_demand.InterpreterWetSurface {
   id: "pre-push-transport",
   membership: DeclaredFrontier {
     authorities: [
@@ -156,7 +156,7 @@ data pre_push_transport_surface: InterpreterWetSurface = InterpreterWetSurface {
   }
 }
 
-data probe_bins_surface: InterpreterWetSurface = InterpreterWetSurface {
+data probe_bins_surface: std.emit_on_demand.InterpreterWetSurface = std.emit_on_demand.InterpreterWetSurface {
   id: "probe-bins",
   membership: DeclaredFrontier {
     authorities: [
@@ -167,7 +167,7 @@ data probe_bins_surface: InterpreterWetSurface = InterpreterWetSurface {
   }
 }
 
-data interpreter_wet_surfaces: List<InterpreterWetSurface> = [
+data interpreter_wet_surfaces: List<std.emit_on_demand.InterpreterWetSurface> = [
   gunbc_serve_wet_surface,
   main_wet_regen_surface,
   gunbc_ci_emission_surface,
@@ -175,18 +175,18 @@ data interpreter_wet_surfaces: List<InterpreterWetSurface> = [
   probe_bins_surface
 ]
 
-data interpreter_base_surviving_roles: List<InterpreterSurvivingRole> = [
-  InterpreterSurvivingRole {
+data interpreter_base_surviving_roles: List<std.emit_on_demand.InterpreterSurvivingRole> = [
+  std.emit_on_demand.InterpreterSurvivingRole {
     id: "bootstrap-receipts",
     purpose: "S1 parse census and seed-honesty receipts until native artifacts cover the corpus",
     dissolution: unbound_dissolution(description: "witness_family_fanout complete + ci_floor_cutover on v2-emitted execution")
   },
-  InterpreterSurvivingRole {
+  std.emit_on_demand.InterpreterSurvivingRole {
     id: "compile-time-eval",
     purpose: "EqualsClaim expected arm and emit-vs-eval oracle during the emit_host transition",
     dissolution: unbound_dissolution(description: "emit_on_demand agreement witnesses green for every enrolled family")
   },
-  InterpreterSurvivingRole {
+  std.emit_on_demand.InterpreterSurvivingRole {
     id: "terminal-bootstrap-kernel",
     purpose: "claim_executor host physics (pinned HAND roster — recorded_fixture, resolved_graph_cache)",
     dissolution: unbound_dissolution(description: "v1_quarantine — seed crates frozen as bootstrap artifact only")
@@ -194,15 +194,15 @@ data interpreter_base_surviving_roles: List<InterpreterSurvivingRole> = [
 ]
 
 fn interpreter_surviving_roles_from_wet_surfaces(
-  wet_surfaces: List<InterpreterWetSurface>
-) -> List<InterpreterSurvivingRole> {
+  wet_surfaces: List<std.emit_on_demand.InterpreterWetSurface>
+) -> List<std.emit_on_demand.InterpreterSurvivingRole> {
   if list_length(items: wet_surfaces) == 0 {
     interpreter_base_surviving_roles
   } else {
     concat(
       interpreter_base_surviving_roles,
       [
-        InterpreterSurvivingRole {
+        std.emit_on_demand.InterpreterSurvivingRole {
           id: "wet-effect-surfaces",
           purpose: "Wet/Record live-effect dispatch for the countable interpreter_wet_surfaces membership",
           dissolution: unbound_dissolution(description: "interpreter_wet_surfaces reaches zero after every effect dispatch selects HandlerBinding from covering_grant + ci_floor_cutover on v2-emitted execution")
@@ -212,7 +212,7 @@ fn interpreter_surviving_roles_from_wet_surfaces(
   }
 }
 
-data interpreter_surviving_roles: List<InterpreterSurvivingRole> = interpreter_surviving_roles_from_wet_surfaces(wet_surfaces: interpreter_wet_surfaces)
+data interpreter_surviving_roles: List<std.emit_on_demand.InterpreterSurvivingRole> = interpreter_surviving_roles_from_wet_surfaces(wet_surfaces: interpreter_wet_surfaces)
 
 data interpreter_surviving_roles_ceiling_note: String = "Policy ceiling (independent of current occupancy): bootstrap headroom for interpreter-surviving roles until witness_family_fanout lands (P3 ACCEPT (c); docs/plans/witness-realization-plan.md). Occupancy is count(interpreter_surviving_roles); wet-effect-surfaces is derived from nonempty interpreter_wet_surfaces membership and dissolves at zero. The ceiling is an upper bound so roster growth is checked against declared headroom, never conflated with a hand count of current entries."
 

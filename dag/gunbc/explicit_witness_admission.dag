@@ -24,8 +24,8 @@ fn known_red_probe_expecting(
   expected: std.witness_admission.WitnessExpectedVerdict,
   reason: std.types.NonEmptyStr,
   dissolution: std.dissolution.DissolutionCondition
-) -> ExplicitWitnessAdmission {
-  ExplicitWitnessAdmission {
+) -> gunbc.explicit_witness_admission.ExplicitWitnessAdmission {
+  gunbc.explicit_witness_admission.ExplicitWitnessAdmission {
     witness: std.realization_schedule.ScheduleWitnessEntry { entry: entry, function: f, kind: kind },
     cadence: QuarantineProbeExpectRed,
     budget: budget,
@@ -42,7 +42,7 @@ fn known_red_probe(
   budget: std.witness_admission.WitnessExecutionBudget,
   reason: std.types.NonEmptyStr,
   dissolution: std.dissolution.DissolutionCondition
-) -> ExplicitWitnessAdmission {
+) -> gunbc.explicit_witness_admission.ExplicitWitnessAdmission {
   known_red_probe_expecting(
     entry: entry,
     f: f,
@@ -63,8 +63,8 @@ fn source_root_ingest_gate_admitted_witness(
   budget: std.witness_admission.WitnessExecutionBudget,
   reason: std.types.NonEmptyStr,
   dissolution: std.dissolution.DissolutionCondition
-) -> ExplicitWitnessAdmission {
-  ExplicitWitnessAdmission {
+) -> gunbc.explicit_witness_admission.ExplicitWitnessAdmission {
+  gunbc.explicit_witness_admission.ExplicitWitnessAdmission {
     witness: std.realization_schedule.ScheduleWitnessEntry { entry: entry, function: f, kind: kind },
     cadence: BinWitnessWet,
     budget: budget,
@@ -85,7 +85,7 @@ fn known_red_pre_verdict_probe(
   cause: std.witness_admission.PreVerdictCause,
   reason: std.types.NonEmptyStr,
   dissolution: std.dissolution.DissolutionCondition
-) -> ExplicitWitnessAdmission {
+) -> gunbc.explicit_witness_admission.ExplicitWitnessAdmission {
   known_red_probe_expecting(
     entry: entry,
     f: f,
@@ -99,7 +99,7 @@ fn known_red_pre_verdict_probe(
 
 data known_red_class_note: String = "WHAT A KNOWN-RED ADMISSION IS: a witness red on main for a feature gap owned by a named lane. It is a RED CONTROL for that lane, not a broken test — deleting it would discard the discriminating input, while leaving it in per-PR discovery would red every wide PR on a debt that PR did not create. Greening is the counted un-quarantine event of std.witness_admission: the row deletes in the SAME change that lands the fix, which promotes the unchanged witness to ordinary DiscoverySelection as a permanent regression control (DESIGN 4b(4) — the climb deletes the quarantine machinery, never the evidence). The roster must not grow silently: a new admission carries a reason naming the diagnosis and owner plus a dissolve_on, both refused empty by NonEmptyStr, and a row whose witness runs green locally is stale and deletes. Local recipe per row: claim_batch --source-root dag --source-root src/v2 --entry <entry> --functions <function>. CorpusWitnessKind rows run on the hermetic falsifier probe batch; ExecutionWitnessKind rows run on the falsifier wet quarantine batch."
 
-data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
+data explicit_witness_admissions: List<gunbc.explicit_witness_admission.ExplicitWitnessAdmission> = [
   known_red_probe(
     entry: "src/v2/test/claim/manual/english_emit_add_test.dag",
     f: "english_emit_add_ingest_round_trip_holds",
@@ -268,7 +268,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     reason: "Exact-cap boundary witness for 07_target_carriers closure (#8210): discriminates complete vs elided transport at manifest_inline_list_max. Per-PR consumer is run_closure_boundary_overlay_claims on source_root_ingest_gate.",
     dissolution: unbound_dissolution(description: "boundary witness re-enrolls on per-PR discovery without transport overlay, or this row migrates to witness_deferral_freeze with a measured dissolve_on")
   ),
-  ExplicitWitnessAdmission {
+  gunbc.explicit_witness_admission.ExplicitWitnessAdmission {
     witness: std.realization_schedule.ScheduleWitnessEntry {
       entry: "src/v2/test/claim/long/infer_transform_binary_infix_witness_test.dag",
       function: "infer_transform_add_vertical_witness_holds",
@@ -283,7 +283,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
 ]
 
 fn explicit_witness_admission_matches(
-  row: ExplicitWitnessAdmission,
+  row: gunbc.explicit_witness_admission.ExplicitWitnessAdmission,
   entry: String,
   function: String
 ) -> Bool {
@@ -294,7 +294,7 @@ fn explicit_witness_admission_matches(
 data explicit_witness_admission_file_grain_note: String = "The empty function is ScheduleWitnessEntry's declared file-grain form (the same authority v1_claim_scoped_witness_batch_note names and expand_explicit_entries realizes for execution): it admits every test declaration in the entry. It is still EXACT — the entry is a path identity, not a substring — which is what separates it from the path policy carrier. Today no known-red row uses it; the arm exists so the derivations stay one fold when a cadence that does use it migrates in."
 
 fn explicit_witness_admission_covers_in(
-  rows: List<ExplicitWitnessAdmission>,
+  rows: List<gunbc.explicit_witness_admission.ExplicitWitnessAdmission>,
   entry: String,
   function: String
 ) -> Bool {
@@ -324,7 +324,7 @@ fn explicit_witness_admission_covers_entry(entry: String) -> Bool {
 }
 
 fn explicit_witness_admission_count_for_in(
-  rows: List<ExplicitWitnessAdmission>,
+  rows: List<gunbc.explicit_witness_admission.ExplicitWitnessAdmission>,
   entry: String,
   function: String
 ) -> Int {
@@ -341,7 +341,7 @@ fn explicit_witness_admission_count_for_in(
   )
 }
 
-fn explicit_witness_admission_duplicate_count_in(rows: List<ExplicitWitnessAdmission>) -> Int {
+fn explicit_witness_admission_duplicate_count_in(rows: List<gunbc.explicit_witness_admission.ExplicitWitnessAdmission>) -> Int {
   fold(
     rows,
     init: 0,
@@ -365,7 +365,7 @@ fn explicit_witness_admission_duplicate_count() -> Int {
 
 data explicit_witness_admission_polarity_source_note: String = "POLARITY IS READ FROM THE EXPECTATION AXIS, NOT THE CADENCE. This predicate matched row.cadence until the axis split: QuarantineProbeExpectRed => true, every other arm false. That made the batch a witness's polarity — an expensive known-red row moved onto a long batch to obtain its budget silently became expected-GREEN, which is exactly how a witness that is red BY DESIGN reached the falsifier alert as a component failure. Reading row.expected instead means moving a row between consumers cannot change what counts as agreement, and a mixed batch is ordinary rather than a trap."
 
-fn explicit_witness_admission_is_known_red(row: ExplicitWitnessAdmission) -> Bool {
+fn explicit_witness_admission_is_known_red(row: gunbc.explicit_witness_admission.ExplicitWitnessAdmission) -> Bool {
   match row.expected {
     ExpectAssertionFalse => true
     ExpectTypedPreVerdictRefusal { phase: _, cause: _ } => true
@@ -373,7 +373,7 @@ fn explicit_witness_admission_is_known_red(row: ExplicitWitnessAdmission) -> Boo
   }
 }
 
-fn explicit_witness_admission_is_executing_witness(row: ExplicitWitnessAdmission) -> Bool {
+fn explicit_witness_admission_is_executing_witness(row: gunbc.explicit_witness_admission.ExplicitWitnessAdmission) -> Bool {
   match row.expected {
     ExpectWitnessHolds => true
     ExpectAssertionFalse => false
@@ -410,7 +410,7 @@ fn explicit_witness_admission_substrate_long_lane_roster() -> List<std.realizati
   ))
 }
 
-fn explicit_witness_admission_requires_long_eval_budget(row: ExplicitWitnessAdmission) -> Bool {
+fn explicit_witness_admission_requires_long_eval_budget(row: gunbc.explicit_witness_admission.ExplicitWitnessAdmission) -> Bool {
   match row.budget {
     SubstrateLongLaneEvalBudget => true
     FastLaneEvalBudget => false
@@ -637,12 +637,12 @@ fn explicit_witness_admission_cadence_executes(cadence: std.witness_admission.Wi
   }
 }
 
-fn explicit_witness_admission_well_formed(row: ExplicitWitnessAdmission) -> Bool {
+fn explicit_witness_admission_well_formed(row: gunbc.explicit_witness_admission.ExplicitWitnessAdmission) -> Bool {
   !(row.witness.entry == "")
     && explicit_witness_admission_cadence_executes(cadence: row.cadence)
 }
 
-fn explicit_witness_admissions_well_formed_in(rows: List<ExplicitWitnessAdmission>) -> Bool {
+fn explicit_witness_admissions_well_formed_in(rows: List<gunbc.explicit_witness_admission.ExplicitWitnessAdmission>) -> Bool {
   fold(
     rows,
     init: true,

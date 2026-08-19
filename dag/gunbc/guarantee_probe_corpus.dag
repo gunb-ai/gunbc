@@ -475,10 +475,10 @@ fn v1_compile_probe_row_from_registry(row: GuaranteeProbeRow) -> V1CompileProbeR
   }
 }
 
-fn v2_infer_eval_probe_row_from_registry(row: GuaranteeProbeRow) -> V2InferEvalProbeRow? {
+fn v2_infer_eval_probe_row_from_registry(row: GuaranteeProbeRow) -> gunbc.guarantee_probe_corpus.V2InferEvalProbeRow? {
   if (row.path as String) == (v2_infer_eval_path_id as String) {
     Present {
-      value: V2InferEvalProbeRow {
+      value: gunbc.guarantee_probe_corpus.V2InferEvalProbeRow {
         probe: row.probe,
         class: row.class,
         expectation: row.expectation,
@@ -496,7 +496,7 @@ fn active_v1_compile_probe_row(probe: gunbc.guarantee_measurement.GuaranteeProbe
   }
 }
 
-fn active_v2_infer_eval_probe_row(probe: gunbc.guarantee_measurement.GuaranteeProbeId) -> V2InferEvalProbeRow? {
+fn active_v2_infer_eval_probe_row(probe: gunbc.guarantee_measurement.GuaranteeProbeId) -> gunbc.guarantee_probe_corpus.V2InferEvalProbeRow? {
   match active_probe_row(probe: probe) {
     Present { value: row } => v2_infer_eval_probe_row_from_registry(row: row)
     Absent => none
@@ -664,7 +664,7 @@ fn receipt_matches_v1_compile_probe_row(receipt: gunbc.guarantee_measurement.Gua
     && (receipt.path as String) == (v1_compile_rust_path_id as String)
 }
 
-fn receipt_matches_v2_infer_eval_probe_row(receipt: gunbc.guarantee_measurement.GuaranteeMeasurementReceipt, row: V2InferEvalProbeRow) -> Bool {
+fn receipt_matches_v2_infer_eval_probe_row(receipt: gunbc.guarantee_measurement.GuaranteeMeasurementReceipt, row: gunbc.guarantee_probe_corpus.V2InferEvalProbeRow) -> Bool {
   (receipt.probe as String) == (row.probe as String)
     && (receipt.class as String) == (row.class as String)
     && (receipt.path as String) == (v2_infer_eval_path_id as String)
@@ -741,7 +741,7 @@ fn receipt_joins_v1_compile_path(receipt: gunbc.guarantee_measurement.GuaranteeM
 }
 
 fn build_v2_infer_eval_receipt(
-  row: V2InferEvalProbeRow,
+  row: gunbc.guarantee_probe_corpus.V2InferEvalProbeRow,
   observed: gunbc.guarantee_measurement.ProbeObservation,
   subject_revision: gunbc.guarantee_measurement.MeasurementRevision,
   harness_revision: gunbc.guarantee_measurement.MeasurementRevision,

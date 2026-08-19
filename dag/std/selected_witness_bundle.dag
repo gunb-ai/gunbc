@@ -214,8 +214,8 @@ fn native_witness_bundle_identity(plan: SelectedWitnessPlan) -> std.selected_wit
   }
 }
 
-fn native_witness_bundle_from_plan(plan: SelectedWitnessPlan) -> NativeWitnessBundle {
-  NativeWitnessBundle {
+fn native_witness_bundle_from_plan(plan: SelectedWitnessPlan) -> std.selected_witness_bundle.NativeWitnessBundle {
+  std.selected_witness_bundle.NativeWitnessBundle {
     identity: native_witness_bundle_identity(plan: plan),
     compiler_identity: plan.compiler_identity,
     members: selected_witness_plan_native_members(plan: plan)
@@ -223,7 +223,7 @@ fn native_witness_bundle_from_plan(plan: SelectedWitnessPlan) -> NativeWitnessBu
 }
 
 type NativeBundleAdmission
-  = NativeBundleAdmitted { bundle: NativeWitnessBundle }
+  = NativeBundleAdmitted { bundle: std.selected_witness_bundle.NativeWitnessBundle }
   | NativeBundleRefusedStaleCompiler {
       bundle_compiler_identity: std.content_hash.Fnv1a64Structural
       current_compiler_identity: std.content_hash.Fnv1a64Structural
@@ -243,7 +243,7 @@ type NativeBundleAdmission
 
 fn native_witness_bundle_admit(
   plan: SelectedWitnessPlan,
-  bundle: NativeWitnessBundle,
+  bundle: std.selected_witness_bundle.NativeWitnessBundle,
   current_compiler_identity: std.content_hash.Fnv1a64Structural
 ) -> NativeBundleAdmission {
   let required = native_witness_bundle_identity(plan: plan)

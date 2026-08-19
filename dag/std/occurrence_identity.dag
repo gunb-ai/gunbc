@@ -218,8 +218,8 @@ fn occurrence_id_allocator_initial() -> OccurrenceIdAllocator {
   OccurrenceIdAllocator { next_id: 0 }
 }
 
-fn alloc_occurrence_id(alloc: OccurrenceIdAllocator) -> OccurrenceIdAllocResult {
-  OccurrenceIdAllocResult {
+fn alloc_occurrence_id(alloc: OccurrenceIdAllocator) -> std.occurrence_identity.OccurrenceIdAllocResult {
+  std.occurrence_identity.OccurrenceIdAllocResult {
     id: OccurrenceId { value: alloc.next_id },
     alloc: OccurrenceIdAllocator { next_id: alloc.next_id + 1 },
   }

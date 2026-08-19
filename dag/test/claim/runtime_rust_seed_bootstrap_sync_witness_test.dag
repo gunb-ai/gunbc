@@ -1,6 +1,5 @@
 module test.claim.runtime_rust_seed_bootstrap_sync_witness_test
 
-import extdeps.filesystem.filesystem_io
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 

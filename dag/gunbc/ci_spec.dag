@@ -102,7 +102,7 @@ data gunbc_ci_deploy_srv1_stage: DeployStage = {
 
 data gunbc_ci_deploy_stages: List<DeployStage> = [gunbc_ci_deploy_srv1_stage]
 
-data gunbc_ci_spec: CiSpec = {
+data gunbc_ci_spec: gunbc.ci_spec.CiSpec = {
   gates: gunbc_ci_floor_gates,
   witness_entries: gunbc_ci_floor_witness_entries,
   discovery_scan_dirs: gunbc.ci_layer_roots.witness_discovery_scan_dirs,
@@ -115,8 +115,8 @@ data gunbc_ci_spec: CiSpec = {
   deploy_stages: gunbc_ci_deploy_stages,
 }
 
-fn ci_spec_with_witness_entries(spec: CiSpec, entries: List<std.realization_schedule.ScheduleWitnessEntry>) -> CiSpec {
-  CiSpec {
+fn ci_spec_with_witness_entries(spec: gunbc.ci_spec.CiSpec, entries: List<std.realization_schedule.ScheduleWitnessEntry>) -> gunbc.ci_spec.CiSpec {
+  gunbc.ci_spec.CiSpec {
     gates: spec.gates,
     witness_entries: entries,
     discovery_scan_dirs: spec.discovery_scan_dirs,
@@ -126,8 +126,8 @@ fn ci_spec_with_witness_entries(spec: CiSpec, entries: List<std.realization_sche
   }
 }
 
-fn ci_spec_with_discovery_scan_dirs(spec: CiSpec, dirs: List<String>) -> CiSpec {
-  CiSpec {
+fn ci_spec_with_discovery_scan_dirs(spec: gunbc.ci_spec.CiSpec, dirs: List<String>) -> gunbc.ci_spec.CiSpec {
+  gunbc.ci_spec.CiSpec {
     gates: spec.gates,
     witness_entries: spec.witness_entries,
     discovery_scan_dirs: dirs,
@@ -336,7 +336,7 @@ data plan_function_string_projection_note: String = "These two are the NAME PROJ
 data floor_plan_function: String = gunbc.cli_invoke.plan_function_name(p: gunbc.cli_invoke.CiFloorPlan)
 data plan_artifact_plan_function: String = gunbc.cli_invoke.plan_function_name(p: gunbc.cli_invoke.CiPlanArtifactPlan)
 
-fn scheduler_invoke_with(spec: CiSpec, plan_function: gunbc.cli_invoke.PlanFunction) -> String {
+fn scheduler_invoke_with(spec: gunbc.ci_spec.CiSpec, plan_function: gunbc.cli_invoke.PlanFunction) -> String {
   gunbc.cli_invoke.claim_executor_run_plan_shell(
     source_roots: gunbc.ci_layer_roots.witness_layer_roots,
     plan_entry: floor_plan_entry,
@@ -346,11 +346,11 @@ fn scheduler_invoke_with(spec: CiSpec, plan_function: gunbc.cli_invoke.PlanFunct
   )
 }
 
-fn scheduler_invoke(spec: CiSpec) -> String {
+fn scheduler_invoke(spec: gunbc.ci_spec.CiSpec) -> String {
   scheduler_invoke_with(spec: spec, plan_function: gunbc.cli_invoke.CiFloorPlan)
 }
 
-fn gunbc_ci_floor_only_script(spec: CiSpec) -> String {
+fn gunbc_ci_floor_only_script(spec: gunbc.ci_spec.CiSpec) -> String {
   concat(
     concat("ROOT=", gunbc.merge_admission_produce.ci_repo_root_shell(), "\n"),
     concat(
@@ -363,11 +363,11 @@ fn gunbc_ci_floor_only_script(spec: CiSpec) -> String {
   )
 }
 
-fn gunbc_ci_workflow_run(spec: CiSpec) -> String {
+fn gunbc_ci_workflow_run(spec: gunbc.ci_spec.CiSpec) -> String {
   gunbc_ci_floor_only_script(spec: spec)
 }
 
-fn gunbc_ci_floor_run(spec: CiSpec) -> String {
+fn gunbc_ci_floor_run(spec: gunbc.ci_spec.CiSpec) -> String {
   gunbc_ci_floor_only_script(spec: spec)
 }
 
