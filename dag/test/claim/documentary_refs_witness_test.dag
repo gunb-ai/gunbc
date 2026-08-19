@@ -15,6 +15,7 @@ import gunbc.documentary_refs {
   documentary_ref_symbol_text,
   five_minute_ci_gate_authority_ref,
   generated_document_declaration_refs,
+  v1_maintenance_standing_ref,
 }
 import gunbc.doc_graph_roots { hand_authored_doc_declaration_refs }
 import gunbc.design_document { expected_design_md }
@@ -26,6 +27,7 @@ fn fixture_modules() -> List<ModuleDeclarationFact> {
     ModuleDeclarationFact { module: "v2.std.symbol_index", path: "src/v2/std/symbol_index.dag" },
     ModuleDeclarationFact { module: "v2.compiler.resolve", path: "src/v2/compiler/03_resolve.dag" },
     ModuleDeclarationFact { module: "gunbc.roadmap_authority", path: "dag/gunbc/roadmap_authority.dag" },
+    ModuleDeclarationFact { module: "gunbc.v1_maintenance_standing", path: "dag/gunbc/v1_maintenance_standing.dag" },
   ]
 }
 
@@ -62,6 +64,11 @@ fn intact_facts() -> List<DeclFact> {
       qualified_name: "gunbc.roadmap_authority.five_minute_ci_gate_program_note",
       name: "five_minute_ci_gate_program_note",
       path: "dag/gunbc/roadmap_authority.dag",
+    ),
+    fixture_fact(
+      qualified_name: "gunbc.v1_maintenance_standing.v1_seed_standing",
+      name: "v1_seed_standing",
+      path: "dag/gunbc/v1_maintenance_standing.dag",
     ),
   ]
 }
@@ -118,6 +125,7 @@ test fn documentary_refs_generated_document_renders_the_rows() -> Bool {
     && string_contains(s: md, pattern: documentary_ref_symbol_text(reference: body_lowering_lexical_lookup_ref))
     && string_contains(s: md, pattern: documentary_ref_symbol_text(reference: body_lowering_production_consumer_ref))
     && string_contains(s: md, pattern: documentary_ref_symbol_text(reference: five_minute_ci_gate_authority_ref))
+    && string_contains(s: md, pattern: documentary_ref_symbol_text(reference: v1_maintenance_standing_ref))
 }
 
 data population_union_note: String = "The widened denominator is asserted directly, because a union that silently dropped one side would leave exactly the exemption this change removes: the generated refs must all be present in the combined population, and the combined population must be larger than the hand-authored one alone."
@@ -127,7 +135,7 @@ test fn documentary_refs_population_is_the_union() -> Bool {
   let hand = hand_authored_doc_declaration_refs()
   let generated = generated_document_declaration_refs()
   length(xs: all_refs) == length(xs: hand) + length(xs: generated)
-    && length(xs: generated) == 4
+    && length(xs: generated) == 5
 }
 
 data retired_prose_substring_control_note: String = "A NEGATIVE PROSE CHECK STOOD HERE AND WAS DELETED RATHER THAN REPAIRED. It asserted the generated document no longer contains the substring 'six-step', to show the superseded numbered sequence is gone. It failed -- and it failed CORRECTLY, because the replacement sentence explains that the paragraph previously carried a numbered six-step copy, so the words survive while the copy does not. The check could not tell a restatement from an explanation of its removal.\n\nTHAT IS THE WHOLE ARGUMENT AGAINST THIS SHAPE, and it is already on record: gunbc.roadmap_authority witness_authority_contains_no_mutable_execution_ledger blacklists substrings in a status field and is structurally unable to catch a stale claim spelled without them. Repairing the needle would have produced a check that passes for this one spelling and decides nothing in general -- validation standing where nothing decidable was available. The positive claim survives instead, in documentary_refs_generated_document_renders_the_rows: the roadmap authority is cited by rendering its typed row, which is a fact a mechanism can actually decide."
