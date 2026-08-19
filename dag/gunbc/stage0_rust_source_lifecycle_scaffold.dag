@@ -712,11 +712,29 @@ fn derived_generated_hand_disjoint_holds() -> Bool {
   )
 }
 
+data residue_layout_overlap_note: String = "seed_retained_intrinsic_registrations (v2.compiler.self_host.stage0_crate_layout) and rust_source_lifecycle_residue_rows are two independently hand-maintained authorities answering two different questions about the same path -- the layout roster says 'required_regen_host's committed-population scan must not treat this basename as self-host-generated' (HAND_MAINTAINED_STAGE0_FILES, generated FROM the roster and read by required_regen_host.rs), the residue row says 'this path's maintenance disposition is HandScaffold, with this reason and this dissolution trigger.' Four paths legitimately answer yes to both, added to seed_retained_intrinsic_registrations 2026-08-19 (origin/main commit ddfecd80d64, 'required_regen_host: strip emitted paths to basenames before comparison') so the required-regen fold's first real CI run would not refuse on them as committed_not_emitted, while each already carries a pre-existing residue row with the real disposition: v2_compiler_compile.rs/v2_compiler_program_assembly.rs/v2_compiler_source_authority.rs are dead-in-tree Wave 2 Gate-A oracle files (required_regen_ci_enrollment_gap_note, reason residue_frontier_module_gap_reason), and cssl_seed_linked_closure_assembly.rs is the hand-retained cssl seed-linked closure assembly kernel (reason residue_cssl_assembly_reason) -- a different reason, same shape. This is the same shape generated_artifact_layout_overlap_repo_paths already names for the generated_artifact-registry case (v1_interpreter_dispatch_generated.rs, bootstrap_stage0_crate_layout_generated.rs) -- a layout member is not thereby 'purely hand-maintained,' it may carry an additional known disposition -- extended here to residue. classified_residue_disjoint_holds permits exactly this named overlap and refuses on any other."
+
+fn residue_layout_overlap_repo_paths() -> List<String> {
+  filter(
+    xs: residue_lifecycle_repo_paths(),
+    predicate: fn(path) { path_in_list(path: path, paths: derived_hand_maintained_stage0_repo_paths()) }
+  )
+}
+
+fn residue_layout_overlap_subset_of_residue_holds() -> Bool {
+  fold_list(
+    xs: residue_layout_overlap_repo_paths(),
+    empty: true,
+    cons: fn(ok, path) { ok && path_in_list(path: path, paths: residue_lifecycle_repo_paths()) }
+  )
+}
+
 fn classified_residue_disjoint_holds() -> Bool {
   !any(
     xs: residue_lifecycle_repo_paths(),
     predicate: fn(residue_path) {
-      any(xs: derived_authority_join_repo_paths(), predicate: fn(derived_path) { derived_path == residue_path })
+      !path_in_list(path: residue_path, paths: residue_layout_overlap_repo_paths())
+        && any(xs: derived_authority_join_repo_paths(), predicate: fn(derived_path) { derived_path == residue_path })
     }
   )
 }
