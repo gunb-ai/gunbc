@@ -16,7 +16,7 @@ import extdeps.github.actions {
 import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
 import gunbc.repo_identity { gunbc_default_branch_name }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
-import gunbc.ci_layer_roots { compile_clean_source_roots }
+import gunbc.ci_layer_roots { witness_layer_roots }
 import std.types { List, String, Int }
 
 // THE ONLY CI EMISSION THIS REPOSITORY HAS.
@@ -199,25 +199,14 @@ fn witness_floor_build_step() -> Step {
   }
 }
 
-// The source-root flags are FOLDED from gunbc.ci_layer_roots compile_clean_source_roots, never spelled
+// The source-root flags are FOLDED from gunbc.ci_layer_roots witness_layer_roots, never spelled
 // here. That authority is what the compile-clean closure and the divergence census already read,
-// and it is deliberately compile_clean_source_roots rather than witness_layer_roots: the latter is
-// the corpus MINUS the v1 seed, so folding it left every src/v1/**.dag source unparsed by the one
-// gate that runs on every PR. src/v1 had no floor coverage of its SOURCE validity at all -- its
-// behavior is covered (253 files under dag/test/claim reach v1, but through host builtins against
-// the compiled Rust seed, not by resolving v1 .dag sources), and the only two things that resolved
-// those sources were compile-clean (deleted with the floor cut) and regen (red by construction
-// since the regen root cut). A parse error inside src/v1 was therefore invisible to CI, which is
-// how one landed. compile_clean_source_roots is witness_layer_roots + src/v1 and already existed
-// as the pool authority; reusing it adds no second list. Its NAME is now narrower than its use --
-// two consumers, one compile-clean-flavoured name -- and that is recorded rather than fixed here,
-// because renaming touches ten sites and this change should be one line of behaviour.
 // so a literal list in this emitter would be a second representation of it (DESIGN §3) -- and the
 // rung drop is invisible exactly while the bytes still agree, because the copy typechecks and
 // looks finished. It went in as a literal on the first authoring of this file and is corrected
 // here; the class was named by tidy-gull-813 on a sibling lane, same day, from its own migration.
 fn witness_floor_source_root_flags() -> String {
-  fold(compile_clean_source_roots(), init: "", f: fn(acc, root) {
+  fold(witness_layer_roots, init: "", f: fn(acc, root) {
     concat(acc, concat(" --source-root \"$ROOT/", concat(root, "\"")))
   })
 }
