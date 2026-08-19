@@ -173,7 +173,7 @@ type EatResult
   | EatUnchanged { tokens: v1.compiler.parse.TokenStream }
 
 type TokenResult { token: v1.std.core.Token, tokens: v1.compiler.parse.TokenStream, err: v1.std.core.ErrorNode? }
-type NameResult { name: String, span: v1.std.core.SourceSpan, tokens: v1.compiler.parse.TokenStream, err: v1.std.core.ErrorNode? }
+type NameResult { name: String, span: std.types.SourceSpan, tokens: v1.compiler.parse.TokenStream, err: v1.std.core.ErrorNode? }
 type ExprResult { expr: Node, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
 type ItemResult { item: Node, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
 type TypeResult { type_expr: Node, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
@@ -194,7 +194,7 @@ type ResUseResult { resource_use: Node, tokens: v1.compiler.parse.TokenStream, c
 
 type ItemPrefixResult {
   name: String
-  name_span: v1.std.core.SourceSpan
+  name_span: std.types.SourceSpan
   type_params: List<Node>
   params: List<Node>
   inferred: InferredNode?
