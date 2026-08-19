@@ -176,7 +176,3 @@ test fn dag_add_translate_accepts_holds() -> Bool {
   }
 }
 
-test fn dag_add_emit_add_fn_accepts_holds() -> Bool {
-  dag_add_emit_matches_serialize_holds()
-}
-

@@ -9,17 +9,8 @@ type AlgebraRef {
 
 data node_grounding_frontier_note: String = "GroundingNotDerived is v2's typed inference frontier, not a failure arm and not an escape hatch. v2 derives a node's type for exactly four of the closed vocabulary's twelve node kinds (Branch, Match, Loop, Transform add-shape only — 6 connectives + 6 behaviors = 12); the other eight kinds, and every other Transform shape, have no derivation rule yet. Before this carrier existed the nine were routed through solve_constraints with the singleton candidate set [root] under a predicate that reduces to root == root, and the resulting grounding carried the SOURCE NODE as its structural evidence — i.e. as the node's resolved type (inferred_facts_resolved_type reads that field), so every literal, binding and operation in v2 was typed as itself and every downstream consumer read that as an established judgment. Each frontier node now carries a typed, located, counted diagnostic (infer_grounding_not_derived) on the Accepted path, so the deficit's frequency is observable and prioritizable rather than zeroed by construction (DESIGN §5). dissolve-on: a behavior-specific derivation rule lands for a kind, at which point that kind moves to DerivedGrounding and its frontier count drops; the carrier deletes when all twelve kinds derive."
 
-type NodeGrounding
-  = DerivedGrounding { grounding: v2.std.constraints.CanonicalGrounding }
-  | GroundingNotDerived { node: v2.std.node.Node }
-
-type InferredFacts {
-  grounding: NodeGrounding
-  descent: Witness<v2.std.cardinality.TerminationProof>
-}
-
-fn infer_grounding_not_derived_diagnostic(at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Diagnostic {
-  v2.std.diagnostic.Diagnostic {
+fn infer_grounding_not_derived_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
     reason: ^infer_grounding_not_derived,
     at: at,
     correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
@@ -88,11 +79,6 @@ fn inferred_facts_descent(facts: InferredFacts) -> Witness<v2.std.cardinality.Te
   facts.descent
 }
 
-type InferredTree {
-  root: v2.std.node.Node
-  facts: Map<v2.std.node.Node, InferredFacts>
-}
-
 data infer_emit_shape_frontier_note: String = "Test-only emit-shape frontier (review 47246): empty facts map for orch-emit-compatible mock proofs (`orch_emit_facts_lookup`, `ingested_emit_shape_frontier_tree_from_source` in emit-host witnesses). Not a production carrier — production emit paths pass canonical infer output facts-flow-forward; erasing or relabeling infer judgments is forbidden (review 47234, review 47246). dissolve-on: v2-inferred-tree-completeness makes incomplete InferredTree unwritable on the production emit path."
 
 fn infer_emit_shape_frontier_inferred_tree(root: v2.std.node.Node) -> InferredTree {
@@ -104,11 +90,6 @@ fn infer_emit_shape_frontier_inferred_tree(root: v2.std.node.Node) -> InferredTr
       }
     }
   }
-}
-
-type InferredFactsEntry {
-  node: v2.std.node.Node
-  facts: InferredFacts
 }
 
 type InferGatherFoldAcc {

@@ -15,7 +15,8 @@ fn mk_table(grammar: v2.std.node.Hash, tokens: v2.std.node.Hash) -> v2.compiler.
     memo_misses: base.memo_misses,
     memo_lookup_calls: base.memo_lookup_calls,
     nullable_set: base.nullable_set,
-    first_rows: base.first_rows
+    first_rows: base.first_rows,
+    productions_by_name: base.productions_by_name
   }
 }
 
