@@ -45,7 +45,7 @@ test fn scaffold_host_observation_hand_rust_receipt_is_bounded() -> Bool {
       pattern: "impl std::fmt::Display for Stage0CargoBinManifestParseRefusal"
     )
     && (refs |> all(r => !(r.module_path == "") && !(r.decl_name == "")))
-    && (expected |> all(e => named |> v2.std.algebra.any(n => n == e)))
+    && (expected |> all(e => named |> any(n => n == e)))
     && gunbc.stage0_rust_host_observation.stage0_rust_observation_seed_growth_justification.owning_dissolution_lane as v2.std.text.String == "v1-hand-queue-drain"
     && match gunbc.stage0_rust_host_observation.stage0_cargo_manifest_parser_seed_scaffold {
       std.disposition.Scaffold { dissolves_to: std.disposition.RealizationDispatch, bind: bind } =>

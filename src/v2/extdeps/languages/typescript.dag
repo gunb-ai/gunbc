@@ -2772,7 +2772,7 @@ fn ts_grammar_production_pr3_array_type() -> v2.std.grammar.GrammarProduction {
 fn ts_grammar_production_pr3_typed_params_opt() -> v2.std.grammar.GrammarProduction {
   v2.std.grammar.GrammarProduction {
     name: ^ts_production_pr3_typed_params_opt,
-    expression: v2.std.optional.Optional { element: v2.std.grammar.Nonterminal { production: ^ts_production_pr3_typed_params } },
+    expression: v2.std.grammar.Optional { element: v2.std.grammar.Nonterminal { production: ^ts_production_pr3_typed_params } },
     emitted: ts_grammar_atom(id: ^ts_surface_typed_params_opt)
   }
 }

@@ -1198,7 +1198,7 @@ fn target_collection_choice_from_node(node: v2.std.node.Node) -> v2.std.diagnost
           v2.std.diagnostic.bind_outcome(
             o: v2.std.node_query.find_named_child(
               root: node,
-              name: ^v2.std.compilers.target_model.target_collection_choice_field_representation_parameters
+              name: ^target_collection_choice_field_representation_parameters
             ),
             f: fn(representation_parameters_node) {
               v2.std.diagnostic.bind_outcome(
@@ -1218,7 +1218,7 @@ fn target_collection_choice_from_node(node: v2.std.node.Node) -> v2.std.diagnost
                           v2.std.diagnostic.bind_outcome(
                             o: v2.std.node_query.find_named_child(
                               root: node,
-                              name: ^v2.std.compilers.target_model.target_collection_choice_field_supplemental_generic_bound_contracts
+                              name: ^target_collection_choice_field_supplemental_generic_bound_contracts
                             ),
                             f: fn(contracts_node) {
                               v2.std.diagnostic.bind_outcome(

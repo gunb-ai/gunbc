@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data sample_wd_device: extdeps.storage.types.StorageDevice = nvme_storage_device(
   catalog: wd_black_sn850x_2tb_catalog,
-  persistence: Persistent,
+  persistence: extdeps.storage.types.Persistent,
 )
 
 test fn wd_black_sn850x_pcie_link_grounds_gen4_x4() -> Bool {

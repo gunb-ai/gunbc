@@ -682,7 +682,7 @@ fn ecmascript_formal_symbol_to_grammar_expr(sym: v2.std.grammar.FormalGrammarSym
 }
 
 fn ecmascript_formal_epsilon_grammar_expr() -> v2.std.grammar.GrammarExpr {
-  v2.std.optional.Optional {
+  v2.std.grammar.Optional {
     element: v2.std.grammar.Terminal { token_class: ^ecmascript_formal_epsilon_shim_terminal, stamp: v2.std.grammar.StampClass }
   }
 }

@@ -4878,15 +4878,15 @@ fn dag_value_expression_projection() -> v2.std.compilers.target_model.TargetValu
       else_token: ^dag_token_kw_else,
       delimiting: v2.std.compilers.target_model.ConditionalSelfDelimiting
     },
-    let_form: TargetBindLetShape {
+    let_form: v2.std.compilers.target_model.TargetBindLetShape {
       let_token: ^dag_token_kw_let,
       assign_token: ^dag_token_eq,
       in_token: ^dag_token_kw_in
     },
-    loop_form: TargetLoopShape {
+    loop_form: v2.std.compilers.target_model.TargetLoopShape {
       loop_token: ^dag_token_kw_loop
     },
-    record_construct_form: TargetRecordConstructShape {
+    record_construct_form: v2.std.compilers.target_model.TargetRecordConstructShape {
       open: ^dag_token_lbrace,
       close: ^dag_token_rbrace,
       separator: ^dag_token_comma,

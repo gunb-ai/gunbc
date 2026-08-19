@@ -446,7 +446,7 @@ fn c_by_value_type_identity_resolution_refusal(
 }
 
 fn c_path_contains_type_owner(path: v2.std.collection.List<CTypeOwner>, node: CTypeOwner) -> Bool {
-  path |> v2.std.algebra.any(step => c_type_owner_eq(left: step, right: node))
+  path |> any(step => c_type_owner_eq(left: step, right: node))
 }
 
 fn c_by_value_edge_crosses_units(
@@ -468,7 +468,7 @@ fn c_by_value_cycle_has_cross_unit_edge(
   assignment: Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId>,
   cycle: v2.std.collection.List<CTypeOwner>
 ) -> Bool {
-  edges |> v2.std.algebra.any(edge =>
+  edges |> any(edge =>
     c_path_contains_type_owner(path: cycle, node: edge.from)
       && c_path_contains_type_owner(path: cycle, node: edge.to)
       && c_by_value_edge_crosses_units(edge: edge, assignment: assignment)

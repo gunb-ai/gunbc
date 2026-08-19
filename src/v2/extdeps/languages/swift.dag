@@ -1110,7 +1110,7 @@ fn swift_grammar_choice(left: v2.std.grammar.GrammarExpr, right: v2.std.grammar.
 }
 
 fn swift_grammar_optional(element: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
-  v2.std.optional.Optional { element: element }
+  v2.std.grammar.Optional { element: element }
 }
 
 fn swift_grammar_repeat(element: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {

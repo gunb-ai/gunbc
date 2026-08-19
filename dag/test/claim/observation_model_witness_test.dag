@@ -231,7 +231,7 @@ test fn w_attention_availability_precedence_and_causes_hold() -> Bool {
   let refused = obs_event(transition: std.observation.Concluded { outcome: std.observation.Refused { diagnostic: "policy" as std.types.NonEmptyStr } }, wall_ms: 1)
   let failed = obs_event(transition: std.observation.Concluded { outcome: std.observation.Failed { error: "broken" as std.types.NonEmptyStr, output: "" } }, wall_ms: 1)
   let timed_out = obs_event(
-    transition: std.observation.Concluded { outcome: std.observation.TimedOut { basis: std.observation.WallClock, budget: std.measure.millisecond(count: 1), elapsed: std.measure.millisecond(count: 2) } },
+    transition: std.observation.Concluded { outcome: std.observation.TimedOut { basis: std.measure.WallClock, budget: std.measure.millisecond(count: 1), elapsed: std.measure.millisecond(count: 2) } },
     wall_ms: 2
   )
   let done = obs_event(transition: std.observation.Concluded { outcome: std.observation.Done }, wall_ms: 500)
@@ -285,7 +285,7 @@ test fn w_attention_strict_facade_equals_measured_value_projection() -> Bool {
     obs_event(transition: std.observation.Concluded { outcome: std.observation.Refused { diagnostic: "policy" as std.types.NonEmptyStr } }, wall_ms: 1),
     obs_event(transition: std.observation.Concluded { outcome: std.observation.Failed { error: "broken" as std.types.NonEmptyStr, output: "" } }, wall_ms: 1),
     obs_event(
-      transition: std.observation.Concluded { outcome: std.observation.TimedOut { basis: std.observation.WallClock, budget: std.measure.millisecond(count: 1), elapsed: std.measure.millisecond(count: 2) } },
+      transition: std.observation.Concluded { outcome: std.observation.TimedOut { basis: std.measure.WallClock, budget: std.measure.millisecond(count: 1), elapsed: std.measure.millisecond(count: 2) } },
       wall_ms: 2
     ),
     obs_event(transition: std.observation.Concluded { outcome: std.observation.Skipped { reason: "unaffected" as std.types.NonEmptyStr } }, wall_ms: 1),

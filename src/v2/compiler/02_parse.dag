@@ -1250,7 +1250,7 @@ fn collect_choice_ambiguities_in_expr(
         )
       )
     }
-    v2.std.optional.Optional { element: element } =>
+    v2.std.grammar.Optional { element: element } =>
       collect_choice_ambiguities_in_expr(
         expr: element,
         production: production,
@@ -2024,7 +2024,7 @@ fn parse_expr_with_first(
         table: table,
         prov: prov
       )
-    v2.std.optional.Optional { element: element } =>
+    v2.std.grammar.Optional { element: element } =>
       parse_expr_optional(
         element: element,
         tokens: tokens,

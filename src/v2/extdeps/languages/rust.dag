@@ -1548,7 +1548,7 @@ fn rust_collection_choice_bundle_node(choice: v2.std.compilers.target_model.Targ
         target: rust_collection_repr_bundle_node(form: choice.form)
       ),
       rust_named_edge(
-        name: ^v2.std.compilers.target_model.target_collection_choice_field_representation_parameters,
+        name: ^target_collection_choice_field_representation_parameters,
         target: v2.std.compilers.target_model.target_representation_choice_parameters_bundle_node(
           choice: choice
         )
@@ -1561,7 +1561,7 @@ fn rust_collection_choice_bundle_node(choice: v2.std.compilers.target_model.Targ
         )
       ),
       rust_named_edge(
-        name: ^v2.std.compilers.target_model.target_collection_choice_field_supplemental_generic_bound_contracts,
+        name: ^target_collection_choice_field_supplemental_generic_bound_contracts,
         target: v2.std.compilers.target_model.target_representation_choice_supplemental_generic_bound_contracts_bundle_node(
           choice: choice
         )
@@ -3601,7 +3601,7 @@ fn rust_grammar_choice(left: v2.std.grammar.GrammarExpr, right: v2.std.grammar.G
 }
 
 fn rust_grammar_optional(element: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
-  v2.std.optional.Optional { element: element }
+  v2.std.grammar.Optional { element: element }
 }
 
 fn rust_grammar_repeat(element: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
