@@ -56,13 +56,6 @@ pub fn run_required_regen(
     let sources = super::regen_input_sources(&workspace)?;
     let authority_digest = authority_digest_from_sources(&sources)?;
 
-    // verify_hand_maintained below writes hand-file scratch comparisons under
-    // candidate_dir before write_emitted_tree (which mkdir -p's it as a side
-    // effect of creating its "src" child) ever runs, so on a clean tree it
-    // wrote into a directory that did not exist yet.
-    fs::create_dir_all(&candidate_dir)
-        .map_err(|e| format!("create {}: {e}", candidate_dir.display()))?;
-
     let emitted = compile_stage0(&workspace)?;
 
     let committed_basenames = committed_generated_basenames(&stage0_src)?;
@@ -210,9 +203,21 @@ fn compile_stage0(workspace: &Path) -> Result<HashMap<String, String>, String> {
     if let Some(message) = stage0_self_compile_refusal_message(result.clone()) {
         return Err(message);
     }
+    // Normalize to a flat basename at insert time: emit paths are heterogeneous
+    // (some "src/foo.rs", some bare "Cargo.toml"), and every downstream consumer
+    // in this module (committed_generated_basenames, write_emitted_tree,
+    // verify_candidate_tree) already keys on flat basenames under stage0/src with
+    // no subdirectories. One normalized key-space here is the single authority;
+    // a prefix-then-fallback lookup at every call site is the same fact checked
+    // N times instead of established once.
     let mut out = HashMap::new();
     for file in result.files.iter() {
-        out.insert(file.path.clone(), file.content.clone());
+        let basename = Path::new(&file.path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(file.path.as_str())
+            .to_string();
+        out.insert(basename, file.content.clone());
     }
     Ok(out)
 }
@@ -221,14 +226,7 @@ fn generated_basenames_from_emit(emitted: &HashMap<String, String>) -> Vec<Strin
     let mut names: BTreeSet<String> = BTreeSet::new();
     for path in emitted.keys() {
         if path.ends_with(".rs") && !is_hand_maintained_path(path) {
-            // Basename, not the emit key: `committed_generated_basenames` keys on
-            // `file_name()`, and emit keys carry a `src/` prefix. Comparing the two
-            // key spaces made every file mismatch in both directions.
-            let basename = Path::new(path)
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or(path);
-            names.insert(basename.to_string());
+            names.insert(path.clone());
         }
     }
     names.into_iter().collect()
@@ -371,8 +369,7 @@ fn compare_generated_surfaces(
                 .map_err(|e| format!("read committed {}: {e}", committed_path.display()))?,
         )?;
         let candidate = emitted
-            .get(&format!("src/{basename}"))
-            .or_else(|| emitted.get(basename))
+            .get(basename)
             .ok_or_else(|| format!("emit missing generated file {basename}"))?;
         let candidate_norm = normalize_generated_source(candidate)?;
         if committed != candidate_norm {
@@ -392,9 +389,7 @@ fn verify_hand_maintained(
 ) -> Result<HandVerifyReport, String> {
     let mut unverifiable = Vec::new();
     for file_name in HAND_MAINTAINED_STAGE0_FILES {
-        let candidate = emitted
-            .get(&format!("src/{file_name}"))
-            .or_else(|| emitted.get(*file_name));
+        let candidate = emitted.get(*file_name);
         let Some(candidate) = candidate else {
             continue;
         };
@@ -422,17 +417,9 @@ fn write_emitted_tree(dest_src: &Path, emitted: &HashMap<String, String>) -> Res
     }
     fs::create_dir_all(dest_src).map_err(|e| format!("create {}: {e}", dest_src.display()))?;
     for (path, content) in emitted {
-        // Emit keys are heterogeneous (some "src/foo.rs", some bare "Cargo.toml" —
-        // same class of key-space mismatch documented on generated_basenames_from_emit),
-        // but committed_generated_basenames only ever names flat basenames under
-        // stage0/src with no subdirectories, so joining the raw key onto dest_src
-        // (itself already ".../src") double-nested every "src/"-prefixed path and
-        // left verify_candidate_tree looking in a directory with nothing in it.
-        let basename = Path::new(path)
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or(path);
-        let out_path = dest_src.join(basename);
+        // compile_stage0 normalizes every key to a flat basename at insert time,
+        // so `path` here is already the basename — no join-time extraction needed.
+        let out_path = dest_src.join(path);
         if let Some(parent) = out_path.parent() {
             fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
         }
@@ -529,8 +516,7 @@ fn tree_digest_from_map(
     let mut payload = String::new();
     for name in basenames {
         let content = emitted
-            .get(&format!("src/{name}"))
-            .or_else(|| emitted.get(name))
+            .get(name)
             .ok_or_else(|| format!("emit missing {name} for digest"))?;
         let norm = normalize_generated_source(content)?;
         payload.push_str(name);
@@ -541,8 +527,27 @@ fn tree_digest_from_map(
     Ok(digest_label(payload.as_bytes()))
 }
 
+/// rustfmt is not guaranteed idempotent on a single pass for every input: some
+/// borderline formatting decisions only reach their stable shape on a second
+/// pass. Comparing a once-formatted candidate against a committed file that
+/// rustfmt itself would reformat further is false drift, not a real content
+/// difference — so normalize to rustfmt's own fixed point (bounded, and
+/// refused rather than silently accepted if rustfmt never converges) instead
+/// of trusting a single pass. (Ported from gunbc#8488, which found this
+/// independently while fixing the same file.)
 fn normalize_generated_source(content: &str) -> Result<String, String> {
-    normalize_generated_source_attempt(content)
+    const MAX_PASSES: usize = 8;
+    let mut current = normalize_generated_source_attempt(content)?;
+    for _ in 1..MAX_PASSES {
+        let next = normalize_generated_source_attempt(&current)?;
+        if next == current {
+            return Ok(current);
+        }
+        current = next;
+    }
+    Err(format!(
+        "rustfmt did not reach a fixed point within {MAX_PASSES} passes"
+    ))
 }
 
 fn normalize_generated_source_attempt(content: &str) -> Result<String, String> {
@@ -575,6 +580,7 @@ fn normalize_generated_source_attempt(content: &str) -> Result<String, String> {
 }
 
 fn normalize_with_workdir(content: &str, work_dir: &Path, label: &str) -> Result<String, String> {
+    fs::create_dir_all(work_dir).map_err(|e| format!("create {}: {e}", work_dir.display()))?;
     let path = work_dir.join(format!("{label}.rs"));
     fs::write(&path, content).map_err(|e| format!("write {}: {e}", path.display()))?;
     let output = Command::new("rustfmt")
