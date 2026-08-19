@@ -3,10 +3,9 @@ module product.fabric.supply
 import std.types { Timestamp, Int }
 import std.measure { MoneyAmountMicro, MoneyPerSecond, MoneyPerHour, MoneyOnce }
 import std.currency { CurrencyCode }
-import product.compute_fabric { Shape }
 import product.fabric.identity { FabricIdentity, OfferKey }
 import product.fabric.demand { ObservationReceiptRef }
-import product.fabric.work { CapabilityManifestRef, TrustDomainRef }
+import product.fabric.work { Shape, CapabilityManifestRef, TrustDomainRef }
 
 // An Offer is a supplier's statement of capacity it is willing to sell. Owned
 // capacity and rented capacity are ONE type: what differs is the evidence behind
