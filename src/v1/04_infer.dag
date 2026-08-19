@@ -3104,11 +3104,10 @@ fn derive_element_provenance(coll_expr: Node, elem_type: Node, scope: InferScope
 // against method_args rather than assuming a fixed arity offset -- the same
 // alignment degrades to a no-op for a direct product method, whose params
 // already correspond 1:1 with method_args.
-type MethodArgContract {
-  KnownArgTypes { types: List<Node> }
-  MethodUnresolved
-  UncontractedMethod
-}
+type MethodArgContract
+  = KnownArgTypes { types: List<Node> }
+  | MethodUnresolved
+  | UncontractedMethod
 
 fn method_declared_arg_contract(receiver_type: Node, method_name: String, method_args_count: Int, source_indices: Map<String, NewlineIndex>) -> MethodArgContract {
   let tier0 = lookup_structural_method(receiver_type: receiver_type, method_name: method_name, source_indices: source_indices)
