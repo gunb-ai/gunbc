@@ -1,7 +1,7 @@
 module v2.lens.affected_set.entry_selection
 
 
-data entry_file_touched_grain_interim: std.disposition.Disposition = Scaffold {
+data entry_file_touched_grain_interim: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.lens.affected_set.entry_selection",

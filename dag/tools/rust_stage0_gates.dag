@@ -52,7 +52,7 @@ data unit_must_run_failclosed_note: std.disposition.Disposition = Terminal {
   reason: "fail-closed per-unit selection is a permanent §5 invariant: absent declaration = must-run, keeping coverage sound while declarations are added incrementally"
 }
 
-data unit_must_run_staged_note: std.disposition.Disposition = Scaffold {
+data unit_must_run_staged_note: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "tools.rust_stage0_gates",

@@ -11,7 +11,7 @@ type LanguageSourceScaffoldRow {
   disposition: std.disposition.Disposition
 }
 
-data rust_pair_completion_spelling_scaffold_trigger: std.disposition.Disposition = Scaffold {
+data rust_pair_completion_spelling_scaffold_trigger: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "std.trait_derive_shape",
@@ -20,7 +20,7 @@ data rust_pair_completion_spelling_scaffold_trigger: std.disposition.Disposition
   }
 }
 
-data rust_bool_host_bridge_scaffold_trigger: std.disposition.Disposition = Scaffold {
+data rust_bool_host_bridge_scaffold_trigger: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.plans.value_null_split",
@@ -29,7 +29,7 @@ data rust_bool_host_bridge_scaffold_trigger: std.disposition.Disposition = Scaff
   }
 }
 
-data rust_dry_run_mode_scaffold_trigger: std.disposition.Disposition = Scaffold {
+data rust_dry_run_mode_scaffold_trigger: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "std.execution_mode",
@@ -56,7 +56,7 @@ data rust_dry_run_mode_scaffold_row: LanguageSourceScaffoldRow = LanguageSourceS
   disposition: rust_dry_run_mode_scaffold_trigger
 }
 
-data runtime_rust_trace_mark_scaffold_trigger: std.disposition.Disposition = Scaffold {
+data runtime_rust_trace_mark_scaffold_trigger: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "std.observation",
@@ -65,7 +65,7 @@ data runtime_rust_trace_mark_scaffold_trigger: std.disposition.Disposition = Sca
   }
 }
 
-data runtime_rust_kernel_opcode_scaffold_trigger: std.disposition.Disposition = Scaffold {
+data runtime_rust_kernel_opcode_scaffold_trigger: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "std.realization_schedule",
@@ -96,7 +96,7 @@ data runtime_rust_hash_ops_terminal_row: LanguageSourceScaffoldRow = LanguageSou
   disposition: runtime_rust_fnv1a64_terminal
 }
 
-data compiler_tests_rust_hand_assertion_scaffold_trigger: std.disposition.Disposition = Scaffold {
+data compiler_tests_rust_hand_assertion_scaffold_trigger: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v1.compiler.coercion",
@@ -105,7 +105,7 @@ data compiler_tests_rust_hand_assertion_scaffold_trigger: std.disposition.Dispos
   }
 }
 
-data runtime_rust_host_intrinsic_kernel_trigger: std.disposition.Disposition = Scaffold {
+data runtime_rust_host_intrinsic_kernel_trigger: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "std.realization_schedule",
@@ -114,7 +114,7 @@ data runtime_rust_host_intrinsic_kernel_trigger: std.disposition.Disposition = S
   }
 }
 
-data runtime_rust_instrumentation_trigger: std.disposition.Disposition = Scaffold {
+data runtime_rust_instrumentation_trigger: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "std.observation",
@@ -123,7 +123,7 @@ data runtime_rust_instrumentation_trigger: std.disposition.Disposition = Scaffol
   }
 }
 
-data runtime_rust_freemonoid_bridge_trigger: std.disposition.Disposition = Scaffold {
+data runtime_rust_freemonoid_bridge_trigger: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "std.algebra",
@@ -132,7 +132,7 @@ data runtime_rust_freemonoid_bridge_trigger: std.disposition.Disposition = Scaff
   }
 }
 
-data runtime_rust_rc_container_trigger: std.disposition.Disposition = Scaffold {
+data runtime_rust_rc_container_trigger: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.ownership",
@@ -141,7 +141,7 @@ data runtime_rust_rc_container_trigger: std.disposition.Disposition = Scaffold {
   }
 }
 
-data runtime_rust_filesystem_effect_trigger: std.disposition.Disposition = Scaffold {
+data runtime_rust_filesystem_effect_trigger: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",
@@ -204,7 +204,7 @@ data runtime_rust_filesystem_row: LanguageSourceScaffoldRow = LanguageSourceScaf
   disposition: runtime_rust_filesystem_effect_trigger
 }
 
-data compiler_tests_harness_trigger: std.disposition.Disposition = Scaffold {
+data compiler_tests_harness_trigger: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.test.workflow.claim_witness_corpus_ci_runner",
@@ -213,7 +213,7 @@ data compiler_tests_harness_trigger: std.disposition.Disposition = Scaffold {
   }
 }
 
-data compiler_tests_profile_trigger: std.disposition.Disposition = Scaffold {
+data compiler_tests_profile_trigger: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "std.observation",
@@ -417,7 +417,7 @@ data ct_row_ct_profile_reconcile_test: LanguageSourceScaffoldRow = LanguageSourc
   disposition: compiler_tests_profile_trigger
 }
 
-data compiler_tests_coercion_hybrid_trigger: std.disposition.Disposition = Scaffold {
+data compiler_tests_coercion_hybrid_trigger: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v1.compiler.coercion",

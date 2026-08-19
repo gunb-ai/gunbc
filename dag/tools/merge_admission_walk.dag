@@ -96,7 +96,7 @@ func refresh_wire_path() -> std.types.FilePath {
 
 data merge_admission_refresh_ratchet_off_widening_note: String = "DECLARED SCAFFOLD (review 47596 finding 3): the final else arm of merge_target_refresh returns MergeTargetRefreshed WITHOUT consuming the classifier verdict whenever merge_freshness_verdict_is_consumed_to_block() is false — the shadow-phase ratchet the operator's fleet-gating policy requires before a mechanism may red unrelated PRs. While the ratchet is off, the verdict is still computed and the RefreshVerdictDenied arm stays type-live, but stage 2 cannot deny on staleness; this is a visible, bounded widening, not a silent fail-open. Dissolution trigger: the merge_freshness_verdict_is_consumed_to_block flip in gunbc.ci_failure_class — the same commit that turns the flag on deletes this else arm (verdict match becomes unconditional) and this row with it."
 
-data merge_admission_refresh_ratchet_off_widening_disposition: std.disposition.Disposition = Scaffold {
+data merge_admission_refresh_ratchet_off_widening_disposition: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.ci_failure_class",

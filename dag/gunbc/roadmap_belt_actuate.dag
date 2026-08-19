@@ -4,7 +4,7 @@ module gunbc.roadmap_belt_actuate
 
 data belt_actuate_exec_authority_note: String = "Slice 2b actuation: the belt DECISION (gunbc.roadmap_belt.belt_reconcile) is CLOSED against the host by three proven single-authorities — the actuator's HostExecArgv argv model (gunbc.roadmap_dispatch_actuator, the one place git/tmux/provider argv is shaped), gunbc.WitnessBin.Run (the typed-argv exec intrinsic, no shell string), and shell.Which.Check (program -> bin_path). Provider is a closed ClaudeCodeProvider | CodexCliProvider choice whose argv, preflight, and pane fingerprint move together. This remains fail-closed throughout: which-miss or auth uncertainty refuses before git worktree add; a worktree failure short-circuits tmux spawn; a nonzero provider process after tmux accepted is runtime evidence, not spawn evidence, and is deliberately NOT absorbed into Spawned-as-success."
 
-data belt_actuate_placement_dissolution_trigger: std.disposition.Disposition = Scaffold {
+data belt_actuate_placement_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.roadmap_dispatch_actuator",
@@ -13,7 +13,7 @@ data belt_actuate_placement_dissolution_trigger: std.disposition.Disposition = S
   }
 }
 
-data belt_actuate_fingerprint_dissolution_trigger: std.disposition.Disposition = Scaffold {
+data belt_actuate_fingerprint_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.roadmap_dispatch_actuator",

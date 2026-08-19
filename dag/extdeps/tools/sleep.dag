@@ -14,7 +14,7 @@ data sleep_cli_tool: CliTool = CliTool {
   installable_via: [SourceCoreutils],
 }
 
-data sleep_delay_seconds_flat_scalar_dissolution_trigger: std.disposition.Disposition = Scaffold {
+data sleep_delay_seconds_flat_scalar_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.tools.sleep",

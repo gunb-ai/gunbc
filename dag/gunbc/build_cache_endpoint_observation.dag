@@ -69,7 +69,7 @@ fn build_cache_ci_placement_unknown_count(hosts: List<product.placement_supply.H
   ).length()
 }
 
-data build_cache_ci_endpoint_observed_producer_dissolve_on: std.disposition.Disposition = Scaffold {
+data build_cache_ci_endpoint_observed_producer_dissolve_on: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",

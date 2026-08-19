@@ -172,7 +172,7 @@ type GitHubRunnerRegistrationObservation
 // Aspiration bind: runner_lifecycle_realize is not yet a single top-level decl; names the realize
 // module's per-effect dissolve targets (runner_lifecycle_realize_*), not a live symbol (review 49698).
 
-data runner_lifecycle_effects_scaffold: std.disposition.Disposition = Scaffold {
+data runner_lifecycle_effects_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.runner_lifecycle_realize",

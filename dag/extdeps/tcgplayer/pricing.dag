@@ -18,7 +18,7 @@ type ProductPriceRow {
   subTypeName: String?
 }
 
-data tcgplayer_pricing_money_measure_grounding_disposition: std.disposition.Disposition = Scaffold {
+data tcgplayer_pricing_money_measure_grounding_disposition: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.tcgplayer.pricing",

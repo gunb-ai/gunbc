@@ -2,7 +2,7 @@ module v2.compiler.emit_host
 
 
 
-data emit_host_access_decision_seed_transport_scaffold: std.disposition.Disposition = Scaffold {
+data emit_host_access_decision_seed_transport_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v1_compiler.v1_interpreter",

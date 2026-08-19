@@ -75,7 +75,7 @@ fn wgsl_relu_mul_add_float_kernel_execute(
   [pure_dag_seam_unreachable_float()]
 }
 
-data wgsl_kernel_int_execution_host_realization_marker: std.disposition.Disposition = Scaffold {
+data wgsl_kernel_int_execution_host_realization_marker: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.languages.gpu.wgsl.kernel",
@@ -84,7 +84,7 @@ data wgsl_kernel_int_execution_host_realization_marker: std.disposition.Disposit
   }
 }
 
-data wgsl_kernel_float_execution_host_realization_marker: std.disposition.Disposition = Scaffold {
+data wgsl_kernel_float_execution_host_realization_marker: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.languages.gpu.wgsl.kernel",
@@ -94,7 +94,7 @@ data wgsl_kernel_float_execution_host_realization_marker: std.disposition.Dispos
 }
 
 
-data wgsl_relu_mul_add_int_kernel_source_grammar_scaffold_marker: std.disposition.Disposition = Scaffold {
+data wgsl_relu_mul_add_int_kernel_source_grammar_scaffold_marker: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.languages.gpu.wgsl.kernel",
@@ -103,7 +103,7 @@ data wgsl_relu_mul_add_int_kernel_source_grammar_scaffold_marker: std.dispositio
   }
 }
 
-data wgsl_relu_mul_add_float_kernel_source_grammar_scaffold_marker: std.disposition.Disposition = Scaffold {
+data wgsl_relu_mul_add_float_kernel_source_grammar_scaffold_marker: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.languages.gpu.wgsl.kernel",

@@ -137,7 +137,7 @@ fn srv3_network_reach_realizable() -> Bool {
   srv3_reach_is_realizable()
 }
 
-data fleet_shell_transport_observed_producer_dissolve_on: std.disposition.Disposition = Scaffold {
+data fleet_shell_transport_observed_producer_dissolve_on: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",

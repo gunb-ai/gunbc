@@ -135,7 +135,7 @@ type MergeGatingStatus
 data merge_freshness_gating_status: MergeGatingStatus = GatingComputedDeferred
 
 
-data merge_admission_enforcement_gating_scaffold: std.disposition.Disposition = Scaffold {
+data merge_admission_enforcement_gating_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.ci_failure_class",

@@ -5,7 +5,7 @@ data gunbc_network_identity_subsumption_scope_disposition: std.disposition.Dispo
   reason: "Slice-1 network-identity subsumption: DHCP option-12 dynamic lease client_hostname short label must subsume fleet_intent HostIdentity slot — discriminates BMC static reservation labels (operator-typed) from OS self-report (option-12). Pre-install: no dynamic row subsumes srv3; post-install: dynamic row with hostname srv3 subsumes operator_host_srv3."
 }
 
-data srv3_os_lan_mac_dissolution_trigger: std.disposition.Disposition = Scaffold {
+data srv3_os_lan_mac_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.network_identity_subsumption",
@@ -14,7 +14,7 @@ data srv3_os_lan_mac_dissolution_trigger: std.disposition.Disposition = Scaffold
   }
 }
 
-data srv3_os_lan_ipv4_dissolution_trigger: std.disposition.Disposition = Scaffold {
+data srv3_os_lan_ipv4_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.network_identity_subsumption",

@@ -60,7 +60,7 @@ type KnownHostKeyRow {
 // 🟡 dissolve-on: like the probe-receipt ledger, rows land here as the provenance-backed
 // transcription of an executed scan receipt; DISSOLVES WHEN scan-artifact ingestion
 // commits rows by machinery (same trigger as probe_receipt_ledger_transcription_scaffold).
-data host_key_enrollment_transcription_scaffold: std.disposition.Disposition = Scaffold {
+data host_key_enrollment_transcription_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.fleet_host_key_enrollment",

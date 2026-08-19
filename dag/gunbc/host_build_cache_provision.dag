@@ -7,7 +7,7 @@ data lane_e_srv1_ci_noncompletion_root_cause_receipt: String = "LANE E ROOT-CAUS
 
 data host_build_cache_provision_scope_disposition: std.disposition.Disposition = SingleAuthority
 
-data host_build_cache_provision_realize_scaffold: std.disposition.Disposition = Scaffold {
+data host_build_cache_provision_realize_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect_realize",
@@ -16,7 +16,7 @@ data host_build_cache_provision_realize_scaffold: std.disposition.Disposition = 
   }
 }
 
-data ci_sccache_opportunistic_detect_scaffold: std.disposition.Disposition = Scaffold {
+data ci_sccache_opportunistic_detect_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.workflow.ci_materialization_emit",

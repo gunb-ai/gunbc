@@ -2,7 +2,7 @@ module gunbc.command_runner
 
 
 
-data command_runner_scaffold: std.disposition.Disposition = Scaffold {
+data command_runner_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.command_runner",

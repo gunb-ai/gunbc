@@ -36,7 +36,7 @@ data corpus_dependency_view_measurement_receipt: CorpusDependencyViewMeasurement
   last_phase: "post_normalize_stuck_in_reconcile"
 }
 
-data corpus_dependency_view_per_pr_execution_gate: std.disposition.Disposition = Scaffold {
+data corpus_dependency_view_per_pr_execution_gate: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.lens.affected_set.corpus_dependency_view",

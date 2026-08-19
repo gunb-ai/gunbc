@@ -1,7 +1,7 @@
 module gunbc.hand_lens_host_bridge_scaffold_index
 
 
-data transport_script_position_host_bridge_dissolution_trigger: std.disposition.Disposition = Scaffold {
+data transport_script_position_host_bridge_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.lens.host_language_transport_script",
@@ -12,7 +12,7 @@ data transport_script_position_host_bridge_dissolution_trigger: std.disposition.
 
 data extdeps_external_authority_host_bridge_alias_walk_coverage_note: String = "SCOPE OF THE ROW BELOW, made explicit because two reviews read the seam as unregistered (reviews 50394, 50418). The registered host seam is cli_run.rs::extdeps_external_authority_module_facts, and the alias-following helpers added beneath it — extdeps_import_home_for_symbol, external_authority_alias_symbol_name, external_authority_anchor_from_data_body, project_external_authority_named_data, try_resolve_extdeps_module_source_path, and the ExternalAuthorityAnchorProjection Refused arm — are PRIVATE HELPERS OF THAT ONE SEAM, not new seams: every production call site is inside its subtree (the only other references are its own unit tests). They dissolve together with it, on the trigger below, so a second HostBridgeScaffoldRow would be a parallel registration of one fact rather than a missing one (DESIGN §3). The capability they add is following an anchor through an import alias instead of requiring a literal body in every extdeps module."
 
-data extdeps_external_authority_host_bridge_dissolution_trigger: std.disposition.Disposition = Scaffold {
+data extdeps_external_authority_host_bridge_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.lens.mandatory_tag.corpus_scan",

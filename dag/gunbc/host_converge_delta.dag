@@ -1,7 +1,7 @@
 module gunbc.host_converge_delta
 
 
-data gunbc_converge_target_byte_normalization_marker: std.disposition.Disposition = Scaffold {
+data gunbc_converge_target_byte_normalization_marker: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_converge_delta",

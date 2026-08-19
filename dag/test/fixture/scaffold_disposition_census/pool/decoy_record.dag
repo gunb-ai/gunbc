@@ -1,9 +1,9 @@
 module test.fixture.scaffold_disposition_census.pool.decoy_record
 
 type DecoyRecordDisposition
-  = Scaffold { note: String }
+  = std.disposition.Scaffold { note: String }
   | Stable
 
-data decoy_record_scaffold_specimen: DecoyRecordDisposition = Scaffold {
+data decoy_record_scaffold_specimen: DecoyRecordDisposition = std.disposition.Scaffold {
   note: "record arm spelled Scaffold on an unrelated type; must classify NonDisposition"
 }

@@ -2,7 +2,7 @@ module gunbc.cli_run_workspace_root_scaffold
 
 
 
-data cli_run_workspace_root_discovery_scaffold: std.disposition.Disposition = Scaffold {
+data cli_run_workspace_root_discovery_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v1_compiler.cli_run",
@@ -21,7 +21,7 @@ data cli_run_workspace_root_discovery_test_discriminator_git_toplevel: String = 
 
 data cli_run_workspace_root_discovery_test_discriminator_cwd_ascent: String = "refuses_path_outside_git_checkout"
 
-data cli_run_source_root_anchor_scaffold: std.disposition.Disposition = Scaffold {
+data cli_run_source_root_anchor_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v1_compiler.cli_run",

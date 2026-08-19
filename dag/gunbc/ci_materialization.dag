@@ -369,7 +369,7 @@ type FloorFinalization {
   expected_resolve_obligations: List<ResolveObligation>
 }
 
-data ci_sccache_provider_shell_injection_dissolution_trigger: std.disposition.Disposition = Scaffold {
+data ci_sccache_provider_shell_injection_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.workflow.ci_materialization_emit",
@@ -394,7 +394,7 @@ data ci_floor_on_success_materialization_receipt_claim_executor_seed_roadmap_lan
 
 data ci_floor_on_success_materialization_receipt_claim_executor_seed_witness_entry: String = "dag/test/claim/ci_floor_on_success_materialization_receipt_hand_rust_witness_test.dag"
 
-data ci_floor_on_success_materialization_receipt_claim_executor_seed_disposition: std.disposition.Disposition = Scaffold {
+data ci_floor_on_success_materialization_receipt_claim_executor_seed_disposition: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.ci_materialization",

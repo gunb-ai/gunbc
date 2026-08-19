@@ -13,7 +13,7 @@ type FnArrowDecl {
   params: List<FnArrowParam>
 }
 
-data fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger: std.disposition.Disposition = Scaffold {
+data fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.std.fn_index",

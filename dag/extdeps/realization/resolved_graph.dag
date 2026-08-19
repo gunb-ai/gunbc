@@ -9,7 +9,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
   }
 }
 
-data resolved_graph_cache_faithful_probe_support_dissolve_trigger: std.disposition.Disposition = Scaffold {
+data resolved_graph_cache_faithful_probe_support_dissolve_trigger: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.realization.resolved_graph",

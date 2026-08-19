@@ -2,7 +2,7 @@ module gunbc.githooks_pre_push_fmt_transport_scaffold
 
 
 
-data githooks_pre_push_fmt_transport_hand_rust_scaffold: std.disposition.Disposition = Scaffold {
+data githooks_pre_push_fmt_transport_hand_rust_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v1_compiler.pre_push",

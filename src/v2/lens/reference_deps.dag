@@ -20,7 +20,7 @@ type ReferenceResolutionCensus {
   refusals: List<ReferenceIngestRefusal>
 }
 
-data reference_deps_parsed_tree_disposition: std.disposition.Disposition = Scaffold {
+data reference_deps_parsed_tree_disposition: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.lens.reference_deps",

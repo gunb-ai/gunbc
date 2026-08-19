@@ -2,7 +2,7 @@ module gunbc.walk_plan_stage_fixture_scaffold
 
 
 
-data walk_plan_stage_fixture_hand_rust_scaffold: std.disposition.Disposition = Scaffold {
+data walk_plan_stage_fixture_hand_rust_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.test.fixture.walk_plan_stage.plan",

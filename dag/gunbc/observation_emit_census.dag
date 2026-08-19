@@ -166,7 +166,7 @@ data observation_emit_roster: List<CensusedEmitSite> = [
   witness_row_cost_migration_disclosure_site
 ]
 
-data observation_emit_roster_completeness_disposition: std.disposition.Disposition = Scaffold {
+data observation_emit_roster_completeness_disposition: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.observation_emit_census",

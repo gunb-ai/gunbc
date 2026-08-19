@@ -92,7 +92,7 @@ fn contiguous_loop_elementwise_float_kernel(
   [pure_dag_seam_unreachable_float()]
 }
 
-data simd_kernel_int_execution_host_realization_marker: std.disposition.Disposition = Scaffold {
+data simd_kernel_int_execution_host_realization_marker: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.languages.simd.kernel",
@@ -101,7 +101,7 @@ data simd_kernel_int_execution_host_realization_marker: std.disposition.Disposit
   }
 }
 
-data simd_kernel_float_execution_host_realization_marker: std.disposition.Disposition = Scaffold {
+data simd_kernel_float_execution_host_realization_marker: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.languages.simd.kernel",

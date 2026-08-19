@@ -103,7 +103,7 @@ fn swap_cap_verdict_gate_accepts(
 
 data host_swap_backing_observation_frontier_note: String = "The live producer returns none for every host on purpose — there is no /proc/swaps reader and no free(1) transport in the tree — so the honest observation for all four hosts is absence, and the derived verdict for all four is UnknownRefused. host_swap_backing_observed_producer is an explicit scaffold no-op (not a transport fold that discards success); realization binds host_swap_backing_observed_producer_scaffold until argv materialization can express swap ops. The count of unobserved hosts is exported so the deficit is a NUMBER that must change when a producer lands."
 
-data host_swap_backing_observed_producer_scaffold: std.disposition.Disposition = Scaffold {
+data host_swap_backing_observed_producer_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",

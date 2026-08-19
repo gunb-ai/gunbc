@@ -106,7 +106,7 @@ data gunbc_ci_linux_surface: std.os.types.OperatingSystemSurface = std.os.types.
 
 data gunbc_ci_host_memory_deferral_note: String = fleet_host_memory_nominal_vs_usable_note
 
-data gunbc_ci_host_memory_deferral_disposition: std.disposition.Disposition = Scaffold {
+data gunbc_ci_host_memory_deferral_disposition: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.ci_fleet",

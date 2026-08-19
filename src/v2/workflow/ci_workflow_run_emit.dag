@@ -109,7 +109,7 @@ fn ci_native_cache_root_script() -> String {
   )
 }
 
-data ci_native_cache_root_shell_emit_scaffold: std.disposition.Disposition = Scaffold {
+data ci_native_cache_root_shell_emit_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.workflow.ci_workflow_run_emit",

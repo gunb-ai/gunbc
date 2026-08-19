@@ -3,7 +3,7 @@ module gunbc.local_tidy_spec
 
 data local_tidy_checks: List<gunbc.commit_workflow.LocalTidyCheck> = project_local_tidy_checks(roster: commit_gate_roster)
 
-data githooks_pre_push_emit_scaffold: std.disposition.Disposition = Scaffold {
+data githooks_pre_push_emit_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.githooks_pre_push_emit",

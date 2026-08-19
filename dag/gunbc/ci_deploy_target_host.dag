@@ -192,7 +192,7 @@ fn gunbc_ci_deploy_srv1_runner_spec() -> extdeps.github.actions.RunnerSpec {
   host_pinned_runner_spec(offer: srv1_offer, host: operator_host_srv1)
 }
 
-data deploy_target_host_preflight_shell_disposition: std.disposition.Disposition = Scaffold {
+data deploy_target_host_preflight_shell_disposition: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.live_deploy.emit",

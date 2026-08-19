@@ -176,7 +176,7 @@ data gunbc_ci_session_reservation_mode: SessionReservationMode = Regime2Aggregat
   aggregate_reservation: SessionAggregateMeasured { bytes: byte_size(21474836480) },
 }
 
-data gunbc_ci_regime2_aggregate_dissolution_marker: std.disposition.Disposition = Scaffold {
+data gunbc_ci_regime2_aggregate_dissolution_marker: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.jobserver",
@@ -249,7 +249,7 @@ fn gunbc_ci_host_fixed_overhead_for(host: product.placement_supply.HostIdentity)
 
 data gunbc_ci_host_fixed_overhead_disposition_split_note: String = "ONE SCAFFOLD BECOMES TWO BECAUSE THE TWO OVERHEADS DISSOLVE ON DIFFERENT EVENTS, and each still binds a successor that DOES NOT YET EXIST — which is what a Scaffold bind is for. v2.lens.disposition_redundancy reads these marks and counts a violation when a bind target is PRESENT: a scaffold whose successor has been written is redundant and must be dissolved. So an absent target is the normal, correct state of outstanding debt, and the lens is the thing that notices when the debt is actually payable.\n\nCORRECTION, recorded because an earlier revision of this change got it backwards and would have shipped the inversion. The row this replaces bound to gunbc_ci_per_service_overhead, and that bind was read here as a defect — 'a dissolve-on pointing at nothing' — on the reasoning that a marker naming a nonexistent declaration can never fire. The reasoning inverts the mechanism. It fires precisely BY that declaration coming into existence, and the first draft's repair (re-binding both scaffolds to rows this module already declares) would have made both of them immediate violations of the redundancy lens, converting two pieces of honest outstanding debt into two false claims that the debt was already paid. The original bind was right; only its single-row grain was wrong.\n\nWhat legitimately changed is the grain. gunbc_ci_per_service_overhead was one successor for one fleet-wide number, and there are now two facts with two different closure conditions: the managed hosts need an observation, the legacy pair need their deployments modeled. Neither successor exists, both name what would replace them, and writing either one fires the lens for that arm alone."
 
-data gunbc_ci_managed_host_fixed_overhead_disposition: std.disposition.Disposition = Scaffold {
+data gunbc_ci_managed_host_fixed_overhead_disposition: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.ci_floor_measurement",
@@ -258,7 +258,7 @@ data gunbc_ci_managed_host_fixed_overhead_disposition: std.disposition.Dispositi
   }
 }
 
-data gunbc_ci_legacy_host_fixed_overhead_disposition: std.disposition.Disposition = Scaffold {
+data gunbc_ci_legacy_host_fixed_overhead_disposition: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.ci_floor_measurement",
@@ -281,7 +281,7 @@ data gunbc_ci_conservative_lower_bound_usable_ram: HostUsableRam = HostUsableRam
 
 data gunbc_ci_host_usable_ram_disposition_note: String = "REGISTERED AS SCAFFOLD DEBT BECAUSE ITS TWIN IS, and because the debt is PRE-EXISTING rather than introduced here: the fleet-wide constant this carrier replaces was already an unmeasured stand-in, and modeling it is what makes it countable. DESIGN 5 refuses NEW dissolution obligations without an operator verdict; it separately exists so that documenting previously hidden debt never reads as creating it, which is this row.\n\nTHE BIND TARGET IS DELIBERATELY NOT THE OVERHEAD ROW'S. gunbc_ci_managed_host_fixed_overhead_disposition binds a QUIESCENT read, because overhead is estimated from MemAvailable and MemAvailable moves with load. MemTotal does not — the kernel reports total usable RAM after firmware and kernel reservations — so an ordinary read taken while the host serves work discharges this and not that. Two obligations, two observations, two independently removable units, which is the grain DESIGN 5 requires: sharing one trigger is admissible only when neither artifact can survive the other, and these plainly can."
 
-data gunbc_ci_host_usable_ram_disposition: std.disposition.Disposition = Scaffold {
+data gunbc_ci_host_usable_ram_disposition: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.ci_floor_measurement",
@@ -315,7 +315,7 @@ fn host_usable_ram_ceiling_bytes(host: product.placement_supply.HostIdentity) ->
 }
 
 
-data gunbc_ci_concurrent_runs_conservative_high_disposition: std.disposition.Disposition = Scaffold {
+data gunbc_ci_concurrent_runs_conservative_high_disposition: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.ci_runner_placement",

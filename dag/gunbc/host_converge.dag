@@ -32,7 +32,7 @@ data gunbc_fleet_pinned_binary_registry: String = "ghcr.io/gunb-ai/gunbc/bootstr
 
 data gunbc_fleet_pinned_binary_digest: String = "sha256:BOOTSTRAP_DIGEST_PLACEHOLDER"
 
-data gunbc_fleet_pinned_binary_digest_marker: std.disposition.Disposition = Scaffold {
+data gunbc_fleet_pinned_binary_digest_marker: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_converge",
@@ -202,7 +202,7 @@ type ConvergeKnob {
   no_op: ConvergeNoOpPolicy
 }
 
-data gunbc_host_converge_knob_apply_semantics_marker: std.disposition.Disposition = Scaffold {
+data gunbc_host_converge_knob_apply_semantics_marker: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_converge",
@@ -211,7 +211,7 @@ data gunbc_host_converge_knob_apply_semantics_marker: std.disposition.Dispositio
   }
 }
 
-data gunbc_host_converge_runner_sessions_coupling_marker: std.disposition.Disposition = Scaffold {
+data gunbc_host_converge_runner_sessions_coupling_marker: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_converge",

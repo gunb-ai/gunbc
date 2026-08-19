@@ -669,7 +669,7 @@ data floor_discovery_exact_admission_note: String = "The per-PR discovery roster
 
 data floor_discovery_producer_note: String = "Floor discovery producer: enrolled witness roster = pure fold over Filesystem.List/Read host facts, owned-data transport records (host-materialized from scan_dirs by invoke_floor_discovery_producer before the producer call — scan_dirs is not a producer parameter), witness_exclusion_substrings, and *_test.dag naming rules. List/read failures increment walk_failures with a located Optional path; finalize refuses, never an empty roster. Interior directory candidates (basename has no '.') are descended; dotted basenames are skipped as non-dag files."
 
-data floor_discovery_surface_text_scan_scaffold: std.disposition.Disposition = Scaffold {
+data floor_discovery_surface_text_scan_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.workflow.floor_naming_hygiene",

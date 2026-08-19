@@ -26,7 +26,7 @@ data ci_v1_compiler_test_targets_compile_gate_execution_gap_note: String = "The 
 
 A CONSEQUENCE WORTH RECORDING, because it is a hole in the retention wall rather than a fact about this gate: the model reds a new Rust test FILE added without a retention row, but it discovers only src/v1/tests/src, so `#[cfg(test)]` tests added INLINE to an existing src/v1/stage0/src file are invisible to it. gunbc#8162's five union_dedup_import_facts_law tests in cli_run.rs entered that unclassified 537 exactly that way — no retention row, no executing consumer, and slated to vanish with the seed. Measure it on a green tree before proposing it, and price it against the retained-kernel gate that already runs 30 tests. Enrolling execution is a strict improvement over this gate, never a substitute for it: a compile gate refuses in ~1.5min and needs no test to be correct, while execution needs every retained test to be green first."
 
-data ci_v1_compiler_test_targets_compile_gate_shell_emit_scaffold: std.disposition.Disposition = Scaffold {
+data ci_v1_compiler_test_targets_compile_gate_shell_emit_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.workflow.ci_v1_compiler_test_targets_compile_gate_emit",

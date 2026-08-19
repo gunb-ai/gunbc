@@ -11,7 +11,7 @@ data default_recognition_model: String = "claude-sonnet-4-6-20250929"
 
 data default_high_value_threshold_usd: Float = 50.0
 
-data tcgplayer_money_measure_grounding_disposition: std.disposition.Disposition = Scaffold {
+data tcgplayer_money_measure_grounding_disposition: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.tools.card_intake",

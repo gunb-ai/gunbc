@@ -10,7 +10,7 @@ WHY IT IS HAND-RUST TODAY rather than a modeling failure: the floor's admission 
 
 FAIL-CLOSED IN BOTH DIRECTIONS, which is what makes an interim scan tolerable: an unparseable row head PANICS with its location rather than yielding no key, because a silently dropped freeze row would refuse a legitimately frozen witness; and a consumer expressed in an unrecognized form yields no key, so its row surfaces as a loud refusal rather than being absorbed."
 
-data cli_run_witness_deferral_freeze_scaffold: std.disposition.Disposition = Scaffold {
+data cli_run_witness_deferral_freeze_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v1_compiler.cli_run",

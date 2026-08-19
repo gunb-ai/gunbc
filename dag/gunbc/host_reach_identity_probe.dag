@@ -98,7 +98,7 @@ data probe_receipts_run_provenance: ProbeRunProvenance = ProbeRunProvenance {
 // receipt file's typed parse committed into this registry by the commit workflow (the
 // same artifact->typed-parse->committed-rows path the operator's join 4 names), at which
 // point a stale hand row is unwritable rather than merely provenance-annotated.
-data probe_receipt_ledger_transcription_scaffold: std.disposition.Disposition = Scaffold {
+data probe_receipt_ledger_transcription_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_reach_identity_probe",

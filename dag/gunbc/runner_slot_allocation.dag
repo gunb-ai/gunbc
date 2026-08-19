@@ -313,7 +313,7 @@ fn gunbc_runner_slot_allocation_wall_holds() -> Bool {
     )
 }
 
-data gunbc_runner_slot_allocation_live_cap_dissolve_on: std.disposition.Disposition = Scaffold {
+data gunbc_runner_slot_allocation_live_cap_dissolve_on: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.runner_slot_allocation",
@@ -377,7 +377,7 @@ data gunbc_floor_minimum_viable_armed_budget_disposition: std.disposition.Dispos
   reason: "MEASURED minimum viable armed budget for the CI floor (operator ruling 2026-07-21, post-#6995): 12GiB (12884901888 bytes) is the conservative lower bound of the healthy capped-box success class (~12.5-16GiB floor_peak_post), NOT the typical peak. Derivation: doomed witnesses gunbc_floor_armed_budget_doomed_witness_receipts prove armed budgets 5.97-6.99GiB at arm time (MemAvailable on crowded uncapped srv3) cannot complete the floor walk - runs 29834380839 and 29845210061 died in batch witness phase after ~30min; success-class receipt gunbc_floor_armed_budget_success_class_receipt (run 29835983525 post-#6995, srv1-05, armed_budget=15GiB memory.high, floor_peak_post=16108544000) proves the healthy class sits above this bound. bright-seal #6999 fill-deferral is perf-only (entry-closure memo); coordinate via gunbc_floor_minimum_viable_armed_budget_dissolve_on if a future change cuts mature index residency. Consumed by claim_executor arm-time FloorBudgetBelowMinimumFootprint refusal (fail-fast, requeue-able)."
 }
 
-data gunbc_floor_minimum_viable_armed_budget_dissolve_on: std.disposition.Disposition = Scaffold {
+data gunbc_floor_minimum_viable_armed_budget_dissolve_on: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.runner_slot_allocation",

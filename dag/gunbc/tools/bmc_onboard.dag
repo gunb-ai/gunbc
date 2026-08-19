@@ -4,7 +4,7 @@ module gunbc.tools.bmc_onboard
 data bmc_onboard_netrc_path: String = "/tmp/bmc_onboard_netrc"
 data bmc_onboard_pwbody_path: String = "/tmp/bmc_onboard_pwbody.json"
 
-data bmc_onboard_secret_on_disk_debt: std.disposition.Disposition = Scaffold {
+data bmc_onboard_secret_on_disk_debt: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.filesystem.filesystem_io",
@@ -14,7 +14,7 @@ data bmc_onboard_secret_on_disk_debt: std.disposition.Disposition = Scaffold {
 }
 
 
-data bmc_credential_length_chars_unit_debt: std.disposition.Disposition = Scaffold {
+data bmc_credential_length_chars_unit_debt: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "std.measure",

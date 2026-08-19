@@ -174,7 +174,7 @@ data js_site_markup_to_jsx_interactivity_medium: Medium<std.markup.Fragment> = e
   fidelity: Lossy
 }
 
-data js_site_expression_prop_markup_debt: std.disposition.Disposition = Scaffold {
+data js_site_expression_prop_markup_debt: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SubstrateMandatoryTag,
   bind: std.decl_ref.DeclarationRef {
     module_path: "std.markup",

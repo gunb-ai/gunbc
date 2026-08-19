@@ -70,7 +70,7 @@ data ci_floor_wet_witness_row_outcome_receipt_read_command: String = "echo \"[we
 
 data ci_floor_wet_witness_row_outcome_receipt_absent_command: String = "echo \"[wet-witness-row-outcome-receipt] absent\""
 
-data ci_floor_wet_witness_row_outcome_receipt_shell_emit_scaffold: std.disposition.Disposition = Scaffold {
+data ci_floor_wet_witness_row_outcome_receipt_shell_emit_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.workflow.ci_floor_peak_emit",
@@ -83,7 +83,7 @@ data ci_floor_wet_witness_row_outcome_receipt_shell_emit_dissolution_trigger: st
 
 data ci_floor_wet_witness_row_outcome_receipt_runner_scaffold_comment: String = concat("# ", std.dissolution.dissolution_description(condition: ci_floor_wet_witness_row_outcome_receipt_shell_emit_dissolution_trigger))
 
-data ci_floor_phase_journal_shell_emit_scaffold: std.disposition.Disposition = Scaffold {
+data ci_floor_phase_journal_shell_emit_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.workflow.ci_floor_peak_emit",
@@ -98,7 +98,7 @@ data ci_floor_phase_journal_roadmap_citation_note: String = "The symbolic ROADMA
 
 data ci_floor_phase_journal_runner_scaffold_comment: String = concat("# ", std.dissolution.dissolution_description(condition: ci_floor_phase_journal_shell_emit_dissolution_trigger))
 
-data ci_floor_peak_cgroup_locate_shell_emit_scaffold: std.disposition.Disposition = Scaffold {
+data ci_floor_peak_cgroup_locate_shell_emit_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.workflow.ci_floor_peak_emit",

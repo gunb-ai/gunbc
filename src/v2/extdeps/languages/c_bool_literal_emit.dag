@@ -1,7 +1,7 @@
 module v2.extdeps.languages.c_bool_literal_emit
 
 
-data c_bool_literal_stdbool_preamble_emit_disposition: std.disposition.Disposition = Scaffold {
+data c_bool_literal_stdbool_preamble_emit_disposition: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.extdeps.languages.c",

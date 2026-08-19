@@ -3,7 +3,7 @@ module gunbc.runner_connectivity_repair_plan
 
 data runner_repair_effect_authority_note: String = "REPAIR CHOREOGRAPHY over the shared HostEffect arms still-ram-738 lands on gunbc.host_effect — NOT a second effect coproduct. RunnerRepairEffectStep names the operator-specified arms (ObserveRunnerLocalState, ObserveGitHubRunnerRegistration, ReplaceRunnerIncarnation) in apply order. This module sequences them; host_effect_realize owns realization cells. ctrl is dead — no script delegation."
 
-data observe_runner_local_state_host_effect_scaffold: std.disposition.Disposition = Scaffold {
+data observe_runner_local_state_host_effect_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",
@@ -12,7 +12,7 @@ data observe_runner_local_state_host_effect_scaffold: std.disposition.Dispositio
   }
 }
 
-data observe_github_runner_registration_host_effect_scaffold: std.disposition.Disposition = Scaffold {
+data observe_github_runner_registration_host_effect_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",
@@ -21,7 +21,7 @@ data observe_github_runner_registration_host_effect_scaffold: std.disposition.Di
   }
 }
 
-data replace_runner_incarnation_host_effect_scaffold: std.disposition.Disposition = Scaffold {
+data replace_runner_incarnation_host_effect_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",
@@ -30,7 +30,7 @@ data replace_runner_incarnation_host_effect_scaffold: std.disposition.Dispositio
   }
 }
 
-data runner_jit_installation_token_cache_scaffold: std.disposition.Disposition = Scaffold {
+data runner_jit_installation_token_cache_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.runner_lifecycle",

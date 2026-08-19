@@ -213,7 +213,7 @@ data claude_enrollment_managed_home_relative: String = ".gunbc/claude-enrollment
 
 data claude_enrollment_writer_reader_deployment_model_gap_reason: std.types.NonEmptyStr = "writer and reader service-identity populations are not yet derived from deployed service identities — name the deployment-model gap rather than asking the operator nine placement questions" as std.types.NonEmptyStr
 
-data claude_enrollment_host_effect_realization_scaffold: std.disposition.Disposition = Scaffold {
+data claude_enrollment_host_effect_realization_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",
@@ -222,7 +222,7 @@ data claude_enrollment_host_effect_realization_scaffold: std.disposition.Disposi
   }
 }
 
-data claude_enrollment_spawn_cli_private_pty_scaffold: std.disposition.Disposition = Scaffold {
+data claude_enrollment_spawn_cli_private_pty_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",
@@ -231,7 +231,7 @@ data claude_enrollment_spawn_cli_private_pty_scaffold: std.disposition.Dispositi
   }
 }
 
-data claude_enrollment_observe_browser_challenge_scaffold: std.disposition.Disposition = Scaffold {
+data claude_enrollment_observe_browser_challenge_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",
@@ -240,7 +240,7 @@ data claude_enrollment_observe_browser_challenge_scaffold: std.disposition.Dispo
   }
 }
 
-data claude_enrollment_capture_setup_token_private_scaffold: std.disposition.Disposition = Scaffold {
+data claude_enrollment_capture_setup_token_private_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",
@@ -249,7 +249,7 @@ data claude_enrollment_capture_setup_token_private_scaffold: std.disposition.Dis
   }
 }
 
-data claude_enrollment_secret_manager_add_version_scaffold: std.disposition.Disposition = Scaffold {
+data claude_enrollment_secret_manager_add_version_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.cloud.gcp.secret_manager",
@@ -258,7 +258,7 @@ data claude_enrollment_secret_manager_add_version_scaffold: std.disposition.Disp
   }
 }
 
-data claude_enrollment_exact_version_read_back_scaffold: std.disposition.Disposition = Scaffold {
+data claude_enrollment_exact_version_read_back_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.cloud.gcp.secret_manager",
@@ -267,7 +267,7 @@ data claude_enrollment_exact_version_read_back_scaffold: std.disposition.Disposi
   }
 }
 
-data claude_enrollment_clean_context_materialization_scaffold: std.disposition.Disposition = Scaffold {
+data claude_enrollment_clean_context_materialization_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.auth.materialized_secret",
@@ -276,7 +276,7 @@ data claude_enrollment_clean_context_materialization_scaffold: std.disposition.D
   }
 }
 
-data claude_enrollment_managed_paired_probe_scaffold: std.disposition.Disposition = Scaffold {
+data claude_enrollment_managed_paired_probe_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",

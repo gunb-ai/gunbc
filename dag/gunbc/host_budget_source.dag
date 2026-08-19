@@ -107,7 +107,7 @@ fn host_budget_source_for_kernel(kernel: std.os.types.KernelFamily) -> HostBudge
   }
 }
 
-data host_budget_source_seed_mirror_disposition: std.disposition.Disposition = Scaffold {
+data host_budget_source_seed_mirror_disposition: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_budget_source",

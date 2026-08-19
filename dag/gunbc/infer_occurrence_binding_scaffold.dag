@@ -1,7 +1,7 @@
 module gunbc.infer_occurrence_binding_scaffold
 
 
-data infer_occurrence_binding_v1_adapter_scaffold: std.disposition.Disposition = Scaffold {
+data infer_occurrence_binding_v1_adapter_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "std.occurrence_binding",

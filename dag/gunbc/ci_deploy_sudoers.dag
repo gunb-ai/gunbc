@@ -6,7 +6,7 @@ data deploy_sudoers_note: String = "Wave C envelope: /etc/sudoers.d/gunbc-deploy
 
 data deploy_sudoers_shell_emit_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.ci_deploy_sudoers — concat-built bash for sudoers dropin install and visudo gates; DISSOLVES WHEN live_deploy_emit_shell_dissolution_trigger retires (bash-emit #5828 / shell-intent Phase 2 realizes deploy shell through orchestration emit without medium-as-string here-docs).")
 
-data deploy_sudoers_shell_emit_scaffold: std.disposition.Disposition = Scaffold {
+data deploy_sudoers_shell_emit_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.ci_deploy_sudoers",

@@ -12,7 +12,7 @@ data react_jsx_keep_mark_note: String = "KEEP with mark (#7272 A3; gpu/wgsl trea
 
 data react_jsx_site_subsumption_jsx_page_emission: String = "dissolve-on: gunb.ai site-subsumption emits ≥1 production page through serialize_jsx_component (a non-test import under gunbc.site.*). That call is the dissolution event for react_jsx_awaiting_production_consumer."
 
-data react_jsx_awaiting_production_consumer: std.disposition.Disposition = Scaffold {
+data react_jsx_awaiting_production_consumer: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.languages.react_jsx",

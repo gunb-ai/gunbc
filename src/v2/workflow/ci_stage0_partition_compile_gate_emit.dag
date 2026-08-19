@@ -10,7 +10,7 @@ data ci_stage0_partition_compile_gate_refusal_prefix: String = "__GUNBC_EFFECT_P
 
 data ci_stage0_partition_compile_gate_authority_note: String = "Build-job compile gate for all seven interim stage0 partition crates (v2.workflow.rust_crate_partition stage0_partition_crate_rows). One extdeps.cargo_build cargo.Build.Check per package_name, FailFast chain — interim backstop that cargo-checks every generated partition crate so a roster or emit drift cannot rot silently off main. Package list is declaration-derived from stage0_partition_package_names, never hand-listed in this emit module."
 
-data ci_stage0_partition_compile_gate_shell_emit_scaffold: std.disposition.Disposition = Scaffold {
+data ci_stage0_partition_compile_gate_shell_emit_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.workflow.ci_stage0_partition_compile_gate_emit",

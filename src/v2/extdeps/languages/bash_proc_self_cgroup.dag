@@ -42,7 +42,7 @@ fn bash_membership_assign_from_content(
 
 data bash_membership_realization_note: String = "Bash realization for extdeps.linux.proc_self_cgroup unified-hierarchy membership. bash_membership_assign_from_content lowers extdeps.linux.proc_self_cgroup.read_unified_cgroup_membership outcomes to shell text. bash_membership_assign_from_source is the foreign-executor transport: a runtime scan over cgroup_source that mirrors the parser's refusal/observed semantics for wet witnesses. The semantic parser lives in extdeps.linux.proc_self_cgroup; procfs path literal is extdeps.linux.procfs ProcSelfCgroup; this module owns target spelling only."
 
-data bash_membership_runtime_scan_shell_emit_scaffold: std.disposition.Disposition = Scaffold {
+data bash_membership_runtime_scan_shell_emit_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.extdeps.languages.bash_proc_self_cgroup",

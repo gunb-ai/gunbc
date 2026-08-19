@@ -199,7 +199,7 @@ fn current_stage0_rust_source_observation() -> RustSourceHostObservation {
   )
 }
 
-data stage0_cargo_manifest_parser_seed_scaffold: std.disposition.Disposition = Scaffold {
+data stage0_cargo_manifest_parser_seed_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v1_compiler.cli_run",
@@ -208,7 +208,7 @@ data stage0_cargo_manifest_parser_seed_scaffold: std.disposition.Disposition = S
   }
 }
 
-data stage0_cargo_manifest_projection_seed_scaffold: std.disposition.Disposition = Scaffold {
+data stage0_cargo_manifest_projection_seed_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v1_compiler.v1_interpreter",

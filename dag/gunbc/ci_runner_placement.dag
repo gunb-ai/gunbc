@@ -5,7 +5,7 @@ type WorkloadClass
   = BatchLatencyTolerant
   | InteractiveLatencySensitive
 
-data gunbc_ci_cpu_weight_unit_modeling_marker: std.disposition.Disposition = Scaffold {
+data gunbc_ci_cpu_weight_unit_modeling_marker: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "std.measure",
@@ -388,7 +388,7 @@ fn session_reservation_plan() -> SessionReservationPlan {
   }
 }
 
-data gunbc_ci_count_field_measure_followup: std.disposition.Disposition = Scaffold {
+data gunbc_ci_count_field_measure_followup: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "std.measure",

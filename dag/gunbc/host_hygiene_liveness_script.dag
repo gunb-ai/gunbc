@@ -4,7 +4,7 @@ module gunbc.host_hygiene_liveness_script
 
 data host_hygiene_liveness_script_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: host_hygiene_liveness_script — concat-built journalctl-mining bash text. DISSOLVES WHEN bash-emit (issue 5828) realizes the liveness read as typed host-effect argv routed through host_effect_apply, retiring the raw shell_exec_via_bash transport this scaffold stands in for.")
 
-data host_hygiene_liveness_script_scaffold: std.disposition.Disposition = Scaffold {
+data host_hygiene_liveness_script_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_hygiene_liveness_script",

@@ -10,7 +10,7 @@ type CompileCleanScopeDisposition
 
 data compile_clean_scope_import_closure_reground_note: String = "2026-07-16 reground (channel 2 of operator fork (c), 2026-07-10): compile-clean per-PR selection consumes v2.lens.module_graph.entry_affected_by_touched_paths (import-closure grain, edge-source-agnostic) — the same authority the discovery-corpus entry_file_touched channel regrounded onto. The fn-arrow DependencyView chain (entry_affected_by_dependency_view, gated on corpus_dependency_view_per_pr_substrate_ready / #6239) is no longer a consumer here; it remains in tree as the decl-level candidate only. Two guards keep the whole-tree baseline where import-closure selection cannot answer: (a) any touched path outside the selectable universe (docs/** or *.dag) is a compiler/infra change — whole-tree; (b) any non-docs departed path (deletion/rename-from) is invisible to current-tree adjacency (a dangling import drops the edge, so the broken importer would not be selected) — whole-tree."
 
-data compile_clean_docs_universe_path_grain_scaffold: std.disposition.Disposition = Scaffold {
+data compile_clean_docs_universe_path_grain_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.workflow.floor_compile_clean_predicates",

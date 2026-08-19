@@ -77,7 +77,7 @@ fn os_install_actuator_plan(mechanism: gunbc.os_install_mechanism.OsInstallMecha
   }
 }
 
-data srv3_nbd_proxy_export_dissolution_trigger: std.disposition.Disposition = Scaffold {
+data srv3_nbd_proxy_export_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.nbd_proxy_virtual_media_install",

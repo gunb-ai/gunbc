@@ -96,7 +96,7 @@ fn organization_runner_roster_evidence() -> OrganizationRunnerRosterEvidence {
   }
 }
 
-data organization_runner_roster_producer_scaffold: std.disposition.Disposition = Scaffold {
+data organization_runner_roster_producer_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.fleet_runner_connectivity",

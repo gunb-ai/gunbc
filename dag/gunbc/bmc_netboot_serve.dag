@@ -107,7 +107,7 @@ fn bmc_ssh_target(plan: BmcNetbootServePlan) -> std.types.NonEmptyStr {
 }
 
 
-data bmc_netboot_provision_scaffold: std.disposition.Disposition = Scaffold {
+data bmc_netboot_provision_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.bmc_netboot_serve",

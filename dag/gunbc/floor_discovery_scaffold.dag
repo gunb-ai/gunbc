@@ -2,7 +2,7 @@ module gunbc.floor_discovery_scaffold
 
 
 
-data floor_discovery_hand_rust_scaffold: std.disposition.Disposition = Scaffold {
+data floor_discovery_hand_rust_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.workflow.floor_discovery_producer",

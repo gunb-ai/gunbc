@@ -300,7 +300,7 @@ fn base64_decode(s: String, variant: Base64Variant) -> List<std.integer.UInt8>? 
   }
 }
 
-data utf8_decode_bytes_host_realization_marker: std.disposition.Disposition = Scaffold {
+data utf8_decode_bytes_host_realization_marker: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "std.bytes",

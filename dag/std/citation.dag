@@ -434,7 +434,7 @@ fn admit_citation_retrieval_observation(
   }
 }
 
-data citation_cit1_pdf_profile_scaffold: std.disposition.Disposition = Scaffold {
+data citation_cit1_pdf_profile_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.standards.rfc_8118",
@@ -443,7 +443,7 @@ data citation_cit1_pdf_profile_scaffold: std.disposition.Disposition = Scaffold 
   },
 }
 
-data citation_cit2_mediawiki_provider_observation_scaffold: std.disposition.Disposition = Scaffold {
+data citation_cit2_mediawiki_provider_observation_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.mediawiki",

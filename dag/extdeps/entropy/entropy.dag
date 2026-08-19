@@ -8,7 +8,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
   }
 }
 
-data entropy_transport_linux_gnu_only: std.disposition.Disposition = Scaffold {
+data entropy_transport_linux_gnu_only: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.os",
@@ -17,7 +17,7 @@ data entropy_transport_linux_gnu_only: std.disposition.Disposition = Scaffold {
   }
 }
 
-data entropy_count_bytes_unit_debt: std.disposition.Disposition = Scaffold {
+data entropy_count_bytes_unit_debt: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "std.measure",
@@ -26,7 +26,7 @@ data entropy_count_bytes_unit_debt: std.disposition.Disposition = Scaffold {
   }
 }
 
-data entropy_password_count_chars_unit_debt: std.disposition.Disposition = Scaffold {
+data entropy_password_count_chars_unit_debt: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "std.measure",

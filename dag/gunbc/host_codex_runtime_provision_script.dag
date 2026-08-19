@@ -5,7 +5,7 @@ data host_codex_runtime_provision_script_dissolution_trigger: std.dissolution.Di
 
 data host_codex_runtime_provision_script_census_row_note: String = "CENSUS STANDING: docs/plans/shell-to-dag-residual-census-and-arc-completion.md §4.A keys this file as the builder for host_effect_realize.ProvisionCodexRuntime, action DECOMPOSE, sub-class A5 (srv* cluster, operator-deferred 2026-07-22 — same deferral class as host_build_cache_provision_script; un-defer trigger is the operator). This site is RUNTIME-PRESENT (realizes through host_effect_apply on LocalShell/SshShell), so per that doc's routing decision its end state is typed observe/ensure/read-back argv with NO bash emitted — the four *_body builders below are the debt, not the design. This PR introduces the debt to close a fleet gap (nothing ensured /opt/gunbc/provider-runtime/codex at the pinned lock); it is not an uncited expansion of an unrelated surface. Standing constraint while the row is deferred (review 42401 on the build-cache twin): NEW emitted shell must be a DEDUCTION or a cited-de-fork SWAP — here it is the minimum transport for a NEW ProvisionCodexRuntime effect, mirroring the build-cache lane's interim shape until #5828. Adding further *_body builders or uncited shell leaves is a census regression."
 
-data host_codex_runtime_provision_script_scaffold: std.disposition.Disposition = Scaffold {
+data host_codex_runtime_provision_script_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_codex_runtime_provision_script",

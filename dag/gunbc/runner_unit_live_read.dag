@@ -23,7 +23,7 @@ data gunbc_runner_unit_live_read_scope_disposition: std.disposition.Disposition 
   reason: "Per-slot raw→typed read carrier: RunnerUnitLiveReadRow parses systemctl-show wire values into SystemdCgroupMemoryLimit and projects onto ConvergeTarget PerSlotMemoryCap verdict semantics. Live READ transport (systemctl show per property) is owned by gunbc.fleet_show_effective_read; this module keeps the typed shape + fixture rows."
 }
 
-data gunbc_runner_unit_live_read_absent_routing_scaffold: std.disposition.Disposition = Scaffold {
+data gunbc_runner_unit_live_read_absent_routing_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.lens.testgen",

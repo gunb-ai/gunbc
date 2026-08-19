@@ -5,7 +5,7 @@ data srv3_os_install_actuator_toolchain_ensure_scaffold: std.disposition.Disposi
   reason: "Thin caller of host_toolchain_ensure(host: srv3, kind: OsInstallActuator) — srv3 behavioral fork dissolved (P-D)."
 }
 
-data os_install_actuator_toolchain_ensure_dissolution_trigger: std.disposition.Disposition = Scaffold {
+data os_install_actuator_toolchain_ensure_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect_realize",

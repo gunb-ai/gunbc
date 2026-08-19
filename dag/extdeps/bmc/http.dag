@@ -8,7 +8,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
   }
 }
 
-data redfish_http_hardwired_transport_dissolution_trigger: std.disposition.Disposition = Scaffold {
+data redfish_http_hardwired_transport_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.bmc.http",

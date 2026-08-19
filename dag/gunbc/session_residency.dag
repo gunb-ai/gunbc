@@ -83,7 +83,7 @@ fn operator_declared_absent_host_count() -> Int {
   )
 }
 
-data session_residency_negative_rows_dissolve_on: std.disposition.Disposition = Scaffold {
+data session_residency_negative_rows_dissolve_on: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",

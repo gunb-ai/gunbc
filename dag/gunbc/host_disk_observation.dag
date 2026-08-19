@@ -49,7 +49,7 @@ fn host_disk_fleet_unobserved_count() -> Int {
   host_disk_unobserved_count(hosts: fleet_subsumption_hosts)
 }
 
-data host_disk_observed_producer_dissolve_on: std.disposition.Disposition = Scaffold {
+data host_disk_observed_producer_dissolve_on: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",

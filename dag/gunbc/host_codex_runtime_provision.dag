@@ -5,7 +5,7 @@ data host_codex_runtime_provision_scope_disposition: std.disposition.Disposition
 
 data host_codex_runtime_provision_converge_cadence_note: String = "Assimilation (host_standup P1c) plus recurring reconcile: fleet_converge_policy registers codex_runtime_bundle on every fleet compute host, and gunbc.fleet_converge_cli converge_provider_runtime_codex_receipt runs ProvisionCodexRuntime on every `gunbc converge` for srv1–srv4 after slice1/knob-frontier work (converge_cli_run_host_knobs) and before converge-receipt publication. Standup alone would not heal already-assimilated hosts; the converge adjunct closes that hole."
 
-data host_codex_runtime_provision_realize_scaffold: std.disposition.Disposition = Scaffold {
+data host_codex_runtime_provision_realize_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect_realize",

@@ -1,7 +1,7 @@
 module gunbc.live_deploy.service_ready
 
 
-data live_deploy_service_ready_scaffold: std.disposition.Disposition = Scaffold {
+data live_deploy_service_ready_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.live_deploy.service_ready",
@@ -10,7 +10,7 @@ data live_deploy_service_ready_scaffold: std.disposition.Disposition = Scaffold 
   }
 }
 
-data live_deploy_service_ready_scaffold_dissolution_trigger: std.disposition.Disposition = Scaffold {
+data live_deploy_service_ready_scaffold_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.live_deploy.readiness",
@@ -57,7 +57,7 @@ data live_deploy_service_ready_poll_bound: std.measure.Second = second(
 
 data live_deploy_service_ready_poll_cadence: std.measure.Second = second(count: 1)
 
-data live_deploy_host_sleep_generalization_dissolution_trigger: std.disposition.Disposition = Scaffold {
+data live_deploy_host_sleep_generalization_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",

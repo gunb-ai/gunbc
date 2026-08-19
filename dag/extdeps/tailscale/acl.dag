@@ -19,7 +19,7 @@ data tailscale_acl_policy_language_uri: String = "tailscale.com/kb/1337/acl-synt
 
 data dashboard_cutover_mac_ip: std.types.NonEmptyStr = "100.65.94.55"
 
-data dashboard_cutover_mac_dissolution_trigger: std.disposition.Disposition = Scaffold {
+data dashboard_cutover_mac_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.tailscale.acl",

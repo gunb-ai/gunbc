@@ -8,7 +8,7 @@ data type_ref_measure_binding_authority_note: String = "MEASUREMENT-ONLY predica
 
 data type_ref_hit_ne_bind_measure_dissolve_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "DISSOLVE when N2 lands TypeReference on namespace-reference-derived-closure → occurrence_binding_from_candidates → OccurrenceBindingResult (docs/plans/containment-binding-cross-module-type-references-design.md). Then delete: type_ref_hit_ne_bind_measure_active arming, type_ref_measure_binding_authority, the masked measure UnresolvedType branch in v1.compiler.infer_resolve, this carrier, and dag/test/claim/type_ref_hit_ne_bind_measure_witness_test.dag (or flip its REDs to permanent regression controls under the canonical fold).")
 
-data type_ref_hit_ne_bind_measure_scaffold: std.disposition.Disposition = Scaffold {
+data type_ref_hit_ne_bind_measure_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.type_ref_hit_ne_bind_measure" as std.types.NonEmptyStr,

@@ -66,7 +66,7 @@ fn srv3_seeded_plan_refuses_with_the_solve() -> Bool {
   }
 }
 
-data srv3_os_install_actuate_credential_source_scaffold: std.disposition.Disposition = Scaffold {
+data srv3_os_install_actuate_credential_source_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.roadmap_authority",
@@ -75,7 +75,7 @@ data srv3_os_install_actuate_credential_source_scaffold: std.disposition.Disposi
   }
 }
 
-data srv3_os_install_actuate_credential_debt_marker: std.disposition.Disposition = Scaffold {
+data srv3_os_install_actuate_credential_debt_marker: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.srv3_bmc_credential_resolve",

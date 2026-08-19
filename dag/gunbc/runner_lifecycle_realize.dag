@@ -10,7 +10,7 @@ module gunbc.runner_lifecycle_realize
 // with independent read-back (org-roster for registration observe; local unit/process facts for
 // ObserveRunnerLocalState; release digest before extract for ADD arms).
 
-data runner_lifecycle_realize_wet_transport_dissolve_on: std.disposition.Disposition = Scaffold {
+data runner_lifecycle_realize_wet_transport_dissolve_on: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",

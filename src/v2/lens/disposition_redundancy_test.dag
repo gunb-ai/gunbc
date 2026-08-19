@@ -9,7 +9,7 @@ data redundancy_present_successor_locator: std.decl_ref.DeclarationRef = std.dec
   field: std.decl_ref.NamedField { field_name: "marker" }
 }
 
-data redundancy_red_scaffold: std.disposition.Disposition = Scaffold {
+data redundancy_red_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "std.disposition",

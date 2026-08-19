@@ -8,7 +8,7 @@ data host_toolchain_ensure_srv3_fork_scaffold: std.disposition.Disposition = Ter
   reason: "srv3_os_install_actuator_toolchain_ensure thinned to host_toolchain_ensure(host: srv3, kind: OsInstallActuator) — no behavioral fork remains."
 }
 
-data host_toolchain_ensure_apply_dispatch_scaffold: std.disposition.Disposition = Scaffold {
+data host_toolchain_ensure_apply_dispatch_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect_realize",

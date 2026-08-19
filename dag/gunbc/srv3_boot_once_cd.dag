@@ -3,7 +3,7 @@ module gunbc.srv3_boot_once_cd
 
 data srv3_boot_once_apply_read_back_sleep: std.measure.Second = second(count: 45)
 
-data srv3_boot_once_cd_secret_debt: std.disposition.Disposition = Scaffold {
+data srv3_boot_once_cd_secret_debt: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.filesystem.filesystem_io",

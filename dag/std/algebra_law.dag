@@ -3,7 +3,7 @@ module std.algebra_law
 
 data algebra_law_slice_note: String = "Slice-1 associativity evidence only: AssociativityCounterexampleWitness plus AssociativityRefutationReceipt bound to the closed AssociativityOperationSubject coproduct (sole variant AssociativityFloatAdd — kernel Float addition, rostered in std.types kernel_type_set). LawExhaustivelyVerified and LawDeclaredByAuthority are omitted until an exhaustive checker or cited proposition producer exists. Float binary + has no DeclarationRef-producing surface (compiler builtin); extdeps.standards.ieee_754_2019 owns the cited standard subject and gunbc.float_add_associativity_observation records the execution receipt."
 
-data algebra_law_subject_coproduct_expansion_disposition: std.disposition.Disposition = Scaffold {
+data algebra_law_subject_coproduct_expansion_disposition: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "std.algebra_law",

@@ -80,7 +80,7 @@ data host_standup_p3_gunbc_pinned_tree_landing_gate: String = "gunbc.host_conver
 
 data host_standup_p3_gunbc_pinned_tree_landed: Bool = true
 
-data host_standup_p3_green_place_scaffold: std.disposition.Disposition = Scaffold {
+data host_standup_p3_green_place_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_converge",
@@ -107,12 +107,12 @@ data host_standup_p5_desired_pin_authority: std.decl_ref.DeclarationRef = std.de
   field: WholeDeclaration,
 }
 
-data host_standup_p5_green_place_pin_scaffold: std.disposition.Disposition = Scaffold {
+data host_standup_p5_green_place_pin_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: host_standup_p5_green_place_noop_gate_authority
 }
 
-data host_standup_p5_composite_gate_scaffold: std.disposition.Disposition = Scaffold {
+data host_standup_p5_composite_gate_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_standup",

@@ -2,7 +2,7 @@ module gunbc.resolved_graph_cache_hand_rust_scaffold
 
 
 
-data resolved_graph_cache_hand_rust_scaffold: std.disposition.Disposition = Scaffold {
+data resolved_graph_cache_hand_rust_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v1_compiler.resolved_graph_cache",

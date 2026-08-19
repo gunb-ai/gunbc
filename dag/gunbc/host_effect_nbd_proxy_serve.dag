@@ -4,7 +4,7 @@ module gunbc.host_effect_nbd_proxy_serve
 
 data host_effect_nbd_proxy_serve_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: host_effect_nbd_proxy_serve — systemd transient-unit realize transport for Srv3NbdProxyServe (P6 Part 2; operator ruling 2026-07-14: no trap/&/$! ShellStmt vocabulary); DISSOLVES WHEN observe-side port/unit query is grounded on cited extdeps.systemd/systemctl read-back and typed argv dispatch retires WitnessBin systemd-run scaffolding. Token bridge: start_units materializes BMCWEB session token from srv3_bmcweb_token_path via Filesystem.Read into websocat argv (replaces deleted wrapper export). Wave 4 residue (shell→dag census §1C category C).")
 
-data host_effect_nbd_proxy_serve_scaffold: std.disposition.Disposition = Scaffold {
+data host_effect_nbd_proxy_serve_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect_nbd_proxy_serve",

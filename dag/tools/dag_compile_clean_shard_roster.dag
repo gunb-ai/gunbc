@@ -162,7 +162,7 @@ fn witness_roster_empty_facts_are_not_nonempty() -> Bool {
   }
 }
 
-data compile_clean_shard_entry_paths_fast_hand_rust_scaffold: std.disposition.Disposition = Scaffold {
+data compile_clean_shard_entry_paths_fast_hand_rust_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "tools.dag_compile_clean_shard_roster",

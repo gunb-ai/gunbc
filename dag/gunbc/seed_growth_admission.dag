@@ -28,7 +28,7 @@ data seed_growth_forward_freeze_policy_note: String = "FORWARD-FREEZE POLICY (en
 data seed_growth_justification_roster_note: String = "CLOSED ROSTER of every SeedGrowthJustification row in the corpus. G1 joins new/modified hand items against this list. Rows are authored beside the obligation they declare; the roster is derived by enumeration, never by grep. Today: stage0_rust_observation_seed_growth_justification (gunbc.stage0_rust_host_observation) and observation_scoped_run_seed_growth_justification (gunbc.roadmap_authority). Each new justification adds one row here AND one data row in its owning module."
 
 // UNCITABLE ITEMS (prose-only until std.decl_ref gains ImplMethod). stage0_rust_observation_seed_growth_justification documents one: impl std::fmt::Display for Stage0CargoBinManifestParseRefusal in v1_compiler.cli_run — seven hand items, six citable DeclarationRef rows. G1 reports uncitable_items separately; they do NOT satisfy the forward-freeze enumeration via DeclarationRef alone.
-data seed_growth_admission_join_scaffold: std.disposition.Disposition = Scaffold {
+data seed_growth_admission_join_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.seed_growth_admission",
@@ -39,7 +39,7 @@ data seed_growth_admission_join_scaffold: std.disposition.Disposition = Scaffold
 
 data seed_growth_admission_join_scaffold_note: String = "SCAFFOLD — seed_growth_join_declarations is NOT an enrolled admission gate until rust_item_host_observation supplies diff DeclarationRef candidates. Joining the roster against itself is a tautology and must not green as completeness admission (review 49332). Dissolve-on: diff population carrier lands and enrolls join against merge-base candidates."
 
-data seed_growth_g0_census_host_scaffold: std.disposition.Disposition = Scaffold {
+data seed_growth_g0_census_host_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.rust_item_identity",

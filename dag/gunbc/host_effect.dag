@@ -132,7 +132,7 @@ data bootstrap_fragment_script_carrier_scaffold: std.disposition.Disposition = T
   reason: "fresh-standup bootstrap emits through orch_emit_pipeline(intent,Bash) on fresh_standup_bootstrap_intent; BootstrapFragment.script is no longer a hand-spelled concat surface for the fleet-converge bootstrap arm (fleet_converge_fresh_standup_bootstrap_emit_dissolution_trigger dissolved)"
 }
 
-data thin_invocation_argv_carrier_scaffold: std.disposition.Disposition = Scaffold {
+data thin_invocation_argv_carrier_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.fleet_converge_apply",

@@ -64,7 +64,7 @@ fn sol_console_transport_authority_for(transport: SolConsoleTransport) -> extdep
   }
 }
 
-data sol_console_capture_bash_emit_dissolution_trigger: std.disposition.Disposition = Scaffold {
+data sol_console_capture_bash_emit_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.bmc.serial_console",

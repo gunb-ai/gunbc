@@ -51,7 +51,7 @@ data live_deploy_unit_diagnosis_dissolution_trigger: std.dissolution.Dissolution
 
 data live_deploy_unit_status_emit_scaffold_note: String = "Emit-only residue: tree_sync_restart_step_with_diagnosis (gunbc.live_deploy.emit) still shells live_deploy_unit_status_tail_command into foreign-executor bash. Readiness unit_diagnosis now routes through systemd.Systemctl.Status (gunbc.systemctl_status_read); dissolve this concat when tree-sync restart migrates to typed host_effect_apply."
 
-data live_deploy_unit_status_tail_scaffold: std.disposition.Disposition = Scaffold {
+data live_deploy_unit_status_tail_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.live_deploy.intent",

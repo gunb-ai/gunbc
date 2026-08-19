@@ -9,7 +9,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 }
 
 // ISO 4217:2015 authority for std.currency.CurrencyCode and currency_minor_unit_exponent.
-data iso_4217_cited_rows_scaffold: std.disposition.Disposition = Scaffold {
+data iso_4217_cited_rows_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "std.currency",

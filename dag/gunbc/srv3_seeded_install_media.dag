@@ -17,7 +17,7 @@ data install_media_remaster_toolchain_ensure_dissolution_trigger: std.dispositio
   reason: "install_media_remaster_toolchain_ensure dissolved onto host_effect_apply realize_seeded_install_media_toolchain_ensure_on_host (srv3_ensure_apt_tool + xorriso version probe) - no concat-built bash script remains"
 }
 
-data srv3_seeded_install_media_unattended_not_proven_marker: std.disposition.Disposition = Scaffold {
+data srv3_seeded_install_media_unattended_not_proven_marker: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.srv3_os_install_actuate_scope",

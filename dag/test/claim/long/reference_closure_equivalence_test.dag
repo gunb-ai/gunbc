@@ -18,7 +18,7 @@ data expected_conformance_closure: FreeMonoid<String> = [
 
 data conformance_entry: String = "dag/test/claim/module_graph/conformance_imports_only.dag"
 
-data conformance_import_envelope_disposition: std.disposition.Disposition = Scaffold {
+data conformance_import_envelope_disposition: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.test.manual.coproduct_reflection_conformance",
