@@ -1,0 +1,46 @@
+module v2.test.lens_cost.map_linear
+
+import v2.lens.cost { LinearCost, SizeVariable, cost_lens }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Cardinality,
+  ComputationNode,
+  Edge,
+  Node,
+  Positional,
+  Transform,
+  TypeNode,
+  SyntheticOccurrence
+}
+import v2.std.witness { Holds }
+
+data map_linear_body_leaf: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^map_linear_body_atom } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data map_linear_body: Node = Node {
+  kind: ComputationNode { behavior: Transform },
+  children: [
+    Edge { label: Positional, target: map_linear_body_leaf }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data map_linear_input: Node = Node {
+  kind: TypeNode { connective: Cardinality },
+  children: [
+    Edge { label: Positional, target: map_linear_body }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+test fn map_linear_claim_holds() -> Bool {
+  match cost_lens(n: map_linear_input) {
+    Holds { value: actual } =>
+      actual == LinearCost { variable: SizeVariable { source: map_linear_input } }
+    _ => false
+  }
+}

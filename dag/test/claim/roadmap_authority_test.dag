@@ -1,0 +1,866 @@
+module test.claim.roadmap_authority
+
+import std.content_hash { Fnv1a64Structural, content_hash_atom }
+import std.types { NonEmptyStr, String }
+import gunbc.roadmap_focus { RoadmapFocus, NoFocus }
+import gunbc.roadmap_authority {
+  roadmap_authority_for,
+  declared_roadmap_nodes,
+  declared_roadmap_edges,
+  active_roadmap_nodes_for_accepted,
+  active_roadmap_edges_for_accepted,
+  roadmap_acceptance_receipts,
+  roadmap_acceptance_event_history_load,
+  RoadmapAcceptanceEventHistoryLoaded,
+  RoadmapAcceptanceEventHistoryLoadRefused,
+  RoadmapAcceptanceReceiptsProjected,
+  RoadmapAcceptanceReceiptsProjectionRefused,
+  accepted_roadmap_node_ids_projection,
+  AcceptedRoadmapNodeIdsProjected,
+  AcceptedRoadmapNodeIdsProjectionRefused,
+  roadmap_authority,
+  authored_merged_prs,
+  observation_scoped_run_seed_growth_justification,
+  closing_contract_task_edges_projection,
+  ClosingContractTaskEdgesProjected,
+  ClosingContractTaskEdgesProjectionRefused,
+  projected_roadmap_dependency_edges_projection,
+  ProjectedRoadmapDependencyEdgesProjected,
+  ProjectedRoadmapDependencyEdgesProjectionRefused,
+}
+import gunbc.roadmap_spawner {
+  roadmap_rendered_ghost_count,
+  roadmap_ghost_node_red_probe_count,
+  roadmap_altered_copy_red_probe_count,
+}
+import gunbc.v1_deletion_plan {
+  V1FinishLine,
+  CompilerFixedPoint,
+  InterpreterDeleted,
+  ProductsV1Free,
+  ZeroHandMaintainedRust,
+  v1_exit_finish_lines,
+  v1_finish_line_key,
+  v1_finish_lines_accepted_count,
+}
+import gunbc.roadmap_execution_contract {
+  ExecutionContractUnspecified,
+  ExecutionContract,
+  GunbcClaimValidation,
+  CargoTestValidation,
+  CargoFmtValidation,
+  WorkItemExecutionContract,
+  dispatch_required_capabilities,
+  execution_capability_label,
+}
+import gunbc.roadmap_document { project_roadmap_to_markdown }
+import gunbc.roadmap_model {
+  RoadmapNode,
+  RoadmapEdge,
+  RoadmapNodeId,
+  RoadmapAcceptanceReceipt,
+  RoadmapAcceptanceEvent,
+  AcceptanceRecorded,
+  AcceptanceRevoked,
+  AcceptanceNodeReopensActiveFrontier,
+  node_accepted,
+  receipt_matches_node,
+  node_criteria_digest,
+  acceptance_history_integrity_holds,
+  acceptance_history_extends_prior,
+  acceptance_history_chain_digest,
+  project_live_acceptance_receipts,
+  drop_first_acceptance_event,
+  roadmap_parent_ids,
+  is_top_level,
+  Pointer,
+  IntricacyLow,
+  IntricacyMedium,
+  IntricacyHigh,
+  VolumeSmall,
+  VolumeMedium,
+  VolumeLarge,
+  Sized,
+  Unsized,
+  ManualAcceptance,
+}
+import gunbc.roadmap_status {
+  RoadmapItem,
+  Signoff,
+  TicketLine,
+  TicketFields,
+  SupersededLine,
+  AuthoredLine,
+  PlainLine,
+  DerivableLine,
+  Unsigned,
+  SignedOff,
+  RedControlExecuted,
+  RedControlNotRun,
+  HandbackDelivered,
+  HandbackNotDelivered,
+  line_ticket,
+  item_is_done,
+  signoff_is_present,
+}
+import extdeps.languages.markdown { serialize_markdown_source }
+import std.graph { GraphEdge, CallGraph, graph_has_multi_node_scc }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn nodes() -> List<RoadmapNode> { declared_roadmap_nodes() }
+fn edges() -> List<RoadmapEdge> { declared_roadmap_edges() }
+fn active_nodes() -> List<RoadmapNode> {
+  match live_accepted_node_ids() {
+    Present { value: accepted } => active_roadmap_nodes_for_accepted(accepted: accepted)
+    Absent => []
+  }
+}
+fn active_edges() -> List<RoadmapEdge> {
+  match live_accepted_node_ids() {
+    Present { value: accepted } => active_roadmap_edges_for_accepted(accepted: accepted)
+    Absent => []
+  }
+}
+
+fn live_accepted_node_ids() -> List<RoadmapNodeId>? {
+  match accepted_roadmap_node_ids_projection() {
+    AcceptedRoadmapNodeIdsProjected { ids: ids } => Present { value: ids }
+    AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => Absent
+  }
+}
+
+fn tnid(s: String) -> RoadmapNodeId { s }
+fn tchash(s: String) -> Fnv1a64Structural { content_hash_atom(value: s as NonEmptyStr) }
+
+fn digest_or_zero(rn: RoadmapNode) -> Fnv1a64Structural {
+  match node_criteria_digest(rn: rn) {
+    Present { value } => value
+    Absent => tchash(s: "0000000000000000")
+  }
+}
+
+fn declared_node(id: String) -> List<RoadmapNode> {
+  nodes() |> filter(n => n.node == id)
+}
+
+fn receipt_fixture(node: String, digest: Fnv1a64Structural) -> RoadmapAcceptanceReceipt {
+  RoadmapAcceptanceReceipt {
+    node: tnid(s: node),
+    criteria_digest: digest,
+    red_control: RedControlExecuted {
+      witness_module: "test.fixture",
+      witness_fn: "fixture_red_control",
+      executed_on: "2026-07-28",
+    },
+    handback: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] },
+    accepted_by: "operator",
+    accepted_on: "2026-07-28",
+  }
+}
+
+fn evidenceless_receipt_fixture(rn: RoadmapNode) -> RoadmapAcceptanceReceipt {
+  RoadmapAcceptanceReceipt {
+    node: rn.node,
+    criteria_digest: digest_or_zero(rn: rn),
+    red_control: RedControlNotRun,
+    handback: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] },
+    accepted_by: "operator",
+    accepted_on: "2026-07-28",
+  }
+}
+
+fn undelivered_receipt_fixture(rn: RoadmapNode) -> RoadmapAcceptanceReceipt {
+  RoadmapAcceptanceReceipt {
+    node: rn.node,
+    criteria_digest: digest_or_zero(rn: rn),
+    red_control: RedControlExecuted {
+      witness_module: "test.fixture",
+      witness_fn: "fixture_red_control",
+      executed_on: "2026-07-28",
+    },
+    handback: HandbackNotDelivered,
+    accepted_by: "operator",
+    accepted_on: "2026-07-28",
+  }
+}
+
+fn id_exists(id: RoadmapNodeId) -> Bool {
+  nodes() |> any(n => n.node == id)
+}
+
+fn id_count(id: RoadmapNodeId) -> Int {
+  nodes() |> filter(n => n.node == id) |> count
+}
+
+fn active_id_exists(id: RoadmapNodeId) -> Bool {
+  active_nodes() |> any(n => n.node == id)
+}
+
+fn edge_exists(child: String, parent: String) -> Bool {
+  edges() |> any(e => e.child == child && e.parent == parent)
+}
+
+fn node_has_carrier_path(path: String) -> Bool {
+  nodes() |> any(n => n.carriers |> any(p => p.path == path))
+}
+
+fn node_count_with_carrier_path(path: String) -> Int {
+  nodes() |> filter(n => n.carriers |> any(p => p.path == path)) |> count
+}
+
+fn mechanical_graph() -> CallGraph {
+  CallGraph {
+    edges: edges() |> map(e => GraphEdge {
+      caller: e.parent as String,
+      callee: e.child as String,
+    }),
+  }
+}
+
+fn node_names() -> List<String> {
+  nodes() |> map(n => n.node as String)
+}
+
+fn ticket_fields_complete(ticket: TicketFields) -> Bool {
+  !(ticket.headline == "")
+        && !(ticket.brief == "")
+        && !(ticket.displaced_cost == "")
+        && !(ticket.current_state == "")
+        && !(ticket.first_slice == "")
+        && !(ticket.red_control == "")
+        && !(ticket.out_of_scope == "")
+        && !(ticket.handback == "")
+}
+
+fn active_node_admissible(n: RoadmapNode) -> Bool {
+  !item_is_done(item: n.line, merged: [])
+    && !signoff_is_present(s: n.signoff)
+    && match line_ticket(item: n.line) {
+      Present { value } => ticket_fields_complete(ticket: value)
+      Absent => false
+    }
+    && count(n.carriers) > 0
+    && !(n.owner == "")
+    && match n.sizing {
+      Sized { intricacy: _, volume: _, repo, acceptance } =>
+        repo == "gunbc" && acceptance == ManualAcceptance
+      Unsized => false
+  }
+}
+
+fn red_fixture(line: RoadmapItem, signoff: Signoff) -> RoadmapNode {
+  RoadmapNode {
+    identity: "rnfx_8E5PG4F7CAZ148VZ8MNY" as RoadmapNodeIdentity,
+    node: "red-fixture",
+    line: line,
+    carriers: [Pointer { label: "authority", path: "DESIGN.md" }],
+    sizing: Sized {
+      intricacy: IntricacyMedium,
+      volume: VolumeMedium,
+      repo: "gunbc",
+      acceptance: ManualAcceptance,
+    },
+    execution: ExecutionContractUnspecified,
+    owner: "roadmap-authority",
+    signoff: signoff,
+  }
+}
+
+fn red_ticket(done: Bool) -> RoadmapItem {
+  TicketLine {
+    done: done,
+    ticket: TicketFields {
+      headline: "planted completed-row RED",
+      brief: "Every required field is populated so only the forbidden completion or acceptance state can reject this fixture.",
+      displaced_cost: "none",
+      current_state: "fixture",
+      first_slice: "fixture",
+      red_control: "fixture",
+      out_of_scope: "fixture",
+      handback: "fixture",
+      updates: [],
+      authored_on: "",
+      last_verified_on: "",
+    },
+  }
+}
+
+test fn witness_declared_graph_has_justified_size() -> Bool {
+  count(nodes()) > 0 && count(edges()) > 0
+    && count(active_nodes()) > 0 && count(active_edges()) > 0
+}
+
+test fn witness_declared_node_ids_are_unique() -> Bool {
+  all(nodes(), n => id_count(id: n.node) == 1)
+}
+
+test fn witness_every_edge_endpoint_exists() -> Bool {
+  all(edges(), e => id_exists(id: e.child) && id_exists(id: e.parent))
+}
+
+test fn witness_declared_graph_is_mechanically_acyclic() -> Bool {
+  all(edges(), e => !(e.parent == e.child))
+    && !graph_has_multi_node_scc(names: node_names(), graph: mechanical_graph())
+}
+
+test fn witness_every_declared_row_is_complete_unsigned_ticket() -> Bool {
+  all(nodes(), n => active_node_admissible(n: n))
+}
+
+data live_state_count_transcription_note: String = "NO LIVE-STATE COUNT PINS IN THIS FILE, deliberately, and the deleted ones are named so the class does not creep back. Removed: `count(accepted) == 8` here, and `\"63 declared · 8 accepted · 55 active\"` in test.claim.long.roadmap_page_witness. Both TRANSCRIBED a number nobody decided — they mirrored whatever the live authority happened to hold, so authoring any correct roadmap row redded them (observed twice; the second was PR #7463, whose only content was two new rows). A pin like that reports 'the roadmap changed', which is not a defect, while the reviewer's habit becomes editing the number to match — a check satisfied by editing the declaration, which DESIGN §5 names as the tell that validation stood where construction was available. THE DISTINCTION THAT DECIDES WHETHER A COUNT MAY STAY: does the number come from a fixture the test CONSTRUCTS, or from live corpus state? test.claim.roadmap_altitude_witness renders `doc_html(nodes: [done_signed_node(), open_node()])` and asserts `1 open · 1 done` — that is the renderer computing from two known inputs, so it is a specification and it stays; deleting it would remove real coverage. Same for the observation render witnesses over replayed fixture blocks, and for structural counts that encode a design fact rather than a population (two workflow lamps, three static routes). WHAT SURVIVED THE DELETION HERE, and why nothing was lost: this witness's actual invariant is the RELATIONSHIP `count(active_nodes()) == count(nodes()) - count(accepted)`, which is magnitude-independent and still asserted; the eight per-id acceptance assertions also stay, because they pin WHICH acceptances exist and a dropped one is real history loss (scm_prerequisite_acceptance_note). Only the magnitude went. Replacing it with `string_contains(page, roadmap_counts_label())` was considered and rejected as the vacuous form — both sides derive from the same function, so it asserts the page contains what the page computed (operator ruling 2026-07-30: no vacuous or tautological testing)."
+
+test fn witness_active_set_is_declared_minus_accepted() -> Bool {
+  match live_accepted_node_ids() {
+    Absent => false
+    Present { value: accepted } =>
+      (accepted |> any(a => a == "namespace-occurrence-transport"))
+        && (accepted |> any(a => a == "pderive-typesafe-nullary-reflection"))
+        && (accepted |> any(a => a == "pderive-static-supplemental-contract"))
+        && (accepted |> any(a => a == "v1-test-hygiene-producer-retirement"))
+        && (accepted |> any(a => a == "2-scm-git-upstream-model"))
+        && (accepted |> any(a => a == "2-scm-mercurial-upstream-model"))
+        && (accepted |> any(a => a == "2-scm-pijul-upstream-model"))
+        && (accepted |> any(a => a == "2-claim-indexed-evidence"))
+        && (accepted |> any(a => a == "2-scm-compatibility-shape"))
+        && (accepted |> any(a => a == "2-scm-p0-landing-spine"))
+        && count(active_nodes()) == count(nodes()) - count(accepted)
+        && all(active_nodes(), n => !(accepted |> any(a => a == n.node)))
+        && all(accepted, a => id_exists(id: a))
+  }
+}
+
+test fn witness_acceptance_receipts_are_valid_and_unique() -> Bool {
+  match roadmap_acceptance_receipts() {
+    RoadmapAcceptanceReceiptsProjectionRefused { detail: _ } => false
+    RoadmapAcceptanceReceiptsProjected { receipts: receipts } =>
+      count(receipts) > 0
+        && all(receipts, r => count(receipts |> filter(x => x.node == r.node)) == 1)
+        && all(receipts, r => id_exists(id: r.node))
+        && all(receipts, r => all(declared_node(id: r.node as String), n => receipt_matches_node(r: r, rn: n)))
+  }
+}
+
+test fn witness_accepted_parents_precede_dependents() -> Bool {
+  match live_accepted_node_ids() {
+    Absent => false
+    Present { value: accepted } =>
+      all(accepted, a => all(roadmap_parent_ids(edges: edges(), node: a), p => accepted |> any(x => x == p)))
+  }
+}
+
+test fn witness_stale_criteria_digest_refuses_acceptance() -> Bool {
+  let victims = declared_node(id: "namespace-occurrence-transport")
+  count(victims) == 1
+    && all(victims, n => !node_accepted(
+      receipts: [receipt_fixture(node: "namespace-occurrence-transport", digest: tchash(s: "0000000000000000"))],
+      rn: n,
+    ))
+}
+
+test fn witness_duplicate_receipts_refuse_acceptance() -> Bool {
+  match roadmap_acceptance_receipts() {
+    RoadmapAcceptanceReceiptsProjectionRefused { detail: _ } => false
+    RoadmapAcceptanceReceiptsProjected { receipts: all_receipts } => {
+      let rs = all_receipts |> filter(r => r.node == "namespace-occurrence-transport")
+      let victims = declared_node(id: "namespace-occurrence-transport")
+      count(rs) == 1
+        && count(victims) == 1
+        && all(victims, n => node_accepted(receipts: rs, rn: n))
+        && all(victims, n => !node_accepted(receipts: concat(rs, rs), rn: n))
+    }
+  }
+}
+
+test fn witness_unexecuted_or_undelivered_evidence_refuses_acceptance() -> Bool {
+  let victims = declared_node(id: "namespace-occurrence-transport")
+  count(victims) == 1
+    && all(victims, n => !node_accepted(receipts: [evidenceless_receipt_fixture(rn: n)], rn: n))
+    && all(victims, n => !node_accepted(receipts: [undelivered_receipt_fixture(rn: n)], rn: n))
+}
+
+test fn witness_receipt_for_unknown_node_accepts_nothing() -> Bool {
+  let ghost = receipt_fixture(node: "no-such-roadmap-node", digest: tchash(s: "0000000000000000"))
+  all(nodes(), n => !node_accepted(receipts: [ghost], rn: n))
+}
+
+data acceptance_receipt_continuity_witness_note: String = "THE WALL AGAINST SILENT RECEIPT DELETION (acceptance_receipt_continuity_wall_note). roadmap_acceptance_event_history loads from dag/gunbc/roadmap_acceptance_event_history.jsonl; roadmap_acceptance_receipts projects live receipts only. Live git-observed integrity executes in test.claim.roadmap_receipt_continuity_live_witness (ReadsLiveTree, bin_witness_wet_entries). RED controls in test.claim.roadmap_receipt_continuity_acceptance plant deleted events, prefix law, empty-prior bypass discriminant, digest-field mutation, wrong prior digest, revocation while live, duplicate revocations, exact revocation admit, criteria rewrite, git-refusal observation, and typed projection refusal chain."
+
+fn live_acceptance_event_history() -> List<RoadmapAcceptanceEvent> {
+  match roadmap_acceptance_event_history_load() {
+    RoadmapAcceptanceEventHistoryLoaded { events: events } => events
+    RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => []
+  }
+}
+
+test fn witness_vanished_receipt_without_revocation_refuses() -> Bool {
+  let prior = live_acceptance_event_history()
+  let current = prior
+    |> filter(e =>
+      match e {
+        AcceptanceRecorded { receipt: r } => r.node != tnid(s: "namespace-occurrence-transport")
+        AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } => true
+      }
+    )
+  !acceptance_history_extends_prior(prior: prior, current: current)
+}
+
+test fn witness_explicit_revocation_authorizes_vanished_receipt() -> Bool {
+  let prior = live_acceptance_event_history()
+  let receipt = first(
+    project_live_acceptance_receipts(history: prior)
+      |> filter(r => r.node == tnid(s: "namespace-occurrence-transport")),
+  )
+  let current = concat(prior, [
+    AcceptanceRevoked {
+      exact_prior_receipt: receipt,
+      disposition: AcceptanceNodeReopensActiveFrontier {},
+      reason: "fixture revocation witness" as NonEmptyStr,
+      revoked_by: "operator" as NonEmptyStr,
+      revoked_on: "2026-08-04" as NonEmptyStr,
+    },
+  ])
+  acceptance_history_extends_prior(prior: prior, current: current)
+    && acceptance_history_integrity_holds(
+      history: current,
+      prior_history: prior,
+    )
+}
+
+test fn witness_accepted_parent_discharges_active_dependency() -> Bool {
+  let act = active_edges()
+  !(act |> any(e => e.child == "namespace-binding-kernel" && e.parent == "namespace-occurrence-transport"))
+    && !(act |> any(e => e.child == "pderive-static-supplemental-contract" && e.parent == "pderive-typesafe-nullary-reflection"))
+    && !(act |> any(e => e.child == "2-scm-p0-landing-spine"))
+    && is_top_level(edges: act, node: "namespace-binding-kernel")
+    && !is_top_level(edges: act, node: "namespace-canonical-binding")
+    && is_top_level(edges: act, node: "pderive-static-supplemental-contract")
+    && is_top_level(edges: act, node: "2-scm-p0-landing-spine")
+    && edge_exists(child: "namespace-binding-kernel", parent: "namespace-occurrence-transport")
+    && edge_exists(child: "pderive-static-supplemental-contract", parent: "pderive-typesafe-nullary-reflection")
+    && edge_exists(child: "2-scm-compatibility-shape", parent: "2-scm-git-upstream-model")
+    && edge_exists(child: "2-scm-compatibility-shape", parent: "2-scm-mercurial-upstream-model")
+    && edge_exists(child: "2-scm-compatibility-shape", parent: "2-scm-pijul-upstream-model")
+    && !edge_exists(child: "2-scm-compatibility-shape", parent: "2-claim-indexed-evidence")
+    && edge_exists(child: "2-scm-p0-landing-spine", parent: "2-scm-compatibility-shape")
+    && edge_exists(child: "2-scm-p0-landing-spine", parent: "2-claim-indexed-evidence")
+}
+
+fn exit_line_bound_to(l: V1FinishLine, node: String) -> Bool {
+  let matches = v1_exit_finish_lines()
+    |> filter(s => v1_finish_line_key(l: s.line) == v1_finish_line_key(l: l))
+  count(matches) == 1 && all(matches, s => s.node == node && id_exists(id: s.node))
+}
+
+test fn witness_exit_model_finish_lines_bind_declared_terminals() -> Bool {
+  let specs = v1_exit_finish_lines()
+  count(specs) == 4
+    && all(specs, s => id_exists(id: s.node))
+    && exit_line_bound_to(l: CompilerFixedPoint, node: "v1-emitter-fixed-point")
+    && exit_line_bound_to(l: InterpreterDeleted, node: "v1-interpreter-delete")
+    && exit_line_bound_to(l: ProductsV1Free, node: "v1-products-v1-free")
+    && exit_line_bound_to(l: ZeroHandMaintainedRust, node: "v1-zero-hand-maintained-rust")
+    && match live_accepted_node_ids() {
+      Absent => false
+      Present { value: accepted } => v1_finish_lines_accepted_count(accepted: accepted) == 0
+    }
+}
+
+test fn witness_completed_ticket_cannot_reenter_active_graph() -> Bool {
+  !active_node_admissible(n: red_fixture(line: red_ticket(done: true), signoff: Unsigned))
+}
+
+test fn witness_accepted_ticket_cannot_reenter_active_graph() -> Bool {
+  !active_node_admissible(n: red_fixture(
+    line: red_ticket(done: false),
+    signoff: SignedOff {
+      by: "operator",
+      works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" },
+      scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] },
+      as_expected: true,
+    },
+  ))
+}
+
+test fn witness_superseded_row_cannot_reenter_active_graph() -> Bool {
+  !active_node_admissible(n: red_fixture(
+    line: SupersededLine { by: "replacement", content: "retired history" },
+    signoff: Unsigned,
+  ))
+}
+
+test fn witness_active_sizes_are_intentional_and_nonuniform() -> Bool {
+  all(nodes(), n => match n.sizing {
+    Sized { intricacy: _, volume: _, repo: _, acceptance: ManualAcceptance } => true
+    _ => false
+  })
+    && any(nodes(), n => match n.sizing {
+      Sized { intricacy: IntricacyLow, volume: VolumeSmall, repo: _, acceptance: _ } => true
+      _ => false
+    })
+    && any(nodes(), n => match n.sizing {
+      Sized { intricacy: IntricacyHigh, volume: VolumeLarge, repo: _, acceptance: _ } => true
+      _ => false
+    })
+}
+
+test fn witness_authority_contains_no_mutable_execution_ledger() -> Bool {
+  all(nodes(), n => match n.line {
+    TicketLine { done: _, ticket } =>
+      count(ticket.updates) == 0
+        && ticket.authored_on == ""
+        && ticket.last_verified_on == ""
+        && !string_contains(s: ticket.current_state, pattern: "PR #")
+        && !string_contains(s: ticket.current_state, pattern: "session/")
+        && !string_contains(s: ticket.current_state, pattern: "CI run")
+    _ => false
+  }) && count(authored_merged_prs()) == 0
+}
+
+test fn witness_namespace_chain_is_explicit() -> Bool {
+  edge_exists(child: "namespace-binding-kernel", parent: "namespace-occurrence-transport")
+    && edge_exists(child: "namespace-reference-derived-closure", parent: "namespace-binding-kernel")
+    && edge_exists(child: "namespace-ambiguity-discharge", parent: "namespace-reference-derived-closure")
+    && edge_exists(child: "namespace-canonical-binding", parent: "namespace-ambiguity-discharge")
+    && !edge_exists(child: "namespace-canonical-binding", parent: "namespace-occurrence-transport")
+    && edge_exists(child: "namespace-bound-only-consumers", parent: "namespace-canonical-binding")
+    && edge_exists(child: "namespace-v2-import-completion", parent: "namespace-bound-only-consumers")
+    && edge_exists(child: "namespace-legacy-choice-retirement", parent: "namespace-v2-import-completion")
+}
+
+test fn witness_pderive_chain_and_namespace_prerequisite_are_explicit() -> Bool {
+    edge_exists(child: "pderive-static-supplemental-contract", parent: "pderive-typesafe-nullary-reflection")
+    && edge_exists(child: "pderive-source-slot-binding", parent: "pderive-static-supplemental-contract")
+    && edge_exists(child: "pderive-source-slot-binding", parent: "namespace-canonical-binding")
+    && edge_exists(child: "pderive-v2-emitter-consumer", parent: "pderive-source-slot-binding")
+    && edge_exists(child: "pderive-v2-emitter-consumer", parent: "v2-emitter-direct-rust-door")
+    && edge_exists(child: "pderive-error-movement-receipt", parent: "pderive-v2-emitter-consumer")
+}
+
+test fn witness_pderive_vertical_slice_gates_bootstrap_widening() -> Bool {
+    edge_exists(child: "v2-emitter-native-bootstrap", parent: "pderive-error-movement-receipt")
+}
+
+test fn witness_new_generator_precedes_fixed_point_and_old_generator_deletion() -> Bool {
+    edge_exists(child: "v2-emitter-direct-rust-door", parent: "v2-emitter-producer-provenance")
+    && edge_exists(child: "v2-emitter-first-behavioral-module", parent: "v2-emitter-direct-rust-door")
+    && edge_exists(child: "v2-emitter-native-bootstrap", parent: "v2-emitter-first-behavioral-module")
+    && edge_exists(child: "v1-emitter-fixed-point", parent: "v2-emitter-native-bootstrap")
+    && edge_exists(child: "v1-emitter-quarantine", parent: "v1-ci-floor-cutover")
+    && edge_exists(child: "v1-emitter-delete", parent: "v1-emitter-quarantine")
+    && edge_exists(child: "v1-interpreter-delete", parent: "v1-emitter-delete")
+}
+
+data native_cutover_edge_direction_note: String = "THE NATIVE EDGE POINTS THE OTHER WAY NOW, and this witness is what forced the change to be deliberate (2026-08-07). It previously required native-selected-witness-bundle to depend on the five-minute gate AND on warm-merge-admission. Both are now asserted ABSENT and the reverse edge is required instead, because the gate is an AGGREGATE OUTCOME: making the native cutover wait for it means the one step that removes the interpreter from the required path cannot start until the programme it contributes to has already succeeded. The warm-merge edge went with it because no input dependency was ever shown — the bundle needs a selected population, an emitter and a toolchain, none of which merge admission supplies.\n\nWHY THIS IS A REORDERING AND NOT A LOOSENING. The node is stale in a specific way: its first slice read 'merge #7599', #7599 is merged, and the cited production enrolment still ran none of its three selected members natively and fell back on all three. So the mechanism exists and the required path takes no benefit, which makes the cutover the first thing that should be startable rather than the last. With no parent, it is. The negatives are asserted rather than merely dropped so the old direction cannot return silently — a re-added dependency on the aggregate would red here, which is the property that was doing the work before and still is.\n\nSUPERSEDED IN PART BY THE CI2-0 STOP (operator ruling 2026-08-10). The reverse edge this note required — the gate depending on the native bundle — is now DELETED, not reversed again: gunbc.roadmap_authority five_minute_ci_gate_program_note records the measurement that decided it, a 3,290s floor carrying 97s of witness evaluation, so an infinitely fast evaluator leaves about 97 percent of the floor standing and native execution cannot be this gate's prerequisite. #8116 implemented the deletion in the authority and left this witness asserting the edge it removed, so the witness read main as broken while main was following the ruling. The clause is now a NEGATIVE on both directions: neither node depends on the other, and either edge returning would red here. What survives from this note unchanged is its reason for asserting absence rather than dropping the clause — a silent re-parenting is exactly what the negative exists to catch."
+
+test fn witness_five_minute_ci_gate_program_chain_is_explicit() -> Bool {
+  id_exists(id: "five-minute-ci-gate")
+    && active_id_exists(id: "five-minute-ci-gate")
+    && id_exists(id: "warm-merge-admission")
+    && id_exists(id: "native-selected-witness-bundle")
+    && id_exists(id: "module-grain-materialization")
+    && id_exists(id: "pre-index-materialization-lookup")
+    && id_exists(id: "phased-single-process-ci")
+    && id_exists(id: "per-entry-assembly-decomposition")
+    && !id_exists(id: "native-selected-witness-corpus")
+    && !id_exists(id: "exact-tree-materialization")
+    && edge_exists(child: "warm-merge-admission", parent: "five-minute-ci-gate")
+    && !edge_exists(child: "five-minute-ci-gate", parent: "native-selected-witness-bundle")
+    && !edge_exists(child: "native-selected-witness-bundle", parent: "five-minute-ci-gate")
+    && !edge_exists(child: "native-selected-witness-bundle", parent: "warm-merge-admission")
+    && edge_exists(child: "module-grain-materialization", parent: "five-minute-ci-gate")
+    && edge_exists(child: "pre-index-materialization-lookup", parent: "five-minute-ci-gate")
+    && edge_exists(child: "phased-single-process-ci", parent: "five-minute-ci-gate")
+    && edge_exists(child: "per-entry-assembly-decomposition", parent: "five-minute-ci-gate")
+    && edge_exists(child: "pre-index-materialization-lookup", parent: "module-grain-materialization")
+    && edge_exists(child: "per-entry-assembly-decomposition", parent: "module-grain-materialization")
+    && !edge_exists(child: "entry-graph-union-construction", parent: "five-minute-ci-gate")
+    && node_has_carrier_path(path: "docs/plans/five-minute-ci-gate-design.md")
+}
+
+test fn witness_observation_and_placement_chains_are_explicit() -> Bool {
+  edge_exists(
+    child: "observation-scoped-run-consumer",
+    parent: "observation-scoped-run-seed-growth-justification",
+  )
+    && edge_exists(child: "observation-ci-event-grouping", parent: "observation-scoped-run-consumer")
+    && edge_exists(child: "observation-collapse-watchdog-restatement", parent: "observation-ci-event-grouping")
+    && edge_exists(child: "observation-raw-print-retirement", parent: "observation-collapse-watchdog-restatement")
+    && edge_exists(child: "placement-live-roster-preflight", parent: "observation-scoped-run-consumer")
+    && edge_exists(child: "placement-two-host-warm-qualification", parent: "placement-live-roster-preflight")
+    && edge_exists(child: "placement-shadow-equality", parent: "placement-two-host-warm-qualification")
+    && edge_exists(child: "placement-atomic-authority-flip", parent: "placement-shadow-equality")
+}
+
+test fn witness_scoped_run_seed_growth_is_bounded_and_routed() -> Bool {
+  let j = observation_scoped_run_seed_growth_justification()
+  j.owning_dissolution_lane == "v1-hand-queue-drain"
+    && j.current_boundary == "dag/gunbc/observation_seed_render.dag; dag/test/claim/observation_seed_scoped_run_witness_test.dag; src/v1/stage0/src/cli_run.rs; src/v1/stage0/src/v1_interpreter.rs; src/v1/stage0/tests/scoped_run_observation.rs"
+    && string_contains(s: j.reason, pattern: "where the old runner starts a program")
+    && string_contains(s: j.trigger, pattern: "described operation")
+    && string_contains(s: j.trigger, pattern: "hollow out")
+    && id_exists(id: "observation-scoped-run-seed-growth-justification")
+    && node_has_carrier_path(path: "dag/gunbc/plans/cli_run_hollowing_plan.dag")
+}
+
+test fn witness_v1_exit_fan_in_matches_finish_line_split() -> Bool {
+  edge_exists(child: "v1-emitter-fixed-point", parent: "pderive-error-movement-receipt")
+    && edge_exists(child: "v1-verification-ledger", parent: "v1-emitter-fixed-point")
+    && edge_exists(child: "v1-ci-floor-cutover", parent: "v1-emitter-fixed-point")
+    && edge_exists(child: "v1-ci-floor-cutover", parent: "v1-honest-frontier")
+    && edge_exists(child: "v1-ci-floor-cutover", parent: "v1-verification-ledger")
+    && edge_exists(child: "v1-interpreter-quarantine", parent: "v1-ci-floor-cutover")
+    && !edge_exists(child: "v1-interpreter-quarantine", parent: "v1-hand-queue-drain")
+    && edge_exists(child: "v1-interpreter-delete", parent: "v1-interpreter-quarantine")
+    && !edge_exists(child: "v1-interpreter-delete", parent: "v1-test-migration")
+    && !edge_exists(child: "v1-interpreter-delete", parent: "v1-seed-honesty-decision")
+    && !edge_exists(child: "v1-interpreter-delete", parent: "namespace-legacy-choice-retirement")
+    && !edge_exists(child: "v1-interpreter-delete", parent: "pderive-error-movement-receipt")
+    && edge_exists(child: "v1-products-v1-free", parent: "v1-interpreter-delete")
+    && edge_exists(child: "v1-products-v1-free", parent: "v1-hand-queue-drain")
+    && edge_exists(child: "v1-zero-hand-maintained-rust", parent: "v1-products-v1-free")
+    && !edge_exists(child: "v1-zero-hand-maintained-rust", parent: "v1-interpreter-delete")
+    && edge_exists(child: "v1-zero-hand-maintained-rust", parent: "v1-test-migration")
+    && edge_exists(child: "v1-zero-hand-maintained-rust", parent: "v1-seed-honesty-decision")
+    && edge_exists(child: "v1-zero-hand-maintained-rust", parent: "namespace-legacy-choice-retirement")
+}
+
+test fn witness_import_deletion_gates_zero_hand_maintained_rust() -> Bool {
+  id_exists(id: "namespace-import-deletion")
+    && active_id_exists(id: "namespace-import-deletion")
+    && edge_exists(child: "namespace-import-deletion", parent: "namespace-legacy-choice-retirement")
+    && edge_exists(child: "v1-zero-hand-maintained-rust", parent: "namespace-import-deletion")
+}
+
+test fn witness_shell_roadmap_and_fleet_chains_are_explicit() -> Bool {
+  edge_exists(child: "shell-effectplan-to-bash", parent: "shell-typed-invocation")
+    && edge_exists(child: "shell-gate-migration", parent: "shell-effectplan-to-bash")
+    && edge_exists(child: "roadmap-runtime-ready-override", parent: "roadmap-runtime-identity-join")
+    && edge_exists(child: "roadmap-runtime-dispatch-consumer", parent: "roadmap-runtime-ready-override")
+    && edge_exists(child: "fleet-closed-loop-converge", parent: "shell-gate-migration")
+    && edge_exists(child: "fleet-receipt-qualified-control", parent: "fleet-anti-entropy-hygiene")
+}
+
+test fn witness_product_roots_have_no_false_roadmap_tool_dependency() -> Bool {
+  !edge_exists(child: "namespace-occurrence-transport", parent: "roadmap-runtime-identity-join")
+    && !edge_exists(child: "pderive-typesafe-nullary-reflection", parent: "roadmap-runtime-identity-join")
+    && !edge_exists(child: "observation-scoped-run-consumer", parent: "roadmap-runtime-identity-join")
+    && !edge_exists(child: "v1-test-hygiene-producer-retirement", parent: "roadmap-runtime-identity-join")
+    && !edge_exists(child: "v1-emitter-fixed-point", parent: "roadmap-runtime-identity-join")
+    && !edge_exists(child: "v1-materialization-kernel", parent: "roadmap-runtime-identity-join")
+    && !edge_exists(child: "v1-hand-queue-drain", parent: "roadmap-runtime-identity-join")
+    && !edge_exists(child: "v1-test-migration", parent: "roadmap-runtime-identity-join")
+    && !edge_exists(child: "v1-seed-honesty-decision", parent: "roadmap-runtime-identity-join")
+    && !edge_exists(child: "shell-typed-invocation", parent: "roadmap-runtime-identity-join")
+    && !edge_exists(child: "fleet-state-frontier", parent: "roadmap-runtime-identity-join")
+}
+
+data scm_prerequisite_witness_focus_note: String = "The accepted SCM sequence is checked against the authority rather than inferred from the focused markdown projection. P0 acceptance leaves the prerequisite spine as declared history; the operator-authored P1 node is the one active SCM slice and depends directly on P0. P2 and P3 remain absent rather than being implied by P1 activation. Carrier-path checks stay over the declared node population so accepting a node cannot erase its authority link."
+
+test fn witness_accepted_scm_sequence_activates_authored_p1_slice() -> Bool {
+  match live_accepted_node_ids() {
+    Absent => false
+    Present { value: accepted } =>
+  node_has_carrier_path(path: "docs/plans/dag-scm-design.md")
+    && node_count_with_carrier_path(path: "docs/plans/dag-scm-design.md") == 7
+    && !node_has_carrier_path(path: "docs/plans/node-subtree-visibility-grants.md")
+    && id_exists(id: "2-scm-git-upstream-model")
+    && id_exists(id: "2-scm-mercurial-upstream-model")
+    && id_exists(id: "2-scm-pijul-upstream-model")
+    && id_exists(id: "2-claim-indexed-evidence")
+    && id_exists(id: "2-scm-compatibility-shape")
+    && id_exists(id: "2-scm-p0-landing-spine")
+    && id_exists(id: "2-scm-p1-proof-kernel")
+    && !active_id_exists(id: "2-scm-git-upstream-model")
+    && !active_id_exists(id: "2-scm-mercurial-upstream-model")
+    && !active_id_exists(id: "2-scm-pijul-upstream-model")
+    && !active_id_exists(id: "2-claim-indexed-evidence")
+    && !active_id_exists(id: "2-scm-compatibility-shape")
+    && !active_id_exists(id: "2-scm-p0-landing-spine")
+    && active_id_exists(id: "2-scm-p1-proof-kernel")
+    && (accepted |> any(id => id == "2-scm-git-upstream-model"))
+    && (accepted |> any(id => id == "2-scm-mercurial-upstream-model"))
+    && (accepted |> any(id => id == "2-scm-pijul-upstream-model"))
+    && (accepted |> any(id => id == "2-claim-indexed-evidence"))
+    && (accepted |> any(id => id == "2-scm-compatibility-shape"))
+    && (accepted |> any(id => id == "2-scm-p0-landing-spine"))
+    && !(accepted |> any(id => id == "2-scm-p1-proof-kernel"))
+    && edge_exists(child: "2-scm-p1-proof-kernel", parent: "2-scm-p0-landing-spine")
+    && match bound_execution_contract_for(id: "2-scm-p1-proof-kernel") {
+      ExecutionContractUnspecified => false
+      ExecutionContract { validations, extra_capabilities } =>
+        count(validations) == 1
+          && count(extra_capabilities) == 0
+          && validations |> any(validation => match validation {
+            GunbcClaimValidation { entry, function } =>
+              (entry as String) == "dag/test/claim/source_integration_proof_kernel_acceptance_test.dag"
+                && function == "witness_p1_proof_kernel_acceptance_contract_holds"
+            CargoTestValidation { filter: _ } => false
+            CargoFmtValidation => false
+          })
+    }
+    && !id_exists(id: "2-scm-node-merge")
+    && !id_exists(id: "2-scm-design-partner-shadow")
+  }
+}
+
+test fn witness_namespace_reference_derived_closure_has_discriminating_contract() -> Bool {
+  match bound_execution_contract_for(id: "namespace-reference-derived-closure") {
+    ExecutionContractUnspecified => false
+    ExecutionContract { validations, extra_capabilities } =>
+      count(validations) == 1
+        && count(extra_capabilities) == 0
+        && validations |> any(validation => match validation {
+          GunbcClaimValidation { entry, function } =>
+            (entry as String) == "dag/test/claim/namespace_reference_derived_closure_acceptance_test.dag"
+              && function == "witness_namespace_reference_derived_closure_closing_contract_holds"
+          CargoTestValidation { filter: _ } => false
+          CargoFmtValidation => false
+        })
+  }
+}
+
+test fn witness_v2_emitter_direct_rust_door_has_discriminating_contract() -> Bool {
+  match bound_execution_contract_for(id: "v2-emitter-direct-rust-door") {
+    ExecutionContractUnspecified => false
+    ExecutionContract { validations, extra_capabilities } =>
+      count(validations) == 1
+        && count(extra_capabilities) == 0
+        && validations |> any(validation => match validation {
+          GunbcClaimValidation { entry, function } =>
+            (entry as String) == "src/v2/test/claim/long/direct_rust_door_production_group_test.dag"
+              && function == "direct_rust_door_production_group_closing_expectation_holds"
+          CargoTestValidation { filter: _ } => false
+          CargoFmtValidation => false
+        })
+  }
+}
+
+data projection_active_only_focus_independence_note: String = "THIS CLAIM READS THE FOCUS-INDEPENDENT VIEW, and that is the whole point of it (2026-08-07). Its subject is the ACTIVE-SET DERIVATION — declared minus validly accepted — so its three controls have to be about acceptance. Against roadmap_authority(), which applies roadmap_focus_selection, they are not: both negative controls name ACCEPTED nodes (namespace-occurrence-transport and pderive-typesafe-nullary-reflection), so any focus that stops selecting the namespace and P-derive lanes makes them absent because they are HIDDEN, and the claim goes green while proving nothing about acceptance. That is not hypothetical — it happened the moment the focus moved to the infrastructure lanes, and the positive control caught it by failing loudly rather than the negatives passing quietly, which is only luck about which way the focus happened to move.\n\nSo the two facts are separated. Whether an accepted row leaves the active set is asserted here, against NoFocus, where absence can only mean accepted. Whether the focused page hides what the policy says it hides belongs to the focus mechanism's own claims. Binding both to one rendering made the stronger fact hostage to a projection policy row that is expected to move, and DESIGN 5 already names the shape: a check satisfiable by editing a declaration is validation standing where the real subject was available. The precedent is witness_rendered_nodes_are_declared_or_derived, which reads BOTH documents deliberately and says why in rendered_containment_witness_note."
+
+test fn witness_projection_is_active_only() -> Bool {
+  let out = serialize_markdown_source(
+    doc: project_roadmap_to_markdown(
+      doc: roadmap_authority_for(focus: NoFocus),
+      merged: authored_merged_prs()
+    )
+  )
+  string_contains(s: out, pattern: "## Active deliverables — dependency order")
+    && string_contains(s: out, pattern: "Build and run every product without the old code present")
+    && !string_contains(s: out, pattern: "Keep track of exactly which name is which")
+    && !string_contains(s: out, pattern: "Stop the compiler from mixing up one type with another")
+    && !string_contains(s: out, pattern: "**superseded →**")
+    && !string_contains(s: out, pattern: "awaiting sign-off")
+    && !string_contains(s: out, pattern: "Operator TODO")
+}
+
+data execution_frontier_witness_note: String = "The execution-contract frontier is a COUNT, and these claims pin both of its halves. Before the first binding the count was zero — dispatch_environment_admit refused on every node, so nothing below Env in the workflow had ever executed end to end and the whole seven-segment strip was unreachable in production. A binding is therefore the gate for every downstream receipt, and an unwitnessed one could regress to zero silently (the way it already did once, when the 2026-07-27 authority refresh deleted the node that carried the prior contract and no claim noticed). The first claim proves the bound node yields a real contract rather than the fail-closed variant; the second proves the platform/task capability JOIN actually happens at admission — 8 fixed dispatch mechanics plus the one capability this contract's validation derives — which is the fact that turns a contract into an admissible environment; the third is the frontier itself, and it is the RED-shaped one: it fails if a binding is lost AND it fails if a second node is bound without this roster being updated, so the count in roadmap_execution_contract_frontier_note cannot silently drift from the authority it describes."
+
+fn bound_execution_contract_for(id: String) -> WorkItemExecutionContract {
+  match nodes()
+    |> filter(n => (n.node as String) == id)
+    |> map(n => n.execution)
+    |> first {
+    Present { value: c } => c
+    Absent => ExecutionContractUnspecified
+  }
+}
+
+test fn witness_shell_typed_invocation_carries_a_real_contract() -> Bool {
+  match bound_execution_contract_for(id: "shell-typed-invocation") {
+    ExecutionContractUnspecified => false
+    ExecutionContract { validations, extra_capabilities: _ } => count(validations) == 1
+  }
+}
+
+test fn witness_bound_contract_joins_platform_and_task_capabilities() -> Bool {
+  let caps = dispatch_required_capabilities(
+    contract: bound_execution_contract_for(id: "shell-typed-invocation"),
+  )
+  count(caps) == 9
+    && any(caps, c => execution_capability_label(capability: c) == "gunbc-claim-runner")
+}
+
+test fn witness_every_binding_carries_a_validation() -> Bool {
+  all(
+    nodes() |> filter(n => match n.execution {
+        ExecutionContractUnspecified => false
+        ExecutionContract { validations: _, extra_capabilities: _ } => true
+      }),
+    n => match n.execution {
+        ExecutionContractUnspecified => false
+        ExecutionContract { validations, extra_capabilities: _ } => count(validations) > 0
+      },
+  )
+}
+
+test fn witness_v1_test_migration_contract_names_retention_wall() -> Bool {
+  match bound_execution_contract_for(id: "v1-test-migration") {
+    ExecutionContractUnspecified => false
+    ExecutionContract { validations, extra_capabilities } =>
+      count(validations) == 1
+        && count(extra_capabilities) == 0
+        && validations |> any(validation => match validation {
+          GunbcClaimValidation { entry, function } =>
+            (entry as String) == "src/v2/test/claim/manual/test_migration_debt_test.dag"
+              && function == "retained_rust_kernel_wall_holds_against_live_tree"
+          CargoTestValidation { filter: _ } => false
+          CargoFmtValidation => false
+        })
+  }
+}
+
+test fn witness_bound_pair_covers_both_verify_directions() -> Bool {
+  match bound_execution_contract_for(id: "observation-raw-print-retirement") {
+    ExecutionContractUnspecified => false
+    ExecutionContract { validations, extra_capabilities: _ } => count(validations) == 1
+  }
+    && match bound_execution_contract_for(id: "shell-typed-invocation") {
+      ExecutionContractUnspecified => false
+      ExecutionContract { validations, extra_capabilities: _ } => count(validations) == 1
+    }
+}
+
+data rendered_containment_witness_note: String = "RENDERED NODES ARE DECLARED OR DERIVED — the wall against a second roadmap universe. The 2026-07-31 operator verdict on gunbc#7489 found a section rendering nodes from a section-local list that never entered declared_roadmap_nodes(): those nodes bypassed acceptance receipts, active-set derivation, and every witness in this file, while looking exactly like roadmap rows on the page. The first claim runs the containment predicate over BOTH real documents (the focus-independent authority view and the focused ROADMAP.md view — a ghost hidden by focus in one can render in the other). The second is the RED: a synthetic document carrying one undeclared node must count exactly one ghost, proving the predicate discriminates rather than vacuously passing whatever renders."
+
+test fn witness_rendered_nodes_are_declared_or_derived() -> Bool {
+  roadmap_rendered_ghost_count(doc: roadmap_authority_for(focus: NoFocus)) == 0
+    && roadmap_rendered_ghost_count(doc: roadmap_authority()) == 0
+}
+
+test fn witness_ghost_node_outside_authority_is_counted() -> Bool {
+  roadmap_ghost_node_red_probe_count() == 1
+}
+
+test fn witness_altered_copy_of_declared_node_is_counted() -> Bool {
+  roadmap_altered_copy_red_probe_count() == 1
+}
+
+test fn witness_projected_dependency_edges_include_closing_contract_projection() -> Bool {
+  match closing_contract_task_edges_projection() {
+    ClosingContractTaskEdgesProjected { edges: closing_edges } =>
+      match projected_roadmap_dependency_edges_projection() {
+        ProjectedRoadmapDependencyEdgesProjected { edges: projected } =>
+          fold(closing_edges, init: true, f: fn(acc, edge) {
+            acc && projected |> any(p => p.child == edge.child && p.parent == edge.parent)
+          })
+        ProjectedRoadmapDependencyEdgesProjectionRefused { detail: _ } => false
+      }
+    ClosingContractTaskEdgesProjectionRefused { detail: _ } => false
+  }
+}
+
+test fn witness_projected_dependency_edges_include_active_edges() -> Bool {
+  match accepted_roadmap_node_ids_projection() {
+    AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
+      match projected_roadmap_dependency_edges_projection() {
+        ProjectedRoadmapDependencyEdgesProjected { edges: projected } =>
+          fold(active_roadmap_edges_for_accepted(accepted: accepted), init: true, f: fn(acc, edge) {
+            acc && projected |> any(p => p.child == edge.child && p.parent == edge.parent)
+          })
+        ProjectedRoadmapDependencyEdgesProjectionRefused { detail: _ } => false
+      }
+    AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => false
+  }
+}

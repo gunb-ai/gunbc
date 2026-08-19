@@ -1,0 +1,71 @@
+module v2.test.manual.structured_body_dispatch
+
+import v2.std.node {
+  Atom,
+  Node,
+  TypeNode,
+  node_synthetic,
+  well_formed
+}
+import v2.compiler.body_producer {
+  body_producer_dispatch_structured_body,
+  produce_arrow_with_structured_body
+}
+import v2.std.node_query { find_arrow_body_child }
+import v2.extdeps.languages.dag {
+  dag_add_arrow_signature_node,
+  dag_add_arrow_with_body_node,
+  dag_add_binary_body_node,
+  dag_pick_arrow_with_body_fixture
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+
+fn structured_body_non_behavior_node() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Atom { identity: ^structured_body_residual } },
+    children: []
+  )
+}
+
+fn structured_body_pick_branch_body() -> Node {
+  match find_arrow_body_child(root: dag_pick_arrow_with_body_fixture) {
+    Accepted { value: body, diagnostics: _ } => body
+    Rejected { diagnostics: _ } => structured_body_non_behavior_node()
+  }
+}
+
+test fn structured_body_dispatch_accepts_transform_call() -> Bool {
+  match body_producer_dispatch_structured_body(body: dag_add_binary_body_node()) {
+    Accepted { value: validated, diagnostics: _ } => validated == dag_add_binary_body_node()
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn structured_body_dispatch_accepts_branch() -> Bool {
+  let branch = structured_body_pick_branch_body()
+  match body_producer_dispatch_structured_body(body: branch) {
+    Accepted { value: validated, diagnostics: _ } => validated == branch
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn structured_body_dispatch_rejects_non_behavior() -> Bool {
+  match body_producer_dispatch_structured_body(body: structured_body_non_behavior_node()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn structured_body_produce_subsumes_add_table() -> Bool {
+  match produce_arrow_with_structured_body(
+    signature: dag_add_arrow_signature_node(),
+    structured_body: dag_add_binary_body_node()
+  ) {
+    Accepted { value: arrow_with_body, diagnostics: _ } =>
+      arrow_with_body == dag_add_arrow_with_body_node()
+        && well_formed(n: arrow_with_body)
+    Rejected { diagnostics: _ } => false
+  }
+}
+

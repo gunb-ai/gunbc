@@ -1,0 +1,139 @@
+module v2.test.manual.typescript_derive_grammar_relation_row_round_trip
+
+import v2.extdeps.languages.typescript {
+  ts_eager_grammar_relation_row_witness,
+  ts_exemplar_emitted_for_lhs,
+  ts_formal_production_fn_add,
+  ts_grammar_relation_row_node,
+  ts_inhabitant_atom,
+  ts_emitted_add_fn_node,
+  ts_fn_add_scaffold_relation_row_node,
+  ts_grammar_relation_row,
+  ts_canonical_add_fn_tokens,
+  ts_concrete_token_node,
+  ts_pr3_identity_relation_row_witness,
+  ts_pr3_identity_typed_fn_emitted,
+  ts_task_formal_productions,
+  ts_task_type_alias_emitted,
+  ts_task_type_alias_relation_row_witness,
+  ts_type_annotation_task_record_emitted
+}
+import v2.std.grammar {
+  derive_grammar_relation_row,
+  derive_grammar_relation_row_node,
+  formal_production_for_lhs_exact,
+  grammar_relation_row_to_node,
+  grammar_relation_tokens_node
+}
+
+import v2.std.logic { Bool }
+import v2.std.witness { Holds, Violates, Witness }
+import v2.std.node { Conj, Edge, Node, Positional, TypeNode, content_hash, SyntheticOccurrence }
+import v2.test.fixture.task_manager_demo { Task, create_task }
+
+fn ts_grammar_relation_tokens_root() -> Node {
+  grammar_relation_tokens_node(
+    tokens: ts_canonical_add_fn_tokens(),
+    token_to_node: ts_concrete_token_node
+  )
+}
+
+fn ts_grammar_relation_row_std_node() -> Node {
+  grammar_relation_row_to_node(
+    row: derive_grammar_relation_row(
+      production: ts_formal_production_fn_add(),
+      emitted: ts_emitted_add_fn_node()
+    ),
+    tokens: ts_grammar_relation_tokens_root()
+  )
+}
+
+data ts_derive_row_node_receipt: Witness<Node> = derive_grammar_relation_row_node(
+  production: ts_formal_production_fn_add(),
+  productions: [ts_formal_production_fn_add()],
+  emitted: ts_emitted_add_fn_node()
+)
+
+fn ts_task_type_alias_emitted_surplus_conj_slot() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_task) },
+      Edge { label: Positional, target: ts_type_annotation_task_record_emitted() },
+      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_surplus_conj_slot_dummy) }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+test fn ts_lhs_exact_arrow_emitted_rejects() -> Bool {
+  match formal_production_for_lhs_exact(
+    productions: ts_task_formal_productions(),
+    lhs: ^ts_production_type_alias_decl,
+    child: ts_emitted_add_fn_node()
+  ) {
+    Violates { diagnostic: d } => d.reason == ^grammar_relation_emitted_not_conj
+    Holds { value: _ } => false
+  }
+}
+
+test fn ts_task_derive_row_surplus_conj_slot_rejects() -> Bool {
+  match formal_production_for_lhs_exact(
+    productions: ts_task_formal_productions(),
+    lhs: ^ts_production_type_alias_decl,
+    child: ts_task_type_alias_emitted()
+  ) {
+    Holds { value: production } =>
+      match derive_grammar_relation_row_node(
+        production: production,
+        productions: ts_task_formal_productions(),
+        emitted: ts_task_type_alias_emitted_surplus_conj_slot()
+      ) {
+        Holds { value: _ } => false
+        Violates { diagnostic: _ } => true
+      }
+    Violates { diagnostic: _ } => false
+  }
+}
+
+test fn ts_task_derive_row_round_trip_holds() -> Bool {
+  match ts_task_type_alias_relation_row_witness() {
+    Holds { value: fixture_row } =>
+      match formal_production_for_lhs_exact(
+        productions: ts_task_formal_productions(),
+        lhs: ^ts_production_type_alias_decl,
+        child: ts_task_type_alias_emitted()
+      ) {
+        Holds { value: production } =>
+          match derive_grammar_relation_row_node(
+            production: production,
+            productions: ts_task_formal_productions(),
+            emitted: ts_task_type_alias_emitted()
+          ) {
+            Holds { value: derived_row } =>
+              content_hash(n: fixture_row) == content_hash(n: derived_row)
+            Violates { diagnostic: _ } => false
+          }
+        Violates { diagnostic: _ } => false
+      }
+    Violates { diagnostic: _ } => false
+  }
+}
+
+test fn ts_derive_grammar_relation_row_round_trip_holds() -> Bool {
+  content_hash(n: ts_grammar_relation_row_std_node()) ==
+    content_hash(n: ts_grammar_relation_row_node(row: ts_grammar_relation_row()))
+}
+
+test fn ts_pr3_identity_derive_row_round_trip_holds() -> Bool {
+  match ts_pr3_identity_relation_row_witness() {
+    Holds { value: eager_row } =>
+      match ts_eager_grammar_relation_row_witness(lhs: ^ts_production_pr3_typed_fn_decl) {
+        Holds { value: rederived } =>
+          content_hash(n: eager_row) == content_hash(n: rederived)
+        Violates { diagnostic: _ } => false
+      }
+    Violates { diagnostic: _ } => false
+  }
+}
+

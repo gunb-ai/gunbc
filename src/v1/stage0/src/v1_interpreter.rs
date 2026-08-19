@@ -965,6 +965,16 @@ pub enum InterpError {
         value: String,
     },
     DivisionByZero,
+    /// A native `Int` binop's true result does not fit `i64`. Native `Int` is a
+    /// bounded machine width (`std/integer.dag`'s `Compose<Int, MachineWidth<64>>` row);
+    /// wrapping past it silently answers a different number than the one asked for, which is
+    /// exactly the fabricated-plausible-output failure DESIGN section 5 forbids -- the same
+    /// class `DivisionByZero` already refuses three lines above this variant.
+    IntegerOverflow {
+        op: &'static str,
+        lhs: i64,
+        rhs: i64,
+    },
     Unimplemented {
         what: String,
     },
@@ -1089,7 +1099,7 @@ impl fmt::Display for InterpError {
             } => {
                 write!(
                     f,
-                    "eval budget exceeded: {}ms thread-CPU > {}ms fast-lane budget (operator ruling 2026-08-17, superseding the 5s rule of 2026-07-12; ceiling from required_floor_claim_budget_ms). This budget is enforced on THREAD CPU, not wall. RELOCATING THE FILE DOES NOT DISCHARGE IT: moving a witness under a long/ dir removes it from per-PR discovery without giving it an executing consumer, which deletes the coverage while retaining the source (the gunbc#7762 specimen behind the 2026-08-04 admission ruling). Either reduce the witness's cost, or enroll it in a lane that declares its own dated ceiling AND names the row as an executing consumer.",
+                    "eval budget exceeded: {}ms thread-CPU > {}ms fast-lane budget (operator ruling 2026-08-17, superseding the 5s rule of 2026-07-12; in the required-floor claim loop the ceiling is required_floor_claim_cpu_safety_limit_ms, an independent deadline from required_floor_claim_wall_safety_limit_ms per the 2026-08-19 budget policy cut's superseding correction — CPU and wall are never one scalar copied into both clocks). This budget is enforced on THREAD CPU, not wall. RELOCATING THE FILE DOES NOT DISCHARGE IT: moving a witness under a long/ dir removes it from per-PR discovery without giving it an executing consumer, which deletes the coverage while retaining the source (the gunbc#7762 specimen behind the 2026-08-04 admission ruling). Either reduce the witness's cost, or enroll it in a lane that declares its own dated ceiling AND names the row as an executing consumer.",
                     elapsed_ms, budget_ms
                 )
             }
@@ -1126,6 +1136,11 @@ impl fmt::Display for InterpError {
                 write!(f, "non-exhaustive pattern match on: {}", value)
             }
             InterpError::DivisionByZero => write!(f, "division by zero"),
+            InterpError::IntegerOverflow { op, lhs, rhs } => write!(
+                f,
+                "integer overflow: {} {} {} does not fit in a 64-bit Int",
+                lhs, op, rhs
+            ),
             InterpError::Unimplemented { what } => write!(f, "not yet implemented: {}", what),
             InterpError::EarlyReturn { .. } => write!(f, "internal: uncaught early return"),
             InterpError::AuthDeclaredButUnwired { service, reason } => write!(
@@ -1201,9 +1216,158 @@ struct PureCallMemo {
     keepalive_fns: Vec<Rc<Node>>,
 }
 
+/// `Symbol`-free mirror of `Value`, used as the cross-claim memo's storage shape.
+///
+/// A `Symbol` is an index into ONE `InterpContext`'s `SymbolInterner` (`v1_interpreter.rs`
+/// `resolve_sym`) — it carries no meaning outside that instance. Required-floor builds a
+/// FRESH `InterpContext` (fresh, empty interner) per claim by design (`cli_run.rs`
+/// `evaluation_frame`, "FRESH PER CLAIM"), while this memo's whole point is to survive
+/// across claims for the life of one prepared-subject run (`clear_cross_claim_pure_memos`
+/// is called once per `register_floor_prepared_authority`/`clear_floor_prepared_authority`,
+/// not per claim). Caching a raw `Value` there let a `Symbol` minted by claim N's interner
+/// be handed, unresolved-index-and-all, to claim N+1's unrelated interner: matching against
+/// it either missed every arm or hit the wrong one, and the `PatternMatchFailure`'s Display
+/// then resolved the stale index against claim N+1's interner and printed `<invalid-symbol>`
+/// (gunbc#8505; the 33 `body_lowering_*` floor-only rows in `floor_expected_red` chunk_14).
+/// Per-entry `claim_batch` never hit this because it keeps one interner live across the
+/// claims of an entry, so a memoized value's symbols stayed valid for every consumer.
+///
+/// The fix is the boundary translation the Realization pattern (DESIGN.md §4) already
+/// prescribes: de-symbolize to `PortableValue` (raw strings) at store time, while the
+/// producing ctx is still alive, and re-intern into the CONSUMING ctx's own interner at
+/// load time. `Closure`/`Fn` are not portable this way (their `Env` chain isn't a content
+/// snapshot) and are refused rather than guessed at — `prepare_grammar` never returns them.
+#[derive(Debug, Clone)]
+enum PortableValue {
+    Null,
+    Unit,
+    Bool(bool),
+    Int(i64),
+    Float(f64),
+    Str(Rc<str>),
+    List(Vec<PortableValue>),
+    Map(Vec<(PortableValue, PortableValue)>),
+    Set(Rc<OrdSet<String>>),
+    Record {
+        type_name: String,
+        fields: Vec<(String, PortableValue)>,
+    },
+    Variant {
+        type_name: String,
+        variant_name: String,
+        fields: Vec<(String, PortableValue)>,
+    },
+}
+
+fn portable_value_from_ctx(ctx: &InterpContext, value: &Value) -> Option<PortableValue> {
+    Some(match value {
+        Value::Null => PortableValue::Null,
+        Value::Unit => PortableValue::Unit,
+        Value::Bool(b) => PortableValue::Bool(*b),
+        Value::Int(i) => PortableValue::Int(*i),
+        Value::Float(f) => PortableValue::Float(*f),
+        Value::Str(s) => PortableValue::Str(s.clone()),
+        Value::List(items) => {
+            let mut out = Vec::with_capacity(items.len());
+            for item in items.iter() {
+                out.push(portable_value_from_ctx(ctx, item)?);
+            }
+            PortableValue::List(out)
+        }
+        Value::Map(m) => {
+            let mut out = Vec::with_capacity(m.len());
+            for (k, v) in m.iter() {
+                out.push((
+                    portable_value_from_ctx(ctx, &k.key)?,
+                    portable_value_from_ctx(ctx, v)?,
+                ));
+            }
+            PortableValue::Map(out)
+        }
+        Value::Set(members) => PortableValue::Set(members.clone()),
+        Value::Record { type_name, fields } => {
+            let mut out = Vec::with_capacity(fields.len());
+            for (k, v) in fields.iter() {
+                out.push((ctx.resolve(*k), portable_value_from_ctx(ctx, v)?));
+            }
+            PortableValue::Record {
+                type_name: ctx.resolve(*type_name),
+                fields: out,
+            }
+        }
+        Value::Variant {
+            type_name,
+            variant_name,
+            fields,
+        } => {
+            let mut out = Vec::with_capacity(fields.len());
+            for (k, v) in fields.iter() {
+                out.push((ctx.resolve(*k), portable_value_from_ctx(ctx, v)?));
+            }
+            PortableValue::Variant {
+                type_name: ctx.resolve(*type_name),
+                variant_name: ctx.resolve(*variant_name),
+                fields: out,
+            }
+        }
+        Value::Closure { .. } | Value::Fn { .. } => return None,
+    })
+}
+
+fn value_from_portable_ctx(ctx: &InterpContext, portable: &PortableValue) -> Value {
+    match portable {
+        PortableValue::Null => Value::Null,
+        PortableValue::Unit => Value::Unit,
+        PortableValue::Bool(b) => Value::Bool(*b),
+        PortableValue::Int(i) => Value::Int(*i),
+        PortableValue::Float(f) => Value::Float(*f),
+        PortableValue::Str(s) => Value::Str(s.clone()),
+        PortableValue::List(items) => list_value(
+            items
+                .iter()
+                .map(|p| value_from_portable_ctx(ctx, p))
+                .collect::<Vec<_>>(),
+        ),
+        PortableValue::Map(entries) => {
+            let fields: HamtMap<CanonKey, Value> = entries
+                .iter()
+                .filter_map(|(k, v)| {
+                    CanonKey::new(value_from_portable_ctx(ctx, k))
+                        .map(|ck| (ck, value_from_portable_ctx(ctx, v)))
+                })
+                .collect();
+            map_value(fields)
+        }
+        PortableValue::Set(members) => Value::Set(members.clone()),
+        PortableValue::Record { type_name, fields } => Value::Record {
+            type_name: ctx.sym(type_name),
+            fields: Rc::new(
+                fields
+                    .iter()
+                    .map(|(k, v)| (ctx.sym(k), value_from_portable_ctx(ctx, v)))
+                    .collect(),
+            ),
+        },
+        PortableValue::Variant {
+            type_name,
+            variant_name,
+            fields,
+        } => Value::Variant {
+            type_name: ctx.sym(type_name),
+            variant_name: ctx.sym(variant_name),
+            fields: Rc::new(
+                fields
+                    .iter()
+                    .map(|(k, v)| (ctx.sym(k), value_from_portable_ctx(ctx, v)))
+                    .collect(),
+            ),
+        },
+    }
+}
+
 #[derive(Default)]
 struct PrepareGrammarCrossClaimMemo {
-    map: HashMap<(usize, u64), Value>,
+    map: HashMap<(usize, u64), PortableValue>,
 }
 
 thread_local! {
@@ -1248,7 +1412,9 @@ fn try_cross_claim_pure_memo(
             _ => return None,
         };
         let memo_key = (Rc::as_ptr(fn_node) as usize, content_hash);
-        return PREPARE_GRAMMAR_CROSS_CLAIM_MEMO.with(|m| m.borrow().map.get(&memo_key).cloned());
+        let portable =
+            PREPARE_GRAMMAR_CROSS_CLAIM_MEMO.with(|m| m.borrow().map.get(&memo_key).cloned())?;
+        return Some(value_from_portable_ctx(ctx, &portable));
     }
     None
 }
@@ -1264,13 +1430,109 @@ fn store_cross_claim_pure_memo(
         let mut hash_memo = ctx.eval_recompute_hash_memo.borrow_mut();
         if let Some(key) = eval_recompute_arg_key(&mut hash_memo, &args[0].1) {
             if let EvalRecomputeArgKey::ContentHash(h) = key {
-                keep_cross_claim_fn(fn_node);
-                PREPARE_GRAMMAR_CROSS_CLAIM_MEMO.with(|m| {
-                    m.borrow_mut()
-                        .map
-                        .insert((Rc::as_ptr(fn_node) as usize, h), result.clone())
-                });
+                if let Some(portable) = portable_value_from_ctx(ctx, result) {
+                    keep_cross_claim_fn(fn_node);
+                    PREPARE_GRAMMAR_CROSS_CLAIM_MEMO.with(|m| {
+                        m.borrow_mut()
+                            .map
+                            .insert((Rc::as_ptr(fn_node) as usize, h), portable)
+                    });
+                }
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod cross_claim_memo_tests {
+    use std::rc::Rc;
+
+    use im::{vector as im_vec, HashMap};
+
+    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_std_core::{make_expr_node, make_span, ExprData};
+
+    use super::{
+        list_value, store_cross_claim_pure_memo, try_cross_claim_pure_memo, ExecutionMode,
+        InterpContext, Value,
+    };
+
+    fn fresh_ctx() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    // Regression for gunbc#8505: the cross-claim `prepare_grammar` memo cached a raw
+    // `Value` (its `Symbol`s indexing into the PRODUCING ctx's interner) keyed only on
+    // fn-node identity + content hash, with no scope tied to which `InterpContext`
+    // consumes it. Required-floor builds a fresh ctx (fresh, empty interner) per claim,
+    // so a value stored under `ctx_a` and served unmodified to `ctx_b` resolved its
+    // `Symbol`s against the wrong interner. This test would have failed under the old
+    // (pre-`PortableValue`) code: `ctx_b`'s decoy vocabulary is interned in a different
+    // order than `ctx_a`'s, so a leaked raw `Symbol` index resolves to the WRONG name
+    // (or is out of bounds) in `ctx_b`, rather than merely happening to still work.
+    #[test]
+    fn cross_claim_memo_survives_a_fresh_consuming_context() {
+        let ctx_a = fresh_ctx();
+        // Decoy vocabulary interned into ctx_a BEFORE the memoized value's symbols, so
+        // "PreparedModeledGrammar"/"GrammarFirstAnalysis"/"stage" do not land at index 0.
+        let _ = ctx_a.sym("alpha_decoy_a");
+        let _ = ctx_a.sym("beta_decoy_a");
+
+        let ctx_b = fresh_ctx();
+        // A DIFFERENT decoy vocabulary, interned in a different order, so any symbol
+        // index that leaked unresolved from ctx_a would resolve to a different (or
+        // out-of-bounds) name under ctx_b rather than accidentally lining up.
+        let _ = ctx_b.sym("zzz_decoy_b_one");
+        let _ = ctx_b.sym("zzz_decoy_b_two");
+        let _ = ctx_b.sym("zzz_decoy_b_three");
+
+        let fn_node = make_expr_node(
+            Rc::new(ExprData::NoExprData),
+            Rc::new(im_vec![]),
+            None,
+            make_span(0, 0),
+        );
+
+        // A non-empty List argument routes through `EvalRecomputeArgKey::ContentHash`
+        // (a bare `Value::Str` would take the `StrHash` arm instead and never reach the
+        // cross-claim memo at all).
+        let arg = list_value(vec![Value::Int(42)]);
+        let args = [(None, arg)];
+
+        let result = Value::Variant {
+            type_name: ctx_a.sym("PreparedModeledGrammar"),
+            variant_name: ctx_a.sym("GrammarFirstAnalysis"),
+            fields: Rc::new(vec![(ctx_a.sym("stage"), Value::Str(Rc::from("first")))]),
+        };
+
+        store_cross_claim_pure_memo(&ctx_a, &fn_node, "prepare_grammar", &args, &result);
+
+        let loaded = try_cross_claim_pure_memo(&ctx_b, &fn_node, "prepare_grammar", &args)
+            .expect("cross-claim memo hit for the same fn identity + content hash");
+
+        match loaded {
+            Value::Variant {
+                type_name,
+                variant_name,
+                fields,
+            } => {
+                assert_eq!(ctx_b.resolve(type_name), "PreparedModeledGrammar");
+                assert_eq!(ctx_b.resolve(variant_name), "GrammarFirstAnalysis");
+                assert_eq!(fields.len(), 1);
+                assert_eq!(ctx_b.resolve(fields[0].0), "stage");
+                match &fields[0].1 {
+                    Value::Str(s) => assert_eq!(s.as_ref(), "first"),
+                    other => panic!("expected Str field, got {other:?}"),
+                }
+            }
+            other => panic!("expected Variant, got {other:?}"),
         }
     }
 }
@@ -1279,16 +1541,6 @@ fn store_cross_claim_pure_memo(
 struct ParseTableMemo {
     map: HashMap<(String, String, i64, Symbol), Value>,
     keepalive: Vec<Value>,
-    lookups: u64,
-    hits: u64,
-    inserts: u64,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct ParseTableMemoStats {
-    pub lookups: u64,
-    pub hits: u64,
-    pub inserts: u64,
 }
 
 // Recompute-trace ledger (diagnostic READ mode: reports, never gates — DESIGN §5
@@ -1857,7 +2109,9 @@ pub struct InterpContext {
     whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
     governed_services: RefCell<Option<Rc<std::collections::HashSet<String>>>>,
     // Cooperative per-witness eval deadline (operator ruling 2026-08-17; ceiling supplied by the
-    // caller from `v2.workflow.required_floor` `required_floor_claim_budget_ms`).
+    // caller from `v2.workflow.required_floor` `required_floor_claim_cpu_safety_limit_ms`, the
+    // CPU safety deadline — independent from the wall deadline that arms the sibling clock below,
+    // per the 2026-08-19 budget policy cut's superseding correction).
     // The bound must unwind from INSIDE eval as a typed error: witness evals run on
     // in-process worker threads with no kill authority, so a wall-clock bound imposed
     // from outside cannot terminate them (the Phase A governor lesson). The budget is
@@ -1953,15 +2207,6 @@ impl InterpContext {
 
     pub fn interner_stats_snapshot(&self) -> InternStats {
         self.symbols.borrow().stats()
-    }
-
-    pub fn parse_table_memo_stats_snapshot(&self) -> ParseTableMemoStats {
-        let st = self.parse_table_memo.borrow();
-        ParseTableMemoStats {
-            lookups: st.lookups,
-            hits: st.hits,
-            inserts: st.inserts,
-        }
     }
 
     pub fn account_retained_memory(&self, extra_roots: &[&Value]) -> MemoryAccounting {
@@ -3504,20 +3749,53 @@ fn describe_repr(v: &Value) -> String {
 
 fn eval_int_binop(op: &BinOp, a: i64, b: i64) -> InterpResult<Value> {
     match op {
-        BinOp::Add => Ok(Value::Int(a + b)),
-        BinOp::Sub => Ok(Value::Int(a - b)),
-        BinOp::Mul => Ok(Value::Int(a * b)),
+        BinOp::Add => a
+            .checked_add(b)
+            .map(Value::Int)
+            .ok_or(InterpError::IntegerOverflow {
+                op: "+",
+                lhs: a,
+                rhs: b,
+            }),
+        BinOp::Sub => a
+            .checked_sub(b)
+            .map(Value::Int)
+            .ok_or(InterpError::IntegerOverflow {
+                op: "-",
+                lhs: a,
+                rhs: b,
+            }),
+        BinOp::Mul => a
+            .checked_mul(b)
+            .map(Value::Int)
+            .ok_or(InterpError::IntegerOverflow {
+                op: "*",
+                lhs: a,
+                rhs: b,
+            }),
         BinOp::Div => {
             if b == 0 {
                 return Err(InterpError::DivisionByZero);
             }
-            Ok(Value::Int(a / b))
+            a.checked_div(b)
+                .map(Value::Int)
+                .ok_or(InterpError::IntegerOverflow {
+                    op: "/",
+                    lhs: a,
+                    rhs: b,
+                })
         }
         BinOp::Mod => {
             if b == 0 {
                 return Err(InterpError::DivisionByZero);
             }
-            Ok(Value::Int(a % b))
+            a.checked_rem(b)
+                .map(Value::Int)
+                .ok_or(InterpError::IntegerOverflow {
+                    op: "%",
+                    lhs: a,
+                    rhs: b,
+                })
         }
         BinOp::Lt => Ok(Value::Bool(a < b)),
         BinOp::Gt => Ok(Value::Bool(a > b)),
@@ -3560,12 +3838,104 @@ fn eval_unaryop(op: &UnaryOpKind, val: Value) -> InterpResult<Value> {
     match op {
         UnaryOpKind::Not => Ok(Value::Bool(!val.is_truthy())),
         UnaryOpKind::Neg => match val {
-            Value::Int(n) => Ok(Value::Int(-n)),
+            Value::Int(n) => n
+                .checked_neg()
+                .map(Value::Int)
+                .ok_or(InterpError::IntegerOverflow {
+                    op: "-",
+                    lhs: 0,
+                    rhs: n,
+                }),
             Value::Float(n) => Ok(Value::Float(-n)),
             _ => Err(InterpError::TypeError {
                 msg: format!("cannot negate {}", val.type_label()),
             }),
         },
+    }
+}
+
+#[cfg(test)]
+mod eval_int_binop_overflow_tests {
+    use super::{eval_int_binop, InterpError, Value};
+    use crate::std_syntax::BinOp;
+
+    #[test]
+    fn mul_overflow_refuses_instead_of_wrapping() {
+        // i64::MAX is ~9.2e18; 4_000_000_000 * 4_000_000_000 = 1.6e19 does not fit and
+        // must not silently wrap to a negative value (the fabrication this guards against).
+        match eval_int_binop(&BinOp::Mul, 4_000_000_000, 4_000_000_000) {
+            Err(InterpError::IntegerOverflow { op: "*", lhs, rhs }) => {
+                assert_eq!((lhs, rhs), (4_000_000_000, 4_000_000_000));
+            }
+            other => panic!("expected IntegerOverflow, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn add_overflow_refuses() {
+        match eval_int_binop(&BinOp::Add, i64::MAX, 1) {
+            Err(InterpError::IntegerOverflow { op: "+", .. }) => {}
+            other => panic!("expected IntegerOverflow, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn sub_overflow_refuses() {
+        match eval_int_binop(&BinOp::Sub, i64::MIN, 1) {
+            Err(InterpError::IntegerOverflow { op: "-", .. }) => {}
+            other => panic!("expected IntegerOverflow, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn in_range_mul_still_succeeds() {
+        assert_eq!(eval_int_binop(&BinOp::Mul, 6, 7).unwrap(), Value::Int(42));
+    }
+
+    #[test]
+    fn div_min_by_negative_one_refuses_instead_of_overflowing() {
+        // i64::MIN / -1 is not representable as i64 and must not panic or wrap.
+        match eval_int_binop(&BinOp::Div, i64::MIN, -1) {
+            Err(InterpError::IntegerOverflow { op: "/", .. }) => {}
+            other => panic!("expected IntegerOverflow, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn mod_min_by_negative_one_refuses_instead_of_overflowing() {
+        match eval_int_binop(&BinOp::Mod, i64::MIN, -1) {
+            Err(InterpError::IntegerOverflow { op: "%", .. }) => {}
+            other => panic!("expected IntegerOverflow, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn in_range_div_still_succeeds() {
+        assert_eq!(eval_int_binop(&BinOp::Div, 84, 2).unwrap(), Value::Int(42));
+    }
+}
+
+#[cfg(test)]
+mod eval_unaryop_overflow_tests {
+    use super::{eval_unaryop, InterpError, UnaryOpKind, Value};
+
+    #[test]
+    fn neg_of_i64_min_refuses_instead_of_wrapping() {
+        // -i64::MIN is not representable as i64 (wraps to i64::MIN in release).
+        match eval_unaryop(&UnaryOpKind::Neg, Value::Int(i64::MIN)) {
+            Err(InterpError::IntegerOverflow { op: "-", rhs, .. }) => {
+                assert_eq!(rhs, i64::MIN);
+            }
+            other => panic!("expected IntegerOverflow, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn neg_in_range_still_succeeds() {
+        assert_eq!(
+            eval_unaryop(&UnaryOpKind::Neg, Value::Int(42)).unwrap(),
+            Value::Int(-42)
+        );
     }
 }
 
@@ -4739,10 +5109,8 @@ macro_rules! v1_parse_table_arms {
                     };
                     let allows_memo = parse_table_materialization_allows_memo($ctx, table);
                     let mut st = $ctx.parse_table_memo.borrow_mut();
-                    st.lookups += 1;
                     if allows_memo {
                         if let Some(v) = st.map.get(&memo_key).cloned() {
-                            st.hits += 1;
                             drop(st);
                             record_parse_memo_lookup(&memo_key, true);
                             return Ok(Some(witness_holds(v, $ctx)));
@@ -4767,7 +5135,6 @@ macro_rules! v1_parse_table_arms {
                             st.keepalive.push((*key).clone());
                             st.keepalive.push((*value).clone());
                             st.map.insert(memo_key, (*value).clone());
-                            st.inserts += 1;
                         }
                     }
                     Ok(Some(result))
@@ -7231,8 +7598,138 @@ pub(crate) struct ShellResult {
     pub(crate) stderr: bounded_shell_host_drain::CapturedStreamEvidence,
 }
 
+/// Expand a `ProcessArgvExpansion` into argv words, one word per `CliArgument`.
+///
+/// SEED REALIZATION OF A MODELED LAW, not a seed-only special case. The authority is
+/// `v2.std.compilers.cli_surface` `ProcessArgvExpansion`, which states:
+///
+///     across the surface's arguments   -- ITERATE, never concatenate
+///     within one argument's fragments  -- CONCATENATE into exactly one word
+///
+/// WHY AN EXPLICIT ARM RATHER THAN A BETTER GUESS. `push_shell_argv_tokens` below decides
+/// "one word or many?" from the RUNTIME ENCODING of a generic value, and that distinction is
+/// genuinely erased: a `FreeMonoid<Str>` is equally a modeled String assembled from fragments
+/// and a modeled list whose members are strings. `value_as_host_string` and `free_monoid_to_vec`
+/// BOTH succeed on it, so no branch order recovers the intent -- reordering them would splice
+/// lists correctly and shred modeled strings. The missing fact is the transport ROLE, and this
+/// carrier supplies it nominally.
+///
+/// FAIL-CLOSED. Every shape mismatch is a typed error. There is deliberately no arm that falls
+/// through to the guessing path: a carrier that says "expand this" and then silently produced one
+/// joined word would be the exact defect it exists to remove (DESIGN section 5).
+fn push_process_argv_expansion(
+    argv: &mut Vec<String>,
+    fields: &[(Symbol, Value)],
+) -> InterpResult<()> {
+    let surface = fields
+        .iter()
+        .find(|(name, _)| resolve_sym(*name).rsplit('.').next() == Some("surface"))
+        .map(|(_, v)| v)
+        .ok_or_else(|| InterpError::TypeError {
+            msg: "ProcessArgvExpansion carries no `surface` field; argv expansion refuses rather \
+                  than emitting a guessed word"
+                .to_string(),
+        })?;
+    let arguments = match surface {
+        Value::Record { type_name, fields } => {
+            if resolve_sym(*type_name).rsplit('.').next() != Some("CliSurface") {
+                return Err(InterpError::TypeError {
+                    msg: format!(
+                        "ProcessArgvExpansion.surface must be a CliSurface record, found `{}`",
+                        resolve_sym(*type_name)
+                    ),
+                });
+            }
+            fields
+                .iter()
+                .find(|(name, _)| resolve_sym(*name).rsplit('.').next() == Some("arguments"))
+                .map(|(_, v)| v.clone())
+                .ok_or_else(|| InterpError::TypeError {
+                    msg: "CliSurface carries no `arguments` field".to_string(),
+                })?
+        }
+        other => {
+            return Err(InterpError::TypeError {
+                msg: format!(
+                    "ProcessArgvExpansion.surface must be a CliSurface record, found `{other}`"
+                ),
+            })
+        }
+    };
+    let items = match &arguments {
+        Value::List(items) => items.iter().cloned().collect::<Vec<_>>(),
+        variant @ Value::Variant { .. } => {
+            free_monoid_to_vec(variant).ok_or_else(|| InterpError::TypeError {
+                msg: "CliSurface.arguments is neither a native list nor a list-shaped value"
+                    .to_string(),
+            })?
+        }
+        other => {
+            return Err(InterpError::TypeError {
+                msg: format!("CliSurface.arguments must be a list, found `{other}`"),
+            })
+        }
+    };
+    for item in items {
+        let text = match &item {
+            Value::Record { type_name, fields } => {
+                if resolve_sym(*type_name).rsplit('.').next() != Some("CliArgument") {
+                    return Err(InterpError::TypeError {
+                        msg: format!(
+                            "CliSurface.arguments member must be a CliArgument record, found `{}`",
+                            resolve_sym(*type_name)
+                        ),
+                    });
+                }
+                fields
+                    .iter()
+                    .find(|(name, _)| resolve_sym(*name).rsplit('.').next() == Some("text"))
+                    .map(|(_, v)| v.clone())
+                    .ok_or_else(|| InterpError::TypeError {
+                        msg: "CliArgument carries no `text` field".to_string(),
+                    })?
+            }
+            other => {
+                return Err(InterpError::TypeError {
+                    msg: format!(
+                        "CliSurface.arguments member must be a CliArgument, found `{other}`"
+                    ),
+                })
+            }
+        };
+        // Concatenation is CORRECT here and only here: this is one argument's own text.
+        let word = value_as_host_string(&text).ok_or_else(|| InterpError::TypeError {
+            msg: "CliArgument.text is not a host string".to_string(),
+        })?;
+        // An EMPTY argument is a real argument and is pushed unchanged: `jq ""` passes one empty
+        // word, and silently dropping it would change arity -- the same boundary destruction the
+        // concatenating path performs, in the other direction.
+        //
+        // An embedded NUL REFUSES rather than reaching the exec boundary. A C argument vector is
+        // NUL-terminated, so no argument can contain one; std::process would reject it at spawn
+        // with an errno-shaped error naming neither the argument nor the surface. Refusing here
+        // yields a located diagnostic instead (DESIGN section 5: refuse, never widen or fabricate).
+        if word.contains('\0') {
+            return Err(InterpError::TypeError {
+                msg: format!(
+                    "CliArgument.text contains an embedded NUL at argv position {}; a process \
+                     argument vector is NUL-terminated and cannot carry one",
+                    argv.len()
+                ),
+            });
+        }
+        argv.push(word);
+    }
+    Ok(())
+}
+
 fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()> {
     match &val {
+        Value::Record { type_name, fields }
+            if resolve_sym(*type_name).rsplit('.').next() == Some("ProcessArgvExpansion") =>
+        {
+            push_process_argv_expansion(argv, fields)
+        }
         Value::Str(s) => {
             argv.push(s.to_string());
             Ok(())
