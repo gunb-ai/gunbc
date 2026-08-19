@@ -17,6 +17,7 @@ type OwnedArtifactKind =
   | BeltTimerUnit
   | FleetConvergeTimerUnit
   | TailscaleServeMapping
+  | DeployedTreeRemoteUnit
 
 type EnsuredDependencyKind =
     TailscalePackage
@@ -70,6 +71,7 @@ type TeardownDisposition
 fn owned_artifact_teardown_disposition(kind: OwnedArtifactKind) -> TeardownDisposition {
   match kind {
     ServeBinary => TeardownActs
+    DeployedTreeRemoteUnit => TeardownActs
     GunbcSourceTree => TeardownActs
     DispatchWorktreeRoot => TeardownActs
     AttemptStateRoot => TeardownActs
@@ -181,8 +183,37 @@ fn deployment_belt_timer_unit_name(names: DeploymentNames) -> std.types.NonEmpty
   join([deployment_belt_unit_stem(names: names), "-belt.timer"], "") as std.types.NonEmptyStr
 }
 
-fn deployment_belt_service_unit_path(names: DeploymentNames) -> std.types.NonEmptyStr {
-  join(["/etc/systemd/system/", deployment_belt_service_unit_name(names: names) as String], "") as std.types.NonEmptyStr
+// THE DEPLOYED TREE'S REMOTE IS A MEMBER, and it needs a unit of its own for an ordering reason
+// rather than an aesthetic one. The convergence must run AS THE SERVICE USER -- the tree is
+// service-user-owned and the deploy principal is the unprivileged ci-runner (emit_deploy_principal_note),
+// so a `git config` from the apply is EACCES on one side and outside the six sudo grants on the
+// other. That argues for the tree-sync unit, which already has the right principal.
+//
+// It cannot be the tree-sync unit. That unit is installed and started inside the GunbcSourceTree
+// step, which is FIRST in deployment_owned_steps, while ServeBinary is second -- so on a fresh
+// instance the gunbc binary the convergence invokes does not exist yet, and the leg would red the
+// first deploy of every new slot. Ordering the member AFTER ServeBinary is what makes the binary a
+// precondition the membership itself establishes.
+//
+// It sits THIRD -- immediately after GunbcSourceTree and ServeBinary, and before the belt timer.
+// An earlier cut of this change said "last" and placed it last; that was an inversion of
+// deployment_apply_order_note's own rule that dependencies precede their consumers, because the
+// remote is a prerequisite of every belt tick and a candidate belt would otherwise fire once
+// against the known-broken observation state before the correction ran. Third is the EARLIEST
+// position satisfying the fresh-instance constraint above, so it satisfies both; last satisfied
+// only one. Witness: deployed_tree_remote_witness_test
+// `the_remote_converges_after_its_inputs_and_before_the_belt` pins the sequence
+// tree,binary,remote,belt,route.
+fn deployment_tree_remote_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-tree-remote.service"], "") as NonEmptyStr
+}
+
+fn deployment_tree_remote_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_tree_remote_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+fn deployment_belt_service_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_belt_service_unit_name(names: names) as String], "") as NonEmptyStr
 }
 
 fn deployment_belt_timer_unit_path(names: DeploymentNames) -> std.types.NonEmptyStr {
@@ -302,10 +333,14 @@ fn deployment_owned_steps(
   names: DeploymentNames,
 ) -> std.types.List<DeploymentArtifactStep> {
   [
-    DeploymentArtifactStep { kind: GunbcSourceTree, path: instance.repo_root as String as std.types.NonEmptyStr },
-    DeploymentArtifactStep { kind: ServeBinary, path: instance.serve_binary as String as std.types.NonEmptyStr },
-    DeploymentArtifactStep { kind: DispatchWorktreeRoot, path: dashboard_instance_dispatch_worktree_root(instance: instance) as String as std.types.NonEmptyStr },
-    DeploymentArtifactStep { kind: AttemptStateRoot, path: dashboard_instance_dispatch_attempt_state_root(instance: instance) as String as std.types.NonEmptyStr },
+    DeploymentArtifactStep { kind: GunbcSourceTree, path: instance.repo_root as String as NonEmptyStr },
+    DeploymentArtifactStep { kind: ServeBinary, path: instance.serve_binary as String as NonEmptyStr },
+    DeploymentArtifactStep {
+      kind: DeployedTreeRemoteUnit,
+      path: deployment_tree_remote_unit_path(names: names),
+    },
+    DeploymentArtifactStep { kind: DispatchWorktreeRoot, path: dashboard_instance_dispatch_worktree_root(instance: instance) as String as NonEmptyStr },
+    DeploymentArtifactStep { kind: AttemptStateRoot, path: dashboard_instance_dispatch_attempt_state_root(instance: instance) as String as NonEmptyStr },
     DeploymentArtifactStep { kind: SystemdUnit, path: deployment_systemd_unit_path(names: names) },
     DeploymentArtifactStep { kind: BeltTimerUnit, path: deployment_belt_timer_unit_path(names: names) },
     DeploymentArtifactStep {
@@ -468,6 +503,7 @@ fn owned_artifact_retirement_disposition(kind: OwnedArtifactKind) -> RetirementD
     BeltTimerUnit => RetiresRuntime
     FleetConvergeTimerUnit => RetiresRuntime
     TailscaleServeMapping => RetirementPreserves
+    DeployedTreeRemoteUnit => RetiresRuntime
   }
 }
 
