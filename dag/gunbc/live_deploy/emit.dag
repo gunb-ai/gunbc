@@ -33,8 +33,16 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.layout {
   Doc, DocConcat,
   LayoutProtocol,
-  doc_concat, doc_line_of,
+  doc_concat, doc_line_of, doc_text,
   render
+}
+import extdeps.systemd.unit_file {
+  SystemdUnitFile, ServiceUnitFile,
+  SystemdInstallSection, NotInstallable,
+  SystemdUnitDirective, Description,
+  SystemdServiceDirective, ServiceType, ExecStart,
+  WorkingDirectory, ServiceUser, ServiceGroup,
+  serialize_systemd_unit_file,
 }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
@@ -348,22 +356,24 @@ fn emit_belt_timer_unit_doc(spec: DeploymentSpec) -> Doc {
 // and the unit of one slot must not converge the other's tree.
 fn emit_tree_remote_unit_doc(spec: DeploymentSpec) -> Doc {
   let svc = spec.service
-  doc_concat(parts: [
-    doc_line_of(text: "[Unit]"),
-    doc_line_of(text: "Description=gunbc deployed tree remote convergence (origin URL for fleet desired observation)"),
-    doc_line_of(text: ""),
-    doc_line_of(text: "[Service]"),
-    doc_line_of(text: "Type=oneshot"),
-    doc_line_of(text: concat("User=", svc.service_user)),
-    doc_line_of(text: concat("Group=", svc.service_user)),
-    doc_line_of(text: concat("WorkingDirectory=", svc.repo_root)),
-    doc_line_of(text: join([
-      "ExecStart=", svc.serve_binary,
-      " run --source-root dag --source-root src/v2",
-      " --entry dag/gunbc/deployed_tree_remote.dag --function ensure_deployed_tree_remote_wet",
-      " --arg repository_path=", svc.repo_root,
-    ], "")),
-  ])
+  doc_text(text: serialize_systemd_unit_file(file: ServiceUnitFile {
+    unit: [Description {
+      text: "gunbc deployed tree remote convergence (origin URL for fleet desired observation)" as NonEmptyStr,
+    }],
+    service: [
+      ServiceType { mode: "oneshot" as NonEmptyStr },
+      ServiceUser { name: svc.service_user },
+      ServiceGroup { name: svc.service_user },
+      WorkingDirectory { path: svc.repo_root },
+      ExecStart { command: join([
+        svc.serve_binary as String,
+        " run --source-root dag --source-root src/v2",
+        " --entry dag/gunbc/deployed_tree_remote.dag --function ensure_deployed_tree_remote_wet",
+        " --arg repository_path=", svc.repo_root as String,
+      ], "") as NonEmptyStr },
+    ],
+    install: NotInstallable,
+  }))
 }
 
 fn apply_tree_remote_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
