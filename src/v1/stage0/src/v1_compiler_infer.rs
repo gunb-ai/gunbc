@@ -5473,11 +5473,27 @@ pub fn infer_method_args_with_fold(
                                 } else {
                                     scope.clone()
                                 };
-                                infer_arg_with_element_type(
-                                    a.clone(),
-                                    element_type.clone(),
-                                    nf_scope.clone(),
-                                )
+                                if is_lambda_expr(nf_lam_value.clone()) {
+                                    infer_arg_with_element_type(
+                                        a.clone(),
+                                        element_type.clone(),
+                                        nf_scope.clone(),
+                                    )
+                                } else {
+                                    match scalar_shaped_builtin_method_arg_type(method_name.clone())
+                                    {
+                                        Some(declared_type) => infer_arg_with_element_type(
+                                            a.clone(),
+                                            declared_type,
+                                            nf_scope.clone(),
+                                        ),
+                                        None => infer_arg_with_element_type(
+                                            a.clone(),
+                                            element_type.clone(),
+                                            nf_scope.clone(),
+                                        ),
+                                    }
+                                }
                             }
                         }
                     }
@@ -5485,6 +5501,19 @@ pub fn infer_method_args_with_fold(
             }
             __result
         })
+    }
+}
+
+pub fn scalar_shaped_builtin_method_arg_type(method_name: Option<String>) -> Option<Rc<Node>> {
+    match method_name {
+        Some(mn) => {
+            if mn == "skip" || mn == "take" || mn == "at" || mn == "nth" || mn == "index" {
+                Some(int_type())
+            } else {
+                None
+            }
+        }
+        None => None,
     }
 }
 
