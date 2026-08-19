@@ -347,9 +347,6 @@ fn v1_freemonoid_filter_hand_written(traits: List<ReprGroundingDeriveTrait>) -> 
   traits |> filter(t => !(v1_freemonoid_hand_written_traits() |> any(h => h == t)))
 }
 
-// A param needs the supplemental bound exactly when it is an element of a FreeMonoid-headed
-// field type expression; a param needs a hand impl's STRUCTURAL bound when it is mentioned in
-// any field type expression at all (mirrors what the deleted derive would have bounded).
 fn v1_freemonoid_element_params(
   generic_param_names: List<String>,
   field_type_exprs: List<Node>,
@@ -372,8 +369,6 @@ fn v1_freemonoid_param_in_fields(
 }
 
 fn v1_freemonoid_supplemental_bound_spelling() -> String {
-  // Consumed from the shared rows, not restated: every row's `required` renders through the
-  // same spelling authority the derive attr uses. Distinct requireds join with " + ".
   unique_strings(items: rust_vec_freemonoid_supplemental_generic_bound_rows |> map(row => rust_trait_derive_spelling(row.required)))
     |> join(separator: " + ")
 }
