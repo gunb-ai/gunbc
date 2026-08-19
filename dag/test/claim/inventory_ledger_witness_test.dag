@@ -22,6 +22,19 @@ import product.inventory {
   InventoryLotIdentity,
   LandedCostEmpty,
   LandedCostSumRefused,
+  LandedCostRecorded,
+  LandedCostUnsettled,
+  LandedCostHeldPrivately,
+  LandedCostReading,
+  LandedCostReadingMicros,
+  LandedCostReadingUnsettled,
+  LandedCostReadingHeldPrivately,
+  LotLandedCostUnsettled,
+  LotLandedCostHeldPrivately,
+  CurrencyMismatchAcrossLots,
+  ReceiptRecorded,
+  ReceiptHeldPrivately,
+  lot_receipt_is_recorded,
   LandedCostTotal,
   LotAcquired,
   LotAlreadyAcquired,
@@ -46,12 +59,12 @@ import product.inventory {
   derive_inventory_balance,
   inventory_lot_allocator_initial,
   inventory_lot_identity_eq,
-  ledger_incremental_purchase_cash_micros,
+  ledger_incremental_purchase_cash,
   lot_catalog_exact_row,
   lot_catalog_is_read,
   lot_catalog_read_obligation,
   lot_catalog_same_exact_row,
-  lot_landed_cost_micros,
+  lot_landed_cost_reading,
   mint_inventory_lot_identity,
   stock_position_label,
   sum_landed_cost,
@@ -61,7 +74,7 @@ import std.currency { Eur, Usd }
 import std.decl_ref { decl_ref }
 import std.measure { MoneyOnce, money_amount_micro, money_once_micros }
 import std.nat { Nat }
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -85,11 +98,11 @@ fn usd_micros(count: Nat) -> MoneyOnce {
 fn ten_unit_lot() -> ProcurementLot {
   ProcurementLot {
     identity: first_lot_identity(),
-    receipt: "receipt-a" as ProcurementReceiptIdentity,
+    receipt: ReceiptRecorded { receipt: "receipt-a" as ProcurementReceiptIdentity },
     catalog: CatalogRowExact { row: decl_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_max_m12830_thermal_limits") },
     display_label: "Ampere Altra Max M128-30, tray" as NonEmptyStr,
     quantity_acquired: 10,
-    landed_cost: usd_micros(count: 1000003),
+    landed_cost: LandedCostRecorded { cost: usd_micros(count: 1000003) },
   }
 }
 
@@ -434,6 +447,14 @@ test fn w_more_assets_than_units_refuses() -> Bool {
 
 // --- WALL 4: historical landed basis survives consumption ------------------------------------------
 
+fn reading_is_micros(reading: LandedCostReading, expected: Int) -> Bool {
+  match reading {
+    LandedCostReadingMicros { micros: m } => m == expected
+    LandedCostReadingUnsettled => false
+    LandedCostReadingHeldPrivately => false
+  }
+}
+
 data w_basis_survives_consumption_note: String = "Two projections, one fact. The basis is read from the lot and takes no event list, so consumption cannot reach it; the incremental purchase cash is read from the ledger and only LotAcquired contributes to it. The assertion runs both readings over a SHORT ledger and over the same ledger with a full consumption tail appended, and requires all four numbers to agree pairwise — a consumption event that contributed cash, or a fold that recomputed the basis from what remains on the shelf, would break it."
 
 test fn w_consumption_leaves_basis_and_cash_untouched() -> Bool {
@@ -449,13 +470,18 @@ test fn w_consumption_leaves_basis_and_cash_untouched() -> Bool {
     },
     QuantitySold { lot: first_lot_identity(), quantity: 4, origin: DepartFromAvailable },
   ])
-  let basis_before = lot_landed_cost_micros(lot: lot)
-  let cash_before = ledger_incremental_purchase_cash_micros(lot: lot, events: short)
-  let cash_after = ledger_incremental_purchase_cash_micros(lot: lot, events: consumed)
-  basis_before == 1000003
-    && cash_before == 1000003
-    && cash_after == cash_before
-    && lot_landed_cost_micros(lot: lot) == basis_before
+  let basis_before = reading_is_micros(reading: lot_landed_cost_reading(lot: lot), expected: 1000003)
+  let cash_before = reading_is_micros(
+    reading: ledger_incremental_purchase_cash(lot: lot, events: short),
+    expected: 1000003,
+  )
+  let cash_after = reading_is_micros(
+    reading: ledger_incremental_purchase_cash(lot: lot, events: consumed),
+    expected: 1000003,
+  )
+  basis_before
+    && cash_before
+    && cash_after
     && match balance_of(lot: lot, events: consumed) {
       Absent => false
       Present { value: b } => b.installed == 6 && b.departed == 4 && b.available == 0
@@ -466,29 +492,33 @@ data w_no_per_unit_average_note: String = "The RED control for the per-unit aver
 
 test fn w_aggregate_basis_is_not_recoverable_from_a_per_unit_floor() -> Bool {
   let lot = ten_unit_lot()
-  let per_unit_floor = lot_landed_cost_micros(lot: lot) / 10
-  per_unit_floor == 100000
-    && per_unit_floor * 10 != lot_landed_cost_micros(lot: lot)
-    && lot_landed_cost_micros(lot: lot) == 1000003
+  match lot_landed_cost_reading(lot: lot) {
+    LandedCostReadingUnsettled => false
+    LandedCostReadingHeldPrivately => false
+    LandedCostReadingMicros { micros: m } => {
+      let per_unit_floor = m / 10
+      per_unit_floor * 10 != m && m == 1000003
+    }
+  }
 }
 
 test fn w_landed_cost_sums_within_one_currency_and_refuses_across() -> Bool {
   let lot = ten_unit_lot()
   let sibling = ProcurementLot {
     identity: second_lot_identity(),
-    receipt: "receipt-b" as ProcurementReceiptIdentity,
+    receipt: ReceiptRecorded { receipt: "receipt-b" as ProcurementReceiptIdentity },
     catalog: CatalogRowExact { row: decl_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_max_m12830_thermal_limits") },
     display_label: "Ampere Altra Max M128-30, tray" as NonEmptyStr,
     quantity_acquired: 5,
-    landed_cost: usd_micros(count: 500000),
+    landed_cost: LandedCostRecorded { cost: usd_micros(count: 500000) },
   }
   let euro_lot = ProcurementLot {
     identity: second_lot_identity(),
-    receipt: "receipt-c" as ProcurementReceiptIdentity,
+    receipt: ReceiptRecorded { receipt: "receipt-c" as ProcurementReceiptIdentity },
     catalog: CatalogRowExact { row: decl_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_max_m12830_thermal_limits") },
     display_label: "Ampere Altra Max M128-30, tray" as NonEmptyStr,
     quantity_acquired: 5,
-    landed_cost: MoneyOnce { amount: money_amount_micro(count: 500000), currency: Eur },
+    landed_cost: LandedCostRecorded { cost: MoneyOnce { amount: money_amount_micro(count: 500000), currency: Eur } },
   }
   match sum_landed_cost(lots: [lot, sibling]) {
     LandedCostTotal { total: t } =>
@@ -496,7 +526,12 @@ test fn w_landed_cost_sums_within_one_currency_and_refuses_across() -> Bool {
         && match sum_landed_cost(lots: [lot, euro_lot]) {
           LandedCostTotal { total: _ } => false
           LandedCostEmpty => false
-          LandedCostSumRefused { cause: c } => (c as String) == "currency_mismatch_across_lots"
+          LandedCostSumRefused { cause: c } =>
+            match c {
+              CurrencyMismatchAcrossLots { left: l, right: r } => l == Usd && r == Eur
+              LotLandedCostUnsettled { lot: _ } => false
+              LotLandedCostHeldPrivately { lot: _ } => false
+            }
         }
     LandedCostEmpty => false
     LandedCostSumRefused { cause: _ } => false
@@ -509,11 +544,11 @@ test fn w_summing_no_lots_is_empty_not_refused() -> Bool {
   let lot = ten_unit_lot()
   let euro_lot = ProcurementLot {
     identity: second_lot_identity(),
-    receipt: "receipt-c" as ProcurementReceiptIdentity,
+    receipt: ReceiptRecorded { receipt: "receipt-c" as ProcurementReceiptIdentity },
     catalog: lot.catalog,
     display_label: lot.display_label,
     quantity_acquired: 5,
-    landed_cost: MoneyOnce { amount: money_amount_micro(count: 500000), currency: Eur },
+    landed_cost: LandedCostRecorded { cost: MoneyOnce { amount: money_amount_micro(count: 500000), currency: Eur } },
   }
   match sum_landed_cost(lots: []) {
     LandedCostEmpty => true
@@ -528,7 +563,12 @@ test fn w_summing_no_lots_is_empty_not_refused() -> Bool {
     && match sum_landed_cost(lots: [lot, euro_lot]) {
       LandedCostEmpty => false
       LandedCostTotal { total: _ } => false
-      LandedCostSumRefused { cause: c } => (c as String) == "currency_mismatch_across_lots"
+      LandedCostSumRefused { cause: c } =>
+            match c {
+              CurrencyMismatchAcrossLots { left: l, right: r } => l == Usd && r == Eur
+              LotLandedCostUnsettled { lot: _ } => false
+              LotLandedCostHeldPrivately { lot: _ } => false
+            }
     }
 }
 
@@ -585,4 +625,113 @@ test fn w_unread_catalog_yields_no_exact_row_and_names_its_obligation() -> Bool 
     }
     && !lot_catalog_same_exact_row(left: unread, right: exact)
     && !lot_catalog_same_exact_row(left: unread, right: unread)
+}
+
+// --- landed-cost and receipt three-state controls ----------------------------------------------
+
+data w_landed_cost_states_note: String = "The three landed-cost arms are asserted by CONSTRUCTOR, in both directions, because the whole point of splitting them is that a consumer can tell them apart. A test that only checked 'not a number' would pass just as well against the single Withheld arm this split replaced, and would therefore be evidence for nothing."
+
+fn unsettled_lot() -> ProcurementLot {
+  ProcurementLot {
+    identity: first_lot_identity(),
+    receipt: ReceiptHeldPrivately,
+    catalog: CatalogRowUnread {
+      observed_family: "64GiB DDR4 RDIMM" as NonEmptyStr,
+      read_obligation: "read the exact part number off the delivered sticks" as NonEmptyStr,
+    },
+    display_label: "in-transit lot" as NonEmptyStr,
+    quantity_acquired: 32,
+    landed_cost: LandedCostUnsettled,
+  }
+}
+
+fn privately_costed_lot() -> ProcurementLot {
+  ProcurementLot {
+    identity: first_lot_identity(),
+    receipt: ReceiptHeldPrivately,
+    catalog: CatalogRowUnread {
+      observed_family: "64GiB DDR4 RDIMM" as NonEmptyStr,
+      read_obligation: "read the exact part number off the delivered sticks" as NonEmptyStr,
+    },
+    display_label: "settled lot, cost off-public" as NonEmptyStr,
+    quantity_acquired: 32,
+    landed_cost: LandedCostHeldPrivately,
+  }
+}
+
+test fn w_the_three_landed_cost_readings_are_distinguishable() -> Bool {
+  let recorded = match lot_landed_cost_reading(lot: ten_unit_lot()) {
+    LandedCostReadingMicros { micros: m } => m == 1000003
+    LandedCostReadingUnsettled => false
+    LandedCostReadingHeldPrivately => false
+  }
+  let unsettled = match lot_landed_cost_reading(lot: unsettled_lot()) {
+    LandedCostReadingUnsettled => true
+    LandedCostReadingMicros { micros: _ } => false
+    LandedCostReadingHeldPrivately => false
+  }
+  let private = match lot_landed_cost_reading(lot: privately_costed_lot()) {
+    LandedCostReadingHeldPrivately => true
+    LandedCostReadingMicros { micros: _ } => false
+    LandedCostReadingUnsettled => false
+  }
+  recorded && unsettled && private
+}
+
+// An unreadable cost must never read as zero. This is the control that would have caught the
+// obvious wrong implementation of the split, in which the reader falls back to no-cost and every
+// total built on it silently understates spend.
+test fn w_an_unreadable_cost_never_reads_as_zero_micros() -> Bool {
+  !reading_is_micros(reading: lot_landed_cost_reading(lot: unsettled_lot()), expected: 0)
+    && !reading_is_micros(reading: lot_landed_cost_reading(lot: privately_costed_lot()), expected: 0)
+}
+
+// A sum containing an unreadable lot refuses, names WHICH lot, and says which of the two ways it
+// was unreadable - it is not skipped and it does not contribute zero. Both causes are asserted so
+// the two arms cannot collapse into one.
+test fn w_a_sum_over_an_unreadable_lot_refuses_and_names_it() -> Bool {
+  let unsettled = match sum_landed_cost(lots: [ten_unit_lot(), unsettled_lot()]) {
+    LandedCostSumRefused { cause: c } =>
+      match c {
+        LotLandedCostUnsettled { lot: l } => inventory_lot_identity_eq(left: l, right: first_lot_identity())
+        LotLandedCostHeldPrivately { lot: _ } => false
+        CurrencyMismatchAcrossLots { left: _, right: _ } => false
+      }
+    LandedCostTotal { total: _ } => false
+    LandedCostEmpty => false
+  }
+  let private = match sum_landed_cost(lots: [ten_unit_lot(), privately_costed_lot()]) {
+    LandedCostSumRefused { cause: c } =>
+      match c {
+        LotLandedCostHeldPrivately { lot: l } => inventory_lot_identity_eq(left: l, right: first_lot_identity())
+        LotLandedCostUnsettled { lot: _ } => false
+        CurrencyMismatchAcrossLots { left: _, right: _ } => false
+      }
+    LandedCostTotal { total: _ } => false
+    LandedCostEmpty => false
+  }
+  unsettled && private
+}
+
+// Cash: a ledger with no acquisition genuinely caused no spend and reads a REAL zero, while the
+// same lot under an acquisition reads unreadable. Pairing the two is what keeps the honest zero
+// from being mistaken for the fabricated one.
+test fn w_cash_separates_a_real_zero_from_an_unreadable_cost() -> Bool {
+  let no_events = reading_is_micros(
+    reading: ledger_incremental_purchase_cash(lot: unsettled_lot(), events: []),
+    expected: 0,
+  )
+  let acquired = match ledger_incremental_purchase_cash(
+    lot: unsettled_lot(),
+    events: [LotAcquired { lot: first_lot_identity() }],
+  ) {
+    LandedCostReadingUnsettled => true
+    LandedCostReadingMicros { micros: _ } => false
+    LandedCostReadingHeldPrivately => false
+  }
+  no_events && acquired
+}
+
+test fn w_a_privately_held_receipt_is_distinguishable_from_a_recorded_one() -> Bool {
+  lot_receipt_is_recorded(lot: ten_unit_lot()) && !lot_receipt_is_recorded(lot: unsettled_lot())
 }

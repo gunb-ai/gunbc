@@ -1,0 +1,392 @@
+module product.installed_bom_reconcile
+
+import std.types { Bool, List, Int, NonEmptyStr }
+import product.placement_supply { HostIdentity }
+import extdeps.memory.types { DramModuleCatalogRow, MemoryPopulationRow }
+import extdeps.cpu.types { CpuModelCatalogRow }
+
+// WHAT A HOST IS BELIEVED TO CONTAIN IS NOT WHAT IT CONTAINS, and this module exists to keep the
+// two apart. An EXPECTATION is a claim someone makes about an installed bill of materials before
+// anybody reads it off the hardware; an OBSERVATION is a receipt from an instrument that looked.
+// Collapsing them is how a purchase record becomes a fleet fact, which is exactly the substitution
+// product.cooling_qualification warns about at the thermal boundary and this module refuses at the
+// identity boundary.
+//
+// The verdict is therefore THREE-VALUED and never two. Confirmed and Refused both require an
+// observation; the third state is that nobody looked, and it is a coverage obligation rather than
+// a pass. An unobserved host that reported Confirmed would make the observation program's own
+// deficit invisible - the absorbing fallback in its purest form, since the frequency of a
+// mismatch we never look for is zero by construction.
+//
+// A MISMATCH IS THE POINT. The reconciliation refuses loudly, at slot grain where the instrument
+// reports slots, naming the expected part, the observed part, and where it sat. A reconciliation
+// that answered "close enough" for a differing part number would be reporting the expectation
+// back to its author.
+//
+// NO PRICE, NO PURCHASE PROVENANCE. Nothing in this module carries money, order identity, or
+// where a part was bought. Those are private facts; the public model carries what the hardware
+// is, not what it cost.
+
+type DimmSlotLocator = NonEmptyStr where brand("DimmSlotLocator")
+
+// An observed part number either decodes to a cited catalog row or it does not, and the second
+// case is a first-class arm rather than a silent drop. A part with no catalog row is not a
+// mismatch and not a match: it is a grounding obligation, and reconciliation refuses on it so the
+// obligation surfaces instead of being answered by whichever comparison happened to be cheapest.
+type ObservedDimmIdentity
+  = ObservedDimmCataloged { catalog: DramModuleCatalogRow }
+  | ObservedDimmUncataloged { part_number: NonEmptyStr }
+
+type ObservedDimmSlot {
+  locator: DimmSlotLocator
+  identity: ObservedDimmIdentity
+  serial: NonEmptyStr?
+}
+
+// TWO INSTRUMENTS, TWO GRAINS, ONE RECONCILIATION. The BMC Redfish read this fleet already
+// performed reports a population - module times stick count - and carries no slot locator that
+// survives into the model; dmidecode reports one record per populated slot with the locator the
+// firmware assigns. These are different observations of one subject, not two subjects, so they
+// are arms of one coproduct feeding one fold. Forking the verdict per instrument would make the
+// slot-grain answer and the population-grain answer two authorities for one question.
+type HostDimmObservation
+  = DimmSlotsObserved { host: HostIdentity, slots: List<ObservedDimmSlot> }
+  | DimmPopulationObserved { host: HostIdentity, rows: List<MemoryPopulationRow> }
+  | DimmObservationAbsent { host: HostIdentity, cause: NonEmptyStr }
+
+type HostDimmExpectation {
+  host: HostIdentity
+  catalog: DramModuleCatalogRow
+  stick_count: Int
+}
+
+// A CONTRADICTION IS A REPORT, NOT A BOOLEAN, AND NOT A FIRST REFUSAL EITHER. Older observation
+// receipts of this fleet disagree with the current expectation, so the reconciliation's product
+// has to be the thing that settles them: every slot whose observed part differs is named, with
+// where it sat, what was expected there, and what was actually found. A fold that stopped at the
+// first difference would answer "at least one" - which is enough to fail a gate and useless for
+// reconciling two disagreeing receipts, because the second difference only appears after somebody
+// fixes the first.
+type DimmDiscrepancyLocation
+  = AtSlot { locator: DimmSlotLocator }
+  | AtPopulationGrain
+
+type DimmSlotDiscrepancy {
+  host: HostIdentity
+  location: DimmDiscrepancyLocation
+  expected_part: NonEmptyStr
+  observed: ObservedDimmIdentity
+}
+
+type DimmCountReconcile
+  = DimmCountMatches { count: Int }
+  | DimmCountDiffers { expected: Int, observed: Int }
+
+// Refused carries BOTH axes because they are independent findings: a population can hold the right
+// count of the wrong part, the right part in the wrong count, or both, and each combination sends
+// the reader somewhere different. Collapsing them into one cause would force the fold to pick
+// which half of a two-part contradiction to report.
+//
+// Refused is reachable only from the fold below, and only when the discrepancy list is nonempty or
+// the count differs. That is an invariant of the producer rather than of the carrier: the record
+// is writable by hand with an empty list and a matching count, which would be a refusal asserting
+// nothing. It sits at mechanically preventable, held by dimm_refusal_is_grounded and its witness,
+// and it climbs when the substrate can seal a constructor to one fold.
+type DimmReconcileVerdict
+  = DimmPopulationConfirmed { host: HostIdentity, stick_count: Int }
+  | DimmPopulationRefused {
+      host: HostIdentity
+      discrepancies: List<DimmSlotDiscrepancy>
+      count: DimmCountReconcile
+    }
+  | DimmObservationHostMismatch { expectation_host: HostIdentity, observation_host: HostIdentity }
+  | DimmPopulationUnconfirmed { host: HostIdentity, cause: NonEmptyStr }
+
+fn slot_discrepancies(
+  host: HostIdentity,
+  slots: List<ObservedDimmSlot>,
+  expected_part: NonEmptyStr,
+) -> List<DimmSlotDiscrepancy> {
+  if slots.length() == 0 {
+    []
+  } else {
+    match slots.first() {
+      Absent => []
+      Present { value: slot } => {
+        let rest = slot_discrepancies(
+          host: host,
+          slots: slots.skip(n: 1),
+          expected_part: expected_part,
+        )
+        match slot.identity {
+          ObservedDimmUncataloged { part_number } =>
+            concat(
+              [
+                DimmSlotDiscrepancy {
+                  host: host,
+                  location: AtSlot { locator: slot.locator },
+                  expected_part: expected_part,
+                  observed: slot.identity,
+                },
+              ],
+              rest,
+            )
+          ObservedDimmCataloged { catalog } =>
+            if catalog.part_number == expected_part {
+              rest
+            } else {
+              concat(
+                [
+                  DimmSlotDiscrepancy {
+                    host: host,
+                    location: AtSlot { locator: slot.locator },
+                    expected_part: expected_part,
+                    observed: slot.identity,
+                  },
+                ],
+                rest,
+              )
+            }
+        }
+      }
+    }
+  }
+}
+
+// The population instrument reports no slot locator, so its discrepancies are located at
+// AtPopulationGrain rather than being given a fabricated slot name. One discrepancy per differing
+// ROW, not per differing stick: the row is the grain the instrument actually reported.
+fn population_discrepancies(
+  host: HostIdentity,
+  rows: List<MemoryPopulationRow>,
+  expected_part: NonEmptyStr,
+) -> List<DimmSlotDiscrepancy> {
+  if rows.length() == 0 {
+    []
+  } else {
+    match rows.first() {
+      Absent => []
+      Present { value: row } => {
+        let rest = population_discrepancies(
+          host: host,
+          rows: rows.skip(n: 1),
+          expected_part: expected_part,
+        )
+        if row.module.part_number == expected_part {
+          rest
+        } else {
+          concat(
+            [
+              DimmSlotDiscrepancy {
+                host: host,
+                location: AtPopulationGrain,
+                expected_part: expected_part,
+                observed: ObservedDimmCataloged { catalog: row.module },
+              },
+            ],
+            rest,
+          )
+        }
+      }
+    }
+  }
+}
+
+fn population_stick_total(rows: List<MemoryPopulationRow>) -> Int {
+  if rows.length() == 0 {
+    0
+  } else {
+    match rows.first() {
+      Absent => 0
+      Present { value: row } => row.stick_count + population_stick_total(rows: rows.skip(n: 1))
+    }
+  }
+}
+
+fn dimm_observation_host(observation: HostDimmObservation) -> HostIdentity {
+  match observation {
+    DimmSlotsObserved { host, slots: _ } => host
+    DimmPopulationObserved { host, rows: _ } => host
+    DimmObservationAbsent { host, cause: _ } => host
+  }
+}
+
+fn dimm_count_reconcile(expected: Int, observed: Int) -> DimmCountReconcile {
+  if expected == observed {
+    DimmCountMatches { count: observed }
+  } else {
+    DimmCountDiffers { expected: expected, observed: observed }
+  }
+}
+
+fn dimm_count_matches(count: DimmCountReconcile) -> Bool {
+  match count {
+    DimmCountMatches { count: _ } => true
+    DimmCountDiffers { expected: _, observed: _ } => false
+  }
+}
+
+fn dimm_verdict_from_findings(
+  expectation: HostDimmExpectation,
+  discrepancies: List<DimmSlotDiscrepancy>,
+  observed_count: Int,
+) -> DimmReconcileVerdict {
+  let count = dimm_count_reconcile(expected: expectation.stick_count, observed: observed_count)
+  if discrepancies.length() == 0 && dimm_count_matches(count: count) {
+    DimmPopulationConfirmed { host: expectation.host, stick_count: observed_count }
+  } else {
+    DimmPopulationRefused {
+      host: expectation.host,
+      discrepancies: discrepancies,
+      count: count,
+    }
+  }
+}
+
+fn dimm_reconcile_verdict(
+  expectation: HostDimmExpectation,
+  observation: HostDimmObservation,
+) -> DimmReconcileVerdict {
+  if expectation.host != dimm_observation_host(observation: observation) {
+    DimmObservationHostMismatch {
+      expectation_host: expectation.host,
+      observation_host: dimm_observation_host(observation: observation),
+    }
+  } else {
+    match observation {
+      DimmObservationAbsent { host, cause } => DimmPopulationUnconfirmed { host: host, cause: cause }
+      DimmSlotsObserved { host, slots } =>
+        dimm_verdict_from_findings(
+          expectation: expectation,
+          discrepancies: slot_discrepancies(
+            host: host,
+            slots: slots,
+            expected_part: expectation.catalog.part_number,
+          ),
+          observed_count: slots.length(),
+        )
+      DimmPopulationObserved { host, rows } =>
+        dimm_verdict_from_findings(
+          expectation: expectation,
+          discrepancies: population_discrepancies(
+            host: host,
+            rows: rows,
+            expected_part: expectation.catalog.part_number,
+          ),
+          observed_count: population_stick_total(rows: rows),
+        )
+    }
+  }
+}
+
+fn dimm_verdict_is_confirmed(verdict: DimmReconcileVerdict) -> Bool {
+  match verdict {
+    DimmPopulationConfirmed { host: _, stick_count: _ } => true
+    DimmPopulationRefused { host: _, discrepancies: _, count: _ } => false
+    DimmObservationHostMismatch { expectation_host: _, observation_host: _ } => false
+    DimmPopulationUnconfirmed { host: _, cause: _ } => false
+  }
+}
+
+// A refusal must have something in it. This is the predicate that makes the invariant checkable
+// while the carrier stays writable: a refusal naming no discrepancy and a matching count is
+// ungrounded, and the witness holds every fold-produced refusal to it.
+fn dimm_refusal_is_grounded(verdict: DimmReconcileVerdict) -> Bool {
+  match verdict {
+    DimmPopulationRefused { host: _, discrepancies, count } =>
+      discrepancies.length() > 0 || !dimm_count_matches(count: count)
+    DimmPopulationConfirmed { host: _, stick_count: _ } => true
+    DimmObservationHostMismatch { expectation_host: _, observation_host: _ } => true
+    DimmPopulationUnconfirmed { host: _, cause: _ } => true
+  }
+}
+
+// THE RECONCILING PRODUCT. Flattening every verdict's discrepancies gives one located report over
+// the whole fleet - host, where, expected, observed - which is what a disagreeing older receipt is
+// checked against. A confirmed or unobserved host contributes nothing, so the report's length is
+// the count of real contradictions and never a mixture of contradictions and silence.
+fn dimm_verdict_discrepancies(verdict: DimmReconcileVerdict) -> List<DimmSlotDiscrepancy> {
+  match verdict {
+    DimmPopulationRefused { host: _, discrepancies, count: _ } => discrepancies
+    DimmPopulationConfirmed { host: _, stick_count: _ } => []
+    DimmObservationHostMismatch { expectation_host: _, observation_host: _ } => []
+    DimmPopulationUnconfirmed { host: _, cause: _ } => []
+  }
+}
+
+fn dimm_discrepancy_report(verdicts: List<DimmReconcileVerdict>) -> List<DimmSlotDiscrepancy> {
+  if verdicts.length() == 0 {
+    []
+  } else {
+    match verdicts.first() {
+      Absent => []
+      Present { value: verdict } =>
+        concat(
+          dimm_verdict_discrepancies(verdict: verdict),
+          dimm_discrepancy_report(verdicts: verdicts.skip(n: 1)),
+        )
+    }
+  }
+}
+
+// THE PROCESSOR HALF. A processor model is one string the firmware reports, so the observation
+// carries that string rather than a catalog row: turning the reported model into a catalog row is
+// a decode, and performing it before comparison would let the decoder decide the comparison's
+// outcome. The expectation carries the cited row, and its model_number is what the comparison
+// reads.
+type HostProcessorObservation
+  = ProcessorModelObserved { host: HostIdentity, model_number: NonEmptyStr }
+  | ProcessorObservationAbsent { host: HostIdentity, cause: NonEmptyStr }
+
+type HostProcessorExpectation {
+  host: HostIdentity
+  catalog: CpuModelCatalogRow
+}
+
+type ProcessorReconcileVerdict
+  = ProcessorModelConfirmed { host: HostIdentity, model_number: NonEmptyStr }
+  | ProcessorModelRefused { host: HostIdentity, expected: NonEmptyStr, observed: NonEmptyStr }
+  | ProcessorObservationHostMismatch { expectation_host: HostIdentity, observation_host: HostIdentity }
+  | ProcessorModelUnconfirmed { host: HostIdentity, cause: NonEmptyStr }
+
+fn processor_observation_host(observation: HostProcessorObservation) -> HostIdentity {
+  match observation {
+    ProcessorModelObserved { host, model_number: _ } => host
+    ProcessorObservationAbsent { host, cause: _ } => host
+  }
+}
+
+fn processor_reconcile_verdict(
+  expectation: HostProcessorExpectation,
+  observation: HostProcessorObservation,
+) -> ProcessorReconcileVerdict {
+  if expectation.host != processor_observation_host(observation: observation) {
+    ProcessorObservationHostMismatch {
+      expectation_host: expectation.host,
+      observation_host: processor_observation_host(observation: observation),
+    }
+  } else {
+    match observation {
+      ProcessorObservationAbsent { host, cause } => ProcessorModelUnconfirmed { host: host, cause: cause }
+      ProcessorModelObserved { host, model_number } =>
+        if model_number == expectation.catalog.model_number {
+          ProcessorModelConfirmed { host: host, model_number: model_number }
+        } else {
+          ProcessorModelRefused {
+            host: host,
+            expected: expectation.catalog.model_number,
+            observed: model_number,
+          }
+        }
+    }
+  }
+}
+
+fn processor_verdict_is_confirmed(verdict: ProcessorReconcileVerdict) -> Bool {
+  match verdict {
+    ProcessorModelConfirmed { host: _, model_number: _ } => true
+    ProcessorModelRefused { host: _, expected: _, observed: _ } => false
+    ProcessorObservationHostMismatch { expectation_host: _, observation_host: _ } => false
+    ProcessorModelUnconfirmed { host: _, cause: _ } => false
+  }
+}
