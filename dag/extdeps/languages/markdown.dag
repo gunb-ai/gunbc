@@ -78,7 +78,7 @@ fn markdown_markup_medium(sp: extdeps.languages.markdown.MarkdownSpellings) -> s
       std.markup.TagDelimiter { tag: "strong", open: sp.strong_delim, close: sp.strong_delim },
       std.markup.TagDelimiter { tag: "code", open: sp.code_span_delim, close: sp.code_span_delim },
     ],
-    bracket: canonical_html_spellings,
+    bracket: extdeps.languages.html.canonical_html_spellings,
     text_escape: EscapeRaw,
     void_tags: [],
     void_rendering: OmitClose,
@@ -541,7 +541,7 @@ fn find_first_rejected_url_in_document(doc: std.markdown.MarkdownDocument) -> ex
 }
 
 fn serialize_markdown_document(doc: std.markdown.MarkdownDocument) -> String {
-  serialize_fragment(frag: markdown_document_to_fragment(doc: doc))
+  extdeps.languages.html_fragment.serialize_fragment(frag: markdown_document_to_fragment(doc: doc))
 }
 
 fn try_serialize_markdown_document(doc: std.markdown.MarkdownDocument) -> std.markup.MarkupSerializeResult {

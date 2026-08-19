@@ -2,11 +2,11 @@ module gunbc.plan_registry_batch_d
 
 
 data batch_d_plans: List<gunbc.plan.Plan> = [
-  emission_ingestion_inverse_plan,
-  testgen_oracle_plan,
-  disposition_carrier_plan,
-  fold_ergonomics_plan,
-  m4_universal_hermetic_corpus_plan,
-  wiring_liveness_preflight_plan,
-  interpreter_kernel_d_plan
+  gunbc.plans.emission_ingestion_inverse.emission_ingestion_inverse_plan,
+  gunbc.plans.testgen_oracle.testgen_oracle_plan,
+  gunbc.plans.disposition_carrier.disposition_carrier_plan,
+  gunbc.plans.fold_ergonomics.fold_ergonomics_plan,
+  gunbc.plans.m4_universal_hermetic_corpus.m4_universal_hermetic_corpus_plan,
+  gunbc.plans.wiring_liveness_preflight.wiring_liveness_preflight_plan,
+  gunbc.plans.interpreter_kernel_d.interpreter_kernel_d_plan
 ]

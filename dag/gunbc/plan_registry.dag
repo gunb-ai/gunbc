@@ -2,9 +2,9 @@ module gunbc.plan_registry
 
 
 data all_plans: List<gunbc.plan.Plan> = concat(
-  [idea_machine_plan],
-  concat(batch_b_plans,
-  concat(batch_c_plans,
-  concat(batch_d_plans,
-  concat(batch_e_plans,
-  concat(batch_f_plans, batch_g_plans))))))
+  [gunbc.plans.idea_machine.idea_machine_plan],
+  concat(gunbc.plan_registry_batch_b.batch_b_plans,
+  concat(gunbc.plan_registry_batch_c.batch_c_plans,
+  concat(gunbc.plan_registry_batch_d.batch_d_plans,
+  concat(gunbc.plan_registry_batch_e.batch_e_plans,
+  concat(gunbc.plan_registry_batch_f.batch_f_plans, gunbc.plan_registry_batch_g.batch_g_plans))))))
