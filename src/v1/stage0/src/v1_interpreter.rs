@@ -1089,7 +1089,7 @@ impl fmt::Display for InterpError {
             } => {
                 write!(
                     f,
-                    "eval budget exceeded: {}ms thread-CPU > {}ms fast-lane budget (operator ruling 2026-08-17, superseding the 5s rule of 2026-07-12; ceiling from required_floor_claim_budget_ms). This budget is enforced on THREAD CPU, not wall. RELOCATING THE FILE DOES NOT DISCHARGE IT: moving a witness under a long/ dir removes it from per-PR discovery without giving it an executing consumer, which deletes the coverage while retaining the source (the gunbc#7762 specimen behind the 2026-08-04 admission ruling). Either reduce the witness's cost, or enroll it in a lane that declares its own dated ceiling AND names the row as an executing consumer.",
+                    "eval budget exceeded: {}ms thread-CPU > {}ms fast-lane budget (operator ruling 2026-08-17, superseding the 5s rule of 2026-07-12; ceiling from required_floor_claim_safety_limit_ms, the safety deadline that arms both the CPU and wall interrupt clocks per the 2026-08-19 budget policy cut). This budget is enforced on THREAD CPU, not wall. RELOCATING THE FILE DOES NOT DISCHARGE IT: moving a witness under a long/ dir removes it from per-PR discovery without giving it an executing consumer, which deletes the coverage while retaining the source (the gunbc#7762 specimen behind the 2026-08-04 admission ruling). Either reduce the witness's cost, or enroll it in a lane that declares its own dated ceiling AND names the row as an executing consumer.",
                     elapsed_ms, budget_ms
                 )
             }
@@ -1857,7 +1857,8 @@ pub struct InterpContext {
     whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
     governed_services: RefCell<Option<Rc<std::collections::HashSet<String>>>>,
     // Cooperative per-witness eval deadline (operator ruling 2026-08-17; ceiling supplied by the
-    // caller from `v2.workflow.required_floor` `required_floor_claim_budget_ms`).
+    // caller from `v2.workflow.required_floor` `required_floor_claim_safety_limit_ms`, the safety
+    // deadline that arms this clock, per the 2026-08-19 budget policy cut split).
     // The bound must unwind from INSIDE eval as a typed error: witness evals run on
     // in-process worker threads with no kill authority, so a wall-clock bound imposed
     // from outside cannot terminate them (the Phase A governor lesson). The budget is

@@ -7510,14 +7510,30 @@ pub fn required_floor_cost_basis() -> RequiredFloorCostBasis {
 /// cost on both clocks (`VerdictReached`) — or did a safety deadline fire before it could
 /// (`SafetyInterrupted`).
 ///
-/// Field names are load-bearing, not cosmetic. `elapsed_at_least` is never `wall_ms`/`cpu_ms`:
-/// an interrupted figure is right-censored — the true cost is at least that number and is
-/// otherwise unknown, so a field name implying an exact measurement would misstate it.
-/// `safety_limit` is never `budget_ms`: it is no longer a budget, because it does not express
-/// what a claim is allowed to cost — that is the separate completed-cost line, judged only on
-/// `VerdictReached`. It is only the point past which a claim is presumed runaway and stopped.
-/// `clock` reuses `BudgetKind` rather than minting a second axis naming the same fact
-/// (DESIGN.md §3 — one concept, one authority).
+/// Field names are load-bearing, not cosmetic, and this shape was corrected once already
+/// (operator amendment to the 2026-08-19 ruling, superseding an interim `elapsed_at_least`
+/// spelling). Both clocks are read exactly, never as bounds: `run_claim_measured` samples
+/// `cpu_nanos`/`wall_nanos` around the WHOLE call and hands both to `PerformanceReceipt`
+/// unconditionally, so at the moment a safety deadline fires both clocks already hold a real,
+/// exact reading — there is no "elapsed so far" approximation to name, and burying a lower-bound
+/// reading in a field name is what let a bound be mistaken for a measurement in the first place
+/// (the same failure DESIGN.md §4b calls rung inflation, one field-name level down). So
+/// `observed_cpu_ms`/`observed_wall_ms` are exact observations of an interrupted claim's cost so
+/// far — never `exact_cpu_ms`/`exact_wall_ms`, which stay reserved for a verdict actually
+/// reached, because exactness of the reading and completeness of the run are different facts.
+/// The lower-bound / right-censored reading this used to spell as a field name (`elapsed_at_least`)
+/// is instead a DERIVED property of the arm itself: `SafetyInterrupted` is entered only when no
+/// verdict exists, so ANY consumer reading either duration off it already knows the claim's true
+/// cost is at least that number — the arm carries that fact structurally, the field does not need
+/// to repeat it, and `exceeds_completed_cost_line` below reads `SafetyInterrupted` as `false`
+/// unconditionally rather than comparing a censored reading to a line.
+/// `interrupt_trigger` (never `clock`) names which deadline fired; `clock` sat one field away
+/// from `RequiredFloorCostBasis` (`CpuCost | WallCost`, the axis choosing which of a completed
+/// claim's two exact readings judges its cost) and invited a reader to fuse "which deadline
+/// interrupted this claim" with "which clock this lane judges completed claims on" — two
+/// unrelated axes that happen to share a `BudgetKind`/`RequiredFloorCostBasis` vocabulary. The
+/// type itself is still `BudgetKind` (DESIGN.md §3 — one concept, one authority for "which clock"
+/// — only the field name that carries it changed).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClaimTerminality {
     VerdictReached {
@@ -7526,8 +7542,9 @@ pub enum ClaimTerminality {
         exact_wall_ms: u64,
     },
     SafetyInterrupted {
-        clock: BudgetKind,
-        elapsed_at_least: u64,
+        interrupt_trigger: BudgetKind,
+        observed_cpu_ms: u64,
+        observed_wall_ms: u64,
         safety_limit: u64,
     },
 }
@@ -7542,19 +7559,25 @@ pub enum ClaimTerminality {
 /// every other outcome, including a `TimedOut { completion: CompletedOverBudget }` (the claim
 /// DID finish; the completion-side backstop only reclassified its label), reached a verdict
 /// and carries exact costs read off the receipt.
+///
+/// `SafetyInterrupted`'s two durations are ALSO read off `receipt`, not off `outcome`'s single
+/// `elapsed_ms`: `run_claim_measured` samples both clocks around the same call regardless of how
+/// it ends, so both are genuine observations at interrupt time, not a bound derived from
+/// whichever clock happened to fire.
 pub fn claim_terminality(
     outcome: &ClaimOutcome,
     receipt: &v1_interpreter::PerformanceReceipt,
 ) -> ClaimTerminality {
     match outcome {
         ClaimOutcome::TimedOut {
-            elapsed_ms,
             budget_ms,
             kind,
             completion: BudgetCompletion::Interrupted,
+            ..
         } => ClaimTerminality::SafetyInterrupted {
-            clock: *kind,
-            elapsed_at_least: *elapsed_ms,
+            interrupt_trigger: *kind,
+            observed_cpu_ms: (receipt.cpu_nanos / 1_000_000) as u64,
+            observed_wall_ms: (receipt.wall_nanos / 1_000_000) as u64,
             safety_limit: *budget_ms,
         },
         _ => ClaimTerminality::VerdictReached {
