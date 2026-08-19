@@ -85,9 +85,10 @@ import extdeps.ampere.mt_collins_product_brief.platform {
 // deliberately absent: it is DERIVED from the surveyed rows on demand, so a
 // benchmark cannot record a figure the census refuses to produce. That is the
 // structural half of the evidence-polarity repair below — the old carrier let
-// a profile cite GitHub as supporting four GB per vCPU while the census was
-// refusing GitHub's arm64 sizes as nonuniform, because the citation was a
-// bare DeclarationRef with nothing to disagree with.
+// a profile cite GitHub as supporting four GB per vCPU while the census could
+// not derive any per-vCPU figure for GitHub at all — its five-vCPU/fourteen-GB
+// arm64 size makes the ratio non-integral — because the citation was a bare
+// DeclarationRef with nothing to disagree with.
 type MarketShapeBenchmark {
   provider_label: NonEmptyStr
   provider: DeclarationRef
@@ -1063,9 +1064,10 @@ data arm_value_profile: RunnerProductProfile = RunnerProductProfile {
 // market offers both, and which one gunbc sells is a policy choice rather than
 // a fact to be resolved by averaging.
 //
-// Its consulted set includes GitHub, whose arm64 sizes the census REFUSES as
-// nonuniform. Under the old flat basis that citation read as support for four
-// GB; here it derives as ContrastsOnRatioUniformity and the SKU stands on
+// Its consulted set includes GitHub, whose arm64 sizes the census cannot
+// reduce to any per-vCPU figure (the five-vCPU/fourteen-GB size makes the
+// ratio non-integral). Under the old flat basis that citation read as support
+// for four GB; here it derives as BenchmarkUnreadable and the SKU stands on
 // Depot and WarpBuild, which is what was actually true all along.
 data arm_memory_profile: RunnerProductProfile = RunnerProductProfile {
   label: "arm-memory",

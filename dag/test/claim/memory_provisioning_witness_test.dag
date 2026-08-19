@@ -318,31 +318,36 @@ test fn ubicloud_contradicts_the_four_gb_memory_sku() -> Bool {
 }
 
 // RED CONTROL, item 6b — the exact miscitation that stood on main. The
-// arm-memory SKU consults GitHub, and GitHub's arm64 sizes are NONUNIFORM, so
-// the census refuses to derive any per-vCPU figure for it. Under the old flat
-// basis this citation read as support for four GB; here it can only ever land
-// on the uniformity-contrast arm, and no declared figure can move it to
-// support.
+// arm-memory SKU consults GitHub, and the census cannot derive ANY per-vCPU
+// figure for GitHub's arm64 surface: its five-vCPU/fourteen-GB size makes the
+// ratio non-integral, so the sample has no per-vCPU figure to agree or
+// disagree with. Under the old flat basis that citation nonetheless read as
+// support for four GB.
+//
+// The claim is asserted against BOTH declared figures, which is what makes it
+// a statement about the benchmark rather than about one number: there is no
+// declared figure that could move GitHub's arm64 rows onto the supporting arm,
+// so no future edit to a SKU can quietly recruit it as support.
 test fn github_arm_cannot_support_any_declared_figure() -> Bool {
   match classify_benchmark(
     declared: arm_memory_profile.guaranteed_memory_per_entitlement,
     benchmark: github_arm_benchmark,
   ) {
-    ContrastsOnRatioUniformity { reading } =>
+    BenchmarkUnreadable { reading } =>
       match classify_benchmark(
         declared: arm_value_profile.guaranteed_memory_per_entitlement,
         benchmark: github_arm_benchmark,
       ) {
-        ContrastsOnRatioUniformity { reading } => true
+        BenchmarkUnreadable { reading } => true
         SupportsDeclaredRatio { advertised_per_entitlement, sizes_agreeing } => false
         ContrastsOnRatio { advertised_per_entitlement } => false
         ContrastsOnUnitWord { advertised_unit_label, declared_unit_label } => false
-        BenchmarkUnreadable { reading } => false
+        ContrastsOnRatioUniformity { reading } => false
       }
     SupportsDeclaredRatio { advertised_per_entitlement, sizes_agreeing } => false
     ContrastsOnRatio { advertised_per_entitlement } => false
     ContrastsOnUnitWord { advertised_unit_label, declared_unit_label } => false
-    BenchmarkUnreadable { reading } => false
+    ContrastsOnRatioUniformity { reading } => false
   }
 }
 
@@ -880,11 +885,12 @@ test fn a_2dpc_board_reaches_a_target_the_1dpc_board_cannot() -> Bool {
 }
 
 
-// GitHub's x64 sizes land on a THIRD standing again — unreadable, because the
-// two-vCPU/seven-GB standard runner makes the ratio non-integral. Three
-// providers, three different reasons a citation fails to support a figure, and
-// none of them expressible under the old flat basis: contradiction, refused
-// uniformity, and a sample the census cannot reduce to a ratio at all.
+// GitHub's x64 sizes are unreadable for the same reason its arm64 sizes are:
+// the two-vCPU/seven-GB standard runner makes the ratio non-integral. Asserted
+// separately from the arm row because they are different surveyed populations
+// reaching the same standing, and a single unreadable arm covering both would
+// not show that the x64 SKU — whose support comes from Depot and WarpBuild —
+// also consults a provider it cannot read.
 test fn github_x64_is_unreadable_rather_than_contradicting() -> Bool {
   match classify_benchmark(
     declared: x64_standard_profile.guaranteed_memory_per_entitlement,
