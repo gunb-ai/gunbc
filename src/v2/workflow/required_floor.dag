@@ -180,9 +180,29 @@ fn long_home_prefixes() -> List<String> {
 // preempt a computation that is still inside its CPU envelope. Whichever deadline fires first,
 // the occurrence is a `SafetyInterrupted` claim and BOTH limits are recorded on it (the ruling's
 // `cpu_safety_limit`/`wall_safety_limit` pair) -- neither limit is a cost allowance, and crossing
-// either blocks. Both remain TEMPORARY restoration-envelope values, not re-founded permanent
-// ceilings, and both are deliberately far above where any ordinary witness should land (measured
-// per-witness median ~1ms) so neither should fire against a healthy claim.
+// either blocks WHEN THE INTERPRETER'S COOPERATIVE POLL OBSERVES THE CROSSING. Both remain
+// TEMPORARY restoration-envelope values, not re-founded permanent ceilings, and both are
+// deliberately far above where any ordinary witness should land (measured per-witness median
+// ~1ms) so neither should fire against a healthy claim.
+//
+// PREEMPTION-1 (operator-directed, 2026-08-19): "crossing either blocks" above is conditioned on
+// the poll landing, and it need not land -- see `std.evaluation_budget`
+// `evaluation_budget_opaque_host_call_note` for the mechanism (eval_expr only polls on a stride
+// between its own calls, so a claim's cost spent entirely inside one opaque host call, such as a
+// `free_call.compile_dag_rust_emit_check` compiling a fixture, is invisible to both clocks for
+// its whole duration). The measured floor-side receipt: floor run 32301212975 recorded
+// `test.claim.long.root_d_checkpoint_scalar_declared_arity_witness`
+// `root_d_checkpoint_scalar_declared_arity_witness_holds` reaching a verdict (VerdictReached, not
+// SafetyInterrupted) at 60317ms CPU against this module's own 5000ms
+// `required_floor_claim_cpu_safety_limit_ms` -- twelve times over, uninterrupted, and not a first
+// occurrence (2792-2855ms isolated per docs/plans/witness-cost-first-touch-attribution.md, then
+// 60317ms under floor pressure). The safety deadline is real protection for a claim whose cost
+// accrues across many `eval_expr` calls; it is no protection at all -- not a looser one, none --
+// for a claim whose cost accrues inside one opaque host call. Recorded here so nothing is built
+// on top of these two constants on the assumption that arming them makes a host call
+// interruptible: it does not, and the honest remedy for a claim in this shape is either to reduce
+// what the host call reaches for or to bound it at its own boundary (the host call's own timeout,
+// or worker isolation per v1_interpreter's `eval_expr` comment), never a tighter number here.
 //
 // A completed claim's cost is judged on exactly one clock, chosen by the witness's PURPOSE and
 // never by measurement -- `v2.workflow.required_floor`'s claims execute Hermetic (pure in-process
