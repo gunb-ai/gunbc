@@ -352,13 +352,35 @@ grounded syntactic law for these keys to refine on: they are host-scoped and att
 built by two different consumers. **The field is `NonEmptyStr`.** A branded key may land later, but
 only together with its validating mint — strictly additive to the record, blocked by nothing here.
 
-**The per-witness run recipe is narrower than the brief claimed.** The brief told Cut A that
+**The per-witness run recipe depends on which binary you reach, and inside a gunbc checkout that
+is deliberately not yours.** The brief told Cut A that
 `gunbc run --source-root dag --source-root src/v2 --entry <claim file> --function <fn>` runs a
-single witness, with the not-`ProcessExit` refusal carrying the Bool. That route is real — verified
-by execution on `temporal_effect_spine_witness_test.dag`, which resolved and evaluated despite
-carrying zero import lines — but Cut A hit unresolved *type* references through it
-(`std.temporal_effect` `Millisecond`, `std.roster_frontier` `DissolutionCondition`) on the clean
-tree. So the route is not generally available, and the boundary is not yet established. Until it
-is, **the required-floor run is the only execution receipt that covers every witness**, and a cut
-whose controls depend on per-witness invocation should plan for a CI round trip rather than assume
-a local one.
+single witness, with the not-`ProcessExit` refusal carrying the Bool. Two wrong explanations were
+proposed and both are refuted by execution — Cut A's "the route cannot reach std at all", and my
+"it works for closure-local functions and fails on cross-module type reach". The second died on a
+clean measurement: three different `--function` selections from one file produce *identical*
+file-wide diagnostics naming lines in functions that were not selected, so `--function` selects
+nothing about resolution. A base-drift explanation died the same way, unchanged across five main
+commits spanning 129 commits.
+
+**The variable is the binary.** `/usr/local/ctrl-build-shims/gunbc` carries an explicit
+gunbc-checkout guard: when the cwd's origin is `gunb-ai/gunbc` it execs the *baked*
+`/usr/local/bin/gunbc` rather than routing, on the reasoning that a gunbc-development session wants
+its own interpreter rather than the pinned one. So a bare `gunbc` inside these worktrees reaches a
+binary that does not match the tree it is being pointed at. Measured on one specimen, same file,
+same function, same tree:
+
+| binary | result |
+| --- | --- |
+| `/usr/local/bin/gunbc` (baked, what bare `gunbc` reaches) | `resolved 1 sources`, then `unresolved type 'NonEmptyStr'`, `'ContentHash'`, `'Timestamp'`, … |
+| `./target/release/gunbc` (built from the tree) | evaluates, returns the value, refuses with not-`ProcessExit` |
+
+The baked binary reports `resolved 1 sources` — it never walks the source roots at all, so every
+type in the corpus is unresolved and the diagnostics land on whatever line mentions one first.
+That is why a stale binary looks like a modeling error in the file under test.
+
+**The rule for every cut in this program:** invoke the interpreter by explicit path
+(`./target/release/gunbc`), never bare `gunbc`, and treat a receipt as trustworthy only from a
+binary built from the tree being evaluated. A green or red from the baked binary is a fact about
+the pin, not about the change — and its failure mode is a plausible-looking located diagnostic in
+your own file, which is the fabricated-plausible-output shape aimed at the author's own instrument.
