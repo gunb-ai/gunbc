@@ -5,16 +5,27 @@ import std.nat { Nat }
 import std.measure {
   Bandwidth,
   ByteSize,
+  MegatransfersPerSecond,
   Milliwatt,
+  Percent,
   Watt,
   bandwidth_count,
   bit_width_count,
+  bits_per_byte,
   byte_size,
   byte_size_count,
+  mega_factor,
+  megatransfers_per_second,
+  megatransfers_per_second_count,
+  milliwatt,
   milliwatt_count,
+  milliwatt_to_watt_floor,
+  percent,
+  percent_count,
   watt,
   watt_count,
 }
+import extdeps.external_authority { ExternalAuthority }
 import extdeps.cpu.types { CpuModelCatalogRow }
 import extdeps.memory.types {
   DramModuleCatalogRow,
@@ -66,7 +77,64 @@ import gunbc.memory_provisioning {
 // PopulationOption.
 type MemoryElectricalContext {
   geometry: MemoryChannelGeometry
-  max_data_rate_mts: Nat
+  max_data_rate: MegatransfersPerSecond
+  two_dpc_ceilings: TwoDpcRateCeilingTable
+}
+
+// THE 2DPC DERATING TABLE, AND ITS EVIDENCE STANDING BESIDE IT. These ceilings
+// arrived with the physics relocated from the deleted product.hardware_selection,
+// where they were bare literals with no citation at all. Moving them into
+// extdeps/ under this repository's citation duty would require an authority that
+// has actually been read, and the Altra platform module states in its own
+// coverage note that it transcribes running text and NOT tables — a derating
+// table is exactly what it does not carry. Minting a citation there would be the
+// fabricated-symbol defect that module's notes exist to prevent.
+//
+// So the figures are carried where they are consumed, with their uncitedness
+// TYPED rather than invisible: a consumer can ask whether the ceiling it just
+// used is grounded, and the read obligation names what would ground it. This is
+// a declared boundary fact, not a silent constant.
+type RateCeilingEvidence
+  = CeilingCitedToAuthority { authority: ExternalAuthority }
+  | CeilingTranscribedUncited { read_obligation: NonEmptyStr }
+
+type TwoDpcRateCeiling {
+  min_rank_count: Nat
+  ceiling: MegatransfersPerSecond
+  evidence: RateCeilingEvidence
+}
+
+type TwoDpcRateCeilingTable {
+  rows: List<TwoDpcRateCeiling>
+}
+
+fn ceiling_is_cited(evidence: RateCeilingEvidence) -> Bool {
+  match evidence {
+    CeilingCitedToAuthority { authority: _ } => true
+    CeilingTranscribedUncited { read_obligation: _ } => false
+  }
+}
+
+// The ceilings this repository holds today, all uncited. Named as one
+// declaration so the population is countable and a later citation edits one row
+// rather than hunting literals.
+data altra_two_dpc_ceilings: TwoDpcRateCeilingTable = TwoDpcRateCeilingTable {
+  rows: [
+    TwoDpcRateCeiling {
+      min_rank_count: 4,
+      ceiling: megatransfers_per_second(count: 2400),
+      evidence: CeilingTranscribedUncited {
+        read_obligation: "cite the platform or JEDEC DDR4 two-DIMM-per-channel derating table for quad-rank modules; transcribed from the deleted product.hardware_selection, which carried it as a bare literal",
+      },
+    },
+    TwoDpcRateCeiling {
+      min_rank_count: 2,
+      ceiling: megatransfers_per_second(count: 2933),
+      evidence: CeilingTranscribedUncited {
+        read_obligation: "cite the platform or JEDEC DDR4 two-DIMM-per-channel derating table for dual-rank modules; transcribed from the deleted product.hardware_selection, which carried it as a bare literal",
+      },
+    },
+  ],
 }
 
 // A full-channel population is as deep as its topology says; a partial one has
@@ -87,30 +155,50 @@ fn min_nat(a: Nat, b: Nat) -> Nat {
   if a < b { a } else { b }
 }
 
-fn effective_data_rate_mts(
+fn min_rate(a: MegatransfersPerSecond, b: MegatransfersPerSecond) -> MegatransfersPerSecond {
+  megatransfers_per_second(
+    count: min_nat(a: megatransfers_per_second_count(r: a), b: megatransfers_per_second_count(r: b)),
+  )
+}
+
+// The deepest ceiling any row applies to this rank count. A fold over the table
+// rather than a literal ladder, so a third derating row is data and not a new
+// branch — and so the table above is genuinely the authority for the numbers
+// rather than a restatement of what the code does.
+fn ceiling_for_ranks(
+  table: TwoDpcRateCeilingTable,
+  rated: MegatransfersPerSecond,
+  rank_count: Nat,
+) -> MegatransfersPerSecond {
+  fold(table.rows, init: rated, f: fn(acc, row) {
+    if rank_count >= row.min_rank_count { min_rate(a: acc, b: row.ceiling) } else { acc }
+  })
+}
+
+fn effective_data_rate(
   context: MemoryElectricalContext,
   dimms_per_channel: Nat,
   rank_count: Nat,
-) -> Nat {
+) -> MegatransfersPerSecond {
   if dimms_per_channel <= 1 {
-    context.max_data_rate_mts
-  } else if rank_count >= 4 {
-    min_nat(a: context.max_data_rate_mts, b: 2400)
-  } else if rank_count >= 2 {
-    min_nat(a: context.max_data_rate_mts, b: 2933)
+    context.max_data_rate
   } else {
-    context.max_data_rate_mts
+    ceiling_for_ranks(
+      table: context.two_dpc_ceilings,
+      rated: context.max_data_rate,
+      rank_count: rank_count,
+    )
   }
 }
 
-fn dram_channel_bus_bytes() -> Nat {
-  bit_width_count(b: dram_data_word_width) / 8
+fn dram_channel_bus_bytes() -> ByteSize {
+  byte_size(count: bit_width_count(b: dram_data_word_width) / bits_per_byte())
 }
 
 // A second rank per channel lets the controller interleave, so a rank-starved
 // population does not reach the bus's rated throughput even at its rated clock.
-fn rank_interleave_percent(rank_count: Nat) -> Nat {
-  if rank_count >= 2 { 100 } else { 90 }
+fn rank_interleave_percent(rank_count: Nat) -> Percent {
+  if rank_count >= 2 { percent(count: 100) } else { percent(count: 90) }
 }
 
 // The platform downclocks to the SLOWEST module present, so the rated figure is
@@ -122,14 +210,21 @@ fn memory_bandwidth(
   let module = population.module
   let rated = min_nat(
     a: module.data_rate_mts,
-    b: effective_data_rate_mts(
-      context: context,
-      dimms_per_channel: populated_dimms_per_channel(population: population),
-      rank_count: module.rank_count,
+    b: megatransfers_per_second_count(
+      r: effective_data_rate(
+        context: context,
+        dimms_per_channel: populated_dimms_per_channel(population: population),
+        rank_count: module.rank_count,
+      ),
     ),
   )
-  let interleaved = rated * rank_interleave_percent(rank_count: module.rank_count) / 100
-  Bandwidth { count: interleaved * 1000000 * dram_channel_bus_bytes() * context.geometry.channels }
+  let interleaved = rated * percent_count(p: rank_interleave_percent(rank_count: module.rank_count)) / 100
+  Bandwidth {
+    count: interleaved
+      * mega_factor()
+      * byte_size_count(b: dram_channel_bus_bytes())
+      * context.geometry.channels,
+  }
 }
 
 fn devices_per_stick(module: DramModuleCatalogRow) -> Nat {
@@ -140,11 +235,12 @@ fn memory_power(
   population: PopulationOption,
   power_per_chip: Milliwatt,
 ) -> Watt {
-  watt(
-    count: milliwatt_count(w: power_per_chip)
-      * devices_per_stick(module: population.module)
-      * population.dimm_count
-      / 1000,
+  milliwatt_to_watt_floor(
+    w: milliwatt(
+      count: milliwatt_count(w: power_per_chip)
+        * devices_per_stick(module: population.module)
+        * population.dimm_count,
+    ),
   )
 }
 
@@ -152,14 +248,30 @@ fn memory_power(
 
 type EfficiencyRating = Plus80 | Bronze | Silver | Gold | Platinum | Titanium
 
-fn efficiency_percent(e: EfficiencyRating) -> Nat {
+// 80 PLUS IS AN EXTERNAL PROGRAM AND THIS TABLE IS A SIMPLIFICATION OF IT,
+// stated rather than left to be discovered. The program certifies efficiency at
+// FOUR load points (10, 20, 50 and 100 percent) and at two input voltages, so a
+// single figure per rating is at best the 50-percent-load 115 V column — the
+// figures below arrived as bare literals with the physics relocated from the
+// deleted product.hardware_selection and no citation came with them.
+//
+// The consequence is real: a node idling at 15 percent of its supply's rating is
+// materially less efficient than this table says, so the derived wall figure is
+// optimistic for a lightly loaded machine. That is exactly why the measured arm
+// of this module exists, and why the divergence is reported signed rather than
+// reconciled.
+//
+// DISSOLVES ON: the 80 PLUS specification cited in extdeps/ with its load-point
+// table, at which point efficiency becomes a function of load rather than of
+// rating alone.
+fn efficiency_percent(e: EfficiencyRating) -> Percent {
   match e {
-    Plus80 => 80
-    Bronze => 85
-    Silver => 88
-    Gold => 90
-    Platinum => 92
-    Titanium => 94
+    Plus80 => percent(count: 80)
+    Bronze => percent(count: 85)
+    Silver => percent(count: 88)
+    Gold => percent(count: 90)
+    Platinum => percent(count: 92)
+    Titanium => percent(count: 94)
   }
 }
 
@@ -245,7 +357,7 @@ fn dc_load_over_read_population(inputs: NodeElectricalInputs, population: Popula
 }
 
 fn wall_from_dc(dc: Watt, efficiency: EfficiencyRating) -> Watt {
-  watt(count: watt_count(w: dc) * 100 / efficiency_percent(e: efficiency))
+  watt(count: watt_count(w: dc) * 100 / percent_count(p: efficiency_percent(e: efficiency)))
 }
 
 fn node_draw(inputs: NodeElectricalInputs) -> NodeDrawReading {

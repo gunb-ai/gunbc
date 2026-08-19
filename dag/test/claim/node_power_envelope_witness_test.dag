@@ -1,11 +1,14 @@
 module test.claim.node_power_envelope_witness
 
-import std.types { Bool, NonEmptyStr }
+import std.types { Bool, Int, NonEmptyStr }
+import std.nat { Nat }
 import std.measure {
   ByteSize,
   bandwidth_count,
   byte_size,
   byte_size_count,
+  megatransfers_per_second,
+  megatransfers_per_second_count,
   milliwatt,
   watt,
   watt_count,
@@ -33,12 +36,14 @@ import product.node_power_envelope {
   EnvelopeAgrees,
   Gold,
   MemoryElectricalContext,
+  altra_two_dpc_ceilings,
+  ceiling_is_cited,
   NodeElectricalInputs,
   PsuAdequate,
   PsuUndersized,
   WallPowerMeasured,
   derived_wall_power,
-  effective_data_rate_mts,
+  effective_data_rate,
   envelope_divergence,
   memory_bandwidth,
   DerivedWallPowerReading,
@@ -112,12 +117,14 @@ data mod_1rx8_32g_impossible: DramModuleCatalogRow = DramModuleCatalogRow {
 // module's context adds only the platform's rated transfer rate.
 data altrad8ud_context: MemoryElectricalContext = MemoryElectricalContext {
   geometry: asrock_altrad8ud_1l2t_geometry,
-  max_data_rate_mts: 3200,
+  max_data_rate: megatransfers_per_second(count: 3200),
+  two_dpc_ceilings: altra_two_dpc_ceilings,
 }
 
 data mt_collins_context: MemoryElectricalContext = MemoryElectricalContext {
   geometry: mt_collins_per_socket_geometry,
-  max_data_rate_mts: 3200,
+  max_data_rate: megatransfers_per_second(count: 3200),
+  two_dpc_ceilings: altra_two_dpc_ceilings,
 }
 
 // A two-deep population on the Mt. Collins per-socket geometry: sixteen slots
@@ -169,11 +176,33 @@ data q8030_node: NodeElectricalInputs = NodeElectricalInputs {
 
 // THE 2DPC DOWNCLOCK IS RANK-DEPENDENT — the claim that survived the module
 // deletion unchanged, now stated against the relocated function.
+fn rate_at(dimms_per_channel: Nat, rank_count: Nat) -> Nat {
+  megatransfers_per_second_count(
+    r: effective_data_rate(
+      context: mt_collins_context,
+      dimms_per_channel: dimms_per_channel,
+      rank_count: rank_count,
+    ),
+  )
+}
+
 test fn downclock_is_rank_dependent() -> Bool {
-  effective_data_rate_mts(context: mt_collins_context, dimms_per_channel: 2, rank_count: 1) == 3200
-    && effective_data_rate_mts(context: mt_collins_context, dimms_per_channel: 2, rank_count: 2) == 2933
-    && effective_data_rate_mts(context: mt_collins_context, dimms_per_channel: 2, rank_count: 4) == 2400
-    && effective_data_rate_mts(context: mt_collins_context, dimms_per_channel: 1, rank_count: 2) == 3200
+  rate_at(dimms_per_channel: 2, rank_count: 1) == 3200
+    && rate_at(dimms_per_channel: 2, rank_count: 2) == 2933
+    && rate_at(dimms_per_channel: 2, rank_count: 4) == 2400
+    && rate_at(dimms_per_channel: 1, rank_count: 2) == 3200
+}
+
+// THE DERATING FIGURES ARE UNCITED, AND THE MODEL SAYS SO. They arrived as bare
+// literals with the physics relocated from the deleted product.hardware_selection.
+// Carrying them with a typed evidence standing makes the gap countable — this
+// claim is what turns green the day a real citation lands, and it will need
+// updating then, which is the point.
+test fn the_two_dpc_ceilings_declare_themselves_uncited() -> Bool {
+  count(altra_two_dpc_ceilings.rows) == 2
+    && fold(altra_two_dpc_ceilings.rows, init: true, f: fn(acc, row) {
+      acc && !ceiling_is_cited(evidence: row.evidence)
+    })
 }
 
 // THE POPULATED DEPTH COMES FROM THE POPULATION, NOT FROM A FIELD BESIDE IT. A
