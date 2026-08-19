@@ -122,6 +122,26 @@ import v2.std.text { String }
 //       roadmap_page_witness 29, live_read_classification 17, add_arrow_eval_by_execution 13.
 // Nothing refuses on their absence. Nothing counts them. That is why they are written here.
 //
+// FORTY ENROLLED ROWS CAN NEVER LEAVE, and this is a defect in this roster's own admissibility
+// argument rather than a fact about any of them (derived 2026-08-19, joining this file against
+// gunbc.witness_deferral_freeze at identity grain: 358 enrolled ids, 669 frozen rows over 147
+// entries, intersection 40). A row is admissible here only while it is temporary, and the ONLY
+// removal path is OBSERVING it pass. Those 40 sit in files the freeze defers, so nothing
+// executes them, so they can never be observed passing, so the self-emptying rule cannot fire
+// for them ever. Two carriers each behaving correctly compose into a permanent resident of a
+// roster whose entire defence is that it is not a skip list. Named at both ends because neither
+// carrier can see the other: the freeze's own arms already say a deferred row is NOT covered,
+// and this file already says an indefinite row is a defect nobody owns wearing a receipt -- the
+// join was simply never taken.
+//
+// It is checkable and should become unwritable: enrolment here and path-deferral there are
+// contradictory claims about one identity, so the intersection should refuse rather than be
+// counted. Specimen that surfaced it: v2.test.execution.dag_add_emit_round_trip
+// dag_add_domain_coerce_accepts_holds and dag_add_domain_translate_accepts_holds, confirmed
+// RED on main head 5ee2572 by control run (quiet-bee-353, all seven claims executed detached,
+// verdicts identical to branch) -- 2ms and 7ms, so not a cost row at all, just a real defect
+// nobody has been looking at because nothing runs the file.
+//
 // WHAT THIS IS NOT, stated because the shape is dangerous: this is NOT the self-emptying rule.
 // Every other removal from this roster came from OBSERVING a pass. These rows were removed by
 // relocation, and a roster that silently went 469 -> 361 is indistinguishable, to every
