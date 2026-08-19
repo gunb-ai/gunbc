@@ -1,0 +1,128 @@
+module test.claim.jq_invocation_lowering_witness
+
+import std.algebra { Cons, Empty }
+import std.types { Bool, String }
+import v2.std.algebra { fold_list, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.compilers.cli_surface { cli_argument_text, cli_surface_arguments }
+import v2.std.diagnostic { Accepted, Rejected }
+import extdeps.tools.jq {
+  JqInputFile,
+  JqInputStdin,
+  JqInvocation,
+  JqJsonBinding,
+  JqBindingName,
+  JqLastResultExit,
+  JqProgram,
+  JqProgramExit,
+  JqRawOutput,
+  jq_invocation_cli_arguments
+}
+
+// WAVE 1A. The semantic invocation SensorIntegerValue will make, lowered to argv.
+// docs/plans/cli-invocation-emission-design.md
+//
+// The point of every assertion below is that the caller named no flag. It asked for raw output
+// and for jq's ordinary exit contract; --raw-output and the ABSENCE of --exit-status are derived.
+
+data sensor_stdin: String = "{\"data\": 41.6}"
+
+data sensor_program: String = "if (.data | type) == \"number\" then (.data | round) else empty end"
+
+fn sensor_invocation() -> JqInvocation {
+  JqInvocation {
+    program: JqProgram { source: sensor_program },
+    bindings: Empty,
+    input: JqInputStdin { content: sensor_stdin },
+    output_encoding: JqRawOutput,
+    exit_policy: JqProgramExit,
+  }
+}
+
+fn argv_of(invocation: JqInvocation) -> List<String> {
+  match jq_invocation_cli_arguments(invocation: invocation) {
+    Accepted { value: surface, diagnostics: _ } =>
+      fold_list(
+        xs: cli_surface_arguments(surface: surface),
+        empty: Empty,
+        cons: fn(acc, a) { list_snoc_item(xs: acc, item: cli_argument_text(argument: a)) }
+      )
+    Rejected { diagnostics: _ } => Empty
+  }
+}
+
+// JqRawOutput selects the raw-output option and it renders in its CANONICAL long form, not -r.
+// JqProgramExit selects NO exit-status option. The program is exactly ONE argument even though it
+// contains spaces, quotes and parentheses.
+test fn sensor_invocation_lowers_to_exact_argv() -> Bool {
+  match argv_of(invocation: sensor_invocation()) {
+    Empty => false
+    Cons { head: first, tail: rest } =>
+      match rest {
+        Empty => false
+        Cons { head: second, tail: after } =>
+          match after {
+            Empty => (first == "--raw-output") && (second == sensor_program)
+            Cons { head: _, tail: _ } => false
+          }
+      }
+  }
+}
+
+// THE STDIN CONTROL. The JSON payload is a process channel, not an argument: it must appear
+// nowhere in argv. An argv-only model could not even state this.
+test fn stdin_content_is_absent_from_argv() -> Bool {
+  fold_list(
+    xs: argv_of(invocation: sensor_invocation()),
+    empty: true,
+    cons: fn(acc, arg) { acc && (arg != sensor_stdin) }
+  )
+}
+
+// PERTURBATION, LEVEL ONE: change the semantic property and the emitted vector changes. This is
+// what proves the SELECTION row is authoritative rather than decorative -- a spelling-only test
+// would pass even if the option could be omitted.
+test fn exit_policy_perturbation_adds_the_exit_status_option() -> Bool {
+  match argv_of(invocation: JqInvocation {
+    program: JqProgram { source: sensor_program },
+    bindings: Empty,
+    input: JqInputStdin { content: "{}" },
+    output_encoding: JqRawOutput,
+    exit_policy: JqLastResultExit,
+  }) {
+    Empty => false
+    Cons { head: first, tail: rest } =>
+      match rest {
+        Empty => false
+        Cons { head: second, tail: _ } =>
+          (first == "--raw-output") && (second == "--exit-status")
+      }
+  }
+}
+
+// The unlowered axes REFUSE rather than emitting a plausible guess.
+test fn unlowered_bindings_refuse() -> Bool {
+  match jq_invocation_cli_arguments(invocation: JqInvocation {
+    program: JqProgram { source: sensor_program },
+    bindings: [JqJsonBinding { name: JqBindingName { name: "index" }, value: "3" }],
+    input: JqInputStdin { content: "{}" },
+    output_encoding: JqRawOutput,
+    exit_policy: JqProgramExit,
+  }) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+test fn unlowered_file_input_refuses() -> Bool {
+  match jq_invocation_cli_arguments(invocation: JqInvocation {
+    program: JqProgram { source: sensor_program },
+    bindings: Empty,
+    input: JqInputFile { path: "/tmp/x.json" },
+    output_encoding: JqRawOutput,
+    exit_policy: JqProgramExit,
+  }) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}

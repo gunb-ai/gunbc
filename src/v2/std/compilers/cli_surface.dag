@@ -1,7 +1,7 @@
 module v2.std.compilers.cli_surface
 
 import std.algebra { Empty }
-import std.types { String }
+import std.types { NonEmptyStr, String }
 import v2.std.algebra { fold_list, list_snoc_item }
 import v2.std.collection { List, Map }
 import v2.std.compilers.target_model {
@@ -14,6 +14,9 @@ import v2.std.diagnostic {
   Accepted,
   None,
   Outcome,
+  ShortCircuit,
+  StageDiagnosticPolicy,
+  append_outcome_value,
   Rejected,
   bind_outcome,
   outcome_accepted
@@ -21,23 +24,18 @@ import v2.std.diagnostic {
 import v2.std.node { Symbol }
 
 
-// WHY THIS EXISTS, and why it is a sibling rather than a transform of the text carrier.
+// WHY THIS EXISTS.
 //
-// v2.std.compilers.target_model.bound_tokens_source_text folds a grammar-selected token sequence
-// into TargetText, resolving each token to its spelling and joining with target_text_seq, which is
-// concatenation. Concatenation is the step that DESTROYS argument boundaries: once the tokens are
-// one String, "a b" and ["a", "b"] are the same value, and every consumer downstream must
-// re-derive a boundary that the grammar already knew. That re-derivation is what shell_quote is,
-// at 36 sites.
+// CliArgumentSyntax preserves the GROUPING a tool's CLI projection selected. bound_tokens_source_text
+// is reused only INSIDE one argument, where concatenation is correct (["--color","=","never"] is the
+// single argument --color=never). The outer fold preserves boundaries BETWEEN arguments, which is
+// the information an argv vector carries and source text cannot.
 //
-// This module folds the SAME tokens with the SAME spelling resolution and a DIFFERENT join: one
-// argument per token. Nothing about the grammar walk changes; only whether the boundary survives.
-// That is the whole claim the CLI-invocation-emission design rests on, reduced to the smallest
-// thing that can be executed -- see docs/plans/cli-invocation-emission-design.md, Wave 0.
-//
-// NOT A SECOND EMITTER. It consumes what translate already produced. A target model that wants
-// argument boundaries selects this serializer; one that wants source text selects the existing
-// one. Both read one grammar.
+// This module consumes ConcreteSyntaxToken. It does NOT consume compiler translate output and is
+// independent of TargetModel as a semantic authority -- an earlier revision of this comment
+// asserted the opposite on both counts, and asserted a flat one-token-one-argument fold that no
+// longer exists. Those claims are gone rather than amended, because a file that states the
+// refuted architecture above the corrected one hands its next reader two plausible instructions.
 
 // SEALED AT THE RECORD, NOT AT THE MINT -- and the difference is a live hole, stated here
 // because an earlier revision of this comment claimed the opposite and was wrong.
@@ -68,6 +66,19 @@ import v2.std.node { Symbol }
 // Not sealed -- it is an input shape a tool's rows author, and sealing an input a caller must
 // build would only push the forgery one level out. What is sealed is the OUTPUT.
 type CliArgumentSyntax { fragments: List<ConcreteSyntaxToken> }
+
+// THE SHARED RENDERING RULE, owned here and not by any tool row. A tool declares WHICH names
+// exist and which form is canonical; how a long name becomes two hyphens plus the name, or a
+// short name one hyphen plus the character, is one rule every POSIX-conventional tool shares
+// (IEEE Std 1003.1-2024 XBD 12). A tool row storing "--raw-output" would re-spell that rule per
+// tool and could silently disagree with it.
+fn cli_long_option_spelling(name: NonEmptyStr) -> NonEmptyStr {
+  concat("--", name)
+}
+
+fn cli_short_option_spelling(name: NonEmptyStr) -> NonEmptyStr {
+  concat("-", name)
+}
 
 type CliArgument sole_constructor { text: String }
 
@@ -113,6 +124,11 @@ fn cli_argument_from_fragments(
   )
 }
 
+// The outer fold routes through append_outcome_value rather than re-implementing part of the
+// Outcome algebra. An earlier revision matched the inner result and bound its accepted
+// diagnostics to _, silently ERASING evidence the spelling fold had produced -- latent only
+// because these rows happen to return None today. A generic serializer must not drop diagnostics
+// because its first callers had none.
 fn serialize_cli_arguments(
   arguments: List<CliArgumentSyntax>,
   lex: LexRules,
@@ -121,24 +137,17 @@ fn serialize_cli_arguments(
   bind_outcome(
     o: fold_list(
       xs: arguments,
-      empty: Accepted { value: Empty, diagnostics: None },
+      empty: outcome_accepted(Empty),
       cons: fn(acc, argument) {
-        match acc {
-          Rejected { diagnostics: r } => Rejected { diagnostics: r }
-          Accepted { value: partial, diagnostics: ad } =>
-            match cli_argument_from_fragments(
-              fragments: argument.fragments,
-              lex: lex,
-              binding_spellings: binding_spellings
-            ) {
-              Rejected { diagnostics: r } => Rejected { diagnostics: r }
-              Accepted { value: rendered, diagnostics: _ } =>
-                Accepted {
-                  value: list_snoc_item(xs: partial, item: rendered),
-                  diagnostics: ad
-                }
-            }
-        }
+        append_outcome_value(
+          acc: acc,
+          child: cli_argument_from_fragments(
+            fragments: argument.fragments,
+            lex: lex,
+            binding_spellings: binding_spellings
+          ),
+          policy: StageDiagnosticPolicy { accumulation: ShortCircuit }
+        )
       }
     ),
     f: fn(rendered) {

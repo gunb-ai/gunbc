@@ -773,6 +773,33 @@ General argument typechecking strengthens the boundary; it does not prove that p
    path already demonstrates rather than retaining `shell_quote`.
 7. Reverse ingestion — reading argv back through the same rows — is the terminal second reading
    and is **not a prerequisite for the first emitter cut**.
+8. **Measured substrate observation — `Optional<T>` at a primitive `T` in record-field
+   construction position.** `stdin: Optional<String>` with an inline `Present { value: … }`
+   refuses with `expected 'Coproduct(Optional)', got 'Primitive(String)'`, and the refusal is
+   independent of the payload expression: a pattern-bound variable, a renamed binding, a
+   shorthand pattern, and a bare `"x"` literal all reproduce it, while `stdin: Absent` resolves.
+   Inline `Present` into an explicitly-declared `Optional<T>` field is ordinary elsewhere in the
+   tree (`gunbc.witness_row_cost` `basis`, `gunbc.declared_import_closure_binding`
+   `binding_source`, `v2.workflow.effect_plan_bash_materialize` `operation`), but every such `T`
+   observed is a record or coproduct — so the discriminator is the **primitive type argument**,
+   not the field form and not the explicit-vs-sugar spelling. This lane uses the corpus's own
+   `String?` sugar, which is the existing modeled form for an optional field (625 sites) rather
+   than a workaround around an unexplained error. **The observation is recorded, not diagnosed:**
+   whether the sugar and the explicit generic genuinely differ at a primitive argument, or the
+   refusal has another cause this bisect did not separate, is unestablished — and a §5 line-stop
+   is owed on it before anything else in this lane relies on the distinction.
+
+9. **A downstream typed verdict may be the redundant lower rung, not a peer** (raised by
+   `eager-wren-138`, 2026-08-18). `gunbc.host_effect_realize` `bmcweb_token_extraction_verdict`
+   refuses blank stdout as its own decode — the wall that actually closed that fail-open, with
+   `jq -e` only ever loudness beside it. If the semantic layer makes *absence-is-a-value*
+   unwritable at the decode, that verdict is a second representation of one requirement (§2/§3)
+   and must **dissolve into** the decode rather than sit beside it. This is a §4b climb, so its
+   discriminating RED stays enrolled against the new decode while the production check is the
+   part deleted. Open because it is not yet established whether the requirement is exactly one
+   nonempty string at *every* consumer or only at the credential path; the OpenBMC sensor path
+   models absence as a legitimate third state (`OpenBmcSensorValueAbsent`), so a blanket
+   absence-is-refusal decode would be the state-space collapse this lane exists to remove.
 
 ---
 
