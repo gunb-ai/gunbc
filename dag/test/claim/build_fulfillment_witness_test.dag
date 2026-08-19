@@ -1,0 +1,788 @@
+module test.claim.build_fulfillment_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.currency { CurrencyCode, Eur, Usd }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.measure { MoneyOnce, byte_size, money_amount_micro, money_amount_micro_count }
+import std.nat { Nat }
+import product.placement_supply { ProcurementReceiptIdentity }
+import product.inventory {
+  CatalogRowExact,
+  CatalogRowUnread,
+  InventoryEvent,
+  InventoryLotIdentity,
+  LandedCostHeldPrivately,
+  LandedCostRecorded,
+  LotAcquired,
+  LotReceived,
+  ProcurementLot,
+  QuantityQualified,
+  QuantityReserved,
+  ReceiptRecorded,
+  inventory_lot_allocator_initial,
+  inventory_lot_identity_eq,
+  mint_inventory_lot_identity,
+}
+import product.build_fulfillment {
+  BasisConsumed,
+  BasisConsumedMicros,
+  BasisConsumedRefused,
+  BasisLotHeldPrivately,
+  BomLine,
+  Bottleneck,
+  BottleneckLines,
+  BottleneckNone,
+  BottleneckNotComputable,
+  BuiltFromComponents,
+  CashLineCompatibilityUnread,
+  CashLineMissing,
+  CashLineUnresolved,
+  CashRefused,
+  CashTotal,
+  CompatibilityUnread,
+  ComponentMarket,
+  ConstructibleRefused,
+  ConstructibleSystems,
+  ConstructibleUnbounded,
+  DepthDeclaredNone,
+  DepthUnits,
+  DepthUnread,
+  IncludedInSystem,
+  IncrementalCash,
+  LedgerRefusedDraw,
+  LineDepthUnread,
+  LineFulfilled,
+  LineResolution,
+  LineResolutionRefused,
+  LotDraw,
+  LotOffering,
+  MarketDepthShort,
+  MarketRowAbsent,
+  Missing,
+  MultipleLotsOfferOneComponent,
+  NewPurchase,
+  NodeRecipe,
+  OfferCurrencyMismatch,
+  OwnedInventory,
+  SupplyContext,
+  SystemInclusion,
+  SystemSourcing,
+  WholeSystemCandidate,
+  basis_consumed,
+  draw_units_for,
+  incremental_cash,
+  max_constructible,
+  next_bottleneck,
+  owned_stock_consumed,
+  recipe_bom,
+  resolve_candidate,
+}
+import gunbc.memory_provisioning { PopulationOption }
+import extdeps.cpu.ampere_altra_platform_hw_design.platform { OneDimmPerChannel }
+import gunbc.memory_provisioning { FullChannel }
+import extdeps.memory.sk_hynix { hma82gr7afr4n_vk_catalog }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_download_authority }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SYNTHETIC PRICES AND SYNTHETIC LOTS ONLY (operator ruling 2026-08-19). Every
+// quantity below is planted so the assertion has an independent oracle: the numbers
+// are authored here and the expected answers are derived by hand, never measured off
+// the tree. The CATALOG ROWS are real and cited — Q80-30 and M128-30 from the Ampere
+// authority, the SK hynix DDR4 RDIMM row, the ALTRAD8UD board authority — because a
+// fabricated catalog symbol would make a green witness prove nothing about the join
+// it claims to exercise.
+
+data cpu_row: DeclarationRef = decl_ref(module_path: "extdeps.cpu.ampere", decl_name: "altra_q8030_catalog")
+data cpu_row_other: DeclarationRef = decl_ref(module_path: "extdeps.cpu.ampere", decl_name: "altra_max_m12830_catalog")
+data dimm_row: DeclarationRef = decl_ref(module_path: "extdeps.memory.sk_hynix", decl_name: "hma82gr7afr4n_vk_catalog")
+data board_row: DeclarationRef = decl_ref(module_path: "extdeps.boards.asrock_rack", decl_name: "asrock_altrad8ud_1l2t_catalog")
+
+// Three distinct minted identities from one allocator. Minted rather than authored,
+// because the ledger deliberately has no fn from a label to an identity.
+fn cpu_lot_identity() -> InventoryLotIdentity {
+  mint_inventory_lot_identity(alloc: inventory_lot_allocator_initial()).id
+}
+
+fn dimm_lot_identity() -> InventoryLotIdentity {
+  let first = mint_inventory_lot_identity(alloc: inventory_lot_allocator_initial())
+  mint_inventory_lot_identity(alloc: first.alloc).id
+}
+
+fn unread_lot_identity() -> InventoryLotIdentity {
+  let first = mint_inventory_lot_identity(alloc: inventory_lot_allocator_initial())
+  let second = mint_inventory_lot_identity(alloc: first.alloc)
+  mint_inventory_lot_identity(alloc: second.alloc).id
+}
+
+fn usd(count: Nat) -> MoneyOnce { MoneyOnce { amount: money_amount_micro(count: count), currency: Usd } }
+
+// THE OPERATOR'S ACCEPTANCE EXAMPLE lives in this one number. A lot of 62 processors
+// at two per dual-socket system is 31 systems with two left over; at 60 it is 30.
+fn cpu_lot(quantity: Nat) -> ProcurementLot {
+  ProcurementLot {
+    identity: cpu_lot_identity(),
+    receipt: ReceiptRecorded { receipt: "synthetic-receipt-cpu" as ProcurementReceiptIdentity },
+    catalog: CatalogRowExact { row: cpu_row },
+    display_label: "planted CPU lot" as NonEmptyStr,
+    quantity_acquired: quantity,
+    landed_cost: LandedCostRecorded { cost: usd(count: 1000000) },
+  }
+}
+
+fn qualified_events(lot: InventoryLotIdentity, quantity: Nat) -> List<InventoryEvent> {
+  [
+    LotAcquired { lot: lot },
+    LotReceived { lot: lot, quantity: quantity },
+    QuantityQualified { lot: lot, quantity: quantity },
+  ]
+}
+
+fn cpu_offering(quantity: Nat) -> LotOffering {
+  LotOffering { lot: cpu_lot(quantity: quantity), events: qualified_events(lot: cpu_lot_identity(), quantity: quantity) }
+}
+
+fn dimm_lot(quantity: Nat) -> ProcurementLot {
+  ProcurementLot {
+    identity: dimm_lot_identity(),
+    receipt: ReceiptRecorded { receipt: "synthetic-receipt-dimm" as ProcurementReceiptIdentity },
+    catalog: CatalogRowExact { row: dimm_row },
+    display_label: "planted DIMM lot" as NonEmptyStr,
+    quantity_acquired: quantity,
+    landed_cost: LandedCostRecorded { cost: usd(count: 900) },
+  }
+}
+
+fn dimm_offering(quantity: Nat) -> LotOffering {
+  LotOffering { lot: dimm_lot(quantity: quantity), events: qualified_events(lot: dimm_lot_identity(), quantity: quantity) }
+}
+
+// A LOT WHOSE CATALOG ROW HAS NEVER BEEN READ. It is deliberately a plausible CPU
+// shipment: the whole point of the arm is that we cannot say the line is unsourced
+// while unidentified units sit on the shelf.
+fn unread_lot() -> ProcurementLot {
+  ProcurementLot {
+    identity: unread_lot_identity(),
+    receipt: ReceiptRecorded { receipt: "synthetic-receipt-unread" as ProcurementReceiptIdentity },
+    catalog: CatalogRowUnread {
+      observed_family: "Ampere Altra, 80C, tray" as NonEmptyStr,
+      read_obligation: "read the exact SKU off the heat spreader and cite the catalog row" as NonEmptyStr,
+    },
+    display_label: "planted unread lot" as NonEmptyStr,
+    quantity_acquired: 8,
+    landed_cost: LandedCostRecorded { cost: usd(count: 500000) },
+  }
+}
+
+fn unread_offering() -> LotOffering {
+  LotOffering { lot: unread_lot(), events: qualified_events(lot: unread_lot_identity(), quantity: 8) }
+}
+
+data authority: ExternalAuthority = asrock_altrad8ud_download_authority
+
+fn market_row(component: DeclarationRef, price: Nat, units: Nat) -> ComponentMarket {
+  ComponentMarket {
+    component: component,
+    unit_price: money_amount_micro(count: price),
+    currency: Usd,
+    depth: DepthUnits { units: units },
+    authority: authority,
+  }
+}
+
+// The DIMM population is the real derivation's output shape: eight modules, one per
+// channel, on the cited SK hynix row.
+fn eight_module_population() -> PopulationOption {
+  PopulationOption {
+    module: hma82gr7afr4n_vk_catalog,
+    dimm_count: 8,
+    coverage: FullChannel { topology: OneDimmPerChannel },
+    total_bytes: byte_size(count: 8 * 34359738368),
+    margin_bytes: byte_size(count: 0),
+  }
+}
+
+fn dual_socket_recipe(sourcing: SystemSourcing) -> NodeRecipe {
+  NodeRecipe {
+    label: "planted dual-socket node" as NonEmptyStr,
+    sourcing: sourcing,
+    board: BomLine { component: board_row, display_label: "ALTRAD8UD-1L2T" as NonEmptyStr, quantity: 1 },
+    cpu: BomLine { component: cpu_row, display_label: "Q80-30" as NonEmptyStr, quantity: 2 },
+    memory_module: dimm_row,
+    population: eight_module_population(),
+    additional: [],
+  }
+}
+
+fn component_built() -> NodeRecipe { dual_socket_recipe(sourcing: BuiltFromComponents) }
+
+// A whole-system candidate that SHIPS ITS TWO PROCESSORS, the live shape the
+// inclusion arm exists for.
+fn barebones_recipe() -> NodeRecipe {
+  dual_socket_recipe(
+    sourcing: WholeSystemCandidate {
+      includes: [SystemInclusion { component: cpu_row, quantity_included: 2 }],
+    },
+  )
+}
+
+// A supply with deep market rows on every line, so that any ceiling below the CPU
+// line's is the CPU line's doing and nothing else's.
+fn supply_with(lots: List<LotOffering>, cpu_units: Nat) -> SupplyContext {
+  SupplyContext {
+    lots: lots,
+    market: [
+      market_row(component: board_row, price: 700, units: 1000),
+      market_row(component: cpu_row, price: 1500, units: cpu_units),
+      market_row(component: dimm_row, price: 90, units: 1000),
+    ],
+    declared_currency: Usd,
+  }
+}
+
+fn fulfillment_for(lines: List<LineResolution>, component: DeclarationRef) -> LineResolution? {
+  fold(lines, init: none, f: fn(acc, r) {
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent =>
+        match r {
+          LineFulfilled { line: l, fulfillment: _ } =>
+            if declaration_ref_eq(a: l.component, b: component) { Present { value: r } } else { none }
+          LineResolutionRefused { line: l, cause: _ } =>
+            if declaration_ref_eq(a: l.component, b: component) { Present { value: r } } else { none }
+        }
+    }
+  })
+}
+
+
+
+// --- WALL 1: over-consuming a lot refuses through the LEDGER'S arms ------------
+
+data w1_note: String = "The over-draw wall is NOT re-implemented here. availability_of asks product.inventory admit_consumption for exactly the quantity the line needs, and a lot holding four processors against a line needing two per system plus a ledger that has already reserved the rest produces the ledger's own located refusal. A second comparison in this module would be a second authority over one fact, and this claim exists to prove there is only one: the arm that fires is the ledger's, carrying the ledger's cause."
+
+// A ledger whose own event sequence does not add up has NO balance, and this claim
+// pins that it propagates as a refusal rather than as zero stock. The reservation of
+// 40 against a received 10 is the ledger's documented over-draw specimen.
+test fn w1_ledger_refusal_propagates_not_zero_stock() -> Bool {
+  let broken = LotOffering {
+    lot: cpu_lot(quantity: 10),
+    events: append(qualified_events(lot: cpu_lot_identity(), quantity: 10), [
+      QuantityReserved { lot: cpu_lot_identity(), quantity: 40, holder: "rack-3" as NonEmptyStr },
+    ]),
+  }
+  let lines = resolve_candidate(recipe: component_built(), supply: supply_with(lots: [broken], cpu_units: 1000))
+  match fulfillment_for(lines: lines, component: cpu_row) {
+    Absent => false
+    Present { value: r } =>
+      match r {
+        LineResolutionRefused { line: _, cause: c } =>
+          match c {
+            LedgerRefusedDraw { lot: l, cause: _, requested: _, available: _ } =>
+              inventory_lot_identity_eq(left: l, right: cpu_lot_identity())
+            MarketRowAbsent { component: _ } => false
+            MultipleLotsOfferOneComponent { component: _, lots_matching: _ } => false
+            OfferCurrencyMismatch { declared: _, offered: _ } => false
+          }
+        LineFulfilled { line: _, fulfillment: _ } => false
+      }
+  }
+}
+
+// The discriminating positive control for the same path: a HEALTHY lot with enough
+// stock draws from inventory and spends no cash. Without this, w1 would pass on a
+// module that refused every line.
+test fn w1_healthy_lot_draws_from_inventory() -> Bool {
+  let lines = resolve_candidate(recipe: component_built(), supply: supply_with(lots: [cpu_offering(quantity: 62)], cpu_units: 1000))
+  match fulfillment_for(lines: lines, component: cpu_row) {
+    Absent => false
+    Present { value: r } =>
+      match r {
+        LineFulfilled { line: _, fulfillment: f } =>
+          match f {
+            OwnedInventory { lot: l, quantity: q, available_after: after } =>
+              inventory_lot_identity_eq(left: l, right: cpu_lot_identity()) && q == 2 && after == 60
+            IncludedInSystem { quantity: _ } => false
+            NewPurchase { quantity: _, unit_price: _, currency: _, authority: _ } => false
+            Missing { cause: _ } => false
+            CompatibilityUnread { lot: _, read_obligation: _ } => false
+          }
+        LineResolutionRefused { line: _, cause: _ } => false
+      }
+  }
+}
+
+// Short stock is NOT a refusal: the line falls through to the market, which is the
+// whole point of resolving against ledger AND market rather than either alone.
+test fn w1_short_stock_falls_through_to_market() -> Bool {
+  let lines = resolve_candidate(recipe: component_built(), supply: supply_with(lots: [cpu_offering(quantity: 1)], cpu_units: 1000))
+  match fulfillment_for(lines: lines, component: cpu_row) {
+    Absent => false
+    Present { value: r } =>
+      match r {
+        LineFulfilled { line: _, fulfillment: f } =>
+          match f {
+            NewPurchase { quantity: q, unit_price: p, currency: _, authority: _ } =>
+              q == 2 && money_amount_micro_count(m: p) == 1500
+            OwnedInventory { lot: _, quantity: _, available_after: _ } => false
+            IncludedInSystem { quantity: _ } => false
+            Missing { cause: _ } => false
+            CompatibilityUnread { lot: _, read_obligation: _ } => false
+          }
+        LineResolutionRefused { line: _, cause: _ } => false
+      }
+  }
+}
+
+// --- WALL 2: an unread compatibility is PENDING EVIDENCE, never a candidate ----
+
+data w2_note: String = "CompatibilityUnread is not a flavour of Missing, and this claim pins the difference at both ends: the line reports the read obligation rather than a shortfall, and the cash projection REFUSES rather than totalling the lines it could read. A candidate that priced the readable half and stayed silent about the unread lot would be comparable against a fully-read candidate on a number that omits it, which is exactly how an unread part wins a comparison it was never entered in."
+
+test fn w2_unread_lot_yields_pending_evidence_not_missing() -> Bool {
+  let supply = SupplyContext {
+    lots: [unread_offering()],
+    market: [
+      market_row(component: board_row, price: 700, units: 1000),
+      ComponentMarket {
+        component: cpu_row,
+        unit_price: money_amount_micro(count: 1500),
+        currency: Usd,
+        depth: DepthDeclaredNone { reason: "no seller listed at this speed grade today" as NonEmptyStr },
+        authority: authority,
+      },
+      market_row(component: dimm_row, price: 90, units: 1000),
+    ],
+    declared_currency: Usd,
+  }
+  let lines = resolve_candidate(recipe: component_built(), supply: supply)
+  match fulfillment_for(lines: lines, component: cpu_row) {
+    Absent => false
+    Present { value: r } =>
+      match r {
+        LineFulfilled { line: _, fulfillment: f } =>
+          match f {
+            CompatibilityUnread { lot: l, read_obligation: _ } =>
+              inventory_lot_identity_eq(left: l, right: unread_lot_identity())
+            Missing { cause: _ } => false
+            OwnedInventory { lot: _, quantity: _, available_after: _ } => false
+            NewPurchase { quantity: _, unit_price: _, currency: _, authority: _ } => false
+            IncludedInSystem { quantity: _ } => false
+          }
+        LineResolutionRefused { line: _, cause: _ } => false
+      }
+  }
+}
+
+// The same candidate is NOT comparable: its cash projection refuses, naming the
+// obligation, instead of reporting the total of the lines it could read.
+test fn w2_unread_candidate_is_not_priceable() -> Bool {
+  let supply = SupplyContext {
+    lots: [unread_offering()],
+    market: [
+      market_row(component: board_row, price: 700, units: 1000),
+      ComponentMarket {
+        component: cpu_row,
+        unit_price: money_amount_micro(count: 1500),
+        currency: Usd,
+        depth: DepthDeclaredNone { reason: "no seller listed at this speed grade today" as NonEmptyStr },
+        authority: authority,
+      },
+      market_row(component: dimm_row, price: 90, units: 1000),
+    ],
+    declared_currency: Usd,
+  }
+  match incremental_cash(lines: resolve_candidate(recipe: component_built(), supply: supply), declared_currency: Usd) {
+    CashRefused { cause: c } =>
+      match c {
+        CashLineCompatibilityUnread { component: comp, read_obligation: _ } => declaration_ref_eq(a: comp, b: cpu_row)
+        CashLineMissing { component: _ } => false
+        CashLineUnresolved { component: _ } => false
+      }
+    CashTotal { amount: _, currency: _ } => false
+  }
+}
+
+// Discriminating control: with NO unread lot in the supply, the very same shortage
+// resolves to Missing and refuses for a DIFFERENT, correctly-named reason. If the
+// unread arm were merely cosmetic, these two claims could not both hold.
+test fn w2_without_unread_lot_the_same_shortage_is_missing() -> Bool {
+  let supply = SupplyContext {
+    lots: [],
+    market: [
+      market_row(component: board_row, price: 700, units: 1000),
+      ComponentMarket {
+        component: cpu_row,
+        unit_price: money_amount_micro(count: 1500),
+        currency: Usd,
+        depth: DepthDeclaredNone { reason: "no seller listed at this speed grade today" as NonEmptyStr },
+        authority: authority,
+      },
+      market_row(component: dimm_row, price: 90, units: 1000),
+    ],
+    declared_currency: Usd,
+  }
+  match incremental_cash(lines: resolve_candidate(recipe: component_built(), supply: supply), declared_currency: Usd) {
+    CashRefused { cause: c } =>
+      match c {
+        CashLineMissing { component: comp } => declaration_ref_eq(a: comp, b: cpu_row)
+        CashLineCompatibilityUnread { component: _, read_obligation: _ } => false
+        CashLineUnresolved { component: _ } => false
+      }
+    CashTotal { amount: _, currency: _ } => false
+  }
+}
+
+// --- WALL 3: whole-system included components subtract from NOTHING ------------
+
+data w3_note: String = "A barebones that ships two processors must not draw two processors from the ledger, and must not add two processors to the cash total. Both halves are asserted, because either one alone would let a real error through: charging for an included part overstates cash, and drawing an included part from stock silently reduces how many OTHER systems can be built."
+
+test fn w3_included_component_draws_no_stock() -> Bool {
+  let supply = supply_with(lots: [cpu_offering(quantity: 62)], cpu_units: 1000)
+  let lines = resolve_candidate(recipe: barebones_recipe(), supply: supply)
+  let draws = owned_stock_consumed(lines: lines)
+  draw_units_for(draws: draws, lot: cpu_lot_identity()) == 0
+}
+
+// The two totals are derived by hand and stated here, above the declaration, because
+// they are the claim's independent oracle: component-built buys a board at 700, two
+// processors at 1500 and eight modules at 90, which is 4420; the barebones buys the
+// board and the modules only, which is 1420, because its two processors arrive in the
+// box. If the inclusion arm charged for them the second figure would be 4420 too.
+test fn w3_included_component_costs_no_cash() -> Bool {
+  let supply = supply_with(lots: [], cpu_units: 1000)
+  let built = incremental_cash(lines: resolve_candidate(recipe: component_built(), supply: supply), declared_currency: Usd)
+  let barebones = incremental_cash(lines: resolve_candidate(recipe: barebones_recipe(), supply: supply), declared_currency: Usd)
+  match built {
+    CashRefused { cause: _ } => false
+    CashTotal { amount: a, currency: _ } =>
+      match barebones {
+        CashRefused { cause: _ } => false
+        CashTotal { amount: b, currency: _ } =>
+          money_amount_micro_count(m: a) == 4420 && money_amount_micro_count(m: b) == 1420
+      }
+  }
+}
+
+// The inclusion must also not invent a bound. A component that arrives in the box is
+// unbounded, so a deep-market barebones is limited by its other lines, never by the
+// processors it ships with.
+test fn w3_included_component_bounds_nothing() -> Bool {
+  let supply = SupplyContext {
+    lots: [],
+    market: [
+      market_row(component: board_row, price: 700, units: 5),
+      market_row(component: cpu_row, price: 1500, units: 0),
+      market_row(component: dimm_row, price: 90, units: 1000),
+    ],
+    declared_currency: Usd,
+  }
+  match max_constructible(recipe: barebones_recipe(), supply: supply) {
+    ConstructibleSystems { systems: s } => s == 5
+    ConstructibleUnbounded => false
+    ConstructibleRefused { cause: _ } => false
+  }
+}
+
+// --- WALL 4: candidate generation is order-invariant ---------------------------
+
+data w4_note: String = "Permuting the offering lists and the bill of materials must not change any derived answer. This is not a style property: every lookup in the resolution is a fold to an aggregate rather than a first-match search precisely so that authoring order cannot decide which lot gets drained. A first-match implementation passes every other claim in this file and fails this one."
+
+fn permuted_supply(cpu_units: Nat) -> SupplyContext {
+  SupplyContext {
+    lots: [dimm_offering(quantity: 40), cpu_offering(quantity: cpu_units)],
+    market: [
+      market_row(component: dimm_row, price: 90, units: 1000),
+      market_row(component: cpu_row, price: 1500, units: 4),
+      market_row(component: board_row, price: 700, units: 1000),
+    ],
+    declared_currency: Usd,
+  }
+}
+
+fn straight_supply(cpu_units: Nat) -> SupplyContext {
+  SupplyContext {
+    lots: [cpu_offering(quantity: cpu_units), dimm_offering(quantity: 40)],
+    market: [
+      market_row(component: board_row, price: 700, units: 1000),
+      market_row(component: cpu_row, price: 1500, units: 4),
+      market_row(component: dimm_row, price: 90, units: 1000),
+    ],
+    declared_currency: Usd,
+  }
+}
+
+fn constructible_systems(recipe: NodeRecipe, supply: SupplyContext) -> Nat? {
+  match max_constructible(recipe: recipe, supply: supply) {
+    ConstructibleSystems { systems: s } => Present { value: s }
+    ConstructibleUnbounded => none
+    ConstructibleRefused { cause: _ } => none
+  }
+}
+
+test fn w4_ceiling_is_order_invariant() -> Bool {
+  match constructible_systems(recipe: component_built(), supply: straight_supply(cpu_units: 62)) {
+    Absent => false
+    Present { value: a } =>
+      match constructible_systems(recipe: component_built(), supply: permuted_supply(cpu_units: 62)) {
+        Absent => false
+        Present { value: b } => a == b
+      }
+  }
+}
+
+test fn w4_owned_draws_are_order_invariant() -> Bool {
+  let straight = owned_stock_consumed(lines: resolve_candidate(recipe: component_built(), supply: straight_supply(cpu_units: 62)))
+  let permuted = owned_stock_consumed(lines: resolve_candidate(recipe: component_built(), supply: permuted_supply(cpu_units: 62)))
+  draw_units_for(draws: straight, lot: cpu_lot_identity()) == draw_units_for(draws: permuted, lot: cpu_lot_identity())
+    && draw_units_for(draws: straight, lot: dimm_lot_identity()) == draw_units_for(draws: permuted, lot: dimm_lot_identity())
+    && count(straight) == count(permuted)
+}
+
+test fn w4_cash_is_order_invariant() -> Bool {
+  match incremental_cash(lines: resolve_candidate(recipe: component_built(), supply: straight_supply(cpu_units: 62)), declared_currency: Usd) {
+    CashRefused { cause: _ } => false
+    CashTotal { amount: a, currency: _ } =>
+      match incremental_cash(lines: resolve_candidate(recipe: component_built(), supply: permuted_supply(cpu_units: 62)), declared_currency: Usd) {
+        CashRefused { cause: _ } => false
+        CashTotal { amount: b, currency: _ } => money_amount_micro_count(m: a) == money_amount_micro_count(m: b)
+      }
+  }
+}
+
+// A REFUSAL ANYWHERE OUTRANKS EVERY BOUND, wherever it sits. If the fold latched the
+// first answer instead of accumulating a meet, moving the unread-depth line ahead of
+// or behind the bounding line would change the verdict.
+fn ceiling_refuses(supply: SupplyContext) -> Bool {
+  match max_constructible(recipe: component_built(), supply: supply) {
+    ConstructibleRefused { cause: _ } => true
+    ConstructibleSystems { systems: _ } => false
+    ConstructibleUnbounded => false
+  }
+}
+
+test fn w4_unread_depth_refuses_from_either_position() -> Bool {
+  let front = SupplyContext {
+    lots: [],
+    market: [
+      ComponentMarket { component: board_row, unit_price: money_amount_micro(count: 700), currency: Usd, depth: DepthUnread { read_obligation: "ask the distributor for stock on hand" as NonEmptyStr }, authority: authority },
+      market_row(component: cpu_row, price: 1500, units: 4),
+      market_row(component: dimm_row, price: 90, units: 1000),
+    ],
+    declared_currency: Usd,
+  }
+  let back = SupplyContext {
+    lots: [],
+    market: [
+      market_row(component: cpu_row, price: 1500, units: 4),
+      market_row(component: dimm_row, price: 90, units: 1000),
+      ComponentMarket { component: board_row, unit_price: money_amount_micro(count: 700), currency: Usd, depth: DepthUnread { read_obligation: "ask the distributor for stock on hand" as NonEmptyStr }, authority: authority },
+    ],
+    declared_currency: Usd,
+  }
+  ceiling_refuses(supply: front) && ceiling_refuses(supply: back)
+}
+
+// --- WALL 5: the operator's acceptance example --------------------------------
+
+data w5_note: String = "62 processors at two per dual-socket system is 31 systems; 60 is 30. The oracle is the arithmetic, stated independently of the code: this is a controlled fixture with a planted quantity and a hand-derived expectation, not a measurement copied off the tree. The market depth on the CPU line is set to zero so the ceiling is the LOT's, and the other lines are given deep markets so the bottleneck is unambiguous."
+
+fn cpu_bound_supply(lot_units: Nat) -> SupplyContext {
+  SupplyContext {
+    lots: [cpu_offering(quantity: lot_units)],
+    market: [
+      market_row(component: board_row, price: 700, units: 1000),
+      market_row(component: cpu_row, price: 1500, units: 0),
+      market_row(component: dimm_row, price: 90, units: 1000),
+    ],
+    declared_currency: Usd,
+  }
+}
+
+test fn w5_sixty_two_processors_build_thirty_one_dual_socket_systems() -> Bool {
+  match constructible_systems(recipe: component_built(), supply: cpu_bound_supply(lot_units: 62)) {
+    Absent => false
+    Present { value: s } => s == 31
+  }
+}
+
+test fn w5_sixty_processors_build_thirty() -> Bool {
+  match constructible_systems(recipe: component_built(), supply: cpu_bound_supply(lot_units: 60)) {
+    Absent => false
+    Present { value: s } => s == 30
+  }
+}
+
+// The bottleneck NAMES the line that bound it. A ceiling without a named argmin is a
+// number a buyer cannot act on.
+test fn w5_bottleneck_names_the_processor_line() -> Bool {
+  match next_bottleneck(recipe: component_built(), supply: cpu_bound_supply(lot_units: 62)) {
+    BottleneckLines { systems: s, components: cs } =>
+      s == 31 && count(cs) == 1 && fold(cs, init: false, f: fn(acc, c) { acc || declaration_ref_eq(a: c, b: cpu_row) })
+    BottleneckNone => false
+    BottleneckNotComputable { cause: _ } => false
+  }
+}
+
+// --- the projections stay separate --------------------------------------------
+
+data projection_note: String = "Cash now and historical basis are two readings of two different facts, and a candidate that draws owned stock proves it: the cash total counts only what must still be bought, while the basis counts only what was already paid for. If either projection reached into the other's arm the two numbers below would move together, and they do not."
+
+// Two CPUs drawn from a 62-unit lot that landed at 1,000,000 micros: the proportional
+// policy assigns 1000000 * 2 / 62 = 32258 micros, with a rounding remainder numerator
+// of 2000000 - 32258*62 = 4. Both figures are stated here independently of the code.
+test fn basis_consumed_names_its_policy_and_keeps_the_remainder() -> Bool {
+  let lines = resolve_candidate(recipe: component_built(), supply: cpu_bound_supply(lot_units: 62))
+  match basis_consumed(supply: cpu_bound_supply(lot_units: 62), draws: owned_stock_consumed(lines: lines)) {
+    BasisConsumedMicros { micros: m, rounding_remainder_numerator: r, policy: _ } => m == 32258 && r == 4
+    BasisConsumedRefused { cause: _ } => false
+  }
+}
+
+// A lot whose landed cost is held privately REFUSES the basis rather than reporting
+// zero. Reporting zero would state that the stock was free.
+test fn privately_held_landed_cost_refuses_the_basis() -> Bool {
+  let private_lot = ProcurementLot {
+    identity: cpu_lot_identity(),
+    receipt: ReceiptRecorded { receipt: "synthetic-receipt-private" as ProcurementReceiptIdentity },
+    catalog: CatalogRowExact { row: cpu_row },
+    display_label: "planted private-cost lot" as NonEmptyStr,
+    quantity_acquired: 62,
+    landed_cost: LandedCostHeldPrivately,
+  }
+  let supply = SupplyContext {
+    lots: [LotOffering { lot: private_lot, events: qualified_events(lot: cpu_lot_identity(), quantity: 62) }],
+    market: [
+      market_row(component: board_row, price: 700, units: 1000),
+      market_row(component: cpu_row, price: 1500, units: 0),
+      market_row(component: dimm_row, price: 90, units: 1000),
+    ],
+    declared_currency: Usd,
+  }
+  let lines = resolve_candidate(recipe: component_built(), supply: supply)
+  match basis_consumed(supply: supply, draws: owned_stock_consumed(lines: lines)) {
+    BasisConsumedRefused { cause: c } =>
+      match c {
+        BasisLotHeldPrivately { lot: l } => inventory_lot_identity_eq(left: l, right: cpu_lot_identity())
+        BasisLotUnsettled { lot: _ } => false
+        BasisLotNotOffered { lot: _ } => false
+      }
+    BasisConsumedMicros { micros: _, rounding_remainder_numerator: _, policy: _ } => false
+  }
+}
+
+// Drawing owned stock costs NO incremental cash, which is the half of the split that
+// is easiest to get wrong in the expensive direction.
+// 1420 is the board at 700 plus eight modules at 90. The two processors come off the
+// shelf, so they appear in the basis projection above and in this one not at all.
+test fn owned_draw_costs_no_incremental_cash() -> Bool {
+  match incremental_cash(lines: resolve_candidate(recipe: component_built(), supply: cpu_bound_supply(lot_units: 62)), declared_currency: Usd) {
+    CashTotal { amount: a, currency: _ } =>
+      money_amount_micro_count(m: a) == 1420
+    CashRefused { cause: _ } => false
+  }
+}
+
+// --- the refusal arms ---------------------------------------------------------
+
+data refusal_note: String = "Three arms that must refuse rather than answer. Each is a state a caller can reach by supplying a contradictory or incomplete supply, and in every case the alternative to refusing is a confident number computed from a premise nobody established."
+
+// An absent market row is NOT zero depth. Refusing here is what keeps a ceiling from
+// being computed against a market nobody observed.
+test fn absent_market_row_refuses_the_line() -> Bool {
+  let supply = SupplyContext {
+    lots: [],
+    market: [market_row(component: board_row, price: 700, units: 1000), market_row(component: dimm_row, price: 90, units: 1000)],
+    declared_currency: Usd,
+  }
+  match fulfillment_for(lines: resolve_candidate(recipe: component_built(), supply: supply), component: cpu_row) {
+    Absent => false
+    Present { value: r } =>
+      match r {
+        LineResolutionRefused { line: _, cause: c } =>
+          match c {
+            MarketRowAbsent { component: comp } => declaration_ref_eq(a: comp, b: cpu_row)
+            MultipleLotsOfferOneComponent { component: _, lots_matching: _ } => false
+            OfferCurrencyMismatch { declared: _, offered: _ } => false
+            LedgerRefusedDraw { lot: _, cause: _, requested: _, available: _ } => false
+          }
+        LineFulfilled { line: _, fulfillment: _ } => false
+      }
+  }
+}
+
+// Two lots offering one component refuse, because choosing between them is an
+// allocation POLICY this module does not model and must not invent.
+test fn two_lots_for_one_component_refuse() -> Bool {
+  let second = LotOffering {
+    lot: ProcurementLot {
+      identity: dimm_lot_identity(),
+      receipt: ReceiptRecorded { receipt: "synthetic-receipt-cpu-2" as ProcurementReceiptIdentity },
+      catalog: CatalogRowExact { row: cpu_row },
+      display_label: "a second planted CPU lot" as NonEmptyStr,
+      quantity_acquired: 4,
+      landed_cost: LandedCostRecorded { cost: usd(count: 50000) },
+    },
+    events: qualified_events(lot: dimm_lot_identity(), quantity: 4),
+  }
+  let supply = SupplyContext {
+    lots: [cpu_offering(quantity: 62), second],
+    market: [
+      market_row(component: board_row, price: 700, units: 1000),
+      market_row(component: cpu_row, price: 1500, units: 1000),
+      market_row(component: dimm_row, price: 90, units: 1000),
+    ],
+    declared_currency: Usd,
+  }
+  match fulfillment_for(lines: resolve_candidate(recipe: component_built(), supply: supply), component: cpu_row) {
+    Absent => false
+    Present { value: r } =>
+      match r {
+        LineResolutionRefused { line: _, cause: c } =>
+          match c {
+            MultipleLotsOfferOneComponent { component: comp, lots_matching: n } =>
+              declaration_ref_eq(a: comp, b: cpu_row) && n == 2
+            MarketRowAbsent { component: _ } => false
+            OfferCurrencyMismatch { declared: _, offered: _ } => false
+            LedgerRefusedDraw { lot: _, cause: _, requested: _, available: _ } => false
+          }
+        LineFulfilled { line: _, fulfillment: _ } => false
+      }
+  }
+}
+
+// A quote in a currency the caller did not declare is refused rather than ranked.
+test fn undeclared_currency_refuses_the_line() -> Bool {
+  let supply = SupplyContext {
+    lots: [],
+    market: [
+      market_row(component: board_row, price: 700, units: 1000),
+      ComponentMarket { component: cpu_row, unit_price: money_amount_micro(count: 1500), currency: Eur, depth: DepthUnits { units: 1000 }, authority: authority },
+      market_row(component: dimm_row, price: 90, units: 1000),
+    ],
+    declared_currency: Usd,
+  }
+  match fulfillment_for(lines: resolve_candidate(recipe: component_built(), supply: supply), component: cpu_row) {
+    Absent => false
+    Present { value: r } =>
+      match r {
+        LineResolutionRefused { line: _, cause: c } =>
+          match c {
+            OfferCurrencyMismatch { declared: d, offered: o } => d == Usd && o == Eur
+            MarketRowAbsent { component: _ } => false
+            MultipleLotsOfferOneComponent { component: _, lots_matching: _ } => false
+            LedgerRefusedDraw { lot: _, cause: _, requested: _, available: _ } => false
+          }
+        LineFulfilled { line: _, fulfillment: _ } => false
+      }
+  }
+}
+
+// The bill of materials derives its memory line from the POPULATION rather than from
+// an authored stick count: eight modules because the derivation said eight.
+test fn memory_line_quantity_comes_from_the_population() -> Bool {
+  fold(recipe_bom(recipe: component_built()), init: false, f: fn(acc, l) {
+    acc || (declaration_ref_eq(a: l.component, b: dimm_row) && l.quantity == 8)
+  }) && count(recipe_bom(recipe: component_built())) == 3
+}

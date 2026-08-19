@@ -1,0 +1,733 @@
+module product.build_fulfillment
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.nat { Nat, nat_min }
+import std.measure { ByteSize, MoneyAmountMicro, byte_size_count, money_amount_micro, money_amount_micro_count }
+import std.currency { CurrencyCode }
+import std.decl_ref { DeclarationRef, declaration_ref_eq, declaration_ref_display_key }
+import extdeps.external_authority { ExternalAuthority }
+import product.inventory {
+  ConsumptionAdmissible,
+  ConsumptionAdmissibility,
+  ConsumptionRefused,
+  ConsumptionRequest,
+  InventoryEvent,
+  InventoryLotIdentity,
+  LandedCostReading,
+  LandedCostReadingHeldPrivately,
+  LandedCostReadingMicros,
+  LandedCostReadingUnsettled,
+  InsufficientStock,
+  EventLotMismatch,
+  EventBeforeAcquisition,
+  LotAlreadyAcquired,
+  ZeroQuantityEvent,
+  ReservationHolderUnknown,
+  ReservationOverRelease,
+  MoreAssetsThanUnits,
+  LedgerRefusalCause,
+  ProcurementLot,
+  admit_consumption,
+  derive_inventory_balance,
+  BalanceDerived,
+  BalanceRefused,
+  inventory_lot_identity_eq,
+  lot_catalog_exact_row,
+  lot_catalog_read_obligation,
+  lot_landed_cost_reading,
+}
+import gunbc.memory_provisioning { PopulationOption }
+
+// WHAT THIS LAYER IS FOR, and why it is a layer rather than a field on either
+// neighbour. gunbc.memory_provisioning derives what populations a board ADMITS;
+// product.inventory owns what stock EXISTS and what it cost. Neither answers the
+// question a buyer actually asks — "given what I already own, what does one more
+// of these cost me, and how many can I build before I run out?" — because that
+// answer is a JOIN and belongs to neither authority. Putting it in provisioning
+// would make a specification module depend on a ledger; putting it in the ledger
+// would make stock depend on board geometry. So it sits here, imports both, and
+// owns nothing they own: every quantity below is derived, and the only wall this
+// module authors is the join itself.
+//
+// PUBLIC VOCABULARY ONLY (operator ruling 2026-08-19). No lot in this module is a
+// real lot, no price is a real price, and no row names a personal holding. The
+// types are generic; the personal rows live off-public and are supplied by the
+// caller. That is also why every price here rides std.measure's money carrier and
+// a std.currency code rather than a bare Int — a synthetic fixture and a real
+// quote are then the same shape, and nothing has to be scrubbed to publish.
+
+// --- the bill of materials ----------------------------------------------------
+
+// ONE LINE OF A BILL OF MATERIALS: a cited catalog row, and how many of it ONE
+// system needs. The quantity is PER SYSTEM, never a total, which is what lets the
+// same line answer both "what does one cost" and "how many can I build" without a
+// second representation of the same number.
+type BomLine {
+  component: DeclarationRef
+  display_label: NonEmptyStr
+  quantity: Nat
+}
+
+// WHERE A SYSTEM COMES FROM, and the reason this is a coproduct rather than a Bool.
+// A whole-system candidate already CONTAINS components a component-built candidate
+// must buy — a dual-socket barebones that ships with both processors is the live
+// example — and counting those against the ledger or the cash total would charge a
+// buyer twice for a part that arrives in the box. So an inclusion is stated, at
+// component grain with its quantity, and the resolution below gives it an arm that
+// draws no stock and spends no money.
+type SystemInclusion {
+  component: DeclarationRef
+  quantity_included: Nat
+}
+
+type SystemSourcing
+  = BuiltFromComponents
+  | WholeSystemCandidate { includes: List<SystemInclusion> }
+
+// A NODE RECIPE. The memory line is DERIVED from the population option rather than
+// authored beside it, because the DIMM count is a fact memory_provisioning already
+// established from board geometry — restating it here would be a second
+// representation that could disagree with the derivation that produced it.
+type NodeRecipe {
+  label: NonEmptyStr
+  sourcing: SystemSourcing
+  board: BomLine
+  cpu: BomLine
+  memory_module: DeclarationRef
+  population: PopulationOption
+  additional: List<BomLine>
+}
+
+fn memory_bom_line(recipe: NodeRecipe) -> BomLine {
+  BomLine {
+    component: recipe.memory_module,
+    display_label: recipe.population.module.part_number,
+    quantity: recipe.population.dimm_count,
+  }
+}
+
+fn recipe_bom(recipe: NodeRecipe) -> List<BomLine> {
+  concat([recipe.board, recipe.cpu, memory_bom_line(recipe: recipe)], recipe.additional)
+}
+
+fn inclusion_quantity(sourcing: SystemSourcing, component: DeclarationRef) -> Nat {
+  match sourcing {
+    BuiltFromComponents => 0
+    WholeSystemCandidate { includes: incs } =>
+      fold(incs, init: 0, f: fn(acc, inc) {
+        if declaration_ref_eq(a: inc.component, b: component) { acc + inc.quantity_included } else { acc }
+      })
+  }
+}
+
+// --- what the supply side offers ----------------------------------------------
+
+// A LOT ON OFFER. There is deliberately NO component field: what a lot IS is
+// lot.catalog, the ledger's own two-state split between an exact cited row and a
+// typed unread obligation. Adding a component here would be a second naming of the
+// same fact that could disagree with it — and worse, it would let an UNREAD lot
+// acquire a confident component identity by assertion, which is exactly the
+// state the ledger's split exists to keep unwritable.
+type LotOffering {
+  lot: ProcurementLot
+  events: List<InventoryEvent>
+}
+
+// MARKET DEPTH, three-valued, and the third arm is the one that matters. An
+// absent market row is NOT zero depth: "nobody is selling this" and "we did not
+// look" are different states with different remedies, and rendering the second as
+// the first is the empty-observation narrow DESIGN names — it would report a
+// confident ceiling computed from a market nobody observed. So a caller that
+// genuinely means "no market source is counted here" says so, with a reason, and
+// a component with no row at all REFUSES rather than defaulting either way.
+type MarketDepth
+  = DepthUnits { units: Nat }
+  | DepthUnread { read_obligation: NonEmptyStr }
+  | DepthDeclaredNone { reason: NonEmptyStr }
+
+type ComponentMarket {
+  component: DeclarationRef
+  unit_price: MoneyAmountMicro
+  currency: CurrencyCode
+  depth: MarketDepth
+  authority: ExternalAuthority
+}
+
+type SupplyContext {
+  lots: List<LotOffering>
+  market: List<ComponentMarket>
+  declared_currency: CurrencyCode
+}
+
+// --- resolving one line -------------------------------------------------------
+
+// WHY A LINE CAN REFUSE OUTRIGHT, as against resolving to Missing. Missing is an
+// ANSWER — this line cannot be sourced, here is what was short — and it is a
+// perfectly good input to a ceiling. A refusal means the question could not be
+// asked: the supply contradicts itself, or the caller left out a fact the join
+// needs. Collapsing the two would let a malformed supply report a buildable
+// system.
+type ResolutionRefusalCause
+  = MarketRowAbsent { component: DeclarationRef }
+  | MultipleLotsOfferOneComponent { component: DeclarationRef, lots_matching: Nat }
+  | OfferCurrencyMismatch { declared: CurrencyCode, offered: CurrencyCode }
+  | LedgerRefusedDraw { lot: InventoryLotIdentity, cause: LedgerRefusalCause, requested: Nat, available: Nat }
+
+// WHY A LINE IS MISSING. Each cause carries the numbers a buyer would act on: a
+// refusal nobody can act on is typed but not located.
+type MissingCause
+  = OwnedStockShort { needed: Nat, available: Nat }
+  | MarketDepthShort { needed: Nat, depth_units: Nat }
+  | MarketDeclaredNone { needed: Nat, reason: NonEmptyStr }
+  | InclusionPartial { included: Nat, needed: Nat }
+
+// THE FIVE FULFILLMENTS. Exactly one per line, and the arms are ordered by what
+// they cost: an included component costs nothing and draws nothing, owned stock
+// costs nothing NEW and draws from a lot, a purchase costs cash now, and the last
+// two are non-answers of two different kinds — one says the line cannot be
+// sourced, the other says it cannot be JUDGED yet.
+//
+// CompatibilityUnread is not a flavour of Missing and the difference is the whole
+// point of the arm. Missing means we looked and there is nothing. CompatibilityUnread
+// means we are holding stock whose exact catalog row has never been read, so we
+// cannot honestly say the line is unsourced while unidentified units sit on the
+// shelf that might be precisely this part. It is a read obligation, it is countable,
+// and a candidate carrying one is NOT a comparable candidate.
+type LineFulfillment
+  = IncludedInSystem { quantity: Nat }
+  | OwnedInventory { lot: InventoryLotIdentity, quantity: Nat, available_after: Nat }
+  | NewPurchase { quantity: Nat, unit_price: MoneyAmountMicro, currency: CurrencyCode, authority: ExternalAuthority }
+  | Missing { cause: MissingCause }
+  | CompatibilityUnread { lot: InventoryLotIdentity, read_obligation: NonEmptyStr }
+
+type LineResolution
+  = LineFulfilled { line: BomLine, fulfillment: LineFulfillment }
+  | LineResolutionRefused { line: BomLine, cause: ResolutionRefusalCause }
+
+// --- reading the supply, order-invariantly ------------------------------------
+//
+// EVERY LOOKUP BELOW IS A FOLD TO AN AGGREGATE, never a first-match search, and
+// that is what makes the resolution invariant under the order of the offering
+// lists. A first-match search over lots would make "which lot supplies this line"
+// depend on authoring order, so permuting a caller's inventory would silently
+// change which lot got drained — the answer would still look correct and would be
+// a different answer.
+
+fn lot_offers_component(offering: LotOffering, component: DeclarationRef) -> Bool {
+  match lot_catalog_exact_row(catalog: offering.lot.catalog) {
+    Absent => false
+    Present { value: row } => declaration_ref_eq(a: row, b: component)
+  }
+}
+
+fn lots_matching(supply: SupplyContext, component: DeclarationRef) -> List<LotOffering> {
+  filter(supply.lots, o => lot_offers_component(offering: o, component: component))
+}
+
+// The unread lots, which belong to no component because none has been read. They
+// are what turns an otherwise-Missing line into a read obligation.
+fn unread_lots(supply: SupplyContext) -> List<LotOffering> {
+  filter(supply.lots, o => match lot_catalog_exact_row(catalog: o.lot.catalog) {
+    Absent => true
+    Present { value: _ } => false
+  })
+}
+
+type MarketLookup
+  = MarketFound { row: ComponentMarket }
+  | MarketAbsent
+
+fn market_for(supply: SupplyContext, component: DeclarationRef) -> MarketLookup {
+  fold(supply.market, init: MarketAbsent, f: fn(acc, row) {
+    match acc {
+      MarketFound { row: r } => MarketFound { row: r }
+      MarketAbsent =>
+        if declaration_ref_eq(a: row.component, b: component) { MarketFound { row: row } } else { MarketAbsent }
+    }
+  })
+}
+
+// The available stock a single offered lot can supply, read through the ledger's
+// own balance fold rather than recomputed here. A second stock computation in this
+// module would be a second authority over the same partition.
+type OwnedAvailability
+  = OwnedAvailable { lot: InventoryLotIdentity, available: Nat }
+  | OwnedNone
+  | OwnedRefused { lot: InventoryLotIdentity, cause: LedgerRefusalCause, requested: Nat, available: Nat }
+
+// AVAILABILITY IS READ THROUGH THE LEDGER, AND THE TWO WAYS IT CAN FAIL ARE KEPT
+// APART. A ledger whose own event sequence refuses has no balance at all, and
+// reporting that as "zero available" would be the state-space conflation the ledger
+// itself is built to prevent: "this lot holds nothing" and "this lot's history does
+// not add up" send a reader in opposite directions, and only the second is a defect
+// to go and fix. So the balance is derived first, a refusal there propagates as a
+// refusal, and only a DERIVED balance is asked for a draw.
+//
+// The draw itself goes through admit_consumption rather than comparing numbers here.
+// That is the reuse the join is entitled to: the over-draw wall already exists one
+// layer down, and re-implementing the comparison in this module would be a second
+// authority over it that could drift.
+//
+// A ZERO-QUANTITY PROBE IS NOT HOW WE ASK. admit_consumption refuses a zero request
+// by design, so probing with quantity 0 would read a real refusal as a stock answer.
+// We ask for exactly what the line needs.
+fn availability_of(offering: LotOffering, needed: Nat) -> OwnedAvailability {
+  match derive_inventory_balance(lot: offering.lot, events: offering.events) {
+    BalanceRefused { cause: c, event_ordinal: _, event_label: _ } =>
+      OwnedRefused { lot: offering.lot.identity, cause: c, requested: needed, available: 0 }
+    BalanceDerived { balance: b } =>
+      match admit_consumption(
+        lot: offering.lot,
+        events: offering.events,
+        request: ConsumptionRequest { lot: offering.lot.identity, quantity: needed, holder: "build_fulfillment" },
+      ) {
+        ConsumptionAdmissible { available_after: _ } =>
+          OwnedAvailable { lot: offering.lot.identity, available: b.available }
+        ConsumptionRefused { cause: c, requested: req, available: avail } =>
+          match c {
+            InsufficientStock { position: _, requested: _, held: _ } =>
+              OwnedAvailable { lot: offering.lot.identity, available: b.available }
+            EventLotMismatch => OwnedRefused { lot: offering.lot.identity, cause: c, requested: req, available: avail }
+            EventBeforeAcquisition => OwnedRefused { lot: offering.lot.identity, cause: c, requested: req, available: avail }
+            LotAlreadyAcquired => OwnedRefused { lot: offering.lot.identity, cause: c, requested: req, available: avail }
+            ZeroQuantityEvent => OwnedRefused { lot: offering.lot.identity, cause: c, requested: req, available: avail }
+            ReservationHolderUnknown { holder: _ } => OwnedRefused { lot: offering.lot.identity, cause: c, requested: req, available: avail }
+            ReservationOverRelease { holder: _, requested: _, held: _ } => OwnedRefused { lot: offering.lot.identity, cause: c, requested: req, available: avail }
+            MoreAssetsThanUnits { assets: _, quantity: _ } => OwnedRefused { lot: offering.lot.identity, cause: c, requested: req, available: avail }
+          }
+      }
+  }
+}
+
+// --- the resolution -----------------------------------------------------------
+//
+// PRECEDENCE, and why it is this order. Inclusion first, because a component that
+// arrives in the box is not a purchasing decision at all. Then owned stock, because
+// the whole point of an inventory-aware plan is that stock already paid for is
+// spent before cash is. Then the market. Then the two non-answers — and an unread
+// lot outranks Missing, because "we hold units nobody has identified" is a stronger
+// and differently-actionable fact than "there is nothing to be had".
+
+fn resolve_owned(
+  line: BomLine,
+  matching: List<LotOffering>,
+  needed: Nat,
+) -> OwnedAvailability {
+  fold(matching, init: OwnedNone, f: fn(acc, offering) {
+    match acc {
+      OwnedRefused { lot: l, cause: c, requested: rq, available: av } =>
+        OwnedRefused { lot: l, cause: c, requested: rq, available: av }
+      OwnedAvailable { lot: l, available: a } => OwnedAvailable { lot: l, available: a }
+      OwnedNone => availability_of(offering: offering, needed: needed)
+    }
+  })
+}
+
+fn market_depth_units(depth: MarketDepth) -> Nat {
+  match depth {
+    DepthUnits { units: u } => u
+    DepthUnread { read_obligation: _ } => 0
+    DepthDeclaredNone { reason: _ } => 0
+  }
+}
+
+fn unread_fallback(line: BomLine, supply: SupplyContext, fallback: LineFulfillment) -> LineFulfillment {
+  fold(unread_lots(supply: supply), init: fallback, f: fn(acc, offering) {
+    match acc {
+      CompatibilityUnread { lot: l, read_obligation: o } => CompatibilityUnread { lot: l, read_obligation: o }
+      IncludedInSystem { quantity: _ } => acc
+      OwnedInventory { lot: _, quantity: _, available_after: _ } => acc
+      NewPurchase { quantity: _, unit_price: _, currency: _, authority: _ } => acc
+      Missing { cause: _ } =>
+        match lot_catalog_read_obligation(catalog: offering.lot.catalog) {
+          Absent => acc
+          Present { value: o } => CompatibilityUnread { lot: offering.lot.identity, read_obligation: o }
+        }
+    }
+  })
+}
+
+fn resolve_from_market(
+  line: BomLine,
+  supply: SupplyContext,
+  row: ComponentMarket,
+  needed: Nat,
+) -> LineResolution {
+  if row.currency != supply.declared_currency {
+    LineResolutionRefused {
+      line: line,
+      cause: OfferCurrencyMismatch { declared: supply.declared_currency, offered: row.currency },
+    }
+  } else {
+    match row.depth {
+      DepthUnits { units: u } =>
+        if u >= needed {
+          LineFulfilled {
+            line: line,
+            fulfillment: NewPurchase {
+              quantity: needed,
+              unit_price: row.unit_price,
+              currency: row.currency,
+              authority: row.authority,
+            },
+          }
+        } else {
+          LineFulfilled {
+            line: line,
+            fulfillment: unread_fallback(
+              line: line,
+              supply: supply,
+              fallback: Missing { cause: MarketDepthShort { needed: needed, depth_units: u } },
+            ),
+          }
+        }
+      DepthUnread { read_obligation: _ } =>
+        LineFulfilled {
+          line: line,
+          fulfillment: NewPurchase {
+            quantity: needed,
+            unit_price: row.unit_price,
+            currency: row.currency,
+            authority: row.authority,
+          },
+        }
+      DepthDeclaredNone { reason: r } =>
+        LineFulfilled {
+          line: line,
+          fulfillment: unread_fallback(
+            line: line,
+            supply: supply,
+            fallback: Missing { cause: MarketDeclaredNone { needed: needed, reason: r } },
+          ),
+        }
+    }
+  }
+}
+
+fn resolve_line(recipe: NodeRecipe, supply: SupplyContext, line: BomLine) -> LineResolution {
+  let included = inclusion_quantity(sourcing: recipe.sourcing, component: line.component)
+  if included >= line.quantity && line.quantity > 0 {
+    LineFulfilled { line: line, fulfillment: IncludedInSystem { quantity: line.quantity } }
+  } else if included > 0 {
+    LineFulfilled {
+      line: line,
+      fulfillment: Missing { cause: InclusionPartial { included: included, needed: line.quantity } },
+    }
+  } else {
+    let matching = lots_matching(supply: supply, component: line.component)
+    if count(matching) > 1 {
+      LineResolutionRefused {
+        line: line,
+        cause: MultipleLotsOfferOneComponent { component: line.component, lots_matching: count(matching) },
+      }
+    } else {
+      match market_for(supply: supply, component: line.component) {
+        MarketAbsent => LineResolutionRefused { line: line, cause: MarketRowAbsent { component: line.component } }
+        MarketFound { row: row } =>
+          match resolve_owned(line: line, matching: matching, needed: line.quantity) {
+            OwnedRefused { lot: l, cause: c, requested: rq, available: av } =>
+              LineResolutionRefused {
+                line: line,
+                cause: LedgerRefusedDraw { lot: l, cause: c, requested: rq, available: av },
+              }
+            OwnedAvailable { lot: l, available: a } =>
+              if a >= line.quantity {
+                LineFulfilled {
+                  line: line,
+                  fulfillment: OwnedInventory { lot: l, quantity: line.quantity, available_after: a - line.quantity },
+                }
+              } else {
+                resolve_from_market(line: line, supply: supply, row: row, needed: line.quantity)
+              }
+            OwnedNone => resolve_from_market(line: line, supply: supply, row: row, needed: line.quantity)
+          }
+      }
+    }
+  }
+}
+
+// --- the candidate ------------------------------------------------------------
+
+type BuildCandidate
+  = CandidateResolved { recipe: NodeRecipe, lines: List<LineResolution> }
+
+fn resolve_candidate(recipe: NodeRecipe, supply: SupplyContext) -> List<LineResolution> {
+  map(recipe_bom(recipe: recipe), l => resolve_line(recipe: recipe, supply: supply, line: l))
+}
+
+// --- projection 1: incremental cash now ---------------------------------------
+//
+// THE FOUR PROJECTIONS BELOW ARE NEVER MERGED, and the reason is the one the ledger
+// already states one layer down: cash now and historical basis answer different
+// questions and move in different directions. Consuming a stick you already own
+// costs zero cash and consumes real basis; buying one costs cash and consumes no
+// basis. A single "cost" figure that added them would charge a buyer twice for the
+// owned half and would be wrong in the direction that looks expensive; a single
+// figure that took only one would be wrong in the direction that looks cheap. So
+// there are two numbers with two names, plus a ceiling and a bottleneck that are
+// counts rather than money at all.
+
+type CashRefusalCause
+  = CashLineUnresolved { component: DeclarationRef }
+  | CashLineMissing { component: DeclarationRef }
+  | CashLineCompatibilityUnread { component: DeclarationRef, read_obligation: NonEmptyStr }
+
+type IncrementalCash
+  = CashTotal { amount: MoneyAmountMicro, currency: CurrencyCode }
+  | CashRefused { cause: CashRefusalCause }
+
+// Only NewPurchase contributes. IncludedInSystem and OwnedInventory contribute
+// ZERO — not "nothing to add" as an accident of the fold, but because the money for
+// both already left the building or never will, and this is the projection that
+// must not spend it twice.
+fn cash_step(acc: IncrementalCash, resolution: LineResolution) -> IncrementalCash {
+  match acc {
+    CashRefused { cause: c } => CashRefused { cause: c }
+    CashTotal { amount: a, currency: cur } =>
+      match resolution {
+        LineResolutionRefused { line: l, cause: _ } =>
+          CashRefused { cause: CashLineUnresolved { component: l.component } }
+        LineFulfilled { line: l, fulfillment: f } =>
+          match f {
+            IncludedInSystem { quantity: _ } => acc
+            OwnedInventory { lot: _, quantity: _, available_after: _ } => acc
+            NewPurchase { quantity: q, unit_price: p, currency: _, authority: _ } =>
+              CashTotal {
+                amount: money_amount_micro(count: money_amount_micro_count(m: a) + money_amount_micro_count(m: p) * q),
+                currency: cur,
+              }
+            Missing { cause: _ } => CashRefused { cause: CashLineMissing { component: l.component } }
+            CompatibilityUnread { lot: _, read_obligation: o } =>
+              CashRefused { cause: CashLineCompatibilityUnread { component: l.component, read_obligation: o } }
+          }
+      }
+  }
+}
+
+fn incremental_cash(lines: List<LineResolution>, declared_currency: CurrencyCode) -> IncrementalCash {
+  fold(
+    lines,
+    init: CashTotal { amount: money_amount_micro(count: 0), currency: declared_currency },
+    f: (acc, r) => cash_step(acc: acc, resolution: r),
+  )
+}
+
+// --- projection 2: owned stock consumed, at lot identity grain -----------------
+
+type LotDraw {
+  lot: InventoryLotIdentity
+  units: Nat
+}
+
+fn draw_step(acc: List<LotDraw>, resolution: LineResolution) -> List<LotDraw> {
+  match resolution {
+    LineResolutionRefused { line: _, cause: _ } => acc
+    LineFulfilled { line: _, fulfillment: f } =>
+      match f {
+        OwnedInventory { lot: l, quantity: q, available_after: _ } =>
+          append(acc, [LotDraw { lot: l, units: q }])
+        IncludedInSystem { quantity: _ } => acc
+        NewPurchase { quantity: _, unit_price: _, currency: _, authority: _ } => acc
+        Missing { cause: _ } => acc
+        CompatibilityUnread { lot: _, read_obligation: _ } => acc
+      }
+  }
+}
+
+fn owned_stock_consumed(lines: List<LineResolution>) -> List<LotDraw> {
+  fold(lines, init: [], f: (acc, r) => draw_step(acc: acc, resolution: r))
+}
+
+fn draw_units_for(draws: List<LotDraw>, lot: InventoryLotIdentity) -> Nat {
+  fold(draws, init: 0, f: fn(acc, d) {
+    if inventory_lot_identity_eq(left: d.lot, right: lot) { acc + d.units } else { acc }
+  })
+}
+
+// --- projection 3: historical basis consumed, with its policy named ------------
+
+// THE POLICY IS A FIELD OF THE ANSWER, not a constant folded into the arithmetic.
+// The ledger deliberately stores landed cost ONCE, at lot grain, with no per-unit
+// field, because assigning cost to individual units is a policy choice and money
+// micros do not divide exactly. This projection therefore states which policy it
+// applied, in the result, at the point of derivation — and carries the exact
+// rounding remainder rather than discarding it, so the figure is reproducible and
+// nothing is silently lost to a floor division.
+type BasisAllocationPolicy = | ProportionalUnitsWithRemainderRetained
+
+type BasisRefusalCause
+  = BasisLotUnsettled { lot: InventoryLotIdentity }
+  | BasisLotHeldPrivately { lot: InventoryLotIdentity }
+  | BasisLotNotOffered { lot: InventoryLotIdentity }
+
+type BasisConsumed
+  = BasisConsumedMicros {
+      micros: Nat
+      rounding_remainder_numerator: Nat
+      policy: BasisAllocationPolicy
+    }
+  | BasisConsumedRefused { cause: BasisRefusalCause }
+
+fn lot_offering_for(supply: SupplyContext, lot: InventoryLotIdentity) -> LotOffering? {
+  fold(supply.lots, init: none, f: fn(acc, o) {
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent => if inventory_lot_identity_eq(left: o.lot.identity, right: lot) { Present { value: o } } else { none }
+    }
+  })
+}
+
+fn basis_for_draw(supply: SupplyContext, draw: LotDraw, acc_micros: Nat, acc_rem: Nat) -> BasisConsumed {
+  match lot_offering_for(supply: supply, lot: draw.lot) {
+    Absent => BasisConsumedRefused { cause: BasisLotNotOffered { lot: draw.lot } }
+    Present { value: offering } =>
+      match lot_landed_cost_reading(lot: offering.lot) {
+        LandedCostReadingUnsettled => BasisConsumedRefused { cause: BasisLotUnsettled { lot: draw.lot } }
+        LandedCostReadingHeldPrivately => BasisConsumedRefused { cause: BasisLotHeldPrivately { lot: draw.lot } }
+        LandedCostReadingMicros { micros: total } =>
+          BasisConsumedMicros {
+            micros: acc_micros + (total * draw.units) / offering.lot.quantity_acquired,
+            rounding_remainder_numerator: acc_rem + ((total * draw.units) - ((total * draw.units) / offering.lot.quantity_acquired) * offering.lot.quantity_acquired),
+            policy: ProportionalUnitsWithRemainderRetained,
+          }
+      }
+  }
+}
+
+fn basis_consumed(supply: SupplyContext, draws: List<LotDraw>) -> BasisConsumed {
+  fold(
+    draws,
+    init: BasisConsumedMicros { micros: 0, rounding_remainder_numerator: 0, policy: ProportionalUnitsWithRemainderRetained },
+    f: fn(acc, draw) {
+      match acc {
+        BasisConsumedRefused { cause: c } => BasisConsumedRefused { cause: c }
+        BasisConsumedMicros { micros: m, rounding_remainder_numerator: r, policy: _ } =>
+          basis_for_draw(supply: supply, draw: draw, acc_micros: m, acc_rem: r)
+      }
+    },
+  )
+}
+
+// --- projection 4: how many can be built, and what stops the next one ----------
+//
+// THE CEILING IS A MINIMUM OVER LINES, and every line's depth is counted in
+// SYSTEMS rather than units, because a line needing eight modules and holding
+// sixty-two of them does not supply sixty-two systems. Integer division is the
+// whole content of the projection: sixty-two units at two per system is thirty-one
+// systems and two units left over, and the operator's own acceptance example is
+// that dropping the lot to sixty moves the ceiling to thirty.
+//
+// AN INCLUDED COMPONENT CONSTRAINS NOTHING. A whole-system candidate that ships
+// its own processors does not run out of them independently of the systems it
+// ships in, so the arm is unbounded rather than a large number — a large number
+// would be a fabricated bound that a later, smaller lot could accidentally beat.
+type LineDepth
+  = DepthSystems { systems: Nat }
+  | DepthUnbounded
+  | LineDepthUnread { component: DeclarationRef, read_obligation: NonEmptyStr }
+  | LineDepthRefused { component: DeclarationRef }
+
+fn owned_units_for(supply: SupplyContext, line: BomLine) -> Nat {
+  let matching = lots_matching(supply: supply, component: line.component)
+  fold(matching, init: 0, f: fn(acc, offering) {
+    match availability_of(offering: offering, needed: line.quantity) {
+      OwnedAvailable { lot: _, available: a } => acc + a
+      OwnedNone => acc
+      OwnedRefused { lot: _, cause: _, requested: _, available: _ } => acc
+    }
+  })
+}
+
+fn line_depth(recipe: NodeRecipe, supply: SupplyContext, line: BomLine) -> LineDepth {
+  let included = inclusion_quantity(sourcing: recipe.sourcing, component: line.component)
+  if included >= line.quantity && line.quantity > 0 {
+    DepthUnbounded
+  } else if line.quantity == 0 {
+    LineDepthRefused { component: line.component }
+  } else {
+    match market_for(supply: supply, component: line.component) {
+      MarketAbsent => LineDepthRefused { component: line.component }
+      MarketFound { row: row } =>
+        match row.depth {
+          DepthUnread { read_obligation: o } =>
+            LineDepthUnread { component: line.component, read_obligation: o }
+          DepthUnits { units: u } =>
+            DepthSystems { systems: (owned_units_for(supply: supply, line: line) + u) / line.quantity }
+          DepthDeclaredNone { reason: _ } =>
+            DepthSystems { systems: owned_units_for(supply: supply, line: line) / line.quantity }
+        }
+    }
+  }
+}
+
+type ConstructibleCount
+  = ConstructibleSystems { systems: Nat }
+  | ConstructibleUnbounded
+  | ConstructibleRefused { cause: LineDepth }
+
+fn depth_meet(acc: ConstructibleCount, depth: LineDepth) -> ConstructibleCount {
+  match acc {
+    ConstructibleRefused { cause: c } => ConstructibleRefused { cause: c }
+    ConstructibleUnbounded =>
+      match depth {
+        DepthUnbounded => ConstructibleUnbounded
+        DepthSystems { systems: s } => ConstructibleSystems { systems: s }
+        LineDepthUnread { component: c, read_obligation: o } =>
+          ConstructibleRefused { cause: LineDepthUnread { component: c, read_obligation: o } }
+        LineDepthRefused { component: c } => ConstructibleRefused { cause: LineDepthRefused { component: c } }
+      }
+    ConstructibleSystems { systems: a } =>
+      match depth {
+        DepthUnbounded => ConstructibleSystems { systems: a }
+        DepthSystems { systems: s } => ConstructibleSystems { systems: nat_min(a: a, b: s) }
+        LineDepthUnread { component: c, read_obligation: o } =>
+          ConstructibleRefused { cause: LineDepthUnread { component: c, read_obligation: o } }
+        LineDepthRefused { component: c } => ConstructibleRefused { cause: LineDepthRefused { component: c } }
+      }
+  }
+}
+
+// A REFUSAL ANYWHERE OUTRANKS EVERY BOUND, wherever it sits in the roster, which is
+// why the fold accumulates to a meet instead of latching the first answer: the
+// ceiling must not depend on whether the unread line happened to be authored before
+// or after the line that bounds it.
+fn max_constructible(recipe: NodeRecipe, supply: SupplyContext) -> ConstructibleCount {
+  fold(
+    recipe_bom(recipe: recipe),
+    init: ConstructibleUnbounded,
+    f: (acc, line) => depth_meet(acc: acc, depth: line_depth(recipe: recipe, supply: supply, line: line)),
+  )
+}
+
+// THE BOTTLENECK IS EVERY LINE AT THE MINIMUM, not the first one found. Two lines
+// that both bound the build at thirty are both bottlenecks, and naming one of them
+// would make the answer depend on authoring order while looking like a fact about
+// the hardware. The caller that wants one name picks it and says how.
+type Bottleneck
+  = BottleneckLines { systems: Nat, components: List<DeclarationRef> }
+  | BottleneckNone
+  | BottleneckNotComputable { cause: LineDepth }
+
+fn line_bounds_at(recipe: NodeRecipe, supply: SupplyContext, line: BomLine, systems: Nat) -> Bool {
+  match line_depth(recipe: recipe, supply: supply, line: line) {
+    DepthSystems { systems: s } => s == systems
+    DepthUnbounded => false
+    LineDepthUnread { component: _, read_obligation: _ } => false
+    LineDepthRefused { component: _ } => false
+  }
+}
+
+fn next_bottleneck(recipe: NodeRecipe, supply: SupplyContext) -> Bottleneck {
+  match max_constructible(recipe: recipe, supply: supply) {
+    ConstructibleRefused { cause: c } => BottleneckNotComputable { cause: c }
+    ConstructibleUnbounded => BottleneckNone
+    ConstructibleSystems { systems: s } =>
+      BottleneckLines {
+        systems: s,
+        components: map(
+          filter(recipe_bom(recipe: recipe), l => line_bounds_at(recipe: recipe, supply: supply, line: l, systems: s)),
+          l => l.component,
+        ),
+      }
+  }
+}
