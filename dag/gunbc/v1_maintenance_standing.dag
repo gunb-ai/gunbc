@@ -14,13 +14,28 @@ type MaintenanceStanding =
     MaintenanceActive
   | MaintenanceClosed
 
-// The three admitted classes. Each preserves observable semantics; none of them
-// completes, extends, or widens v1. Refusal dominates: a proposal matching any
-// class below is refused however many of these it also matches.
+// The four admitted classes. Refusal dominates: a proposal matching any refused
+// class below is refused however many of these it also matches. Three preserve
+// observable semantics; the fourth, DefectRepairDiagnosticsMayMove, is the one
+// exception and is bounded by the line stated here rather than at its arm,
+// since the language admits only a standalone leading comment at module-item
+// grain (DESIGN 4c), not one attached to a single variant inside a type body.
+// OPERATOR RULING 2026-08-19 (narrowing the 2026-08-18 ruling above): "it is
+// pretty frozen but fixing issues is fine." The three behavior-preserving
+// classes below left a gap: a genuine defect repair whose correction moves
+// observable diagnostics is not behavior-preserving by any honest reading, yet
+// is squarely what the operator admits. DefectRepairDiagnosticsMayMove closes
+// that gap and no other: the seed is doing something INCORRECT -> admitted
+// here, repair it, its diagnostics may move. The line it does NOT cross: the
+// seed is FAILING TO DO something it never did -> that is SeedFeatureCompletion,
+// refused, and dominates this class exactly as it dominates the other three. A
+// proposal that cannot be pinned to a specific incorrect behavior the seed
+// exhibits today is not this class.
 type MaintenanceAdmission =
     BehaviorPreservingCorrectness
   | BehaviorPreservingRedundancyRemoval
   | BoundedOperationalFix
+  | DefectRepairDiagnosticsMayMove
 
 // The five refused classes, and they DOMINATE the admitted ones above. These are
 // the growth surfaces DESIGN 3 names: a freeze that still accepts rows is not a
@@ -35,6 +50,8 @@ type MaintenanceRefusal =
 data v1_seed_standing: SeedLifecycleStanding = SemanticsFrozen { maintenance: MaintenanceActive }
 
 data v1_maintenance_standing_ruling_note: String = "OPERATOR RULING 2026-08-18, and the reason it is a reclassification rather than a loophole. The v1 seed was carried as 'frozen' under DESIGN section 3's frozen-X carve-out: no new investment, no completion work, quarry-in-place. Work then arrived that is economically correct and that the unqualified word forbids — a measured 177.8s of repeated formal canonicalization on every required-floor run, removable by construction. The honest options were to refuse the work or to state the status accurately; describing v1 as frozen while maintaining it is the rung-inflation failure of section 4b applied to a lifecycle label, and it is worse than either option because it makes the maintenance invisible. THE ECONOMIC BASIS, which is what distinguishes this from ordinary reluctance to delete: 'let it die with v1' is only an argument when some bounded event kills the cost. gunbc#8352 closed unmerged and integration/v1-cut is quarry, so no such event is scheduled and the cost is unbounded in time. Against an eight-hour implementation the payback is 28,800 / 177.8, roughly 162 required-floor runs. THE STANDING DANGER, named so it can be checked: MaintenanceActive is a candidate absorbing arm in exactly the section 5 sense — if every proposed v1 change classifies as admissible, the vocabulary has stopped discriminating and the freeze has been repealed by drift rather than by ruling. The refused list is therefore load-bearing, not decorative, and a proposal that fits no admitted class is refused rather than accommodated by widening the list."
+
+data v1_maintenance_defect_repair_note: String = "OPERATOR RULING 2026-08-19, narrowing the 2026-08-18 ruling above rather than reopening it: 'it is pretty frozen but fixing issues is fine.' The freeze stands; MaintenanceActive under SemanticsFrozen is unchanged. What changed is the admitted vocabulary, by exactly one class. THE GAP THIS CLOSES: the three original admitted classes are all worded behavior-preserving, so a genuine defect repair whose correct fix moves observable diagnostics fell through the vocabulary even though it is squarely inside what the operator admits — a defect is not a behavior worth preserving. THE LINE, stated because it is the entire content of the class and the thing most likely to be eroded later: the seed doing something INCORRECT is admitted, repair it, diagnostics may move; the seed FAILING TO DO something it never did is SeedFeatureCompletion, refused, and refusal dominates this class exactly as it dominates the other three. A proposal that cannot be pinned to a specific incorrect behavior the seed exhibits today, evidenced the way the redundancy-removal population above is evidenced, is not DefectRepairDiagnosticsMayMove. WHY THIS MATTERS BEYOND HOUSEKEEPING: the stale three-class reading had already produced one wrong refusal — a real lane declined on carrier strength alone — before this class existed, which is the standing danger this carrier names elsewhere (an active-maintenance arm that misdescribes itself contaminates every decision made near it, in either direction: too wide repeals the freeze by drift, too narrow refuses admitted work)."
 
 data v1_maintenance_vocabulary_shape_note: String = "WHY THERE IS NO VERDICT TYPE HERE, since its absence is deliberate rather than an omission. An earlier draft of this carrier declared a V1ChangeVerdict coproduct pairing the admitted and refused classes. Nothing produces it: no lens reads this module, no gate joins it to a diff, and the rung note below says plainly that classification is authored by a human reviewer rather than derived. A verdict type with no producer is uninhabited generality (DESIGN section 6, model just-in-time) and, worse, it would make this carrier LOOK like a decision procedure in a PR whose entire subject is being honest about what is and is not enforced. The two vocabularies are the whole content: they give a reviewer a closed list to classify against and a name to refuse with. If a mechanical classifier is ever built for the two decidable refused classes named in the rung note, the verdict type is minted THEN, by the thing that produces it.\n\nTWO CORRECTIONS TO THE VOCABULARY ITSELF, both from review, and the first one matters more than its size suggests. A fourth admitted class, ChangeCarryingDeletionTrigger, stood beside the three above and has been REMOVED — not relocated to another axis, removed. A change that carries its own deletion trigger is not thereby semantically admissible, and treating the trigger as an admission reason is exactly the self-authorized-dissolution failure DESIGN section 5 names: a dissolution condition describes how admitted debt ends, it does not authorize creating the debt. Left standing it would have been the widest arm in the list, since almost any v1 change can be narrated as carrying a trigger, and it would have re-opened the freeze through the one door section 5 already closed. A deletion trigger remains a real fact about a change; it is a lifecycle axis carried by std.disposition, and it is not a reason.\n\nSECOND, the two vocabularies are ORDERED rather than peer, because without an order a proposal matching both an admitted and a refused class had no stated outcome — and an unstated outcome is precisely how MaintenanceActive becomes the absorbing arm the ruling note warns about. Any refusal dominates every admission. This ordering is stated and NOT enforced, for the same reason there is no verdict type: nothing here produces a classification, so the dominance is a rule a reviewer applies, at the rung the note below declares."
 

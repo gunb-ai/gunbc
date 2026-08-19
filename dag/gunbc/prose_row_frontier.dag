@@ -237,7 +237,7 @@ data prose_row_migration_scope: List<String> = [
   "dag/test/claim/state_response_totality_witness_test.dag",
   "dag/test/claim/test_module_hygiene_hand_rust_equivalence_witness_test.dag",
   "dag/test/claim/tool_pin_witness_test.dag",
-  "dag/test/claim/long/transport_script_wall_compile_red_test.dag",
+  "dag/test/claim/transport_script_wall_compile_red_test.dag",
   "dag/test/claim/type_ref_hit_ne_bind_measure_witness_test.dag",
   "dag/test/claim/type_reference_containment_binding_witness_test.dag",
   "dag/test/claim/v1_complexity_capability_census_witness_test.dag",
