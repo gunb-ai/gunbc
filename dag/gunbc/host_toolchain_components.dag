@@ -18,7 +18,7 @@ import product.placement_supply { HostIdentity }
 
 data toolchain_completeness_authority_note: String = "B3's toolchain-completeness axis, and it is keyed on a RESOLVED TOOLCHAIN rather than on a host, because the host-shaped question is the one that produces a true-sounding wrong answer. The incident that grounds it, read live on srv2 2026-07-25: floor gates died with `spawn rustfmt: No such file or directory` across two hosts in two days, and the natural reading — rustfmt is missing from the machine — was wrong. rustfmt WAS on srv2. The job principal ghrunner carried two rustup toolchains, 1.93.0 with rustfmt and stable WITHOUT it, ~/.cargo/bin/rustfmt was a shim, and ghrunner's default was stable. So a completeness check keyed on 'is rustfmt installed on this host' answers yes, converges green, and the gate keeps failing — the same presupposition failure gunbc.host_swap_backing found in a MemorySwapMax over absent swap, and gunbc.auth.materialized_secret found in an SmEnabled version upstream had revoked. Three incidents, one shape: a value reported green because the condition under which it would MEAN something was assumed instead of observed. The cell therefore names the toolchain it resolved and the component set THAT toolchain carries, and a requirement is satisfied only by the components of the ACTIVE toolchain."
 
-data toolchain_requirement_derivation_note: String = "The requirement is derived from the gate that needs it, carried as a DeclarationRef rather than a label, so a component nothing requires cannot accumulate here and the reason a component is required stays pointable. Today there is exactly one row: the self-host realized-comparison gate emits Rust and formats it, so it needs rustfmt. Clippy is deliberately NOT a row — it was removed from CI 2026-07-08 as zero-signal under a crate-wide allow, and adding it here because it is a familiar component would be requiring something no consumer needs."
+data toolchain_requirement_derivation_note: String = "The requirement is derived from the gate that needs it, carried as a DeclarationRef rather than a label, so a component nothing requires cannot accumulate here and the reason a component is required stays pointable. Today there is exactly one row: the required CI fmt step invokes rustfmt, so it needs rustfmt on the job principal's resolved toolchain. Clippy is deliberately NOT a row — it was removed from CI 2026-07-08 as zero-signal under a crate-wide allow, and adding it here because it is a familiar component would be requiring something no consumer needs."
 
 type ToolchainComponentRequirement {
   component: RustupComponent
@@ -29,8 +29,8 @@ data floor_gate_component_requirements: List<ToolchainComponentRequirement> = [
   ToolchainComponentRequirement {
     component: Rustfmt,
     required_by: DeclarationRef {
-      module_path: "v2.workflow.ci_floor_plan",
-      decl_name: "floor_self_host_realized_comparison_gate_entry",
+      module_path: "gunbc.ci_spec",
+      decl_name: "ci_fmt_gate_line",
       field: WholeDeclaration,
     },
   },
