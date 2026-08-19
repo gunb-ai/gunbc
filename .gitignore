@@ -21,7 +21,7 @@ tarpaulin-report.html
 tarpaulin-report.json
 cobertura.xml
 lcov.info
-coverage/
+/coverage/
 
 # --- JetBrains IDE project state [cited: jetbrains.com/idea] ---
 # Per-developer configuration, not project state
