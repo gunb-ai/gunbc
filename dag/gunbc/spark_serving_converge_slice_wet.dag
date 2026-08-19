@@ -38,6 +38,7 @@ import gunbc.host_effect_realize { run_typed_argv_transport }
 import gunbc.spark_credential_workflow { run_with_materialized_fleet_ssh_binding }
 import gunbc.auth.access_token_source { GcloudPrintToken }
 import gunbc.spark_serving_desired { spark_serving_automation_principal_login }
+import gunbc.spark_serving_membership { SparkServingMember, SparkServingMemberAt }
 import gunbc.spark_serving_converge_plan {
   fleet_converge_spark_serving_action_at,
   spark_serving_fleet_converge_plan_artifact,
@@ -83,7 +84,15 @@ import gunbc.fleet_converge_plan {
   FleetConvergePlanArtifact,
   FleetConvergeSparkServingTypedAction,
 }
-import gunbc.membership_reconcile { membership_write_count }
+import gunbc.membership_reconcile {
+  membership_write_count,
+  MemberAction,
+  MemberAdded,
+  MemberChanged,
+  MemberRemoved,
+  MemberRemovalRefused,
+  MemberRosterDuplicateKeyRefused,
+}
 
 data spark_serving_converge_slice_wet_note: String = "Wet Seam 2 linger slice: observe durable Linger property on each Spark via FleetSsh (endpoint from gunbc.fleet_reach_endpoint.fleet_probe_endpoint_for → gunbc.dgx_spark_procurement OperatorAllocation rows, NOT fleet_intent_network DNS), plan frozen typed rows, derive apply argv. Hermetic witnesses prove logic given linger_enabled input; this entry proves a REAL host was observed."
 
@@ -335,9 +344,32 @@ fn spark_serving_replan_disagreeing_addresses_wire(
   rows: List<FleetConvergeSparkServingTypedAction>,
 ) -> String {
   join(
-    map(rows, r => fleet_converge_spark_serving_action_at(action: r.action)),
+    map(rows, r => spark_serving_replan_row_wire(action: r.action)),
     " ",
   )
+}
+
+// WHY THE ROW DISAGREES, WHICH IS THE ARM IT TOOK.
+//
+// An address alone says a member did not converge; it does not say whether the resource is MISSING
+// or PRESENT-AND-DIFFERENT, and those have different causes and different fixes. A model slot that
+// reconciles as Added means the pull is not landing. The same slot reconciling as Changed means the
+// artifact is there and the two sides identify it differently -- which for this member is a named,
+// written-down, unverified upstream assumption (spark_serving_observe: sha256 of the manifest file
+// equals the digest /api/tags reports), whose predicted failure is exactly a plan that can never
+// empty. The arm is what decides between them, and the plan has always known it.
+fn spark_serving_replan_row_wire(
+  action: MemberAction<SparkServingMember, SparkServingMemberAt>,
+) -> String {
+  match action {
+    MemberAdded { at: at, to: to } =>
+      join([at, "=absent->", to.state_digest as String], "")
+    MemberChanged { at: at, from: from, to: to } =>
+      join([at, "=", from.state_digest as String, "->", to.state_digest as String], "")
+    MemberRemoved { at: at, from: _ } => join([at, "=removal"], "")
+    MemberRemovalRefused { from: _, cause: _ } => "removal-refused"
+    MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => "duplicate-key-refused"
+  }
 }
 
 fn spark_serving_converge_slice_exec_verdict(
