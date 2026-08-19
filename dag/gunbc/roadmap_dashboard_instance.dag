@@ -115,7 +115,6 @@ type HostDashboardInstance {
 data dashboard_instance_note: String = "A dashboard is an explicit host instance, not an ambient serve process. One value moves the source repository, local Git origin, attempt-worktree root, semantic execution-capability realizations, provider state binding, tmux server, listen address, handler entrypoint, and actuation posture together. Selection is by the serve entry function that receives this value; no environment variable may replace one projection independently. Production uses the user's default tmux server for compatibility. Labs and previews use named tmux servers and roots disjoint from production. Provider credentials remain pre-existing user-authored state and are referenced, never copied into a deployment payload. Capability realizations name exact executable paths and identity probes; observe-only means absence refuses admission until a separate capability-specific provisioner exists, never that generic Ensure guesses an installer."
 
 data srv1_dashboard_live_id: NonEmptyStr = "srv1-live" as NonEmptyStr
-data srv1_dashboard_green_id: NonEmptyStr = "srv1-green" as NonEmptyStr
 data srv1_dashboard_lab_id: NonEmptyStr = "srv1-lab-codex-feedback-v0" as NonEmptyStr
 data srv2_dashboard_preview_id: NonEmptyStr = "srv2-preview-codex-feedback-v0" as NonEmptyStr
 
@@ -387,43 +386,7 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
   }
 }
 
-data srv1_green_dashboard_instance_note: String = "The second production slot for the operator-signed 2026-08-01 blue/green cutover. It is a full HostDashboardInstance rather than a port override: source, binary, unit handler and listen port move together, so preparing this idle slot cannot mutate the instance that Tailscale still serves. Provider credentials are referenced from the same admitted account binding, never copied. The slot is actuating and serves the production handler surface; it is not the pre-existing feedback lab, whose source ref and handler intentionally describe a different product.\\n\\nDISPATCH STATE AND THE TMUX SERVER DELIBERATELY DO NOT MOVE WITH THE SLOT, and an earlier revision of this note listed dispatch worktrees, attempt evidence and the tmux server among the things that do (operator ruling, 2026-08-01). Moving them was wrong twice over. It put a teardown of live dispatch evidence on the per-push cutover path, where the empty-directory wall correctly refused and reded every main push; and it meant a flip handed the dashboard to a process reading an empty attempt-state root and a differently-named tmux server, so attempts dispatched under the predecessor went invisible and their sessions unmanageable. Blue/green is sound for a stateless server, and this instance is stateful — so the stateful members are host-shared and the slot carries only what a slot may safely own."
 
-fn srv1_green_dashboard_instance() -> HostDashboardInstance {
-  let root = "/opt/gunbc-green" as FilePath
-  let binary = dashboard_instance_child(root: root, child: "bin/gunbc")
-  HostDashboardInstance {
-    instance_id: srv1_dashboard_green_id,
-    host_identity: "srv1" as NonEmptyStr,
-    provision_parent_root: "/opt" as FilePath,
-    instance_root: root,
-    local_origin_root: dashboard_instance_child(root: root, child: "gunbc"),
-    local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
-    repo_root: dashboard_instance_child(root: root, child: "gunbc"),
-    dispatch_base_ref: "origin/main" as NonEmptyStr,
-    dispatch_state_scope: DispatchStateHostShared {
-      worktree_root: srv1_dispatch_worktree_root,
-      attempt_state_root: srv1_dispatch_attempt_state_root,
-    },
-    execution_environment: dashboard_execution_environment(serve_binary: binary),
-    provider_state: DashboardExistingProviderState {
-      root: srv1_roadmap_codex_home,
-      executable: srv1_codex_bundled_executable(),
-      binding: admitted_single_session_binding(
-        selection: codex_roadmap_account_selection(),
-        evidence: codex_roadmap_account_evidence,
-      ),
-    },
-    serve_binary: binary,
-    serve_function: "roadmap_serve_handle_srv1_green" as NonEmptyStr,
-    listen_host: "0.0.0.0" as NonEmptyStr,
-    listen_port: 18080,
-    tmux_server: DefaultTmuxServer,
-    actuation: DashboardActuating,
-    provision_transport: DashboardSshProvision { host: "srv1" as NonEmptyStr },
-    source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as NonEmptyStr },
-  }
-}
 
 data isolated_instance_layout_parameter_note: String = "host_identity USED TO BE A PARAMETER OVER A BODY OF srv1 LITERALS, which made a second host expressible without making it representable. Serve binary, provider state root, and source-seed controller repo were pinned to srv1 rows here, so srv2_preview_dashboard_instance below produced a value reading host_identity srv2 while describing srv1's binary, srv1's Codex home, and srv1's controller worktree. Nothing caught it because every consumer that would disagree — preflight, apply, the git and tmux observations — needs the host to actually be actuated, and that instance was declared observe-only and never provisioned.\\n\\nTaking the whole layout row instead of a bare host_identity makes the mismatch unwritable: there is no longer a way to name a host without also supplying the three facts that belong to it, because the name IS a field of the row that carries them. gunbc.host_layout owns those rows."
 

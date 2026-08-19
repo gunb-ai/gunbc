@@ -144,7 +144,7 @@ import gunbc.roadmap_belt_actuate {
   SpawnWorkdirInstanceResolved,
   UnknownSpawnWorkdir,
   srv1_live_dashboard_instance,
-  srv1_green_dashboard_instance,
+  srv1_lab_dashboard_instance,
 }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
 import gunbc.fleet_desired_observe {
@@ -1132,16 +1132,22 @@ test fn unknown_spawn_workdir_refuses_instance_resolution() -> Bool {
   }
 }
 
+// RE-ENROLLED against srv1-lab. The lookup's job is to answer WHICH instance a spawn workdir
+// belongs to, so it needs two known workdirs resolving to different identities; the deleted green
+// slot supplied the second one and the lab supplies it now. Retiring this with the slot would have
+// left the lookup with only its refusal arm witnessed — the arm that answers correctly would then
+// be exercised by nothing, which is how a resolver that fused every workdir onto one instance would
+// pass.
 test fn known_spawn_workdirs_resolve_to_distinct_instances() -> Bool {
   match belt_dashboard_instance_lookup_for_spawn_workdir(
     workdir: srv1_live_dashboard_instance().repo_root as String,
   ) {
     SpawnWorkdirInstanceResolved { instance: live } =>
       match belt_dashboard_instance_lookup_for_spawn_workdir(
-        workdir: srv1_green_dashboard_instance().repo_root as String,
+        workdir: srv1_lab_dashboard_instance().repo_root as String,
       ) {
-        SpawnWorkdirInstanceResolved { instance: green } =>
-          (live.instance_id as String) != (green.instance_id as String)
+        SpawnWorkdirInstanceResolved { instance: lab } =>
+          (live.instance_id as String) != (lab.instance_id as String)
         UnknownSpawnWorkdir { workdir: _ } => false
       }
     UnknownSpawnWorkdir { workdir: _ } => false

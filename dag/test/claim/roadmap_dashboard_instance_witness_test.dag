@@ -54,7 +54,6 @@ import gunbc.roadmap_dashboard_instance {
   DashboardInstanceRetractPlan,
   DashboardInstanceRetractRefused,
   srv1_live_dashboard_instance,
-  srv1_green_dashboard_instance,
   srv1_lab_dashboard_instance,
   srv2_preview_dashboard_instance,
   srv2_lab_dashboard_instance,
@@ -747,7 +746,7 @@ test fn a_refused_observation_never_derives_a_plan() -> Bool {
   }
 }
 
-// THE DISCRIMINATORS FOR HOST-SHARED DISPATCH STATE, built around a counterfactual rather than around the declared slots alone. Asserting only that srv1-live and srv1-green agree would pass for a reason that has nothing to do with the law: both are authored correctly, so the assertion cannot tell a working law from an absent one. witness_production_slot takes the two dispatch roots as parameters, so the SAME constructor produces the agreeing slot and the slot that keeps its own attempt-state root, and the pair goes green and red respectively off one definition.\n\nThe red control is the shape the outage actually had: a production slot deriving dispatch roots under its own instance root. That is what put a teardown of live dispatch evidence on the per-push cutover path, and it is what must never typecheck-and-pass again. The lab control is its mirror — a host-shared root handed to an instance-owned lab breaks the isolation labs exist for, so consistency must refuse that direction too.
+// THE DISCRIMINATORS FOR HOST-SHARED DISPATCH STATE, built around a counterfactual rather than around the declared slots alone. Asserting only that the declared slots agree would pass for a reason that has nothing to do with the law: they are authored correctly, so the assertion cannot tell a working law from an absent one. That is also why the deletion of the second production slot cost this file no discrimination — the pair claim it removed was the weak half, and the counterfactual pair below is the strong one. witness_production_slot takes the two dispatch roots as parameters, so the SAME constructor produces the agreeing slot and the slot that keeps its own attempt-state root, and the pair goes green and red respectively off one definition.\n\nThe red control is the shape the outage actually had: a production slot deriving dispatch roots under its own instance root. That is what put a teardown of live dispatch evidence on the per-push cutover path, and it is what must never typecheck-and-pass again. The lab control is its mirror — a host-shared root handed to an instance-owned lab breaks the isolation labs exist for, so consistency must refuse that direction too.
 fn witness_production_slot(
   instance_id: NonEmptyStr,
   root: FilePath,
@@ -810,14 +809,17 @@ fn witness_slot_keeping_its_own_dispatch_state() -> HostDashboardInstance {
   )
 }
 
-test fn production_slots_resolve_dispatch_state_to_the_same_roots() -> Bool {
+// NARROWED with the second slot's deletion. This used to assert that the two production slots
+// agreed with each other AND with the host roots; the agreement half has no second operand now, and
+// asserting it against one instance would be a self-equality. What survives is the half that was
+// always the law: a production slot resolves dispatch state to the HOST's roots, not to its own.
+// The pair-disagreement direction is not lost — the counterfactual constructor below still produces
+// an agreeing slot and a self-rooted one off one definition, which is where that discrimination
+// actually lived (see the discriminator note above).
+test fn a_production_slot_resolves_dispatch_state_to_the_host_roots() -> Bool {
   let live = srv1_live_dashboard_instance()
-  let green = srv1_green_dashboard_instance()
-  dashboard_instance_dispatch_worktree_root(instance: live) == dashboard_instance_dispatch_worktree_root(instance: green)
-    && dashboard_instance_dispatch_attempt_state_root(instance: live) == dashboard_instance_dispatch_attempt_state_root(instance: green)
-    && dashboard_instance_dispatch_worktree_root(instance: green) == srv1_dispatch_worktree_root
-    && dashboard_instance_dispatch_attempt_state_root(instance: green) == srv1_dispatch_attempt_state_root
-    && dashboard_instances_dispatch_state_is_consistent(a: live, b: green)
+  dashboard_instance_dispatch_worktree_root(instance: live) == srv1_dispatch_worktree_root
+    && dashboard_instance_dispatch_attempt_state_root(instance: live) == srv1_dispatch_attempt_state_root
 }
 
 test fn a_production_slot_keeping_its_own_dispatch_state_is_refused() -> Bool {
@@ -846,13 +848,13 @@ test fn an_instance_owned_scope_cannot_reach_the_shared_roots() -> Bool {
 }
 
 test fn host_shared_slots_are_exempt_from_containment_but_labs_are_not() -> Bool {
-  let green = srv1_green_dashboard_instance()
+  let shared = srv1_live_dashboard_instance()
   let lab = srv1_lab_dashboard_instance()
-  dashboard_instance_paths_are_owned(instance: green)
+  dashboard_instance_paths_are_owned(instance: shared)
     && dashboard_instance_paths_are_owned(instance: lab)
     && !dashboard_path_is_under(
-      path: dashboard_instance_dispatch_attempt_state_root(instance: green),
-      root: green.instance_root,
+      path: dashboard_instance_dispatch_attempt_state_root(instance: shared),
+      root: shared.instance_root,
     )
 }
 
@@ -876,11 +878,16 @@ test fn host_shared_slots_on_different_hosts_are_consistent() -> Bool {
     )
 }
 
-test fn the_binary_hazard_stays_closed_across_production_slots() -> Bool {
+// RE-ENROLLED against srv1-lab rather than retired. The deleted green slot was this claim's second
+// operand, but the hazard is not a property of that slot: two instances sharing a serve_binary,
+// repo root or origin root on one host is the defect, and srv1-lab is a real second instance to
+// hold it over. Retiring this with the slot would have deleted a live obligation along with its
+// most recent example.
+test fn the_binary_hazard_stays_closed_across_instances_on_one_host() -> Bool {
   let live = srv1_live_dashboard_instance()
-  let green = srv1_green_dashboard_instance()
-  live.serve_binary != green.serve_binary
-    && live.repo_root != green.repo_root
-    && live.local_origin_root != green.local_origin_root
-    && dashboard_instances_have_disjoint_owned_paths(a: live, b: green)
+  let lab = srv1_lab_dashboard_instance()
+  live.serve_binary != lab.serve_binary
+    && live.repo_root != lab.repo_root
+    && live.local_origin_root != lab.local_origin_root
+    && dashboard_instances_have_disjoint_owned_paths(a: live, b: lab)
 }

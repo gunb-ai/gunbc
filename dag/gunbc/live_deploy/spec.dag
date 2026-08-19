@@ -41,7 +41,6 @@ import gunbc.host_layout {
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
   srv1_live_dashboard_instance,
-  srv1_green_dashboard_instance,
   dashboard_instance_dispatch_worktree_root,
   dashboard_instance_dispatch_attempt_state_root,
 }
@@ -329,21 +328,7 @@ fn srv1_live_deployment_names(instance: HostDashboardInstance) -> DeploymentName
   }
 }
 
-data srv1_green_deployment_names_note: String = "The green slot owns distinct unit and tree-sync names, but it deliberately shares production's ROOT Tailscale endpoint. Endpoint identity excludes backend (extdeps.tailscale.serve): changing 8080 to 18080 is a re-point of one owned route, not a second route. That distinction is load-bearing for blue/green — the candidate footprint stays invisible until readiness proves THIS tree, then one scoped endpoint replay performs the cutover."
 
-fn srv1_green_deployment_names(instance: HostDashboardInstance) -> DeploymentNames {
-  let derived = derived_deployment_names(instance: instance)
-  DeploymentNames {
-    unit_name: derived.unit_name,
-    tailscale_serve_endpoint: TailscaleServeEndpoint {
-      https_port: tailscale_default_https_port,
-      mount: ServeRootMount,
-      backend: to_string(instance.listen_port) as NonEmptyStr,
-    },
-    tree_sync_unit_name: derived.tree_sync_unit_name,
-    tree_sync_env_path: derived.tree_sync_env_path,
-  }
-}
 
 data gunbc_tree_sync_note: String = "gunbc-tree-sync.service is the GunbcSourceTree member's sync TRANSPORT, not an independent member: a oneshot unit running AS the service user (the tree's owner writes its own tree — ownership by construction, no chown), installed/started by the deploy through the granted install+systemctl channel because the ci-runner principal holds no rsync grant and no write access to the service-user-owned tree (emit_deploy_principal_note). Its EnvironmentFile carries the runner checkout path (varies per runner slot), written by the apply at run time. Both files are owned host state and are torn down with the tree in the GunbcSourceTree teardown arm."
 data tree_sync_was_a_host_singleton_note: String = "THE SYNC TRANSPORT WAS ONE SET OF FILES FOR THE WHOLE HOST, and it never appeared in the five-member footprint the twin witness compares. gunbc-tree-sync.service and /etc/gunbc-tree-sync.env were fixed literals, so a twin apply OVERWROTE both with its own tree destination and restarted the shared unit — pointing production's sync at the lab's tree — and a twin retract DELETED both, disabling production's sync entirely. Neither effect is a path in DeploymentArtifactStep, so a claim over declared members could not see either (review, 2026-07-30).\\n\\nThey are derived from the deployment identity now, for the same reason the unit and binary are: the collision becomes unwritable rather than unlikely, because two deployments cannot produce one filename without sharing an identity the registry already forbids. gunbc_tree_sync_note calls these files owned host state torn down with the tree; that description is only true once they are per-deployment, and it was describing an intent the literals contradicted.\\n\\nThe names still derive from the SERVICE unit name rather than from instance_id directly, so srv1-live's migration-debt unit name carries through to its sync files and its emitted paths stay byte-identical."
@@ -523,18 +508,9 @@ fn deployment_spec_srv1() -> DeploymentSpec {
   )
 }
 
-fn deployment_spec_srv1_green() -> DeploymentSpec {
-  deployment_spec_for(
-    instance: srv1_green_dashboard_instance(),
-    target: deployment_srv1_target(),
-    names: srv1_green_deployment_names(instance: srv1_green_dashboard_instance()),
-  )
-}
 
-data blue_green_spec_partition_note: String = "Slot convergence, public routing, and retirement are three effects with required edges: candidate slot -> healthz digest readiness -> route replay -> old runtime retirement. The old DeploymentSpec roster fused them, so LiveDeployApply replayed Tailscale before the post-mutation readiness gate and recreated the 502 window on the candidate port. The first projections do not mint new operations; they partition the existing modeled members. Retirement is deliberately narrower than full slot retract: it stops the old serve unit and belt timer, while preserving the reusable tree and binary plus dispatch worktrees and published attempt evidence. Full retract remains the ownership boundary that refuses non-empty roots. Using full retract for retirement stopped the old runtime before its empty-directory refusal, leaving a silently half-retracted slot until its next candidate apply reinstalled the runtime members; every cutover still reported failure after the successful route flip. Route teardown is excluded because replaying `off` from the old spec after the flip addresses the SAME root endpoint and would remove the newly installed route."
-data blue_green_retirement_stateful_root_scaffold_note: String = "See blue_green_retirement_stateful_root_scaffold_note_dissolve_on for the lifecycle condition this row's rationale accompanies."
 
-data blue_green_retirement_stateful_root_scaffold_dissolve_on: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: deployment_retiring_slot_spec is the bounded outage repair while blue and green each carry instance-scoped DispatchWorktreeRoot and AttemptStateRoot members. Those roots hold host-lifetime user work and published evidence, not replaceable serve-slot payload, so retirement preserves them instead of pretending successful cutover requires their deletion. This leaves two alternating state roots and therefore remains a declared scaffold. The operator selected the host-scoped stateful-roots shape as the required end-state; neat-wolf-573 owns that follow-on, coordinated with the GunbcHostLayout / host-placement lane established by #7455 and building on this repair's post-merge baseline. DISSOLVES WHEN dispatch worktree and attempt-state roots are modeled as host-scoped stateful resources shared by both blue/green runtime slots, candidate convergence no longer provisions a second copy, and full host teardown owns their one fail-closed non-empty removal boundary.")
+data alternating_state_roots_dissolved_note: String = "THE ALTERNATING-STATE-ROOTS SCAFFOLD IS DISSOLVED BY DELETION, WHICH IS THE CONDITION IT NAMED. It read: dissolves when dispatch worktree and attempt-state roots are no longer a second copy provisioned per candidate, leaving two alternating state roots. Blue/green was deleted at the root on 2026-08-19, so there is one deployment, one dispatch-worktree root and one attempt-state root -- not two shared ones, but one, which satisfies the condition more completely than the host-scoped-sharing shape it anticipated. The bounded outage repair it accompanied (deployment_retiring_slot_spec) went with it: retirement of an old slot is not an operation this model has any more.\n\nRecorded rather than silently dropped because a scaffold row that vanishes with its subject leaves no evidence the obligation was DISCHARGED as opposed to forgotten (DESIGN 4b: dissolution on climb deletes the production machinery, never the receipt)."
 
 type RetirementDisposition
   = RetiresRuntime
@@ -554,44 +530,8 @@ fn owned_artifact_retirement_disposition(kind: OwnedArtifactKind) -> RetirementD
   }
 }
 
-fn deployment_slot_spec(spec: DeploymentSpec) -> DeploymentSpec {
-  DeploymentSpec {
-    target: spec.target,
-    steps: filter(spec.steps, s => match s {
-      ArtifactStep { step: art } => art.kind != TailscaleServeMapping
-      Dependency { step: _ } => true
-    }),
-    service: spec.service,
-    names: spec.names,
-  }
-}
 
-fn deployment_retiring_slot_spec(spec: DeploymentSpec) -> DeploymentSpec {
-  DeploymentSpec {
-    target: spec.target,
-    steps: filter(spec.steps, s => match s {
-      ArtifactStep { step: art } => match owned_artifact_retirement_disposition(kind: art.kind) {
-        RetiresRuntime => true
-        RetirementPreserves => false
-      }
-      Dependency { step: _ } => false
-    }),
-    service: spec.service,
-    names: spec.names,
-  }
-}
 
-fn deployment_route_spec(spec: DeploymentSpec) -> DeploymentSpec {
-  DeploymentSpec {
-    target: spec.target,
-    steps: filter(spec.steps, s => match s {
-      ArtifactStep { step: art } => art.kind == TailscaleServeMapping
-      Dependency { step: _ } => false
-    }),
-    service: spec.service,
-    names: spec.names,
-  }
-}
 
 fn deployment_plan_host_identity(spec: DeploymentSpec) -> String {
   spec.target.host.identity
