@@ -22,8 +22,17 @@ import std.measurement_subject {
   measurement_run_causes,
 }
 
-data witness_note: String = "THE FOUR NAMED CONTROLS IN THIS FILE ARE NOT HYPOTHETICALS. Each reproduces an instrument this session actually shipped, each of which reported a well-formed answer instead of refusing: a fixed-point harness that printed YES from three regen passes that had all FAILED; a background wrapper that exited 0 while the remote work died with 127; an A/B floor pair whose two arms carried one subject digest and therefore agreed by tautology; and a classifier that reported a clean result over an empty extraction. They are permanent regression alarms - if any of the four goes green through admission, the carrier has stopped refusing the exact shape it was built for. dissolve-on: never."
 
+// THE FOUR NAMED CONTROLS IN THIS FILE ARE NOT HYPOTHETICALS. Each reproduces
+// an instrument this session actually shipped, each of which reported a well-
+// formed answer instead of refusing: a fixed-point harness that printed YES
+// from three regen passes that had all FAILED; a background wrapper that
+// exited 0 while the remote work died with 127; an A/B floor pair whose two
+// arms carried one subject digest and therefore agreed by tautology; and a
+// classifier that reported a clean result over an empty extraction. They are
+// permanent regression alarms - if any of the four goes green through
+// admission, the carrier has stopped refusing the exact shape it was built
+// for. dissolve-on: never.
 fn w_span(name: String) -> NonEmptyStr {
   name as NonEmptyStr
 }

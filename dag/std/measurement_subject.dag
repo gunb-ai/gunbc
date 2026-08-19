@@ -123,12 +123,29 @@ fn measurement_nes_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
   (a as String) == (b as String)
 }
 
-fn measurement_span_present(samples: List<MeasurementSample>, span: NonEmptyStr) -> Bool {
-  list_length(items: samples |> filter(s => measurement_nes_eq(a: s.span, b: span))) > 0
+// ONE PASS, THEN LOOKUPS. Occurrence counting, duplicate detection, parent
+// presence and expected-span presence are four questions with one answer: how
+// many times did this span report? Building that count once makes the causes
+// fold linear in the sample count; asking it per sample by filtering the whole
+// list made it quadratic, which DESIGN section 6 fixes regardless of the
+// realized n because "n is small here" is not a time-stable fact. Only lookups
+// are performed against the map and never an iteration, so cause ordering still
+// follows the sample fold and nothing here becomes an order-exposing operation.
+fn measurement_span_counts(samples: List<MeasurementSample>) -> Map<String, Int> {
+  fold(samples, init: empty_map(), f: fn(acc, s) {
+    let key = s.span as String
+    match map_get(acc, key) {
+      Present { value: n } => map_insert(acc, key, n + 1)
+      Absent => map_insert(acc, key, 1)
+    }
+  })
 }
 
-fn measurement_span_occurrences(samples: List<MeasurementSample>, span: NonEmptyStr) -> Int {
-  list_length(items: samples |> filter(s => measurement_nes_eq(a: s.span, b: span)))
+fn measurement_span_count_at(counts: Map<String, Int>, span: NonEmptyStr) -> Int {
+  match map_get(counts, span as String) {
+    Present { value: n } => n
+    Absent => 0
+  }
 }
 
 fn measurement_subject_causes(acc: List<MeasurementRefusalCause>, subject: MeasurementSubject) -> List<MeasurementRefusalCause> {
@@ -151,9 +168,9 @@ fn measurement_subject_causes(acc: List<MeasurementRefusalCause>, subject: Measu
 fn measurement_sample_causes(
   acc: List<MeasurementRefusalCause>,
   sample: MeasurementSample,
-  samples: List<MeasurementSample>,
+  counts: Map<String, Int>,
 ) -> List<MeasurementRefusalCause> {
-  let dup = if measurement_span_occurrences(samples: samples, span: sample.span) > 1 {
+  let dup = if measurement_span_count_at(counts: counts, span: sample.span) > 1 {
     acc + [SpanReportedTwice { span: sample.span }]
   } else {
     acc
@@ -178,7 +195,7 @@ fn measurement_sample_causes(
       if measurement_nes_eq(a: parent, b: sample.span) {
         calls + [ParentIsSelf { span: sample.span }]
       } else {
-        if measurement_span_present(samples: samples, span: parent) {
+        if measurement_span_count_at(counts: counts, span: parent) > 0 {
           calls
         } else {
           calls + [ParentSpanAbsent { span: sample.span, parent_span: parent }]
@@ -190,13 +207,13 @@ fn measurement_sample_causes(
 fn measurement_expected_span_causes(
   acc: List<MeasurementRefusalCause>,
   expected: List<NonEmptyStr>,
-  samples: List<MeasurementSample>,
+  counts: Map<String, Int>,
 ) -> List<MeasurementRefusalCause> {
   fold(
     expected,
     init: acc,
     f: fn(inner, span) {
-      if measurement_span_present(samples: samples, span: span) {
+      if measurement_span_count_at(counts: counts, span: span) > 0 {
         inner
       } else {
         inner + [ExpectedSpanAbsent { span: span }]
@@ -224,14 +241,66 @@ fn measurement_run_causes(run: MeasurementRun) -> List<MeasurementRefusalCause> 
   } else {
     subject_acc
   }
+  let counts = measurement_span_counts(samples: run.samples)
   let sample_acc = fold(
     run.samples,
     init: empty_acc,
-    f: fn(acc, sample) { measurement_sample_causes(acc: acc, sample: sample, samples: run.samples) },
+    f: fn(acc, sample) { measurement_sample_causes(acc: acc, sample: sample, counts: counts) },
   )
-  measurement_expected_span_causes(acc: sample_acc, expected: run.expected_spans, samples: run.samples)
+  measurement_expected_span_causes(acc: sample_acc, expected: run.expected_spans, counts: counts)
 }
 
+// TWO REFUSALS FROM THE COMMISSIONING SPEC WERE MISSING FROM THE FIRST
+// REVISION, and one of them was this carrier committing the defect it exists
+// to refuse. The spec names 'wrong commit or binary' and 'unknown metric
+// rendered as zero' among the states a measurement harness must refuse. (1)
+// Wrong commit or binary had no representation: SubjectsIdentical catches two
+// arms that measured ONE subject, but nothing compared a run against the
+// subject it was SUPPOSED to measure, because no expectation was ever
+// supplied. admit_measurement_run_against now takes that expectation and
+// refuses SubjectMismatch, carrying both digests. (2) work_units was a bare
+// Int, so a span whose work units were never measured could only be rendered
+// as zero -- unknown collapsed into a legitimate value, inside the carrier
+// whose entire subject is that ignorance must not be rendered as an answer. It
+// is now Int?, so 'not measured' and 'measured zero' are distinct states. Note
+// the asymmetry deliberately: the spec asked for a REFUSAL on rendering
+// unknown as zero, and the repair makes the rendering UNWRITABLE instead,
+// which is the higher rung -- a refusal would have conceded that the bad state
+// is constructible. Both gaps were found by re-reading the commissioning spec
+// against the built carrier after it was already approved and green, which is
+// the only reason they are recorded here rather than shipped.  THE DURATION
+// AXIS IS GROUNDED, recorded first because an earlier revision of this carrier
+// got it wrong. The two wall figures were declared as bare Int fields named
+// inclusive_wall_nanos and exclusive_wall_nanos -- a unit carried in a field
+// NAME, which is a second representation of a quantity std.measure already
+// owns, and in a std/ carrier at that. They are now Nanosecond, which is
+// Measure<Time, Nano, Nat>: the scale lives in the type, so the field name no
+// longer carries it, the refusal causes that propagate the figures outward
+// carry the same type rather than re-flattening it, and the
+// inclusive/exclusive ordering check is measure_le rather than a scalar
+// comparison. No dissolution trigger is attached because nothing is deferred
+// -- the fork is removed rather than admitted. Caught in review on gunbc#8545;
+// the remedy the review named (std.measure.Duration) does not exist, and
+// Nanosecond is the carrier that does.  RUNG, stated honestly rather than by
+// the carrier's name. MeasurementSubject and MeasurementSample are ordinary
+// records and remain directly constructible, so an author can still write a
+// subject whose fields do not describe the run they label - this carrier
+// cannot make a LIE about an observation unwritable, because the observation
+// happens outside the model. What IS structural is the verdict:
+// AdmittedMeasurementRun is sole_constructor with one in-module mint inside
+// admit_measurement_run, so an admitted receipt that never passed the causes
+// fold has no representation, and a delta over an unadmitted or self-identical
+// pair likewise has none. So the class sits at mechanically preventable for
+// the ADMISSION question and at mitigatable for the FAITHFULNESS question.
+// NEXT-RUNG TRIGGER for the second half: the subject's binary_digest and
+// source_inventory_digest are produced by the harness at launch rather than
+// declared by the author, at which point a subject detached from its run stops
+// being writable at the boundary that mints it. NOT CLAIMED: that any
+// measurement in this repository currently routes through this carrier. It has
+// one consumer, its witness, and the profiler spans that would feed it are
+// blocked behind the stage0 regeneration; enrolling a producer is separate
+// work and until it lands this is a modeled admission with no production
+// subject.
 fn admit_measurement_run(run: MeasurementRun) -> MeasurementAdmission {
   let causes = measurement_run_causes(run: run)
   if list_length(items: causes) == 0 {
@@ -332,8 +401,3 @@ fn admit_measurement_delta(baseline: MeasurementRun, candidate: MeasurementRun) 
   }
 }
 
-data measurement_subject_rung_note: String = "TWO REFUSALS FROM THE COMMISSIONING SPEC WERE MISSING FROM THE FIRST REVISION, and one of them was this carrier committing the defect it exists to refuse. The spec names 'wrong commit or binary' and 'unknown metric rendered as zero' among the states a measurement harness must refuse. (1) Wrong commit or binary had no representation: SubjectsIdentical catches two arms that measured ONE subject, but nothing compared a run against the subject it was SUPPOSED to measure, because no expectation was ever supplied. admit_measurement_run_against now takes that expectation and refuses SubjectMismatch, carrying both digests. (2) work_units was a bare Int, so a span whose work units were never measured could only be rendered as zero -- unknown collapsed into a legitimate value, inside the carrier whose entire subject is that ignorance must not be rendered as an answer. It is now Int?, so 'not measured' and 'measured zero' are distinct states. Note the asymmetry deliberately: the spec asked for a REFUSAL on rendering unknown as zero, and the repair makes the rendering UNWRITABLE instead, which is the higher rung -- a refusal would have conceded that the bad state is constructible. Both gaps were found by re-reading the commissioning spec against the built carrier after it was already approved and green, which is the only reason they are recorded here rather than shipped.
-
-THE DURATION AXIS IS GROUNDED, recorded first because an earlier revision of this carrier got it wrong. The two wall figures were declared as bare Int fields named inclusive_wall_nanos and exclusive_wall_nanos -- a unit carried in a field NAME, which is a second representation of a quantity std.measure already owns, and in a std/ carrier at that. They are now Nanosecond, which is Measure<Time, Nano, Nat>: the scale lives in the type, so the field name no longer carries it, the refusal causes that propagate the figures outward carry the same type rather than re-flattening it, and the inclusive/exclusive ordering check is measure_le rather than a scalar comparison. No dissolution trigger is attached because nothing is deferred -- the fork is removed rather than admitted. Caught in review on gunbc#8545; the remedy the review named (std.measure.Duration) does not exist, and Nanosecond is the carrier that does.
-
-RUNG, stated honestly rather than by the carrier's name. MeasurementSubject and MeasurementSample are ordinary records and remain directly constructible, so an author can still write a subject whose fields do not describe the run they label - this carrier cannot make a LIE about an observation unwritable, because the observation happens outside the model. What IS structural is the verdict: AdmittedMeasurementRun is sole_constructor with one in-module mint inside admit_measurement_run, so an admitted receipt that never passed the causes fold has no representation, and a delta over an unadmitted or self-identical pair likewise has none. So the class sits at mechanically preventable for the ADMISSION question and at mitigatable for the FAITHFULNESS question. NEXT-RUNG TRIGGER for the second half: the subject's binary_digest and source_inventory_digest are produced by the harness at launch rather than declared by the author, at which point a subject detached from its run stops being writable at the boundary that mints it. NOT CLAIMED: that any measurement in this repository currently routes through this carrier. It has one consumer, its witness, and the profiler spans that would feed it are blocked behind the stage0 regeneration; enrolling a producer is separate work and until it lands this is a modeled admission with no production subject."
