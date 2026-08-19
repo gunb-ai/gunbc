@@ -847,3 +847,87 @@ test fn the_unit_content_member_does_not_enable() -> Bool {
     && any(spark_serving_user_unit_install_effects(), e => e == WriteUserUnitFile)
     && any(spark_serving_user_unit_install_effects(), e => e == ReloadUserManager)
 }
+
+// ── The walls that refuse actuation from ignorance ──────────────────────────────────────────────
+
+// AN UNOBSERVED RUNTIME REFUSES THE PLAN, AND THIS IS THE HALF THAT WAS MISSING.
+//
+// The projection carried runtime_observed and the full-plan carrier destructured only unit,
+// enablement and linger, so it was silently discarded: a refused runtime probe omitted the member,
+// the member read as ABSENT, and InstallOwnedRuntimeClosure became selectable. The remedy for "the
+// runtime is not there" is to install it; the remedy for "we could not look" is to fix the probe.
+// Omission collapsed the two and picked the destructive one.
+//
+// This asserts the REFUSAL, not merely that no install was planned -- a plan that produced nothing
+// at all would also emit no install, and on a bare host that is the empty-observation narrow. It
+// also asserts zero rows, because a refusal carrying rows would let a consumer act on them.
+test fn an_unobserved_runtime_refuses_the_plan_and_emits_no_operations() -> Bool {
+  let v = artifact_verdict(
+    host: subject_host,
+    projection: project(
+      obs: SparkServingAbsent { host: subject_host },
+      runtime: RuntimeMaterializationObservationRefused { cause: "probe leg did not run" as NonEmptyStr },
+      store: bare_store(),
+      unit: UserUnitStateAbsent,
+      enablement: UserUnitEnablementNotFound,
+      linger: LingerObservedEnabled,
+    ),
+  )
+  string_contains(artifact_refusal_cause(v: v), "runtime materialization was not observed")
+    && artifact_row_count(v: v) == 0 - 1
+}
+
+// THE SAME WALL FOR THE MODEL STORE, and it is the more expensive one to get wrong: an unobserved
+// store planned as absent pulls a multi-gigabyte artifact onto a host that may already hold it, on
+// the strength of a probe that failed.
+test fn an_unobserved_model_store_refuses_the_plan_and_emits_no_pull() -> Bool {
+  let v = artifact_verdict(
+    host: subject_host,
+    projection: project(
+      obs: SparkServingAbsent { host: subject_host },
+      runtime: bare_runtime(),
+      store: ModelStoreObservationRefused { cause: "blob listing leg did not run" as NonEmptyStr },
+      unit: UserUnitStateAbsent,
+      enablement: UserUnitEnablementNotFound,
+      linger: LingerObservedEnabled,
+    ),
+  )
+  string_contains(artifact_refusal_cause(v: v), "model store was not observed")
+    && artifact_row_count(v: v) == 0 - 1
+}
+
+// THE TWO REFUSALS ARE DISTINCT SENTENCES, because one "incomplete observation" cause would send an
+// operator to the wrong probe. Distinct constants, not a Boolean: asserting only that both refuse
+// would pass on a single fused message.
+test fn the_two_unobserved_walls_name_their_own_subjects() -> Bool {
+  let rt = artifact_refusal_cause(
+    v: artifact_verdict(
+      host: subject_host,
+      projection: project(
+        obs: SparkServingAbsent { host: subject_host },
+        runtime: RuntimeMaterializationObservationRefused { cause: "x" as NonEmptyStr },
+        store: bare_store(),
+        unit: UserUnitStateAbsent,
+        enablement: UserUnitEnablementNotFound,
+        linger: LingerObservedEnabled,
+      ),
+    ),
+  )
+  let ms = artifact_refusal_cause(
+    v: artifact_verdict(
+      host: subject_host,
+      projection: project(
+        obs: SparkServingAbsent { host: subject_host },
+        runtime: bare_runtime(),
+        store: ModelStoreObservationRefused { cause: "x" as NonEmptyStr },
+        unit: UserUnitStateAbsent,
+        enablement: UserUnitEnablementNotFound,
+        linger: LingerObservedEnabled,
+      ),
+    ),
+  )
+  rt != ms
+    && string_contains(rt, "runtime")
+    && string_contains(ms, "model store")
+    && !string_contains(rt, "model store")
+}

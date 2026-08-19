@@ -448,6 +448,21 @@ fn spark_serving_frozen_linger_effect(row: FleetConvergeSparkServingTypedAction)
 // It refuses rather than planning when the observation could not be made: a refused observation
 // rendered as an empty observed population would plan every member as an addition against a host
 // nobody saw.
+//
+// RUNTIME AND MODEL COMPLETENESS REFUSE HERE RATHER THAN TRAVELLING AS FIELDS, and the choice is the
+// point. The projection carries runtime_observed and model_observed; this carrier destructured only
+// unit, enablement and linger, so both were silently dropped -- a refused runtime probe omitted the
+// runtime member, the member read as ABSENT, and InstallOwnedRuntimeClosure became selectable. Same
+// for the model and PullModelArtifact. That is actuation from ignorance: the remedy for "the runtime
+// is not there" and for "we could not look" are different, and omission collapses them.
+//
+// Adding two more Bool fields would have reproduced the very bug -- the defect was a completeness
+// fact that a partial destructure discarded, and the repair cannot be another field for the next
+// destructure to drop. Refusing at the plan means no downstream consumer can forget to check,
+// because there is no plan to consume. Construction over validation.
+//
+// Each cause names its own subject: a single "incomplete observation" sentence would send an
+// operator looking in the wrong place, and these two have different probes and different remedies.
 fn spark_serving_full_membership_plan(
   occurrence: SparkServingOccurrence,
   serving_release: SparkServingRelease,
@@ -456,7 +471,23 @@ fn spark_serving_full_membership_plan(
   match projection {
     SparkServingObservedMembersRefused { cause: cause } =>
       SparkServingFullMembershipPlanRefused { cause: cause }
-    SparkServingObservedMembers { members: observed, unit_observed: unit_observed, enablement_observed: enablement_observed, linger_observed: linger_observed } =>
+    SparkServingObservedMembers {
+      members: observed,
+      runtime_observed: runtime_observed,
+      model_observed: model_observed,
+      unit_observed: unit_observed,
+      enablement_observed: enablement_observed,
+      linger_observed: linger_observed,
+    } =>
+      if runtime_observed == false {
+        SparkServingFullMembershipPlanRefused {
+          cause: "spark serving plan refused: the runtime materialization was not observed, and an unobserved runtime must not be planned as an absent one — the remedy for a missing runtime is to install it, and the remedy for a failed probe is to fix the probe",
+        }
+      } else if model_observed == false {
+        SparkServingFullMembershipPlanRefused {
+          cause: "spark serving plan refused: the model store was not observed, and an unobserved store must not be planned as an absent one — that would pull a multi-gigabyte artifact onto a host that may already hold it, on the strength of a failed probe",
+        }
+      } else {
       SparkServingFullMembershipPlanReady {
         plan: spark_serving_membership_reconcile(
           desired: spark_serving_desired_members(
@@ -469,6 +500,7 @@ fn spark_serving_full_membership_plan(
         enablement_observed: enablement_observed,
         linger_observed: linger_observed,
         observed_members: observed,
+      }
       }
   }
 }

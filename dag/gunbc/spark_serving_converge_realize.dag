@@ -38,6 +38,7 @@ import gunbc.spark_serving_install_paths {
   spark_serving_required_runtime_staged_executable_path,
   spark_serving_required_runtime_checksum_manifest_path,
   spark_serving_required_runtime_receipt_path,
+  spark_serving_required_runtime_executable_path,
 }
 import extdeps.ollama.binary_release {
   ollama_required_release,
@@ -141,6 +142,12 @@ fn spark_serving_enable_user_unit_remote_argv() -> SparkServingInstallRemoteComm
 // the command ran without error; whether the store now holds the manifest and its complete blob
 // closure is settled by re-observing the member after apply, never by this step's status.
 //
+// THE EXACT EXECUTABLE, NOT AMBIENT PATH. This invoked a bare `ollama`, which makes the ambient PATH
+// a second unmodeled runtime authority: it resolves to whatever happens to be installed, or to
+// nothing at all on the bare host this whole branch exists to restore -- where the runtime we just
+// materialized is at a content-addressed path precisely so it is NOT on PATH. Naming the planned
+// entrypoint means the pull runs the runtime the plan installed, or fails loudly.
+//
 // The ref is the wire label rather than the digest because that is what the pull interface takes.
 // The digest remains the identity every comparison is made on -- the label names what to fetch, and
 // the observation says what arrived, and conflating those is how a moved tag becomes an undetected
@@ -148,7 +155,11 @@ fn spark_serving_enable_user_unit_remote_argv() -> SparkServingInstallRemoteComm
 fn spark_serving_pull_model_artifact_steps() -> SparkServingInstallRemoteCommandsVerdict {
   spark_serving_admit_portable_remote_argv(
     identity: "pull-model-artifact" as NonEmptyStr,
-    raws: ["ollama", "pull", ollama_model_ref_wire(ref: spark_serving_desired_model_ref)],
+    raws: [
+      spark_serving_required_runtime_executable_path() as String,
+      "pull",
+      ollama_model_ref_wire(ref: spark_serving_desired_model_ref),
+    ],
   )
 }
 

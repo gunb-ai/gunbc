@@ -147,6 +147,11 @@ test fn staging_is_reset_before_it_is_created() -> Bool {
 // unrealized, and said in its own comment that landing the realizer must fail it rather than let a
 // stale frontier description stand. The realizer landed, so this now asserts the opposite.
 //
+// THE EXECUTABLE MUST BE THE PLANNED ONE. A bare "ollama" would resolve through ambient PATH -- a
+// second unmodeled runtime authority, and on a bare host it resolves to nothing at all, which is the
+// exact host this branch exists to restore. The claim asserts the content-addressed path AND that it
+// is not the bare name, because a check for "ends with ollama" passes on both.
+//
 // It asserts the ARM AND THE ARGV, not merely that something came back. `realize_...` returns a
 // verdict whose refusal arm is a perfectly ordinary value, so a realizer that refused every call
 // would be indistinguishable from one that worked if the claim only checked that a verdict was
@@ -168,7 +173,9 @@ test fn pull_model_artifact_realizes_as_one_pull_command() -> Bool {
                  Absent => false
                  Present { value: words } =>
                    length(words) == 3
-                     && words[0] == "ollama"
+                     && string_contains(words[0], "/runtimes/")
+                     && string_contains(words[0], "/bin/ollama")
+                     && words[0] != "ollama"
                      && words[1] == "pull"
                      && words[2] == "gpt-oss:20b"
                }
