@@ -5397,6 +5397,39 @@ pub fn spine_root_is_shadowed(scope: Rc<InferScope>, root: String) -> bool {
     }
 }
 
+pub fn qualified_service_projection(
+    dotted: String,
+    scope: Rc<InferScope>,
+    span: Rc<SourceSpan>,
+) -> Option<Rc<InferResult>> {
+    let leaf = qualified_last_segment(dotted.clone());
+    let owner = qualified_all_but_last(dotted.clone());
+    match v1_rt::map_get(
+        &scope.type_env.clone().symbol_index.clone().services.clone(),
+        leaf.clone(),
+    ) {
+        None => None,
+        Some(sentry) => {
+            if sentry.module_path.clone() == owner {
+                Some(ok_infer(make_named_expr_node(
+                    leaf.clone(),
+                    Rc::new(ExprData::ExprVar {
+                        binding_kind: Some(Rc::new(VarBindingKind::FunctionValueBinding)),
+                    }),
+                    Rc::new(vec![]),
+                    Some(Rc::new(InferredNode::Resolved {
+                        node: nominal_type_ref(leaf.clone()),
+                    })),
+                    span.clone(),
+                    kernel_span(leaf.clone()),
+                )))
+            } else {
+                None
+            }
+        }
+    }
+}
+
 pub fn qualified_value_projection(
     texpr: Rc<Node>,
     scope: Rc<InferScope>,
@@ -5410,7 +5443,9 @@ pub fn qualified_value_projection(
                 scope.type_env.clone().symbol_index.clone(),
                 spine.dotted.clone(),
             ) {
-                None => None,
+                None => {
+                    qualified_service_projection(spine.dotted.clone(), scope.clone(), span.clone())
+                }
                 Some(decl) => {
                     let raw_value_type = match decl.inferred.clone().as_deref().cloned() {
                         Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),

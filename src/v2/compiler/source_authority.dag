@@ -376,7 +376,7 @@ fn source_ref_for_storage_path(path: String) -> SourceRef {
 }
 
 fn source_ref_for_observed_storage_path(path: String) -> SourceRef {
-  let read = Filesystem.Read(path: path)
+  let read = extdeps.filesystem.filesystem_io.Filesystem.Read(path: path)
   SourceRef {
     path: path,
     source_root: source_root_for_storage_path(path: path),
@@ -495,7 +495,7 @@ type SourceRefReadResult
 data source_ref_read_result_note: String = "Single filesystem observation for a SourceRef read-through. v2.std.diagnostic.Accepted carries the witness and the observed hash from the SAME read. Refused and HashMismatch never perform a second read to reconstruct failure detail."
 
 fn dag_source_read_result_from_ref(ref: SourceRef) -> SourceRefReadResult {
-  let read = Filesystem.Read(path: ref.path)
+  let read = extdeps.filesystem.filesystem_io.Filesystem.Read(path: ref.path)
   if !read.success {
     SourceRefFilesystemReadRefused { ref: ref, error: read.error }
   } else {

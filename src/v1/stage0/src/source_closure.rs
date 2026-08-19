@@ -484,11 +484,32 @@ fn closure_inner(
                 .rfind('.')
                 .map(|i| &name[..i])
                 .filter(|prefix| index.source_for_module(prefix).is_some());
+            // A DOTTED NAME WHOSE PREFIX IS NOT A MODULE is a projection off a
+            // declared root rather than a qualified declaration: `Filesystem.Read`
+            // names an operation of the service `Filesystem`, and `Filesystem` is
+            // what some module declares. Without this arm the whole dotted string
+            // matches nothing -- neither `source_for_module("Filesystem")` nor
+            // `modules_declaring("Filesystem.Read")` -- and the edge is dropped
+            // silently, so a module reached ONLY through a service call never
+            // enters the closure and every call on it reports `undefined
+            // variable` at the root segment. The root segment is looked up
+            // exactly as a bare reference would be, so this adds no name that a
+            // bare spelling could not already reach.
             let declaring: BTreeSet<String> =
                 match (qualified_owner, index.modules_declaring(&name)) {
                     (Some(owner), _) => std::iter::once(owner.to_string()).collect(),
                     (None, Some(found)) => found.clone(),
-                    (None, None) => continue,
+                    (None, None) => {
+                        let root = name.split('.').next().unwrap_or(&name);
+                        match if root == name {
+                            None
+                        } else {
+                            index.modules_declaring(root)
+                        } {
+                            Some(found) => found.clone(),
+                            None => continue,
+                        }
+                    }
                 };
             for module_path in &declaring {
                 if own_modules.contains(module_path) || in_closure.contains_key(module_path) {

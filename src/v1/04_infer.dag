@@ -2952,6 +2952,25 @@ fn spine_root_is_shadowed(scope: v1.compiler.infer.InferScope, root: String) -> 
   }
 }
 
+fn qualified_service_projection(dotted: String, scope: v1.compiler.infer.InferScope, span: std.types.SourceSpan) -> v1.compiler.infer.InferResult? {
+  let leaf = qualified_last_segment(name: dotted)
+  let owner = qualified_all_but_last(name: dotted)
+  match map_get(scope.type_env.symbol_index.services, leaf) {
+    Absent => none
+    Present { value: sentry } =>
+      if sentry.module_path == owner {
+        Present { value: ok_infer(texpr: make_named_expr_node(
+          name: leaf,
+          expr_data: v1.std.core.ExprVar { binding_kind: Present { value: FunctionValueBinding } },
+          children: [],
+          inferred: Present { value: v1.std.core.Resolved { node: nominal_type_ref(name: leaf) } },
+          span: span,
+          name_span: kernel_span(name: leaf)
+        )) }
+      } else { none }
+  }
+}
+
 fn qualified_value_projection(texpr: v1.std.core.Node, scope: v1.compiler.infer.InferScope, span: std.types.SourceSpan) -> v1.compiler.infer.InferResult? {
   match field_access_spine(texpr: texpr, source_indices: scope.type_env.source_indices) {
     Absent => none
@@ -2960,7 +2979,7 @@ fn qualified_value_projection(texpr: v1.std.core.Node, scope: v1.compiler.infer.
         true => none
         false =>
           match v1.compiler.infer_env.symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: spine.dotted) {
-            Absent => none
+            Absent => qualified_service_projection(dotted: spine.dotted, scope: scope, span: span)
             Present { value: decl } =>
               let raw_value_type = match decl.inferred {
                 Present { value: v1.std.core.Resolved { node: rt } } => rt
