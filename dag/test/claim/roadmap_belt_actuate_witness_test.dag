@@ -144,8 +144,8 @@ import gunbc.roadmap_belt_actuate {
   SpawnWorkdirInstanceResolved,
   UnknownSpawnWorkdir,
   srv1_live_dashboard_instance,
-  srv1_lab_dashboard_instance,
 }
+import gunbc.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
 import gunbc.fleet_desired_observe {
   RevisionConverged, RevisionDrifted, RevisionUnobserved,

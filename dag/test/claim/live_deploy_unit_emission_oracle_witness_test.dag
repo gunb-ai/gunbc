@@ -43,6 +43,25 @@ import gunbc.live_deploy.spec { DeploymentSpec, deployment_spec_srv1 }
 //
 // Live drift detection is a DIFFERENT mechanism this fixture does not provide: it would have to
 // observe the host at run time and would belong with the fleet observation lane, not here.
+//
+// ── RETIRED FOR WANT OF AN OBSERVATION, NOT FOR WANT OF A SUBJECT ──────────────────────────────
+//
+// the_fleet_converge_service_unit_matches_the_deployed_bytes and
+// the_fleet_converge_timer_unit_matches_the_deployed_bytes were transcribed from
+// gunbc-srv1-green-fleet-converge.{service,timer}. Those files existed only on the deleted slot.
+// srv1's surviving deployment carries no fleet-converge units at all — checked on the host on
+// 2026-08-19, where /etc/systemd/system holds gunbc-roadmap.service, its belt pair, tree-sync and
+// tree-remote, and nothing else for the live slot.
+//
+// So there are no host bytes to transcribe, and that is the whole reason these are gone. The
+// members are still in deployment_spec_srv1's step list, so the emitter still renders them and
+// they will appear on the host at the next apply; the absence is that the live slot predates them,
+// not that the units were retired. Writing an expectation anyway would mean authoring the bytes
+// from the emitter and calling the result an independent transcription, which is exactly the
+// self-capture golden the header above refuses — a change detector wearing an oracle's name.
+//
+// RE-ARMS: transcribe both units off srv1 after the next apply of deployment_spec_srv1, the same
+// way every surviving row here was obtained.
 
 // RE-TRANSCRIBED against the surviving deployment. This fixture used to read the green slot; that
 // slot is deleted, so its bytes had no subject. Re-pointing was the right disposition rather than
@@ -95,22 +114,3 @@ test fn the_tree_sync_unit_matches_the_deployed_bytes_plus_the_exclusion_widenin
   let emitted = render(doc: emit_tree_sync_unit_doc(spec: live_spec(), tree_path: live_spec().service.repo_root as String), proto: live_deploy_protocol)
   emitted == "[Unit]\nDescription=gunbc source tree sync (service-user-principal rsync from CI runner checkout)\n\n[Service]\nType=oneshot\nUser=briansrls\nGroup=briansrls\nEnvironmentFile=/etc/gunbc-tree-sync.env\nExecStart=/usr/bin/rsync -rlpt --delete --exclude /target --exclude /.git --exclude /.claude --exclude /.gunbc --exclude /target-codex --exclude /.cargo-home \"$\{GUNBC_TREE_SRC}/\" /opt/gunbc/gunbc/\nExecStart=/usr/bin/rsync -rlpt --exclude=objects/pack/*.keep --exclude=objects/pack/tmp_pack_* --include=/HEAD --include=/objects/*** --include=/packed-refs --include=/refs/*** --exclude=* \"$\{GUNBC_TREE_SRC}/.git/\" /opt/gunbc/gunbc/.git/\n"
 }
-
-// ── RETIRED FOR WANT OF AN OBSERVATION, NOT FOR WANT OF A SUBJECT ──────────────────────────────
-//
-// the_fleet_converge_service_unit_matches_the_deployed_bytes and
-// the_fleet_converge_timer_unit_matches_the_deployed_bytes were transcribed from
-// gunbc-srv1-green-fleet-converge.{service,timer}. Those files existed only on the deleted slot.
-// srv1's surviving deployment carries no fleet-converge units at all — checked on the host on
-// 2026-08-19, where /etc/systemd/system holds gunbc-roadmap.service, its belt pair, tree-sync and
-// tree-remote, and nothing else for the live slot.
-//
-// So there are no host bytes to transcribe, and that is the whole reason these are gone. The
-// members are still in deployment_spec_srv1's step list, so the emitter still renders them and
-// they will appear on the host at the next apply; the absence is that the live slot predates them,
-// not that the units were retired. Writing an expectation anyway would mean authoring the bytes
-// from the emitter and calling the result an independent transcription, which is exactly the
-// self-capture golden the header above refuses — a change detector wearing an oracle's name.
-//
-// RE-ARMS: transcribe both units off srv1 after the next apply of deployment_spec_srv1, the same
-// way every surviving row here was obtained.
