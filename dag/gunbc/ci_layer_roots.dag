@@ -103,12 +103,6 @@ data excl_install_media_dissolve: DissolutionCondition = unbound_dissolution(des
 
 data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   WitnessExclusionRow {
-    pattern: "stage0_partition_closure_live_census_test.dag",
-    classification: FalsifierSubstrateLongLane,
-    reason: "PARTITION-CLOSURE LIVE CENSUS: partition_closure_verdict derives dependency_resolution_facts_live and module_declaration_facts_live over pool roots dag and src/v2 and asks whether the live crate roster holds against the live corpus. Its subject IS the corpus breadth, so it cannot be shrunk without measuring less, and narrowing the pool roots would under-approximate the edges — the fail-open gunbc.stage0_partition_closure partition_closure_authority_note refuses. MEASURED 173.6s and 177.6s thread CPU against the 5s fast-lane budget; CI only ever reported 5040ms, which is where the budget INTERRUPTS and is a lower bound on cost, never the cost. The mechanism half is fixture-shaped and stays per-PR in test.claim.stage0_partition_closure_witness_test at 1-4ms (three REDs plus the extent row, through partition_closure_verdict_over), so this row carries the census and not the discrimination — and the census lives in its OWN file precisely so this file-grain pattern does not drag those four fixtures off per-PR discovery with it.",
-    dissolution: unbound_dissolution(description: "the live fact producers stop dominating the verdict — they are already host-memoized, and two cost-shape defects removed here (a per-edge re-read of the importer's emitted source, and duplicate live scans) measurably did NOT move it, 177.6s against a 173.6s baseline, so the remaining cost is theirs and not this gate's folds — OR v2 self-host gains compile-graph access (gunbc#5364) so the closure derives at closure cost rather than a corpus walk. Then the row's eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run, the census re-enrolls per-PR discovery beside its fixture siblings, and this classification flips back to DiscoverySelection.")
-  },
-  WitnessExclusionRow {
     pattern: "lifecycle_survivor_corpus_census_test.dag",
     classification: FalsifierSubstrateLongLane,
     reason: "LIFECYCLE-CARRIER COMPLETENESS CENSUS: derives every top-level data declaration in the corpus with its declared type (data_decl_type_facts over both roots, 16975 declarations / 3475 modules) and gates the raw-string lifecycle survivor population at zero. Its subject IS the corpus breadth, so it cannot be shrunk without measuring less. MEASURED 18482ms eval against the 5s fast-lane budget. The mechanism half is fixture-shaped and stays per-PR in test.claim.lifecycle_survivor_scan_witness (planted survivor selected, migrated control and out-of-class String rejected, ~0ms), so this row carries only the irreducible census — not the discrimination.",
@@ -427,16 +421,6 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: excl_bin_wet_dissolve},
   WitnessExclusionRow {
     pattern: "atom_body_discriminator_witness_test.dag",
-    classification: FalsifierSubstrateLongLane,
-    reason: excl_substrate_long_lane_reason,
-    dissolution: excl_substrate_long_lane_dissolve},
-  WitnessExclusionRow {
-    pattern: "affected_set_provenance_producer_witness_test.dag",
-    classification: FalsifierSubstrateLongLane,
-    reason: excl_substrate_long_lane_reason,
-    dissolution: excl_substrate_long_lane_dissolve},
-  WitnessExclusionRow {
-    pattern: "edit_locus_source_provenance_witness_test.dag",
     classification: FalsifierSubstrateLongLane,
     reason: excl_substrate_long_lane_reason,
     dissolution: excl_substrate_long_lane_dissolve},
