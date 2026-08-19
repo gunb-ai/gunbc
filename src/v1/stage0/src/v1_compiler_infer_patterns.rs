@@ -578,7 +578,17 @@ pub fn lookup_variant_in_type(
                                 qualified_last_segment(variant_name.clone()),
                                 source_indices.clone(),
                             ) {
-                                Some(variant_child) => node_lookup_resolved(variant_child.clone()),
+                                Some(variant_child) => match find_child_named(
+                                    expand_scrut_type_for_variant_lookup(
+                                        scrut_node.clone(),
+                                        env.clone(),
+                                    ),
+                                    qualified_last_segment(variant_name.clone()),
+                                    source_indices.clone(),
+                                ) {
+                                    Some(scrut_child) => node_lookup_resolved(scrut_child.clone()),
+                                    None => node_lookup_resolved(variant_child.clone()),
+                                },
                                 None => variant_not_found_result(
                                     scrut_node.clone(),
                                     variant_name.clone(),
