@@ -516,3 +516,81 @@ rollback path not depending on that App being alive, and the current effective r
 Then **update** the existing entry to add `integration_id` — never delete and recreate it. The
 failure mode after pinning is not a protection gap but a fail-closed queue freeze if some open
 subject lacks a fabric-authored check, which is why the pre-population is part of the cut.
+
+## 18. Product direction reframes this PR, and corrects four things in it
+
+From `swift-badger-524`, 2026-08-19. The reframe is not a relabelling: it changes what counts as
+done, and two of the four corrections name defects in code already on this branch.
+
+### The reframe
+
+Not *"replace GitHub Actions with the fabric"* but: **build the first production CI binding, make
+gunbc its first consumer, then cut gunbc's old executor authority over in one motion.** The test is
+sharp — *you can successfully replace Actions and still have no saleable CI system.* The self-CI
+cutover then wet-tests the exact path an external customer will use, which is a strictly stronger
+proof than replacing our own workflow.
+
+The ownership split that follows:
+
+| layer | owns |
+| --- | --- |
+| `product.fabric` | provider-neutral negotiation, attempts, grants, receipts |
+| GitHub binding | observations, subject correlation, demand commands, check projection |
+| CI product layer | the public execution contract, isolation promise, billable receipt |
+| `gunbc.*` | **only** the floor's program and contracts |
+
+**This locates a defect in what I already built.** `gunbc.fabric_witness_run.authorize_floor_run`
+takes a `Work` and an `Offer` and answers a fungibility question — *does this executor satisfy these
+requirements* — which is **provider-neutral fabric logic sitting in a gunbc module**. `FloorRunRefusal`
+is likewise a general fungibility refusal wearing a floor-specific name: nothing in
+`ShapeNotCovered`, `TrustDomainMismatch` or `CapabilitiesNotOffered` is about the floor. The gunbc
+module should keep `floor_work_contract` and `floor_execution_requirements` and nothing else.
+
+### GitHub vocabulary must not leak into the fabric
+
+**Operator ruling: there is no "main vs PR" in the fabric — it is just how compute is negotiated.**
+§13's answer to Q1 is right in substance and wrong in vocabulary: *"every unseen main commit, every
+current PR merge subject, manual reexecution"* are three ways **this binding** obtains desired
+demands, and they must never become three modes inside the fabric. A fabric that names its
+provider's event kinds cannot admit a provider it did not anticipate — the same argument
+`FabricIdentity` already makes for keeping the principal type open.
+
+### Self-CI is an ordinary priced demand
+
+**Confirmed as a gap in this branch:** `authorize_floor_run` checks shape, capabilities and trust
+and **does not consider price at all**, so gunbc's floor is currently an always-admitted path. That
+is precisely the privileged arm the arbitrage thesis forbids — if self-CI bypasses the market, the
+opportunity cost of running our own work is not a computable quantity and the arbitrage degrades
+into a hand-maintained spreadsheet. Cheap now, expensive to retrofit.
+
+Control-plane work is a separately privileged class, and that exclusion **must not leak to floor
+runs**.
+
+### Placement: the invariant is not "off-fleet"
+
+§13's Q2 answer is superseded. The invariant is that **no single capacity, scheduler generation,
+deployment, or failure domain may simultaneously remove observation, canonical state, allocation,
+AND the only means of restoring them.** Meta-processes may run *on* the fabric, modeled as **control
+work** — an execution class with reserved entitlement, its own trust domain, placement constraints
+and receipts — distinct from customer work, which runs only from an admitted grant with no
+control-plane credentials.
+
+Four prerequisites, not follow-ups: **(a)** the reserved placement class; **(b)** a durable
+single-writer compare-and-swap — *`LeaseEpoch` is a fence, not a serialization mechanism, and
+replication without CAS makes the race worse rather than better*; **(c)** bootstrap independence —
+whatever starts the control plane must not require the control plane, so an external one-shot
+cadence that consults nothing; **(d)** rollout durability — a new version takes over from a **dead**
+predecessor, never requiring a graceful handoff. First honest rung: one management node plus an
+independent watchdog plus a tested restore path, declared as an SPOF.
+
+### `WorkContentKey` bundles three concerns — split it
+
+§13's Q4 answer conflated **identity**, **reuse policy**, and **correlation**. Reuse-disabled-for-
+cutover is a **policy over identities**, not a property of identity; per §3 policy is a workflow
+fact. Turning reuse on later must not mean editing what things *are*.
+
+**The split is already available in the carriers** — verified rather than proposed:
+`product.fabric.demand.SatisfactionRequirement { terminal_receipt_may_satisfy, new_attempt_required,
+step_reuse_permitted }` lives on the **Demand**. So identity stays `WorkContentKey`, reuse policy
+rides the Demand, and the cutover's "no reuse" is one Demand-side setting rather than a property
+baked into what a Work *is*.
