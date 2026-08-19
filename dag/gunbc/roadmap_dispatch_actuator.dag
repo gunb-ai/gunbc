@@ -997,7 +997,7 @@ fn codex_spawn_argv_for_instance(
 }
 
 type DispatchProviderInnerArgv
-  = DispatchProviderInnerArgvReady { argv: std.types.List<String> }
+  = DispatchProviderInnerArgvReady { argv: List<String> }
   | CodexProviderExecutableAbsent { reason: std.types.NonEmptyStr }
   | CursorProviderSpawnUnwired { reason: std.types.NonEmptyStr }
 

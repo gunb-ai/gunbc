@@ -70,7 +70,7 @@ data three_sixty_five_philadelphia: extdeps.colo.types.ColoFacilityRow = extdeps
   facility_note: "Roughly 135,000 square feet with about 70,000 square feet of raised floor and 10 MW marketed per datacenterhawk, read 2026-08-18; multi-operator building shared with an H5 floor.",
 }
 
-data three_sixty_five_facilities: std.types.List<extdeps.colo.types.ColoFacilityRow> = [
+data three_sixty_five_facilities: List<extdeps.colo.types.ColoFacilityRow> = [
   three_sixty_five_carlstadt,
   three_sixty_five_bridgewater,
   three_sixty_five_weehawken,

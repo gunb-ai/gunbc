@@ -27,7 +27,7 @@ type WorkflowFactTree
   = WorkflowFactLeaf { fact: WorkflowFact }
   | WorkflowFactDecomposed {
       fact: WorkflowFact,
-      children: std.types.List<WorkflowFactTree>,
+      children: List<WorkflowFactTree>,
     }
 
 type WorkflowFactParent
@@ -46,7 +46,7 @@ type WorkflowFactTreeFold<R> {
 
 type WorkflowFactMembershipFold {
   root: WorkflowFact
-  descendants: std.types.List<WorkflowFactMember>
+  descendants: List<WorkflowFactMember>
 }
 
 type WorkflowReconcileFold {
@@ -186,7 +186,7 @@ fn workflow_fact_membership_fold(
 
 fn workflow_fact_tree_members(
   tree: WorkflowFactTree,
-) -> std.types.List<WorkflowFactMember> {
+) -> List<WorkflowFactMember> {
   let folded = workflow_fact_membership_fold(tree: tree)
   concat(
     [
@@ -200,8 +200,8 @@ fn workflow_fact_tree_members(
 }
 
 fn workflow_fact_forest_members(
-  forest: std.types.List<WorkflowFactTree>,
-) -> std.types.List<WorkflowFactMember> {
+  forest: List<WorkflowFactTree>,
+) -> List<WorkflowFactMember> {
   flat_map(
     forest,
     tree => workflow_fact_tree_members(tree: tree),
@@ -336,7 +336,7 @@ fn workflow_fact_tree_observation_tally(
 }
 
 fn workflow_fact_forest_observation_tally(
-  forest: std.types.List<WorkflowFactTree>,
+  forest: List<WorkflowFactTree>,
 ) -> WorkflowObservationTally {
   fold(
     forest,
@@ -354,7 +354,7 @@ fn workflow_fact_forest_observation_tally(
 }
 
 fn workflow_fact_forest_verdict(
-  forest: std.types.List<WorkflowFactTree>,
+  forest: List<WorkflowFactTree>,
 ) -> std.reducible.ReduceVerdict {
   std.workflow_recursive.settle_verdict_tree(
     w: std.workflow_recursive.Decomposed {
@@ -367,8 +367,8 @@ fn workflow_fact_forest_verdict(
 }
 
 fn workflow_fact_reconcile(
-  desired: std.types.List<WorkflowFactTree>,
-  observed: std.types.List<WorkflowFactTree>,
+  desired: List<WorkflowFactTree>,
+  observed: List<WorkflowFactTree>,
 ) -> gunbc.membership_reconcile.MembershipPlan<WorkflowFactMember, WorkflowFactMemberAt> {
   gunbc.membership_reconcile.membership_plan_admitting_outcome(
     outcome: gunbc.membership_reconcile.membership_reconcile(
@@ -457,8 +457,8 @@ fn workflow_reconcile_fold(
 }
 
 fn workflow_reconcile_report(
-  desired: std.types.List<WorkflowFactTree>,
-  observed: std.types.List<WorkflowFactTree>,
+  desired: List<WorkflowFactTree>,
+  observed: List<WorkflowFactTree>,
 ) -> WorkflowReconcileReport {
   let plan = workflow_fact_reconcile(
     desired: desired,

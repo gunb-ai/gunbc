@@ -3,11 +3,11 @@ module gunbc.spark_serving_member_realization
 
 data spark_serving_member_realization_authority_note: String = "Per-member-type realization bundle for Spark serving: maps membership_reconcile actions/effects onto the EXISTING gunbc.spark_serving_realization ServingInstallEffect vocabulary (UserUnitRealization scope only — never live_deploy SystemdUnit/system-scoped handlers). MemberEffect<M> classifies change; this module supplies how to realize each action for SparkServingMember addresses. Admission boundaries and API readiness observations stay outside this bundle."
 
-fn spark_serving_user_unit_install_effects() -> std.types.List<gunbc.spark_serving_realization.ServingInstallEffect> {
+fn spark_serving_user_unit_install_effects() -> List<gunbc.spark_serving_realization.ServingInstallEffect> {
   [gunbc.spark_serving_realization.WriteUserUnitFile, gunbc.spark_serving_realization.ReloadUserManager, gunbc.spark_serving_realization.EnableUserUnit]
 }
 
-fn spark_serving_install_effects_for_address(address: gunbc.spark_serving_membership.SparkServingResourceAddress) -> std.types.List<gunbc.spark_serving_realization.ServingInstallEffect> {
+fn spark_serving_install_effects_for_address(address: gunbc.spark_serving_membership.SparkServingResourceAddress) -> List<gunbc.spark_serving_realization.ServingInstallEffect> {
   match address {
     gunbc.spark_serving_membership.SparkServingRuntimeRootAddress => [gunbc.spark_serving_realization.InstallOwnedRuntimeClosure]
     gunbc.spark_serving_membership.SparkServingUserUnitAddress => spark_serving_user_unit_install_effects()
@@ -16,24 +16,24 @@ fn spark_serving_install_effects_for_address(address: gunbc.spark_serving_member
   }
 }
 
-fn spark_serving_install_effects_for_add(member: gunbc.spark_serving_membership.SparkServingMember) -> std.types.List<gunbc.spark_serving_realization.ServingInstallEffect> {
+fn spark_serving_install_effects_for_add(member: gunbc.spark_serving_membership.SparkServingMember) -> List<gunbc.spark_serving_realization.ServingInstallEffect> {
   spark_serving_install_effects_for_address(address: member.address)
 }
 
 fn spark_serving_install_effects_for_change(
   from: gunbc.spark_serving_membership.SparkServingMember,
   to: gunbc.spark_serving_membership.SparkServingMember,
-) -> std.types.List<gunbc.spark_serving_realization.ServingInstallEffect> {
+) -> List<gunbc.spark_serving_realization.ServingInstallEffect> {
   spark_serving_install_effects_for_address(address: to.address)
 }
 
-fn spark_serving_install_effects_for_remove(_member: gunbc.spark_serving_membership.SparkServingMember) -> std.types.List<gunbc.spark_serving_realization.ServingInstallEffect> {
+fn spark_serving_install_effects_for_remove(_member: gunbc.spark_serving_membership.SparkServingMember) -> List<gunbc.spark_serving_realization.ServingInstallEffect> {
   []
 }
 
 fn spark_serving_install_effects_for_member_action(
   action: gunbc.membership_reconcile.MemberAction<gunbc.spark_serving_membership.SparkServingMember, gunbc.spark_serving_membership.SparkServingMemberAt>,
-) -> std.types.List<gunbc.spark_serving_realization.ServingInstallEffect>? {
+) -> List<gunbc.spark_serving_realization.ServingInstallEffect>? {
   match action {
     MemberAdded { at: _, to: member } =>
       Present { value: spark_serving_install_effects_for_add(member: member) }
@@ -48,7 +48,7 @@ fn spark_serving_install_effects_for_member_action(
 
 fn spark_serving_install_effects_for_member_effect(
   effect: gunbc.membership_reconcile.MemberEffect<gunbc.spark_serving_membership.SparkServingMember>,
-) -> std.types.List<gunbc.spark_serving_realization.ServingInstallEffect> {
+) -> List<gunbc.spark_serving_realization.ServingInstallEffect> {
   match effect {
     EffectAdd { to: member } => spark_serving_install_effects_for_add(member: member)
     EffectReplace { from: f, to: t } =>
@@ -58,7 +58,7 @@ fn spark_serving_install_effects_for_member_effect(
 }
 
 fn spark_serving_install_effects_include(
-  effects: std.types.List<gunbc.spark_serving_realization.ServingInstallEffect>,
+  effects: List<gunbc.spark_serving_realization.ServingInstallEffect>,
   needle: gunbc.spark_serving_realization.ServingInstallEffect,
 ) -> std.types.Bool {
   any(effects, e => e == needle)

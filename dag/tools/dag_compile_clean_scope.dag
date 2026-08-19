@@ -3,7 +3,7 @@ module tools.dag_compile_clean_scope
 
 
 type CompileCleanScopeDisposition
-  = ScopedRun { entry_paths: std.types.List<String> }
+  = ScopedRun { entry_paths: List<String> }
   | SkipNoAffectedEntries { reason: String }
   | RequireWholeTree { reason: String }
   | RefuseShardRosterDuplicate { path: String, reason: String }

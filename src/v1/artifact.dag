@@ -38,7 +38,7 @@ type ArtifactPlan {
 }
 
 type PartitionRule
-  = Explicit { artifacts: std.types.List<Artifact> }
+  = Explicit { artifacts: List<Artifact> }
 
 fn plan_artifacts(rule: PartitionRule) -> ArtifactPlan {
   match rule {

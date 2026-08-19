@@ -39,8 +39,8 @@ type FloorDiscoveryRequest {
 type FloorDiscoverySubjectMismatch
   = FloorDiscoveryTestedCommitMismatch { expected: extdeps.git.object_store.GitObjectId, observed: extdeps.git.object_store.GitObjectId }
   | FloorDiscoveryTestedTreeMismatch { expected: extdeps.git.object_store.GitObjectId, observed: extdeps.git.object_store.GitObjectId }
-  | FloorDiscoverySourceRootsMismatch { expected: std.types.List<String>, observed: std.types.List<String> }
-  | FloorDiscoveryExecutionAuthorityRootsMismatch { expected: std.types.List<String>, observed: std.types.List<String> }
+  | FloorDiscoverySourceRootsMismatch { expected: List<String>, observed: List<String> }
+  | FloorDiscoveryExecutionAuthorityRootsMismatch { expected: List<String>, observed: List<String> }
   | FloorDiscoveryNamingAuthorityMismatch {
       expected: std.content_hash.Fnv1a64Structural,
       observed: std.content_hash.Fnv1a64Structural
@@ -107,9 +107,9 @@ fn floor_discovery_subject_bind(
 
 type FloorDiscoveryRequestMismatch
   = FloorDiscoveryRequestSubjectMismatch { cause: FloorDiscoverySubjectMismatch }
-  | FloorDiscoveryScanDirsMismatch { expected: std.types.List<String>, observed: std.types.List<String> }
-  | FloorDiscoveryExclusionsMismatch { expected: std.types.List<String>, observed: std.types.List<String> }
-  | FloorDiscoveryScopeMismatch { expected: std.types.List<String>, observed: std.types.List<String> }
+  | FloorDiscoveryScanDirsMismatch { expected: List<String>, observed: List<String> }
+  | FloorDiscoveryExclusionsMismatch { expected: List<String>, observed: List<String> }
+  | FloorDiscoveryScopeMismatch { expected: List<String>, observed: List<String> }
   | FloorDiscoveryExecutionModeMismatch { expected: std.execution_mode.ExecutionMode, observed: std.execution_mode.ExecutionMode }
 
 type FloorDiscoveryRequestBinding

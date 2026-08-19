@@ -14,7 +14,7 @@ type MutationCoverage {
 
 type AdequacyVerdict
   = MutationAdequate
-  | Inadequate { survivors: std.types.List<StructureMutation> }
+  | Inadequate { survivors: List<StructureMutation> }
 
 fn mutation_is_killed(mc: MutationCoverage) -> Bool {
   unit_is_discriminating(unit: mc.discriminating_unit)

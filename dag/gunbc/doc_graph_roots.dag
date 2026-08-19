@@ -1622,7 +1622,7 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
 ]
 
 type HandAuthoredDocBindsPopulation
-  = HandAuthoredDocBindsBuilt { binds: std.types.List<HandAuthoredDocBind> }
+  = HandAuthoredDocBindsBuilt { binds: List<HandAuthoredDocBind> }
   | HandAuthoredDocBindsDuplicateKey {
       key: String,
       first: HandAuthoredDocBind,

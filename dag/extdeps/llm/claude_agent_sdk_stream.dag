@@ -30,7 +30,7 @@ data claude_stream_event_type_rate_limit_event: String = "rate_limit_event"
 data claude_sdk_parser_drop_receipt_path: String = "docs/probes/claude_paired_entitlement_probe/claude_sdk_parser_drop_receipt.json"
 
 type JsonStringListDecode
-  = JsonStringListOk { values: std.types.List<String> }
+  = JsonStringListOk { values: List<String> }
   | JsonStringListFail
 
 fn list_contains_string(items: List<String>, needle: String) -> Bool {

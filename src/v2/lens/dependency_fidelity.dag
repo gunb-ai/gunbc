@@ -11,7 +11,7 @@ type FidelityDiscrepancy
 
 type FidelityVerdict
   = Faithful
-  | Discrepant { findings: std.types.List<FidelityDiscrepancy> }
+  | Discrepant { findings: List<FidelityDiscrepancy> }
 
 fn verdict_from_discrepancies(findings: List<FidelityDiscrepancy>) -> FidelityVerdict {
   if is_empty(xs: findings) {

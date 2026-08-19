@@ -154,7 +154,7 @@ fn node_keyed_graph_reach_step(
 type NodeKeyedGraphTransitiveBytes
   = NodeKeyedGraphTransitiveBytesSettled { bytes: std.measure.ByteSize }
   | NodeKeyedGraphTransitiveBytesMissingRow { missing: std.content_hash.ContentHash }
-  | NodeKeyedGraphTransitiveBytesUnsettled { pending: std.types.List<std.content_hash.ContentHash> }
+  | NodeKeyedGraphTransitiveBytesUnsettled { pending: List<std.content_hash.ContentHash> }
 
 fn node_keyed_graph_transitive_bytes(
   artifact: NodeKeyedGraphArtifact,

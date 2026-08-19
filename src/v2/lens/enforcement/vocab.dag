@@ -17,7 +17,7 @@ type ConsumerKind
 
 type ConsumerRequirement
   = AnyLiveConsumer
-  | OneOf { acceptable: std.types.List<ConsumerKind> }
+  | OneOf { acceptable: List<ConsumerKind> }
   | Exact { kind: ConsumerKind }
 
 type ConsumerWitnessBinding

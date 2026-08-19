@@ -7,9 +7,9 @@ type ElementwiseArrayOp
   | ElemwiseRelu
 
 type AcceleratorDemoProgram
-  = PureElementwiseMap { ops: std.types.List<ElementwiseArrayOp> }
-  | EffectfulElementwiseMap { ops: std.types.List<ElementwiseArrayOp> }
-  | DataDependentGatherMap { ops: std.types.List<ElementwiseArrayOp> }
+  = PureElementwiseMap { ops: List<ElementwiseArrayOp> }
+  | EffectfulElementwiseMap { ops: List<ElementwiseArrayOp> }
+  | DataDependentGatherMap { ops: List<ElementwiseArrayOp> }
 
 data relu_mul_add_ops: List<ElementwiseArrayOp> = [
   ElemwiseMul,

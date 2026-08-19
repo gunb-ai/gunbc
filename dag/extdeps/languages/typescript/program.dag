@@ -20,13 +20,13 @@ type TsExpr
   | Ident { name: String }
   | Member { object: TsExpr, property: String }
   | Index { object: TsExpr, index: TsExpr }
-  | Call { callee: TsExpr, args: std.types.List<TsExpr> }
-  | New { callee: TsExpr, args: std.types.List<TsExpr> }
-  | ArrowFn { params: std.types.List<String>, body: TsStmt }
+  | Call { callee: TsExpr, args: List<TsExpr> }
+  | New { callee: TsExpr, args: List<TsExpr> }
+  | ArrowFn { params: List<String>, body: TsStmt }
   | BinOp { left: TsExpr, op: String, right: TsExpr }
   | Prefix { op: String, expr: TsExpr }
-  | ArrayLit { elements: std.types.List<TsExpr> }
-  | ObjectLit { fields: std.types.List<TsObjectField> }
+  | ArrayLit { elements: List<TsExpr> }
+  | ObjectLit { fields: List<TsObjectField> }
   | Spread { expr: TsExpr }
   | Cond { test: TsExpr, consequent: TsExpr, alternate: TsExpr }
 
@@ -40,7 +40,7 @@ type TsStmt
   | If { cond: TsExpr, then: TsStmt, else_stmt: TsStmt? }
   | ForOf { var_name: String, iterable: TsExpr, body: TsStmt }
   | Return { expr: TsExpr? }
-  | Block { stmts: std.types.List<TsStmt> }
+  | Block { stmts: List<TsStmt> }
   | Try { body: TsStmt, catch_param: String, handler: TsStmt }
 
 type TsProgram {

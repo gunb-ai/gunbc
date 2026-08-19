@@ -22,7 +22,7 @@ type RunnerCapacityHostPlan {
 }
 
 type RunnerCapacityPlan
-  = PlanReady { hosts: std.types.List<RunnerCapacityHostPlan> }
+  = PlanReady { hosts: List<RunnerCapacityHostPlan> }
   | PlanRefused { reason: String }
 
 fn parse_positive_width(value: String) -> Int? {

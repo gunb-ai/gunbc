@@ -7,7 +7,7 @@ module gunbc.runner_shape_census
 // decomposition rule is explicit that a generic hub may not enumerate
 // concrete products or dispatch among their authorities. Adding a provider
 // adds a module beside its peers and one line here; it edits no shared shape.
-fn surveyed_runner_catalogs() -> std.types.List<extdeps.ci_runner.types.RunnerCatalogAvailability> {
+fn surveyed_runner_catalogs() -> List<extdeps.ci_runner.types.RunnerCatalogAvailability> {
   [
     extdeps.cloud.ubicloud.ubicloud_runner_catalog_shapes,
     extdeps.ci_runner.blacksmith.blacksmith_runner_catalog,
@@ -18,11 +18,11 @@ fn surveyed_runner_catalogs() -> std.types.List<extdeps.ci_runner.types.RunnerCa
   ]
 }
 
-fn surveyed_runner_shapes() -> std.types.List<extdeps.ci_runner.types.RunnerShapeRow> {
+fn surveyed_runner_shapes() -> List<extdeps.ci_runner.types.RunnerShapeRow> {
   fold(surveyed_runner_catalogs(), init: [], f: (acc, c) => concat(acc, extdeps.ci_runner.types.runner_shape_rows(availability: c)))
 }
 
-fn shapes_for(rows: std.types.List<extdeps.ci_runner.types.RunnerShapeRow>, provider: std.decl_ref.DeclarationRef, architecture: extdeps.toolchain.types.Architecture) -> std.types.List<extdeps.ci_runner.types.RunnerShapeRow> {
+fn shapes_for(rows: List<extdeps.ci_runner.types.RunnerShapeRow>, provider: std.decl_ref.DeclarationRef, architecture: extdeps.toolchain.types.Architecture) -> List<extdeps.ci_runner.types.RunnerShapeRow> {
   filter(rows, r => std.decl_ref.declaration_ref_eq(a: r.provider, b: provider) && extdeps.ci_runner.types.shape_is_architecture(row: r, architecture: architecture))
 }
 
@@ -51,8 +51,8 @@ type MemoryPerVcpuReading
 type RatioAccum {
   seen: std.nat.Nat
   first: std.nat.Nat
-  divergent: std.types.List<extdeps.ci_runner.types.RunnerShapeRow>
-  non_integral: std.types.List<extdeps.ci_runner.types.RunnerShapeRow>
+  divergent: List<extdeps.ci_runner.types.RunnerShapeRow>
+  non_integral: List<extdeps.ci_runner.types.RunnerShapeRow>
 }
 
 fn ratio_step(acc: RatioAccum, row: extdeps.ci_runner.types.RunnerShapeRow) -> RatioAccum {
@@ -79,7 +79,7 @@ fn ratio_step(acc: RatioAccum, row: extdeps.ci_runner.types.RunnerShapeRow) -> R
 }
 
 fn memory_per_vcpu(
-  rows: std.types.List<extdeps.ci_runner.types.RunnerShapeRow>,
+  rows: List<extdeps.ci_runner.types.RunnerShapeRow>,
   provider: std.decl_ref.DeclarationRef,
   architecture: extdeps.toolchain.types.Architecture,
 ) -> MemoryPerVcpuReading {
@@ -144,7 +144,7 @@ type SampleUnitLabel
 type UnitLabelAccum {
   seen: std.types.Bool
   first: std.types.NonEmptyStr
-  divergent: std.types.List<std.types.NonEmptyStr>
+  divergent: List<std.types.NonEmptyStr>
 }
 
 fn unit_label_step(acc: UnitLabelAccum, row: extdeps.ci_runner.types.RunnerShapeRow) -> UnitLabelAccum {
@@ -160,7 +160,7 @@ fn unit_label_step(acc: UnitLabelAccum, row: extdeps.ci_runner.types.RunnerShape
   }
 }
 
-fn sample_unit_label(rows: std.types.List<extdeps.ci_runner.types.RunnerShapeRow>) -> SampleUnitLabel {
+fn sample_unit_label(rows: List<extdeps.ci_runner.types.RunnerShapeRow>) -> SampleUnitLabel {
   let acc = fold(
     rows,
     init: UnitLabelAccum { seen: false, first: "GB" as std.types.NonEmptyStr, divergent: [] },
@@ -176,11 +176,11 @@ fn sample_unit_label(rows: std.types.List<extdeps.ci_runner.types.RunnerShapeRow
   }
 }
 
-fn first_label(rows: std.types.List<extdeps.ci_runner.types.RunnerShapeRow>) -> std.types.NonEmptyStr {
+fn first_label(rows: List<extdeps.ci_runner.types.RunnerShapeRow>) -> std.types.NonEmptyStr {
   fold(rows, init: "none" as std.types.NonEmptyStr, f: (acc, r) => if acc == "none" { r.label } else { acc })
 }
 
-fn first_ratio(rows: std.types.List<extdeps.ci_runner.types.RunnerShapeRow>) -> std.nat.Nat {
+fn first_ratio(rows: List<extdeps.ci_runner.types.RunnerShapeRow>) -> std.nat.Nat {
   fold(
     rows,
     init: zero_ratio(),

@@ -33,7 +33,7 @@ type ToolReadiness
       pin: extdeps.pin.Pin<extdeps.tools.CliTool>,
       plan: gunbc.membership_reconcile.MembershipPlan<extdeps.pin.Pin<extdeps.tools.CliTool>, CliToolPinMemberAt>
     }
-  | PinnedRefused { refusals: std.types.List<ToolReadinessRefusal> }
+  | PinnedRefused { refusals: List<ToolReadinessRefusal> }
   | UnpinnedFrontier {
       row: UnpinnedToolFrontierRow,
       observed: extdeps.realization.emit_on_demand_host.ObservedToolIdentity
@@ -50,8 +50,8 @@ fn tool_pin_ownership(pin: extdeps.pin.Pin<extdeps.tools.CliTool>) -> gunbc.owne
 }
 
 fn tool_pin_reconcile(
-  desired: std.types.List<extdeps.pin.Pin<extdeps.tools.CliTool>>,
-  observed: std.types.List<extdeps.pin.Pin<extdeps.tools.CliTool>>,
+  desired: List<extdeps.pin.Pin<extdeps.tools.CliTool>>,
+  observed: List<extdeps.pin.Pin<extdeps.tools.CliTool>>,
 ) -> gunbc.membership_reconcile.MembershipPlan<extdeps.pin.Pin<extdeps.tools.CliTool>, CliToolPinMemberAt> {
   gunbc.membership_reconcile.membership_plan_admitting_outcome(
     outcome: gunbc.membership_reconcile.membership_reconcile(
@@ -138,14 +138,14 @@ fn pinned_tool_readiness(
 
 fn matching_frontier_rows(
   tool: extdeps.tools.CliTool,
-  frontier: std.types.List<UnpinnedToolFrontierRow>,
-) -> std.types.List<UnpinnedToolFrontierRow> {
+  frontier: List<UnpinnedToolFrontierRow>,
+) -> List<UnpinnedToolFrontierRow> {
   filter(frontier, row => row.tool.name == tool.name)
 }
 
 fn unpinned_tool_readiness(
   tool: extdeps.tools.CliTool,
-  frontier: std.types.List<UnpinnedToolFrontierRow>,
+  frontier: List<UnpinnedToolFrontierRow>,
   context: extdeps.realization.emit_on_demand_host.ResolvedBuildContext,
 ) -> ToolReadiness {
   let matching = matching_frontier_rows(tool: tool, frontier: frontier)
@@ -180,7 +180,7 @@ fn unpinned_tool_readiness(
 
 fn tool_readiness(
   request: ToolReadinessRequest,
-  frontier: std.types.List<UnpinnedToolFrontierRow>,
+  frontier: List<UnpinnedToolFrontierRow>,
   context: extdeps.realization.emit_on_demand_host.ResolvedBuildContext,
 ) -> ToolReadiness {
   match request {

@@ -23,8 +23,8 @@ type FloorDiscoverySnapshotWriteReceipt {
 type FloorDiscoveryTransportObservation
   = CommitObserved { commit: v2.workflow.floor_discovery.FloorDiscoveryCommitId }
   | TreeObserved { tree: v2.workflow.floor_discovery.FloorDiscoveryTreeId }
-  | TrackedWorktreeObserved { modified_paths: std.types.List<String> }
-  | UntrackedWorktreeObserved { paths: std.types.List<String> }
+  | TrackedWorktreeObserved { modified_paths: List<String> }
+  | UntrackedWorktreeObserved { paths: List<String> }
   | SnapshotPublished {
       receipt: FloorDiscoverySnapshotWriteReceipt
     }

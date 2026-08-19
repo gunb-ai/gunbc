@@ -7407,7 +7407,7 @@ fn is_type_variable_name(name: String) -> Bool {
   name == "T" || name == "K" || name == "V" || name == "MappedElement" || name == "FoldAccumulator"
 }
 
-type ArgGenericFoldState { results: std.types.List<v1.compiler.infer.ArgInferResult>, subst: Map<String, v1.std.core.Node> }
+type ArgGenericFoldState { results: List<v1.compiler.infer.ArgInferResult>, subst: Map<String, v1.std.core.Node> }
 
 fn type_node_label(n: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   let authored = authored_name_at(source_indices: source_indices, node: n)

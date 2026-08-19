@@ -1249,7 +1249,7 @@ fn dashboard_required_target_executables(
 data executable_survey_note: String = "ABSENT AND UNOBSERVED ARE DIFFERENT ANSWERS ABOUT A REQUIRED EXECUTABLE, and this survey is the fold that stopped conflating them (review 45213). The predecessor filtered the required paths on a Bool that was false for both, so a refused transport reported every required executable as missing — a list of real paths, each of which may well exist, handed to an operator as the thing to go install.\\n\\nThe survey refuses on the FIRST unobservable path rather than continuing, because the refusal is a property of the transport and not of the path: once a probe could not be delivered, the remaining probes carry no information either, and a partial missing-list assembled from the ones that happened to answer is exactly the partial observation that looks complete. Carrying the path alongside the reason keeps the refusal located — which probe stopped the line — rather than reporting only that something went wrong."
 
 type DashboardExecutableSurvey
-  = ExecutablesSurveyed { missing: std.types.List<std.types.FilePath> }
+  = ExecutablesSurveyed { missing: List<std.types.FilePath> }
   | ExecutableSurveyRefused { path: std.types.FilePath, reason: String }
 
 fn dashboard_survey_target_executables(

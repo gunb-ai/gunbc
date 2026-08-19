@@ -63,7 +63,7 @@ type FailurePolicy = FailFast | Continue
 type Expr
   = ExprLit { spelling: String }
   | ExprVarRef { name: String }
-  | ExprCmdSubst { callee: String, args: std.types.List<String> }
+  | ExprCmdSubst { callee: String, args: List<String> }
 
 type Procedure {
   name: String
@@ -83,7 +83,7 @@ type PipelineStep
       on_exhausted: Pipeline
     }
   | Let { name: String, value: Expr }
-  | Call { callee: String, args: std.types.List<String> }
+  | Call { callee: String, args: List<String> }
 
 data pipeline_step_comment_note: String = "Comment \{ text \} is a non-command PipelineStep (comment body WITHOUT the leading \"# \"). Emission reuses the existing orch_construct_run_rawline / realize_run_rawline path (bash_fold_raw_line_target_model) — no new grammar row (operator PR2a ruling). Multiline text is REFUSED (^orch_emit_comment_multiline_refused): a newline would start an executable shell line after the \"# \" prefix, so the non-command invariant holds by construction (fail-closed), not by hoping authors stay single-line. 🟡 dissolve-on: shared with redirect_spec_to_file_note — typed single-line comment-body carrier makes the emit-time newline refuse unwritable-by-construction."
 

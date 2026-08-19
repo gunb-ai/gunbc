@@ -58,7 +58,7 @@ type CacheKeying = ContentKeyed | ExistenceKeyed
 
 type CacheCoverage
   = CoversAllComputations
-  | CoversIdentities { identities: std.types.List<String> }
+  | CoversIdentities { identities: List<String> }
 
 type ProviderTier
   = ReferenceTier
@@ -155,15 +155,15 @@ fn provider_row(
 }
 
 type LadderVerdict
-  = AuthoredDuplication { identity: String, lca: std.types.List<Frame>, site_count: Int }
+  = AuthoredDuplication { identity: String, lca: List<Frame>, site_count: Int }
   | DeadComputation { identity: String }
-  | Discharged { identity: String, lca: std.types.List<Frame>, provider_id: String }
-  | RefusedNoProvider { identity: String, lca: std.types.List<Frame> }
-  | RefusedScopeTooNarrow { identity: String, lca: std.types.List<Frame>, provider_id: String }
-  | RefusedExistenceKeyed { identity: String, lca: std.types.List<Frame>, provider_id: String }
-  | RefusedRetentionUnbounded { identity: String, lca: std.types.List<Frame>, provider_id: String }
-  | RefusedRetentionUnobserved { identity: String, lca: std.types.List<Frame>, provider_id: String }
-  | RefusedUnmodeledWorldRead { identity: String, lca: std.types.List<Frame> }
+  | Discharged { identity: String, lca: List<Frame>, provider_id: String }
+  | RefusedNoProvider { identity: String, lca: List<Frame> }
+  | RefusedScopeTooNarrow { identity: String, lca: List<Frame>, provider_id: String }
+  | RefusedExistenceKeyed { identity: String, lca: List<Frame>, provider_id: String }
+  | RefusedRetentionUnbounded { identity: String, lca: List<Frame>, provider_id: String }
+  | RefusedRetentionUnobserved { identity: String, lca: List<Frame>, provider_id: String }
+  | RefusedUnmodeledWorldRead { identity: String, lca: List<Frame> }
   | ExemptFreshEffect { identity: String }
   | AcceptedBelowCostFloor { identity: String }
   | AcceptedSingleRecompute { identity: String }

@@ -133,7 +133,7 @@ type ImmediateOperandConstraint {
 
 type MemoryOperandConstraint
   = AbsoluteAddressSlot { displacement_width: OperandFieldWidthRef }
-  | RegisterIndirectSlot { allowed_bases: std.types.List<RegisterRef> }
+  | RegisterIndirectSlot { allowed_bases: List<RegisterRef> }
   | BaseDisplacementSlot {
       allowed_bases: List<RegisterRef>,
       displacement_width: OperandFieldWidthRef

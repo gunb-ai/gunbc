@@ -104,9 +104,9 @@ type OccurrenceIdentityClosingRefusal
   | ReceiptDeferralOverlap { law_id: String }
 
 type OccurrenceIdentityClosingVerdict
-  = OccurrenceIdentityClosingCovered { deferred_law_ids: std.types.List<String> }
-  | OccurrenceIdentityClosingOpen { missing_law_ids: std.types.List<String> }
-  | OccurrenceIdentityClosingRefused { refusals: std.types.List<OccurrenceIdentityClosingRefusal> }
+  = OccurrenceIdentityClosingCovered { deferred_law_ids: List<String> }
+  | OccurrenceIdentityClosingOpen { missing_law_ids: List<String> }
+  | OccurrenceIdentityClosingRefused { refusals: List<OccurrenceIdentityClosingRefusal> }
 
 data occurrence_identity_closing_check_note: String = "Validation/workflow carrier for the namespace-reference-derived-closure node; execution outcomes, admitted deferrals, and node-closing verdicts deliberately do not live in the std.occurrence_identity identity authority. The closing verdict is derived from that authority's permanent occurrence_identity_acceptance_laws rows, scoped-batch execution observations, and admitted deferrals. The law population is not a caller parameter, so deleting a debt row or passing a narrowed list cannot delete a law. A receipt counts only when its law id and exact required_receipt still match and its execution observation is Passed; the scoped witness batch must supply that observation from execution, never from a roster entry asserting its own success. Unknown, duplicate, stale, non-green, and receipt-plus-deferral rows refuse. Covered with deferred_law_ids is an explicit deferred state, not completion; only Covered with an empty deferred population closes the node. The exact-denominator census is only a hand-maintained spec-growth tripwire; this derived unmatched-law-to-Open fold is the load-bearing guarantee, and the census must be deleted rather than automated into a self-comparison. This five-law occurrence-identity acceptance family is distinct from the six candidate-producer conformance laws owned by the namespace mechanism. Synthetic Passed rows are controls for this fold only and never evidence that a production receipt executed; production integration must replace them with the live scoped execution-observation join."
 

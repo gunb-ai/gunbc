@@ -34,7 +34,7 @@ fn carrier_content_declares_scope(content: String) -> Bool {
 data manifest_freeze_check_note: String = "codex review 46215, finding half 2: the manifest's remove-only lifecycle was review discipline, not mechanics. Closed: every manifest row must name a file that already existed at legacy_manifest_freeze_sha — the live-cover witness diffs freeze..HEAD with the same git.Core.DiffNameStatus + parse the publication placement gate uses, and refuses any manifest row in the added/copied/renamed set. Diff failure and parse truncation are typed refusal arms of DiffAddedObservation, never skips (a broken freeze probe must not report frozen)."
 
 type DiffAddedObservation
-  = AddedPathsObserved { paths: std.types.List<String> }
+  = AddedPathsObserved { paths: List<String> }
   | DiffObserveFailed
   | DiffParseTruncated
 
@@ -52,7 +52,7 @@ data manifest_remove_only_note: String = "The remove-only lifecycle, enforced me
 type ManifestLineObservation
   = ManifestUntouched
   | ManifestIntroduced
-  | ManifestLinesAdded { rows: std.types.List<String> }
+  | ManifestLinesAdded { rows: List<String> }
   | ManifestDiffUnreadable
 
 type ManifestLineFoldState {

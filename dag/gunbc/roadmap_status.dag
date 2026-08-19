@@ -25,7 +25,7 @@ type TicketFields {
 
 type RoadmapItem
 
-  = DerivableLine { prs: std.types.List<Int>, title: String, description: String }
+  = DerivableLine { prs: List<Int>, title: String, description: String }
 
   | AuthoredLine { done: Bool, content: String }
 
@@ -43,7 +43,7 @@ type RedControlEvidence
 
 type HandbackEvidence
   = HandbackNotDelivered
-  | HandbackDelivered { first_artifact: std.types.NonEmptyStr, further_artifacts: std.types.List<std.types.NonEmptyStr> }
+  | HandbackDelivered { first_artifact: std.types.NonEmptyStr, further_artifacts: List<std.types.NonEmptyStr> }
 
 type Signoff
   = Unsigned

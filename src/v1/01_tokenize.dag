@@ -32,7 +32,7 @@ data v1_scan_step_note: String = "scan_next_token used to return exactly one Tok
 
 type ScanStep
   = ScannedToken { result: ScanResult }
-  | ScannedAnnotation { pos: Int, capture: std.source_annotation.UnboundAnnotationCapture, interp_depth: std.types.List<Int> }
+  | ScannedAnnotation { pos: Int, capture: std.source_annotation.UnboundAnnotationCapture, interp_depth: List<Int> }
 
 data v1_tokenize_artifact_note: String = "tokenize keeps returning List<v1.std.core.Token> and is the SEMANTIC PROJECTION, so every existing caller (compile.dag, the parser, the Rust seed tests) is untouched by construction. tokenize_artifact is the authored result. The projection direction is one-way on purpose: a semantic consumer cannot reach annotation text."
 
@@ -342,9 +342,9 @@ fn scan_number(source: SourceRef, pos: TokPos) -> ScanResult {
 }
 
 type StringScanResult
-  = ClosedString { content: std.types.List<Int>, end_pos: Int }
-  | InterpolationStart { content: std.types.List<Int>, end_pos: Int }
-  | UnterminatedString { content: std.types.List<Int>, end_pos: Int }
+  = ClosedString { content: List<Int>, end_pos: Int }
+  | InterpolationStart { content: List<Int>, end_pos: Int }
+  | UnterminatedString { content: List<Int>, end_pos: Int }
 
 type EscapeProcessResult
   = EscapesProcessed { text: String }

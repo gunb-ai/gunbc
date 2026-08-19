@@ -32,7 +32,7 @@ type PxeNetworkStanding
       http_endpoint: std.decl_ref.DeclarationRef,
       isolation: PxeNetworkIsolation,
     }
-  | PxeNetworkGapped { gaps: std.types.List<PxeNetworkGap> }
+  | PxeNetworkGapped { gaps: List<PxeNetworkGap> }
   | PxeNetworkUnobserved
 
 fn pxe_network_reachability_gaps(observation: PxeNetworkObservation) -> List<PxeNetworkGap> {
@@ -311,7 +311,7 @@ type SparkUnattendedPxeBootAdmissionOutcome
   | SparkUnattendedPxeBootRefused { reason: SparkUnattendedPxeBootRefusalReason }
 
 type SparkUnattendedPxeBootRefusalReason
-  = UnattendedPxeBootNetworkStandingIncomplete { gaps: std.types.List<PxeNetworkGap> }
+  = UnattendedPxeBootNetworkStandingIncomplete { gaps: List<PxeNetworkGap> }
   | UnattendedPxeBootFirmwareHumanInterventionRequired { intervention: std.human_intervention.HumanIntervention }
   | NetworkObservationAbsent
   | FirmwareConfigurationAbsent

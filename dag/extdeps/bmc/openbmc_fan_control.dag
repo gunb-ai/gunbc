@@ -32,7 +32,7 @@ type OpenBmcSelection<T>
 type OpenBmcCollection<T>
   = OpenBmcCollectionZero
   | OpenBmcCollectionOne { value: T }
-  | OpenBmcCollectionMany { values: std.types.List<T> }
+  | OpenBmcCollectionMany { values: List<T> }
 
 fn openbmc_collection_from_values<T>(
   values: List<T>,
@@ -1145,11 +1145,11 @@ type OpenBmcStringResult
   | OpenBmcStringRefused { reason: String }
 
 type OpenBmcIntegerListResult
-  = OpenBmcIntegerListObserved { values: std.types.List<Int> }
+  = OpenBmcIntegerListObserved { values: List<Int> }
   | OpenBmcIntegerListRefused { reason: String }
 
 type OpenBmcFanControllerListResult
-  = OpenBmcFanControllerListObserved { values: std.types.List<OpenBmcFanController> }
+  = OpenBmcFanControllerListObserved { values: List<OpenBmcFanController> }
   | OpenBmcFanControllerListRefused { reason: String }
 
 type OpenBmcFanSeries = OpenBmcReadings | OpenBmcOutputs

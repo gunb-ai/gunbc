@@ -19,7 +19,7 @@ data reach_note: String = "How packets get to a host — a network-reach fact, D
 
 type Reach =
     DirectLan { host: extdeps.network.endpoint.NetworkHost }
-  | ProxyJump { jumps: std.types.List<extdeps.network.endpoint.NetworkHost>, target: extdeps.network.endpoint.NetworkHost }
+  | ProxyJump { jumps: List<extdeps.network.endpoint.NetworkHost>, target: extdeps.network.endpoint.NetworkHost }
   | FabricTunnel { target: extdeps.network.endpoint.NetworkHost }
 
 type ReachRefusalCause =

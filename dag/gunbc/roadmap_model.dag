@@ -46,7 +46,7 @@ type RoadmapEdge {
 }
 
 type SectionProse { content: String }
-type SectionGroup { label: String, nodes: std.types.List<RoadmapNode>, edges: std.types.List<RoadmapEdge> }
+type SectionGroup { label: String, nodes: List<RoadmapNode>, edges: List<RoadmapEdge> }
 
 type SectionElement
   = Prose { prose: SectionProse }

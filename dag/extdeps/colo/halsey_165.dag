@@ -40,7 +40,7 @@ data halsey_165_cross_connect: extdeps.colo.types.CrossConnectFee = extdeps.colo
   citation: "165halsey.com connectivity page, read 2026-08-18",
 }
 
-data halsey_165_remote_hands: std.types.List<extdeps.colo.types.RemoteHandsWindowRate> = [
+data halsey_165_remote_hands: List<extdeps.colo.types.RemoteHandsWindowRate> = [
   extdeps.colo.types.RemoteHandsWindowRate {
     window_label: "Monday-Friday 06:00-18:00",
     hourly: std.measure.MoneyPerHour { amount: std.measure.money_amount_micro(count: 175000000), currency: std.currency.Usd },

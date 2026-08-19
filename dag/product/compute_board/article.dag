@@ -180,7 +180,7 @@ type PhysicalRealizationPendingCause
   | RequiresPackageFootprintAuthority
 
 type PhysicalRealizationStanding
-  = PhysicalRealizationPending { causes: std.types.List<PhysicalRealizationPendingCause> }
+  = PhysicalRealizationPending { causes: List<PhysicalRealizationPendingCause> }
   | PhysicalRealizationAdmitted { outline: std.types.NonEmptyStr }
 
 type ManufacturingRealizationStanding

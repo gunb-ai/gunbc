@@ -63,7 +63,7 @@ type LinuxProcMountLineParse
   | LinuxProcMountLineRefused { cause: LinuxProcMountLineRefusal }
 
 type LinuxProcMountsParse
-  = LinuxProcMountsParsed { rows: std.types.List<LinuxProcMountRow> }
+  = LinuxProcMountsParsed { rows: List<LinuxProcMountRow> }
   | LinuxProcMountsRefused {
       line_number: Int,
       cause: LinuxProcMountLineRefusal,

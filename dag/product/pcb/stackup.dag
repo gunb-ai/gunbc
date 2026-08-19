@@ -122,7 +122,7 @@ type StackupRefusalCause
 // round (DESIGN section 5, counted diagnostics).
 type StackupAdmission
   = StackupAdmitted { admitted: AdmittedStackup }
-  | StackupRefused { causes: std.types.List<StackupRefusalCause> }
+  | StackupRefused { causes: List<StackupRefusalCause> }
 
 // THE ADMITTED VALUE CARRIES THE DECLARATION IT JUDGED, not just the stackup. Admission binds the
 // two together, so an established capability names the stackup that was actually checked. Taking

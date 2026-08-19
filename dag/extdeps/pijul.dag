@@ -1203,7 +1203,7 @@ type PijulLogHeadDecodeOutcome
   | PijulLogHeadDecodeRefused { cause: extdeps.pijul.PijulLogWireRefusal }
 
 type PijulLogHashSetDecodeOutcome
-  = PijulLogHashSetDecoded { changes: std.types.List<extdeps.pijul.PijulChangeHash> }
+  = PijulLogHashSetDecoded { changes: List<extdeps.pijul.PijulChangeHash> }
   | PijulLogHashSetDecodeRefused { cause: extdeps.pijul.PijulLogWireRefusal }
 
 type PijulPrefixedLine {

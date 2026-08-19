@@ -24,7 +24,7 @@ fn family_crate_complement_tree() -> v2.compiler.inferred_tree.InferredTree {
   emit_complement_eval_tree_for(root: dag_complement_arrow_with_body_fixture)
 }
 
-fn family_crate_members() -> std.types.List<v2.compiler.emit_module.EmitFamilyMember> {
+fn family_crate_members() -> List<v2.compiler.emit_module.EmitFamilyMember> {
   [
     v2.compiler.emit_module.EmitFamilyMember {
       tree: family_crate_meet_tree(),
@@ -49,7 +49,7 @@ fn family_crate_complement_alt_tree() -> v2.compiler.inferred_tree.InferredTree 
   emit_complement_eval_tree_for(root: dag_complement_arrow_with_body_swapped_arms_fixture)
 }
 
-fn family_crate_alt_members() -> std.types.List<v2.compiler.emit_module.EmitFamilyMember> {
+fn family_crate_alt_members() -> List<v2.compiler.emit_module.EmitFamilyMember> {
   [
     v2.compiler.emit_module.EmitFamilyMember {
       tree: family_crate_meet_alt_tree(),
@@ -70,7 +70,7 @@ fn family_crate_member_digest(member: v2.compiler.emit_module.EmitFamilyMember) 
   inferred_tree_digest(tree: member.tree)
 }
 
-fn family_crate_member_digests(members: std.types.List<v2.compiler.emit_module.EmitFamilyMember>) -> std.types.List<std.content_hash.Fnv1a64Structural> {
+fn family_crate_member_digests(members: List<v2.compiler.emit_module.EmitFamilyMember>) -> List<std.content_hash.Fnv1a64Structural> {
   match members {
     Empty => []
     Cons { head: m, tail: t } =>
@@ -81,11 +81,11 @@ fn family_crate_member_digests(members: std.types.List<v2.compiler.emit_module.E
   }
 }
 
-fn family_crate_digest(members: std.types.List<v2.compiler.emit_module.EmitFamilyMember>) -> std.content_hash.Fnv1a64Structural {
+fn family_crate_digest(members: List<v2.compiler.emit_module.EmitFamilyMember>) -> std.content_hash.Fnv1a64Structural {
   std.emit_on_demand.family_closure_digest(members: family_crate_member_digests(members: members))
 }
 
-fn family_crate_native_key(members: std.types.List<v2.compiler.emit_module.EmitFamilyMember>) -> std.content_hash.ContentHash {
+fn family_crate_native_key(members: List<v2.compiler.emit_module.EmitFamilyMember>) -> std.content_hash.ContentHash {
   std.emit_on_demand.emit_on_demand_key(
     closure_digest: family_crate_digest(members: members),
     emitter_identity: family_crate_emitter,
@@ -108,7 +108,7 @@ fn family_crate_cache_root_for(test_id: String) -> String {
 
 fn family_crate_evict_and_workspace(
   test_id: String,
-  members: std.types.List<v2.compiler.emit_module.EmitFamilyMember>
+  members: List<v2.compiler.emit_module.EmitFamilyMember>
 ) -> String {
   let key = family_crate_native_key(members: members)
   let root = family_crate_cache_root_for(test_id: test_id)
@@ -242,7 +242,7 @@ fn family_crate_complement_member_agreement(
 
 fn optional_divergence_to_list(
   opt: Optional<v2.std.native_agreement.NativeAgreementDivergence>
-) -> std.types.List<v2.std.native_agreement.NativeAgreementDivergence> {
+) -> List<v2.std.native_agreement.NativeAgreementDivergence> {
   match opt {
     Absent => []
     Present { value: d } => [d]
@@ -257,7 +257,7 @@ fn family_crate_emit_family_rejected_divergence() -> v2.std.native_agreement.Nat
   }
 }
 
-fn family_crate_pr_native_agreement_divergences() -> std.types.List<v2.std.native_agreement.NativeAgreementDivergence> {
+fn family_crate_pr_native_agreement_divergences() -> List<v2.std.native_agreement.NativeAgreementDivergence> {
   let members = family_crate_members()
   let workspace = extdeps.realization.emit_on_demand_host.native_cache_workspace_root(
     cache_root: family_crate_cache_root_for(test_id: "pr_native"),

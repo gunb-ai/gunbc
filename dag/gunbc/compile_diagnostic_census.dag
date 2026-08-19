@@ -29,7 +29,7 @@ type CompileDiagnosticCensusRow {
 }
 
 type CompileDiagnosticCensus
-  = CensusObserved { rows: std.types.List<CompileDiagnosticCensusRow> }
+  = CensusObserved { rows: List<CompileDiagnosticCensusRow> }
   | CensusNotRunnable { cause: std.types.NonEmptyStr }
 
 data census_projection_note: String = "Pure reads over ROWS, never over the census. The selectors take List<CompileDiagnosticCensusRow>, so the only way to obtain rows is to MATCH the coproduct - which makes reading a row list out of a CensusNotRunnable structurally unwritable rather than warned against. An earlier cut exported census_rows(c: CompileDiagnosticCensus) answering [] on the NotRunnable arm, with a prose caution telling callers not to read a zero out of it. That was the fail-open this module exists to prevent, one layer up and in its own API: could-not-measure and observed-nothing became the same empty list at the export boundary, and a prose warning is validation standing exactly where construction was available (DESIGN 5; caught by codex review 46144). The caution deleted WITH the accessor rather than surviving beside it - a warning about a state that can no longer be written is dead text. None of these decides acceptance: blocking and advisory partition the SAME rows by the severity the host already reported, and census_total_count sums counts rather than rows so a class occurring twice is two occurrences."

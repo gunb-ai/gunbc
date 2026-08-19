@@ -69,7 +69,7 @@ fn heal_push_refusal_cause_token(cause: HealPushRefusalCause) -> String {
 
 type HealPushPlan
   = HealPushNothingToDo
-  | HealPushReady { artifacts: std.types.List<gunbc.generated_artifact.GeneratedArtifact> }
+  | HealPushReady { artifacts: List<gunbc.generated_artifact.GeneratedArtifact> }
   | HealPushPartial {
       ready: List<gunbc.generated_artifact.GeneratedArtifact>
       refused: List<gunbc.generated_artifact.GeneratedArtifact>
@@ -79,11 +79,11 @@ type HealPushPlan
       refused: List<gunbc.generated_artifact.GeneratedArtifact>
       cause: HealPushRefusal
     }
-  | HealPushPlanInconsistent { refused_paths: std.types.List<extdeps.github.effect.RepositoryPath> }
+  | HealPushPlanInconsistent { refused_paths: List<extdeps.github.effect.RepositoryPath> }
 
 type RefusalDerivation
   = RefusalDerived { refusal: HealPushRefusal }
-  | RefusalDerivationInconsistent { refused_paths: std.types.List<extdeps.github.effect.RepositoryPath> }
+  | RefusalDerivationInconsistent { refused_paths: List<extdeps.github.effect.RepositoryPath> }
 
 fn capability_failure(c: gunbc.auth.github_credential.CredentialCapability) -> HealPushFailure? {
   match c {
@@ -354,12 +354,12 @@ fn author_residual_exact(refusal: HealPushRefusal) -> Bool {
 }
 
 type HealPushRemediation
-  = HealAutomatically { paths: std.types.List<extdeps.github.effect.RepositoryPath> }
-  | AuthorCommitRequired { paths: std.types.List<extdeps.github.effect.RepositoryPath>, causes: std.types.List<HealPushRefusalCause> }
-  | MachineRepairRequired { causes: std.types.List<HealPushRefusalCause> }
-  | ProviderObservationRequired { causes: std.types.List<HealPushRefusalCause> }
+  = HealAutomatically { paths: List<extdeps.github.effect.RepositoryPath> }
+  | AuthorCommitRequired { paths: List<extdeps.github.effect.RepositoryPath>, causes: List<HealPushRefusalCause> }
+  | MachineRepairRequired { causes: List<HealPushRefusalCause> }
+  | ProviderObservationRequired { causes: List<HealPushRefusalCause> }
   | HealNothingToRemediate
-  | HealPlanInconsistent { refused_paths: std.types.List<extdeps.github.effect.RepositoryPath> }
+  | HealPlanInconsistent { refused_paths: List<extdeps.github.effect.RepositoryPath> }
 
 fn remediation_for_refusal(refusal: HealPushRefusal) -> HealPushRemediation {
   let machine = filter(refusal.failures, f => failure_is_machine_owned(f: f))
@@ -428,8 +428,8 @@ fn path_requires_author_commit(path: String) -> Bool {
 
 type HealRepairDisposition
   = HealRepairNoDrift
-  | HealRepairAutoPushEligibleOnly { paths: std.types.List<String> }
-  | HealRepairAuthorCommitRequired { paths: std.types.List<String> }
+  | HealRepairAutoPushEligibleOnly { paths: List<String> }
+  | HealRepairAuthorCommitRequired { paths: List<String> }
   | HealRepairMixed {
       auto_push_paths: List<String>,
       author_commit_paths: List<String>

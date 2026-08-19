@@ -162,7 +162,7 @@ fn typed_remote_file_write_stdin_payload(write: TypedRemoteFileWrite) -> String 
 }
 
 // Remote argv is ONLY [tee, path] — no sh/bash/-c arm exists; bytes ride stdin, not argv.
-fn typed_remote_file_write_remote_argv(write: TypedRemoteFileWrite) -> std.types.List<String> {
+fn typed_remote_file_write_remote_argv(write: TypedRemoteFileWrite) -> List<String> {
   [typed_remote_file_write_tee_command, write.path as String]
 }
 

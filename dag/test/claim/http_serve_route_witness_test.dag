@@ -177,7 +177,7 @@ fn zip_accept(re_segs: List<String>, path_segs: List<String>) -> Bool {
   }
 }
 
-fn parity_corpus() -> std.types.List<String> {
+fn parity_corpus() -> List<String> {
   ["/", "/roadmap", "/roadmap/", "/dispatch", "/dispatch/abc", "/dispatch/abc/d", "/dispatch//x", "/nope", "/healthz"]
 }
 

@@ -12,7 +12,7 @@ type CompilerStage
   | Emit
 
 type StageInput
-  = SourceText { files: std.types.List<SourceEntry> }
+  = SourceText { files: List<SourceEntry> }
   | TokenStream { from_stage: CompilerStage }
   | ParseTree { from_stage: CompilerStage }
   | ModuleGraph { from_stage: CompilerStage }

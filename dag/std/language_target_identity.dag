@@ -61,7 +61,7 @@ type TargetDisposition
   | TargetParked { reason: String }
   | TargetDecisionPending { decision_id: String }
   | TargetMaintenanceOnly
-  | TargetGovernedByContracts { contract_ids: std.types.List<String> }
+  | TargetGovernedByContracts { contract_ids: List<String> }
 
 type LanguageTargetSurfaceRow {
   authority: LanguageTargetSurfaceAuthority

@@ -56,18 +56,18 @@ type PlacedSpace {
 // disagreement this band exists to make unrepresentable. It is re-derived when a caller asks for
 // it; that is a recomputation, and it is the cheaper mistake than a stale field.
 type World sole_constructor {
-  rooms: std.types.List<PlacedSpace>
+  rooms: List<PlacedSpace>
 }
 
 fn room_identity_eq(a: product.placement_supply.RoomIdentity, b: product.placement_supply.RoomIdentity) -> Bool {
   (a as String) == (b as String)
 }
 
-fn world_rooms(w: World) -> std.types.List<PlacedSpace> { w.rooms }
+fn world_rooms(w: World) -> List<PlacedSpace> { w.rooms }
 
 fn world_room_count(w: World) -> Int { length(w.rooms) }
 
-fn find_room(rooms: std.types.List<PlacedSpace>, identity: product.placement_supply.RoomIdentity) -> PlacedSpace? {
+fn find_room(rooms: List<PlacedSpace>, identity: product.placement_supply.RoomIdentity) -> PlacedSpace? {
   fold(rooms, init: none, f: (acc, r) =>
     match acc {
       Present { value: found } => Present { value: found }
@@ -76,11 +76,11 @@ fn find_room(rooms: std.types.List<PlacedSpace>, identity: product.placement_sup
 }
 
 type DuplicateScan {
-  seen: std.types.List<product.placement_supply.RoomIdentity>
+  seen: List<product.placement_supply.RoomIdentity>
   duplicate: product.placement_supply.RoomIdentity?
 }
 
-fn first_duplicate_identity(rooms: std.types.List<PlacedSpace>) -> product.placement_supply.RoomIdentity? {
+fn first_duplicate_identity(rooms: List<PlacedSpace>) -> product.placement_supply.RoomIdentity? {
   let scanned = fold(rooms, init: DuplicateScan { seen: [], duplicate: none }, f: (acc, r) =>
     match acc.duplicate {
       Present { value: d } => DuplicateScan { seen: acc.seen, duplicate: Present { value: d } }
@@ -95,14 +95,14 @@ fn first_duplicate_identity(rooms: std.types.List<PlacedSpace>) -> product.place
   scanned.duplicate
 }
 
-fn room_spaces(rooms: std.types.List<PlacedSpace>) -> std.types.List<std.orthogonal_topology.EnclosedSpace> {
+fn room_spaces(rooms: List<PlacedSpace>) -> List<std.orthogonal_topology.EnclosedSpace> {
   reverse(fold(rooms, init: [], f: (acc, r) => concat([r.space], acc)))
 }
 
 // The mint runs BOTH walls: identities are unique, and the geometry is admissible as a complex -
 // which is where interpenetration and frame agreement are decided, by the authority that owns them.
 // A world therefore cannot exist in which two rooms share an identity or occupy the same volume.
-fn world(rooms: std.types.List<PlacedSpace>) -> WorldConstruction<World> {
+fn world(rooms: List<PlacedSpace>) -> WorldConstruction<World> {
   match first_duplicate_identity(rooms: rooms) {
     Present { value: d } => WorldRefused { cause: DuplicateRoomIdentity { identity: d } }
     Absent =>
@@ -149,11 +149,11 @@ fn variant_base(v: WorldVariant) -> World { v.base }
 fn variant_delta(v: WorldVariant) -> std.change.KeyedPatch<product.placement_supply.RoomIdentity, std.orthogonal_topology.EnclosedSpace> { v.delta }
 
 type ApplyAcc {
-  rooms: std.types.List<PlacedSpace>
+  rooms: List<PlacedSpace>
   refusal: WorldRefusal?
 }
 
-fn without_identity(rooms: std.types.List<PlacedSpace>, identity: product.placement_supply.RoomIdentity) -> std.types.List<PlacedSpace> {
+fn without_identity(rooms: List<PlacedSpace>, identity: product.placement_supply.RoomIdentity) -> List<PlacedSpace> {
   reverse(fold(rooms, init: [], f: (acc, r) =>
     if room_identity_eq(a: r.identity, b: identity) { acc } else { concat([r], acc) }))
 }
@@ -163,7 +163,7 @@ fn without_identity(rooms: std.types.List<PlacedSpace>, identity: product.placem
 // [hall, kitchen] when only kitchen changed, and any consumer that folds the world - a projection, a
 // serialization, a receipt - would see a change with no hunk behind it. The band's thesis is that
 // the change IS the representation, and an unrepresented reorder is precisely the violation of it.
-fn replace_identity(rooms: std.types.List<PlacedSpace>, identity: product.placement_supply.RoomIdentity, space: std.orthogonal_topology.EnclosedSpace) -> std.types.List<PlacedSpace> {
+fn replace_identity(rooms: List<PlacedSpace>, identity: product.placement_supply.RoomIdentity, space: std.orthogonal_topology.EnclosedSpace) -> List<PlacedSpace> {
   reverse(fold(rooms, init: [], f: (acc, r) =>
     if room_identity_eq(a: r.identity, b: identity) {
       concat([PlacedSpace { identity: identity, space: space }], acc)

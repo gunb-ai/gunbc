@@ -3,7 +3,7 @@ module std.workflow_recursive
 
 type VerdictTree
   = Leaf { verdict: std.reducible.ReduceVerdict }
-  | Decomposed { children: std.types.List<VerdictTree> }
+  | Decomposed { children: List<VerdictTree> }
 
 fn settle_verdict_tree(w: VerdictTree) -> std.reducible.ReduceVerdict {
   match w {

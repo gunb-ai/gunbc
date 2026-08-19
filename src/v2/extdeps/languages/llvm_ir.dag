@@ -20,8 +20,8 @@ type LlvmType
   | PointerType { address_space: v2.std.nat.Nat }
   | VectorType { element: LlvmType, count: v2.std.cardinality.NonZeroNat, scalable: VectorScaling }
   | ArrayType { element: LlvmType, count: v2.std.nat.Nat }
-  | StructType { fields: std.types.List<LlvmType>, packed: StructPacking }
-  | FunctionType { result: LlvmType, params: std.types.List<LlvmType>, var_arg: VarArg }
+  | StructType { fields: List<LlvmType>, packed: StructPacking }
+  | FunctionType { result: LlvmType, params: List<LlvmType>, var_arg: VarArg }
   | NamedType { name: v2.std.node.Symbol }
 
 type VectorScaling
@@ -41,13 +41,13 @@ type LlvmConstant
   | FloatConstant { ty: LlvmType, bits: Int }
   | NullPointer { ty: LlvmType }
   | NoneToken
-  | AggregateConstant { ty: LlvmType, elements: std.types.List<LlvmConstant> }
+  | AggregateConstant { ty: LlvmType, elements: List<LlvmConstant> }
   | ZeroInitializer { ty: LlvmType }
   | UndefValue { ty: LlvmType }
   | PoisonValue { ty: LlvmType }
   | BlockAddress { function: v2.std.node.Symbol, block: v2.std.node.Symbol }
   | GlobalAddress { name: v2.std.node.Symbol }
-  | ConstantExpr { op: ConstExprOpcode, operands: std.types.List<LlvmConstant>, result_type: LlvmType }
+  | ConstantExpr { op: ConstExprOpcode, operands: List<LlvmConstant>, result_type: LlvmType }
 
 type LlvmValue
   = LocalRef { name: v2.std.node.Symbol }
@@ -114,7 +114,7 @@ type LandingPadCleanup
 
 type LandingClause
   = CatchClause { type_info: LlvmValue }
-  | FilterClause { type_infos: std.types.List<LlvmValue> }
+  | FilterClause { type_infos: List<LlvmValue> }
 
 type AtomicOrdering
   = OrderingUnordered
@@ -316,8 +316,8 @@ type Terminator
   | RetValue { value: LlvmValue }
   | UnconditionalBr { target: v2.std.node.Symbol }
   | ConditionalBr { condition: LlvmValue, if_true: v2.std.node.Symbol, if_false: v2.std.node.Symbol }
-  | Switch { value: LlvmValue, default_target: v2.std.node.Symbol, cases: std.types.List<SwitchCase> }
-  | IndirectBr { address: LlvmValue, possible_targets: std.types.List<v2.std.node.Symbol> }
+  | Switch { value: LlvmValue, default_target: v2.std.node.Symbol, cases: List<SwitchCase> }
+  | IndirectBr { address: LlvmValue, possible_targets: List<v2.std.node.Symbol> }
   | Unreachable
   | Invoke {
       callee: LlvmValue
@@ -334,7 +334,7 @@ type Terminator
       indirect_targets: List<v2.std.node.Symbol>
     }
   | Resume { value: LlvmValue }
-  | CatchSwitch { result: v2.std.node.Symbol, parent_pad: LlvmValue, handlers: std.types.List<v2.std.node.Symbol>, unwind: UnwindDest }
+  | CatchSwitch { result: v2.std.node.Symbol, parent_pad: LlvmValue, handlers: List<v2.std.node.Symbol>, unwind: UnwindDest }
   | CleanupRet { cleanup_pad: LlvmValue, unwind: UnwindDest }
   | CatchRet { catch_pad: LlvmValue, successor: v2.std.node.Symbol }
 
@@ -364,7 +364,7 @@ type Linkage
 
 type FunctionBody
   = Declared
-  | Defined { entry: BasicBlock, rest: std.types.List<BasicBlock> }
+  | Defined { entry: BasicBlock, rest: List<BasicBlock> }
 
 type FunctionParameter {
   ty: LlvmType

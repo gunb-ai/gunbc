@@ -40,7 +40,7 @@ type RunnerHostDeployment {
 }
 
 type RunnerDeploymentPlan
-  = PlanDerived { hosts: std.types.List<RunnerHostDeployment>, fleet_concurrent_runs: Int }
+  = PlanDerived { hosts: List<RunnerHostDeployment>, fleet_concurrent_runs: Int }
   | PlanUnsound { reason: String }
 
 

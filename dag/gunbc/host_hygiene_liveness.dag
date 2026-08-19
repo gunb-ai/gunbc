@@ -47,7 +47,7 @@ fn slot_listening_verdict_unit(v: SlotListeningVerdict) -> std.types.NonEmptyStr
 
 type FleetListeningVerdict
   = FleetListeningGreen
-  | FleetListeningRed { unhealthy: std.types.List<SlotListeningVerdict> }
+  | FleetListeningRed { unhealthy: List<SlotListeningVerdict> }
 
 fn fleet_listening_verdict(verdicts: List<SlotListeningVerdict>) -> FleetListeningVerdict {
   let unhealthy = filter(verdicts, v => !slot_listening_verdict_healthy(v: v))

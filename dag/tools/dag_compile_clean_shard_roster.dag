@@ -35,7 +35,7 @@ fn compile_clean_module_shard_from_decl(decl: CompileCleanModuleDeclFact) -> too
 }
 
 type CompileCleanModuleShardRoster
-  = CompileCleanModuleShardRosterBuilt { shards: std.types.List<tools.dag_compile_clean_partition.CompileCleanModuleShard> }
+  = CompileCleanModuleShardRosterBuilt { shards: List<tools.dag_compile_clean_partition.CompileCleanModuleShard> }
   | CompileCleanModuleShardRosterDuplicatePath {
       path: String
       first: CompileCleanModuleDeclFact
@@ -43,7 +43,7 @@ type CompileCleanModuleShardRoster
     }
 
 type CompileCleanShardEntryPaths
-  = CompileCleanShardEntryPathsBuilt { paths: std.types.List<String> }
+  = CompileCleanShardEntryPathsBuilt { paths: List<String> }
   | CompileCleanShardEntryPathsDuplicatePath {
       path: String
       first: CompileCleanModuleDeclFact

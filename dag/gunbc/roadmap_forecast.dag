@@ -89,7 +89,7 @@ type CycleTimeHistoryRefusal
   | HistoryAcceptanceCarrierLoadRefused { detail: String }
 
 type CycleTimePopulationExclusion
-  = BundledPullDelivery { pull_number: Int, nodes: std.types.List<gunbc.roadmap_model.RoadmapNodeId> }
+  = BundledPullDelivery { pull_number: Int, nodes: List<gunbc.roadmap_model.RoadmapNodeId> }
 
 type CycleTimeObservationBuild
   = CycleTimeObserved { observation: CycleTimeObservation }
@@ -281,7 +281,7 @@ type ScenarioAdjustmentUnavailableCause
   | OperatorMergeLatencyUnobserved { declared_latency: std.measure.Millisecond }
 
 type ScenarioAdjustment
-  = AdjustmentUnavailable { causes: std.types.List<ScenarioAdjustmentUnavailableCause> }
+  = AdjustmentUnavailable { causes: List<ScenarioAdjustmentUnavailableCause> }
 
 fn scenario_adjustment(assumptions: ScheduleForecastAssumptions) -> ScenarioAdjustment {
   AdjustmentUnavailable { causes: [
@@ -353,10 +353,10 @@ type CalibrationGap {
 
 type ForecastRefusal
   = ForecastGraphEmpty
-  | DependencyCycle { nodes: std.types.List<gunbc.roadmap_model.RoadmapNodeId> }
-  | DependencyEndpointUnknown { nodes: std.types.List<gunbc.roadmap_model.RoadmapNodeId> }
-  | NodeUnsized { nodes: std.types.List<gunbc.roadmap_model.RoadmapNodeId> }
-  | CycleTimeObservationNonPositive { nodes: std.types.List<gunbc.roadmap_model.RoadmapNodeId> }
+  | DependencyCycle { nodes: List<gunbc.roadmap_model.RoadmapNodeId> }
+  | DependencyEndpointUnknown { nodes: List<gunbc.roadmap_model.RoadmapNodeId> }
+  | NodeUnsized { nodes: List<gunbc.roadmap_model.RoadmapNodeId> }
+  | CycleTimeObservationNonPositive { nodes: List<gunbc.roadmap_model.RoadmapNodeId> }
   | NoCalibrationSample {
       gaps: List<CalibrationGap>,
       population_exclusions: List<CycleTimePopulationExclusion>,
@@ -364,13 +364,13 @@ type ForecastRefusal
       scenario_adjustment: ScenarioAdjustment,
     }
   | WorkerConcurrencyCapInvalid { declared_cap: Int }
-  | CalibrationHistoryRefused { refusals: std.types.List<CycleTimeHistoryRefusal> }
+  | CalibrationHistoryRefused { refusals: List<CycleTimeHistoryRefusal> }
   | ForecastRoadmapAuthorityRefused { detail: String }
   | ForecastBuildRefused { node: gunbc.roadmap_model.RoadmapNodeId }
 
 type ScheduleForecastResult
   = ScheduleForecastKnown { forecast: ScheduleForecast }
-  | ScheduleForecastRefused { refusals: std.types.List<ForecastRefusal> }
+  | ScheduleForecastRefused { refusals: List<ForecastRefusal> }
 
 fn forecast_refusal_count(result: ScheduleForecastResult) -> Int {
   match result {
@@ -532,7 +532,7 @@ fn path_to_node(
 }
 
 type NodeForecastBuild
-  = NodeForecastBuilt { forecast: NodeScheduleForecast, median_path: std.types.List<gunbc.roadmap_model.RoadmapNodeId> }
+  = NodeForecastBuilt { forecast: NodeScheduleForecast, median_path: List<gunbc.roadmap_model.RoadmapNodeId> }
   | NodeForecastBuildRefused { node: gunbc.roadmap_model.RoadmapNodeId }
 
 type CriticalPathChoice {

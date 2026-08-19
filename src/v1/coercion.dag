@@ -130,7 +130,7 @@ type CoercionAssertion
   = CheckpointAssertion { target: v1.compiler.artifact.RenderTarget, dag_name: String, expected_type: String }
   | ContainerAssertion { target: v1.compiler.artifact.RenderTarget, container_name: String, expected_template: String }
   | CopyAssertion { target: v1.compiler.artifact.RenderTarget, dag_name: String, expected_copy: Bool }
-  | TemplateAssertion { template: String, args: std.types.List<String>, expected: String }
+  | TemplateAssertion { template: String, args: List<String>, expected: String }
 
 type CoercionTestEntry {
   test_name: String

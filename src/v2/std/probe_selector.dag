@@ -38,7 +38,7 @@ type HostHealthProbeKind
 type ProbePrior
   = HostHealthPrior { hypothesis: HostHealthHypothesis }
   | CiAffectedPrior { affected: v2.std.change.AffectedSet }
-  | CiRerunPrior { frontier: std.types.List<Node> }
+  | CiRerunPrior { frontier: List<Node> }
   | CiFailClosedPrior {}
 
 type ProbeCatalogEntry {

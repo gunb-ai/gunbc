@@ -72,7 +72,7 @@ type CargoArtifactSelection
 // its own line number. That is the opposite of an absorbing fallback: nothing widens
 // and nothing is skipped, the line that could not be read is named.
 type CargoScanState
-  = CargoScanning { hits: std.types.List<CargoArtifactHit>, line_number: Int }
+  = CargoScanning { hits: List<CargoArtifactHit>, line_number: Int }
   | CargoScanRefused { selection: CargoArtifactSelection }
 
 fn cargo_message_string_value(v: extdeps.languages.json.emit.JsonValue) -> String? {

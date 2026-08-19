@@ -4,7 +4,7 @@ module gunbc.roadmap_acceptance_history_projection
 data roadmap_acceptance_history_projection_note: String = "One-time migration bootstrap: evaluate roadmap_acceptance_event_history from revision-addressed authority source text when dag/gunbc/roadmap_acceptance_event_history.jsonl is absent at merge-base. Steady-state prior_history parses the carrier via gunbc.roadmap_acceptance_history_carrier; this projection is the typed bridge only for carrier introduction on main. SEED OVERLAY HONESTY (review 48679): v1_compiler.cli_run project_roadmap_acceptance_event_history_from_authority_text overlays only dag/gunbc/roadmap_authority.dag from the passed merge-base text; every other dag/ and src/v2 module resolves from the HEAD worktree. If HEAD carries a schema-touching change to any roadmap_authority dependency, the bootstrap projection is evaluated against HEAD's transitive closure, not a fully revision-pinned tree. Bounded: this arm fires only when git_show_path_absent_at_ref admits carrier introduction at merge-base (this PR's one-time window); dissolve-on is roadmap_acceptance_history_projection_seed_scaffold → modeled revision-addressed carrier ingest."
 
 type RoadmapAcceptanceHistoryProjection
-  = RoadmapAcceptanceHistoryProjected { events: std.types.List<gunbc.roadmap_model.RoadmapAcceptanceEvent> }
+  = RoadmapAcceptanceHistoryProjected { events: List<gunbc.roadmap_model.RoadmapAcceptanceEvent> }
   | RoadmapAcceptanceHistoryProjectionRefused { detail: String }
 
 fn project_roadmap_acceptance_event_history_from_authority_text(authority_text: String) -> RoadmapAcceptanceHistoryProjection {

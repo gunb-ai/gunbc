@@ -14,7 +14,7 @@ type BeltAction
   | HoldPaused
   | AtCapacity { ready_waiting: Int }
 
-fn node_occupied(occupied: std.types.List<gunbc.roadmap_model.RoadmapNodeId>, node: gunbc.roadmap_model.RoadmapNode) -> std.types.Bool {
+fn node_occupied(occupied: List<gunbc.roadmap_model.RoadmapNodeId>, node: gunbc.roadmap_model.RoadmapNode) -> std.types.Bool {
   any(occupied, id => id == node.node)
 }
 
@@ -23,20 +23,20 @@ fn belt_free_slots_int(cap: BeltCapacity, occupied_count: Int) -> Int {
   if free < 0 { 0 } else { free }
 }
 
-fn belt_free_slots(cap: BeltCapacity, occupied: std.types.List<gunbc.roadmap_model.RoadmapNodeId>) -> Int {
+fn belt_free_slots(cap: BeltCapacity, occupied: List<gunbc.roadmap_model.RoadmapNodeId>) -> Int {
   belt_free_slots_int(cap: cap, occupied_count: count(occupied))
 }
 
-fn belt_dispatchable(frontier: gunbc.roadmap_spawner.SpawnFrontier, occupied: std.types.List<gunbc.roadmap_model.RoadmapNodeId>) -> std.types.List<gunbc.roadmap_model.RoadmapNode> {
+fn belt_dispatchable(frontier: gunbc.roadmap_spawner.SpawnFrontier, occupied: List<gunbc.roadmap_model.RoadmapNodeId>) -> List<gunbc.roadmap_model.RoadmapNode> {
   frontier.ready |> filter(n => !node_occupied(occupied: occupied, node: n))
 }
 
 fn belt_step(
   state: BeltRunState,
   frontier: gunbc.roadmap_spawner.SpawnFrontier,
-  occupied: std.types.List<gunbc.roadmap_model.RoadmapNodeId>,
+  occupied: List<gunbc.roadmap_model.RoadmapNodeId>,
   cap: BeltCapacity,
-) -> std.types.List<BeltAction> {
+) -> List<BeltAction> {
   match state {
     Paused => [ HoldPaused ]
     Running => {
@@ -59,11 +59,11 @@ fn belt_action_is_spawn(a: BeltAction) -> std.types.Bool {
   }
 }
 
-fn belt_spawn_count(actions: std.types.List<BeltAction>) -> Int {
+fn belt_spawn_count(actions: List<BeltAction>) -> Int {
   count(actions |> filter(a => belt_action_is_spawn(a: a)))
 }
 
-fn belt_spawns_node(actions: std.types.List<BeltAction>, id: gunbc.roadmap_model.RoadmapNodeId) -> std.types.Bool {
+fn belt_spawns_node(actions: List<BeltAction>, id: gunbc.roadmap_model.RoadmapNodeId) -> std.types.Bool {
   any(actions, a => match a {
     SpawnWorker { node } => node.node == id
     HoldPaused => false
@@ -78,10 +78,10 @@ data roadmap_belt_default_run_state: BeltRunState = Running
 fn belt_plan(
   state: BeltRunState,
   doc: gunbc.roadmap_document.RoadmapDocument,
-  merged: std.types.List<Int>,
-  occupied: std.types.List<gunbc.roadmap_model.RoadmapNodeId>,
+  merged: List<Int>,
+  occupied: List<gunbc.roadmap_model.RoadmapNodeId>,
   cap: BeltCapacity,
-) -> std.types.List<BeltAction> {
+) -> List<BeltAction> {
   belt_step(
     state: state,
     frontier: gunbc.roadmap_spawner.spawn_frontier(doc: doc, merged: merged),
@@ -97,7 +97,7 @@ fn belt_run_state_label(s: BeltRunState) -> String {
   }
 }
 
-fn belt_would_spawn_ids(actions: std.types.List<BeltAction>) -> std.types.List<gunbc.roadmap_model.RoadmapNodeId> {
+fn belt_would_spawn_ids(actions: List<BeltAction>) -> List<gunbc.roadmap_model.RoadmapNodeId> {
   fold(actions, init: [], f: fn(acc, a) {
     match a {
       SpawnWorker { node } => concat(acc, [node.node])
@@ -107,7 +107,7 @@ fn belt_would_spawn_ids(actions: std.types.List<BeltAction>) -> std.types.List<g
   })
 }
 
-fn belt_is_at_capacity(actions: std.types.List<BeltAction>) -> std.types.Bool {
+fn belt_is_at_capacity(actions: List<BeltAction>) -> std.types.Bool {
   any(actions, a => match a {
     AtCapacity { ready_waiting: _ } => true
     SpawnWorker { node: _ } => false
@@ -115,7 +115,7 @@ fn belt_is_at_capacity(actions: std.types.List<BeltAction>) -> std.types.Bool {
   })
 }
 
-fn belt_at_capacity_backlog(actions: std.types.List<BeltAction>) -> Int {
+fn belt_at_capacity_backlog(actions: List<BeltAction>) -> Int {
   fold(actions, init: 0, f: fn(acc, a) {
     match a {
       AtCapacity { ready_waiting } => ready_waiting
@@ -128,8 +128,8 @@ fn belt_at_capacity_backlog(actions: std.types.List<BeltAction>) -> Int {
 fn belt_json_value(
   state: BeltRunState,
   doc: gunbc.roadmap_document.RoadmapDocument,
-  merged: std.types.List<Int>,
-  occupied: std.types.List<gunbc.roadmap_model.RoadmapNodeId>,
+  merged: List<Int>,
+  occupied: List<gunbc.roadmap_model.RoadmapNodeId>,
   cap: BeltCapacity,
 ) -> extdeps.languages.json.emit.JsonValue {
   let frontier = gunbc.roadmap_spawner.spawn_frontier(doc: doc, merged: merged)
@@ -206,17 +206,17 @@ fn dispatch_member_ownership(m: DispatchMember) -> gunbc.ownership.Ownership? {
   }
 }
 
-fn belt_desired_members(frontier: gunbc.roadmap_spawner.SpawnFrontier) -> std.types.List<DispatchMember> {
+fn belt_desired_members(frontier: gunbc.roadmap_spawner.SpawnFrontier) -> List<DispatchMember> {
   frontier.ready |> map(n => DesiredMember { node_id: n.node as String, node: n })
 }
 
-fn belt_observed_members(live: std.types.List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>) -> std.types.List<DispatchMember> {
+fn belt_observed_members(live: List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>) -> List<DispatchMember> {
   live |> map(s => ObservedMember { node_id: s.node_id, session: s })
 }
 
 fn belt_membership_plan(
   frontier: gunbc.roadmap_spawner.SpawnFrontier,
-  live: std.types.List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>,
+  live: List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>,
 ) -> gunbc.membership_reconcile.MembershipPlan<DispatchMember, DispatchMemberAt> {
   gunbc.membership_reconcile.membership_plan_admitting_outcome(
     outcome: gunbc.membership_reconcile.membership_reconcile(
@@ -230,7 +230,7 @@ fn belt_membership_plan(
   )
 }
 
-fn belt_plan_upserts(plan: gunbc.membership_reconcile.MembershipPlan<DispatchMember, DispatchMemberAt>) -> std.types.List<DispatchMember> {
+fn belt_plan_upserts(plan: gunbc.membership_reconcile.MembershipPlan<DispatchMember, DispatchMemberAt>) -> List<DispatchMember> {
   fold(plan.actions, init: [], f: fn(acc, a) {
     match a {
       MemberAdded { at: _, to: member } => concat(acc, [member])
@@ -242,7 +242,7 @@ fn belt_plan_upserts(plan: gunbc.membership_reconcile.MembershipPlan<DispatchMem
   })
 }
 
-fn belt_plan_teardowns(plan: gunbc.membership_reconcile.MembershipPlan<DispatchMember, DispatchMemberAt>) -> std.types.List<DispatchMember> {
+fn belt_plan_teardowns(plan: gunbc.membership_reconcile.MembershipPlan<DispatchMember, DispatchMemberAt>) -> List<DispatchMember> {
   fold(plan.actions, init: [], f: fn(acc, a) {
     match a {
       MemberRemoved { at: _, from: member } => concat(acc, [member])
@@ -254,7 +254,7 @@ fn belt_plan_teardowns(plan: gunbc.membership_reconcile.MembershipPlan<DispatchM
   })
 }
 
-fn belt_plan_refusals(plan: gunbc.membership_reconcile.MembershipPlan<DispatchMember, DispatchMemberAt>) -> std.types.List<gunbc.membership_reconcile.MemberAction<DispatchMember, DispatchMemberAt>> {
+fn belt_plan_refusals(plan: gunbc.membership_reconcile.MembershipPlan<DispatchMember, DispatchMemberAt>) -> List<gunbc.membership_reconcile.MemberAction<DispatchMember, DispatchMemberAt>> {
   plan.actions |> filter(a => match a {
     MemberRemovalRefused { from: _, cause: _ } => true
     MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => true
@@ -268,10 +268,10 @@ type BeltReconcile {
   run_state: BeltRunState,
   occupied: Int,
   free: Int,
-  spawns: std.types.List<DispatchMember>,
+  spawns: List<DispatchMember>,
   deferred: Int,
-  teardowns: std.types.List<DispatchMember>,
-  refusals: std.types.List<gunbc.membership_reconcile.MemberAction<DispatchMember, DispatchMemberAt>>,
+  teardowns: List<DispatchMember>,
+  refusals: List<gunbc.membership_reconcile.MemberAction<DispatchMember, DispatchMemberAt>>,
 }
 
 data belt_deferred_note: String = "deferred = upserts beyond this tick's free capacity. NOT dropped-and-forgotten (absorbing): the deferred nodes stay desired-not-observed, so the next reconcile tick produces their upserts again (idempotent). The count is SURFACED (belt status at_capacity_backlog / would_defer), so a growing backlog is an observable signal, never silent."
@@ -279,7 +279,7 @@ data belt_deferred_note: String = "deferred = upserts beyond this tick's free ca
 fn belt_reconcile(
   state: BeltRunState,
   frontier: gunbc.roadmap_spawner.SpawnFrontier,
-  live: std.types.List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>,
+  live: List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>,
   cap: BeltCapacity,
 ) -> BeltReconcile {
   match state {
@@ -317,7 +317,7 @@ fn belt_reconcile_refusal_count(r: BeltReconcile) -> Int { count(r.refusals) }
 
 fn dispatch_member_id(m: DispatchMember) -> String { dispatch_member_key(m: m) }
 
-fn belt_member_ids(ms: std.types.List<DispatchMember>) -> std.types.List<String> {
+fn belt_member_ids(ms: List<DispatchMember>) -> List<String> {
   ms |> map(m => dispatch_member_id(m: m))
 }
 
@@ -331,14 +331,14 @@ fn belt_refusal_member_id(a: gunbc.membership_reconcile.MemberAction<DispatchMem
   }
 }
 
-fn belt_refusal_ids(as: std.types.List<gunbc.membership_reconcile.MemberAction<DispatchMember, DispatchMemberAt>>) -> std.types.List<String> {
+fn belt_refusal_ids(as: List<gunbc.membership_reconcile.MemberAction<DispatchMember, DispatchMemberAt>>) -> List<String> {
   as |> map(a => belt_refusal_member_id(a: a))
 }
 
 fn belt_reconcile_json_value(
   state: BeltRunState,
   frontier: gunbc.roadmap_spawner.SpawnFrontier,
-  live: std.types.List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>,
+  live: List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>,
   cap: BeltCapacity,
 ) -> extdeps.languages.json.emit.JsonValue {
   let r = belt_reconcile(state: state, frontier: frontier, live: live, cap: cap)
@@ -359,7 +359,7 @@ fn belt_reconcile_json_value(
 fn belt_reconcile_status_json(
   state: BeltRunState,
   frontier: gunbc.roadmap_spawner.SpawnFrontier,
-  live: std.types.List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>,
+  live: List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>,
   cap: BeltCapacity,
 ) -> String {
   extdeps.languages.json.emit.serialize_json(v: belt_reconcile_json_value(state: state, frontier: frontier, live: live, cap: cap))

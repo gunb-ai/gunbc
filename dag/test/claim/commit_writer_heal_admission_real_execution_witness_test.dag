@@ -32,7 +32,7 @@ fn commit_witness_side(repo: std.types.FilePath, branch: String, content: String
   branched == 0 && written && staged == 0 && committed == 0
 }
 
-fn refusals_contain_unmerged_index(refusals: std.types.List<gunbc.commit_workflow.CommitWriterRefusal>) -> Bool {
+fn refusals_contain_unmerged_index(refusals: List<gunbc.commit_workflow.CommitWriterRefusal>) -> Bool {
   match refusals {
     Empty => false
     Cons { head: CommitWriterUnmergedIndexRefusal { path: _, stages: _ }, tail: _ } => true
@@ -40,7 +40,7 @@ fn refusals_contain_unmerged_index(refusals: std.types.List<gunbc.commit_workflo
   }
 }
 
-fn refusals_contain_conflict_marker_text(refusals: std.types.List<gunbc.commit_workflow.CommitWriterRefusal>) -> Bool {
+fn refusals_contain_conflict_marker_text(refusals: List<gunbc.commit_workflow.CommitWriterRefusal>) -> Bool {
   match refusals {
     Empty => false
     Cons { head: CommitWriterConflictMarkerTextRefusal { location: _ }, tail: _ } => true

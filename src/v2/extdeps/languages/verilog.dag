@@ -206,11 +206,11 @@ type NetIdentifierDeclarator {
 }
 
 type VariableDeclaration
-  = RegVariable { packing: PackingShape, signedness: std.integer.Signedness, declarators: std.types.List<VariableDeclarator> }
-  | IntegerVariable { declarators: std.types.List<VariableDeclarator> }
-  | RealVariable { declarators: std.types.List<VariableDeclarator> }
-  | TimeVariable { declarators: std.types.List<VariableDeclarator> }
-  | RealTimeVariable { declarators: std.types.List<VariableDeclarator> }
+  = RegVariable { packing: PackingShape, signedness: std.integer.Signedness, declarators: List<VariableDeclarator> }
+  | IntegerVariable { declarators: List<VariableDeclarator> }
+  | RealVariable { declarators: List<VariableDeclarator> }
+  | TimeVariable { declarators: List<VariableDeclarator> }
+  | RealTimeVariable { declarators: List<VariableDeclarator> }
 
 type VariableDeclarator
   = NamedVariable {
@@ -310,7 +310,7 @@ type AlwaysBlock {
 type AlwaysBlockSensitivity
   = NoEventControl
   | ImplicitAtStar
-  | ExplicitEventList { items: std.types.List<SensitivityItem> }
+  | ExplicitEventList { items: List<SensitivityItem> }
 
 type InitialBlock {
   body_lexeme: String
@@ -351,8 +351,8 @@ type NamedParameterOverride {
 
 type ParameterOverrides
   = NoParameterOverrides
-  | OrderedParameterOverrides { actuals: std.types.List<String> }
-  | NamedParameterOverrides { overrides: std.types.List<NamedParameterOverride> }
+  | OrderedParameterOverrides { actuals: List<String> }
+  | NamedParameterOverrides { overrides: List<NamedParameterOverride> }
 
 type InstanceRangeClause
   = NoInstanceRange
@@ -529,7 +529,7 @@ type NonAnsiModuleItem
 
 type ModuleParameterPortList
   = NoModuleParameterPortList
-  | ModuleParameters { parameters: std.types.List<ParameterDeclaration> }
+  | ModuleParameters { parameters: List<ParameterDeclaration> }
 
 type ModuleKeyword
   = ModuleKw
@@ -686,7 +686,7 @@ fn verilog_source_text_module_formal_production() -> v2.std.grammar.FormalProduc
 // not a module grammar. Expressions nest through their own nonterminals for the same reason: a
 // row whose token list happened to spell the whole module would only be the hand serializer
 // moved into data.
-fn verilog_emission_formal_productions() -> std.types.List<v2.std.grammar.FormalProduction> {
+fn verilog_emission_formal_productions() -> List<v2.std.grammar.FormalProduction> {
   [
     v2.std.grammar.grammar_formal_production(
       lhs: ^verilog_production_ansi_port,
@@ -1027,7 +1027,7 @@ fn verilog_relation_row_for_productions(
 // The same population in reverse authoring order. Selection is structural, so this must derive a
 // byte-identical row; if it did not, the grammar would be an ordered table pretending to be a
 // relation and the first matching row would win.
-fn verilog_emission_formal_productions_reversed() -> std.types.List<v2.std.grammar.FormalProduction> {
+fn verilog_emission_formal_productions_reversed() -> List<v2.std.grammar.FormalProduction> {
   reverse(verilog_emission_formal_productions())
 }
 

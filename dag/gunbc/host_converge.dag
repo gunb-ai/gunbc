@@ -249,7 +249,7 @@ fn find_by_identity<T>(items: List<T>, identity: product.placement_supply.HostId
 }
 
 type ConvergePolicy
-  = ConvergePolicyDerived { hosts: std.types.List<HostConverge> }
+  = ConvergePolicyDerived { hosts: List<HostConverge> }
   | ConvergePolicyUnsound { reason: String }
 
 fn runner_instance_glob(host: product.placement_supply.HostIdentity) -> String {

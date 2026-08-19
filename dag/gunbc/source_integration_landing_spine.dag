@@ -150,7 +150,7 @@ type LandingEvidenceReadiness
 
 fn landing_required_claims(
   proposal: gunbc.source_integration_landing_spine.LandingProposalContract,
-) -> std.types.List<gunbc.source_integration_landing_spine.LandingRequiredClaim> {
+) -> List<gunbc.source_integration_landing_spine.LandingRequiredClaim> {
   append(
     [proposal.ensures_guarantees.first],
     items: proposal.ensures_guarantees.remaining,
@@ -170,7 +170,7 @@ fn landing_requirement_is_duplicated(
 fn landing_requirement_block(
   proposal: gunbc.source_integration_landing_spine.LandingProposalContract,
   readiness: gunbc.source_integration_landing_spine.LandingClaimRequirementReadiness,
-) -> std.types.List<gunbc.source_integration_landing_spine.LandingEvidenceBlock> {
+) -> List<gunbc.source_integration_landing_spine.LandingEvidenceBlock> {
   std.claim_evidence.claim_requirement_readiness_fold(
     readiness: readiness,
     fold: std.claim_evidence.ClaimRequirementReadinessFold {

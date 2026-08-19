@@ -35,7 +35,7 @@ type FailClosedReason
 
 type FrontierDecision
   = Rerun
-  | Excluded { first: v2.lens.affected_set.PropagationExclusionProof, rest: std.types.List<v2.lens.affected_set.PropagationExclusionProof> }
+  | Excluded { first: v2.lens.affected_set.PropagationExclusionProof, rest: List<v2.lens.affected_set.PropagationExclusionProof> }
 
 type ReExecFrontier
   = ChangedSubgraphFrontier {
@@ -55,7 +55,7 @@ type BoundaryReceipt
   | BoundaryUnknown { reason: v2.std.node.Symbol }
 
 type ChangedDimensionReceipt
-  = ChangedDimensions { first: v2.lens.affected_set.AffectedDimension, rest: std.types.List<v2.lens.affected_set.AffectedDimension> }
+  = ChangedDimensions { first: v2.lens.affected_set.AffectedDimension, rest: List<v2.lens.affected_set.AffectedDimension> }
   | ChangedDimensionsUnknown { reason: v2.std.node.Symbol }
 
 type PropagationReceipt
@@ -69,7 +69,7 @@ type FrontierDependency {
 }
 
 type FrontierReceipt
-  = FrontierProduced { dependencies: std.types.List<v2.lens.affected_set.FrontierDependency> }
+  = FrontierProduced { dependencies: List<v2.lens.affected_set.FrontierDependency> }
   | FrontierUnknown { reason: v2.std.node.Symbol }
   | FrontierRejected { diagnostic: v2.std.diagnostic.Diagnostic }
 
@@ -171,7 +171,7 @@ fn frontier_from_fold_acc(acc: v2.lens.affected_set.AffectedFoldAcc) -> v2.lens.
   }
 }
 
-fn lens_frontier_dependency_kinds() -> std.types.List<v2.std.dependency.DependencyKind> {
+fn lens_frontier_dependency_kinds() -> List<v2.std.dependency.DependencyKind> {
   [ProjectionDependsOn, VerifiedBy, Contains]
 }
 
@@ -331,7 +331,7 @@ fn affected_set_closure_frontier_unchanged(
   length(xs: before.frontier) == length(xs: after.frontier)
 }
 
-fn affected_set_closure_convergence_rounds(dependencies: List<v2.std.dependency.DependencyView>) -> std.types.List<v2.std.dependency.DependencyView> {
+fn affected_set_closure_convergence_rounds(dependencies: List<v2.std.dependency.DependencyView>) -> List<v2.std.dependency.DependencyView> {
   list_append(left: dependencies, right: dependencies)
 }
 
@@ -377,13 +377,13 @@ fn affected_set_reading(graph: v2.compiler.inferred_tree.InferredTree, edit_locu
   }
 }
 
-fn append_changed_node_subjects(nodes: List<v2.std.node.Node>, changes: v2.std.change.ChangeSet) -> std.types.List<v2.std.node.Node> {
+fn append_changed_node_subjects(nodes: List<v2.std.node.Node>, changes: v2.std.change.ChangeSet) -> List<v2.std.node.Node> {
   fold(changes.changes, init: nodes, f: fn(acc, change) {
     list_snoc_item(xs: acc, item: change.subject)
   })
 }
 
-fn append_affected_dependency_nodes(nodes: List<v2.std.node.Node>, affected: List<v2.std.change.AffectedDependency>) -> std.types.List<v2.std.node.Node> {
+fn append_affected_dependency_nodes(nodes: List<v2.std.node.Node>, affected: List<v2.std.change.AffectedDependency>) -> List<v2.std.node.Node> {
   fold(affected, init: nodes, f: fn(acc, row) {
     list_snoc_item(
       xs: acc,
@@ -1003,7 +1003,7 @@ fn behavior_to_dimension_family(behavior: v2.std.node.Behavior) -> v2.lens.affec
   }
 }
 
-fn node_root_dimension_family(node: v2.std.node.Node) -> std.types.List<v2.lens.affected_set.AffectedDimension> {
+fn node_root_dimension_family(node: v2.std.node.Node) -> List<v2.lens.affected_set.AffectedDimension> {
   match node.kind {
     TypeNode { connective: connective } =>
       [connective_to_dimension_family(connective: connective)]
@@ -1016,7 +1016,7 @@ fn dimension_in_list(xs: List<v2.lens.affected_set.AffectedDimension>, item: v2.
   contains(xs: xs, item: item, eq: fn(left, right) { left == right })
 }
 
-fn union_dimension_into(acc: List<v2.lens.affected_set.AffectedDimension>, dim: v2.lens.affected_set.AffectedDimension) -> std.types.List<v2.lens.affected_set.AffectedDimension> {
+fn union_dimension_into(acc: List<v2.lens.affected_set.AffectedDimension>, dim: v2.lens.affected_set.AffectedDimension) -> List<v2.lens.affected_set.AffectedDimension> {
   if dimension_in_list(xs: acc, item: dim) {
     acc
   } else {
@@ -1024,7 +1024,7 @@ fn union_dimension_into(acc: List<v2.lens.affected_set.AffectedDimension>, dim: 
   }
 }
 
-fn union_dimension_lists(left: List<v2.lens.affected_set.AffectedDimension>, right: List<v2.lens.affected_set.AffectedDimension>) -> std.types.List<v2.lens.affected_set.AffectedDimension> {
+fn union_dimension_lists(left: List<v2.lens.affected_set.AffectedDimension>, right: List<v2.lens.affected_set.AffectedDimension>) -> List<v2.lens.affected_set.AffectedDimension> {
   fold(right, init: left, f: fn(acc, dim) {
     union_dimension_into(acc: acc, dim: dim)
   })
@@ -1094,7 +1094,7 @@ fn frontier_dependency_from_dependency_view(dependency: v2.std.dependency.Depend
   }
 }
 
-fn frontier_dependencies_from_dependency_views(dependencies: List<v2.std.dependency.DependencyView>) -> std.types.List<v2.lens.affected_set.FrontierDependency> {
+fn frontier_dependencies_from_dependency_views(dependencies: List<v2.std.dependency.DependencyView>) -> List<v2.lens.affected_set.FrontierDependency> {
   fold(dependencies, init: [], f: fn(acc, dependency) {
     list_snoc_item(
       xs: acc,
@@ -1228,20 +1228,20 @@ type RepoProcess {
 }
 
 type RepoProcessUniverse
-  = UniverseComplete { processes: std.types.List<v2.lens.affected_set.RepoProcess> }
+  = UniverseComplete { processes: List<v2.lens.affected_set.RepoProcess> }
   | UniverseIncomplete { uncovered_kind: v2.std.node.Symbol, reason: v2.lens.affected_set.FailClosedReason }
 
 data affected_set_reflect_gate_type: v2.std.node.Symbol = ^Gate
 data affected_set_reflect_meta_process_kind_type: v2.std.node.Symbol = ^MetaProcessKind
 data affected_set_reflect_repo_process_kind_type: v2.std.node.Symbol = ^RepoProcessKind
 
-fn ci_gate_processes() -> std.types.List<v2.lens.affected_set.RepoProcess> {
+fn ci_gate_processes() -> List<v2.lens.affected_set.RepoProcess> {
   fold(coproduct_arm_keys(type_name: affected_set_reflect_gate_type), init: [], f: fn(acc, key) {
     list_snoc_item(xs: acc, item: v2.lens.affected_set.RepoProcess { kind: CiGateProcess, identity: key })
   })
 }
 
-fn meta_processes() -> std.types.List<v2.lens.affected_set.RepoProcess> {
+fn meta_processes() -> List<v2.lens.affected_set.RepoProcess> {
   fold(coproduct_arm_keys(type_name: affected_set_reflect_meta_process_kind_type), init: [], f: fn(acc, key) {
     list_snoc_item(xs: acc, item: v2.lens.affected_set.RepoProcess { kind: MetaProcessRole, identity: key })
   })

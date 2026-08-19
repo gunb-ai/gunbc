@@ -128,7 +128,7 @@ fn known_hosts_anchor_seal(
 type KnownHostsMaterializationOutcome
   = KnownHostsReady { anchor: KnownHostsAnchor, receipt: String }
   | KnownHostsAlreadyConverged { anchor: KnownHostsAnchor, receipt: String }
-  | KnownHostsRefused { first: String, more: std.types.List<String> }
+  | KnownHostsRefused { first: String, more: List<String> }
 
 // CANONICAL, not registry-order. An earlier revision hashed the rows in whatever order the list
 // happened to carry, which made the identity -- and therefore the anchor's filename -- a function of
@@ -140,15 +140,15 @@ type KnownHostsMaterializationOutcome
 // Sorting the rendered lines is the canonicalization rather than sorting the rows, because the LINE
 // is what ssh consumes -- so canonical bytes and canonical identity are the same operation, and the
 // emitted file is order-independent too rather than only its hash.
-fn canonical_known_hosts_lines(rows: std.types.List<gunbc.fleet_host_key_enrollment.KnownHostKeyRow>) -> std.types.List<String> {
+fn canonical_known_hosts_lines(rows: List<gunbc.fleet_host_key_enrollment.KnownHostKeyRow>) -> List<String> {
   map(rows, k => gunbc.fleet_host_key_enrollment.known_hosts_line(k: k)) |> sort_by(line => line)
 }
 
-fn canonical_known_hosts_fragment(rows: std.types.List<gunbc.fleet_host_key_enrollment.KnownHostKeyRow>) -> String {
+fn canonical_known_hosts_fragment(rows: List<gunbc.fleet_host_key_enrollment.KnownHostKeyRow>) -> String {
   join(map(canonical_known_hosts_lines(rows: rows), l => concat(l, "\n")), "")
 }
 
-fn canonical_known_hosts_identity(rows: std.types.List<gunbc.fleet_host_key_enrollment.KnownHostKeyRow>) -> std.content_hash.ContentHash {
+fn canonical_known_hosts_identity(rows: List<gunbc.fleet_host_key_enrollment.KnownHostKeyRow>) -> std.content_hash.ContentHash {
   std.content_hash.content_hash_of_value(value: canonical_known_hosts_fragment(rows: rows) as std.types.NonEmptyStr)
 }
 
@@ -156,7 +156,7 @@ fn canonical_known_hosts_identity(rows: std.types.List<gunbc.fleet_host_key_enro
 // line for that endpoint, so two rows naming one endpoint with different keys widen what is trusted
 // while the registry reads as if it pinned one key -- and the digest would happily identify that
 // widened set. Counted at endpoint grain because the endpoint is what ssh matches on.
-fn known_hosts_endpoint_conflict(rows: std.types.List<gunbc.fleet_host_key_enrollment.KnownHostKeyRow>) -> String? {
+fn known_hosts_endpoint_conflict(rows: List<gunbc.fleet_host_key_enrollment.KnownHostKeyRow>) -> String? {
   let endpoints = map(rows, k => k.endpoint) |> sort_by(e => e)
   fold(endpoints, init: none, f: fn(acc, e) {
     match acc {
@@ -342,7 +342,7 @@ fn fleet_openssh_trust_policy_of(outcome: KnownHostsMaterializationOutcome) -> F
 // Derived, never stored. The anchor path is read off the sealed policy, so the options a leg carries
 // and the file whose content was verified are the same fact rather than two facts a path string
 // relates.
-fn fleet_openssh_trust_options(policy: FleetOpenSshTrustPolicy) -> std.types.List<extdeps.ssh.client_options.SshClientOption> {
+fn fleet_openssh_trust_options(policy: FleetOpenSshTrustPolicy) -> List<extdeps.ssh.client_options.SshClientOption> {
   extdeps.ssh.client_options.openssh_exclusive_known_hosts_trust_options(known_hosts: policy.anchor.path)
 }
 
@@ -396,7 +396,7 @@ fn fleet_ssh_credential_locus_label(binding: FleetSshCredentialBinding) -> Strin
 
 // Derived, never stored beside the locus: the options a leg carries come from the locus that was
 // minted, so a caller cannot pair an agent-held credential with identity-file options or the reverse.
-fn fleet_ssh_credential_options(binding: FleetSshCredentialBinding) -> std.types.List<extdeps.ssh.client_options.SshClientOption> {
+fn fleet_ssh_credential_options(binding: FleetSshCredentialBinding) -> List<extdeps.ssh.client_options.SshClientOption> {
   match binding.locus {
     FleetSshIdentityFileHeld { identity_file: f } =>
       extdeps.ssh.client_options.openssh_exact_credential_options(identity_file: f)
@@ -551,10 +551,10 @@ fn portable_remote_word(raw: String) -> PortableRemoteWord? {
 // by passing an empty list to this one.
 type PortableRemoteWords {
   first: PortableRemoteWord
-  more: std.types.List<PortableRemoteWord>
+  more: List<PortableRemoteWord>
 }
 
-fn portable_remote_words(raws: std.types.List<String>) -> PortableRemoteWords? {
+fn portable_remote_words(raws: List<String>) -> PortableRemoteWords? {
   let admitted = fold(raws, init: Present { value: [] }, f: fn(acc, r) {
     match acc {
       Absent => none
@@ -576,7 +576,7 @@ fn portable_remote_words(raws: std.types.List<String>) -> PortableRemoteWords? {
   }
 }
 
-fn portable_remote_words_strings(words: PortableRemoteWords) -> std.types.List<String> {
+fn portable_remote_words_strings(words: PortableRemoteWords) -> List<String> {
   concat([words.first.value as String], map(words.more, w => w.value as String))
 }
 
@@ -595,7 +595,7 @@ fn shape_fleet_ssh_exec(
   context: FleetSshExecutionContext,
   target: SshTarget,
   words: PortableRemoteWords,
-) -> std.types.List<String> {
+) -> List<String> {
   let config_suppression = extdeps.ssh.client_options.openssh_suppress_ambient_configuration_options()
   let derived = concat(
     fleet_openssh_trust_options(policy: context.trust),

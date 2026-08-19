@@ -71,10 +71,10 @@ fn select_copper_layer(a: product.pcb.stackup.AdmittedStackup, ordinal: Int) -> 
 // can match, and the caller has already refused the out-of-range case, so the match is nonempty.
 type LayerScan {
   seen: Int
-  picked: std.types.List<product.pcb.stackup.CopperLayer>
+  picked: List<product.pcb.stackup.CopperLayer>
 }
 
-fn scan_for_ordinal(layers: std.types.List<product.pcb.stackup.CopperLayer>, ordinal: Int) -> LayerScan {
+fn scan_for_ordinal(layers: List<product.pcb.stackup.CopperLayer>, ordinal: Int) -> LayerScan {
   v2.std.algebra.fold_list(
     xs: layers,
     empty: LayerScan { seen: 0, picked: [] },
@@ -87,7 +87,7 @@ fn scan_for_ordinal(layers: std.types.List<product.pcb.stackup.CopperLayer>, ord
   )
 }
 
-fn nth_layer_function(layers: std.types.List<product.pcb.stackup.CopperLayer>, ordinal: Int) -> product.pcb.stackup.CopperLayerFunction {
+fn nth_layer_function(layers: List<product.pcb.stackup.CopperLayer>, ordinal: Int) -> product.pcb.stackup.CopperLayerFunction {
   scan_for_ordinal(layers: layers, ordinal: ordinal).picked.first().function
 }
 
@@ -138,7 +138,7 @@ fn net_exists(nets: List<product.electrical.connectivity.ElectricalNet>, net: pr
   count(filter(nets, n => n.identity == net)) > 0
 }
 
-fn realizations_of_net(rs: std.types.List<NetCopperRealization>, net: product.electrical.connectivity.NetIdentity) -> std.types.List<NetCopperRealization> {
+fn realizations_of_net(rs: List<NetCopperRealization>, net: product.electrical.connectivity.NetIdentity) -> List<NetCopperRealization> {
   filter(rs, r => r.net == net)
 }
 
@@ -377,7 +377,7 @@ type AdmittedCopper sole_constructor {
 
 type CopperAdmission
   = CopperAdmitted { admitted: AdmittedCopper }
-  | CopperRefused { causes: std.types.List<CopperRefusalCause> }
+  | CopperRefused { causes: List<CopperRefusalCause> }
 
 fn mint_admitted_copper(
   board: std.decl_ref.DeclarationRef,
@@ -420,10 +420,10 @@ fn admit_copper(
 // realized at all. Fusing them would let a board with two correct traces and forty unrouted nets
 // report as admitted-and-therefore-done, which is the completeness-versus-verdict conflation
 // PcbBodyLayoutStanding already had to split into separate arms.
-fn unrealized_nets(nets: std.types.List<product.electrical.connectivity.ElectricalNet>, rs: std.types.List<NetCopperRealization>) -> std.types.List<product.electrical.connectivity.ElectricalNet> {
+fn unrealized_nets(nets: List<product.electrical.connectivity.ElectricalNet>, rs: List<NetCopperRealization>) -> List<product.electrical.connectivity.ElectricalNet> {
   filter(nets, n => count(realizations_of_net(rs: rs, net: n.identity)) == 0)
 }
 
-fn copper_is_complete_over_nets(nets: std.types.List<product.electrical.connectivity.ElectricalNet>, rs: std.types.List<NetCopperRealization>) -> Bool {
+fn copper_is_complete_over_nets(nets: List<product.electrical.connectivity.ElectricalNet>, rs: List<NetCopperRealization>) -> Bool {
   count(unrealized_nets(nets: nets, rs: rs)) == 0
 }

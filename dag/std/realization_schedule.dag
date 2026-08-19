@@ -71,7 +71,7 @@ type ScheduledWitnessEnvelope {
 
 type WitnessSpan
   = SpanUndeclared
-  | SpanSeams { seams: std.types.List<WitnessSeam> }
+  | SpanSeams { seams: List<WitnessSeam> }
   | SpanEnrolled {
       seams: List<WitnessSeam>,
       cost_basis: WitnessCostBasis,

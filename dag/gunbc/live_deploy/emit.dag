@@ -23,7 +23,7 @@ fn deploy_raw(command: String) -> v2.std.orchestration.PipelineStep {
   }
 }
 
-fn systemctl_disable_now_argv_for_deploy(unit: std.types.NonEmptyStr, privileged: std.types.Bool) -> std.types.List<String> {
+fn systemctl_disable_now_argv_for_deploy(unit: std.types.NonEmptyStr, privileged: std.types.Bool) -> List<String> {
   if privileged {
     concat(["sudo", "-n"], extdeps.systemd.systemctl.systemctl_disable_now_argv(unit: unit))
   } else {
@@ -70,7 +70,7 @@ fn bash_intent_command_or_poison(intent: v2.std.node.Node) -> String {
   }
 }
 
-fn systemctl_disable_now_if_present_steps(unit: std.types.NonEmptyStr, privileged: std.types.Bool) -> std.types.List<v2.std.orchestration.PipelineStep> {
+fn systemctl_disable_now_if_present_steps(unit: std.types.NonEmptyStr, privileged: std.types.Bool) -> List<v2.std.orchestration.PipelineStep> {
   [
     deploy_raw(command: bash_intent_command_or_poison(
       intent: systemctl_load_state_assignment_intent(unit: unit)
@@ -485,7 +485,7 @@ fn install_d_owned_command(spec: gunbc.live_deploy.spec.DeploymentSpec, path: St
 
 data ensure_dependency_steps_note: String = "THE DISPATCH THAT ADMITS A SECOND KIND OF ENSURED RESOURCE, written so the package arm is untouched. A package still lowers to exactly the ensure step it always did, at both privilege settings, so no existing emitted byte moves -- the widening adds a kind, it does not redefine what ensuring a package means.\\n\\nA directory lowers to the same owned install -d the artifact steps use, through the same single authority, with the owner taken from the ensured subject rather than from a deployment spec. That is what lets a host-level resource be stated without an instance: an ensured host directory is a fact about the host, and threading a spec through it would have made it look like a per-instance fact again -- the exact confusion that put this root in the owned roster to begin with.\\n\\nprivileged is consumed only by the package arm because it describes how apt is invoked; install -d is privileged in both contexts and takes the same form either way."
 
-fn ensure_dependency_steps(dep: gunbc.live_deploy.spec.DeploymentDependencyStep, privileged: std.types.Bool) -> std.types.List<v2.std.orchestration.PipelineStep> {
+fn ensure_dependency_steps(dep: gunbc.live_deploy.spec.DeploymentDependencyStep, privileged: std.types.Bool) -> List<v2.std.orchestration.PipelineStep> {
   match dep.subject {
     EnsuredPackage { package } => [ensure_apt_package_step(pkg: package, privileged: privileged)]
     EnsuredHostDirectory { path, owner } => [
@@ -505,11 +505,11 @@ fn install_d_managed_command(dir: gunbc.managed_directory.ManagedDirectory) -> S
   ], "")
 }
 
-fn deploy_apply_preamble_steps(access: gunbc.ci_deploy_access.DeployAccess) -> std.types.List<v2.std.orchestration.PipelineStep> {
+fn deploy_apply_preamble_steps(access: gunbc.ci_deploy_access.DeployAccess) -> List<v2.std.orchestration.PipelineStep> {
   [deploy_raw(command: gunbc.ci_deploy_sudoers.deploy_sudoers_install_shell(access: access))]
 }
 
-fn deploy_memory_cap_apply_steps(spec: gunbc.live_deploy.spec.DeploymentSpec) -> std.types.List<v2.std.orchestration.PipelineStep> {
+fn deploy_memory_cap_apply_steps(spec: gunbc.live_deploy.spec.DeploymentSpec) -> List<v2.std.orchestration.PipelineStep> {
   let host = spec.target.host.identity
   let units = gunbc.host_axis_caps.runner_slot_service_units_for_host(host: host)
   let script = gunbc.host_axis_caps.deploy_memory_cap_apply_script_for_host(host: host)
@@ -530,7 +530,7 @@ fn deploy_memory_cap_apply_steps(spec: gunbc.live_deploy.spec.DeploymentSpec) ->
 
 data apply_tree_split_sync_note: String = "GunbcSourceTree apply is a SPLIT sync (review 40332, DESIGN 5 — the retract-side rmdir wall alone gave false assurance): the shared repo at /opt/gunbc/gunbc accumulates target-LOCAL git state the runner checkout never has — .git/worktrees/<name> registrations for every live dispatch worktree, the session branch refs those worktrees are on, and the objects their commits wrote into the shared store — so a single rsync --delete of ./ would destroy live agent sessions on every redeploy. The working tree syncs with --delete (stale sources must not linger) but excludes /.git; .git syncs ADDITIVELY (no --delete), which keeps origin/main fresh from the runner checkout (the belt's git worktree add resolves origin/main from these remote-tracking refs — srv1 does no fetch) while never deleting worktree metadata, session refs, or their objects. Accumulation of pruned-worktree residue is the safe direction and is reaped by git itself, never by deploy. Flags are -rlpt, not -a: the sync principal is the service user (emit_deploy_principal_note), so -a's owner/group replication would chgrp toward the runner's group and fail EPERM — ownership is the destination principal's by construction, never replicated from the source."
 
-fn emit_artifact_upsert(art: gunbc.live_deploy.spec.DeploymentArtifactStep, spec: gunbc.live_deploy.spec.DeploymentSpec, revision: ReleaseRevisionBinding) -> std.types.List<v2.std.orchestration.PipelineStep> {
+fn emit_artifact_upsert(art: gunbc.live_deploy.spec.DeploymentArtifactStep, spec: gunbc.live_deploy.spec.DeploymentSpec, revision: ReleaseRevisionBinding) -> List<v2.std.orchestration.PipelineStep> {
   match art.kind {
     gunbc.live_deploy.spec.GunbcSourceTree => [
       deploy_raw(command: "sudo -n install -d -m 0755 /opt/gunbc"),
@@ -613,7 +613,7 @@ data devboot_root_realization_note: String = "REALIZATION FOR THE BUILD SERVICE'
 data belt_receipt_dir_bootstrap_note: String = "THE BELT MEMBER CARRIES THE install -d FOR THE DIRECTORY ITS TICK WRITES INTO, which is the orchestration-is-derived-from-the-member rule emit_deploy_member_effect_note already states (a ServerScript carries the install -d it writes into). The belt tick publishes its receipt to instance_receipts_dir(instance_root) and the workflow UI reads that receipt to answer whether a tick ran; with no directory owned by the service principal the write is EACCES, which is what every instance was in fact doing — belt-last-tick.json was absent from BOTH srv1 roots when read on 2026-08-19, so this receipt has never been written anywhere, not merely on the new slot.\n\nTHIS ALSO RESTORES A BOOTSTRAP THAT WENT DEAD RATHER THAN ADDING A NEW ONE. fleet_converge_receipt_atomic_publish_note FORMERLY named the deploy install-d on fleet_converge_receipt_dir as riding FleetConvergeTimerUnit apply (that clause is itself now corrected in gunbc.host_layout, so this sentence describes the prior revision rather than the current text), and that member is a retired refusal poison (the cadence moved to on-demand plan/apply, sleek-heron-218), so nothing has bootstrapped a receipts directory on any fresh instance root since. Green has no receipts directory at all; production's exists only because it predates the retirement. Riding the belt member is correct rather than convenient: the belt is the consumer that needs the directory on every instance it is installed on, so the bootstrap travels with a member that is unconditionally present wherever a receipt gets written.\n\nTHERE IS DELIBERATELY NO TEARDOWN ARM. Receipts are produced artifacts, and devboot_root_realization_note draws exactly this line — a deploy must never delete what it produced — so the directory is bootstrapped and never removed, and a retract that also destroyed the converge receipts sharing the directory would be the failure that note exists to prevent. install -d is idempotent, so converging an existing correctly-owned directory (production's) emits the same command and changes nothing.\n\nRESIDUE, NAMED: the belt writes its receipt in place rather than through the same-directory staging + rename that gunbc.fleet_converge_cli uses. In-place write is correct here because the directory is service-user-owned and the file is not a stale root-owned artifact, but it is NOT crash-safe — a tick interrupted mid-write leaves a truncated receipt, which renders as BeltPassOutcomeUnreadable rather than as a wrong verdict. Adopting the atomic publish is the strictly better construction and is not done here; it is stated so the weaker one is a decision on the record rather than an oversight."
 data teardown_worktree_rmdir_note: String = "DispatchWorktreeRoot teardown is rm -d (empty-directory removal via the granted rm — the unprivileged principal has no rmdir grant and no write on the root-owned parent), NEVER rm -rf: a non-empty worktree root means live agent worktrees exist, so the retract FAILS LOUDLY there instead of silently destroying sessions (DESIGN 5 — the refusal is the empty-dir precondition itself, identical to the former rmdir). GunbcSourceTree teardown runs AFTER the worktree rm -d succeeds, so the repo the worktrees are registered in is never deleted from under them."
 
-fn emit_artifact_teardown(art: gunbc.live_deploy.spec.DeploymentArtifactStep, spec: gunbc.live_deploy.spec.DeploymentSpec) -> std.types.List<v2.std.orchestration.PipelineStep> {
+fn emit_artifact_teardown(art: gunbc.live_deploy.spec.DeploymentArtifactStep, spec: gunbc.live_deploy.spec.DeploymentSpec) -> List<v2.std.orchestration.PipelineStep> {
   match art.kind {
     gunbc.live_deploy.spec.TailscaleServeMapping => [
       tailscale_serve_teardown_step(spec: spec),
@@ -671,17 +671,17 @@ data emit_deploy_member_effect_note: String = "The per-member realization HANDLE
 
 data live_deploy_replace_unreachable_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ EffectReplace reached the deploy emit dispatch. Both deploy poles are degenerate — apply observes the empty set, retract desires the empty set — so no Modified hunk can arise and no replace can be emitted. Reaching this arm means a NON-degenerate observed provider landed without its realization being modeled: a replace on a host resource is an in-place update only if the address survived, and a STAGED replacement with declared intermediates otherwise (gunbc.change_realization). Emitting an unconditional overwrite here would be the srv4 failure exactly — a transition that believed it had nothing to retire. This marker is not valid deploy shell, so the golden drift gate reds. member="
 
-fn emit_deploy_replace_unreachable_refusal(step: gunbc.live_deploy.spec.DeploymentStep) -> std.types.List<v2.std.orchestration.PipelineStep> {
+fn emit_deploy_replace_unreachable_refusal(step: gunbc.live_deploy.spec.DeploymentStep) -> List<v2.std.orchestration.PipelineStep> {
   [deploy_raw(command: concat(live_deploy_replace_unreachable_poison, deployment_step_key(step: step) as String))]
 }
 
 data live_deploy_teardown_dependency_unreachable_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ R5 wall breach — EffectRemove of an Ensured dependency reached the emit dispatch. A dependency is Ensured, so a Removed dependency is MemberRemovalRefused (never an EffectRemove); reaching this arm means deployment_step_ownership or membership_effects is broken. This marker is not valid deploy shell, so the golden drift gate reds — DESIGN §5: an unreachable arm REFUSES loudly (typed/located/counted), never fabricates a no-op. dependency="
 
-fn emit_deploy_teardown_dependency_refusal(dep: gunbc.live_deploy.spec.DeploymentDependencyStep) -> std.types.List<v2.std.orchestration.PipelineStep> {
+fn emit_deploy_teardown_dependency_refusal(dep: gunbc.live_deploy.spec.DeploymentDependencyStep) -> List<v2.std.orchestration.PipelineStep> {
   [deploy_raw(command: concat(live_deploy_teardown_dependency_unreachable_poison, gunbc.live_deploy.spec.ensured_subject_identity(subject: dep.subject) as String))]
 }
 
-fn emit_deploy_member_effect(effect: gunbc.membership_reconcile.MemberEffect<gunbc.live_deploy.spec.DeploymentStep>, spec: gunbc.live_deploy.spec.DeploymentSpec, revision: ReleaseRevisionBinding) -> std.types.List<v2.std.orchestration.PipelineStep> {
+fn emit_deploy_member_effect(effect: gunbc.membership_reconcile.MemberEffect<gunbc.live_deploy.spec.DeploymentStep>, spec: gunbc.live_deploy.spec.DeploymentSpec, revision: ReleaseRevisionBinding) -> List<v2.std.orchestration.PipelineStep> {
   match effect {
     EffectAdd { to: step } =>
       match step {
@@ -699,7 +699,7 @@ fn emit_deploy_member_effect(effect: gunbc.membership_reconcile.MemberEffect<gun
 
 fn apply_intent_from_effects(
   spec: gunbc.live_deploy.spec.DeploymentSpec,
-  effects: std.types.List<gunbc.membership_reconcile.MemberEffect<gunbc.live_deploy.spec.DeploymentStep>>,
+  effects: List<gunbc.membership_reconcile.MemberEffect<gunbc.live_deploy.spec.DeploymentStep>>,
   access: gunbc.ci_deploy_access.DeployAccess,
   revision: ReleaseRevisionBinding
 ) -> v2.std.orchestration.Pipeline {
@@ -755,7 +755,7 @@ fn retract_unobserved_client_poison(reason: String) -> String {
 
 fn retract_intent_from_effects(
   spec: gunbc.live_deploy.spec.DeploymentSpec,
-  effects: std.types.List<gunbc.membership_reconcile.MemberEffect<gunbc.live_deploy.spec.DeploymentStep>>,
+  effects: List<gunbc.membership_reconcile.MemberEffect<gunbc.live_deploy.spec.DeploymentStep>>,
   access: gunbc.ci_deploy_access.DeployAccess
 ) -> v2.std.orchestration.Pipeline {
   v2.std.orchestration.Pipeline {
@@ -790,7 +790,7 @@ fn retract_intent_from_effects(
 
 data live_deploy_wholesale_refused_poison_prefix: String = "__GUNBC_DEPLOY_REFUSED__ live-deploy reconcile refused WHOLESALE — the plan carried member teardown-refusals (a member the deploy does not own, or ownership unknown). Per the wholesale-refuse execution policy (gunbc.membership_reconcile.membership_effects_wholesale_refuse_policy_trigger) the ENTIRE fold is refused before emit rather than partially applied — R5 owned-only teardown is a construction wall, never emit-around. This marker is not valid deploy shell, so the committed golden drift gate reds (DESIGN §5: refuse, never widen). "
 
-fn live_deploy_wholesale_refused_poison(refusals: std.types.List<gunbc.membership_reconcile.MemberRefusal<gunbc.live_deploy.spec.DeploymentStep>>, fold_label: String) -> String {
+fn live_deploy_wholesale_refused_poison(refusals: List<gunbc.membership_reconcile.MemberRefusal<gunbc.live_deploy.spec.DeploymentStep>>, fold_label: String) -> String {
   concat(
     live_deploy_wholesale_refused_poison_prefix,
     concat(fold_label, concat(" refused-member-count=", to_string(count(refusals))))

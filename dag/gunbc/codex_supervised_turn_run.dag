@@ -53,7 +53,7 @@ fn codex_supervised_worker_turn_apply(
   }
 }
 
-fn codex_supervised_stdio_session_preamble_lines(cwd: std.types.FilePath) -> std.types.List<std.types.NonEmptyStr> {
+fn codex_supervised_stdio_session_preamble_lines(cwd: std.types.FilePath) -> List<std.types.NonEmptyStr> {
   [
     extdeps.llm.codex_app_server.codex_app_server_initialize_request_line(),
     extdeps.llm.codex_app_server.codex_app_server_initialized_notification_line(),

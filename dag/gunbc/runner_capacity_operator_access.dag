@@ -173,7 +173,7 @@ fn runner_capacity_host_admission_verdict(host: product.placement_supply.HostIde
   }
 }
 
-fn runner_capacity_managed_host_admission_verdicts() -> std.types.List<gunbc.runner_capacity_operator_access.RunnerCapacityHostAdmissionVerdict> {
+fn runner_capacity_managed_host_admission_verdicts() -> List<gunbc.runner_capacity_operator_access.RunnerCapacityHostAdmissionVerdict> {
   [
     runner_capacity_host_admission_verdict(host: gunbc.fleet_intent_network.operator_host_srv3),
     runner_capacity_host_admission_verdict(host: gunbc.fleet_intent_network.operator_host_srv4),

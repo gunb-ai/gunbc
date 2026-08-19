@@ -206,7 +206,7 @@ type TriggerShape
   | ContainerHas { container: String, target: String }
 
 type BuildRule
-  = StaticRule { selector: extdeps.languages.css.selectors.SelectorSubject, decls: std.types.List<CssDecl> }
+  = StaticRule { selector: extdeps.languages.css.selectors.SelectorSubject, decls: List<CssDecl> }
   | ResponseRule {
       subject: extdeps.languages.css.selectors.SelectorSubject,
       shape: TriggerShape,

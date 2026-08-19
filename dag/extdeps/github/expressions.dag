@@ -37,8 +37,8 @@ type ExpressionFunction
   | Failure
 
 type Expression
-  = ContextAccess { context: ExpressionContext, path: std.types.List<String> }
-  | FunctionCall { function: ExpressionFunction, args: std.types.List<extdeps.github.expressions.Expression> }
+  = ContextAccess { context: ExpressionContext, path: List<String> }
+  | FunctionCall { function: ExpressionFunction, args: List<extdeps.github.expressions.Expression> }
   | StringLiteral { value: String }
   | LogicalOr { left: extdeps.github.expressions.Expression, right: extdeps.github.expressions.Expression }
   | LogicalAnd { left: extdeps.github.expressions.Expression, right: extdeps.github.expressions.Expression }

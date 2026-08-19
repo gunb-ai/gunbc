@@ -15,7 +15,7 @@ fn host_effect_codex_supervised_session_bin_path(root: String) -> String {
 }
 
 fn host_effect_codex_supervised_session_preamble_content(
-  lines: std.types.List<std.types.NonEmptyStr>,
+  lines: List<std.types.NonEmptyStr>,
 ) -> String {
   fold(
     lines,
@@ -71,7 +71,7 @@ fn host_effect_codex_supervised_turn_session_argv(
   intent: extdeps.llm.codex_app_server_stdio_session.CodexAppServerStdioSessionIntent,
   preamble_path: String,
   client_command_id: std.types.NonEmptyStr,
-) -> std.types.List<String> {
+) -> List<String> {
   [
     "--executable",
     intent.executable as String,

@@ -281,7 +281,7 @@ fn artifact_bytes(artifact: MaterializedArtifact) -> std.measure.ByteSize {
 
 type ArtifactCompleteness
   = ArtifactComplete
-  | ArtifactMissingOutputs { missing: std.types.List<ArtifactOutputId> }
+  | ArtifactMissingOutputs { missing: List<ArtifactOutputId> }
 
 fn output_list_contains(xs: List<ArtifactOutputId>, wanted: ArtifactOutputId) -> Bool {
   xs |> fold(init: false, f: (acc, x) => acc || (x == wanted))
@@ -311,7 +311,7 @@ type RequestArtifactBinding
   | BindingKindMismatch { requested: std.cache_identity.ArtifactKindId, found: std.cache_identity.ArtifactKindId }
   | BindingWrongArtifact { key: std.content_hash.ContentHash, found_key: std.content_hash.ContentHash }
   | BindingWrongContent { recorded: std.content_hash.ContentHash, observed: std.content_hash.ContentHash }
-  | BindingIncomplete { missing: std.types.List<ArtifactOutputId> }
+  | BindingIncomplete { missing: List<ArtifactOutputId> }
 
 fn request_artifact_binding(
   req: ArtifactRequest,
@@ -364,7 +364,7 @@ type ProviderLookup
   | ProviderRefusedWrongArtifact { key: std.content_hash.ContentHash, found_key: std.content_hash.ContentHash }
   | ProviderRefusedWrongContent { key: std.content_hash.ContentHash, recorded: std.content_hash.ContentHash, observed: std.content_hash.ContentHash }
   | ProviderRefusedCrossFamilyContentHash { key: std.content_hash.ContentHash, family: std.content_hash.HashFamily }
-  | ProviderRefusedIncomplete { key: std.content_hash.ContentHash, missing: std.types.List<ArtifactOutputId> }
+  | ProviderRefusedIncomplete { key: std.content_hash.ContentHash, missing: List<ArtifactOutputId> }
 
 type Fnv1a64StructuralAdmission
   = Fnv1a64StructuralAdmitted { digest: std.content_hash.Fnv1a64Structural }
@@ -402,11 +402,11 @@ fn provider_serve(req: ArtifactRequest, probe: ProviderProbe) -> ProviderLookup 
 }
 
 type ProviderAdmission
-  = ProviderAdmitted { store: std.artifact_store.ArtifactStore, evicted: std.types.List<std.content_hash.ContentHash> }
+  = ProviderAdmitted { store: std.artifact_store.ArtifactStore, evicted: List<std.content_hash.ContentHash> }
   | ProviderRefusedKindMismatchWrite { requested: std.cache_identity.ArtifactKindId, found: std.cache_identity.ArtifactKindId }
   | ProviderRefusedWrongArtifactWrite { key: std.content_hash.ContentHash, found_key: std.content_hash.ContentHash }
   | ProviderRefusedWrongContentWrite { recorded: std.content_hash.ContentHash, observed: std.content_hash.ContentHash }
-  | ProviderRefusedIncompleteWrite { missing: std.types.List<ArtifactOutputId> }
+  | ProviderRefusedIncompleteWrite { missing: List<ArtifactOutputId> }
   | ProviderBudgetExhausted { needed: std.measure.ByteSize, budget: std.measure.ByteSize }
 
 data materialization_provider_fit_authority_note: String = "The budget fit test has ONE authority, and it is store_put's (PR 7406, merged 2026-07-29). This function used to re-implement it — compare artifact bytes against store.budget, and only then call store_put — which was a second representation of a rule the store now carries by construction: store_put runs the fit test BEFORE any eviction and answers StorePutDidNotFit, so the destructive oversized path is unwritable there rather than guarded here. Keeping the local comparison would have made ProviderBudgetExhausted reachable by two different judgements that could drift apart, and would have left store_put's own refusal arm unreachable from this door — an inert arm, which section 5 counts as a lie. So the check is DELETED and ProviderBudgetExhausted is now DERIVED from store_put's refusal, carrying the needed/budget the store itself reported."

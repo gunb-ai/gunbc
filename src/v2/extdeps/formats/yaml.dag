@@ -9,7 +9,7 @@ type YamlSchemaCarrierValue
   | YamlInt { lexeme: String }
   | YamlFloat { lexeme: String }
   | YamlString { value: String }
-  | YamlSequence { elements: std.types.List<YamlSchemaCarrierValue> }
+  | YamlSequence { elements: List<YamlSchemaCarrierValue> }
   | YamlMapping { entries: Map<YamlSchemaCarrierValue, YamlSchemaCarrierValue> }
 
 type YamlIntBase10DecimalOptionalSignWitness {}

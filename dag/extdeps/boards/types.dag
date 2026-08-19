@@ -34,7 +34,7 @@ type DimmPopulation {
 
 type PopulationAdmission
   = PopulationSupported
-  | PopulationUnsupported { slots: std.types.List<std.types.NonEmptyStr> }
+  | PopulationUnsupported { slots: List<std.types.NonEmptyStr> }
 
 fn slot_occurrence_count(slots: List<std.types.NonEmptyStr>, slot: std.types.NonEmptyStr) -> Int {
   fold(slots, init: 0, f: (acc, s) => if s == slot { acc + 1 } else { acc })

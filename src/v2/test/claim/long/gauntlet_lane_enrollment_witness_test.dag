@@ -39,7 +39,7 @@ fn synthetic_bare_deenrolled_row() -> gunbc.commit_workflow.CommitCheckEnrollmen
   }
 }
 
-fn falsifier_entries_contain(entries: std.types.List<std.realization_schedule.ScheduleWitnessEntry>, f: v2.std.text.String) -> Bool {
+fn falsifier_entries_contain(entries: List<std.realization_schedule.ScheduleWitnessEntry>, f: v2.std.text.String) -> Bool {
   v2.std.algebra.any(entries, e => e.function == f)
 }
 

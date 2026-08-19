@@ -18,7 +18,7 @@ type EffectReachFlow {
 
 type EffectReachClassification
   = LocalEffect
-  | HostEffectReach { flows: std.types.List<EffectReachFlow> }
+  | HostEffectReach { flows: List<EffectReachFlow> }
 
 data effect_reach_host_sink_callee_symbols_v0: List<String> = [
   "Read",

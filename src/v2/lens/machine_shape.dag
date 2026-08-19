@@ -69,7 +69,7 @@ fn machine_shape_unsanctioned_construction_diagnostic(n: Node) -> v2.std.diagnos
   }
 }
 
-fn local_machine_shape_findings(n: Node, module_qn: Optional<v2.std.qualified_name.QualifiedName>) -> std.types.List<v2.std.diagnostic.Diagnostic> {
+fn local_machine_shape_findings(n: Node, module_qn: Optional<v2.std.qualified_name.QualifiedName>) -> List<v2.std.diagnostic.Diagnostic> {
   if module_allows_machine_shape_literal(qn: module_qn) {
     []
   } else {
@@ -91,7 +91,7 @@ type MachineShapeWalkCtx {
 
 type MachineShapeWalkResult {
   module_qn: Optional<v2.std.qualified_name.QualifiedName>
-  findings: std.types.List<v2.std.diagnostic.Diagnostic>
+  findings: List<v2.std.diagnostic.Diagnostic>
 }
 
 fn machine_shape_walk_init(n: Node, ctx: MachineShapeWalkCtx) -> MachineShapeWalkResult {
@@ -131,7 +131,7 @@ fn machine_shape_topdown_algebra() -> NodeFoldTopDown<MachineShapeWalkCtx, Machi
   }
 }
 
-fn machine_shape_construction_findings(root: Node) -> std.types.List<v2.std.diagnostic.Diagnostic> {
+fn machine_shape_construction_findings(root: Node) -> List<v2.std.diagnostic.Diagnostic> {
   match fold_node_topdown(
     n: root,
     ctx: MachineShapeWalkCtx { module_qn: optional_absent() },

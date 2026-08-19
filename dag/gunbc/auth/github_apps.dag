@@ -153,7 +153,7 @@ type ObservedInstallation
   | InstallationReadbackUnavailable { cause: InstallationReadbackCause }
 
 type ObservedAppRegistration
-  = AppRegistrationReadback { app_id: extdeps.github.app.GitHubAppId, requested_permissions: std.types.List<extdeps.github.app.ObservedGitHubPermission> }
+  = AppRegistrationReadback { app_id: extdeps.github.app.GitHubAppId, requested_permissions: List<extdeps.github.app.ObservedGitHubPermission> }
   | AppRegistrationReadbackUnavailable
 
 fn registration_missing_permissions(
@@ -341,8 +341,8 @@ type GitHubAppOperatorAction
   | GenerateAppSigningKey
 
 type ControlPlanePostcondition
-  = AppRegistrationRequestsPermissions { add: std.types.List<extdeps.github.app.GitHubAppPermission> }
-  | InstallationHoldsPermissions { accept: std.types.List<extdeps.github.app.GitHubAppPermission> }
+  = AppRegistrationRequestsPermissions { add: List<extdeps.github.app.GitHubAppPermission> }
+  | InstallationHoldsPermissions { accept: List<extdeps.github.app.GitHubAppPermission> }
   | AppHasRegisteredSigningKey { app: DeclaredGitHubApp }
 
 type RequiredObservation

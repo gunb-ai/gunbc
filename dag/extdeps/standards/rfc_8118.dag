@@ -169,7 +169,7 @@ fn pdf_open_fdf(uri: extdeps.uri.Uri) -> PdfProfileParameterConstruction {
 }
 
 type PdfOpenParameterSequenceFoldState
-  = SequenceFoldBuilding { parameters: std.types.List<PdfProfileParameter> }
+  = SequenceFoldBuilding { parameters: List<PdfProfileParameter> }
 
 fn rfc_pdf_open_parameter_sequence(constructions: List<PdfProfileParameterConstruction>) -> PdfOpenParameterSequenceConstruction {
   match fold(constructions, init: SequenceFoldBuilding { parameters: [] }, f: fn(acc, construction) {

@@ -45,7 +45,7 @@ data digital_realty_ewr20: extdeps.colo.types.ColoFacilityRow = extdeps.colo.typ
   facility_note: "Seven-story roughly 183,000 square foot building with about 33 MW marketed per directory profiles read 2026-08-18; legacy Telx NJR2/NJR3 lineage. Multi-operator building: Colocation America resells retail space here under its own module.",
 }
 
-data digital_realty_facilities: std.types.List<extdeps.colo.types.ColoFacilityRow> = [digital_realty_ewr10, digital_realty_ewr20]
+data digital_realty_facilities: List<extdeps.colo.types.ColoFacilityRow> = [digital_realty_ewr10, digital_realty_ewr20]
 
 data digital_realty_retail_rates: extdeps.colo.types.RetailRateStanding = extdeps.colo.types.RatesQuoteOnly {
   contact_route: "digitalrealty.com sales",

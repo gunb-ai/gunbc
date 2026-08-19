@@ -67,7 +67,7 @@ data tierpoint_valley_forge: extdeps.colo.types.ColoFacilityRow = extdeps.colo.t
   facility_note: "Philadelphia-suburb site on the operator's Pennsylvania index.",
 }
 
-data tierpoint_pennsylvania_facilities: std.types.List<extdeps.colo.types.ColoFacilityRow> = [
+data tierpoint_pennsylvania_facilities: List<extdeps.colo.types.ColoFacilityRow> = [
   tierpoint_philadelphia,
   tierpoint_allentown,
   tierpoint_bethlehem,

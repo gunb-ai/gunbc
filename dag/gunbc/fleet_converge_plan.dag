@@ -27,8 +27,8 @@ fn fleet_converge_plan_resource_fingerprint(subject: FleetConvergePlanSubject) -
 
 fn fleet_converge_plan_subject(
   host: std.types.NonEmptyStr,
-  observed_timers: std.types.List<TimerRetirementMember>,
-  observed_caps: std.types.List<gunbc.host_axis_caps.CapMember>,
+  observed_timers: List<TimerRetirementMember>,
+  observed_caps: List<gunbc.host_axis_caps.CapMember>,
 ) -> FleetConvergePlanSubject {
   FleetConvergePlanSubject {
     host: host,
@@ -42,8 +42,8 @@ fn fleet_converge_plan_subject(
 
 fn fleet_converge_member_set_fingerprint(
   host: std.types.NonEmptyStr,
-  observed_timers: std.types.List<TimerRetirementMember>,
-  observed_caps: std.types.List<gunbc.host_axis_caps.CapMember>,
+  observed_timers: List<TimerRetirementMember>,
+  observed_caps: List<gunbc.host_axis_caps.CapMember>,
 ) -> std.content_hash.ContentHash {
   std.content_hash.content_hash_of_value(
     value: observed_baseline_text(
@@ -57,8 +57,8 @@ fn fleet_converge_member_set_fingerprint(
 fn fleet_converge_apply_subject_admits(
   planned_subject: FleetConvergePlanSubject,
   observed_host: std.types.NonEmptyStr,
-  observed_timers: std.types.List<TimerRetirementMember>,
-  observed_caps: std.types.List<gunbc.host_axis_caps.CapMember>,
+  observed_timers: List<TimerRetirementMember>,
+  observed_caps: List<gunbc.host_axis_caps.CapMember>,
 ) -> std.types.Bool {
   planned_subject.host == observed_host
     && std.content_hash.compare_content_hash(
@@ -96,8 +96,8 @@ fn fleet_converge_apply_generation_stale(planned_generation: Int, store_generati
 fn fleet_converge_member_set_fingerprint_matches(
   planned_fingerprint_text: String,
   host: std.types.NonEmptyStr,
-  observed_timers: std.types.List<TimerRetirementMember>,
-  observed_caps: std.types.List<gunbc.host_axis_caps.CapMember>,
+  observed_timers: List<TimerRetirementMember>,
+  observed_caps: List<gunbc.host_axis_caps.CapMember>,
 ) -> std.types.Bool {
   std.algebra.trim(s: planned_fingerprint_text) == (
     std.content_hash.serialize_content_hash(
@@ -130,7 +130,7 @@ fn timer_member_ownership(m: TimerRetirementMember) -> gunbc.ownership.Ownership
   Present { value: gunbc.ownership.Owned }
 }
 
-fn timer_retirement_plan(observed: std.types.List<TimerRetirementMember>) -> gunbc.membership_reconcile.MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt> {
+fn timer_retirement_plan(observed: List<TimerRetirementMember>) -> gunbc.membership_reconcile.MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt> {
   gunbc.membership_reconcile.membership_plan_admitting_outcome(
     outcome: gunbc.membership_reconcile.membership_reconcile(
       desired: timer_retirement_desired(),
@@ -147,11 +147,11 @@ fn timer_member_unit_path(unit_name: std.types.NonEmptyStr) -> std.types.NonEmpt
   concat("/etc/systemd/system/", unit_name as String) as std.types.NonEmptyStr
 }
 
-fn timer_retirement_desired() -> std.types.List<TimerRetirementMember> {
+fn timer_retirement_desired() -> List<TimerRetirementMember> {
   []
 }
 
-fn timer_retirement_observed_legacy_srv1() -> std.types.List<TimerRetirementMember> {
+fn timer_retirement_observed_legacy_srv1() -> List<TimerRetirementMember> {
   let names = gunbc.live_deploy.spec.deployment_spec_srv1().names
   [
     TimerRetirementMember { unit_name: gunbc.fleet_converge_timer.fleet_converge_timer_unit_name as std.types.NonEmptyStr },
@@ -199,15 +199,15 @@ fn cap_action_line(action: gunbc.membership_reconcile.MemberAction<gunbc.host_ax
   }
 }
 
-fn membership_plan_lines_timer(plan: gunbc.membership_reconcile.MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt>) -> std.types.List<String> {
+fn membership_plan_lines_timer(plan: gunbc.membership_reconcile.MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt>) -> List<String> {
   map(plan.actions, a => timer_action_line(action: a))
 }
 
-fn membership_plan_lines_cap(plan: gunbc.membership_reconcile.MembershipPlan<gunbc.host_axis_caps.CapMember, gunbc.host_axis_caps.CapMemberAt>) -> std.types.List<String> {
+fn membership_plan_lines_cap(plan: gunbc.membership_reconcile.MembershipPlan<gunbc.host_axis_caps.CapMember, gunbc.host_axis_caps.CapMemberAt>) -> List<String> {
   map(plan.actions, a => cap_action_line(action: a))
 }
 
-fn fleet_converge_desired_caps() -> std.types.List<gunbc.host_axis_caps.CapMember> {
+fn fleet_converge_desired_caps() -> List<gunbc.host_axis_caps.CapMember> {
   let slot = gunbc.runner_slot_allocation.gunbc_runner_slot_desired()
   [
     gunbc.host_axis_caps.desired_cap_member(
@@ -235,8 +235,8 @@ fn fleet_converge_desired_caps() -> std.types.List<gunbc.host_axis_caps.CapMembe
 
 fn observed_baseline_text(
   host: std.types.NonEmptyStr,
-  observed_timers: std.types.List<TimerRetirementMember>,
-  observed_caps: std.types.List<gunbc.host_axis_caps.CapMember>,
+  observed_timers: List<TimerRetirementMember>,
+  observed_caps: List<gunbc.host_axis_caps.CapMember>,
 ) -> String {
   join(
     concat(
@@ -250,7 +250,7 @@ fn observed_baseline_text(
 
 type FleetConvergeSparkServingTypedAction {
   action: gunbc.membership_reconcile.MemberAction<gunbc.spark_serving_membership.SparkServingMember, gunbc.spark_serving_membership.SparkServingMemberAt>,
-  install_effects: std.types.List<gunbc.spark_serving_realization.ServingInstallEffect>
+  install_effects: List<gunbc.spark_serving_realization.ServingInstallEffect>
 }
 
 type FleetConvergePlanArtifact {
@@ -260,7 +260,7 @@ type FleetConvergePlanArtifact {
   observed_baseline_hex: std.content_hash.Fnv1a64StructuralDigestHex
   plan_body: String
   apply_shell: String
-  spark_serving_typed_actions: std.types.List<FleetConvergeSparkServingTypedAction>
+  spark_serving_typed_actions: List<FleetConvergeSparkServingTypedAction>
 }
 
 // NO WILDCARD. The wildcard is what made ServingInstallEffect extensible in silence: a thirteenth
@@ -317,7 +317,7 @@ fn fleet_converge_spark_serving_action_line(row: FleetConvergeSparkServingTypedA
 }
 
 fn fleet_converge_spark_serving_typed_actions_wire(
-  rows: std.types.List<FleetConvergeSparkServingTypedAction>,
+  rows: List<FleetConvergeSparkServingTypedAction>,
 ) -> String {
   join(map(rows, r => fleet_converge_spark_serving_action_line(row: r)), ";")
 }
@@ -344,7 +344,7 @@ fn fleet_converge_plan_body_claims_spark_typed_actions(plan_body: String) -> std
 
 fn fleet_converge_plan_spark_typed_actions_consistency_admits(
   plan_body: String,
-  spark_serving_typed_actions: std.types.List<FleetConvergeSparkServingTypedAction>,
+  spark_serving_typed_actions: List<FleetConvergeSparkServingTypedAction>,
 ) -> std.types.Bool {
   let body_claims = fleet_converge_plan_body_claims_spark_typed_actions(plan_body: plan_body)
   if length(spark_serving_typed_actions) > 0 && !body_claims {
@@ -501,7 +501,7 @@ fn cap_apply_line(action: gunbc.membership_reconcile.MemberAction<gunbc.host_axi
 
 data fleet_converge_cap_apply_shell_note: String = "Cap MemberAdded/Changed/Removed arms are rendered in plan.txt for human review but are NOT emitted into apply.sh — PerSlotMemoryCap drop-in writes are live_deploy deploy-principal authority (host_axis_caps host_axis_caps_note); converge on the operator runner does not sudo-write /etc/systemd drop-ins."
 
-fn timer_apply_lines(plan: gunbc.membership_reconcile.MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt>) -> std.types.List<String> {
+fn timer_apply_lines(plan: gunbc.membership_reconcile.MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt>) -> List<String> {
   flat_map(plan.actions, a =>
     match a {
       MemberRemoved { at: _, from: m } =>
@@ -612,8 +612,8 @@ fn fleet_converge_apply_shell(timer_plan: gunbc.membership_reconcile.MembershipP
 fn fleet_converge_plan_artifact(
   host: std.types.NonEmptyStr,
   prior_generation: Int,
-  observed_timers: std.types.List<TimerRetirementMember>,
-  observed_caps: std.types.List<gunbc.host_axis_caps.CapMember>,
+  observed_timers: List<TimerRetirementMember>,
+  observed_caps: List<gunbc.host_axis_caps.CapMember>,
 ) -> FleetConvergePlanArtifact? {
   let subject = fleet_converge_plan_subject(
     host: host,
@@ -700,8 +700,8 @@ data fleet_converge_plan_member_set_fp_path: String = "/tmp/fleet-converge-plan/
 fn fleet_converge_observed_baseline_matches(
   host: std.types.NonEmptyStr,
   observed_baseline_hex: std.content_hash.Fnv1a64StructuralDigestHex,
-  observed_timers: std.types.List<TimerRetirementMember>,
-  observed_caps: std.types.List<gunbc.host_axis_caps.CapMember>,
+  observed_timers: List<TimerRetirementMember>,
+  observed_caps: List<gunbc.host_axis_caps.CapMember>,
 ) -> std.types.Bool {
   let baseline = observed_baseline_text(
     host: host,

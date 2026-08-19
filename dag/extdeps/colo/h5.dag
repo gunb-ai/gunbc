@@ -45,7 +45,7 @@ data h5_philadelphia: extdeps.colo.types.ColoFacilityRow = extdeps.colo.types.Co
   facility_note: "H5 floor in the multi-operator 1500 Spring Garden building (the former vXchnge footprint, roughly 72,000 square feet); 365 Data Centers also operates in the same building under its own module.",
 }
 
-data h5_facilities: std.types.List<extdeps.colo.types.ColoFacilityRow> = [h5_secaucus, h5_philadelphia]
+data h5_facilities: List<extdeps.colo.types.ColoFacilityRow> = [h5_secaucus, h5_philadelphia]
 
 data h5_retail_rates: extdeps.colo.types.RetailRateStanding = extdeps.colo.types.RatesQuoteOnly {
   contact_route: "quote request via h5datacenters.com",

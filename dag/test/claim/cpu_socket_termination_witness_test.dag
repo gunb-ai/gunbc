@@ -106,7 +106,7 @@ test fn w_the_am5_catalog_rows_cite_their_socket_termination() -> Bool {
 // rows it names, in the file an author is already editing, rather than in a test module they have
 // no reason to open. A genuinely closed denominator would have to be discovered from the module
 // tree, which is lens work and is not attempted here.
-fn every_row_cites_its_socket(rows: std.types.List<extdeps.cpu.types.CpuModelCatalogRow>) -> Bool {
+fn every_row_cites_its_socket(rows: List<extdeps.cpu.types.CpuModelCatalogRow>) -> Bool {
   count(rows |> filter(r => count(r.socket_citations) >= 2)) == count(rows)
 }
 

@@ -458,7 +458,7 @@ fn geometry_slot_count(g: MemoryChannelGeometry) -> std.nat.Nat {
 // The topologies at or below the board's maximum. Enumerated from the closed
 // coproduct rather than counted out as a range, so a topology the platform
 // authority does not admit has no way into the candidate set.
-fn admitted_topologies(g: MemoryChannelGeometry) -> std.types.List<extdeps.cpu.ampere_altra_platform_hw_design.platform.DimmsPerChannelTopology> {
+fn admitted_topologies(g: MemoryChannelGeometry) -> List<extdeps.cpu.ampere_altra_platform_hw_design.platform.DimmsPerChannelTopology> {
   match g.max_topology {
     extdeps.cpu.ampere_altra_platform_hw_design.platform.OneDimmPerChannel => [extdeps.cpu.ampere_altra_platform_hw_design.platform.OneDimmPerChannel]
     extdeps.cpu.ampere_altra_platform_hw_design.platform.TwoDimmsPerChannel => [extdeps.cpu.ampere_altra_platform_hw_design.platform.OneDimmPerChannel, extdeps.cpu.ampere_altra_platform_hw_design.platform.TwoDimmsPerChannel]

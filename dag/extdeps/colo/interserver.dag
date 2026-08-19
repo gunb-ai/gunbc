@@ -73,7 +73,7 @@ data interserver_half_rack_plan: extdeps.colo.types.RetailPlanRow = extdeps.colo
   citation: "whtop.com/plans/interserver.net/60481, plan updated 2026-05-17, read 2026-08-18",
 }
 
-data interserver_published_plans: std.types.List<extdeps.colo.types.RetailPlanRow> = [
+data interserver_published_plans: List<extdeps.colo.types.RetailPlanRow> = [
   interserver_single_server_1u_plan,
   interserver_quarter_rack_plan,
   interserver_half_rack_plan,

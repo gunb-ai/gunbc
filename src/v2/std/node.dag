@@ -193,7 +193,7 @@ fn canonicalize_node_strip_provenance(n: v2.std.node.Node) -> v2.std.node.Node {
 
 type Node {
   kind: v2.std.node.NodeKind
-  children: std.types.List<v2.std.node.Edge>
+  children: List<v2.std.node.Edge>
   occurrence_id: v2.std.node.NodeOccurrenceId
 }
 type NodeFold<R> {

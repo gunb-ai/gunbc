@@ -48,7 +48,7 @@ type UefiShellCommand
   | Ifconfig { action: UefiIfconfigAction }
   | Ping { host: std.types.NonEmptyStr }
   | Tftp { interface: std.types.NonEmptyStr, server: std.types.NonEmptyStr, remote_file: std.types.NonEmptyStr, local_file: std.types.NonEmptyStr }
-  | ExecuteEfi { path: std.types.NonEmptyStr, cmdline: std.types.List<extdeps.firmware.kernel_cmdline.KernelCmdlineArg> }
+  | ExecuteEfi { path: std.types.NonEmptyStr, cmdline: List<extdeps.firmware.kernel_cmdline.KernelCmdlineArg> }
   | Reset { mode: UefiResetMode }
 
 fn uefi_shell_command_line(cmd: UefiShellCommand) -> String {

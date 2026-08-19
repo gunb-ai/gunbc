@@ -55,7 +55,7 @@ type SparkServingObservedLingerState
   | LingerUnobservedState
 
 type SparkServingObservedMemberProjection
-  = SparkServingObservedMembers { members: std.types.List<gunbc.spark_serving_membership.SparkServingMember>, unit_observed: Bool }
+  = SparkServingObservedMembers { members: List<gunbc.spark_serving_membership.SparkServingMember>, unit_observed: Bool }
   | SparkServingObservedMembersRefused { cause: String }
 
 // A member is present in the OBSERVED list only when something was actually observed to be there.

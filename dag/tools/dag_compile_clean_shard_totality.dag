@@ -3,9 +3,9 @@ module tools.dag_compile_clean_shard_totality
 
 type PartitionTotalityVerdict
   = PartitionTotal { module_count: Int }
-  | PartitionOrphan { unclaimed_paths: std.types.List<String> }
-  | PartitionDuplicateClaim { duplicated_paths: std.types.List<String> }
-  | PartitionSurplusClaim { surplus_paths: std.types.List<String> }
+  | PartitionOrphan { unclaimed_paths: List<String> }
+  | PartitionDuplicateClaim { duplicated_paths: List<String> }
+  | PartitionSurplusClaim { surplus_paths: List<String> }
   | PartitionGlobUnavailable { stderr: String }
 
 fn nonempty_lines(text: String) -> List<String> {

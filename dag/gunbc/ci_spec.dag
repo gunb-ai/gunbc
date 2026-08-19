@@ -59,7 +59,7 @@ type DeployStage {
   step_name: String
   entry: String
   function: String
-  needs: std.types.List<String>
+  needs: List<String>
   access: gunbc.ci_deploy_access.DeployAccess
   runner: extdeps.github.actions.RunnerSpec
 }
@@ -68,24 +68,24 @@ data ci_spec_witness_entries_note: String = "witness_entries is the opt-in CI wi
 
 data ci_spec_discovery_flip_note: String = "SUPERSEDED IN ITS OPERATIVE HALF 2026-08-13, AND ITS AUTHORITY DELETED 2026-08-15: the corpus batch carried SelectionOff (v2.workflow.ci_floor_plan corpus_selection_off_note — that module is deleted by the floor cut, so this names history, not a live symbol), so a PR and a main push both ran the tree-wide witness corpus WHOLE; the replacement preserves that whole-roster property by construction rather than by a flag. The shrink this note was written to describe is gone; the enrollment half it also describes — discovery_scan_dirs being the roster source at all, rather than a fixed opt-in list — still stands and is why the row survives instead of being deleted. Read the rest as the history of how the roster came to be discovered, not as the live selection policy.\n\nAS ORIGINALLY WRITTEN (affected-set enrollment flip, operator acceptance 2026-07-09 on #6403; re-landed 2026-07-10 after the operator's direct go, merged onto the resolve-receipt-gate era): the ci floor's corpus batch scans these dirs (plus the source-root *_test.dag walk) with SelectionApplied, so a PR runs the tree-wide witness corpus SHRUNK to the diff's affected set instead of the fixed opt-in roster. Rationale accepted: at flip authoring per-PR coverage was 8 of ~1721 discoverable witnesses, so a selection miss (skipped-but-affected witness) is bounded by the status quo - the witness would not have run at all - while the nightly affected-set-falsifier keeps running the full corpus cold with predictions recorded, so any missing selection edge still surfaces as a counted divergence within one cadence window. Selection stays fail-closed per the PR-A rulings (a provenance gap refuses, never widens; host-scaffold/live-tree rows never predict-skip). The 8-clean-window falsifier criterion continues to govern the falsifier's own retirement, not this flip. Empty list = no discovery (the regen spec, and synthetic test specs exercising pure roster machinery)."
 type CiSpec {
-  gates: std.types.List<gunbc.ci_gate.Gate>
-  witness_entries: std.types.List<std.realization_schedule.ScheduleWitnessEntry>
-  discovery_scan_dirs: std.types.List<String>
+  gates: List<gunbc.ci_gate.Gate>
+  witness_entries: List<std.realization_schedule.ScheduleWitnessEntry>
+  discovery_scan_dirs: List<String>
   diff_policy: DiffPolicy
   notice_title: String
-  deploy_stages: std.types.List<DeployStage>
+  deploy_stages: List<DeployStage>
 }
 
-data gunbc_ci_floor_gates: std.types.List<gunbc.ci_gate.Gate> = gunbc.commit_workflow.project_ci_floor_gates(roster: gunbc.commit_workflow.commit_gate_roster)
+data gunbc_ci_floor_gates: List<gunbc.ci_gate.Gate> = gunbc.commit_workflow.project_ci_floor_gates(roster: gunbc.commit_workflow.commit_gate_roster)
 
 
 data gunbc_ci_falsifier_gates_note: String = "The THIRD executing gate surface, projected here beside the floor and regen lists so the coproduct-totality witness can see it. It is not decoration: v2.test.claim.ci_spec_witness witness_gate_roster_matches_coproduct_arms asserts BAG-EQUALITY between the enrolled gates and every arm of the gunbc.ci_gate.Gate coproduct, which is the construction-shaped form of 'no gate is unenrolled' — strictly stronger than the per-row detection wall in gunbc.commit_workflow, because it reds when a gate is enrolled NOWHERE even if no roster row was edited (a newly added gunbc.ci_gate.Gate arm, for instance). When the cadence lane gained gates on 2026-07-26 that witness went red for exactly the right reason: its universe of executing surfaces was two, and there were now three. Adding this projection to the bag EXTENDS the totality check to the new surface — it does not relax it. The distinction matters because the tempting alternative, dropping the two flipped arms from the comparison or slackening bag-equality to subset, would have silenced the wall in the same motion that made it informative, which is the absorbing-fallback shape DESIGN §5 forbids."
 
-data gunbc_ci_falsifier_gates: std.types.List<gunbc.ci_gate.Gate> = gunbc.commit_workflow.project_falsifier_gates(roster: gunbc.commit_workflow.commit_gate_roster)
+data gunbc_ci_falsifier_gates: List<gunbc.ci_gate.Gate> = gunbc.commit_workflow.project_falsifier_gates(roster: gunbc.commit_workflow.commit_gate_roster)
 
-data gunbc_ci_floor_witness_entries: std.types.List<std.realization_schedule.ScheduleWitnessEntry> = gunbc.commit_workflow.project_ci_floor_witness_entries(roster: gunbc.commit_workflow.commit_gate_roster)
+data gunbc_ci_floor_witness_entries: List<std.realization_schedule.ScheduleWitnessEntry> = gunbc.commit_workflow.project_ci_floor_witness_entries(roster: gunbc.commit_workflow.commit_gate_roster)
 
-data gunbc_ci_gates: std.types.List<gunbc.ci_gate.Gate> = gunbc_ci_floor_gates
+data gunbc_ci_gates: List<gunbc.ci_gate.Gate> = gunbc_ci_floor_gates
 
 data live_deploy_apply_entry: String = "dag/gunbc/live_deploy/apply.dag"
 data live_deploy_apply_srv1_wet_function: String = "live_deploy_apply_srv1_wet"
@@ -100,7 +100,7 @@ data gunbc_ci_deploy_srv1_stage: DeployStage = {
   runner: gunbc.ci_deploy_target_host.gunbc_ci_deploy_srv1_runner_spec(),
 }
 
-data gunbc_ci_deploy_stages: std.types.List<DeployStage> = [gunbc_ci_deploy_srv1_stage]
+data gunbc_ci_deploy_stages: List<DeployStage> = [gunbc_ci_deploy_srv1_stage]
 
 data gunbc_ci_spec: gunbc.ci_spec.CiSpec = {
   gates: gunbc_ci_floor_gates,
@@ -115,7 +115,7 @@ data gunbc_ci_spec: gunbc.ci_spec.CiSpec = {
   deploy_stages: gunbc_ci_deploy_stages,
 }
 
-fn ci_spec_with_witness_entries(spec: gunbc.ci_spec.CiSpec, entries: std.types.List<std.realization_schedule.ScheduleWitnessEntry>) -> gunbc.ci_spec.CiSpec {
+fn ci_spec_with_witness_entries(spec: gunbc.ci_spec.CiSpec, entries: List<std.realization_schedule.ScheduleWitnessEntry>) -> gunbc.ci_spec.CiSpec {
   gunbc.ci_spec.CiSpec {
     gates: spec.gates,
     witness_entries: entries,
@@ -126,7 +126,7 @@ fn ci_spec_with_witness_entries(spec: gunbc.ci_spec.CiSpec, entries: std.types.L
   }
 }
 
-fn ci_spec_with_discovery_scan_dirs(spec: gunbc.ci_spec.CiSpec, dirs: std.types.List<String>) -> gunbc.ci_spec.CiSpec {
+fn ci_spec_with_discovery_scan_dirs(spec: gunbc.ci_spec.CiSpec, dirs: List<String>) -> gunbc.ci_spec.CiSpec {
   gunbc.ci_spec.CiSpec {
     gates: spec.gates,
     witness_entries: spec.witness_entries,
@@ -158,7 +158,7 @@ fn gunbc_ci_floor_positional_clamp(overhead_seconds: Int, per_unit_ms: Int) -> s
   }
 }
 
-data gunbc_ci_floor_batch_clamp_params: std.types.List<std.realization_schedule.RunnableBatchClamp> = [
+data gunbc_ci_floor_batch_clamp_params: List<std.realization_schedule.RunnableBatchClamp> = [
   gunbc_ci_floor_positional_clamp(overhead_seconds: 240, per_unit_ms: 0),
   gunbc_ci_floor_positional_clamp(overhead_seconds: 60, per_unit_ms: 0),
   gunbc_ci_floor_positional_clamp(overhead_seconds: 300, per_unit_ms: 1000),
@@ -312,7 +312,7 @@ fn ci_release_bins_unpack_verify_script() -> String {
   )
 }
 
-fn join_slash(parts: std.types.List<String>) -> String {
+fn join_slash(parts: List<String>) -> String {
   fold(parts, init: "", f: (acc, p) => if acc == "" { p } else { concat(concat(acc, "/"), p) })
 }
 
@@ -970,12 +970,12 @@ data ci_heal_commit_push_shell_emit_scaffold: std.disposition.Disposition = std.
 
 data ci_heal_commit_push_shell_emit_dissolution_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_heal_commit_push_script — the entire foreign-executor heal commit RunStep, including git config/add/commit/push, workflow author-commit drift detection (git diff over gunbc.heal_push_plan.author_commit_required_committed_artifact_paths), repair-artifact packaging (mkdir/cp into heal-author-commit-required/), and HealAuthorCommitRequired diagnostic emission. All of this is today concat-built bash under the single std.disposition.Scaffold disposition beside ci_heal_commit_push_shell_emit_scaffold (ci_heal_git_add_lines was already the prior git-staging half; #7659 extends the same surface for AuthorCommitRequired, not a std.measure.second unmarked shell). The former merge-admission emitter peer stays deleted: its runtime-present work executes as typed git/filesystem operations inside WalkPlan success stages. DISSOLVES WHEN the shell→intent lane models the full heal repair disposition on host_effect_apply — git transport, filesystem packaging, typed diagnostic — via orchestration bash-emit or typed v2.std.orchestration.Do-effects (host-effect-orchestration, ROADMAP shell→intent Phase 2), at which point this RunStep is a realization handler, not emitted bash. The regen half (main_wet) is already modeled separately.")
 
-fn ci_heal_git_add_lines() -> std.types.List<String> {
+fn ci_heal_git_add_lines() -> List<String> {
   map(gunbc.heal_push_plan.auto_push_eligible_committed_artifact_paths(), p =>
     concat("if [ -e \"", concat(p, concat("\" ]; then git add \"", concat(p, concat("\"; else echo \"chore-heal: registered generated artifact absent on this tree, not staging: ", concat(p, "\"; fi")))))))
 }
 
-fn ci_heal_author_commit_drift_lines() -> std.types.List<String> {
+fn ci_heal_author_commit_drift_lines() -> List<String> {
   concat(
     ["AUTHOR_COMMIT_DRIFT=\"\""],
     map(gunbc.heal_push_plan.author_commit_required_committed_artifact_paths(), p =>
@@ -985,7 +985,7 @@ fn ci_heal_author_commit_drift_lines() -> std.types.List<String> {
 
 data ci_heal_author_commit_required_output: String = "heal_author_commit_required"
 
-fn ci_heal_author_commit_package_lines() -> std.types.List<String> {
+fn ci_heal_author_commit_package_lines() -> List<String> {
   [
     concat(concat("echo \"", ci_heal_author_commit_required_output), "=0\" >> \"$GITHUB_OUTPUT\""),
     "if [ -n \"$AUTHOR_COMMIT_DRIFT\" ]; then",
@@ -999,7 +999,7 @@ fn ci_heal_author_commit_package_lines() -> std.types.List<String> {
   ]
 }
 
-fn ci_heal_shell_lines() -> std.types.List<String> {
+fn ci_heal_shell_lines() -> List<String> {
   concat(
     [
       "git config user.name \"gunbc-ci-auto-heal\"",

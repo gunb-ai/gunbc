@@ -196,7 +196,7 @@ type SparkServingReconciliation
   = SparkServingAlreadyConverged { converged_release: SparkServingReleaseIdentity }
   | SparkServingInstallRequired { subject: product.placement_supply.HostIdentity, desired_release: SparkServingReleaseIdentity }
   | SparkServingDeltaRequired { plan_subject: std.types.NonEmptyStr }
-  | SparkServingRefused { first: SparkServingRefusal, more: std.types.List<SparkServingRefusal> }
+  | SparkServingRefused { first: SparkServingRefusal, more: List<SparkServingRefusal> }
 
 data no_absent_prerequisite: SparkServingRefusal? = none
 
@@ -358,7 +358,7 @@ type SparkServingPlanRow {
 // considered" are different answers and an empty list would render identically for both -- which is
 // precisely the conflation that made first install unreachable one type up.
 type SparkServingPlan
-  = ServingPlanned { first: SparkServingPlanRow, more: std.types.List<SparkServingPlanRow> }
+  = ServingPlanned { first: SparkServingPlanRow, more: List<SparkServingPlanRow> }
   | ServingPlanNotAttempted { cause: std.types.NonEmptyStr }
 
 // The deployment target for a Spark serving unit under the named automation account. The actor is a

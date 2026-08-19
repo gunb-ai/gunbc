@@ -24,7 +24,7 @@ fn t_key_eq(a: String, b: String) -> std.types.Bool { a == b }
 fn t_val_eq(a: test.claim.membership_reconcile_witness.TMember, b: test.claim.membership_reconcile_witness.TMember) -> std.types.Bool { a.ver == b.ver }
 fn t_own(m: test.claim.membership_reconcile_witness.TMember) -> gunbc.ownership.Ownership? { m.own }
 
-fn t_reconcile(desired: std.types.List<test.claim.membership_reconcile_witness.TMember>, observed: std.types.List<test.claim.membership_reconcile_witness.TMember>) -> gunbc.membership_reconcile.MembershipPlan<test.claim.membership_reconcile_witness.TMember, test.claim.membership_reconcile_witness.TMemberAt> {
+fn t_reconcile(desired: List<test.claim.membership_reconcile_witness.TMember>, observed: List<test.claim.membership_reconcile_witness.TMember>) -> gunbc.membership_reconcile.MembershipPlan<test.claim.membership_reconcile_witness.TMember, test.claim.membership_reconcile_witness.TMemberAt> {
   gunbc.membership_reconcile.membership_plan_admitting_outcome(
     outcome: gunbc.membership_reconcile.membership_reconcile(
       desired: desired,
@@ -145,7 +145,7 @@ test fn w_r5_owned_only_teardown_synthetic() -> std.types.Bool {
     && gunbc.membership_reconcile.membership_refusal_count(plan: plan) == 2
 }
 
-fn effects_has_teardown(es: std.types.List<gunbc.membership_reconcile.MemberEffect<test.claim.membership_reconcile_witness.TMember>>, mid: String) -> std.types.Bool {
+fn effects_has_teardown(es: List<gunbc.membership_reconcile.MemberEffect<test.claim.membership_reconcile_witness.TMember>>, mid: String) -> std.types.Bool {
   any(es, e =>
     match e {
       EffectRemove { from: m } => m.mid == mid

@@ -33,7 +33,7 @@ type ConnectivityEvidenceGrade
   | OperatorDeclaredEvidence { reason: std.types.NonEmptyStr }
 
 type RunnerRemoteRegistration
-  = RunnerRemoteOnline { runner_name: std.types.NonEmptyStr, labels: std.types.List<String> }
+  = RunnerRemoteOnline { runner_name: std.types.NonEmptyStr, labels: List<String> }
   | RunnerRemoteOffline
   | RunnerRemoteAbsent
   | RunnerRemoteBusy { detail: std.types.NonEmptyStr }

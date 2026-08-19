@@ -57,7 +57,7 @@ data equinix_ny6: extdeps.colo.types.ColoFacilityRow = extdeps.colo.types.ColoFa
   facility_note: "Campus building; newest of the four in most directory listings.",
 }
 
-data equinix_secaucus_campus: std.types.List<extdeps.colo.types.ColoFacilityRow> = [equinix_ny2, equinix_ny4, equinix_ny5, equinix_ny6]
+data equinix_secaucus_campus: List<extdeps.colo.types.ColoFacilityRow> = [equinix_ny2, equinix_ny4, equinix_ny5, equinix_ny6]
 
 data equinix_retail_rates: extdeps.colo.types.RetailRateStanding = extdeps.colo.types.RatesQuoteOnly {
   contact_route: "equinix.com sales",

@@ -15,7 +15,7 @@ data legacy_test_inflow_extraction_fork_note: String = "A DECLARED SECOND READIN
 data legacy_test_inflow_arrival_versus_churn_note: String = "AN ARRIVAL IS NOT A POPULATION DELTA, AND THE DIFFERENCE IS RENAMES — measured, not reasoned. Over the first window this counter was run against (the merge of gunbc#7652 to the tree state at 9f978aa8df9), the discovered population gained 21 identities and lost 5, while this counter reported 18 arrivals. The gap is exactly three renamed test functions: renaming a test emits a removed and an added `fn` line with its `#[test]` line UNCHANGED, so an identity join over the two populations counts the rename as one departure plus one arrival, and this counter counts it as neither. The counter's reading is the one the roadmap rule is stated in — renaming a legacy test does not grow the population the migration must drain, so it is churn, not inflow. Anyone comparing the two numbers should expect them to differ by renames and should NOT reconcile them by adjusting either: they answer different questions, and only this one answers 'did a new legacy behavior arrive'.\\n\\nCONSEQUENCE FOR THE ZERO-CONTEXT TRANSPORT, stated because it is the shape most likely to be misread as a miss: the floor observes git diff with -U0, so a change that adds ONLY an attribute line above an already-existing function leaves that function's declaration outside the observed text entirely. That arrival is real and this carrier will not name it, so it REFUSES (InflowRefused, unresolved attribute) rather than reporting a count that silently omits it. Under a context-bearing diff the same fold resolves the declaration and reports it normally. Refusing a shape it cannot name is the fail-closed half of audit mode; quietly reporting one fewer arrival would be the absorbing fallback."
 
 type LegacyTestInflowObservation
-  = InflowMeasured { additions: std.types.List<gunbc.legacy_test_behavior_disposition.LegacyTestBehavior> }
+  = InflowMeasured { additions: List<gunbc.legacy_test_behavior_disposition.LegacyTestBehavior> }
   | InflowRefused { reason: std.types.NonEmptyStr }
 
 type InflowFoldState {
@@ -158,7 +158,7 @@ fn inflow_observation_of_diff(diff_text: String) -> LegacyTestInflowObservation 
 }
 
 type LegacyTestInflowTally
-  = InflowCountMeasured { count: Int, ids: std.types.List<String> }
+  = InflowCountMeasured { count: Int, ids: List<String> }
   | InflowCountUnavailable { reason: std.types.NonEmptyStr }
 
 data legacy_test_inflow_tally_note: String = "THE PROJECTION CANNOT ERASE THE REFUSAL, because there is no arm on which to erase it (codex review, gunbc#7692). An earlier revision exposed inflow_observation_addition_ids and inflow_observation_count directly: both mapped InflowRefused to an empty list, and count of empty is zero, so an unobservable diff PROJECTED AS ZERO ARRIVALS unless every caller remembered to consult inflow_observation_is_measured first. The typed outcome existed precisely to remove that footgun and the projection put it back, one call-order mistake from the silent widening this carrier's own note forbids. A count and an id list now exist ONLY on InflowCountMeasured; a refusal projects to InflowCountUnavailable carrying its reason, which has no count to read. Fail-closed semantics is a property of the shape rather than of caller discipline."

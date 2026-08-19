@@ -80,7 +80,7 @@ fn receipt_text_at(v: extdeps.languages.json.emit.JsonValue, key: String) -> Rec
 }
 
 type ReceiptElements
-  = ReceiptElementsFound { elements: std.types.List<extdeps.languages.json.emit.JsonValue> }
+  = ReceiptElementsFound { elements: List<extdeps.languages.json.emit.JsonValue> }
   | ReceiptElementsFailed { decoding: FloorComponentReceiptDecoding }
 
 fn receipt_array_at(v: extdeps.languages.json.emit.JsonValue, key: String) -> ReceiptElements {
@@ -587,7 +587,7 @@ fn unsuccessful_population_joins(
 }
 
 type ComponentSummaryListDecoding
-  = ComponentSummaryListDecoded { summaries: std.types.List<ComponentAlertSummary> }
+  = ComponentSummaryListDecoded { summaries: List<ComponentAlertSummary> }
   | ComponentSummaryListFailed { decoding: FloorComponentReceiptDecoding }
 
 fn component_alert_summaries_of(components: List<extdeps.languages.json.emit.JsonValue>) -> ComponentSummaryListDecoding {

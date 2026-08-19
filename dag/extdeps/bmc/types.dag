@@ -458,7 +458,7 @@ fn bmc_fan_curve_sensor_unavailable_duty(curve: BmcFanCurve) -> std.measure.Perc
 }
 
 type BmcFanControllerShape
-  = FanPidIndependentEntries { entry_names: std.types.List<std.types.NonEmptyStr> }
+  = FanPidIndependentEntries { entry_names: List<std.types.NonEmptyStr> }
   | FanPidAggregatedEntry {
       entry_name: std.types.NonEmptyStr,
       tach_inputs: List<std.types.NonEmptyStr>,

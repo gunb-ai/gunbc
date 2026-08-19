@@ -25,7 +25,7 @@ fn authorized_key_value_eq(a: extdeps.ssh.SshPublicKey, b: extdeps.ssh.SshPublic
 
 data fleet_owned_key_materials_note: String = "The registry of key materials the FLEET manages — the ownership authority the R5 teardown-owned-only wall reads for a Removed key. DERIVED from fleet_authorized_keys (single authority, never a hand-copied material list), so today it is exactly the two declared fleet keys. A key NOT in this registry (an out-of-band key like node-orch@srv2 or briansrls@srv1 hand-added in the node-orch bootstrap era) has NO ownership record -> ownership_of returns Absent -> OwnershipUnknown -> the spine REFUSES to tear it down (fail-closed; we never delete a key we did not place). ROTATION EXTENSION (dissolution trigger, not built here): when a fleet key rotates, its retired material must be appended to a retired-owned list so the Removed old key resolves Owned -> teardown-eligible; until that lands, a rotated-out fleet key drops out of this derived registry and is REFUSED rather than removed — a safe leak, not a silent delete. That extension is what makes the Owned teardown arm non-degenerate; today every teardown-refusal is OwnershipUnknown by construction, which is honest for the srv3 case (zero teardowns needed)."
 
-fn fleet_owned_key_materials() -> std.types.List<std.types.NonEmptyStr> {
+fn fleet_owned_key_materials() -> List<std.types.NonEmptyStr> {
   map(gunbc.fleet_ssh_access.fleet_authorized_keys, k => k.material)
 }
 
@@ -39,7 +39,7 @@ fn authorized_key_ownership(k: extdeps.ssh.SshPublicKey) -> gunbc.ownership.Owne
 
 data host_authorized_keys_reconcile_note: String = "desired = fleet_authorized_keys (the model's declared key set); observed = a live read of the host's authorized_keys (an OBSERVATION effect, staged — the fixtures below are point-in-time reads, not the live provider). The apply-grain POLICY is deliberately NOT resolved in this module: authorized_keys is an EVERYTHING-ON-HOST observed scope (foreign keys are normal, not anomalies), which is exactly the scope where membership_reconcile's wholesale-refuse policy (membership_effects) would be wrong — a foreign key's refusal would block our owned upsert. That is the conscious wholesale-vs-siblings-continue call the spine reserves to a human (membership_effects_wholesale_refuse_policy_note); this module produces the PLAN grain only and leaves the apply projection to that decision."
 
-fn host_authorized_keys_reconcile(observed: std.types.List<extdeps.ssh.SshPublicKey>) -> gunbc.membership_reconcile.MembershipPlan<extdeps.ssh.SshPublicKey, HostAuthorizedKeysMemberAt> {
+fn host_authorized_keys_reconcile(observed: List<extdeps.ssh.SshPublicKey>) -> gunbc.membership_reconcile.MembershipPlan<extdeps.ssh.SshPublicKey, HostAuthorizedKeysMemberAt> {
   host_authorized_keys_reconcile_with_ownership(
     observed: observed,
     ownership_of: authorized_key_ownership,
@@ -47,7 +47,7 @@ fn host_authorized_keys_reconcile(observed: std.types.List<extdeps.ssh.SshPublic
 }
 
 fn host_authorized_keys_reconcile_with_ownership(
-  observed: std.types.List<extdeps.ssh.SshPublicKey>,
+  observed: List<extdeps.ssh.SshPublicKey>,
   ownership_of: fn(extdeps.ssh.SshPublicKey) -> gunbc.ownership.Ownership?,
 ) -> gunbc.membership_reconcile.MembershipPlan<extdeps.ssh.SshPublicKey, HostAuthorizedKeysMemberAt> {
   gunbc.membership_reconcile.membership_plan_admitting_outcome(
@@ -76,7 +76,7 @@ data srv3_observed_briansrls_srv1_key: extdeps.ssh.SshPublicKey = extdeps.ssh.Ss
   comment: "briansrls@srv1",
 }
 
-data srv3_observed_authorized_keys: std.types.List<extdeps.ssh.SshPublicKey> = [
+data srv3_observed_authorized_keys: List<extdeps.ssh.SshPublicKey> = [
   srv3_observed_node_orch_srv2_key,
   srv3_observed_briansrls_srv1_key,
   gunbc.fleet_ssh_access.operator_macbook_ssh_key,
@@ -84,7 +84,7 @@ data srv3_observed_authorized_keys: std.types.List<extdeps.ssh.SshPublicKey> = [
 
 data srv4_observed_authorized_keys_note: String = "OBSERVED read of ubuntu@192.168.1.196 ~/.ssh/authorized_keys (operator, macbook, 2026-07-24). srv4 was installed via #7027 with fleet_authorized_keys in the seed, so it carries EXACTLY the two declared fleet keys and nothing foreign — the CONVERGED control: reconciling it against desired yields an empty plan (0 upsert / 0 teardown / 0 refusal). Both keys reused from fleet_ssh_access (single authority)."
 
-data srv4_observed_authorized_keys: std.types.List<extdeps.ssh.SshPublicKey> = [
+data srv4_observed_authorized_keys: List<extdeps.ssh.SshPublicKey> = [
   gunbc.fleet_ssh_access.operator_macbook_ssh_key,
   gunbc.fleet_ssh_access.fleet_automation_ssh_key,
 ]

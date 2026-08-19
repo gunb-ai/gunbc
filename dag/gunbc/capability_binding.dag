@@ -154,7 +154,7 @@ fn tap_cause_key(c: TapQualificationCause) -> String {
 
 type TapQualification
   = TapQualified { receipt: SampleReceipt }
-  | TapRejected { receipt: SampleReceipt, causes: std.types.List<TapQualificationCause> }
+  | TapRejected { receipt: SampleReceipt, causes: List<TapQualificationCause> }
 
 fn cause_when(holds: Bool, c: TapQualificationCause) -> List<TapQualificationCause> {
   if holds {
@@ -323,7 +323,7 @@ fn obstacle_key(o: CapabilityObstacle) -> String {
 }
 
 type DegradationCause
-  = DegradedTapRejected { causes: std.types.List<TapQualificationCause> }
+  = DegradedTapRejected { causes: List<TapQualificationCause> }
   | DegradedSamplesWithoutQualification
   | DegradedSamplesCarryNoValues
   | DegradedNoSamplesInWindow { lifecycle: SampleLifecycle }

@@ -15,7 +15,7 @@ fn int_max(a: Int, b: Int) -> Int {
   if a < b { b } else { a }
 }
 
-fn add_profiles(a: std.types.List<Int>, b: std.types.List<Int>) -> std.types.List<Int> {
+fn add_profiles(a: List<Int>, b: List<Int>) -> List<Int> {
   match a {
     Empty => b
     Cons { head: ha, tail: ta } =>
@@ -27,26 +27,26 @@ fn add_profiles(a: std.types.List<Int>, b: std.types.List<Int>) -> std.types.Lis
   }
 }
 
-fn shift_deeper(profile: std.types.List<Int>) -> std.types.List<Int> {
+fn shift_deeper(profile: List<Int>) -> List<Int> {
   std.algebra.Cons { head: 0, tail: profile }
 }
 
-fn profile_fold_init(_n: Node) -> std.types.List<Int> {
+fn profile_fold_init(_n: Node) -> List<Int> {
   std.algebra.Cons { head: 1, tail: std.algebra.Empty }
 }
 
-fn profile_fold_step(acc: std.types.List<Int>, _edge: v2.std.node.Edge, child_profile: std.types.List<Int>) -> std.types.List<Int> {
+fn profile_fold_step(acc: List<Int>, _edge: v2.std.node.Edge, child_profile: List<Int>) -> List<Int> {
   add_profiles(a: acc, b: shift_deeper(profile: child_profile))
 }
 
-fn profile_algebra() -> NodeFold<std.types.List<Int>> {
+fn profile_algebra() -> NodeFold<List<Int>> {
   v2.std.node.NodeFold {
     init: profile_fold_init,
     step: profile_fold_step
   }
 }
 
-fn level_profile(root: Node) -> std.types.List<Int> {
+fn level_profile(root: Node) -> List<Int> {
   fold_node(n: root, algebra: profile_algebra())
 }
 

@@ -28,7 +28,7 @@ fn container_expected_arity(name: String) -> Int? {
   map_get(container_type_arity, name)
 }
 
-fn container_param_names_for(kind_name: String) -> std.types.List<String> {
+fn container_param_names_for(kind_name: String) -> List<String> {
   if kind_name == "Witness" {
     ["T"]
   } else {
@@ -89,7 +89,7 @@ fn container_template_alias_algebra(name: String) -> String? {
   map_get(container_template_alias_rows, name)
 }
 
-fn canonical_container_names() -> std.types.List<String> {
+fn canonical_container_names() -> List<String> {
   ["BooleanAlgebra", "FreeMonoid", "std.types.List", "Map", "PartialFunction", "Set", "Witness"]
 }
 
@@ -106,7 +106,7 @@ type List<element> = std.algebra.FreeMonoid<element>
 type Set<element> = std.algebra.PointwisePower<element>
 type Map<key, value> = std.algebra.PartialFunction<key, value>
 
-fn list_length<T>(items: std.types.List<T>) -> Int {
+fn list_length<T>(items: List<T>) -> Int {
   fold(items, init: 0, f: (acc, _) => acc + 1)
 }
 
@@ -158,10 +158,10 @@ data rendered_terminal_text_note: String = "TEXT THAT CARRIES NO TERMINAL CONTRO
 
 type RenderedTerminalText = String where brand("RenderedTerminalText")
 type FilePathParts {
-  segments: std.types.List<std.types.PathSegment>
+  segments: List<std.types.PathSegment>
 }
 type GlobPattern {
-  segments: std.types.List<std.types.GlobSegment>
+  segments: List<std.types.GlobSegment>
 }
 type FilePath      = String where non_empty
 
@@ -228,7 +228,7 @@ type Credential {
   scheme: std.types.AuthScheme
   header_name: String?
   source_id: String
-  required_scopes: std.types.List<String>
+  required_scopes: List<String>
   expires_in: Int?
 }
 
@@ -301,13 +301,13 @@ type ToolEntry {
 }
 
 type ToolRegistry {
-  tools: std.types.List<std.types.ToolEntry>
+  tools: List<std.types.ToolEntry>
 }
 
 type DagTopology {
-  nodes: std.types.List<std.types.TopologyNode>
-  edges: std.types.List<std.types.TopologyEdge>
-  subdag_boundaries: std.types.List<String>
+  nodes: List<std.types.TopologyNode>
+  edges: List<std.types.TopologyEdge>
+  subdag_boundaries: List<String>
 }
 
 type TopologyNode {
@@ -324,9 +324,9 @@ type TopologyEdge {
 }
 
 type DagDiff {
-  added: std.types.List<String>
-  removed: std.types.List<String>
-  changed: std.types.List<String>
+  added: List<String>
+  removed: List<String>
+  changed: List<String>
 }
 
 type PragmaDirective {

@@ -3,15 +3,15 @@ module std.bit
 
 type Bit = Bool
 
-type Nibble { bits: std.types.List<Bit> }
+type Nibble { bits: List<Bit> }
 
-type Byte { bits: std.types.List<Bit> }
+type Byte { bits: List<Bit> }
 
 type Word8 {
   bytes: List<Byte>
 }
 
-type Word16 { bytes: std.types.List<Byte> }
-type Word32 { bytes: std.types.List<Byte> }
-type Word64 { bytes: std.types.List<Byte> }
-type Word128 { bytes: std.types.List<Byte> }
+type Word16 { bytes: List<Byte> }
+type Word32 { bytes: List<Byte> }
+type Word64 { bytes: List<Byte> }
+type Word128 { bytes: List<Byte> }

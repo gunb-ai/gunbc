@@ -26,9 +26,9 @@ module gunbc.fleet_multi_principal_probe
 // It also replaces work rather than adding any: the deleted spark-canary-probe.yml asked exactly
 // this question in hand-authored shell, against this same principal list, and a hand-written
 // workflow is hand-applying (operator ruling, 2026-08-10).
-data multi_principal_probe_hosts: std.types.List<String> = ["srv3", "srv4", "srv5", "srv6"]
+data multi_principal_probe_hosts: List<String> = ["srv3", "srv4", "srv5", "srv6"]
 
-data multi_principal_probe_principals: std.types.List<String> = ["ubuntu", "briansrls", "ghrunner", "root", "gunbc-automation"]
+data multi_principal_probe_principals: List<String> = ["ubuntu", "briansrls", "ghrunner", "root", "gunbc-automation"]
 
 data fleet_multi_principal_probe_receipt_path: String = "target/fleet-multi-principal-probe-receipt.txt"
 
@@ -37,7 +37,7 @@ data fleet_multi_principal_probe_receipt_path: String = "target/fleet-multi-prin
 // ONE LEG, and every option it carries derived from the sealed context rather than assembled here.
 // The words go through portable_remote_words, so a command this probe cannot transport safely
 // refuses before the leg rather than being quoted into something the remote shell may re-split.
-fn probe_leg(context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext, host: String, principal: String, raw_words: std.types.List<String>) -> extdeps.ssh.session.SshSessionExecResult? {
+fn probe_leg(context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext, host: String, principal: String, raw_words: List<String>) -> extdeps.ssh.session.SshSessionExecResult? {
   match gunbc.fleet_known_hosts_anchor.portable_remote_words(raws: raw_words) {
     Absent => none
     Present { value: words } => Present {
@@ -168,7 +168,7 @@ func probe_agent_credential_verification(attempt: gunbc.fleet_known_hosts_anchor
   }
 }
 
-fn agent_backed_probe_success(host: String, principal: String, argv: std.types.List<String>) -> std.types.Bool {
+fn agent_backed_probe_success(host: String, principal: String, argv: List<String>) -> std.types.Bool {
   let target = join([principal, "@", gunbc.fleet_reach_endpoint.fleet_probe_endpoint_for(host: host)], "")
   match gunbc.typed_argv_exec.typed_argv_probe_over_ssh(host: target as std.types.NonEmptyStr, argv: argv) {
     TypedArgvExecConverged { result: r } => r.success
@@ -382,7 +382,7 @@ type SparkGrantRow {
 // Head-plus-tail: a grant probe that observed no host has no constructor, because "every host is
 // clean" and "nothing was asked" must not share a representation.
 type SparkGrantReport
-  = GrantsObserved { first: SparkGrantRow, more: std.types.List<SparkGrantRow> }
+  = GrantsObserved { first: SparkGrantRow, more: List<SparkGrantRow> }
   | GrantProbeNotAttempted { cause: String }
 
 fn spark_exact_grant_row(context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext, host: String, principal: String) -> SparkGrantRow {
@@ -541,7 +541,7 @@ data spark_standing_receipt_path: String = "target/spark-managed-access-standing
 
 // The Spark hosts only: this derivation is about the serving fleet, and running it over srv1..srv4
 // would produce bootstrap plans for hosts whose managed access is a different lane's question.
-data spark_standing_hosts: std.types.List<String> = ["srv5", "srv6"]
+data spark_standing_hosts: List<String> = ["srv5", "srv6"]
 
 func spark_managed_access_standing_wet() -> std.process.ProcessExit
   uses net: std.cache_interface.Network
@@ -561,7 +561,7 @@ func spark_managed_access_standing_wet() -> std.process.ProcessExit
 // at all and the func exited 0 whatever it observed (found while fixing the sibling defect in
 // review 51704). ManagedAccessBootstrapRequired is a real observation and stays a success; only
 // ManagedAccessUnobserved -- no reachable principal, so nothing was measured -- fails.
-fn spark_standing_unobserved_host(standings: std.types.List<gunbc.spark_managed_access_bootstrap.SparkManagedAccessStanding>) -> String? {
+fn spark_standing_unobserved_host(standings: List<gunbc.spark_managed_access_bootstrap.SparkManagedAccessStanding>) -> String? {
   fold(standings, init: none, f: fn(acc, standing) {
     match acc {
       Present { value: _ } => acc

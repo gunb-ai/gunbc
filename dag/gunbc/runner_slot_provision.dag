@@ -24,7 +24,7 @@ type RunnerSlotMember {
 }
 
 type RunnerSlotObservation
-  = RunnerSlotsObserved { members: std.types.List<RunnerSlotMember> }
+  = RunnerSlotsObserved { members: List<RunnerSlotMember> }
   | RunnerSlotsUnobserved { host: product.placement_supply.HostIdentity, reason: std.types.NonEmptyStr }
 
 fn runner_slot_instance_dir(instance_name: std.types.NonEmptyStr) -> std.types.NonEmptyStr {
@@ -39,7 +39,7 @@ fn runner_slot_member_from_instance_name(instance_name: String) -> RunnerSlotMem
   }
 }
 
-fn desired_runner_slot_members(deploy: gunbc.runner_host_deploy.RunnerHostDeploy) -> std.types.List<RunnerSlotMember> {
+fn desired_runner_slot_members(deploy: gunbc.runner_host_deploy.RunnerHostDeploy) -> List<RunnerSlotMember> {
   map(
     gunbc.runner_host_deploy.runner_instance_names(deploy: deploy),
     n => runner_slot_member_from_instance_name(instance_name: n),
@@ -65,8 +65,8 @@ fn runner_slot_member_ownership(m: RunnerSlotMember) -> gunbc.ownership.Ownershi
 }
 
 fn runner_slot_membership_reconcile(
-  desired: std.types.List<RunnerSlotMember>,
-  observed: std.types.List<RunnerSlotMember>,
+  desired: List<RunnerSlotMember>,
+  observed: List<RunnerSlotMember>,
 ) -> gunbc.membership_reconcile.MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt> {
   gunbc.membership_reconcile.membership_plan_admitting_outcome(
     outcome: gunbc.membership_reconcile.membership_reconcile(
@@ -90,7 +90,7 @@ type RunnerSlotEnumerationPostcondition
 
 fn runner_slot_enumeration_postcondition(
   host: product.placement_supply.HostIdentity,
-  observed: std.types.List<RunnerSlotMember>,
+  observed: List<RunnerSlotMember>,
 ) -> RunnerSlotEnumerationPostcondition {
   let declared = gunbc.fleet_host_budget.declared_runner_count_for(host: host)
   let observed_count = length(observed)
@@ -109,13 +109,13 @@ type RunnerSlotProvisionPlan {
   host_label: std.types.NonEmptyStr
   membership: gunbc.membership_reconcile.MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt>
   base_dir_script: String
-  upsert_extract_scripts: std.types.List<String>
+  upsert_extract_scripts: List<String>
 }
 
 fn runner_slot_provision_plan(
   deploy: gunbc.runner_host_deploy.RunnerHostDeploy,
   artifact: extdeps.github.actions_runner.ActionsRunnerBinaryArtifact,
-  observed: std.types.List<RunnerSlotMember>,
+  observed: List<RunnerSlotMember>,
 ) -> RunnerSlotProvisionPlan {
   let membership = runner_slot_membership_reconcile(
     desired: desired_runner_slot_members(deploy: deploy),

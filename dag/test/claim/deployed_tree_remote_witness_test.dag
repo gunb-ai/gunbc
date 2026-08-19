@@ -173,7 +173,7 @@ fn ordering_tag(kind: gunbc.live_deploy.spec.OwnedArtifactKind) -> String {
   }
 }
 
-fn ordered_tags() -> std.types.List<String> {
+fn ordered_tags() -> List<String> {
   fold(
     gunbc.live_deploy.spec.deployment_owned_steps(
       instance: gunbc.roadmap_dashboard_instance.srv1_green_dashboard_instance(),

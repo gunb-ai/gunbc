@@ -82,14 +82,14 @@ data natcoweb_plan_full_cabinet: extdeps.colo.types.RetailPlanRow = extdeps.colo
   citation: "natcoweb.com/colocation.html, read 2026-08-18; cabinet U count not stated on the page - 42U is the industry-standard full cabinet and is carried here as the plan's nominal size pending quote confirmation",
 }
 
-data natcoweb_plans: std.types.List<extdeps.colo.types.RetailPlanRow> = [
+data natcoweb_plans: List<extdeps.colo.types.RetailPlanRow> = [
   natcoweb_plan_1u,
   natcoweb_plan_10u,
   natcoweb_plan_20u,
   natcoweb_plan_full_cabinet,
 ]
 
-data natcoweb_remote_hands: std.types.List<extdeps.colo.types.RemoteHandsWindowRate> = [
+data natcoweb_remote_hands: List<extdeps.colo.types.RemoteHandsWindowRate> = [
   extdeps.colo.types.RemoteHandsWindowRate {
     window_label: "scheduled",
     hourly: std.measure.MoneyPerHour { amount: std.measure.money_amount_micro(count: 150000000), currency: std.currency.Usd },

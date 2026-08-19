@@ -13,16 +13,16 @@ data axis_power_id: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef { 
 data axis_cost: std.pareto.SelectionAxis = std.pareto.SelectionAxis { identity: axis_cost_id, goal: std.pareto.LowerIsBetter }
 data axis_power: std.pareto.SelectionAxis = std.pareto.SelectionAxis { identity: axis_power_id, goal: std.pareto.HigherIsBetter }
 
-data both_axes: std.types.List<std.pareto.SelectionAxis> = [axis_cost, axis_power]
-data cost_only: std.types.List<std.pareto.SelectionAxis> = [axis_cost]
-data power_only: std.types.List<std.pareto.SelectionAxis> = [axis_power]
+data both_axes: List<std.pareto.SelectionAxis> = [axis_cost, axis_power]
+data cost_only: List<std.pareto.SelectionAxis> = [axis_cost]
+data power_only: List<std.pareto.SelectionAxis> = [axis_power]
 
 // A second axis row carrying the SAME identity under a different goal - the duplicate the
 // selection must refuse rather than resolve first-one-wins.
 data axis_cost_duplicate: std.pareto.SelectionAxis = std.pareto.SelectionAxis { identity: axis_cost_id, goal: std.pareto.HigherIsBetter }
-data duplicated_axes: std.types.List<std.pareto.SelectionAxis> = [axis_cost, axis_cost_duplicate, axis_power]
+data duplicated_axes: List<std.pareto.SelectionAxis> = [axis_cost, axis_cost_duplicate, axis_power]
 
-data no_missing: std.types.List<std.types.NonEmptyStr> = []
+data no_missing: List<std.types.NonEmptyStr> = []
 
 data id_cheap_strong: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef { module_path: "test.claim.pareto_selection_witness", decl_name: "entry_cheap_strong", field: std.decl_ref.WholeDeclaration }
 data id_dear_weak: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef { module_path: "test.claim.pareto_selection_witness", decl_name: "entry_dear_weak", field: std.decl_ref.WholeDeclaration }
@@ -110,7 +110,7 @@ data entry_double_reading: std.pareto.ParetoEntry = std.pareto.ParetoEntry {
 // The CLEAN field for the domination and trade-off controls; the holed field adds the
 // reading-hole entry for the fail-closed control; the reversed field proves order
 // invariance; the duplicated field plants one identity twice.
-data clean_field: std.types.List<std.pareto.ParetoEntry> = [
+data clean_field: List<std.pareto.ParetoEntry> = [
   entry_cheap_strong,
   entry_dear_weak,
   entry_dear_strong,
@@ -118,7 +118,7 @@ data clean_field: std.types.List<std.pareto.ParetoEntry> = [
   entry_twin_dominated,
 ]
 
-data clean_field_reversed: std.types.List<std.pareto.ParetoEntry> = [
+data clean_field_reversed: List<std.pareto.ParetoEntry> = [
   entry_twin_dominated,
   entry_quote_pending,
   entry_dear_strong,
@@ -126,7 +126,7 @@ data clean_field_reversed: std.types.List<std.pareto.ParetoEntry> = [
   entry_cheap_strong,
 ]
 
-data holed_field: std.types.List<std.pareto.ParetoEntry> = [
+data holed_field: List<std.pareto.ParetoEntry> = [
   entry_cheap_strong,
   entry_dear_weak,
   entry_dear_strong,
@@ -136,7 +136,7 @@ data holed_field: std.types.List<std.pareto.ParetoEntry> = [
 
 // The same poisoned field with the hole FIRST: refusal precedence must not depend on where
 // the malformed entry sits relative to a valid dominator.
-data holed_field_hole_first: std.types.List<std.pareto.ParetoEntry> = [
+data holed_field_hole_first: List<std.pareto.ParetoEntry> = [
   entry_reading_hole,
   entry_cheap_strong,
   entry_dear_weak,
@@ -144,15 +144,15 @@ data holed_field_hole_first: std.types.List<std.pareto.ParetoEntry> = [
   entry_quote_pending,
 ]
 
-data duplicated_field: std.types.List<std.pareto.ParetoEntry> = [
+data duplicated_field: List<std.pareto.ParetoEntry> = [
   entry_cheap_strong,
   entry_dear_weak,
   entry_cheap_strong,
 ]
 
-data spine_sensitivities: std.types.List<std.types.NonEmptyStr> = ["a planted sensitivity so frontier survivors carry their caveat"]
+data spine_sensitivities: List<std.types.NonEmptyStr> = ["a planted sensitivity so frontier survivors carry their caveat"]
 
-fn dominators_of(s: std.pareto.ParetoStanding) -> std.types.List<std.pareto.Domination> {
+fn dominators_of(s: std.pareto.ParetoStanding) -> List<std.pareto.Domination> {
   match s {
     DominatedBy { dominators } => dominators,
     ProvisionallyNonDominated { sensitivities } => no_dominations,
@@ -161,7 +161,7 @@ fn dominators_of(s: std.pareto.ParetoStanding) -> std.types.List<std.pareto.Domi
   }
 }
 
-data no_dominations: std.types.List<std.pareto.Domination> = []
+data no_dominations: List<std.pareto.Domination> = []
 
 fn has_dominator(s: std.pareto.ParetoStanding, expected: std.decl_ref.DeclarationRef) -> Bool {
   fold(dominators_of(s: s), init: false, f: fn(acc, d) { acc || std.decl_ref.declaration_ref_eq(a: d.candidate, b: expected) })

@@ -127,10 +127,10 @@ type RunnerShapeRow {
 // recalled rather than fetched is indistinguishable from a cited one
 // downstream, and a runner catalog is exactly the kind of fact that moves.
 type RunnerCatalogAvailability
-  = RunnerShapesCited { rows: std.types.List<RunnerShapeRow> }
+  = RunnerShapesCited { rows: List<RunnerShapeRow> }
   | RunnerShapesUnavailable { cause: std.types.NonEmptyStr }
 
-fn runner_shape_rows(availability: RunnerCatalogAvailability) -> std.types.List<RunnerShapeRow> {
+fn runner_shape_rows(availability: RunnerCatalogAvailability) -> List<RunnerShapeRow> {
   match availability {
     RunnerShapesCited { rows } => rows
     RunnerShapesUnavailable { cause } => []

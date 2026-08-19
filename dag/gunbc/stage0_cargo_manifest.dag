@@ -3,7 +3,7 @@ module gunbc.stage0_cargo_manifest
 
 // Cargo [[bin]] targets are NOT hand-listed here. stage0_cargo_toml_repo_path names the manifest file and CargoManifestBinParse owns the typed parser boundary. The temporary host parser returns authored relative path facts only; gunbc.stage0_rust_host_observation owns repository-path normalization and the join to revision-addressed Git facts. CargoBin is a source role, never a maintenance disposition.
 type CargoManifestBinParse
-  = CargoManifestBinsParsed { authored_relative_paths: std.types.List<String> }
+  = CargoManifestBinsParsed { authored_relative_paths: List<String> }
   | CargoManifestBinsParseRefused { detail: String }
 
 data stage0_cargo_toml_repo_path: String = "src/v1/stage0/Cargo.toml"

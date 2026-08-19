@@ -121,10 +121,10 @@ type Component
   | VoltageSource { name: SpiceIdentifier, n_plus: NodeRef, n_minus: NodeRef, value: SpiceValue }
   | CurrentSource { name: SpiceIdentifier, n_plus: NodeRef, n_minus: NodeRef, value: SpiceValue }
   | Diode { name: SpiceIdentifier, anode: NodeRef, cathode: NodeRef, model: v2.std.node.Symbol }
-  | Bjt { name: SpiceIdentifier, collector: NodeRef, base: NodeRef, emitter: NodeRef, substrate: SubstrateSpec, model: v2.std.node.Symbol, modifiers: std.types.List<Modifier> }
-  | Mosfet { name: SpiceIdentifier, drain: NodeRef, gate: NodeRef, source: NodeRef, body: NodeRef, model: v2.std.node.Symbol, modifiers: std.types.List<Modifier> }
+  | Bjt { name: SpiceIdentifier, collector: NodeRef, base: NodeRef, emitter: NodeRef, substrate: SubstrateSpec, model: v2.std.node.Symbol, modifiers: List<Modifier> }
+  | Mosfet { name: SpiceIdentifier, drain: NodeRef, gate: NodeRef, source: NodeRef, body: NodeRef, model: v2.std.node.Symbol, modifiers: List<Modifier> }
   | MutualInductance { name: SpiceIdentifier, l1: InductorRef, l2: InductorRef, coupling: SpiceValue }
-  | SubcircuitCall { name: SpiceIdentifier, connections: SubcircuitConnections, subcircuit: v2.std.node.Symbol, parameters: std.types.List<Parameter> }
+  | SubcircuitCall { name: SpiceIdentifier, connections: SubcircuitConnections, subcircuit: v2.std.node.Symbol, parameters: List<Parameter> }
 
 type ModelKind
   = DiodeModel
@@ -161,7 +161,7 @@ type Directive
   | Ac { sweep: AcSweepKind, n: SpiceValue, fstart: SpiceValue, fstop: SpiceValue }
   | InitialCondition { assignments: NodeVoltageBindings }
   | NodeSet { assignments: NodeVoltageBindings }
-  | Options { modifiers: std.types.List<Modifier> }
+  | Options { modifiers: List<Modifier> }
   | Include { card: IncludeCard }
 
 type SubcircuitStatement

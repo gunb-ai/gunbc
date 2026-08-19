@@ -217,7 +217,7 @@ fn jwt_string_or_uri_wire(value: JwtStringOrUri) -> std.types.NonEmptyStr {
 // storing only the derived form was.
 type JwtAudience
   = JwtAudienceSingle { value: JwtStringOrUri }
-  | JwtAudienceMultiple { values: std.types.List<JwtStringOrUri> }
+  | JwtAudienceMultiple { values: List<JwtStringOrUri> }
 
 fn jwt_audience_values(audience: JwtAudience) -> List<JwtStringOrUri> {
   match audience {

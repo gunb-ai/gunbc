@@ -43,7 +43,7 @@ type SqlColumnDefinition {
 }
 
 type SqlTableConstraint
-  = SqlTableUnique { columns: std.types.List<SqlIdentifier> }
+  = SqlTableUnique { columns: List<SqlIdentifier> }
   | SqlTableForeignKey {
       columns: List<SqlIdentifier>,
       referenced_table: SqlIdentifier,

@@ -19,7 +19,7 @@ fn spark_serving_desired_linger_member(host: product.placement_supply.HostIdenti
 fn spark_serving_linger_observed_members(
   host: product.placement_supply.HostIdentity,
   linger_enabled: std.types.Bool,
-) -> std.types.List<gunbc.spark_serving_membership.SparkServingMember> {
+) -> List<gunbc.spark_serving_membership.SparkServingMember> {
   if linger_enabled {
     [spark_serving_desired_linger_member(host: host)]
   } else {
@@ -71,7 +71,7 @@ fn fleet_converge_spark_serving_typed_action(
 // always translates, so nothing ever exercised the arm. That is what made it worth closing before
 // the plan widens rather than after -- a four-member plan is exactly the input that reaches it.
 type SparkServingTypedActionProjection
-  = SparkServingTypedActionsProjected { rows: std.types.List<gunbc.fleet_converge_plan.FleetConvergeSparkServingTypedAction> }
+  = SparkServingTypedActionsProjected { rows: List<gunbc.fleet_converge_plan.FleetConvergeSparkServingTypedAction> }
   | SparkServingTypedActionsRefused { cause: String }
 
 fn fleet_converge_spark_serving_typed_actions(
@@ -111,8 +111,8 @@ fn spark_serving_fleet_converge_apply_shell(
 fn spark_serving_fleet_converge_plan_artifact(
   host: std.types.NonEmptyStr,
   prior_generation: Int,
-  observed_timers: std.types.List<gunbc.fleet_converge_plan.TimerRetirementMember>,
-  observed_caps: std.types.List<gunbc.host_axis_caps.CapMember>,
+  observed_timers: List<gunbc.fleet_converge_plan.TimerRetirementMember>,
+  observed_caps: List<gunbc.host_axis_caps.CapMember>,
   linger_enabled: std.types.Bool,
 ) -> gunbc.fleet_converge_plan.FleetConvergePlanArtifact? {
   if !spark_serving_converge_host_is_spark(host: host) {

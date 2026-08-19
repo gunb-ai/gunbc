@@ -24,7 +24,7 @@ type TmuxLsEntry {
 }
 
 type TmuxLsParse
-  = TmuxLsParsed { entries: std.types.List<TmuxLsEntry> }
+  = TmuxLsParsed { entries: List<TmuxLsEntry> }
   | TmuxLsParseRefused {
       line_number: Int,
       raw: String,
@@ -167,7 +167,7 @@ fn parse_tmux_ls_output(output: String) -> TmuxLsParse {
 }
 
 type TmuxSessionListOutcome
-  = TmuxSessionsListed { entries: std.types.List<TmuxLsEntry> }
+  = TmuxSessionsListed { entries: List<TmuxLsEntry> }
   | TmuxNoServer { evidence: String }
   | TmuxListUnknowable { stderr: String }
   | TmuxListStdoutRefused {
@@ -216,7 +216,7 @@ type TmuxAttemptPaneEntry {
 }
 
 type TmuxAttemptPanesParse
-  = AttemptPanesParsed { panes: std.types.List<TmuxAttemptPaneEntry> }
+  = AttemptPanesParsed { panes: List<TmuxAttemptPaneEntry> }
   | AttemptPanesParseRefused {
       line_number: Int,
       raw: String,

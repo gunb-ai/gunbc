@@ -4,39 +4,39 @@ type HeadingLevel = H1 | H2 | H3 | H4 | H5 | H6
 
 type MarkdownInline
   = TextInline { text: String }
-  | EmphasisInline { inlines: std.types.List<MarkdownInline> }
-  | StrongInline { inlines: std.types.List<MarkdownInline> }
+  | EmphasisInline { inlines: List<MarkdownInline> }
+  | StrongInline { inlines: List<MarkdownInline> }
   | CodeInline { text: String }
-  | LinkInline { inlines: std.types.List<MarkdownInline>, url: String }
+  | LinkInline { inlines: List<MarkdownInline>, url: String }
   | ImageInline { alt: String, url: String }
 
-type MarkdownListItem { blocks: std.types.List<MarkdownBlock> }
+type MarkdownListItem { blocks: List<MarkdownBlock> }
 
 type CheckboxState = Checked | Unchecked
 
-type MarkdownTaskItem { state: CheckboxState, blocks: std.types.List<MarkdownBlock> }
+type MarkdownTaskItem { state: CheckboxState, blocks: List<MarkdownBlock> }
 
 type MarkdownAlignment = AlignNone | AlignLeft | AlignCenter | AlignRight
 
-type MarkdownTableCell { inlines: std.types.List<MarkdownInline> }
-type MarkdownTableRow { cells: std.types.List<MarkdownTableCell> }
+type MarkdownTableCell { inlines: List<MarkdownInline> }
+type MarkdownTableRow { cells: List<MarkdownTableCell> }
 
 type MarkdownBlock
-  = HeadingBlock { level: HeadingLevel, inlines: std.types.List<MarkdownInline> }
-  | ParagraphBlock { inlines: std.types.List<MarkdownInline> }
-  | UnorderedListBlock { items: std.types.List<MarkdownListItem> }
-  | OrderedListBlock { items: std.types.List<MarkdownListItem> }
+  = HeadingBlock { level: HeadingLevel, inlines: List<MarkdownInline> }
+  | ParagraphBlock { inlines: List<MarkdownInline> }
+  | UnorderedListBlock { items: List<MarkdownListItem> }
+  | OrderedListBlock { items: List<MarkdownListItem> }
   | CodeBlock { code: String }
-  | TaskListBlock { items: std.types.List<MarkdownTaskItem> }
+  | TaskListBlock { items: List<MarkdownTaskItem> }
   | TableBlock {
       header: MarkdownTableRow,
       alignments: List<MarkdownAlignment>,
       rows: List<MarkdownTableRow>,
     }
-  | BlockquoteBlock { blocks: std.types.List<MarkdownBlock> }
+  | BlockquoteBlock { blocks: List<MarkdownBlock> }
   | ThematicBreak
 
-type MarkdownDocument { blocks: std.types.List<MarkdownBlock> }
+type MarkdownDocument { blocks: List<MarkdownBlock> }
 
 fn heading_level_to_tag(level: HeadingLevel) -> String {
   match level {

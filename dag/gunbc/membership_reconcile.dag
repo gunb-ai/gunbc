@@ -15,7 +15,7 @@ type MemberAction<M, At>
     }
 
 type MembershipPlan<M, At> {
-  actions: std.types.List<gunbc.membership_reconcile.MemberAction<M, At>>
+  actions: List<gunbc.membership_reconcile.MemberAction<M, At>>
 }
 
 type MemberEffect<M>
@@ -29,8 +29,8 @@ type MemberRefusal<M> {
 }
 
 type EffectsOrRefusal<M>
-  = EffectsReady { effects: std.types.List<gunbc.membership_reconcile.MemberEffect<M>> }
-  | ApplyRefused { refusals: std.types.List<gunbc.membership_reconcile.MemberRefusal<M>> }
+  = EffectsReady { effects: List<gunbc.membership_reconcile.MemberEffect<M>> }
+  | ApplyRefused { refusals: List<gunbc.membership_reconcile.MemberRefusal<M>> }
 
 type MembershipRosterSide = MembershipDesiredRoster | MembershipObservedRoster
 
@@ -55,14 +55,14 @@ type MembershipReconcileScopedOutcome<M, Relation, Scope, K>
 data membership_reconcile_authority_note: String = "THE grain-agnostic membership-diff reconcile (R2/R3/R5/R9). Desired set vs observed set keyed by member identity: Added -> add, Modified -> change, Removed -> remove (owned-only) or refuse, Unchanged -> noop (absence of a hunk). Add and change are DISTINCT arms and are NOT collapsed into one 'upsert'. Only REMOVAL consults ownership (gunbc.ownership Ensured constrains teardown only). Generic over member type M and key K — consumers pass (key_of, key_eq, value_eq, ownership_of) to membership_reconcile, they NEVER copy-adapt this fn. MemberAction carries `at` = the reconcile key so effect realization does not re-derive identity from mutable value. FUNCTIONAL-KEY ADMISSION: each population is built through keyed_roster_build BEFORE diffing — KeyedRosterBuildDuplicateKey refuses with typed evidence; no diff, no pick-one, no widen. R5 removal-owned-only is a CONSTRUCTION WALL on MemberRemovalRefused. membership_reconcile_scoped is the KeyRelation/KeyedResourceRelation path for relations with grounded scope (Tailscale vertical only until scope lands elsewhere)."
 
 fn plain_member_rows<M, K>(
-  members: std.types.List<M>,
+  members: List<M>,
   key_of: fn(M) -> K,
-) -> std.types.List<std.keyed_row.KeyedRow<K, M>> {
+) -> List<std.keyed_row.KeyedRow<K, M>> {
   map(members, m => std.keyed_row.KeyedRow { row_key: key_of(m), value: m })
 }
 
 fn membership_plain_roster_build<M, K>(
-  members: std.types.List<M>,
+  members: List<M>,
   key_of: fn(M) -> K,
   key_eq: fn(K, K) -> std.types.Bool,
 ) -> std.keyed_roster.KeyedRosterBuild<K, M> {
@@ -105,8 +105,8 @@ fn plain_hunk_to_action<M, K>(
 }
 
 fn membership_reconcile_built<M, K>(
-  desired_rows: std.types.List<std.keyed_row.KeyedRow<K, M>>,
-  observed_rows: std.types.List<std.keyed_row.KeyedRow<K, M>>,
+  desired_rows: List<std.keyed_row.KeyedRow<K, M>>,
+  observed_rows: List<std.keyed_row.KeyedRow<K, M>>,
   key_eq: fn(K, K) -> std.types.Bool,
   value_eq: fn(M, M) -> std.types.Bool,
   ownership_of: fn(M) -> gunbc.ownership.Ownership?,
@@ -123,8 +123,8 @@ fn membership_reconcile_built<M, K>(
 }
 
 fn membership_reconcile<M, K>(
-  desired: std.types.List<M>,
-  observed: std.types.List<M>,
+  desired: List<M>,
+  observed: List<M>,
   key_of: fn(M) -> K,
   key_eq: fn(K, K) -> std.types.Bool,
   value_eq: fn(M, M) -> std.types.Bool,
@@ -176,9 +176,9 @@ fn membership_plan_admitting_outcome<M, K>(
 }
 
 fn scoped_member_rows<M, Relation, Scope, K>(
-  members: std.types.List<M>,
+  members: List<M>,
   relation: std.key_relation.KeyRelation<Relation, M, Scope, K>,
-) -> std.types.List<std.keyed_row.KeyedRow<std.key_relation.ScopedKey<Relation, Scope, K>, M>> {
+) -> List<std.keyed_row.KeyedRow<std.key_relation.ScopedKey<Relation, Scope, K>, M>> {
   map(members, m =>
     std.keyed_row.KeyedRow {
       row_key: std.key_relation.key_relation_scoped_key(relation: relation, subject: m),
@@ -188,7 +188,7 @@ fn scoped_member_rows<M, Relation, Scope, K>(
 }
 
 fn membership_scoped_roster_build<M, Relation, Scope, K>(
-  members: std.types.List<M>,
+  members: List<M>,
   relation: std.key_relation.KeyRelation<Relation, M, Scope, K>,
 ) -> std.keyed_roster.KeyedRosterBuild<std.key_relation.ScopedKey<Relation, Scope, K>, M> {
   std.keyed_roster.keyed_roster_build(
@@ -213,8 +213,8 @@ fn scoped_hunk_to_action<M, Relation, Scope, K>(
 }
 
 fn membership_reconcile_scoped_built<M, Relation, Scope, K, State>(
-  desired_rows: std.types.List<std.keyed_row.KeyedRow<std.key_relation.ScopedKey<Relation, Scope, K>, M>>,
-  observed_rows: std.types.List<std.keyed_row.KeyedRow<std.key_relation.ScopedKey<Relation, Scope, K>, M>>,
+  desired_rows: List<std.keyed_row.KeyedRow<std.key_relation.ScopedKey<Relation, Scope, K>, M>>,
+  observed_rows: List<std.keyed_row.KeyedRow<std.key_relation.ScopedKey<Relation, Scope, K>, M>>,
   resource: std.key_relation.KeyedResourceRelation<Relation, M, Scope, K, State>,
   ownership_of: fn(M) -> gunbc.ownership.Ownership?,
 ) -> gunbc.membership_reconcile.MembershipPlan<M, std.key_relation.ScopedKey<Relation, Scope, K>> {
@@ -232,8 +232,8 @@ fn membership_reconcile_scoped_built<M, Relation, Scope, K, State>(
 }
 
 fn membership_reconcile_scoped<M, Relation, Scope, K, State>(
-  desired: std.types.List<M>,
-  observed: std.types.List<M>,
+  desired: List<M>,
+  observed: List<M>,
   resource: std.key_relation.KeyedResourceRelation<Relation, M, Scope, K, State>,
   ownership_of: fn(M) -> gunbc.ownership.Ownership?,
 ) -> gunbc.membership_reconcile.MembershipReconcileScopedOutcome<M, Relation, Scope, K> {

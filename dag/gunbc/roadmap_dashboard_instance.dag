@@ -931,7 +931,7 @@ fn dashboard_source_seed_ready(
 
 type DashboardInstanceReconcile
   = DashboardInstanceConverged
-  | DashboardInstanceApply { plan: std.types.List<DashboardInstanceProvisionOp> }
+  | DashboardInstanceApply { plan: List<DashboardInstanceProvisionOp> }
   | DashboardInstanceRefused { reason: std.types.NonEmptyStr }
 
 // THE REFUSAL CHANNEL IS READ BEFORE ANY FIELD, because after a refused probe no field in the record is evidence. Every branch below reasons from Bools — origin present, source present, health current — and each of those is false when the probe could not run just as surely as when the thing is genuinely missing. Reaching them with an unread refusal means deriving a plan from an observation that never happened.\n\nThe order is the whole point. Placing this check second, after the ownership law, would already be too late for anything the ownership law consults; placing it first means a transport failure produces one refusal naming what could not be observed, rather than a confident Apply plan built to create files that may well already exist.\n\nIt refuses rather than retrying or widening. A probe that could not run is not a slow probe, and a reconcile that responded by planning the superset — create everything, it is safe if it already exists — would be the absorbing fallback wearing a plausible justification.
@@ -1000,7 +1000,7 @@ type DashboardInstanceRetractOp
   | DashboardPreserveSourceBundle { path: std.types.FilePath }
 
 type DashboardInstanceRetract
-  = DashboardInstanceRetractPlan { plan: std.types.List<DashboardInstanceRetractOp> }
+  = DashboardInstanceRetractPlan { plan: List<DashboardInstanceRetractOp> }
   | DashboardInstanceRetractRefused { reason: std.types.NonEmptyStr }
 
 data dashboard_instance_retract_note: String = "Retraction is modeled independently from provisioning and is deliberately narrower than recursive deletion. Existing-repo instances (including production) are not owned by this model and refuse retraction. Isolated bundle-seeded instances stop only their named service, refuse while any attempt worktree remains, remove the reproducible source clone and local origin, and preserve the staged bundle as the recovery anchor. Provider state is referenced secret state and is never in the retract plan."

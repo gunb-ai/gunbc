@@ -229,8 +229,8 @@ type ServedRouteTable<H> {
 
 type RouteSelection<H>
   = SelectedStatic { route: extdeps.http.server.ServedStaticRoute }
-  | SelectedDynamic { handler: H, params: std.types.List<std.http_path.PathParamBinding> }
-  | MethodNotAllowed { allowed: std.types.List<std.types.HttpMethod> }
+  | SelectedDynamic { handler: H, params: List<std.http_path.PathParamBinding> }
+  | MethodNotAllowed { allowed: List<std.types.HttpMethod> }
   | NoRouteMatched
 
 fn served_route_method<H>(r: extdeps.http.server.ServedRoute<H>) -> std.types.HttpMethod {

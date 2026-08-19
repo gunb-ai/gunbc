@@ -44,7 +44,7 @@ data coresite_ny3: extdeps.colo.types.ColoFacilityRow = extdeps.colo.types.ColoF
   facility_note: "Second Secaucus building on the operator's New York campus listing, read 2026-08-18.",
 }
 
-data coresite_facilities: std.types.List<extdeps.colo.types.ColoFacilityRow> = [coresite_ny2, coresite_ny3]
+data coresite_facilities: List<extdeps.colo.types.ColoFacilityRow> = [coresite_ny2, coresite_ny3]
 
 data coresite_retail_rates: extdeps.colo.types.RetailRateStanding = extdeps.colo.types.RatesQuoteOnly {
   contact_route: "coresite.com sales",

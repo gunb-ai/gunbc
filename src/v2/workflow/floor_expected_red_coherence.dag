@@ -27,7 +27,7 @@ type ChunkCoherenceRefusal
 
 type ChunkCoherenceVerdict
   = ChunkCoherenceCoherent { checked_chunk_count: Int, checked_identity_count: Int }
-  | ChunkCoherenceRefused { causes: std.types.List<ChunkCoherenceRefusal> }
+  | ChunkCoherenceRefused { causes: List<ChunkCoherenceRefusal> }
 
 // The refusal message a maintainer meets when a chunk body authors an identity the
 // evaluated roster does not contain. It names WHY the mismatch is dangerous to paper
@@ -67,8 +67,8 @@ fn chunk_short_name_linked(node: v2.std.node.Node, chunk: ChunkDeclRef) -> Bool 
 fn chunk_authored_identities_against_roster(
   node: v2.std.node.Node,
   chunk: ChunkDeclRef,
-  roster: std.types.List<String>
-) -> std.types.List<ChunkCoherenceRefusal> {
+  roster: List<String>
+) -> List<ChunkCoherenceRefusal> {
   let authored = v2.std.decl_facts_skeleton.node_skeleton_authored_non_construction_atom_lexemes(node: node)
   v2.std.algebra.list_reverse(xs: fold(authored, init: std.algebra.Empty, f: fn(acc, identity) {
     if v2.std.algebra.contains(xs: roster, item: identity, eq: fn(a, b) { a == b }) {
@@ -90,9 +90,9 @@ fn chunk_authored_identities_against_roster(
 }
 
 fn all_checked_chunk_authored_identities(
-  facts: std.types.List<v2.std.decl_index.DeclFact>,
-  chunks: std.types.List<ChunkDeclRef>
-) -> std.types.List<String> {
+  facts: List<v2.std.decl_index.DeclFact>,
+  chunks: List<ChunkDeclRef>
+) -> List<String> {
   v2.std.algebra.list_reverse(xs: fold(chunks, init: std.algebra.Empty, f: fn(acc, chunk) {
     let resolution = v2.std.decl_facts_skeleton.resolve_decl_fact_by_qualified_name(facts: facts, qn: chunk.qualified_name)
     match v2.std.decl_facts_skeleton.decl_fact_skeleton_for_resolution(resolution: resolution) {
@@ -110,10 +110,10 @@ fn all_checked_chunk_authored_identities(
 }
 
 fn roster_identities_missing_from_authored_chunks(
-  facts: std.types.List<v2.std.decl_index.DeclFact>,
-  chunks: std.types.List<ChunkDeclRef>,
-  roster: std.types.List<String>
-) -> std.types.List<ChunkCoherenceRefusal> {
+  facts: List<v2.std.decl_index.DeclFact>,
+  chunks: List<ChunkDeclRef>,
+  roster: List<String>
+) -> List<ChunkCoherenceRefusal> {
   let union_authored = all_checked_chunk_authored_identities(facts: facts, chunks: chunks)
   v2.std.algebra.list_reverse(xs: fold(roster, init: std.algebra.Empty, f: fn(acc, identity) {
     if v2.std.algebra.contains(xs: union_authored, item: identity, eq: fn(a, b) { a == b }) {
@@ -146,7 +146,7 @@ fn roster_identities_missing_from_authored_chunks(
 //
 // BLIND SPOT this scope creates, named rather than left implicit: a chunk that is
 // declared in the checked module (e.g. floor_expected_red.dag) but is absent from
-// the call site's `chunks: std.types.List<ChunkDeclRef>` roster is invisible to this check --
+// the call site's `chunks: List<ChunkDeclRef>` roster is invisible to this check --
 // it is not one of the `facts` this function ever resolves, so it can neither
 // contribute a cause nor be reported missing. Such an omission returns
 // ChunkCoherenceCoherent exactly as if the chunk had never existed, which is the
@@ -164,10 +164,10 @@ fn roster_identities_missing_from_authored_chunks(
 // angle rather than the roster-content angle, and it dissolves with that work's
 // preparation-time consumer, not separately.
 fn floor_expected_red_chunk_coherence_check(
-  facts: std.types.List<v2.std.decl_index.DeclFact>,
-  chunks: std.types.List<ChunkDeclRef>,
+  facts: List<v2.std.decl_index.DeclFact>,
+  chunks: List<ChunkDeclRef>,
   aggregator_qualified_name: String,
-  evaluated_roster: std.types.List<String>
+  evaluated_roster: List<String>
 ) -> ChunkCoherenceVerdict {
   let aggregator_resolution = v2.std.decl_facts_skeleton.resolve_decl_fact_by_qualified_name(facts: facts, qn: aggregator_qualified_name)
   let aggregator_causes = match aggregator_resolution {

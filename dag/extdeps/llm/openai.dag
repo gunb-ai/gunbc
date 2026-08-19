@@ -78,7 +78,7 @@ type OpenAiChatMessageRole = System | Developer | User | Assistant | Tool | Func
 
 type OpenAiChatMessageContent
   = OpenAiChatMessageText { text: String }
-  | OpenAiChatMessageParts { parts: std.types.List<OpenAiChatMessagePart> }
+  | OpenAiChatMessageParts { parts: List<OpenAiChatMessagePart> }
 
 type OpenAiChatMessageImageUrl {
   url: String
@@ -93,7 +93,7 @@ type OpenAiChatMessage
   = OpenAiChatMessageSystem { content: OpenAiChatMessageContent }
   | OpenAiChatMessageDeveloper { content: OpenAiChatMessageContent }
   | OpenAiChatMessageUser { content: OpenAiChatMessageContent }
-  | OpenAiChatMessageAssistant { content: OpenAiChatMessageContent?, tool_calls: std.types.List<ToolCall>?, function_call: FunctionCall? }
+  | OpenAiChatMessageAssistant { content: OpenAiChatMessageContent?, tool_calls: List<ToolCall>?, function_call: FunctionCall? }
   | OpenAiChatMessageTool { content: OpenAiChatMessageContent, tool_call_id: String }
   | OpenAiChatMessageFunction { content: String, name: String }
 

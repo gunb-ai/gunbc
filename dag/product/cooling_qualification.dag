@@ -58,7 +58,7 @@ type CoolingCatalogVerdict
     }
 
 fn cooler_supports_baseboard(
-  supported: std.types.List<extdeps.boards.types.BaseboardModel>,
+  supported: List<extdeps.boards.types.BaseboardModel>,
   baseboard_model: extdeps.boards.types.BaseboardModel,
 ) -> std.types.Bool {
   if supported.length() == 0 {
@@ -169,14 +169,14 @@ fn cooling_catalog_verdict(
 // wrong inventory must never yield a thermal admission.
 fn installed_cooling_matches_for_host(
   host: product.placement_supply.HostIdentity,
-  realizations: std.types.List<InstalledCoolingRealization>,
-) -> std.types.List<InstalledCoolingRealization> {
+  realizations: List<InstalledCoolingRealization>,
+) -> List<InstalledCoolingRealization> {
   filter(realizations, r => r.host == host)
 }
 
 fn installed_cooling_verdict_for_host(
   host: product.placement_supply.HostIdentity,
-  realizations: std.types.List<InstalledCoolingRealization>,
+  realizations: List<InstalledCoolingRealization>,
 ) -> CoolingCatalogVerdict {
   let matches = installed_cooling_matches_for_host(host: host, realizations: realizations)
   if count(matches) == 0 {

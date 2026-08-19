@@ -76,7 +76,7 @@ type CallSemantics
 type MethodSemantics
   = PlainMethodSemantics
   | AlgebraMethodSemantics { method_def: v1.std.core.Node, fold_accumulator_type: v1.std.core.Node?, size_effect: std.algebra.CollectionSizeEffect?, cost_shape: std.algebra.CostShape?, algebra_template: std.algebra.AlgebraFieldTemplate? }
-  | ServiceMethodSemantics { service_name: String, op_params: std.types.List<v1.std.core.Node> }
+  | ServiceMethodSemantics { service_name: String, op_params: List<v1.std.core.Node> }
 
 type ExprErrorKind = ParseRecoveryError | SemanticExprError | InternalExprError | CensusHeadsBodyStripped
 
@@ -86,7 +86,7 @@ type ExprData
   | ExprError { kind: v1.std.core.ExprErrorKind, message: String }
   | ExprVar { binding_kind: v1.std.core.VarBindingKind? }
   | ExprFieldAccess { summary: v1.std.core.FieldSummary? }
-  | ExprCall { call_semantics: v1.std.core.CallSemantics?, descent_evidence: std.types.List<std.induction.SubValueRelation>? }
+  | ExprCall { call_semantics: v1.std.core.CallSemantics?, descent_evidence: List<std.induction.SubValueRelation>? }
   | ExprMethodCall { method_semantics: v1.std.core.MethodSemantics? }
   | ExprMatch
   | ExprIf
@@ -107,7 +107,7 @@ type ExprData
 type MatchPattern
   = Bind { declaration: v1.std.core.Node }
   | LitPattern { value: std.syntax.LiteralValue }
-  | VariantPattern { name: String, parent_enum: String?, field_bindings: std.types.List<v1.std.core.Node> }
+  | VariantPattern { name: String, parent_enum: String?, field_bindings: List<v1.std.core.Node> }
   | Wildcard
 
 type UnaryOpKind = Not | Neg
@@ -142,8 +142,8 @@ type CompilerDiagnostic
   | ReceiverTypeUnestablished { method: String, span: std.types.SourceSpan }
   | FrontierOccurrenceBudgetExceeded { method: String, receiver_type: String, declared: Int, observed: Int, span: std.types.SourceSpan }
   | MissingField       { field: String, type_name: String, span: std.types.SourceSpan }
-  | NonExhaustiveMatch { missing: std.types.List<String>, span: std.types.SourceSpan }
-  | CircularDependency { modules: std.types.List<String>, span: std.types.SourceSpan }
+  | NonExhaustiveMatch { missing: List<String>, span: std.types.SourceSpan }
+  | CircularDependency { modules: List<String>, span: std.types.SourceSpan }
   | DuplicateModule    { name: String, span: std.types.SourceSpan }
   | MissingAnnotation  { fn_name: String, what: String, span: std.types.SourceSpan }
   | ParseError         { message: String, span: std.types.SourceSpan }
@@ -163,8 +163,8 @@ type CompilerDiagnostic
       span: std.types.SourceSpan
     }
   | UnlistedImportUse { name: String, span: std.types.SourceSpan }
-  | AmbiguousReference { name: String, candidates: std.types.List<String>, span: std.types.SourceSpan }
-  | CallArgumentNameUnknown { callee: String, argument: String, declared: std.types.List<String>, span: std.types.SourceSpan }
+  | AmbiguousReference { name: String, candidates: List<String>, span: std.types.SourceSpan }
+  | CallArgumentNameUnknown { callee: String, argument: String, declared: List<String>, span: std.types.SourceSpan }
   | CallPositionalSurplus { callee: String, supplied: Int, capacity: Int, span: std.types.SourceSpan }
   | CallArgumentDuplicate { callee: String, argument: String, span: std.types.SourceSpan }
   | CallPositionalDeficit { callee: String, parameter: String, supplied: Int, required: Int, span: std.types.SourceSpan }

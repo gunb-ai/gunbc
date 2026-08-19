@@ -71,7 +71,7 @@ fn state_durability_boundary_requirements(
 
 fn state_durability_boundary_requirement_list(
   requirements: std.state_durability.StateDurabilityBoundaryRequirements,
-) -> std.types.List<std.state_durability.StateDurabilityBoundary> {
+) -> List<std.state_durability.StateDurabilityBoundary> {
   append([requirements.first], items: requirements.additional_unique)
 }
 
@@ -155,7 +155,7 @@ fn state_definition_linkage_verdict(
 
 fn state_durability_definition_linkage_verdicts<Target, ReadbackSubject>(
   admission: std.state_durability.StateDurabilityAdmission<Target, ReadbackSubject>,
-) -> std.types.List<std.state_durability.StateDefinitionLinkageVerdict> {
+) -> List<std.state_durability.StateDefinitionLinkageVerdict> {
   [
     state_definition_linkage_verdict(
       role: RealizationProjectionDefinition,
@@ -186,7 +186,7 @@ fn state_durability_definition_linkage_verdicts<Target, ReadbackSubject>(
 
 fn state_durability_definition_linkage_unavailable_assertions(
   verdicts: List<std.state_durability.StateDefinitionLinkageVerdict>,
-) -> std.types.List<std.state_durability.StateDefinitionCallerAssertion> {
+) -> List<std.state_durability.StateDefinitionCallerAssertion> {
   fold(
     verdicts,
     init: [],

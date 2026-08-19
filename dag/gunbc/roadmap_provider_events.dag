@@ -28,7 +28,7 @@ type CodexProviderEvent {
 }
 
 type CodexEventParse
-  = CodexEventsParsed { events: std.types.List<CodexProviderEvent> }
+  = CodexEventsParsed { events: List<CodexProviderEvent> }
   | CodexEventsRefused {
       events_before_refusal: List<CodexProviderEvent>,
       line_number: Int,

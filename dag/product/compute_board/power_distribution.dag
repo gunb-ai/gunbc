@@ -67,7 +67,7 @@ type PowerRefusal
 
 type PowerAdmission
   = PowerIntentAdmitted { intent: BoardPowerIntent }
-  | PowerIntentRefused { causes: std.types.List<PowerRefusal> }
+  | PowerIntentRefused { causes: List<PowerRefusal> }
 
 fn rail_is(a: extdeps.programmable_logic.ice40.supply.Ice40SupplyRail, b: extdeps.programmable_logic.ice40.supply.Ice40SupplyRail) -> Bool {
   supply_rails_equal(a: a, b: b)

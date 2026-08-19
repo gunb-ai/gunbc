@@ -154,7 +154,7 @@ type CacheRejectReason
 
 type CacheLookupSemantics
   = ExactKeyOnly
-  | PrefixFallback { ordered_prefixes: std.types.List<std.types.NonEmptyStr> }
+  | PrefixFallback { ordered_prefixes: List<std.types.NonEmptyStr> }
   | NativeInternalLookup
   | ContentAddressLookup
 

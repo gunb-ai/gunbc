@@ -23,7 +23,7 @@ type HostStandupPhase
   | Assimilation { phase: HostStandupAssimilationPhase }
 
 type PhaseDisposition
-  = ModeledCompose { authorities: std.types.List<std.decl_ref.DeclarationRef> }
+  = ModeledCompose { authorities: List<std.decl_ref.DeclarationRef> }
   | DeclaredGap {
       interim_realization: String
       refusal: String

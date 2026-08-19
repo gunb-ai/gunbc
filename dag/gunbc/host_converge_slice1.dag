@@ -245,7 +245,7 @@ type HostConvergeSlice1UnitOutcome
   | HostConvergeSlice1UnitRefused { unit: std.types.NonEmptyStr, reason: String }
 
 type HostConvergeSlice1HostResult
-  = HostConvergeSlice1HostEnumerated { host: product.placement_supply.HostIdentity, outcomes: std.types.List<HostConvergeSlice1UnitOutcome> }
+  = HostConvergeSlice1HostEnumerated { host: product.placement_supply.HostIdentity, outcomes: List<HostConvergeSlice1UnitOutcome> }
   | HostConvergeSlice1HostRefused { reason: String }
   | HostConvergeSlice1HostEnumerationMismatch { mismatch: HostConvergeSlice1EnumerationMismatch }
 

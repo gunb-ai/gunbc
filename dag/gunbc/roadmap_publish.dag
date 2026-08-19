@@ -55,7 +55,7 @@ fn render_pull_request_read_failure(cause: PullRequestReadFailure) -> String {
 }
 
 type PullRequestObservation
-  = PullRequestsRead { pulls: std.types.List<extdeps.github.pulls.PullRequest> }
+  = PullRequestsRead { pulls: List<extdeps.github.pulls.PullRequest> }
   | PullRequestsUnreadable { cause: PullRequestReadFailure }
 
 data remote_branch_read_failure_note: String = "THREE CAUSES, THREE REMEDIES, PREVIOUSLY ONE STRING. RemoteBranchesUnreadable carried `detail: String` and three genuinely different failures were flattened into it at the point of construction: the ref advertisement was REFUSED by the transport, an advertised LINE did not parse, or an advertised ref PROJECTED to an empty branch name. Those are not three phrasings of one event. The first is an environment fact and says nothing about the repository; the second means the remote spoke a format this parser does not accept; the third means a ref exists whose name survives advertisement but not projection. A caller handed a sentence can only re-derive which of the three it holds by matching on the prose, which is the classifier-by-substring move the transport-anemia plan exists to remove.\\n\\nTHE ARGV WENT WITH IT, and that is the sharper half. Each of those three sentences was built by concatenating the literal `git ls-remote --heads` onto the remote name, so the command SPELLING was load-bearing in a domain refusal three times over. A domain layer reaches for a command spelling exactly when it has no stable operation identity to name; the operation is git.Core.LsRemoteHeads and naming it is both stabler and truer, since the spelling is one realization of it and will change when the invocation is derived rather than hand-written.\\n\\nSO THE CAUSE IS TYPED AND THE PROSE MOVES TO A RENDERER. render_remote_branch_read_failure is the only function here that produces a sentence, and it names the operation rather than the argv. What it renders is recoverable from the fields, which is what makes the rendering a projection rather than the authority.\\n\\nWHAT THIS DOES NOT FIX, stated so the seam is visible: RefAdvertisementRefused still carries exit_code and stderr as an Int and a String, because the typed process observation that would replace them does not exist yet — it is the substrate half of this same plan (Lane C) and is in flight separately. This arm is therefore honest about WHICH failure occurred while still anemic about what the process did. The other two arms have no such dependency: they are decided by this module's own decoding, downstream of the process, and are fully typed here."
@@ -63,7 +63,7 @@ data remote_branch_read_failure_note: String = "THREE CAUSES, THREE REMEDIES, PR
 type RemoteBranchReadFailure
   = RefAdvertisementRefused { remote: std.types.NonEmptyStr, exit_code: Int, stderr: String }
   | AdvertisedLineUnparsed { remote: std.types.NonEmptyStr, index: Int, line: String }
-  | AdvertisedRefProjectsEmptyBranch { remote: std.types.NonEmptyStr, ref_names: std.types.List<String> }
+  | AdvertisedRefProjectsEmptyBranch { remote: std.types.NonEmptyStr, ref_names: List<String> }
 
 data ls_remote_operation: v2.std.operation_argv.OperationRef = v2.std.operation_argv.OperationRef {
   path: "dag/extdeps/git/git.dag",
@@ -98,7 +98,7 @@ fn render_remote_branch_read_failure(cause: RemoteBranchReadFailure) -> String {
 }
 
 type RemoteBranchObservation
-  = RemoteBranchesRead { branches: std.types.List<RemoteBranch> }
+  = RemoteBranchesRead { branches: List<RemoteBranch> }
   | RemoteBranchesUnreadable { cause: RemoteBranchReadFailure }
 
 data remote_ref_identity_note: String = "A REMOTE REF NAME IS NOT A PUBLICATION (review correction, 2026-07-31). The previous cut observed remote branches as bare strings, so the branch-without-pull-request arm established only that a ref with the right NAME existed — which is exactly the exact-head thesis this module claims to enforce, abandoned on the one path that had no pull request to compare against. A branch left over from an earlier attempt, or one the worker pushed and then rewrote, satisfied it.\\n\\nSo the observation carries ref identity, and the arm splits: at the expected head, or diverged from it. The diverged arm matters most on this path precisely because there is no pull request whose head would otherwise reveal the mismatch."
@@ -410,7 +410,7 @@ type PublicationReceiptOutcome
       pr_head: std.types.CommitSha,
       url: std.types.NonEmptyStr,
     }
-  | ReceiptBindingAmbiguous { pr_numbers: std.types.List<Int> }
+  | ReceiptBindingAmbiguous { pr_numbers: List<Int> }
   | ReceiptRemoteBranchAtHeadWithoutPullRequest { head_sha: std.types.CommitSha }
   | ReceiptRemoteBranchHeadDiverged { remote_head: std.types.CommitSha }
   | ReceiptRemoteBranchBindingAmbiguous { refs_matched: Int }

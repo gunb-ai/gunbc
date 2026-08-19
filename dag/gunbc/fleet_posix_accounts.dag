@@ -421,7 +421,7 @@ fn fleet_posix_inference_service_sudo_grants() -> List<PosixSudoGrant> {
 // permitted but never required, and is never evidence of one principal.
 type PosixIdentityDomain
   = HostLocalIdentityDomain { host: product.placement_supply.HostIdentity }
-  | SharedNumericOwnershipDomain { identity: std.types.NonEmptyStr, members: std.types.List<product.placement_supply.HostIdentity> }
+  | SharedNumericOwnershipDomain { identity: std.types.NonEmptyStr, members: List<product.placement_supply.HostIdentity> }
 
 type PosixAccountOccurrence {
   host: product.placement_supply.HostIdentity
@@ -510,7 +510,7 @@ type PosixAccessObservation {
 type HostAccessOutcome
   = HostAccessGrounded { principal: GroundedPosixPrincipal }
   | HostAccessAccountNotGrounded { account_outcome: GroundedPosixPrincipalOutcome }
-  | HostAccessKeyPopulationDrifted { expected: std.types.List<extdeps.ssh.SshPublicKey>, observed: std.types.List<extdeps.ssh.SshPublicKey> }
+  | HostAccessKeyPopulationDrifted { expected: List<extdeps.ssh.SshPublicKey>, observed: List<extdeps.ssh.SshPublicKey> }
   | HostAccessPasswordLoginStillAdmitted
   | HostAccessPrivilegeNotProven
 

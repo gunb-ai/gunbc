@@ -1544,9 +1544,9 @@ fn list_head_and_tail(xs: List<v2.std.node.Node>, node: v2.std.node.Node) -> v2.
 }
 
 type TypeExprTranslateAcc
-  = TypeExprTranslateSlots { slots: std.types.List<v2.std.compilers.target_model.TargetTypeExprFieldSlot> }
-  | TypeExprTranslateVariants { variants: std.types.List<v2.std.compilers.target_model.TargetTypeExprVariantSlot> }
-  | TypeExprTranslatePositional { items: std.types.List<v2.std.node.Node> }
+  = TypeExprTranslateSlots { slots: List<v2.std.compilers.target_model.TargetTypeExprFieldSlot> }
+  | TypeExprTranslateVariants { variants: List<v2.std.compilers.target_model.TargetTypeExprVariantSlot> }
+  | TypeExprTranslatePositional { items: List<v2.std.node.Node> }
   | TypeExprTranslateDone { node: v2.std.node.Node }
 
 fn translate_algebra_finalize(
@@ -3931,7 +3931,7 @@ type TranslateDiagnosticReason
   | TargetFunctionSignatureRealizationLookupMiss
   | TargetTypeExprEmittedShapeMalformed
 
-fn translate_diagnostic_reason_variants() -> std.types.List<TranslateDiagnosticReason> {
+fn translate_diagnostic_reason_variants() -> List<TranslateDiagnosticReason> {
   [
     TargetBundleMalformed,
     TargetBundleDuplicateEdge,
@@ -3999,7 +3999,7 @@ fn translate_diagnostic_reason_from_symbol(sym: v2.std.node.Symbol) -> v2.std.op
   )
 }
 
-fn translate_diagnostic_reason_roster() -> std.types.List<v2.std.node.Symbol> {
+fn translate_diagnostic_reason_roster() -> List<v2.std.node.Symbol> {
   fold(translate_diagnostic_reason_variants(), init: std.algebra.Empty, f: fn(acc, variant) {
     v2.std.algebra.list_snoc_item(
       xs: acc,

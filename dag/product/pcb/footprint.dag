@@ -34,7 +34,7 @@ type Pad {
 // rather than prose that rots silently.
 type Footprint {
   component: product.electrical.connectivity.ComponentInstanceIdentity
-  pads: std.types.List<Pad>
+  pads: List<Pad>
   drawing_authority: std.decl_ref.DeclarationRef
 }
 
@@ -46,11 +46,11 @@ fn pad_terminal_ref(f: Footprint, p: Pad) -> product.electrical.connectivity.Ele
   product.electrical.connectivity.terminal_ref(component: f.component, terminal: p.terminal)
 }
 
-fn footprint_terminal_refs(f: Footprint) -> std.types.List<product.electrical.connectivity.ElectricalTerminalRef> {
+fn footprint_terminal_refs(f: Footprint) -> List<product.electrical.connectivity.ElectricalTerminalRef> {
   map(f.pads, p => pad_terminal_ref(f: f, p: p))
 }
 
-fn footprints_terminal_refs(fs: std.types.List<Footprint>) -> std.types.List<product.electrical.connectivity.ElectricalTerminalRef> {
+fn footprints_terminal_refs(fs: List<Footprint>) -> List<product.electrical.connectivity.ElectricalTerminalRef> {
   v2.std.algebra.fold_list(
     xs: fs,
     empty: no_terminal_refs,
@@ -58,9 +58,9 @@ fn footprints_terminal_refs(fs: std.types.List<Footprint>) -> std.types.List<pro
   )
 }
 
-data no_terminal_refs: std.types.List<product.electrical.connectivity.ElectricalTerminalRef> = []
+data no_terminal_refs: List<product.electrical.connectivity.ElectricalTerminalRef> = []
 
-fn terminal_ref_is_padded(refs: std.types.List<product.electrical.connectivity.ElectricalTerminalRef>, t: product.electrical.connectivity.ElectricalTerminalRef) -> Bool {
+fn terminal_ref_is_padded(refs: List<product.electrical.connectivity.ElectricalTerminalRef>, t: product.electrical.connectivity.ElectricalTerminalRef) -> Bool {
   count(filter(refs, r => product.electrical.connectivity.terminal_ref_equal(a: r, b: t))) > 0
 }
 
@@ -75,7 +75,7 @@ fn terminal_has_duplicate_pad(f: Footprint, t: product.electrical.connectivity.T
   count(filter(f.pads, p => (p.terminal as std.types.NonEmptyStr) == (t as std.types.NonEmptyStr))) > 1
 }
 
-fn footprint_duplicate_terminals(f: Footprint) -> std.types.List<product.electrical.connectivity.TerminalIdentity> {
+fn footprint_duplicate_terminals(f: Footprint) -> List<product.electrical.connectivity.TerminalIdentity> {
   map(
     filter(f.pads, p => terminal_has_duplicate_pad(f: f, t: p.terminal)),
     p => p.terminal,
@@ -100,23 +100,23 @@ type FootprintRefusalCause
 
 type AdmittedFootprints sole_constructor {
   board: std.decl_ref.DeclarationRef
-  footprints: std.types.List<Footprint>
+  footprints: List<Footprint>
 }
 
 type FootprintAdmission
   = FootprintsAdmitted { admitted: AdmittedFootprints }
-  | FootprintsRefused { causes: std.types.List<FootprintRefusalCause> }
+  | FootprintsRefused { causes: List<FootprintRefusalCause> }
 
-data no_footprint_causes: std.types.List<FootprintRefusalCause> = []
+data no_footprint_causes: List<FootprintRefusalCause> = []
 
-fn net_member_causes(refs: std.types.List<product.electrical.connectivity.ElectricalTerminalRef>, n: product.electrical.connectivity.ElectricalNet) -> std.types.List<FootprintRefusalCause> {
+fn net_member_causes(refs: List<product.electrical.connectivity.ElectricalTerminalRef>, n: product.electrical.connectivity.ElectricalNet) -> List<FootprintRefusalCause> {
   map(
     filter(n.members, m => !terminal_ref_is_padded(refs: refs, t: m)),
     m => NetMemberHasNoPad { net: n.identity, component: m.component, terminal: m.terminal },
   )
 }
 
-fn duplicate_pad_causes(f: Footprint) -> std.types.List<FootprintRefusalCause> {
+fn duplicate_pad_causes(f: Footprint) -> List<FootprintRefusalCause> {
   map(
     footprint_duplicate_terminals(f: f),
     t => TerminalHasTwoPads { component: f.component, terminal: t },
@@ -126,11 +126,11 @@ fn duplicate_pad_causes(f: Footprint) -> std.types.List<FootprintRefusalCause> {
 // A COMPONENT WITH TWO FOOTPRINTS IS TWO ANSWERS TO ONE QUESTION. Which pads a component has is a
 // fact with one authority; two rows for one component identity means two drawings were read and
 // neither was chosen, and every downstream join would silently take whichever came first.
-fn component_has_duplicate_footprint(fs: std.types.List<Footprint>, c: product.electrical.connectivity.ComponentInstanceIdentity) -> Bool {
+fn component_has_duplicate_footprint(fs: List<Footprint>, c: product.electrical.connectivity.ComponentInstanceIdentity) -> Bool {
   count(filter(fs, f => product.electrical.connectivity.component_identity_eq(a: f.component, b: c))) > 1
 }
 
-fn duplicate_component_causes(fs: std.types.List<Footprint>) -> std.types.List<FootprintRefusalCause> {
+fn duplicate_component_causes(fs: List<Footprint>) -> List<FootprintRefusalCause> {
   map(
     filter(fs, f => component_has_duplicate_footprint(fs: fs, c: f.component)),
     f => TwoFootprintsForOneComponent { component: f.component },
@@ -140,7 +140,7 @@ fn duplicate_component_causes(fs: std.types.List<Footprint>) -> std.types.List<F
 // A PAD SELECTED AGAINST A DIFFERENT BOARD IS NOT THIS BOARD'S COPPER. The layer reference carries
 // its stackup binding, so this is the same join copper performs on its realizations — asked here
 // because a footprint reaches copper before any realization does.
-fn foreign_pad_causes(board: std.decl_ref.DeclarationRef, f: Footprint) -> std.types.List<FootprintRefusalCause> {
+fn foreign_pad_causes(board: std.decl_ref.DeclarationRef, f: Footprint) -> List<FootprintRefusalCause> {
   map(
     filter(f.pads, p => p.layer.stackup_authority != board),
     p => PadSelectedAgainstAnotherStackup { component: f.component, terminal: p.terminal },
@@ -149,9 +149,9 @@ fn foreign_pad_causes(board: std.decl_ref.DeclarationRef, f: Footprint) -> std.t
 
 fn footprint_refusal_causes(
   board: std.decl_ref.DeclarationRef,
-  nets: std.types.List<product.electrical.connectivity.ElectricalNet>,
-  fs: std.types.List<Footprint>,
-) -> std.types.List<FootprintRefusalCause> {
+  nets: List<product.electrical.connectivity.ElectricalNet>,
+  fs: List<Footprint>,
+) -> List<FootprintRefusalCause> {
   let refs = footprints_terminal_refs(fs: fs)
   let unpadded = v2.std.algebra.fold_list(
     xs: nets,
@@ -171,7 +171,7 @@ fn footprint_refusal_causes(
   unpadded + duplicated + foreign + duplicate_component_causes(fs: fs)
 }
 
-fn mint_admitted_footprints(board: std.decl_ref.DeclarationRef, fs: std.types.List<Footprint>) -> FootprintAdmission
+fn mint_admitted_footprints(board: std.decl_ref.DeclarationRef, fs: List<Footprint>) -> FootprintAdmission
   admit_callers: [
     decl_ref(module_path: "product.pcb.footprint", decl_name: "admit_footprints"),
   ]
@@ -179,8 +179,8 @@ fn mint_admitted_footprints(board: std.decl_ref.DeclarationRef, fs: std.types.Li
 
 fn admit_footprints(
   board: std.decl_ref.DeclarationRef,
-  nets: std.types.List<product.electrical.connectivity.ElectricalNet>,
-  fs: std.types.List<Footprint>,
+  nets: List<product.electrical.connectivity.ElectricalNet>,
+  fs: List<Footprint>,
 ) -> FootprintAdmission {
   let causes = footprint_refusal_causes(board: board, nets: nets, fs: fs)
   if count(causes) > 0 {
@@ -190,7 +190,7 @@ fn admit_footprints(
   }
 }
 
-fn admitted_footprints_rows(a: AdmittedFootprints) -> std.types.List<Footprint> {
+fn admitted_footprints_rows(a: AdmittedFootprints) -> List<Footprint> {
   a.footprints
 }
 

@@ -32,7 +32,7 @@ type SerialField {
 
 type SerialValue
   = ScalarValue { text: String }
-  | RecordValue { fields: std.types.List<SerialField> }
+  | RecordValue { fields: List<SerialField> }
 
 type NamingConvention {
   type_case: NamingCase

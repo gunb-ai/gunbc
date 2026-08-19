@@ -62,7 +62,7 @@ data func_sig_lookup_outcome_note: String = "namespace-resolution-design.md 13 /
 type FuncSigLookup
   = FuncSigResolved { sig: v1.compiler.infer_sigs.ResolvedFuncSig }
   | FuncSigUnresolved
-  | FuncSigAmbiguous { candidates: std.types.List<String> }
+  | FuncSigAmbiguous { candidates: List<String> }
 
 type ChainSigScan {
   first_sig: v1.compiler.infer_sigs.ResolvedFuncSig?

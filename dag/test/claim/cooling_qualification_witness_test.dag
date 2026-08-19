@@ -226,7 +226,7 @@ test fn catalog_verdict_cannot_stand_in_for_runtime_thermal_evidence() -> std.ty
 
 data ambiguity_witness_note: String = "installed_cooling_verdict_for_host previously returned on the FIRST row whose host matched, so two cooler rows bound to one host were resolved by authoring order: one won silently and the other sat in the inventory affecting nothing. It presented as a clean Compatible. A host carries at most one heat-pickup realization, so two rows are an inventory error and must refuse rather than resolve. The control below is ORDER-INDEPENDENT on purpose - it asserts the same refusal with the duplicate pair in both orders, because a witness using a single ordering would pass just as well against the first-match-wins implementation it exists to refuse."
 
-data duplicate_cooling_ab: std.types.List<product.cooling_qualification.InstalledCoolingRealization> = [
+data duplicate_cooling_ab: List<product.cooling_qualification.InstalledCoolingRealization> = [
   srv3_installed_cooling,
   product.cooling_qualification.InstalledCoolingRealization {
     host: gunbc.fleet_physical_inventory.host_srv3,
@@ -237,7 +237,7 @@ data duplicate_cooling_ab: std.types.List<product.cooling_qualification.Installe
   },
 ]
 
-data duplicate_cooling_ba: std.types.List<product.cooling_qualification.InstalledCoolingRealization> = [
+data duplicate_cooling_ba: List<product.cooling_qualification.InstalledCoolingRealization> = [
   product.cooling_qualification.InstalledCoolingRealization {
     host: gunbc.fleet_physical_inventory.host_srv3,
     cooler_asset: gunbc.fleet_physical_inventory.cooler_srv3,

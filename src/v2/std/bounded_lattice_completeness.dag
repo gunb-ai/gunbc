@@ -157,7 +157,7 @@ fn infer_bounded_lattice_consumer_gate(
   }
 }
 
-fn partial_bounded_lattice_instances_in_tree(tree: v2.std.node.Node) -> std.types.List<v2.std.node.Node> {
+fn partial_bounded_lattice_instances_in_tree(tree: v2.std.node.Node) -> List<v2.std.node.Node> {
   fold_node(
     n: tree,
     algebra: v2.std.node.NodeFold {

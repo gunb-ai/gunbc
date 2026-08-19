@@ -116,7 +116,7 @@ fn keyed_roster_locate_duplicate<K, V>(
 }
 
 type KeyedRosterInsert<K, V>
-  = KeyedRosterInserted { rows: std.types.List<std.keyed_row.KeyedRow<K, V>> }
+  = KeyedRosterInserted { rows: List<std.keyed_row.KeyedRow<K, V>> }
   | KeyedRosterDuplicateKey {
       key: K
       existing: std.keyed_row.KeyedRow<K, V>
@@ -172,7 +172,7 @@ fn keyed_roster_insert_into_unique<K, V>(
 }
 
 type KeyedRosterBuild<K, V>
-  = KeyedRosterBuilt { rows: std.types.List<std.keyed_row.KeyedRow<K, V>> }
+  = KeyedRosterBuilt { rows: List<std.keyed_row.KeyedRow<K, V>> }
   | KeyedRosterBuildDuplicateKey {
       key: K
       first: std.keyed_row.KeyedRow<K, V>

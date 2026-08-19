@@ -40,7 +40,7 @@ data ampere_altra_l1_cache_geometry: extdeps.cpu.types.CpuL1CacheGeometry = extd
   line_size: ampere_altra_l1_line_size,
 }
 
-data ampere_altra_l1_cache_citations: std.types.List<extdeps.cpu.types.CacheGeometryCitation> = [
+data ampere_altra_l1_cache_citations: List<extdeps.cpu.types.CacheGeometryCitation> = [
   {
     field: "data_capacity_per_core"
     authority: ampere_altra_rev_a1_datasheet_authority
@@ -63,7 +63,7 @@ data ampere_altra_l2_cache_geometry: extdeps.cpu.types.CpuL2CacheGeometry = extd
   line_size: ampere_altra_l2_line_size,
 }
 
-data ampere_altra_l2_cache_citations: std.types.List<extdeps.cpu.types.CacheGeometryCitation> = [
+data ampere_altra_l2_cache_citations: List<extdeps.cpu.types.CacheGeometryCitation> = [
   {
     field: "capacity_per_core"
     authority: ampere_altra_rev_a1_datasheet_authority
@@ -82,7 +82,7 @@ data ampere_altra_max_l3_cache_geometry: extdeps.cpu.types.CpuL3CacheGeometry = 
   line_size: ampere_altra_l3_line_size,
 }
 
-data ampere_altra_max_l3_cache_citations: std.types.List<extdeps.cpu.types.CacheGeometryCitation> = [
+data ampere_altra_max_l3_cache_citations: List<extdeps.cpu.types.CacheGeometryCitation> = [
   {
     field: "capacity"
     authority: ampere_altra_rev_a1_datasheet_authority
@@ -100,7 +100,7 @@ data ampere_altra_classic_l3_cache_geometry: extdeps.cpu.types.CpuL3CacheGeometr
   line_size: ampere_altra_l3_line_size,
 }
 
-data ampere_altra_classic_l3_cache_citations: std.types.List<extdeps.cpu.types.CacheGeometryCitation> = [
+data ampere_altra_classic_l3_cache_citations: List<extdeps.cpu.types.CacheGeometryCitation> = [
   {
     field: "capacity"
     authority: ampere_altra_classic_rev_a1_datasheet_authority
@@ -145,7 +145,7 @@ data ampere_lga4926_socket: extdeps.cpu.types.CpuSocket = extdeps.cpu.types.CpuS
 
 // The citations sit beside the family socket they ground, not on each SKU row, because the fact
 // they cite is the family's.
-data socket_lga4926_citations: std.types.List<extdeps.cpu.types.SocketFactCitation> = [
+data socket_lga4926_citations: List<extdeps.cpu.types.SocketFactCitation> = [
   extdeps.cpu.types.SocketFactCitation {
     field: "package",
     authority: ampere_altra_rev_a1_datasheet_authority,
@@ -251,7 +251,7 @@ data altra_q8030_catalog: extdeps.cpu.types.CpuModelCatalogRow = extdeps.cpu.typ
 
 // THE MODULE'S OWN ROSTER OF CATALOG ROWS, for the same reason as the AMD side: one authority for
 // "every Ampere processor modelled here", edited beside the rows it names.
-data ampere_cpu_catalog_rows: std.types.List<extdeps.cpu.types.CpuModelCatalogRow> = [
+data ampere_cpu_catalog_rows: List<extdeps.cpu.types.CpuModelCatalogRow> = [
   altra_max_m12830_catalog,
   altra_q6430_catalog,
   altra_q8030_catalog,

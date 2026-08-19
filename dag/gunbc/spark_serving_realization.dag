@@ -764,7 +764,7 @@ type ServingDeploymentTarget {
 // to actuate a user-owned effect: it would read the empty list as work already done. The two states
 // are now different constructors, so that misreading has no representation to occur in.
 type EffectActuation
-  = ActuatedByEscalation { commands: std.types.List<std.types.NonEmptyStr> }
+  = ActuatedByEscalation { commands: List<std.types.NonEmptyStr> }
   | ActuatedByOwnerDirectly
 
 fn effect_actuation(
@@ -872,7 +872,7 @@ type ObservedGrantPopulation
 
 type EscalationShortfall
   = NoNewPrivilegeRequired
-  | NewPrivilegeRequired { first: std.types.NonEmptyStr, more: std.types.List<std.types.NonEmptyStr> }
+  | NewPrivilegeRequired { first: std.types.NonEmptyStr, more: List<std.types.NonEmptyStr> }
   | ShortfallUndecidable { cause: std.types.NonEmptyStr }
   | ShortfallEvidenceMismatch { cause: std.types.NonEmptyStr }
 

@@ -85,7 +85,7 @@ type HostBootStallSignature {
 type HostBootLoopCause
   = HostSelfResetOnError { code: std.types.NonEmptyStr }
   | SupervisorForcedReset { supervisor: HostBootSupervisor }
-  | LoopCauseConfounded { candidates: std.types.List<HostBootSupervisor> }
+  | LoopCauseConfounded { candidates: List<HostBootSupervisor> }
   | LoopCauseUnobserved
 
 // Discriminating a self-reset from a forced reset requires stopping the

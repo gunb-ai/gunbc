@@ -53,7 +53,7 @@ fn pad_at(layer: product.pcb.copper.CopperLayerRef, terminal: std.types.NonEmpty
   }
 }
 
-fn footprint_of(component: std.types.NonEmptyStr, pads: std.types.List<product.pcb.footprint.Pad>) -> product.pcb.footprint.Footprint {
+fn footprint_of(component: std.types.NonEmptyStr, pads: List<product.pcb.footprint.Pad>) -> product.pcb.footprint.Footprint {
   product.pcb.footprint.Footprint {
     component: product.electrical.connectivity.component_instance_identity(design: fixture_design, local_identity: component),
     pads: pads,
@@ -61,7 +61,7 @@ fn footprint_of(component: std.types.NonEmptyStr, pads: std.types.List<product.p
   }
 }
 
-fn net_over(members: std.types.List<product.electrical.connectivity.ElectricalTerminalRef>) -> std.types.List<product.electrical.connectivity.ElectricalNet> {
+fn net_over(members: List<product.electrical.connectivity.ElectricalTerminalRef>) -> List<product.electrical.connectivity.ElectricalNet> {
   [product.electrical.connectivity.ElectricalNet { identity: vcc, members: members }]
 }
 

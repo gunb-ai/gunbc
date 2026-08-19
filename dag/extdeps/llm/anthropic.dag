@@ -181,8 +181,8 @@ data current_api_version: AnthropicApiVersion = {
 }
 
 type AnthropicChatMessage
-  = UserMessage { content: std.types.List<AnthropicUserContentBlock> }
-  | AssistantMessage { content: std.types.List<AnthropicAssistantContentBlock> }
+  = UserMessage { content: List<AnthropicUserContentBlock> }
+  | AssistantMessage { content: List<AnthropicAssistantContentBlock> }
 
 type AnthropicMessages200Citation
   = CharLocation { cited_text: String, document_index: Int, document_title: String?, file_id: String?, start_char_index: Int, end_char_index: Int }
@@ -192,7 +192,7 @@ type AnthropicMessages200Citation
   | SearchResultLocation { cited_text: String, source: String, title: String?, search_result_index: Int, start_block_index: Int, end_block_index: Int }
 
 type AnthropicMessages200ContentBlock
-  = MessagesTextBlock { text: String, citations: std.types.List<AnthropicMessages200Citation>? }
+  = MessagesTextBlock { text: String, citations: List<AnthropicMessages200Citation>? }
   | MessagesThinkingBlock { thinking: String, signature: String }
   | MessagesRedactedThinkingBlock { data: String }
   | MessagesToolUseBlock { id: String, name: String, input: Json, caller: Json? }
