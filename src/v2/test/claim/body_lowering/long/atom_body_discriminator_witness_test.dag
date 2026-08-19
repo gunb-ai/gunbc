@@ -1,4 +1,4 @@
-module v2.test.claim.body_lowering_atom_body_discriminator_witness
+module v2.test.claim.long.body_lowering_atom_body_discriminator_witness
 
 import v2.test.claim.body_lowering.atom_body_discriminator_helpers {
   atom_body_discriminator_batched_receipt_holds

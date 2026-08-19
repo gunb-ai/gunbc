@@ -5,7 +5,7 @@ module test.claim.dissolution_census_mechanism_witness_test
 // bound/pending/fired/unbound classification proven on a planted roster, so
 // this file never imports gunbc.census_closure_frontier or the ~20-module
 // extdeps fan-in it concatenates. The breadth-preserving half stays the
-// irreducible census in dag/test/claim/dissolution_census_witness_test.dag.
+// irreducible census in dag/test/claim/long/dissolution_census_witness_test.dag.
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { bound_dissolution, unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl, fold_frontier_expiry, frontier_expiry_clean }

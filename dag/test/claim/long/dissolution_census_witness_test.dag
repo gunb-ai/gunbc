@@ -1,4 +1,4 @@
-module test.claim.dissolution_census_witness_test
+module test.claim.long.dissolution_census_witness_test
 
 // Breadth-preserving half of the dissolution-census split (DESIGN.md
 // "witness cost derives from purpose", operator ruling 2026-08-04): the
