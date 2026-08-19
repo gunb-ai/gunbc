@@ -1,0 +1,27 @@
+module test.claim.annotation_erasure_emission_witness_test
+
+data annotation_erasure_emission_migration_note: String = "Migrated from src/v1/tests/claim/v1_annotation_target_emission_test.dag (dead witness tree triage, dashboard node adhoc-9b80ec49-d63). That file's own NEXT TRIGGER named exactly what was missing: 'a .dag-reachable surface returning emitted files for a synthetic source... then all three arms enroll together in this file and this receipt dissolves.' compile_dag_rust_emit_check is that surface: it compiles a synthetic source through the real v1 pipeline and lets a witness assert on the emitted Rust text via includes/excludes. It does not hand back raw bytes for a diff, so this is not a byte-identical replay of the 2026-08-05 host-execution receipt (annotated vs bare fixtures, `diff -r` reporting zero difference) — that receipt stands as historical evidence and is not restated as a live claim. What migrates is the same D-C property 4 argument (prose reaches the target program nowhere) using excludes on the literal prose strings, paired with a non-vacuity control proving the check tracks real emitted content rather than passing on any input."
+
+data annotated_source_alpha_marker_a: String = "module emit_probe_one\n\n// prose about alpha\ndata alpha: Int = 424242\n\n// prose about probe\nfn probe(x: Int) -> Int {\n  x + alpha\n}\n"
+
+data annotated_source_alpha_marker_b: String = "module emit_probe_two\n\n// prose about alpha\ndata alpha: Int = 909192\n\n// prose about probe\nfn probe(x: Int) -> Int {\n  x + alpha\n}\n"
+
+// Arm one (erasure): the authored prose never reaches the emitted program —
+// neither comment string appears anywhere in the emitted Rust.
+test fn w_annotation_prose_is_erased_from_emission_test() -> Bool {
+  compile_dag_rust_emit_check(
+    annotated_source_alpha_marker_a,
+    "src/emit_probe_one.rs",
+    [],
+    ["prose about alpha", "prose about probe"]
+  )
+}
+
+// Arm two (non-vacuity): the check is not satisfiable by any emission
+// whatsoever — a real semantic change (alpha's distinctive marker value) is
+// observable past the erased prose, so an emitter that ignored its input
+// entirely, or one that always answers true, would fail this pair.
+test fn w_semantic_change_is_observable_past_the_erased_prose_test() -> Bool {
+  compile_dag_rust_emit_check(annotated_source_alpha_marker_a, "src/emit_probe_one.rs", ["424242"], ["909192"])
+    && compile_dag_rust_emit_check(annotated_source_alpha_marker_b, "src/emit_probe_two.rs", ["909192"], ["424242"])
+}

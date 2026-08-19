@@ -1,0 +1,60 @@
+module extdeps.energy.nj_electricity
+
+import std.types { NonEmptyStr }
+import std.nat { Nat }
+import std.measure { MoneyPerKilowattHour, money_amount_micro }
+import std.currency { Usd }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.eia.gov/electricity/sales_revenue_price/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.energy.nj_electricity",
+      decl_name: "nj_commercial_rate",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// New Jersey retail electricity price readings, read 2026-08-18. The class averages are
+// EIA-derived figures read through a rate aggregator (secondary grade); the tariff a real
+// meter pays is the utility's filed schedule, which was NOT read and is carried as an
+// obligation rather than a guessed structure.
+
+type RetailElectricityRate {
+  customer_class: NonEmptyStr
+  rate: MoneyPerKilowattHour
+  citation: NonEmptyStr
+}
+
+data nj_commercial_rate: RetailElectricityRate = RetailElectricityRate {
+  customer_class: "commercial",
+  rate: MoneyPerKilowattHour { amount: money_amount_micro(count: 161300), currency: Usd },
+  citation: "chooseenergy.com New Jersey state report, August 2026, citing EIA sales/revenue/price data; secondary read of the EIA table, 2026-08-18",
+}
+
+data nj_industrial_rate: RetailElectricityRate = RetailElectricityRate {
+  customer_class: "industrial",
+  rate: MoneyPerKilowattHour { amount: money_amount_micro(count: 139500), currency: Usd },
+  citation: "chooseenergy.com New Jersey state report, August 2026, citing EIA sales/revenue/price data; secondary read of the EIA table, 2026-08-18",
+}
+
+data nj_residential_rate: RetailElectricityRate = RetailElectricityRate {
+  customer_class: "residential",
+  rate: MoneyPerKilowattHour { amount: money_amount_micro(count: 270000), currency: Usd },
+  citation: "nuwattenergy.com PSE&G rate tracker, 2026 (headline all-in figure of 0.27 USD per kWh, supply plus delivery); aggregator grade, read 2026-08-18 - the June 2026 BGS supply component alone was reported near 0.199 USD per kWh, so the all-in figure is the one a marginal continuous load pays",
+}
+
+data tariff_structure_obligation: NonEmptyStr = "A small industrial bay in the target corridor meters through PSE&G (most of Hudson/Essex/Bergen) or JCP&L on a filed commercial schedule (PSE&G GLP or LPL class), whose bill is NOT a flat per-kWh figure: it decomposes into a supply charge, delivery charges, and - above class thresholds - a per-kW DEMAND charge that prices the monthly peak rather than the energy. Neither utility's filed schedule was read on 2026-08-18; until one is, the class-average rows above bound a continuous-load bill only roughly (a flat continuous load is the demand-charge-friendliest shape, so the class average likely OVERSTATES a 24/7 compute load's blended rate rather than understating it - carried as a direction, not a figure)."
