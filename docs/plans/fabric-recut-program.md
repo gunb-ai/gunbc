@@ -73,11 +73,8 @@ epoch comparator.
 ## 5. Open, and deliberately not decided by the author
 
 1. *(Resolved — see §10. There are two roots, not one.)*
-2. **Does `StructuralWorkKey` exist at all**, or is it `ComputationIdentity`'s structural member and
-   therefore a rename of something already owned? Prefer deletion to renaming.
-3. **Six modules or fewer.** The current split has `execution.dag` importing `identity`, `demand`
-   and `supply`. If the layer underneath is replaced wholesale, the file boundaries are
-   re-litigable at the same time and should be settled once.
+2. *(Resolved — see §11. The carrier survives; deletion would have been wrong.)*
+3. *(Resolved — see §12. Six modules, but not the present six.)*
 4. **Who may attest a receipt.** `admit_receipt_for_grant` never reads `r.id`, whose principal is
    the attesting producer — so any principal can author a `SettlementReceipt` carrying
    `actual_spend` against another's grant. The fix is blocked on a question the fixtures expose
@@ -235,3 +232,106 @@ authority and is a smaller interception point (verified present, with consumers 
   workflow consumer is a boundary to sever first, not the complete population.**
 
 Cut C is what makes D safe: sever the wrong edge before migrating the authority behind it.
+
+## 11. Resolved: the Work key is a distinct carrier, not a rename — `WorkContentKey`
+
+I proposed deleting it in favour of `ComputationIdentity`'s structural member, on the standing
+preference for deletion over renaming. That was refused, and the reason is a grain distinction I
+had collapsed:
+
+- `ComputationIdentity` / `StructurallyIdentical` is a **qualification result** — a verdict about a
+  relationship between two things, produced by a comparison.
+- A Work key is a **content address** — it answers "what exact canonical structural computation is
+  this?" for one thing, with no second operand.
+
+A verdict is not an address, so replacing the address with the verdict's member would have erased
+the addressing capability rather than deduplicated it. §2's test applies in the other direction
+here: net concepts must not *shrink* by conflation either.
+
+**Decided representation:**
+
+```
+WorkContentKey { digest: ContentHash }
+```
+
+- Named `WorkContentKey`, **not** `StructuralWorkKey` — the noun is the content address, and
+  "structural" would borrow the qualification vocabulary that caused the confusion.
+- Wraps `ContentHash`; it is **not** a branded serialization string. Brands are unenforced in this
+  substrate (`where`-refinement predicates defer at compile time), so a branded string is a name
+  standing where a distinct carrier was available — §4b's "richer type names are not safety".
+- **Derived, never caller-supplied**: canonical contract → content hash → key. A constructor that
+  accepts a key from its caller concedes the mismatched state is writable.
+
+It is additionally a legitimate **peer** of `materialization_provider.request_key` at a different
+grain, not a fork of it: one addresses a work item's canonical contract, the other addresses a
+materialization request. Peers at different grains are not nicknames.
+
+## 12. Resolved: six modules, but not the present six
+
+Both extremes were refused. One module carrying all six identities would fuse work identity,
+requester policy, supplier statements, accounting, authorization, lease fencing, execution
+occurrence and result evidence into a single file, so every downstream addition edits the same
+authority. The present six-file split is also wrong — but its defect is not the count, it is
+**mis-owned shared types creating backward imports**:
+
+- `supply` imports `ObservationReceiptRef` from `demand`
+- `budget` imports `BudgetAccountId` from `demand`
+- `budget` imports `ReservationRef` from `execution`
+- `execution` carries Attempt, Grant, Receipt, payloads *and* receipt admission at once
+- `identity` is a central record every other authority depends on
+
+The correct answer is **multiple modules with an acyclic authority graph** — the count is
+incidental, the acyclicity is the reason.
+
+```
+          work          budget
+            \            /
+             \          /
+               demand          supply
+                    \          /
+                     \        /
+                      execution
+                          |
+                        receipt
+```
+
+| module | owns | must not import |
+| --- | --- | --- |
+| `product.fabric.work` | `Work`, `WorkContentKey`, work identity relation/tag, canonical `Work` constructor | scheduling quantities, supplier types, `Demand` |
+| `product.fabric.budget` | `BudgetAccountId`, `MoneyAccount`, `MoneyReservationRef`, generic `ReservationLeaseBinding<R>`, the currency wall, encumbrance projections | `Demand`, `Offer`, `ExecutionGrant` |
+| `product.fabric.demand` | `Demand`, demand identity, `AdmissionTerms`, `BuyTerms`, `SatisfactionRequirement`, `DeliveryRequirement`, demand commands and access profiles | — |
+| `product.fabric.supply` | `Offer`, offer identity, `OfferQuote`, `ObservedSupplyEvidence`, `QuotedSupplyEvidence`, availability, accepted revision identity | `demand` (it must not import Demand merely to borrow a generic receipt string — observed and quoted supply carry their own typed evidence authorities) |
+| `product.fabric.execution` | `Attempt`, `ExecutionAttemptLineage`, `ExecutionGrant`, the fabric grant `AccessRequest` profile, accepted offer revision, the atomic reservation bundle, `LeaseEpoch`, `ExecutionAuthorityEnvelope`, `GrantBoundExecutionRef`, the grant-bound fencing kernel | — |
+| `product.fabric.receipt` | `Receipt<P, R>`, receipt identity, the receipt-submission `AccessRequest` profile, attester authorization, result-independent receipt acceptance | a closed payload coproduct — it does not define one |
+
+**`product.fabric.identity` is deleted.** Each owning module defines its own key type, relation tag
+and principal-scoped specialization, projected through `std.key_relation.ScopedKey` rather than
+routed through another freely constructible `(principal, key)` record — which is §5's construction
+point: a freely constructible identity record concedes the mismatched pairing is writable.
+
+The payoff is narrow provider imports: an SCM binding imports Work and Demand; a compute supplier
+binding imports Supply; a host realizer imports Execution; a result publisher imports Receipt; an
+accounting actuator imports Budget. Adding GitLab does not import market allocation internals;
+adding Hetzner does not import demand commands; adding a Receipt result does not edit
+`ExecutionGrant`.
+
+## 13. Cut E, and what #8413 may not do
+
+Two additions to §10's order, both signed off:
+
+- **Cut E — recut #8413's modules** into the §12 layout, after the supply authority is singular.
+- **Then, and only then, the first real `Demand` → `ExecutionGrant` transition**: Demand plus
+  eligible Offers → fungibility → affordability → selection → atomic reservations →
+  `ExecutionGrant`. This is deliberately last: a market allocation fold written while two supply
+  authorities are live would be written against whichever one the author had in hand.
+
+**The merge constraint on #8413, stated as a refusal:** it must not merge while both `ComputeOffer`
+and the new `Offer` are independently authoritative — that is the §3 dual-authority interval the
+replacement doctrine forbids on main. Either the live supply replacement lands first and #8413
+consumes the landed authority, or #8413 itself carries the complete replacement and deletes
+`ComputeOffer`. There is no third arm where both stand.
+
+**#8413 is preserved, not closed.** Cuts A–D land as separately reviewable changes and are merged
+*into* the still-open #8413 branch, so its final diff is the product protocol rather than every
+prerequisite migration absorbed into one unreviewable change. That is what answers the bankruptcy
+concern without discarding 16 commits of review-hardened work (§6).
