@@ -1,6 +1,7 @@
 module std.measurement_subject
 
 import std.types { Bool, String, List, Int, NonEmptyStr, list_length }
+import std.measure { Nanosecond, time_measure, measure_le, measure_count }
 import std.content_hash {
   Fnv1a64Structural,
   content_hash_atom,
@@ -48,8 +49,8 @@ type MeasurementSample {
   span: NonEmptyStr
   parent_span: NonEmptyStr?
   calls: Int
-  inclusive_wall_nanos: Int
-  exclusive_wall_nanos: Int
+  inclusive_wall: Nanosecond
+  exclusive_wall: Nanosecond
   work_units: Int
 }
 
@@ -69,8 +70,8 @@ type MeasurementRefusalCause
   | ZeroSamples
   | ExpectedSpanAbsent { span: NonEmptyStr }
   | SpanReportedTwice { span: NonEmptyStr }
-  | ExclusiveExceedsInclusive { span: NonEmptyStr, inclusive_wall_nanos: Int, exclusive_wall_nanos: Int }
-  | SampleWithoutCalls { span: NonEmptyStr, inclusive_wall_nanos: Int }
+  | ExclusiveExceedsInclusive { span: NonEmptyStr, inclusive_wall: Nanosecond, exclusive_wall: Nanosecond }
+  | SampleWithoutCalls { span: NonEmptyStr, inclusive_wall: Nanosecond }
   | ParentSpanAbsent { span: NonEmptyStr, parent_span: NonEmptyStr }
   | ParentIsSelf { span: NonEmptyStr }
   | SubjectHasNoSourceRoots
@@ -156,17 +157,17 @@ fn measurement_sample_causes(
   } else {
     acc
   }
-  let bounds = if sample.exclusive_wall_nanos > sample.inclusive_wall_nanos {
+  let bounds = if !measure_le(a: sample.exclusive_wall, b: sample.inclusive_wall) {
     dup + [ExclusiveExceedsInclusive {
       span: sample.span,
-      inclusive_wall_nanos: sample.inclusive_wall_nanos,
-      exclusive_wall_nanos: sample.exclusive_wall_nanos,
+      inclusive_wall: sample.inclusive_wall,
+      exclusive_wall: sample.exclusive_wall,
     }]
   } else {
     dup
   }
-  let calls = if sample.calls <= 0 && sample.inclusive_wall_nanos > 0 {
-    bounds + [SampleWithoutCalls { span: sample.span, inclusive_wall_nanos: sample.inclusive_wall_nanos }]
+  let calls = if sample.calls <= 0 && measure_count(m: sample.inclusive_wall) > 0 {
+    bounds + [SampleWithoutCalls { span: sample.span, inclusive_wall: sample.inclusive_wall }]
   } else {
     bounds
   }
@@ -297,4 +298,6 @@ fn admit_measurement_delta(baseline: MeasurementRun, candidate: MeasurementRun) 
   }
 }
 
-data measurement_subject_rung_note: String = "RUNG, stated honestly rather than by the carrier's name. MeasurementSubject and MeasurementSample are ordinary records and remain directly constructible, so an author can still write a subject whose fields do not describe the run they label - this carrier cannot make a LIE about an observation unwritable, because the observation happens outside the model. What IS structural is the verdict: AdmittedMeasurementRun is sole_constructor with one in-module mint inside admit_measurement_run, so an admitted receipt that never passed the causes fold has no representation, and a delta over an unadmitted or self-identical pair likewise has none. So the class sits at mechanically preventable for the ADMISSION question and at mitigatable for the FAITHFULNESS question. NEXT-RUNG TRIGGER for the second half: the subject's binary_digest and source_inventory_digest are produced by the harness at launch rather than declared by the author, at which point a subject detached from its run stops being writable at the boundary that mints it. NOT CLAIMED: that any measurement in this repository currently routes through this carrier. It has one consumer, its witness, and the profiler spans that would feed it are blocked behind the stage0 regeneration; enrolling a producer is separate work and until it lands this is a modeled admission with no production subject."
+data measurement_subject_rung_note: String = "THE DURATION AXIS IS GROUNDED, recorded first because an earlier revision of this carrier got it wrong. The two wall figures were declared as bare Int fields named inclusive_wall_nanos and exclusive_wall_nanos -- a unit carried in a field NAME, which is a second representation of a quantity std.measure already owns, and in a std/ carrier at that. They are now Nanosecond, which is Measure<Time, Nano, Nat>: the scale lives in the type, so the field name no longer carries it, the refusal causes that propagate the figures outward carry the same type rather than re-flattening it, and the inclusive/exclusive ordering check is measure_le rather than a scalar comparison. No dissolution trigger is attached because nothing is deferred -- the fork is removed rather than admitted. Caught in review on gunbc#8545; the remedy the review named (std.measure.Duration) does not exist, and Nanosecond is the carrier that does.
+
+RUNG, stated honestly rather than by the carrier's name. MeasurementSubject and MeasurementSample are ordinary records and remain directly constructible, so an author can still write a subject whose fields do not describe the run they label - this carrier cannot make a LIE about an observation unwritable, because the observation happens outside the model. What IS structural is the verdict: AdmittedMeasurementRun is sole_constructor with one in-module mint inside admit_measurement_run, so an admitted receipt that never passed the causes fold has no representation, and a delta over an unadmitted or self-identical pair likewise has none. So the class sits at mechanically preventable for the ADMISSION question and at mitigatable for the FAITHFULNESS question. NEXT-RUNG TRIGGER for the second half: the subject's binary_digest and source_inventory_digest are produced by the harness at launch rather than declared by the author, at which point a subject detached from its run stops being writable at the boundary that mints it. NOT CLAIMED: that any measurement in this repository currently routes through this carrier. It has one consumer, its witness, and the profiler spans that would feed it are blocked behind the stage0 regeneration; enrolling a producer is separate work and until it lands this is a modeled admission with no production subject."
