@@ -9013,7 +9013,7 @@ fn target_type_expr_emitted_surface_identity(node: v2.std.node.Node) -> v2.std.d
   }
 }
 
-fn target_type_expression_spelling(form: TargetTypeExpression) -> Symbol {
+fn target_type_expression_spelling(form: TargetTypeExpression) -> v2.std.node.Symbol {
   match list_at_optional(xs: node_positional_child_targets(node: form.node), index: 0) {
     Present { value: child } =>
       match target_node_atom_identity(node: child) {

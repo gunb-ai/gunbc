@@ -1405,7 +1405,7 @@ fn project_set_collection_type_node(
               v2.std.diagnostic.bind_outcome(
                 o: translate_type_expression_project(node: elem, target: target, projection: projection),
                 f: fn(elem_projected) {
-                  Accepted {
+                  v2.std.diagnostic.Accepted {
                     value: target_type_expr_instantiation_emitted(
                       form: projection.instantiation_form,
                       head: target_type_expr_atom_emitted(
@@ -1477,7 +1477,7 @@ fn project_free_monoid_via_vec_choice(
               use_site: v2.std.compilers.target_model.OwnershipAtBindingProjection
             ),
             f: fn(elem_storage) {
-              Accepted {
+              v2.std.diagnostic.Accepted {
                 value: target_type_expr_instantiation_emitted(
                   form: projection.instantiation_form,
                   head: target_type_expr_atom_emitted(

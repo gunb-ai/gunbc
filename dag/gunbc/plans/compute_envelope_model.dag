@@ -34,7 +34,7 @@ fn compute_envelope_model_body() -> List<std.markdown.MarkdownBlock> {
     h2(text: "3. The move: one ResourceEnvelope, every knob derived (§3 single authority)"),
     p(text: "Collapse the N hand-tuned dimensions into **one authority** — the host `ResourceEnvelope` (cores, memory, pids capacity; a type in `gunbc.fleet_container`, which is where #5904 moved it and where it lives now that `product.compute_fabric` is deleted) — and make **every knob a function of it**. Then the dimensions stop being N things to juggle: they are one measured fact with derivations, and the fleet gets **exactly one coherent operating point**. It *cannot* be both starved and thrashing, because both the width floor and the fan-out ceiling come from the same envelope."),
     std.markdown.TableBlock {
-      header: row(cells: [cell(text: "Knob"), cell(text: "Derivation from the envelope"), cell(text: "Tier (§4)"), cell(text: "Owner"), cell(text: "Status")]),
+      header: gunbc.plans.md_helpers.row(cells: [cell(text: "Knob"), cell(text: "Derivation from the envelope"), cell(text: "Tier (§4)"), cell(text: "Owner"), cell(text: "Status")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
         gunbc.plans.md_helpers.row(cells: [cell(text: "measured host facts"), cell(text: "**the envelope itself** — cores, mem, pids capacity, *measured*"), cell(text: "ctrl realization"), cell(text: "ctrl"), cell(text: "model is **wrong** (64c/256GB; real 128c/128GB) — **fix first**")]),

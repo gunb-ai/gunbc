@@ -294,7 +294,7 @@ fn git_diff_window_from_json(text: String) -> GitDiffWindowObservation {
 }
 
 fn git_diff_window_from_path(path: String) -> GitDiffWindowObservation {
-  let read = v2.extdeps.file_system.Filesystem.Read(path: path)
+  let read = extdeps.filesystem.filesystem_io.Filesystem.Read(path: path)
   if read.success {
     git_diff_window_from_json(text: read.content)
   } else {
