@@ -176,7 +176,7 @@ service cargo.Build {
       stderr: String from "stderr"
     }
 
-    transport shell { argv: ["cargo", "run", "-p", package, "--bin", bin, args] }
+    transport shell { argv: ["cargo", "run", "-p", package, "--bin", bin, "--", args] }
     exit {
       0 => Unit
       101 => String "Run failed"

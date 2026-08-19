@@ -10,15 +10,17 @@ import v2.lens.application {
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, ComputationNode, Conj, Edge, Named, Node, Path, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.verification {
-  EqualsClaim,
-  TestClaim,
-  TestClassification,
-  ManualAnchorAbsent,
-  Tier1,
-  Unit,
-  manual_claim_anchor
+import v2.std.node {
+  Atom,
+  ComputationNode,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Path,
+  Symbol,
+  TypeNode,
+  SyntheticOccurrence
 }
 
 data projection_test_section: Node = Node {
@@ -28,7 +30,7 @@ data projection_test_section: Node = Node {
 }
 
 data projection_test_root: Node = Node {
-  kind: TypeNode { connective: Atom { identity: ^projection_test_symbol } },
+  kind: TypeNode { connective: Conj },
   children: [
     Edge {
       label: Named { name: ^projection_section_step },
@@ -70,7 +72,7 @@ data projection_test_declaration: DeclarationId = DeclarationId {
   path: Path { steps: [^projection_section_step] }
 }
 
-fn apply_lens_enforce_projection_claim_holds() -> Bool {
+test fn apply_lens_enforce_projection_claim_holds() -> Bool {
   match apply_lens_enforce(
     enforceable: projection_test_enforceable,
     section: DeclarationScope { declaration: projection_test_declaration },
@@ -81,24 +83,4 @@ fn apply_lens_enforce_projection_claim_holds() -> Bool {
       result.output == ^projection_section_symbol && result.projected == ^projection_projected_symbol
     Rejected { diagnostics: _ } => false
   }
-}
-
-fn apply_lens_enforce_projection_claim_rhs() -> Node {
-  if apply_lens_enforce_projection_claim_holds() {
-    projection_test_root
-  } else {
-    Node {
-      kind: TypeNode { connective: Conj },
-      children: [],
-      occurrence_id: SyntheticOccurrence
-    }
-  }
-}
-
-data claim_apply_lens_enforce_uses_projection: TestClaim = EqualsClaim {
-  label: "lens_application/apply_lens_enforce_uses_projection: enforce result carries projection",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: projection_test_root,
-  rhs: apply_lens_enforce_projection_claim_rhs(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
 }
