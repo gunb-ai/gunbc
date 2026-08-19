@@ -31,7 +31,9 @@ import gunbc.ollama_runtime_bundle {
   ollama_runtime_materialization_identity_for_observed_release,
   ollama_runtime_materialization_identity_for_required_release,
 }
+import gunbc.fleet_known_hosts_anchor { portable_remote_words }
 import gunbc.spark_serving_observe {
+  spark_serving_nvidia_driver_probe_words,
   spark_serving_unit_outcome_from_probe_results,
   spark_serving_runtime_materialization_receipt_probe_argv,
   SparkServingObservationReportRefused,
@@ -627,4 +629,29 @@ test fn a_refused_report_is_never_read_as_observed() -> Bool {
       cause: "no host was probed" as NonEmptyStr,
     },
   ) == false
+}
+
+// THE COMMA IS ADMITTED AND THE BRACE IS NOT, asserted as a pair because a widening argued on paper
+// and unchecked in the tree is the specification-without-execution trap. The comma is inert in POSIX
+// sh; brace expansion is the one context that gives it meaning, and it needs braces, which stay
+// refused. If a future edit widens the alphabet toward `{`, this goes red.
+test fn the_word_alphabet_admits_a_comma_and_still_refuses_a_brace() -> Bool {
+  match portable_remote_words(raws: ["nvidia-smi", "--format=csv,noheader"]) {
+    Absent => false
+    Present { value: _ } =>
+      match portable_remote_words(raws: ["echo", "\{a,b}"]) {
+        Present { value: _ } => false
+        Absent => true
+      }
+  }
+}
+
+// THE PROBE THAT FORCED IT, asserted against the real argv rather than a hand-written stand-in: the
+// read-only observation's nvidia leg had been refused at the transport since it was written, and
+// nothing could report why until the refusal reason was carried.
+test fn the_nvidia_driver_probe_is_portable() -> Bool {
+  match portable_remote_words(raws: spark_serving_nvidia_driver_probe_words) {
+    Present { value: _ } => true
+    Absent => false
+  }
 }
