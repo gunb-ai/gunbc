@@ -163,7 +163,7 @@ test fn witness_offline_execution_lane_consumer_holds() -> Bool {
 
 test fn witness_discovery_row_consumer_holds() -> Bool {
   match witness_consumer_cadence_for_row(
-    entry: "src/v2/test/claim/long/effect_reach_test.dag",
+    entry: "src/v2/test/claim/effect_reach_test.dag",
     function: "effect_reach_path_data_init_derived_host_reading_holds",
     excluded_from_discovery: false
   ) {

@@ -221,7 +221,7 @@ data prose_row_migration_scope: List<String> = [
   "dag/test/claim/roadmap_execution_contract_witness_test.dag",
   "dag/test/claim/roadmap_focus_witness_test.dag",
   "dag/test/claim/roadmap_identity_witness_test.dag",
-  "dag/test/claim/long/roadmap_page_witness_test.dag",
+  "dag/test/claim/roadmap_page_witness_test.dag",
   "dag/test/claim/roadmap_presentation_witness_test.dag",
   "dag/test/claim/roadmap_publish_observe_witness_test.dag",
   "dag/test/claim/roadmap_publish_witness_test.dag",

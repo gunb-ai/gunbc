@@ -1,4 +1,4 @@
-module v2.test.long.emit_host_native_only_verdict
+module v2.test.emit_host_native_only_verdict
 
 import v2.compiler.emit { emit }
 import v2.compiler.emit_host { emit_host_octets_byte_string, run_emit_host_cached }

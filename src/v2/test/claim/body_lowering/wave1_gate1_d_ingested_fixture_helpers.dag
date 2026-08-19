@@ -27,7 +27,7 @@ import v2.std.node {
 }
 import v2.std.node_query { find_arrow_body_child }
 
-data wave1_gate1_d_note: String = "Wave 1 Gate 1 Stage D long-lane helpers: census ingest via ingested_fixture_arrows. Well-formedness + behavior-kind checks here; ingested bind/loop execution+RED in long/wave1_gate1_d_ingested_bind_loop_eval_witness_test.dag; add/pick/match execution in general_body_producer + pick_ingested + classical_not witnesses."
+data wave1_gate1_d_note: String = "Wave 1 Gate 1 Stage D long-lane helpers: census ingest via ingested_fixture_arrows. Well-formedness + behavior-kind checks here; ingested bind/loop execution+RED in wave1_gate1_d_ingested_bind_loop_eval_witness_test.dag; add/pick/match execution in general_body_producer + pick_ingested + classical_not witnesses."
 
 fn wave1_gate1_d_arrow_well_formed_with_body(o: Outcome<Node>) -> Bool {
   match o {

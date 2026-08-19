@@ -1,4 +1,4 @@
-module test.claim.long.extdeps_scope_placement_gate_loudness_witness
+module test.claim.extdeps_scope_placement_gate_loudness_witness
 
 import extdeps.filesystem.filesystem_io
 import gunbc.extdeps_scope_frontier {

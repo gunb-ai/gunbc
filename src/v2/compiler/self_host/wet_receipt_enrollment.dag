@@ -79,7 +79,7 @@ data falsifier_self_host_wet_template_entries: List<ScheduleWitnessEntry> = [
     f: ""
   ),
   self_host_wet_entry(
-    entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
+    entry: "src/v2/test/claim/execution/emit_host_native_only_verdict_test.dag",
     f: ""
   ),
   self_host_wet_entry(

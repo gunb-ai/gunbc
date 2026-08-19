@@ -1,4 +1,4 @@
-module test.claim.long.gauntlet_lane_enrollment_witness
+module test.claim.gauntlet_lane_enrollment_witness
 
 import gunbc.ci_layer_roots { SubstrateLongLaneRow, falsifier_substrate_long_lane_rows }
 import gunbc.ci_gate { Gate, CheapClaimPoolGate, GeneratedArtifactDriftGate }

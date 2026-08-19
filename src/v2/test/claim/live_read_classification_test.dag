@@ -1,4 +1,4 @@
-module v2.test.claim.long.live_read_classification_test
+module v2.test.claim.live_read_classification_test
 
 import v2.lens.live_read_classification {
   live_read_classification,

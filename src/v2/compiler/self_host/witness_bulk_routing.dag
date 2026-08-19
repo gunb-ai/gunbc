@@ -88,7 +88,7 @@ data witness_bulk_routing_sample_roster: List<WitnessEntryRoutingRow> = [
     }
   },
   WitnessEntryRoutingRow {
-    entry: "src/v2/test/claim/long/effect_reach_test.dag",
+    entry: "src/v2/test/claim/effect_reach_test.dag",
     disposition: InterpretedRetained {
       reason: HostFedCeiling,
       dissolution: unbound_dissolution(description: "native host-effect transport lane delivers typed host_effect_apply execution for this entry's sink class (deliberately uncoupled from bulk flip per ROADMAP 2a)")

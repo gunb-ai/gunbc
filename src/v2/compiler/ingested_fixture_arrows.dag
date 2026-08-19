@@ -37,7 +37,7 @@ import v2.std.node {
 }
 import v2.std.node_query { find_arrow_body_child }
 
-data ingested_fixture_arrows_note: String = "Wave 1 Gate 1 Stage D: census-ingest Arrow fixtures replacing produce_* flat-token MVP producers. Every arrow is tokenize→parse_module→normalize→resolve→extract. dissolve-on: general body producer fully subsumes produce_* and flat-token StampBinding tables (wave-2). Well-formedness + behavior-kind: long/wave1_gate1_d_mvp_subsumption_witness_test.dag; ingested bind/loop execution+RED: long/wave1_gate1_d_ingested_bind_loop_eval_witness_test.dag; add/pick/match execution: long/wave1_gate1_general_body_producer_witness_test.dag and execution/pick_ingested_*."
+data ingested_fixture_arrows_note: String = "Wave 1 Gate 1 Stage D: census-ingest Arrow fixtures replacing produce_* flat-token MVP producers. Every arrow is tokenize→parse_module→normalize→resolve→extract. dissolve-on: general body producer fully subsumes produce_* and flat-token StampBinding tables (wave-2). Well-formedness + behavior-kind: long/wave1_gate1_d_mvp_subsumption_witness_test.dag; ingested bind/loop execution+RED: wave1_gate1_d_ingested_bind_loop_eval_witness_test.dag; add/pick/match execution: long/wave1_gate1_general_body_producer_witness_test.dag and execution/pick_ingested_*."
 
 data ingested_add_module_source: String = "module m\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"
 data ingested_add_swapped_operands_module_source: String = "module m\n\nfn add(x: Int, y: Int) -> Int { y + x }\n"

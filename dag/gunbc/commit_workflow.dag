@@ -1410,7 +1410,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
+      entry: "src/v2/test/claim/execution/emit_host_native_only_verdict_test.dag",
       check_fns: [
         "emit_host_native_only_verdict_stdout_match_mock_holds",
         "emit_host_native_only_verdict_stdout_mismatch_mock_holds"
@@ -1617,7 +1617,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/long/wave1_gate1_d_ingested_bind_loop_eval_witness_test.dag",
+      entry: "src/v2/test/claim/wave1_gate1_d_ingested_bind_loop_eval_witness_test.dag",
       check_fns: [
         "wave1_gate1_d_ingested_bind_executes_witness_holds",
         "wave1_gate1_d_ingested_loop_executes_witness_holds"
@@ -1629,7 +1629,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/long/parse_binding_fidelity_witness_test.dag",
+      entry: "src/v2/test/claim/parse_binding_fidelity_witness_test.dag",
       check_fns: ["witness_resolve_distinct_param_bindings_holds"],
       kind: ExecutionWitnessKind,
       span: SpanUndeclared
@@ -1638,7 +1638,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/long/parse_binding_fidelity_witness_test.dag",
+      entry: "src/v2/test/claim/parse_binding_fidelity_witness_test.dag",
       check_fns: ["witness_parse_binding_fidelity_distinct_identifiers_holds"],
       kind: ExecutionWitnessKind,
       span: SpanUndeclared
@@ -1777,7 +1777,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/long/gauntlet_lane_enrollment_witness_test.dag",
+      entry: "src/v2/test/claim/gauntlet_lane_enrollment_witness_test.dag",
       check_fns: [
         "witness_rehomed_rows_are_cadence_enrolled",
         "witness_split_entries_keep_cheap_half_per_pr",

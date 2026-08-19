@@ -1,4 +1,4 @@
-module v2.test.long.realization_sweep_probe_entry
+module v2.test.realization_sweep_probe_entry
 
 import v2.workflow.realization_sweep {
   RealizationSweepRow,
