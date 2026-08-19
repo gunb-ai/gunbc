@@ -3511,6 +3511,12 @@ fn compile_clean_scoping_active() -> bool {
 
 pub const CLASS_B_ENTRY_REL: &str = "src/v2/extdeps/languages/rust_test_fixtures.dag";
 pub const CLASS_B_TRANSPORT_REL: &str = "src/v2/workflow/class_b_import_closure_transport.dag";
+/// Rows 1-2's shape+call, relocated out of CLASS_B_TRANSPORT_REL so a witness reaching only
+/// rows 1-2 does not inherit the transport module's extdeps.git / extdeps.git.inspect /
+/// gunbc.ci_layer_roots closure (DESIGN.md §3 relocation-not-refork; the same signature
+/// extdeps_scope_placement_gate_loudness_witness's repair fixed). The transport module imports
+/// this one back for rows 1-2's own use, so it is part of the gate's input closure too.
+pub const CLASS_B_PROBE_REL: &str = "src/v2/workflow/class_b_import_closure_probe.dag";
 pub const CLASS_B_BINDING_REL: &str = "dag/gunbc/declared_import_closure_binding.dag";
 pub const CLASS_B_OVERLAY_REL: &str = "dag/gunbc/class_b_import_closure_overlay.dag";
 pub const CLASS_B_FIXTURES_PREFIX: &str = "fixtures/class_b_import_closure";
@@ -3519,6 +3525,7 @@ const CLASS_B_DECLARED_POOL_ROOTS_DATA_NAME: &str = "class_b_declared_import_poo
 pub const CLASS_B_GATE_INPUT_ENTRIES: &[&str] = &[
     CLASS_B_ENTRY_REL,
     CLASS_B_TRANSPORT_REL,
+    CLASS_B_PROBE_REL,
     CLASS_B_BINDING_REL,
     CLASS_B_OVERLAY_REL,
 ];
@@ -6276,7 +6283,7 @@ pub fn load_sources_for_entry(
     source_roots: &[String],
     entry_path: &str,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    let index = build_multi_entry_index(source_roots);
+    let index = process_shared_index(source_roots);
     load_sources_for_entry_with_pool(&index, entry_path)
 }
 
@@ -30340,7 +30347,7 @@ fn commit_witness_field_str(
 
 fn ci_floor_commit_witness_claim_pairs() -> Result<Vec<(String, String)>, String> {
     let roots = witness_layer_roots();
-    let index = build_multi_entry_index(&roots);
+    let index = process_shared_index(&roots);
     let (graph, source_indices) = resolve_entry_with_index(&index, COMMIT_WORKFLOW_ENTRY)?;
     let ctx = make_eval_context(
         &graph,
@@ -30354,7 +30361,7 @@ fn ci_floor_commit_witness_claim_pairs() -> Result<Vec<(String, String)>, String
 
 pub fn commit_witness_claim_pair_resolvable(entry: &str, function: &str) -> bool {
     let roots = witness_layer_roots();
-    let index = build_multi_entry_index(&roots);
+    let index = process_shared_index(&roots);
     let mut entry_cache = std::collections::HashMap::new();
     matches!(
         commit_witness_claim_pair_resolvability_with_index(
@@ -30448,7 +30455,7 @@ pub fn commit_witness_claim_roster_defects() -> Vec<(String, String, String)> {
         )];
     };
     let roots = witness_layer_roots();
-    let index = build_multi_entry_index(&roots);
+    let index = process_shared_index(&roots);
     let mut entry_cache = std::collections::HashMap::new();
     let mut defects = Vec::new();
     for (entry, function) in pairs {
@@ -39468,6 +39475,45 @@ pub fn run_required_floor(
         index_warm_started.elapsed().as_millis(),
         warmed_modules
     );
+    // WARM THE SHARED MultiEntryIndex HERE, for the same reason as the module-path index
+    // above: otherwise ONE ARBITRARY CLAIM PAYS FOR IT (witness cost class 2).
+    //
+    // `commit_witness_claim_pair_resolvable` (the commit-witness roster's host arm, and its
+    // sibling `ci_floor_commit_witness_claim_pairs` / `commit_witness_claim_roster_defects`)
+    // used to call `build_multi_entry_index(&roots)` directly instead of going through
+    // `process_shared_index`, the existing thread-local shared-index cache every other
+    // production call site already uses (`resolve_entry_graph_shared` and friends). That
+    // meant every one of those functions re-walked and re-parsed the whole witness corpus on
+    // EVERY call, uncached — even though `process_shared_index` would have served the same
+    // `MultiEntryIndex` for free after the first build.
+    //
+    // MEASURED: `commit_witness_claim_pair_resolvable`, invoked exactly once by
+    // `commit_witness_claim_roster_red_control_holds` (the fast-lane RED control for the
+    // synthetic stale (entry, function) pair), cost 62.7-83.0s for that single call — the
+    // full one-time corpus walk+parse billed against one witness with a ~1-5s ceiling. As
+    // with the module-path index, quarantining the victim does not remove the cost, it only
+    // relocates it onto whichever claim runs next.
+    //
+    // The three call sites were switched to `process_shared_index(&roots)` (this fix); this
+    // warm call additionally ensures the shared cache is already hot before the per-claim
+    // loop starts, so the cost is paid here, in preparation, rather than by whichever claim
+    // happens to touch it first. `witness_layer_roots()` is the exact roots value all three
+    // call sites resolve internally (not the `source_roots` parameter above), so the roots
+    // key here must match theirs; `canonical_shared_index_roots` normalizes relative and
+    // absolute forms to the same key regardless.
+    //
+    // dissolve-on: same as the module-path-index warm above — when the shared index derives
+    // from the prepared inventory instead of a second disk walk, this warm call becomes
+    // unnecessary rather than merely redundant, because there is no second authority to warm.
+    let shared_index_warm_started = std::time::Instant::now();
+    let warmed_shared_index_modules = process_shared_index(&witness_layer_roots())
+        .source_files
+        .len();
+    eprintln!(
+        "[floor-phase] phase=shared-index-warm state=completed wall_ms={} modules={}",
+        shared_index_warm_started.elapsed().as_millis(),
+        warmed_shared_index_modules
+    );
     let prepare_ms = prepare_started.elapsed().as_millis();
     eprintln!(
         "floor: active sources = {}",
@@ -40363,11 +40409,49 @@ pub fn run_required_floor(
                 budget_ms,
                 kind,
                 completion,
-            } => outcome.failures.push(format!(
-                "{} exceeded its {kind:?} budget (cost is {} {elapsed_ms}ms against {budget_ms}ms)",
-                claim.qualified,
-                completion.elapsed_reading()
-            )),
+                // AND AN UNENROLLED BUDGET REFUSAL IS NOT A DEFECT EITHER. The enrolled arm above
+                // already rules that a budget refusal produces no verdict and therefore is not a
+                // failure; that fact is a property of the interruption, not of the roster, so it
+                // holds identically for a row nobody enrolled. Reporting it in `failures` said the
+                // opposite — `failures` is the channel whose remedy is "fix the defect", and it is
+                // what the alert signature reads to distinguish a regression from a cost debt. A
+                // row that was preempted before answering has no defect to fix and may well be
+                // passing, so routing it here made an unmeasured cost indistinguishable from a
+                // broken witness, in the direction that manufactures alarm.
+                //
+                // The consequence this closes is concrete: a row that PASSES and exceeds its budget
+                // had no honest state anywhere. Enrolled, it asserted an expected failure that does
+                // not occur and reported twice. Unenrolled, it landed here and read as a defect.
+                // Cost is not a verdict, so the verdict channels cannot carry it — and now they do
+                // not. The line still stops, because the cost is still owed; it stops saying the
+                // true thing about why.
+                // TWO READINGS, AND THEY ARE NOT THE SAME CLAIM. `Interrupted` means the deadline
+                // fired before the witness answered: no verdict exists, the figure is a LOWER BOUND
+                // and the row's real cost is unmeasured. `CompletedOverBudget` means the witness ran
+                // to completion and then was found over budget: the verdict IS known and the figure
+                // is EXACT. Printing one sentence for both would repeat the conflation this arm
+                // exists to remove — asserting "correctness unknown" over a row that demonstrably
+                // answered is as wrong as calling a cost a defect.
+            } => outcome.budget_refused.push(match completion {
+                BudgetCompletion::Interrupted => format!(
+                    "{} was BUDGET-REFUSED and went UNDECIDED: {kind:?}, cost at least \
+                     {elapsed_ms}ms against {budget_ms}ms. Not enrolled as expected-red, so \
+                     nothing claims it is broken — but the deadline preempted the verdict, so \
+                     whether it passes is UNKNOWN and its real cost is UNMEASURED: the figure \
+                     is the interrupt point, not this row's cost. Reduce the cost, or move it \
+                     to a lane declaring its own ceiling, so the witness reaches a verdict.",
+                    claim.qualified
+                ),
+                BudgetCompletion::CompletedOverBudget => format!(
+                    "{} reached its verdict and then exceeded its budget: {kind:?}, cost \
+                     exactly {elapsed_ms}ms against {budget_ms}ms. The witness ran to \
+                     completion, so this is a measurement rather than a bound and the cost is \
+                     known and actionable. This is a cost debt only — it is not a defect and \
+                     it does not belong on the expected-red roster, which asserts an expected \
+                     FAILURE this row does not exhibit.",
+                    claim.qualified
+                ),
+            }),
         }
     }
     outcome.receipt_identities = receipted.len();

@@ -3,6 +3,11 @@ module test.claim.systemd_unit_file_witness_test
 import std.types { Bool, String, NonEmptyStr }
 import extdeps.systemd.unit_file {
   SystemdUnitFile,
+  ServiceUnitFile,
+  TimerUnitFile,
+  SystemdInstallSection,
+  NotInstallable,
+  Installable,
   SystemdUnitDirective,
   Description,
   After,
@@ -12,18 +17,30 @@ import extdeps.systemd.unit_file {
   ExecStart,
   Restart,
   Environment,
+  EnvironmentFile,
   WorkingDirectory,
+  ServiceUser,
+  ServiceGroup,
+  SystemdTimerDirective,
+  TimerUnit,
+  OnCalendar,
+  OnBootSec,
+  OnUnitInactiveSec,
+  AccuracySec,
+  RandomizedDelaySec,
+  Persistent,
   SystemdInstallDirective,
   WantedBy,
   RequiredBy,
   systemd_unit_directive_line,
   systemd_service_directive_line,
+  systemd_timer_directive_line,
   systemd_install_directive_line,
   serialize_systemd_unit_file,
 }
 
 fn sample() -> SystemdUnitFile {
-  SystemdUnitFile {
+  ServiceUnitFile {
     unit: [
       Description { text: "gunbc Spark serving" as NonEmptyStr },
       After { target: "network-online.target" as NonEmptyStr },
@@ -33,7 +50,7 @@ fn sample() -> SystemdUnitFile {
       ExecStart { command: "/opt/x/bin/ollama serve" as NonEmptyStr },
       Restart { policy: "on-failure" as NonEmptyStr },
     ],
-    install: [WantedBy { target: "default.target" as NonEmptyStr }],
+    install: Installable { directives: [WantedBy { target: "default.target" as NonEmptyStr }] },
   }
 }
 
@@ -46,7 +63,7 @@ fn sample() -> SystemdUnitFile {
 // here independently of the serializer's own composition.
 test fn a_unit_file_serializes_to_exactly_these_bytes() -> Bool {
   serialize_systemd_unit_file(file: sample()) ==
-    "[Unit]\nDescription=gunbc Spark serving\nAfter=network-online.target\n[Service]\nType=simple\nExecStart=/opt/x/bin/ollama serve\nRestart=on-failure\n[Install]\nWantedBy=default.target\n"
+    "[Unit]\nDescription=gunbc Spark serving\nAfter=network-online.target\n\n[Service]\nType=simple\nExecStart=/opt/x/bin/ollama serve\nRestart=on-failure\n\n[Install]\nWantedBy=default.target\n"
 }
 
 // systemd's parser is line-oriented; a final directive with no newline is the classic silently
@@ -70,12 +87,39 @@ test fn sections_are_emitted_in_unit_service_install_order() -> Bool {
 // rendered bytes a function of the record alone rather than of which fields happened to be nonempty.
 test fn an_empty_section_still_emits_its_header() -> Bool {
   serialize_systemd_unit_file(
-    file: SystemdUnitFile {
+    file: ServiceUnitFile {
       unit: [Description { text: "d" as NonEmptyStr }],
       service: [],
-      install: [],
+      install: Installable { directives: [] },
     },
-  ) == "[Unit]\nDescription=d\n[Service]\n[Install]\n"
+  ) == "[Unit]\nDescription=d\n\n[Service]\n\n[Install]\n"
+}
+
+// THE DISCRIMINATING PAIR for the install section, and the reason it is a named type rather than a
+// list that happens to be empty. These two files differ in their bytes, so a model that could not
+// tell them apart could not render both -- and the second is the shape three live fleet units have.
+test fn a_not_installable_unit_omits_the_install_section_entirely() -> Bool {
+  serialize_systemd_unit_file(
+    file: ServiceUnitFile {
+      unit: [Description { text: "d" as NonEmptyStr }],
+      service: [ServiceType { mode: "oneshot" as NonEmptyStr }],
+      install: NotInstallable,
+    },
+  ) == "[Unit]\nDescription=d\n\n[Service]\nType=oneshot\n"
+}
+
+test fn installable_and_not_installable_render_differently() -> Bool {
+  let base_unit = [Description { text: "d" as NonEmptyStr }]
+  let base_service = [ServiceType { mode: "oneshot" as NonEmptyStr }]
+  serialize_systemd_unit_file(
+    file: ServiceUnitFile { unit: base_unit, service: base_service, install: NotInstallable },
+  ) != serialize_systemd_unit_file(
+    file: ServiceUnitFile {
+      unit: base_unit,
+      service: base_service,
+      install: Installable { directives: [] },
+    },
+  )
 }
 
 // ── The directive names are systemd's, and each is pinned to a distinct constant ────────────────
@@ -115,4 +159,98 @@ test fn an_environment_assignment_keeps_its_own_equals_sign() -> Bool {
   systemd_service_directive_line(
     directive: Environment { assignment: "OLLAMA_HOST=127.0.0.1:11434" as NonEmptyStr },
   ) == "Environment=OLLAMA_HOST=127.0.0.1:11434"
+}
+
+// ── The timer section ───────────────────────────────────────────────────────────────────────────
+
+// THE KEYSTONE FOR THE TIMER ARM, and its oracle is deliberately not this repository. These are the
+// exact bytes of /etc/systemd/system/gunbc-srv1-green-fleet-converge.timer as read from srv1 on
+// 2026-08-18, a file systemd has loaded and run. A literal transcribed from the renderer's own
+// current output would be a change detector; a literal transcribed from a file the target system
+// already accepts is an external authority, and it is what makes "the shared model is a safe
+// destination" a claim about systemd rather than a claim about our own spacing.
+//
+// It is also the file that could not be rendered at all before this arm existed: it has a [Timer]
+// section and no [Service], which the previous three-mandatory-section record had no way to express.
+test fn the_live_fleet_converge_timer_serializes_to_exactly_its_deployed_bytes() -> Bool {
+  serialize_systemd_unit_file(
+    file: TimerUnitFile {
+      unit: [Description { text: "gunbc fleet converge cadence" as NonEmptyStr }],
+      timer: [
+        TimerUnit { target: "gunbc-srv1-green-fleet-converge.service" as NonEmptyStr },
+        OnCalendar { expression: "*:0/15" as NonEmptyStr },
+        Persistent { enabled: true },
+        RandomizedDelaySec { duration: "90" as NonEmptyStr },
+      ],
+      install: Installable { directives: [WantedBy { target: "timers.target" as NonEmptyStr }] },
+    },
+  ) == "[Unit]\nDescription=gunbc fleet converge cadence\n\n[Timer]\nUnit=gunbc-srv1-green-fleet-converge.service\nOnCalendar=*:0/15\nPersistent=true\nRandomizedDelaySec=90\n\n[Install]\nWantedBy=timers.target\n"
+}
+
+// The monotonic-timer form, from the live gunbc-srv1-green-belt.timer on the same host. It shares no
+// directive with the calendar form above except Unit=, so the two together exercise every timer
+// variant this module models.
+test fn the_live_belt_timer_serializes_to_exactly_its_deployed_bytes() -> Bool {
+  serialize_systemd_unit_file(
+    file: TimerUnitFile {
+      unit: [Description { text: "gunbc roadmap belt tick cadence" as NonEmptyStr }],
+      timer: [
+        TimerUnit { target: "gunbc-srv1-green-belt.service" as NonEmptyStr },
+        OnBootSec { duration: "2min" as NonEmptyStr },
+        OnUnitInactiveSec { duration: "60s" as NonEmptyStr },
+        AccuracySec { duration: "5s" as NonEmptyStr },
+      ],
+      install: Installable { directives: [WantedBy { target: "timers.target" as NonEmptyStr }] },
+    },
+  ) == "[Unit]\nDescription=gunbc roadmap belt tick cadence\n\n[Timer]\nUnit=gunbc-srv1-green-belt.service\nOnBootSec=2min\nOnUnitInactiveSec=60s\nAccuracySec=5s\n\n[Install]\nWantedBy=timers.target\n"
+}
+
+// `TimerUnit` renders as `Unit=`, not `TimerUnit=` — the same variant-name-versus-wire-name trap
+// `ServiceType` carries, and the one most likely to leak here because [Unit] is also a section name.
+test fn the_timer_unit_directive_renders_as_the_bare_unit_key() -> Bool {
+  systemd_timer_directive_line(directive: TimerUnit { target: "a.service" as NonEmptyStr })
+    == "Unit=a.service"
+    && !string_contains(
+      systemd_timer_directive_line(directive: TimerUnit { target: "a.service" as NonEmptyStr }),
+      "TimerUnit",
+    )
+}
+
+test fn each_timer_directive_renders_its_own_systemd_name() -> Bool {
+  systemd_timer_directive_line(directive: OnCalendar { expression: "*:0/15" as NonEmptyStr })
+    == "OnCalendar=*:0/15"
+    && systemd_timer_directive_line(directive: OnBootSec { duration: "2min" as NonEmptyStr })
+      == "OnBootSec=2min"
+    && systemd_timer_directive_line(directive: OnUnitInactiveSec { duration: "60s" as NonEmptyStr })
+      == "OnUnitInactiveSec=60s"
+    && systemd_timer_directive_line(directive: AccuracySec { duration: "5s" as NonEmptyStr })
+      == "AccuracySec=5s"
+    && systemd_timer_directive_line(directive: RandomizedDelaySec { duration: "90" as NonEmptyStr })
+      == "RandomizedDelaySec=90"
+}
+
+// systemd accepts `true`/`false` and this is a modeled Bool, so the spelling is decided here once.
+// The false arm is asserted because it is the one no live unit exercises.
+test fn persistent_renders_systemds_own_boolean_spelling() -> Bool {
+  systemd_timer_directive_line(directive: Persistent { enabled: true }) == "Persistent=true"
+    && systemd_timer_directive_line(directive: Persistent { enabled: false }) == "Persistent=false"
+}
+
+// The three service directives added for the live fleet units. `User=`/`Group=` are the pair whose
+// variant names had to differ from their wire names, so a leak shows up as `ServiceUser=`.
+test fn the_added_service_directives_render_their_own_systemd_names() -> Bool {
+  systemd_service_directive_line(directive: ServiceUser { name: "briansrls" as NonEmptyStr })
+    == "User=briansrls"
+    && systemd_service_directive_line(directive: ServiceGroup { name: "briansrls" as NonEmptyStr })
+      == "Group=briansrls"
+    && systemd_service_directive_line(
+      directive: EnvironmentFile { path: "/etc/x.env" as NonEmptyStr },
+    ) == "EnvironmentFile=/etc/x.env"
+}
+
+// `EnvironmentFile=` is not a spelling of `Environment=`. One names a file, the other carries an
+// assignment, and a renderer that fused them would silently turn a path into a variable named by it.
+test fn environment_and_environment_file_are_distinct_directives() -> Bool {
+  systemd_service_directive_line(directive: EnvironmentFile { path: "/etc/x.env" as NonEmptyStr })
+    != systemd_service_directive_line(directive: Environment { assignment: "/etc/x.env" as NonEmptyStr })
 }

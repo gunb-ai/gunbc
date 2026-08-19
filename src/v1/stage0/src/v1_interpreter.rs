@@ -4443,6 +4443,19 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         })
         .collect::<InterpResult<_>>()?;
 
+    // A LEXICAL BINDING SHADOWS EVERY NAME-KEYED TIER (nearest-first precedence, the same law
+    // 04_infer states at call_locals_shadow_note and now applies to the builtin tiers too). A
+    // parameter or let named `lookup`, `count`, `filter`, ... is a function VALUE, and answering
+    // its call from the builtin table by spelling calls a different function than the program
+    // names -- silently, wherever the two arities happen to agree. `ctx.lookup_fn` (module-level
+    // declarations) deliberately stays BELOW the builtins as before: this moves the lexical tier
+    // only.
+    if let Some(closure @ Value::Closure { .. }) = env.lookup(ctx.sym(&func_name)) {
+        let closure = closure.clone();
+        let arg_vals: Vec<Value> = args.iter().map(|(_, v)| v.clone()).collect();
+        return apply_closure(&closure, &arg_vals, env, ctx);
+    }
+
     v1_bridge_family_arms!(v1_bridge_dispatch, func_name, args, node, ctx);
 
     v1_native_intercept_arms!(v1_native_intercept_dispatch, func_name, args, env, ctx);

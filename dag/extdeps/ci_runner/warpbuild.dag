@@ -1,0 +1,66 @@
+module extdeps.ci_runner.warpbuild
+
+import std.types { List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { hardware_thread_count }
+import std.decl_ref { DeclarationRef, decl_ref }
+import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
+import extdeps.ci_runner.types {
+  EntitlementUnstated,
+  RunnerCatalogAvailability,
+  QuotedWithoutBasis,
+  RunnerShapeRow,
+  RunnerShapesCited,
+}
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.warpbuild.com/docs/ci/cloud-runners"
+  }
+}
+
+data warpbuild_catalog_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data warpbuild_provider_identity: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.warpbuild",
+  decl_name: "warpbuild_catalog_authority",
+)
+
+// Live-fetched 2026-08-18 from the cloud-runners documentation. Linux
+// families only. Four GB per vCPU on both architectures.
+//
+// The page states no basis for "GB" and states no per-vCPU core entitlement.
+fn warpbuild_shape(
+  label: NonEmptyStr,
+  architecture: Architecture,
+  vcpus: Nat,
+  quoted_numeral: Nat,
+) -> RunnerShapeRow {
+  RunnerShapeRow {
+    provider: warpbuild_provider_identity,
+    label: label,
+    architecture: architecture,
+    entitlement: EntitlementUnstated,
+    vcpus: hardware_thread_count(vcpus),
+    memory: QuotedWithoutBasis { numeral: quoted_numeral, unit_label: "GB" },
+  }
+}
+
+data warpbuild_runner_catalog: RunnerCatalogAvailability = RunnerShapesCited {
+  rows: [
+    warpbuild_shape(label: "warp-ubuntu-latest-arm64-2x", architecture: Aarch64, vcpus: 2, quoted_numeral: 8),
+    warpbuild_shape(label: "warp-ubuntu-latest-arm64-4x", architecture: Aarch64, vcpus: 4, quoted_numeral: 16),
+    warpbuild_shape(label: "warp-ubuntu-latest-arm64-8x", architecture: Aarch64, vcpus: 8, quoted_numeral: 32),
+    warpbuild_shape(label: "warp-ubuntu-latest-arm64-16x", architecture: Aarch64, vcpus: 16, quoted_numeral: 64),
+    warpbuild_shape(label: "warp-ubuntu-latest-arm64-32x", architecture: Aarch64, vcpus: 32, quoted_numeral: 128),
+    warpbuild_shape(label: "warp-ubuntu-latest-x64-2x", architecture: X86_64, vcpus: 2, quoted_numeral: 8),
+    warpbuild_shape(label: "warp-ubuntu-latest-x64-4x", architecture: X86_64, vcpus: 4, quoted_numeral: 16),
+    warpbuild_shape(label: "warp-ubuntu-latest-x64-8x", architecture: X86_64, vcpus: 8, quoted_numeral: 32),
+    warpbuild_shape(label: "warp-ubuntu-latest-x64-16x", architecture: X86_64, vcpus: 16, quoted_numeral: 64),
+    warpbuild_shape(label: "warp-ubuntu-latest-x64-32x", architecture: X86_64, vcpus: 32, quoted_numeral: 128),
+  ],
+}
