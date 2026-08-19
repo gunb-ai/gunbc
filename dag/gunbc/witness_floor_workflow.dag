@@ -41,37 +41,30 @@ import std.types { List, String, Int }
 // operator agreement. Their absence here is the declared state of the ladder, not a gap in this
 // module.
 //
-// REGEN IS ABSENT FOR A DIFFERENT REASON AND DOES NOT RETURN (operator ruling, 2026-08-15,
-// landed on integration/v1-cut at eebdeca813 -- 71 files, 62,261 lines deleted). This list named
-// regen as an unmet obligation awaiting its turn; that is no longer true, because its SUBJECT is
-// deleted. `regen_stage0` went with the whole v1 .dag compiler authority and its 142-entry
-// emit-plan roster. The emitted Rust under src/v1/stage0/src is retained and frozen -- every .rs
-// is committed, so a clone still builds with rustc alone -- and what died is the loop that kept
-// those files in sync with a .dag authority that no longer exists. Deleting regen in the same
-// commit was load-bearing rather than tidy: left standing, it would have computed an empty emit
-// set against the deleted authority and deleted the 142 frozen files, so the regrowth trap
-// pointed at the seed itself. A regen job, a regen verify gate, a self-host staleness gate and a
-// regen affected-set skip witness are therefore all off this queue permanently; each had exactly
-// one subject. The consequence for this fold is that no second required CI path competes with it
-// for the floor budget.
+// REGEN WAS ABSENT FOR A DIFFERENT REASON THAN THE REST OF THE QUEUE, AND IS NOW BACK
+// (corrected 2026-08-19; supersedes the three paragraphs this replaced, which reasoned about a
+// still-open integration/v1-cut race between two candidate cuts). Neither candidate the prior
+// text weighed is what actually happened: integration/v1-cut never reached main, and the v1 .dag
+// compiler authority was never deleted. Instead the REGEN ROOT CUT (#8406, 3b431f34a9e,
+// 2026-08-18) deleted the old `regen_stage0` binary and its RegenVerifyGate/SelfHostStalenessGate
+// CI gates, and rebuilt required-regen as one fold in the same binary this job already runs:
+// `claim_executor --required-regen` and `--required-regen-fixed-point`, backed by
+// src/v1/stage0/src/required_regen_host.rs. The fold still calls the live v1 .dag compiler to
+// regenerate stage0's Rust sources and compares the result against the committed, frozen
+// src/v1/stage0/src/*.rs files -- its subject was never deleted, only its old CI harness.
 //
-// THAT RETIREMENT IS ORDER-DEPENDENT, and the paragraph above states it in a settled present
-// tense it has not earned (corrected 2026-08-15, cross-branch review). `regen_stage0` and its
-// roster are deleted on integration/v1-cut and ALIVE on main. So "its subject is deleted" is true
-// on that branch and not yet true of the repository, and the retirement above discharges only if
-// v1-cut reaches main. If this cut lands FIRST, main carries a live regen authority with no
-// required job invoking it -- which is a real gap someone must own, not the settled absence the
-// paragraph describes -- and if v1-cut never lands, the item returns to the queue as an ordinary
-// unmet obligation rather than a retired one. This is the same branch-dependent-population defect
-// already declared on the src/v1 coverage gap row, and it is recorded here because a reader
-// checking main and a reader checking the cut branch would otherwise disagree about whether this
-// obligation exists at all. Whichever cut merges second owns the reconciliation.
+// So the gap this paragraph used to describe as order-dependent is now a plain, ordinary one:
+// the fold exists and has never been invoked from CI. The two steps below close it by adding two
+// more invocations of the one binary already built for the floor fold, in the same job, after it
+// -- no second job, no artifact hand-off, no new `needs` edge, for the same reason the header
+// above gives for not reviving gunbc.ci_workflow's six-job architecture.
 //
-// THE DRIFT GATES DO NOT RIDE ON THIS. Measured on the v1-cut branch: heal_generated_artifacts
-// PASSES while regen is RED. So "the regen fixed point and the generated-artifact drift gates"
-// is two obligations with two subjects, and only the regen half is order-dependent. The drift
-// gates stay on the queue above unconditionally, and a future reader must not retire them by
-// association when the regen half retires.
+// THE DRIFT GATES DID NOT RIDE ON THE OLD REGEN EITHER, and still don't: regen failing is a
+// self-host fixed-point defect (the emitted stage0 sources diverge from what the compiler would
+// emit today), which is a materially different fact from the generated-artifact drift gate (which
+// diffs THIS repository's checked-in generated files against what THIS commit's .dag sources
+// would emit for THEM). The two steps below add a third, unrelated failure surface to the job;
+// they do not change what the drift gate covers.
 
 data witness_floor_workflow_job_id: String = "witnesses"
 
@@ -240,6 +233,66 @@ fn witness_floor_run_step() -> Step {
   }
 }
 
+// TWO MORE INVOCATIONS OF THE SAME BINARY, mirroring witness_floor_run_step() exactly: the
+// `--source-root` flags are the same fold over gunbc.ci_layer_roots witness_layer_roots (DESIGN
+// §3 -- one authority, not a second literal roster), and each mode decides its own subject in
+// .dag; this step passes only the source roots. `--required-regen` proves the fold's first
+// generation matches the committed candidate; `--required-regen-fixed-point` additionally proves
+// a second generation from that candidate reproduces it, so the emit is at a fixed point rather
+// than merely agreeing once by coincidence. Both currently require at least one --source-root
+// flag to pass claim_executor's own CLI gate even though neither mode's function consumes it
+// (src/v1/stage0/src/bin/claim_executor.rs, the empty-source-roots check runs ahead of all three
+// mode dispatches) -- fixing that gate is out of scope here; supplying the flag is the correct
+// interim, not a workaround, since the flag is otherwise meaningful for every other mode this
+// binary serves.
+fn witness_required_regen_script() -> String {
+  concat(
+    concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
+    concat(
+      "\"$ROOT/target/release/claim_executor\" --required-regen",
+      concat(witness_floor_source_root_flags(), "\n")
+    )
+  )
+}
+
+fn witness_required_regen_step() -> Step {
+  RunStep {
+    name: Present { value: "Regen fixed point: first generation matches committed candidate" },
+    id: none,
+    run: witness_required_regen_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn witness_required_regen_fixed_point_script() -> String {
+  concat(
+    concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
+    concat(
+      "\"$ROOT/target/release/claim_executor\" --required-regen-fixed-point",
+      concat(witness_floor_source_root_flags(), "\n")
+    )
+  )
+}
+
+fn witness_required_regen_fixed_point_step() -> Step {
+  RunStep {
+    name: Present { value: "Regen fixed point: second generation reproduces the first" },
+    id: none,
+    run: witness_required_regen_fixed_point_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
 // A DECLARED PROVISIONAL BOUND, NOT A DERIVED ONE, AND THE DIFFERENCE IS THE WHOLE POINT.
 //
 // Absent, this job inherits GitHub's 360-minute default -- so it was never unbounded, but
@@ -257,9 +310,15 @@ fn witness_floor_run_step() -> Step {
 // plausible output DESIGN section 5 forbids, one level up -- a number with no measurement
 // behind it wearing a measurement's authority.
 //
-// RESTORATION TRIGGER: the first run that completes this fold. Its wall time is the real
-// measurement, and this constant is replaced by one derived from it -- at which point this
-// note dissolves with the provisional bound it explains.
+// The two regen steps added 2026-08-19 are covered by the SAME job-level bound, provisionally,
+// for the same reason: neither has ever completed in CI either, so there is nothing to derive a
+// separate figure from yet. This is a widening of what the existing provisional number covers,
+// not a second number -- DESIGN §2 (one concept, one authority) applies to a timeout bound as
+// much as to any other fact.
+//
+// RESTORATION TRIGGER: the first run that completes this fold, floor and regen alike. Real wall
+// times replace this constant -- at which point this note dissolves with the provisional bound
+// it explains.
 fn witness_floor_job() -> Job {
   Job {
     id: witness_floor_workflow_job_id,
@@ -269,7 +328,9 @@ fn witness_floor_job() -> Job {
       witness_floor_checkout_step(),
       witness_floor_toolchain_step(),
       witness_floor_build_step(),
-      witness_floor_run_step()
+      witness_floor_run_step(),
+      witness_required_regen_step(),
+      witness_required_regen_fixed_point_step()
     ],
     needs: [],
     env: none,
