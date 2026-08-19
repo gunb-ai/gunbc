@@ -17,7 +17,30 @@ import std.types { Bool, String, List }
 // which gunbc.host_effect reaches, which the emitter's own closure reaches — and acyclicity is the import
 // graph's one structural law (DESIGN §3). A fact needed by two modules on opposite sides of a dependency
 // chain belongs beneath both, not inside either.
-data deployed_tree_excluded_prefixes: List<String> = ["target", ".git"]
+// WHY THIS LIST IS NOT JUST target AND .git, AND WHY IT IS STILL NOT EVERY IGNORED PATH.
+// The working-tree leg is rsync, which does not read .gitignore, so an ignored path outside these prefixes
+// is copied to the host under a revision that does not name it. Candidate admission refuses on exactly that
+// state (gunbc.live_deploy.candidate, the ignored_deployed arm), and the refusal names two remedies: widen
+// these exclusions, or remove the file. The four appended here take the first remedy because they are host
+// state by construction -- agent session state and local tool/build caches that the deployed tree must never
+// contain under any revision, so shipping one is never the intent and refusing on one is pure friction.
+//
+// THE .env FAMILY IS DELIBERATELY ABSENT AND STAYS REFUSED. The repository ignores `.env`, `.env.local` and
+// `.env.*.local`; the third is a wildcard, and both this predicate and rsync's `--exclude /<p>` match a
+// literal segment. Listing the two spellable forms would silence admission on them while `.env.*.local` kept
+// shipping -- partial cover on the one class where the shipped bytes are secrets, which is strictly worse
+// than the present loud refusal on all three. It stays refused until the exclusion carrier can express a
+// pattern, and the same reasoning holds for src/v2/test/claim/manual/sg2_scratch_probe.dag for a different
+// reason: it sits inside a source root the graph actually reads, so excluding it would change what the host
+// compiles rather than merely what it stores.
+//
+// NOT DERIVED FROM gunbc.gitignore_authority, ON PURPOSE. That authority answers "must not be tracked"; this
+// one answers "must not be shipped", and the sets genuinely differ -- a tracked file ships and is not
+// ignored. Deriving would also let an ordinary .gitignore edit silently change what a deploy installs, and
+// would put an import edge into a module kept leaf for the acyclicity reason stated above.
+data deployed_tree_excluded_prefixes: List<String> = [
+  "target", ".git", ".claude", ".gunbc", "target-codex", ".cargo-home",
+]
 
 fn deployed_tree_rsync_exclude_flags() -> String {
   join(map(deployed_tree_excluded_prefixes, p => concat("--exclude /", p)), " ")

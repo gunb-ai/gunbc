@@ -74,10 +74,22 @@ test fn the_serve_unit_matches_the_deployed_bytes() -> Bool {
   emitted == "[Unit]\nDescription=gunbc roadmap HTTP server (gunbc serve)\nAfter=network-online.target tailscaled.service\nWants=network-online.target\n\n[Service]\nType=simple\nUser=briansrls\nGroup=briansrls\nWorkingDirectory=/opt/gunbc-green/gunbc\nExecStart=/opt/gunbc-green/bin/gunbc serve --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap_serve.dag --function roadmap_serve_handle_srv1_green --host 0.0.0.0 --port 18080 --release-revision 7d06e3783e112abe351045cf8903705b55e633bd --eval-budget-cpu-ms 30000 --eval-budget-wall-ms 30000\nRestart=on-failure\n\n[Install]\nWantedBy=multi-user.target\n"
 }
 
-// gunbc-srv1-green-tree-sync.service, as deployed on srv1 2026-08-19.
-test fn the_tree_sync_unit_matches_the_deployed_bytes() -> Bool {
+// gunbc-srv1-green-tree-sync.service. Base transcription: srv1, 2026-08-19, like its siblings — but this
+// row is the ONE in the family whose expectation intentionally diverges from the bytes currently on the
+// host, so it is named for what it actually asserts rather than for the family it belongs to.
+//
+// THE DELTA IS EXACTLY THE FIRST ExecStart's EXCLUDE RUN, and it is derived, not transcribed:
+// deployed_tree_rsync_exclude_flags() renders one `--exclude /<p>` per deployed_tree_excluded_prefixes
+// entry, and that list widened from two prefixes to six. The deployed unit still carries the two-prefix
+// spelling and will carry the six-prefix one after the next deploy of this slot, at which point the
+// divergence closes and the transcription and the emission agree again.
+//
+// The second ExecStart is untouched on purpose: the .git leg carries its own include/exclude set and does
+// not read the exclusion list, so a change to that list must not move it. Its bytes staying byte-identical
+// here is the control that says the widening reached the leg it should and no other.
+test fn the_tree_sync_unit_matches_the_deployed_bytes_plus_the_exclusion_widening() -> Bool {
   let emitted = render(doc: emit_tree_sync_unit_doc(spec: green_spec(), tree_path: green_spec().service.repo_root as String), proto: live_deploy_protocol)
-  emitted == "[Unit]\nDescription=gunbc source tree sync (service-user-principal rsync from CI runner checkout)\n\n[Service]\nType=oneshot\nUser=briansrls\nGroup=briansrls\nEnvironmentFile=/etc/gunbc-srv1-green-tree-sync.env\nExecStart=/usr/bin/rsync -rlpt --delete --exclude /target --exclude /.git \"$\{GUNBC_TREE_SRC}/\" /opt/gunbc-green/gunbc/\nExecStart=/usr/bin/rsync -rlpt --exclude=objects/pack/*.keep --exclude=objects/pack/tmp_pack_* --include=/HEAD --include=/objects/*** --include=/packed-refs --include=/refs/*** --exclude=* \"$\{GUNBC_TREE_SRC}/.git/\" /opt/gunbc-green/gunbc/.git/\n"
+  emitted == "[Unit]\nDescription=gunbc source tree sync (service-user-principal rsync from CI runner checkout)\n\n[Service]\nType=oneshot\nUser=briansrls\nGroup=briansrls\nEnvironmentFile=/etc/gunbc-srv1-green-tree-sync.env\nExecStart=/usr/bin/rsync -rlpt --delete --exclude /target --exclude /.git --exclude /.claude --exclude /.gunbc --exclude /target-codex --exclude /.cargo-home \"$\{GUNBC_TREE_SRC}/\" /opt/gunbc-green/gunbc/\nExecStart=/usr/bin/rsync -rlpt --exclude=objects/pack/*.keep --exclude=objects/pack/tmp_pack_* --include=/HEAD --include=/objects/*** --include=/packed-refs --include=/refs/*** --exclude=* \"$\{GUNBC_TREE_SRC}/.git/\" /opt/gunbc-green/gunbc/.git/\n"
 }
 
 // gunbc-srv1-green-fleet-converge.service, as deployed on srv1 2026-08-19.
