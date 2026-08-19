@@ -23,6 +23,7 @@ import std.witness_admission {
   LegacyFrozenPathDeferral,
   UnexecutedDeferredWitness,
   UnclassifiedPathDeferral,
+  DeclaredCadenceUnrealized,
   FrozenBaselineDebtAllowed,
   FrozenBaselineDebtGrew
 }
@@ -80,6 +81,7 @@ fn standing_is_unclassified_path_deferral(r: WitnessExecutionStanding) -> Bool {
     UnexecutedDeferredWitness { entry: _, function: _ } => false
     LegacyFrozenPathDeferral { entry: _, function: _ } => false
     WitnessHasExecutingConsumer { cadence: _ } => false
+    DeclaredCadenceUnrealized { cadence: _, entry: _, function: _ } => false
   }
 }
 
@@ -89,6 +91,7 @@ fn standing_is_unexecuted_deferred(r: WitnessExecutionStanding) -> Bool {
     UnclassifiedPathDeferral { entry: _, function: _ } => false
     LegacyFrozenPathDeferral { entry: _, function: _ } => false
     WitnessHasExecutingConsumer { cadence: _ } => false
+    DeclaredCadenceUnrealized { cadence: _, entry: _, function: _ } => false
   }
 }
 
@@ -98,6 +101,7 @@ fn standing_is_legacy_frozen(r: WitnessExecutionStanding) -> Bool {
     UnexecutedDeferredWitness { entry: _, function: _ } => false
     UnclassifiedPathDeferral { entry: _, function: _ } => false
     WitnessHasExecutingConsumer { cadence: _ } => false
+    DeclaredCadenceUnrealized { cadence: _, entry: _, function: _ } => false
   }
 }
 
