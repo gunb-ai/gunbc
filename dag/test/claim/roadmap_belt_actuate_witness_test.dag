@@ -145,7 +145,6 @@ import gunbc.roadmap_belt_actuate {
   UnknownSpawnWorkdir,
   srv1_live_dashboard_instance,
 }
-import gunbc.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
 import gunbc.fleet_desired_observe {
   RevisionConverged, RevisionDrifted, RevisionUnobserved,
@@ -1113,7 +1112,7 @@ test fn dashboard_instance_dispatch_contract_keystone_holds() -> Bool {
     && observe_refused_spawn_does_not_zero_verify_pass()
     && observe_refused_with_empty_verify_is_deferred_not_recorded()
     && unknown_spawn_workdir_refuses_instance_resolution()
-    && known_spawn_workdirs_resolve_to_distinct_instances()
+    && the_known_spawn_workdir_resolves_to_its_own_instance()
     && verification_presentation_absent_receipt_is_queued()
     && verification_presentation_unreadable_receipt_is_blocked()
     && verification_presentation_decouples_verify_from_spawn_observe_refusal()
@@ -1132,24 +1131,24 @@ test fn unknown_spawn_workdir_refuses_instance_resolution() -> Bool {
   }
 }
 
-// RE-ENROLLED against srv1-lab. The lookup's job is to answer WHICH instance a spawn workdir
-// belongs to, so it needs two known workdirs resolving to different identities; the deleted green
-// slot supplied the second one and the lab supplies it now. Retiring this with the slot would have
-// left the lookup with only its refusal arm witnessed — the arm that answers correctly would then
-// be exercised by nothing, which is how a resolver that fused every workdir onto one instance would
-// pass.
-test fn known_spawn_workdirs_resolve_to_distinct_instances() -> Bool {
-  match belt_dashboard_instance_lookup_for_spawn_workdir(
-    workdir: srv1_live_dashboard_instance().repo_root as String,
-  ) {
-    SpawnWorkdirInstanceResolved { instance: live } =>
-      match belt_dashboard_instance_lookup_for_spawn_workdir(
-        workdir: srv1_lab_dashboard_instance().repo_root as String,
-      ) {
-        SpawnWorkdirInstanceResolved { instance: lab } =>
-          (live.instance_id as String) != (lab.instance_id as String)
-        UnknownSpawnWorkdir { workdir: _ } => false
-      }
+// NARROWED, and the first attempt at this was wrong in a way worth recording. The claim used to
+// assert that two known spawn workdirs resolve to DIFFERENT instances, with the deleted green slot
+// as the second one. Re-enrolling it against srv1-lab looked right and failed by execution: the
+// lookup's population is the instances this belt actuates, and the lab was never in it, so the lab
+// root resolves to UnknownSpawnWorkdir. Distinctness is not something the lookup can be asked about
+// any more -- it knows exactly one workdir -- and that is a consequence of the single deployment
+// rather than a guarantee that was dropped.
+//
+// So this asserts the arm that still exists: the known workdir resolves, and it resolves to the
+// instance that owns it. Retiring outright would have left only
+// unknown_spawn_workdir_refuses_instance_resolution enrolled, and a lookup that refused EVERY
+// workdir would then pass the file -- the resolved arm needs its own claim precisely because the
+// refusal arm cannot detect its absence.
+test fn the_known_spawn_workdir_resolves_to_its_own_instance() -> Bool {
+  let live = srv1_live_dashboard_instance()
+  match belt_dashboard_instance_lookup_for_spawn_workdir(workdir: live.repo_root as String) {
+    SpawnWorkdirInstanceResolved { instance: resolved } =>
+      (resolved.instance_id as String) == (live.instance_id as String)
     UnknownSpawnWorkdir { workdir: _ } => false
   }
 }
