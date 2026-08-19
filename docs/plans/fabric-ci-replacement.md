@@ -1,6 +1,11 @@
 # Replacing GitHub Actions with the fabric: the plan
 
-**Status: proposed, awaiting sign-off.** Operator direction (2026-08-19): do the migration as one
+**Status: APPROVED IN DIRECTION, amended. Sign-off received 2026-08-19 — "I approve the one-PR,
+no-shadow replacement direction, but not the plan exactly as written" — with eight blocking
+corrections and sixteen acceptance conditions, recorded in §11–§13 below. Earlier sections are kept
+as authored, with their defects registered rather than edited away.**
+
+**Original framing:** Operator direction (2026-08-19): do the migration as one
 PR, no long shadow process. That is the replacement doctrine's *default* — delete-first, one atomic
 authority transition — rather than the gap-intolerant carve-out I had proposed. The plan below is
 written to that ruling.
@@ -247,3 +252,141 @@ That is the first genuinely new *stateful* infrastructure in this proposal — t
 process, this is new persistence — and it needs to be named as such rather than absorbed into "the
 reconciler keeps track". Where that state lives, and what makes its CAS atomic, is now an open
 question ahead of the four in §8.
+
+## 11. The merge gate is enforced by a ruleset, and the verdict's reading of it is wrong
+
+The sign-off states there is *"currently no GitHub-enforced required-check gate on `main`: branch
+data reports zero required contexts and enforcement off"*, and builds a failure-mode argument on it.
+**Measured directly, that is false**, and the mechanism of the error is one this repository has a
+name for.
+
+```
+GET /repos/gunb-ai/gunbc/branches/main/protection   →  403 Resource not accessible
+GET /repos/gunb-ai/gunbc/rulesets                   →  "passing CI", enforcement: ACTIVE
+GET /repos/gunb-ai/gunbc/rulesets/16178731          →  required_status_checks: [{ context: "witnesses" }]
+                                                       plus deletion, non_fast_forward
+                                                       conditions: ~DEFAULT_BRANCH
+```
+
+The gate exists, it is **active**, and it requires exactly the context `witnesses`. It is enforced
+through a **ruleset**, not classic branch protection — a different API surface, which is why the
+protection endpoint returns nothing useful. Reading "branch protection is empty" as "the branch is
+unprotected" is the nearby-question failure: the endpoint answered a question adjacent to the one
+asked, and answered it confidently.
+
+**Three consequences, and the first is a bootstrap trap that would have bitten during the cutover.**
+
+1. **Deleting `witnesses.yml` without addressing the ruleset makes every PR permanently
+   unmergeable** — including the rollback PR. Nothing would produce a check named `witnesses`, so
+   every PR sits at "Waiting for status to be reported" forever. The rollback path in §6 assumed a
+   human could merge a revert; under this ruleset a human cannot, without bypass authority that has
+   never been exercised.
+2. **The good news is larger than the bad.** The required check carries **no `integration_id` pin**
+   — the parameter is `{"context": "witnesses"}` and nothing else. So *any* source publishing a
+   check named `witnesses` satisfies the rule. If the fabric's Check Run keeps that exact name, the
+   gate transition is a **no-op**: no ruleset edit, no window in which the gate is absent, and the
+   sign-off's concern about pinning the check to a GitHub App source becomes optional rather than
+   load-bearing. **Keeping the context name is therefore a design constraint, not a preference.**
+3. The failure mode the sign-off wanted is **already the one we have**: poller unavailable → no new
+   check → PR unmergeable. That is fail-closed today, and the cutover must not weaken it. The
+   sign-off's premise that the merge button is currently not fail-closed on CI is what would have
+   licensed weakening it.
+
+`deletion` and `non_fast_forward` are also active on the default branch, so §6's rollback story
+needs a named bypass authority that has actually been tested — the sign-off's condition 16, arrived
+at from the opposite direction.
+
+## 12. The eight blocking corrections
+
+§9 and §10 already registered three of these; they are restated here in one place with the
+sign-off's sharper form.
+
+1. **`LeaseEpoch` is not the serialization point.** It makes stale actuation decidable *after* a
+   canonical Grant exists; it does not stop two ticks from both reading free capacity and minting
+   different Grants against it. What is needed is a durable authority transition — *read canonical
+   generation N, consume idempotent observations, derive, commit N+1 iff N is still current* — plus
+   an **outbox** for GitHub mutations, because `CreateRun` succeeding and the process dying before
+   recording the returned id produces a duplicate Check Run. The modeled `CheckRun` accepts an
+   `external_id` on create but **does not retain it**, so there is no modeled exact join for
+   recovery. That join is part of the work.
+2. **`extdeps.github.push_event` cannot poll.** It parses a webhook payload from
+   `GITHUB_EVENT_PATH`; once Actions is gone there is no such payload. Real polling operations are
+   needed. Main: persist a **SHA cursor**, enumerate every unseen descendant in ancestry order,
+   oldest first, and **refuse a non-descendant head as discontinuous history rather than silently
+   resetting the cursor**. Not timestamps — commit times are not a reliable cursor.
+3. **PR Work uses the synthetic merge subject** (§10), and PR head identity and execution subject
+   stay **two separate facts** — the check correlates to the head, the run tests the merge. No
+   head-tree fallback: an unusable merge ref is a typed `MergeSubjectUnavailable`
+   (conflict / inaccessible / unobserved). A base-branch change that moves the merge subject
+   naturally creates a new Demand, which is a gain.
+4. **`workflow_dispatch` does not survive workflow deletion** (§9) — GitHub only provides it while
+   the file exists on the default branch. It needs an explicit replacement creating a Demand with
+   *requested reexecution, exact ref, new Attempt required, prior receipt not sufficient*. A Check
+   Run "re-run" is not a substitute: re-requesting emits a webhook we would not receive.
+5. **Check publication is a lifecycle, not a PATCH:** created `queued` when a Demand is admitted →
+   `in_progress` when the Attempt begins → `completed` with a conclusion, and `cancelled` /
+   `timed_out` as their own terminal arms. It needs a GitHub App identity with Checks write, whose
+   token stays on the control side and **never enters the execution workspace**.
+6. **Logs and the semantic result need an owned store in this cut** — deferring it was refused
+   outright, and correctly: today's log surface cannot distinguish a complete semantic result from
+   a cancelled prefix from a reader-truncated prefix. Retained ordered artifact, terminal manifest
+   written last, manifest verifier, content-addressed blobs, `details_url` resolving to it. The
+   terminal conclusion derives from the verified artifact plus process termination plus the two
+   gate receipts — **never from scraping stdout**.
+7. **Attempt precedes Grant.** My §4 loop had `Demand → Offer match → Grant → Attempt`, but the
+   `ExecutionGrant` carrier *names the Attempt it authorizes*, so that ordering cannot be
+   constructed. Attempt creation consumes no capacity; Grant issuance does.
+8. **Source and toolchain materialization are real work**, not inherited. `FetchNoTags` does not
+   ground an attempt worktree in a named mirror. The Rust closure is pinned at `1.93.0` with
+   `clippy`/`rustfmt` and must be materialized and *verified*, not delegated to
+   `setup-rust-toolchain` — that action is the old realization, not a product concept. Preserve
+   Linux/AArch64 and the *reason* behind `cache: false` (no foreign post-job cleanup mutating a
+   cache shared with a live Attempt); do **not** preserve the literal `self-hosted` label, which is
+   a GitHub routing token whose subject disappears with Actions. `CARGO_TERM_COLOR=always` is in
+   the workflow and missing from §2's table — my omission.
+
+## 13. The four questions, answered
+
+1. **PRs too.** Main-only is coherent only as a partial transition that retains a workflow and two
+   execution authorities, contradicting the one-motion ruling — my reading was right. First cut
+   covers every unseen main commit, every current PR merge subject targeting main, and manual
+   reexecution. **No merge-queue semantics**: the current workflow has no `merge_group` trigger, so
+   it is not in the measured contract. PR concurrency is expressed as a **state-reconciliation
+   contract** — *every open PR targeting main has a terminal check for its current merge subject* —
+   rather than replaying `opened`/`reopened`/`ready_for_review`/`synchronize`. One behaviour change
+   is admitted deliberately: `ready_for_review` on an unchanged merge subject would no longer force
+   a re-run. Draft PRs currently *do* run CI (no draft exclusion) and that stays.
+2. **Off-fleet.** The control-plane principal and store must not be an Offer the control plane
+   itself allocates; on-fleet placement lets one host failure remove observation, canonical state,
+   allocation and execution together. Minimum footprint: one small independent node, persistent
+   storage with snapshots, App key and token minting, a **one-shot tick** invoked by an external
+   cadence — not a resident interpreted loop — an outbox publisher, and point-to-point authority to
+   fleet executors. It runs no customer Work and never appears in the Offer roster. One node is a
+   declared single point of failure whose climb is an external observer or a second replica.
+3. **Execution class lands here, narrowly.** Environment and entitlement for the floor —
+   Linux/AArch64, resource entitlement, source-materialization and toolchain-closure capability,
+   current trust profile. It must **not** contain a `RunnerSpec`, a `self-hosted` label, a public
+   SKU, a variance promise, or a physical host identity. The Offer-to-backing relation lands with
+   it, because selection can otherwise choose an Offer it cannot actuate.
+4. **Not the tree hash** — my §8 hope is refused. `WorkContentKey` is over source subject + CI
+   contract digest + runtime closure + semantic environment + output contract, where source subject
+   is the exact **commit** identity (for PRs, the merge commit plus head/base correlation). Commit
+   rather than tree because the checkout materializes full history, so history may be a declared
+   input until proven otherwise; and reuse is **disabled for the cutover** —
+   `prior terminal receipt sufficient = no` — because witness budgets can depend on CPU and wall
+   measurements, witnesses may consume Git identity, and the output contract includes the
+   expected-red roster. **Dedup is not part of an authority cutover.**
+
+## 14. What "no shadow" means, and the one thing I need re-ruled
+
+The sign-off reads the operator's no-shadow instruction as **"no long-lived dual production
+authority", not "no wet proof"**, and requires a bounded pre-merge canary: deploy the control plane
+off-fleet, run the exact candidate merge subject through the fabric, publish a **non-required**
+Check Run from the intended App, verify retained artifacts and teardown, disable intake, then merge
+the one-motion cutover.
+
+I think that reading is right and the distinction is real — my §6 pre-merge argument was too thin,
+because a green Actions run proves the tree resolves and its witnesses pass, and proves **nothing**
+about token minting, Check Run creation, durable state recovery, grant acceptance, materialization
+outside Actions, or artifact publication. But it is a reinterpretation of an operator instruction
+rather than a technical finding, so it goes back to the operator rather than being adopted by me.
