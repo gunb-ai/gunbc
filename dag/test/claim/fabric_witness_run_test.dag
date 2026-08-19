@@ -26,11 +26,11 @@ fn t_work() -> Work<NonEmptyStr> {
   }
 }
 
-fn t_offer(threads: Nat, caps: CapabilityManifestRef, trust: TrustDomainRef) -> Offer<NonEmptyStr> {
+fn t_offer(threads: HardwareThreadCount, caps: CapabilityManifestRef, trust: TrustDomainRef) -> Offer<NonEmptyStr> {
   Offer {
     id: FabricIdentity { principal: "gunbc", key: "offer-srv1" },
     executor: "gunbc",
-    shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: threads) } },
+    shape: Shape { hard: HardRequirements { threads: threads } },
     capabilities: caps,
     trust_domain: trust,
     quantity_bound: 1,
@@ -45,7 +45,7 @@ fn t_offer(threads: Nat, caps: CapabilityManifestRef, trust: TrustDomainRef) -> 
 
 fn t_good_offer() -> Offer<NonEmptyStr> {
   t_offer(
-    threads: 128,
+    threads: hardware_thread_count(count: 128),
     caps: "gunbc.capabilities.linux-aarch64-rust-toolchain",
     trust: "gunbc.trust.internal-fleet",
   )
@@ -82,19 +82,17 @@ test fn authorized_command_is_the_floor_invocation() -> Bool {
   }
 }
 
-// THE RESIDUE WALL. floor_run_command hand-expands one argv pair per source
-// root because the substrate has no flat-map; this is the executing check that
-// the expansion still matches the declared authority. Adding a root to
-// floor_source_roots without adding its pair to the argv reds here.
-//
-// It asserts a JOIN, not a count: a count would pass if someone wrote the same
-// root twice, which is exactly the drift the review said a string-to-string
-// comparison could not detect.
+// The argv is now a total fold over witness_layer_roots, so this is a
+// REGRESSION CONTROL rather than the wall it was when the pairs were hand
+// expanded -- per DESIGN §4b(4), evidence stays enrolled when a class climbs.
+// It asserts a JOIN plus the exact arity, not a count alone: a count would pass
+// if one root appeared twice, which is the drift review 53848 correctly said a
+// string-to-string comparison could not detect.
 
 test fn floor_argv_carries_every_declared_source_root() -> Bool {
   let argv = floor_run_command().argv
-  all(floor_source_roots(), r => string_list_contains(xs: argv, wanted: r))
-    && length(xs: argv) == 2 + 2 * length(xs: floor_source_roots())
+  all(witness_layer_roots, r => any(argv, a => a == r))
+    && length(xs: argv) == 2 + 2 * length(xs: witness_layer_roots)
 }
 
 test fn floor_inputs_manifest_ref_folds_the_same_authority() -> Bool {
@@ -122,7 +120,7 @@ test fn foreign_trust_domain_refuses_despite_ample_capacity() -> Bool {
     work: t_work(),
     attempt_work: t_work_id(),
     offer: t_offer(
-      threads: 1024,
+      threads: hardware_thread_count(count: 1024),
       caps: "gunbc.capabilities.linux-aarch64-rust-toolchain",
       trust: "gunbc.trust.public-cloud",
     ),
@@ -138,7 +136,7 @@ test fn missing_capabilities_refuse() -> Bool {
     work: t_work(),
     attempt_work: t_work_id(),
     offer: t_offer(
-      threads: 128,
+      threads: hardware_thread_count(count: 128),
       caps: "gunbc.capabilities.linux-x86_64-no-toolchain",
       trust: "gunbc.trust.internal-fleet",
     ),
@@ -157,7 +155,7 @@ test fn larger_offer_still_authorizes() -> Bool {
     work: t_work(),
     attempt_work: t_work_id(),
     offer: t_offer(
-      threads: 256,
+      threads: hardware_thread_count(count: 256),
       caps: "gunbc.capabilities.linux-aarch64-rust-toolchain",
       trust: "gunbc.trust.internal-fleet",
     ),
@@ -169,7 +167,7 @@ test fn insufficient_threads_refuse() -> Bool {
     work: t_work(),
     attempt_work: t_work_id(),
     offer: t_offer(
-      threads: 2,
+      threads: hardware_thread_count(count: 2),
       caps: "gunbc.capabilities.linux-aarch64-rust-toolchain",
       trust: "gunbc.trust.internal-fleet",
     ),
@@ -186,4 +184,21 @@ test fn insufficient_threads_refuse() -> Bool {
 // red for an unrelated reason.
 test fn floor_contract_keeps_the_parse_gate_as_its_own_step() -> Bool {
   length(xs: floor_work_contract(source: t_source()).steps) == 2
+}
+
+// THE SUBSTITUTION CHECK. The fabric's argv and the live workflow's step are
+// two projections of one authority (witness_layer_roots), so this asserts they
+// agree on the thing that could actually diverge: the source roots, in order.
+//
+// It does NOT assert byte equality with the emitted shell line. That line
+// carries "$ROOT/" prefixes and quoting the argv carrier deliberately does not,
+// because an argv is a list of arguments and a shell line is a rendering of one
+// -- asserting they are the same string would be asserting that the transport
+// never differs from the thing transported.
+test fn fabric_argv_and_workflow_step_agree_on_source_roots() -> Bool {
+  let argv = floor_run_command().argv
+  all(witness_layer_roots, r => any(argv, a => a == r))
+    && string_contains(s: witness_floor_run_script(), pattern: "--required-floor")
+    && all(witness_layer_roots, r =>
+         string_contains(s: witness_floor_run_script(), pattern: concat("--source-root \"$ROOT/", concat(r, "\""))))
 }
