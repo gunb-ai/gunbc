@@ -31,6 +31,7 @@ import gunbc.spark_serving_execution_schedule {
   SparkServingScheduleRefused,
   spark_serving_freeze_execution_schedule,
   spark_serving_frozen_schedule_order,
+  scheduled_rows_list,
 }
 import gunbc.spark_serving_release {
   RuntimeArtifactIdentity,
@@ -360,7 +361,7 @@ test fn an_ordinary_linger_plan_still_projects_its_rows() -> Bool {
     plan: spark_serving_linger_membership_plan(host: subject_host, linger_enabled: false),
     desired: [spark_serving_desired_linger_member(host: subject_host)],
   ) {
-    SparkServingTypedActionsProjected { rows: rows } => length(rows) == 1
+    SparkServingTypedActionsProjected { rows: rows } => length(scheduled_rows_list(scheduled: rows)) == 1
     SparkServingTypedActionsRefused { cause: _ } => false
   }
 }
@@ -472,7 +473,7 @@ fn artifact_refusal_cause(v: SparkServingPlanArtifactVerdict) -> String {
 
 fn artifact_row_count(v: SparkServingPlanArtifactVerdict) -> Int {
   match v {
-    SparkServingPlanArtifactReady { artifact: a } => length(a.spark_serving_typed_actions)
+    SparkServingPlanArtifactReady { artifact: a } => length(scheduled_rows_list(scheduled: a.spark_serving_typed_actions))
     SparkServingPlanArtifactRefused { cause: _ } => 0 - 1
   }
 }
@@ -561,7 +562,7 @@ fn runtime_rows(v: SparkServingPlanArtifactVerdict) -> Int {
   match v {
     SparkServingPlanArtifactRefused { cause: _ } => 0 - 1
     SparkServingPlanArtifactReady { artifact: a } =>
-      length(filter(a.spark_serving_typed_actions, row =>
+      length(filter(scheduled_rows_list(scheduled: a.spark_serving_typed_actions), row =>
         match row.action {
           MemberAdded { at: _, to: m } => is_runtime_root(address: m.address)
           MemberChanged { at: _, from: _, to: m } => is_runtime_root(address: m.address)

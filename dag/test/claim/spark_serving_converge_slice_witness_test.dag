@@ -19,6 +19,10 @@ import gunbc.fleet_converge_plan {
   fleet_converge_plan_artifact_bundle_admits,
   fleet_converge_plan_spark_typed_actions_consistency_admits,
 }
+import gunbc.spark_serving_execution_schedule {
+  scheduled_rows_empty,
+  scheduled_rows_list,
+}
 import gunbc.spark_serving_converge_plan {
   spark_serving_fleet_converge_plan_artifact,
   SparkServingPlanArtifactReady,
@@ -208,8 +212,8 @@ test fn linger_slice_freezes_enable_linger_typed_row() -> Bool {
     projection: slice_projection_linger(r: rel, linger_enabled: false),
   ) {
     SparkServingPlanArtifactReady { artifact: artifact } =>
-      length(artifact.spark_serving_typed_actions) == 1
-        && match spark_serving_frozen_linger_effect(row: artifact.spark_serving_typed_actions[0]) {
+      length(scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions)) == 1
+        && match spark_serving_frozen_linger_effect(row: scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions)[0]) {
           Present { value: e } => e == EnableLingerForOwnAccount
           Absent => false
         }
@@ -234,7 +238,7 @@ test fn linger_slice_converged_plan_has_empty_typed_rows() -> Bool {
     observed_caps: [],
     projection: slice_projection_linger(r: rel, linger_enabled: true),
   ) {
-    SparkServingPlanArtifactReady { artifact: artifact } => length(artifact.spark_serving_typed_actions) == 0
+    SparkServingPlanArtifactReady { artifact: artifact } => length(scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions)) == 0
     SparkServingPlanArtifactRefused { cause: _ } => false
   }
   }
@@ -262,7 +266,7 @@ test fn linger_slice_bundle_refuses_smuggled_v1_without_typed_rows() -> Bool {
               observed_baseline_hex: artifact.observed_baseline_hex,
               plan_body: artifact.plan_body,
               apply_shell: artifact.apply_shell,
-              spark_serving_typed_actions: [],
+              spark_serving_typed_actions: scheduled_rows_empty(),
             },
             claimed_hex: hex as String,
           )

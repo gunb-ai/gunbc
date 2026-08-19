@@ -34,6 +34,9 @@ import gunbc.fleet_converge_plan {
   fleet_converge_plan_content_hash_path,
   fleet_converge_spark_serving_typed_actions_wire,
 }
+import gunbc.spark_serving_execution_schedule {
+  scheduled_rows_list,
+}
 
 data fleet_converge_plan_spark_typed_actions_wire_path: String = "/tmp/fleet-converge-plan/spark_serving_typed_actions.wire"
 
@@ -107,7 +110,7 @@ func fleet_converge_plan_wet() -> ProcessExit
         plan_body: artifact.plan_body,
         apply_shell: artifact.apply_shell,
         spark_typed_actions_wire: fleet_converge_spark_serving_typed_actions_wire(
-          rows: artifact.spark_serving_typed_actions,
+          rows: scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions),
         ),
       ) {
         Absent =>
@@ -115,7 +118,7 @@ func fleet_converge_plan_wet() -> ProcessExit
         Present { value: content_hash } => {
           let planned_generation = prior_generation + 1
           let spark_wire = fleet_converge_spark_serving_typed_actions_wire(
-            rows: artifact.spark_serving_typed_actions,
+            rows: scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions),
           )
           let mkdir = run_shell_commands(
             commands: [ArgvCommand { argv: ["mkdir", "-p", fleet_converge_plan_artifact_dir] }],

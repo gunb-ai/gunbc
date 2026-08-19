@@ -36,6 +36,7 @@ import gunbc.remote_operation {
   remote_step_standing_wire,
   remote_step_failure_cause,
 }
+import gunbc.spark_serving_execution_schedule { scheduled_rows_list }
 import gunbc.typed_remote_file_write {
   TypedRemoteFileWriteAdmitted,
   TypedRemoteFileConvergence,
@@ -71,10 +72,10 @@ fn spark_serving_apply_reads_frozen_typed_rows(
   } else {
     SparkServingFrozenApplied {
       remote_steps: flat_map(
-        artifact.spark_serving_typed_actions,
+        scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions),
         r => fleet_converge_spark_serving_row_steps(row: r),
       ),
-      effect_count: length(flat_map(artifact.spark_serving_typed_actions, r => fleet_converge_spark_serving_row_effects(row: r))),
+      effect_count: length(flat_map(scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions), r => fleet_converge_spark_serving_row_effects(row: r))),
     }
   }
 }

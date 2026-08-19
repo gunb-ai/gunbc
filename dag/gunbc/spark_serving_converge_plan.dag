@@ -20,8 +20,12 @@ import gunbc.membership_reconcile {
   membership_write_count,
 }
 import gunbc.spark_serving_execution_schedule {
+  ScheduledRows,
+  SparkServingFrozenExecutionSchedule,
   SparkServingScheduleFrozen,
   SparkServingScheduleRefused,
+  scheduled_rows_from_frozen_schedule,
+  scheduled_rows_list,
   spark_serving_freeze_execution_schedule,
   spark_serving_frozen_schedule_order,
 }
@@ -220,7 +224,7 @@ fn spark_serving_planned_effect_executions(
 // always translates, so nothing ever exercised the arm. That is what made it worth closing before
 // the plan widens rather than after -- a four-member plan is exactly the input that reaches it.
 type SparkServingTypedActionProjection
-  = SparkServingTypedActionsProjected { rows: List<FleetConvergeSparkServingTypedAction> }
+  = SparkServingTypedActionsProjected { rows: ScheduledRows<FleetConvergeSparkServingTypedAction> }
   | SparkServingTypedActionsRefused { cause: String }
 
 // THE ROWS COME OUT IN THE SCHEDULED ORDER, NOT THE DIFF ORDER.
@@ -243,10 +247,7 @@ fn fleet_converge_spark_serving_typed_actions(
     SparkServingScheduleRefused { cause: why } =>
       SparkServingTypedActionsRefused { cause: why }
     SparkServingScheduleFrozen { schedule: schedule } =>
-      fleet_converge_spark_serving_typed_actions_in_order(
-        plan: plan,
-        order: spark_serving_frozen_schedule_order(schedule: schedule),
-      )
+      fleet_converge_spark_serving_typed_actions_in_order(plan: plan, schedule: schedule)
   }
 }
 
@@ -256,20 +257,24 @@ fn fleet_converge_spark_serving_typed_actions(
 // refusal, never a quiet subset.
 fn fleet_converge_spark_serving_typed_actions_in_order(
   plan: MembershipPlan<SparkServingMember, SparkServingMemberAt>,
-  order: List<SparkServingMemberAt>,
+  schedule: SparkServingFrozenExecutionSchedule,
 ) -> SparkServingTypedActionProjection {
-  let rows = flat_map(order, at =>
-    flat_map(
-      filter(plan.actions, a => fleet_converge_spark_serving_action_at(action: a) == at),
-      a =>
-        match fleet_converge_spark_serving_typed_action(action: a) {
-          Present { value: row } => [row]
-          Absent => []
-        }
-    )
+  let scheduled = scheduled_rows_from_frozen_schedule(
+    schedule: schedule,
+    rows_for: fn(at) {
+      flat_map(
+        filter(plan.actions, a => fleet_converge_spark_serving_action_at(action: a) == at),
+        a =>
+          match fleet_converge_spark_serving_typed_action(action: a) {
+            Present { value: row } => [row]
+            Absent => []
+          }
+      )
+    },
   )
+  let rows = scheduled_rows_list(scheduled: scheduled)
   if length(rows) == length(plan.actions) {
-    SparkServingTypedActionsProjected { rows: rows }
+    SparkServingTypedActionsProjected { rows: scheduled }
   } else {
     SparkServingTypedActionsRefused {
       cause: join([
@@ -413,7 +418,7 @@ fn spark_serving_fleet_converge_plan_artifact_from_rows(
   observed_timers: List<TimerRetirementMember>,
   observed_caps: List<CapMember>,
   spark_plan: MembershipPlan<SparkServingMember, SparkServingMemberAt>,
-  spark_rows: List<FleetConvergeSparkServingTypedAction>,
+  spark_rows: ScheduledRows<FleetConvergeSparkServingTypedAction>,
   observed_spark: List<SparkServingMember>,
 ) -> FleetConvergePlanArtifact? {
   let subject = fleet_converge_plan_subject(
@@ -426,7 +431,7 @@ fn spark_serving_fleet_converge_plan_artifact_from_rows(
     let cap_plan = caps_reconcile(desired: fleet_converge_desired_caps(), observed: observed_caps)
     let timer_lines = membership_plan_lines_timer(plan: timer_plan)
     let cap_lines = membership_plan_lines_cap(plan: cap_plan)
-    let spark_lines = map(spark_rows, r => fleet_converge_spark_serving_action_line(row: r))
+    let spark_lines = map(scheduled_rows_list(scheduled: spark_rows), r => fleet_converge_spark_serving_action_line(row: r))
     let baseline = observed_baseline_text(
       host: host,
       observed_timers: observed_timers,
@@ -434,7 +439,7 @@ fn spark_serving_fleet_converge_plan_artifact_from_rows(
       observed_spark: observed_spark,
     )
     let planned_generation = prior_generation + 1
-    let spark_wire = fleet_converge_spark_serving_typed_actions_wire(rows: spark_rows)
+    let spark_wire = fleet_converge_spark_serving_typed_actions_wire(rows: scheduled_rows_list(scheduled: spark_rows))
     let apply_shell = spark_serving_fleet_converge_apply_shell(timer_plan: timer_plan)
     let body = join(
       concat(

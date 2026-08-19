@@ -394,3 +394,51 @@ fn spark_serving_frozen_schedule_order(
 ) -> List<SparkServingMemberAt> {
   schedule.ordered
 }
+
+// ROWS THAT CANNOT BE HANDED OVER IN THE WRONG ORDER.
+//
+// Freezing the schedule made the ORDER derivable; it did not make the wrong order unusable. Emission
+// folded the frozen order, so the list apply received was correct -- but a diff-ordered list and a
+// schedule-ordered list are the same type, so the guarantee lived in the producer's current behaviour
+// rather than in anything the consumer could check. That is the same shape as the defect this whole
+// vertical exists to close: a value that is right today because of who built it, not because a wrong
+// one is unrepresentable.
+//
+// ScheduledRows is sole_constructor and its only mint takes a frozen schedule. The caller supplies
+// the rows FOR a subject and cannot supply their order -- the fold walks the schedule, so the order
+// is the scheduler's by construction. A consumer holding a ScheduledRows is holding rows that were
+// ordered by a graph, and there is no other way to have obtained one.
+//
+// It is generic in the row because the artifact carrying it is declared upstream of this module and
+// naming that row type here would close an import cycle. The subject is this vertical's; the row is
+// whatever the plan layer freezes.
+type ScheduledRows<Row> sole_constructor {
+  rows: List<Row>
+}
+
+fn scheduled_rows_from_frozen_schedule<Row>(
+  schedule: SparkServingFrozenExecutionSchedule,
+  rows_for: fn(SparkServingMemberAt) -> List<Row>,
+) -> ScheduledRows<Row> {
+  ScheduledRows {
+    rows: flat_map(
+      spark_serving_frozen_schedule_order(schedule: schedule),
+      at => rows_for(at),
+    ),
+  }
+}
+
+fn scheduled_rows_list<Row>(scheduled: ScheduledRows<Row>) -> List<Row> {
+  scheduled.rows
+}
+
+// THE EMPTY ONE, and why it is a mint rather than a hole in the wall.
+//
+// A host with no Spark rows to freeze still needs an artifact, and sole_constructor means the plan
+// layer cannot write one. This supplies it. It is not a bypass: the wall exists to stop rows being
+// handed over in an order nobody derived, and an empty list has no order to get wrong -- there is no
+// sequence it could be the wrong one of. The mint takes no rows for exactly that reason, so it
+// cannot be used to smuggle a populated list past the fold.
+fn scheduled_rows_empty<Row>() -> ScheduledRows<Row> {
+  ScheduledRows { rows: [] }
+}

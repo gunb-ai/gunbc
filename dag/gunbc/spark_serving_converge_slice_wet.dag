@@ -84,6 +84,7 @@ import gunbc.fleet_converge_plan {
   FleetConvergePlanArtifact,
   FleetConvergeSparkServingTypedAction,
 }
+import gunbc.spark_serving_execution_schedule { scheduled_rows_list }
 import gunbc.membership_reconcile {
   membership_write_count,
   MemberAction,
@@ -310,7 +311,7 @@ fn spark_serving_applied_replan_verdict(
     SparkServingPlanArtifactRefused { cause: why } =>
       join(["wet-applied-replan-refused ", why], "")
     SparkServingPlanArtifactReady { artifact: replanned } =>
-      if length(replanned.spark_serving_typed_actions) == 0 {
+      if length(scheduled_rows_list(scheduled: replanned.spark_serving_typed_actions)) == 0 {
         spark_serving_terminal_health_verdict(
           context: context,
           host: host,
@@ -319,10 +320,10 @@ fn spark_serving_applied_replan_verdict(
       } else {
         join([
           "wet-applied-replan-nonempty rows=",
-          to_string(length(replanned.spark_serving_typed_actions)),
+          to_string(length(scheduled_rows_list(scheduled: replanned.spark_serving_typed_actions))),
           " -- apply executed but the host does not match the declared state; still disagreeing: ",
           spark_serving_replan_disagreeing_addresses_wire(
-            rows: replanned.spark_serving_typed_actions,
+            rows: scheduled_rows_list(scheduled: replanned.spark_serving_typed_actions),
           ),
         ], "")
       }
@@ -515,7 +516,7 @@ fn spark_serving_converge_slice_wet_host_report(
                       host: host,
                       endpoint: endpoint,
                       observed_linger: LingerObserved { enabled: linger_enabled },
-                      typed_row_count: length(artifact.spark_serving_typed_actions),
+                      typed_row_count: length(scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions)),
                       apply_effect_count: 0,
                       apply_command_count: 0,
                       verdict: "plan-hash-refused",
@@ -530,7 +531,7 @@ fn spark_serving_converge_slice_wet_host_report(
                           host: host,
                           endpoint: endpoint,
                           observed_linger: LingerObserved { enabled: linger_enabled },
-                          typed_row_count: length(artifact.spark_serving_typed_actions),
+                          typed_row_count: length(scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions)),
                           apply_effect_count: 0,
                           apply_command_count: 0,
                           verdict: join(["apply-refused ", why], ""),
@@ -540,7 +541,7 @@ fn spark_serving_converge_slice_wet_host_report(
                           host: host,
                           endpoint: endpoint,
                           observed_linger: LingerObserved { enabled: linger_enabled },
-                          typed_row_count: length(artifact.spark_serving_typed_actions),
+                          typed_row_count: length(scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions)),
                           apply_effect_count: n,
                           apply_command_count: remote_operation_count(operations: map(steps, st => st.operation)),
                           verdict: if execute_apply {

@@ -36,6 +36,7 @@ import gunbc.membership_reconcile {
   membership_refusal_count,
 }
 import gunbc.ownership { Ownership, Owned }
+import gunbc.spark_serving_execution_schedule { ScheduledRows, scheduled_rows_empty, scheduled_rows_list }
 import gunbc.fleet_converge_timer {
   fleet_converge_service_unit_name,
   fleet_converge_timer_unit_name,
@@ -441,7 +442,7 @@ type FleetConvergePlanArtifact {
   observed_baseline_hex: Fnv1a64StructuralDigestHex
   plan_body: String
   apply_shell: String
-  spark_serving_typed_actions: List<FleetConvergeSparkServingTypedAction>
+  spark_serving_typed_actions: ScheduledRows<FleetConvergeSparkServingTypedAction>
 }
 
 // NO WILDCARD. The wildcard is what made ServingInstallEffect extensible in silence: a thirteenth
@@ -553,10 +554,10 @@ fn fleet_converge_plan_body_claims_spark_typed_actions(plan_body: String) -> Boo
 
 fn fleet_converge_plan_spark_typed_actions_consistency_admits(
   plan_body: String,
-  spark_serving_typed_actions: List<FleetConvergeSparkServingTypedAction>,
+  spark_serving_typed_actions: ScheduledRows<FleetConvergeSparkServingTypedAction>,
 ) -> Bool {
   let body_claims = fleet_converge_plan_body_claims_spark_typed_actions(plan_body: plan_body)
-  if length(spark_serving_typed_actions) > 0 && !body_claims {
+  if length(scheduled_rows_list(scheduled: spark_serving_typed_actions)) > 0 && !body_claims {
     false
   } else {
     true
@@ -659,7 +660,7 @@ fn fleet_converge_plan_artifact_hash(artifact: FleetConvergePlanArtifact) -> Fnv
     plan_body: artifact.plan_body,
     apply_shell: artifact.apply_shell,
     spark_typed_actions_wire: fleet_converge_spark_serving_typed_actions_wire(
-      rows: artifact.spark_serving_typed_actions,
+      rows: scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions),
     ),
   )
 }
@@ -673,7 +674,7 @@ fn fleet_converge_plan_artifact_bundle_admits(artifact: FleetConvergePlanArtifac
       plan_body: artifact.plan_body,
       apply_shell: artifact.apply_shell,
       spark_typed_actions_wire: fleet_converge_spark_serving_typed_actions_wire(
-        rows: artifact.spark_serving_typed_actions,
+        rows: scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions),
       ),
       claimed_hex: claimed_hex,
     )
@@ -884,7 +885,7 @@ fn fleet_converge_plan_artifact(
           observed_baseline_hex: structural.digest,
           plan_body: body,
           apply_shell: apply_shell,
-          spark_serving_typed_actions: [],
+          spark_serving_typed_actions: scheduled_rows_empty(),
         },
       }
     _ => Absent
