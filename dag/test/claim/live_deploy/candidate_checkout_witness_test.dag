@@ -274,7 +274,42 @@ test fn the_status_refusal_is_distinct_from_the_not_clean_refusal() -> Bool {
 // side, this reds — which is the only mechanical thing standing between the two readings drifting into
 // disagreeing about which bytes the deploy installs.
 test fn the_rsync_flags_derive_from_the_same_exclusion_set_the_filter_reads() -> Bool {
-  deployed_tree_rsync_exclude_flags() == "--exclude /target --exclude /.git"
-    && length(deployed_tree_excluded_prefixes) == 2
-    && join(deployed_tree_excluded_prefixes, ",") == "target,.git"
+  let expected_flags = "--exclude /target --exclude /.git --exclude /.claude --exclude /.gunbc --exclude /target-codex --exclude /.cargo-home"
+  deployed_tree_rsync_exclude_flags() == expected_flags
+    && length(deployed_tree_excluded_prefixes) == 6
+    && join(deployed_tree_excluded_prefixes, ",") == "target,.git,.claude,.gunbc,target-codex,.cargo-home"
+}
+
+// THE OBSERVED BLOCKER, AS A CLAIM. A real operator deploy from a checkout carrying nine stale
+// .claude/worktrees/ directories and .claude/settings.local.json refused at admission with
+// CandidateCheckoutNotClean, before any mutation. Agent session state and local tool caches are host state
+// by construction: no revision ever names them, so the deploy must not ship them and admission must not
+// refuse on them either.
+test fn agent_session_and_local_tool_state_is_not_deployed() -> Bool {
+  !path_is_deployed(path: ".claude")
+    && !path_is_deployed(path: ".claude/settings.local.json")
+    && !path_is_deployed(path: ".claude/worktrees/agent-a08ba29cba32fef1b/dag/x.dag")
+    && !path_is_deployed(path: ".gunbc/state.json")
+    && !path_is_deployed(path: "target-codex/debug/x")
+    && !path_is_deployed(path: ".cargo-home/registry/x")
+}
+
+// THE RESIDUE STAYS LOUD, AND THIS IS THE CONTROL THAT SAYS SO. Widening the exclusion set removes admission
+// coverage for every prefix it names, so the two classes deliberately left out must still read as deployed —
+// otherwise a later widening could silence them and nothing would notice. `.env.*.local` is a wildcard the
+// prefix carrier cannot spell, and shipped .env bytes are secrets; the scratch probe sits inside a source
+// root the graph reads, where excluding it would change what the host compiles.
+test fn the_env_family_and_the_read_source_root_probe_are_still_refused() -> Bool {
+  path_is_deployed(path: ".env")
+    && path_is_deployed(path: ".env.local")
+    && path_is_deployed(path: ".env.production.local")
+    && path_is_deployed(path: "src/v2/test/claim/manual/sg2_scratch_probe.dag")
+}
+
+// Segment matching must survive the widening: a dotted prefix is the easy place to regress into a character
+// run, because `.claudex/` and `.envy` both start with a listed spelling.
+test fn the_appended_dotted_prefixes_still_match_segments_not_character_runs() -> Bool {
+  path_is_deployed(path: ".claudex/x.dag")
+    && path_is_deployed(path: "dag/.claude/x.dag")
+    && path_is_deployed(path: "target-codexish/x")
 }
