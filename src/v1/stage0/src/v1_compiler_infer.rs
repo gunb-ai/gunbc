@@ -147,6 +147,7 @@ pub use crate::v1_compiler_infer_types::{
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+pub use crate::v1_std_core::expr_is_any_literal;
 use crate::v1_std_core::CallSemantics::{
     FunctionValueCallSemantics, LookupCallSemantics, PlainCallSemantics,
 };
@@ -2350,14 +2351,20 @@ pub fn where_refinement_diags_for_predicate(
                         }
                     }
                 },
-                None => Rc::new(vec![where_refinement_unenforced_error(
-                    pname.clone(),
-                    formal.clone(),
-                    "non-literal value at refined position".to_string(),
-                    span.clone(),
-                    module_name.clone(),
-                    source_indices.clone(),
-                )]),
+                None => {
+                    if expr_is_any_literal(value_expr.clone()) {
+                        refinement_refusal
+                    } else {
+                        Rc::new(vec![where_refinement_unenforced_error(
+                            pname.clone(),
+                            formal.clone(),
+                            "non-literal value at refined position".to_string(),
+                            span.clone(),
+                            module_name.clone(),
+                            source_indices.clone(),
+                        )])
+                    }
+                }
             }
         } else {
             if where_refinement_is_string_literal_predicate(pname.clone()) {
@@ -2381,14 +2388,20 @@ pub fn where_refinement_diags_for_predicate(
                             )]),
                         }
                     }
-                    None => Rc::new(vec![where_refinement_unenforced_error(
-                        pname.clone(),
-                        formal.clone(),
-                        "non-literal value at refined position".to_string(),
-                        span.clone(),
-                        module_name.clone(),
-                        source_indices.clone(),
-                    )]),
+                    None => {
+                        if expr_is_any_literal(value_expr.clone()) {
+                            refinement_refusal
+                        } else {
+                            Rc::new(vec![where_refinement_unenforced_error(
+                                pname.clone(),
+                                formal.clone(),
+                                "non-literal value at refined position".to_string(),
+                                span.clone(),
+                                module_name.clone(),
+                                source_indices.clone(),
+                            )])
+                        }
+                    }
                 }
             } else {
                 if where_refinement_is_deferred_predicate(pname.clone()) {
@@ -2557,17 +2570,7 @@ pub fn kernel_value_declared_type_mismatch(
         false
     } else {
         {
-            let formal_base = if (((formal.connective.clone() == Connective::Conj)
-                && (formal.type_annotation.clone() != None))
-                && ((formal.children.clone().len() as i64) == 1))
-            {
-                match formal.children.clone().first().cloned() {
-                    Some(refinement_base) => refinement_base.clone(),
-                    None => formal.clone(),
-                }
-            } else {
-                formal.clone()
-            };
+            let formal_base = peel_where_refinement_base(formal.clone(), type_env.clone());
             let actual_name = authored_name_at(source_indices.clone(), actual.clone());
             if ((is_kernel_type(actual_name.clone()) == false)
                 || (actual_name.clone() == "Unit".to_string()))
@@ -20138,6 +20141,7 @@ pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphI
         let init = Rc::new(EmitInfoBuildState {
             type_summaries: v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
             type_decl_items: v1_rt::rc_empty_map::<String, Rc<Node>>(),
+            fn_decl_items: v1_rt::rc_empty_map::<String, Rc<Node>>(),
         });
         let built_raw = modules.clone().iter().cloned().fold(
             init.clone(),
@@ -20157,6 +20161,7 @@ pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphI
         let built = Rc::new(EmitInfoBuildState {
             type_summaries: close_fn_fields(built_raw.type_summaries.clone()),
             type_decl_items: built_raw.type_decl_items.clone(),
+            fn_decl_items: built_raw.fn_decl_items.clone(),
         });
         let all_recursive = modules.clone().iter().cloned().fold(
             v1_rt::rc_empty_set::<_>(),
@@ -20180,6 +20185,7 @@ pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphI
         Rc::new(EmitGraphInfo {
             type_summaries: built.type_summaries.clone(),
             type_decl_items: built.type_decl_items.clone(),
+            fn_decl_items: built.fn_decl_items.clone(),
             recursive_type_set: all_recursive.clone(),
             fielded_variants: variant_shapes.fielded.clone(),
             positional_payload_variants: variant_shapes.positional_payload.clone(),
