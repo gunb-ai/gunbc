@@ -22,18 +22,18 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data parent_node: RoadmapNodeId = "invert-hand-maintained"
 data second_parent_node: RoadmapNodeId = "model-before-implement"
-data child_node: RoadmapNodeId = "pr-checkbox-status"
+data roadmap_model_child_node: RoadmapNodeId = "pr-checkbox-status"
 data orphan_node: RoadmapNodeId = "no-parent-node"
 
 fn edges() -> List<RoadmapEdge> {
-  [RoadmapEdge { child: child_node, parent: parent_node }]
+  [RoadmapEdge { child: roadmap_model_child_node, parent: parent_node }]
 }
 
 fn verdict_is_drifted(v: DriftVerdict) -> Bool {
   match v { Drifted => true  Clean => false  Underivable => false }
 }
 test fn witness_child_has_parent() -> Bool {
-  match roadmap_primary_parent(edges: edges(), node: child_node) {
+  match roadmap_primary_parent(edges: edges(), node: roadmap_model_child_node) {
     UnderParent { parent: p } => p == parent_node
     TopLevel => false
   }
@@ -41,11 +41,11 @@ test fn witness_child_has_parent() -> Bool {
 
 test fn witness_multi_parent_dependencies_are_not_flattened() -> Bool {
   let es = [
-    RoadmapEdge { child: child_node, parent: parent_node },
-    RoadmapEdge { child: child_node, parent: second_parent_node },
+    RoadmapEdge { child: roadmap_model_child_node, parent: parent_node },
+    RoadmapEdge { child: roadmap_model_child_node, parent: second_parent_node },
   ]
-  roadmap_parent_ids(edges: es, node: child_node) == [parent_node, second_parent_node]
-    && match roadmap_primary_parent(edges: es, node: child_node) {
+  roadmap_parent_ids(edges: es, node: roadmap_model_child_node) == [parent_node, second_parent_node]
+    && match roadmap_primary_parent(edges: es, node: roadmap_model_child_node) {
       UnderParent { parent: p } => p == parent_node
       TopLevel => false
     }
@@ -67,7 +67,7 @@ data existing_docs: List<String> = [
 fn node_with_carriers(cs: List<Pointer>) -> RoadmapNode {
   RoadmapNode {
     identity: "rnfx_P8CGH3E7ERD8M55W9X49" as RoadmapNodeIdentity,
-    node: child_node,
+    node: roadmap_model_child_node,
     line: AuthoredLine { done: false, content: "PR→checkbox status" },
     carriers: cs,
     sizing: Unsized,
@@ -98,7 +98,7 @@ test fn witness_no_carrier_clean() -> Bool {
 test fn witness_node_status_drifts() -> Bool {
   let rn = RoadmapNode {
     identity: "rnfx_WZ1MVE2JJZ2CCAWP2TVM" as RoadmapNodeIdentity,
-    node: child_node,
+    node: roadmap_model_child_node,
     line: DerivableLine { prs: [5491], title: "stale", description: "" },
     carriers: [],
     sizing: Unsized,
@@ -112,7 +112,7 @@ test fn witness_node_status_drifts() -> Bool {
 test fn witness_node_unsigned_box_clean() -> Bool {
   let rn = RoadmapNode {
     identity: "rnfx_Q203PA6K5BSTTSCXR7JB" as RoadmapNodeIdentity,
-    node: child_node,
+    node: roadmap_model_child_node,
     line: AuthoredLine { done: false, content: "partial evidence" },
     carriers: [],
     sizing: Unsized,

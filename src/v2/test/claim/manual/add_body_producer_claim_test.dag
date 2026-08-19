@@ -1,0 +1,126 @@
+module v2.test.manual.add_body_producer_claim
+
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.test.complexity_gate.table_fixture_add_subject_producer {
+  table_fixture_add_arrow_with_body
+}
+import v2.extdeps.languages.dag { dag_add_binary_body_fixture }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Arrow,
+  Atom,
+  ComputationNode,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Transform,
+  TypeNode,
+  node_synthetic,
+  well_formed
+}
+import v2.std.node_query { find_arrow_body_child }
+
+test fn add_body_table_fixture_arrow_accepts() -> Bool {
+  match table_fixture_add_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } =>
+      well_formed(n: arrow)
+        && match find_arrow_body_child(root: arrow) {
+          Accepted { value: body, diagnostics: _ } =>
+            match body.kind {
+              ComputationNode { behavior: _ } => true
+              _ => false
+            }
+          Rejected { diagnostics: _ } => false
+        }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn add_arrow_swapped_operand_body() -> Node {
+  node_synthetic(
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge {
+        label: Positional,
+        target: node_synthetic(
+          kind: TypeNode { connective: Atom { identity: ^dag_token_plus } },
+          children: []
+        )
+      },
+      Edge {
+        label: Positional,
+        target: node_synthetic(
+          kind: TypeNode { connective: Atom { identity: ^dag_binding_param_y } },
+          children: []
+        )
+      },
+      Edge {
+        label: Positional,
+        target: node_synthetic(
+          kind: TypeNode { connective: Atom { identity: ^dag_binding_param_x } },
+          children: []
+        )
+      }
+    ]
+  )
+}
+
+test fn add_body_operand_order_differs() -> Bool {
+  let canonical = dag_add_binary_body_fixture
+  let swapped = add_arrow_swapped_operand_body()
+  canonical != swapped
+}
+
+fn add_body_arrow_with_atom_body_rejects() -> Bool {
+  let arrow = node_synthetic(
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge {
+        label: Positional,
+        target: node_synthetic(
+          kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
+          children: []
+        )
+      },
+      Edge {
+        label: Positional,
+        target: node_synthetic(
+          kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
+          children: []
+        )
+      },
+      Edge {
+        label: Positional,
+        target: node_synthetic(
+          kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
+          children: []
+        )
+      },
+      Edge {
+        label: Named { name: ^arrow_body_edge },
+        target: node_synthetic(
+          kind: TypeNode { connective: Atom { identity: ^add_body_producer_fail } },
+          children: []
+        )
+      }
+    ]
+  )
+  !well_formed(n: arrow)
+}
+
+test fn add_body_edge_targets_binary_transform() -> Bool {
+  match table_fixture_add_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } =>
+      match find_arrow_body_child(root: arrow) {
+        Accepted { value: body, diagnostics: _ } =>
+          match body.kind {
+            ComputationNode { behavior: Transform } => true
+            _ => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+

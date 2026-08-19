@@ -40,7 +40,7 @@ Cost = `symbolic_cost(graph structure)` evaluated at a declared input envelope. 
 | `shard_balance_slot_for_cost` in `std.realization_width` | Uses `CostAccount.time` to balance shards — cost is never populated |
 | `WidthBoundedRealization { plan, spawn_width }` | Right carrier, produced by a side-channel not the scheduler |
 | `memory_aware_spawn_width` | Formula correct; reads `per_shard_peak` from a static external data row |
-| `PerformanceReceipt { wall_duration, sample_count, confidence }` in `compute_fabric` | Exists, not wired to `CostAccount.space` |
+| `PerformanceReceipt { wall_duration, sample_count, confidence }` in `gunbc.fleet_intent` | Exists, not wired to `CostAccount.space` (#5904 moved it off `product.compute_fabric`, which is now deleted) |
 | `claim_batch.rs:74` `account_retained_memory()` | Emits interpreter heap bytes to stderr — never collected by `claim_executor` |
 | `claim_batch.rs:30` `peak_rss_lines()` | Emits process `VmHWM` to stderr — never collected by `claim_executor` |
 
@@ -60,7 +60,7 @@ Cost = `symbolic_cost(graph structure)` evaluated at a declared input envelope. 
   Current implementation: derives `per_shard = floor_rss / width` (a sound approximation); Node D refinement: parse per-shard lines from child stderr and take `max`.
 
 **Authority chain (design-locked 2026-06-25 with sharp-stag-782):**
-- `PerformanceReceipt.cost: CostAccount<Nano>` is the single measured authority (`cost.time` = wall_duration, `cost.space` = per-shard VmHWM, `cost.power` = unmeasured Watt(0), `basis = Measured`). Lives in `dag/product/compute_fabric.dag`.
+- `PerformanceReceipt.cost: CostAccount<Nano>` is the single measured authority (`cost.time` = wall_duration, `cost.space` = per-shard VmHWM, `cost.power` = unmeasured Watt(0), `basis = Measured`). Lives in `gunbc.fleet_intent` — `product.compute_fabric` was deleted at the root and never held the live carrier after #5904.
 - `wall_duration` field removed from `PerformanceReceipt` — becomes a pure projection `fn performance_receipt_wall_duration(r) -> r.cost.time` (no stored state that can drift).
 - `cache_state_summary` stays top-level on `PerformanceReceipt` — it is a measurement-context tag, not a cost axis. A cache-hit peak and a cold peak are different facts (§5 cache-impurity).
 - `PerformanceReceiptSpaceContext { space: ByteSize, cache_state: NonEmptyStr? }` accessor gives sharp-stag-782's `ci_budget_tree` a paired (space, cache_state) without join risk.

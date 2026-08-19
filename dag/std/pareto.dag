@@ -270,13 +270,14 @@ fn compare_pair(a: ParetoEntry, b: ParetoEntry, axes: List<SelectionAxis>) -> Pa
   }))
 }
 
-fn pair_dominates(a: ParetoEntry, b: ParetoEntry, axes: List<SelectionAxis>) -> Bool {
-  match compare_pair(a: a, b: b, axes: axes) {
-    PairDominates { winning_axes } => true,
-    PairNoDominance => false,
-    PairRefused { cause } => false,
-  }
-}
+// pair_dominates WAS HERE AND IS DELETED (2026-08-19). It answered Bool over
+// the three-state PairStanding, and its PairRefused arm answered false — so a
+// consumer asking the cheap Boolean question read MALFORMED EVIDENCE as
+// ordinary non-dominance, which is the state-space conflation this spine's
+// whole design exists to refuse one layer up. Giving it a typed three-state
+// would have made it compare_pair with a different name, so it is deleted
+// rather than repaired: the standing path is the only path, and a caller that
+// wants a Boolean must first say what it intends to do about a refusal.
 
 // Duplicate-identity refusals: an axis roster or a candidate field carrying one identity
 // twice REFUSES the whole selection, because the fold would otherwise resolve the collision

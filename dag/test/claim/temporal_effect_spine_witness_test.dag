@@ -18,37 +18,45 @@ data witness_step_serve: NonEmptyStr = "nbd-serve" as NonEmptyStr
 
 data witness_lease_key: NonEmptyStr = "srv3-nbd-proxy-10809" as NonEmptyStr
 
-data foreign_lease: HeldLease = HeldLease {
-  lease_key: witness_lease_key,
-  resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
-  owner_fingerprint: content_hash_of_value(value: "foreign-owner" as NonEmptyStr),
-  generation: 1,
+data foreign_lease: HeldLease = held_lease(
+  epoch: LeaseEpoch {
+    lease_key: witness_lease_key,
+    resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
+    owner_fingerprint: content_hash_of_value(value: "foreign-owner" as NonEmptyStr),
+    generation: 1,
+  },
   observed: LeasePortForeign,
-}
+)
 
-data stale_lease: HeldLease = HeldLease {
-  lease_key: witness_lease_key,
-  resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
-  owner_fingerprint: content_hash_of_value(value: "expected-owner" as NonEmptyStr),
-  generation: 2,
+data stale_lease: HeldLease = held_lease(
+  epoch: LeaseEpoch {
+    lease_key: witness_lease_key,
+    resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
+    owner_fingerprint: content_hash_of_value(value: "expected-owner" as NonEmptyStr),
+    generation: 2,
+  },
   observed: LeaseRunningStale,
-}
+)
 
-data expected_lease: HeldLease = HeldLease {
-  lease_key: witness_lease_key,
-  resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
-  owner_fingerprint: content_hash_of_value(value: "expected-owner" as NonEmptyStr),
-  generation: 3,
+data expected_lease: HeldLease = held_lease(
+  epoch: LeaseEpoch {
+    lease_key: witness_lease_key,
+    resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
+    owner_fingerprint: content_hash_of_value(value: "expected-owner" as NonEmptyStr),
+    generation: 3,
+  },
   observed: LeaseRunningExpected,
-}
+)
 
-data absent_lease: HeldLease = HeldLease {
-  lease_key: witness_lease_key,
-  resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
-  owner_fingerprint: content_hash_of_value(value: "no-owner" as NonEmptyStr),
-  generation: 0,
+data absent_lease: HeldLease = held_lease(
+  epoch: LeaseEpoch {
+    lease_key: witness_lease_key,
+    resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
+    owner_fingerprint: content_hash_of_value(value: "no-owner" as NonEmptyStr),
+    generation: 0,
+  },
   observed: LeaseAbsent,
-}
+)
 
 fn converged_serve_receipt() -> EffectStepReceipt {
   EffectStepReceipt {
@@ -312,13 +320,15 @@ test fn inaccessible_lease_refuses() -> Bool {
     requires_destructive_approval: false,
     escalation_id: witness_escalation_id,
     grant: GrantAbsent,
-    lease: HeldLease {
-      lease_key: witness_lease_key,
-      resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
-      owner_fingerprint: content_hash_of_value(value: "no-owner" as NonEmptyStr),
-      generation: 0,
+    lease: held_lease(
+      epoch: LeaseEpoch {
+        lease_key: witness_lease_key,
+        resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
+        owner_fingerprint: content_hash_of_value(value: "no-owner" as NonEmptyStr),
+        generation: 0,
+      },
       observed: LeaseInaccessible,
-    },
+    ),
     prior: NoPriorReceipt,
     observed_at: witness_observed_at,
   ) {
@@ -465,4 +475,30 @@ test fn srv3_transition_budget_past_limit_is_exceeded_not_within() -> Bool {
       string_contains(s: sid, pattern: "os-install-actuated-to-host-identity")
     StallWithinBudget => false
   }
+}
+
+test fn held_lease_with_observed_preserves_the_epoch_exactly() -> Bool {
+  let updated = held_lease_with_observed(lease: expected_lease, observed: LeaseInaccessible)
+  let same_epoch = held_lease_epoch(lease: updated) == held_lease_epoch(lease: expected_lease)
+  same_epoch
+    && match updated.observed {
+      LeaseInaccessible => true
+      _ => false
+    }
+}
+
+test fn held_lease_epoch_separates_leases_differing_only_in_generation() -> Bool {
+  let restated = held_lease_with_observed(lease: stale_lease, observed: LeaseRunningExpected)
+  let differs = held_lease_epoch(lease: restated) != held_lease_epoch(lease: expected_lease)
+  let same_owner = restated.epoch.owner_fingerprint == expected_lease.epoch.owner_fingerprint
+  differs && same_owner
+}
+
+test fn held_lease_rebuilds_the_observation_without_a_second_epoch_spelling() -> Bool {
+  let rebuilt = held_lease(
+    epoch: held_lease_epoch(lease: absent_lease),
+    observed: LeasePortForeign,
+  )
+  let restated = held_lease_with_observed(lease: absent_lease, observed: LeasePortForeign)
+  rebuilt == restated
 }

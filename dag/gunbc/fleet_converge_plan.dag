@@ -17,7 +17,7 @@ import std.content_hash {
   ContentHash,
   content_hash_combine_structural,
 }
-import std.temporal_effect { HeldLease, HeldLeaseObservedState, LeaseAbsent }
+import std.temporal_effect { HeldLease, HeldLeaseObservedState, LeaseAbsent, LeaseEpoch, held_lease }
 import extdeps.exec.command { ArgvCommand }
 import gunbc.membership_reconcile {
   MembershipPlan,
@@ -72,7 +72,7 @@ import gunbc.spark_serving_realization { ServingInstallEffect, EnableLingerForOw
 
 type TimerRetirementMemberAt = NonEmptyStr
 
-data fleet_converge_plan_authority_note: String = "On-demand fleet converge PLAN authority (operator directive 2026-08-13, sleek-heron-218): membership_reconcile computes the typed hunks — MemberAdded, MemberChanged, MemberRemoved, MemberRemovalRefused — that a human reviews BEFORE apply. Plan and apply are the same spine at different poles; this module owns serialization, the content-addressed artifact, subject identity, std.temporal_effect HeldLease generation protection, and the observed baseline fingerprint apply must CAS against. A plan names its subject (host + member-set fingerprint) and mints a generation-scoped lease so two applies against the same observed baseline cannot both act. Timer retirement: desired has NO fleet-converge timers; observed lists legacy units still on the host. MemberRemovalRefused arms are rendered in plan output and never filtered — they are precisely what a reviewer needs to see before approving."
+data fleet_converge_plan_authority_note: String = "On-demand fleet converge PLAN authority (operator directive 2026-08-13, sleek-heron-218): membership_reconcile computes the typed hunks — MemberAdded, MemberChanged, MemberRemoved, MemberRemovalRefused — that a human reviews BEFORE apply. Plan and apply are the same spine at different poles; this module owns serialization, the content-addressed artifact, subject identity, std.temporal_effect LeaseEpoch generation protection, and the observed baseline fingerprint apply must CAS against. A plan names its subject (host + member-set fingerprint) and mints a generation-scoped lease so two applies against the same observed baseline cannot both act. Timer retirement: desired has NO fleet-converge timers; observed lists legacy units still on the host. MemberRemovalRefused arms are rendered in plan output and never filtered — they are precisely what a reviewer needs to see before approving."
 
 type FleetConvergePlanSubject {
   host: NonEmptyStr
@@ -145,13 +145,15 @@ fn fleet_converge_plan_held_lease(
   prior_generation: Int,
   owner_fingerprint: ContentHash,
 ) -> HeldLease {
-  HeldLease {
-    lease_key: fleet_converge_plan_lease_key(host: subject.host),
-    resource_fingerprint: fleet_converge_plan_resource_fingerprint(subject: subject),
-    owner_fingerprint: owner_fingerprint,
-    generation: prior_generation + 1,
+  held_lease(
+    epoch: LeaseEpoch {
+      lease_key: fleet_converge_plan_lease_key(host: subject.host),
+      resource_fingerprint: fleet_converge_plan_resource_fingerprint(subject: subject),
+      owner_fingerprint: owner_fingerprint,
+      generation: prior_generation + 1,
+    },
     observed: LeaseAbsent,
-  }
+  )
 }
 
 fn fleet_converge_apply_generation_admits(prior_generation: Int, store_generation: Int) -> Bool {

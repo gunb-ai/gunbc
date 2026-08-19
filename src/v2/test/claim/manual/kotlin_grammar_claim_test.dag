@@ -1,0 +1,52 @@
+module v2.test.manual.kotlin_grammar_claim
+
+import v2.compiler.parse {
+  grammar_validate_for_parse,
+  parse_production_tree,
+}
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.kotlin {
+  kotlin_source_text,
+  kotlin_lex,
+  kotlin_grammar_root
+}
+import v2.std.compilers.lexing { token_stream_remaining }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, port_locus }
+import v2.std.grammar { ParseTree }
+import v2.std.logic { Bool }
+
+test fn kotlin_grammar_validates_fixture() -> Bool {
+  let at = port_locus(port: ^parse_stage_locus_port)
+  match grammar_validate_for_parse(root: kotlin_grammar_root(), at: at) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn kotlin_grammar_parse_accepted() -> Bool {
+  match kotlin_grammar_parse_fixture() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn kotlin_grammar_parse_fixture() -> Outcome<ParseTree> {
+  let at = port_locus(port: ^parse_stage_locus_port)
+  match tokenize(
+    text: kotlin_source_text,
+    file: ^kotlin_parse_fixture_file,
+    rules: kotlin_lex()
+  ) {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: stream, diagnostics: _ } =>
+      match grammar_validate_for_parse(root: kotlin_grammar_root(), at: at) {
+        Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+        Accepted { value: validated, diagnostics: _ } =>
+          parse_production_tree(
+            tokens: token_stream_remaining(stream: stream),
+            validated: validated,
+            production_name: ^kotlin_production_fn_add
+          )
+      }
+  }
+}

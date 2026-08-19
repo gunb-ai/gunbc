@@ -1,0 +1,93 @@
+module v2.test.lens_application.substitute_at_depth_three
+
+import v2.lens.application { substitute_at }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Conj, Edge, Named, Node, Path, Symbol, TypeNode, SyntheticOccurrence }
+
+data depth_three_original_leaf: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^depth_three_original_leaf_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data depth_three_replacement_leaf: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^depth_three_replacement_leaf_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data depth_three_inner: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Named { name: ^depth_three_step_c },
+      target: depth_three_original_leaf
+    }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data depth_three_middle: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Named { name: ^depth_three_step_b },
+      target: depth_three_inner
+    }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data depth_three_root: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Named { name: ^depth_three_step_a },
+      target: depth_three_middle
+    }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data depth_three_expected_root: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Named { name: ^depth_three_step_a },
+      target: Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge {
+            label: Named { name: ^depth_three_step_b },
+            target: Node {
+              kind: TypeNode { connective: Conj },
+              children: [
+                Edge {
+                  label: Named { name: ^depth_three_step_c },
+                  target: depth_three_replacement_leaf
+                }
+              ],
+              occurrence_id: SyntheticOccurrence
+            }
+          }
+        ],
+        occurrence_id: SyntheticOccurrence
+      }
+    }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+test fn substitute_at_depth_three_claim_holds() -> Bool {
+  match substitute_at(
+    root: depth_three_root,
+    path: Path {
+      steps: [^depth_three_step_a, ^depth_three_step_b, ^depth_three_step_c]
+    },
+    replacement: depth_three_replacement_leaf
+  ) {
+    Accepted { value: n, diagnostics: _ } => n == depth_three_expected_root
+    Rejected { diagnostics: _ } => false
+  }
+}

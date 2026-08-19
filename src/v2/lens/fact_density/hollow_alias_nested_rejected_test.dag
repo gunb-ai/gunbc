@@ -1,0 +1,45 @@
+module v2.test.lens_fact_density.hollow_alias_nested_rejected
+
+import v2.compiler.compile {
+  Eval,
+  validate_then_compile
+}
+
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.test.lens_common.infer_fixture { claim_atom_node }
+import v2.test.lens_application.empty_required_lenses_skip_gate {
+  non_empty_diagnostics_contain_reason
+}
+
+data hollow_alias_nested_child: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^hollow_alias_nested_el_subject } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data hollow_alias_nested_root: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Named { name: ^hollow_alias_nested_child_edge },
+      target: hollow_alias_nested_child
+    }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data hollow_alias_nested_authority: Node = claim_atom_node(s: ^hollow_alias_nested_el_symbol)
+
+test fn hollow_alias_nested_rejected_holds() -> Bool {
+  match validate_then_compile(
+    source: hollow_alias_nested_root,
+    lenses: [],
+    mode: Eval { runtime: hollow_alias_nested_root }
+  ) {
+    Rejected { diagnostics: r } =>
+      non_empty_diagnostics_contain_reason(d: r, reason: ^fact_density_hollow_alias_locus)
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
