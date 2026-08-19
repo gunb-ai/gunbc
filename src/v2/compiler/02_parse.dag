@@ -355,7 +355,11 @@ fn grammar_first_production_named(
     cons: fn(acc, p) {
       match acc {
         Present { value: _ } => acc
-        Absent => if p.name == name { Present { value: p } } else { Absent }
+        Absent =>
+          match p.name == name {
+            true => Present { value: p }
+            false => Absent
+          }
       }
     }
   )
@@ -1924,6 +1928,9 @@ fn grammar_overlap_residue_diagnostics(at: Locus, roster: List<GrammarChoiceAmbi
   )
 }
 
+// ONE nullable fixpoint for the whole preparation. The left-recursion check and the FIRST analysis
+// both need the nullable set, and computing it here rather than inside each of them is the
+// difference between one fixpoint per preparation and three.
 fn grammar_validate_and_analyze(root: GrammarRoot, at: Locus) -> Outcome<PreparedModeledGrammar> {
   if grammar_has_undefined_nonterminals(root: root) {
     Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_undefined_nonterminal_diagnostic(at: at)) }
@@ -1931,9 +1938,6 @@ fn grammar_validate_and_analyze(root: GrammarRoot, at: Locus) -> Outcome<Prepare
     if grammar_has_duplicate_productions(root: root) {
       Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_duplicate_production_diagnostic(at: at)) }
     } else {
-      // ONE nullable fixpoint for the whole preparation. The left-recursion check and the FIRST
-      // analysis both need it, and computing it here rather than inside each of them is the
-      // difference between one fixpoint per preparation and three.
       let nullable_set = compute_nullable_set(root: root)
       if grammar_has_left_recursion_given(root: root, nullable_set: nullable_set) {
         Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_left_recursive_diagnostic(at: at)) }
