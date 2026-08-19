@@ -535,7 +535,7 @@ fn bmcweb_token_extraction_verdict(jq_success: Bool, jq_stdout: String) -> gunbc
         reason: "host_effect_apply: Srv3BmcwebTokenExtract jq -e exited zero but produced no token text for `.token` in the bmcweb login response; fail-closed, no token file written.",
       }
     } else {
-      BmcwebTokenExtracted { token: token as NonEmptyStr }
+      BmcwebTokenExtracted { token: token as std.types.NonEmptyStr }
     }
   } else {
     BmcwebTokenExtractRefused {

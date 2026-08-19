@@ -102,9 +102,9 @@ data rendered_from_rows_note: String = "THE BYTES COME FROM THE ROWS, WHICH IS W
 
 test fn documentary_refs_generated_document_renders_the_rows() -> Bool {
   let md = gunbc.design_document.expected_design_md()
-  string_contains(s: md, pattern: gunbc.documentary_refs.documentary_ref_symbol_text(reference: gunbc.documentary_refs.body_lowering_symbol_index_ref))
-    && string_contains(s: md, pattern: gunbc.documentary_refs.documentary_ref_symbol_text(reference: gunbc.documentary_refs.body_lowering_lexical_lookup_ref))
-    && string_contains(s: md, pattern: gunbc.documentary_refs.documentary_ref_symbol_text(reference: gunbc.documentary_refs.body_lowering_production_consumer_ref))
+  string_contains(s: md, pattern: gunbc.documentary_refs.documentary_ref_symbol_text(reference: gunbc.doc_graph_roots.body_lowering_symbol_index_ref))
+    && string_contains(s: md, pattern: gunbc.documentary_refs.documentary_ref_symbol_text(reference: gunbc.doc_graph_roots.body_lowering_lexical_lookup_ref))
+    && string_contains(s: md, pattern: gunbc.documentary_refs.documentary_ref_symbol_text(reference: gunbc.doc_graph_roots.body_lowering_production_consumer_ref))
     && string_contains(s: md, pattern: gunbc.documentary_refs.documentary_ref_symbol_text(reference: gunbc.documentary_refs.five_minute_ci_gate_authority_ref))
     && string_contains(s: md, pattern: gunbc.documentary_refs.documentary_ref_symbol_text(reference: gunbc.documentary_refs.v1_maintenance_standing_ref))
 }

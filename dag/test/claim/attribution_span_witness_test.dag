@@ -5,8 +5,8 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 fn worker_domain() -> std.measure.ClockDomain { std.measure.ProcessMonotonic { process: "ordinary-worker" as std.types.NonEmptyStr } }
 
-fn occ(id: std.types.NonEmptyStr) -> std.occurrence_identity.OccurrenceId {
-  std.occurrence_identity.OccurrenceId { attempt: "attempt-1" as std.types.NonEmptyStr, id: id }
+fn occ(id: std.types.NonEmptyStr) -> std.observation.OccurrenceId {
+  std.observation.OccurrenceId { attempt: "attempt-1" as std.types.NonEmptyStr, id: id }
 }
 
 fn frame() -> std.attribution.ClockFrame { std.attribution.ClockFrame { domain: worker_domain(), basis: CpuClock } }

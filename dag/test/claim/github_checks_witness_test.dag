@@ -95,7 +95,7 @@ test fn witness_wrong_case_status_does_not_decode() -> Bool {
 }
 
 test fn witness_check_status_roundtrip_in_progress() -> Bool {
-  check_status_wire_label(s: InProgress) == "in_progress"
+  check_status_wire_label(s: extdeps.github.checks.InProgress) == "in_progress"
 }
 
 test fn witness_timed_out_wire_decodes_to_timed_out() -> Bool {

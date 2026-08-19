@@ -2,7 +2,7 @@ module gunbc.ci_workflow_expressions
 
 
 fn ci_cache_hash_files() -> extdeps.github.expressions.Expression {
-  extdeps.llm.openai.FunctionCall {
+  extdeps.github.expressions.FunctionCall {
     function: HashFiles,
     args: [
       extdeps.github.expressions.StringLiteral { value: "**/Cargo.lock" },
