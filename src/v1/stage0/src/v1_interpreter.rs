@@ -1390,8 +1390,15 @@ fn try_cross_claim_pure_memo(
     // fold. These two name arms exist only because that lifetime gap does; a third arm is
     // evidence the generic memo has not landed, not a reason to grow the list.
     if func_name == "prepare_grammar" && args.len() == 1 {
-        let mut hash_memo = ctx.eval_recompute_hash_memo.borrow_mut();
-        let key = eval_recompute_arg_key(&mut hash_memo, &args[0].1)?;
+        // The interner/hash-memo borrows must not outlive this block: they are
+        // immutable/local borrows of `ctx`, and `value_from_portable_ctx` below
+        // interns symbols into `ctx` (a `borrow_mut()`) while reconstructing the
+        // stored value — holding `interner` across that call double-borrows.
+        let key = {
+            let mut hash_memo = ctx.eval_recompute_hash_memo.borrow_mut();
+            let interner = ctx.symbols.borrow();
+            eval_recompute_arg_key(&mut hash_memo, &interner, &args[0].1)?
+        };
         let content_hash = match key {
             EvalRecomputeArgKey::ContentHash(h) => h,
             _ => return None,
@@ -1412,8 +1419,15 @@ fn store_cross_claim_pure_memo(
     result: &Value,
 ) {
     if func_name == "prepare_grammar" && args.len() == 1 {
-        let mut hash_memo = ctx.eval_recompute_hash_memo.borrow_mut();
-        if let Some(key) = eval_recompute_arg_key(&mut hash_memo, &args[0].1) {
+        // See the matching comment in `try_cross_claim_pure_memo`: the interner
+        // borrow must be dropped before `portable_value_from_ctx` below, which
+        // itself may borrow `ctx.symbols` while resolving/interning.
+        let key = {
+            let mut hash_memo = ctx.eval_recompute_hash_memo.borrow_mut();
+            let interner = ctx.symbols.borrow();
+            eval_recompute_arg_key(&mut hash_memo, &interner, &args[0].1)
+        };
+        if let Some(key) = key {
             if let EvalRecomputeArgKey::ContentHash(h) = key {
                 if let Some(portable) = portable_value_from_ctx(ctx, result) {
                     keep_cross_claim_fn(fn_node);
@@ -1520,6 +1534,111 @@ mod cross_claim_memo_tests {
             other => panic!("expected Variant, got {other:?}"),
         }
     }
+
+    // Regression for the SECOND half of gunbc#8505's follow-up (dashboard
+    // adhoc-e78c4260-d3a): the test above proves the STORED VALUE survives a fresh
+    // consuming interner (PortableValue). It says nothing about the memo KEY, which
+    // was still built by `eval_recompute_arg_key`/`eval_recompute_value_hash` mixing
+    // raw interner-local `Symbol` ordinals (`type_name.0`, `variant_name.0`) rather
+    // than the resolved symbol TEXT. Ordinals are assigned in per-context encounter
+    // order, so two semantically distinct arguments from two independently-interned
+    // contexts can be assigned the IDENTICAL ordinal pattern for DIFFERENT strings,
+    // aliasing one memo entry onto an unrelated logical call -- silent wrongness one
+    // level up from the bug PortableValue fixed. This test would have passed
+    // (wrongly, by returning ctx_a's stored result) under the pre-fix ordinal-keyed
+    // code: "TypeFoo" is ctx_a's first interned symbol (ordinal 0) and "TypeBar" is
+    // ctx_c's first interned symbol (ALSO ordinal 0), so the old `UnitVariant(u32,
+    // u32)` key was identical for two different types.
+    #[test]
+    fn cross_claim_memo_key_is_content_addressed_not_ordinal_addressed() {
+        let ctx_a = fresh_ctx();
+        let type_a = ctx_a.sym("TypeFoo"); // ordinal 0 in ctx_a
+        let variant_a = ctx_a.sym("VariantX"); // ordinal 1 in ctx_a
+
+        let ctx_c = fresh_ctx();
+        let type_c = ctx_c.sym("TypeBar"); // ordinal 0 in ctx_c -- collides with type_a's ordinal
+        let variant_c = ctx_c.sym("VariantY"); // ordinal 1 in ctx_c -- collides with variant_a's ordinal
+
+        let fn_node = make_expr_node(
+            Rc::new(ExprData::NoExprData),
+            Rc::new(im_vec![]),
+            None,
+            make_span(0, 0),
+        );
+
+        let args_a = [(
+            None,
+            Value::Variant {
+                type_name: type_a,
+                variant_name: variant_a,
+                fields: Rc::new(vec![]),
+            },
+        )];
+        let result_a = Value::Str(Rc::from("result-for-TypeFoo"));
+        store_cross_claim_pure_memo(&ctx_a, &fn_node, "prepare_grammar", &args_a, &result_a);
+
+        let args_c = [(
+            None,
+            Value::Variant {
+                type_name: type_c,
+                variant_name: variant_c,
+                fields: Rc::new(vec![]),
+            },
+        )];
+        // A genuinely different argument (TypeBar/VariantY, not TypeFoo/VariantX)
+        // must NOT hit the entry stored for ctx_a's argument, even though both
+        // interners assigned the identical ordinal pattern (0, 1) to their symbols.
+        let loaded = try_cross_claim_pure_memo(&ctx_c, &fn_node, "prepare_grammar", &args_c);
+        assert!(
+            loaded.is_none(),
+            "ordinal-collision aliased TypeBar/VariantY onto TypeFoo/VariantX's memo entry"
+        );
+    }
+
+    // Same defect class, exercised through the Record/Fields-frame path
+    // (`eval_recompute_frame_integrate`'s per-field mixing) rather than the
+    // `UnitVariant` fast path above: a FIELD name ordinal collision must not alias
+    // two records of the same type but different field identity.
+    #[test]
+    fn cross_claim_memo_key_distinguishes_field_names_across_ordinal_collisions() {
+        let ctx_a = fresh_ctx();
+        let type_a = ctx_a.sym("Wrapper"); // ordinal 0
+        let field_a = ctx_a.sym("alpha"); // ordinal 1
+
+        let ctx_c = fresh_ctx();
+        let type_c = ctx_c.sym("Wrapper"); // ordinal 0, same string as ctx_a
+        let field_c = ctx_c.sym("beta"); // ordinal 1, DIFFERENT string, same ordinal as field_a
+
+        let fn_node = make_expr_node(
+            Rc::new(ExprData::NoExprData),
+            Rc::new(im_vec![]),
+            None,
+            make_span(0, 0),
+        );
+
+        let args_a = [(
+            None,
+            Value::Record {
+                type_name: type_a,
+                fields: Rc::new(vec![(field_a, Value::Int(1))]),
+            },
+        )];
+        let result_a = Value::Str(Rc::from("result-for-alpha"));
+        store_cross_claim_pure_memo(&ctx_a, &fn_node, "prepare_grammar", &args_a, &result_a);
+
+        let args_c = [(
+            None,
+            Value::Record {
+                type_name: type_c,
+                fields: Rc::new(vec![(field_c, Value::Int(1))]),
+            },
+        )];
+        let loaded = try_cross_claim_pure_memo(&ctx_c, &fn_node, "prepare_grammar", &args_c);
+        assert!(
+            loaded.is_none(),
+            "field-name ordinal collision (alpha vs beta both at ordinal 1) aliased across contexts"
+        );
+    }
 }
 
 #[derive(Default)]
@@ -1578,7 +1697,11 @@ enum EvalRecomputeArgKey {
     Int(i64),
     FloatBits(u64),
     StrHash(u64),
-    UnitVariant(u32, u32),
+    // Content hashes of the resolved symbol TEXT, not raw interner ordinals — see
+    // eval_recompute_str_hash callers below; ordinals are only stable within one
+    // SymbolInterner and this key must compare equal across independently-interned
+    // InterpContexts (gunbc#8505 follow-up: the cross-claim prepare_grammar memo).
+    UnitVariant(u64, u64),
     EmptyList,
     // Recursive content hash of a composite value (Record/Variant/List/Map/
     // Set/Fn/Unit), memoized per allocation with Weak-liveness validation so
@@ -5089,9 +5212,17 @@ enum EvalRecomputeFrameKind {
     },
     Fields {
         rc: Rc<Vec<(Symbol, Value)>>,
-        type_sym: u32,
-        variant_sym: u32,
+        // Content hashes of the resolved symbol TEXT (type/variant name and, per
+        // field, the field name) — never the raw interner ordinal. The cross-claim
+        // prepare_grammar memo (gunbc#8505) is a thread_local outliving any single
+        // InterpContext, so a key built from ordinals is a function of interning
+        // ORDER, not of the value's content, and two structurally-identical-shaped
+        // but semantically-different grammars from different contexts could
+        // silently alias onto the same memo entry.
+        type_sym_hash: u64,
+        variant_sym_hash: u64,
         is_variant: bool,
+        field_name_hashes: Vec<u64>,
     },
     Map {
         rc: Rc<HamtMap<CanonKey, Value>>,
@@ -5119,9 +5250,10 @@ fn eval_recompute_frame_integrate(f: &mut EvalRecomputeFrame, child_h: u64) {
         EvalRecomputeFrameKind::List { .. } => {
             f.h = eval_recompute_mix(f.h, child_h);
         }
-        EvalRecomputeFrameKind::Fields { rc, .. } => {
-            let sym = (rc[f.idx].0).0;
-            let mixed = eval_recompute_mix(f.h, u64::from(sym));
+        EvalRecomputeFrameKind::Fields {
+            field_name_hashes, ..
+        } => {
+            let mixed = eval_recompute_mix(f.h, field_name_hashes[f.idx]);
             f.h = eval_recompute_mix(mixed, child_h);
         }
         EvalRecomputeFrameKind::Map { key_hashes, .. } => {
@@ -5145,9 +5277,10 @@ fn eval_recompute_frame_finalize(memo: &mut EvalRecomputeHashMemo, f: EvalRecomp
         }
         EvalRecomputeFrameKind::Fields {
             rc,
-            type_sym,
-            variant_sym,
+            type_sym_hash,
+            variant_sym_hash,
             is_variant,
+            ..
         } => {
             // The fields-content hash is memoized independently of the owning
             // type/variant symbols (a fields Rc could in principle be shared
@@ -5160,13 +5293,13 @@ fn eval_recompute_frame_finalize(memo: &mut EvalRecomputeHashMemo, f: EvalRecomp
             if is_variant {
                 eval_recompute_mix(
                     eval_recompute_mix(
-                        eval_recompute_mix(0xA5A5_0080, u64::from(type_sym)),
-                        u64::from(variant_sym),
+                        eval_recompute_mix(0xA5A5_0080, type_sym_hash),
+                        variant_sym_hash,
                     ),
                     h,
                 )
             } else {
-                eval_recompute_mix(eval_recompute_mix(0xA5A5_0070, u64::from(type_sym)), h)
+                eval_recompute_mix(eval_recompute_mix(0xA5A5_0070, type_sym_hash), h)
             }
         }
         EvalRecomputeFrameKind::Map { rc, .. } => {
@@ -5186,7 +5319,11 @@ enum EvalRecomputeStep {
     Bail,
 }
 
-fn eval_recompute_value_hash(memo: &mut EvalRecomputeHashMemo, root: &Value) -> Option<u64> {
+fn eval_recompute_value_hash(
+    memo: &mut EvalRecomputeHashMemo,
+    interner: &SymbolInterner,
+    root: &Value,
+) -> Option<u64> {
     let mut frames: Vec<EvalRecomputeFrame> = Vec::new();
     let mut cursor: Value = root.clone();
     loop {
@@ -5241,18 +5378,24 @@ fn eval_recompute_value_hash(memo: &mut EvalRecomputeHashMemo, root: &Value) -> 
                 }
                 Value::Record { type_name, fields } => {
                     let ptr = Rc::as_ptr(fields) as usize;
+                    let type_sym_hash = eval_recompute_str_hash(interner.resolve(*type_name));
                     match memo.get(&ptr) {
                         Some((w, h)) if w.alive() => EvalRecomputeStep::Have(eval_recompute_mix(
-                            eval_recompute_mix(0xA5A5_0070, u64::from(type_name.0)),
+                            eval_recompute_mix(0xA5A5_0070, type_sym_hash),
                             *h,
                         )),
                         _ => {
+                            let field_name_hashes = fields
+                                .iter()
+                                .map(|(s, _)| eval_recompute_str_hash(interner.resolve(*s)))
+                                .collect();
                             frames.push(EvalRecomputeFrame {
                                 kind: EvalRecomputeFrameKind::Fields {
                                     rc: fields.clone(),
-                                    type_sym: type_name.0,
-                                    variant_sym: 0,
+                                    type_sym_hash,
+                                    variant_sym_hash: 0,
                                     is_variant: false,
+                                    field_name_hashes,
                                 },
                                 idx: 0,
                                 h: 0xA5A5_00F0,
@@ -5267,21 +5410,28 @@ fn eval_recompute_value_hash(memo: &mut EvalRecomputeHashMemo, root: &Value) -> 
                     fields,
                 } => {
                     let ptr = Rc::as_ptr(fields) as usize;
+                    let type_sym_hash = eval_recompute_str_hash(interner.resolve(*type_name));
+                    let variant_sym_hash = eval_recompute_str_hash(interner.resolve(*variant_name));
                     match memo.get(&ptr) {
                         Some((w, h)) if w.alive() => EvalRecomputeStep::Have(eval_recompute_mix(
                             eval_recompute_mix(
-                                eval_recompute_mix(0xA5A5_0080, u64::from(type_name.0)),
-                                u64::from(variant_name.0),
+                                eval_recompute_mix(0xA5A5_0080, type_sym_hash),
+                                variant_sym_hash,
                             ),
                             *h,
                         )),
                         _ => {
+                            let field_name_hashes = fields
+                                .iter()
+                                .map(|(s, _)| eval_recompute_str_hash(interner.resolve(*s)))
+                                .collect();
                             frames.push(EvalRecomputeFrame {
                                 kind: EvalRecomputeFrameKind::Fields {
                                     rc: fields.clone(),
-                                    type_sym: type_name.0,
-                                    variant_sym: variant_name.0,
+                                    type_sym_hash,
+                                    variant_sym_hash,
                                     is_variant: true,
+                                    field_name_hashes,
                                 },
                                 idx: 0,
                                 h: 0xA5A5_00F0,
@@ -5356,6 +5506,7 @@ fn eval_recompute_value_hash(memo: &mut EvalRecomputeHashMemo, root: &Value) -> 
 
 fn eval_recompute_arg_key(
     memo: &mut EvalRecomputeHashMemo,
+    interner: &SymbolInterner,
     v: &Value,
 ) -> Option<EvalRecomputeArgKey> {
     match v {
@@ -5369,11 +5520,13 @@ fn eval_recompute_arg_key(
             variant_name,
             fields,
         } if fields.is_empty() => Some(EvalRecomputeArgKey::UnitVariant(
-            type_name.0,
-            variant_name.0,
+            eval_recompute_str_hash(interner.resolve(*type_name)),
+            eval_recompute_str_hash(interner.resolve(*variant_name)),
         )),
         Value::List(xs) if xs.is_empty() => Some(EvalRecomputeArgKey::EmptyList),
-        other => eval_recompute_value_hash(memo, other).map(EvalRecomputeArgKey::ContentHash),
+        other => {
+            eval_recompute_value_hash(memo, interner, other).map(EvalRecomputeArgKey::ContentHash)
+        }
     }
 }
 
@@ -5383,9 +5536,10 @@ fn eval_recompute_key(
     args: &[(Option<String>, Value)],
 ) -> Option<EvalRecomputeKey> {
     let mut memo = ctx.eval_recompute_hash_memo.borrow_mut();
+    let interner = ctx.symbols.borrow();
     let mut keys = Vec::with_capacity(args.len());
     for (_, v) in args {
-        keys.push(eval_recompute_arg_key(&mut memo, v)?);
+        keys.push(eval_recompute_arg_key(&mut memo, &interner, v)?);
     }
     Some(EvalRecomputeKey {
         fn_ptr: Rc::as_ptr(fn_node) as usize,
