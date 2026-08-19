@@ -4,7 +4,7 @@ import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.currency { Eur, Usd }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.measure { Bandwidth, ByteSize, byte_size, money_amount_micro, watt }
+import std.measure { Bandwidth, ByteSize, MoneyOnce, Watt, byte_size, money_amount_micro, watt }
 import std.pareto {
   DominatedBy,
   IncomparablePendingEvidence,
@@ -47,6 +47,10 @@ data dear_ref: DeclarationRef = decl_ref(module_path: "test.claim.build_selectio
 data pending_ref: DeclarationRef = decl_ref(module_path: "test.claim.build_selection_witness", decl_name: "pending_build")
 data part_ref: DeclarationRef = decl_ref(module_path: "extdeps.memory.types", decl_name: "DramModuleCatalogRow")
 
+fn usd_micros(count: Nat) -> MoneyOnce {
+  MoneyOnce { amount: money_amount_micro(count: count), currency: Usd }
+}
+
 data one_terabyte: ByteSize = byte_size(count: 1099511627776)
 data half_terabyte: ByteSize = byte_size(count: 549755813888)
 
@@ -64,31 +68,31 @@ fn candidate(
   identity: DeclarationRef,
   label: NonEmptyStr,
   capacity: ByteSize,
-  cash_micros: Nat,
+  cash: MoneyOnce,
   builds: Nat,
-  watts: Nat,
-  bandwidth: Nat,
+  wall_power: Watt,
+  bandwidth: Bandwidth,
 ) -> BuildCandidate {
   BuildCandidate {
     identity: identity,
     display_label: label,
     memory_capacity: capacity,
-    wall_power: watt(count: watts),
-    memory_bandwidth: Bandwidth { count: bandwidth },
+    wall_power: wall_power,
+    memory_bandwidth: bandwidth,
     resolutions: [],
-    cash: CashDerived { micros: cash_micros, currency: Usd },
+    cash: CashDerived { cash: cash },
     ceiling: CeilingDerived { builds: builds, bottlenecks: [purchase_line()], bottleneck_units: builds * 32 },
   }
 }
 
 fn cheap_build() -> BuildCandidate {
-  candidate(identity: cheap_ref, label: "cheap" as NonEmptyStr, capacity: one_terabyte, cash_micros: 1000000, builds: 31, watts: 300, bandwidth: 204800000000)
+  candidate(identity: cheap_ref, label: "cheap" as NonEmptyStr, capacity: one_terabyte, cash: usd_micros(count: 1000000), builds: 31, wall_power: watt(count: 300), bandwidth: Bandwidth { count: 204800000000 })
 }
 
 // Strictly worse on every funded axis than the cheap build: less memory, more
 // money, fewer builds, more power, less bandwidth.
 fn dear_build() -> BuildCandidate {
-  candidate(identity: dear_ref, label: "dear" as NonEmptyStr, capacity: half_terabyte, cash_micros: 9000000, builds: 30, watts: 400, bandwidth: 187712000000)
+  candidate(identity: dear_ref, label: "dear" as NonEmptyStr, capacity: half_terabyte, cash: usd_micros(count: 9000000), builds: 30, wall_power: watt(count: 400), bandwidth: Bandwidth { count: 187712000000 })
 }
 
 test fn w_the_axes_are_the_five_the_pipeline_funds() -> Bool {
@@ -115,7 +119,7 @@ test fn w_the_better_candidate_stands_on_the_frontier() -> Bool {
 // higher-is-better, the dominance above would still hold and this claim goes
 // red.
 test fn w_a_tradeoff_is_not_a_domination() -> Bool {
-  let tradeoff = candidate(identity: dear_ref, label: "tradeoff" as NonEmptyStr, capacity: half_terabyte, cash_micros: 100000, builds: 31, watts: 300, bandwidth: 204800000000)
+  let tradeoff = candidate(identity: dear_ref, label: "tradeoff" as NonEmptyStr, capacity: half_terabyte, cash: usd_micros(count: 100000), builds: 31, wall_power: watt(count: 300), bandwidth: Bandwidth { count: 204800000000 })
   match build_standing(subject: tradeoff, field: [cheap_build(), tradeoff], declared: Usd) {
     ProvisionallyNonDominated { sensitivities: _ } => true
     _ => false
@@ -141,7 +145,7 @@ fn pending_build() -> BuildCandidate {
         },
       },
     ],
-    cash: CashDerived { micros: 1, currency: Usd },
+    cash: CashDerived { cash: usd_micros(count: 1) },
     ceiling: CeilingDerived { builds: 99, bottlenecks: [purchase_line()], bottleneck_units: 3168 },
   }
 }
@@ -174,7 +178,7 @@ test fn w_a_candidate_in_an_undeclared_currency_does_not_rank() -> Bool {
     wall_power: watt(count: 300),
     memory_bandwidth: Bandwidth { count: 204800000000 },
     resolutions: [],
-    cash: CashDerived { micros: 1, currency: Eur },
+    cash: CashDerived { cash: MoneyOnce { amount: money_amount_micro(count: 1), currency: Eur } },
     ceiling: CeilingDerived { builds: 99, bottlenecks: [purchase_line()], bottleneck_units: 3168 },
   }
   match build_standing(subject: eur, field: [cheap_build(), eur], declared: Usd) {

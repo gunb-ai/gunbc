@@ -3,7 +3,7 @@ module product.build_fulfillment
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
-import std.measure { MoneyAmountMicro, money_amount_micro_count }
+import std.measure { MoneyAmountMicro, MoneyOnce, money_amount_micro, money_amount_micro_count, money_once_micros }
 import std.currency { CurrencyCode }
 import extdeps.external_authority { ExternalAuthority }
 import gunbc.memory_provisioning { PopulationOption }
@@ -21,8 +21,11 @@ import product.inventory {
   InventoryEvent,
   InventoryLotIdentity,
   LandedCostReadingHeldPrivately,
+  LandedCostCurrencyKnown,
+  LandedCostCurrencyUnrecorded,
   LandedCostReadingMicros,
   LandedCostReadingUnsettled,
+  lot_landed_cost_currency,
   LedgerRefusalCause,
   ProcurementLot,
   QuantityReserved,
@@ -168,8 +171,7 @@ fn derive_bom(recipe: NodeRecipe) -> List<BomLine> {
 type MarketDepth
   = MarketDepthCited {
       units_available: Nat
-      unit_price: MoneyAmountMicro
-      currency: CurrencyCode
+      unit_price: MoneyOnce
       authority: ExternalAuthority
     }
   | MarketDepthUnread { obligation: NonEmptyStr }
@@ -306,8 +308,7 @@ type Fulfillment
   | NewPurchase {
       part: DeclarationRef
       quantity: Nat
-      unit_price: MoneyAmountMicro
-      currency: CurrencyCode
+      unit_price: MoneyOnce
       authority: ExternalAuthority
     }
   | IncludedInSystem { part: DeclarationRef, quantity: Nat }
@@ -344,7 +345,7 @@ type LineResolution
 fn fulfillment_label(f: Fulfillment) -> NonEmptyStr {
   match f {
     OwnedInventory { lot: _, quantity: _, reservation: _, available_after: _ } => "OwnedInventory" as NonEmptyStr
-    NewPurchase { part: _, quantity: _, unit_price: _, currency: _, authority: _ } => "NewPurchase" as NonEmptyStr
+    NewPurchase { part: _, quantity: _, unit_price: _, authority: _ } => "NewPurchase" as NonEmptyStr
     IncludedInSystem { part: _, quantity: _ } => "IncludedInSystem" as NonEmptyStr
     SupplyMissing { part: _, requested: _, owned_available: _, market_units: _ } => "SupplyMissing" as NonEmptyStr
     CompatibilityUnread { part: _, obligation: _ } => "CompatibilityUnread" as NonEmptyStr
@@ -363,7 +364,7 @@ fn resolution_label(r: LineResolution) -> NonEmptyStr {
 // the ledger refused with.
 fn resolve_from_market(line: BomLine, market: MarketDepth, owned_available: Nat) -> LineResolution {
   match market {
-    MarketDepthCited { units_available: units, unit_price: price, currency: ccy, authority: auth } =>
+    MarketDepthCited { units_available: units, unit_price: price, authority: auth } =>
       if units >= line.quantity_per_build {
         LineResolved {
           line: line,
@@ -371,7 +372,6 @@ fn resolve_from_market(line: BomLine, market: MarketDepth, owned_available: Nat)
             part: line.part,
             quantity: line.quantity_per_build,
             unit_price: price,
-            currency: ccy,
             authority: auth,
           },
         }
@@ -570,8 +570,15 @@ type CashRefusalCause
   | CashLineUnfulfilled { part: DeclarationRef }
   | CashCurrencyMismatch { declared: CurrencyCode, line_currency: CurrencyCode }
 
+// MONEY RIDES std.measure's CARRIER, never a bare Nat beside a currency code.
+// An amount and its currency are ONE fact — MoneyOnce is exactly that carrier —
+// and splitting them across two fields is the second representation DESIGN
+// section 3 forbids: nothing would stop a fold carrying 90,000,000 micros
+// forward while replacing the code beside it. Caught by review 53754, which was
+// right that the flat field was the defect and the witness helpers only mirrored
+// it.
 type CashProjection
-  = CashDerived { micros: Nat, currency: CurrencyCode }
+  = CashDerived { cash: MoneyOnce }
   | CashNoPurchaseLines
   | CashRefused { cause: CashRefusalCause }
 
@@ -583,15 +590,25 @@ fn cash_step(acc: CashProjection, declared: CurrencyCode, r: LineResolution) -> 
         LineRefused { line: l, cause: _ } => CashRefused { cause: CashLineRefused { part: l.part } }
         LineResolved { line: l, fulfillment: f } =>
           match f {
-            NewPurchase { part: p, quantity: q, unit_price: price, currency: ccy, authority: _ } =>
-              if ccy != declared {
-                CashRefused { cause: CashCurrencyMismatch { declared: declared, line_currency: ccy } }
+            NewPurchase { part: p, quantity: q, unit_price: price, authority: _ } =>
+              if price.currency != declared {
+                CashRefused { cause: CashCurrencyMismatch { declared: declared, line_currency: price.currency } }
               } else {
                 match acc {
-                  CashDerived { micros: m, currency: _ } =>
-                    CashDerived { micros: m + q * money_amount_micro_count(m: price), currency: declared }
+                  CashDerived { cash: running } =>
+                    CashDerived {
+                      cash: MoneyOnce {
+                        amount: money_amount_micro(count: money_once_micros(q: running) + q * money_once_micros(q: price)),
+                        currency: declared,
+                      },
+                    }
                   _ =>
-                    CashDerived { micros: q * money_amount_micro_count(m: price), currency: declared }
+                    CashDerived {
+                      cash: MoneyOnce {
+                        amount: money_amount_micro(count: q * money_once_micros(q: price)),
+                        currency: declared,
+                      },
+                    }
                 }
               }
             SupplyMissing { part: p, requested: _, owned_available: _, market_units: _ } =>
@@ -687,10 +704,26 @@ type BasisRefusalCause
   | BasisLotDuplicated { lot: InventoryLotIdentity }
   | BasisLandedCostUnsettled { lot: InventoryLotIdentity }
   | BasisLandedCostHeldPrivately { lot: InventoryLotIdentity }
+  // Defensive, and named rather than assumed away: the cost reading and the
+  // currency reading are two projections of ONE ProcurementLot field, so they
+  // cannot disagree today — a lot with readable micros always has a readable
+  // currency. Nothing in the type system says so, which is exactly why this arm
+  // is a typed refusal instead of an assumption. It dissolves if the two
+  // readings ever become one call.
+  | BasisLandedCurrencyUnrecorded { lot: InventoryLotIdentity }
+  | BasisCurrencyMismatchAcrossLots { first: CurrencyCode, other: CurrencyCode }
 
 
+// THE BASIS RIDES THE SAME CARRIER, and typing it exposed a hole the bare Nat
+// was hiding: a basis summed across lots landed in DIFFERENT currencies was
+// being added up as though the numbers were commensurable. product.inventory's
+// own sum_landed_cost refuses that case; so does this, with the same shape.
 type BasisProjection
-  = BasisDerived { micros: Nat, remainder_micros: Nat, policy: BasisAllocationPolicy }
+  = BasisDerived {
+      basis: MoneyOnce
+      remainder: MoneyAmountMicro
+      policy: BasisAllocationPolicy
+    }
   | BasisNoDraws
   | BasisRefused { cause: BasisRefusalCause }
 
@@ -721,14 +754,18 @@ fn basis_for_draw(lot: ProcurementLot, draw: LotDraw) -> BasisProjection {
   match lot_landed_cost_reading(lot: lot) {
     LandedCostReadingUnsettled => BasisRefused { cause: BasisLandedCostUnsettled { lot: draw.lot } }
     LandedCostReadingHeldPrivately => BasisRefused { cause: BasisLandedCostHeldPrivately { lot: draw.lot } }
-    LandedCostReadingMicros { micros: c } => {
-      let total = c * draw.quantity
-      BasisDerived {
-        micros: total / lot.quantity_acquired,
-        remainder_micros: total - (total / lot.quantity_acquired) * lot.quantity_acquired,
-        policy: ProportionalUnitsWithRemainderRetained,
+    LandedCostReadingMicros { micros: c } =>
+      match lot_landed_cost_currency(lot: lot) {
+        LandedCostCurrencyUnrecorded => BasisRefused { cause: BasisLandedCurrencyUnrecorded { lot: draw.lot } }
+        LandedCostCurrencyKnown { currency: ccy } => {
+          let total = c * draw.quantity
+          BasisDerived {
+            basis: MoneyOnce { amount: money_amount_micro(count: total / lot.quantity_acquired), currency: ccy },
+            remainder: money_amount_micro(count: total - (total / lot.quantity_acquired) * lot.quantity_acquired),
+            policy: ProportionalUnitsWithRemainderRetained,
+          }
+        }
       }
-    }
   }
 }
 
@@ -743,11 +780,26 @@ fn basis_step(acc: BasisProjection, lots: List<ProcurementLot>, draw: LotDraw) -
           match basis_for_draw(lot: l, draw: draw) {
             BasisRefused { cause: c } => BasisRefused { cause: c }
             BasisNoDraws => acc
-            BasisDerived { micros: m, remainder_micros: rem, policy: p } =>
+            BasisDerived { basis: b, remainder: rem, policy: p } =>
               match acc {
-                BasisDerived { micros: running, remainder_micros: running_rem, policy: _ } =>
-                  BasisDerived { micros: running + m, remainder_micros: running_rem + rem, policy: p }
-                _ => BasisDerived { micros: m, remainder_micros: rem, policy: p }
+                BasisDerived { basis: running, remainder: running_rem, policy: _ } =>
+                  if running.currency != b.currency {
+                    BasisRefused {
+                      cause: BasisCurrencyMismatchAcrossLots { first: running.currency, other: b.currency },
+                    }
+                  } else {
+                    BasisDerived {
+                      basis: MoneyOnce {
+                        amount: money_amount_micro(count: money_once_micros(q: running) + money_once_micros(q: b)),
+                        currency: running.currency,
+                      },
+                      remainder: money_amount_micro(
+                        count: money_amount_micro_count(m: running_rem) + money_amount_micro_count(m: rem),
+                      ),
+                      policy: p,
+                    }
+                  }
+                _ => BasisDerived { basis: b, remainder: rem, policy: p }
               }
           }
       }
@@ -779,7 +831,7 @@ type LineDepth
 
 fn market_units(market: MarketDepth, part: DeclarationRef) -> LineDepth {
   match market {
-    MarketDepthCited { units_available: u, unit_price: _, currency: _, authority: _ } => DepthUnits { units: u }
+    MarketDepthCited { units_available: u, unit_price: _, authority: _ } => DepthUnits { units: u }
     MarketDepthUnread { obligation: o } => DepthUnread { part: part, obligation: o }
     MarketNotOffered => DepthUnits { units: 0 }
   }

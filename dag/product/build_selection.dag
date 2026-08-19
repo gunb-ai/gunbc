@@ -7,12 +7,12 @@ import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
 import std.measure {
   Bandwidth,
   ByteSize,
-  MoneyAmountMicro,
+  MoneyOnce,
   Watt,
   bandwidth_count,
   byte_size_count,
   money_amount_micro,
-  money_amount_micro_count,
+  money_once_micros,
   watt_count,
 }
 import std.pareto {
@@ -61,7 +61,7 @@ import product.build_fulfillment {
 // reading. A new axis cannot be added without stating what it measures.
 type BuildAxisMagnitude
   = MagnitudeBytes { bytes: ByteSize }
-  | MagnitudeMoneyMicro { amount: MoneyAmountMicro, currency: CurrencyCode }
+  | MagnitudeMoney { money: MoneyOnce }
   | MagnitudeWatts { watts: Watt }
   | MagnitudeBandwidth { bandwidth: Bandwidth }
   | MagnitudeUnitCount { units: Nat }
@@ -74,17 +74,10 @@ type BuildAxisReading {
 fn magnitude_scalar(m: BuildAxisMagnitude) -> Int {
   match m {
     MagnitudeBytes { bytes: b } => byte_size_count(b: b)
-    MagnitudeMoneyMicro { amount: a, currency: _ } => money_amount_micro_count(m: a)
+    MagnitudeMoney { money: m } => money_once_micros(q: m)
     MagnitudeWatts { watts: w } => watt_count(w: w)
     MagnitudeBandwidth { bandwidth: b } => bandwidth_count(b: b)
     MagnitudeUnitCount { units: u } => u
-  }
-}
-
-fn magnitude_currency(m: BuildAxisMagnitude) -> CurrencyCode? {
-  match m {
-    MagnitudeMoneyMicro { amount: _, currency: c } => Present { value: c }
-    _ => none
   }
 }
 
@@ -167,7 +160,7 @@ fn line_missing(acc: List<NonEmptyStr>, r: LineResolution) -> List<NonEmptyStr> 
         SupplyMissing { part: _, requested: _, owned_available: _, market_units: _ } =>
           concat(acc, one_missing(name: join(["line ", l.display_label as String, " cannot be filled"], "") as NonEmptyStr))
         OwnedInventory { lot: _, quantity: _, reservation: _, available_after: _ } => acc
-        NewPurchase { part: _, quantity: _, unit_price: _, currency: _, authority: _ } => acc
+        NewPurchase { part: _, quantity: _, unit_price: _, authority: _ } => acc
         IncludedInSystem { part: _, quantity: _ } => acc
       }
   }
@@ -182,8 +175,8 @@ fn line_missing(acc: List<NonEmptyStr>, r: LineResolution) -> List<NonEmptyStr> 
 // pipeline actually compares.
 fn cash_missing(declared: CurrencyCode, cash: CashProjection) -> List<NonEmptyStr> {
   match cash {
-    CashDerived { micros: _, currency: c } =>
-      if c != declared {
+    CashDerived { cash: c } =>
+      if c.currency != declared {
         one_missing(name: "priced in a currency the field did not declare" as NonEmptyStr)
       } else {
         no_missing
@@ -221,15 +214,13 @@ fn candidate_missing_inputs(candidate: BuildCandidate, declared: CurrencyCode) -
 // here at all, because it is a declared missing input above.
 fn cash_reading(cash: CashProjection, declared: CurrencyCode) -> BuildAxisReading {
   match cash {
-    CashDerived { micros: m, currency: c } =>
-      BuildAxisReading {
-        axis: cash_axis,
-        magnitude: MagnitudeMoneyMicro { amount: money_amount_micro(count: m), currency: c },
-      }
+    CashDerived { cash: c } => BuildAxisReading { axis: cash_axis, magnitude: MagnitudeMoney { money: c } }
     _ =>
       BuildAxisReading {
         axis: cash_axis,
-        magnitude: MagnitudeMoneyMicro { amount: money_amount_micro(count: 0), currency: declared },
+        magnitude: MagnitudeMoney {
+          money: MoneyOnce { amount: money_amount_micro(count: 0), currency: declared },
+        },
       }
   }
 }
