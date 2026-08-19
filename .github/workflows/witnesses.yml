@@ -30,6 +30,10 @@ jobs:
       - name: Build the witness fold
         run: |
           cargo build --release -p v1-compiler --bin claim_executor --bin gunbc --bin v1_src_dag_parse
+      - name: src/v1 .dag sources parse
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          cd "$ROOT" && "$ROOT/target/release/v1_src_dag_parse"
       - name: All witnesses (one prepared subject, one fold)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
