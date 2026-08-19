@@ -125,10 +125,12 @@ fn classify_typed_remote_file_readback(
   } else {
     TypedRemoteFileConvergenceRefused {
       step: "read-back",
-      reason: concat(
-        concat("the bytes at ", write.path as String),
+      reason: join([
+        "the bytes at ", write.path as String,
         " are not the declared content: the write reported success and the file is something else",
-      ),
+        " (declared_bytes=", to_string(string_length(s: write.content)),
+        " read_back_bytes=", to_string(string_length(s: readback_stdout)), ")",
+      ], ""),
     }
   }
 }
