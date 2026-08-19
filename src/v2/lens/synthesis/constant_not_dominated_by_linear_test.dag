@@ -1,0 +1,18 @@
+module v2.test.lens_synthesis.constant_not_dominated_by_linear
+
+import v2.lens.cost { LinearCost, SizeVariable, symbolic_cost_dominates, unit_cost }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Node, TypeNode, SyntheticOccurrence }
+
+data synthesis_const_x: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^synthesis_const_x_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+test fn constant_not_dominated_by_linear_claim_holds() -> Bool {
+  !symbolic_cost_dominates(
+    a: unit_cost(),
+    b: LinearCost { variable: SizeVariable { source: synthesis_const_x } }
+  )
+}

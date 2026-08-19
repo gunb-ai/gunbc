@@ -1,0 +1,293 @@
+module v2.std.compilers.cli_surface
+
+import std.algebra { Empty }
+import std.types { NonEmptyStr, String }
+import v2.std.algebra { fold_list, list_snoc_item }
+import v2.std.collection { List, Map }
+import v2.std.compilers.target_model {
+  BoundToken,
+  ConcreteSyntaxToken,
+  FixedToken,
+  LexRules,
+  lex_rules_literal_for_class
+}
+import v2.std.collection { map_get }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  ShortCircuit,
+  StageDiagnosticPolicy,
+  Unavailable,
+  append_outcome_value,
+  Rejected,
+  bind_outcome,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.node { Atom, Node, Symbol, SyntheticOccurrence, TypeNode }
+import v2.std.optional { Absent, Present }
+
+
+// WHY THIS EXISTS.
+//
+// CliArgumentSyntax preserves the GROUPING a tool's CLI projection selected. Fragments concatenate
+// only INSIDE one argument, where concatenation is correct (["--color","=","never"] is the single
+// argument --color=never). The outer fold preserves boundaries BETWEEN arguments, which is the
+// information an argv vector carries and source text cannot.
+//
+// This module consumes ConcreteSyntaxToken. It does NOT consume compiler translate output and is
+// independent of TargetModel as a semantic authority -- an earlier revision of this comment
+// asserted the opposite on both counts, and asserted a flat one-token-one-argument fold that no
+// longer exists. Those claims are gone rather than amended, because a file that states the
+// refuted architecture above the corrected one hands its next reader two plausible instructions.
+
+// SEALED AT THE RECORD, NOT AT THE MINT -- and the difference is a live hole, stated here
+// because an earlier revision of this comment claimed the opposite and was wrong.
+//
+// WHAT HOLDS: sole_constructor means no other module can write CliSurface { arguments: ... } or
+// cast into one. The record literal and the cast are both closed (04_infer
+// sole_constructor_construction_diags judges the two forms through one authority).
+//
+// WHAT DOES NOT HOLD: serialize_cli_arguments below is public and takes tokens, lex rules AND
+// binding spellings FROM ITS CALLER, so any module can synthesize whatever token sequence and lex
+// table it likes and receive a sealed CliSurface carrying arbitrary content. You cannot author
+// the record; you can author its contents. That is the mint-function hole gunbc.guarantee_probe_corpus
+// already enumerates as sole_ctor_mint_fn_hole_probe, reproduced here.
+//
+// SO THE EARLIER CLAIM WAS BACKWARDS. This is WEAKER than extdeps.shell.exec TransportScript, not
+// stronger: transport_script_seal is admit_callers-restricted to two named production decls, while
+// this fold admits everyone. The claim was made, reviewed, and corroborated once before anyone
+// checked it -- which is why it is written down here rather than quietly amended.
+//
+// WHY IT IS NOT CLOSED IN THIS COMMIT -- and the open question this comment used to defer to is
+// now ANSWERED. It read: the shape "is decided by whether the jq path consumes translate's target
+// model or bypasses it entirely." Wave 1A answered that by execution: jq bypasses it. The lowering
+// builds CliArgumentSyntax from its own rows and never constructs a TargetModel, so "bind the fold
+// to a target model" is not available as the repair -- there is no target model on this path.
+//
+// THE REPAIR, RESTATED: seal the INPUT, not the fold. A sealed AdmittedCliInvocation that only a
+// tool's own row-derived lowering can produce, with the serializer total over it. admit_callers on
+// the serializer is REFUSED on DESIGN section 3 grounds, and not merely because the roster would be
+// short: it would make this std module name every tool module permitted to emit a CLI, which is
+// dispatch fused into the interface -- the exact shape this lane exists to keep peripheral.
+//
+// NOT BUILT, and its mint's design is genuinely open, because whatever seals AdmittedCliInvocation
+// faces the same recursion one level up. Until it lands, provenance sits at MITIGATABLE and the
+// only containment is that jq's complete public entry point is jq_invocation_process_plan -- a
+// convention, not a wall. DISSOLVES WITH: that sealed input carrier, not with "the first
+// production consumer", which was the previous trigger and would have fired without closing this.
+
+// One argv argument, as GRAMMAR: the fragments that compose it, before any spelling is resolved.
+// Not sealed -- it is an input shape a tool's rows author, and sealing an input a caller must
+// build would only push the forgery one level out. What is sealed is the OUTPUT.
+type CliArgumentSyntax { fragments: List<ConcreteSyntaxToken> }
+
+// THE SHARED RENDERING RULE, owned here and not by any tool row. A tool declares WHICH names
+// exist and which form is canonical; how a long name becomes two hyphens plus the name is one
+// rule every POSIX-conventional tool shares (IEEE Std 1003.1-2024 XBD 12). A tool row storing
+// "--raw-output" would re-spell that rule per tool and could silently disagree with it.
+//
+// Only the LONG form is modeled, because only the long form has a consumer. The short-form
+// renderer was authored beside it and deleted unused: POSIX guideline 3 is cited in the design
+// note, but a citation is not a consumer, and a rule nothing calls cannot be shown to be right.
+// It returns with the first tool row that selects a short spelling.
+fn cli_long_option_spelling(name: NonEmptyStr) -> NonEmptyStr {
+  concat("--", name)
+}
+
+
+type CliArgument sole_constructor { text: String }
+
+type CliSurface sole_constructor { arguments: List<CliArgument> }
+
+fn cli_surface_arguments(surface: CliSurface) -> List<CliArgument> {
+  surface.arguments
+}
+
+fn cli_argument_text(argument: CliArgument) -> String {
+  argument.text
+}
+
+// THE TRANSPORT ROLE, stated rather than inferred from runtime encoding.
+//
+// WHY THIS EXISTS, and it is not a wrapper for tidiness. A `List<String>` reaching an argv
+// position does not say what the collection MEANS there: several argv words, one JSON argument,
+// one comma-joined option value, or repeated option/value groups are all realizable from the
+// same declared type. That is a TRANSPORT ROLE, not a data type, and the seed currently GUESSES
+// it from how the value happens to be represented at runtime.
+//
+// THE MEASURED DEFECT THAT FORCED THIS (design note, open question 9-ter; receipts there):
+// a folded List<String> is CONCATENATED into one argv word while an identical literal list is
+// SPLICED -- same declared type, two different processes. `jq --raw-output--exit-status.missing`
+// reached a real process from a correctly-lowered three-argument vector.
+//
+// THE LAW THIS CARRIER STATES, which is Wave 0's theorem at the host edge:
+//
+//     across the surface's arguments   -- ITERATE, never concatenate
+//     within one argument's fragments  -- CONCATENATE into exactly one word
+//
+// IT CARRIES CliSurface, NOT List<String>, and that is the whole strength of it. CliSurface is
+// sole_constructor and its members are nominal CliArgument records, so a realization can check
+// both nominal layers and a modeled string cannot impersonate a list of arguments. A wrapper
+// around a raw list would state the role while leaving the payload dynamically ambiguous -- the
+// same guess one level up.
+//
+// V2 CORRESPONDENCE (this is why the seed may realize it): v2.std.operation_argv already models
+// the same distinction for DECLARATION-owned materialization -- OperationInputValue is
+// InputText | InputTextList, and binding a token list into a string position is the typed
+// refusal TokenListInStringPosition. That module's own note records that expression-valued argv
+// elements instead execute through the interpreter's dispatch_shell path, "which evaluates argv
+// expressions in the full evaluator and is untouched here". This carrier is that same law for
+// the computed-surface case, so the seed arm realizes a modeled fact rather than inventing a
+// seed-only special case.
+// NOT "SHELL", AND THE NAME WAS CORRECTED BEFORE IT SPREAD. This branch's own investigation of
+// the seed established that the realization is Command::new(&argv[0]).args(&argv[1..]) -- a direct
+// process exec with no shell in the path, no word splitting, no glob expansion and no quoting
+// layer to be correct about. Naming the carrier for `transport shell` would name it after the
+// surface DSL keyword that happens to declare these operations today, which is DESIGN section 3
+// nicknaming: a second name for a concept -- process argument-vector construction -- that the
+// host boundary already names. A shell-hosted transport, if one is ever modeled, is a DIFFERENT
+// realization binding, not the thing this carrier describes.
+
+type ProcessArgvExpansion sole_constructor { surface: CliSurface }
+
+fn process_argv_expansion(surface: CliSurface) -> ProcessArgvExpansion {
+  ProcessArgvExpansion { surface: surface }
+}
+
+fn process_argv_expansion_surface(expansion: ProcessArgvExpansion) -> CliSurface {
+  expansion.surface
+}
+
+// THE FOLD IS NESTED, AND THE NESTING IS THE WHOLE POINT.
+//
+// An earlier revision folded a FLAT List<ConcreteSyntaxToken> one-token-one-argument, and its
+// witness supplied exactly two tokens and asserted exactly two arguments. That witness chose the
+// argument split before the serializer ran, so it established "one token supplied, one argument
+// retained" and NOT "the grammar groups fragments into arguments". The distinction is not
+// pedantic: concatenation is not inherently where CLI structure dies -- concatenation at the
+// WRONG STRUCTURAL LEVEL is. Within one argument concatenation is exactly right
+// (["--color", "=", "never"] is one argument --color=never; ["-", "e", "r"] is one argument -er);
+// across arguments it destroys the boundary.
+//
+// So there are two folds, not one. The inner fold resolves each fragment's spelling and
+// concatenates WITHIN one argument. The outer fold preserves the argument boundary BETWEEN them.
+// Both directions are then reachable from the same fragments, which is what makes the witness
+// discriminating rather than self-fulfilling.
+// A MISSING BINDING REFUSES HERE. It does not fall back to the binding's own symbol name.
+//
+// This fold used to route through target_model bound_tokens_source_text, whose bound-token
+// lookup answers an absent entry with the symbol's interned spelling instead of a refusal. That
+// is defensible for compiler source text, where the symbol name IS a legitimate rendering. It is
+// fail-open for runtime CLI data: a missing jq_program_text binding would have emitted the
+// literal argument "jq_program_text" -- a plausible-looking argv the process would then run.
+// DESIGN section 5: no fabricated plausible output. Absence is a typed, located refusal.
+//
+// So the two carriers keep their own folds, which is also what the carrier ruling requires. The
+// shared authority is TOKEN-GRAIN SPELLING (lex_rules_literal_for_class, and the map lookup
+// below), not sequence composition: emitted source composes through TargetText via text_atom and
+// target_text_seq, an argv argument composes into a CliArgument here, and no already-composed
+// String is ever lifted into either carrier.
+fn required_bound_spelling(
+  binding_spellings: Map<Symbol, String>,
+  binding: Symbol
+) -> Outcome<String> {
+  match map_get(binding_spellings, binding) {
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+    Accepted { value: found, diagnostics: pending } =>
+      match found {
+        Present { value: spelling } => Accepted { value: spelling, diagnostics: pending }
+        Absent => outcome_rejected(cli_binding_spelling_missing_diagnostic(binding: binding))
+      }
+  }
+}
+
+fn cli_binding_spelling_missing_diagnostic(binding: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: ^cli_binding_spelling_missing,
+    at: node_locus(node: Node {
+      kind: TypeNode { connective: Atom { identity: binding } },
+      children: [],
+      occurrence_id: SyntheticOccurrence
+    }),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn cli_fragment_spelling(
+  fragment: ConcreteSyntaxToken,
+  lex: LexRules,
+  binding_spellings: Map<Symbol, String>
+) -> Outcome<String> {
+  match fragment {
+    FixedToken { token_class: tc } =>
+      lex_rules_literal_for_class(rules: lex, token_class: tc)
+    BoundToken { token_class: _, binding: b } =>
+      required_bound_spelling(binding_spellings: binding_spellings, binding: b)
+  }
+}
+
+fn cli_argument_from_fragments(
+  fragments: List<ConcreteSyntaxToken>,
+  lex: LexRules,
+  binding_spellings: Map<Symbol, String>
+) -> Outcome<CliArgument> {
+  bind_outcome(
+    o: fold_list(
+      xs: fragments,
+      empty: outcome_accepted(""),
+      cons: fn(acc, fragment) {
+        bind_outcome(
+          o: acc,
+          f: fn(partial) {
+            bind_outcome(
+              o: cli_fragment_spelling(
+                fragment: fragment,
+                lex: lex,
+                binding_spellings: binding_spellings
+              ),
+              f: fn(spelling) { outcome_accepted(concat(partial, spelling)) }
+            )
+          }
+        )
+      }
+    ),
+    f: fn(text) { outcome_accepted(CliArgument { text: text }) }
+  )
+}
+
+// The outer fold routes through append_outcome_value rather than re-implementing part of the
+// Outcome algebra. An earlier revision matched the inner result and bound its accepted
+// diagnostics to _, silently ERASING evidence the spelling fold had produced -- latent only
+// because these rows happen to return None today. A generic serializer must not drop diagnostics
+// because its first callers had none.
+fn serialize_cli_arguments(
+  arguments: List<CliArgumentSyntax>,
+  lex: LexRules,
+  binding_spellings: Map<Symbol, String>
+) -> Outcome<CliSurface> {
+  bind_outcome(
+    o: fold_list(
+      xs: arguments,
+      empty: outcome_accepted(Empty),
+      cons: fn(acc, argument) {
+        append_outcome_value(
+          acc: acc,
+          child: cli_argument_from_fragments(
+            fragments: argument.fragments,
+            lex: lex,
+            binding_spellings: binding_spellings
+          ),
+          policy: StageDiagnosticPolicy { accumulation: ShortCircuit }
+        )
+      }
+    ),
+    f: fn(rendered) {
+      outcome_accepted(CliSurface { arguments: rendered })
+    }
+  )
+}

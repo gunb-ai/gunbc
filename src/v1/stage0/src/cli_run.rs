@@ -7412,6 +7412,203 @@ pub enum ClaimOutcome {
     },
 }
 
+/// Which clock a completed claim's cost is judged on. Operator ruling 2026-08-19 (BUDGET
+/// POLICY CUT): chosen by the witness's PURPOSE — pure modeled computation is judged on CPU,
+/// external/blocking interaction is judged on wall — and NEVER by which clock happened to
+/// read higher. Both clocks are always recorded on a reached verdict regardless of which one
+/// is the judged basis; the basis says which figure the completed-cost line is compared
+/// against, not which figure exists.
+///
+/// Named `RequiredFloorCostBasis`, not the bare `WitnessCostBasis` the ruling's prose uses,
+/// because `std_realization_schedule.rs` already declares a `WitnessCostBasis` for an
+/// unrelated concept (`MeasuredAtExactSubject | EstimatedFromSiblingClass`, a realization
+/// schedule's provenance for a cost figure, not a policy choice of which clock judges a
+/// completed claim). Two same-named public enums in one crate is the exact citation ambiguity
+/// DESIGN.md §3 rules against, so this type is scoped to the one lane that declares it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RequiredFloorCostBasis {
+    CpuCost,
+    WallCost,
+}
+
+/// `v2.workflow.required_floor`'s claims execute Hermetic (pure in-process evaluation), so
+/// CPU is the judged basis. A lane that later admits an execution mode whose purpose is
+/// external or blocking interaction picks wall instead — but the choice is made here, by
+/// declaring the lane's purpose, not derived from a measurement.
+pub fn required_floor_cost_basis() -> RequiredFloorCostBasis {
+    RequiredFloorCostBasis::CpuCost
+}
+
+/// Which safety mechanism raised THIS occurrence — nothing stronger. Operator ruling
+/// 2026-08-19 (BUDGET POLICY CUT, superseding correction): even "which deadline was crossed"
+/// overstates the fact, because both the CPU and wall safety limits may already be crossed by
+/// the time the interpreter next polls and only one check happens to be the one that raises
+/// the stop. `raised_by` names the mechanism that raised this occurrence, not a claim about
+/// which clock is "responsible" for the interruption — a `WallDeadlineRaised` occurrence does
+/// NOT make the claim a wall-cost witness; that is `RequiredFloorCostBasis`'s question, decided
+/// by the witness's declared purpose and never by which mechanism happened to fire
+/// (`interrupt trigger -/-> cost basis` is the load-bearing independence the ruling states).
+///
+/// Distinct from `BudgetKind`, which stays the interpreter's internal raise-path vocabulary
+/// (in-eval poll vs. completion-side backstop, consulted at many unrelated call sites); this is
+/// the admission-facing fact of which mechanism raised one occurrence. `From<BudgetKind>` is
+/// the one translation between them, kept at this seam so the two names never drift apart by
+/// accident.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SafetyInterruptTrigger {
+    CpuDeadlineRaised,
+    WallDeadlineRaised,
+}
+
+impl From<BudgetKind> for SafetyInterruptTrigger {
+    fn from(kind: BudgetKind) -> Self {
+        match kind {
+            BudgetKind::Cpu => SafetyInterruptTrigger::CpuDeadlineRaised,
+            BudgetKind::Wall => SafetyInterruptTrigger::WallDeadlineRaised,
+        }
+    }
+}
+
+/// Whether one claim reached a verdict, or was interrupted before it could. Operator ruling
+/// 2026-08-19 (BUDGET POLICY CUT, corrected by the operator's superseding message the same
+/// day — read this doc comment, not an older diff, if the two disagree): the prior fused model
+/// let a scheduler-sensitive wall crossing stand in for a judgment about a pure computation's
+/// cost. `ClaimTerminality` separates that: did the claim finish, and what did it exactly cost
+/// on both clocks (`VerdictReached`) — or did a safety deadline fire before it could
+/// (`SafetyInterrupted`).
+///
+/// FIELD NAMES ARE CHOSEN FOR THEIR CONSUMER, not for how the number was obtained, and the two
+/// arms are named for OPPOSITE facts on purpose:
+///
+/// - `VerdictReached.observed_cpu_ms` / `observed_wall_ms` — exact readings, but neither is a
+///   canonical "cost of the witness": they are honest facts about this one occurrence, and nothing
+///   stronger. (`exact_*_ms` was the prior spelling; retired because "exact" invited reading these
+///   as a canonical cost rather than an occurrence fact.)
+/// - `SafetyInterrupted.elapsed_cpu_at_least_ms` / `elapsed_wall_at_least_ms` — also exact
+///   measurements of work observed up to the stopped return, but only LOWER BOUNDS on what
+///   reaching a verdict would have required. The `_at_least` suffix stays on this arm because the
+///   lower bound is the fact downstream admission actually needs: a consumer must not read either
+///   duration as the claim's true cost, and the field name says so without requiring the consumer
+///   to already know that `SafetyInterrupted` implies censoring. (An interim revision moved
+///   `_at_least` off this arm entirely — that revision is withdrawn; the names stay here.)
+///
+/// `raised_by: SafetyInterruptTrigger` names the mechanism that raised this occurrence — see that
+/// type's doc comment for why it is not "which clock the claim ran over".
+///
+/// TWO INDEPENDENT SAFETY LIMITS are carried on `SafetyInterrupted`, not one shared value: CPU
+/// and wall protect against different failures (runaway evaluation vs. a blocked/descheduled
+/// process) and must never be a mechanical copy of one figure into both fields — see
+/// `WitnessSafetyPolicy` below.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ClaimTerminality {
+    VerdictReached {
+        verdict: ClaimOutcome,
+        observed_cpu_ms: u64,
+        observed_wall_ms: u64,
+    },
+    SafetyInterrupted {
+        raised_by: SafetyInterruptTrigger,
+        elapsed_cpu_at_least_ms: u64,
+        elapsed_wall_at_least_ms: u64,
+        cpu_safety_limit_ms: u64,
+        wall_safety_limit_ms: u64,
+    },
+}
+
+/// Two independently derived safety limits, never a scalar copied into both. For a Hermetic
+/// pure in-process claim, CPU safety protects against runaway evaluation while wall safety
+/// protects against a blocked or descheduled process — different jobs, so the wall limit must
+/// be independently derived and LOOSER than the CPU limit, so ordinary host scheduling cannot
+/// preempt a computation still inside its CPU envelope. For a genuinely blocking or effectful
+/// claim wall may instead be the primary per-row guard. Neither limit is a cost allowance;
+/// crossing either is `NotEvaluated` and blocks — see `RequiredFloorClaim`'s
+/// `cpu_safety_limit_ms` / `wall_safety_limit_ms` fields for the live-wired instantiation of
+/// this policy (`v2.workflow.required_floor`'s two `.dag` constants are its declared values).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WitnessSafetyPolicy {
+    pub cpu_ms: u64,
+    pub wall_ms: u64,
+}
+
+/// The single translation from a raw `(ClaimOutcome, PerformanceReceipt)` pair into the
+/// terminality the policy layer reasons over. `run_claim`/`run_claim_measured` and the two
+/// completion-side backstops (`budget_completion_outcome`, `wall_budget_completion_outcome`)
+/// are unchanged by this — they still raise/detect exactly as before. Only an outcome that is
+/// `TimedOut` with `completion: Interrupted` — a genuine pre-verdict abort — becomes
+/// `SafetyInterrupted`; every other outcome, including a `TimedOut { completion:
+/// CompletedOverBudget }` (the claim DID finish; the completion-side backstop only reclassified
+/// its label), reached a verdict and carries exact costs read off the receipt.
+///
+/// `outcome`'s own `TimedOut.budget_ms` names only the ONE limit that was checked when the
+/// interrupt fired, never the other clock's limit — so both limits are threaded in here from
+/// the caller's `WitnessSafetyPolicy`, the same policy that armed both deadlines in the first
+/// place, rather than reconstructed from a single-limit outcome.
+///
+/// `SafetyInterrupted`'s two elapsed readings are read off `receipt`, not off `outcome`'s single
+/// `elapsed_ms`: `run_claim_measured` samples both clocks around the same call regardless of how
+/// it ends, so both are genuine observations at interrupt time.
+pub fn claim_terminality(
+    outcome: &ClaimOutcome,
+    receipt: &v1_interpreter::PerformanceReceipt,
+    policy: WitnessSafetyPolicy,
+) -> ClaimTerminality {
+    match outcome {
+        ClaimOutcome::TimedOut {
+            kind,
+            completion: BudgetCompletion::Interrupted,
+            ..
+        } => ClaimTerminality::SafetyInterrupted {
+            raised_by: SafetyInterruptTrigger::from(*kind),
+            elapsed_cpu_at_least_ms: (receipt.cpu_nanos / 1_000_000) as u64,
+            elapsed_wall_at_least_ms: (receipt.wall_nanos / 1_000_000) as u64,
+            cpu_safety_limit_ms: policy.cpu_ms,
+            wall_safety_limit_ms: policy.wall_ms,
+        },
+        _ => ClaimTerminality::VerdictReached {
+            verdict: outcome.clone(),
+            observed_cpu_ms: (receipt.cpu_nanos / 1_000_000) as u64,
+            observed_wall_ms: (receipt.wall_nanos / 1_000_000) as u64,
+        },
+    }
+}
+
+/// DIAGNOSTIC ONLY — never a merge-admission, quarantine, or cost-debt-population decision.
+/// Operator ruling 2026-08-19 (BUDGET POLICY CUT, superseding correction): the completed-cost
+/// line (`cost_line_ms`, presently 1552) is retired from deciding completed-cost admission, not
+/// only from interruption. It was one 1527ms observation plus a scheduler quantum, and the
+/// exact 1792ms/1928ms pair observed since shows terminal measurements vary materially across
+/// admissible envelopes — a single literal line cannot honestly gate on that spread. This
+/// function may remain historical calibration evidence and a diagnostic comparison; nothing in
+/// the required-floor loop may call it to decide whether a run blocks. (Consistent with the
+/// live code today: `RequiredFloorOutcome.completed_over_cost_requirement` is populated from
+/// `BudgetCompletion::CompletedOverBudget` against the safety limit, never from this function or
+/// from `cost_line_ms` — this comment states that constraint explicitly so a future edit cannot
+/// wire this function back into admission by accident.)
+///
+/// Evaluated only on `VerdictReached` — an interrupted claim's cost is a lower bound, and
+/// comparing a lower bound against a line is not the question this answers, so
+/// `SafetyInterrupted` always reads `false` here.
+pub fn exceeds_completed_cost_line(
+    terminality: &ClaimTerminality,
+    cost_line_ms: u64,
+    basis: RequiredFloorCostBasis,
+) -> bool {
+    match terminality {
+        ClaimTerminality::VerdictReached {
+            observed_cpu_ms,
+            observed_wall_ms,
+            ..
+        } => {
+            let exact = match basis {
+                RequiredFloorCostBasis::CpuCost => *observed_cpu_ms,
+                RequiredFloorCostBasis::WallCost => *observed_wall_ms,
+            };
+            exact > cost_line_ms
+        }
+        ClaimTerminality::SafetyInterrupted { .. } => false,
+    }
+}
+
 pub fn resolve_entry_graph(
     source_roots: &[String],
     entry_file: &str,
@@ -15757,7 +15954,14 @@ pub fn run_claims_in_process(
 /// builtin-heavy) can finish over budget without ever hitting a poll. A Pass that
 /// exceeded the budget converts to the same typed refusal here — the witness is over
 /// the fast-lane classification either way, and silent green would fail open on the
-/// operator eval-budget ruling (2026-08-17; ceiling at `required_floor_claim_budget_ms`).
+/// operator eval-budget ruling (2026-08-17). The budget compared here is the caller's
+/// armed `witness_eval_budget`/`witness_wall_budget`; the required-floor caller arms
+/// them independently from `required_floor_claim_cpu_safety_limit_ms` and
+/// `required_floor_claim_wall_safety_limit_ms` (BUDGET POLICY CUT, 2026-08-19,
+/// superseding correction — two safety deadlines, never one scalar copied into both
+/// clocks) — the separate completed-cost line, `required_floor_claim_cost_line_ms`, is
+/// diagnostic only and is judged above this function, once a claim has already reached a
+/// verdict, and decides nothing about admission.
 /// A Fail/RuntimeError stays itself: those are already loud, and
 /// replacing a genuine finding with the budget message would discard it. `cpu_nanos` is
 /// THREAD CPU time (not wall), matching the stride-poll metric — a witness whose wall time
@@ -20262,8 +20466,14 @@ pub struct DiscoveryCorpusOptions {
     /// When non-empty, scopes the source-root `test fn` tree walk to files under one of these
     /// directories. Import resolution still uses the full source_roots. Empty = full walk.
     pub discovery_scope_dirs: Vec<String>,
-    /// Fast-lane per-witness eval budget (operator ruling 2026-08-17; the ceiling itself is
-    /// `v2.workflow.required_floor` `required_floor_claim_budget_ms`). When set, every
+    /// Fast-lane per-witness eval budget (operator ruling 2026-08-17). This is a distinct
+    /// PR-path posture from the required-floor claim loop; that loop's own constant split
+    /// into `required_floor_claim_cpu_safety_limit_ms` / `required_floor_claim_wall_safety_limit_ms`
+    /// (interrupt, now two independent deadlines) and `required_floor_claim_cost_line_ms`
+    /// (completed-cost, diagnostic only) under the BUDGET POLICY CUT (2026-08-19,
+    /// superseding correction) — this field is unaffected by that split and still names one
+    /// ceiling.
+    /// When set, every
     /// discovered witness eval is deadline-armed and an over-budget eval unwinds as the
     /// typed EvalBudgetExceeded runtime error (a FAIL row naming the witness). None = no
     /// bound (the long-lane / local recipe posture).
@@ -38004,6 +38214,25 @@ pub fn floor_prepared_subject_exclusions() -> Vec<String> {
     vec![
         "test/fixture/meta_exec_confinement_scan/".to_string(),
         "test/manual/ownership_movable_test.dag".to_string(),
+        // WET RECEIPT, AND IT HAS NO CI CONSUMER TODAY — stated plainly rather than dressed up
+        // as an enrollment. case4_expansion_carrier_splices dispatches a real jq through
+        // jq.Process.RunWithStdin, which carries no mock_response, so the hermetic floor refuses
+        // it and one refusing member fails the run. Mocking is not the repair: the witness exists
+        // to prove that a REAL jq exits 0 only on two argv words rather than one concatenated
+        // one, and a mocked dispatch passes it without any process running.
+        //
+        // The first attempt at this fix added rows to gunbc.ci_layer_roots
+        // (witness_exclusion_frontier + bin_witness_wet_entries) and asserted they would take
+        // effect. They did not: run_required_floor consults THIS list and nothing else, the CI
+        // receipt was an unchanged modules_excluded=2, and the wet batches those rosters feed
+        // were deleted with the old floor. Adding a row to a roster with no live consumer is
+        // specification-without-execution, so both rows were reverted rather than left standing.
+        //
+        // What this exclusion buys is a green floor; what it does NOT buy is coverage. The claim
+        // sits at UNEXECUTED-IN-CI with a local recipe recorded in the design note (§15), and
+        // re-enrolls when a wet lane exists again — which required_floor.dag deliberately defers
+        // until it can be "asked against a live consumer".
+        "test/manual/process_argv_expansion_receipt_test.dag".to_string(),
     ]
 }
 
@@ -38726,8 +38955,127 @@ pub struct RequiredFloorClaim {
     pub function: String,
     pub qualified: String,
     pub execution_mode: v1_interpreter::ExecutionMode,
-    pub budget_ms: u64,
+    /// The CPU SAFETY DEADLINE: arms the CPU interrupt clock. Never `budget_ms` — operator
+    /// ruling 2026-08-19 (BUDGET POLICY CUT) — because it does not express what a claim is
+    /// allowed to cost, only the point past which it is presumed runaway on the CPU clock and
+    /// interrupted before reaching a verdict. Independently derived from `wall_safety_limit_ms`
+    /// and TIGHTER than it (superseding correction, same date): CPU and wall protect against
+    /// different failures — runaway evaluation vs. a blocked/descheduled process — so a
+    /// mechanical copy of one figure into both is forbidden.
+    pub cpu_safety_limit_ms: u64,
+    /// The WALL SAFETY DEADLINE: arms the wall interrupt clock, independently derived and
+    /// LOOSER than `cpu_safety_limit_ms` so ordinary host scheduling delay cannot itself trip an
+    /// interrupt on a computation still inside its CPU envelope.
+    pub wall_safety_limit_ms: u64,
+    /// The COMPLETED-COST LINE. DIAGNOSTIC ONLY — never a merge-admission, quarantine, or
+    /// cost-debt-population decision (operator ruling 2026-08-19, superseding correction: 1552ms
+    /// is retired from completed-cost admission too, not only from interruption — a single
+    /// literal line cannot honestly gate a merge decision when the observed exact-cost spread
+    /// (1792ms/1928ms) already exceeds it under admissible envelopes). Retained as historical
+    /// calibration evidence and read only by the diagnostic `exceeds_completed_cost_line`; no
+    /// admission-path code may consult it.
+    pub cost_line_ms: u64,
     pub warn_ms: u64,
+}
+
+/// The site-projection loop's one decision, per identity, kept instead of discarded into three
+/// anonymous `usize` counters. Execution/admission derives from THIS alone — never from
+/// `LongHomeStorageAgreement` below, which observes a different, purely diagnostic fact.
+///
+/// Modeled authority: `v2.workflow.required_floor` `RequiredFloorDisposition`
+/// (`src/v2/workflow/required_floor.dag`). This Rust type is the realization of that `.dag`
+/// declaration, not its origin — the three arms and their meaning are declared there first; this
+/// enum's shape must track it rather than the reverse.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RequiredFloorDisposition {
+    /// Admitted into `claims`: the module's authored name did not match a long-home prefix and
+    /// the module does not declare `ReadsLiveTree`.
+    Planned,
+    /// Declined because the module's AUTHORED name (read from its own source, never its path)
+    /// matches a `long_home_prefixes()` entry. Carries the exact prefix that matched, which the
+    /// former bare `long_declined` counter discarded.
+    DeclinedLongModule { matched_prefix: String },
+    /// Declined because the module declares `LiveTreeDisposition = ReadsLiveTree` and cannot
+    /// execute in the hermetic frame this floor runs.
+    DeclinedLiveTree,
+}
+
+/// One identity's `RequiredFloorDisposition`, keyed by the qualified `module.function` name so
+/// downstream consumers can join on identity rather than reconstruct a population from filenames
+/// or intended-rename lists.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RequiredFloorDispositionRow {
+    pub identity: String,
+    pub disposition: RequiredFloorDisposition,
+}
+
+/// A storage/name-hygiene DIAGNOSTIC, cross-checking a witness file's PHYSICAL PATH (does it sit
+/// under a `long`-shaped directory) against its AUTHORED module declaration (does `module_path`
+/// match a `long_home_prefixes()` entry). This is NOT an admission fact: the 2026-08-04 ruling
+/// forbids deriving admission from a path, `RequiredFloorDisposition` above is the sole
+/// admission authority, and this value must never feed, reshape, or serve as a fallback for that
+/// decision. It exists because the tree has drifted in BOTH directions between path and
+/// declared module — a `git mv` can land a file under `long/` without updating its declaration
+/// (still executing) or a file can be renamed out of `long/` while keeping a long-prefixed
+/// declaration (still declined).
+///
+/// Modeled authority: `v2.workflow.required_floor` `LongHomeStorageAgreement`
+/// (`src/v2/workflow/required_floor.dag`), including the derivation
+/// `long_home_storage_agreement(path_is_long: Bool, module_is_long: Bool)` that names the same
+/// Cartesian product this file's `long_home_storage_agreement(bool, bool)` below realizes. The
+/// four arms are not a hand-picked enum: they are total over `(path_is_long, module_is_long)`,
+/// and that totality is declared in `.dag`, not invented here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LongHomeStorageAgreement {
+    /// Path and module agree: both long.
+    LongPathAndLongModule,
+    /// Path and module agree: both short.
+    ShortPathAndShortModule,
+    /// Disagreement whose consequence is EXECUTION: the path looks quarantined but the module is
+    /// not long-prefixed, so the floor runs it anyway.
+    LongPathButExecutingModule,
+    /// Disagreement whose consequence is DECLINE: the path looks ordinary but the module is
+    /// long-prefixed, so the floor excludes it anyway.
+    ShortPathButDeclinedModule,
+}
+
+/// One identity's `LongHomeStorageAgreement`, keyed the same way as `RequiredFloorDispositionRow`
+/// so the two receipts join on `identity`. The agreement itself is computed once per file (the
+/// fact it observes is file-grained); this row repeats it per site purely for joinability.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LongHomeStorageAgreementRow {
+    pub identity: String,
+    pub agreement: LongHomeStorageAgreement,
+}
+
+/// A generic path-segment predicate: true when `path` contains a `long` directory component
+/// anywhere in its ancestry. This is deliberately NOT a hardcoded substring match against one
+/// literal directory — the corpus carries multiple real, only loosely-correlated `long`-shaped
+/// homes (`dag/test/claim/long/`, `src/v2/test/long/`, `src/v2/test/claim/long/`, mirroring the
+/// three `long_home_prefixes()` module-name prefixes above), and a single hardcoded string would
+/// silently miss the others.
+fn is_long_home_path(path: &str) -> bool {
+    path.split('/').any(|segment| segment == "long")
+}
+
+/// The pure (bool, bool) -> LongHomeStorageAgreement mapping. Takes no file, no module name, no
+/// prefix list -- only the two booleans the caller has already derived -- so this function
+/// cannot itself read a path or a module name and cannot become a second admission authority by
+/// accretion.
+///
+/// Realizes `v2.workflow.required_floor` `long_home_storage_agreement` in
+/// `src/v2/workflow/required_floor.dag` — the match arms below must stay in exact correspondence
+/// with that `.dag` function's arms.
+fn long_home_storage_agreement(
+    path_is_long: bool,
+    module_is_long: bool,
+) -> LongHomeStorageAgreement {
+    match (path_is_long, module_is_long) {
+        (true, true) => LongHomeStorageAgreement::LongPathAndLongModule,
+        (false, false) => LongHomeStorageAgreement::ShortPathAndShortModule,
+        (true, false) => LongHomeStorageAgreement::LongPathButExecutingModule,
+        (false, true) => LongHomeStorageAgreement::ShortPathButDeclinedModule,
+    }
 }
 
 /// What one required-floor attempt did. The three identity counts are separate fields rather
@@ -38753,13 +39101,39 @@ pub struct RequiredFloorOutcome {
     /// indistinguishable from a regression in the alert signature, which is the conflation
     /// `std.witness_admission` already ruled on for exactly this case.
     pub stale_quarantine: Vec<String>,
-    /// AND A BUDGET REFUSAL IS NEITHER. The row went undecided; the remedy is cost, not a
-    /// roster edit and not a bug fix. Three causes with three remedies get three counts.
-    pub budget_refused: Vec<String>,
+    /// A CLAIM INTERRUPTED BEFORE REACHING A VERDICT IS A THIRD THING, SEPARATE FROM COST.
+    /// Operator ruling 2026-08-19 (BUDGET POLICY CUT): the prior single `budget_refused`
+    /// collection fused this population together with `completed_over_cost_requirement` below
+    /// — a claim that never answered, and a claim that answered but cost too much, are
+    /// different facts with different remedies, and fusing them into one undecided bucket hid
+    /// which remedy applied. `NotEvaluated` is never green: this population still blocks
+    /// admission exactly as `budget_refused` did. What changed is that it is now visible
+    /// separately from `completed_over_cost_requirement`, not that either stops blocking.
+    pub interrupted_before_verdict: Vec<String>,
+    /// A CLAIM THAT REACHED A VERDICT BUT COST MORE THAN THE COMPLETED-COST LINE. Separate
+    /// from `interrupted_before_verdict` for the same reason: this claim answered, and the
+    /// remedy is reducing what it costs, not investigating why it never returned. Still
+    /// blocking, per the same ruling.
+    pub completed_over_cost_requirement: Vec<String>,
     /// Host tool could not be resolved — infra undecided, not budget-refused.
     pub host_tool_unresolved: Vec<String>,
     pub over_warn: usize,
+    /// DIAGNOSTIC ONLY, NEVER ADMISSION. A `VerdictReached` claim whose exact cost (on the
+    /// `RequiredFloorCostBasis` clock) exceeded `required_floor_claim_cost_line_ms`, per
+    /// `exceeds_completed_cost_line`. Counted so `ClaimTerminality`/`exceeds_completed_cost_line`
+    /// have a real executing consumer (DESIGN §6 — no scaffold without one) without smuggling the
+    /// retired 1552ms figure back into a blocking decision: this count is reported and nothing
+    /// reads it to fail the run, unlike `completed_over_cost_requirement` above, which blocks on
+    /// the independently-derived safety limit and is unaffected by this field.
+    pub over_cost_line_diagnostic: usize,
     pub failures: Vec<String>,
+    /// Per-identity `RequiredFloorDisposition`, one row per (module, function) site the
+    /// site-projection loop considered. This is the sole admission authority for the site; see
+    /// the type's doc comment.
+    pub required_floor_disposition: Vec<RequiredFloorDispositionRow>,
+    /// Per-identity `LongHomeStorageAgreement`, a storage/name-hygiene diagnostic that never
+    /// feeds admission. See the type's doc comment.
+    pub long_home_storage_agreement: Vec<LongHomeStorageAgreementRow>,
 }
 
 /// A witness site as preparation found it — the file's path, its module, and the `test fn`
@@ -39556,17 +39930,34 @@ pub fn run_required_floor(
     // `ClaimIdentityCountsDisagree` refuses. The manifest's enrollment map was a second mechanism
     // for that one invariant — and, being a growing `Value::Map` re-hashed once per fold step,
     // was the whole of the phase's quadratic cost.
-    let claim_budget_ms = floor_required_int(&hermetic, "required_floor_claim_budget_ms")?;
+    // THREE INDEPENDENT NUMBERS, not one and not two. Operator ruling 2026-08-19 (BUDGET POLICY
+    // CUT), superseding correction the same date: the CPU and wall safety deadlines are
+    // independently derived — never one figure copied into both clocks — and the completed-cost
+    // line is diagnostic only and reads from its own constant, unconsulted by admission.
+    // Reading all three from separate `.dag` constants is what makes the fusion structurally
+    // impossible to reintroduce here — there is no longer a single value a future edit could
+    // hand to more than one role by accident.
+    let claim_cpu_safety_limit_ms =
+        floor_required_int(&hermetic, "required_floor_claim_cpu_safety_limit_ms")?;
+    let claim_wall_safety_limit_ms =
+        floor_required_int(&hermetic, "required_floor_claim_wall_safety_limit_ms")?;
+    let claim_cost_line_ms = floor_required_int(&hermetic, "required_floor_claim_cost_line_ms")?;
     let claim_warn_ms = floor_required_int(&hermetic, "required_floor_claim_warn_ms")?;
-    // THE TWO TIERS ARE ORDERED, and reading them independently cannot see that. The warn tier
+    // THE TIERS ARE ORDERED, and reading them independently cannot see that. The warn tier
     // reports a row an order of magnitude above where an ordinary witness lands and lets it
-    // finish; the hard tier stops it. A warn at or above the ceiling is an inverted policy that
-    // never warns, and both values would still typecheck as ordinary positive Ints.
-    if claim_warn_ms >= claim_budget_ms {
+    // finish; the safety deadlines are what actually stop it (BUDGET POLICY CUT, 2026-08-19 —
+    // the completed-cost line never interrupts anything, so it is not a "hard ceiling" this
+    // check protects: only the two safety limits arm the interrupt clocks). The warn tier must
+    // sit strictly below the TIGHTER of the two safety limits, or it can never fire before the
+    // interrupt it is meant to precede.
+    let claim_tighter_safety_limit_ms = claim_cpu_safety_limit_ms.min(claim_wall_safety_limit_ms);
+    if claim_warn_ms >= claim_tighter_safety_limit_ms {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=ClaimBudgetTiersInverted warn_ms={claim_warn_ms} \
-             budget_ms={claim_budget_ms} — the warning tier must sit strictly below the hard \
-             ceiling or it can never fire before the deadline it is meant to precede"
+             cpu_safety_limit_ms={claim_cpu_safety_limit_ms} \
+             wall_safety_limit_ms={claim_wall_safety_limit_ms} — the warning tier must sit \
+             strictly below the tighter of the two safety deadlines or it can never fire before \
+             the interrupt it is meant to precede"
         ));
     }
     let long_home_prefixes: Vec<String> = {
@@ -39603,21 +39994,44 @@ pub fn run_required_floor(
     let mut long_declined = 0usize;
     let mut live_declined = 0usize;
     let mut sites_offered = 0usize;
+    let mut disposition_rows: Vec<RequiredFloorDispositionRow> = Vec::new();
+    let mut storage_agreement_rows: Vec<LongHomeStorageAgreementRow> = Vec::new();
     for file in files {
-        let long_home = long_home_prefixes
+        let matched_prefix = long_home_prefixes
             .iter()
-            .any(|prefix| file.module_path.starts_with(prefix.as_str()));
+            .find(|prefix| file.module_path.starts_with(prefix.as_str()));
+        let long_home = matched_prefix.is_some();
+        // Diagnostic only -- computed once per file and never consulted by the admission
+        // branching below. See `LongHomeStorageAgreement`'s doc comment.
+        let path_is_long = is_long_home_path(&file.path);
+        let storage_agreement = long_home_storage_agreement(path_is_long, long_home);
         for function in &file.functions {
             sites_offered += 1;
+            let identity = format!("{}.{}", file.module_path, function);
+            storage_agreement_rows.push(LongHomeStorageAgreementRow {
+                identity: identity.clone(),
+                agreement: storage_agreement,
+            });
             if long_home {
                 long_declined += 1;
+                disposition_rows.push(RequiredFloorDispositionRow {
+                    identity,
+                    disposition: RequiredFloorDisposition::DeclinedLongModule {
+                        matched_prefix: matched_prefix
+                            .expect("long_home is true only when matched_prefix is Some")
+                            .clone(),
+                    },
+                });
                 continue;
             }
             if file.reads_live_tree {
                 live_declined += 1;
+                disposition_rows.push(RequiredFloorDispositionRow {
+                    identity,
+                    disposition: RequiredFloorDisposition::DeclinedLiveTree,
+                });
                 continue;
             }
-            let qualified = format!("{}.{}", file.module_path, function);
             // ONE EXECUTABLE CLAIM PER QUALIFIED IDENTITY, REFUSED HERE AND NAMED.
             //
             // The deleted manifest carried this invariant and refused BEFORE running anything,
@@ -39627,19 +40041,25 @@ pub fn run_required_floor(
             // that two populations disagree -- never which identity caused it. Planned-identity
             // uniqueness and receipt completeness are different properties, and the terminal
             // `planned == executed == receipted` check remains as the second, separate one.
-            if let Some(prior) = planned_identities.replace(qualified.clone()) {
+            if let Some(prior) = planned_identities.replace(identity.clone()) {
                 return Err(format!(
                     "REQUIRED-FLOOR REFUSAL cause=DuplicateWitnessIdentity identity={prior} — \
                      one qualified declaration resolved to more than one executable claim; the \
                      roster cannot name the same witness twice"
                 ));
             }
+            disposition_rows.push(RequiredFloorDispositionRow {
+                identity: identity.clone(),
+                disposition: RequiredFloorDisposition::Planned,
+            });
             claims.push(RequiredFloorClaim {
-                qualified: qualified.clone(),
+                qualified: identity,
                 module_path: file.module_path.clone(),
                 function: function.clone(),
                 execution_mode: v1_interpreter::ExecutionMode::Hermetic,
-                budget_ms: claim_budget_ms,
+                cpu_safety_limit_ms: claim_cpu_safety_limit_ms,
+                wall_safety_limit_ms: claim_wall_safety_limit_ms,
+                cost_line_ms: claim_cost_line_ms,
                 warn_ms: claim_warn_ms,
             });
         }
@@ -39761,6 +40181,8 @@ pub fn run_required_floor(
         .ok()
         .is_some_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
     let roster_join_active = roster_join_path.is_some() || roster_join_only;
+    let required_floor_disposition_path = std::env::var("GUNBC_REQUIRED_FLOOR_DISPOSITION").ok();
+    let long_home_storage_agreement_path = std::env::var("GUNBC_LONG_HOME_STORAGE_AGREEMENT").ok();
     let mut roster_join_report = if roster_join_active {
         let mut roster_identities: Vec<String> = expected_red_roster.iter().cloned().collect();
         roster_identities.sort();
@@ -39840,10 +40262,14 @@ pub fn run_required_floor(
         passed: 0,
         known_red_held: 0,
         stale_quarantine: Vec::new(),
-        budget_refused: Vec::new(),
+        interrupted_before_verdict: Vec::new(),
+        completed_over_cost_requirement: Vec::new(),
         host_tool_unresolved: Vec::new(),
         over_warn: 0,
+        over_cost_line_diagnostic: 0,
         failures: Vec::new(),
+        required_floor_disposition: disposition_rows,
+        long_home_storage_agreement: storage_agreement_rows,
     };
     let mut receipted: HashSet<String> = HashSet::new();
 
@@ -39969,12 +40395,17 @@ pub fn run_required_floor(
         // complete in the interpreter and simply never switched on here, so a CPU budget stood
         // in for it while printing the wall rule's own error text.
         //
-        // Both clocks are armed deliberately. CPU catches a spin; wall catches a witness that
-        // is slow because of what it reaches for, which CPU cannot see: the worst row measured
-        // burned 504 SECONDS of wall under a 5-second ceiling and returned an ordinary Bool,
-        // because its time was filesystem reads and its CPU never approached the limit.
-        frame.set_witness_eval_budget(Some(claim.budget_ms));
-        frame.set_witness_wall_budget(Some(claim.budget_ms));
+        // Both clocks are armed deliberately, and INDEPENDENTLY (operator ruling 2026-08-19,
+        // BUDGET POLICY CUT, superseding correction — "DO NOT set CPU and wall to the same
+        // 5000ms"). CPU catches a spin; wall catches a witness that is slow because of what it
+        // reaches for, which CPU cannot see: the worst row measured burned 504 SECONDS of wall
+        // under a 5-second ceiling and returned an ordinary Bool, because its time was
+        // filesystem reads and its CPU never approached the limit. The wall limit is
+        // deliberately looser than the CPU limit so ordinary host scheduling delay on a pure
+        // in-process claim cannot itself trip an interrupt while the claim is still within its
+        // CPU envelope.
+        frame.set_witness_eval_budget(Some(claim.cpu_safety_limit_ms));
+        frame.set_witness_wall_budget(Some(claim.wall_safety_limit_ms));
         // NAME WHO IS RUNNING, so a shared computation filled during this claim is attributed to
         // it rather than to nobody. The wall time this row is about to be charged is not
         // necessarily its own; `shared_fill` records which part was a first touch of a
@@ -40013,6 +40444,27 @@ pub fn run_required_floor(
                 claim_rss_kb as f64 / 1048576.0,
                 claim_rss_after as f64 / 1048576.0
             );
+        }
+        // DIAGNOSTIC-ONLY COST-LINE COMPARISON. This is the executing consumer of
+        // `claim_terminality`/`exceeds_completed_cost_line`/`ClaimTerminality`/
+        // `RequiredFloorCostBasis` (BUDGET POLICY CUT, 2026-08-19) — reported and counted so the
+        // types are not review §6 scaffolds, never gated on: `over_cost_line_diagnostic` has no
+        // reader that fails the run, unlike `completed_over_cost_requirement` above, which blocks
+        // on the safety limit and is computed independently of this comparison.
+        let terminality = claim_terminality(
+            &result,
+            &receipt,
+            WitnessSafetyPolicy {
+                cpu_ms: claim.cpu_safety_limit_ms,
+                wall_ms: claim.wall_safety_limit_ms,
+            },
+        );
+        if exceeds_completed_cost_line(
+            &terminality,
+            claim.cost_line_ms,
+            required_floor_cost_basis(),
+        ) {
+            outcome.over_cost_line_diagnostic += 1;
         }
         // RETURN WHAT THE FRAME NO LONGER OWNS, on a cadence rather than every row.
         //
@@ -40055,7 +40507,7 @@ pub fn run_required_floor(
                 &claim.qualified,
                 wall_ms,
                 claim.warn_ms,
-                claim.budget_ms,
+                claim.wall_safety_limit_ms,
             ) {
                 Some(line) => eprintln!("{line}"),
                 None => eprintln!(
@@ -40127,7 +40579,7 @@ pub fn run_required_floor(
                         ),
                         other => format!("{other:?}"),
                     };
-                    outcome.budget_refused.push(format!(
+                    outcome.interrupted_before_verdict.push(format!(
                         "{} is enrolled as expected-red but was BUDGET-REFUSED, not failed: \
                          {}. Enrollment asserts an expected verdict and a budget refusal \
                          produces none, so the enrolled claim went undecided — THIS ROW'S \
@@ -40149,8 +40601,8 @@ pub fn run_required_floor(
                 // unaffected because it counts receipts, not verdicts.
                 // BOTH REMEDIES, because the row is true on both axes. The semantic half goes
                 // to stale_quarantine (the claim passed, so the roster row must come out) and
-                // the cost half to budget_refused (an exact overrun that still has to be paid
-                // down). Choosing one would silently drop the other, and the one the code used
+                // the cost half to completed_over_cost_requirement (an exact overrun that still
+                // has to be paid down). Choosing one would silently drop the other, and the one the code used
                 // to drop was the repaid-debt signal the roster exists to surface.
                 ExpectedRedArm::PassedOverBudget => {
                     known_red_passed_over_budget += 1;
@@ -40169,7 +40621,7 @@ pub fn run_required_floor(
                          reported separately and is not a reason to keep the row",
                         claim.qualified, cost
                     ));
-                    outcome.budget_refused.push(format!(
+                    outcome.completed_over_cost_requirement.push(format!(
                         "{} PASSED but exceeded its budget: {}. This is an exact measurement, \
                          not a bound — the witness ran to completion — so the cost is known and \
                          actionable. Reduce it, or move the row to a lane declaring its own \
@@ -40251,8 +40703,8 @@ pub fn run_required_floor(
                 // is EXACT. Printing one sentence for both would repeat the conflation this arm
                 // exists to remove — asserting "correctness unknown" over a row that demonstrably
                 // answered is as wrong as calling a cost a defect.
-            } => outcome.budget_refused.push(match completion {
-                BudgetCompletion::Interrupted => format!(
+            } => match completion {
+                BudgetCompletion::Interrupted => outcome.interrupted_before_verdict.push(format!(
                     "{} was BUDGET-REFUSED and went UNDECIDED: {kind:?}, cost at least \
                      {elapsed_ms}ms against {budget_ms}ms. Not enrolled as expected-red, so \
                      nothing claims it is broken — but the deadline preempted the verdict, so \
@@ -40260,17 +40712,19 @@ pub fn run_required_floor(
                      is the interrupt point, not this row's cost. Reduce the cost, or move it \
                      to a lane declaring its own ceiling, so the witness reaches a verdict.",
                     claim.qualified
-                ),
-                BudgetCompletion::CompletedOverBudget => format!(
-                    "{} reached its verdict and then exceeded its budget: {kind:?}, cost \
+                )),
+                BudgetCompletion::CompletedOverBudget => {
+                    outcome.completed_over_cost_requirement.push(format!(
+                        "{} reached its verdict and then exceeded its budget: {kind:?}, cost \
                      exactly {elapsed_ms}ms against {budget_ms}ms. The witness ran to \
                      completion, so this is a measurement rather than a bound and the cost is \
                      known and actionable. This is a cost debt only — it is not a defect and \
                      it does not belong on the expected-red roster, which asserts an expected \
                      FAILURE this row does not exhibit.",
-                    claim.qualified
-                ),
-            }),
+                        claim.qualified
+                    ))
+                }
+            },
         }
     }
     outcome.receipt_identities = receipted.len();
@@ -40454,7 +40908,321 @@ pub fn run_required_floor(
             crate::expected_red_roster_join::write_join_tsv(&path, &join)?;
         }
     }
+    if let Some(path) = required_floor_disposition_path {
+        write_required_floor_disposition_tsv(&path, &outcome.required_floor_disposition)?;
+    }
+    if let Some(path) = long_home_storage_agreement_path {
+        write_long_home_storage_agreement_tsv(&path, &outcome.long_home_storage_agreement)?;
+    }
     Ok(outcome)
+}
+
+fn required_floor_disposition_label(disposition: &RequiredFloorDisposition) -> &'static str {
+    match disposition {
+        RequiredFloorDisposition::Planned => "planned",
+        RequiredFloorDisposition::DeclinedLongModule { .. } => "declined_long_module",
+        RequiredFloorDisposition::DeclinedLiveTree => "declined_live_tree",
+    }
+}
+
+fn required_floor_disposition_matched_prefix(disposition: &RequiredFloorDisposition) -> &str {
+    match disposition {
+        RequiredFloorDisposition::DeclinedLongModule { matched_prefix } => matched_prefix,
+        RequiredFloorDisposition::Planned | RequiredFloorDisposition::DeclinedLiveTree => "",
+    }
+}
+
+/// Writes the per-identity `RequiredFloorDisposition` receipt as TSV: one row per site the
+/// site-projection loop considered, joinable on `identity`. This is a receipt of the admission
+/// decision already made above -- writing it changes nothing about which claims execute.
+fn write_required_floor_disposition_tsv(
+    path: &str,
+    rows: &[RequiredFloorDispositionRow],
+) -> Result<(), String> {
+    use std::io::Write;
+    let mut file = std::fs::File::create(path)
+        .map_err(|e| format!("write_required_floor_disposition_tsv: create {path}: {e}"))?;
+    let mut planned = 0usize;
+    let mut declined_long = 0usize;
+    let mut declined_live = 0usize;
+    for row in rows {
+        match &row.disposition {
+            RequiredFloorDisposition::Planned => planned += 1,
+            RequiredFloorDisposition::DeclinedLongModule { .. } => declined_long += 1,
+            RequiredFloorDisposition::DeclinedLiveTree => declined_live += 1,
+        }
+    }
+    writeln!(
+        file,
+        "# summary\ttotal={}\tplanned={}\tdeclined_long_module={}\tdeclined_live_tree={}",
+        rows.len(),
+        planned,
+        declined_long,
+        declined_live
+    )
+    .map_err(|e| format!("write_required_floor_disposition_tsv: write {path}: {e}"))?;
+    writeln!(file, "identity\tdisposition\tmatched_prefix")
+        .map_err(|e| format!("write_required_floor_disposition_tsv: write {path}: {e}"))?;
+    for row in rows {
+        writeln!(
+            file,
+            "{}\t{}\t{}",
+            row.identity.replace(['\t', '\n'], " "),
+            required_floor_disposition_label(&row.disposition),
+            required_floor_disposition_matched_prefix(&row.disposition).replace(['\t', '\n'], " "),
+        )
+        .map_err(|e| format!("write_required_floor_disposition_tsv: write {path}: {e}"))?;
+    }
+    Ok(())
+}
+
+fn long_home_storage_agreement_label(agreement: LongHomeStorageAgreement) -> &'static str {
+    match agreement {
+        LongHomeStorageAgreement::LongPathAndLongModule => "long_path_and_long_module",
+        LongHomeStorageAgreement::ShortPathAndShortModule => "short_path_and_short_module",
+        LongHomeStorageAgreement::LongPathButExecutingModule => "long_path_but_executing_module",
+        LongHomeStorageAgreement::ShortPathButDeclinedModule => "short_path_but_declined_module",
+    }
+}
+
+/// Writes the per-identity `LongHomeStorageAgreement` receipt as TSV: a storage/name-hygiene
+/// DIAGNOSTIC, joinable on `identity` with the disposition receipt above, that never feeds
+/// admission. See the type's doc comment for why the two receipts are kept separate.
+fn write_long_home_storage_agreement_tsv(
+    path: &str,
+    rows: &[LongHomeStorageAgreementRow],
+) -> Result<(), String> {
+    use std::io::Write;
+    let mut file = std::fs::File::create(path)
+        .map_err(|e| format!("write_long_home_storage_agreement_tsv: create {path}: {e}"))?;
+    let mut agree_long = 0usize;
+    let mut agree_short = 0usize;
+    let mut long_path_executing = 0usize;
+    let mut short_path_declined = 0usize;
+    for row in rows {
+        match row.agreement {
+            LongHomeStorageAgreement::LongPathAndLongModule => agree_long += 1,
+            LongHomeStorageAgreement::ShortPathAndShortModule => agree_short += 1,
+            LongHomeStorageAgreement::LongPathButExecutingModule => long_path_executing += 1,
+            LongHomeStorageAgreement::ShortPathButDeclinedModule => short_path_declined += 1,
+        }
+    }
+    writeln!(
+        file,
+        "# summary\ttotal={}\tlong_path_and_long_module={}\tshort_path_and_short_module={}\t\
+         long_path_but_executing_module={}\tshort_path_but_declined_module={}",
+        rows.len(),
+        agree_long,
+        agree_short,
+        long_path_executing,
+        short_path_declined
+    )
+    .map_err(|e| format!("write_long_home_storage_agreement_tsv: write {path}: {e}"))?;
+    writeln!(file, "identity\tagreement")
+        .map_err(|e| format!("write_long_home_storage_agreement_tsv: write {path}: {e}"))?;
+    for row in rows {
+        writeln!(
+            file,
+            "{}\t{}",
+            row.identity.replace(['\t', '\n'], " "),
+            long_home_storage_agreement_label(row.agreement),
+        )
+        .map_err(|e| format!("write_long_home_storage_agreement_tsv: write {path}: {e}"))?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod required_floor_disposition_and_storage_agreement_law {
+    //! `RequiredFloorDisposition` decides admission; `LongHomeStorageAgreement` never does.
+    //! Tested on the pure boundary functions the site-projection loop composes, plus one real
+    //! corpus specimen so the storage-agreement classification is grounded in an actual file
+    //! rather than only in synthetic strings. Fixtures deliberately never touch the filesystem
+    //! or the live tree — the whole subject is representable as (path, module) pairs.
+
+    use super::*;
+
+    // ── is_long_home_path: a path-segment predicate, not a substring match ──────────────────
+
+    #[test]
+    fn a_long_segment_anywhere_in_the_path_is_detected() {
+        assert!(is_long_home_path("dag/test/claim/long/foo_test.dag"));
+    }
+
+    #[test]
+    fn a_path_with_no_long_segment_is_not_long() {
+        assert!(!is_long_home_path("dag/test/claim/foo_test.dag"));
+    }
+
+    #[test]
+    fn a_substring_match_is_not_a_segment_match() {
+        // "belong" contains the letters "long" but is not the path SEGMENT "long" — the
+        // predicate splits on '/' rather than scanning for a substring, so this must not match.
+        assert!(!is_long_home_path("dag/test/claim/belong/foo_test.dag"));
+    }
+
+    // ── long_home_storage_agreement: all four arms, by construction exhaustive ──────────────
+
+    #[test]
+    fn long_path_and_long_module_agree() {
+        assert_eq!(
+            long_home_storage_agreement(true, true),
+            LongHomeStorageAgreement::LongPathAndLongModule
+        );
+    }
+
+    #[test]
+    fn short_path_and_short_module_agree() {
+        assert_eq!(
+            long_home_storage_agreement(false, false),
+            LongHomeStorageAgreement::ShortPathAndShortModule
+        );
+    }
+
+    #[test]
+    fn long_path_but_executing_module_disagree() {
+        assert_eq!(
+            long_home_storage_agreement(true, false),
+            LongHomeStorageAgreement::LongPathButExecutingModule
+        );
+    }
+
+    #[test]
+    fn short_path_but_declined_module_disagree() {
+        assert_eq!(
+            long_home_storage_agreement(false, true),
+            LongHomeStorageAgreement::ShortPathButDeclinedModule
+        );
+    }
+
+    /// The live specimen named at the ruling that grounded these arms: a `git mv` landed the
+    /// file under `dag/test/claim/long/` without updating its own module declaration, so the
+    /// directory says one thing and the authored name says another. This is the exact
+    /// discrepancy `LongHomeStorageAgreement` exists to surface, on the actual file rather than
+    /// a stand-in for it.
+    #[test]
+    fn qualified_declaration_reference_specimen_is_long_path_but_executing_module() {
+        let path = "dag/test/claim/long/qualified_declaration_reference_emit_cross_module_witness_test.dag";
+        let module = "test.claim.qualified_declaration_reference_emit_cross_module_witness";
+
+        let path_is_long = is_long_home_path(path);
+        let matched_prefix = long_home_prefixes_for_test()
+            .iter()
+            .any(|prefix| module.starts_with(prefix.as_str()));
+
+        assert!(
+            path_is_long,
+            "the file lives under a long/-shaped directory"
+        );
+        assert!(
+            !matched_prefix,
+            "the module declaration does not carry a long-home prefix"
+        );
+        assert_eq!(
+            long_home_storage_agreement(path_is_long, matched_prefix),
+            LongHomeStorageAgreement::LongPathButExecutingModule,
+            "path-long/module-short must classify as the specimen's known disagreement"
+        );
+    }
+
+    /// Mirrors `long_home_prefixes()` in `src/v2/workflow/required_floor.dag` — the `.dag`
+    /// authority the host already reads for admission. Restated here rather than imported
+    /// because the loop's own matched-prefix decision is driven by the `.dag`-evaluated roster
+    /// at runtime; this fixture exists only to ground the specimen test above against the same
+    /// three literal prefixes without requiring a live interpreter frame in a unit test.
+    fn long_home_prefixes_for_test() -> Vec<String> {
+        vec![
+            "test.claim.long.".to_string(),
+            "v2.test.long.".to_string(),
+            "v2.test.claim.long.".to_string(),
+        ]
+    }
+
+    // ── disposition/agreement TSV writers: identity-grain, not a summary-only receipt ───────
+
+    #[test]
+    fn disposition_tsv_carries_one_row_per_identity_with_matched_prefix() {
+        let dir = std::env::temp_dir().join(format!(
+            "required_floor_disposition_tsv_test_{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let path = dir.join("disposition.tsv");
+        let path_str = path.to_string_lossy().to_string();
+
+        let rows = vec![
+            RequiredFloorDispositionRow {
+                identity: "m.one.a".to_string(),
+                disposition: RequiredFloorDisposition::Planned,
+            },
+            RequiredFloorDispositionRow {
+                identity: "test.claim.long.two.b".to_string(),
+                disposition: RequiredFloorDisposition::DeclinedLongModule {
+                    matched_prefix: "test.claim.long.".to_string(),
+                },
+            },
+            RequiredFloorDispositionRow {
+                identity: "m.three.c".to_string(),
+                disposition: RequiredFloorDisposition::DeclinedLiveTree,
+            },
+        ];
+
+        write_required_floor_disposition_tsv(&path_str, &rows).expect("write tsv");
+        let content = std::fs::read_to_string(&path).expect("read tsv");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let lines: Vec<&str> = content.lines().collect();
+        assert_eq!(lines.len(), 5, "summary + header + 3 rows: {lines:?}");
+        assert!(lines[0].starts_with("# summary"));
+        assert!(lines[0].contains("total=3"));
+        assert!(lines[0].contains("planned=1"));
+        assert!(lines[0].contains("declined_long_module=1"));
+        assert!(lines[0].contains("declined_live_tree=1"));
+        assert_eq!(lines[1], "identity\tdisposition\tmatched_prefix");
+        assert_eq!(lines[2], "m.one.a\tplanned\t");
+        assert_eq!(
+            lines[3],
+            "test.claim.long.two.b\tdeclined_long_module\ttest.claim.long."
+        );
+        assert_eq!(lines[4], "m.three.c\tdeclined_live_tree\t");
+    }
+
+    #[test]
+    fn storage_agreement_tsv_carries_one_row_per_identity() {
+        let dir = std::env::temp_dir().join(format!(
+            "long_home_storage_agreement_tsv_test_{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let path = dir.join("agreement.tsv");
+        let path_str = path.to_string_lossy().to_string();
+
+        let rows = vec![
+            LongHomeStorageAgreementRow {
+                identity: "m.one.a".to_string(),
+                agreement: LongHomeStorageAgreement::LongPathAndLongModule,
+            },
+            LongHomeStorageAgreementRow {
+                identity: "m.two.b".to_string(),
+                agreement: LongHomeStorageAgreement::LongPathButExecutingModule,
+            },
+        ];
+
+        write_long_home_storage_agreement_tsv(&path_str, &rows).expect("write tsv");
+        let content = std::fs::read_to_string(&path).expect("read tsv");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let lines: Vec<&str> = content.lines().collect();
+        assert_eq!(lines.len(), 4, "summary + header + 2 rows: {lines:?}");
+        assert!(lines[0].contains("total=2"));
+        assert!(lines[0].contains("long_path_and_long_module=1"));
+        assert!(lines[0].contains("long_path_but_executing_module=1"));
+        assert!(lines[0].contains("short_path_and_short_module=0"));
+        assert!(lines[0].contains("short_path_but_declined_module=0"));
+        assert_eq!(lines[1], "identity\tagreement");
+        assert_eq!(lines[2], "m.one.a\tlong_path_and_long_module");
+        assert_eq!(lines[3], "m.two.b\tlong_path_but_executing_module");
+    }
 }
 
 fn witness_eval_verdict_from_claim_outcome(

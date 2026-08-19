@@ -1,0 +1,105 @@
+module v2.test.manual.target_model_atom_lookup_dissolution
+
+import v2.extdeps.languages.typescript {
+  ts_sg2_type_expr_target_model,
+  ts_sg2_type_expr_target_model_node,
+  ts_target_atom_realization_bool,
+  ts_target_atom_realization_catalog
+}
+import v2.std.algebra { fold_list }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.passing_candidate_fold {
+  ManyPassingCandidates,
+  NoPassingCandidate,
+  OnePassingCandidate
+}
+import v2.std.logic { Bool, bool_node }
+import v2.std.node { Atom, Conj, Edge, Node, Positional, SyntheticOccurrence, TypeNode }
+import v2.std.compilers.target_model {
+  symbol_kernel_type_node,
+  target_atom_realization_lookup_in_catalog,
+  target_atom_realization_lookup_in_catalog_node,
+  target_atom_realization_to_node
+}
+
+fn atom_lookup_dissolution_probe_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^atom_lookup_dissolution_probe } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+test fn passing_candidate_fold_duplicate_produces_many() -> Bool {
+  match fold_list(
+    xs: [atom_lookup_dissolution_probe_node(), atom_lookup_dissolution_probe_node()],
+    empty: NoPassingCandidate,
+    cons: fn(acc, n) {
+      match acc {
+        NoPassingCandidate => OnePassingCandidate { candidate: n }
+        OnePassingCandidate { candidate: _ } => ManyPassingCandidates
+        ManyPassingCandidates => ManyPassingCandidates
+      }
+    }
+  ) {
+    NoPassingCandidate => false
+    OnePassingCandidate { candidate: _ } => false
+    ManyPassingCandidates => true
+  }
+}
+
+test fn atom_lookup_in_catalog_known_carrier_accepts() -> Bool {
+  match target_atom_realization_lookup_in_catalog(
+    catalog: ts_target_atom_realization_catalog,
+    source_carrier: symbol_kernel_type_node()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn atom_lookup_in_catalog_unknown_carrier_rejects_miss() -> Bool {
+  match target_atom_realization_lookup_in_catalog(
+    catalog: ts_target_atom_realization_catalog,
+    source_carrier: atom_lookup_dissolution_probe_node()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == ^target_atom_realization_lookup_miss
+  }
+}
+
+test fn atom_lookup_in_catalog_node_non_conj_rejects_decode_invalid() -> Bool {
+  match target_atom_realization_lookup_in_catalog_node(
+    catalog: atom_lookup_dissolution_probe_node(),
+    source_carrier: atom_lookup_dissolution_probe_node(),
+    host_target_model: ts_sg2_type_expr_target_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == ^target_atom_realization_catalog_row_decode_invalid
+  }
+}
+
+test fn atom_catalog_with_malformed_row_skips_accepts_valid() -> Bool {
+  match target_atom_realization_lookup_in_catalog_node(
+    catalog: Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        Edge { label: Positional, target: atom_lookup_dissolution_probe_node() },
+        Edge {
+          label: Positional,
+          target: target_atom_realization_to_node(
+            row: ts_target_atom_realization_bool,
+            host_bundle: ts_sg2_type_expr_target_model_node()
+          )
+        }
+      ],
+      occurrence_id: SyntheticOccurrence
+    },
+    source_carrier: bool_node(),
+    host_target_model: ts_sg2_type_expr_target_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
