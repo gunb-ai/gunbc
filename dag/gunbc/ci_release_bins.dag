@@ -30,13 +30,21 @@ REMOVAL (2026-08-18, regen root cut + resolution-divergence cut union with #8409
 - regen_stage0 (witness_declared_release_bins) — regen root cut; verification is claim_executor --required-regen
 - resolution_divergence_census (witness_declared_release_bins) — silent-pick gate deleted end-to-end (#8409)
 
-LESSON (fleet-converge survivor): the floor cut removed the twenty-binary build from ci.yml but the identical build survived in fleet-converge.yml because deletion was described by workflow removed rather than population removed. This cut surfaces that second consumer."
+LESSON (fleet-converge survivor): the floor cut removed the twenty-binary build from ci.yml but the identical build survived in fleet-converge.yml because deletion was described by workflow removed rather than population removed. This cut surfaces that second consumer.
+
+FOURTH REMOVAL (2026-08-19, the two bins the FLOOR-Y cutover left behind), justified per bin rather than by a class sentence:
+- floor_skip_discovery_witness (ci_floor_invoked_bins) — source deleted by 611fd027708 (FLOOR-Y cutover, #8283); the row was not deleted with it
+- selection_control_skip_witness (ci_floor_invoked_bins) — same commit, same omission
+
+These are the exact residue the LESSON paragraph above predicted and did not finish collecting: that cut described its deletion as workflow removed rather than population removed, identified the fleet-converge survivor, and still left two dead names inside the population feeding it. Removing a consumer and removing a member are different edits, and naming the survivor is not the same as draining it.
+
+MEASURED CONSEQUENCE: every fleet-converge dispatch after the cutover failed at the build step with no bin target named floor_skip_discovery_witness in the v1-compiler package. The last green dispatch was 2026-08-17T19:09Z, whose tree still carried both sources; the cutover committed at 2026-08-17T22:38Z; the next dispatch was the first to refuse, and the workflow stayed unusable for two days. It went unseen because this roster feeds only fleet-converge.yml, which is dispatch-only — no per-PR run ever builds the pack, so ordinary CI could not observe the breakage no matter how green it was.
+
+The check that found it is the sweep this module already prescribes: every enrolled name against the real bin sources, rather than only the row cargo happened to name first. Both rosters were swept and these two were the entire stale set. Fix verified by execution — the build job that had been refusing packs and uploads green in run 32213195686."
 
 data ci_floor_invoked_bins: List<String> = [
   "claim_executor",
   "gunbc",
-  "floor_skip_discovery_witness",
-  "selection_control_skip_witness",
 ]
 
 data witness_declared_release_bins: List<String> = [

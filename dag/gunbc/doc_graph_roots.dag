@@ -110,6 +110,105 @@ data mock_corpus_prefilter_control_note: String = "LIVE CONTROL FOR THE MOCK-COR
 data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "floor-expected-red-shrink-monotonicity-design",
+    primary_work: DeclarationRef { module_path: "v2.workflow.floor_expected_red", decl_name: "floor_expected_red_roster", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "gunbc.witness_deferral_freeze", decl_name: "FrozenPathDeferral", field: WholeDeclaration },
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the undispositioned-SHRINK wall lands on floor_expected_red_roster and its subject describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "ci-minutes-product-design",
+    primary_work: DeclarationRef { module_path: "gunbc.ci_fleet", decl_name: "ComputeOffer", field: WholeDeclaration },
+    additional_works: [
+
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the CI-minutes product ships and its subject ComputeOffer describes a sold surface rather than a proposed one; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "fabric-concept-reconciliation",
+    primary_work: DeclarationRef { module_path: "gunbc.runner_spec_from_offer", decl_name: "runner_spec_from_offer", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "gunbc.ci_fleet", decl_name: "ComputeOffer", field: WholeDeclaration },
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the fabric identities land on a single authority with the existing offer vocabulary and this reconciliation has no forks left to name; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "floor-semantic-artifact-design",
+    primary_work: DeclarationRef { module_path: "v2.workflow.required_floor", decl_name: "RequiredFloorClaim", field: WholeDeclaration },
+    additional_works: [
+
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the floor emits a semantic artifact and its subject RequiredFloorClaim describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "content-hash-family-grounding",
+    primary_work: DeclarationRef { module_path: "std.content_hash", decl_name: "content_hash_family_grounding_note", field: WholeDeclaration },
+    additional_works: [
+
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "Phase B lands and union-level ContentHash comparison is structurally unwritable, so this lane's record describes shipped behavior; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "determinism-boundary-relative",
+    primary_work: DeclarationRef { module_path: "v2.lens.determinism", decl_name: "determinism_compile_gate", field: WholeDeclaration },
+    additional_works: [
+
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the PrimitiveDefinition identity join closes the denominator and every operation carries exactly one traversal-order classification; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "disk-tier-repeat-resolve-closeout",
+    primary_work: DeclarationRef { module_path: "gunbc.ci_cost_arc_closeout_receipt", decl_name: "warm_hit_settle", field: WholeDeclaration },
+    additional_works: [
+
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the withdrawn warm-hit skip proof is re-established as an executing witness or the guard is retired with a receipt; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "secret-version-lifecycle",
+    primary_work: DeclarationRef { module_path: "gunbc.auth.secret_rotation", decl_name: "SecretRotationIntent", field: WholeDeclaration },
+    additional_works: [
+
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the rotation kernel actuates against a live federation authority and its subject SecretRotationIntent describes shipped behavior rather than a declared frontier; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "witness-cost-derives-from-purpose",
+    primary_work: DeclarationRef { module_path: "gunbc.witness_deferral_freeze", decl_name: "FrozenPathDeferral", field: WholeDeclaration },
+    additional_works: [
+
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the per-witness declared cost envelope lands and the frozen path-deferral population reaches zero, dissolving the freeze this document records; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "cross-platform-instrument-motion",
+    primary_work: DeclarationRef { module_path: "gunbc.design.instrument_physical", decl_name: "physical_character_note", field: WholeDeclaration },
+    additional_works: [
+
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the executed browser receipts and physical qualification land, so this lane's parked record describes shipped behavior rather than an open frontier; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "parked-questions",
+    primary_work: DeclarationRef { module_path: "std.access", decl_name: "AccessRequest", field: WholeDeclaration },
+    additional_works: [
+
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "each parked item is either promoted to its own design document or retired with a reason, leaving this file with no subjects; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "affected-set-differential-falsifier",
     primary_work: std.decl_ref.DeclarationRef { module_path: "v2.lens.module_graph", decl_name: "entry_affected_by_touched_paths", field: WholeDeclaration },
     additional_works: [

@@ -436,4 +436,60 @@ data asrock_altrad8ud_documented_dimm_populations: List<extdeps.boards.types.Dim
 // Board integration facts only: HOW the Ampere consoles are routed. The board
 // does not own the meanings of Ampere SCP tokens, and its ordinary AMI POST
 // code table is a different namespace that does not decode P012/E588/P029.
-data asrock_altrad8ud_scp_console_tcp_port: std.nat.Nat = 2202
+data asrock_altrad8ud_scp_console_tcp_port: Nat = 2202
+
+
+// ---------------------------------------------------------------------------
+// THE BOARD'S MECHANICAL FACTS, converged here from the former
+// extdeps.boards.asrock module. Both modules described the SAME physical board
+// against two public surfaces of the same vendor — the product page and the
+// manual PDF — which is the section 3 fork: one concept, two authorities, and
+// nothing structural keeping their slot counts, socket rows or vendor edges in
+// agreement. The mechanical facts are rows in this subject module now, and the
+// product page they were read from is the authority this module ALREADY
+// declared as asrock_altrad8ud_download_authority, so the convergence removes a
+// module without adding a second citation of one page.
+// ---------------------------------------------------------------------------
+
+data asrock_altrad8ud_mechanical_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.boards.asrock_rack",
+      decl_name: "asrock_altrad8ud_1l2t_mechanical",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: asrock_altrad8ud_download_authority,
+  further_citations: []
+}
+
+// ASRock Rack ALTRAD8UD-1L2T, read 2026-08-18 from the vendor product page: the commodity
+// single-socket Ampere Altra board. When a shared baseboard-profile authority lands on main,
+// this row re-grounds onto it.
+type AsrockAltrad8ud1l2tMechanical {
+  board_label: NonEmptyStr
+  form_factor_label: NonEmptyStr
+  processor_socket_count: Nat
+  socket: CpuSocket
+  processor_support_label: NonEmptyStr
+  dimm_slots_total: Nat
+  dimms_per_channel: Nat
+  ddr4_max_data_rate: MegatransfersPerSecond
+  network_label: NonEmptyStr
+  citation: NonEmptyStr
+}
+
+data asrock_altrad8ud_1l2t_mechanical: AsrockAltrad8ud1l2tMechanical = AsrockAltrad8ud1l2tMechanical {
+  board_label: "ASRock Rack ALTRAD8UD-1L2T",
+  form_factor_label: "deep micro-ATX (9.6 x 10.5 in)",
+  processor_socket_count: 1,
+  socket: ampere_lga4926_socket,
+  processor_support_label: "LGA 4926, Ampere Altra / Altra Max",
+  dimm_slots_total: 8,
+  dimms_per_channel: 1,
+  ddr4_max_data_rate: megatransfers_per_second(count: 3200),
+  network_label: "2x 10GbE (Intel X550) + 1x 1GbE (Intel i210) per the vendor page",
+  citation: "asrockrack.com product page for ALTRAD8UD-1L2T, read 2026-08-18",
+}
+
+data asrock_altrad8ud_channel_note: NonEmptyStr = "Eight DIMM slots at one DIMM per channel on the vendor page - the board exposes eight of the SoC's memory channels, so the one-DIMM-per-channel population IS the full population; there is no second-DIMM headroom on this platform, unlike the 16-slot dual-socket boards and the 32-slot 2DPC systems."

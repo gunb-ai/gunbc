@@ -9,9 +9,14 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
   }
 }
 
-data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
-  subject: extdeps.external_authority.ExternalSubjectRef {
-    declaration: std.decl_ref.DeclarationRef {
+// A NAMED alias for the anchor, so a consumer cites this board's authority by a
+// symbol that says which board it is rather than by a generic per-module anchor
+// name that every extdeps module also declares.
+data supermicro_r12spd_a_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
       module_path: "extdeps.boards.supermicro",
       decl_name: "supermicro_r12spd_a_mechanical",
       field: std.decl_ref.WholeDeclaration

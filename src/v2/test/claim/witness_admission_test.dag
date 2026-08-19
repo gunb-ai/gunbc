@@ -162,9 +162,9 @@ test fn witness_bin_wet_live_rust_observation_consumer_holds() -> Bool {
 }
 
 test fn witness_substrate_long_lane_consumer_holds() -> Bool {
-  match v2.workflow.witness_admission.witness_consumer_cadence_for_row(
-    entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
-    function: "lens_affected_set_provenance_producer_single_read_emits_row_holds",
+  match witness_consumer_cadence_for_row(
+    entry: "dag/test/claim/long/dissolution_census_witness_test.dag",
+    function: "census_counters_exhaustively_partition_the_rows",
     excluded_from_discovery: true
   ) {
     std.witness_admission.FalsifierSubstrateLongLane => true
@@ -173,9 +173,9 @@ test fn witness_substrate_long_lane_consumer_holds() -> Bool {
 }
 
 test fn witness_substrate_long_lane_manifest_covers_holds() -> Bool {
-  v2.workflow.witness_admission.witness_admission_manifest_covers_row(
-    entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
-    function: "lens_affected_set_provenance_producer_single_read_emits_row_holds"
+  witness_admission_manifest_covers_row(
+    entry: "dag/test/claim/long/dissolution_census_witness_test.dag",
+    function: "census_counters_exhaustively_partition_the_rows"
   )
 }
 
