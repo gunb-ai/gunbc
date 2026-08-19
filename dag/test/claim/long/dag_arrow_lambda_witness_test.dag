@@ -5,11 +5,11 @@ data arrow_lambda_witness_note: String = "CI2-0 grammar-extension proof obligati
 
 fn parse_accepts_with(source: String, grammar: v2.std.grammar.ParseGrammar) -> Bool {
   match v2.compiler.tokenize.lex_walk_artifact(source: source, file: ^lambda_probe, rules: v2.extdeps.languages.dag.dag_lex_rules()) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
-    v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
+    Rejected { diagnostics: _ } => false
+    Accepted { value: a, diagnostics: _ } =>
       match v2.compiler.parse.parse_module(tokens: v2.std.compilers.lexing.lex_artifact_semantic_tokens(artifact: a), grammar: grammar) {
-        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
       }
   }
 }
@@ -91,7 +91,7 @@ fn swapped_count(productions: List<v2.std.grammar.GrammarProduction>) -> Int {
 
 fn pre_repair_grammar() -> v2.std.grammar.ParseGrammar {
   match v2.extdeps.languages.dag.dag_grammar() {
-    v2.std.grammar.ModeledGrammar { root: r } =>
+    ModeledGrammar { root: r } =>
       v2.std.grammar.ModeledGrammar {
         root: v2.std.grammar.GrammarRoot {
           start: r.start,
@@ -105,7 +105,7 @@ fn pre_repair_grammar() -> v2.std.grammar.ParseGrammar {
 
 fn pre_repair_swap_targeted_exactly_one() -> Bool {
   match v2.extdeps.languages.dag.dag_grammar() {
-    v2.std.grammar.ModeledGrammar { root: r } => swapped_count(productions: r.productions) == 1
+    ModeledGrammar { root: r } => swapped_count(productions: r.productions) == 1
     v2.std.grammar.VoidGrammar => false
   }
 }

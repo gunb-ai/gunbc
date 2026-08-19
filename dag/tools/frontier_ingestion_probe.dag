@@ -139,8 +139,8 @@ type FrontendWorld {
 
 fn prepare_frontend_world() -> v2.std.diagnostic.Outcome<FrontendWorld> {
   match v2.compiler.parse.prepare_grammar(grammar: v2.extdeps.languages.dag.dag_grammar()) {
-    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-    v2.std.diagnostic.Accepted { value: prepared, diagnostics: residue } =>
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
       v2.std.diagnostic.Accepted {
         value: FrontendWorld {
           lex_rules: v2.extdeps.languages.dag.dag_lex_rules(),
@@ -162,19 +162,19 @@ fn classify_after_lex(
     prepared: prepared,
     validation_residue: residue
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => ParseRefused
-    v2.std.diagnostic.Accepted { value: parsed, diagnostics: _ } =>
+    Rejected { diagnostics: _ } => ParseRefused
+    Accepted { value: parsed, diagnostics: _ } =>
       match v2.compiler.normalize.normalize(parse_tree: artifact_tree(artifact: parsed)) {
-        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => NormalizeAccepted
-        v2.std.diagnostic.Rejected { diagnostics: d } => classify_normalize_diagnostics(d: d)
+        Accepted { value: _, diagnostics: _ } => NormalizeAccepted
+        Rejected { diagnostics: d } => classify_normalize_diagnostics(d: d)
       }
   }
 }
 
 fn classify_source_in(world: FrontendWorld, source: String) -> FrontendStage {
   match v2.compiler.tokenize.lex_walk_artifact(source: source, file: ^frontier_probe, rules: world.lex_rules) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => LexRefused
-    v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
+    Rejected { diagnostics: _ } => LexRefused
+    Accepted { value: a, diagnostics: _ } =>
       classify_after_lex(prepared: world.prepared, residue: world.validation_residue, artifact: a)
   }
 }
@@ -183,12 +183,12 @@ data single_source_laziness_note: String = "classify_source PREPARES LAZILY, and
 
 fn classify_source(source: String) -> v2.std.diagnostic.Outcome<FrontendStage> {
   match v2.compiler.tokenize.lex_walk_artifact(source: source, file: ^frontier_probe, rules: v2.extdeps.languages.dag.dag_lex_rules()) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } =>
+    Rejected { diagnostics: _ } =>
       v2.std.diagnostic.Accepted { value: LexRefused, diagnostics: v2.std.diagnostic.None }
-    v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
+    Accepted { value: a, diagnostics: _ } =>
       match v2.compiler.parse.prepare_grammar(grammar: v2.extdeps.languages.dag.dag_grammar()) {
-        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-        v2.std.diagnostic.Accepted { value: prepared, diagnostics: residue } =>
+        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        Accepted { value: prepared, diagnostics: residue } =>
           v2.std.diagnostic.Accepted {
             value: classify_after_lex(prepared: prepared, residue: residue, artifact: a),
             diagnostics: v2.std.diagnostic.None,
@@ -289,8 +289,8 @@ data census_over_rows_note: String = "take_census_over takes the roster as an ar
 
 fn take_census_over(rows: List<FrontierMember>) -> FrontendCensusReceipt {
   match prepare_frontend_world() {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => CensusRefusedAtWorld
-    v2.std.diagnostic.Accepted { value: world, diagnostics: _ } => {
+    Rejected { diagnostics: _ } => CensusRefusedAtWorld
+    Accepted { value: world, diagnostics: _ } => {
       let obs = observe_rows_in(world: world, rows: rows)
       let verdict = reconcile_census_over(obs: obs, rows: rows)
       match verdict {
@@ -433,8 +433,8 @@ data stage_count_absence_note: String = "THERE IS NO PER-STAGE COUNT HERE, delib
 
 fn render_classified(source_outcome: v2.std.diagnostic.Outcome<FrontendStage>) -> String {
   match source_outcome {
-    v2.std.diagnostic.Accepted { value: st, diagnostics: _ } => frontend_stage_label(s: st)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => "WORLD_PREPARATION_REFUSED"
+    Accepted { value: st, diagnostics: _ } => frontend_stage_label(s: st)
+    Rejected { diagnostics: _ } => "WORLD_PREPARATION_REFUSED"
   }
 }
 

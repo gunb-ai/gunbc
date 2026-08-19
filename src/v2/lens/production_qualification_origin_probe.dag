@@ -132,7 +132,7 @@ fn atom_collect_init(n: v2.std.node.Node) -> AtomCollectState {
 
 fn atom_collect_step(acc: AtomCollectState, _edge: v2.std.node.Edge, child: AtomCollectState) -> AtomCollectState {
   let atoms = match v2.std.grammar.node_atom_identity_optional(node: child.node) {
-    v2.std.optional.Present { value: sym } =>
+    Present { value: sym } =>
       if v2.std.algebra.contains(xs: acc.atoms, item: sym, eq: symbol_eq) {
         acc.atoms
       } else {
@@ -150,7 +150,7 @@ fn atom_collect_algebra() -> v2.std.node.NodeFold<AtomCollectState> {
 fn atom_identities_in_node(node: v2.std.node.Node) -> List<v2.std.node.Symbol> {
   let from_descendants = v2.std.node.fold_node(n: node, algebra: atom_collect_algebra()).atoms
   match v2.std.grammar.node_atom_identity_optional(node: node) {
-    v2.std.optional.Present { value: sym } =>
+    Present { value: sym } =>
       if v2.std.algebra.contains(xs: from_descendants, item: sym, eq: symbol_eq) {
         from_descendants
       } else {
@@ -187,13 +187,13 @@ fn maybe_snoc_callee_text(callees: List<String>, text: String) -> List<String> {
 fn callee_text_from_call_node(node: v2.std.node.Node) -> List<String> {
   if v2.std.node_query.node_is_call(node: node) {
     match v2.std.node_query.call_callee_target(node: node) {
-      v2.std.diagnostic.Accepted { value: callee_node, diagnostics: _ } =>
+      Accepted { value: callee_node, diagnostics: _ } =>
         match v2.std.grammar.node_atom_identity_optional(node: callee_node) {
-          v2.std.optional.Present { value: sym } =>
+          Present { value: sym } =>
             [v2.std.compilers.lexing.symbol_lexeme(sym: sym)]
           v2.std.optional.Absent => empty_string_list
         }
-      v2.std.diagnostic.Rejected { diagnostics: _ } => empty_string_list
+      Rejected { diagnostics: _ } => empty_string_list
     }
   } else {
     empty_string_list

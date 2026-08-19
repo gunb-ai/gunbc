@@ -245,7 +245,7 @@ fn landing_evidence_readiness(
           readiness: readiness,
         },
       }
-    v2.std.algebra.HeadFound { value } =>
+    HeadFound { value } =>
       LandingEvidenceBlocking {
         proposal: proposal,
         policy: policy,
@@ -486,7 +486,7 @@ fn landing_alternative_for_choice(
       v2.std.optional.Present { value: options.first_option.alternative }
     gunbc.native_scm_interaction_contract.NativeScmSecondContinuationOption =>
       v2.std.optional.Present { value: options.second_option.alternative }
-    gunbc.native_scm_interaction_contract.NativeScmAdditionalContinuationOption { index } =>
+    NativeScmAdditionalContinuationOption { index } =>
       v2.std.collection.list_at_optional(
         xs: options.additional_options,
         index: index,
@@ -504,13 +504,13 @@ fn landing_resolve_question(
     continuation: continuation,
     choice: choice,
   ) {
-    gunbc.native_scm_interaction_contract.NativeScmContinuationChoiceMatched { selected } => {
+    NativeScmContinuationChoiceMatched { selected } => {
       let alternative = landing_alternative_for_choice(
         options: question.options,
         choice: selected.identity.choice,
       )
       match alternative {
-        v2.std.optional.Present { value } =>
+        Present { value } =>
           LandingChoiceAdvanced {
             continuation: gunbc.source_integration_landing_spine.LandingChoiceContinuation {
               prior: prior,
@@ -527,7 +527,7 @@ fn landing_resolve_question(
           }
       }
     }
-    gunbc.native_scm_interaction_contract.NativeScmContinuationChoiceNotOffered { choice: not_offered } =>
+    NativeScmContinuationChoiceNotOffered { choice: not_offered } =>
       LandingChoiceNotOffered {
         prior: prior,
         choice: not_offered,

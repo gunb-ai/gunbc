@@ -14,12 +14,12 @@ fn bash_conj_emitted_from_tokens(tokens: List<v2.std.compilers.target_model.Conc
     kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: v2.std.algebra.list_flat_map(xs: tokens, f: fn(token) {
       match token {
-        v2.std.compilers.target_model.BoundToken { binding: binding, token_class: _ } =>
+        BoundToken { binding: binding, token_class: _ } =>
           std.algebra.Cons {
             head: v2.std.node.Edge { label: v2.std.node.Positional, target: bash_word_atom(id: binding) },
             tail: std.algebra.Empty
           }
-        v2.std.compilers.target_model.FixedToken { token_class: _ } => std.algebra.Empty
+        FixedToken { token_class: _ } => std.algebra.Empty
       }
     }),
     occurrence_id: v2.std.node.SyntheticOccurrence
@@ -28,8 +28,8 @@ fn bash_conj_emitted_from_tokens(tokens: List<v2.std.compilers.target_model.Conc
 
 fn bash_formal_symbol_from_token(token: v2.std.compilers.target_model.ConcreteSyntaxToken) -> v2.std.grammar.FormalGrammarSymbol {
   match token {
-    v2.std.compilers.target_model.FixedToken { token_class: c } => v2.std.grammar.grammar_formal_terminal(identity: c)
-    v2.std.compilers.target_model.BoundToken { token_class: c, binding: b } =>
+    FixedToken { token_class: c } => v2.std.grammar.grammar_formal_terminal(identity: c)
+    BoundToken { token_class: c, binding: b } =>
       v2.std.grammar.grammar_formal_terminal_bound(identity: c, binding: b)
   }
 }
@@ -62,13 +62,13 @@ fn bash_lhs_exact_relation_row_witness(
     lhs: lhs,
     child: emitted
   ) {
-    v2.std.witness.Holds { value: selected } =>
+    Holds { value: selected } =>
       v2.std.grammar.derive_grammar_relation_row_node(
         production: selected,
         productions: productions,
         emitted: emitted
       )
-    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -91,7 +91,7 @@ fn bash_relation_translation_rules_witness(
     tokens: tokens,
     emitted: emitted
   ) {
-    v2.std.witness.Holds { value: row } =>
+    Holds { value: row } =>
       v2.std.witness.Holds {
         value: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
@@ -101,7 +101,7 @@ fn bash_relation_translation_rules_witness(
           occurrence_id: v2.std.node.SyntheticOccurrence
         }
       }
-    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -117,8 +117,8 @@ fn bash_relation_translation_rules_node(
     tokens: tokens,
     emitted: emitted
   ) {
-    v2.std.witness.Holds { value: rules } => rules
-    v2.std.witness.Violates { diagnostic: _ } => bash_empty_translation_rules_node()
+    Holds { value: rules } => rules
+    Violates { diagnostic: _ } => bash_empty_translation_rules_node()
   }
 }
 
@@ -1087,8 +1087,8 @@ fn retry_eagain_seg_h4() -> String {
 
 fn bash_env_binding_spelling(b: v2.std.orchestration.EnvBinding) -> String {
   match b {
-    v2.std.orchestration.EnvSet { name: n, value: v } => concat(concat(n, "="), concat(v, " "))
-    v2.std.orchestration.EnvUnset { name: n } => concat("env -u ", concat(n, " "))
+    EnvSet { name: n, value: v } => concat(concat(n, "="), concat(v, " "))
+    EnvUnset { name: n } => concat("env -u ", concat(n, " "))
   }
 }
 

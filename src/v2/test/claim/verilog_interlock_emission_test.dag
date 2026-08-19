@@ -7,16 +7,16 @@ data expected_interlock_verilog: String = "module board_power_interlock (\n  inp
 
 fn emit_verilog(emitted: v2.std.node.Node) -> String {
   match v2.extdeps.languages.verilog.verilog_relation_row_for(lhs: ^verilog_production_ansi_module_decl, emitted: emitted) {
-    v2.std.witness.Holds { value: row } =>
+    Holds { value: row } =>
       match v2.compiler.translate.target_serialize_relation_row_from_model_bounded(
         4096,
         v2.extdeps.languages.verilog.verilog_target_model_with_single_row(row: row),
         emitted
       ) {
-        v2.std.diagnostic.Accepted { value: text, diagnostics: _ } => v2.std.compilers.target_model.render_target_text(t: text)
-        v2.std.diagnostic.Rejected { diagnostics: _ } => "EMISSION_REFUSED"
+        Accepted { value: text, diagnostics: _ } => v2.std.compilers.target_model.render_target_text(t: text)
+        Rejected { diagnostics: _ } => "EMISSION_REFUSED"
       }
-    v2.std.witness.Violates { diagnostic: _ } => "ROW_NOT_DERIVED"
+    Violates { diagnostic: _ } => "ROW_NOT_DERIVED"
   }
 }
 
@@ -33,8 +33,8 @@ test fn w_interlock_emits_expected_bytes_through_the_generic_fold() -> Bool {
 // asserts the fallback is UNREACHABLE rather than trusting that it is.
 fn row_derives(lhs: v2.std.node.Symbol, emitted: v2.std.node.Node) -> Bool {
   match v2.extdeps.languages.verilog.verilog_relation_row_for(lhs: lhs, emitted: emitted) {
-    v2.std.witness.Holds { value: _ } => true
-    v2.std.witness.Violates { diagnostic: _ } => false
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
   }
 }
 
@@ -151,16 +151,16 @@ test fn w_port_population_changes_only_the_port_region() -> Bool {
 // tree it checks.
 fn emit_with(productions: List<v2.std.grammar.FormalProduction>, emitted: v2.std.node.Node) -> String {
   match v2.extdeps.languages.verilog.verilog_relation_row_for_productions(productions: productions, lhs: ^verilog_production_ansi_module_decl, emitted: emitted) {
-    v2.std.witness.Holds { value: row } =>
+    Holds { value: row } =>
       match v2.compiler.translate.target_serialize_relation_row_from_model_bounded(
         4096,
         v2.extdeps.languages.verilog.verilog_target_model_with_single_row(row: row),
         emitted
       ) {
-        v2.std.diagnostic.Accepted { value: text, diagnostics: _ } => v2.std.compilers.target_model.render_target_text(t: text)
-        v2.std.diagnostic.Rejected { diagnostics: _ } => "EMISSION_REFUSED"
+        Accepted { value: text, diagnostics: _ } => v2.std.compilers.target_model.render_target_text(t: text)
+        Rejected { diagnostics: _ } => "EMISSION_REFUSED"
       }
-    v2.std.witness.Violates { diagnostic: _ } => "ROW_NOT_DERIVED"
+    Violates { diagnostic: _ } => "ROW_NOT_DERIVED"
   }
 }
 
@@ -181,23 +181,23 @@ test fn w_production_order_does_not_change_the_bytes() -> Bool {
 // sequence the row renders is the token sequence the grammar reads back to the same structure.
 fn module_row() -> v2.std.node.Node {
   match v2.extdeps.languages.verilog.verilog_relation_row_for(lhs: ^verilog_production_ansi_module_decl, emitted: v2.extdeps.languages.verilog.verilog_interlock_emitted()) {
-    v2.std.witness.Holds { value: row } => row
-    v2.std.witness.Violates { diagnostic: _ } => v2.extdeps.languages.verilog.verilog_conj(children: [])
+    Holds { value: row } => row
+    Violates { diagnostic: _ } => v2.extdeps.languages.verilog.verilog_conj(children: [])
   }
 }
 
 fn rebuilt_from_spine() -> v2.std.node.Node {
   match v2.compiler.ingest.row_token_spine_tokens(row: module_row()) {
-    v2.std.diagnostic.Accepted { value: tokens, diagnostics: _ } =>
+    Accepted { value: tokens, diagnostics: _ } =>
       match v2.compiler.ingest.grammar_relation_row_forward_token_selection(
         tokens: tokens,
         rules: v2.extdeps.languages.verilog.verilog_emission_rules_for_row(row: module_row()),
         start_lhs: ^verilog_production_ansi_module_decl
       ) {
-        v2.std.diagnostic.Accepted { value: node, diagnostics: _ } => node
-        v2.std.diagnostic.Rejected { diagnostics: _ } => v2.extdeps.languages.verilog.verilog_conj(children: [])
+        Accepted { value: node, diagnostics: _ } => node
+        Rejected { diagnostics: _ } => v2.extdeps.languages.verilog.verilog_conj(children: [])
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => v2.extdeps.languages.verilog.verilog_conj(children: [])
+    Rejected { diagnostics: _ } => v2.extdeps.languages.verilog.verilog_conj(children: [])
   }
 }
 

@@ -22,72 +22,72 @@ fn pbf_parse_tokens(tokens: v2.std.compilers.lexing.TokenStream) -> v2.std.diagn
 
 fn pbf_normalized_add_module() -> v2.std.diagnostic.Outcome<v2.compiler.normalized_tree.NormalizedTree> {
   match pbf_tokenize() {
-    v2.std.diagnostic.Accepted { value: tokens, diagnostics: _ } =>
+    Accepted { value: tokens, diagnostics: _ } =>
       match pbf_parse_tokens(tokens: tokens) {
-        v2.std.diagnostic.Accepted { value: parsed, diagnostics: _ } =>
+        Accepted { value: parsed, diagnostics: _ } =>
           v2.compiler.normalize.normalize(parse_tree: parsed)
-        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
 fn pbf_normalized_add_arrow() -> v2.std.optional.Optional<v2.std.node.Node> {
   match pbf_normalized_add_module() {
-    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+    Accepted { value: tree, diagnostics: _ } =>
       v2.compiler.ingested_fixture_arrows.ingested_find_arrow_in_module(root: tree.root)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.optional.Absent
+    Rejected { diagnostics: _ } => v2.std.optional.Absent
   }
 }
 
 fn pbf_resolved_add_module() -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   let lm = v2.extdeps.languages.dag.dag_language_model()
   match pbf_normalized_add_module() {
-    v2.std.diagnostic.Accepted { value: normalized, diagnostics: _ } =>
+    Accepted { value: normalized, diagnostics: _ } =>
       v2.compiler.resolve.resolve(tree: normalized, lm: lm)
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
 fn pbf_resolved_add_arrow() -> v2.std.optional.Optional<v2.std.node.Node> {
   match pbf_resolved_add_module() {
-    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+    Accepted { value: tree, diagnostics: _ } =>
       v2.compiler.ingested_fixture_arrows.ingested_find_arrow_in_module(root: tree)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.optional.Absent
+    Rejected { diagnostics: _ } => v2.std.optional.Absent
   }
 }
 
 fn pbf_arrow_body_operand_lexeme(arrow: v2.std.node.Node, index: Int) -> v2.std.optional.Optional<String> {
   match v2.std.node_query.find_arrow_body_child(root: arrow) {
-    v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
+    Accepted { value: body, diagnostics: _ } =>
       match v2.std.collection.list_at_optional(xs: body.children, index: index) {
-        v2.std.optional.Present { value: e } =>
+        Present { value: e } =>
           match v2.std.grammar.node_atom_identity_optional(node: e.target) {
-            v2.std.optional.Present { value: id } => v2.std.optional.Present { value: v2.std.compilers.lexing.symbol_lexeme(sym: id) }
+            Present { value: id } => v2.std.optional.Present { value: v2.std.compilers.lexing.symbol_lexeme(sym: id) }
             v2.std.optional.Absent => v2.std.optional.Absent
           }
         v2.std.optional.Absent => v2.std.optional.Absent
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.optional.Absent
+    Rejected { diagnostics: _ } => v2.std.optional.Absent
   }
 }
 
 fn pbf_arrow_body_operand_id(arrow: v2.std.node.Node, index: Int) -> v2.std.optional.Optional<v2.std.node.Symbol> {
   match v2.std.node_query.find_arrow_body_child(root: arrow) {
-    v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
+    Accepted { value: body, diagnostics: _ } =>
       match v2.std.collection.list_at_optional(xs: body.children, index: index) {
-        v2.std.optional.Present { value: e } => v2.std.grammar.node_atom_identity_optional(node: e.target)
+        Present { value: e } => v2.std.grammar.node_atom_identity_optional(node: e.target)
         v2.std.optional.Absent => v2.std.optional.Absent
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.optional.Absent
+    Rejected { diagnostics: _ } => v2.std.optional.Absent
   }
 }
 
 fn pbf_parse_preserves_param_x_binding() -> Bool {
   match pbf_normalized_add_arrow() {
-    v2.std.optional.Present { value: arrow } =>
+    Present { value: arrow } =>
       match pbf_arrow_body_operand_lexeme(arrow: arrow, index: 1) {
-        v2.std.optional.Present { value: lex } => lex == "x"
+        Present { value: lex } => lex == "x"
         v2.std.optional.Absent => false
       }
     v2.std.optional.Absent => false
@@ -96,9 +96,9 @@ fn pbf_parse_preserves_param_x_binding() -> Bool {
 
 fn pbf_parse_preserves_param_y_binding() -> Bool {
   match pbf_normalized_add_arrow() {
-    v2.std.optional.Present { value: arrow } =>
+    Present { value: arrow } =>
       match pbf_arrow_body_operand_lexeme(arrow: arrow, index: 2) {
-        v2.std.optional.Present { value: lex } => lex == "y"
+        Present { value: lex } => lex == "y"
         v2.std.optional.Absent => false
       }
     v2.std.optional.Absent => false
@@ -107,11 +107,11 @@ fn pbf_parse_preserves_param_y_binding() -> Bool {
 
 fn pbf_parse_does_not_collapse_to_token_ident() -> Bool {
   match pbf_normalized_add_arrow() {
-    v2.std.optional.Present { value: arrow } =>
+    Present { value: arrow } =>
       match pbf_arrow_body_operand_lexeme(arrow: arrow, index: 1) {
-        v2.std.optional.Present { value: left } =>
+        Present { value: left } =>
           match pbf_arrow_body_operand_lexeme(arrow: arrow, index: 2) {
-            v2.std.optional.Present { value: right } => (left == "x") && (right == "y") && (left != right)
+            Present { value: right } => (left == "x") && (right == "y") && (left != right)
             v2.std.optional.Absent => false
           }
         v2.std.optional.Absent => false
@@ -122,18 +122,18 @@ fn pbf_parse_does_not_collapse_to_token_ident() -> Bool {
 
 fn pbf_resolved_add_accepts() -> Bool {
   match pbf_resolved_add_module() {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 
 fn pbf_resolved_tree_has_distinct_param_bindings() -> Bool {
   match pbf_resolved_add_arrow() {
-    v2.std.optional.Present { value: arrow } =>
+    Present { value: arrow } =>
       match pbf_arrow_body_operand_id(arrow: arrow, index: 1) {
-        v2.std.optional.Present { value: left } =>
+        Present { value: left } =>
           match pbf_arrow_body_operand_id(arrow: arrow, index: 2) {
-            v2.std.optional.Present { value: right } => (left != right) && (v2.std.compilers.lexing.symbol_lexeme(sym: left) == "x") && (v2.std.compilers.lexing.symbol_lexeme(sym: right) == "y")
+            Present { value: right } => (left != right) && (v2.std.compilers.lexing.symbol_lexeme(sym: left) == "x") && (v2.std.compilers.lexing.symbol_lexeme(sym: right) == "y")
             v2.std.optional.Absent => false
           }
         v2.std.optional.Absent => false

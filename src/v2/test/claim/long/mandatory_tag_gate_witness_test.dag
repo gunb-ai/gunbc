@@ -28,11 +28,11 @@ type GrainProbe
 fn parse_grain_tree(source: String) -> v2.test.long.mandatory_tag_gate_witness.GrainProbe {
   let lm = v2.extdeps.languages.dag.dag_language_model()
   match v2.compiler.tokenize.tokenize(text: source, file: ^mandatory_tag_gate_witness_file, rules: lm.lex) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => GrainStageRejected
-    v2.std.diagnostic.Accepted { value: ts, diagnostics: _ } =>
+    Rejected { diagnostics: _ } => GrainStageRejected
+    Accepted { value: ts, diagnostics: _ } =>
       match v2.compiler.parse.parse_module(tokens: ts, grammar: lm.grammar) {
-        v2.std.diagnostic.Rejected { diagnostics: _ } => GrainStageRejected
-        v2.std.diagnostic.Accepted { value: artifact, diagnostics: _ } => GrainTree { root: artifact.tree }
+        Rejected { diagnostics: _ } => GrainStageRejected
+        Accepted { value: artifact, diagnostics: _ } => GrainTree { root: artifact.tree }
       }
   }
 }
@@ -42,8 +42,8 @@ fn normalized_grain_tree(source: String) -> v2.test.long.mandatory_tag_gate_witn
     GrainStageRejected => GrainStageRejected
     GrainTree { root: parse_root } =>
       match v2.compiler.normalize.normalize(parse_tree: parse_root) {
-        v2.std.diagnostic.Rejected { diagnostics: _ } => GrainStageRejected
-        v2.std.diagnostic.Accepted { value: normalized, diagnostics: _ } => GrainTree { root: normalized }
+        Rejected { diagnostics: _ } => GrainStageRejected
+        Accepted { value: normalized, diagnostics: _ } => GrainTree { root: normalized }
       }
   }
 }
@@ -53,8 +53,8 @@ fn gate_accepts_tree(probe: v2.test.long.mandatory_tag_gate_witness.GrainProbe) 
     GrainStageRejected => false
     GrainTree { root: root } =>
       match v2.lens.mandatory_tag.mandatory_tag_compile_gate(node: root) {
-        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
       }
   }
 }
@@ -64,8 +64,8 @@ fn gate_rejects_tree_with(probe: v2.test.long.mandatory_tag_gate_witness.GrainPr
     GrainStageRejected => false
     GrainTree { root: root } =>
       match v2.lens.mandatory_tag.mandatory_tag_compile_gate(node: root) {
-        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
-        v2.std.diagnostic.Rejected { diagnostics: d } =>
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } =>
           if d.head.reason == reason {
             true
           } else {
@@ -148,8 +148,8 @@ fn roster_rejects_with(probe: v2.test.long.mandatory_tag_gate_witness.GrainProbe
       fold(v2.compiler.compile.always_required_root_lenses(), init: false, f: fn(acc, lens) {
         acc
           || match lens.gate(inferred) {
-            v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
-            v2.std.diagnostic.Rejected { diagnostics: d } =>
+            Accepted { value: _, diagnostics: _ } => false
+            Rejected { diagnostics: d } =>
               if d.head.reason == reason {
                 true
               } else {

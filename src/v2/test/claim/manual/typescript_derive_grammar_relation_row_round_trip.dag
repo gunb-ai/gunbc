@@ -59,8 +59,8 @@ fn ts_lhs_exact_arrow_emitted_rejects() -> Bool {
     lhs: ^ts_production_type_alias_decl,
     child: v2.extdeps.languages.typescript.ts_emitted_add_fn_node()
   ) {
-    v2.std.witness.Violates { diagnostic: d } => d.reason == ^grammar_relation_emitted_not_conj
-    v2.std.witness.Holds { value: _ } => false
+    Violates { diagnostic: d } => d.reason == ^grammar_relation_emitted_not_conj
+    Holds { value: _ } => false
   }
 }
 
@@ -70,40 +70,40 @@ fn ts_task_derive_row_surplus_conj_slot_rejects() -> Bool {
     lhs: ^ts_production_type_alias_decl,
     child: v2.extdeps.languages.typescript.ts_task_type_alias_emitted()
   ) {
-    v2.std.witness.Holds { value: production } =>
+    Holds { value: production } =>
       match v2.std.grammar.derive_grammar_relation_row_node(
         production: production,
         productions: v2.extdeps.languages.typescript.ts_task_formal_productions(),
         emitted: ts_task_type_alias_emitted_surplus_conj_slot()
       ) {
-        v2.std.witness.Holds { value: _ } => false
-        v2.std.witness.Violates { diagnostic: _ } => true
+        Holds { value: _ } => false
+        Violates { diagnostic: _ } => true
       }
-    v2.std.witness.Violates { diagnostic: _ } => false
+    Violates { diagnostic: _ } => false
   }
 }
 
 fn ts_task_derive_row_round_trip_holds() -> Bool {
   match v2.extdeps.languages.typescript.ts_task_type_alias_relation_row_witness() {
-    v2.std.witness.Holds { value: fixture_row } =>
+    Holds { value: fixture_row } =>
       match v2.std.grammar.formal_production_for_lhs_exact(
         productions: v2.extdeps.languages.typescript.ts_task_formal_productions(),
         lhs: ^ts_production_type_alias_decl,
         child: v2.extdeps.languages.typescript.ts_task_type_alias_emitted()
       ) {
-        v2.std.witness.Holds { value: production } =>
+        Holds { value: production } =>
           match v2.std.grammar.derive_grammar_relation_row_node(
             production: production,
             productions: v2.extdeps.languages.typescript.ts_task_formal_productions(),
             emitted: v2.extdeps.languages.typescript.ts_task_type_alias_emitted()
           ) {
-            v2.std.witness.Holds { value: derived_row } =>
+            Holds { value: derived_row } =>
               v2.std.node.content_hash(n: fixture_row) == v2.std.node.content_hash(n: derived_row)
-            v2.std.witness.Violates { diagnostic: _ } => false
+            Violates { diagnostic: _ } => false
           }
-        v2.std.witness.Violates { diagnostic: _ } => false
+        Violates { diagnostic: _ } => false
       }
-    v2.std.witness.Violates { diagnostic: _ } => false
+    Violates { diagnostic: _ } => false
   }
 }
 
@@ -142,13 +142,13 @@ data claim_typescript_derive_grammar_relation_row_arrow_emitted_rejects: v2.std.
 
 fn ts_pr3_identity_derive_row_round_trip_holds() -> Bool {
   match v2.extdeps.languages.typescript.ts_pr3_identity_relation_row_witness() {
-    v2.std.witness.Holds { value: eager_row } =>
+    Holds { value: eager_row } =>
       match v2.extdeps.languages.typescript.ts_eager_grammar_relation_row_witness(lhs: ^ts_production_pr3_typed_fn_decl) {
-        v2.std.witness.Holds { value: rederived } =>
+        Holds { value: rederived } =>
           v2.std.node.content_hash(n: eager_row) == v2.std.node.content_hash(n: rederived)
-        v2.std.witness.Violates { diagnostic: _ } => false
+        Violates { diagnostic: _ } => false
       }
-    v2.std.witness.Violates { diagnostic: _ } => false
+    Violates { diagnostic: _ } => false
   }
 }
 

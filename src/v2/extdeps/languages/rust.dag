@@ -986,7 +986,7 @@ fn rust_signature_diagnostic(reason: v2.std.node.Symbol, node: v2.std.node.Node)
 
 fn rust_signature_type_ref_tokens(type_node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match type_node.kind {
-    v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } } =>
+    TypeNode { connective: v2.std.node.Atom { identity: id } } =>
       v2.std.diagnostic.outcome_accepted(
         value: [v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: id }]
       )
@@ -999,7 +999,7 @@ fn rust_signature_type_ref_tokens(type_node: v2.std.node.Node) -> v2.std.diagnos
 
 fn rust_signature_one_param_tokens(edge: v2.std.node.Edge) -> v2.std.diagnostic.Outcome<v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match edge.label {
-    v2.std.node.Named { name: pname } =>
+    Named { name: pname } =>
       v2.std.diagnostic.bind_outcome(
         o: rust_signature_type_ref_tokens(type_node: edge.target),
         f: fn(type_toks) {
@@ -1024,7 +1024,7 @@ fn rust_signature_one_param_tokens(edge: v2.std.node.Edge) -> v2.std.diagnostic.
 fn rust_signature_params_tail_tokens(params: v2.std.collection.List<v2.std.node.Edge>) -> v2.std.diagnostic.Outcome<v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match params {
     std.algebra.Empty => v2.std.diagnostic.outcome_accepted(value: std.algebra.Empty)
-    std.algebra.Cons { head: e, tail: rest } =>
+    Cons { head: e, tail: rest } =>
       v2.std.diagnostic.bind_outcome(
         o: rust_signature_one_param_tokens(edge: e),
         f: fn(toks) {
@@ -1050,7 +1050,7 @@ fn rust_signature_params_tail_tokens(params: v2.std.collection.List<v2.std.node.
 fn rust_signature_params_tokens(params: v2.std.collection.List<v2.std.node.Edge>) -> v2.std.diagnostic.Outcome<v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match params {
     std.algebra.Empty => v2.std.diagnostic.outcome_accepted(value: std.algebra.Empty)
-    std.algebra.Cons { head: e, tail: rest } =>
+    Cons { head: e, tail: rest } =>
       v2.std.diagnostic.bind_outcome(
         o: rust_signature_one_param_tokens(edge: e),
         f: fn(first_toks) {
@@ -1082,9 +1082,9 @@ fn rust_signature_return_arrow_tokens() -> v2.std.collection.List<v2.std.compile
 
 fn rust_signature_from_name_and_arrow(fn_name: v2.std.node.Symbol, arrow: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: arrow), index: 0) {
-    v2.std.optional.Present { value: domain } =>
+    Present { value: domain } =>
       match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: arrow), index: 1) {
-        v2.std.optional.Present { value: codomain } =>
+        Present { value: codomain } =>
           v2.std.diagnostic.bind_outcome(
             o: rust_signature_params_tokens(params: domain.children),
             f: fn(param_toks) {
@@ -1124,11 +1124,11 @@ fn rust_signature_from_name_and_arrow(fn_name: v2.std.node.Symbol, arrow: v2.std
 
 fn rust_signature_with_open_from_decl(decl: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match decl.kind {
-    v2.std.node.TypeNode { connective: v2.std.node.Conj } =>
+    TypeNode { connective: v2.std.node.Conj } =>
       match v2.std.collection.list_at_optional(xs: decl.children, index: 0) {
-        v2.std.optional.Present { value: decl_edge } =>
+        Present { value: decl_edge } =>
           match decl_edge.label {
-            v2.std.node.Named { name: fn_name } =>
+            Named { name: fn_name } =>
               rust_signature_from_name_and_arrow(fn_name: fn_name, arrow: decl_edge.target)
             v2.std.node.Positional =>
               v2.std.diagnostic.outcome_rejected(
@@ -1491,7 +1491,7 @@ fn rust_collection_repr_bundle_node(form: v2.std.compilers.target_model.TargetRe
 
 fn rust_collection_witness_bundle_node(witness: v2.std.compilers.target_model.RequiredTraitWitness) -> v2.std.node.Node {
   match witness {
-    v2.std.compilers.target_model.TargetCollectionWitnessOrd { type_param: type_param } =>
+    TargetCollectionWitnessOrd { type_param: type_param } =>
       v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
         children: [
@@ -1506,7 +1506,7 @@ fn rust_collection_witness_bundle_node(witness: v2.std.compilers.target_model.Re
         ],
         occurrence_id: v2.std.node.SyntheticOccurrence
 }
-    v2.std.compilers.target_model.TargetCollectionWitnessHash { type_param: type_param } =>
+    TargetCollectionWitnessHash { type_param: type_param } =>
       v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
         children: [
@@ -1521,7 +1521,7 @@ fn rust_collection_witness_bundle_node(witness: v2.std.compilers.target_model.Re
         ],
         occurrence_id: v2.std.node.SyntheticOccurrence
 }
-    v2.std.compilers.target_model.TargetCollectionWitnessEq { type_param: type_param } =>
+    TargetCollectionWitnessEq { type_param: type_param } =>
       v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
         children: [
@@ -2106,7 +2106,7 @@ fn rust_trait_derive_coproduct_diagnostic(reason: v2.std.node.Symbol, node: v2.s
 
 fn rust_trait_derive_surface_binding_for_coproduct(coproduct: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Symbol> {
   match coproduct.kind {
-    v2.std.node.TypeNode { connective: v2.std.node.Disj } =>
+    TypeNode { connective: v2.std.node.Disj } =>
       if v2.std.compilers.coproduct_variant_shape.coproduct_all_variants_nullary(edges: coproduct.children) {
         v2.std.diagnostic.outcome_accepted(value: ^rust_decl_derive_enum_copy_binding)
       } else {
@@ -3153,13 +3153,13 @@ fn rust_insert_per_language_fact_bundle_entry_outcome(
   entry: v2.std.grounding.PerLanguageFactBundleEntry
 ) -> v2.std.diagnostic.Outcome<v2.std.grounding.PerLanguageFactBundleRegistry> {
   match acc {
-    v2.std.diagnostic.Accepted { value: registry, diagnostics: _ } =>
+    Accepted { value: registry, diagnostics: _ } =>
       v2.std.grounding.insert_per_language_fact_bundle_entry(
         registry: registry,
         key: entry.key,
         fact_value: entry.fact_value
       )
-    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
@@ -3179,19 +3179,19 @@ fn rust_snoc_primitive_bundle(
   subject_carrier: v2.std.node.Node
 ) -> v2.std.diagnostic.Outcome<v2.std.collection.List<v2.std.model_core.PrimitiveFactBundle>> {
   match acc {
-    v2.std.diagnostic.Accepted { value: bundles, diagnostics: _ } => match v2.std.grounding.primitive_fact_bundle_for_subject(
+    Accepted { value: bundles, diagnostics: _ } => match v2.std.grounding.primitive_fact_bundle_for_subject(
       registry: registry,
       subject_carrier: subject_carrier,
       target: rust_target_model()
     ) {
-      v2.std.diagnostic.Accepted { value: bundle, diagnostics: d } =>
+      Accepted { value: bundle, diagnostics: d } =>
         v2.std.diagnostic.Accepted {
           value: v2.std.algebra.list_snoc_item(xs: bundles, item: bundle),
           diagnostics: d
         }
-      v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+      Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     }
-    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
@@ -3248,12 +3248,12 @@ fn rust_append_primitive_bundle_outcomes(
   right: v2.std.diagnostic.Outcome<v2.std.collection.List<v2.std.model_core.PrimitiveFactBundle>>
 ) -> v2.std.diagnostic.Outcome<v2.std.collection.List<v2.std.model_core.PrimitiveFactBundle>> {
   match left {
-    v2.std.diagnostic.Accepted { value: l, diagnostics: _ } => match right {
-      v2.std.diagnostic.Accepted { value: r, diagnostics: d } =>
+    Accepted { value: l, diagnostics: _ } => match right {
+      Accepted { value: r, diagnostics: d } =>
         v2.std.diagnostic.Accepted { value: v2.std.algebra.list_append(left: l, right: r), diagnostics: d }
-      v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+      Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     }
-    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
@@ -3271,9 +3271,9 @@ fn rust_primitive_fact_bundles_from_registry(
 
 fn rust_model_core() -> v2.std.diagnostic.Outcome<v2.std.model_core.ModelCore> {
   match rust_per_language_fact_bundle_registry() {
-    v2.std.diagnostic.Accepted { value: registry, diagnostics: _ } =>
+    Accepted { value: registry, diagnostics: _ } =>
       match rust_primitive_fact_bundles_from_registry(registry: registry) {
-        v2.std.diagnostic.Accepted { value: primitives, diagnostics: d } =>
+        Accepted { value: primitives, diagnostics: d } =>
           v2.std.diagnostic.Accepted {
             value: v2.std.model_core.ModelCore {
               primitives: primitives,
@@ -3284,15 +3284,15 @@ fn rust_model_core() -> v2.std.diagnostic.Outcome<v2.std.model_core.ModelCore> {
             },
             diagnostics: d
           }
-        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
       }
-    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
 fn rust_fn_add_language_model() -> v2.std.diagnostic.Outcome<v2.std.language_model.LanguageModel> {
   match rust_model_core() {
-    v2.std.diagnostic.Accepted { value: core, diagnostics: d } =>
+    Accepted { value: core, diagnostics: d } =>
       v2.std.diagnostic.Accepted {
         value: v2.std.language_model.LanguageModel {
           lex: rust_fn_add_lex(),
@@ -3303,7 +3303,7 @@ fn rust_fn_add_language_model() -> v2.std.diagnostic.Outcome<v2.std.language_mod
         },
         diagnostics: d
       }
-    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
@@ -3937,7 +3937,7 @@ fn rust_canonical_symbols() -> Set<v2.std.node.Symbol> {
 
 fn rust_language_model() -> v2.std.diagnostic.Outcome<v2.std.language_model.LanguageModel> {
   match rust_model_core() {
-    v2.std.diagnostic.Accepted { value: core, diagnostics: d } =>
+    Accepted { value: core, diagnostics: d } =>
       v2.std.diagnostic.Accepted {
         value: v2.std.language_model.LanguageModel {
           lex: rust_lex(),
@@ -3948,7 +3948,7 @@ fn rust_language_model() -> v2.std.diagnostic.Outcome<v2.std.language_model.Lang
         },
         diagnostics: d
       }
-    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
@@ -4268,7 +4268,7 @@ fn rust_sg2_type_expr_target_model_bundle_core() -> v2.std.node.Node {
 
 fn rust_sg2_type_expr_target_model_node() -> v2.std.node.Node {
   match rust_sg2_type_expr_target_model_bundle_core().kind {
-    v2.std.node.TypeNode { connective: v2.std.node.Conj } =>
+    TypeNode { connective: v2.std.node.Conj } =>
       v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
         children: v2.std.algebra.list_snoc_item(
@@ -4570,7 +4570,7 @@ fn rust_sg2_emitted_without_named_edge(base: v2.std.node.Node, field: v2.std.nod
     kind: base.kind,
     children: fold(base.children, init: std.algebra.Empty, f: fn(acc, e) {
       match e.label {
-        v2.std.node.Named { name: n } =>
+        Named { name: n } =>
           if n == field {
             acc
           } else {

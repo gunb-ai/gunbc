@@ -1317,8 +1317,8 @@ fn verilog_emit_module(module_node: v2.std.node.Node, spellings: Map<v2.std.node
         verilog_target_model_for(row: row, spellings: spellings),
         module_node
       ) {
-        v2.std.diagnostic.Accepted { value: text, diagnostics: _ } => VerilogEmitted { source: v2.std.compilers.target_model.render_target_text(t: text) }
-        v2.std.diagnostic.Rejected { diagnostics: d } => VerilogEmissionRefused { reason: d.head.reason }
+        Accepted { value: text, diagnostics: _ } => VerilogEmitted { source: v2.std.compilers.target_model.render_target_text(t: text) }
+        Rejected { diagnostics: d } => VerilogEmissionRefused { reason: d.head.reason }
       }
     Violates { diagnostic: d } => VerilogEmissionRefused { reason: d.reason }
   }

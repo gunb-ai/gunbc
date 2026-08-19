@@ -41,24 +41,24 @@ test fn emit_backward_selects_canonical_row_holds() -> Bool {
     rules: emit_ingest_shared_rules(),
     emitted: emit_ingest_canonical_emitted()
   ) {
-    v2.std.diagnostic.Accepted { value: row, diagnostics: _ } =>
+    Accepted { value: row, diagnostics: _ } =>
       row == emit_ingest_canonical_row()
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn ingest_forward_selects_canonical_emitted_holds() -> Bool {
   match grammar_relation_row_token_spine_classes(row: emit_ingest_canonical_row()) {
-    v2.std.diagnostic.Accepted { value: frontier, diagnostics: _ } =>
+    Accepted { value: frontier, diagnostics: _ } =>
       match v2.compiler.ingest.grammar_relation_row_forward_selection(
         frontier: frontier,
         rules: emit_ingest_shared_rules()
       ) {
-        v2.std.diagnostic.Accepted { value: emitted, diagnostics: _ } =>
+        Accepted { value: emitted, diagnostics: _ } =>
           emitted == emit_ingest_canonical_emitted()
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -67,42 +67,42 @@ test fn emit_then_ingest_selector_identity_holds() -> Bool {
     rules: emit_ingest_shared_rules(),
     emitted: emit_ingest_canonical_emitted()
   ) {
-    v2.std.diagnostic.Accepted { value: row, diagnostics: _ } =>
+    Accepted { value: row, diagnostics: _ } =>
       match grammar_relation_row_token_spine_classes(row: row) {
-        v2.std.diagnostic.Accepted { value: frontier, diagnostics: _ } =>
+        Accepted { value: frontier, diagnostics: _ } =>
           match v2.compiler.ingest.grammar_relation_row_forward_selection(
             frontier: frontier,
             rules: emit_ingest_shared_rules()
           ) {
-            v2.std.diagnostic.Accepted { value: recovered, diagnostics: _ } =>
+            Accepted { value: recovered, diagnostics: _ } =>
               recovered == emit_ingest_canonical_emitted()
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn ingest_then_emit_selector_identity_holds() -> Bool {
   match grammar_relation_row_token_spine_classes(row: emit_ingest_canonical_row()) {
-    v2.std.diagnostic.Accepted { value: frontier, diagnostics: _ } =>
+    Accepted { value: frontier, diagnostics: _ } =>
       match v2.compiler.ingest.grammar_relation_row_forward_selection(
         frontier: frontier,
         rules: emit_ingest_shared_rules()
       ) {
-        v2.std.diagnostic.Accepted { value: emitted, diagnostics: _ } =>
+        Accepted { value: emitted, diagnostics: _ } =>
           match v2.compiler.translate.grammar_relation_row_for_emitted(
             rules: emit_ingest_shared_rules(),
             emitted: emitted
           ) {
-            v2.std.diagnostic.Accepted { value: row, diagnostics: _ } =>
+            Accepted { value: row, diagnostics: _ } =>
               row == emit_ingest_canonical_row()
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -127,16 +127,16 @@ fn emit_ingest_parsed_add_tree() -> v2.std.diagnostic.Outcome<v2.std.grammar.Par
 
 test fn same_grammar_parse_ingest_bridge_holds() -> Bool {
   match emit_ingest_parsed_add_tree() {
-    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+    Accepted { value: tree, diagnostics: _ } =>
       match v2.compiler.ingest.parse_tree_to_emitted_node(
         parse_tree: tree,
         source_model: v2.extdeps.languages.dag.dag_target_model()
       ) {
-        v2.std.diagnostic.Accepted { value: recovered, diagnostics: _ } =>
+        Accepted { value: recovered, diagnostics: _ } =>
           recovered == emit_ingest_canonical_emitted()
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

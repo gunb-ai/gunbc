@@ -14,14 +14,14 @@ fn artifact_tree(artifact: v2.compiler.parse.ParseArtifact) -> v2.std.grammar.Pa
 // pending carriers put it.
 fn rejection_reasons(source: String) -> List<v2.std.node.Symbol> {
   match v2.compiler.tokenize.lex_walk_artifact(source: source, file: ^graft_guard_probe, rules: v2.extdeps.languages.dag.dag_lex_rules()) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => no_reasons()
-    v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
+    Rejected { diagnostics: _ } => no_reasons()
+    Accepted { value: a, diagnostics: _ } =>
       match v2.compiler.parse.parse_module(tokens: v2.std.compilers.lexing.lex_artifact_semantic_tokens(artifact: a), grammar: v2.extdeps.languages.dag.dag_grammar()) {
-        v2.std.diagnostic.Rejected { diagnostics: _ } => no_reasons()
-        v2.std.diagnostic.Accepted { value: artifact, diagnostics: _ } =>
+        Rejected { diagnostics: _ } => no_reasons()
+        Accepted { value: artifact, diagnostics: _ } =>
           match v2.compiler.normalize.normalize(parse_tree: artifact_tree(artifact: artifact)) {
-            v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => no_reasons()
-            v2.std.diagnostic.Rejected { diagnostics: d } => all_reasons(d: d)
+            Accepted { value: _, diagnostics: _ } => no_reasons()
+            Rejected { diagnostics: d } => all_reasons(d: d)
           }
       }
   }
@@ -49,14 +49,14 @@ fn reasons_contain(reasons: List<v2.std.node.Symbol>, sym: v2.std.node.Symbol) -
 
 fn normalize_accepts(source: String) -> Bool {
   match v2.compiler.tokenize.lex_walk_artifact(source: source, file: ^graft_guard_probe, rules: v2.extdeps.languages.dag.dag_lex_rules()) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
-    v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
+    Rejected { diagnostics: _ } => false
+    Accepted { value: a, diagnostics: _ } =>
       match v2.compiler.parse.parse_module(tokens: v2.std.compilers.lexing.lex_artifact_semantic_tokens(artifact: a), grammar: v2.extdeps.languages.dag.dag_grammar()) {
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
-        v2.std.diagnostic.Accepted { value: artifact, diagnostics: _ } =>
+        Rejected { diagnostics: _ } => false
+        Accepted { value: artifact, diagnostics: _ } =>
           match v2.compiler.normalize.normalize(parse_tree: artifact_tree(artifact: artifact)) {
-            v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
           }
       }
   }
@@ -64,14 +64,14 @@ fn normalize_accepts(source: String) -> Bool {
 
 fn normalized_tree_optional(source: String) -> v2.std.node.Node? {
   match v2.compiler.tokenize.lex_walk_artifact(source: source, file: ^graft_guard_probe, rules: v2.extdeps.languages.dag.dag_lex_rules()) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.collection.optional_absent()
-    v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
+    Rejected { diagnostics: _ } => v2.std.collection.optional_absent()
+    Accepted { value: a, diagnostics: _ } =>
       match v2.compiler.parse.parse_module(tokens: v2.std.compilers.lexing.lex_artifact_semantic_tokens(artifact: a), grammar: v2.extdeps.languages.dag.dag_grammar()) {
-        v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.collection.optional_absent()
-        v2.std.diagnostic.Accepted { value: artifact, diagnostics: _ } =>
+        Rejected { diagnostics: _ } => v2.std.collection.optional_absent()
+        Accepted { value: artifact, diagnostics: _ } =>
           match v2.compiler.normalize.normalize(parse_tree: artifact_tree(artifact: artifact)) {
-            v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.collection.optional_absent()
-            v2.std.diagnostic.Accepted { value: n, diagnostics: _ } => v2.std.collection.optional_present(value: normalized_root_node(t: n))
+            Rejected { diagnostics: _ } => v2.std.collection.optional_absent()
+            Accepted { value: n, diagnostics: _ } => v2.std.collection.optional_present(value: normalized_root_node(t: n))
           }
       }
   }
@@ -83,7 +83,7 @@ fn normalized_root_node(t: v2.compiler.normalized_tree.NormalizedTree) -> v2.std
 
 fn tree_contains_atom(n: v2.std.node.Node, sym: v2.std.node.Symbol) -> Bool {
   match v2.std.grammar.node_atom_identity_optional(node: n) {
-    v2.std.optional.Present { value: id } =>
+    Present { value: id } =>
       match id == sym {
         true => true
         false => children_contain_atom(n: n, sym: sym)
@@ -121,7 +121,7 @@ test fn witness_type_only_module_dissolution_refuses_RED() -> Bool {
 test fn witness_lowered_body_module_still_grafts() -> Bool {
   normalize_accepts(source: lowered_body_source)
     && (match normalized_tree_optional(source: lowered_body_source) {
-      v2.std.optional.Present { value: n } => tree_contains_atom(n: n, sym: ^list_append)
+      Present { value: n } => tree_contains_atom(n: n, sym: ^list_append)
       v2.std.optional.Absent => false
     })
 }

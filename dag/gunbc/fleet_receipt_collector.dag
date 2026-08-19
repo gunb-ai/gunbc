@@ -108,26 +108,26 @@ fn parse_converge_verdict_label(label: String) -> gunbc.host_converge.ConvergeVe
 // line that does not decode -> Unparseable carrying the exact bytes.
 fn collect_host_receipt(host: String) -> gunbc.fleet_receipt_collector.CollectedHostReceipt {
   match gunbc.fleet_reach_endpoint.fleet_probe_target_for(host: host) {
-    gunbc.fleet_reach_endpoint.ProbeTargetRefused { host: _, cause: c } =>
+    ProbeTargetRefused { host: _, cause: c } =>
       ReceiptAbsent {
         host: host,
         cause: match c {
-          gunbc.fleet_reach_endpoint.PrincipalUnobserved { note: n } => join(["principal unobserved (no SSH attempted): ", n], "")
-          gunbc.fleet_reach_endpoint.EndpointUnobserved { note: n } => join(["endpoint unobserved (no SSH attempted): ", n], "")
+          PrincipalUnobserved { note: n } => join(["principal unobserved (no SSH attempted): ", n], "")
+          EndpointUnobserved { note: n } => join(["endpoint unobserved (no SSH attempted): ", n], "")
         },
       }
-    gunbc.fleet_reach_endpoint.ProbeTargetReady { host: _, endpoint: e, remote_principal: p } =>
+    ProbeTargetReady { host: _, endpoint: e, remote_principal: p } =>
   match gunbc.typed_argv_exec.typed_argv_probe_over_ssh(
     host: gunbc.fleet_reach_endpoint.fleet_probe_ready_ssh_target(t_host: host, endpoint: e, remote_principal: p) as std.types.NonEmptyStr,
     argv: ["cat", gunbc.fleet_converge_cli.fleet_converge_receipt_path(host: host)],
   ) {
-    gunbc.typed_argv_exec.TypedArgvExecConverged { result: r } =>
+    TypedArgvExecConverged { result: r } =>
       if r.success {
         classify_receipt_stdout(host: host, raw: r.stdout)
       } else {
         ReceiptAbsent { host: host, cause: std.algebra.trim(s: r.stderr) }
       }
-    gunbc.typed_argv_exec.TypedArgvExecRefused { reason: why } => ReceiptAbsent { host: host, cause: why }
+    TypedArgvExecRefused { reason: why } => ReceiptAbsent { host: host, cause: why }
   }
   }
 }
@@ -233,8 +233,8 @@ func collect_fleet_convergence_wet() -> std.process.ProcessExit {
     receipts: collected_receipts_only(collected: collected),
   )
   let verdict_line = match verdict {
-    gunbc.fleet_convergence_verdict.FleetConverged { host_count: n } => concat("fleet-verdict converged hosts=", to_string(n))
-    gunbc.fleet_convergence_verdict.FleetNotConverged { standings: s } => concat("fleet-verdict not-converged standings=", to_string(length(s)))
+    FleetConverged { host_count: n } => concat("fleet-verdict converged hosts=", to_string(n))
+    FleetNotConverged { standings: s } => concat("fleet-verdict not-converged standings=", to_string(length(s)))
   }
   let body = join([enroll_lines, join(map(collected, c => collected_line(c: c)), "\n"), "\n", verdict_line, "\n"], "")
   let w = extdeps.filesystem.filesystem_io.Filesystem.Write(path: fleet_collect_receipt_path, content: body)

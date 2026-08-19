@@ -17,17 +17,17 @@ fn add_arrow_eval_i64_node() -> v2.std.node.Node {
 
 fn add_arrow_eval_int_literal_optional(lexeme: String) -> v2.std.optional.Optional<v2.std.node.Node> {
   match v2.extdeps.languages.dag.dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: v2.std.node.SyntheticOccurrence) {
-    v2.std.diagnostic.Accepted { value: node, diagnostics: _ } => v2.std.optional.Present { value: node }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.optional.Absent
+    Accepted { value: node, diagnostics: _ } => v2.std.optional.Present { value: node }
+    Rejected { diagnostics: _ } => v2.std.optional.Absent
   }
 }
 
 fn add_arrow_eval_runtime_int_equals(value: v2.std.runtime.RuntimeValue, n: Int) -> Bool {
   match value {
-    v2.std.runtime.RuntimePrimitive { value: p } =>
+    RuntimePrimitive { value: p } =>
       match v2.std.integer.integer_signed_i32_le_bytes_to_int(bytes: p.bytes) {
-        v2.std.diagnostic.Accepted { value: magnitude, diagnostics: _ } => magnitude == n
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Accepted { value: magnitude, diagnostics: _ } => magnitude == n
+        Rejected { diagnostics: _ } => false
       }
     _ => false
   }
@@ -44,9 +44,9 @@ fn add_arrow_eval_runtime_diagnostic(n: v2.std.node.Node) -> v2.std.diagnostic.D
 fn add_arrow_eval_ordered_add_args(args: List<v2.std.runtime.RuntimeValue>) -> Bool {
   if count(args) == 2 {
     match v2.std.collection.list_at_optional(xs: args, index: 0) {
-      v2.std.optional.Present { value: left } =>
+      Present { value: left } =>
         match v2.std.collection.list_at_optional(xs: args, index: 1) {
-          v2.std.optional.Present { value: right } =>
+          Present { value: right } =>
             add_arrow_eval_runtime_int_equals(value: left, n: 2)
               && add_arrow_eval_runtime_int_equals(value: right, n: 3)
           v2.std.optional.Absent => false
@@ -81,7 +81,7 @@ fn add_arrow_eval_call_primitive(
 
 fn add_arrow_eval_choose_first_arm(node: v2.std.node.Node, _value: v2.std.runtime.RuntimeValue, _env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: node), index: 1) {
-    v2.std.optional.Present { value: arm } => v2.std.diagnostic.outcome_accepted(value: arm)
+    Present { value: arm } => v2.std.diagnostic.outcome_accepted(value: arm)
     v2.std.optional.Absent => v2.std.diagnostic.outcome_rejected(d: add_arrow_eval_runtime_diagnostic(n: node))
   }
 }
@@ -111,9 +111,9 @@ fn add_arrow_eval_lazy_arm_interpretation() -> v2.std.runtime.InterpretationAlge
 
 fn add_arrow_eval_lazy_arm_branch_node() -> v2.std.node.Node {
   match add_arrow_eval_int_literal_optional(lexeme: "2") {
-    v2.std.optional.Present { value: two_lit } =>
+    Present { value: two_lit } =>
       match add_arrow_eval_int_literal_optional(lexeme: "5") {
-        v2.std.optional.Present { value: five_lit } =>
+        Present { value: five_lit } =>
           v2.std.node.Node {
             kind: v2.std.node.ComputationNode { behavior: v2.std.node.Branch },
             occurrence_id: v2.std.node.SyntheticOccurrence,
@@ -197,54 +197,54 @@ fn add_arrow_eval_tokenize_source() -> v2.std.diagnostic.Outcome<v2.std.compiler
 
 test fn add_arrow_eval_tokenize_holds() -> Bool {
   match add_arrow_eval_tokenize_source() {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn add_arrow_eval_parse_holds() -> Bool {
   match add_arrow_eval_tokenize_source() {
-    v2.std.diagnostic.Accepted { value: tokens, diagnostics: _ } =>
+    Accepted { value: tokens, diagnostics: _ } =>
       match add_arrow_eval_parse_tokens(tokens: tokens) {
-        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn add_arrow_eval_normalize_holds() -> Bool {
   match add_arrow_eval_tokenize_source() {
-    v2.std.diagnostic.Accepted { value: tokens, diagnostics: _ } =>
+    Accepted { value: tokens, diagnostics: _ } =>
       match add_arrow_eval_parse_tokens(tokens: tokens) {
-        v2.std.diagnostic.Accepted { value: parsed, diagnostics: _ } =>
+        Accepted { value: parsed, diagnostics: _ } =>
           match v2.compiler.normalize.normalize(parse_tree: parsed) {
-            v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn add_arrow_eval_resolve_holds() -> Bool {
   let lm = v2.extdeps.languages.dag.dag_language_model()
   match add_arrow_eval_tokenize_source() {
-    v2.std.diagnostic.Accepted { value: tokens, diagnostics: _ } =>
+    Accepted { value: tokens, diagnostics: _ } =>
       match add_arrow_eval_parse_tokens(tokens: tokens) {
-        v2.std.diagnostic.Accepted { value: parsed, diagnostics: _ } =>
+        Accepted { value: parsed, diagnostics: _ } =>
           match v2.compiler.normalize.normalize(parse_tree: parsed) {
-            v2.std.diagnostic.Accepted { value: normalized, diagnostics: _ } =>
+            Accepted { value: normalized, diagnostics: _ } =>
               match v2.compiler.resolve.resolve(tree: normalized, lm: lm) {
-                v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-                v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                Accepted { value: _, diagnostics: _ } => true
+                Rejected { diagnostics: _ } => false
               }
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -254,9 +254,9 @@ fn add_arrow_eval_add_call_optional(
   right_lex: String
 ) -> v2.std.optional.Optional<v2.std.node.Node> {
   match add_arrow_eval_int_literal_optional(lexeme: left_lex) {
-    v2.std.optional.Present { value: left } =>
+    Present { value: left } =>
       match add_arrow_eval_int_literal_optional(lexeme: right_lex) {
-        v2.std.optional.Present { value: right } =>
+        Present { value: right } =>
           v2.std.optional.Present {
             value: v2.std.node.Node {
               kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
@@ -309,9 +309,9 @@ fn add_arrow_eval_inferred_run_tree(
   expected_lex: String
 ) -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
   match add_arrow_eval_add_call_optional(callee: callee, left_lex: left_lex, right_lex: right_lex) {
-    v2.std.optional.Present { value: call } =>
+    Present { value: call } =>
       match add_arrow_eval_int_literal_optional(lexeme: expected_lex) {
-        v2.std.optional.Present { value: expected } => {
+        Present { value: expected } => {
           let root = add_arrow_eval_tree_root(call: call, expected: expected)
           v2.std.diagnostic.outcome_accepted(value: add_arrow_eval_admitted_tree(root: root))
         }
@@ -364,9 +364,9 @@ fn add_arrow_eval_run(
     left_lex: left_lex,
     right_lex: right_lex
   ) {
-    v2.std.optional.Present { value: call_node } =>
+    Present { value: call_node } =>
       match add_arrow_eval_int_literal_optional(lexeme: expected_lex) {
-        v2.std.optional.Present { value: expected } =>
+        Present { value: expected } =>
           v2.std.diagnostic.bind_outcome(
             o: add_arrow_eval_inferred_run_tree(
               callee: callee,
@@ -477,9 +477,9 @@ fn add_arrow_excess_body() -> v2.std.node.Node {
 
 fn add_arrow_excess_actual_call_optional(callee: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Node> {
   match add_arrow_eval_int_literal_optional(lexeme: "2") {
-    v2.std.optional.Present { value: two_lit } =>
+    Present { value: two_lit } =>
       match add_arrow_eval_int_literal_optional(lexeme: "3") {
-        v2.std.optional.Present { value: three_lit } =>
+        Present { value: three_lit } =>
           v2.std.optional.Present {
             value: v2.std.node.Node {
               kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
@@ -500,35 +500,35 @@ fn add_arrow_excess_actual_call_optional(callee: v2.std.node.Node) -> v2.std.opt
 
 fn add_arrow_eval_run_passes(run: v2.std.diagnostic.Outcome<v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>>) -> Bool {
   match run {
-    v2.std.diagnostic.Accepted { value: r, diagnostics: _ } =>
+    Accepted { value: r, diagnostics: _ } =>
       match v2.compiler.eval.test_claim_run_verdict(run: r) {
         v2.std.verdict.Pass => true
         _ => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn add_arrow_eval_source_pipeline_admits_add_holds() -> Bool {
   match add_arrow_source_ingested_add_infers() {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn add_arrow_eval_canonical_tree_infers_holds() -> Bool {
   match v2.test.complexity_gate.table_fixture_add_subject_producer.table_fixture_add_arrow_with_body() {
-    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
+    Accepted { value: arrow, diagnostics: _ } =>
       match add_arrow_eval_inferred_run_tree(
         callee: arrow,
         left_lex: "2",
         right_lex: "3",
         expected_lex: "5"
       ) {
-        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -538,36 +538,36 @@ fn add_arrow_eval_runtime_value_is_n(value: v2.std.runtime.RuntimeValue, n: Int)
 
 test fn add_arrow_eval_direct_runtime_holds() -> Bool {
   match v2.test.complexity_gate.table_fixture_add_subject_producer.table_fixture_add_arrow_with_body() {
-    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
+    Accepted { value: arrow, diagnostics: _ } =>
       match add_arrow_eval_add_call_optional(callee: arrow, left_lex: "2", right_lex: "3") {
-        v2.std.optional.Present { value: call_node } =>
+        Present { value: call_node } =>
           match add_arrow_eval_inferred_run_tree(
             callee: arrow,
             left_lex: "2",
             right_lex: "3",
             expected_lex: "5"
           ) {
-            v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+            Accepted { value: tree, diagnostics: _ } =>
               match v2.compiler.eval.eval(
                 tree: tree,
                 interpretation: v2.extdeps.runtimes.v2_evaluator.v2_evaluator_interpretation(),
                 inputs: v2.compiler.eval.inputs_root_only(root: call_node)
               ) {
-                v2.std.diagnostic.Accepted { value: actual, diagnostics: v2.std.diagnostic.None } =>
+                Accepted { value: actual, diagnostics: v2.std.diagnostic.None } =>
                   add_arrow_eval_runtime_value_is_n(value: actual, n: 5)
                 _ => false
               }
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
         v2.std.optional.Absent => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn add_arrow_eval_source_driven_add_executes_holds() -> Bool {
   match v2.test.complexity_gate.table_fixture_add_subject_producer.table_fixture_add_arrow_with_body() {
-    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
+    Accepted { value: arrow, diagnostics: _ } =>
       add_arrow_eval_run_passes(
         run: add_arrow_eval_run(
           callee: arrow,
@@ -576,13 +576,13 @@ test fn add_arrow_eval_source_driven_add_executes_holds() -> Bool {
           expected_lex: "5"
         )
       )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn add_arrow_eval_produced_add_body_executes_holds() -> Bool {
   match v2.test.complexity_gate.table_fixture_add_subject_producer.table_fixture_add_arrow_with_body() {
-    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
+    Accepted { value: arrow, diagnostics: _ } =>
       add_arrow_eval_run_passes(
         run: add_arrow_eval_run(
           callee: arrow,
@@ -591,13 +591,13 @@ test fn add_arrow_eval_produced_add_body_executes_holds() -> Bool {
           expected_lex: "5"
         )
       )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn add_arrow_eval_generality_executes_holds() -> Bool {
   match v2.test.complexity_gate.table_fixture_add_subject_producer.table_fixture_add_arrow_with_body() {
-    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
+    Accepted { value: arrow, diagnostics: _ } =>
       add_arrow_eval_run_passes(
         run: add_arrow_eval_run(
           callee: arrow,
@@ -606,7 +606,7 @@ test fn add_arrow_eval_generality_executes_holds() -> Bool {
           expected_lex: "15"
         )
       )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -627,7 +627,7 @@ fn add_arrow_eval_swapped_operands_claim_passes() -> Bool {
 
 test fn add_arrow_eval_wrong_value_red_holds() -> Bool {
   match v2.test.complexity_gate.table_fixture_add_subject_producer.table_fixture_add_arrow_with_body() {
-    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
+    Accepted { value: arrow, diagnostics: _ } =>
       add_arrow_eval_run_passes(
         run: add_arrow_eval_run(
           callee: arrow,
@@ -636,7 +636,7 @@ test fn add_arrow_eval_wrong_value_red_holds() -> Bool {
           expected_lex: "16"
         )
       ) == false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -664,30 +664,30 @@ test fn add_arrow_excess_body_red_holds() -> Bool {
 
 fn add_arrow_excess_actual_executes_to_five() -> Bool {
   match v2.test.complexity_gate.table_fixture_add_subject_producer.table_fixture_add_arrow_with_body() {
-    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
+    Accepted { value: arrow, diagnostics: _ } =>
       match add_arrow_excess_actual_call_optional(callee: arrow) {
-        v2.std.optional.Present { value: call_node } =>
+        Present { value: call_node } =>
           match add_arrow_eval_inferred_run_tree(
             callee: arrow,
             left_lex: "2",
             right_lex: "3",
             expected_lex: "5"
           ) {
-            v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+            Accepted { value: tree, diagnostics: _ } =>
               match v2.compiler.eval.eval(
                 tree: tree,
                 interpretation: v2.extdeps.runtimes.v2_evaluator.v2_evaluator_interpretation(),
                 inputs: v2.compiler.eval.inputs_root_only(root: call_node)
               ) {
-                v2.std.diagnostic.Accepted { value: actual, diagnostics: v2.std.diagnostic.None } =>
+                Accepted { value: actual, diagnostics: v2.std.diagnostic.None } =>
                   add_arrow_eval_runtime_value_is_n(value: actual, n: 5)
                 _ => false
               }
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
         v2.std.optional.Absent => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -703,9 +703,9 @@ test fn add_arrow_eval_lazy_arm_branch_suppression_holds() -> Bool {
     interpretation: add_arrow_eval_lazy_arm_interpretation(),
     inputs: v2.compiler.eval.inputs_root_only(root: branch)
   ) {
-    v2.std.diagnostic.Accepted { value: v, diagnostics: _ } =>
+    Accepted { value: v, diagnostics: _ } =>
       add_arrow_eval_runtime_int_equals(value: v, n: 5)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -744,7 +744,7 @@ fn add_arrow_eval_loop_admitted_tree(root: v2.std.node.Node) -> v2.compiler.infe
     facts: std.types.Map {
       lookup: fn(key) {
         match key.kind {
-          v2.std.node.ComputationNode { behavior: v2.std.node.Loop } =>
+          ComputationNode { behavior: v2.std.node.Loop } =>
             v2.std.optional.Present {
               value: v2.test.lens_common.infer_fixture.claim_inferred_facts_from_nodes(
                 resolved: key,
@@ -775,9 +775,9 @@ test fn add_arrow_eval_lazy_arm_loop_suppression_holds() -> Bool {
     interpretation: add_arrow_eval_lazy_arm_loop_interpretation(),
     inputs: v2.compiler.eval.inputs_root_only(root: loop_node)
   ) {
-    v2.std.diagnostic.Accepted { value: v, diagnostics: _ } =>
+    Accepted { value: v, diagnostics: _ } =>
       add_arrow_eval_runtime_int_equals(value: v, n: 5)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

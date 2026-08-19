@@ -17,13 +17,13 @@ fn normalize_fold_init(n: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.
 fn normalize_fold_step(acc: v2.std.diagnostic.Outcome<v2.std.node.Node>, edge: v2.std.node.Edge, child: v2.std.diagnostic.Outcome<v2.std.node.Node>) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match acc {
     Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-    v2.std.diagnostic.Accepted { value: shell, diagnostics: ad } =>
+    Accepted { value: shell, diagnostics: ad } =>
       match child {
         Rejected { diagnostics: cr } =>
           v2.std.diagnostic.Rejected {
             diagnostics: v2.std.diagnostic.rejected_with_pending(pending: ad, rejected: cr)
           }
-        v2.std.diagnostic.Accepted { value: child_node, diagnostics: cd } =>
+        Accepted { value: child_node, diagnostics: cd } =>
           v2.std.diagnostic.Accepted {
             value: v2.std.node.node_rebuild(
               n: shell,
@@ -40,11 +40,11 @@ fn normalize_fold_step(acc: v2.std.diagnostic.Outcome<v2.std.node.Node>, edge: v
 
 fn normalize_sugar_key_optional(folded: v2.std.node.Node) -> v2.std.compilers.sugar.SugarKey? {
   match folded.kind {
-    v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } } =>
+    TypeNode { connective: v2.std.node.Atom { identity: id } } =>
       v2.std.collection.optional_present(value: v2.std.compilers.sugar.SurfaceAtomKey { atom: id })
-    v2.std.node.TypeNode { connective: _ } =>
+    TypeNode { connective: _ } =>
       match v2.extdeps.languages.dag.parse_production_emitted_identity_optional(node: folded) {
-        v2.std.optional.Present { value: id } =>
+        Present { value: id } =>
           v2.std.collection.optional_present(value: v2.std.compilers.sugar.ProductionIdentityKey { identity: id })
         v2.std.optional.Absent => v2.std.collection.optional_absent()
       }
@@ -54,15 +54,15 @@ fn normalize_sugar_key_optional(folded: v2.std.node.Node) -> v2.std.compilers.su
 
 fn normalize_sugar_finish(n: v2.std.node.Node, folded: v2.std.node.Node, cd: v2.std.diagnostic.Diagnostics) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match normalize_sugar_key_optional(folded: folded) {
-    v2.std.optional.Present { value: key } =>
+    Present { value: key } =>
       match v2.std.compilers.sugar.sugar_rule_for_key(key: key) {
-        v2.std.optional.Present { value: rule } =>
+        Present { value: rule } =>
           match v2.std.compilers.sugar.apply_sugar(rule: rule, n: n, folded: folded) {
             Rejected { diagnostics: r } =>
               v2.std.diagnostic.Rejected {
                 diagnostics: v2.std.diagnostic.rejected_with_pending(pending: cd, rejected: r)
               }
-            v2.std.diagnostic.Accepted { value: v, diagnostics: d } =>
+            Accepted { value: v, diagnostics: d } =>
               v2.std.diagnostic.Accepted {
                 value: v,
                 diagnostics: v2.std.diagnostic.diagnostics_merge(outer: cd, inner: d)
@@ -90,7 +90,7 @@ fn normalize_fn_body_pass_through_at_seam(emitted: v2.std.node.Symbol, under_fn_
 
 fn normalize_node_ctx(n: v2.std.node.Node, under_fn_decl: Bool) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match v2.extdeps.languages.dag.parse_production_emitted_identity_optional(node: n) {
-    v2.std.optional.Present { value: emitted } =>
+    Present { value: emitted } =>
       if v2.compiler.body_lowering_fold.body_lower_is_deferred_lower_at_normalize(
         emitted: emitted,
         under_fn_decl: normalize_scope_under_fn_decl(under_fn_decl: under_fn_decl, emitted: emitted)
@@ -108,7 +108,7 @@ fn normalize_node_ctx(n: v2.std.node.Node, under_fn_decl: Bool) -> v2.std.diagno
           )
         ) {
           Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-          v2.std.diagnostic.Accepted { value: after_body, diagnostics: cd0 } =>
+          Accepted { value: after_body, diagnostics: cd0 } =>
             normalize_sugar_finish(n: n, folded: after_body, cd: cd0)
         }
       } else {
@@ -131,7 +131,7 @@ fn normalize_module_graft_finish(folded: v2.std.node.Node, cd: v2.std.diagnostic
         v2.std.diagnostic.Rejected {
           diagnostics: v2.std.diagnostic.rejected_with_pending(pending: cd, rejected: r)
         }
-      v2.std.diagnostic.Accepted { value: grafted, diagnostics: d } =>
+      Accepted { value: grafted, diagnostics: d } =>
         v2.std.diagnostic.Accepted {
           value: grafted,
           diagnostics: v2.std.diagnostic.diagnostics_merge(outer: cd, inner: d)
@@ -151,7 +151,7 @@ fn normalize_node_fold_children_ctx(n: v2.std.node.Node, under_fn_decl: Bool) ->
     )
   }) {
     Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-    v2.std.diagnostic.Accepted { value: folded, diagnostics: cd } =>
+    Accepted { value: folded, diagnostics: cd } =>
       match v2.compiler.body_lowering_fold.body_lower_finish_for_normalize(
         n: n,
         folded: folded,
@@ -159,7 +159,7 @@ fn normalize_node_fold_children_ctx(n: v2.std.node.Node, under_fn_decl: Bool) ->
         fn_body_pass_through: false
       ) {
         Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-        v2.std.diagnostic.Accepted { value: after_body, diagnostics: cd0 } =>
+        Accepted { value: after_body, diagnostics: cd0 } =>
           normalize_sugar_finish(n: n, folded: after_body, cd: cd0)
       }
   }
@@ -168,10 +168,10 @@ fn normalize_node_fold_children_ctx(n: v2.std.node.Node, under_fn_decl: Bool) ->
 fn normalize(parse_tree: v2.std.grammar.ParseTree) -> v2.std.diagnostic.Outcome<v2.compiler.normalized_tree.NormalizedTree> {
   match normalize_node(n: parse_tree) {
     Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-    v2.std.diagnostic.Accepted { value: normalized, diagnostics: d } =>
+    Accepted { value: normalized, diagnostics: d } =>
       match normalize_module_graft_finish(folded: normalized, cd: d) {
         Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-        v2.std.diagnostic.Accepted { value: grafted, diagnostics: d1 } =>
+        Accepted { value: grafted, diagnostics: d1 } =>
           if v2.std.node.well_formed(n: grafted) {
             v2.compiler.normalized_tree.admit_normalized_tree(root: grafted, diagnostics: d1)
           } else {

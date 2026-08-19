@@ -441,9 +441,9 @@ fn python_g1_2_insert_entries(
   entry: v2.std.grounding.PerLanguageFactBundleEntry
 ) -> v2.std.diagnostic.Outcome<v2.std.grounding.PerLanguageFactBundleRegistry> {
   match registry {
-    v2.std.diagnostic.Accepted { value: r, diagnostics: _ } =>
+    Accepted { value: r, diagnostics: _ } =>
       python_g1_2_insert_fact_bundle_entry(registry: r, entry: entry)
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
@@ -464,20 +464,20 @@ fn python_g1_2_snoc_primitive_bundle(
   subject_carrier: v2.std.node.Node
 ) -> v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
   match acc {
-    v2.std.diagnostic.Accepted { value: bundles, diagnostics: _ } => match v2.std.grounding.primitive_fact_bundle_for_subject(
+    Accepted { value: bundles, diagnostics: _ } => match v2.std.grounding.primitive_fact_bundle_for_subject(
       registry: registry,
       subject_carrier: subject_carrier,
       target: python_target_model()
     ) {
-      v2.std.diagnostic.Accepted { value: bundle, diagnostics: d } =>
+      Accepted { value: bundle, diagnostics: d } =>
         v2.std.diagnostic.Accepted {
           value: v2.std.algebra.list_snoc_item(xs: bundles, item: bundle),
           diagnostics: d
         }
-      v2.std.diagnostic.Rejected { diagnostics: d } =>
+      Rejected { diagnostics: d } =>
         v2.std.diagnostic.Rejected { diagnostics: d }
     }
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
@@ -567,13 +567,13 @@ fn python_g1_2_append_primitive_bundle_outcomes(
   right: v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>>
 ) -> v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
   match left {
-    v2.std.diagnostic.Accepted { value: l, diagnostics: _ } => match right {
-      v2.std.diagnostic.Accepted { value: r, diagnostics: d } =>
+    Accepted { value: l, diagnostics: _ } => match right {
+      Accepted { value: r, diagnostics: d } =>
         v2.std.diagnostic.Accepted { value: v2.std.algebra.list_append(left: l, right: r), diagnostics: d }
-      v2.std.diagnostic.Rejected { diagnostics: d } =>
+      Rejected { diagnostics: d } =>
         v2.std.diagnostic.Rejected { diagnostics: d }
     }
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
@@ -598,9 +598,9 @@ fn python_g1_2_primitive_bundles_from_registry(
 
 fn python_g1_2_primitive_fact_bundles() -> v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
   match python_g1_2_fact_bundle_registry() {
-    v2.std.diagnostic.Accepted { value: registry, diagnostics: _ } =>
+    Accepted { value: registry, diagnostics: _ } =>
       python_g1_2_primitive_bundles_from_registry(registry: registry)
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
@@ -704,7 +704,7 @@ fn python_model_core_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabi
 
 fn python_model_core() -> v2.std.diagnostic.Outcome<v2.std.model_core.ModelCore> {
   match python_g1_2_primitive_fact_bundles() {
-    v2.std.diagnostic.Accepted { value: primitives, diagnostics: d } =>
+    Accepted { value: primitives, diagnostics: d } =>
       v2.std.diagnostic.Accepted {
         value: v2.std.model_core.ModelCore {
           primitives: primitives,
@@ -715,7 +715,7 @@ fn python_model_core() -> v2.std.diagnostic.Outcome<v2.std.model_core.ModelCore>
         },
         diagnostics: d
       }
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
@@ -1440,7 +1440,7 @@ fn python_language_model_canonical_symbols() -> Set<v2.std.node.Symbol> {
 
 fn python_language_model() -> v2.std.diagnostic.Outcome<v2.std.language_model.LanguageModel> {
   match python_model_core() {
-    v2.std.diagnostic.Accepted { value: core, diagnostics: d } =>
+    Accepted { value: core, diagnostics: d } =>
       v2.std.diagnostic.Accepted {
         value: v2.std.language_model.LanguageModel {
           lex: python_lex(),
@@ -1451,7 +1451,7 @@ fn python_language_model() -> v2.std.diagnostic.Outcome<v2.std.language_model.La
         },
         diagnostics: d
       }
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }

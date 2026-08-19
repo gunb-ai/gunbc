@@ -60,17 +60,17 @@ fn mercurial_compatibility_bind(
   read_back: extdeps.mercurial.MercurialReadBackObservation,
 ) -> gunbc.scm_compatibility.mercurial.MercurialCompatibilityBindingOutcome {
   match extdeps.mercurial.mercurial_decode_projection(projection: projection) {
-    extdeps.mercurial.MercurialDecodeRefused { cause } =>
+    MercurialDecodeRefused { cause } =>
       MercurialCompatibilityBindingRefused {
         cause: MercurialCompatibilityDecodeRejected { cause: cause },
       }
-    extdeps.mercurial.MercurialRepositoryUnavailable { reason } =>
+    MercurialRepositoryUnavailable { reason } =>
       MercurialCompatibilityBindingRefused {
         cause: MercurialCompatibilityRepositoryUnavailable {
           reason: reason,
         },
       }
-    extdeps.mercurial.MercurialDecoded { repository } => {
+    MercurialDecoded { repository } => {
       let target_history = extdeps.mercurial.mercurial_named_branch_changesets(
         repository: repository,
         branch: target,
@@ -84,7 +84,7 @@ fn mercurial_compatibility_bind(
           expected: repository,
           observation: read_back,
         ) {
-          extdeps.mercurial.MercurialReadBackMatches { observed_by: _ } =>
+          MercurialReadBackMatches { observed_by: _ } =>
             MercurialCompatibilityBound {
               receipt: gunbc.scm_compatibility.mercurial.MercurialCompatibilityReceipt {
                 target: target,
@@ -98,7 +98,7 @@ fn mercurial_compatibility_bind(
                 advance: extdeps.mercurial.mercurial_r0_conditional_advance,
               },
             }
-          extdeps.mercurial.MercurialReadBackMismatch {
+          MercurialReadBackMismatch {
             observed_by,
             expected: _,
             observed: _,
@@ -108,14 +108,14 @@ fn mercurial_compatibility_bind(
                 observed_by: observed_by,
               },
             }
-          extdeps.mercurial.MercurialReadBackInvalid { observed_by, cause } =>
+          MercurialReadBackInvalid { observed_by, cause } =>
             MercurialCompatibilityBindingRefused {
               cause: MercurialCompatibilityReadBackInvalid {
                 observed_by: observed_by,
                 cause: cause,
               },
             }
-          extdeps.mercurial.MercurialReadBackUnavailable { observed_by, reason } =>
+          MercurialReadBackUnavailable { observed_by, reason } =>
             MercurialCompatibilityBindingRefused {
               cause: MercurialCompatibilityReadBackUnavailable {
                 observed_by: observed_by,
@@ -344,7 +344,7 @@ fn mercurial_compatibility_evolution_identity(
         tag: "mercurial-evolution-disabled",
         members: [],
       )
-    extdeps.mercurial.MercurialEvolutionMarkers { markers } =>
+    MercurialEvolutionMarkers { markers } =>
       gunbc.scm_compatibility_shape.compatibility_identity_sequence(
         tag: "mercurial-evolution-markers",
         members: markers
@@ -549,7 +549,7 @@ fn mercurial_compatibility_projection_receipt(
     repository: receipt.repository,
   )
   match receipt.advance {
-    extdeps.mercurial.MercurialConditionalAdvanceUnavailable { reason } =>
+    MercurialConditionalAdvanceUnavailable { reason } =>
       gunbc.scm_compatibility_shape.CompatibilityProjectionReceipt {
         realization: "mercurial-r0",
         target: receipt.target as std.types.NonEmptyStr,

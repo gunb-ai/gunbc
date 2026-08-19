@@ -71,21 +71,21 @@ fn classify_fallback_arm(input: FallbackArmClassifyInput) -> FallbackArmClass {
 
 fn pattern_node_is_planted_wildcard(pattern: v2.std.node.Node) -> Bool {
   match v2.std.grammar.node_atom_identity_optional(node: pattern) {
-    v2.std.optional.Present { value: id } => id == fallback_planted_wildcard
+    Present { value: id } => id == fallback_planted_wildcard
     v2.std.optional.Absent => false
   }
 }
 
 fn body_node_marks_refuses(body: v2.std.node.Node) -> Bool {
   match v2.std.grammar.node_atom_identity_optional(node: body) {
-    v2.std.optional.Present { value: id } => id == fallback_body_refuses
+    Present { value: id } => id == fallback_body_refuses
     v2.std.optional.Absent => false
   }
 }
 
 fn body_node_marks_answers(body: v2.std.node.Node) -> Bool {
   match v2.std.grammar.node_atom_identity_optional(node: body) {
-    v2.std.optional.Present { value: id } => id == fallback_body_answers
+    Present { value: id } => id == fallback_body_answers
     v2.std.optional.Absent => false
   }
 }
@@ -96,9 +96,9 @@ fn classify_planted_arm(
   interim_declared: Bool
 ) -> FallbackArmClass {
   match v2.std.node_query.find_named_child(root: arm, name: v2.std.node.match_arm_pattern) {
-    v2.std.diagnostic.Accepted { value: pat_node, diagnostics: _ } =>
+    Accepted { value: pat_node, diagnostics: _ } =>
       match v2.std.node_query.find_named_child(root: arm, name: v2.std.node.match_arm_body) {
-        v2.std.diagnostic.Accepted { value: body_node, diagnostics: _ } =>
+        Accepted { value: body_node, diagnostics: _ } =>
           classify_fallback_arm(
             input: FallbackArmClassifyInput {
               pattern_is_wildcard: pattern_node_is_planted_wildcard(pattern: pat_node),
@@ -108,10 +108,10 @@ fn classify_planted_arm(
               interim_declared: interim_declared
             }
           )
-        v2.std.diagnostic.Rejected { diagnostics: _ } =>
+        Rejected { diagnostics: _ } =>
           ClassifierUnknown { cause: fallback_unknown_undecidable_body }
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } =>
+    Rejected { diagnostics: _ } =>
       ClassifierUnknown { cause: fallback_unknown_not_wildcard }
   }
 }
@@ -150,13 +150,13 @@ fn planted_match_with_wildcard_opaque() -> v2.std.node.Node {
 
 fn match_positional_arms(match_node: v2.std.node.Node) -> List<v2.std.node.Node> {
   match match_node.kind {
-    v2.std.node.ComputationNode { behavior: v2.std.node.Match } =>
+    ComputationNode { behavior: v2.std.node.Match } =>
       match v2.std.algebra.list_tail(xs: v2.std.node_query.node_positional_child_targets(node: match_node)) {
-        v2.std.algebra.TailFound { tail: arms } => arms
+        TailFound { tail: arms } => arms
         v2.std.algebra.TailAbsent => std.algebra.Empty
       }
-    v2.std.node.TypeNode { connective: _ } => std.algebra.Empty
-    v2.std.node.ComputationNode { behavior: _ } => std.algebra.Empty
+    TypeNode { connective: _ } => std.algebra.Empty
+    ComputationNode { behavior: _ } => std.algebra.Empty
   }
 }
 
@@ -174,7 +174,7 @@ fn classify_last_arm_of_planted_match(
   interim_declared: Bool
 ) -> FallbackArmClass {
   match last_list_node(xs: match_positional_arms(match_node: match_node)) {
-    v2.std.optional.Present { value: arm } =>
+    Present { value: arm } =>
       classify_planted_arm(
         arm: arm,
         scrutinee_closed_total: scrutinee_closed_total,

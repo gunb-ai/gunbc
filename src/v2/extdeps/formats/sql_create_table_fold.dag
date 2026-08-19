@@ -40,15 +40,15 @@ fn sql_fold_columns_absent_diagnostic() -> v2.std.diagnostic.Diagnostic {
 
 fn sql_fold_identifier_spelling(id: v2.extdeps.formats.sql.SqlIdentifier) -> v2.std.witness.Witness<String> {
   match id {
-    v2.extdeps.formats.sql.SqlRegularIdentifier { name: n } => v2.std.witness.Holds { value: n }
-    v2.extdeps.formats.sql.SqlDelimitedIdentifier { name: _ } =>
+    SqlRegularIdentifier { name: n } => v2.std.witness.Holds { value: n }
+    SqlDelimitedIdentifier { name: _ } =>
       v2.std.witness.Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_delimited_identifier) }
   }
 }
 
 fn sql_fold_column_def_emitted_witness(col: v2.extdeps.formats.sql.SqlColumnDefinition) -> v2.std.witness.Witness<v2.std.node.Node> {
   match sql_fold_identifier_spelling(id: col.name) {
-    v2.std.witness.Holds { value: name } =>
+    Holds { value: name } =>
       match col.data_type {
         v2.extdeps.formats.sql.SqlTypeCharacterLargeObject =>
           if col.constraints.not_null {
@@ -104,7 +104,7 @@ fn sql_fold_column_def_emitted_witness(col: v2.extdeps.formats.sql.SqlColumnDefi
         SqlTypeTimestampWithTimeZone =>
           v2.std.witness.Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
       }
-    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -135,15 +135,15 @@ fn sql_fold_list_production_emitted_fold_rest(
   index: Int
 ) -> v2.std.witness.Witness<v2.std.node.Node> {
   match v2.std.collection.list_at_optional(xs: cols, index: index) {
-    v2.std.optional.Present { value: col } =>
+    Present { value: col } =>
       match sql_fold_column_def_emitted_witness(col: col) {
-        v2.std.witness.Holds { value: col_node } =>
+        Holds { value: col_node } =>
           sql_fold_list_production_emitted_fold_rest(
             cols: cols,
             accumulated: sql_fold_conj_list_append(left: accumulated, right: col_node),
             index: index + 1
           )
-        v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+        Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
       }
     v2.std.optional.Absent => v2.std.witness.Holds { value: accumulated }
   }
@@ -151,17 +151,17 @@ fn sql_fold_list_production_emitted_fold_rest(
 
 fn sql_fold_column_list_emitted_witness(cols: List<v2.extdeps.formats.sql.SqlColumnDefinition>) -> v2.std.witness.Witness<v2.std.node.Node> {
   match v2.std.collection.list_nth(xs: cols, wanted: 0, absent: sql_fold_columns_absent_diagnostic()) {
-    v2.std.witness.Holds { value: col0 } =>
+    Holds { value: col0 } =>
       match sql_fold_column_def_emitted_witness(col: col0) {
-        v2.std.witness.Holds { value: col_node } =>
+        Holds { value: col_node } =>
           sql_fold_list_production_emitted_fold_rest(
             cols: cols,
             accumulated: sql_fold_conj_list_root(item: col_node),
             index: 1
           )
-        v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+        Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
       }
-    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -169,11 +169,11 @@ fn sql_fold_primary_key_emitted_witness(pk: v2.std.optional.Optional<List<v2.ext
   match pk {
     v2.std.optional.Absent =>
       v2.std.witness.Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_no_primary_key) }
-    v2.std.optional.Present { value: cols } =>
+    Present { value: cols } =>
       match v2.std.collection.list_nth(xs: cols, wanted: 0, absent: sql_fold_columns_absent_diagnostic()) {
-        v2.std.witness.Holds { value: id0 } =>
+        Holds { value: id0 } =>
           match sql_fold_identifier_spelling(id: id0) {
-            v2.std.witness.Holds { value: name } =>
+            Holds { value: name } =>
               v2.std.witness.Holds {
                 value: v2.std.node.Node {
                   kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
@@ -194,9 +194,9 @@ fn sql_fold_primary_key_emitted_witness(pk: v2.std.optional.Optional<List<v2.ext
                   occurrence_id: v2.std.node.SyntheticOccurrence
                 }
               }
-            v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+            Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
           }
-        v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+        Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
       }
   }
 }
@@ -227,7 +227,7 @@ fn sql_fold_create_table_body_emitted(
         ],
         occurrence_id: v2.std.node.SyntheticOccurrence
       }
-    v2.std.optional.Present { value: pk_node } =>
+    Present { value: pk_node } =>
       v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
         children: [
@@ -259,9 +259,9 @@ type SqlFoldCreateTableBundle {
 
 fn sql_fold_create_table_bundle_witness(table: v2.extdeps.formats.sql.SqlTableDefinition) -> v2.std.witness.Witness<SqlFoldCreateTableBundle> {
   match sql_fold_identifier_spelling(id: table.name) {
-    v2.std.witness.Holds { value: table_name } =>
+    Holds { value: table_name } =>
       match sql_fold_column_list_emitted_witness(cols: table.columns) {
-        v2.std.witness.Holds { value: column_list } =>
+        Holds { value: column_list } =>
           match table.primary_key {
             v2.std.optional.Absent =>
               v2.std.witness.Holds {
@@ -275,9 +275,9 @@ fn sql_fold_create_table_bundle_witness(table: v2.extdeps.formats.sql.SqlTableDe
                   )
                 }
               }
-            v2.std.optional.Present { value: _ } =>
+            Present { value: _ } =>
               match sql_fold_primary_key_emitted_witness(pk: table.primary_key) {
-                v2.std.witness.Holds { value: pk_node } =>
+                Holds { value: pk_node } =>
                   v2.std.witness.Holds {
                     value: SqlFoldCreateTableBundle {
                       production_binding: ^sql_production_fold_create_table_pk,
@@ -289,12 +289,12 @@ fn sql_fold_create_table_bundle_witness(table: v2.extdeps.formats.sql.SqlTableDe
                       )
                     }
                   }
-                v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+                Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
               }
           }
-        v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+        Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
       }
-    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -434,15 +434,15 @@ fn sql_fold_column_list_uses_recursive_list_production_witness(
   cols: List<v2.extdeps.formats.sql.SqlColumnDefinition>
 ) -> v2.std.witness.Witness<Bool> {
   match sql_fold_column_list_emitted_witness(cols: cols) {
-    v2.std.witness.Holds { value: column_list } =>
+    Holds { value: column_list } =>
       match sql_fold_column_list_matched_production_witness(column_list: column_list) {
-        v2.std.witness.Holds { value: production } =>
+        Holds { value: production } =>
           v2.std.witness.Holds {
             value: sql_fold_column_list_production_is_recursive_list(production: production)
           }
-        v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+        Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
       }
-    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -453,13 +453,13 @@ fn sql_fold_relation_row_witness(emitted: v2.std.node.Node, lhs: v2.std.node.Sym
     lhs: lhs,
     child: emitted
   ) {
-    v2.std.witness.Holds { value: production } =>
+    Holds { value: production } =>
       v2.std.grammar.derive_grammar_relation_row_node(
         production: production,
         productions: productions,
         emitted: emitted
       )
-    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -469,7 +469,7 @@ fn sql_fold_translation_rules_node_for_emitted(
   rule_name: v2.std.node.Symbol
 ) -> v2.std.witness.Witness<v2.std.node.Node> {
   match sql_fold_relation_row_witness(emitted: emitted, lhs: lhs) {
-    v2.std.witness.Holds { value: row } =>
+    Holds { value: row } =>
       v2.std.witness.Holds {
         value: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
@@ -488,7 +488,7 @@ fn sql_fold_translation_rules_node_for_emitted(
           occurrence_id: v2.std.node.SyntheticOccurrence
         }
       }
-    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -530,9 +530,9 @@ fn sql_fold_serialize_source_witness(
   production_binding: v2.std.node.Symbol
 ) -> v2.std.witness.Witness<v2.std.node.Node> {
   match sql_fold_relation_row_witness(emitted: emitted, lhs: production_binding) {
-    v2.std.witness.Holds { value: row } =>
+    Holds { value: row } =>
       match v2.std.node_query.find_named_child(root: row, name: ^grammar_relation_field_tokens) {
-        v2.std.diagnostic.Accepted { value: tokens_root, diagnostics: _ } =>
+        Accepted { value: tokens_root, diagnostics: _ } =>
           v2.std.witness.Holds {
             value: v2.std.node.Node {
               kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
@@ -553,9 +553,9 @@ fn sql_fold_serialize_source_witness(
               occurrence_id: v2.std.node.SyntheticOccurrence
             }
           }
-        v2.std.diagnostic.Rejected { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
+        Rejected { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
       }
-    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -571,13 +571,13 @@ fn sql_fold_target_model_for_emitted_witness(
     source_literal: source_literal,
     production_binding: production_binding
   ) {
-    v2.std.witness.Holds { value: serialize_source } =>
+    Holds { value: serialize_source } =>
       match sql_fold_translation_rules_node_for_emitted(
         emitted: emitted,
         lhs: production_binding,
         rule_name: rule_name
       ) {
-        v2.std.witness.Holds { value: rules } =>
+        Holds { value: rules } =>
           v2.std.witness.Holds {
             value: v2.std.compilers.target_model.target_model_make_with_emit_transforms(
               bundle: v2.extdeps.formats.sql_target.sql_target_model_bundle(
@@ -591,9 +591,9 @@ fn sql_fold_target_model_for_emitted_witness(
               runtime_row: v2.std.host_transport.target_emit_host_runtime_row_unconfigured
             )
           }
-        v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+        Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
       }
-    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -612,9 +612,9 @@ fn sql_fold_target_model_from_bundle_witness(
 
 fn sql_fold_target_model_for_operation_witness(op: v2.extdeps.formats.sql.SqlSchemaOperation) -> v2.std.witness.Witness<v2.std.compilers.target_model.TargetModel> {
   match sql_fold_schema_operation_bundle_witness(op: op) {
-    v2.std.witness.Holds { value: bundle } =>
+    Holds { value: bundle } =>
       match v2.extdeps.formats.sql.sql_serialize_schema_operation(op: op) {
-        v2.std.diagnostic.Accepted { value: source_text, diagnostics: d } =>
+        Accepted { value: source_text, diagnostics: d } =>
           match d {
             None =>
               sql_fold_target_model_from_bundle_witness(
@@ -623,16 +623,16 @@ fn sql_fold_target_model_for_operation_witness(op: v2.extdeps.formats.sql.SqlSch
               )
             Some { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
           }
-        v2.std.diagnostic.Rejected { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
+        Rejected { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
       }
-    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
 fn sql_fold_operation_emitted_witness(op: v2.extdeps.formats.sql.SqlSchemaOperation) -> v2.std.witness.Witness<v2.std.node.Node> {
   match sql_fold_schema_operation_bundle_witness(op: op) {
-    v2.std.witness.Holds { value: bundle } => v2.std.witness.Holds { value: bundle.emitted }
-    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    Holds { value: bundle } => v2.std.witness.Holds { value: bundle.emitted }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 

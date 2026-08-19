@@ -853,9 +853,9 @@ fn ts_task_serialize_source_children() -> List<v2.std.node.Edge> {
 
 fn ts_grammar_relation_row_token_edges_witness(row: v2.std.node.Node) -> v2.std.witness.Witness<List<v2.std.node.Edge>> {
   match v2.std.node_query.find_named_child(root: row, name: ^grammar_relation_field_tokens) {
-    v2.std.diagnostic.Accepted { value: tokens_root, diagnostics: _ } =>
+    Accepted { value: tokens_root, diagnostics: _ } =>
       match tokens_root.kind {
-        v2.std.node.TypeNode { connective: v2.std.node.Conj } => v2.std.witness.Holds { value: tokens_root.children }
+        TypeNode { connective: v2.std.node.Conj } => v2.std.witness.Holds { value: tokens_root.children }
         _ =>
           v2.std.witness.Violates {
             diagnostic: v2.std.diagnostic.Diagnostic {
@@ -865,15 +865,15 @@ fn ts_grammar_relation_row_token_edges_witness(row: v2.std.node.Node) -> v2.std.
             }
           }
       }
-    v2.std.diagnostic.Rejected { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
+    Rejected { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
   }
 }
 
 fn ts_task_serialize_source_witness() -> v2.std.witness.Witness<v2.std.node.Node> {
   match ts_task_type_alias_relation_row_witness() {
-    v2.std.witness.Holds { value: row } =>
+    Holds { value: row } =>
       match ts_grammar_relation_row_token_edges_witness(row: row) {
-        v2.std.witness.Holds { value: token_edges } =>
+        Holds { value: token_edges } =>
           v2.std.witness.Holds {
             value: v2.std.node.Node {
               kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
@@ -884,9 +884,9 @@ fn ts_task_serialize_source_witness() -> v2.std.witness.Witness<v2.std.node.Node
               occurrence_id: v2.std.node.SyntheticOccurrence
 }
           }
-        v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+        Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
       }
-    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -1047,22 +1047,22 @@ fn ts_exemplared_formal_productions_for_lhs(lhs: v2.std.node.Symbol) -> List<v2.
 
 fn ts_eager_grammar_relation_row_witness(lhs: v2.std.node.Symbol) -> v2.std.witness.Witness<v2.std.node.Node> {
   match ts_exemplar_emitted_for_lhs(lhs: lhs) {
-    v2.std.witness.Holds { value: emitted } =>
+    Holds { value: emitted } =>
       let productions = ts_exemplared_formal_productions_for_lhs(lhs: lhs)
       match v2.std.grammar.formal_production_for_lhs_exact(
         productions: productions,
         lhs: lhs,
         child: emitted
       ) {
-        v2.std.witness.Holds { value: production } =>
+        Holds { value: production } =>
           v2.std.grammar.derive_grammar_relation_row_node(
             production: production,
             productions: productions,
             emitted: emitted
           )
-        v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+        Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
       }
-    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -1089,9 +1089,9 @@ fn ts_pr3_identity_serialize_source_children() -> List<v2.std.node.Edge> {
 
 fn ts_pr3_identity_serialize_source_witness() -> v2.std.witness.Witness<v2.std.node.Node> {
   match ts_pr3_identity_relation_row_witness() {
-    v2.std.witness.Holds { value: row } =>
+    Holds { value: row } =>
       match ts_grammar_relation_row_token_edges_witness(row: row) {
-        v2.std.witness.Holds { value: token_edges } =>
+        Holds { value: token_edges } =>
           v2.std.witness.Holds {
             value: v2.std.node.Node {
               kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
@@ -1102,17 +1102,17 @@ fn ts_pr3_identity_serialize_source_witness() -> v2.std.witness.Witness<v2.std.n
               occurrence_id: v2.std.node.SyntheticOccurrence
 }
           }
-        v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+        Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
       }
-    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
 fn ts_pr3_translation_rules_witness() -> v2.std.witness.Witness<v2.std.node.Node> {
   match ts_task_type_alias_relation_row_witness() {
-    v2.std.witness.Holds { value: task_row } =>
+    Holds { value: task_row } =>
       match ts_pr3_identity_relation_row_witness() {
-        v2.std.witness.Holds { value: pr3_row } =>
+        Holds { value: pr3_row } =>
           v2.std.witness.Holds {
             value: v2.std.node.Node {
               kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
@@ -1133,17 +1133,17 @@ fn ts_pr3_translation_rules_witness() -> v2.std.witness.Witness<v2.std.node.Node
               occurrence_id: v2.std.node.SyntheticOccurrence
 }
           }
-        v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+        Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
       }
-    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
 fn ts_pr3_identity_target_model_bundle_witness() -> v2.std.witness.Witness<v2.std.node.Node> {
   match ts_pr3_translation_rules_witness() {
-    v2.std.witness.Holds { value: rules } =>
+    Holds { value: rules } =>
       match ts_pr3_identity_serialize_source_witness() {
-        v2.std.witness.Holds { value: serialize } =>
+        Holds { value: serialize } =>
           v2.std.witness.Holds {
             value: v2.std.node.Node {
               kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
@@ -1168,9 +1168,9 @@ fn ts_pr3_identity_target_model_bundle_witness() -> v2.std.witness.Witness<v2.st
               occurrence_id: v2.std.node.SyntheticOccurrence
 }
           }
-        v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+        Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
       }
-    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -1196,7 +1196,7 @@ fn ts_pr3_identity_binding_spellings() -> Map<v2.std.node.Symbol, String> {
 
 fn ts_pr3_identity_target_model_witness() -> v2.std.witness.Witness<v2.std.compilers.target_model.TargetModel> {
   match ts_pr3_identity_target_model_bundle_witness() {
-    v2.std.witness.Holds { value: bundle } =>
+    Holds { value: bundle } =>
       v2.std.witness.Holds {
         value: v2.std.compilers.target_model.TargetModel {
           produced_decl_support: v2.std.compilers.target_model.ProducedDeclUnwired,
@@ -1208,7 +1208,7 @@ fn ts_pr3_identity_target_model_witness() -> v2.std.witness.Witness<v2.std.compi
           runtime_row: v2.std.host_transport.target_emit_host_runtime_row_unconfigured
         }
       }
-    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -1237,7 +1237,7 @@ fn ts_translation_rules_node() -> v2.std.node.Node {
 
 fn ts_translation_rules_witness() -> v2.std.witness.Witness<v2.std.node.Node> {
   match ts_task_type_alias_relation_row_witness() {
-    v2.std.witness.Holds { value: task_row } =>
+    Holds { value: task_row } =>
       v2.std.witness.Holds {
         value: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
@@ -1254,7 +1254,7 @@ fn ts_translation_rules_witness() -> v2.std.witness.Witness<v2.std.node.Node> {
           occurrence_id: v2.std.node.SyntheticOccurrence
 }
       }
-    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -1792,9 +1792,9 @@ fn ts_sg2_disj_source_type_node() -> v2.std.node.Node {
 
 fn ts_task_target_model_bundle_witness() -> v2.std.witness.Witness<v2.std.node.Node> {
   match ts_translation_rules_witness() {
-    v2.std.witness.Holds { value: rules } =>
+    Holds { value: rules } =>
       match ts_task_serialize_source_witness() {
-        v2.std.witness.Holds { value: serialize } =>
+        Holds { value: serialize } =>
           v2.std.witness.Holds {
             value: v2.std.node.Node {
               kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
@@ -1819,15 +1819,15 @@ fn ts_task_target_model_bundle_witness() -> v2.std.witness.Witness<v2.std.node.N
               occurrence_id: v2.std.node.SyntheticOccurrence
 }
           }
-        v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+        Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
       }
-    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
 fn ts_task_target_model_witness() -> v2.std.witness.Witness<v2.std.compilers.target_model.TargetModel> {
   match ts_task_target_model_bundle_witness() {
-    v2.std.witness.Holds { value: bundle } =>
+    Holds { value: bundle } =>
       v2.std.witness.Holds {
         value: v2.std.compilers.target_model.TargetModel {
           produced_decl_support: v2.std.compilers.target_model.ProducedDeclUnwired,
@@ -1839,7 +1839,7 @@ fn ts_task_target_model_witness() -> v2.std.witness.Witness<v2.std.compilers.tar
           runtime_row: v2.std.host_transport.target_emit_host_runtime_row_unconfigured
         }
       }
-    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -2264,8 +2264,8 @@ fn ts_lex_token_symbol(sym: v2.std.node.Symbol) -> Bool {
 
 fn ts_formal_grammar_symbol_from_token(token: v2.std.compilers.target_model.ConcreteSyntaxToken) -> v2.std.grammar.FormalGrammarSymbol {
   match token {
-    v2.std.compilers.target_model.FixedToken { token_class: c } => v2.std.grammar.grammar_formal_terminal(identity: c)
-    v2.std.compilers.target_model.BoundToken { token_class: c, binding: b } => v2.std.grammar.grammar_formal_terminal_bound(identity: c, binding: b)
+    FixedToken { token_class: c } => v2.std.grammar.grammar_formal_terminal(identity: c)
+    BoundToken { token_class: c, binding: b } => v2.std.grammar.grammar_formal_terminal_bound(identity: c, binding: b)
   }
 }
 
@@ -3062,7 +3062,7 @@ fn ts_build_per_language_fact_bundle_registry() -> v2.std.diagnostic.Outcome<v2.
     axis: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {},
     value: ts_inhabitant_atom(id: ts_facts_number.surface_spelling)
   ) {
-    v2.std.diagnostic.Accepted { value: r0, diagnostics: _ } =>
+    Accepted { value: r0, diagnostics: _ } =>
       match ts_insert_per_language_primitive_axis(
         registry: r0,
         subject: number_subject,
@@ -3070,7 +3070,7 @@ fn ts_build_per_language_fact_bundle_registry() -> v2.std.diagnostic.Outcome<v2.
         axis: v2.std.model_core.ModelCoreFactAxisWidth {},
         value: ts_inhabitant_atom(id: ^ts_tag_bits64)
       ) {
-        v2.std.diagnostic.Accepted { value: r1, diagnostics: _ } =>
+        Accepted { value: r1, diagnostics: _ } =>
           match ts_insert_per_language_primitive_axis(
             registry: r1,
             subject: number_subject,
@@ -3078,7 +3078,7 @@ fn ts_build_per_language_fact_bundle_registry() -> v2.std.diagnostic.Outcome<v2.
             axis: v2.std.model_core.ModelCoreFactAxisEncoding {},
             value: ts_inhabitant_atom(id: ts_facts_number.ieee754_binary)
           ) {
-            v2.std.diagnostic.Accepted { value: r2, diagnostics: _ } =>
+            Accepted { value: r2, diagnostics: _ } =>
               match ts_insert_per_language_primitive_axis(
                 registry: r2,
                 subject: bigint_subject,
@@ -3086,7 +3086,7 @@ fn ts_build_per_language_fact_bundle_registry() -> v2.std.diagnostic.Outcome<v2.
                 axis: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {},
                 value: ts_inhabitant_atom(id: ts_facts_bigint.surface_spelling)
               ) {
-                v2.std.diagnostic.Accepted { value: r3, diagnostics: _ } =>
+                Accepted { value: r3, diagnostics: _ } =>
                   match ts_insert_per_language_primitive_axis(
                     registry: r3,
                     subject: bigint_subject,
@@ -3094,7 +3094,7 @@ fn ts_build_per_language_fact_bundle_registry() -> v2.std.diagnostic.Outcome<v2.
                     axis: v2.std.model_core.ModelCoreFactAxisEncoding {},
                     value: ts_inhabitant_atom(id: ts_facts_bigint.encoding)
                   ) {
-                    v2.std.diagnostic.Accepted { value: r4, diagnostics: _ } =>
+                    Accepted { value: r4, diagnostics: _ } =>
                       match ts_insert_per_language_primitive_axis(
                         registry: r4,
                         subject: bool_subject,
@@ -3102,7 +3102,7 @@ fn ts_build_per_language_fact_bundle_registry() -> v2.std.diagnostic.Outcome<v2.
                         axis: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {},
                         value: ts_inhabitant_atom(id: ts_facts_boolean.surface_spelling)
                       ) {
-                        v2.std.diagnostic.Accepted { value: r5, diagnostics: _ } =>
+                        Accepted { value: r5, diagnostics: _ } =>
                           match ts_insert_per_language_primitive_axis(
                             registry: r5,
                             subject: bool_subject,
@@ -3110,7 +3110,7 @@ fn ts_build_per_language_fact_bundle_registry() -> v2.std.diagnostic.Outcome<v2.
                             axis: v2.std.model_core.ModelCoreFactAxisEncoding {},
                             value: ts_inhabitant_atom(id: ts_facts_boolean.encoding)
                           ) {
-                            v2.std.diagnostic.Accepted { value: r6, diagnostics: _ } =>
+                            Accepted { value: r6, diagnostics: _ } =>
                               match ts_insert_per_language_primitive_axis(
                                 registry: r6,
                                 subject: string_subject,
@@ -3118,7 +3118,7 @@ fn ts_build_per_language_fact_bundle_registry() -> v2.std.diagnostic.Outcome<v2.
                                 axis: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {},
                                 value: ts_inhabitant_atom(id: ts_facts_string.surface_spelling)
                               ) {
-                                v2.std.diagnostic.Accepted { value: r7, diagnostics: _ } =>
+                                Accepted { value: r7, diagnostics: _ } =>
                                   ts_insert_per_language_primitive_axis(
                                     registry: r7,
                                     subject: string_subject,
@@ -3126,28 +3126,28 @@ fn ts_build_per_language_fact_bundle_registry() -> v2.std.diagnostic.Outcome<v2.
                                     axis: v2.std.model_core.ModelCoreFactAxisEncoding {},
                                     value: ts_inhabitant_atom(id: ts_facts_string.encoding)
                                   )
-                                v2.std.diagnostic.Rejected { diagnostics: d } =>
+                                Rejected { diagnostics: d } =>
                                   v2.std.diagnostic.Rejected { diagnostics: d }
                               }
-                            v2.std.diagnostic.Rejected { diagnostics: d } =>
+                            Rejected { diagnostics: d } =>
                               v2.std.diagnostic.Rejected { diagnostics: d }
                           }
-                        v2.std.diagnostic.Rejected { diagnostics: d } =>
+                        Rejected { diagnostics: d } =>
                           v2.std.diagnostic.Rejected { diagnostics: d }
                       }
-                    v2.std.diagnostic.Rejected { diagnostics: d } =>
+                    Rejected { diagnostics: d } =>
                       v2.std.diagnostic.Rejected { diagnostics: d }
                   }
-                v2.std.diagnostic.Rejected { diagnostics: d } =>
+                Rejected { diagnostics: d } =>
                   v2.std.diagnostic.Rejected { diagnostics: d }
               }
-            v2.std.diagnostic.Rejected { diagnostics: d } =>
+            Rejected { diagnostics: d } =>
               v2.std.diagnostic.Rejected { diagnostics: d }
           }
-        v2.std.diagnostic.Rejected { diagnostics: d } =>
+        Rejected { diagnostics: d } =>
           v2.std.diagnostic.Rejected { diagnostics: d }
       }
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }

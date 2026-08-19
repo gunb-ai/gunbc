@@ -232,8 +232,8 @@ test fn g2_unknown_path_pattern_fail_closed_touched() -> Bool {
 
 test fn g2_fn_arrow_marshal_host_scaffold_receipt_is_checkable() -> Bool {
   match v2.std.fn_index.fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger {
-    std.disposition.Scaffold { dissolves_to: _, bind: _ } => true
-    std.disposition.Terminal { reason: _ } => false
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
   }
 }
 
@@ -294,22 +294,22 @@ fn selection_projection_over(decls: List<v2.std.fn_index.FnArrowDecl>) -> v2.std
 
 fn projection_is_refused(p: v2.std.live_read.LiveReadSelectionProjection) -> Bool {
   match p {
-    v2.std.live_read.LiveReadSelectionRefused { cause: c } => !string_is_empty(s: c)
-    v2.std.live_read.LiveReadSelectionClassified { classification: k } => v2.lens.live_read_classification.classification_is_local(classification: k) && false
+    LiveReadSelectionRefused { cause: c } => !string_is_empty(s: c)
+    LiveReadSelectionClassified { classification: k } => v2.lens.live_read_classification.classification_is_local(classification: k) && false
   }
 }
 
 fn projection_classification_is_local(p: v2.std.live_read.LiveReadSelectionProjection) -> Bool {
   match p {
-    v2.std.live_read.LiveReadSelectionRefused { cause: _ } => false
-    v2.std.live_read.LiveReadSelectionClassified { classification: c } => v2.lens.live_read_classification.classification_is_local(classification: c)
+    LiveReadSelectionRefused { cause: _ } => false
+    LiveReadSelectionClassified { classification: c } => v2.lens.live_read_classification.classification_is_local(classification: c)
   }
 }
 
 fn projection_classification_has_runtime_read(p: v2.std.live_read.LiveReadSelectionProjection) -> Bool {
   match p {
-    v2.std.live_read.LiveReadSelectionRefused { cause: _ } => false
-    v2.std.live_read.LiveReadSelectionClassified { classification: c } =>
+    LiveReadSelectionRefused { cause: _ } => false
+    LiveReadSelectionClassified { classification: c } =>
       v2.lens.live_read_classification.classification_has_runtime_read(classification: c)
   }
 }

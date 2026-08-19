@@ -114,11 +114,11 @@ fn runner_memory_cap_live_read(host: product.placement_supply.HostIdentity) -> g
   match gunbc.clock_read.clock_now_probed_at() {
     Present { value: probed_at } =>
       match gunbc.systemctl_show_read.systemctl_show_property_read_local(unit: unit, property: extdeps.systemd.MemoryMax) {
-        gunbc.systemctl_show_read.SystemdPropertyCaptured { value: memory_max_raw } =>
+        SystemdPropertyCaptured { value: memory_max_raw } =>
           match gunbc.systemctl_show_read.systemctl_show_property_read_local(unit: unit, property: extdeps.systemd.MemorySwapMax) {
-            gunbc.systemctl_show_read.SystemdPropertyCaptured { value: memory_swap_max_raw } =>
+            SystemdPropertyCaptured { value: memory_swap_max_raw } =>
               match gunbc.systemctl_show_read.systemctl_show_property_read_local(unit: unit, property: extdeps.systemd.MemoryHigh) {
-                gunbc.systemctl_show_read.SystemdPropertyCaptured { value: memory_high_raw } =>
+                SystemdPropertyCaptured { value: memory_high_raw } =>
                   Present {
                     value: gunbc.runner_unit_live_read.runner_unit_live_read_typed(
                       row: gunbc.runner_unit_live_read.RunnerUnitLiveReadRow {
@@ -131,11 +131,11 @@ fn runner_memory_cap_live_read(host: product.placement_supply.HostIdentity) -> g
                       }
                     )
                   }
-                gunbc.systemctl_show_read.SystemdPropertyCaptureRefused { reason: _ } => none
+                SystemdPropertyCaptureRefused { reason: _ } => none
               }
-            gunbc.systemctl_show_read.SystemdPropertyCaptureRefused { reason: _ } => none
+            SystemdPropertyCaptureRefused { reason: _ } => none
           }
-        gunbc.systemctl_show_read.SystemdPropertyCaptureRefused { reason: _ } => none
+        SystemdPropertyCaptureRefused { reason: _ } => none
       }
     gunbc.host_converge.Absent => none
   }

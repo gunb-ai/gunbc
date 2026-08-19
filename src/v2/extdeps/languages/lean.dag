@@ -149,16 +149,16 @@ fn lean_admit_fixed_width_overflow_semantics(
   semantics: std.integer.IntegerOverflowSemantics<LeanOverflowRaiseEffect>
 ) -> LeanOverflowSemanticsAdmission {
   match semantics {
-    std.integer.OverflowReturns { value_rule: std.integer.ReturnWrapping } =>
+    OverflowReturns { value_rule: std.integer.ReturnWrapping } =>
       LeanOverflowAccepted {
         semantics: LeanAdmittedOverflowSemantics { semantics: semantics }
       }
-    std.integer.OverflowReturns { value_rule: std.integer.ReturnSaturating } =>
+    OverflowReturns { value_rule: std.integer.ReturnSaturating } =>
       LeanOverflowRefused {
         observed: semantics,
         reason: ^lean_overflow_refuse_saturating_not_fixed_width_catalog
       }
-    std.integer.OverflowRaises { effect: _ } =>
+    OverflowRaises { effect: _ } =>
       LeanOverflowRefused {
         observed: semantics,
         reason: ^lean_overflow_refuse_raises_not_fixed_width_catalog
@@ -175,8 +175,8 @@ fn lean_overflow_semantics_arm_tag(
   semantics: std.integer.IntegerOverflowSemantics<LeanOverflowRaiseEffect>
 ) -> v2.std.node.Symbol {
   match semantics {
-    std.integer.OverflowReturns { value_rule: _ } => ^lean_overflow_arm_returns
-    std.integer.OverflowRaises { effect: _ } => ^lean_overflow_arm_raises
+    OverflowReturns { value_rule: _ } => ^lean_overflow_arm_returns
+    OverflowRaises { effect: _ } => ^lean_overflow_arm_raises
     std.integer.OverflowUndefined => ^lean_overflow_arm_undefined
   }
 }
@@ -433,7 +433,7 @@ fn lean_overflow_semantics_node(
   semantics: std.integer.IntegerOverflowSemantics<LeanOverflowRaiseEffect>
 ) -> v2.std.node.Node {
   match semantics {
-    std.integer.OverflowReturns { value_rule: rule } => v2.std.node.Node {
+    OverflowReturns { value_rule: rule } => v2.std.node.Node {
       kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
       children: [
         lean_named_edge(
@@ -447,7 +447,7 @@ fn lean_overflow_semantics_node(
       ],
       occurrence_id: v2.std.node.SyntheticOccurrence
 }
-    std.integer.OverflowRaises { effect: effect } => v2.std.node.Node {
+    OverflowRaises { effect: effect } => v2.std.node.Node {
       kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
       children: [
         lean_named_edge(
@@ -883,7 +883,7 @@ fn lean_scalar_algebra_inhabitance_optional(facts: LeanPrimitiveFacts) -> v2.std
 
 fn lean_inhabitance_decl_step(acc: List<v2.std.model_core.AlgebraInhabitanceDecl>, facts: LeanPrimitiveFacts) -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   match lean_scalar_algebra_inhabitance_optional(facts: facts) {
-    v2.std.optional.Present { value: decl } => v2.std.algebra.list_snoc_item(xs: acc, item: decl)
+    Present { value: decl } => v2.std.algebra.list_snoc_item(xs: acc, item: decl)
     v2.std.optional.Absent => acc
   }
 }

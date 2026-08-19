@@ -66,7 +66,7 @@ fn lex_strip_prefix(prefix: String, source: String) -> v2.std.algebra.ListTailRe
     cons: fn(acc, _) {
       match acc {
         v2.std.algebra.TailAbsent => v2.std.algebra.TailAbsent
-        v2.std.algebra.TailFound { tail: r } => v2.std.algebra.list_tail(xs: r)
+        TailFound { tail: r } => v2.std.algebra.list_tail(xs: r)
       }
     }
   )
@@ -75,7 +75,7 @@ fn lex_strip_prefix(prefix: String, source: String) -> v2.std.algebra.ListTailRe
 fn lex_match_prefix(prefix: String, source: String) -> v2.compiler.tokenize.LexMatchResult {
   if v2.std.algebra.is_prefix_of(prefix: prefix, xs: source, eq: fn(a, b) { a == b }) {
     match lex_strip_prefix(prefix: prefix, source: source) {
-      v2.std.algebra.TailFound { tail: rem } => LexMatchAccepted { remaining: rem, lexeme: prefix }
+      TailFound { tail: rem } => LexMatchAccepted { remaining: rem, lexeme: prefix }
       v2.std.algebra.TailAbsent => LexMatchRejected
     }
   } else {
@@ -98,9 +98,9 @@ type DelimitedState {
 
 fn lex_rule_pattern(rule: v2.std.compilers.lexing.LexRule) -> v2.std.compilers.lexing.LexPattern {
   match rule {
-    v2.std.compilers.lexing.TokenRule { token_class: _, pattern: p } => p
-    v2.std.compilers.lexing.TriviaRule { pattern: p } => p
-    v2.std.compilers.lexing.AnnotationRule { annotation_class: _, pattern: p } => p
+    TokenRule { token_class: _, pattern: p } => p
+    TriviaRule { pattern: p } => p
+    AnnotationRule { annotation_class: _, pattern: p } => p
   }
 }
 
@@ -110,11 +110,11 @@ fn lex_match_char_pred(pred: fn(Char) -> Bool, source: String) -> v2.compiler.to
     false =>
       match v2.std.text.string_head(s: source) {
         v2.std.text.CharAbsent => LexMatchRejected
-        v2.std.text.CharFound { value: c } =>
+        CharFound { value: c } =>
           match pred(c) {
             true =>
               match v2.std.text.string_tail(s: source) {
-                v2.std.algebra.TailFound { tail: rest } =>
+                TailFound { tail: rest } =>
                   LexMatchAccepted { remaining: rest, lexeme: std.algebra.Cons { head: c, tail: std.algebra.Empty } }
                 v2.std.algebra.TailAbsent => LexMatchRejected
               }
@@ -218,7 +218,7 @@ fn lex_rule_thunk(rule: v2.std.compilers.lexing.LexRule) -> v2.compiler.tokenize
                 false =>
                   match v2.std.text.string_head(s: rest) {
                     v2.std.text.CharAbsent => LexMatchAccepted { remaining: rest, lexeme: lex }
-                    v2.std.text.CharFound { value: c } =>
+                    CharFound { value: c } =>
                       match v2.compiler.tokenize.char_in_class(c: c, class: v2.std.compilers.lexing.IdentContinueChar) {
                         true => LexMatchRejected
                         false => LexMatchAccepted { remaining: rest, lexeme: lex }
@@ -312,11 +312,11 @@ fn lex_try_compiled(compiled: v2.compiler.tokenize.CompiledLexRule, source: Stri
     LexMatchRejected => LexRuleNoMatch
     LexMatchAccepted { remaining: remaining, lexeme: lexeme } =>
       match compiled.rule {
-        v2.std.compilers.lexing.TokenRule { token_class: class, pattern: _ } =>
+        TokenRule { token_class: class, pattern: _ } =>
           LexRuleToken { class: class, lexeme: lexeme, remaining: remaining }
-        v2.std.compilers.lexing.TriviaRule { pattern: _ } =>
+        TriviaRule { pattern: _ } =>
           LexRuleTrivia { lexeme: lexeme, remaining: remaining }
-        v2.std.compilers.lexing.AnnotationRule { annotation_class: class, pattern: _ } =>
+        AnnotationRule { annotation_class: class, pattern: _ } =>
           LexRuleAnnotation { class: class, lexeme: lexeme, remaining: remaining }
       }
   }
@@ -571,9 +571,9 @@ fn lex_walk_artifact(source: String, file: v2.std.node.Symbol, rules: v2.std.com
 
 fn lex_walk(source: String, file: v2.std.node.Symbol, rules: v2.std.compilers.lexing.LexRuleSet) -> v2.std.diagnostic.Outcome<v2.std.compilers.lexing.TokenStream> {
   match lex_walk_artifact(source: source, file: file, rules: rules) {
-    v2.std.diagnostic.Rejected { diagnostics: ds } =>
+    Rejected { diagnostics: ds } =>
       v2.std.diagnostic.Rejected { diagnostics: ds }
-    v2.std.diagnostic.Accepted { value: artifact, diagnostics: ds } =>
+    Accepted { value: artifact, diagnostics: ds } =>
       v2.std.diagnostic.Accepted { value: v2.std.compilers.lexing.lex_artifact_semantic_tokens(artifact: artifact), diagnostics: ds }
   }
 }
@@ -590,7 +590,7 @@ fn tokenize(text: String, file: v2.std.node.Symbol, rules: v2.std.compilers.lexi
       } else {
         v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.diagnostics_singleton(d: tokenize_lex_e0_source_not_exhausted_diagnostic(at: at)) }
       }
-    v2.std.compilers.lexing.ModeledLexRules { root: rule_set } =>
+    ModeledLexRules { root: rule_set } =>
       lex_walk(source: text, file: file, rules: rule_set)
   }
 }
