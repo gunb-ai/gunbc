@@ -143,6 +143,21 @@ fn realization_vocab_edge_from_fact(fact: LayerImportFact) -> RealizationVocabIm
   }
 }
 
+// Membership of an edge in an exempt population, with the population supplied. The
+// grandfathered-roster reader below is one caller of it, not its definition.
+fn realization_vocab_edge_in(
+  edges: List<RealizationVocabImportEdge>,
+  edge: RealizationVocabImportEdge
+) -> Bool {
+  fold_list(
+    xs: edges,
+    empty: false,
+    cons: fn(acc, candidate) {
+      acc || realization_vocab_import_edge_eq(a: candidate, b: edge)
+    }
+  )
+}
+
 fn realization_vocab_edge_grandfathered(edge: RealizationVocabImportEdge) -> Bool {
   fold_list(
     xs: realization_vocab_grandfathered_edge_roster,
@@ -230,24 +245,80 @@ fn path_has_any_prefix(prefixes: List<String>, path: String) -> Bool {
   )
 }
 
+// THE VOCABULARY AXIS IS AN ARGUMENT, NOT A LITERAL. This lens answers one
+// question -- does module X reach construction vocabulary from set V -- and V was
+// welded to the target-AST set at every use site. Opening it is the DESIGN section 2
+// horizontal move (one axis, not N copies): a second question about a second
+// vocabulary is a row, never a second lens, because a forked lens would be exactly
+// the section 3 duplication this mechanism exists to detect.
+//
+// WHERE THE SETS LIVE, AND WHEN THEY MOVE. A vocabulary set is a fact about the
+// vocabulary, not about this lens, so with a third set these rows belong with their
+// owning modules. With two they do not: the lens is where a reader currently looks,
+// and relocating now would be speculative generality. TRIGGER, not a plan: a third
+// set is authored.
+type RealizationVocabularySet {
+  name: String
+  modules: List<String>
+  module_prefixes: List<String>
+}
+
+fn module_is_in_vocab(module: String, vocab: RealizationVocabularySet) -> Bool {
+  list_contains_str(xs: vocab.modules, target: module)
+    || path_has_any_prefix(prefixes: vocab.module_prefixes, path: module)
+}
+
+fn target_ast_vocabulary() -> RealizationVocabularySet {
+  RealizationVocabularySet {
+    name: "target-ast",
+    modules: target_ast_vocab_modules,
+    module_prefixes: target_ast_vocab_module_prefixes
+  }
+}
+
+// THE CLI/PROCESS CONSTRUCTION VOCABULARY. A module reaching these is building a
+// process invocation: a jq program plan, a CLI surface, or the argv expansion
+// carrier. It is deliberately NOT the bash language vocabulary above -- that set is
+// about emitting a target language, this one is about constructing an argument
+// vector -- and the two are separate sets rather than one widened set precisely
+// because a module may legitimately reach one and not the other.
+data cli_process_vocab_modules: List<String> = [
+  "extdeps.tools.jq",
+  "v2.std.compilers.cli_surface",
+  "extdeps.shell.exec"
+]
+
+data cli_process_vocab_module_prefixes: List<String> = []
+
+fn cli_process_vocabulary() -> RealizationVocabularySet {
+  RealizationVocabularySet {
+    name: "cli-process",
+    modules: cli_process_vocab_modules,
+    module_prefixes: cli_process_vocab_module_prefixes
+  }
+}
+
 fn module_is_target_ast_vocab(module: String) -> Bool {
-  list_contains_str(xs: target_ast_vocab_modules, target: module)
-    || path_has_any_prefix(prefixes: target_ast_vocab_module_prefixes, path: module)
+  module_is_in_vocab(module: module, vocab: target_ast_vocabulary())
 }
 
 fn path_is_realization_edge(path: String) -> Bool {
   path_has_any_prefix(prefixes: realization_edge_path_prefixes, path: path)
 }
 
+// The target-AST binding of the general predicate. It DELEGATES rather than
+// restating the fold: leaving a second copy here would be one predicate with two
+// implementations, which is the fork this lens exists to detect, one level down.
 fn is_realization_vocab_leak_under(
   fact: LayerImportFact,
   edge_prefixes: List<String>
 ) -> Bool {
-  module_is_target_ast_vocab(module: fact.import_module)
-    && (path_has_any_prefix(prefixes: edge_prefixes, path: fact.path) == false)
-    && (realization_vocab_edge_grandfathered(
-      edge: realization_vocab_edge_from_fact(fact: fact)
-    ) == false)
+  is_vocab_leak_in(
+    fact: fact,
+    vocab: target_ast_vocabulary(),
+    edge_prefixes: edge_prefixes,
+    exempt_edges: realization_vocab_grandfathered_edges()
+  )
 }
 
 fn is_realization_vocab_leak(fact: LayerImportFact) -> Bool {
@@ -275,11 +346,49 @@ fn scan_facts_for_leaks_under(
   facts: List<LayerImportFact>,
   edge_prefixes: List<String>
 ) -> List<RealizationVocabularyLeak> {
+  scan_facts_for_leaks_in(
+    facts: facts,
+    vocab: target_ast_vocabulary(),
+    edge_prefixes: edge_prefixes,
+    exempt_edges: realization_vocab_grandfathered_edges()
+  )
+}
+
+// THE GENERALIZED SCAN. Same predicate, same fold, with the vocabulary and the
+// exempt-edge population supplied by the caller instead of read from a literal. The
+// exemptions are a PARAMETER rather than a global roster read because "this
+// vocabulary has zero admitted exceptions" must be a stated fact rather than an
+// accident of the target-AST roster happening not to name any CLI module.
+fn is_vocab_leak_in(
+  fact: LayerImportFact,
+  vocab: RealizationVocabularySet,
+  edge_prefixes: List<String>,
+  exempt_edges: List<RealizationVocabImportEdge>
+) -> Bool {
+  module_is_in_vocab(module: fact.import_module, vocab: vocab)
+    && (path_has_any_prefix(prefixes: edge_prefixes, path: fact.path) == false)
+    && (realization_vocab_edge_in(
+      edges: exempt_edges,
+      edge: realization_vocab_edge_from_fact(fact: fact)
+    ) == false)
+}
+
+fn scan_facts_for_leaks_in(
+  facts: List<LayerImportFact>,
+  vocab: RealizationVocabularySet,
+  edge_prefixes: List<String>,
+  exempt_edges: List<RealizationVocabImportEdge>
+) -> List<RealizationVocabularyLeak> {
   fold_list(
     xs: facts,
     empty: empty_realization_vocab_leaks,
     cons: fn(acc, fact) {
-      if is_realization_vocab_leak_under(fact: fact, edge_prefixes: edge_prefixes) {
+      if is_vocab_leak_in(
+        fact: fact,
+        vocab: vocab,
+        edge_prefixes: edge_prefixes,
+        exempt_edges: exempt_edges
+      ) {
         list_snoc_item(
           xs: acc,
           item: RealizationVocabularyLeak {
@@ -291,6 +400,34 @@ fn scan_facts_for_leaks_under(
         acc
       }
     }
+  )
+}
+
+fn vocab_leak_count_in(
+  facts: List<LayerImportFact>,
+  vocab: RealizationVocabularySet,
+  edge_prefixes: List<String>,
+  exempt_edges: List<RealizationVocabImportEdge>
+) -> Int {
+  length(xs: scan_facts_for_leaks_in(
+    facts: facts,
+    vocab: vocab,
+    edge_prefixes: edge_prefixes,
+    exempt_edges: exempt_edges
+  ))
+}
+
+fn vocab_leak_count_live_in(
+  scan_roots: List<String>,
+  vocab: RealizationVocabularySet,
+  edge_prefixes: List<String>,
+  exempt_edges: List<RealizationVocabImportEdge>
+) -> Int {
+  vocab_leak_count_in(
+    facts: layer_import_facts_live(std_roots: scan_roots, extdeps_roots: []),
+    vocab: vocab,
+    edge_prefixes: edge_prefixes,
+    exempt_edges: exempt_edges
   )
 }
 
@@ -329,6 +466,15 @@ fn realization_vocab_containment_clean_live(scan_roots: List<String>) -> Bool {
   )
 }
 
+// DELIBERATELY TARGET-AST-ONLY, decided rather than left welded. These two
+// projections exist to feed the grandfathered-roster staleness check, and every row
+// in that roster is target-AST debt by construction -- RealizationVocabDebtClass has
+// no other inhabitant. A second vocabulary reaches this lens with an EMPTY exempt
+// population supplied at the call site, so it has no roster for these to be stale
+// against, and parameterizing them now would produce a staleness answer about a
+// population that does not exist. TRIGGER: the first non-empty exempt roster for a
+// second vocabulary is authored, at which point these take the same argument the
+// scan already takes.
 fn realization_vocab_leak_candidate_paths_from_facts(facts: List<LayerImportFact>) -> List<String> {
   fold_list(
     xs: facts,

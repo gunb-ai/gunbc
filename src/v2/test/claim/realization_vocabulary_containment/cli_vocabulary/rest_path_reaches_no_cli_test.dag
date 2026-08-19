@@ -1,0 +1,91 @@
+module v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli
+
+// THE NEGATIVE FALSIFIER FOR THE REST/CLI BOUNDARY.
+//
+// The claim under test is the one the argv lane keeps asserting in prose: a
+// Redfish/REST path constructs no process invocation -- no jq program, no CLI
+// surface, no argv expansion carrier. Prose cannot be contradicted by the tree.
+// This can.
+//
+// WHY THIS IS A FALSIFIER AND NOT A DECORATION. A witness asserting that the REST
+// path constructs a REST carrier restates a type signature: it cannot fail for the
+// reason anyone cares about. The failure this watches for is a CLI carrier
+// APPEARING where none should, so the assertion is over the vocabulary a module
+// reaches, and it reds when a new module in the scanned population reaches CLI
+// construction vocabulary.
+//
+// THE SUBJECT IS NOT AN EMPTY UNIVERSE, which is the usual way a negative claim
+// turns vacuous. The scanned population CONTAINS a module that legitimately reaches
+// this vocabulary -- extdeps.bmc.openbmc_fan_control, which the argv lane routes
+// through jq deliberately -- sitting in the same directory as extdeps.bmc.redfish,
+// which does not. So the scan discriminates WITHIN the population rather than over
+// a population where nothing could have been found, and the RED control below is
+// real corpus data rather than a planted fixture.
+//
+// WHAT EXECUTES AND WHAT DOES NOT. This witness is discovered by the floor and its
+// scan is a live read of the two named directories. It is NOT whole-corpus
+// coverage: a module outside these roots reaching CLI vocabulary is not seen here,
+// and no green from this file may be read as saying otherwise. The whole-corpus
+// half of this lens is enrolled on a cadence that does not currently run, which is
+// a fact about that cadence and not about this witness.
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// The REST/BMC transport population. Both directories, because the boundary claim
+// is about the transport layer as a whole rather than one file.
+data rest_path_scan_roots: List<String> = [
+  "dag/extdeps/bmc",
+  "dag/extdeps/transports"
+]
+
+// THE ONE ADMITTED EDGE, named at exact identity grain. This is not a category or a
+// path prefix: it is one importer reaching one vocabulary module, so a SECOND
+// jq-reaching module anywhere in the scanned roots reds rather than being absorbed
+// by a pattern broad enough to cover it. The admission exists because the fan
+// control path's transport genuinely is a CLI process today; it is the subject of
+// the argv lane, not an exception to the boundary.
+data fan_control_admitted_cli_edges: List<RealizationVocabImportEdge> = [
+  RealizationVocabImportEdge {
+    importer_path: "dag/extdeps/bmc/openbmc_fan_control.dag",
+    vocab_module: "extdeps.tools.jq"
+  }
+]
+
+data no_admitted_cli_edges: List<RealizationVocabImportEdge> = []
+
+// POSITIVE: everything in the REST/BMC transport population except the one admitted
+// edge reaches no CLI construction vocabulary.
+test fn rest_path_reaches_no_cli_construction_vocabulary() -> Bool {
+  vocab_leak_count_live_in(
+    scan_roots: rest_path_scan_roots,
+    vocab: cli_process_vocabulary(),
+    edge_prefixes: [],
+    exempt_edges: fan_control_admitted_cli_edges
+  ) == 0
+}
+
+// RED CONTROL, from live corpus data rather than a fixture: withdraw the admission
+// and the scan must FIND the fan control edge. Without this the positive above is
+// indistinguishable from a scan that reads nothing -- an empty result and a clean
+// result are different states, and only this assertion separates them.
+test fn withdrawing_the_admission_surfaces_the_known_cli_edge() -> Bool {
+  vocab_leak_count_live_in(
+    scan_roots: rest_path_scan_roots,
+    vocab: cli_process_vocabulary(),
+    edge_prefixes: [],
+    exempt_edges: no_admitted_cli_edges
+  ) == 1
+}
+
+// SECOND RED, on the other axis: the scan must not be blind to the vocabulary set
+// itself. The same roots scanned for TARGET-AST vocabulary also report zero, so the
+// two sets are genuinely separate questions over one mechanism rather than one
+// question answered twice.
+test fn rest_path_reaches_no_target_ast_vocabulary() -> Bool {
+  vocab_leak_count_live_in(
+    scan_roots: rest_path_scan_roots,
+    vocab: target_ast_vocabulary(),
+    edge_prefixes: [],
+    exempt_edges: no_admitted_cli_edges
+  ) == 0
+}
