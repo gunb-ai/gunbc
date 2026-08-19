@@ -4,8 +4,9 @@ import std.types { List, String }
 
 data stage0_emit_plan_generated_note: String = "Generated projection — do not hand-edit. Authority: gunbc.stage0_emit_plan over parse-derived regen source identities. DECLARED SCAFFOLD supply; dissolve-on: generated_artifact_gate accepts v2.compiler.source_authority.ModuleStorageIndex, then the host supply deletes. Regen via dag/tools/generated_artifact_gate.dag main_wet."
 
+data stage0_emit_plan_generated_orphan_correction_note: String = "This file's claimed generating authority, gunbc.stage0_emit_plan, was deleted by #8406 (the regen root cut) — no module by that name remains in the corpus, and neither generated_artifact.dag's registry nor generated_artifact_emit.dag's dispatch names this path, so main_wet has no live rule that regenerates this file; it is orphaned data from a deleted fold, not a currently-produced artifact. One row was hand-corrected rather than left standing: compiler_tests.rs was removed from generated_stage0_files/generated_stage0_paths. It is hand-authored Rust test code with no corresponding .dag source module (v1.compiler.compiler_tests does not exist — see stage0_crate_layout.dag's compiler_tests_seed_retained_note) and structurally cannot be freshly emitted, so its presence here falsely modeled it as a planned regen target and collided with its correct SeedRetainedIntrinsicRegistration, breaking derived_generated_hand_disjoint_holds. Restoring this file's real generating authority (or replacing it per the file's own dissolve-on trigger) is out of scope of this correction."
+
 data generated_stage0_files: List<String> = [
-  "compiler_tests.rs",
   "extdeps_cargo.rs",
   "extdeps_cargo_version.rs",
   "extdeps_container_oci_digest.rs",
@@ -137,7 +138,6 @@ data generated_stage0_files: List<String> = [
 ]
 
 data generated_stage0_paths: List<String> = [
-  "src/v1/stage0/src/compiler_tests.rs",
   "src/v1/stage0/src/extdeps_cargo.rs",
   "src/v1/stage0/src/extdeps_cargo_version.rs",
   "src/v1/stage0/src/extdeps_container_oci_digest.rs",

@@ -404,8 +404,11 @@ test fn scaffold_generated_artifact_emit_authority_ref_populated() -> Bool {
     && generated_artifact_emit_authority_ref.decl_name == "artifact_generate"
 }
 
-test fn scaffold_generated_artifact_layout_overlap_repo_paths_is_exactly_v1_interpreter_dispatch() -> Bool {
-  generated_artifact_layout_overlap_repo_paths() == [v1_interpreter_dispatch_generated_repo_path]
+test fn scaffold_generated_artifact_layout_overlap_repo_paths_is_exactly_the_two_dual_pipeline_artifacts() -> Bool {
+  generated_artifact_layout_overlap_repo_paths() == [
+    bootstrap_stage0_crate_layout_generated_repo_path,
+    v1_interpreter_dispatch_generated_repo_path
+  ]
 }
 
 test fn scaffold_generated_artifact_layout_overlap_subset_of_hand_maintained_holds_green() -> Bool {
