@@ -85,7 +85,7 @@ data mt_jade_model_scope: ExternalModelScope = ExternalModelScope {
       field: WholeDeclaration
     }
   },
-  first_citation: extdeps_external_authority_anchor,
+  first_citation: mt_jade_subject_authority_anchor,
   further_citations: [],
 }
 
