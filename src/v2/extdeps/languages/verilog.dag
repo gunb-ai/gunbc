@@ -686,7 +686,7 @@ fn verilog_source_text_module_formal_production() -> v2.std.grammar.FormalProduc
 // not a module grammar. Expressions nest through their own nonterminals for the same reason: a
 // row whose token list happened to spell the whole module would only be the hand serializer
 // moved into data.
-fn verilog_emission_formal_productions() -> v2.std.collection.List<v2.std.grammar.FormalProduction> {
+fn verilog_emission_formal_productions() -> std.types.List<v2.std.grammar.FormalProduction> {
   [
     v2.std.grammar.grammar_formal_production(
       lhs: ^verilog_production_ansi_port,
@@ -1027,7 +1027,7 @@ fn verilog_relation_row_for_productions(
 // The same population in reverse authoring order. Selection is structural, so this must derive a
 // byte-identical row; if it did not, the grammar would be an ordered table pretending to be a
 // relation and the first matching row would win.
-fn verilog_emission_formal_productions_reversed() -> v2.std.collection.List<v2.std.grammar.FormalProduction> {
+fn verilog_emission_formal_productions_reversed() -> std.types.List<v2.std.grammar.FormalProduction> {
   reverse(verilog_emission_formal_productions())
 }
 

@@ -50,7 +50,7 @@ fn format_native_agreement_divergence(d: NativeAgreementDivergence) -> String {
 }
 
 fn first_native_agreement_divergence(
-  divergences: v2.std.collection.List<NativeAgreementDivergence>
+  divergences: std.types.List<NativeAgreementDivergence>
 ) -> Optional<NativeAgreementDivergence> {
   match divergences {
     Empty => Absent
@@ -59,7 +59,7 @@ fn first_native_agreement_divergence(
 }
 
 fn native_agreement_failure_receipt(
-  divergences: v2.std.collection.List<NativeAgreementDivergence>
+  divergences: std.types.List<NativeAgreementDivergence>
 ) -> String {
   match first_native_agreement_divergence(divergences: divergences) {
     Present { value: d } => format_native_agreement_divergence(d: d)

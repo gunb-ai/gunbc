@@ -11,23 +11,23 @@ module test.fixture.floor_expected_red_coherence.severed_chunk_fixture
 // identities are invisible to anything that does not compare authored bodies against
 // the evaluated roster.
 
-fn severed_fixture_chunk_linked_a() -> v2.std.collection.List<v2.std.text.String> {
+fn severed_fixture_chunk_linked_a() -> std.types.List<v2.std.text.String> {
   std.algebra.Cons { head: "fixture.severed.linked_a_first", tail: std.algebra.Cons { head: "fixture.severed.linked_a_second", tail: std.algebra.Empty {} } }
 }
 
-fn severed_fixture_chunk_linked_b() -> v2.std.collection.List<v2.std.text.String> {
+fn severed_fixture_chunk_linked_b() -> std.types.List<v2.std.text.String> {
   std.algebra.Cons { head: "fixture.severed.linked_b_only", tail: std.algebra.Empty {} }
 }
 
 // SEVERED: authored here, never called below.
-fn severed_fixture_chunk_severed() -> v2.std.collection.List<v2.std.text.String> {
+fn severed_fixture_chunk_severed() -> std.types.List<v2.std.text.String> {
   std.algebra.Cons { head: "fixture.severed.orphaned_first", tail: std.algebra.Cons { head: "fixture.severed.orphaned_second", tail: std.algebra.Empty {} } }
 }
 
-fn severed_fixture_chunks() -> v2.std.collection.List<v2.std.collection.List<v2.std.text.String>> {
+fn severed_fixture_chunks() -> std.types.List<std.types.List<v2.std.text.String>> {
   std.algebra.Cons { head: severed_fixture_chunk_linked_a(), tail: std.algebra.Cons { head: severed_fixture_chunk_linked_b(), tail: std.algebra.Empty {} } }
 }
 
-fn severed_fixture_roster() -> v2.std.collection.List<v2.std.text.String> {
+fn severed_fixture_roster() -> std.types.List<v2.std.text.String> {
   v2.std.algebra.list_flat_map(xs: severed_fixture_chunks(), f: fn(chunk) { chunk })
 }

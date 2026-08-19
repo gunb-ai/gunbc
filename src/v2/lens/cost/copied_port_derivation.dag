@@ -25,7 +25,7 @@ fn cost_linear_in_node(cost: SymbolicCost, n: v2.std.node.Node) -> Bool {
   }
 }
 
-fn arrow_domain_param_nodes(arrow: v2.std.node.Node) -> v2.std.collection.List<v2.std.node.Node> {
+fn arrow_domain_param_nodes(arrow: v2.std.node.Node) -> std.types.List<v2.std.node.Node> {
   match arrow.kind {
     TypeNode { connective: Arrow } =>
       fold(arrow.children, init: std.algebra.Empty, f: fn(acc, e) {
@@ -48,15 +48,15 @@ fn arrow_domain_param_nodes(arrow: v2.std.node.Node) -> v2.std.collection.List<v
   }
 }
 
-fn param_list_reverse_to_forward(xs: v2.std.collection.List<v2.std.node.Node>) -> v2.std.collection.List<v2.std.node.Node> {
+fn param_list_reverse_to_forward(xs: std.types.List<v2.std.node.Node>) -> std.types.List<v2.std.node.Node> {
   fold(xs, init: std.algebra.Empty, f: fn(acc, n) { std.algebra.Cons { head: n, tail: acc } })
 }
 
-fn int_list_prepend(item: Int, xs: v2.std.collection.List<Int>) -> v2.std.collection.List<Int> {
+fn int_list_prepend(item: Int, xs: std.types.List<Int>) -> std.types.List<Int> {
   std.algebra.Cons { head: item, tail: xs }
 }
 
-fn linear_param_indices(cost: SymbolicCost, params: v2.std.collection.List<v2.std.node.Node>, idx: Int, acc: v2.std.collection.List<Int>) -> v2.std.collection.List<Int> {
+fn linear_param_indices(cost: SymbolicCost, params: std.types.List<v2.std.node.Node>, idx: Int, acc: std.types.List<Int>) -> std.types.List<Int> {
   match params {
     Empty => acc
     Cons { head: param, tail: rest } =>
@@ -110,7 +110,7 @@ fn some_copied_port_index(idx: Int) -> Optional<Int> {
   Present { value: idx }
 }
 
-fn copied_port_index_from_registry(rows: v2.std.collection.List<v2.std.algebra.CopiedPortFact>, combiner: v2.std.node.Symbol) -> Optional<Int> {
+fn copied_port_index_from_registry(rows: std.types.List<v2.std.algebra.CopiedPortFact>, combiner: v2.std.node.Symbol) -> Optional<Int> {
   fold_list(
     xs: rows,
     empty: Absent,

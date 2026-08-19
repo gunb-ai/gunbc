@@ -105,7 +105,7 @@ fn runtime_value_signed_i32_le_as_int(value: v2.std.runtime.RuntimeValue) -> v2.
   }
 }
 
-fn emit_host_list_map<T, U>(xs: v2.std.collection.List<T>, f: fn(T) -> U) -> v2.std.collection.List<U> {
+fn emit_host_list_map<T, U>(xs: std.types.List<T>, f: fn(T) -> U) -> std.types.List<U> {
   match xs {
     Empty => []
     Cons { head: h, tail: t } => concat([f(h)], emit_host_list_map(xs: t, f: f))
@@ -133,7 +133,7 @@ fn invocation_arg_text(arg: v2.std.host_transport.InvocationArg) -> String {
   }
 }
 
-fn invocation_argv(inv: v2.std.host_transport.ProcessInvocation) -> v2.std.diagnostic.Outcome<v2.std.collection.List<String>> {
+fn invocation_argv(inv: v2.std.host_transport.ProcessInvocation) -> v2.std.diagnostic.Outcome<std.types.List<String>> {
   bind_outcome(
     o: process_program_name(program: inv.program),
     f: fn(program) {
@@ -148,11 +148,11 @@ fn invocation_argv(inv: v2.std.host_transport.ProcessInvocation) -> v2.std.diagn
   )
 }
 
-fn empty_argv_lists() -> v2.std.collection.List<v2.std.collection.List<String>> {
+fn empty_argv_lists() -> std.types.List<std.types.List<String>> {
   []
 }
 
-fn build_invocation_argvs(builds: v2.std.collection.List<v2.std.host_transport.ProcessInvocation>) -> v2.std.diagnostic.Outcome<v2.std.collection.List<v2.std.collection.List<String>>> {
+fn build_invocation_argvs(builds: std.types.List<v2.std.host_transport.ProcessInvocation>) -> v2.std.diagnostic.Outcome<std.types.List<std.types.List<String>>> {
   match builds {
     Empty => v2.std.diagnostic.Accepted { value: empty_argv_lists(), diagnostics: v2.std.diagnostic.None }
     Cons { head: inv, tail: rest } =>
@@ -178,7 +178,7 @@ fn workspace_content_text(content: v2.std.host_transport.WorkspaceContent, emitt
   }
 }
 
-fn emit_host_string_list_digest(xs: v2.std.collection.List<String>, seed: String) -> std.content_hash.ContentHash {
+fn emit_host_string_list_digest(xs: std.types.List<String>, seed: String) -> std.content_hash.ContentHash {
   fold(
     xs,
     init: std.content_hash.content_hash_atom(value: seed),
@@ -190,9 +190,9 @@ fn emit_host_string_list_digest(xs: v2.std.collection.List<String>, seed: String
 }
 
 fn emit_host_materialized_workspace_files(
-  workspace: v2.std.collection.List<v2.std.host_transport.WorkspaceFile>,
+  workspace: std.types.List<v2.std.host_transport.WorkspaceFile>,
   emitted: String
-) -> v2.std.collection.List<v2.std.host_transport.MaterializedWorkspaceFile> {
+) -> std.types.List<v2.std.host_transport.MaterializedWorkspaceFile> {
   emit_host_list_map(
     xs: workspace,
     f: fn(w) {
@@ -205,8 +205,8 @@ fn emit_host_materialized_workspace_files(
 }
 
 fn emit_host_workspace_realization_inputs(
-  files: v2.std.collection.List<v2.std.host_transport.MaterializedWorkspaceFile>
-) -> v2.std.collection.List<std.artifact_store.ArtifactRealizationInput> {
+  files: std.types.List<v2.std.host_transport.MaterializedWorkspaceFile>
+) -> std.types.List<std.artifact_store.ArtifactRealizationInput> {
   emit_host_list_map(
     xs: files,
     f: fn(file) {
@@ -219,8 +219,8 @@ fn emit_host_workspace_realization_inputs(
 }
 
 fn emit_host_build_realization_inputs(
-  builds: v2.std.collection.List<v2.std.collection.List<String>>
-) -> v2.std.collection.List<std.artifact_store.ArtifactRealizationInput> {
+  builds: std.types.List<std.types.List<String>>
+) -> std.types.List<std.artifact_store.ArtifactRealizationInput> {
   match builds {
     Empty => []
     Cons { head: argv, tail: rest } =>
@@ -240,8 +240,8 @@ fn emit_host_build_realization_inputs(
 }
 
 fn emit_host_input_realization_digest(
-  files: v2.std.collection.List<v2.std.host_transport.MaterializedWorkspaceFile>,
-  builds: v2.std.collection.List<v2.std.collection.List<String>>
+  files: std.types.List<v2.std.host_transport.MaterializedWorkspaceFile>,
+  builds: std.types.List<std.types.List<String>>
 ) -> std.content_hash.ContentHash {
   std.artifact_store.artifact_realization_digest(
     inputs: concat(
@@ -270,7 +270,7 @@ fn emit_host_byte_from_octet(octet: Int) -> std.bit.Byte {
   }
 }
 
-fn emit_host_octets_byte_string(octets: v2.std.collection.List<Int>) -> v2.std.host_transport.ByteString {
+fn emit_host_octets_byte_string(octets: std.types.List<Int>) -> v2.std.host_transport.ByteString {
   emit_host_list_map(xs: octets, f: fn(o) { emit_host_byte_from_octet(octet: o) })
 }
 
@@ -318,7 +318,7 @@ fn run_host_process_with_cache(
   source: extdeps.communication.medium.Medium<String>,
   fixture_inputs: v2.compiler.eval.Inputs,
   use_cache: Bool,
-  run_args: v2.std.collection.List<String>
+  run_args: std.types.List<String>
 ) -> v2.std.diagnostic.Outcome<v2.std.host_run.EmitHostRunReceipt> {
   let _inputs = fixture_inputs
   let transport = row.transport
@@ -345,7 +345,7 @@ fn run_host_process_admitted(
   target: v2.std.compilers.target_model.TargetModel,
   source: extdeps.communication.medium.Medium<String>,
   use_cache: Bool,
-  run_args: v2.std.collection.List<String>
+  run_args: std.types.List<String>
 ) -> v2.std.diagnostic.Outcome<v2.std.host_run.EmitHostRunReceipt> {
   bind_outcome(
     o: build_invocation_argvs(builds: transport.build),
@@ -453,7 +453,7 @@ fn run_emit_host_cached_with_run_args(
   target: v2.std.compilers.target_model.TargetModel,
   source: extdeps.communication.medium.Medium<String>,
   fixture_inputs: v2.compiler.eval.Inputs,
-  run_args: v2.std.collection.List<String>
+  run_args: std.types.List<String>
 ) -> v2.std.diagnostic.Outcome<v2.std.host_run.EmitHostRunReceipt> {
   bind_outcome(
     o: runtime_row_from_target(target: target),
@@ -512,7 +512,7 @@ fn run_test_claim_emit_vs_eval_verdict(
   }
 }
 
-fn emit_host_no_run_args() -> v2.std.collection.List<String> {
+fn emit_host_no_run_args() -> std.types.List<String> {
   []
 }
 
@@ -598,7 +598,7 @@ fn run_test_claim_emit_vs_eval_verdict_from_source_cached(
   target: v2.std.compilers.target_model.TargetModel,
   source_outcome: v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>>,
   workspace_dir: String,
-  run_args: v2.std.collection.List<String>,
+  run_args: std.types.List<String>,
   claim_input_root: Node,
   expected_eval_root: Node,
   expected: v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>,
@@ -761,7 +761,7 @@ fn run_test_claim_from_source_emit_vs_eval_cached_for_claim(
   source_outcome: v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>>,
   target: v2.std.compilers.target_model.TargetModel,
   workspace_dir: String,
-  run_args: v2.std.collection.List<String>,
+  run_args: std.types.List<String>,
   claim_input_root: Node,
   expected_eval_root: Node
 ) -> Verdict<v2.compiler.eval.TestClaimEvalSubject<Node>, RuntimeValue> {
@@ -790,7 +790,7 @@ fn run_test_claim_from_source_emit_vs_eval_cached(
   source_outcome: v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>>,
   target: v2.std.compilers.target_model.TargetModel,
   workspace_dir: String,
-  run_args: v2.std.collection.List<String>
+  run_args: std.types.List<String>
 ) -> TestClaimRun<Node, RuntimeValue> {
   match subject.claim {
     EqualsClaim { rhs: rhs, label: _, anchor: _, lhs: lhs, classification: _ } =>
@@ -827,7 +827,7 @@ fn run_test_claim_from_source_emit_vs_eval_cached(
 
 fn run_test_claim_module_emit_vs_eval(
   subject: v2.compiler.eval.TestClaimEvalSubject<Node>,
-  module_decls: v2.std.collection.List<v2.compiler.inferred_tree.InferredTree>,
+  module_decls: std.types.List<v2.compiler.inferred_tree.InferredTree>,
   target: v2.std.compilers.target_model.TargetModel
 ) -> TestClaimRun<Node, RuntimeValue> {
   run_test_claim_from_source_emit_vs_eval(

@@ -322,7 +322,7 @@ fn lex_try_compiled(compiled: v2.compiler.tokenize.CompiledLexRule, source: Stri
   }
 }
 
-fn lex_compile_rules(rules: List<v2.std.compilers.lexing.LexRule>) -> v2.std.collection.List<v2.compiler.tokenize.CompiledLexRule> {
+fn lex_compile_rules(rules: List<v2.std.compilers.lexing.LexRule>) -> std.types.List<v2.compiler.tokenize.CompiledLexRule> {
   let reversed = v2.std.algebra.fold_list(
     xs: rules,
     empty: std.algebra.Empty,

@@ -67,7 +67,7 @@ fn row_token_spine_tokens(row: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Li
 fn operational_parse_tree_project_to_formal_captures(
   captured: v2.std.node.Node,
   binding_to_class: Map<v2.std.node.Symbol, v2.std.node.Symbol>
-) -> v2.std.collection.List<v2.std.node.Symbol> {
+) -> std.types.List<v2.std.node.Symbol> {
   match v2.std.grammar.node_atom_identity_optional(node: captured) {
     Present { value: id } =>
       v2.std.algebra.list_append(
@@ -110,7 +110,7 @@ fn grammar_relation_row_forward_selection(frontier: List<v2.std.node.Symbol>, ru
   v2.std.grammar.grammar_relation_row_forward_token_spine_selection(frontier: frontier, rules: rules)
 }
 
-fn concrete_syntax_token_spine_classes(tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> v2.std.collection.List<v2.std.node.Symbol> {
+fn concrete_syntax_token_spine_classes(tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> std.types.List<v2.std.node.Symbol> {
   fold(
     tokens,
     init: std.algebra.Empty,

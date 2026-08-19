@@ -22,31 +22,31 @@ type HandMaintainedOutcome
   | HandUnverifiable { filename: v2.std.text.String, reason: v2.std.text.String }
 
 type RequiredRegenRefusal
-  = GeneratedDrift { paths: v2.std.collection.List<v2.std.text.String> }
+  = GeneratedDrift { paths: std.types.List<v2.std.text.String> }
   | SurfacePopulationMismatch {
-      emitted_not_committed: v2.std.collection.List<v2.std.text.String>
-      committed_not_emitted: v2.std.collection.List<v2.std.text.String>
+      emitted_not_committed: std.types.List<v2.std.text.String>
+      committed_not_emitted: std.types.List<v2.std.text.String>
     }
   | CompileRefused { reason: v2.std.text.String }
-  | HandUnverifiableRefused { entries: v2.std.collection.List<v2.std.text.String> }
+  | HandUnverifiableRefused { entries: std.types.List<v2.std.text.String> }
   | PlannedExecutedMismatch { planned: Int, executed: Int }
   | EmptyCommittedPopulation
   | EmptyEmitResult
   | CandidateTreeAbsent { reason: v2.std.text.String }
 
 type RequiredRegenAttempt {
-  generated_outcomes: v2.std.collection.List<RegenSurfaceOutcome>
-  hand_outcomes: v2.std.collection.List<HandMaintainedOutcome>
+  generated_outcomes: std.types.List<RegenSurfaceOutcome>
+  hand_outcomes: std.types.List<HandMaintainedOutcome>
   authority_digest: v2.std.text.String
 }
 
 type RequiredRegenSyncAdmission
   = RequiredRegenSyncRunnable { attempt: v2.workflow.required_regen.RequiredRegenAttempt }
-  | RequiredRegenSyncRefused { refusals: v2.std.collection.List<RequiredRegenRefusal> }
+  | RequiredRegenSyncRefused { refusals: std.types.List<RequiredRegenRefusal> }
 
-data no_regen_refusals: v2.std.collection.List<RequiredRegenRefusal> = []
+data no_regen_refusals: std.types.List<RequiredRegenRefusal> = []
 
-data no_string_paths: v2.std.collection.List<v2.std.text.String> = []
+data no_string_paths: std.types.List<v2.std.text.String> = []
 
 fn surface_is_drift(o: RegenSurfaceOutcome) -> Bool {
   match o {
@@ -58,9 +58,9 @@ fn surface_is_drift(o: RegenSurfaceOutcome) -> Bool {
 }
 
 fn collect_generated_drift_paths(
-  acc: v2.std.collection.List<v2.std.text.String>,
+  acc: std.types.List<v2.std.text.String>,
   o: RegenSurfaceOutcome
-) -> v2.std.collection.List<v2.std.text.String> {
+) -> std.types.List<v2.std.text.String> {
   match o {
     SurfaceDrifted { relative_path: path } => std.algebra.Cons { head: path, tail: acc }
     EmittedNotCommitted { relative_path: path } => std.algebra.Cons { head: path, tail: acc }
@@ -79,9 +79,9 @@ fn hand_is_unverifiable(o: HandMaintainedOutcome) -> Bool {
 }
 
 fn collect_hand_unverifiable(
-  acc: v2.std.collection.List<v2.std.text.String>,
+  acc: std.types.List<v2.std.text.String>,
   o: HandMaintainedOutcome
-) -> v2.std.collection.List<v2.std.text.String> {
+) -> std.types.List<v2.std.text.String> {
   match o {
     HandUnverifiable { filename: name, reason: reason } =>
       std.algebra.Cons { head: concat(name, concat(": ", reason)), tail: acc }
@@ -94,8 +94,8 @@ fn collect_hand_unverifiable(
 // Hand-maintained DRIFT is expected on a clean tree (main.rs and known emitter gaps).
 // Only UNVERIFIABLE hand rows refuse sync admission.
 fn required_regen_sync_admission(
-  generated_outcomes: v2.std.collection.List<RegenSurfaceOutcome>,
-  hand_outcomes: v2.std.collection.List<HandMaintainedOutcome>,
+  generated_outcomes: std.types.List<RegenSurfaceOutcome>,
+  hand_outcomes: std.types.List<HandMaintainedOutcome>,
   authority_digest: v2.std.text.String,
   planned_surfaces: Int,
   executed_surfaces: Int

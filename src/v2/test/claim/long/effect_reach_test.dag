@@ -3,7 +3,7 @@ module v2.test.claim.long.effect_reach_test
 
 data sn_source_rel_path: v2.std.text.String = "src/v2/compiler/03_normalize.dag"
 
-data fixture_transport_facts: v2.std.collection.List<v2.lens.witness_cost_locality.ModuleImportFact> = [
+data fixture_transport_facts: std.types.List<v2.lens.witness_cost_locality.ModuleImportFact> = [
   v2.lens.witness_cost_locality.ModuleImportFact {
     module: "fix.witness",
     imports: ["fix.transport", "fix.std_logic"]
@@ -12,15 +12,15 @@ data fixture_transport_facts: v2.std.collection.List<v2.lens.witness_cost_locali
   v2.lens.witness_cost_locality.ModuleImportFact { module: "fix.harness", imports: [] }
 ]
 
-data fixture_severed_facts: v2.std.collection.List<v2.lens.witness_cost_locality.ModuleImportFact> = [
+data fixture_severed_facts: std.types.List<v2.lens.witness_cost_locality.ModuleImportFact> = [
   v2.lens.witness_cost_locality.ModuleImportFact { module: "fix.witness", imports: ["fix.std_logic"] }
 ]
 
-data fixture_hermetic_facts: v2.std.collection.List<v2.lens.witness_cost_locality.ModuleImportFact> = [
+data fixture_hermetic_facts: std.types.List<v2.lens.witness_cost_locality.ModuleImportFact> = [
   v2.lens.witness_cost_locality.ModuleImportFact { module: "fix.hermetic_witness", imports: ["fix.std_logic"] }
 ]
 
-data fixture_path_data_inits: v2.std.collection.List<v2.std.data_index.DataInitDecl> = [
+data fixture_path_data_inits: std.types.List<v2.std.data_index.DataInitDecl> = [
   v2.std.data_index.DataInitDecl {
     qualified_name: "fix.transport.sn_source_rel",
     module: "fix.transport",
@@ -29,7 +29,7 @@ data fixture_path_data_inits: v2.std.collection.List<v2.std.data_index.DataInitD
   }
 ]
 
-data fixture_empty_data_inits: v2.std.collection.List<v2.std.data_index.DataInitDecl> = []
+data fixture_empty_data_inits: std.types.List<v2.std.data_index.DataInitDecl> = []
 
 // Explicit fixture standing in for `decls` on every synthetic "fix.*" specimen below.
 // call_reachable_decls filters decls by qualified-name membership in the fixture's own
@@ -39,13 +39,13 @@ data fixture_empty_data_inits: v2.std.collection.List<v2.std.data_index.DataInit
 // a test is not entitled to arbitrary computation merely because it is a test). Only the
 // one named live integration below (effect_reach_live_03_normalize_witness_derived_host_reading_holds)
 // legitimately reads v2.std.fn_index.fn_arrow_decl_facts_live().
-data fixture_empty_decls: v2.std.collection.List<v2.std.fn_index.FnArrowDecl> = []
+data fixture_empty_decls: std.types.List<v2.std.fn_index.FnArrowDecl> = []
 
-data fixture_prose_facts: v2.std.collection.List<v2.lens.witness_cost_locality.ModuleImportFact> = [
+data fixture_prose_facts: std.types.List<v2.lens.witness_cost_locality.ModuleImportFact> = [
   v2.lens.witness_cost_locality.ModuleImportFact { module: "fix.prose_witness", imports: ["fix.std_logic"] }
 ]
 
-data fixture_prose_doc_inits: v2.std.collection.List<v2.std.data_index.DataInitDecl> = [
+data fixture_prose_doc_inits: std.types.List<v2.std.data_index.DataInitDecl> = [
   v2.std.data_index.DataInitDecl {
     qualified_name: "fix.prose_witness.witness_doc",
     module: "fix.prose_witness",
@@ -54,7 +54,7 @@ data fixture_prose_doc_inits: v2.std.collection.List<v2.std.data_index.DataInitD
   }
 ]
 
-data fixture_concat_path_facts: v2.std.collection.List<v2.lens.witness_cost_locality.ModuleImportFact> = [
+data fixture_concat_path_facts: std.types.List<v2.lens.witness_cost_locality.ModuleImportFact> = [
   v2.lens.witness_cost_locality.ModuleImportFact {
     module: "fix.concat_witness",
     imports: ["fix.concat_transport", "fix.std_logic"]
@@ -62,7 +62,7 @@ data fixture_concat_path_facts: v2.std.collection.List<v2.lens.witness_cost_loca
   v2.lens.witness_cost_locality.ModuleImportFact { module: "fix.concat_transport", imports: [] }
 ]
 
-data fixture_concat_path_data_inits: v2.std.collection.List<v2.std.data_index.DataInitDecl> = [
+data fixture_concat_path_data_inits: std.types.List<v2.std.data_index.DataInitDecl> = [
   v2.std.data_index.DataInitDecl {
     qualified_name: "fix.concat_transport.sn_path_prefix",
     module: "fix.concat_transport",
@@ -153,7 +153,7 @@ test fn effect_reach_concat_built_path_frontier_not_classified_holds() -> Bool {
   witness_frontier_concat_built_path_not_classified()
 }
 
-data live_03_normalize_facts: v2.std.collection.List<v2.lens.witness_cost_locality.ModuleImportFact> = [
+data live_03_normalize_facts: std.types.List<v2.lens.witness_cost_locality.ModuleImportFact> = [
   v2.lens.witness_cost_locality.ModuleImportFact {
     module: "test.claim.self_host_03_normalize_behavioral_witness",
     imports: ["tools.self_host_module_behavioral_transport_roster"]
@@ -185,7 +185,7 @@ data live_03_normalize_facts: v2.std.collection.List<v2.lens.witness_cost_locali
   }
 ]
 
-data live_03_normalize_data_inits: v2.std.collection.List<v2.std.data_index.DataInitDecl> = [
+data live_03_normalize_data_inits: std.types.List<v2.std.data_index.DataInitDecl> = [
   v2.std.data_index.DataInitDecl {
     qualified_name: "tools.self_host_module_behavioral_transport_roster.compiler_module_behavioral_transport_roster",
     module: "tools.self_host_module_behavioral_transport_roster",

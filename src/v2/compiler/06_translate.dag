@@ -3931,7 +3931,7 @@ type TranslateDiagnosticReason
   | TargetFunctionSignatureRealizationLookupMiss
   | TargetTypeExprEmittedShapeMalformed
 
-fn translate_diagnostic_reason_variants() -> v2.std.collection.List<TranslateDiagnosticReason> {
+fn translate_diagnostic_reason_variants() -> std.types.List<TranslateDiagnosticReason> {
   [
     TargetBundleMalformed,
     TargetBundleDuplicateEdge,
@@ -3999,7 +3999,7 @@ fn translate_diagnostic_reason_from_symbol(sym: v2.std.node.Symbol) -> v2.std.op
   )
 }
 
-fn translate_diagnostic_reason_roster() -> v2.std.collection.List<v2.std.node.Symbol> {
+fn translate_diagnostic_reason_roster() -> std.types.List<v2.std.node.Symbol> {
   fold(translate_diagnostic_reason_variants(), init: std.algebra.Empty, f: fn(acc, variant) {
     v2.std.algebra.list_snoc_item(
       xs: acc,
