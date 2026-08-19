@@ -46,6 +46,7 @@ pub fn container_type_arity() -> Rc<HashMap<String, i64>> {
         static CACHED: Rc<HashMap<String, i64>> = {
             let mut __m = HashMap::new();
             __m.insert("List".to_string(), 1);
+            __m.insert("std.types.List".to_string(), 1);
             __m.insert("Set".to_string(), 1);
             __m.insert("Map".to_string(), 2);
             __m.insert("Witness".to_string(), 1);
@@ -123,6 +124,7 @@ pub fn ordered_element_collections() -> Rc<HashMap<String, bool>> {
         static CACHED: Rc<HashMap<String, bool>> = {
             let mut __m = HashMap::new();
             __m.insert("List".to_string(), true);
+            __m.insert("std.types.List".to_string(), true);
             Rc::new(__m)
         };
     }
@@ -138,6 +140,7 @@ pub fn container_template_algebra_rows() -> Rc<HashMap<String, String>> {
         static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
             __m.insert("List".to_string(), "FreeMonoid".to_string());
+            __m.insert("std.types.List".to_string(), "FreeMonoid".to_string());
             __m.insert("list".to_string(), "FreeMonoid".to_string());
             __m.insert("Set".to_string(), "PointwisePower".to_string());
             __m.insert("set".to_string(), "PointwisePower".to_string());
@@ -162,6 +165,7 @@ pub fn container_template_alias_rows() -> Rc<HashMap<String, String>> {
         static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
             __m.insert("List".to_string(), "FreeMonoid".to_string());
+            __m.insert("std.types.List".to_string(), "FreeMonoid".to_string());
             __m.insert("list".to_string(), "FreeMonoid".to_string());
             __m.insert("Set".to_string(), "PointwisePower".to_string());
             __m.insert("set".to_string(), "PointwisePower".to_string());
@@ -186,6 +190,7 @@ pub fn canonical_container_names() -> Rc<Vec<String>> {
         "BooleanAlgebra".to_string(),
         "FreeMonoid".to_string(),
         "List".to_string(),
+        "std.types.List".to_string(),
         "Map".to_string(),
         "PartialFunction".to_string(),
         "Set".to_string(),
