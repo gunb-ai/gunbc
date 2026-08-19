@@ -1,7 +1,7 @@
-# Git plumbing as an extdeps authority — the exact-ref-mutation lift
+# Git plumbing as an extdeps authority
 
-DRAFT, design-note-first. No code lands from this note yet. It scopes one PR (`GIT-REF-EXACT-0`)
-and states what it deliberately does not decide.
+DRAFT, design-note-first. No code lands from this note yet. It scopes one PR (`GIT-PLUMBING-0`) —
+the dissolution of a split Git authority — and states what it deliberately does not decide.
 
 ## 1. The finding
 
@@ -101,27 +101,54 @@ second publish for one token is a real conflict that must refuse loudly.
 No unconditional arm is added to preserve that call. A site that can name neither create nor exact
 advance refuses until its intended transition is modeled.
 
-## 5. Scope
+## 5. The cut is the whole plumbing surface, not one operation
 
-In:
+DESIGN §3's replacement-migration rule is greedy root-first: attempt the maximal cut and descend
+only on an exact refusal — Y-incomplete, an escaping consumer, or opaque — because a separate
+deeper cut pays admission surfaces, receipts and X-compatibility work the root cut never pays.
 
-1. The three-arm pure model in `extdeps.git.object_store`, preserving every existing refusal arm.
-2. The Git service operations, with typed observation and read-back.
-3. Executed receipts against a real repository: create succeeds; second create refused with the
-   original value intact; exact advance succeeds; stale advance refused; exact delete succeeds;
-   stale delete refused; every success independently read back.
-4. Migration of devboot's `update-ref` sites, with `publish_produced_tree` converted to create.
-5. Re-aiming the ~17 git rows in `gunbc.devboot.transport` to the extdeps operations they actually
-   dissolve into, leaving the ~13 host-effect rows pointing at `host_effect_apply`.
+An earlier draft of this note cut at ref mutation alone and left the other seven plumbing families
+private to `gunbc.devboot`. That had no refusal behind it. Ref mutation is the operation with an
+interesting transactional guarantee, which is a reason to sequence the *proof* there — not a reason
+to leave the authority split standing. Descoping would have left devboot the private authority for
+Git plumbing while each later family paid its own admission round, which is the attractor the rule
+exists to prevent.
 
-Out:
+So the cut is the split itself: **no `gunbc.devboot` declaration constructs a Git plumbing argv
+list, and the corresponding `RetainedWitnessRun` rows delete rather than being repointed.** The
+census in §1 is the deletion population, not a work-list for later.
 
-- The remaining plumbing operations (`write-tree`, `commit-tree`, `hash-object`, `read-tree`,
-  `checkout-index`, `cat-file`, `unpack-file`). They are the same class and the same lift, but ref
-  mutation is the one with a transactional guarantee to prove; sequencing them after keeps this PR
-  one conceptual change. The census in §1 is their work-list.
-- Any SCM behavior. This PR has two consumers available; it makes no claim about either.
-- Devboot's materialization question (§6).
+The upstream-shaped surface, joining `extdeps/git/`'s existing decomposition rather than arriving
+as one generic operation:
+
+```
+object database   HashObjectWrite · CatFileExists · CatFileSize · CatFileRead · UnpackObject
+index and tree    ReadTreeIntoIndex · CheckoutIndexToPrefix · WriteTreeFromIndex
+commit            CommitTree { tree, parents: NoParents | Parents { first, remaining }, message }
+ref store         ObserveRef · CreateRefIfAbsent · AdvanceRefIfExpected · DeleteRefIfExpected
+```
+
+Repository-scoped operations that already exist — `RevParseInRepo`, `CatFileBlobInRepo` — are
+consumed, never reintroduced under a plumbing module.
+
+Acceptance:
+
+1. The three-arm pure ref model in `extdeps.git.object_store`, preserving every existing refusal arm
+   (repository-invalid, stale, missing, duplicate, symbolic cycle, format mismatch, target
+   unavailable, target-kind refused). Create and delete inherit that decode and dereference; they do
+   not re-derive it.
+2. Repository, index path, ref, OID, parent set and output path are typed operation inputs. Git's
+   empty-old encoding exists only in the `CreateRefIfAbsent` transport projection.
+3. Executed against real repositories, with independent read-back on every success: create succeeds;
+   a second create refuses with the original value intact; exact advance succeeds; stale advance
+   refuses; exact delete succeeds; stale delete refuses.
+4. Devboot's behavior survives unchanged except where the migration intentionally exposes a defect
+   (§4).
+5. The ~17 Git rows leave `gunbc.devboot.transport`; the ~13 host-effect rows remain, still pointing
+   at `host_effect_apply`.
+
+Out of scope: any SCM behavior. This PR makes the plumbing an authority with one real consumer cut
+over; M0 is the second consumer and proves the surface is not devboot-specific, in its own PR.
 
 ## 6. Deliberately undecided
 
@@ -134,13 +161,25 @@ contract as a transport and cannot inhabit the target's cache field at all — a
 object database plausibly occupies the same position. `ArtifactRequest` is additionally a closed
 coproduct with an explicit `request_fold`, so a new arm edits every consumer.
 
-The question to answer first is the discriminator: what fact establishes devboot as a *consumer* of
-the materialization contract rather than a realization sitting beneath it? If a cargo build is a
-host-effect realization whose content-addressed store happens to be Git, devboot's uniformity work
-is exactly §5's lift and nothing more.
+Two facts found while scoping this note argue that the question is not merely open but currently
+**unanswerable in the adoption direction**, and both are recorded here so the next author does not
+rediscover them. Devboot decides reuse by `build_subject_equal` over the whole `BuildSubject` after
+the digest narrows to a candidate — the digest is documented there as an index, not a decision —
+whereas `provider_serve` decides on `ContentHash` equality alone. And `MaterializedArtifact` retains
+only `request_key` plus its parts, so the contract holds no subject that could differ from a
+request's: the same-key-different-subject state is not representable, which is why the provider's
+witness suite contains no collision test. Routing devboot into the contract as it stands would
+therefore lower a wall rather than share one.
+
+That is a finding about `std.materialization_provider`, not about devboot or about this PR, and it
+belongs to its own lane with its own operator ruling — the module is contract-stable after four
+review passes and seven consumers are scheduled to adopt it. Nothing here depends on its outcome:
+if the contract later grows an exact-comparison door, devboot's fold is the reference
+implementation; if it does not, devboot remains a build-domain materializer whose storage
+realization is Git. Either way its uniformity work is exactly §5's cut and nothing more.
 
 ## Dissolution trigger (DESIGN §6)
 
 This note dissolves into the carriers it names when the family lands: the model and operations in
-`extdeps.git`, the re-aimed rows in `gunbc.devboot.transport`, and the remaining-plumbing work-list
-as its own registered row.
+`extdeps.git`, and the deleted rows in `gunbc.devboot.transport`. The §6 materialization finding
+does not dissolve with it; it is owed a lane of its own.
