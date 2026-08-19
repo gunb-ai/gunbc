@@ -39155,22 +39155,6 @@ fn str_list(items: impl IntoIterator<Item = String>) -> v1_interpreter::Value {
     ))
 }
 
-fn record_value(
-    ctx: &v1_interpreter::InterpContext,
-    type_name: &str,
-    fields: Vec<(&str, v1_interpreter::Value)>,
-) -> v1_interpreter::Value {
-    v1_interpreter::Value::Record {
-        type_name: ctx.sym(type_name),
-        fields: Rc::new(
-            fields
-                .into_iter()
-                .map(|(n, v)| (ctx.sym(n), v))
-                .collect::<Vec<_>>(),
-        ),
-    }
-}
-
 /// The module carrying the floor's authored thresholds and the long-home roster. Named once,
 /// and evaluated in its OWN exact scope exactly as every claim is, so the module that supplies
 /// the admission facts is not privileged with a wider namespace than the claims they admit.
