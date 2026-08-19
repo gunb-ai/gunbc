@@ -1,0 +1,53 @@
+module test.manual.command_runner_local_argv_receipt
+
+import std.types { Bool, String }
+import extdeps.exec.command { ArgvCommand, LocalExec }
+import gunbc.command_runner { run_shell_command_capture }
+
+// THE DISCRIMINATING RECEIPT FOR THE LOCAL ARGV CUT.
+//
+// WHAT IT DISCRIMINATES, which is the only thing that makes it worth running. The local path used
+// to render argv to text and hand it to bash, which split it back apart on whitespace. It now goes
+// word-for-word to the process. A test that merely runs a command green proves nothing about that
+// change -- it would be equally green with the bash hop restored. So the subject is an argument
+// that the two paths DISAGREE about: one containing a space.
+//
+//   argv:            ["printf", "%s|", "a b"]
+//   direct exec:     one operand "a b"          -> stdout "a b|"
+//   via a shell:     two operands "a" and "b"   -> stdout "a|b|"
+//
+// If this ever reads "a|b|", the local path has reached a shell again and the cut has silently
+// regressed. That is the failure this file exists to make loud.
+//
+// WHY IT IS WET AND NOT ENROLLED. Hermetic evaluation replays an operation's declared
+// mock_response off the declaration and never constructs an argv at all, so the property under
+// test -- how the words reach the process -- is not observable hermetically by construction. A
+// hermetic version of this file could only assert the mock, which is the specification-without-
+// execution trap. It therefore runs wet, by hand, and is excluded from the floor exactly as
+// test/manual/process_argv_expansion_receipt_test.dag is, for the same reason.
+
+test fn spaced_operand_survives_as_one_argument() -> Bool {
+  run_shell_command_capture(
+    command: ArgvCommand { argv: ["printf", "%s|", "a b"] },
+    transport: LocalExec,
+  ).stdout == "a b|"
+}
+
+// The RED half of the same observation, stated as its own assertion rather than left implicit in
+// the equality above: the shell-split rendering must NOT be what comes back. Written separately so
+// a future edit that weakens the positive into something like a nonempty check still trips here.
+test fn shell_split_rendering_is_not_what_comes_back() -> Bool {
+  run_shell_command_capture(
+    command: ArgvCommand { argv: ["printf", "%s|", "a b"] },
+    transport: LocalExec,
+  ).stdout != "a|b|"
+}
+
+// Control that the runner works at all on the ordinary case, so a failure above is read as a
+// splitting regression rather than as the whole path being broken.
+test fn plain_operand_round_trips() -> Bool {
+  run_shell_command_capture(
+    command: ArgvCommand { argv: ["printf", "%s|", "plain"] },
+    transport: LocalExec,
+  ).stdout == "plain|"
+}

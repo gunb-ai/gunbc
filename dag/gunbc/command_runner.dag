@@ -15,6 +15,10 @@ import extdeps.exec.command {
 import extdeps.shell
 import gunbc.shell_bash_runner { shell_exec_via_bash }
 import gunbc.retained_shell_script { retained_runtime }
+import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import std.algebra { Empty }
+import v2.std.compilers.cli_surface { cli_surface_of_literal_words, process_argv_expansion }
+import extdeps.shell.exec { ExitZeroSucceeds, process_exit_is_admitted }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -29,20 +33,72 @@ data command_runner_scaffold: Disposition = Scaffold {
 
 data command_runner_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: run_shell_command — generic ArgvCommand runner routes the typed extdeps.exec.command shape through shell.Exec.Run via the shell_bash_runner heredoc transport; DISSOLVES WHEN host_effect_apply binds ArgvCommand execution as a typed transport handler and dag/gunbc/command_runner.dag retires its shell_exec_via_bash glue")
 
+// THE LOCAL ARM NO LONGER ROUND-TRIPS ARGV THROUGH A STRING.
+//
+// What it used to do, and why none of it was necessary: render the argv to quoted text, wrap the
+// text in a bash heredoc, hand that to a shell, and let the shell split it back into an argument
+// vector -- to reach a seed that ends in Command::new(argv[0]).args(argv[1..]) regardless. Every
+// step in that chain existed only to undo the step before it. On LocalExec command_over_transport
+// is the IDENTITY, so the render had nothing to transform either.
+//
+// The words now reach the process as words. Nothing is quoted, joined, split, or re-parsed, which
+// is the whole point: an argv is a serialization, and a serialization that is immediately
+// deserialized by a different grammar is where argument boundaries get lost.
+//
+// EMPTY ARGV REFUSES rather than defaulting. A command with no argv has no program, and there is
+// no plausible process to run -- inventing one is exactly the fabricated output DESIGN forbids.
+//
+// THE SSH ARM IS UNTOUCHED, deliberately and not by oversight. Its prefix-append shape is wrong in
+// kind -- RFC 4254 carries one string, so the inner command is a nested serialization target
+// rather than a concatenation -- and that target is being built in another lane. Two sessions
+// editing one contested branch is worse than either fix. Measured before leaving it: every one of
+// the 22 live call sites of this module's entry points passes LocalExec, so this arm currently
+// carries no traffic through here at all.
 func run_shell_command(command: ArgvCommand, transport: CommandTransport) -> ProcessExit
   uses net: Network
 {
-  let rendered = shell_command_render(command: command_over_transport(command: command, transport: transport))
-  let run = shell.Exec.Run(
-    script: retained_runtime(
-      body: shell_exec_via_bash(body: rendered),
-      reason: "generic ArgvCommand runner heredoc transport, pending the typed host_effect_apply argv handler" as NonEmptyStr,
-    )
-  )
-  if run.success {
-    ExitSuccess
-  } else {
-    exit_failure(reason: concat("command failed: ", run.stderr))
+  match transport {
+    LocalExec =>
+      match list_head(xs: command.argv) {
+        HeadAbsent =>
+          exit_failure(reason: "empty argv: a command with no words names no program to execute")
+        HeadFound { value: program } => {
+          let run = shell.Exec.RunArgv(
+            program: program as NonEmptyStr,
+            arguments: process_argv_expansion(
+              surface: cli_surface_of_literal_words(words: argv_operands(command: command))
+            ),
+          )
+          if process_exit_is_admitted(policy: ExitZeroSucceeds, exit_code: run.exit_code) {
+            ExitSuccess
+          } else {
+            exit_failure(reason: concat("command failed: ", run.stderr))
+          }
+        }
+      }
+    SshExec { ssh_target: _ } => {
+      let rendered = shell_command_render(command: command_over_transport(command: command, transport: transport))
+      let run = shell.Exec.Run(
+        script: retained_runtime(
+          body: shell_exec_via_bash(body: rendered),
+          reason: "SSH arm only: nested command-string target is owned by another lane; the local arm no longer routes here" as NonEmptyStr,
+        )
+      )
+      if run.success {
+        ExitSuccess
+      } else {
+        exit_failure(reason: concat("command failed: ", run.stderr))
+      }
+    }
+  }
+}
+
+// The operands are everything after the program. A missing tail is the one-word command, whose
+// operand list is empty -- not an error, and not the same state as an empty argv.
+fn argv_operands(command: ArgvCommand) -> List<String> {
+  match list_tail(xs: command.argv) {
+    TailAbsent => Empty
+    TailFound { tail: rest } => rest
   }
 }
 
@@ -56,17 +112,62 @@ type ShellCaptureResult {
   stderr: String
 }
 
+// THE success FIELD IS DERIVED THROUGH A NAMED POLICY, not a bare exit_code == 0, and the
+// difference is not cosmetic. RunArgv deliberately carries no success field because success is a
+// POLICY judgement about an observation rather than part of it -- jq exits 4 to mean "no output"
+// and 1 to mean "false result", neither of which is failure. Routing through
+// process_exit_is_admitted(ExitZeroSucceeds) states which convention this runner applies, so a
+// caller needing a different one has something to change rather than a literal to discover.
+//
+// WHAT THIS SHAPE STILL COLLAPSES, named rather than fixed here. "the program ran and exited
+// nonzero" and "the program could not be executed at all" both arrive as success: false. Under the
+// old bash hop those were genuinely indistinguishable -- a missing binary became the shell's exit
+// 127, which claims the process ran and exited when it never existed. Going direct removes the
+// shell that fabricated that code, so the distinction is now AVAILABLE at the transport even
+// though this record cannot express it.
+//
+// It is not fixed in this change because it is not free: 17 of the 22 live call sites read
+// ShellCaptureResult, and the correct destination is the ProcessOutcome coproduct that already
+// exists one module away -- ProcessOutputPresent / ProcessOutputAbsent / ProcessRefused -- so the
+// repair is a caller migration and belongs with the sites it changes. Recorded here so the
+// collapse is a known state with a destination rather than an unremarked property of the record.
 func run_shell_command_capture(command: ArgvCommand, transport: CommandTransport) -> ShellCaptureResult
   uses net: Network
 {
-  let rendered = shell_command_render(command: command_over_transport(command: command, transport: transport))
-  let run = shell.Exec.Run(
-    script: retained_runtime(
-      body: shell_exec_via_bash(body: rendered),
-      reason: "generic ArgvCommand capture runner heredoc transport, pending the typed host_effect_apply argv handler" as NonEmptyStr,
-    )
-  )
-  ShellCaptureResult { success: run.success, stdout: run.stdout, stderr: run.stderr }
+  match transport {
+    LocalExec =>
+      match list_head(xs: command.argv) {
+        HeadAbsent =>
+          ShellCaptureResult {
+            success: false,
+            stdout: "",
+            stderr: "empty argv: a command with no words names no program to execute",
+          }
+        HeadFound { value: program } => {
+          let run = shell.Exec.RunArgv(
+            program: program as NonEmptyStr,
+            arguments: process_argv_expansion(
+              surface: cli_surface_of_literal_words(words: argv_operands(command: command))
+            ),
+          )
+          ShellCaptureResult {
+            success: process_exit_is_admitted(policy: ExitZeroSucceeds, exit_code: run.exit_code),
+            stdout: run.stdout,
+            stderr: run.stderr,
+          }
+        }
+      }
+    SshExec { ssh_target: _ } => {
+      let rendered = shell_command_render(command: command_over_transport(command: command, transport: transport))
+      let run = shell.Exec.Run(
+        script: retained_runtime(
+          body: shell_exec_via_bash(body: rendered),
+          reason: "SSH arm only: nested command-string target is owned by another lane; the local arm no longer routes here" as NonEmptyStr,
+        )
+      )
+      ShellCaptureResult { success: run.success, stdout: run.stdout, stderr: run.stderr }
+    }
+  }
 }
 
 // Receipt owner probe — admitted under command_runner_scaffold until
