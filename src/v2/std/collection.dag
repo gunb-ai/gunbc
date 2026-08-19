@@ -13,7 +13,7 @@ fn optional_present_witness<T>(opt: Optional<T>) -> Witness<T> {
   witness_from_optional(opt: opt, absent: optional_absent_unwrap_diagnostic())
 }
 
-type List<T> = std.algebra.FreeMonoid<T>
+type List<T> = FreeMonoid<T>
 
 data empty_map_host_binding: std.primitives.PrimitiveContract = std.primitives.empty_map_contract
 data map_insert_host_binding: std.primitives.PrimitiveContract = std.primitives.map_insert_contract
