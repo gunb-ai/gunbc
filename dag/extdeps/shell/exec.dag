@@ -53,6 +53,35 @@ data shell_exec_check_argv_embed_note: String = "shell.Exec.Check transport: arg
 
 data shell_exec_transport_ceiling_authority: ByteSize = host_exec_arg_max_strlen
 
+// THE LOCAL PROCESS-ARGV SEAM (shell.Exec.RunArgv, declared in the service below).
+//
+// Run is argv ["bash", "-s"] with the script on stdin -- the heredoc path -- so every local
+// ArgvCommand in the corpus renders its argv to quoted TEXT and hands that text to a shell, which
+// parses it back into an argument vector. The seed does Command::new(&argv[0]).args(&argv[1..]) at
+// the far end regardless, so the round trip through shell quoting buys nothing and costs the one
+// thing argv-as-serialization exists to stop: a re-parse where the boundary between arguments is
+// inferred from text instead of carried.
+//
+// THE PROGRAM IS NOT AN ARGUMENT, which is why RunArgv takes it as a separate input rather than as
+// the first element of the expansion. execve takes the executable and the argument vector as
+// distinct parameters; conflating them is the same state-space collapse this lane keeps removing.
+// And with the program separate and NonEmptyStr, an EMPTY argv is unconstructible -- there is
+// always an argv[0], so the unspawnable empty vector has no representation here rather than being
+// refused after the fact.
+//
+// NO success: Bool FIELD, DELIBERATELY. `success` is not an observation, it is a POLICY judgement
+// about one -- jq exits 4 to mean "no output" and 1 to mean "false result", neither of which is
+// failure. A Bool beside stdout forces every caller to re-derive that judgement from a field that
+// already threw the information away, and lets a refusal read as empty output. So the wire carries
+// the honest triple -- a wire returns scalars, it cannot return a coproduct -- and the typed
+// outcome is decoded immediately above it by classify_process_observation against a policy the
+// caller declares. That is the pattern already landed for jq (jq_classify_observation /
+// JqExitPolicy / JqOutcome), reused rather than re-coined.
+//
+// The argv IS the expansion, spliced one word per CliArgument, with no shell between the carrier
+// and the process: nothing is quoted, joined, or re-parsed. A nonzero exit is DATA, not an error --
+// refusing there would hard-code one exit policy into the seam and make every legitimate nonzero
+// convention unreachable.
 service shell.Exec {
   operation Run {
     input { script: TransportScript }
@@ -77,49 +106,19 @@ service shell.Exec {
     }
   }
 
-  // ---------------------------------------------------------------------------------------------
-  // THE LOCAL PROCESS-ARGV SEAM. Run above is argv ["bash", "-s"] with the script on stdin -- the
-  // heredoc path -- so every local ArgvCommand in the corpus currently renders its argv to quoted
-  // TEXT and hands that text to a shell, which parses it back into an argument vector. The seed
-  // does Command::new(&argv[0]).args(&argv[1..]) at the far end regardless, so the round trip
-  // through shell quoting buys nothing and costs the one thing argv-as-serialization exists to
-  // stop: a re-parse where the boundary between arguments is inferred from text instead of carried.
-  //
-  // THE PROGRAM IS NOT AN ARGUMENT, which is why it is a separate input rather than the first
-  // element of the expansion. Two reasons, and the second is the load-bearing one. execve takes
-  // the executable and the argument vector as distinct parameters; conflating them is the same
-  // state-space collapse this lane keeps removing. And with the program separate, an EMPTY argv is
-  // unconstructible -- a NonEmptyStr program means there is always an argv[0], so the unspawnable
-  // empty vector has no representation here rather than being refused after the fact.
   operation RunArgv {
     input { program: NonEmptyStr, arguments: ProcessArgvExpansion }
 
-    // NO success: Bool FIELD, DELIBERATELY, and this is the output-shape decision stated where it
-    // is made. `success` is not an observation, it is a POLICY judgement about one -- jq exits 4
-    // to mean "no output" and 1 to mean "false result", neither of which is failure. A Bool beside
-    // stdout forces every caller to re-derive that judgement from a field that already threw the
-    // information away, and lets a refusal read as empty output, which is precisely the confusion
-    // run_shell_command_capture's callers live with today.
-    //
-    // So the wire carries the honest triple -- a wire returns scalars, it cannot return a
-    // coproduct -- and the typed outcome is decoded immediately above it by
-    // classify_process_observation, against a policy the caller declares. That is not a new
-    // pattern: it is the one already landed for jq (jq_classify_observation / JqExitPolicy /
-    // JqOutcome), reused rather than re-coined.
     output {
       exit_code: Int from "exit_code"
       stdout: String from "stdout"
       stderr: String from "stderr"
     }
 
-    // The argv IS the expansion, spliced one word per CliArgument, with no shell between the
-    // carrier and the process. Nothing here is quoted, joined, or re-parsed.
     transport shell {
       argv: [program, arguments]
     }
 
-    // A nonzero exit is DATA, not an error. Refusing here would hard-code one exit policy into the
-    // seam and make every legitimate nonzero convention unreachable.
     exit {
       0 => Unit
       nonzero => Unit

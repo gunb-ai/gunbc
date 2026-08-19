@@ -105,16 +105,17 @@ test fn rest_path_reaches_no_target_ast_vocabulary() -> Bool {
 // edge -- the difference is deliberate: a definition site is a location whose whole
 // purpose is this vocabulary, while an admission is one consumer that happens to
 // need it and must not silently become two.
+// The third entry was added when shell.Exec.RunArgv landed, and it is worth
+// recording HOW rather than just that it happened: this witness REDDED on the
+// change that introduced the edge. exec.dag is itself a member of
+// cli_process_vocab_modules, so its reach into cli_surface is internal to the
+// vocabulary rather than a leak out of anywhere -- the same footing as jq's
+// module, which also defines a CLI surface for the tool it wraps. A roster entry
+// added because a real scan refused is a different thing from one added in
+// anticipation, and only the first kind has been tested.
 data cli_vocab_definition_edges: List<String> = [
   "dag/extdeps/tools/jq.dag",
   "src/v2/std/compilers/cli_surface.dag",
-  // Added when shell.Exec.RunArgv landed, and worth recording HOW rather than just
-  // that it was: this witness redded on the change that introduced the edge. The
-  // module is itself a member of cli_process_vocab_modules, so its reach into
-  // cli_surface is internal to the vocabulary rather than a leak out of anywhere --
-  // the same footing as jq's module, which also defines a CLI surface for the tool
-  // it wraps. A roster entry added because a real scan refused is a different thing
-  // from one added in anticipation, and only the first kind has been tested.
   "dag/extdeps/shell/exec.dag"
 ]
 
