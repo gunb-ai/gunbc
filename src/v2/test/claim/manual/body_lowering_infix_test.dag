@@ -1,29 +1,11 @@
 module v2.test.manual.body_lowering_infix
 
-import v2.std.node {
-  Atom,
-  Node,
-  TypeNode,
-  node_synthetic
-}
+import v2.std.node { Atom, Node, TypeNode, node_synthetic }
 import v2.std.compilers.body_lowering { lower_block_body_atoms }
-import v2.std.node_query {
-  call_argument_targets,
-  call_callee_target,
-  node_is_call
-}
+import v2.std.node_query { call_argument_targets, call_callee_target, node_is_call }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.collection { Absent, List, Present, list_at_optional }
 import v2.std.logic { Bool }
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 fn body_lowering_bool_node(pass: Bool) -> Node {
   if pass {
@@ -60,14 +42,14 @@ fn body_lowering_emitted() -> Outcome<Node> {
   )
 }
 
-fn body_lowering_emit_is_call() -> Bool {
+test fn body_lowering_emit_is_call() -> Bool {
   match body_lowering_emitted() {
     Accepted { value: body, diagnostics: _ } => node_is_call(node: body)
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn body_lowering_emit_callee_is_operator() -> Bool {
+test fn body_lowering_emit_callee_is_operator() -> Bool {
   match body_lowering_emitted() {
     Accepted { value: body, diagnostics: _ } =>
       match call_callee_target(node: body) {
@@ -78,7 +60,7 @@ fn body_lowering_emit_callee_is_operator() -> Bool {
   }
 }
 
-fn body_lowering_emit_args_are_operands() -> Bool {
+test fn body_lowering_emit_args_are_operands() -> Bool {
   match body_lowering_emitted() {
     Accepted { value: body, diagnostics: _ } =>
       let args = call_argument_targets(node: body)
@@ -96,7 +78,7 @@ fn body_lowering_emit_args_are_operands() -> Bool {
   }
 }
 
-fn body_lowering_rejects_non_binary() -> Bool {
+test fn body_lowering_rejects_non_binary() -> Bool {
   match lower_block_body_atoms(
     atoms: [body_lowering_atom_plus()],
     witness: body_lowering_atom_plus()
@@ -104,36 +86,4 @@ fn body_lowering_rejects_non_binary() -> Bool {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }
-}
-
-data claim_body_lowering_emit_is_call: TestClaim = EqualsClaim {
-  label: "manual/body-lowering: binary-infix body lowers to a carrier-recognized Transform call",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: body_lowering_bool_node(pass: body_lowering_emit_is_call()),
-  rhs: body_lowering_bool_node(pass: true),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data claim_body_lowering_emit_callee_is_operator: TestClaim = EqualsClaim {
-  label: "manual/body-lowering: emitted callee child[0] is the infix operator (call_callee_target)",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: body_lowering_bool_node(pass: body_lowering_emit_callee_is_operator()),
-  rhs: body_lowering_bool_node(pass: true),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data claim_body_lowering_emit_args_are_operands: TestClaim = EqualsClaim {
-  label: "manual/body-lowering: emitted args are the operands [x, y] in surface order (call_argument_targets)",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: body_lowering_bool_node(pass: body_lowering_emit_args_are_operands()),
-  rhs: body_lowering_bool_node(pass: true),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data claim_body_lowering_rejects_non_binary: TestClaim = EqualsClaim {
-  label: "manual/body-lowering: a non-binary body atom sequence is the unsupported-form reject",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: body_lowering_bool_node(pass: body_lowering_rejects_non_binary()),
-  rhs: body_lowering_bool_node(pass: true),
-  classification: TestClassification { tier: Tier1, layer: Unit }
 }

@@ -5,25 +5,14 @@ import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
   ComputationNode,
-  Conj,
   Edge,
   Loop,
   Named,
   Node,
   Positional,
-  Symbol,
   Transform,
   TypeNode,
   SyntheticOccurrence
-}
-import v2.std.verification {
-  EqualsClaim,
-  TestClaim,
-  TestClassification,
-  ManualAnchorAbsent,
-  Tier1,
-  Unit,
-  manual_claim_anchor
 }
 import v2.std.witness { Holds }
 
@@ -56,7 +45,7 @@ data loop_linear_input: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-fn loop_linear_claim_holds() -> Bool {
+test fn loop_linear_claim_holds() -> Bool {
   match cost_lens(n: loop_linear_input) {
     Holds { value: actual } =>
       match actual {
@@ -65,24 +54,4 @@ fn loop_linear_claim_holds() -> Bool {
       }
     _ => false
   }
-}
-
-fn loop_linear_claim_rhs() -> Node {
-  if loop_linear_claim_holds() {
-    loop_linear_input
-  } else {
-    Node {
-      kind: TypeNode { connective: Conj },
-      children: [],
-      occurrence_id: SyntheticOccurrence
-}
-  }
-}
-
-data claim_loop_linear: TestClaim = EqualsClaim {
-  label: "lens_cost/loop_linear: loop with loop_bound_edge projects iterative linear cost",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: loop_linear_input,
-  rhs: loop_linear_claim_rhs(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
 }

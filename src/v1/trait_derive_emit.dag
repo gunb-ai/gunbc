@@ -264,19 +264,32 @@ fn v1_map_key_fixpoint_loop(
   }
 }
 
+// extra_seed_names is the fixpoint's declared complement to the type-expression-position scan
+// above: a caller-supplied population of names known to reach a map-key position OUTSIDE any
+// .dag field/signature type expression (the residue the comment above names as loud-not-silent).
+// Each name is seeded exactly like a scan-discovered one — same fixpoint, same propagation, same
+// derive_traits_union — so it is not a derive override, it is an additional root the same closed
+// computation grows from. An unknown-to-this-corpus name is silently dropped by
+// v1_map_key_round_add's declared-type guard inside the fixpoint loop, never inserted bare.
 fn v1_map_key_required_type_names(
   seed_type_exprs: List<Node>,
+  extra_seed_names: List<String>,
   type_decl_items: Map<String, Node>,
   source_indices: Map<String, NewlineIndex>
 ) -> Set<String> {
   let declared_type_names = map_keys(type_decl_items)
-  let seeded = seed_type_exprs |> fold(init: MapKeyRequirementRound { names: empty_set(), added: 0 }, f: (acc, te) =>
+  let scanned = seed_type_exprs |> fold(init: MapKeyRequirementRound { names: empty_set(), added: 0 }, f: (acc, te) =>
     v1_map_key_head_names_in_type_expr(type_expr: te, source_indices: source_indices)
       |> fold(init: acc, f: (inner, key_name) =>
         if map_has_declared_type(type_decl_items: type_decl_items, name: key_name) {
           v1_map_key_round_add(round: inner, name: key_name)
         } else { inner }
       )
+  )
+  let seeded = extra_seed_names |> fold(init: scanned, f: (acc, key_name) =>
+    if map_has_declared_type(type_decl_items: type_decl_items, name: key_name) {
+      v1_map_key_round_add(round: acc, name: key_name)
+    } else { acc }
   )
   v1_map_key_fixpoint_loop(
     round: seeded,
