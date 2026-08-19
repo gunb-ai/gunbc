@@ -132,7 +132,7 @@ Recorded so the terminal design is not read as a description of today, and so ea
 - `product.network_topology` `network_reachability` is a global two-argument matrix returning `Bool`, and it answers true for container-runner to BMC-management and container-runner to container-runner. Beyond the values, the shape is wrong: it takes no profile parameter, so it cannot express a per-cell policy at all. **Dissolves when** reachability derives from a profile applied to an attachment.
 - `product.network_topology` `NetworkEgressClass` is vocabulary only — four arms, one optional consumer in `gunbc.fleet_container` `NetworkRequirement`, with no rate, byte count, counter, reservation or settlement anywhere. It is **not** a billing axis today and must not be cited as one. **Dissolves when** network appropriation lands.
 - `gunbc.runner_spec_from_offer` derives labels from a physical offer — the inverted direction of §4. **Dissolves when** ExecutionClass becomes the projection source.
-- `product.compute_fabric` `Shape` carries a thread count only, and `shape_covers` compares only threads. The public name `gunbai-8c32g` names two axes it cannot express before reaching storage, isolation or network. **Dissolves with** the resource-root replacement cut, which deletes the module rather than growing `Shape`.
+- `product.compute_fabric` `Shape` carried a thread count only, and `shape_covers` compared only threads; the module is now deleted at the root, so no shape authority stands here at all. The public name `gunbai-8c32g` names two axes it cannot express before reaching storage, isolation or network. **Dissolved with** the resource-root replacement cut, which deleted the module rather than growing `Shape`.
 
 ## 10. Open decisions (operator)
 
