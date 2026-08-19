@@ -1,4 +1,4 @@
-module test.claim.long.live_deploy.running_release_identity_witness_test
+module test.claim.live_deploy.running_release_identity_witness_test
 
 import std.content_hash { Fnv1a64Structural }
 import std.types { Bool, String, CommitSha, NonEmptyStr }

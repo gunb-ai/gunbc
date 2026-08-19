@@ -1,0 +1,275 @@
+module product.build_selection
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.currency { CurrencyCode }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
+import std.measure {
+  Bandwidth,
+  ByteSize,
+  MoneyOnce,
+  Watt,
+  bandwidth_count,
+  byte_size_count,
+  money_amount_micro,
+  money_once_micros,
+  watt_count,
+}
+import std.pareto {
+  AxisReading,
+  HigherIsBetter,
+  LowerIsBetter,
+  ParetoEntry,
+  ParetoStanding,
+  SelectionAxis,
+  entry_standing,
+}
+import product.build_fulfillment {
+  CashDerived,
+  CashNoPurchaseLines,
+  CashRefused,
+  CashProjection,
+  CeilingDerived,
+  CeilingRefused,
+  CeilingUnconstrainedByAnyLine,
+  CompatibilityUnread,
+  ConstructibleCeiling,
+  IncludedInSystem,
+  LineRefused,
+  LineResolution,
+  LineResolved,
+  SupplyMissing,
+  NewPurchase,
+  OwnedInventory,
+}
+
+// THE DOMAIN PROJECTOR. std.pareto is the universal selection spine and knows
+// nothing about hardware; this module is the one place that turns a resolved
+// build into the spine's vocabulary. It is the last stage of the pipeline —
+// memory_provisioning derives populations, the qualification seam grades them,
+// product.build_fulfillment resolves and prices the lines, and this projects
+// what survives into a comparable field.
+//
+// WHY THE MAGNITUDES ARE DOMAIN-TYPED AND THE SPINE'S ARE NOT. std.pareto's
+// AxisReading carries a bare scalar, and that is correct FOR THE SPINE: a fold
+// that compared std.measure carriers would have to enumerate them, which is a
+// universal framework naming its domains. But a projector that reached for the
+// bare scalar directly would lose the unit at exactly the seam where a
+// wattage, a byte count and a money figure sit side by side — so the readings
+// are authored here on their std.measure carriers, and the collapse to the
+// spine's scalar happens in ONE total function that must name the carrier it is
+// reading. A new axis cannot be added without stating what it measures.
+type BuildAxisMagnitude
+  = MagnitudeBytes { bytes: ByteSize }
+  | MagnitudeMoney { money: MoneyOnce }
+  | MagnitudeWatts { watts: Watt }
+  | MagnitudeBandwidth { bandwidth: Bandwidth }
+  | MagnitudeUnitCount { units: Nat }
+
+type BuildAxisReading {
+  axis: DeclarationRef
+  magnitude: BuildAxisMagnitude
+}
+
+fn magnitude_scalar(m: BuildAxisMagnitude) -> Int {
+  match m {
+    MagnitudeBytes { bytes: b } => byte_size_count(b: b)
+    MagnitudeMoney { money: m } => money_once_micros(q: m)
+    MagnitudeWatts { watts: w } => watt_count(w: w)
+    MagnitudeBandwidth { bandwidth: b } => bandwidth_count(b: b)
+    MagnitudeUnitCount { units: u } => u
+  }
+}
+
+fn to_axis_reading(r: BuildAxisReading) -> AxisReading {
+  AxisReading { axis: r.axis, value_micro: magnitude_scalar(m: r.magnitude) }
+}
+
+// THE FUNDED AXES, each named by the declaration it projects rather than by a
+// label, so renaming a display string cannot move a candidate.
+data capacity_axis: DeclarationRef = decl_ref(
+  module_path: "product.build_selection",
+  decl_name: "build_memory_capacity_axis",
+)
+
+data cash_axis: DeclarationRef = decl_ref(
+  module_path: "product.build_selection",
+  decl_name: "build_incremental_cash_axis",
+)
+
+data ceiling_axis: DeclarationRef = decl_ref(
+  module_path: "product.build_selection",
+  decl_name: "build_constructible_ceiling_axis",
+)
+
+data wall_power_axis: DeclarationRef = decl_ref(
+  module_path: "product.build_selection",
+  decl_name: "build_wall_power_axis",
+)
+
+data bandwidth_axis: DeclarationRef = decl_ref(
+  module_path: "product.build_selection",
+  decl_name: "build_memory_bandwidth_axis",
+)
+
+fn build_selection_axes() -> List<SelectionAxis> {
+  [
+    SelectionAxis { identity: capacity_axis, goal: HigherIsBetter },
+    SelectionAxis { identity: cash_axis, goal: LowerIsBetter },
+    SelectionAxis { identity: ceiling_axis, goal: HigherIsBetter },
+    SelectionAxis { identity: wall_power_axis, goal: LowerIsBetter },
+    SelectionAxis { identity: bandwidth_axis, goal: HigherIsBetter },
+  ]
+}
+
+// ONE CANDIDATE AS THIS DOMAIN HOLDS IT: the recipe's own identity, what its
+// memory adds up to, and the two answers the fulfillment layer produced. The
+// resolutions ride along because the projector must state what is MISSING, and
+// only the per-line answers know that.
+type BuildCandidate {
+  identity: DeclarationRef
+  display_label: NonEmptyStr
+  memory_capacity: ByteSize
+  wall_power: Watt
+  memory_bandwidth: Bandwidth
+  resolutions: List<LineResolution>
+  cash: CashProjection
+  ceiling: ConstructibleCeiling
+}
+
+fn one_missing(name: NonEmptyStr) -> List<NonEmptyStr> { [name] }
+
+data no_missing: List<NonEmptyStr> = []
+
+// WHAT MAKES A CANDIDATE INCOMPARABLE, stated by the projector rather than
+// substituted for. Every one of these is a fact the candidate does not yet
+// have — an unread compatibility, a line nobody could fill, a refused cash
+// answer, a refused ceiling — and std.pareto's rule is that an entry declaring
+// a missing input is incomparable BY ITS OWN DECLARATION. That is exactly the
+// wall the brief asks for: an unread compatibility yields pending evidence,
+// never a candidate that quietly ranks well because the axis it would lose on
+// could not be computed.
+fn line_missing(acc: List<NonEmptyStr>, r: LineResolution) -> List<NonEmptyStr> {
+  match r {
+    LineRefused { line: l, cause: _ } =>
+      concat(acc, one_missing(name: join(["line ", l.display_label as String, " refused"], "") as NonEmptyStr))
+    LineResolved { line: l, fulfillment: f } =>
+      match f {
+        CompatibilityUnread { part: _, obligation: o } =>
+          concat(acc, one_missing(name: join([l.display_label as String, ": ", o as String], "") as NonEmptyStr))
+        SupplyMissing { part: _, requested: _, owned_available: _, market_units: _ } =>
+          concat(acc, one_missing(name: join(["line ", l.display_label as String, " cannot be filled"], "") as NonEmptyStr))
+        OwnedInventory { lot: _, quantity: _, reservation: _, available_after: _ } => acc
+        NewPurchase { part: _, quantity: _, unit_price: _, authority: _ } => acc
+        IncludedInSystem { part: _, quantity: _ } => acc
+      }
+  }
+}
+
+// A CANDIDATE PRICED IN ANOTHER CURRENCY IS PENDING EVIDENCE, NOT A CHEAP ONE.
+// The cash axis collapses to a scalar for the spine, and two scalars in
+// different currencies compare perfectly well and mean nothing. So the field
+// declares its currency once and a candidate priced elsewhere declares that as
+// a missing input rather than being ranked against it — the same wall the
+// deleted memory_part_selection held at its own admission, kept here where the
+// pipeline actually compares.
+fn cash_missing(declared: CurrencyCode, cash: CashProjection) -> List<NonEmptyStr> {
+  match cash {
+    CashDerived { cash: c } =>
+      if c.currency != declared {
+        one_missing(name: "priced in a currency the field did not declare" as NonEmptyStr)
+      } else {
+        no_missing
+      }
+    CashNoPurchaseLines => no_missing
+    CashRefused { cause: _ } =>
+      one_missing(name: "incremental cash refused" as NonEmptyStr)
+  }
+}
+
+fn ceiling_missing(ceiling: ConstructibleCeiling) -> List<NonEmptyStr> {
+  match ceiling {
+    CeilingDerived { builds: _, bottlenecks: _, bottleneck_units: _ } => no_missing
+    CeilingUnconstrainedByAnyLine =>
+      one_missing(name: "no line bounds the build count, so there is no ceiling to compare" as NonEmptyStr)
+    CeilingRefused { cause: _ } => one_missing(name: "constructible ceiling refused" as NonEmptyStr)
+  }
+}
+
+fn candidate_missing_inputs(candidate: BuildCandidate, declared: CurrencyCode) -> List<NonEmptyStr> {
+  concat(
+    concat(
+      fold(candidate.resolutions, init: no_missing, f: fn(acc, r) { line_missing(acc: acc, r: r) }),
+      cash_missing(declared: declared, cash: candidate.cash),
+    ),
+    ceiling_missing(ceiling: candidate.ceiling),
+  )
+}
+
+// A build that buys nothing reads ZERO on the cash axis, and that is a real
+// reading rather than a substituted one: CashNoPurchaseLines means every line
+// was owned or included, so the incremental cash genuinely is zero — the arm
+// exists to stop a zero being invented for an UNREADABLE answer, not to stop
+// one being reported for a readable one. A refused cash answer never reaches
+// here at all, because it is a declared missing input above.
+fn cash_reading(cash: CashProjection, declared: CurrencyCode) -> BuildAxisReading {
+  match cash {
+    CashDerived { cash: c } => BuildAxisReading { axis: cash_axis, magnitude: MagnitudeMoney { money: c } }
+    _ =>
+      BuildAxisReading {
+        axis: cash_axis,
+        magnitude: MagnitudeMoney {
+          money: MoneyOnce { amount: money_amount_micro(count: 0), currency: declared },
+        },
+      }
+  }
+}
+
+// A ceiling that no line bounds has no build count to compare, so the entry
+// declares it missing above and this reading is never reached for it. The zero
+// here is unreachable-by-construction rather than a substituted answer: an
+// entry declaring a missing input is incomparable in std.pareto and is excluded
+// as a challenger, so it can neither win nor poison the field.
+fn ceiling_reading(ceiling: ConstructibleCeiling) -> BuildAxisReading {
+  match ceiling {
+    CeilingDerived { builds: b, bottlenecks: _, bottleneck_units: _ } =>
+      BuildAxisReading { axis: ceiling_axis, magnitude: MagnitudeUnitCount { units: b } }
+    _ => BuildAxisReading { axis: ceiling_axis, magnitude: MagnitudeUnitCount { units: 0 } }
+  }
+}
+
+fn candidate_readings(candidate: BuildCandidate, declared: CurrencyCode) -> List<BuildAxisReading> {
+  [
+    BuildAxisReading { axis: capacity_axis, magnitude: MagnitudeBytes { bytes: candidate.memory_capacity } },
+    cash_reading(cash: candidate.cash, declared: declared),
+    ceiling_reading(ceiling: candidate.ceiling),
+    BuildAxisReading { axis: wall_power_axis, magnitude: MagnitudeWatts { watts: candidate.wall_power } },
+    BuildAxisReading { axis: bandwidth_axis, magnitude: MagnitudeBandwidth { bandwidth: candidate.memory_bandwidth } },
+  ]
+}
+
+fn project_entry(candidate: BuildCandidate, declared: CurrencyCode) -> ParetoEntry {
+  ParetoEntry {
+    identity: candidate.identity,
+    display_label: candidate.display_label,
+    readings: map(candidate_readings(candidate: candidate, declared: declared), r => to_axis_reading(r: r)),
+    missing_inputs: candidate_missing_inputs(candidate: candidate, declared: declared),
+  }
+}
+
+fn project_field(candidates: List<BuildCandidate>, declared: CurrencyCode) -> List<ParetoEntry> {
+  map(candidates, c => project_entry(candidate: c, declared: declared))
+}
+
+fn build_standing(
+  subject: BuildCandidate,
+  field: List<BuildCandidate>,
+  declared: CurrencyCode,
+) -> ParetoStanding {
+  entry_standing(
+    subject: project_entry(candidate: subject, declared: declared),
+    field: project_field(candidates: field, declared: declared),
+    axes: build_selection_axes(),
+    sensitivities: no_missing,
+  )
+}
