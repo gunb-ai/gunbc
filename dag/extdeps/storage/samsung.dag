@@ -11,7 +11,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 fn samsung_970_evo_plus(part_number: std.types.NonEmptyStr, capacity_bytes: std.measure.ByteSize) -> extdeps.storage.types.NvmeDeviceCatalogRow {
   extdeps.storage.types.NvmeDeviceCatalogRow {
     part_number: part_number,
-    manufacturer: samsung,
+    manufacturer: extdeps.vendor.samsung.samsung,
     capacity_bytes: capacity_bytes,
     pcie_link: extdeps.storage.types.PcieLink { generation: Gen3, lane_count: 4 },
     form_factor: M2_2280,
@@ -28,7 +28,7 @@ data samsung_970_evo_plus_2tb_catalog: extdeps.storage.types.NvmeDeviceCatalogRo
 fn samsung_970_evo(part_number: std.types.NonEmptyStr, capacity_bytes: std.measure.ByteSize) -> extdeps.storage.types.NvmeDeviceCatalogRow {
   extdeps.storage.types.NvmeDeviceCatalogRow {
     part_number: part_number,
-    manufacturer: samsung,
+    manufacturer: extdeps.vendor.samsung.samsung,
     capacity_bytes: capacity_bytes,
     pcie_link: extdeps.storage.types.PcieLink { generation: Gen3, lane_count: 4 },
     form_factor: M2_2280,

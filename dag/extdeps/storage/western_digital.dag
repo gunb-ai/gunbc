@@ -12,7 +12,7 @@ data wd_black_sn850x_2tb_capacity: std.measure.ByteSize = byte_size(200039893401
 
 data wd_black_sn850x_2tb_catalog: extdeps.storage.types.NvmeDeviceCatalogRow = extdeps.storage.types.NvmeDeviceCatalogRow {
   part_number: "WDS200T2X0E",
-  manufacturer: western_digital,
+  manufacturer: extdeps.vendor.western_digital.western_digital,
   capacity_bytes: wd_black_sn850x_2tb_capacity,
   pcie_link: extdeps.storage.types.PcieLink { generation: Gen4, lane_count: 4 },
   form_factor: M2_2280,

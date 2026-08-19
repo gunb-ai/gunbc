@@ -12,7 +12,7 @@ data stick_capacity_bytes: std.measure.ByteSize = byte_size(17179869184)
 
 data hma82gr7afr4n_vk_catalog: extdeps.memory.types.DramModuleCatalogRow = extdeps.memory.types.DramModuleCatalogRow {
   part_number: "HMA82GR7AFR4N-VK",
-  manufacturer: sk_hynix,
+  manufacturer: extdeps.vendor.sk_hynix.sk_hynix,
   generation: dram_generation_ddr4,
   capacity_bytes: stick_capacity_bytes,
   data_rate_mts: 2666,
@@ -25,7 +25,7 @@ data hma82gr7afr4n_vk_catalog: extdeps.memory.types.DramModuleCatalogRow = extde
 
 data hma82gr7afr8n_vk_catalog: extdeps.memory.types.DramModuleCatalogRow = extdeps.memory.types.DramModuleCatalogRow {
   part_number: "HMA82GR7AFR8N-VK",
-  manufacturer: sk_hynix,
+  manufacturer: extdeps.vendor.sk_hynix.sk_hynix,
   generation: dram_generation_ddr4,
   capacity_bytes: stick_capacity_bytes,
   data_rate_mts: 2666,

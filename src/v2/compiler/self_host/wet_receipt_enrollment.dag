@@ -146,7 +146,7 @@ data emit_on_demand_family_cadence_note: String = "The seven emit-on-demand fami
 
 data falsifier_self_host_wet_known_red_note: String = "Wet expect_red quarantine for SelfEmitted module behavioral receipts that red on assemble (Phase-0 admission invariant, review #7199 2026-07-25): same mechanism as known_red_probe_entries but Wet-profiled — hermetic would refuse the host effect and lie about the red class. claim_executor expect_red-inverts the batch. Owner: #7199 falsifier lane / self-host assemble. Dissolve-on per row: local wet receipt greens under gunbc_falsifier_self_host_wet_receipt_wall_budget, the known-red entry deletes, and the SelfHostWetReceiptBinding restores to seed_emitter_behavioral_wet_module_bindings."
 
-data falsifier_self_host_wet_known_red_entries: List<std.realization_schedule.ScheduleWitnessEntry> = seed_emitter_behavioral_wet_known_red_entries
+data falsifier_self_host_wet_known_red_entries: List<std.realization_schedule.ScheduleWitnessEntry> = v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries.seed_emitter_behavioral_wet_known_red_entries
 
 fn falsifier_self_host_wet_known_red_batch_enrolled() -> Bool {
   length(xs: falsifier_self_host_wet_known_red_entries) > 0

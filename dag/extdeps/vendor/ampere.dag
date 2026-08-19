@@ -16,4 +16,4 @@ data ampere_customer_reference_boards_authority: extdeps.external_authority.Exte
   }
 }
 
-data ampere_vendor: Vendor<extdeps.hardware.Hardware> = Vendor { legal_name: "Ampere Computing LLC" }
+data ampere_vendor: extdeps.vendor.Vendor<extdeps.hardware.Hardware> = extdeps.vendor.Vendor { legal_name: "Ampere Computing LLC" }

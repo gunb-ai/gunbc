@@ -777,7 +777,7 @@ fn fleet_posix_account_from_name(name: std.types.NonEmptyStr) -> GroundedPosixPr
   }
 }
 
-data fleet_posix_account_exists_predicate_disposition: std.disposition.Disposition = Scaffold {
+data fleet_posix_account_exists_predicate_disposition: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.fleet_posix_accounts",

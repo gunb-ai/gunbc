@@ -30,7 +30,7 @@ data fleet_automation_ssh_key_fingerprint: String = "SHA256:mGT7qJsh36VsVb8OPh3m
 // pinned_version both DERIVE from it via the helpers below, so there is one place the pin
 // lives. Rotating to version 2 edits this one field and everything downstream follows.
 data fleet_automation_ssh_privkey_secret: extdeps.cloud.gcp.secret_ref.SecretRef = extdeps.cloud.gcp.secret_ref.SecretRef {
-  project: fleet_secrets_gcp_project,
+  project: gunbc.fleet_secrets_config.fleet_secrets_gcp_project,
   secret: "fleet-automation-ssh-key" as std.types.NonEmptyStr,
   version: "1",
   hash_state: HashPending,
@@ -47,7 +47,7 @@ fn fleet_automation_privkey_version_segment() -> String {
 fn fleet_automation_privkey_sm_access_url() -> String {
   join([
     "https://secretmanager.googleapis.com/v1/projects/",
-    fleet_secrets_gcp_project as String,
+    gunbc.fleet_secrets_config.fleet_secrets_gcp_project as String,
     "/secrets/",
     fleet_automation_ssh_privkey_secret.secret as String,
     "/",

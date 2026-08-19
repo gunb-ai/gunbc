@@ -12,7 +12,7 @@ module v1.compiler.coercion
 fn target_checkpoints(target: v1.compiler.artifact.RenderTarget) -> List<std.coercion.TypeCheckpoint> {
   match target {
     Rust => extdeps.languages.rust.types.rust_type_checkpoints
-    Python => extdeps.languages.python.types.python_type_checkpoints
+    v1.compiler.artifact.Python => extdeps.languages.python.types.python_type_checkpoints
     Go => extdeps.languages.go.types.go_type_checkpoints
     Dag => extdeps.languages.dag.types.dag_type_checkpoints
   }
@@ -21,7 +21,7 @@ fn target_checkpoints(target: v1.compiler.artifact.RenderTarget) -> List<std.coe
 fn target_inhabitants(target: v1.compiler.artifact.RenderTarget) -> List<std.coercion.InhabitantDecl> {
   match target {
     Rust => extdeps.languages.rust.types.rust_algebra_inhabitants
-    Python => extdeps.languages.python.types.python_algebra_inhabitants
+    v1.compiler.artifact.Python => extdeps.languages.python.types.python_algebra_inhabitants
     Go => extdeps.languages.go.types.go_algebra_inhabitants
     Dag => []
   }
@@ -30,7 +30,7 @@ fn target_inhabitants(target: v1.compiler.artifact.RenderTarget) -> List<std.coe
 fn target_callable(target: v1.compiler.artifact.RenderTarget) -> std.coercion.CallableRepr {
   match target {
     Rust => extdeps.languages.rust.types.rust_callable
-    Python => extdeps.languages.python.types.python_callable
+    v1.compiler.artifact.Python => extdeps.languages.python.types.python_callable
     Go => extdeps.languages.go.types.go_callable
     Dag => std.coercion.CallableRepr {
       template: "fn(\{params\}) -> \{return\}",
@@ -44,7 +44,7 @@ fn target_callable(target: v1.compiler.artifact.RenderTarget) -> std.coercion.Ca
 fn target_optional_template(target: v1.compiler.artifact.RenderTarget) -> String {
   match target {
     Rust => extdeps.languages.rust.types.rust_optional_template
-    Python => extdeps.languages.python.types.python_optional_template
+    v1.compiler.artifact.Python => extdeps.languages.python.types.python_optional_template
     Go => extdeps.languages.go.types.go_optional_template
     Dag => "\{0\}?"
   }
@@ -53,7 +53,7 @@ fn target_optional_template(target: v1.compiler.artifact.RenderTarget) -> String
 fn target_cast_syntax(target: v1.compiler.artifact.RenderTarget) -> std.coercion.CastSyntax? {
   match target {
     Rust => Present { value: extdeps.languages.rust.types.rust_cast_syntax }
-    Python => Present { value: extdeps.languages.python.types.python_cast_syntax }
+    v1.compiler.artifact.Python => Present { value: extdeps.languages.python.types.python_cast_syntax }
     Go => Present { value: extdeps.languages.go.types.go_cast_syntax }
     Dag => none
   }
@@ -78,7 +78,7 @@ fn lookup_checkpoint(target: v1.compiler.artifact.RenderTarget, dag_name: String
   target_checkpoints(target: target) |> filter(cp => cp.dag_name == dag_name) |> first
 }
 
-data coerce_primitive_type_dotted_fallback_note: String = "Construction wall for the dotted-render class in TYPE position (sibling of variant_pattern_dotted_qualification_note, which covers PATTERN position, in v1.compiler.05_emit_rust). Every target's checkpoint dag_names are bare (Int, String, ...), so a namespace-QUALIFIED type name (post source_authority, e.g. v2.std.node.Edge) never matches a checkpoint and previously fell through this Absent arm verbatim, dots and all -- not a valid identifier in any target language, a PARSE error masking every later diagnostic in the module. Rendering a type never needs a crate::-qualified path here (this fn is target-agnostic, shared by Rust/Python/Go/Dag, and the existing convention across all of them is a bare type name; qualification, where a target needs it, is a separate import-line-synthesis seam) so the fix is to route the fallback through qualified_last_segment (v1.std.core, the same single authority variant_pattern_qualified_path reuses) instead of forking a second dotted-name fallback. Every already-bare dag_name renders exactly as before (qualified_last_segment is the identity on an unqualified name)."
+data coerce_primitive_type_dotted_fallback_note: String = "Construction wall for the dotted-render class in TYPE position (sibling of variant_pattern_dotted_qualification_note, which covers PATTERN position, in v1.compiler.05_emit_rust). Every target's checkpoint dag_names are bare (Int, String, ...), so a namespace-QUALIFIED type name (post source_authority, e.g. v2.std.node.Edge) never matches a checkpoint and previously fell through this Absent arm verbatim, dots and all -- not a valid identifier in any target language, a PARSE error masking every later diagnostic in the module. Rendering a type never needs a crate::-qualified path here (this fn is target-agnostic, shared by Rust/v1.compiler.artifact.Python/Go/Dag, and the existing convention across all of them is a bare type name; qualification, where a target needs it, is a separate import-line-synthesis seam) so the fix is to route the fallback through qualified_last_segment (v1.std.core, the same single authority variant_pattern_qualified_path reuses) instead of forking a second dotted-name fallback. Every already-bare dag_name renders exactly as before (qualified_last_segment is the identity on an unqualified name)."
 
 fn coerce_primitive_type(target: v1.compiler.artifact.RenderTarget, dag_name: String) -> String {
   match lookup_checkpoint(target: target, dag_name: dag_name) {
@@ -140,7 +140,7 @@ type CoercionTestEntry {
 fn target_label(target: v1.compiler.artifact.RenderTarget) -> String {
   match target {
     Rust => "rust"
-    Python => "python"
+    v1.compiler.artifact.Python => "python"
     Go => "go"
     Dag => "dag"
   }
@@ -203,7 +203,7 @@ fn unique_inhabitants_for_template_tests(inhs: List<std.coercion.InhabitantDecl>
 }
 
 fn template_application_tests() -> List<CoercionTestEntry> {
-  let targets = [Rust, Python, Go]
+  let targets = [Rust, v1.compiler.artifact.Python, Go]
   let assertions = targets |> flat_map(t =>
     let inhs = unique_inhabitants_for_template_tests(inhs: target_inhabitants(target: t))
     let int_target = coerce_primitive_type(target: t, dag_name: "Int")
@@ -228,10 +228,10 @@ fn template_application_tests() -> List<CoercionTestEntry> {
 fn extract_coercion_tests() -> List<CoercionTestEntry> {
   concat(
     checkpoint_tests(target: Rust),
-    checkpoint_tests(target: Python),
+    checkpoint_tests(target: v1.compiler.artifact.Python),
     checkpoint_tests(target: Go),
     inhabitant_tests(target: Rust),
-    inhabitant_tests(target: Python),
+    inhabitant_tests(target: v1.compiler.artifact.Python),
     inhabitant_tests(target: Go),
     copy_tests(),
     template_application_tests())
