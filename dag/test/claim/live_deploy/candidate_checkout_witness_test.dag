@@ -196,16 +196,21 @@ test fn an_ignored_file_under_an_excluded_prefix_is_not_a_deployed_path() -> Boo
   length(scanned) == 0
 }
 
-// Both directions in one observation, so a filter that inverted its sense cannot pass by accident.
+// Both directions in one observation, so a filter that inverted its sense cannot pass by accident. The kept
+// side is now exactly the residue the exclusion set deliberately does not cover -- the .env family, whose
+// wildcard spelling no prefix can express, and the probe inside a read source root. `.gunbc/ledger.json`
+// moved to the dropped side when local tool state joined the exclusions; it is local state no revision
+// names, so the deploy does not install it and admission has nothing to refuse on.
 test fn the_ignored_scan_keeps_deployed_paths_and_drops_excluded_ones() -> Bool {
   let scanned = scan_ignored_deployed_paths(paths_nul: scan_of(fields: [
     ".env",
     "target/release/gunbc",
     ".gunbc/ledger.json",
     ".git/config",
+    ".claude/settings.local.json",
     "src/v2/test/claim/manual/sg2_scratch_probe.dag",
   ]))
-  join(scanned, ",") == ".env,.gunbc/ledger.json,src/v2/test/claim/manual/sg2_scratch_probe.dag"
+  join(scanned, ",") == ".env,src/v2/test/claim/manual/sg2_scratch_probe.dag"
 }
 
 // The prefix filter matches whole path SEGMENTS, not character runs — a directory merely beginning with the
