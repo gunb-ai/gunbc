@@ -1,0 +1,344 @@
+module test.claim.measurement_subject_admission_witness
+
+import std.types { Bool, String, List, Int, NonEmptyStr, list_length }
+import std.content_hash { Fnv1a64Structural, content_hash_atom }
+import std.measurement_subject {
+  MeasurementSubject,
+  MeasurementSample,
+  MeasurementRun,
+  MeasurementRefusalCause,
+  MeasurementAdmitted,
+  MeasurementRefused,
+  MeasurementDelta,
+  DeltaAdmitted,
+  DeltaRefused,
+  admit_measurement_run,
+  admit_measurement_delta,
+  measurement_subject_digest,
+  measurement_subject_eq,
+  measurement_run_causes,
+}
+
+data witness_note: String = "THE FOUR NAMED CONTROLS IN THIS FILE ARE NOT HYPOTHETICALS. Each reproduces an instrument this session actually shipped, each of which reported a well-formed answer instead of refusing: a fixed-point harness that printed YES from three regen passes that had all FAILED; a background wrapper that exited 0 while the remote work died with 127; an A/B floor pair whose two arms carried one subject digest and therefore agreed by tautology; and a classifier that reported a clean result over an empty extraction. They are permanent regression alarms - if any of the four goes green through admission, the carrier has stopped refusing the exact shape it was built for. dissolve-on: never."
+
+fn w_span(name: String) -> NonEmptyStr {
+  name as NonEmptyStr
+}
+
+fn w_digest(seed: String) -> Fnv1a64Structural {
+  content_hash_atom(value: seed as NonEmptyStr)
+}
+
+fn w_subject(commit: String, binary: String) -> MeasurementSubject {
+  MeasurementSubject {
+    commit: commit as NonEmptyStr,
+    binary_digest: w_digest(seed: binary),
+    command: "claim_executor --required-floor" as NonEmptyStr,
+    source_roots: ["dag" as NonEmptyStr, "src/v2" as NonEmptyStr],
+    source_inventory_digest: w_digest(seed: "inventory-a"),
+    module_population: 4118,
+    host: "srv1" as NonEmptyStr,
+    process: 4242,
+  }
+}
+
+fn w_sample(span: String, calls: Int, inclusive: Int, exclusive: Int) -> MeasurementSample {
+  MeasurementSample {
+    span: w_span(name: span),
+    parent_span: none,
+    calls: calls,
+    inclusive_wall_nanos: inclusive,
+    exclusive_wall_nanos: exclusive,
+    work_units: calls,
+  }
+}
+
+fn w_run(subject: MeasurementSubject, exit_code: Int, samples: List<MeasurementSample>) -> MeasurementRun {
+  MeasurementRun {
+    subject: subject,
+    producer_exit: exit_code,
+    expected_spans: ["compile.reconcile" as NonEmptyStr],
+    samples: samples,
+  }
+}
+
+fn w_good_samples() -> List<MeasurementSample> {
+  [w_sample(span: "compile.reconcile", calls: 2280, inclusive: 181010000000, exclusive: 90000000000)]
+}
+
+fn w_is_admitted(a: MeasurementAdmission) -> Bool {
+  match a {
+    MeasurementAdmitted { admitted: _ } => true
+    MeasurementRefused { causes: _ } => false
+  }
+}
+
+fn w_refusal_causes(a: MeasurementAdmission) -> List<MeasurementRefusalCause> {
+  match a {
+    MeasurementAdmitted { admitted: _ } => []
+    MeasurementRefused { causes: causes } => causes
+  }
+}
+
+// POSITIVE CONTROL. Without this, every refusal below is satisfiable by an
+// admission that refuses everything, which proves nothing.
+test fn well_formed_run_is_admitted() -> Bool {
+  w_is_admitted(a: admit_measurement_run(run: w_run(
+    subject: w_subject(commit: "228638139d", binary: "60cee20962576c7d"),
+    exit_code: 0,
+    samples: w_good_samples(),
+  )))
+}
+
+// CONTROL 1 - the wrapper that exited 0 while the remote work died with 127.
+// The samples are perfectly well-formed; only the producer's exit says the run
+// is not evidence, which is precisely why the exit has to be in the subject
+// rather than in the reader's head.
+test fn producer_exit_nonzero_refuses_despite_wellformed_samples() -> Bool {
+  let admission = admit_measurement_run(run: w_run(
+    subject: w_subject(commit: "228638139d", binary: "60cee20962576c7d"),
+    exit_code: 127,
+    samples: w_good_samples(),
+  ))
+  !w_is_admitted(a: admission)
+    && list_length(items: w_refusal_causes(a: admission)) > 0
+}
+
+// CONTROL 2 - the fixed-point harness that printed YES from three FAILED
+// passes. Every pass produced an empty observation, and empty compared equal to
+// empty. A fold over zero samples yields zero causes, so the emptiness must be
+// its own arm ahead of the fold or the run reports clean.
+test fn zero_samples_refuses_rather_than_comparing_equal() -> Bool {
+  let admission = admit_measurement_run(run: w_run(
+    subject: w_subject(commit: "228638139d", binary: "60cee20962576c7d"),
+    exit_code: 0,
+    samples: [],
+  ))
+  !w_is_admitted(a: admission)
+}
+
+// CONTROL 3 - the A/B floor pair that returned identical tallies. Both arms
+// were internally valid; the defect was that they measured ONE subject, and
+// nothing in the pair could say so. A delta over two admitted-but-identical
+// runs must refuse, not report a zero improvement.
+test fn identical_subjects_refuse_the_delta() -> Bool {
+  let subject = w_subject(commit: "228638139d", binary: "60cee20962576c7d")
+  let base = w_run(subject: subject, exit_code: 0, samples: w_good_samples())
+  let cand = w_run(subject: subject, exit_code: 0, samples: w_good_samples())
+  match admit_measurement_delta(baseline: base, candidate: cand) {
+    DeltaRefused { causes: _ } => true
+    DeltaAdmitted { baseline_digest: _, candidate_digest: _, baseline_calls: _, candidate_calls: _ } => false
+  }
+}
+
+// The other direction of control 3: a genuinely different binary IS a
+// different subject, so the delta is admitted. Without this, refusing every
+// delta would satisfy the control above.
+test fn differing_binaries_admit_the_delta() -> Bool {
+  let base = w_run(
+    subject: w_subject(commit: "3abc17b54", binary: "179375783af59779"),
+    exit_code: 0,
+    samples: [w_sample(span: "compile.reconcile", calls: 2900, inclusive: 249240000000, exclusive: 120000000000)],
+  )
+  let cand = w_run(
+    subject: w_subject(commit: "1caa2f2ce", binary: "60cee20962576c7d"),
+    exit_code: 0,
+    samples: w_good_samples(),
+  )
+  match admit_measurement_delta(baseline: base, candidate: cand) {
+    DeltaAdmitted { baseline_digest: _, candidate_digest: _, baseline_calls: bc, candidate_calls: cc } =>
+      bc == 2900 && cc == 2280
+    DeltaRefused { causes: _ } => false
+  }
+}
+
+// A refused arm must not be laundered into a delta either.
+test fn refused_arm_refuses_the_delta() -> Bool {
+  let base = w_run(
+    subject: w_subject(commit: "3abc17b54", binary: "179375783af59779"),
+    exit_code: 9,
+    samples: w_good_samples(),
+  )
+  let cand = w_run(
+    subject: w_subject(commit: "1caa2f2ce", binary: "60cee20962576c7d"),
+    exit_code: 0,
+    samples: w_good_samples(),
+  )
+  match admit_measurement_delta(baseline: base, candidate: cand) {
+    DeltaRefused { causes: _ } => true
+    DeltaAdmitted { baseline_digest: _, candidate_digest: _, baseline_calls: _, candidate_calls: _ } => false
+  }
+}
+
+// CONTROL 4 - the classifier that reported a clean result over a broken
+// extraction. Its denominator was never checked. Here the analogous state is a
+// subject claiming zero modules: an instrument whose population is empty has
+// not measured a small corpus, it has failed to observe one.
+test fn empty_population_refuses() -> Bool {
+  let subject = MeasurementSubject {
+    commit: "228638139d" as NonEmptyStr,
+    binary_digest: w_digest(seed: "60cee20962576c7d"),
+    command: "claim_executor --required-floor" as NonEmptyStr,
+    source_roots: ["dag" as NonEmptyStr],
+    source_inventory_digest: w_digest(seed: "inventory-a"),
+    module_population: 0,
+    host: "srv1" as NonEmptyStr,
+    process: 4242,
+  }
+  !w_is_admitted(a: admit_measurement_run(run: w_run(subject: subject, exit_code: 0, samples: w_good_samples())))
+}
+
+test fn no_source_roots_refuses() -> Bool {
+  let subject = MeasurementSubject {
+    commit: "228638139d" as NonEmptyStr,
+    binary_digest: w_digest(seed: "60cee20962576c7d"),
+    command: "claim_executor --required-floor" as NonEmptyStr,
+    source_roots: [],
+    source_inventory_digest: w_digest(seed: "inventory-a"),
+    module_population: 4118,
+    host: "srv1" as NonEmptyStr,
+    process: 4242,
+  }
+  !w_is_admitted(a: admit_measurement_run(run: w_run(subject: subject, exit_code: 0, samples: w_good_samples())))
+}
+
+// An expected span that never reported is absence, not a zero reading. This is
+// the arm that would have caught a profiler whose instrumentation never
+// executed while the run reported clean.
+test fn expected_span_absent_refuses() -> Bool {
+  !w_is_admitted(a: admit_measurement_run(run: w_run(
+    subject: w_subject(commit: "228638139d", binary: "60cee20962576c7d"),
+    exit_code: 0,
+    samples: [w_sample(span: "compile.emit", calls: 10, inclusive: 5000, exclusive: 5000)],
+  )))
+}
+
+// Counters that do not reconcile: exclusive time cannot exceed inclusive.
+test fn exclusive_exceeding_inclusive_refuses() -> Bool {
+  !w_is_admitted(a: admit_measurement_run(run: w_run(
+    subject: w_subject(commit: "228638139d", binary: "60cee20962576c7d"),
+    exit_code: 0,
+    samples: [w_sample(span: "compile.reconcile", calls: 5, inclusive: 100, exclusive: 900)],
+  )))
+}
+
+// Elapsed time attributed to zero calls is a fabricated total.
+test fn wall_time_without_calls_refuses() -> Bool {
+  !w_is_admitted(a: admit_measurement_run(run: w_run(
+    subject: w_subject(commit: "228638139d", binary: "60cee20962576c7d"),
+    exit_code: 0,
+    samples: [w_sample(span: "compile.reconcile", calls: 0, inclusive: 181010000000, exclusive: 0)],
+  )))
+}
+
+// One span reported twice is two answers to one question.
+test fn duplicate_span_refuses() -> Bool {
+  !w_is_admitted(a: admit_measurement_run(run: w_run(
+    subject: w_subject(commit: "228638139d", binary: "60cee20962576c7d"),
+    exit_code: 0,
+    samples: [
+      w_sample(span: "compile.reconcile", calls: 5, inclusive: 100, exclusive: 50),
+      w_sample(span: "compile.reconcile", calls: 7, inclusive: 200, exclusive: 60),
+    ],
+  )))
+}
+
+// A parent naming a span that did not report leaves the tree unrooted.
+test fn dangling_parent_span_refuses() -> Bool {
+  let orphan = MeasurementSample {
+    span: "peel_nominal_alias_identity" as NonEmptyStr,
+    parent_span: Present { value: "compile.reconcile" as NonEmptyStr },
+    calls: 600000,
+    inclusive_wall_nanos: 90000000000,
+    exclusive_wall_nanos: 90000000000,
+    work_units: 600000,
+  }
+  !w_is_admitted(a: admit_measurement_run(run: MeasurementRun {
+    subject: w_subject(commit: "228638139d", binary: "60cee20962576c7d"),
+    producer_exit: 0,
+    expected_spans: [],
+    samples: [orphan],
+  }))
+}
+
+test fn self_parented_span_refuses() -> Bool {
+  let looped = MeasurementSample {
+    span: "compile.reconcile" as NonEmptyStr,
+    parent_span: Present { value: "compile.reconcile" as NonEmptyStr },
+    calls: 10,
+    inclusive_wall_nanos: 100,
+    exclusive_wall_nanos: 100,
+    work_units: 10,
+  }
+  !w_is_admitted(a: admit_measurement_run(run: MeasurementRun {
+    subject: w_subject(commit: "228638139d", binary: "60cee20962576c7d"),
+    producer_exit: 0,
+    expected_spans: [],
+    samples: [looped],
+  }))
+}
+
+// A well-formed parent/child pair IS admitted, so the two controls above are
+// not satisfied by refusing every nested span.
+test fn wellformed_parent_child_is_admitted() -> Bool {
+  let parent = w_sample(span: "compile.reconcile", calls: 2280, inclusive: 181010000000, exclusive: 90000000000)
+  let child = MeasurementSample {
+    span: "peel_nominal_alias_identity" as NonEmptyStr,
+    parent_span: Present { value: "compile.reconcile" as NonEmptyStr },
+    calls: 600000,
+    inclusive_wall_nanos: 91010000000,
+    exclusive_wall_nanos: 91010000000,
+    work_units: 600000,
+  }
+  w_is_admitted(a: admit_measurement_run(run: MeasurementRun {
+    subject: w_subject(commit: "228638139d", binary: "60cee20962576c7d"),
+    producer_exit: 0,
+    expected_spans: ["compile.reconcile" as NonEmptyStr],
+    samples: [parent, child],
+  }))
+}
+
+// Subject identity is a function of the declared identity fields and nothing
+// else. Wall time is an outcome, so two runs of one subject that took different
+// times are the SAME subject - which is what makes a repeat measurement
+// possible at all.
+test fn subject_identity_is_independent_of_outcome() -> Bool {
+  let a = w_subject(commit: "228638139d", binary: "60cee20962576c7d")
+  let b = w_subject(commit: "228638139d", binary: "60cee20962576c7d")
+  measurement_subject_eq(a: a, b: b)
+}
+
+test fn differing_binary_is_a_differing_subject() -> Bool {
+  !measurement_subject_eq(
+    a: w_subject(commit: "228638139d", binary: "60cee20962576c7d"),
+    b: w_subject(commit: "228638139d", binary: "179375783af59779"),
+  )
+}
+
+test fn differing_commit_is_a_differing_subject() -> Bool {
+  !measurement_subject_eq(
+    a: w_subject(commit: "228638139d", binary: "60cee20962576c7d"),
+    b: w_subject(commit: "3abc17b54", binary: "60cee20962576c7d"),
+  )
+}
+
+// All causes are counted, not short-circuited at the first one: a run with
+// three independent defects reports three.
+test fn every_cause_is_counted() -> Bool {
+  let subject = MeasurementSubject {
+    commit: "228638139d" as NonEmptyStr,
+    binary_digest: w_digest(seed: "60cee20962576c7d"),
+    command: "claim_executor --required-floor" as NonEmptyStr,
+    source_roots: [],
+    source_inventory_digest: w_digest(seed: "inventory-a"),
+    module_population: 0,
+    host: "srv1" as NonEmptyStr,
+    process: 4242,
+  }
+  list_length(items: measurement_run_causes(run: MeasurementRun {
+    subject: subject,
+    producer_exit: 127,
+    expected_spans: [],
+    samples: [],
+  })) >= 4
+}

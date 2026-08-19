@@ -1,0 +1,298 @@
+module std.measurement_subject
+
+import std.types { Bool, String, List, Int, NonEmptyStr, list_length }
+import std.content_hash {
+  Fnv1a64Structural,
+  content_hash_atom,
+  content_hash_combine_structural,
+  content_hash_tagged_structural,
+  content_hash_eq_structural,
+}
+
+// WHY THIS CARRIER EXISTS, at the strength the evidence supports.
+// Four measurement instruments failed in one week, and every one of them
+// reported a well-formed answer rather than refusing: a fixed-point harness
+// printed YES from three regen passes that had all FAILED (three empty patches
+// compare equal); a background wrapper exited 0 while the remote work it
+// wrapped died with 127; an A/B floor pair returned identical tallies because
+// both arms measured the same subject and neither arm could say so; and a
+// residue classifier printed NONE FOUND for every row because its extraction
+// was broken and it had no denominator to check itself against. None was a
+// measurement error. All four were ADMISSION errors - the instrument had no
+// representation for "I did not observe this", so it rendered ignorance as a
+// value. That is the empty-observation narrow at the instrument layer, and it
+// is why the subject is modeled here as a first-class identity rather than
+// left implicit in whatever the producer happened to print.
+
+// A measured run's subject: what was measured, stated so that two runs can be
+// compared or REFUSED. Wall time is an outcome, never identity - a subject that
+// derived any field from the measurement it labels could not detect the case
+// where two arms measured the same thing, which is the exact defect that made
+// an A/B pair agree.
+type MeasurementSubject {
+  commit: NonEmptyStr
+  binary_digest: Fnv1a64Structural
+  command: NonEmptyStr
+  source_roots: List<NonEmptyStr>
+  source_inventory_digest: Fnv1a64Structural
+  module_population: Int
+  host: NonEmptyStr
+  process: Int
+}
+
+// One span's observation. calls and the two wall figures are independent
+// counters precisely so they can be reconciled against each other; a carrier
+// that stored only the total could not detect a producer that emitted a
+// plausible total over samples it never took.
+type MeasurementSample {
+  span: NonEmptyStr
+  parent_span: NonEmptyStr?
+  calls: Int
+  inclusive_wall_nanos: Int
+  exclusive_wall_nanos: Int
+  work_units: Int
+}
+
+type MeasurementRun {
+  subject: MeasurementSubject
+  producer_exit: Int
+  expected_spans: List<NonEmptyStr>
+  samples: List<MeasurementSample>
+}
+
+// Every refusal names the invalid state and carries enough to locate it. There
+// is deliberately no arm meaning "measurement unavailable, proceeding" - an
+// instrument that cannot observe its subject has nothing to report and must
+// stop the line.
+type MeasurementRefusalCause
+  = ProducerExitNonZero { code: Int }
+  | ZeroSamples
+  | ExpectedSpanAbsent { span: NonEmptyStr }
+  | SpanReportedTwice { span: NonEmptyStr }
+  | ExclusiveExceedsInclusive { span: NonEmptyStr, inclusive_wall_nanos: Int, exclusive_wall_nanos: Int }
+  | SampleWithoutCalls { span: NonEmptyStr, inclusive_wall_nanos: Int }
+  | ParentSpanAbsent { span: NonEmptyStr, parent_span: NonEmptyStr }
+  | ParentIsSelf { span: NonEmptyStr }
+  | SubjectHasNoSourceRoots
+  | SubjectPopulationNonPositive { module_population: Int }
+
+// A sealed verdict. The digest covers every subject field, so an admitted
+// receipt detached from the run that produced it is unwritable rather than
+// merely discouraged.
+type AdmittedMeasurementRun sole_constructor {
+  subject_digest: Fnv1a64Structural
+  span_count: Int
+  total_calls: Int
+  producer_exit: Int
+}
+
+type MeasurementAdmission
+  = MeasurementAdmitted { admitted: AdmittedMeasurementRun }
+  | MeasurementRefused { causes: List<MeasurementRefusalCause> }
+
+fn measurement_subject_digest(subject: MeasurementSubject) -> Fnv1a64Structural {
+  let roots = fold(
+    subject.source_roots,
+    init: content_hash_atom(value: "measurement-subject-roots-v1" as NonEmptyStr),
+    f: fn(acc, root) { content_hash_combine_structural(left: acc, right: content_hash_atom(value: root)) },
+  )
+  let identity = content_hash_combine_structural(
+    left: content_hash_atom(value: subject.commit),
+    right: content_hash_atom(value: subject.command),
+  )
+  let digests = content_hash_combine_structural(left: subject.binary_digest, right: subject.source_inventory_digest)
+  content_hash_tagged_structural(
+    tag: "measurement-subject-v1" as NonEmptyStr,
+    payload: content_hash_combine_structural(
+      left: content_hash_combine_structural(left: identity, right: roots),
+      right: digests,
+    ),
+  )
+}
+
+fn measurement_subject_eq(a: MeasurementSubject, b: MeasurementSubject) -> Bool {
+  content_hash_eq_structural(
+    left: measurement_subject_digest(subject: a),
+    right: measurement_subject_digest(subject: b),
+  )
+}
+
+fn measurement_nes_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
+  (a as String) == (b as String)
+}
+
+fn measurement_span_present(samples: List<MeasurementSample>, span: NonEmptyStr) -> Bool {
+  list_length(items: samples |> filter(s => measurement_nes_eq(a: s.span, b: span))) > 0
+}
+
+fn measurement_span_occurrences(samples: List<MeasurementSample>, span: NonEmptyStr) -> Int {
+  list_length(items: samples |> filter(s => measurement_nes_eq(a: s.span, b: span)))
+}
+
+fn measurement_subject_causes(acc: List<MeasurementRefusalCause>, subject: MeasurementSubject) -> List<MeasurementRefusalCause> {
+  let with_roots = if list_length(items: subject.source_roots) == 0 {
+    acc + [SubjectHasNoSourceRoots]
+  } else {
+    acc
+  }
+  if subject.module_population <= 0 {
+    with_roots + [SubjectPopulationNonPositive { module_population: subject.module_population }]
+  } else {
+    with_roots
+  }
+}
+
+fn measurement_sample_causes(
+  acc: List<MeasurementRefusalCause>,
+  sample: MeasurementSample,
+  samples: List<MeasurementSample>,
+) -> List<MeasurementRefusalCause> {
+  let dup = if measurement_span_occurrences(samples: samples, span: sample.span) > 1 {
+    acc + [SpanReportedTwice { span: sample.span }]
+  } else {
+    acc
+  }
+  let bounds = if sample.exclusive_wall_nanos > sample.inclusive_wall_nanos {
+    dup + [ExclusiveExceedsInclusive {
+      span: sample.span,
+      inclusive_wall_nanos: sample.inclusive_wall_nanos,
+      exclusive_wall_nanos: sample.exclusive_wall_nanos,
+    }]
+  } else {
+    dup
+  }
+  // A span that reports elapsed time over zero calls is the fabricated-total
+  // shape: something rendered a duration for work it never observed.
+  let calls = if sample.calls <= 0 && sample.inclusive_wall_nanos > 0 {
+    bounds + [SampleWithoutCalls { span: sample.span, inclusive_wall_nanos: sample.inclusive_wall_nanos }]
+  } else {
+    bounds
+  }
+  match sample.parent_span {
+    Absent => calls
+    Present { value: parent } =>
+      if measurement_nes_eq(a: parent, b: sample.span) {
+        calls + [ParentIsSelf { span: sample.span }]
+      } else {
+        if measurement_span_present(samples: samples, span: parent) {
+          calls
+        } else {
+          calls + [ParentSpanAbsent { span: sample.span, parent_span: parent }]
+        }
+      }
+  }
+}
+
+fn measurement_expected_span_causes(
+  acc: List<MeasurementRefusalCause>,
+  expected: List<NonEmptyStr>,
+  samples: List<MeasurementSample>,
+) -> List<MeasurementRefusalCause> {
+  fold(
+    expected,
+    init: acc,
+    f: fn(inner, span) {
+      if measurement_span_present(samples: samples, span: span) {
+        inner
+      } else {
+        inner + [ExpectedSpanAbsent { span: span }]
+      }
+    },
+  )
+}
+
+fn measurement_total_calls(samples: List<MeasurementSample>) -> Int {
+  fold(samples, init: 0, f: fn(acc, s) { acc + s.calls })
+}
+
+fn measurement_run_causes(run: MeasurementRun) -> List<MeasurementRefusalCause> {
+  let exit_acc = if run.producer_exit != 0 {
+    [ProducerExitNonZero { code: run.producer_exit }]
+  } else {
+    []
+  }
+  let subject_acc = measurement_subject_causes(acc: exit_acc, subject: run.subject)
+  // Zero samples is its own arm, ahead of the per-sample fold, because a fold
+  // over an empty list produces no causes at all - which is how an instrument
+  // that observed nothing reports as clean.
+  let empty_acc = if list_length(items: run.samples) == 0 {
+    subject_acc + [ZeroSamples]
+  } else {
+    subject_acc
+  }
+  let sample_acc = fold(
+    run.samples,
+    init: empty_acc,
+    f: fn(acc, sample) { measurement_sample_causes(acc: acc, sample: sample, samples: run.samples) },
+  )
+  measurement_expected_span_causes(acc: sample_acc, expected: run.expected_spans, samples: run.samples)
+}
+
+fn admit_measurement_run(run: MeasurementRun) -> MeasurementAdmission {
+  let causes = measurement_run_causes(run: run)
+  if list_length(items: causes) == 0 {
+    MeasurementAdmitted {
+      admitted: AdmittedMeasurementRun {
+        subject_digest: measurement_subject_digest(subject: run.subject),
+        span_count: list_length(items: run.samples),
+        total_calls: measurement_total_calls(samples: run.samples),
+        producer_exit: run.producer_exit,
+      },
+    }
+  } else {
+    MeasurementRefused { causes: causes }
+  }
+}
+
+// THE A/B ARM. A delta between two runs is meaningless unless both were
+// admitted AND their subjects actually differ: an A/B pair whose two arms
+// carry one subject digest measured one thing twice, and its agreement is a
+// tautology rather than a result. This is the exact shape that let a floor
+// pair report identical tallies with the change absent from both arms.
+type MeasurementDeltaRefusalCause
+  = BaselineRefused { causes: List<MeasurementRefusalCause> }
+  | CandidateRefused { causes: List<MeasurementRefusalCause> }
+  | SubjectsIdentical { subject_digest: Fnv1a64Structural }
+
+type MeasurementDelta
+  = DeltaAdmitted {
+      baseline_digest: Fnv1a64Structural
+      candidate_digest: Fnv1a64Structural
+      baseline_calls: Int
+      candidate_calls: Int
+    }
+  | DeltaRefused { causes: List<MeasurementDeltaRefusalCause> }
+
+fn admit_measurement_delta(baseline: MeasurementRun, candidate: MeasurementRun) -> MeasurementDelta {
+  let base_causes = measurement_run_causes(run: baseline)
+  let cand_causes = measurement_run_causes(run: candidate)
+  let base_acc = if list_length(items: base_causes) > 0 {
+    [BaselineRefused { causes: base_causes }]
+  } else {
+    []
+  }
+  let cand_acc = if list_length(items: cand_causes) > 0 {
+    base_acc + [CandidateRefused { causes: cand_causes }]
+  } else {
+    base_acc
+  }
+  let base_digest = measurement_subject_digest(subject: baseline.subject)
+  let cand_digest = measurement_subject_digest(subject: candidate.subject)
+  let all_causes = if content_hash_eq_structural(left: base_digest, right: cand_digest) {
+    cand_acc + [SubjectsIdentical { subject_digest: base_digest }]
+  } else {
+    cand_acc
+  }
+  if list_length(items: all_causes) == 0 {
+    DeltaAdmitted {
+      baseline_digest: base_digest,
+      candidate_digest: cand_digest,
+      baseline_calls: measurement_total_calls(samples: baseline.samples),
+      candidate_calls: measurement_total_calls(samples: candidate.samples),
+    }
+  } else {
+    DeltaRefused { causes: all_causes }
+  }
+}
+
+data measurement_subject_rung_note: String = "RUNG, stated honestly rather than by the carrier's name. MeasurementSubject and MeasurementSample are ordinary records and remain directly constructible, so an author can still write a subject whose fields do not describe the run they label - this carrier cannot make a LIE about an observation unwritable, because the observation happens outside the model. What IS structural is the verdict: AdmittedMeasurementRun is sole_constructor with one in-module mint inside admit_measurement_run, so an admitted receipt that never passed the causes fold has no representation, and a delta over an unadmitted or self-identical pair likewise has none. So the class sits at mechanically preventable for the ADMISSION question and at mitigatable for the FAITHFULNESS question. NEXT-RUNG TRIGGER for the second half: the subject's binary_digest and source_inventory_digest are produced by the harness at launch rather than declared by the author, at which point a subject detached from its run stops being writable at the boundary that mints it. NOT CLAIMED: that any measurement in this repository currently routes through this carrier. It has one consumer, its witness, and the profiler spans that would feed it are blocked behind the stage0 regeneration; enrolling a producer is separate work and until it lands this is a modeled admission with no production subject."
