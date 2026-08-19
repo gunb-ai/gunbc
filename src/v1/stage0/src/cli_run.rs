@@ -8,7 +8,9 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 use crate::coproduct_reflection::{decl_facts_corpus_walk, DeclFactRaw};
-use crate::module_path_index::{parse_module_binding, ParsedModuleBinding};
+use crate::module_path_index::{
+    parse_module_binding, ModuleBindingOutcome, ModuleBindingRefusal, ParsedModuleBinding,
+};
 use crate::shared_typecheck_store::{self, SharedTypecheckCaches};
 use crate::std_node::compiler_recursive_types;
 use crate::std_syntax::LiteralValue;
@@ -1478,10 +1480,16 @@ fn insert_module_path(index: &mut HashMap<String, String>, module_path: &str, re
     index.insert(module_path.to_string(), rel);
 }
 
+/// Walks every `.dag` under `source_roots`, visiting each module-bound file.
+///
+/// Parse failures do not panic and are not skipped: each becomes a typed located
+/// `ModuleBindingRefusal`, all of them are collected, and the walk refuses as a
+/// counted set at the end.
 fn for_each_parsed_module_binding(
     source_roots: &[String],
     mut visit: impl FnMut(usize, &Path, ParsedModuleBinding),
 ) {
+    let mut refusals: Vec<ModuleBindingRefusal> = Vec::new();
     for (root_idx, root) in source_roots.iter().enumerate() {
         let anchored_root = anchor_source_root(root);
         let root_path = Path::new(&anchored_root);
@@ -1495,13 +1503,47 @@ fn for_each_parsed_module_binding(
                 )
             });
             let binding = match parse_module_binding(&path, &content) {
-                Ok(Some(binding)) => binding,
-                Ok(None) => continue,
-                Err(msg) => panic!("for_each_parsed_module_binding: {msg}"),
+                Ok(ModuleBindingOutcome::Bound(binding)) => binding,
+                Ok(ModuleBindingOutcome::ModuleBindingUnclassified) => continue,
+                // Fail-closed, but the line stops with a TYPED, LOCATED refusal
+                // rather than an untyped panic that discarded the span. Siblings
+                // continue so the report is COUNTED and complete: one run names
+                // every unparseable file, not just the first (§5 factory model —
+                // a stopped-line audit ledgers every deficit before restart).
+                Err(refusal) => {
+                    refusals.push(refusal);
+                    continue;
+                }
             };
             visit(root_idx, &path, binding);
         }
     }
+    refuse_unparseable_module_sources(&refusals);
+}
+
+/// The refusal arm of the module-index walk. Typed (each carries the parser's own
+/// `CompilerDiagnostic`), located (path + span), and counted (every offender is
+/// named, with a total). Replaces `panic!` with a formatted string, which stopped
+/// the line but discarded the span and reported only the first offender.
+///
+/// RUNG, stated exactly rather than by implication: the PER-FILE refusal is typed
+/// and located; the AGGREGATE is retained structurally until rendering; the
+/// OPERATION-LEVEL outcome is still a process exit, NOT a typed result returned to
+/// a caller. Consequence for any future run receipt: an in-process observer cannot
+/// witness this arm, because the process is gone. Such a receipt must be produced
+/// by an EXTERNAL observer until the exit moves to the command boundary.
+fn refuse_unparseable_module_sources(refusals: &[ModuleBindingRefusal]) {
+    if refusals.is_empty() {
+        return;
+    }
+    eprintln!(
+        "module index refused: {} unparseable .dag source(s)",
+        refusals.len()
+    );
+    for refusal in refusals {
+        eprintln!("  {}", refusal.rendered());
+    }
+    std::process::exit(1);
 }
 
 fn collect_module_binding_manifest_rows(source_roots: &[String]) -> Vec<ModuleBindingManifestRow> {
