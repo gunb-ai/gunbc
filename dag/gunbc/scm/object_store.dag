@@ -1,0 +1,128 @@
+module gunbc.scm.object_store
+
+import std.types { List, Bool, NonEmptyStr, String }
+import v2.std.node {
+  Hash,
+  Node,
+  NodeKind,
+  Edge,
+  EdgeLabel,
+  content_hash,
+  node_synthetic,
+}
+
+// WHY A NODE IS STORED DECOMPOSED RATHER THAN WHOLE, which is the whole point of the slice and not
+// an implementation preference. Storing each node as (kind, [(label, child identity)]) is what makes
+// a commit a CLOSURE: checkout follows exact identities and can therefore refuse when one is absent,
+// which is the discriminating behaviour the reconstruction claim rests on. A store that kept whole
+// node values per identity would round-trip perfectly and prove nothing, because there would be no
+// links to follow and no reachable object that could be missing.
+//
+// THE IDENTITY IS CONSUMED, NOT MINTED. v2.std.node content_hash already folds kind, edge labels and
+// child digests canonically, through canonical_hash_of_node_kind and canonical_hash_of_edge_label.
+// Re-deriving a second structural digest here would be the section 3 fork this repository consolidates
+// everywhere else, and it would be a WORSE fork than usual: two structural hashes over one node type
+// disagreeing is undetectable until something compares them.
+//
+// DECLARED RUNG, stated rather than left for a reader to discover. ObjectId is that digest, and that
+// digest is fnv1a64 -- 64-bit and non-cryptographic. It is adequate for THIS slice's claims, which are
+// about stability, reconstruction and identity-free combination, and it is NOT adequate as a durable
+// intersubjective content identity for cross-party agreement: a 64-bit non-cryptographic digest is a
+// locator, and treating a locator as an identity witness is a defect class this repository has already
+// met elsewhere. No stronger option exists in .dag today -- the sha256 surfaces in std.content_hash and
+// extdeps.crypto.hash VALIDATE hex rather than computing it, and the v1 seed's builtin registry is
+// frozen against new rows. dissolve-on: a computing cryptographic digest reachable from .dag, at which
+// point ObjectId changes family and this note deletes.
+//
+// ObjectId IS v2.std.node's Hash rather than a parallel alias over the same underlying digest type.
+// The typechecker treats two aliases of one primitive as distinct, so the first cut -- ObjectId
+// aliasing Fnv1a64Structural directly -- refused every content_hash result at the store boundary.
+// That refusal was correct and worth keeping the shape it forced: an object's identity is not merely
+// the same SHAPE as a node's content hash, it is that hash, and saying so in the type means no
+// conversion exists to get them out of step.
+type ObjectId = Hash
+
+type StoredEdge {
+  label: EdgeLabel
+  target: ObjectId
+}
+
+type ObjectRecord {
+  identity: ObjectId
+  kind: NodeKind
+  children: List<StoredEdge>
+}
+
+// The store is a LIST rather than a map, deliberately and temporarily. std.determinism refuses the
+// uniquely named Map projections whose traversal order is host-unspecified, and a store whose
+// iteration order leaked into a digest would make one program hash two ways. A list keeps ordering
+// authored and observable. dissolve-on: a determinism-admitted keyed collection; the lookup below is
+// the only site that would change.
+type ObjectStore {
+  objects: List<ObjectRecord>
+}
+
+fn empty_store() -> ObjectStore {
+  ObjectStore { objects: [] }
+}
+
+fn object_id_eq(left: ObjectId, right: ObjectId) -> Bool {
+  (left.digest as String) == (right.digest as String)
+}
+
+fn find_object(store: ObjectStore, identity: ObjectId) -> ObjectRecord? {
+  fold(store.objects, init: none, f: fn(acc, record) {
+    if object_id_eq(left: record.identity, right: identity) {
+      Present { value: record }
+    } else {
+      acc
+    }
+  })
+}
+
+fn store_contains(store: ObjectStore, identity: ObjectId) -> Bool {
+  match find_object(store: store, identity: identity) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+// WRITING IS IDEMPOTENT BY CONSTRUCTION, not by a check the caller must remember. An identity already
+// present is the same content by definition of a content address, so re-storing returns the store
+// unchanged. This is what lets the same object appear at many positions in one program while being
+// stored once -- content is fungible, positions are not.
+fn put_object(store: ObjectStore, record: ObjectRecord) -> ObjectStore {
+  if store_contains(store: store, identity: record.identity) {
+    store
+  } else {
+    ObjectStore { objects: concat(store.objects, [record]) }
+  }
+}
+
+type StoreResult {
+  store: ObjectStore
+  identity: ObjectId
+}
+
+type StoreEdgeAcc {
+  store: ObjectStore
+  edges: List<StoredEdge>
+}
+
+fn store_node(store: ObjectStore, n: Node) -> StoreResult {
+  let acc = fold(n.children, init: StoreEdgeAcc { store: store, edges: [] }, f: fn(acc, edge) {
+    let child = store_node(store: acc.store, n: edge.target)
+    StoreEdgeAcc {
+      store: child.store,
+      edges: concat(acc.edges, [StoredEdge { label: edge.label, target: child.identity }]),
+    }
+  })
+  let identity = content_hash(n: n)
+  StoreResult {
+    store: put_object(
+      store: acc.store,
+      record: ObjectRecord { identity: identity, kind: n.kind, children: acc.edges },
+    ),
+    identity: identity,
+  }
+}

@@ -1,0 +1,229 @@
+module test.claim.scm_object_store_witness
+
+// Slice 1 of NATIVE-COMMIT-0 (docs/plans/dag-native-scm-design.md §7): a commit is a root object id
+// plus the closure reachable from it, and checking one out either reconstructs the exact program or
+// refuses with a located missing object. Nothing here merges yet.
+//
+// Every claim below is paired with its discriminating control, written as a NEGATED assertion so a
+// vacuous implementation reds rather than passing quietly: a checkout that fabricated a program
+// would pass round_trip_holds, and a refusal that fired unconditionally would pass the two refusal
+// claims. The controls are what make those two impossible.
+
+import std.types { String, Bool, List, Int, NonEmptyStr }
+import std.occurrence_identity { OccurrenceId }
+
+import v2.std.node {
+  Node,
+  NodeKind,
+  TypeNode,
+  Connective,
+  Atom,
+  Conj,
+  Edge,
+  EdgeLabel,
+  Named,
+  Symbol,
+  node_synthetic,
+  node_with_occurrence_id,
+  node_occurrence_minted,
+  content_hash,
+}
+
+import gunbc.scm.object_store {
+  ObjectId,
+  ObjectStore,
+  ObjectRecord,
+  find_object,
+  put_object,
+  empty_store,
+  store_node,
+  object_id_eq,
+  StoreResult,
+}
+import gunbc.scm.checkout {
+  Commit,
+  commit_of_root,
+  checkout,
+  CheckedOut,
+  CheckoutRefused,
+}
+
+fn atom_node(identity: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: identity } }, children: [])
+}
+
+fn named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+fn program_a() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [named_edge(name: ^left, target: atom_node(identity: ^L))],
+  )
+}
+
+fn program_ab() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      named_edge(name: ^left, target: atom_node(identity: ^L)),
+      named_edge(name: ^right, target: atom_node(identity: ^R)),
+    ],
+  )
+}
+
+// The same program rebuilt with MINTED occurrence ids instead of synthetic ones. Occurrence ids are
+// graph-scoped allocator output (std.occurrence_identity occurrence_identity_scope_law), so two
+// independent parses of one authored program get DIFFERENT ids for the same construct. If object
+// identity were sensitive to them, no commit could ever be recognised as one already stored.
+fn minted_atom_node(identity: Symbol, id: Int) -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Atom { identity: identity } },
+    children: [],
+    occurrence_id: node_occurrence_minted(id: OccurrenceId { value: id }),
+  )
+}
+
+fn minted_program_ab(base: Int) -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Conj },
+    children: [
+      named_edge(name: ^left, target: minted_atom_node(identity: ^L, id: base + 1)),
+      named_edge(name: ^right, target: minted_atom_node(identity: ^R, id: base + 2)),
+    ],
+    occurrence_id: node_occurrence_minted(id: OccurrenceId { value: base }),
+  )
+}
+
+fn checkout_matches(store: ObjectStore, commit: Commit, expected: Node) -> Bool {
+  match checkout(store: store, commit: commit) {
+    CheckoutRefused { cause: _ } => false
+    CheckedOut { program: got } =>
+      object_id_eq(left: content_hash(n: got), right: content_hash(n: expected))
+  }
+}
+
+fn checkout_refuses(store: ObjectStore, commit: Commit) -> Bool {
+  match checkout(store: store, commit: commit) {
+    CheckoutRefused { cause: _ } => true
+    CheckedOut { program: _ } => false
+  }
+}
+
+// A store holding the root record and none of its children. Used to reach the refusal through the
+// recursive descent rather than at the entry lookup.
+fn store_of_root_only(full: ObjectStore, root: ObjectId) -> ObjectStore {
+  match find_object(store: full, identity: root) {
+    Absent => empty_store()
+    Present { value: record } => put_object(store: empty_store(), record: record)
+  }
+}
+
+// CRITERION 2 -- a commit reconstructs its exact program from its own closure.
+test fn round_trip_reconstructs_the_exact_program() -> Bool {
+  let stored = store_node(store: empty_store(), n: program_ab())
+  checkout_matches(
+    store: stored.store,
+    commit: commit_of_root(root: stored.identity),
+    expected: program_ab(),
+  )
+}
+
+// CONTROL for the claim above: checkout_matches must be able to say no.
+test fn round_trip_refuses_a_wrong_expectation() -> Bool {
+  let stored = store_node(store: empty_store(), n: program_ab())
+  !checkout_matches(
+    store: stored.store,
+    commit: commit_of_root(root: stored.identity),
+    expected: program_a(),
+  )
+}
+
+// CRITERION 1 -- growing the store cannot change what an existing commit means.
+test fn later_objects_do_not_change_an_existing_commit() -> Bool {
+  let first = store_node(store: empty_store(), n: program_a())
+  let grown = store_node(store: first.store, n: program_ab())
+  checkout_matches(
+    store: grown.store,
+    commit: commit_of_root(root: first.identity),
+    expected: program_a(),
+  )
+}
+
+// An incomplete closure refuses rather than substituting, at the entry lookup.
+test fn absent_root_refuses() -> Bool {
+  let stored = store_node(store: empty_store(), n: program_ab())
+  checkout_refuses(
+    store: empty_store(),
+    commit: commit_of_root(root: stored.identity),
+  )
+}
+
+// The STRONGER missing-object case: the root IS present and its children are not, so the refusal
+// has to come from the recursive descent, not from a guard on the entry point.
+test fn missing_reachable_child_refuses() -> Bool {
+  let stored = store_node(store: empty_store(), n: program_ab())
+  let severed = store_of_root_only(full: stored.store, root: stored.identity)
+  checkout_refuses(
+    store: severed,
+    commit: commit_of_root(root: stored.identity),
+  )
+}
+
+// CONTROL for the case above: the severed store is not merely empty. If it were, the claim would be
+// a restatement of absent_root_refuses rather than a statement about a missing child.
+test fn severed_store_still_holds_its_root() -> Bool {
+  let stored = store_node(store: empty_store(), n: program_ab())
+  let severed = store_of_root_only(full: stored.store, root: stored.identity)
+  length(severed.objects) == 1
+}
+
+// CONTROL for both refusal claims: refusal is not unconditional.
+test fn a_complete_closure_does_not_refuse() -> Bool {
+  let stored = store_node(store: empty_store(), n: program_ab())
+  !checkout_refuses(
+    store: stored.store,
+    commit: commit_of_root(root: stored.identity),
+  )
+}
+
+// CRITERION 3, first half -- identical content stores identically no matter how it was built. Both
+// programs are constructed independently, so nothing correlates their nodes.
+test fn independently_built_equal_programs_share_one_identity() -> Bool {
+  let one = store_node(store: empty_store(), n: program_ab())
+  let two = store_node(store: empty_store(), n: program_ab())
+  object_id_eq(left: one.identity, right: two.identity)
+}
+
+// CRITERION 3, second half -- and the gap the first half leaves open. If every node carried the same
+// SyntheticOccurrence, equal identities would be consistent with an identity that reads the
+// occurrence id and merely finds it equal. These are the same program under three DIFFERENT
+// occurrence allocations, and all three must land on one object identity.
+test fn identity_survives_reminted_occurrences() -> Bool {
+  let synthetic = store_node(store: empty_store(), n: program_ab())
+  let minted_low = store_node(store: empty_store(), n: minted_program_ab(base: 10))
+  let minted_high = store_node(store: empty_store(), n: minted_program_ab(base: 900))
+  object_id_eq(left: synthetic.identity, right: minted_low.identity)
+    && object_id_eq(left: minted_low.identity, right: minted_high.identity)
+}
+
+// CONTROL for the remint claim: the two bases really do allocate different occurrence ids, so the
+// claim above is about insensitivity rather than about two identical inputs.
+test fn reminted_programs_carry_different_occurrences() -> Bool {
+  minted_program_ab(base: 10).occurrence_id != minted_program_ab(base: 900).occurrence_id
+}
+
+// CONTROL for identity itself: object_id_eq is not degenerate.
+test fn different_programs_get_different_identities() -> Bool {
+  let one = store_node(store: empty_store(), n: program_a())
+  let two = store_node(store: empty_store(), n: program_ab())
+  !object_id_eq(left: one.identity, right: two.identity)
+}
+
+// Storing the same program twice adds nothing: content addressing makes writes idempotent.
+test fn restoring_one_program_adds_no_objects() -> Bool {
+  let one = store_node(store: empty_store(), n: program_ab())
+  let twice = store_node(store: one.store, n: program_ab())
+  length(one.store.objects) == length(twice.store.objects)
+}
