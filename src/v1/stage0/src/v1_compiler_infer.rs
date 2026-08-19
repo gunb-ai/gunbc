@@ -20138,6 +20138,7 @@ pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphI
         let init = Rc::new(EmitInfoBuildState {
             type_summaries: v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
             type_decl_items: v1_rt::rc_empty_map::<String, Rc<Node>>(),
+            fn_decl_items: v1_rt::rc_empty_map::<String, Rc<Node>>(),
         });
         let built_raw = modules.clone().iter().cloned().fold(
             init.clone(),
@@ -20157,6 +20158,7 @@ pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphI
         let built = Rc::new(EmitInfoBuildState {
             type_summaries: close_fn_fields(built_raw.type_summaries.clone()),
             type_decl_items: built_raw.type_decl_items.clone(),
+            fn_decl_items: built_raw.fn_decl_items.clone(),
         });
         let all_recursive = modules.clone().iter().cloned().fold(
             v1_rt::rc_empty_set::<_>(),
@@ -20180,6 +20182,7 @@ pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphI
         Rc::new(EmitGraphInfo {
             type_summaries: built.type_summaries.clone(),
             type_decl_items: built.type_decl_items.clone(),
+            fn_decl_items: built.fn_decl_items.clone(),
             recursive_type_set: all_recursive.clone(),
             fielded_variants: variant_shapes.fielded.clone(),
             positional_payload_variants: variant_shapes.positional_payload.clone(),
