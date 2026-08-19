@@ -1,0 +1,81 @@
+module test.claim.live_deploy_unit_emission_oracle_witness
+
+import std.types { Bool, String, CommitSha }
+import std.layout { render }
+import gunbc.live_deploy.emit {
+  live_deploy_protocol,
+  emit_belt_service_unit_doc,
+  emit_belt_timer_unit_doc,
+  emit_systemd_unit_doc,
+  emit_tree_sync_unit_doc,
+  emit_fleet_converge_service_unit_doc,
+  emit_fleet_converge_timer_unit_doc,
+  ReleaseRevisionBinding,
+  RevisionBoundAtEmission,
+}
+import gunbc.live_deploy.spec { DeploymentSpec, deployment_spec_srv1_green }
+
+// THE ORACLE IS THE LIVE HOST, NOT THIS TREE.
+//
+// These six renderers produce the bytes that BECOME systemd unit files on srv1, and nothing in
+// the repository or in CI pins them: dag/test/claim/live_deploy/long/emit_test.dag carries 47
+// witnesses and not one asserts a unit doc's text, the emitted deploy script is not a committed
+// artifact so git shows no diff, and the generated-artifact drift gate was deleted by the
+// 2026-08-15 floor cut (.github/workflows now holds only fleet-converge.yml and witnesses.yml).
+// So a refactor of these functions could change a live unit file with no oracle anywhere.
+//
+// The expected bytes below were READ FROM /etc/systemd/system ON srv1 on 2026-08-19 — they are
+// what is deployed and running, an external authority. They are deliberately NOT a capture of
+// what these functions currently emit: a golden generated from the same tree it guards is the
+// change detector DESIGN section 5 rejects, and it would certify a renderer as correct purely
+// because nobody had touched it. Grounding on the deployed bytes means a disagreement is a real
+// finding about emission drifting from the fleet, in either direction.
+//
+// A witness here going red therefore asks a question before it asks for a fix: did the emitter
+// change, or did the host? Both are answerable, and neither is answerable from a self-capture.
+
+fn green_spec() -> DeploymentSpec {
+  deployment_spec_srv1_green()
+}
+
+// The revision the green slot is actually serving, read from its live ExecStart on the same date.
+// Bound rather than synthesised because it appears verbatim in the emitted unit.
+fn green_revision() -> ReleaseRevisionBinding {
+  RevisionBoundAtEmission { revision: "7d06e3783e112abe351045cf8903705b55e633bd" as CommitSha }
+}
+
+// gunbc-srv1-green-belt.service, as deployed on srv1 2026-08-19.
+test fn the_belt_service_unit_matches_the_deployed_bytes() -> Bool {
+  let emitted = render(doc: emit_belt_service_unit_doc(spec: green_spec()), proto: live_deploy_protocol)
+  emitted == "[Unit]\nDescription=gunbc roadmap belt tick (one reconcile pass over the ready frontier)\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=oneshot\nUser=briansrls\nGroup=briansrls\nWorkingDirectory=/opt/gunbc-green/gunbc\nEnvironment=GUNBC_BELT_SPAWN_WORKDIR=/opt/gunbc-green/gunbc\nExecStart=/opt/gunbc-green/bin/gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap_belt_actuate.dag --function belt_run_once_cli\n"
+}
+
+// gunbc-srv1-green-belt.timer, as deployed on srv1 2026-08-19.
+test fn the_belt_timer_unit_matches_the_deployed_bytes() -> Bool {
+  let emitted = render(doc: emit_belt_timer_unit_doc(spec: green_spec()), proto: live_deploy_protocol)
+  emitted == "[Unit]\nDescription=gunbc roadmap belt tick cadence\n\n[Timer]\nUnit=gunbc-srv1-green-belt.service\nOnBootSec=2min\nOnUnitInactiveSec=60s\nAccuracySec=5s\n\n[Install]\nWantedBy=timers.target\n"
+}
+
+// gunbc-srv1-green.service, as deployed on srv1 2026-08-19.
+test fn the_serve_unit_matches_the_deployed_bytes() -> Bool {
+  let emitted = render(doc: emit_systemd_unit_doc(spec: green_spec(), revision: green_revision()), proto: live_deploy_protocol)
+  emitted == "[Unit]\nDescription=gunbc roadmap HTTP server (gunbc serve)\nAfter=network-online.target tailscaled.service\nWants=network-online.target\n\n[Service]\nType=simple\nUser=briansrls\nGroup=briansrls\nWorkingDirectory=/opt/gunbc-green/gunbc\nExecStart=/opt/gunbc-green/bin/gunbc serve --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap_serve.dag --function roadmap_serve_handle_srv1_green --host 0.0.0.0 --port 18080 --release-revision 7d06e3783e112abe351045cf8903705b55e633bd --eval-budget-cpu-ms 30000 --eval-budget-wall-ms 30000\nRestart=on-failure\n\n[Install]\nWantedBy=multi-user.target\n"
+}
+
+// gunbc-srv1-green-tree-sync.service, as deployed on srv1 2026-08-19.
+test fn the_tree_sync_unit_matches_the_deployed_bytes() -> Bool {
+  let emitted = render(doc: emit_tree_sync_unit_doc(spec: green_spec(), tree_path: green_spec().service.repo_root as String), proto: live_deploy_protocol)
+  emitted == "[Unit]\nDescription=gunbc source tree sync (service-user-principal rsync from CI runner checkout)\n\n[Service]\nType=oneshot\nUser=briansrls\nGroup=briansrls\nEnvironmentFile=/etc/gunbc-srv1-green-tree-sync.env\nExecStart=/usr/bin/rsync -rlpt --delete --exclude /target --exclude /.git \"$\{GUNBC_TREE_SRC}/\" /opt/gunbc-green/gunbc/\nExecStart=/usr/bin/rsync -rlpt --exclude=objects/pack/*.keep --exclude=objects/pack/tmp_pack_* --include=/HEAD --include=/objects/*** --include=/packed-refs --include=/refs/*** --exclude=* \"$\{GUNBC_TREE_SRC}/.git/\" /opt/gunbc-green/gunbc/.git/\n"
+}
+
+// gunbc-srv1-green-fleet-converge.service, as deployed on srv1 2026-08-19.
+test fn the_fleet_converge_service_unit_matches_the_deployed_bytes() -> Bool {
+  let emitted = render(doc: emit_fleet_converge_service_unit_doc(spec: green_spec()), proto: live_deploy_protocol)
+  emitted == "[Unit]\nDescription=gunbc fleet converge (self)\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=oneshot\nUser=briansrls\nGroup=briansrls\nWorkingDirectory=/opt/gunbc-green/gunbc\nExecStart=/opt/gunbc-green/bin/gunbc converge --host self\n"
+}
+
+// gunbc-srv1-green-fleet-converge.timer, as deployed on srv1 2026-08-19.
+test fn the_fleet_converge_timer_unit_matches_the_deployed_bytes() -> Bool {
+  let emitted = render(doc: emit_fleet_converge_timer_unit_doc(spec: green_spec()), proto: live_deploy_protocol)
+  emitted == "[Unit]\nDescription=gunbc fleet converge cadence\n\n[Timer]\nUnit=gunbc-srv1-green-fleet-converge.service\nOnCalendar=*:0/15\nPersistent=true\nRandomizedDelaySec=90\n\n[Install]\nWantedBy=timers.target\n"
+}
