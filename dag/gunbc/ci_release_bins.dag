@@ -34,8 +34,6 @@ data ci_floor_invoked_bins: List<String> = [
   "claim_executor",
   "gunbc",
   "regen_floor_skip_witness",
-  "floor_skip_discovery_witness",
-  "selection_control_skip_witness",
 ]
 
 data witness_declared_release_bins: List<String> = [
