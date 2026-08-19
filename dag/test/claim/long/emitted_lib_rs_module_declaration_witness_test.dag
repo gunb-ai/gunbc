@@ -23,9 +23,17 @@ module test.claim.long.emitted_lib_rs_module_declaration_witness_test
 // derives from the emitted file set, so a crate that did not produce the module
 // cannot declare it.
 //
-// The second claim is the non-vacuity half: it proves the oracle is reading a
-// real lib.rs that declares this probe's own module, so the exclusion above is
+// The required half is the non-vacuity half: it proves the oracle is reading a
+// real lib.rs that declares this probe's own module, so the exclusion is
 // evidence of absence rather than evidence of an unread file.
+//
+// THOSE TWO FACTS WERE TWO CLAIMS OVER ONE SOURCE UNTIL 2026-08-19, and that cost
+// two full frontend-and-emitter crossings for one emitted lib.rs. They are one
+// call now — a required token and a forbidden token over the same emitted file —
+// because compile_dag_rust_emit_check already expresses exactly that conjunction,
+// and because the non-vacuity argument above is precisely the claim that the two
+// halves must be read off ONE emission. Neither assertion changed. The ordering
+// probe below emits a genuinely different crate, so it stays a crossing of its own.
 //
 // THE SECOND DIMENSION, ORDER, is covered below, and the first revision of this
 // file was wrong about who covered it: it deferred the ordering constraint to the
@@ -54,21 +62,12 @@ module test.claim.long.emitted_lib_rs_module_declaration_witness_test
 
 data lrd_probe_source: String = "module lrd_probe\n\nimport std.types { Bool }\n\nfn lrd_true() -> Bool {\n  true\n}\n"
 
-fn w_small_crate_lib_rs_omits_unemitted_dispatch_module() -> Bool {
-  compile_dag_rust_emit_check(
-    lrd_probe_source,
-    "src/lib.rs",
-    [],
-    ["v1_interpreter_dispatch_generated"]
-  )
-}
-
-fn w_small_crate_lib_rs_declares_its_own_emitted_module() -> Bool {
+fn w_small_crate_lib_rs_omits_dispatch_and_declares_its_own_module() -> Bool {
   compile_dag_rust_emit_check(
     lrd_probe_source,
     "src/lib.rs",
     ["pub mod lrd_probe;"],
-    []
+    ["v1_interpreter_dispatch_generated"]
   )
 }
 
@@ -83,12 +82,8 @@ fn w_partial_crate_declares_macro_provider_before_ordinary_modules() -> Bool {
   )
 }
 
-test fn small_crate_lib_rs_omits_unemitted_dispatch_module() -> Bool {
-  w_small_crate_lib_rs_omits_unemitted_dispatch_module()
-}
-
-test fn small_crate_lib_rs_declares_its_own_emitted_module() -> Bool {
-  w_small_crate_lib_rs_declares_its_own_emitted_module()
+test fn small_crate_lib_rs_omits_dispatch_and_declares_its_own_module() -> Bool {
+  w_small_crate_lib_rs_omits_dispatch_and_declares_its_own_module()
 }
 
 test fn partial_crate_declares_macro_provider_before_ordinary_modules() -> Bool {
