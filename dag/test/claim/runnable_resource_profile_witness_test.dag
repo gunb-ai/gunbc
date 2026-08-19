@@ -8,7 +8,7 @@ test fn witness_negligible_profile_is_not_heavy() -> Bool {
 
 test fn witness_negligible_profile_declares_hermetic() -> Bool {
   let p = runnable_resource_profile_negligible()
-  execution_mode_eq(left: p.execution_mode, right: Hermetic)
+  execution_mode_eq(left: p.execution_mode, right: std.execution_mode.Hermetic)
 }
 
 test fn witness_profile_eq_discriminates_execution_mode() -> Bool {

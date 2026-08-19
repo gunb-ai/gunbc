@@ -26,7 +26,7 @@ type ExecutionShape {
 type ExecutionDomain {
   id: std.machine_shape.DomainId
   execution: std.machine_shape.ExecutionShape
-  memory: std.machine_shape.MemoryShape
+  memory: List<std.machine_shape.MemoryLevel>
 }
 
 type InterconnectLink {
