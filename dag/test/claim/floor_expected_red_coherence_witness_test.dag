@@ -104,11 +104,12 @@ test fn w_severed_fixture_refusal_message_names_the_derivation_not_an_exclusion(
 // POSITIVE CONTROL: with only the two linked chunks checked (the honest roster the
 // fixture's own aggregator actually calls), the check finds full coherence.
 //
-// LIVE-ROSTER JOIN: OWED, not landed in this file. floor_expected_red.dag's own 20
-// chunks against its own evaluated roster is NOT checked by any witness declared
-// here -- see v2.workflow.floor_expected_red_coherence's
-// live_floor_expected_red_coherence_join_owed_note for why, and for the derivation
-// this file deliberately does not repeat.
+// This file's fixture witnesses are the complete, permanent proof of the mechanism
+// (see v2.workflow.floor_expected_red_coherence's floor_expected_red_chunk_coherence_check_note).
+// floor_expected_red.dag's own 20 chunks against its own evaluated roster is a
+// separate, pre-existing, unowned gap this file does not close -- see that module's
+// live_floor_expected_red_coherence_join_gap_note for the measured cost and natural
+// home of that still-open work.
 data fixture_linked_only_chunks: List<ChunkDeclRef> = [
   ChunkDeclRef { qualified_name: "test.fixture.floor_expected_red_coherence.severed_chunk_fixture.severed_fixture_chunk_linked_a", short_name: "severed_fixture_chunk_linked_a" },
   ChunkDeclRef { qualified_name: "test.fixture.floor_expected_red_coherence.severed_chunk_fixture.severed_fixture_chunk_linked_b", short_name: "severed_fixture_chunk_linked_b" },

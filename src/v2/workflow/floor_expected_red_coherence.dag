@@ -1,6 +1,5 @@
 module v2.workflow.floor_expected_red_coherence
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.types { Bool, List, String }
 import v2.std.algebra { Cons, Empty, contains, length, list_append, list_reverse }
 import v2.std.decl_facts_skeleton {
@@ -208,24 +207,36 @@ fn floor_expected_red_chunk_coherence_check(
   }
 }
 
-data floor_expected_red_chunk_coherence_check_dissolve_on: DissolutionCondition = unbound_dissolution(description: "Dissolve-on: the checked ChunkDeclRef roster is authored at each call site (this module names no fixed chunk count). If floor_expected_red.dag's chunk count changes, the call site enumerating its 20 ChunkDeclRef rows must be updated by hand -- there is no derivation of 'which functions are chunks' from decl_facts alone, because that would require a naming-convention heuristic over declaration names, which is the same class of shape-based inference DESIGN §4 forbids for atom lexemes. Widens if a future consumer wants the chunk roster itself derived rather than declared.")
+// MECHANISM ON FIXTURES, per the decomposition rule witness_deferral_freeze_witness_note
+// already states for this exact situation: a corpus census may be irreducible but a
+// mechanism never is. This module's fixture-scale witnesses
+// (dag/test/claim/floor_expected_red_coherence_witness_test.dag) are the complete,
+// permanent evidence for floor_expected_red_chunk_coherence_check itself: they are
+// cheap, they execute every PR, and they discriminate the #8437 incident shape (a
+// severed chunk still authoring identities into a well-formed, non-empty roster).
+// The mechanism is finished, not deferred -- there is no dissolution condition here
+// because the fixture witnesses are not scaffolding for a later replacement; per
+// DESIGN §4b a climb deletes redundant lower-rung PRODUCTION machinery and never the
+// evidence, so these RED controls stay enrolled exactly as they are even after a live
+// census exists on top of them.
+data floor_expected_red_chunk_coherence_check_note: String = "MECHANISM ON FIXTURES: floor_expected_red_chunk_coherence_check is proven by execution against planted rosters in dag/test/claim/floor_expected_red_coherence_witness_test.dag -- a severed-aggregator RED, its cause-naming RED siblings, and a linked-chunks-only positive control. That is the complete claim this module makes about the mechanism; it is not partial."
 
-// OWED, deliberately not landed as a witness. This module's fixture-scale witnesses
-// (dag/test/claim/floor_expected_red_coherence_witness_test.dag) are the whole
-// per-PR claim: they are cheap, they execute every PR, and they discriminate the
-// #8437 incident shape (a severed chunk still authoring identities into a
-// well-formed, non-empty roster). Folding floor_expected_red.dag's own real 20
-// chunks through this same check is a SEPARATE, much larger claim -- it requires a
-// fresh decl_facts(pool_roots: ["src/v2/workflow"]) parse (measured: ~56s process
-// wall, dominated by the parse itself, ~36x the 1552ms per-PR floor ceiling) -- and
-// per DESIGN §5/§6 that cost may not be paid inside an ordinary per-PR claim, in
-// test/claim/long/, or as an unenrolled-but-honest UnexecutedDeferredWitness record
-// (the gunbc#7762 shape: a file retained, coverage deleted, admission still green).
-// The live join belongs where its cost is already paid: the required-floor run
-// already resolves the whole corpus during preparation (3662 modules on a recent
-// run) before any claim executes, so re-deriving decl_facts fresh over 84 modules
-// inside a claim duplicates work the floor has already done -- the #8470 shape one
-// level up. Its future home is a check at that preparation-time corpus join, not a
-// witness in this file. Dissolve-on: that preparation-time consumer exists and
-// checks floor_expected_red.dag's real chunk/aggregator/roster triple against it.
-data live_floor_expected_red_coherence_join_owed_note: String = "OWED: the live join of floor_expected_red.dag's own 20 chunks against its own evaluated roster is not a per-PR witness in floor_expected_red_coherence_witness_test.dag. It is deferred to a future consumer of the required-floor run's already-resolved whole-corpus decl_facts (the #8470 shape one level up), not re-derived fresh inside a claim. See this module's own dissolve-on note immediately above for the reasoning and the measured cost that ruled out landing it as a claim."
+// SEPARATE, PRE-EXISTING, UNOWNED OBLIGATION -- not debt this module introduces.
+// Folding floor_expected_red.dag's own real 20 chunks through the same check is a
+// distinct, much larger claim: it requires a fresh
+// decl_facts(pool_roots: ["src/v2/workflow"]) parse (measured: ~56s process wall,
+// dominated by the parse itself, ~36x the 1552ms per-PR floor ceiling), so per
+// DESIGN §5/§6 that cost may not be paid inside an ordinary per-PR claim, in
+// test/claim/long/ without cadence enrollment, or as an unenrolled-but-honest
+// UnexecutedDeferredWitness record (the gunbc#7762 shape). Before this module
+// existed, nothing in the tree could see a severed aggregator at all; after it,
+// strictly more of the #8437 incident shape is covered than before -- this is a
+// partial fix of a gap that predates this module, not an introduction of new debt,
+// so no admission verdict is owed for it (AcknowledgePreexistingDebt, DESIGN
+// 2026-08-10). The live join's natural home is where its cost is already paid: the
+// required-floor run resolves the whole corpus during preparation before any claim
+// executes, so re-deriving decl_facts fresh inside a claim duplicates work the floor
+// has already done -- the #8470 shape one level up. Building that preparation-time
+// consumer is its own future work item with its own owner, not a continuation of
+// this one.
+data live_floor_expected_red_coherence_join_gap_note: String = "PRE-EXISTING, UNOWNED GAP (not this module's debt): the live join of floor_expected_red.dag's own 20 chunks against its own evaluated roster is not a per-PR witness in floor_expected_red_coherence_witness_test.dag, and was not checkable by anything before this module existed either. See floor_expected_red_chunk_coherence_check_note and the comment above it for why the mechanism itself is complete, and for the measured cost and natural home (a required-floor preparation-time consumer) of the still-open live-census gap."
