@@ -142,7 +142,7 @@ import gunbc.worker_lifecycle {
   terminal_outcome_evidence_label,
 }
 import gunbc.dispatch_selection { default_provider_selection_request }
-import gunbc.host_layout { srv1_gunbc_repo_root, belt_spawn_workdir_env_var }
+import gunbc.host_layout { srv1_gunbc_repo_root, belt_spawn_workdir_env_var, instance_receipts_dir }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
   DashboardObserveOnly,
@@ -1776,12 +1776,34 @@ type BeltTickReceiptRead
   | BeltTickReceiptAbsent
   | BeltTickReceiptUnreadable { reason: String }
 
-data belt_tick_receipt_note: String = "THE PERSISTED TICK RECEIPT IS WHAT THE WORKFLOW UI READS to answer whether a belt tick ran, deferred, refused, or failed — today it exists only in journald stdout and the row cannot say 'Verification queued - next belt tick' or 'blocked - belt session observation refused'. Each pass is typed independently (BeltPassOutcome): spawn/teardown depend on tmux session observation; verify depends only on the attempt ledger plus terminal provider/process evidence; publish depends on exact verified head plus repository observation. A tmux-list refusal may block spawn/reap while verify still examines its own attempt evidence (DESIGN section 5: a failure arm must refuse narrowly, never widen to zeroing sibling passes). Written beside the instance's attempt-state root so /workflow.json can read it without re-running the belt."
+data belt_tick_receipt_note: String = "THE PERSISTED TICK RECEIPT IS WHAT THE WORKFLOW UI READS to answer whether a belt tick ran, deferred, refused, or failed — today it exists only in journald stdout and the row cannot say 'Verification queued - next belt tick' or 'blocked - belt session observation refused'. Each pass is typed independently (BeltPassOutcome): spawn/teardown depend on tmux session observation; verify depends only on the attempt ledger plus terminal provider/process evidence; publish depends on exact verified head plus repository observation. A tmux-list refusal may block spawn/reap while verify still examines its own attempt evidence (DESIGN section 5: a failure arm must refuse narrowly, never widen to zeroing sibling passes). Written to the instance's own receipts directory (gunbc.host_layout instance_receipts_dir) so /workflow.json can read it without re-running the belt. CORRECTED 2026-08-19: this sentence read 'beside the instance's attempt-state root', which was wrong in two ways at once and is recorded rather than quietly reworded. The code never wrote there — it wrote <instance_root>/belt-last-tick.json, a root-owned directory, so the receipt was EACCES and absent on every instance. And the attempt-state root is not a per-instance home at all: the srv1 pair is DispatchStateHostShared, so blue and green resolve it to ONE path and a receipt written there would be a single file answering for two instances. A note describing a home the implementation did not use, and could not have used safely, is the stale-authority class DESIGN section 3 names."
 
 data belt_tick_receipt_schema: String = "roadmap-belt-tick-receipt/v2"
 
+// THE RECEIPT HAD NO WRITABLE HOME AND THEREFORE HAS NEVER BEEN WRITTEN ON ANY INSTANCE.
+// This path was <instance_root>/belt-last-tick.json, and every instance_root on srv1 is
+// root:root 0755 while the belt runs as the service user — so the write was EACCES on blue and
+// green alike, and `belt-last-tick.json` was absent from both when read on 2026-08-19. The
+// workflow UI reads this receipt to say whether a tick ran, deferred, refused or failed, so its
+// absence is exactly the "nothing seems to be changing" the operator observed: the belt could
+// run and still leave the row with nothing to render.
+//
+// The fix is a home the service principal owns, not an elevation at write time. It is the
+// instance's own receipts directory — bootstrapped by the deploy through the granted
+// install -d -o <service-user> (live_deploy.emit BeltTimerUnit apply), which is the same
+// mechanism and the same reasoning fleet_converge_receipt_atomic_publish_note already records
+// for the converge receipt beside it.
+//
+// NOT the dispatch attempt-state root, though it is already service-user-owned and looks like
+// the closer home: the srv1 pair is DispatchStateHostShared, so blue and green resolve
+// dashboard_instance_dispatch_attempt_state_root to ONE path, and a receipt written there would
+// be a single file answering for two instances. Deriving from instance_root keeps the receipt
+// per-instance by construction.
 fn belt_tick_receipt_path_for_instance(instance: HostDashboardInstance) -> String {
-  join([instance.instance_root as String, "/belt-last-tick.json"], "")
+  join([
+    instance_receipts_dir(instance_root: instance.instance_root as String),
+    "/belt-last-tick.json",
+  ], "")
 }
 
 fn belt_pass_outcome_key(o: BeltPassOutcome) -> String {

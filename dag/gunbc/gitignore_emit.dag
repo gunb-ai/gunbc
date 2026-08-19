@@ -51,7 +51,7 @@ fn artifact_pattern(a: IgnoreArtifact) -> String {
     TarpaulinJsonReport => "tarpaulin-report.json"
     CoberturaReport => "cobertura.xml"
     LcovReport => "lcov.info"
-    CoverageOutputDir => "coverage/"
+    CoverageOutputDir => "/coverage/"
     JetBrainsProjectDir => ".idea/"
     VSCodeWorkspaceDir => ".vscode/"
     VimSwapFile => "*.swp"
