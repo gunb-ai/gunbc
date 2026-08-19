@@ -1,6 +1,7 @@
 module gunbc.host_converge_realize
 
 import std.types { String, List, Bool, NonEmptyStr, Int }
+import std.disposition { Disposition, Terminal }
 import gunbc.host_converge {
   ConvergeKnob,
   ConvergeTarget,
@@ -83,6 +84,12 @@ type ConvergeHostInterpretResult =
 
 data converge_host_no_knobs_reason: String = "host_converge_realize: HostConverge has zero knobs; fail-closed — refusing fabricated ConvergePlanApplied without knob work"
 
+data converge_host_multi_knob_concatenation_finding: Disposition = Terminal {
+  reason: "FINDING (2026-08-19, surfaced while investigating gunbc.fleet_converge_cli converge_cli_applied_knob_count). INVALID STATE: interpret_host_converge folded 2+ KnobEffect scripts into one concatenated shell body and realize_converge_in_process (host_effect_realize.dag) reported Converged on that one script's whole-script exit code; cap_upsert_script (host_axis_caps.dag) fragments carry no set -e / && chaining, so the exit code reflects only the LAST fragment's command, not an AND of all of them. HARM: a ConvergeCliReceipt/ConvergePlanApplied that a later reader trusts instead of re-observing would claim convergence achieved while an earlier knob's command silently failed. RUNG: below the floor — silent wrongness, outside the guarantee ladder, forbidden outright (DESIGN §4b/§5) — if reached. MEASURED (not sampled): today this is unreachable for every host in fleet_converge_policy, because gunbc_pinned_tree_knobs is concatenated FIRST into every HostConverge.knobs list and is a GunbcPinnedTree-target knob that interpret_converge_knob does not implement, so the fail-closed all-or-nothing fold in interpret_host_converge always refuses on knob #1 before reaching any PerSlotMemoryCap knob; no knob-ordering fix rescues this, every real host also independently carries other unimplemented-target knobs later in the same list. CEILING: decidable, gated on the substrate migration this lane exists to do (typed per-knob effects with per-knob outcomes) — a wall after grounding, not a ratchet. REPAIR SHAPE, deliberately not set -e/&&: hardening the concatenated script would invest in the shell path this lane exists to delete and cement multi-knob concatenation as a supported shape. Instead this module refuses multi-knob concatenation outright (below), typed/located/counted, the moment a second KnobEffect would be folded into one script — so the day a future author gives a second ConvergeTarget a real interpret_converge_knob arm, the fold refuses loudly instead of silently concatenating. NEXT TRIGGER: this refusal, and the concatenation it guards, both dissolve together when interpret_host_converge is replaced by typed per-knob effects with per-knob outcomes."
+}
+
+data converge_host_multi_knob_concatenation_refused_reason_prefix: String = "host_converge_realize: multi-knob script concatenation refused — see converge_host_multi_knob_concatenation_finding for the full invalid-state/harm/rung/ceiling/trigger record"
+
 fn interpret_host_converge(host_converge: HostConverge) -> ConvergeHostInterpretResult {
   if host_converge.knobs.length() == 0 {
     ConvergeHostRefused { reason: converge_host_no_knobs_reason }
@@ -102,8 +109,17 @@ fn interpret_host_converge(host_converge: HostConverge) -> ConvergeHostInterpret
                     concat(concat(", slice=", converge_slice_label(s: knob.slice)), concat(", knob=", name))
                   ),
                 }
-              KnobEffect { knob_name: _, effect_script: s } =>
-                ConvergeHostInterpreted { knob_count: n + 1, stdout: concat(out, s) }
+              KnobEffect { knob_name: name, effect_script: s } =>
+                if n >= 1 {
+                  ConvergeHostRefused {
+                    reason: concat(
+                      concat(concat(converge_host_multi_knob_concatenation_refused_reason_prefix, " (host="), host_converge.identity as String),
+                      concat(concat(", slice=", converge_slice_label(s: knob.slice)), concat(", knob=", name))
+                    ),
+                  }
+                } else {
+                  ConvergeHostInterpreted { knob_count: n + 1, stdout: concat(out, s) }
+                }
             }
         }
       }
