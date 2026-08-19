@@ -1,5 +1,23 @@
 module gunbc.witness_floor_workflow
 
+import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
+import extdeps.languages.yaml.emit { serialize_yaml }
+import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
+import extdeps.github.actions {
+  Workflow, Job, Step, RunStep, UsesStep,
+  WorkflowTrigger, Push, PullRequest, WorkflowDispatch,
+  PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview,
+  DispatchInput, InputString,
+  WorkflowPermissions, PermRead,
+  ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressExpression,
+  RunnerSpec,
+  checkout_action, setup_rust_action
+}
+import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
+import gunbc.repo_identity { gunbc_default_branch_name }
+import gunbc.merge_admission_produce { ci_repo_root_shell }
+import gunbc.ci_layer_roots { witness_layer_roots }
+import std.types { List, String, Int }
 
 // THE ONLY CI EMISSION THIS REPOSITORY HAS.
 //
@@ -304,7 +322,7 @@ fn witness_floor_job() -> extdeps.github.actions.Job {
   extdeps.github.actions.Job {
     id: witness_floor_workflow_job_id,
     name: none,
-    runner: gunbc.runner_spec_from_offer.gunbc_ci_runner_spec(),
+    runner: gunbc_ci_selected_runner_spec(),
     steps: [
       witness_floor_checkout_step(),
       witness_floor_toolchain_step(),

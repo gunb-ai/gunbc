@@ -1,5 +1,106 @@
 module test.claim.live_deploy.emit
 
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision, deploy_witness_other_release_revision }
+import std.types { Bool, String, List, NonEmptyStr, Int }
+import std.os.types { Apt }
+import gunbc.live_deploy.spec {
+  DeploymentSpec,
+  OwnedArtifactKind,
+  DeploymentDependencyStep,
+  EnsuredPackage,
+  TailscalePackage,
+  TmuxPackage,
+  deployment_spec_srv1,
+  deployment_spec_srv1_green,
+  deployment_slot_spec,
+  deployment_retiring_slot_spec,
+  deployment_route_spec,
+  deployment_plan_host_identity,
+  deployment_plan_listen_port,
+  deployment_owned_steps,
+  deployment_owned_steps_retract_order,
+  deployment_steps_apply_order,
+  deployment_spec_for,
+  derived_deployment_names,
+  deployment_srv1_target,
+  DeploymentHostTarget,
+  srv1_live_deployment_names,
+  ArtifactStep,
+  Dependency,
+  deployment_tailnet_url,
+  gunbc_roadmap_unit_name,
+  GunbcSourceTree,
+  ServeBinary,
+  DispatchWorktreeRoot,
+  AttemptStateRoot,
+  SystemdUnit,
+  BeltTimerUnit,
+  FleetConvergeTimerUnit,
+  TailscaleServeMapping,
+  TeardownDisposition,
+  TeardownActs,
+  TeardownRefuses,
+  TeardownRefusalCause,
+  TeardownOutsideOwnership,
+  owned_artifact_teardown_disposition,
+  deployment_step_teardown_disposition,
+  gunbc_service_user,
+}
+import gunbc.host_layout { srv1_dispatch_attempt_state_root, belt_spawn_workdir_env_var }
+import gunbc.live_deploy.deployed_tree_scope { deployed_tree_rsync_exclude_flags }
+import gunbc.managed_directory {
+  managed_directory_mode_octal,
+  managed_directory_permissions,
+  srv1_attempt_state_directory,
+}
+import gunbc.roadmap_dashboard_instance { srv1_lab_dashboard_instance, srv1_live_dashboard_instance }
+import extdeps.version.semver { SemVerVersion }
+import extdeps.tailscale.serve {
+  ScopedRemovalUnobserved,
+  tailscale_scoped_removal_capability,
+}
+import extdeps.exec.command { shell_quote }
+import gunbc.live_deploy.emit {
+  RevisionBoundAtEmission,
+  live_deploy_systemd_unit_for,
+  live_deploy_tree_sync_unit_for,
+  deployment_ensure_dependency_script,
+  emit_deploy_teardown_dependency_refusal,
+  live_deploy_wholesale_refused_poison,
+  live_deploy_apply_script_for,
+  live_deploy_retract_script_for,
+  live_deploy_emit_shell_dissolution_trigger,
+  live_deploy_remote_mutation_service_op_realization_dissolution_trigger,
+  live_deploy_intent_dependency_graph_emit_dissolution_trigger,
+}
+import gunbc.ci_deploy_access {
+  DeployAccessJobPrincipalRefusal,
+  deploy_access_job_principal_refused_emit_poison,
+}
+import gunbc.fleet_posix_accounts { DeployRunnerPrincipal }
+import gunbc.host_axis_caps {
+  deploy_memory_cap_apply_script_for_host,
+  deploy_memory_cap_script_author_precedes_shadow_revert,
+  runner_slot_service_units_for_host,
+}
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import std.measure { byte_size_count }
+import v2.std.orchestration { Do, Run }
+import std.disposition { Scaffold, RealizationDispatch, Terminal }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.generated_artifact {
+  artifact_path,
+}
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.roadmap_static_site {
+  roadmap_site_health_path,
+  roadmap_site_roadmap_url_path,
+  roadmap_site_dispatch_url_path,
+  roadmap_site_text_static_routes,
+  served_static_route_literal_path,
+}
+import extdeps.apt { package_tailscale, package_tmux }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data witness_script_producers_note: String = "THE COMMITTED SCRIPT ARTIFACTS ARE GONE, SO THESE WITNESSES CALL THE EMITTER DIRECTLY. Nothing executed .github/live-deploy-srv1-apply.sh or -retract.sh — the real deploy runs live_deploy_apply_srv1_wet through gunbc run — and their registry rows named a HostReconciler consumer that does not exist. A committed artifact nobody reads is not coverage; it is a false architectural claim that happened to be convenient as a byte oracle.\\n\\nThe coverage did not need the artifact. A fixture sha is forbidden in a committed PRODUCTION artifact, never in a witness, so these call live_deploy_apply_script_for with RevisionBoundAtEmission at the fixture revision and assert the same bytes the golden used to pin — with the ExecStart line now pinned EXACTLY, which the golden never did."
 
@@ -215,7 +316,10 @@ test fn witness_scripts_stay_within_ci_runner_grants() -> Bool {
     && string_contains(s: unit, pattern: "Type=oneshot")
     && string_contains(s: unit, pattern: "User=briansrls")
     && string_contains(s: unit, pattern: "EnvironmentFile=/etc/gunbc-tree-sync.env")
-    && string_contains(s: unit, pattern: "ExecStart=/usr/bin/rsync -rlpt --delete --exclude /target --exclude /.git --exclude /.claude --exclude /.gunbc --exclude /target-codex --exclude /.cargo-home \"$\{GUNBC_TREE_SRC\}/\" /opt/gunbc/gunbc/")
+    && string_contains(s: unit, pattern: join([
+      "ExecStart=/usr/bin/rsync -rlpt --delete ", deployed_tree_rsync_exclude_flags(),
+      " \"$\{GUNBC_TREE_SRC\}/\" /opt/gunbc/gunbc/",
+    ], ""))
     && string_contains(s: unit, pattern: "ExecStart=/usr/bin/rsync -rlpt --exclude=objects/pack/*.keep --exclude=objects/pack/tmp_pack_* --include=/HEAD --include=/objects/*** --include=/packed-refs --include=/refs/*** --exclude=* \"$\{GUNBC_TREE_SRC\}/.git/\" /opt/gunbc/gunbc/.git/")
     && !string_contains(s: unit, pattern: "rsync -rlpt \"$\{GUNBC_TREE_SRC\}/.git/\"")
     && !string_contains(s: unit, pattern: "--include=/config")
