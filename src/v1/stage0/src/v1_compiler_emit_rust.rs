@@ -121,7 +121,9 @@ pub use crate::v1_compiler_trait_derive_emit::{
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
+use crate::v1_std_core::CallSemantics::{
+    FunctionValueCallSemantics, LookupCallSemantics, PlainCallSemantics,
+};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{InternalError, UnlistedImportUse};
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
@@ -14770,6 +14772,37 @@ pub fn return_type_is_unit(
     }
 }
 
+pub fn rust_declared_return_is_callable(emit_info: Rc<EmitGraphInfo>) -> bool {
+    match emit_info.fn_return_type.clone() {
+        Some(ret) => (ret.connective.clone() == Connective::Arrow),
+        None => false,
+    }
+}
+
+pub fn rust_callable_return_wrap(
+    body_str: String,
+    texpr: Rc<Node>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
+    {
+        let is_lambda_body = match (*texpr.expr_data.clone()).clone() {
+            ExprData::ExprLambda => true,
+            _ => false,
+        };
+        let wrap_template = language_spec(RenderTarget::Rust)
+            .callable_value_wrap_template
+            .clone();
+        if (is_lambda_body.clone() && rust_declared_return_is_callable(emit_info.clone())) {
+            match wrap_template.clone() {
+                Some(t) => apply_type_template1(t.clone(), body_str.clone()),
+                None => body_str.clone(),
+            }
+        } else {
+            body_str.clone()
+        }
+    }
+}
+
 pub fn emit_rust_fn_body_expr(
     texpr: Rc<Node>,
     return_is_unit: bool,
@@ -14789,14 +14822,18 @@ pub fn emit_rust_fn_body_expr(
             emit_info.clone(),
         )
     } else {
-        emit_typed_expr(
+        rust_callable_return_wrap(
+            emit_typed_expr(
+                texpr.clone(),
+                registry.clone(),
+                scope.clone(),
+                depth.clone(),
+                shared_types.clone(),
+                emit_info.clone(),
+                1024,
+            ),
             texpr.clone(),
-            registry.clone(),
-            scope.clone(),
-            depth.clone(),
-            shared_types.clone(),
             emit_info.clone(),
-            1024,
         )
     }
 }
@@ -18830,6 +18867,13 @@ pub fn emit_rust_expr_field_access(
     }
 }
 
+pub fn call_semantics_is_function_value(cs: Option<CallSemantics>) -> bool {
+    match cs.clone() {
+        Some(CallSemantics::FunctionValueCallSemantics) => true,
+        _ => false,
+    }
+}
+
 pub fn emit_rust_expr_call(
     expr: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
@@ -18839,12 +18883,15 @@ pub fn emit_rust_expr_call(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
-        ExprData::ExprCall { .. } => {
+        ExprData::ExprCall {
+            call_semantics: cs, ..
+        } => {
             let f = expr_call_func_at(expr.clone(), scope.type_env.clone().source_indices.clone());
             emit_typed_call_expr(
                 f.clone(),
                 expr.children.clone(),
                 expr.inferred.clone(),
+                call_semantics_is_function_value(cs.clone()),
                 registry.clone(),
                 scope.clone(),
                 depth.clone(),
@@ -19760,6 +19807,7 @@ pub fn emit_typed_call_expr(
     func: String,
     args: Rc<Vec<Rc<Node>>>,
     inferred: Option<Rc<InferredNode>>,
+    callee_is_function_value: bool,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
@@ -19811,6 +19859,7 @@ pub fn emit_typed_call_expr(
                 emit_typed_call(
                     func.clone(),
                     args.clone(),
+                    callee_is_function_value.clone(),
                     registry.clone(),
                     scope.clone(),
                     depth.clone(),
@@ -19819,7 +19868,9 @@ pub fn emit_typed_call_expr(
                 )
             }
         };
-        if rust_runtime_bridge_wraps_collection_result_in_rc(func.clone()) {
+        if ((callee_is_function_value.clone() == false)
+            && rust_runtime_bridge_wraps_collection_result_in_rc(func.clone()))
+        {
             rust_shared_wrap_ctor(call_str.clone())
         } else {
             call_str.clone()
@@ -19862,7 +19913,7 @@ pub fn rust_call_arg_fail_closed_unwrap(
     }
 }
 
-pub fn emit_typed_call(
+pub fn emit_typed_function_value_call(
     func: String,
     args: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
@@ -19872,6 +19923,55 @@ pub fn emit_typed_call(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
+        let arg_strs = Rc::new({
+            let mut __result = Vec::new();
+            for a in args.clone().iter().cloned() {
+                __result.push(emit_cloned_arg(
+                    arg_value(a.clone()),
+                    registry.clone(),
+                    scope.clone(),
+                    depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                ));
+            }
+            __result
+        });
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    emit_ident(func.clone(), RenderTarget::Rust),
+                    "(".to_string(),
+                ),
+                arg_strs.clone().join(&", ".to_string()),
+            ),
+            ")".to_string(),
+        )
+    }
+}
+
+pub fn emit_typed_call(
+    func: String,
+    args: Rc<Vec<Rc<Node>>>,
+    callee_is_function_value: bool,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    scope: Rc<InferScope>,
+    depth: i64,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
+    {
+        if callee_is_function_value.clone() {
+            return emit_typed_function_value_call(
+                func.clone(),
+                args.clone(),
+                registry.clone(),
+                scope.clone(),
+                depth.clone(),
+                shared_types.clone(),
+                emit_info.clone(),
+            );
+        }
         if (func.clone() == "get".to_string()) {
             {
                 let get_args = order_typed_call_args(args.clone(), func.clone(), scope.clone());
@@ -20121,8 +20221,10 @@ pub fn emit_typed_call(
             shared_types.clone(),
             emit_info.clone(),
         );
-        let is_rt = v1_rt::map_contains_key(&rt_functions(), func.clone());
-        let is_rt_ref_map = v1_rt::map_contains_key(&rt_ref_map_functions(), func.clone());
+        let is_rt = ((callee_is_function_value.clone() == false)
+            && v1_rt::map_contains_key(&rt_functions(), func.clone()));
+        let is_rt_ref_map = ((callee_is_function_value.clone() == false)
+            && v1_rt::map_contains_key(&rt_ref_map_functions(), func.clone()));
         let arg_strs = Rc::new({
             let mut __result = Vec::new();
             for pair in Rc::new(
@@ -25537,7 +25639,9 @@ pub fn emit_rust_tco_non_self_call(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
-        ExprData::ExprCall { .. } => {
+        ExprData::ExprCall {
+            call_semantics: cs, ..
+        } => {
             let f = expr_call_func_at(
                 frame.expr.clone(),
                 frame.scope.clone().type_env.clone().source_indices.clone(),
@@ -25545,6 +25649,7 @@ pub fn emit_rust_tco_non_self_call(
             let call_str = emit_typed_call(
                 f.clone(),
                 frame.expr.clone().children.clone(),
+                call_semantics_is_function_value(cs.clone()),
                 registry.clone(),
                 frame.scope.clone(),
                 frame.depth.clone(),
