@@ -40409,11 +40409,49 @@ pub fn run_required_floor(
                 budget_ms,
                 kind,
                 completion,
-            } => outcome.failures.push(format!(
-                "{} exceeded its {kind:?} budget (cost is {} {elapsed_ms}ms against {budget_ms}ms)",
-                claim.qualified,
-                completion.elapsed_reading()
-            )),
+                // AND AN UNENROLLED BUDGET REFUSAL IS NOT A DEFECT EITHER. The enrolled arm above
+                // already rules that a budget refusal produces no verdict and therefore is not a
+                // failure; that fact is a property of the interruption, not of the roster, so it
+                // holds identically for a row nobody enrolled. Reporting it in `failures` said the
+                // opposite — `failures` is the channel whose remedy is "fix the defect", and it is
+                // what the alert signature reads to distinguish a regression from a cost debt. A
+                // row that was preempted before answering has no defect to fix and may well be
+                // passing, so routing it here made an unmeasured cost indistinguishable from a
+                // broken witness, in the direction that manufactures alarm.
+                //
+                // The consequence this closes is concrete: a row that PASSES and exceeds its budget
+                // had no honest state anywhere. Enrolled, it asserted an expected failure that does
+                // not occur and reported twice. Unenrolled, it landed here and read as a defect.
+                // Cost is not a verdict, so the verdict channels cannot carry it — and now they do
+                // not. The line still stops, because the cost is still owed; it stops saying the
+                // true thing about why.
+                // TWO READINGS, AND THEY ARE NOT THE SAME CLAIM. `Interrupted` means the deadline
+                // fired before the witness answered: no verdict exists, the figure is a LOWER BOUND
+                // and the row's real cost is unmeasured. `CompletedOverBudget` means the witness ran
+                // to completion and then was found over budget: the verdict IS known and the figure
+                // is EXACT. Printing one sentence for both would repeat the conflation this arm
+                // exists to remove — asserting "correctness unknown" over a row that demonstrably
+                // answered is as wrong as calling a cost a defect.
+            } => outcome.budget_refused.push(match completion {
+                BudgetCompletion::Interrupted => format!(
+                    "{} was BUDGET-REFUSED and went UNDECIDED: {kind:?}, cost at least \
+                     {elapsed_ms}ms against {budget_ms}ms. Not enrolled as expected-red, so \
+                     nothing claims it is broken — but the deadline preempted the verdict, so \
+                     whether it passes is UNKNOWN and its real cost is UNMEASURED: the figure \
+                     is the interrupt point, not this row's cost. Reduce the cost, or move it \
+                     to a lane declaring its own ceiling, so the witness reaches a verdict.",
+                    claim.qualified
+                ),
+                BudgetCompletion::CompletedOverBudget => format!(
+                    "{} reached its verdict and then exceeded its budget: {kind:?}, cost \
+                     exactly {elapsed_ms}ms against {budget_ms}ms. The witness ran to \
+                     completion, so this is a measurement rather than a bound and the cost is \
+                     known and actionable. This is a cost debt only — it is not a defect and \
+                     it does not belong on the expected-red roster, which asserts an expected \
+                     FAILURE this row does not exhibit.",
+                    claim.qualified
+                ),
+            }),
         }
     }
     outcome.receipt_identities = receipted.len();
