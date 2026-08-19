@@ -30,15 +30,15 @@ jobs:
       - name: Build the witness fold
         run: |
           cargo build --release -p v1-compiler --bin claim_executor --bin gunbc
-      - name: 'Regen fixed point: first generation matches committed candidate'
-        run: |
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/claim_executor" --required-regen --source-root "$ROOT/dag" --source-root "$ROOT/src/v2"
-      - name: 'Regen fixed point: second generation reproduces the first'
-        run: |
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/claim_executor" --required-regen-fixed-point --source-root "$ROOT/dag" --source-root "$ROOT/src/v2"
       - name: All witnesses (one prepared subject, one fold)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/claim_executor" --required-floor --source-root "$ROOT/dag" --source-root "$ROOT/src/v2"
+      - name: "Regen fixed point: first generation matches committed candidate"
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/claim_executor" --required-regen --source-root "$ROOT/dag" --source-root "$ROOT/src/v2"
+      - name: "Regen fixed point: second generation reproduces the first"
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/claim_executor" --required-regen-fixed-point --source-root "$ROOT/dag" --source-root "$ROOT/src/v2"
