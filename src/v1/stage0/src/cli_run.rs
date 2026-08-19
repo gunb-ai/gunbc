@@ -40005,7 +40005,10 @@ pub fn run_required_floor(
     let expected_red_roster: HashSet<String> = {
         let value = v1_interpreter::run_in_context(
             &hermetic,
-            "v2.workflow.floor_expected_red.floor_expected_red_roster",
+            // Called through the policy module's own delegating edge rather than by reaching
+            // across the graph: the frame's scope IS this module's closure, so a name that
+            // module does not reference is not in the world the frame was built from.
+            "v2.workflow.required_floor.required_floor_expected_red_roster",
             false,
         )
         .map_err(|e| format!("floor_expected_red_roster: {e}"))?;

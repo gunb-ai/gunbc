@@ -1,17 +1,21 @@
 module v2.workflow.required_floor
 
 
-// THE ROSTER IS IMPORTED HERE SO IT IS REACHABLE, NOT SO IT IS RE-EXPORTED.
+// THE ROSTER EDGE IS A QUALIFIED REFERENCE, BECAUSE THAT IS WHAT AN EDGE IS NOW.
 //
 // The host evaluates the expected-red roster in the SAME frame it evaluates this manifest in,
-// and that frame's scope is this module's closure. Without this edge the roster module is
-// simply not in the world the frame was built from, and the call fails with `no such function`
-// — which is what happened on the first run that reached admission-decode.
+// and that frame's scope is this module's closure. Without an edge the roster module is simply
+// not in the world the frame was built from, and the call fails with `no such function` — which
+// is exactly what this comment's previous revision predicted, and exactly what happened once
+// the namespace cut deleted the import that had been carrying it.
 //
-// The import names the roster's own function and nothing wraps it: the host still calls
-// `v2.workflow.floor_expected_red.floor_expected_red_roster` by its real qualified name. A
-// thin accessor here would be a second name for one authority, and this module would then own
-// a fact it does not produce.
+// That previous revision refused a thin accessor here, on the grounds that it would be a second
+// name for one authority and would make this module own a fact it does not produce. The first
+// half no longer holds: with imports deleted, a qualified reference IS the only way one module
+// depends on another, so `required_floor_expected_red_roster` is not a second name standing
+// beside an import — it is the edge, in the only form the substrate now has. The second half
+// still holds and is preserved by construction: the function delegates and stores nothing, so
+// this module names where the roster comes from and never owns what is in it.
 
 // BARE-NAME AMBIGUITY IS COMPUTED AND DISCARDED, one rung below where the machinery already
 // stands. This is an ACKNOWLEDGEMENT of debt the floor cut discovered on its base, not debt the
@@ -143,4 +147,10 @@ fn required_floor_claim_budget_ms() -> Int {
 
 fn required_floor_claim_warn_ms() -> Int {
   100
+}
+
+// The frame's edge to the expected-red roster (see the header). It delegates and holds nothing:
+// deleting the roster's own rows changes this function's answer with no edit here.
+fn required_floor_expected_red_roster() -> List<v2.std.text.String> {
+  v2.workflow.floor_expected_red.floor_expected_red_roster()
 }
