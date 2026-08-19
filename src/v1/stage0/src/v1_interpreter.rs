@@ -1070,7 +1070,7 @@ impl fmt::Display for InterpError {
             } => {
                 write!(
                     f,
-                    "eval budget exceeded: {}ms thread-CPU > {}ms fast-lane budget (operator 5s rule 2026-07-12). This budget is enforced on THREAD CPU, not wall. RELOCATING THE FILE DOES NOT DISCHARGE IT: moving a witness under a long/ dir removes it from per-PR discovery without giving it an executing consumer, which deletes the coverage while retaining the source (the gunbc#7762 specimen behind the 2026-08-04 admission ruling). Either reduce the witness's cost, or enroll it in a lane that declares its own dated ceiling AND names the row as an executing consumer.",
+                    "eval budget exceeded: {}ms thread-CPU > {}ms fast-lane budget (operator ruling 2026-08-17, superseding the 5s rule of 2026-07-12; ceiling from required_floor_claim_budget_ms). This budget is enforced on THREAD CPU, not wall. RELOCATING THE FILE DOES NOT DISCHARGE IT: moving a witness under a long/ dir removes it from per-PR discovery without giving it an executing consumer, which deletes the coverage while retaining the source (the gunbc#7762 specimen behind the 2026-08-04 admission ruling). Either reduce the witness's cost, or enroll it in a lane that declares its own dated ceiling AND names the row as an executing consumer.",
                     elapsed_ms, budget_ms
                 )
             }
@@ -1839,7 +1839,8 @@ pub struct InterpContext {
     published_mock_keys: RefCell<Option<Rc<std::collections::HashSet<String>>>>,
     whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
     governed_services: RefCell<Option<Rc<std::collections::HashSet<String>>>>,
-    // Cooperative per-witness eval deadline (fast-lane 5s rule, operator 2026-07-12).
+    // Cooperative per-witness eval deadline (operator ruling 2026-08-17; ceiling supplied by the
+    // caller from `v2.workflow.required_floor` `required_floor_claim_budget_ms`).
     // The bound must unwind from INSIDE eval as a typed error: witness evals run on
     // in-process worker threads with no kill authority, so a wall-clock bound imposed
     // from outside cannot terminate them (the Phase A governor lesson). The budget is
@@ -2010,17 +2011,59 @@ impl InterpContext {
         graph: &ResolvedGraph,
         source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     ) -> Rc<PreparedScopeIndexes> {
+        Self::build_scope_indexes_with_module_order(graph, source_indices, None)
+    }
+
+    /// Same walk as [`build_scope_indexes`], but when `module_order` is present the modules are
+    /// visited in that precedence order and bare `fn_nodes` keys use first-write-wins — the same
+    /// resolution `claim_scope_for` already applies to `item_registry`. Without an order the walk
+    /// follows `graph.modules` and bare keys keep last-write-wins for entry-major callers.
+    ///
+    /// THIS IS STILL NAME-BASED RESOLUTION WITH A PRECEDENCE RULE, not a wall. An entry module
+    /// now wins its own colliding helper, which makes the compute_board `refusal_is` theft
+    /// unwritable for that caller. A non-entry homonym in the same scope still binds by order.
+    /// Next rung: DESIGN §3 namespace-only — a qualified reference has exactly one declarer, so
+    /// ambiguous bare binding has no constructor (`floor_bare_name_ambiguity_next_rung_trigger`).
+    pub fn build_scope_indexes_with_module_order(
+        graph: &ResolvedGraph,
+        source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+        module_order: Option<&[String]>,
+    ) -> Rc<PreparedScopeIndexes> {
         SCOPE_INDEX_CONSTRUCTIONS.with(|c| c.set(c.get() + 1));
+        let first_write_wins = module_order.is_some();
+        let modules_to_walk: Vec<&Rc<crate::v1_compiler_infer_items::TypedModule>> =
+            match module_order {
+                Some(order) => {
+                    let by_name: HashMap<&str, &Rc<crate::v1_compiler_infer_items::TypedModule>> =
+                        graph
+                            .modules
+                            .iter()
+                            .map(|m| (m.func_env.name.as_str(), m))
+                            .collect();
+                    // Walk `order`, not the graph. `claim_scope_for` built this graph's
+                    // `modules` from the same `order` (`in_scope` is that list), so the
+                    // filter_map cannot drop a scoped member.
+                    order
+                        .iter()
+                        .filter_map(|name| by_name.get(name.as_str()).copied())
+                        .collect()
+                }
+                None => graph.modules.iter().collect(),
+            };
         let mut fn_nodes = HashMap::new();
         let mut bare_name_counts = HashMap::<String, usize>::new();
         let mut service_ops = HashMap::new();
-        for module in graph.modules.iter() {
+        for module in modules_to_walk {
             let module_path = authored_name_at(source_indices.clone(), module.module.clone());
             for item in module.items.iter() {
                 let name = authored_name_at(source_indices.clone(), item.clone());
                 if !name.is_empty() {
                     *bare_name_counts.entry(name.clone()).or_default() += 1;
-                    fn_nodes.insert(name.clone(), item.clone());
+                    if first_write_wins {
+                        fn_nodes.entry(name.clone()).or_insert(item.clone());
+                    } else {
+                        fn_nodes.insert(name.clone(), item.clone());
+                    }
                     if !module_path.is_empty() {
                         let qualified = format!("{}.{}", module_path, name);
                         fn_nodes.insert(qualified.clone(), item.clone());
@@ -2778,7 +2821,7 @@ fn call_function_inner(
 /// It advances only while THIS thread is actually running on a core, so it excludes both
 /// blocking-I/O waits (a witness reading the live tree cold) and scheduler time-slicing (many
 /// witnesses sharing cores under the adaptive governor). That is exactly the "assuming the
-/// infra isn't the problem" clause of the operator's 5s rule: a genuine non-terminating eval
+/// infra isn't the problem" clause of the operator's eval-budget ruling: a genuine non-terminating eval
 /// burns CPU and is still caught, while a bounded scan whose WALL time was inflated by infra is
 /// not misclassified. On unix this reads `CLOCK_THREAD_CPUTIME_ID`; elsewhere (dev only — CI is
 /// linux) it falls back to a process-monotonic wall clock. A clock error yields 0, which makes
