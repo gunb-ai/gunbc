@@ -66,6 +66,7 @@ type Scale =
   | One
   | Sixty
   | RackUnitHeight
+  | SquareFootArea
 
   | ArcsecondAngle
   | DegreeAngle
@@ -96,6 +97,7 @@ fn scale_exponent(s: Scale) -> Int? {
     TurnAngle      => none
     Sixty =>  none
     RackUnitHeight => none
+    SquareFootArea => none
     Kilo  =>  Present { value:   3 }
     Mega  =>  Present { value:   6 }
     Giga  =>  Present { value:   9 }
@@ -138,6 +140,7 @@ fn time_scale_factor_seconds(s: Scale) -> Nat? {
     TurnAngle => none
     Sixty => Present { value: seconds_per_minute() }
     RackUnitHeight => none
+    SquareFootArea => none
     Atto  => none
     Femto => none
     Pico  => none
@@ -175,6 +178,7 @@ fn memory_scale_factor_bytes(s: Scale) -> Nat? {
     TurnAngle => none
     Sixty => none
     RackUnitHeight => none
+    SquareFootArea => none
     Kilo  => none
     Mega  => none
     Giga  => none
@@ -255,6 +259,12 @@ fn bits_per_byte() -> Nat {
 }
 
 type Hertz = Measure<Frequency, One, Nat>
+
+// DDR "MT/s": mega-TRANSFERS per second. Dimensionally a frequency-family rate (1/s at Mega
+// scale), semantically distinct from both Hertz (a clock: DDR moves two transfers per clock,
+// so the marketing figure is never the clock) and DataRate (bits/s: transfers x bus width).
+// The alias carries the transfer semantics; the scale carries the Mega.
+type MegatransfersPerSecond = Measure<Frequency, Mega, Nat>
 
 type HardwareThreadCount = Measure<Count, One, Nat>
 
@@ -341,6 +351,14 @@ type CubicMillimeter = Measure<Volume, Nano, Nat>
 // something": square_metres_to_square_millimetres(count: 3) accepted a bare Nat and so re-created,
 // at the conversion boundary, exactly the dimensional erasure this slice exists to close.
 type SquareMeter = Measure<Area, One, Nat>
+
+// THE SQUARE FOOT is non-decimal, like Sixty and RackUnitHeight: one international foot is
+// exactly 0.3048 m, so one square foot is exactly 0.09290304 square metres - not a power of
+// ten, so scale_exponent answers none rather than pretending. US commercial real estate
+// quotes area and rent in this unit (the MoneyRate PerSquareFootYear period marker below is
+// its rent-side twin); the carrier keeps the listing's own unit rather than converting at
+// ingestion, which would trade an exact quoted figure for a rounded derived one.
+type SquareFoot = Measure<Area, SquareFootArea, Nat>
 
 type CubicMeter = Measure<Volume, One, Nat>
 
@@ -642,6 +660,14 @@ type MoneyPerMonth = MoneyRate<PerMonth>
 
 type MoneyOnce = MoneyRate<Once>
 
+type PerKilowattHour
+
+type PerSquareFootYear
+
+type MoneyPerKilowattHour = MoneyRate<PerKilowattHour>
+
+type MoneyPerSquareFootYear = MoneyRate<PerSquareFootYear>
+
 data money_rate_carrier_representation_note: String = "MoneyRate<P> is the §2-horizontal carrier for vendor billing period: one parameterized record (P = PerMinute | PerHour | PerMonth | Once phantom markers), not four structurally-identical records — same move as MoneyAmount<S> = Measure<Currency, S, Nat> and Vendor<Domain>. Not a Measure<Q,S,M> row: billing period is a categorical vendor unit axis, not an SI Scale on a single Quantity; the carrier also holds runtime CurrencyCode beside the micro-denominated amount. Passing PerMinute where PerHour is expected is unwritable via the type argument."
 
 fn money_rate_micros<P>(q: MoneyRate<P>) -> Nat {
@@ -661,6 +687,14 @@ fn money_per_month_micros(q: MoneyPerMonth) -> Nat {
 }
 
 fn money_once_micros(q: MoneyOnce) -> Nat {
+  money_rate_micros(q: q)
+}
+
+fn money_per_kilowatt_hour_micros(q: MoneyPerKilowattHour) -> Nat {
+  money_rate_micros(q: q)
+}
+
+fn money_per_sqft_year_micros(q: MoneyPerSquareFootYear) -> Nat {
   money_rate_micros(q: q)
 }
 
@@ -702,8 +736,24 @@ fn bit_width_count(b: BitWidth) -> Nat {
   measure_count(b)
 }
 
+fn square_foot(count: Nat) -> SquareFoot {
+  Measure { count: count }
+}
+
+fn square_foot_count(a: SquareFoot) -> Nat {
+  measure_count(a)
+}
+
 fn hertz(count: Nat) -> Hertz {
   Measure { count: count }
+}
+
+fn megatransfers_per_second(count: Nat) -> MegatransfersPerSecond {
+  Measure { count: count }
+}
+
+fn megatransfers_per_second_count(r: MegatransfersPerSecond) -> Nat {
+  measure_count(r)
 }
 
 fn hertz_count(h: Hertz) -> Nat {
