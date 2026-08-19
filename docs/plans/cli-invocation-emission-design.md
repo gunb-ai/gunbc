@@ -648,7 +648,8 @@ error.
 
 | exact subject | honest rung after the first vertical | mechanism |
 |---|---|---|
-| forging a `CliInvocationTree` / `CliSurface` / `JqObservation` | **structurally impossible now** | `sole_constructor`; only the row emitter, serializer and decoder may mint |
+| forging a `CliSurface` **by record literal or cast** | structurally impossible | `sole_constructor`, whose cross-module refusal is witnessed by the corpus `sole-constructor-cross-module` probes — not re-proved here |
+| minting a `CliSurface` **whose content did not come from rows** | **mitigatable only** | *no wall.* `serialize_cli_arguments` is public and accepts caller-supplied `lex` and fragments, so any module can obtain a well-typed `CliSurface` carrying arbitrary text |
 | omitting `--exit-status` from an accepted truthiness invocation | **structurally impossible within the new path** | exhaustive semantic→option selection; zero-or-many rows refuse; no mint on miss |
 | hand-authoring flags inside a migrated route | **structurally impossible after cutover** | handler takes a semantic invocation, emits internally, old argv site deleted |
 | reintroducing the exact old operation transport | mechanically preventable | structural deletion witness |
@@ -657,6 +658,25 @@ error.
 
 So: **the first migrated jq path can be structural now; the repository-wide raw-jq class stays
 open; the repository-wide raw-argv class is a later migration.**
+
+**The seal is on the shape, not on the provenance — corrected 2026-08-19.** The row above
+previously read *structurally impossible now — only the row emitter, serializer and decoder may
+mint*, which is false and was the §4b inflation this document warns about, asserted about this
+document's own subject. `sole_constructor` closes the record literal and the cast; it says nothing
+about a **public fold that takes caller-supplied inputs**, and `serialize_cli_arguments` is
+exactly that. An earlier claim in this lane that `CliSurface` was therefore *stronger* than
+`TransportScript` had the comparison backwards: `TransportScript`'s mint is `admit_callers`-sealed
+to two named production declarations, and `CliSurface`'s is not sealed at all.
+
+**Ceiling and trigger, stated rather than left implied.** The obvious repair — `admit_callers` on
+the serializer — is refused on §3 grounds: it would make `v2.std.compilers.cli_surface` name every
+tool module that may emit a CLI, which is dispatch fused into the interface, the thing this lane
+exists to keep peripheral. So the wall belongs on the **input**, not on the serializer: a sealed
+`AdmittedCliInvocation` that only a tool's own row-derived lowering can produce, with the
+serializer total over it. That is **not built**, and the design of its mint is genuinely open —
+whatever seals it faces the same recursion one level up. Until it lands, provenance sits at
+*mitigatable*, and the practical containment is that the only public jq entry point is
+`jq_invocation_cli_arguments`, which is a convention, not a wall.
 
 **Application-argument typechecking is not the terminal trigger.** The `04_infer` gap is real —
 `explicit_return_conformance_note` records that conformance is judged only by the
