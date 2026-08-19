@@ -664,6 +664,36 @@ data gunbc_ci_spark_serving_converge_slice_shell_emit_scaffold: Disposition = Sc
 
 data gunbc_ci_spark_serving_converge_slice_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_spark_serving_converge_slice_invoke — foreign-executor shell invoking spark_serving_converge_slice_ci_wet (the runner-side entry: in-run ssh-agent, no gcloud, no Secret Manager fetch) with SPARK_CONVERGE_TARGET/SPARK_CONVERGE_EXECUTE env; DISSOLVES WHEN bash-emit binds the step to orchestration emit over typed WitnessBin.Run")
 
+data gunbc_ci_spark_serving_reboot_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "gunbc_ci_spark_serving_reboot_invoke",
+    field: WholeDeclaration
+  }
+}
+
+data gunbc_ci_spark_serving_reboot_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_spark_serving_reboot_invoke — foreign-executor shell invoking spark_serving_reboot_ci_wet (the durability probe: issues one reboot at a NAMED target and reports what the far side said; establishes nothing about durability itself, the receipt being the post-reboot converge) with SPARK_CONVERGE_TARGET env; DISSOLVES WHEN bash-emit binds the step to orchestration emit over typed WitnessBin.Run")
+
+fn gunbc_ci_spark_serving_reboot_invoke() -> String {
+  concat(
+    concat("# ", concat(dissolution_description(condition: gunbc_ci_spark_serving_reboot_shell_emit_dissolution_trigger), "\n")),
+    concat(
+      concat(
+        concat("ROOT=", ci_repo_root_shell(), "\n"),
+        gunbc_run_shell(
+          source_roots: witness_layer_roots,
+          entry: "dag/gunbc/spark_serving_reboot_probe.dag",
+          function: "spark_serving_reboot_ci_wet",
+          rooted: true,
+          claim_run: false
+        )
+      ),
+      "\ncat \"$ROOT/target/spark-serving-reboot-receipt.txt\""
+    )
+  )
+}
+
 data gunbc_ci_spark_serving_observe_shell_emit_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {

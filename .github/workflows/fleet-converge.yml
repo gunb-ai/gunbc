@@ -10,7 +10,7 @@ on:
       mode:
         description: plan shows membership hunks; apply executes a prior plan artifact; spark_linger enables linger on target spark via FleetSsh typed argv from executor; spark_observe is a read-only observation of both Sparks
         required: true
-        options: [plan, apply, spark_linger, spark_observe]
+        options: [plan, apply, spark_linger, spark_observe, spark_reboot]
         type: choice
       target:
         description: Spark target host for spark_linger mode (srv5 or srv6)
@@ -243,6 +243,17 @@ jobs:
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark_serving_observe.dag --function spark_serving_observe_ci_wet
           cat "$ROOT/target/spark-serving-observe-ci-receipt.txt"
         if: github.event.inputs.mode == 'spark_observe'
+        timeout-minutes: 60
+      - name: "Spark serving reboot (durability probe: the receipt is the converge that follows)"
+        id: spark_reboot
+        run: |
+          # 🟡 dissolve-on: gunbc_ci_spark_serving_reboot_invoke — foreign-executor shell invoking spark_serving_reboot_ci_wet (the durability probe: issues one reboot at a NAMED target and reports what the far side said; establishes nothing about durability itself, the receipt being the post-reboot converge) with SPARK_CONVERGE_TARGET env; DISSOLVES WHEN bash-emit binds the step to orchestration emit over typed WitnessBin.Run
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark_serving_reboot_probe.dag --function spark_serving_reboot_ci_wet
+          cat "$ROOT/target/spark-serving-reboot-receipt.txt"
+        env:
+          SPARK_CONVERGE_TARGET: ${{ github.event.inputs.target }}
+        if: github.event.inputs.mode == 'spark_reboot'
         timeout-minutes: 60
       - name: Kill the in-run ssh-agent (key never outlives the job)
         run: |
