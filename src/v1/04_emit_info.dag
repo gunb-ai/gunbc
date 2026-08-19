@@ -58,8 +58,8 @@ data emit_graph_fn_decl_items_note: String = "fn_decl_items mirrors type_decl_it
 
 type EmitGraphInfo {
   type_summaries: Map<String, TypeSummary>
-  type_decl_items: Map<String, Node>
-  fn_decl_items: Map<String, Node>
+  type_decl_items: Map<String, v1.std.core.Node>
+  fn_decl_items: Map<String, v1.std.core.Node>
   recursive_type_set: Set<String>
   fielded_variants: Set<String>
   positional_payload_variants: Set<String>
@@ -85,8 +85,8 @@ type EmitGraphInfo {
 
 type EmitInfoBuildState {
   type_summaries: Map<String, TypeSummary>
-  type_decl_items: Map<String, Node>
-  fn_decl_items: Map<String, Node>
+  type_decl_items: Map<String, v1.std.core.Node>
+  fn_decl_items: Map<String, v1.std.core.Node>
 }
 
 data empty_emit_graph_info_ord_fallback_note: String = "Conservatism: render paths without EmitGraphInfo pass empty_emit_graph_info(); bare-ref BTreeSet Ord eligibility fails closed (lookup_emit_type_decl -> Absent) and surfaces compile_error! at probe time — nine call sites inherit this, loud not silent widen."
@@ -194,7 +194,7 @@ fn emit_graph_records_type_decl(item: v1.std.core.Node, source_indices: Map<Stri
 
 data emit_graph_records_fn_decl_note: String = "Same criterion as v1.compiler.emit_core_support's is_function_item (05_emit_rust.dag's top-level item dispatch), duplicated here rather than imported: this module (v1.compiler.infer_emit_info) is upstream of v1.compiler.emit_core_support in the DAG (04_emit_info.dag has no import of 05_emit_core_support.dag today), and emit_graph_records_type_decl beside it already establishes the precedent of a locally-scoped duplicate one-line item-shape predicate at this stage rather than reaching downstream for one (DESIGN.md S3 -- a fact's home is its layer, and both predicates answer 'what item shape reaches this stage's fold', not 'what does emit_core_support export')."
 
-fn emit_graph_records_fn_decl(item: Node) -> Bool {
+fn emit_graph_records_fn_decl(item: v1.std.core.Node) -> Bool {
   item.body != none && item.type_annotation == none
 }
 

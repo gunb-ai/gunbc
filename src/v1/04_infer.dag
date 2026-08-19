@@ -2657,13 +2657,13 @@ fn annotate_pattern_parent_enums(pattern: v1.std.core.MatchPattern, scrutinee_su
       )
       match inferred_parent {
         Present { value: parent_name } =>
-          v1.std.core.v1.std.core.VariantPattern {
+          v1.std.core.VariantPattern {
             name: annotated_variant_name,
             parent_enum: parent_name,
             field_bindings: annotated_bindings
           }
         Absent =>
-          v1.std.core.v1.std.core.VariantPattern { name: variant_name, parent_enum: none, field_bindings: annotated_bindings }
+          v1.std.core.VariantPattern { name: variant_name, parent_enum: none, field_bindings: annotated_bindings }
       }
     _ => pattern
   }
@@ -9280,7 +9280,7 @@ fn build_emit_graph_info(modules: List<v1.compiler.infer_items.TypedModule>) -> 
       add_emit_item_summary(state: inner_state, item: item, source_indices: typed_module.type_env.source_indices)
     )
   )
-  let built = EmitInfoBuildState { type_summaries: close_fn_fields(summaries: built_raw.type_summaries), type_decl_items: built_raw.type_decl_items, fn_decl_items: built_raw.fn_decl_items }
+  let built = v1.compiler.infer_emit_info.EmitInfoBuildState { type_summaries: close_fn_fields(summaries: built_raw.type_summaries), type_decl_items: built_raw.type_decl_items, fn_decl_items: built_raw.fn_decl_items }
   let all_recursive = modules |> fold(init: empty_set(), f: (acc, m) =>
     fold(map_keys(m.type_env.recursive_type_set), init: acc, f: (inner, ident) =>
       set_insert(inner, intern_str(table: m.type_env.intern_table, id: ident))
