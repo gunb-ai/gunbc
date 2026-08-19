@@ -50,6 +50,9 @@ pub(crate) mod floor_discovery_snapshot;
 pub(crate) mod materialization_provider_consumer;
 #[path = "phase_profile.rs"]
 mod phase_profile;
+#[path = "required_regen_host.rs"]
+mod required_regen_host;
+pub(crate) mod shared_fill;
 pub(crate) mod test_module_hygiene_bridge;
 pub use floor_discovery_snapshot::{
     append_discovery_trace_row, build_floor_discovery_request,
@@ -109,11 +112,14 @@ pub(crate) fn is_cargo_target_output_dir(
         && parent.join("Cargo.toml").is_file()
 }
 
-fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
+fn collect_dag_files_result(
+    dir: &std::path::Path,
+    files: &mut Vec<std::path::PathBuf>,
+) -> Result<(), String> {
     let mut entries: Vec<_> = std::fs::read_dir(dir)
-        .unwrap_or_else(|e| panic!("failed to read dir {:?}: {}", dir, e))
-        .map(|e| e.unwrap_or_else(|e| panic!("failed to read dir entry: {}", e)))
-        .collect();
+        .map_err(|e| format!("failed to read dir {:?}: {}", dir, e))?
+        .map(|e| e.map_err(|e| format!("failed to read dir entry in {:?}: {}", dir, e)))
+        .collect::<Result<Vec<_>, String>>()?;
     entries.sort_by_key(|e| e.file_name());
     for entry in entries {
         let path = entry.path();
@@ -121,11 +127,16 @@ fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>)
             if is_cargo_target_output_dir(dir, &path) {
                 continue;
             }
-            collect_dag_files(&path, files);
+            collect_dag_files_result(&path, files)?;
         } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
             files.push(path);
         }
     }
+    Ok(())
+}
+
+fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
+    collect_dag_files_result(dir, files).unwrap_or_else(|e| panic!("{e}"));
 }
 
 pub(crate) fn extract_module_path(content: &str) -> Option<String> {
@@ -1329,98 +1340,6 @@ mod workspace_root_discovery_tests {
     }
 }
 
-#[cfg(test)]
-mod regen_input_closure_tests {
-    use super::{regen_input_sources, regen_path_affects_regen};
-    use std::collections::HashSet;
-    use std::path::{Path, PathBuf};
-
-    fn fixture_root(tag: &str) -> PathBuf {
-        std::env::temp_dir().join(format!("gunbc-regen-closure-{tag}-{}", std::process::id()))
-    }
-
-    fn write(root: &Path, rel: &str, content: &str) {
-        let p = root.join(rel);
-        std::fs::create_dir_all(p.parent().unwrap()).expect("mkdir fixture");
-        std::fs::write(p, content).expect("write fixture");
-    }
-
-    /// The regen input closure is exactly the `src/v1` entries plus their transitive
-    /// `import` closure through `[src/v1, dag]` — a `dag` module nobody imports is
-    /// EXCLUDED. This is the RED control: without the exclusion the skip is vacuous
-    /// (every dag change would appear in-closure and the shortcut would never fire).
-    #[test]
-    fn closure_is_imports_only_unimported_dag_excluded() {
-        let root = fixture_root("imports-only");
-        let _ = std::fs::remove_dir_all(&root);
-        write(
-            &root,
-            "src/v1/a.dag",
-            "module v1.a\nimport v1.b { T }\nimport std.x { Y }\n",
-        );
-        write(&root, "src/v1/b.dag", "module v1.b\n");
-        write(&root, "dag/std/x.dag", "module std.x\n");
-        write(&root, "dag/std/y.dag", "module std.y\n"); // unimported — excluded
-        write(&root, "dag/gunbc/u.dag", "module gunbc.u\n"); // unimported — excluded
-
-        let relpaths: HashSet<String> = regen_input_sources(&root)
-            .expect("closure computes")
-            .into_iter()
-            .map(|(p, _)| p)
-            .collect();
-        let _ = std::fs::remove_dir_all(&root);
-
-        assert!(
-            relpaths.contains("src/v1/a.dag"),
-            "entry seed: {relpaths:?}"
-        );
-        assert!(
-            relpaths.contains("src/v1/b.dag"),
-            "imported v1 module present"
-        );
-        assert!(
-            relpaths.contains("dag/std/x.dag"),
-            "imported dag module present"
-        );
-        assert!(
-            !relpaths.contains("dag/std/y.dag"),
-            "unimported dag module must be EXCLUDED: {relpaths:?}"
-        );
-        assert!(
-            !relpaths.contains("dag/gunbc/u.dag"),
-            "unimported dag module must be EXCLUDED: {relpaths:?}"
-        );
-    }
-
-    #[test]
-    fn path_predicate_covers_src_v1_manifest_and_closure_only() {
-        let closure: HashSet<String> = ["dag/std/x.dag".to_string()].into_iter().collect();
-        // src/v1/** = emitter source + committed stage0 outputs + dag entry seeds.
-        assert!(regen_path_affects_regen(
-            "src/v1/stage0/src/cli_run.rs",
-            &closure
-        ));
-        assert!(regen_path_affects_regen("src/v1/03_resolve.dag", &closure));
-        // Cargo / toolchain build config (emitter binary inputs).
-        assert!(regen_path_affects_regen("Cargo.lock", &closure));
-        assert!(regen_path_affects_regen(
-            "src/v1/stage0/Cargo.toml",
-            &closure
-        ));
-        assert!(regen_path_affects_regen("rust-toolchain.toml", &closure));
-        assert!(regen_path_affects_regen(".cargo/config.toml", &closure));
-        // dag file in v1's transitive import closure.
-        assert!(regen_path_affects_regen("dag/std/x.dag", &closure));
-        // NOT affecting: v2 sources, unimported dag, docs — the skip-eligible surface.
-        assert!(!regen_path_affects_regen(
-            "src/v2/compiler/frontier.dag",
-            &closure
-        ));
-        assert!(!regen_path_affects_regen("dag/gunbc/ci_spec.dag", &closure));
-        assert!(!regen_path_affects_regen("docs/plans/x.md", &closure));
-    }
-}
-
 /// Empty ingest-manifest placeholder excluded from the module index when a later
 /// source root carries the host-emitted manifest (source-root ingest / closure gates).
 const SOURCE_ROOT_INGEST_MANIFEST_STUB_REL: &str =
@@ -1493,9 +1412,13 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
         .join("\u{1f}");
     MODULE_PATH_INDEX_CACHE.with(|cache| {
         if let Some(index) = cache.borrow().get(&key) {
+            shared_fill::record_hit("module_path_index", &key);
             return index.clone();
         }
+        shared_fill::begin_fill();
+        let start = std::time::Instant::now();
         let index = build_module_path_index_uncached(source_roots);
+        shared_fill::record_fill("module_path_index", &key, start.elapsed().as_nanos() as u64);
         cache.borrow_mut().insert(key, index.clone());
         index
     })
@@ -2491,6 +2414,61 @@ pub(crate) fn default_source_roots() -> Vec<String> {
         .iter()
         .map(|r| ws.join(r).to_string_lossy().into_owned())
         .collect()
+}
+
+/// Source roots whose transitive import closure feeds stage0 self-compile (`required_regen`).
+pub fn regen_source_roots() -> Vec<String> {
+    vec!["src/v1".to_string(), "dag".to_string()]
+}
+
+/// Every `(repo-relative path, source text)` in the stage0 compile closure.
+///
+/// Seeds every `.dag` under `src/v1`; walks imports through `build_module_path_index`
+/// over `regen_source_roots()` so reachable `dag/` modules are included.
+pub fn regen_input_sources(workspace: &Path) -> Result<Vec<(String, String)>, String> {
+    let roots = regen_source_roots();
+    let abs_roots: Vec<String> = roots
+        .iter()
+        .map(|r| workspace.join(r).to_string_lossy().into_owned())
+        .collect();
+    let index = build_module_path_index(&abs_roots);
+    let entry_root = workspace.join(
+        roots
+            .first()
+            .ok_or_else(|| "regen source root list must not be empty".to_string())?,
+    );
+    let mut entry_paths = Vec::new();
+    collect_dag_files_result(&entry_root, &mut entry_paths)?;
+
+    let mut seen: std::collections::HashMap<String, (String, String)> =
+        std::collections::HashMap::new();
+    let mut queue: Vec<String> = Vec::new();
+    for path in &entry_paths {
+        let content =
+            std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+        let rel = workspace_relative_repo_path(&path.to_string_lossy());
+        if let Some(module_path) = extract_module_path(&content) {
+            seen.insert(module_path, (rel, content.clone()));
+        }
+        queue.push(content);
+    }
+    while let Some(content) = queue.pop() {
+        for module_path in extract_import_paths(&content) {
+            if seen.contains_key(&module_path) {
+                continue;
+            }
+            if let Some(rel_path) = index.get(&module_path) {
+                let file_path = workspace.join(rel_path);
+                let file_content = std::fs::read_to_string(&file_path)
+                    .map_err(|e| format!("read imported module {}: {e}", file_path.display()))?;
+                seen.insert(module_path, (rel_path.clone(), file_content.clone()));
+                queue.push(file_content);
+            }
+        }
+    }
+    let mut result: Vec<(String, String)> = seen.into_values().collect();
+    result.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(result)
 }
 
 pub fn build_module_path_index_from_witness_roots() -> HashMap<String, String> {
@@ -3519,294 +3497,6 @@ fn compile_clean_scoping_active() -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// Regen (self-host fixed-point) affected-set scoping.
-//
-// `regen_stage0` compiles `[src/v1, dag]` into the committed stage0 seed; both the
-// RegenVerifyGate and the SelfHostStalenessGate compare that emit against the
-// committed crate. The emit is a pure function of exactly one input set: every
-// `src/v1/**.dag` entry plus its transitive `import` closure through `[src/v1, dag]`
-// (`regen_input_sources` below — the single authority `regen_stage0` also consumes),
-// the emitter binary (all `src/v1/**` Rust, covered by the path prefix), the committed
-// stage0 outputs (all written under `src/v1/stage0/src`, same prefix), and the Cargo
-// manifest/lockfile. A PR whose diff touches none of those provably cannot change the
-// regen outcome, so the regen CI step can skip. Fail-closed: any uncertainty runs.
-// Main pushes and the 4-hourly falsifier run regen unconditionally as the cold control.
-// ---------------------------------------------------------------------------
-
-pub const REGEN_NOT_AFFECTED_SKIP_LABEL: &str = "regen_not_affected_skip";
-pub const RUN_REGEN_LABEL: &str = "run_regen";
-
-/// Relativize an absolute source path against the workspace root for regen display /
-/// closure identity. Single authority: consumed by `regen_stage0` and the skip witness.
-pub fn regen_workspace_relpath(path: &Path, workspace: &Path) -> String {
-    path.strip_prefix(workspace)
-        .unwrap_or(path)
-        .to_string_lossy()
-        .to_string()
-}
-
-// Distinct from `collect_dag_files` above (which panics on IO error and skips cargo
-// `target/` output dirs): regen needs the fail-closed Result variant and the exact
-// whole-tree walk `regen_stage0` has always used, so the closure stays byte-identical
-// to the committed seed (guarded by `regen_stage0 --verify`).
-fn regen_collect_dag_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
-    let mut entries: Vec<_> = std::fs::read_dir(dir)
-        .map_err(|e| format!("read dir {}: {e}", dir.display()))?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| format!("read dir entry in {}: {e}", dir.display()))?;
-    entries.sort_by_key(|entry| entry.file_name());
-    for entry in entries {
-        let path = entry.path();
-        if path.is_dir() {
-            regen_collect_dag_files(&path, files)?;
-        } else if path.extension().is_some_and(|ext| ext == "dag") {
-            files.push(path);
-        }
-    }
-    Ok(())
-}
-
-fn regen_build_module_index(
-    roots: &[PathBuf],
-) -> Result<std::collections::HashMap<String, PathBuf>, String> {
-    let mut index: std::collections::HashMap<String, PathBuf> = std::collections::HashMap::new();
-    for root in roots {
-        if !root.exists() {
-            return Err(format!("source root does not exist: {}", root.display()));
-        }
-        let mut dag_paths = Vec::new();
-        regen_collect_dag_files(root, &mut dag_paths)?;
-        for path in dag_paths {
-            let content = std::fs::read_to_string(&path)
-                .map_err(|e| format!("read {}: {e}", path.display()))?;
-            if let Some(module_path) = extract_module_path(&content) {
-                if let Some(existing) = index.get(&module_path) {
-                    return Err(format!(
-                        "duplicate module path `{module_path}`: {} and {}",
-                        existing.display(),
-                        path.display()
-                    ));
-                }
-                index.insert(module_path, path);
-            }
-        }
-    }
-    Ok(index)
-}
-
-/// The two source roots the self-host regen compiles: `src/v1` entry seeds and `dag`
-/// (the import-resolution index). Single authority for both `regen_stage0` and the
-/// regen affected-set skip witness.
-pub fn regen_source_roots(workspace: &Path) -> Vec<PathBuf> {
-    vec![workspace.join("src/v1"), workspace.join("dag")]
-}
-
-/// Every `.dag` source `regen_stage0` reads to emit the stage0 seed: all `src/v1/**.dag`
-/// entries plus their transitive `import` closure through `[src/v1, dag]`, returned as
-/// sorted `(workspace-relpath, content)`. This IS the set `regen_stage0` compiles — it
-/// consumes this function — so the regen compile and the skip witness share one closure
-/// authority (no forked "what regen reads"). The dedup is by module path, mirroring the
-/// original seed-collection semantics; `regen_stage0 --verify` is the byte-identical
-/// oracle guarding that equivalence.
-pub fn regen_input_sources(workspace: &Path) -> Result<Vec<(String, String)>, String> {
-    let roots = regen_source_roots(workspace);
-    let index = regen_build_module_index(&roots)?;
-    let entry_root = roots
-        .first()
-        .ok_or_else(|| "regen source root list must not be empty".to_string())?;
-    let mut entry_paths = Vec::new();
-    regen_collect_dag_files(entry_root, &mut entry_paths)?;
-
-    // module_path -> (relpath, content); the first occurrence of a module path wins, so
-    // src/v1 entry seeds and their import closure resolve to exactly the set regen emits.
-    let mut seen: std::collections::HashMap<String, (String, String)> =
-        std::collections::HashMap::new();
-    let mut queue: Vec<String> = Vec::new(); // module contents whose imports remain to walk
-    for path in &entry_paths {
-        let content =
-            std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
-        let rel = regen_workspace_relpath(path, workspace);
-        if let Some(module_path) = extract_module_path(&content) {
-            seen.insert(module_path, (rel, content.clone()));
-        }
-        queue.push(content);
-    }
-    while let Some(content) = queue.pop() {
-        for module_path in extract_import_paths(&content) {
-            if seen.contains_key(&module_path) {
-                continue;
-            }
-            if let Some(file_path) = index.get(&module_path) {
-                let file_content = std::fs::read_to_string(file_path)
-                    .map_err(|e| format!("read imported module {}: {e}", file_path.display()))?;
-                let rel = regen_workspace_relpath(file_path, workspace);
-                seen.insert(module_path, (rel, file_content.clone()));
-                queue.push(file_content);
-            }
-        }
-    }
-    let mut result: Vec<(String, String)> = seen.into_values().collect();
-    result.sort_by(|a, b| a.0.cmp(&b.0));
-    Ok(result)
-}
-
-/// Source-side carrier for `gunbc.stage0_emit_plan`'s declared host-supply scaffold.
-///
-/// This deliberately stops before resolve/infer/emit: every identity comes from the same
-/// parse-derived module-binding path used by `v2.compiler.source_authority`, over exactly the
-/// `regen_input_sources` closure. It must never accept an `EmitResult` or inspect emitted paths.
-/// Dissolve-on: generated_artifact_gate accepts a source_authority ModuleStorageIndex.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Stage0EmissionSourceIdentity {
-    pub module_path: String,
-    pub storage_path: String,
-    pub source_tree: &'static str,
-}
-
-thread_local! {
-    static STAGE0_EMISSION_SOURCE_IDENTITY_CACHE: RefCell<
-        std::collections::HashMap<PathBuf, Vec<Stage0EmissionSourceIdentity>>
-    > = RefCell::new(std::collections::HashMap::new());
-}
-
-pub fn stage0_emission_source_identities(
-    workspace: &Path,
-) -> Result<Vec<Stage0EmissionSourceIdentity>, String> {
-    if let Some(cached) =
-        STAGE0_EMISSION_SOURCE_IDENTITY_CACHE.with(|cache| cache.borrow().get(workspace).cloned())
-    {
-        return Ok(cached);
-    }
-    let mut identities = Vec::new();
-    let mut seen = std::collections::BTreeSet::new();
-    for (storage_path, content) in regen_input_sources(workspace)? {
-        let parsed =
-            parse_module_binding(Path::new(&storage_path), &content)?.ok_or_else(|| {
-                format!(
-                    "stage0 emission source identity missing module declaration: {storage_path}"
-                )
-            })?;
-        if !seen.insert(parsed.module_path.clone()) {
-            return Err(format!(
-                "stage0 emission source identity duplicated module: {}",
-                parsed.module_path
-            ));
-        }
-        let source_tree = if storage_path.starts_with("src/v1/") {
-            "V1SourceTree"
-        } else if storage_path.starts_with("dag/") {
-            "DagSourceTree"
-        } else {
-            return Err(format!(
-                "stage0 emission source identity outside modeled regen roots: {storage_path}"
-            ));
-        };
-        identities.push(Stage0EmissionSourceIdentity {
-            module_path: parsed.module_path,
-            storage_path,
-            source_tree,
-        });
-    }
-    STAGE0_EMISSION_SOURCE_IDENTITY_CACHE.with(|cache| {
-        cache
-            .borrow_mut()
-            .insert(workspace.to_path_buf(), identities.clone());
-    });
-    Ok(identities)
-}
-
-/// Does a diff-changed path belong to the regen input surface (fail-closed superset)?
-fn regen_path_affects_regen(changed: &str, dag_closure: &HashSet<String>) -> bool {
-    let p = normalize_repo_path(changed);
-    // src/v1/** = the emitter binary source (.rs), every committed stage0 output
-    // (all under src/v1/stage0/src), and the src/v1 .dag entry seeds.
-    if p.starts_with("src/v1/") {
-        return true;
-    }
-    // Cargo/toolchain build config: the emitter binary is built from these; a
-    // dependency, pinned-toolchain, or cargo-config change could in principle alter
-    // emitted bytes. Rare in practice; fail-closed (whole-file matches, no substring).
-    if p == "Cargo.lock"
-        || p == "Cargo.toml"
-        || p.ends_with("/Cargo.toml")
-        || p == "rust-toolchain.toml"
-        || p == "rust-toolchain"
-        || p == ".cargo/config.toml"
-        || p == ".cargo/config"
-    {
-        return true;
-    }
-    // dag/** files in v1's transitive import closure.
-    dag_closure.contains(&p)
-}
-
-/// CI label for the regen self-host fixed-point step's affected-set skip arm.
-/// `regen_not_affected_skip` iff the merge-base diff touches no regen input;
-/// `run_regen` on any intersection, empty diff, departed non-docs path, or
-/// observation/closure failure (fail-closed). This computes the label only; the CI
-/// shell (ci_spec.dag) gates the skip to pull_request events, so push-to-main runs
-/// regen unconditionally as the cold control that surfaces a wrong closure on the
-/// next merge.
-pub fn regen_floor_skip_label_for_ci() -> String {
-    let (changed_paths, departed_paths) = match floor_git_diff_name_status_range() {
-        Ok(v) => v,
-        Err(msg) => {
-            eprintln!("regen floor skip: diff observation failed ({msg}) — run regen");
-            return RUN_REGEN_LABEL.to_string();
-        }
-    };
-    if changed_paths.is_empty() {
-        eprintln!("regen floor skip: empty diff — run regen (fail-closed cold control)");
-        return RUN_REGEN_LABEL.to_string();
-    }
-    // Departed (deleted / renamed-from) non-docs paths: the closure below is computed
-    // from the CURRENT tree, so a deleted `.dag` file that WAS in the regen closure is
-    // invisible to it — the intersection test would skip a diff that provably changes
-    // the fresh emit (the deleted module no longer contributes; its importers now fail
-    // to resolve). Same guard shape as compile-clean's departed arm: run, never skip.
-    if let Some(gone) = departed_paths.iter().find(|p| {
-        let n = normalize_repo_path(p);
-        !n.starts_with("docs/")
-    }) {
-        eprintln!(
-            "regen floor skip: departed non-docs path in diff ({}) — run regen (current-tree closure cannot see deletions)",
-            normalize_repo_path(gone)
-        );
-        return RUN_REGEN_LABEL.to_string();
-    }
-    let workspace = workspace_root();
-    let dag_closure: HashSet<String> = match regen_input_sources(&workspace) {
-        Ok(sources) => sources
-            .into_iter()
-            .map(|(p, _)| normalize_repo_path(&p))
-            .collect(),
-        Err(msg) => {
-            eprintln!("regen floor skip: input-closure computation failed ({msg}) — run regen");
-            return RUN_REGEN_LABEL.to_string();
-        }
-    };
-    match changed_paths
-        .iter()
-        .find(|p| regen_path_affects_regen(p, &dag_closure))
-    {
-        Some(example) => {
-            eprintln!(
-                "regen floor skip: diff intersects regen inputs (e.g. {}) — run regen",
-                normalize_repo_path(example)
-            );
-            RUN_REGEN_LABEL.to_string()
-        }
-        None => {
-            eprintln!(
-                "regen floor skip: {} changed path(s), none intersect the regen input closure (src/v1/** ∪ v1 dag import-closure ∪ Cargo/toolchain config) — self-host fixed-point provably unchanged (push-to-main runs regen unconditionally as the cold control)",
-                changed_paths.len()
-            );
-            REGEN_NOT_AFFECTED_SKIP_LABEL.to_string()
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Class B import-closure gate affected-set skip (#7835).
 //
 // `run_class_b_import_closure_gate` costs ~2.3 min wall per cold run; skip when the
@@ -3821,6 +3511,12 @@ pub fn regen_floor_skip_label_for_ci() -> String {
 
 pub const CLASS_B_ENTRY_REL: &str = "src/v2/extdeps/languages/rust_test_fixtures.dag";
 pub const CLASS_B_TRANSPORT_REL: &str = "src/v2/workflow/class_b_import_closure_transport.dag";
+/// Rows 1-2's shape+call, relocated out of CLASS_B_TRANSPORT_REL so a witness reaching only
+/// rows 1-2 does not inherit the transport module's extdeps.git / extdeps.git.inspect /
+/// gunbc.ci_layer_roots closure (DESIGN.md §3 relocation-not-refork; the same signature
+/// extdeps_scope_placement_gate_loudness_witness's repair fixed). The transport module imports
+/// this one back for rows 1-2's own use, so it is part of the gate's input closure too.
+pub const CLASS_B_PROBE_REL: &str = "src/v2/workflow/class_b_import_closure_probe.dag";
 pub const CLASS_B_BINDING_REL: &str = "dag/gunbc/declared_import_closure_binding.dag";
 pub const CLASS_B_OVERLAY_REL: &str = "dag/gunbc/class_b_import_closure_overlay.dag";
 pub const CLASS_B_FIXTURES_PREFIX: &str = "fixtures/class_b_import_closure";
@@ -3829,6 +3525,7 @@ const CLASS_B_DECLARED_POOL_ROOTS_DATA_NAME: &str = "class_b_declared_import_poo
 pub const CLASS_B_GATE_INPUT_ENTRIES: &[&str] = &[
     CLASS_B_ENTRY_REL,
     CLASS_B_TRANSPORT_REL,
+    CLASS_B_PROBE_REL,
     CLASS_B_BINDING_REL,
     CLASS_B_OVERLAY_REL,
 ];
@@ -3899,7 +3596,7 @@ fn dag_module_index(
             return Err(format!("source root does not exist: {}", root.display()));
         }
         let mut dag_paths = Vec::new();
-        regen_collect_dag_files(root, &mut dag_paths)?;
+        collect_dag_files(root, &mut dag_paths);
         for path in dag_paths {
             let content = std::fs::read_to_string(&path)
                 .map_err(|e| format!("read {}: {e}", path.display()))?;
@@ -3932,7 +3629,8 @@ fn import_closure_dag_files(
                 continue;
             };
             for path in candidates {
-                let rel = normalize_repo_path(&regen_workspace_relpath(path, workspace));
+                let rel =
+                    normalize_repo_path(&workspace_relative_repo_path(&path.to_string_lossy()));
                 if !seen.insert(rel) {
                     continue;
                 }
@@ -3963,8 +3661,8 @@ fn collect_repo_files_under_prefix(
             if path.is_dir() {
                 walk(&path, workspace, seen)?;
             } else if path.is_file() {
-                seen.insert(normalize_repo_path(&regen_workspace_relpath(
-                    &path, workspace,
+                seen.insert(normalize_repo_path(&workspace_relative_repo_path(
+                    &path.to_string_lossy(),
                 )));
             }
         }
@@ -3981,12 +3679,9 @@ fn collect_repo_files_under_prefix(
 /// 🟡 dissolve-on (two triggers, near then terminal):
 ///
 /// NEAR — the import walk here duplicates the shape the deleted selection-control suite used, and
-/// `regen_input_sources`. They are NOT unified yet because regen's closure is guarded by a
-/// byte-identical oracle (`regen_stage0 --verify`) that this change is not in a position to
-/// re-verify, and the three differ in duplicate policy (refuse vs. superset) and entry
-/// selection (whole-root walk vs. declared list). DISSOLVES WHEN the walk is lifted to one
-/// parameterized helper (duplicate policy + entry source as arguments) and regen's byte oracle
-/// re-greens on it.
+/// `regen_input_sources` (whole-root seed under `src/v1` vs. declared entry list). They differ in
+/// entry selection and duplicate policy (refuse vs. superset). DISSOLVES WHEN lifted to one
+/// parameterized helper (duplicate policy + entry source as arguments).
 ///
 /// TERMINAL — owning lane: `docs/plans/affected-set-precompute-pruning.md`, whose **Step 5
 /// "delete Rust parallel"** (NOT STARTED, gated on Step 4) is what retires host-side selection
@@ -4212,35 +3907,11 @@ enum FloorCompileCleanReceipt {
 
 static FLOOR_COMPILE_CLEAN_RECEIPT: Mutex<Option<FloorCompileCleanReceipt>> = Mutex::new(None);
 
-static REGEN_VERIFY_GATE_FAILURE_DETAIL: Mutex<Option<String>> = Mutex::new(None);
 static GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL: Mutex<Option<String>> = Mutex::new(None);
-
-pub fn record_regen_verify_gate_failure_detail(detail: String) {
-    if let Ok(mut guard) = REGEN_VERIFY_GATE_FAILURE_DETAIL.lock() {
-        *guard = Some(detail);
-    }
-}
-
-pub fn consume_regen_verify_gate_failure_detail() -> String {
-    match REGEN_VERIFY_GATE_FAILURE_DETAIL.lock() {
-        Ok(guard) => guard.clone().unwrap_or_else(|| {
-            "regen_verify failure detail unavailable (gate body did not run in this process)"
-                .to_string()
-        }),
-        Err(e) => format!("regen_verify failure detail refused: gate detail lock poisoned ({e})"),
-    }
-}
 
 pub fn record_generated_artifact_drift_gate_failure_detail(detail: String) {
     if let Ok(mut guard) = GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL.lock() {
         *guard = Some(detail);
-    }
-}
-
-#[cfg(test)]
-fn reset_regen_verify_gate_failure_detail_for_test() {
-    if let Ok(mut guard) = REGEN_VERIFY_GATE_FAILURE_DETAIL.lock() {
-        *guard = None;
     }
 }
 
@@ -6024,9 +5695,17 @@ pub fn build_module_graph_facts_live(pool_roots: &[String]) -> ModuleGraphFactsL
     let key = pool_roots_for_module_graph_closure(pool_roots).join("\u{1f}");
     MODULE_GRAPH_FACTS_CACHE.with(|cache| {
         if let Some(facts) = cache.borrow().get(&key) {
+            shared_fill::record_hit("module_graph_facts", &key);
             return facts.clone();
         }
+        shared_fill::begin_fill();
+        let start = std::time::Instant::now();
         let facts = build_module_graph_facts_live_uncached(pool_roots);
+        shared_fill::record_fill(
+            "module_graph_facts",
+            &key,
+            start.elapsed().as_nanos() as u64,
+        );
         cache.borrow_mut().insert(key, facts.clone());
         facts
     })
@@ -6604,7 +6283,7 @@ pub fn load_sources_for_entry(
     source_roots: &[String],
     entry_path: &str,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    let index = build_multi_entry_index(source_roots);
+    let index = process_shared_index(source_roots);
     load_sources_for_entry_with_pool(&index, entry_path)
 }
 
@@ -7784,6 +7463,13 @@ pub enum ClaimOutcome {
         budget_ms: u64,
         kind: BudgetKind,
         completion: BudgetCompletion,
+    },
+    /// A host-tool program could not be resolved to an existing executable path.
+    /// Typed at the witness boundary so downstream classifiers do not substring-match
+    /// `Display` prose from `InterpError::HostToolUnresolved`.
+    HostToolUnresolved {
+        name: String,
+        probed: Vec<String>,
     },
 }
 
@@ -16022,6 +15708,9 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
         // Mapping both raised forms onto `TimedOut` here makes the outcome vocabulary closed
         // over the event, so a total match is total in fact and not only in shape.
         Err(e) => match v1_interpreter::map_budget_error_to_witness_refusal(e) {
+            v1_interpreter::InterpError::HostToolUnresolved { name, probed } => {
+                ClaimOutcome::HostToolUnresolved { name, probed }
+            }
             v1_interpreter::InterpError::EvalBudgetExceeded { cpu_ms, budget_ms } => {
                 ClaimOutcome::TimedOut {
                     elapsed_ms: cpu_ms,
@@ -16198,6 +15887,9 @@ enum ExpectedRedArm {
     /// only `ClaimOutcome::Pass`, so `CompletedOverBudget` cannot occur for a failing witness.
     /// The arm therefore means "passed, then reclassified on cost", not merely "completed".
     PassedOverBudget,
+    /// Enrolled but the host tool chain could not resolve a required binary. NOT a budget
+    /// refusal — no subject verdict, no cost lower bound, remedy is infra not witness cost.
+    HostToolUnresolved,
 }
 
 fn expected_red_arm(outcome: &ClaimOutcome) -> ExpectedRedArm {
@@ -16214,6 +15906,7 @@ fn expected_red_arm(outcome: &ClaimOutcome) -> ExpectedRedArm {
         ClaimOutcome::Fail | ClaimOutcome::NotBool { .. } | ClaimOutcome::RuntimeError { .. } => {
             ExpectedRedArm::Held
         }
+        ClaimOutcome::HostToolUnresolved { .. } => ExpectedRedArm::HostToolUnresolved,
     }
 }
 
@@ -18198,6 +17891,16 @@ pub fn project_witness_cost_receipt(
                     ));
                     "witness_cost_seed_failed_event"
                 }
+                ClaimOutcome::HostToolUnresolved { name, probed } => {
+                    args.push((
+                        Some("error".to_string()),
+                        str_value(format!(
+                            "host tool unresolved: {name:?} (probed: {})",
+                            probed.join(", ")
+                        )),
+                    ));
+                    "witness_cost_seed_refused_event"
+                }
                 // A deadline-killed row is TimedOut, never Failed: its recorded wall is a
                 // CEILING, not a cost, and anything reading it as a completed duration
                 // reads a fabricated value. Both Millisecond carriers are built by calling
@@ -19713,6 +19416,34 @@ fn eprintln_deferred_discovery_rows(rows: &[DeferredDiscoveryRow]) {
             rows.len() - 8
         );
     }
+}
+
+/// Does this tree hold at least one `.dag` file? EXISTENCE, not inventory.
+///
+/// `collect_dag_files_tolerant` answers "which files" and costs the whole subtree; this answers
+/// "any file" and stops at the first hit. They are different questions and the pool-root gate asks
+/// this one -- collecting every file beneath a root in order to call `is_empty` on the result is
+/// the copied-accumulator shape, an O(subtree) walk to settle something the first file decides.
+/// Directory recursion is depth-first for the same reason: a hit anywhere ends the walk.
+pub(crate) fn dag_tree_holds_any_file(dir: &Path) -> bool {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return false,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if is_cargo_target_output_dir(dir, &path) {
+                continue;
+            }
+            if dag_tree_holds_any_file(&path) {
+                return true;
+            }
+        } else if path.extension().and_then(|e| e.to_str()) == Some("dag") {
+            return true;
+        }
+    }
+    false
 }
 
 pub(crate) fn collect_dag_files_tolerant(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -23926,6 +23657,13 @@ fn run_discovery_rows(
             ClaimOutcome::RuntimeError { message } => summary.failures.push(format!(
                 "{} ({}) runtime error: {}",
                 row.function, row.entry, message
+            )),
+            ClaimOutcome::HostToolUnresolved { name, probed } => summary.failures.push(format!(
+                "{} ({}) host tool unresolved: {:?} (probed: {})",
+                row.function,
+                row.entry,
+                name,
+                probed.join(", ")
             )),
             // Rendered so the elapsed value is never mistaken for a completed duration:
             // the row was killed AT the budget, so this is a ceiling, not a cost. The
@@ -29625,8 +29363,14 @@ pub fn reference_resolution_facts(
         exclude_substrings.join("\u{1e}")
     );
     if let Some(cached) = REFERENCE_EDGE_CACHE.with(|c| c.borrow().get(&cache_key).cloned()) {
+        shared_fill::record_hit("reference_edges", &cache_key);
         return cached;
     }
+    // THE WHOLE-POOL PARSE PASS BELOW IS THE FLOOR'S LARGEST SHARED FILL. Timed and attributed
+    // from here so the claim that happens to reach it first is not read as the claim that costs
+    // it; see `shared_fill` for why the per-row number alone cannot answer that.
+    shared_fill::begin_fill();
+    let reference_edges_fill_start = std::time::Instant::now();
     let mut unaccounted: Vec<ReferenceAccountingRefusal> = Vec::new();
 
     // ── Pass 1: parse the pool once. Build the exported-name→module index (precedence: first root
@@ -29830,6 +29574,11 @@ pub fn reference_resolution_facts(
     }
 
     unaccounted.sort_by(|a, b| a.path.cmp(&b.path));
+    shared_fill::record_fill(
+        "reference_edges",
+        &cache_key,
+        reference_edges_fill_start.elapsed().as_nanos() as u64,
+    );
     REFERENCE_UNACCOUNTED_CACHE.with(|c| c.borrow_mut().insert(cache_key.clone(), unaccounted));
     REFERENCE_EDGE_CACHE.with(|c| c.borrow_mut().insert(cache_key, edges.clone()));
     edges
@@ -30598,7 +30347,7 @@ fn commit_witness_field_str(
 
 fn ci_floor_commit_witness_claim_pairs() -> Result<Vec<(String, String)>, String> {
     let roots = witness_layer_roots();
-    let index = build_multi_entry_index(&roots);
+    let index = process_shared_index(&roots);
     let (graph, source_indices) = resolve_entry_with_index(&index, COMMIT_WORKFLOW_ENTRY)?;
     let ctx = make_eval_context(
         &graph,
@@ -30612,7 +30361,7 @@ fn ci_floor_commit_witness_claim_pairs() -> Result<Vec<(String, String)>, String
 
 pub fn commit_witness_claim_pair_resolvable(entry: &str, function: &str) -> bool {
     let roots = witness_layer_roots();
-    let index = build_multi_entry_index(&roots);
+    let index = process_shared_index(&roots);
     let mut entry_cache = std::collections::HashMap::new();
     matches!(
         commit_witness_claim_pair_resolvability_with_index(
@@ -30706,7 +30455,7 @@ pub fn commit_witness_claim_roster_defects() -> Vec<(String, String, String)> {
         )];
     };
     let roots = witness_layer_roots();
-    let index = build_multi_entry_index(&roots);
+    let index = process_shared_index(&roots);
     let mut entry_cache = std::collections::HashMap::new();
     let mut defects = Vec::new();
     for (entry, function) in pairs {
@@ -31254,7 +31003,7 @@ struct NonFoldReport {
 
 fn nfr_build_report() -> &'static NonFoldReport {
     static REPORT: std::sync::OnceLock<NonFoldReport> = std::sync::OnceLock::new();
-    REPORT.get_or_init(|| {
+    shared_fill::once(&REPORT, "non_fold_residue", "corpus", || {
         let files = corpus_dag_files();
         let closed_coproduct_names = nfr_closed_coproduct_names(&files);
         NonFoldReport {
@@ -32110,7 +31859,9 @@ fn compute_inert_carrier_data(files: &[(String, String)]) -> InertCarrierData {
 
 fn build_inert_carrier_data() -> &'static InertCarrierData {
     static CACHE: OnceLock<InertCarrierData> = OnceLock::new();
-    CACHE.get_or_init(|| compute_inert_carrier_data(&corpus_dag_files()))
+    shared_fill::once(&CACHE, "inert_carrier_data", "corpus", || {
+        compute_inert_carrier_data(&corpus_dag_files())
+    })
 }
 
 pub fn inert_carrier_names_live() -> Vec<String> {
@@ -32516,13 +32267,18 @@ struct ClaAuditBuiltinCache {
 
 fn cla_cached_builtin_cache() -> &'static ClaAuditBuiltinCache {
     static CACHE: OnceLock<ClaAuditBuiltinCache> = OnceLock::new();
-    CACHE.get_or_init(|| {
-        let summary = complexity_linearity_audit_corpus_default_roots();
-        ClaAuditBuiltinCache {
-            finding_count: summary.findings.len() as i64,
-            sites: summary.findings.iter().map(|f| f.site.clone()).collect(),
-        }
-    })
+    shared_fill::once(
+        &CACHE,
+        "complexity_linearity_audit",
+        "default_roots",
+        || {
+            let summary = complexity_linearity_audit_corpus_default_roots();
+            ClaAuditBuiltinCache {
+                finding_count: summary.findings.len() as i64,
+                sites: summary.findings.iter().map(|f| f.site.clone()).collect(),
+            }
+        },
+    )
 }
 
 pub fn complexity_linearity_syntactic_finding_count() -> i64 {
@@ -32576,9 +32332,14 @@ fn cla_compute_wildcard_facts(roots: &[String]) -> Vec<ComplexityLinearityWildca
 
 fn cla_cached_wildcard_facts() -> &'static ClaWildcardFactsCache {
     static CACHE: OnceLock<ClaWildcardFactsCache> = OnceLock::new();
-    CACHE.get_or_init(|| ClaWildcardFactsCache {
-        facts: cla_compute_wildcard_facts(&witness_layer_roots()),
-    })
+    shared_fill::once(
+        &CACHE,
+        "complexity_linearity_wildcard",
+        "witness_layer_roots",
+        || ClaWildcardFactsCache {
+            facts: cla_compute_wildcard_facts(&witness_layer_roots()),
+        },
+    )
 }
 
 pub fn complexity_linearity_wildcard_facts() -> &'static [ComplexityLinearityWildcardFactRaw] {
@@ -32786,8 +32547,10 @@ struct FacCensusCache {
 
 fn fac_cached_census_facts() -> &'static FacCensusCache {
     static CACHE: OnceLock<FacCensusCache> = OnceLock::new();
-    CACHE.get_or_init(|| FacCensusCache {
-        facts: fac_compute_census_facts(&witness_layer_roots()),
+    shared_fill::once(&CACHE, "fallback_arm_census", "witness_layer_roots", || {
+        FacCensusCache {
+            facts: fac_compute_census_facts(&witness_layer_roots()),
+        }
     })
 }
 
@@ -33041,10 +32804,15 @@ fn doc_graph_report(extra_roots: &[String]) -> std::sync::Arc<DocGraphReport> {
         OnceLock::new();
     let cache = CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
     let mut guard = cache.lock().expect("doc_graph_report cache poisoned");
+    let key = extra_roots.join("\u{1f}");
     if let Some(r) = guard.get(extra_roots) {
+        shared_fill::record_hit("doc_graph_report", &key);
         return r.clone();
     }
+    shared_fill::begin_fill();
+    let start = std::time::Instant::now();
     let report = std::sync::Arc::new(build_doc_graph_report(extra_roots));
+    shared_fill::record_fill("doc_graph_report", &key, start.elapsed().as_nanos() as u64);
     guard.insert(extra_roots.to_vec(), report.clone());
     report
 }
@@ -33201,7 +32969,12 @@ fn build_test_migration_behavior_discovery_report() -> TestMigrationBehaviorDisc
 
 fn test_migration_behavior_discovery_report() -> &'static TestMigrationBehaviorDiscoveryReport {
     static REPORT: OnceLock<TestMigrationBehaviorDiscoveryReport> = OnceLock::new();
-    REPORT.get_or_init(build_test_migration_behavior_discovery_report)
+    shared_fill::once(
+        &REPORT,
+        "test_migration_behavior_discovery",
+        "corpus",
+        build_test_migration_behavior_discovery_report,
+    )
 }
 
 pub fn test_migration_legacy_behavior_ids() -> Vec<String> {
@@ -33319,7 +33092,12 @@ fn build_test_migration_debt_report() -> TestMigrationDebtReport {
 
 fn test_migration_debt_report() -> &'static TestMigrationDebtReport {
     static REPORT: OnceLock<TestMigrationDebtReport> = OnceLock::new();
-    REPORT.get_or_init(build_test_migration_debt_report)
+    shared_fill::once(
+        &REPORT,
+        "test_migration_debt",
+        "corpus",
+        build_test_migration_debt_report,
+    )
 }
 
 pub fn test_migration_debt_module_names() -> Vec<String> {
@@ -33619,28 +33397,6 @@ mod witness_layer_roots_compile_clean_tests {
         });
     }
 
-    #[test]
-    fn regen_verify_gate_failure_detail_unavailable_without_prior_record() {
-        reset_regen_verify_gate_failure_detail_for_test();
-        assert!(
-            consume_regen_verify_gate_failure_detail()
-                .contains("gate body did not run in this process"),
-            "missing record must refuse with a located message, not imply an empty success verdict"
-        );
-    }
-
-    #[test]
-    fn regen_verify_gate_failure_detail_round_trips_recorded_reason() {
-        reset_regen_verify_gate_failure_detail_for_test();
-        record_regen_verify_gate_failure_detail(
-            "Changed generated file(s): v1_compiler_emit_rust.rs".to_string(),
-        );
-        assert_eq!(
-            consume_regen_verify_gate_failure_detail(),
-            "Changed generated file(s): v1_compiler_emit_rust.rs"
-        );
-    }
-
     /// §5 discriminating RED (end-to-end): real whole-tree compile with an injected broken module
     /// must refuse through install_floor_compile_clean_receipt → consume_floor_compile_clean_gate_verdict.
     /// Ignored in CI: ~minutes cold whole-tree compile; recorded execution receipt in PR #6361 body.
@@ -33810,41 +33566,6 @@ mod witness_layer_roots_compile_clean_tests {
                 matches!(plan, CompileCleanScopePlan::SkipNoAffected { .. }),
                 "expected SkipNoAffected, got {plan:?}"
             );
-        });
-    }
-
-    /// Regen departed-path guard: a deleted `.dag` path must run regen even when the
-    /// current-tree closure no longer contains it (the closure is computed from the
-    /// current tree, so deletions are invisible to the intersection test). The control
-    /// below proves the same path as a modification outside the closure still skips.
-    #[test]
-    fn regen_floor_skip_runs_on_departed_dag_path() {
-        with_env_test_lock(|| {
-            with_workspace_cwd(|| {
-                let _ns = EnvGuard::set(
-                    "GUNBC_CI_DIFF_NAME_STATUS",
-                    "D\\000src/v2/lens/machine_shape.dag\\000",
-                );
-                assert_eq!(regen_floor_skip_label_for_ci(), RUN_REGEN_LABEL);
-            });
-        });
-    }
-
-    /// Control for the departed guard: the same non-closure path as a plain
-    /// modification keeps the skip arm (proves the guard discriminates on D, not path).
-    #[test]
-    fn regen_floor_skip_skips_on_modified_non_closure_path() {
-        with_env_test_lock(|| {
-            with_workspace_cwd(|| {
-                let _ns = EnvGuard::set(
-                    "GUNBC_CI_DIFF_NAME_STATUS",
-                    "M\\000src/v2/lens/machine_shape.dag\\000",
-                );
-                assert_eq!(
-                    regen_floor_skip_label_for_ci(),
-                    REGEN_NOT_AFFECTED_SKIP_LABEL
-                );
-            });
         });
     }
 
@@ -39162,6 +38883,8 @@ pub struct RequiredFloorOutcome {
     /// AND A BUDGET REFUSAL IS NEITHER. The row went undecided; the remedy is cost, not a
     /// roster edit and not a bug fix. Three causes with three remedies get three counts.
     pub budget_refused: Vec<String>,
+    /// Host tool could not be resolved — infra undecided, not budget-refused.
+    pub host_tool_unresolved: Vec<String>,
     pub over_warn: usize,
     pub failures: Vec<String>,
 }
@@ -39678,6 +39401,30 @@ pub fn run_required_floor(
     commit: &str,
     style: ShardStyle,
 ) -> Result<RequiredFloorOutcome, String> {
+    // HONEST SCOPE (review 53487): the caller marker below is a self-attested string, not
+    // authentication — any caller able to set `_ONLY` can set `_ONLY_CALLER` too. What it
+    // buys is exactly one thing: the witnesses CI env cannot gain `_ONLY` by a one-variable
+    // edit or copy-paste; flipping the primary floor into join-only mode now takes a second,
+    // deliberately named variable whose value documents where the mode is allowed to come
+    // from. It is a tripwire against accident, not a wall against intent. The whole gate
+    // dissolves with the `expected_red_roster_join` bin (registered scaffold) when the floor
+    // emits the join report by default.
+    const EXPECTED_RED_ROSTER_JOIN_ONLY_BIN: &str = "expected_red_roster_join_bin";
+    let roster_join_only_requested = std::env::var("GUNBC_EXPECTED_RED_ROSTER_JOIN_ONLY")
+        .ok()
+        .is_some_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+    if roster_join_only_requested
+        && std::env::var("GUNBC_EXPECTED_RED_ROSTER_JOIN_ONLY_CALLER").as_deref()
+            != Ok(EXPECTED_RED_ROSTER_JOIN_ONLY_BIN)
+    {
+        return Err(
+            "REQUIRED-FLOOR REFUSAL cause=ExpectedRedRosterJoinOnlyUnauthorized — \
+             GUNBC_EXPECTED_RED_ROSTER_JOIN_ONLY is admitted only from the \
+             expected_red_roster_join stop-line-audit bin; witnesses CI must set \
+             GUNBC_EXPECTED_RED_ROSTER_JOIN without _ONLY"
+                .to_string(),
+        );
+    }
     floor_cgroup_envelope("floor-entry");
     spawn_floor_heartbeat();
     floor_seam("strict-preparation");
@@ -39688,6 +39435,85 @@ pub fn run_required_floor(
     let (prepared, prepared_sources) =
         prepare_repository_once(source_roots, &floor_prepared_subject_exclusions())?;
     let _floor_prepared_guard = register_floor_prepared_authority_guard(prepared_sources);
+    // WARM THE MODULE-PATH INDEX HERE, because otherwise ONE ARBITRARY CLAIM PAYS FOR IT.
+    //
+    // `compile_dag_rust_emit_check` (the emit witnesses' host arm) calls
+    // `build_module_path_index_from_witness_roots`, which walks and PARSES every module under
+    // the default source roots. It is thread-local cached, so exactly one claim per process
+    // pays the build and every later one hits the cache. That claim is then billed ~45s
+    // against a 1552ms per-claim ceiling and reports as a budget failure, while its identical
+    // siblings run in ~760ms.
+    //
+    // MEASURED, three runs, same rows, evaluation order alphabetical and stable throughout:
+    //
+    //   run                     emitted_lib_rs...omits    emitter_nested...single
+    //   pre-quarantine              739ms                     761ms
+    //   32189985063               42647ms  <- billed           687ms
+    //   32193032348 (main)        quarantined                45941ms  <- billed
+    //
+    // The bill is POSITIONAL, not a property of any witness: quarantining the victim hands it
+    // to the next module in evaluation order. Three modules were quarantined down this chain
+    // (dissolution_census 55.5s, emitted_lib_rs 42.6s, and the 83.0s
+    // extdeps_scope_placement_gate row) before the pattern was read correctly -- each read as
+    // a slow test, all three were the same one-time build landing on whoever touched it first.
+    //
+    // Paying it in preparation is where the cost BELONGS: it is a fact of the subject, not of
+    // any claim, and the floor's whole design is one preparation serving every claim. Total
+    // run wall is unchanged -- the same work happens once either way; what changes is that no
+    // claim is charged for building the subject it was handed.
+    //
+    // dissolve-on: the index derives from the prepared inventory instead of a second disk
+    // walk. The bytes are already in hand -- the emit memo is keyed on
+    // `floor_inventory_content_digest` precisely because that index reads the same files --
+    // and `languages_decl_records_from_inventory` is the existing precedent for the
+    // inventory-sourced form of a census that used to scan. When that lands this warm call is
+    // unnecessary rather than merely redundant, because there is no second authority to warm.
+    let index_warm_started = std::time::Instant::now();
+    let warmed_modules = build_module_path_index_from_witness_roots().len();
+    eprintln!(
+        "[floor-phase] phase=module-path-index-warm state=completed wall_ms={} modules={}",
+        index_warm_started.elapsed().as_millis(),
+        warmed_modules
+    );
+    // WARM THE SHARED MultiEntryIndex HERE, for the same reason as the module-path index
+    // above: otherwise ONE ARBITRARY CLAIM PAYS FOR IT (witness cost class 2).
+    //
+    // `commit_witness_claim_pair_resolvable` (the commit-witness roster's host arm, and its
+    // sibling `ci_floor_commit_witness_claim_pairs` / `commit_witness_claim_roster_defects`)
+    // used to call `build_multi_entry_index(&roots)` directly instead of going through
+    // `process_shared_index`, the existing thread-local shared-index cache every other
+    // production call site already uses (`resolve_entry_graph_shared` and friends). That
+    // meant every one of those functions re-walked and re-parsed the whole witness corpus on
+    // EVERY call, uncached — even though `process_shared_index` would have served the same
+    // `MultiEntryIndex` for free after the first build.
+    //
+    // MEASURED: `commit_witness_claim_pair_resolvable`, invoked exactly once by
+    // `commit_witness_claim_roster_red_control_holds` (the fast-lane RED control for the
+    // synthetic stale (entry, function) pair), cost 62.7-83.0s for that single call — the
+    // full one-time corpus walk+parse billed against one witness with a ~1-5s ceiling. As
+    // with the module-path index, quarantining the victim does not remove the cost, it only
+    // relocates it onto whichever claim runs next.
+    //
+    // The three call sites were switched to `process_shared_index(&roots)` (this fix); this
+    // warm call additionally ensures the shared cache is already hot before the per-claim
+    // loop starts, so the cost is paid here, in preparation, rather than by whichever claim
+    // happens to touch it first. `witness_layer_roots()` is the exact roots value all three
+    // call sites resolve internally (not the `source_roots` parameter above), so the roots
+    // key here must match theirs; `canonical_shared_index_roots` normalizes relative and
+    // absolute forms to the same key regardless.
+    //
+    // dissolve-on: same as the module-path-index warm above — when the shared index derives
+    // from the prepared inventory instead of a second disk walk, this warm call becomes
+    // unnecessary rather than merely redundant, because there is no second authority to warm.
+    let shared_index_warm_started = std::time::Instant::now();
+    let warmed_shared_index_modules = process_shared_index(&witness_layer_roots())
+        .source_files
+        .len();
+    eprintln!(
+        "[floor-phase] phase=shared-index-warm state=completed wall_ms={} modules={}",
+        shared_index_warm_started.elapsed().as_millis(),
+        warmed_shared_index_modules
+    );
     let prepare_ms = prepare_started.elapsed().as_millis();
     eprintln!(
         "floor: active sources = {}",
@@ -39930,7 +39756,7 @@ pub fn run_required_floor(
     );
     floor_seam("admission-decode");
     let admission_decode_started = std::time::Instant::now();
-    let claims = required_floor_claims_from_admission(&hermetic, &admission)?;
+    let mut claims = required_floor_claims_from_admission(&hermetic, &admission)?;
     eprintln!(
         "[floor-phase] phase=admission-decode state=completed wall_ms={} claims={}",
         admission_decode_started.elapsed().as_millis(),
@@ -40110,6 +39936,46 @@ pub fn run_required_floor(
         "[floor-known-red] roster carries {} enrolled identity(ies)",
         expected_red_roster.len()
     );
+    let roster_join_path = std::env::var("GUNBC_EXPECTED_RED_ROSTER_JOIN").ok();
+    let roster_join_only = std::env::var("GUNBC_EXPECTED_RED_ROSTER_JOIN_ONLY")
+        .ok()
+        .is_some_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+    let roster_join_active = roster_join_path.is_some() || roster_join_only;
+    let mut roster_join_report = if roster_join_active {
+        let mut roster_identities: Vec<String> = expected_red_roster.iter().cloned().collect();
+        roster_identities.sort();
+        let run_head = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .output()
+            .ok()
+            .and_then(|o| {
+                if o.status.success() {
+                    Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
+                } else {
+                    None
+                }
+            })
+            .filter(|s| !s.is_empty());
+        let run_note = if roster_join_only {
+            "join-only mode: evaluates enrolled identities present in the manifest; do not \
+             prune the roster from this output until the rebase wave (#8420) restores host-tool \
+             verdicts"
+                .to_string()
+        } else {
+            "full-floor join: every enrolled identity receives still_red | now_passes | \
+             not_evaluated"
+                .to_string()
+        };
+        Some(
+            crate::expected_red_roster_join::ExpectedRedRosterJoinReport::new(
+                run_head,
+                run_note,
+                &roster_identities,
+            ),
+        )
+    } else {
+        None
+    };
 
     // THE MANIFEST'S WORLD DIES HERE, before the fold rather than at the end of the function.
     //
@@ -40135,6 +40001,15 @@ pub fn run_required_floor(
 
     // ── 4. fold the manifest ──────────────────────────────────────────────────────────────
     eprintln!("floor: claims = {}", claims.len());
+    if roster_join_only {
+        let before = claims.len();
+        claims.retain(|c| expected_red_roster.contains(c.qualified.as_str()));
+        eprintln!(
+            "floor: expected-red-roster-join-only retained {} of {} claim(s)",
+            claims.len(),
+            before
+        );
+    }
     let claims_planned = claims.len();
     let mut outcome = RequiredFloorOutcome {
         subject_digest: prepared.subject_digest.clone(),
@@ -40147,6 +40022,7 @@ pub fn run_required_floor(
         known_red_held: 0,
         stale_quarantine: Vec::new(),
         budget_refused: Vec::new(),
+        host_tool_unresolved: Vec::new(),
         over_warn: 0,
         failures: Vec::new(),
     };
@@ -40210,6 +40086,7 @@ pub fn run_required_floor(
     let mut known_red_now_passing: usize = 0;
     let mut known_red_budget_refused: usize = 0;
     let mut known_red_passed_over_budget: usize = 0;
+    let mut known_red_host_tool_unresolved: usize = 0;
     let mut expected_red_seen: HashSet<String> = HashSet::new();
     let mut claim_rss_kb_max: u64 = 0;
     let mut claim_rss_kb_max_row = String::new();
@@ -40279,6 +40156,11 @@ pub fn run_required_floor(
         // because its time was filesystem reads and its CPU never approached the limit.
         frame.set_witness_eval_budget(Some(claim.budget_ms));
         frame.set_witness_wall_budget(Some(claim.budget_ms));
+        // NAME WHO IS RUNNING, so a shared computation filled during this claim is attributed to
+        // it rather than to nobody. The wall time this row is about to be charged is not
+        // necessarily its own; `shared_fill` records which part was a first touch of a
+        // process-global corpus cache and which later claims read that same fill for free.
+        shared_fill::set_current_claim(Some(&claim.qualified));
         set_phase(FloorPhase::Eval, &claim.qualified);
         // WHAT ONE CLAIM COSTS IN MEMORY, for the same reason the scope is measured beside it:
         // the fold's resident set swings ~5.6GB and the scope turned out to account for 0.02GB
@@ -40378,6 +40260,12 @@ pub fn run_required_floor(
         let expected_red = expected_red_roster.contains(claim.qualified.as_str());
         if expected_red {
             expected_red_seen.insert(claim.qualified.clone());
+            if let Some(ref mut join) = roster_join_report {
+                join.record_observed(
+                    &claim.qualified,
+                    &witness_eval_verdict_from_claim_outcome(&result),
+                );
+            }
         }
         let passed = matches!(result, ClaimOutcome::Pass);
         if expected_red {
@@ -40471,6 +40359,24 @@ pub fn run_required_floor(
                     ));
                     continue;
                 }
+                ExpectedRedArm::HostToolUnresolved => {
+                    known_red_host_tool_unresolved += 1;
+                    let detail = match &result {
+                        ClaimOutcome::HostToolUnresolved { name, probed } => format!(
+                            "host tool unresolved: {name:?} (probed: {})",
+                            probed.join(", ")
+                        ),
+                        other => format!("{other:?}"),
+                    };
+                    outcome.host_tool_unresolved.push(format!(
+                        "{} is enrolled as expected-red but HOST-TOOL-UNRESOLVED, not failed \
+                         and not budget-refused: {}. Enrollment asserts an expected verdict; \
+                         missing host tooling produces none. Fix the tool chain or run on a host \
+                         that provides it — do not chase witness cost on an infra gap.",
+                        claim.qualified, detail
+                    ));
+                    continue;
+                }
                 ExpectedRedArm::Held => {
                     known_red_held += 1;
                     continue;
@@ -40492,23 +40398,77 @@ pub fn run_required_floor(
             ClaimOutcome::RuntimeError { message } => outcome
                 .failures
                 .push(format!("{} errored: {message}", claim.qualified)),
+            ClaimOutcome::HostToolUnresolved { name, probed } => outcome.failures.push(format!(
+                "{} host tool unresolved: {:?} (probed: {})",
+                claim.qualified,
+                name,
+                probed.join(", ")
+            )),
             ClaimOutcome::TimedOut {
                 elapsed_ms,
                 budget_ms,
                 kind,
                 completion,
-            } => outcome.failures.push(format!(
-                "{} exceeded its {kind:?} budget (cost is {} {elapsed_ms}ms against {budget_ms}ms)",
-                claim.qualified,
-                completion.elapsed_reading()
-            )),
+                // AND AN UNENROLLED BUDGET REFUSAL IS NOT A DEFECT EITHER. The enrolled arm above
+                // already rules that a budget refusal produces no verdict and therefore is not a
+                // failure; that fact is a property of the interruption, not of the roster, so it
+                // holds identically for a row nobody enrolled. Reporting it in `failures` said the
+                // opposite — `failures` is the channel whose remedy is "fix the defect", and it is
+                // what the alert signature reads to distinguish a regression from a cost debt. A
+                // row that was preempted before answering has no defect to fix and may well be
+                // passing, so routing it here made an unmeasured cost indistinguishable from a
+                // broken witness, in the direction that manufactures alarm.
+                //
+                // The consequence this closes is concrete: a row that PASSES and exceeds its budget
+                // had no honest state anywhere. Enrolled, it asserted an expected failure that does
+                // not occur and reported twice. Unenrolled, it landed here and read as a defect.
+                // Cost is not a verdict, so the verdict channels cannot carry it — and now they do
+                // not. The line still stops, because the cost is still owed; it stops saying the
+                // true thing about why.
+                // TWO READINGS, AND THEY ARE NOT THE SAME CLAIM. `Interrupted` means the deadline
+                // fired before the witness answered: no verdict exists, the figure is a LOWER BOUND
+                // and the row's real cost is unmeasured. `CompletedOverBudget` means the witness ran
+                // to completion and then was found over budget: the verdict IS known and the figure
+                // is EXACT. Printing one sentence for both would repeat the conflation this arm
+                // exists to remove — asserting "correctness unknown" over a row that demonstrably
+                // answered is as wrong as calling a cost a defect.
+            } => outcome.budget_refused.push(match completion {
+                BudgetCompletion::Interrupted => format!(
+                    "{} was BUDGET-REFUSED and went UNDECIDED: {kind:?}, cost at least \
+                     {elapsed_ms}ms against {budget_ms}ms. Not enrolled as expected-red, so \
+                     nothing claims it is broken — but the deadline preempted the verdict, so \
+                     whether it passes is UNKNOWN and its real cost is UNMEASURED: the figure \
+                     is the interrupt point, not this row's cost. Reduce the cost, or move it \
+                     to a lane declaring its own ceiling, so the witness reaches a verdict.",
+                    claim.qualified
+                ),
+                BudgetCompletion::CompletedOverBudget => format!(
+                    "{} reached its verdict and then exceeded its budget: {kind:?}, cost \
+                     exactly {elapsed_ms}ms against {budget_ms}ms. The witness ran to \
+                     completion, so this is a measurement rather than a bound and the cost is \
+                     known and actionable. This is a cost debt only — it is not a defect and \
+                     it does not belong on the expected-red roster, which asserts an expected \
+                     FAILURE this row does not exhibit.",
+                    claim.qualified
+                ),
+            }),
         }
     }
     outcome.receipt_identities = receipted.len();
+    // THE FOLD IS OVER, so nothing after this point is any witness's cost. Cleared before the
+    // report is rendered rather than after, so a gate that fills a cache on its way out cannot
+    // be charged to the last row that happened to run.
+    shared_fill::set_current_claim(None);
     eprintln!(
         "floor: evaluating {claims_planned} / {claims_planned} ({}ms)",
         eval_started.elapsed().as_millis()
     );
+    // WHAT THE PER-ROW NUMBERS ABOVE DO NOT SAY. Each line names one shared computation, what
+    // its fill cost, which claim paid it, and how many claims and modules read that same fill
+    // for free. A `shared` fill does not go away when its payer is removed from the floor — the
+    // next claim to touch it pays the same seconds — so a paring decision that reads only the
+    // per-row wall time is deciding on an attribution artifact.
+    eprint!("{}", shared_fill::report());
     // CONSTRUCTIONS AGAINST DISTINCT SCOPES. Equal means the manifest's claim order was grouped
     // by module and each scope was built exactly once; higher means it was not, and the excess
     // is rebuilding this reports rather than absorbs. `modules_per_scope` is carried here now
@@ -40562,11 +40522,13 @@ pub fn run_required_floor(
         "[floor-known-red] {} enrolled identity(ies) held as expected-red; {} enrolled \
          identity(ies) now PASS and must be removed from the roster; {} enrolled \
          identity(ies) were BUDGET-REFUSED and so went undecided; {} PASSED but exceeded \
-         budget (stale roster row AND a real cost debt)",
+         budget (stale roster row AND a real cost debt); {} HOST-TOOL-UNRESOLVED (infra, \
+         not budget)",
         known_red_held,
         known_red_now_passing,
         known_red_budget_refused,
-        known_red_passed_over_budget
+        known_red_passed_over_budget,
+        known_red_host_tool_unresolved
     );
     eprintln!(
         "[floor-claim-memory] worst single claim grew rss by {:.2}GB at={}",
@@ -40611,7 +40573,7 @@ pub fn run_required_floor(
         missing.sort();
         missing
     };
-    if !expected_red_missing.is_empty() {
+    if !expected_red_missing.is_empty() && !roster_join_only {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=ExpectedRedIdentityDidNotExecute count={} — every \
              identity enrolled in v2.workflow.floor_expected_red must be observed among the \
@@ -40629,20 +40591,26 @@ pub fn run_required_floor(
     // observed exactly once, so it landed in precisely one of the two arms. Checking the sum is
     // therefore checking that the two arms are the whole roster and do not overlap — cheap, and
     // it fails loudly if a later edit adds a third arm that quietly swallows rows.
-    if known_red_held
-        + known_red_now_passing
-        + known_red_budget_refused
-        + known_red_passed_over_budget
-        != expected_red_roster.len()
+    // The three-outcome roster join relaxes this to still_red | now_passes | not_evaluated and
+    // is the authority for pruning — not the failure-log subset.
+    if !roster_join_only
+        && known_red_held
+            + known_red_now_passing
+            + known_red_budget_refused
+            + known_red_passed_over_budget
+            + known_red_host_tool_unresolved
+            != expected_red_roster.len()
     {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=ExpectedRedPartitionInexact held={} now_passing={} \
-             budget_refused={} passed_over_budget={} roster={} — every enrolled identity must \
-             be exactly one of held, now-passing, budget-refused or passed-over-budget",
+             budget_refused={} passed_over_budget={} host_tool_unresolved={} roster={} — every \
+             enrolled identity must be exactly one of held, now-passing, budget-refused, \
+             passed-over-budget, or host-tool-unresolved",
             known_red_held,
             known_red_now_passing,
             known_red_budget_refused,
             known_red_passed_over_budget,
+            known_red_host_tool_unresolved,
             expected_red_roster.len()
         ));
     }
@@ -40660,7 +40628,53 @@ pub fn run_required_floor(
             outcome.claims_planned, outcome.claims_executed, outcome.receipt_identities
         ));
     }
+    if let Some(mut join) = roster_join_report {
+        join.finalize_not_observed();
+        crate::expected_red_roster_join::emit_join_summary(&join);
+        if let Some(path) = roster_join_path {
+            crate::expected_red_roster_join::write_join_tsv(&path, &join)?;
+        }
+    }
     Ok(outcome)
+}
+
+fn witness_eval_verdict_from_claim_outcome(
+    outcome: &ClaimOutcome,
+) -> crate::expected_red_roster_join::WitnessEvalVerdict {
+    match outcome {
+        ClaimOutcome::Pass => crate::expected_red_roster_join::WitnessEvalVerdict::Passed,
+        ClaimOutcome::Fail => crate::expected_red_roster_join::WitnessEvalVerdict::BoolFalse,
+        ClaimOutcome::NotBool { got } => {
+            crate::expected_red_roster_join::WitnessEvalVerdict::NotBool(got.clone())
+        }
+        ClaimOutcome::RuntimeError { message } => {
+            crate::expected_red_roster_join::WitnessEvalVerdict::RuntimeError(message.clone())
+        }
+        ClaimOutcome::HostToolUnresolved { name, probed } => {
+            crate::expected_red_roster_join::WitnessEvalVerdict::HostToolUnresolved {
+                name: name.clone(),
+                probed: probed.clone(),
+            }
+        }
+        ClaimOutcome::TimedOut {
+            elapsed_ms,
+            budget_ms,
+            kind,
+            completion,
+        } => crate::expected_red_roster_join::WitnessEvalVerdict::BudgetExceeded {
+            elapsed_ms: *elapsed_ms,
+            budget_ms: *budget_ms,
+            kind: kind.label(),
+            completion: match completion {
+                BudgetCompletion::Interrupted => {
+                    crate::expected_red_roster_join::BudgetVerdictCompletion::Interrupted
+                }
+                BudgetCompletion::CompletedOverBudget => {
+                    crate::expected_red_roster_join::BudgetVerdictCompletion::CompletedOverBudget
+                }
+            },
+        },
+    }
 }
 
 /// Read the `.dag` admission. A refusal is reported with every offending row rather than the
@@ -40888,4 +40902,18 @@ fn required_floor_claims_from_admission(
         out.len()
     );
     Ok(out)
+}
+
+pub fn run_required_regen(
+    candidate_dir_rel: &str,
+    receipt_rel: &str,
+) -> Result<required_regen_host::RequiredRegenOutcome, String> {
+    required_regen_host::run_required_regen(candidate_dir_rel, receipt_rel)
+}
+
+pub fn run_required_regen_fixed_point(
+    receipt_rel: &str,
+    pass1_digest: Option<String>,
+) -> Result<required_regen_host::RequiredRegenOutcome, String> {
+    required_regen_host::run_required_regen_fixed_point(receipt_rel, pass1_digest)
 }
