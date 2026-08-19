@@ -8745,82 +8745,24 @@ pub fn parse_op_body_entries(
                                         continue;
                                     }
                                 } else {
-                                    if peek_is_colon_after_ident(tokens.clone()) {
-                                        let r = expect_ident(tokens.clone());
-                                        if has_err(r.err.clone()) {
-                                            return Rc::new(OpBodyResult {
-                                                inputs: inputs.clone(),
-                                                outputs: outputs.clone(),
-                                                modifier_props: modifier_props.clone(),
-                                                transport: transport.clone(),
-                                                exit_props: exit_props.clone(),
-                                                response_props: response_props.clone(),
-                                                mock_props: mock_props.clone(),
-                                                tokens: r.tokens.clone(),
-                                                ctx: ctx.clone(),
-                                                err: r.err.clone(),
-                                            });
-                                        }
-                                        let r2 = expect(
-                                            r.tokens.clone(),
-                                            Rc::new(ExpectedToken::ExpectColon),
-                                        );
-                                        if has_err(r2.err.clone()) {
-                                            return Rc::new(OpBodyResult {
-                                                inputs: inputs.clone(),
-                                                outputs: outputs.clone(),
-                                                modifier_props: modifier_props.clone(),
-                                                transport: transport.clone(),
-                                                exit_props: exit_props.clone(),
-                                                response_props: response_props.clone(),
-                                                mock_props: mock_props.clone(),
-                                                tokens: r2.tokens.clone(),
-                                                ctx: ctx.clone(),
-                                                err: r2.err.clone(),
-                                            });
-                                        }
-                                        let r3 = parse_expr(r2.tokens.clone(), ctx.clone());
-                                        if has_err(r3.err.clone()) {
-                                            return Rc::new(OpBodyResult {
-                                                inputs: inputs.clone(),
-                                                outputs: outputs.clone(),
-                                                modifier_props: modifier_props.clone(),
-                                                transport: transport.clone(),
-                                                exit_props: exit_props.clone(),
-                                                response_props: response_props.clone(),
-                                                mock_props: mock_props.clone(),
-                                                tokens: r3.tokens.clone(),
-                                                ctx: r3.ctx.clone(),
-                                                err: r3.err.clone(),
-                                            });
-                                        }
-                                        {
-                                            let __tco_0 = skip_newlines(r3.tokens.clone());
-                                            let __tco_1 = r3.ctx.clone();
-                                            tokens = __tco_0;
-                                            ctx = __tco_1;
-                                            continue;
-                                        }
-                                    } else {
-                                        break Rc::new(OpBodyResult {
-                                            inputs: inputs.clone(),
-                                            outputs: outputs.clone(),
-                                            modifier_props: modifier_props.clone(),
-                                            transport: transport.clone(),
-                                            exit_props: exit_props.clone(),
-                                            response_props: response_props.clone(),
-                                            mock_props: mock_props.clone(),
-                                            tokens: tokens.clone(),
-                                            ctx: ctx.clone(),
-                                            err: Some(parse_error(
-                                                format!(
-                                                    "unexpected '{}' in operation body",
-                                                    id.clone()
-                                                ),
-                                                span.clone(),
-                                            )),
-                                        });
-                                    }
+                                    break Rc::new(OpBodyResult {
+                                        inputs: inputs.clone(),
+                                        outputs: outputs.clone(),
+                                        modifier_props: modifier_props.clone(),
+                                        transport: transport.clone(),
+                                        exit_props: exit_props.clone(),
+                                        response_props: response_props.clone(),
+                                        mock_props: mock_props.clone(),
+                                        tokens: tokens.clone(),
+                                        ctx: ctx.clone(),
+                                        err: Some(parse_error(
+                                            format!(
+                                                "unexpected '{}' in operation body",
+                                                id.clone()
+                                            ),
+                                            span.clone(),
+                                        )),
+                                    });
                                 }
                             }
                         }
