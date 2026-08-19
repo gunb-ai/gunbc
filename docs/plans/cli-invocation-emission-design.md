@@ -868,7 +868,45 @@ General argument typechecking strengthens the boundary; it does not prove that p
    fragments concatenate within an argument and never across, and the transport violates exactly
    that. It is also a live specimen of the model↔realization fork DESIGN tracks as an open thread.
 
-   **Consequence for this lane:** the cutover is BLOCKED at the execution seam. The semantic
+   **CORRECTION (same day, adversarial review): "blocked on application-argument typechecking"
+   was WRONG, and too strong.** The diagnosis above survived independent verification — the
+   reviewer traced `build_service_param_env` (which clones call arguments with no conformance
+   check), `dispatch_shell`, and `Command::new(&argv[0]).args(&argv[1..])`, confirming the vector
+   is already malformed before `Command` sees it, so no later join is available as an alternative
+   explanation. The refusal to reorder the branches was also upheld. But the conclusion was not:
+   **a correct construction is available now.**
+
+   The counter-evidence is in-tree: `OperationInputValue = InputText | InputTextList` already
+   carries tagged list intent, and its realization explicitly converts that tag into a native
+   `Value::List` (`free_monoid_to_vec` then `list_value`), so the later flattening splices. Tagged
+   intent → native list is therefore proven possible *without* global argument typechecking.
+
+   And the deeper correction: even a fully typechecked system would still not answer the question
+   the transport must ask. `List<String>` does not say whether a collection becomes several argv
+   words, one JSON argument, a comma-joined option value, or repeated option/value groups. **That
+   is a transport ROLE, not a data type**, and the missing fact should be modeled rather than
+   inferred from runtime encoding. Application-argument typechecking remains independently
+   valuable and is neither necessary nor sufficient here.
+
+   **The construction:** one explicit nominal carrier — `ShellArgvExpansion { surface: CliSurface }`,
+   sealed — with an interpreter branch placed BEFORE the generic string/list heuristic that requires
+   the nominal `CliSurface`, iterates its arguments, and pushes exactly one host word per
+   `CliArgument`, concatenating that argument's fragments into that one word. It carries `CliSurface`
+   rather than `List<String>` precisely so the payload cannot be dynamically ambiguous: a modeled
+   string cannot impersonate a list of nominal `CliArgument` records, and `value_as_host_string` is
+   then used only on one admitted argument's text, where concatenation IS correct. That is Wave 0's
+   theorem enforced at the host edge.
+
+   **Explicitly not to be landed** (each rejected for a stated reason): reversing the two `Variant`
+   branches (damages modeled strings); `map(identity)` to coerce a native list, rebuilding the
+   emitted argv as a literal, or join-then-shell-split (runtime-representation workarounds, and the
+   last reintroduces shell parsing); routing jq through `OperationInputValue` permanently (that
+   carrier belongs to declaration-owned operation materialization); or accepting BOTH a raw
+   `List<String>` and the explicit carrier (two authorities, with future callers free to pick the
+   unsafe one). The raw-list handler signature is REPLACED, not retained for compatibility.
+
+   **Consequence for this lane:** the cutover is blocked at the execution seam *until that carrier
+   lands*, which is a build, not a decision. The semantic
    spine is built and resolving; no consumer can move until this is decided, because every
    migrated call site computes its argv rather than authoring it literally — which is precisely
    what the migration asks callers to start doing.
