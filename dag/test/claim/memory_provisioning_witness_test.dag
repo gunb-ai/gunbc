@@ -425,12 +425,12 @@ test fn arm_benchmarks_record_the_providers_own_entitlement_silence() -> Bool {
 test fn the_sku_entitlement_is_declared_not_inherited() -> Bool {
   match arm_memory_profile.advertised_entitlement {
     DedicatedPhysicalCore =>
-      all(
+      !any(
         arm_memory_profile.consulted_benchmarks,
         b => match b.advertised_entitlement {
-          EntitlementUnstated => true
-          DedicatedPhysicalCore => false
-          SmtSharedVcpu { threads_per_core } => false
+          EntitlementUnstated => false
+          DedicatedPhysicalCore => true
+          SmtSharedVcpu { threads_per_core } => true
         },
       )
     EntitlementUnstated => false
@@ -805,9 +805,9 @@ test fn the_same_uncited_board_derives_under_the_full_channel_policy() -> Bool {
       count(options) == 2
         && any(options, o => o.dimm_count == 8)
         && any(options, o => o.dimm_count == 16)
-        && all(options, o => match o.coverage {
-          FullChannel { topology } => true
-          PartialChannel { channels_populated, channels_dark } => false
+        && !any(options, o => match o.coverage {
+          FullChannel { topology } => false
+          PartialChannel { channels_populated, channels_dark } => true
         })
     PopulationDerivationRefused { board_label, cause } => false
   }
@@ -910,12 +910,12 @@ test fn github_x64_is_unreadable_rather_than_contradicting() -> Bool {
 // first is the wall, and the second shows the wall is not being cleared by
 // quietly dropping the inconvenient citations.
 test fn every_declared_sku_is_supported_and_still_carries_its_contradictions() -> Bool {
-  all(
+  !any(
     declared_product_profiles(),
     p => match profile_evidence_verdict(profile: p) {
       EvidenceSupported { supporting_count, contrasting_count } =>
-        supporting_count == 2 && contrasting_count >= 1
-      EvidenceUnsupported { consulted_count, contrasting_count } => false
+        !(supporting_count == 2 && contrasting_count >= 1)
+      EvidenceUnsupported { consulted_count, contrasting_count } => true
     },
   )
 }
@@ -1113,14 +1113,14 @@ test fn full_channel_populations_are_topology_derived() -> Bool {
   ) {
     PopulationsDerived { options, declined_by_policy } =>
       count(options) == 1
-        && all(options, o => o.dimm_count == 8)
-        && all(options, o => match o.coverage {
+        && !any(options, o => o.dimm_count != 8)
+        && !any(options, o => match o.coverage {
           FullChannel { topology } =>
             match topology {
-              OneDimmPerChannel => true
-              TwoDimmsPerChannel => false
+              OneDimmPerChannel => false
+              TwoDimmsPerChannel => true
             }
-          PartialChannel { channels_populated, channels_dark } => false
+          PartialChannel { channels_populated, channels_dark } => true
         })
     PopulationDerivationRefused { board_label, cause } => false
   }
@@ -1137,8 +1137,8 @@ test fn the_population_names_its_overshoot() -> Bool {
     modules: [rdimm_32g()],
   ) {
     PopulationsDerived { options, declined_by_policy } =>
-      all(options, o => byte_size_count(b: o.total_bytes) == 256 * gb)
-        && all(options, o => byte_size_count(b: o.margin_bytes) == 64 * gb)
+      !any(options, o => byte_size_count(b: o.total_bytes) != 256 * gb)
+        && !any(options, o => byte_size_count(b: o.margin_bytes) != 64 * gb)
     PopulationDerivationRefused { board_label, cause } => false
   }
 }

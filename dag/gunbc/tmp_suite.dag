@@ -1,0 +1,97 @@
+module gunbc.tmp_suite
+
+import std.types { Bool }
+import std.nat { Nat }
+import test.claim.memory_provisioning_witness_test {
+  ubicloud_and_blacksmith_publish_three_gb_per_arm_vcpu,
+  depot_publishes_four_gb_per_arm_vcpu,
+  a_provider_with_non_uniform_sizes_refuses_a_single_ratio,
+  circleci_x86_docker_is_two_gb_per_vcpu,
+  only_ubicloud_states_a_dedicated_core_entitlement,
+  ubicloud_x64_entitlement_is_an_smt_thread,
+  ubicloud_supports_the_three_gb_value_sku,
+  ubicloud_contradicts_the_four_gb_memory_sku,
+  github_arm_cannot_support_any_declared_figure,
+  circleci_contrasts_with_the_x64_sku_rather_than_supporting_it,
+  a_sku_standing_only_on_contradictions_is_unsupported,
+  arm_benchmarks_record_the_providers_own_entitlement_silence,
+  the_sku_entitlement_is_declared_not_inherited,
+  the_x64_sku_refuses_on_the_q8030,
+  the_x64_sku_refuses_on_the_m12830,
+  an_arm_sku_refuses_on_an_x64_processor,
+  a_matching_architecture_still_derives,
+  a_ddr5_module_refuses_against_the_ddr4_platform,
+  one_incompatible_module_refuses_the_whole_offer,
+  an_existing_128gib_host_reports_what_it_provides_and_its_shortfall,
+  the_admission_fold_and_the_observation_disagree_on_reachable_bounds,
+  an_exactly_sized_machine_is_evenly_bound,
+  observation_refuses_a_mismatched_architecture_too,
+  the_documented_four_module_shape_is_declined_not_invalid,
+  the_permissive_policy_admits_the_documented_partial_shapes,
+  a_board_without_a_cited_population_table_refuses_the_permissive_policy,
+  the_same_uncited_board_derives_under_the_full_channel_policy,
+  three_boards_are_answered_and_every_channel_count_is_derived,
+  a_2dpc_board_reaches_a_target_the_1dpc_board_cannot,
+  github_x64_is_unreadable_rather_than_contradicting,
+  every_declared_sku_is_supported_and_still_carries_its_contradictions,
+  a_declared_decimal_basis_converts_to_bytes,
+  the_same_quoted_figure_differs_under_a_binary_basis,
+  an_undeclared_basis_refuses_the_capacity_derivation,
+  an_unstated_entitlement_refuses_rather_than_assuming_cores,
+  an_unstated_entitlement_refuses_through_the_fold,
+  no_offered_modules_refuses_distinctly,
+  a_mixed_capacity_population_is_refused,
+  the_fan_out_answers_once_per_sku_and_refuses_the_x64_one,
+  full_channel_populations_are_topology_derived,
+  the_population_names_its_overshoot,
+  a_mixed_unit_label_sample_refuses_a_ratio,
+  the_same_sample_in_one_unit_yields_a_ratio,
+}
+
+fn weigh(b: Bool, w: Nat) -> Nat { if b { 0 } else { w } }
+
+fn suite_failure_mask() -> Nat {
+  weigh(b: ubicloud_and_blacksmith_publish_three_gb_per_arm_vcpu(), w: 1)
+  + weigh(b: depot_publishes_four_gb_per_arm_vcpu(), w: 2)
+  + weigh(b: a_provider_with_non_uniform_sizes_refuses_a_single_ratio(), w: 4)
+  + weigh(b: circleci_x86_docker_is_two_gb_per_vcpu(), w: 8)
+  + weigh(b: only_ubicloud_states_a_dedicated_core_entitlement(), w: 16)
+  + weigh(b: ubicloud_x64_entitlement_is_an_smt_thread(), w: 32)
+  + weigh(b: ubicloud_supports_the_three_gb_value_sku(), w: 64)
+  + weigh(b: ubicloud_contradicts_the_four_gb_memory_sku(), w: 128)
+  + weigh(b: github_arm_cannot_support_any_declared_figure(), w: 256)
+  + weigh(b: circleci_contrasts_with_the_x64_sku_rather_than_supporting_it(), w: 512)
+  + weigh(b: a_sku_standing_only_on_contradictions_is_unsupported(), w: 1024)
+  + weigh(b: arm_benchmarks_record_the_providers_own_entitlement_silence(), w: 2048)
+  + weigh(b: the_sku_entitlement_is_declared_not_inherited(), w: 4096)
+  + weigh(b: the_x64_sku_refuses_on_the_q8030(), w: 8192)
+  + weigh(b: the_x64_sku_refuses_on_the_m12830(), w: 16384)
+  + weigh(b: an_arm_sku_refuses_on_an_x64_processor(), w: 32768)
+  + weigh(b: a_matching_architecture_still_derives(), w: 65536)
+  + weigh(b: a_ddr5_module_refuses_against_the_ddr4_platform(), w: 131072)
+  + weigh(b: one_incompatible_module_refuses_the_whole_offer(), w: 262144)
+  + weigh(b: an_existing_128gib_host_reports_what_it_provides_and_its_shortfall(), w: 524288)
+  + weigh(b: the_admission_fold_and_the_observation_disagree_on_reachable_bounds(), w: 1048576)
+  + weigh(b: an_exactly_sized_machine_is_evenly_bound(), w: 2097152)
+  + weigh(b: observation_refuses_a_mismatched_architecture_too(), w: 4194304)
+  + weigh(b: the_documented_four_module_shape_is_declined_not_invalid(), w: 8388608)
+  + weigh(b: the_permissive_policy_admits_the_documented_partial_shapes(), w: 16777216)
+  + weigh(b: a_board_without_a_cited_population_table_refuses_the_permissive_policy(), w: 33554432)
+  + weigh(b: the_same_uncited_board_derives_under_the_full_channel_policy(), w: 67108864)
+  + weigh(b: three_boards_are_answered_and_every_channel_count_is_derived(), w: 134217728)
+  + weigh(b: a_2dpc_board_reaches_a_target_the_1dpc_board_cannot(), w: 268435456)
+  + weigh(b: github_x64_is_unreadable_rather_than_contradicting(), w: 536870912)
+  + weigh(b: every_declared_sku_is_supported_and_still_carries_its_contradictions(), w: 1073741824)
+  + weigh(b: a_declared_decimal_basis_converts_to_bytes(), w: 2147483648)
+  + weigh(b: the_same_quoted_figure_differs_under_a_binary_basis(), w: 4294967296)
+  + weigh(b: an_undeclared_basis_refuses_the_capacity_derivation(), w: 8589934592)
+  + weigh(b: an_unstated_entitlement_refuses_rather_than_assuming_cores(), w: 17179869184)
+  + weigh(b: an_unstated_entitlement_refuses_through_the_fold(), w: 34359738368)
+  + weigh(b: no_offered_modules_refuses_distinctly(), w: 68719476736)
+  + weigh(b: a_mixed_capacity_population_is_refused(), w: 137438953472)
+  + weigh(b: the_fan_out_answers_once_per_sku_and_refuses_the_x64_one(), w: 274877906944)
+  + weigh(b: full_channel_populations_are_topology_derived(), w: 549755813888)
+  + weigh(b: the_population_names_its_overshoot(), w: 1099511627776)
+  + weigh(b: a_mixed_unit_label_sample_refuses_a_ratio(), w: 2199023255552)
+  + weigh(b: the_same_sample_in_one_unit_yields_a_ratio(), w: 4398046511104)
+}
