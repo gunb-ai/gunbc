@@ -319,7 +319,7 @@ test fn inaccessible_lease_refuses() -> Bool {
     pending_step_id: witness_step_serve,
     requires_destructive_approval: false,
     escalation_id: witness_escalation_id,
-    grant: GrantAbsent,
+    grant: std.temporal_effect.GrantAbsent,
     lease: held_lease(
       epoch: std.temporal_effect.LeaseEpoch {
         lease_key: witness_lease_key,

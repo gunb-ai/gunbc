@@ -538,7 +538,7 @@ fn tcc_cache_diagnostic_tail_bag_claim(label_suffix: String, tail: List<v2.std.d
 }
 
 test fn tcc_cache_diagnostic_tail_permutation_claim_hash_invariant() -> Bool {
-  let diag_b = Diagnostic {
+  let diag_b = v2.std.diagnostic.Diagnostic {
     reason: ^tcc_cache_tail_diag_b,
     at: node_locus(node: tcc_cache_root()),
     correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }

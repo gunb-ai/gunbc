@@ -384,7 +384,7 @@ fn floor_expected_red_chunk_13() -> List<v2.std.text.String> {
 // this cohort is promotable in one motion. Nothing here should be re-enrolled before then;
 // re-enrolling without the fix reproduces the undecidable rows this cut removed.
 fn floor_expected_red_chunk_14() -> List<String> {
-  Empty {}
+  std.algebra.Empty {}
 }
 
 fn floor_expected_red_chunk_15() -> List<v2.std.text.String> {
