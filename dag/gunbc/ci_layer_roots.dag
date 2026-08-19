@@ -1236,15 +1236,87 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
-    function: "witness_dag_grammar_arrow_lambda_admission_holds",
-    reason: "one interpreted production dag_lex_rules + dag_grammar construction, then thirteen three-line sources folded through it — the CI2-0 arrow-lambda grammar-admission proof matrix (parse-only, v1-fidelity). CONSOLIDATED 2026-08-19 from thirteen per-source rows, each of which rebuilt the 6,230-line grammar for its own three-line fixture; the fixtures and assertions are unchanged and the repeated construction is gone",
+    function: "witness_single_param_lambda_parses",
+    reason: "~16s measured eval (valiant-boar-65, 2026-08-10): interpreted production dag_lex_rules + dag_grammar lex+parse per control — the CI2-0 arrow-lambda grammar-admission proof matrix (parse-only, v1-fidelity), same wall as the leading-pipe sibling matrix",
     dissolution: unbound_dissolution(description: "witness realization lands the lex/parse natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
+    function: "witness_multi_param_lambda_parses",
+    reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~16s measured)",
+    dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
+    function: "witness_lambda_in_pipeline_parses",
+    reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~16s measured)",
+    dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
+    function: "witness_authored_algebra_shape_parses",
+    reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~16s measured; the VERBATIM dag/std/algebra.dag line-370 source — lambda in pipeline in lambda)",
+    dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
+    function: "witness_lambda_block_body_parses",
+    reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured)",
+    dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
+    function: "witness_match_arm_fat_arrow_unchanged",
+    reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured)",
+    dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
+    function: "witness_named_arg_unchanged",
+    reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured)",
+    dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
+    function: "witness_paren_arithmetic_unchanged",
+    reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured)",
+    dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
+    function: "witness_sum_decl_unchanged",
+    reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured)",
+    dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
+    function: "witness_missing_body_refuses_RED",
+    reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured)",
+    dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
+    function: "witness_missing_param_refuses_RED",
+    reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured)",
+    dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
+    function: "witness_single_paren_param_refuses_RED",
+    reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured; v1-fidelity refusal — (x) is a parenthesized expr in v1, never a lambda)",
+    dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
+    function: "witness_zero_param_refuses_RED",
+    reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured; v1-fidelity refusal — () is the empty record literal in v1, never a lambda)",
+    dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
     function: "witness_pre_repair_grammar_restores_the_RED",
-    reason: "the rule-removed RED: the pre-extension grammar is derived once from the same base value the sibling row builds, and the discriminating subset is folded through it. CONSOLIDATED 2026-08-19 — this row previously rebuilt dag_grammar six times for four parses",
-    dissolution: unbound_dissolution(description: "same as witness_dag_grammar_arrow_lambda_admission_holds row")
+    reason: "four parses under the identity-swapped pre-extension grammar — the rule-removed RED (~68s measured)",
+    dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/long/namespace_graft_body_dissolution_witness_test.dag",
