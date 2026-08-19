@@ -179,17 +179,17 @@ test fn nbd_proxy_observe_port_local_shell_is_active_active_wires_through() -> B
   }
 }
 
-test fn systemd_run_transient_operation_argv_matches_authority() -> Bool {
+test fn witness_systemd_run_transient_operation_argv_matches_authority() -> Bool {
   systemd_run_transient_operation_argv_matches_authority(
     unit: "nbd-proxy-srv3-nbd-proxy-10809" as NonEmptyStr,
     command_argv: ["nbdkit", "-p", "10809", "file", "/var/lib/gunbc/artifacts/x.iso"],
   )
 }
 
-test fn systemctl_stop_operation_argv_matches_authority() -> Bool {
+test fn witness_systemctl_stop_operation_argv_matches_authority() -> Bool {
   systemctl_stop_operation_argv_matches_authority(unit: "nbd-proxy-srv3-nbd-proxy-10809" as NonEmptyStr)
 }
 
-test fn systemctl_is_active_operation_argv_matches_authority() -> Bool {
+test fn witness_systemctl_is_active_operation_argv_matches_authority() -> Bool {
   systemctl_is_active_operation_argv_matches_authority(unit: "nbd-proxy-srv3-nbd-proxy-10809-ws" as NonEmptyStr)
 }
