@@ -1652,7 +1652,6 @@ data whole_tree_strict_resolve_scaffold_exclusion_note: String = "The per-file r
 data whole_tree_strict_resolve_exclusion_substrings: List<String> = [
   "test/fixture/",
   "/test/",
-  "nat_semiring_rung",
   "lens/application/empty_required_lenses_skip_gate.dag",
   "lens/application/rejecting_lens_blocks_before_compile.dag",
   "lens/idempotency/write_effect.dag",
@@ -1662,7 +1661,6 @@ data whole_tree_strict_resolve_exclusion_substrings: List<String> = [
   "workflow/affected_testgen_ci_runner.dag",
   "workflow/lens_discrimination_family_eval_test.dag",
   "workflow/lens_synthesis_family_eval_test.dag",
-  "workflow/testclaim_corpus_runner.dag",
   "lens/idempotency/sg_claims_test.dag",
   "lens/idempotency/family_receipt.dag",
   "lens/parallelism/family_receipt.dag",

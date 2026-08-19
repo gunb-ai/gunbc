@@ -656,36 +656,6 @@ data bootstrap_projection_inputs: BootstrapProjectionInputs = BootstrapProjectio
   runtime_model: v2_evaluator_runtime()
 }
 
-type BootstrapEvaluatorCorpusHarnessEntry {
-  runtime_model: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime
-  stage0_binary: v2.std.node.Symbol
-  source_root: v2.std.node.Symbol
-  entry_fn: v2.std.node.Symbol
-  entry_module: v2.std.node.Symbol
-}
-
-fn bootstrap_evaluator_corpus_harness_entry() -> BootstrapEvaluatorCorpusHarnessEntry {
-  BootstrapEvaluatorCorpusHarnessEntry {
-    runtime_model: v2_evaluator_runtime(),
-    stage0_binary: ^v2_stage0_binary,
-    source_root: ^v2_dag_source,
-    entry_fn: ^run_manual_testclaim_corpus_eval,
-    entry_module: ^v2_test_claim_workflow_testclaim_corpus_runner
-  }
-}
-
-fn bootstrap_evaluator_corpus_harness_well_formed(entry: BootstrapEvaluatorCorpusHarnessEntry) -> Bool {
-  (entry.runtime_model == v2_evaluator_runtime())
-    && (entry.stage0_binary == ^v2_stage0_binary)
-    && (entry.source_root == ^v2_dag_source)
-    && (entry.entry_fn == ^run_manual_testclaim_corpus_eval)
-    && (entry.entry_module == ^v2_test_claim_workflow_testclaim_corpus_runner)
-}
-
-data bootstrap_manual_corpus_harness: BootstrapEvaluatorCorpusHarnessEntry = bootstrap_evaluator_corpus_harness_entry()
-
-data witness_bootstrap_evaluator_corpus_harness_well_formed: Bool = bootstrap_evaluator_corpus_harness_well_formed(entry: bootstrap_manual_corpus_harness)
-
 data bootstrap_footprint_witness: Witness<BootstrapFootprint> = bootstrap_footprint(inputs: bootstrap_projection_inputs)
 
 data bootstrap_seed_capability_gate: Witness<BootstrapCapabilityExact> = bootstrap_seed_capability_matches_footprint(

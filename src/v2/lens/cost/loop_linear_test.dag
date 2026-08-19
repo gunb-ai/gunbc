@@ -30,7 +30,7 @@ data loop_linear_input: Node = v2.std.node.Node {
   occurrence_id: SyntheticOccurrence
 }
 
-fn loop_linear_claim_holds() -> Bool {
+test fn loop_linear_claim_holds() -> Bool {
   match cost_lens(n: loop_linear_input) {
     Holds { value: actual } =>
       match actual {
@@ -39,24 +39,4 @@ fn loop_linear_claim_holds() -> Bool {
       }
     _ => false
   }
-}
-
-fn loop_linear_claim_rhs() -> Node {
-  if loop_linear_claim_holds() {
-    loop_linear_input
-  } else {
-    v2.std.node.Node {
-      kind: v2.std.node.TypeNode { connective: Conj },
-      children: [],
-      occurrence_id: SyntheticOccurrence
-}
-  }
-}
-
-data claim_loop_linear: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
-  label: "lens_cost/loop_linear: loop with loop_bound_edge projects iterative linear cost",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: loop_linear_input,
-  rhs: loop_linear_claim_rhs(),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
