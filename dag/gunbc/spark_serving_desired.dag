@@ -104,6 +104,27 @@ data spark_serving_desired_endpoint_intent: ServingEndpointIntent = Unauthentica
 
 data spark_serving_desired_model_ref: OllamaModelRef = ollama_gpt_oss_20b_model_ref
 
+// THIS PIN NO LONGER NAMES WHAT THE TAG RESOLVES TO, AND THE MEASUREMENT SAYS SO.
+//
+// Measured 2026-08-19T14:28Z against registry.ollama.ai/v2/library/gpt-oss/manifests/20b: the
+// manifest that tag serves today hashes to
+// 17052f91a42e97930aa6e28a6c6c06a983e6a58dbb00434885a0cf5313e376f7, and that is also what srv6 holds
+// and what its ollama reports through /api/tags. Three independent readings agree with each other
+// and disagree with the pin below, which was authored under the 2026-08-12 declaration and was
+// correct then. extdeps.ollama.model_store already names the mechanism: a manifest is addressed by
+// reference, and a reference is a moving pointer -- upstream republished.
+//
+// SO THE HOST IS NOT DRIFTING AND THE PIN IS NOT ENFORCEABLE. PullModelArtifact runs
+// `ollama pull gpt-oss:20b`, which fetches whatever the tag names now, so a digest pin behind a
+// tag-addressed remedy cannot be satisfied after a republish however often the remedy runs. The
+// member reconciles as drift on every pass and the pull is planned forever -- the exact shape
+// spark_serving_observe predicted for a mismatch of this kind, arriving from the pin rather than
+// from the observation.
+//
+// The pin is LEFT AS AUTHORED. Editing it to match the host would empty the plan by abolishing the
+// question the pin exists to ask, and which bytes this fleet serves is a declaration, not a repair.
+// Re-pinning to the measured digest, or making the remedy digest-addressed so the pin becomes
+// enforceable, are both operator decisions and neither is taken here.
 data spark_serving_desired_gpt_oss_manifest_digest: Sha256Digest = Sha256Digest {
   hex: "49124fc2c622237675273a842019e83bd327d4d6c2d6e076378ca07ec7579d05" as Sha256DigestHex,
 }
