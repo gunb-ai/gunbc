@@ -408,9 +408,9 @@ fn serialize_match_pattern(pattern: MatchPattern, source_indices: Map<String, v1
       concat("{\"kind\": \"Bind\", \"name\": ", json_quote(s: declaration.name), "}")
     LitPattern { value: inner } =>
       concat("{\"kind\": \"LitPattern\", \"value\": ", serialize_literal(value: inner), "}")
-    VariantPattern { name: inner, parent_enum: parent_enum, field_bindings: field_bindings } =>
+    v1.std.core.VariantPattern { name: inner, parent_enum: parent_enum, field_bindings: field_bindings } =>
       concat(
-        "{\"kind\": \"VariantPattern\", \"name\": ", json_quote(s: inner),
+        "{\"kind\": \"v1.std.core.VariantPattern\", \"name\": ", json_quote(s: inner),
         ", \"parent_enum\": ", json_optional_string(value: parent_enum),
         ", \"field_bindings\": ", json_list(items: field_bindings |> map(fb => serialize_field_binding(binding: fb, source_indices: source_indices))),
         "}")

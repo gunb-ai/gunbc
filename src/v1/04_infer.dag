@@ -2593,9 +2593,9 @@ fn resolve_pattern_subject(scope: v1.compiler.infer.InferScope, scrutinee_subjec
   }
 }
 
-fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: v1.compiler.infer_patterns.PatternSubject, scope: v1.compiler.infer.InferScope) -> MatchPattern {
+fn annotate_pattern_parent_enums(pattern: v1.std.core.MatchPattern, scrutinee_subject: v1.compiler.infer_patterns.PatternSubject, scope: v1.compiler.infer.InferScope) -> v1.std.core.MatchPattern {
   match pattern {
-    VariantPattern { name: variant_name, parent_enum: _, field_bindings: bindings } =>
+    v1.std.core.VariantPattern { name: variant_name, parent_enum: _, field_bindings: bindings } =>
       let resolved_scrut = resolve_pattern_subject(scope: scope, scrutinee_subject: scrutinee_subject)
       let inferred_parent = match resolved_scrut {
         PatternResolved { node: resolved_scrut_node } =>
@@ -2626,13 +2626,13 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: v1.co
       )
       match inferred_parent {
         Present { value: parent_name } =>
-          v1.std.core.VariantPattern {
+          v1.std.core.v1.std.core.VariantPattern {
             name: annotated_variant_name,
             parent_enum: parent_name,
             field_bindings: annotated_bindings
           }
         Absent =>
-          v1.std.core.VariantPattern { name: variant_name, parent_enum: none, field_bindings: annotated_bindings }
+          v1.std.core.v1.std.core.VariantPattern { name: variant_name, parent_enum: none, field_bindings: annotated_bindings }
       }
     _ => pattern
   }
@@ -2746,12 +2746,12 @@ fn derive_field_provenance(scope: v1.compiler.infer.InferScope, scrutinee_proven
   }
 }
 
-fn extend_scope_with_pattern_node(scope: v1.compiler.infer.InferScope, pattern: MatchPattern, scrutinee_subject: v1.compiler.infer_patterns.PatternSubject, scrutinee_provenance: std.induction.SubValueRelation) -> v1.compiler.infer.PatternScopeResult {
+fn extend_scope_with_pattern_node(scope: v1.compiler.infer.InferScope, pattern: v1.std.core.MatchPattern, scrutinee_subject: v1.compiler.infer_patterns.PatternSubject, scrutinee_provenance: std.induction.SubValueRelation) -> v1.compiler.infer.PatternScopeResult {
   match pattern {
     Bind { declaration: declaration } => PatternScopeResult { scope: extend_scope_match_bound(scope: scope, name: declaration.name, resolved: pattern_binding_type(subject: scrutinee_subject), provenance: scrutinee_provenance), diagnostics: [] }
     Wildcard => PatternScopeResult { scope: scope, diagnostics: [] }
     LitPattern { value: _ } => PatternScopeResult { scope: scope, diagnostics: [] }
-    VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
+    v1.std.core.VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
       let resolved_scrut = resolve_pattern_subject(scope: scope, scrutinee_subject: scrutinee_subject)
       let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: vname, module_name: scope.module_name, env: scope.type_env, field_binding_count: bindings |> count)
       let variant_subject = lookup_result_subject(result: variant_lookup)
@@ -6082,7 +6082,7 @@ fn annotate_descent(body: v1.std.core.Node, ctx: v1.compiler.infer.DescentContex
           Absent =>
         if scrut_has_inductive {
           match arm_pattern(n: arm_node) {
-            VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
+            v1.std.core.VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
               match scrut_inducing_field {
                 Present { value: ind_field } =>
                   if vname == "Present" {
@@ -6098,7 +6098,7 @@ fn annotate_descent(body: v1.std.core.Node, ctx: v1.compiler.infer.DescentContex
                             scope_locals: c.scope_locals, func_env: c.func_env,
                             per_field_vars: c.per_field_vars
                           }
-                        VariantPattern { name: inner_vname, parent_enum: _, field_bindings: inner_bindings } =>
+                        v1.std.core.VariantPattern { name: inner_vname, parent_enum: _, field_bindings: inner_bindings } =>
                           let inner_ind_fields = inductive_fields_for(env: c.type_env, type_name: ind_field.element_type)
                           inner_bindings |> fold(init: c, f: (ic, inner_fb) =>
                             let inner_field_name = field_binding_name_at(n: inner_fb, source_indices: ctx.type_env.source_indices)
@@ -6576,7 +6576,7 @@ fn classify_body_provenance(expr: v1.std.core.Node, param_names: List<String>, p
       let arm_provs = arms |> map(arm =>
 
         let arm_let_prov = match arm_pattern(n: arm) {
-          VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
+          v1.std.core.VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
             fold(bindings, init: let_prov, f: (acc, binding) =>
               let field_label = field_binding_name_at(n: binding, source_indices: type_env.source_indices)
               let bind_name = match field_binding_pattern(n: binding) {
@@ -6842,7 +6842,7 @@ fn intersect_prov_maps(a: Map<String, std.induction.SubValueRelation>, b: Map<St
 
 fn arm_ctx_from_variant_provenance(arm_node: v1.std.core.Node, sig: v1.compiler.infer_sigs.ResolvedFuncSig, scrut: v1.std.core.Node, ctx: v1.compiler.infer.DescentContext) -> v1.compiler.infer.DescentContext? {
   match arm_pattern(n: arm_node) {
-    VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
+    v1.std.core.VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
       match map_get(sig.variant_provenance, vname) {
         Present { value: variant_field_map } =>
           let call_args = call_args_by_name(call: scrut, source_indices: ctx.type_env.source_indices)

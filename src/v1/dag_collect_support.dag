@@ -115,7 +115,7 @@ fn literal_value_fingerprint(value: std.syntax.LiteralValue) -> String {
 
 // match_pattern is a SubValueField (v1.std.core node_field_roles) carrying the
 // match-arm/field-binding semantics; the pattern's own Node subtrees
-// (Bind.declaration, VariantPattern.field_bindings) must be folded in
+// (Bind.declaration, v1.std.core.VariantPattern.field_bindings) must be folded in
 // recursively or two arms/bindings differing only by pattern collapse to the
 // same fingerprint.
 fn match_pattern_fingerprint_rec(pattern: MatchPattern?) -> String {
@@ -125,9 +125,9 @@ fn match_pattern_fingerprint_rec(pattern: MatchPattern?) -> String {
       hash_combine(atom_identity_hash("Bind"), dag_node_surface_fingerprint_rec(node: d))
     Present { value: LitPattern { value: v } } =>
       atom_identity_hash(concat("LitPattern:", literal_value_fingerprint(value: v)))
-    Present { value: VariantPattern { name: n, parent_enum: pe, field_bindings: fbs } } =>
+    Present { value: v1.std.core.VariantPattern { name: n, parent_enum: pe, field_bindings: fbs } } =>
       let base = atom_identity_hash(concat(
-        "VariantPattern:", n, "|",
+        "v1.std.core.VariantPattern:", n, "|",
         match pe { Present { value: p } => p  Absent => "" }))
       let field_hashes = fbs |> map(f => dag_node_surface_fingerprint_rec(node: f))
       hash_combine(base, dag_node_seq_hash(digests: field_hashes))
