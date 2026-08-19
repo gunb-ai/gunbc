@@ -16608,59 +16608,80 @@ pub fn symbol_index_insert_unique_disj_variant_aliases(
             .fold(
                 index.clone(),
                 |acc: Rc<SymbolIndex>, item: Rc<Node>| match item.connective.clone() {
-                    Connective::Disj => item.children.clone().iter().cloned().fold(
-                        acc.clone(),
-                        |a2: Rc<SymbolIndex>, child: Rc<Node>| {
-                            let vname = authored_name_at(source_indices.clone(), child.clone());
-                            match v1_rt::map_get(&counts, vname.clone()) {
-                                Some(1) => {
-                                    match v1_rt::map_get(&corpus_variant_counts, vname.clone()) {
-                                        Some(1) => {
-                                            if ((v1_rt::map_get(
-                                                &corpus_item_counts,
-                                                vname.clone(),
-                                            ) != None)
-                                                || overlay_skips_kernel_name(vname.clone()))
-                                            {
-                                                symbol_index_insert(
-                                                    a2.clone(),
-                                                    v1_rt::concat(
-                                                        v1_rt::concat(
-                                                            module_path.clone(),
-                                                            ".".to_string(),
-                                                        ),
-                                                        vname.clone(),
-                                                    ),
-                                                    item.clone(),
-                                                )
-                                            } else {
-                                                symbol_index_insert_decl(
-                                                    a2.clone(),
-                                                    module_path.clone(),
-                                                    Rc::new(TypeBinding {
-                                                        name: vname.clone(),
-                                                        resolved: item.clone(),
-                                                        provenance: Rc::new(
-                                                            SubValueRelation::SubValueUnknown,
-                                                        ),
-                                                    }),
-                                                )
-                                            }
-                                        }
-                                        _ => symbol_index_insert(
-                                            a2.clone(),
-                                            v1_rt::concat(
-                                                v1_rt::concat(module_path.clone(), ".".to_string()),
-                                                vname.clone(),
-                                            ),
-                                            item.clone(),
+                    Connective::Disj => {
+                        let tname = authored_name_at(source_indices.clone(), item.clone());
+                        item.children.clone().iter().cloned().fold(
+                            acc.clone(),
+                            |a2: Rc<SymbolIndex>, child: Rc<Node>| {
+                                let vname = authored_name_at(source_indices.clone(), child.clone());
+                                // Unconditional fully-qualified insertion, ahead of the
+                                // uniqueness-gated 2-segment aliases below — see the matching
+                                // comment on the .dag authority (symbol_index_insert_unique_disj_variant_aliases).
+                                let a2_qualified = symbol_index_insert(
+                                    a2.clone(),
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(module_path.clone(), ".".to_string()),
+                                            tname.clone(),
                                         ),
+                                        v1_rt::concat(".".to_string(), vname.clone()),
+                                    ),
+                                    item.clone(),
+                                );
+                                match v1_rt::map_get(&counts, vname.clone()) {
+                                    Some(1) => {
+                                        match v1_rt::map_get(&corpus_variant_counts, vname.clone())
+                                        {
+                                            Some(1) => {
+                                                if ((v1_rt::map_get(
+                                                    &corpus_item_counts,
+                                                    vname.clone(),
+                                                ) != None)
+                                                    || overlay_skips_kernel_name(vname.clone()))
+                                                {
+                                                    symbol_index_insert(
+                                                        a2_qualified.clone(),
+                                                        v1_rt::concat(
+                                                            v1_rt::concat(
+                                                                module_path.clone(),
+                                                                ".".to_string(),
+                                                            ),
+                                                            vname.clone(),
+                                                        ),
+                                                        item.clone(),
+                                                    )
+                                                } else {
+                                                    symbol_index_insert_decl(
+                                                        a2_qualified.clone(),
+                                                        module_path.clone(),
+                                                        Rc::new(TypeBinding {
+                                                            name: vname.clone(),
+                                                            resolved: item.clone(),
+                                                            provenance: Rc::new(
+                                                                SubValueRelation::SubValueUnknown,
+                                                            ),
+                                                        }),
+                                                    )
+                                                }
+                                            }
+                                            _ => symbol_index_insert(
+                                                a2_qualified.clone(),
+                                                v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        module_path.clone(),
+                                                        ".".to_string(),
+                                                    ),
+                                                    vname.clone(),
+                                                ),
+                                                item.clone(),
+                                            ),
+                                        }
                                     }
+                                    _ => a2_qualified.clone(),
                                 }
-                                _ => a2.clone(),
-                            }
-                        },
-                    ),
+                            },
+                        )
+                    }
                     _ => acc.clone(),
                 },
             )
