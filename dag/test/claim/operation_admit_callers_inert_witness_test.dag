@@ -49,7 +49,15 @@ import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
 // refusal here is a resolve error, so an unadmitted call written directly into this module would
 // take the whole file down with it.
 
-data admit_fn_form_source: String = "module probe_admit_fn_form\nimport extdeps.shell.exec { TransportScript, transport_script_seal }\nfn unadmitted_caller() -> TransportScript {\n  transport_script_seal(body: \"x\")\n}\n"
+// THE CONTROL'S SUBJECT IS THE PURPOSE-BUILT FIXTURE, not a production sealed fn, and that is a
+// COST decision with a measured cause rather than a preference. The first cut of this control
+// forged a caller of extdeps.shell.exec.transport_script_seal; it established the same fact but
+// took 54.9 SECONDS against the floor's 10s per-witness ceiling and grew RSS by about a gigabyte,
+// because compiling that source drags the whole shell/extdeps closure through the census. The
+// fixture's closure is a few declarations, and the operation-form probe beside it costs 516ms for
+// the same reason -- it imports only std.types. Same mechanism, same refusal, two orders of
+// magnitude less work.
+data admit_fn_form_source: String = "module probe_admit_fn_form\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated, mint_sealed_local }\nfn unadmitted_caller() -> LocalValidated {\n  mint_sealed_local(n: 65)\n}\n"
 
 data admit_op_form_source: String = "module probe_admit_op_form\nimport std.types { String, Int }\nservice probe.Svc {\n  operation Sealed {\n    input { arg: String }\n    output { exit_code: Int from \"exit_code\" }\n    readonly\n    admit_callers: [\n      decl_ref(module_path: \"probe_admit_op_form\", decl_name: \"admitted_caller\"),\n    ]\n    transport shell { argv: [\"true\", arg] }\n    exit { 0 => Unit  nonzero => Unit }\n    mock_response { 0 => { exit_code: 0 } \"hermetic\" }\n  }\n}\nfn unadmitted_caller() -> Int {\n  probe.Svc.Sealed(arg: \"x\").exit_code\n}\n"
 
