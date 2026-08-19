@@ -195,9 +195,25 @@ import v2.std.text { String }
 //
 // RESTORATION TRIGGER: the cost lane. Measured by three sessions independently on 2026-08-18,
 // the cost is the EVALUATION CONTEXT, not the witnesses -- a row taking 71s on the floor runs
-// in 70-85ms in isolation, a 12s row in 31ms, and dag_arrow_lambda rebuilds a 6,230-line
-// grammar once per witness for 3-line sources because each claim gets a fresh frame by design.
-// No witness has yet been found that is genuinely slow. When a module's cost is repaired it
+// in 70-85ms in isolation, and a 12s row in 31ms.
+//
+// ONE CLAUSE OF THAT PARAGRAPH IS REFUTED BY EXECUTION (quiet-bee-353, 2026-08-19, gunbc#8478,
+// remote executor, release claim_batch). It read: "dag_arrow_lambda rebuilds a 6,230-line
+// grammar once per witness for 3-line sources because each claim gets a fresh frame by design."
+// Folding that file from nineteen grammar builds to two DID NOT PAY -- 210.9s for the two
+// folded claims against ~208s for the fourteen they replaced -- so the fold was reverted and
+// the file left byte-identical. Solving the terms out of those runs: a `dag_grammar()`
+// construction is ~0.5s and a single three-line parse through the interpreted frontend is ~12s.
+// The apparatus is not the cost; the parse is. The arrow row must therefore NOT be planned as a
+// witness-side repair, and twelve seconds to parse three lines is a frontend cost-shape defect
+// that is plausibly the real subject behind several rows in this quarantine rather than an
+// evaluation-context tax.
+//
+// SO "no witness has yet been found that is genuinely slow" IS NO LONGER ESTABLISHED, and this
+// line is corrected rather than deleted because the claim was load-bearing for how the whole
+// lane was planned: it licensed treating every relocated row as an apparatus problem. What is
+// still true is that the two measured extremes above are apparatus. What is not established is
+// that the residue is. When a module's cost is repaired it
 // returns to the floor WHOLE and its healthy siblings return with it, so the collateral
 // dissolves with work already scheduled rather than needing its own cleanup. This declaration
 // is deleted when the relocated population reaches zero.
