@@ -1,0 +1,84 @@
+module test.claim.spark_serving_reboot_probe_witness
+
+import std.types { Bool, String, NonEmptyStr, Int }
+import extdeps.ssh.session { SshSessionExecResult }
+import gunbc.spark_serving_reboot_probe {
+  spark_serving_reboot_argv,
+  spark_serving_reboot_was_rejected_outright,
+  spark_serving_reboot_was_attempted,
+  spark_serving_reboot_outcome_wire,
+  SparkServingRebootIssued,
+  SparkServingRebootRejected,
+  SparkServingRebootNotAttempted,
+}
+import product.placement_supply { HostIdentity }
+
+fn exec(code: Int, err: String) -> SshSessionExecResult {
+  SshSessionExecResult { exit_code: code, success: code == 0, stdout: "", stderr: err }
+}
+
+data subject: HostIdentity = "srv6" as HostIdentity
+
+// THE MEASURED SPECIMEN. srv6 answered exactly this, and the first version of this module reported
+// SUCCESS over it: escalation refused, `systemctl reboot` never ran, the host certainly still up,
+// and the probe claiming it had done its job. This claim is the regression control for that.
+test fn a_sudo_password_refusal_is_a_rejection_not_an_issued_reboot() -> Bool {
+  spark_serving_reboot_was_rejected_outright(result: exec(code: 1, err: "sudo: a password is required"))
+    && !spark_serving_reboot_was_attempted(outcome: SparkServingRebootRejected {
+         host: subject, exit_code: 1, stderr: "sudo: a password is required",
+       })
+}
+
+// The other two shapes sudo produces when a grant is missing, so the class is covered rather than
+// the one string that happened to be observed.
+test fn the_other_privilege_refusals_are_rejections_too() -> Bool {
+  spark_serving_reboot_was_rejected_outright(
+    result: exec(code: 1, err: "gunbc-automation is not allowed to execute '/bin/systemctl reboot'"),
+  )
+    && spark_serving_reboot_was_rejected_outright(result: exec(code: 1, err: "sudo: no tty present"))
+}
+
+// THE DISCRIMINATING NEGATIVE, and it is what keeps the rejection arm from swallowing the case the
+// module exists to leave undecided. A host that actually begins rebooting tears down the session
+// mid-command and can report any status; that outcome is ambiguous by nature and must NOT be
+// classified as a rejection, or a real reboot would read as a refusal.
+test fn a_dropped_connection_is_not_read_as_a_rejection() -> Bool {
+  !spark_serving_reboot_was_rejected_outright(result: exec(code: 255, err: "Connection to 192.168.1.223 closed by remote host."))
+    && !spark_serving_reboot_was_rejected_outright(result: exec(code: 0, err: ""))
+}
+
+// The exit code alone cannot separate the two -- which is exactly why the discrimination is on
+// sudo's own diagnostic. Both of these are exit 1 and they mean opposite things.
+test fn the_exit_code_alone_does_not_decide_it() -> Bool {
+  spark_serving_reboot_was_rejected_outright(result: exec(code: 1, err: "sudo: a password is required"))
+    && !spark_serving_reboot_was_rejected_outright(result: exec(code: 1, err: "Connection closed by remote host"))
+}
+
+// The wire says what happened AND says what it does not establish. A line that reported an issued
+// reboot as durability evidence would be the claim this module refuses to make.
+test fn the_issued_wire_disclaims_establishing_durability() -> Bool {
+  string_contains(
+    spark_serving_reboot_outcome_wire(outcome: SparkServingRebootIssued {
+      host: subject, exit_code: 255, stderr: "closed",
+    }),
+    "durability is NOT established",
+  )
+}
+
+// A rejection says the host is still up, because that is the actionable half: the operator needs to
+// know a grant is missing, not that something ambiguous occurred.
+test fn the_rejection_wire_says_the_host_is_still_up() -> Bool {
+  string_contains(
+    spark_serving_reboot_outcome_wire(outcome: SparkServingRebootRejected {
+      host: subject, exit_code: 1, stderr: "sudo: a password is required",
+    }),
+    "still up",
+  )
+}
+
+// Non-interactive escalation and systemctl, not the `reboot` shim: a prompt would hang a job rather
+// than fail it, and naming the shim would be naming a nickname for the same call.
+test fn the_reboot_argv_escalates_non_interactively_through_systemctl() -> Bool {
+  let a = spark_serving_reboot_argv()
+  a.length() == 4 && a[0] == "sudo" && a[1] == "-n" && a[2] == "systemctl" && a[3] == "reboot"
+}

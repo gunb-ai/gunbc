@@ -48,6 +48,11 @@ type SparkServingRebootOutcome
       exit_code: Int
       stderr: String
     }
+  | SparkServingRebootRejected {
+      host: HostIdentity
+      exit_code: Int
+      stderr: String
+    }
   | SparkServingRebootNotAttempted {
       host: HostIdentity
       cause: NonEmptyStr
@@ -86,16 +91,50 @@ fn spark_serving_issue_reboot(
         cause: join(["transport refused the reboot leg, it was never attempted: ", why], "") as NonEmptyStr,
       }
     TypedArgvExecConverged { result: r } =>
-      SparkServingRebootIssued {
-        host: host,
-        exit_code: r.exit_code,
-        stderr: trim(s: r.stderr),
+      if spark_serving_reboot_was_rejected_outright(result: r) {
+        SparkServingRebootRejected {
+          host: host,
+          exit_code: r.exit_code,
+          stderr: trim(s: r.stderr),
+        }
+      } else {
+        SparkServingRebootIssued {
+          host: host,
+          exit_code: r.exit_code,
+          stderr: trim(s: r.stderr),
+        }
       }
   }
 }
 
+// THE ONE CASE THE AMBIGUITY ARGUMENT DOES NOT COVER, and this arm exists because the first version
+// of this module returned SUCCESS over it. srv6 answered `sudo: a password is required` with exit 1,
+// and the step went green: the reboot had been definitively refused BEFORE the command ran, the host
+// was certainly still up, and the probe reported that it had done its job. That is the absorbing
+// fallback in its purest form -- an unknowable outcome used to excuse a knowable one.
+//
+// A privilege refusal is decidable: sudo rejected the escalation, so `systemctl reboot` never
+// executed and no shutdown was begun. The connection cannot have died from a reboot that did not
+// start, so nothing about it is ambiguous. It refuses.
+//
+// The discrimination is on sudo's own diagnostic rather than on the exit code, because exit 1 is
+// also what a half-completed shutdown can produce -- the exit code is exactly the signal that cannot
+// tell these apart, which is why the ambiguity argument was reached for in the first place.
+fn spark_serving_reboot_was_rejected_outright(result: SshSessionExecResult) -> Bool {
+  string_contains(result.stderr, "a password is required")
+    || string_contains(result.stderr, "is not allowed to execute")
+    || string_contains(result.stderr, "no tty present")
+}
+
 fn spark_serving_reboot_outcome_wire(outcome: SparkServingRebootOutcome) -> String {
   match outcome {
+    SparkServingRebootRejected { host: h, exit_code: code, stderr: err } =>
+      join([
+        "reboot-rejected host=", h as String,
+        " ssh_exit=", to_string(code),
+        " stderr=", err,
+        " -- escalation was refused, so `systemctl reboot` never ran and the host is still up\n",
+      ], "")
     SparkServingRebootNotAttempted { host: h, cause: c } =>
       join(["reboot-not-attempted host=", h as String, " cause=", c as String, "\n"], "")
     SparkServingRebootIssued { host: h, exit_code: code, stderr: err } =>
@@ -113,6 +152,7 @@ fn spark_serving_reboot_outcome_wire(outcome: SparkServingRebootOutcome) -> Stri
 fn spark_serving_reboot_was_attempted(outcome: SparkServingRebootOutcome) -> Bool {
   match outcome {
     SparkServingRebootIssued { host: _, exit_code: _, stderr: _ } => true
+    SparkServingRebootRejected { host: _, exit_code: _, stderr: _ } => false
     SparkServingRebootNotAttempted { host: _, cause: _ } => false
   }
 }
