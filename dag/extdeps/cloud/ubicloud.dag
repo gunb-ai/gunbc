@@ -13,7 +13,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 // per-module convention name every extdeps module declares, so a consumer
 // importing it by that name would be importing "some module's anchor" rather
 // than this one's.
-data ubicloud_runner_types_authority: ExternalAuthority = extdeps_external_authority_anchor
+data ubicloud_runner_types_authority: extdeps.external_authority.ExternalAuthority = extdeps_external_authority_anchor
 
 data ubicloud_runner_catalog_citation_note: String = "Cited 2026-07-11 from the runner-types page (the anchor above). Vendor prose kept as facts, not re-derived: x64 runners run on AMD Ryzen 9 7950X3D with every two vCPUs mapped to one physical core; arm64 runners run on Ampere Altra Q80-30 with each vCPU backed by a DEDICATED physical core (contrast: the gunbc fleet is Ampere Altra Q64-30, extdeps.cpu.ampere). Memory is the vendor's published figure per label - the vendor writes decimal-suffixed strings ('48GB'); memory_bytes records that figure read as decimal GB. The documented memory-per-vCPU ratio is 4GB on x64 and 3GB on arm64. A Q80-30 catalog row in extdeps/cpu/ampere is the grounding successor for the arm rows' cpu axis; until it lands the architecture field carries the load."
 
@@ -196,32 +196,32 @@ fn ubicloud_threads_per_physical_core(architecture: extdeps.toolchain.types.Arch
 // threads on one core), and the byte basis (this module records the vendor's
 // decimal-suffixed figure read as decimal GB, so its rows take the DECIMAL
 // arm where every other surveyed provider takes the basis-less one).
-fn ubicloud_shape_entitlement(architecture: extdeps.toolchain.types.Architecture) -> CpuEntitlement {
+fn ubicloud_shape_entitlement(architecture: extdeps.toolchain.types.Architecture) -> extdeps.ci_runner.types.CpuEntitlement {
   match ubicloud_threads_per_physical_core(architecture: architecture) {
     ThreadsPerPhysicalCore { count } =>
-      if count == 1 { DedicatedPhysicalCore } else { SmtSharedVcpu { threads_per_core: count } }
+      if count == 1 { DedicatedPhysicalCore } else { extdeps.ci_runner.types.SmtSharedVcpu { threads_per_core: count } }
     ThreadsPerCoreUnpublished { architecture } => EntitlementUnstated
   }
 }
 
-data ubicloud_provider_identity: DeclarationRef = decl_ref(
+data ubicloud_provider_identity: std.decl_ref.DeclarationRef = decl_ref(
   module_path: "extdeps.cloud.ubicloud",
   decl_name: "ubicloud_runner_types_authority",
 )
 
-fn ubicloud_runner_shape(row: UbicloudRunnerCatalogRow) -> RunnerShapeRow {
-  RunnerShapeRow {
+fn ubicloud_runner_shape(row: UbicloudRunnerCatalogRow) -> extdeps.ci_runner.types.RunnerShapeRow {
+  extdeps.ci_runner.types.RunnerShapeRow {
     provider: ubicloud_provider_identity,
     label: row.runs_on_label,
     architecture: row.cpu_architecture,
     entitlement: ubicloud_shape_entitlement(architecture: row.cpu_architecture),
     vcpus: row.vcpus,
-    memory: QuotedDecimalGigabytes {
+    memory: extdeps.ci_runner.types.QuotedDecimalGigabytes {
       value: gigabyte(count: byte_size_count(b: row.memory_bytes) / 1000000000),
     },
   }
 }
 
-data ubicloud_runner_catalog_shapes: RunnerCatalogAvailability = RunnerShapesCited {
+data ubicloud_runner_catalog_shapes: extdeps.ci_runner.types.RunnerCatalogAvailability = extdeps.ci_runner.types.RunnerShapesCited {
   rows: map(ubicloud_runner_catalog(), r => ubicloud_runner_shape(row: r)),
 }

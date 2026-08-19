@@ -163,17 +163,17 @@ fn dominators_of(s: std.pareto.ParetoStanding) -> std.types.List<std.pareto.Domi
 
 data no_dominations: std.types.List<std.pareto.Domination> = []
 
-fn has_dominator(s: std.pareto.ParetoStanding, expected: std.decl_ref.DeclarationRef) -> std.types.Bool {
+fn has_dominator(s: std.pareto.ParetoStanding, expected: std.decl_ref.DeclarationRef) -> Bool {
   fold(dominators_of(s: s), init: false, f: fn(acc, d) { acc || std.decl_ref.declaration_ref_eq(a: d.candidate, b: expected) })
 }
 
-fn winning_axis_count_of(s: std.pareto.ParetoStanding, dominator: std.decl_ref.DeclarationRef) -> std.types.Int {
+fn winning_axis_count_of(s: std.pareto.ParetoStanding, dominator: std.decl_ref.DeclarationRef) -> Int {
   fold(dominators_of(s: s), init: 0, f: fn(acc, d) {
     if std.decl_ref.declaration_ref_eq(a: d.candidate, b: dominator) { acc + count(d.winning_axes) } else { acc }
   })
 }
 
-fn standing_is_incomparable(s: std.pareto.ParetoStanding) -> std.types.Bool {
+fn standing_is_incomparable(s: std.pareto.ParetoStanding) -> Bool {
   match s {
     IncomparablePendingEvidence { missing } => true,
     ProvisionallyNonDominated { sensitivities } => false,
@@ -182,7 +182,7 @@ fn standing_is_incomparable(s: std.pareto.ParetoStanding) -> std.types.Bool {
   }
 }
 
-fn standing_is_refused(s: std.pareto.ParetoStanding) -> std.types.Bool {
+fn standing_is_refused(s: std.pareto.ParetoStanding) -> Bool {
   match s {
     SelectionRefused { cause } => true,
     IncomparablePendingEvidence { missing } => false,
@@ -191,7 +191,7 @@ fn standing_is_refused(s: std.pareto.ParetoStanding) -> std.types.Bool {
   }
 }
 
-fn witness_not_dominated(s: std.pareto.ParetoStanding) -> std.types.Bool {
+fn witness_not_dominated(s: std.pareto.ParetoStanding) -> Bool {
   match s {
     DominatedBy { dominators } => false,
     ProvisionallyNonDominated { sensitivities } => true,
@@ -205,7 +205,7 @@ fn witness_not_dominated(s: std.pareto.ParetoStanding) -> std.types.Bool {
 // axes, dear-strong beats it on power alone, and the fold reports both rather than
 // latching whichever the field order presented first. The label derivation renders the
 // identities, never the display labels.
-test fn witness_dominated_entry_names_its_dominator() -> std.types.Bool {
+test fn witness_dominated_entry_names_its_dominator() -> Bool {
   let standing = std.pareto.entry_standing(subject: entry_dear_weak, field: clean_field, axes: both_axes, sensitivities: spine_sensitivities)
   count(dominators_of(s: standing)) == 2
     && has_dominator(s: standing, expected: id_cheap_strong)
@@ -218,7 +218,7 @@ test fn witness_dominated_entry_names_its_dominator() -> std.types.Bool {
 
 // CONTROL 2. A genuine trade-off keeps both entries on the frontier with the sensitivities
 // attached - the spine refuses to rank what the axes do not decide.
-test fn witness_tradeoff_pair_both_survive() -> std.types.Bool {
+test fn witness_tradeoff_pair_both_survive() -> Bool {
   let cheap = std.pareto.entry_standing(subject: entry_cheap_strong, field: clean_field, axes: both_axes, sensitivities: spine_sensitivities)
   let strong = std.pareto.entry_standing(subject: entry_dear_strong, field: clean_field, axes: both_axes, sensitivities: spine_sensitivities)
   let cheap_carries_sensitivities = match cheap {
@@ -234,7 +234,7 @@ test fn witness_tradeoff_pair_both_survive() -> std.types.Bool {
 // CONTROL 3. Declared-missing inputs land incomparable, never dominated and never dominating:
 // the quote-pending entry's too-good-to-be-true planted readings must not knock anything off
 // the frontier, and its own standing must name the outstanding quote.
-test fn witness_missing_inputs_neither_dominate_nor_die() -> std.types.Bool {
+test fn witness_missing_inputs_neither_dominate_nor_die() -> Bool {
   let pending = std.pareto.entry_standing(subject: entry_quote_pending, field: clean_field, axes: both_axes, sensitivities: spine_sensitivities)
   let cheap_unmoved = witness_not_dominated(s: std.pareto.entry_standing(subject: entry_cheap_strong, field: clean_field, axes: both_axes, sensitivities: spine_sensitivities))
   standing_is_incomparable(s: pending) && cheap_unmoved && std.pareto.pareto_label(s: pending) == "not computable"
@@ -244,7 +244,7 @@ test fn witness_missing_inputs_neither_dominate_nor_die() -> std.types.Bool {
 // lacking a compared reading REFUSES the pair, and the refusal reaches the standing as
 // incomparable rather than being skipped: a partial comparison never silently survives.
 // The refusal poisons the field WHEREVER the hole sits - before or after a valid dominator.
-test fn witness_absent_reading_refuses_the_pair() -> std.types.Bool {
+test fn witness_absent_reading_refuses_the_pair() -> Bool {
   let pair = std.pareto.compare_pair(a: entry_cheap_strong, b: entry_reading_hole, axes: both_axes)
   let pair_refuses = match pair {
     PairRefused { cause } => true,
@@ -260,7 +260,7 @@ test fn witness_absent_reading_refuses_the_pair() -> std.types.Bool {
 
 // CONTROL 5. Orientation: the same pair flips winner when the axis flips direction, so
 // the axis goal orientation is provably consulted rather than decorative.
-test fn witness_axis_orientation_is_consulted() -> std.types.Bool {
+test fn witness_axis_orientation_is_consulted() -> Bool {
   std.pareto.pair_dominates(a: entry_cheap_strong, b: entry_dear_strong, axes: cost_only)
     && std.pareto.pair_dominates(a: entry_dear_strong, b: entry_cheap_strong, axes: power_only)
     && std.pareto.pair_dominates(a: entry_dear_strong, b: entry_cheap_strong, axes: cost_only) == false
@@ -270,7 +270,7 @@ test fn witness_axis_orientation_is_consulted() -> std.types.Bool {
 // distinct identities; the worse one is still challenged and lands dominated by the better
 // one. Under the retired label-keyed exclusion this comparison was skipped as
 // self-comparison and the twin wrongly survived.
-test fn witness_shared_label_still_compares() -> std.types.Bool {
+test fn witness_shared_label_still_compares() -> Bool {
   let twin = std.pareto.entry_standing(subject: entry_twin_dominated, field: clean_field, axes: both_axes, sensitivities: spine_sensitivities)
   has_dominator(s: twin, expected: id_cheap_strong) && count(dominators_of(s: twin)) == 3
 }
@@ -278,7 +278,7 @@ test fn witness_shared_label_still_compares() -> std.types.Bool {
 // CONTROL 7 - ORDER INVARIANCE. Reversing the field changes neither the standing class nor
 // the identified dominator: the fold accumulates every challenge instead of latching the
 // first.
-test fn witness_field_order_is_irrelevant() -> std.types.Bool {
+test fn witness_field_order_is_irrelevant() -> Bool {
   let forward = std.pareto.entry_standing(subject: entry_dear_weak, field: clean_field, axes: both_axes, sensitivities: spine_sensitivities)
   let reversed = std.pareto.entry_standing(subject: entry_dear_weak, field: clean_field_reversed, axes: both_axes, sensitivities: spine_sensitivities)
   count(dominators_of(s: forward)) == 2 && count(dominators_of(s: reversed)) == 2
@@ -289,21 +289,21 @@ test fn witness_field_order_is_irrelevant() -> std.types.Bool {
 
 // CONTROL 8 - DUPLICATE AXIS IDENTITY REFUSES. One axis identity appearing twice (here
 // under opposite goals) must refuse the selection outright, never resolve first-one-wins.
-test fn witness_duplicate_axis_identity_refuses() -> std.types.Bool {
+test fn witness_duplicate_axis_identity_refuses() -> Bool {
   standing_is_refused(s: std.pareto.entry_standing(subject: entry_dear_weak, field: clean_field, axes: duplicated_axes, sensitivities: spine_sensitivities))
     && std.pareto.pareto_label(s: std.pareto.entry_standing(subject: entry_dear_weak, field: clean_field, axes: duplicated_axes, sensitivities: spine_sensitivities)) == "selection refused"
 }
 
 // CONTROL 9 - DUPLICATE CANDIDATE IDENTITY REFUSES. A field carrying one identity twice
 // refuses: the duplicate would otherwise be silently skipped as self-comparison.
-test fn witness_duplicate_candidate_identity_refuses() -> std.types.Bool {
+test fn witness_duplicate_candidate_identity_refuses() -> Bool {
   standing_is_refused(s: std.pareto.entry_standing(subject: entry_dear_weak, field: duplicated_field, axes: both_axes, sensitivities: spine_sensitivities))
 }
 
 // CONTROL 10 - DUPLICATE READING REFUSES THE PAIR. Two readings on one axis identity
 // refuse rather than take the first: 10 would dominate on cost, 999 would not, and the
 // spine must not pick.
-test fn witness_duplicate_reading_refuses_the_pair() -> std.types.Bool {
+test fn witness_duplicate_reading_refuses_the_pair() -> Bool {
   match std.pareto.compare_pair(a: entry_double_reading, b: entry_dear_weak, axes: both_axes) {
     PairRefused { cause } => true,
     PairDominates { winning_axes } => false,
@@ -311,7 +311,7 @@ test fn witness_duplicate_reading_refuses_the_pair() -> std.types.Bool {
   }
 }
 
-fn flag(b: std.types.Bool) -> std.types.NonEmptyStr { if b { "pass" } else { "FAIL" } }
+fn flag(b: Bool) -> std.types.NonEmptyStr { if b { "pass" } else { "FAIL" } }
 
 fn pareto_witness_report() -> std.types.NonEmptyStr {
   join([
