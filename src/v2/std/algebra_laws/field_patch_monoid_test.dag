@@ -8,20 +8,6 @@ import v2.std.patch {
   apply_field_patch,
   field_patch_monoid
 }
-import v2.std.node { Atom, Node, TypeNode, SyntheticOccurrence }
-fn fp_pass_node() -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: ^fp_pass_sym } }, children: [],
- occurrence_id: SyntheticOccurrence
-}
-}
-fn fp_fail_node() -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: ^fp_fail_sym } }, children: [],
- occurrence_id: SyntheticOccurrence
-}
-}
-fn fp_ok(b: Bool) -> Node {
-  if b { fp_pass_node() } else { fp_fail_node() }
-}
 
 fn fp_monoid_op(left: FieldPatch<Bool>, right: FieldPatch<Bool>) -> FieldPatch<Bool> {
   let m = field_patch_monoid()
@@ -31,28 +17,48 @@ fn fp_monoid_identity() -> FieldPatch<Bool> {
   field_patch_monoid().identity
 }
 
-data witness_left_identity: Bool = apply_field_patch(base: false, patch: compose_field_patch(left: Inherit, right: Override { value: true })) == true
+test fn witness_left_identity() -> Bool {
+  apply_field_patch(base: false, patch: compose_field_patch(left: Inherit, right: Override { value: true })) == true
+}
 
-data witness_right_identity: Bool = apply_field_patch(base: false, patch: compose_field_patch(left: Override { value: true }, right: Inherit)) == true
+test fn witness_right_identity() -> Bool {
+  apply_field_patch(base: false, patch: compose_field_patch(left: Override { value: true }, right: Inherit)) == true
+}
 
-data witness_right_bias: Bool = apply_field_patch(base: true, patch: compose_field_patch(left: Override { value: true }, right: Override { value: false })) == false
+test fn witness_right_bias() -> Bool {
+  apply_field_patch(base: true, patch: compose_field_patch(left: Override { value: true }, right: Override { value: false })) == false
+}
 
-test fn compose_assoc_lhs() -> Bool {
+fn compose_assoc_lhs() -> Bool {
   apply_field_patch(base: true, patch: compose_field_patch(left: compose_field_patch(left: Override { value: true }, right: Override { value: false }), right: Inherit))
 }
-test fn compose_assoc_rhs() -> Bool {
+fn compose_assoc_rhs() -> Bool {
   apply_field_patch(base: true, patch: compose_field_patch(left: Override { value: true }, right: compose_field_patch(left: Override { value: false }, right: Inherit)))
 }
-data witness_associativity: Bool = compose_assoc_lhs() == compose_assoc_rhs()
+test fn witness_associativity() -> Bool {
+  compose_assoc_lhs() == compose_assoc_rhs()
+}
 
-data witness_inherit_preserves: Bool = apply_field_patch(base: true, patch: Inherit) == true
+test fn witness_inherit_preserves() -> Bool {
+  apply_field_patch(base: true, patch: Inherit) == true
+}
 
-data witness_override_replaces: Bool = apply_field_patch(base: true, patch: Override { value: false }) == false
+test fn witness_override_replaces() -> Bool {
+  apply_field_patch(base: true, patch: Override { value: false }) == false
+}
 
-data witness_monoid_identity_preserves: Bool = apply_field_patch(base: true, patch: fp_monoid_identity()) == true
+test fn witness_monoid_identity_preserves() -> Bool {
+  apply_field_patch(base: true, patch: fp_monoid_identity()) == true
+}
 
-data witness_monoid_left_identity: Bool = apply_field_patch(base: false, patch: fp_monoid_op(left: fp_monoid_identity(), right: Override { value: true })) == true
+test fn witness_monoid_left_identity() -> Bool {
+  apply_field_patch(base: false, patch: fp_monoid_op(left: fp_monoid_identity(), right: Override { value: true })) == true
+}
 
-data witness_monoid_right_identity: Bool = apply_field_patch(base: false, patch: fp_monoid_op(left: Override { value: true }, right: fp_monoid_identity())) == true
+test fn witness_monoid_right_identity() -> Bool {
+  apply_field_patch(base: false, patch: fp_monoid_op(left: Override { value: true }, right: fp_monoid_identity())) == true
+}
 
-data witness_monoid_right_bias: Bool = apply_field_patch(base: true, patch: fp_monoid_op(left: Override { value: true }, right: Override { value: false })) == false
+test fn witness_monoid_right_bias() -> Bool {
+  apply_field_patch(base: true, patch: fp_monoid_op(left: Override { value: true }, right: Override { value: false })) == false
+}
