@@ -141,3 +141,53 @@ regression is most likely — specifically the asymmetry in §2.
 4. **What is the Work identity over?** The tree hash, so an identical tree does not re-run — which
    would be a real gain over Actions, or a real hazard if the floor is not actually a pure function
    of the tree. It reads pure; I have not proven it.
+
+## 9. Two defects in this plan, registered before the sign-off returns
+
+Both surfaced from the reviewer's working notes rather than the finished verdict, and both are
+confirmed against the plan as written. Recorded now because one is an internal contradiction I
+authored, and a plan that waits for permission to admit its own defect is doing the thing this
+repository keeps charging elsewhere.
+
+### `workflow_dispatch` is listed as preserved and cannot be preserved by the design
+
+§2's table names `workflow_dispatch` among the triggers, marked **must survive: yes**. §4's loop
+has **no manual trigger at all** — a poller notices commits; nobody can ask it for a run. So the
+plan enumerates the contract correctly and then specifies something that cannot satisfy one row of
+it. That is worse than omitting the row, because the table is what a reader would check the design
+against.
+
+Deleting the workflow deletes the only manual re-run mechanism we have, and manual re-run is not a
+convenience: it is how a human recovers from an infrastructure flake without pushing an empty
+commit. The replacement needs an explicit *demand-creation* surface — which in fabric terms is the
+honest shape anyway, since `workflow_dispatch` **is** a Demand authored by a person rather than by
+an event.
+
+### Branch-head polling is a sampling, and sampling misses transitions
+
+The plan says "poll GitHub for new commit on main". Polling a branch *head* observes the current
+value of a mutable pointer, so two pushes between polls collapse into one observation and the
+intermediate commit never receives a check. That is not a rare race: it is the ordinary case for a
+merge followed quickly by another merge, and it fails **silently** — the missed commit simply has
+no check rather than a red one.
+
+This is the empty-observation narrow from DESIGN's failure-mode list, arriving through a different
+door: "I sampled a pointer and saw one value" rendered as "there was one commit". The correct
+construction is **reconciliation against durable state** — the set of commits that *should* carry a
+verdict, differenced against the set that *do* — which is the shape the fleet spine already uses
+(`Reconciliation<Intent, Evidence>`), not a poll-and-react loop. A reconciler that wakes up having
+missed ten minutes converges; a poller that wakes up having missed ten minutes has lost the events.
+
+**Consequence for §4:** the loop's first arm is wrong as drawn. It is not
+`poll → new commit → Work`; it is `desired check targets ⊖ observed check runs → Work per
+difference`. The trigger becomes a wake-up rather than an event, and correctness stops depending
+on the polling interval.
+
+### One framing to carry into the verdict
+
+The reviewer's phrase for the risk is worth keeping: whether polling preserves every refusal
+**without becoming a new ambient authority**. A poller acts without being asked — nothing grants it
+the right to spend the fleet on a commit. In the fabric's own vocabulary that is a Demand with no
+authenticated author, which is precisely the shape `std.access` exists to refuse. The reconciler
+framing improves this too: a reconciler derives its work from declared desired state, and declared
+desired state has an author.
