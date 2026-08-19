@@ -526,3 +526,97 @@ to avoid), or drop the derivation and let the labels come from somewhere less gr
 interface from Cut D's population, which means the physical-facts question is answered once, at
 the runner-target seam, instead of once per consumer during a type migration. Cut D should not be
 dispatched until one of the three options above is signed off.
+
+## 16. Cut D, signed off: decompose the fused carrier, then delete it — and all three of my options were wrong as stated
+
+The fork in §15 came back refusing every option in the form I put it, and the corrected construction
+is a combination rather than a choice.
+
+> **Take option (1)'s separation, but derive labels from the execution class/environment rather
+> than directly from `ComputeHost`. Preserve the Offer-to-realization relationship as option (3)'s
+> relation — provider-owned, not a field on `Offer`. Reject option (2)'s concrete-host target.**
+
+**Why (1) was right to sever and wrong about the destination.** `runner_spec_from_offer` is indeed
+not reading a market fact, so it must stop taking an `Offer`. But GitHub runner labels describe
+**the environment presented to the job**, not the bare-metal host: one host may back several
+execution classes, a guest's OS surface may differ from its host's, a provider may expose one
+stable SKU over many backing machines. So `ComputeHost → RunnerSpec` still points the wrong way.
+The terminal direction is `ExecutionClass → RunnerSpec`, with the host and execution surface as
+*evidence that a realization can satisfy the class*. A gunbc-owned projection may derive a runner
+environment from today's host authorities during migration, but `runner_spec_from_host` must not
+become the long-term product seam.
+
+**Why (2) is rejected outright.** `FleetSelfHosted` currently means a selected runner *family*, not
+one machine. Putting a host on it collapses *selected execution class* into *selected physical
+backing*, so the customer-facing target would change whenever placement changes — the exact
+coupling a stable SKU interface exists to prevent. A corrected variant carrying an
+`ExecutionClassRef` *is* the recommended construction, but that is no longer option (2).
+
+**Why (3)'s relation is necessary but its placement was wrong.** Offer and realization are not
+one-to-one: one backing may support several offers on different terms, one offer may be fulfillable
+by several equivalent hosts, a quoted Hetzner offer may exist before any server does, and the exact
+resource may only be known after grant issuance. A single realization field would either make
+quoted supply unrepresentable or degrade into "something will realize this". The relation is
+independently owned instead — shape, not names:
+
+```
+OwnedSupplyBacking { id: OwnedSupplyBackingRef, physical: ComputeHost, execution: ExecutionSurface }
+OfferBacking<P>    { offer: FabricIdentity<P, OfferKey>, offer_revision: ContentHash,
+                     backing: OwnedSupplyBackingRef }
+```
+
+The laws are what bind: `OfferBacking` is provider-owned; `Offer` never enumerates backing kinds;
+offer terms are *derived from or proven against* the backing; changing backing does not change the
+public execution class; a quoted offer may name a fulfillment template rather than a concrete host.
+
+**"What was offered" vs "what actually ran" is proven at three points, not stored as one record** —
+which answers the worry in §15 that severing loses the link. Offer publication: the backing
+substantiates the advertised shape, capabilities, trust domain, availability and quote. Grant
+issuance: the grant binds accepted offer identity *and revision*, exact reservation, exact
+executor, fulfillment binding. Realization readback: a receipt proves the materialized resource
+satisfies the accepted obligations, and a mismatch refuses. Severing the runner labels removes the
+relation from the **wrong consumer**; it does not sever the relation.
+
+### `observed_performance` moves, and it costs nothing — verified
+
+The ruling that `ComputeSupplyFacts.observed_performance` is not load-bearing is **stronger than
+stated**. Measured across `*.dag` and `*.rs`: one declaration, five row initializers **all `[]`**,
+one plan-document mention. No production consumer *and no data* — it is an inert carrier. Its
+terminal home is an append-only observation keyed to the exact realization
+(`RealizationPerformanceObservation { realization, work_or_class, receipt }`), with derived profiles
+folding over that population. The standing rule beside it: **`Offer` promises entitlement, not a
+variance bound**; observations are collected from day one, and performance becomes a fungibility or
+contractual fact only when a future variance-bound execution class references an admitted profile.
+
+### Cut D is a consumer classification, executed in four steps
+
+Every `ComputeOffer` consumer gets one of five dispositions by *which field it actually reads*:
+**A market** (provider, availability, price, quantity) → `Offer`; **B physical realization**
+(host, CPU, memory, storage, BMC, NICs) → backing/host authority — `ci_runner_placement` is here,
+not in A; **C execution environment** (OS, architecture, toolchain, isolation, network) →
+execution class — `runner_spec_from_offer` is here; **D performance** → realization-performance
+authority; **E settlement** (accepted price, billable usage) → accepted offer revision + grant +
+supplier billing evidence. Only when every consumer holds a disposition may the fused carrier die.
+
+- **D1** — extract the surviving realization facts into owned-supply backing rows plus a separate
+  performance-observation population. No `Offer` migration yet.
+- **D2** — each owned backing *projects* an `Offer` (explicit zero quote, typed evidence,
+  advertised resource and capability profile, supplier/executor identities); the projection and its
+  witness establish the offer-to-backing relation.
+- **D3** — migrate by consumer class, per the A–E dispositions above.
+- **D4** — delete `ComputeSupplyFacts`, `ComputeOffer`, `runner_spec_from_offer`, the old-typed
+  fleet offers, and `CostEstimate` if fully subsumed. **No compatibility record survives on main.**
+
+### Cut C lands first, with four acceptance conditions
+
+Confirmed: no reason to defer, and it gives D one clean boundary — D can then change how
+`FleetSelfHosted` derives its spec without editing the workflow emitter. Acceptance:
+
+1. emitted `witnesses.yml` is byte-identical;
+2. **no production emitter calls `gunbc_ci_runner_spec()` directly**;
+3. the selected-target witness stays green;
+4. the old direct projection is **marked for deletion with Cut D**, not left standing as a
+   permanent equal path.
+
+Condition 4 is new relative to the dispatched brief and is the one that keeps C from creating the
+dual-authority interval it exists to close.
