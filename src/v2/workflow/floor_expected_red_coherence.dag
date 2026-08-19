@@ -2,7 +2,7 @@ module v2.workflow.floor_expected_red_coherence
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.types { Bool, List, String }
-import v2.std.algebra { Cons, Empty, contains, fold_list_right, length, list_reverse }
+import v2.std.algebra { Cons, Empty, contains, length, list_append, list_reverse }
 import v2.std.decl_facts_skeleton {
   DeclFactQualifiedNameResolution,
   DeclFactResolvedAmbiguous,
@@ -74,10 +74,6 @@ fn roster_identity_missing_from_authored_chunks_message(identity: String) -> Str
       "' is present in the evaluated roster but was not found authored in any checked chunk body. Either the checked chunk-declaration roster passed to this check is incomplete (a chunk exists that this call site did not enumerate), or the roster is built from something other than the chunk bodies this check was told to read -- widen the checked chunk-declaration list to match, do not weaken this side of the comparison."
     )
   )
-}
-
-fn list_append(a: List<ChunkCoherenceRefusal>, b: List<ChunkCoherenceRefusal>) -> List<ChunkCoherenceRefusal> {
-  fold_list_right(xs: a, empty: b, snoc: fn(acc, item) { Cons { head: item, tail: acc } })
 }
 
 fn chunk_short_name_linked(node: Node, chunk: ChunkDeclRef) -> Bool {
@@ -194,14 +190,14 @@ fn floor_expected_red_chunk_coherence_check(
             }
           Absent => Empty
         }
-        list_append(identity_causes, list_append(link_causes, acc))
+        list_append(left: identity_causes, right: list_append(left: link_causes, right: acc))
       }
     }
   }))
 
   let roster_causes = roster_identities_missing_from_authored_chunks(facts: facts, chunks: chunks, roster: evaluated_roster)
 
-  let all_causes = list_append(aggregator_causes, list_append(per_chunk_causes, roster_causes))
+  let all_causes = list_append(left: aggregator_causes, right: list_append(left: per_chunk_causes, right: roster_causes))
   if length(xs: all_causes) > 0 {
     ChunkCoherenceRefused { causes: all_causes }
   } else {
