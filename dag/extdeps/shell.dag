@@ -1,6 +1,6 @@
 module extdeps.shell
 
-import std.types { FilePath, NonEmptyStr, Secret, String }
+import std.types { FilePath, NonEmptyStr, Secret, String, List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -90,6 +90,10 @@ service shell.Which {
   }
 }
 
+fn shell_which_check_argv(command: NonEmptyStr) -> List<String> {
+  ["which", command as String]
+}
+
 service shell.Test {
   operation IsExecutable {
     input { path: FilePath }
@@ -145,6 +149,10 @@ service shell.Test {
       1 => Unit "Path is missing or not writable by the effective principal"
     }
   }
+}
+
+fn shell_test_is_executable_argv(path: FilePath) -> List<String> {
+  ["test", "-x", path as String]
 }
 
 service shell.Uname {
