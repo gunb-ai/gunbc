@@ -21,21 +21,21 @@ import gunbc.live_deploy.spec {
   srv1_green_deployment_names,
 }
 import std.types { List, NonEmptyStr, CommitSha }
-import std.orchestration { PipelineStep, Do, Run }
+import v2.std.orchestration { PipelineStep, Do, Run }
 
 // THE KEYSTONE. The srv1 pair is DispatchStateHostShared, so both instances resolve the dispatch
 // attempt-state root to ONE path. A receipt homed there would be a single file answering for two
 // instances — blue's tick would overwrite green's and the UI would render one slot's state as the
 // other's. Asserted as an inequality against the ACTUAL shared value rather than against a literal,
 // so it keeps discriminating if that root is ever re-pointed.
+// The first conjunct is the PREMISE this witness defends: the two instances really do share one
+// attempt-state root. If that ever stops being true the rest is no longer the interesting claim,
+// and it going red is the signal to re-read the note rather than to relax the assertion.
 test fn the_receipt_is_not_homed_in_the_shared_attempt_state_root() -> Bool {
   let shared_blue = dashboard_instance_dispatch_attempt_state_root(instance: srv1_live_dashboard_instance()) as String
   let shared_green = dashboard_instance_dispatch_attempt_state_root(instance: srv1_green_dashboard_instance()) as String
   let blue = belt_tick_receipt_path_for_instance(instance: srv1_live_dashboard_instance())
   let green = belt_tick_receipt_path_for_instance(instance: srv1_green_dashboard_instance())
-  // The premise this witness defends: the two instances really do share one attempt-state root.
-  // If that ever stops being true the claim below is no longer the interesting one, and this
-  // equality going red is the signal to re-read the note rather than to relax the assertion.
   shared_blue == shared_green && blue != shared_blue && green != shared_green
 }
 
