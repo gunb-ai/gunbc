@@ -1,0 +1,39 @@
+module std.minted_identity
+
+import std.types { Bool, Int, List, String }
+
+data minted_identity_subject_parameterization_note: String = "One concept, every breadth (DESIGN section 2 horizontal): an opaque, allocator-minted identity in a NAMED subject space, with the subject as a type argument rather than one carrier per subject. This is the Vendor<Domain> move applied to identity, and it is authored here because the third such subject arrived — gunbc.host_resource resource_occurrence_generalization_trigger declared exactly that condition (a THIRD minted-identity subject appears) as the dissolve-on for extracting this carrier. The three subjects are std.occurrence_identity source occurrences, gunbc.host_resource host resources, and product.inventory procurement lots. What the type argument buys is a construction wall rather than a convention: MintedId<A> and MintedId<B> are different types, so comparing a lot identity against a host-resource identity has no inhabitant of minted_id_eq to call and is unwritable — the cross-family comparison std.content_hash closed for digests, closed here for minted identities before a numeric coincidence between two subject spaces can be read as sameness."
+
+data minted_not_derived_note: String = "MINTED BY THE DECLARATION, never derived from content, path, label, or display text (operator ruling, carried over from gunbc.host_resource). A derived key makes a rename indistinguishable from a delete-plus-create unless some key function is clever enough to notice the two are the same thing — which is inference, and DESIGN section 4 rules a heuristic never necessary in a closed system. Git does not track renames; it INFERS them from content similarity after the fact, and that inference is exactly what a content-or-label-derived key reproduces. Minting at declaration time closes it: the identity is stable across every value change, so a relabel is one change whose from and to share an identity. Consequence worth stating because it is easy to lose: the identity is NOT the label and NOT the address — every human-facing string is a mutable VALUE field carried beside a fixed identity. Structurally, no constructor in this module accepts a String."
+
+type MintedId<Subject> {
+  ordinal: Int
+}
+
+type MintedIdAllocator<Subject> {
+  next_ordinal: Int
+}
+
+type MintedIdAllocation<Subject> {
+  id: MintedId<Subject>
+  alloc: MintedIdAllocator<Subject>
+}
+
+fn mint_id<Subject>(alloc: MintedIdAllocator<Subject>) -> MintedIdAllocation<Subject> {
+  MintedIdAllocation {
+    id: MintedId { ordinal: alloc.next_ordinal },
+    alloc: MintedIdAllocator { next_ordinal: alloc.next_ordinal + 1 },
+  }
+}
+
+fn minted_id_eq<Subject>(left: MintedId<Subject>, right: MintedId<Subject>) -> Bool {
+  left.ordinal == right.ordinal
+}
+
+fn minted_id_ordinal<Subject>(id: MintedId<Subject>) -> Int {
+  id.ordinal
+}
+
+fn minted_id_in_list<Subject>(target: MintedId<Subject>, ids: List<MintedId<Subject>>) -> Bool {
+  fold(ids, init: false, f: fn(acc, candidate) { acc || minted_id_eq(left: target, right: candidate) })
+}

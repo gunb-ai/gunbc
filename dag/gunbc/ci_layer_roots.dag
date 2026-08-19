@@ -466,11 +466,6 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_substrate_long_lane_reason,
     dissolution: excl_substrate_long_lane_dissolve},
   WitnessExclusionRow {
-    pattern: "rust_test_fixtures_import_closure_witness_test.dag",
-    classification: FalsifierSubstrateLongLane,
-    reason: excl_substrate_long_lane_reason,
-    dissolution: excl_substrate_long_lane_dissolve},
-  WitnessExclusionRow {
     pattern: "synthetic_orphan_admission_witness_test.dag",
     classification: NoConsumer,
     reason: "deliberate no-consumer synthetic path: the admission RED control keys on this reserved (nonexistent) entry to prove enrolled-with-zero-consumers refuses (witness_admission_test, cli_run admission tests)",
@@ -1598,18 +1593,6 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     function: "live_roadmap_program_view_corpus_projection_receipt",
     reason: "LIVE-AUTHORITY INTEGRATION RECEIPT (operator verdict 2026-08-05, PR #7822): exercises the full declared roadmap closure through gunbc.roadmap_program_view — evidentiary wiring receipt enrolled on the corpus/integration lane for its integration role, not because eval cost exceeds the per-PR business budget. Business algebra stays on planted fixtures in roadmap_program_view_witness_test.dag",
     dissolution: unbound_dissolution(description: "replaced by a cheaper structural wiring receipt that covers the same live-authority join, or live roadmap projection integration receipts become unnecessary")
-  },
-  SubstrateLongLaneRow {
-    entry: "dag/test/claim/long/rust_test_fixtures_import_closure_witness_test.dag",
-    function: "declared_import_closure_lists_rust_import",
-    reason: "Class B row 1 (#7835), cold-control pattern (c): falsifier long-lane backstop for selection misses; per-PR merge-blocking consumer is run_class_b_import_closure_gate on source_root_ingest_gate (same shape as compile-clean/regen cold controls). One observe_declared_import_closure_symbol_binding over class_b_declared_import_pool_roots. CI run 30986525413 measured 0.0ms when scheduled after row 2 (warm shared index); cold single-observe cost is substrate-long.",
-    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run with class_b_declared_import_pool_roots and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
-  },
-  SubstrateLongLaneRow {
-    entry: "dag/test/claim/long/rust_test_fixtures_import_closure_witness_test.dag",
-    function: "ambient_pool_provider_preserves_listed_import",
-    reason: "Class B row 2 (#7835), cold-control pattern (c): falsifier long-lane backstop for selection misses; per-PR merge-blocking consumer is run_class_b_import_closure_gate on source_root_ingest_gate. Two cold observe_declared_import_closure_symbol_binding calls (baseline + perturbed) over class_b_declared_import_pool_roots. CI run 30986525413 measured 48868.8ms (>5s fast-lane budget; ceiling — row 2 is the cold observe, row 1 was warm). Shrinking pool from witness_layer_roots (~3044 modules) to declared-import footprint (~696) is a stronger control, not a budget remedy.",
-    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run with class_b_declared_import_pool_roots and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
   SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/realization_vocabulary_containment_witness_test.dag",

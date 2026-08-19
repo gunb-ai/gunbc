@@ -7444,6 +7444,13 @@ pub enum ClaimOutcome {
         kind: BudgetKind,
         completion: BudgetCompletion,
     },
+    /// A host-tool program could not be resolved to an existing executable path.
+    /// Typed at the witness boundary so downstream classifiers do not substring-match
+    /// `Display` prose from `InterpError::HostToolUnresolved`.
+    HostToolUnresolved {
+        name: String,
+        probed: Vec<String>,
+    },
 }
 
 pub fn resolve_entry_graph(
@@ -15681,6 +15688,9 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
         // Mapping both raised forms onto `TimedOut` here makes the outcome vocabulary closed
         // over the event, so a total match is total in fact and not only in shape.
         Err(e) => match v1_interpreter::map_budget_error_to_witness_refusal(e) {
+            v1_interpreter::InterpError::HostToolUnresolved { name, probed } => {
+                ClaimOutcome::HostToolUnresolved { name, probed }
+            }
             v1_interpreter::InterpError::EvalBudgetExceeded { cpu_ms, budget_ms } => {
                 ClaimOutcome::TimedOut {
                     elapsed_ms: cpu_ms,
@@ -15857,6 +15867,9 @@ enum ExpectedRedArm {
     /// only `ClaimOutcome::Pass`, so `CompletedOverBudget` cannot occur for a failing witness.
     /// The arm therefore means "passed, then reclassified on cost", not merely "completed".
     PassedOverBudget,
+    /// Enrolled but the host tool chain could not resolve a required binary. NOT a budget
+    /// refusal — no subject verdict, no cost lower bound, remedy is infra not witness cost.
+    HostToolUnresolved,
 }
 
 fn expected_red_arm(outcome: &ClaimOutcome) -> ExpectedRedArm {
@@ -15873,6 +15886,7 @@ fn expected_red_arm(outcome: &ClaimOutcome) -> ExpectedRedArm {
         ClaimOutcome::Fail | ClaimOutcome::NotBool { .. } | ClaimOutcome::RuntimeError { .. } => {
             ExpectedRedArm::Held
         }
+        ClaimOutcome::HostToolUnresolved { .. } => ExpectedRedArm::HostToolUnresolved,
     }
 }
 
@@ -17856,6 +17870,16 @@ pub fn project_witness_cost_receipt(
                         str_value(format!("runtime error: {message}")),
                     ));
                     "witness_cost_seed_failed_event"
+                }
+                ClaimOutcome::HostToolUnresolved { name, probed } => {
+                    args.push((
+                        Some("error".to_string()),
+                        str_value(format!(
+                            "host tool unresolved: {name:?} (probed: {})",
+                            probed.join(", ")
+                        )),
+                    ));
+                    "witness_cost_seed_refused_event"
                 }
                 // A deadline-killed row is TimedOut, never Failed: its recorded wall is a
                 // CEILING, not a cost, and anything reading it as a completed duration
@@ -23585,6 +23609,13 @@ fn run_discovery_rows(
             ClaimOutcome::RuntimeError { message } => summary.failures.push(format!(
                 "{} ({}) runtime error: {}",
                 row.function, row.entry, message
+            )),
+            ClaimOutcome::HostToolUnresolved { name, probed } => summary.failures.push(format!(
+                "{} ({}) host tool unresolved: {:?} (probed: {})",
+                row.function,
+                row.entry,
+                name,
+                probed.join(", ")
             )),
             // Rendered so the elapsed value is never mistaken for a completed duration:
             // the row was killed AT the budget, so this is a ceiling, not a cost. The
@@ -38764,6 +38795,8 @@ pub struct RequiredFloorOutcome {
     /// AND A BUDGET REFUSAL IS NEITHER. The row went undecided; the remedy is cost, not a
     /// roster edit and not a bug fix. Three causes with three remedies get three counts.
     pub budget_refused: Vec<String>,
+    /// Host tool could not be resolved — infra undecided, not budget-refused.
+    pub host_tool_unresolved: Vec<String>,
     pub over_warn: usize,
     pub failures: Vec<String>,
 }
@@ -39280,6 +39313,30 @@ pub fn run_required_floor(
     commit: &str,
     style: ShardStyle,
 ) -> Result<RequiredFloorOutcome, String> {
+    // HONEST SCOPE (review 53487): the caller marker below is a self-attested string, not
+    // authentication — any caller able to set `_ONLY` can set `_ONLY_CALLER` too. What it
+    // buys is exactly one thing: the witnesses CI env cannot gain `_ONLY` by a one-variable
+    // edit or copy-paste; flipping the primary floor into join-only mode now takes a second,
+    // deliberately named variable whose value documents where the mode is allowed to come
+    // from. It is a tripwire against accident, not a wall against intent. The whole gate
+    // dissolves with the `expected_red_roster_join` bin (registered scaffold) when the floor
+    // emits the join report by default.
+    const EXPECTED_RED_ROSTER_JOIN_ONLY_BIN: &str = "expected_red_roster_join_bin";
+    let roster_join_only_requested = std::env::var("GUNBC_EXPECTED_RED_ROSTER_JOIN_ONLY")
+        .ok()
+        .is_some_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+    if roster_join_only_requested
+        && std::env::var("GUNBC_EXPECTED_RED_ROSTER_JOIN_ONLY_CALLER").as_deref()
+            != Ok(EXPECTED_RED_ROSTER_JOIN_ONLY_BIN)
+    {
+        return Err(
+            "REQUIRED-FLOOR REFUSAL cause=ExpectedRedRosterJoinOnlyUnauthorized — \
+             GUNBC_EXPECTED_RED_ROSTER_JOIN_ONLY is admitted only from the \
+             expected_red_roster_join stop-line-audit bin; witnesses CI must set \
+             GUNBC_EXPECTED_RED_ROSTER_JOIN without _ONLY"
+                .to_string(),
+        );
+    }
     floor_cgroup_envelope("floor-entry");
     spawn_floor_heartbeat();
     floor_seam("strict-preparation");
@@ -39290,6 +39347,46 @@ pub fn run_required_floor(
     let (prepared, prepared_sources) =
         prepare_repository_once(source_roots, &floor_prepared_subject_exclusions())?;
     let _floor_prepared_guard = register_floor_prepared_authority_guard(prepared_sources);
+    // WARM THE MODULE-PATH INDEX HERE, because otherwise ONE ARBITRARY CLAIM PAYS FOR IT.
+    //
+    // `compile_dag_rust_emit_check` (the emit witnesses' host arm) calls
+    // `build_module_path_index_from_witness_roots`, which walks and PARSES every module under
+    // the default source roots. It is thread-local cached, so exactly one claim per process
+    // pays the build and every later one hits the cache. That claim is then billed ~45s
+    // against a 1552ms per-claim ceiling and reports as a budget failure, while its identical
+    // siblings run in ~760ms.
+    //
+    // MEASURED, three runs, same rows, evaluation order alphabetical and stable throughout:
+    //
+    //   run                     emitted_lib_rs...omits    emitter_nested...single
+    //   pre-quarantine              739ms                     761ms
+    //   32189985063               42647ms  <- billed           687ms
+    //   32193032348 (main)        quarantined                45941ms  <- billed
+    //
+    // The bill is POSITIONAL, not a property of any witness: quarantining the victim hands it
+    // to the next module in evaluation order. Three modules were quarantined down this chain
+    // (dissolution_census 55.5s, emitted_lib_rs 42.6s, and the 83.0s
+    // extdeps_scope_placement_gate row) before the pattern was read correctly -- each read as
+    // a slow test, all three were the same one-time build landing on whoever touched it first.
+    //
+    // Paying it in preparation is where the cost BELONGS: it is a fact of the subject, not of
+    // any claim, and the floor's whole design is one preparation serving every claim. Total
+    // run wall is unchanged -- the same work happens once either way; what changes is that no
+    // claim is charged for building the subject it was handed.
+    //
+    // dissolve-on: the index derives from the prepared inventory instead of a second disk
+    // walk. The bytes are already in hand -- the emit memo is keyed on
+    // `floor_inventory_content_digest` precisely because that index reads the same files --
+    // and `languages_decl_records_from_inventory` is the existing precedent for the
+    // inventory-sourced form of a census that used to scan. When that lands this warm call is
+    // unnecessary rather than merely redundant, because there is no second authority to warm.
+    let index_warm_started = std::time::Instant::now();
+    let warmed_modules = build_module_path_index_from_witness_roots().len();
+    eprintln!(
+        "[floor-phase] phase=module-path-index-warm state=completed wall_ms={} modules={}",
+        index_warm_started.elapsed().as_millis(),
+        warmed_modules
+    );
     let prepare_ms = prepare_started.elapsed().as_millis();
     eprintln!(
         "floor: active sources = {}",
@@ -39532,7 +39629,7 @@ pub fn run_required_floor(
     );
     floor_seam("admission-decode");
     let admission_decode_started = std::time::Instant::now();
-    let claims = required_floor_claims_from_admission(&hermetic, &admission)?;
+    let mut claims = required_floor_claims_from_admission(&hermetic, &admission)?;
     eprintln!(
         "[floor-phase] phase=admission-decode state=completed wall_ms={} claims={}",
         admission_decode_started.elapsed().as_millis(),
@@ -39712,6 +39809,46 @@ pub fn run_required_floor(
         "[floor-known-red] roster carries {} enrolled identity(ies)",
         expected_red_roster.len()
     );
+    let roster_join_path = std::env::var("GUNBC_EXPECTED_RED_ROSTER_JOIN").ok();
+    let roster_join_only = std::env::var("GUNBC_EXPECTED_RED_ROSTER_JOIN_ONLY")
+        .ok()
+        .is_some_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+    let roster_join_active = roster_join_path.is_some() || roster_join_only;
+    let mut roster_join_report = if roster_join_active {
+        let mut roster_identities: Vec<String> = expected_red_roster.iter().cloned().collect();
+        roster_identities.sort();
+        let run_head = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .output()
+            .ok()
+            .and_then(|o| {
+                if o.status.success() {
+                    Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
+                } else {
+                    None
+                }
+            })
+            .filter(|s| !s.is_empty());
+        let run_note = if roster_join_only {
+            "join-only mode: evaluates enrolled identities present in the manifest; do not \
+             prune the roster from this output until the rebase wave (#8420) restores host-tool \
+             verdicts"
+                .to_string()
+        } else {
+            "full-floor join: every enrolled identity receives still_red | now_passes | \
+             not_evaluated"
+                .to_string()
+        };
+        Some(
+            crate::expected_red_roster_join::ExpectedRedRosterJoinReport::new(
+                run_head,
+                run_note,
+                &roster_identities,
+            ),
+        )
+    } else {
+        None
+    };
 
     // THE MANIFEST'S WORLD DIES HERE, before the fold rather than at the end of the function.
     //
@@ -39737,6 +39874,15 @@ pub fn run_required_floor(
 
     // ── 4. fold the manifest ──────────────────────────────────────────────────────────────
     eprintln!("floor: claims = {}", claims.len());
+    if roster_join_only {
+        let before = claims.len();
+        claims.retain(|c| expected_red_roster.contains(c.qualified.as_str()));
+        eprintln!(
+            "floor: expected-red-roster-join-only retained {} of {} claim(s)",
+            claims.len(),
+            before
+        );
+    }
     let claims_planned = claims.len();
     let mut outcome = RequiredFloorOutcome {
         subject_digest: prepared.subject_digest.clone(),
@@ -39749,6 +39895,7 @@ pub fn run_required_floor(
         known_red_held: 0,
         stale_quarantine: Vec::new(),
         budget_refused: Vec::new(),
+        host_tool_unresolved: Vec::new(),
         over_warn: 0,
         failures: Vec::new(),
     };
@@ -39812,6 +39959,7 @@ pub fn run_required_floor(
     let mut known_red_now_passing: usize = 0;
     let mut known_red_budget_refused: usize = 0;
     let mut known_red_passed_over_budget: usize = 0;
+    let mut known_red_host_tool_unresolved: usize = 0;
     let mut expected_red_seen: HashSet<String> = HashSet::new();
     let mut claim_rss_kb_max: u64 = 0;
     let mut claim_rss_kb_max_row = String::new();
@@ -39980,6 +40128,12 @@ pub fn run_required_floor(
         let expected_red = expected_red_roster.contains(claim.qualified.as_str());
         if expected_red {
             expected_red_seen.insert(claim.qualified.clone());
+            if let Some(ref mut join) = roster_join_report {
+                join.record_observed(
+                    &claim.qualified,
+                    &witness_eval_verdict_from_claim_outcome(&result),
+                );
+            }
         }
         let passed = matches!(result, ClaimOutcome::Pass);
         if expected_red {
@@ -40073,6 +40227,24 @@ pub fn run_required_floor(
                     ));
                     continue;
                 }
+                ExpectedRedArm::HostToolUnresolved => {
+                    known_red_host_tool_unresolved += 1;
+                    let detail = match &result {
+                        ClaimOutcome::HostToolUnresolved { name, probed } => format!(
+                            "host tool unresolved: {name:?} (probed: {})",
+                            probed.join(", ")
+                        ),
+                        other => format!("{other:?}"),
+                    };
+                    outcome.host_tool_unresolved.push(format!(
+                        "{} is enrolled as expected-red but HOST-TOOL-UNRESOLVED, not failed \
+                         and not budget-refused: {}. Enrollment asserts an expected verdict; \
+                         missing host tooling produces none. Fix the tool chain or run on a host \
+                         that provides it — do not chase witness cost on an infra gap.",
+                        claim.qualified, detail
+                    ));
+                    continue;
+                }
                 ExpectedRedArm::Held => {
                     known_red_held += 1;
                     continue;
@@ -40094,6 +40266,12 @@ pub fn run_required_floor(
             ClaimOutcome::RuntimeError { message } => outcome
                 .failures
                 .push(format!("{} errored: {message}", claim.qualified)),
+            ClaimOutcome::HostToolUnresolved { name, probed } => outcome.failures.push(format!(
+                "{} host tool unresolved: {:?} (probed: {})",
+                claim.qualified,
+                name,
+                probed.join(", ")
+            )),
             ClaimOutcome::TimedOut {
                 elapsed_ms,
                 budget_ms,
@@ -40164,11 +40342,13 @@ pub fn run_required_floor(
         "[floor-known-red] {} enrolled identity(ies) held as expected-red; {} enrolled \
          identity(ies) now PASS and must be removed from the roster; {} enrolled \
          identity(ies) were BUDGET-REFUSED and so went undecided; {} PASSED but exceeded \
-         budget (stale roster row AND a real cost debt)",
+         budget (stale roster row AND a real cost debt); {} HOST-TOOL-UNRESOLVED (infra, \
+         not budget)",
         known_red_held,
         known_red_now_passing,
         known_red_budget_refused,
-        known_red_passed_over_budget
+        known_red_passed_over_budget,
+        known_red_host_tool_unresolved
     );
     eprintln!(
         "[floor-claim-memory] worst single claim grew rss by {:.2}GB at={}",
@@ -40213,7 +40393,7 @@ pub fn run_required_floor(
         missing.sort();
         missing
     };
-    if !expected_red_missing.is_empty() {
+    if !expected_red_missing.is_empty() && !roster_join_only {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=ExpectedRedIdentityDidNotExecute count={} — every \
              identity enrolled in v2.workflow.floor_expected_red must be observed among the \
@@ -40231,20 +40411,26 @@ pub fn run_required_floor(
     // observed exactly once, so it landed in precisely one of the two arms. Checking the sum is
     // therefore checking that the two arms are the whole roster and do not overlap — cheap, and
     // it fails loudly if a later edit adds a third arm that quietly swallows rows.
-    if known_red_held
-        + known_red_now_passing
-        + known_red_budget_refused
-        + known_red_passed_over_budget
-        != expected_red_roster.len()
+    // The three-outcome roster join relaxes this to still_red | now_passes | not_evaluated and
+    // is the authority for pruning — not the failure-log subset.
+    if !roster_join_only
+        && known_red_held
+            + known_red_now_passing
+            + known_red_budget_refused
+            + known_red_passed_over_budget
+            + known_red_host_tool_unresolved
+            != expected_red_roster.len()
     {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=ExpectedRedPartitionInexact held={} now_passing={} \
-             budget_refused={} passed_over_budget={} roster={} — every enrolled identity must \
-             be exactly one of held, now-passing, budget-refused or passed-over-budget",
+             budget_refused={} passed_over_budget={} host_tool_unresolved={} roster={} — every \
+             enrolled identity must be exactly one of held, now-passing, budget-refused, \
+             passed-over-budget, or host-tool-unresolved",
             known_red_held,
             known_red_now_passing,
             known_red_budget_refused,
             known_red_passed_over_budget,
+            known_red_host_tool_unresolved,
             expected_red_roster.len()
         ));
     }
@@ -40262,7 +40448,53 @@ pub fn run_required_floor(
             outcome.claims_planned, outcome.claims_executed, outcome.receipt_identities
         ));
     }
+    if let Some(mut join) = roster_join_report {
+        join.finalize_not_observed();
+        crate::expected_red_roster_join::emit_join_summary(&join);
+        if let Some(path) = roster_join_path {
+            crate::expected_red_roster_join::write_join_tsv(&path, &join)?;
+        }
+    }
     Ok(outcome)
+}
+
+fn witness_eval_verdict_from_claim_outcome(
+    outcome: &ClaimOutcome,
+) -> crate::expected_red_roster_join::WitnessEvalVerdict {
+    match outcome {
+        ClaimOutcome::Pass => crate::expected_red_roster_join::WitnessEvalVerdict::Passed,
+        ClaimOutcome::Fail => crate::expected_red_roster_join::WitnessEvalVerdict::BoolFalse,
+        ClaimOutcome::NotBool { got } => {
+            crate::expected_red_roster_join::WitnessEvalVerdict::NotBool(got.clone())
+        }
+        ClaimOutcome::RuntimeError { message } => {
+            crate::expected_red_roster_join::WitnessEvalVerdict::RuntimeError(message.clone())
+        }
+        ClaimOutcome::HostToolUnresolved { name, probed } => {
+            crate::expected_red_roster_join::WitnessEvalVerdict::HostToolUnresolved {
+                name: name.clone(),
+                probed: probed.clone(),
+            }
+        }
+        ClaimOutcome::TimedOut {
+            elapsed_ms,
+            budget_ms,
+            kind,
+            completion,
+        } => crate::expected_red_roster_join::WitnessEvalVerdict::BudgetExceeded {
+            elapsed_ms: *elapsed_ms,
+            budget_ms: *budget_ms,
+            kind: kind.label(),
+            completion: match completion {
+                BudgetCompletion::Interrupted => {
+                    crate::expected_red_roster_join::BudgetVerdictCompletion::Interrupted
+                }
+                BudgetCompletion::CompletedOverBudget => {
+                    crate::expected_red_roster_join::BudgetVerdictCompletion::CompletedOverBudget
+                }
+            },
+        },
+    }
 }
 
 /// Read the `.dag` admission. A refusal is reported with every offending row rather than the

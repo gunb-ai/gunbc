@@ -23,6 +23,8 @@ data body_lowering_system_refs: List<DeclarationRef> = [
   body_lowering_production_consumer_ref,
 ]
 
+data v1_maintenance_standing_ref: DeclarationRef = decl_ref(module_path: "gunbc.v1_maintenance_standing", decl_name: "v1_seed_standing")
+
 data five_minute_ci_gate_authority_ref: DeclarationRef = decl_ref(module_path: "gunbc.roadmap_authority", decl_name: "five_minute_ci_gate_program_note")
 
 data cite_by_symbol_only_note: String = "THE ROADMAP AUTHORITY IS CITED AND NOT SUMMARIZED, DELIBERATELY. The reference below names the symbol that owns the five-minute CI programme's scope and ordering, and the document asserts nothing about its contents. The reason is on record as a measured failure: DESIGN carried its own numbered six-step copy of that sequence, the roadmap authority was later recut, and the copy went on presenting a superseded order inside the canonical design document. A citation that summarises what it cites has become a second copy of it, and a second copy is what goes stale."
@@ -32,7 +34,7 @@ fn documentary_ref_symbol_text(reference: DeclarationRef) -> String {
 }
 
 fn generated_document_declaration_refs() -> List<DeclarationRef> {
-  concat(body_lowering_system_refs, [five_minute_ci_gate_authority_ref])
+  concat(body_lowering_system_refs, [five_minute_ci_gate_authority_ref, v1_maintenance_standing_ref])
 }
 
 data documentary_population_union_note: String = "ONE POPULATION, TWO SOURCES, AND THE UNION IS THE POINT. The cited-symbol lens already had a denominator; it counted hand-authored binds only, so a generated document could name a system that no longer existed and stay green while a hand-authored document naming the same system reddened. Widening the denominator rather than adding a second resolution algorithm keeps v2.std.decl_ref_resolution the single authority for what resolving a reference means -- a second algorithm agreeing today is a fork that disagrees later."
