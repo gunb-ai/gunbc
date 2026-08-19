@@ -50,6 +50,7 @@ fn inert_layer_lens_body() -> List<MarkdownBlock> {
         row(cells: [cell(text: "`execution_receipt_digest`"), cell(text: "`compute_fabric.dag`"), cell(text: "the digest the 3-dimension unification rests on — a stub returning `work.id`, consumed nowhere")]),
       ],
     },
+    p(text: "The 2026-06-21 measurement above is left as measured. Four of its rows name `compute_fabric.dag` as their home: those carriers were dissolved by #5904 and the module itself was deleted at the root afterwards, so the rows record what was inert then, not where anything lives now. The lens must re-derive the class rather than read this table."),
     p(text: "**Edge-wired (consumed by a model that is not itself the live source yet):**"),
     TableBlock {
       header: row(cells: [cell(text: "carrier"), cell(text: "consumed by"), cell(text: "why still inert-at-the-edge")]),

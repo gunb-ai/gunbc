@@ -46,13 +46,30 @@ type HeldLeaseObservedState
   | LeasePortForeign
   | LeaseInaccessible
 
-type HeldLease {
+type LeaseEpoch {
   lease_key: NonEmptyStr
   resource_fingerprint: ContentHash
   owner_fingerprint: ContentHash
   generation: Int
+}
+
+type HeldLease {
+  epoch: LeaseEpoch
   observed: HeldLeaseObservedState
 }
+
+fn held_lease(epoch: LeaseEpoch, observed: HeldLeaseObservedState) -> HeldLease {
+  HeldLease { epoch: epoch, observed: observed }
+}
+
+fn held_lease_epoch(lease: HeldLease) -> LeaseEpoch {
+  lease.epoch
+}
+
+fn held_lease_with_observed(lease: HeldLease, observed: HeldLeaseObservedState) -> HeldLease {
+  HeldLease { epoch: lease.epoch, observed: observed }
+}
+
 
 type DurableApprovalGrant
   = GrantAbsent
@@ -148,7 +165,7 @@ fn decision_for_held_lease_verdict(
     Converged => Noop
     Absent => Apply { plan: ApplyAtStep { step_id: pending_step_id } }
     Drifted => Apply {
-      plan: DrainThenStartAtStep { step_id: pending_step_id, lease_key: lease.lease_key },
+      plan: DrainThenStartAtStep { step_id: pending_step_id, lease_key: lease.epoch.lease_key },
     }
     Conflict => Refuse { reason: "foreign lease holder on scoped resource" as NonEmptyStr }
     Inaccessible => Refuse { reason: "lease observation inaccessible" as NonEmptyStr }
