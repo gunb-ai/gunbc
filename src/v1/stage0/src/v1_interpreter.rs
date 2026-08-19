@@ -3874,6 +3874,131 @@ fn eval_unaryop(op: &UnaryOpKind, val: Value) -> InterpResult<Value> {
 }
 
 #[cfg(test)]
+mod argv_representation_ambiguity_tests {
+    //! THE RED FOR THE ARGV AMBIGUITY REFUSAL.
+    //!
+    //! It is a unit-level construction rather than an executed process, and that is forced rather
+    //! than chosen: in hermetic mode `eval_mock_response` replays an operation's RESULT off its
+    //! declaration and never touches argv, so NO argv is constructed in the mode CI runs. There is
+    //! no execution to assert against, and a witness that waited for one would assert nothing.
+    //!
+    //! What discriminates: both cases below carry the SAME two strings and the SAME declared
+    //! meaning. Only the runtime representation differs. The native list expands to two argv words;
+    //! the monoid-encoded form used to collapse to the single word "mainHEAD" and now refuses.
+    //! Delete the refusal and `monoid_encoded_string_sequence_refuses` fails with one argv word.
+    use std::rc::Rc;
+
+    use im::{vector as im_vec, HashMap};
+
+    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+
+    use super::{
+        list_value, push_shell_argv_tokens, with_active_ctx, ExecutionMode, InterpContext,
+        InterpError, Value,
+    };
+
+    fn fresh_ctx() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    /// `Cons { head, tail }` over `Empty` — the representation a fold produces.
+    fn monoid_of(ctx: &InterpContext, items: &[&str]) -> Value {
+        let mut cur = Value::Variant {
+            type_name: ctx.sym("FreeMonoid"),
+            variant_name: ctx.sym("Empty"),
+            fields: Rc::new(Vec::new()),
+        };
+        for s in items.iter().rev() {
+            cur = Value::Variant {
+                type_name: ctx.sym("FreeMonoid"),
+                variant_name: ctx.sym("Cons"),
+                fields: Rc::new(vec![
+                    (ctx.sym("head"), Value::Str(Rc::from(*s))),
+                    (ctx.sym("tail"), cur),
+                ]),
+            };
+        }
+        cur
+    }
+
+    #[test]
+    fn native_list_of_two_strings_expands_to_two_argv_words() {
+        let ctx = fresh_ctx();
+        with_active_ctx(&ctx, || {
+            let mut argv = Vec::new();
+            push_shell_argv_tokens(
+                &mut argv,
+                list_value(vec![
+                    Value::Str(Rc::from("main")),
+                    Value::Str(Rc::from("HEAD")),
+                ]),
+            )
+            .expect("a native list is unambiguous and must expand");
+            assert_eq!(argv, vec!["main".to_string(), "HEAD".to_string()]);
+        });
+    }
+
+    #[test]
+    fn monoid_encoded_string_sequence_refuses() {
+        let ctx = fresh_ctx();
+        with_active_ctx(&ctx, || {
+            let mut argv = Vec::new();
+            let result = push_shell_argv_tokens(&mut argv, monoid_of(&ctx, &["main", "HEAD"]));
+            match result {
+                Err(InterpError::TypeError { msg }) => {
+                    assert!(
+                        msg.contains("ambiguous"),
+                        "the refusal must name the ambiguity, got: {msg}"
+                    );
+                }
+                // The pre-refusal behaviour: one concatenated word. Named explicitly so the
+                // regression is legible rather than appearing as a bare count mismatch.
+                Ok(()) => panic!(
+                    "expected a refusal; the ambiguity was resolved silently into argv {argv:?} \
+                     (pre-fix this was the single word \"mainHEAD\")"
+                ),
+                Err(other) => panic!("expected a TypeError naming the ambiguity, got {other:?}"),
+            }
+        });
+    }
+
+    #[test]
+    fn codepoint_monoid_still_decodes_to_one_word() {
+        let ctx = fresh_ctx();
+        with_active_ctx(&ctx, || {
+            // An Int-element monoid is a code-point sequence: unambiguous under one reading only,
+            // so it must keep decoding. This is the control that keeps the refusal from widening
+            // into every modeled string.
+            let mut cur = Value::Variant {
+                type_name: ctx.sym("FreeMonoid"),
+                variant_name: ctx.sym("Empty"),
+                fields: Rc::new(Vec::new()),
+            };
+            for c in "hi".chars().rev() {
+                cur = Value::Variant {
+                    type_name: ctx.sym("FreeMonoid"),
+                    variant_name: ctx.sym("Cons"),
+                    fields: Rc::new(vec![
+                        (ctx.sym("head"), Value::Int(c as i64)),
+                        (ctx.sym("tail"), cur),
+                    ]),
+                };
+            }
+            let mut argv = Vec::new();
+            push_shell_argv_tokens(&mut argv, cur).expect("a codepoint monoid is a host string");
+            assert_eq!(argv, vec!["hi".to_string()]);
+        });
+    }
+}
+
+#[cfg(test)]
 mod eval_int_binop_overflow_tests {
     use super::{eval_int_binop, InterpError, Value};
     use crate::std_syntax::BinOp;
@@ -7762,7 +7887,61 @@ fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()
             }
             Ok(())
         }
+        // THE AMBIGUITY IS REFUSED HERE, NOT RESOLVED — and the two readings really are both
+        // well-formed, which is why no ordering of the old arms could have been correct.
+        //
+        // A free monoid whose elements are `Str` satisfies BOTH readings at once:
+        // `value_as_host_string` folds it into one concatenated word (its `Value::Str(s) =>
+        // out.push_str(&s)` arm), and `free_monoid_to_vec` splices it into N words. The value
+        // records no choice between them, so the previous code silently took the first — meaning
+        // one declared `List<String>` produced ONE argv word when it arrived monoid-encoded and N
+        // words when it arrived as a native list. Same type, same declaration, opposite arity,
+        // decided by a representation the author never selected.
+        //
+        // The measured specimen: `extdeps.git.git` `git_diff_range_argv` returns `[base, head]` on
+        // its TwoDot arm, spliced into `git diff -U0 <range>`. Monoid-encoded, that reaches the
+        // process as `mainHEAD` — and the failure is not that git errors. On any pair whose
+        // concatenation names a real object it produces a successful diff of the WRONG RANGE,
+        // which is fabricated plausible output rather than a crash (DESIGN §5).
+        //
+        // So this is a state-space conflation, not a missing wall: "one argument whose text is the
+        // concatenation" and "N arguments" are different states with different remedies, and a
+        // position that cannot tell them apart must refuse rather than pick.
+        //
+        // WHAT DELIBERATELY DOES NOT CHANGE:
+        //   * Int-element monoids stay char-decoded into one word. A code-point sequence is a
+        //     genuine host string under one reading only, so nothing is ambiguous there.
+        //   * A native `Value::List` keeps its N-word expansion (arm above) — it states the list
+        //     reading structurally.
+        //   * `ProcessArgvExpansion` stays authoritative (arm at the top) — it states the role.
+        //   * `value_as_host_string` itself is UNTOUCHED. `value_to_host_string` wraps it for
+        //     general use, and narrowing a shared helper to fix one caller is precisely the forked
+        //     -logic trap this lane exists to remove. The discrimination belongs to the argv
+        //     position, so it lives here.
+        //
+        // An EMPTY monoid is treated as the empty string, preserving existing behaviour. Stated
+        // rather than left implicit: it is the one input where the two readings differ in arity
+        // (one empty word vs no words) and this arm still picks. It is called out as a deliberate
+        // narrow choice with no observed consumer, not an oversight.
         Value::Variant { .. } => {
+            if let Some(items) = free_monoid_to_vec(&val) {
+                let has_str_element = items.iter().any(|i| matches!(i, Value::Str(_)));
+                if has_str_element {
+                    return Err(InterpError::TypeError {
+                        msg: format!(
+                            "argv position {}: a modeled sequence of {} string element(s) is \
+                             ambiguous here — it reads BOTH as one argument whose text is their \
+                             concatenation AND as {} separate arguments, and the value records no \
+                             choice. Refusing rather than picking. Say which is meant: wrap the \
+                             surface in ProcessArgvExpansion for the argument-list reading, or \
+                             join the parts explicitly for the single-word reading",
+                            argv.len(),
+                            items.len(),
+                            items.len()
+                        ),
+                    });
+                }
+            }
             if let Some(s) = value_as_host_string(&val) {
                 argv.push(s);
                 Ok(())
