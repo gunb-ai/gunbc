@@ -1,0 +1,59 @@
+module extdeps.ampere.mt_collins_product_brief.platform
+
+import std.types { String, NonEmptyStr, Int }
+import std.nat { Nat }
+import std.measure { MegatransfersPerSecond, megatransfers_per_second }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.ampere.mt_collins_product_brief.subject { MtCollinsPublicProductBrief, mt_collins_public_product_brief }
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "uawartifacts.blob.core.windows.net/upload-files/data/uawbrochures/cloud_native_demo/Mt._Collins_2U_2022_V2.pdf",
+  }
+}
+
+// A NAMED alias for the anchor, so a consumer cites this platform's authority by
+// a symbol naming the platform rather than by the generic per-module anchor name.
+data mt_collins_product_brief_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data platform_subject_edge_note: String = "PLATFORM FACTS JOIN THE ENTITY THEY DESCRIBE, on the extdeps.ocp.mt_jade.platform pattern: extdeps.ampere.mt_collins_product_brief.subject owns mt_collins_public_product_brief, and this row is the typed subject edge binding the mechanical facts below to that declaration."
+
+data mt_collins_platform_subject: MtCollinsPublicProductBrief = mt_collins_public_product_brief
+
+data platform_note: String = "MECHANICAL FACTS FROM PUBLIC MT. COLLINS COLLATERAL, read 2026-08-18: the 2022 V2 product brief (anchor above) and the publicly downloadable Mt. Collins DVT/PVT/MP getting-started guide describe a dual-socket 2U rack server for Altra and Altra Max with thirty-two DDR4 DIMM connectors - sixteen per socket, two DIMMs per channel - at DDR4-3200. Everything here is a READING of marketing and getting-started collateral, never a measurement, and the NDA route on the subject row still gates engineering-grade facts. MARKET DISCREPANCY WORTH A ROW: at least one 2026 marketplace listing offers a Mt. Collins chassis described as 1U, which contradicts the 2U form factor every public document states; a listing-versus-specification conflict is resolved by holding the unit, not by trusting either page."
+
+type MtCollinsPlatformMechanical {
+  form_factor_label: NonEmptyStr
+  processor_socket_count: Nat
+  ddr4_dimms_total: Nat
+  ddr4_dimms_per_socket: Nat
+  dimms_per_channel: Nat
+  ddr4_max_data_rate: MegatransfersPerSecond
+}
+
+data mt_collins_platform_mechanical: MtCollinsPlatformMechanical = MtCollinsPlatformMechanical {
+  form_factor_label: "2U rack server",
+  processor_socket_count: 2,
+  ddr4_dimms_total: 32,
+  ddr4_dimms_per_socket: 16,
+  dimms_per_channel: 2,
+  ddr4_max_data_rate: megatransfers_per_second(count: 3200),
+}
+
+data mt_collins_platform_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ampere.mt_collins_product_brief.platform",
+      decl_name: "mt_collins_platform_mechanical",
+      field: WholeDeclaration,
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+data extdeps_model_scope: ExternalModelScope = mt_collins_platform_model_scope

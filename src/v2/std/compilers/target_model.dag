@@ -10640,6 +10640,165 @@ type TargetReferenceLayer
   | ReferenceLayerRc
   | ReferenceLayerBox
 
+// The two grounded axes a reference layer is made of. TargetReferenceLayer enumerates the three
+// layers a target spells, but "Rc" and "Box" are not atoms: each is a pair of independent facts,
+// and every question anyone asks of a layer is really a question about one of the two. Modeling
+// them separately is what lets the transition below be DERIVED from the layers rather than
+// hand-enumerated over them -- nine pairs authored by hand is nine chances to author one wrong,
+// and the ninth is exactly the arm nobody writes a witness for.
+// It is also what leaves room for Arc without widening anything: Arc differs from Rc on a THREAD
+// axis, not on indirection or sharing, so it enters as a third fact on this record and every arm
+// below keeps its answer. That is the design's own open question (the floor_materialization P2
+// note wants Arc for cross-process ResolvedGraph sharing) answered structurally in advance rather
+// than deferred to a migration.
+type TargetIndirection
+  = IndirectionDirect
+  | IndirectionIndirect
+
+type TargetSharing
+  = SharingUnique
+  | SharingShared
+
+type TargetReferenceLayerFacts {
+  indirection: TargetIndirection
+  sharing: TargetSharing
+}
+
+// The single authority for what each layer IS. Every arm below reads this and nothing else, so a
+// layer's facts are stated once rather than re-decided per question.
+fn target_reference_layer_facts(layer: TargetReferenceLayer) -> TargetReferenceLayerFacts {
+  match layer {
+    ReferenceLayerOwned =>
+      TargetReferenceLayerFacts {
+        indirection: IndirectionDirect,
+        sharing: SharingUnique
+      }
+    ReferenceLayerBox =>
+      TargetReferenceLayerFacts {
+        indirection: IndirectionIndirect,
+        sharing: SharingUnique
+      }
+    ReferenceLayerRc =>
+      TargetReferenceLayerFacts {
+        indirection: IndirectionIndirect,
+        sharing: SharingShared
+      }
+  }
+}
+
+// Why a transition can be refused. Two distinct causes, kept apart because their remedies differ
+// and collapsing them would be the state-space conflation DESIGN section 5 names.
+//
+// SharedValueDuplication: the source is shared and the destination is unique. The only realization
+// is to clone the pointee, which produces a SECOND value where the program had one. Every other
+// holder of the shared handle keeps observing the original, so any later write through either side
+// diverges silently. This is unconvertible in the strong sense -- not missing work, but a
+// conversion that would have to destroy the identity the sharing exists to express.
+//
+// UniqueIndirectionResharing: unique indirection to shared indirection (Box to Rc). This one is
+// refused for a WEAKER reason and the difference is worth carrying in the type rather than hiding
+// behind one cause: it is meaning-preserving in principle -- the box is unique, so no other holder
+// exists to disagree -- but no grounded realization for it is cited anywhere in the target model
+// today, and the emitted corpus that motivated this carrier contains no instance of the pair.
+// Deriving it on the strength of "a target language happens to offer a conversion" would be
+// reaching past the model into one realization's convenience, which is the layer inversion DESIGN
+// section 3 forbids. So it refuses, loudly and with its own name, and dissolves the moment a cited
+// realization row exists to derive it from.
+type TargetLayerTransitionRefusal
+  = SharedValueDuplication
+  | UniqueIndirectionResharing
+
+// A total function's worth of answers about delivering a value produced at one layer to a site
+// that wants another. Total over all nine (from, to) pairs by construction: three identities, two
+// wraps, one unwrap, three refusals.
+type TargetLayerTransition
+  = LayerTransitionIdentity
+  | LayerTransitionWrap { into: TargetReferenceLayer }
+  | LayerTransitionUnwrap { from: TargetReferenceLayer }
+  | LayerTransitionRefused {
+      from: TargetReferenceLayer,
+      to: TargetReferenceLayer,
+      cause: TargetLayerTransitionRefusal
+    }
+
+// R1's next rung, and the reason it is a DERIVATION rather than a table.
+//
+// wrap_decision_flow_gate (v2.compiler.wrap_decision) currently answers a producer/consumer pair by
+// COMPARING the two positions' layers and refusing every disagreement. That is honest but blunt: a
+// producer returning Rc<T> feeding a parameter that wants T is a disagreement the emitter can
+// simply RESOLVE, by lowering at the boundary, and refusing it stops a line that had a correct
+// continuation. The measured corpus is the argument -- ten types, fourteen occurrences, wrapped at
+// every signature and bare at one or more fields, producing BOTH error directions from one
+// inconsistency. Comparison sees six disagreeing pairs and refuses six. This function sees which
+// three are genuinely unconvertible and refuses three, deriving the other three.
+//
+// The derivation reads the two axes and nothing else:
+//   sharing Shared -> Unique              => refuse (SharedValueDuplication) -- Rc->Owned, Rc->Box
+//   indirection Direct -> Indirect        => wrap                            -- Owned->Box, Owned->Rc
+//   indirection Indirect -> Direct        => unwrap                          -- Box->Owned
+//   indirection Indirect -> Indirect,
+//     sharing Unique -> Shared            => refuse (UniqueIndirectionResharing) -- Box->Rc
+//   from == to                            => identity
+//
+// Note which way the refusal points. Gaining sharing from an owned value is safe -- the produced
+// handle is the first one, so there is nobody to disagree with. LOSING it is not, and that
+// asymmetry is a fact about the sharing axis rather than a policy choice, which is precisely why
+// it is derived here instead of asserted in a row someone could edit to say otherwise.
+fn target_layer_transition(
+  from: TargetReferenceLayer,
+  to: TargetReferenceLayer
+) -> TargetLayerTransition {
+  if from == to {
+    LayerTransitionIdentity
+  } else {
+    let from_facts = target_reference_layer_facts(layer: from)
+    let to_facts = target_reference_layer_facts(layer: to)
+    match from_facts.sharing {
+      SharingShared =>
+        match to_facts.sharing {
+          SharingUnique =>
+            LayerTransitionRefused {
+              from: from,
+              to: to,
+              cause: SharedValueDuplication
+            }
+          SharingShared =>
+            LayerTransitionRefused {
+              from: from,
+              to: to,
+              cause: UniqueIndirectionResharing
+            }
+        }
+      SharingUnique =>
+        match from_facts.indirection {
+          IndirectionDirect => LayerTransitionWrap { into: to }
+          IndirectionIndirect =>
+            match to_facts.indirection {
+              IndirectionDirect => LayerTransitionUnwrap { from: from }
+              IndirectionIndirect =>
+                LayerTransitionRefused {
+                  from: from,
+                  to: to,
+                  cause: UniqueIndirectionResharing
+                }
+            }
+        }
+    }
+  }
+}
+
+// Whether a flow is deliverable at all -- the one question a consumer of the transition asks when
+// it does not care HOW the boundary is realized. Kept as a projection of the transition rather
+// than a second predicate over (from, to), so there is no way for the two to disagree.
+fn target_layer_transition_is_deliverable(transition: TargetLayerTransition) -> Bool {
+  match transition {
+    LayerTransitionIdentity => true
+    LayerTransitionWrap { into: _ } => true
+    LayerTransitionUnwrap { from: _ } => true
+    LayerTransitionRefused { from: _, to: _, cause: _ } => false
+  }
+}
+
 type TargetReferenceLayerTokens {
   rc_type_head: Symbol
   box_type_head: Symbol

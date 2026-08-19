@@ -34,7 +34,7 @@ import extdeps.languages.python.syntax {
 }
 import extdeps.languages.rust.emit {
   rust_async_prefix, rust_enum_derives, rust_enum_derives_copy, rust_error_expr_template, rust_error_type_template, rust_import_from_keyword,
-  rust_import_keyword, rust_keywords, rust_lambda_template, rust_list_literal_empty, rust_list_literal_template, rust_null_coalesce_template,
+  rust_import_keyword, rust_keywords, rust_lambda_template, rust_callable_value_wrap_template, rust_list_literal_empty, rust_list_literal_template, rust_null_coalesce_template,
   rust_param_separator, rust_param_type_sep, rust_reserved, rust_reserved_escape_suffix, rust_return_arrow, rust_serde_rename_template,
   rust_serde_tag, rust_source_dir, rust_source_extension, rust_string_types, rust_struct_derives, rust_struct_derives_copy,
   rust_tuple_empty, rust_tuple_multi_template, rust_tuple_pair_template, rust_tuple_separator, rust_type_arg_close, rust_type_arg_open,
@@ -297,6 +297,7 @@ type LanguageSpec {
   string_interp: StringInterpSyntax
 
   callable_type_template: String?
+  callable_value_wrap_template: String?
   naming_case: NamingCase
   async_call_prefix: String
   bridge_method_prefix: String
@@ -490,6 +491,7 @@ fn rust_spec() -> LanguageSpec {
       escape_pairs: [EscapePair { from: "{", to: "{{" }, EscapePair { from: "}", to: "}}" }]
     },
     callable_type_template: "Rc<dyn Fn(\{params\}) -> \{return\}>",
+    callable_value_wrap_template: rust_callable_value_wrap_template,
     naming_case: SnakeCase,
     async_call_prefix: "",
     bridge_method_prefix: "",
@@ -639,6 +641,7 @@ fn python_spec() -> LanguageSpec {
       escape_pairs: [EscapePair { from: "{", to: "{{" }, EscapePair { from: "}", to: "}}" }]
     },
     callable_type_template: null,
+    callable_value_wrap_template: null,
     naming_case: SnakeCase,
     async_call_prefix: "await ",
     bridge_method_prefix: "",
@@ -788,6 +791,7 @@ fn go_spec() -> LanguageSpec {
       escape_pairs: [EscapePair { from: "%", to: "%%" }]
     },
     callable_type_template: null,
+    callable_value_wrap_template: null,
     naming_case: CamelCase,
     async_call_prefix: "",
     bridge_method_prefix: "v2rt.",
@@ -937,6 +941,7 @@ fn dag_spec() -> LanguageSpec {
       escape_pairs: [EscapePair { from: "{", to: "\\{" }, EscapePair { from: "}", to: "\\}" }]
     },
     callable_type_template: null,
+    callable_value_wrap_template: null,
     naming_case: AsAuthored,
     async_call_prefix: "",
     bridge_method_prefix: "",

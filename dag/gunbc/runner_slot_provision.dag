@@ -31,7 +31,7 @@ import gunbc.fleet_host_budget { declared_runner_count_for }
 // RunnerSlotProvision owns runner installation end-to-end in gunbc (operator ruling 2026-08-06:
 // ctrl is a dead repo; prior ctrl:install-actions-runner citations are void legacy pointers).
 // Per slot: cited ActionsRunnerRelease fetch+verify, base dir, extract, ownership, per-slot caps
-// BEFORE systemctl enable. srv3/srv4 materialization target is 7 slots; srv4 disk binding is
+// BEFORE systemctl enable. srv3/srv4 materialization target is 6 slots; srv4 disk binding is
 // apply-time preflight in gunbc.runner_lifecycle runner_width_disk_preflight (not a row pin).
 
 data runner_slot_provision_scaffold: Disposition = Scaffold {

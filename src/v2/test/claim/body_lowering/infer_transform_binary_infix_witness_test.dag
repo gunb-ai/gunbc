@@ -1,0 +1,27 @@
+module v2.test.claim.body_lowering.infer_transform_binary_infix_witness_test
+
+import v2.compiler.infer {
+  infer,
+  inferred_facts_grounding_derived,
+  inferred_facts_witness_for_node
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.test.claim.body_lowering.infer_transform_binary_infix_witness_helpers {
+  infer_transform_subtract_fixture
+}
+import v2.std.witness { Holds, Violates }
+
+data infer_transform_binary_infix_witness_note: String = "v2-inferred-tree-completeness fast-lane witness: subtract binary infix stays Accepted + GroundingNotDerived (dispatch gate control — non-add must not route through await_transform_row). Add vertical discriminating receipt enrolled on FalsifierSubstrateLongLane (long/infer_transform_binary_infix_witness_test.dag + gunbc.explicit_witness_admission)."
+
+test fn infer_transform_non_add_remains_frontier_holds() -> Bool {
+  let body = infer_transform_subtract_fixture()
+  match infer(tree: body) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match inferred_facts_witness_for_node(tree: tree, node: body) {
+        Holds { value: facts } => !inferred_facts_grounding_derived(facts: facts)
+        Violates { diagnostic: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}

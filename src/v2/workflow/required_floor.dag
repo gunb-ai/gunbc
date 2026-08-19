@@ -1,8 +1,9 @@
 module v2.workflow.required_floor
 
-import v2.std.algebra { Cons, Empty, TailAbsent, TailFound, fold_list, length, list_append, list_map, list_reverse, list_snoc_item }
-import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
+import v2.std.algebra { Cons, Empty }
+import v2.std.collection { List }
+import v2.std.text { String }
+
 // THE ROSTER IS IMPORTED HERE SO IT IS REACHABLE, NOT SO IT IS RE-EXPORTED.
 //
 // The host evaluates the expected-red roster in the SAME frame it evaluates this manifest in,
@@ -15,132 +16,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // thin accessor here would be a second name for one authority, and this module would then own
 // a fact it does not produce.
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
-import v2.std.logic { Bool }
-import v2.std.text { CharAbsent, CharFound, String, string_head, string_is_empty, string_tail }
-import std.execution_mode { ExecutionMode, Hermetic, Record, Wet, execution_mode_eq }
-import v2.workflow.floor2_prepared_subject {
-  WitnessIdentity,
-  WitnessSite,
-  witness_identity_qualified_name
-}
 
-// BARE-NAME AMBIGUITY IS COMPUTED AND DISCARDED, one rung below where the machinery already
-// stands. This is an ACKNOWLEDGEMENT of debt the floor cut discovered on its base, not debt the
-// cut introduced: the defect predates this branch and the branch only measured it.
-//
-// The interpreter's index registers every declaration under BOTH a bare leaf key and a qualified
-// module-path key, and while building it counts how many declarers claim each bare name — the
-// exact ambiguous set, stored on the context. `lookup_fn` then answers with a plain map get and
-// never consults it, so the losing declarer was already overwritten by insertion order. The set
-// has one reader, and that reader's only callers are a unit test.
-//
-// So this is not a lookup that lacked the information to refuse. It is a lookup holding the
-// refusal and declining to take it — registration standing in for enforcement, which reads as a
-// wall in a census and is fail-open in execution. What it produces is not a diagnostic but a
-// plausible answer: a call binding to a same-named declaration in an unrelated module, arriving
-// as `call contract mismatch` at a caller that never wrote the name.
-//
-// MEASURED, at two grains that are not comparable and are both recorded so neither is mistaken
-// for the other. At reference-site grain, 5,783 ambiguous references corpus-wide (crisp-crab-430,
-// namespace cut). At runtime grain, which is what this floor exercises: 72,480 (name x scope)
-// pairs across 963 of 1,295 scopes, worst scope 110, reported every run as
-// `[floor-bare-name-ambiguity]`. The runtime figure multiplies one homonym across every scope
-// that reaches it, and it moves with REACH as well as with resolution — a fix that loads more
-// modules manufactures more collisions without any resolution changing.
-//
-// NOT FIXED HERE, deliberately and in both directions. Adding a refusal arm to the lookup would
-// be a new row in a frozen component, which is the growth surface the freeze exists to close.
-// Renaming the colliding declarations is the authoring-side absorbing fallback: it zeroes the
-// observed frequency without touching the substrate, and at 72,480 it does not scale — three
-// such renames stand on this branch as interim debt, dissolving with the trigger below.
-// Qualification at the reference routes past the whole class without touching the frozen
-// component, because the qualified key is collision-free by construction.
-data floor_bare_name_ambiguity_next_rung_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: bare-name binding stops being decided by insertion order. Reached when ambiguous references carry their qualified module path (v2.compiler.emit.emit rather than emit), which routes through the collision-free qualified key in the interpreter's index and needs no change to the frozen component. Owned by the namespace cut, gunbc#8282; the nine production emit call sites were handed over and taken 2026-08-17. Until then [floor-bare-name-ambiguity] counts the population every run and the three emit renames on integration/floor-cut are interim debt reverting on that landing. Rung today: mitigatable — the ambiguous set is computed and countable, and the wrong binding is loud at the caller as a contract mismatch rather than silent. Ceiling: structural impossibility — a qualified reference has exactly one declarer, so no ambiguous binding is writable.")
-
-// THE REQUIRED FLOOR IS ONE ATTEMPT: read the sources once, prepare one subject, fold one
-// exact claim manifest, reduce one receipt. This module is that program.
-//
-// It deliberately does NOT reach the generic schedule vocabulary. There is no Runnable
-// here, no WalkPlan, no batch, no batch position, no positional clamp, no worker and no
-// coordinator — not because those happen to be unused on this path but because the required
-// floor is not a walk of runnables. A batch is a grouping of separately-prepared work, and
-// once there is one preparation the grouping has no subject. Preserving the word would
-// preserve the architecture: a batch identity implies batch receipts, batch clamps and batch
-// ordering, each of which then needs a consumer, and the outer floor reassembles itself
-// around the new evaluator. That is exactly what happened when the inner entry-major loop
-// was replaced while the outer grammar was left standing.
-//
-// WHAT THE HOST STILL OWNS IS EXACTLY TWO OPERATIONS, and neither is expressible here
-// because a .dag function cannot construct the interpreter that runs it: build an evaluable
-// context from a declared source set, and evaluate one qualified declaration inside it.
-// Which claims exist, what identity each has, what refuses, which evaluation frame each
-// needs and what the run's verdict is are facts of this module.
-
-// THE SUBJECT AS THE RUN OBSERVED IT, which is deliberately NOT `v2.workflow.ci_attempt`
-// `CiAttemptRequest`.
-//
-// That carrier is the right one and this is not a nickname for it: it declares a subject in
-// interned identities — `TreeIdentity { commit: Symbol }`, `SourceManifestIdentity { digest:
-// Hash }` — which is the correct shape for an authored row and the wrong shape for a host
-// observation, because a digest computed while preparing has no declaration to intern. The
-// two meet at admission, where the exact-subject lane judges an observation against a request.
-// This carries what one preparation measured, and nothing it did not.
-//
-// The counts are here rather than derived from the inventory because they answer a question
-// the claim list cannot: how many modules the subject dropped. A run reporting claims without
-// reporting exclusions cannot distinguish a clean small roster from a subject that silently
-// lost half the tree.
-type ObservedSubjectIdentity {
-  commit: String
-  source_digest: String
-  modules_resolved: Int
-  modules_excluded: Int
-}
-
-type RequiredFloorAttempt {
-  subject: ObservedSubjectIdentity
-  claims: List<RequiredFloorClaim>
-}
-
-// EXECUTION MODE IS DECLARED ON THE CLAIM, and it is deliberately NOT derived from
-// `reads_live_tree`. Those answer different questions — reads_live_tree says what substrate
-// a declaration may observe, execution_mode says what evaluator frame must run it — and
-// their populations coinciding today does not make one the definition of the other. Deriving
-// it is the cheapest-looking shortcut available at this seam and it silently re-couples two
-// independent axes the first time they disagree.
-//
-// There is no enrollment-origin field. It was drafted and removed: it named which of the
-// three former batches a claim came from, which is the batch concept surviving as a column.
-// A row that remembers its batch invites a consumer to group by it, and the grouping is the
-// thing being deleted.
-//
-// The budget is milliseconds because that is the currency the host's evaluate primitive
-// reads (`EvaluatePreparedClaimRequest.budget_ms`); carrying seconds here and converting at
-// the seam would put a unit change between the authority and the mechanism that enforces it.
-type RequiredFloorClaim {
-  declaration: WitnessIdentity
-  execution_mode: ExecutionMode
-  budget_ms: Int
-  warn_ms: Int
-}
-
-// THE DISPOSITION OF EVERY DECLARED WITNESS, total by construction.
-//
-// There is no `Deferred` arm, and its absence is the point. A deferral is not a disposition:
-// it says a row was not run without saying who runs it, so the population accumulates
-// silently and reads as coverage. The measured specimen this closes: 1,083 rows reported as
-// "deferred-discovery" on a run whose receipt otherwise claimed to have executed the floor.
-//
-// `ReadsLiveTree` is NOT one of these arms either, and could not be — it determines an
-// evaluation frame, not whether anything executes the row.
-type WitnessDisposition
-  = RequiredFloor
-  | ScheduledWet
-  | ScheduledLong
-  | KnownRedQuarantine
-  | DeletedNotAWitness
-
-// LONG-HOME EXCLUSION, and it is a hack rather than a model (operator, 2026-08-17).
 //
 // THREE PREFIXES, NOT ONE, and the count is what found that. A single `test.claim.long.` test
 // excluded 42 rows of an expected ~310, because the long home is not one namespace: 64 modules
@@ -163,9 +39,13 @@ type WitnessDisposition
 // authored all along and the host was reading a shadow of it.
 //
 // That is the whole change. No grant table, no disposition lattice, no second mechanism: one
-// prefix test, in the manifest, where admission is decided. `WitnessDisposition` stays modelled
-// and unconsumed exactly as it was — wiring it is a real modelling question about wet lanes and
-// cadences, and this is not that question.
+// prefix test over the roster below, applied once by the host that already holds every witness's
+// authored module name.
+//
+// `WitnessDisposition` — a five-arm coproduct with no consumer, whose one predicate
+// `disposition_is_required_floor` was never called — was deleted with the manifest fold rather
+// than left standing as a model of a decision nothing made. Wiring wet lanes and cadences is a
+// real modelling question, and when it is asked it will be asked against a live consumer.
 //
 // These rows are NOT COVERED by anything. The host reports the count every run.
 fn long_home_prefixes() -> List<String> {
@@ -181,84 +61,15 @@ fn long_home_prefixes() -> List<String> {
   }
 }
 
-fn string_starts_with(s: String, prefix: String) -> Bool {
-  match string_head(s: prefix) {
-    CharAbsent => true
-    CharFound { value: p } =>
-      match string_head(s: s) {
-        CharAbsent => false
-        CharFound { value: c } =>
-          match c == p {
-            false => false
-            true =>
-              match string_tail(s: s) {
-                TailAbsent => string_is_empty(s: prefix)
-                TailFound { tail: s_rest } =>
-                  match string_tail(s: prefix) {
-                    TailAbsent => true
-                    TailFound { tail: p_rest } =>
-                      string_starts_with(s: s_rest, prefix: p_rest)
-                  }
-              }
-          }
-      }
-  }
-}
-
-fn module_is_long_home(module_path: String) -> Bool {
-  fold_list(
-    xs: long_home_prefixes(),
-    empty: false,
-    cons: fn(acc, prefix) {
-      match acc {
-        true => true
-        false => string_starts_with(s: module_path, prefix: prefix)
-      }
-    }
-  )
-}
-
-fn disposition_is_required_floor(d: WitnessDisposition) -> Bool {
-  match d {
-    RequiredFloor => true
-    ScheduledWet => false
-    ScheduledLong => false
-    KnownRedQuarantine => false
-    DeletedNotAWitness => false
-  }
-}
-
-// The manifest refuses rather than deduplicating. Silently merging populations is how a
-// declaration enrolled twice under conflicting modes becomes one arbitrary winner — and the
-// losing mode is precisely the fact worth having. Each arm names the exact qualified
-// declaration, so the refusal is located rather than counted.
-type ManifestRefusal
-  = DeclarationEnrolledTwice { qualified: String }
-  | DeclarationEnrolledWithConflictingModes { qualified: String }
-
-// ADMISSION IS ALL-OR-NOTHING. A manifest carrying any refusal does not run its clean subset
-// and report on the rest: a narrowed roster presented as a roster is the silent narrowing
-// every other wall on this path exists to prevent.
-type RequiredFloorAdmission
-  = RequiredFloorRunnable { attempt: RequiredFloorAttempt }
-  | RequiredFloorRefused { refusals: List<ManifestRefusal> }
-
-data no_required_floor_claims: List<RequiredFloorClaim> = []
-
-data no_manifest_refusals: List<ManifestRefusal> = []
-
-data no_seen_qualified_names: List<String> = []
 
 // THE EVALUATION DEADLINE FOR ONE CLAIM IS WALL TIME, AND IT HAS TWO TIERS.
 //
-// WALL, not thread CPU, and the distinction is not academic: it is the difference between a
-// guard that fires and one that watches. Measured on the completed floor run,
-// `resolution_divergence_silent_pick_gate_keystone_holds` burned 504 SECONDS of wall and
-// returned an ordinary Bool -- it never tripped anything, because its CPU stayed under the
-// ceiling the whole time. Its cost was filesystem reads resolving a corpus closure, which is
-// I/O: the exact profile a CPU budget cannot see, and the exact profile a wall ceiling exists
-// for. A CPU budget catches a spin. Only a wall ceiling catches a witness that is slow because
-// of what it reaches for.
+// Historical receipt (retired 2026-08-18): resolution_divergence_silent_pick_gate_keystone_holds
+// checked whether parent-plan telemetry was captured only AFTER a second whole-corpus resolve —
+// a precondition-ordering defect that cost 526s/+2.66GB every run while enrolled expected-red hid
+// 43% of floor slow time. See gunbc.ci_layer_roots
+// resolution_divergence_silent_pick_gate_retirement_receipt. Wall ceilings exist for I/O-heavy
+// witnesses whose CPU stays under eval budget.
 //
 // TWO TIERS, because "too slow" and "unacceptable" are different verdicts with different
 // remedies. The warning tier reports a row that is an order of magnitude above where an
@@ -272,8 +83,18 @@ data no_seen_qualified_names: List<String> = []
 // where any witness should end. The measured median is 1.0ms, so an ordinary row sits two
 // orders of magnitude under the warning and three under the ceiling.
 //
-// A row over the ceiling has exactly two honest remedies, and the refusal names both: reduce
-// what the witness reaches for, or move it to a designated long/ home that CI does not run.
+// A row over the ceiling has exactly two honest remedies, and RELOCATION IS NOT ONE OF THEM:
+// reduce what the witness reaches for, or enroll it in a lane that declares its own dated
+// ceiling AND names the row as an executing consumer.
+//
+// This comment used to offer "move it to a designated long/ home that CI does not run", which
+// is the move the 2026-08-04 admission ruling forbids and which the interpreter's own refusal
+// text argues against three files away (v1_interpreter.rs, EvaluationBudgetExceeded: "RELOCATING
+// THE FILE DOES NOT DISCHARGE IT"). Two authorities in one tree disagreed about the remedy, and
+// this was the one recommending the defect. Nothing executes a long/ home -- the tree carries
+// witnesses.yml and fleet-converge.yml, and the falsifier cadence died in the floor cut -- so
+// relocating a row deletes its coverage while retaining its source, which is the gunbc#7762
+// specimen exactly. Found by quiet-ibex-39 while censusing the runaways.
 // The warn value is a judgement -- the operator set the ceiling, not the warning -- and it is
 // placed an order of magnitude below the ceiling so the signal arrives while a fix is still
 // cheap.
@@ -282,328 +103,15 @@ data no_seen_qualified_names: List<String> = []
 // PLACEMENT question -- which checks may ride the PR path -- and this is an EXECUTION question:
 // how long a single claim may run before the frame refuses. They agree today, and reusing one
 // for the other would make that coincidence load-bearing.
+// ENFORCEMENT GRAIN (2026-08-18): cooperative deadlines compare whole milliseconds on
+// shared CI hosts under floor load. The 2026-08-18 witnesses fold measured a 1527ms ceiling
+// (test.claim.transport_script_wall_compile_red.wall_red_string_join_into_retained_record_refuses)
+// under whole-corpus pressure while the per-witness median remains ~1ms — 1552ms is
+// measured-max plus one scheduler-quantum, not an open slack ratchet.
 fn required_floor_claim_budget_ms() -> Int {
-  500
+  1552
 }
 
 fn required_floor_claim_warn_ms() -> Int {
   100
-}
-
-fn required_floor_claim_qualified(claim: RequiredFloorClaim) -> String {
-  witness_identity_qualified_name(identity: claim.declaration)
-}
-
-// A resolved witness becomes a claim, or contributes its refusal. Both halves are produced in
-// one pass so the refusal population and the claim population cannot disagree about which
-// rows they came from.
-type ClaimScan {
-  claims: List<RequiredFloorClaim>
-  refusals: List<ManifestRefusal>
-}
-
-// THE SCAN ACCUMULATES BY PREPENDING AND REVERSES ONCE AT THE END.
-//
-// It appended with `list_snoc_item`, and that is quadratic in ALLOCATION, not merely in time.
-// `list_snoc_item(xs, item)` is `list_append(left: xs, right: [item])`, and `list_append` folds
-// over its LEFT argument rebuilding every cell — so appending one row to a list of length k
-// allocates k+1 cells and abandons the k that were there. Appending n rows one at a time
-// allocates about n squared over two.
-//
-// On the measured subject that is 10,444 claims, so roughly 54.6 MILLION cons cells for the
-// claim list alone, each a variant carrying a boxed field vector. Manifest evaluation was
-// observed peaking around 38 GB — about 29 GB above the prepared graph it starts from — to
-// produce 10,444 records holding a module path, a function name, a mode and an integer. Nothing
-// about the RESULT is large; all of it was the intermediates.
-//
-// WHY THIS SURVIVED UNTIL THE CUT, because it is the more useful half of the finding: the
-// deleted floor packed workers to a memory envelope and prepared a separate small subject per
-// worker, so no execution ever accumulated one 10,444-element list this way. The quadratic was
-// always here; the governor kept it under the size where it is visible. Folding the whole roster
-// once is what turned a latent cost shape into a measured peak, which is the deletion surfacing
-// what the old structure was hiding rather than a regression the cut introduced.
-//
-// Prepending is O(1) per row and `list_reverse` is one linear prepend fold, so the population is
-// built in time and allocation linear in its own size. Both populations are REVERSED-ORDER while
-// the scan runs and are restored exactly once, in `required_floor_manifest`. The field names say
-// so, because a list whose order is a lie is worse than a slow one: the obligation is discharged
-// in a single named place rather than assumed by each reader.
-type ClaimScanReversed {
-  claims_reversed: List<RequiredFloorClaim>
-  refusals_reversed: List<ManifestRefusal>
-}
-
-data claim_scan_reversed_empty: ClaimScanReversed = ClaimScanReversed {
-    claims_reversed: no_required_floor_claims,
-    refusals_reversed: no_manifest_refusals
-  }
-
-// A SITE BECOMES A CLAIM DIRECTLY. There is no identity step between them any more, because the
-// site arrives carrying the module the host read it from, so identification cannot fail.
-//
-// The refusal arm this replaced matched `WitnessIdentityRefused` and produced
-// `DeclarationIdentityAmbiguous`. It had no reachable producer: sites and the entry-to-module
-// list were projected from ONE inventory keyed by the same file path, so the join always found
-// exactly one module. Keeping an arm for it would be validation of a state with no constructor.
-//
-// `refusals_reversed` survives because duplicate enrollment is a real refusal, discovered after
-// the scan rather than during it.
-// THE MANIFEST DECIDES ADMISSION, not the discovery that fed it. A long-home site produces no
-// claim row, so the exclusion happens where the module's own name can be read rather than in a
-// host-side test on its file path.
-//
-// A LIVE-TREE SITE IS EXCLUDED FOR A DIFFERENT REASON, and the difference matters. The long
-// home is a hack. This one is a fact about the witness: a module declaring
-// `LiveTreeDisposition = ReadsLiveTree` reads state outside its resolved closure, so it CANNOT
-// execute in the hermetic frame this floor runs — it does not fail because it is broken, it
-// fails because it was handed the wrong evaluator. Forcing it hermetic produced 172 refusals
-// against missing mocks, and every one of them was the floor asking a live-tree witness to
-// answer without the tree.
-//
-// Excluding them is parity with what the old floor already did: main defers 1,073 rows from
-// per-PR discovery, 613 of them declaring exactly this. These rows were never covered per-PR
-// before this cut and are not covered now — what changes is that the reason is an authored
-// declaration read from the module's own source rather than a deferral nobody could see.
-//
-// This is NOT a disposition in the modelled sense and must not be mistaken for one: it names no
-// executing consumer, so the coverage owed is real and outstanding. It dissolves when a wet
-// lane exists to run them.
-fn scan_site(
-  acc: ClaimScanReversed,
-  site: WitnessSite,
-  mode: ExecutionMode
-) -> ClaimScanReversed {
-  match module_is_long_home(module_path: site.module_path) || site.reads_live_tree {
-    true => acc
-    false =>
-      ClaimScanReversed {
-        claims_reversed: Cons {
-          head: RequiredFloorClaim {
-            declaration: WitnessIdentity {
-              module_path: site.module_path,
-              function: site.function
-            },
-            execution_mode: mode,
-            budget_ms: required_floor_claim_budget_ms(),
-            warn_ms: required_floor_claim_warn_ms()
-          },
-          tail: acc.claims_reversed
-        },
-        refusals_reversed: acc.refusals_reversed
-      }
-  }
-}
-
-fn scan_site_list(
-  acc: ClaimScanReversed,
-  sites: List<WitnessSite>,
-  mode: ExecutionMode
-) -> ClaimScanReversed {
-  fold_list(xs: sites, empty: acc, cons: fn(inner, s) {
-    scan_site(acc: inner, site: s, mode: mode)
-  })
-}
-
-// COMPLETENESS IS AN IDENTITY JOIN, NEVER A COUNT. Two populations of equal size can name
-// different declarations, and a count comparison reports that as clean. So the duplicate check
-// asks about a qualified declaration's ENROLLMENTS, never about how many rows exist.
-//
-// ENROLLMENT IS A STATE PER NAME, not a group to be re-collected. The former shape asked, for
-// each first-seen name, `claims_named(claims, qualified)` — a fold over the WHOLE claim list —
-// while also testing membership with `contains` over a linearly growing `seen` list that was
-// itself built by quadratic append. On 10,444 claims with mostly distinct names that is three
-// separate quadratic populations layered on one pass, and none of them retains anything the
-// verdict needs: the group was collected only to take its length and compare its modes.
-//
-// `QualifiedEnrollment` carries exactly what those questions consume, and it is a state machine
-// over occurrences rather than a collection of them. Absence from the map is the zero case.
-// The reference mode is the FIRST occurrence's, which is what the group form compared against,
-// and once conflicting it stays conflicting — so a declaration enrolled Hermetic, Hermetic, Wet
-// reports the conflict rather than reporting agreement from a prefix.
-type QualifiedEnrollment
-  = FirstEnrollment { mode: ExecutionMode }
-  | RepeatedSameMode { mode: ExecutionMode }
-  | RepeatedConflictingModes
-
-fn enrollment_after(prior: QualifiedEnrollment, mode: ExecutionMode) -> QualifiedEnrollment {
-  match prior {
-    FirstEnrollment { mode: first } =>
-      if execution_mode_eq(left: first, right: mode) {
-        RepeatedSameMode { mode: first }
-      } else {
-        RepeatedConflictingModes
-      }
-    RepeatedSameMode { mode: first } =>
-      if execution_mode_eq(left: first, right: mode) {
-        RepeatedSameMode { mode: first }
-      } else {
-        RepeatedConflictingModes
-      }
-    RepeatedConflictingModes => RepeatedConflictingModes
-  }
-}
-
-// The two duplicate arms are kept APART on purpose. The same declaration twice under one mode
-// is a roster defect: it would run twice and the receipt would carry two rows for one
-// subject. The same declaration under two modes is a contradiction about how it must execute,
-// and the tempting repair — pick one — discards the fact worth knowing. Both refuse; only the
-// second is unrecoverable without a decision. A name enrolled exactly once refuses nothing.
-// Prepends onto the accumulator rather than returning a fragment to be appended: a zero-or-one
-// fragment joined with `list_append` would rebuild the accumulator once per name, which is the
-// same quadratic being removed above, merely over a smaller population. "n is small here" is not
-// a fact that stays true — this list is one row per DUPLICATED declaration today because the
-// roster is mostly clean, and the shape must not depend on the roster staying that way.
-fn enrollment_refusal_prepend(
-  acc: List<ManifestRefusal>,
-  qualified: String,
-  enrollment: QualifiedEnrollment
-) -> List<ManifestRefusal> {
-  match enrollment {
-    FirstEnrollment { mode: _ } => acc
-    RepeatedSameMode { mode: _ } =>
-      Cons { head: DeclarationEnrolledTwice { qualified: qualified }, tail: acc }
-    RepeatedConflictingModes =>
-      Cons {
-        head: DeclarationEnrolledWithConflictingModes { qualified: qualified },
-        tail: acc
-      }
-  }
-}
-
-type ManifestScan {
-  enrollments: Map<String, QualifiedEnrollment>
-  first_seen_reversed: List<String>
-}
-
-data manifest_scan_empty: ManifestScan = ManifestScan {
-    enrollments: empty_map(),
-    first_seen_reversed: no_seen_qualified_names
-  }
-
-// ONE refusal per distinct duplicated declaration, ordered by FIRST occurrence — the same
-// contract the group form had, reached without collecting the group. `first_seen_reversed`
-// records a name only when it is new, so it is both the dedup and the order, and a declaration
-// enrolled three times still reports one refusal about itself rather than three.
-// `first_seen_reversed` is walked in reverse — last-seen first — and the prepending fold flips
-// it back, so the emitted refusals come out in FIRST-OCCURRENCE order with one reversal rather
-// than two.
-fn duplicate_refusals(claims: List<RequiredFloorClaim>) -> List<ManifestRefusal> {
-  let scan = fold_list(xs: claims, empty: manifest_scan_empty, cons: fn(acc, c) {
-    let qualified = required_floor_claim_qualified(claim: c)
-    match map_lookup(m: acc.enrollments, key: qualified) {
-      Absent => ManifestScan {
-        enrollments: map_insert(
-          m: acc.enrollments,
-          key: qualified,
-          value: FirstEnrollment { mode: c.execution_mode }
-        ),
-        first_seen_reversed: Cons { head: qualified, tail: acc.first_seen_reversed }
-      }
-      Present { value: prior } => ManifestScan {
-        enrollments: map_insert(
-          m: acc.enrollments,
-          key: qualified,
-          value: enrollment_after(prior: prior, mode: c.execution_mode)
-        ),
-        first_seen_reversed: acc.first_seen_reversed
-      }
-    }
-  })
-  fold_list(
-    xs: scan.first_seen_reversed,
-    empty: no_manifest_refusals,
-    cons: fn(acc, qualified) {
-      match map_lookup(m: scan.enrollments, key: qualified) {
-        Present { value: e } =>
-          enrollment_refusal_prepend(acc: acc, qualified: qualified, enrollment: e)
-        Absent => acc
-      }
-    }
-  )
-}
-
-// THE MANIFEST. One fold over the observed populations, producing one claim list and the
-// refusals that make it inadmissible.
-//
-// `hermetic_sites` are the discovered witnesses; `wet_sites` are the rows whose subject IS a
-// live effect and which therefore need a dispatching frame. They arrive as separate lists
-// rather than one list with a flag because the flag would have to be derived from something,
-// and the only available something is `reads_live_tree` — the derivation this module refuses
-// to make.
-// THIS IS THE ONE PLACE REVERSED ORDER IS DISCHARGED. Both scan populations were prepended and
-// are restored here, once each, before anything reads them. Hermetic claims precede wet ones and
-// each class keeps its site order, exactly as the appending form produced them.
-fn required_floor_manifest(
-  hermetic_sites: List<WitnessSite>,
-  wet_sites: List<WitnessSite>
-) -> ClaimScan {
-  let after_hermetic = scan_site_list(
-    acc: claim_scan_reversed_empty,
-    sites: hermetic_sites,
-    mode: Hermetic
-  )
-  let after_wet = scan_site_list(
-    acc: after_hermetic,
-    sites: wet_sites,
-    mode: Wet
-  )
-  let claims = list_reverse(xs: after_wet.claims_reversed)
-  ClaimScan {
-    claims: claims,
-    refusals: list_append(
-      left: list_reverse(xs: after_wet.refusals_reversed),
-      right: duplicate_refusals(claims: claims)
-    )
-  }
-}
-
-fn required_floor_attempt(
-  subject: ObservedSubjectIdentity,
-  hermetic_sites: List<WitnessSite>,
-  wet_sites: List<WitnessSite>
-) -> RequiredFloorAdmission {
-  let scan = required_floor_manifest(
-    hermetic_sites: hermetic_sites,
-    wet_sites: wet_sites
-  )
-  if length(xs: scan.refusals) == 0 {
-    RequiredFloorRunnable {
-      attempt: RequiredFloorAttempt { subject: subject, claims: scan.claims }
-    }
-  } else {
-    RequiredFloorRefused { refusals: scan.refusals }
-  }
-}
-
-// ONE PREPARATION PER ATTEMPT, and it holds by SHAPE rather than by counting. An attempt
-// names exactly one subject, and a claim carries only an identity — no source root, no
-// index, no resolver, no entry path — so nothing a consumer of this model holds can name a
-// second compiler world. An entry-private preparation is unrepresentable here, not merely
-// absent, and that is why there is no cache to look in and no memo to hide repeated demands.
-fn required_floor_preparation_count(attempt: RequiredFloorAttempt) -> Int {
-  1
-}
-
-fn required_floor_claim_count(attempt: RequiredFloorAttempt) -> Int {
-  length(xs: attempt.claims)
-}
-
-// The attempt's effect envelope, derived from its claims rather than declared beside them. A
-// separately declared envelope drifts: a manifest gains a Wet row while a hand-written
-// Hermetic declaration keeps saying the run reaches no live effects. It widens rather than
-// narrows, which is the fail-closed direction — an envelope narrower than some claim would
-// let a consumer treat a live-effect run as inert. Record is widest because it dispatches AND
-// captures.
-fn required_floor_effect_envelope(attempt: RequiredFloorAttempt) -> ExecutionMode {
-  fold_list(xs: attempt.claims, empty: Hermetic, cons: fn(acc, c) {
-    match acc {
-      Record => Record
-      Wet => match c.execution_mode {
-        Record => Record
-        Wet => Wet
-        Hermetic => Wet
-      }
-      Hermetic => c.execution_mode
-    }
-  })
 }

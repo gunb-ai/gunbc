@@ -32,7 +32,6 @@ use crate::v1_interpreter;
 use crate::v1_interpreter::str_value;
 use crate::v1_interpreter::Value;
 use crate::v1_rt;
-use crate::v1_rt::SilentPickTelemetry;
 use crate::v1_std_core::{
     arg_name_at, arg_value, arm_body, arm_pattern, authored_name_at, block_stmts,
     build_newline_index, byte_to_line_col, diagnostic_to_message, diagnostic_to_span,
@@ -51,6 +50,9 @@ pub(crate) mod floor_discovery_snapshot;
 pub(crate) mod materialization_provider_consumer;
 #[path = "phase_profile.rs"]
 mod phase_profile;
+#[path = "required_regen_host.rs"]
+mod required_regen_host;
+pub(crate) mod shared_fill;
 pub(crate) mod test_module_hygiene_bridge;
 pub use floor_discovery_snapshot::{
     append_discovery_trace_row, build_floor_discovery_request,
@@ -110,11 +112,14 @@ pub(crate) fn is_cargo_target_output_dir(
         && parent.join("Cargo.toml").is_file()
 }
 
-fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
+fn collect_dag_files_result(
+    dir: &std::path::Path,
+    files: &mut Vec<std::path::PathBuf>,
+) -> Result<(), String> {
     let mut entries: Vec<_> = std::fs::read_dir(dir)
-        .unwrap_or_else(|e| panic!("failed to read dir {:?}: {}", dir, e))
-        .map(|e| e.unwrap_or_else(|e| panic!("failed to read dir entry: {}", e)))
-        .collect();
+        .map_err(|e| format!("failed to read dir {:?}: {}", dir, e))?
+        .map(|e| e.map_err(|e| format!("failed to read dir entry in {:?}: {}", dir, e)))
+        .collect::<Result<Vec<_>, String>>()?;
     entries.sort_by_key(|e| e.file_name());
     for entry in entries {
         let path = entry.path();
@@ -122,11 +127,16 @@ fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>)
             if is_cargo_target_output_dir(dir, &path) {
                 continue;
             }
-            collect_dag_files(&path, files);
+            collect_dag_files_result(&path, files)?;
         } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
             files.push(path);
         }
     }
+    Ok(())
+}
+
+fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
+    collect_dag_files_result(dir, files).unwrap_or_else(|e| panic!("{e}"));
 }
 
 pub(crate) fn extract_module_path(content: &str) -> Option<String> {
@@ -1115,14 +1125,6 @@ mod process_workspace_root_tests {
     }
 
     #[test]
-    fn walk_target_alias_plan_scaffold_marker_is_declared() {
-        assert_eq!(
-            super::CLI_RUN_WALK_TARGET_ALIAS_PLAN_SCAFFOLD_MARKER,
-            "cli_run_walk_target_alias_plan"
-        );
-    }
-
-    #[test]
     fn layer_prefix_from_dotted_module_scaffold_marker_is_declared() {
         assert_eq!(
             super::CLI_RUN_LAYER_PREFIX_FROM_DOTTED_MODULE_SCAFFOLD_MARKER,
@@ -1338,98 +1340,6 @@ mod workspace_root_discovery_tests {
     }
 }
 
-#[cfg(test)]
-mod regen_input_closure_tests {
-    use super::{regen_input_sources, regen_path_affects_regen};
-    use std::collections::HashSet;
-    use std::path::{Path, PathBuf};
-
-    fn fixture_root(tag: &str) -> PathBuf {
-        std::env::temp_dir().join(format!("gunbc-regen-closure-{tag}-{}", std::process::id()))
-    }
-
-    fn write(root: &Path, rel: &str, content: &str) {
-        let p = root.join(rel);
-        std::fs::create_dir_all(p.parent().unwrap()).expect("mkdir fixture");
-        std::fs::write(p, content).expect("write fixture");
-    }
-
-    /// The regen input closure is exactly the `src/v1` entries plus their transitive
-    /// `import` closure through `[src/v1, dag]` — a `dag` module nobody imports is
-    /// EXCLUDED. This is the RED control: without the exclusion the skip is vacuous
-    /// (every dag change would appear in-closure and the shortcut would never fire).
-    #[test]
-    fn closure_is_imports_only_unimported_dag_excluded() {
-        let root = fixture_root("imports-only");
-        let _ = std::fs::remove_dir_all(&root);
-        write(
-            &root,
-            "src/v1/a.dag",
-            "module v1.a\nimport v1.b { T }\nimport std.x { Y }\n",
-        );
-        write(&root, "src/v1/b.dag", "module v1.b\n");
-        write(&root, "dag/std/x.dag", "module std.x\n");
-        write(&root, "dag/std/y.dag", "module std.y\n"); // unimported — excluded
-        write(&root, "dag/gunbc/u.dag", "module gunbc.u\n"); // unimported — excluded
-
-        let relpaths: HashSet<String> = regen_input_sources(&root)
-            .expect("closure computes")
-            .into_iter()
-            .map(|(p, _)| p)
-            .collect();
-        let _ = std::fs::remove_dir_all(&root);
-
-        assert!(
-            relpaths.contains("src/v1/a.dag"),
-            "entry seed: {relpaths:?}"
-        );
-        assert!(
-            relpaths.contains("src/v1/b.dag"),
-            "imported v1 module present"
-        );
-        assert!(
-            relpaths.contains("dag/std/x.dag"),
-            "imported dag module present"
-        );
-        assert!(
-            !relpaths.contains("dag/std/y.dag"),
-            "unimported dag module must be EXCLUDED: {relpaths:?}"
-        );
-        assert!(
-            !relpaths.contains("dag/gunbc/u.dag"),
-            "unimported dag module must be EXCLUDED: {relpaths:?}"
-        );
-    }
-
-    #[test]
-    fn path_predicate_covers_src_v1_manifest_and_closure_only() {
-        let closure: HashSet<String> = ["dag/std/x.dag".to_string()].into_iter().collect();
-        // src/v1/** = emitter source + committed stage0 outputs + dag entry seeds.
-        assert!(regen_path_affects_regen(
-            "src/v1/stage0/src/cli_run.rs",
-            &closure
-        ));
-        assert!(regen_path_affects_regen("src/v1/03_resolve.dag", &closure));
-        // Cargo / toolchain build config (emitter binary inputs).
-        assert!(regen_path_affects_regen("Cargo.lock", &closure));
-        assert!(regen_path_affects_regen(
-            "src/v1/stage0/Cargo.toml",
-            &closure
-        ));
-        assert!(regen_path_affects_regen("rust-toolchain.toml", &closure));
-        assert!(regen_path_affects_regen(".cargo/config.toml", &closure));
-        // dag file in v1's transitive import closure.
-        assert!(regen_path_affects_regen("dag/std/x.dag", &closure));
-        // NOT affecting: v2 sources, unimported dag, docs — the skip-eligible surface.
-        assert!(!regen_path_affects_regen(
-            "src/v2/compiler/frontier.dag",
-            &closure
-        ));
-        assert!(!regen_path_affects_regen("dag/gunbc/ci_spec.dag", &closure));
-        assert!(!regen_path_affects_regen("docs/plans/x.md", &closure));
-    }
-}
-
 /// Empty ingest-manifest placeholder excluded from the module index when a later
 /// source root carries the host-emitted manifest (source-root ingest / closure gates).
 const SOURCE_ROOT_INGEST_MANIFEST_STUB_REL: &str =
@@ -1502,9 +1412,13 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
         .join("\u{1f}");
     MODULE_PATH_INDEX_CACHE.with(|cache| {
         if let Some(index) = cache.borrow().get(&key) {
+            shared_fill::record_hit("module_path_index", &key);
             return index.clone();
         }
+        shared_fill::begin_fill();
+        let start = std::time::Instant::now();
         let index = build_module_path_index_uncached(source_roots);
+        shared_fill::record_fill("module_path_index", &key, start.elapsed().as_nanos() as u64);
         cache.borrow_mut().insert(key, index.clone());
         index
     })
@@ -1968,6 +1882,47 @@ pub fn observe_declared_import_closure_symbol_binding(
     )
 }
 
+thread_local! {
+    static COMPILE_DAG_RUST_EMIT_CHECK_MEMO: std::cell::RefCell<
+        std::collections::HashMap<String, bool>,
+    > = std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+fn compile_dag_rust_emit_check_memo_key(
+    source: &str,
+    file_path: &str,
+    includes: &[String],
+    excludes: &[String],
+    inventory_digest: &str,
+) -> String {
+    use crate::v1_rt::{atom_identity_hash, hash_combine};
+    let mut h = atom_identity_hash(source.to_string());
+    h = hash_combine(h, atom_identity_hash(file_path.to_string()));
+    for s in includes {
+        h = hash_combine(h, atom_identity_hash(s.clone()));
+    }
+    for s in excludes {
+        h = hash_combine(h, atom_identity_hash(s.clone()));
+    }
+    h = hash_combine(h, atom_identity_hash(inventory_digest.to_string()));
+    h
+}
+
+fn floor_inventory_content_digest(inventory: &[PreparedSourceView]) -> String {
+    use crate::v1_rt::{atom_identity_hash, hash_combine};
+    let mut entries: Vec<(&str, &str)> = inventory
+        .iter()
+        .map(|e| (e.source.path.as_str(), e.source.content.as_str()))
+        .collect();
+    entries.sort_by(|a, b| a.0.cmp(b.0));
+    let mut h = atom_identity_hash("floor-prepared-inventory".to_string());
+    for (path, content) in entries {
+        h = hash_combine(h, atom_identity_hash(path.to_string()));
+        h = hash_combine(h, atom_identity_hash(content.to_string()));
+    }
+    h
+}
+
 /// Host realization backing the `compile_dag_rust_emit_check` builtin: compile an in-memory
 /// `.dag` program to Rust and check that the named emitted file contains every string in
 /// `includes` and none of `excludes`, with zero **compile-clean hard** diagnostics
@@ -1976,6 +1931,39 @@ pub fn observe_declared_import_closure_symbol_binding(
 /// check. A real, green-by-execution consumer of the v1 Rust emitter (DESIGN §5) — not a
 /// re-derivation of the emitter's own formula, so it can go red on a real emission regression.
 pub fn compile_dag_rust_emit_check(
+    source: &str,
+    file_path: &str,
+    includes: &[String],
+    excludes: &[String],
+) -> bool {
+    // Memo only under the floor guard, keyed on declared inputs AND the prepared
+    // inventory digest (`build_module_path_index_from_witness_roots` reads those bytes).
+    // Outside the guard there is no snapshot, so a hit would lie about disk.
+    let Some(inventory_digest) = floor_prepared_inventory_digest() else {
+        return compile_dag_rust_emit_check_uncached(source, file_path, includes, excludes);
+    };
+    let memo_key = compile_dag_rust_emit_check_memo_key(
+        source,
+        file_path,
+        includes,
+        excludes,
+        &inventory_digest,
+    );
+    if let Some(hit) = COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| m.borrow().get(&memo_key).copied())
+    {
+        return hit;
+    }
+    if crate::v1_interpreter::eval_recompute_trace_enabled() {
+        eprintln!(
+            "compile_dag_rust_emit_check: memo miss key={memo_key} (content-addressed recompute)"
+        );
+    }
+    let verdict = compile_dag_rust_emit_check_uncached(source, file_path, includes, excludes);
+    COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| m.borrow_mut().insert(memo_key, verdict));
+    verdict
+}
+
+fn compile_dag_rust_emit_check_uncached(
     source: &str,
     file_path: &str,
     includes: &[String],
@@ -1993,14 +1981,15 @@ pub fn compile_dag_rust_emit_check(
         .filter(|d| compile_clean_diagnostic_is_hard(d))
         .count();
     if hard_diagnostics != 0 {
-        return false;
-    }
-    match result.files.iter().find(|f| f.path == file_path) {
-        Some(f) => {
-            includes.iter().all(|n| f.content.contains(n.as_str()))
-                && excludes.iter().all(|n| !f.content.contains(n.as_str()))
+        false
+    } else {
+        match result.files.iter().find(|f| f.path == file_path) {
+            Some(f) => {
+                includes.iter().all(|n| f.content.contains(n.as_str()))
+                    && excludes.iter().all(|n| !f.content.contains(n.as_str()))
+            }
+            None => false,
         }
-        None => false,
     }
 }
 
@@ -2039,9 +2028,6 @@ const WET_RECEIPT_ENROLLMENT_AUTHORITY_REL: &str =
     "src/v2/compiler/self_host/wet_receipt_enrollment.dag";
 const WHOLE_TREE_STRICT_RESOLVE_EXCLUSION_SUBSTRINGS_DATA_NAME: &str =
     "whole_tree_strict_resolve_exclusion_substrings";
-const RESOLUTION_DIVERGENCE_CENSUS_ROSTER_EXCLUDED_MODULE_PREFIXES_DATA_NAME: &str =
-    "resolution_divergence_census_roster_excluded_module_prefixes";
-
 fn ci_layer_roots_authority_content() -> &'static str {
     static CONTENT: OnceLock<String> = OnceLock::new();
     CONTENT
@@ -2125,18 +2111,6 @@ pub(crate) fn string_list_data_from_module_source(
         return values;
     }
     panic!("lens table reader: no `data {data_name}` def in {module_rel_path}")
-}
-
-/// Read a `List<String>` data table from a live `.dag` lens authority on disk.
-pub fn lens_string_list_data(
-    module_rel_path: &str,
-    data_name: &str,
-    allow_empty: bool,
-) -> Vec<String> {
-    let path = workspace_root().join(module_rel_path);
-    let content = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("lens table reader: failed to read {}: {e}", path.display()));
-    string_list_data_from_module_source(module_rel_path, &content, data_name, allow_empty)
 }
 
 /// Project a `List<String>` data literal out of the ci_layer_roots authority's SOURCE TEXT via the
@@ -2320,36 +2294,6 @@ pub(crate) fn whole_tree_strict_resolve_exclusion_substrings_from_source(
     )
 }
 
-/// Project `resolution_divergence_census_roster_excluded_module_prefixes` out of the
-/// ci_layer_roots authority — modules under these prefixes are test harness / fixture
-/// territory and are excluded from the fn_parent_first_hit ⊆ containment_ambiguous
-/// construction invariant (not from the genuine silent-pick join gate).
-pub(crate) fn resolution_divergence_census_roster_excluded_module_prefixes_from_source(
-    content: &str,
-) -> Vec<String> {
-    string_list_data_from_ci_layer_roots_source(
-        content,
-        RESOLUTION_DIVERGENCE_CENSUS_ROSTER_EXCLUDED_MODULE_PREFIXES_DATA_NAME,
-    )
-}
-
-pub fn resolution_divergence_census_roster_excluded_module_prefixes() -> Vec<String> {
-    static PREFIXES: OnceLock<Vec<String>> = OnceLock::new();
-    PREFIXES
-        .get_or_init(|| {
-            resolution_divergence_census_roster_excluded_module_prefixes_from_source(
-                ci_layer_roots_authority_content(),
-            )
-        })
-        .clone()
-}
-
-pub fn resolution_divergence_module_path_roster_excluded(module_path: &str) -> bool {
-    resolution_divergence_census_roster_excluded_module_prefixes()
-        .iter()
-        .any(|prefix| module_path.starts_with(prefix.as_str()))
-}
-
 /// The witness layer roots, read live from the single .dag authority and memoized.
 ///
 /// VISIBILITY WIDENED `pub(crate)` -> `pub` by the cli-run cut, and the reason is a §3 one
@@ -2458,6 +2402,61 @@ pub(crate) fn default_source_roots() -> Vec<String> {
         .iter()
         .map(|r| ws.join(r).to_string_lossy().into_owned())
         .collect()
+}
+
+/// Source roots whose transitive import closure feeds stage0 self-compile (`required_regen`).
+pub fn regen_source_roots() -> Vec<String> {
+    vec!["src/v1".to_string(), "dag".to_string()]
+}
+
+/// Every `(repo-relative path, source text)` in the stage0 compile closure.
+///
+/// Seeds every `.dag` under `src/v1`; walks imports through `build_module_path_index`
+/// over `regen_source_roots()` so reachable `dag/` modules are included.
+pub fn regen_input_sources(workspace: &Path) -> Result<Vec<(String, String)>, String> {
+    let roots = regen_source_roots();
+    let abs_roots: Vec<String> = roots
+        .iter()
+        .map(|r| workspace.join(r).to_string_lossy().into_owned())
+        .collect();
+    let index = build_module_path_index(&abs_roots);
+    let entry_root = workspace.join(
+        roots
+            .first()
+            .ok_or_else(|| "regen source root list must not be empty".to_string())?,
+    );
+    let mut entry_paths = Vec::new();
+    collect_dag_files_result(&entry_root, &mut entry_paths)?;
+
+    let mut seen: std::collections::HashMap<String, (String, String)> =
+        std::collections::HashMap::new();
+    let mut queue: Vec<String> = Vec::new();
+    for path in &entry_paths {
+        let content =
+            std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+        let rel = workspace_relative_repo_path(&path.to_string_lossy());
+        if let Some(module_path) = extract_module_path(&content) {
+            seen.insert(module_path, (rel, content.clone()));
+        }
+        queue.push(content);
+    }
+    while let Some(content) = queue.pop() {
+        for module_path in extract_import_paths(&content) {
+            if seen.contains_key(&module_path) {
+                continue;
+            }
+            if let Some(rel_path) = index.get(&module_path) {
+                let file_path = workspace.join(rel_path);
+                let file_content = std::fs::read_to_string(&file_path)
+                    .map_err(|e| format!("read imported module {}: {e}", file_path.display()))?;
+                seen.insert(module_path, (rel_path.clone(), file_content.clone()));
+                queue.push(file_content);
+            }
+        }
+    }
+    let mut result: Vec<(String, String)> = seen.into_values().collect();
+    result.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(result)
 }
 
 pub fn build_module_path_index_from_witness_roots() -> HashMap<String, String> {
@@ -2984,48 +2983,12 @@ pub fn compile_clean_pipeline_has_hard_errors(diagnostics: &im::Vector<Rc<ErrorN
     diagnostics.iter().any(compile_clean_diagnostic_is_hard)
 }
 
-/// `PipelineResult` adapter for the compile CLI transport.
-pub fn compile_clean_vec_has_hard_errors(diagnostics: &Rc<Vec<Rc<ErrorNode>>>) -> bool {
-    if compile_clean_policy_read_refuses_gate() {
-        return true;
-    }
-    diagnostics.iter().any(compile_clean_diagnostic_is_hard)
-}
-
 /// `ResolvedPipelineResult` / `im::Vector` adapter for compile-clean checks.
 pub fn compile_clean_im_vector_has_hard_errors(diagnostics: &im::Vector<Rc<ErrorNode>>) -> bool {
     if compile_clean_policy_read_refuses_gate() {
         return true;
     }
     diagnostics.iter().any(compile_clean_diagnostic_is_hard)
-}
-
-pub fn compile_clean_im_vector_hard_error_count(diagnostics: &im::Vector<Rc<ErrorNode>>) -> usize {
-    diagnostics
-        .iter()
-        .filter(|d| compile_clean_diagnostic_is_hard(d))
-        .count()
-}
-
-pub fn compile_clean_im_vector_advisory_count(diagnostics: &im::Vector<Rc<ErrorNode>>) -> usize {
-    diagnostics
-        .iter()
-        .filter(|d| compile_clean_diagnostic_is_advisory(d))
-        .count()
-}
-
-pub fn compile_clean_vec_hard_error_count(diagnostics: &Rc<Vec<Rc<ErrorNode>>>) -> usize {
-    diagnostics
-        .iter()
-        .filter(|d| compile_clean_diagnostic_is_hard(d))
-        .count()
-}
-
-pub fn compile_clean_vec_advisory_count(diagnostics: &Rc<Vec<Rc<ErrorNode>>>) -> usize {
-    diagnostics
-        .iter()
-        .filter(|d| compile_clean_diagnostic_is_advisory(d))
-        .count()
 }
 
 fn format_compile_clean_hard_diagnostic_line(d: &Rc<ErrorNode>) -> String {
@@ -3486,294 +3449,6 @@ fn compile_clean_scoping_active() -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// Regen (self-host fixed-point) affected-set scoping.
-//
-// `regen_stage0` compiles `[src/v1, dag]` into the committed stage0 seed; both the
-// RegenVerifyGate and the SelfHostStalenessGate compare that emit against the
-// committed crate. The emit is a pure function of exactly one input set: every
-// `src/v1/**.dag` entry plus its transitive `import` closure through `[src/v1, dag]`
-// (`regen_input_sources` below — the single authority `regen_stage0` also consumes),
-// the emitter binary (all `src/v1/**` Rust, covered by the path prefix), the committed
-// stage0 outputs (all written under `src/v1/stage0/src`, same prefix), and the Cargo
-// manifest/lockfile. A PR whose diff touches none of those provably cannot change the
-// regen outcome, so the regen CI step can skip. Fail-closed: any uncertainty runs.
-// Main pushes and the 4-hourly falsifier run regen unconditionally as the cold control.
-// ---------------------------------------------------------------------------
-
-pub const REGEN_NOT_AFFECTED_SKIP_LABEL: &str = "regen_not_affected_skip";
-pub const RUN_REGEN_LABEL: &str = "run_regen";
-
-/// Relativize an absolute source path against the workspace root for regen display /
-/// closure identity. Single authority: consumed by `regen_stage0` and the skip witness.
-pub fn regen_workspace_relpath(path: &Path, workspace: &Path) -> String {
-    path.strip_prefix(workspace)
-        .unwrap_or(path)
-        .to_string_lossy()
-        .to_string()
-}
-
-// Distinct from `collect_dag_files` above (which panics on IO error and skips cargo
-// `target/` output dirs): regen needs the fail-closed Result variant and the exact
-// whole-tree walk `regen_stage0` has always used, so the closure stays byte-identical
-// to the committed seed (guarded by `regen_stage0 --verify`).
-fn regen_collect_dag_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
-    let mut entries: Vec<_> = std::fs::read_dir(dir)
-        .map_err(|e| format!("read dir {}: {e}", dir.display()))?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| format!("read dir entry in {}: {e}", dir.display()))?;
-    entries.sort_by_key(|entry| entry.file_name());
-    for entry in entries {
-        let path = entry.path();
-        if path.is_dir() {
-            regen_collect_dag_files(&path, files)?;
-        } else if path.extension().is_some_and(|ext| ext == "dag") {
-            files.push(path);
-        }
-    }
-    Ok(())
-}
-
-fn regen_build_module_index(
-    roots: &[PathBuf],
-) -> Result<std::collections::HashMap<String, PathBuf>, String> {
-    let mut index: std::collections::HashMap<String, PathBuf> = std::collections::HashMap::new();
-    for root in roots {
-        if !root.exists() {
-            return Err(format!("source root does not exist: {}", root.display()));
-        }
-        let mut dag_paths = Vec::new();
-        regen_collect_dag_files(root, &mut dag_paths)?;
-        for path in dag_paths {
-            let content = std::fs::read_to_string(&path)
-                .map_err(|e| format!("read {}: {e}", path.display()))?;
-            if let Some(module_path) = extract_module_path(&content) {
-                if let Some(existing) = index.get(&module_path) {
-                    return Err(format!(
-                        "duplicate module path `{module_path}`: {} and {}",
-                        existing.display(),
-                        path.display()
-                    ));
-                }
-                index.insert(module_path, path);
-            }
-        }
-    }
-    Ok(index)
-}
-
-/// The two source roots the self-host regen compiles: `src/v1` entry seeds and `dag`
-/// (the import-resolution index). Single authority for both `regen_stage0` and the
-/// regen affected-set skip witness.
-pub fn regen_source_roots(workspace: &Path) -> Vec<PathBuf> {
-    vec![workspace.join("src/v1"), workspace.join("dag")]
-}
-
-/// Every `.dag` source `regen_stage0` reads to emit the stage0 seed: all `src/v1/**.dag`
-/// entries plus their transitive `import` closure through `[src/v1, dag]`, returned as
-/// sorted `(workspace-relpath, content)`. This IS the set `regen_stage0` compiles — it
-/// consumes this function — so the regen compile and the skip witness share one closure
-/// authority (no forked "what regen reads"). The dedup is by module path, mirroring the
-/// original seed-collection semantics; `regen_stage0 --verify` is the byte-identical
-/// oracle guarding that equivalence.
-pub fn regen_input_sources(workspace: &Path) -> Result<Vec<(String, String)>, String> {
-    let roots = regen_source_roots(workspace);
-    let index = regen_build_module_index(&roots)?;
-    let entry_root = roots
-        .first()
-        .ok_or_else(|| "regen source root list must not be empty".to_string())?;
-    let mut entry_paths = Vec::new();
-    regen_collect_dag_files(entry_root, &mut entry_paths)?;
-
-    // module_path -> (relpath, content); the first occurrence of a module path wins, so
-    // src/v1 entry seeds and their import closure resolve to exactly the set regen emits.
-    let mut seen: std::collections::HashMap<String, (String, String)> =
-        std::collections::HashMap::new();
-    let mut queue: Vec<String> = Vec::new(); // module contents whose imports remain to walk
-    for path in &entry_paths {
-        let content =
-            std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
-        let rel = regen_workspace_relpath(path, workspace);
-        if let Some(module_path) = extract_module_path(&content) {
-            seen.insert(module_path, (rel, content.clone()));
-        }
-        queue.push(content);
-    }
-    while let Some(content) = queue.pop() {
-        for module_path in extract_import_paths(&content) {
-            if seen.contains_key(&module_path) {
-                continue;
-            }
-            if let Some(file_path) = index.get(&module_path) {
-                let file_content = std::fs::read_to_string(file_path)
-                    .map_err(|e| format!("read imported module {}: {e}", file_path.display()))?;
-                let rel = regen_workspace_relpath(file_path, workspace);
-                seen.insert(module_path, (rel, file_content.clone()));
-                queue.push(file_content);
-            }
-        }
-    }
-    let mut result: Vec<(String, String)> = seen.into_values().collect();
-    result.sort_by(|a, b| a.0.cmp(&b.0));
-    Ok(result)
-}
-
-/// Source-side carrier for `gunbc.stage0_emit_plan`'s declared host-supply scaffold.
-///
-/// This deliberately stops before resolve/infer/emit: every identity comes from the same
-/// parse-derived module-binding path used by `v2.compiler.source_authority`, over exactly the
-/// `regen_input_sources` closure. It must never accept an `EmitResult` or inspect emitted paths.
-/// Dissolve-on: generated_artifact_gate accepts a source_authority ModuleStorageIndex.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Stage0EmissionSourceIdentity {
-    pub module_path: String,
-    pub storage_path: String,
-    pub source_tree: &'static str,
-}
-
-thread_local! {
-    static STAGE0_EMISSION_SOURCE_IDENTITY_CACHE: RefCell<
-        std::collections::HashMap<PathBuf, Vec<Stage0EmissionSourceIdentity>>
-    > = RefCell::new(std::collections::HashMap::new());
-}
-
-pub fn stage0_emission_source_identities(
-    workspace: &Path,
-) -> Result<Vec<Stage0EmissionSourceIdentity>, String> {
-    if let Some(cached) =
-        STAGE0_EMISSION_SOURCE_IDENTITY_CACHE.with(|cache| cache.borrow().get(workspace).cloned())
-    {
-        return Ok(cached);
-    }
-    let mut identities = Vec::new();
-    let mut seen = std::collections::BTreeSet::new();
-    for (storage_path, content) in regen_input_sources(workspace)? {
-        let parsed =
-            parse_module_binding(Path::new(&storage_path), &content)?.ok_or_else(|| {
-                format!(
-                    "stage0 emission source identity missing module declaration: {storage_path}"
-                )
-            })?;
-        if !seen.insert(parsed.module_path.clone()) {
-            return Err(format!(
-                "stage0 emission source identity duplicated module: {}",
-                parsed.module_path
-            ));
-        }
-        let source_tree = if storage_path.starts_with("src/v1/") {
-            "V1SourceTree"
-        } else if storage_path.starts_with("dag/") {
-            "DagSourceTree"
-        } else {
-            return Err(format!(
-                "stage0 emission source identity outside modeled regen roots: {storage_path}"
-            ));
-        };
-        identities.push(Stage0EmissionSourceIdentity {
-            module_path: parsed.module_path,
-            storage_path,
-            source_tree,
-        });
-    }
-    STAGE0_EMISSION_SOURCE_IDENTITY_CACHE.with(|cache| {
-        cache
-            .borrow_mut()
-            .insert(workspace.to_path_buf(), identities.clone());
-    });
-    Ok(identities)
-}
-
-/// Does a diff-changed path belong to the regen input surface (fail-closed superset)?
-fn regen_path_affects_regen(changed: &str, dag_closure: &HashSet<String>) -> bool {
-    let p = normalize_repo_path(changed);
-    // src/v1/** = the emitter binary source (.rs), every committed stage0 output
-    // (all under src/v1/stage0/src), and the src/v1 .dag entry seeds.
-    if p.starts_with("src/v1/") {
-        return true;
-    }
-    // Cargo/toolchain build config: the emitter binary is built from these; a
-    // dependency, pinned-toolchain, or cargo-config change could in principle alter
-    // emitted bytes. Rare in practice; fail-closed (whole-file matches, no substring).
-    if p == "Cargo.lock"
-        || p == "Cargo.toml"
-        || p.ends_with("/Cargo.toml")
-        || p == "rust-toolchain.toml"
-        || p == "rust-toolchain"
-        || p == ".cargo/config.toml"
-        || p == ".cargo/config"
-    {
-        return true;
-    }
-    // dag/** files in v1's transitive import closure.
-    dag_closure.contains(&p)
-}
-
-/// CI label for the regen self-host fixed-point step's affected-set skip arm.
-/// `regen_not_affected_skip` iff the merge-base diff touches no regen input;
-/// `run_regen` on any intersection, empty diff, departed non-docs path, or
-/// observation/closure failure (fail-closed). This computes the label only; the CI
-/// shell (ci_spec.dag) gates the skip to pull_request events, so push-to-main runs
-/// regen unconditionally as the cold control that surfaces a wrong closure on the
-/// next merge.
-pub fn regen_floor_skip_label_for_ci() -> String {
-    let (changed_paths, departed_paths) = match floor_git_diff_name_status_range() {
-        Ok(v) => v,
-        Err(msg) => {
-            eprintln!("regen floor skip: diff observation failed ({msg}) — run regen");
-            return RUN_REGEN_LABEL.to_string();
-        }
-    };
-    if changed_paths.is_empty() {
-        eprintln!("regen floor skip: empty diff — run regen (fail-closed cold control)");
-        return RUN_REGEN_LABEL.to_string();
-    }
-    // Departed (deleted / renamed-from) non-docs paths: the closure below is computed
-    // from the CURRENT tree, so a deleted `.dag` file that WAS in the regen closure is
-    // invisible to it — the intersection test would skip a diff that provably changes
-    // the fresh emit (the deleted module no longer contributes; its importers now fail
-    // to resolve). Same guard shape as compile-clean's departed arm: run, never skip.
-    if let Some(gone) = departed_paths.iter().find(|p| {
-        let n = normalize_repo_path(p);
-        !n.starts_with("docs/")
-    }) {
-        eprintln!(
-            "regen floor skip: departed non-docs path in diff ({}) — run regen (current-tree closure cannot see deletions)",
-            normalize_repo_path(gone)
-        );
-        return RUN_REGEN_LABEL.to_string();
-    }
-    let workspace = workspace_root();
-    let dag_closure: HashSet<String> = match regen_input_sources(&workspace) {
-        Ok(sources) => sources
-            .into_iter()
-            .map(|(p, _)| normalize_repo_path(&p))
-            .collect(),
-        Err(msg) => {
-            eprintln!("regen floor skip: input-closure computation failed ({msg}) — run regen");
-            return RUN_REGEN_LABEL.to_string();
-        }
-    };
-    match changed_paths
-        .iter()
-        .find(|p| regen_path_affects_regen(p, &dag_closure))
-    {
-        Some(example) => {
-            eprintln!(
-                "regen floor skip: diff intersects regen inputs (e.g. {}) — run regen",
-                normalize_repo_path(example)
-            );
-            RUN_REGEN_LABEL.to_string()
-        }
-        None => {
-            eprintln!(
-                "regen floor skip: {} changed path(s), none intersect the regen input closure (src/v1/** ∪ v1 dag import-closure ∪ Cargo/toolchain config) — self-host fixed-point provably unchanged (push-to-main runs regen unconditionally as the cold control)",
-                changed_paths.len()
-            );
-            REGEN_NOT_AFFECTED_SKIP_LABEL.to_string()
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Class B import-closure gate affected-set skip (#7835).
 //
 // `run_class_b_import_closure_gate` costs ~2.3 min wall per cold run; skip when the
@@ -3788,6 +3463,12 @@ pub fn regen_floor_skip_label_for_ci() -> String {
 
 pub const CLASS_B_ENTRY_REL: &str = "src/v2/extdeps/languages/rust_test_fixtures.dag";
 pub const CLASS_B_TRANSPORT_REL: &str = "src/v2/workflow/class_b_import_closure_transport.dag";
+/// Rows 1-2's shape+call, relocated out of CLASS_B_TRANSPORT_REL so a witness reaching only
+/// rows 1-2 does not inherit the transport module's extdeps.git / extdeps.git.inspect /
+/// gunbc.ci_layer_roots closure (DESIGN.md §3 relocation-not-refork; the same signature
+/// extdeps_scope_placement_gate_loudness_witness's repair fixed). The transport module imports
+/// this one back for rows 1-2's own use, so it is part of the gate's input closure too.
+pub const CLASS_B_PROBE_REL: &str = "src/v2/workflow/class_b_import_closure_probe.dag";
 pub const CLASS_B_BINDING_REL: &str = "dag/gunbc/declared_import_closure_binding.dag";
 pub const CLASS_B_OVERLAY_REL: &str = "dag/gunbc/class_b_import_closure_overlay.dag";
 pub const CLASS_B_FIXTURES_PREFIX: &str = "fixtures/class_b_import_closure";
@@ -3796,6 +3477,7 @@ const CLASS_B_DECLARED_POOL_ROOTS_DATA_NAME: &str = "class_b_declared_import_poo
 pub const CLASS_B_GATE_INPUT_ENTRIES: &[&str] = &[
     CLASS_B_ENTRY_REL,
     CLASS_B_TRANSPORT_REL,
+    CLASS_B_PROBE_REL,
     CLASS_B_BINDING_REL,
     CLASS_B_OVERLAY_REL,
 ];
@@ -3866,7 +3548,7 @@ fn dag_module_index(
             return Err(format!("source root does not exist: {}", root.display()));
         }
         let mut dag_paths = Vec::new();
-        regen_collect_dag_files(root, &mut dag_paths)?;
+        collect_dag_files(root, &mut dag_paths);
         for path in dag_paths {
             let content = std::fs::read_to_string(&path)
                 .map_err(|e| format!("read {}: {e}", path.display()))?;
@@ -3899,7 +3581,8 @@ fn import_closure_dag_files(
                 continue;
             };
             for path in candidates {
-                let rel = normalize_repo_path(&regen_workspace_relpath(path, workspace));
+                let rel =
+                    normalize_repo_path(&workspace_relative_repo_path(&path.to_string_lossy()));
                 if !seen.insert(rel) {
                     continue;
                 }
@@ -3930,8 +3613,8 @@ fn collect_repo_files_under_prefix(
             if path.is_dir() {
                 walk(&path, workspace, seen)?;
             } else if path.is_file() {
-                seen.insert(normalize_repo_path(&regen_workspace_relpath(
-                    &path, workspace,
+                seen.insert(normalize_repo_path(&workspace_relative_repo_path(
+                    &path.to_string_lossy(),
                 )));
             }
         }
@@ -3948,12 +3631,9 @@ fn collect_repo_files_under_prefix(
 /// 🟡 dissolve-on (two triggers, near then terminal):
 ///
 /// NEAR — the import walk here duplicates the shape the deleted selection-control suite used, and
-/// `regen_input_sources`. They are NOT unified yet because regen's closure is guarded by a
-/// byte-identical oracle (`regen_stage0 --verify`) that this change is not in a position to
-/// re-verify, and the three differ in duplicate policy (refuse vs. superset) and entry
-/// selection (whole-root walk vs. declared list). DISSOLVES WHEN the walk is lifted to one
-/// parameterized helper (duplicate policy + entry source as arguments) and regen's byte oracle
-/// re-greens on it.
+/// `regen_input_sources` (whole-root seed under `src/v1` vs. declared entry list). They differ in
+/// entry selection and duplicate policy (refuse vs. superset). DISSOLVES WHEN lifted to one
+/// parameterized helper (duplicate policy + entry source as arguments).
 ///
 /// TERMINAL — owning lane: `docs/plans/affected-set-precompute-pruning.md`, whose **Step 5
 /// "delete Rust parallel"** (NOT STARTED, gated on Step 4) is what retires host-side selection
@@ -4179,35 +3859,11 @@ enum FloorCompileCleanReceipt {
 
 static FLOOR_COMPILE_CLEAN_RECEIPT: Mutex<Option<FloorCompileCleanReceipt>> = Mutex::new(None);
 
-static REGEN_VERIFY_GATE_FAILURE_DETAIL: Mutex<Option<String>> = Mutex::new(None);
 static GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL: Mutex<Option<String>> = Mutex::new(None);
-
-pub fn record_regen_verify_gate_failure_detail(detail: String) {
-    if let Ok(mut guard) = REGEN_VERIFY_GATE_FAILURE_DETAIL.lock() {
-        *guard = Some(detail);
-    }
-}
-
-pub fn consume_regen_verify_gate_failure_detail() -> String {
-    match REGEN_VERIFY_GATE_FAILURE_DETAIL.lock() {
-        Ok(guard) => guard.clone().unwrap_or_else(|| {
-            "regen_verify failure detail unavailable (gate body did not run in this process)"
-                .to_string()
-        }),
-        Err(e) => format!("regen_verify failure detail refused: gate detail lock poisoned ({e})"),
-    }
-}
 
 pub fn record_generated_artifact_drift_gate_failure_detail(detail: String) {
     if let Ok(mut guard) = GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL.lock() {
         *guard = Some(detail);
-    }
-}
-
-#[cfg(test)]
-fn reset_regen_verify_gate_failure_detail_for_test() {
-    if let Ok(mut guard) = REGEN_VERIFY_GATE_FAILURE_DETAIL.lock() {
-        *guard = None;
     }
 }
 
@@ -5156,19 +4812,6 @@ pub fn import_closure_from_adjacency(
     result
 }
 
-/// Host realization of `v2.lens.module_graph.import_closure` over modeled fact rows.
-/// Authority: `src/v2/lens/module_graph.dag` — this is the consumer repoint surface for
-/// `cli_run.rs` resolve/reconcile (Phase 1 de-fork); fact extraction stays on the existing
-/// `import_resolution_facts` / `module_declaration_facts` builtins.
-pub fn import_closure_from_facts(
-    entry_path: &str,
-    edges: &[ImportResolutionFactRaw],
-    nodes: &[ModuleDeclarationFactRaw],
-) -> Vec<String> {
-    let adjacency = build_import_adjacency(edges, nodes);
-    import_closure_from_adjacency(entry_path, &adjacency)
-}
-
 /// Pre-built `import_resolution_facts` / `module_declaration_facts` rows for one pool-root
 /// set. Built once per `MultiEntryIndex` / resolve pass so closure queries do not re-scan the
 /// corpus on every `resolve_transitively` call (Phase 1 perf receipt, DESIGN §2).
@@ -5991,9 +5634,17 @@ pub fn build_module_graph_facts_live(pool_roots: &[String]) -> ModuleGraphFactsL
     let key = pool_roots_for_module_graph_closure(pool_roots).join("\u{1f}");
     MODULE_GRAPH_FACTS_CACHE.with(|cache| {
         if let Some(facts) = cache.borrow().get(&key) {
+            shared_fill::record_hit("module_graph_facts", &key);
             return facts.clone();
         }
+        shared_fill::begin_fill();
+        let start = std::time::Instant::now();
         let facts = build_module_graph_facts_live_uncached(pool_roots);
+        shared_fill::record_fill(
+            "module_graph_facts",
+            &key,
+            start.elapsed().as_nanos() as u64,
+        );
         cache.borrow_mut().insert(key, facts.clone());
         facts
     })
@@ -6571,7 +6222,7 @@ pub fn load_sources_for_entry(
     source_roots: &[String],
     entry_path: &str,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    let index = build_multi_entry_index(source_roots);
+    let index = process_shared_index(source_roots);
     load_sources_for_entry_with_pool(&index, entry_path)
 }
 
@@ -7656,6 +7307,66 @@ pub enum BudgetKind {
     Wall,
 }
 
+/// WHETHER THE NUMBER IS A MEASUREMENT OR A LOWER BOUND — the axis `BudgetKind` does not carry.
+///
+/// `BudgetKind` says which clock was consulted. It does not say whether the witness FINISHED,
+/// and those are different facts with different arithmetic:
+///
+/// - `Interrupted` — an armed deadline fired and the witness was aborted. `elapsed_ms` is
+///   right-censored: the true cost is at least that and is otherwise unknown. A row that would
+///   have taken two seconds and one that would have taken forty report the same number, because
+///   the number is the ceiling plus poll granularity rather than a property of the row.
+/// - `CompletedOverBudget` — the witness ran to completion and passed, and the completion-side
+///   backstop then reclassified it. `elapsed_ms` is exact.
+///
+/// Keeping the two apart is what makes a cost distribution computable at all: a spread taken
+/// across a censoring boundary is an artifact of where the ceiling sits, not a fact about the
+/// witnesses. It is also the condition named in `claim_executor.rs`'s cost-basis seeding guard,
+/// which refuses to seed a basis from a deadline-killed row "until ClaimOutcome::TimedOut can
+/// distinguish killed from completed".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BudgetCompletion {
+    Interrupted,
+    CompletedOverBudget,
+}
+
+// WHY THIS IS A FIELD AND NOT A SIBLING VARIANT — the actual trade, recorded so the next person
+// weighing it has the argument rather than the outcome.
+//
+// The discriminator sits INSIDE `TimedOut`, which is exactly what made the erasure writable: a
+// `TimedOut { .. }` wildcard absorbs it, and the classifier did precisely that. Had
+// passed-over-budget been a sibling `ClaimOutcome` variant, that wildcard would not have
+// compiled against it and the bug would have been a type error instead of a review miss.
+//
+// It is still a field, for a reason that is not inertia. The variant split this replaced was on
+// RAISE MECHANISM — in-eval poll versus completion-side backstop — which is not a distinction
+// any consumer should act on, and unifying it is what closed the absorption in the first place.
+// Passed-versus-interrupted IS a real distinction because it determines the remedy. Splitting
+// the variant again would re-fragment an event vocabulary that was just deliberately closed, so
+// the axis lives on the arm and the wildcard hazard is paid for by review.
+//
+// NEXT-RUNG TRIGGER, falsifiable rather than a site count: `elapsed: Measured | LowerBound`
+// makes the bad read UNCONSTRUCTIBLE rather than merely reviewable — you cannot obtain the
+// number without deciding which kind you hold. It is not justified by today's population
+// (seven consuming sites), because that is the wrong denominator: the value scales with the
+// RATE at which consuming sites appear and the cost of one miss. So the trigger is a condition,
+// not a threshold — THE NEXT CONSUMING SITE ADDED THAT DROPS THE AXIS is the evidence that
+// arm-level is insufficient and the climb is earned. Today's rate evidence, for whoever reads
+// this next: four sites dropped it in one PR, authored by the person who wrote the converters,
+// on the day he was most primed to look for it, one of them a fabricated receipt protected by
+// its own justifying comment.
+
+impl BudgetCompletion {
+    /// How the elapsed number may be READ. Rendered beside every budget figure so a reader
+    /// never has to know which mechanism produced it.
+    pub fn elapsed_reading(self) -> &'static str {
+        match self {
+            BudgetCompletion::Interrupted => "at least",
+            BudgetCompletion::CompletedOverBudget => "exactly",
+        }
+    }
+}
+
 impl BudgetKind {
     pub fn label(self) -> &'static str {
         match self {
@@ -7690,6 +7401,14 @@ pub enum ClaimOutcome {
         elapsed_ms: u64,
         budget_ms: u64,
         kind: BudgetKind,
+        completion: BudgetCompletion,
+    },
+    /// A host-tool program could not be resolved to an existing executable path.
+    /// Typed at the witness boundary so downstream classifiers do not substring-match
+    /// `Display` prose from `InterpError::HostToolUnresolved`.
+    HostToolUnresolved {
+        name: String,
+        probed: Vec<String>,
     },
 }
 
@@ -7766,12 +7485,6 @@ static PROVIDER_BOOTSTRAP_STORE_SKIPS: std::sync::atomic::AtomicUsize =
 
 fn record_provider_bootstrap_store_skip() {
     PROVIDER_BOOTSTRAP_STORE_SKIPS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-}
-
-/// Observed count of bootstrap-window store skips — the countable half of the
-/// disclosed refusal (§5).
-pub fn provider_bootstrap_store_skip_count() -> usize {
-    PROVIDER_BOOTSTRAP_STORE_SKIPS.load(std::sync::atomic::Ordering::SeqCst)
 }
 
 pub(crate) fn with_cross_process_provider_routing_suppressed<F, R>(f: F) -> R
@@ -9339,19 +9052,6 @@ fn stripped_fn_body_marker() -> Rc<Node> {
 pub fn is_census_heads_fn_stand_in(node: &Rc<Node>) -> bool {
     node.name == CENSUS_HEADS_FN_STAND_IN_NAME
         || STRIPPED_FN_BODY_MARKER.with(|marker| Rc::ptr_eq(node, marker))
-}
-
-/// Optional query helper for non-inference traversals. Loud refusal on inference is
-/// enforced by `ExprErrorKind::CensusHeadsBodyStripped` in `infer_expr`, not this API.
-pub fn census_heads_body_traversal_refusal(node: &Rc<Node>) -> Option<String> {
-    if is_census_heads_fn_stand_in(node) {
-        Some(format!(
-            "census heads-only pool parse refused: body traversal hit stand-in '{}'",
-            CENSUS_HEADS_FN_STAND_IN_NAME
-        ))
-    } else {
-        None
-    }
 }
 
 #[cfg(any(test, feature = "interp_test_witness"))]
@@ -11113,20 +10813,6 @@ fn typed_module_cache_cap_derivation() -> (usize, String, bool) {
         TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL,
     );
     (cap, source_label, degraded)
-}
-
-/// Host-budget-derived cap on `typed_module_cache` entries for the private
-/// per-index store (width=1 drain path). `GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES`
-/// is an operator/test probe: still clamped to `1..CEIL` (never unbounded); a
-/// malformed override falls through to the derived cap (fail-closed).
-///
-/// This is the pure, un-cached derivation — kept for direct env-override
-/// tests. Runtime call sites must go through `typed_module_cache_cap`
-/// instead, which samples this exactly once per index lifetime; re-deriving
-/// from a live host-shared signal on every insert was the 2026-07-21 fleet
-/// OOM incident (see the doc comment on `MultiEntryIndex::typed_module_cache_cap`).
-pub fn typed_module_cache_max_entries() -> usize {
-    typed_module_cache_cap_derivation().0
 }
 
 /// The typed-cache cap for `index`, sampled exactly ONCE for this index's
@@ -14660,6 +14346,95 @@ fn render_batch_summary_line(
     }
 }
 
+/// Mirror of `gunbc.observation_ci_render.ci_witness_claim_result_text` and
+/// `ci_human_elapsed`. Hot-path render for per-witness floor lines: interpreter
+/// eval per printed line (~800 anomaly rows) dominated the fold and pushed marginal
+/// witnesses over the 500ms receipt budget. Format authority stays in `.dag`;
+/// `observation_ci_render_witness_test` is the oracle (same pattern as
+/// `render_heartbeat_line_mirror`).
+const WITNESS_CLAIM_COLUMN_WIDTH: usize = 60;
+
+fn witness_claim_package_path(subject: &str) -> String {
+    if subject.contains('/') {
+        if subject.ends_with(".dag") {
+            subject[..subject.len() - 4].to_string()
+        } else {
+            subject.to_string()
+        }
+    } else {
+        subject.replace('.', "/")
+    }
+}
+
+fn witness_bazel_target_label(subject: &str, function: &str) -> String {
+    format!("//{}:{}", witness_claim_package_path(subject), function)
+}
+
+pub fn render_witness_claim_result_text_mirror(
+    subject: &str,
+    function: &str,
+    wall_nanos: u128,
+    passed: bool,
+) -> String {
+    let label = witness_bazel_target_label(subject, function);
+    let padded = if label.len() >= WITNESS_CLAIM_COLUMN_WIDTH {
+        label
+    } else {
+        format!(
+            "{}{}",
+            label,
+            " ".repeat(WITNESS_CLAIM_COLUMN_WIDTH - label.len())
+        )
+    };
+    let token = if passed { "PASSED" } else { "FAILED" };
+    format!(
+        "{padded}{token} in {}",
+        crate::v1_rt::obs_human_elapsed(wall_nanos)
+    )
+}
+
+/// Render one per-witness claim-result line through the `.dag` authority. Every choice about
+/// how the line READS lives in `gunbc.observation_ci_render ci_witness_claim_result_text`; the
+/// seed transports subject, function, verdict and wall time only.
+fn render_witness_claim_result_text(
+    subject: &str,
+    function: &str,
+    wall_nanos: u128,
+    passed: bool,
+) -> Option<String> {
+    // Fail-closed: policy install must have run before any witness line prints.
+    OBSERVATION_SOURCE_ROOTS.get()?;
+    Some(render_witness_claim_result_text_mirror(
+        subject, function, wall_nanos, passed,
+    ))
+}
+
+/// Mirror of `gunbc.observation_ci_render.ci_witness_budget_warn_text`. Hot-path render
+/// for the warn-tier line (~800 rows/run): native format, no per-line interpreter eval.
+pub fn render_witness_budget_warn_text_mirror(
+    qualified: &str,
+    wall_ms: u128,
+    warn_ms: u64,
+    budget_ms: u64,
+) -> String {
+    format!(
+        "[floor-witness-slow] {qualified} {wall_ms}ms > {warn_ms}ms warn (ceiling {budget_ms}ms)"
+    )
+}
+
+/// Render one per-witness budget-warn line through the `.dag` authority.
+fn render_witness_budget_warn_text(
+    qualified: &str,
+    wall_ms: u128,
+    warn_ms: u64,
+    budget_ms: u64,
+) -> Option<String> {
+    OBSERVATION_SOURCE_ROOTS.get()?;
+    Some(render_witness_budget_warn_text_mirror(
+        qualified, wall_ms, warn_ms, budget_ms,
+    ))
+}
+
 pub fn install_output_policy(source_roots: &[String]) {
     let entry = "dag/gunbc/output_policy.dag";
     let (graph, indices) = match resolve_entry_graph_shared(source_roots, entry) {
@@ -15830,8 +15605,37 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
         // relocating-the-file-does-not-discharge-it text) reaches the witness author. Mapping
         // here rather than in the kernel is what keeps a served HTTP route from receiving
         // witness guidance it cannot act on.
-        Err(e) => ClaimOutcome::RuntimeError {
-            message: format!("{}", v1_interpreter::map_budget_error_to_witness_refusal(e)),
+        // ONE EVENT, ONE VARIANT. A budget refusal reaches this seam two ways — the in-eval
+        // stride poll raises it as an error, while the completion-side backstop produces
+        // `TimedOut` directly — and until now the first arrived as a `RuntimeError` carrying
+        // the refusal as prose. That is one fact in two representations, and it is not
+        // cosmetic: any consumer partitioning on the outcome sees a budget refusal as an
+        // ordinary runtime error, so a partition that means to treat the two apart cannot.
+        // Mapping both raised forms onto `TimedOut` here makes the outcome vocabulary closed
+        // over the event, so a total match is total in fact and not only in shape.
+        Err(e) => match v1_interpreter::map_budget_error_to_witness_refusal(e) {
+            v1_interpreter::InterpError::HostToolUnresolved { name, probed } => {
+                ClaimOutcome::HostToolUnresolved { name, probed }
+            }
+            v1_interpreter::InterpError::EvalBudgetExceeded { cpu_ms, budget_ms } => {
+                ClaimOutcome::TimedOut {
+                    elapsed_ms: cpu_ms,
+                    budget_ms,
+                    kind: BudgetKind::Cpu,
+                    completion: BudgetCompletion::Interrupted,
+                }
+            }
+            v1_interpreter::InterpError::WitnessWallBudgetExceeded { wall_ms, budget_ms } => {
+                ClaimOutcome::TimedOut {
+                    elapsed_ms: wall_ms,
+                    budget_ms,
+                    kind: BudgetKind::Wall,
+                    completion: BudgetCompletion::Interrupted,
+                }
+            }
+            other => ClaimOutcome::RuntimeError {
+                message: format!("{other}"),
+            },
         },
     }
 }
@@ -15953,10 +15757,65 @@ pub fn run_claims_in_process(
 /// builtin-heavy) can finish over budget without ever hitting a poll. A Pass that
 /// exceeded the budget converts to the same typed refusal here — the witness is over
 /// the fast-lane classification either way, and silent green would fail open on the
-/// operator 5s rule. A Fail/RuntimeError stays itself: those are already loud, and
+/// operator eval-budget ruling (2026-08-17; ceiling at `required_floor_claim_budget_ms`).
+/// A Fail/RuntimeError stays itself: those are already loud, and
 /// replacing a genuine finding with the budget message would discard it. `cpu_nanos` is
 /// THREAD CPU time (not wall), matching the stride-poll metric — a witness whose wall time
 /// was inflated by cold-I/O or governor time-slicing is not misclassified as over-budget.
+/// WHICH ARM OF THE EXPECTED-RED PARTITION AN ENROLLED ROW LANDS IN.
+///
+/// A total function over the outcome, so the partition is a value the caller matches on rather
+/// than three `continue`s whose exhaustiveness holds only by reading the loop. The three arms
+/// are mutually exclusive by construction here; the caller's sum check then verifies that the
+/// roster is covered exactly once.
+#[derive(Debug, PartialEq, Eq)]
+enum ExpectedRedArm {
+    /// Enrolled and failed. Agreement.
+    Held,
+    /// Enrolled and passed. The debt was repaid and the roster is stale — reds the build.
+    NowPassing,
+    /// Enrolled and INTERRUPTED at a budget. NOT agreement: an interruption is a lower bound on
+    /// cost, never a verdict, so the enrolled claim was never decided.
+    BudgetRefused,
+    /// Enrolled, PASSED, and then reclassified because its exact cost exceeded the budget.
+    ///
+    /// This arm exists because the row is true on two axes at once and the other three arms
+    /// each force a choice between them. Semantically the claim WAS decided and it passed, so
+    /// the roster row is stale and must be removed. On cost it is over budget with an EXACT
+    /// elapsed, so a real cost debt remains. Reporting it as `BudgetRefused` says the claim
+    /// went undecided, which is false — that is "a budget outcome is never stale", the same
+    /// absorption as "a budget outcome is always held" one arm over, and it hides precisely the
+    /// signal the roster exists to surface: that the debt was repaid. Reporting it as
+    /// `NowPassing` would drop the cost fact instead. So it reports BOTH, and the reader gets
+    /// two remedies rather than whichever one the code happened to pick.
+    ///
+    /// Reachability is not incidental: `budget_completion_outcome` and its wall sibling rewrite
+    /// only `ClaimOutcome::Pass`, so `CompletedOverBudget` cannot occur for a failing witness.
+    /// The arm therefore means "passed, then reclassified on cost", not merely "completed".
+    PassedOverBudget,
+    /// Enrolled but the host tool chain could not resolve a required binary. NOT a budget
+    /// refusal — no subject verdict, no cost lower bound, remedy is infra not witness cost.
+    HostToolUnresolved,
+}
+
+fn expected_red_arm(outcome: &ClaimOutcome) -> ExpectedRedArm {
+    match outcome {
+        ClaimOutcome::Pass => ExpectedRedArm::NowPassing,
+        ClaimOutcome::TimedOut {
+            completion: BudgetCompletion::Interrupted,
+            ..
+        } => ExpectedRedArm::BudgetRefused,
+        ClaimOutcome::TimedOut {
+            completion: BudgetCompletion::CompletedOverBudget,
+            ..
+        } => ExpectedRedArm::PassedOverBudget,
+        ClaimOutcome::Fail | ClaimOutcome::NotBool { .. } | ClaimOutcome::RuntimeError { .. } => {
+            ExpectedRedArm::Held
+        }
+        ClaimOutcome::HostToolUnresolved { .. } => ExpectedRedArm::HostToolUnresolved,
+    }
+}
+
 fn budget_completion_outcome(
     budget: Option<u64>,
     outcome: ClaimOutcome,
@@ -15968,6 +15827,7 @@ fn budget_completion_outcome(
                 elapsed_ms: (cpu_nanos / 1_000_000) as u64,
                 budget_ms,
                 kind: BudgetKind::Cpu,
+                completion: BudgetCompletion::CompletedOverBudget,
             }
         }
         (_, o) => o,
@@ -15988,6 +15848,7 @@ fn wall_budget_completion_outcome(
                 elapsed_ms: (wall_nanos / 1_000_000) as u64,
                 budget_ms,
                 kind: BudgetKind::Wall,
+                completion: BudgetCompletion::CompletedOverBudget,
             }
         }
         (_, o) => o,
@@ -16012,10 +15873,20 @@ mod budget_completion_tests {
                 elapsed_ms,
                 budget_ms,
                 kind,
+                completion,
             } => {
                 assert_eq!(budget_ms, 5);
                 assert_eq!(elapsed_ms, 6);
                 assert_eq!(kind, BudgetKind::Cpu, "CPU budget must not report as wall");
+                // Binding `completion` rather than `..` is the point: this fn is one of the two
+                // producers of CompletedOverBudget, so if it ever emitted Interrupted the
+                // elapsed above would silently become a lower bound and 6 would stop being a
+                // measurement. A `..` here would have accepted that.
+                assert_eq!(
+                    completion,
+                    BudgetCompletion::CompletedOverBudget,
+                    "the completion-side backstop observes an exact elapsed, never a bound"
+                );
             }
             other => panic!("expected TimedOut, got {other:?}"),
         }
@@ -16100,10 +15971,16 @@ mod budget_completion_tests {
                 elapsed_ms,
                 budget_ms,
                 kind,
+                completion,
             } => {
                 assert_eq!(budget_ms, 600);
                 assert_eq!(elapsed_ms, 601_000);
                 assert_eq!(kind, BudgetKind::Wall, "wall budget must not report as CPU");
+                assert_eq!(
+                    completion,
+                    BudgetCompletion::CompletedOverBudget,
+                    "the completion-side backstop observes an exact elapsed, never a bound"
+                );
             }
             other => panic!("expected TimedOut, got {other:?}"),
         }
@@ -17920,16 +17797,41 @@ pub fn project_witness_cost_receipt(
                     ));
                     "witness_cost_seed_failed_event"
                 }
+                ClaimOutcome::HostToolUnresolved { name, probed } => {
+                    args.push((
+                        Some("error".to_string()),
+                        str_value(format!(
+                            "host tool unresolved: {name:?} (probed: {})",
+                            probed.join(", ")
+                        )),
+                    ));
+                    "witness_cost_seed_refused_event"
+                }
                 // A deadline-killed row is TimedOut, never Failed: its recorded wall is a
                 // CEILING, not a cost, and anything reading it as a completed duration
                 // reads a fabricated value. Both Millisecond carriers are built by calling
                 // the authored `millisecond` constructor across the boundary rather than
                 // assembling a Value::Record here, so the constructor stays the single
                 // authority for the carrier's shape.
+                // THE ONE DELIBERATE DROP — and per DESIGN §5 it is AcknowledgePreexistingDebt,
+                // not new debt, which is a distinction worth naming rather than leaving to a
+                // reader's charity. `std.observation` `TimedOut` never carried this axis, so the
+                // gap predates this change; what the change did was make it VISIBLE by creating
+                // an axis there was previously nothing to drop. Filing that as newly-introduced
+                // debt would teach the next author that surfacing a gap costs an approval, and
+                // the cheap move becomes leaving it unsurfaced — which is the incentive that
+                // verdict exists to remove.
+                // `std.observation` `TimedOut` carries { basis, budget, elapsed } and has no
+                // completion field yet, so there is nowhere on the carrier to put it — and
+                // fabricating a value to reach a more specific arm is exactly what the floor
+                // component receipt note already forbids for the first pair. This is the last
+                // `completion: _` in the seed and it dissolves when that std arm gains
+                // `completion` beside `basis`; every other consumer now reads the axis.
                 ClaimOutcome::TimedOut {
                     elapsed_ms,
                     budget_ms,
                     kind,
+                    completion: _,
                 } => {
                     // The clock the deadline was enforced on travels WITH the pair, so a
                     // reader of the event can tell a thread-CPU fail-stop from a wall
@@ -18174,78 +18076,6 @@ pub(crate) fn resolve_entry_file_under_roots(
     ))
 }
 
-pub fn wet_hermetic_scaffold_roster_entry_prefix(
-    source_roots: &[String],
-) -> Result<String, String> {
-    let entry =
-        resolve_entry_file_under_roots(source_roots, WET_HERMETIC_EQUIVALENCE_WITNESS_ENTRY)?;
-    let (graph, source_indices) = resolve_entry_graph_shared(source_roots, &entry)?;
-    let sources = load_sources_for_entry(source_roots, &entry)?;
-    let entry_source = sources
-        .iter()
-        .find(|s| s.path == entry || s.path.ends_with(WET_HERMETIC_EQUIVALENCE_WITNESS_ENTRY))
-        .ok_or_else(|| format!("{entry}: missing from entry closure"))?;
-    let entry_module = extract_module_path(&entry_source.content)
-        .ok_or_else(|| format!("{entry}: missing module declaration"))?;
-    let typed_module = entry_typed_module(&graph, &source_indices, &entry_module)?;
-    let si = Rc::new((*source_indices).clone());
-    for item in typed_module.items.iter() {
-        if item.body.is_none() {
-            continue;
-        }
-        let decl_name = authored_name_at(si.clone(), item.clone());
-        if decl_name != WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA {
-            continue;
-        }
-        let body = item.body.as_ref().ok_or_else(|| {
-            format!("{entry}: data '{WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA}' missing body")
-        })?;
-        return literal_string_from_expr(body).ok_or_else(|| {
-            format!(
-                "{entry}: data '{WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA}' must be a string literal"
-            )
-        });
-    }
-    Err(format!(
-        "{entry}: missing data '{WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA}'"
-    ))
-}
-
-pub fn is_governed_service_representative_row(row: &DiscoveryRow, prefix: &str) -> bool {
-    !prefix.is_empty() && row.entry.contains(prefix)
-}
-
-pub fn wet_hermetic_discovery_outcome_divergences(
-    wet: &[DiscoveryWitnessOutcome],
-    hermetic: &[DiscoveryWitnessOutcome],
-) -> Vec<String> {
-    let mut divergences = Vec::new();
-    if wet.len() != hermetic.len() {
-        divergences.push(format!(
-            "roster size mismatch: wet={} hermetic={}",
-            wet.len(),
-            hermetic.len()
-        ));
-        return divergences;
-    }
-    for (w, h) in wet.iter().zip(hermetic.iter()) {
-        if w.entry != h.entry || w.function != h.function {
-            divergences.push(format!(
-                "roster order mismatch: wet=({},{}) hermetic=({},{})",
-                w.function, w.entry, h.function, h.entry
-            ));
-            continue;
-        }
-        if w.outcome != h.outcome {
-            divergences.push(format!(
-                "{} ({}): wet={:?} hermetic={:?}",
-                w.function, w.entry, w.outcome, h.outcome
-            ));
-        }
-    }
-    divergences
-}
-
 fn proc_status_kb_field(prefix: &str) -> Option<u64> {
     let status = std::fs::read_to_string("/proc/self/status").ok()?;
     let line = status.lines().find(|l| l.starts_with(prefix))?;
@@ -18333,20 +18163,6 @@ pub fn peak_rss_vhwm_bytes() -> Option<u64> {
     {
         Some(raw.saturating_mul(1024))
     }
-}
-
-/// `memory.events` `high` counter from the process leaf cgroup, when readable.
-pub fn cgroup_memory_events_high() -> Option<u64> {
-    let dir = crate::memory_governor::leaf_cgroup_dir()?;
-    let raw = crate::memory_governor::read_cgroup_raw(&dir, "memory.events")?;
-    raw.lines().find_map(|line| {
-        let mut parts = line.split_whitespace();
-        let key = parts.next()?;
-        if key != "high" {
-            return None;
-        }
-        parts.next()?.parse().ok()
-    })
 }
 
 pub fn floor_discovery_path_excluded(path: &str) -> bool {
@@ -18795,9 +18611,9 @@ fn frozen_path_deferral_keys() -> &'static [String] {
     })
 }
 
-fn frozen_path_deferral_keys_from_source(content: &str) -> Vec<String> {
+fn frozen_path_deferral_rows_from_source(content: &str) -> Vec<(String, Vec<String>)> {
     const HEAD: &str = "FrozenPathDeferral {";
-    let mut keys: Vec<String> = Vec::new();
+    let mut rows: Vec<(String, Vec<String>)> = Vec::new();
     let mut cursor = 0usize;
     while let Some(offset) = content[cursor..].find(HEAD) {
         let at = cursor + offset;
@@ -18826,6 +18642,14 @@ fn frozen_path_deferral_keys_from_source(content: &str) -> Vec<String> {
                  function list — a freeze row covering nothing is a row that should be deleted"
             );
         }
+        rows.push((entry, functions));
+    }
+    rows
+}
+
+fn frozen_path_deferral_keys_from_source(content: &str) -> Vec<String> {
+    let mut keys: Vec<String> = Vec::new();
+    for (entry, functions) in frozen_path_deferral_rows_from_source(content) {
         for function in functions {
             let key = witness_admission_manifest_key(&entry, &function);
             if !keys.iter().any(|k| k == &key) {
@@ -18834,6 +18658,97 @@ fn frozen_path_deferral_keys_from_source(content: &str) -> Vec<String> {
         }
     }
     keys
+}
+
+/// The same freeze rows, joined against the ENROLLED-ROSTER identity space instead of the
+/// admission-key space: `module.function` (as `floor_expected_red_roster` writes it) rather
+/// than `entry::function` (as `witness_admission_manifest_key` writes it). Two different keys
+/// over the same two facts, kept as two functions rather than one that returns both — a caller
+/// asking "is this frozen?" wants the admission key; a caller asking "is this row also known-red?"
+/// wants the qualified name, and conflating them would let a shape mismatch hide a real miss.
+///
+/// The module name is read from each entry file's own `module ...` line (`extract_module_path`),
+/// the same authority `run_required_floor` reads for every other qualified name it reports — not
+/// re-derived from the path string, which would silently diverge from the interpreter's own
+/// binding the day a file's module line stops matching its directory.
+fn frozen_path_deferral_qualified_identities_from_source(
+    content: &str,
+    root: &std::path::Path,
+) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = Vec::new();
+    for (entry, functions) in frozen_path_deferral_rows_from_source(content) {
+        let file_content = match std::fs::read_to_string(root.join(&entry)) {
+            Ok(c) => c,
+            // A frozen row naming a file the tree no longer carries is stale-path debt, not a
+            // roster-intersection question — `collect_stale_frozen_path_deferrals` already owns
+            // that disposition, so this join skips it rather than panicking a second authority.
+            Err(_) => continue,
+        };
+        let module = match extract_module_path(&file_content) {
+            Some(m) => m,
+            None => continue,
+        };
+        for function in functions {
+            out.push((entry.clone(), format!("{module}.{function}")));
+        }
+    }
+    out
+}
+
+/// The contradictory-intersection wall's pure decision: which frozen (entry, qualified-name)
+/// rows also name an identity enrolled in `floor_expected_red_roster`. Pure and side-effect-free
+/// so it is testable without a corpus checkout or a git repository — the file-reading half
+/// (`frozen_path_deferral_qualified_identities_from_source`) and the git-head half
+/// (`current_git_head_or_unresolved`) are kept out of it deliberately.
+fn expected_red_freeze_intersection(
+    frozen_qualified: &[(String, String)],
+    expected_red_roster: &HashSet<String>,
+) -> Vec<(String, String)> {
+    let mut colliding: Vec<(String, String)> = frozen_qualified
+        .iter()
+        .filter(|(_, qualified)| expected_red_roster.contains(qualified))
+        .cloned()
+        .collect();
+    colliding.sort();
+    colliding.dedup();
+    colliding
+}
+
+fn current_git_head_or_unresolved() -> String {
+    std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_else(|| "HEAD-unresolved".to_string())
+}
+
+fn format_expected_red_freeze_intersection_refusal(
+    colliding: &[(String, String)],
+    head: &str,
+) -> String {
+    let mut detail = String::new();
+    for (entry, qualified) in colliding {
+        detail.push_str(&format!("\n  - {qualified} (frozen via entry \"{entry}\")"));
+    }
+    format!(
+        "REQUIRED-FLOOR REFUSAL cause=ExpectedRedFreezeIntersection count={} head={head} — {} \
+         identity(ies) are simultaneously enrolled in \
+         v2.workflow.floor_expected_red.floor_expected_red_roster (known-red, removable only by \
+         an observed pass) AND path-deferred in dag/gunbc/witness_deferral_freeze.dag \
+         frozen_path_deferrals (LegacyFrozenPathDeferral, admitted as never-executed). Both \
+         claims cannot hold of one identity: this roster's own did-not-execute check below \
+         proves every enrolled row here DOES execute, so the freeze row is stale evidence, not a \
+         live exemption. This count is bound to the head above — measure again at merge time, \
+         never cite it bare. Disposition: retire the frozen_path_deferrals row (it already has \
+         an executing consumer — this required floor) with a receipt in \
+         witness_deferral_freeze.dag's shrink log, or if the identity is not genuinely \
+         executing, fix floor_expected_red_roster/required_floor's admission instead of leaving \
+         the contradiction standing. Colliding identities:{detail}",
+        colliding.len(),
+        colliding.len()
+    )
 }
 
 fn quoted_after_field(text: &str, field: &str) -> Option<String> {
@@ -19420,6 +19335,34 @@ fn eprintln_deferred_discovery_rows(rows: &[DeferredDiscoveryRow]) {
             rows.len() - 8
         );
     }
+}
+
+/// Does this tree hold at least one `.dag` file? EXISTENCE, not inventory.
+///
+/// `collect_dag_files_tolerant` answers "which files" and costs the whole subtree; this answers
+/// "any file" and stops at the first hit. They are different questions and the pool-root gate asks
+/// this one -- collecting every file beneath a root in order to call `is_empty` on the result is
+/// the copied-accumulator shape, an O(subtree) walk to settle something the first file decides.
+/// Directory recursion is depth-first for the same reason: a hit anywhere ends the walk.
+pub(crate) fn dag_tree_holds_any_file(dir: &Path) -> bool {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return false,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if is_cargo_target_output_dir(dir, &path) {
+                continue;
+            }
+            if dag_tree_holds_any_file(&path) {
+                return true;
+            }
+        } else if path.extension().and_then(|e| e.to_str()) == Some("dag") {
+            return true;
+        }
+    }
+    false
 }
 
 pub(crate) fn collect_dag_files_tolerant(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -20319,7 +20262,8 @@ pub struct DiscoveryCorpusOptions {
     /// When non-empty, scopes the source-root `test fn` tree walk to files under one of these
     /// directories. Import resolution still uses the full source_roots. Empty = full walk.
     pub discovery_scope_dirs: Vec<String>,
-    /// Fast-lane per-witness eval budget (operator 5s rule, 2026-07-12). When set, every
+    /// Fast-lane per-witness eval budget (operator ruling 2026-08-17; the ceiling itself is
+    /// `v2.workflow.required_floor` `required_floor_claim_budget_ms`). When set, every
     /// discovered witness eval is deadline-armed and an over-budget eval unwinds as the
     /// typed EvalBudgetExceeded runtime error (a FAIL row naming the witness). None = no
     /// bound (the long-lane / local recipe posture).
@@ -23426,8 +23370,8 @@ impl ShardStyle {
     fn stream_witness(
         self,
         function: &str,
-        entry: &str,
-        execution_leg: &str,
+        subject: &str,
+        _execution_leg: &str,
         wall_nanos: u128,
         passed: bool,
     ) {
@@ -23442,21 +23386,23 @@ impl ShardStyle {
         if routine_rollup_folds() && concluded_outcome_folds(passed) {
             return;
         }
-        let ms = wall_nanos as f64 / 1.0e6;
         let ts = floor_ts();
         let tag = self.shard_tag();
-        if self.color {
-            let glyph = if passed {
-                "\x1b[32m✓\x1b[0m"
-            } else {
-                "\x1b[31m✗\x1b[0m"
-            };
-            eprintln!(
-                "\x1b[2m{ts}\x1b[0m {tag}{glyph} {function} \x1b[2m({entry} leg={execution_leg})\x1b[0m {ms:.1}ms"
-            );
-        } else {
-            let glyph = if passed { "PASS" } else { "FAIL" };
-            eprintln!("{ts} {tag}{glyph} {function} ({entry} leg={execution_leg}) {ms:.1}ms");
+        match render_witness_claim_result_text(subject, function, wall_nanos, passed) {
+            Some(line) => {
+                if self.color {
+                    eprintln!("\x1b[2m{ts}\x1b[0m {tag}{line}");
+                } else {
+                    eprintln!("{ts} {tag}{line}");
+                }
+            }
+            // Fail-closed: routine lines may already be folded, so a silent return would read as
+            // a witness that never ran rather than a renderer that refused.
+            None => eprintln!(
+                "::error::witness presentation unavailable: could not render claim result \
+                 through gunbc.observation_ci_render `ci_witness_claim_result_text` for \
+                 {subject}:{function}"
+            ),
         }
     }
 }
@@ -23603,14 +23549,14 @@ fn run_discovery_rows(
             })?;
         summary.witness_outcomes.push(DiscoveryWitnessOutcome {
             entry: row.entry.clone(),
-            module_path,
+            module_path: module_path.clone(),
             function: row.function.clone(),
             outcome: outcome.clone(),
             execution_leg: execution_leg.clone(),
         });
         style.stream_witness(
             &row.function,
-            &row.entry,
+            &module_path,
             &execution_leg,
             wall_nanos,
             matches!(outcome, ClaimOutcome::Pass),
@@ -23631,6 +23577,13 @@ fn run_discovery_rows(
                 "{} ({}) runtime error: {}",
                 row.function, row.entry, message
             )),
+            ClaimOutcome::HostToolUnresolved { name, probed } => summary.failures.push(format!(
+                "{} ({}) host tool unresolved: {:?} (probed: {})",
+                row.function,
+                row.entry,
+                name,
+                probed.join(", ")
+            )),
             // Rendered so the elapsed value is never mistaken for a completed duration:
             // the row was killed AT the budget, so this is a ceiling, not a cost. The
             // clock (cpu vs wall) is named because the two have different remedies.
@@ -23638,12 +23591,13 @@ fn run_discovery_rows(
                 elapsed_ms,
                 budget_ms,
                 kind,
+                completion,
             } => summary.failures.push(format!(
-                "{} ({}) killed at its {} budget: {}ms elapsed > {}ms budget \
-                 (elapsed is a ceiling, not a completed duration)",
+                "{} ({}) over its {} budget: cost is {} {}ms against a {}ms budget",
                 row.function,
                 row.entry,
                 kind.label(),
+                completion.elapsed_reading(),
                 elapsed_ms,
                 budget_ms
             )),
@@ -25516,6 +25470,100 @@ mod node_frontier_plumbing_controls {
             ],
             "the `type` declaration is not a row, and both row shapes parse"
         );
+    }
+
+    // The contradictory-intersection wall's file-reading half: an entry path resolves through
+    // its own `module ...` line, not through the path string, and a frozen row naming a file the
+    // tree does not carry is skipped here (that disposition belongs to
+    // `collect_stale_frozen_path_deferrals`) rather than panicking a second authority.
+    #[test]
+    fn frozen_path_deferral_qualified_identities_reads_the_entrys_own_module_line() {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc_freeze_qualified_{}_{}",
+            std::process::id(),
+            line!()
+        ));
+        std::fs::create_dir_all(dir.join("test/claim")).expect("mkdir fixture root");
+        std::fs::write(
+            dir.join("test/claim/one_test.dag"),
+            "module test.claim.one\n\nfn x_holds() -> Bool { true }\n",
+        )
+        .expect("write fixture entry");
+        let source = concat!(
+            "data frozen_path_deferrals: List<FrozenPathDeferral> = [\n",
+            "  FrozenPathDeferral { entry: \"test/claim/one_test.dag\", functions: [\"x_holds\"] },\n",
+            "  FrozenPathDeferral { entry: \"test/claim/missing_test.dag\", functions: [\"y_holds\"] },\n",
+            "]\n"
+        );
+        let qualified = super::frozen_path_deferral_qualified_identities_from_source(source, &dir);
+        assert_eq!(
+            qualified,
+            vec![(
+                "test/claim/one_test.dag".to_string(),
+                "test.claim.one.x_holds".to_string()
+            )],
+            "the missing entry is skipped, not panicked, and the module line — not the path — \
+             names the qualified identity"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // DISCRIMINATING RED: a frozen row whose qualified identity is also enrolled in
+    // floor_expected_red_roster must be caught, by identity, not by count — planting one
+    // colliding row beside one non-colliding row proves the join is selective rather than
+    // vacuously "any freeze row plus any roster makes a hit."
+    #[test]
+    fn expected_red_freeze_intersection_catches_the_planted_collision() {
+        let frozen = vec![
+            (
+                "test/claim/known_red_test.dag".to_string(),
+                "test.claim.known_red.stays_red_holds".to_string(),
+            ),
+            (
+                "test/claim/other_test.dag".to_string(),
+                "test.claim.other.unrelated_holds".to_string(),
+            ),
+        ];
+        let mut roster: std::collections::HashSet<String> = std::collections::HashSet::new();
+        roster.insert("test.claim.known_red.stays_red_holds".to_string());
+        roster.insert("test.claim.some_third_thing.holds".to_string());
+
+        let colliding = super::expected_red_freeze_intersection(&frozen, &roster);
+        assert_eq!(
+            colliding,
+            vec![(
+                "test/claim/known_red_test.dag".to_string(),
+                "test.claim.known_red.stays_red_holds".to_string()
+            )],
+            "only the row present in BOTH rosters collides — the unrelated frozen row and the \
+             unrelated roster entry must not appear"
+        );
+
+        let refusal =
+            super::format_expected_red_freeze_intersection_refusal(&colliding, "deadbeef");
+        assert!(refusal.contains("cause=ExpectedRedFreezeIntersection"));
+        assert!(refusal.contains("count=1"));
+        assert!(refusal.contains("head=deadbeef"));
+        assert!(refusal.contains("test.claim.known_red.stays_red_holds"));
+        assert!(
+            !refusal.contains("test.claim.other.unrelated_holds"),
+            "the refusal must name exactly the colliding identities, not the whole frozen roster"
+        );
+    }
+
+    // POSITIVE CONTROL: disjoint rosters must produce no collision and no refusal text — the
+    // wall's ordinary, contradiction-free path stays silent rather than firing on every run.
+    #[test]
+    fn expected_red_freeze_intersection_is_empty_when_rosters_are_disjoint() {
+        let frozen = vec![(
+            "test/claim/other_test.dag".to_string(),
+            "test.claim.other.unrelated_holds".to_string(),
+        )];
+        let mut roster: std::collections::HashSet<String> = std::collections::HashSet::new();
+        roster.insert("test.claim.some_third_thing.holds".to_string());
+
+        let colliding = super::expected_red_freeze_intersection(&frozen, &roster);
+        assert!(colliding.is_empty(), "{colliding:?}");
     }
 
     // The freeze's second direction, live: every frozen identity must still exist in the tree and
@@ -29328,8 +29376,14 @@ pub fn reference_resolution_facts(
         exclude_substrings.join("\u{1e}")
     );
     if let Some(cached) = REFERENCE_EDGE_CACHE.with(|c| c.borrow().get(&cache_key).cloned()) {
+        shared_fill::record_hit("reference_edges", &cache_key);
         return cached;
     }
+    // THE WHOLE-POOL PARSE PASS BELOW IS THE FLOOR'S LARGEST SHARED FILL. Timed and attributed
+    // from here so the claim that happens to reach it first is not read as the claim that costs
+    // it; see `shared_fill` for why the per-row number alone cannot answer that.
+    shared_fill::begin_fill();
+    let reference_edges_fill_start = std::time::Instant::now();
     let mut unaccounted: Vec<ReferenceAccountingRefusal> = Vec::new();
 
     // ── Pass 1: parse the pool once. Build the exported-name→module index (precedence: first root
@@ -29533,6 +29587,11 @@ pub fn reference_resolution_facts(
     }
 
     unaccounted.sort_by(|a, b| a.path.cmp(&b.path));
+    shared_fill::record_fill(
+        "reference_edges",
+        &cache_key,
+        reference_edges_fill_start.elapsed().as_nanos() as u64,
+    );
     REFERENCE_UNACCOUNTED_CACHE.with(|c| c.borrow_mut().insert(cache_key.clone(), unaccounted));
     REFERENCE_EDGE_CACHE.with(|c| c.borrow_mut().insert(cache_key, edges.clone()));
     edges
@@ -29567,2665 +29626,6 @@ pub struct BareRefReachability {
     pub ambiguous_sites: usize,
     /// Unique nearest declarer shares zero module-path prefix with the referrer (disjoint subtree).
     pub cross_subtree_unique_sites: usize,
-}
-
-/// Count bare-reference reachability for `name` using the same nearest-wins producer as
-/// `reference_resolution_facts` (import-less files only).
-pub fn bare_ref_reachability_for_name(
-    pool_roots: &[String],
-    importer_roots: &[String],
-    exclude_substrings: &[String],
-    name: &str,
-) -> BareRefReachability {
-    let abs_pool_roots = pool_roots_abs(pool_roots);
-    let abs_importer_roots = pool_roots_abs(importer_roots);
-    let mut decl_index: HashMap<String, std::collections::BTreeSet<String>> = HashMap::new();
-    let mut module_names: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut seen_modules: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut pool_trees: HashMap<String, (String, Rc<crate::v1_std_core::Node>, bool)> =
-        HashMap::new();
-    for root in &abs_pool_roots {
-        let root_path = Path::new(root);
-        if !root_path.is_dir() {
-            continue;
-        }
-        let mut files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(root_path, &mut files);
-        files.sort();
-        for file in files {
-            let rel = rel_path_for_layer_import(&file);
-            let content = match std::fs::read_to_string(&file) {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
-            let module_name = match extract_module_path(&content) {
-                Some(m) => m,
-                None => continue,
-            };
-            let tree = match parse_module_node_tolerant(&rel, &content) {
-                Some(t) => t,
-                None => continue,
-            };
-            let has_imports = !extract_import_paths(&content).is_empty();
-            if seen_modules.insert(module_name.clone()) {
-                module_names.insert(module_name.clone());
-                for decl_name in collect_module_decl_names(&tree) {
-                    decl_index
-                        .entry(decl_name)
-                        .or_default()
-                        .insert(module_name.clone());
-                }
-            }
-            pool_trees
-                .entry(rel)
-                .or_insert((module_name, tree, has_imports));
-        }
-    }
-
-    let mut stats = BareRefReachability::default();
-    for root in &abs_importer_roots {
-        let root_path = Path::new(root);
-        if !root_path.is_dir() {
-            continue;
-        }
-        let mut files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(root_path, &mut files);
-        files.sort();
-        for file in files {
-            let rel = rel_path_for_layer_import(&file);
-            if is_excluded_import_path(&rel, exclude_substrings) {
-                continue;
-            }
-            let (self_module, tree) = match pool_trees.get(&rel) {
-                Some((_, _, true)) => continue,
-                Some((m, t, false)) => (m.clone(), t.clone()),
-                None => {
-                    let content = match std::fs::read_to_string(&file) {
-                        Ok(c) => c,
-                        Err(_) => continue,
-                    };
-                    if !extract_import_paths(&content).is_empty() {
-                        continue;
-                    }
-                    let module_name = match extract_module_path(&content) {
-                        Some(m) => m,
-                        None => continue,
-                    };
-                    match parse_module_node_tolerant(&rel, &content) {
-                        Some(t) => (module_name, t),
-                        None => continue,
-                    }
-                }
-            };
-            let mut bare: std::collections::HashSet<String> = std::collections::HashSet::new();
-            let mut chains: Vec<Vec<String>> = Vec::new();
-            for item in tree.children.iter() {
-                collect_node_refs(item, &mut bare, &mut chains);
-            }
-            if !bare.contains(name) {
-                continue;
-            }
-            let Some(mods) = decl_index.get(name) else {
-                continue;
-            };
-            if mods.contains(&self_module) {
-                continue;
-            }
-            let mut best_len = 0usize;
-            let mut winners: Vec<&String> = Vec::new();
-            for m in mods.iter() {
-                let shared = module_prefix_shared_len(&self_module, m);
-                if winners.is_empty() || shared > best_len {
-                    best_len = shared;
-                    winners.clear();
-                    winners.push(m);
-                } else if shared == best_len {
-                    winners.push(m);
-                }
-            }
-            match winners.len() {
-                0 => {}
-                1 => {
-                    if module_prefix_shared_len(&self_module, winners[0]) == 0 {
-                        stats.cross_subtree_unique_sites += 1;
-                    }
-                }
-                _ => stats.ambiguous_sites += 1,
-            }
-        }
-    }
-    stats
-}
-
-// --- Resolution divergence census (namespace-resolution-design.md §12.4) ---
-// Read-only inventory: compare `lookup_resolved_sig` (first-hit over func_env.parents)
-// against the landed SymbolIndex containment walk (lexical + global-unique only).
-// Method: direct observation of each mechanism's return value — NOT diagnostics.
-
-pub const RESOLUTION_DIVERGENCE_PHASE_RECEIPT_PATH: &str =
-    "target/resolution-divergence-phase-receipt.tsv";
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ResolutionDivergencePhase {
-    ParentPlanResolve,
-    ChildLaunch,
-    ChildWholeTreeResolve,
-    ParentWholeTreeResolve,
-    CensusTraversal,
-    OutputProjection,
-}
-
-impl ResolutionDivergencePhase {
-    fn label(self) -> &'static str {
-        match self {
-            Self::ParentPlanResolve => "parent_plan_resolve",
-            Self::ChildLaunch => "child_launch",
-            Self::ChildWholeTreeResolve => "child_whole_tree_resolve",
-            Self::ParentWholeTreeResolve => "parent_whole_tree_resolve",
-            Self::CensusTraversal => "census_traversal",
-            Self::OutputProjection => "output_projection",
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ResolutionDivergencePhaseState {
-    Started,
-    Completed,
-    Skipped,
-}
-
-impl ResolutionDivergencePhaseState {
-    fn label(self) -> &'static str {
-        match self {
-            Self::Started => "started",
-            Self::Completed => "completed",
-            Self::Skipped => "skipped",
-        }
-    }
-}
-
-fn resolution_divergence_phase_receipt_process_name() -> String {
-    std::env::current_exe()
-        .ok()
-        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
-        .unwrap_or_else(|| "unknown".to_string())
-}
-
-fn resolution_divergence_phase_receipt_timestamp_ms() -> u128 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis()
-}
-
-fn resolution_divergence_phase_receipt_pressure_avg10(path: &str) -> String {
-    std::fs::read_to_string(path)
-        .ok()
-        .and_then(|body| {
-            body.lines()
-                .find(|line| line.starts_with("some "))
-                .and_then(|line| {
-                    line.split_whitespace()
-                        .find(|field| field.starts_with("avg10="))
-                })
-                .and_then(|field| field.strip_prefix("avg10="))
-                .map(str::to_string)
-        })
-        .unwrap_or_else(|| "unavailable".to_string())
-}
-
-fn resolution_divergence_phase_receipt_contention() -> (String, String, String, String) {
-    let host = std::env::var("RUNNER_NAME")
-        .ok()
-        .filter(|name| !name.is_empty())
-        .or_else(|| {
-            std::fs::read_to_string("/etc/hostname")
-                .ok()
-                .map(|name| name.trim().to_string())
-                .filter(|name| !name.is_empty())
-        })
-        .unwrap_or_else(|| "unavailable".to_string());
-    let loadavg_1m = std::fs::read_to_string("/proc/loadavg")
-        .ok()
-        .and_then(|body| body.split_whitespace().next().map(str::to_string))
-        .unwrap_or_else(|| "unavailable".to_string());
-    (
-        host,
-        loadavg_1m,
-        resolution_divergence_phase_receipt_pressure_avg10("/proc/pressure/cpu"),
-        resolution_divergence_phase_receipt_pressure_avg10("/proc/pressure/memory"),
-    )
-}
-
-fn resolution_divergence_phase_elapsed_ms(
-    phase: ResolutionDivergencePhase,
-    state: ResolutionDivergencePhaseState,
-) -> Option<u128> {
-    static STARTS: OnceLock<Mutex<std::collections::HashMap<&'static str, std::time::Instant>>> =
-        OnceLock::new();
-    let mut starts = STARTS
-        .get_or_init(|| Mutex::new(std::collections::HashMap::new()))
-        .lock()
-        .expect("resolution-divergence phase start lock poisoned");
-    match state {
-        ResolutionDivergencePhaseState::Started => {
-            starts.insert(phase.label(), std::time::Instant::now());
-            None
-        }
-        ResolutionDivergencePhaseState::Completed => starts
-            .remove(phase.label())
-            .map(|started| started.elapsed().as_millis()),
-        ResolutionDivergencePhaseState::Skipped => Some(0),
-    }
-}
-
-fn resolution_divergence_phase_receipt_sanitize(detail: &str) -> String {
-    detail
-        .replace('\t', " ")
-        .replace('\n', " ")
-        .replace('\r', " ")
-}
-
-fn write_resolution_divergence_phase_receipt_row_at(
-    path: &Path,
-    phase: ResolutionDivergencePhase,
-    state: ResolutionDivergencePhaseState,
-    detail: &str,
-) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| {
-            format!(
-                "resolution-divergence phase receipt: create {}: {e}",
-                parent.display()
-            )
-        })?;
-    }
-    let is_new = !path.exists();
-    let mut file = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)
-        .map_err(|e| {
-            format!(
-                "resolution-divergence phase receipt: open {}: {e}",
-                path.display()
-            )
-        })?;
-    if is_new {
-        writeln!(
-            file,
-            "timestamp_ms\tpid\tprocess\thost\tloadavg_1m\tcpu_psi_some_avg10\tmemory_psi_some_avg10\tphase\tstate\telapsed_ms\tdetail"
-        )
-        .map_err(|e| format!("resolution-divergence phase receipt: header write: {e}"))?;
-    }
-    let elapsed_ms = resolution_divergence_phase_elapsed_ms(phase, state)
-        .map(|n| n.to_string())
-        .unwrap_or_default();
-    let (host, loadavg_1m, cpu_psi_some_avg10, memory_psi_some_avg10) =
-        resolution_divergence_phase_receipt_contention();
-    let process_name = resolution_divergence_phase_receipt_process_name();
-    let row = format!(
-        "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
-        resolution_divergence_phase_receipt_timestamp_ms(),
-        std::process::id(),
-        process_name,
-        resolution_divergence_phase_receipt_sanitize(&host),
-        loadavg_1m,
-        cpu_psi_some_avg10,
-        memory_psi_some_avg10,
-        phase.label(),
-        state.label(),
-        elapsed_ms,
-        resolution_divergence_phase_receipt_sanitize(detail),
-    );
-    writeln!(file, "{row}")
-        .map_err(|e| format!("resolution-divergence phase receipt: row write: {e}"))?;
-    file.sync_data().map_err(|e| {
-        format!(
-            "resolution-divergence phase receipt: sync {}: {e}",
-            path.display()
-        )
-    })?;
-    // The Actions runner worktree is ephemeral and this receipt is deliberately
-    // kill-safe. Stream each fsynced parent row to the durable job log as well as
-    // the TSV, so a deadline kill preserves phase and contention evidence without
-    // adding a generated-workflow upload side channel. Standalone adapter output
-    // remains byte-identical because only claim_executor emits this transport mark.
-    if process_name == "claim_executor" {
-        eprintln!("[resolution-divergence-phase-receipt]\t{row}");
-    }
-    Ok(())
-}
-
-pub fn reset_resolution_divergence_phase_receipt() -> Result<(), String> {
-    let path = Path::new(RESOLUTION_DIVERGENCE_PHASE_RECEIPT_PATH);
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| {
-            format!(
-                "resolution-divergence phase receipt: create {}: {e}",
-                parent.display()
-            )
-        })?;
-    }
-    let mut file = std::fs::File::create(path).map_err(|e| {
-        format!(
-            "resolution-divergence phase receipt: reset {}: {e}",
-            path.display()
-        )
-    })?;
-    writeln!(
-        file,
-        "timestamp_ms\tpid\tprocess\thost\tloadavg_1m\tcpu_psi_some_avg10\tmemory_psi_some_avg10\tphase\tstate\telapsed_ms\tdetail"
-    )
-    .map_err(|e| format!("resolution-divergence phase receipt: header write: {e}"))?;
-    file.sync_data().map_err(|e| {
-        format!(
-            "resolution-divergence phase receipt: reset sync {}: {e}",
-            path.display()
-        )
-    })
-}
-
-pub fn record_resolution_divergence_phase(
-    phase: ResolutionDivergencePhase,
-    state: ResolutionDivergencePhaseState,
-    detail: &str,
-) -> Result<(), String> {
-    write_resolution_divergence_phase_receipt_row_at(
-        Path::new(RESOLUTION_DIVERGENCE_PHASE_RECEIPT_PATH),
-        phase,
-        state,
-        detail,
-    )
-}
-
-static RESOLUTION_DIVERGENCE_PARENT_PLAN_SILENT_PICKS: Mutex<Option<SilentPickTelemetry>> =
-    Mutex::new(None);
-
-/// Arm the telemetry that the divergence census consumes before the parent-owned
-/// plan graph is resolved. The subprocess used to arm the same observation around
-/// its duplicate cold resolve; retaining it here makes the cut observational rather
-/// than a silent loss of the gate's resolution evidence.
-pub fn resolution_divergence_parent_plan_capture_begin() -> Result<(), String> {
-    *RESOLUTION_DIVERGENCE_PARENT_PLAN_SILENT_PICKS
-        .lock()
-        .map_err(|_| "resolution-divergence parent-plan telemetry lock poisoned".to_string())? =
-        None;
-    crate::v1_rt::resolution_silent_pick_enable();
-    Ok(())
-}
-
-/// Seal the parent plan's telemetry after its single resolve and make it available
-/// to the later read-only witness traversal, regardless of which executor thread
-/// evaluates that witness.
-pub fn resolution_divergence_parent_plan_capture_finish() -> Result<(), String> {
-    let telemetry = crate::v1_rt::resolution_silent_pick_disable();
-    *RESOLUTION_DIVERGENCE_PARENT_PLAN_SILENT_PICKS
-        .lock()
-        .map_err(|_| "resolution-divergence parent-plan telemetry lock poisoned".to_string())? =
-        Some(telemetry);
-    // Continue recording on the pump thread after the plan. Modules resolved by
-    // intervening falsifier work may be cache hits by the time this witness runs;
-    // keeping the observation armed preserves those first-resolution rows without
-    // asking the shared index to recompute them.
-    crate::v1_rt::resolution_silent_pick_enable();
-    Ok(())
-}
-
-fn resolution_divergence_parent_plan_silent_picks() -> Result<SilentPickTelemetry, String> {
-    RESOLUTION_DIVERGENCE_PARENT_PLAN_SILENT_PICKS
-        .lock()
-        .map_err(|_| "resolution-divergence parent-plan telemetry lock poisoned".to_string())?
-        .clone()
-        .ok_or_else(|| {
-            "resolution-divergence census refused: parent plan telemetry was not captured"
-                .to_string()
-        })
-}
-
-fn resolution_divergence_combine_silent_pick_telemetry(
-    mut earlier: SilentPickTelemetry,
-    later: SilentPickTelemetry,
-) -> SilentPickTelemetry {
-    for row in later.global_bare_lcp_picks {
-        if !earlier.global_bare_lcp_picks.contains(&row) {
-            earlier.global_bare_lcp_picks.push(row);
-        }
-    }
-    for row in later.global_bare_lcp_ties {
-        if !earlier.global_bare_lcp_ties.contains(&row) {
-            earlier.global_bare_lcp_ties.push(row);
-        }
-    }
-    for row in later.fn_parent_first_hits {
-        if !earlier.fn_parent_first_hits.contains(&row) {
-            earlier.fn_parent_first_hits.push(row);
-        }
-    }
-    earlier
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ContainmentResolveVia {
-    Lexical,
-    GlobalUnique,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ContainmentResolve {
-    Hit {
-        owner_module: String,
-        qualified_path: String,
-        node_ptr: usize,
-        via: ContainmentResolveVia,
-        lexical_steps: usize,
-    },
-    Ambiguous,
-    Unresolved,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FnBindingRef {
-    pub owner_module: String,
-    pub qualified_path: String,
-    pub node_ptr: usize,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ResolutionDivergenceBucket {
-    Agree,
-    Diverge {
-        import_binding: FnBindingRef,
-        containment_binding: FnBindingRef,
-    },
-    ContainmentAmbiguous {
-        import_binding: FnBindingRef,
-    },
-    ContainmentUnresolved {
-        import_binding: FnBindingRef,
-    },
-    ImportUnresolved {
-        containment_binding: FnBindingRef,
-    },
-    NeitherBound,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum NeitherBoundSubclass {
-    BuiltinOrIntrinsic,
-    LocalOrParam,
-    GenuinelyUnbound,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ResolutionDivergenceSite {
-    pub calling_module: String,
-    pub caller_fn: String,
-    pub callee: String,
-    pub call_file: String,
-    pub call_span_start: i64,
-    pub bucket: ResolutionDivergenceBucket,
-    pub containment_via: Option<ContainmentResolveVia>,
-    pub import_owner_module: Option<String>,
-    pub containment_owner_module: Option<String>,
-    pub neither_bound_subclass: Option<NeitherBoundSubclass>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct AgreeGlobalUniqueOwnerRow {
-    pub calling_module: String,
-    pub caller_fn: String,
-    pub callee: String,
-    pub call_file: String,
-    pub call_span_start: i64,
-    pub import_owner_module: String,
-    pub containment_owner_module: String,
-    pub owners_agree: bool,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ImportUnresolvedInferCrossCheckRow {
-    pub calling_module: String,
-    pub caller_fn: String,
-    pub callee: String,
-    pub call_file: String,
-    pub call_span_start: i64,
-    pub containment_via: ContainmentResolveVia,
-    pub walk_binding: FnBindingRef,
-    pub infer_binding: Option<FnBindingRef>,
-    pub walk_infer_agree: bool,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct ResolutionDivergenceCostShape {
-    pub containment_hits: usize,
-    pub lexical_steps_histogram: BTreeMap<usize, usize>,
-    pub global_unique_hits: usize,
-    pub lexical_only_hits: usize,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct ResolutionDivergenceCensus {
-    pub modules_resolved: usize,
-    pub modules_excluded: usize,
-    pub sites_checked: usize,
-    pub agree: usize,
-    pub diverge: usize,
-    pub containment_ambiguous: usize,
-    pub containment_unresolved: usize,
-    pub import_unresolved: usize,
-    pub neither_bound: usize,
-    pub diverge_rows: Vec<ResolutionDivergenceSite>,
-    pub containment_ambiguous_rows: Vec<ResolutionDivergenceSite>,
-    pub containment_unresolved_rows: Vec<ResolutionDivergenceSite>,
-    pub import_unresolved_rows: Vec<ResolutionDivergenceSite>,
-    pub neither_bound_rows: Vec<ResolutionDivergenceSite>,
-    pub agree_global_unique_owner_rows: Vec<AgreeGlobalUniqueOwnerRow>,
-    pub import_unresolved_infer_cross_check_rows: Vec<ImportUnresolvedInferCrossCheckRow>,
-    pub import_unresolved_infer_agree: usize,
-    pub import_unresolved_infer_mismatch: usize,
-    pub neither_bound_builtin_or_intrinsic: usize,
-    pub neither_bound_local_or_param: usize,
-    pub neither_bound_genuinely_unbound: usize,
-    pub silent_pick_global_bare_lcp: usize,
-    pub silent_pick_global_bare_lcp_tie: usize,
-    pub silent_pick_fn_parent_first_hit: usize,
-    pub silent_pick_global_bare_lcp_rows: Vec<crate::v1_rt::GlobalBareLcpPickSite>,
-    pub silent_pick_global_bare_lcp_tie_rows: Vec<crate::v1_rt::GlobalBareLcpTieSite>,
-    pub silent_pick_fn_parent_first_hit_rows: Vec<crate::v1_rt::FnParentFirstHitSite>,
-    pub cost_shape: ResolutionDivergenceCostShape,
-}
-
-fn module_path_to_qualified_path(module_path: &str, name: &str) -> String {
-    if module_path.is_empty() {
-        name.to_string()
-    } else {
-        format!("{module_path}.{name}")
-    }
-}
-
-type ModuleItemIndex = HashMap<(String, String), Rc<Node>>;
-
-fn build_module_item_index(ctx: &v1_interpreter::InterpContext) -> ModuleItemIndex {
-    let source_indices = ctx.source_indices.clone();
-    let mut index = HashMap::new();
-    for tm in ctx.modules.iter() {
-        let module_path = tm.type_env.module_path.clone();
-        for item in tm.items.iter() {
-            let name = authored_name_at(source_indices.clone(), item.clone());
-            index.insert((module_path.clone(), name), item.clone());
-        }
-    }
-    index
-}
-
-/// True when `owner_module.name` is a fn/func decl — routes through `item_kind` (same
-/// classifier as `local_binding_for_item` / resolver item census) when the module item is
-/// available; otherwise falls back to the SymbolIndex stub shape from `local_binding_for_item`.
-fn is_fn_like_binding(
-    node: &Node,
-    owner_module: &str,
-    name: &str,
-    item_index: Option<&ModuleItemIndex>,
-) -> bool {
-    if let Some(index) = item_index {
-        if let Some(item) = index.get(&(owner_module.to_string(), name.to_string())) {
-            return matches!(
-                item_kind(item.clone()),
-                ItemKind::FnItem | ItemKind::FuncItem
-            );
-        }
-    }
-    is_fn_decl_symbol_index_stub(node)
-}
-
-fn is_fn_decl_symbol_index_stub(node: &Node) -> bool {
-    use crate::v1_std_core::Connective;
-    node.connective == Connective::NoConnective
-        && node.transport.is_none()
-        && node.body.is_none()
-        && !(node.inferred.is_some() && node.params.is_empty() && node.type_annotation.is_none())
-}
-
-fn fn_binding_from_sig(owner_module: &str, name: &str, sig: &ResolvedFuncSig) -> FnBindingRef {
-    let anchor = sig
-        .params
-        .iter()
-        .next()
-        .cloned()
-        .unwrap_or_else(|| sig.inferred.clone());
-    FnBindingRef {
-        owner_module: owner_module.to_string(),
-        qualified_path: module_path_to_qualified_path(owner_module, name),
-        node_ptr: Rc::as_ptr(&anchor) as usize,
-    }
-}
-
-fn fn_binding_from_node(owner_module: &str, name: &str, node: &Rc<Node>) -> FnBindingRef {
-    FnBindingRef {
-        owner_module: owner_module.to_string(),
-        qualified_path: module_path_to_qualified_path(owner_module, name),
-        node_ptr: Rc::as_ptr(node) as usize,
-    }
-}
-
-fn import_chain_owner(func_env: &ResolvedFuncEnv, name: &str) -> Option<String> {
-    if func_env.local.contains_key(name) {
-        return Some(func_env.name.clone());
-    }
-    for p in func_env.parents.iter() {
-        if p.local.contains_key(name) {
-            return Some(p.name.clone());
-        }
-    }
-    None
-}
-
-/// `symbol_index_lexical_lookup` from `src/v2/std/symbol_index.dag`, on v1 string QNs.
-/// Unique-on-chain: collects every binder on the ancestor chain; 0 = Unbound, 1 = Hit, 2+ = Ambiguous.
-#[derive(Clone, Debug)]
-pub enum LexicalLookupV1 {
-    Hit {
-        owner_module: String,
-        node: Rc<Node>,
-        steps: usize,
-    },
-    Ambiguous {
-        candidates: Vec<(String, Rc<Node>)>,
-    },
-    Unbound,
-}
-
-pub fn symbol_index_lexical_lookup_v1(
-    index: &SymbolIndex,
-    position: &str,
-    name: &str,
-) -> LexicalLookupV1 {
-    let mut pos = position.to_string();
-    let mut step = 0usize;
-    let mut candidates: Vec<(String, Rc<Node>, usize)> = Vec::new();
-    loop {
-        step += 1;
-        let qn = module_path_to_qualified_path(&pos, name);
-        if let Some(node) = symbol_index_lookup(Rc::new(index.clone()), qn) {
-            candidates.push((pos.clone(), node, step));
-        }
-        if pos.is_empty() {
-            break;
-        }
-        pos = qualified_all_but_last(pos);
-    }
-    match candidates.len() {
-        0 => LexicalLookupV1::Unbound,
-        1 => {
-            let (owner, node, steps) = candidates.into_iter().next().unwrap();
-            LexicalLookupV1::Hit {
-                owner_module: owner,
-                node,
-                steps,
-            }
-        }
-        _ => LexicalLookupV1::Ambiguous {
-            candidates: candidates
-                .into_iter()
-                .map(|(owner, node, _)| (owner, node))
-                .collect(),
-        },
-    }
-}
-
-/// Containment walk: lexical lookup, then global-bare unique (§12.4 / `03_resolve.dag`).
-pub fn containment_resolve_fn_v1(
-    index: &SymbolIndex,
-    module_path: &str,
-    name: &str,
-) -> ContainmentResolve {
-    containment_resolve_fn_v1_for_module(index, module_path, name, None)
-}
-
-/// Containment walk with optional module-item index for `item_kind` classification.
-pub fn containment_resolve_fn_v1_for_module(
-    index: &SymbolIndex,
-    module_path: &str,
-    name: &str,
-    item_index: Option<&ModuleItemIndex>,
-) -> ContainmentResolve {
-    match symbol_index_lexical_lookup_v1(index, module_path, name) {
-        LexicalLookupV1::Hit {
-            owner_module: owner,
-            node,
-            steps,
-        } => {
-            if is_fn_like_binding(&node, &owner, name, item_index) {
-                return ContainmentResolve::Hit {
-                    owner_module: owner.clone(),
-                    qualified_path: module_path_to_qualified_path(&owner, name),
-                    node_ptr: Rc::as_ptr(&node) as usize,
-                    via: ContainmentResolveVia::Lexical,
-                    lexical_steps: steps,
-                };
-            }
-        }
-        LexicalLookupV1::Ambiguous { .. } => return ContainmentResolve::Ambiguous,
-        LexicalLookupV1::Unbound => {}
-    }
-    match index.global_bare.get(name).map(|s| &**s) {
-        Some(GlobalBareLookupState::GlobalBareUniqueBinding {
-            module_path: owner,
-            binding,
-        }) => {
-            if is_fn_like_binding(&binding.resolved, owner, name, item_index) {
-                return ContainmentResolve::Hit {
-                    owner_module: owner.clone(),
-                    qualified_path: module_path_to_qualified_path(&owner, name),
-                    node_ptr: Rc::as_ptr(&binding.resolved) as usize,
-                    via: ContainmentResolveVia::GlobalUnique,
-                    lexical_steps: 0,
-                };
-            }
-            ContainmentResolve::Unresolved
-        }
-        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding { .. }) => {
-            ContainmentResolve::Ambiguous
-        }
-        None => ContainmentResolve::Unresolved,
-    }
-}
-
-fn collect_bare_call_sites(
-    node: &Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    out: &mut Vec<(String, Rc<Node>)>,
-) {
-    match &*node.expr_data {
-        ExprData::ExprCall { .. } => {
-            let callee = expr_call_func_at(node.clone(), source_indices.clone());
-            if !callee.contains('.') {
-                out.push((callee, node.clone()));
-            }
-        }
-        _ => {}
-    }
-    for child in node.children.iter() {
-        collect_bare_call_sites(child, source_indices.clone(), out);
-    }
-    if let Some(body) = &node.body {
-        collect_bare_call_sites(body, source_indices, out);
-    }
-}
-
-fn bindings_agree(import: &FnBindingRef, containment: &FnBindingRef) -> bool {
-    import.node_ptr == containment.node_ptr || import.qualified_path == containment.qualified_path
-}
-
-fn containment_owner_and_via(
-    containment: &ContainmentResolve,
-) -> (Option<String>, Option<ContainmentResolveVia>) {
-    match containment {
-        ContainmentResolve::Hit {
-            owner_module, via, ..
-        } => (Some(owner_module.clone()), Some(via.clone())),
-        ContainmentResolve::Ambiguous | ContainmentResolve::Unresolved => (None, None),
-    }
-}
-
-fn infer_fn_binding_at_site(
-    type_env: Rc<TypeEnv>,
-    module_path: &str,
-    callee: &str,
-    item_index: &ModuleItemIndex,
-) -> Option<FnBindingRef> {
-    if let Some(node) = global_bare_callable_node(type_env.clone(), callee.to_string()) {
-        return Some(fn_binding_from_node(module_path, callee, &node));
-    }
-    if let Some(binding) = lookup_binding_by_name(type_env, callee.to_string()) {
-        if is_fn_like_binding(&binding.resolved, module_path, callee, Some(item_index)) {
-            return Some(fn_binding_from_node(module_path, callee, &binding.resolved));
-        }
-    }
-    None
-}
-
-fn classify_neither_bound_subclass(
-    callee: &str,
-    func_env: &ResolvedFuncEnv,
-    caller_item: &Rc<Node>,
-    type_env: Rc<TypeEnv>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> NeitherBoundSubclass {
-    if infer_builtin_call_type(callee.to_string()).is_some() {
-        return NeitherBoundSubclass::BuiltinOrIntrinsic;
-    }
-    if func_env.local.contains_key(callee) {
-        return NeitherBoundSubclass::LocalOrParam;
-    }
-    if v1_rt::map_get(&type_env.str_bindings, callee.to_string()).is_some() {
-        return NeitherBoundSubclass::LocalOrParam;
-    }
-    for param in caller_item.params.iter() {
-        if param_node_name_at(param.clone(), source_indices.clone()) == callee {
-            return NeitherBoundSubclass::LocalOrParam;
-        }
-    }
-    if lookup_type_by_name(type_env, callee.to_string()).is_some() {
-        return NeitherBoundSubclass::LocalOrParam;
-    }
-    NeitherBoundSubclass::GenuinelyUnbound
-}
-
-fn merge_silent_pick_telemetry(
-    census: &mut ResolutionDivergenceCensus,
-    telemetry: SilentPickTelemetry,
-) {
-    census.silent_pick_global_bare_lcp = telemetry.global_bare_lcp_picks.len();
-    census.silent_pick_global_bare_lcp_tie = telemetry.global_bare_lcp_ties.len();
-    census.silent_pick_fn_parent_first_hit = telemetry.fn_parent_first_hits.len();
-    census.silent_pick_global_bare_lcp_rows = telemetry.global_bare_lcp_picks;
-    census.silent_pick_global_bare_lcp_tie_rows = telemetry.global_bare_lcp_ties;
-    census.silent_pick_fn_parent_first_hit_rows = telemetry.fn_parent_first_hits;
-}
-
-fn bucket_site(
-    import_binding: Option<FnBindingRef>,
-    containment: ContainmentResolve,
-) -> ResolutionDivergenceBucket {
-    match (import_binding, containment) {
-        (
-            Some(import),
-            ContainmentResolve::Hit {
-                owner_module,
-                qualified_path,
-                node_ptr,
-                ..
-            },
-        ) => {
-            let containment_binding = FnBindingRef {
-                owner_module,
-                qualified_path,
-                node_ptr,
-            };
-            if bindings_agree(&import, &containment_binding) {
-                ResolutionDivergenceBucket::Agree
-            } else {
-                ResolutionDivergenceBucket::Diverge {
-                    import_binding: import,
-                    containment_binding,
-                }
-            }
-        }
-        (Some(import), ContainmentResolve::Ambiguous) => {
-            ResolutionDivergenceBucket::ContainmentAmbiguous {
-                import_binding: import,
-            }
-        }
-        (Some(import), ContainmentResolve::Unresolved) => {
-            ResolutionDivergenceBucket::ContainmentUnresolved {
-                import_binding: import,
-            }
-        }
-        (
-            None,
-            ContainmentResolve::Hit {
-                owner_module,
-                qualified_path,
-                node_ptr,
-                ..
-            },
-        ) => ResolutionDivergenceBucket::ImportUnresolved {
-            containment_binding: FnBindingRef {
-                owner_module,
-                qualified_path,
-                node_ptr,
-            },
-        },
-        (None, ContainmentResolve::Ambiguous | ContainmentResolve::Unresolved) => {
-            ResolutionDivergenceBucket::NeitherBound
-        }
-    }
-}
-
-/// Whole-corpus resolution divergence census over a resolved `InterpContext`.
-pub fn resolution_divergence_census_from_ctx(
-    ctx: &v1_interpreter::InterpContext,
-) -> ResolutionDivergenceCensus {
-    let source_indices = ctx.source_indices.clone();
-    let item_index = build_module_item_index(ctx);
-
-    let mut out = ResolutionDivergenceCensus::default();
-
-    for tm in ctx.modules.iter() {
-        let module_path = tm.type_env.module_path.clone();
-        let func_env = tm.func_env.clone();
-        // Borrow the index out of its Rc rather than deep-cloning it per module: the
-        // sole consumer below takes `&SymbolIndex`, so the clone bought nothing and cost
-        // one full index copy per module in the closure (DESIGN §6 bare-minimum cost).
-        let module_index: &SymbolIndex = &tm.type_env.symbol_index;
-
-        for item in tm.items.iter() {
-            let caller_fn = authored_name_at(source_indices.clone(), item.clone());
-            let mut calls = Vec::new();
-            if let Some(body) = &item.body {
-                collect_bare_call_sites(body, source_indices.clone(), &mut calls);
-            }
-            for (callee, call_node) in calls {
-                out.sites_checked += 1;
-                let import_sig =
-                    func_sig_if_resolved(lookup_resolved_sig(func_env.clone(), callee.clone()));
-                // Resolved once per site and shared by both consumers. This was previously
-                // computed here and again below; the second call was unconditional, so
-                // hoisting is a strict reduction (2 calls -> 1 on the resolved path, 1 -> 1
-                // otherwise) with no change in which sites compute it.
-                let import_owner = import_chain_owner(&func_env, &callee);
-                let import_binding = import_sig.as_ref().and_then(|sig| {
-                    import_owner
-                        .as_ref()
-                        .map(|owner| fn_binding_from_sig(owner, &callee, sig))
-                });
-                let containment = containment_resolve_fn_v1_for_module(
-                    module_index,
-                    &module_path,
-                    &callee,
-                    Some(&item_index),
-                );
-
-                if let ContainmentResolve::Hit {
-                    via, lexical_steps, ..
-                } = &containment
-                {
-                    out.cost_shape.containment_hits += 1;
-                    match via {
-                        ContainmentResolveVia::Lexical => {
-                            out.cost_shape.lexical_only_hits += 1;
-                            *out.cost_shape
-                                .lexical_steps_histogram
-                                .entry(*lexical_steps)
-                                .or_insert(0) += 1;
-                        }
-                        ContainmentResolveVia::GlobalUnique => {
-                            out.cost_shape.global_unique_hits += 1;
-                        }
-                    }
-                }
-
-                let (containment_owner_module, containment_via) =
-                    containment_owner_and_via(&containment);
-                let bucket = bucket_site(import_binding, containment.clone());
-
-                if let ContainmentResolve::Hit {
-                    via: ContainmentResolveVia::GlobalUnique,
-                    ..
-                } = &containment
-                {
-                    if matches!(bucket, ResolutionDivergenceBucket::Agree) {
-                        if let (Some(import_owner), Some(containment_owner)) =
-                            (import_owner.clone(), containment_owner_module.clone())
-                        {
-                            out.agree_global_unique_owner_rows
-                                .push(AgreeGlobalUniqueOwnerRow {
-                                    calling_module: module_path.clone(),
-                                    caller_fn: caller_fn.clone(),
-                                    callee: callee.clone(),
-                                    call_file: call_node.span.file.clone(),
-                                    call_span_start: call_node.span.start,
-                                    import_owner_module: import_owner.clone(),
-                                    containment_owner_module: containment_owner.clone(),
-                                    owners_agree: import_owner == containment_owner,
-                                });
-                        }
-                    }
-                }
-
-                let neither_bound_subclass =
-                    if matches!(bucket, ResolutionDivergenceBucket::NeitherBound) {
-                        Some(classify_neither_bound_subclass(
-                            &callee,
-                            func_env.as_ref(),
-                            item,
-                            tm.type_env.clone(),
-                            source_indices.clone(),
-                        ))
-                    } else {
-                        None
-                    };
-
-                let site = ResolutionDivergenceSite {
-                    calling_module: module_path.clone(),
-                    caller_fn: caller_fn.clone(),
-                    callee: callee.clone(),
-                    call_file: call_node.span.file.clone(),
-                    call_span_start: call_node.span.start,
-                    bucket: bucket.clone(),
-                    containment_via: if matches!(bucket, ResolutionDivergenceBucket::Agree) {
-                        None
-                    } else {
-                        containment_via.clone()
-                    },
-                    import_owner_module: if matches!(bucket, ResolutionDivergenceBucket::Agree) {
-                        None
-                    } else {
-                        import_owner.clone()
-                    },
-                    containment_owner_module: if matches!(bucket, ResolutionDivergenceBucket::Agree)
-                    {
-                        None
-                    } else {
-                        containment_owner_module.clone()
-                    },
-                    neither_bound_subclass: neither_bound_subclass.clone(),
-                };
-                match bucket {
-                    ResolutionDivergenceBucket::Agree => out.agree += 1,
-                    ResolutionDivergenceBucket::Diverge { .. } => {
-                        out.diverge += 1;
-                        out.diverge_rows.push(site);
-                    }
-                    ResolutionDivergenceBucket::ContainmentAmbiguous { .. } => {
-                        out.containment_ambiguous += 1;
-                        out.containment_ambiguous_rows.push(site);
-                    }
-                    ResolutionDivergenceBucket::ContainmentUnresolved { .. } => {
-                        out.containment_unresolved += 1;
-                        out.containment_unresolved_rows.push(site);
-                    }
-                    ResolutionDivergenceBucket::ImportUnresolved {
-                        containment_binding,
-                    } => {
-                        out.import_unresolved += 1;
-                        out.import_unresolved_rows.push(site.clone());
-                        let infer_binding = infer_fn_binding_at_site(
-                            tm.type_env.clone(),
-                            &module_path,
-                            &callee,
-                            &item_index,
-                        );
-                        let walk_infer_agree = infer_binding
-                            .as_ref()
-                            .map(|infer| bindings_agree(infer, &containment_binding))
-                            .unwrap_or(false);
-                        if walk_infer_agree {
-                            out.import_unresolved_infer_agree += 1;
-                        } else {
-                            out.import_unresolved_infer_mismatch += 1;
-                        }
-                        if let ContainmentResolve::Hit { via, .. } = &containment {
-                            out.import_unresolved_infer_cross_check_rows.push(
-                                ImportUnresolvedInferCrossCheckRow {
-                                    calling_module: module_path.clone(),
-                                    caller_fn: caller_fn.clone(),
-                                    callee: callee.clone(),
-                                    call_file: call_node.span.file.clone(),
-                                    call_span_start: call_node.span.start,
-                                    containment_via: via.clone(),
-                                    walk_binding: containment_binding,
-                                    infer_binding,
-                                    walk_infer_agree,
-                                },
-                            );
-                        }
-                    }
-                    ResolutionDivergenceBucket::NeitherBound => {
-                        out.neither_bound += 1;
-                        out.neither_bound_rows.push(site.clone());
-                        match neither_bound_subclass {
-                            Some(NeitherBoundSubclass::BuiltinOrIntrinsic) => {
-                                out.neither_bound_builtin_or_intrinsic += 1
-                            }
-                            Some(NeitherBoundSubclass::LocalOrParam) => {
-                                out.neither_bound_local_or_param += 1
-                            }
-                            Some(NeitherBoundSubclass::GenuinelyUnbound) => {
-                                out.neither_bound_genuinely_unbound += 1
-                            }
-                            None => {}
-                        }
-                    }
-                }
-            }
-        }
-    }
-    out
-}
-
-/// Floor corpus source roots for the §12.4 census (`gunbc.ci_layer_roots.witness_layer_roots`).
-pub fn resolution_divergence_census_source_roots(ws: &Path) -> Vec<String> {
-    vec![
-        ws.join("dag").to_string_lossy().into_owned(),
-        ws.join("src/v2").to_string_lossy().into_owned(),
-    ]
-}
-
-/// Run the whole-tree resolution divergence census (read-only).
-pub fn resolution_divergence_census_live(
-    source_roots: &[String],
-    exclude_substrings: &[String],
-) -> Result<ResolutionDivergenceCensus, String> {
-    crate::v1_rt::resolution_silent_pick_enable();
-    let resolve_result = whole_tree_resolved_ctx(
-        source_roots,
-        exclude_substrings,
-        v1_interpreter::ExecutionMode::Wet,
-    );
-    let silent_picks = crate::v1_rt::resolution_silent_pick_disable();
-    let WholeTreeCtx {
-        ctx,
-        modules_resolved,
-        modules_excluded,
-        ..
-    } = resolve_result?;
-    let mut census = resolution_divergence_census_from_ctx(&ctx);
-    census.modules_resolved = modules_resolved;
-    census.modules_excluded = modules_excluded;
-    merge_silent_pick_telemetry(&mut census, silent_picks);
-    Ok(census)
-}
-
-/// Closure-scoped mode (operator/parent ruling 2026-07-21, in response to the
-/// default whole-tree scan's ~15 pre-existing unrelated resolve failures on
-/// orphaned/broken files never reachable from any real entry): reuses the
-/// compile-clean gate's OWN closure authority — `witness_layer_roots()` +
-/// `load_compile_clean_entry_sources` — the exact source set the falsifier's
-/// `GUNBC_CI_COMPILE_CLEAN_COLD_CONTROL` whole-tree cold control already
-/// resolves cleanly, rather than `whole_tree_strict_sources`'s blind directory
-/// walk. A file nothing imports is not compiled into any real program, so this
-/// is the closure precision frontier computed AS the answer (DESIGN §5), not a
-/// blocklist: it excludes nothing by name, only by non-membership in the live
-/// compiled tree. Does NOT touch `resolution_divergence_census_live`'s default
-/// whole-tree scan — an additive mode, not a semantics change for #6936/#6967
-/// or any other consumer.
-pub fn resolution_divergence_census_live_closure_scoped(
-) -> Result<ResolutionDivergenceCensus, String> {
-    record_resolution_divergence_phase(
-        ResolutionDivergencePhase::ChildWholeTreeResolve,
-        ResolutionDivergencePhaseState::Started,
-        "closure-scoped source load + resolve",
-    )?;
-    let roots = default_source_roots();
-    let sources = resolution_divergence_closure_scoped_sources(&roots)?;
-    let modules_resolved = sources.len();
-    crate::v1_rt::resolution_silent_pick_enable();
-    let resolve_result = resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict);
-    let silent_picks = crate::v1_rt::resolution_silent_pick_disable();
-    let (graph, source_indices) = resolve_result?;
-    record_resolution_divergence_phase(
-        ResolutionDivergencePhase::ChildWholeTreeResolve,
-        ResolutionDivergencePhaseState::Completed,
-        &format!("modules={modules_resolved}"),
-    )?;
-    let ctx = v1_interpreter::InterpContext::with_runtime_options(
-        graph.as_ref(),
-        source_indices,
-        v1_interpreter::ExecutionMode::Wet,
-        None,
-        None,
-    );
-    record_resolution_divergence_phase(
-        ResolutionDivergencePhase::CensusTraversal,
-        ResolutionDivergencePhaseState::Started,
-        &format!("modules={modules_resolved}"),
-    )?;
-    let mut census = resolution_divergence_census_from_ctx(&ctx);
-    census.modules_resolved = modules_resolved;
-    census.modules_excluded = 0;
-    merge_silent_pick_telemetry(&mut census, silent_picks);
-    record_resolution_divergence_phase(
-        ResolutionDivergencePhase::CensusTraversal,
-        ResolutionDivergencePhaseState::Completed,
-        &format!("sites_checked={}", census.sites_checked),
-    )?;
-    Ok(census)
-}
-
-/// Cold closure membership for the standalone adapter. It has no parent index, so
-/// it retains the declared primary-precedence pool build used before the in-process
-/// cut.
-fn resolution_divergence_closure_scoped_sources(
-    roots: &[String],
-) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    let membership_index = build_multi_entry_index_primary_precedence(roots);
-    load_compile_clean_entry_sources(roots, &membership_index, None)
-}
-
-/// Closure membership over source objects the parent index already owns.
-///
-/// `process_shared_index` canonicalizes absolute CI roots to workspace-relative
-/// spellings. Re-reading every first-root file from `default_source_roots` creates
-/// new absolute-path `SourceFile`s; resolving imports then pulls the same modules'
-/// relative-path objects from the index, so every declaration appears twice. Seed
-/// the closure from the index's existing `Rc<SourceFile>` values instead. This is a
-/// read-only index walk: no second whole-tree disk load and no second index build.
-/// The executable frozen control walls this consumer with `Rc::ptr_eq`; other
-/// `default_source_roots` consumers remain an explicitly separate construction-time
-/// identity class, tracked by `node://adhoc-0c214548-ded` and dissolved when
-/// `SourceFile` construction canonicalizes paths. Content equality is NOT an oracle
-/// for this class: the forked objects have identical bytes, so only object identity
-/// distinguishes the bad state. Keep the pointer-identity control enrolled when the
-/// construction wall lands as evidence that the higher rung is real.
-fn resolution_divergence_closure_scoped_sources_from_shared_index(
-    index: &MultiEntryIndex,
-) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    let first_root = index.source_roots.first().ok_or_else(|| {
-        "resolution-divergence census refused: parent shared index has no source roots".to_string()
-    })?;
-    let first_root_only = std::slice::from_ref(first_root);
-    let mut entry_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = index
-        .source_files
-        .values()
-        .filter(|sf| {
-            let rel = workspace_relative_repo_path(&sf.path);
-            source_tree_root_of(first_root_only, &rel).is_some()
-        })
-        .cloned()
-        .collect();
-    entry_sources.sort_by(|a, b| a.path.cmp(&b.path));
-    if entry_sources.is_empty() {
-        return Err(format!(
-            "resolution-divergence census refused: parent shared index has no modules under first root '{first_root}'"
-        ));
-    }
-    let sources = resolve_transitively(
-        entry_sources,
-        &index.source_files,
-        &index.module_graph_facts,
-    )?;
-    extend_sources_to_both_closure_fixpoint(sources, index)
-}
-
-/// A silent-pick row that also lands in the census's own containment_ambiguous
-/// or diverge cross-check for the same (module, name) site — the JOIN that
-/// separates a genuine §13 fail-open from benign whole-pool name overlap
-/// (parent ruling 2026-07-21: neither signal alone is the answer — silent-pick
-/// over-fires on whole-pool candidate_count>=2 with 487 of 487 corpus sites
-/// benign-looking at a glance, containment_ambiguous alone would include sites
-/// the seed correctly refuses — the intersection is the durable condition, and
-/// it tracks the §13 seed refusal-arm landing: a fixed site moves picks->refuses
-/// and leaves the frontier for free, no re-tuning).
-#[derive(Clone, Debug)]
-pub struct SilentPickGenuineRow {
-    pub class: &'static str,
-    pub module: String,
-    pub name: String,
-    pub detail: String,
-}
-
-/// Single-authority join, reused by the CLI binary's exit code, the Rust
-/// discriminating-RED oracle, and the ad hoc cross-check analysis (§2 — one
-/// decision, not two/three). Reuses `containment_ambiguous_rows`/`diverge_rows`
-/// verbatim — no recompute, no new resolution pass.
-pub fn resolution_divergence_silent_pick_genuine_rows(
-    census: &ResolutionDivergenceCensus,
-) -> Vec<SilentPickGenuineRow> {
-    let mut genuine_keys: std::collections::HashSet<(String, String)> =
-        std::collections::HashSet::new();
-    for row in &census.diverge_rows {
-        genuine_keys.insert((row.calling_module.clone(), row.callee.clone()));
-    }
-    for row in &census.containment_ambiguous_rows {
-        genuine_keys.insert((row.calling_module.clone(), row.callee.clone()));
-    }
-
-    let mut out = Vec::new();
-    for row in &census.silent_pick_global_bare_lcp_rows {
-        if genuine_keys.contains(&(row.env_module_path.clone(), row.name.clone())) {
-            out.push(SilentPickGenuineRow {
-                class: "SILENT_PICK_GLOBAL_BARE_LCP",
-                module: row.env_module_path.clone(),
-                name: row.name.clone(),
-                detail: format!(
-                    "candidates={} chosen_module={}",
-                    row.candidate_count, row.chosen_module_path
-                ),
-            });
-        }
-    }
-    for row in &census.silent_pick_global_bare_lcp_tie_rows {
-        if genuine_keys.contains(&(row.env_module_path.clone(), row.name.clone())) {
-            out.push(SilentPickGenuineRow {
-                class: "SILENT_PICK_GLOBAL_BARE_LCP_TIE",
-                module: row.env_module_path.clone(),
-                name: row.name.clone(),
-                detail: format!("candidates={}", row.candidate_count),
-            });
-        }
-    }
-    for row in &census.silent_pick_fn_parent_first_hit_rows {
-        if genuine_keys.contains(&(row.env_module_path.clone(), row.name.clone())) {
-            out.push(SilentPickGenuineRow {
-                class: "SILENT_PICK_FN_PARENT_FIRST_HIT",
-                module: row.env_module_path.clone(),
-                name: row.name.clone(),
-                detail: format!(
-                    "parent_matches={} chosen_parent={}",
-                    row.parent_match_count, row.chosen_parent_module
-                ),
-            });
-        }
-    }
-    out
-}
-
-/// §5 fail-closed gate: a silent-pick row that ALSO lands in the census's own
-/// containment_ambiguous/diverge cross-check is a regression (the §13-ratified
-/// unique-on-chain rule has no silent-pick arm; #6936's Diverge=0 baseline means
-/// the frontier starts at zero, not a tuned threshold). Bare silent-pick
-/// telemetry alone over-records on whole-pool name overlap (v1/v2 std forks,
-/// each unique on its own resolution chain — not a §13 violation), so the raw
-/// count is NOT the gate condition; the join is (parent ruling 2026-07-21).
-/// Single authority consumed by both the CLI binary's exit code and the Rust
-/// discriminating-RED oracle (§2 — one decision, not two).
-pub fn resolution_divergence_silent_pick_refusal(
-    census: &ResolutionDivergenceCensus,
-) -> Option<String> {
-    let genuine = resolution_divergence_silent_pick_genuine_rows(census);
-    if genuine.is_empty() {
-        return None;
-    }
-    // "SILENT-PICK-GATE" is a stable, greppable marker (parent-session guardrail,
-    // 2026-07-21): the falsifier is currently red for unrelated reasons on other
-    // batches, so this refusal must self-identify rather than ride an
-    // undifferentiated job-conclusion flip.
-    let mut lines = vec![format!(
-        "SILENT-PICK-GATE: resolution-divergence-census: SILENT_PICK regression: {} silent pick(s) \
-         joined against containment_ambiguous/diverge (§13 genuine fail-open — whole-pool-overlap-only \
-         sites are filtered as benign, not counted here) — DESIGN §5/§13: a resolver that silently \
-         picks among >=2 candidates must refuse, never pick",
-        genuine.len(),
-    )];
-    for row in &genuine {
-        lines.push(format!(
-            "  SILENT-PICK-GATE {} module={} name={} {}",
-            row.class, row.module, row.name, row.detail,
-        ));
-    }
-    Some(lines.join("\n"))
-}
-
-/// A `fn_parent_first_hit` telemetry row outside the roster-excluded test harness
-/// prefixes that does NOT land in `containment_ambiguous_rows` for the same
-/// (module, name) site — a violation of the construction invariant the compile-path
-/// proxy gate (`main.rs`) assumes when it red-on-any raw `fn_parent_first_hit` count.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FnParentFirstHitSubsetViolation {
-    pub module: String,
-    pub name: String,
-    pub parent_match_count: usize,
-    pub chosen_parent_module: String,
-}
-
-/// Construction invariant (#7013 fast-follow): every in-roster `fn_parent_first_hit`
-/// fire must also be `containment_ambiguous` for the same site (the fn-parent walk IS
-/// the containment walk). Test-harness modules (`v2.test.*` by default) are excluded
-/// via `resolution_divergence_census_roster_excluded_module_prefixes` — intentional
-/// ambiguity fixtures, not production resolver debt.
-pub fn resolution_divergence_fn_parent_first_hit_subset_violations(
-    census: &ResolutionDivergenceCensus,
-) -> Vec<FnParentFirstHitSubsetViolation> {
-    let mut ambig_keys: std::collections::HashSet<(String, String)> =
-        std::collections::HashSet::new();
-    for row in &census.containment_ambiguous_rows {
-        ambig_keys.insert((row.calling_module.clone(), row.callee.clone()));
-    }
-
-    census
-        .silent_pick_fn_parent_first_hit_rows
-        .iter()
-        .filter(|row| !resolution_divergence_module_path_roster_excluded(&row.env_module_path))
-        .filter(|row| !ambig_keys.contains(&(row.env_module_path.clone(), row.name.clone())))
-        .map(|row| FnParentFirstHitSubsetViolation {
-            module: row.env_module_path.clone(),
-            name: row.name.clone(),
-            parent_match_count: row.parent_match_count,
-            chosen_parent_module: row.chosen_parent_module.clone(),
-        })
-        .collect()
-}
-
-/// Fail-closed refusal when the construction invariant is violated — makes the
-/// compile-path raw-count proxy sound by proving its assumption on the live corpus.
-pub fn resolution_divergence_fn_parent_first_hit_subset_refusal(
-    census: &ResolutionDivergenceCensus,
-) -> Option<String> {
-    let violations = resolution_divergence_fn_parent_first_hit_subset_violations(census);
-    if violations.is_empty() {
-        return None;
-    }
-    let mut lines = vec![format!(
-        "SILENT-PICK-GATE: resolution-divergence-census: fn_parent_first_hit subset violation: \
-         {} in-roster fn_parent_first_hit site(s) not in containment_ambiguous (construction \
-         invariant broken — compile-path raw-count proxy is unsound)",
-        violations.len(),
-    )];
-    for row in &violations {
-        lines.push(format!(
-            "  SILENT-PICK-GATE FN_PARENT_FIRST_HIT_NOT_CONTAINMENT_AMBIGUOUS module={} name={} \
-             parent_matches={} chosen_parent={}",
-            row.module, row.name, row.parent_match_count, row.chosen_parent_module,
-        ));
-    }
-    Some(lines.join("\n"))
-}
-
-pub fn format_resolution_divergence_census(census: &ResolutionDivergenceCensus) -> String {
-    let mut lines = Vec::new();
-    lines.push(format!(
-        "[resolution-divergence-census] scope=dag+src/v2 modules_resolved={} modules_excluded={}",
-        census.modules_resolved, census.modules_excluded
-    ));
-    lines.push(format!(
-        "[resolution-divergence-census] sites_checked={}",
-        census.sites_checked
-    ));
-    lines.push(format!(
-        "[resolution-divergence-census] agree={}",
-        census.agree
-    ));
-    lines.push(format!(
-        "[resolution-divergence-census] diverge={}",
-        census.diverge
-    ));
-    lines.push(format!(
-        "[resolution-divergence-census] containment_ambiguous={}",
-        census.containment_ambiguous
-    ));
-    lines.push(format!(
-        "[resolution-divergence-census] containment_unresolved={}",
-        census.containment_unresolved
-    ));
-    lines.push(format!(
-        "[resolution-divergence-census] import_unresolved={}",
-        census.import_unresolved
-    ));
-    lines.push(format!(
-        "[resolution-divergence-census] neither_bound={}",
-        census.neither_bound
-    ));
-    lines.push(format!(
-        "[resolution-divergence-census] neither_bound_subclass builtin_or_intrinsic={} local_or_param={} genuinely_unbound={}",
-        census.neither_bound_builtin_or_intrinsic,
-        census.neither_bound_local_or_param,
-        census.neither_bound_genuinely_unbound,
-    ));
-    lines.push(format!(
-        "[resolution-divergence-census] silent_pick global_bare_lcp={} global_bare_lcp_tie={} fn_parent_first_hit={}",
-        census.silent_pick_global_bare_lcp,
-        census.silent_pick_global_bare_lcp_tie,
-        census.silent_pick_fn_parent_first_hit,
-    ));
-    let agree_global_unique_owner_mismatch = census
-        .agree_global_unique_owner_rows
-        .iter()
-        .filter(|row| !row.owners_agree)
-        .count();
-    lines.push(format!(
-        "[resolution-divergence-census] agree_global_unique_owner_rows={} owner_mismatch={}",
-        census.agree_global_unique_owner_rows.len(),
-        agree_global_unique_owner_mismatch,
-    ));
-    lines.push(format!(
-        "[resolution-divergence-census] import_unresolved_infer_cross_check agree={} mismatch={}",
-        census.import_unresolved_infer_agree, census.import_unresolved_infer_mismatch,
-    ));
-    lines.push(format!(
-        "[resolution-divergence-census] cost_shape hits={} lexical_only={} global_unique={} lexical_steps_histogram={:?}",
-        census.cost_shape.containment_hits,
-        census.cost_shape.lexical_only_hits,
-        census.cost_shape.global_unique_hits,
-        census.cost_shape.lexical_steps_histogram,
-    ));
-    for site in &census.diverge_rows {
-        if let ResolutionDivergenceBucket::Diverge {
-            import_binding,
-            containment_binding,
-        } = &site.bucket
-        {
-            lines.push(format!(
-                "DIVERGE\tmodule={}\tcaller={}\tcallee={}\tat={}@{}\t\
-                 via={}\timport_chain={} ({} ptr={})\tcontainment={} ({} ptr={})",
-                site.calling_module,
-                site.caller_fn,
-                site.callee,
-                site.call_file,
-                site.call_span_start,
-                site.containment_via
-                    .as_ref()
-                    .map(containment_via_label)
-                    .unwrap_or("n/a"),
-                import_binding.owner_module,
-                import_binding.qualified_path,
-                import_binding.node_ptr,
-                containment_binding.owner_module,
-                containment_binding.qualified_path,
-                containment_binding.node_ptr,
-            ));
-        }
-    }
-    for site in &census.containment_ambiguous_rows {
-        if let ResolutionDivergenceBucket::ContainmentAmbiguous { import_binding } = &site.bucket {
-            lines.push(format!(
-                "CONTAINMENT_AMBIGUOUS\tmodule={}\tcaller={}\tcallee={}\tat={}@{}\t\
-                 via={}\timport_chain={} ({})",
-                site.calling_module,
-                site.caller_fn,
-                site.callee,
-                site.call_file,
-                site.call_span_start,
-                site.containment_via
-                    .as_ref()
-                    .map(containment_via_label)
-                    .unwrap_or("n/a"),
-                import_binding.owner_module,
-                import_binding.qualified_path,
-            ));
-        }
-    }
-    for site in &census.containment_unresolved_rows {
-        if let ResolutionDivergenceBucket::ContainmentUnresolved { import_binding } = &site.bucket {
-            lines.push(format!(
-                "CONTAINMENT_UNRESOLVED\tmodule={}\tcaller={}\tcallee={}\tat={}@{}\t\
-                 via={}\timport_chain={} ({})",
-                site.calling_module,
-                site.caller_fn,
-                site.callee,
-                site.call_file,
-                site.call_span_start,
-                site.containment_via
-                    .as_ref()
-                    .map(containment_via_label)
-                    .unwrap_or("n/a"),
-                import_binding.owner_module,
-                import_binding.qualified_path,
-            ));
-        }
-    }
-    for site in &census.import_unresolved_rows {
-        if let ResolutionDivergenceBucket::ImportUnresolved {
-            containment_binding,
-        } = &site.bucket
-        {
-            lines.push(format!(
-                "IMPORT_UNRESOLVED\tmodule={}\tcaller={}\tcallee={}\tat={}@{}\t\
-                 via={}\tcontainment={} ({})",
-                site.calling_module,
-                site.caller_fn,
-                site.callee,
-                site.call_file,
-                site.call_span_start,
-                site.containment_via
-                    .as_ref()
-                    .map(containment_via_label)
-                    .unwrap_or("n/a"),
-                containment_binding.owner_module,
-                containment_binding.qualified_path,
-            ));
-        }
-    }
-    for site in &census.neither_bound_rows {
-        lines.push(format!(
-            "NEITHER_BOUND\tmodule={}\tcaller={}\tcallee={}\tat={}@{}\tsubclass={}",
-            site.calling_module,
-            site.caller_fn,
-            site.callee,
-            site.call_file,
-            site.call_span_start,
-            site.neither_bound_subclass
-                .as_ref()
-                .map(neither_bound_subclass_label)
-                .unwrap_or("unknown"),
-        ));
-    }
-    for row in census
-        .agree_global_unique_owner_rows
-        .iter()
-        .filter(|row| !row.owners_agree)
-    {
-        lines.push(format!(
-            "AGREE_GLOBAL_UNIQUE_OWNER_MISMATCH\tmodule={}\tcaller={}\tcallee={}\tat={}@{}\t\
-             import_owner={}\tcontainment_owner={}",
-            row.calling_module,
-            row.caller_fn,
-            row.callee,
-            row.call_file,
-            row.call_span_start,
-            row.import_owner_module,
-            row.containment_owner_module,
-        ));
-    }
-    for row in census
-        .import_unresolved_infer_cross_check_rows
-        .iter()
-        .filter(|row| !row.walk_infer_agree)
-    {
-        lines.push(format!(
-            "IMPORT_UNRESOLVED_INFER_MISMATCH\tmodule={}\tcaller={}\tcallee={}\tat={}@{}\t\
-             via={}\twalk={} ({} ptr={})\tinfer={}",
-            row.calling_module,
-            row.caller_fn,
-            row.callee,
-            row.call_file,
-            row.call_span_start,
-            containment_via_label(&row.containment_via),
-            row.walk_binding.owner_module,
-            row.walk_binding.qualified_path,
-            row.walk_binding.node_ptr,
-            row.infer_binding
-                .as_ref()
-                .map(|b| format!("{} ({})", b.qualified_path, b.node_ptr))
-                .unwrap_or_else(|| "none".to_string()),
-        ));
-    }
-    for row in &census.silent_pick_global_bare_lcp_rows {
-        lines.push(format!(
-            "SILENT_PICK_GLOBAL_BARE_LCP\tmodule={}\tname={}\tcandidates={}\tchosen_module={}",
-            row.env_module_path, row.name, row.candidate_count, row.chosen_module_path,
-        ));
-    }
-    for row in &census.silent_pick_global_bare_lcp_tie_rows {
-        lines.push(format!(
-            "SILENT_PICK_GLOBAL_BARE_LCP_TIE\tmodule={}\tname={}\tcandidates={}",
-            row.env_module_path, row.name, row.candidate_count,
-        ));
-    }
-    for row in &census.silent_pick_fn_parent_first_hit_rows {
-        lines.push(format!(
-            "SILENT_PICK_FN_PARENT_FIRST_HIT\tmodule={}\tname={}\tparent_matches={}\tchosen_parent={}",
-            row.env_module_path,
-            row.name,
-            row.parent_match_count,
-            row.chosen_parent_module,
-        ));
-    }
-    lines.join("\n")
-}
-
-/// Byte projection and gate verdict shared by the in-process CI witness and the
-/// standalone adapter. Keeping both consumers on this value prevents the process
-/// cut from growing a second verdict or output-format authority.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ResolutionDivergenceCensusProjection {
-    pub stdout: String,
-    pub stderr: Option<String>,
-    pub exit_code: u8,
-    pub receipt_detail: &'static str,
-}
-
-pub fn project_resolution_divergence_census(
-    census: &ResolutionDivergenceCensus,
-) -> ResolutionDivergenceCensusProjection {
-    let report = format_resolution_divergence_census(census);
-    if census.sites_checked == 0 {
-        return ResolutionDivergenceCensusProjection {
-            stdout: report,
-            stderr: Some(
-                "resolution_divergence_census: no bare call sites in resolved corpus".to_string(),
-            ),
-            exit_code: 2,
-            receipt_detail: "refused: no bare call sites",
-        };
-    }
-    if let Some(refusal) = resolution_divergence_fn_parent_first_hit_subset_refusal(census) {
-        return ResolutionDivergenceCensusProjection {
-            stdout: report,
-            stderr: Some(refusal),
-            exit_code: 1,
-            receipt_detail: "refused: fn-parent subset violation",
-        };
-    }
-    if let Some(refusal) = resolution_divergence_silent_pick_refusal(census) {
-        return ResolutionDivergenceCensusProjection {
-            stdout: report,
-            stderr: Some(refusal),
-            exit_code: 1,
-            receipt_detail: "refused: genuine silent pick",
-        };
-    }
-    let raw_telemetry_count = census.silent_pick_global_bare_lcp_rows.len()
-        + census.silent_pick_global_bare_lcp_tie_rows.len()
-        + census.silent_pick_fn_parent_first_hit_rows.len();
-    ResolutionDivergenceCensusProjection {
-        stdout: format!(
-            "{report}\nSILENT-PICK-GATE: clean (0 genuine silent picks — {} raw telemetry site(s) filtered as benign whole-pool overlap via containment_ambiguous/diverge join, sites_checked={})",
-            raw_telemetry_count, census.sites_checked,
-        ),
-        stderr: None,
-        exit_code: 0,
-        receipt_detail: "clean gate verdict",
-    }
-}
-
-/// CI witness implementation over the parent process's shared SymbolIndex. The old
-/// adapter launched `resolution_divergence_census --closure-scoped`, which built a
-/// second index and cold-resolved the closure in a child process. This path keeps the
-/// closure-scoped source authority and resolver semantics while reusing the parent's
-/// typed-module cache; no child process or child resolve exists.
-pub fn resolution_divergence_silent_pick_gate_in_process(
-    _calling_ctx: &v1_interpreter::InterpContext,
-) -> bool {
-    let run = || -> Result<ResolutionDivergenceCensusProjection, String> {
-        // Parent-plan capture leaves observation armed so cache misses between the
-        // plan and this witness are retained. Bracket every fallible setup step and
-        // disable before propagating its result: a closure-membership or receipt-I/O
-        // refusal must not leak the global observation state into later work.
-        let resolve_setup = (|| -> Result<_, String> {
-            record_resolution_divergence_phase(
-                ResolutionDivergencePhase::ChildLaunch,
-                ResolutionDivergencePhaseState::Skipped,
-                "in-process witness; no child launched",
-            )?;
-            record_resolution_divergence_phase(
-                ResolutionDivergencePhase::ChildWholeTreeResolve,
-                ResolutionDivergencePhaseState::Skipped,
-                "in-process census uses parent-owned shared index",
-            )?;
-
-            record_resolution_divergence_phase(
-                ResolutionDivergencePhase::ParentWholeTreeResolve,
-                ResolutionDivergencePhaseState::Started,
-                "parent shared-index closure walk + resolve",
-            )?;
-            let roots = default_source_roots();
-            let index = process_shared_index(&roots);
-            let sources = resolution_divergence_closure_scoped_sources_from_shared_index(&index)?;
-            let modules_resolved = sources.len();
-            let (graph, source_indices, _) = resolved_graph_from_sources_with_index(
-                &index,
-                sources,
-                ResolveTypecheckGate::Strict,
-                "resolution-divergence-census-in-process",
-                ResolvedGraphMemoShare::Ephemeral,
-            )?;
-            Ok((graph, source_indices, modules_resolved))
-        })();
-        let subsequent_silent_picks = crate::v1_rt::resolution_silent_pick_disable();
-        let (graph, source_indices, modules_resolved) = resolve_setup?;
-        record_resolution_divergence_phase(
-            ResolutionDivergencePhase::ParentWholeTreeResolve,
-            ResolutionDivergencePhaseState::Completed,
-            &format!("modules={modules_resolved}; shared_index=true"),
-        )?;
-        let ctx = v1_interpreter::InterpContext::with_runtime_options(
-            graph.as_ref(),
-            source_indices,
-            v1_interpreter::ExecutionMode::Wet,
-            None,
-            None,
-        );
-        record_resolution_divergence_phase(
-            ResolutionDivergencePhase::CensusTraversal,
-            ResolutionDivergencePhaseState::Started,
-            &format!("modules={modules_resolved}"),
-        )?;
-        let mut census = resolution_divergence_census_from_ctx(&ctx);
-        census.modules_resolved = modules_resolved;
-        census.modules_excluded = 0;
-        let silent_picks = resolution_divergence_combine_silent_pick_telemetry(
-            resolution_divergence_parent_plan_silent_picks()?,
-            subsequent_silent_picks,
-        );
-        merge_silent_pick_telemetry(&mut census, silent_picks);
-        record_resolution_divergence_phase(
-            ResolutionDivergencePhase::CensusTraversal,
-            ResolutionDivergencePhaseState::Completed,
-            &format!("sites_checked={}", census.sites_checked),
-        )?;
-
-        record_resolution_divergence_phase(
-            ResolutionDivergencePhase::OutputProjection,
-            ResolutionDivergencePhaseState::Started,
-            "format report and gate verdict",
-        )?;
-        Ok(project_resolution_divergence_census(&census))
-    };
-
-    match run() {
-        Ok(projection) => {
-            println!("{}", projection.stdout);
-            if let Some(stderr) = &projection.stderr {
-                eprintln!("{stderr}");
-            }
-            if let Err(e) = record_resolution_divergence_phase(
-                ResolutionDivergencePhase::OutputProjection,
-                ResolutionDivergencePhaseState::Completed,
-                projection.receipt_detail,
-            ) {
-                eprintln!("resolution_divergence_census: {e}");
-                return false;
-            }
-            projection.exit_code == 0
-        }
-        Err(e) => {
-            eprintln!("resolution_divergence_census: {e}");
-            false
-        }
-    }
-}
-
-fn containment_via_label(via: &ContainmentResolveVia) -> &'static str {
-    match via {
-        ContainmentResolveVia::Lexical => "lexical",
-        ContainmentResolveVia::GlobalUnique => "global_unique",
-    }
-}
-
-fn neither_bound_subclass_label(subclass: &NeitherBoundSubclass) -> &'static str {
-    match subclass {
-        NeitherBoundSubclass::BuiltinOrIntrinsic => "builtin_or_intrinsic",
-        NeitherBoundSubclass::LocalOrParam => "local_or_param",
-        NeitherBoundSubclass::GenuinelyUnbound => "genuinely_unbound",
-    }
-}
-
-/// Silent-pick class eligible for walk-target-sourced alias codemod (§13 relief valve).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum WalkTargetAliasPlanClass {
-    GlobalBareLcp,
-    GlobalBareLcpTie,
-    FnParentFirstHit,
-}
-
-impl WalkTargetAliasPlanClass {
-    fn label(self) -> &'static str {
-        match self {
-            WalkTargetAliasPlanClass::GlobalBareLcp => "global_bare_lcp",
-            WalkTargetAliasPlanClass::GlobalBareLcpTie => "global_bare_lcp_tie",
-            WalkTargetAliasPlanClass::FnParentFirstHit => "fn_parent_first_hit",
-        }
-    }
-}
-
-/// Deduped alias plan row — one `alias <binding> = <walk.target>` per key.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct WalkTargetAliasPlanKey {
-    pub class: WalkTargetAliasPlanClass,
-    pub declaring_module: String,
-    pub binding: String,
-    pub walk_target_qualified_path: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct WalkTargetAliasPlanRow {
-    pub key: WalkTargetAliasPlanKey,
-    pub lookup_events: usize,
-    pub walk_verified: bool,
-    /// Primary oracle key (§13): pre-flip binding identity as qualified path.
-    pub pre_flip_qualified_path: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct WalkTargetAliasPlanRefused {
-    pub class: WalkTargetAliasPlanClass,
-    pub declaring_module: String,
-    pub binding: String,
-    pub reason: String,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct WalkTargetAliasPlan {
-    pub rows: Vec<WalkTargetAliasPlanRow>,
-    pub refused: Vec<WalkTargetAliasPlanRefused>,
-    pub global_bare_lcp_events: usize,
-    pub global_bare_lcp_tie_events: usize,
-    pub fn_parent_first_hit_events: usize,
-    pub modules_resolved: usize,
-    pub modules_excluded: usize,
-    /// Relative source-root labels joined with `+` (never hardcoded).
-    pub source_scope_label: String,
-}
-
-// SCAFFOLD (§7 seed-retained HAND-RUST — authority: docs/plans/namespace-resolution-design.md §13):
-// Plan-only walk-target alias codemod (`walk_target_alias_plan` bin + cli_run plan types).
-// 🟡 dissolve-on: apply phase emits `alias` rows into source modules and retires this
-// read-only planner when §13 import→alias transmutation + refusal flip complete
-// (stern-owl-401 Phase 3). Receipt: `rg walk_target_alias_plan src/v1/stage0` until deletion;
-// ROADMAP namespace-only lane (docs/plans/namespace-resolution-design.md).
-pub(crate) const CLI_RUN_WALK_TARGET_ALIAS_PLAN_SCAFFOLD_MARKER: &str =
-    "cli_run_walk_target_alias_plan";
-
-/// Format plan scope from caller-supplied source roots (relative to workspace when possible).
-pub fn walk_target_alias_plan_scope_label(source_roots: &[String]) -> String {
-    let ws = process_workspace_root();
-    source_roots
-        .iter()
-        .map(|root| {
-            Path::new(root)
-                .strip_prefix(&ws)
-                .map(|p| p.to_string_lossy().replace('\\', "/"))
-                .unwrap_or_else(|_| root.clone())
-        })
-        .collect::<Vec<_>>()
-        .join("+")
-}
-
-fn build_module_type_env_map(ctx: &v1_interpreter::InterpContext) -> HashMap<String, Rc<TypeEnv>> {
-    ctx.modules
-        .iter()
-        .map(|tm| (tm.type_env.module_path.clone(), tm.type_env.clone()))
-        .collect()
-}
-
-/// Ground walk target for a `global_bare_lcp` silent pick via SymbolIndex — never import lists.
-fn ground_walk_target_global_bare_lcp(
-    type_env: Rc<TypeEnv>,
-    name: &str,
-    chosen_module_path: &str,
-) -> Result<String, String> {
-    match type_env.symbol_index.global_bare.get(name).map(|s| &**s) {
-        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates, .. }) => {
-            let _cand = candidates
-                .iter()
-                .find(|c| c.module_path == chosen_module_path)
-                .ok_or_else(|| {
-                    format!(
-                        "chosen_module '{chosen_module_path}' not in global_bare candidates for '{name}'"
-                    )
-                })?;
-            let qualified_path = module_path_to_qualified_path(chosen_module_path, name);
-            if symbol_index_lookup(type_env.symbol_index.clone(), qualified_path.clone()).is_some()
-            {
-                Ok(qualified_path)
-            } else {
-                Err(format!("symbol_index_lookup miss for '{qualified_path}'"))
-            }
-        }
-        Some(GlobalBareLookupState::GlobalBareUniqueBinding { .. }) => Err(format!(
-            "global_bare not ambiguous for '{name}' at silent-pick site"
-        )),
-        None => Err(format!("name '{name}' not in global_bare index")),
-    }
-}
-
-/// Ground walk target for `fn_parent_first_hit` via SymbolIndex qualified-path lookup.
-fn ground_walk_target_fn_parent_first_hit(
-    type_env: Rc<TypeEnv>,
-    chosen_parent_module: &str,
-    name: &str,
-    item_index: &ModuleItemIndex,
-) -> Result<String, String> {
-    let qualified_path = module_path_to_qualified_path(chosen_parent_module, name);
-    match symbol_index_lookup(type_env.symbol_index.clone(), qualified_path.clone()) {
-        Some(node) if is_fn_like_binding(&node, chosen_parent_module, name, Some(item_index)) => {
-            Ok(qualified_path)
-        }
-        Some(_) => Err(format!(
-            "symbol_index_lookup hit for '{qualified_path}' is not fn-like"
-        )),
-        None => Err(format!("symbol_index_lookup miss for '{qualified_path}'")),
-    }
-}
-
-/// Build deduped walk-target alias plan from a resolved ctx + census telemetry.
-pub fn walk_target_alias_plan_from_census(
-    ctx: &v1_interpreter::InterpContext,
-    census: &ResolutionDivergenceCensus,
-) -> WalkTargetAliasPlan {
-    let type_envs = build_module_type_env_map(ctx);
-    let item_index = build_module_item_index(ctx);
-    let mut event_counts: HashMap<WalkTargetAliasPlanKey, usize> = HashMap::new();
-    let mut verified: HashMap<WalkTargetAliasPlanKey, bool> = HashMap::new();
-    let mut pre_flip_paths: HashMap<WalkTargetAliasPlanKey, String> = HashMap::new();
-    let mut refused = Vec::new();
-
-    let mut record = |class: WalkTargetAliasPlanClass,
-                      declaring_module: &str,
-                      binding: &str,
-                      walk_target: Result<String, String>| {
-        match walk_target {
-            Ok(qualified_path) => {
-                let key = WalkTargetAliasPlanKey {
-                    class,
-                    declaring_module: declaring_module.to_string(),
-                    binding: binding.to_string(),
-                    walk_target_qualified_path: qualified_path.clone(),
-                };
-                *event_counts.entry(key.clone()).or_insert(0) += 1;
-                verified.entry(key.clone()).or_insert(true);
-                pre_flip_paths.entry(key).or_insert(qualified_path);
-            }
-            Err(reason) => refused.push(WalkTargetAliasPlanRefused {
-                class,
-                declaring_module: declaring_module.to_string(),
-                binding: binding.to_string(),
-                reason,
-            }),
-        }
-    };
-
-    for row in &census.silent_pick_global_bare_lcp_rows {
-        match type_envs.get(&row.env_module_path) {
-            Some(type_env) => record(
-                WalkTargetAliasPlanClass::GlobalBareLcp,
-                &row.env_module_path,
-                &row.name,
-                ground_walk_target_global_bare_lcp(
-                    type_env.clone(),
-                    &row.name,
-                    &row.chosen_module_path,
-                ),
-            ),
-            None => record(
-                WalkTargetAliasPlanClass::GlobalBareLcp,
-                &row.env_module_path,
-                &row.name,
-                Err(format!(
-                    "declaring module '{}' not in resolved ctx",
-                    row.env_module_path
-                )),
-            ),
-        }
-    }
-
-    for row in &census.silent_pick_fn_parent_first_hit_rows {
-        match type_envs.get(&row.env_module_path) {
-            Some(type_env) => record(
-                WalkTargetAliasPlanClass::FnParentFirstHit,
-                &row.env_module_path,
-                &row.name,
-                ground_walk_target_fn_parent_first_hit(
-                    type_env.clone(),
-                    &row.chosen_parent_module,
-                    &row.name,
-                    &item_index,
-                ),
-            ),
-            None => record(
-                WalkTargetAliasPlanClass::FnParentFirstHit,
-                &row.env_module_path,
-                &row.name,
-                Err(format!(
-                    "declaring module '{}' not in resolved ctx",
-                    row.env_module_path
-                )),
-            ),
-        }
-    }
-
-    for row in &census.silent_pick_global_bare_lcp_tie_rows {
-        refused.push(WalkTargetAliasPlanRefused {
-            class: WalkTargetAliasPlanClass::GlobalBareLcpTie,
-            declaring_module: row.env_module_path.clone(),
-            binding: row.name.clone(),
-            reason: format!(
-                "global_bare_lcp_tie: {} candidates, no LCP winner — manual qualify/alias/rename required (§13)",
-                row.candidate_count
-            ),
-        });
-    }
-
-    let mut rows: Vec<WalkTargetAliasPlanRow> = event_counts
-        .into_iter()
-        .map(|(key, lookup_events)| WalkTargetAliasPlanRow {
-            pre_flip_qualified_path: pre_flip_paths
-                .get(&key)
-                .cloned()
-                .unwrap_or_else(|| key.walk_target_qualified_path.clone()),
-            walk_verified: *verified.get(&key).unwrap_or(&false),
-            lookup_events,
-            key,
-        })
-        .collect();
-    rows.sort_by(|a, b| {
-        (
-            a.key.class.label(),
-            a.key.declaring_module.as_str(),
-            a.key.binding.as_str(),
-            a.key.walk_target_qualified_path.as_str(),
-        )
-            .cmp(&(
-                b.key.class.label(),
-                b.key.declaring_module.as_str(),
-                b.key.binding.as_str(),
-                b.key.walk_target_qualified_path.as_str(),
-            ))
-    });
-
-    WalkTargetAliasPlan {
-        rows,
-        refused,
-        global_bare_lcp_events: census.silent_pick_global_bare_lcp,
-        global_bare_lcp_tie_events: census.silent_pick_global_bare_lcp_tie,
-        fn_parent_first_hit_events: census.silent_pick_fn_parent_first_hit,
-        modules_resolved: census.modules_resolved,
-        modules_excluded: census.modules_excluded,
-        source_scope_label: String::new(),
-    }
-}
-
-/// Whole-corpus walk-target alias plan (plan-only; no source edits).
-pub fn walk_target_alias_plan_live(
-    source_roots: &[String],
-    exclude_substrings: &[String],
-) -> Result<WalkTargetAliasPlan, String> {
-    crate::v1_rt::resolution_silent_pick_enable();
-    let WholeTreeCtx {
-        ctx,
-        modules_resolved,
-        modules_excluded,
-        ..
-    } = whole_tree_resolved_ctx(
-        source_roots,
-        exclude_substrings,
-        v1_interpreter::ExecutionMode::Wet,
-    )?;
-    let silent_picks = crate::v1_rt::resolution_silent_pick_disable();
-    let mut census = resolution_divergence_census_from_ctx(&ctx);
-    census.modules_resolved = modules_resolved;
-    census.modules_excluded = modules_excluded;
-    merge_silent_pick_telemetry(&mut census, silent_picks);
-    let mut plan = walk_target_alias_plan_from_census(&ctx, &census);
-    plan.source_scope_label = walk_target_alias_plan_scope_label(source_roots);
-    Ok(plan)
-}
-
-pub fn format_walk_target_alias_plan(plan: &WalkTargetAliasPlan) -> String {
-    let global_bare_unique = plan
-        .rows
-        .iter()
-        .filter(|r| r.key.class == WalkTargetAliasPlanClass::GlobalBareLcp)
-        .count();
-    let fn_parent_unique = plan
-        .rows
-        .iter()
-        .filter(|r| r.key.class == WalkTargetAliasPlanClass::FnParentFirstHit)
-        .count();
-    let mut lines = vec![
-        format!(
-            "[walk-target-alias-plan] scope={} modules_resolved={} modules_excluded={}",
-            if plan.source_scope_label.is_empty() {
-                "unknown".to_string()
-            } else {
-                plan.source_scope_label.clone()
-            },
-            plan.modules_resolved,
-            plan.modules_excluded
-        ),
-        format!(
-            "[walk-target-alias-plan] global_bare_lcp_events={} unique_rows={} global_bare_lcp_tie_events={} fn_parent_first_hit_events={} unique_rows={} refused={}",
-            plan.global_bare_lcp_events,
-            global_bare_unique,
-            plan.global_bare_lcp_tie_events,
-            plan.fn_parent_first_hit_events,
-            fn_parent_unique,
-            plan.refused.len(),
-        ),
-    ];
-    for row in &plan.rows {
-        lines.push(format!(
-            "ALIAS_ROW\t{}\tmodule={}\tbinding={}\twalk_target={}\tlookup_events={}\twalk_verified={}\tpre_flip_qn={}",
-            row.key.class.label(),
-            row.key.declaring_module,
-            row.key.binding,
-            row.key.walk_target_qualified_path,
-            row.lookup_events,
-            row.walk_verified,
-            row.pre_flip_qualified_path,
-        ));
-    }
-    for row in &plan.refused {
-        lines.push(format!(
-            "REFUSED\t{}\tmodule={}\tbinding={}\treason={}",
-            row.class.label(),
-            row.declaring_module,
-            row.binding,
-            row.reason,
-        ));
-    }
-    lines.join("\n")
-}
-
-#[cfg(test)]
-mod resolution_divergence_census_tests {
-    use super::{
-        build_module_item_index, containment_resolve_fn_v1, containment_resolve_fn_v1_for_module,
-        func_sig_if_resolved, import_chain_owner, lookup_resolved_sig,
-        resolution_divergence_census_live, resolution_divergence_silent_pick_refusal,
-        whole_tree_resolved_ctx, write_resolution_divergence_phase_receipt_row_at,
-        ContainmentResolve, ResolutionDivergenceBucket, ResolutionDivergencePhase,
-        ResolutionDivergencePhaseState, WholeTreeCtx,
-    };
-    use crate::v1_interpreter::ExecutionMode::Wet;
-    use std::rc::Rc;
-
-    fn write_fixture(root: &std::path::Path, rel: &str, content: &str) {
-        let path = root.join(rel);
-        std::fs::create_dir_all(path.parent().unwrap()).expect("mkdir");
-        std::fs::write(&path, content).expect("write dag");
-    }
-
-    #[test]
-    fn phase_receipt_persists_started_before_completed_with_distinct_timing() {
-        let receipt = std::env::temp_dir().join(format!(
-            "gunbc-resolution-divergence-phase-receipt-{}.tsv",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_file(&receipt);
-        write_resolution_divergence_phase_receipt_row_at(
-            &receipt,
-            ResolutionDivergencePhase::CensusTraversal,
-            ResolutionDivergencePhaseState::Started,
-            "fixture\nstart",
-        )
-        .expect("started row");
-        write_resolution_divergence_phase_receipt_row_at(
-            &receipt,
-            ResolutionDivergencePhase::CensusTraversal,
-            ResolutionDivergencePhaseState::Completed,
-            "fixture complete",
-        )
-        .expect("completed row");
-        let body = std::fs::read_to_string(&receipt).expect("read receipt");
-        let lines: Vec<&str> = body.lines().collect();
-        assert_eq!(lines.len(), 3, "header plus one row per transition");
-        assert!(lines[0].contains("elapsed_ms"));
-        assert!(lines[1].contains("\tcensus_traversal\tstarted\t\tfixture start"));
-        assert!(lines[2].contains("\tcensus_traversal\tcompleted\t"));
-        assert_eq!(lines[1].split('\t').count(), 11);
-        assert_eq!(lines[2].split('\t').count(), 11);
-        let _ = std::fs::remove_file(receipt);
-    }
-
-    #[test]
-    fn parent_and_shared_index_telemetry_join_without_cache_hit_duplicates() {
-        let parent_row = crate::v1_rt::GlobalBareLcpPickSite {
-            env_module_path: "test.parent".to_string(),
-            name: "shared".to_string(),
-            candidate_count: 2,
-            chosen_module_path: "test.choice".to_string(),
-        };
-        let later_row = crate::v1_rt::GlobalBareLcpPickSite {
-            env_module_path: "test.later".to_string(),
-            name: "shared".to_string(),
-            candidate_count: 3,
-            chosen_module_path: "test.other_choice".to_string(),
-        };
-        let earlier = crate::v1_rt::SilentPickTelemetry {
-            global_bare_lcp_picks: vec![parent_row.clone()],
-            ..Default::default()
-        };
-        let later = crate::v1_rt::SilentPickTelemetry {
-            global_bare_lcp_picks: vec![parent_row.clone(), later_row.clone()],
-            ..Default::default()
-        };
-        let joined = super::resolution_divergence_combine_silent_pick_telemetry(earlier, later);
-        assert_eq!(joined.global_bare_lcp_picks, vec![parent_row, later_row]);
-    }
-
-    /// The root set for a hermetic fixture corpus: the fixture, and nothing else.
-    ///
-    /// These are positive controls — the planted divergence lives entirely among
-    /// fixture modules, and `std.types` is present only to supply `Bool`. Rooting at
-    /// the live `dag/std` made every one of them depend on the whole
-    /// std -> extdeps -> {gunbc, v2.std} import closure resolving, so they went red at
-    /// #7268 (which grounded std's class-1 unit constants and relocated the POSIX exit
-    /// codes onto extdeps rows) without the detector under test changing at all.
-    /// DESIGN §3 deleted the `std <- extdeps` layer direction on purpose, so that
-    /// closure is expected to keep widening; chasing it with more roots would re-break
-    /// on the next grounding. A local stub keeps the control discriminating and
-    /// independent of corpus health.
-    fn fixture_roots(fixture: &std::path::Path) -> Vec<String> {
-        write_fixture(
-            fixture,
-            "std_types.dag",
-            "module std.types\n\ntype Bool = True | False\n",
-        );
-        vec![fixture.to_string_lossy().into_owned()]
-    }
-
-    fn positive_control_fixture_root() -> std::path::PathBuf {
-        super::process_workspace_root()
-            .join("target")
-            .join(format!("gunbc-resdiv-posctl-{}", std::process::id()))
-    }
-
-    #[test]
-    fn shared_index_cut_preserves_frozen_census_output_and_verdict() {
-        let fixture = super::process_workspace_root()
-            .join("target")
-            .join(format!("gunbc-resdiv-shared-cut-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&fixture);
-        write_fixture(
-            &fixture,
-            "callee.dag",
-            r#"module test.sharedcut.callee
-
-import std.types { Bool }
-
-fn identity(a: Bool) -> Bool {
-  return a
-}
-"#,
-        );
-        write_fixture(
-            &fixture,
-            "caller.dag",
-            r#"module test.sharedcut.caller
-
-import std.types { Bool }
-import test.sharedcut.callee { identity }
-
-fn caller() -> Bool {
-  return identity(False)
-}
-"#,
-        );
-        let roots = fixture_roots(&fixture);
-        let before = resolution_divergence_census_live(&roots, &[]).expect("legacy cold census");
-
-        // Match production exactly: derive membership from source objects the
-        // canonicalized parent index already owns, then resolve through that index.
-        // The absolute fixture roots intentionally differ in spelling from the
-        // canonical index; re-reading them would mint absolute entry objects alongside
-        // the relative provider objects and reintroduce every module twice.
-        let index = super::process_shared_index(&roots);
-        let sources =
-            super::resolution_divergence_closure_scoped_sources_from_shared_index(index.as_ref())
-                .expect("parent-owned closure-scoped fixture sources");
-        assert!(
-            sources.iter().all(|source| index
-                .source_files
-                .values()
-                .any(|owned| Rc::ptr_eq(source, owned))),
-            "the in-process cut must not reload any source outside the parent index",
-        );
-        let modules_resolved = sources.len();
-        crate::v1_rt::resolution_silent_pick_enable();
-        let resolve_result = super::resolved_graph_from_sources_with_index(
-            index.as_ref(),
-            sources,
-            super::ResolveTypecheckGate::Strict,
-            "resolution-divergence-shared-cut-control",
-            super::ResolvedGraphMemoShare::Ephemeral,
-        );
-        let telemetry = crate::v1_rt::resolution_silent_pick_disable();
-        let (graph, source_indices, _) = resolve_result.expect("shared-index resolve");
-        let ctx = crate::v1_interpreter::InterpContext::with_runtime_options(
-            graph.as_ref(),
-            source_indices,
-            Wet,
-            None,
-            None,
-        );
-        let mut after = super::resolution_divergence_census_from_ctx(&ctx);
-        after.modules_resolved = modules_resolved;
-        super::merge_silent_pick_telemetry(&mut after, telemetry);
-
-        assert_eq!(
-            super::project_resolution_divergence_census(&after),
-            super::project_resolution_divergence_census(&before),
-            "the process-boundary cut must preserve census bytes and gate verdict on a frozen tree",
-        );
-        let _ = std::fs::remove_dir_all(fixture);
-    }
-
-    #[test]
-    fn resolution_divergence_positive_control_planted_site() {
-        let fixture = positive_control_fixture_root();
-        let _ = std::fs::remove_dir_all(&fixture);
-        write_fixture(
-            &fixture,
-            "middle.dag",
-            r#"module test.posctl.middle
-
-import std.types { Bool }
-
-fn lex_target(a: Bool) -> Bool {
-  return a
-}
-"#,
-        );
-        write_fixture(
-            &fixture,
-            "other.dag",
-            r#"module test.posctl.other
-
-import std.types { Bool }
-
-fn lex_target(a: Bool, b: Bool) -> Bool {
-  return a
-}
-"#,
-        );
-        write_fixture(
-            &fixture,
-            "leaf.dag",
-            r#"module test.posctl.middle.leaf
-
-import std.types { Bool }
-import test.posctl.other { lex_target }
-
-fn caller() -> Bool {
-  return lex_target(False)
-}
-"#,
-        );
-        let roots = fixture_roots(&fixture);
-        let WholeTreeCtx { ctx, .. } =
-            whole_tree_resolved_ctx(&roots, &[], Wet).expect("resolve ctx");
-        let leaf = ctx
-            .modules
-            .iter()
-            .find(|m| m.type_env.module_path == "test.posctl.middle.leaf")
-            .expect("leaf module must resolve");
-        let import_sig = func_sig_if_resolved(lookup_resolved_sig(
-            leaf.func_env.clone(),
-            "lex_target".to_string(),
-        ))
-        .expect("import");
-        let import_owner = import_chain_owner(&leaf.func_env, "lex_target").expect("import owner");
-        let import_arity = import_sig.params.len();
-        let item_index = build_module_item_index(&ctx);
-        let containment = containment_resolve_fn_v1_for_module(
-            &leaf.type_env.symbol_index,
-            "test.posctl.middle.leaf",
-            "lex_target",
-            Some(&item_index),
-        );
-        assert_eq!(
-            import_arity, 2,
-            "lookup_resolved_sig must bind other.lex_target (2 params), owner={import_owner}"
-        );
-        assert!(
-            matches!(
-                &containment,
-                ContainmentResolve::Hit {
-                    owner_module,
-                    ..
-                } if owner_module.contains("middle") && !owner_module.contains("leaf")
-            ),
-            "§12.4 lexical ancestor must bind middle.lex_target, got {containment:?}"
-        );
-        let census = resolution_divergence_census_live(&roots, &[]).expect("resolve");
-        assert_eq!(
-            census.diverge, 1,
-            "positive control: expected Diverge=1, got diverge={} agree={} ambiguous={} import_unresolved={} neither_bound={} sites={} import_owner={import_owner} import_arity={import_arity} containment={containment:?}",
-            census.diverge,
-            census.agree,
-            census.containment_ambiguous,
-            census.import_unresolved,
-            census.neither_bound,
-            census.sites_checked,
-        );
-        let diverge_rows: Vec<_> = census
-            .diverge_rows
-            .iter()
-            .filter(|s| s.callee == "lex_target" && s.calling_module.contains("middle.leaf"))
-            .collect();
-        assert_eq!(diverge_rows.len(), 1, "expected one leaf lex_target site");
-        assert!(
-            matches!(
-                diverge_rows[0].bucket,
-                ResolutionDivergenceBucket::Diverge { .. }
-            ),
-            "positive control must classify leaf lex_target as Diverge, got {:?}",
-            diverge_rows[0].bucket
-        );
-        if let ResolutionDivergenceBucket::Diverge {
-            import_binding,
-            containment_binding,
-        } = &diverge_rows[0].bucket
-        {
-            assert!(
-                import_binding.owner_module.contains("other"),
-                "import chain must bind other, got {}",
-                import_binding.owner_module
-            );
-            assert!(
-                containment_binding.owner_module.contains("middle")
-                    && !containment_binding.owner_module.contains("leaf"),
-                "containment lexical ancestor must bind middle, got {}",
-                containment_binding.owner_module
-            );
-        }
-        let _ = std::fs::remove_dir_all(&fixture);
-    }
-
-    fn silent_pick_fixture_root(tag: &str) -> std::path::PathBuf {
-        super::process_workspace_root().join("target").join(format!(
-            "gunbc-resdiv-silentpick-{tag}-{}",
-            std::process::id()
-        ))
-    }
-
-    // Four silent-pick positive controls were deleted here, not repaired: they planted
-    // a §13 silent pick (two sibling `shared_pick` fns; two homonymous types) and
-    // asserted the telemetry counted it. `NAME_RESOLUTION_POLICY_NAMESPACE_ONLY`
-    // now defaults to true (v1_rt.rs), so the resolver REFUSES those fixtures with a
-    // typed `AmbiguousReference` instead of picking — the planted fail-open is
-    // unwritable by construction (DESIGN §5), and a validation control for an
-    // unwritable class cannot fire. The surviving behaviour is the refusal itself,
-    // already carried by `v1-compiler-tests`
-    // `namespace_unique_on_chain_policy_test::namespace_only_refuses_{chain_homonym_on_type_path,
-    // fn_parent_first_hit_at_call_site}` (green by execution, both policy arms, and
-    // it reds if the refusal ever regresses to a silent pick). Keeping these four
-    // would be a second representation of that one fact (§2/§3).
-    //
-    // This fires the dissolve-on that `dag/gunbc/ci_layer_roots.dag`
-    // `falsifier_silent_pick_gate_note` declares for itself: "§13's unique-on-chain
-    // resolution ships as the resolver's actual behavior ... then telemetry, this
-    // witness, and this note all delete together." The rest of that dissolution —
-    // the `v1_rt` telemetry, the 04_env/04_sigs recording sites, main.rs's
-    // SILENT-PICK-GATE, the two census bins, the falsifier roster row and the note —
-    // is a separate lane; `resolution_divergence_silent_pick_clean_corpus_refusal_none`
-    // below is vacuous under the same flip and dissolves with it.
-
-    /// Same fixture family, but the leaf imports only module `a` — one parent, not
-    /// two — so `shared_pick` resolves via a single parent hit (match_count=1) and
-    /// no telemetry fires. Proves the gate does not over-trigger on ordinary
-    /// bare-name-via-parent resolution, only on a genuine >=2-candidate collision.
-    #[test]
-    fn resolution_divergence_silent_pick_clean_corpus_refusal_none() {
-        let fixture = silent_pick_fixture_root("clean");
-        let _ = std::fs::remove_dir_all(&fixture);
-        write_fixture(
-            &fixture,
-            "a.dag",
-            r#"module test.silentpickclean.a
-
-import std.types { Bool }
-
-fn unrelated_a(x: Bool) -> Bool {
-  return x
-}
-
-fn shared_pick(x: Bool) -> Bool {
-  return x
-}
-"#,
-        );
-        write_fixture(
-            &fixture,
-            "leaf.dag",
-            r#"module test.silentpickclean.leaf
-
-import std.types { Bool }
-import test.silentpickclean.a { unrelated_a }
-
-fn caller() -> Bool {
-  return shared_pick(False)
-}
-"#,
-        );
-        let roots = fixture_roots(&fixture);
-        let census = resolution_divergence_census_live(&roots, &[]).expect("resolve");
-        assert_eq!(
-            census.silent_pick_fn_parent_first_hit, 0,
-            "single-parent bare resolution must not fire silent-pick telemetry, rows={:?}",
-            census.silent_pick_fn_parent_first_hit_rows
-        );
-        assert!(
-            resolution_divergence_silent_pick_refusal(&census).is_none(),
-            "§5 gate must be None on a clean corpus with no silent pick"
-        );
-        let _ = std::fs::remove_dir_all(&fixture);
-    }
-
-    /// Construction invariant on the live closure-scoped corpus: every in-roster
-    /// `fn_parent_first_hit` row must land in `containment_ambiguous_rows` for the
-    /// same (module, name) site. `v2.test.*` modules are roster-excluded.
-    #[test]
-    fn resolution_divergence_fn_parent_first_hit_subset_holds_on_closure_scoped_corpus() {
-        let census = super::resolution_divergence_census_live_closure_scoped()
-            .expect("closure-scoped census");
-        let violations =
-            super::resolution_divergence_fn_parent_first_hit_subset_violations(&census);
-        assert!(
-            violations.is_empty(),
-            "fn_parent_first_hit must be subset of containment_ambiguous on in-roster modules \
-             (violations={violations:?}, raw_fn_parent_first_hit={}, containment_ambiguous={})",
-            census.silent_pick_fn_parent_first_hit,
-            census.containment_ambiguous,
-        );
-        assert!(
-            super::resolution_divergence_fn_parent_first_hit_subset_refusal(&census).is_none(),
-            "subset refusal must be None on the live closure-scoped corpus"
-        );
-    }
-
-    #[test]
-    fn walk_target_alias_plan_refuses_global_bare_lcp_tie_sites() {
-        use super::{
-            walk_target_alias_plan_from_census, ResolutionDivergenceCensus,
-            WalkTargetAliasPlanClass,
-        };
-        use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
-        use crate::v1_compiler_infer_items::ResolvedGraph;
-        use crate::v1_interpreter::InterpContext;
-        use im::HashMap;
-        use im::Vector;
-        use std::rc::Rc;
-
-        let graph = ResolvedGraph {
-            modules: Rc::new(Vector::new()),
-            item_registry: Rc::new(HashMap::new()),
-            diagnostics: Rc::new(Vector::new()),
-            emit_graph_info: empty_emit_graph_info(),
-        };
-        let ctx = InterpContext::new(&graph, Rc::new(HashMap::new()), Wet);
-        let census = ResolutionDivergenceCensus {
-            silent_pick_global_bare_lcp_tie: 1,
-            silent_pick_global_bare_lcp_tie_rows: vec![crate::v1_rt::GlobalBareLcpTieSite {
-                env_module_path: "test.aliasplan.tie.consumer".to_string(),
-                name: "AmbigType".to_string(),
-                candidate_count: 2,
-            }],
-            ..ResolutionDivergenceCensus::default()
-        };
-        let plan = walk_target_alias_plan_from_census(&ctx, &census);
-        assert_eq!(plan.global_bare_lcp_tie_events, 1);
-        assert_eq!(plan.refused.len(), 1);
-        assert_eq!(
-            plan.refused[0].class,
-            WalkTargetAliasPlanClass::GlobalBareLcpTie
-        );
-        assert_eq!(
-            plan.refused[0].declaring_module,
-            "test.aliasplan.tie.consumer"
-        );
-        assert_eq!(plan.refused[0].binding, "AmbigType");
-        assert!(
-            plan.refused[0].reason.contains("global_bare_lcp_tie"),
-            "tie refusal must be typed and located, got {}",
-            plan.refused[0].reason
-        );
-    }
 }
 
 #[cfg(test)]
@@ -32320,11 +29720,11 @@ mod reference_edge_producer_tests {
             panic!("expected ModuleDependencyEdge record, got {value}");
         };
         let path = match ctx.field(fields, "path") {
-            Some(crate::v1_interpreter::str_value(s)) => s.to_string(),
+            Some(crate::v1_interpreter::Value::Str(s)) => s.to_string(),
             other => panic!("path field: {other:?}"),
         };
         let target = match ctx.field(fields, "target_module") {
-            Some(crate::v1_interpreter::str_value(s)) => s.to_string(),
+            Some(crate::v1_interpreter::Value::Str(s)) => s.to_string(),
             other => panic!("target_module field: {other:?}"),
         };
         (path, target)
@@ -32832,7 +30232,7 @@ fn commit_witness_field_str(
 
 fn ci_floor_commit_witness_claim_pairs() -> Result<Vec<(String, String)>, String> {
     let roots = witness_layer_roots();
-    let index = build_multi_entry_index(&roots);
+    let index = process_shared_index(&roots);
     let (graph, source_indices) = resolve_entry_with_index(&index, COMMIT_WORKFLOW_ENTRY)?;
     let ctx = make_eval_context(
         &graph,
@@ -32846,7 +30246,7 @@ fn ci_floor_commit_witness_claim_pairs() -> Result<Vec<(String, String)>, String
 
 pub fn commit_witness_claim_pair_resolvable(entry: &str, function: &str) -> bool {
     let roots = witness_layer_roots();
-    let index = build_multi_entry_index(&roots);
+    let index = process_shared_index(&roots);
     let mut entry_cache = std::collections::HashMap::new();
     matches!(
         commit_witness_claim_pair_resolvability_with_index(
@@ -32940,7 +30340,7 @@ pub fn commit_witness_claim_roster_defects() -> Vec<(String, String, String)> {
         )];
     };
     let roots = witness_layer_roots();
-    let index = build_multi_entry_index(&roots);
+    let index = process_shared_index(&roots);
     let mut entry_cache = std::collections::HashMap::new();
     let mut defects = Vec::new();
     for (entry, function) in pairs {
@@ -32976,10 +30376,6 @@ pub fn commit_witness_claim_roster_unresolvable_count() -> i64 {
         );
     }
     defects.len() as i64
-}
-
-pub fn commit_witness_claim_roster_holds() -> bool {
-    commit_witness_claim_roster_unresolvable_count() == 0
 }
 
 pub fn non_fold_residue_wildcard_red_fixture_holds() -> bool {
@@ -33488,7 +30884,7 @@ struct NonFoldReport {
 
 fn nfr_build_report() -> &'static NonFoldReport {
     static REPORT: std::sync::OnceLock<NonFoldReport> = std::sync::OnceLock::new();
-    REPORT.get_or_init(|| {
+    shared_fill::once(&REPORT, "non_fold_residue", "corpus", || {
         let files = corpus_dag_files();
         let closed_coproduct_names = nfr_closed_coproduct_names(&files);
         NonFoldReport {
@@ -33535,14 +30931,6 @@ pub fn non_fold_residue_stale_roster_count() -> i64 {
 
 pub fn non_fold_residue_coproduct_universe_count() -> i64 {
     nfr_build_report().coproduct_universe as i64
-}
-
-pub fn non_fold_residue_live_sites() -> &'static [String] {
-    &nfr_build_report().sites
-}
-
-pub fn non_fold_residue_roster_size() -> i64 {
-    non_fold_residue_roster_entries().len() as i64
 }
 
 #[cfg(test)]
@@ -33859,7 +31247,104 @@ pub struct LanguagesDeclConsumerRecord {
     pub external_consumer_paths: Vec<String>,
 }
 
+fn languages_census_record_tokens(
+    rel: &str,
+    content: &str,
+    decl_name_set: &HashSet<String>,
+    by_decl: &mut HashMap<String, HashSet<String>>,
+) {
+    if rel == LANGUAGES_AUTHORITY_REL || languages_census_is_infrastructure_path(rel) {
+        return;
+    }
+    let tokens = languages_census_tokenize(content);
+    for decl_name in tokens.intersection(decl_name_set) {
+        by_decl
+            .get_mut(decl_name)
+            .expect("decl map key")
+            .insert(rel.to_string());
+    }
+}
+
+fn languages_decl_records_from_inventory(
+    inventory: &[PreparedSourceView],
+) -> Vec<LanguagesDeclConsumerRecord> {
+    let authority_content = inventory
+        .iter()
+        .find(|e| e.source.path.replace('\\', "/") == LANGUAGES_AUTHORITY_REL)
+        .map(|e| e.source.content.as_str())
+        .unwrap_or_else(|| {
+            panic!(
+                "languages_consumer_census: prepared inventory missing {LANGUAGES_AUTHORITY_REL}"
+            )
+        });
+    let decl_names = languages_census_extract_data_decl_names(authority_content);
+    let decl_name_set: HashSet<String> = decl_names.iter().cloned().collect();
+
+    let mut by_decl: HashMap<String, HashSet<String>> = decl_names
+        .iter()
+        .map(|name| (name.clone(), HashSet::new()))
+        .collect();
+
+    let mut seen: HashSet<String> = HashSet::new();
+    for entry in inventory {
+        let rel = entry.source.path.replace('\\', "/");
+        if !rel.starts_with("dag/") && !rel.starts_with("src/") {
+            continue;
+        }
+        seen.insert(rel.clone());
+        languages_census_record_tokens(&rel, &entry.source.content, &decl_name_set, &mut by_decl);
+    }
+
+    // Prepared inventory is dag + src/v2 `.dag` only. The disk census also tokenizes
+    // `src/v1` and every `.rs` file; those are the external consumers of `rust_spec`.
+    let ws = workspace_root();
+    let mut extra = Vec::new();
+    let src_root = ws.join("src");
+    if src_root.is_dir() {
+        languages_census_collect_source_files(&src_root, &mut extra);
+    }
+    for path in extra {
+        let rel = path
+            .strip_prefix(&ws)
+            .map(|p| p.to_string_lossy().replace('\\', "/"))
+            .unwrap_or_default();
+        if seen.contains(&rel) {
+            continue;
+        }
+        let content = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        languages_census_record_tokens(&rel, &content, &decl_name_set, &mut by_decl);
+    }
+
+    let mut records = Vec::new();
+    for decl_name in decl_names {
+        let mut paths: Vec<String> = by_decl
+            .remove(&decl_name)
+            .expect("decl map key")
+            .into_iter()
+            .collect();
+        paths.sort();
+        records.push(LanguagesDeclConsumerRecord {
+            decl_name,
+            external_consumer_paths: paths,
+        });
+    }
+    records
+}
+
 fn languages_decl_records_inner() -> Vec<LanguagesDeclConsumerRecord> {
+    if floor_prepared_authority_active() {
+        return FLOOR_LANGUAGES_RECORDS.with(|cell| {
+            if cell.borrow().is_none() {
+                let inventory = floor_prepared_inventory_snapshot()
+                    .expect("floor languages census: authority active but inventory missing");
+                *cell.borrow_mut() = Some(languages_decl_records_from_inventory(&inventory));
+            }
+            cell.borrow().clone().expect("floor languages records")
+        });
+    }
     let ws = workspace_root();
     let authority = ws.join(LANGUAGES_AUTHORITY_REL);
     let authority_content = std::fs::read_to_string(&authority).unwrap_or_else(|e| {
@@ -33896,13 +31381,7 @@ fn languages_decl_records_inner() -> Vec<LanguagesDeclConsumerRecord> {
             Ok(c) => c,
             Err(_) => continue,
         };
-        let tokens = languages_census_tokenize(&content);
-        for decl_name in tokens.intersection(&decl_name_set) {
-            by_decl
-                .get_mut(decl_name)
-                .expect("decl map key")
-                .insert(rel.clone());
-        }
+        languages_census_record_tokens(&rel, &content, &decl_name_set, &mut by_decl);
     }
 
     let mut records = Vec::new();
@@ -34253,7 +31732,9 @@ fn compute_inert_carrier_data(files: &[(String, String)]) -> InertCarrierData {
 
 fn build_inert_carrier_data() -> &'static InertCarrierData {
     static CACHE: OnceLock<InertCarrierData> = OnceLock::new();
-    CACHE.get_or_init(|| compute_inert_carrier_data(&corpus_dag_files()))
+    shared_fill::once(&CACHE, "inert_carrier_data", "corpus", || {
+        compute_inert_carrier_data(&corpus_dag_files())
+    })
 }
 
 pub fn inert_carrier_names_live() -> Vec<String> {
@@ -34659,13 +32140,18 @@ struct ClaAuditBuiltinCache {
 
 fn cla_cached_builtin_cache() -> &'static ClaAuditBuiltinCache {
     static CACHE: OnceLock<ClaAuditBuiltinCache> = OnceLock::new();
-    CACHE.get_or_init(|| {
-        let summary = complexity_linearity_audit_corpus_default_roots();
-        ClaAuditBuiltinCache {
-            finding_count: summary.findings.len() as i64,
-            sites: summary.findings.iter().map(|f| f.site.clone()).collect(),
-        }
-    })
+    shared_fill::once(
+        &CACHE,
+        "complexity_linearity_audit",
+        "default_roots",
+        || {
+            let summary = complexity_linearity_audit_corpus_default_roots();
+            ClaAuditBuiltinCache {
+                finding_count: summary.findings.len() as i64,
+                sites: summary.findings.iter().map(|f| f.site.clone()).collect(),
+            }
+        },
+    )
 }
 
 pub fn complexity_linearity_syntactic_finding_count() -> i64 {
@@ -34719,9 +32205,14 @@ fn cla_compute_wildcard_facts(roots: &[String]) -> Vec<ComplexityLinearityWildca
 
 fn cla_cached_wildcard_facts() -> &'static ClaWildcardFactsCache {
     static CACHE: OnceLock<ClaWildcardFactsCache> = OnceLock::new();
-    CACHE.get_or_init(|| ClaWildcardFactsCache {
-        facts: cla_compute_wildcard_facts(&witness_layer_roots()),
-    })
+    shared_fill::once(
+        &CACHE,
+        "complexity_linearity_wildcard",
+        "witness_layer_roots",
+        || ClaWildcardFactsCache {
+            facts: cla_compute_wildcard_facts(&witness_layer_roots()),
+        },
+    )
 }
 
 pub fn complexity_linearity_wildcard_facts() -> &'static [ComplexityLinearityWildcardFactRaw] {
@@ -34929,8 +32420,10 @@ struct FacCensusCache {
 
 fn fac_cached_census_facts() -> &'static FacCensusCache {
     static CACHE: OnceLock<FacCensusCache> = OnceLock::new();
-    CACHE.get_or_init(|| FacCensusCache {
-        facts: fac_compute_census_facts(&witness_layer_roots()),
+    shared_fill::once(&CACHE, "fallback_arm_census", "witness_layer_roots", || {
+        FacCensusCache {
+            facts: fac_compute_census_facts(&witness_layer_roots()),
+        }
     })
 }
 
@@ -35184,10 +32677,15 @@ fn doc_graph_report(extra_roots: &[String]) -> std::sync::Arc<DocGraphReport> {
         OnceLock::new();
     let cache = CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
     let mut guard = cache.lock().expect("doc_graph_report cache poisoned");
+    let key = extra_roots.join("\u{1f}");
     if let Some(r) = guard.get(extra_roots) {
+        shared_fill::record_hit("doc_graph_report", &key);
         return r.clone();
     }
+    shared_fill::begin_fill();
+    let start = std::time::Instant::now();
     let report = std::sync::Arc::new(build_doc_graph_report(extra_roots));
+    shared_fill::record_fill("doc_graph_report", &key, start.elapsed().as_nanos() as u64);
     guard.insert(extra_roots.to_vec(), report.clone());
     report
 }
@@ -35344,7 +32842,12 @@ fn build_test_migration_behavior_discovery_report() -> TestMigrationBehaviorDisc
 
 fn test_migration_behavior_discovery_report() -> &'static TestMigrationBehaviorDiscoveryReport {
     static REPORT: OnceLock<TestMigrationBehaviorDiscoveryReport> = OnceLock::new();
-    REPORT.get_or_init(build_test_migration_behavior_discovery_report)
+    shared_fill::once(
+        &REPORT,
+        "test_migration_behavior_discovery",
+        "corpus",
+        build_test_migration_behavior_discovery_report,
+    )
 }
 
 pub fn test_migration_legacy_behavior_ids() -> Vec<String> {
@@ -35462,7 +32965,12 @@ fn build_test_migration_debt_report() -> TestMigrationDebtReport {
 
 fn test_migration_debt_report() -> &'static TestMigrationDebtReport {
     static REPORT: OnceLock<TestMigrationDebtReport> = OnceLock::new();
-    REPORT.get_or_init(build_test_migration_debt_report)
+    shared_fill::once(
+        &REPORT,
+        "test_migration_debt",
+        "corpus",
+        build_test_migration_debt_report,
+    )
 }
 
 pub fn test_migration_debt_module_names() -> Vec<String> {
@@ -35762,28 +33270,6 @@ mod witness_layer_roots_compile_clean_tests {
         });
     }
 
-    #[test]
-    fn regen_verify_gate_failure_detail_unavailable_without_prior_record() {
-        reset_regen_verify_gate_failure_detail_for_test();
-        assert!(
-            consume_regen_verify_gate_failure_detail()
-                .contains("gate body did not run in this process"),
-            "missing record must refuse with a located message, not imply an empty success verdict"
-        );
-    }
-
-    #[test]
-    fn regen_verify_gate_failure_detail_round_trips_recorded_reason() {
-        reset_regen_verify_gate_failure_detail_for_test();
-        record_regen_verify_gate_failure_detail(
-            "Changed generated file(s): v1_compiler_emit_rust.rs".to_string(),
-        );
-        assert_eq!(
-            consume_regen_verify_gate_failure_detail(),
-            "Changed generated file(s): v1_compiler_emit_rust.rs"
-        );
-    }
-
     /// §5 discriminating RED (end-to-end): real whole-tree compile with an injected broken module
     /// must refuse through install_floor_compile_clean_receipt → consume_floor_compile_clean_gate_verdict.
     /// Ignored in CI: ~minutes cold whole-tree compile; recorded execution receipt in PR #6361 body.
@@ -35953,41 +33439,6 @@ mod witness_layer_roots_compile_clean_tests {
                 matches!(plan, CompileCleanScopePlan::SkipNoAffected { .. }),
                 "expected SkipNoAffected, got {plan:?}"
             );
-        });
-    }
-
-    /// Regen departed-path guard: a deleted `.dag` path must run regen even when the
-    /// current-tree closure no longer contains it (the closure is computed from the
-    /// current tree, so deletions are invisible to the intersection test). The control
-    /// below proves the same path as a modification outside the closure still skips.
-    #[test]
-    fn regen_floor_skip_runs_on_departed_dag_path() {
-        with_env_test_lock(|| {
-            with_workspace_cwd(|| {
-                let _ns = EnvGuard::set(
-                    "GUNBC_CI_DIFF_NAME_STATUS",
-                    "D\\000src/v2/lens/machine_shape.dag\\000",
-                );
-                assert_eq!(regen_floor_skip_label_for_ci(), RUN_REGEN_LABEL);
-            });
-        });
-    }
-
-    /// Control for the departed guard: the same non-closure path as a plain
-    /// modification keeps the skip arm (proves the guard discriminates on D, not path).
-    #[test]
-    fn regen_floor_skip_skips_on_modified_non_closure_path() {
-        with_env_test_lock(|| {
-            with_workspace_cwd(|| {
-                let _ns = EnvGuard::set(
-                    "GUNBC_CI_DIFF_NAME_STATUS",
-                    "M\\000src/v2/lens/machine_shape.dag\\000",
-                );
-                assert_eq!(
-                    regen_floor_skip_label_for_ci(),
-                    REGEN_NOT_AFFECTED_SKIP_LABEL
-                );
-            });
         });
     }
 
@@ -40572,29 +38023,205 @@ pub fn floor_prepared_subject_exclusions() -> Vec<String> {
 /// callers. Direct value flow states it structurally: `prepare_repository_once` is called at
 /// one site, and every frame is derived from what it returned.
 ///
-/// THE INVENTORY IS RETAINED, and that is the second half of the deletion. Preparation
-/// already walked and read every admitted file; a later consumer that walks again to ask what
-/// modules exist, which files declare witnesses, or what a module's path is, is re-acquiring
-/// the repository to learn something the preparation already knows. The naming-hygiene walk
-/// cost ~6 minutes of every floor run for exactly that reason. Consumers fold over this
-/// inventory instead.
+/// WHAT PREPARATION LEARNED IS RETAINED; THE BYTES IT LEARNED IT FROM ARE NOT. Preparation
+/// already walked and read every admitted file, so a later consumer that walks again to ask
+/// which files declare witnesses is re-acquiring the repository to learn something preparation
+/// already knows. The naming-hygiene walk cost ~6 minutes of every floor run for exactly that
+/// reason, and retaining the answer is what removed it.
+///
+/// It retained the QUESTION as well, and that was a 31.8 MB duplicate of the whole corpus.
+/// The predecessor held every admitted file's `content` in a `Vec<InventoryEntry>` beside the
+/// `Rc<SourceFile>` list the graph already owns — `sf.content.clone()`, a deep copy of every
+/// byte, measured at 31,819,415 bytes across 3,655 modules. Its justification named three
+/// questions a consumer might ask (what modules exist, which files declare witnesses, what a
+/// module's path is). Only the middle one ever had a consumer: `content` was read in exactly
+/// two places, both inside one fold, and that fold had one caller.
+///
+/// So the fold now runs during preparation and the bytes are dropped. This is the construction
+/// move rather than the tidier one: a retained corpus copy is an invitation to answer the next
+/// question by re-scanning it, which is the second representation of facts the graph is already
+/// the authority for. With the bytes gone that answer is unavailable, so the next consumer has
+/// to ask the graph — and the duplicate cannot come back by someone reaching for what was
+/// conveniently in hand.
 pub struct PreparedRepository {
     pub graph: Rc<v1_compiler_compile::ResolvedGraph>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     pub subject_digest: String,
     pub modules_resolved: usize,
     pub modules_excluded: usize,
-    pub inventory: Vec<InventoryEntry>,
+    /// The witness sites preparation found, already folded. NOT the corpus bytes.
+    pub witness_files: Vec<InventoryWitnessFile>,
 }
 
-/// One admitted source file, as preparation read it: its module path, its repository path,
-/// and the bytes. The module path is carried here rather than re-derived because the index
-/// that produced it is the same one preparation resolved from — re-deriving it later is the
-/// second representation of the path/module binding, and it is the representation that rots.
-pub struct InventoryEntry {
+/// Shared view of one admitted source. Holds the same `Rc<SourceFile>` preparation already
+/// has — path, module, and bytes — so floor host builtins can consume it without cloning a
+/// second corpus onto `PreparedRepository`.
+#[derive(Clone)]
+pub struct PreparedSourceView {
     pub module_path: String,
-    pub path: String,
-    pub content: String,
+    pub source: Rc<v1_compiler_compile::SourceFile>,
+}
+
+thread_local! {
+    static FLOOR_PREPARED_AUTHORITY: std::cell::RefCell<Option<FloorPreparedAuthority>> =
+        std::cell::RefCell::new(None);
+    static FLOOR_LANGUAGES_RECORDS: std::cell::RefCell<Option<Vec<LanguagesDeclConsumerRecord>>> =
+        std::cell::RefCell::new(None);
+}
+
+struct FloorPreparedAuthority {
+    inventory: Vec<PreparedSourceView>,
+    inventory_digest: String,
+}
+
+struct FloorPreparedAuthorityGuard;
+
+impl Drop for FloorPreparedAuthorityGuard {
+    fn drop(&mut self) {
+        clear_floor_prepared_authority();
+        COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| m.borrow_mut().clear());
+    }
+}
+
+/// Install prepared source bytes. Only `register_floor_prepared_authority_guard` calls this so
+/// Drop always clears the thread-locals and compile memo.
+fn register_floor_prepared_authority(inventory: Vec<PreparedSourceView>) {
+    crate::coproduct_reflection::register_floor_decl_parse_memo();
+    let inventory_digest = floor_inventory_content_digest(&inventory);
+    FLOOR_PREPARED_AUTHORITY.with(|cell| {
+        *cell.borrow_mut() = Some(FloorPreparedAuthority {
+            inventory,
+            inventory_digest,
+        });
+    });
+    FLOOR_LANGUAGES_RECORDS.with(|cell| *cell.borrow_mut() = None);
+    crate::v1_interpreter::clear_cross_claim_pure_memos();
+}
+
+pub fn clear_floor_prepared_authority() {
+    FLOOR_PREPARED_AUTHORITY.with(|cell| *cell.borrow_mut() = None);
+    FLOOR_LANGUAGES_RECORDS.with(|cell| *cell.borrow_mut() = None);
+    crate::coproduct_reflection::clear_floor_decl_parse_memo();
+    crate::v1_interpreter::clear_cross_claim_pure_memos();
+}
+
+/// Measurement harness (`floor_prepared_toll_receipt` bin): print reclaimed wall time per item.
+pub fn run_floor_prepared_toll_receipt() {
+    let source_roots = vec!["dag".to_string(), "src/v2".to_string()];
+    let exclusions = floor_prepared_subject_exclusions();
+    let index = build_module_index(&source_roots);
+    let mut inventory = Vec::with_capacity(index.len());
+    for (module_path, sf) in index.iter() {
+        let p = sf.path.replace('\\', "/");
+        if exclusions
+            .iter()
+            .any(|sub| p.contains(sub.as_str()) || module_path.contains(sub.as_str()))
+        {
+            continue;
+        }
+        inventory.push(PreparedSourceView {
+            module_path: module_path.clone(),
+            source: sf.clone(),
+        });
+    }
+    let ws = workspace_root();
+    let pool_roots: Vec<String> = witness_layer_roots()
+        .iter()
+        .map(|r| ws.join(r).to_string_lossy().into_owned())
+        .collect();
+
+    eprintln!(
+        "[floor-toll-receipt] inventory_modules={} pool_roots={}",
+        inventory.len(),
+        pool_roots.len()
+    );
+
+    let (disk_ms, inv_modules) = crate::coproduct_reflection::pool_decl_parse_wall_ms(
+        &pool_roots,
+        crate::v1_compiler_infer_items::ItemKind::TypeItem,
+        None,
+    )
+    .expect("disk parse");
+    let (inventory_ms, _) = crate::coproduct_reflection::pool_decl_parse_wall_ms(
+        &pool_roots,
+        crate::v1_compiler_infer_items::ItemKind::TypeItem,
+        Some(&inventory),
+    )
+    .expect("inventory parse");
+    let item1_reclaimed = disk_ms.saturating_sub(inventory_ms);
+    eprintln!(
+        "[floor-toll-receipt] item1_pool_type_decl_parse disk_ms={} inventory_ms={} modules={} reclaimed_ms={}",
+        disk_ms, inventory_ms, inv_modules, item1_reclaimed
+    );
+
+    clear_floor_prepared_authority();
+    let languages_disk_ms = languages_decl_records_disk_scan_wall_ms();
+    let languages_inventory_ms = languages_decl_records_inventory_wall_ms(&inventory);
+    let item4_reclaimed = languages_disk_ms.saturating_sub(languages_inventory_ms);
+    eprintln!(
+        "[floor-toll-receipt] item4_languages_census disk_ms={} inventory_ms={} reclaimed_ms={}",
+        languages_disk_ms, languages_inventory_ms, item4_reclaimed
+    );
+
+    let _floor_prepared_guard = register_floor_prepared_authority_guard(inventory);
+
+    let sample_source = "module cuartifact_ok\n\nimport std.types { NonEmptyStr, String }\n\ntype UnitId = NonEmptyStr where brand(\"UnitId\")\n\ntype Unit {\n  id: UnitId\n}\n\nfn consistent() -> Unit {\n  Unit { id: \"unit-a\" as UnitId }\n}\n";
+    let file_path = "src/cuartifact_ok.rs";
+    let includes = vec!["fn consistent".to_string()];
+    let excludes: Vec<String> = vec![];
+    let cold_started = std::time::Instant::now();
+    let first = compile_dag_rust_emit_check(sample_source, file_path, &includes, &excludes);
+    let cold_ms = cold_started.elapsed().as_millis();
+    let warm_started = std::time::Instant::now();
+    let second = compile_dag_rust_emit_check(sample_source, file_path, &includes, &excludes);
+    let warm_ms = warm_started.elapsed().as_millis();
+    let item3_reclaimed = cold_ms.saturating_sub(warm_ms);
+    eprintln!(
+        "[floor-toll-receipt] item3_compile_dag_rust_emit_check cold_ms={} warm_ms={} first={first} second={second} reclaimed_ms={}",
+        cold_ms, warm_ms, item3_reclaimed
+    );
+
+    eprintln!(
+        "[floor-toll-receipt] summary item1_reclaimed_ms={} item4_reclaimed_ms={} item3_compile_reclaimed_ms={}",
+        item1_reclaimed, item4_reclaimed, item3_reclaimed
+    );
+}
+
+/// Wall time for the languages census over prepared inventory (floor path).
+pub fn languages_decl_records_inventory_wall_ms(inventory: &[PreparedSourceView]) -> u128 {
+    let started = std::time::Instant::now();
+    languages_decl_records_from_inventory(inventory);
+    started.elapsed().as_millis()
+}
+
+/// Wall time for the languages census filesystem scan (legacy path).
+pub fn languages_decl_records_disk_scan_wall_ms() -> u128 {
+    let started = std::time::Instant::now();
+    languages_decl_records_inner();
+    started.elapsed().as_millis()
+}
+
+pub fn floor_prepared_authority_active() -> bool {
+    FLOOR_PREPARED_AUTHORITY.with(|cell| cell.borrow().is_some())
+}
+
+pub fn floor_prepared_inventory_snapshot() -> Option<Vec<PreparedSourceView>> {
+    FLOOR_PREPARED_AUTHORITY.with(|cell| cell.borrow().as_ref().map(|auth| auth.inventory.clone()))
+}
+
+fn floor_prepared_inventory_digest() -> Option<String> {
+    FLOOR_PREPARED_AUTHORITY.with(|cell| {
+        cell.borrow()
+            .as_ref()
+            .map(|auth| auth.inventory_digest.clone())
+    })
+}
+
+fn register_floor_prepared_authority_guard(
+    inventory: Vec<PreparedSourceView>,
+) -> FloorPreparedAuthorityGuard {
+    register_floor_prepared_authority(inventory);
+    FloorPreparedAuthorityGuard
 }
 
 /// THE ONE PREPARATION. Reads the active sources once, resolves them once under the strict
@@ -40603,11 +38230,12 @@ pub struct InventoryEntry {
 pub fn prepare_repository_once(
     source_roots: &[String],
     exclude_substrings: &[String],
-) -> Result<PreparedRepository, String> {
+) -> Result<(PreparedRepository, Vec<PreparedSourceView>), String> {
     let index = build_module_index(source_roots);
     let total = index.len();
-    let mut inventory: Vec<InventoryEntry> = Vec::with_capacity(total);
+    let mut witness_files: Vec<InventoryWitnessFile> = Vec::new();
     let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::with_capacity(total);
+    let mut inventory: Vec<PreparedSourceView> = Vec::with_capacity(total);
     for (module_path, sf) in index.iter() {
         let p = sf.path.replace('\\', "/");
         if exclude_substrings
@@ -40616,10 +38244,12 @@ pub fn prepare_repository_once(
         {
             continue;
         }
-        inventory.push(InventoryEntry {
+        if let Some(site) = witness_file_from_source(module_path, &sf.path, &sf.content) {
+            witness_files.push(site);
+        }
+        inventory.push(PreparedSourceView {
             module_path: module_path.clone(),
-            path: sf.path.clone(),
-            content: sf.content.clone(),
+            source: sf.clone(),
         });
         sources.push(sf.clone());
     }
@@ -40627,6 +38257,7 @@ pub fn prepare_repository_once(
         return Err("whole-tree corpus is empty (no .dag modules under source roots)".to_string());
     }
     let modules_excluded = total - sources.len();
+    witness_files.sort_by(|a, b| a.path.cmp(&b.path));
     let subject_digest = subject_digest_for_closure(&sources);
     // THE SUBJECT IS STATED BY THE REFUSAL ITSELF, not only by the success path.
     //
@@ -40643,14 +38274,17 @@ pub fn prepare_repository_once(
     );
     let resolved = resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict);
     let (graph, source_indices) = resolved.map_err(|e| format!("{subject_statement}\n{e}"))?;
-    Ok(PreparedRepository {
-        graph,
-        source_indices,
-        subject_digest,
-        modules_resolved,
-        modules_excluded,
+    Ok((
+        PreparedRepository {
+            graph,
+            source_indices,
+            subject_digest,
+            modules_resolved,
+            modules_excluded,
+            witness_files,
+        },
         inventory,
-    })
+    ))
 }
 
 /// THE EXACT SCOPE ONE CLAIM EVALUATES IN — a projection of the one preparation, never a
@@ -40881,8 +38515,9 @@ pub fn claim_scope_for(
     //
     // That is the population the entry-major path bound against, computed by the compiler that
     // resolved it. An earlier revision re-derived it here by scanning `import` lines out of the
-    // retained inventory, which was a SECOND answer to a question the prepared artifacts had
-    // already answered — and one that could differ from the first, in the direction that
+    // corpus copy preparation then retained, which was a SECOND answer to a question the
+    // prepared artifacts had already answered — and one that could differ from the first, in
+    // the direction that
     // silently narrows: the old closure also admitted modules reached by bare reference, which
     // no scan of import lines can see.
     let entry_module = prepared
@@ -40959,12 +38594,18 @@ pub fn claim_scope_for(
     // produced it are read off ONE field. Deriving the population from the authored module node
     // while deriving the closure from `func_env` would be two spellings of a module identity,
     // and a scope whose members disagree with its own closure is the defect one level up.
-    let modules: Vec<Rc<v1_compiler_compile::TypedModule>> = prepared
+    let module_by_name: HashMap<&str, Rc<v1_compiler_compile::TypedModule>> = prepared
         .graph
         .modules
         .iter()
         .filter(|m| in_scope.contains(m.func_env.name.as_str()))
-        .cloned()
+        .map(|m| (m.func_env.name.as_str(), m.clone()))
+        .collect();
+    // `in_scope` is collected from `order` immediately above, so this cannot drop a
+    // member that was in the scope: every in-graph name in `order` is in the map.
+    let modules: Vec<Rc<v1_compiler_compile::TypedModule>> = order
+        .iter()
+        .filter_map(|name| module_by_name.get(name.as_str()).cloned())
         .collect();
     // The item registry is projected from the SAME module population, by UNIONING each scoped
     // module's own registry rather than filtering the global one on `ItemInfo.module_name`.
@@ -40973,9 +38614,11 @@ pub fn claim_scope_for(
     // `scope.alpha.reads_datum` answered `NoSuchVariable { name: "shared_datum" }` because
     // `module_name` is not the module-path spelling the inventory carries, so the predicate
     // matched nothing and every data declaration was dropped. Functions still worked — they
-    // come from `fn_nodes`, built off the module list — so a function-only control would have
-    // passed while `build_initial_env` bound nothing at all. Each module's own registry needs
-    // no name comparison to be correct, which is why it is the projection used.
+    // come from `fn_nodes` — so a function-only control would have passed while
+    // `build_initial_env` bound nothing at all. Each module's own registry needs no name
+    // comparison to be correct, which is why it is the projection used. `fn_nodes` is built
+    // through the same precedence-ordered first-write-wins walk (see
+    // `build_scope_indexes_with_module_order` below) so bare calls and data bindings agree.
     // UNIONED IN PRECEDENCE ORDER, FIRST WRITE WINS — not in the graph's module order, last
     // write wins.
     //
@@ -41047,9 +38690,10 @@ pub fn claim_scope_for(
         emit_graph_info: prepared.graph.emit_graph_info.clone(),
     };
     Ok(PreparedClaimScope {
-        indexes: v1_interpreter::InterpContext::build_scope_indexes(
+        indexes: v1_interpreter::InterpContext::build_scope_indexes_with_module_order(
             &scoped_graph,
             prepared.source_indices.clone(),
+            Some(&order),
         ),
         module_count,
         scope_identity,
@@ -41104,12 +38748,23 @@ pub struct RequiredFloorOutcome {
     /// witness, and a headline number that rises as debt is added has no direction left to
     /// report repayment in.
     pub known_red_held: usize,
+    /// UNEXPECTED GREEN IS NOT A WITNESS RED. An enrolled row that passed means someone fixed
+    /// the bug and the roster is stale; folding it into `failures` makes an un-quarantine
+    /// indistinguishable from a regression in the alert signature, which is the conflation
+    /// `std.witness_admission` already ruled on for exactly this case.
+    pub stale_quarantine: Vec<String>,
+    /// AND A BUDGET REFUSAL IS NEITHER. The row went undecided; the remedy is cost, not a
+    /// roster edit and not a bug fix. Three causes with three remedies get three counts.
+    pub budget_refused: Vec<String>,
+    /// Host tool could not be resolved — infra undecided, not budget-refused.
+    pub host_tool_unresolved: Vec<String>,
     pub over_warn: usize,
     pub failures: Vec<String>,
 }
 
-/// A witness site as the inventory reports it — the file's path, its module, and the `test fn`
-/// names it declares. Produced by folding over bytes preparation already read.
+/// A witness site as preparation found it — the file's path, its module, and the `test fn`
+/// names it declares. Produced from bytes preparation had in hand, and retained INSTEAD of
+/// those bytes.
 pub struct InventoryWitnessFile {
     pub path: String,
     pub module_path: String,
@@ -41122,49 +38777,52 @@ pub struct InventoryWitnessFile {
     pub reads_live_tree: bool,
 }
 
-/// Fold the one inventory into witness sites. NO FILESYSTEM ACCESS: preparation read every
-/// admitted file, so asking which of them declare witnesses is a scan of bytes already in
-/// hand. The walk this replaces cost ~6 minutes of every floor run, acquired the repository a
-/// second time, and additionally built a whole-corpus module graph to answer a question about
-/// one file at a time.
+/// Decide whether ONE admitted file is a witness site, from the bytes preparation is holding
+/// at that moment. Called inside the preparation loop, so no corpus copy is retained to be
+/// scanned later and NO FILESYSTEM ACCESS occurs: the walk this replaces cost ~6 minutes of
+/// every floor run, acquired the repository a second time, and additionally built a
+/// whole-corpus module graph to answer a question about one file at a time.
+///
+/// `None` means the file declares no `test fn`, which is how a non-witness module is excluded
+/// — the predecessor expressed the same rule as `if !functions.is_empty()` after building the
+/// record.
 ///
 /// A `test fn` is recognised at column zero only, which is the same rule the parser applies to
 /// a top-level declaration: an indented occurrence is inside a body and is not a declaration.
-pub fn inventory_witness_files(prepared: &PreparedRepository) -> Vec<InventoryWitnessFile> {
-    let mut out: Vec<InventoryWitnessFile> = Vec::new();
-    for entry in &prepared.inventory {
-        let mut functions: Vec<String> = Vec::new();
-        // Same scan, same column-zero rule as `test fn` below: a module-scope `data` whose
-        // value is `ReadsLiveTree`. Indented occurrences are inside bodies and are not
-        // declarations.
-        let reads_live_tree = entry.content.lines().any(|line| {
-            line.starts_with("data ")
-                && line.contains("LiveTreeDisposition")
-                && line.contains("ReadsLiveTree")
-        });
-        for line in entry.content.lines() {
-            let Some(rest) = line.strip_prefix("test fn ") else {
-                continue;
-            };
-            let name: String = rest
-                .chars()
-                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
-                .collect();
-            if !name.is_empty() {
-                functions.push(name);
-            }
-        }
-        if !functions.is_empty() {
-            out.push(InventoryWitnessFile {
-                path: entry.path.replace('\\', "/"),
-                module_path: entry.module_path.clone(),
-                functions,
-                reads_live_tree,
-            });
+fn witness_file_from_source(
+    module_path: &str,
+    path: &str,
+    content: &str,
+) -> Option<InventoryWitnessFile> {
+    let mut functions: Vec<String> = Vec::new();
+    for line in content.lines() {
+        let Some(rest) = line.strip_prefix("test fn ") else {
+            continue;
+        };
+        let name: String = rest
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        if !name.is_empty() {
+            functions.push(name);
         }
     }
-    out.sort_by(|a, b| a.path.cmp(&b.path));
-    out
+    if functions.is_empty() {
+        return None;
+    }
+    // Same scan, same column-zero rule as `test fn` above: a module-scope `data` whose value is
+    // `ReadsLiveTree`. Indented occurrences are inside bodies and are not declarations.
+    let reads_live_tree = content.lines().any(|line| {
+        line.starts_with("data ")
+            && line.contains("LiveTreeDisposition")
+            && line.contains("ReadsLiveTree")
+    });
+    Some(InventoryWitnessFile {
+        path: path.replace('\\', "/"),
+        module_path: module_path.to_string(),
+        functions,
+        reads_live_tree,
+    })
 }
 
 fn str_list(items: impl IntoIterator<Item = String>) -> v1_interpreter::Value {
@@ -41177,32 +38835,15 @@ fn str_list(items: impl IntoIterator<Item = String>) -> v1_interpreter::Value {
     ))
 }
 
-fn record_value(
-    ctx: &v1_interpreter::InterpContext,
-    type_name: &str,
-    fields: Vec<(&str, v1_interpreter::Value)>,
-) -> v1_interpreter::Value {
-    v1_interpreter::Value::Record {
-        type_name: ctx.sym(type_name),
-        fields: Rc::new(
-            fields
-                .into_iter()
-                .map(|(n, v)| (ctx.sym(n), v))
-                .collect::<Vec<_>>(),
-        ),
-    }
-}
-
-/// The module whose `required_floor_attempt` folds the manifest. Named once: the manifest is
-/// evaluated in its OWN exact scope, exactly as every claim is, so the program that decides
-/// which claims exist is not itself privileged with a wider namespace than the claims it
-/// admits.
-const REQUIRED_FLOOR_MANIFEST_MODULE: &str = "v2.workflow.required_floor";
+/// The module carrying the floor's authored thresholds and the long-home roster. Named once,
+/// and evaluated in its OWN exact scope exactly as every claim is, so the module that supplies
+/// the policy constants is not privileged with a wider namespace than the claims they bound.
+const REQUIRED_FLOOR_POLICY_MODULE: &str = "v2.workflow.required_floor";
 
 /// THE REQUIRED FLOOR, AS ONE ATTEMPT.
 ///
-/// Read the active sources once, strict-prepare one subject once, evaluate the manifest inside
-/// that subject, fold the manifest once, reduce one receipt. There is no plan resolve, no
+/// Read the active sources once, strict-prepare one subject once, project the claim roster from
+/// that subject's inventory, fold it once, reduce one receipt. There is no plan resolve, no
 /// policy resolve, no compile-clean resolve, no discovery-producer resolve, no batch, no
 /// positional clamp, no worker, no coordinator, no child process and no prepared-subject
 /// cache — not because they are switched off on this path but because this function does not
@@ -41418,6 +39059,24 @@ fn floor_value_shape(v: Option<&v1_interpreter::Value>) -> String {
 // subject, and the recursive spelling already in this file for dependency edges would recurse
 // once per element -- fine for a handful of edges, a stack overflow here. Depth belongs on the
 // heap when the depth is the population size.
+/// One nullary `.dag` Int authority, decoded. The floor's per-claim thresholds are authored in
+/// `v2.workflow.required_floor` and read here rather than re-spelled in Rust: the host owns when
+/// a budget is applied, never what it is.
+fn floor_required_int(ctx: &v1_interpreter::InterpContext, func: &str) -> Result<u64, String> {
+    let qualified = format!("v2.workflow.required_floor.{func}");
+    // STRICTLY POSITIVE, because the deleted admission decoder refused non-positive budgets and
+    // a replacement that accepts zero is a weaker wall wearing the same name. A zero ceiling is
+    // not a lenient policy — it refuses every witness before it evaluates one.
+    match v1_interpreter::run_in_context(ctx, &qualified, false) {
+        Ok(v1_interpreter::Value::Int(n)) if n > 0 => Ok(n as u64),
+        Ok(other) => Err(format!(
+            "{qualified}: expected a non-negative Int, got {}",
+            floor_value_shape(Some(&other))
+        )),
+        Err(e) => Err(format!("{qualified}: {e}")),
+    }
+}
+
 fn floor_decode_list<'a>(
     ctx: &v1_interpreter::InterpContext,
     v: Option<&'a v1_interpreter::Value>,
@@ -41616,6 +39275,30 @@ pub fn run_required_floor(
     commit: &str,
     style: ShardStyle,
 ) -> Result<RequiredFloorOutcome, String> {
+    // HONEST SCOPE (review 53487): the caller marker below is a self-attested string, not
+    // authentication — any caller able to set `_ONLY` can set `_ONLY_CALLER` too. What it
+    // buys is exactly one thing: the witnesses CI env cannot gain `_ONLY` by a one-variable
+    // edit or copy-paste; flipping the primary floor into join-only mode now takes a second,
+    // deliberately named variable whose value documents where the mode is allowed to come
+    // from. It is a tripwire against accident, not a wall against intent. The whole gate
+    // dissolves with the `expected_red_roster_join` bin (registered scaffold) when the floor
+    // emits the join report by default.
+    const EXPECTED_RED_ROSTER_JOIN_ONLY_BIN: &str = "expected_red_roster_join_bin";
+    let roster_join_only_requested = std::env::var("GUNBC_EXPECTED_RED_ROSTER_JOIN_ONLY")
+        .ok()
+        .is_some_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+    if roster_join_only_requested
+        && std::env::var("GUNBC_EXPECTED_RED_ROSTER_JOIN_ONLY_CALLER").as_deref()
+            != Ok(EXPECTED_RED_ROSTER_JOIN_ONLY_BIN)
+    {
+        return Err(
+            "REQUIRED-FLOOR REFUSAL cause=ExpectedRedRosterJoinOnlyUnauthorized — \
+             GUNBC_EXPECTED_RED_ROSTER_JOIN_ONLY is admitted only from the \
+             expected_red_roster_join stop-line-audit bin; witnesses CI must set \
+             GUNBC_EXPECTED_RED_ROSTER_JOIN without _ONLY"
+                .to_string(),
+        );
+    }
     floor_cgroup_envelope("floor-entry");
     spawn_floor_heartbeat();
     floor_seam("strict-preparation");
@@ -41623,7 +39306,88 @@ pub fn run_required_floor(
     // ── 1. read once, prepare once ────────────────────────────────────────────────────────
     set_phase(FloorPhase::Resolve, "required-floor preparation");
     let prepare_started = std::time::Instant::now();
-    let prepared = prepare_repository_once(source_roots, &floor_prepared_subject_exclusions())?;
+    let (prepared, prepared_sources) =
+        prepare_repository_once(source_roots, &floor_prepared_subject_exclusions())?;
+    let _floor_prepared_guard = register_floor_prepared_authority_guard(prepared_sources);
+    // WARM THE MODULE-PATH INDEX HERE, because otherwise ONE ARBITRARY CLAIM PAYS FOR IT.
+    //
+    // `compile_dag_rust_emit_check` (the emit witnesses' host arm) calls
+    // `build_module_path_index_from_witness_roots`, which walks and PARSES every module under
+    // the default source roots. It is thread-local cached, so exactly one claim per process
+    // pays the build and every later one hits the cache. That claim is then billed ~45s
+    // against a 1552ms per-claim ceiling and reports as a budget failure, while its identical
+    // siblings run in ~760ms.
+    //
+    // MEASURED, three runs, same rows, evaluation order alphabetical and stable throughout:
+    //
+    //   run                     emitted_lib_rs...omits    emitter_nested...single
+    //   pre-quarantine              739ms                     761ms
+    //   32189985063               42647ms  <- billed           687ms
+    //   32193032348 (main)        quarantined                45941ms  <- billed
+    //
+    // The bill is POSITIONAL, not a property of any witness: quarantining the victim hands it
+    // to the next module in evaluation order. Three modules were quarantined down this chain
+    // (dissolution_census 55.5s, emitted_lib_rs 42.6s, and the 83.0s
+    // extdeps_scope_placement_gate row) before the pattern was read correctly -- each read as
+    // a slow test, all three were the same one-time build landing on whoever touched it first.
+    //
+    // Paying it in preparation is where the cost BELONGS: it is a fact of the subject, not of
+    // any claim, and the floor's whole design is one preparation serving every claim. Total
+    // run wall is unchanged -- the same work happens once either way; what changes is that no
+    // claim is charged for building the subject it was handed.
+    //
+    // dissolve-on: the index derives from the prepared inventory instead of a second disk
+    // walk. The bytes are already in hand -- the emit memo is keyed on
+    // `floor_inventory_content_digest` precisely because that index reads the same files --
+    // and `languages_decl_records_from_inventory` is the existing precedent for the
+    // inventory-sourced form of a census that used to scan. When that lands this warm call is
+    // unnecessary rather than merely redundant, because there is no second authority to warm.
+    let index_warm_started = std::time::Instant::now();
+    let warmed_modules = build_module_path_index_from_witness_roots().len();
+    eprintln!(
+        "[floor-phase] phase=module-path-index-warm state=completed wall_ms={} modules={}",
+        index_warm_started.elapsed().as_millis(),
+        warmed_modules
+    );
+    // WARM THE SHARED MultiEntryIndex HERE, for the same reason as the module-path index
+    // above: otherwise ONE ARBITRARY CLAIM PAYS FOR IT (witness cost class 2).
+    //
+    // `commit_witness_claim_pair_resolvable` (the commit-witness roster's host arm, and its
+    // sibling `ci_floor_commit_witness_claim_pairs` / `commit_witness_claim_roster_defects`)
+    // used to call `build_multi_entry_index(&roots)` directly instead of going through
+    // `process_shared_index`, the existing thread-local shared-index cache every other
+    // production call site already uses (`resolve_entry_graph_shared` and friends). That
+    // meant every one of those functions re-walked and re-parsed the whole witness corpus on
+    // EVERY call, uncached — even though `process_shared_index` would have served the same
+    // `MultiEntryIndex` for free after the first build.
+    //
+    // MEASURED: `commit_witness_claim_pair_resolvable`, invoked exactly once by
+    // `commit_witness_claim_roster_red_control_holds` (the fast-lane RED control for the
+    // synthetic stale (entry, function) pair), cost 62.7-83.0s for that single call — the
+    // full one-time corpus walk+parse billed against one witness with a ~1-5s ceiling. As
+    // with the module-path index, quarantining the victim does not remove the cost, it only
+    // relocates it onto whichever claim runs next.
+    //
+    // The three call sites were switched to `process_shared_index(&roots)` (this fix); this
+    // warm call additionally ensures the shared cache is already hot before the per-claim
+    // loop starts, so the cost is paid here, in preparation, rather than by whichever claim
+    // happens to touch it first. `witness_layer_roots()` is the exact roots value all three
+    // call sites resolve internally (not the `source_roots` parameter above), so the roots
+    // key here must match theirs; `canonical_shared_index_roots` normalizes relative and
+    // absolute forms to the same key regardless.
+    //
+    // dissolve-on: same as the module-path-index warm above — when the shared index derives
+    // from the prepared inventory instead of a second disk walk, this warm call becomes
+    // unnecessary rather than merely redundant, because there is no second authority to warm.
+    let shared_index_warm_started = std::time::Instant::now();
+    let warmed_shared_index_modules = process_shared_index(&witness_layer_roots())
+        .source_files
+        .len();
+    eprintln!(
+        "[floor-phase] phase=shared-index-warm state=completed wall_ms={} modules={}",
+        shared_index_warm_started.elapsed().as_millis(),
+        warmed_shared_index_modules
+    );
     let prepare_ms = prepare_started.elapsed().as_millis();
     eprintln!(
         "floor: active sources = {}",
@@ -41736,9 +39500,9 @@ pub fn run_required_floor(
         published_started.elapsed().as_millis(),
         published.as_ref().map(|k| k.len()).unwrap_or(0)
     );
-    let manifest_scope = claim_scope_for(&prepared, REQUIRED_FLOOR_MANIFEST_MODULE)?;
+    let policy_scope = claim_scope_for(&prepared, REQUIRED_FLOOR_POLICY_MODULE)?;
     let hermetic = evaluation_frame(
-        &manifest_scope,
+        &policy_scope,
         v1_interpreter::ExecutionMode::Hermetic,
         None,
         published.clone(),
@@ -41748,7 +39512,7 @@ pub fn run_required_floor(
     // five channel decisions out of a world this function had already built.
     install_output_policy_in(&hermetic, source_roots);
 
-    // ── 3. the manifest, folded in .dag ───────────────────────────────────────────────────
+    // ── 3. the claim roster, projected from the prepared inventory ───────────────────────
     //
     // T3/T4/T5 SPLIT THIS REGION because it is the whole blank interval. Between the
     // preparation line and the first `floor: claims = ...` line nothing is printed, so a run
@@ -41758,138 +39522,53 @@ pub fn run_required_floor(
     // seams below are what turn the gap into one located term.
     floor_seam("site-projection");
     let projection_started = std::time::Instant::now();
-    let files = inventory_witness_files(&prepared);
-    // THE SITE CARRIES ITS MODULE. `InventoryWitnessFile` already holds `module_path`, read from
-    // the same inventory entry in the same iteration, so the site is complete at construction.
+    let files = &prepared.witness_files;
+    // ONE DECISION, MADE ONCE, WHERE THE FACTS ALREADY ARE.
     //
-    // This replaced a second projection of the WHOLE inventory into an entry-to-module list --
-    // 3,680 records marshalled into the interpreter -- which the .dag manifest then JOINED back
-    // onto the sites by `entry`. Both lists came from one collection keyed by one file path, so
-    // the join re-derived inside the fold a fact this loop held two lines earlier, and its answer
-    // was always "exactly one". The refusal for the other cases had no reachable producer.
-    // EVERY DISCOVERED SITE IS OFFERED TO THE MANIFEST, and the manifest decides which are
-    // required-floor claims.
+    // WHAT THIS REPLACED, and why it was not an optimisation. The required outcome of this whole
+    // region is exactly: exclude a witness whose AUTHORED module sits in the long home, exclude
+    // one that reads the live tree, claim everything else Hermetic. That decision used to be
+    // made TWICE — once by `required_floor_manifest` over 10,498 records marshalled into the
+    // interpreter, and again here in Rust, applying the same prefix test to explain the
+    // difference between sites offered and claims returned. Between the two sat an interpreted
+    // fold whose only product was a population this host could compute directly from facts it
+    // already held in `prepared.witness_files`.
     //
-    // This host previously partitioned the population itself, by testing whether a file's PATH
-    // contained the long home. That made a directory the admission authority — the 2026-08-04
-    // ruling's exact root cause — and it decided at file grain, so one expensive witness took
-    // every cheap sibling in its file out of the floor with it. It was also a SECOND authority:
-    // `WitnessDisposition` already modelled the answer in `.dag` and nothing consulted it.
+    // THE AUTHORED FACTS STAY AUTHORED. `long_home_prefixes`, the claim budget and the warn
+    // threshold are still read from `v2.workflow.required_floor`, so the prefix list and both
+    // thresholds remain .dag authorities and are not re-spelled in Rust. What is deleted is the
+    // reconstruction, never the fact.
     //
-    // The disposition now lives where it is authored — `v2.workflow.required_floor`
-    // `disposition_for_module`, a grant over a namespace subtree joined by the prefix relation,
-    // with `RequiredFloor` as the fail-closed default. Discovery's job is to report what exists;
-    // deciding what that means is the manifest's.
+    // THE TEST IS ON THE MODULE'S AUTHORED NAME, never its path — the 2026-08-04 ruling's actual
+    // requirement, and the reason the inventory carries `module_path` beside each file. A
+    // directory deciding admission was that ruling's root cause; reading the declaration is what
+    // fixes it, and that is preserved here exactly.
     //
-    // The exclusion is still counted, and counted from the claim list rather than from a
-    // predicate this host applies: sites offered minus claims returned is what the manifest
-    // declined, so the number cannot drift from the decision that produced it.
-    let mut sites: Vec<v1_interpreter::Value> = Vec::new();
-    // THE SAME POPULATION, KEPT IN HOST SHAPE, so the decline can be reported as a PARTITION
-    // rather than as a subtraction. `sites_offered - claims.len()` says how many rows vanished
-    // and nothing about why; two independent hacks decline rows here, and a single difference
-    // cannot distinguish them, cannot notice a row declined by neither, and cannot notice a row
-    // counted by both.
-    let mut site_facts: Vec<(String, String, bool)> = Vec::new();
-    for file in &files {
-        for function in &file.functions {
-            site_facts.push((
-                format!("{}.{}", file.module_path, function),
-                file.module_path.clone(),
-                file.reads_live_tree,
-            ));
-            sites.push(record_value(
-                &hermetic,
-                "WitnessSite",
-                vec![
-                    ("entry", v1_interpreter::str_value(file.path.clone())),
-                    ("function", v1_interpreter::str_value(function.clone())),
-                    (
-                        "module_path",
-                        v1_interpreter::str_value(file.module_path.clone()),
-                    ),
-                    (
-                        "reads_live_tree",
-                        v1_interpreter::Value::Bool(file.reads_live_tree),
-                    ),
-                ],
-            ));
-        }
+    // THE PARTITION IS NOW EXACT BY CONSTRUCTION, not by reconciliation. Every site takes exactly
+    // one arm below, so `claims + declined == offered` holds because the loop cannot do
+    // otherwise. The former `SitePartitionInexact` and unexplained-decline refusals existed to
+    // catch the two computations disagreeing; with one computation they have no reachable
+    // producer, so they are deleted rather than left standing as walls nothing can trip.
+    //
+    // DUPLICATE ENROLLMENT IS UNCHANGED AND UNMOVED, and this is the one invariant the deleted
+    // fold genuinely carried. It is caught downstream by `receipt_identities`, a HashSet keyed on
+    // the same qualified name: two claims sharing a name give executed=2, receipted=1, and
+    // `ClaimIdentityCountsDisagree` refuses. The manifest's enrollment map was a second mechanism
+    // for that one invariant — and, being a growing `Value::Map` re-hashed once per fold step,
+    // was the whole of the phase's quadratic cost.
+    let claim_budget_ms = floor_required_int(&hermetic, "required_floor_claim_budget_ms")?;
+    let claim_warn_ms = floor_required_int(&hermetic, "required_floor_claim_warn_ms")?;
+    // THE TWO TIERS ARE ORDERED, and reading them independently cannot see that. The warn tier
+    // reports a row an order of magnitude above where an ordinary witness lands and lets it
+    // finish; the hard tier stops it. A warn at or above the ceiling is an inverted policy that
+    // never warns, and both values would still typecheck as ordinary positive Ints.
+    if claim_warn_ms >= claim_budget_ms {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=ClaimBudgetTiersInverted warn_ms={claim_warn_ms} \
+             budget_ms={claim_budget_ms} — the warning tier must sit strictly below the hard \
+             ceiling or it can never fire before the deadline it is meant to precede"
+        ));
     }
-    let sites_offered = sites.len();
-    eprintln!(
-        "[floor-phase] phase=site-projection state=completed wall_ms={} sites={} files={}",
-        projection_started.elapsed().as_millis(),
-        sites_offered,
-        files.len()
-    );
-    let subject = record_value(
-        &hermetic,
-        "ObservedSubjectIdentity",
-        vec![
-            ("commit", v1_interpreter::str_value(commit.to_string())),
-            (
-                "source_digest",
-                v1_interpreter::str_value(prepared.subject_digest.clone()),
-            ),
-            (
-                "modules_resolved",
-                v1_interpreter::Value::Int(prepared.modules_resolved as i64),
-            ),
-            (
-                "modules_excluded",
-                v1_interpreter::Value::Int(prepared.modules_excluded as i64),
-            ),
-        ],
-    );
-    let empty_sites =
-        v1_interpreter::Value::List(Rc::new(Vec::<v1_interpreter::Value>::new().into()));
-    floor_seam("manifest-evaluation");
-    let manifest_eval_started = std::time::Instant::now();
-    let admission = v1_interpreter::run_in_context_with_args(
-        &hermetic,
-        "required_floor_attempt",
-        &[
-            (Some("subject".to_string()), subject),
-            (
-                Some("hermetic_sites".to_string()),
-                v1_interpreter::Value::List(Rc::new(sites.into())),
-            ),
-            (Some("wet_sites".to_string()), empty_sites),
-        ],
-        false,
-    )
-    .map_err(|e| format!("required_floor_attempt: {e}"))?;
-    eprintln!(
-        "[floor-phase] phase=manifest-evaluation state=completed wall_ms={}",
-        manifest_eval_started.elapsed().as_millis()
-    );
-    floor_seam("admission-decode");
-    let admission_decode_started = std::time::Instant::now();
-    let claims = required_floor_claims_from_admission(&hermetic, &admission)?;
-    eprintln!(
-        "[floor-phase] phase=admission-decode state=completed wall_ms={} claims={}",
-        admission_decode_started.elapsed().as_millis(),
-        claims.len()
-    );
-    // WHAT THE MANIFEST DECLINED, derived from the two populations rather than recomputed. A
-    // site offered and not returned as a claim carries a non-required disposition, and those
-    // rows are NOT covered by this floor — reported every run in those words, because the
-    // gunbc#7762 failure was not that rows were deferred but that the deferral was silent.
-    // THE DECLINE IS A PARTITION, AND IT IS PROVED HERE RATHER THAN ASSERTED.
-    //
-    // Two hacks decline rows: the long-home prefix test and the live-tree declaration. A single
-    // `offered - claims` difference cannot tell them apart, cannot see a row declined by
-    // NEITHER (which would be a silent disappearance — the exact gunbc#7762 failure), and
-    // cannot see a row that both would claim. So the three populations are computed by identity
-    // and required to reconstruct the whole:
-    //
-    //     offered = executed ⊎ long-home-declined ⊎ live-tree-declined
-    //
-    // The prefixes are DECODED from the `.dag` authority rather than restated here, because a
-    // host-side copy of that list is a second authority that would drift the moment either side
-    // moved — and the drift would show up as this partition disagreeing, which is a confusing
-    // way to learn about a copy-paste.
     let long_home_prefixes: Vec<String> = {
         let value = v1_interpreter::run_in_context(
             &hermetic,
@@ -41898,85 +39577,85 @@ pub fn run_required_floor(
         )
         .map_err(|e| format!("long_home_prefixes: {e}"))?;
         let items = floor_decode_list(&hermetic, Some(&value))
-            .map_err(|e| format!("long_home_prefixes: {e}"))?;
+            .map_err(|why| format!("long_home_prefixes decode: {why}"))?;
         let mut out = Vec::new();
         for item in items {
             match item {
                 v1_interpreter::Value::Str(s) => out.push(s.to_string()),
                 other => {
                     return Err(format!(
-                        "long_home_prefixes: expected a module-path prefix, got {}",
+                        "long_home_prefixes: expected String rows, got {}",
                         floor_value_shape(Some(other))
-                    ));
+                    ))
                 }
             }
         }
+        // NO EMPTY-ROSTER REFUSAL, and the first version of this decode had one. It was
+        // backwards: an empty exception roster is the DESIRED terminal state, so refusing on it
+        // would make "at least one exclusion must exist forever" a structural requirement of the
+        // floor. Once the long home is discharged, admitting those witnesses to the ordinary
+        // population is the intended result, not an error. A decode that fails still refuses
+        // above — a failed read and a legitimately empty roster are different states.
         out
     };
-    {
-        let executed: HashSet<&str> = claims.iter().map(|c| c.qualified.as_str()).collect();
-        let mut long_declined = 0usize;
-        let mut live_declined = 0usize;
-        let mut both = 0usize;
-        let mut unexplained: Vec<&str> = Vec::new();
-        for (qualified, module_path, reads_live_tree) in &site_facts {
-            if executed.contains(qualified.as_str()) {
+    let mut claims: Vec<RequiredFloorClaim> = Vec::new();
+    let mut planned_identities: HashSet<String> = HashSet::new();
+    let mut long_declined = 0usize;
+    let mut live_declined = 0usize;
+    let mut sites_offered = 0usize;
+    for file in files {
+        let long_home = long_home_prefixes
+            .iter()
+            .any(|prefix| file.module_path.starts_with(prefix.as_str()));
+        for function in &file.functions {
+            sites_offered += 1;
+            if long_home {
+                long_declined += 1;
                 continue;
             }
-            let long_home = long_home_prefixes
-                .iter()
-                .any(|p| module_path.starts_with(p));
-            // ASSIGNED IN A FIXED ORDER SO THE ARMS STAY DISJOINT, with the overlap counted
-            // separately rather than hidden by whichever test ran first. A row that is both
-            // long-home and live-tree is a real thing and it is worth knowing how many there
-            // are, but it must be attributed once.
-            match (long_home, *reads_live_tree) {
-                (true, true) => {
-                    long_declined += 1;
-                    both += 1;
-                }
-                (true, false) => long_declined += 1,
-                (false, true) => live_declined += 1,
-                // DECLINED BY NEITHER HACK. This is the arm that must stay empty: the manifest
-                // dropped a row for a reason this host cannot name, which is precisely a silent
-                // narrowing of the roster.
-                (false, false) => unexplained.push(qualified.as_str()),
+            if file.reads_live_tree {
+                live_declined += 1;
+                continue;
             }
-        }
-        let declined = long_declined + live_declined + unexplained.len();
-        if declined > 0 {
-            eprintln!(
-                "[floor-disposition] {declined} of {sites_offered} discovered site(s) are NOT \
-                 required-floor and NOT RUN HERE: {long_declined} long-home-declined \
-                 ({both} of them also declare ReadsLiveTree), {live_declined} live-tree-declined \
-                 — each needs an executing consumer on another cadence, and none exists yet on \
-                 this branch"
-            );
-        }
-        if !unexplained.is_empty() {
-            unexplained.sort_unstable();
-            let shown: Vec<&str> = unexplained.iter().copied().take(20).collect();
-            return Err(format!(
-                "REQUIRED-FLOOR REFUSAL cause=SiteDeclinedWithoutDisposition count={} — a \
-                 discovered site was neither executed nor declined by a named disposition, so \
-                 the roster narrowed for a reason nothing can report; first {}: {}",
-                unexplained.len(),
-                shown.len(),
-                shown.join(", ")
-            ));
-        }
-        if claims.len() + declined != sites_offered {
-            return Err(format!(
-                "REQUIRED-FLOOR REFUSAL cause=SitePartitionInexact offered={} executed={} \
-                 declined={} — the three populations must reconstruct the offered set exactly",
-                sites_offered,
-                claims.len(),
-                declined
-            ));
+            let qualified = format!("{}.{}", file.module_path, function);
+            // ONE EXECUTABLE CLAIM PER QUALIFIED IDENTITY, REFUSED HERE AND NAMED.
+            //
+            // The deleted manifest carried this invariant and refused BEFORE running anything,
+            // naming the offending declaration. `receipt_identities` is NOT the same wall: it
+            // compares populations after all 9,122 claims have executed, so a duplicate costs a
+            // full duplicated evaluation before anything notices, and a count mismatch says only
+            // that two populations disagree -- never which identity caused it. Planned-identity
+            // uniqueness and receipt completeness are different properties, and the terminal
+            // `planned == executed == receipted` check remains as the second, separate one.
+            if let Some(prior) = planned_identities.replace(qualified.clone()) {
+                return Err(format!(
+                    "REQUIRED-FLOOR REFUSAL cause=DuplicateWitnessIdentity identity={prior} — \
+                     one qualified declaration resolved to more than one executable claim; the \
+                     roster cannot name the same witness twice"
+                ));
+            }
+            claims.push(RequiredFloorClaim {
+                qualified: qualified.clone(),
+                module_path: file.module_path.clone(),
+                function: function.clone(),
+                execution_mode: v1_interpreter::ExecutionMode::Hermetic,
+                budget_ms: claim_budget_ms,
+                warn_ms: claim_warn_ms,
+            });
         }
     }
+    eprintln!(
+        "[floor-phase] phase=site-projection state=completed wall_ms={} sites={} files={} \
+         claims={} declined_long={} declined_live={}",
+        projection_started.elapsed().as_millis(),
+        sites_offered,
+        files.len(),
+        claims.len(),
+        long_declined,
+        live_declined
+    );
 
-    // THE EXPECTED-RED ROSTER, read from its .dag authority in the manifest's own frame — it
+    // THE EXPECTED-RED ROSTER, read from its .dag authority in the policy module's frame — it
     // must be decoded BEFORE that frame is dropped below, and it is a separate evaluation from
     // the manifest because it answers a different question: the manifest says which claims
     // exist, this says which of them are known to fail while someone fixes them.
@@ -42012,12 +39691,111 @@ pub fn run_required_floor(
                 }
             }
         }
+        // AN EMPTY ROSTER REFUSES, because it is indistinguishable from a roster that could
+        // not be read. Every downstream guard here is a join over this set: the partition-sum
+        // check compares four counters against `len()`, and the did-not-execute check walks
+        // the roster looking for identities no claim reported. At zero, all of them are
+        // VACUOUSLY TRUE -- 0+0+0+0 == 0 passes, and nothing is missing from an empty set. So
+        // the one shape that disables every check is the one shape nothing was checking.
+        //
+        // This is the empty-observation narrow, and it is the mirror of the absorbing fallback
+        // rather than an instance of it: a widen is merely expensive, a narrow is silently
+        // uncovered. It ran live on main. #8437 flipped prepared-floor scope to bind bare
+        // helper names last-write-wins, `floor_expected_red_roster` began evaluating to the
+        // empty list, and the run reported `roster carries 0 enrolled identity(ies)` followed
+        // by 469 ordinary FAILs -- 469 enrolled rows each re-labelled a regression, with the
+        // remainder absorbed as passes. The immediately preceding commit reported 661.
+        //
+        // The roster is a debt ledger shrinking toward zero, so an empty one WILL eventually
+        // be legitimate. It is not legitimate SILENTLY: the day the last row is removed, this
+        // refusal is what makes someone delete it deliberately and say so, rather than a read
+        // failure quietly wearing the same face as success.
+        if out.is_empty() {
+            return Err("REQUIRED-FLOOR REFUSAL cause=ExpectedRedRosterEmpty — \
+                 v2.workflow.floor_expected_red.floor_expected_red_roster evaluated to zero \
+                 identities. An empty roster makes the partition-sum and did-not-execute \
+                 checks vacuous, so every enrolled row reports as an ordinary failure and no \
+                 guard can fire. If the roster is genuinely empty, delete this refusal in the \
+                 same change that empties it."
+                .to_string());
+        }
         out
     };
     eprintln!(
         "[floor-known-red] roster carries {} enrolled identity(ies)",
         expected_red_roster.len()
     );
+
+    // CONTRADICTORY-INTERSECTION WALL: `floor_expected_red_roster` (this roster — removable
+    // only by an OBSERVED PASS, per its own header) and `witness_deferral_freeze`'s
+    // `frozen_path_deferrals` (`LegacyFrozenPathDeferral` — admitted as NEVER EXECUTED) make
+    // opposite claims about the same identity. Both cannot be true of one row: an identity that
+    // executes here (as every enrolled row must, on pain of `ExpectedRedIdentityDidNotExecute`
+    // below) is proof the freeze's classification for it is stale, and an identity that is
+    // genuinely never executed cannot legitimately be "known red, awaiting an observed pass" —
+    // there is no pass to observe. Construction, not validation (DESIGN.md §5): the two rosters
+    // are cross-referenced from their own source authorities on every required-floor run, so the
+    // contradiction cannot re-accumulate silently the way it did before this wall existed.
+    {
+        let freeze_content = std::fs::read_to_string(
+            workspace_root().join(WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL),
+        )
+        .map_err(|e| {
+            format!("witness deferral freeze: failed to read {WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL}: {e}")
+        })?;
+        let frozen_qualified = frozen_path_deferral_qualified_identities_from_source(
+            &freeze_content,
+            &workspace_root(),
+        );
+        let colliding = expected_red_freeze_intersection(&frozen_qualified, &expected_red_roster);
+        if !colliding.is_empty() {
+            let head = current_git_head_or_unresolved();
+            return Err(format_expected_red_freeze_intersection_refusal(
+                &colliding, &head,
+            ));
+        }
+    }
+
+    let roster_join_path = std::env::var("GUNBC_EXPECTED_RED_ROSTER_JOIN").ok();
+    let roster_join_only = std::env::var("GUNBC_EXPECTED_RED_ROSTER_JOIN_ONLY")
+        .ok()
+        .is_some_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+    let roster_join_active = roster_join_path.is_some() || roster_join_only;
+    let mut roster_join_report = if roster_join_active {
+        let mut roster_identities: Vec<String> = expected_red_roster.iter().cloned().collect();
+        roster_identities.sort();
+        let run_head = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .output()
+            .ok()
+            .and_then(|o| {
+                if o.status.success() {
+                    Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
+                } else {
+                    None
+                }
+            })
+            .filter(|s| !s.is_empty());
+        let run_note = if roster_join_only {
+            "join-only mode: evaluates enrolled identities present in the manifest; do not \
+             prune the roster from this output until the rebase wave (#8420) restores host-tool \
+             verdicts"
+                .to_string()
+        } else {
+            "full-floor join: every enrolled identity receives still_red | now_passes | \
+             not_evaluated"
+                .to_string()
+        };
+        Some(
+            crate::expected_red_roster_join::ExpectedRedRosterJoinReport::new(
+                run_head,
+                run_note,
+                &roster_identities,
+            ),
+        )
+    } else {
+        None
+    };
 
     // THE MANIFEST'S WORLD DIES HERE, before the fold rather than at the end of the function.
     //
@@ -42038,11 +39816,19 @@ pub fn run_required_floor(
     // the next run says, and if the step survives then the cost is elsewhere and this was still
     // correct — an unread value held across the longest phase of the program has no defence.
     drop(hermetic);
-    drop(admission);
-    drop(manifest_scope);
+    drop(policy_scope);
 
     // ── 4. fold the manifest ──────────────────────────────────────────────────────────────
     eprintln!("floor: claims = {}", claims.len());
+    if roster_join_only {
+        let before = claims.len();
+        claims.retain(|c| expected_red_roster.contains(c.qualified.as_str()));
+        eprintln!(
+            "floor: expected-red-roster-join-only retained {} of {} claim(s)",
+            claims.len(),
+            before
+        );
+    }
     let claims_planned = claims.len();
     let mut outcome = RequiredFloorOutcome {
         subject_digest: prepared.subject_digest.clone(),
@@ -42053,6 +39839,9 @@ pub fn run_required_floor(
         receipt_identities: 0,
         passed: 0,
         known_red_held: 0,
+        stale_quarantine: Vec::new(),
+        budget_refused: Vec::new(),
+        host_tool_unresolved: Vec::new(),
         over_warn: 0,
         failures: Vec::new(),
     };
@@ -42114,6 +39903,9 @@ pub fn run_required_floor(
     let mut scope_module_max: usize = 0;
     let mut known_red_held: usize = 0;
     let mut known_red_now_passing: usize = 0;
+    let mut known_red_budget_refused: usize = 0;
+    let mut known_red_passed_over_budget: usize = 0;
+    let mut known_red_host_tool_unresolved: usize = 0;
     let mut expected_red_seen: HashSet<String> = HashSet::new();
     let mut claim_rss_kb_max: u64 = 0;
     let mut claim_rss_kb_max_row = String::new();
@@ -42183,6 +39975,11 @@ pub fn run_required_floor(
         // because its time was filesystem reads and its CPU never approached the limit.
         frame.set_witness_eval_budget(Some(claim.budget_ms));
         frame.set_witness_wall_budget(Some(claim.budget_ms));
+        // NAME WHO IS RUNNING, so a shared computation filled during this claim is attributed to
+        // it rather than to nobody. The wall time this row is about to be charged is not
+        // necessarily its own; `shared_fill` records which part was a first touch of a
+        // process-global corpus cache and which later claims read that same fill for free.
+        shared_fill::set_current_claim(Some(&claim.qualified));
         set_phase(FloorPhase::Eval, &claim.qualified);
         // WHAT ONE CLAIM COSTS IN MEMORY, for the same reason the scope is measured beside it:
         // the fold's resident set swings ~5.6GB and the scope turned out to account for 0.02GB
@@ -42254,10 +40051,19 @@ pub fn run_required_floor(
         let wall_ms = receipt.wall_nanos / 1_000_000;
         if wall_ms > u128::from(claim.warn_ms) {
             outcome.over_warn += 1;
-            eprintln!(
-                "[floor-witness-slow] {} {}ms > {}ms warn (ceiling {}ms)",
-                claim.qualified, wall_ms, claim.warn_ms, claim.budget_ms
-            );
+            match render_witness_budget_warn_text(
+                &claim.qualified,
+                wall_ms,
+                claim.warn_ms,
+                claim.budget_ms,
+            ) {
+                Some(line) => eprintln!("{line}"),
+                None => eprintln!(
+                    "::error::witness presentation unavailable: could not render budget warn \
+                     through gunbc.observation_ci_render `ci_witness_budget_warn_text` for {}",
+                    claim.qualified
+                ),
+            }
         }
         // THE EXPECTED-RED JOIN. A quarantined identity is one this branch KNOWS fails; it is
         // enrolled by exact qualified name in `v2.workflow.floor_expected_red`, and the
@@ -42273,26 +40079,128 @@ pub fn run_required_floor(
         let expected_red = expected_red_roster.contains(claim.qualified.as_str());
         if expected_red {
             expected_red_seen.insert(claim.qualified.clone());
+            if let Some(ref mut join) = roster_join_report {
+                join.record_observed(
+                    &claim.qualified,
+                    &witness_eval_verdict_from_claim_outcome(&result),
+                );
+            }
         }
         let passed = matches!(result, ClaimOutcome::Pass);
-        if expected_red && passed {
-            known_red_now_passing += 1;
-            outcome.failures.push(format!(
-                "{} is enrolled as expected-red and PASSED — remove it from \
-                 v2.workflow.floor_expected_red",
-                claim.qualified
-            ));
-            continue;
-        }
         if expected_red {
-            known_red_held += 1;
-            // NOT COUNTED AS A PASS. A held row did not pass — it failed exactly as enrolled,
-            // and agreement about a failure is not the same fact as a passing witness. Folding
-            // it into `passed` would make the headline number rise as debt is ADDED, which is
-            // the direction that flatters, and would leave no count that falls when the debt is
-            // repaid. The identity accounting (planned = executed = receipted) is unaffected
-            // because it counts receipts, not verdicts.
-            continue;
+            // ONE DISPATCH. Every arm does its own work here rather than classifying once and
+            // re-deriving the answer below: two dispatches over one value agree only as long
+            // as nobody adds a variant, and the second test is always the narrower one, so the
+            // new variant reaches the fallthrough and is silently held. That is precisely the
+            // absorption this join exists to remove, and it would read as correct in review
+            // because the helper LOOKS like it classifies. With one match the compiler makes
+            // the next variant get classified here or not compile, and the caller's sum check
+            // is then checking three counters produced by one mechanism rather than two.
+            match expected_red_arm(&result) {
+                ExpectedRedArm::NowPassing => {
+                    known_red_now_passing += 1;
+                    outcome.stale_quarantine.push(format!(
+                        "{} is enrolled as expected-red and PASSED — remove it from \
+                         v2.workflow.floor_expected_red",
+                        claim.qualified
+                    ));
+                    continue;
+                }
+                // A BUDGET REFUSAL IS NOT AN ENROLLED FAILURE, and conflating the two is what
+                // let the most expensive row in the corpus hide behind its own enrollment.
+                // Enrollment records that this branch expects the claim to FAIL — a statement
+                // about the witness's verdict. A budget refusal is not a verdict: it is an
+                // interruption plus a measured lower bound on cost, so the enrolled claim was
+                // never decided at all. Holding it reports agreement about a failure that
+                // nobody observed.
+                ExpectedRedArm::BudgetRefused => {
+                    known_red_budget_refused += 1;
+                    let detail = match &result {
+                        ClaimOutcome::TimedOut {
+                            elapsed_ms,
+                            budget_ms,
+                            kind,
+                            completion,
+                        } => format!(
+                            "{kind:?}, cost {} {elapsed_ms}ms against {budget_ms}ms",
+                            completion.elapsed_reading()
+                        ),
+                        other => format!("{other:?}"),
+                    };
+                    outcome.budget_refused.push(format!(
+                        "{} is enrolled as expected-red but was BUDGET-REFUSED, not failed: \
+                         {}. Enrollment asserts an expected verdict and a budget refusal \
+                         produces none, so the enrolled claim went undecided — THIS ROW'S \
+                         CORRECTNESS IS UNKNOWN, not merely expensive: the refusal preempted \
+                         the verdict, so a content defect here would be indistinguishable from \
+                         the enrolled failure. Reducing the row's cost, or moving it to a lane \
+                         that declares its own ceiling, is what lets it reach a verdict at all; \
+                         removing it from the roster would not help, because it is not passing \
+                         either.",
+                        claim.qualified, detail
+                    ));
+                    continue;
+                }
+                // NOT COUNTED AS A PASS. A held row did not pass — it failed as enrolled, and
+                // agreement about a failure is not the same fact as a passing witness. Folding
+                // it into `passed` would make the headline number rise as debt is ADDED, which
+                // is the direction that flatters, and would leave no count that falls when the
+                // debt is repaid. The identity accounting (planned = executed = receipted) is
+                // unaffected because it counts receipts, not verdicts.
+                // BOTH REMEDIES, because the row is true on both axes. The semantic half goes
+                // to stale_quarantine (the claim passed, so the roster row must come out) and
+                // the cost half to budget_refused (an exact overrun that still has to be paid
+                // down). Choosing one would silently drop the other, and the one the code used
+                // to drop was the repaid-debt signal the roster exists to surface.
+                ExpectedRedArm::PassedOverBudget => {
+                    known_red_passed_over_budget += 1;
+                    let cost = match &result {
+                        ClaimOutcome::TimedOut {
+                            elapsed_ms,
+                            budget_ms,
+                            kind,
+                            ..
+                        } => format!("{kind:?}, cost exactly {elapsed_ms}ms against {budget_ms}ms"),
+                        other => format!("{other:?}"),
+                    };
+                    outcome.stale_quarantine.push(format!(
+                        "{} is enrolled as expected-red and PASSED (then exceeded its budget: \
+                         {}) — remove it from v2.workflow.floor_expected_red; the cost debt is \
+                         reported separately and is not a reason to keep the row",
+                        claim.qualified, cost
+                    ));
+                    outcome.budget_refused.push(format!(
+                        "{} PASSED but exceeded its budget: {}. This is an exact measurement, \
+                         not a bound — the witness ran to completion — so the cost is known and \
+                         actionable. Reduce it, or move the row to a lane declaring its own \
+                         ceiling.",
+                        claim.qualified, cost
+                    ));
+                    continue;
+                }
+                ExpectedRedArm::HostToolUnresolved => {
+                    known_red_host_tool_unresolved += 1;
+                    let detail = match &result {
+                        ClaimOutcome::HostToolUnresolved { name, probed } => format!(
+                            "host tool unresolved: {name:?} (probed: {})",
+                            probed.join(", ")
+                        ),
+                        other => format!("{other:?}"),
+                    };
+                    outcome.host_tool_unresolved.push(format!(
+                        "{} is enrolled as expected-red but HOST-TOOL-UNRESOLVED, not failed \
+                         and not budget-refused: {}. Enrollment asserts an expected verdict; \
+                         missing host tooling produces none. Fix the tool chain or run on a host \
+                         that provides it — do not chase witness cost on an infra gap.",
+                        claim.qualified, detail
+                    ));
+                    continue;
+                }
+                ExpectedRedArm::Held => {
+                    known_red_held += 1;
+                    continue;
+                }
+            }
         }
         match result {
             ClaimOutcome::Pass => outcome.passed += 1,
@@ -42309,21 +40217,77 @@ pub fn run_required_floor(
             ClaimOutcome::RuntimeError { message } => outcome
                 .failures
                 .push(format!("{} errored: {message}", claim.qualified)),
+            ClaimOutcome::HostToolUnresolved { name, probed } => outcome.failures.push(format!(
+                "{} host tool unresolved: {:?} (probed: {})",
+                claim.qualified,
+                name,
+                probed.join(", ")
+            )),
             ClaimOutcome::TimedOut {
                 elapsed_ms,
                 budget_ms,
                 kind,
-            } => outcome.failures.push(format!(
-                "{} exceeded its {kind:?} budget ({elapsed_ms}ms elapsed against {budget_ms}ms)",
-                claim.qualified
-            )),
+                completion,
+                // AND AN UNENROLLED BUDGET REFUSAL IS NOT A DEFECT EITHER. The enrolled arm above
+                // already rules that a budget refusal produces no verdict and therefore is not a
+                // failure; that fact is a property of the interruption, not of the roster, so it
+                // holds identically for a row nobody enrolled. Reporting it in `failures` said the
+                // opposite — `failures` is the channel whose remedy is "fix the defect", and it is
+                // what the alert signature reads to distinguish a regression from a cost debt. A
+                // row that was preempted before answering has no defect to fix and may well be
+                // passing, so routing it here made an unmeasured cost indistinguishable from a
+                // broken witness, in the direction that manufactures alarm.
+                //
+                // The consequence this closes is concrete: a row that PASSES and exceeds its budget
+                // had no honest state anywhere. Enrolled, it asserted an expected failure that does
+                // not occur and reported twice. Unenrolled, it landed here and read as a defect.
+                // Cost is not a verdict, so the verdict channels cannot carry it — and now they do
+                // not. The line still stops, because the cost is still owed; it stops saying the
+                // true thing about why.
+                // TWO READINGS, AND THEY ARE NOT THE SAME CLAIM. `Interrupted` means the deadline
+                // fired before the witness answered: no verdict exists, the figure is a LOWER BOUND
+                // and the row's real cost is unmeasured. `CompletedOverBudget` means the witness ran
+                // to completion and then was found over budget: the verdict IS known and the figure
+                // is EXACT. Printing one sentence for both would repeat the conflation this arm
+                // exists to remove — asserting "correctness unknown" over a row that demonstrably
+                // answered is as wrong as calling a cost a defect.
+            } => outcome.budget_refused.push(match completion {
+                BudgetCompletion::Interrupted => format!(
+                    "{} was BUDGET-REFUSED and went UNDECIDED: {kind:?}, cost at least \
+                     {elapsed_ms}ms against {budget_ms}ms. Not enrolled as expected-red, so \
+                     nothing claims it is broken — but the deadline preempted the verdict, so \
+                     whether it passes is UNKNOWN and its real cost is UNMEASURED: the figure \
+                     is the interrupt point, not this row's cost. Reduce the cost, or move it \
+                     to a lane declaring its own ceiling, so the witness reaches a verdict.",
+                    claim.qualified
+                ),
+                BudgetCompletion::CompletedOverBudget => format!(
+                    "{} reached its verdict and then exceeded its budget: {kind:?}, cost \
+                     exactly {elapsed_ms}ms against {budget_ms}ms. The witness ran to \
+                     completion, so this is a measurement rather than a bound and the cost is \
+                     known and actionable. This is a cost debt only — it is not a defect and \
+                     it does not belong on the expected-red roster, which asserts an expected \
+                     FAILURE this row does not exhibit.",
+                    claim.qualified
+                ),
+            }),
         }
     }
     outcome.receipt_identities = receipted.len();
+    // THE FOLD IS OVER, so nothing after this point is any witness's cost. Cleared before the
+    // report is rendered rather than after, so a gate that fills a cache on its way out cannot
+    // be charged to the last row that happened to run.
+    shared_fill::set_current_claim(None);
     eprintln!(
         "floor: evaluating {claims_planned} / {claims_planned} ({}ms)",
         eval_started.elapsed().as_millis()
     );
+    // WHAT THE PER-ROW NUMBERS ABOVE DO NOT SAY. Each line names one shared computation, what
+    // its fill cost, which claim paid it, and how many claims and modules read that same fill
+    // for free. A `shared` fill does not go away when its payer is removed from the floor — the
+    // next claim to touch it pays the same seconds — so a paring decision that reads only the
+    // per-row wall time is deciding on an attribution artifact.
+    eprint!("{}", shared_fill::report());
     // CONSTRUCTIONS AGAINST DISTINCT SCOPES. Equal means the manifest's claim order was grouped
     // by module and each scope was built exactly once; higher means it was not, and the excess
     // is rebuilding this reports rather than absorbs. `modules_per_scope` is carried here now
@@ -42375,8 +40339,15 @@ pub fn run_required_floor(
     // than quietly absorbing it.
     eprintln!(
         "[floor-known-red] {} enrolled identity(ies) held as expected-red; {} enrolled \
-         identity(ies) now PASS and must be removed from the roster",
-        known_red_held, known_red_now_passing
+         identity(ies) now PASS and must be removed from the roster; {} enrolled \
+         identity(ies) were BUDGET-REFUSED and so went undecided; {} PASSED but exceeded \
+         budget (stale roster row AND a real cost debt); {} HOST-TOOL-UNRESOLVED (infra, \
+         not budget)",
+        known_red_held,
+        known_red_now_passing,
+        known_red_budget_refused,
+        known_red_passed_over_budget,
+        known_red_host_tool_unresolved
     );
     eprintln!(
         "[floor-claim-memory] worst single claim grew rss by {:.2}GB at={}",
@@ -42421,7 +40392,7 @@ pub fn run_required_floor(
         missing.sort();
         missing
     };
-    if !expected_red_missing.is_empty() {
+    if !expected_red_missing.is_empty() && !roster_join_only {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=ExpectedRedIdentityDidNotExecute count={} — every \
              identity enrolled in v2.workflow.floor_expected_red must be observed among the \
@@ -42439,12 +40410,26 @@ pub fn run_required_floor(
     // observed exactly once, so it landed in precisely one of the two arms. Checking the sum is
     // therefore checking that the two arms are the whole roster and do not overlap — cheap, and
     // it fails loudly if a later edit adds a third arm that quietly swallows rows.
-    if known_red_held + known_red_now_passing != expected_red_roster.len() {
+    // The three-outcome roster join relaxes this to still_red | now_passes | not_evaluated and
+    // is the authority for pruning — not the failure-log subset.
+    if !roster_join_only
+        && known_red_held
+            + known_red_now_passing
+            + known_red_budget_refused
+            + known_red_passed_over_budget
+            + known_red_host_tool_unresolved
+            != expected_red_roster.len()
+    {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=ExpectedRedPartitionInexact held={} now_passing={} \
-             roster={} — every enrolled identity must be exactly one of held or now-passing",
+             budget_refused={} passed_over_budget={} host_tool_unresolved={} roster={} — every \
+             enrolled identity must be exactly one of held, now-passing, budget-refused, \
+             passed-over-budget, or host-tool-unresolved",
             known_red_held,
             known_red_now_passing,
+            known_red_budget_refused,
+            known_red_passed_over_budget,
+            known_red_host_tool_unresolved,
             expected_red_roster.len()
         ));
     }
@@ -42462,232 +40447,65 @@ pub fn run_required_floor(
             outcome.claims_planned, outcome.claims_executed, outcome.receipt_identities
         ));
     }
+    if let Some(mut join) = roster_join_report {
+        join.finalize_not_observed();
+        crate::expected_red_roster_join::emit_join_summary(&join);
+        if let Some(path) = roster_join_path {
+            crate::expected_red_roster_join::write_join_tsv(&path, &join)?;
+        }
+    }
     Ok(outcome)
 }
 
-/// Read the `.dag` admission. A refusal is reported with every offending row rather than the
-/// first, because a manifest with three conflicting declarations should take one round-trip to
-
-fn required_floor_claims_from_admission(
-    ctx: &v1_interpreter::InterpContext,
-    admission: &v1_interpreter::Value,
-) -> Result<Vec<RequiredFloorClaim>, String> {
-    // EVERY STEP MARKED, BECAUSE THE ONE UNMARKED REGION IS WHERE THE TIME WAS.
-    //
-    // Run 31942605651 completed manifest-evaluation at 11:14:12 and was cancelled at 13:48:13
-    // having printed neither arm's entry marker -- so 2h34m elapsed inside this function before
-    // reaching either. That region was left unmarked on my reasoning that it is a sym_eq and two
-    // binary searches and "cannot cost hours on its face". That was an assumption about cost
-    // stated as a bound, and it was wrong. Each step now emits, so no step can absorb time
-    // silently.
-    let entered = std::time::Instant::now();
-    eprintln!("[floor-phase] phase=admission-decode state=started");
-    let v1_interpreter::Value::Variant {
-        variant_name,
-        fields,
-        ..
-    } = admission
-    else {
-        return Err(
-            "required_floor_attempt did not answer a RequiredFloorAdmission variant".to_string(),
-        );
-    };
-    eprintln!(
-        "[floor-phase-progress] phase=admission-decode step=destructured wall_ms={} {}",
-        entered.elapsed().as_millis(),
-        floor_resource_sample()
-    );
-    let refused = ctx.sym_eq(*variant_name, "RequiredFloorRefused");
-    eprintln!(
-        "[floor-phase-progress] phase=admission-decode step=arm-resolved refused={} wall_ms={} {}",
-        refused,
-        entered.elapsed().as_millis(),
-        floor_resource_sample()
-    );
-    if refused {
-        // T5a — THE REFUSAL RENDER IS ITS OWN TERM because it is the arm that can cost more
-        // than the decode it reports on. `{r:?}` walks an interpreter `Value` structurally, and
-        // a refusal carries records that share substructure: Debug re-renders each occurrence
-        // rather than the shared node, so a cheap-looking format over a few thousand rows is not
-        // bounded by the row count. A run that refuses would otherwise spend that time inside a
-        // function whose seam says "decode", attributing a diagnostic's cost to the decode loop.
-        // THE SEAM MOVES WITH EXECUTION, or the heartbeat lies about where the run is.
-        // `floor_seam` was last set to "admission-decode" by the caller, and the heartbeat prints
-        // whatever it holds — so a run stalled inside THIS arm reported `phase=admission-decode`
-        // for its entire life, which is indistinguishable in the log from a run stalled BEFORE the
-        // arm was entered. A reader then cannot tell "never reached the render" from "spent three
-        // hours inside it", and the natural conclusion is that no progress instrument exists.
-        floor_seam("refusal-render");
-        let refusal_render_started = std::time::Instant::now();
-        let refusal_count = match ctx.field(fields, "refusals") {
-            Some(v1_interpreter::Value::List(items)) => items.len(),
-            _ => 0,
-        };
-        eprintln!("[floor-phase] phase=refusal-render state=started total={refusal_count}");
-        // The SAME progress obligation as the decode loop, and it was missing here first. A
-        // censored run keeps only what was already printed, so an arm with an entry marker and a
-        // completion timer and nothing between teaches nothing when it is the arm that stalls --
-        // and a rate plus a denominator is a completion estimate obtainable WITHOUT completing.
-        // Every 16 rather than every 256 because a refusal render is few rows of possibly enormous
-        // output, so the interesting variance is per-row, not across thousands.
-        let rendered = match ctx.field(fields, "refusals") {
-            Some(v1_interpreter::Value::List(items)) => items
-                .iter()
-                .enumerate()
-                .map(|(i, r)| {
-                    if i % 16 == 0 {
-                        eprintln!(
-                            "[floor-phase-progress] phase=refusal-render rendered={i} total={} wall_ms={} {}",
-                            items.len(),
-                            refusal_render_started.elapsed().as_millis(),
-                            floor_resource_sample()
-                        );
-                    }
-                    format!("{r:?}")
-                })
-                .collect::<Vec<_>>()
-                .join("\n  "),
-            _ => "<refusal list unreadable>".to_string(),
-        };
-        eprintln!(
-            "[floor-phase] phase=refusal-render state=completed wall_ms={} total={} rendered_bytes={}",
-            refusal_render_started.elapsed().as_millis(),
-            refusal_count,
-            rendered.len()
-        );
-        return Err(format!(
-            "REQUIRED-FLOOR REFUSAL cause=ManifestInadmissible — the claim manifest carries \
-             refusals, so the floor does not run its clean subset and report on the rest:\n  \
-             {rendered}"
-        ));
-    }
-    if !ctx.sym_eq(*variant_name, "RequiredFloorRunnable") {
-        return Err("required_floor_attempt answered an unknown admission arm".to_string());
-    }
-    let Some(v1_interpreter::Value::Record { fields: af, .. }) = ({
-        let r = ctx.field(fields, "attempt");
-        eprintln!(
-            "[floor-phase-progress] phase=admission-decode step=attempt-field wall_ms={} {}",
-            entered.elapsed().as_millis(),
-            floor_resource_sample()
-        );
-        r
-    }) else {
-        return Err("RequiredFloorRunnable carries no attempt record".to_string());
-    };
-    // THE REFUSAL NAMES THE SHAPE IT OBSERVED, not merely that the shape was wrong.
-    //
-    // "the attempt carries no claim list" is true of an absent field, of a record, of a variant
-    // and of a scalar alike, so it identifies the seam and nothing else. Reaching this arm costs
-    // a full preparation plus manifest evaluation — measured at 28 minutes on the first run that
-    // ever got here — and spending that to learn only that the field was not a list makes the
-    // next attempt cost the same again. What discriminates the causes is the constructor.
-    let claims_field = ctx.field(af, "claims");
-    let claims_shape = floor_value_shape(claims_field);
-    eprintln!(
-        "[floor-phase-progress] phase=admission-decode step=claims-field wall_ms={} observed={} {}",
-        entered.elapsed().as_millis(),
-        claims_shape,
-        floor_resource_sample()
-    );
-    let rows = floor_decode_list(ctx, claims_field).map_err(|why| {
-        format!("the attempt's `claims` field is not a list — {why} (field shape {claims_shape})")
-    })?;
-    // T5b — the ordinary decode loop, reported separately from the refusal arm above so that
-    // "the decode is slow" and "the refusal diagnostic is slow" are never one number.
-    // Same obligation as the refusal arm: carry the seam into the loop so the heartbeat names
-    // the loop rather than the phase that called it. Without this the decode's own ticks and the
-    // heartbeat disagree about the phase name, and a reader filtering the log on
-    // "admission-decode" — the name the heartbeat kept printing — silently excludes every
-    // `phase=claim-decode` progress line and concludes the loop has no counter at all.
-    floor_seam("claim-decode");
-    let decode_loop_started = std::time::Instant::now();
-    eprintln!(
-        "[floor-phase] phase=claim-decode state=started total={}",
-        rows.len()
-    );
-    let mut out = Vec::with_capacity(rows.len());
-    // PROGRESS, NOT JUST COMPLETION. A timer printed after a loop reports the loop's cost only if
-    // the loop terminates; a run killed inside it leaves "entered" and "finished" equally silent,
-    // so decoded-0 and decoded-9000 present identically. The tick is what separates them.
-    for (decoded, row) in rows.iter().enumerate() {
-        if decoded % 256 == 0 {
-            eprintln!(
-                "[floor-phase-progress] phase=claim-decode decoded={decoded} total={} wall_ms={} {}",
-                rows.len(),
-                decode_loop_started.elapsed().as_millis(),
-                floor_resource_sample()
-            );
+fn witness_eval_verdict_from_claim_outcome(
+    outcome: &ClaimOutcome,
+) -> crate::expected_red_roster_join::WitnessEvalVerdict {
+    match outcome {
+        ClaimOutcome::Pass => crate::expected_red_roster_join::WitnessEvalVerdict::Passed,
+        ClaimOutcome::Fail => crate::expected_red_roster_join::WitnessEvalVerdict::BoolFalse,
+        ClaimOutcome::NotBool { got } => {
+            crate::expected_red_roster_join::WitnessEvalVerdict::NotBool(got.clone())
         }
-        let v1_interpreter::Value::Record { fields: cf, .. } = row else {
-            return Err("a manifest claim is not a record".to_string());
-        };
-        let Some(v1_interpreter::Value::Record { fields: df, .. }) = ctx.field(cf, "declaration")
-        else {
-            return Err("a manifest claim carries no declaration identity".to_string());
-        };
-        let module_path = match ctx.field(df, "module_path") {
-            Some(v1_interpreter::Value::Str(s)) => s.to_string(),
-            _ => return Err("a claim identity carries no module path".to_string()),
-        };
-        let function = match ctx.field(df, "function") {
-            Some(v1_interpreter::Value::Str(s)) => s.to_string(),
-            _ => return Err("a claim identity carries no function name".to_string()),
-        };
-        let budget_ms = match ctx.field(cf, "budget_ms") {
-            Some(v1_interpreter::Value::Int(n)) if *n > 0 => *n as u64,
-            // A non-positive budget is refused rather than defaulted: a zero deadline that
-            // reads as "no limit" is the absorbing fallback, and one that reads as "refuse
-            // instantly" fails every claim for a reason unrelated to the claim.
-            other => {
-                return Err(format!(
-                    "claim {module_path}.{function} carries a non-positive budget ({other:?})"
-                ))
+        ClaimOutcome::RuntimeError { message } => {
+            crate::expected_red_roster_join::WitnessEvalVerdict::RuntimeError(message.clone())
+        }
+        ClaimOutcome::HostToolUnresolved { name, probed } => {
+            crate::expected_red_roster_join::WitnessEvalVerdict::HostToolUnresolved {
+                name: name.clone(),
+                probed: probed.clone(),
             }
-        };
-        let warn_ms = match ctx.field(cf, "warn_ms") {
-            Some(v1_interpreter::Value::Int(n)) if *n > 0 => *n as u64,
-            other => {
-                return Err(format!(
-                "claim {module_path}.{function} carries a non-positive warn threshold ({other:?})"
-            ))
-            }
-        };
-        let execution_mode = match ctx.field(cf, "execution_mode") {
-            Some(v1_interpreter::Value::Variant {
-                variant_name: m, ..
-            }) => {
-                if ctx.sym_eq(*m, "Hermetic") {
-                    v1_interpreter::ExecutionMode::Hermetic
-                } else if ctx.sym_eq(*m, "Wet") {
-                    v1_interpreter::ExecutionMode::Wet
-                } else if ctx.sym_eq(*m, "Record") {
-                    v1_interpreter::ExecutionMode::Record
-                } else {
-                    return Err(format!(
-                        "claim {module_path}.{function} names an unknown execution mode"
-                    ));
-                }
-            }
-            _ => {
-                return Err(format!(
-                    "claim {module_path}.{function} carries no execution mode"
-                ))
-            }
-        };
-        out.push(RequiredFloorClaim {
-            qualified: format!("{module_path}.{function}"),
-            module_path,
-            function,
-            execution_mode,
+        }
+        ClaimOutcome::TimedOut {
+            elapsed_ms,
             budget_ms,
-            warn_ms,
-        });
+            kind,
+            completion,
+        } => crate::expected_red_roster_join::WitnessEvalVerdict::BudgetExceeded {
+            elapsed_ms: *elapsed_ms,
+            budget_ms: *budget_ms,
+            kind: kind.label(),
+            completion: match completion {
+                BudgetCompletion::Interrupted => {
+                    crate::expected_red_roster_join::BudgetVerdictCompletion::Interrupted
+                }
+                BudgetCompletion::CompletedOverBudget => {
+                    crate::expected_red_roster_join::BudgetVerdictCompletion::CompletedOverBudget
+                }
+            },
+        },
     }
-    eprintln!(
-        "[floor-phase] phase=claim-decode state=completed wall_ms={} claims={}",
-        decode_loop_started.elapsed().as_millis(),
-        out.len()
-    );
-    Ok(out)
+}
+
+pub fn run_required_regen(
+    candidate_dir_rel: &str,
+    receipt_rel: &str,
+) -> Result<required_regen_host::RequiredRegenOutcome, String> {
+    required_regen_host::run_required_regen(candidate_dir_rel, receipt_rel)
+}
+
+pub fn run_required_regen_fixed_point(
+    receipt_rel: &str,
+    pass1_digest: Option<String>,
+) -> Result<required_regen_host::RequiredRegenOutcome, String> {
+    required_regen_host::run_required_regen_fixed_point(receipt_rel, pass1_digest)
 }

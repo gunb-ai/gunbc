@@ -54,11 +54,6 @@ name = "gunbc"
 path = "src/main.rs"
 
 [[bin]]
-name = "regen_stage0"
-path = "src/bin/regen_stage0.rs"
-# cache-bust-v2-binary-20260526
-
-[[bin]]
 name = "cssl_assemble"
 path = "src/bin/cssl_assemble.rs"
 
@@ -91,7 +86,11 @@ path = "src/bin/json_parse_scaling_probe.rs"
 
 # Isolated char_at scaling receipt: position x string-length, uncontaminated by the
 # JSON parser's independent list-accumulation cost (eager-koi-458 scope correction,
-# 2026-08-17). DISSOLUTION: delete alongside json_parse_scaling_probe.rs.
+# 2026-08-17). SCAFFOLD -- disposition authority is
+# `char_at_scaling_probe_disposition` in dag/gunbc/char_at_scaling_probe_support.dag.
+# DISSOLUTION: its OWN trigger (`char_at_scaling_probe_dissolution`), NOT alongside
+# json_parse_scaling_probe.rs -- the two probes measure different primitives and can
+# have independently different lifetimes (DESIGN section 5, same-unit rule).
 [[bin]]
 name = "char_at_scaling_probe"
 path = "src/bin/char_at_scaling_probe.rs"
@@ -150,14 +149,6 @@ name = "measure_selected_closure_overlap"
 path = "src/bin/measure_selected_closure_overlap.rs"
 
 [[bin]]
-name = "resolution_divergence_census"
-path = "src/bin/resolution_divergence_census.rs"
-
-[[bin]]
-name = "walk_target_alias_plan"
-path = "src/bin/walk_target_alias_plan.rs"
-
-[[bin]]
 name = "measure_dependency_view_build"
 path = "src/bin/measure_dependency_view_build.rs"
 
@@ -205,15 +196,6 @@ path = "src/bin/p1_cohort_probe.rs"
 [[bin]]
 name = "measure_worker_private_memory"
 path = "src/bin/measure_worker_private_memory.rs"
-
-# Host-physics CI witness: regen self-host fixed-point affected-set skip. Prints
-# regen_not_affected_skip | run_regen for the generated ci regen step by intersecting
-# the merge-base diff with the [src/v1, dag] regen input closure (shared authority
-# cli_run::regen_input_sources). Empty diff / diff failure / closure failure → run_regen
-# (fail-closed; main + the 4-hourly falsifier run regen cold as the control).
-[[bin]]
-name = "regen_floor_skip_witness"
-path = "src/bin/regen_floor_skip_witness.rs"
 
 # Host-physics floor witness for the v1 interpreter recorded-fixture record ->
 # hermetic-replay -> fail-closed lifecycle (DESIGN §5 determinism). Drives the real
@@ -281,11 +263,12 @@ path = "src/bin/compile_clean_unlisted_import_census.rs"
 [[bin]]
 name = "namespace_structural_root_exposure_generated_witness"
 path = "src/bin/namespace_structural_root_exposure_generated_witness.rs"
-
-# Owned CI control plane v0 — poll-first discovery, durable queue, one executor,
-# GitHub Checks projection. See docs/plans/owned-ci-control-plane-design.md.
-# dissolve-on: REST transport folds into extdeps.github.checks/pulls interpreter bridge;
-# receipt: `rg OWNED_CI_CONTROL_PLANE_SEED_SCAFFOLD_MARKER src/v1/stage0` until deletion.
 [[bin]]
-name = "ci_control_plane"
-path = "src/bin/ci_control_plane.rs"
+name = "floor_prepared_toll_receipt"
+path = "src/bin/floor_prepared_toll_receipt.rs"
+
+# Expected-red roster identity join — join-only host transport. NOT floor-enrolled.
+# Dissolve-on: prune `floor_expected_red` from a post-rebase join run, not from failure-log rows.
+[[bin]]
+name = "expected_red_roster_join"
+path = "src/bin/expected_red_roster_join.rs"

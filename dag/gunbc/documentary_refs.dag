@@ -2,37 +2,20 @@ module gunbc.documentary_refs
 
 import std.types { String }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.doc_graph_roots {
-  hand_authored_doc_declaration_refs,
-  body_lowering_symbol_index_ref,
-  body_lowering_lexical_lookup_ref,
-  body_lowering_production_consumer_ref,
-}
+import gunbc.doc_graph_roots { hand_authored_doc_declaration_refs }
 
 data documentary_refs_note: String = "THE SYSTEMS A GENERATED DOCUMENT NAMES, CARRIED AS TYPED REFERENCES RATHER THAN SPELLED IN PROSE. gunbc.doc_graph_roots already does exactly this for HAND-AUTHORED documents: HandAuthoredDocBind carries primary_work plus additional_works as DeclarationRef rows, and v2.lens.cited_symbol_resolution resolves that population against live declaration facts and refuses a missing, ambiguous, or field-absent reference. Generated documents had no equivalent, so a system named inside gunbc.design_document existed only as characters inside a string literal -- unreachable by that lens and by every other structural reader.\n\nTHE MEASURED CONSEQUENCE, which is why this module exists rather than a wider one. The body-lowering paragraph named v2.std.symbol_index SymbolIndex as an open prerequisite. The prerequisite was discharged; the declaration existed the whole time; the sentence stayed. Nothing was wrong with the declaration, so no declaration-level check could fire, and the sentence was not a reference to anything, so no reference-level check could either. Four copies of that one claim were live across DESIGN.md and two plan documents.\n\nWHAT THIS DOES AND DOES NOT ESTABLISH, stated because the distinction is the whole scope of this change. A resolved reference proves the named system EXISTS and is uniquely identified -- so a rename, a deletion, or a fork into two same-named declarations reds through the required cited-symbol path without anyone editing the document. It does NOT prove a production relationship between the named systems: that a consumer actually invokes an implementation on a live path is a different claim, and a reference population cannot carry it. Where a document needs that stronger claim it cites an executing witness for that exact relationship. Reference resolution is the honest rung here, and claiming the stronger one from the weaker mechanism is what the earlier draft of this work did."
 
 data generated_document_ref_rows_note: String = "ONE ROW PER SYSTEM THE GENERATED DESIGN DOCUMENT NAMES IN A MIGRATED PARAGRAPH, and the rendered bytes come from these rows rather than beside them. A row typed here while the paragraph independently spells the same name would be two representations of one fact, which is the shape this program exists to remove -- so the paragraph builds its symbol text by rendering the row, and a rename that moves the row moves the document."
 
-data body_lowering_shared_home_note: String = "THE THREE BODY-LOWERING ROWS ARE IMPORTED, NOT RE-DECLARED. Both this generated document and the hand-authored general-body-producer plan name the same three systems, so the rows live at one home in gunbc.doc_graph_roots and both populations project the same values. An earlier revision of this module authored its own DeclarationRef literals beside the ones inlined in the bind: two spellings of one fact, free to drift apart, in the module written to remove exactly that."
-
-data body_lowering_named_row_note: String = "THE THREE ROWS ARE NAMED AND THE LIST IS BUILT FROM THEM, not the other way round. The document renders a specific system in a specific sentence position, so it needs to name one row rather than index a list -- and a positional index would be a second, silent way to get the wrong symbol into the right sentence if the list order ever changed. The list below is the enrollment projection of the same three rows, so the population the lens resolves and the symbols the document prints cannot diverge."
-
-data body_lowering_system_refs: List<DeclarationRef> = [
-  body_lowering_symbol_index_ref,
-  body_lowering_lexical_lookup_ref,
-  body_lowering_production_consumer_ref,
-]
-
-data five_minute_ci_gate_authority_ref: DeclarationRef = decl_ref(module_path: "gunbc.roadmap_authority", decl_name: "five_minute_ci_gate_program_note")
-
-data cite_by_symbol_only_note: String = "THE ROADMAP AUTHORITY IS CITED AND NOT SUMMARIZED, DELIBERATELY. The reference below names the symbol that owns the five-minute CI programme's scope and ordering, and the document asserts nothing about its contents. The reason is on record as a measured failure: DESIGN carried its own numbered six-step copy of that sequence, the roadmap authority was later recut, and the copy went on presenting a superseded order inside the canonical design document. A citation that summarises what it cites has become a second copy of it, and a second copy is what goes stale."
+data v1_maintenance_standing_ref: DeclarationRef = decl_ref(module_path: "gunbc.v1_maintenance_standing", decl_name: "v1_seed_standing")
 
 fn documentary_ref_symbol_text(reference: DeclarationRef) -> String {
   concat("`", reference.module_path as String, " ", reference.decl_name as String, "`")
 }
 
 fn generated_document_declaration_refs() -> List<DeclarationRef> {
-  concat(body_lowering_system_refs, [five_minute_ci_gate_authority_ref])
+  [v1_maintenance_standing_ref]
 }
 
 data documentary_population_union_note: String = "ONE POPULATION, TWO SOURCES, AND THE UNION IS THE POINT. The cited-symbol lens already had a denominator; it counted hand-authored binds only, so a generated document could name a system that no longer existed and stay green while a hand-authored document naming the same system reddened. Widening the denominator rather than adding a second resolution algorithm keeps v2.std.decl_ref_resolution the single authority for what resolving a reference means -- a second algorithm agreeing today is a fork that disagrees later."

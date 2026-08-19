@@ -23,8 +23,16 @@ import std.measure {
 }
 import std.symbols { SymbolId, Tier, Emoji, Unicode, Ascii, StatusPulse, StatusDwell, StatusBlocked, StatusRefused, StatusTimedOut, StatusFinal, NodeCompleted, NodeFailed, NodeRunning, NodeSkipped }
 import std.disposition { Disposition, Terminal }
+import gunbc.witness_row_cost {
+  SharedFillPayer,
+  SharedFillDisposition,
+  shared_fill_disposition,
+  shared_fill_disposition_tag,
+  shared_fill_payer_tag,
+}
 import extdeps.render.glyphs { resolve_symbol }
 import extdeps.github.log_annotations { annotation_group_prefix, annotation_endgroup, neutralize_workflow_commands }
+import std.render_repeat_string_bootstrap { repeat_string }
 import std.observation {
   ClassDone,
   ClassFailed,
@@ -693,5 +701,200 @@ fn ci_batch_summary_text(
       attention: if failed > 0 { Anomaly } else { Ambient }
     },
     tier: Ascii,
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Per-witness claim-result lines — the ONE presentation authority for floor output.
+// ---------------------------------------------------------------------------
+
+data ci_witness_claim_result_note: String = "Bazel-shaped claim-result lines for every witness the floor executes. The seed transports subject, function, verdict and wall time; every choice about how the line READS lives here. Subject is either a dotted module path (test.claim.foo) or a repo-relative entry path (dag/test/claim/foo_test.dag); both normalize to a //package:target label. Column width is a display policy, not a semantic fact — the outcome and duration are always present so a fast green and a slow green read differently at arm's length."
+
+data ci_witness_claim_result_interim_scalar_note: String = "KNOWN BLIND SPOT, NOT A FORMATTING SIMPLIFICATION. Wave 6 routes E1 formatting through this authority but the seed still collapses ClaimOutcome to passed: Bool at the boundary because the hot path cannot afford per-line interpreter eval. That collapse is lossy in the direction that hides the class gunbc#8423 just surfaced: Pass, Fail, and TimedOut all become two display tokens, and TimedOut — budget interruption, not a semantic verdict — is the one that matters. The Bool must not become the shared interface other consumers key on. Warn-tier cost debt remains a separate projection (ci_witness_budget_warn_text). Dissolve-on: replace subject/function/passed/wall with ONE typed per-witness receipt the floor produces once; the renderer projects human lines from the PRODUCT of two independent facts — (1) outcome: ClaimOutcome (Pass | Fail | NotBool | RuntimeError | TimedOut\{elapsed_ms,budget_ms,kind:BudgetKind\}) where TimedOut is the sole budget-refusal variant and elapsed_ms is a lower bound, not a measured duration; (2) disposition: ExpectedRedArm Held | NowPassing | BudgetRefused when enrolled, else not enrolled. The failed / stale_quarantine / budget_refused reporting channels on RequiredFloorOutcome are a run-level partition, not per-witness facts — do not key the renderer on them. Held rows currently print nothing (261 of 795 measured); a follow-up renderer must not assume only refusals get lines."
+
+data ci_witness_claim_column_width: Nat = 60
+
+fn ci_witness_package_from_entry_path(path: String) -> String {
+  if path.ends_with(suffix: ".dag") {
+    substring(s: path, start: 0, end: string_length(s: path) - 4)
+  } else {
+    path
+  }
+}
+
+fn ci_witness_package_path(subject: String) -> String {
+  if string_contains(s: subject, pattern: "/") {
+    ci_witness_package_from_entry_path(path: subject)
+  } else {
+    join(subject.split(delimiter: "."), "/")
+  }
+}
+
+fn ci_witness_bazel_target_label(subject: String, function: String) -> String {
+  concat("//", concat(ci_witness_package_path(subject: subject), concat(":", function)))
+}
+
+fn ci_witness_outcome_token(passed: Bool) -> String {
+  if passed {
+    "PASSED"
+  } else {
+    "FAILED"
+  }
+}
+
+fn ci_witness_claim_suffix(passed: Bool, wall: Nanosecond) -> String {
+  concat(
+    ci_witness_outcome_token(passed: passed),
+    concat(" in ", ci_human_elapsed(d: wall))
+  )
+}
+
+fn ci_witness_pad_to_column(label: String, width: Nat) -> String {
+  let len = string_length(s: label)
+  if len >= width {
+    label
+  } else {
+    concat(label, repeat_string(s: " ", n: width - len))
+  }
+}
+
+// THE SEED'S ONE SEAM for per-witness floor output. Scalars in, one finished line out — the same
+// shape as ci_batch_summary_text, so the floor never owns a second formatter for claim results.
+fn ci_witness_claim_result_text(
+  subject: String,
+  function: String,
+  passed: Bool,
+  wall: Nanosecond,
+) -> String {
+  let label = ci_witness_bazel_target_label(subject: subject, function: function)
+  let padded = ci_witness_pad_to_column(label: label, width: ci_witness_claim_column_width)
+  concat(padded, ci_witness_claim_suffix(passed: passed, wall: wall))
+}
+
+data ci_witness_budget_warn_note: String = "Per-witness budget warning for the floor fold's warn tier — distinct from S1 claim-result lines. A witness over its warn threshold but under the hard budget is reported and allowed to finish; the line names qualified identity, observed wall, warn threshold and ceiling so the population is observable rather than reconstructed from timings. Durations cross as std.measure Millisecond at this seam; the seed converts wall_nanos and policy thresholds at the boundary."
+
+fn ci_witness_budget_warn_text(
+  qualified: String,
+  wall: Millisecond,
+  warn: Millisecond,
+  budget: Millisecond,
+) -> String {
+  concat(
+    "[floor-witness-slow] ",
+    concat(
+      qualified,
+      concat(
+        " ",
+        concat(
+          to_string(millisecond_count(m: wall)),
+          concat(
+            "ms > ",
+            concat(
+              to_string(millisecond_count(m: warn)),
+              concat("ms warn (ceiling ", concat(to_string(millisecond_count(m: budget)), "ms)"))
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+data ci_shared_fill_row_note: String = "fill_ms is SELF time and inclusive_ms includes the fills nested inside this one, because these caches compose: building the module graph builds the reference edges and the path index on its way, so a sum over inclusive figures counts each inner scan once per enclosing scan. Measured on the first floor receipt, a 17890ms module-graph fill contained a 12054ms path-index fill and a 5141ms reference-edge fill and was ~695ms of its own. The total is summed over SELF; inclusive is carried beside it because it is what names the caller that caused the inner scans. One line per SHARED FILL in the floor fold — a process-global corpus computation, what it cost, which claim paid it, and how many claims and modules read that same fill for free. Distinct from ci_witness_budget_warn_text, which reports the wall time of one row: this reports the part of that wall time that did not belong to that row. The disposition is derived from the payer and the consumer breadth by gunbc.witness_row_cost shared_fill_disposition, so the line never carries a verdict the seed authored beside the numbers that decide it."
+
+fn ci_shared_fill_row_text(
+  cache: String,
+  key: String,
+  fill: Millisecond,
+  inclusive: Millisecond,
+  payer: SharedFillPayer,
+  consumer_claims: Nat,
+  consumer_modules: Nat,
+  modules: String,
+) -> String {
+  concat(
+    "[floor-shared-fill] cache=",
+    concat(
+      cache,
+      concat(
+        " key=",
+        concat(
+          key,
+          concat(
+            " fill_ms=",
+            concat(
+              to_string(millisecond_count(m: fill)),
+              concat(
+                " inclusive_ms=",
+              concat(
+                to_string(millisecond_count(m: inclusive)),
+              concat(
+                " paid_by=",
+                concat(
+                  shared_fill_payer_tag(payer: payer),
+                  concat(
+                    " consumer_claims=",
+                    concat(
+                      to_string(consumer_claims),
+                      concat(
+                        " consumer_modules=",
+                        concat(
+                          to_string(consumer_modules),
+                          concat(
+                            " disposition=",
+                            concat(
+                              shared_fill_disposition_tag(
+                                disposition: shared_fill_disposition(
+                                  payer: payer,
+                                  consumer_modules: consumer_modules
+                                )
+                              ),
+                              concat(" modules=", modules)
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+              )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+// THE TOTAL LINE CARRIES BOTH DENOMINATORS AND THE HOLE. shared_fill_ms is the part of fill_ms
+// that removing any one module cannot recover; unattributed_hits is the count of reads served by
+// a fill this ledger did not observe, which is the honest statement that the shared figure is a
+// LOWER bound rather than the whole of the sharing.
+fn ci_shared_fill_total_text(
+  fills: Nat,
+  fill: Millisecond,
+  shared_fill: Millisecond,
+  unattributed_hits: Nat,
+) -> String {
+  concat(
+    "[floor-shared-fill] TOTAL fills=",
+    concat(
+      to_string(fills),
+      concat(
+        " fill_ms=",
+        concat(
+          to_string(millisecond_count(m: fill)),
+          concat(
+            " shared_fill_ms=",
+            concat(
+              to_string(millisecond_count(m: shared_fill)),
+              concat(" unattributed_hits=", to_string(unattributed_hits))
+            )
+          )
+        )
+      )
+    )
   )
 }

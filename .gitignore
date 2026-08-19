@@ -21,7 +21,7 @@ tarpaulin-report.html
 tarpaulin-report.json
 cobertura.xml
 lcov.info
-coverage/
+/coverage/
 
 # --- JetBrains IDE project state [cited: jetbrains.com/idea] ---
 # Per-developer configuration, not project state
@@ -113,6 +113,7 @@ out.txt
 *.py
 !docs/plans/witness-subject-execution-audit.py
 !docs/probes/e0369_b1_operator_classify.py
+!docs/probes/floor_cut_name_resolution_partition.py
 
 # --- CPython bytecode cache (PEP 3147) [cited: python.org/peps/pep-3147] ---
 __pycache__/

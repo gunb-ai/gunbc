@@ -1,6 +1,6 @@
 module gunbc.witness_floor_workflow
 
-import extdeps.languages.yaml.types { yaml_string, yaml_int, kv }
+import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.github.actions {
@@ -9,7 +9,7 @@ import extdeps.github.actions {
   PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview,
   DispatchInput, InputString,
   WorkflowPermissions, PermRead,
-  ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool,
+  ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressExpression,
   RunnerSpec,
   checkout_action, setup_rust_action
 }
@@ -75,7 +75,27 @@ import std.types { List, String, Int }
 
 data witness_floor_workflow_job_id: String = "witnesses"
 
-data witness_floor_concurrency_group: String = "witness-floor-${{ github.event.pull_request.number || github.ref }}"
+// CANCELLATION IS A PER-EVENT FACT, AND THE GROUP CARRIES HALF OF IT. Operator ruling
+// 2026-08-17: every push to main must finish; only pull-request runs may be superseded.
+// The predecessor collapsed both axes into one group keyed on `github.ref` with an
+// unconditional `true`, so consecutive pushes to main landed in the single group
+// `witness-floor-refs/heads/main` and each new push killed the previous commit's run --
+// main's floor coverage was decided by push arrival, which is exactly the empty-observation
+// narrow section 5 forbids: a cancelled run reports no verdict, and no verdict was being
+// read as nothing to report.
+//
+// Setting `cancel_in_progress` false for main is NOT sufficient on its own. GitHub cancels
+// PENDING runs in a group regardless of that flag -- it only ever protects a run that has
+// already started -- so a main run queued behind a busy fleet could still be superseded
+// before it ever executed. The group must therefore be unique per main run, which
+// `github.run_id` gives, and the flag must additionally be false there so the two
+// mechanisms agree rather than one relying on the other.
+//
+// The cost is that N concurrent main runs may execute where one used to. That is the
+// intended trade -- coverage of every landed commit, at fleet occupancy -- and it is the
+// reason the dep-info race under `target/` is worth identifying before this is widened
+// further.
+data witness_floor_concurrency_group: String = "witness-floor-${{ github.event.pull_request.number || github.run_id }}"
 
 // The binaries the fold actually needs, and only those. `claim_executor` is the fold's entry;
 // `gunbc` is the CLI the repository's own tooling invokes. The predecessor build job named
@@ -98,12 +118,54 @@ fn witness_floor_checkout_step() -> Step {
   }
 }
 
+// CACHING IS DISABLED BECAUSE IT WAS DELETING OTHER JOBS' FILES MID-BUILD, and that is a
+// statement about this fleet rather than about the action.
+//
+// setup-rust-toolchain defaults `cache` to true, which runs Swatinem/rust-cache, which
+// registers a POST step. Two of that step's cleanup functions are the deleters, confirmed
+// against its own source rather than inferred:
+//
+//   cleanBin(oldBins)    removes binaries from ~/.cargo/bin that were not in the baseline
+//                        captured when THAT job started.
+//   cleanRegistry(..)    removes directories from ~/.cargo/registry/src that do not match
+//                        the CURRENT workspace's dependency set.
+//
+// Both are correct on a GitHub-hosted runner, where the home directory belongs to one job
+// and dies with it. This fleet is self-hosted, and there /opt/actions-runner/<slot>/_work is
+// per-slot while /home/ghrunner/.cargo is ONE directory shared by every slot on the host. So
+// each job's baseline and each job's dependency set are computed as though it owned the home,
+// and its post step then deletes against a home that other jobs are actively building in.
+//
+// The two observed symptoms are exactly the two functions. cleanBin gives
+// `host tool unresolved: "cargo"` — cargo was present at 01:24:52 when the build step used it
+// for 2m49s and absent later in the SAME job on the SAME PATH (run 32088114155), which no
+// PATH misconfiguration can produce. cleanRegistry gives
+// `ring-0.17.14/crypto/fipsmodule/ec/ecp_nistz.c: No such file or directory` during a build
+// (run 32087371268, srv2-04), whose downstream noise is the
+// `could not parse/generate dep info` class that reads like a target/ problem and is not.
+//
+// The selection effect corroborates it: the witness step is ~45 minutes and the build step ~3,
+// so almost every hit lands in the witness step — which is what an overlap-probability
+// argument predicts and what a configuration error would not.
+//
+// WHY DISABLING RATHER THAN SPLITTING THE HOME. A per-slot CARGO_HOME also works and was the
+// first candidate, but it multiplies the registry by the slot count on every host to solve a
+// problem caused by a cache layer this fleet does not need: ~/.cargo already persists across
+// jobs on a self-hosted runner, so restore-and-save buys nothing here and only the cleanup
+// half has an effect. Disabling is the smaller change and removes the mechanism outright.
+//
+// THE COST, STATED. Nothing now prunes ~/.cargo, so the registry grows without bound and
+// becomes a disk-pressure question instead of a correctness one. That is the right trade —
+// a full disk refuses loudly, a deleted source file mid-compile does not — but it is a real
+// obligation and it belongs to whoever owns fleet disk, not to this file.
 fn witness_floor_toolchain_step() -> Step {
   UsesStep {
     name: Present { value: "Install Rust toolchain" },
     id: none,
     uses: setup_rust_action,
-    with: none,
+    with: Present {
+      value: [kv(key: "cache", value: yaml_bool(b: false))]
+    },
     env: none,
     if_condition: none,
     continue_on_error: none,
@@ -233,12 +295,19 @@ data witness_floor_workflow: Workflow = {
   concurrency: Present {
     value: ConcurrencyMappingQueueNotMax {
       group: witness_floor_concurrency_group,
-      cancel_in_progress: Present { value: CancelInProgressBool { value: true } },
+      cancel_in_progress: Present {
+        value: CancelInProgressExpression {
+          expression: "${{ github.event_name == 'pull_request' }}"
+        }
+      },
       explicit_single: none
     }
   },
   env: Present {
-    value: [kv(key: "CARGO_TERM_COLOR", value: yaml_string(s: "always"))]
+    value: [
+      kv(key: "CARGO_TERM_COLOR", value: yaml_string(s: "always")),
+      kv(key: "GUNBC_EXPECTED_RED_ROSTER_JOIN", value: yaml_string(s: "expected_red_roster_join.tsv"))
+    ]
   },
   permissions: Present {
     value: WorkflowPermissions {

@@ -16,30 +16,45 @@ ci_floor_required_artifact_names() is DERIVED (floor ∪ witness-declared, stabl
 
 Measured gap that priced this PR (2026-07-26): cssl_assemble and frontier_probe_survey were addressed by production transports but absent from the pack — live absorption risk. cssl_assemble enrolls below. frontier_probe_survey was enrolled here and is removed by the roster cut — see the second-removal paragraph below.
 
-CORRECTION (2026-08-15, cli-run cut). An earlier revision of this row DELETED four bins — frontier_probe_survey, discover_source_root_ingest, effects_rest_transport_witness and resolution_divergence_census — and justified all four with one sentence: 'every one of them was a probe bin whose only subject was src/v1/stage0/src/cli_run.rs'. That sentence was asserted once and never checked per bin, and it is FALSE FOR ALL FOUR. All four are restored.
+CORRECTION (2026-08-15, cli-run cut). An earlier revision of this row DELETED four bins — frontier_probe_survey, discover_source_root_ingest, effects_rest_transport_witness and resolution_divergence_census — and justified all four with one sentence: 'every one of them was a probe bin whose only subject was src/v1/stage0/src/cli_run.rs'. That sentence was asserted once and never checked per bin, and it is FALSE FOR ALL FOUR. All four were restored on that branch; frontier_probe_survey and resolution_divergence_census are removed again by SECOND and THIRD REMOVAL below, and discover_source_root_ingest and effects_rest_transport_witness remain enrolled.
 
-SECOND REMOVAL OF frontier_probe_survey (self-host frontier roster cut), justified per bin rather than by a class sentence, because the correction above is exactly the mistake to avoid repeating. This one is not a probe bin whose subject was cli_run, which is what that sentence claimed of all four. Its subject was the 27-row self-host frontier roster, which is deleted in this change: the bin read compiler_frontier_sweep_order from frontier.dag at runtime to decide which modules to survey, and its own Cargo comment stated that census as its checkable receipt (before=27 from compiler_frontier_roster_count). With the roster gone the bin has no module census to read and no receipt to produce. Its .dag surface (v2.compiler.self_host.frontier_probe_survey) and its host transport (v2.workflow.frontier_probe_survey_transport) are deleted in the same change, so nothing remains that could invoke it.
+SECOND REMOVAL OF frontier_probe_survey (self-host frontier roster cut), justified per bin rather than by a class sentence, because the correction above is exactly the mistake to avoid repeating. This one is not a probe bin whose subject was cli_run, which is what that sentence claimed of all four. Its subject was the 27-row self-host frontier roster, which is deleted in this change: the bin read compiler_frontier_sweep_order from frontier.dag at runtime to decide which modules to survey, and its own Cargo comment stated that census as its checkable receipt (before=27 from compiler_frontier_sweep_order). With the roster gone the bin has no module census to read and no receipt to produce. Its .dag surface (v2.compiler.self_host.frontier_probe_survey) and its host transport (v2.workflow.frontier_probe_survey_transport) are deleted in the same change, so nothing remains that could invoke it.
+
+THIRD REMOVAL OF resolution_divergence_census and walk_target_alias_plan (silent-pick gate retirement, 2026-08-18, gentle-tern-815): the census bin, in-process witness, and walk_target_alias_plan investigation bin (sole consumer of the cli_run walk-target planner; zero CI enrollment; silent-pick events only) deleted together. See gunbc.ci_layer_roots resolution_divergence_silent_pick_gate_retirement_receipt.
 
 The independent fact that made the removal easy rather than merely consistent: the harness produces no receipts on any host and has not since at least 2026-08-06 — six invocations six kills on a shared host, a silent death after ~27 minutes on a dedicated BuildBuddy runner with the module filter narrowed to one small module, and a kernel OOM elsewhere the same day. Packing a binary that cannot complete a run is not coverage. If a per-module emit survey is wanted again it is authored against whatever replaces the roster, not restored from this bin.
 
-The distinction it collapsed is the load-bearing one. USING AN ENGINE IS NOT THE SAME RELATION AS PROBING A DRIVER. Each of these bins imports engine functions out of cli_run — resolve_entry_graph, workspace_root, discover_source_root_reads, collect_rest_transport_operations, project_resolution_divergence_census and their neighbours — while its SUBJECT is something else entirely: the v2 self-host frontier survey, source-root ingest discovery, declared REST transport operations, the namespace-resolution §12.4 divergence census. The cli-run cut deletes the DRIVER and retains the ENGINE frozen in place, so every symbol these four import survives it (measured: twelve of twelve). A cut that removes a driver has no claim on a consumer of the engine, and 'imports from cli_run' is not evidence of subjecthood — it is evidence the engine had no other home, which is the thing this cut is about rather than a reason to delete its callers.
+The distinction that correction collapsed is the load-bearing one. USING AN ENGINE IS NOT THE SAME RELATION AS PROBING A DRIVER. Each of the four restored bins imported engine functions out of cli_run — resolve_entry_graph, workspace_root, discover_source_root_reads, collect_rest_transport_operations, project_resolution_divergence_census and their neighbours — while its SUBJECT was something else entirely: the v2 self-host frontier survey, source-root ingest discovery, declared REST transport operations, the namespace-resolution §12.4 divergence census. The cli-run cut deletes the DRIVER and retains the ENGINE frozen in place, so every symbol those four imported survived it (measured: twelve of twelve). Two of the four are removed again by SECOND and THIRD REMOVAL above; discover_source_root_ingest and effects_rest_transport_witness remain enrolled. A cut that removes a driver has no claim on a consumer of the engine, and 'imports from cli_run' is not evidence of subjecthood — it is evidence the engine had no other home, which is the thing that cut was about rather than a reason to delete its callers.
 
 What made the error invisible was that nothing on this branch objected. Their surviving invokers are transports, not compile-time references, so the crate still built; the two witnesses that would have redded the roster change are deleted by a sibling lane, so CI would have been green on loan. The check that found it was a one-command sweep of the deleted bin names across dag/, src/v2/ and .github/, which turned up five live structural invocation sites — three production transports for discover_source_root_ingest alone, plus fleet-converge pack lines for all four. A deletion census trained on who DEFINES a thing must also ask who CALLS it.
 
-Dissolve-on (hand membership of witness_declared_release_bins): a host census of production WitnessBin.bin_name literals derives this list (non_fold_residue_units_from_module_source shape), so a transport spelling a free string not yet enrolled is a typed census refusal rather than a hand edit; then this list and its roster row delete."
+Dissolve-on (hand membership of witness_declared_release_bins): a host census of production WitnessBin.bin_name literals derives this list (non_fold_residue_units_from_module_source shape), so a transport spelling a free string not yet enrolled is a typed census refusal rather than a hand edit; then this list and its roster row delete.
+
+REMOVAL (2026-08-18, regen root cut + resolution-divergence cut union with #8409). Three release bins deleted from the derived pack — never hand-edit fleet-converge.yml; regenerate from this authority after membership changes:
+- regen_floor_skip_witness (ci_floor_invoked_bins) — regen skip witness deleted with regen_stage0 root cut
+- regen_stage0 (witness_declared_release_bins) — regen root cut; verification is claim_executor --required-regen
+- resolution_divergence_census (witness_declared_release_bins) — silent-pick gate deleted end-to-end (#8409)
+
+LESSON (fleet-converge survivor): the floor cut removed the twenty-binary build from ci.yml but the identical build survived in fleet-converge.yml because deletion was described by workflow removed rather than population removed. This cut surfaces that second consumer.
+
+FOURTH REMOVAL (2026-08-19, the two bins the FLOOR-Y cutover left behind), justified per bin rather than by a class sentence:
+- floor_skip_discovery_witness (ci_floor_invoked_bins) — source deleted by 611fd027708 (FLOOR-Y cutover, #8283); the row was not deleted with it
+- selection_control_skip_witness (ci_floor_invoked_bins) — same commit, same omission
+
+These are the exact residue the LESSON paragraph above predicted and did not finish collecting: that cut described its deletion as workflow removed rather than population removed, identified the fleet-converge survivor, and still left two dead names inside the population feeding it. Removing a consumer and removing a member are different edits, and naming the survivor is not the same as draining it.
+
+MEASURED CONSEQUENCE: every fleet-converge dispatch after the cutover failed at the build step with no bin target named floor_skip_discovery_witness in the v1-compiler package. The last green dispatch was 2026-08-17T19:09Z, whose tree still carried both sources; the cutover committed at 2026-08-17T22:38Z; the next dispatch was the first to refuse, and the workflow stayed unusable for two days. It went unseen because this roster feeds only fleet-converge.yml, which is dispatch-only — no per-PR run ever builds the pack, so ordinary CI could not observe the breakage no matter how green it was.
+
+The check that found it is the sweep this module already prescribes: every enrolled name against the real bin sources, rather than only the row cargo happened to name first. Both rosters were swept and these two were the entire stale set. Fix verified by execution — the build job that had been refusing packs and uploads green in run 32213195686."
 
 data ci_floor_invoked_bins: List<String> = [
   "claim_executor",
   "gunbc",
-  "regen_floor_skip_witness",
-  "floor_skip_discovery_witness",
-  "selection_control_skip_witness",
 ]
 
 data witness_declared_release_bins: List<String> = [
   "discover_source_root_ingest",
   "claim_batch",
-  "regen_stage0",
   "interp_recorded_fixture_witness",
   "v1_src_dag_parse",
   "auth_declared_but_unwired_witness",
@@ -49,7 +64,6 @@ data witness_declared_release_bins: List<String> = [
   "effects_rest_transport_witness",
   "infer_semantics_witness",
   "parse_witness",
-  "resolution_divergence_census",
   "cssl_assemble",
   "namespace_structural_root_exposure_generated_witness",
   "codex_app_server_stdio_session",

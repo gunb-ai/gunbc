@@ -147,7 +147,9 @@ pub use crate::v1_compiler_infer_types::{
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
+use crate::v1_std_core::CallSemantics::{
+    FunctionValueCallSemantics, LookupCallSemantics, PlainCallSemantics,
+};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
     AmbiguousReference, CallArgumentDuplicate, CallArgumentNameUnknown,
@@ -1519,10 +1521,32 @@ pub fn record_lit_expected_coproduct(
                 Some(r) => r.clone(),
                 None => exp.clone(),
             };
-            if (resolved.connective.clone() == Connective::Disj) {
-                Some(resolved.clone())
+            let nominal = if node_is_element_collection(
+                resolved.clone(),
+                scope.type_env.clone().source_indices.clone(),
+            ) {
+                match resolved.children.clone().first().cloned() {
+                    Some(elem) => {
+                        let elem_ty = child_type_node(elem.clone());
+                        match lookup_type_for(scope.type_env.clone(), elem_ty.clone()) {
+                            Some(r) => Some(r.clone()),
+                            None => Some(elem_ty.clone()),
+                        }
+                    }
+                    None => None,
+                }
             } else {
-                None
+                Some(resolved.clone())
+            };
+            match nominal.clone() {
+                Some(n) => {
+                    if (n.connective.clone() == Connective::Disj) {
+                        Some(n.clone())
+                    } else {
+                        None
+                    }
+                }
+                None => None,
             }
         }
         None => None,
@@ -2958,15 +2982,32 @@ pub fn direct_call_structured_record_literal_resolved_type_mismatch(
     }
 }
 
-pub fn direct_call_structured_application_mismatch_diags(
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CallFormalApplication {
+    pub index: i64,
+    pub param_name: String,
+    pub formal_subst: Rc<Node>,
+    pub formal: Rc<Node>,
+    pub matched_arg: Option<Rc<Node>>,
+}
+
+pub fn call_application_plan_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Cost shape (DESIGN §6 bare-minimum-cost) and single authority (§3). direct_call_arg_mismatch_diags and direct_call_structured_application_mismatch_diags were line-for-line duplicates of the same per-formal prologue: param_node_type_expr, substitute_generics, peel_nominal_alias_identity, authored_name_at, and the named-then-positional actual search. Both run over the SAME value_params, typed_args and call_subst at the one direct-call seam, so every formal was canonicalized twice per call. peel_nominal_alias_identity is resolve_node_bounded, an unmemoized recursive rebuild allocating a fresh Node per level, and it measured as the ENTIRE cost of the conformance seam: on gunbc.host_effect_realize the two timed peels inside direct_call_arg_mismatch_diags accounted for that function to within instrument overhead (62719ms + 62804ms against 125438ms over 330 calls), while the timer around direct_call_arg_type_mismatch never entered the top fourteen operations and substitute_generics already short-circuits an empty substitution. That module holds 63% of all corpus type inference. Building the binding ONCE and passing it to both consumers is the deduplication, not a cache: no map is introduced, so nothing here becomes an order-exposing operation in the v2.std.determinism denominator. Behavior is identical because every recomputed term is a pure function of arguments both callers already share.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn build_call_application_plan(
     value_params: Rc<Vec<Rc<Node>>>,
     typed_args: Rc<Vec<Rc<Node>>>,
     call_subst: Rc<HashMap<String, Rc<Node>>>,
-    scope: Rc<InferScope>,
-) -> Rc<Vec<Rc<ErrorNode>>> {
+    type_env: Rc<TypeEnv>,
+    module_name: String,
+) -> Rc<Vec<Rc<CallFormalApplication>>> {
     {
-        let type_env = scope.type_env.clone();
-        let module_name = scope.module_name.clone();
         let source_indices = type_env.source_indices.clone();
         Rc::new({
             let mut __result = Vec::new();
@@ -2982,21 +3023,24 @@ pub fn direct_call_structured_application_mismatch_diags(
             .iter()
             .cloned()
             {
-                __result.extend(
-                    (*{
-                        let formal_raw = param_node_type_expr(pair.1.clone());
-                        let formal_subst = substitute_generics(
-                            formal_raw.clone(),
-                            call_subst.clone(),
-                            source_indices.clone(),
-                        );
-                        let formal = peel_nominal_alias_identity(
+                __result.push({
+                    let formal_raw = param_node_type_expr(pair.1.clone());
+                    let formal_subst = substitute_generics(
+                        formal_raw.clone(),
+                        call_subst.clone(),
+                        source_indices.clone(),
+                    );
+                    let param_name = authored_name_at(source_indices.clone(), pair.1.clone());
+                    Rc::new(CallFormalApplication {
+                        index: pair.0.clone(),
+                        param_name: param_name.clone(),
+                        formal_subst: formal_subst.clone(),
+                        formal: peel_nominal_alias_identity(
                             formal_subst.clone(),
                             type_env.clone(),
                             module_name.clone(),
-                        );
-                        let param_name = authored_name_at(source_indices.clone(), pair.1.clone());
-                        let matched_arg = match Rc::new({
+                        ),
+                        matched_arg: match Rc::new({
                             let mut __result = Vec::new();
                             for ta in typed_args.clone().iter().cloned() {
                                 if arg_has_name(
@@ -3019,8 +3063,31 @@ pub fn direct_call_structured_application_mismatch_diags(
                                 .cloned()
                                 .skip(pair.0.clone() as usize)
                                 .next(),
-                        };
-                        match matched_arg.clone() {
+                        },
+                    })
+                });
+            }
+            __result
+        })
+    }
+}
+
+pub fn direct_call_structured_application_mismatch_diags(
+    plan: Rc<Vec<Rc<CallFormalApplication>>>,
+    scope: Rc<InferScope>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    {
+        let type_env = scope.type_env.clone();
+        let module_name = scope.module_name.clone();
+        let source_indices = type_env.source_indices.clone();
+        Rc::new({
+            let mut __result = Vec::new();
+            for app in plan.clone().iter().cloned() {
+                __result.extend(
+                    (*{
+                        let formal_subst = app.formal_subst.clone();
+                        let formal = app.formal.clone();
+                        match app.matched_arg.clone() {
                             Some(ta) => {
                                 let actual_expr = arg_value(ta.clone());
                                 if (structured_application_site_type_mismatch(
@@ -3704,9 +3771,7 @@ pub fn direct_call_shape_wall_note() -> String {
 }
 
 pub fn direct_call_arg_mismatch_diags(
-    value_params: Rc<Vec<Rc<Node>>>,
-    typed_args: Rc<Vec<Rc<Node>>>,
-    call_subst: Rc<HashMap<String, Rc<Node>>>,
+    plan: Rc<Vec<Rc<CallFormalApplication>>>,
     type_env: Rc<TypeEnv>,
     module_name: String,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
@@ -3714,57 +3779,11 @@ pub fn direct_call_arg_mismatch_diags(
         let source_indices = type_env.source_indices.clone();
         Rc::new({
             let mut __result = Vec::new();
-            for pair in Rc::new(
-                value_params
-                    .clone()
-                    .iter()
-                    .cloned()
-                    .enumerate()
-                    .map(|(i, v)| (i as i64, v))
-                    .collect::<Vec<_>>(),
-            )
-            .iter()
-            .cloned()
-            {
+            for app in plan.clone().iter().cloned() {
                 __result.extend(
                     (*{
-                        let formal_raw = param_node_type_expr(pair.1.clone());
-                        let formal_subst = substitute_generics(
-                            formal_raw.clone(),
-                            call_subst.clone(),
-                            source_indices.clone(),
-                        );
-                        let formal = peel_nominal_alias_identity(
-                            formal_subst.clone(),
-                            type_env.clone(),
-                            module_name.clone(),
-                        );
-                        let param_name = authored_name_at(source_indices.clone(), pair.1.clone());
-                        let matched_arg = match Rc::new({
-                            let mut __result = Vec::new();
-                            for ta in typed_args.clone().iter().cloned() {
-                                if arg_has_name(
-                                    ta.clone(),
-                                    param_name.clone(),
-                                    source_indices.clone(),
-                                ) {
-                                    __result.push(ta);
-                                }
-                            }
-                            __result
-                        })
-                        .first()
-                        .cloned()
-                        {
-                            Some(named_ta) => Some(named_ta.clone()),
-                            None => typed_args
-                                .clone()
-                                .iter()
-                                .cloned()
-                                .skip(pair.0.clone() as usize)
-                                .next(),
-                        };
-                        match matched_arg.clone() {
+                        let formal = app.formal.clone();
+                        match app.matched_arg.clone() {
                             Some(ta) => {
                                 let actual_expr = arg_value(ta.clone());
                                 if match (*actual_expr.expr_data.clone()).clone() {
@@ -6331,24 +6350,27 @@ pub fn infer_expr_body(
                                         scope.module_name.clone(),
                                         span.clone(),
                                     );
+                                    let call_application_plan = build_call_application_plan(
+                                        value_params_for_check.clone(),
+                                        typed_args.clone(),
+                                        call_subst.clone(),
+                                        scope.type_env.clone(),
+                                        scope.module_name.clone(),
+                                    );
                                     let arg_compat_diags = if module_skips_direct_call_arg_check(
                                         scope.module_name.clone(),
                                     ) {
                                         Rc::new(vec![])
                                     } else {
                                         direct_call_arg_mismatch_diags(
-                                            value_params_for_check.clone(),
-                                            typed_args.clone(),
-                                            call_subst.clone(),
+                                            call_application_plan.clone(),
                                             scope.type_env.clone(),
                                             scope.module_name.clone(),
                                         )
                                     };
                                     let structured_arg_diags =
                                         direct_call_structured_application_mismatch_diags(
-                                            value_params_for_check.clone(),
-                                            typed_args.clone(),
-                                            call_subst.clone(),
+                                            call_application_plan.clone(),
                                             scope.clone(),
                                         );
                                     Rc::new(InferResult {
@@ -6448,8 +6470,12 @@ pub fn infer_expr_body(
                                                 scope.type_env.clone().source_indices.clone(),
                                             )
                                         };
-                                    let is_known_method =
-                                        (method_resolution.result_type.clone() != None);
+                                    let callee_is_body_binding = v1_rt::map_has(
+                                        &scope.body_locals.clone(),
+                                        func_name.clone(),
+                                    );
+                                    let is_known_method = (!callee_is_body_binding.clone()
+                                        && (method_resolution.result_type.clone() != None));
                                     if (is_known_method.clone()
                                         && ((typed_args.clone().len() as i64) > 0))
                                     {
@@ -6665,7 +6691,9 @@ pub fn infer_expr_body(
                                             })
                                         }
                                     } else {
-                                        if (func_name.clone() == "empty_map".to_string()) {
+                                        if (!callee_is_body_binding.clone()
+                                            && (func_name.clone() == "empty_map".to_string()))
+                                        {
                                             {
                                                 let bare_m = bare_map_node();
                                                 match expected.clone() {
@@ -6729,7 +6757,9 @@ match bare_m.clone() {
 }
                                             }
                                         } else {
-                                            if (func_name.clone() == "empty_set".to_string()) {
+                                            if (!callee_is_body_binding.clone()
+                                                && (func_name.clone() == "empty_set".to_string()))
+                                            {
                                                 {
                                                     let bare_s = bare_set_node();
                                                     match expected.clone() {
@@ -6793,8 +6823,9 @@ match bare_s.clone() {
 }
                                                 }
                                             } else {
-                                                if (infer_builtin_call_type(func_name.clone())
-                                                    != None)
+                                                if (!callee_is_body_binding.clone()
+                                                    && (infer_builtin_call_type(func_name.clone())
+                                                        != None))
                                                 {
                                                     {
                                                         let tier2b =
@@ -6871,7 +6902,11 @@ match bare_s.clone() {
 };
                                                                 Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
-    call_semantics: Some(CallSemantics::PlainCallSemantics),
+    call_semantics: Some(if callee_is_body_binding.clone() {
+                                                    CallSemantics::FunctionValueCallSemantics
+                                                } else {
+                                                    CallSemantics::PlainCallSemantics
+                                                }),
     descent_evidence: None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: resolved_type.clone(),

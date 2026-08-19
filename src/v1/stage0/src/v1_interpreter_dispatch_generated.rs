@@ -7,7 +7,6 @@ pub enum EvalBuiltinArm {
     FreeCallParseStage0CargoManifestBins,
     FreeCallParseRoadmapAcceptanceEventHistoryJsonl,
     FreeCallProjectRoadmapAcceptanceEventHistoryFromAuthorityTextHost,
-    FreeCallStage0EmissionSourceIdentitiesHost,
     FreeCallToString,
     FreeCallUtf8DecodeBytes,
     FreeCallBytesOctets,
@@ -99,8 +98,6 @@ pub enum EvalBuiltinArm {
     FreeCallWitnessLayerRootsCompileCleanEmitCheck,
     FreeCallConsumeFloorCompileCleanGateVerdict,
     FreeCallConsumeFloorCompileCleanGateFailureDetail,
-    FreeCallRecordRegenVerifyGateFailureDetail,
-    FreeCallConsumeRegenVerifyGateFailureDetail,
     FreeCallRecordGeneratedArtifactDriftGateFailureDetail,
     FreeCallConsumeGeneratedArtifactDriftGateFailureDetail,
     FreeCallWitnessCompileCleanCliFloorVerdictsAgree,
@@ -128,7 +125,6 @@ pub enum EvalBuiltinArm {
     FreeCallFallbackArmCensusReconciliationHolds,
     FreeCallComplexityLinearitySyntacticSiteFired,
     FreeCallCensusCorpusRootsFollowLayerAuthority,
-    FreeCallResolutionDivergenceSilentPickGateInProcess,
 }
 
 #[rustfmt::skip]
@@ -137,7 +133,6 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "parse_stage0_cargo_manifest_bins" => Some(EvalBuiltinArm::FreeCallParseStage0CargoManifestBins),
         "parse_roadmap_acceptance_event_history_jsonl" => Some(EvalBuiltinArm::FreeCallParseRoadmapAcceptanceEventHistoryJsonl),
         "project_roadmap_acceptance_event_history_from_authority_text_host" => Some(EvalBuiltinArm::FreeCallProjectRoadmapAcceptanceEventHistoryFromAuthorityTextHost),
-        "stage0_emission_source_identities_host" => Some(EvalBuiltinArm::FreeCallStage0EmissionSourceIdentitiesHost),
         "to_string" => Some(EvalBuiltinArm::FreeCallToString),
         "utf8_decode_bytes" => Some(EvalBuiltinArm::FreeCallUtf8DecodeBytes),
         "bytes_octets" => Some(EvalBuiltinArm::FreeCallBytesOctets),
@@ -232,8 +227,6 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "witness_layer_roots_compile_clean_emit_check" => Some(EvalBuiltinArm::FreeCallWitnessLayerRootsCompileCleanEmitCheck),
         "consume_floor_compile_clean_gate_verdict" => Some(EvalBuiltinArm::FreeCallConsumeFloorCompileCleanGateVerdict),
         "consume_floor_compile_clean_gate_failure_detail" => Some(EvalBuiltinArm::FreeCallConsumeFloorCompileCleanGateFailureDetail),
-        "record_regen_verify_gate_failure_detail" => Some(EvalBuiltinArm::FreeCallRecordRegenVerifyGateFailureDetail),
-        "consume_regen_verify_gate_failure_detail" => Some(EvalBuiltinArm::FreeCallConsumeRegenVerifyGateFailureDetail),
         "record_generated_artifact_drift_gate_failure_detail" => Some(EvalBuiltinArm::FreeCallRecordGeneratedArtifactDriftGateFailureDetail),
         "consume_generated_artifact_drift_gate_failure_detail" => Some(EvalBuiltinArm::FreeCallConsumeGeneratedArtifactDriftGateFailureDetail),
         "witness_compile_clean_cli_floor_verdicts_agree" => Some(EvalBuiltinArm::FreeCallWitnessCompileCleanCliFloorVerdictsAgree),
@@ -261,7 +254,6 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "fallback_arm_census_reconciliation_holds" => Some(EvalBuiltinArm::FreeCallFallbackArmCensusReconciliationHolds),
         "complexity_linearity_syntactic_site_fired" => Some(EvalBuiltinArm::FreeCallComplexityLinearitySyntacticSiteFired),
         "census_corpus_roots_follow_layer_authority" => Some(EvalBuiltinArm::FreeCallCensusCorpusRootsFollowLayerAuthority),
-        "resolution_divergence_silent_pick_gate_in_process" => Some(EvalBuiltinArm::FreeCallResolutionDivergenceSilentPickGateInProcess),
         _ => None,
     }
 }
@@ -271,7 +263,6 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.parse_stage0_cargo_manifest_bins") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallParseStage0CargoManifestBins };
     ("free_call.parse_roadmap_acceptance_event_history_jsonl") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallParseRoadmapAcceptanceEventHistoryJsonl };
     ("free_call.project_roadmap_acceptance_event_history_from_authority_text_host") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallProjectRoadmapAcceptanceEventHistoryFromAuthorityTextHost };
-    ("free_call.stage0_emission_source_identities_host") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallStage0EmissionSourceIdentitiesHost };
     ("free_call.to_string") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallToString };
     ("free_call.utf8_decode_bytes") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallUtf8DecodeBytes };
     ("free_call.bytes_octets") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallBytesOctets };
@@ -363,8 +354,6 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.witness_layer_roots_compile_clean_emit_check") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallWitnessLayerRootsCompileCleanEmitCheck };
     ("free_call.consume_floor_compile_clean_gate_verdict") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallConsumeFloorCompileCleanGateVerdict };
     ("free_call.consume_floor_compile_clean_gate_failure_detail") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallConsumeFloorCompileCleanGateFailureDetail };
-    ("free_call.record_regen_verify_gate_failure_detail") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallRecordRegenVerifyGateFailureDetail };
-    ("free_call.consume_regen_verify_gate_failure_detail") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallConsumeRegenVerifyGateFailureDetail };
     ("free_call.record_generated_artifact_drift_gate_failure_detail") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallRecordGeneratedArtifactDriftGateFailureDetail };
     ("free_call.consume_generated_artifact_drift_gate_failure_detail") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallConsumeGeneratedArtifactDriftGateFailureDetail };
     ("free_call.witness_compile_clean_cli_floor_verdicts_agree") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallWitnessCompileCleanCliFloorVerdictsAgree };
@@ -392,7 +381,6 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.fallback_arm_census_reconciliation_holds") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallFallbackArmCensusReconciliationHolds };
     ("free_call.complexity_linearity_syntactic_site_fired") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallComplexityLinearitySyntacticSiteFired };
     ("free_call.census_corpus_roots_follow_layer_authority") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCensusCorpusRootsFollowLayerAuthority };
-    ("free_call.resolution_divergence_silent_pick_gate_in_process") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallResolutionDivergenceSilentPickGateInProcess };
 }
 #[rustfmt::skip]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
