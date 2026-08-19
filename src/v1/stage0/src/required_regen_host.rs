@@ -56,6 +56,13 @@ pub fn run_required_regen(
     let sources = super::regen_input_sources(&workspace)?;
     let authority_digest = authority_digest_from_sources(&sources)?;
 
+    // verify_hand_maintained below writes hand-file scratch comparisons under
+    // candidate_dir before write_emitted_tree (which mkdir -p's it as a side
+    // effect of creating its "src" child) ever runs, so on a clean tree it
+    // wrote into a directory that did not exist yet.
+    fs::create_dir_all(&candidate_dir)
+        .map_err(|e| format!("create {}: {e}", candidate_dir.display()))?;
+
     let emitted = compile_stage0(&workspace)?;
 
     let committed_basenames = committed_generated_basenames(&stage0_src)?;
