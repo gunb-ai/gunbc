@@ -66,8 +66,8 @@ type IndependentCompilerPair {
 }
 
 type DiverseCompilationAgreement {
-  primary: DiverseCompilationRun
-  secondary: DiverseCompilationRun
+  primary: v2.workflow.bootstrap.DiverseCompilationRun
+  secondary: v2.workflow.bootstrap.DiverseCompilationRun
   independent_compilers: IndependentCompilerPair
   agreed_hash: BootstrapHashPin
 }
@@ -93,8 +93,8 @@ type SeedHonestyDischarge {
 }
 
 type SeedSelfVerifyReceipt {
-  claim: DiverseCompilationRun
-  check: DiverseCompilationRun
+  claim: v2.workflow.bootstrap.DiverseCompilationRun
+  check: v2.workflow.bootstrap.DiverseCompilationRun
 }
 
 type SeedHonestyDecision
@@ -571,8 +571,8 @@ fn independent_compiler_pair_witness(
 }
 
 fn seed_self_verify_check(
-  claim: DiverseCompilationRun,
-  check: DiverseCompilationRun
+  claim: v2.workflow.bootstrap.DiverseCompilationRun,
+  check: v2.workflow.bootstrap.DiverseCompilationRun
 ) -> v2.std.diagnostic.Outcome<v2.workflow.bootstrap.SeedSelfVerifyReceipt> {
   if claim.output == check.output {
     v2.std.diagnostic.Rejected {
@@ -603,8 +603,8 @@ fn seed_self_verify_check(
 }
 
 fn diverse_compilation_agreement_witness(
-  primary: DiverseCompilationRun,
-  secondary: DiverseCompilationRun,
+  primary: v2.workflow.bootstrap.DiverseCompilationRun,
+  secondary: v2.workflow.bootstrap.DiverseCompilationRun,
   independent_compilers: Witness<IndependentCompilerPair>,
   evidence: IndependentCompilerEvidence,
   agreed_hash: BootstrapHashPin
@@ -701,13 +701,13 @@ data bootstrap_physical_axiom: PhysicalExecutionAxiom = PhysicalExecutionAxiom {
 data bootstrap_seed_honesty_discharge: Witness<SeedHonestyDischarge> = bootstrap_seed_honesty_discharge_witness(
   axiom: ^seed_honesty_axiom,
   diverse_double_compilation: diverse_compilation_agreement_witness(
-    primary: DiverseCompilationRun {
+    primary: v2.workflow.bootstrap.DiverseCompilationRun {
       source: ^v2_dag_source,
       compiler: ^v1_pipeline,
       output: ^diverse_compile_fixed_point_output,
       output_hash: BootstrapHashPin { digest: pinned_v4_fixed_point_hash, pin: ^pinned_v4_fixed_point_hash_pin }
     },
-    secondary: DiverseCompilationRun {
+    secondary: v2.workflow.bootstrap.DiverseCompilationRun {
       source: ^v2_dag_source,
       compiler: ^independent_compiler_witness,
       output: ^diverse_compile_fixed_point_output,

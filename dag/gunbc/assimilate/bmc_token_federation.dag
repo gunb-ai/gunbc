@@ -26,7 +26,7 @@ fn gcp_token_smoke_intent() -> v2.std.orchestration.Pipeline {
       gcp_token_smoke_do(command: gcp_token_smoke_print_token_command),
       gcp_token_smoke_do(command: gcp_token_smoke_echo_acquired_command)
     ],
-    on_failure: FailFast
+    on_failure: v2.std.orchestration.FailFast
   }
 }
 

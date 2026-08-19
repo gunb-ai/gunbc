@@ -18,7 +18,7 @@ fn witness_plan_ctx() -> gunbc.host_effect_plan.HostEffectPlanContext {
 }
 
 fn witness_empty_plan() -> gunbc.host_effect_plan.HostEffectPlan {
-  v2.std.effect_plan.EffectPlan { steps: [], on_failure: FailFast }
+  v2.std.effect_plan.EffectPlan { steps: [], on_failure: v2.std.orchestration.FailFast }
 }
 
 fn witness_if_control_flow_plan() -> gunbc.host_effect_plan.HostEffectPlan {
@@ -28,11 +28,11 @@ fn witness_if_control_flow_plan() -> gunbc.host_effect_plan.HostEffectPlan {
         cond: v2.std.orchestration.ExitZero {
           run: v2.std.orchestration.Run { command: "true", env: [], redirect: Absent, capture: Absent }
         },
-        then_: v2.std.effect_plan.EffectPlan { steps: [], on_failure: FailFast },
+        then_: v2.std.effect_plan.EffectPlan { steps: [], on_failure: v2.std.orchestration.FailFast },
         else_: Absent,
       },
     ],
-    on_failure: FailFast,
+    on_failure: v2.std.orchestration.FailFast,
   }
 }
 

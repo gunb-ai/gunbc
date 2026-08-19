@@ -20,14 +20,14 @@ fn witness_plan_ctx() -> gunbc.host_effect_plan.HostEffectPlanContext {
 fn witness_single_do_true_plan() -> gunbc.host_effect_plan.HostEffectPlan {
   v2.std.effect_plan.EffectPlan {
     steps: [v2.std.effect_plan.Do { effect: gunbc.host_effect.ShellCommand { script: "true" } }],
-    on_failure: FailFast,
+    on_failure: v2.std.orchestration.FailFast,
   }
 }
 
 fn witness_single_do_false_plan() -> gunbc.host_effect_plan.HostEffectPlan {
   v2.std.effect_plan.EffectPlan {
     steps: [v2.std.effect_plan.Do { effect: gunbc.host_effect.ShellCommand { script: "exit 1" } }],
-    on_failure: FailFast,
+    on_failure: v2.std.orchestration.FailFast,
   }
 }
 
@@ -37,7 +37,7 @@ fn witness_sequential_do_plan() -> gunbc.host_effect_plan.HostEffectPlan {
       v2.std.effect_plan.Do { effect: gunbc.host_effect.ShellCommand { script: "true" } },
       v2.std.effect_plan.Do { effect: gunbc.host_effect.ShellCommand { script: "true" } },
     ],
-    on_failure: FailFast,
+    on_failure: v2.std.orchestration.FailFast,
   }
 }
 
