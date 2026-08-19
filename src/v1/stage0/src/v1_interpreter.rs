@@ -942,6 +942,25 @@ pub enum InterpError {
     StringRealizationStraddle {
         detail: String,
     },
+    /// A pool root contributed NO `.dag` files to a parse-only corpus walk.
+    ///
+    /// Its own variant rather than a `TypeError` because the class is exactly the
+    /// empty-observation narrow DESIGN names: a pool that silently lost its subject was
+    /// indistinguishable from a pool that legitimately matched nothing, so every row over
+    /// it kept passing on a population smaller than its author declared.
+    ///
+    /// The variant CARRIES the classification rather than a rendered sentence: which of the
+    /// three states each root is in -- missing, naming a file, or a directory with no `.dag`
+    /// under it -- because they have different causes and different fixes, and collapsing them
+    /// re-commits the same state-space conflation one level down. A `String` here would have
+    /// done exactly that collapse at the boundary: the type would exist, be classified, and then
+    /// die into prose no consumer could match on. The message is derived from these fields in
+    /// `Display`, which is the one direction that cannot lose them.
+    PoolRootContributesNothing {
+        caller: &'static str,
+        declared: usize,
+        defects: Vec<(String, crate::coproduct_reflection::PoolRootDefect)>,
+    },
     PatternMatchFailure {
         value: String,
     },
@@ -1089,6 +1108,19 @@ impl fmt::Display for InterpError {
             }
             InterpError::StringRealizationStraddle { detail } => {
                 write!(f, "string realization straddle: {}", detail)
+            }
+            InterpError::PoolRootContributesNothing {
+                caller,
+                declared,
+                defects,
+            } => {
+                write!(
+                    f,
+                    "pool root contributes nothing: {}",
+                    crate::coproduct_reflection::pool_root_refusal_message(
+                        defects, *declared, caller
+                    )
+                )
             }
             InterpError::PatternMatchFailure { value } => {
                 write!(f, "non-exhaustive pattern match on: {}", value)
