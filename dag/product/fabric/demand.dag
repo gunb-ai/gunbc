@@ -1,0 +1,128 @@
+module product.fabric.demand
+
+import std.types { NonEmptyStr, Timestamp, Bool }
+import std.measure { MoneyAmountMicro }
+import std.currency { CurrencyCode }
+import product.fabric.identity { FabricIdentity, DemandKey, WorkKey }
+
+// Demand is WHO currently wants a result and WHERE to report it. Provider facts
+// live here and nowhere else, which is what keeps Work provider-neutral.
+
+// A Demand is immutable. There is deliberately no cancelled, superseded or
+// rerun field on it, because those are TRANSITIONS over an identity rather
+// than properties of one - and a mutable status field is the thing that later
+// makes it impossible to answer what was true when a decision was taken. A
+// binding interprets a provider observation into one of the normalized
+// commands below and supplies authenticated evidence for that interpretation;
+// the core decides the effect.
+// Cancellation CANNOT live entirely in a provider binding, and the reason is a
+// two-provider argument rather than a stylistic one. Suppose a GitHub demand
+// and a GitLab demand attach to the same Work. If the GitHub binding cancels
+// that Work directly when its pull request is superseded, it destroys work the
+// GitLab demand still requires. Only the core knows the complete demand
+// population, so the binding owns INTERPRETATION - this observation means
+// withdraw, or supersede, or re-execute - and the core owns EFFECT: whether
+// the transition is authorized, whether any other demand still requires the
+// Work, whether a running Attempt should continue, whether capacity and budget
+// should be released.
+// Rerun is not one flag. It decomposes into three independent questions, and
+// collapsing them is how re-run comes to mean delete every cache. (1) May an
+// existing terminal receipt satisfy this demand? (2) Must a new Attempt exist?
+// (3) May that Attempt reuse accepted step receipts and materializations? An
+// ordinary duplicate demand answers yes, no, yes - it attaches to the existing
+// execution. A provider rerun answers no, yes, yes - the prior verdict is not
+// accepted but warm materializations remain valid. An operator clean recompute
+// answers no, yes, no - prior step materializations are refused at the
+// declared frame. Three separate fields, because a system that offers only
+// rerun forces the third answer whenever the first is wanted.
+type SatisfactionRequirement {
+  terminal_receipt_may_satisfy: Bool
+  new_attempt_required: Bool
+  step_reuse_permitted: Bool
+}
+
+// Provenance is the binding's stable, idempotent reference to whatever the
+// provider observed. The core treats it as opaque: it is carried so a result can
+// be reported back, and it is never interpreted.
+
+type ObservationReceiptRef = NonEmptyStr where brand("ObservationReceiptRef")
+
+type BudgetAccountId = NonEmptyStr where brand("BudgetAccountId")
+
+// Buy terms are the BUYER half of the posted-offer market. A reservation price is
+// the maximum this demand will pay; a delay valuation prices waiting, without
+// which a fabric optimizing money alone waits minutes to save cents.
+
+// Three monetary facts stay separate throughout, and conflating them into one
+// price field is the defect this note exists to prevent. MaximumLiability is
+// the amount that must be RESERVED before a grant may issue. SelectionCost is
+// the amount used to COMPARE candidates, and it includes valued availability
+// delay so that a supplier who can start now is correctly preferred over a
+// cheaper supplier who cannot. ActualSpend is the irreversible amount SETTLED
+// after execution and release. For the first policy the maximum liability may
+// equal the provider-charge portion of the selection cost; keeping the three
+// named means a later expected-cost model can diverge without touching ExecutionGrant
+// or settlement. maximum_buy_order is the ceiling on a single grant's
+// liability - a refusal boundary, never a degradation: an ask above it refuses
+// rather than selecting something cheaper and unsuitable.
+// There is deliberately NO delay-valuation field yet. Selection is specified
+// to compare a provider charge against a valued availability delay, which
+// needs a money-per-second RATE, and this record has no honest carrier for
+// one: MoneyAmountMicro would put the dimension in the field name, and the
+// existing MoneyRate bundles a CurrencyCode that would let a rate disagree
+// with the currency these terms already carry.
+//
+// Landing the field on the wrong type and describing the mismatch in a comment
+// was the alternative, and it is the shape DESIGN refuses -- a dissolution note
+// is a lifecycle fact, not permission to create the debt, and the author cannot
+// grant himself that permission. Since nothing consumes the field yet, the
+// cheaper and more honest option is simply not to ship it: the terms carry what
+// they can state correctly, and the rate arrives with its carrier once the
+// denomination authority -- these terms, or the referenced budget account -- is
+// decided. An absent field forces that decision; a wrongly-typed one hides it.
+type BuyTerms {
+  budget_account: BudgetAccountId
+  currency: CurrencyCode
+  reservation_price: MoneyAmountMicro
+  maximum_buy_order: MoneyAmountMicro
+}
+
+type AdmissionTerms {
+  priority_class: NonEmptyStr
+  deadline: Timestamp?
+  buy: BuyTerms
+}
+
+type Demand<P> {
+  id: FabricIdentity<P, DemandKey>
+  work: FabricIdentity<P, WorkKey>
+  origin: ObservationReceiptRef
+  submitted_at: Timestamp
+  admission: AdmissionTerms
+  satisfaction: SatisfactionRequirement
+}
+
+// The normalized command vocabulary a binding may produce. A provider event is
+// interpreted into exactly one of these; the core never sees the provider's own
+// event shape.
+
+type DemandCommand<P>
+  = SubmitDemand { demand: Demand<P> }
+  | WithdrawDemand { demand: FabricIdentity<P, DemandKey>, evidence: ObservationReceiptRef }
+  | SupersedeDemand {
+      superseded: FabricIdentity<P, DemandKey>,
+      replacement: Demand<P>,
+      evidence: ObservationReceiptRef,
+    }
+
+fn demand_work<P>(d: Demand<P>) -> FabricIdentity<P, WorkKey> {
+  d.work
+}
+
+fn demand_reservation_price<P>(d: Demand<P>) -> MoneyAmountMicro {
+  d.admission.buy.reservation_price
+}
+
+fn demand_maximum_buy_order<P>(d: Demand<P>) -> MoneyAmountMicro {
+  d.admission.buy.maximum_buy_order
+}

@@ -314,29 +314,44 @@ fn tcc_cache_byte_offset_over_ceiling() -> Int {
   tcc_cache_byte_offset_pow_9()
 }
 
-test fn tcc_cache_byte_offset_exact_ceiling_digest_differs_from_over_ceiling() -> Bool {
-  byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_exact_ceiling())) !=
-    byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_over_ceiling()))
-}
-
 fn tcc_cache_byte_offset_same_quotient() -> Int {
   int_add(a: tcc_cache_byte_offset_over_ceiling(), b: tcc_cache_byte_limb_base)
 }
 
-test fn tcc_cache_byte_offset_same_quotient_low_limbs_digest_differs() -> Bool {
+// DEMOTED (retirement candidates, 2026-08-19): the TEN byte-offset rows below assert
+// digest discrimination in the over-ceiling / limb-exhaustion regime, which begins at
+// 256^9 = 2^72 — above i64::MAX. Every pow_9..pow_37 fixture is therefore unrepresentable,
+// so the pairs these rows compare cannot be constructed at all: the regime is unreachable
+// from any representable Int, and the claims cannot be stated with executable fixtures on
+// this realization. The digest algorithm itself does not alias on these pairs (symbolic
+// simulation of the limb arithmetic: all pairs differ) — the defect is in the fixtures,
+// not in the thing they test.
+//
+// COUNT CORRECTED FROM EIGHT TO TEN (gunbc#8505 follow-up). The first two rows here —
+// exact_ceiling_digest_differs_from_over_ceiling and
+// same_quotient_low_limbs_digest_differs — were left as `test fn` when their eight
+// siblings were demoted, and they reach pow_9 through
+// tcc_cache_byte_offset_over_ceiling exactly as the others do. They were demoted by
+// enumeration rather than by the property, so two members of the class were missed.
+//
+// WHY THAT SURVIVED CI AND THEN BROKE main: the earlier description of this regime said
+// `a * b` wraps silently in release mode, and the two rows passed on that behaviour by
+// comparing 0 against 0 — a VACUOUS pass, not a real one. Int multiplication now refuses
+// with a typed located diagnostic (`integer overflow: 4294967296 * 4294967296 does not
+// fit in a 64-bit Int`) instead of wrapping, which is the correct fail-closed behaviour
+// and turned the vacuous pass into an honest failure. main went red at f44a1254 with
+// failed=2, both of them. The rows did not regress; the silence that hid them was
+// removed.
+fn tcc_cache_byte_offset_exact_ceiling_digest_differs_from_over_ceiling() -> Bool {
+  byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_exact_ceiling())) !=
+    byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_over_ceiling()))
+}
+
+fn tcc_cache_byte_offset_same_quotient_low_limbs_digest_differs() -> Bool {
   byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_over_ceiling())) !=
     byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_same_quotient()))
 }
 
-// DEMOTED (retirement candidates, 2026-08-19): the eight byte-offset rows below assert
-// digest discrimination in the over-ceiling / limb-exhaustion regime, which begins at
-// 256^9 = 2^72 — above i64::MAX. The runtime Int is Value::Int(i64) with unchecked
-// release-mode `a * b`, so every pow_9..pow_37 fixture silently wraps to 0 (verified by
-// execution: pow_9 == 0, pow_13 == 0, pow_37 == 0, while pow_2 == 65536), making each
-// pair literally identical inputs (0 vs 0, or 0 vs -0). The digest algorithm itself does
-// not alias on these pairs (symbolic simulation of the limb arithmetic: all pairs
-// differ); the regime is unreachable from any representable Int, so the claims cannot be
-// stated with executable fixtures on this realization.
 fn tcc_cache_byte_offset_sign_over_ceiling_digest_differs() -> Bool {
   byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_over_ceiling())) !=
     byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: 0 - tcc_cache_byte_offset_over_ceiling()))

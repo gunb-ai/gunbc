@@ -1,4 +1,4 @@
-module test.claim.long.e0308_mechanical_trio_test
+module test.claim.e0308_mechanical_trio_test
 
 // THE MECHANICAL E0308 TRIO IN THE v1 SEED EMITTER, migrated from
 // src/v1/tests/src/e0308_mechanical_trio_test.rs, which is deleted in the same

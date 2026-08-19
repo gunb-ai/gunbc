@@ -51,11 +51,11 @@ type CandidateRelease {
 // a path that .gitignore exists to keep out of the index.
 //
 // It closes a hole the first version of this admission had. `git status --porcelain=v1 -z
-// --untracked-files=all` does not report ignored files at all, while the source sync excludes only the two
-// prefixes deployed_tree_scope names — so an ignored path outside those two (this repository ignores .env,
-// /.gunbc/, .claude/, /target-codex/, /.cargo-home/, and, inside a source root the graph actually reads,
-// src/v2/test/claim/manual/sg2_scratch_probe.dag) was copied by rsync while the admission reported the tree
-// clean. The resulting state is self-consistent and therefore invisible to every later comparison: HEAD names
+// --untracked-files=all` does not report ignored files at all, while the source sync excludes only the
+// prefixes deployed_tree_scope names — so an ignored path outside them (the residue is now the .env family,
+// which stays refused because `.env.*.local` is a wildcard no prefix can spell, and, inside a source root the
+// graph actually reads, src/v2/test/claim/manual/sg2_scratch_probe.dag) was copied by rsync while the
+// admission reported the tree clean. The resulting state is self-consistent and therefore invisible to every later comparison: HEAD names
 // revision A, rsync installs bytes B, the candidate's expected surface is rendered from B, the process reports
 // A and B, and readiness compares A against A and B against B and greens. That is exactly the false identity
 // this admission exists to make unrepresentable, surviving inside it.
