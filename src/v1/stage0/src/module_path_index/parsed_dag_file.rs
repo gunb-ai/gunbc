@@ -20,12 +20,17 @@ pub struct ParsedDagFile {
 ///
 /// This collapses a parse failure into `None`, i.e. into absence, with no
 /// diagnostic and no location — the same class `index::parse_module_binding` was
-/// repaired for. It is NOT repaired in the same change because its consumers
-/// differ: they are corpus censuses and walks (e.g. `coproduct_reflection`'s
-/// `decl_facts_corpus_walk`) that treat an unparseable file as out-of-population
-/// by design, and one of them, `decls_parse_only_from_disk`, is ALREADY the
-/// fail-closed counterpart. Converting this signature would change those
-/// censuses' denominators, which is a separate subject with its own witnesses.
+/// repaired for. It is NOT repaired in the same change, and the reason is that its
+/// consumer population has MIXED policies rather than one intentional policy:
+/// `decls_parse_only_from_disk` converts `None` into a fail-closed error, while at
+/// least one census walk (`coproduct_reflection`'s `decl_facts_corpus_walk`) uses
+/// `let Some(parsed) = ... else { continue; }` and silently excludes the file.
+/// Converting this signature would change those censuses' denominators, which is a
+/// separate subject with its own witnesses.
+///
+/// So this comment does NOT claim absence is the correct reading for the class.
+/// It records that the sibling population is unreconciled and that this change
+/// neither reconciles nor closes it.
 ///
 /// So the class is NOT declared closed by the module-index repair. Closing it
 /// means either routing these callers through the typed helper or recording, per

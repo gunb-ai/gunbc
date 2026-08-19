@@ -1504,7 +1504,7 @@ fn for_each_parsed_module_binding(
             });
             let binding = match parse_module_binding(&path, &content) {
                 Ok(ModuleBindingOutcome::Bound(binding)) => binding,
-                Ok(ModuleBindingOutcome::ValidModuleless) => continue,
+                Ok(ModuleBindingOutcome::ModuleBindingUnclassified) => continue,
                 // Fail-closed, but the line stops with a TYPED, LOCATED refusal
                 // rather than an untyped panic that discarded the span. Siblings
                 // continue so the report is COUNTED and complete: one run names
@@ -1525,6 +1525,13 @@ fn for_each_parsed_module_binding(
 /// `CompilerDiagnostic`), located (path + span), and counted (every offender is
 /// named, with a total). Replaces `panic!` with a formatted string, which stopped
 /// the line but discarded the span and reported only the first offender.
+///
+/// RUNG, stated exactly rather than by implication: the PER-FILE refusal is typed
+/// and located; the AGGREGATE is retained structurally until rendering; the
+/// OPERATION-LEVEL outcome is still a process exit, NOT a typed result returned to
+/// a caller. Consequence for any future run receipt: an in-process observer cannot
+/// witness this arm, because the process is gone. Such a receipt must be produced
+/// by an EXTERNAL observer until the exit moves to the command boundary.
 fn refuse_unparseable_module_sources(refusals: &[ModuleBindingRefusal]) {
     if refusals.is_empty() {
         return;

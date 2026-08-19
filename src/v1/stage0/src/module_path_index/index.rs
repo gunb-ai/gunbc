@@ -16,12 +16,20 @@ pub struct ParsedModuleBinding {
     pub ident_span: Rc<SourceSpan>,
 }
 
-/// A parse that SUCCEEDED, partitioned. `ValidModuleless` means the file parsed
-/// and declared no module — a legitimate fragment, never a failure.
+/// A non-refusing outcome of the module-index walk.
+///
+/// `ModuleBindingUnclassified` is deliberately NOT called "valid moduleless". Its
+/// inhabitants include admitted PARSE FAILURES — a file whose leading `module `
+/// header the legacy scan did not recognize is placed here whether it is a genuine
+/// fragment or unparseable source, and the two are indistinguishable (see
+/// `module_declaration_line_present`). Naming it "valid" would assert a semantic
+/// classification the index cannot observe, which is the same conflation this
+/// change exists to expose. The name reports what was observed: no binding was
+/// produced, and why is unclassified.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ModuleBindingOutcome {
     Bound(ParsedModuleBinding),
-    ValidModuleless,
+    ModuleBindingUnclassified,
 }
 
 /// A parse that FAILED: typed, located, and carrying the parser's own diagnostic
@@ -104,9 +112,11 @@ fn source_key(path: &Path) -> String {
 ///                         typed, located refusal carrying the parser's own
 ///                         diagnostic. This arm previously PANICKED with a
 ///                         rendered string, discarding the span.
-/// `Ok(ValidModuleless)` — no header: a moduleless fragment, OR a parse failure
-///                         indistinguishable from one. Conflated, unchanged, and
-///                         documented on `module_declaration_line_present`.
+/// `Ok(ModuleBindingUnclassified)`
+///                       — the leading-header scan recognized no module
+///                         declaration and no binding was produced. Inhabitants
+///                         include genuine fragments AND parse failures; the index
+///                         cannot tell them apart. Unchanged by this PR.
 /// `Ok(Bound(_))`        — parsed, declared a module.
 ///
 /// SCOPE: this is the panic arm only. The silent arm is NOT closed here, and the
@@ -132,16 +142,16 @@ pub fn parse_module_binding(
         // UNCHANGED, and still a conflation: see `module_declaration_line_present`.
         // What this change fixes is the OTHER arm — a header-bearing file that fails
         // to parse now produces a typed located refusal instead of an untyped panic.
-        return Ok(ModuleBindingOutcome::ValidModuleless);
+        return Ok(ModuleBindingOutcome::ModuleBindingUnclassified);
     }
     let Some(module) = result.module.as_ref() else {
-        return Ok(ModuleBindingOutcome::ValidModuleless);
+        return Ok(ModuleBindingOutcome::ModuleBindingUnclassified);
     };
-    // NOTE: an empty parsed module name stays ValidModuleless, preserving the
-    // prior behavior exactly. It is a third candidate refusal and is deliberately
-    // NOT changed here — this change is bounded to the parse-failure partition.
+    // NOTE: an empty parsed module name is also unclassified, preserving prior
+    // behavior exactly. It is a third candidate refusal, deliberately unchanged —
+    // this change is bounded to the recognized-header parse-failure arm.
     if module.name.is_empty() {
-        return Ok(ModuleBindingOutcome::ValidModuleless);
+        return Ok(ModuleBindingOutcome::ModuleBindingUnclassified);
     }
     Ok(ModuleBindingOutcome::Bound(ParsedModuleBinding {
         module_path: module.name.clone(),
@@ -172,7 +182,7 @@ mod tests {
         );
     }
 
-    // Case 2 — malformed WITHOUT a module header: STILL read as moduleless.
+    // Case 2 — malformed WITHOUT a recognized header: lands unclassified.
     //
     // This pins the RESIDUE rather than the fix. It is the silent arm, and it is
     // deliberately still open: the bootstrap parser cannot distinguish this from a
@@ -180,23 +190,26 @@ mod tests {
     // parser affordance ever separates them, this assertion FLIPS to expect an
     // Err, and it should — that is the signal the next rung became reachable.
     #[test]
-    fn malformed_without_header_is_still_conflated_with_moduleless() {
+    fn malformed_without_header_lands_unclassified_not_refused() {
         let path = Path::new("fixture.dag");
         let src = "/* unsupported */\nmodule probe.silentbad\n\nfn f() -> Int {\n  1\n}\n";
         assert_eq!(
-            parse_module_binding(path, src).expect("conflated with a fragment today"),
-            ModuleBindingOutcome::ValidModuleless,
-            "residue: a parse failure with no textual header still reads as absence"
+            parse_module_binding(path, src).expect("unclassified today"),
+            ModuleBindingOutcome::ModuleBindingUnclassified,
+            "residue: a parse failure with no recognized header is not distinguishable \
+             from a fragment, so it lands unclassified rather than refusing"
         );
     }
 
-    // Case 3 — valid moduleless fragment: accepted, still not a refusal.
+    // Case 3 — a GENUINE fragment: also unclassified. Same arm as case 2, which is
+    // precisely the residue: this test and the one above cannot be told apart by
+    // the index, and both assertions are identical by necessity, not by accident.
     #[test]
-    fn valid_moduleless_fragment_accepted() {
+    fn genuine_fragment_also_lands_unclassified() {
         let path = Path::new("fixture.dag");
         assert_eq!(
             parse_module_binding(path, "type Foo { x: Int }\n").expect("must parse"),
-            ModuleBindingOutcome::ValidModuleless
+            ModuleBindingOutcome::ModuleBindingUnclassified
         );
     }
 
