@@ -3547,13 +3547,25 @@ fn eval_int_binop(op: &BinOp, a: i64, b: i64) -> InterpResult<Value> {
             if b == 0 {
                 return Err(InterpError::DivisionByZero);
             }
-            Ok(Value::Int(a / b))
+            a.checked_div(b)
+                .map(Value::Int)
+                .ok_or(InterpError::IntegerOverflow {
+                    op: "/",
+                    lhs: a,
+                    rhs: b,
+                })
         }
         BinOp::Mod => {
             if b == 0 {
                 return Err(InterpError::DivisionByZero);
             }
-            Ok(Value::Int(a % b))
+            a.checked_rem(b)
+                .map(Value::Int)
+                .ok_or(InterpError::IntegerOverflow {
+                    op: "%",
+                    lhs: a,
+                    rhs: b,
+                })
         }
         BinOp::Lt => Ok(Value::Bool(a < b)),
         BinOp::Gt => Ok(Value::Bool(a > b)),
@@ -3596,7 +3608,14 @@ fn eval_unaryop(op: &UnaryOpKind, val: Value) -> InterpResult<Value> {
     match op {
         UnaryOpKind::Not => Ok(Value::Bool(!val.is_truthy())),
         UnaryOpKind::Neg => match val {
-            Value::Int(n) => Ok(Value::Int(-n)),
+            Value::Int(n) => n
+                .checked_neg()
+                .map(Value::Int)
+                .ok_or(InterpError::IntegerOverflow {
+                    op: "-",
+                    lhs: 0,
+                    rhs: n,
+                }),
             Value::Float(n) => Ok(Value::Float(-n)),
             _ => Err(InterpError::TypeError {
                 msg: format!("cannot negate {}", val.type_label()),
@@ -3641,6 +3660,52 @@ mod eval_int_binop_overflow_tests {
     #[test]
     fn in_range_mul_still_succeeds() {
         assert_eq!(eval_int_binop(&BinOp::Mul, 6, 7).unwrap(), Value::Int(42));
+    }
+
+    #[test]
+    fn div_min_by_negative_one_refuses_instead_of_overflowing() {
+        // i64::MIN / -1 is not representable as i64 and must not panic or wrap.
+        match eval_int_binop(&BinOp::Div, i64::MIN, -1) {
+            Err(InterpError::IntegerOverflow { op: "/", .. }) => {}
+            other => panic!("expected IntegerOverflow, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn mod_min_by_negative_one_refuses_instead_of_overflowing() {
+        match eval_int_binop(&BinOp::Mod, i64::MIN, -1) {
+            Err(InterpError::IntegerOverflow { op: "%", .. }) => {}
+            other => panic!("expected IntegerOverflow, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn in_range_div_still_succeeds() {
+        assert_eq!(eval_int_binop(&BinOp::Div, 84, 2).unwrap(), Value::Int(42));
+    }
+}
+
+#[cfg(test)]
+mod eval_unaryop_overflow_tests {
+    use super::{eval_unaryop, InterpError, UnaryOpKind, Value};
+
+    #[test]
+    fn neg_of_i64_min_refuses_instead_of_wrapping() {
+        // -i64::MIN is not representable as i64 (wraps to i64::MIN in release).
+        match eval_unaryop(&UnaryOpKind::Neg, Value::Int(i64::MIN)) {
+            Err(InterpError::IntegerOverflow { op: "-", rhs, .. }) => {
+                assert_eq!(rhs, i64::MIN);
+            }
+            other => panic!("expected IntegerOverflow, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn neg_in_range_still_succeeds() {
+        assert_eq!(
+            eval_unaryop(&UnaryOpKind::Neg, Value::Int(42)).unwrap(),
+            Value::Int(-42)
+        );
     }
 }
 
