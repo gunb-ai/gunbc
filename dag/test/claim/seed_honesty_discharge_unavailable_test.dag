@@ -169,7 +169,7 @@ fn seed_honesty_fabricated_agreement(
 
 fn seed_honesty_discharge_refuses_when_unavailable() -> Bool {
   match v2.workflow.bootstrap.bootstrap_seed_honesty_discharge {
-    Violates { diagnostic: d } => d.reason == ^bootstrap_diverse_compilation_mismatch
+    v2.std.witness.Violates { diagnostic: d } => d.reason == ^bootstrap_diverse_compilation_mismatch
     Holds { value: _ } => false
   }
 }
@@ -182,7 +182,7 @@ fn seed_honesty_discharge_witness_refuses_holds_agreement() -> Bool {
       secondary_compiler: seed_honesty_secondary_compiler
     )
   ) {
-    Violates { diagnostic: d } => d.reason == ^bootstrap_diverse_compilation_mismatch
+    v2.std.witness.Violates { diagnostic: d } => d.reason == ^bootstrap_diverse_compilation_mismatch
     Holds { value: _ } => false
   }
 }
@@ -195,7 +195,7 @@ fn seed_honesty_discharge_witness_refuses_old_magic_atom() -> Bool {
       secondary_compiler: ^independent_compiler_witness
     )
   ) {
-    Violates { diagnostic: d } => d.reason == ^bootstrap_diverse_compilation_mismatch
+    v2.std.witness.Violates { diagnostic: d } => d.reason == ^bootstrap_diverse_compilation_mismatch
     Holds { value: _ } => false
   }
 }
@@ -206,7 +206,7 @@ fn independent_compiler_pair_witness_refuses_distinct_compilers_unavailable() ->
     secondary: seed_honesty_secondary_compiler,
     evidence: v2.workflow.bootstrap.independent_compiler_evidence_unavailable()
   ) {
-    Violates { diagnostic: d } => d.reason == ^bootstrap_diverse_compilation_mismatch
+    v2.std.witness.Violates { diagnostic: d } => d.reason == ^bootstrap_diverse_compilation_mismatch
     Holds { value: _ } => false
   }
 }
@@ -217,7 +217,7 @@ fn independent_compiler_pair_witness_refuses_matching_compilers_unavailable() ->
     secondary: seed_honesty_shared_compiler,
     evidence: v2.workflow.bootstrap.independent_compiler_evidence_unavailable()
   ) {
-    Violates { diagnostic: d } => d.reason == ^bootstrap_diverse_compilation_mismatch
+    v2.std.witness.Violates { diagnostic: d } => d.reason == ^bootstrap_diverse_compilation_mismatch
     Holds { value: _ } => false
   }
 }
@@ -228,7 +228,7 @@ fn independent_compiler_pair_witness_refuses_perturbed_compilers_unavailable() -
     secondary: seed_honesty_perturbed_secondary_compiler,
     evidence: v2.workflow.bootstrap.independent_compiler_evidence_unavailable()
   ) {
-    Violates { diagnostic: d } => d.reason == ^bootstrap_diverse_compilation_mismatch
+    v2.std.witness.Violates { diagnostic: d } => d.reason == ^bootstrap_diverse_compilation_mismatch
     Holds { value: _ } => false
   }
 }
