@@ -9,7 +9,22 @@ import std.types { String, List, Bool, NonEmptyStr, Int }
 import std.content_hash { content_hash_of_value, serialize_content_hash, Fnv1a64 }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
-import gunbc.membership_reconcile { MembershipPlan, MemberAction, membership_write_count }
+import gunbc.membership_reconcile {
+  MembershipPlan,
+  MemberAction,
+  MemberAdded,
+  MemberChanged,
+  MemberRemoved,
+  MemberRemovalRefused,
+  MemberRosterDuplicateKeyRefused,
+  membership_write_count,
+}
+import gunbc.spark_serving_execution_schedule {
+  SparkServingScheduleFrozen,
+  SparkServingScheduleRefused,
+  spark_serving_freeze_execution_schedule,
+  spark_serving_frozen_schedule_order,
+}
 import gunbc.spark_serving_membership {
   SparkServingMember,
   SparkServingMemberAt,
@@ -112,6 +127,24 @@ fn spark_serving_linger_membership_plan(
 // A row whose effects cannot realize yields no row at all, which the projection above turns into a
 // typed refusal -- so an unrealizable member stops the plan instead of freezing an empty operation
 // list that apply would happily execute as a no-op.
+// THE RECONCILE KEY OF A PLANNED ACTION, WHICH IS THE SCHEDULER'S SUBJECT.
+//
+// The two refusal arms carry no key because they are not executable rows -- a refusal is a fact
+// about why nothing will be done, not a thing to order. They answer with the empty key, which
+// matches no scheduled subject, so a plan carrying one fails the row-count completeness check and
+// refuses. That is the same refusal a dropped row has always produced, reached by the same check.
+fn fleet_converge_spark_serving_action_at(
+  action: MemberAction<SparkServingMember, SparkServingMemberAt>,
+) -> SparkServingMemberAt {
+  match action {
+    MemberAdded { at: at, to: _ } => at
+    MemberChanged { at: at, from: _, to: _ } => at
+    MemberRemoved { at: at, from: _ } => at
+    MemberRemovalRefused { from: _, cause: _ } => ""
+    MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => ""
+  }
+}
+
 fn fleet_converge_spark_serving_typed_action(
   action: MemberAction<SparkServingMember, SparkServingMemberAt>,
 ) -> FleetConvergeSparkServingTypedAction? {
@@ -190,14 +223,50 @@ type SparkServingTypedActionProjection
   = SparkServingTypedActionsProjected { rows: List<FleetConvergeSparkServingTypedAction> }
   | SparkServingTypedActionsRefused { cause: String }
 
+// THE ROWS COME OUT IN THE SCHEDULED ORDER, NOT THE DIFF ORDER.
+//
+// This function used to walk `plan.actions` directly, and that walk order became the order actuation
+// ran the remedies in -- a set difference's incidental traversal promoted to an execution schedule
+// with nothing in between to notice. The schedule is now derived from the resources' own
+// requires/establishes facts and frozen by the scheduler kernel, and the rows are emitted by folding
+// that frozen order. A refusal to schedule is a refusal to plan: there is no arm that emits rows in
+// an unscheduled order, because an unscheduled order is what produced a manager reload against a
+// unit file that did not exist yet.
 fn fleet_converge_spark_serving_typed_actions(
   plan: MembershipPlan<SparkServingMember, SparkServingMemberAt>,
+  desired: List<SparkServingMember>,
 ) -> SparkServingTypedActionProjection {
-  let rows = flat_map(plan.actions, a =>
-    match fleet_converge_spark_serving_typed_action(action: a) {
-      Present { value: row } => [row]
-      Absent => []
-    }
+  match spark_serving_freeze_execution_schedule(
+    plan: plan,
+    desired_addresses: flat_map(desired, m => [m.address]),
+  ) {
+    SparkServingScheduleRefused { cause: why } =>
+      SparkServingTypedActionsRefused { cause: why }
+    SparkServingScheduleFrozen { schedule: schedule } =>
+      fleet_converge_spark_serving_typed_actions_in_order(
+        plan: plan,
+        order: spark_serving_frozen_schedule_order(schedule: schedule),
+      )
+  }
+}
+
+// FOLDING THE FROZEN ORDER OVER THE PLAN. The completeness check is unchanged and still compares
+// against `plan.actions`, so a row lost to the reordering fold refuses exactly as a row lost to a
+// failed projection always did -- the schedule is a permutation of the planned rows or it is a
+// refusal, never a quiet subset.
+fn fleet_converge_spark_serving_typed_actions_in_order(
+  plan: MembershipPlan<SparkServingMember, SparkServingMemberAt>,
+  order: List<SparkServingMemberAt>,
+) -> SparkServingTypedActionProjection {
+  let rows = flat_map(order, at =>
+    flat_map(
+      filter(plan.actions, a => fleet_converge_spark_serving_action_at(action: a) == at),
+      a =>
+        match fleet_converge_spark_serving_typed_action(action: a) {
+          Present { value: row } => [row]
+          Absent => []
+        }
+    )
   )
   if length(rows) == length(plan.actions) {
     SparkServingTypedActionsProjected { rows: rows }
@@ -285,7 +354,7 @@ fn spark_serving_fleet_converge_plan_artifact_for_release(
       SparkServingPlanArtifactRefused {
         cause: join(["plan-refused observation ", why], ""),
       }
-    SparkServingFullMembershipPlanReady { plan: full_plan, unit_observed: unit_observed, enablement_observed: enablement_observed, linger_observed: linger_observed, observed_members: observed_members } =>
+    SparkServingFullMembershipPlanReady { plan: full_plan, unit_observed: unit_observed, enablement_observed: enablement_observed, linger_observed: linger_observed, observed_members: observed_members, desired_members: desired_members } =>
       if !unit_observed {
         SparkServingPlanArtifactRefused {
           cause: join([
@@ -311,7 +380,7 @@ fn spark_serving_fleet_converge_plan_artifact_for_release(
           ], ""),
         }
       } else {
-        match fleet_converge_spark_serving_typed_actions(plan: full_plan) {
+        match fleet_converge_spark_serving_typed_actions(plan: full_plan, desired: desired_members) {
           SparkServingTypedActionsRefused { cause: why } =>
             SparkServingPlanArtifactRefused {
               cause: join(["plan-refused typed-actions ", why], ""),
@@ -493,6 +562,10 @@ fn spark_serving_full_membership_plan(
           ),
           observed: observed,
         ),
+        desired_members: spark_serving_desired_members(
+          occurrence: occurrence,
+          serving_release: serving_release,
+        ),
         unit_observed: unit_observed,
         enablement_observed: enablement_observed,
         linger_observed: linger_observed,
@@ -503,5 +576,12 @@ fn spark_serving_full_membership_plan(
 }
 
 type SparkServingFullMembershipPlan
-  = SparkServingFullMembershipPlanReady { plan: MembershipPlan<SparkServingMember, SparkServingMemberAt>, unit_observed: Bool, enablement_observed: Bool, linger_observed: Bool, observed_members: List<SparkServingMember> }
+  = SparkServingFullMembershipPlanReady {
+      plan: MembershipPlan<SparkServingMember, SparkServingMemberAt>,
+      unit_observed: Bool,
+      enablement_observed: Bool,
+      linger_observed: Bool,
+      observed_members: List<SparkServingMember>,
+      desired_members: List<SparkServingMember>,
+    }
   | SparkServingFullMembershipPlanRefused { cause: String }

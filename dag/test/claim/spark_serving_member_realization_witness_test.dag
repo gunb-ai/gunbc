@@ -111,22 +111,32 @@ test fn w_member_realization_runtime_change_is_install_owned_closure_only() -> B
     && !spark_serving_install_effects_include(effects: effects, needle: WriteSystemUnitFile)
 }
 
-// RETIRED AND REPLACED, with its receipt: this required the CONTENT change to include
-// EnableUserUnit, which was the bundled remedy that survived underneath the address split and made
-// a bare host freeze TWO enables for one unit. A test asserting the old bundle would have kept it
-// alive through the fix.
+// NARROWED TWICE, and the second narrowing is this one's receipt.
 //
-// The claim it protected is real and survives at its own address: a unit must end up enabled. What
-// changed is who owns that -- content owns the bytes and making the manager read them; enablement
-// owns surviving a reboot. So the content change writes and reloads, and NO LONGER enables.
-test fn w_member_realization_user_unit_content_change_writes_and_reloads_without_enabling() -> Bool {
+// It first required the CONTENT change to include EnableUserUnit -- the bundled remedy that survived
+// underneath the enablement address split and made a bare host freeze TWO enables for one unit. That
+// half was removed when enablement got its own address.
+//
+// The reload was the SAME defect one address later, and this claim carried it until the registration
+// address landed. `daemon-reload` is not what writing bytes does; it is what makes the manager read
+// them, and that is a distinct resource with its own observation (the manager knows this unit), its
+// own drift, and its own remedy. While the content member owned both, a host whose file was already
+// correct but unregistered had no member that could ask for a reload -- and a host needing only a
+// reload got its file rewritten to obtain one.
+//
+// So the content change now writes and does NOTHING else. Each remedy this claim gave up is asserted
+// at the address that actually owns it: `the_registration_member_owns_the_reload` and the enablement
+// rows in the full-plan witness. The claim did not weaken; it stopped speaking for two other
+// resources.
+test fn w_member_realization_user_unit_content_change_writes_only() -> Bool {
   let effect = EffectReplace {
     from: w_unit_member(state: "unit-v1" as NonEmptyStr),
     to: w_unit_member(state: "unit-v2" as NonEmptyStr),
   }
   let effects = spark_serving_install_effects_for_member_effect(effect: effect)
-  spark_serving_install_effects_include(effects: effects, needle: WriteUserUnitFile)
-    && spark_serving_install_effects_include(effects: effects, needle: ReloadUserManager)
+  length(effects) == 1
+    && spark_serving_install_effects_include(effects: effects, needle: WriteUserUnitFile)
+    && !spark_serving_install_effects_include(effects: effects, needle: ReloadUserManager)
     && !spark_serving_install_effects_include(effects: effects, needle: EnableUserUnit)
     && !spark_serving_install_effects_include(effects: effects, needle: WriteSystemUnitFile)
 }

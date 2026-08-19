@@ -101,11 +101,11 @@ import gunbc.spark_serving_observed_members {
   SparkServingObservedLingerState,
   SparkServingObservedUnitState,
   UserUnitStateUnobserved,
-  SparkServingUnitEnablement,
-  UserUnitEnabled,
-  UserUnitDisabled,
-  UserUnitEnablementNotFound,
-  UserUnitEnablementUnobserved,
+  SparkServingUnitManagerState,
+  UserUnitManagerEnabled,
+  UserUnitManagerDisabled,
+  UserUnitManagerNotRegistered,
+  UserUnitManagerUnobserved,
   classify_observed_user_unit,
   spark_serving_user_unit_read_argv,
   spark_serving_user_unit_is_enabled_argv,
@@ -696,16 +696,16 @@ func spark_serving_observe_ci_with_context(
 // way that matters: a disabled unit exits non-zero while printing "disabled", which is a successful
 // observation of a real state. Reading only the exit code would render that as a failed probe, so
 // the word is what is classified and the exit code only distinguishes "we could not ask".
-fn classify_is_enabled_stdout(result: SshSessionExecResult) -> SparkServingUnitEnablement {
+fn classify_is_enabled_stdout(result: SshSessionExecResult) -> SparkServingUnitManagerState {
   let word = trim(s: result.stdout)
   if word == "enabled" || word == "enabled-runtime" {
-    UserUnitEnabled
+    UserUnitManagerEnabled
   } else if word == "disabled" {
-    UserUnitDisabled
+    UserUnitManagerDisabled
   } else if word == "not-found" {
-    UserUnitEnablementNotFound
+    UserUnitManagerNotRegistered
   } else {
-    UserUnitEnablementUnobserved
+    UserUnitManagerUnobserved
   }
 }
 
@@ -722,7 +722,7 @@ fn cat_reported_missing_file(result: SshSessionExecResult) -> Bool {
 // are read once and returned together rather than by two callers each paying the round trips again.
 type SparkServingObservedUnit {
   state: SparkServingObservedUnitState
-  enablement: SparkServingUnitEnablement
+  enablement: SparkServingUnitManagerState
 }
 
 // THE MODEL STORE PRODUCER -- the evidence behind the model-slot member.
@@ -1176,13 +1176,13 @@ fn spark_serving_observe_user_unit_pair(
     context: context, host: host, raw_words: spark_serving_user_unit_read_argv(),
   ) {
     Absent =>
-      SparkServingObservedUnit { state: UserUnitStateUnobserved, enablement: UserUnitEnablementUnobserved }
+      SparkServingObservedUnit { state: UserUnitStateUnobserved, enablement: UserUnitManagerUnobserved }
     Present { value: read } =>
       match spark_serving_probe_leg(
         context: context, host: host, raw_words: spark_serving_user_unit_is_enabled_argv(),
       ) {
         Absent =>
-          SparkServingObservedUnit { state: UserUnitStateUnobserved, enablement: UserUnitEnablementUnobserved }
+          SparkServingObservedUnit { state: UserUnitStateUnobserved, enablement: UserUnitManagerUnobserved }
         Present { value: enabled } =>
           SparkServingObservedUnit {
             state: classify_observed_user_unit(

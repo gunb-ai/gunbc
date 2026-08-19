@@ -57,11 +57,11 @@ import gunbc.remote_operation { RemoteOperation, RemoteArgv }
 import std.types { List }
 import gunbc.spark_serving_observed_members {
   SparkServingObservedMemberProjection,
-  SparkServingUnitEnablement,
-  UserUnitEnabled,
-  UserUnitDisabled,
-  UserUnitEnablementNotFound,
-  UserUnitEnablementUnobserved,
+  SparkServingUnitManagerState,
+  UserUnitManagerEnabled,
+  UserUnitManagerDisabled,
+  UserUnitManagerNotRegistered,
+  UserUnitManagerUnobserved,
   UserUnitStateObserved,
   LingerObservedEnabled,
   LingerObservedDisabled,
@@ -191,7 +191,7 @@ fn slice_projection_linger(r: SparkServingRelease, linger_enabled: Bool) -> Spar
       blob_closure_size: 1,
     },
     unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
-    enablement: UserUnitEnabled,
+    enablement: UserUnitManagerEnabled,
     linger: if linger_enabled { LingerObservedEnabled } else { LingerObservedDisabled },
   )
 }

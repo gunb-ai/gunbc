@@ -50,6 +50,7 @@ data spark_serving_primary_model_slot: NonEmptyStr = "primary" as NonEmptyStr
 type SparkServingResourceAddress
   = SparkServingRuntimeRootAddress
   | SparkServingUserUnitAddress
+  | SparkServingUserUnitRegistrationAddress
   | SparkServingUserUnitEnablementAddress
   | SparkServingModelSlotAddress { slot: NonEmptyStr }
   | SparkServingLingerAddress
@@ -74,6 +75,8 @@ fn spark_serving_resource_address_wire(address: SparkServingResourceAddress) -> 
     SparkServingRuntimeRootAddress => "runtime-root"
     SparkServingUserUnitAddress =>
       join(["user-unit:", spark_serving_unit_name], "")
+    SparkServingUserUnitRegistrationAddress =>
+      join(["user-unit-registration:", spark_serving_unit_name], "")
     SparkServingUserUnitEnablementAddress =>
       join(["user-unit-enablement:", spark_serving_unit_name], "")
     SparkServingModelSlotAddress { slot: slot } =>
@@ -123,6 +126,42 @@ data spark_serving_user_unit_enabled_state: NonEmptyStr = "user-unit-enabled" as
 data spark_serving_user_unit_disabled_state: NonEmptyStr = "user-unit-disabled" as NonEmptyStr
 
 data spark_serving_user_unit_not_registered_state: NonEmptyStr = "user-unit-not-registered" as NonEmptyStr
+
+// REGISTRATION IS A SEPARATE SUBJECT FROM ENABLEMENT, AND ITS STATE IS THE DEFINITION THE MANAGER
+// HOLDS -- NOT A BOOLEAN.
+//
+// systemd answers is-enabled with not-found when no unit is registered at all. That is a fact about
+// REGISTRATION, not a value of enablement: enablement is only meaningful over a unit the manager
+// knows about, so not-found is the absence of the subject enablement would be about. Modelling it as
+// an enablement value conflated two states whose remedies differ -- a registered-but-disabled unit
+// needs enable, an unregistered one needs write then reload then enable -- and let the enablement
+// member reconcile as a CHANGE to something that did not exist.
+//
+// A bare registered marker would be just as wrong one level down. Writing new bytes does not change
+// what the manager already loaded, so a unit that is registered against a STALE definition is not
+// converged, and a state that says only registered cannot tell the two apart. The state therefore
+// names the content the manager has consumed.
+//
+// THE IDENTITY IS TAKEN OVER OBSERVATIONS ONLY. It would be easy to define freshness as observed
+// bytes equal desired bytes, and that is the error this module already records one comment up: an
+// earlier revision returned the DESIRED digest when bytes matched, so the observed side imported the
+// answer it was supposed to establish. Instead the observed registration names the digest actually
+// on disk and the desired registration names the desired digest, so equality FALLS OUT of the same
+// comparison every other member uses, and the two sides stay in one identity domain.
+fn spark_serving_user_unit_registration_state(content_digest: NonEmptyStr) -> NonEmptyStr {
+  concat("user-unit-registered:", content_digest as String) as NonEmptyStr
+}
+
+// A unit the manager knows about while its file is gone is a real, observable, and wrong state. It
+// is not absence (the manager holds a definition) and not staleness against known bytes (there are
+// none), so it gets its own value rather than being folded into either.
+data spark_serving_user_unit_registered_without_content_state: NonEmptyStr = "user-unit-registered-without-content" as NonEmptyStr
+
+fn spark_serving_desired_user_unit_registration_state_digest() -> NonEmptyStr {
+  spark_serving_user_unit_registration_state(
+    content_digest: spark_serving_desired_user_unit_content_identity(),
+  )
+}
 
 fn spark_serving_user_unit_enabled_state_digest() -> NonEmptyStr {
   spark_serving_user_unit_enabled_state
@@ -215,6 +254,13 @@ fn spark_serving_desired_members(
       principal: principal,
       address: SparkServingUserUnitAddress,
       state_digest: spark_serving_user_unit_state_digest(),
+      ownership: Owned,
+    ),
+    spark_serving_member(
+      host: host,
+      principal: principal,
+      address: SparkServingUserUnitRegistrationAddress,
+      state_digest: spark_serving_desired_user_unit_registration_state_digest(),
       ownership: Owned,
     ),
     spark_serving_member(

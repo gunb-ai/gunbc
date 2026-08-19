@@ -92,7 +92,7 @@ type SparkServingObservedLingerState
   | LingerUnobservedState
 
 type SparkServingObservedMemberProjection
-  = SparkServingObservedMembers { members: List<SparkServingMember>, runtime_observed: Bool, model_observed: Bool, unit_observed: Bool, enablement_observed: Bool, linger_observed: Bool }
+  = SparkServingObservedMembers { members: List<SparkServingMember>, runtime_observed: Bool, model_observed: Bool, unit_observed: Bool, registration_observed: Bool, enablement_observed: Bool, linger_observed: Bool }
 
 
 // A member is present in the OBSERVED list only when something was actually observed to be there.
@@ -254,7 +254,7 @@ fn spark_serving_observed_members(
   runtime: RuntimeMaterializationObservation,
   store: ModelStoreObservation,
   unit: SparkServingObservedUnitState,
-  enablement: SparkServingUnitEnablement,
+  enablement: SparkServingUnitManagerState,
   linger: SparkServingObservedLingerState,
 ) -> SparkServingObservedMemberProjection {
   spark_serving_reached_host_members(
@@ -268,7 +268,7 @@ fn spark_serving_reached_host_members(
   runtime: RuntimeMaterializationObservation,
   store: ModelStoreObservation,
   unit: SparkServingObservedUnitState,
-  enablement: SparkServingUnitEnablement,
+  enablement: SparkServingUnitManagerState,
   linger: SparkServingObservedLingerState,
 ) -> SparkServingObservedMemberProjection {
   SparkServingObservedMembers {
@@ -280,7 +280,12 @@ fn spark_serving_reached_host_members(
       concat(
         concat(
           spark_serving_observed_unit_members(host: host, unit: unit),
-          spark_serving_observed_unit_enablement_members(host: host, enablement: enablement),
+          concat(
+            spark_serving_observed_unit_registration_members(
+              host: host, manager: enablement, unit: unit,
+            ),
+            spark_serving_observed_unit_enablement_members(host: host, manager: enablement),
+          ),
         ),
         spark_serving_observed_linger_members(host: host, linger: linger),
       ),
@@ -288,7 +293,8 @@ fn spark_serving_reached_host_members(
     runtime_observed: runtime_materialization_was_observed(observation: runtime),
     model_observed: model_store_was_observed(observation: store),
     unit_observed: spark_serving_unit_state_was_observed(unit: unit),
-    enablement_observed: spark_serving_enablement_was_observed(enablement: enablement),
+    registration_observed: spark_serving_registration_was_observed(manager: enablement),
+    enablement_observed: spark_serving_enablement_was_observed(manager: enablement),
     linger_observed: spark_serving_linger_state_was_observed(linger: linger),
   }
 
@@ -306,12 +312,25 @@ fn spark_serving_reached_host_members(
 // ENABLEMENT CARRIES ITS OWN COMPLETENESS FACT. It used to borrow `unit_observed=false` as an
 // indirect refusal wall, which only worked because the content classifier was erasing itself on the
 // enablement's behalf. With the subjects separated, each owes its own answer to "was this measured".
-fn spark_serving_enablement_was_observed(enablement: SparkServingUnitEnablement) -> Bool {
-  match enablement {
-    UserUnitEnabled => true
-    UserUnitDisabled => true
-    UserUnitEnablementNotFound => true
-    UserUnitEnablementUnobserved => false
+fn spark_serving_enablement_was_observed(manager: SparkServingUnitManagerState) -> Bool {
+  match manager {
+    UserUnitManagerEnabled => true
+    UserUnitManagerDisabled => true
+    UserUnitManagerNotRegistered => true
+    UserUnitManagerUnobserved => false
+  }
+}
+
+// Registration is established by exactly the same probe, so its completeness bit is the same
+// question asked of the same answer. It is stated separately rather than shared because the two are
+// now separate subjects, and a future registration probe that does not come from is-enabled must not
+// silently inherit enablement's completeness.
+fn spark_serving_registration_was_observed(manager: SparkServingUnitManagerState) -> Bool {
+  match manager {
+    UserUnitManagerEnabled => true
+    UserUnitManagerDisabled => true
+    UserUnitManagerNotRegistered => true
+    UserUnitManagerUnobserved => false
   }
 }
 
@@ -343,9 +362,10 @@ fn spark_serving_projection_supports_empty_replan(
       runtime_observed: rt_seen,
       model_observed: model_seen,
       unit_observed: observed,
+      registration_observed: reg_seen,
       enablement_observed: enab_seen,
       linger_observed: linger_seen,
-    } => rt_seen && model_seen && observed && enab_seen && linger_seen
+    } => rt_seen && model_seen && observed && reg_seen && enab_seen && linger_seen
   }
 }
 
@@ -378,11 +398,17 @@ fn spark_serving_user_unit_is_enabled_argv() -> List<String> {
 // systemd's own answers, modeled rather than collapsed. `is-enabled` exits non-zero for a DISABLED
 // unit and for a unit that does not exist, and treating every nonzero exit as infrastructure failure
 // would render a perfectly healthy disabled unit as unobservable.
-type SparkServingUnitEnablement
-  = UserUnitEnabled
-  | UserUnitDisabled
-  | UserUnitEnablementNotFound
-  | UserUnitEnablementUnobserved
+// ONE PROBE, TWO FACTS. `systemctl --user is-enabled` answers about the manager, and its answer
+// establishes two separate subjects: whether a unit is REGISTERED with the manager at all, and, only
+// when it is, whether that unit is ENABLED. This type is the manager's raw answer -- it is named for
+// what it is rather than for one of the two facts derived from it, because calling it an enablement
+// while it carries a not-registered arm is what let absence-of-subject reconcile as a change to the
+// subject.
+type SparkServingUnitManagerState
+  = UserUnitManagerEnabled
+  | UserUnitManagerDisabled
+  | UserUnitManagerNotRegistered
+  | UserUnitManagerUnobserved
 
 // CLASSIFYING THE READ, with the identity taken over bytes on BOTH sides.
 //
@@ -401,7 +427,7 @@ type SparkServingUnitEnablement
 // unit, versus fix why it is unreadable -- so they stay distinct states.
 // THE CONTENT CLASSIFIER READS ONLY THE FILE-READ EVIDENCE.
 //
-// It took `enablement`, and UserUnitEnablementUnobserved turned a SUCCESSFULLY READ FILE into
+// It took the manager answer, and its unobserved arm turned a SUCCESSFULLY READ FILE into
 // UserUnitStateUnobserved -- so failing to observe one subject erased an established fact about a
 // different one. Splitting the member addresses did not fix that; it left the collapse one level up,
 // in the classifier, where a subject's own evidence is the only thing entitled to decide it.
@@ -431,39 +457,110 @@ fn classify_observed_user_unit(
 // Unobserved projects to no member at all, exactly as the other unobserved states do: absence from
 // the observed list is what makes reconcile plan a change, so a member nobody measured must not
 // appear -- and the projection's completeness bit is what stops that absence being read as drift.
+// NOT REGISTERED PRODUCES NO ENABLEMENT MEMBER, AND THAT IS THE WHOLE POINT.
+//
+// Enablement is meaningful only over a unit the manager knows about. When the manager answers
+// not-found there is no enablement fact to report -- not an unknown one, and not a not-registered
+// one. Reporting a member here is what made an absent subject reconcile as a CHANGE at the
+// enablement address, which then selected enable as the remedy for a unit that had never been
+// written. The remedies differ (a registered-but-disabled unit needs enable; an unregistered one
+// needs write, reload, then enable), so one member could never have carried both.
+//
+// This is NOT the unobserved arm wearing another name. The host answered; a real fact was
+// established. It is simply a fact about REGISTRATION, and it is reported there.
 fn spark_serving_observed_unit_enablement_members(
   host: HostIdentity,
-  enablement: SparkServingUnitEnablement,
+  manager: SparkServingUnitManagerState,
 ) -> List<SparkServingMember> {
-  match enablement {
-        UserUnitEnablementUnobserved => []
-        UserUnitEnabled => [
-          spark_serving_member(
-            host: host,
-            principal: spark_serving_serving_principal(),
-            address: SparkServingUserUnitEnablementAddress,
-            state_digest: spark_serving_user_unit_enabled_state,
-            ownership: Owned,
-          ),
-        ]
-        UserUnitDisabled => [
-          spark_serving_member(
-            host: host,
-            principal: spark_serving_serving_principal(),
-            address: SparkServingUserUnitEnablementAddress,
-            state_digest: spark_serving_user_unit_disabled_state,
-            ownership: Owned,
-          ),
-        ]
-    UserUnitEnablementNotFound => [
+  match manager {
+    UserUnitManagerUnobserved => []
+    UserUnitManagerNotRegistered => []
+    UserUnitManagerEnabled => [
       spark_serving_member(
         host: host,
         principal: spark_serving_serving_principal(),
         address: SparkServingUserUnitEnablementAddress,
+        state_digest: spark_serving_user_unit_enabled_state,
+        ownership: Owned,
+      ),
+    ]
+    UserUnitManagerDisabled => [
+      spark_serving_member(
+        host: host,
+        principal: spark_serving_serving_principal(),
+        address: SparkServingUserUnitEnablementAddress,
+        state_digest: spark_serving_user_unit_disabled_state,
+        ownership: Owned,
+      ),
+    ]
+  }
+}
+
+// REGISTRATION NAMES THE DEFINITION THE MANAGER HOLDS, NOT MERELY THAT IT HOLDS ONE.
+//
+// Writing new bytes does not change what systemd already loaded, so registered is not by itself a
+// converged state: a manager holding a stale definition and one holding the current definition both
+// answer enabled. The observed state therefore carries the digest of the file actually on disk, and
+// the desired state carries the desired digest, so staleness is an ordinary member difference rather
+// than a special check -- and reload is selected exactly when the manager has not consumed the bytes
+// we want it to have.
+//
+// The identity is a function of OBSERVATIONS ONLY. Defining freshness as observed-equals-desired
+// would import the answer this projection exists to establish, which is the error recorded on the
+// content classifier above.
+//
+// Registered with no file on disk is its own observed state. It is neither absence nor staleness
+// against known bytes, and folding it into either would claim something that was not measured.
+fn spark_serving_observed_unit_registration_members(
+  host: HostIdentity,
+  manager: SparkServingUnitManagerState,
+  unit: SparkServingObservedUnitState,
+) -> List<SparkServingMember> {
+  match manager {
+    UserUnitManagerUnobserved => []
+    UserUnitManagerNotRegistered => [
+      spark_serving_member(
+        host: host,
+        principal: spark_serving_serving_principal(),
+        address: SparkServingUserUnitRegistrationAddress,
         state_digest: spark_serving_user_unit_not_registered_state,
         ownership: Owned,
       ),
     ]
+    UserUnitManagerEnabled =>
+      spark_serving_registered_member_for_content(host: host, unit: unit)
+    UserUnitManagerDisabled =>
+      spark_serving_registered_member_for_content(host: host, unit: unit)
+  }
+}
+
+// A manager that holds a definition while the content probe could not read the file establishes no
+// freshness fact: the bytes it consumed are unknown, so the honest projection is no member rather
+// than a guess in either direction.
+fn spark_serving_registered_member_for_content(
+  host: HostIdentity,
+  unit: SparkServingObservedUnitState,
+) -> List<SparkServingMember> {
+  match unit {
+    UserUnitStateObserved { unit_state_digest: d } => [
+      spark_serving_member(
+        host: host,
+        principal: spark_serving_serving_principal(),
+        address: SparkServingUserUnitRegistrationAddress,
+        state_digest: spark_serving_user_unit_registration_state(content_digest: d),
+        ownership: Owned,
+      ),
+    ]
+    UserUnitStateAbsent => [
+      spark_serving_member(
+        host: host,
+        principal: spark_serving_serving_principal(),
+        address: SparkServingUserUnitRegistrationAddress,
+        state_digest: spark_serving_user_unit_registered_without_content_state,
+        ownership: Owned,
+      ),
+    ]
+    UserUnitStateUnobserved => []
   }
 }
 

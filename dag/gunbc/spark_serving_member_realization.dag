@@ -36,17 +36,26 @@ data spark_serving_member_realization_authority_note: String = "Per-member-type 
 // enable operations for one unit.
 //
 // Adding an address does not divide a responsibility; removing it from the old owner does. Content
-// owns getting the right bytes in place and making the manager read them; enablement owns whether
-// the unit survives a reboot. The reload stays here because it is what makes NEW BYTES visible to
-// the manager, which is a fact about the content having changed.
+// owns getting the right bytes in place; enablement owns whether the unit survives a reboot.
+//
+// AND THE RELOAD HAS NOW MOVED FOR THE SAME REASON THE ENABLE DID. It stayed here on the grounds
+// that reload is what makes new bytes visible, which is true and is still not an argument for who
+// OWNS it: with registration modelled as its own resource, reload is the remedy that establishes
+// registration -- the manager holding the definition we want it to hold. Leaving it bundled here
+// would have recreated the defect recorded directly above, one subject over: a bare host drifts at
+// BOTH content and registration, so content emitting a reload while registration also emits one
+// freezes TWO daemon-reloads for one unit.
+//
+// Content now emits exactly one operation, and every address in this map has exactly one remedy.
 fn spark_serving_user_unit_install_effects() -> List<ServingInstallEffect> {
-  [WriteUserUnitFile, ReloadUserManager]
+  [WriteUserUnitFile]
 }
 
 fn spark_serving_install_effects_for_address(address: SparkServingResourceAddress) -> List<ServingInstallEffect> {
   match address {
     SparkServingRuntimeRootAddress => [InstallOwnedRuntimeClosure]
     SparkServingUserUnitAddress => spark_serving_user_unit_install_effects()
+    SparkServingUserUnitRegistrationAddress => [ReloadUserManager]
     SparkServingUserUnitEnablementAddress => [EnableUserUnit]
     SparkServingModelSlotAddress { slot: _ } => [PullModelArtifact]
     SparkServingLingerAddress => [EnableLingerForOwnAccount]
@@ -57,8 +66,21 @@ fn spark_serving_install_effects_for_add(member: SparkServingMember) -> List<Ser
   spark_serving_install_effects_for_address(address: member.address)
 }
 
+// THE PRIOR STATE IS DELIBERATELY UNUSED, AND THE UNDERSCORE IS THE POINT.
+//
+// This parameter was bound as `from` and silently discarded, which reads as consumed and is not. The
+// generic spine carries both sides on purpose -- its own authority note says a handler replacing a
+// member must be able to retire the prior realization -- so dropping it was how one remedy came to
+// answer for transitions that needed different ones: not-registered and disabled both arrived at
+// this address and both selected enable, when the first needed write and reload first.
+//
+// After the registration split every address in the effect map has exactly one remedy, so the prior
+// state genuinely does not select anything here and the honest spelling is the one this module
+// already uses for the remove arm. If a future address gains a state-dependent remedy, the
+// underscore comes off and this function matches on it -- an unused name is a decision recorded,
+// where a used-looking one was a defect hidden.
 fn spark_serving_install_effects_for_change(
-  from: SparkServingMember,
+  _from: SparkServingMember,
   to: SparkServingMember,
 ) -> List<ServingInstallEffect> {
   spark_serving_install_effects_for_address(address: to.address)

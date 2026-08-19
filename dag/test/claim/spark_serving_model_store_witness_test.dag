@@ -39,7 +39,7 @@ import gunbc.spark_serving_observed_members {
   spark_serving_projection_supports_empty_replan,
   SparkServingObservedMembers,
   UserUnitStateObserved,
-  UserUnitEnabled,
+  UserUnitManagerEnabled,
   LingerObservedEnabled,
 }
 import gunbc.spark_serving_observe { spark_serving_classify_model_store, spark_serving_model_blob_digest_argv }
@@ -313,7 +313,7 @@ test fn an_unobserved_store_blocks_the_empty_replan_bar() -> Bool {
           blob_closure_size: 1,
         },
         unit: UserUnitStateObserved { unit_state_digest: "u" as NonEmptyStr },
-        enablement: UserUnitEnabled,
+        enablement: UserUnitManagerEnabled,
         linger: LingerObservedEnabled,
       )
       let without = spark_serving_observed_members(
@@ -321,7 +321,7 @@ test fn an_unobserved_store_blocks_the_empty_replan_bar() -> Bool {
         runtime: complete_runtime_stub(),
         store: ModelStoreObservationRefused { cause: "leg did not run" as NonEmptyStr },
         unit: UserUnitStateObserved { unit_state_digest: "u" as NonEmptyStr },
-        enablement: UserUnitEnabled,
+        enablement: UserUnitManagerEnabled,
         linger: LingerObservedEnabled,
       )
       spark_serving_projection_supports_empty_replan(projection: with_store)
