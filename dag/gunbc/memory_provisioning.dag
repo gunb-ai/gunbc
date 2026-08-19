@@ -100,7 +100,7 @@ fn classify_benchmark(
       }
     RatioNotUniformAcrossSizes { first_per_vcpu, divergent_label, divergent_per_vcpu } =>
       ContrastsOnRatioUniformity {
-        reading: RatioNotUniformAcrossSizes {
+        reading: gunbc.runner_shape_census.RatioNotUniformAcrossSizes {
           first_per_vcpu: first_per_vcpu,
           divergent_label: divergent_label,
           divergent_per_vcpu: divergent_per_vcpu,
@@ -108,10 +108,10 @@ fn classify_benchmark(
       }
     UnitLabelNotUniformAcrossSizes { first_label, divergent_label } =>
       ContrastsOnRatioUniformity {
-        reading: UnitLabelNotUniformAcrossSizes { first_label: first_label, divergent_label: divergent_label },
+        reading: gunbc.runner_shape_census.UnitLabelNotUniformAcrossSizes { first_label: first_label, divergent_label: divergent_label },
       }
     NonIntegralRatioInSizes { label } =>
-      BenchmarkUnreadable { reading: NonIntegralRatioInSizes { label: label } }
+      BenchmarkUnreadable { reading: gunbc.runner_shape_census.NonIntegralRatioInSizes { label: label } }
     NoShapesForProviderArchitecture =>
       BenchmarkUnreadable { reading: NoShapesForProviderArchitecture }
   }
@@ -349,7 +349,7 @@ type ProfileReadiness
   = ProfileReady { per_entitlement: std.measure.ByteSize, cpu_entitlements: std.nat.Nat }
   | ProfileNotReady { cause: ProfileCapacityRefusalCause }
 
-fn profile_readiness(cpu: CpuModelCatalogRow, profile: RunnerProductProfile) -> ProfileReadiness {
+fn profile_readiness(cpu: extdeps.cpu.types.CpuModelCatalogRow, profile: RunnerProductProfile) -> ProfileReadiness {
   if profile.architecture != cpu.architecture {
     ProfileNotReady {
       cause: ProfileArchitectureUnsupportedByCpu {
@@ -390,7 +390,7 @@ type ObservedCapacityDerivation
     }
 
 fn observe_installed_capacity(
-  cpu: CpuModelCatalogRow,
+  cpu: extdeps.cpu.types.CpuModelCatalogRow,
   profile: RunnerProductProfile,
   installed_bytes: std.measure.ByteSize,
 ) -> ObservedCapacityDerivation {
@@ -814,7 +814,7 @@ fn capacity_for_option(
 fn derive_profile_capacity(
   geometry: MemoryChannelGeometry,
   policy: ChannelPopulationPolicy,
-  cpu: CpuModelCatalogRow,
+  cpu: extdeps.cpu.types.CpuModelCatalogRow,
   profile: RunnerProductProfile,
   modules: List<extdeps.memory.types.DramModuleCatalogRow>,
 ) -> ProfileCapacityDerivation {
@@ -856,7 +856,7 @@ fn derive_profile_capacity(
 fn derive_all_profile_capacities(
   geometry: MemoryChannelGeometry,
   policy: ChannelPopulationPolicy,
-  cpu: CpuModelCatalogRow,
+  cpu: extdeps.cpu.types.CpuModelCatalogRow,
   profiles: List<RunnerProductProfile>,
   modules: List<extdeps.memory.types.DramModuleCatalogRow>,
 ) -> List<ProfileCapacityDerivation> {
@@ -1022,7 +1022,7 @@ data arm_value_profile: RunnerProductProfile = RunnerProductProfile {
   label: "arm-value",
   architecture: Aarch64,
   advertised_entitlement: DedicatedPhysicalCore,
-  guaranteed_memory_per_entitlement: QuotedDecimalGigabytes { value: gigabyte(count: 3) },
+  guaranteed_memory_per_entitlement: extdeps.ci_runner.types.QuotedDecimalGigabytes { value: gigabyte(count: 3) },
   consulted_benchmarks: [ubicloud_arm_benchmark, blacksmith_arm_benchmark, github_arm_benchmark],
 }
 
@@ -1040,7 +1040,7 @@ data arm_memory_profile: RunnerProductProfile = RunnerProductProfile {
   label: "arm-memory",
   architecture: Aarch64,
   advertised_entitlement: DedicatedPhysicalCore,
-  guaranteed_memory_per_entitlement: QuotedDecimalGigabytes { value: gigabyte(count: 4) },
+  guaranteed_memory_per_entitlement: extdeps.ci_runner.types.QuotedDecimalGigabytes { value: gigabyte(count: 4) },
   consulted_benchmarks: [github_arm_benchmark, depot_arm_benchmark, warpbuild_arm_benchmark],
 }
 
@@ -1050,8 +1050,8 @@ data arm_memory_profile: RunnerProductProfile = RunnerProductProfile {
 data x64_standard_profile: RunnerProductProfile = RunnerProductProfile {
   label: "x64-standard",
   architecture: X86_64,
-  advertised_entitlement: SmtSharedVcpu { threads_per_core: 2 },
-  guaranteed_memory_per_entitlement: QuotedDecimalGigabytes { value: gigabyte(count: 4) },
+  advertised_entitlement: extdeps.ci_runner.types.SmtSharedVcpu { threads_per_core: 2 },
+  guaranteed_memory_per_entitlement: extdeps.ci_runner.types.QuotedDecimalGigabytes { value: gigabyte(count: 4) },
   consulted_benchmarks: [
     github_x64_benchmark,
     depot_x64_benchmark,

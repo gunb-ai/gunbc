@@ -229,48 +229,48 @@ fn fleet_nominal_rackmount_arithmetic_holds() -> Bool {
 // nothing and would have made this divergence invisible.
 // ---------------------------------------------------------------------------
 
-data fleet_dimm_expectations: List<HostDimmExpectation> = [
-  HostDimmExpectation { host: host_srv1, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
-  HostDimmExpectation { host: host_srv2, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
-  HostDimmExpectation { host: host_srv3, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
-  HostDimmExpectation { host: host_srv4, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
+data fleet_dimm_expectations: List<product.installed_bom_reconcile.HostDimmExpectation> = [
+  product.installed_bom_reconcile.HostDimmExpectation { host: host_srv1, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
+  product.installed_bom_reconcile.HostDimmExpectation { host: host_srv2, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
+  product.installed_bom_reconcile.HostDimmExpectation { host: host_srv3, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
+  product.installed_bom_reconcile.HostDimmExpectation { host: host_srv4, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
 ]
 
-data srv1_dimm_observation: HostDimmObservation = DimmPopulationObserved {
+data srv1_dimm_observation: product.installed_bom_reconcile.HostDimmObservation = DimmPopulationObserved {
   host: host_srv1,
   rows: srv1_memory_population.rows,
 }
 
-data srv2_dimm_observation: HostDimmObservation = DimmPopulationObserved {
+data srv2_dimm_observation: product.installed_bom_reconcile.HostDimmObservation = DimmPopulationObserved {
   host: host_srv2,
   rows: srv2_memory_population.rows,
 }
 
-data srv3_dimm_observation: HostDimmObservation = DimmPopulationObserved {
+data srv3_dimm_observation: product.installed_bom_reconcile.HostDimmObservation = DimmPopulationObserved {
   host: host_srv3,
   rows: srv3_memory_population.rows,
 }
 
-data srv4_dimm_observation: HostDimmObservation = DimmObservationAbsent {
+data srv4_dimm_observation: product.installed_bom_reconcile.HostDimmObservation = DimmObservationAbsent {
   host: host_srv4,
   cause: "no per-DIMM read of srv4 exists at either grain: the BMC Redfish read of 192.168.1.195 was never authenticated (gunbc.fleet_intent srv4_memory_population_deferral) and no dmidecode receipt has been supplied",
 }
 
-data fleet_dimm_verdicts: List<DimmReconcileVerdict> = [
+data fleet_dimm_verdicts: List<product.installed_bom_reconcile.DimmReconcileVerdict> = [
   dimm_reconcile_verdict(
-    expectation: HostDimmExpectation { host: host_srv1, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
+    expectation: product.installed_bom_reconcile.HostDimmExpectation { host: host_srv1, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
     observation: srv1_dimm_observation,
   ),
   dimm_reconcile_verdict(
-    expectation: HostDimmExpectation { host: host_srv2, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
+    expectation: product.installed_bom_reconcile.HostDimmExpectation { host: host_srv2, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
     observation: srv2_dimm_observation,
   ),
   dimm_reconcile_verdict(
-    expectation: HostDimmExpectation { host: host_srv3, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
+    expectation: product.installed_bom_reconcile.HostDimmExpectation { host: host_srv3, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
     observation: srv3_dimm_observation,
   ),
   dimm_reconcile_verdict(
-    expectation: HostDimmExpectation { host: host_srv4, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
+    expectation: product.installed_bom_reconcile.HostDimmExpectation { host: host_srv4, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
     observation: srv4_dimm_observation,
   ),
 ]
@@ -281,38 +281,38 @@ data fleet_dimm_verdicts: List<DimmReconcileVerdict> = [
 // modeled intent rather than a per-host reading of what is in the socket. The
 // four rows below say so, and they are what a dmidecode -t processor receipt
 // dissolves.
-data fleet_processor_expectations: List<HostProcessorExpectation> = [
-  HostProcessorExpectation { host: host_srv1, catalog: altra_max_m12830_catalog },
-  HostProcessorExpectation { host: host_srv2, catalog: altra_max_m12830_catalog },
-  HostProcessorExpectation { host: host_srv3, catalog: altra_max_m12830_catalog },
-  HostProcessorExpectation { host: host_srv4, catalog: altra_max_m12830_catalog },
+data fleet_processor_expectations: List<product.installed_bom_reconcile.HostProcessorExpectation> = [
+  product.installed_bom_reconcile.HostProcessorExpectation { host: host_srv1, catalog: altra_max_m12830_catalog },
+  product.installed_bom_reconcile.HostProcessorExpectation { host: host_srv2, catalog: altra_max_m12830_catalog },
+  product.installed_bom_reconcile.HostProcessorExpectation { host: host_srv3, catalog: altra_max_m12830_catalog },
+  product.installed_bom_reconcile.HostProcessorExpectation { host: host_srv4, catalog: altra_max_m12830_catalog },
 ]
 
-data fleet_processor_observation_absent_cause: NonEmptyStr = "no per-host processor reading exists: the fleet processor is modeled intent (gunbc.fleet_intent fleet_intent_cpu) and no dmidecode -t processor receipt has been supplied"
+data fleet_processor_observation_absent_cause: std.types.NonEmptyStr = "no per-host processor reading exists: the fleet processor is modeled intent (gunbc.fleet_intent fleet_intent_cpu) and no dmidecode -t processor receipt has been supplied"
 
-data fleet_processor_observations: List<HostProcessorObservation> = [
+data fleet_processor_observations: List<product.installed_bom_reconcile.HostProcessorObservation> = [
   ProcessorObservationAbsent { host: host_srv1, cause: fleet_processor_observation_absent_cause },
-  ProcessorObservationAbsent { host: host_srv2, cause: fleet_processor_observation_absent_cause },
-  ProcessorObservationAbsent { host: host_srv3, cause: fleet_processor_observation_absent_cause },
-  ProcessorObservationAbsent { host: host_srv4, cause: fleet_processor_observation_absent_cause },
+  product.installed_bom_reconcile.ProcessorObservationAbsent { host: host_srv2, cause: fleet_processor_observation_absent_cause },
+  product.installed_bom_reconcile.ProcessorObservationAbsent { host: host_srv3, cause: fleet_processor_observation_absent_cause },
+  product.installed_bom_reconcile.ProcessorObservationAbsent { host: host_srv4, cause: fleet_processor_observation_absent_cause },
 ]
 
-data fleet_processor_verdicts: List<ProcessorReconcileVerdict> = [
+data fleet_processor_verdicts: List<product.installed_bom_reconcile.ProcessorReconcileVerdict> = [
   processor_reconcile_verdict(
-    expectation: HostProcessorExpectation { host: host_srv1, catalog: altra_max_m12830_catalog },
-    observation: ProcessorObservationAbsent { host: host_srv1, cause: fleet_processor_observation_absent_cause },
+    expectation: product.installed_bom_reconcile.HostProcessorExpectation { host: host_srv1, catalog: altra_max_m12830_catalog },
+    observation: product.installed_bom_reconcile.ProcessorObservationAbsent { host: host_srv1, cause: fleet_processor_observation_absent_cause },
   ),
   processor_reconcile_verdict(
-    expectation: HostProcessorExpectation { host: host_srv2, catalog: altra_max_m12830_catalog },
-    observation: ProcessorObservationAbsent { host: host_srv2, cause: fleet_processor_observation_absent_cause },
+    expectation: product.installed_bom_reconcile.HostProcessorExpectation { host: host_srv2, catalog: altra_max_m12830_catalog },
+    observation: product.installed_bom_reconcile.ProcessorObservationAbsent { host: host_srv2, cause: fleet_processor_observation_absent_cause },
   ),
   processor_reconcile_verdict(
-    expectation: HostProcessorExpectation { host: host_srv3, catalog: altra_max_m12830_catalog },
-    observation: ProcessorObservationAbsent { host: host_srv3, cause: fleet_processor_observation_absent_cause },
+    expectation: product.installed_bom_reconcile.HostProcessorExpectation { host: host_srv3, catalog: altra_max_m12830_catalog },
+    observation: product.installed_bom_reconcile.ProcessorObservationAbsent { host: host_srv3, cause: fleet_processor_observation_absent_cause },
   ),
   processor_reconcile_verdict(
-    expectation: HostProcessorExpectation { host: host_srv4, catalog: altra_max_m12830_catalog },
-    observation: ProcessorObservationAbsent { host: host_srv4, cause: fleet_processor_observation_absent_cause },
+    expectation: product.installed_bom_reconcile.HostProcessorExpectation { host: host_srv4, catalog: altra_max_m12830_catalog },
+    observation: product.installed_bom_reconcile.ProcessorObservationAbsent { host: host_srv4, cause: fleet_processor_observation_absent_cause },
   ),
 ]
 
@@ -341,25 +341,25 @@ data fleet_processor_verdicts: List<ProcessorReconcileVerdict> = [
 // reservations through ordinary ledger events when the sticks arrive.
 // ---------------------------------------------------------------------------
 
-data fleet_lot_allocation_seed: InventoryLotAllocator = inventory_lot_allocator_initial()
+data fleet_lot_allocation_seed: product.inventory.InventoryLotAllocator = inventory_lot_allocator_initial()
 
 data dimm_lot_64gib_32x_identity: product.inventory.InventoryLotIdentity = mint_inventory_lot_identity(alloc: fleet_lot_allocation_seed).id
 
-data fleet_lot_allocator_after_dimm_lot: InventoryLotAllocator = mint_inventory_lot_identity(alloc: fleet_lot_allocation_seed).alloc
+data fleet_lot_allocator_after_dimm_lot: product.inventory.InventoryLotAllocator = mint_inventory_lot_identity(alloc: fleet_lot_allocation_seed).alloc
 
-data dimm_lot_64gib_32x: ProcurementLot = ProcurementLot {
+data dimm_lot_64gib_32x: product.inventory.ProcurementLot = product.inventory.ProcurementLot {
   identity: dimm_lot_64gib_32x_identity,
   receipt: ReceiptHeldPrivately,
-  catalog: CatalogRowUnread {
-    observed_family: "64 GiB DDR4 DIMM, exact vendor and part unread" as NonEmptyStr,
-    read_obligation: "read the manufacturer and exact part number off the delivered sticks or the order confirmation, author the cited DramModuleCatalogRow in extdeps.memory against the manufacturer datasheet with the part number decomposed onto chip_width, rank_count and buffering, then replace this arm with CatalogRowExact naming that row" as NonEmptyStr,
+  catalog: product.inventory.CatalogRowUnread {
+    observed_family: "64 GiB DDR4 DIMM, exact vendor and part unread" as std.types.NonEmptyStr,
+    read_obligation: "read the manufacturer and exact part number off the delivered sticks or the order confirmation, author the cited DramModuleCatalogRow in extdeps.memory against the manufacturer datasheet with the part number decomposed onto chip_width, rank_count and buffering, then replace this arm with CatalogRowExact naming that row" as std.types.NonEmptyStr,
   },
-  display_label: "64 GiB DIMM lot, 32 sticks, fleet memory uplift" as NonEmptyStr,
+  display_label: "64 GiB DIMM lot, 32 sticks, fleet memory uplift" as std.types.NonEmptyStr,
   quantity_acquired: 32,
   landed_cost: LandedCostUnsettled,
 }
 
-data dimm_lot_64gib_32x_ledger: List<InventoryEvent> = [
+data dimm_lot_64gib_32x_ledger: List<product.inventory.InventoryEvent> = [
   LotAcquired { lot: dimm_lot_64gib_32x_identity },
 ]
 
