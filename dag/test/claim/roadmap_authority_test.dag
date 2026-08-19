@@ -1,4 +1,4 @@
-module test.claim.long.roadmap_authority
+module test.claim.roadmap_authority
 
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import std.types { NonEmptyStr, String }
