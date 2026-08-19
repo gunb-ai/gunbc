@@ -38730,6 +38730,106 @@ pub struct RequiredFloorClaim {
     pub warn_ms: u64,
 }
 
+/// The site-projection loop's one decision, per identity, kept instead of discarded into three
+/// anonymous `usize` counters. Execution/admission derives from THIS alone — never from
+/// `LongHomeStorageAgreement` below, which observes a different, purely diagnostic fact.
+///
+/// Modeled authority: `v2.workflow.required_floor` `RequiredFloorDisposition`
+/// (`src/v2/workflow/required_floor.dag`). This Rust type is the realization of that `.dag`
+/// declaration, not its origin — the three arms and their meaning are declared there first; this
+/// enum's shape must track it rather than the reverse.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RequiredFloorDisposition {
+    /// Admitted into `claims`: the module's authored name did not match a long-home prefix and
+    /// the module does not declare `ReadsLiveTree`.
+    Planned,
+    /// Declined because the module's AUTHORED name (read from its own source, never its path)
+    /// matches a `long_home_prefixes()` entry. Carries the exact prefix that matched, which the
+    /// former bare `long_declined` counter discarded.
+    DeclinedLongModule { matched_prefix: String },
+    /// Declined because the module declares `LiveTreeDisposition = ReadsLiveTree` and cannot
+    /// execute in the hermetic frame this floor runs.
+    DeclinedLiveTree,
+}
+
+/// One identity's `RequiredFloorDisposition`, keyed by the qualified `module.function` name so
+/// downstream consumers can join on identity rather than reconstruct a population from filenames
+/// or intended-rename lists.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RequiredFloorDispositionRow {
+    pub identity: String,
+    pub disposition: RequiredFloorDisposition,
+}
+
+/// A storage/name-hygiene DIAGNOSTIC, cross-checking a witness file's PHYSICAL PATH (does it sit
+/// under a `long`-shaped directory) against its AUTHORED module declaration (does `module_path`
+/// match a `long_home_prefixes()` entry). This is NOT an admission fact: the 2026-08-04 ruling
+/// forbids deriving admission from a path, `RequiredFloorDisposition` above is the sole
+/// admission authority, and this value must never feed, reshape, or serve as a fallback for that
+/// decision. It exists because the tree has drifted in BOTH directions between path and
+/// declared module — a `git mv` can land a file under `long/` without updating its declaration
+/// (still executing) or a file can be renamed out of `long/` while keeping a long-prefixed
+/// declaration (still declined).
+///
+/// Modeled authority: `v2.workflow.required_floor` `LongHomeStorageAgreement`
+/// (`src/v2/workflow/required_floor.dag`), including the derivation
+/// `long_home_storage_agreement(path_is_long: Bool, module_is_long: Bool)` that names the same
+/// Cartesian product this file's `long_home_storage_agreement(bool, bool)` below realizes. The
+/// four arms are not a hand-picked enum: they are total over `(path_is_long, module_is_long)`,
+/// and that totality is declared in `.dag`, not invented here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LongHomeStorageAgreement {
+    /// Path and module agree: both long.
+    LongPathAndLongModule,
+    /// Path and module agree: both short.
+    ShortPathAndShortModule,
+    /// Disagreement whose consequence is EXECUTION: the path looks quarantined but the module is
+    /// not long-prefixed, so the floor runs it anyway.
+    LongPathButExecutingModule,
+    /// Disagreement whose consequence is DECLINE: the path looks ordinary but the module is
+    /// long-prefixed, so the floor excludes it anyway.
+    ShortPathButDeclinedModule,
+}
+
+/// One identity's `LongHomeStorageAgreement`, keyed the same way as `RequiredFloorDispositionRow`
+/// so the two receipts join on `identity`. The agreement itself is computed once per file (the
+/// fact it observes is file-grained); this row repeats it per site purely for joinability.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LongHomeStorageAgreementRow {
+    pub identity: String,
+    pub agreement: LongHomeStorageAgreement,
+}
+
+/// A generic path-segment predicate: true when `path` contains a `long` directory component
+/// anywhere in its ancestry. This is deliberately NOT a hardcoded substring match against one
+/// literal directory — the corpus carries multiple real, only loosely-correlated `long`-shaped
+/// homes (`dag/test/claim/long/`, `src/v2/test/long/`, `src/v2/test/claim/long/`, mirroring the
+/// three `long_home_prefixes()` module-name prefixes above), and a single hardcoded string would
+/// silently miss the others.
+fn is_long_home_path(path: &str) -> bool {
+    path.split('/').any(|segment| segment == "long")
+}
+
+/// The pure (bool, bool) -> LongHomeStorageAgreement mapping. Takes no file, no module name, no
+/// prefix list -- only the two booleans the caller has already derived -- so this function
+/// cannot itself read a path or a module name and cannot become a second admission authority by
+/// accretion.
+///
+/// Realizes `v2.workflow.required_floor` `long_home_storage_agreement` in
+/// `src/v2/workflow/required_floor.dag` — the match arms below must stay in exact correspondence
+/// with that `.dag` function's arms.
+fn long_home_storage_agreement(
+    path_is_long: bool,
+    module_is_long: bool,
+) -> LongHomeStorageAgreement {
+    match (path_is_long, module_is_long) {
+        (true, true) => LongHomeStorageAgreement::LongPathAndLongModule,
+        (false, false) => LongHomeStorageAgreement::ShortPathAndShortModule,
+        (true, false) => LongHomeStorageAgreement::LongPathButExecutingModule,
+        (false, true) => LongHomeStorageAgreement::ShortPathButDeclinedModule,
+    }
+}
+
 /// What one required-floor attempt did. The three identity counts are separate fields rather
 /// than one `total` because the operator's acceptance census asks them to be EQUAL, and a
 /// single number cannot be compared with itself: a run that planned 9,267 claims, executed
@@ -38760,6 +38860,13 @@ pub struct RequiredFloorOutcome {
     pub host_tool_unresolved: Vec<String>,
     pub over_warn: usize,
     pub failures: Vec<String>,
+    /// Per-identity `RequiredFloorDisposition`, one row per (module, function) site the
+    /// site-projection loop considered. This is the sole admission authority for the site; see
+    /// the type's doc comment.
+    pub required_floor_disposition: Vec<RequiredFloorDispositionRow>,
+    /// Per-identity `LongHomeStorageAgreement`, a storage/name-hygiene diagnostic that never
+    /// feeds admission. See the type's doc comment.
+    pub long_home_storage_agreement: Vec<LongHomeStorageAgreementRow>,
 }
 
 /// A witness site as preparation found it — the file's path, its module, and the `test fn`
@@ -39603,21 +39710,44 @@ pub fn run_required_floor(
     let mut long_declined = 0usize;
     let mut live_declined = 0usize;
     let mut sites_offered = 0usize;
+    let mut disposition_rows: Vec<RequiredFloorDispositionRow> = Vec::new();
+    let mut storage_agreement_rows: Vec<LongHomeStorageAgreementRow> = Vec::new();
     for file in files {
-        let long_home = long_home_prefixes
+        let matched_prefix = long_home_prefixes
             .iter()
-            .any(|prefix| file.module_path.starts_with(prefix.as_str()));
+            .find(|prefix| file.module_path.starts_with(prefix.as_str()));
+        let long_home = matched_prefix.is_some();
+        // Diagnostic only -- computed once per file and never consulted by the admission
+        // branching below. See `LongHomeStorageAgreement`'s doc comment.
+        let path_is_long = is_long_home_path(&file.path);
+        let storage_agreement = long_home_storage_agreement(path_is_long, long_home);
         for function in &file.functions {
             sites_offered += 1;
+            let identity = format!("{}.{}", file.module_path, function);
+            storage_agreement_rows.push(LongHomeStorageAgreementRow {
+                identity: identity.clone(),
+                agreement: storage_agreement,
+            });
             if long_home {
                 long_declined += 1;
+                disposition_rows.push(RequiredFloorDispositionRow {
+                    identity,
+                    disposition: RequiredFloorDisposition::DeclinedLongModule {
+                        matched_prefix: matched_prefix
+                            .expect("long_home is true only when matched_prefix is Some")
+                            .clone(),
+                    },
+                });
                 continue;
             }
             if file.reads_live_tree {
                 live_declined += 1;
+                disposition_rows.push(RequiredFloorDispositionRow {
+                    identity,
+                    disposition: RequiredFloorDisposition::DeclinedLiveTree,
+                });
                 continue;
             }
-            let qualified = format!("{}.{}", file.module_path, function);
             // ONE EXECUTABLE CLAIM PER QUALIFIED IDENTITY, REFUSED HERE AND NAMED.
             //
             // The deleted manifest carried this invariant and refused BEFORE running anything,
@@ -39627,15 +39757,19 @@ pub fn run_required_floor(
             // that two populations disagree -- never which identity caused it. Planned-identity
             // uniqueness and receipt completeness are different properties, and the terminal
             // `planned == executed == receipted` check remains as the second, separate one.
-            if let Some(prior) = planned_identities.replace(qualified.clone()) {
+            if let Some(prior) = planned_identities.replace(identity.clone()) {
                 return Err(format!(
                     "REQUIRED-FLOOR REFUSAL cause=DuplicateWitnessIdentity identity={prior} — \
                      one qualified declaration resolved to more than one executable claim; the \
                      roster cannot name the same witness twice"
                 ));
             }
+            disposition_rows.push(RequiredFloorDispositionRow {
+                identity: identity.clone(),
+                disposition: RequiredFloorDisposition::Planned,
+            });
             claims.push(RequiredFloorClaim {
-                qualified: qualified.clone(),
+                qualified: identity,
                 module_path: file.module_path.clone(),
                 function: function.clone(),
                 execution_mode: v1_interpreter::ExecutionMode::Hermetic,
@@ -39761,6 +39895,8 @@ pub fn run_required_floor(
         .ok()
         .is_some_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
     let roster_join_active = roster_join_path.is_some() || roster_join_only;
+    let required_floor_disposition_path = std::env::var("GUNBC_REQUIRED_FLOOR_DISPOSITION").ok();
+    let long_home_storage_agreement_path = std::env::var("GUNBC_LONG_HOME_STORAGE_AGREEMENT").ok();
     let mut roster_join_report = if roster_join_active {
         let mut roster_identities: Vec<String> = expected_red_roster.iter().cloned().collect();
         roster_identities.sort();
@@ -39844,6 +39980,8 @@ pub fn run_required_floor(
         host_tool_unresolved: Vec::new(),
         over_warn: 0,
         failures: Vec::new(),
+        required_floor_disposition: disposition_rows,
+        long_home_storage_agreement: storage_agreement_rows,
     };
     let mut receipted: HashSet<String> = HashSet::new();
 
@@ -40454,7 +40592,321 @@ pub fn run_required_floor(
             crate::expected_red_roster_join::write_join_tsv(&path, &join)?;
         }
     }
+    if let Some(path) = required_floor_disposition_path {
+        write_required_floor_disposition_tsv(&path, &outcome.required_floor_disposition)?;
+    }
+    if let Some(path) = long_home_storage_agreement_path {
+        write_long_home_storage_agreement_tsv(&path, &outcome.long_home_storage_agreement)?;
+    }
     Ok(outcome)
+}
+
+fn required_floor_disposition_label(disposition: &RequiredFloorDisposition) -> &'static str {
+    match disposition {
+        RequiredFloorDisposition::Planned => "planned",
+        RequiredFloorDisposition::DeclinedLongModule { .. } => "declined_long_module",
+        RequiredFloorDisposition::DeclinedLiveTree => "declined_live_tree",
+    }
+}
+
+fn required_floor_disposition_matched_prefix(disposition: &RequiredFloorDisposition) -> &str {
+    match disposition {
+        RequiredFloorDisposition::DeclinedLongModule { matched_prefix } => matched_prefix,
+        RequiredFloorDisposition::Planned | RequiredFloorDisposition::DeclinedLiveTree => "",
+    }
+}
+
+/// Writes the per-identity `RequiredFloorDisposition` receipt as TSV: one row per site the
+/// site-projection loop considered, joinable on `identity`. This is a receipt of the admission
+/// decision already made above -- writing it changes nothing about which claims execute.
+fn write_required_floor_disposition_tsv(
+    path: &str,
+    rows: &[RequiredFloorDispositionRow],
+) -> Result<(), String> {
+    use std::io::Write;
+    let mut file = std::fs::File::create(path)
+        .map_err(|e| format!("write_required_floor_disposition_tsv: create {path}: {e}"))?;
+    let mut planned = 0usize;
+    let mut declined_long = 0usize;
+    let mut declined_live = 0usize;
+    for row in rows {
+        match &row.disposition {
+            RequiredFloorDisposition::Planned => planned += 1,
+            RequiredFloorDisposition::DeclinedLongModule { .. } => declined_long += 1,
+            RequiredFloorDisposition::DeclinedLiveTree => declined_live += 1,
+        }
+    }
+    writeln!(
+        file,
+        "# summary\ttotal={}\tplanned={}\tdeclined_long_module={}\tdeclined_live_tree={}",
+        rows.len(),
+        planned,
+        declined_long,
+        declined_live
+    )
+    .map_err(|e| format!("write_required_floor_disposition_tsv: write {path}: {e}"))?;
+    writeln!(file, "identity\tdisposition\tmatched_prefix")
+        .map_err(|e| format!("write_required_floor_disposition_tsv: write {path}: {e}"))?;
+    for row in rows {
+        writeln!(
+            file,
+            "{}\t{}\t{}",
+            row.identity.replace(['\t', '\n'], " "),
+            required_floor_disposition_label(&row.disposition),
+            required_floor_disposition_matched_prefix(&row.disposition).replace(['\t', '\n'], " "),
+        )
+        .map_err(|e| format!("write_required_floor_disposition_tsv: write {path}: {e}"))?;
+    }
+    Ok(())
+}
+
+fn long_home_storage_agreement_label(agreement: LongHomeStorageAgreement) -> &'static str {
+    match agreement {
+        LongHomeStorageAgreement::LongPathAndLongModule => "long_path_and_long_module",
+        LongHomeStorageAgreement::ShortPathAndShortModule => "short_path_and_short_module",
+        LongHomeStorageAgreement::LongPathButExecutingModule => "long_path_but_executing_module",
+        LongHomeStorageAgreement::ShortPathButDeclinedModule => "short_path_but_declined_module",
+    }
+}
+
+/// Writes the per-identity `LongHomeStorageAgreement` receipt as TSV: a storage/name-hygiene
+/// DIAGNOSTIC, joinable on `identity` with the disposition receipt above, that never feeds
+/// admission. See the type's doc comment for why the two receipts are kept separate.
+fn write_long_home_storage_agreement_tsv(
+    path: &str,
+    rows: &[LongHomeStorageAgreementRow],
+) -> Result<(), String> {
+    use std::io::Write;
+    let mut file = std::fs::File::create(path)
+        .map_err(|e| format!("write_long_home_storage_agreement_tsv: create {path}: {e}"))?;
+    let mut agree_long = 0usize;
+    let mut agree_short = 0usize;
+    let mut long_path_executing = 0usize;
+    let mut short_path_declined = 0usize;
+    for row in rows {
+        match row.agreement {
+            LongHomeStorageAgreement::LongPathAndLongModule => agree_long += 1,
+            LongHomeStorageAgreement::ShortPathAndShortModule => agree_short += 1,
+            LongHomeStorageAgreement::LongPathButExecutingModule => long_path_executing += 1,
+            LongHomeStorageAgreement::ShortPathButDeclinedModule => short_path_declined += 1,
+        }
+    }
+    writeln!(
+        file,
+        "# summary\ttotal={}\tlong_path_and_long_module={}\tshort_path_and_short_module={}\t\
+         long_path_but_executing_module={}\tshort_path_but_declined_module={}",
+        rows.len(),
+        agree_long,
+        agree_short,
+        long_path_executing,
+        short_path_declined
+    )
+    .map_err(|e| format!("write_long_home_storage_agreement_tsv: write {path}: {e}"))?;
+    writeln!(file, "identity\tagreement")
+        .map_err(|e| format!("write_long_home_storage_agreement_tsv: write {path}: {e}"))?;
+    for row in rows {
+        writeln!(
+            file,
+            "{}\t{}",
+            row.identity.replace(['\t', '\n'], " "),
+            long_home_storage_agreement_label(row.agreement),
+        )
+        .map_err(|e| format!("write_long_home_storage_agreement_tsv: write {path}: {e}"))?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod required_floor_disposition_and_storage_agreement_law {
+    //! `RequiredFloorDisposition` decides admission; `LongHomeStorageAgreement` never does.
+    //! Tested on the pure boundary functions the site-projection loop composes, plus one real
+    //! corpus specimen so the storage-agreement classification is grounded in an actual file
+    //! rather than only in synthetic strings. Fixtures deliberately never touch the filesystem
+    //! or the live tree — the whole subject is representable as (path, module) pairs.
+
+    use super::*;
+
+    // ── is_long_home_path: a path-segment predicate, not a substring match ──────────────────
+
+    #[test]
+    fn a_long_segment_anywhere_in_the_path_is_detected() {
+        assert!(is_long_home_path("dag/test/claim/long/foo_test.dag"));
+    }
+
+    #[test]
+    fn a_path_with_no_long_segment_is_not_long() {
+        assert!(!is_long_home_path("dag/test/claim/foo_test.dag"));
+    }
+
+    #[test]
+    fn a_substring_match_is_not_a_segment_match() {
+        // "belong" contains the letters "long" but is not the path SEGMENT "long" — the
+        // predicate splits on '/' rather than scanning for a substring, so this must not match.
+        assert!(!is_long_home_path("dag/test/claim/belong/foo_test.dag"));
+    }
+
+    // ── long_home_storage_agreement: all four arms, by construction exhaustive ──────────────
+
+    #[test]
+    fn long_path_and_long_module_agree() {
+        assert_eq!(
+            long_home_storage_agreement(true, true),
+            LongHomeStorageAgreement::LongPathAndLongModule
+        );
+    }
+
+    #[test]
+    fn short_path_and_short_module_agree() {
+        assert_eq!(
+            long_home_storage_agreement(false, false),
+            LongHomeStorageAgreement::ShortPathAndShortModule
+        );
+    }
+
+    #[test]
+    fn long_path_but_executing_module_disagree() {
+        assert_eq!(
+            long_home_storage_agreement(true, false),
+            LongHomeStorageAgreement::LongPathButExecutingModule
+        );
+    }
+
+    #[test]
+    fn short_path_but_declined_module_disagree() {
+        assert_eq!(
+            long_home_storage_agreement(false, true),
+            LongHomeStorageAgreement::ShortPathButDeclinedModule
+        );
+    }
+
+    /// The live specimen named at the ruling that grounded these arms: a `git mv` landed the
+    /// file under `dag/test/claim/long/` without updating its own module declaration, so the
+    /// directory says one thing and the authored name says another. This is the exact
+    /// discrepancy `LongHomeStorageAgreement` exists to surface, on the actual file rather than
+    /// a stand-in for it.
+    #[test]
+    fn qualified_declaration_reference_specimen_is_long_path_but_executing_module() {
+        let path = "dag/test/claim/long/qualified_declaration_reference_emit_cross_module_witness_test.dag";
+        let module = "test.claim.qualified_declaration_reference_emit_cross_module_witness";
+
+        let path_is_long = is_long_home_path(path);
+        let matched_prefix = long_home_prefixes_for_test()
+            .iter()
+            .any(|prefix| module.starts_with(prefix.as_str()));
+
+        assert!(
+            path_is_long,
+            "the file lives under a long/-shaped directory"
+        );
+        assert!(
+            !matched_prefix,
+            "the module declaration does not carry a long-home prefix"
+        );
+        assert_eq!(
+            long_home_storage_agreement(path_is_long, matched_prefix),
+            LongHomeStorageAgreement::LongPathButExecutingModule,
+            "path-long/module-short must classify as the specimen's known disagreement"
+        );
+    }
+
+    /// Mirrors `long_home_prefixes()` in `src/v2/workflow/required_floor.dag` — the `.dag`
+    /// authority the host already reads for admission. Restated here rather than imported
+    /// because the loop's own matched-prefix decision is driven by the `.dag`-evaluated roster
+    /// at runtime; this fixture exists only to ground the specimen test above against the same
+    /// three literal prefixes without requiring a live interpreter frame in a unit test.
+    fn long_home_prefixes_for_test() -> Vec<String> {
+        vec![
+            "test.claim.long.".to_string(),
+            "v2.test.long.".to_string(),
+            "v2.test.claim.long.".to_string(),
+        ]
+    }
+
+    // ── disposition/agreement TSV writers: identity-grain, not a summary-only receipt ───────
+
+    #[test]
+    fn disposition_tsv_carries_one_row_per_identity_with_matched_prefix() {
+        let dir = std::env::temp_dir().join(format!(
+            "required_floor_disposition_tsv_test_{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let path = dir.join("disposition.tsv");
+        let path_str = path.to_string_lossy().to_string();
+
+        let rows = vec![
+            RequiredFloorDispositionRow {
+                identity: "m.one.a".to_string(),
+                disposition: RequiredFloorDisposition::Planned,
+            },
+            RequiredFloorDispositionRow {
+                identity: "test.claim.long.two.b".to_string(),
+                disposition: RequiredFloorDisposition::DeclinedLongModule {
+                    matched_prefix: "test.claim.long.".to_string(),
+                },
+            },
+            RequiredFloorDispositionRow {
+                identity: "m.three.c".to_string(),
+                disposition: RequiredFloorDisposition::DeclinedLiveTree,
+            },
+        ];
+
+        write_required_floor_disposition_tsv(&path_str, &rows).expect("write tsv");
+        let content = std::fs::read_to_string(&path).expect("read tsv");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let lines: Vec<&str> = content.lines().collect();
+        assert_eq!(lines.len(), 5, "summary + header + 3 rows: {lines:?}");
+        assert!(lines[0].starts_with("# summary"));
+        assert!(lines[0].contains("total=3"));
+        assert!(lines[0].contains("planned=1"));
+        assert!(lines[0].contains("declined_long_module=1"));
+        assert!(lines[0].contains("declined_live_tree=1"));
+        assert_eq!(lines[1], "identity\tdisposition\tmatched_prefix");
+        assert_eq!(lines[2], "m.one.a\tplanned\t");
+        assert_eq!(
+            lines[3],
+            "test.claim.long.two.b\tdeclined_long_module\ttest.claim.long."
+        );
+        assert_eq!(lines[4], "m.three.c\tdeclined_live_tree\t");
+    }
+
+    #[test]
+    fn storage_agreement_tsv_carries_one_row_per_identity() {
+        let dir = std::env::temp_dir().join(format!(
+            "long_home_storage_agreement_tsv_test_{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let path = dir.join("agreement.tsv");
+        let path_str = path.to_string_lossy().to_string();
+
+        let rows = vec![
+            LongHomeStorageAgreementRow {
+                identity: "m.one.a".to_string(),
+                agreement: LongHomeStorageAgreement::LongPathAndLongModule,
+            },
+            LongHomeStorageAgreementRow {
+                identity: "m.two.b".to_string(),
+                agreement: LongHomeStorageAgreement::LongPathButExecutingModule,
+            },
+        ];
+
+        write_long_home_storage_agreement_tsv(&path_str, &rows).expect("write tsv");
+        let content = std::fs::read_to_string(&path).expect("read tsv");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let lines: Vec<&str> = content.lines().collect();
+        assert_eq!(lines.len(), 4, "summary + header + 2 rows: {lines:?}");
+        assert!(lines[0].contains("total=2"));
+        assert!(lines[0].contains("long_path_and_long_module=1"));
+        assert!(lines[0].contains("long_path_but_executing_module=1"));
+        assert!(lines[0].contains("short_path_and_short_module=0"));
+        assert!(lines[0].contains("short_path_but_declined_module=0"));
+        assert_eq!(lines[1], "identity\tagreement");
+        assert_eq!(lines[2], "m.one.a\tlong_path_and_long_module");
+        assert_eq!(lines[3], "m.two.b\tlong_path_but_executing_module");
+    }
 }
 
 fn witness_eval_verdict_from_claim_outcome(
