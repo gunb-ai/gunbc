@@ -4214,7 +4214,7 @@ pub fn unresolved_method_frontier() -> Rc<Vec<Rc<UnresolvedMethodFrontierRow>>> 
     module_name: "v2.compiler.tokenize".to_string(),
     method: "apply".to_string(),
     occurrences: 7,
-    receiver_shape: "Primitive()".to_string(),
+    receiver_shape: "Primitive(R)".to_string(),
     cause: "receiver is a lambda parameter whose type is never inferred, so it arrives with NO authored name at all. The call is a product FIELD holding a callable — the LexMatchThunk { apply: fn(s) } idiom — not a method at all.".to_string(),
     dissolution: unbound_dissolution("lambda-parameter receiver typing, so the receiver resolves to its declared product and apply is found as a field".to_string()),
 }), Rc::new(UnresolvedMethodFrontierRow {

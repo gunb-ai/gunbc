@@ -2413,7 +2413,7 @@ fn unresolved_method_frontier() -> List<v1.compiler.infer.UnresolvedMethodFronti
       module_name: "extdeps.git.object_store",
       method: "map",
       occurrences: 2,
-      receiver_shape: "Primitive()",
+      receiver_shape: "Primitive(R)",
       cause: "receiver is `tree.entries` where `tree` is the parameter of a lambda stored in a StoreObjectFold record field, so the field's declared fn type never reaches the lambda's parameter and the projection off it has no established type.",
       dissolution: unbound_dissolution(description: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in")
     },
