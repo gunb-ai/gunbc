@@ -3,13 +3,13 @@ module test.claim.stage0_regen_convergence_real_execution_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
-data stage0_regen_convergence_home_doc: std.types.String = "Wet execution witness for the drift-fix's actual claim: 'the tree builds after regen', not a symbol/substring proxy for it (smart-ram-730 requirement; DESIGN witness-cost ruling — the smallest specimen that crosses the real boundary, not a realistic-looking one). cargo.Build.Run has no mock_response, so the hermetic discovery corpus refuses this file by construction; it is excluded from discovery (gunbc.ci_layer_roots witness_exclusion_frontier) and enrolled in bin_witness_wet_entries, same lane as self_host_artifact_materialization_real_execution_witness_test.dag."
+data stage0_regen_convergence_home_doc: String = "Wet execution witness for the drift-fix's actual claim: 'the tree builds after regen', not a symbol/substring proxy for it (smart-ram-730 requirement; DESIGN witness-cost ruling — the smallest specimen that crosses the real boundary, not a realistic-looking one). cargo.Build.Run has no mock_response, so the hermetic discovery corpus refuses this file by construction; it is excluded from discovery (gunbc.ci_layer_roots witness_exclusion_frontier) and enrolled in bin_witness_wet_entries, same lane as self_host_artifact_materialization_real_execution_witness_test.dag."
 
-data why_run_verify_alone_suffices_doc: std.types.String = "One invocation, `cargo run -p v1-compiler --bin regen_stage0 -- --verify`, crosses BOTH root-cause boundaries this drift fix closed, because of the crate topology (measured, not assumed): src/v1/stage0/src/lib.rs declares `pub mod coproduct_reflection;` inside the SAME package (name = \"v1-compiler\", src/v1/stage0/Cargo.toml) that owns the `regen_stage0` bin target, so `cargo run` cannot even start without first compiling coproduct_reflection.rs — the exact file whose `StdHashMap<(Vec<std.types.String>, ItemKind), ..>` key type required `ItemKind: Hash` and E0599'd when a regen dropped that derive (root cause 2). And `--verify` itself is the self-compile comparison that catches a checked-in seed drifted from its .dag authority without a live rebuild (root cause 1, the obs_human_elapsed two-hop bootstrap-lag class). A build failure refuses before regen ever prints its marker line; a stale-seed divergence prints regen_divergence_count > 0. Only a tree that both compiles AND self-agrees prints regen_divergence_count=0, so that exact string is the one thing this witness may accept as success — nothing weaker proves the claim."
+data why_run_verify_alone_suffices_doc: String = "One invocation, `cargo run -p v1-compiler --bin regen_stage0 -- --verify`, crosses BOTH root-cause boundaries this drift fix closed, because of the crate topology (measured, not assumed): src/v1/stage0/src/lib.rs declares `pub mod coproduct_reflection;` inside the SAME package (name = \"v1-compiler\", src/v1/stage0/Cargo.toml) that owns the `regen_stage0` bin target, so `cargo run` cannot even start without first compiling coproduct_reflection.rs — the exact file whose `StdHashMap<(Vec<String>, ItemKind), ..>` key type required `ItemKind: Hash` and E0599'd when a regen dropped that derive (root cause 2). And `--verify` itself is the self-compile comparison that catches a checked-in seed drifted from its .dag authority without a live rebuild (root cause 1, the obs_human_elapsed two-hop bootstrap-lag class). A build failure refuses before regen ever prints its marker line; a stale-seed divergence prints regen_divergence_count > 0. Only a tree that both compiles AND self-agrees prints regen_divergence_count=0, so that exact string is the one thing this witness may accept as success — nothing weaker proves the claim."
 
-data regen_stage0_success_marker: std.types.String = "regen_divergence_count=0"
+data regen_stage0_success_marker: String = "regen_divergence_count=0"
 
-test fn a_real_regen_stage0_verify_run_reports_zero_divergence() -> std.types.Bool {
+test fn a_real_regen_stage0_verify_run_reports_zero_divergence() -> Bool {
   let run = cargo.Build.Run(package: "v1-compiler", bin: "regen_stage0", args: ["--verify"])
   run.success && string_contains(s: run.stdout, pattern: regen_stage0_success_marker)
 }
@@ -19,7 +19,7 @@ test fn a_real_regen_stage0_verify_run_reports_zero_divergence() -> std.types.Bo
 // (src/v1/stage0/src/bin/regen_stage0.rs run(): the `unexpected =>` arm returns Err
 // immediately), so this exercises `cargo run`'s real process-exit plumbing without
 // re-paying the ~2-3 minute compile+emit cost, and it must NOT report the success marker.
-test fn w_RED_an_unrecognized_flag_does_not_report_the_success_marker() -> std.types.Bool {
+test fn w_RED_an_unrecognized_flag_does_not_report_the_success_marker() -> Bool {
   let run = cargo.Build.Run(package: "v1-compiler", bin: "regen_stage0", args: ["--this-flag-does-not-exist"])
   !run.success && !string_contains(s: run.stdout, pattern: regen_stage0_success_marker)
 }

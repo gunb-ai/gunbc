@@ -14,16 +14,16 @@ module v2.workflow.floor_expected_red_coherence
 // A single declared chunk to check: its fully qualified decl-fact lookup key, and the
 // short identifier spelling the aggregator body must contain if the chunk is linked.
 type ChunkDeclRef {
-  qualified_name: std.types.String
-  short_name: std.types.String
+  qualified_name: String
+  short_name: String
 }
 
 type ChunkCoherenceRefusal
-  = ChunkDeclarationUnresolved { qualified_name: std.types.String, resolution: v2.std.decl_facts_skeleton.DeclFactQualifiedNameResolution }
-  | AggregatorDeclarationUnresolved { qualified_name: std.types.String, resolution: v2.std.decl_facts_skeleton.DeclFactQualifiedNameResolution }
-  | ChunkNotLinkedIntoAggregator { chunk_qualified_name: std.types.String, chunk_short_name: std.types.String, aggregator_qualified_name: std.types.String }
-  | AuthoredIdentityMissingFromRoster { identity: std.types.String, source_chunk_qualified_name: std.types.String, message: std.types.String }
-  | RosterIdentityMissingFromAuthoredChunks { identity: std.types.String, message: std.types.String }
+  = ChunkDeclarationUnresolved { qualified_name: String, resolution: v2.std.decl_facts_skeleton.DeclFactQualifiedNameResolution }
+  | AggregatorDeclarationUnresolved { qualified_name: String, resolution: v2.std.decl_facts_skeleton.DeclFactQualifiedNameResolution }
+  | ChunkNotLinkedIntoAggregator { chunk_qualified_name: String, chunk_short_name: String, aggregator_qualified_name: String }
+  | AuthoredIdentityMissingFromRoster { identity: String, source_chunk_qualified_name: String, message: String }
+  | RosterIdentityMissingFromAuthoredChunks { identity: String, message: String }
 
 type ChunkCoherenceVerdict
   = ChunkCoherenceCoherent { checked_chunk_count: Int, checked_identity_count: Int }
@@ -34,7 +34,7 @@ type ChunkCoherenceVerdict
 // over and WHERE the real fix belongs, so the cheapest available reaction is not an
 // exclusion list re-inventing the lexeme-shape heuristic this derivation was built to
 // avoid (DESIGN §4/§5).
-fn authored_identity_missing_from_roster_message(identity: std.types.String, source_chunk_qualified_name: std.types.String) -> std.types.String {
+fn authored_identity_missing_from_roster_message(identity: String, source_chunk_qualified_name: String) -> String {
   concat(
     "identity '",
     concat(
@@ -50,7 +50,7 @@ fn authored_identity_missing_from_roster_message(identity: std.types.String, sou
   )
 }
 
-fn roster_identity_missing_from_authored_chunks_message(identity: std.types.String) -> std.types.String {
+fn roster_identity_missing_from_authored_chunks_message(identity: String) -> String {
   concat(
     "identity '",
     concat(
@@ -60,14 +60,14 @@ fn roster_identity_missing_from_authored_chunks_message(identity: std.types.Stri
   )
 }
 
-fn chunk_short_name_linked(node: v2.std.node.Node, chunk: ChunkDeclRef) -> std.types.Bool {
+fn chunk_short_name_linked(node: v2.std.node.Node, chunk: ChunkDeclRef) -> Bool {
   v2.std.decl_facts_skeleton.skeleton_contains_marshal_atom_lexeme(node: node, lexeme: chunk.short_name)
 }
 
 fn chunk_authored_identities_against_roster(
   node: v2.std.node.Node,
   chunk: ChunkDeclRef,
-  roster: std.types.List<std.types.String>
+  roster: std.types.List<String>
 ) -> std.types.List<ChunkCoherenceRefusal> {
   let authored = v2.std.decl_facts_skeleton.node_skeleton_authored_non_construction_atom_lexemes(node: node)
   v2.std.algebra.list_reverse(xs: fold(authored, init: v2.std.algebra.Empty, f: fn(acc, identity) {
@@ -92,7 +92,7 @@ fn chunk_authored_identities_against_roster(
 fn all_checked_chunk_authored_identities(
   facts: std.types.List<v2.std.decl_index.DeclFact>,
   chunks: std.types.List<ChunkDeclRef>
-) -> std.types.List<std.types.String> {
+) -> std.types.List<String> {
   v2.std.algebra.list_reverse(xs: fold(chunks, init: v2.std.algebra.Empty, f: fn(acc, chunk) {
     let resolution = v2.std.decl_facts_skeleton.resolve_decl_fact_by_qualified_name(facts: facts, qn: chunk.qualified_name)
     match v2.std.decl_facts_skeleton.decl_fact_skeleton_for_resolution(resolution: resolution) {
@@ -112,7 +112,7 @@ fn all_checked_chunk_authored_identities(
 fn roster_identities_missing_from_authored_chunks(
   facts: std.types.List<v2.std.decl_index.DeclFact>,
   chunks: std.types.List<ChunkDeclRef>,
-  roster: std.types.List<std.types.String>
+  roster: std.types.List<String>
 ) -> std.types.List<ChunkCoherenceRefusal> {
   let union_authored = all_checked_chunk_authored_identities(facts: facts, chunks: chunks)
   v2.std.algebra.list_reverse(xs: fold(roster, init: v2.std.algebra.Empty, f: fn(acc, identity) {
@@ -166,8 +166,8 @@ fn roster_identities_missing_from_authored_chunks(
 fn floor_expected_red_chunk_coherence_check(
   facts: std.types.List<v2.std.decl_index.DeclFact>,
   chunks: std.types.List<ChunkDeclRef>,
-  aggregator_qualified_name: std.types.String,
-  evaluated_roster: std.types.List<std.types.String>
+  aggregator_qualified_name: String,
+  evaluated_roster: std.types.List<String>
 ) -> ChunkCoherenceVerdict {
   let aggregator_resolution = v2.std.decl_facts_skeleton.resolve_decl_fact_by_qualified_name(facts: facts, qn: aggregator_qualified_name)
   let aggregator_causes = match aggregator_resolution {
@@ -234,7 +234,7 @@ fn floor_expected_red_chunk_coherence_check(
 // DESIGN §4b a climb deletes redundant lower-rung PRODUCTION machinery and never the
 // evidence, so these RED controls stay enrolled exactly as they are even after a live
 // census exists on top of them.
-data floor_expected_red_chunk_coherence_check_note: std.types.String = "MECHANISM ON FIXTURES: floor_expected_red_chunk_coherence_check is proven by execution against planted rosters in dag/test/claim/floor_expected_red_coherence_witness_test.dag -- a severed-aggregator RED, its cause-naming RED siblings, and a linked-chunks-only positive control. That is the complete claim this module makes about the mechanism; it is not partial."
+data floor_expected_red_chunk_coherence_check_note: String = "MECHANISM ON FIXTURES: floor_expected_red_chunk_coherence_check is proven by execution against planted rosters in dag/test/claim/floor_expected_red_coherence_witness_test.dag -- a severed-aggregator RED, its cause-naming RED siblings, and a linked-chunks-only positive control. That is the complete claim this module makes about the mechanism; it is not partial."
 
 // SEPARATE, PRE-EXISTING, UNOWNED OBLIGATION -- not debt this module introduces.
 // Folding floor_expected_red.dag's own real 20 chunks through the same check is a
@@ -254,4 +254,4 @@ data floor_expected_red_chunk_coherence_check_note: std.types.String = "MECHANIS
 // has already done -- the #8470 shape one level up. Building that preparation-time
 // consumer is its own future work item with its own owner, not a continuation of
 // this one.
-data live_floor_expected_red_coherence_join_gap_note: std.types.String = "PRE-EXISTING, UNOWNED GAP (not this module's debt): the live join of floor_expected_red.dag's own 20 chunks against its own evaluated roster is not a per-PR witness in floor_expected_red_coherence_witness_test.dag, and was not checkable by anything before this module existed either. This single gap has two faces, not two gaps: a checked chunk's identities may drift from the roster (the content face, this note's original subject), and a chunk may be missing from the caller's ChunkDeclRef roster entirely (the omission face, named on floor_expected_red_chunk_coherence_check's own SCOPE comment) -- closing either face requires the identical fresh decl_facts parse over floor_expected_red.dag's module, so one preparation-time consumer closes both. See floor_expected_red_chunk_coherence_check_note and the comment above it for why the mechanism itself is complete, and for the measured cost and natural home (a required-floor preparation-time consumer) of the still-open live-census gap."
+data live_floor_expected_red_coherence_join_gap_note: String = "PRE-EXISTING, UNOWNED GAP (not this module's debt): the live join of floor_expected_red.dag's own 20 chunks against its own evaluated roster is not a per-PR witness in floor_expected_red_coherence_witness_test.dag, and was not checkable by anything before this module existed either. This single gap has two faces, not two gaps: a checked chunk's identities may drift from the roster (the content face, this note's original subject), and a chunk may be missing from the caller's ChunkDeclRef roster entirely (the omission face, named on floor_expected_red_chunk_coherence_check's own SCOPE comment) -- closing either face requires the identical fresh decl_facts parse over floor_expected_red.dag's module, so one preparation-time consumer closes both. See floor_expected_red_chunk_coherence_check_note and the comment above it for why the mechanism itself is complete, and for the measured cost and natural home (a required-floor preparation-time consumer) of the still-open live-census gap."

@@ -38,8 +38,8 @@ fn deployed_tree_remote_desired(repository_path: std.types.FilePath) -> extdeps.
 
 fn observe_deployed_tree_remote(at: extdeps.git.GitRemoteUrlAt) -> extdeps.git.GitRemoteUrlObservation {
   let result = git.Core.RemoteUrlIn(
-    repository_path: at.repository_path as std.types.String,
-    remote: at.name as std.types.String,
+    repository_path: at.repository_path as String,
+    remote: at.name as String,
   )
   extdeps.git.git_remote_url_observation_of(
     at: at,
@@ -57,11 +57,11 @@ fn observe_deployed_tree_remote(at: extdeps.git.GitRemoteUrlAt) -> extdeps.git.G
 type DeployedTreeRemoteOutcome
   = RemoteAlreadyConverged { member: extdeps.git.GitRemoteUrlMember }
   | RemoteConverged { member: extdeps.git.GitRemoteUrlMember, previous: extdeps.git.GitRemoteUrlObservation }
-  | RemoteSetRefused { at: extdeps.git.GitRemoteUrlAt, stderr: std.types.String }
+  | RemoteSetRefused { at: extdeps.git.GitRemoteUrlAt, stderr: String }
   | RemoteReadBackAbsent { at: extdeps.git.GitRemoteUrlAt }
   | RemoteReadBackMismatched { at: extdeps.git.GitRemoteUrlAt, expected: std.types.NonEmptyStr, observed: std.types.NonEmptyStr }
-  | RemoteReadBackRefused { at: extdeps.git.GitRemoteUrlAt, exit_code: std.types.Int, stderr: std.types.String }
-  | RemoteRepositoryUnusable { at: extdeps.git.GitRemoteUrlAt, exit_code: std.types.Int, stderr: std.types.String }
+  | RemoteReadBackRefused { at: extdeps.git.GitRemoteUrlAt, exit_code: Int, stderr: String }
+  | RemoteRepositoryUnusable { at: extdeps.git.GitRemoteUrlAt, exit_code: Int, stderr: String }
 
 fn deployed_tree_remote_read_back(
   desired: extdeps.git.GitRemoteUrlMember,
@@ -69,8 +69,8 @@ fn deployed_tree_remote_read_back(
 ) -> DeployedTreeRemoteOutcome {
   match observe_deployed_tree_remote(at: desired.at) {
     GitRemoteUrlObserved { member: observed } => {
-      let seen = observed.url as std.types.String
-      let want = desired.url as std.types.String
+      let seen = observed.url as String
+      let want = desired.url as String
       if seen == want {
         RemoteConverged { member: desired, previous: previous }
       } else {
@@ -95,8 +95,8 @@ fn deployed_tree_remote_write(
 ) -> DeployedTreeRemoteOutcome {
   let set = git.Core.ConfigLocalSetInRepo(
     repo: desired.at.repository_path,
-    key: extdeps.git.git_remote_url_config_key(name: desired.at.name) as std.types.String,
-    value: desired.url as std.types.String,
+    key: extdeps.git.git_remote_url_config_key(name: desired.at.name) as String,
+    value: desired.url as String,
   )
   if set.success {
     deployed_tree_remote_read_back(desired: desired, previous: previous)
@@ -114,8 +114,8 @@ fn ensure_deployed_tree_remote(repository_path: std.types.FilePath) -> DeployedT
   let observed = observe_deployed_tree_remote(at: desired.at)
   match observed {
     GitRemoteUrlObserved { member: current } => {
-      let seen = current.url as std.types.String
-      let want = desired.url as std.types.String
+      let seen = current.url as String
+      let want = desired.url as String
       if seen == want {
         RemoteAlreadyConverged { member: desired }
       } else {
@@ -130,25 +130,25 @@ fn ensure_deployed_tree_remote(repository_path: std.types.FilePath) -> DeployedT
   }
 }
 
-fn deployed_tree_remote_outcome_text(outcome: DeployedTreeRemoteOutcome) -> std.types.String {
+fn deployed_tree_remote_outcome_text(outcome: DeployedTreeRemoteOutcome) -> String {
   match outcome {
     RemoteAlreadyConverged { member: m } =>
-      join(["remote already converged: ", m.at.name as std.types.String, " -> ", m.url as std.types.String], "")
+      join(["remote already converged: ", m.at.name as String, " -> ", m.url as String], "")
     RemoteConverged { member: m, previous: _ } =>
-      join(["remote converged: ", m.at.name as std.types.String, " -> ", m.url as std.types.String], "")
+      join(["remote converged: ", m.at.name as String, " -> ", m.url as String], "")
     RemoteSetRefused { at: at, stderr: e } =>
-      join(["git config refused for ", at.repository_path as std.types.String, ": ", e], "")
+      join(["git config refused for ", at.repository_path as String, ": ", e], "")
     RemoteReadBackAbsent { at: at } =>
-      join(["read-back found no remote after a successful write in ", at.repository_path as std.types.String], "")
+      join(["read-back found no remote after a successful write in ", at.repository_path as String], "")
     RemoteReadBackMismatched { at: at, expected: x, observed: o } =>
       join([
-        "read-back mismatched in ", at.repository_path as std.types.String,
-        ": expected ", x as std.types.String, ", observed ", o as std.types.String,
+        "read-back mismatched in ", at.repository_path as String,
+        ": expected ", x as String, ", observed ", o as String,
       ], "")
     RemoteReadBackRefused { at: at, exit_code: c, stderr: e } =>
-      join(["read-back refused in ", at.repository_path as std.types.String, ": ", e], "")
+      join(["read-back refused in ", at.repository_path as String, ": ", e], "")
     RemoteRepositoryUnusable { at: at, exit_code: c, stderr: e } =>
-      join(["not a usable repository at ", at.repository_path as std.types.String, ": ", e], "")
+      join(["not a usable repository at ", at.repository_path as String, ": ", e], "")
   }
 }
 
@@ -182,7 +182,7 @@ fn deployed_tree_remote_exit(outcome: DeployedTreeRemoteOutcome) -> std.process.
 // (live_deploy.spec deployment_tree_remote_unit_name), ordered third so the binary is a
 // precondition the membership itself establishes. The argument above survives the correction --
 // the caller still knows its own tree -- but the sentence named the wrong caller.
-func ensure_deployed_tree_remote_wet(repository_path: std.types.String) -> std.process.ProcessExit {
+func ensure_deployed_tree_remote_wet(repository_path: String) -> std.process.ProcessExit {
   deployed_tree_remote_exit(
     outcome: ensure_deployed_tree_remote(repository_path: repository_path as std.types.FilePath),
   )

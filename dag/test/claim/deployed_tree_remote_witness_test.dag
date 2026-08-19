@@ -9,9 +9,9 @@ fn green_at() -> extdeps.git.GitRemoteUrlAt {
   }
 }
 
-fn observed_url(o: extdeps.git.GitRemoteUrlObservation) -> std.types.String {
+fn observed_url(o: extdeps.git.GitRemoteUrlObservation) -> String {
   match o {
-    GitRemoteUrlObserved { member: m } => m.url as std.types.String
+    GitRemoteUrlObserved { member: m } => m.url as String
     GitRemoteUrlAbsent { at: _ } => "<absent>"
     GitRemoteUrlRepositoryUnusable { at: _, exit_code: _, stderr: _ } => "<unusable>"
     GitRemoteUrlReadRefused { at: _, exit_code: _, stderr: _ } => "<refused>"
@@ -28,20 +28,20 @@ fn observed_url(o: extdeps.git.GitRemoteUrlObservation) -> std.types.String {
 //
 // The exits are git's own, transcribed from srv1 on 2026-08-18 where the live belt logged
 // `remote get-url origin (exit=2)` with `error: No such remote 'origin'`.
-test fn an_unconfigured_remote_is_absent_not_unusable() -> std.types.Bool {
+test fn an_unconfigured_remote_is_absent_not_unusable() -> Bool {
   observed_url(o: extdeps.git.git_remote_url_observation_of(
     at: green_at(), exit_code: 2, stderr: "error: No such remote 'origin'", url: "",
   )) == "<absent>"
 }
 
-test fn a_path_that_is_not_a_repository_is_unusable_not_absent() -> std.types.Bool {
+test fn a_path_that_is_not_a_repository_is_unusable_not_absent() -> Bool {
   observed_url(o: extdeps.git.git_remote_url_observation_of(
     at: green_at(), exit_code: 128, stderr: "fatal: not a git repository", url: "",
   )) == "<unusable>"
 }
 
 // The pair asserted together, because each alone passes under a decoder that answers one constant.
-test fn absent_and_unusable_are_distinct_observations() -> std.types.Bool {
+test fn absent_and_unusable_are_distinct_observations() -> Bool {
   let absent = observed_url(o: extdeps.git.git_remote_url_observation_of(at: green_at(), exit_code: 2, stderr: "", url: ""))
   let unusable = observed_url(o: extdeps.git.git_remote_url_observation_of(at: green_at(), exit_code: 128, stderr: "", url: ""))
   absent != unusable
@@ -50,56 +50,56 @@ test fn absent_and_unusable_are_distinct_observations() -> std.types.Bool {
 // A zero exit with empty stdout is UNREADABLE, not an observed empty URL: git can exit zero and
 // print nothing, and an empty string is not an address. Precedent: the same rule in
 // `gunbc.roadmap_publish_observe` `worktree_head_observation_note`.
-test fn a_zero_exit_with_no_output_is_refused_not_an_empty_url() -> std.types.Bool {
+test fn a_zero_exit_with_no_output_is_refused_not_an_empty_url() -> Bool {
   let blank = observed_url(o: extdeps.git.git_remote_url_observation_of(at: green_at(), exit_code: 0, stderr: "", url: "   "))
   blank == "<refused>"
 }
 
-test fn an_observed_url_is_trimmed() -> std.types.Bool {
+test fn an_observed_url_is_trimmed() -> Bool {
   observed_url(o: extdeps.git.git_remote_url_observation_of(
     at: green_at(), exit_code: 0, stderr: "", url: "https://github.com/gunb-ai/gunbc.git\n",
   )) == "https://github.com/gunb-ai/gunbc.git"
 }
 
 // An unrecognised nonzero exit refuses rather than guessing which of the two known causes it was.
-test fn an_unknown_exit_code_is_refused() -> std.types.Bool {
+test fn an_unknown_exit_code_is_refused() -> Bool {
   let unknown = observed_url(o: extdeps.git.git_remote_url_observation_of(at: green_at(), exit_code: 7, stderr: "?", url: ""))
   unknown == "<refused>"
 }
 
 // ── The property, not a hand-spelled key ────────────────────────────────────────────────────────
 
-test fn the_config_key_is_projected_from_the_remote_name() -> std.types.Bool {
-  extdeps.git.git_remote_url_config_key(name: gunbc.deployed_tree_remote.deployed_tree_remote_name) as std.types.String == "remote.origin.url"
+test fn the_config_key_is_projected_from_the_remote_name() -> Bool {
+  extdeps.git.git_remote_url_config_key(name: gunbc.deployed_tree_remote.deployed_tree_remote_name) as String == "remote.origin.url"
 }
 
 // The desired URL is DERIVED from the repository authority, so a witness pinning a literal would
 // pass against a hand-spelled URL too. Both sides are asserted: the exact bytes, and that those
 // bytes are what the projection produces.
-test fn the_desired_url_is_the_derived_public_clone_url() -> std.types.Bool {
+test fn the_desired_url_is_the_derived_public_clone_url() -> Bool {
   let desired = gunbc.deployed_tree_remote.deployed_tree_remote_desired(repository_path: "/opt/gunbc-green/gunbc" as std.types.FilePath)
-  let url = desired.url as std.types.String
-  let derived = extdeps.github.github.github_https_clone_url(repo: gunbc.repository.gunbc_repository) as std.types.String
+  let url = desired.url as String
+  let derived = extdeps.github.github.github_https_clone_url(repo: gunbc.repository.gunbc_repository) as String
   url == derived && url == "https://github.com/gunb-ai/gunbc.git"
 }
 
 // Identity is repository x remote name. Two slots on one host both call their remote `origin`, so a
 // key that dropped the repository would fuse blue's member and green's into one.
-test fn identity_separates_two_slots_on_one_host() -> std.types.Bool {
+test fn identity_separates_two_slots_on_one_host() -> Bool {
   let green = gunbc.deployed_tree_remote.deployed_tree_remote_desired(repository_path: "/opt/gunbc-green/gunbc" as std.types.FilePath)
   let blue = gunbc.deployed_tree_remote.deployed_tree_remote_desired(repository_path: "/opt/gunbc/gunbc" as std.types.FilePath)
-  let gp = green.at.repository_path as std.types.String
-  let bp = blue.at.repository_path as std.types.String
-  let gn = green.at.name as std.types.String
-  let bn = blue.at.name as std.types.String
-  let gu = green.url as std.types.String
-  let bu = blue.url as std.types.String
+  let gp = green.at.repository_path as String
+  let bp = blue.at.repository_path as String
+  let gn = green.at.name as String
+  let bn = blue.at.name as String
+  let gu = green.url as String
+  let bu = blue.url as String
   gp != bp && gn == bn && gu == bu
 }
 
 // ── A zero exit from the setter is not convergence ──────────────────────────────────────────────
 
-fn exit_is_success(e: std.process.ProcessExit) -> std.types.Bool {
+fn exit_is_success(e: std.process.ProcessExit) -> Bool {
   match e {
     std.process.ExitSuccess => true
     ExitFailure { code: _, reason: _ } => false
@@ -113,7 +113,7 @@ fn member() -> extdeps.git.GitRemoteUrlMember {
 // Only an exact read-back reports success. Every other terminal state fails, including the two that
 // follow a setter which reported no error at all — a mismatched read-back and an absent one. Those
 // are precisely the states a "did the command exit zero" check would call converged.
-test fn only_an_exact_read_back_reports_success() -> std.types.Bool {
+test fn only_an_exact_read_back_reports_success() -> Bool {
   exit_is_success(e: gunbc.deployed_tree_remote.deployed_tree_remote_exit(outcome: gunbc.deployed_tree_remote.RemoteAlreadyConverged { member: member() }))
     && exit_is_success(e: gunbc.deployed_tree_remote.deployed_tree_remote_exit(
       outcome: gunbc.deployed_tree_remote.RemoteConverged {
@@ -159,7 +159,7 @@ test fn only_an_exact_read_back_reports_success() -> std.types.Bool {
 // Asserted as a filtered SEQUENCE rather than absolute indices, so inserting an unrelated member
 // leaves this green while a genuine reordering reds it.
 
-fn ordering_tag(kind: gunbc.live_deploy.spec.OwnedArtifactKind) -> std.types.String {
+fn ordering_tag(kind: gunbc.live_deploy.spec.OwnedArtifactKind) -> String {
   match kind {
     gunbc.live_deploy.spec.GunbcSourceTree => "tree"
     gunbc.live_deploy.spec.ServeBinary => "binary"
@@ -173,7 +173,7 @@ fn ordering_tag(kind: gunbc.live_deploy.spec.OwnedArtifactKind) -> std.types.Str
   }
 }
 
-fn ordered_tags() -> std.types.List<std.types.String> {
+fn ordered_tags() -> std.types.List<String> {
   fold(
     gunbc.live_deploy.spec.deployment_owned_steps(
       instance: gunbc.roadmap_dashboard_instance.srv1_green_dashboard_instance(),
@@ -187,6 +187,6 @@ fn ordered_tags() -> std.types.List<std.types.String> {
   )
 }
 
-test fn the_remote_converges_after_its_inputs_and_before_the_belt() -> std.types.Bool {
+test fn the_remote_converges_after_its_inputs_and_before_the_belt() -> Bool {
   join(ordered_tags(), ",") == "tree,binary,remote,belt,route"
 }
