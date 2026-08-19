@@ -618,5 +618,37 @@ Confirmed: no reason to defer, and it gives D one clean boundary — D can then 
 4. the old direct projection is **marked for deletion with Cut D**, not left standing as a
    permanent equal path.
 
+**Condition 2 says *CI* workflow emitter, deliberately.** `fleet_converge_workflow` also calls
+`gunbc_ci_runner_spec()` directly and **must not be routed through this seam.**
+`selected_ci_runner_target()` is a one-row function whose entire purpose is to be flipped — to
+`UbicloudRunner` or `GithubHostedRunner` — and fleet convergence must run *on the fleet*, so a
+future cloud flip would silently send the converger to a machine that cannot reach the hosts it
+converges. The principle, not the pragmatics: *which machine runs CI* and *which machine converges
+the fleet* are two different questions that happen to have the same answer today.
+`FleetSelfHosted` here is a coincidence of value, not an identity of question, and forcing one
+authority to serve both is the nicknaming failure run in reverse. `fleet_converge_workflow` already
+carries its own `fleet_converge_host_pinned_runner_spec()` for one job, so fleet convergence
+demonstrably has its own runner semantics.
+
 Condition 4 is new relative to the dispatched brief and is the one that keeps C from creating the
 dual-authority interval it exists to close.
+
+## 17. A precondition Cut D acquired from Cut C's carve-out — recorded before D4 arrives with a wrong deletion list
+
+§16's **D4** deletes `runner_spec_from_offer`. That is now **not executable as written**, and the
+reason is the carve-out one section up rather than anything wrong with either decision.
+
+`gunbc_ci_runner_spec` lives *in* `runner_spec_from_offer`, and after Cut C's carve-out
+`fleet_converge_workflow` still calls it — a live production consumer that we have just ruled must
+**not** be migrated to the CI runner-target seam. So D4 would delete a function whose remaining
+consumer is one the design deliberately declines to move.
+
+**The precondition:** fleet convergence needs its own runner authority, derived from the fleet
+rather than from a CI selection, and **D4's deletion of `runner_spec_from_offer` is conditional on
+that existing.** Recorded here rather than discovered at D4, because a deletion list that cannot
+execute is the kind of defect that surfaces as an implementer improvising a merge of two
+authorities to make a cut compile — the exact arm this program has now twice had to stop.
+
+It is not Cut C's job to build it. The carve-out is complete without it, and inventing the fleet
+runner authority inside a bypass closure would be scope the implementer authored rather than
+received.
