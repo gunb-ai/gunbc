@@ -232,6 +232,23 @@ type Mebibyte = Measure<Memory, Mebi, Nat>
 
 type Gibibyte = Measure<Memory, Gibi, Nat>
 
+// THE DECIMAL SIBLING of Gibibyte, added because the two are routinely quoted
+// with the same word and differ by 7.4 percent. Vendors publish "GB" meaning
+// 10^9 (storage rates, CI runner catalogs) while DIMM capacity is binary, so a
+// model that carries both as one type can compare them silently. Carrying them
+// as two Measure types at two Scales makes the comparison a conversion the
+// author must write, which is the same resolution ByteBasis reaches by
+// validation and this reaches by construction.
+type Gigabyte = Measure<Memory, Giga, Nat>
+
+fn gigabyte(count: Nat) -> Gigabyte {
+  Measure { count: count }
+}
+
+fn gigabyte_count(g: Gigabyte) -> Nat {
+  measure_count(g)
+}
+
 fn mebibyte(count: Nat) -> Mebibyte {
   Measure { count: count }
 }
