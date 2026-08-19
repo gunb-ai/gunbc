@@ -26,6 +26,92 @@ A distinct axis from §1's *emission* census: these are ops whose **interface sh
 
 ---
 
+## 0c. The named boundary — argv is not the authority, and CLI invocation is not the universal effect model (2026-08-19)
+
+This lane and the CLI-invocation lane (`cli-invocation-emission-design.md`, gunbc#8467, `sharp-ant-396`) are **one migration program with a named boundary**, not competing destinations. Recorded here because without the boundary stated, #8467's diagnosis — that an argv array is a serialization exactly as bash text is a serialization of a bash AST — reads as replacing every typed effect with a CLI tree, which would move the authority *downward* into one particular realization technology.
+
+The division:
+
+- **This lane owns the semantic destination and site routing.** The authority remains the typed domain operation or the typed `HostEffect`. It decides whether a realization is native, REST, filesystem, library, CLI-backed, or necessarily text-emitting. That is unchanged by #8467 and is exactly what §1's five categories already do.
+- **#8467 owns one realization sublayer:** how a **CLI-backed** handler lowers a tool-semantic request through cited CLI grammar rows into a carrier. It is the inside of one cell of §1.C, not a replacement for §1.
+- **argv is never the authority.** `ArgvCommand` builders and `transport shell { argv: [...] }` are migration substrates.
+- **CLI invocation is not the universal effect model.** A native handler reaches no CLI surface at all.
+
+The complete shape, so the layers are not re-fused by the next reader:
+
+```
+typed domain operation / HostEffect        <- this lane; the authority
+    |
+    | realization selection                <- this lane
+    |
+    +-- native handler: REST / filesystem / library / Redfish / ...
+    |                                       (no CLI surface is reachable from here)
+    `-- CLI-backed handler                 <- #8467 owns everything below this line
+          |  private tool-semantic request
+          v
+       admitted tool process plan (tool identity, emitted CLI surface, stdin,
+                                    cwd/environment, observation contract)
+          |
+          +-- local target: ProcessArgv -> direct process spawn
+          `-- SSH target:   shell simple-command tree -> shell grammar -> RFC 4254 string
+          |
+          v
+       raw ProcessObservation -> tool-policy decoder -> typed tool observation
+          -> domain decoder -> domain result / reconciliation receipt
+```
+
+**Two consequences are load-bearing.** Local process execution has **no shell and no quoting** — the v1 seed realizes `transport shell` as `Command::new(&argv[0]).args(&argv[1..])`, with no shell, no word splitting and no quoting layer, so the name is a historical DSL keyword rather than a description (this is why the host-edge carrier is `ProcessArgvExpansion`, not `ShellArgvExpansion` — the §3 nickname class, caught before it spread). And **SSH is a different target**: RFC 4254 carries one command string, and far-side shell interpretation is a deployment capability to be modeled or observed, never assumed.
+
+### What this corrects in this document
+
+§5's framing — "the arc needs only ~4 new typed ops", §5.A's new-op list and §5.B's call-an-existing-op table — is **not wrong about the destination** but is written in the vocabulary of the layer #8467 replaces. Typed argv is the terminus for a **CLI-backed** handler only in the sense that argv is what the process boundary consumes; it is not the authority a domain module authors against. Concretely, for the §5.B rows: calling `systemd.Systemctl.ShowProperty` instead of concatenating `systemctl show --property=…` remains exactly the right move and those rows stand as written. What changes is one layer in — the op's *own* realization must not itself be a hand-authored flag list, which is the defect #8467 measured (a dropped `--fail` across eleven curl sites made a 401 read as success). So a §5.B migration is complete at this lane's grain when the concat is gone and the caller names semantics; it is complete at #8467's grain when the op's flags derive from cited rows. **Do not treat a §5.B row as blocked on #8467** — the two grains land independently, and this lane's row is the prerequisite, not the dependent.
+
+### The measured shape of the remainder (2026-08-19)
+
+Measured on `dag/**` and `src/v2/**`, excluding `/test/`, `*_test.dag` and fixtures, so these are production populations rather than witness counts:
+
+| population | production count |
+|---|---|
+| `transport shell` blocks | 236 lines across 48 files — **230 lines / 45 files in `dag/extdeps`**, 5 lines / 2 files in `dag/gunbc`, 1 in `dag/tools` |
+| `argv:` lines | 457 — 275 in `dag/extdeps`, 172 in `dag/gunbc`, 10 in `src/v2` |
+| counted retained-script bridge call sites | 48 across 13 files |
+| distinct `fn *_argv` builders (whole tree) | 333, of which ~158 lead with `shape`/`witness`/`operation`/`typed` and model no tool at all |
+
+**The load-bearing reading:** `transport shell` is overwhelmingly an `extdeps` population — 230 of 236 production lines — i.e. it sits *beneath already-typed operations*, in the interface layer, not in the intent. This lane's original job, getting shell out of the intent, is therefore substantially done, and most of what remains is transport depth inside a CLI-backed cell. That is #8467's subject, not this document's.
+
+Two cautions against over-reading it. The `dag/gunbc` argv residue is **172 lines across 41 files** — real intent-adjacent work, not a rounding error (an earlier scoping pass in conversation quoted the 41 *files* as though it were the line count; recorded so the smaller figure does not get re-cited). And a `transport shell` block is not a residual shell program at all: the v1 seed executes it as `Command::new(&argv[0]).args(&argv[1..])`, so 236 blocks are 236 *process invocations*, of which the shell-shaped ones are the SSH-composed subset.
+
+**Do not turn these counts into a work plan.** Under the replacement-migration rule the unit is a root consumer × subject population, and the census direction reliably overestimates: sizing by argv occurrence, then by executable head, then by tool, each produced an inflated number, because a tool vertical, its site cutovers and its `host_effect_apply` caller are commonly **one** vertical whose acceptance condition is the old site's deletion — not three workstreams. The domain clusters this document already tracks in §5.D, each with its own un-defer trigger, are the better unit.
+
+### Two finish lines, named separately
+
+The program has two, and conflating them is what makes the remainder look larger than it is:
+
+```
+SHELL-DAG        runtime-present script carriers are zero;
+                 foreign/bootstrap shell is emitted from typed intent;
+                 ShellCommand and the runtime retained-script bridges are deleted.
+
+CLI-AUTHORITY    production CLI-backed realizations derive their concrete argv
+                 from semantic tool requests and cited surface rows.
+```
+
+SHELL-DAG is this document's; CLI-AUTHORITY is `cli-invocation-emission-design.md`'s. A site can be complete against the first and still owe the second, and that is not a defect in either — it is the boundary in §0c working. The corollary for dispatch: **a SHELL-DAG row is never blocked on CLI-AUTHORITY.**
+
+### A live instance of the forbidden SSH shape
+
+`extdeps.exec.command` `command_over_transport` constructs `ArgvCommand { argv: append(ssh_exec_prefix(target: t), items: command.argv) }`. That is exactly the `append(ssh_prefix, inner.argv)` composition §0c forbids — SSH is a nested target whose carrier is one RFC 4254 command string, not a prefix on an argument vector. It is production code beneath the generic runner, so every SSH-transported `ArgvCommand` in the tree flows through it, and it is the concrete mechanism by which argument boundaries are lost remotely.
+
+It sits in the same file as `gunbc.command_runner`'s round trip — `run_shell_command` takes a typed `ArgvCommand`, renders it to quoted text via `shell_command_render`, and posts it through `shell.Exec.Run`'s heredoc transport. That carrier already declares the repair in `command_runner_dissolution_trigger`: *dissolves when `host_effect_apply` binds `ArgvCommand` execution as a typed transport handler*. So the runner cut and the SSH target are one vertical, not two, and the debt was declared before it was scoped.
+
+### What is owed, and by whom
+
+- The **negative falsifier** — one witness proving a Redfish/REST path reaches no `JqInvocation`, no `CliSurface`, no `ProcessArgvExpansion` and no shell target — is owed by the CLI lane (`sharp-ant-396`), not by this one. It guards this boundary better than any further argv census would, and per the replacement-migration rule a census over a structure being deleted is the attractor at work.
+- The **scoped supersession sentence** in `cli-invocation-emission-design.md` is that document's to place. It supersedes typed argv as the terminal representation *for CLI-backed handlers*; it does not supersede typed domain effects, typed extdeps operations, host-effect routing, or native realizations.
+- **`DESIGN.md` needs no edit.** Its shell → intent row already routes runtime-present sites to typed effects on `host_effect_apply` and confines emission to foreign executors and bootstrap. The boundary refines what happens *inside* a CLI-backed realization; it falsifies no sentence in that row. Stated explicitly so a later reader does not "discover" a missing correction and add a second account of it.
+
+---
+
 ## 1. Residual-shell census (current tree)
 
 Five categories. "Genuine emitter" = emits bash that actually runs; "oracle/scaffold" = shell text retained only for a test. *(Corrected 2026-07-26: the oracle/scaffold definition read "`serialize_bash` retained only for a test" — that sidecar is deleted and **no** test retains it, so the definition described an empty class by its mechanism instead of by its role. §4.H is the live statement of this category.)*

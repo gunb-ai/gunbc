@@ -72,6 +72,25 @@ The load-bearing correction (operator review, 2026-07-19): **"dissolve the raw c
 
 So the arc is not "N files onto the bash emitter." It is: route each site to the correct path, and generalize `host_effect_apply` from `ShellCommand{script:String}` toward typed effects — the census authority's central finding.
 
+## The boundary beneath realization — a CLI-backed handler is one cell, not the model (2026-08-19)
+
+The routing decision above says *where* a site goes. This says what the **realization** column may and may not become, and it is placed here because the layering table's four rows are the exact thing a reader can re-fuse.
+
+`cli-invocation-emission-design.md` (gunbc#8467) establishes that an argv array is a **serialization** — the same relation bash text bears to a bash AST. Its measured census found 556 `argv:` lines across 124 files and 250 `transport shell` blocks whose three welded facts (what the tool is, how we reached it, what we asked it) are re-decided by hand at every site. That diagnosis is accepted, and the consequence for **this** document is narrow and must stay narrow:
+
+- The **intent** row is untouched. It named no language before and names no tool now.
+- The **realization** row gains an internal structure it did not have: a handler is native (REST, filesystem, library) **or** CLI-backed. Only the second lowers a tool-semantic request through cited CLI grammar rows into a carrier.
+- **argv is never the authority**, and **CLI invocation is not the universal effect model.** A native handler reaches no CLI surface at all. Making CLI lowering universal would relocate the authority into one realization technology — the §3 violation this document exists to name, one layer below where it usually appears.
+
+The invariant this document owns generalizes cleanly and needs no restatement per-target: *the intent imports no language-construction vocabulary* becomes, at the layer below, **the domain imports no tool vocabulary**. A domain module that stops concatenating `sudo -n …` and starts authoring a tool's flags — or a tool's embedded program text — has moved the anemic leaf one layer in, not dissolved it. That is the same relocation-counted-as-progress this lane already priced once (#7004/#7006, §4's "why now").
+
+Two facts carried here because they change what the emit row means:
+
+- **Local process execution has no shell.** The v1 seed realizes `transport shell` as `Command::new(&argv[0]).args(&argv[1..])` — no shell, no word splitting, no quoting. So `transport shell` is a historical DSL keyword at that boundary, not a description, and the emit column's bash grammar is *not* on the local path at all.
+- **SSH is a separate target**, not a prefix. RFC 4254 carries one command string; `append(ssh_prefix, inner.argv)` is the shape this document already forbids for transports, and it is forbidden here for the same reason.
+
+Ownership, so neither lane waits on the other: this document and the census own the semantic destination and site routing; #8467 owns the inside of the CLI-backed cell. The negative falsifier that keeps the boundary honest — a Redfish/REST path reaching no CLI surface, no process-argv carrier and no shell target — is owed by that lane.
+
 ## The carriers and the two enforcement milestones (corrected)
 
 The anemic `String` leaves are **more than one**: `host_effect.ShellCommand{script}` (`host_effect.dag:25`), `std.orchestration.Run.command` (the `Do{run}` leaf), and `host_effect.BootstrapFragment.script` (`host_effect.dag:59`) — plus the `ThinInvocation`/`EmitArtifactThenThinRun` medium-as-string scaffolds. The target for all of them is **`Do{effect}` — never a command string** (host-effect-orchestration.md's `std.effect_plan` band). Sequencing is **add-replacement → migrate all consumers → delete at arc close** (§5 construction, but you cannot delete `ShellCommand` while other constructors and consumers still populate it). `host_effect.dag` is a DESIGN-named load-bearing carrier — the delete is escalated/co-designed, not improvised.
