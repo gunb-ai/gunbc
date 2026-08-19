@@ -199,13 +199,21 @@ test fn witness_srv3_nbd_proxy_websocat_argv_materializes_token_not_shell_env_re
   }
 }
 
-test fn witness_srv3_nbd_proxy_apply_observe_unimplemented_refuses_fail_closed() -> Bool {
+// observe-side is now grounded on systemctl is-active read-back (host_effect_nbd_proxy_serve
+// P6 Part 2 dissolution trigger, retired). LocalShell/SshShell/FleetSsh can genuinely observe, so
+// this no longer names "observe unimplemented" universally -- it names the one transport that
+// genuinely cannot: EmitArtifactThenThinRun, whose typed dispatch refuses before any read-back is
+// attempted, which classify_process_port_upsert renders as the same "port inaccessible" verdict.
+test fn witness_srv3_nbd_proxy_apply_emit_artifact_transport_observe_refuses_fail_closed() -> Bool {
   let effect = srv3_nbd_proxy_serve_host_effect()
   match effect {
     Srv3NbdProxyServe { intent: i, lease_key: k } =>
       host_effect_nbd_proxy_serve_apply_refuses_when_observe_unimplemented(
         binding: host_effect_nbd_proxy_serve_session_binding(intent: i, lease_key: k),
-        transport: LocalShell,
+        transport: EmitArtifactThenThinRun {
+          bootstrap: BootstrapFragment { script: "true" },
+          invocation: ThinInvocation { argv: ["true"] },
+        },
       )
     _ => false
   }
@@ -252,10 +260,19 @@ test fn shell_bash_runner_still_present_for_p5b() -> Bool {
   string_contains(s: dissolution_description(condition: shell_bash_runner_dissolution_trigger), pattern: "shell_exec_via_bash")
 }
 
-test fn srv3_nbd_proxy_serve_realize_layer_dissolves_via_host_effect_nbd_proxy_serve() -> Bool {
-  string_contains(s: dissolution_description(condition: host_effect_nbd_proxy_serve_dissolution_trigger), pattern: "systemd")
-    && string_contains(s: dissolution_description(condition: host_effect_nbd_proxy_serve_dissolution_trigger), pattern: "srv3_bmcweb_token_path")
-    && string_contains(s: dissolution_description(condition: host_effect_nbd_proxy_serve_dissolution_trigger), pattern: "P6 Part 2")
+// host_effect_nbd_proxy_serve_dissolution_trigger / _scaffold are RETIRED: both dissolution
+// conditions (observe-side grounded on cited extdeps.systemd/systemctl read-back; typed argv
+// dispatch retiring the WitnessBin systemd-run scaffolding) are met, so the module now carries a
+// std.disposition.Terminal disposition instead of a Scaffold. This asserts the Terminal disposition
+// names what replaced the scaffold, rather than asserting a dissolved carrier still exists.
+test fn srv3_nbd_proxy_serve_realize_layer_is_terminal_via_host_effect_nbd_proxy_serve() -> Bool {
+  match host_effect_nbd_proxy_serve_disposition {
+    Terminal { reason: why } =>
+      string_contains(s: why as String, pattern: "systemd")
+        && string_contains(s: why as String, pattern: "systemctl_is_active_read")
+        && string_contains(s: why as String, pattern: "P6 Part 2")
+    Scaffold { dissolves_to: _, bind: _ } => false
+  }
 }
 
 
