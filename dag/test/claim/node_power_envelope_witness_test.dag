@@ -1,0 +1,255 @@
+module test.claim.node_power_envelope_witness
+
+import std.types { Bool, NonEmptyStr }
+import std.measure {
+  ByteSize,
+  bandwidth_count,
+  byte_size,
+  byte_size_count,
+  milliwatt,
+  watt,
+  watt_count,
+}
+import extdeps.vendor.sk_hynix { sk_hynix }
+import extdeps.memory.jedec { ddr4_generation_catalog }
+import extdeps.memory.types {
+  DramModuleCatalogRow,
+  Registered,
+  bit_width,
+  dram_generation_ddr4,
+  dram_module_is_realizable,
+  dram_module_required_die_density,
+}
+import extdeps.cpu.ampere { altra_q8030_catalog }
+import extdeps.cpu.ampere_altra_platform_hw_design.platform { OneDimmPerChannel, TwoDimmsPerChannel }
+import gunbc.memory_provisioning {
+  FullChannel,
+  PopulationOption,
+  asrock_altrad8ud_1l2t_geometry,
+  mt_collins_per_socket_geometry,
+}
+import product.node_power_envelope {
+  DerivationReadsHigh,
+  EnvelopeAgrees,
+  Gold,
+  MemoryElectricalContext,
+  NodeElectricalInputs,
+  PsuAdequate,
+  PsuUndersized,
+  WallPowerMeasured,
+  derived_wall_power,
+  effective_data_rate_mts,
+  envelope_divergence,
+  memory_bandwidth,
+  memory_power,
+  populated_dimms_per_channel,
+  psu_adequacy,
+  wall_draw_watts,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// RELOCATED 2026-08-19 from test.claim.hardware_selection, whose module was
+// deleted at the root. Four of its eight claims tested the deleted candidate
+// records and their local dominance kernel (rank_tradeoff_is_incomparable,
+// higher_throughput_dominates, front_keeps_tradeoffs_strips_dominated,
+// derived_ratios_are_computed); those are retired here rather than re-enrolled,
+// because ordering a field is now std.pareto's job through
+// product.build_selection, and the ratios they pinned (cost per GiB, bandwidth
+// per watt) were derived from a candidate record carrying a synthetic price.
+// The physics claims survive, against the relocated functions and against real
+// cited rows rather than a hand-authored Platform literal.
+
+data stick_32g: ByteSize = byte_size(count: 34359738368)
+
+data mod_2rx4_32g: DramModuleCatalogRow = DramModuleCatalogRow {
+  part_number: "GENERIC-32G-2RX4-3200",
+  manufacturer: sk_hynix,
+  generation: dram_generation_ddr4,
+  capacity_bytes: stick_32g,
+  data_rate_mts: 3200,
+  ecc: true,
+  buffering: Registered,
+  chip_width: bit_width(count: 4),
+  rank_count: 2,
+}
+
+data mod_1rx4_16g: DramModuleCatalogRow = DramModuleCatalogRow {
+  part_number: "HMA82GR7AFR4N-VK",
+  manufacturer: sk_hynix,
+  generation: dram_generation_ddr4,
+  capacity_bytes: byte_size(count: 17179869184),
+  data_rate_mts: 2666,
+  ecc: true,
+  buffering: Registered,
+  chip_width: bit_width(count: 4),
+  rank_count: 1,
+}
+
+data mod_1rx8_32g_impossible: DramModuleCatalogRow = DramModuleCatalogRow {
+  part_number: "FAKE-32G-1RX8-3200",
+  manufacturer: sk_hynix,
+  generation: dram_generation_ddr4,
+  capacity_bytes: stick_32g,
+  data_rate_mts: 3200,
+  ecc: true,
+  buffering: Registered,
+  chip_width: bit_width(count: 8),
+  rank_count: 1,
+}
+
+// The board geometries are the CITED upstream rows, not restated here: this
+// module's context adds only the platform's rated transfer rate.
+data altrad8ud_context: MemoryElectricalContext = MemoryElectricalContext {
+  geometry: asrock_altrad8ud_1l2t_geometry,
+  max_data_rate_mts: 3200,
+}
+
+data mt_collins_context: MemoryElectricalContext = MemoryElectricalContext {
+  geometry: mt_collins_per_socket_geometry,
+  max_data_rate_mts: 3200,
+}
+
+// A two-deep population on the Mt. Collins per-socket geometry: sixteen slots
+// across eight channels, both slots filled.
+data sixteen_module_population: PopulationOption = PopulationOption {
+  module: mod_2rx4_32g,
+  dimm_count: 16,
+  coverage: FullChannel { topology: TwoDimmsPerChannel },
+  total_bytes: byte_size(count: 549755813888),
+  margin_bytes: byte_size(count: 0),
+}
+
+data sixteen_module_1rx4_population: PopulationOption = PopulationOption {
+  module: mod_1rx4_16g,
+  dimm_count: 8,
+  coverage: FullChannel { topology: OneDimmPerChannel },
+  total_bytes: byte_size(count: 137438953472),
+  margin_bytes: byte_size(count: 0),
+}
+
+data eight_module_population: PopulationOption = PopulationOption {
+  module: mod_2rx4_32g,
+  dimm_count: 8,
+  coverage: FullChannel { topology: OneDimmPerChannel },
+  total_bytes: byte_size(count: 274877906944),
+  margin_bytes: byte_size(count: 0),
+}
+
+data q8030_node: NodeElectricalInputs = NodeElectricalInputs {
+  label: "altrad8ud-q8030",
+  sockets: 1,
+  cpu: altra_q8030_catalog,
+  context: altrad8ud_context,
+  population: eight_module_population,
+  dram_power_per_chip: milliwatt(count: 400),
+  board_idle_draw: watt(count: 30),
+  psu_rated_output: watt(count: 550),
+  psu_efficiency: Gold,
+}
+
+// THE 2DPC DOWNCLOCK IS RANK-DEPENDENT — the claim that survived the module
+// deletion unchanged, now stated against the relocated function.
+test fn downclock_is_rank_dependent() -> Bool {
+  effective_data_rate_mts(context: mt_collins_context, dimms_per_channel: 2, rank_count: 1) == 3200
+    && effective_data_rate_mts(context: mt_collins_context, dimms_per_channel: 2, rank_count: 2) == 2933
+    && effective_data_rate_mts(context: mt_collins_context, dimms_per_channel: 2, rank_count: 4) == 2400
+    && effective_data_rate_mts(context: mt_collins_context, dimms_per_channel: 1, rank_count: 2) == 3200
+}
+
+// THE POPULATED DEPTH COMES FROM THE POPULATION, NOT FROM A FIELD BESIDE IT. A
+// board that admits two DIMMs per channel but was populated one-deep is
+// electrically one-deep, and the only authority for which happened is the
+// PopulationOption's own coverage.
+test fn the_populated_depth_is_read_from_the_population() -> Bool {
+  populated_dimms_per_channel(population: sixteen_module_population) == 2
+    && populated_dimms_per_channel(population: eight_module_population) == 1
+}
+
+// PSU SIZING IS COMPUTED, and its verdict carries both numbers. 161W of
+// processor (the Q80-30's cited TDP, not a hand-authored typical draw) plus
+// 115W of DRAM plus 30W of board is 306W at the DC rail; a Gold supply turns
+// that into 340W at the wall. The DRAM figure counts the ECC devices as well as
+// the data ones — eight 2Rx4 modules are 8 x 2 x 18 chips, not 8 x 2 x 16 —
+// because the chip count comes from the module width against the ECC word:
+// dram_chips_per_rank derives the count from the 72-bit ECC word rather than
+// the 64-bit data word.
+test fn psu_sizing_is_computed_from_the_cited_tdp() -> Bool {
+  watt_count(w: memory_power(population: eight_module_population, power_per_chip: milliwatt(count: 400))) == 115
+    && watt_count(w: wall_draw_watts(inputs: q8030_node)) == 340
+    && match psu_adequacy(inputs: q8030_node) {
+      PsuAdequate { dc_load: dc, rated: _, headroom: h } => watt_count(w: dc) == 306 && watt_count(w: h) == 244
+      PsuUndersized { dc_load: _, rated: _, shortfall: _ } => false
+    }
+}
+
+// RED CONTROL: the same node behind a supply that cannot carry it reports the
+// shortfall, not a Boolean false a buyer cannot act on.
+test fn an_undersized_supply_reports_its_shortfall() -> Bool {
+  let small = NodeElectricalInputs {
+    label: "altrad8ud-q8030-undersized",
+    sockets: 1,
+    cpu: altra_q8030_catalog,
+    context: altrad8ud_context,
+    population: eight_module_population,
+    dram_power_per_chip: milliwatt(count: 400),
+    board_idle_draw: watt(count: 30),
+    psu_rated_output: watt(count: 250),
+    psu_efficiency: Gold,
+  }
+  match psu_adequacy(inputs: small) {
+    PsuUndersized { dc_load: dc, rated: r, shortfall: s } =>
+      watt_count(w: dc) == 306 && watt_count(w: r) == 250 && watt_count(w: s) == 56
+    PsuAdequate { dc_load: _, rated: _, headroom: _ } => false
+  }
+}
+
+test fn memory_bandwidth_is_derived_from_the_populated_topology() -> Bool {
+  bandwidth_count(b: memory_bandwidth(context: altrad8ud_context, population: eight_module_population)) == 204800000000
+    && bandwidth_count(b: memory_bandwidth(context: mt_collins_context, population: sixteen_module_population)) == 187712000000
+}
+
+// A single-rank module cannot interleave, so it does not reach the bus's rated
+// throughput even at its rated clock — the axis that made rank a real tradeoff
+// rather than a preference.
+test fn a_single_rank_population_does_not_reach_the_rated_bus() -> Bool {
+  bandwidth_count(b: memory_bandwidth(context: altrad8ud_context, population: sixteen_module_1rx4_population))
+    < bandwidth_count(b: memory_bandwidth(context: altrad8ud_context, population: eight_module_population))
+}
+
+test fn realizability_rejects_an_impossible_sku() -> Bool {
+  dram_module_is_realizable(module: mod_2rx4_32g, jedec: ddr4_generation_catalog)
+    && !dram_module_is_realizable(module: mod_1rx8_32g_impossible, jedec: ddr4_generation_catalog)
+}
+
+test fn a_real_part_computes_a_real_die_density() -> Bool {
+  byte_size_count(b: dram_module_required_die_density(module: mod_1rx4_16g)) == 1073741824
+}
+
+// DERIVED AND OBSERVED ARE TWO FACTS OF THE SAME SHAPE. A measurement that
+// disagrees with the derivation is reported as the divergence it is; nothing
+// here overwrites the derived figure with the measured one, and there is no
+// function that would.
+test fn a_measurement_beside_the_derivation_reports_the_divergence() -> Bool {
+  let derived = derived_wall_power(inputs: q8030_node)
+  let measured_low = WallPowerMeasured {
+    watts: watt(count: 300),
+    host: "srv1" as NonEmptyStr,
+    observed_at: 1786600000000,
+  }
+  let measured_equal = WallPowerMeasured {
+    watts: watt(count: 340),
+    host: "srv1" as NonEmptyStr,
+    observed_at: 1786600000000,
+  }
+  match envelope_divergence(derived: derived, measured: measured_low) {
+    DerivationReadsHigh { derived: d, measured: m, excess: e } =>
+      watt_count(w: d) == 340 && watt_count(w: m) == 300 && watt_count(w: e) == 40
+    _ => false
+  }
+    && match envelope_divergence(derived: derived, measured: measured_equal) {
+      EnvelopeAgrees { watts: w } => watt_count(w: w) == 340
+      _ => false
+    }
+}

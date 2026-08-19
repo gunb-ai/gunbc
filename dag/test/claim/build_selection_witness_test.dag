@@ -1,0 +1,258 @@
+module test.claim.build_selection_witness
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.currency { Eur, Usd }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.measure { Bandwidth, ByteSize, byte_size, money_amount_micro, watt }
+import std.pareto {
+  DominatedBy,
+  IncomparablePendingEvidence,
+  ProvisionallyNonDominated,
+  SelectionRefused,
+}
+import product.build_fulfillment {
+  BomLine,
+  CashDerived,
+  CashNoPurchaseLines,
+  CashRefused,
+  CashLineUnfulfilled,
+  CeilingDerived,
+  CeilingUnconstrainedByAnyLine,
+  CompatibilityUnread,
+  LineResolution,
+  LineResolved,
+  MemoryModule,
+  NewPurchase,
+  OwnedInventory,
+  Processor,
+}
+import product.build_selection {
+  BuildCandidate,
+  build_selection_axes,
+  build_standing,
+  project_entry,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The projector is exercised on hand-built candidates rather than on a full
+// resolve: what is under test here is the projection and the standing it
+// produces, and driving it through the fulfillment layer would make a failure
+// ambiguous between the two. The fulfillment layer has its own witness.
+
+data cheap_ref: DeclarationRef = decl_ref(module_path: "test.claim.build_selection_witness", decl_name: "cheap_build")
+data dear_ref: DeclarationRef = decl_ref(module_path: "test.claim.build_selection_witness", decl_name: "dear_build")
+data pending_ref: DeclarationRef = decl_ref(module_path: "test.claim.build_selection_witness", decl_name: "pending_build")
+data part_ref: DeclarationRef = decl_ref(module_path: "extdeps.memory.types", decl_name: "DramModuleCatalogRow")
+
+data one_terabyte: ByteSize = byte_size(count: 1099511627776)
+data half_terabyte: ByteSize = byte_size(count: 549755813888)
+
+fn purchase_line() -> BomLine {
+  BomLine {
+    role: MemoryModule,
+    part: part_ref,
+    display_label: "memory modules" as NonEmptyStr,
+    quantity_per_build: 32,
+  }
+}
+
+// A candidate whose lines all resolved: nothing is missing, so it is comparable.
+fn candidate(
+  identity: DeclarationRef,
+  label: NonEmptyStr,
+  capacity: ByteSize,
+  cash_micros: Nat,
+  builds: Nat,
+  watts: Nat,
+  bandwidth: Nat,
+) -> BuildCandidate {
+  BuildCandidate {
+    identity: identity,
+    display_label: label,
+    memory_capacity: capacity,
+    wall_power: watt(count: watts),
+    memory_bandwidth: Bandwidth { count: bandwidth },
+    resolutions: [],
+    cash: CashDerived { micros: cash_micros, currency: Usd },
+    ceiling: CeilingDerived { builds: builds, bottlenecks: [purchase_line()], bottleneck_units: builds * 32 },
+  }
+}
+
+fn cheap_build() -> BuildCandidate {
+  candidate(identity: cheap_ref, label: "cheap" as NonEmptyStr, capacity: one_terabyte, cash_micros: 1000000, builds: 31, watts: 300, bandwidth: 204800000000)
+}
+
+// Strictly worse on every funded axis than the cheap build: less memory, more
+// money, fewer builds, more power, less bandwidth.
+fn dear_build() -> BuildCandidate {
+  candidate(identity: dear_ref, label: "dear" as NonEmptyStr, capacity: half_terabyte, cash_micros: 9000000, builds: 30, watts: 400, bandwidth: 187712000000)
+}
+
+test fn w_the_axes_are_the_five_the_pipeline_funds() -> Bool {
+  count(build_selection_axes()) == 5
+}
+
+test fn w_a_strictly_worse_candidate_is_dominated() -> Bool {
+  match build_standing(subject: dear_build(), field: [cheap_build(), dear_build()], declared: Usd) {
+    DominatedBy { dominators: ds } => count(ds) == 1
+    _ => false
+  }
+}
+
+test fn w_the_better_candidate_stands_on_the_frontier() -> Bool {
+  match build_standing(subject: cheap_build(), field: [cheap_build(), dear_build()], declared: Usd) {
+    ProvisionallyNonDominated { sensitivities: _ } => true
+    _ => false
+  }
+}
+
+// RED CONTROL on the orientation of the cash axis: give the dear build the
+// cheaper price and nothing dominates, because cheaper-but-smaller against
+// dearer-but-larger is a real tradeoff. If cash were oriented
+// higher-is-better, the dominance above would still hold and this claim goes
+// red.
+test fn w_a_tradeoff_is_not_a_domination() -> Bool {
+  let tradeoff = candidate(identity: dear_ref, label: "tradeoff" as NonEmptyStr, capacity: half_terabyte, cash_micros: 100000, builds: 31, watts: 300, bandwidth: 204800000000)
+  match build_standing(subject: tradeoff, field: [cheap_build(), tradeoff], declared: Usd) {
+    ProvisionallyNonDominated { sensitivities: _ } => true
+    _ => false
+  }
+}
+
+// THE WALL THE BRIEF NAMES: an unread compatibility is pending evidence, never
+// a comparable candidate — and it reaches that verdict through std.pareto's own
+// missing-input rule rather than through a second check here.
+fn pending_build() -> BuildCandidate {
+  BuildCandidate {
+    identity: pending_ref,
+    display_label: "pending" as NonEmptyStr,
+    memory_capacity: one_terabyte,
+    wall_power: watt(count: 200),
+    memory_bandwidth: Bandwidth { count: 204800000000 },
+    resolutions: [
+      LineResolved {
+        line: purchase_line(),
+        fulfillment: CompatibilityUnread {
+          part: part_ref,
+          obligation: "sample-qualify one module on this platform" as NonEmptyStr,
+        },
+      },
+    ],
+    cash: CashDerived { micros: 1, currency: Usd },
+    ceiling: CeilingDerived { builds: 99, bottlenecks: [purchase_line()], bottleneck_units: 3168 },
+  }
+}
+
+test fn w_an_unread_compatibility_is_pending_evidence_not_a_winner() -> Bool {
+  match build_standing(subject: pending_build(), field: [cheap_build(), pending_build()], declared: Usd) {
+    IncomparablePendingEvidence { missing: _ } => true
+    _ => false
+  }
+}
+
+// ...and it does not poison the field either: std.pareto excludes an entry
+// declaring missing inputs from being a challenger, so the cheap build keeps
+// its standing even though the pending candidate would beat it on paper.
+test fn w_a_pending_candidate_neither_wins_nor_poisons_the_field() -> Bool {
+  match build_standing(subject: cheap_build(), field: [cheap_build(), pending_build()], declared: Usd) {
+    ProvisionallyNonDominated { sensitivities: _ } => true
+    _ => false
+  }
+}
+
+// A CANDIDATE PRICED IN ANOTHER CURRENCY IS PENDING EVIDENCE, NOT A CHEAP ONE.
+// This is the claim the deleted memory_part_selection held at its own
+// admission; it is re-enrolled here, where the pipeline actually compares.
+test fn w_a_candidate_in_an_undeclared_currency_does_not_rank() -> Bool {
+  let eur = BuildCandidate {
+    identity: dear_ref,
+    display_label: "priced in euro" as NonEmptyStr,
+    memory_capacity: one_terabyte,
+    wall_power: watt(count: 300),
+    memory_bandwidth: Bandwidth { count: 204800000000 },
+    resolutions: [],
+    cash: CashDerived { micros: 1, currency: Eur },
+    ceiling: CeilingDerived { builds: 99, bottlenecks: [purchase_line()], bottleneck_units: 3168 },
+  }
+  match build_standing(subject: eur, field: [cheap_build(), eur], declared: Usd) {
+    IncomparablePendingEvidence { missing: _ } => true
+    _ => false
+  }
+}
+
+// A refused cash answer and a refused ceiling are missing inputs too: a
+// candidate whose price could not be computed must not be ranked as free.
+test fn w_a_refused_cash_answer_makes_the_candidate_incomparable() -> Bool {
+  let broken = BuildCandidate {
+    identity: dear_ref,
+    display_label: "unpriceable" as NonEmptyStr,
+    memory_capacity: one_terabyte,
+    wall_power: watt(count: 300),
+    memory_bandwidth: Bandwidth { count: 204800000000 },
+    resolutions: [],
+    cash: CashRefused { cause: CashLineUnfulfilled { part: part_ref } },
+    ceiling: CeilingDerived { builds: 99, bottlenecks: [purchase_line()], bottleneck_units: 3168 },
+  }
+  match build_standing(subject: broken, field: [cheap_build(), broken], declared: Usd) {
+    IncomparablePendingEvidence { missing: _ } => true
+    _ => false
+  }
+}
+
+// A build that buys nothing reads a REAL zero on the cash axis and ranks with
+// it — the no-purchase arm is not a missing input, because every line was owned
+// or included and the incremental cash genuinely is zero.
+test fn w_a_fully_owned_build_ranks_at_zero_cash() -> Bool {
+  let owned = BuildCandidate {
+    identity: dear_ref,
+    display_label: "all from stock" as NonEmptyStr,
+    memory_capacity: one_terabyte,
+    wall_power: watt(count: 300),
+    memory_bandwidth: Bandwidth { count: 204800000000 },
+    resolutions: [],
+    cash: CashNoPurchaseLines,
+    ceiling: CeilingDerived { builds: 31, bottlenecks: [purchase_line()], bottleneck_units: 992 },
+  }
+  match build_standing(subject: owned, field: [cheap_build(), owned], declared: Usd) {
+    ProvisionallyNonDominated { sensitivities: _ } => true
+    _ => false
+  }
+}
+
+// A ceiling no line bounds has no build count to compare, and the candidate
+// says so rather than reading zero and losing the axis.
+test fn w_an_unbounded_ceiling_is_declared_missing_not_read_as_zero() -> Bool {
+  let unbounded = BuildCandidate {
+    identity: dear_ref,
+    display_label: "whole system" as NonEmptyStr,
+    memory_capacity: one_terabyte,
+    wall_power: watt(count: 300),
+    memory_bandwidth: Bandwidth { count: 204800000000 },
+    resolutions: [],
+    cash: CashNoPurchaseLines,
+    ceiling: CeilingUnconstrainedByAnyLine,
+  }
+  match build_standing(subject: unbounded, field: [cheap_build(), unbounded], declared: Usd) {
+    IncomparablePendingEvidence { missing: _ } => true
+    _ => false
+  }
+}
+
+// Two candidates sharing one identity REFUSE the whole selection — the spine's
+// own duplicate rule, reached through this projector.
+test fn w_duplicate_candidate_identity_refuses_the_selection() -> Bool {
+  match build_standing(subject: cheap_build(), field: [cheap_build(), cheap_build()], declared: Usd) {
+    SelectionRefused { cause: _ } => true
+    _ => false
+  }
+}
+
+// The projection is identity-keyed, not label-keyed: the entry carries the
+// candidate's DeclarationRef and its readings carry the axes' refs.
+test fn w_the_projected_entry_is_keyed_by_declaration_identity() -> Bool {
+  let e = project_entry(candidate: cheap_build(), declared: Usd)
+  count(e.readings) == 5 && count(e.missing_inputs) == 0
+}

@@ -1,0 +1,297 @@
+module product.node_power_envelope
+
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure {
+  Bandwidth,
+  ByteSize,
+  Milliwatt,
+  Watt,
+  bandwidth_count,
+  bit_width_count,
+  byte_size,
+  byte_size_count,
+  milliwatt_count,
+  watt,
+  watt_count,
+}
+import extdeps.cpu.types { CpuModelCatalogRow }
+import extdeps.memory.types {
+  DramModuleCatalogRow,
+  dram_chips_per_rank,
+  dram_data_word_width,
+}
+import extdeps.cpu.ampere_altra_platform_hw_design.platform { dimms_per_channel_count }
+import gunbc.memory_provisioning {
+  FullChannel,
+  MemoryChannelGeometry,
+  PartialChannel,
+  PopulationOption,
+}
+
+// WHAT A NODE DRAWS AND WHAT ITS MEMORY DELIVERS — the electrical and bandwidth
+// half of a build, kept deliberately apart from what the build COSTS
+// (product.build_fulfillment). The two answer different questions and a reader
+// looking for one would not find it inside the other; fusing them was the shape
+// of the deleted product.hardware_selection, where a candidate record carried a
+// synthetic price beside a real wall-draw and neither could be used without the
+// other.
+//
+// RELOCATED, NOT REWRITTEN (2026-08-19). effective_data_rate_mts,
+// memory_bandwidth, memory_power, the DC/AC wall-draw pair and psu_is_adequate
+// came from product.hardware_selection when that module was deleted at the
+// root. What changed is their INPUTS: they take a cited PopulationOption from
+// gunbc.memory_provisioning and a cited CpuModelCatalogRow rather than the
+// deleted module's hand-authored Platform/CpuCandidate/MemoryConfig records,
+// so a population this repository refuses upstream has no way to be priced
+// electrically here. What did not change is the physics or its witnesses.
+//
+// NO PRICES LIVE HERE, and no candidate records. A power envelope is a fact
+// about hardware; a candidate is a decision about buying it.
+
+// --- the memory channel context this module needs ----------------------------------------------
+
+// WHAT THIS MODULE ADDS TO THE UPSTREAM GEOMETRY, AND NOTHING ELSE. Channel
+// count, admitted topology and DRAM generation are already
+// gunbc.memory_provisioning's MemoryChannelGeometry, so they are referenced
+// rather than restated — a second record carrying its own channels field would
+// be two authorities for one fact that could disagree. The genuinely new fact
+// is the platform's rated transfer rate, which is an electrical figure the
+// population derivation has no reason to carry.
+//
+// The POPULATED depth is not a field either: it is a property of the population
+// that was actually chosen, and it is read from that population's coverage
+// below. A board with two DIMMs per channel populated one-deep is electrically
+// a one-deep board, and the only authority for which of those happened is the
+// PopulationOption.
+type MemoryElectricalContext {
+  geometry: MemoryChannelGeometry
+  max_data_rate_mts: Nat
+}
+
+// A full-channel population is as deep as its topology says; a partial one has
+// dark channels and the populated ones are single-deep, which is what
+// documented_coverage means by PartialChannel.
+fn populated_dimms_per_channel(population: PopulationOption) -> Nat {
+  match population.coverage {
+    FullChannel { topology: t } => dimms_per_channel_count(topology: t)
+    PartialChannel { channels_populated: _, channels_dark: _ } => 1
+  }
+}
+
+// THE 2DPC DOWNCLOCK, and it is rank-dependent. A second module on a channel
+// loads the bus; how much depends on how many ranks that module presents, so a
+// single-rank pair keeps the platform's rated speed while a quad-rank pair
+// falls to 2400 MT/s. These figures are the platform's published 2DPC table.
+fn min_nat(a: Nat, b: Nat) -> Nat {
+  if a < b { a } else { b }
+}
+
+fn effective_data_rate_mts(
+  context: MemoryElectricalContext,
+  dimms_per_channel: Nat,
+  rank_count: Nat,
+) -> Nat {
+  if dimms_per_channel <= 1 {
+    context.max_data_rate_mts
+  } else if rank_count >= 4 {
+    min_nat(a: context.max_data_rate_mts, b: 2400)
+  } else if rank_count >= 2 {
+    min_nat(a: context.max_data_rate_mts, b: 2933)
+  } else {
+    context.max_data_rate_mts
+  }
+}
+
+fn dram_channel_bus_bytes() -> Nat {
+  bit_width_count(b: dram_data_word_width) / 8
+}
+
+// A second rank per channel lets the controller interleave, so a rank-starved
+// population does not reach the bus's rated throughput even at its rated clock.
+fn rank_interleave_percent(rank_count: Nat) -> Nat {
+  if rank_count >= 2 { 100 } else { 90 }
+}
+
+// The platform downclocks to the SLOWEST module present, so the rated figure is
+// the minimum of what the module can do and what the topology admits.
+fn memory_bandwidth(
+  context: MemoryElectricalContext,
+  population: PopulationOption,
+) -> Bandwidth {
+  let module = population.module
+  let rated = min_nat(
+    a: module.data_rate_mts,
+    b: effective_data_rate_mts(
+      context: context,
+      dimms_per_channel: populated_dimms_per_channel(population: population),
+      rank_count: module.rank_count,
+    ),
+  )
+  let interleaved = rated * rank_interleave_percent(rank_count: module.rank_count) / 100
+  Bandwidth { count: interleaved * 1000000 * dram_channel_bus_bytes() * context.geometry.channels }
+}
+
+fn devices_per_stick(module: DramModuleCatalogRow) -> Nat {
+  dram_chips_per_rank(module: module) * module.rank_count
+}
+
+fn memory_power(
+  population: PopulationOption,
+  power_per_chip: Milliwatt,
+) -> Watt {
+  watt(
+    count: milliwatt_count(w: power_per_chip)
+      * devices_per_stick(module: population.module)
+      * population.dimm_count
+      / 1000,
+  )
+}
+
+// --- the whole node --------------------------------------------------------------------------
+
+type EfficiencyRating = Plus80 | Bronze | Silver | Gold | Platinum | Titanium
+
+fn efficiency_percent(e: EfficiencyRating) -> Nat {
+  match e {
+    Plus80 => 80
+    Bronze => 85
+    Silver => 88
+    Gold => 90
+    Platinum => 92
+    Titanium => 94
+  }
+}
+
+// A node's electrical inputs. Board idle draw and per-chip DRAM power are
+// declared by the caller because this repository cites no row for either yet;
+// naming them as fields keeps them visible as the two figures a reader must
+// supply, rather than burying a default inside the arithmetic.
+type NodeElectricalInputs {
+  label: NonEmptyStr
+  sockets: Nat
+  cpu: CpuModelCatalogRow
+  context: MemoryElectricalContext
+  population: PopulationOption
+  dram_power_per_chip: Milliwatt
+  board_idle_draw: Watt
+  psu_rated_output: Watt
+  psu_efficiency: EfficiencyRating
+}
+
+// CPU draw is the catalog TDP, once per socket. An earlier home for this
+// arithmetic took a hand-authored 'typical_draw' beside the catalog row, which
+// is a second representation of one fact that could disagree with the first;
+// TDP is what the vendor states and it is what this reads.
+fn cpu_draw_watts(inputs: NodeElectricalInputs) -> Watt {
+  watt(count: watt_count(w: inputs.cpu.tdp_watts) * inputs.sockets)
+}
+
+fn dc_load_watts(inputs: NodeElectricalInputs) -> Watt {
+  watt(
+    count: watt_count(w: cpu_draw_watts(inputs: inputs))
+      + watt_count(w: memory_power(population: inputs.population, power_per_chip: inputs.dram_power_per_chip)) * inputs.sockets
+      + watt_count(w: inputs.board_idle_draw),
+  )
+}
+
+fn wall_draw_watts(inputs: NodeElectricalInputs) -> Watt {
+  watt(
+    count: watt_count(w: dc_load_watts(inputs: inputs)) * 100
+      / efficiency_percent(e: inputs.psu_efficiency),
+  )
+}
+
+// PSU ADEQUACY IS A TYPED VERDICT CARRYING BOTH NUMBERS, not a Bool. A false
+// tells a buyer nothing about which supply to buy instead, and the headroom is
+// exactly the figure the next decision needs.
+type PsuAdequacy
+  = PsuAdequate { dc_load: Watt, rated: Watt, headroom: Watt }
+  | PsuUndersized { dc_load: Watt, rated: Watt, shortfall: Watt }
+
+fn psu_adequacy(inputs: NodeElectricalInputs) -> PsuAdequacy {
+  let load = dc_load_watts(inputs: inputs)
+  let rated = inputs.psu_rated_output
+  if watt_count(w: load) <= watt_count(w: rated) {
+    PsuAdequate {
+      dc_load: load,
+      rated: rated,
+      headroom: watt(count: watt_count(w: rated) - watt_count(w: load)),
+    }
+  } else {
+    PsuUndersized {
+      dc_load: load,
+      rated: rated,
+      shortfall: watt(count: watt_count(w: load) - watt_count(w: rated)),
+    }
+  }
+}
+
+// --- derived and observed are two facts of the same shape --------------------------------------
+
+// THE MEASUREMENT SEAM. Once a host is built and qualified, someone puts a
+// meter on it, and the number that comes back is a DIFFERENT FACT from the one
+// derived above — same units, same shape, different epistemic standing. Neither
+// overwrites the other: a derived figure that disagreed with a measurement is
+// not corrected by deleting it, it is the most interesting thing in the record,
+// because the disagreement locates a modelling error the next node will repeat.
+//
+// So a reading carries its provenance, and the comparison below reports the
+// divergence rather than reconciling it. There is deliberately no function that
+// takes a measurement and returns a corrected derivation.
+type WallPowerReading
+  = WallPowerDerived { watts: Watt }
+  | WallPowerMeasured { watts: Watt, host: NonEmptyStr, observed_at: EpochMs }
+
+fn reading_watts(reading: WallPowerReading) -> Watt {
+  match reading {
+    WallPowerDerived { watts: w } => w
+    WallPowerMeasured { watts: w, host: _, observed_at: _ } => w
+  }
+}
+
+// The divergence is signed and named in both directions, because over- and
+// under-prediction have different causes and different remedies: a derivation
+// that reads high is usually a TDP standing in for a typical draw, while one
+// that reads low usually means a component the model does not carry at all.
+type EnvelopeDivergence
+  = EnvelopeAgrees { watts: Watt }
+  | DerivationReadsHigh { derived: Watt, measured: Watt, excess: Watt }
+  | DerivationReadsLow { derived: Watt, measured: Watt, shortfall: Watt }
+  | DivergenceNotComparable
+
+fn envelope_divergence(derived: WallPowerReading, measured: WallPowerReading) -> EnvelopeDivergence {
+  match derived {
+    WallPowerMeasured { watts: _, host: _, observed_at: _ } => DivergenceNotComparable
+    WallPowerDerived { watts: d } =>
+      match measured {
+        WallPowerDerived { watts: _ } => DivergenceNotComparable
+        WallPowerMeasured { watts: m, host: _, observed_at: _ } =>
+          if watt_count(w: d) == watt_count(w: m) {
+            EnvelopeAgrees { watts: d }
+          } else if watt_count(w: d) > watt_count(w: m) {
+            DerivationReadsHigh {
+              derived: d,
+              measured: m,
+              excess: watt(count: watt_count(w: d) - watt_count(w: m)),
+            }
+          } else {
+            DerivationReadsLow {
+              derived: d,
+              measured: m,
+              shortfall: watt(count: watt_count(w: m) - watt_count(w: d)),
+            }
+          }
+      }
+  }
+}
+
+fn derived_wall_power(inputs: NodeElectricalInputs) -> WallPowerReading {
+  WallPowerDerived { watts: wall_draw_watts(inputs: inputs) }
+}
+
+// --- capacity, for the projector -----------------------------------------------------------------
+
+fn node_memory_capacity(inputs: NodeElectricalInputs) -> ByteSize {
+  byte_size(count: byte_size_count(b: inputs.population.total_bytes) * inputs.sockets)
+}
