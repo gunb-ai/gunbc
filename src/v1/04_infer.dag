@@ -3166,6 +3166,7 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
               let contract_diag = categorized_error(message: "no declared argument contract is available at this parameter position; refusing rather than substituting the receiver element type", span: a.span, module_name: nf_scope.module_name, category: "method-arg-contract-unavailable")
               ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: a, source_indices: nf_scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: concat(ar.diagnostics, [contract_diag]) }
           }
+      }
     }
   )
 }
