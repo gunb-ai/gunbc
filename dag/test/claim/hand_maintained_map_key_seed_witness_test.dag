@@ -1,0 +1,53 @@
+module test.claim.hand_maintained_map_key_seed_witness
+
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+// Executing floor witness for the HAND-MAINTAINED-ROSTER half of
+// v1.compiler.trait_derive_emit derive selection (v1.compiler.05_emit_rust
+// hand_maintained_map_key_required_type_names, fed as extra_seed_names into
+// v1.compiler.trait_derive_emit v1_map_key_required_type_names). This is the
+// declared complement to the USAGE-DERIVED half already covered by
+// map_key_derive_requirement_witness_test.dag: that witness proves a type
+// reaching a Map<K,_> key position INSIDE the compiled .dag fixture earns
+// Eq+Hash; this one proves a type reaches the SAME requirement with NO map-key
+// usage anywhere in the fixture, purely because its declared name is on the
+// hardcoded roster (today: ["ItemKind"]). The roster exists because
+// src/v1/stage0/src/coproduct_reflection.rs keys a StdHashMap on a tuple
+// containing ItemKind — a fact invisible to the .dag-source scan by
+// construction, since no .dag declaration ever positions ItemKind as a map
+// key. compile_dag_rust_emit_check drives the real emit path over an inline
+// fixture with no `v1.compiler.*` import, so this resolves under the
+// required floor's source roots even though src/v1 itself is not one of them.
+// w_roster_name_earns_eq_and_hash is the positive case: a plain record named
+// ItemKind, with no Map usage at all, still derives Eq+Hash because the name
+// match alone seeds the fixpoint (map_has_declared_type is the only gate).
+// w_non_roster_name_derives_no_hash is the paired negative control: an
+// identically-shaped record under a name NOT on the roster and not used as a
+// map key must stay silent — proving the roster seeds by declared name, not
+// by incidentally matching every plain record the fixpoint could reach.
+fn w_roster_name_earns_eq_and_hash() -> Bool {
+  compile_dag_rust_emit_check(
+    "module hand_maintained_map_key_witness.seeded\n\ntype ItemKind {\n  tag: Int\n}\n",
+    "src/hand_maintained_map_key_witness_seeded.rs",
+    ["Eq, std::hash::Hash)]\npub struct ItemKind"],
+    []
+  )
+}
+
+fn w_non_roster_name_derives_no_hash() -> Bool {
+  compile_dag_rust_emit_check(
+    "module hand_maintained_map_key_witness.unseeded\n\ntype OtherKind {\n  tag: Int\n}\n",
+    "src/hand_maintained_map_key_witness_unseeded.rs",
+    ["pub struct OtherKind"],
+    ["std::hash::Hash"]
+  )
+}
+
+test fn roster_name_earns_eq_and_hash() -> Bool {
+  w_roster_name_earns_eq_and_hash()
+}
+
+test fn non_roster_name_derives_no_hash() -> Bool {
+  w_non_roster_name_derives_no_hash()
+}

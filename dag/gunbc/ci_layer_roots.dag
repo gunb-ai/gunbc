@@ -279,6 +279,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_bin_wet_reason,
     dissolution: excl_bin_wet_dissolve},
   WitnessExclusionRow {
+    pattern: "stage0_regen_convergence_real_execution_witness_test.dag",
+    classification: BinWitnessWet,
+    reason: excl_bin_wet_reason,
+    dissolution: excl_bin_wet_dissolve},
+  WitnessExclusionRow {
     pattern: "typed_witness_invocation_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
@@ -908,6 +913,8 @@ data bin_witness_wet_entries: List<std.realization_schedule.ScheduleWitnessEntry
   bin_wet(entry: "dag/test/claim/self_host_artifact_materialization_real_execution_witness_test.dag", f: "the_digest_is_of_the_file_cargo_named_not_of_some_other_real_file"),
   bin_wet(entry: "dag/test/claim/self_host_artifact_materialization_real_execution_witness_test.dag", f: "changing_only_the_source_bytes_names_exactly_the_artifact_axis"),
   bin_wet(entry: "dag/test/claim/self_host_artifact_materialization_real_execution_witness_test.dag", f: "rebuilding_identical_source_in_place_moves_no_axis"),
+  bin_wet(entry: "dag/test/claim/stage0_regen_convergence_real_execution_witness_test.dag", f: "a_real_regen_stage0_verify_run_reports_zero_divergence"),
+  bin_wet(entry: "dag/test/claim/stage0_regen_convergence_real_execution_witness_test.dag", f: "w_RED_an_unrecognized_flag_does_not_report_the_success_marker"),
   bin_wet(entry: "dag/test/claim/run_verdict_exit_status_witness_test.dag", f: "run_failure_verdict_reaches_nonzero_exit"),
   bin_wet(entry: "dag/test/claim/run_verdict_exit_status_witness_test.dag", f: "run_success_verdict_reaches_zero_exit"),
   bin_wet(entry: "dag/test/claim/run_verdict_exit_status_witness_test.dag", f: "run_non_process_exit_return_refuses"),

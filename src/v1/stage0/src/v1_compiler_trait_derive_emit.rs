@@ -367,12 +367,13 @@ pub fn v1_map_key_fixpoint_loop(
 
 pub fn v1_map_key_required_type_names(
     seed_type_exprs: Rc<Vec<Rc<Node>>>,
+    extra_seed_names: Rc<Vec<String>>,
     type_decl_items: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<BTreeSet<String>> {
     {
         let declared_type_names = Rc::new(v1_rt::map_keys(&type_decl_items));
-        let seeded = seed_type_exprs.clone().iter().cloned().fold(
+        let scanned = seed_type_exprs.clone().iter().cloned().fold(
             Rc::new(MapKeyRequirementRound {
                 names: v1_rt::rc_empty_set::<String>(),
                 added: 0,
@@ -391,6 +392,16 @@ pub fn v1_map_key_required_type_names(
                             }
                         },
                     )
+            },
+        );
+        let seeded = extra_seed_names.clone().iter().cloned().fold(
+            scanned.clone(),
+            |acc: Rc<MapKeyRequirementRound>, key_name: String| {
+                if map_has_declared_type(type_decl_items.clone(), key_name.clone()) {
+                    v1_map_key_round_add(acc.clone(), key_name.clone())
+                } else {
+                    acc.clone()
+                }
             },
         );
         v1_map_key_fixpoint_loop(
