@@ -1,0 +1,34 @@
+module v2.test.lens_fact_density.hollow_alias_vtc_empty_lenses_rejected
+
+import v2.compiler.compile {
+  Eval,
+  validate_then_compile
+}
+
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.test.lens_common.infer_fixture { claim_atom_node }
+import v2.test.lens_application.empty_required_lenses_skip_gate {
+  non_empty_diagnostics_contain_reason
+}
+
+data hollow_alias_el_root: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^hollow_alias_el_subject } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data hollow_alias_el_authority: Node = claim_atom_node(s: ^hollow_alias_el_symbol)
+
+test fn hollow_alias_vtc_empty_lenses_rejected_holds() -> Bool {
+  match validate_then_compile(
+    source: hollow_alias_el_root,
+    lenses: [],
+    mode: Eval { runtime: hollow_alias_el_root }
+  ) {
+    Rejected { diagnostics: r } =>
+      non_empty_diagnostics_contain_reason(d: r, reason: ^fact_density_hollow_alias_locus)
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}

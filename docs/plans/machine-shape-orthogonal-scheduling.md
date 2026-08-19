@@ -60,7 +60,7 @@ type InterconnectEdge
 type MachineShape { domains: List<ExecutionDomain>, edges: List<InterconnectEdge> }
 ```
 
-Extdeps derivations (beside their rows): `extdeps.gpu.machine_shape.shape_from_catalog` (GPU catalog → single-domain grant); `extdeps.storage.types.pcie_interconnect_link` (reuses `pcie_link_bandwidth` — derived, never stored). Cross-domain host composition, when it comes, lives in `product/` (precedent: hardware_selection composes cpu+memory rows).
+Extdeps derivations (beside their rows): `extdeps.gpu.machine_shape.shape_from_catalog` (GPU catalog → single-domain grant); `extdeps.storage.types.pcie_interconnect_link` (reuses `pcie_link_bandwidth` — derived, never stored). Cross-domain host composition, when it comes, lives in `product/` (precedent: `product.node_power_envelope` composes cpu+memory rows into an electrical envelope, and `product.build_fulfillment` composes them into a bill of materials; the earlier `hardware_selection` this line named was deleted 2026-08-19).
 
 **No `Quantified<T>`, no `UnknownQuantity`, no per-value `Evidence` on shapes.** Measurement receipts stay in witness-realization; topology = pure fn(graph × bound shape).
 
