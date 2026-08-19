@@ -274,7 +274,7 @@ data host_standup_spine: List<HostStandupStep> = [
     label: "P2:compute-fabric-enroll",
     disposition: DeclaredGap {
       interim_realization: "ctrl:scripts/session-dashboard/lib/node_registry.mjs",
-      refusal: "host_standup:P2:compute-fabric-enroll:shape-and-act-unmodeled — the need/opportunity shape authority this row once named was deleted at the root, so neither the match nor the enroll act is modeled; the enroll act remains interim ctrl only"
+      refusal: "host_standup:P2:compute-fabric-enroll:match-and-act-unmodeled — the shape CARRIER is referenced, not redeclared here: product.fabric.work Shape, where it moved when product.compute_fabric was deleted at the root. What that deletion removed and nothing replaced is the need/opportunity MATCH, so the enroll decision has no authority and the enroll act remains interim ctrl only"
     },
     effect_evidence: host_effect_identity_evidence
   ),
@@ -367,7 +367,7 @@ data host_standup_gap_ledger: List<GapLedgerRow> = [
   GapLedgerRow {
     phase_label: "P2:compute-fabric-enroll",
     modeling: "gap",
-    authority_or_interim: "no shape authority (the prior one was deleted at the root, unreplaced); enroll act: ctrl node_registry.mjs"
+    authority_or_interim: "shape carrier: product.fabric.work Shape (referenced, not redeclared); no match authority since product.compute_fabric was deleted; enroll act: ctrl node_registry.mjs"
   },
   GapLedgerRow {
     phase_label: "P3:green-place-readiness",
