@@ -63,7 +63,7 @@ test fn witness_presentation_policy_row_present_holds() -> Bool {
 }
 
 test fn witness_committed_matches_emit_holds() -> Bool {
-  let committed = extdeps.filesystem.filesystem_io.Filesystem.Read(path: gunbc.generated_artifact.artifact_path(a: gunbc.generated_artifact.GitattributesArtifact))
+  let committed = Filesystem.Read(path: gunbc.generated_artifact.artifact_path(a: gunbc.generated_artifact.GitattributesArtifact))
   match gunbc.gitattributes_emit.expected_gitattributes() {
     gunbc.gitattributes_emit.GitattributesGenerationRefused => false
     gunbc.gitattributes_emit.GitattributesGenerated { content } => committed.success && committed.content == content
@@ -75,7 +75,7 @@ test fn witness_red_missing_merge_row_fails() -> Bool {
 }
 
 test fn witness_red_perturbed_emit_drifts() -> Bool {
-  let committed = extdeps.filesystem.filesystem_io.Filesystem.Read(path: gunbc.generated_artifact.artifact_path(a: gunbc.generated_artifact.GitattributesArtifact))
+  let committed = Filesystem.Read(path: gunbc.generated_artifact.artifact_path(a: gunbc.generated_artifact.GitattributesArtifact))
   match gunbc.gitattributes_emit.expected_gitattributes() {
     gunbc.gitattributes_emit.GitattributesGenerationRefused => false
     gunbc.gitattributes_emit.GitattributesGenerated { content } => committed.success && !(concat(committed.content, "\n# perturb") == content)

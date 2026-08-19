@@ -237,7 +237,7 @@ func collect_fleet_convergence_wet() -> std.process.ProcessExit {
     FleetNotConverged { standings: s } => concat("fleet-verdict not-converged standings=", to_string(length(s)))
   }
   let body = join([enroll_lines, join(map(collected, c => collected_line(c: c)), "\n"), "\n", verdict_line, "\n"], "")
-  let w = extdeps.filesystem.filesystem_io.Filesystem.Write(path: fleet_collect_receipt_path, content: body)
+  let w = Filesystem.Write(path: fleet_collect_receipt_path, content: body)
   if w.success {
     std.process.ExitSuccess
   } else {
