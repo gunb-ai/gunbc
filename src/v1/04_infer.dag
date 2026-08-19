@@ -3151,9 +3151,50 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
           lambda_param_provenance: nf_prov_map
         }
       } else { scope }
-      infer_arg_with_element_type(arg: a, element_type: element_type, scope: nf_scope)
+      if is_lambda_expr(e: nf_lam_value) {
+        infer_arg_with_element_type(arg: a, element_type: element_type, scope: nf_scope)
+      } else {
+        match scalar_shaped_builtin_method_arg_type(method_name: method_name) {
+          Present { value: declared_type } =>
+            infer_arg_with_element_type(arg: a, element_type: declared_type, scope: nf_scope)
+          Absent =>
+            unclassified_method_arg_refusal(method_name: method_name, arg: a, scope: nf_scope)
+        }
+      }
     }
   )
+}
+
+fn scalar_shaped_builtin_method_arg_type(method_name: String?) -> Node? {
+  match method_name {
+    Present { value: mn } =>
+      if mn == "skip" || mn == "take" || mn == "at" || mn == "nth" || mn == "index" {
+        Present { value: int_type }
+      } else {
+        none
+      }
+    Absent => none
+  }
+}
+
+// defaulting to element_type, so the corpus run enumerates every non-lambda
+// builtin-method-call argument this bridge currently mistypes -- the
+// above). Separating the two populations is the point of the run.
+fn unclassified_method_arg_refusal(method_name: String?, arg: Node, scope: InferScope) -> ArgInferResult {
+  let mn = match method_name {
+    Present { value: v } => v
+    Absent => "<unnamed>"
+  }
+  let diag = type_mismatch_error(
+    expected: concat("classified-arg-contract(", mn, ")"),
+    got: "unclassified-builtin-method-arg",
+    span: arg.span,
+    module_name: scope.module_name
+  )
+  ArgInferResult {
+    typed_arg: make_arg_node(name: arg_name_at(n: arg, source_indices: scope.type_env.source_indices), value: arg_value(n: arg), span: arg.span, name_span: arg.span),
+    diagnostics: [diag]
+  }
 }
 
 fn is_lambda_expr(e: Node) -> Bool {
