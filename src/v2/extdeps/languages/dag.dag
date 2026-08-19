@@ -2795,7 +2795,7 @@ fn emit_row_module_header(qualified_name: v2.std.node.Node) -> v2.std.node.Node 
 
 fn emit_import_decl_emitted_node(
   qualified_name: v2.std.node.Node,
-  import_block: v2.std.node.Node?
+  import_block: v2.std.optional.Optional<v2.std.node.Node>
 ) -> v2.std.node.Node {
   let prefix = [
     dag_named_edge(
