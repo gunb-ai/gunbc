@@ -430,7 +430,7 @@ fn bind_eval_minted_atom(s: Symbol, id: Int) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
     occurrence_id: MintedOccurrence {
-      id: v2.std.node.OccurrenceId { value: id },
+      id: std.occurrence_identity.OccurrenceId { value: id },
     },
     children: []
   }

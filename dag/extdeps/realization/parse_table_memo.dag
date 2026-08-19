@@ -74,14 +74,14 @@ data parse_table_memo_facts: CacheInterfaceCatalogFacts = {
       field: "locality"
       evidence: OperatorObserved {
         note: "scoped to InterpContext; drops with evaluation — within-run memo (design-recompute-memoization §4.1)"
-        observed_at: 0
+        observed_at: "2026-08-19"
       }
     },
     {
       field: "key_derivation"
       evidence: OperatorObserved {
         note: "ParseTableSubject = grammar_digest + token_stream_digest (full stream content-address incl. lexemes) + position + production"
-        observed_at: 0
+        observed_at: "2026-08-19"
       }
     },
   ]

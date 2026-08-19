@@ -65,9 +65,7 @@ fn cost_account_measured_from_time_and_space<S>(time: Measure<Time, S, Nat>, spa
 }
 
 fn time_measure_list_total<S>(times: List<Measure<Time, S, Nat>>) -> Measure<Time, S, Nat> {
-  time_measure(
-    count: fold(times, init: 0, f: (acc, t) => acc + measure_count(m: t))
-  )
+  fold(times, init: time_measure(count: 0), f: (acc, t) => time_measure_seq(a: acc, b: t))
 }
 
 type ConcurrentMemoryPeakSample {
