@@ -3790,7 +3790,27 @@ fn match_pattern(
                 }
                 Value::Record { type_name, fields } => {
                     if *type_name != ctx.sym(name) {
-                        return None;
+                        // Mirror of the Value::Variant arm above, for the same reason and
+                        // with one difference. A record pattern head and the record VALUE
+                        // can be spelled at different points on the same containment path
+                        // -- a value constructed as `v2.std.integer.DecimalNonZeroMagnitude`
+                        // against a bare `DecimalNonZeroMagnitude` head -- and this arm
+                        // compared the two spellings whole, so the match fell through
+                        // non-exhaustive and died as PatternMatchFailure.
+                        //
+                        // The difference: variant values ARE normalized to the bare last
+                        // segment at construction, so that arm normalizes only the pattern.
+                        // Record values are not, so both sides are reduced here. NEXT RUNG:
+                        // normalize the record type_name at construction the way variants
+                        // already are, which makes the two arms identical and this
+                        // reconciliation unnecessary -- 67 Value::Record construction sites,
+                        // so it is a separate change, named rather than silently skipped.
+                        let pat_last = name.rsplit('.').next().unwrap_or(name);
+                        let val_full = ctx.resolve(*type_name);
+                        let val_last = val_full.rsplit('.').next().unwrap_or(&val_full);
+                        if val_last != pat_last {
+                            return None;
+                        }
                     }
                     let mut bindings = HashMap::new();
                     for fb in field_bindings.iter() {
