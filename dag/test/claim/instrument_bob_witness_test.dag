@@ -48,9 +48,9 @@ fn witness_the_bob_stays_under_the_registers_attraction_travel() -> Bool {
 
 fn witness_red_every_advanced_state_stays_bounded() -> Bool {
   let hit = apply_impulse(i: an_impulse(magnitude: 999999), m: MotionFull)
-  let a1 = advance(s: hit, dt_ms: 60)
-  let a2 = advance(s: a1, dt_ms: 200)
-  let a3 = advance(s: a2, dt_ms: 500)
+  let a1 = gunbc.design.instrument_bob.advance(s: hit, dt_ms: 60)
+  let a2 = gunbc.design.instrument_bob.advance(s: a1, dt_ms: 200)
+  let a3 = gunbc.design.instrument_bob.advance(s: a2, dt_ms: 500)
   bob_is_within_register_bound(s: a1)
     && bob_is_within_register_bound(s: a2)
     && bob_is_within_register_bound(s: a3)
@@ -59,16 +59,16 @@ fn witness_red_every_advanced_state_stays_bounded() -> Bool {
 data step_size_independence_note: String = "THE DEFECT THIS CONTROL EXISTS FOR. Decaying by each step's duration made the envelope a function of how a caller chose to advance rather than of elapsed time, and at the production interval — sixteen milliseconds against a one-hundred-and-eighty-millisecond half-life — it decayed by nothing at all. So this asserts the property directly: reaching one instant in many small steps and reaching it in one large step produce the SAME amplitude, and the production interval genuinely reduces it. A model that regressed to per-step decay fails the first conjunct AND the second."
 
 fn advance_n(s: gunbc.design.instrument_bob.BobState, dt_ms: Int, n: Int) -> gunbc.design.instrument_bob.BobState {
-  if n <= 0 { s } else { advance_n(s: advance(s: s, dt_ms: dt_ms), dt_ms: dt_ms, n: n - 1) }
+  if n <= 0 { s } else { advance_n(s: gunbc.design.instrument_bob.advance(s: s, dt_ms: dt_ms), dt_ms: dt_ms, n: n - 1) }
 }
 
 fn witness_decay_is_independent_of_how_the_caller_steps() -> Bool {
   let hit = apply_impulse(i: an_impulse(magnitude: impulse_reference_magnitude_milli), m: MotionFull)
   let many = advance_n(s: hit, dt_ms: 16, n: 10)
-  let once = advance(s: hit, dt_ms: 160)
+  let once = gunbc.design.instrument_bob.advance(s: hit, dt_ms: 160)
   bob_amplitude_milli(s: many) == bob_amplitude_milli(s: once)
     && bob_amplitude_milli(s: many) < bob_amplitude_milli(s: hit)
-    && bob_amplitude_milli(s: advance(s: hit, dt_ms: 16)) < bob_amplitude_milli(s: hit)
+    && bob_amplitude_milli(s: gunbc.design.instrument_bob.advance(s: hit, dt_ms: 16)) < bob_amplitude_milli(s: hit)
     && bob_amplitude_milli(s: advance_n(s: hit, dt_ms: 16, n: 60)) == 0
 }
 
@@ -85,12 +85,12 @@ fn witness_the_bob_always_settles_with_strict_descent() -> Bool {
 
 fn witness_the_envelope_strictly_decays_and_reaches_rest() -> Bool {
   let hit = apply_impulse(i: an_impulse(magnitude: impulse_reference_magnitude_milli), m: MotionFull)
-  let a1 = advance(s: hit, dt_ms: bob_half_life_ms)
-  let a2 = advance(s: a1, dt_ms: bob_half_life_ms)
+  let a1 = gunbc.design.instrument_bob.advance(s: hit, dt_ms: bob_half_life_ms)
+  let a2 = gunbc.design.instrument_bob.advance(s: a1, dt_ms: bob_half_life_ms)
   bob_amplitude_milli(s: a1) < bob_amplitude_milli(s: hit)
     && bob_amplitude_milli(s: a2) < bob_amplitude_milli(s: a1)
-    && bob_phase_key(p: advance(s: hit, dt_ms: bob_half_life_ms * 20).phase) == "settled"
-    && bob_amplitude_milli(s: advance(s: hit, dt_ms: bob_half_life_ms * 20)) == 0
+    && bob_phase_key(p: gunbc.design.instrument_bob.advance(s: hit, dt_ms: bob_half_life_ms * 20).phase) == "settled"
+    && bob_amplitude_milli(s: gunbc.design.instrument_bob.advance(s: hit, dt_ms: bob_half_life_ms * 20)) == 0
 }
 
 data derived_settle_bound_note: String = "The settle time is derived from the bound, the floor and the half-life rather than declared, so retuning any of the three moves it and no second number goes stale. The largest admissible knock rings for a little over a second, which is the interval a bobber on water actually takes and is why the number reads as correct rather than as arbitrary."
