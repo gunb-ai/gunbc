@@ -278,15 +278,53 @@ authority and is a smaller interception point (verified present, with consumers 
   settlement, teardown and component fencing would otherwise all build against a temporary carrier.
 - **Cut B — delete the dead root.** Delete `product.compute_fabric`, remove #8413's dependency on
   its thread-only `Shape`, drop the subject-only witnesses, and classify the compile refusals.
-- **Cut C — sever physical supply from the public CI interface.** Make the workflow runner
-  specification derive from a selected execution class or runner-target contract rather than from a
-  physical `ComputeOffer`. This preserves workflow emission while removing the live edge.
+- **Cut C — point the live workflow emitter at the seam that already exists.** *(Rewritten after
+  measurement. The original specification of this cut was premised on an edge that is not there.)*
 - **Cut D — replace live `ComputeOffer`.** Migrate the remaining consumers to
-  `product.fabric.supply.Offer`. The census covers runner placement, deployment-target selection,
-  fleet convergence, host standup and assimilation, and supply-derived budget projections — **the
-  workflow consumer is a boundary to sever first, not the complete population.**
+  `product.fabric.supply.Offer`. Census by *declaration* name: `ci_budget_tree` (10),
+  `ci_fleet` (7), `ci_runner_placement` (4), `runner_spec_from_offer` (2), `fleet_host_budget` (2),
+  `ci_deploy_target_host` (2), plus plan prose.
 
-Cut C is what makes D safe: sever the wrong edge before migrating the authority behind it.
+### Cut C, as measured rather than as assumed
+
+I wrote that "the customer-facing execution class currently depends on physical supply — every
+supply migration is a workflow migration", and specified Cut C as *building* a seam. **The seam
+already exists and is already the authority.** `gunbc.ci_runner_target` declares
+`CiRunnerTarget = FleetSelfHosted | UbicloudRunner | GithubHostedRunner`, projects
+`ci_runner_target_spec` and `ci_runner_target_memory_regime` from one selection, and its
+`FleetSelfHosted` arm delegating to `runner_spec_from_offer` is **correct and deliberate** — a
+self-hosted fleet runner's labels genuinely *are* facts about the physical fleet. That is not the
+wrong edge; that is the right derivation.
+
+**The actual defect is narrower and sharper: the one live workflow emitter bypasses the seam.**
+
+```
+witness_floor_workflow.dag:325   runner: gunbc_ci_runner_spec()        <- runner_spec_from_offer(gunbc_ci_fleet_offer)
+ci_runner_target.dag:54          gunbc_ci_selected_runner_spec()       <- the seam's projection, UNUSED by any workflow
+```
+
+`ci_runner_target`'s own note says "ci_workflow reads the spec projection now" — but `ci_workflow`
+was deleted in the floor cut, and the workflow that replaced it reads the un-seamed function. So
+the bypass is most likely **collateral of the floor cut**, not an original decision: the consumer
+that honoured the seam was deleted and its replacement was wired to the older call.
+
+**Why this is an unusually safe cut, and why it must still be done.** The two are provably equal
+today — `ci_runner_target_witness_test` asserts
+`ci_runner_target_spec(target: FleetSelfHosted) == gunbc_ci_runner_spec()` — so pointing the
+emitter at `gunbc_ci_selected_runner_spec()` is byte-identical in the emitted workflow, and the
+existing witness is the control. What it buys is that the runner selection becomes a one-row edit
+again, which is the entire reason `ci_runner_target` was built; and it removes one of the three
+direct `runner_spec_from_offer` call sites ahead of Cut D. The other two
+(`ci_runner_placement`, `ci_deploy_target_host`) are *legitimately* about physical placement and
+stay.
+
+**Correction of a live note is part of this cut**: `ci_runner_target_mapping_note` asserts a
+present-tense consumer that no longer exists. A note claiming its seam is honoured, inside the
+module whose seam is being bypassed, is the stale-present-tense class in the place most likely to
+stop the next person from checking.
+
+Cut C is what makes D cheaper: close the bypass before migrating the type behind it, so the
+migration meets three call sites rather than four and the workflow is not one of them.
 
 ## 11. Resolved: the Work key is a distinct carrier, not a rename — `WorkContentKey`
 
