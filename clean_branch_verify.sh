@@ -1,6 +1,6 @@
 set -e
 MAIN_SHA=9fb884aa0062754a482b1b0e85b491e989826330
-FIX_SHA=ed235bd2598
+FIX_SHA=ed235bd259883cf661e2f94b9340d654271daa31
 
 echo "=== MAIN BASELINE PHASE (clean, no surface-ownership commits) ==="
 git fetch origin $MAIN_SHA
