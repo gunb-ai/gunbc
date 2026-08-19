@@ -39,7 +39,7 @@ fn parse_overlap_residue_stage_diagnostic(row: v2.std.grammar_choice_ambiguity.G
 
 fn non_empty_parse_stage_diagnostics_from_overlap_roster(
   at: v2.std.diagnostic.Locus,
-  roster: List<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow>
+  roster: std.algebra.FreeMonoid<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow>
 ) -> Optional<NonEmptyParseStageDiagnostics> {
   match roster {
     std.algebra.Empty => optional_absent()
