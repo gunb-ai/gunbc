@@ -30,7 +30,7 @@ data projection_test_section: Node = Node {
 }
 
 data projection_test_root: Node = Node {
-  kind: TypeNode { connective: Atom { identity: ^projection_test_symbol } },
+  kind: TypeNode { connective: Conj },
   children: [
     Edge {
       label: Named { name: ^projection_section_step },
