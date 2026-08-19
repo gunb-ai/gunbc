@@ -1,15 +1,8 @@
 module extdeps.shell.exec
 
-import std.types { String, Int, Bool, NonEmptyStr }
-import v2.std.compilers.cli_surface { ProcessArgvExpansion }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import extdeps.exec.exec_arg_limit { host_exec_arg_max_strlen }
-import std.measure { ByteSize }
-
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html"
   }
 }
@@ -51,7 +44,7 @@ data service_op_string_wire_projection_method_fork_note: String = "🟡 KNOWN CL
 
 data shell_exec_check_argv_embed_note: String = "shell.Exec.Check transport: argv is [sh, -c, command] — the entire command string is ONE argv element. On Linux hosts this is the surface that hits execve(2) MAX_ARG_STRLEN (extdeps.exec.exec_arg_limit.host_exec_arg_max_strlen): an oversized embed fails E2BIG (opaque os error 7) unless the interpreter refuses first at dispatch_shell (InterpError::ArgvExceedsHostArgMax). Prefer Run for payloads approaching the per-argument ceiling."
 
-data shell_exec_transport_ceiling_authority: std.measure.ByteSize = host_exec_arg_max_strlen
+data shell_exec_transport_ceiling_authority: std.measure.ByteSize = extdeps.exec.exec_arg_limit.host_exec_arg_max_strlen
 
 // THE LOCAL PROCESS-ARGV SEAM (shell.Exec.RunArgv, declared in the service below).
 //
@@ -107,7 +100,7 @@ service shell.Exec {
   }
 
   operation RunArgv {
-    input { program: NonEmptyStr, arguments: ProcessArgvExpansion }
+    input { program: std.types.NonEmptyStr, arguments: v2.std.compilers.cli_surface.ProcessArgvExpansion }
 
     output {
       exit_code: Int from "exit_code"

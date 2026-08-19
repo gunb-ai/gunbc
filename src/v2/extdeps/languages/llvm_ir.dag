@@ -696,7 +696,7 @@ fn llvm_lex_token(token_class: v2.std.node.Symbol, pattern: v2.std.compilers.lex
 }
 
 fn llvm_grammar_terminal(token_class: v2.std.node.Symbol) -> v2.std.grammar.GrammarExpr {
-  Terminal { token_class: token_class, stamp: v2.std.grammar.StampClass }
+  v2.std.grammar.Terminal { token_class: token_class, stamp: v2.std.grammar.StampClass }
 }
 
 fn llvm_grammar_sequence(left: v2.std.grammar.GrammarExpr, right: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
