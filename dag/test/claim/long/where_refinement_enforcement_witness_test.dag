@@ -1,6 +1,14 @@
 module test.claim.long.where_refinement_enforcement_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -294,6 +302,16 @@ fn w_depth2_wrong_base_type_data_init_green() -> Bool {
   )
 }
 
+data where_refinement_cause_pinning_note: String = "node://adhoc-2ccd029d-c1d follow-up (parent review, 2026-08-19): every red/green pair above asserts only compile_dag_rust_emit_check's coarse Bool — false on ANY hard diagnostic, true on none — which cannot distinguish this wall's own TypeMismatch from an unrelated hard diagnostic an unrecognized-regression fixture might trip instead ('a negative control satisfied by an unrelated harness accident passes invisibly'). The four depth-2/3 base-type-mismatch specimens below additionally pin CAUSE via compile_dag_diagnostic_census: the red source must produce exactly one BLOCKING TypeMismatch row (not merely 'something blocking'), and the green source must produce zero. This is deliberately scoped to the base-type-mismatch specimens this PR introduces (root cause (a), and (b)'s data-init path) rather than retrofitted across all 38 pre-existing tests in this file, which is a larger, separately-scoped census migration (dag/test/claim/compile_diagnostic_census_witness_test.dag already establishes the pattern for other walls) and not this PR's fix."
+
+fn depth_wrong_base_type_mismatch_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "TypeMismatch")))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
 fn w_wrong_kind_literal_int_pred_data_init_red() -> Bool {
   compile_dag_rust_emit_check(
     "module whereref_wrongkind_int_pred_red\nimport std.nat { Nat }\ntype PositiveInt = Nat where gt_zero\ndata d: PositiveInt = \"x\"\n",
@@ -474,6 +492,26 @@ test fn where_refinement_depth2_wrong_base_type_data_init_refuses() -> Bool {
 
 test fn where_refinement_depth2_wrong_base_type_data_init_accepts() -> Bool {
   w_depth2_wrong_base_type_data_init_green()
+}
+
+test fn where_refinement_depth2_wrong_base_type_record_field_pins_type_mismatch_cause() -> Bool {
+  depth_wrong_base_type_mismatch_count(source: "module whereref_depth2_wrong_base_red\ntype S1 = String where non_empty\ntype S2 = S1 where brand(\"S2\")\ntype Box { s: S2 }\ndata b: Box = Box { s: 0 }\n") == 1
+  && depth_wrong_base_type_mismatch_count(source: "module whereref_depth2_wrong_base_green\ntype S1 = String where non_empty\ntype S2 = S1 where brand(\"S2\")\ntype Box { s: S2 }\ndata b: Box = Box { s: \"ok\" }\n") == 0
+}
+
+test fn where_refinement_depth3_wrong_base_type_record_field_pins_type_mismatch_cause() -> Bool {
+  depth_wrong_base_type_mismatch_count(source: "module whereref_depth3_wrong_base_red\ntype S1 = String where non_empty\ntype S2 = S1 where brand(\"S2\")\ntype S3 = S2 where brand(\"S3\")\ntype Box { s: S3 }\ndata b: Box = Box { s: 0 }\n") == 1
+  && depth_wrong_base_type_mismatch_count(source: "module whereref_depth3_wrong_base_green\ntype S1 = String where non_empty\ntype S2 = S1 where brand(\"S2\")\ntype S3 = S2 where brand(\"S3\")\ntype Box { s: S3 }\ndata b: Box = Box { s: \"ok\" }\n") == 0
+}
+
+test fn where_refinement_depth2_wrong_base_type_call_arg_pins_type_mismatch_cause() -> Bool {
+  depth_wrong_base_type_mismatch_count(source: "module whereref_depth2_callarg_red\ntype S1 = String where non_empty\ntype S2 = S1 where brand(\"S2\")\nfn takes(x: S2) -> Bool { true }\nfn bad() -> Bool { takes(x: 0) }\n") == 1
+  && depth_wrong_base_type_mismatch_count(source: "module whereref_depth2_callarg_green\ntype S1 = String where non_empty\ntype S2 = S1 where brand(\"S2\")\nfn takes(x: S2) -> Bool { true }\nfn ok() -> Bool { takes(x: \"hello\") }\n") == 0
+}
+
+test fn where_refinement_depth2_wrong_base_type_data_init_pins_type_mismatch_cause() -> Bool {
+  depth_wrong_base_type_mismatch_count(source: "module whereref_depth2_data_init_red\ntype S1 = String where non_empty\ntype S2 = S1 where brand(\"S2\")\ndata d: S2 = 0\n") == 1
+  && depth_wrong_base_type_mismatch_count(source: "module whereref_depth2_data_init_green\ntype S1 = String where non_empty\ntype S2 = S1 where brand(\"S2\")\ndata d: S2 = \"ok\"\n") == 0
 }
 
 test fn where_refinement_wrong_kind_literal_int_pred_data_init_refuses() -> Bool {
