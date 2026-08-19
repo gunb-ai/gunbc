@@ -94,8 +94,8 @@ fn list_at_optional<T>(xs: v2.std.collection.List<T>, index: Int) -> Optional<T>
       }
     }
   ) {
-    ListAtFound { value: v } => optional_present(value: v)
-    ListAtMissing { remaining: _ } => optional_absent()
+    ListAtFound { value: v } => v2.std.optional.optional_present(value: v)
+    ListAtMissing { remaining: _ } => v2.std.optional.optional_absent()
   }
 }
 

@@ -47,7 +47,7 @@ fn decl_ref_named_field_present(ref: std.decl_ref.DeclarationRef, fact: v2.std.d
     WholeDeclaration => true
     NamedField { field_name: f } =>
       any(
-        xs: node_labeled_child_edges(node: fact.node),
+        xs: v2.std.node_query.node_labeled_child_edges(node: fact.node),
         predicate: fn(e) { named_edge_sort_key(e: e) == f as String }
       )
   }
@@ -61,7 +61,7 @@ fn resolve_declaration_ref(
   if !module_path_declared(module_path: ref.module_path as String, modules: modules) {
     DeclarationRefModuleAbsent { reference: ref }
   } else {
-    let matches = decl_facts_matching_qualified_name(
+    let matches = v2.std.decl_facts_skeleton.decl_facts_matching_qualified_name(
       qn: declaration_ref_target_qualified_name(ref: ref),
       facts: facts
     )

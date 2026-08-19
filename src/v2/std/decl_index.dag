@@ -39,7 +39,7 @@ fn data_decl_type_facts(pool_roots: List<String>) -> List<v2.std.decl_index.Data
   data_decl_type_facts(pool_roots: pool_roots)
 }
 
-data export_signature_facts_host_scaffold_dissolution_trigger: std.disposition.Disposition = Scaffold {
+data export_signature_facts_host_scaffold_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "std.interface_summary",
@@ -67,8 +67,8 @@ fn decl_facts_is_fn_like(kind: v2.std.decl_index.ItemKind) -> Bool {
 }
 
 fn decl_fact_node_has_body(node: Node) -> Bool {
-  (length(xs: node_labeled_child_edges(node: node)) > 0)
-    || (length(xs: node_positional_child_targets(node: node)) > 0)
+  (length(xs: v2.std.node_query.node_labeled_child_edges(node: node)) > 0)
+    || (length(xs: v2.std.node_query.node_positional_child_targets(node: node)) > 0)
 }
 
 fn decl_facts_fn_items(facts: List<v2.std.decl_index.DeclFact>) -> List<v2.std.decl_index.DeclFact> {
