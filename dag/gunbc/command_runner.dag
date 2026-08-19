@@ -31,7 +31,26 @@ data command_runner_scaffold: Disposition = Scaffold {
   }
 }
 
-data command_runner_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: run_shell_command — generic ArgvCommand runner routes the typed extdeps.exec.command shape through shell.Exec.Run via the shell_bash_runner heredoc transport; DISSOLVES WHEN host_effect_apply binds ArgvCommand execution as a typed transport handler and dag/gunbc/command_runner.dag retires its shell_exec_via_bash glue")
+data command_runner_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: the SSH arm of run_shell_command / run_shell_command_capture. THE LOCAL ARM IS DONE -- it routes straight at shell.Exec.RunArgv, constructs no TransportScript, and reaches no shell. WORDING CORRECTED, and the correction is the point: this row previously named host_effect_apply binding ArgvCommand as a typed transport handler. No such production module exists -- host_effect_apply appears only as a witness test, and host_effect_realize never mentions ArgvCommand -- so the trigger named a binding that was never built, and satisfying it literally would have meant building a second route to answer a question command_runner already answers. Measured before rewriting: command_runner is the ONLY module that turns an ArgvCommand into a local process. The other ArgvCommand consumers reach shell_command_render, which serializes argv into TEXT for emission (githooks) or for the SSH leg, which is a different destination rather than a second local-exec path. DISSOLVES WHEN the SSH arm stops rendering argv to a string -- which needs the nested command-string target RFC 4254 actually requires, owned by another lane -- at which point shell_exec_via_bash and retained_runtime leave this module entirely.")
+
+// WHAT GUARDS THIS, AND WHAT DOES NOT -- read before assuming the property below is enforced.
+//
+// The property "the local path reaches no shell" is established by execution, wet, against a real
+// process: test/manual/command_runner_local_argv_receipt_test.dag runs printf against an operand
+// containing a space and asserts the one-argument reading arrives while the shell-split reading
+// does not. It passes. It is also EXCLUDED FROM THE FLOOR, so CI does not run it, and after this
+// lands someone reintroducing a render-and-bash hop on this arm gets NO SIGNAL from CI.
+//
+// The exclusion is structural rather than convenient: hermetic evaluation replays an operation's
+// declared mock_response and never constructs an argv, so how the words reach the process is not
+// observable hermetically at all. A hermetic version of that receipt could only assert the mock,
+// which is specification-without-execution -- it would look like coverage while proving nothing.
+//
+// RUNG: mitigatable. The invalid state (argv re-split by a shell) is writable, and the mechanism
+// that detects it does not execute in CI. NEXT-RUNG TRIGGER: a wet lane that executes
+// floor-excluded receipts, at which point this row's evidence enrolls and the class climbs to
+// mechanically preventable. Stated here rather than left to be inferred from a passing receipt,
+// because a green test that nothing runs is exactly the inert evidence DESIGN calls a lie.
 
 // THE LOCAL ARM NO LONGER ROUND-TRIPS ARGV THROUGH A STRING.
 //
