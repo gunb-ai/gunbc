@@ -15,24 +15,36 @@ import gunbc.live_deploy.emit {
 }
 import gunbc.live_deploy.spec { DeploymentSpec, deployment_spec_srv1_green }
 
-// THE ORACLE IS THE LIVE HOST, NOT THIS TREE.
+// A DATED, INDEPENDENTLY TRANSCRIBED REALIZATION FIXTURE — NOT LIVE DRIFT DETECTION.
 //
-// These six renderers produce the bytes that BECOME systemd unit files on srv1, and nothing in
-// the repository or in CI pins them: dag/test/claim/live_deploy/long/emit_test.dag carries 47
-// witnesses and not one asserts a unit doc's text, the emitted deploy script is not a committed
-// artifact so git shows no diff, and the generated-artifact drift gate was deleted by the
-// 2026-08-15 floor cut (.github/workflows now holds only fleet-converge.yml and witnesses.yml).
-// So a refactor of these functions could change a live unit file with no oracle anywhere.
+// Read this claim precisely, because an earlier revision of this note overstated it and the
+// overstatement is the exact failure this repository keeps paying for. What executes here is
 //
-// The expected bytes below were READ FROM /etc/systemd/system ON srv1 on 2026-08-19 — they are
-// what is deployed and running, an external authority. They are deliberately NOT a capture of
-// what these functions currently emit: a golden generated from the same tree it guards is the
-// change detector DESIGN section 5 rejects, and it would certify a renderer as correct purely
-// because nobody had touched it. Grounding on the deployed bytes means a disagreement is a real
-// finding about emission drifting from the fleet, in either direction.
+//     emitter(current) == bytes transcribed from srv1 on 2026-08-19
 //
-// A witness here going red therefore asks a question before it asks for a fix: did the emitter
-// change, or did the host? Both are answerable, and neither is answerable from a self-capture.
+// and NOT
+//
+//     emitter(current) == host(current)
+//
+// Nothing reads srv1 at execution time. If the deployed units drift tomorrow while these
+// functions stay put, every witness below stays green — so this fixture CANNOT ask "did the host
+// change?", and calling the running host an external authority for these bytes would be a claim
+// the mechanism does not support. The deployed file is an observed realization, not the authority
+// for systemd syntax or for desired deployment state.
+//
+// What it IS good for, and why it exists: the expected bytes were obtained independently of the
+// functions under test, so this is not a self-capture golden — it cannot certify a renderer as
+// correct merely because nobody edited it, which is the change detector DESIGN section 5 rejects.
+// That makes it a sound BASELINE for refactoring these renderers: a red means the emitter moved
+// off the last observed deployed baseline, which during a migration is exactly the question.
+//
+// It is needed because nothing else pins these bytes. dag/test/claim/live_deploy/long/emit_test.dag
+// carries 47 witnesses and not one asserts a unit doc's text; the emitted deploy script is not a
+// committed artifact, so git shows no diff; and the generated-artifact drift gate was deleted by
+// the 2026-08-15 floor cut (.github/workflows now holds only fleet-converge.yml and witnesses.yml).
+//
+// Live drift detection is a DIFFERENT mechanism this fixture does not provide: it would have to
+// observe the host at run time and would belong with the fleet observation lane, not here.
 
 fn green_spec() -> DeploymentSpec {
   deployment_spec_srv1_green()
