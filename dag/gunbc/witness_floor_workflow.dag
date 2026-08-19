@@ -101,7 +101,20 @@ data witness_floor_concurrency_group: String = "witness-floor-${{ github.event.p
 // `gunbc` is the CLI the repository's own tooling invokes. The predecessor build job named
 // nineteen binaries, most of which this cut deleted; naming a binary that no step runs buys
 // nothing and costs a compile.
-data witness_floor_required_bins: List<String> = ["claim_executor", "gunbc"]
+// `v1_src_dag_parse` ADDED 2026-08-19, and this is a build-list omission repaired, not a new gate.
+// `test.claim.v1_dag_parse_witness.v1_dag_parse_witnesses` has been an ordinary discovered witness
+// the whole time; it invokes this binary through `tools.v1_dag_parse_transport`. It failed for one
+// reason -- the binary was never built here, so `witness_bin_program_readiness` refused and the
+// witness returned false -- and it went onto the expected-red roster in FLOOR-Y's bulk enrolment
+// (#8283), where the cause was never diagnosed. Built locally, the witness returns true.
+//
+// WHAT THAT COST, because it is the part worth keeping: a row named for v1 parse coverage sat red
+// for four days while the missing --bin flag was three declarations up this same file, and a
+// sibling lane meanwhile reported v1's .dag sources as having no per-PR gate at all. Both readings
+// were true of the observable state and neither located the mechanism. That is the roster's own
+// stated hazard -- "a defect nobody owns wearing a receipt" -- reached in the ordinary way, by an
+// entry being enrolled with a population rather than with a cause.
+data witness_floor_required_bins: List<String> = ["claim_executor", "gunbc", "v1_src_dag_parse"]
 
 fn witness_floor_checkout_step() -> Step {
   UsesStep {
