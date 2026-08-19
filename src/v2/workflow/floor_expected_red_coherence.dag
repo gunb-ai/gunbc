@@ -148,6 +148,36 @@ fn roster_identities_missing_from_authored_chunks(
 // Fail-closed by construction: an unresolved chunk or aggregator declaration is a
 // refusal in its own right, never treated as "no identities to check" (the
 // empty-observation narrow DESIGN §5 forbids) and never silently skipped.
+//
+// SCOPE, stated positively rather than as a dissolution condition (this is a
+// permanent property of the check, not debt with a lifecycle): this function is
+// complete for the chunks it is GIVEN via the `chunks` parameter. The caller
+// decides which declarations count as chunks and enumerates them by hand -- there
+// is no derivation of "which functions are chunks" from decl_facts alone, because
+// that would require a naming-convention heuristic over declaration names, which
+// is the same class of shape-based inference DESIGN §4 forbids for atom lexemes
+// (the substrate has no closed vocabulary that marks "chunk" as a structural
+// property; it is a role the caller assigns).
+//
+// BLIND SPOT this scope creates, named rather than left implicit: a chunk that is
+// declared in the checked module (e.g. floor_expected_red.dag) but is absent from
+// the call site's `chunks: List<ChunkDeclRef>` roster is invisible to this check --
+// it is not one of the `facts` this function ever resolves, so it can neither
+// contribute a cause nor be reported missing. Such an omission returns
+// ChunkCoherenceCoherent exactly as if the chunk had never existed, which is the
+// same empty-observation-narrow shape (DESIGN's "Recurring failure modes") the
+// severed-aggregator RED above exists to catch, now sitting one level up at the
+// call site instead of inside the aggregator body. Closing it would mean deriving
+// the chunk roster from decl_facts instead of taking it as a parameter -- and
+// deriving it without a naming heuristic requires the same fresh whole-module
+// decl_facts parse the live join already needs (see
+// live_floor_expected_red_coherence_join_gap_note below: verifying a caller's
+// roster against floor_expected_red.dag's actual declarations costs the identical
+// ~56s parse as verifying the roster's identities do, because both need decl_facts
+// over the same pool root). So this is not a second, separate gap with its own
+// cheaper fix -- it is the same live-join gap, restated from the roster-omission
+// angle rather than the roster-content angle, and it dissolves with that work's
+// preparation-time consumer, not separately.
 fn floor_expected_red_chunk_coherence_check(
   facts: List<DeclFact>,
   chunks: List<ChunkDeclRef>,
@@ -239,4 +269,4 @@ data floor_expected_red_chunk_coherence_check_note: String = "MECHANISM ON FIXTU
 // has already done -- the #8470 shape one level up. Building that preparation-time
 // consumer is its own future work item with its own owner, not a continuation of
 // this one.
-data live_floor_expected_red_coherence_join_gap_note: String = "PRE-EXISTING, UNOWNED GAP (not this module's debt): the live join of floor_expected_red.dag's own 20 chunks against its own evaluated roster is not a per-PR witness in floor_expected_red_coherence_witness_test.dag, and was not checkable by anything before this module existed either. See floor_expected_red_chunk_coherence_check_note and the comment above it for why the mechanism itself is complete, and for the measured cost and natural home (a required-floor preparation-time consumer) of the still-open live-census gap."
+data live_floor_expected_red_coherence_join_gap_note: String = "PRE-EXISTING, UNOWNED GAP (not this module's debt): the live join of floor_expected_red.dag's own 20 chunks against its own evaluated roster is not a per-PR witness in floor_expected_red_coherence_witness_test.dag, and was not checkable by anything before this module existed either. This single gap has two faces, not two gaps: a checked chunk's identities may drift from the roster (the content face, this note's original subject), and a chunk may be missing from the caller's ChunkDeclRef roster entirely (the omission face, named on floor_expected_red_chunk_coherence_check's own SCOPE comment) -- closing either face requires the identical fresh decl_facts parse over floor_expected_red.dag's module, so one preparation-time consumer closes both. See floor_expected_red_chunk_coherence_check_note and the comment above it for why the mechanism itself is complete, and for the measured cost and natural home (a required-floor preparation-time consumer) of the still-open live-census gap."
