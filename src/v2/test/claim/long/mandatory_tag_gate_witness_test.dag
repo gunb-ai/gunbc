@@ -140,6 +140,13 @@ test fn mandatory_tag_normalized_grain_misnamed_rejects() -> Bool {
   )
 }
 
+fn any_tail_diagnostic_has_reason(
+  tail: std.algebra.FreeMonoid<v2.std.diagnostic.Diagnostic>,
+  reason: v2.std.node.Symbol,
+) -> Bool {
+  fold(tail, init: false, f: fn(acc2, diag) { acc2 || diag.reason == reason })
+}
+
 fn roster_rejects_with(probe: v2.test.long.mandatory_tag_gate_witness.GrainProbe, reason: v2.std.node.Symbol) -> Bool {
   match probe {
     GrainStageRejected => false
@@ -153,7 +160,7 @@ fn roster_rejects_with(probe: v2.test.long.mandatory_tag_gate_witness.GrainProbe
               if d.head.reason == reason {
                 true
               } else {
-                fold(d.tail, init: false, f: fn(acc2, diag) { acc2 || diag.reason == reason })
+                any_tail_diagnostic_has_reason(tail: d.tail, reason: reason)
               }
           }
       })

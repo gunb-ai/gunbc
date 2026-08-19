@@ -36,9 +36,9 @@ type PreparedFloorEntryArtifact {
 
 type PreparedFloorSubjectRefusal
   = PreparedFloorDuplicateSelectedIdentities { duplicates: std.algebra.FreeMonoid<std.realization_schedule.ScheduleWitnessEntry> }
-  | PreparedFloorDuplicateProbeIdentities { duplicates: List<std.realization_schedule.ScheduleWitnessEntry> }
+  | PreparedFloorDuplicateProbeIdentities { duplicates: std.algebra.FreeMonoid<std.realization_schedule.ScheduleWitnessEntry> }
   | PreparedFloorMissingProbeIdentities { missing: std.algebra.FreeMonoid<std.realization_schedule.ScheduleWitnessEntry> }
-  | PreparedFloorUnexpectedProbeIdentities { unexpected: List<std.realization_schedule.ScheduleWitnessEntry> }
+  | PreparedFloorUnexpectedProbeIdentities { unexpected: std.algebra.FreeMonoid<std.realization_schedule.ScheduleWitnessEntry> }
   | PreparedFloorProviderRefused { witness: std.realization_schedule.ScheduleWitnessEntry, lookup: std.materialization_provider.ProviderLookup }
 
 type PreparedFloorSubjectServe

@@ -487,10 +487,14 @@ fn landing_alternative_for_choice(
     gunbc.native_scm_interaction_contract.NativeScmSecondContinuationOption =>
       v2.std.optional.Present { value: options.second_option.alternative }
     NativeScmAdditionalContinuationOption { index } =>
-      v2.std.collection.list_at_optional(
+      match v2.std.collection.list_at_optional(
         xs: options.additional_options,
         index: index,
-      ) |> map(option => option.alternative)
+      ) {
+        v2.std.optional.Present { value: option } =>
+          v2.std.optional.Present { value: option.alternative }
+        v2.std.optional.Absent => v2.std.optional.Absent
+      }
   }
 }
 
