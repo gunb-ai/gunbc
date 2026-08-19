@@ -136,6 +136,25 @@ infer's 11 is a subset of the class, and same class is not same defect.
 
 ## The matrix
 
+**A board is a snapshot, not a score, and this table must not be read as a ranking of what to fix.**
+A diagnostic count is not a value function: a fix that makes a silent wrong answer *loud* always looks
+like a regression on a count, and a fix that makes a loud error *silent* always looks like progress —
+and the second direction is the dangerous one. A module whose count **rises** because concealed
+non-exhaustiveness became a hard error has **improved**. Rank by what a fix *converts*, not by board
+size, and report any re-measurement as which classes converted into which — never as a net.
+
+That is not hypothetical here. Re-measuring `emit_module` after gunbc#8570 (`52e1c4dc6c`, the emitter's
+nested-constructor-pattern flattening) moved its board 286 → 276, a net of −10 that reads as a rounding
+error. What actually happened: `unreachable_pattern` went 37 → **0** while `E0004` (non-exhaustive
+match) went 1 → **28**, with all sixteen other classes byte-identical. Thirty-seven lint-shaped
+concealments became twenty-eight hard errors — a climb from *mitigatable* to *loud refusal* (DESIGN
+§4b), bought for +27 visible errors. The net conceals the entire event.
+
+The conversion is also **heterogeneous**, which only a per-class reading shows: a control module that
+does not reach `v2.compiler.infer` lost its 2 `unreachable_pattern` and gained **no** `E0004`. Where the
+flattened arm was genuinely redundant it vanishes; where it concealed real non-exhaustiveness, that
+surfaces as an error.
+
 Boards sorted descending. `program_assembly` is carried as its own row with **no numeric board**.
 
 | module | files | board | E0308 | E0277 | ~unreachable_pattern | E0369 | E0063 | E0560 | E0609 | E0597 | E0599 | E0282 | E0425 | E0614 | E0061 | E0615 | E0392 | E0071 | E0004 | ~UNRESOLVED_CompilerError | E0310 | E0631 | E0433 | E0728 | E0573 | E0223 | E0533 |
