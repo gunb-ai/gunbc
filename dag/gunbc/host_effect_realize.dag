@@ -130,9 +130,15 @@ import gunbc.runner_incarnation { LocalRunnerSlotIncarnation }
 import gunbc.runner_lifecycle { RunnerReplacementCause }
 import extdeps.github.actions_runner { ActionsRunnerRelease, ActionsRunnerBinaryArtifact }
 import gunbc.roadmap_static_site { roadmap_site_digest_readback_script }
-import gunbc.host_codex_runtime_provision_script { codex_runtime_provision_shell_script }
+import gunbc.package_delivery { codex_runtime_version_identity_satisfied }
+import gunbc.cli_invoke { gunbc_run_transport_argv }
 import gunbc.host_codex_runtime_provision_verdict {
-  provision_codex_runtime_verdict_from_shell,
+  codex_runtime_observe_argv,
+  provision_codex_runtime_verdict,
+  CodexRuntimeIdentityOk,
+  CodexRuntimeMaterializationFailed,
+  CodexRuntimeIdentityMismatch,
+  CodexRuntimeTransportRefused,
   ProvisionConverged,
   ProvisionRefused,
 }
@@ -223,7 +229,7 @@ import extdeps.bmc.webui.nbd_proxy_serve {
   NbdProxyServeTransportIntent,
   bmcweb_session_login_curl_args,
 }
-import std.types { String, NonEmptyStr, List, Bool, Int }
+import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
 
 type TypedReconcileKind = TypedReconcileFetch | TypedReconcileRemaster
 
@@ -897,31 +903,187 @@ fn provision_build_cache_reconcile(
   )
 }
 
-fn provision_codex_runtime_reconcile(
-  observed: ShellExecObserved,
+data provision_codex_runtime_typed_step_note: String = "ProvisionCodexRuntime observe/materialize/read-back replaced the concat-built bash body of the now-deleted host_codex_runtime_provision_script.dag with three typed single-command steps: LocalShell dispatches through the existing typed argv services gunbc.WitnessBin.Run (observe/read-back) and gunbc.Cli.Run (materialize) — argv arrays, not a shell string, so there is no branching or receipt-marker text to construct or parse; SshShell/FleetSsh dispatch through run_typed_argv_transport with the same argv shape built by gunbc.host_codex_runtime_provision_verdict codex_runtime_observe_argv and gunbc.cli_invoke gunbc_run_transport_argv. The mkdir-release-parent step the old shell body ran before materialize is dropped: gunbc.package_delivery release_codex_runtime_bundle_immutable already runs shell.Mkdir.Parents on release_parent inside materialize_codex_runtime_bundle's own call chain, so a second mkdir ahead of it was redundant work (DESIGN §2), not preserved behavior. Read-back reuses the observe step verbatim — 'we ran materialize' is never treated as 'it is installed'; only a second successful --version probe that satisfies codex_runtime_version_identity_satisfied converges."
+
+type CodexRuntimeStepResult
+  = CodexRuntimeStepRan { observed: ShellExecObserved }
+  | CodexRuntimeStepRefused { reason: String }
+
+fn codex_runtime_typed_argv_step(
+  argv: List<String>,
+  transport: HostEffectTransport,
+) -> CodexRuntimeStepResult {
+  match run_typed_argv_transport(argv: argv, transport: transport) {
+    TypedArgvExecConverged { result: r } =>
+      CodexRuntimeStepRan {
+        observed: ShellExecObserved { exit_code: r.exit_code, success: r.success, stdout: r.stdout, stderr: r.stderr },
+      }
+    TypedArgvExecRefused { reason: why } => CodexRuntimeStepRefused { reason: why }
+  }
+}
+
+fn codex_runtime_observe_step(
+  transport: HostEffectTransport,
+  executable: FilePath,
+) -> CodexRuntimeStepResult {
+  match transport {
+    LocalShell => {
+      let r = gunbc.WitnessBin.Run(workdir: "/" as FilePath, bin_path: executable, args: ["--version"])
+      CodexRuntimeStepRan {
+        observed: ShellExecObserved { exit_code: r.exit_code, success: r.success, stdout: r.stdout, stderr: r.stderr },
+      }
+    }
+    SshShell { ssh_host: _ } =>
+      codex_runtime_typed_argv_step(
+        argv: codex_runtime_observe_argv(executable: executable as String),
+        transport: transport,
+      )
+    FleetSsh { target: _, context: _ } =>
+      codex_runtime_typed_argv_step(
+        argv: codex_runtime_observe_argv(executable: executable as String),
+        transport: transport,
+      )
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      CodexRuntimeStepRefused {
+        reason: "host_effect_apply: ProvisionCodexRuntime cannot use EmitArtifactThenThinRun transport; typed mismatch.",
+      }
+  }
+}
+
+data codex_runtime_materialize_source_roots: List<String> = ["dag", "src/v2"]
+data codex_runtime_materialize_entry: String = "dag/gunbc/host_codex_runtime_provision.dag"
+data codex_runtime_materialize_function: String = "materialize_codex_runtime_on_local_host"
+
+fn codex_runtime_materialize_step(
+  transport: HostEffectTransport,
+  gunbc_binary: FilePath,
+  gunbc_repo: FilePath,
+) -> CodexRuntimeStepResult {
+  match transport {
+    LocalShell => {
+      let r = gunbc.Cli.Run(
+        workdir: gunbc_repo,
+        bin_path: gunbc_binary,
+        source_roots: codex_runtime_materialize_source_roots,
+        entry: codex_runtime_materialize_entry,
+        function: codex_runtime_materialize_function,
+        claim_run: false,
+      )
+      CodexRuntimeStepRan {
+        observed: ShellExecObserved { exit_code: r.exit_code, success: r.success, stdout: r.stdout, stderr: r.stderr },
+      }
+    }
+    SshShell { ssh_host: _ } =>
+      codex_runtime_typed_argv_step(
+        argv: concat(
+          [gunbc_binary as String],
+          gunbc_run_transport_argv(
+            source_roots: codex_runtime_materialize_source_roots,
+            entry: codex_runtime_materialize_entry,
+            function: codex_runtime_materialize_function,
+            claim_run: false,
+          ),
+        ),
+        transport: transport,
+      )
+    FleetSsh { target: _, context: _ } =>
+      codex_runtime_typed_argv_step(
+        argv: concat(
+          [gunbc_binary as String],
+          gunbc_run_transport_argv(
+            source_roots: codex_runtime_materialize_source_roots,
+            entry: codex_runtime_materialize_entry,
+            function: codex_runtime_materialize_function,
+            claim_run: false,
+          ),
+        ),
+        transport: transport,
+      )
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      CodexRuntimeStepRefused {
+        reason: "host_effect_apply: ProvisionCodexRuntime cannot use EmitArtifactThenThinRun transport; typed mismatch.",
+      }
+  }
+}
+
+fn provision_codex_runtime_refuse(
+  host: HostIdentity,
+  observed: CodexRuntimeObservation,
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  match provision_codex_runtime_target_host(effect_intent: intent) {
-    Absent =>
+  match provision_codex_runtime_verdict(host: host, observed: observed) {
+    ProvisionConverged { executable: _, version_line: _ } =>
       NotConverged {
-        reason: "host_effect_apply: ProvisionCodexRuntime reconcile requires HostOs target with a fleet host identity; fail-closed.",
+        reason: "host_effect_apply: ProvisionCodexRuntime verdict unexpectedly converged from a refusal-classified observation; fail-closed.",
         applied: intent,
       }
-    Present { value: host } =>
-      match provision_codex_runtime_verdict_from_shell(
+    ProvisionRefused { cause: _, reason: reason } =>
+      NotConverged { reason: reason as String, applied: intent }
+  }
+}
+
+fn provision_codex_runtime_reconcile(
+  host: HostIdentity,
+  executable: FilePath,
+  gunbc_binary: FilePath,
+  gunbc_repo: FilePath,
+  transport: HostEffectTransport,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match codex_runtime_observe_step(transport: transport, executable: executable) {
+    CodexRuntimeStepRefused { reason: why } =>
+      provision_codex_runtime_refuse(
         host: host,
-        success: observed.success,
-        stdout: observed.stdout,
-        stderr: observed.stderr,
-      ) {
-        ProvisionConverged { executable: _, version_line: _ } =>
-          toolchain_ensure_reconcile(
-            observed: observed,
-            intent: intent,
-            effect_label: "ProvisionCodexRuntime",
-          )
-        ProvisionRefused { cause: _, reason: reason } =>
-          NotConverged { reason: reason as String, applied: intent }
+        observed: CodexRuntimeTransportRefused { reason: why },
+        intent: intent,
+      )
+    CodexRuntimeStepRan { observed: observe_result } =>
+      if observe_result.success && codex_runtime_version_identity_satisfied(combined_output: observe_result.stdout) {
+        toolchain_ensure_reconcile(observed: observe_result, intent: intent, effect_label: "ProvisionCodexRuntime")
+      } else {
+        match codex_runtime_materialize_step(transport: transport, gunbc_binary: gunbc_binary, gunbc_repo: gunbc_repo) {
+          CodexRuntimeStepRefused { reason: why } =>
+            provision_codex_runtime_refuse(
+              host: host,
+              observed: CodexRuntimeTransportRefused { reason: why },
+              intent: intent,
+            )
+          CodexRuntimeStepRan { observed: materialize_result } =>
+            if !materialize_result.success {
+              provision_codex_runtime_refuse(
+                host: host,
+                observed: CodexRuntimeMaterializationFailed { reason: materialize_result.stderr },
+                intent: intent,
+              )
+            } else {
+              match codex_runtime_observe_step(transport: transport, executable: executable) {
+                CodexRuntimeStepRefused { reason: why } =>
+                  provision_codex_runtime_refuse(
+                    host: host,
+                    observed: CodexRuntimeTransportRefused { reason: why },
+                    intent: intent,
+                  )
+                CodexRuntimeStepRan { observed: read_back_result } =>
+                  if read_back_result.success
+                    && codex_runtime_version_identity_satisfied(combined_output: read_back_result.stdout)
+                  {
+                    toolchain_ensure_reconcile(
+                      observed: read_back_result,
+                      intent: intent,
+                      effect_label: "ProvisionCodexRuntime",
+                    )
+                  } else {
+                    provision_codex_runtime_refuse(
+                      host: host,
+                      observed: CodexRuntimeIdentityMismatch {
+                        observed_output: concat(read_back_result.stdout, concat(" ", read_back_result.stderr)),
+                      },
+                      intent: intent,
+                    )
+                  }
+              }
+            }
+        }
       }
   }
 }
@@ -971,20 +1133,15 @@ fn realize_provision_codex_runtime_body(
                 ),
                 applied: effect_intent,
               }
-            Present { value: placement } =>
-              let observed = run_shell_transport(
-                script: retained_srvn(
-                  body: codex_runtime_provision_shell_script(
-                    executable: executable as String,
-                    release_parent: placement.runtime_release_root as String,
-                    gunbc_binary: srv1_gunbc_serve_binary as String,
-                    gunbc_repo: srv1_gunbc_repo_root as String,
-                  ),
-                  reason: "ProvisionCodexRuntime observe/ensure/read-back shell transport",
-                ),
+            Present { value: _ } =>
+              provision_codex_runtime_reconcile(
+                host: host,
+                executable: executable,
+                gunbc_binary: srv1_gunbc_serve_binary,
+                gunbc_repo: srv1_gunbc_repo_root,
                 transport: transport,
+                intent: effect_intent,
               )
-              provision_codex_runtime_reconcile(observed: observed, intent: effect_intent)
           }
       }
   }

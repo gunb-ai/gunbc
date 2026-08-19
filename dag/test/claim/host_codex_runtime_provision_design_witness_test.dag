@@ -1,70 +1,35 @@
 module test.claim.host_codex_runtime_provision_design
 
-import std.disposition { Scaffold, SingleAuthority, Terminal }
+import std.disposition { Scaffold, RealizationDispatch, Terminal }
 import std.decl_ref { DeclarationRef }
-import product.placement_supply { HostIdentity }
-import gunbc.host_effect { ProvisionCodexRuntime }
 import gunbc.codex_runtime_paths { srv1_codex_runtime_release_root }
 import gunbc.host_layout { srv1_codex_bundled_executable }
 import gunbc.host_toolchain_ensure { host_toolchain_ensure_effect, CodexRuntime }
+import gunbc.host_effect { ProvisionCodexRuntime }
 import gunbc.host_codex_runtime_provision {
   provision_codex_runtime_effect,
   provision_codex_runtime_routes_through_host_effect_apply,
-}
-import gunbc.host_codex_runtime_provision_script {
-  codex_runtime_provision_read_back_fails_closed,
-  codex_runtime_provision_shell_uses_exact_line_grep,
-  codex_runtime_provision_fleet_paths_are_shell_safe,
-  codex_runtime_provision_shell_uses_shell_quote_authority,
-  host_codex_runtime_provision_script_scaffold,
+  host_codex_runtime_provision_realize_scaffold,
 }
 import gunbc.host_codex_runtime_provision_verdict {
-  codex_runtime_absent_refuses_fail_closed,
   codex_runtime_identity_mismatch_refuses_fail_closed,
   codex_runtime_identity_ok_converges,
   codex_runtime_materialization_failed_refuses_fail_closed,
-  codex_runtime_shell_output_unrecognized_refuses_fail_closed,
-  provision_codex_runtime_verdict_from_shell,
-  ProvisionRefused,
-  ProvisionConverged,
-  RefusalIdentityMismatch,
-  RefusalMaterializationFailed,
-  RefusalRuntimeAbsent,
-  RefusalShellOutputUnrecognized,
+  codex_runtime_transport_refused_refuses_fail_closed,
+  codex_runtime_host_unsupported_refuses_fail_closed,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn design_witness_read_back_fails_closed_in_shell() -> Bool {
-  codex_runtime_provision_read_back_fails_closed()
-}
-
-test fn design_witness_shell_uses_exact_line_grep() -> Bool {
-  codex_runtime_provision_shell_uses_exact_line_grep()
-}
-
-test fn design_witness_provision_shell_paths_are_shell_safe() -> Bool {
-  codex_runtime_provision_fleet_paths_are_shell_safe()
-}
-
-test fn design_witness_provision_shell_uses_shell_quote_authority() -> Bool {
-  codex_runtime_provision_shell_uses_shell_quote_authority()
-}
-
-test fn design_witness_provision_script_carries_scaffold() -> Bool {
-  match host_codex_runtime_provision_script_scaffold {
+test fn design_witness_realize_carries_scaffold() -> Bool {
+  match host_codex_runtime_provision_realize_scaffold {
     Scaffold {
-      dissolves_to: SingleAuthority,
+      dissolves_to: RealizationDispatch,
       bind: DeclarationRef { module_path: m, decl_name: n, field: _ },
     } =>
-      m == "gunbc.host_codex_runtime_provision_script"
-        && n == "host_codex_runtime_provision_script_dissolution_trigger"
+      m == "gunbc.host_effect_realize" && n == "realize_provision_codex_runtime"
     Terminal { reason: _ } => false
   }
-}
-
-test fn design_witness_absent_runtime_refuses_fail_closed() -> Bool {
-  codex_runtime_absent_refuses_fail_closed()
 }
 
 test fn design_witness_identity_mismatch_refuses_fail_closed() -> Bool {
@@ -73,6 +38,18 @@ test fn design_witness_identity_mismatch_refuses_fail_closed() -> Bool {
 
 test fn design_witness_identity_ok_converges() -> Bool {
   codex_runtime_identity_ok_converges()
+}
+
+test fn design_witness_materialization_failed_refuses_fail_closed() -> Bool {
+  codex_runtime_materialization_failed_refuses_fail_closed()
+}
+
+test fn design_witness_transport_refused_refuses_fail_closed() -> Bool {
+  codex_runtime_transport_refused_refuses_fail_closed()
+}
+
+test fn design_witness_host_unsupported_refuses_fail_closed() -> Bool {
+  codex_runtime_host_unsupported_refuses_fail_closed()
 }
 
 test fn design_witness_routes_through_host_effect_apply() -> Bool {
@@ -105,80 +82,5 @@ test fn design_witness_srv1_bundled_executable_under_release_root() -> Bool {
           pattern: "/current/",
         )
     Absent => false
-  }
-}
-
-test fn design_witness_materialization_failed_refuses_fail_closed() -> Bool {
-  codex_runtime_materialization_failed_refuses_fail_closed()
-}
-
-test fn design_witness_shell_output_unrecognized_refuses_fail_closed() -> Bool {
-  codex_runtime_shell_output_unrecognized_refuses_fail_closed()
-}
-
-test fn design_witness_shell_verdict_materialization_failed_not_identity_mismatch() -> Bool {
-  match provision_codex_runtime_verdict_from_shell(
-    host: "srv1" as HostIdentity,
-    success: false,
-    stdout: join(
-      [
-        "CodexRuntimeProvisionReceipt: observe=absent",
-        "CodexRuntimeProvisionReceipt: ensure=starting",
-        "CodexRuntimeProvisionReceipt: ensure=FAILED",
-      ],
-      "\n",
-    ),
-    stderr: "network error",
-  ) {
-    ProvisionRefused { cause: RefusalMaterializationFailed, reason: _ } => true
-    ProvisionRefused { cause: RefusalIdentityMismatch, reason: _ } => false
-    ProvisionRefused { cause: RefusalShellOutputUnrecognized, reason: _ } => false
-    ProvisionConverged { executable: _, version_line: _ } => false
-  }
-}
-
-test fn design_witness_shell_verdict_refuses_identity_mismatch() -> Bool {
-  match provision_codex_runtime_verdict_from_shell(
-    host: "srv1" as HostIdentity,
-    success: false,
-    stdout: "CodexRuntimeProvisionReceipt: read_back=FAILED identity not realized\ncodex-cli 0.133.0",
-    stderr: "",
-  ) {
-    ProvisionRefused { cause: RefusalIdentityMismatch, reason: _ } => true
-    ProvisionConverged { executable: _, version_line: _ } => false
-  }
-}
-
-test fn design_witness_shell_verdict_ensure_failure_is_mismatch_not_absent() -> Bool {
-  match provision_codex_runtime_verdict_from_shell(
-    host: "srv1" as HostIdentity,
-    success: false,
-    stdout: join(
-      [
-        "CodexRuntimeProvisionReceipt: observe=absent",
-        "CodexRuntimeProvisionReceipt: ensure=starting",
-        "CodexRuntimeProvisionReceipt: read_back=FAILED identity not realized",
-      ],
-      "\n",
-    ),
-    stderr: "",
-  ) {
-    ProvisionRefused { cause: RefusalIdentityMismatch, reason: _ } => true
-    ProvisionRefused { cause: RefusalRuntimeAbsent, reason: _ } => false
-    ProvisionRefused { cause: RefusalShellOutputUnrecognized, reason: _ } => false
-    ProvisionConverged { executable: _, version_line: _ } => false
-  }
-}
-
-test fn design_witness_shell_verdict_unrecognized_output_not_identity_mismatch() -> Bool {
-  match provision_codex_runtime_verdict_from_shell(
-    host: "srv1" as HostIdentity,
-    success: false,
-    stdout: "ssh: connection timed out",
-    stderr: "",
-  ) {
-    ProvisionRefused { cause: RefusalShellOutputUnrecognized, reason: _ } => true
-    ProvisionRefused { cause: RefusalIdentityMismatch, reason: _ } => false
-    ProvisionConverged { executable: _, version_line: _ } => false
   }
 }
