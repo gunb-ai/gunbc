@@ -1,4 +1,5 @@
 set -e
+echo "AMBIENT RUSTC_WRAPPER before clearing: '${RUSTC_WRAPPER:-<unset>}'"
 unset RUSTC_WRAPPER || true
 export RUSTC_WRAPPER=
 echo "RUSTC_WRAPPER explicitly cleared: '${RUSTC_WRAPPER}'"
@@ -19,9 +20,11 @@ GOT=$(git rev-parse HEAD)
 if [ "$GOT" != "$BEFORE_FULL" ]; then echo "BASEFAIL got $GOT want $BEFORE_FULL"; exit 99; fi
 echo "BEFORE_OK $GOT"
 rm -rf /tmp/target-before
+echo "VERBATIM: RUSTC_WRAPPER='${RUSTC_WRAPPER}' cargo build --release --target-dir /tmp/target-before -p v1-compiler --bin gunbc --bin claim_executor"
 cargo build --release --target-dir /tmp/target-before -p v1-compiler --bin gunbc --bin claim_executor 2>&1 | tail -8
 
 set +e
+echo "VERBATIM: /tmp/target-before/release/gunbc run --source-root dag --source-root src/v2 --entry dag/tools/generated_artifact_gate.dag --function main_wet"
 /tmp/target-before/release/gunbc run --source-root dag --source-root src/v2 --entry dag/tools/generated_artifact_gate.dag --function main_wet > /tmp/before_mw.log 2>&1
 echo "before_mw_exit=$?"
 set -e
@@ -93,10 +96,12 @@ cargo fmt --all 2>&1 | tail -5 || true
 
 echo "--- rebuild with fixed std_algebra.rs ---"
 rm -rf /tmp/target-after
+echo "VERBATIM: RUSTC_WRAPPER='${RUSTC_WRAPPER}' cargo build --release --target-dir /tmp/target-after -p v1-compiler --bin gunbc --bin claim_executor"
 cargo build --release --target-dir /tmp/target-after -p v1-compiler --bin gunbc --bin claim_executor 2>&1 | tail -15
 
 echo "--- after-fix main_wet ---"
 set +e
+echo "VERBATIM: /tmp/target-after/release/gunbc run --source-root dag --source-root src/v2 --entry dag/tools/generated_artifact_gate.dag --function main_wet"
 /tmp/target-after/release/gunbc run --source-root dag --source-root src/v2 --entry dag/tools/generated_artifact_gate.dag --function main_wet > /tmp/after_mw.log 2>&1
 echo "after_mw_exit=$?"
 set -e
