@@ -363,3 +363,145 @@ data claim_validate_accepts_disjoint_choice: v2.std.verification.TestClaim = v2.
   rhs: validation_bool_atom(b: true),
   classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: v2.std.verification.Unit }
 }
+
+// EXECUTING CONTROLS FOR THE LEFT-CORNER RELATION.
+//
+// The `TestClaim` rows above are not reached by floor discovery, which selects column-zero
+// `test fn` declarations — so the direct-left-recursion and right-recursive rows in this file
+// establish nothing at run time today. The rewrite of `grammar_has_left_recursion` from a
+// per-production closure to one shared left-corner relation therefore had no executing regression
+// control, and these rows are it.
+//
+// INDIRECT RECURSION IS THE DISCRIMINATING CASE. A shared relation that only ever expanded one
+// production deep would still answer `true` for `A = A 'x'` and `false` for the right-recursive
+// fixture — every claim this file previously made — while silently missing `A = B 'x'`,
+// `B = A 'x'`. That is precisely the failure a closure rewrite introduces, so the transitive case
+// is asserted directly rather than assumed to follow from the direct one.
+
+data validation_indirect_a: Symbol = ^validation_indirect_a_production
+data validation_indirect_b: Symbol = ^validation_indirect_b_production
+
+fn validation_left_corner_production(name: Symbol, corner: Symbol) -> GrammarProduction {
+  GrammarProduction {
+    name: name,
+    expression: Sequence {
+      left: Nonterminal { production: corner },
+      right: Terminal { token_class: ^validation_tok_class, stamp: StampClass }
+    },
+    emitted: grammar_atom(identity: name)
+  }
+}
+
+// A = B 'x' , B = A 'x' — neither production is directly left-recursive; the cycle exists only
+// through the transitive left-corner relation.
+data validation_indirect_left_recursive_root: GrammarRoot = GrammarRoot {
+  start: ^validation_indirect_a_production,
+  productions: Cons {
+    head: validation_left_corner_production(
+      name: ^validation_indirect_a_production,
+      corner: ^validation_indirect_b_production
+    ),
+    tail: Cons {
+      head: validation_left_corner_production(
+        name: ^validation_indirect_b_production,
+        corner: ^validation_indirect_a_production
+      ),
+      tail: Empty
+    }
+  },
+  sync_tokens: grammar_empty_sync_tokens()
+}
+
+// A = B 'x' , B = 'x' — one left-corner hop, no cycle. The negative twin of the row above: it
+// shares the indirect SHAPE and differs only in whether the relation closes, so a mechanism that
+// answered `true` for any two-production grammar would be caught here.
+data validation_indirect_terminating_root: GrammarRoot = GrammarRoot {
+  start: ^validation_indirect_a_production,
+  productions: Cons {
+    head: validation_left_corner_production(
+      name: ^validation_indirect_a_production,
+      corner: ^validation_indirect_b_production
+    ),
+    tail: Cons {
+      head: validation_terminal_production(name: ^validation_indirect_b_production),
+      tail: Empty
+    }
+  },
+  sync_tokens: grammar_empty_sync_tokens()
+}
+
+test fn validation_direct_left_recursion_is_detected() -> Bool {
+  grammar_has_left_recursion(root: validation_left_recursive_root)
+}
+
+test fn validation_right_recursion_is_not_left_recursion() -> Bool {
+  grammar_has_left_recursion(root: validation_right_recursive_root) == false
+}
+
+test fn validation_indirect_left_recursion_is_detected_RED() -> Bool {
+  grammar_has_left_recursion(root: validation_indirect_left_recursive_root)
+}
+
+test fn validation_indirect_terminating_is_not_left_recursion() -> Bool {
+  grammar_has_left_recursion(root: validation_indirect_terminating_root) == false
+}
+
+test fn validation_two_distinct_productions_are_not_left_recursive() -> Bool {
+  grammar_has_left_recursion(root: validation_two_distinct_root) == false
+}
+
+// DEPTH, NOT JUST INDIRECTNESS. The two-production cycle above is caught by any relation that
+// expands even once. A five-production cycle is not: it requires the relation to close over five
+// hops, so an implementation that stopped early — a truncated fixpoint, a bounded expansion, a
+// fuel that ran out — answers `false` here while still passing every row above.
+data validation_cycle_5_root: GrammarRoot = GrammarRoot {
+  start: ^validation_cycle_p1,
+  productions: Cons {
+    head: validation_left_corner_production(name: ^validation_cycle_p1, corner: ^validation_cycle_p2),
+    tail: Cons {
+      head: validation_left_corner_production(name: ^validation_cycle_p2, corner: ^validation_cycle_p3),
+      tail: Cons {
+        head: validation_left_corner_production(name: ^validation_cycle_p3, corner: ^validation_cycle_p4),
+        tail: Cons {
+          head: validation_left_corner_production(name: ^validation_cycle_p4, corner: ^validation_cycle_p5),
+          tail: Cons {
+            head: validation_left_corner_production(name: ^validation_cycle_p5, corner: ^validation_cycle_p1),
+            tail: Empty
+          }
+        }
+      }
+    }
+  },
+  sync_tokens: grammar_empty_sync_tokens()
+}
+
+// The same five-hop chain with the cycle broken at the last link: p5 ends in a terminal instead of
+// returning to p1. Identical size and shape, opposite verdict.
+data validation_chain_5_root: GrammarRoot = GrammarRoot {
+  start: ^validation_cycle_p1,
+  productions: Cons {
+    head: validation_left_corner_production(name: ^validation_cycle_p1, corner: ^validation_cycle_p2),
+    tail: Cons {
+      head: validation_left_corner_production(name: ^validation_cycle_p2, corner: ^validation_cycle_p3),
+      tail: Cons {
+        head: validation_left_corner_production(name: ^validation_cycle_p3, corner: ^validation_cycle_p4),
+        tail: Cons {
+          head: validation_left_corner_production(name: ^validation_cycle_p4, corner: ^validation_cycle_p5),
+          tail: Cons {
+            head: validation_terminal_production(name: ^validation_cycle_p5),
+            tail: Empty
+          }
+        }
+      }
+    }
+  },
+  sync_tokens: grammar_empty_sync_tokens()
+}
+
+test fn validation_five_hop_cycle_is_left_recursive() -> Bool {
+  grammar_has_left_recursion(root: validation_cycle_5_root)
+}
+
+test fn validation_five_hop_chain_is_not_left_recursive() -> Bool {
+  grammar_has_left_recursion(root: validation_chain_5_root) == false
+}

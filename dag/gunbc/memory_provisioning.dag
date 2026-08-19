@@ -1,0 +1,547 @@
+module gunbc.memory_provisioning
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat, nat_max, nat_min }
+import std.measure { ByteSize, byte_size, byte_size_count, gigabyte, hardware_thread_count_value }
+import std.decl_ref { DeclarationRef, decl_ref }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
+import extdeps.ci_runner.types {
+  CpuEntitlement,
+  DedicatedPhysicalCore,
+  EntitlementUnstated,
+  QuotedBasisUnresolved,
+  QuotedByteMagnitude,
+  QuotedDecimalGigabytes,
+  ResolvedBytes,
+  SmtSharedVcpu,
+  quoted_magnitude_bytes,
+}
+import extdeps.cpu.types { CpuModelCatalogRow }
+import extdeps.cpu.ampere_altra_platform_hw_design.platform {
+  DimmsPerChannelTopology,
+  OneDimmPerChannel,
+  TwoDimmsPerChannel,
+  dimms_per_channel_count,
+}
+import extdeps.memory.types { DramModuleCatalogRow }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_download_authority }
+
+
+// ---------------------------------------------------------------------------
+// PROFILES: what one runner-second of service is, per architecture.
+//
+// This replaces an earlier single architecture-neutral "requirement". A single
+// figure could not survive contact with the surveyed market: the same word
+// "4GB per vCPU" is a dedicated Altra core on one provider and one of two SMT
+// threads on another, and one surveyed provider ships x64 Docker classes at
+// 2GB per vCPU. A provisioning target that does not say which architecture and
+// which entitlement it means is not a target, it is an average.
+// ---------------------------------------------------------------------------
+
+// A NONEMPTY citation list, by construction. A profile is a policy claim about
+// what the market provides, so it must name the rows it read; making the list
+// a plain List would allow the empty one, and an uncited profile is exactly
+// the state this carrier exists to forbid. head plus tail is the same shape
+// std.realization uses for declared staged intermediates and for the same
+// reason: the empty case has no constructor rather than a check.
+type CitedBasis {
+  primary: DeclarationRef
+  additional: List<DeclarationRef>
+}
+
+fn basis_refs(b: CitedBasis) -> List<DeclarationRef> {
+  concat([b.primary], b.additional)
+}
+
+fn basis_count(b: CitedBasis) -> Nat {
+  1 + count(b.additional)
+}
+
+// ONE SERVICE PROFILE. memory_per_entitlement is a QuotedByteMagnitude, whose
+// arm IS the basis: a profile sized in decimal GB and one sized in binary GiB
+// are different values of different Measure types, so the 7.4 percent gap has
+// no silent path into a target. Declaring the basis is a DECISION — the
+// surveyed providers state none, DIMMs are binary, and somebody must say which
+// reading the purchase is sized against — and here that decision is made by
+// choosing a constructor rather than by filling in a field beside a number.
+type RunnerServiceProfile {
+  label: NonEmptyStr
+  architecture: Architecture
+  entitlement: CpuEntitlement
+  memory_per_entitlement: QuotedByteMagnitude
+  basis: CitedBasis
+}
+
+// The conversion, and its refusal. A profile carrying an unresolved basis
+// cannot be turned into bytes and says so rather than picking a reading; on a
+// 192GB target the gap is over 14GB, more than the margin between two DIMM
+// SKUs.
+type EntitlementBytes
+  = EntitlementBytesDeclared { bytes: ByteSize }
+  | EntitlementBytesBasisUndeclared
+
+fn entitlement_bytes(profile: RunnerServiceProfile) -> EntitlementBytes {
+  match quoted_magnitude_bytes(quoted: profile.memory_per_entitlement) {
+    ResolvedBytes { bytes } => EntitlementBytesDeclared { bytes: bytes }
+    QuotedBasisUnresolved { numeral, unit_label } => EntitlementBytesBasisUndeclared
+  }
+}
+
+// HOW MANY ENTITLEMENTS ONE PROCESSOR OFFERS, on the profile's own axis. A
+// dedicated-core profile is bounded by physical cores; an SMT profile by
+// threads. An unstated entitlement cannot be counted at all — that is the
+// honest answer, not a silent fallback to cores, because falling back would
+// make an unstated-entitlement profile silently claim the more conservative
+// number and read as safe.
+type CpuEntitlementSupply
+  = EntitlementsAvailable { count: Nat }
+  | EntitlementKindUnstated
+
+fn cpu_entitlement_supply(cpu: CpuModelCatalogRow, entitlement: CpuEntitlement) -> CpuEntitlementSupply {
+  match entitlement {
+    DedicatedPhysicalCore => EntitlementsAvailable { count: cpu.cores }
+    SmtSharedVcpu { threads_per_core } =>
+      EntitlementsAvailable { count: hardware_thread_count_value(t: cpu.threads) }
+    EntitlementUnstated => EntitlementKindUnstated
+  }
+}
+
+// WHICH SIDE OF THE MACHINE RUNS OUT FIRST — and there are only two answers
+// here, not three, which is a fact about the admission rule rather than an
+// omission. A population is admitted only if it MEETS the profile target, and
+// the target is exactly cpu_entitlements times the per-entitlement figure, so
+// every admitted population satisfies memory_entitlements >= cpu_entitlements
+// by construction. A memory-bound admitted population is therefore unwritable,
+// and a third variant for it would be vocabulary nothing could ever produce.
+//
+// A board that cannot feed its socket does not appear here as a memory-bound
+// reading; it appears as TargetUnreachableInSlotGeometry, which is the honest
+// place for it because the buyer's remedy is different — bigger DIMMs or a
+// different board, not a smaller expectation.
+type ServiceBound = CpuBound | EvenlyBound
+
+fn service_bound(cpu_entitlements: Nat, memory_entitlements: Nat) -> ServiceBound {
+  if cpu_entitlements < memory_entitlements { CpuBound } else { EvenlyBound }
+}
+
+// ONE POPULATION READ THROUGH ONE PROFILE.
+type ProfileCapacity {
+  profile_label: NonEmptyStr
+  dimm_count: Nat
+  total_bytes: ByteSize
+  servable_entitlements: Nat
+  cpu_entitlements: Nat
+  memory_entitlements: Nat
+  surplus_entitlements: Nat
+  bound: ServiceBound
+}
+
+type ProfileCapacityRefusalCause
+  = ProfileBasisUndeclared
+  | ProfileEntitlementUnstated
+  | ProfilePopulationRefused { cause: PopulationRefusalCause }
+
+type ProfileCapacityDerivation
+  = ProfileCapacitiesDerived { capacities: List<ProfileCapacity> }
+  | ProfileCapacityRefused {
+      profile_label: NonEmptyStr
+      cause: ProfileCapacityRefusalCause
+    }
+
+fn capacity_for_option(
+  profile: RunnerServiceProfile,
+  option: PopulationOption,
+  per_entitlement: ByteSize,
+  cpu_entitlements: Nat,
+) -> ProfileCapacity {
+  let memory_entitlements = byte_size_count(b: option.total_bytes) / byte_size_count(b: per_entitlement)
+  ProfileCapacity {
+    profile_label: profile.label,
+    dimm_count: option.dimm_count,
+    total_bytes: option.total_bytes,
+    servable_entitlements: nat_min(a: cpu_entitlements, b: memory_entitlements),
+    cpu_entitlements: cpu_entitlements,
+    memory_entitlements: memory_entitlements,
+    surplus_entitlements: memory_entitlements - cpu_entitlements,
+    bound: service_bound(cpu_entitlements: cpu_entitlements, memory_entitlements: memory_entitlements),
+  }
+}
+
+// THE DERIVATION A CONSUMER CALLS: (board geometry x CPU x profile x offered
+// modules) -> per-profile admissible populations with their servable capacity.
+// Never one architecture-neutral unit — the profile is an input, and the
+// Pareto consumer takes one reading per profile.
+//
+// The target every population is admitted against is the profile's own
+// per-entitlement figure times the entitlements this processor supplies, so a
+// dedicated-core profile and an SMT profile on the SAME processor produce
+// different targets, which is the whole point of carrying the axis.
+fn derive_profile_capacity(
+  geometry: MemoryChannelGeometry,
+  cpu: CpuModelCatalogRow,
+  profile: RunnerServiceProfile,
+  modules: List<DramModuleCatalogRow>,
+) -> ProfileCapacityDerivation {
+  match entitlement_bytes(profile: profile) {
+    EntitlementBytesBasisUndeclared =>
+      ProfileCapacityRefused { profile_label: profile.label, cause: ProfileBasisUndeclared }
+    EntitlementBytesDeclared { bytes } =>
+      match cpu_entitlement_supply(cpu: cpu, entitlement: profile.entitlement) {
+        EntitlementKindUnstated =>
+          ProfileCapacityRefused { profile_label: profile.label, cause: ProfileEntitlementUnstated }
+        EntitlementsAvailable { count } => {
+          let required = byte_size(count: byte_size_count(b: bytes) * count)
+          match derive_populations(geometry: geometry, required: required, modules: modules) {
+            PopulationDerivationRefused { board_label, cause } =>
+              ProfileCapacityRefused {
+                profile_label: profile.label,
+                cause: ProfilePopulationRefused { cause: cause },
+              }
+            PopulationsDerived { options } =>
+              ProfileCapacitiesDerived {
+                capacities: map(
+                  options,
+                  o =>
+                    capacity_for_option(
+                      profile: profile,
+                      option: o,
+                      per_entitlement: bytes,
+                      cpu_entitlements: count,
+                    ),
+                ),
+              }
+          }
+        }
+      }
+  }
+}
+
+// The per-profile fan-out: one derivation per declared profile, so a candidate
+// board carries an arm-value reading, an arm-memory reading and an x64 reading
+// side by side rather than one blended number.
+fn derive_all_profile_capacities(
+  geometry: MemoryChannelGeometry,
+  cpu: CpuModelCatalogRow,
+  profiles: List<RunnerServiceProfile>,
+  modules: List<DramModuleCatalogRow>,
+) -> List<ProfileCapacityDerivation> {
+  map(profiles, p => derive_profile_capacity(geometry: geometry, cpu: cpu, profile: p, modules: modules))
+}
+
+// THE BOARD'S SLOT GEOMETRY, as the two facts that decide a population:
+// how many channels the memory controller drives, and the deepest linear
+// topology the platform admits. The topology axis is imported from the Altra
+// platform authority rather than re-coined as a slot integer, because that
+// specification states the admitted topologies as a closed set — a population
+// outside them is unsupported, not a smaller supported one.
+type MemoryChannelGeometry {
+  board_label: NonEmptyStr
+  channels: Nat
+  max_topology: DimmsPerChannelTopology
+  authority: ExternalAuthority
+}
+
+fn geometry_slot_count(g: MemoryChannelGeometry) -> Nat {
+  g.channels * dimms_per_channel_count(topology: g.max_topology)
+}
+
+// The topologies at or below the board's maximum. Enumerated from the closed
+// coproduct rather than counted out as a range, so a topology the platform
+// authority does not admit has no way into the candidate set.
+fn admitted_topologies(g: MemoryChannelGeometry) -> List<DimmsPerChannelTopology> {
+  match g.max_topology {
+    OneDimmPerChannel => [OneDimmPerChannel]
+    TwoDimmsPerChannel => [OneDimmPerChannel, TwoDimmsPerChannel]
+  }
+}
+
+// ONE ADMISSIBLE POPULATION. Every population this module produces is
+// full-channel by construction: dimm_count is channels times the topology's
+// per-channel depth, so there is no way to express a population that leaves a
+// channel dark. That is a constraint rather than a preference — on a
+// bandwidth-bound part an unpopulated channel is lost bandwidth the buyer
+// already paid the socket for, and the Altra controller's own admitted active
+// channel counts are a closed set that a partial population can fall outside.
+//
+// margin_bytes NAMES THE OVERSHOOT. Slot geometry and per-DIMM capacities are
+// both coarse, so a population that meets a target almost always exceeds it;
+// reporting only "met" would let a purchase round silently up to the next SKU.
+type PopulationOption {
+  module: DramModuleCatalogRow
+  topology: DimmsPerChannelTopology
+  dimm_count: Nat
+  total_bytes: ByteSize
+  margin_bytes: ByteSize
+}
+
+// WHY A DERIVATION CAN REFUSE, and why each cause carries its numbers: a
+// refusal a buyer cannot act on is typed but not located. Unreachable names
+// both the target and the best the geometry can do, so the gap is the size of
+// the problem; the mixed-capacity arm exists because no platform authority in
+// this tree admits a mixed population, and admitting one on the grounds that
+// it arithmetically reaches the target would be reading a capacity sum as a
+// support statement.
+type PopulationRefusalCause
+  = TargetUnreachableInSlotGeometry {
+      required_bytes: ByteSize
+      best_reachable_bytes: ByteSize
+      shortfall_bytes: ByteSize
+    }
+  | NoModuleCandidatesOffered
+  | MixedCapacityPopulationUnsupported
+
+type PopulationDerivation
+  = PopulationsDerived { options: List<PopulationOption> }
+  | PopulationDerivationRefused {
+      board_label: NonEmptyStr
+      cause: PopulationRefusalCause
+    }
+
+fn population_total_bytes(module: DramModuleCatalogRow, dimm_count: Nat) -> ByteSize {
+  byte_size(count: byte_size_count(b: module.capacity_bytes) * dimm_count)
+}
+
+fn option_for(
+  g: MemoryChannelGeometry,
+  module: DramModuleCatalogRow,
+  topology: DimmsPerChannelTopology,
+  required: ByteSize,
+) -> List<PopulationOption> {
+  let dimm_count = g.channels * dimms_per_channel_count(topology: topology)
+  let total = population_total_bytes(module: module, dimm_count: dimm_count)
+  if byte_size_count(b: total) >= byte_size_count(b: required) {
+    [
+      PopulationOption {
+        module: module,
+        topology: topology,
+        dimm_count: dimm_count,
+        total_bytes: total,
+        margin_bytes: byte_size(count: byte_size_count(b: total) - byte_size_count(b: required)),
+      },
+    ]
+  } else {
+    []
+  }
+}
+
+fn options_for_module(
+  g: MemoryChannelGeometry,
+  module: DramModuleCatalogRow,
+  required: ByteSize,
+) -> List<PopulationOption> {
+  fold(
+    admitted_topologies(g: g),
+    init: [],
+    f: (acc, topology) =>
+      concat(acc, option_for(g: g, module: module, topology: topology, required: required)),
+  )
+}
+
+fn best_reachable_bytes(g: MemoryChannelGeometry, modules: List<DramModuleCatalogRow>) -> ByteSize {
+  let slots = geometry_slot_count(g: g)
+  byte_size(
+    count: fold(
+      modules,
+      init: 0,
+      f: (acc, m) => nat_max(a: acc, b: byte_size_count(b: m.capacity_bytes) * slots),
+    ),
+  )
+}
+
+// THE DERIVATION. (board geometry x CPU x sourced requirement x offered
+// modules) -> the full-channel populations that meet the requirement, each
+// with its named overshoot; or one typed refusal that says why none does.
+//
+// The module list is offered by the caller rather than read from a global
+// catalog because what is BUYABLE is an inventory fact, not a specification
+// fact — the sibling inventory ledger owns that population, and this fold
+// stays a pure derivation over whatever is offered.
+fn derive_populations(
+  geometry: MemoryChannelGeometry,
+  required: ByteSize,
+  modules: List<DramModuleCatalogRow>,
+) -> PopulationDerivation {
+  if count(modules) == 0 {
+    PopulationDerivationRefused {
+      board_label: geometry.board_label,
+      cause: NoModuleCandidatesOffered,
+    }
+  } else {
+    let options = fold(
+      modules,
+      init: [],
+      f: (acc, m) => concat(acc, options_for_module(g: geometry, module: m, required: required)),
+    )
+    if count(options) == 0 {
+      let best = best_reachable_bytes(g: geometry, modules: modules)
+      PopulationDerivationRefused {
+        board_label: geometry.board_label,
+        cause: TargetUnreachableInSlotGeometry {
+          required_bytes: required,
+          best_reachable_bytes: best,
+          shortfall_bytes: byte_size(count: byte_size_count(b: required) - byte_size_count(b: best)),
+        },
+      }
+    } else {
+      PopulationsDerived { options: options }
+    }
+  }
+}
+
+// A mixed-capacity population is refused rather than derived. It is a separate
+// entry point instead of an arm inside the fold above because the fold has no
+// way to express one: every option it builds carries a single module row. This
+// names the refusal for a caller that holds two capacities and would otherwise
+// have to infer the rule from the fold's shape.
+fn admit_mixed_capacity_population(geometry: MemoryChannelGeometry) -> PopulationDerivation {
+  PopulationDerivationRefused {
+    board_label: geometry.board_label,
+    cause: MixedCapacityPopulationUnsupported,
+  }
+}
+
+// THE ENTRY POINT A CONSUMER ACTUALLY CALLS, taking the benchmark DERIVATION
+// rather than a finished requirement. This is where "a requirement without a
+// sourced benchmark is refused" becomes an executed arm instead of a rule
+// stated in prose: the caller cannot skip the derivation, because the
+// requirement it would otherwise have to build has no other way to obtain its
+// basis. A refused benchmark carries its cause straight through to the
+// population refusal, so the buyer is told the figure was never grounded
+// rather than being handed a population computed from a rounded ratio.
+fn derivation_option_count(d: PopulationDerivation) -> Nat {
+  match d {
+    PopulationsDerived { options } => count(options)
+    PopulationDerivationRefused { board_label, cause } => 0
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Rows: the candidates this repository currently holds.
+//
+// These are receipts in the observing layer, not facts authored inside the
+// upstream modules: each one DERIVES its fields from a cited row and carries
+// that row's authority, so the derivation is joinable back to its source.
+// ---------------------------------------------------------------------------
+
+// The ASRock ALTRAD8UD-1L2T geometry, derived rather than authored. Channel
+// count comes from the Altra package authority (eight DDR4 channels); the
+// topology follows from the board's own documented maximum population of eight
+// slots, which is one DIMM per channel and therefore the FULL population for
+// this board. Both halves matter: the board's documented four-module
+// population A1+B1+E1+F1 is explicitly NOT one per channel, so slot count
+// alone does not tell you which channels a population lights.
+data asrock_altrad8ud_1l2t_geometry: MemoryChannelGeometry = MemoryChannelGeometry {
+  board_label: "ASRock Rack ALTRAD8UD-1L2T",
+  channels: 8,
+  max_topology: OneDimmPerChannel,
+  authority: asrock_altrad8ud_download_authority,
+}
+
+
+// ---------------------------------------------------------------------------
+// The declared profiles. Each one names the surveyed rows it was read from;
+// none of them invents a figure.
+// ---------------------------------------------------------------------------
+
+data ubicloud_arm_shapes_ref: DeclarationRef = decl_ref(
+  module_path: "extdeps.cloud.ubicloud",
+  decl_name: "ubicloud_runner_catalog_shapes",
+)
+
+data blacksmith_shapes_ref: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.blacksmith",
+  decl_name: "blacksmith_runner_catalog",
+)
+
+data github_shapes_ref: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.github_actions",
+  decl_name: "github_actions_runner_catalog",
+)
+
+data depot_shapes_ref: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.depot",
+  decl_name: "depot_runner_catalog",
+)
+
+data warpbuild_shapes_ref: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.warpbuild",
+  decl_name: "warpbuild_runner_catalog",
+)
+
+data circleci_shapes_ref: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.circleci",
+  decl_name: "circleci_runner_catalog",
+)
+
+// THE VALUE PROFILE: three GB per DEDICATED physical core. Two surveyed
+// providers publish arm64 at this ratio, and one of them states that its arm64
+// vCPU is a dedicated Altra core — which is the same processor family this
+// board purchase is about, so the comparison is like for like rather than a
+// ratio borrowed across machine classes.
+//
+// The basis is declared decimal because that is how the cited surfaces quote
+// it; declaring it through the constructor is what makes the resulting byte
+// target inspectable rather than assumed.
+data arm_value_profile: RunnerServiceProfile = RunnerServiceProfile {
+  label: "arm-value",
+  architecture: Aarch64,
+  entitlement: DedicatedPhysicalCore,
+  memory_per_entitlement: QuotedDecimalGigabytes { value: gigabyte(count: 3) },
+  basis: CitedBasis { primary: ubicloud_arm_shapes_ref, additional: [blacksmith_shapes_ref] },
+}
+
+// THE MEMORY PROFILE: four GB per entitlement, the ratio the GitHub-shaped
+// cluster publishes on arm64. Carried as a separate profile rather than as a
+// correction to the one above, because they are both real: the market offers
+// both, and which one gunbc is buying for is a policy choice, not a fact to
+// be resolved by averaging.
+data arm_memory_profile: RunnerServiceProfile = RunnerServiceProfile {
+  label: "arm-memory",
+  architecture: Aarch64,
+  entitlement: DedicatedPhysicalCore,
+  memory_per_entitlement: QuotedDecimalGigabytes { value: gigabyte(count: 4) },
+  basis: CitedBasis {
+    primary: github_shapes_ref,
+    additional: [depot_shapes_ref, warpbuild_shapes_ref],
+  },
+}
+
+// THE x64 PROFILE, and the reason its entitlement is SMT rather than a core:
+// on the surveyed x64 surfaces a vCPU is a hardware thread, so four GB per
+// vCPU is EIGHT GB per physical core. CircleCI is cited beside the others
+// precisely because it disagrees — its x86 Docker classes are two GB per vCPU
+// — and a profile whose basis included only the agreeing providers would have
+// looked better sourced while being less honest about the spread.
+data x64_standard_profile: RunnerServiceProfile = RunnerServiceProfile {
+  label: "x64-standard",
+  architecture: X86_64,
+  entitlement: SmtSharedVcpu { threads_per_core: 2 },
+  memory_per_entitlement: QuotedDecimalGigabytes { value: gigabyte(count: 4) },
+  basis: CitedBasis {
+    primary: github_shapes_ref,
+    additional: [depot_shapes_ref, warpbuild_shapes_ref, circleci_shapes_ref],
+  },
+}
+
+fn declared_service_profiles() -> List<RunnerServiceProfile> {
+  [arm_value_profile, arm_memory_profile, x64_standard_profile]
+}
+
+// THE CANDIDATE SET THIS MODULE CAN CURRENTLY ANSWER FOR, and what it cannot.
+// Three of the four boards this derivation was asked about — Supermicro
+// R12SPD-A, the Mt. Collins platform, and the second ASRock row — carry their
+// geometry only on an unmerged branch, and the Ampere Q80-30 the fleet
+// purchase is actually about has no catalog row anywhere in the tree (the
+// ubicloud citation note names that row as its own grounding successor). None
+// of them is minted here: a geometry invented to make a derivation runnable is
+// a fabricated input to a buying decision, which is worse than an absent one
+// because it is indistinguishable from a cited one downstream.
+//
+// The fold is parameterized on geometry and CPU precisely so those arrive as
+// DATA when their rows land — no change to this module is owed, only rows.
+// Until then the answered candidate set is exactly one board and one
+// processor, and that is a smaller claim than the question asked.
+fn answered_candidate_board_count() -> Nat {
+  1
+}

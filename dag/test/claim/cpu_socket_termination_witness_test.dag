@@ -111,10 +111,10 @@ fn every_row_cites_its_socket(rows: std.types.List<extdeps.cpu.types.CpuModelCat
 }
 
 test fn w_every_catalog_row_in_both_rosters_cites_its_socket() -> Bool {
-  every_row_cites_its_socket(rows: extdeps.cpu.amd.amd_cpu_catalog_rows)
-    && every_row_cites_its_socket(rows: extdeps.cpu.ampere.ampere_cpu_catalog_rows)
-    && count(extdeps.cpu.amd.amd_cpu_catalog_rows) == 3
-    && count(extdeps.cpu.ampere.ampere_cpu_catalog_rows) == 2
+  every_row_cites_its_socket(rows: amd_cpu_catalog_rows)
+    && every_row_cites_its_socket(rows: ampere_cpu_catalog_rows)
+    && count(amd_cpu_catalog_rows) == 3
+    && count(ampere_cpu_catalog_rows) == 3
 }
 
 // RED control: the census discriminates. A roster carrying a row with no citations must fail, or

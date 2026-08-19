@@ -1,0 +1,109 @@
+module extdeps.colo.types
+
+import std.types { NonEmptyStr, List, Bool }
+import std.nat { Nat }
+import std.measure {
+  MoneyPerMonth, MoneyOnce, MoneyPerHour,
+  Watt, Ampere, Volt, RackUnit, Bandwidth, ByteSize,
+}
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Colocation_centre"
+  }
+}
+
+// AGNOSTIC SHAPES ONLY, per the external-upstream-decomposition rule: this hub defines the
+// vocabulary a colocation provider's cited rows inhabit and enumerates NO concrete provider,
+// facility, or plan. Each independently governed operator has its own extdeps.colo module
+// beside this one; rosters of candidates and any selection over them are consumer facts and
+// live with the consumer, never here.
+
+// The domain tag for Vendor<Domain> when a colocation operator is referenced as a company.
+// A pure type tag, never construction-reached, on the extdeps.hardware.Hardware pattern.
+type ColocationServices
+
+// A street address is a listing claim until someone stands at the door. Rows whose source
+// did not carry the address say so instead of carrying a fabricated one.
+type AddressStanding
+  = AddressListed { street: NonEmptyStr, citation: NonEmptyStr }
+  | AddressUnread { obligation: NonEmptyStr }
+
+// One physical colocation facility as one operator's cited row. A multi-operator carrier
+// hotel appears once per operator that sells space in it, because the operator is the
+// upstream authority the row cites, not the building.
+type ColoFacilityRow {
+  operator_label: NonEmptyStr
+  facility_label: NonEmptyStr
+  address: AddressStanding
+  municipality: NonEmptyStr
+  region_code: NonEmptyStr
+  facility_note: NonEmptyStr
+}
+
+// Power as a retail colocation offer states it. Watt allocations and breakered feeds are
+// different commercial objects: an allocation is a cap the provider meters or polices, a
+// feed is a circuit whose usable share is set by the continuous-load derating the consumer
+// applies. An offer that states neither is PowerUnread, never a guessed figure; an offer
+// stating amps with no voltage keeps its amp reading and carries the voltage as a typed
+// obligation, because multiplying by an assumed voltage would fabricate the wattage.
+type PowerAllocation
+  = AllocatedWatts { allocation: Watt }
+  | FeedAmps { amps: Ampere, volts: Volt }
+  | FeedAmpsVoltsUnstated { amps: Ampere, voltage_obligation: NonEmptyStr }
+  | PowerUnread { obligation: NonEmptyStr }
+
+type TransitAllocation
+  = UnmeteredPort { port_speed: Bandwidth }
+  | MeteredTransfer { port_speed: Bandwidth, included_transfer_per_month: ByteSize }
+  | TransitUnread { obligation: NonEmptyStr }
+
+type Ipv4Allocation
+  = Ipv4Usable { usable_addresses: Nat, block_note: NonEmptyStr }
+  | Ipv4Unread { obligation: NonEmptyStr }
+
+type SetupCharge
+  = SetupFee { fee: MoneyOnce }
+  | SetupWaived
+  | SetupUnread { obligation: NonEmptyStr }
+
+// A published retail plan row, cited. Every field is a READING of the cited source at the
+// capture date in the citation; a plan the provider has since withdrawn is recorded by the
+// withdrawal note on the provider module, not by deleting the reading's history.
+type RetailPlanRow {
+  plan_label: NonEmptyStr
+  rack_units: RackUnit
+  power: PowerAllocation
+  transit: TransitAllocation
+  ipv4: Ipv4Allocation
+  monthly: MoneyPerMonth
+  setup: SetupCharge
+  term_note: NonEmptyStr
+  citation: NonEmptyStr
+}
+
+// Whether ordinary retail pricing is published at all. Most facility operators in this
+// market price by quote; that is a fact about the provider worth a typed arm, because a
+// consumer computing over prices must treat quote-only as absent-with-an-obligation and
+// never as zero or as an average of the published ones.
+type RetailRateStanding
+  = RatesPublished { plans_note: NonEmptyStr }
+  | RatesQuoteOnly { contact_route: NonEmptyStr, obligation: NonEmptyStr }
+
+type CrossConnectFee {
+  monthly: MoneyPerMonth
+  install: MoneyOnce
+  fee_note: NonEmptyStr
+  citation: NonEmptyStr
+}
+
+type RemoteHandsWindowRate {
+  window_label: NonEmptyStr
+  hourly: MoneyPerHour
+  minimum_note: NonEmptyStr
+  citation: NonEmptyStr
+}

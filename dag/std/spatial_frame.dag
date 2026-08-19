@@ -76,6 +76,7 @@ fn length_scale_is_decimal(s: std.measure.Scale) -> Bool {
     TurnAngle      => false
     Sixty          => false
     RackUnitHeight => false
+    SquareFootArea => false
   }
 }
 

@@ -1,0 +1,44 @@
+module extdeps.colo.qts
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly }
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "q.com/data-centers/piscataway/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.colo.qts",
+      decl_name: "qts_piscataway",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data qts_piscataway: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "QTS Data Centers",
+  facility_label: "QTS Piscataway (PNJ1)",
+  address: AddressListed {
+    street: "101 Possumtown Road, Piscataway, NJ 08854",
+    citation: "datacentermap QTS Piscataway profile, read 2026-08-18",
+  },
+  municipality: "Piscataway",
+  region_code: "NJ",
+  facility_note: "Large campus (about 65 MW marketed per datacentermap, read 2026-08-18) with a hybrid retail-plus-hyperscale motion. Roughly a Middlesex County drive from the Hudson waterfront, so it prices against the operator-travel axis rather than the proximity one.",
+}
+
+data qts_retail_rates: RetailRateStanding = RatesQuoteOnly {
+  contact_route: "q.com sales",
+  obligation: "No published cabinet pricing on pages read 2026-08-18.",
+}
