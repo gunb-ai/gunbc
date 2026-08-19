@@ -219,6 +219,9 @@ fn generated_basenames_from_emit(emitted: &HashMap<String, String>) -> Vec<Strin
     let mut names: BTreeSet<String> = BTreeSet::new();
     for path in emitted.keys() {
         if path.ends_with(".rs") && !is_hand_maintained_path(path) {
+            // Basename, not the emit key: `committed_generated_basenames` keys on
+            // `file_name()`, and emit keys carry a `src/` prefix. Comparing the two
+            // key spaces made every file mismatch in both directions.
             names.insert(emit_path_basename(path).to_string());
         }
     }

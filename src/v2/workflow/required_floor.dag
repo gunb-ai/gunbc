@@ -2,7 +2,6 @@ module v2.workflow.required_floor
 
 import v2.std.algebra { Cons, Empty }
 import v2.std.collection { List }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.std.text { String }
 
 // THE ROSTER IS IMPORTED HERE SO IT IS REACHABLE, NOT SO IT IS RE-EXPORTED.
@@ -17,39 +16,6 @@ import v2.std.text { String }
 // thin accessor here would be a second name for one authority, and this module would then own
 // a fact it does not produce.
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
-
-// BARE-NAME AMBIGUITY IS COMPUTED AND DISCARDED, one rung below where the machinery already
-// stands. This is an ACKNOWLEDGEMENT of debt the floor cut discovered on its base, not debt the
-// cut introduced: the defect predates this branch and the branch only measured it.
-//
-// The interpreter's index registers every declaration under BOTH a bare leaf key and a qualified
-// module-path key, and while building it counts how many declarers claim each bare name — the
-// exact ambiguous set, stored on the context. `lookup_fn` then answers with a plain map get and
-// never consults it, so the losing declarer was already overwritten by insertion order. The set
-// has one reader, and that reader's only callers are a unit test.
-//
-// So this is not a lookup that lacked the information to refuse. It is a lookup holding the
-// refusal and declining to take it — registration standing in for enforcement, which reads as a
-// wall in a census and is fail-open in execution. What it produces is not a diagnostic but a
-// plausible answer: a call binding to a same-named declaration in an unrelated module, arriving
-// as `call contract mismatch` at a caller that never wrote the name.
-//
-// MEASURED, at two grains that are not comparable and are both recorded so neither is mistaken
-// for the other. At reference-site grain, 5,783 ambiguous references corpus-wide (crisp-crab-430,
-// namespace cut). At runtime grain, which is what this floor exercises: 72,480 (name x scope)
-// pairs across 963 of 1,295 scopes, worst scope 110, reported every run as
-// `[floor-bare-name-ambiguity]`. The runtime figure multiplies one homonym across every scope
-// that reaches it, and it moves with REACH as well as with resolution — a fix that loads more
-// modules manufactures more collisions without any resolution changing.
-//
-// NOT FIXED HERE, deliberately and in both directions. Adding a refusal arm to the lookup would
-// be a new row in a frozen component, which is the growth surface the freeze exists to close.
-// Renaming the colliding declarations is the authoring-side absorbing fallback: it zeroes the
-// observed frequency without touching the substrate, and at 72,480 it does not scale — three
-// such renames stand on this branch as interim debt, dissolving with the trigger below.
-// Qualification at the reference routes past the whole class without touching the frozen
-// component, because the qualified key is collision-free by construction.
-data floor_bare_name_ambiguity_next_rung_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: bare-name binding stops being decided by insertion order. Reached when ambiguous references carry their qualified module path (v2.compiler.emit.emit rather than emit), which routes through the collision-free qualified key in the interpreter's index and needs no change to the frozen component. Owned by the namespace cut, gunbc#8282; the nine production emit call sites were handed over and taken 2026-08-17. Until then [floor-bare-name-ambiguity] counts the population every run and the three emit renames on integration/floor-cut are interim debt reverting on that landing. Rung today: mitigatable — the ambiguous set is computed and countable, and the wrong binding is loud at the caller as a contract mismatch rather than silent. Ceiling: structural impossibility — a qualified reference has exactly one declarer, so no ambiguous binding is writable.")
 
 //
 // THREE PREFIXES, NOT ONE, and the count is what found that. A single `test.claim.long.` test
