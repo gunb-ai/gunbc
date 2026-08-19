@@ -1,8 +1,21 @@
 # CLI invocation emission — the tree is the authority, argv is emitted
 
-**Status: DESIGN NOTE. No code lands from this note yet.** Design-note-first, per the
+**Status: DESIGN NOTE PLUS ITS FIRST CUT.** An earlier revision of this line read "No code lands
+from this note yet" and kept reading that way while the branch carried a carrier, a seed
+realization, witnesses and one migrated production site. That is the stale-citation class in the
+lane's own authority: a status sentence nobody edits because nobody is touching the paragraph
+around it. What has landed is stated at each wave below; what has not is stated as not. Design-note-first, per the
 hollow-alias precedent. The first vertical is specified here; nothing is built until the
 note is accepted.
+
+**Lane scope, narrowed (raised by the `shell → dag` session, accepted):** this note governs
+**CLI-backed host effects only** — effects whose realization is a process invoked with an argument
+vector. It is *not* a universal effect model, and the distinction is load-bearing rather than
+pedantic: a Redfish/REST path reaches a modeled request and must reach **no** `JqInvocation`, no
+`CliSurface`, no `ProcessArgvExpansion` and no shell target at all. Treating every host effect as a
+CLI invocation would re-import at the effect layer exactly the mistake this lane is removing at the
+argv layer — one realization mistaken for the interface. A negative falsifier witness proving a
+REST path reaches none of these carriers is **owed by this lane and not yet built.**
 
 **Lane:** supersedes the Lane B destination of `gunbc.plans.transport_argv_anemia_dissolution`.
 That plan's *diagnosis* stands — "the model is the request; the curl argv is one derived
@@ -544,6 +557,16 @@ byte-identical; argument boundaries observable *by execution*; direct/cast/unadm
 explicit refusal when no CLI serializer is wired. See §10 — this probe must execute, because it
 will not refuse at compile time.
 
+**WAVE ORDER CORRECTED BY EXECUTION: 1B CUT FIRST, and the note was wrong, not the branch.**
+Wave 1A was named the strongest first exemplar because it exercises the most axes at once —
+including a typed JSON binding through `--argjson`. That is exactly why it cannot be first: the
+binding lowering is **not built**, and `jq_invocation_lower` refuses it as
+`JqBindingLoweringUnwired`. Choosing the richest site as the first cut selected the one site whose
+lowering is unimplemented. `SensorIntegerValue` (Wave 1B) migrated first because its every axis is
+wired: program operand, stdin input, raw output, and `JqProgramExit` selecting no exit-status
+option. Its falsifier role is undiminished by going first — a counterexample does not require the
+thing it falsifies to exist yet. 1A follows once `--argjson` lowers.
+
 **Wave 1A — `ObjectMapperServiceAt`.** The strongest first exemplar, because its existing argv
 exercises nearly every load-bearing axis at once: `-e` truthiness exit, `-r` raw output, a typed
 JSON binding through `--argjson` (an option with **two** values), stdin input, a jq program
@@ -601,8 +624,13 @@ separate proofs.
 4. Emission to `List<PosixArgument>`.
 5. Local resolution into `extdeps.posix` `Command`.
 6. A process-input realization for jq stdin, separate from argv.
-7. The SSH handler: emitted arguments → shell simple-command tree → shell text → RFC 4254 string.
-8. One live jq population cut over, with its prior argv authoring site deleted.
+7. One live jq population cut over, with its prior argv authoring site deleted.
+
+The SSH handler is **Wave 2 and is deliberately absent from this list.** An earlier revision
+carried it here as item 7, directly contradicting "Do not make the first vertical solve SSH" two
+paragraphs above and the recut in §7 — the same list could be cited to prove either scope. SSH adds
+a second language target, RFC 4254 string loss and the `sshpass -d 0` collision; none of that is
+needed to prove a local vertical.
 
 The carrier lands **with** its first live consumer, or in an immediately preceding stacked PR that
 already contains an executing consumer. A standalone carrier PR with no consumer would reproduce
@@ -653,6 +681,9 @@ error.
 | omitting `--exit-status` from an accepted truthiness invocation | **structurally impossible within the new path** | exhaustive semantic→option selection; zero-or-many rows refuse; no mint on miss |
 | hand-authoring flags inside a migrated route | **structurally impossible after cutover** | handler takes a semantic invocation, emits internally, old argv site deleted |
 | reintroducing the exact old operation transport | mechanically preventable | structural deletion witness |
+| a computed argument vector losing its argument boundaries at the host edge | **mitigatable only** | the `ProcessArgvExpansion` arm makes boundaries survive *on the carrier path* and refuses every malformed shape it is handed, but the guessing path it sits in front of is untouched for every value that is not this carrier — 21 operations still splice a declared `List` param. This is a repair at ONE seam, not a wall over the class |
+| a domain module authoring jq program source | **mitigatable only** | §12 — `JqProgram` is public; nothing prevents it |
+| decoding a jq exit code against the wrong contract | **structurally guaranteed on the new path** | §13 — the policy travels on the plan and `jq_classify_observation` is the only reader; a domain module has no exit code to misread |
 | writing another raw jq argv elsewhere | **still writable** | unrelated raw shell/process routes remain |
 | arbitrary raw argv corpus-wide | outside this vertical | later process/transport confinement |
 
@@ -888,7 +919,7 @@ General argument typechecking strengthens the boundary; it does not prove that p
    inferred from runtime encoding. Application-argument typechecking remains independently
    valuable and is neither necessary nor sufficient here.
 
-   **The construction:** one explicit nominal carrier — `ShellArgvExpansion { surface: CliSurface }`,
+   **The construction:** one explicit nominal carrier — `ProcessArgvExpansion { surface: CliSurface }`,
    sealed — with an interpreter branch placed BEFORE the generic string/list heuristic that requires
    the nominal `CliSurface`, iterates its arguments, and pushes exactly one host word per
    `CliArgument`, concatenating that argument's fragments into that one word. It carries `CliSurface`
@@ -1026,3 +1057,178 @@ Claims asserted during this design and refuted by measurement, kept so they are 
   population, so a compile-only probe **false-greens**.
 - *"The smallest complete vertical includes SSH."* **False** — SSH adds a second language target
   and three independent failure modes; the unit is local-only.
+
+---
+
+## 12. `JqProgram` is public, and the domain still authors jq source
+
+Raised by the `shell → dag` session against the `SensorIntegerValue` cut. The objection: after the
+migration, `extdeps.bmc.openbmc_fan_control` no longer authors argv — but it *does* author
+
+```
+data openbmc_sensor_integer_program: String =
+  "if (.data | type) == \"number\" then (.data | round) else empty end"
+```
+
+so the workflow moved from authoring shell to authoring jq. `JqProgram { source: NonEmptyStr }`
+is a public constructor, so every domain module may do the same.
+
+**The objection is right about the residue and should not be argued down.** What the cut
+established is narrower than "the domain stopped authoring foreign syntax": it stopped authoring
+*argv*. Measured at the cut, OpenBMC no longer names `-r`, `--raw-output`, an option spelling, an
+argument position, argv[0], or the stdin routing — all of those are now derived from jq's cited
+rows, and that is the property the two-level derivation buys. The jq *program* is untouched by it.
+
+**The proposed remedy — keep `OpenBmcSensorIntegerProjection { content }` public and have the
+handler privately select a sealed program identity — is refused as stated, on §2.** It does not
+decompose the program; it relocates the same string behind an indirection and adds a registry to
+maintain. Ask where the text lives afterwards. If the handler is OpenBMC's, the jq source is still
+in the OpenBMC layer and only a wrapper was added. If the handler is jq's, then `extdeps.tools.jq`
+knows what a BMC sensor reading is — a layer inversion, jq depending upward on its consumer's
+domain. Neither position is better than the row that exists, and the second is worse. A sealed
+identity would buy something only if the identity were *derived*, which is the real answer:
+
+**The terminal shape is that the program is not authored at all.** `.data`, "is it a number",
+"round it", "otherwise nothing" are a modeled JSON projection — a path, a type guard, a rounding
+policy, and an absence arm — of which a jq program is ONE realization, exactly as an argv vector
+is one serialization of a `CliSurface`. Under that model the domain declares the projection, jq's
+module derives the program text from it the way it already derives option spellings, and a second
+realization (a native JSON fold with no process at all) becomes possible for free. That is the same
+move the lane already made one layer out, applied one layer in — and it is what stops this work
+generalizing into a thousand bespoke jq programs where it found a thousand bespoke argv lines.
+
+**Rung, honestly.** Domain-authored jq source is **mitigatable**: nothing prevents it, and the only
+things standing between it and an arbitrary computed program are that the row is `data` rather than
+a function — so it cannot vary per call — and review. Not a wall, and it should not be reported as
+one.
+
+**Dissolution trigger:** a modeled JSON projection carrier with jq as a derived realization. Until
+it lands, `JqProgram` stays public and this section is the reason, not an oversight. This is
+deliberately NOT scoped into the current cut: modeling a JSON projection algebra is its own
+vertical, and bundling it would repeat the Wave 1A mistake of selecting the richest thing first.
+
+
+---
+
+## 13. The observation contract travels with the plan
+
+Raised as "`JqAdmittedProcessPlan` cannot be decoded" by the `shell → dag` session. Verified
+against the code and **worse than raised** — it was not a missing convenience, it was a live latent
+defect in the cut itself.
+
+The sensor decoder read `exit_code`, `stdout` and `stderr` directly and mapped every nonzero exit to
+a refusal. That is correct under `JqProgramExit` and silently wrong under `JqLastResultExit`, where
+jq documents exit **1** as "the last output was false or null" — a legitimate *value* — and exit
+**4** as "no valid result was ever produced" — *absence*. Nothing connected the decoder to the
+policy that produced the argv, so changing `exit_policy` in the invocation would have left the
+decoder confidently answering the previous contract. That is §5's own tell: the declaration is
+edited while the realization goes on lying, and the model's own witnesses stay green because they
+never varied the policy.
+
+**Repair.** `JqAdmittedProcessPlan` carries `exit_policy`, so the plan is self-describing. One
+authority, `jq_classify_observation`, reads an exit code *against* the policy that asked for it and
+returns `JqOutputPresent | JqOutputAbsent | JqExecutionRefused`. The domain matches those arms and
+decides only what OpenBMC alone can decide — whether a present projection parses as an integer. No
+domain module reads a jq exit code any more.
+
+**Discriminating evidence, and why it discriminates.** Five assertions hold one observation fixed
+and vary only the policy:
+
+```
+exit 1, stdout "false"   under JqProgramExit     -> Refused
+exit 1, stdout "false"   under JqLastResultExit  -> Present     <- the policy-blind decoder fails here
+exit 4, stdout ""        under JqLastResultExit  -> Absent
+exit 2, stderr "usage"   under BOTH              -> Refused
+exit 0, stdout "   "     under JqProgramExit     -> Absent
+```
+
+The second row is the discriminator: a decoder reading the exit code without the policy must answer
+`Refused` for exit 1 under both policies, so it cannot make rows one and two true at once. The
+fourth row is the control that keeps the law from overfitting — the policy changes how *some* codes
+read, not whether jq can fail.
+
+**This also closes the point `eager-wren-138` reached from the other direction.** That session
+proposed sweeping `-e` across jq sites as hardening; the counter was that `-e` reports on the *last
+output*, so it converts legitimate `false`/`null` into failure. Both facts are now modeled rather
+than argued: selecting `JqLastResultExit` changes the *decode*, not just the flag, and absence
+remains a state distinct from refusal on both arms.
+
+---
+
+## 14. Verification scoped to the consumers I already knew about
+
+Recorded because it is the third instance of one failure mode in this lane's own work, and the
+first two were caught by other people.
+
+Changing `openbmc_sensor_integer_projection_result`'s signature broke two enrolled witnesses
+(`failed_sensor_projection_cannot_become_absent`, `successful_empty_sensor_projection_is_absent`)
+that call the decoder directly. I did not find them, because I had selected the witnesses to run by
+asking which files import `openbmc_fan_control.dag` **and then hand-picking three of them** — the
+verification denominator was a list I wrote, not a list the tree produced. The break surfaced only
+when the resolve failed on an unrelated run.
+
+The same shape produced the two earlier defects: an unimported-reference sweep run *before* the
+last addition rather than after it, and a grep whose zero result was accepted without a control
+that must hit. In each case the mechanism was sound and the **denominator** was authored.
+
+**The rule adopted for the rest of the lane:** verification enumerates test functions from the
+FILE, never from memory —
+
+```
+grep "^test fn" <witness> | sed 's/test fn \([a-z_0-9]*\).*/\1/'
+```
+
+— and every function in every witness file touching a changed signature runs, not a chosen subset.
+This is the same principle §5 states for oracles, applied to coverage: a population I author is not
+an observation of the population that exists.
+
+**What the break itself demonstrates, and it is the argument for the cut.** Both witnesses were
+re-enrolled unchanged in *requirement* — a refusal must not decay into absence, an empty successful
+projection must not decay into a refusal — while their *carrier* moved from a `success: Bool` triple
+to the typed jq outcome. The migration also made a third requirement stateable that the old triple
+could not express: that a present numeric projection is an observation. That is a replacement
+migration behaving correctly (§3): deletion surfaced the load, the load was dispositioned as
+re-enrolled evidence rather than restored by reflex, and the new representation was strictly more
+expressive than the one it replaced.
+
+---
+
+## 15. Wave 1B cutover receipt
+
+Executed on BuildBuddy against the branch tree. Counts are from enumerating `^test fn` in each
+file, not from a chosen subset (§14).
+
+```
+extdeps.bmc.openbmc_fan_control                 SensorIntegerValue operation DELETED
+  consumers rewired                             2 (openbmc_sensor_value, openbmc_sensor_threshold_result)
+  both now route through                        openbmc_sensor_integer_projection  (one shared fn, not two call sites)
+  argv authored by the domain after cutover     0 -- no -r, no --raw-output, no argv position, no argv[0]
+  residual foreign syntax authored              1 jq program row (S12, mitigatable, trigger recorded)
+
+test/claim/bmc_typed_operations_witness         29 / 29 pass
+  of which migrated onto the typed jq outcome    2 (requirement unchanged, carrier replaced)
+  of which newly stateable and added             1 (present numeric projection is an observation)
+test/claim/jq_invocation_lowering_witness        9 / 9 pass  (lowering)
+                                                 5 / 5 pass  (S13 exit-policy classification)
+test/claim/bmc_fan_converge_witness              duty_curve pass
+test/manual/process_argv_expansion_receipt       case 4 pass -- real jq, exit 0 reachable only
+                                                 with two argv words, through the production handler
+```
+
+**What this receipt does NOT establish**, stated because the table above reads stronger than the
+lane's actual position:
+
+- The argv splice defect is repaired at **one seam**, not closed as a class. 21 operations still
+  splice a declared `List` parameter through the guessing path.
+- The other three `openbmc.JsonProjection` operations are unmigrated, and two of them
+  (`ObjectMapperServiceCount`, `ObjectMapperServiceAt`) need `--argjson` lowering, which is unbuilt.
+- No negative falsifier exists yet proving a REST path reaches none of these carriers.
+- The wet receipt run reports `[expectation-frontier] 1 site(s), 1 dispatch(es) undeclared:
+  jq.Process.RunWithStdin=1`. That is the new handler's dispatch not being declared to the
+  expectation registry. It is left standing rather than silenced because it is exactly the shape §5
+  asks for — typed, located, counted, and visible — but it IS an open item, and a reader should not
+  infer from a `PASS` line that nothing else was reported.
+- The 5 classification assertions and the wet receipt executed in separate runs from the 29+9; a
+  single run of all 43 exceeded the 45-minute remote timeout, because every `gunbc run` pays a
+  whole-corpus typecheck. That is a cost-shape observation about the harness, not evidence about
+  the code, and it is recorded rather than left as an unexplained split.

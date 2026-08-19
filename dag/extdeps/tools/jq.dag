@@ -1,10 +1,10 @@
 module extdeps.tools.jq
 
-import std.types { NonEmptyStr, String, Bool, List }
-import std.algebra { Cons, Empty }
+import std.types { NonEmptyStr, String, Bool, Int, List }
+import std.algebra { Cons, Empty, trim }
 import v2.std.algebra { list_append, list_snoc_item }
 import v2.std.collection { Map, empty_map, map_insert }
-import v2.std.compilers.cli_surface { CliArgumentSyntax, CliSurface, cli_long_option_spelling, serialize_cli_arguments }
+import v2.std.compilers.cli_surface { CliArgumentSyntax, CliSurface, cli_long_option_spelling, process_argv_expansion, serialize_cli_arguments }
 import v2.std.compilers.lexing { LexRuleSet, LiteralPattern, ModeledLexRules, TokenRule }
 import v2.std.compilers.target_model { BoundToken, FixedToken }
 import v2.std.diagnostic {
@@ -41,15 +41,58 @@ data jq_cli_tool: CliTool = CliTool {
   installable_via: [SourceApt { package: package_jq }],
 }
 
-service jq.Json {
-  operation ExtractRaw {
-    input { filter: NonEmptyStr, path: NonEmptyStr }
-    output { value: String from "stdout", success: Bool from "exit_success" }
+// THE EXECUTION HANDLER, and the argv here is NOT a second authority on jq's flags.
+//
+// jq.Json.ExtractRaw stood here: input { filter, path }, argv ["jq","-r","{filter}","{path}"].
+// That was a SEMANTIC argv -- it decided that raw output is what a caller wants and spelled the
+// flag itself -- and it had zero consumers tree-wide. Deleted rather than migrated: the semantic
+// layer above answers the question it was answering.
+//
+// What replaces it spells nothing. `arguments` arrives already lowered from a sealed plan, and
+// the only literal is the executable -- the same shape as gunbc.WitnessBin.Run's
+// ["env","-C","{workdir}","{bin_path}", args]: a process-spawn form at the REALIZATION layer.
+//
+// THE ARGUMENTS ARRIVE AS ProcessArgvExpansion, NOT List<String>, and that is load-bearing rather
+// than decorative. A computed List<String> does NOT reach the process as separate words: a folded
+// list is concatenated into one argv word while an identical literal splices (receipt: literal
+// ["--raw-output","."] -> exit 0; the same two elements folded -> exit 2, `jq: Unknown option
+// --raw-output.`). The transport was guessing the expansion role from runtime encoding. The
+// carrier states it nominally, and the seed realizes it fail-closed. The raw-list signature is
+// REPLACED rather than kept beside the carrier: two accepted forms would leave the unsafe one
+// reachable by every future caller.
+service jq.Process {
+  operation RunWithStdin {
+    input { arguments: ProcessArgvExpansion, stdin_payload: String }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
     readonly
-    transport shell { argv: ["jq", "-r", "{filter}", "{path}"] }
+    transport shell {
+      argv: ["jq", arguments]
+      stdin: stdin_payload
+    }
     exit {
       0 => Unit
-      nonzero => String "jq extract failed"
+      nonzero => Unit
+    }
+  }
+
+  operation RunWithoutStdin {
+    input { arguments: ProcessArgvExpansion }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: ["jq", arguments]
+    }
+    exit {
+      0 => Unit
+      nonzero => Unit
     }
   }
 }
@@ -59,7 +102,7 @@ service jq.Json {
 // docs/plans/cli-invocation-emission-design.md
 //
 // The caller describes WHAT IT WANTS OF JQ. It never names a flag. A domain module reaches this
-// module through jq_invocation_process_plan -- the complete result, carrying tool, argv and stdin
+// module through jq_invocation_process_plan -- the complete result, carrying argv and process input
 // -- and those functions emit the spellings rather than accepting them. jq_invocation_cli_arguments
 // remains beside it as the argv-only projection the boundary witness asserts over; it is NOT the
 // handler's entry point, because a handler that took it would have to reopen the JqInvocation to
@@ -191,7 +234,7 @@ fn jq_cli_lex_rules() -> ModeledLexRules {
 type JqProcessPlan {
   arguments: List<CliArgumentSyntax>
   binding_spellings: Map<Symbol, String>
-  stdin: String?
+  process_input: JqProcessInput
 }
 
 // THE CAUSE IS TYPED, NOT PROSE. An earlier revision carried a NonEmptyStr reason that
@@ -229,7 +272,7 @@ fn jq_invocation_lower(invocation: JqInvocation) -> JqLowering {
                 key: ^jq_program_text,
                 value: invocation.program.source as String
               ),
-              stdin: Present { value: content }
+              process_input: JqProcessStdin { content: content }
             }
           }
       }
@@ -270,15 +313,86 @@ fn jq_selected_option_argument(selection: JqCliSelection) -> List<CliArgumentSyn
 // This carrier also gives tool identity its first real consumer, so which binary runs stops being
 // ambient. A handler consumes THIS, never a bare CliSurface it must reopen the JqInvocation to
 // complete -- that would give the process projection two authorities.
+// A PROCESS WITH NO STDIN CHANNEL AND A PROCESS GIVEN EMPTY STDIN ARE DIFFERENT EXECUTIONS.
+// An earlier revision carried Optional<String>, which conflates them -- the same state-space
+// collapse JqCliSelection exists to prevent one layer up, reintroduced at the process boundary.
+type JqProcessInput
+  = JqProcessStdin { content: String }
+  | JqProcessNoStdin
+
+// exit_code and NOT a success Bool beside it: two fields for one fact is a second
+// representation, since success is exactly exit_code == 0, derived where it is decided.
+type JqProcessObservation {
+  exit_code: Int
+  stdout: String
+  stderr: String
+}
+
+// No `tool` field. A jq-owned handler already fixes the executable, so carrying CliTool here
+// would restate the carrier's own type. It returns when a genuinely generic executor consumes it
+// to RESOLVE an executable -- that consumer does not exist yet.
+// THE PLAN CARRIES ITS OWN OBSERVATION CONTRACT, and it must, because how jq's exit code is to be
+// READ is decided by the exit policy that produced the argv. A plan carrying only a surface and an
+// input is decodable only by a consumer that separately remembers which policy it asked for -- and
+// a consumer that remembers is a consumer that can forget. The live specimen: the sensor decoder
+// mapped every nonzero exit to a refusal, which is correct under JqProgramExit and WRONG under
+// JqLastResultExit, where exit 1 means the last output was false-or-null (a legitimate value) and
+// exit 4 means no valid result (absence). Editing the policy in the invocation would have left the
+// decoder silently answering the old contract -- DESIGN section 5's tell exactly: the declaration
+// changes while the realization goes on lying.
 type JqAdmittedProcessPlan sole_constructor {
-  tool: CliTool
   surface: CliSurface
-  stdin: String?
+  process_input: JqProcessInput
+  exit_policy: JqExitPolicy
+}
+
+// The three states a jq run can be in, as the DOMAIN needs them. Presence, absence and refusal are
+// separate arms because they are separate facts with different remedies -- collapsing absence into
+// refusal is the state-space conflation that would report a non-numeric sensor reading as a broken
+// BMC.
+type JqOutcome
+  = JqOutputPresent { text: String }
+  | JqOutputAbsent
+  | JqExecutionRefused { exit_code: Int, stderr: String }
+
+// The one authority that reads an exit code, and it reads it AGAINST the policy that asked for it.
+//
+// Under JqProgramExit jq exits 0 whenever the program ran, including when it emitted nothing, so
+// absence is observable only as empty output and any nonzero exit is a genuine failure.
+//
+// Under JqLastResultExit the same codes mean different things, per jq's documented contract: 1 is a
+// false-or-null LAST OUTPUT -- a real value, carried in stdout, and NOT a failure -- and 4 is "no
+// valid result was ever produced", which is absence. 2 (usage or system error) and 3 (program
+// compile error) remain refusals under both policies. A single "nonzero means broken" rule would
+// mis-decode three of those four codes.
+fn jq_classify_observation(plan: JqAdmittedProcessPlan, observation: JqProcessObservation) -> JqOutcome {
+  match plan.exit_policy {
+    JqProgramExit =>
+      if observation.exit_code != 0 {
+        JqExecutionRefused { exit_code: observation.exit_code, stderr: observation.stderr }
+      } else if trim(observation.stdout) == "" {
+        JqOutputAbsent
+      } else {
+        JqOutputPresent { text: observation.stdout }
+      }
+    JqLastResultExit =>
+      if observation.exit_code == 4 {
+        JqOutputAbsent
+      } else if observation.exit_code == 0 || observation.exit_code == 1 {
+        if trim(observation.stdout) == "" {
+          JqOutputAbsent
+        } else {
+          JqOutputPresent { text: observation.stdout }
+        }
+      } else {
+        JqExecutionRefused { exit_code: observation.exit_code, stderr: observation.stderr }
+      }
+  }
 }
 
 fn jq_admitted_plan_surface(plan: JqAdmittedProcessPlan) -> CliSurface { plan.surface }
 
-fn jq_admitted_plan_stdin(plan: JqAdmittedProcessPlan) -> String? { plan.stdin }
+fn jq_admitted_plan_input(plan: JqAdmittedProcessPlan) -> JqProcessInput { plan.process_input }
 
 fn jq_invocation_process_plan(invocation: JqInvocation) -> Outcome<JqAdmittedProcessPlan> {
   match jq_invocation_lower(invocation: invocation) {
@@ -293,9 +407,9 @@ fn jq_invocation_process_plan(invocation: JqInvocation) -> Outcome<JqAdmittedPro
         ),
         f: fn(surface) {
           outcome_accepted(JqAdmittedProcessPlan {
-            tool: jq_cli_tool,
             surface: surface,
-            stdin: plan.stdin
+            process_input: plan.process_input,
+            exit_policy: invocation.exit_policy
           })
         }
       )
@@ -333,4 +447,36 @@ fn jq_lowering_refused_diagnostic(cause: JqLoweringRefusal) -> Diagnostic {
     }),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
+}
+
+
+// EXECUTION. The one function a domain module calls to actually run jq.
+//
+// It takes the SEALED plan, so the arguments reaching the process are the ones the row-driven
+// lowering produced -- a caller cannot hand it an argv it authored. The handler operation is
+// selected by matching the process-input arm rather than by an if, so a third input form would be
+// a non-exhaustive match here rather than a silently wrong execution.
+//
+// Nonzero exit is DATA, not failure: a consumer's decoder maps nonzero to its own refusal state,
+// exit-zero with empty stdout to absence, and exit-zero with content to an observation. A handler
+// that treated nonzero as an error would collapse that three-state decode into two.
+fn jq_execute_admitted_plan(plan: JqAdmittedProcessPlan) -> JqProcessObservation {
+  let arguments = process_argv_expansion(surface: plan.surface)
+  match plan.process_input {
+    JqProcessStdin { content: payload } => {
+      let ran = jq.Process.RunWithStdin(arguments: arguments, stdin_payload: payload)
+      JqProcessObservation { exit_code: ran.exit_code, stdout: ran.stdout, stderr: ran.stderr }
+    }
+    JqProcessNoStdin => {
+      let ran = jq.Process.RunWithoutStdin(arguments: arguments)
+      JqProcessObservation { exit_code: ran.exit_code, stdout: ran.stdout, stderr: ran.stderr }
+    }
+  }
+}
+
+// The four-case receipt's entry point (test/manual/process_argv_expansion_receipt_test.dag). It
+// exists so the receipt asserts through the SAME handler production uses, rather than a
+// look-alike declared in the witness -- a witness-local service would prove nothing about this one.
+fn jq_argv_expansion_probe(expansion: ProcessArgvExpansion, payload: String) -> Int {
+  jq.Process.RunWithStdin(arguments: expansion, stdin_payload: payload).exit_code
 }

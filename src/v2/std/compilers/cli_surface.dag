@@ -112,6 +112,57 @@ fn cli_argument_text(argument: CliArgument) -> String {
   argument.text
 }
 
+// THE TRANSPORT ROLE, stated rather than inferred from runtime encoding.
+//
+// WHY THIS EXISTS, and it is not a wrapper for tidiness. A `List<String>` reaching an argv
+// position does not say what the collection MEANS there: several argv words, one JSON argument,
+// one comma-joined option value, or repeated option/value groups are all realizable from the
+// same declared type. That is a TRANSPORT ROLE, not a data type, and the seed currently GUESSES
+// it from how the value happens to be represented at runtime.
+//
+// THE MEASURED DEFECT THAT FORCED THIS (design note, open question 9-ter; receipts there):
+// a folded List<String> is CONCATENATED into one argv word while an identical literal list is
+// SPLICED -- same declared type, two different processes. `jq --raw-output--exit-status.missing`
+// reached a real process from a correctly-lowered three-argument vector.
+//
+// THE LAW THIS CARRIER STATES, which is Wave 0's theorem at the host edge:
+//
+//     across the surface's arguments   -- ITERATE, never concatenate
+//     within one argument's fragments  -- CONCATENATE into exactly one word
+//
+// IT CARRIES CliSurface, NOT List<String>, and that is the whole strength of it. CliSurface is
+// sole_constructor and its members are nominal CliArgument records, so a realization can check
+// both nominal layers and a modeled string cannot impersonate a list of arguments. A wrapper
+// around a raw list would state the role while leaving the payload dynamically ambiguous -- the
+// same guess one level up.
+//
+// V2 CORRESPONDENCE (this is why the seed may realize it): v2.std.operation_argv already models
+// the same distinction for DECLARATION-owned materialization -- OperationInputValue is
+// InputText | InputTextList, and binding a token list into a string position is the typed
+// refusal TokenListInStringPosition. That module's own note records that expression-valued argv
+// elements instead execute through the interpreter's dispatch_shell path, "which evaluates argv
+// expressions in the full evaluator and is untouched here". This carrier is that same law for
+// the computed-surface case, so the seed arm realizes a modeled fact rather than inventing a
+// seed-only special case.
+// NOT "SHELL", AND THE NAME WAS CORRECTED BEFORE IT SPREAD. This branch's own investigation of
+// the seed established that the realization is Command::new(&argv[0]).args(&argv[1..]) -- a direct
+// process exec with no shell in the path, no word splitting, no glob expansion and no quoting
+// layer to be correct about. Naming the carrier for `transport shell` would name it after the
+// surface DSL keyword that happens to declare these operations today, which is DESIGN section 3
+// nicknaming: a second name for a concept -- process argument-vector construction -- that the
+// host boundary already names. A shell-hosted transport, if one is ever modeled, is a DIFFERENT
+// realization binding, not the thing this carrier describes.
+
+type ProcessArgvExpansion sole_constructor { surface: CliSurface }
+
+fn process_argv_expansion(surface: CliSurface) -> ProcessArgvExpansion {
+  ProcessArgvExpansion { surface: surface }
+}
+
+fn process_argv_expansion_surface(expansion: ProcessArgvExpansion) -> CliSurface {
+  expansion.surface
+}
+
 // THE FOLD IS NESTED, AND THE NESTING IS THE WHOLE POINT.
 //
 // An earlier revision folded a FLAT List<ConcreteSyntaxToken> one-token-one-argument, and its

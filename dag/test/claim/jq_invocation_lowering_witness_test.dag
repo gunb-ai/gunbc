@@ -20,16 +20,28 @@ import extdeps.tools.jq {
   JqFileInputLoweringUnwired,
   JqLowered,
   JqLoweringRefused,
-  jq_admitted_plan_stdin,
+  JqOutcome,
+  JqExitPolicy,
+  JqOutputAbsent,
+  JqOutputPresent,
+  JqExecutionRefused,
+  JqProcessObservation,
+  jq_classify_observation,
+  jq_invocation_process_plan,
+  jq_admitted_plan_input,
+  JqProcessStdin,
+  JqProcessNoStdin,
   jq_admitted_plan_surface,
   jq_invocation_cli_arguments,
   jq_invocation_lower,
   jq_invocation_process_plan,
   jq_lowering_refusal_identity
 }
-import v2.std.optional { Absent, Present }
 
-// WAVE 1A. The semantic invocation SensorIntegerValue will make, lowered to argv.
+// WAVE 1B, LANDED. The semantic invocation the OpenBMC sensor projection makes, lowered to argv.
+// Not "will make": openbmc.JsonProjection.SensorIntegerValue is DELETED and
+// extdeps.bmc.openbmc_fan_control openbmc_sensor_integer_projection is the live consumer of this
+// lowering. (The note calls the ObjectMapper site Wave 1A; it is blocked on --argjson lowering.)
 // docs/plans/cli-invocation-emission-design.md
 //
 // The point of every assertion below is that the caller named no flag. It asked for raw output
@@ -149,9 +161,9 @@ test fn stdin_survives_lowering_into_the_process_plan() -> Bool {
   match jq_invocation_process_plan(invocation: sensor_invocation()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: plan, diagnostics: _ } =>
-      match jq_admitted_plan_stdin(plan: plan) {
-        Absent => false
-        Present { value: carried } => carried == sensor_stdin
+      match jq_admitted_plan_input(plan: plan) {
+        JqProcessNoStdin => false
+        JqProcessStdin { content: carried } => carried == sensor_stdin
       }
   }
 }
@@ -208,4 +220,113 @@ test fn unlowered_file_input_refuses_with_the_file_cause() -> Bool {
         JqFileInputLoweringUnwired => true
       }
   }
+}
+
+
+// THE EXIT CODE MEANS DIFFERENT THINGS UNDER DIFFERENT POLICIES, and these four assertions are the
+// discriminating evidence for that. Each holds ONE observation fixed and varies only the exit
+// policy the plan carries. A decoder that read the exit code without the policy -- which is what
+// the sensor path did before this landed -- cannot make all four true at once: it must answer
+// Refused for exit 1 under both policies, and the second assertion below would go red.
+
+type ExpectedOutcome = ExpectPresent | ExpectAbsent | ExpectRefused
+
+fn outcome_matches(outcome: JqOutcome, expected: ExpectedOutcome) -> Bool {
+  match expected {
+    ExpectPresent =>
+      match outcome {
+        JqOutputPresent { text: _ } => true
+        JqOutputAbsent => false
+        JqExecutionRefused { exit_code: _, stderr: _ } => false
+      }
+    ExpectAbsent =>
+      match outcome {
+        JqOutputPresent { text: _ } => false
+        JqOutputAbsent => true
+        JqExecutionRefused { exit_code: _, stderr: _ } => false
+      }
+    ExpectRefused =>
+      match outcome {
+        JqOutputPresent { text: _ } => false
+        JqOutputAbsent => false
+        JqExecutionRefused { exit_code: _, stderr: _ } => true
+      }
+  }
+}
+
+// A plan that fails to lower answers FALSE rather than being replaced by a fabricated one: if the
+// lowering ever refuses this invocation, these assertions must go red, not quietly test a stand-in.
+fn classifies_as(
+  policy: JqExitPolicy,
+  observation: JqProcessObservation,
+  expected: ExpectedOutcome,
+) -> Bool {
+  match jq_invocation_process_plan(invocation: JqInvocation {
+    program: JqProgram { source: sensor_program },
+    bindings: Empty,
+    input: JqInputStdin { content: "{}" },
+    output_encoding: JqRawOutput,
+    exit_policy: policy,
+  }) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: plan, diagnostics: _ } =>
+      outcome_matches(
+        outcome: jq_classify_observation(plan: plan, observation: observation),
+        expected: expected,
+      )
+  }
+}
+
+// Exit 1 with output "false": a program-exit contract never produces it, so it is a failure.
+test fn exit_one_is_a_refusal_under_program_exit() -> Bool {
+  classifies_as(
+    policy: JqProgramExit,
+    observation: JqProcessObservation { exit_code: 1, stdout: "false", stderr: "" },
+    expected: ExpectRefused,
+  )
+}
+
+// The SAME observation under the last-result contract is a legitimate VALUE -- jq documents exit 1
+// as "the last output was false or null", and false is a value a filter may correctly produce.
+// This is the assertion a policy-blind decoder cannot satisfy while satisfying the one above.
+test fn exit_one_is_a_value_under_last_result_exit() -> Bool {
+  classifies_as(
+    policy: JqLastResultExit,
+    observation: JqProcessObservation { exit_code: 1, stdout: "false", stderr: "" },
+    expected: ExpectPresent,
+  )
+}
+
+// Exit 4 is jq's "no valid result was ever produced" -- absence, not breakage.
+test fn exit_four_is_absence_under_last_result_exit() -> Bool {
+  classifies_as(
+    policy: JqLastResultExit,
+    observation: JqProcessObservation { exit_code: 4, stdout: "", stderr: "" },
+    expected: ExpectAbsent,
+  )
+}
+
+// Exit 2 is a usage or system error and refuses under BOTH policies -- the policy changes how
+// SOME codes read, not whether jq can fail.
+test fn exit_two_refuses_under_both_policies() -> Bool {
+  classifies_as(
+    policy: JqProgramExit,
+    observation: JqProcessObservation { exit_code: 2, stdout: "", stderr: "usage" },
+    expected: ExpectRefused,
+  )
+  && classifies_as(
+    policy: JqLastResultExit,
+    observation: JqProcessObservation { exit_code: 2, stdout: "", stderr: "usage" },
+    expected: ExpectRefused,
+  )
+}
+
+// Empty output on a zero exit is absence, not an empty observation -- the sensor path's third
+// state, which is the whole reason JqProgramExit must not carry --exit-status.
+test fn empty_output_on_zero_exit_is_absence() -> Bool {
+  classifies_as(
+    policy: JqProgramExit,
+    observation: JqProcessObservation { exit_code: 0, stdout: "   ", stderr: "" },
+    expected: ExpectAbsent,
+  )
 }
