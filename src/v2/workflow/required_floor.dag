@@ -6,6 +6,8 @@ import v2.std.logic { Bool, True, False }
 import v2.std.text { String }
 import v2.std.integer { Int, int_gt }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.types { NonEmptyStr }
 
 // IDENTITY-GRAINED FLOOR DISPOSITION RECEIPT (operator ruling 2026-08-19).
 //
@@ -332,6 +334,26 @@ type ClaimSafetyOutcome =
       preemption: ClaimPreemptionReachability
     }
 
+// FLAT-SCALAR MILLISECOND FIELDS, DECLARED AS A BOUNDED GAP RATHER THAN SILENTLY LEFT (review
+// 53860 on gunbc#8584, BLOCKING on `observed_cpu_ms`/`observed_wall_ms`/`cpu_limit_ms`/
+// `wall_limit_ms` and the `ClaimSafetyOutcome` fields derived from them). The finding is correct
+// on the merits and matches this repository's own sibling precedent: `std.evaluation_budget`
+// (the caller-agnostic kernel this module's constants already cite) carries the identical
+// domain -- a cooperative deadline observed in milliseconds -- through `std.measure`
+// `Nanosecond`/`PositiveMillisecond`, never a bare `_ms: Int`. It is not fixed inline here
+// because `std.measure` `Millisecond = Measure<Time, Milli, std.nat.Nat>` is built on v1's
+// host-backed `Nat`, while this module's own `Int`/`Nat` (`v2.std.integer`, `v2.std.nat`) are
+// v2's inductive Peano tower (`Nat = Zero | Succ { prev: Nat }`, verified in
+// `src/v2/std/nat.dag`) -- and no bridge between the two numeric towers is established anywhere
+// in this corpus today. Converting these four fields under an unrelated CI-fix pass would mean
+// authoring that bridge for the first time, unverified, exactly the class of silent
+// cross-representation mismatch this repository's own incident history warns against (a prior
+// PR read cleanly and mismatched a carrier seal at runtime). Recorded as a typed obligation
+// rather than a prose promise so it cannot decay into an unmarked scaffold.
+data flat_scalar_millisecond_fields_dissolve_on: DissolutionCondition = unbound_dissolution(
+  description: "dissolve-on: ClaimSafetyOutcome's observed_cpu/observed_wall/elapsed_cpu_at_least/elapsed_wall_at_least and claim_safety_outcome's observed_cpu_ms/observed_wall_ms/cpu_limit_ms/wall_limit_ms parameters convert from bare Int to std.measure Millisecond once a verified Int/Nat conversion exists between v2's inductive Peano tower (v2.std.integer.Int = GroupCompletion<v2.std.nat.Nat>) and the host-backed Nat std.measure is built on (per review 53860 on gunbc#8584)." as NonEmptyStr,
+)
+
 // THE DERIVATION. `reached_verdict` is the one fact that decides between `SafetyInterrupted` and
 // the two completed arms -- never the observed costs, which is what keeps a claim that merely
 // ran long from being misreported as interrupted, and a claim that was genuinely cut off from
@@ -375,19 +397,6 @@ fn claim_safety_outcome(
   }
 }
 
-// BINDING CONSTRAINT: NO AMOUNT OF LATER COMPLETION CONVERTS A MISSED INTERRUPT INTO SUCCESSFUL
-// ENFORCEMENT. `CompletedPastSafetyLimit` blocks exactly as `SafetyInterrupted` does -- a
-// consumer that only checks for `SafetyInterrupted` before deciding admission reproduces the
-// silent-completion defect this whole model exists to close. This predicate is the one place
-// that fact is asserted, so a caller cannot rediscover it (or get it wrong) per call site.
-fn claim_safety_outcome_blocks(outcome: ClaimSafetyOutcome) -> Bool {
-  match outcome {
-    CompletedWithinSafetyLimits => False
-    SafetyInterrupted { raised_by: _, elapsed_cpu_at_least: _, elapsed_wall_at_least: _ } => True
-    CompletedPastSafetyLimit { observed_cpu: _, observed_wall: _, preemption: _ } => True
-  }
-}
-
 // §4b RUNG DROP, DECLARED (operator-directed, 2026-08-19; PREEMPTION-1).
 //
 // PREVIOUS CLAIMED RUNG: mechanically preventable -- the two safety-limit constants above were
@@ -399,7 +408,7 @@ fn claim_safety_outcome_blocks(outcome: ClaimSafetyOutcome) -> Bool {
 // `OpaqueHostCallUnbounded` operation the two limits are not even mitigatable -- they observe
 // nothing and block nothing at the moment the cost accrues; the harm is caught only after the
 // fact, once the claim completes, through `RequiredFloorOutcome.completed_over_cost_requirement`
-// (a `CompletedPastSafetyLimit` occurrence, per `claim_safety_outcome_blocks` above, blocking
+// (a `CompletedPastSafetyLimit` occurrence, per `claim_safety_outcome_blocks` below, blocking
 // exactly as a genuine interrupt would).
 //
 // BOUNDED POPULATION, DERIVED FROM HOST-OPERATION INVOCATION REACH, NOT HAND-LISTED BY CLAIM
@@ -418,3 +427,16 @@ fn claim_safety_outcome_blocks(outcome: ClaimSafetyOutcome) -> Bool {
 // v1_interpreter's `eval_expr` comment naming worker isolation, not a budget, as what would bound
 // it unconditionally. Until then this rung is the honest one, and S2 (building that boundary) is
 // out of scope for this model.
+//
+// BINDING CONSTRAINT: NO AMOUNT OF LATER COMPLETION CONVERTS A MISSED INTERRUPT INTO SUCCESSFUL
+// ENFORCEMENT. `CompletedPastSafetyLimit` blocks exactly as `SafetyInterrupted` does -- a
+// consumer that only checks for `SafetyInterrupted` before deciding admission reproduces the
+// silent-completion defect this whole model exists to close. This predicate is the one place
+// that fact is asserted, so a caller cannot rediscover it (or get it wrong) per call site.
+fn claim_safety_outcome_blocks(outcome: ClaimSafetyOutcome) -> Bool {
+  match outcome {
+    CompletedWithinSafetyLimits => False
+    SafetyInterrupted { raised_by: _, elapsed_cpu_at_least: _, elapsed_wall_at_least: _ } => True
+    CompletedPastSafetyLimit { observed_cpu: _, observed_wall: _, preemption: _ } => True
+  }
+}
