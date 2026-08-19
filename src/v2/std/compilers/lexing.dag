@@ -97,11 +97,11 @@ type Token {
 }
 
 type TokenStream {
-  all: List<Token>
+  all: List<v2.std.compilers.lexing.Token>
   pos: Int
 }
 
-fn token_stream_new(all: List<Token>) -> TokenStream {
+fn token_stream_new(all: List<v2.std.compilers.lexing.Token>) -> TokenStream {
   TokenStream { all: all, pos: 0 }
 }
 
@@ -113,7 +113,7 @@ fn token_stream_position(stream: TokenStream) -> Int {
   stream.pos
 }
 
-fn token_stream_all(stream: TokenStream) -> List<Token> {
+fn token_stream_all(stream: TokenStream) -> List<v2.std.compilers.lexing.Token> {
   stream.all
 }
 
@@ -121,15 +121,15 @@ fn token_stream_remaining_count(stream: TokenStream) -> Int {
   length(xs: stream.all) - stream.pos
 }
 
-fn token_stream_remaining(stream: TokenStream) -> List<Token> {
+fn token_stream_remaining(stream: TokenStream) -> List<v2.std.compilers.lexing.Token> {
   skip(xs: stream.all, n: stream.pos)
 }
 
-fn token_stream_first(stream: TokenStream) -> Optional<Token> {
+fn token_stream_first(stream: TokenStream) -> Optional<v2.std.compilers.lexing.Token> {
   list_at_optional(xs: stream.all, index: stream.pos)
 }
 
-fn token_stream_get(stream: TokenStream, offset: Int) -> Optional<Token> {
+fn token_stream_get(stream: TokenStream, offset: Int) -> Optional<v2.std.compilers.lexing.Token> {
   list_at_optional(xs: stream.all, index: stream.pos + offset)
 }
 

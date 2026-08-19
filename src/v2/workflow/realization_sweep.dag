@@ -95,7 +95,7 @@ fn sweep_row_cause(a: v2.workflow.realization_attempt.EntryRealizationAttempt) -
   }
 }
 
-fn sweep_rows(ingest: v2.compiler.source_authority.SourceRootIngest, admission: v2.compiler.name_resolve.Admission, entry: String) -> List<RealizationSweepRow> {
+fn sweep_rows(ingest: v2.compiler.source_authority.SourceRootIngest, admission: v2.compiler.name_resolve.Admission, entry: String) -> List<v2.workflow.realization_sweep.RealizationSweepRow> {
   sweep_rows_with_identities(
     ingest: ingest,
     admission: admission,
@@ -104,10 +104,10 @@ fn sweep_rows(ingest: v2.compiler.source_authority.SourceRootIngest, admission: 
   )
 }
 
-fn sweep_rows_with_identities(ingest: v2.compiler.source_authority.SourceRootIngest, admission: v2.compiler.name_resolve.Admission, entry: String, identities: List<String>) -> List<RealizationSweepRow> {
+fn sweep_rows_with_identities(ingest: v2.compiler.source_authority.SourceRootIngest, admission: v2.compiler.name_resolve.Admission, entry: String, identities: List<String>) -> List<v2.workflow.realization_sweep.RealizationSweepRow> {
   match entry_witness_source(ingest: ingest, entry: entry) {
     Absent =>
-      [RealizationSweepRow {
+      [v2.workflow.realization_sweep.RealizationSweepRow {
         entry: entry,
         function: "",
         phase_label: "read",
@@ -126,7 +126,7 @@ fn sweep_rows_with_identities(ingest: v2.compiler.source_authority.SourceRootIng
           ),
           empty: no_sweep_rows(),
           cons: fn(acc, a) {
-            concat(acc, [RealizationSweepRow {
+            concat(acc, [v2.workflow.realization_sweep.RealizationSweepRow {
               entry: entry,
               function: "(member-scan)",
               phase_label: attempt_phase_label(a: a),
@@ -147,7 +147,7 @@ fn sweep_rows_with_identities(ingest: v2.compiler.source_authority.SourceRootIng
       fold_list(xs: names, empty: SweepPairState { index: 0, out: [] }, cons: fn(st, name) {
         let row = match list_at_optional(xs: attempts, index: st.index) {
           Absent =>
-            RealizationSweepRow {
+            v2.workflow.realization_sweep.RealizationSweepRow {
               entry: entry,
               function: name,
               phase_label: "read",
@@ -155,7 +155,7 @@ fn sweep_rows_with_identities(ingest: v2.compiler.source_authority.SourceRootIng
               located: entry
             }
           Present { value: a } =>
-            RealizationSweepRow {
+            v2.workflow.realization_sweep.RealizationSweepRow {
               entry: entry,
               function: name,
               phase_label: attempt_phase_label(a: a),
@@ -172,15 +172,15 @@ fn sweep_rows_with_identities(ingest: v2.compiler.source_authority.SourceRootIng
 
 type SweepPairState {
   index: Int
-  out: List<RealizationSweepRow>
+  out: List<v2.workflow.realization_sweep.RealizationSweepRow>
 }
 
 data sweep_rows_from_refs_note: String = "Read-through seam for closures past the manifest inline cap (the SAME source_root_ingest_build_from_source_refs the frontier probe rides): the host manifest carries SourceRef rows (path + root + content hash, no inline source), the sweep reads them through the filesystem with content-hash verification, and a read failure is ONE located refusal row for the entry — typed, counted, never an empty roster."
 
-fn sweep_rows_from_refs(refs: List<v2.compiler.source_authority.SourceRef>, admission: v2.compiler.name_resolve.Admission, entry: String, identities: List<String>) -> List<RealizationSweepRow> {
+fn sweep_rows_from_refs(refs: List<v2.compiler.source_authority.SourceRef>, admission: v2.compiler.name_resolve.Admission, entry: String, identities: List<String>) -> List<v2.workflow.realization_sweep.RealizationSweepRow> {
   match source_root_ingest_build_from_source_refs(refs: refs) {
     SourceRootIngestBuildReadFailed { result: _ } =>
-      [RealizationSweepRow {
+      [v2.workflow.realization_sweep.RealizationSweepRow {
         entry: entry,
         function: "",
         phase_label: "read",
@@ -192,13 +192,13 @@ fn sweep_rows_from_refs(refs: List<v2.compiler.source_authority.SourceRef>, admi
   }
 }
 
-fn sweep_row_count_for(rows: List<RealizationSweepRow>, entry: String, function: String) -> Int {
+fn sweep_row_count_for(rows: List<v2.workflow.realization_sweep.RealizationSweepRow>, entry: String, function: String) -> Int {
   fold_list(xs: rows, empty: 0, cons: fn(acc, r) {
     if (r.entry == entry) && (r.function == function) { acc + 1 } else { acc }
   })
 }
 
-fn sweep_rows_join_canonical(rows: List<RealizationSweepRow>, entry: String, identities: List<String>) -> Bool {
+fn sweep_rows_join_canonical(rows: List<v2.workflow.realization_sweep.RealizationSweepRow>, entry: String, identities: List<String>) -> Bool {
   let forward = fold_list(xs: identities, empty: true, cons: fn(acc, f) {
     acc && (sweep_row_count_for(rows: rows, entry: entry, function: f) == 1)
   })
@@ -234,7 +234,7 @@ fn subject_admission(segments: List<v2.std.node.Symbol>) -> v2.compiler.name_res
   }
 }
 
-fn member_parse_rows(ingest: v2.compiler.source_authority.SourceRootIngest) -> List<RealizationSweepRow> {
+fn member_parse_rows(ingest: v2.compiler.source_authority.SourceRootIngest) -> List<v2.workflow.realization_sweep.RealizationSweepRow> {
   fold_list(xs: ingest, empty: no_sweep_rows(), cons: fn(acc, r) {
     let singleton = std.algebra.Cons { head: r, tail: std.algebra.Empty }
     let rows = fold_list(
@@ -248,7 +248,7 @@ fn member_parse_rows(ingest: v2.compiler.source_authority.SourceRootIngest) -> L
       cons: fn(inner, a) {
         let label = attempt_phase_label(a: a)
         if label == "frontend" {
-          concat(inner, [RealizationSweepRow {
+          concat(inner, [v2.workflow.realization_sweep.RealizationSweepRow {
             entry: r.artifact.file_path,
             function: "(member-scan)",
             phase_label: label,
@@ -264,10 +264,10 @@ fn member_parse_rows(ingest: v2.compiler.source_authority.SourceRootIngest) -> L
   })
 }
 
-fn member_parse_rows_from_refs(refs: List<v2.compiler.source_authority.SourceRef>) -> List<RealizationSweepRow> {
+fn member_parse_rows_from_refs(refs: List<v2.compiler.source_authority.SourceRef>) -> List<v2.workflow.realization_sweep.RealizationSweepRow> {
   match source_root_ingest_build_from_source_refs(refs: refs) {
     SourceRootIngestBuildReadFailed { result: _ } =>
-      [RealizationSweepRow {
+      [v2.workflow.realization_sweep.RealizationSweepRow {
         entry: "",
         function: "(member-scan)",
         phase_label: "read",
@@ -278,11 +278,11 @@ fn member_parse_rows_from_refs(refs: List<v2.compiler.source_authority.SourceRef
   }
 }
 
-fn no_sweep_rows() -> List<RealizationSweepRow> {
+fn no_sweep_rows() -> List<v2.workflow.realization_sweep.RealizationSweepRow> {
   []
 }
 
-fn sweep_receipt_tsv(rows: List<RealizationSweepRow>) -> String {
+fn sweep_receipt_tsv(rows: List<v2.workflow.realization_sweep.RealizationSweepRow>) -> String {
   fold_list(xs: rows, empty: "", cons: fn(acc, r) {
     let line = concat(r.entry, "\t", r.function, "\t", r.phase_label, "\t", r.cause, "\t", r.located)
     if acc == "" { line } else { concat(acc, "\n", line) }
@@ -295,7 +295,7 @@ type SweepHistogramState {
   out: String
 }
 
-fn sweep_histogram_tsv(rows: List<RealizationSweepRow>) -> String {
+fn sweep_histogram_tsv(rows: List<v2.workflow.realization_sweep.RealizationSweepRow>) -> String {
   let keys = map(rows, r => concat(r.phase_label, "\t", r.cause)) |> sort_by(k => k)
   let folded = fold_list(xs: keys, empty: SweepHistogramState { prev: "", count: 0, out: "" }, cons: fn(st, k) {
     if st.count == 0 {

@@ -23,7 +23,7 @@ fn vacuous_admits<B>(_: B) -> Bool {
   true
 }
 
-fn validation_from_vacuous<B>(by: VacuousValidation<B>) -> Validation<B> {
+fn validation_from_vacuous<B>(by: v2.std.refinement.VacuousValidation<B>) -> Validation<B> {
   Validation { reason: by.reason, admits: vacuous_admits }
 }
 
@@ -55,7 +55,7 @@ fn refined_base<B>(r: Refined<B>) -> B {
   r.base
 }
 
-fn refined_vacuous_oracle_terminal<B>(base: B, by: VacuousValidation<B>, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<Refined<B>> {
+fn refined_vacuous_oracle_terminal<B>(base: B, by: v2.std.refinement.VacuousValidation<B>, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<Refined<B>> {
   let validation = validation_from_vacuous(by: by)
   match refine(base: base, by: validation, at: at) {
     Accepted { value: refined, diagnostics: _ } => v2.std.diagnostic.Accepted { value: refined, diagnostics: v2.std.diagnostic.None }
@@ -63,7 +63,7 @@ fn refined_vacuous_oracle_terminal<B>(base: B, by: VacuousValidation<B>, at: v2.
   }
 }
 
-fn refined_vacuous_stub_pack<B>(base: B, by: VacuousValidation<B>, at: v2.std.diagnostic.Locus) -> Refined<B> {
+fn refined_vacuous_stub_pack<B>(base: B, by: v2.std.refinement.VacuousValidation<B>, at: v2.std.diagnostic.Locus) -> Refined<B> {
   match refined_vacuous_oracle_terminal(base: base, by: by, at: at) {
     Accepted { value: refined, diagnostics: _ } => refined
     Rejected { diagnostics: _ } => Refined { base: base }

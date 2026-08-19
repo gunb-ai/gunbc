@@ -573,7 +573,7 @@ fn independent_compiler_pair_witness(
 fn seed_self_verify_check(
   claim: DiverseCompilationRun,
   check: DiverseCompilationRun
-) -> v2.std.diagnostic.Outcome<SeedSelfVerifyReceipt> {
+) -> v2.std.diagnostic.Outcome<v2.workflow.bootstrap.SeedSelfVerifyReceipt> {
   if claim.output == check.output {
     v2.std.diagnostic.Rejected {
       diagnostics: diagnostics_singleton(
@@ -596,7 +596,7 @@ fn seed_self_verify_check(
     }
   } else {
     v2.std.diagnostic.Accepted {
-      value: SeedSelfVerifyReceipt { claim: claim, check: check },
+      value: v2.workflow.bootstrap.SeedSelfVerifyReceipt { claim: claim, check: check },
       diagnostics: v2.std.diagnostic.None
     }
   }

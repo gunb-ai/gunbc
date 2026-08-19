@@ -63,10 +63,10 @@ type ListTailResult<T>
   = TailFound { tail: std.algebra.FreeMonoid<T> }
   | TailAbsent
 
-fn list_tail<T>(xs: std.algebra.FreeMonoid<T>) -> ListTailResult<T> {
+fn list_tail<T>(xs: std.algebra.FreeMonoid<T>) -> v2.std.algebra.ListTailResult<T> {
   match xs {
-    std.algebra.Empty => TailAbsent
-    Cons { head: _, tail: t } => TailFound { tail: t }
+    std.algebra.Empty => v2.std.algebra.TailAbsent
+    Cons { head: _, tail: t } => v2.std.algebra.TailFound { tail: t }
   }
 }
 
@@ -74,10 +74,10 @@ type ListHeadResult<T>
   = HeadFound { value: T }
   | HeadAbsent
 
-fn list_head<T>(xs: std.algebra.FreeMonoid<T>) -> ListHeadResult<T> {
+fn list_head<T>(xs: std.algebra.FreeMonoid<T>) -> v2.std.algebra.ListHeadResult<T> {
   match xs {
-    std.algebra.Empty => HeadAbsent
-    Cons { head: h, tail: _ } => HeadFound { value: h }
+    std.algebra.Empty => v2.std.algebra.HeadAbsent
+    Cons { head: h, tail: _ } => v2.std.algebra.HeadFound { value: h }
   }
 }
 

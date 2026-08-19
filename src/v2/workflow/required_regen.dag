@@ -160,7 +160,7 @@ fn required_regen_sync_admission(
     }
   }
   RequiredRegenSyncRunnable {
-    attempt: RequiredRegenAttempt {
+    attempt: v2.workflow.required_regen.RequiredRegenAttempt {
       generated_outcomes: generated_outcomes,
       hand_outcomes: hand_outcomes,
       authority_digest: authority_digest

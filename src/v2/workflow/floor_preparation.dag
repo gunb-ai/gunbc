@@ -43,7 +43,7 @@ type PreparedFloorSubjectRefusal
 
 type PreparedFloorSubjectServe
   = PreparedFloorSubjectReady {
-      identity: PreparedClaimSubjectIdentity
+      identity: v2.workflow.floor_preparation.PreparedClaimSubjectIdentity
       entries: List<PreparedFloorEntryArtifact>
     }
   | PreparedFloorSubjectRefused { cause: PreparedFloorSubjectRefusal }
@@ -122,8 +122,8 @@ fn prepared_floor_artifact_set_identity(
 
 fn prepared_claim_subject_identity(
   request: PreparedFloorSubjectRequest,
-) -> PreparedClaimSubjectIdentity {
-  PreparedClaimSubjectIdentity {
+) -> v2.workflow.floor_preparation.PreparedClaimSubjectIdentity {
+  v2.workflow.floor_preparation.PreparedClaimSubjectIdentity {
     discovery_request_identity: floor_discovery_request_identity(request: request.discovery),
     selected_identity_digest: prepared_floor_selected_identity(selected: request.selected),
     preparation_policy_identity: floor_preparation_policy_identity(policy: request.policy),

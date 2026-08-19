@@ -8,9 +8,9 @@ type EffectPlanStep<E>
   | For { binder: v2.std.node.Symbol, over: v2.std.orchestration.ValueSource, body: EffectPlan<E> }
   | While { cond: v2.std.orchestration.Predicate, body: EffectPlan<E> }
   | Retry {
-      body: EffectPlan<E>,
+      body: v2.std.effect_plan.EffectPlan<E>,
       escalations: FreeMonoid<v2.std.orchestration.EscalationLevel>,
-      on_exhausted: EffectPlan<E>
+      on_exhausted: v2.std.effect_plan.EffectPlan<E>
     }
   | Let { name: String, value: v2.std.orchestration.Expr }
   | Call { callee: String, args: List<String> }
@@ -20,6 +20,6 @@ type EffectPlan<E> {
   on_failure: v2.std.orchestration.FailurePolicy
 }
 
-data effect_plan_do_effect_target_band_note: String = "std.effect_plan leaves are Do-effect leaves, never a command string. v2.std.orchestration PipelineStep Do-run is the bash-emit scaffold; runtime-present sites compose EffectPlan over HostEffect and interpret via gunbc.host_effect_plan.host_effect_plan_apply routing to host_effect_apply (host-effect-orchestration.md section 1b)."
+data effect_plan_do_effect_target_band_note: String = "std.effect_plan leaves are Do-effect leaves, never a command string. v2.std.orchestration PipelineStep Do-run is the bash-emit scaffold; runtime-present sites compose v2.std.effect_plan.EffectPlan over HostEffect and interpret via gunbc.host_effect_plan.host_effect_plan_apply routing to host_effect_apply (host-effect-orchestration.md section 1b)."
 
-data effect_plan_orchestration_succession_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: v2.std.orchestration parallel — Predicate/FailurePolicy/ValueSource/EscalationLevel/Expr neighbor vocab and Pipeline/PipelineStep bash-emit scaffold remain in v2.std.orchestration until host-effect-orchestration.md Phase B rename absorbs them here; effect_plan owns generic EffectPlan<E>/Do-effect composition (#6903 Wave A2 keystone).")
+data effect_plan_orchestration_succession_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: v2.std.orchestration parallel — Predicate/FailurePolicy/ValueSource/EscalationLevel/Expr neighbor vocab and Pipeline/PipelineStep bash-emit scaffold remain in v2.std.orchestration until host-effect-orchestration.md Phase B rename absorbs them here; effect_plan owns generic v2.std.effect_plan.EffectPlan<E>/Do-effect composition (#6903 Wave A2 keystone).")

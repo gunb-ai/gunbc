@@ -39,12 +39,12 @@ fn first_located_cause(ds: v2.std.diagnostic.NonEmptyDiagnostics) -> v2.std.node
   }
 }
 
-fn attempt_refused(entry: String, phase: RealizationPhase, cause: v2.std.node.Symbol) -> EntryRealizationAttempt {
+fn attempt_refused(entry: String, phase: RealizationPhase, cause: v2.std.node.Symbol) -> v2.workflow.realization_attempt.EntryRealizationAttempt {
   attempt_refused_at(entry: entry, phase: phase, cause: cause, located: "")
 }
 
-fn attempt_refused_at(entry: String, phase: RealizationPhase, cause: v2.std.node.Symbol, located: String) -> EntryRealizationAttempt {
-  EntryRealizationAttempt {
+fn attempt_refused_at(entry: String, phase: RealizationPhase, cause: v2.std.node.Symbol, located: String) -> v2.workflow.realization_attempt.EntryRealizationAttempt {
+  v2.workflow.realization_attempt.EntryRealizationAttempt {
     entry: entry,
     arrow_count: 0,
     standing: V2RealizationRefused { phase: phase, exact_cause: cause, located: located }
@@ -133,7 +133,7 @@ fn capture_test_markers(source: String) -> MarkedSource {
   folded
 }
 
-fn attempt_entry_source(entry: String, source: String) -> EntryRealizationAttempt {
+fn attempt_entry_source(entry: String, source: String) -> v2.workflow.realization_attempt.EntryRealizationAttempt {
   let marked = capture_test_markers(source: source)
   match v2.compiler.ingested_fixture_arrows.ingested_resolved_module_from_source(source: marked.unmarked, file: ^realization_attempt_entry_file) {
     Rejected { diagnostics: ds } =>
@@ -150,13 +150,13 @@ fn attempt_entry_source(entry: String, source: String) -> EntryRealizationAttemp
       } else {
         match emit_produced_module(decls: arrows, target: rust_target_model_staging()) {
           Accepted { value: medium, diagnostics: _ } =>
-            EntryRealizationAttempt {
+            v2.workflow.realization_attempt.EntryRealizationAttempt {
               entry: entry,
               arrow_count: length(xs: arrows),
               standing: V2TranslateSerialized { emitted_nonempty: !(medium.carried == "") }
             }
           Rejected { diagnostics: ds } =>
-            EntryRealizationAttempt {
+            v2.workflow.realization_attempt.EntryRealizationAttempt {
               entry: entry,
               arrow_count: length(xs: arrows),
               standing: V2RealizationRefused {
@@ -171,7 +171,7 @@ fn attempt_entry_source(entry: String, source: String) -> EntryRealizationAttemp
   }
 }
 
-fn attempt_entry(entry: String) -> EntryRealizationAttempt {
+fn attempt_entry(entry: String) -> v2.workflow.realization_attempt.EntryRealizationAttempt {
   let read_out = Filesystem.Read(path: entry)
   if !read_out.success {
     attempt_refused(entry: entry, phase: PhaseRead, cause: ^realization_attempt_read_refused)
@@ -180,14 +180,14 @@ fn attempt_entry(entry: String) -> EntryRealizationAttempt {
   }
 }
 
-fn attempt_is_emitted(a: EntryRealizationAttempt) -> Bool {
+fn attempt_is_emitted(a: v2.workflow.realization_attempt.EntryRealizationAttempt) -> Bool {
   match a.standing {
     V2TranslateSerialized { emitted_nonempty: ne } => ne
     V2RealizationRefused { phase: _, exact_cause: _, located: _ } => false
   }
 }
 
-fn attempt_phase_label(a: EntryRealizationAttempt) -> String {
+fn attempt_phase_label(a: v2.workflow.realization_attempt.EntryRealizationAttempt) -> String {
   match a.standing {
     V2TranslateSerialized { emitted_nonempty: _ } => "emitted"
     V2RealizationRefused { phase: p, exact_cause: _, located: _ } => match p {
@@ -204,7 +204,7 @@ fn attempt_phase_label(a: EntryRealizationAttempt) -> String {
   }
 }
 
-fn attempt_cause(a: EntryRealizationAttempt) -> Optional<v2.std.node.Symbol> {
+fn attempt_cause(a: v2.workflow.realization_attempt.EntryRealizationAttempt) -> Optional<v2.std.node.Symbol> {
   match a.standing {
     V2TranslateSerialized { emitted_nonempty: _ } => Absent
     V2RealizationRefused { phase: _, exact_cause: c, located: _ } => Present { value: c }
@@ -251,7 +251,7 @@ fn phase_for_reason(reason: v2.std.node.Symbol, fallback: RealizationPhase) -> R
   }
 }
 
-fn attempt_joined(program: v2.std.node.Node, fn_name: v2.std.node.Symbol, entry: String) -> EntryRealizationAttempt {
+fn attempt_joined(program: v2.std.node.Node, fn_name: v2.std.node.Symbol, entry: String) -> v2.workflow.realization_attempt.EntryRealizationAttempt {
   let joined = decl_edges_named(root: program, fn_name: fn_name, acc: [])
   if length(xs: joined) == 0 {
     attempt_refused(entry: entry, phase: PhaseResolve, cause: ^realization_attempt_identity_absent)
@@ -271,7 +271,7 @@ fn attempt_joined(program: v2.std.node.Node, fn_name: v2.std.node.Symbol, entry:
               Accepted { value: out, diagnostics: _ } =>
                 match out {
                   TranslateResult { source: emitted } =>
-                    EntryRealizationAttempt {
+                    v2.workflow.realization_attempt.EntryRealizationAttempt {
                       entry: entry,
                       arrow_count: 1,
                       standing: V2TranslateSerialized { emitted_nonempty: !(emitted.carried == "") }
@@ -290,7 +290,7 @@ fn attempt_assembled(
   admission: v2.compiler.name_resolve.Admission,
   fn_name: v2.std.node.Symbol,
   entry: String
-) -> EntryRealizationAttempt {
+) -> v2.workflow.realization_attempt.EntryRealizationAttempt {
   match assemble_program_from_ingest(ingest: ingest, admission: admission, lm: dag_language_model()) {
     Rejected { diagnostics: ds } => {
       let cause = first_located_cause(ds: ds)
@@ -335,7 +335,7 @@ fn entry_witness_source(ingest: v2.compiler.source_authority.SourceRootIngest, e
   })
 }
 
-fn no_attempt_rows() -> List<EntryRealizationAttempt> {
+fn no_attempt_rows() -> List<v2.workflow.realization_attempt.EntryRealizationAttempt> {
   []
 }
 
@@ -344,7 +344,7 @@ fn attempt_closure_rows(
   admission: v2.compiler.name_resolve.Admission,
   fn_names: List<v2.std.node.Symbol>,
   entry: String
-) -> List<EntryRealizationAttempt> {
+) -> List<v2.workflow.realization_attempt.EntryRealizationAttempt> {
   match assemble_program_from_ingest(ingest: capture_markers_ingest(ingest: ingest), admission: admission, lm: dag_language_model()) {
     Rejected { diagnostics: ds } => {
       let cause = first_located_cause(ds: ds)

@@ -67,7 +67,7 @@ type BehavioralEquivalenceReceipt {
   oracle: v2.compiler.self_host.generation.GenerationIdentity
   corpus: BehavioralCorpus
   cases_compared: Int
-  outcome: ObservedVerdict<EquivalenceOutcome>
+  outcome: v2.compiler.self_host.promotion_admission.ObservedVerdict<EquivalenceOutcome>
 }
 
 // The discriminating RED. A behavioral corpus that cannot fail proves nothing, so a
@@ -78,12 +78,12 @@ type DiscriminatingFaultReceipt {
   subject: v2.compiler.self_host.generation.GenerationIdentity
   corpus: BehavioralCorpus
   planted_fault: String
-  outcome: ObservedVerdict<FaultOutcome>
+  outcome: v2.compiler.self_host.promotion_admission.ObservedVerdict<FaultOutcome>
 }
 
 type BuildReceipt {
   subject: v2.compiler.self_host.generation.GenerationIdentity
-  outcome: ObservedVerdict<BuildOutcome>
+  outcome: v2.compiler.self_host.promotion_admission.ObservedVerdict<BuildOutcome>
 }
 
 type GenerationProvenanceReceipt {
@@ -124,9 +124,9 @@ type SelfHostCandidate {
 type BehavioralComparisonObservation {
   corpus: BehavioralCorpus
   cases_compared: Int
-  build: ObservedVerdict<BuildOutcome>
-  equivalence: ObservedVerdict<EquivalenceOutcome>
-  fault: ObservedVerdict<FaultOutcome>
+  build: v2.compiler.self_host.promotion_admission.ObservedVerdict<BuildOutcome>
+  equivalence: v2.compiler.self_host.promotion_admission.ObservedVerdict<EquivalenceOutcome>
+  fault: v2.compiler.self_host.promotion_admission.ObservedVerdict<FaultOutcome>
 }
 
 fn build_receipt_from_observation(
@@ -208,12 +208,12 @@ fn build_receipt_causes(
 ) -> List<PromotionRefusalCause> {
   let stale = stale_causes_for(receipt: receipt, subject: r.subject, expected: expected)
   match r.outcome {
-    ObservationUnavailable { cause: c } =>
+    v2.compiler.self_host.promotion_admission.ObservationUnavailable { cause: c } =>
       list_snoc_item(
         xs: stale,
         item: ReceiptObservationUnavailable { receipt: receipt, cause: c }
       )
-    Observed { value: v } =>
+    v2.compiler.self_host.promotion_admission.Observed { value: v } =>
       match v {
         BuildGreen => stale
         BuildFailed { cause: _ } =>
@@ -275,12 +275,12 @@ fn equivalence_receipt_causes(
     )
   }
   match r.outcome {
-    ObservationUnavailable { cause: c } =>
+    v2.compiler.self_host.promotion_admission.ObservationUnavailable { cause: c } =>
       list_snoc_item(
         xs: sized,
         item: ReceiptObservationUnavailable { receipt: receipt, cause: c }
       )
-    Observed { value: v } =>
+    v2.compiler.self_host.promotion_admission.Observed { value: v } =>
       match v {
         BehaviorAgrees => sized
         BehaviorDiverges { at_case: c } =>
@@ -302,7 +302,7 @@ fn fault_receipt_causes(
     expected: expected
   )
   match r.outcome {
-    ObservationUnavailable { cause: c } =>
+    v2.compiler.self_host.promotion_admission.ObservationUnavailable { cause: c } =>
       list_snoc_item(
         xs: stale,
         item: ReceiptObservationUnavailable {
@@ -310,7 +310,7 @@ fn fault_receipt_causes(
           cause: c
         }
       )
-    Observed { value: v } =>
+    v2.compiler.self_host.promotion_admission.Observed { value: v } =>
       match v {
         FaultCaught => stale
         FaultNotCaught { at_case: c } =>

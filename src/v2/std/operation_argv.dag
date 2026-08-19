@@ -15,11 +15,11 @@ type OperationRef {
   operation: String
 }
 
-fn operation_ref_label(at: OperationRef) -> String {
+fn operation_ref_label(at: v2.std.operation_argv.OperationRef) -> String {
   join([at.service, ".", at.operation], "")
 }
 
-data operation_ref_label_authority_note: String = "The one place an OperationRef becomes a sentence fragment. A module that needs to NAME the operation it was talking to - a refusal renderer, a diagnostic, a receipt - would otherwise reach for the literal `git.Core.LsRemoteHeads`, which is a second textual naming scheme for something the declaration already names, and which drifts silently when the operation is renamed (DESIGN 3). Referring to the operation by OperationRef instead makes staleness DECIDABLE: shell_transport_operation_rows enumerates the declared rows, each carrying its own `at`, so a ref that names nothing is findable, whereas a free string in a sentence is not reachable from that enumeration at all.\\n\\nThe label omits `path` on purpose. path locates the declaration for a mechanism resolving the ref; a human reading a refusal wants the operation, and including a file path would put a storage fact into a domain sentence."
+data operation_ref_label_authority_note: String = "The one place an v2.std.operation_argv.OperationRef becomes a sentence fragment. A module that needs to NAME the operation it was talking to - a refusal renderer, a diagnostic, a receipt - would otherwise reach for the literal `git.Core.LsRemoteHeads`, which is a second textual naming scheme for something the declaration already names, and which drifts silently when the operation is renamed (DESIGN 3). Referring to the operation by v2.std.operation_argv.OperationRef instead makes staleness DECIDABLE: shell_transport_operation_rows enumerates the declared rows, each carrying its own `at`, so a ref that names nothing is findable, whereas a free string in a sentence is not reachable from that enumeration at all.\\n\\nThe label omits `path` on purpose. path locates the declaration for a mechanism resolving the ref; a human reading a refusal wants the operation, and including a file path would put a storage fact into a domain sentence."
 
 type OperationInputValue
   = InputText { text: String }
@@ -31,14 +31,14 @@ type OperationInputBinding {
 }
 
 type BoundOperationInvocation {
-  at: OperationRef
+  at: v2.std.operation_argv.OperationRef
   bindings: List<OperationInputBinding>
 }
 
-data bound_operation_invocation_authority_note: String = "A bound operation invocation is exactly an existing OperationRef paired with the existing declaration-owned OperationInputBinding vocabulary. It carries no argv, process, target-language, registry, or path-alias fact: argv remains derived from the referenced extdeps declaration by shell_materialize_operation_argv, and a realization chooses whether/how to transport it."
+data bound_operation_invocation_authority_note: String = "A bound operation invocation is exactly an existing v2.std.operation_argv.OperationRef paired with the existing declaration-owned OperationInputBinding vocabulary. It carries no argv, process, target-language, registry, or path-alias fact: argv remains derived from the referenced extdeps declaration by shell_materialize_operation_argv, and a realization chooses whether/how to transport it."
 
 fn bind_operation_invocation(
-  at: OperationRef,
+  at: v2.std.operation_argv.OperationRef,
   bindings: List<OperationInputBinding>
 ) -> BoundOperationInvocation {
   BoundOperationInvocation {
@@ -63,7 +63,7 @@ type ArgvMaterialization
   | ArgvMaterializationRefused { at: OperationRef, cause: ArgvRefusalCause }
 
 type ShellTransportOperationRow {
-  at: OperationRef
+  at: v2.std.operation_argv.OperationRef
   declared_inputs: List<String>
   argv_input_refs: List<String>
 }
@@ -126,7 +126,7 @@ fn operation_argv_cause_label(cause: ArgvRefusalCause) -> String {
   }
 }
 
-fn operation_argv_ref_label(at: OperationRef) -> String {
+fn operation_argv_ref_label(at: v2.std.operation_argv.OperationRef) -> String {
   concat(concat(concat(concat(at.path, " "), at.service), "."), at.operation)
 }
 

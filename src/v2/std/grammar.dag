@@ -259,7 +259,7 @@ type GrammarRoot {
 }
 
 type ValidatedGrammarRoot {
-  root: GrammarRoot
+  root: v2.std.grammar.GrammarRoot
 }
 
 type ParseGrammar
@@ -1623,7 +1623,7 @@ fn grammar_productions_to_node(productions: v2.std.collection.List<GrammarProduc
 }
 }
 
-fn grammar_root_to_node(root: GrammarRoot) -> v2.std.node.Node {
+fn grammar_root_to_node(root: v2.std.grammar.GrammarRoot) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode {
       connective: v2.std.node.Conj
