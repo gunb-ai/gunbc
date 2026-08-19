@@ -142,7 +142,7 @@ type SampleUnitLabel
   | SampleUnitLabelMixed { first_label: std.types.NonEmptyStr, divergent_label: std.types.NonEmptyStr }
 
 type UnitLabelAccum {
-  seen: std.types.Bool
+  seen: Bool
   first: std.types.NonEmptyStr
   divergent: List<std.types.NonEmptyStr>
 }

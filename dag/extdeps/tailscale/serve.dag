@@ -216,7 +216,7 @@ fn tailscale_serve_route_key(endpoint: TailscaleServeEndpoint) -> TailscaleServe
   }
 }
 
-fn tailscale_serve_mount_eq(a: TailscaleServeMount, b: TailscaleServeMount) -> std.types.Bool {
+fn tailscale_serve_mount_eq(a: TailscaleServeMount, b: TailscaleServeMount) -> Bool {
   match a {
     ServeRootMount =>
       match b {
@@ -231,7 +231,7 @@ fn tailscale_serve_mount_eq(a: TailscaleServeMount, b: TailscaleServeMount) -> s
   }
 }
 
-fn tailscale_serve_route_key_eq(a: TailscaleServeRouteKey, b: TailscaleServeRouteKey) -> std.types.Bool {
+fn tailscale_serve_route_key_eq(a: TailscaleServeRouteKey, b: TailscaleServeRouteKey) -> Bool {
   a.https_port == b.https_port && tailscale_serve_mount_eq(a: a.mount, b: b.mount)
 }
 
@@ -250,11 +250,11 @@ fn tailscale_endpoint_state_of(endpoint: TailscaleServeEndpoint) -> std.types.No
   endpoint.backend
 }
 
-fn tailscale_endpoint_state_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr) -> std.types.Bool {
+fn tailscale_endpoint_state_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr) -> Bool {
   a == b
 }
 
-fn tailscale_endpoint_value_eq(a: TailscaleServeEndpoint, b: TailscaleServeEndpoint) -> std.types.Bool {
+fn tailscale_endpoint_value_eq(a: TailscaleServeEndpoint, b: TailscaleServeEndpoint) -> Bool {
   tailscale_endpoint_state_eq(
     a: tailscale_endpoint_state_of(endpoint: a),
     b: tailscale_endpoint_state_of(endpoint: b),

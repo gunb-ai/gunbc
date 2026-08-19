@@ -64,7 +64,7 @@ fn plain_member_rows<M, K>(
 fn membership_plain_roster_build<M, K>(
   members: List<M>,
   key_of: fn(M) -> K,
-  key_eq: fn(K, K) -> std.types.Bool,
+  key_eq: fn(K, K) -> Bool,
 ) -> std.keyed_roster.KeyedRosterBuild<K, M> {
   std.keyed_roster.keyed_roster_build(
     incomings: plain_member_rows(members: members, key_of: key_of),
@@ -107,8 +107,8 @@ fn plain_hunk_to_action<M, K>(
 fn membership_reconcile_built<M, K>(
   desired_rows: List<std.keyed_row.KeyedRow<K, M>>,
   observed_rows: List<std.keyed_row.KeyedRow<K, M>>,
-  key_eq: fn(K, K) -> std.types.Bool,
-  value_eq: fn(M, M) -> std.types.Bool,
+  key_eq: fn(K, K) -> Bool,
+  value_eq: fn(M, M) -> Bool,
   ownership_of: fn(M) -> gunbc.ownership.Ownership?,
 ) -> gunbc.membership_reconcile.MembershipPlan<M, K> {
   let patch = std.change.keyed_two_way_diff(
@@ -126,8 +126,8 @@ fn membership_reconcile<M, K>(
   desired: List<M>,
   observed: List<M>,
   key_of: fn(M) -> K,
-  key_eq: fn(K, K) -> std.types.Bool,
-  value_eq: fn(M, M) -> std.types.Bool,
+  key_eq: fn(K, K) -> Bool,
+  value_eq: fn(M, M) -> Bool,
   ownership_of: fn(M) -> gunbc.ownership.Ownership?,
 ) -> gunbc.membership_reconcile.MembershipReconcileOutcome<M, K> {
   match membership_plain_roster_build(members: desired, key_of: key_of, key_eq: key_eq) {

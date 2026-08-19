@@ -137,6 +137,6 @@ fn runner_shape_rows(availability: RunnerCatalogAvailability) -> List<RunnerShap
   }
 }
 
-fn shape_is_architecture(row: RunnerShapeRow, architecture: extdeps.toolchain.types.Architecture) -> std.types.Bool {
+fn shape_is_architecture(row: RunnerShapeRow, architecture: extdeps.toolchain.types.Architecture) -> Bool {
   row.architecture == architecture
 }

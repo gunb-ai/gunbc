@@ -17,7 +17,7 @@ data caps_managed_dropin_paths: List<std.types.NonEmptyStr> = [
   gunbc.host_converge.gunbc_runner_per_slot_tasks_dropin_path as std.types.NonEmptyStr,
 ]
 
-fn cap_is_managed_path(p: std.types.NonEmptyStr) -> std.types.Bool {
+fn cap_is_managed_path(p: std.types.NonEmptyStr) -> Bool {
   fold(caps_managed_dropin_paths, init: false, f: (acc, mp) => acc || (mp as String == p as String))
 }
 
@@ -25,11 +25,11 @@ fn cap_member_key(m: gunbc.host_axis_caps.CapMember) -> std.types.NonEmptyStr {
   m.dropin_path
 }
 
-fn cap_member_key_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr) -> std.types.Bool {
+fn cap_member_key_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr) -> Bool {
   a as String == b as String
 }
 
-fn cap_member_value_eq(a: gunbc.host_axis_caps.CapMember, b: gunbc.host_axis_caps.CapMember) -> std.types.Bool {
+fn cap_member_value_eq(a: gunbc.host_axis_caps.CapMember, b: gunbc.host_axis_caps.CapMember) -> Bool {
   a.content == b.content
 }
 
@@ -120,11 +120,11 @@ fn control_shadow_unit_key(u: gunbc.host_axis_caps.ControlShadowUnit) -> std.typ
   u.unit
 }
 
-fn control_shadow_unit_key_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr) -> std.types.Bool {
+fn control_shadow_unit_key_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr) -> Bool {
   a as String == b as String
 }
 
-fn control_shadow_unit_value_eq(a: gunbc.host_axis_caps.ControlShadowUnit, b: gunbc.host_axis_caps.ControlShadowUnit) -> std.types.Bool {
+fn control_shadow_unit_value_eq(a: gunbc.host_axis_caps.ControlShadowUnit, b: gunbc.host_axis_caps.ControlShadowUnit) -> Bool {
   a.unit as String == b.unit as String
 }
 
@@ -136,7 +136,7 @@ fn control_shadow_revert_script(u: gunbc.host_axis_caps.ControlShadowUnit) -> St
   concat(join(extdeps.systemd.systemctl.systemctl_revert_memory_caps_argv(unit: u.unit), " "), "\n")
 }
 
-fn control_shadow_revert_script_matches_extdeps_argv(u: gunbc.host_axis_caps.ControlShadowUnit) -> std.types.Bool {
+fn control_shadow_revert_script_matches_extdeps_argv(u: gunbc.host_axis_caps.ControlShadowUnit) -> Bool {
   join(extdeps.systemd.systemctl.systemctl_revert_memory_caps_argv(unit: u.unit), " ") == std.algebra.trim(s: control_shadow_revert_script(u: u))
 }
 
@@ -167,7 +167,7 @@ fn runner_memory_cap_author_script() -> String {
   ], "")
 }
 
-fn cap_observed_contains_derived_member(observed: List<gunbc.host_axis_caps.CapMember>, derived: gunbc.host_axis_caps.CapMember) -> std.types.Bool {
+fn cap_observed_contains_derived_member(observed: List<gunbc.host_axis_caps.CapMember>, derived: gunbc.host_axis_caps.CapMember) -> Bool {
   fold(observed, init: false, f: (acc, o) =>
     acc
       || (
@@ -179,7 +179,7 @@ fn cap_observed_contains_derived_member(observed: List<gunbc.host_axis_caps.CapM
 
 // Shadow revert is safe only after deploy drop-ins carry derived allocation bytes —
 // reverting before author on stale 16/15GiB disk raises effective caps (operator hazard).
-fn runner_memory_cap_author_ready_for_shadow_revert(observed: List<gunbc.host_axis_caps.CapMember>) -> std.types.Bool {
+fn runner_memory_cap_author_ready_for_shadow_revert(observed: List<gunbc.host_axis_caps.CapMember>) -> Bool {
   fold(derived_runner_memory_cap_members(), init: true, f: (acc, d) =>
     acc && cap_observed_contains_derived_member(observed: observed, derived: d)
   )
@@ -187,7 +187,7 @@ fn runner_memory_cap_author_ready_for_shadow_revert(observed: List<gunbc.host_ax
 
 data memory_cap_author_before_shadow_revert_ordering_note: String = "Deploy drop-ins (20-fleet-width extdeps.systemd.MemoryMax, 40-fleet-high extdeps.systemd.MemoryHigh) must be authored from gunbc.runner_slot_allocation BEFORE systemctl revert extdeps.systemd.MemoryMax extdeps.systemd.MemoryHigh on any unit. On-disk deploy files may still carry superseded 16/15GiB while effective caps match declared 14/13 via system.control shadows; revert alone drops shadows and falls back to stale disk."
 
-data host_axis_caps_author_before_revert_enforced: std.types.Bool = true
+data host_axis_caps_author_before_revert_enforced: Bool = true
 
 fn runner_slot_service_units_range(host: product.placement_supply.HostIdentity, slot: Int, limit: Int) -> List<std.types.NonEmptyStr> {
   if slot > limit {
@@ -245,12 +245,12 @@ fn deploy_memory_cap_apply_script_ordered(units: List<std.types.NonEmptyStr>) ->
 }
 
 // Pin external script to deploy_memory_cap_apply_script_ordered's concat(author, reverts).
-fn deploy_memory_cap_script_matches_ordered_composition(script: String, units: List<std.types.NonEmptyStr>) -> std.types.Bool {
+fn deploy_memory_cap_script_matches_ordered_composition(script: String, units: List<std.types.NonEmptyStr>) -> Bool {
   script == deploy_memory_cap_apply_script_ordered(units: units)
 }
 
 // Independently derive author + revert halves; refuse reversed or padded wrong-order scripts.
-fn deploy_memory_cap_script_author_precedes_shadow_revert(script: String, units: List<std.types.NonEmptyStr>) -> std.types.Bool {
+fn deploy_memory_cap_script_author_precedes_shadow_revert(script: String, units: List<std.types.NonEmptyStr>) -> Bool {
   let author = deploy_runner_memory_cap_author_script()
   let reverts = deploy_memory_cap_shadow_revert_script(units: units)
   std.types.list_length(items: units) > 0 && script == concat(author, reverts)

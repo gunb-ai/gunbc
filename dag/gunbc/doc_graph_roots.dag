@@ -111,12 +111,12 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
     slug: "fabric-recut-program",
-    primary_work: DeclarationRef { module_path: "std.temporal_effect", decl_name: "HeldLease", field: WholeDeclaration },
+    primary_work: std.decl_ref.DeclarationRef { module_path: "std.temporal_effect", decl_name: "HeldLease", field: WholeDeclaration },
     additional_works: [
-      DeclarationRef { module_path: "std.computation_identity", decl_name: "ComputationIdentity", field: WholeDeclaration },
-      DeclarationRef { module_path: "gunbc.ci_fleet", decl_name: "ComputeOffer", field: WholeDeclaration },
+      std.decl_ref.DeclarationRef { module_path: "std.computation_identity", decl_name: "ComputationIdentity", field: WholeDeclaration },
+      std.decl_ref.DeclarationRef { module_path: "gunbc.ci_fleet", decl_name: "ComputeOffer", field: WholeDeclaration },
     ],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the fabric carriers consume the canonical lease, computation-identity and market authorities, and the old ComputeNeed/Opportunity/ComputeOffer vocabulary is migrated rather than coexisting; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
+    dissolution: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "the fabric carriers consume the canonical lease, computation-identity and market authorities, and the old ComputeNeed/Opportunity/ComputeOffer vocabulary is migrated rather than coexisting; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,

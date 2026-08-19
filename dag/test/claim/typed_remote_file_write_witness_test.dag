@@ -27,7 +27,7 @@ data witness_preflight_ssh_target: gunbc.fleet_known_hosts_anchor.SshTarget = gu
   principal: "gunbc-automation" as std.types.NonEmptyStr,
 }
 
-test fn w_path_outside_prefix_refused() -> std.types.Bool {
+test fn w_path_outside_prefix_refused() -> Bool {
   match gunbc.typed_remote_file_write.typed_remote_file_write_seal(
     path: witness_path_outside_prefix as std.types.FilePath,
     content: "payload" as String,
@@ -38,7 +38,7 @@ test fn w_path_outside_prefix_refused() -> std.types.Bool {
   }
 }
 
-test fn w_dotdot_escape_refused() -> std.types.Bool {
+test fn w_dotdot_escape_refused() -> Bool {
   !gunbc.file_access.path_within_file_tree_scope(
     scope: witness_tmp_scope,
     path: witness_dotdot_escape_path as std.types.NonEmptyStr,
@@ -53,7 +53,7 @@ test fn w_dotdot_escape_refused() -> std.types.Bool {
     }
 }
 
-test fn w_executor_home_substring_trap_refused() -> std.types.Bool {
+test fn w_executor_home_substring_trap_refused() -> Bool {
   !gunbc.file_access.path_within_file_tree_scope(
     scope: witness_executor_home_scope,
     path: witness_executor_home_substring_trap_path as std.types.NonEmptyStr,
@@ -68,7 +68,7 @@ test fn w_executor_home_substring_trap_refused() -> std.types.Bool {
     }
 }
 
-test fn w_non_portable_path_refused() -> std.types.Bool {
+test fn w_non_portable_path_refused() -> Bool {
   match gunbc.typed_remote_file_write.typed_remote_file_write_seal(
     path: witness_non_portable_path as std.types.FilePath,
     content: "payload" as String,
@@ -79,7 +79,7 @@ test fn w_non_portable_path_refused() -> std.types.Bool {
   }
 }
 
-test fn w_metachar_payload_seals_without_interpretation() -> std.types.Bool {
+test fn w_metachar_payload_seals_without_interpretation() -> Bool {
   match gunbc.typed_remote_file_write.typed_remote_file_write_seal(
     path: "/tmp/gunbc-trfw-metachar" as std.types.FilePath,
     content: witness_metachar_payload,
@@ -90,7 +90,7 @@ test fn w_metachar_payload_seals_without_interpretation() -> std.types.Bool {
   }
 }
 
-test fn w_remote_argv_is_tee_and_path_only() -> std.types.Bool {
+test fn w_remote_argv_is_tee_and_path_only() -> Bool {
   match gunbc.typed_remote_file_write.typed_remote_file_write_seal(
     path: "/tmp/gunbc-trfw-argv" as std.types.FilePath,
     content: "x" as String,
@@ -107,7 +107,7 @@ test fn w_remote_argv_is_tee_and_path_only() -> std.types.Bool {
   }
 }
 
-test fn w_non_portable_remote_argv_fails_execute_portable_gate() -> std.types.Bool {
+test fn w_non_portable_remote_argv_fails_execute_portable_gate() -> Bool {
   match gunbc.fleet_known_hosts_anchor.portable_remote_words(
     raws: [gunbc.typed_remote_file_write.typed_remote_file_write_tee_command, witness_non_portable_path],
   ) {
@@ -116,7 +116,7 @@ test fn w_non_portable_remote_argv_fails_execute_portable_gate() -> std.types.Bo
   }
 }
 
-test fn w_admitted_write_passes_execute_preflight() -> std.types.Bool {
+test fn w_admitted_write_passes_execute_preflight() -> Bool {
   match gunbc.typed_remote_file_write.typed_remote_file_write_seal(
     path: "/tmp/gunbc-trfw-preflight" as std.types.FilePath,
     content: witness_metachar_payload,
@@ -134,7 +134,7 @@ test fn w_admitted_write_passes_execute_preflight() -> std.types.Bool {
   }
 }
 
-test fn w_stdin_payload_is_exact_content_not_transformed() -> std.types.Bool {
+test fn w_stdin_payload_is_exact_content_not_transformed() -> Bool {
   match gunbc.typed_remote_file_write.typed_remote_file_write_seal(
     path: "/tmp/gunbc-trfw-stdin" as std.types.FilePath,
     content: witness_metachar_payload,
@@ -146,7 +146,7 @@ test fn w_stdin_payload_is_exact_content_not_transformed() -> std.types.Bool {
   }
 }
 
-test fn w_content_digest_stable_for_same_bytes() -> std.types.Bool {
+test fn w_content_digest_stable_for_same_bytes() -> Bool {
   match gunbc.typed_remote_file_write.typed_remote_file_write_seal(
     path: "/tmp/gunbc-trfw-digest-a" as std.types.FilePath,
     content: witness_metachar_payload,
@@ -167,7 +167,7 @@ test fn w_content_digest_stable_for_same_bytes() -> std.types.Bool {
   }
 }
 
-test fn w_executor_home_unit_path_seals_for_spark_layout() -> std.types.Bool {
+test fn w_executor_home_unit_path_seals_for_spark_layout() -> Bool {
   match gunbc.typed_remote_file_write.typed_remote_file_write_seal(
     path: concat(
       gunbc.spark_serving_runtime_receipt.spark_serving_executor_home as String,
@@ -181,7 +181,7 @@ test fn w_executor_home_unit_path_seals_for_spark_layout() -> std.types.Bool {
   }
 }
 
-test fn w_over_fleet_ssh_hermetic_mock_exec_accepted() -> std.types.Bool {
+test fn w_over_fleet_ssh_hermetic_mock_exec_accepted() -> Bool {
   match gunbc.typed_remote_file_write.typed_remote_file_write_seal(
     path: "/tmp/gunbc-trfw-over-fleet-ssh" as std.types.FilePath,
     content: witness_metachar_payload,
@@ -207,7 +207,7 @@ test fn w_over_fleet_ssh_hermetic_mock_exec_accepted() -> std.types.Bool {
   }
 }
 
-test fn w_ssh_exec_failure_routes_to_outcome_refused() -> std.types.Bool {
+test fn w_ssh_exec_failure_routes_to_outcome_refused() -> Bool {
   match gunbc.typed_remote_file_write.typed_remote_file_write_seal(
     path: "/tmp/gunbc-trfw-ssh-failure" as std.types.FilePath,
     content: "payload" as String,

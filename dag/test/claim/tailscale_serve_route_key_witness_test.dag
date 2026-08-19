@@ -34,7 +34,7 @@ fn retired_flattened_serve_flags_key(subject: extdeps.tailscale.serve.TailscaleS
   join(tailscale_serve_endpoint_flags(endpoint: subject.endpoint), " ") as std.types.NonEmptyStr
 }
 
-fn retired_flattened_serve_flags_key_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr) -> std.types.Bool {
+fn retired_flattened_serve_flags_key_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr) -> Bool {
   a as String == b as String
 }
 
@@ -47,7 +47,7 @@ fn tailscale_enable_argv_identity_key(subject: extdeps.tailscale.serve.Tailscale
   join(tailscale_serve_enable_argv(endpoint: subject.endpoint), " ") as std.types.NonEmptyStr
 }
 
-fn tailscale_enable_argv_identity_key_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr) -> std.types.Bool {
+fn tailscale_enable_argv_identity_key_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr) -> Bool {
   a as String == b as String
 }
 
@@ -60,7 +60,7 @@ fn plan_has_change_between_backends(
   plan: gunbc.membership_reconcile.MembershipPlan<extdeps.tailscale.serve.TailscaleServeRouteSubject, TailscaleServeRouteMemberAt>,
   from_backend: String,
   to_backend: String,
-) -> std.types.Bool {
+) -> Bool {
   any(plan.actions, a =>
     match a {
       MemberChanged { at: _, from: f, to: t } =>
@@ -108,7 +108,7 @@ fn tailscale_enable_argv_endpoint_state_of(subject: extdeps.tailscale.serve.Tail
   subject.endpoint.backend
 }
 
-fn tailscale_enable_argv_endpoint_state_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr) -> std.types.Bool {
+fn tailscale_enable_argv_endpoint_state_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr) -> Bool {
   a == b
 }
 
@@ -148,7 +148,7 @@ test fn w_retired_flags_key_is_route_stable_across_backend_repoint() -> Bool {
     == retired_flattened_serve_flags_key(subject: b) as String
 }
 
-test fn backend_change_preserves_route_key() -> std.types.Bool {
+test fn backend_change_preserves_route_key() -> Bool {
   let root = root_endpoint(backend: "8080")
   let repointed = root_endpoint(backend: "18081")
   extdeps.tailscale.serve.tailscale_serve_route_key_eq(
@@ -157,7 +157,7 @@ test fn backend_change_preserves_route_key() -> std.types.Bool {
   )
 }
 
-test fn distinct_mounts_have_distinct_keys() -> std.types.Bool {
+test fn distinct_mounts_have_distinct_keys() -> Bool {
   let root = extdeps.tailscale.serve.tailscale_serve_route_key(endpoint: root_endpoint(backend: "8080"))
   let lab = extdeps.tailscale.serve.tailscale_serve_route_key(endpoint: extdeps.tailscale.serve.TailscaleServeEndpoint {
     https_port: 443,
@@ -167,7 +167,7 @@ test fn distinct_mounts_have_distinct_keys() -> std.types.Bool {
   !extdeps.tailscale.serve.tailscale_serve_route_key_eq(a: root, b: lab)
 }
 
-test fn membership_label_is_not_rendered_argv() -> std.types.Bool {
+test fn membership_label_is_not_rendered_argv() -> Bool {
   let endpoint = extdeps.tailscale.serve.TailscaleServeEndpoint {
     https_port: 443,
     mount: extdeps.tailscale.serve.ServeSetPath { path: "/srv1-lab" as std.types.NonEmptyStr },

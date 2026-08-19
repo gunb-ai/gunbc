@@ -50,11 +50,11 @@ fn runner_slot_member_key(m: RunnerSlotMember) -> std.types.NonEmptyStr {
   m.instance_name
 }
 
-fn runner_slot_member_key_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr) -> std.types.Bool {
+fn runner_slot_member_key_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr) -> Bool {
   a as String == b as String
 }
 
-fn runner_slot_member_value_eq(a: RunnerSlotMember, b: RunnerSlotMember) -> std.types.Bool {
+fn runner_slot_member_value_eq(a: RunnerSlotMember, b: RunnerSlotMember) -> Bool {
   a.slot_dir as String == b.slot_dir as String
 }
 
@@ -142,6 +142,6 @@ fn runner_slot_provision_plan(
   }
 }
 
-fn runner_slot_provision_has_width_increase(plan: RunnerSlotProvisionPlan) -> std.types.Bool {
+fn runner_slot_provision_has_width_increase(plan: RunnerSlotProvisionPlan) -> Bool {
   gunbc.membership_reconcile.membership_added_count(plan: plan.membership) > 0
 }

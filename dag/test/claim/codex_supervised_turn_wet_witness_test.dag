@@ -41,7 +41,7 @@ fn wet_codex_home_from_env() -> std.types.FilePath? {
 fn wet_supervised_turn_terminal_ok(
   turn: gunbc.roadmap_workflow_command.WorkerTurn,
   terminal: gunbc.codex_supervised_turn.CodexRunnerTurnTerminalReceipt,
-) -> std.types.Bool {
+) -> Bool {
   (terminal.client_command_id as String) ==
     (gunbc.codex_supervised_turn.codex_supervised_turn_client_command_id(turn: turn) as String)
     && match terminal.binding.lease.observed {
@@ -63,7 +63,7 @@ fn wet_supervised_turn() -> gunbc.roadmap_workflow_command.WorkerTurn {
   }
 }
 
-fn wet_committed_admitted_source_lock_admits() -> std.types.Bool {
+fn wet_committed_admitted_source_lock_admits() -> Bool {
   match gunbc.package_delivery.admit_codex_package_lock_text(text: committed_codex_lock_text()) {
     CodexPackageLockAdmitted { graph: _, nodes, registry_artifacts } =>
       count(nodes) > 0 && count(registry_artifacts) > 0
@@ -71,12 +71,12 @@ fn wet_committed_admitted_source_lock_admits() -> std.types.Bool {
   }
 }
 
-fn wet_committed_admitted_source_construct_only() -> std.types.Bool {
+fn wet_committed_admitted_source_construct_only() -> Bool {
   let source = committed_admitted_codex_runtime_source()
   (source.lock_bytes != "") && (source.manifest_bytes != "")
 }
 
-fn wet_select_codex_exact_target_closure_only() -> std.types.Bool {
+fn wet_select_codex_exact_target_closure_only() -> Bool {
   match gunbc.package_delivery.admit_codex_package_lock_text(text: committed_codex_lock_text()) {
     CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
       match gunbc.package_delivery.observe_codex_npm_runtime_target() {
@@ -99,7 +99,7 @@ fn wet_select_codex_exact_target_closure_only() -> std.types.Bool {
   }
 }
 
-fn wet_acquire_wrapper_artifact_only() -> std.types.Bool {
+fn wet_acquire_wrapper_artifact_only() -> Bool {
   match gunbc.package_delivery.prepare_codex_runtime_closure(
     source: committed_admitted_codex_runtime_source(),
   ) {
@@ -137,7 +137,7 @@ fn wet_acquire_wrapper_artifact_only() -> std.types.Bool {
   }
 }
 
-fn wet_acquire_platform_artifact_only() -> std.types.Bool {
+fn wet_acquire_platform_artifact_only() -> Bool {
   match gunbc.package_delivery.prepare_codex_runtime_closure(
     source: committed_admitted_codex_runtime_source(),
   ) {
@@ -175,7 +175,7 @@ fn wet_acquire_platform_artifact_only() -> std.types.Bool {
   }
 }
 
-fn wet_codex_runtime_prepare_closure_only() -> std.types.Bool {
+fn wet_codex_runtime_prepare_closure_only() -> Bool {
   match gunbc.package_delivery.prepare_codex_runtime_closure(
     source: committed_admitted_codex_runtime_source(),
   ) {
@@ -193,98 +193,98 @@ fn wet_codex_runtime_prepare_closure_only() -> std.types.Bool {
   }
 }
 
-fn wet_materialize_through_prepare_only() -> std.types.Bool {
+fn wet_materialize_through_prepare_only() -> Bool {
   gunbc.package_delivery.materialize_codex_runtime_bundle_through_prepare(
     source: committed_admitted_codex_runtime_source(),
   )
 }
 
-fn wet_acquire_selected_pair_only() -> std.types.Bool {
+fn wet_acquire_selected_pair_only() -> Bool {
   gunbc.package_delivery.materialize_codex_runtime_bundle_through_pair_acquire(
     source: committed_admitted_codex_runtime_source(),
   )
 }
 
-fn wet_materialize_npm_ci_offline_only() -> std.types.Bool {
+fn wet_materialize_npm_ci_offline_only() -> Bool {
   gunbc.package_delivery.materialize_codex_runtime_bundle_through_npm_ci_offline(
     source: committed_admitted_codex_runtime_source(),
   )
 }
 
-fn wet_materialize_finish_after_install_only() -> std.types.Bool {
+fn wet_materialize_finish_after_install_only() -> Bool {
   gunbc.package_delivery.materialize_codex_runtime_bundle_finish_after_install(
     source: committed_admitted_codex_runtime_source(),
     release_parent: wet_materialize_bisect_release_parent,
   )
 }
 
-fn wet_finish_observe_set_identity_only() -> std.types.Bool {
+fn wet_finish_observe_set_identity_only() -> Bool {
   gunbc.package_delivery.materialize_codex_runtime_finish_bisect_observe_set_identity_only(
     source: committed_admitted_codex_runtime_source(),
   )
 }
 
-fn wet_finish_observe_manifest_digest_only() -> std.types.Bool {
+fn wet_finish_observe_manifest_digest_only() -> Bool {
   gunbc.package_delivery.materialize_codex_runtime_finish_bisect_observe_manifest_digest_only(
     source: committed_admitted_codex_runtime_source(),
   )
 }
 
-fn wet_finish_observe_lock_digest_only() -> std.types.Bool {
+fn wet_finish_observe_lock_digest_only() -> Bool {
   gunbc.package_delivery.materialize_codex_runtime_finish_bisect_observe_lock_digest_only(
     source: committed_admitted_codex_runtime_source(),
   )
 }
 
-fn wet_finish_observe_native_digest_only() -> std.types.Bool {
+fn wet_finish_observe_native_digest_only() -> Bool {
   gunbc.package_delivery.materialize_codex_runtime_finish_bisect_observe_native_digest_only(
     source: committed_admitted_codex_runtime_source(),
   )
 }
 
-fn wet_finish_observe_toolchain_only() -> std.types.Bool {
+fn wet_finish_observe_toolchain_only() -> Bool {
   gunbc.package_delivery.materialize_codex_runtime_finish_bisect_observe_toolchain_only(
     source: committed_admitted_codex_runtime_source(),
   )
 }
 
-fn wet_finish_observe_protocol_schema_only() -> std.types.Bool {
+fn wet_finish_observe_protocol_schema_only() -> Bool {
   gunbc.package_delivery.materialize_codex_runtime_finish_bisect_observe_protocol_schema_only(
     source: committed_admitted_codex_runtime_source(),
   )
 }
 
-fn wet_finish_parse_largest_protocol_schema_only() -> std.types.Bool {
+fn wet_finish_parse_largest_protocol_schema_only() -> Bool {
   gunbc.package_delivery.materialize_codex_runtime_finish_bisect_parse_largest_protocol_schema_only(
     source: committed_admitted_codex_runtime_source(),
   )
 }
 
-fn wet_finish_parse_canonicalize_largest_protocol_schema_only() -> std.types.Bool {
+fn wet_finish_parse_canonicalize_largest_protocol_schema_only() -> Bool {
   gunbc.package_delivery.materialize_codex_runtime_finish_bisect_parse_canonicalize_largest_protocol_schema_only(
     source: committed_admitted_codex_runtime_source(),
   )
 }
 
-fn wet_finish_observe_package_tree_only() -> std.types.Bool {
+fn wet_finish_observe_package_tree_only() -> Bool {
   gunbc.package_delivery.materialize_codex_runtime_finish_bisect_observe_package_tree_only(
     source: committed_admitted_codex_runtime_source(),
   )
 }
 
-fn wet_finish_observe_receipt_identity_only() -> std.types.Bool {
+fn wet_finish_observe_receipt_identity_only() -> Bool {
   gunbc.package_delivery.materialize_codex_runtime_finish_bisect_observe_receipt_identity_only(
     source: committed_admitted_codex_runtime_source(),
   )
 }
 
-fn wet_finish_observe_package_tree_tiny_fixture() -> std.types.Bool {
+fn wet_finish_observe_package_tree_tiny_fixture() -> Bool {
   gunbc.package_delivery.finish_bisect_observe_package_materialized_tree_tiny_fixture()
 }
 
 data wet_materialize_bisect_release_parent: std.types.FilePath = "/tmp/gunbc-wet-materialize-bisect-release" as std.types.FilePath
 
-fn wet_materialize_codex_runtime_bundle_only() -> std.types.Bool {
+fn wet_materialize_codex_runtime_bundle_only() -> Bool {
   match gunbc.package_delivery.materialize_codex_runtime_bundle(
     source: committed_admitted_codex_runtime_source(),
     release_parent: wet_materialize_bisect_release_parent,
@@ -295,7 +295,7 @@ fn wet_materialize_codex_runtime_bundle_only() -> std.types.Bool {
   }
 }
 
-fn supervised_turn_materialized_bundle_writes_terminal_receipt() -> std.types.Bool {
+fn supervised_turn_materialized_bundle_writes_terminal_receipt() -> Bool {
   let release_tmp = shell.Mktemp.Dir()
   let evidence = shell.Mktemp.Dir()
   let cwd = shell.Mktemp.Dir()

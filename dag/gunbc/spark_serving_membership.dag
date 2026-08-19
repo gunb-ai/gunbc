@@ -47,11 +47,11 @@ fn spark_serving_member_key(member: SparkServingMember) -> String {
   ], "")
 }
 
-fn spark_serving_member_key_eq(a: String, b: String) -> std.types.Bool {
+fn spark_serving_member_key_eq(a: String, b: String) -> Bool {
   a == b
 }
 
-fn spark_serving_member_value_eq(a: SparkServingMember, b: SparkServingMember) -> std.types.Bool {
+fn spark_serving_member_value_eq(a: SparkServingMember, b: SparkServingMember) -> Bool {
   a.state_digest == b.state_digest
 }
 
@@ -199,7 +199,7 @@ fn spark_serving_membership_effects(
   gunbc.membership_reconcile.membership_effects(plan: plan)
 }
 
-fn spark_serving_membership_noop(plan: gunbc.membership_reconcile.MembershipPlan<SparkServingMember, SparkServingMemberAt>) -> std.types.Bool {
+fn spark_serving_membership_noop(plan: gunbc.membership_reconcile.MembershipPlan<SparkServingMember, SparkServingMemberAt>) -> Bool {
   gunbc.membership_reconcile.membership_write_count(plan: plan) == 0
     && gunbc.membership_reconcile.membership_removal_count(plan: plan) == 0
     && gunbc.membership_reconcile.membership_refusal_count(plan: plan) == 0

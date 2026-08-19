@@ -87,14 +87,14 @@ fn workflow_fact_state_key(state: WorkflowFactState) -> String {
 fn workflow_fact_states_equal(
   a: WorkflowFactState,
   b: WorkflowFactState,
-) -> std.types.Bool {
+) -> Bool {
   workflow_fact_state_key(state: a) == workflow_fact_state_key(state: b)
 }
 
 fn workflow_fact_key_equal(
   a: WorkflowFactKey,
   b: WorkflowFactKey,
-) -> std.types.Bool {
+) -> Bool {
   a.workflow_id == b.workflow_id
     && a.obligation_id == b.obligation_id
 }
@@ -102,7 +102,7 @@ fn workflow_fact_key_equal(
 fn workflow_fact_value_equal(
   a: WorkflowFact,
   b: WorkflowFact,
-) -> std.types.Bool {
+) -> Bool {
   a.intent_revision == b.intent_revision
     && workflow_fact_states_equal(a: a.state, b: b.state)
 }
@@ -211,7 +211,7 @@ fn workflow_fact_forest_members(
 fn workflow_fact_parents_equal(
   a: WorkflowFactParent,
   b: WorkflowFactParent,
-) -> std.types.Bool {
+) -> Bool {
   match a {
     WorkflowFactRoot => match b {
       WorkflowFactRoot => true
@@ -228,7 +228,7 @@ fn workflow_fact_parents_equal(
 fn workflow_fact_member_value_equal(
   a: WorkflowFactMember,
   b: WorkflowFactMember,
-) -> std.types.Bool {
+) -> Bool {
   workflow_fact_value_equal(a: a.fact, b: b.fact)
     && workflow_fact_parents_equal(
       a: a.parent,

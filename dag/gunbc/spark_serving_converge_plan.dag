@@ -2,7 +2,7 @@ module gunbc.spark_serving_converge_plan
 
 data spark_serving_converge_plan_authority_note: String = "Seam 2 vertical slice — Spark serving membership frozen into FleetConvergePlanArtifact typed rows. First member kind: Ensured linger (SparkServingLingerAddress → EnableLingerForOwnAccount). Plan observes linger state, runs membership_reconcile once, serializes MemberAction + install_effects into typed_action_rows on the artifact; apply MUST read those frozen rows (never re-derive). Spark actuation is typed argv via spark_serving_converge_realize + typed_argv_exec — NOT merged into apply_shell. Change arm (disable-linger) is NOT claimed proven — sudoers grants enable-linger only."
 
-fn spark_serving_converge_host_is_spark(host: std.types.NonEmptyStr) -> std.types.Bool {
+fn spark_serving_converge_host_is_spark(host: std.types.NonEmptyStr) -> Bool {
   host == (gunbc.fleet_intent_network.operator_host_srv5 as std.types.NonEmptyStr) || host == (gunbc.fleet_intent_network.operator_host_srv6 as std.types.NonEmptyStr)
 }
 
@@ -18,7 +18,7 @@ fn spark_serving_desired_linger_member(host: product.placement_supply.HostIdenti
 
 fn spark_serving_linger_observed_members(
   host: product.placement_supply.HostIdentity,
-  linger_enabled: std.types.Bool,
+  linger_enabled: Bool,
 ) -> List<gunbc.spark_serving_membership.SparkServingMember> {
   if linger_enabled {
     [spark_serving_desired_linger_member(host: host)]
@@ -37,7 +37,7 @@ fn spark_serving_linger_observed_members(
 
 fn spark_serving_linger_membership_plan(
   host: product.placement_supply.HostIdentity,
-  linger_enabled: std.types.Bool,
+  linger_enabled: Bool,
 ) -> gunbc.membership_reconcile.MembershipPlan<gunbc.spark_serving_membership.SparkServingMember, gunbc.spark_serving_membership.SparkServingMemberAt> {
   gunbc.spark_serving_membership.spark_serving_membership_reconcile(
     desired: [spark_serving_desired_linger_member(host: host)],
@@ -113,7 +113,7 @@ fn spark_serving_fleet_converge_plan_artifact(
   prior_generation: Int,
   observed_timers: List<gunbc.fleet_converge_plan.TimerRetirementMember>,
   observed_caps: List<gunbc.host_axis_caps.CapMember>,
-  linger_enabled: std.types.Bool,
+  linger_enabled: Bool,
 ) -> gunbc.fleet_converge_plan.FleetConvergePlanArtifact? {
   if !spark_serving_converge_host_is_spark(host: host) {
     none
@@ -216,7 +216,7 @@ fn spark_serving_fleet_converge_plan_artifact_from_rows(
     }
 }
 
-fn spark_serving_linger_slice_noop_when_converged(linger_enabled: std.types.Bool) -> std.types.Bool {
+fn spark_serving_linger_slice_noop_when_converged(linger_enabled: Bool) -> Bool {
   gunbc.spark_serving_membership.spark_serving_membership_noop(
     plan: spark_serving_linger_membership_plan(
       host: gunbc.fleet_intent_network.operator_host_srv5,

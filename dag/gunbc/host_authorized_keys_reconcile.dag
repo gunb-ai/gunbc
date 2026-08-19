@@ -9,15 +9,15 @@ fn authorized_key_identity(k: extdeps.ssh.SshPublicKey) -> std.types.NonEmptyStr
   k.material
 }
 
-fn authorized_key_identity_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr) -> std.types.Bool {
+fn authorized_key_identity_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr) -> Bool {
   a == b
 }
 
-fn ssh_algorithm_eq(a: extdeps.ssh.SshKeyAlgorithm, b: extdeps.ssh.SshKeyAlgorithm) -> std.types.Bool {
+fn ssh_algorithm_eq(a: extdeps.ssh.SshKeyAlgorithm, b: extdeps.ssh.SshKeyAlgorithm) -> Bool {
   extdeps.ssh.ssh_key_algorithm_token(a: a) == extdeps.ssh.ssh_key_algorithm_token(a: b)
 }
 
-fn authorized_key_value_eq(a: extdeps.ssh.SshPublicKey, b: extdeps.ssh.SshPublicKey) -> std.types.Bool {
+fn authorized_key_value_eq(a: extdeps.ssh.SshPublicKey, b: extdeps.ssh.SshPublicKey) -> Bool {
   ssh_algorithm_eq(a: a.algorithm, b: b.algorithm)
     && (a.material == b.material)
     && (a.comment == b.comment)

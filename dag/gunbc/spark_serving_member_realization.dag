@@ -60,6 +60,6 @@ fn spark_serving_install_effects_for_member_effect(
 fn spark_serving_install_effects_include(
   effects: List<gunbc.spark_serving_realization.ServingInstallEffect>,
   needle: gunbc.spark_serving_realization.ServingInstallEffect,
-) -> std.types.Bool {
+) -> Bool {
   any(effects, e => e == needle)
 }

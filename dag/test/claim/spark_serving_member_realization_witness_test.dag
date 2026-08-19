@@ -58,7 +58,7 @@ fn w_runtime_replace_effect() -> gunbc.membership_reconcile.MemberEffect<gunbc.s
   }
 }
 
-test fn w_member_realization_runtime_change_is_install_owned_closure_only() -> std.types.Bool {
+test fn w_member_realization_runtime_change_is_install_owned_closure_only() -> Bool {
   let effects = gunbc.spark_serving_member_realization.spark_serving_install_effects_for_member_effect(effect: w_runtime_replace_effect())
   length(effects) == 1
     && gunbc.spark_serving_member_realization.spark_serving_install_effects_include(
@@ -68,7 +68,7 @@ test fn w_member_realization_runtime_change_is_install_owned_closure_only() -> s
     && !gunbc.spark_serving_member_realization.spark_serving_install_effects_include(effects: effects, needle: gunbc.spark_serving_realization.WriteSystemUnitFile)
 }
 
-test fn w_member_realization_user_unit_change_includes_write_reload_enable() -> std.types.Bool {
+test fn w_member_realization_user_unit_change_includes_write_reload_enable() -> Bool {
   let effect = gunbc.membership_reconcile.EffectReplace {
     from: w_unit_member(state: "unit-v1" as std.types.NonEmptyStr),
     to: w_unit_member(state: "unit-v2" as std.types.NonEmptyStr),
@@ -80,7 +80,7 @@ test fn w_member_realization_user_unit_change_includes_write_reload_enable() -> 
     && !gunbc.spark_serving_member_realization.spark_serving_install_effects_include(effects: effects, needle: gunbc.spark_serving_realization.WriteSystemUnitFile)
 }
 
-test fn w_member_realization_model_slot_change_is_pull_model_artifact() -> std.types.Bool {
+test fn w_member_realization_model_slot_change_is_pull_model_artifact() -> Bool {
   let effect = gunbc.membership_reconcile.EffectReplace {
     from: w_model_member(state: "model-a" as std.types.NonEmptyStr),
     to: w_model_member(state: "model-b" as std.types.NonEmptyStr),
@@ -90,7 +90,7 @@ test fn w_member_realization_model_slot_change_is_pull_model_artifact() -> std.t
     && gunbc.spark_serving_member_realization.spark_serving_install_effects_include(effects: effects, needle: gunbc.spark_serving_realization.PullModelArtifact)
 }
 
-test fn w_member_realization_linger_change_is_enable_linger() -> std.types.Bool {
+test fn w_member_realization_linger_change_is_enable_linger() -> Bool {
   let effect = gunbc.membership_reconcile.EffectReplace {
     from: w_linger_member(state: "linger=0" as std.types.NonEmptyStr),
     to: w_linger_member(state: "linger=1" as std.types.NonEmptyStr),
@@ -100,7 +100,7 @@ test fn w_member_realization_linger_change_is_enable_linger() -> std.types.Bool 
     && gunbc.spark_serving_member_realization.spark_serving_install_effects_include(effects: effects, needle: gunbc.spark_serving_realization.EnableLingerForOwnAccount)
 }
 
-test fn w_member_realization_member_changed_action_matches_effect_replace() -> std.types.Bool {
+test fn w_member_realization_member_changed_action_matches_effect_replace() -> Bool {
   let from = w_runtime_member(host: w_host(), state: "v1" as std.types.NonEmptyStr)
   let to = w_runtime_member(host: w_host(), state: "v2" as std.types.NonEmptyStr)
   match gunbc.spark_serving_member_realization.spark_serving_install_effects_for_member_action(
@@ -131,7 +131,7 @@ test fn w_member_realization_member_changed_action_matches_effect_replace() -> s
 // !include(effects, WriteSystemUnitFile) passed VACUOUSLY under the matcher, since that arm
 // could not return true for any input. A negative assertion over a predicate that is false by
 // construction proves nothing, and three of them were standing.
-test fn w_system_scope_install_effects_equal_themselves() -> std.types.Bool {
+test fn w_system_scope_install_effects_equal_themselves() -> Bool {
   gunbc.spark_serving_member_realization.spark_serving_install_effects_include(effects: [gunbc.spark_serving_realization.WriteSystemUnitFile], needle: gunbc.spark_serving_realization.WriteSystemUnitFile)
     && gunbc.spark_serving_member_realization.spark_serving_install_effects_include(effects: [gunbc.spark_serving_realization.ReloadSystemManager], needle: gunbc.spark_serving_realization.ReloadSystemManager)
     && gunbc.spark_serving_member_realization.spark_serving_install_effects_include(effects: [gunbc.spark_serving_realization.EnableSystemUnit], needle: gunbc.spark_serving_realization.EnableSystemUnit)
@@ -143,7 +143,7 @@ test fn w_system_scope_install_effects_equal_themselves() -> std.types.Bool {
 // Positive control for the negative direction: include() must still distinguish variants, so
 // the fix above is not "return true for everything". Without this, an equality that always
 // answered true would satisfy the claim above and break every !include assertion silently.
-test fn w_install_effects_include_still_discriminates_between_variants() -> std.types.Bool {
+test fn w_install_effects_include_still_discriminates_between_variants() -> Bool {
   !gunbc.spark_serving_member_realization.spark_serving_install_effects_include(effects: [gunbc.spark_serving_realization.WriteSystemUnitFile], needle: gunbc.spark_serving_realization.EnableSystemUnit)
     && !gunbc.spark_serving_member_realization.spark_serving_install_effects_include(effects: [gunbc.spark_serving_realization.EnableLingerForOwnAccount], needle: gunbc.spark_serving_realization.WriteUserUnitFile)
     && !gunbc.spark_serving_member_realization.spark_serving_install_effects_include(effects: [], needle: gunbc.spark_serving_realization.WriteSystemUnitFile)

@@ -113,7 +113,7 @@ fn causes_of(admission: gunbc.replacement_cut.PlanAdmission) -> std.types.List<g
   }
 }
 
-fn cause_matches(c: gunbc.replacement_cut.CutRefusalCause, tag: String, subject: String) -> std.types.Bool {
+fn cause_matches(c: gunbc.replacement_cut.CutRefusalCause, tag: String, subject: String) -> Bool {
   match c {
     UndispositionedConsumer { consumer: w } => tag == "undispositioned-consumer" && (w as String) == subject
     UncoveredSurvivingConsumer { consumer: w } => tag == "uncovered-surviving" && (w as String) == subject
@@ -131,11 +131,11 @@ fn cause_matches(c: gunbc.replacement_cut.CutRefusalCause, tag: String, subject:
   }
 }
 
-fn causes_include(causes: std.types.List<gunbc.replacement_cut.CutRefusalCause>, tag: String, subject: String) -> std.types.Bool {
+fn causes_include(causes: std.types.List<gunbc.replacement_cut.CutRefusalCause>, tag: String, subject: String) -> Bool {
   fold(causes, init: false, f: fn(acc, c) { acc || cause_matches(c: c, tag: tag, subject: subject) })
 }
 
-test fn fully_dispositioned_cut_admits_with_exact_counts() -> std.types.Bool {
+test fn fully_dispositioned_cut_admits_with_exact_counts() -> Bool {
   let admission = gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_with(
     consumers: [covered_consumer(), replaced_consumer(), evidence_consumer(), retired_consumer()],
     region: two_region(),
@@ -149,7 +149,7 @@ test fn fully_dispositioned_cut_admits_with_exact_counts() -> std.types.Bool {
   }
 }
 
-test fn admitted_verdict_is_bound_to_the_plan_it_judged() -> std.types.Bool {
+test fn admitted_verdict_is_bound_to_the_plan_it_judged() -> Bool {
   let plan = cut_with(
     consumers: [covered_consumer()],
     region: two_region(),
@@ -167,7 +167,7 @@ test fn admitted_verdict_is_bound_to_the_plan_it_judged() -> std.types.Bool {
   }
 }
 
-test fn undecided_consumer_blocks_the_cut() -> std.types.Bool {
+test fn undecided_consumer_blocks_the_cut() -> Bool {
   let causes = causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_with(
     consumers: [covered_consumer(), undecided_consumer()],
     region: two_region(),
@@ -177,7 +177,7 @@ test fn undecided_consumer_blocks_the_cut() -> std.types.Bool {
     && causes_include(causes: causes, tag: "undispositioned-consumer", subject: "undispositioned caller")
 }
 
-test fn surviving_consumer_without_coverage_refuses() -> std.types.Bool {
+test fn surviving_consumer_without_coverage_refuses() -> Bool {
   let causes = causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_with(
     consumers: [open_consumer()],
     region: two_region(),
@@ -187,7 +187,7 @@ test fn surviving_consumer_without_coverage_refuses() -> std.types.Bool {
     && causes_include(causes: causes, tag: "uncovered-surviving", subject: "surviving invariant consumer")
 }
 
-test fn undecided_evidence_blocks_the_cut() -> std.types.Bool {
+test fn undecided_evidence_blocks_the_cut() -> Bool {
   let causes = causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_with(
     consumers: [covered_consumer()],
     region: two_region(),
@@ -197,7 +197,7 @@ test fn undecided_evidence_blocks_the_cut() -> std.types.Bool {
     && causes_include(causes: causes, tag: "undispositioned-evidence", subject: "parked witness")
 }
 
-test fn retired_consumer_needs_no_coverage() -> std.types.Bool {
+test fn retired_consumer_needs_no_coverage() -> Bool {
   let admission = gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_with(
     consumers: [retired_consumer()],
     region: two_region(),
@@ -210,7 +210,7 @@ test fn retired_consumer_needs_no_coverage() -> std.types.Bool {
   }
 }
 
-test fn a_cut_that_deletes_nothing_is_not_a_cut() -> std.types.Bool {
+test fn a_cut_that_deletes_nothing_is_not_a_cut() -> Bool {
   let causes = causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_with(
     consumers: [covered_consumer()],
     region: [],
@@ -220,7 +220,7 @@ test fn a_cut_that_deletes_nothing_is_not_a_cut() -> std.types.Bool {
     && causes_include(causes: causes, tag: "empty-covered-region", subject: "")
 }
 
-test fn every_cause_is_counted_not_first_wins() -> std.types.Bool {
+test fn every_cause_is_counted_not_first_wins() -> Bool {
   let causes = causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_with(
     consumers: [undecided_consumer(), open_consumer()],
     region: [],
@@ -233,7 +233,7 @@ test fn every_cause_is_counted_not_first_wins() -> std.types.Bool {
     && causes_include(causes: causes, tag: "empty-covered-region", subject: "")
 }
 
-test fn new_root_equal_to_old_root_refuses() -> std.types.Bool {
+test fn new_root_equal_to_old_root_refuses() -> Bool {
   let causes = causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_full(
     consumers: [covered_consumer()],
     region: two_region(),
@@ -244,7 +244,7 @@ test fn new_root_equal_to_old_root_refuses() -> std.types.Bool {
   causes_include(causes: causes, tag: "new-root-equals-old-root", subject: "")
 }
 
-test fn coverage_by_the_old_root_is_fallback_wearing_a_disposition() -> std.types.Bool {
+test fn coverage_by_the_old_root_is_fallback_wearing_a_disposition() -> Bool {
   let fallback_consumer = gunbc.replacement_cut.BoundaryConsumer {
     consumer: nes(s: "consumer leaning on x"),
     disposition: gunbc.replacement_cut.RetainSameContract {
@@ -261,7 +261,7 @@ test fn coverage_by_the_old_root_is_fallback_wearing_a_disposition() -> std.type
     && causes_include(causes: causes, tag: "covered-by-old-root", subject: "consumer leaning on x")
 }
 
-test fn replacement_naming_the_old_root_refuses() -> std.types.Bool {
+test fn replacement_naming_the_old_root_refuses() -> Bool {
   let circular = gunbc.replacement_cut.BoundaryConsumer {
     consumer: nes(s: "circular client"),
     disposition: gunbc.replacement_cut.ReplacedByY { new_authority: nes(s: "old floor step") },
@@ -275,7 +275,7 @@ test fn replacement_naming_the_old_root_refuses() -> std.types.Bool {
     && causes_include(causes: causes, tag: "replacement-names-old-root", subject: "circular client")
 }
 
-test fn duplicate_consumer_refuses_even_when_dispositions_agree() -> std.types.Bool {
+test fn duplicate_consumer_refuses_even_when_dispositions_agree() -> Bool {
   let causes = causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_with(
     consumers: [retired_consumer(), retired_consumer()],
     region: two_region(),
@@ -285,7 +285,7 @@ test fn duplicate_consumer_refuses_even_when_dispositions_agree() -> std.types.B
     && causes_include(causes: causes, tag: "consumer-duplicated", subject: "workaround built to compensate for x")
 }
 
-test fn duplicate_evidence_subject_refuses() -> std.types.Bool {
+test fn duplicate_evidence_subject_refuses() -> Bool {
   let causes = causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_with(
     consumers: [covered_consumer()],
     region: two_region(),
@@ -302,7 +302,7 @@ test fn duplicate_evidence_subject_refuses() -> std.types.Bool {
     && causes_include(causes: causes, tag: "evidence-duplicated", subject: "one witness")
 }
 
-test fn duplicate_region_member_refuses() -> std.types.Bool {
+test fn duplicate_region_member_refuses() -> Bool {
   let causes = causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_with(
     consumers: [covered_consumer()],
     region: [nes(s: "x root module"), nes(s: "x root module")],
@@ -312,7 +312,7 @@ test fn duplicate_region_member_refuses() -> std.types.Bool {
     && causes_include(causes: causes, tag: "region-member-duplicated", subject: "x root module")
 }
 
-test fn enumerated_empty_census_refuses_but_declared_empty_admits() -> std.types.Bool {
+test fn enumerated_empty_census_refuses_but_declared_empty_admits() -> Bool {
   let ambiguous = gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_with(
     consumers: [],
     region: two_region(),
@@ -337,7 +337,7 @@ test fn enumerated_empty_census_refuses_but_declared_empty_admits() -> std.types
     })
 }
 
-test fn empty_external_role_list_refuses_but_justified_no_oracle_admits() -> std.types.Bool {
+test fn empty_external_role_list_refuses_but_justified_no_oracle_admits() -> Bool {
   let ambiguous = gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_full(
     consumers: [covered_consumer()],
     region: two_region(),
@@ -360,7 +360,7 @@ test fn empty_external_role_list_refuses_but_justified_no_oracle_admits() -> std
     })
 }
 
-test fn self_referential_descent_refuses() -> std.types.Bool {
+test fn self_referential_descent_refuses() -> Bool {
   let cut = gunbc.replacement_cut.ReplacementCut {
     identity: "cut-self" as gunbc.replacement_cut.ReplacementCutId,
     old_root_consumer: nes(s: "b0 boundary"),
@@ -379,7 +379,7 @@ test fn self_referential_descent_refuses() -> std.types.Bool {
   causes_include(causes: causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut)), tag: "self-referential-descent", subject: "")
 }
 
-test fn descended_cut_names_its_parent_by_typed_identity() -> std.types.Bool {
+test fn descended_cut_names_its_parent_by_typed_identity() -> Bool {
   let cut = gunbc.replacement_cut.ReplacementCut {
     identity: "cut-b0" as gunbc.replacement_cut.ReplacementCutId,
     old_root_consumer: nes(s: "b0 boundary"),
@@ -403,7 +403,7 @@ test fn descended_cut_names_its_parent_by_typed_identity() -> std.types.Bool {
   }
 }
 
-fn is_admitted(a: gunbc.replacement_cut.PlanAdmission) -> std.types.Bool {
+fn is_admitted(a: gunbc.replacement_cut.PlanAdmission) -> Bool {
   match a {
     PlanAdmitted { admitted: _ } => true
     PlanRefused { causes: _ } => false
@@ -428,7 +428,7 @@ fn cut_answering(identity: String, answer: gunbc.replacement_cut.HigherBoundaryA
 // The honest state a real first subject lands in: not outermost, and no cut has
 // been authored at the boundary above. It admits, and it carries no identifier
 // that could be mistaken for a resolvable join.
-test fn unauthored_parent_boundary_admits_without_naming_an_id() -> std.types.Bool {
+test fn unauthored_parent_boundary_admits_without_naming_an_id() -> Bool {
   let cut = cut_answering(
     identity: "cut-interpreter",
     answer: gunbc.replacement_cut.DescentParentUnauthored {
@@ -447,7 +447,7 @@ test fn unauthored_parent_boundary_admits_without_naming_an_id() -> std.types.Bo
 
 // The new arm's self-reference: naming your own old root as the boundary above
 // you is the same incoherence SelfReferentialDescent already names.
-test fn descent_parent_unauthored_naming_its_own_root_refuses() -> std.types.Bool {
+test fn descent_parent_unauthored_naming_its_own_root_refuses() -> Bool {
   let causes = causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_answering(
     identity: "cut-self-boundary",
     answer: gunbc.replacement_cut.DescentParentUnauthored {
@@ -461,7 +461,7 @@ test fn descent_parent_unauthored_naming_its_own_root_refuses() -> std.types.Boo
 
 // POSITIVE CONTROL for the two declared-gap probes below: admission is not
 // vacuous. Without this,  132  carries no information.
-test fn probe_control_refuses_undecided() -> std.types.Bool {
+test fn probe_control_refuses_undecided() -> Bool {
   !is_admitted(a: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_with(
     consumers: [undecided_consumer()],
     region: two_region(),
@@ -473,7 +473,7 @@ test fn probe_control_refuses_undecided() -> std.types.Bool {
 // is an unjoined reference and a parent that exists nowhere is admitted. This
 // test asserts the gap. It goes RED when a cut registry makes the reference
 // joinable -- which is the next-rung trigger firing, not a regression.
-test fn probe_admits_nonexistent_parent() -> std.types.Bool {
+test fn probe_admits_nonexistent_parent() -> Bool {
   is_admitted(a: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_answering(
     identity: "cut-b0",
     answer: gunbc.replacement_cut.DescendedFromRefusedCut {
@@ -486,7 +486,7 @@ test fn probe_admits_nonexistent_parent() -> std.types.Bool {
 // SCOPE, not a gap: plan admission judges the authored plan's internal
 // coherence, never the world, so a well-formed OutermostBoundary claim admits
 // whether or not a higher boundary exists in fact.
-test fn probe_admits_outermost_claim() -> std.types.Bool {
+test fn probe_admits_outermost_claim() -> Bool {
   is_admitted(a: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_answering(
     identity: "cut-outermost",
     answer: gunbc.replacement_cut.OutermostBoundary,

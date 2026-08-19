@@ -22,7 +22,7 @@ fn fixture_credential() -> gunbc.codex_app_server_press.AmbientCodexCredentialCo
   }
 }
 
-test fn witness_supervised_binding_uses_held_session_lease_policy() -> std.types.Bool {
+test fn witness_supervised_binding_uses_held_session_lease_policy() -> Bool {
   let binding = gunbc.codex_supervised_turn.codex_supervised_turn_binding(
     turn: fixture_turn(),
     credential: fixture_credential(),
@@ -36,28 +36,28 @@ test fn witness_supervised_binding_uses_held_session_lease_policy() -> std.types
   }
 }
 
-test fn witness_idle_thread_without_terminal_receipt_refuses_duplicate_execution() -> std.types.Bool {
+test fn witness_idle_thread_without_terminal_receipt_refuses_duplicate_execution() -> Bool {
   match gunbc.codex_supervised_turn.codex_turn_start_admission(terminal_receipt: none, thread: gunbc.codex_supervised_turn.CodexThreadIdle) {
     CodexTurnStartRefusedDuplicateExecution { reason: _ } => true
     _ => false
   }
 }
 
-test fn witness_absent_thread_admits_turn_start() -> std.types.Bool {
+test fn witness_absent_thread_admits_turn_start() -> Bool {
   match gunbc.codex_supervised_turn.codex_turn_start_admission(terminal_receipt: none, thread: gunbc.codex_supervised_turn.CodexThreadAbsent) {
     gunbc.codex_supervised_turn.CodexTurnStartAdmitted => true
     _ => false
   }
 }
 
-test fn witness_busy_thread_refuses_outcome_unobserved() -> std.types.Bool {
+test fn witness_busy_thread_refuses_outcome_unobserved() -> Bool {
   match gunbc.codex_supervised_turn.codex_turn_start_admission(terminal_receipt: none, thread: gunbc.codex_supervised_turn.CodexThreadBusy) {
     CodexTurnStartRefusedOutcomeUnobserved { reason: _ } => true
     _ => false
   }
 }
 
-test fn witness_running_lease_observation_is_expected_not_absent() -> std.types.Bool {
+test fn witness_running_lease_observation_is_expected_not_absent() -> Bool {
   let binding = gunbc.codex_supervised_turn.codex_supervised_turn_binding(
     turn: fixture_turn(),
     credential: fixture_credential(),
@@ -71,7 +71,7 @@ test fn witness_running_lease_observation_is_expected_not_absent() -> std.types.
   }
 }
 
-test fn witness_parse_supervised_stdout_extracts_thread_and_turn_ids() -> std.types.Bool {
+test fn witness_parse_supervised_stdout_extracts_thread_and_turn_ids() -> Bool {
   let parse = gunbc.codex_supervised_turn.parse_supervised_turn_stdout(stdout: supervised_turn_fixture_stdout)
   match parse.thread_start {
     SupervisedRpcOk { native_id: tid } =>
@@ -84,7 +84,7 @@ test fn witness_parse_supervised_stdout_extracts_thread_and_turn_ids() -> std.ty
   }
 }
 
-test fn witness_parse_supervised_stdout_turn_completed_disposition() -> std.types.Bool {
+test fn witness_parse_supervised_stdout_turn_completed_disposition() -> Bool {
   let parse = gunbc.codex_supervised_turn.parse_supervised_turn_stdout(stdout: supervised_turn_fixture_stdout)
   match gunbc.codex_supervised_turn.disposition_from_supervised_parse(parse: parse, exit_code: Present { value: 0 }) {
     gunbc.provider_turn_adjudication.ProviderTurnCompleted => true
@@ -92,7 +92,7 @@ test fn witness_parse_supervised_stdout_turn_completed_disposition() -> std.type
   }
 }
 
-test fn witness_terminal_receipt_carries_client_command_id() -> std.types.Bool {
+test fn witness_terminal_receipt_carries_client_command_id() -> Bool {
   let binding = gunbc.codex_supervised_turn.codex_supervised_turn_binding(
     turn: fixture_turn(),
     credential: fixture_credential(),
@@ -112,7 +112,7 @@ test fn witness_terminal_receipt_carries_client_command_id() -> std.types.Bool {
     && gunbc.provider_turn_adjudication.press_display_finished(disposition: receipt.disposition)
 }
 
-test fn witness_parse_turn_failed_notification_disposition() -> std.types.Bool {
+test fn witness_parse_turn_failed_notification_disposition() -> Bool {
   let stdout = "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"thread\":{\"id\":\"t1\"}}}\n{\"jsonrpc\":\"2.0\",\"id\":5,\"result\":{\"turn\":{\"id\":\"u1\"}}}\n{\"jsonrpc\":\"2.0\",\"method\":\"turn/failed\",\"params\":{}}\n"
   let parse = gunbc.codex_supervised_turn.parse_supervised_turn_stdout(stdout: stdout)
   match gunbc.codex_supervised_turn.disposition_from_supervised_parse(parse: parse, exit_code: Present { value: 0 }) {
@@ -121,7 +121,7 @@ test fn witness_parse_turn_failed_notification_disposition() -> std.types.Bool {
   }
 }
 
-test fn witness_exit_zero_without_terminal_is_not_observed() -> std.types.Bool {
+test fn witness_exit_zero_without_terminal_is_not_observed() -> Bool {
   let stdout =
     "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"thread\":{\"id\":\"t1\"}}}\n{\"jsonrpc\":\"2.0\",\"id\":5,\"result\":{\"turn\":{\"id\":\"u1\"}}}\n"
   let parse = gunbc.codex_supervised_turn.parse_supervised_turn_stdout(stdout: stdout)
@@ -131,7 +131,7 @@ test fn witness_exit_zero_without_terminal_is_not_observed() -> std.types.Bool {
   }
 }
 
-test fn witness_supervised_thread_id_from_line_matches_rpc_parse() -> std.types.Bool {
+test fn witness_supervised_thread_id_from_line_matches_rpc_parse() -> Bool {
   let line =
     "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"thread\":{\"id\":\"thread-uuid-1\"}}}"
   match gunbc.codex_supervised_turn.supervised_thread_id_from_line(line: line) {
@@ -140,7 +140,7 @@ test fn witness_supervised_thread_id_from_line_matches_rpc_parse() -> std.types.
   }
 }
 
-test fn witness_turn_start_line_escapes_json_unsafe_user_input() -> std.types.Bool {
+test fn witness_turn_start_line_escapes_json_unsafe_user_input() -> Bool {
   let user_input = "say \"hello\"\nline2\\backslash"
   let line = gunbc.codex_supervised_turn.codex_supervised_turn_start_line_template(user_input: user_input)
   match extdeps.languages.json.parse.parse_json(s: line) {
@@ -149,7 +149,7 @@ test fn witness_turn_start_line_escapes_json_unsafe_user_input() -> std.types.Bo
   }
 }
 
-test fn witness_nonzero_exit_without_turn_start_is_not_observed() -> std.types.Bool {
+test fn witness_nonzero_exit_without_turn_start_is_not_observed() -> Bool {
   let parse = gunbc.codex_supervised_turn.empty_supervised_turn_parse_acc()
   match gunbc.codex_supervised_turn.disposition_from_supervised_parse(parse: parse, exit_code: Present { value: 1 }) {
     ProviderTurnFailed { cause: _ } => true
@@ -157,7 +157,7 @@ test fn witness_nonzero_exit_without_turn_start_is_not_observed() -> std.types.B
   }
 }
 
-test fn witness_missing_generation_store_reads_as_zero() -> std.types.Bool {
+test fn witness_missing_generation_store_reads_as_zero() -> Bool {
   match gunbc.codex_supervised_turn.codex_supervised_generation_read_from_store(
     store_present: false,
     read_success: true,
@@ -168,7 +168,7 @@ test fn witness_missing_generation_store_reads_as_zero() -> std.types.Bool {
   }
 }
 
-test fn witness_corrupt_generation_store_refuses_prior_read() -> std.types.Bool {
+test fn witness_corrupt_generation_store_refuses_prior_read() -> Bool {
   let read = gunbc.codex_supervised_turn.codex_supervised_generation_read_from_store(
     store_present: true,
     read_success: true,
@@ -184,7 +184,7 @@ test fn witness_corrupt_generation_store_refuses_prior_read() -> std.types.Bool 
   }
 }
 
-test fn witness_negative_generation_store_refuses_prior_read() -> std.types.Bool {
+test fn witness_negative_generation_store_refuses_prior_read() -> Bool {
   let read = gunbc.codex_supervised_turn.codex_supervised_generation_read_from_store(
     store_present: true,
     read_success: true,
@@ -201,7 +201,7 @@ test fn witness_negative_generation_store_refuses_prior_read() -> std.types.Bool
   }
 }
 
-test fn witness_whitespace_generation_store_is_malformed_not_absent() -> std.types.Bool {
+test fn witness_whitespace_generation_store_is_malformed_not_absent() -> Bool {
   match gunbc.codex_supervised_turn.codex_supervised_generation_read_from_store(
     store_present: true,
     read_success: true,
@@ -213,7 +213,7 @@ test fn witness_whitespace_generation_store_is_malformed_not_absent() -> std.typ
   }
 }
 
-test fn witness_unreadable_generation_store_refuses_prior_read() -> std.types.Bool {
+test fn witness_unreadable_generation_store_refuses_prior_read() -> Bool {
   let read = gunbc.codex_supervised_turn.codex_supervised_generation_read_from_store(
     store_present: true,
     read_success: false,

@@ -14,7 +14,7 @@ type BeltAction
   | HoldPaused
   | AtCapacity { ready_waiting: Int }
 
-fn node_occupied(occupied: List<gunbc.roadmap_model.RoadmapNodeId>, node: gunbc.roadmap_model.RoadmapNode) -> std.types.Bool {
+fn node_occupied(occupied: List<gunbc.roadmap_model.RoadmapNodeId>, node: gunbc.roadmap_model.RoadmapNode) -> Bool {
   any(occupied, id => id == node.node)
 }
 
@@ -51,7 +51,7 @@ fn belt_step(
   }
 }
 
-fn belt_action_is_spawn(a: BeltAction) -> std.types.Bool {
+fn belt_action_is_spawn(a: BeltAction) -> Bool {
   match a {
     SpawnWorker { node: _ } => true
     HoldPaused => false
@@ -63,7 +63,7 @@ fn belt_spawn_count(actions: List<BeltAction>) -> Int {
   count(actions |> filter(a => belt_action_is_spawn(a: a)))
 }
 
-fn belt_spawns_node(actions: List<BeltAction>, id: gunbc.roadmap_model.RoadmapNodeId) -> std.types.Bool {
+fn belt_spawns_node(actions: List<BeltAction>, id: gunbc.roadmap_model.RoadmapNodeId) -> Bool {
   any(actions, a => match a {
     SpawnWorker { node } => node.node == id
     HoldPaused => false
@@ -107,7 +107,7 @@ fn belt_would_spawn_ids(actions: List<BeltAction>) -> List<gunbc.roadmap_model.R
   })
 }
 
-fn belt_is_at_capacity(actions: List<BeltAction>) -> std.types.Bool {
+fn belt_is_at_capacity(actions: List<BeltAction>) -> Bool {
   any(actions, a => match a {
     AtCapacity { ready_waiting: _ } => true
     SpawnWorker { node: _ } => false
@@ -182,11 +182,11 @@ fn dispatch_member_key(m: DispatchMember) -> String {
   }
 }
 
-fn dispatch_member_key_eq(a: String, b: String) -> std.types.Bool { a == b }
+fn dispatch_member_key_eq(a: String, b: String) -> Bool { a == b }
 
 data belt_value_eq_note: String = "Presence-only equality (always true): a ready node WITH a live session is Unchanged (noop), never Modified — the belt must NEVER respawn a running session on content drift (that would kill live work). Session HEALTH (drain/restart of a drifted or hung session for a still-ready node) is the actuator lease concern (roadmap_dispatch_actuator.classify_dispatch_lease_upsert), a SEPARATE layer over membership. key_of is stable identity (node-id) so a Removed member means the node genuinely left the ready set (done), never a content drift."
 
-fn dispatch_member_value_eq(a: DispatchMember, b: DispatchMember) -> std.types.Bool { true }
+fn dispatch_member_value_eq(a: DispatchMember, b: DispatchMember) -> Bool { true }
 
 data belt_ownership_mapping_note: String = "R5 owned-only teardown at session grain. Teardown-eligibility (Owned) is the actuator's dispatch_session_is_owned Bool (Converged/Drifted = OUR process; Conflict/Inaccessible/UnknownRefused/Absent = not owned — see dispatch_session_ownership_note). This fn LIFTS that Bool into gunbc.ownership.Ownership? for the spine's teardown gate: owned -> Present{gunbc.ownership.Owned} (reap), not-owned -> Absent -> OwnershipUnknown -> the spine REFUSES teardown (counted, surfaced), never kills a session it cannot prove it owns. The coarse spine cause (foreign Conflict collapses to OwnershipUnknown because gunbc.ownership has no observed-but-foreign stance distinct from Ensured=required-dependency) is retained finely in the ObservedMember payload (session.lease_verdict) for belt surfacing; a spine-cause refinement is a coordinated evolution, not a belt fork. Keeping the verdict match in the actuator lets roadmap_belt avoid importing ObservationVerdict, whose Absent variant collides with Optional.Absent."
 

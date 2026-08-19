@@ -168,7 +168,7 @@ func probe_agent_credential_verification(attempt: gunbc.fleet_known_hosts_anchor
   }
 }
 
-fn agent_backed_probe_success(host: String, principal: String, argv: List<String>) -> std.types.Bool {
+fn agent_backed_probe_success(host: String, principal: String, argv: List<String>) -> Bool {
   let target = join([principal, "@", gunbc.fleet_reach_endpoint.fleet_probe_endpoint_for(host: host)], "")
   match gunbc.typed_argv_exec.typed_argv_probe_over_ssh(host: target as std.types.NonEmptyStr, argv: argv) {
     TypedArgvExecConverged { result: r } => r.success
@@ -248,7 +248,7 @@ type SparkConvergeTargetSelection =
   | SparkConvergeTargetAllObserveOnly
   | SparkConvergeTargetRefused { reason: String }
 
-fn spark_converge_target_selection(execute_apply: std.types.Bool) -> SparkConvergeTargetSelection {
+fn spark_converge_target_selection(execute_apply: Bool) -> SparkConvergeTargetSelection {
   spark_converge_target_selection_of(
     raw: env_var_nonempty(name: spark_converge_target_env_name),
     execute_apply: execute_apply,
@@ -260,7 +260,7 @@ fn spark_converge_target_selection(execute_apply: std.types.Bool) -> SparkConver
 // can hold, which is how the widening arm survived unnoticed in the first place.
 fn spark_converge_target_selection_of(
   raw: std.types.NonEmptyStr?,
-  execute_apply: std.types.Bool,
+  execute_apply: Bool,
 ) -> SparkConvergeTargetSelection {
   match raw {
     Present { value: raw } =>
@@ -287,7 +287,7 @@ fn spark_converge_target_selection_of(
   }
 }
 
-fn spark_converge_execute_apply_from_env() -> std.types.Bool {
+fn spark_converge_execute_apply_from_env() -> Bool {
   match env_var_nonempty(name: spark_converge_execute_env_name) {
     Present { value: v } => v == "1"
     Absent => false

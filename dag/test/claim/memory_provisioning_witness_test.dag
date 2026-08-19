@@ -48,7 +48,7 @@ fn rdimm_32g_ddr5() -> extdeps.memory.types.DramModuleCatalogRow {
 
 // The two providers whose arm64 surfaces publish three GB per vCPU. Asserted
 // through the derivation so the number comes from the fetched rows.
-test fn ubicloud_and_blacksmith_publish_three_gb_per_arm_vcpu() -> std.types.Bool {
+test fn ubicloud_and_blacksmith_publish_three_gb_per_arm_vcpu() -> Bool {
   let rows = gunbc.runner_shape_census.surveyed_runner_shapes()
   match gunbc.runner_shape_census.memory_per_vcpu(rows: rows, provider: extdeps.cloud.ubicloud.ubicloud_provider_identity, architecture: extdeps.toolchain.types.Aarch64) {
     UniformMemoryPerVcpu { per_vcpu, sizes_agreeing } =>
@@ -70,7 +70,7 @@ test fn ubicloud_and_blacksmith_publish_three_gb_per_arm_vcpu() -> std.types.Boo
 }
 
 // Depot publishes four GB per arm vCPU, so the market is not one ratio.
-test fn depot_publishes_four_gb_per_arm_vcpu() -> std.types.Bool {
+test fn depot_publishes_four_gb_per_arm_vcpu() -> Bool {
   match gunbc.runner_shape_census.memory_per_vcpu(
     rows: gunbc.runner_shape_census.surveyed_runner_shapes(),
     provider: extdeps.ci_runner.depot.depot_provider_identity,
@@ -88,7 +88,7 @@ test fn depot_publishes_four_gb_per_arm_vcpu() -> std.types.Bool {
 // refuses instead of reporting a provider-level constant. GitHub's arm64 sizes
 // are mostly four GB per vCPU but include a 5-vCPU/14 GB size, so a collapsed
 // figure would have silently discarded a real published shape.
-test fn a_provider_with_non_uniform_sizes_refuses_a_single_ratio() -> std.types.Bool {
+test fn a_provider_with_non_uniform_sizes_refuses_a_single_ratio() -> Bool {
   match gunbc.runner_shape_census.memory_per_vcpu(
     rows: gunbc.runner_shape_census.surveyed_runner_shapes(),
     provider: extdeps.ci_runner.github_actions.github_actions_provider_identity,
@@ -104,7 +104,7 @@ test fn a_provider_with_non_uniform_sizes_refuses_a_single_ratio() -> std.types.
 
 // The x64 side is not uniformly four either: CircleCI's x86 Docker classes are
 // two GB per vCPU. This is the row that refutes "1:4 everywhere".
-test fn circleci_x86_docker_is_two_gb_per_vcpu() -> std.types.Bool {
+test fn circleci_x86_docker_is_two_gb_per_vcpu() -> Bool {
   match gunbc.runner_shape_census.memory_per_vcpu(
     rows: gunbc.runner_shape_census.surveyed_runner_shapes(),
     provider: extdeps.ci_runner.circleci.circleci_provider_identity,
@@ -121,7 +121,7 @@ test fn circleci_x86_docker_is_two_gb_per_vcpu() -> std.types.Bool {
 // Only one surveyed provider states what a vCPU is backed by; the rest are
 // Unstated. Asserted in BOTH directions so the unstated arm is known to be a
 // real reading of the pages and not a constructor nobody reaches.
-test fn only_ubicloud_states_a_dedicated_core_entitlement() -> std.types.Bool {
+test fn only_ubicloud_states_a_dedicated_core_entitlement() -> Bool {
   let ubicloud_arm = filter(
     extdeps.ci_runner.types.runner_shape_rows(availability: extdeps.cloud.ubicloud.ubicloud_runner_catalog_shapes),
     r => r.architecture == extdeps.toolchain.types.Aarch64,
@@ -147,7 +147,7 @@ test fn only_ubicloud_states_a_dedicated_core_entitlement() -> std.types.Bool {
 // Ubicloud's x64 vCPU is an SMT thread, so its four GB per vCPU is EIGHT GB
 // per physical core — the cross-frame comparison this whole model exists to
 // make visible.
-test fn ubicloud_x64_entitlement_is_an_smt_thread() -> std.types.Bool {
+test fn ubicloud_x64_entitlement_is_an_smt_thread() -> Bool {
   all(
     filter(extdeps.ci_runner.types.runner_shape_rows(availability: extdeps.cloud.ubicloud.ubicloud_runner_catalog_shapes), r => r.architecture == extdeps.toolchain.types.X86_64),
     r => match r.entitlement {
@@ -1051,7 +1051,7 @@ test fn the_population_names_its_overshoot() -> Bool {
 // the divergent row is the tail — under the old fold it would have returned
 // "GiB" happily, so the control fails against the defect rather than merely
 // passing against the fix.
-test fn a_mixed_unit_label_sample_refuses_a_ratio() -> std.types.Bool {
+test fn a_mixed_unit_label_sample_refuses_a_ratio() -> Bool {
   match gunbc.runner_shape_census.memory_per_vcpu(
     rows: [
       synthetic_shape(vcpus: 2, numeral: 6, decimal: false),
@@ -1071,7 +1071,7 @@ test fn a_mixed_unit_label_sample_refuses_a_ratio() -> std.types.Bool {
 // POSITIVE CONTROL on the same instrument: the identical rows in one unit do
 // yield a ratio, so the refusal above is discriminating on the label axis and
 // not on the synthetic rows generally.
-test fn the_same_sample_in_one_unit_yields_a_ratio() -> std.types.Bool {
+test fn the_same_sample_in_one_unit_yields_a_ratio() -> Bool {
   match gunbc.runner_shape_census.memory_per_vcpu(
     rows: [
       synthetic_shape(vcpus: 2, numeral: 6, decimal: true),
@@ -1093,7 +1093,7 @@ fn synthetic_provider() -> std.decl_ref.DeclarationRef {
   std.decl_ref.decl_ref(module_path: "test.claim.memory_provisioning_witness_test", decl_name: "synthetic_provider")
 }
 
-fn synthetic_shape(vcpus: std.nat.Nat, numeral: std.nat.Nat, decimal: std.types.Bool) -> extdeps.ci_runner.types.RunnerShapeRow {
+fn synthetic_shape(vcpus: std.nat.Nat, numeral: std.nat.Nat, decimal: Bool) -> extdeps.ci_runner.types.RunnerShapeRow {
   extdeps.ci_runner.types.RunnerShapeRow {
     provider: synthetic_provider(),
     label: "synthetic",
@@ -1104,7 +1104,7 @@ fn synthetic_shape(vcpus: std.nat.Nat, numeral: std.nat.Nat, decimal: std.types.
   }
 }
 
-fn synthetic_memory(numeral: std.nat.Nat, decimal: std.types.Bool) -> extdeps.ci_runner.types.QuotedByteMagnitude {
+fn synthetic_memory(numeral: std.nat.Nat, decimal: Bool) -> extdeps.ci_runner.types.QuotedByteMagnitude {
   if decimal {
     extdeps.ci_runner.types.QuotedDecimalGigabytes { value: std.measure.gigabyte(count: numeral) }
   } else {

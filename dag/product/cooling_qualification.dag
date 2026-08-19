@@ -60,7 +60,7 @@ type CoolingCatalogVerdict
 fn cooler_supports_baseboard(
   supported: List<extdeps.boards.types.BaseboardModel>,
   baseboard_model: extdeps.boards.types.BaseboardModel,
-) -> std.types.Bool {
+) -> Bool {
   if supported.length() == 0 {
     false
   } else {
@@ -96,7 +96,7 @@ fn cooler_supports_baseboard(
 fn cooler_mount_matches_processor_mount(
   cooler_mount: extdeps.cpu.types.ProcessorCoolingMount,
   processor_mount: extdeps.cpu.types.ProcessorCoolingMount,
-) -> std.types.Bool {
+) -> Bool {
   extdeps.cpu.types.cooling_mount_eq(a: cooler_mount, b: processor_mount)
 }
 
@@ -106,7 +106,7 @@ fn cooler_mount_matches_processor_mount(
 fn cooler_design_power_covers_processor_tdp(
   cooler_max_design_power: std.measure.Watt,
   processor_tdp: std.measure.Watt,
-) -> std.types.Bool {
+) -> Bool {
   std.measure.measure_le(a: processor_tdp, b: cooler_max_design_power)
 }
 
@@ -193,7 +193,7 @@ fn installed_cooling_verdict_for_host(
 
 fn cooling_catalog_verdict_admits_qualification(
   verdict: CoolingCatalogVerdict,
-) -> std.types.Bool {
+) -> Bool {
   match verdict {
     CoolingCatalogCompatible { host: _, cooler_asset: _ } => true
     CoolingCatalogRefused { host: _, cause: _ } => false
