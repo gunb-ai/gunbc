@@ -847,8 +847,19 @@ test fn an_instance_owned_scope_cannot_reach_the_shared_roots() -> Bool {
     && dashboard_instances_dispatch_state_is_consistent(a: live, b: lab)
 }
 
+// The exemption is asserted over the COUNTERFACTUAL host-shared slot, not over srv1-live, and the
+// reason is a measured one rather than a preference. This claim's discriminating half is that a
+// host-shared instance's attempt-state root is NOT under its own instance root. srv1-live is
+// host-shared, but the host's dispatch roots live under /opt/gunbc, which IS srv1-live's instance
+// root -- so on the surviving production instance the exemption is invisible, and the negation
+// reads false. The deleted green slot was the instance where the two roots differed, which is why
+// this claim was written against it and why repointing it at srv1-live failed by execution.
+// witness_agreeing_slot is a host-shared slot rooted at /opt/gunbc-witness carrying srv1's dispatch
+// roots -- the same shape the deleted slot had, built from the constructor this file already uses
+// for exactly this purpose. Per the discriminator note above, the counterfactual pair is where this
+// law's discrimination has always lived; the declared slots were only ever a convenient instance.
 test fn host_shared_slots_are_exempt_from_containment_but_labs_are_not() -> Bool {
-  let shared = srv1_live_dashboard_instance()
+  let shared = witness_agreeing_slot()
   let lab = srv1_lab_dashboard_instance()
   dashboard_instance_paths_are_owned(instance: shared)
     && dashboard_instance_paths_are_owned(instance: lab)
