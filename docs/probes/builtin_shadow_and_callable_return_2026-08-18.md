@@ -109,7 +109,7 @@ after both roots        51
 The six new rows are **honest errors the two defects were hiding**: with the call now bound to
 the parameter and the closure now coerced, the missing `Clone` bound on the generic parameters is
 what rustc reaches next. They belong to mechanism 1 (Clone bounds), which is unowned and is the
-largest remaining cluster in this module — 16 E0277 plus 9 E0599 of the surviving 51.
+largest remaining cluster in this module — 28 of the surviving 51, split in §10.
 
 Surviving histogram (on the merged base): `E0277 16 · E0308 15 · E0599 9 · E0425 3 · E0422 2 · E0369 2 · unreachable_pattern 2 · E0560 1 · E0282 1`.
 
@@ -149,7 +149,7 @@ somewhere else.
 
 | # | mechanism | pop | specimen (emitted site) | DFS position | authority | consumer | touch set | depends on | target shape |
 |---|---|---:|---|---|---|---|---|---|---|
-| 1 | **Clone bound not emitted on generic params** | **28** | `v2_std_staging.rs:44` `no method clone on type parameter A`; `v2_std_algebra.rs:45` derive | emit, two distinct seams | `v1_item_clone_bounded_param_names` (fn sigs) + `trait_derive_emit` (derives) | rustc trait solver | `05_emit_rust.dag`, `trait_derive_emit.dag` | none — it is the root | modeled `TraitBoundWitness` consumed by `emit_fn_def`; **never** a scan for `.clone()`/`.iter()`. Keep E0599 (generic fn bodies) and E0277 (per-derive bounds at struct decls) separate: same trait word, different consumers, different repairs |
+| 1 | **Clone bound not emitted on generic params** — split into 1a/1b in §10 | **28** | `v2_std_staging.rs:44` `no method clone on type parameter A`; `v2_std_algebra.rs:45` derive | emit, two distinct seams | `v1_item_clone_bounded_param_names` (fn sigs) + `trait_derive_emit` (derives) | rustc trait solver | `05_emit_rust.dag`, `trait_derive_emit.dag` | none — it is the root | modeled `TraitBoundWitness` consumed by `emit_fn_def`; **never** a scan for `.clone()`/`.iter()`. Keep E0599 (generic fn bodies) and E0277 (per-derive bounds at struct decls) separate: same trait word, different consumers, different repairs |
 | 2 | **Optional carrier fork** | 6 | `std_cache_interface.rs:638` `expected Option<String>, found None` (a `None` *variant*); `:695` list head returning `Option` where the value is expected; `extdeps_uri.rs:752` `Absent` as a fold init against an `Option` accumulator | infer + emit | `std.optional` / the `Value::Null` split | emitted Rust; the interpreter's `Value::Null` overload | `04_infer.dag`, `05_emit_rust.dag` | the `Value::Null` split plan | one Optional carrier with one emitted spelling; `Present`/`Absent` and `Option` stop being two surfaces |
 | 3 | **Unsynthesized use-line (root K)** | 5 | `extdeps_realization_compile_stage_memo.rs:82` `ProviderRetention` not found; `v2_compiler_materialization_carriers.rs:141` `NonEmptyStr` not found | emit, import synthesis | `reference_derived_use_lines` (`05_emit_rust.dag`) | rustc name resolution | `05_emit_rust.dag` | namespace-resolution lane | the note's own §5: a candidate that registry-resolves but fails export proof must **refuse**, typed and counted, instead of silently emitting nothing |
 | 4 | **Int literal accepted into a branded-string field** | 4 | `extdeps_realization_compile_stage_memo.rs:95` `observed_at: 0`, `expected String, found integer` | **corpus authoring, and a hole in the compile seam** | `dag/std/types.dag` `LogicalTime = NonEmptyStr where brand("LogicalTime")` | record-literal field checking | `dag/extdeps/realization/{compile_stage,parse_table}_memo.dag` (4 authored rows) + the field-literal conformance check | none | **rustc caught what the typechecker did not.** The rows are simply wrong (`0` where a branded non-empty string is declared) and repairing them is a two-line edit — but the seam that let an `Int` literal into a `where`-refined `String` field is the real subject, and it is a §5 fail-open, not a formatting slip |
@@ -253,4 +253,60 @@ emission of invalid Rust — refusing it cannot break anything that currently wo
 nor the refusal lands here: both are emitter-shape changes, and a corpus census belongs with them.
 Recorded in `05_emit_rust.dag` beside the function so the next reader meets the residue where the
 decision is made, not only in this receipt.
+
+## 10. Settling row 1: it is two mechanisms, and neither is the checkpoint-scalar dispatch
+
+`smart-ram-730` raised three signals against board row 1 at once: `silent-raven-853` traced the
+E0277 population to a realization-dispatch mechanism (a non-generic container's field missing the
+checkpoint-scalar path), `deep-swift-570`'s actual retirement is 2 sites rather than a cluster, and
+my own PR summary line did not add up. All three are answered from the same rustc JSON, at
+`(code, primary span, label, children)` grain.
+
+### 10.1 The arithmetic was wrong in the summary, not in the table
+
+The board table said 28 and enumerated it. The PR summary sentence said "16 E0277 plus 9 E0599",
+which is wrong twice: it folded in the T7 `partial_cmp` E0599 (board row 7, not row 1) and dropped
+E0369 ×2 and E0308 ×2. Corrected above. The row was always 28 = 16 + 6 + 2 + 2 + 2.
+
+### 10.2 The E0277 population is NOT the checkpoint-scalar mechanism — measured, not argued
+
+Every one of the 16 E0277 rows names a **type parameter** (`T`, `A`, `B`, `C`), and each one's
+`children` say which obligation raised it:
+
+```
+required for `im::Vector<T>` to implement Debug / Serialize / Deserialize      (10 rows)
+required by a bound in `bind_outcome` / `resolve_probe`                        ( 6 rows)
+```
+
+Two independent negative checks on the dispatch reading, in this closure:
+
+- **Zero** of the 51 errors mention `Nat`, `Magnitude`, or `CommutativeSemiring` anywhere in the
+  diagnostic JSON (message, labels, or children).
+- `Nat` in this closure resolves to `dag/std/nat.dag` and is emitted as `pub type Nat = i64;` —
+  the checkpoint-scalar path already answers correctly here. Seven `Nat`-typed struct fields exist
+  in the emitted crate and none of them errors, because the alias itself is `i64`.
+
+So the mechanism `silent-raven-853` describes accounts for **0 of 16** in this denominator. That is
+not a contradiction of their trace — a gate that only fires for generic containers is a real defect
+wherever a v2-side declaration wins the name — it is a statement that *this* module's closure does
+not exercise it. Which yields a **falsifiable prediction**: when their fix lands, this module's
+count should move by **zero**. If it moves, the movement is composition with something else and
+belongs in the next delta receipt, not in this row.
+
+### 10.3 The real split: by where the missing bound belongs, not by error code
+
+Both error codes appear on both sides, which is exactly why a code-keyed split reads as confusing.
+The mechanism-keyed split is clean and sums:
+
+| row | mechanism | pop | evidence | repair site |
+|---|---|---:|---|---|
+| **1a** | bound missing on a generic type's **derived impls** | **14** | E0277 ×10 (`im::Vector<T>` needs `T: Clone` for Debug/Serialize/Deserialize on `FreeMonoidUniqueState<T>`, `ListTailResult<T>`) · E0369 ×2 (derived `PartialEq` comparing `Rc<Vector<T>>`) · E0599 ×2 (`CacheLookupResult<T>` derived `Clone` unsatisfiable) | the `#[derive(...)]` emission for a generic declaration — `trait_derive_emit.dag` |
+| **1b** | bound missing on a generated **fn / inherent-impl signature** whose body clones a type param | **14** | E0277 ×6 (`required by a bound in bind_outcome` / `resolve_probe`) · E0599 ×6 (`no method clone found for type parameter A`) · E0308 ×2 (`expected type parameter T, found &T` — "`T` does not implement `Clone`, so `&T` was cloned instead") | `v1_item_clone_bounded_param_names` / `emit_fn_def` in `05_emit_rust.dag` |
+
+14 + 14 = 28. This preserves the separation `smart-ram-730` asked for — different consumers,
+different repairs — but draws it where the repair actually differs. A `TraitBoundWitness` consumed
+by `emit_fn_def` addresses **1b**; **1a** is the derive emitter, and the two can land independently.
+
+`deep-swift-570`'s 2 sites being small is therefore consistent with the row being 28: the row is
+not one lane's backlog, it is the module's whole Clone-bound population across two emitters.
 
