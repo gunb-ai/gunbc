@@ -7,7 +7,7 @@ data roadmap_acceptance_history_authority_repo_path: String = "dag/gunbc/roadmap
 data roadmap_acceptance_history_prior_history_next_rung_trigger: String = "DISSOLVED: merge-base prior_history parses dag/gunbc/roadmap_acceptance_event_history.jsonl via gunbc.roadmap_acceptance_history_carrier when the carrier exists at merge-base; when absent (carrier introduction on main) the typed bootstrap projects inline authority history via gunbc.roadmap_acceptance_history_projection. A changed carrier without a valid merge-base observation refuses AcceptanceHistoryIntegrityRefusedPriorHistoryObservation — never prior_history = []. git_show_path_absent_at_ref substring-matches both git stderr shapes for path absent at ref (tree miss: does not exist in; worktree-present-but-not-in-commit: exists on disk, but not in) until extdeps.git carries a typed path-absent-at-ref disposition. Remaining dissolve-on: delete both seed bridges when a modeled revision-addressed carrier ingest lands."
 
 type RoadmapAcceptanceHistoryPriorObservation
-  = PriorHistoryObserved { prior: List<gunbc.roadmap_model.RoadmapAcceptanceEvent> }
+  = PriorHistoryObserved { prior: std.types.List<gunbc.roadmap_model.RoadmapAcceptanceEvent> }
   | PriorHistoryGitObservationRefused { detail: String }
 
 fn git_refusal_detail(operation: String, stderr: String) -> String {

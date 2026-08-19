@@ -8,7 +8,7 @@ type JsonSchemaCarrierValue
   | JsonBool { value: Bool }
   | JsonNumber { lexeme: String }
   | JsonString { value: String }
-  | JsonArray { elements: List<JsonSchemaCarrierValue> }
+  | JsonArray { elements: std.types.List<JsonSchemaCarrierValue> }
   | JsonObject { members: Map<String, JsonSchemaCarrierValue> }
 
 type JsonNumberLeadingMinusOptionalPrefixWitness {}

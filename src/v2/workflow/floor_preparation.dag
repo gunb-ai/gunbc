@@ -35,10 +35,10 @@ type PreparedFloorEntryArtifact {
 }
 
 type PreparedFloorSubjectRefusal
-  = PreparedFloorDuplicateSelectedIdentities { duplicates: List<std.realization_schedule.ScheduleWitnessEntry> }
-  | PreparedFloorDuplicateProbeIdentities { duplicates: List<std.realization_schedule.ScheduleWitnessEntry> }
-  | PreparedFloorMissingProbeIdentities { missing: List<std.realization_schedule.ScheduleWitnessEntry> }
-  | PreparedFloorUnexpectedProbeIdentities { unexpected: List<std.realization_schedule.ScheduleWitnessEntry> }
+  = PreparedFloorDuplicateSelectedIdentities { duplicates: std.types.List<std.realization_schedule.ScheduleWitnessEntry> }
+  | PreparedFloorDuplicateProbeIdentities { duplicates: std.types.List<std.realization_schedule.ScheduleWitnessEntry> }
+  | PreparedFloorMissingProbeIdentities { missing: std.types.List<std.realization_schedule.ScheduleWitnessEntry> }
+  | PreparedFloorUnexpectedProbeIdentities { unexpected: std.types.List<std.realization_schedule.ScheduleWitnessEntry> }
   | PreparedFloorProviderRefused { witness: std.realization_schedule.ScheduleWitnessEntry, lookup: std.materialization_provider.ProviderLookup }
 
 type PreparedFloorSubjectServe
@@ -284,7 +284,7 @@ fn prepared_floor_unexpected_probe_identities(
 }
 
 type PreparedFloorServeFold
-  = PreparedFloorServeContinue { entries: List<PreparedFloorEntryArtifact> }
+  = PreparedFloorServeContinue { entries: std.types.List<PreparedFloorEntryArtifact> }
   | PreparedFloorServeStopped { cause: PreparedFloorSubjectRefusal }
 
 fn prepared_floor_serve_one(

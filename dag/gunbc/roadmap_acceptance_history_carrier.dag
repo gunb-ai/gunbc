@@ -5,11 +5,11 @@ module gunbc.roadmap_acceptance_history_carrier
 data roadmap_acceptance_event_history_carrier_repo_path: String = "dag/gunbc/roadmap_acceptance_event_history.jsonl"
 
 type RoadmapAcceptanceEventHistoryParse
-  = RoadmapAcceptanceEventHistoryParsed { events: List<gunbc.roadmap_model.RoadmapAcceptanceEvent> }
+  = RoadmapAcceptanceEventHistoryParsed { events: std.types.List<gunbc.roadmap_model.RoadmapAcceptanceEvent> }
   | RoadmapAcceptanceEventHistoryParseRefused { detail: String }
 
 type RoadmapAcceptanceEventHistoryLoad
-  = RoadmapAcceptanceEventHistoryLoaded { events: List<gunbc.roadmap_model.RoadmapAcceptanceEvent> }
+  = RoadmapAcceptanceEventHistoryLoaded { events: std.types.List<gunbc.roadmap_model.RoadmapAcceptanceEvent> }
   | RoadmapAcceptanceEventHistoryLoadRefused { detail: String }
 
 fn parse_roadmap_acceptance_event_history_carrier(text: String) -> RoadmapAcceptanceEventHistoryParse {

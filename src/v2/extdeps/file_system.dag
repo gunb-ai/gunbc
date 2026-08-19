@@ -22,8 +22,8 @@ type RelativePathHead
 
 type RelativePath
   = CurrentDirectory
-  | CurrentDescendant { first: RelativePathHead, rest: List<PathComponent> }
-  | RelativeDescendant { first: RelativePathHead, rest: List<PathComponent> }
+  | CurrentDescendant { first: RelativePathHead, rest: std.types.List<PathComponent> }
+  | RelativeDescendant { first: RelativePathHead, rest: std.types.List<PathComponent> }
 
 type FilesystemPath
   = Absolute { path: AbsolutePath }

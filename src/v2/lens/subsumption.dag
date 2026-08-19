@@ -14,7 +14,7 @@ type ProducerStageId {
 
 type SubsumptionVerification
   = MechanicalReverification { test_claim: TestClaimId }
-  | ProducerStageDerivation { derivation_path: List<ProducerStageId> }
+  | ProducerStageDerivation { derivation_path: std.types.List<ProducerStageId> }
 
 type DissolutionSubsumption {
   root_fix: DiffId

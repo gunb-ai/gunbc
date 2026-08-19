@@ -189,7 +189,7 @@ type ArmResult { arm: Node, tokens: v1.compiler.parse.TokenStream, ctx: v1.compi
 type ArgResult { arg: Node, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
 type FieldResult { field: Node, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
 type FieldInitResult { field: Node, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
-type AdmitCallersResult { props: List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
+type AdmitCallersResult { props: std.types.List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
 type ResUseResult { resource_use: Node, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
 
 type ItemPrefixResult {
@@ -228,19 +228,19 @@ type ExpectedToken
   | ExpectQuestion
   | ExpectPipe
 
-type ItemsResult { items: List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
-type FieldsResult { fields: List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
-type FieldInitsResult { fields: List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
-type VariantsResult { variants: List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
-type PredsResult { predicates: List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
-type ParamsResult { params: List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
-type UsesResult { uses: List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
-type ArgsResult { args: List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
-type StmtsResult { stmts: List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
-type ExprsResult { exprs: List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
-type ArmsResult { arms: List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
-type ModsResult { modifiers: List<v1.std.core.OperationModifier>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
-type BindingsResult { field_bindings: List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
+type ItemsResult { items: std.types.List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
+type FieldsResult { fields: std.types.List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
+type FieldInitsResult { fields: std.types.List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
+type VariantsResult { variants: std.types.List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
+type PredsResult { predicates: std.types.List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
+type ParamsResult { params: std.types.List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
+type UsesResult { uses: std.types.List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
+type ArgsResult { args: std.types.List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
+type StmtsResult { stmts: std.types.List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
+type ExprsResult { exprs: std.types.List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
+type ArmsResult { arms: std.types.List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
+type ModsResult { modifiers: std.types.List<v1.std.core.OperationModifier>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
+type BindingsResult { field_bindings: std.types.List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
 
 fn parse_recovery_expr(span: SourceSpan, message: String) -> Node {
   make_expr_error_node(kind: ParseRecoveryError, message: message, span: span)
@@ -259,18 +259,18 @@ type FromKeyResult { from_key: String?, tokens: v1.compiler.parse.TokenStream, c
 
 type PostfixResult { expr: Node, changed: Bool, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
 type ParserParam { name: String, span: v1.std.core.SourceSpan }
-type LambdaCheckResult { is_lambda: Bool, params: List<v1.compiler.parse.ParserParam>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
-type IdentCollectResult { success: Bool, params: List<v1.compiler.parse.ParserParam>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
+type LambdaCheckResult { is_lambda: Bool, params: std.types.List<v1.compiler.parse.ParserParam>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
+type IdentCollectResult { success: Bool, params: std.types.List<v1.compiler.parse.ParserParam>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
 type RangeArgsResult { min_val: Int?, max_val: Int?, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
 type NamedIntResult { arg_name: String, arg_value: Int, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
-type ServiceBodyResult { config: v1.compiler.parse.ServiceConfig?, transport: Node, operations: List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
-type IOResult { inputs: List<Node>, outputs: List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
-type ResPropResult { properties: List<Node>, capabilities: List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
-type ResponsesResult { responses: List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
-type MocksResult { mocks: List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
-type ExitEntriesResult { entries: List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
-type RespEntriesResult { entries: List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
-type MockEntriesResult { entries: List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
+type ServiceBodyResult { config: v1.compiler.parse.ServiceConfig?, transport: Node, operations: std.types.List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
+type IOResult { inputs: std.types.List<Node>, outputs: std.types.List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
+type ResPropResult { properties: std.types.List<Node>, capabilities: std.types.List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
+type ResponsesResult { responses: std.types.List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
+type MocksResult { mocks: std.types.List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
+type ExitEntriesResult { entries: std.types.List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
+type RespEntriesResult { entries: std.types.List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
+type MockEntriesResult { entries: std.types.List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
 type OpBodyResult {
   inputs: List<Node>, outputs: List<Node>,
   modifier_props: List<Node>, transport: Node?,
@@ -2547,7 +2547,7 @@ fn parse_uses_entry(tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.pars
   }
 }
 
-type ResConfigResult { fields: List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
+type ResConfigResult { fields: std.types.List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
 
 fn parse_resource_config_args(tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext) -> v1.compiler.parse.ResConfigResult {
   parse_resource_config_acc(tokens: skip_newlines(tokens: tokens), ctx: ctx, acc: [])
@@ -4241,7 +4241,7 @@ fn is_constraint_bracket(tokens: v1.compiler.parse.TokenStream) -> Bool {
   }
 }
 
-type ConstraintsResult { constraints: List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
+type ConstraintsResult { constraints: std.types.List<Node>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
 
 fn parse_constraint_annotations(tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext) -> v1.compiler.parse.ConstraintsResult {
   match eat(tokens: tokens, expected: ExpectLBracket) {

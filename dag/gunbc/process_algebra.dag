@@ -130,7 +130,7 @@ type ProcessCloseState
 type ProcessNodeDeclarationState
   = ProcessModeMissing
   | ProcessLeafDeclared
-  | ProcessCompositeDeclared { open_children: List<ProcessNodeId> }
+  | ProcessCompositeDeclared { open_children: std.types.List<ProcessNodeId> }
   | ProcessBucketDeclared { drain: BucketDrainState }
 
 type ProcessNodeFacts {

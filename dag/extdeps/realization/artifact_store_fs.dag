@@ -30,7 +30,7 @@ type ArtifactFsDeleteResult
   | ArtifactFsDeleteFailed { path: String }
 
 type ArtifactFsListResult
-  = ArtifactFsListOk { entries: List<String> }
+  = ArtifactFsListOk { entries: std.types.List<String> }
   | ArtifactFsListRefused { verb: std.effect_grant.Verb, target: std.effect_grant.NamespacePosition, frame: std.materialization_ladder.Frame }
   | ArtifactFsListFailed { path: String }
 

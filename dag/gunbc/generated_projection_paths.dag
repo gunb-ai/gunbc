@@ -13,11 +13,11 @@ type GeneratedProjectionPathsRefusal = GeneratedProjectionPathCollision {
 }
 
 type GeneratedProjectionPathsOutcome
-  = GeneratedProjectionPathsAccepted { paths: List<String> }
+  = GeneratedProjectionPathsAccepted { paths: std.types.List<String> }
   | GeneratedProjectionPathsRefused { cause: GeneratedProjectionPathsRefusal }
 
 type GeneratedProjectionPathFoldOutcome
-  = GeneratedProjectionPathRowsAccepted { rows: List<GeneratedProjectionPathRow> }
+  = GeneratedProjectionPathRowsAccepted { rows: std.types.List<GeneratedProjectionPathRow> }
   | GeneratedProjectionPathRowsRefused { cause: GeneratedProjectionPathsRefusal }
 
 fn deterministic_generated_projection_paths_from_rows(

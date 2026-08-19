@@ -64,7 +64,7 @@ fn pip_boy_3000_citation(decl_name: String) -> InstrumentCitation {
 }
 
 type AxisProvenance
-  = CitedOn { first: InstrumentCitation, rest: List<InstrumentCitation> }
+  = CitedOn { first: InstrumentCitation, rest: std.types.List<InstrumentCitation> }
   | OriginatedHere { rationale: std.types.NonEmptyStr }
 
 data originated_axis_note: String = "OriginatedHere is a first-class arm, not a gap. An axis the design lane wants that no cited instrument realizes has no upstream provenance to claim, and saying so is the point of the join: it separates what we cite from what we invent. BuoyantDrift is ours — no reference product realizes a continuous buoyant drift of the display, the axis entered this repository from the operator's fishing-hook-bobber description, and the InstrumentDrift register amendment it motivates must therefore stand on its own laws rather than borrow a Pip-Boy citation."

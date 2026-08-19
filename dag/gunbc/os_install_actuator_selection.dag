@@ -14,7 +14,7 @@ type OsInstallActuatorReachFacts {
 }
 
 type OsInstallActuatorTieBreakPolicy
-  = OperatorHostPreference { order: List<product.placement_supply.HostIdentity> }
+  = OperatorHostPreference { order: std.types.List<product.placement_supply.HostIdentity> }
   | LeastLoadedHost
 
 type OsInstallActuatorSelection

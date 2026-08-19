@@ -206,11 +206,11 @@ type NetIdentifierDeclarator {
 }
 
 type VariableDeclaration
-  = RegVariable { packing: PackingShape, signedness: std.integer.Signedness, declarators: List<VariableDeclarator> }
-  | IntegerVariable { declarators: List<VariableDeclarator> }
-  | RealVariable { declarators: List<VariableDeclarator> }
-  | TimeVariable { declarators: List<VariableDeclarator> }
-  | RealTimeVariable { declarators: List<VariableDeclarator> }
+  = RegVariable { packing: PackingShape, signedness: std.integer.Signedness, declarators: std.types.List<VariableDeclarator> }
+  | IntegerVariable { declarators: std.types.List<VariableDeclarator> }
+  | RealVariable { declarators: std.types.List<VariableDeclarator> }
+  | TimeVariable { declarators: std.types.List<VariableDeclarator> }
+  | RealTimeVariable { declarators: std.types.List<VariableDeclarator> }
 
 type VariableDeclarator
   = NamedVariable {
@@ -310,7 +310,7 @@ type AlwaysBlock {
 type AlwaysBlockSensitivity
   = NoEventControl
   | ImplicitAtStar
-  | ExplicitEventList { items: List<SensitivityItem> }
+  | ExplicitEventList { items: std.types.List<SensitivityItem> }
 
 type InitialBlock {
   body_lexeme: String
@@ -351,8 +351,8 @@ type NamedParameterOverride {
 
 type ParameterOverrides
   = NoParameterOverrides
-  | OrderedParameterOverrides { actuals: List<String> }
-  | NamedParameterOverrides { overrides: List<NamedParameterOverride> }
+  | OrderedParameterOverrides { actuals: std.types.List<String> }
+  | NamedParameterOverrides { overrides: std.types.List<NamedParameterOverride> }
 
 type InstanceRangeClause
   = NoInstanceRange
@@ -529,7 +529,7 @@ type NonAnsiModuleItem
 
 type ModuleParameterPortList
   = NoModuleParameterPortList
-  | ModuleParameters { parameters: List<ParameterDeclaration> }
+  | ModuleParameters { parameters: std.types.List<ParameterDeclaration> }
 
 type ModuleKeyword
   = ModuleKw

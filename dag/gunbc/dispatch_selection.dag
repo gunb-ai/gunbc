@@ -135,7 +135,7 @@ type DispatchTemporalBounds
 
 type DispatchUsageObservations
   = DispatchUsageUnobserved { reason: std.types.NonEmptyStr }
-  | DispatchUsageObserved { observations: List<std.types.NonEmptyStr> }
+  | DispatchUsageObserved { observations: std.types.List<std.types.NonEmptyStr> }
 
 type DispatchAttemptIdentity
   = DispatchAttemptUnassigned { reason: std.types.NonEmptyStr }

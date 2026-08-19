@@ -367,10 +367,10 @@ type AtomicCost
 type CostBound
   = ConstantBound
   | AtomicBound { cost: AtomicCost }
-  | ProductBound { factors: List<AtomicCost> }
-  | SumOfProductsBound { terms: List<List<AtomicCost>> }
+  | ProductBound { factors: std.types.List<AtomicCost> }
+  | SumOfProductsBound { terms: std.types.List<List<AtomicCost>> }
 
-  | SumBound { terms: List<CostBound> }
+  | SumBound { terms: std.types.List<CostBound> }
   | ForeverBound
   | ErrorBound
 

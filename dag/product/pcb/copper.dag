@@ -377,7 +377,7 @@ type AdmittedCopper sole_constructor {
 
 type CopperAdmission
   = CopperAdmitted { admitted: AdmittedCopper }
-  | CopperRefused { causes: List<CopperRefusalCause> }
+  | CopperRefused { causes: std.types.List<CopperRefusalCause> }
 
 fn mint_admitted_copper(
   board: std.decl_ref.DeclarationRef,

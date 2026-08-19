@@ -37,7 +37,7 @@ type GlobalBareCandidate {
 
 type GlobalBareLookupState
   = GlobalBareUniqueBinding { module_path: String, binding: v1.compiler.infer_env.TypeBinding }
-  | GlobalBareAmbiguousBinding { candidates: List<v1.compiler.infer_env.GlobalBareCandidate> }
+  | GlobalBareAmbiguousBinding { candidates: std.types.List<v1.compiler.infer_env.GlobalBareCandidate> }
 
 type ImportBinding {
   name: String

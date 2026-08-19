@@ -26,7 +26,7 @@ type ResolvePartitionOutcome
   | ResolvePartitionRefused { cause: ResolvePartitionRefusalCause }
 
 type Stage0PartitionReceiptOutcome
-  = Stage0PartitionReceiptOk { units: List<v2.std.compilers.compilation_unit.CompilationUnit> }
+  = Stage0PartitionReceiptOk { units: std.types.List<v2.std.compilers.compilation_unit.CompilationUnit> }
   | Stage0PartitionReceiptResolveRefused { cause: ResolvePartitionRefusalCause }
   | Stage0PartitionReceiptFoldRefused { cause: v2.std.compilers.compilation_unit.PartitionFoldRefusalCause }
 

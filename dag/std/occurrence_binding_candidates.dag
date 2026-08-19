@@ -861,7 +861,7 @@ fn direct_module_dependencies_from_providers(
 }
 
 type BoundReferencePopulation
-  = AllReferencesBound { providers: List<BoundReferenceProvider> }
+  = AllReferencesBound { providers: std.types.List<BoundReferenceProvider> }
   | ReferencePopulationRefused {
       first_failure: ReferenceBindingProjection
       more_failures: List<ReferenceBindingProjection>
@@ -1050,7 +1050,7 @@ fn bound_reference_population_from_projections(
 }
 
 type DirectModuleDependencyBuild
-  = DirectModuleDependencyListReady { edges: List<DirectModuleDependency> }
+  = DirectModuleDependencyListReady { edges: std.types.List<DirectModuleDependency> }
   | DirectModuleDependencyPopulationRefused {
       population: BoundReferencePopulation
     }
@@ -1228,7 +1228,7 @@ type CrossFileBindingProvenanceProjection
   | CrossFileBindingProvenanceProjectionFilePathMissing { module_path: std.types.NonEmptyStr }
 
 type CrossFileBindingProvenancePopulation
-  = AllCrossFileBindingsBound { provenances: List<CrossFileBindingProvenance> }
+  = AllCrossFileBindingsBound { provenances: std.types.List<CrossFileBindingProvenance> }
   | CrossFileBindingPopulationBindingRefused { population: BoundReferencePopulation }
   | CrossFileBindingPopulationRefused {
       first_failure: CrossFileBindingProvenanceProjection
@@ -1400,7 +1400,7 @@ fn direct_file_dependencies_from_provenances(
 }
 
 type DirectFileDependencyBuild
-  = DirectFileDependencyListReady { dependencies: List<DirectFileDependency> }
+  = DirectFileDependencyListReady { dependencies: std.types.List<DirectFileDependency> }
   | DirectFileDependencyPopulationRefused {
       population: CrossFileBindingProvenancePopulation
     }
@@ -1451,7 +1451,7 @@ fn reference_derived_provider_files_for_consumer(
 }
 
 type ReferenceDerivedProviderFileProjection
-  = ReferenceDerivedProviderFileProjectionReady { provider_files: List<std.types.FilePath> }
+  = ReferenceDerivedProviderFileProjectionReady { provider_files: std.types.List<std.types.FilePath> }
   | ReferenceDerivedProviderFileProjectionBindingRefused { population: BoundReferencePopulation }
   | ReferenceDerivedProviderFileProjectionFileRefused {
       first_failure: CrossFileBindingProvenanceProjection
@@ -2160,7 +2160,7 @@ fn reference_derived_dependency_projection_for_assembled_closure(
 }
 
 type ReferenceDerivedProviderFilesForAssembledClosure
-  = ReferenceDerivedProviderFilesForAssembledClosureReady { provider_files: List<std.types.FilePath> }
+  = ReferenceDerivedProviderFilesForAssembledClosureReady { provider_files: std.types.List<std.types.FilePath> }
   | ReferenceDerivedProviderFilesForAssembledClosureRefused {
       refusal: AssembledClosureDependencyProjectionRefusal,
     }

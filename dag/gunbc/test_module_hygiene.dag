@@ -63,7 +63,7 @@ fn pair_key(entry: String, function: String) -> String {
   concat(entry, "\0", function)
 }
 
-type ExpandExplicitPairsOutcome = Expanded { pairs: List<ExplicitEntryPair> } | Refused { reason: String }
+type ExpandExplicitPairsOutcome = Expanded { pairs: std.types.List<ExplicitEntryPair> } | Refused { reason: String }
 
 fn file_grain_empty_refusal(entry: String) -> String {
   concat("file-grain enumerate: entry ", concat(entry, " has no test fn / test data declarations"))

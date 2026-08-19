@@ -32,8 +32,8 @@ type UsersetRewrite
   = This
   | ComputedUserset { relation: std.types.NonEmptyStr }
   | TupleToUserset { tupleset: std.types.NonEmptyStr, computed: std.types.NonEmptyStr }
-  | Union { children: List<UsersetRewrite> }
-  | Intersection { children: List<UsersetRewrite> }
+  | Union { children: std.types.List<UsersetRewrite> }
+  | Intersection { children: std.types.List<UsersetRewrite> }
   | Exclusion { base: UsersetRewrite, subtract: UsersetRewrite }
 
 type RelationConfig {

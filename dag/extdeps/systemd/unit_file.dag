@@ -168,7 +168,7 @@ fn systemd_install_directive_line(directive: SystemdInstallDirective) -> String 
 // about what that meant.
 type SystemdInstallSection
   = NotInstallable
-  | Installable { directives: List<SystemdInstallDirective> }
+  | Installable { directives: std.types.List<SystemdInstallDirective> }
 
 type SystemdUnitFile
   = ServiceUnitFile {

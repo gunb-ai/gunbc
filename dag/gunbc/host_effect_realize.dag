@@ -24,7 +24,7 @@ type ResolvedHostEffectCell =
       intent: extdeps.llm.codex_app_server_stdio_session.CodexAppServerStdioSessionIntent,
       lease_key: std.types.NonEmptyStr,
     }
-  | ReceiptEmitOnHost { node: gunbc.fleet_intent.ComputeHost, lines: List<String> }
+  | ReceiptEmitOnHost { node: gunbc.fleet_intent.ComputeHost, lines: std.types.List<String> }
   | BootOnceReadBackSleepOnHost { node: gunbc.fleet_intent.ComputeHost }
   | SeededInstallMediaToolchainOnHost { node: gunbc.fleet_intent.ComputeHost }
   | BmcwebSessionLoginOnHost { node: gunbc.fleet_intent.ComputeHost }

@@ -378,7 +378,7 @@ fn prose_row_decl_name(line: String) -> Optional<String> {
 // old name leaves and a new one arrives, so the row reads as introduced. That is the wanted answer —
 // a prose row being renamed is a prose row being touched by someone who could migrate it instead.
 type ProseRowDiffObservation
-  = ProseRowsObserved { added: List<ProseRowRef>, removed: List<String> }
+  = ProseRowsObserved { added: std.types.List<ProseRowRef>, removed: std.types.List<String> }
   | ProseRowDiffUnreadable { reason: String }
 
 type ProseRowFoldState {

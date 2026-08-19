@@ -188,8 +188,8 @@ fn git_diff_name_status_advance(state: GitDiffNameStatusParseState, token: Strin
 }
 
 type GitDiffNameStatusParseOutcome
-  = GitDiffNameStatusComplete { entries: List<GitDiffStatusEntry> }
-  | GitDiffNameStatusTruncated { pending: GitDiffNameStatusParsePending, entries: List<GitDiffStatusEntry> }
+  = GitDiffNameStatusComplete { entries: std.types.List<GitDiffStatusEntry> }
+  | GitDiffNameStatusTruncated { pending: GitDiffNameStatusParsePending, entries: std.types.List<GitDiffStatusEntry> }
 
 fn git_diff_name_status_parse_state(raw: String) -> GitDiffNameStatusParseState {
   let tokens = split(s: raw, delimiter: git_diff_name_status_field_separator)
@@ -287,7 +287,7 @@ data remote_url_takes_its_repository_as_a_parameter_note: String = "BOTH THE REP
 data ls_remote_carries_no_exit_block_note: String = "WHY LsRemoteHeads DECLARES NO `exit` BLOCK WHILE EVERY SIBLING OPERATION DOES, which is the first thing a reader will notice. The `exit` arms are INERT AT RUN TIME - established by reading the seed, not assumed. The shell dispatch in v1_interpreter.rs maps declared output sources (`stdout`, `stderr`, `exit_success`, `exit_code`, `stdout_lines`) onto the process result and returns a record; it never consults the operation's exit arms and never raises on a nonzero exit. The only consumer of exit_props anywhere outside the parser is v1_compiler_emit_rust.rs, which round-trips them back to source so the self-host fixed point holds. So an exit arm is a declaration that is parsed, re-emitted, and never realized.\\n\\nThat makes this operation's OUTPUTS the realized authority for its outcome: a caller learns whether the read succeeded from `exit_code`/`stderr`, which are values it can match on. (It carried a `success` Bool too until this operation narrowed - see ls_remote_reports_termination_not_success_note directly above, which is the authority for why. Left unfixed, this sentence would have been a stale citation inside the very PR that made it false.) Adding an exit block beside them would be a second representation of the same fact where only one of the two executes - and since this operation is new, authoring one knowing it is inert would be minting a fresh declared-but-unrealized instance rather than inheriting an existing one. The corpus-wide inertness of exit blocks is a real finding and a separate correction; it is not fixed by making one operation diverge from a hundred siblings, and it is not made worse by declining to add the hundred-and-first."
 
 type AdvertisedRefScan
-  = AdvertisedRefsRead { refs: List<AdvertisedRef> }
+  = AdvertisedRefsRead { refs: std.types.List<AdvertisedRef> }
   | AdvertisedRefLineUnparsed { line: String, index: Int }
 
 data advertised_ref_heads_prefix: String = "refs/heads/"

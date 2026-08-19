@@ -449,8 +449,8 @@ fn spark_wif_issuance_standing() -> gunbc.spark_bootstrap_provision.WifCredentia
 // Overbreadth is likewise UNOBSERVED rather than absent: nothing enumerated the policy, so no
 // probe could have found a binding it did not think to ask about.
 type EffectiveAccessStanding
-  = EffectiveAccessExact { observed_cells: List<gunbc.spark_bootstrap_provision.AccessGrantCell> }
-  | EffectiveAccessOverbroad { extra_cells: List<gunbc.spark_bootstrap_provision.AccessGrantCell> }
+  = EffectiveAccessExact { observed_cells: std.types.List<gunbc.spark_bootstrap_provision.AccessGrantCell> }
+  | EffectiveAccessOverbroad { extra_cells: std.types.List<gunbc.spark_bootstrap_provision.AccessGrantCell> }
   | EffectiveAccessPartiallyObserved {
       positively_observed: List<gunbc.spark_bootstrap_provision.AccessGrantCell>
       requested_but_not_returned: List<gunbc.spark_bootstrap_provision.AccessGrantCell>
@@ -806,7 +806,7 @@ type SelectedSparkEffect {
 // demand. Those are different states: "this effect needs nothing" would admit the effect with no
 // grant at all, which is the fail-open an empty list quietly performs.
 type DemandProjection
-  = DemandDerived { cells: List<gunbc.spark_bootstrap_provision.ExternalAccessDemand> }
+  = DemandDerived { cells: std.types.List<gunbc.spark_bootstrap_provision.ExternalAccessDemand> }
   | DemandIncomplete { step: std.types.NonEmptyStr, operation: v2.std.operation_argv.OperationRef, cause: std.types.NonEmptyStr }
 
 fn spark_demand_for_selected(
@@ -911,7 +911,7 @@ type SecretConsumer {
 }
 
 type SecretDemandStanding
-  = SecretDemandActive { secret: std.types.NonEmptyStr, consumers: List<gunbc.spark_bootstrap_provision.SecretConsumer> }
+  = SecretDemandActive { secret: std.types.NonEmptyStr, consumers: std.types.List<gunbc.spark_bootstrap_provision.SecretConsumer> }
   | SecretDemandRetainedForRecovery { secret: std.types.NonEmptyStr, recovery_consumer: std.types.NonEmptyStr }
   | SecretDemandRetiredAfterOobe { secret: std.types.NonEmptyStr, reason: std.types.NonEmptyStr }
   | SecretDemandUnobserved { secret: std.types.NonEmptyStr, cause: std.types.NonEmptyStr }

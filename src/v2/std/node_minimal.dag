@@ -131,10 +131,10 @@ type TransportSlot
   | TransportPresent { transport: v2.std.node.Edge }
 
 type SurfaceDeclPayload
-  = SdpChildrenOnly { children: List<v2.std.node.Edge> }
-  | SdpWithParams { params: List<v2.std.node.Edge>, children: List<v2.std.node.Edge> }
-  | SdpWithBody { body: v2.std.node.Edge, children: List<v2.std.node.Edge> }
-  | SdpWithUses { uses: List<v2.std.node.Edge>, children: List<v2.std.node.Edge> }
+  = SdpChildrenOnly { children: std.types.List<v2.std.node.Edge> }
+  | SdpWithParams { params: std.types.List<v2.std.node.Edge>, children: std.types.List<v2.std.node.Edge> }
+  | SdpWithBody { body: v2.std.node.Edge, children: std.types.List<v2.std.node.Edge> }
+  | SdpWithUses { uses: std.types.List<v2.std.node.Edge>, children: std.types.List<v2.std.node.Edge> }
   | SdpFnItem {
       params: List<v2.std.node.Edge>
       body: v2.std.node.Edge

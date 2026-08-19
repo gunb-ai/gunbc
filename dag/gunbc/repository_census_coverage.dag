@@ -260,8 +260,8 @@ data repository_census_duplicate_note: String = "BLOCKER 2 — DUPLICATES ARE RE
 
 type CoverageDuplicateResolution
   = NoDuplicateSubjects
-  | DenominatorDuplicated { denominator_duplicated: List<gunbc.repository_census_observation.CensusSubjectKey> }
-  | ObservationDuplicated { observation_duplicated: List<gunbc.repository_census_observation.CensusSubjectKey> }
+  | DenominatorDuplicated { denominator_duplicated: std.types.List<gunbc.repository_census_observation.CensusSubjectKey> }
+  | ObservationDuplicated { observation_duplicated: std.types.List<gunbc.repository_census_observation.CensusSubjectKey> }
   | BothDuplicated {
       denominator_duplicated: List<gunbc.repository_census_observation.CensusSubjectKey>
       observation_duplicated: List<gunbc.repository_census_observation.CensusSubjectKey>
@@ -312,8 +312,8 @@ type CensusCoverageReconciliation
   = CoverageReconciled { population_identity: std.content_hash.Fnv1a64Structural, revision_identity: std.content_hash.Fnv1a64Structural }
   | CoverageSubjectsUnresolved { resolution: CoverageSubjectResolution }
   | CoverageDuplicateSubjects { duplicates: CoverageDuplicateResolution }
-  | CoverageIncomplete { missing: List<gunbc.repository_census_observation.CensusSubjectKey> }
-  | CoverageUnexpected { unexpected: List<gunbc.repository_census_observation.CensusSubjectKey> }
+  | CoverageIncomplete { missing: std.types.List<gunbc.repository_census_observation.CensusSubjectKey> }
+  | CoverageUnexpected { unexpected: std.types.List<gunbc.repository_census_observation.CensusSubjectKey> }
   | CoverageDiverged {
       missing: List<gunbc.repository_census_observation.CensusSubjectKey>
       unexpected: List<gunbc.repository_census_observation.CensusSubjectKey>

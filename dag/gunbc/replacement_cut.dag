@@ -22,7 +22,7 @@ type ConsumerDisposition
 type BoundaryConsumer { consumer: std.types.NonEmptyStr, disposition: ConsumerDisposition }
 
 type BoundaryCensus
-  = ConsumersEnumerated { consumers: List<BoundaryConsumer> }
+  = ConsumersEnumerated { consumers: std.types.List<BoundaryConsumer> }
   | BoundaryDeclaredEmpty { basis: std.types.NonEmptyStr }
 
 type HigherBoundaryAnswer
@@ -43,7 +43,7 @@ type ExternalXRole
   | HistoricalMeasurementSource
 
 type ExternalXAnswer
-  = ExternalXRoles { roles: List<ExternalXRole> }
+  = ExternalXRoles { roles: std.types.List<ExternalXRole> }
   | NoExternalOracleRequired { justification: std.types.NonEmptyStr }
 
 type ReplacementCut {
@@ -86,7 +86,7 @@ type AdmittedReplacementCutPlan sole_constructor {
 
 type PlanAdmission
   = PlanAdmitted { admitted: AdmittedReplacementCutPlan }
-  | PlanRefused { causes: List<CutRefusalCause> }
+  | PlanRefused { causes: std.types.List<CutRefusalCause> }
 
 type CountStanding = CountZero | CountPositive
 
@@ -157,7 +157,7 @@ fn evidence_key(e: EvidenceDisposition) -> std.types.NonEmptyStr {
   }
 }
 
-type ConsumerDupState { seen: List<std.types.NonEmptyStr>, causes: List<CutRefusalCause> }
+type ConsumerDupState { seen: std.types.List<std.types.NonEmptyStr>, causes: std.types.List<CutRefusalCause> }
 
 fn consumer_duplicate_causes(
   acc: List<CutRefusalCause>,

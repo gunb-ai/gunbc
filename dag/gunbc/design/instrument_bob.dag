@@ -278,7 +278,7 @@ fn bob_sequence_refusal_key(r: BobSequenceRefusal) -> String {
 data budget_allowed_not_remaining_note: String = "THE FIELD SAYS WHAT IT MEANS. An earlier revision reported the REMAINING budget at the moment of exhaustion — which is always zero — under a name a reader takes for the budget the sequence was given, and the control pinned that zero, making the inaccurate receipt load-bearing. A number rendered under a name it does not mean is worse than an absent number, because it reads as information. The allowed budget is threaded down so the refusal can name the bound it actually failed against."
 
 type BobSequence
-  = BobSequenceSettled { frames: List<BobFrame> }
+  = BobSequenceSettled { frames: std.types.List<BobFrame> }
   | BobSequenceRefused { cause: BobSequenceRefusal, frames_emitted: Int, budget_allowed: Int }
 
 fn bob_frame_of(s: BobState) -> BobFrame {

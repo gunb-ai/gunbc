@@ -160,7 +160,7 @@ type BmcFanRequestedAction
   | BmcFanRollbackPrevious
 
 type ParsedCurveSteps
-  = CurveStepsParsed { steps: List<extdeps.bmc.types.BmcFanCurveStep> }
+  = CurveStepsParsed { steps: std.types.List<extdeps.bmc.types.BmcFanCurveStep> }
   | CurveStepsParseRefused { reason: String }
 
 type ParsedFanCurve
@@ -561,7 +561,7 @@ fn bmc_fan_observe_temperatures(
 }
 
 type BmcFanTachHealthListResult
-  = BmcFanTachHealthListObserved { values: List<extdeps.bmc.openbmc_fan_control.OpenBmcTachHealth> }
+  = BmcFanTachHealthListObserved { values: std.types.List<extdeps.bmc.openbmc_fan_control.OpenBmcTachHealth> }
   | BmcFanTachHealthListRefused { reason: String }
 
 fn bmc_fan_observe_tach_health_rec(

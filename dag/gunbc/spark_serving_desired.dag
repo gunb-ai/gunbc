@@ -77,7 +77,7 @@ fn spark_serving_desired_release_admission() -> SparkServingDesiredAdmission {
 data spark_serving_desired_admission: SparkServingDesiredAdmission = spark_serving_desired_release_admission()
 
 type SparkServingFleetDesired
-  = SparkServingFleetDesiredReady { occurrences: List<gunbc.spark_serving_release.SparkServingOccurrence> }
+  = SparkServingFleetDesiredReady { occurrences: std.types.List<gunbc.spark_serving_release.SparkServingOccurrence> }
   | SparkServingFleetDesiredRefused { cause: std.types.NonEmptyStr }
 
 fn spark_serving_occurrence(host: product.placement_supply.HostIdentity, serving_release: gunbc.spark_serving_release.SparkServingRelease) -> gunbc.spark_serving_release.SparkServingOccurrence {

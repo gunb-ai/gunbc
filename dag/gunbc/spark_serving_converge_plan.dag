@@ -71,7 +71,7 @@ fn fleet_converge_spark_serving_typed_action(
 // always translates, so nothing ever exercised the arm. That is what made it worth closing before
 // the plan widens rather than after -- a four-member plan is exactly the input that reaches it.
 type SparkServingTypedActionProjection
-  = SparkServingTypedActionsProjected { rows: List<gunbc.fleet_converge_plan.FleetConvergeSparkServingTypedAction> }
+  = SparkServingTypedActionsProjected { rows: std.types.List<gunbc.fleet_converge_plan.FleetConvergeSparkServingTypedAction> }
   | SparkServingTypedActionsRefused { cause: String }
 
 fn fleet_converge_spark_serving_typed_actions(

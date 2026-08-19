@@ -153,8 +153,8 @@ type Domination {
 }
 
 type ParetoStanding
-  = ProvisionallyNonDominated { sensitivities: List<std.types.NonEmptyStr> }
-  | DominatedBy { dominators: List<Domination> }
+  = ProvisionallyNonDominated { sensitivities: std.types.List<std.types.NonEmptyStr> }
+  | DominatedBy { dominators: std.types.List<Domination> }
   | IncomparablePendingEvidence { missing: std.types.NonEmptyStr }
   | SelectionRefused { cause: std.types.NonEmptyStr }
 
@@ -164,7 +164,7 @@ type ReadingLookup
   | ReadingDuplicated { duplicated_axis: std.decl_ref.DeclarationRef }
 
 type PairStanding
-  = PairDominates { winning_axes: List<std.decl_ref.DeclarationRef> }
+  = PairDominates { winning_axes: std.types.List<std.decl_ref.DeclarationRef> }
   | PairNoDominance
   | PairRefused { cause: std.types.NonEmptyStr }
 

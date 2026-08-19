@@ -5,7 +5,7 @@ type Doc
   = DocEmpty
   | DocText { text: String }
   | DocLine
-  | DocConcat { parts: List<Doc> }
+  | DocConcat { parts: std.types.List<Doc> }
   | DocNest { levels: Int, body: Doc }
 
 type LayoutProtocol {

@@ -57,7 +57,7 @@ fn spark_capability_label(capability: SparkServingCapability) -> String {
 type CapabilityObservationOutcome
   = CapabilityPresent { evidence: std.types.NonEmptyStr }
   | CapabilityAbsent { evidence: std.types.NonEmptyStr }
-  | CapabilityObservationRefused { first: std.types.NonEmptyStr, more: List<std.types.NonEmptyStr> }
+  | CapabilityObservationRefused { first: std.types.NonEmptyStr, more: std.types.List<std.types.NonEmptyStr> }
   | CapabilityUnobserved
 
 // THE OBSERVATION, carrying how it was obtained rather than only what it found. probe_effect is the

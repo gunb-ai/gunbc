@@ -109,15 +109,15 @@ type Stage0PackageCrateDirLookup
   | Stage0PackageCrateDirRefused { cause: Stage0PackageCrateDirRefusalCause }
 
 type Stage0ReexportPathDepsOutcome
-  = Stage0ReexportPathDepsOk { deps: List<extdeps.cargo.CargoDependency> }
+  = Stage0ReexportPathDepsOk { deps: std.types.List<extdeps.cargo.CargoDependency> }
   | Stage0ReexportPathDepsRefused { cause: Stage0PackageCrateDirRefusalCause }
 
 type Stage0EmitShellReexportsOutcome
-  = Stage0EmitShellReexportsOk { lines: List<String> }
+  = Stage0EmitShellReexportsOk { lines: std.types.List<String> }
   | Stage0EmitShellReexportsRefused { cause: Stage0ModuleOwnerRefusalCause }
 
 type Stage0PartitionRowDepsOutcome
-  = Stage0PartitionRowDepsOk { deps: List<extdeps.cargo.CargoDependency> }
+  = Stage0PartitionRowDepsOk { deps: std.types.List<extdeps.cargo.CargoDependency> }
   | Stage0PartitionRowDepsRefused { cause: Stage0PackageCrateDirRefusalCause }
 
 type Stage0PartitionRowSpecOutcome
@@ -137,7 +137,7 @@ type Stage0CrateBoundaryEmitRefusalCause
   | Stage0CrateBoundaryEmitPackageCrateDirMissing { package_name: String }
 
 type Stage0CrateBoundaryEmitOutcome
-  = Stage0CrateBoundaryEmitOk { files: List<v1.std.core.TextFile> }
+  = Stage0CrateBoundaryEmitOk { files: std.types.List<v1.std.core.TextFile> }
   | Stage0CrateBoundaryEmitRefused { cause: Stage0CrateBoundaryEmitRefusalCause }
 
 fn stage0_lookup_module_owner_package_name(module_basename: String) -> Stage0ModuleOwnerLookup {

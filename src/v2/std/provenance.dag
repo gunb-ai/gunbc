@@ -3,8 +3,8 @@ module v2.std.provenance
 
 type OriginEvent
   = FromSource { locus: v2.std.diagnostic.Locus }
-  | DerivedBy { producer: v2.std.node.Symbol, from: List<std.occurrence_identity.OccurrenceId> }
-  | GeneratedBy { generator: v2.std.artifact.GeneratorId, from: List<std.occurrence_identity.OccurrenceId> }
+  | DerivedBy { producer: v2.std.node.Symbol, from: std.types.List<std.occurrence_identity.OccurrenceId> }
+  | GeneratedBy { generator: v2.std.artifact.GeneratorId, from: std.types.List<std.occurrence_identity.OccurrenceId> }
 
 fn origin_event_from_source(locus: v2.std.diagnostic.Locus) -> OriginEvent {
   FromSource { locus: locus }

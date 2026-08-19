@@ -129,7 +129,7 @@ data affected_set_ledger_law: String = "door_ledger_over_affected_set is the aff
 
 type AffectedLedgerResult
   = AffectedDiffRefused { reason: String }
-  | AffectedLedgered { rows: List<DoorLedgerRow> }
+  | AffectedLedgered { rows: std.types.List<DoorLedgerRow> }
 
 fn dag_module_paths(paths: List<String>) -> List<String> {
   filter(xs: paths, predicate: fn(p) { ends_with(s: p, suffix: ".dag") })

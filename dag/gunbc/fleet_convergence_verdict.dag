@@ -111,7 +111,7 @@ fn host_standing_is_converged(s: HostConvergenceStanding) -> Bool {
 
 type FleetConvergenceVerdict
   = FleetConverged { host_count: Int }
-  | FleetNotConverged { standings: List<HostConvergenceStanding> }
+  | FleetNotConverged { standings: std.types.List<HostConvergenceStanding> }
 
 // The atomic fold: converged only when EVERY enrolled host converges at BOTH grains.
 // The not-converged arm carries every host's full standing rather than a count, so the

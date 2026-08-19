@@ -96,7 +96,7 @@ fn collect_import_decl_nodes(n: v2.std.node.Node, acc: FreeMonoid<v2.std.node.No
 
 type ImportRowsState
   = ImportRowsFailed { reason: v2.std.node.Symbol }
-  | ImportRowsOk { rows: List<Import> }
+  | ImportRowsOk { rows: std.types.List<Import> }
 
 fn import_rows_from_parsed_module(root: v2.std.node.Node) -> ImportRowsState {
   let gathered = fold_list(

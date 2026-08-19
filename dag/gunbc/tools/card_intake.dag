@@ -43,7 +43,7 @@ type RiskReason
 
 type IntakeDisposition
   = ReadyToList
-  | NeedsReview { reasons: List<RiskReason> }
+  | NeedsReview { reasons: std.types.List<RiskReason> }
 
 fn classify_catalog_match(total_items: Int, first_product_id: Int) -> CatalogMatch {
   if total_items == 0 { NoMatch }

@@ -298,8 +298,8 @@ type DgxSparkUnitDisposition
   | DgxSparkUnitPending { identity: product.placement_supply.HostIdentity, reason: DgxSparkAdmissionRefusalReason }
 
 type DgxSparkProcurementConvergence
-  = DgxSparkProcurementConverged { deployments: List<DgxSparkDeployment> }
-  | DgxSparkProcurementPending { pending: List<DgxSparkUnitDisposition> }
+  = DgxSparkProcurementConverged { deployments: std.types.List<DgxSparkDeployment> }
+  | DgxSparkProcurementPending { pending: std.types.List<DgxSparkUnitDisposition> }
 
 // Two arms, not three: a unit is deployed or it is pending with a typed, located cause. There is deliberately no `Unknown` arm -- every reason a unit is not deployed is one of the closed DgxSparkAdmissionRefusalReason causes, so "we could not tell" cannot masquerade as a verdict (§5 state-space conflation). This is a diff-shaped read but NOT an instance of the gunbc.membership_reconcile spine: that spine reconciles a desired member set against an OBSERVED member set of the same type with teardown as the Removed arm, and here the two sides are different types (a reserved identity vs an admitted deployment) and there is no teardown -- you cannot retract a machine that was never present. Instantiating the spine would mean inventing an M that fits neither side, so the genericity would buy nothing and cost a fake member type.
 fn dgx_spark_unit_disposition(

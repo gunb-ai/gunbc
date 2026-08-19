@@ -18,8 +18,8 @@ type JsonValue
   | JsonBool { value: Bool }
   | JsonNumber { lexeme: extdeps.languages.json.grammar.JsonNumberLexeme }
   | JsonString { value: String }
-  | JsonArray { elements: List<JsonValue> }
-  | JsonObject { members: List<JsonKeyValue> }
+  | JsonArray { elements: std.types.List<JsonValue> }
+  | JsonObject { members: std.types.List<JsonKeyValue> }
 
 fn json_kv(key: String, value: JsonValue) -> JsonKeyValue {
   JsonKeyValue { key: key, value: value }

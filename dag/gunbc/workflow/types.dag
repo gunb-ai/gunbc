@@ -270,7 +270,7 @@ type CredentialIntent
 type CredentialResolution
   = EnvVar { name: std.types.NonEmptyStr }
   | SecretManagerRef { secret_id: std.types.NonEmptyStr, project_id: extdeps.cloud.gcp.gcp.GcpProjectId }
-  | WorkloadIdentity { service_account: extdeps.cloud.gcp.gcp.ServiceAccountEmail?, scopes: List<String> }
+  | WorkloadIdentity { service_account: extdeps.cloud.gcp.gcp.ServiceAccountEmail?, scopes: std.types.List<String> }
 
 type CredentialBinding {
   intent: CredentialIntent

@@ -426,7 +426,7 @@ type MercurialObsolescenceMarker {
 
 type MercurialEvolutionMetadata
   = MercurialEvolutionNotEnabled
-  | MercurialEvolutionMarkers { markers: List<MercurialObsolescenceMarker> }
+  | MercurialEvolutionMarkers { markers: std.types.List<MercurialObsolescenceMarker> }
 
 type MercurialRepositoryCompleteness
   = MercurialContentsComplete
@@ -682,7 +682,7 @@ type MercurialChangesetReference {
 }
 
 type MercurialManifestDecodeOutcome
-  = MercurialManifestsDecoded { manifests: List<MercurialManifest> }
+  = MercurialManifestsDecoded { manifests: std.types.List<MercurialManifest> }
   | MercurialManifestDecodeRefused { cause: MercurialProjectionRefusal }
 
 type MercurialManifestFlagDecodeOutcome
@@ -706,7 +706,7 @@ fn mercurial_decode_manifest_flag(
 }
 
 type MercurialManifestEntryDecodeOutcome
-  = MercurialManifestEntriesDecoded { entries: List<MercurialManifestEntry> }
+  = MercurialManifestEntriesDecoded { entries: std.types.List<MercurialManifestEntry> }
   | MercurialManifestEntriesRefused { cause: MercurialProjectionRefusal }
 
 fn mercurial_decode_manifest_entry_step(
@@ -780,7 +780,7 @@ fn mercurial_decode_manifests(
 }
 
 type MercurialPhaseDecodeOutcome
-  = MercurialPhasesDecoded { phases: List<MercurialPhaseEntry> }
+  = MercurialPhasesDecoded { phases: std.types.List<MercurialPhaseEntry> }
   | MercurialPhaseDecodeRefused { cause: MercurialProjectionRefusal }
 
 type MercurialPhaseTokenDecodeOutcome

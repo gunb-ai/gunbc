@@ -3,7 +3,7 @@ module gunbc.pr_digests
 
 type MergeReadinessVerdict
   = Ready
-  | NotReady { first_reason: String, more_reasons: List<String> }
+  | NotReady { first_reason: String, more_reasons: std.types.List<String> }
 
 type AttachedUrl {
   url: std.types.NonEmptyStr

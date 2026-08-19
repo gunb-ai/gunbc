@@ -21,7 +21,7 @@ data keyless_fallback_cause_note: String = "std.effects.KeylessFallback de-confl
 type KeySource
   = PathParam { param: String }
   | InputField { field: String }
-  | CompositeKey { fields: List<String> }
+  | CompositeKey { fields: std.types.List<String> }
 
 type IdempotencyEvidence
   = LatticeEffect { shape: EffectShape<KeySource> }

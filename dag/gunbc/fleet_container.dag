@@ -2,7 +2,7 @@ module gunbc.fleet_container
 
 
 type CpuRequirement { min_threads: std.measure.HardwareThreadCount, architecture: extdeps.toolchain.types.Architecture? }
-type GpuRequirement { min_vram: std.measure.ByteSize, runtimes: List<extdeps.gpu.types.GpuRuntime> }
+type GpuRequirement { min_vram: std.measure.ByteSize, runtimes: std.types.List<extdeps.gpu.types.GpuRuntime> }
 type MemoryRequirement { min_bytes: std.measure.ByteSize }
 type StorageRequirement { min_bytes: std.measure.ByteSize, persistence: extdeps.storage.types.PersistenceKind }
 type NetworkRequirement { egress: product.network_topology.NetworkEgressClass?, ambient_allowed: Bool }

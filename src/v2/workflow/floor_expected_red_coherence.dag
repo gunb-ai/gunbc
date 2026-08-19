@@ -2,12 +2,12 @@ module v2.workflow.floor_expected_red_coherence
 
 
 // AUTHORED-VS-EVALUATED COHERENCE for a chunk/aggregator/roster roster shape such as
-// floor_expected_red.dag's. #8437 severed one chunk out of the v2.std.algebra.Cons chain that links
+// floor_expected_red.dag's. #8437 severed one chunk out of the std.algebra.Cons chain that links
 // chunk_NN() calls into the aggregator: the chunk still authored its identities, the
 // aggregator stayed well-formed, and the roster stayed non-empty, so nothing observed
 // that identities had silently stopped being evaluated. This module reads the SAME
 // declaration facts the corpus already exposes and asserts two things a hand-authored
-// v2.std.algebra.Cons chain cannot assert of itself: every identity a chunk body authors is present
+// std.algebra.Cons chain cannot assert of itself: every identity a chunk body authors is present
 // in the evaluated roster, and every declared chunk function is actually called from
 // the aggregator body — both at identity/lexeme grain, never by count.
 
@@ -70,11 +70,11 @@ fn chunk_authored_identities_against_roster(
   roster: std.types.List<String>
 ) -> std.types.List<ChunkCoherenceRefusal> {
   let authored = v2.std.decl_facts_skeleton.node_skeleton_authored_non_construction_atom_lexemes(node: node)
-  v2.std.algebra.list_reverse(xs: fold(authored, init: v2.std.algebra.Empty, f: fn(acc, identity) {
+  v2.std.algebra.list_reverse(xs: fold(authored, init: std.algebra.Empty, f: fn(acc, identity) {
     if v2.std.algebra.contains(xs: roster, item: identity, eq: fn(a, b) { a == b }) {
       acc
     } else {
-      v2.std.algebra.Cons {
+      std.algebra.Cons {
         head: AuthoredIdentityMissingFromRoster {
           identity: identity,
           source_chunk_qualified_name: chunk.qualified_name,
@@ -93,7 +93,7 @@ fn all_checked_chunk_authored_identities(
   facts: std.types.List<v2.std.decl_index.DeclFact>,
   chunks: std.types.List<ChunkDeclRef>
 ) -> std.types.List<String> {
-  v2.std.algebra.list_reverse(xs: fold(chunks, init: v2.std.algebra.Empty, f: fn(acc, chunk) {
+  v2.std.algebra.list_reverse(xs: fold(chunks, init: std.algebra.Empty, f: fn(acc, chunk) {
     let resolution = v2.std.decl_facts_skeleton.resolve_decl_fact_by_qualified_name(facts: facts, qn: chunk.qualified_name)
     match v2.std.decl_facts_skeleton.decl_fact_skeleton_for_resolution(resolution: resolution) {
       Present { value: node } =>
@@ -101,10 +101,10 @@ fn all_checked_chunk_authored_identities(
           if v2.std.algebra.contains(xs: inner_acc, item: identity, eq: fn(a, b) { a == b }) {
             inner_acc
           } else {
-            v2.std.algebra.Cons { head: identity, tail: inner_acc }
+            std.algebra.Cons { head: identity, tail: inner_acc }
           }
         })
-      v2.std.collection.Absent => acc
+      v2.std.optional.Absent => acc
     }
   }))
 }
@@ -115,11 +115,11 @@ fn roster_identities_missing_from_authored_chunks(
   roster: std.types.List<String>
 ) -> std.types.List<ChunkCoherenceRefusal> {
   let union_authored = all_checked_chunk_authored_identities(facts: facts, chunks: chunks)
-  v2.std.algebra.list_reverse(xs: fold(roster, init: v2.std.algebra.Empty, f: fn(acc, identity) {
+  v2.std.algebra.list_reverse(xs: fold(roster, init: std.algebra.Empty, f: fn(acc, identity) {
     if v2.std.algebra.contains(xs: union_authored, item: identity, eq: fn(a, b) { a == b }) {
       acc
     } else {
-      v2.std.algebra.Cons {
+      std.algebra.Cons {
         head: RosterIdentityMissingFromAuthoredChunks {
           identity: identity,
           message: roster_identity_missing_from_authored_chunks_message(identity: identity)
@@ -171,18 +171,18 @@ fn floor_expected_red_chunk_coherence_check(
 ) -> ChunkCoherenceVerdict {
   let aggregator_resolution = v2.std.decl_facts_skeleton.resolve_decl_fact_by_qualified_name(facts: facts, qn: aggregator_qualified_name)
   let aggregator_causes = match aggregator_resolution {
-    DeclFactResolvedUnique { fact: _ } => v2.std.algebra.Empty
-    _ => v2.std.algebra.Cons {
+    DeclFactResolvedUnique { fact: _ } => std.algebra.Empty
+    _ => std.algebra.Cons {
       head: AggregatorDeclarationUnresolved { qualified_name: aggregator_qualified_name, resolution: aggregator_resolution },
-      tail: v2.std.algebra.Empty
+      tail: std.algebra.Empty
     }
   }
 
-  let per_chunk_causes = v2.std.algebra.list_reverse(xs: fold(chunks, init: v2.std.algebra.Empty, f: fn(acc, chunk) {
+  let per_chunk_causes = v2.std.algebra.list_reverse(xs: fold(chunks, init: std.algebra.Empty, f: fn(acc, chunk) {
     let resolution = v2.std.decl_facts_skeleton.resolve_decl_fact_by_qualified_name(facts: facts, qn: chunk.qualified_name)
     match v2.std.decl_facts_skeleton.decl_fact_skeleton_for_resolution(resolution: resolution) {
-      v2.std.collection.Absent =>
-        v2.std.algebra.Cons {
+      v2.std.optional.Absent =>
+        std.algebra.Cons {
           head: ChunkDeclarationUnresolved { qualified_name: chunk.qualified_name, resolution: resolution },
           tail: acc
         }
@@ -191,18 +191,18 @@ fn floor_expected_red_chunk_coherence_check(
         let link_causes = match v2.std.decl_facts_skeleton.decl_fact_skeleton_for_resolution(resolution: aggregator_resolution) {
           Present { value: aggregator_node } =>
             if chunk_short_name_linked(node: aggregator_node, chunk: chunk) {
-              v2.std.algebra.Empty
+              std.algebra.Empty
             } else {
-              v2.std.algebra.Cons {
+              std.algebra.Cons {
                 head: ChunkNotLinkedIntoAggregator {
                   chunk_qualified_name: chunk.qualified_name,
                   chunk_short_name: chunk.short_name,
                   aggregator_qualified_name: aggregator_qualified_name
                 },
-                tail: v2.std.algebra.Empty
+                tail: std.algebra.Empty
               }
             }
-          v2.std.collection.Absent => v2.std.algebra.Empty
+          v2.std.optional.Absent => std.algebra.Empty
         }
         v2.std.algebra.list_append(left: identity_causes, right: v2.std.algebra.list_append(left: link_causes, right: acc))
       }

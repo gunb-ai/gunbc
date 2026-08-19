@@ -1563,7 +1563,7 @@ type GitTreeDecodeRefusal
     }
 
 type GitTreeDecodeOutcome
-  = GitTreeDecoded { entries: List<extdeps.git.object_store.TreeEntry> }
+  = GitTreeDecoded { entries: std.types.List<extdeps.git.object_store.TreeEntry> }
   | GitTreeDecodeRefused { cause: extdeps.git.object_store.GitTreeDecodeRefusal }
 
 type GitTreeEntryDecodeOutcome
@@ -1693,7 +1693,7 @@ type GitNulQuartetRefusal
   | GitNulQuartetIncompleteRecord { field_count: std.integer.NonNegativeInt }
 
 type GitNulQuartetDecodeOutcome
-  = GitNulQuartetsDecoded { rows: List<extdeps.git.object_store.GitNulQuartet> }
+  = GitNulQuartetsDecoded { rows: std.types.List<extdeps.git.object_store.GitNulQuartet> }
   | GitNulQuartetsRefused { cause: extdeps.git.object_store.GitNulQuartetRefusal }
 
 // A single ls-files -z / ls-tree -z record is ONE NUL-terminated chunk whose
@@ -1701,7 +1701,7 @@ type GitNulQuartetDecodeOutcome
 // separate NUL-delimited fields — verified against real git output via
 // `git ls-files -z --stage | od -c` (one NUL total for one staged file).
 type GitNulRecordSplitState
-  = GitNulRecordSplitAwaitFirstSpace { first: List<std.integer.UInt8> }
+  = GitNulRecordSplitAwaitFirstSpace { first: std.types.List<std.integer.UInt8> }
   | GitNulRecordSplitAwaitSecondSpace {
       first: List<std.integer.UInt8>,
       second: List<std.integer.UInt8>,
@@ -1827,7 +1827,7 @@ fn git_split_nul_record_quartet(
 }
 
 type GitNulQuartetRowsFoldState
-  = GitNulQuartetRowsAccumulating { rows: List<extdeps.git.object_store.GitNulQuartet> }
+  = GitNulQuartetRowsAccumulating { rows: std.types.List<extdeps.git.object_store.GitNulQuartet> }
   | GitNulQuartetRowsRefused { cause: extdeps.git.object_store.GitNulQuartetRefusal }
 
 fn git_nul_quartet_rows_step(
@@ -1974,7 +1974,7 @@ type GitLsTreeZRefusal
   | GitLsTreeZEntryRefused { cause: extdeps.git.object_store.GitTreeDecodeRefusal }
 
 type GitLsTreeZDecodeOutcome
-  = GitLsTreeZDecoded { entries: List<extdeps.git.object_store.GitTreeWireEntry> }
+  = GitLsTreeZDecoded { entries: std.types.List<extdeps.git.object_store.GitTreeWireEntry> }
   | GitLsTreeZRefused { cause: extdeps.git.object_store.GitLsTreeZRefusal }
 
 fn git_ascii_field_text(octets: List<std.integer.UInt8>) -> std.types.NonEmptyStr? {

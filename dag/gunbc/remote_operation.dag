@@ -22,7 +22,7 @@ module gunbc.remote_operation
 // both SSH execution seams re-check them -- so the property is a fact about those paths, not about
 // this constructor.
 type RemoteOperation
-  = RemoteArgv { argv: List<String> }
+  = RemoteArgv { argv: std.types.List<String> }
   | RemoteFileBytes { write: gunbc.typed_remote_file_write.TypedRemoteFileWrite, mode: gunbc.typed_remote_file_write.RemoteFileMode }
 
 // ONE OUTCOME VOCABULARY FOR BOTH KINDS, because the two executions answer in different types and

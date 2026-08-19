@@ -13,7 +13,7 @@ type EffectPlanStep<E>
       on_exhausted: v2.std.effect_plan.EffectPlan<E>
     }
   | Let { name: String, value: v2.std.orchestration.Expr }
-  | Call { callee: String, args: List<String> }
+  | Call { callee: String, args: std.types.List<String> }
 
 type EffectPlan<E> {
   steps: FreeMonoid<EffectPlanStep<E>>

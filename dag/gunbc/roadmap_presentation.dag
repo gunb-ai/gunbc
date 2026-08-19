@@ -128,7 +128,7 @@ data work_scheduling_note: String = "The scheduling axis as a TYPED position, no
 
 type WorkScheduling
   = SchedulingReady
-  | SchedulingUpcoming { blockers: List<String> }
+  | SchedulingUpcoming { blockers: std.types.List<String> }
   | SchedulingDone
   | SchedulingSuperseded
   | SchedulingUnplanned

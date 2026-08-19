@@ -53,7 +53,7 @@ type RunnerRepairEffectStep
 type RunnerRepairApplyPlan
   = RepairNoop { reason: std.types.NonEmptyStr }
   | RepairRefusedPlan { slot: gunbc.build_cache_instance.RunnerSlotIdentity, reason: std.types.NonEmptyStr }
-  | RepairExecute { slot: gunbc.build_cache_instance.RunnerSlotIdentity, steps: List<RunnerRepairEffectStep> }
+  | RepairExecute { slot: gunbc.build_cache_instance.RunnerSlotIdentity, steps: std.types.List<RunnerRepairEffectStep> }
 
 fn repair_effect_step_count(steps: List<RunnerRepairEffectStep>) -> Int {
   list_length(items: steps)

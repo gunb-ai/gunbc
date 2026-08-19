@@ -52,13 +52,13 @@ type LeanTermNode {
 
 type LeanTermForm
   = LeanSort { level: LeanLevelRef }
-  | LeanConst { name: LeanName, levels: List<LeanLevelRef> }
+  | LeanConst { name: LeanName, levels: std.types.List<LeanLevelRef> }
   | LeanVar { name: LeanName }
   | LeanApp { function: LeanTermRef, argument: LeanTermRef }
   | LeanLambda { binder: LeanBinder, body: LeanTermRef }
   | LeanForall { binder: LeanBinder, body: LeanTermRef }
   | LeanLet { binder: LeanBinder, value: LeanTermRef, body: LeanTermRef }
-  | LeanMatch { scrutinee: LeanTermRef, alternatives: List<LeanMatchAlternative> }
+  | LeanMatch { scrutinee: LeanTermRef, alternatives: std.types.List<LeanMatchAlternative> }
 
 type LeanMatchAlternative {
   constructor: LeanName

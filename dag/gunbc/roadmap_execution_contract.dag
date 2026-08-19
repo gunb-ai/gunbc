@@ -135,7 +135,7 @@ data contract_closure_note: String = "ONE BINDING LAW, BECAUSE THERE WERE THREE 
 type ContractClosure
   = ContractDeclaresNoValidation
   | ContractClosesNothing
-  | ContractCloses { validations: List<ValidationOperation> }
+  | ContractCloses { validations: std.types.List<ValidationOperation> }
 
 fn contract_closure(contract: WorkItemExecutionContract) -> ContractClosure {
   match contract {

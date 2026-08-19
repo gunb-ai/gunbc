@@ -302,7 +302,7 @@ data witness_cost_row_eval_clocks_note: String = "The row's eval term carries EV
 
 
 type WitnessCostProjection
-  = WitnessCostProjectionComplete { rows: List<gunbc.witness_row_cost.WitnessCostReceiptRow> }
+  = WitnessCostProjectionComplete { rows: std.types.List<gunbc.witness_row_cost.WitnessCostReceiptRow> }
   | WitnessCostProjectionRefused { cause: std.types.NonEmptyStr }
 
 fn witness_cost_project_one_witness(

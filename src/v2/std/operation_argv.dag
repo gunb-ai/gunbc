@@ -23,7 +23,7 @@ data operation_ref_label_authority_note: String = "The one place an v2.std.opera
 
 type OperationInputValue
   = InputText { text: String }
-  | InputTextList { items: List<String> }
+  | InputTextList { items: std.types.List<String> }
 
 type OperationInputBinding {
   name: String
@@ -59,7 +59,7 @@ type ArgvRefusalCause
   | BindingMalformed { detail: String }
 
 type ArgvMaterialization
-  = ArgvMaterialized { argv: List<String> }
+  = ArgvMaterialized { argv: std.types.List<String> }
   | ArgvMaterializationRefused { at: OperationRef, cause: ArgvRefusalCause }
 
 type ShellTransportOperationRow {

@@ -385,7 +385,7 @@ fn placement_refusal_count(cs: List<PlacementRefusal>) -> Int {
 
 type PlacementAdmission
   = PlacementAdmitted { plan: BoardPlacementPlan }
-  | PlacementRefused { causes: List<PlacementRefusal> }
+  | PlacementRefused { causes: std.types.List<PlacementRefusal> }
 
 // THE ADMISSION IS THE SAME QUESTION UNDER BOTH INTENTS, and that is deliberate. An unestablished
 // envelope is not more acceptable during bring-up: the part is still whatever size it is, and a

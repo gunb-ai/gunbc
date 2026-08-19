@@ -10,7 +10,7 @@ type Attribute {
 }
 
 type Fragment
-  = Element { tag: String, attributes: List<Attribute>, children: List<Fragment> }
+  = Element { tag: String, attributes: std.types.List<Attribute>, children: std.types.List<Fragment> }
   | FragmentText { content: String }
   | RawNode { content: String }
 

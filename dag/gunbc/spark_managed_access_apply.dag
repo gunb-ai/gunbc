@@ -33,7 +33,7 @@ type SparkApplyStep {
 // nothing has no constructor: reporting an apply with zero steps would be indistinguishable from one
 // where everything converged, which is the shape a caller most wants to trust.
 type SparkApplyReport
-  = ApplyAttempted { first: SparkApplyStep, more: List<SparkApplyStep> }
+  = ApplyAttempted { first: SparkApplyStep, more: std.types.List<SparkApplyStep> }
   | ApplyNotAttempted { cause: String }
 
 fn spark_apply_steps(report: SparkApplyReport) -> List<SparkApplyStep> {

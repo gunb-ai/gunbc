@@ -190,7 +190,7 @@ data live_view_two_refusal_sources_note: String = "TWO INDEPENDENT WAYS THE LIVE
 
 type LiveProgramView
   = LiveViewDerived { view: gunbc.roadmap_program_view.V1DeletionProgramView }
-  | LiveViewRefused { causes: List<String> }
+  | LiveViewRefused { causes: std.types.List<String> }
 
 fn live_program_view_result() -> LiveProgramView {
   match roadmap_acceptance_receipts() {

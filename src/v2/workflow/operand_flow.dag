@@ -42,7 +42,7 @@ fn operand_root(edge: v2.std.dependency.DependencyView) -> OperandRootFacts {
 type OperandFlowRefusalCause
   = OperandFlowNoOperand { edge: v2.std.dependency.DependencyView }
   | OperandFlowFootprintMissingRow { missing: std.content_hash.ContentHash }
-  | OperandFlowFootprintUnsettled { pending: List<std.content_hash.ContentHash> }
+  | OperandFlowFootprintUnsettled { pending: std.types.List<std.content_hash.ContentHash> }
 
 type OperandFlowRow
   = OperandFlow { edge: v2.std.dependency.DependencyView, operand: std.content_hash.ContentHash, footprint: std.measure.ByteSize }

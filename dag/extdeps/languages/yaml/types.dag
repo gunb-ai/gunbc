@@ -19,8 +19,8 @@ type YamlValue
   | YamlInt { lexeme: String }
   | YamlFloat { lexeme: String }
   | YamlString { value: String }
-  | YamlSequence { elements: List<YamlValue> }
-  | YamlMapping { entries: List<YamlKeyValue> }
+  | YamlSequence { elements: std.types.List<YamlValue> }
+  | YamlMapping { entries: std.types.List<YamlKeyValue> }
 
 type YamlValueKind
   = YamlNullKind

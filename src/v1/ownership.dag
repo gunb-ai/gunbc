@@ -27,7 +27,7 @@ fn binding_fan_out(usage: BindingUsage) -> Int {
 
 type OwnershipDecision
   = SoleOwner { binding: String, site: String }
-  | SharedError { binding: String, consumer_count: Int, sites: List<String> }
+  | SharedError { binding: String, consumer_count: Int, sites: std.types.List<String> }
   | Unclassified { binding: String, reason: String }
 
 type FoldAccUnwrapProof {

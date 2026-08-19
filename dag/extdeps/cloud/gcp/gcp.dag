@@ -40,7 +40,7 @@ type GcpCredentialFlow
       service_account: ServiceAccountEmail?
       scopes: List<String>
     }
-  | InteractiveAuth { scopes: List<String> }
+  | InteractiveAuth { scopes: std.types.List<String> }
   | OAuth2AccessToken { strategy: GcpOAuth2AccessTokenStrategy }
 
 type OAuth2Scope {

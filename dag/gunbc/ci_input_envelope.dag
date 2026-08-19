@@ -12,7 +12,7 @@ type InputBound {
 }
 
 type InputEnvelope
-  = BoundedInput { bounds: List<InputBound> }
+  = BoundedInput { bounds: std.types.List<InputBound> }
   | EnvelopeUnknown
 
 type AdmissionVerdict

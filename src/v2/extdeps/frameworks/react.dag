@@ -20,7 +20,7 @@ type ReactEffectCleanupSite
 
 type ReactHookInlineDependenciesArgument
   = DependenciesArgOmitted
-  | DependenciesArgPresent { dependency_refs: List<ReactCrossDeclRef> }
+  | DependenciesArgPresent { dependency_refs: std.types.List<ReactCrossDeclRef> }
 
 type ReactModuleSurface
   = ReactClientModule
@@ -117,7 +117,7 @@ type ReactCompositeElement {
 type ReactElement
   = Host { host: ReactHostElement }
   | Composite { composite: ReactCompositeElement }
-  | Fragment { key: ReactOptKey, children: List<ReactCreateElementChild> }
+  | Fragment { key: ReactOptKey, children: std.types.List<ReactCreateElementChild> }
 
 type ReactCreateElementChild
   = Element { element: ReactElement }

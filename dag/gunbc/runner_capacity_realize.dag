@@ -15,7 +15,7 @@ type RunnerCapacityHostApplyReceipt {
 }
 
 type RunnerCapacityApplyOutcome
-  = RunnerCapacityApplyCompleted { hosts: List<RunnerCapacityHostApplyReceipt> }
+  = RunnerCapacityApplyCompleted { hosts: std.types.List<RunnerCapacityHostApplyReceipt> }
   | RunnerCapacityApplyRefused { reason: String }
 
 fn disk_preflight_refusal(host: product.placement_supply.HostIdentity, requested_width: Int) -> String? {

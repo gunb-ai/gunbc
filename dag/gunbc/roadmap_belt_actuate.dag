@@ -1347,7 +1347,7 @@ fn belt_actuate_teardown_member(m: gunbc.roadmap_belt.DispatchMember) -> BeltTea
 }
 
 type BeltObserve
-  = Observed { live: List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession> }
+  = Observed { live: std.types.List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession> }
   | ObserveRefused { reason: String }
 
 data belt_observe_note: String = "tmux-present is the FIRST precondition: tmux not on PATH -> ObserveRefused (the belt cannot know what is live). Once tmux is present the observe half must NOT widen an exec failure into a zero-session answer (the §5 absorbing-fallback / ⊤-as-answer-vs-⊤-as-ignorance conflation). extdeps.tmux classify_tmux_session_list is the sole authority for tmux ls outcome facts (listed sessions, documented no-server signals, stdout parse refusal, unknowable stderr); this module maps those outcomes to belt policy only: TmuxSessionsListed -> filter dispatch sessions into Observed live rows; TmuxNoServer -> Observed []; TmuxListStdoutRefused and TmuxListUnknowable -> ObserveRefused with located evidence, never a blind spawn/reap. First-tick bootstrap works under either no-server spelling admitted by the classifier. The decision is a pure fn so every arm is witnessed (belt_observe_from_result witnesses); belt_observe only threads the live WitnessBin.Run result fields into it."
@@ -2088,7 +2088,7 @@ fn belt_tick_verify_write_failed_count(t: BeltTickResult) -> Int {
 }
 
 type BeltAttempts
-  = AttemptsObserved { attempts: List<gunbc.roadmap_dispatch_actuator.DispatchAttemptRef> }
+  = AttemptsObserved { attempts: std.types.List<gunbc.roadmap_dispatch_actuator.DispatchAttemptRef> }
   | AttemptsRefused { reason: String }
 
 data belt_attempts_observe_note: String = "U3: the attempts observation mirrors belt_observe's fail-closed grammar — git absent or a non-zero for-each-ref is an UNKNOWABLE attempts set (AttemptsRefused, typed, carries stderr), never widened to zero attempts; exit 0 with empty output IS a genuine zero (for-each-ref's documented no-match behavior). Runs in belt_actuate_workdir — the same repo-root authority the spawn's worktree add uses, because the attempt branches live exactly where spawns mint them."
@@ -2156,11 +2156,11 @@ fn belt_attempts_http_status(a: BeltAttempts) -> Int {
 }
 
 type BeltAttemptPanes
-  = BeltAttemptPanesObserved { panes: List<extdeps.tmux.TmuxAttemptPaneEntry> }
+  = BeltAttemptPanesObserved { panes: std.types.List<extdeps.tmux.TmuxAttemptPaneEntry> }
   | BeltAttemptPanesRefused { reason: String }
 
 type BeltWorkflowAttempts
-  = WorkflowAttemptsObserved { attempts: List<gunbc.roadmap_workflow_progress.WorkflowAttemptProgress> }
+  = WorkflowAttemptsObserved { attempts: std.types.List<gunbc.roadmap_workflow_progress.WorkflowAttemptProgress> }
   | WorkflowAttemptsRefused { reason: String }
 
 data belt_workflow_attempts_note: String = "The workflow route joins the latest published attempt state to process evidence at node grain. Git refs determine which nodes have attempts; the node-current pointer selects the latest modeled attempt without guessing chronology from content-hash keys; Filesystem.Read observes the immutable key/admission prefix plus the append-only Codex JSONL; one exact tmux list-panes read observes alive/dead/exit for all attempts. A git refusal refuses the route. A pane-command or parse refusal stays located inside each attempt so already-terminal provider evidence remains usable while incomplete attempts become refused."

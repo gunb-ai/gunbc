@@ -14,10 +14,10 @@ type Effect
 
 type Principal
   = AnyPrincipal
-  | AwsPrincipal { arns: List<std.types.NonEmptyStr> }
-  | ServicePrincipal { services: List<std.types.NonEmptyStr> }
-  | FederatedPrincipal { providers: List<std.types.NonEmptyStr> }
-  | CanonicalUserPrincipal { ids: List<std.types.NonEmptyStr> }
+  | AwsPrincipal { arns: std.types.List<std.types.NonEmptyStr> }
+  | ServicePrincipal { services: std.types.List<std.types.NonEmptyStr> }
+  | FederatedPrincipal { providers: std.types.List<std.types.NonEmptyStr> }
+  | CanonicalUserPrincipal { ids: std.types.List<std.types.NonEmptyStr> }
 
 type ConditionEntry {
   operator: std.types.NonEmptyStr

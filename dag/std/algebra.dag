@@ -190,7 +190,7 @@ type AlgebraTypeTemplate
   | OptionalOf { inner: AlgebraTypeTemplate }
   | WitnessOf { inner: AlgebraTypeTemplate }
   | TupleOf { first: AlgebraTypeTemplate, second: AlgebraTypeTemplate }
-  | CallableOf { params: List<AlgebraTypeTemplate>, return_type: AlgebraTypeTemplate }
+  | CallableOf { params: std.types.List<AlgebraTypeTemplate>, return_type: AlgebraTypeTemplate }
   | AlgebraTypeVariable { id: String }
 
 type CollectionSizeEffect

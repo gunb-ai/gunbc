@@ -94,10 +94,10 @@ data srv3_nbd_proxy_export_placeholder: extdeps.bmc.webui.nbd_proxy.NbdProxyServ
 // no delivery mechanism has no actuator step sequence, and must not be handed a plausible one.
 type OsInstallActuatorPlanRefusal
   = ActuatorMechanismRefused { cause: gunbc.os_install_mechanism.OsInstallMechanismRefusalCause }
-  | ActuatorStepsUnrealized { refusals: List<ActuatorStepRefusal> }
+  | ActuatorStepsUnrealized { refusals: std.types.List<ActuatorStepRefusal> }
 
 type OsInstallActuatorPlanStanding
-  = ActuatorPlanReady { plan: OsInstallActuatorPlan, intents: List<gunbc.host_effect.HostEffectIntent> }
+  = ActuatorPlanReady { plan: OsInstallActuatorPlan, intents: std.types.List<gunbc.host_effect.HostEffectIntent> }
   | ActuatorPlanRefused { cause: OsInstallActuatorPlanRefusal }
 
 fn os_install_actuator_plan_standing_for(
@@ -138,8 +138,8 @@ type ActuatorStepRealization
   | ActuatorStepRefused { cause: ActuatorStepRefusal }
 
 type ActuatorPlanRealization
-  = ActuatorPlanRealized { intents: List<gunbc.host_effect.HostEffectIntent> }
-  | ActuatorPlanUnrealized { refusals: List<ActuatorStepRefusal> }
+  = ActuatorPlanRealized { intents: std.types.List<gunbc.host_effect.HostEffectIntent> }
+  | ActuatorPlanUnrealized { refusals: std.types.List<ActuatorStepRefusal> }
 
 // Accumulates every unrealized step rather than stopping at the first: which effects are missing
 // is the actionable fact, and reporting one of three hides the size of the gap.

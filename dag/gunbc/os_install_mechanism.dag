@@ -59,7 +59,7 @@ type NetworkBootDeliveryEstablishment {
 
 type NetworkBootDeliveryStanding
   = NetworkBootDeliveryEstablished { evidence: NetworkBootDeliveryEstablishment }
-  | NetworkBootDeliveryUnestablished { missing: List<NetworkBootRequirement> }
+  | NetworkBootDeliveryUnestablished { missing: std.types.List<NetworkBootRequirement> }
 
 // CapabilityFirmwareUpdate means "this firmware exposes an update operation", NOT "therefore a
 // VM-capable firmware is reachable from here". The pre-repair FirmwareUpdateThenVirtualMedia arm
@@ -81,7 +81,7 @@ type FirmwareTransitionStanding
       to: extdeps.bmc.capability.BmcFirmwareVersion,
       artifact: std.decl_ref.DeclarationRef,
     }
-  | FirmwareTransitionUnestablished { missing: List<FirmwareTransitionRequirement> }
+  | FirmwareTransitionUnestablished { missing: std.types.List<FirmwareTransitionRequirement> }
   | FirmwareTransitionAmbiguous { candidates: Int }
 
 type OsInstallMechanismRefusalCause

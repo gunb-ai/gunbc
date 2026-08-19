@@ -34,7 +34,7 @@ type PdfSafeParameterSequenceConstruction
   | SafeSequenceConstructionRefused { cause: PdfProfileRefusalCause }
 
 type PdfSafeParameterSequenceFoldState
-  = SafeSequenceFoldBuilding { parameters: List<PdfSafeProfileParameter> }
+  = SafeSequenceFoldBuilding { parameters: std.types.List<PdfSafeProfileParameter> }
   | SafeSequenceFoldRefused { cause: PdfProfileRefusalCause }
 
 type NavigableUriSafeRefusalCause

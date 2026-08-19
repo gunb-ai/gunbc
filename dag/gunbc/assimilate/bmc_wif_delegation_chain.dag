@@ -84,7 +84,7 @@ fn bmc_wif_bootstrap_bindings() -> List<extdeps.cloud.gcp.iam.GcpBinding> {
 type CredentialDelegationStep
   = GhaOidcIssuance { audience: std.types.NonEmptyStr, designated_job: std.types.NonEmptyStr }
   | WifTokenExchange { pool: extdeps.cloud.gcp.gcp.WifPool, provider: extdeps.cloud.gcp.gcp.WifProvider, attribute_condition: std.types.NonEmptyStr }
-  | ServiceAccountImpersonation { impersonated_sa: extdeps.cloud.gcp.gcp.ServiceAccountEmail, granted_roles: List<String> }
+  | ServiceAccountImpersonation { impersonated_sa: extdeps.cloud.gcp.gcp.ServiceAccountEmail, granted_roles: std.types.List<String> }
   | SecretVersionAccess { secret_ref: extdeps.cloud.gcp.secret_ref.SecretRef }
 
 type WifDelegationChain {

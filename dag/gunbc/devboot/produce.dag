@@ -829,7 +829,7 @@ type BuildPlanRefusalCause
   | BuildEnvironmentNotRealized { detail: String }
 
 type BuildPlan
-  = BuildPlanReady { args: List<String>, artifact_path: String }
+  = BuildPlanReady { args: std.types.List<String>, artifact_path: String }
   | BuildPlanRefused { cause: BuildPlanRefusalCause }
 
 fn cargo_target_flags(target: extdeps.cargo.CargoTarget) -> List<String> {

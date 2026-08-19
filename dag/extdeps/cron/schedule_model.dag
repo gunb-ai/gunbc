@@ -11,7 +11,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 type CronField
   = Wildcard
   | Exact { value: std.integer.NonNegativeInt }
-  | Listed { values: List<std.integer.NonNegativeInt> }
+  | Listed { values: std.types.List<std.integer.NonNegativeInt> }
   | Ranged { start: std.integer.NonNegativeInt, end: std.integer.NonNegativeInt }
   | Step { start: std.integer.NonNegativeInt, step: std.integer.PositiveInt }
 

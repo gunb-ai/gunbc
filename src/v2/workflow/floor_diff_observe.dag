@@ -6,7 +6,7 @@ type FloorUnifiedDiffResult
   | UnifiedDiffFail { reason: String }
 
 type FloorNameStatusDiffResult
-  = NameStatusDiffOk { changed_paths: List<String>, departed_paths: List<String> }
+  = NameStatusDiffOk { changed_paths: std.types.List<String>, departed_paths: std.types.List<String> }
   | NameStatusDiffFail { reason: String }
 
 fn floor_env_override_or(env_name: std.types.NonEmptyStr, default: String) -> String {

@@ -17,7 +17,7 @@ type ContainerImageConfig {
 }
 
 type ImageRootfs
-  = RootfsLayers { diff_ids: List<extdeps.container.oci.digest.OciContentDigest> }
+  = RootfsLayers { diff_ids: std.types.List<extdeps.container.oci.digest.OciContentDigest> }
 
 type ImageConfiguration {
   architecture: extdeps.toolchain.types.Architecture

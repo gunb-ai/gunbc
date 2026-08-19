@@ -6,7 +6,7 @@ data infer_occurrence_binding_canonical_decide_note: String = "Narrow v1 stage0 
 type ModulePathBindingProjection
   = ModulePathBindingHit { owner: String }
   | ModulePathBindingMiss
-  | ModulePathBindingAmbiguous { owners: List<String> }
+  | ModulePathBindingAmbiguous { owners: std.types.List<String> }
 
 fn module_path_owner_binding_decide(
   owners: List<String>

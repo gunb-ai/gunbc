@@ -18,7 +18,7 @@ type BlackTargetVersion
 
 type BlackTargetVersionPolicy
   = BlackTargetVersionAbsent
-  | BlackTargetVersionExplicit { targets: List<BlackTargetVersion> }
+  | BlackTargetVersionExplicit { targets: std.types.List<BlackTargetVersion> }
 
 type BlackRequiredVersionPolicy
   = BlackRequiredVersionAbsent

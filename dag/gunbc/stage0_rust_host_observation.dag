@@ -21,7 +21,7 @@ type CargoBinRepoPathProjection
   | CargoBinRepoPathProjectionRefused { authored_path: String, detail: String }
 
 type CargoBinRepoPathsProjection
-  = CargoBinRepoPathsProjected { paths: List<String> }
+  = CargoBinRepoPathsProjected { paths: std.types.List<String> }
   | CargoBinRepoPathsProjectionRefused { authored_path: String, detail: String }
 
 fn git_refusal_detail(operation: String, stderr: String) -> String {

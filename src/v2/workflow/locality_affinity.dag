@@ -15,11 +15,11 @@ type AffinityRefusalCause
   | AffinityFootprintMismatch { operand: std.content_hash.ContentHash, expected: std.measure.ByteSize, found: std.measure.ByteSize }
 
 type AffinityDecision
-  = AffinityClaim { operand: std.content_hash.ContentHash, level: std.machine_shape.LevelId, footprint: std.measure.ByteSize, consumers: List<std.content_hash.ContentHash> }
+  = AffinityClaim { operand: std.content_hash.ContentHash, level: std.machine_shape.LevelId, footprint: std.measure.ByteSize, consumers: std.types.List<std.content_hash.ContentHash> }
   | AffinityRefused { operand: std.content_hash.ContentHash, cause: AffinityRefusalCause }
 
 type AffinityCollectAcc
-  = AffinityCollectOk { footprint: Optional<std.measure.ByteSize>, consumers: List<std.content_hash.ContentHash> }
+  = AffinityCollectOk { footprint: Optional<std.measure.ByteSize>, consumers: std.types.List<std.content_hash.ContentHash> }
   | AffinityCollectRefused { cause: AffinityRefusalCause }
 
 fn affinity_collect_step(expected: std.content_hash.ContentHash, acc: AffinityCollectAcc, row: v2.workflow.operand_flow.OperandFlowRow) -> AffinityCollectAcc {
@@ -123,7 +123,7 @@ fn batch_for_consumer(assignment: List<ConsumerBatch>, consumer: std.content_has
 }
 
 type BatchCollectResult
-  = BatchCollectOk { batches: List<Int> }
+  = BatchCollectOk { batches: std.types.List<Int> }
   | BatchCollectMissing { consumer: std.content_hash.ContentHash }
   | BatchCollectConflict { consumer: std.content_hash.ContentHash, first: Int, second: Int }
 

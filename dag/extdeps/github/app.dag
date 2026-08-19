@@ -195,7 +195,7 @@ fn permission_name_eq(a: GitHubPermissionAxis, b: GitHubPermissionAxis) -> Bool 
 }
 
 type GitHubAppPermissionSetAdmission
-  = PermissionSetAdmitted { permissions: List<GitHubAppPermission> }
+  = PermissionSetAdmitted { permissions: std.types.List<GitHubAppPermission> }
   | PermissionSetDuplicateName { name: GitHubPermissionAxis }
 
 data no_admitted_permissions: List<GitHubAppPermission> = []
@@ -253,12 +253,12 @@ type GitHubAppInstallation {
 
 type GitHubInstallationRepositoryNarrowing
   = RepositoryNarrowingOmitted
-  | SelectedRepositoryNames { names: List<std.types.NonEmptyStr> }
-  | SelectedRepositoryIds { ids: List<GitHubRepositoryId> }
+  | SelectedRepositoryNames { names: std.types.List<std.types.NonEmptyStr> }
+  | SelectedRepositoryIds { ids: std.types.List<GitHubRepositoryId> }
 
 type GitHubInstallationPermissionNarrowing
   = PermissionNarrowingOmitted
-  | SelectedPermissions { permissions: List<GitHubAppPermission> }
+  | SelectedPermissions { permissions: std.types.List<GitHubAppPermission> }
 
 type GitHubInstallationTokenRequest {
   installation_id: GitHubAppInstallationId
@@ -267,7 +267,7 @@ type GitHubInstallationTokenRequest {
 }
 
 type AuthoredPermissionProjection
-  = AuthoredPermissions { permissions: List<GitHubAppPermission> }
+  = AuthoredPermissions { permissions: std.types.List<GitHubAppPermission> }
   | UnknownPermissionWireName { wire_name: std.types.NonEmptyStr }
 
 fn requested_permissions(

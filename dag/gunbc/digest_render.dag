@@ -13,7 +13,7 @@ type PullRequestDigestSubject {
 
 type DigestReadinessProjection
   = DigestOpenForReview
-  | DigestNotReady { first_reason: String, more_reasons: List<String> }
+  | DigestNotReady { first_reason: String, more_reasons: std.types.List<String> }
 
 type PullRequestDigestView {
   subject: PullRequestDigestSubject

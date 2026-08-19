@@ -81,7 +81,7 @@ type AttributionSpan
   | Unattributed { parent: std.observation.OccurrenceId, interval: OrderedClosedInterval<std.measure.Nanosecond> }
 
 type AttributionResult
-  = AttributionComputed { spans: List<AttributionSpan> }
+  = AttributionComputed { spans: std.types.List<AttributionSpan> }
   | AttributionRefusedForeignClock { child: std.observation.OccurrenceId }
   | AttributionRefusedChildOutsideParent { child: std.observation.OccurrenceId }
   | AttributionRefusedImpossibleInterval { cause: std.types.NonEmptyStr }

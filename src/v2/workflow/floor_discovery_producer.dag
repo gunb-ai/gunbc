@@ -4,7 +4,7 @@ module v2.workflow.floor_discovery_producer
 
 
 type FloorDiscoveryProducerResult
-  = FloorDiscoveryAccepted { rows: List<v2.workflow.floor_discovery.FloorDiscoveryRow> }
+  = FloorDiscoveryAccepted { rows: std.types.List<v2.workflow.floor_discovery.FloorDiscoveryRow> }
   | FloorDiscoveryRefused { reason: String }
 
 type FloorDiscoveryWalkState {

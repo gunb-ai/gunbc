@@ -10,7 +10,7 @@ data organization_roster_is_one_org_read_note: String = "THE ROSTER IS ONE CENTR
 data achieved_widths_are_orthogonal_to_desired_width_note: String = "THE ACHIEVED AXES HERE ARE ORTHOGONAL TO gunbc.runner_slot_allocation's desired-side widths (#7930 candidate/actuatable/observed). registered_width counts GitHub org roster rows; connected_width counts status == online; schedulable_width counts online AND NOT busy; executing_width counts online AND busy. desired_width is INTENT from gunbc_runner_slots_per_host and does NOT reconcile down when connected collapses during an outage. materialized_width and unit_active_width are LOCAL incarnation facts pinned from the incident corpus until the local producer grounds them."
 
 type OrganizationRunnerRosterEvidence
-  = RosterObserved { observed_on: std.types.NonEmptyStr, registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration> }
+  = RosterObserved { observed_on: std.types.NonEmptyStr, registrations: std.types.List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration> }
   | RosterReadUnavailable { reason: String }
 
 type FleetAchievedRunnerWidths

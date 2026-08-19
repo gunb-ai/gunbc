@@ -526,7 +526,7 @@ fn observation_contradictions(o: WebMotionObservation) -> List<ObservationContra
 
 type WebMotionObservationAdmission
   = ObservationAdmitted { observation: WebMotionObservation }
-  | ObservationContradicted { contradictions: List<ObservationContradiction> }
+  | ObservationContradicted { contradictions: std.types.List<ObservationContradiction> }
 
 fn admit_web_observation(o: WebMotionObservation) -> WebMotionObservationAdmission {
   let found = observation_contradictions(o: o)

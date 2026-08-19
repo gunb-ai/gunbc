@@ -9,7 +9,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 }
 
 type PathSegmentTokensResult
-  = ParsedSegmentTokens { tokens: List<std.http_path.UrlPathToken> }
+  = ParsedSegmentTokens { tokens: std.types.List<std.http_path.UrlPathToken> }
   | MalformedPathSegment { segment: String, reason: String }
 
 type PathTemplateParseResult
@@ -67,7 +67,7 @@ fn parse_segment_tokens(seg: String) -> PathSegmentTokensResult {
 }
 
 type PathTemplateMatch
-  = PathMatched { params: List<std.http_path.PathParamBinding> }
+  = PathMatched { params: std.types.List<std.http_path.PathParamBinding> }
   | PathNotMatched
 
 data match_path_template_note: String = "The FORWARD reading of the same PathTemplate rows gunbc.node_http_server_emit.emit_path_template_regex_source reads BACKWARD into a JS regex, and std.http_path.render_path_template reads backward into a rendered path — three directions, one row set, never parallel authorities (DESIGN 4); the binding record is std.http_path.PathParamBinding, the single binding authority (a local duplicate here briefly shadowed it and broke no-import name resolution for test.claim.uri_path_parse_witness — the §3 nickname caught by execution). Parity contract with the emitted regex, kept strict so the two realizations agree on every input: one token = one path segment joined by '/' (LiteralToken == segment text; ParamToken binds any NON-EMPTY segment, the [^/]+ class); the empty template matches exactly the root path '/'; a trailing slash is a mismatch (the regex anchors with $); an interior empty segment ('//') never matches any token (a Literal is never empty by parse construction, a Param requires non-empty). Query strings are stripped before matching, mirroring parse_path_template's own '?' strip."

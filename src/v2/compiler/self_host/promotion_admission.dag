@@ -179,7 +179,7 @@ type PromotionRefusalCause
 
 type PromotionOutcome
   = Promoted { successor: v2.compiler.self_host.generation.SuccessorGeneration, cases_compared: Int }
-  | PromotionRefused { causes: List<PromotionRefusalCause> }
+  | PromotionRefused { causes: std.types.List<PromotionRefusalCause> }
 
 fn stale_causes_for(
   receipt: v2.std.node.Symbol,

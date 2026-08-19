@@ -34,8 +34,8 @@ type CatalogBackendCacheKey {
 
 type CatalogKeyInputs
   = ContentAddressed
-  | NativeInternal { cited_inputs: List<CatalogInputSurface> }
-  | HandAuthored { cited_inputs: List<CatalogInputSurface> }
+  | NativeInternal { cited_inputs: std.types.List<CatalogInputSurface> }
+  | HandAuthored { cited_inputs: std.types.List<CatalogInputSurface> }
 
 type CatalogKeyDerivationFacts {
   key_inputs: CatalogKeyInputs

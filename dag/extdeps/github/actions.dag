@@ -63,12 +63,12 @@ type WorkflowPermissions {
 type PermissionLevel = PermRead | PermWrite | PermNone
 
 type WorkflowTrigger
-  = Push { branches: List<String>, paths: List<String> }
-  | PullRequest { branches: List<String>, types: List<PullRequestActivity> }
+  = Push { branches: std.types.List<String>, paths: std.types.List<String> }
+  | PullRequest { branches: std.types.List<String>, types: std.types.List<PullRequestActivity> }
   | Schedule { cron: extdeps.cron.schedule_model.CronSchedule }
-  | WorkflowDispatch { inputs: List<DispatchInput> }
-  | WorkflowCall { inputs: List<DispatchInput> }
-  | WorkflowRunCompleted { workflows: List<String> }
+  | WorkflowDispatch { inputs: std.types.List<DispatchInput> }
+  | WorkflowCall { inputs: std.types.List<DispatchInput> }
+  | WorkflowRunCompleted { workflows: std.types.List<String> }
   | MergeGroup
 
 type PullRequestActivity
@@ -93,7 +93,7 @@ type DispatchInput {
 type DispatchInputType
   = InputString
   | InputBoolean
-  | InputChoice { options: List<String> }
+  | InputChoice { options: std.types.List<String> }
   | InputEnvironment
 
 type SecretScope = StepScope | JobScope | WorkflowScope
@@ -146,7 +146,7 @@ type ConcurrencySpec
 
 type RunnerSpec
   = HostedRunner { label: RunnerLabel }
-  | SelfHosted { labels: List<String> }
+  | SelfHosted { labels: std.types.List<String> }
 
   | RunsOnExpression { expression: String }
 

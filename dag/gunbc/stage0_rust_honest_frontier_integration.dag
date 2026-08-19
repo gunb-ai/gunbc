@@ -101,7 +101,7 @@ fn honest_frontier_integration_receipt(
 }
 
 type TrackedRustUnclassifiedProjection
-  = TrackedRustUnclassifiedPaths { paths: List<String> }
+  = TrackedRustUnclassifiedPaths { paths: std.types.List<String> }
   | TrackedRustProjectionReadRefused { detail: String }
   | TrackedRustProjectionParseRefused { detail: String }
   | TrackedRustProjectionGitRefused { detail: String }

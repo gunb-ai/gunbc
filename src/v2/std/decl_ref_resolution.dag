@@ -15,7 +15,7 @@ type DeclarationRefResolution
   | DeclarationRefModuleAbsent { reference: std.decl_ref.DeclarationRef }
   | DeclarationRefDeclarationAbsent { reference: std.decl_ref.DeclarationRef }
   | DeclarationRefFieldAbsent { reference: std.decl_ref.DeclarationRef }
-  | DeclarationRefAmbiguous { reference: std.decl_ref.DeclarationRef, candidates: List<v2.std.decl_ref_resolution.DeclarationIdentity> }
+  | DeclarationRefAmbiguous { reference: std.decl_ref.DeclarationRef, candidates: std.types.List<v2.std.decl_ref_resolution.DeclarationIdentity> }
 
 fn declaration_identity_from_fact(fact: v2.std.decl_index.DeclFact) -> v2.std.decl_ref_resolution.DeclarationIdentity {
   DeclarationIdentity {

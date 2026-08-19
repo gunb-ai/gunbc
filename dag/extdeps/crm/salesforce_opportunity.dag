@@ -88,7 +88,7 @@ type SalesforceOpportunityStageRow {
 
 // Field-by-field mirror of the upstream OpportunityStage object under its real names: MasterLabel ('the internal label that does not get translated'), ApiName ('uniquely identifies a picklist value so it can be retrieved without using an id or master label'), DefaultProbability ('the default percentage estimate of the confidence in closing a specific opportunity for this opportunity stage value'), ForecastCategory, IsClosed, IsWon, and SortOrder ('number used to sort this value in the opportunity stage picklist'). DefaultProbability is a percent field upstream and is carried here on the std.measure BasisPoint carrier -- 60 percent is basis_point_count 6000 -- so a bare scalar with an implicit scale is unwritable.
 type SalesforceDefaultStageRoster
-  = DefaultStageRosterCited { rows: List<SalesforceOpportunityStageRow>, citation: std.types.NonEmptyStr }
+  = DefaultStageRosterCited { rows: std.types.List<SalesforceOpportunityStageRow>, citation: std.types.NonEmptyStr }
   | DefaultStageRosterUnavailable { cause: std.types.NonEmptyStr }
 
 data salesforce_default_stage_roster: SalesforceDefaultStageRoster = DefaultStageRosterUnavailable {
