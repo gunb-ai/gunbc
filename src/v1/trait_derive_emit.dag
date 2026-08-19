@@ -2,14 +2,25 @@ module v1.compiler.trait_derive_emit
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import v1.compiler.emit { to_pascal }
+import v1.compiler.emit { to_pascal, emit_ident }
+import v1.compiler.artifact { Rust }
 import v1.compiler.infer_types { child_type_node, is_coproduct_type }
+import v1.compiler.emit_core_support { unique_strings }
+import extdeps.languages.rust.derive_contracts {
+  RustVecSupplementalGenericBoundRow,
+  rust_vec_freemonoid_supplemental_generic_bound_rows,
+}
 import v1.std.core {
   Node, NewlineIndex, authored_name_at, generic_param_name_at, param_node_type_expr,
   NoConnective
 }
 import std.trait_derive_shape {
   ReprGroundingDeriveTrait,
+  ReprDeriveDebug,
+  ReprDeriveClone,
+  ReprDerivePartialEq,
+  ReprDeriveSerialize,
+  ReprDeriveDeserialize,
   map_key_required_derive_traits,
   derive_traits_union,
   ReprGroundingDeriveElemShape,
@@ -31,6 +42,7 @@ import std.trait_derive_shape {
 }
 import extdeps.languages.rust.emit {
   rust_trait_derive_attr_from_traits,
+  rust_trait_derive_spelling,
   rust_supplemental_impls_group_completion,
   rust_supplemental_impls_bool_coproduct
 }
@@ -44,7 +56,7 @@ data trait_derive_emit_item_clone_bound_wf_propagation_note: String = "SECOND, I
 
 data trait_derive_emit_fn_clone_bound_wf_propagation_note: String = "THIRD site for the SAME well-formedness trigger (trait_derive_emit_item_clone_bound_wf_propagation_note above), applied to FN declarations rather than item (struct/enum) declarations: naming a Clone-bounded declared type G<A..> in a fn's value-param or return type is exactly as ill-formed as naming it in a field, so a fn generic parameter P earns `: Clone` when v1_fn_param_wf_needs_clone finds it occupying a Clone-bounded argument position of some declared type mentioned in a value param or the return type — reusing v1_type_expr_wf_needs_clone_param verbatim against the same v1_clone_bounded_type_params fixpoint (EmitGraphInfo.clone_bounded_type_params), not a second fixpoint or a restated predicate. This is additive to, not a replacement for, the existing structural fn trigger (v1_type_param_needs_clone_bound: bare-generic return or direct container-element usage) computed in v1_generic_params_needing_clone_bound — the two triggers answer different questions (usage-shape vs. naming-a-bounded-declared-type) and a fn param needing either earns the bound. Enum/struct IMPL surfaces (accessor impl blocks, supplemental impls) already inherit their item's bounded type_params string from emit_item_type_params_with_clone_bounds at the struct/enum decl site, so no separate IMPL-side propagation is needed there; the gap closed here is specifically free FN declarations, whose type_params were computed independently of the item-level fixpoint. Discovered live (not hypothetical) in deep-heron's honest regen of dag/std/occurrence_binding.dag: occurrence_binding_from_candidates<N> names BindingOccurrence<N> and BindingCandidate<N> (each well-formedness-bounded because their field ContainmentPath<N> is FreeMonoid<N>-derive-bounded) at value-param position without the fn declaring N: Clone, and OccurrenceBindingResult<N> at the return position — E0277 at both without this trigger."
 
-data trait_derive_emit_item_clone_bound_contract_fork_note: String = "MODEL-REALIZATION FORK (counted): supplemental generic bounds are also modeled at v2.std.compilers.target_model target_derive_supplemental_generic_bound_contract (trait_derive_supplemental_generic_bound_contract_test.dag) for target collection representation choices. That carrier has no consumer in v1 seed emit today; it is inhabited with cited upstream impl authorities (v2.extdeps.languages.rust) and consumed by the v2 translate path (v2.compiler.06_translate via target_derive_supplemental_generic_bound_contract_catalog_from_node). This v1 structural rule is a separate interim authority for generic struct item type-param bounds (bare field or direct container element) — an approximation of cited upstream requirements pending v2 emitter subsumption at that grain; dissolution re-grounds onto upstream impl requirements, not a mechanical lift of the same predicate — the two can disagree at the edges."
+data trait_derive_emit_item_clone_bound_contract_fork_note: String = "MODEL-REALIZATION FORK (counted): supplemental generic bounds are also modeled at v2.std.compilers.target_model target_derive_supplemental_generic_bound_contract (trait_derive_supplemental_generic_bound_contract_test.dag) for target collection representation choices. That carrier has no consumer in v1 seed emit today; it is inhabited with cited upstream impl authorities (v2.extdeps.languages.rust) and consumed by the v2 translate path (v2.compiler.06_translate via target_derive_supplemental_generic_bound_contract_catalog_from_node). This v1 structural rule is a separate interim authority for generic struct item type-param bounds (bare field or direct container element) — an approximation of cited upstream requirements pending v2 emitter subsumption at that grain; dissolution re-grounds onto upstream impl requirements, not a mechanical lift of the same predicate — the two can disagree at the edges. PARTIALLY RE-GROUNDED (Row 1a, 2026-08-19): the DERIVE-facing half for FreeMonoid/im::Vector fields no longer approximates — v1_emit_struct_from_capability_table / v1_emit_enum_derives / v1_emit_enum_supplemental_impls consume extdeps.languages.rust.derive_contracts rust_vec_freemonoid_supplemental_generic_bound_rows (the same cited rows the v2 contract map folds), routing each row per trait_derive_emit_freemonoid_supplemental_note. The item-HEADER structural rule below remains the interim approximation; its dissolution condition is unchanged."
 
 data trait_derive_emit_fn_clone_bound_keyed_carrier_module_scaffold_note: String = "COUNTED SCAFFOLD (emit_fn_def module_path arm): std.keyed_row and std.keyed_roster generic fns emit Clone on every item generic because List<KeyedRow<..>> value-param type exprs reach emit as opaque containers — the element applied-type children are not readable in param_node_type_expr, so v1_fn_param_type_needs_clone_bound cannot derive K/V from rows: List<KeyedRow<K, V>> even though item-level KeyedRow<K: Clone, V: Clone> and the emitted bodies clone both fields. The override is module-scoped, not a seed widen: it does not change v1_generic_params_needing_clone_bound's per-param filter. Membership is the typed allowlist trait_derive_emit_fn_clone_bound_keyed_carrier_module_allowlist, enrolled DeclaredFrontier in gunbc.roster_registry — not gunbc.non_fold_residue (no wildcard-match site). Witness: regen --verify on std_keyed_row/std_keyed_roster without this arm drops V: Clone on keyed_row_find and drops all fn-level bounds on keyed_roster_build (compile errors on .value.clone())."
 
@@ -300,6 +312,237 @@ fn v1_map_key_required_type_names(
   )
 }
 
+data trait_derive_emit_freemonoid_supplemental_note: String = "ROW 1a (materialization_carriers board): a derive-only generic item whose only Clone-requiring surface is a FreeMonoid<P> field (realized im::Vector<P>, whose Debug/PartialEq/Serialize/Deserialize impls are each conditional on the element being Clone) previously either derived with an unsatisfiable per-impl obligation (E0277/E0369 at the derive) or bounded the whole item header — both wrong: the bound belongs on specific IMPLS, not the declaration (loyal-raven review 43338). Realization here, consuming the dag-rooted single authority extdeps.languages.rust.derive_contracts rust_vec_freemonoid_supplemental_generic_bound_rows (NEVER a literal trait list in this module — operator verdict, smart-ram-730 2026-08-19): the item header stays BARE; rows routed FreeMonoidHandWrittenImpl (Debug, PartialEq — std derives cannot carry a bound override) leave the derive list and are realized as hand-written impls whose headers union the trait's own structural requirement with the row's supplemental requirement (impl<P: Clone + std::fmt::Debug> — a header carrying ONLY the supplemental bound would not compile, since the impl body formats/compares the field); rows routed FreeMonoidSerdeBoundAttr (Serialize, Deserialize) stay derived with a #[serde(bound(..))] override naming every item generic param, supplemental-bound params carrying the row's requirement. The route split is realization knowledge (which Rust derive grammar admits a bound override) and lives here; the FACTS (which trait needs which supplemental bound, cited to im-15.1.0) live only in the shared rows. A row whose derive_trait this realization cannot route REFUSES via compile_error (typed, located), never skips. Divergences from the #8525 oracle's pinned bytes, deliberate and reported: impl headers union the structural trait (the oracle's bare `impl<T: Clone>` would emit non-compiling impls), and serde bound strings spell serde::Serialize / serde::Deserialize<'de> (bare Serialize does not resolve in emitted modules that never import it). Companion header facts: the struct path keys bareness on impl_bodies being nonempty (existing rule: supplemental-impl items keep bare params); enums were already bare under the derive trigger. Dissolution: same as trait_derive_emit_item_clone_bound_contract_fork_dissolve_on (v2 emitter subsumption at this grain)."
+
+type V1FreeMonoidSupplementalRoute
+  = FreeMonoidHandWrittenImpl
+  | FreeMonoidSerdeBoundAttr
+
+fn v1_freemonoid_row_route(row: RustVecSupplementalGenericBoundRow) -> V1FreeMonoidSupplementalRoute? {
+  match row.derive_trait {
+    ReprDeriveDebug => Present { value: FreeMonoidHandWrittenImpl }
+    ReprDerivePartialEq => Present { value: FreeMonoidHandWrittenImpl }
+    ReprDeriveSerialize => Present { value: FreeMonoidSerdeBoundAttr }
+    ReprDeriveDeserialize => Present { value: FreeMonoidSerdeBoundAttr }
+    _ => Absent
+  }
+}
+
+fn v1_freemonoid_unroutable_row_refusal() -> String {
+  let unroutable = rust_vec_freemonoid_supplemental_generic_bound_rows |> filter(row =>
+    match v1_freemonoid_row_route(row: row) { Present { value: _ } => false  Absent => true }
+  )
+  if (unroutable |> count) == 0 { "" } else {
+    v1_trait_derive_refuse("trait_derive_emit: a rust_vec_freemonoid_supplemental_generic_bound_rows row names a derive trait this realization cannot route (neither hand-written impl nor serde bound attr) — extend v1_freemonoid_row_route rather than skipping the row")
+  }
+}
+
+fn v1_freemonoid_hand_written_traits() -> List<ReprGroundingDeriveTrait> {
+  rust_vec_freemonoid_supplemental_generic_bound_rows
+    |> filter(row => match v1_freemonoid_row_route(row: row) { Present { value: FreeMonoidHandWrittenImpl } => true  _ => false })
+    |> map(row => row.derive_trait)
+}
+
+fn v1_freemonoid_filter_hand_written(traits: List<ReprGroundingDeriveTrait>) -> List<ReprGroundingDeriveTrait> {
+  traits |> filter(t => !(v1_freemonoid_hand_written_traits() |> any(h => h == t)))
+}
+
+// A param needs the supplemental bound exactly when it is an element of a FreeMonoid-headed
+// field type expression; a param needs a hand impl's STRUCTURAL bound when it is mentioned in
+// any field type expression at all (mirrors what the deleted derive would have bounded).
+fn v1_freemonoid_element_params(
+  generic_param_names: List<String>,
+  field_type_exprs: List<Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> List<String> {
+  generic_param_names |> filter(p =>
+    field_type_exprs |> any(te =>
+      authored_name_at(source_indices: source_indices, node: te) == "FreeMonoid"
+        && te.children |> any(c => v1_type_expr_contains_param_name(param_name: p, type_expr: c, source_indices: source_indices))
+    )
+  )
+}
+
+fn v1_freemonoid_param_in_fields(
+  param_name: String,
+  field_type_exprs: List<Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  field_type_exprs |> any(te => v1_type_expr_contains_param_name(param_name: param_name, type_expr: te, source_indices: source_indices))
+}
+
+fn v1_freemonoid_supplemental_bound_spelling() -> String {
+  // Consumed from the shared rows, not restated: every row's `required` renders through the
+  // same spelling authority the derive attr uses. Distinct requireds join with " + ".
+  unique_strings(items: rust_vec_freemonoid_supplemental_generic_bound_rows |> map(row => rust_trait_derive_spelling(row.required)))
+    |> join(separator: " + ")
+}
+
+fn v1_freemonoid_impl_type_params(
+  generic_param_names: List<String>,
+  fm_params: List<String>,
+  field_type_exprs: List<Node>,
+  structural_spelling: String,
+  source_indices: Map<String, NewlineIndex>
+) -> String {
+  if (generic_param_names |> count) == 0 { "" } else {
+    let entries = generic_param_names |> map(p =>
+      let pascal = to_pascal(name: p)
+      let supplemental = if fm_params |> any(f => f == p) { [v1_freemonoid_supplemental_bound_spelling()] } else { [] }
+      let structural = if v1_freemonoid_param_in_fields(param_name: p, field_type_exprs: field_type_exprs, source_indices: source_indices) { [structural_spelling] } else { [] }
+      let parts = concat(supplemental, structural)
+      if (parts |> count) == 0 { pascal } else { concat(pascal, ": ", parts |> join(separator: " + ")) }
+    )
+    concat("<", entries |> join(separator: ", "), ">")
+  }
+}
+
+fn v1_freemonoid_bare_type_args(generic_param_names: List<String>) -> String {
+  if (generic_param_names |> count) == 0 { "" } else {
+    concat("<", generic_param_names |> map(p => to_pascal(name: p)) |> join(separator: ", "), ">")
+  }
+}
+
+fn v1_freemonoid_serde_bound_attr(
+  generic_param_names: List<String>,
+  fm_params: List<String>
+) -> String {
+  let supplement = v1_freemonoid_supplemental_bound_spelling()
+  let ser_entries = generic_param_names |> map(p =>
+    let pascal = to_pascal(name: p)
+    if fm_params |> any(f => f == p) {
+      concat(pascal, ": ", supplement, " + serde::Serialize")
+    } else {
+      concat(pascal, ": serde::Serialize")
+    }
+  )
+  let de_entries = generic_param_names |> map(p =>
+    let pascal = to_pascal(name: p)
+    if fm_params |> any(f => f == p) {
+      concat(pascal, ": ", supplement, " + serde::Deserialize<'de>")
+    } else {
+      concat(pascal, ": serde::Deserialize<'de>")
+    }
+  )
+  concat(
+    "#[serde(bound(serialize = \"", ser_entries |> join(separator: ", "),
+    "\", deserialize = \"", de_entries |> join(separator: ", "), "\"))]"
+  )
+}
+
+fn v1_freemonoid_struct_debug_impl(
+  name: String,
+  generic_param_names: List<String>,
+  fm_params: List<String>,
+  children: List<Node>,
+  field_type_exprs: List<Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> String {
+  let tp = v1_freemonoid_impl_type_params(generic_param_names: generic_param_names, fm_params: fm_params, field_type_exprs: field_type_exprs, structural_spelling: "std::fmt::Debug", source_indices: source_indices)
+  let args = v1_freemonoid_bare_type_args(generic_param_names: generic_param_names)
+  let field_calls = children |> map(f =>
+    let ident = emit_ident(name: authored_name_at(source_indices: source_indices, node: f), target: Rust)
+    concat(".field(\"", ident, "\", &self.", ident, ")")
+  )
+  concat(
+    "impl", tp, " std::fmt::Debug for ", name, args, " {\n",
+    "    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {\n",
+    "        f.debug_struct(\"", name, "\")", field_calls |> join(separator: ""), ".finish()\n",
+    "    }\n",
+    "}"
+  )
+}
+
+fn v1_freemonoid_struct_partial_eq_impl(
+  name: String,
+  generic_param_names: List<String>,
+  fm_params: List<String>,
+  children: List<Node>,
+  field_type_exprs: List<Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> String {
+  let tp = v1_freemonoid_impl_type_params(generic_param_names: generic_param_names, fm_params: fm_params, field_type_exprs: field_type_exprs, structural_spelling: "PartialEq", source_indices: source_indices)
+  let args = v1_freemonoid_bare_type_args(generic_param_names: generic_param_names)
+  let comparisons = children |> map(f =>
+    let ident = emit_ident(name: authored_name_at(source_indices: source_indices, node: f), target: Rust)
+    concat("self.", ident, " == other.", ident)
+  )
+  let body = if (comparisons |> count) == 0 { "true" } else { comparisons |> join(separator: " && ") }
+  concat(
+    "impl", tp, " PartialEq for ", name, args, " {\n",
+    "    fn eq(&self, other: &Self) -> bool {\n",
+    "        ", body, "\n",
+    "    }\n",
+    "}"
+  )
+}
+
+fn v1_freemonoid_enum_debug_impl(
+  name: String,
+  generic_param_names: List<String>,
+  fm_params: List<String>,
+  children: List<Node>,
+  field_type_exprs: List<Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> String {
+  let tp = v1_freemonoid_impl_type_params(generic_param_names: generic_param_names, fm_params: fm_params, field_type_exprs: field_type_exprs, structural_spelling: "std::fmt::Debug", source_indices: source_indices)
+  let args = v1_freemonoid_bare_type_args(generic_param_names: generic_param_names)
+  let arms = children |> map(variant =>
+    let vname = to_pascal(name: authored_name_at(source_indices: source_indices, node: variant))
+    if (variant.children |> count) == 0 {
+      concat("            Self::", vname, " => f.write_str(\"", vname, "\"),")
+    } else {
+      let fields = variant.children |> map(f => emit_ident(name: authored_name_at(source_indices: source_indices, node: f), target: Rust))
+      let bindings = fields |> join(separator: ", ")
+      let field_calls = fields |> map(fi => concat(".field(\"", fi, "\", ", fi, ")")) |> join(separator: "")
+      concat("            Self::", vname, " { ", bindings, " } => f.debug_struct(\"", vname, "\")", field_calls, ".finish(),")
+    }
+  )
+  concat(
+    "impl", tp, " std::fmt::Debug for ", name, args, " {\n",
+    "    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {\n",
+    "        match self {\n",
+    arms |> join(separator: "\n"), "\n",
+    "        }\n",
+    "    }\n",
+    "}"
+  )
+}
+
+fn v1_freemonoid_enum_partial_eq_impl(
+  name: String,
+  generic_param_names: List<String>,
+  fm_params: List<String>,
+  children: List<Node>,
+  field_type_exprs: List<Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> String {
+  let tp = v1_freemonoid_impl_type_params(generic_param_names: generic_param_names, fm_params: fm_params, field_type_exprs: field_type_exprs, structural_spelling: "PartialEq", source_indices: source_indices)
+  let args = v1_freemonoid_bare_type_args(generic_param_names: generic_param_names)
+  let arms = children |> map(variant =>
+    let vname = to_pascal(name: authored_name_at(source_indices: source_indices, node: variant))
+    if (variant.children |> count) == 0 {
+      concat("            (Self::", vname, ", Self::", vname, ") => true,")
+    } else {
+      let fields = variant.children |> map(f => emit_ident(name: authored_name_at(source_indices: source_indices, node: f), target: Rust))
+      let a_bindings = fields |> map(fi => concat(fi, ": a_", fi)) |> join(separator: ", ")
+      let b_bindings = fields |> map(fi => concat(fi, ": b_", fi)) |> join(separator: ", ")
+      let comparisons = fields |> map(fi => concat("a_", fi, " == b_", fi)) |> join(separator: " && ")
+      concat("            (Self::", vname, " { ", a_bindings, " }, Self::", vname, " { ", b_bindings, " }) => ", comparisons, ",")
+    }
+  )
+  let catchall = if (children |> count) > 1 { "\n            _ => false," } else { "" }
+  concat(
+    "impl", tp, " PartialEq for ", name, args, " {\n",
+    "    fn eq(&self, other: &Self) -> bool {\n",
+    "        match (self, other) {\n",
+    arms |> join(separator: "\n"), catchall, "\n",
+    "        }\n",
+    "    }\n",
+    "}"
+  )
+}
+
 fn v1_emit_struct_derives(
   name: String,
   children: List<Node>,
@@ -334,8 +577,24 @@ fn v1_emit_struct_derives(
 fn v1_emit_enum_derives(
   children: List<Node>,
   map_key_required: Bool,
+  generic_param_names: List<String>,
   source_indices: Map<String, NewlineIndex>
 ) -> String {
+  let fm_params = if map_key_required { [] } else {
+    v1_freemonoid_element_params(
+      generic_param_names: generic_param_names,
+      field_type_exprs: v1_enum_variant_field_type_exprs(children: children),
+      source_indices: source_indices
+    )
+  }
+  if (fm_params |> count) > 0 {
+    return concat(
+      v1_freemonoid_unroutable_row_refusal(),
+      rust_trait_derive_attr_from_traits(v1_freemonoid_filter_hand_written(traits: payload_coproduct_derive_traits())),
+      "\n",
+      v1_freemonoid_serde_bound_attr(generic_param_names: generic_param_names, fm_params: fm_params)
+    )
+  }
   let shape = v1_repr_grounding_derive_elem_shape_from_coproduct_children(children: children, source_indices: source_indices)
   let nullary_traits = v1_with_map_key_requirement(base: nullary_coproduct_derive_traits(), map_key_required: map_key_required)
   let payload_traits = v1_with_map_key_requirement(base: payload_coproduct_derive_traits(), map_key_required: map_key_required)
@@ -1362,30 +1621,75 @@ fn v1_emit_struct_from_capability_table(
   shared_types: Set<String>,
   has_fn_fields: Bool,
   map_key_required: Bool,
+  generic_param_names: List<String>,
   source_indices: Map<String, NewlineIndex>
 ) -> StructCapabilityEmit {
-  let derive_attr = v1_emit_struct_derives(
-    name: name,
-    children: children,
-    shared_types: shared_types,
-    has_fn_fields: has_fn_fields,
-    map_key_required: map_key_required,
-    source_indices: source_indices
-  )
-  let impl_bodies = if repr_grounding_group_completion_carrier(module_path: module_path, name: name)
-    && repr_grounding_derive_completeness_predicate(
-      kernel_int_arithmetic_traits(),
-      ReprDeriveElemKernelInt
-    ) {
-    rust_supplemental_impls_group_completion()
+  let field_type_exprs = children |> map(f => child_type_node(ch: f))
+  let fm_params = if has_fn_fields || map_key_required
+    || rust_symbol_wrapped_ord_carrier_shape_eligible(children: children, source_indices: source_indices)
+    || repr_grounding_group_completion_carrier(module_path: module_path, name: name) {
+    []
   } else {
-    ""
+    v1_freemonoid_element_params(generic_param_names: generic_param_names, field_type_exprs: field_type_exprs, source_indices: source_indices)
   }
-  StructCapabilityEmit { derive_attr: derive_attr, impl_bodies: impl_bodies }
+  if (fm_params |> count) > 0 {
+    let base = if set_contains(shared_types, name) { record_derive_traits_heap() } else { record_derive_traits_copy() }
+    let derive_attr = concat(
+      v1_freemonoid_unroutable_row_refusal(),
+      rust_trait_derive_attr_from_traits(v1_freemonoid_filter_hand_written(traits: base)),
+      "\n",
+      v1_freemonoid_serde_bound_attr(generic_param_names: generic_param_names, fm_params: fm_params)
+    )
+    let impl_bodies = concat(
+      "\n\n",
+      v1_freemonoid_struct_debug_impl(name: name, generic_param_names: generic_param_names, fm_params: fm_params, children: children, field_type_exprs: field_type_exprs, source_indices: source_indices),
+      "\n\n",
+      v1_freemonoid_struct_partial_eq_impl(name: name, generic_param_names: generic_param_names, fm_params: fm_params, children: children, field_type_exprs: field_type_exprs, source_indices: source_indices)
+    )
+    StructCapabilityEmit { derive_attr: derive_attr, impl_bodies: impl_bodies }
+  } else {
+    let derive_attr = v1_emit_struct_derives(
+      name: name,
+      children: children,
+      shared_types: shared_types,
+      has_fn_fields: has_fn_fields,
+      map_key_required: map_key_required,
+      source_indices: source_indices
+    )
+    let impl_bodies = if repr_grounding_group_completion_carrier(module_path: module_path, name: name)
+      && repr_grounding_derive_completeness_predicate(
+        kernel_int_arithmetic_traits(),
+        ReprDeriveElemKernelInt
+      ) {
+      rust_supplemental_impls_group_completion()
+    } else {
+      ""
+    }
+    StructCapabilityEmit { derive_attr: derive_attr, impl_bodies: impl_bodies }
+  }
 }
 
-fn v1_emit_enum_supplemental_impls(module_path: String, name: String) -> String {
-  if repr_grounding_supplemental_bool_host_bridge_target(module_path: module_path, name: name)
+fn v1_enum_variant_field_type_exprs(children: List<Node>) -> List<Node> {
+  children |> flat_map(variant => variant.children |> map(f => child_type_node(ch: f)))
+}
+
+fn v1_emit_enum_supplemental_impls(
+  module_path: String,
+  name: String,
+  children: List<Node>,
+  generic_param_names: List<String>,
+  source_indices: Map<String, NewlineIndex>
+) -> String {
+  let field_type_exprs = v1_enum_variant_field_type_exprs(children: children)
+  let fm_params = v1_freemonoid_element_params(generic_param_names: generic_param_names, field_type_exprs: field_type_exprs, source_indices: source_indices)
+  if (fm_params |> count) > 0 {
+    concat(
+      "\n\n",
+      v1_freemonoid_enum_debug_impl(name: name, generic_param_names: generic_param_names, fm_params: fm_params, children: children, field_type_exprs: field_type_exprs, source_indices: source_indices),
+      "\n\n",
+      v1_freemonoid_enum_partial_eq_impl(name: name, generic_param_names: generic_param_names, fm_params: fm_params, children: children, field_type_exprs: field_type_exprs, source_indices: source_indices)
+    )
+  } else if repr_grounding_supplemental_bool_host_bridge_target(module_path: module_path, name: name)
     && repr_grounding_derive_completeness_predicate(
       nullary_coproduct_derive_traits(),
       ReprDeriveElemNullaryEnumCopy
