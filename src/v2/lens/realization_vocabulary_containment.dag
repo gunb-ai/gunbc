@@ -343,7 +343,7 @@ fn scan_facts_for_leaks_under(
 // vocabulary has zero admitted exceptions" must be a stated fact rather than an
 // accident of the target-AST roster happening not to name any CLI module.
 fn is_vocab_leak_in(
-  fact: LayerImportFact,
+  fact: v2.std.layer.LayerImportFact,
   vocab: RealizationVocabularySet,
   edge_prefixes: List<String>,
   exempt_edges: List<RealizationVocabImportEdge>
@@ -357,7 +357,7 @@ fn is_vocab_leak_in(
 }
 
 fn scan_facts_for_leaks_in(
-  facts: List<LayerImportFact>,
+  facts: List<v2.std.layer.LayerImportFact>,
   vocab: RealizationVocabularySet,
   edge_prefixes: List<String>,
   exempt_edges: List<RealizationVocabImportEdge>
@@ -387,7 +387,7 @@ fn scan_facts_for_leaks_in(
 }
 
 fn vocab_leak_count_in(
-  facts: List<LayerImportFact>,
+  facts: List<v2.std.layer.LayerImportFact>,
   vocab: RealizationVocabularySet,
   edge_prefixes: List<String>,
   exempt_edges: List<RealizationVocabImportEdge>
@@ -423,7 +423,7 @@ fn vocab_leak_count_live_in(
   )
 }
 
-fn realization_vocab_leak_count(facts: List<LayerImportFact>) -> Int {
+fn realization_vocab_leak_count(facts: List<v2.std.layer.LayerImportFact>) -> Int {
   length(xs: scan_facts_for_leaks_under(facts: facts, edge_prefixes: realization_edge_path_prefixes))
 }
 
@@ -467,7 +467,7 @@ fn realization_vocab_containment_clean_live(scan_roots: List<String>) -> Bool {
 // population that does not exist. TRIGGER: the first non-empty exempt roster for a
 // second vocabulary is authored, at which point these take the same argument the
 // scan already takes.
-fn realization_vocab_leak_candidate_paths_from_facts(facts: List<LayerImportFact>) -> List<String> {
+fn realization_vocab_leak_candidate_paths_from_facts(facts: List<v2.std.layer.LayerImportFact>) -> List<String> {
   fold_list(
     xs: facts,
     empty: empty_realization_vocab_path_list,

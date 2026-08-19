@@ -983,7 +983,7 @@ test fn unknown_spawn_workdir_refuses_instance_resolution() -> Bool {
 // workdir would then pass the file -- the resolved arm needs its own claim precisely because the
 // refusal arm cannot detect its absence.
 test fn the_known_spawn_workdir_resolves_to_its_own_instance() -> Bool {
-  let live = gunbc.roadmap_belt_actuate.srv1_live_dashboard_instance()
+  let live = gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance()
   match gunbc.roadmap_belt_actuate.belt_dashboard_instance_lookup_for_spawn_workdir(workdir: live.repo_root as String) {
     SpawnWorkdirInstanceResolved { instance: resolved } =>
       (resolved.instance_id as String) == (live.instance_id as String)
@@ -997,7 +997,7 @@ test fn observe_refused_spawn_does_not_zero_verify_pass() -> Bool {
   let result = gunbc.roadmap_belt_actuate.BeltTickResult {
     observe_refused: true,
     observe_refusal_reason: "belt_observe: tmux ls failed; session containers are unknowable",
-    reconcile: gunbc.roadmap_belt_actuate.belt_tick_empty_reconcile(state: gunbc.roadmap_belt_actuate.Running),
+    reconcile: gunbc.roadmap_belt_actuate.belt_tick_empty_reconcile(state: gunbc.roadmap_belt.Running),
     spawn_outcomes: [],
     teardown_outcomes: [],
     verify_outcomes: [
@@ -1027,7 +1027,7 @@ test fn observe_refused_with_empty_verify_is_deferred_not_recorded() -> Bool {
   let result = gunbc.roadmap_belt_actuate.BeltTickResult {
     observe_refused: true,
     observe_refusal_reason: "tmux refused",
-    reconcile: gunbc.roadmap_belt_actuate.belt_tick_empty_reconcile(state: gunbc.roadmap_belt_actuate.Running),
+    reconcile: gunbc.roadmap_belt_actuate.belt_tick_empty_reconcile(state: gunbc.roadmap_belt.Running),
     spawn_outcomes: [],
     teardown_outcomes: [],
     verify_outcomes: [
@@ -1072,7 +1072,7 @@ test fn verification_presentation_decouples_verify_from_spawn_observe_refusal() 
     result: gunbc.roadmap_belt_actuate.BeltTickResult {
       observe_refused: true,
       observe_refusal_reason: "belt_observe: tmux ls failed; session containers are unknowable",
-      reconcile: gunbc.roadmap_belt_actuate.belt_tick_empty_reconcile(state: gunbc.roadmap_belt_actuate.Running),
+      reconcile: gunbc.roadmap_belt_actuate.belt_tick_empty_reconcile(state: gunbc.roadmap_belt.Running),
       spawn_outcomes: [],
       teardown_outcomes: [],
       verify_outcomes: [

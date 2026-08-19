@@ -63,7 +63,7 @@ test fn witness_healthz_bad_body_not_groundable() -> Bool {
 test fn witness_ssh_mock_stdout_is_discriminating_red() -> Bool {
   !gunbc.live_deploy.readiness.healthz_body_groundable(body: witness_ssh_mock_stdout)
     && match gunbc.live_deploy.readiness.ground_service_ready_from_healthz(
-      read: gunbc.live_deploy.readiness.HealthzEffectiveRead {
+      read: gunbc.roadmap_site_surface_types.HealthzEffectiveRead {
         body: witness_ssh_mock_stdout,
         probe_error: "",
       },
@@ -99,7 +99,7 @@ test fn witness_transport_probe_targets_localhost_healthz() -> Bool {
 
 test fn witness_accept_no_response_probe_fails_fast_not_hangs() -> Bool {
   match gunbc.live_deploy.readiness.ground_service_ready_from_healthz(
-    read: gunbc.live_deploy.readiness.HealthzEffectiveRead {
+    read: gunbc.roadmap_site_surface_types.HealthzEffectiveRead {
       body: "",
       probe_error: "curl: (28) Operation timed out after 5000 milliseconds with 0 bytes received",
     },

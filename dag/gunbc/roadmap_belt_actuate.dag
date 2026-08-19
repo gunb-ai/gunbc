@@ -2933,8 +2933,8 @@ fn git_target_generation_observation_of(outcome: BeltExecOutcome) -> gunbc.git_d
 fn git_merge_base_observation_of(
   outcome: BeltExecOutcome,
   target: std.types.GitRef,
-  target_generation: GitObjectId,
-  head: GitObjectId,
+  target_generation: extdeps.git.object_store.GitObjectId,
+  head: extdeps.git.object_store.GitObjectId,
 ) -> gunbc.git_diff_change_window.GitMergeBaseObservation {
   match outcome {
     ExecOk { stdout } =>
@@ -3119,7 +3119,7 @@ fn belt_prepare_diff_window_for_verification(
 
 fn belt_verification_subject_with_window(
   subject: gunbc.roadmap_verification_receipt.VerificationSubject,
-  window_identity: Fnv1a64Structural,
+  window_identity: std.content_hash.Fnv1a64Structural,
 ) -> gunbc.roadmap_verification_receipt.VerificationSubject {
   gunbc.roadmap_verification_receipt.VerificationSubject {
     node_identity: subject.node_identity,

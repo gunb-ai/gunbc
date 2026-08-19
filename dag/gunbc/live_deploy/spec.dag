@@ -245,7 +245,7 @@ fn deployment_fleet_converge_timer_unit_path(names: DeploymentNames) -> std.type
   join(["/etc/systemd/system/", deployment_fleet_converge_timer_unit_name(names: names) as String], "") as std.types.NonEmptyStr
 }
 
-data tailscale_default_https_port: Port = 443
+data tailscale_default_https_port: std.types.Port = 443
 
 data derived_mount_is_the_instance_namespace_note: String = "THE MOUNT PATH IS NAMESPACED BY instance_id, which is the same axis that already namespaces the instance root, the repo root, the serve binary, the listen port, the worktree root, the unit name and the tmux session. The twin's endpoint is /srv1-lab because the twin IS srv1-lab, so two instances cannot produce one endpoint without sharing an identity the instance registry already forbids — the collision is unwritable rather than merely witnessed (operator: use literal namespacing in the repo, 2026-07-30).\\n\\nHand-picking a mount would have re-created the defect this replaces. tailscale_serve_path was hand-picked too, and being distinct is precisely what it was: distinct, unconsumed, and unrelated to the thing tailscale keys on. A second hand-picked string differs only in being the right KIND of string, and the next instance would re-litigate it.\\n\\nDISSOLVES ON the containment tree becoming the naming authority (namespace-only resolution): instance_id is itself a flat identifier, so this derivation is namespacing by string prefix where namespacing by position is the end state. The mount then projects from the instance's position rather than from its name, and this function stops spelling a separator."
 
