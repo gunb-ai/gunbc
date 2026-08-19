@@ -30841,7 +30841,13 @@ pub(crate) fn non_fold_residue_units_from_module_source(
                             source_indices.clone(),
                             value.clone(),
                         );
-                        if variant_name != "PathSubject" {
+                        // Compared at the LEAF, because this reader parses the module without
+                        // resolving it and therefore sees the AUTHORED spelling: the rows now
+                        // write `std.roster_frontier.PathSubject`, and a bare-leaf equality
+                        // read that as a different variant and refused a correct roster.
+                        if crate::v1_std_core::qualified_last_segment(variant_name.clone())
+                            != "PathSubject"
+                        {
                             panic!(
                                 "nfr frontier reader: `subject` in a `{data_name}` row of \
                                  {module_rel_path} is not PathSubject {{ ... }}"
