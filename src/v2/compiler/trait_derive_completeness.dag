@@ -20,6 +20,7 @@ import std.trait_derive_shape {
 }
 import v2.std.algebra { Cons, Empty }
 import v2.std.collection { List }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
@@ -32,10 +33,7 @@ import v2.std.node {
 }
 import v2.std.compilers.coproduct_variant_shape { coproduct_all_variants_nullary }
 import v2.std.compilers.target_model {
-  RequiredTraitWitness,
-  TargetCollectionWitnessEq,
-  TargetCollectionWitnessHash,
-  TargetCollectionWitnessOrd
+  TargetCapabilityRequirement
 }
 
 data trait_derive_completeness_note: String = "Gate-1 sub-wall #2 (#7174 narrowed 2026-07-25): v2 Node elem-shape classifier + collection-witness gate over std.trait_derive_shape. v1 emit wires (a) clone bounds on generic params, (b) coproduct-native supplemental impl blocks, and (c) serde/Debug/Ord #[derive] on named structs/enums — arm (b) detail in std.trait_derive_shape.trait_derive_shape_grounding_lane_handoff. Fail-closed: unknown shapes refuse. Dissolve-on: those three v1 emit arms + layer-boundary mock test wire through this module."
@@ -110,41 +108,42 @@ fn repr_grounding_derive_completeness_predicate_for_elem(
   )
 }
 
-fn repr_grounding_derive_traits_for_collection_witness(
-  witness: RequiredTraitWitness
-) -> List<ReprGroundingDeriveTrait> {
-  match witness {
-    TargetCollectionWitnessOrd { type_param: _ } =>
-      Cons {
-        head: ReprDeriveOrd,
-        tail: Cons {
-          head: ReprDerivePartialOrd,
-          tail: Cons {
-            head: ReprDeriveEq,
-            tail: Cons {
-              head: ReprDerivePartialEq,
-              tail: Cons { head: ReprDeriveClone, tail: Empty }
-            }
-          }
-        }
+data repr_grounding_derive_traits_ordering_capability: List<ReprGroundingDeriveTrait> = [
+  ReprDeriveOrd,
+  ReprDerivePartialOrd,
+  ReprDeriveEq,
+  ReprDerivePartialEq,
+  ReprDeriveClone
+]
+
+data repr_grounding_derive_traits_equality_capability: List<ReprGroundingDeriveTrait> = [
+  ReprDeriveEq,
+  ReprDerivePartialEq,
+  ReprDeriveClone
+]
+
+fn repr_grounding_derive_traits_for_capability(
+  capability_key: Symbol
+) -> Optional<List<ReprGroundingDeriveTrait>> {
+  if capability_key == ^target_collection_trait_ord {
+    optional_present(value: repr_grounding_derive_traits_ordering_capability)
+  } else {
+    if capability_key == ^target_collection_trait_hash {
+      optional_present(value: repr_grounding_derive_traits_equality_capability)
+    } else {
+      if capability_key == ^target_collection_trait_eq {
+        optional_present(value: repr_grounding_derive_traits_equality_capability)
+      } else {
+        optional_absent()
       }
-    TargetCollectionWitnessHash { type_param: _ } =>
-      Cons {
-        head: ReprDeriveEq,
-        tail: Cons {
-          head: ReprDerivePartialEq,
-          tail: Cons { head: ReprDeriveClone, tail: Empty }
-        }
-      }
-    TargetCollectionWitnessEq { type_param: _ } =>
-      Cons {
-        head: ReprDeriveEq,
-        tail: Cons {
-          head: ReprDerivePartialEq,
-          tail: Cons { head: ReprDeriveClone, tail: Empty }
-        }
-      }
+    }
   }
+}
+
+fn repr_grounding_derive_traits_for_collection_requirement(
+  requirement: TargetCapabilityRequirement
+) -> Optional<List<ReprGroundingDeriveTrait>> {
+  repr_grounding_derive_traits_for_capability(capability_key: requirement.capability_key)
 }
 
 fn trait_derive_completeness_gate(
@@ -158,12 +157,15 @@ fn trait_derive_completeness_gate(
   }
 }
 
-fn trait_derive_completeness_gate_for_collection_witness(
-  witness: RequiredTraitWitness,
+fn trait_derive_completeness_gate_for_collection_requirement(
+  requirement: TargetCapabilityRequirement,
   elem: Node
-) -> TraitDeriveCompletenessGate {
-  trait_derive_completeness_gate(
-    required: repr_grounding_derive_traits_for_collection_witness(witness: witness),
-    elem: elem
-  )
+) -> Optional<TraitDeriveCompletenessGate> {
+  match repr_grounding_derive_traits_for_collection_requirement(requirement: requirement) {
+    Present { value: required } =>
+      optional_present(
+        value: trait_derive_completeness_gate(required: required, elem: elem)
+      )
+    Absent => optional_absent()
+  }
 }

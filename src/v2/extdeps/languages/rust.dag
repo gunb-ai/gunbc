@@ -221,10 +221,10 @@ import v2.std.compilers.target_model {
   TargetDeriveSupplementalGenericBoundRequirementSet,
   TargetDeriveTraitKey,
   TargetRepresentationParameterSlot,
-  RequiredTraitWitness,
-  TargetCollectionWitnessOrd,
-  TargetCollectionWitnessHash,
-  TargetCollectionWitnessEq,
+  TargetCapabilityElementEligibility,
+  TargetCapabilityEligibilityRow,
+  TargetCapabilityEligibilityTable,
+  TargetCapabilityRequirement,
   target_collection_set_carrier_node,
   TargetCollectionReprBTreeSet,
   TargetCollectionReprHashSet,
@@ -1699,20 +1699,20 @@ fn rust_hash_set_supplemental_generic_bound_contracts() -> Map<TargetDeriveTrait
 
 type RustSupplementalGenericBoundContractCoverageBlocker {
   derive_trait: ReprGroundingDeriveTrait
-  requirements: Set<RequiredTraitWitness>
+  requirements: Set<TargetCapabilityRequirement>
   authority: ExternalAuthority
   coverage: RustSupplementalGenericBoundContractCoverageDisposition
 }
 
 fn rust_hash_set_eq_hash_supplemental_generic_bound_requirements(
   representation_parameter: Symbol
-) -> Set<RequiredTraitWitness> {
+) -> Set<TargetCapabilityRequirement> {
   Set {
     member: fn(requirement) {
       fold_list(
         xs: [
-          TargetCollectionWitnessEq { type_param: representation_parameter },
-          TargetCollectionWitnessHash { type_param: representation_parameter }
+          TargetCapabilityRequirement { representation_parameter: representation_parameter, capability_key: ^target_collection_trait_eq },
+          TargetCapabilityRequirement { representation_parameter: representation_parameter, capability_key: ^target_collection_trait_hash }
         ],
         empty: false,
         cons: fn(found, expected) {
@@ -1750,7 +1750,7 @@ fn rust_set_collection_primary_choice() -> TargetRepresentationChoice {
     },
     representation_parameters: rust_collection_representation_parameters(),
     constraints: [
-      TargetCollectionWitnessOrd { type_param: ^target_collection_type_param_t }
+      TargetCapabilityRequirement { representation_parameter: ^target_collection_type_param_t, capability_key: ^target_collection_trait_ord }
     ],
     supplemental_generic_bound_contracts: rust_btree_set_supplemental_generic_bound_contracts()
   }
@@ -1764,8 +1764,8 @@ fn rust_set_collection_hash_choice() -> TargetRepresentationChoice {
     },
     representation_parameters: rust_collection_representation_parameters(),
     constraints: [
-      TargetCollectionWitnessHash { type_param: ^target_collection_type_param_t },
-      TargetCollectionWitnessEq { type_param: ^target_collection_type_param_t }
+      TargetCapabilityRequirement { representation_parameter: ^target_collection_type_param_t, capability_key: ^target_collection_trait_hash },
+      TargetCapabilityRequirement { representation_parameter: ^target_collection_type_param_t, capability_key: ^target_collection_trait_eq }
     ],
     supplemental_generic_bound_contracts: rust_hash_set_supplemental_generic_bound_contracts()
   }
@@ -1832,53 +1832,20 @@ fn rust_collection_repr_bundle_node(form: TargetRepresentation) -> Node {
 }
 }
 
-fn rust_collection_witness_bundle_node(witness: RequiredTraitWitness) -> Node {
-  match witness {
-    TargetCollectionWitnessOrd { type_param: type_param } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          rust_named_edge(
-            name: ^target_collection_witness_field_trait_name,
-            target: rust_inhabitant_atom(id: ^target_collection_trait_ord)
-          ),
-          rust_named_edge(
-            name: ^target_collection_witness_field_type_param,
-            target: rust_inhabitant_atom(id: type_param)
-          )
-        ],
-        occurrence_id: SyntheticOccurrence
-}
-    TargetCollectionWitnessHash { type_param: type_param } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          rust_named_edge(
-            name: ^target_collection_witness_field_trait_name,
-            target: rust_inhabitant_atom(id: ^target_collection_trait_hash)
-          ),
-          rust_named_edge(
-            name: ^target_collection_witness_field_type_param,
-            target: rust_inhabitant_atom(id: type_param)
-          )
-        ],
-        occurrence_id: SyntheticOccurrence
-}
-    TargetCollectionWitnessEq { type_param: type_param } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          rust_named_edge(
-            name: ^target_collection_witness_field_trait_name,
-            target: rust_inhabitant_atom(id: ^target_collection_trait_eq)
-          ),
-          rust_named_edge(
-            name: ^target_collection_witness_field_type_param,
-            target: rust_inhabitant_atom(id: type_param)
-          )
-        ],
-        occurrence_id: SyntheticOccurrence
-}
+fn rust_collection_witness_bundle_node(requirement: TargetCapabilityRequirement) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: ^target_collection_witness_field_trait_name,
+        target: rust_inhabitant_atom(id: requirement.capability_key)
+      ),
+      rust_named_edge(
+        name: ^target_collection_witness_field_type_param,
+        target: rust_inhabitant_atom(id: requirement.representation_parameter)
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
   }
 }
 
@@ -1914,6 +1881,65 @@ fn rust_collection_choice_bundle_node(choice: TargetRepresentationChoice) -> Nod
 }
 }
 
+fn rust_capability_eligibility_row_node(row: TargetCapabilityEligibilityRow) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: ^target_capability_eligibility_field_capability,
+        target: rust_inhabitant_atom(id: row.capability_key)
+      ),
+      rust_named_edge(
+        name: ^target_capability_eligibility_field_kernel_atoms,
+        target: fold_list_node(
+          xs: row.eligibility.kernel_atoms,
+          item_node: rust_capability_kernel_atom_node
+        )
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn rust_capability_kernel_atom_node(id: Symbol) -> Node {
+  rust_inhabitant_atom(id: id)
+}
+
+data rust_collection_capability_kernel_atoms: List<Symbol> = [
+  ^target_collection_kernel_string,
+  ^target_collection_kernel_int,
+  ^target_collection_kernel_bool,
+  ^target_collection_kernel_unit
+]
+
+data rust_collection_capability_eligibility_rows: List<TargetCapabilityEligibilityRow> = [
+  TargetCapabilityEligibilityRow {
+    capability_key: ^target_collection_trait_ord,
+    eligibility: TargetCapabilityElementEligibility {
+      kernel_atoms: rust_collection_capability_kernel_atoms
+    }
+  },
+  TargetCapabilityEligibilityRow {
+    capability_key: ^target_collection_trait_hash,
+    eligibility: TargetCapabilityElementEligibility {
+      kernel_atoms: rust_collection_capability_kernel_atoms
+    }
+  },
+  TargetCapabilityEligibilityRow {
+    capability_key: ^target_collection_trait_eq,
+    eligibility: TargetCapabilityElementEligibility {
+      kernel_atoms: rust_collection_capability_kernel_atoms
+    }
+  }
+]
+
+fn rust_capability_eligibility_bundle_node() -> Node {
+  fold_list_node(
+    xs: rust_collection_capability_eligibility_rows,
+    item_node: rust_capability_eligibility_row_node
+  )
+}
+
 fn rust_set_collection_realization_bundle_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -1936,6 +1962,10 @@ fn rust_set_collection_realization_bundle_node() -> Node {
       rust_named_edge(
         name: ^target_collection_row_field_fallback,
         target: rust_inhabitant_atom(id: ^target_collection_set_no_representation)
+      ),
+      rust_named_edge(
+        name: ^target_collection_row_field_capability_eligibility,
+        target: rust_capability_eligibility_bundle_node()
       )
     ],
     occurrence_id: SyntheticOccurrence
@@ -1968,6 +1998,10 @@ fn rust_free_monoid_collection_realization_bundle_node() -> Node {
       rust_named_edge(
         name: ^target_collection_row_field_text_carrier,
         target: rust_free_monoid_text_carrier_bundle_node()
+      ),
+      rust_named_edge(
+        name: ^target_collection_row_field_capability_eligibility,
+        target: rust_capability_eligibility_bundle_node()
       )
     ],
     occurrence_id: SyntheticOccurrence
