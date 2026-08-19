@@ -9,9 +9,9 @@ module test.claim.jq_invocation_lowering_witness
 // The point of every assertion below is that the caller named no flag. It asked for raw output
 // and for jq's ordinary exit contract; --raw-output and the ABSENCE of --exit-status are derived.
 
-data sensor_stdin: std.types.String = "{\"data\": 41.6}"
+data sensor_stdin: String = "{\"data\": 41.6}"
 
-data sensor_program: std.types.String = "if (.data | type) == \"number\" then (.data | round) else empty end"
+data sensor_program: String = "if (.data | type) == \"number\" then (.data | round) else empty end"
 
 fn sensor_invocation() -> extdeps.tools.jq.JqInvocation {
   extdeps.tools.jq.JqInvocation {
@@ -23,7 +23,7 @@ fn sensor_invocation() -> extdeps.tools.jq.JqInvocation {
   }
 }
 
-fn argv_of(invocation: extdeps.tools.jq.JqInvocation) -> v2.std.collection.List<std.types.String> {
+fn argv_of(invocation: extdeps.tools.jq.JqInvocation) -> v2.std.collection.List<String> {
   match extdeps.tools.jq.jq_invocation_cli_arguments(invocation: invocation) {
     Accepted { value: surface, diagnostics: _ } =>
       v2.std.algebra.fold_list(
@@ -38,7 +38,7 @@ fn argv_of(invocation: extdeps.tools.jq.JqInvocation) -> v2.std.collection.List<
 // JqRawOutput selects the raw-output option and it renders in its CANONICAL long form, not -r.
 // JqProgramExit selects NO exit-status option. The program is exactly ONE argument even though it
 // contains spaces, quotes and parentheses.
-test fn sensor_invocation_lowers_to_exact_argv() -> std.types.Bool {
+test fn sensor_invocation_lowers_to_exact_argv() -> Bool {
   match argv_of(invocation: sensor_invocation()) {
     Empty => false
     Cons { head: first, tail: rest } =>
@@ -55,7 +55,7 @@ test fn sensor_invocation_lowers_to_exact_argv() -> std.types.Bool {
 
 // THE STDIN CONTROL. The JSON payload is a process channel, not an argument: it must appear
 // nowhere in argv. An argv-only model could not even state this.
-test fn stdin_content_is_absent_from_argv() -> std.types.Bool {
+test fn stdin_content_is_absent_from_argv() -> Bool {
   v2.std.algebra.fold_list(
     xs: argv_of(invocation: sensor_invocation()),
     empty: true,
@@ -66,7 +66,7 @@ test fn stdin_content_is_absent_from_argv() -> std.types.Bool {
 // PERTURBATION, LEVEL ONE: change the semantic property and the emitted vector changes. This is
 // what proves the SELECTION row is authoritative rather than decorative -- a spelling-only test
 // would pass even if the option could be omitted.
-test fn exit_policy_perturbation_adds_the_exit_status_option() -> std.types.Bool {
+test fn exit_policy_perturbation_adds_the_exit_status_option() -> Bool {
   match argv_of(invocation: extdeps.tools.jq.JqInvocation {
     program: extdeps.tools.jq.JqProgram { source: sensor_program },
     bindings: std.algebra.Empty,
@@ -85,7 +85,7 @@ test fn exit_policy_perturbation_adds_the_exit_status_option() -> std.types.Bool
 }
 
 // The unlowered axes REFUSE rather than emitting a plausible guess.
-test fn unlowered_bindings_refuse() -> std.types.Bool {
+test fn unlowered_bindings_refuse() -> Bool {
   match extdeps.tools.jq.jq_invocation_cli_arguments(invocation: extdeps.tools.jq.JqInvocation {
     program: extdeps.tools.jq.JqProgram { source: sensor_program },
     bindings: [extdeps.tools.jq.JqJsonBinding { name: extdeps.tools.jq.JqBindingName { name: "index" }, value: "3" }],
@@ -98,7 +98,7 @@ test fn unlowered_bindings_refuse() -> std.types.Bool {
   }
 }
 
-test fn unlowered_file_input_refuses() -> std.types.Bool {
+test fn unlowered_file_input_refuses() -> Bool {
   match extdeps.tools.jq.jq_invocation_cli_arguments(invocation: extdeps.tools.jq.JqInvocation {
     program: extdeps.tools.jq.JqProgram { source: sensor_program },
     bindings: std.algebra.Empty,
@@ -118,7 +118,7 @@ test fn unlowered_file_input_refuses() -> std.types.Bool {
 // projection used to do. These two assertions are the positive half: the content reaches the
 // process plan, and it reaches it WITHOUT also appearing in the argument vector. Neither one
 // alone distinguishes correct routing from total loss.
-test fn stdin_survives_lowering_into_the_process_plan() -> std.types.Bool {
+test fn stdin_survives_lowering_into_the_process_plan() -> Bool {
   match extdeps.tools.jq.jq_invocation_process_plan(invocation: sensor_invocation()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: plan, diagnostics: _ } =>
@@ -129,7 +129,7 @@ test fn stdin_survives_lowering_into_the_process_plan() -> std.types.Bool {
   }
 }
 
-test fn stdin_reaches_the_plan_without_entering_the_argument_vector() -> std.types.Bool {
+test fn stdin_reaches_the_plan_without_entering_the_argument_vector() -> Bool {
   match extdeps.tools.jq.jq_invocation_process_plan(invocation: sensor_invocation()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: plan, diagnostics: _ } =>
@@ -144,12 +144,12 @@ test fn stdin_reaches_the_plan_without_entering_the_argument_vector() -> std.typ
 // THE TWO UNLOWERED AXES ARE DISTINGUISHABLE. The refusal witnesses above assert only a generic
 // Rejected, which one shared diagnostic identity would satisfy -- and did, while the cause was
 // prose the diagnostic never read.
-test fn the_two_unlowered_causes_carry_distinct_identities() -> std.types.Bool {
+test fn the_two_unlowered_causes_carry_distinct_identities() -> Bool {
   extdeps.tools.jq.jq_lowering_refusal_identity(cause: extdeps.tools.jq.JqBindingLoweringUnwired)
     != extdeps.tools.jq.jq_lowering_refusal_identity(cause: extdeps.tools.jq.JqFileInputLoweringUnwired)
 }
 
-test fn unlowered_bindings_refuse_with_the_binding_cause() -> std.types.Bool {
+test fn unlowered_bindings_refuse_with_the_binding_cause() -> Bool {
   match extdeps.tools.jq.jq_invocation_lower(invocation: extdeps.tools.jq.JqInvocation {
     program: extdeps.tools.jq.JqProgram { source: sensor_program },
     bindings: [extdeps.tools.jq.JqJsonBinding { name: extdeps.tools.jq.JqBindingName { name: "index" }, value: "3" }],
@@ -166,7 +166,7 @@ test fn unlowered_bindings_refuse_with_the_binding_cause() -> std.types.Bool {
   }
 }
 
-test fn unlowered_file_input_refuses_with_the_file_cause() -> std.types.Bool {
+test fn unlowered_file_input_refuses_with_the_file_cause() -> Bool {
   match extdeps.tools.jq.jq_invocation_lower(invocation: extdeps.tools.jq.JqInvocation {
     program: extdeps.tools.jq.JqProgram { source: sensor_program },
     bindings: std.algebra.Empty,
@@ -198,7 +198,7 @@ test fn unlowered_file_input_refuses_with_the_file_cause() -> std.types.Bool {
 // reference resolution, and a witness-local helper must be named as one.
 type JqOutcomeExpectation = ExpectPresent | ExpectAbsent | ExpectRefused
 
-fn outcome_matches(outcome: extdeps.tools.jq.JqOutcome, expected: JqOutcomeExpectation) -> std.types.Bool {
+fn outcome_matches(outcome: extdeps.tools.jq.JqOutcome, expected: JqOutcomeExpectation) -> Bool {
   match expected {
     ExpectPresent =>
       match outcome {
@@ -227,7 +227,7 @@ fn classifies_as(
   policy: extdeps.tools.jq.JqExitPolicy,
   observation: extdeps.tools.jq.JqProcessObservation,
   expected: JqOutcomeExpectation,
-) -> std.types.Bool {
+) -> Bool {
   match extdeps.tools.jq.jq_invocation_process_plan(invocation: extdeps.tools.jq.JqInvocation {
     program: extdeps.tools.jq.JqProgram { source: sensor_program },
     bindings: std.algebra.Empty,
@@ -245,7 +245,7 @@ fn classifies_as(
 }
 
 // Exit 1 with output "false": a program-exit contract never produces it, so it is a failure.
-test fn exit_one_is_a_refusal_under_program_exit() -> std.types.Bool {
+test fn exit_one_is_a_refusal_under_program_exit() -> Bool {
   classifies_as(
     policy: extdeps.tools.jq.JqProgramExit,
     observation: extdeps.tools.jq.JqProcessObservation { exit_code: 1, stdout: "false", stderr: "" },
@@ -256,7 +256,7 @@ test fn exit_one_is_a_refusal_under_program_exit() -> std.types.Bool {
 // The SAME observation under the last-result contract is a legitimate VALUE -- jq documents exit 1
 // as "the last output was false or null", and false is a value a filter may correctly produce.
 // This is the assertion a policy-blind decoder cannot satisfy while satisfying the one above.
-test fn exit_one_is_a_value_under_last_result_exit() -> std.types.Bool {
+test fn exit_one_is_a_value_under_last_result_exit() -> Bool {
   classifies_as(
     policy: extdeps.tools.jq.JqLastResultExit,
     observation: extdeps.tools.jq.JqProcessObservation { exit_code: 1, stdout: "false", stderr: "" },
@@ -265,7 +265,7 @@ test fn exit_one_is_a_value_under_last_result_exit() -> std.types.Bool {
 }
 
 // Exit 4 is jq's "no valid result was ever produced" -- absence, not breakage.
-test fn exit_four_is_absence_under_last_result_exit() -> std.types.Bool {
+test fn exit_four_is_absence_under_last_result_exit() -> Bool {
   classifies_as(
     policy: extdeps.tools.jq.JqLastResultExit,
     observation: extdeps.tools.jq.JqProcessObservation { exit_code: 4, stdout: "", stderr: "" },
@@ -275,7 +275,7 @@ test fn exit_four_is_absence_under_last_result_exit() -> std.types.Bool {
 
 // Exit 2 is a usage or system error and refuses under BOTH policies -- the policy changes how
 // SOME codes read, not whether jq can fail.
-test fn exit_two_refuses_under_both_policies() -> std.types.Bool {
+test fn exit_two_refuses_under_both_policies() -> Bool {
   classifies_as(
     policy: extdeps.tools.jq.JqProgramExit,
     observation: extdeps.tools.jq.JqProcessObservation { exit_code: 2, stdout: "", stderr: "usage" },
@@ -290,7 +290,7 @@ test fn exit_two_refuses_under_both_policies() -> std.types.Bool {
 
 // Empty output on a zero exit is absence, not an empty observation -- the sensor path's third
 // state, which is the whole reason JqProgramExit must not carry --exit-status.
-test fn empty_output_on_zero_exit_is_absence() -> std.types.Bool {
+test fn empty_output_on_zero_exit_is_absence() -> Bool {
   classifies_as(
     policy: extdeps.tools.jq.JqProgramExit,
     observation: extdeps.tools.jq.JqProcessObservation { exit_code: 0, stdout: "   ", stderr: "" },

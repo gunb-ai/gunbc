@@ -13,9 +13,9 @@ module test.claim.cli_surface_boundary_probe
 // two would be indistinguishable. That is the property an argv vector has and source text does
 // not, so it is the property worth executing.
 
-data probe_dash_option_class: std.types.String = "probe_dash_option"
-data probe_equals_class: std.types.String = "probe_equals"
-data probe_value_class: std.types.String = "probe_value"
+data probe_dash_option_class: String = "probe_dash_option"
+data probe_equals_class: String = "probe_equals"
+data probe_value_class: String = "probe_value"
 
 fn probe_lex_rules() -> v2.std.compilers.lexing.ModeledLexRules {
   v2.std.compilers.lexing.ModeledLexRules {
@@ -67,7 +67,7 @@ fn flatten_grouping(arguments: v2.std.collection.List<v2.std.compilers.cli_surfa
   )
 }
 
-fn argument_texts(arguments: v2.std.collection.List<v2.std.compilers.cli_surface.CliArgumentSyntax>) -> v2.std.collection.List<std.types.String> {
+fn argument_texts(arguments: v2.std.collection.List<v2.std.compilers.cli_surface.CliArgumentSyntax>) -> v2.std.collection.List<String> {
   match v2.std.compilers.cli_surface.serialize_cli_arguments(
     arguments: arguments,
     lex: probe_lex_rules(),
@@ -86,7 +86,7 @@ fn argument_texts(arguments: v2.std.collection.List<v2.std.compilers.cli_surface
 }
 
 // Grouped as one: exactly one argument, "--color=never".
-test fn joined_fragments_render_one_argument() -> std.types.Bool {
+test fn joined_fragments_render_one_argument() -> Bool {
   match argument_texts(arguments: joined_grouping()) {
     Empty => false
     Cons { head: only, tail: rest } =>
@@ -98,7 +98,7 @@ test fn joined_fragments_render_one_argument() -> std.types.Bool {
 }
 
 // Grouped as three: exactly three arguments, and the middle one is bare "=".
-test fn separated_fragments_render_three_arguments() -> std.types.Bool {
+test fn separated_fragments_render_three_arguments() -> Bool {
   match argument_texts(arguments: separated_grouping()) {
     Empty => false
     Cons { head: a, tail: r1 } =>
@@ -120,7 +120,7 @@ test fn separated_fragments_render_three_arguments() -> std.types.Bool {
 // THE KEYSTONE. Both groupings flatten to the same source text, so the text carrier cannot tell
 // them apart at all. Grouping is therefore information the argv carrier holds and text does not
 // -- which is exactly the fact the 17 remote jq rows lose at the ssh seam.
-fn grouping_flat_text(arguments: v2.std.collection.List<v2.std.compilers.cli_surface.CliArgumentSyntax>) -> std.types.String {
+fn grouping_flat_text(arguments: v2.std.collection.List<v2.std.compilers.cli_surface.CliArgumentSyntax>) -> String {
   match v2.std.compilers.target_model.bound_tokens_source_text(
     tokens: flatten_grouping(arguments: arguments),
     lex: probe_lex_rules(),
@@ -135,13 +135,13 @@ fn grouping_flat_text(arguments: v2.std.collection.List<v2.std.compilers.cli_sur
 // both flatten to identical text, so the text carrier cannot separate them at all, while the
 // two assertions above show the argv carrier does. Grouping is exactly the information the argv
 // vector holds and source text loses -- which is what the 17 remote jq rows lose at the ssh seam.
-test fn both_groupings_flatten_to_the_same_text() -> std.types.Bool {
+test fn both_groupings_flatten_to_the_same_text() -> Bool {
   (grouping_flat_text(arguments: joined_grouping()) == "--color=never")
     && (grouping_flat_text(arguments: joined_grouping())
           == grouping_flat_text(arguments: separated_grouping()))
 }
 
-test fn keystone_flat_text_is_nonempty() -> std.types.Bool {
+test fn keystone_flat_text_is_nonempty() -> Bool {
   match v2.std.compilers.target_model.bound_tokens_source_text(
     tokens: flatten_grouping(arguments: separated_grouping()),
     lex: probe_lex_rules(),
@@ -163,7 +163,7 @@ test fn keystone_flat_text_is_nonempty() -> std.types.Bool {
 // The assertion is deliberately Rejected-vs-Accepted rather than a text comparison: if the
 // fallback ever returns, this goes red because the fold ACCEPTS, and no assertion about the
 // emitted text is needed to see it.
-test fn a_bound_fragment_with_no_spelling_refuses() -> std.types.Bool {
+test fn a_bound_fragment_with_no_spelling_refuses() -> Bool {
   match v2.std.compilers.cli_surface.serialize_cli_arguments(
     arguments: [v2.std.compilers.cli_surface.CliArgumentSyntax {
       fragments: [v2.std.compilers.target_model.BoundToken { token_class: ^probe_value_class, binding: ^probe_unbound_value }]

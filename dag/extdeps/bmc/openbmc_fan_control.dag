@@ -7,25 +7,25 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
   },
 }
 
-data openbmc_fan_control_authority_anchor_scaffold_note: std.types.String = "SCAFFOLD (mandatory-tag corpus cadence) - the host scanner reads the correct openbmc_busctl_authority alias as absent, so the literal anchor duplicates its projection; openbmc_busctl_authority remains the semantic authority. This copy dissolves with the host seam under the corpus_scan_scaffold_note in v2.lens.mandatory_tag.corpus_scan when native witness realization runs the parse-grain corpus witness."
+data openbmc_fan_control_authority_anchor_scaffold_note: String = "SCAFFOLD (mandatory-tag corpus cadence) - the host scanner reads the correct openbmc_busctl_authority alias as absent, so the literal anchor duplicates its projection; openbmc_busctl_authority remains the semantic authority. This copy dissolves with the host seam under the corpus_scan_scaffold_note in v2.lens.mandatory_tag.corpus_scan when native witness realization runs the parse-grain corpus witness."
 
-data openbmc_systemctl_is_active_authority_note: std.types.String = "The systemctl(1) is-active contract names the unit-state tokens and assigns a nonzero exit status when no named unit is active. This decoder admits only the exact inactive token as the typed false observation; other non-active states remain typed refusals rather than being collapsed into inactive."
+data openbmc_systemctl_is_active_authority_note: String = "The systemctl(1) is-active contract names the unit-state tokens and assigns a nonzero exit status when no named unit is active. This decoder admits only the exact inactive token as the typed false observation; other non-active states remain typed refusals rather than being collapsed into inactive."
 
 data openbmc_systemctl_is_active_authority: extdeps.external_authority.ExternalAuthority = extdeps.systemd.systemctl.systemctl_authority
 
 data openbmc_json_projection_authority: extdeps.external_authority.ExternalAuthority = extdeps.tools.jq.jq_authority
 
 type OpenBmcLocalTransformResult {
-  exit_code: std.types.Int
-  success: std.types.Bool
-  content: std.types.String
-  stderr: std.types.String
+  exit_code: Int
+  success: Bool
+  content: String
+  stderr: String
 }
 
 type OpenBmcSelection<T>
   = OpenBmcSelectionZero
   | OpenBmcSelectionOne { value: T }
-  | OpenBmcSelectionMany { count: std.types.Int }
+  | OpenBmcSelectionMany { count: Int }
 
 type OpenBmcCollection<T>
   = OpenBmcCollectionZero
@@ -54,7 +54,7 @@ type OpenBmcStepwiseController {
   outputs: std.types.List<std.measure.Percent>
 }
 
-fn openbmc_fan_config_desired_json(desired: extdeps.bmc.openbmc_operation.OpenBmcFanConfigDesired) -> std.types.String {
+fn openbmc_fan_config_desired_json(desired: extdeps.bmc.openbmc_operation.OpenBmcFanConfigDesired) -> String {
   extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_object(members: [
     extdeps.languages.json.emit.json_kv(key: "minimum", value: extdeps.languages.json.emit.json_int(n: std.measure.percent_count(desired.minimum_duty))),
     extdeps.languages.json.emit.json_kv(key: "zone_failsafe_duty", value: extdeps.languages.json.emit.json_int(n: std.measure.percent_count(desired.zone_failsafe_duty))),
@@ -71,12 +71,12 @@ fn openbmc_fan_config_desired_json(desired: extdeps.bmc.openbmc_operation.OpenBm
     ),
     extdeps.languages.json.emit.json_kv(
       key: "fan_pid_entry",
-      value: extdeps.languages.json.emit.json_string(s: desired.fan_controller_name as std.types.String),
+      value: extdeps.languages.json.emit.json_string(s: desired.fan_controller_name as String),
     ),
     extdeps.languages.json.emit.json_kv(
       key: "fan_inputs",
       value: extdeps.languages.json.emit.json_array(elements: desired.fan_inputs |> map(value =>
-        extdeps.languages.json.emit.json_string(s: value as std.types.String)
+        extdeps.languages.json.emit.json_string(s: value as String)
       )),
     ),
   ]))
@@ -94,23 +94,23 @@ type OpenBmcFanConfigObservation {
 
 type OpenBmcFanConfigObservationResult
   = OpenBmcFanConfigObserved { observation: OpenBmcFanConfigObservation }
-  | OpenBmcFanConfigObservationRefused { reason: std.types.String }
+  | OpenBmcFanConfigObservationRefused { reason: String }
 
 type OpenBmcPathResult
   = OpenBmcPathObserved { path: std.types.NonEmptyStr }
-  | OpenBmcPathRefused { reason: std.types.String }
+  | OpenBmcPathRefused { reason: String }
 
 type OpenBmcBoolResult
-  = OpenBmcBoolObserved { value: std.types.Bool }
-  | OpenBmcBoolRefused { reason: std.types.String }
+  = OpenBmcBoolObserved { value: Bool }
+  | OpenBmcBoolRefused { reason: String }
 
 type OpenBmcByteSizeResult
   = OpenBmcByteSizeObserved { value: std.measure.ByteSize }
-  | OpenBmcByteSizeRefused { reason: std.types.String }
+  | OpenBmcByteSizeRefused { reason: String }
 
 type OpenBmcInstantResult
   = OpenBmcInstantObserved { observed_at: std.types.EpochMs }
-  | OpenBmcInstantRefused { reason: std.types.String }
+  | OpenBmcInstantRefused { reason: String }
 
 fn openbmc_path_result(
   remote: extdeps.ssh.password_session.PasswordSshExecResult,
@@ -639,14 +639,14 @@ fn openbmc_execute(
 service openbmc.JsonProjection {
   operation ProjectFanConfig {
     input {
-      desired_json: std.types.String
+      desired_json: String
       path: std.types.NonEmptyStr
     }
     output {
-      value: std.types.String from "stdout"
-      success: std.types.Bool from "exit_success"
-      exit_code: std.types.Int from "exit_code"
-      stderr: std.types.String from "stderr"
+      value: String from "stdout"
+      success: Bool from "exit_success"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
     }
     readonly
     transport shell {
@@ -661,16 +661,16 @@ service openbmc.JsonProjection {
     }
     exit {
       0 => Unit
-      nonzero => std.types.String "OpenBMC fan config projection failed"
+      nonzero => String "OpenBMC fan config projection failed"
     }
   }
 
   operation ObjectMapperServiceCount {
-    input { content: std.types.String }
+    input { content: String }
     output {
-      value: std.types.String from "stdout"
-      success: std.types.Bool from "exit_success"
-      stderr: std.types.String from "stderr"
+      value: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
     }
     readonly
     transport shell {
@@ -679,16 +679,16 @@ service openbmc.JsonProjection {
     }
     exit {
       0 => Unit
-      nonzero => std.types.String "ObjectMapper service count projection failed"
+      nonzero => String "ObjectMapper service count projection failed"
     }
   }
 
   operation ObjectMapperServiceAt {
-    input { content: std.types.String, index: std.types.Int }
+    input { content: String, index: Int }
     output {
-      value: std.types.String from "stdout"
-      success: std.types.Bool from "exit_success"
-      stderr: std.types.String from "stderr"
+      value: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
     }
     readonly
     transport shell {
@@ -697,7 +697,7 @@ service openbmc.JsonProjection {
     }
     exit {
       0 => Unit
-      nonzero => std.types.String "ObjectMapper service projection failed"
+      nonzero => String "ObjectMapper service projection failed"
     }
   }
 
@@ -766,12 +766,12 @@ type OpenBmcSensorServicesResult
   = OpenBmcSensorServicesObserved {
       services: OpenBmcCollection<std.types.NonEmptyStr>,
     }
-  | OpenBmcSensorServicesRefused { reason: std.types.String }
+  | OpenBmcSensorServicesRefused { reason: String }
 
 type OpenBmcSensorValueResult
-  = OpenBmcSensorValueObserved { value: std.types.Int }
+  = OpenBmcSensorValueObserved { value: Int }
   | OpenBmcSensorValueAbsent
-  | OpenBmcSensorValueRefused { reason: std.types.String }
+  | OpenBmcSensorValueRefused { reason: String }
 
 // exit_code, not `success: Bool`. Two fields for one fact is a second representation: success is
 // exactly exit_code == 0, derived here where the three states are decided rather than carried
@@ -781,10 +781,10 @@ type OpenBmcSensorValueResult
 // load-bearing: a non-numeric reading emits NOTHING and exits zero, which the decoder below reads
 // as OpenBmcSensorValueAbsent -- a real third state beside Refused and Observed. That is why this
 // path must NOT carry jq's --exit-status: it would collapse Absent into Refused on a live sensor.
-data openbmc_sensor_integer_program: std.types.String = "if (.data | type) == \"number\" then (.data | round) else empty end"
+data openbmc_sensor_integer_program: String = "if (.data | type) == \"number\" then (.data | round) else empty end"
 
 // One place builds the sensor projection invocation, so both call sites cannot drift apart.
-fn openbmc_sensor_integer_projection(content: std.types.String) -> OpenBmcSensorValueResult {
+fn openbmc_sensor_integer_projection(content: String) -> OpenBmcSensorValueResult {
   match extdeps.tools.jq.jq_invocation_process_plan(invocation: extdeps.tools.jq.JqInvocation {
     program: extdeps.tools.jq.JqProgram { source: openbmc_sensor_integer_program },
     bindings: std.algebra.Empty,
@@ -831,7 +831,7 @@ type OpenBmcTachThresholdSource
   | OpenBmcCriticalLowThreshold
 
 type OpenBmcTachHealth
-  = OpenBmcTachThresholdUnstated { sensor: std.types.NonEmptyStr, reason: std.types.String }
+  = OpenBmcTachThresholdUnstated { sensor: std.types.NonEmptyStr, reason: String }
   | OpenBmcTachBelowThreshold {
       sensor: std.types.NonEmptyStr,
       reading_rpm: std.measure.RevolutionsPerMinute,
@@ -857,16 +857,16 @@ fn openbmc_tach_health_sensor(
 
 type OpenBmcTachHealthResult
   = OpenBmcTachHealthObserved { health: OpenBmcTachHealth }
-  | OpenBmcTachHealthRefused { reason: std.types.String }
+  | OpenBmcTachHealthRefused { reason: String }
 
 type OpenBmcDigestResult
   = OpenBmcDigestObserved { digest: extdeps.crypto.hash.Digest }
-  | OpenBmcDigestRefused { reason: std.types.String }
+  | OpenBmcDigestRefused { reason: String }
 
 fn openbmc_object_mapper_services_rec(
-  content: std.types.String,
-  index: std.types.Int,
-  count: std.types.Int,
+  content: String,
+  index: Int,
+  count: Int,
   built: std.types.List<std.types.NonEmptyStr>,
 ) -> OpenBmcSensorServicesResult {
   if index >= count {
@@ -1084,7 +1084,7 @@ fn openbmc_tach_health(
   sensor: std.types.NonEmptyStr,
 ) -> OpenBmcTachHealthResult {
   let sensor_path = join(
-    ["/xyz/openbmc_project/sensors/fan_tach/", sensor as std.types.String],
+    ["/xyz/openbmc_project/sensors/fan_tach/", sensor as String],
     "",
   ) as std.types.NonEmptyStr
   match openbmc_sensor_service(session: session, sensor_path: sensor_path) {
@@ -1139,20 +1139,20 @@ fn openbmc_file_sha256(
 }
 
 type OpenBmcIntegerResult
-  = OpenBmcIntegerObserved { value: std.types.Int }
-  | OpenBmcIntegerRefused { reason: std.types.String }
+  = OpenBmcIntegerObserved { value: Int }
+  | OpenBmcIntegerRefused { reason: String }
 
 type OpenBmcStringResult
   = OpenBmcStringObserved { value: std.types.NonEmptyStr }
-  | OpenBmcStringRefused { reason: std.types.String }
+  | OpenBmcStringRefused { reason: String }
 
 type OpenBmcIntegerListResult
-  = OpenBmcIntegerListObserved { values: std.types.List<std.types.Int> }
-  | OpenBmcIntegerListRefused { reason: std.types.String }
+  = OpenBmcIntegerListObserved { values: std.types.List<Int> }
+  | OpenBmcIntegerListRefused { reason: String }
 
 type OpenBmcFanControllerListResult
   = OpenBmcFanControllerListObserved { values: std.types.List<OpenBmcFanController> }
-  | OpenBmcFanControllerListRefused { reason: std.types.String }
+  | OpenBmcFanControllerListRefused { reason: String }
 
 type OpenBmcFanSeries = OpenBmcReadings | OpenBmcOutputs
 
@@ -1207,7 +1207,7 @@ fn openbmc_fan_config_string(
   }
 }
 
-fn openbmc_fan_series_query(series: OpenBmcFanSeries, index: std.types.Int) -> extdeps.bmc.openbmc_operation.OpenBmcFanConfigQuery {
+fn openbmc_fan_series_query(series: OpenBmcFanSeries, index: Int) -> extdeps.bmc.openbmc_operation.OpenBmcFanConfigQuery {
   match series {
     OpenBmcReadings => extdeps.bmc.openbmc_operation.OpenBmcReadingAt { index: index }
     OpenBmcOutputs => extdeps.bmc.openbmc_operation.OpenBmcOutputAt { index: index }
@@ -1218,9 +1218,9 @@ fn openbmc_fan_config_integer_list_rec(
   session: extdeps.ssh.password_session.PasswordSshSession,
   config_path: std.types.NonEmptyStr,
   series: OpenBmcFanSeries,
-  index: std.types.Int,
-  count: std.types.Int,
-  built: std.types.List<std.types.Int>,
+  index: Int,
+  count: Int,
+  built: std.types.List<Int>,
 ) -> OpenBmcIntegerListResult {
   if index >= count {
     OpenBmcIntegerListObserved { values: built }
@@ -1278,9 +1278,9 @@ fn openbmc_fan_config_integer_list(
 fn openbmc_fan_input_list_rec(
   session: extdeps.ssh.password_session.PasswordSshSession,
   config_path: std.types.NonEmptyStr,
-  fan_index: std.types.Int,
-  input_index: std.types.Int,
-  count: std.types.Int,
+  fan_index: Int,
+  input_index: Int,
+  count: Int,
   built: std.types.List<std.types.NonEmptyStr>,
 ) -> OpenBmcFanControllerListResult {
   if input_index >= count {
@@ -1321,7 +1321,7 @@ fn openbmc_fan_input_list_rec(
 fn openbmc_fan_controller_at(
   session: extdeps.ssh.password_session.PasswordSshSession,
   config_path: std.types.NonEmptyStr,
-  fan_index: std.types.Int,
+  fan_index: Int,
 ) -> OpenBmcFanControllerListResult {
   match openbmc_fan_config_integer(
     session: session,
@@ -1348,8 +1348,8 @@ fn openbmc_fan_controller_at(
 fn openbmc_fan_controllers_rec(
   session: extdeps.ssh.password_session.PasswordSshSession,
   config_path: std.types.NonEmptyStr,
-  index: std.types.Int,
-  count: std.types.Int,
+  index: Int,
+  count: Int,
   built: std.types.List<OpenBmcFanController>,
 ) -> OpenBmcFanControllerListResult {
   if index >= count {
@@ -1415,7 +1415,7 @@ fn openbmc_fan_config_queries_rec(
   session: extdeps.ssh.password_session.PasswordSshSession,
   config_path: std.types.NonEmptyStr,
   queries: std.types.List<extdeps.bmc.openbmc_operation.OpenBmcFanConfigQuery>,
-  built: std.types.List<std.types.Int>,
+  built: std.types.List<Int>,
 ) -> OpenBmcIntegerListResult {
   if queries.length() == 0 {
     OpenBmcIntegerListObserved { values: built }
@@ -1645,7 +1645,7 @@ fn openbmc_utc_timestamp(
 fn openbmc_make_directory(
   session: extdeps.ssh.password_session.PasswordSshSession,
   path: std.types.NonEmptyStr,
-  parents: std.types.Bool,
+  parents: Bool,
 ) -> extdeps.ssh.password_session.PasswordSshExecResult {
   openbmc_execute(
     session: session,
@@ -1720,4 +1720,4 @@ fn openbmc_upload_file(
   )
 }
 
-data openbmc_fan_typed_operation_note: std.types.String = "OpenBMC fan observation and mutation are a composition of typed argv and typed file-transfer operations. ObjectMapper and sensor values are requested from busctl as JSON and projected through typed local jq operations; no consumer parses busctl's presentation text. The jq programs are confined to this extdeps realizer as fixed semantic projections; gunbc intent never constructs shell syntax. Password material remains on sshpass fd 0. The caller separately models which file-publication operations establish a durability commit barrier."
+data openbmc_fan_typed_operation_note: String = "OpenBMC fan observation and mutation are a composition of typed argv and typed file-transfer operations. ObjectMapper and sensor values are requested from busctl as JSON and projected through typed local jq operations; no consumer parses busctl's presentation text. The jq programs are confined to this extdeps realizer as fixed semantic projections; gunbc intent never constructs shell syntax. Password material remains on sshpass fd 0. The caller separately models which file-publication operations establish a durability commit barrier."

@@ -28,7 +28,7 @@ type BuildAxisReading {
   magnitude: BuildAxisMagnitude
 }
 
-fn magnitude_scalar(m: BuildAxisMagnitude) -> std.types.Int {
+fn magnitude_scalar(m: BuildAxisMagnitude) -> Int {
   match m {
     MagnitudeBytes { bytes: b } => std.measure.byte_size_count(b: b)
     MagnitudeMoney { money: m } => std.measure.money_once_micros(q: m)
@@ -109,13 +109,13 @@ data no_missing: std.types.List<std.types.NonEmptyStr> = []
 fn line_missing(acc: std.types.List<std.types.NonEmptyStr>, r: product.build_fulfillment.LineResolution) -> std.types.List<std.types.NonEmptyStr> {
   match r {
     LineRefused { line: l, cause: _ } =>
-      concat(acc, one_missing(name: join(["line ", l.display_label as std.types.String, " refused"], "") as std.types.NonEmptyStr))
+      concat(acc, one_missing(name: join(["line ", l.display_label as String, " refused"], "") as std.types.NonEmptyStr))
     LineResolved { line: l, fulfillment: f } =>
       match f {
         CompatibilityUnread { part: _, obligation: o } =>
-          concat(acc, one_missing(name: join([l.display_label as std.types.String, ": ", o as std.types.String], "") as std.types.NonEmptyStr))
+          concat(acc, one_missing(name: join([l.display_label as String, ": ", o as String], "") as std.types.NonEmptyStr))
         SupplyMissing { part: _, requested: _, owned_available: _, market_units: _ } =>
-          concat(acc, one_missing(name: join(["line ", l.display_label as std.types.String, " cannot be filled"], "") as std.types.NonEmptyStr))
+          concat(acc, one_missing(name: join(["line ", l.display_label as String, " cannot be filled"], "") as std.types.NonEmptyStr))
         OwnedInventory { lot: _, quantity: _, reservation: _, available_after: _ } => acc
         NewPurchase { part: _, quantity: _, unit_price: _, authority: _ } => acc
         IncludedInSystem { part: _, quantity: _ } => acc

@@ -68,7 +68,7 @@ type TwoDpcRateCeilingTable {
   rows: std.types.List<TwoDpcRateCeiling>
 }
 
-fn ceiling_is_cited(evidence: RateCeilingEvidence) -> std.types.Bool {
+fn ceiling_is_cited(evidence: RateCeilingEvidence) -> Bool {
   match evidence {
     CeilingCitedToAuthority { authority: _ } => true
     CeilingTranscribedUncited { read_obligation: _ } => false

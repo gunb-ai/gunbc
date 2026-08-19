@@ -37,7 +37,7 @@ type BuildRole
   | MemoryModule
   | Baseboard
 
-fn build_role_key(role: BuildRole) -> std.types.Int {
+fn build_role_key(role: BuildRole) -> Int {
   match role {
     Processor => 0
     MemoryModule => 1
@@ -45,7 +45,7 @@ fn build_role_key(role: BuildRole) -> std.types.Int {
   }
 }
 
-fn build_role_eq(left: BuildRole, right: BuildRole) -> std.types.Bool {
+fn build_role_eq(left: BuildRole, right: BuildRole) -> Bool {
   build_role_key(role: left) == build_role_key(role: right)
 }
 
@@ -221,7 +221,7 @@ type SupplyLookup
   | SupplyAbsent
   | SupplyDuplicated
 
-fn supply_row_matches(rows: std.types.List<SupplyRow>, part: std.decl_ref.DeclarationRef) -> std.types.Int {
+fn supply_row_matches(rows: std.types.List<SupplyRow>, part: std.decl_ref.DeclarationRef) -> Int {
   fold(rows, init: 0, f: fn(acc, r) {
     if std.decl_ref.declaration_ref_eq(a: r.part, b: part) { acc + 1 } else { acc }
   })

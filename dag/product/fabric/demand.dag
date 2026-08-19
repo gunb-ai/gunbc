@@ -31,9 +31,9 @@ module product.fabric.demand
 // declared frame. Three separate fields, because a system that offers only
 // rerun forces the third answer whenever the first is wanted.
 type SatisfactionRequirement {
-  terminal_receipt_may_satisfy: std.types.Bool
-  new_attempt_required: std.types.Bool
-  step_reuse_permitted: std.types.Bool
+  terminal_receipt_may_satisfy: Bool
+  new_attempt_required: Bool
+  step_reuse_permitted: Bool
 }
 
 // Provenance is the binding's stable, idempotent reference to whatever the

@@ -63,7 +63,7 @@ type HostMemoryStanding {
 // the collapse unwritable rather than warn about it. This predicate exists so
 // a consumer can ASK whether the downstream question is still open, and it
 // answers from the boot axis alone.
-fn host_boot_is_established(standing: HostMemoryStanding) -> std.types.Bool {
+fn host_boot_is_established(standing: HostMemoryStanding) -> Bool {
   match standing.boot {
     BootReachedOperatingSystem => true
     RepeatingFirmwareReset { token: _, cycles: _ } => false

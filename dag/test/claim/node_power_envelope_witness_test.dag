@@ -93,7 +93,7 @@ data eight_module_population: gunbc.memory_provisioning.PopulationOption = gunbc
 
 // Reads the wall figure out of the typed reading. A refusal answers a negative,
 // which no claim below can mistake for a wattage.
-fn node_wall(inputs: product.node_power_envelope.NodeElectricalInputs) -> std.types.Int {
+fn node_wall(inputs: product.node_power_envelope.NodeElectricalInputs) -> Int {
   match product.node_power_envelope.node_draw(inputs: inputs) {
     NodeDrawDerived { dc_load: _, wall_draw: w } => std.measure.watt_count(w: w)
     NodeDrawRefused { cause: _ } => 0 - 1
@@ -124,7 +124,7 @@ fn rate_at(dimms_per_channel: std.nat.Nat, rank_count: std.nat.Nat) -> std.nat.N
   )
 }
 
-test fn downclock_is_rank_dependent() -> std.types.Bool {
+test fn downclock_is_rank_dependent() -> Bool {
   rate_at(dimms_per_channel: 2, rank_count: 1) == 3200
     && rate_at(dimms_per_channel: 2, rank_count: 2) == 2933
     && rate_at(dimms_per_channel: 2, rank_count: 4) == 2400
@@ -136,7 +136,7 @@ test fn downclock_is_rank_dependent() -> std.types.Bool {
 // Carrying them with a typed evidence standing makes the gap countable — this
 // claim is what turns green the day a real citation lands, and it will need
 // updating then, which is the point.
-test fn the_two_dpc_ceilings_declare_themselves_uncited() -> std.types.Bool {
+test fn the_two_dpc_ceilings_declare_themselves_uncited() -> Bool {
   count(product.node_power_envelope.altra_two_dpc_ceilings.rows) == 2
     && fold(product.node_power_envelope.altra_two_dpc_ceilings.rows, init: true, f: fn(acc, row) {
       acc && !product.node_power_envelope.ceiling_is_cited(evidence: row.evidence)
@@ -147,7 +147,7 @@ test fn the_two_dpc_ceilings_declare_themselves_uncited() -> std.types.Bool {
 // board that admits two DIMMs per channel but was populated one-deep is
 // electrically one-deep, and the only authority for which happened is the
 // PopulationOption's own coverage.
-test fn the_populated_depth_is_read_from_the_population() -> std.types.Bool {
+test fn the_populated_depth_is_read_from_the_population() -> Bool {
   product.node_power_envelope.populated_dimms_per_channel(population: sixteen_module_population) == 2
     && product.node_power_envelope.populated_dimms_per_channel(population: eight_module_population) == 1
 }
@@ -160,7 +160,7 @@ test fn the_populated_depth_is_read_from_the_population() -> std.types.Bool {
 // because the chip count comes from the module width against the ECC word:
 // dram_chips_per_rank derives the count from the 72-bit ECC word rather than
 // the 64-bit data word.
-test fn psu_sizing_is_computed_from_the_cited_tdp() -> std.types.Bool {
+test fn psu_sizing_is_computed_from_the_cited_tdp() -> Bool {
   std.measure.watt_count(w: product.node_power_envelope.memory_power(population: eight_module_population, power_per_chip: std.measure.milliwatt(count: 400))) == 115
     && node_wall(inputs: q8030_node) == 340
     && match product.node_power_envelope.psu_adequacy(inputs: q8030_node) {
@@ -172,7 +172,7 @@ test fn psu_sizing_is_computed_from_the_cited_tdp() -> std.types.Bool {
 
 // RED CONTROL: the same node behind a supply that cannot carry it reports the
 // shortfall, not a Boolean false a buyer cannot act on.
-test fn an_undersized_supply_reports_its_shortfall() -> std.types.Bool {
+test fn an_undersized_supply_reports_its_shortfall() -> Bool {
   let small = product.node_power_envelope.NodeElectricalInputs {
     label: "altrad8ud-q8030-undersized",
     sockets: 1,
@@ -192,7 +192,7 @@ test fn an_undersized_supply_reports_its_shortfall() -> std.types.Bool {
   }
 }
 
-test fn memory_bandwidth_is_derived_from_the_populated_topology() -> std.types.Bool {
+test fn memory_bandwidth_is_derived_from_the_populated_topology() -> Bool {
   std.measure.bandwidth_count(b: product.node_power_envelope.memory_bandwidth(context: altrad8ud_context, population: eight_module_population)) == 204800000000
     && std.measure.bandwidth_count(b: product.node_power_envelope.memory_bandwidth(context: mt_collins_context, population: sixteen_module_population)) == 187712000000
 }
@@ -200,17 +200,17 @@ test fn memory_bandwidth_is_derived_from_the_populated_topology() -> std.types.B
 // A single-rank module cannot interleave, so it does not reach the bus's rated
 // throughput even at its rated clock — the axis that made rank a real tradeoff
 // rather than a preference.
-test fn a_single_rank_population_does_not_reach_the_rated_bus() -> std.types.Bool {
+test fn a_single_rank_population_does_not_reach_the_rated_bus() -> Bool {
   std.measure.bandwidth_count(b: product.node_power_envelope.memory_bandwidth(context: altrad8ud_context, population: sixteen_module_1rx4_population))
     < std.measure.bandwidth_count(b: product.node_power_envelope.memory_bandwidth(context: altrad8ud_context, population: eight_module_population))
 }
 
-test fn realizability_rejects_an_impossible_sku() -> std.types.Bool {
+test fn realizability_rejects_an_impossible_sku() -> Bool {
   extdeps.memory.types.dram_module_is_realizable(module: mod_2rx4_32g, jedec: extdeps.memory.jedec.ddr4_generation_catalog)
     && !extdeps.memory.types.dram_module_is_realizable(module: mod_1rx8_32g_impossible, jedec: extdeps.memory.jedec.ddr4_generation_catalog)
 }
 
-test fn a_real_part_computes_a_real_die_density() -> std.types.Bool {
+test fn a_real_part_computes_a_real_die_density() -> Bool {
   std.measure.byte_size_count(b: extdeps.memory.types.dram_module_required_die_density(module: mod_1rx4_16g)) == 1073741824
 }
 
@@ -218,7 +218,7 @@ test fn a_real_part_computes_a_real_die_density() -> std.types.Bool {
 // disagrees with the derivation is reported as the divergence it is; nothing
 // here overwrites the derived figure with the measured one, and there is no
 // function that would.
-test fn a_measurement_beside_the_derivation_reports_the_divergence() -> std.types.Bool {
+test fn a_measurement_beside_the_derivation_reports_the_divergence() -> Bool {
   let derived = match product.node_power_envelope.derived_wall_power(inputs: q8030_node) {
     DerivedWallPowerReading { reading: r } => r
     DerivedWallPowerRefused { cause: _ } => product.node_power_envelope.WallPowerMeasured { watts: std.measure.watt(count: 0), host: "unreachable" as std.types.NonEmptyStr, observed_at: 0 }
@@ -276,7 +276,7 @@ data pending_altrad8ud_m12830_node: product.node_power_envelope.NodeElectricalIn
   psu_efficiency: product.node_power_envelope.Gold,
 }
 
-test fn the_pending_configuration_refuses_its_draw_and_names_the_read() -> std.types.Bool {
+test fn the_pending_configuration_refuses_its_draw_and_names_the_read() -> Bool {
   match product.node_power_envelope.node_draw(inputs: pending_altrad8ud_m12830_node) {
     NodeDrawRefused { cause: c } =>
       match c {
@@ -290,7 +290,7 @@ test fn the_pending_configuration_refuses_its_draw_and_names_the_read() -> std.t
 // ...and the supply is UNDECIDABLE rather than adequate. A 550W supply against
 // a 183W processor and a board looks comfortable until the memory it could not
 // count is added, which is exactly the reading this arm refuses to give.
-test fn the_pending_configuration_leaves_the_supply_undecidable() -> std.types.Bool {
+test fn the_pending_configuration_leaves_the_supply_undecidable() -> Bool {
   match product.node_power_envelope.psu_adequacy(inputs: pending_altrad8ud_m12830_node) {
     PsuUndecidable { cause: _ } => true
     PsuAdequate { dc_load: _, rated: _, headroom: _ } => false
@@ -302,7 +302,7 @@ test fn the_pending_configuration_leaves_the_supply_undecidable() -> std.types.B
 // same node reports 512 GiB while refusing to report a wattage. Two questions,
 // two evidence requirements — and a reader who only needed capacity is not
 // blocked by a read obligation that does not bear on it.
-test fn the_pending_configuration_still_answers_its_capacity() -> std.types.Bool {
+test fn the_pending_configuration_still_answers_its_capacity() -> Bool {
   std.measure.byte_size_count(b: product.node_power_envelope.node_memory_capacity(inputs: pending_altrad8ud_m12830_node)) == 549755813888
 }
 
@@ -344,7 +344,7 @@ data qualified_altrad8ud_m12830_node: product.node_power_envelope.NodeElectrical
   psu_efficiency: product.node_power_envelope.Gold,
 }
 
-test fn the_same_node_derives_its_draw_once_the_part_is_read() -> std.types.Bool {
+test fn the_same_node_derives_its_draw_once_the_part_is_read() -> Bool {
   match product.node_power_envelope.node_draw(inputs: qualified_altrad8ud_m12830_node) {
     NodeDrawDerived { dc_load: dc, wall_draw: w } => std.measure.watt_count(w: dc) == 328 && std.measure.watt_count(w: w) == 364
     NodeDrawRefused { cause: _ } => false

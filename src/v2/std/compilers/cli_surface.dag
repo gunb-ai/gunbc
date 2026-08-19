@@ -67,7 +67,7 @@ fn cli_long_option_spelling(name: std.types.NonEmptyStr) -> std.types.NonEmptySt
   concat("--", name)
 }
 
-type CliArgument sole_constructor { text: std.types.String }
+type CliArgument sole_constructor { text: String }
 
 type CliSurface sole_constructor { arguments: v2.std.collection.List<CliArgument> }
 
@@ -75,7 +75,7 @@ fn cli_surface_arguments(surface: CliSurface) -> v2.std.collection.List<CliArgum
   surface.arguments
 }
 
-fn cli_argument_text(argument: CliArgument) -> std.types.String {
+fn cli_argument_text(argument: CliArgument) -> String {
   argument.text
 }
 
@@ -160,9 +160,9 @@ fn process_argv_expansion_surface(expansion: ProcessArgvExpansion) -> CliSurface
 // target_text_seq, an argv argument composes into a CliArgument here, and no already-composed
 // String is ever lifted into either carrier.
 fn required_bound_spelling(
-  binding_spellings: v2.std.collection.Map<v2.std.node.Symbol, std.types.String>,
+  binding_spellings: v2.std.collection.Map<v2.std.node.Symbol, String>,
   binding: v2.std.node.Symbol
-) -> v2.std.diagnostic.Outcome<std.types.String> {
+) -> v2.std.diagnostic.Outcome<String> {
   match v2.std.collection.map_get(binding_spellings, binding) {
     Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
     Accepted { value: found, diagnostics: pending } =>
@@ -188,8 +188,8 @@ fn cli_binding_spelling_missing_diagnostic(binding: v2.std.node.Symbol) -> v2.st
 fn cli_fragment_spelling(
   fragment: v2.std.compilers.target_model.ConcreteSyntaxToken,
   lex: v2.std.compilers.target_model.LexRules,
-  binding_spellings: v2.std.collection.Map<v2.std.node.Symbol, std.types.String>
-) -> v2.std.diagnostic.Outcome<std.types.String> {
+  binding_spellings: v2.std.collection.Map<v2.std.node.Symbol, String>
+) -> v2.std.diagnostic.Outcome<String> {
   match fragment {
     FixedToken { token_class: tc } =>
       v2.std.compilers.target_model.lex_rules_literal_for_class(rules: lex, token_class: tc)
@@ -201,7 +201,7 @@ fn cli_fragment_spelling(
 fn cli_argument_from_fragments(
   fragments: v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
   lex: v2.std.compilers.target_model.LexRules,
-  binding_spellings: v2.std.collection.Map<v2.std.node.Symbol, std.types.String>
+  binding_spellings: v2.std.collection.Map<v2.std.node.Symbol, String>
 ) -> v2.std.diagnostic.Outcome<CliArgument> {
   v2.std.diagnostic.bind_outcome(
     o: v2.std.algebra.fold_list(
@@ -235,7 +235,7 @@ fn cli_argument_from_fragments(
 fn serialize_cli_arguments(
   arguments: v2.std.collection.List<CliArgumentSyntax>,
   lex: v2.std.compilers.target_model.LexRules,
-  binding_spellings: v2.std.collection.Map<v2.std.node.Symbol, std.types.String>
+  binding_spellings: v2.std.collection.Map<v2.std.node.Symbol, String>
 ) -> v2.std.diagnostic.Outcome<CliSurface> {
   v2.std.diagnostic.bind_outcome(
     o: v2.std.algebra.fold_list(

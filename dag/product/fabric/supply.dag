@@ -81,7 +81,7 @@ type Offer<P> {
   shape: product.fabric.work.Shape
   capabilities: product.fabric.work.CapabilityManifestRef
   trust_domain: product.fabric.work.TrustDomainRef
-  quantity_bound: std.types.Int
+  quantity_bound: Int
   ready_at: std.types.Timestamp
   quote: OfferQuote
   evidence: OfferEvidence

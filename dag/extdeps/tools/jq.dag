@@ -9,7 +9,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 
 data jq_authority: extdeps.external_authority.ExternalAuthority = extdeps_external_authority_anchor
 
-data jq_authority_anchor_scaffold_note: std.types.String = "SCAFFOLD (mandatory-tag corpus cadence) - the host scanner reads an aliased anchor as absent, so the literal anchor grounds its projection while jq_authority remains the semantic authority name. This copy dissolves with the host seam under the corpus_scan_scaffold_note in v2.lens.mandatory_tag.corpus_scan when native witness realization runs the parse-grain corpus witness."
+data jq_authority_anchor_scaffold_note: String = "SCAFFOLD (mandatory-tag corpus cadence) - the host scanner reads an aliased anchor as absent, so the literal anchor grounds its projection while jq_authority remains the semantic authority name. This copy dissolves with the host seam under the corpus_scan_scaffold_note in v2.lens.mandatory_tag.corpus_scan when native witness realization runs the parse-grain corpus witness."
 
 data jq_cli_tool: extdeps.tools.CliTool = extdeps.tools.CliTool {
   name: "jq",
@@ -38,11 +38,11 @@ data jq_cli_tool: extdeps.tools.CliTool = extdeps.tools.CliTool {
 // reachable by every future caller.
 service jq.Process {
   operation RunWithStdin {
-    input { arguments: ProcessArgvExpansion, stdin_payload: std.types.String }
+    input { arguments: ProcessArgvExpansion, stdin_payload: String }
     output {
-      exit_code: std.types.Int from "exit_code"
-      stdout: std.types.String from "stdout"
-      stderr: std.types.String from "stderr"
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
     }
     readonly
     transport shell {
@@ -58,9 +58,9 @@ service jq.Process {
   operation RunWithoutStdin {
     input { arguments: ProcessArgvExpansion }
     output {
-      exit_code: std.types.Int from "exit_code"
-      stdout: std.types.String from "stdout"
-      stderr: std.types.String from "stderr"
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
     }
     readonly
     transport shell {
@@ -94,14 +94,14 @@ type JqBindingName { name: std.types.NonEmptyStr }
 
 type JqBinding
   = JqJsonBinding { name: JqBindingName, value: std.types.NonEmptyStr }
-  | JqTextBinding { name: JqBindingName, value: std.types.String }
+  | JqTextBinding { name: JqBindingName, value: String }
 
 // Input is an AXIS, not an operand, because the two arms differ in WHERE the bytes go: a file is
 // an argv operand, stdin is a process channel. An argv-only model cannot state that difference,
 // which is the same gap extdeps.llm.cursor_cli hit when an environment credential had no field.
 type JqInput
   = JqInputFile { path: std.types.NonEmptyStr }
-  | JqInputStdin { content: std.types.String }
+  | JqInputStdin { content: String }
 
 // -r writes STRING results raw; non-string results stay JSON-formatted. Hence JqRawOutput rather
 // than a "RawText" that would overclaim what the flag does.
@@ -209,7 +209,7 @@ fn jq_cli_lex_rules() -> v2.std.compilers.lexing.ModeledLexRules {
 // JSON payload through argv by mistake.
 type JqProcessPlan {
   arguments: std.types.List<v2.std.compilers.cli_surface.CliArgumentSyntax>
-  binding_spellings: v2.std.collection.Map<v2.std.node.Symbol, std.types.String>
+  binding_spellings: v2.std.collection.Map<v2.std.node.Symbol, String>
   process_input: JqProcessInput
 }
 
@@ -246,7 +246,7 @@ fn jq_invocation_lower(invocation: JqInvocation) -> JqLowering {
               binding_spellings: v2.std.collection.map_insert(
                 m: v2.std.collection.empty_map(),
                 key: ^jq_program_text,
-                value: invocation.program.source as std.types.String
+                value: invocation.program.source as String
               ),
               process_input: JqProcessStdin { content: content }
             }
@@ -293,15 +293,15 @@ fn jq_selected_option_argument(selection: JqCliSelection) -> std.types.List<v2.s
 // An earlier revision carried Optional<String>, which conflates them -- the same state-space
 // collapse JqCliSelection exists to prevent one layer up, reintroduced at the process boundary.
 type JqProcessInput
-  = JqProcessStdin { content: std.types.String }
+  = JqProcessStdin { content: String }
   | JqProcessNoStdin
 
 // exit_code and NOT a success Bool beside it: two fields for one fact is a second
 // representation, since success is exactly exit_code == 0, derived where it is decided.
 type JqProcessObservation {
-  exit_code: std.types.Int
-  stdout: std.types.String
-  stderr: std.types.String
+  exit_code: Int
+  stdout: String
+  stderr: String
 }
 
 // No `tool` field. A jq-owned handler already fixes the executable, so carrying CliTool here
@@ -327,9 +327,9 @@ type JqAdmittedProcessPlan sole_constructor {
 // refusal is the state-space conflation that would report a non-numeric sensor reading as a broken
 // BMC.
 type JqOutcome
-  = JqOutputPresent { text: std.types.String }
+  = JqOutputPresent { text: String }
   | JqOutputAbsent
-  | JqExecutionRefused { exit_code: std.types.Int, stderr: std.types.String }
+  | JqExecutionRefused { exit_code: Int, stderr: String }
 
 // The one authority that reads an exit code, and it reads it AGAINST the policy that asked for it.
 //
@@ -452,6 +452,6 @@ fn jq_execute_admitted_plan(plan: JqAdmittedProcessPlan) -> JqProcessObservation
 // The four-case receipt's entry point (test/manual/process_argv_expansion_receipt_test.dag). It
 // exists so the receipt asserts through the SAME handler production uses, rather than a
 // look-alike declared in the witness -- a witness-local service would prove nothing about this one.
-fn jq_argv_expansion_probe(expansion: ProcessArgvExpansion, payload: std.types.String) -> std.types.Int {
+fn jq_argv_expansion_probe(expansion: ProcessArgvExpansion, payload: String) -> Int {
   jq.Process.RunWithStdin(arguments: expansion, stdin_payload: payload).exit_code
 }

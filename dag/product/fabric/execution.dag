@@ -40,7 +40,7 @@ type LeaseKey = std.types.NonEmptyStr where brand("LeaseKey")
 type LeaseIdentity {
   lease_key: LeaseKey
   resource_fingerprint: std.content_hash.ContentHash
-  generation: std.types.Int
+  generation: Int
 }
 
 // resource_fingerprint names the EXACT reserved claim, not the host. Naming
@@ -141,11 +141,11 @@ type Receipt<P> {
 // release evidence, and MISSING RELEASE EVIDENCE HOLDS THE RESERVATION rather
 // than assuming the supplier stopped charging. Assuming release is the arm
 // that quietly under-reserves against a machine still billing.
-fn receipt_lease_generation<P>(r: Receipt<P>) -> std.types.Int {
+fn receipt_lease_generation<P>(r: Receipt<P>) -> Int {
   r.lease.generation
 }
 
-fn grant_lease_generation<P>(g: ExecutionGrant<P>) -> std.types.Int {
+fn grant_lease_generation<P>(g: ExecutionGrant<P>) -> Int {
   g.context.lease.generation
 }
 
@@ -182,7 +182,7 @@ type ReceiptAdmission =
   | ReceiptFromDifferentLease
   | ReceiptFromDifferentAttempt
   | ReceiptFingerprintIncomparable
-  | ReceiptGenerationStale { presented: std.types.Int, current: std.types.Int }
+  | ReceiptGenerationStale { presented: Int, current: Int }
 
 fn admit_receipt_for_grant<P>(r: Receipt<P>, g: ExecutionGrant<P>) -> ReceiptAdmission {
   if !product.fabric.identity.fabric_identity_eq(left: r.attempt, right: g.context.attempt) {

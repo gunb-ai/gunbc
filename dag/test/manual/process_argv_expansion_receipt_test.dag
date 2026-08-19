@@ -56,7 +56,7 @@ fn two_argument_surface() -> v2.std.collection.List<v2.std.compilers.cli_surface
 }
 
 // CASE 4 -- the carrier. jq exits 0 only if it received TWO argv words.
-test fn case4_expansion_carrier_splices() -> std.types.Bool {
+test fn case4_expansion_carrier_splices() -> Bool {
   match v2.std.compilers.cli_surface.serialize_cli_arguments(
     arguments: two_argument_surface(),
     lex: probe_lex(),

@@ -57,14 +57,14 @@ type MoneyAccount {
 // projects inward, which is the direction that keeps both true.
 type MoneyReservationRequest {
   reference: product.fabric.execution.ReservationRef
-  generation: std.types.Int
+  generation: Int
   maximum_liability: std.measure.MoneyAmountMicro
   currency: std.currency.CurrencyCode
 }
 
 type MoneySettlementRequest {
   reference: product.fabric.execution.ReservationRef
-  generation: std.types.Int
+  generation: Int
   actual_spend: std.measure.MoneyAmountMicro
   currency: std.currency.CurrencyCode
   settled_at: std.types.Timestamp
@@ -82,14 +82,14 @@ type MoneySettlementRequest {
 
 type MoneyLease {
   reference: product.fabric.execution.ReservationRef
-  generation: std.types.Int
+  generation: Int
 }
 
-fn lease_generation_for(a: MoneyAccount, reference: product.fabric.execution.ReservationRef) -> List<std.types.Int> {
+fn lease_generation_for(a: MoneyAccount, reference: product.fabric.execution.ReservationRef) -> List<Int> {
   a.leases |> filter(l => l.reference == reference) |> map(l => l.generation)
 }
 
-fn fence_admits(a: MoneyAccount, reference: product.fabric.execution.ReservationRef, presented: std.types.Int) -> Bool {
+fn fence_admits(a: MoneyAccount, reference: product.fabric.execution.ReservationRef, presented: Int) -> Bool {
   match lease_generation_for(a: a, reference: reference) {
     Empty {} => false
     Cons { head: held, tail: _ } => held == presented
@@ -103,7 +103,7 @@ type MoneyRefusal =
       presented_currency: std.currency.CurrencyCode,
     }
   | LedgerRefused { account: product.fabric.demand.BudgetAccountId, refusal: extdeps.accounting.encumbrance.EncumbranceRefusal<std.measure.Currency, std.measure.Micro> }
-  | StaleLeaseGeneration { reference: product.fabric.execution.ReservationRef, presented: std.types.Int }
+  | StaleLeaseGeneration { reference: product.fabric.execution.ReservationRef, presented: Int }
 
 type MoneyOutcome =
   | AccountAdvanced { account: MoneyAccount }
@@ -198,7 +198,7 @@ fn settle_money(a: MoneyAccount, request: MoneySettlementRequest) -> MoneyOutcom
 fn release_money(
   a: MoneyAccount,
   reference: product.fabric.execution.ReservationRef,
-  generation: std.types.Int,
+  generation: Int,
   reason: std.types.NonEmptyStr,
   released_at: std.types.Timestamp,
 ) -> MoneyOutcome {
@@ -224,7 +224,7 @@ fn release_money(
 // against. Recording only on success matters: a refused reservation that still
 // wrote a lease would let the fence admit a hold that does not exist.
 
-fn record_lease(o: MoneyOutcome, reference: product.fabric.execution.ReservationRef, generation: std.types.Int) -> MoneyOutcome {
+fn record_lease(o: MoneyOutcome, reference: product.fabric.execution.ReservationRef, generation: Int) -> MoneyOutcome {
   match o {
     AccountAdvanced { account: a } =>
       AccountAdvanced {

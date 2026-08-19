@@ -60,18 +60,18 @@ fn dear_build() -> product.build_selection.BuildCandidate {
   candidate(identity: dear_ref, label: "dear" as std.types.NonEmptyStr, capacity: half_terabyte, cash: usd_micros(count: 9000000), builds: 30, wall_power: std.measure.watt(count: 400), bandwidth: std.measure.Bandwidth { count: 187712000000 })
 }
 
-test fn w_the_axes_are_the_five_the_pipeline_funds() -> std.types.Bool {
+test fn w_the_axes_are_the_five_the_pipeline_funds() -> Bool {
   count(product.build_selection.build_selection_axes()) == 5
 }
 
-test fn w_a_strictly_worse_candidate_is_dominated() -> std.types.Bool {
+test fn w_a_strictly_worse_candidate_is_dominated() -> Bool {
   match product.build_selection.build_standing(subject: dear_build(), field: [cheap_build(), dear_build()], declared: std.currency.Usd) {
     DominatedBy { dominators: ds } => count(ds) == 1
     _ => false
   }
 }
 
-test fn w_the_better_candidate_stands_on_the_frontier() -> std.types.Bool {
+test fn w_the_better_candidate_stands_on_the_frontier() -> Bool {
   match product.build_selection.build_standing(subject: cheap_build(), field: [cheap_build(), dear_build()], declared: std.currency.Usd) {
     ProvisionallyNonDominated { sensitivities: _ } => true
     _ => false
@@ -83,7 +83,7 @@ test fn w_the_better_candidate_stands_on_the_frontier() -> std.types.Bool {
 // dearer-but-larger is a real tradeoff. If cash were oriented
 // higher-is-better, the dominance above would still hold and this claim goes
 // red.
-test fn w_a_tradeoff_is_not_a_domination() -> std.types.Bool {
+test fn w_a_tradeoff_is_not_a_domination() -> Bool {
   let tradeoff = candidate(identity: dear_ref, label: "tradeoff" as std.types.NonEmptyStr, capacity: half_terabyte, cash: usd_micros(count: 100000), builds: 31, wall_power: std.measure.watt(count: 300), bandwidth: std.measure.Bandwidth { count: 204800000000 })
   match product.build_selection.build_standing(subject: tradeoff, field: [cheap_build(), tradeoff], declared: std.currency.Usd) {
     ProvisionallyNonDominated { sensitivities: _ } => true
@@ -115,7 +115,7 @@ fn pending_build() -> product.build_selection.BuildCandidate {
   }
 }
 
-test fn w_an_unread_compatibility_is_pending_evidence_not_a_winner() -> std.types.Bool {
+test fn w_an_unread_compatibility_is_pending_evidence_not_a_winner() -> Bool {
   match product.build_selection.build_standing(subject: pending_build(), field: [cheap_build(), pending_build()], declared: std.currency.Usd) {
     IncomparablePendingEvidence { missing: _ } => true
     _ => false
@@ -125,7 +125,7 @@ test fn w_an_unread_compatibility_is_pending_evidence_not_a_winner() -> std.type
 // ...and it does not poison the field either: std.pareto excludes an entry
 // declaring missing inputs from being a challenger, so the cheap build keeps
 // its standing even though the pending candidate would beat it on paper.
-test fn w_a_pending_candidate_neither_wins_nor_poisons_the_field() -> std.types.Bool {
+test fn w_a_pending_candidate_neither_wins_nor_poisons_the_field() -> Bool {
   match product.build_selection.build_standing(subject: cheap_build(), field: [cheap_build(), pending_build()], declared: std.currency.Usd) {
     ProvisionallyNonDominated { sensitivities: _ } => true
     _ => false
@@ -135,7 +135,7 @@ test fn w_a_pending_candidate_neither_wins_nor_poisons_the_field() -> std.types.
 // A CANDIDATE PRICED IN ANOTHER CURRENCY IS PENDING EVIDENCE, NOT A CHEAP ONE.
 // This is the claim the deleted memory_part_selection held at its own
 // admission; it is re-enrolled here, where the pipeline actually compares.
-test fn w_a_candidate_in_an_undeclared_currency_does_not_rank() -> std.types.Bool {
+test fn w_a_candidate_in_an_undeclared_currency_does_not_rank() -> Bool {
   let eur = product.build_selection.BuildCandidate {
     identity: dear_ref,
     display_label: "priced in euro" as std.types.NonEmptyStr,
@@ -154,7 +154,7 @@ test fn w_a_candidate_in_an_undeclared_currency_does_not_rank() -> std.types.Boo
 
 // A refused cash answer and a refused ceiling are missing inputs too: a
 // candidate whose price could not be computed must not be ranked as free.
-test fn w_a_refused_cash_answer_makes_the_candidate_incomparable() -> std.types.Bool {
+test fn w_a_refused_cash_answer_makes_the_candidate_incomparable() -> Bool {
   let broken = product.build_selection.BuildCandidate {
     identity: dear_ref,
     display_label: "unpriceable" as std.types.NonEmptyStr,
@@ -174,7 +174,7 @@ test fn w_a_refused_cash_answer_makes_the_candidate_incomparable() -> std.types.
 // A build that buys nothing reads a REAL zero on the cash axis and ranks with
 // it — the no-purchase arm is not a missing input, because every line was owned
 // or included and the incremental cash genuinely is zero.
-test fn w_a_fully_owned_build_ranks_at_zero_cash() -> std.types.Bool {
+test fn w_a_fully_owned_build_ranks_at_zero_cash() -> Bool {
   let owned = product.build_selection.BuildCandidate {
     identity: dear_ref,
     display_label: "all from stock" as std.types.NonEmptyStr,
@@ -193,7 +193,7 @@ test fn w_a_fully_owned_build_ranks_at_zero_cash() -> std.types.Bool {
 
 // A ceiling no line bounds has no build count to compare, and the candidate
 // says so rather than reading zero and losing the axis.
-test fn w_an_unbounded_ceiling_is_declared_missing_not_read_as_zero() -> std.types.Bool {
+test fn w_an_unbounded_ceiling_is_declared_missing_not_read_as_zero() -> Bool {
   let unbounded = product.build_selection.BuildCandidate {
     identity: dear_ref,
     display_label: "whole system" as std.types.NonEmptyStr,
@@ -212,7 +212,7 @@ test fn w_an_unbounded_ceiling_is_declared_missing_not_read_as_zero() -> std.typ
 
 // Two candidates sharing one identity REFUSE the whole selection — the spine's
 // own duplicate rule, reached through this projector.
-test fn w_duplicate_candidate_identity_refuses_the_selection() -> std.types.Bool {
+test fn w_duplicate_candidate_identity_refuses_the_selection() -> Bool {
   match product.build_selection.build_standing(subject: cheap_build(), field: [cheap_build(), cheap_build()], declared: std.currency.Usd) {
     SelectionRefused { cause: _ } => true
     _ => false
@@ -221,7 +221,7 @@ test fn w_duplicate_candidate_identity_refuses_the_selection() -> std.types.Bool
 
 // The projection is identity-keyed, not label-keyed: the entry carries the
 // candidate's DeclarationRef and its readings carry the axes' refs.
-test fn w_the_projected_entry_is_keyed_by_declaration_identity() -> std.types.Bool {
+test fn w_the_projected_entry_is_keyed_by_declaration_identity() -> Bool {
   let e = product.build_selection.project_entry(candidate: cheap_build(), declared: std.currency.Usd)
   count(e.readings) == 5 && count(e.missing_inputs) == 0
 }

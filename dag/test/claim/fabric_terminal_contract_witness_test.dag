@@ -75,7 +75,7 @@ data other_runtime_requirements: product.fabric.work.ExecutionRequirements = pro
   trust_domain: "fleet-owned",
 }
 
-fn buy_terms(reservation: std.types.Int, ceiling: std.types.Int) -> product.fabric.demand.BuyTerms {
+fn buy_terms(reservation: Int, ceiling: Int) -> product.fabric.demand.BuyTerms {
   product.fabric.demand.BuyTerms {
     budget_account: "acct-fleet",
     currency: std.currency.Usd,
@@ -87,8 +87,8 @@ fn buy_terms(reservation: std.types.Int, ceiling: std.types.Int) -> product.fabr
 fn demand_from_binding(
   key: product.fabric.identity.DemandKey,
   provenance: std.types.NonEmptyStr,
-  reservation: std.types.Int,
-  ceiling: std.types.Int,
+  reservation: Int,
+  ceiling: Int,
 ) -> product.fabric.demand.Demand<std.types.NonEmptyStr> {
   product.fabric.demand.Demand {
     id: product.fabric.identity.FabricIdentity { principal: "operator", key: key },
@@ -124,7 +124,7 @@ data gitlab_binding_demand: product.fabric.demand.Demand<std.types.NonEmptyStr> 
 
 // The load-bearing claim: two providers, one Work.
 
-test fn two_bindings_project_into_one_work_identity() -> std.types.Bool {
+test fn two_bindings_project_into_one_work_identity() -> Bool {
   product.fabric.identity.fabric_identity_key(id: product.fabric.demand.demand_work(d: github_binding_demand))
     == product.fabric.identity.fabric_identity_key(id: product.fabric.demand.demand_work(d: gitlab_binding_demand))
     && github_binding_demand.origin != gitlab_binding_demand.origin
@@ -135,7 +135,7 @@ test fn two_bindings_project_into_one_work_identity() -> std.types.Bool {
 // The derivation controls. Without these the test above is satisfied by a key
 // that ignores its inputs entirely, which is what an authored constant was.
 
-test fn one_changed_semantic_input_changes_the_work_key() -> std.types.Bool {
+test fn one_changed_semantic_input_changes_the_work_key() -> Bool {
   product.fabric.work.derive_work_key(contract: fixture_contract, requirements: fixture_requirements)
     != product.fabric.work.derive_work_key(contract: other_source_contract, requirements: fixture_requirements)
 }
@@ -144,7 +144,7 @@ test fn one_changed_semantic_input_changes_the_work_key() -> std.types.Bool {
 // a different architecture does not promise the same answer, so it must not
 // share a key with work that does.
 
-test fn changed_execution_requirements_change_the_work_key() -> std.types.Bool {
+test fn changed_execution_requirements_change_the_work_key() -> Bool {
   product.fabric.work.derive_work_key(contract: fixture_contract, requirements: fixture_requirements)
     != product.fabric.work.derive_work_key(contract: fixture_contract, requirements: other_runtime_requirements)
 }
@@ -154,7 +154,7 @@ test fn changed_execution_requirements_change_the_work_key() -> std.types.Bool {
 // deduplication the whole design rests on is a property of the function rather
 // than of two fixtures happening to be given one constant.
 
-test fn identical_contracts_derive_one_key_regardless_of_who_asked() -> std.types.Bool {
+test fn identical_contracts_derive_one_key_regardless_of_who_asked() -> Bool {
   product.fabric.work.derive_work_key(contract: fixture_contract, requirements: fixture_requirements)
     == product.fabric.work.derive_work_key(
       contract: product.fabric.work.WorkContract {
@@ -176,26 +176,26 @@ test fn identical_contracts_derive_one_key_regardless_of_who_asked() -> std.type
 // A machine that cannot run one of them is not an interchangeable executor for
 // both, so a differing shape must derive a differing key.
 
-test fn a_different_machine_shape_changes_the_work_key() -> std.types.Bool {
+test fn a_different_machine_shape_changes_the_work_key() -> Bool {
   product.fabric.work.derive_work_key(contract: fixture_contract, requirements: fixture_requirements)
     != product.fabric.work.derive_work_key(contract: fixture_contract, requirements: bigger_shape_requirements)
 }
 
-test fn cost_terms_differ_without_forking_work() -> std.types.Bool {
+test fn cost_terms_differ_without_forking_work() -> Bool {
   std.measure.money_amount_micro_count(m: product.fabric.demand.demand_reservation_price(d: github_binding_demand)) == 500
     && std.measure.money_amount_micro_count(m: product.fabric.demand.demand_reservation_price(d: gitlab_binding_demand)) == 250
     && std.measure.money_amount_micro_count(m: product.fabric.demand.demand_maximum_buy_order(d: github_binding_demand)) == 1000
-    && (product.fabric.demand.demand_work(d: github_binding_demand).key as std.types.String)
-      == (product.fabric.demand.demand_work(d: gitlab_binding_demand).key as std.types.String)
+    && (product.fabric.demand.demand_work(d: github_binding_demand).key as String)
+      == (product.fabric.demand.demand_work(d: gitlab_binding_demand).key as String)
 }
 
 // Different principals are different Work, even at an identical contract.
 
-test fn principals_do_not_share_work_identity() -> std.types.Bool {
+test fn principals_do_not_share_work_identity() -> Bool {
   let mine = work_for_principal(p: "operator")
   let theirs = work_for_principal(p: "other-tenant")
-  (mine.id.key as std.types.String) == (theirs.id.key as std.types.String)
-    && (mine.id.principal as std.types.String) != (theirs.id.principal as std.types.String)
+  (mine.id.key as String) == (theirs.id.key as String)
+    && (mine.id.principal as String) != (theirs.id.principal as String)
 }
 
 // An owned offer states zero explicitly; absence is not free.
@@ -228,7 +228,7 @@ data rented_offer: product.fabric.supply.Offer<std.types.NonEmptyStr> = product.
   },
 }
 
-test fn owned_supply_states_zero_rather_than_absent() -> std.types.Bool {
+test fn owned_supply_states_zero_rather_than_absent() -> Bool {
   std.measure.money_amount_micro_count(m: product.fabric.supply.offer_quote_amount(q: owned_offer.quote)) == 0
     && std.measure.money_amount_micro_count(m: product.fabric.supply.offer_quote_amount(q: rented_offer.quote)) == 900
     && product.fabric.supply.offer_quote_currency(q: owned_offer.quote) == std.currency.Usd
@@ -238,7 +238,7 @@ test fn owned_supply_states_zero_rather_than_absent() -> std.types.Bool {
 
 // Observed and quoted supply are one type with two evidences.
 
-test fn observed_and_quoted_supply_share_one_offer_type() -> std.types.Bool {
+test fn observed_and_quoted_supply_share_one_offer_type() -> Bool {
   match owned_offer.evidence {
     ObservedSupply { observed_at: _, receipt: _ } =>
       match rented_offer.evidence {
@@ -276,12 +276,12 @@ data retry_attempt: product.fabric.execution.Attempt<std.types.NonEmptyStr> = pr
   created_at: "2026-08-18T00:10:00Z",
 }
 
-test fn retry_is_a_new_attempt_naming_its_cause() -> std.types.Bool {
-  (first_attempt.id.key as std.types.String) != (retry_attempt.id.key as std.types.String)
-    && (first_attempt.work.key as std.types.String) == (retry_attempt.work.key as std.types.String)
+test fn retry_is_a_new_attempt_naming_its_cause() -> Bool {
+  (first_attempt.id.key as String) != (retry_attempt.id.key as String)
+    && (first_attempt.work.key as String) == (retry_attempt.work.key as String)
     && match retry_attempt.lineage {
       InfrastructureRetry { prior_attempt: prior, cause_receipt: _ } =>
-        (prior.key as std.types.String) == (first_attempt.id.key as std.types.String)
+        (prior.key as String) == (first_attempt.id.key as String)
       InitialAttempt { initiating_demand: _ } => false
       RequestedReexecution { initiating_demand: _ } => false
     }
@@ -395,7 +395,7 @@ fn admission_label(r: product.fabric.execution.Receipt<std.types.NonEmptyStr>) -
 // generation alone cannot tell same-generation-different-slice from current,
 // and cannot tell a foreign attempt from a stale one.
 
-test fn acceptance_compares_lease_identity_not_only_generation() -> std.types.Bool {
+test fn acceptance_compares_lease_identity_not_only_generation() -> Bool {
   admission_label(r: stale_receipt) == "generation-stale"
     && admission_label(r: other_slice_receipt) == "different-lease"
     && admission_label(r: foreign_attempt_receipt) == "different-attempt"
@@ -405,14 +405,14 @@ test fn acceptance_compares_lease_identity_not_only_generation() -> std.types.Bo
 // not an attempt; a receipt carrying another principal's identically-named
 // attempt is refused rather than admitted.
 
-test fn a_receipt_from_another_principal_is_not_the_same_attempt() -> std.types.Bool {
+test fn a_receipt_from_another_principal_is_not_the_same_attempt() -> Bool {
   admission_label(r: foreign_principal_receipt) == "different-attempt"
 }
 
 // The positive control. Without it every refusal above is satisfied by an
 // admission function that refuses everything.
 
-test fn a_receipt_from_the_granted_lease_is_admissible() -> std.types.Bool {
+test fn a_receipt_from_the_granted_lease_is_admissible() -> Bool {
   match product.fabric.execution.admit_receipt_for_grant(
     r: product.fabric.execution.Receipt {
       id: product.fabric.identity.FabricIdentity { principal: "operator", key: "receipt-ok" },
@@ -450,7 +450,7 @@ fn resumability_tier_of(step: product.fabric.work.WorkStep) -> std.types.NonEmpt
   }
 }
 
-test fn resumability_is_declared_not_assumed() -> std.types.Bool {
+test fn resumability_is_declared_not_assumed() -> Bool {
   let satisfiable = resumability_tier_of(step: product.fabric.work.WorkStep {
     step_id: "build",
     resumability: product.fabric.work.ReceiptSatisfiable,
