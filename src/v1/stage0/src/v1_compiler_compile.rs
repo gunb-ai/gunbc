@@ -721,6 +721,7 @@ pub fn call_semantics_name(value: CallSemantics) -> String {
     match value.clone() {
         CallSemantics::PlainCallSemantics => "PlainCallSemantics".to_string(),
         CallSemantics::LookupCallSemantics => "LookupCallSemantics".to_string(),
+        CallSemantics::FunctionValueCallSemantics => "FunctionValueCallSemantics".to_string(),
     }
 }
 

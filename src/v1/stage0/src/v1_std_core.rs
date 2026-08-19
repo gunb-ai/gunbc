@@ -228,6 +228,7 @@ impl VarBindingKind {
 pub enum CallSemantics {
     PlainCallSemantics,
     LookupCallSemantics,
+    FunctionValueCallSemantics,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

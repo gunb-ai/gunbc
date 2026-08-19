@@ -133,9 +133,9 @@ type ParseTableRealization {
   memo_hits: Int
   memo_misses: Int
   memo_lookup_calls: Int
-  nullable_set: Set<v2.std.node.Symbol>
-  first_rows: Map<v2.std.node.Symbol, List<v2.std.node.Symbol>>
-  productions_by_name: Map<v2.std.node.Symbol, v2.std.grammar.GrammarProduction>
+  nullable_set: Set<Symbol>
+  first_rows: Map<Symbol, List<Symbol>>
+  productions_by_name: Map<Symbol, GrammarProduction>
 }
 
 type ParseTable = ParseTableRealization
