@@ -41,6 +41,7 @@ import gunbc.spark_serving_observed_members {
   SparkServingObservedMembers,
   UserUnitStateObserved,
   UserUnitManagerEnabled,
+  UnitActivityRunning,
   LingerObservedEnabled,
 }
 import gunbc.spark_serving_observe { spark_serving_classify_model_store, spark_serving_model_blob_digest_argv }
@@ -320,6 +321,7 @@ test fn an_unobserved_store_blocks_the_empty_replan_bar() -> Bool {
         },
         unit: UserUnitStateObserved { unit_state_digest: "u" as NonEmptyStr },
         enablement: UserUnitManagerEnabled,
+        activity: UnitActivityRunning,
         linger: LingerObservedEnabled,
       )
       let without = spark_serving_observed_members(
@@ -328,6 +330,7 @@ test fn an_unobserved_store_blocks_the_empty_replan_bar() -> Bool {
         store: ModelStoreObservationRefused { cause: "leg did not run" as NonEmptyStr },
         unit: UserUnitStateObserved { unit_state_digest: "u" as NonEmptyStr },
         enablement: UserUnitManagerEnabled,
+        activity: UnitActivityRunning,
         linger: LingerObservedEnabled,
       )
       spark_serving_projection_supports_empty_replan(projection: with_store)
@@ -399,7 +402,7 @@ fn complete_runtime_stub() -> RuntimeMaterializationObservation {
 
 // A TRUNCATED BLOB KEEPS ITS NAME, and that is the whole defect. An interrupted pull, a full disk or
 // a partially written layer all leave a correctly-named file, so a listing reports the store
-// complete -- which suppresses PullModelArtifact, making the repair for a corrupt model exactly the
+// complete -- which suppresses MaterializeModelArtifact, making the repair for a corrupt model exactly the
 // operation the observation prevents. A host in that state can never self-heal.
 //
 // Same manifest, same listing, same everything except the bytes. Only the digest leg can tell them
