@@ -418,3 +418,101 @@ carries no `integration_id` pin, the fabric's Check Run named `witnesses` satisf
 from a different source — so the gate never has a gap. **Job B must therefore NOT be named
 `witnesses`** during the two-job phase (that name is still the live gate), and the fabric claims it
 only at the cutover commit.
+
+## 15. The cutover PR cannot merge itself — the trap the two-job sequence walks into
+
+The reviewer's rollback analysis notes, as an inference, that a `pull_request` workflow executes
+from the **PR's merge commit** rather than from the base branch — which is why a rollback PR that
+*restores* `witnesses.yml` might run the restored workflow and satisfy its own required check.
+
+Run that inference in the other direction and it is not a convenience, it is a blocker:
+
+```
+the cutover PR DELETES .github/workflows/witnesses.yml
+  → the merge commit contains no such workflow
+  → Actions runs no job named `witnesses` for that PR
+  → the required context `witnesses` is never reported
+  → the ruleset holds the PR at "Waiting for status to be reported"
+  → THE CUTOVER PR CANNOT MERGE
+```
+
+The two-job sequence is correct right up to its final commit and then blocks on itself. Job B
+proves the fabric wet, job A is deleted — and deleting job A is exactly what withdraws the check
+the ruleset is waiting for. The same property that makes the two-job proof work (a PR's workflows
+run from its own merge subject) is what makes the deletion self-blocking.
+
+**Three ways out, and they are not equally good.**
+
+1. **The fabric publishes `witnesses` for the cutover PR's own merge subject.** The control plane
+   is already deployed and observing by then — that is what the two-job phase established — so it
+   can satisfy the gate for the very PR that installs it. This is the elegant arm: the cutover is
+   gated by the system it is installing, which is the strongest possible wet proof, and the ruleset
+   never changes. It requires the fabric to be *authoritative* for one PR before merge, which is a
+   deliberate promotion of the canary rather than a shadow.
+2. **Bypass.** Merge the cutover PR through a tested break-glass credential. This makes the
+   reviewer's bypass drill **mandatory rather than prudent**, and it means the cutover's success
+   depends on an authority we have never exercised.
+3. **Two PRs** — one installs and proves the fabric while keeping job A, a second deletes job A
+   once the fabric is already publishing `witnesses`. This is the safest and it is in tension with
+   the one-motion ruling, though the *authority* still transitions in one motion; only the file
+   deletion is separated.
+
+**I have not tested the premise.** That a PR deleting a workflow causes it not to run for that PR
+is documented GitHub behaviour and I am confident of it, but every confident structural claim in
+this program that went untested today turned out wrong at least once, and this one decides the
+shape of the final commit. The reviewer already proposed the machinery: a disposable branch with a
+temporary active ruleset requiring a test context, and a PR that deletes the workflow producing it.
+That test costs nothing and settles it.
+
+**It also sharpens the canary naming.** The canary must publish `fabric-witnesses-canary`, never
+`witnesses`, so the old gate stays unambiguously load-bearing and it stays provable which
+implementation satisfied it. Arm 1 above is the one moment that rule is deliberately suspended, and
+it should be suspended once, knowingly, at the cutover commit — not by having both producers emit
+the same context throughout the canary.
+
+## 16. Rollback, re-specified — and my claim about it was wrong
+
+I wrote in §11 that `deletion` and `non_fast_forward` mean "a human cannot merge a revert". That
+overstated it. `non_fast_forward` prevents **force** pushes, not ordinary fast-forward updates, and
+`deletion` prevents deleting the ref. **Neither bans a normal push to `main`.** The operative
+blocker is the required check alone — which is a narrower and more actionable finding than the one
+I recorded.
+
+What must actually be established before cutover:
+
+- **Effective rules for `main`**, from the branch-rules endpoint — it returns every active rule
+  applying to the branch including organisation-level ones, which neither classic branch protection
+  nor the repository ruleset list gives.
+- **`bypass_actors` on the ruleset**, fetched with credentials that can see them — GitHub omits the
+  property from callers with insufficient ruleset access, so an empty reading is *not* evidence of
+  no bypass. (Exactly the shape of the mistake that produced the retracted claim.)
+- Bypass **mode** per actor: `always`, `pull_request`, or `exempt`. A `pull_request`-mode actor
+  **cannot push directly** — it must open a PR and choose to bypass at merge. Being a repository
+  administrator is not itself sufficient.
+
+**Revised condition 16:** before cutover, at least one rollback route independent of the fabric is
+executed end-to-end against an active equivalent ruleset, and a second independently shaped route
+is prepared. Preferred pair: a rollback PR that restores and runs `witnesses.yml` as primary, and a
+tested ruleset bypass by an independent credential as break-glass. The drill runs on a disposable
+branch with its own temporary ruleset — negative control (ordinary identity refused), positive
+control (break-glass succeeds and Rule Insights records a **Bypass**, an inspectable receipt rather
+than a UI that looked like it would work) — then proves the drill branch's effective rules
+equivalent to `main`'s.
+
+**The rollback credential, patch, and ruleset snapshot must not live only on the fabric control-plane
+machine.** That is the whole point of a break-glass path.
+
+## 17. App pinning is deferred, deliberately
+
+Agreed both ways: **do not pin the App during the cutover.** No ruleset mutation inside an already
+large authority transition, no interval where old and new required-check configuration disagree,
+and the Actions-produced `witnesses` continues to gate the cutover PR. The cost is real but
+**pre-existing**: an unpinned context can be published by anyone with sufficient repository
+permission.
+
+Pinning is a later hardening cut, gated on the fabric App having produced `witnesses` on current
+`main` and on every open PR's exact merge subject, its installation independently observed, the
+rollback path not depending on that App being alive, and the current effective rules captured.
+Then **update** the existing entry to add `integration_id` — never delete and recreate it. The
+failure mode after pinning is not a protection gap but a fail-closed queue freeze if some open
+subject lacks a fabric-authored check, which is why the pre-population is part of the cut.
