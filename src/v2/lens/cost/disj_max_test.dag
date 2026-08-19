@@ -16,9 +16,26 @@ import v2.std.node {
 }
 import v2.std.witness { Holds }
 
+// THE CHEAP ALTERNATIVE MUST COST SOMETHING. A bare Atom costs zero
+// (base_cost_for_connective), and every alternative-composition rule that could be wrong here
+// agrees on a zero first operand: taking the max and keeping the first child both yield the
+// second child, so a Disj whose cheap arm is a bare Atom cannot distinguish max from
+// first-child-wins. Wrapping it in a Transform makes the cheap arm cost unit — still strictly
+// dominated by the Cardinality arm, so this witness's claim is unchanged — while a rule that
+// keeps the first alternative now answers unit instead of linear (verified by mutation,
+// gunbc#8505).
 data disj_max_cheap_body: Node = Node {
-  kind: TypeNode { connective: Atom { identity: ^disj_max_cheap_body_atom } },
-  children: [],
+  kind: ComputationNode { behavior: Transform },
+  children: [
+    Edge {
+      label: Positional,
+      target: Node {
+        kind: TypeNode { connective: Atom { identity: ^disj_max_cheap_body_atom } },
+        children: [],
+        occurrence_id: SyntheticOccurrence
+      }
+    }
+  ],
   occurrence_id: SyntheticOccurrence
 }
 
