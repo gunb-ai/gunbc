@@ -1,0 +1,55 @@
+module product.fabric.identity
+
+import std.types { NonEmptyStr }
+
+// Identity shell for every fabric carrier. The principal is PART of the identity
+// rather than metadata beside it, so that two principals asking for the same
+// computation hold two distinct identities without a later migration widening
+// every carrier. P stays a type parameter: the core imports no closed principal
+// enum, and a provider binding supplies its own evidence-derived principal type.
+
+// The principal is a component of identity, not a field beside it. A fabric
+// identity is the pair (principal, key), so cross-principal isolation holds by
+// construction rather than by every consumer remembering to compare two
+// things. P is open: the core never imports a closed GitHub/GitLab/OIDC/POSIX
+// principal enum, because a fabric that names its principal sources cannot
+// admit a supplier it did not anticipate. The role P plays differs per carrier
+// and is documented on each: requester on Demand, accounting and security
+// scope on Work, the account a try is authorized and charged under on Attempt,
+// supplier on Offer, grantee on ExecutionGrant, attesting producer on Receipt. An ExecutionGrant
+// is bilateral, so naming its grantee here does not erase the supplier role
+// its Offer reference carries.
+type DemandKey = NonEmptyStr where brand("DemandKey")
+
+type WorkKey = NonEmptyStr where brand("WorkKey")
+
+type ExecutionAttemptKey = NonEmptyStr where brand("ExecutionAttemptKey")
+
+type OfferKey = NonEmptyStr where brand("OfferKey")
+
+type GrantKey = NonEmptyStr where brand("GrantKey")
+
+type ReceiptKey = NonEmptyStr where brand("ReceiptKey")
+
+type FabricIdentity<P, K> {
+  principal: P
+  key: K
+}
+
+fn fabric_identity_key<P, K>(id: FabricIdentity<P, K>) -> K {
+  id.key
+}
+
+// Equality is over the PAIR, because that is what identity means here. A
+// comparison on the key alone silently merges two tenants who chose the same
+// name for their work, which is not a naming collision but a cross-principal
+// leak: the whole reason principal sits INSIDE identity rather than beside it
+// is that dropping it must not be expressible as an ordinary field access.
+
+fn fabric_identity_eq<P, K>(left: FabricIdentity<P, K>, right: FabricIdentity<P, K>) -> Bool {
+  left.principal == right.principal && left.key == right.key
+}
+
+fn fabric_identity_principal<P, K>(id: FabricIdentity<P, K>) -> P {
+  id.principal
+}

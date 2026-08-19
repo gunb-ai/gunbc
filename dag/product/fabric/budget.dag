@@ -1,0 +1,253 @@
+module product.fabric.budget
+
+import std.types { NonEmptyStr, Int, Timestamp }
+import std.measure { MoneyAmountMicro, Currency, Micro }
+import std.currency { CurrencyCode }
+import product.fabric.demand { BudgetAccountId }
+import product.fabric.execution { ReservationRef }
+import extdeps.accounting.encumbrance {
+  EncumbranceLedger, EncumbranceOutcome, EncumbranceRefusal,
+  LedgerAdvanced, EncumbranceRefused,
+  reserve_encumbrance, settle_encumbrance, release_encumbrance, committed_total,
+}
+
+// The fabric's money binding over the generic encumbrance kernel. Everything
+// about reserve-settle-release lives upstream; what is added here is the one
+// fact the generic kernel cannot carry, and the reason it cannot.
+//
+// MoneyAmountMicro is Measure<Currency, Micro, Nat>, and Currency there is a
+// QUANTITY - the dimension - not a currency CODE. So two amounts in different
+// currencies have the same type and add without complaint. A generic ledger
+// instantiated at that quantity would therefore sum dollars and euros into a
+// number with no meaning, and would do it silently, which is the worst
+// available failure: the ceiling check would still pass or fail, just against
+// a quantity that denominates nothing.
+//
+// The fix is not to teach the kernel about currency - a compute ledger has no
+// use for that - but to bind the code ONCE to the account and refuse anything
+// presented against it in another code. One account, one denomination, and a
+// cross-currency line has nowhere to land.
+
+// The account identifier is product.fabric.demand's BudgetAccountId, imported
+// rather than re-minted. A second identifier for one fact would be the
+// nicknaming fork, and here it would also be actively load-bearing in the
+// wrong direction: a demand's buy terms name the account they draw on, so
+// joining terms to ledger is the whole point of the identifier, and two types
+// for it make that join impossible to state. The one I had minted was also
+// weaker -- a plain alias against a branded id -- so the fork was losing
+// information as well as duplicating it.
+//
+// The import direction is worth noting as unfinished: the identity of an
+// account arguably belongs with the account rather than with the demand that
+// references it. Moving it would mean demand importing from this module, which
+// cannot happen while this module is stacked above it. Left as the smaller of
+// two wrongs, and cheap to correct once both land.
+type MoneyAccount {
+  account: BudgetAccountId
+  currency: CurrencyCode
+  ledger: EncumbranceLedger<Currency, Micro>
+  leases: List<MoneyLease>
+}
+
+// A request names its own currency rather than inheriting the account's. That
+// is the entire mechanism: if the request could not state a currency, a
+// mismatch would be unrepresentable and therefore undetectable, and the check
+// below would be checking nothing. The caller says what it means, and the
+// account says whether that is what it holds.
+
+// The reference is product.fabric.execution's ReservationRef. An ExecutionGrant
+// already carries money_reservation at that type and SettlementReceipt already
+// names it, so these requests are the two operations that ACT on the thing the
+// grant is holding -- taking an unbranded string here would mean the one type
+// in the flow that cannot be confused with another key space is dropped
+// precisely at the boundary where the grant hands over.
+//
+// The generic kernel below still takes NonEmptyStr, and that is correct rather
+// than a leak: an encumbrance kernel that knew about fabric reservations would
+// not be quantity-generic. The branding lives at the fabric API boundary and
+// projects inward, which is the direction that keeps both true.
+type MoneyReservationRequest {
+  reference: ReservationRef
+  generation: Int
+  maximum_liability: MoneyAmountMicro
+  currency: CurrencyCode
+}
+
+type MoneySettlementRequest {
+  reference: ReservationRef
+  generation: Int
+  actual_spend: MoneyAmountMicro
+  currency: CurrencyCode
+  settled_at: Timestamp
+}
+
+// The generation fence lives HERE, not in the accounting kernel. Temporal
+// fencing is this fabric's lease protocol rather than a fact about
+// encumbrance accounting, so an upstream carrier holding it would impose CI
+// lease generations on every future consumer of appropriation conservation.
+// The binding checks the fence and then calls the transition, which keeps the
+// upstream authority about money and this module about leases.
+//
+// The held generation is recorded per reservation reference, because that is
+// what a superseded holder's late settlement has to be compared against.
+
+type MoneyLease {
+  reference: ReservationRef
+  generation: Int
+}
+
+fn lease_generation_for(a: MoneyAccount, reference: ReservationRef) -> List<Int> {
+  a.leases |> filter(l => l.reference == reference) |> map(l => l.generation)
+}
+
+fn fence_admits(a: MoneyAccount, reference: ReservationRef, presented: Int) -> Bool {
+  match lease_generation_for(a: a, reference: reference) {
+    Empty {} => false
+    Cons { head: held, tail: _ } => held == presented
+  }
+}
+
+type MoneyRefusal =
+  | CurrencyMismatch {
+      account: BudgetAccountId,
+      account_currency: CurrencyCode,
+      presented_currency: CurrencyCode,
+    }
+  | LedgerRefused { account: BudgetAccountId, refusal: EncumbranceRefusal<Currency, Micro> }
+  | StaleLeaseGeneration { reference: ReservationRef, presented: Int }
+
+type MoneyOutcome =
+  | AccountAdvanced { account: MoneyAccount }
+  | MoneyRefused { refusal: MoneyRefusal }
+
+fn account_with_ledger(a: MoneyAccount, ledger: EncumbranceLedger<Currency, Micro>) -> MoneyAccount {
+  MoneyAccount { account: a.account, currency: a.currency, ledger: ledger, leases: a.leases }
+}
+
+fn account_with_lease(a: MoneyAccount, lease: MoneyLease) -> MoneyAccount {
+  MoneyAccount {
+    account: a.account,
+    currency: a.currency,
+    ledger: a.ledger,
+    leases: concat(a.leases, [lease]),
+  }
+}
+
+fn project_outcome(a: MoneyAccount, outcome: EncumbranceOutcome<Currency, Micro>) -> MoneyOutcome {
+  match outcome {
+    LedgerAdvanced { ledger: l } => AccountAdvanced { account: account_with_ledger(a: a, ledger: l) }
+    EncumbranceRefused { refusal: r } =>
+      MoneyRefused { refusal: LedgerRefused { account: a.account, refusal: r } }
+  }
+}
+
+// The currency wall is checked BEFORE the amount reaches the kernel, because
+// once it is inside the kernel the code is gone and the mismatch is no longer
+// observable. There is no arm that converts: a conversion needs a rate, a rate
+// needs a source and a time, and inventing one at an admission boundary would
+// fabricate the exact fact the refusal exists to demand.
+
+fn reserve_money(a: MoneyAccount, request: MoneyReservationRequest) -> MoneyOutcome {
+  if a.currency != request.currency {
+    MoneyRefused {
+      refusal: CurrencyMismatch {
+        account: a.account,
+        account_currency: a.currency,
+        presented_currency: request.currency,
+      }
+    }
+  } else {
+    record_lease(
+      o: project_outcome(
+        a: a,
+        outcome: reserve_encumbrance(
+          ledger: a.ledger,
+          reference: request.reference,
+          maximum_liability: request.maximum_liability,
+        ),
+      ),
+      reference: request.reference,
+      generation: request.generation,
+    )
+  }
+}
+
+fn settle_money(a: MoneyAccount, request: MoneySettlementRequest) -> MoneyOutcome {
+  if !fence_admits(a: a, reference: request.reference, presented: request.generation) {
+    MoneyRefused {
+      refusal: StaleLeaseGeneration {
+        reference: request.reference,
+        presented: request.generation,
+      }
+    }
+  } else if a.currency != request.currency {
+    MoneyRefused {
+      refusal: CurrencyMismatch {
+        account: a.account,
+        account_currency: a.currency,
+        presented_currency: request.currency,
+      }
+    }
+  } else {
+    project_outcome(
+      a: a,
+      outcome: settle_encumbrance(
+        ledger: a.ledger,
+        reference: request.reference,
+        actual: request.actual_spend,
+        settled_at: request.settled_at,
+      ),
+    )
+  }
+}
+
+// Release takes no amount, so it takes no currency and needs no wall. The
+// released quantity is whatever was held, which the ledger already knows; a
+// caller-supplied release amount would be a second authority for a number the
+// entry carries, and could disagree with it.
+
+fn release_money(
+  a: MoneyAccount,
+  reference: ReservationRef,
+  generation: Int,
+  reason: NonEmptyStr,
+  released_at: Timestamp,
+) -> MoneyOutcome {
+  if !fence_admits(a: a, reference: reference, presented: generation) {
+    MoneyRefused {
+      refusal: StaleLeaseGeneration { reference: reference, presented: generation }
+    }
+  } else {
+    project_outcome(
+      a: a,
+      outcome: release_encumbrance(
+        ledger: a.ledger,
+        reference: reference,
+        reason: reason,
+        released_at: released_at,
+      ),
+    )
+  }
+}
+
+// A successful reservation records the generation it was taken under, so a
+// later settlement from a superseded holder has something exact to fail
+// against. Recording only on success matters: a refused reservation that still
+// wrote a lease would let the fence admit a hold that does not exist.
+
+fn record_lease(o: MoneyOutcome, reference: ReservationRef, generation: Int) -> MoneyOutcome {
+  match o {
+    AccountAdvanced { account: a } =>
+      AccountAdvanced {
+        account: account_with_lease(
+          a: a,
+          lease: MoneyLease { reference: reference, generation: generation },
+        )
+      }
+    MoneyRefused { refusal: r } => MoneyRefused { refusal: r }
+  }
+}
+
+fn account_committed(a: MoneyAccount) -> MoneyAmountMicro {
+  committed_total(ledger: a.ledger)
+}
