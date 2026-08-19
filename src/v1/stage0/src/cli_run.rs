@@ -7412,6 +7412,203 @@ pub enum ClaimOutcome {
     },
 }
 
+/// Which clock a completed claim's cost is judged on. Operator ruling 2026-08-19 (BUDGET
+/// POLICY CUT): chosen by the witness's PURPOSE — pure modeled computation is judged on CPU,
+/// external/blocking interaction is judged on wall — and NEVER by which clock happened to
+/// read higher. Both clocks are always recorded on a reached verdict regardless of which one
+/// is the judged basis; the basis says which figure the completed-cost line is compared
+/// against, not which figure exists.
+///
+/// Named `RequiredFloorCostBasis`, not the bare `WitnessCostBasis` the ruling's prose uses,
+/// because `std_realization_schedule.rs` already declares a `WitnessCostBasis` for an
+/// unrelated concept (`MeasuredAtExactSubject | EstimatedFromSiblingClass`, a realization
+/// schedule's provenance for a cost figure, not a policy choice of which clock judges a
+/// completed claim). Two same-named public enums in one crate is the exact citation ambiguity
+/// DESIGN.md §3 rules against, so this type is scoped to the one lane that declares it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RequiredFloorCostBasis {
+    CpuCost,
+    WallCost,
+}
+
+/// `v2.workflow.required_floor`'s claims execute Hermetic (pure in-process evaluation), so
+/// CPU is the judged basis. A lane that later admits an execution mode whose purpose is
+/// external or blocking interaction picks wall instead — but the choice is made here, by
+/// declaring the lane's purpose, not derived from a measurement.
+pub fn required_floor_cost_basis() -> RequiredFloorCostBasis {
+    RequiredFloorCostBasis::CpuCost
+}
+
+/// Which safety mechanism raised THIS occurrence — nothing stronger. Operator ruling
+/// 2026-08-19 (BUDGET POLICY CUT, superseding correction): even "which deadline was crossed"
+/// overstates the fact, because both the CPU and wall safety limits may already be crossed by
+/// the time the interpreter next polls and only one check happens to be the one that raises
+/// the stop. `raised_by` names the mechanism that raised this occurrence, not a claim about
+/// which clock is "responsible" for the interruption — a `WallDeadlineRaised` occurrence does
+/// NOT make the claim a wall-cost witness; that is `RequiredFloorCostBasis`'s question, decided
+/// by the witness's declared purpose and never by which mechanism happened to fire
+/// (`interrupt trigger -/-> cost basis` is the load-bearing independence the ruling states).
+///
+/// Distinct from `BudgetKind`, which stays the interpreter's internal raise-path vocabulary
+/// (in-eval poll vs. completion-side backstop, consulted at many unrelated call sites); this is
+/// the admission-facing fact of which mechanism raised one occurrence. `From<BudgetKind>` is
+/// the one translation between them, kept at this seam so the two names never drift apart by
+/// accident.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SafetyInterruptTrigger {
+    CpuDeadlineRaised,
+    WallDeadlineRaised,
+}
+
+impl From<BudgetKind> for SafetyInterruptTrigger {
+    fn from(kind: BudgetKind) -> Self {
+        match kind {
+            BudgetKind::Cpu => SafetyInterruptTrigger::CpuDeadlineRaised,
+            BudgetKind::Wall => SafetyInterruptTrigger::WallDeadlineRaised,
+        }
+    }
+}
+
+/// Whether one claim reached a verdict, or was interrupted before it could. Operator ruling
+/// 2026-08-19 (BUDGET POLICY CUT, corrected by the operator's superseding message the same
+/// day — read this doc comment, not an older diff, if the two disagree): the prior fused model
+/// let a scheduler-sensitive wall crossing stand in for a judgment about a pure computation's
+/// cost. `ClaimTerminality` separates that: did the claim finish, and what did it exactly cost
+/// on both clocks (`VerdictReached`) — or did a safety deadline fire before it could
+/// (`SafetyInterrupted`).
+///
+/// FIELD NAMES ARE CHOSEN FOR THEIR CONSUMER, not for how the number was obtained, and the two
+/// arms are named for OPPOSITE facts on purpose:
+///
+/// - `VerdictReached.observed_cpu_ms` / `observed_wall_ms` — exact readings, but neither is a
+///   canonical "cost of the witness": they are honest facts about this one occurrence, and nothing
+///   stronger. (`exact_*_ms` was the prior spelling; retired because "exact" invited reading these
+///   as a canonical cost rather than an occurrence fact.)
+/// - `SafetyInterrupted.elapsed_cpu_at_least_ms` / `elapsed_wall_at_least_ms` — also exact
+///   measurements of work observed up to the stopped return, but only LOWER BOUNDS on what
+///   reaching a verdict would have required. The `_at_least` suffix stays on this arm because the
+///   lower bound is the fact downstream admission actually needs: a consumer must not read either
+///   duration as the claim's true cost, and the field name says so without requiring the consumer
+///   to already know that `SafetyInterrupted` implies censoring. (An interim revision moved
+///   `_at_least` off this arm entirely — that revision is withdrawn; the names stay here.)
+///
+/// `raised_by: SafetyInterruptTrigger` names the mechanism that raised this occurrence — see that
+/// type's doc comment for why it is not "which clock the claim ran over".
+///
+/// TWO INDEPENDENT SAFETY LIMITS are carried on `SafetyInterrupted`, not one shared value: CPU
+/// and wall protect against different failures (runaway evaluation vs. a blocked/descheduled
+/// process) and must never be a mechanical copy of one figure into both fields — see
+/// `WitnessSafetyPolicy` below.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ClaimTerminality {
+    VerdictReached {
+        verdict: ClaimOutcome,
+        observed_cpu_ms: u64,
+        observed_wall_ms: u64,
+    },
+    SafetyInterrupted {
+        raised_by: SafetyInterruptTrigger,
+        elapsed_cpu_at_least_ms: u64,
+        elapsed_wall_at_least_ms: u64,
+        cpu_safety_limit_ms: u64,
+        wall_safety_limit_ms: u64,
+    },
+}
+
+/// Two independently derived safety limits, never a scalar copied into both. For a Hermetic
+/// pure in-process claim, CPU safety protects against runaway evaluation while wall safety
+/// protects against a blocked or descheduled process — different jobs, so the wall limit must
+/// be independently derived and LOOSER than the CPU limit, so ordinary host scheduling cannot
+/// preempt a computation still inside its CPU envelope. For a genuinely blocking or effectful
+/// claim wall may instead be the primary per-row guard. Neither limit is a cost allowance;
+/// crossing either is `NotEvaluated` and blocks — see `RequiredFloorClaim`'s
+/// `cpu_safety_limit_ms` / `wall_safety_limit_ms` fields for the live-wired instantiation of
+/// this policy (`v2.workflow.required_floor`'s two `.dag` constants are its declared values).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WitnessSafetyPolicy {
+    pub cpu_ms: u64,
+    pub wall_ms: u64,
+}
+
+/// The single translation from a raw `(ClaimOutcome, PerformanceReceipt)` pair into the
+/// terminality the policy layer reasons over. `run_claim`/`run_claim_measured` and the two
+/// completion-side backstops (`budget_completion_outcome`, `wall_budget_completion_outcome`)
+/// are unchanged by this — they still raise/detect exactly as before. Only an outcome that is
+/// `TimedOut` with `completion: Interrupted` — a genuine pre-verdict abort — becomes
+/// `SafetyInterrupted`; every other outcome, including a `TimedOut { completion:
+/// CompletedOverBudget }` (the claim DID finish; the completion-side backstop only reclassified
+/// its label), reached a verdict and carries exact costs read off the receipt.
+///
+/// `outcome`'s own `TimedOut.budget_ms` names only the ONE limit that was checked when the
+/// interrupt fired, never the other clock's limit — so both limits are threaded in here from
+/// the caller's `WitnessSafetyPolicy`, the same policy that armed both deadlines in the first
+/// place, rather than reconstructed from a single-limit outcome.
+///
+/// `SafetyInterrupted`'s two elapsed readings are read off `receipt`, not off `outcome`'s single
+/// `elapsed_ms`: `run_claim_measured` samples both clocks around the same call regardless of how
+/// it ends, so both are genuine observations at interrupt time.
+pub fn claim_terminality(
+    outcome: &ClaimOutcome,
+    receipt: &v1_interpreter::PerformanceReceipt,
+    policy: WitnessSafetyPolicy,
+) -> ClaimTerminality {
+    match outcome {
+        ClaimOutcome::TimedOut {
+            kind,
+            completion: BudgetCompletion::Interrupted,
+            ..
+        } => ClaimTerminality::SafetyInterrupted {
+            raised_by: SafetyInterruptTrigger::from(*kind),
+            elapsed_cpu_at_least_ms: (receipt.cpu_nanos / 1_000_000) as u64,
+            elapsed_wall_at_least_ms: (receipt.wall_nanos / 1_000_000) as u64,
+            cpu_safety_limit_ms: policy.cpu_ms,
+            wall_safety_limit_ms: policy.wall_ms,
+        },
+        _ => ClaimTerminality::VerdictReached {
+            verdict: outcome.clone(),
+            observed_cpu_ms: (receipt.cpu_nanos / 1_000_000) as u64,
+            observed_wall_ms: (receipt.wall_nanos / 1_000_000) as u64,
+        },
+    }
+}
+
+/// DIAGNOSTIC ONLY — never a merge-admission, quarantine, or cost-debt-population decision.
+/// Operator ruling 2026-08-19 (BUDGET POLICY CUT, superseding correction): the completed-cost
+/// line (`cost_line_ms`, presently 1552) is retired from deciding completed-cost admission, not
+/// only from interruption. It was one 1527ms observation plus a scheduler quantum, and the
+/// exact 1792ms/1928ms pair observed since shows terminal measurements vary materially across
+/// admissible envelopes — a single literal line cannot honestly gate on that spread. This
+/// function may remain historical calibration evidence and a diagnostic comparison; nothing in
+/// the required-floor loop may call it to decide whether a run blocks. (Consistent with the
+/// live code today: `RequiredFloorOutcome.completed_over_cost_requirement` is populated from
+/// `BudgetCompletion::CompletedOverBudget` against the safety limit, never from this function or
+/// from `cost_line_ms` — this comment states that constraint explicitly so a future edit cannot
+/// wire this function back into admission by accident.)
+///
+/// Evaluated only on `VerdictReached` — an interrupted claim's cost is a lower bound, and
+/// comparing a lower bound against a line is not the question this answers, so
+/// `SafetyInterrupted` always reads `false` here.
+pub fn exceeds_completed_cost_line(
+    terminality: &ClaimTerminality,
+    cost_line_ms: u64,
+    basis: RequiredFloorCostBasis,
+) -> bool {
+    match terminality {
+        ClaimTerminality::VerdictReached {
+            observed_cpu_ms,
+            observed_wall_ms,
+            ..
+        } => {
+            let exact = match basis {
+                RequiredFloorCostBasis::CpuCost => *observed_cpu_ms,
+                RequiredFloorCostBasis::WallCost => *observed_wall_ms,
+            };
+            exact > cost_line_ms
+        }
+        ClaimTerminality::SafetyInterrupted { .. } => false,
+    }
+}
+
 pub fn resolve_entry_graph(
     source_roots: &[String],
     entry_file: &str,
@@ -15757,7 +15954,14 @@ pub fn run_claims_in_process(
 /// builtin-heavy) can finish over budget without ever hitting a poll. A Pass that
 /// exceeded the budget converts to the same typed refusal here — the witness is over
 /// the fast-lane classification either way, and silent green would fail open on the
-/// operator eval-budget ruling (2026-08-17; ceiling at `required_floor_claim_budget_ms`).
+/// operator eval-budget ruling (2026-08-17). The budget compared here is the caller's
+/// armed `witness_eval_budget`/`witness_wall_budget`; the required-floor caller arms
+/// them independently from `required_floor_claim_cpu_safety_limit_ms` and
+/// `required_floor_claim_wall_safety_limit_ms` (BUDGET POLICY CUT, 2026-08-19,
+/// superseding correction — two safety deadlines, never one scalar copied into both
+/// clocks) — the separate completed-cost line, `required_floor_claim_cost_line_ms`, is
+/// diagnostic only and is judged above this function, once a claim has already reached a
+/// verdict, and decides nothing about admission.
 /// A Fail/RuntimeError stays itself: those are already loud, and
 /// replacing a genuine finding with the budget message would discard it. `cpu_nanos` is
 /// THREAD CPU time (not wall), matching the stride-poll metric — a witness whose wall time
@@ -20262,8 +20466,14 @@ pub struct DiscoveryCorpusOptions {
     /// When non-empty, scopes the source-root `test fn` tree walk to files under one of these
     /// directories. Import resolution still uses the full source_roots. Empty = full walk.
     pub discovery_scope_dirs: Vec<String>,
-    /// Fast-lane per-witness eval budget (operator ruling 2026-08-17; the ceiling itself is
-    /// `v2.workflow.required_floor` `required_floor_claim_budget_ms`). When set, every
+    /// Fast-lane per-witness eval budget (operator ruling 2026-08-17). This is a distinct
+    /// PR-path posture from the required-floor claim loop; that loop's own constant split
+    /// into `required_floor_claim_cpu_safety_limit_ms` / `required_floor_claim_wall_safety_limit_ms`
+    /// (interrupt, now two independent deadlines) and `required_floor_claim_cost_line_ms`
+    /// (completed-cost, diagnostic only) under the BUDGET POLICY CUT (2026-08-19,
+    /// superseding correction) — this field is unaffected by that split and still names one
+    /// ceiling.
+    /// When set, every
     /// discovered witness eval is deadline-armed and an over-budget eval unwinds as the
     /// typed EvalBudgetExceeded runtime error (a FAIL row naming the witness). None = no
     /// bound (the long-lane / local recipe posture).
@@ -38726,7 +38936,26 @@ pub struct RequiredFloorClaim {
     pub function: String,
     pub qualified: String,
     pub execution_mode: v1_interpreter::ExecutionMode,
-    pub budget_ms: u64,
+    /// The CPU SAFETY DEADLINE: arms the CPU interrupt clock. Never `budget_ms` — operator
+    /// ruling 2026-08-19 (BUDGET POLICY CUT) — because it does not express what a claim is
+    /// allowed to cost, only the point past which it is presumed runaway on the CPU clock and
+    /// interrupted before reaching a verdict. Independently derived from `wall_safety_limit_ms`
+    /// and TIGHTER than it (superseding correction, same date): CPU and wall protect against
+    /// different failures — runaway evaluation vs. a blocked/descheduled process — so a
+    /// mechanical copy of one figure into both is forbidden.
+    pub cpu_safety_limit_ms: u64,
+    /// The WALL SAFETY DEADLINE: arms the wall interrupt clock, independently derived and
+    /// LOOSER than `cpu_safety_limit_ms` so ordinary host scheduling delay cannot itself trip an
+    /// interrupt on a computation still inside its CPU envelope.
+    pub wall_safety_limit_ms: u64,
+    /// The COMPLETED-COST LINE. DIAGNOSTIC ONLY — never a merge-admission, quarantine, or
+    /// cost-debt-population decision (operator ruling 2026-08-19, superseding correction: 1552ms
+    /// is retired from completed-cost admission too, not only from interruption — a single
+    /// literal line cannot honestly gate a merge decision when the observed exact-cost spread
+    /// (1792ms/1928ms) already exceeds it under admissible envelopes). Retained as historical
+    /// calibration evidence and read only by the diagnostic `exceeds_completed_cost_line`; no
+    /// admission-path code may consult it.
+    pub cost_line_ms: u64,
     pub warn_ms: u64,
 }
 
@@ -38853,12 +39082,31 @@ pub struct RequiredFloorOutcome {
     /// indistinguishable from a regression in the alert signature, which is the conflation
     /// `std.witness_admission` already ruled on for exactly this case.
     pub stale_quarantine: Vec<String>,
-    /// AND A BUDGET REFUSAL IS NEITHER. The row went undecided; the remedy is cost, not a
-    /// roster edit and not a bug fix. Three causes with three remedies get three counts.
-    pub budget_refused: Vec<String>,
+    /// A CLAIM INTERRUPTED BEFORE REACHING A VERDICT IS A THIRD THING, SEPARATE FROM COST.
+    /// Operator ruling 2026-08-19 (BUDGET POLICY CUT): the prior single `budget_refused`
+    /// collection fused this population together with `completed_over_cost_requirement` below
+    /// — a claim that never answered, and a claim that answered but cost too much, are
+    /// different facts with different remedies, and fusing them into one undecided bucket hid
+    /// which remedy applied. `NotEvaluated` is never green: this population still blocks
+    /// admission exactly as `budget_refused` did. What changed is that it is now visible
+    /// separately from `completed_over_cost_requirement`, not that either stops blocking.
+    pub interrupted_before_verdict: Vec<String>,
+    /// A CLAIM THAT REACHED A VERDICT BUT COST MORE THAN THE COMPLETED-COST LINE. Separate
+    /// from `interrupted_before_verdict` for the same reason: this claim answered, and the
+    /// remedy is reducing what it costs, not investigating why it never returned. Still
+    /// blocking, per the same ruling.
+    pub completed_over_cost_requirement: Vec<String>,
     /// Host tool could not be resolved — infra undecided, not budget-refused.
     pub host_tool_unresolved: Vec<String>,
     pub over_warn: usize,
+    /// DIAGNOSTIC ONLY, NEVER ADMISSION. A `VerdictReached` claim whose exact cost (on the
+    /// `RequiredFloorCostBasis` clock) exceeded `required_floor_claim_cost_line_ms`, per
+    /// `exceeds_completed_cost_line`. Counted so `ClaimTerminality`/`exceeds_completed_cost_line`
+    /// have a real executing consumer (DESIGN §6 — no scaffold without one) without smuggling the
+    /// retired 1552ms figure back into a blocking decision: this count is reported and nothing
+    /// reads it to fail the run, unlike `completed_over_cost_requirement` above, which blocks on
+    /// the independently-derived safety limit and is unaffected by this field.
+    pub over_cost_line_diagnostic: usize,
     pub failures: Vec<String>,
     /// Per-identity `RequiredFloorDisposition`, one row per (module, function) site the
     /// site-projection loop considered. This is the sole admission authority for the site; see
@@ -39663,17 +39911,34 @@ pub fn run_required_floor(
     // `ClaimIdentityCountsDisagree` refuses. The manifest's enrollment map was a second mechanism
     // for that one invariant — and, being a growing `Value::Map` re-hashed once per fold step,
     // was the whole of the phase's quadratic cost.
-    let claim_budget_ms = floor_required_int(&hermetic, "required_floor_claim_budget_ms")?;
+    // THREE INDEPENDENT NUMBERS, not one and not two. Operator ruling 2026-08-19 (BUDGET POLICY
+    // CUT), superseding correction the same date: the CPU and wall safety deadlines are
+    // independently derived — never one figure copied into both clocks — and the completed-cost
+    // line is diagnostic only and reads from its own constant, unconsulted by admission.
+    // Reading all three from separate `.dag` constants is what makes the fusion structurally
+    // impossible to reintroduce here — there is no longer a single value a future edit could
+    // hand to more than one role by accident.
+    let claim_cpu_safety_limit_ms =
+        floor_required_int(&hermetic, "required_floor_claim_cpu_safety_limit_ms")?;
+    let claim_wall_safety_limit_ms =
+        floor_required_int(&hermetic, "required_floor_claim_wall_safety_limit_ms")?;
+    let claim_cost_line_ms = floor_required_int(&hermetic, "required_floor_claim_cost_line_ms")?;
     let claim_warn_ms = floor_required_int(&hermetic, "required_floor_claim_warn_ms")?;
-    // THE TWO TIERS ARE ORDERED, and reading them independently cannot see that. The warn tier
+    // THE TIERS ARE ORDERED, and reading them independently cannot see that. The warn tier
     // reports a row an order of magnitude above where an ordinary witness lands and lets it
-    // finish; the hard tier stops it. A warn at or above the ceiling is an inverted policy that
-    // never warns, and both values would still typecheck as ordinary positive Ints.
-    if claim_warn_ms >= claim_budget_ms {
+    // finish; the safety deadlines are what actually stop it (BUDGET POLICY CUT, 2026-08-19 —
+    // the completed-cost line never interrupts anything, so it is not a "hard ceiling" this
+    // check protects: only the two safety limits arm the interrupt clocks). The warn tier must
+    // sit strictly below the TIGHTER of the two safety limits, or it can never fire before the
+    // interrupt it is meant to precede.
+    let claim_tighter_safety_limit_ms = claim_cpu_safety_limit_ms.min(claim_wall_safety_limit_ms);
+    if claim_warn_ms >= claim_tighter_safety_limit_ms {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=ClaimBudgetTiersInverted warn_ms={claim_warn_ms} \
-             budget_ms={claim_budget_ms} — the warning tier must sit strictly below the hard \
-             ceiling or it can never fire before the deadline it is meant to precede"
+             cpu_safety_limit_ms={claim_cpu_safety_limit_ms} \
+             wall_safety_limit_ms={claim_wall_safety_limit_ms} — the warning tier must sit \
+             strictly below the tighter of the two safety deadlines or it can never fire before \
+             the interrupt it is meant to precede"
         ));
     }
     let long_home_prefixes: Vec<String> = {
@@ -39773,7 +40038,9 @@ pub fn run_required_floor(
                 module_path: file.module_path.clone(),
                 function: function.clone(),
                 execution_mode: v1_interpreter::ExecutionMode::Hermetic,
-                budget_ms: claim_budget_ms,
+                cpu_safety_limit_ms: claim_cpu_safety_limit_ms,
+                wall_safety_limit_ms: claim_wall_safety_limit_ms,
+                cost_line_ms: claim_cost_line_ms,
                 warn_ms: claim_warn_ms,
             });
         }
@@ -39976,9 +40243,11 @@ pub fn run_required_floor(
         passed: 0,
         known_red_held: 0,
         stale_quarantine: Vec::new(),
-        budget_refused: Vec::new(),
+        interrupted_before_verdict: Vec::new(),
+        completed_over_cost_requirement: Vec::new(),
         host_tool_unresolved: Vec::new(),
         over_warn: 0,
+        over_cost_line_diagnostic: 0,
         failures: Vec::new(),
         required_floor_disposition: disposition_rows,
         long_home_storage_agreement: storage_agreement_rows,
@@ -40107,12 +40376,17 @@ pub fn run_required_floor(
         // complete in the interpreter and simply never switched on here, so a CPU budget stood
         // in for it while printing the wall rule's own error text.
         //
-        // Both clocks are armed deliberately. CPU catches a spin; wall catches a witness that
-        // is slow because of what it reaches for, which CPU cannot see: the worst row measured
-        // burned 504 SECONDS of wall under a 5-second ceiling and returned an ordinary Bool,
-        // because its time was filesystem reads and its CPU never approached the limit.
-        frame.set_witness_eval_budget(Some(claim.budget_ms));
-        frame.set_witness_wall_budget(Some(claim.budget_ms));
+        // Both clocks are armed deliberately, and INDEPENDENTLY (operator ruling 2026-08-19,
+        // BUDGET POLICY CUT, superseding correction — "DO NOT set CPU and wall to the same
+        // 5000ms"). CPU catches a spin; wall catches a witness that is slow because of what it
+        // reaches for, which CPU cannot see: the worst row measured burned 504 SECONDS of wall
+        // under a 5-second ceiling and returned an ordinary Bool, because its time was
+        // filesystem reads and its CPU never approached the limit. The wall limit is
+        // deliberately looser than the CPU limit so ordinary host scheduling delay on a pure
+        // in-process claim cannot itself trip an interrupt while the claim is still within its
+        // CPU envelope.
+        frame.set_witness_eval_budget(Some(claim.cpu_safety_limit_ms));
+        frame.set_witness_wall_budget(Some(claim.wall_safety_limit_ms));
         // NAME WHO IS RUNNING, so a shared computation filled during this claim is attributed to
         // it rather than to nobody. The wall time this row is about to be charged is not
         // necessarily its own; `shared_fill` records which part was a first touch of a
@@ -40151,6 +40425,27 @@ pub fn run_required_floor(
                 claim_rss_kb as f64 / 1048576.0,
                 claim_rss_after as f64 / 1048576.0
             );
+        }
+        // DIAGNOSTIC-ONLY COST-LINE COMPARISON. This is the executing consumer of
+        // `claim_terminality`/`exceeds_completed_cost_line`/`ClaimTerminality`/
+        // `RequiredFloorCostBasis` (BUDGET POLICY CUT, 2026-08-19) — reported and counted so the
+        // types are not review §6 scaffolds, never gated on: `over_cost_line_diagnostic` has no
+        // reader that fails the run, unlike `completed_over_cost_requirement` above, which blocks
+        // on the safety limit and is computed independently of this comparison.
+        let terminality = claim_terminality(
+            &result,
+            &receipt,
+            WitnessSafetyPolicy {
+                cpu_ms: claim.cpu_safety_limit_ms,
+                wall_ms: claim.wall_safety_limit_ms,
+            },
+        );
+        if exceeds_completed_cost_line(
+            &terminality,
+            claim.cost_line_ms,
+            required_floor_cost_basis(),
+        ) {
+            outcome.over_cost_line_diagnostic += 1;
         }
         // RETURN WHAT THE FRAME NO LONGER OWNS, on a cadence rather than every row.
         //
@@ -40193,7 +40488,7 @@ pub fn run_required_floor(
                 &claim.qualified,
                 wall_ms,
                 claim.warn_ms,
-                claim.budget_ms,
+                claim.wall_safety_limit_ms,
             ) {
                 Some(line) => eprintln!("{line}"),
                 None => eprintln!(
@@ -40265,7 +40560,7 @@ pub fn run_required_floor(
                         ),
                         other => format!("{other:?}"),
                     };
-                    outcome.budget_refused.push(format!(
+                    outcome.interrupted_before_verdict.push(format!(
                         "{} is enrolled as expected-red but was BUDGET-REFUSED, not failed: \
                          {}. Enrollment asserts an expected verdict and a budget refusal \
                          produces none, so the enrolled claim went undecided — THIS ROW'S \
@@ -40287,8 +40582,8 @@ pub fn run_required_floor(
                 // unaffected because it counts receipts, not verdicts.
                 // BOTH REMEDIES, because the row is true on both axes. The semantic half goes
                 // to stale_quarantine (the claim passed, so the roster row must come out) and
-                // the cost half to budget_refused (an exact overrun that still has to be paid
-                // down). Choosing one would silently drop the other, and the one the code used
+                // the cost half to completed_over_cost_requirement (an exact overrun that still
+                // has to be paid down). Choosing one would silently drop the other, and the one the code used
                 // to drop was the repaid-debt signal the roster exists to surface.
                 ExpectedRedArm::PassedOverBudget => {
                     known_red_passed_over_budget += 1;
@@ -40307,7 +40602,7 @@ pub fn run_required_floor(
                          reported separately and is not a reason to keep the row",
                         claim.qualified, cost
                     ));
-                    outcome.budget_refused.push(format!(
+                    outcome.completed_over_cost_requirement.push(format!(
                         "{} PASSED but exceeded its budget: {}. This is an exact measurement, \
                          not a bound — the witness ran to completion — so the cost is known and \
                          actionable. Reduce it, or move the row to a lane declaring its own \
@@ -40389,8 +40684,8 @@ pub fn run_required_floor(
                 // is EXACT. Printing one sentence for both would repeat the conflation this arm
                 // exists to remove — asserting "correctness unknown" over a row that demonstrably
                 // answered is as wrong as calling a cost a defect.
-            } => outcome.budget_refused.push(match completion {
-                BudgetCompletion::Interrupted => format!(
+            } => match completion {
+                BudgetCompletion::Interrupted => outcome.interrupted_before_verdict.push(format!(
                     "{} was BUDGET-REFUSED and went UNDECIDED: {kind:?}, cost at least \
                      {elapsed_ms}ms against {budget_ms}ms. Not enrolled as expected-red, so \
                      nothing claims it is broken — but the deadline preempted the verdict, so \
@@ -40398,17 +40693,19 @@ pub fn run_required_floor(
                      is the interrupt point, not this row's cost. Reduce the cost, or move it \
                      to a lane declaring its own ceiling, so the witness reaches a verdict.",
                     claim.qualified
-                ),
-                BudgetCompletion::CompletedOverBudget => format!(
-                    "{} reached its verdict and then exceeded its budget: {kind:?}, cost \
+                )),
+                BudgetCompletion::CompletedOverBudget => {
+                    outcome.completed_over_cost_requirement.push(format!(
+                        "{} reached its verdict and then exceeded its budget: {kind:?}, cost \
                      exactly {elapsed_ms}ms against {budget_ms}ms. The witness ran to \
                      completion, so this is a measurement rather than a bound and the cost is \
                      known and actionable. This is a cost debt only — it is not a defect and \
                      it does not belong on the expected-red roster, which asserts an expected \
                      FAILURE this row does not exhibit.",
-                    claim.qualified
-                ),
-            }),
+                        claim.qualified
+                    ))
+                }
+            },
         }
     }
     outcome.receipt_identities = receipted.len();
