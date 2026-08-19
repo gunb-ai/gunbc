@@ -54,7 +54,7 @@ type ResolvedGraph {
   emit_graph_info: v1.compiler.infer_emit_info.EmitGraphInfo
 }
 
-fn inferred_to_outputs(inferred: InferredNode?, span: std.types.SourceSpan, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<v1.std.core.Node> {
+fn inferred_to_outputs(inferred: v1.std.core.InferredNode?, span: std.types.SourceSpan, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<v1.std.core.Node> {
   if inferred == none { [] }
   else { match inferred.value {
     CompilerError { message: _, span: _ } => []

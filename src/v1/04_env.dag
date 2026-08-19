@@ -743,7 +743,7 @@ fn node_with_children(n: v1.std.core.Node, children: List<v1.std.core.Node>) -> 
   }
 }
 
-fn node_with_inferred(n: v1.std.core.Node, inferred: InferredNode?) -> v1.std.core.Node {
+fn node_with_inferred(n: v1.std.core.Node, inferred: v1.std.core.InferredNode?) -> v1.std.core.Node {
   v1.std.core.Node {
     name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span,
     children: n.children, connective: n.connective, params: n.params,
@@ -755,10 +755,10 @@ fn node_with_inferred(n: v1.std.core.Node, inferred: InferredNode?) -> v1.std.co
   }
 }
 
-fn qualify_borrowed_inferred(inferred: InferredNode?, owner_module_path: String, env: v1.compiler.infer_env.TypeEnv, excluded: Map<String, Bool>) -> InferredNode? {
+fn qualify_borrowed_inferred(inferred: v1.std.core.InferredNode?, owner_module_path: String, env: v1.compiler.infer_env.TypeEnv, excluded: Map<String, Bool>) -> v1.std.core.InferredNode? {
   match inferred {
-    Present { value: Resolved { node: t } } =>
-      Present { value: Resolved { node: qualify_borrowed_type_names(n: t, owner_module_path: owner_module_path, env: env, excluded: excluded) } }
+    Present { value: v1.std.core.Resolved { node: t } } =>
+      Present { value: v1.std.core.Resolved { node: qualify_borrowed_type_names(n: t, owner_module_path: owner_module_path, env: env, excluded: excluded) } }
     _ => inferred
   }
 }
