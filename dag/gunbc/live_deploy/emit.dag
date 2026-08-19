@@ -349,8 +349,10 @@ fn emit_belt_timer_unit_doc(spec: DeploymentSpec) -> Doc {
 //
 // WHY NOT A LEG ON THE TREE-SYNC UNIT, which already has the right principal: that unit is started
 // inside the GunbcSourceTree step, and ServeBinary is installed in the step AFTER it, so the gunbc
-// binary this invocation needs does not exist yet on a fresh instance. Ordering this member last in
-// deployment_owned_steps is what makes the binary a precondition the membership establishes.
+// binary this invocation needs does not exist yet on a fresh instance. Ordering this member AFTER
+// ServeBinary in deployment_owned_steps is what makes the binary a precondition the membership
+// establishes -- concretely THIRD, before the belt timer that depends on the remote, not last
+// (see deployment_tree_remote_unit_name's header for why last was wrong).
 //
 // The ExecStart names the tree explicitly rather than deriving it, because a host can run two slots
 // and the unit of one slot must not converge the other's tree.

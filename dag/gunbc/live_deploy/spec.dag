@@ -238,8 +238,18 @@ fn deployment_belt_timer_unit_name(names: DeploymentNames) -> NonEmptyStr {
 // It cannot be the tree-sync unit. That unit is installed and started inside the GunbcSourceTree
 // step, which is FIRST in deployment_owned_steps, while ServeBinary is second -- so on a fresh
 // instance the gunbc binary the convergence invokes does not exist yet, and the leg would red the
-// first deploy of every new slot. Ordering the member last is what makes the binary a precondition
-// the membership itself establishes.
+// first deploy of every new slot. Ordering the member AFTER ServeBinary is what makes the binary a
+// precondition the membership itself establishes.
+//
+// It sits THIRD -- immediately after GunbcSourceTree and ServeBinary, and before the belt timer.
+// An earlier cut of this change said "last" and placed it last; that was an inversion of
+// deployment_apply_order_note's own rule that dependencies precede their consumers, because the
+// remote is a prerequisite of every belt tick and a candidate belt would otherwise fire once
+// against the known-broken observation state before the correction ran. Third is the EARLIEST
+// position satisfying the fresh-instance constraint above, so it satisfies both; last satisfied
+// only one. Witness: deployed_tree_remote_witness_test
+// `the_remote_converges_after_its_inputs_and_before_the_belt` pins the sequence
+// tree,binary,remote,belt,route.
 fn deployment_tree_remote_unit_name(names: DeploymentNames) -> NonEmptyStr {
   join([deployment_belt_unit_stem(names: names), "-tree-remote.service"], "") as NonEmptyStr
 }
