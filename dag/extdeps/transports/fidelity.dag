@@ -11,7 +11,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 
 data local_direct_transport_fidelity: std.fidelity.TransportFidelity = std.fidelity.TransportFidelity { depth: Xs, hermetic: true }
 data interface_stub_transport_fidelity: std.fidelity.TransportFidelity = std.fidelity.TransportFidelity { depth: Xs, hermetic: true }
-data unknown_transport_fidelity: std.fidelity.TransportFidelity = std.fidelity.TransportFidelity { depth: Xl, hermetic: false }
+data unknown_transport_fidelity: std.fidelity.TransportFidelity = std.fidelity.TransportFidelity { depth: std.types.Xl, hermetic: false }
 
 fn transport_fidelity(tc: std.fidelity.TransportClass) -> std.fidelity.TransportFidelity {
   match tc {
