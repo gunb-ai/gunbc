@@ -23,9 +23,30 @@ module test.claim.long.e0308_mechanical_trio_test
 // Ported unsliced, that exclusion is a false red, and this is measured rather
 // than reasoned: probes asserting the unit fixture's emitted file CONTAINS
 // `None` and `Some(` both pass. So every pin here is scoped by fn name, and
-// each forbidden token additionally carries an expecting-red control below —
-// a forbidden list that could never match would pass vacuously, and naming the
-// defect form as a must-be-false requirement is that same fact made executable.
+// every forbidden token names a real defect form rather than a token that could
+// never appear — the next paragraph records how that is kept honest, and how it
+// used to be kept honest at four times the cost.
+//
+// ONE CROSSING PER FIXTURE (witness-cost consolidation, 2026-08-19). Each
+// claim here sends a source through the whole v1 frontend and emitter, and the
+// seed memo is keyed on the include and exclude lists as well as the source, so
+// two claims naming the same source with different lists are two full compiles.
+// Four of the nine claims were `!compile_dag_rust_emit_check(source, path,
+// [defect_form], [])` -- an assertion that a defect token is ABSENT, which is
+// exactly what the sibling claim's own exclude list already says about the same
+// source, and says more strongly: the negated form is also satisfied by a compile
+// that produced hard diagnostics, while the exclude form requires the compile to
+// be clean AND the required token to be present. So the four were duplicate
+// coverage at four times the cost, and they are folded into the exclude lists
+// they restated. The string-borrow exclude is NEW here -- that one red named a
+// form its sibling did not forbid.
+//
+// AND THE VACUITY OBJECTION THE ORIGINAL NOTE RAISED IS ANSWERED BY THE INCLUDE
+// LIST, NOT BY A SECOND CLAIM: an exclude list over an emitted file that does not
+// contain the subject at all would pass for the wrong reason, and what rules that
+// out is the required token in the same call, which fails if the fn was not
+// emitted. The planted-wrong red control below is a DIFFERENT fixture, not a
+// restatement, so it stays a claim of its own.
 //
 // The Unit witness pins the pair (`-> ()` signature, optional value still
 // constructed in the body). That conjunction is the behavior: the tail is built
@@ -59,7 +80,7 @@ test fn string_length_call_borrows_string_arg() -> Bool {
     e0308_string_borrow_source(),
     "src/e0308strlen.rs",
     ["v1_rt::string_length(&"],
-    []
+    ["v1_rt::string_length(s"]
   )
 }
 
@@ -87,42 +108,6 @@ test fn unit_return_discards_optional_tail() -> Bool {
     "src/e0308unit.rs",
     ["pub fn maybe_discard(flag: bool) -> ()", "Some(\"x\".to_string())"],
     ["pub fn maybe_discard(flag: bool) -> Option"]
-  )
-}
-
-test fn red_string_length_unborrowed_arg_is_absent() -> Bool {
-  !compile_dag_rust_emit_check(
-    e0308_string_borrow_source(),
-    "src/e0308strlen.rs",
-    ["v1_rt::string_length(s"],
-    []
-  )
-}
-
-test fn red_list_slice_bare_integer_range_is_absent() -> Bool {
-  !compile_dag_rust_emit_check(
-    e0308_list_slice_source(),
-    "src/e0308slice.rs",
-    ["[1..3]"],
-    []
-  )
-}
-
-test fn red_skip_first_direct_index_is_absent() -> Bool {
-  !compile_dag_rust_emit_check(
-    e0308_skip_first_source(),
-    "src/e0308skip.rs",
-    [".get(1 as usize)"],
-    []
-  )
-}
-
-test fn red_skip_first_option_cloned_tail_is_absent() -> Bool {
-  !compile_dag_rust_emit_check(
-    e0308_skip_first_source(),
-    "src/e0308skip.rs",
-    [".next().cloned()"],
-    []
   )
 }
 

@@ -1,0 +1,224 @@
+module v2.test.claim.layer_transition
+
+import v2.std.compilers.target_model {
+  IndirectionDirect,
+  IndirectionIndirect,
+  LayerTransitionIdentity,
+  LayerTransitionRefused,
+  LayerTransitionUnwrap,
+  LayerTransitionWrap,
+  ReferenceLayerBox,
+  ReferenceLayerOwned,
+  ReferenceLayerRc,
+  SharedValueDuplication,
+  SharingShared,
+  SharingUnique,
+  TargetLayerTransition,
+  TargetReferenceLayer,
+  UniqueIndirectionResharing,
+  target_layer_transition,
+  target_layer_transition_is_deliverable,
+  target_reference_layer_facts
+}
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data layer_transition_note: String = "Executing controls for target_layer_transition, R1's next rung over wrap_decision_flow_gate. The flow gate refuses every layer disagreement; this derivation refuses only the three pairs that are genuinely unconvertible and derives the other three. BOTH DIRECTIONS ARE DISCRIMINATED DELIBERATELY, because R1's two error populations are oppositely signed and largely disjoint: a fix validated on one direction moves about half the population and makes the other half worse. lt_under_wrap_direction_derives covers the under-wrap shape (a bare producer read into an Rc consumer, Owned->Rc, which must WRAP) and lt_over_wrap_direction_refuses covers the over (an Rc producer assigned into a bare consumer, Rc->Owned, which must REFUSE); the asymmetry between those two is the whole content of the sharing axis.\n\nMUTATION PROFILE, EXECUTED RATHER THAN ASSERTED, and reported as measured because it is NOT uniform -- a witness set that reds together says less than one whose profile names which witness guards which arm. An earlier revision of this row predicted these profiles and was wrong about two of the three; the measured table replaces it.\n\n(1) target_layer_transition returns LayerTransitionIdentity unconditionally: 8 red, 1 green. Only lt_layer_facts_ground_the_axes survives, and it should -- it is the one witness that never calls the transition. Note lt_identity_is_not_the_default reds here rather than passing: its negative conjuncts exist precisely to deny this mutation the hiding place a positive-only identity test would have given it.\n\n(2) target_reference_layer_facts made to read SharingUnique for Rc: 5 red, 4 green. Red are lt_over_wrap_direction_refuses, lt_shared_to_unique_indirection_refuses, lt_refusal_causes_are_distinct, lt_layer_facts_ground_the_axes and lt_all_nine_pairs_are_classified -- every row whose answer depends on Rc being shared. Green are lt_under_wrap_direction_derives, lt_owned_to_box_wraps, lt_box_to_owned_unwraps and lt_identity_is_not_the_default, none of which reads the sharing axis on the destination side. That the facts row and the over-wrap row red TOGETHER is the evidence that the transition is derived from the axes rather than a nine-arm table that happens to agree with them.\n\n(3) the two refusal causes collapsed into one: exactly 1 red, lt_refusal_causes_are_distinct, and nothing else moves. That isolation is the point -- the two causes have different remedies (UniqueIndirectionResharing dissolves when a cited realization row lands, SharedValueDuplication never does), so a single witness owning that distinction is what keeps them from being merged later by someone who reads them as one refusal."
+
+fn lt_is_wrap_into(transition: TargetLayerTransition, expected: TargetReferenceLayer) -> Bool {
+  match transition {
+    LayerTransitionWrap { into: got } => got == expected
+    LayerTransitionIdentity => false
+    LayerTransitionUnwrap { from: _ } => false
+    LayerTransitionRefused { from: _, to: _, cause: _ } => false
+  }
+}
+
+fn lt_is_unwrap_from(transition: TargetLayerTransition, expected: TargetReferenceLayer) -> Bool {
+  match transition {
+    LayerTransitionUnwrap { from: got } => got == expected
+    LayerTransitionIdentity => false
+    LayerTransitionWrap { into: _ } => false
+    LayerTransitionRefused { from: _, to: _, cause: _ } => false
+  }
+}
+
+fn lt_is_identity(transition: TargetLayerTransition) -> Bool {
+  match transition {
+    LayerTransitionIdentity => true
+    LayerTransitionWrap { into: _ } => false
+    LayerTransitionUnwrap { from: _ } => false
+    LayerTransitionRefused { from: _, to: _, cause: _ } => false
+  }
+}
+
+fn lt_refused_by_shared_duplication(transition: TargetLayerTransition) -> Bool {
+  match transition {
+    LayerTransitionRefused { from: _, to: _, cause: c } =>
+      match c {
+        SharedValueDuplication => true
+        UniqueIndirectionResharing => false
+      }
+    LayerTransitionIdentity => false
+    LayerTransitionWrap { into: _ } => false
+    LayerTransitionUnwrap { from: _ } => false
+  }
+}
+
+fn lt_refused_by_unique_resharing(transition: TargetLayerTransition) -> Bool {
+  match transition {
+    LayerTransitionRefused { from: _, to: _, cause: c } =>
+      match c {
+        UniqueIndirectionResharing => true
+        SharedValueDuplication => false
+      }
+    LayerTransitionIdentity => false
+    LayerTransitionWrap { into: _ } => false
+    LayerTransitionUnwrap { from: _ } => false
+  }
+}
+
+// THE UNDER-WRAP DIRECTION. A field emitted bare feeding a parameter emitted Rc<T> is 28 of the 55
+// measured sites. The flow gate refuses this pair; the derivation resolves it, because gaining
+// sharing from an owned value produces the first handle and there is nobody to disagree with.
+test fn lt_under_wrap_direction_derives() -> Bool {
+  lt_is_wrap_into(
+    transition: target_layer_transition(from: ReferenceLayerOwned, to: ReferenceLayerRc),
+    expected: ReferenceLayerRc
+  )
+    && target_layer_transition_is_deliverable(
+      transition: target_layer_transition(from: ReferenceLayerOwned, to: ReferenceLayerRc)
+    )
+}
+
+// THE OVER-WRAP DIRECTION, and the asymmetry that is the point. An Rc<T> producer assigned into a
+// bare field is the other 27. This one must NOT derive: the only realization clones the pointee,
+// so the program would hold two values where it had one and every other holder keeps observing the
+// original. Losing sharing is not the mirror of gaining it.
+test fn lt_over_wrap_direction_refuses() -> Bool {
+  lt_refused_by_shared_duplication(
+    transition: target_layer_transition(from: ReferenceLayerRc, to: ReferenceLayerOwned)
+  )
+    && !target_layer_transition_is_deliverable(
+      transition: target_layer_transition(from: ReferenceLayerRc, to: ReferenceLayerOwned)
+    )
+}
+
+// Rc -> Box is the same loss of sharing wearing a different destination, and it must refuse for the
+// same cause. Stated separately because a derivation that keyed on the DESTINATION rather than on
+// the sharing axis would pass the row above and fail this one.
+test fn lt_shared_to_unique_indirection_refuses() -> Bool {
+  lt_refused_by_shared_duplication(
+    transition: target_layer_transition(from: ReferenceLayerRc, to: ReferenceLayerBox)
+  )
+}
+
+test fn lt_owned_to_box_wraps() -> Bool {
+  lt_is_wrap_into(
+    transition: target_layer_transition(from: ReferenceLayerOwned, to: ReferenceLayerBox),
+    expected: ReferenceLayerBox
+  )
+}
+
+test fn lt_box_to_owned_unwraps() -> Bool {
+  lt_is_unwrap_from(
+    transition: target_layer_transition(from: ReferenceLayerBox, to: ReferenceLayerOwned),
+    expected: ReferenceLayerBox
+  )
+    && target_layer_transition_is_deliverable(
+      transition: target_layer_transition(from: ReferenceLayerBox, to: ReferenceLayerOwned)
+    )
+}
+
+// Box -> Rc refuses under the WEAKER cause, and the distinctness of the two causes is the claim.
+// This pair is meaning-preserving in principle; what it lacks is a cited realization to derive it
+// from. Collapsing the two causes into one would make this row indistinguishable from the Rc->Owned
+// refusal above, and the two have different remedies -- one dissolves when a realization row lands,
+// the other never does.
+test fn lt_refusal_causes_are_distinct() -> Bool {
+  lt_refused_by_unique_resharing(
+    transition: target_layer_transition(from: ReferenceLayerBox, to: ReferenceLayerRc)
+  )
+    && lt_refused_by_shared_duplication(
+      transition: target_layer_transition(from: ReferenceLayerRc, to: ReferenceLayerOwned)
+    )
+    && !lt_refused_by_unique_resharing(
+      transition: target_layer_transition(from: ReferenceLayerRc, to: ReferenceLayerOwned)
+    )
+}
+
+// Every layer transitions to itself as identity, and -- the half that matters -- identity is not
+// what the function answers for anything else. A mutation returning LayerTransitionIdentity
+// unconditionally passes the first three conjuncts and dies on the last three.
+test fn lt_identity_is_not_the_default() -> Bool {
+  lt_is_identity(
+    transition: target_layer_transition(from: ReferenceLayerOwned, to: ReferenceLayerOwned)
+  )
+    && lt_is_identity(
+      transition: target_layer_transition(from: ReferenceLayerRc, to: ReferenceLayerRc)
+    )
+    && lt_is_identity(
+      transition: target_layer_transition(from: ReferenceLayerBox, to: ReferenceLayerBox)
+    )
+    && !lt_is_identity(
+      transition: target_layer_transition(from: ReferenceLayerOwned, to: ReferenceLayerRc)
+    )
+    && !lt_is_identity(
+      transition: target_layer_transition(from: ReferenceLayerBox, to: ReferenceLayerOwned)
+    )
+    && !lt_is_identity(
+      transition: target_layer_transition(from: ReferenceLayerRc, to: ReferenceLayerOwned)
+    )
+}
+
+// The derivation reads the two axes, so the axes have to say what the layers are. This is the row
+// that goes red together with the over-wrap witness under a sharing-axis mutation, which is what
+// distinguishes a derivation from a nine-arm table that happens to agree with one.
+test fn lt_layer_facts_ground_the_axes() -> Bool {
+  let owned = target_reference_layer_facts(layer: ReferenceLayerOwned)
+  let boxed = target_reference_layer_facts(layer: ReferenceLayerBox)
+  let shared = target_reference_layer_facts(layer: ReferenceLayerRc)
+  owned.indirection == IndirectionDirect
+    && owned.sharing == SharingUnique
+    && boxed.indirection == IndirectionIndirect
+    && boxed.sharing == SharingUnique
+    && shared.indirection == IndirectionIndirect
+    && shared.sharing == SharingShared
+}
+
+// Totality over the whole nine-pair space, at the grain the type makes checkable: every pair is
+// classified, and the deliverable projection agrees with the transition on every one of them. A
+// function that answered nothing for some pair could not satisfy this, and a projection that drifted
+// from the transition it projects would break here rather than in a consumer.
+test fn lt_all_nine_pairs_are_classified() -> Bool {
+  let pairs_deliverable =
+    target_layer_transition_is_deliverable(
+      transition: target_layer_transition(from: ReferenceLayerOwned, to: ReferenceLayerOwned)
+    )
+      && target_layer_transition_is_deliverable(
+        transition: target_layer_transition(from: ReferenceLayerOwned, to: ReferenceLayerRc)
+      )
+      && target_layer_transition_is_deliverable(
+        transition: target_layer_transition(from: ReferenceLayerOwned, to: ReferenceLayerBox)
+      )
+      && target_layer_transition_is_deliverable(
+        transition: target_layer_transition(from: ReferenceLayerBox, to: ReferenceLayerBox)
+      )
+      && target_layer_transition_is_deliverable(
+        transition: target_layer_transition(from: ReferenceLayerBox, to: ReferenceLayerOwned)
+      )
+      && target_layer_transition_is_deliverable(
+        transition: target_layer_transition(from: ReferenceLayerRc, to: ReferenceLayerRc)
+      )
+  let pairs_refused =
+    !target_layer_transition_is_deliverable(
+      transition: target_layer_transition(from: ReferenceLayerBox, to: ReferenceLayerRc)
+    )
+      && !target_layer_transition_is_deliverable(
+        transition: target_layer_transition(from: ReferenceLayerRc, to: ReferenceLayerOwned)
+      )
+      && !target_layer_transition_is_deliverable(
+        transition: target_layer_transition(from: ReferenceLayerRc, to: ReferenceLayerBox)
+      )
+  pairs_deliverable && pairs_refused
+}

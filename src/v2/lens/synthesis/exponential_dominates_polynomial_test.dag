@@ -1,0 +1,33 @@
+module v2.test.lens_synthesis.exponential_dominates_polynomial
+
+import v2.lens.cost {
+  ExponentialBase,
+  ExponentialCost,
+  PolynomialCost,
+  PolynomialDegree,
+  SizeVariable,
+  symbolic_cost_dominates
+}
+import v2.std.cardinality { NonZeroNat }
+import v2.std.logic { Bool }
+import v2.std.nat { Zero }
+import v2.std.node { Atom, Node, TypeNode, SyntheticOccurrence }
+
+data synthesis_exp_x: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^synthesis_exp_x_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+test fn exponential_dominates_polynomial_claim_holds() -> Bool {
+  symbolic_cost_dominates(
+    a: ExponentialCost {
+      variable: SizeVariable { source: synthesis_exp_x },
+      base: ExponentialBase { predecessor_after_one: NonZeroNat { prev: Zero } }
+    },
+    b: PolynomialCost {
+      variable: SizeVariable { source: synthesis_exp_x },
+      degree: PolynomialDegree { predecessor_after_linear: NonZeroNat { prev: Zero } }
+    }
+  )
+}

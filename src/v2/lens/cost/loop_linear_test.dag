@@ -1,0 +1,57 @@
+module v2.test.lens_cost.loop_linear
+
+import v2.lens.cost { LinearCost, cost_lens }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  ComputationNode,
+  Edge,
+  Loop,
+  Named,
+  Node,
+  Positional,
+  Transform,
+  TypeNode,
+  SyntheticOccurrence
+}
+import v2.std.witness { Holds }
+
+data loop_linear_body_leaf: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^loop_linear_body_atom } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data loop_linear_measure_leaf: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^loop_linear_measure_atom } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data loop_linear_body: Node = Node {
+  kind: ComputationNode { behavior: Transform },
+  children: [
+    Edge { label: Positional, target: loop_linear_body_leaf }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data loop_linear_input: Node = Node {
+  kind: ComputationNode { behavior: Loop },
+  children: [
+    Edge { label: Positional, target: loop_linear_body },
+    Edge { label: Named { name: ^loop_bound_edge }, target: loop_linear_measure_leaf }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+test fn loop_linear_claim_holds() -> Bool {
+  match cost_lens(n: loop_linear_input) {
+    Holds { value: actual } =>
+      match actual {
+        LinearCost { variable: sv } => sv.source == loop_linear_measure_leaf
+        _ => false
+      }
+    _ => false
+  }
+}

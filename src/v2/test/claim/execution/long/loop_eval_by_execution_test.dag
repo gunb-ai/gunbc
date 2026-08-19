@@ -19,7 +19,7 @@ import v2.compiler.eval {
   test_claim_run_verdict,
   test_claim_typed_input_node
 }
-import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.compiler.inferred_tree { InferredFacts, InferredTree }
 import v2.std.collection {
   List,
   Map,

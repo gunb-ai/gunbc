@@ -3511,6 +3511,12 @@ fn compile_clean_scoping_active() -> bool {
 
 pub const CLASS_B_ENTRY_REL: &str = "src/v2/extdeps/languages/rust_test_fixtures.dag";
 pub const CLASS_B_TRANSPORT_REL: &str = "src/v2/workflow/class_b_import_closure_transport.dag";
+/// Rows 1-2's shape+call, relocated out of CLASS_B_TRANSPORT_REL so a witness reaching only
+/// rows 1-2 does not inherit the transport module's extdeps.git / extdeps.git.inspect /
+/// gunbc.ci_layer_roots closure (DESIGN.md §3 relocation-not-refork; the same signature
+/// extdeps_scope_placement_gate_loudness_witness's repair fixed). The transport module imports
+/// this one back for rows 1-2's own use, so it is part of the gate's input closure too.
+pub const CLASS_B_PROBE_REL: &str = "src/v2/workflow/class_b_import_closure_probe.dag";
 pub const CLASS_B_BINDING_REL: &str = "dag/gunbc/declared_import_closure_binding.dag";
 pub const CLASS_B_OVERLAY_REL: &str = "dag/gunbc/class_b_import_closure_overlay.dag";
 pub const CLASS_B_FIXTURES_PREFIX: &str = "fixtures/class_b_import_closure";
@@ -3519,6 +3525,7 @@ const CLASS_B_DECLARED_POOL_ROOTS_DATA_NAME: &str = "class_b_declared_import_poo
 pub const CLASS_B_GATE_INPUT_ENTRIES: &[&str] = &[
     CLASS_B_ENTRY_REL,
     CLASS_B_TRANSPORT_REL,
+    CLASS_B_PROBE_REL,
     CLASS_B_BINDING_REL,
     CLASS_B_OVERLAY_REL,
 ];
@@ -6276,7 +6283,7 @@ pub fn load_sources_for_entry(
     source_roots: &[String],
     entry_path: &str,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    let index = build_multi_entry_index(source_roots);
+    let index = process_shared_index(source_roots);
     load_sources_for_entry_with_pool(&index, entry_path)
 }
 
@@ -18784,9 +18791,9 @@ fn frozen_path_deferral_keys() -> &'static [String] {
     })
 }
 
-fn frozen_path_deferral_keys_from_source(content: &str) -> Vec<String> {
+fn frozen_path_deferral_rows_from_source(content: &str) -> Vec<(String, Vec<String>)> {
     const HEAD: &str = "FrozenPathDeferral {";
-    let mut keys: Vec<String> = Vec::new();
+    let mut rows: Vec<(String, Vec<String>)> = Vec::new();
     let mut cursor = 0usize;
     while let Some(offset) = content[cursor..].find(HEAD) {
         let at = cursor + offset;
@@ -18815,6 +18822,14 @@ fn frozen_path_deferral_keys_from_source(content: &str) -> Vec<String> {
                  function list — a freeze row covering nothing is a row that should be deleted"
             );
         }
+        rows.push((entry, functions));
+    }
+    rows
+}
+
+fn frozen_path_deferral_keys_from_source(content: &str) -> Vec<String> {
+    let mut keys: Vec<String> = Vec::new();
+    for (entry, functions) in frozen_path_deferral_rows_from_source(content) {
         for function in functions {
             let key = witness_admission_manifest_key(&entry, &function);
             if !keys.iter().any(|k| k == &key) {
@@ -18823,6 +18838,97 @@ fn frozen_path_deferral_keys_from_source(content: &str) -> Vec<String> {
         }
     }
     keys
+}
+
+/// The same freeze rows, joined against the ENROLLED-ROSTER identity space instead of the
+/// admission-key space: `module.function` (as `floor_expected_red_roster` writes it) rather
+/// than `entry::function` (as `witness_admission_manifest_key` writes it). Two different keys
+/// over the same two facts, kept as two functions rather than one that returns both — a caller
+/// asking "is this frozen?" wants the admission key; a caller asking "is this row also known-red?"
+/// wants the qualified name, and conflating them would let a shape mismatch hide a real miss.
+///
+/// The module name is read from each entry file's own `module ...` line (`extract_module_path`),
+/// the same authority `run_required_floor` reads for every other qualified name it reports — not
+/// re-derived from the path string, which would silently diverge from the interpreter's own
+/// binding the day a file's module line stops matching its directory.
+fn frozen_path_deferral_qualified_identities_from_source(
+    content: &str,
+    root: &std::path::Path,
+) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = Vec::new();
+    for (entry, functions) in frozen_path_deferral_rows_from_source(content) {
+        let file_content = match std::fs::read_to_string(root.join(&entry)) {
+            Ok(c) => c,
+            // A frozen row naming a file the tree no longer carries is stale-path debt, not a
+            // roster-intersection question — `collect_stale_frozen_path_deferrals` already owns
+            // that disposition, so this join skips it rather than panicking a second authority.
+            Err(_) => continue,
+        };
+        let module = match extract_module_path(&file_content) {
+            Some(m) => m,
+            None => continue,
+        };
+        for function in functions {
+            out.push((entry.clone(), format!("{module}.{function}")));
+        }
+    }
+    out
+}
+
+/// The contradictory-intersection wall's pure decision: which frozen (entry, qualified-name)
+/// rows also name an identity enrolled in `floor_expected_red_roster`. Pure and side-effect-free
+/// so it is testable without a corpus checkout or a git repository — the file-reading half
+/// (`frozen_path_deferral_qualified_identities_from_source`) and the git-head half
+/// (`current_git_head_or_unresolved`) are kept out of it deliberately.
+fn expected_red_freeze_intersection(
+    frozen_qualified: &[(String, String)],
+    expected_red_roster: &HashSet<String>,
+) -> Vec<(String, String)> {
+    let mut colliding: Vec<(String, String)> = frozen_qualified
+        .iter()
+        .filter(|(_, qualified)| expected_red_roster.contains(qualified))
+        .cloned()
+        .collect();
+    colliding.sort();
+    colliding.dedup();
+    colliding
+}
+
+fn current_git_head_or_unresolved() -> String {
+    std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_else(|| "HEAD-unresolved".to_string())
+}
+
+fn format_expected_red_freeze_intersection_refusal(
+    colliding: &[(String, String)],
+    head: &str,
+) -> String {
+    let mut detail = String::new();
+    for (entry, qualified) in colliding {
+        detail.push_str(&format!("\n  - {qualified} (frozen via entry \"{entry}\")"));
+    }
+    format!(
+        "REQUIRED-FLOOR REFUSAL cause=ExpectedRedFreezeIntersection count={} head={head} — {} \
+         identity(ies) are simultaneously enrolled in \
+         v2.workflow.floor_expected_red.floor_expected_red_roster (known-red, removable only by \
+         an observed pass) AND path-deferred in dag/gunbc/witness_deferral_freeze.dag \
+         frozen_path_deferrals (LegacyFrozenPathDeferral, admitted as never-executed). Both \
+         claims cannot hold of one identity: this roster's own did-not-execute check below \
+         proves every enrolled row here DOES execute, so the freeze row is stale evidence, not a \
+         live exemption. This count is bound to the head above — measure again at merge time, \
+         never cite it bare. Disposition: retire the frozen_path_deferrals row (it already has \
+         an executing consumer — this required floor) with a receipt in \
+         witness_deferral_freeze.dag's shrink log, or if the identity is not genuinely \
+         executing, fix floor_expected_red_roster/required_floor's admission instead of leaving \
+         the contradiction standing. Colliding identities:{detail}",
+        colliding.len(),
+        colliding.len()
+    )
 }
 
 fn quoted_after_field(text: &str, field: &str) -> Option<String> {
@@ -25546,6 +25652,100 @@ mod node_frontier_plumbing_controls {
         );
     }
 
+    // The contradictory-intersection wall's file-reading half: an entry path resolves through
+    // its own `module ...` line, not through the path string, and a frozen row naming a file the
+    // tree does not carry is skipped here (that disposition belongs to
+    // `collect_stale_frozen_path_deferrals`) rather than panicking a second authority.
+    #[test]
+    fn frozen_path_deferral_qualified_identities_reads_the_entrys_own_module_line() {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc_freeze_qualified_{}_{}",
+            std::process::id(),
+            line!()
+        ));
+        std::fs::create_dir_all(dir.join("test/claim")).expect("mkdir fixture root");
+        std::fs::write(
+            dir.join("test/claim/one_test.dag"),
+            "module test.claim.one\n\nfn x_holds() -> Bool { true }\n",
+        )
+        .expect("write fixture entry");
+        let source = concat!(
+            "data frozen_path_deferrals: List<FrozenPathDeferral> = [\n",
+            "  FrozenPathDeferral { entry: \"test/claim/one_test.dag\", functions: [\"x_holds\"] },\n",
+            "  FrozenPathDeferral { entry: \"test/claim/missing_test.dag\", functions: [\"y_holds\"] },\n",
+            "]\n"
+        );
+        let qualified = super::frozen_path_deferral_qualified_identities_from_source(source, &dir);
+        assert_eq!(
+            qualified,
+            vec![(
+                "test/claim/one_test.dag".to_string(),
+                "test.claim.one.x_holds".to_string()
+            )],
+            "the missing entry is skipped, not panicked, and the module line — not the path — \
+             names the qualified identity"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // DISCRIMINATING RED: a frozen row whose qualified identity is also enrolled in
+    // floor_expected_red_roster must be caught, by identity, not by count — planting one
+    // colliding row beside one non-colliding row proves the join is selective rather than
+    // vacuously "any freeze row plus any roster makes a hit."
+    #[test]
+    fn expected_red_freeze_intersection_catches_the_planted_collision() {
+        let frozen = vec![
+            (
+                "test/claim/known_red_test.dag".to_string(),
+                "test.claim.known_red.stays_red_holds".to_string(),
+            ),
+            (
+                "test/claim/other_test.dag".to_string(),
+                "test.claim.other.unrelated_holds".to_string(),
+            ),
+        ];
+        let mut roster: std::collections::HashSet<String> = std::collections::HashSet::new();
+        roster.insert("test.claim.known_red.stays_red_holds".to_string());
+        roster.insert("test.claim.some_third_thing.holds".to_string());
+
+        let colliding = super::expected_red_freeze_intersection(&frozen, &roster);
+        assert_eq!(
+            colliding,
+            vec![(
+                "test/claim/known_red_test.dag".to_string(),
+                "test.claim.known_red.stays_red_holds".to_string()
+            )],
+            "only the row present in BOTH rosters collides — the unrelated frozen row and the \
+             unrelated roster entry must not appear"
+        );
+
+        let refusal =
+            super::format_expected_red_freeze_intersection_refusal(&colliding, "deadbeef");
+        assert!(refusal.contains("cause=ExpectedRedFreezeIntersection"));
+        assert!(refusal.contains("count=1"));
+        assert!(refusal.contains("head=deadbeef"));
+        assert!(refusal.contains("test.claim.known_red.stays_red_holds"));
+        assert!(
+            !refusal.contains("test.claim.other.unrelated_holds"),
+            "the refusal must name exactly the colliding identities, not the whole frozen roster"
+        );
+    }
+
+    // POSITIVE CONTROL: disjoint rosters must produce no collision and no refusal text — the
+    // wall's ordinary, contradiction-free path stays silent rather than firing on every run.
+    #[test]
+    fn expected_red_freeze_intersection_is_empty_when_rosters_are_disjoint() {
+        let frozen = vec![(
+            "test/claim/other_test.dag".to_string(),
+            "test.claim.other.unrelated_holds".to_string(),
+        )];
+        let mut roster: std::collections::HashSet<String> = std::collections::HashSet::new();
+        roster.insert("test.claim.some_third_thing.holds".to_string());
+
+        let colliding = super::expected_red_freeze_intersection(&frozen, &roster);
+        assert!(colliding.is_empty(), "{colliding:?}");
+    }
+
     // The freeze's second direction, live: every frozen identity must still exist in the tree and
     // still be offline-classified. This is an identity join, never a count — a size comparison
     // would go green on any pair of compensating edits.
@@ -30340,7 +30540,7 @@ fn commit_witness_field_str(
 
 fn ci_floor_commit_witness_claim_pairs() -> Result<Vec<(String, String)>, String> {
     let roots = witness_layer_roots();
-    let index = build_multi_entry_index(&roots);
+    let index = process_shared_index(&roots);
     let (graph, source_indices) = resolve_entry_with_index(&index, COMMIT_WORKFLOW_ENTRY)?;
     let ctx = make_eval_context(
         &graph,
@@ -30354,7 +30554,7 @@ fn ci_floor_commit_witness_claim_pairs() -> Result<Vec<(String, String)>, String
 
 pub fn commit_witness_claim_pair_resolvable(entry: &str, function: &str) -> bool {
     let roots = witness_layer_roots();
-    let index = build_multi_entry_index(&roots);
+    let index = process_shared_index(&roots);
     let mut entry_cache = std::collections::HashMap::new();
     matches!(
         commit_witness_claim_pair_resolvability_with_index(
@@ -30448,7 +30648,7 @@ pub fn commit_witness_claim_roster_defects() -> Vec<(String, String, String)> {
         )];
     };
     let roots = witness_layer_roots();
-    let index = build_multi_entry_index(&roots);
+    let index = process_shared_index(&roots);
     let mut entry_cache = std::collections::HashMap::new();
     let mut defects = Vec::new();
     for (entry, function) in pairs {
@@ -38955,26 +39155,9 @@ fn str_list(items: impl IntoIterator<Item = String>) -> v1_interpreter::Value {
     ))
 }
 
-fn record_value(
-    ctx: &v1_interpreter::InterpContext,
-    type_name: &str,
-    fields: Vec<(&str, v1_interpreter::Value)>,
-) -> v1_interpreter::Value {
-    v1_interpreter::Value::Record {
-        type_name: ctx.sym(type_name),
-        fields: Rc::new(
-            fields
-                .into_iter()
-                .map(|(n, v)| (ctx.sym(n), v))
-                .collect::<Vec<_>>(),
-        ),
-    }
-}
-
-/// The module whose `required_floor_attempt` folds the manifest. Named once: the manifest is
-/// evaluated in its OWN exact scope, exactly as every claim is, so the program that decides
-/// which claims exist is not itself privileged with a wider namespace than the claims it
-/// admits.
+/// The module carrying the floor's authored thresholds and the long-home roster. Named once,
+/// and evaluated in its OWN exact scope exactly as every claim is, so the module that supplies
+/// the admission facts is not privileged with a wider namespace than the claims they admit.
 const REQUIRED_FLOOR_MANIFEST_MODULE: &str = "v2.workflow.required_floor";
 
 /// THE REQUIRED FLOOR, AS ONE ATTEMPT.
@@ -39196,6 +39379,21 @@ fn floor_value_shape(v: Option<&v1_interpreter::Value>) -> String {
 // subject, and the recursive spelling already in this file for dependency edges would recurse
 // once per element -- fine for a handful of edges, a stack overflow here. Depth belongs on the
 // heap when the depth is the population size.
+/// One nullary `.dag` Int authority, decoded. The floor's per-claim thresholds are authored in
+/// `v2.workflow.required_floor` and read here rather than re-spelled in Rust: the host owns when
+/// a budget is applied, never what it is.
+fn floor_required_int(ctx: &v1_interpreter::InterpContext, func: &str) -> Result<u64, String> {
+    let qualified = format!("v2.workflow.required_floor.{func}");
+    match v1_interpreter::run_in_context(ctx, &qualified, false) {
+        Ok(v1_interpreter::Value::Int(n)) if n >= 0 => Ok(n as u64),
+        Ok(other) => Err(format!(
+            "{qualified}: expected a non-negative Int, got {}",
+            floor_value_shape(Some(&other))
+        )),
+        Err(e) => Err(format!("{qualified}: {e}")),
+    }
+}
+
 fn floor_decode_list<'a>(
     ctx: &v1_interpreter::InterpContext,
     v: Option<&'a v1_interpreter::Value>,
@@ -39468,6 +39666,45 @@ pub fn run_required_floor(
         index_warm_started.elapsed().as_millis(),
         warmed_modules
     );
+    // WARM THE SHARED MultiEntryIndex HERE, for the same reason as the module-path index
+    // above: otherwise ONE ARBITRARY CLAIM PAYS FOR IT (witness cost class 2).
+    //
+    // `commit_witness_claim_pair_resolvable` (the commit-witness roster's host arm, and its
+    // sibling `ci_floor_commit_witness_claim_pairs` / `commit_witness_claim_roster_defects`)
+    // used to call `build_multi_entry_index(&roots)` directly instead of going through
+    // `process_shared_index`, the existing thread-local shared-index cache every other
+    // production call site already uses (`resolve_entry_graph_shared` and friends). That
+    // meant every one of those functions re-walked and re-parsed the whole witness corpus on
+    // EVERY call, uncached — even though `process_shared_index` would have served the same
+    // `MultiEntryIndex` for free after the first build.
+    //
+    // MEASURED: `commit_witness_claim_pair_resolvable`, invoked exactly once by
+    // `commit_witness_claim_roster_red_control_holds` (the fast-lane RED control for the
+    // synthetic stale (entry, function) pair), cost 62.7-83.0s for that single call — the
+    // full one-time corpus walk+parse billed against one witness with a ~1-5s ceiling. As
+    // with the module-path index, quarantining the victim does not remove the cost, it only
+    // relocates it onto whichever claim runs next.
+    //
+    // The three call sites were switched to `process_shared_index(&roots)` (this fix); this
+    // warm call additionally ensures the shared cache is already hot before the per-claim
+    // loop starts, so the cost is paid here, in preparation, rather than by whichever claim
+    // happens to touch it first. `witness_layer_roots()` is the exact roots value all three
+    // call sites resolve internally (not the `source_roots` parameter above), so the roots
+    // key here must match theirs; `canonical_shared_index_roots` normalizes relative and
+    // absolute forms to the same key regardless.
+    //
+    // dissolve-on: same as the module-path-index warm above — when the shared index derives
+    // from the prepared inventory instead of a second disk walk, this warm call becomes
+    // unnecessary rather than merely redundant, because there is no second authority to warm.
+    let shared_index_warm_started = std::time::Instant::now();
+    let warmed_shared_index_modules = process_shared_index(&witness_layer_roots())
+        .source_files
+        .len();
+    eprintln!(
+        "[floor-phase] phase=shared-index-warm state=completed wall_ms={} modules={}",
+        shared_index_warm_started.elapsed().as_millis(),
+        warmed_shared_index_modules
+    );
     let prepare_ms = prepare_started.elapsed().as_millis();
     eprintln!(
         "floor: active sources = {}",
@@ -39603,137 +39840,41 @@ pub fn run_required_floor(
     floor_seam("site-projection");
     let projection_started = std::time::Instant::now();
     let files = &prepared.witness_files;
-    // THE SITE CARRIES ITS MODULE. `InventoryWitnessFile` already holds `module_path`, read from
-    // the same inventory entry in the same iteration, so the site is complete at construction.
+    // ONE DECISION, MADE ONCE, WHERE THE FACTS ALREADY ARE.
     //
-    // This replaced a second projection of the WHOLE inventory into an entry-to-module list --
-    // 3,680 records marshalled into the interpreter -- which the .dag manifest then JOINED back
-    // onto the sites by `entry`. Both lists came from one collection keyed by one file path, so
-    // the join re-derived inside the fold a fact this loop held two lines earlier, and its answer
-    // was always "exactly one". The refusal for the other cases had no reachable producer.
-    // EVERY DISCOVERED SITE IS OFFERED TO THE MANIFEST, and the manifest decides which are
-    // required-floor claims.
+    // WHAT THIS REPLACED, and why it was not an optimisation. The required outcome of this whole
+    // region is exactly: exclude a witness whose AUTHORED module sits in the long home, exclude
+    // one that reads the live tree, claim everything else Hermetic. That decision used to be
+    // made TWICE — once by `required_floor_manifest` over 10,498 records marshalled into the
+    // interpreter, and again here in Rust, applying the same prefix test to explain the
+    // difference between sites offered and claims returned. Between the two sat an interpreted
+    // fold whose only product was a population this host could compute directly from facts it
+    // already held in `prepared.witness_files`.
     //
-    // This host previously partitioned the population itself, by testing whether a file's PATH
-    // contained the long home. That made a directory the admission authority — the 2026-08-04
-    // ruling's exact root cause — and it decided at file grain, so one expensive witness took
-    // every cheap sibling in its file out of the floor with it. It was also a SECOND authority:
-    // `WitnessDisposition` already modelled the answer in `.dag` and nothing consulted it.
+    // THE AUTHORED FACTS STAY AUTHORED. `long_home_prefixes`, the claim budget and the warn
+    // threshold are still read from `v2.workflow.required_floor`, so the prefix list and both
+    // thresholds remain .dag authorities and are not re-spelled in Rust. What is deleted is the
+    // reconstruction, never the fact.
     //
-    // The disposition now lives where it is authored — `v2.workflow.required_floor`
-    // `disposition_for_module`, a grant over a namespace subtree joined by the prefix relation,
-    // with `RequiredFloor` as the fail-closed default. Discovery's job is to report what exists;
-    // deciding what that means is the manifest's.
+    // THE TEST IS ON THE MODULE'S AUTHORED NAME, never its path — the 2026-08-04 ruling's actual
+    // requirement, and the reason the inventory carries `module_path` beside each file. A
+    // directory deciding admission was that ruling's root cause; reading the declaration is what
+    // fixes it, and that is preserved here exactly.
     //
-    // The exclusion is still counted, and counted from the claim list rather than from a
-    // predicate this host applies: sites offered minus claims returned is what the manifest
-    // declined, so the number cannot drift from the decision that produced it.
-    let mut sites: Vec<v1_interpreter::Value> = Vec::new();
-    // THE SAME POPULATION, KEPT IN HOST SHAPE, so the decline can be reported as a PARTITION
-    // rather than as a subtraction. `sites_offered - claims.len()` says how many rows vanished
-    // and nothing about why; two independent hacks decline rows here, and a single difference
-    // cannot distinguish them, cannot notice a row declined by neither, and cannot notice a row
-    // counted by both.
-    let mut site_facts: Vec<(String, String, bool)> = Vec::new();
-    for file in files {
-        for function in &file.functions {
-            site_facts.push((
-                format!("{}.{}", file.module_path, function),
-                file.module_path.clone(),
-                file.reads_live_tree,
-            ));
-            sites.push(record_value(
-                &hermetic,
-                "WitnessSite",
-                vec![
-                    ("entry", v1_interpreter::str_value(file.path.clone())),
-                    ("function", v1_interpreter::str_value(function.clone())),
-                    (
-                        "module_path",
-                        v1_interpreter::str_value(file.module_path.clone()),
-                    ),
-                    (
-                        "reads_live_tree",
-                        v1_interpreter::Value::Bool(file.reads_live_tree),
-                    ),
-                ],
-            ));
-        }
-    }
-    let sites_offered = sites.len();
-    eprintln!(
-        "[floor-phase] phase=site-projection state=completed wall_ms={} sites={} files={}",
-        projection_started.elapsed().as_millis(),
-        sites_offered,
-        files.len()
-    );
-    let subject = record_value(
-        &hermetic,
-        "ObservedSubjectIdentity",
-        vec![
-            ("commit", v1_interpreter::str_value(commit.to_string())),
-            (
-                "source_digest",
-                v1_interpreter::str_value(prepared.subject_digest.clone()),
-            ),
-            (
-                "modules_resolved",
-                v1_interpreter::Value::Int(prepared.modules_resolved as i64),
-            ),
-            (
-                "modules_excluded",
-                v1_interpreter::Value::Int(prepared.modules_excluded as i64),
-            ),
-        ],
-    );
-    let empty_sites =
-        v1_interpreter::Value::List(Rc::new(Vec::<v1_interpreter::Value>::new().into()));
-    floor_seam("manifest-evaluation");
-    let manifest_eval_started = std::time::Instant::now();
-    let admission = v1_interpreter::run_in_context_with_args(
-        &hermetic,
-        "required_floor_attempt",
-        &[
-            (Some("subject".to_string()), subject),
-            (
-                Some("hermetic_sites".to_string()),
-                v1_interpreter::Value::List(Rc::new(sites.into())),
-            ),
-            (Some("wet_sites".to_string()), empty_sites),
-        ],
-        false,
-    )
-    .map_err(|e| format!("required_floor_attempt: {e}"))?;
-    eprintln!(
-        "[floor-phase] phase=manifest-evaluation state=completed wall_ms={}",
-        manifest_eval_started.elapsed().as_millis()
-    );
-    floor_seam("admission-decode");
-    let admission_decode_started = std::time::Instant::now();
-    let mut claims = required_floor_claims_from_admission(&hermetic, &admission)?;
-    eprintln!(
-        "[floor-phase] phase=admission-decode state=completed wall_ms={} claims={}",
-        admission_decode_started.elapsed().as_millis(),
-        claims.len()
-    );
-    // WHAT THE MANIFEST DECLINED, derived from the two populations rather than recomputed. A
-    // site offered and not returned as a claim carries a non-required disposition, and those
-    // rows are NOT covered by this floor — reported every run in those words, because the
-    // gunbc#7762 failure was not that rows were deferred but that the deferral was silent.
-    // THE DECLINE IS A PARTITION, AND IT IS PROVED HERE RATHER THAN ASSERTED.
+    // THE PARTITION IS NOW EXACT BY CONSTRUCTION, not by reconciliation. Every site takes exactly
+    // one arm below, so `claims + declined == offered` holds because the loop cannot do
+    // otherwise. The former `SitePartitionInexact` and unexplained-decline refusals existed to
+    // catch the two computations disagreeing; with one computation they have no reachable
+    // producer, so they are deleted rather than left standing as walls nothing can trip.
     //
-    // Two hacks decline rows: the long-home prefix test and the live-tree declaration. A single
-    // `offered - claims` difference cannot tell them apart, cannot see a row declined by
-    // NEITHER (which would be a silent disappearance — the exact gunbc#7762 failure), and
-    // cannot see a row that both would claim. So the three populations are computed by identity
-    // and required to reconstruct the whole:
-    //
-    //     offered = executed ⊎ long-home-declined ⊎ live-tree-declined
-    //
-    // The prefixes are DECODED from the `.dag` authority rather than restated here, because a
-    // host-side copy of that list is a second authority that would drift the moment either side
-    // moved — and the drift would show up as this partition disagreeing, which is a confusing
-    // way to learn about a copy-paste.
+    // DUPLICATE ENROLLMENT IS UNCHANGED AND UNMOVED, and this is the one invariant the deleted
+    // fold genuinely carried. It is caught downstream by `receipt_identities`, a HashSet keyed on
+    // the same qualified name: two claims sharing a name give executed=2, receipted=1, and
+    // `ClaimIdentityCountsDisagree` refuses. The manifest's enrollment map was a second mechanism
+    // for that one invariant — and, being a growing `Value::Map` re-hashed once per fold step,
+    // was the whole of the phase's quadratic cost.
+    let claim_budget_ms = floor_required_int(&hermetic, "required_floor_claim_budget_ms")?;
+    let claim_warn_ms = floor_required_int(&hermetic, "required_floor_claim_warn_ms")?;
     let long_home_prefixes: Vec<String> = {
         let value = v1_interpreter::run_in_context(
             &hermetic,
@@ -39742,83 +39883,67 @@ pub fn run_required_floor(
         )
         .map_err(|e| format!("long_home_prefixes: {e}"))?;
         let items = floor_decode_list(&hermetic, Some(&value))
-            .map_err(|e| format!("long_home_prefixes: {e}"))?;
+            .map_err(|why| format!("long_home_prefixes decode: {why}"))?;
         let mut out = Vec::new();
         for item in items {
             match item {
                 v1_interpreter::Value::Str(s) => out.push(s.to_string()),
                 other => {
                     return Err(format!(
-                        "long_home_prefixes: expected a module-path prefix, got {}",
+                        "long_home_prefixes: expected String rows, got {}",
                         floor_value_shape(Some(other))
-                    ));
+                    ))
                 }
             }
+        }
+        if out.is_empty() {
+            return Err(
+                "REQUIRED-FLOOR REFUSAL cause=LongHomePrefixesEmpty — the long-home roster \
+                 decoded to zero prefixes, which would silently admit the long home into the \
+                 required floor"
+                    .to_string(),
+            );
         }
         out
     };
-    {
-        let executed: HashSet<&str> = claims.iter().map(|c| c.qualified.as_str()).collect();
-        let mut long_declined = 0usize;
-        let mut live_declined = 0usize;
-        let mut both = 0usize;
-        let mut unexplained: Vec<&str> = Vec::new();
-        for (qualified, module_path, reads_live_tree) in &site_facts {
-            if executed.contains(qualified.as_str()) {
+    let mut claims: Vec<RequiredFloorClaim> = Vec::new();
+    let mut long_declined = 0usize;
+    let mut live_declined = 0usize;
+    let mut sites_offered = 0usize;
+    for file in files {
+        let long_home = long_home_prefixes
+            .iter()
+            .any(|prefix| file.module_path.starts_with(prefix.as_str()));
+        for function in &file.functions {
+            sites_offered += 1;
+            if long_home {
+                long_declined += 1;
                 continue;
             }
-            let long_home = long_home_prefixes
-                .iter()
-                .any(|p| module_path.starts_with(p));
-            // ASSIGNED IN A FIXED ORDER SO THE ARMS STAY DISJOINT, with the overlap counted
-            // separately rather than hidden by whichever test ran first. A row that is both
-            // long-home and live-tree is a real thing and it is worth knowing how many there
-            // are, but it must be attributed once.
-            match (long_home, *reads_live_tree) {
-                (true, true) => {
-                    long_declined += 1;
-                    both += 1;
-                }
-                (true, false) => long_declined += 1,
-                (false, true) => live_declined += 1,
-                // DECLINED BY NEITHER HACK. This is the arm that must stay empty: the manifest
-                // dropped a row for a reason this host cannot name, which is precisely a silent
-                // narrowing of the roster.
-                (false, false) => unexplained.push(qualified.as_str()),
+            if file.reads_live_tree {
+                live_declined += 1;
+                continue;
             }
-        }
-        let declined = long_declined + live_declined + unexplained.len();
-        if declined > 0 {
-            eprintln!(
-                "[floor-disposition] {declined} of {sites_offered} discovered site(s) are NOT \
-                 required-floor and NOT RUN HERE: {long_declined} long-home-declined \
-                 ({both} of them also declare ReadsLiveTree), {live_declined} live-tree-declined \
-                 — each needs an executing consumer on another cadence, and none exists yet on \
-                 this branch"
-            );
-        }
-        if !unexplained.is_empty() {
-            unexplained.sort_unstable();
-            let shown: Vec<&str> = unexplained.iter().copied().take(20).collect();
-            return Err(format!(
-                "REQUIRED-FLOOR REFUSAL cause=SiteDeclinedWithoutDisposition count={} — a \
-                 discovered site was neither executed nor declined by a named disposition, so \
-                 the roster narrowed for a reason nothing can report; first {}: {}",
-                unexplained.len(),
-                shown.len(),
-                shown.join(", ")
-            ));
-        }
-        if claims.len() + declined != sites_offered {
-            return Err(format!(
-                "REQUIRED-FLOOR REFUSAL cause=SitePartitionInexact offered={} executed={} \
-                 declined={} — the three populations must reconstruct the offered set exactly",
-                sites_offered,
-                claims.len(),
-                declined
-            ));
+            claims.push(RequiredFloorClaim {
+                qualified: format!("{}.{}", file.module_path, function),
+                module_path: file.module_path.clone(),
+                function: function.clone(),
+                execution_mode: v1_interpreter::ExecutionMode::Hermetic,
+                budget_ms: claim_budget_ms,
+                warn_ms: claim_warn_ms,
+            });
         }
     }
+    eprintln!(
+        "[floor-phase] phase=site-projection state=completed wall_ms={} sites={} files={} \
+         claims={} declined_long={} declined_live={}",
+        projection_started.elapsed().as_millis(),
+        sites_offered,
+        files.len(),
+        claims.len(),
+        long_declined,
+        live_declined
+    );
 
     // THE EXPECTED-RED ROSTER, read from its .dag authority in the manifest's own frame — it
     // must be decoded BEFORE that frame is dropped below, and it is a separate evaluation from
@@ -39890,6 +40015,37 @@ pub fn run_required_floor(
         "[floor-known-red] roster carries {} enrolled identity(ies)",
         expected_red_roster.len()
     );
+
+    // CONTRADICTORY-INTERSECTION WALL: `floor_expected_red_roster` (this roster — removable
+    // only by an OBSERVED PASS, per its own header) and `witness_deferral_freeze`'s
+    // `frozen_path_deferrals` (`LegacyFrozenPathDeferral` — admitted as NEVER EXECUTED) make
+    // opposite claims about the same identity. Both cannot be true of one row: an identity that
+    // executes here (as every enrolled row must, on pain of `ExpectedRedIdentityDidNotExecute`
+    // below) is proof the freeze's classification for it is stale, and an identity that is
+    // genuinely never executed cannot legitimately be "known red, awaiting an observed pass" —
+    // there is no pass to observe. Construction, not validation (DESIGN.md §5): the two rosters
+    // are cross-referenced from their own source authorities on every required-floor run, so the
+    // contradiction cannot re-accumulate silently the way it did before this wall existed.
+    {
+        let freeze_content = std::fs::read_to_string(
+            workspace_root().join(WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL),
+        )
+        .map_err(|e| {
+            format!("witness deferral freeze: failed to read {WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL}: {e}")
+        })?;
+        let frozen_qualified = frozen_path_deferral_qualified_identities_from_source(
+            &freeze_content,
+            &workspace_root(),
+        );
+        let colliding = expected_red_freeze_intersection(&frozen_qualified, &expected_red_roster);
+        if !colliding.is_empty() {
+            let head = current_git_head_or_unresolved();
+            return Err(format_expected_red_freeze_intersection_refusal(
+                &colliding, &head,
+            ));
+        }
+    }
+
     let roster_join_path = std::env::var("GUNBC_EXPECTED_RED_ROSTER_JOIN").ok();
     let roster_join_only = std::env::var("GUNBC_EXPECTED_RED_ROSTER_JOIN_ONLY")
         .ok()
@@ -39950,7 +40106,6 @@ pub fn run_required_floor(
     // the next run says, and if the step survives then the cost is elsewhere and this was still
     // correct — an unread value held across the longest phase of the program has no defence.
     drop(hermetic);
-    drop(admission);
     drop(manifest_scope);
 
     // ── 4. fold the manifest ──────────────────────────────────────────────────────────────
@@ -40365,11 +40520,49 @@ pub fn run_required_floor(
                 budget_ms,
                 kind,
                 completion,
-            } => outcome.failures.push(format!(
-                "{} exceeded its {kind:?} budget (cost is {} {elapsed_ms}ms against {budget_ms}ms)",
-                claim.qualified,
-                completion.elapsed_reading()
-            )),
+                // AND AN UNENROLLED BUDGET REFUSAL IS NOT A DEFECT EITHER. The enrolled arm above
+                // already rules that a budget refusal produces no verdict and therefore is not a
+                // failure; that fact is a property of the interruption, not of the roster, so it
+                // holds identically for a row nobody enrolled. Reporting it in `failures` said the
+                // opposite — `failures` is the channel whose remedy is "fix the defect", and it is
+                // what the alert signature reads to distinguish a regression from a cost debt. A
+                // row that was preempted before answering has no defect to fix and may well be
+                // passing, so routing it here made an unmeasured cost indistinguishable from a
+                // broken witness, in the direction that manufactures alarm.
+                //
+                // The consequence this closes is concrete: a row that PASSES and exceeds its budget
+                // had no honest state anywhere. Enrolled, it asserted an expected failure that does
+                // not occur and reported twice. Unenrolled, it landed here and read as a defect.
+                // Cost is not a verdict, so the verdict channels cannot carry it — and now they do
+                // not. The line still stops, because the cost is still owed; it stops saying the
+                // true thing about why.
+                // TWO READINGS, AND THEY ARE NOT THE SAME CLAIM. `Interrupted` means the deadline
+                // fired before the witness answered: no verdict exists, the figure is a LOWER BOUND
+                // and the row's real cost is unmeasured. `CompletedOverBudget` means the witness ran
+                // to completion and then was found over budget: the verdict IS known and the figure
+                // is EXACT. Printing one sentence for both would repeat the conflation this arm
+                // exists to remove — asserting "correctness unknown" over a row that demonstrably
+                // answered is as wrong as calling a cost a defect.
+            } => outcome.budget_refused.push(match completion {
+                BudgetCompletion::Interrupted => format!(
+                    "{} was BUDGET-REFUSED and went UNDECIDED: {kind:?}, cost at least \
+                     {elapsed_ms}ms against {budget_ms}ms. Not enrolled as expected-red, so \
+                     nothing claims it is broken — but the deadline preempted the verdict, so \
+                     whether it passes is UNKNOWN and its real cost is UNMEASURED: the figure \
+                     is the interrupt point, not this row's cost. Reduce the cost, or move it \
+                     to a lane declaring its own ceiling, so the witness reaches a verdict.",
+                    claim.qualified
+                ),
+                BudgetCompletion::CompletedOverBudget => format!(
+                    "{} reached its verdict and then exceeded its budget: {kind:?}, cost \
+                     exactly {elapsed_ms}ms against {budget_ms}ms. The witness ran to \
+                     completion, so this is a measurement rather than a bound and the cost is \
+                     known and actionable. This is a cost debt only — it is not a defect and \
+                     it does not belong on the expected-red roster, which asserts an expected \
+                     FAILURE this row does not exhibit.",
+                    claim.qualified
+                ),
+            }),
         }
     }
     outcome.receipt_identities = receipted.len();
@@ -40676,233 +40869,6 @@ fn witness_eval_verdict_from_claim_outcome(
             },
         },
     }
-}
-
-/// Read the `.dag` admission. A refusal is reported with every offending row rather than the
-/// first, because a manifest with three conflicting declarations should take one round-trip to
-
-fn required_floor_claims_from_admission(
-    ctx: &v1_interpreter::InterpContext,
-    admission: &v1_interpreter::Value,
-) -> Result<Vec<RequiredFloorClaim>, String> {
-    // EVERY STEP MARKED, BECAUSE THE ONE UNMARKED REGION IS WHERE THE TIME WAS.
-    //
-    // Run 31942605651 completed manifest-evaluation at 11:14:12 and was cancelled at 13:48:13
-    // having printed neither arm's entry marker -- so 2h34m elapsed inside this function before
-    // reaching either. That region was left unmarked on my reasoning that it is a sym_eq and two
-    // binary searches and "cannot cost hours on its face". That was an assumption about cost
-    // stated as a bound, and it was wrong. Each step now emits, so no step can absorb time
-    // silently.
-    let entered = std::time::Instant::now();
-    eprintln!("[floor-phase] phase=admission-decode state=started");
-    let v1_interpreter::Value::Variant {
-        variant_name,
-        fields,
-        ..
-    } = admission
-    else {
-        return Err(
-            "required_floor_attempt did not answer a RequiredFloorAdmission variant".to_string(),
-        );
-    };
-    eprintln!(
-        "[floor-phase-progress] phase=admission-decode step=destructured wall_ms={} {}",
-        entered.elapsed().as_millis(),
-        floor_resource_sample()
-    );
-    let refused = ctx.sym_eq(*variant_name, "RequiredFloorRefused");
-    eprintln!(
-        "[floor-phase-progress] phase=admission-decode step=arm-resolved refused={} wall_ms={} {}",
-        refused,
-        entered.elapsed().as_millis(),
-        floor_resource_sample()
-    );
-    if refused {
-        // T5a — THE REFUSAL RENDER IS ITS OWN TERM because it is the arm that can cost more
-        // than the decode it reports on. `{r:?}` walks an interpreter `Value` structurally, and
-        // a refusal carries records that share substructure: Debug re-renders each occurrence
-        // rather than the shared node, so a cheap-looking format over a few thousand rows is not
-        // bounded by the row count. A run that refuses would otherwise spend that time inside a
-        // function whose seam says "decode", attributing a diagnostic's cost to the decode loop.
-        // THE SEAM MOVES WITH EXECUTION, or the heartbeat lies about where the run is.
-        // `floor_seam` was last set to "admission-decode" by the caller, and the heartbeat prints
-        // whatever it holds — so a run stalled inside THIS arm reported `phase=admission-decode`
-        // for its entire life, which is indistinguishable in the log from a run stalled BEFORE the
-        // arm was entered. A reader then cannot tell "never reached the render" from "spent three
-        // hours inside it", and the natural conclusion is that no progress instrument exists.
-        floor_seam("refusal-render");
-        let refusal_render_started = std::time::Instant::now();
-        let refusal_count = match ctx.field(fields, "refusals") {
-            Some(v1_interpreter::Value::List(items)) => items.len(),
-            _ => 0,
-        };
-        eprintln!("[floor-phase] phase=refusal-render state=started total={refusal_count}");
-        // The SAME progress obligation as the decode loop, and it was missing here first. A
-        // censored run keeps only what was already printed, so an arm with an entry marker and a
-        // completion timer and nothing between teaches nothing when it is the arm that stalls --
-        // and a rate plus a denominator is a completion estimate obtainable WITHOUT completing.
-        // Every 16 rather than every 256 because a refusal render is few rows of possibly enormous
-        // output, so the interesting variance is per-row, not across thousands.
-        let rendered = match ctx.field(fields, "refusals") {
-            Some(v1_interpreter::Value::List(items)) => items
-                .iter()
-                .enumerate()
-                .map(|(i, r)| {
-                    if i % 16 == 0 {
-                        eprintln!(
-                            "[floor-phase-progress] phase=refusal-render rendered={i} total={} wall_ms={} {}",
-                            items.len(),
-                            refusal_render_started.elapsed().as_millis(),
-                            floor_resource_sample()
-                        );
-                    }
-                    format!("{r:?}")
-                })
-                .collect::<Vec<_>>()
-                .join("\n  "),
-            _ => "<refusal list unreadable>".to_string(),
-        };
-        eprintln!(
-            "[floor-phase] phase=refusal-render state=completed wall_ms={} total={} rendered_bytes={}",
-            refusal_render_started.elapsed().as_millis(),
-            refusal_count,
-            rendered.len()
-        );
-        return Err(format!(
-            "REQUIRED-FLOOR REFUSAL cause=ManifestInadmissible — the claim manifest carries \
-             refusals, so the floor does not run its clean subset and report on the rest:\n  \
-             {rendered}"
-        ));
-    }
-    if !ctx.sym_eq(*variant_name, "RequiredFloorRunnable") {
-        return Err("required_floor_attempt answered an unknown admission arm".to_string());
-    }
-    let Some(v1_interpreter::Value::Record { fields: af, .. }) = ({
-        let r = ctx.field(fields, "attempt");
-        eprintln!(
-            "[floor-phase-progress] phase=admission-decode step=attempt-field wall_ms={} {}",
-            entered.elapsed().as_millis(),
-            floor_resource_sample()
-        );
-        r
-    }) else {
-        return Err("RequiredFloorRunnable carries no attempt record".to_string());
-    };
-    // THE REFUSAL NAMES THE SHAPE IT OBSERVED, not merely that the shape was wrong.
-    //
-    // "the attempt carries no claim list" is true of an absent field, of a record, of a variant
-    // and of a scalar alike, so it identifies the seam and nothing else. Reaching this arm costs
-    // a full preparation plus manifest evaluation — measured at 28 minutes on the first run that
-    // ever got here — and spending that to learn only that the field was not a list makes the
-    // next attempt cost the same again. What discriminates the causes is the constructor.
-    let claims_field = ctx.field(af, "claims");
-    let claims_shape = floor_value_shape(claims_field);
-    eprintln!(
-        "[floor-phase-progress] phase=admission-decode step=claims-field wall_ms={} observed={} {}",
-        entered.elapsed().as_millis(),
-        claims_shape,
-        floor_resource_sample()
-    );
-    let rows = floor_decode_list(ctx, claims_field).map_err(|why| {
-        format!("the attempt's `claims` field is not a list — {why} (field shape {claims_shape})")
-    })?;
-    // T5b — the ordinary decode loop, reported separately from the refusal arm above so that
-    // "the decode is slow" and "the refusal diagnostic is slow" are never one number.
-    // Same obligation as the refusal arm: carry the seam into the loop so the heartbeat names
-    // the loop rather than the phase that called it. Without this the decode's own ticks and the
-    // heartbeat disagree about the phase name, and a reader filtering the log on
-    // "admission-decode" — the name the heartbeat kept printing — silently excludes every
-    // `phase=claim-decode` progress line and concludes the loop has no counter at all.
-    floor_seam("claim-decode");
-    let decode_loop_started = std::time::Instant::now();
-    eprintln!(
-        "[floor-phase] phase=claim-decode state=started total={}",
-        rows.len()
-    );
-    let mut out = Vec::with_capacity(rows.len());
-    // PROGRESS, NOT JUST COMPLETION. A timer printed after a loop reports the loop's cost only if
-    // the loop terminates; a run killed inside it leaves "entered" and "finished" equally silent,
-    // so decoded-0 and decoded-9000 present identically. The tick is what separates them.
-    for (decoded, row) in rows.iter().enumerate() {
-        if decoded % 256 == 0 {
-            eprintln!(
-                "[floor-phase-progress] phase=claim-decode decoded={decoded} total={} wall_ms={} {}",
-                rows.len(),
-                decode_loop_started.elapsed().as_millis(),
-                floor_resource_sample()
-            );
-        }
-        let v1_interpreter::Value::Record { fields: cf, .. } = row else {
-            return Err("a manifest claim is not a record".to_string());
-        };
-        let Some(v1_interpreter::Value::Record { fields: df, .. }) = ctx.field(cf, "declaration")
-        else {
-            return Err("a manifest claim carries no declaration identity".to_string());
-        };
-        let module_path = match ctx.field(df, "module_path") {
-            Some(v1_interpreter::Value::Str(s)) => s.to_string(),
-            _ => return Err("a claim identity carries no module path".to_string()),
-        };
-        let function = match ctx.field(df, "function") {
-            Some(v1_interpreter::Value::Str(s)) => s.to_string(),
-            _ => return Err("a claim identity carries no function name".to_string()),
-        };
-        let budget_ms = match ctx.field(cf, "budget_ms") {
-            Some(v1_interpreter::Value::Int(n)) if *n > 0 => *n as u64,
-            // A non-positive budget is refused rather than defaulted: a zero deadline that
-            // reads as "no limit" is the absorbing fallback, and one that reads as "refuse
-            // instantly" fails every claim for a reason unrelated to the claim.
-            other => {
-                return Err(format!(
-                    "claim {module_path}.{function} carries a non-positive budget ({other:?})"
-                ))
-            }
-        };
-        let warn_ms = match ctx.field(cf, "warn_ms") {
-            Some(v1_interpreter::Value::Int(n)) if *n > 0 => *n as u64,
-            other => {
-                return Err(format!(
-                "claim {module_path}.{function} carries a non-positive warn threshold ({other:?})"
-            ))
-            }
-        };
-        let execution_mode = match ctx.field(cf, "execution_mode") {
-            Some(v1_interpreter::Value::Variant {
-                variant_name: m, ..
-            }) => {
-                if ctx.sym_eq(*m, "Hermetic") {
-                    v1_interpreter::ExecutionMode::Hermetic
-                } else if ctx.sym_eq(*m, "Wet") {
-                    v1_interpreter::ExecutionMode::Wet
-                } else if ctx.sym_eq(*m, "Record") {
-                    v1_interpreter::ExecutionMode::Record
-                } else {
-                    return Err(format!(
-                        "claim {module_path}.{function} names an unknown execution mode"
-                    ));
-                }
-            }
-            _ => {
-                return Err(format!(
-                    "claim {module_path}.{function} carries no execution mode"
-                ))
-            }
-        };
-        out.push(RequiredFloorClaim {
-            qualified: format!("{module_path}.{function}"),
-            module_path,
-            function,
-            execution_mode,
-            budget_ms,
-            warn_ms,
-        });
-    }
-    eprintln!(
-        "[floor-phase] phase=claim-decode state=completed wall_ms={} claims={}",
-        decode_loop_started.elapsed().as_millis(),
-        out.len()
-    );
-    Ok(out)
 }
 
 pub fn run_required_regen(
