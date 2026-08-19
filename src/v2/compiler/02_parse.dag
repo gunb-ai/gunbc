@@ -1975,18 +1975,18 @@ fn grammar_validate_for_parse(root: GrammarRoot, at: Locus) -> Outcome<Validated
   }
 }
 
-fn parse_sync_step(acc: ParseSyncState, tok: Token, sync_tokens: Set<Symbol>) -> ParseSyncState {
+fn parse_sync_step(acc: ParseSyncState, tok: Token, sync_tokens: List<Symbol>) -> ParseSyncState {
   match acc.found_sync {
     true => ParseSyncState { found_sync: true, result: list_snoc_item(xs: acc.result, item: tok) }
     false =>
-      match sync_tokens.member(tok.class) {
+      match contains(xs: sync_tokens, item: tok.class, eq: fn(a, b) { a == b }) {
         true => ParseSyncState { found_sync: true, result: list_snoc_item(xs: std.algebra.Empty, item: tok) }
         false => ParseSyncState { found_sync: false, result: std.algebra.Empty }
       }
   }
 }
 
-fn parse_skip_to_sync(tokens: List<Token>, sync_tokens: Set<Symbol>) -> ParseSyncState {
+fn parse_skip_to_sync(tokens: List<Token>, sync_tokens: List<Symbol>) -> ParseSyncState {
   fold_list(
     xs: tokens,
     empty: ParseSyncState { found_sync: false, result: std.algebra.Empty },

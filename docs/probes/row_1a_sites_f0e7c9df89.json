@@ -1,0 +1,206 @@
+[
+ {
+  "code": "E0277",
+  "file": "src/v2_std_algebra.rs",
+  "line": 45,
+  "col": 5,
+  "msg": "the trait bound `T: Clone` is not satisfied",
+  "label": "the trait `Clone` is not implemented for `T`",
+  "text": "pub seen: Rc<Vec<T>>,",
+  "children": [
+   "required for `im::Vector<T>` to implement `Debug`",
+   "1 redundant requirement hidden",
+   "required for `Rc<im::Vector<T>>` to implement `Debug`",
+   "required for the cast from `&Rc<im::Vector<T>>` to `&dyn Debug`",
+   "consider restricting type parameter `T` with trait `Clone`"
+  ]
+ },
+ {
+  "code": "E0369",
+  "file": "src/v2_std_algebra.rs",
+  "line": 45,
+  "col": 5,
+  "msg": "binary operation `==` cannot be applied to type `Rc<im::Vector<T>>`",
+  "label": null,
+  "text": "pub seen: Rc<Vec<T>>,",
+  "children": [
+   "consider restricting type parameter `T` with trait `Clone`"
+  ]
+ },
+ {
+  "code": "E0277",
+  "file": "src/v2_std_algebra.rs",
+  "line": 43,
+  "col": 35,
+  "msg": "the trait bound `T: Clone` is not satisfied",
+  "label": "the trait `Clone` is not implemented for `T`",
+  "text": "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]",
+  "children": [
+   "required for `im::Vector<T>` to implement `Serialize`",
+   "1 redundant requirement hidden",
+   "required for `Rc<im::Vector<T>>` to implement `Serialize`",
+   "required by a bound in `std_error_primitives::_::_serde::ser::SerializeStruct::serialize_field`"
+  ]
+ },
+ {
+  "code": "E0277",
+  "file": "src/v2_std_algebra.rs",
+  "line": 45,
+  "col": 15,
+  "msg": "the trait bound `T: Clone` is not satisfied",
+  "label": "the trait `Clone` is not implemented for `T`",
+  "text": "pub seen: Rc<Vec<T>>,",
+  "children": [
+   "required for `im::Vector<T>` to implement `Deserialize<'_>`",
+   "2 redundant requirements hidden",
+   "required for `Rc<im::Vector<T>>` to implement `Deserialize<'_>`",
+   "required by a bound in `next_element`"
+  ]
+ },
+ {
+  "code": "E0277",
+  "file": "src/v2_std_algebra.rs",
+  "line": 45,
+  "col": 15,
+  "msg": "the trait bound `T: Clone` is not satisfied",
+  "label": "the trait `Clone` is not implemented for `T`",
+  "text": "pub seen: Rc<Vec<T>>,",
+  "children": [
+   "required for `im::Vector<T>` to implement `Deserialize<'_>`",
+   "2 redundant requirements hidden",
+   "required for `Rc<im::Vector<T>>` to implement `Deserialize<'_>`",
+   "required by a bound in `next_value`"
+  ]
+ },
+ {
+  "code": "E0277",
+  "file": "src/v2_std_algebra.rs",
+  "line": 43,
+  "col": 53,
+  "msg": "the trait bound `T: Clone` is not satisfied",
+  "label": "the trait `Clone` is not implemented for `T`",
+  "text": "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]",
+  "children": [
+   "required for `im::Vector<T>` to implement `Deserialize<'_>`",
+   "2 redundant requirements hidden",
+   "required for `Rc<im::Vector<T>>` to implement `Deserialize<'_>`",
+   "required by a bound in `std_error_primitives::_::_serde::__private229::de::missing_field`"
+  ]
+ },
+ {
+  "code": "E0277",
+  "file": "src/v2_std_algebra.rs",
+  "line": 88,
+  "col": 9,
+  "msg": "the trait bound `T: Clone` is not satisfied",
+  "label": "the trait `Clone` is not implemented for `T`",
+  "text": "tail: Rc<Vec<T>>,",
+  "children": [
+   "required for `im::Vector<T>` to implement `Debug`",
+   "2 redundant requirements hidden",
+   "required for `&Rc<im::Vector<T>>` to implement `Debug`",
+   "required for the cast from `&&Rc<im::Vector<T>>` to `&dyn Debug`",
+   "consider restricting type parameter `T` with trait `Clone`"
+  ]
+ },
+ {
+  "code": "E0369",
+  "file": "src/v2_std_algebra.rs",
+  "line": 88,
+  "col": 9,
+  "msg": "binary operation `==` cannot be applied to type `&Rc<im::Vector<T>>`",
+  "label": null,
+  "text": "tail: Rc<Vec<T>>,",
+  "children": [
+   "consider restricting type parameter `T` with trait `Clone`"
+  ]
+ },
+ {
+  "code": "E0277",
+  "file": "src/v2_std_algebra.rs",
+  "line": 88,
+  "col": 9,
+  "msg": "the trait bound `T: Clone` is not satisfied",
+  "label": "the trait `Clone` is not implemented for `T`",
+  "text": "tail: Rc<Vec<T>>,",
+  "children": [
+   "required for `im::Vector<T>` to implement `Serialize`",
+   "1 redundant requirement hidden",
+   "required for `Rc<im::Vector<T>>` to implement `Serialize`",
+   "required by a bound in `std_error_primitives::_::_serde::ser::SerializeStruct::serialize_field`"
+  ]
+ },
+ {
+  "code": "E0277",
+  "file": "src/v2_std_algebra.rs",
+  "line": 88,
+  "col": 15,
+  "msg": "the trait bound `T: Clone` is not satisfied",
+  "label": "the trait `Clone` is not implemented for `T`",
+  "text": "tail: Rc<Vec<T>>,",
+  "children": [
+   "required for `im::Vector<T>` to implement `Deserialize<'_>`",
+   "2 redundant requirements hidden",
+   "required for `Rc<im::Vector<T>>` to implement `Deserialize<'_>`",
+   "required by a bound in `next_element`"
+  ]
+ },
+ {
+  "code": "E0277",
+  "file": "src/v2_std_algebra.rs",
+  "line": 88,
+  "col": 15,
+  "msg": "the trait bound `T: Clone` is not satisfied",
+  "label": "the trait `Clone` is not implemented for `T`",
+  "text": "tail: Rc<Vec<T>>,",
+  "children": [
+   "required for `im::Vector<T>` to implement `Deserialize<'_>`",
+   "2 redundant requirements hidden",
+   "required for `Rc<im::Vector<T>>` to implement `Deserialize<'_>`",
+   "required by a bound in `next_value`"
+  ]
+ },
+ {
+  "code": "E0277",
+  "file": "src/v2_std_algebra.rs",
+  "line": 84,
+  "col": 53,
+  "msg": "the trait bound `T: Clone` is not satisfied",
+  "label": "the trait `Clone` is not implemented for `T`",
+  "text": "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]",
+  "children": [
+   "required for `im::Vector<T>` to implement `Deserialize<'_>`",
+   "2 redundant requirements hidden",
+   "required for `Rc<im::Vector<T>>` to implement `Deserialize<'_>`",
+   "required by a bound in `std_error_primitives::_::_serde::__private229::de::missing_field`"
+  ]
+ },
+ {
+  "code": "E0599",
+  "file": "src/std_cache_interface.rs",
+  "line": 564,
+  "col": 29,
+  "msg": "the method `clone` exists for enum `CacheLookupResult<T>`, but its trait bounds were not satisfied",
+  "label": "method cannot be called on `CacheLookupResult<T>` due to unsatisfied trait bounds",
+  "text": "match (*lookup.clone()).clone() {",
+  "children": [
+   "trait bound `T: Clone` was not satisfied",
+   "consider manually implementing the trait to avoid undesired bounds",
+   "consider restricting the type parameter to satisfy the trait bound"
+  ]
+ },
+ {
+  "code": "E0599",
+  "file": "src/std_cache_interface.rs",
+  "line": 580,
+  "col": 31,
+  "msg": "the method `clone` exists for enum `CacheLookupResult<T>`, but its trait bounds were not satisfied",
+  "label": "method cannot be called on `CacheLookupResult<T>` due to unsatisfied trait bounds",
+  "text": "match (*existing.clone()).clone() {",
+  "children": [
+   "trait bound `T: Clone` was not satisfied",
+   "consider manually implementing the trait to avoid undesired bounds",
+   "consider restricting the type parameter to satisfy the trait bound"
+  ]
+ }
+]

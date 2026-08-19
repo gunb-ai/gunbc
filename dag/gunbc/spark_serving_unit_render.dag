@@ -3,6 +3,8 @@ module gunbc.spark_serving_unit_render
 import std.types { String, NonEmptyStr, FilePath }
 import extdeps.systemd.unit_file {
   SystemdUnitFile,
+  ServiceUnitFile,
+  Installable,
   Description,
   After,
   ServiceType,
@@ -47,7 +49,7 @@ fn spark_serving_exec_start_command(spec: SparkServingUserUnitSpec) -> NonEmptyS
 // The runtime and model roots come from the install-paths authority rather than from the spec's
 // relative strings, so the unit and the installer cannot disagree about where the runtime lives.
 fn spark_serving_user_unit_file(spec: SparkServingUserUnitSpec) -> SystemdUnitFile {
-  SystemdUnitFile {
+  ServiceUnitFile {
     unit: [
       Description { text: spec.description },
       After { target: spec.after },
@@ -62,7 +64,7 @@ fn spark_serving_user_unit_file(spec: SparkServingUserUnitSpec) -> SystemdUnitFi
       ExecStart { command: spark_serving_exec_start_command(spec: spec) },
       Restart { policy: spec.restart },
     ],
-    install: [WantedBy { target: spec.wanted_by }],
+    install: Installable { directives: [WantedBy { target: spec.wanted_by }] },
   }
 }
 
