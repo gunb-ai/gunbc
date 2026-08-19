@@ -161,6 +161,26 @@ pub fn parse_module_binding(
 
 #[cfg(test)]
 mod tests {
+    //! THESE TESTS DO NOT CURRENTLY EXECUTE, and must not be read as coverage.
+    //!
+    //! The lib test target does not build: `compiler_tests.rs` imports
+    //! `crate::v1_tests_claim_caret_parse_smoke_test`, a module file that does not
+    //! exist, so `cargo test -p v1-compiler --lib` fails with E0432 before reaching
+    //! anything here. That break is pre-existing and unrelated to this module (the
+    //! Rust suite was removed from CI 2026-07-11 and is tolerated-red).
+    //!
+    //! This notice is in the test module rather than only in the PR body because
+    //! two independent reviews of this change read the tests as covering the
+    //! discriminating pair. Compiling is not running; a test that cannot execute
+    //! establishes nothing (DESIGN §5, specification-without-execution).
+    //!
+    //! The behavior below IS established, by end-to-end runs through `gunbc
+    //! compile` recorded on the PR: a recognized-header parse failure refuses typed
+    //! and located with no panic; two offenders sharing a basename are both named
+    //! and counted; a genuine fragment and a valid module still compile clean.
+    //!
+    //! DISSOLVE-ON: when the lib test target builds, delete this notice — these
+    //! become ordinary executing tests and the end-to-end runs become redundant.
     use super::*;
 
     // The four cases the partition must keep separate. Cases 1 and 2 are the
