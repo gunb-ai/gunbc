@@ -39,6 +39,7 @@ import gunbc.spark_credential_workflow { run_with_materialized_fleet_ssh_binding
 import gunbc.auth.access_token_source { GcloudPrintToken }
 import gunbc.spark_serving_desired { spark_serving_automation_principal_login }
 import gunbc.spark_serving_converge_plan {
+  fleet_converge_spark_serving_action_at,
   spark_serving_fleet_converge_plan_artifact,
   spark_serving_linger_membership_plan,
   SparkServingPlanArtifactReady,
@@ -80,6 +81,7 @@ import gunbc.spark_serving_converge_apply {
 import gunbc.fleet_converge_plan {
   fleet_converge_plan_artifact_hash,
   FleetConvergePlanArtifact,
+  FleetConvergeSparkServingTypedAction,
 }
 import gunbc.membership_reconcile { membership_write_count }
 
@@ -309,10 +311,33 @@ fn spark_serving_applied_replan_verdict(
         join([
           "wet-applied-replan-nonempty rows=",
           to_string(length(replanned.spark_serving_typed_actions)),
-          " -- apply executed but the host does not match the declared state",
+          " -- apply executed but the host does not match the declared state; still disagreeing: ",
+          spark_serving_replan_disagreeing_addresses_wire(
+            rows: replanned.spark_serving_typed_actions,
+          ),
         ], "")
       }
   }
+}
+
+// WHICH ROWS STILL DISAGREE, not merely how many.
+//
+// A non-empty replan is the honest verdict -- apply ran and the host still does not match -- but a
+// bare count cannot start an investigation. Three rows might be the unit, its enablement and the
+// model, or it might be one resource observed three ways; those are different failures and the plan
+// already knows which, because every action carries the reconcile key that names its address. The
+// count was a projection of exactly the fact the reader needs, taken one step too far.
+//
+// This is the third instance in this vertical of a correct refusal reporting below the rung of the
+// evidence it held: the step standing dropped its cause, the cause dropped its measurement, and the
+// replan dropped its identities. Each was one function short of the operator.
+fn spark_serving_replan_disagreeing_addresses_wire(
+  rows: List<FleetConvergeSparkServingTypedAction>,
+) -> String {
+  join(
+    map(rows, r => fleet_converge_spark_serving_action_at(action: r.action)),
+    " ",
+  )
 }
 
 fn spark_serving_converge_slice_exec_verdict(
