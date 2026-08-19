@@ -4,12 +4,8 @@ unset RUSTC_WRAPPER || true
 export RUSTC_WRAPPER=
 echo "RUSTC_WRAPPER explicitly cleared: '${RUSTC_WRAPPER}'"
 echo "sccache env check:"; env | grep -i sccache || echo "(no sccache env vars set)"
-BEFORE_SHA=e89dd91e629b1cb1b4b3b1c1b1c1b1c1b1c1b1c1
-AFTER_SHA=2087d8b7bc8
-
-echo "=== resolve full SHAs ==="
-BEFORE_FULL=$(git rev-parse e89dd91e629)
-AFTER_FULL=$(git rev-parse 2087d8b7bc8)
+BEFORE_FULL=e89dd91e6293d5a294f3ecf21dfd7f22031c0b1c
+AFTER_FULL=2087d8b7bc8e1dab0bb3aaabb5bcb6358fe65ea8
 echo "BEFORE_FULL=$BEFORE_FULL"
 echo "AFTER_FULL=$AFTER_FULL"
 
