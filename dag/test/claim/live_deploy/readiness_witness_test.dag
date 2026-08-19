@@ -26,7 +26,8 @@ import gunbc.live_deploy.service_ready {
   live_deploy_service_ready_endpoint_authority,
   UnitDiagnosisCaptured,
 }
-import gunbc.live_deploy.spec { deployment_spec_srv1, deployment_spec_srv1_green, deployment_plan_listen_port, gunbc_roadmap_unit_name }
+import gunbc.live_deploy.spec { deployment_spec_srv1, deployment_spec_for, deployment_srv1_target, derived_deployment_names, deployment_plan_listen_port, gunbc_roadmap_unit_name }
+import gunbc.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
 import gunbc.ci_deploy_access { ci_deploy_srv1_access }
 import gunbc.host_effect {
   LocalShell,
@@ -85,8 +86,23 @@ fn witness_candidate_release() -> CandidateRelease {
   }
 }
 
-test fn witness_green_readiness_names_the_green_unit() -> Bool {
-  let spec = deployment_spec_srv1_green()
+// The readiness effect names the unit of the spec it was HANDED, not production's unit. The second
+// conjunct is what makes that discriminating: an implementation that ignored its argument and
+// returned gunbc_roadmap_unit_name would satisfy the first conjunct on production's own spec and
+// fail only against a spec whose unit differs.
+// RE-ENROLLED against a derived non-production spec. The deleted green slot used to supply that
+// second unit name; with one deployment, asserting this on deployment_spec_srv1 alone would make
+// the second conjunct FALSE (production's spec unit IS gunbc_roadmap_unit_name), so repointing was
+// not available and dropping the conjunct would have deleted the whole discrimination. A spec built
+// from srv1-lab through derived_deployment_names supplies a genuinely different unit name off the
+// production constructor path, so the anti-hardwire check survives the slot it was written against.
+test fn witness_readiness_names_the_unit_of_the_spec_it_is_given() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let spec = deployment_spec_for(
+    instance: lab,
+    target: deployment_srv1_target(),
+    names: derived_deployment_names(instance: lab),
+  )
   let effect = service_ready_apply_effect_for_deploy(spec: spec)
   effect.unit == spec.service.unit_name
     && effect.unit != gunbc_roadmap_unit_name

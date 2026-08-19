@@ -148,7 +148,6 @@ import gunbc.roadmap_dashboard_instance {
   DashboardObserveOnly,
   DashboardActuating,
   srv1_live_dashboard_instance,
-  srv1_green_dashboard_instance,
   dashboard_instance_provider_state_root,
   dashboard_instance_provider_executable,
   dashboard_instance_provider_executable_refusal_detail,
@@ -1948,9 +1947,7 @@ type SpawnWorkdirInstanceLookup
 fn belt_dashboard_instance_lookup_for_spawn_workdir(
   workdir: String,
 ) -> SpawnWorkdirInstanceLookup {
-  if workdir == (srv1_green_dashboard_instance().repo_root as String) {
-    SpawnWorkdirInstanceResolved { instance: srv1_green_dashboard_instance() }
-  } else if workdir == (srv1_live_dashboard_instance().repo_root as String) {
+  if workdir == (srv1_live_dashboard_instance().repo_root as String) {
     SpawnWorkdirInstanceResolved { instance: srv1_live_dashboard_instance() }
   } else {
     UnknownSpawnWorkdir { workdir: workdir }

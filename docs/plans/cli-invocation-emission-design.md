@@ -1278,3 +1278,68 @@ lane's actual position:
   single run of all 43 exceeded the 45-minute remote timeout, because every `gunbc run` pays a
   whole-corpus typecheck. That is a cost-shape observation about the harness, not evidence about
   the code, and it is recorded rather than left as an unexplained split.
+
+## 16. The negative falsifier: the REST/CLI boundary becomes a row that reds
+
+Every prior section of this document asserts, in prose, that the REST path constructs no
+process invocation. Prose cannot be contradicted by the tree. This section records the
+mechanism that can.
+
+**The question already had an authority, so no second mechanism was minted.**
+`v2.lens.realization_vocabulary_containment` answers "does module X reach construction
+vocabulary from set V" and has answered it since the TypeScript-only ratchet. The obstacle
+was not that the question was unmodeled but that `V` was a literal: `scan_facts_for_leaks_under`
+threads the *importer-path* axis as a parameter while `module_is_target_ast_vocab` was welded
+into the predicate. Building a second lens for a second `V` would have been precisely the §3
+duplication this lens exists to detect, so the vocabulary axis was opened instead — the §2
+horizontal move, one axis rather than N copies.
+
+What that cost, exactly:
+
+- `RealizationVocabularySet` (name, modules, module_prefixes) and `module_is_in_vocab`.
+- `target_ast_vocabulary()` derives from the existing `target_ast_vocab_modules` /
+  `target_ast_vocab_module_prefixes` rows rather than replacing them — those rows are consumed
+  directly by `gunbc.realization_vocab_confinement_census`, which has live claims against them.
+- `is_vocab_leak_in` / `scan_facts_for_leaks_in` / `vocab_leak_count_in` / `vocab_leak_count_live_in`,
+  taking vocabulary and exempt-edge population as arguments. Every pre-existing entry point
+  delegates to these with the target-AST set, so no behavior moved.
+- The exempt population is a **parameter**, not a global roster read, so "this vocabulary has
+  zero admitted exceptions" is a stated fact rather than an accident of the target-AST roster
+  happening to name no CLI module.
+
+**Two sites were left target-AST-only, deliberately.**
+`realization_vocab_leak_candidate_paths_from_facts` and
+`realization_vocab_live_leak_edges_from_facts` feed the grandfathered-roster staleness check,
+and every row in that roster is target-AST debt by construction — `RealizationVocabDebtClass`
+has no other inhabitant. A second vocabulary reaches the lens with an empty exempt population,
+so it has no roster for those projections to be stale against, and parameterizing them now
+would produce a staleness answer about a population that does not exist. The trigger is
+recorded in-file: the first non-empty exempt roster for a second vocabulary.
+
+**The subject is not an empty universe** — the usual way a negative claim turns vacuous. The
+scanned population (`dag/extdeps/bmc`, `dag/extdeps/transports`) *contains* a module that
+legitimately reaches CLI vocabulary: `extdeps.bmc.openbmc_fan_control`, the module this very
+lane routes through jq, sitting in the same directory as `extdeps.bmc.redfish`, which does not.
+So the scan discriminates *within* the population, and the RED control is live corpus data
+rather than a planted fixture: withdraw the one admitted edge and the count must become 1.
+Without that assertion the positive result is indistinguishable from a scan that read nothing,
+which is the empty-observation narrow DESIGN names — ⊥-as-answer conflated with ⊥-as-ignorance.
+
+The admitted edge is named at exact `(importer_path, vocab_module)` grain rather than by
+category or path prefix, so a *second* jq-reaching module anywhere in the scanned roots reds
+instead of being absorbed by a pattern broad enough to cover it.
+
+**What executes, and what does not.** The witness is floor-discovered — it is neither
+`long/`-homed nor in `floor_prepared_subject_exclusions` — and its scan is a live read of the
+two named directories, so this is corpus data rather than a fixture. It is **not** whole-corpus
+coverage: a module outside those roots reaching CLI vocabulary is not seen, and no green here
+may be read as saying otherwise. The whole-corpus half of this lens is enrolled on a cadence
+that does not currently run, which is a fact about that cadence, not about this witness. Both
+halves are stated because a scoped green presented as a general one is the rung inflation §4b
+calls worse than sitting low.
+
+**Where this goes, not scoped here.** The boundary in #8535 is a paragraph today. If this
+generalization holds, the natural successor is that the paragraph becomes a row that reds —
+which changes what the lens is *for*: not one witness for one lane, but the mechanism by which
+a named architectural boundary is enforceable at all. That is a separate change and is
+deliberately not attempted in this one.
