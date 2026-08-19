@@ -44,7 +44,7 @@ import v2.std.node { Symbol }
 // cast into one. The record literal and the cast are both closed (04_infer
 // sole_constructor_construction_diags judges the two forms through one authority).
 //
-// WHAT DOES NOT HOLD: bound_tokens_cli_arguments below is public and takes tokens, lex rules AND
+// WHAT DOES NOT HOLD: serialize_cli_arguments below is public and takes tokens, lex rules AND
 // binding spellings FROM ITS CALLER, so any module can synthesize whatever token sequence and lex
 // table it likes and receive a sealed CliSurface carrying arbitrary content. You cannot author
 // the record; you can author its contents. That is the mint-function hole gunbc.guarantee_probe_corpus
@@ -55,12 +55,23 @@ import v2.std.node { Symbol }
 // this fold admits everyone. The claim was made, reviewed, and corroborated once before anyone
 // checked it -- which is why it is written down here rather than quietly amended.
 //
-// WHY IT IS NOT CLOSED IN THIS COMMIT: the fix is to stop taking caller-supplied grammar at all --
-// the fold should be reachable only already bound to a target model, so the lex table is the
-// target's rather than the caller's -- and that shape is decided by whether the jq path consumes
-// translate's target model or bypasses it entirely. Sealing to an admit_callers roster now would
-// admit only this probe, which is a wall around an empty room. DISSOLVES WITH: the wave that adds
-// the first production consumer, which is also the wave that answers the target-model question.
+// WHY IT IS NOT CLOSED IN THIS COMMIT -- and the open question this comment used to defer to is
+// now ANSWERED. It read: the shape "is decided by whether the jq path consumes translate's target
+// model or bypasses it entirely." Wave 1A answered that by execution: jq bypasses it. The lowering
+// builds CliArgumentSyntax from its own rows and never constructs a TargetModel, so "bind the fold
+// to a target model" is not available as the repair -- there is no target model on this path.
+//
+// THE REPAIR, RESTATED: seal the INPUT, not the fold. A sealed AdmittedCliInvocation that only a
+// tool's own row-derived lowering can produce, with the serializer total over it. admit_callers on
+// the serializer is REFUSED on DESIGN section 3 grounds, and not merely because the roster would be
+// short: it would make this std module name every tool module permitted to emit a CLI, which is
+// dispatch fused into the interface -- the exact shape this lane exists to keep peripheral.
+//
+// NOT BUILT, and its mint's design is genuinely open, because whatever seals AdmittedCliInvocation
+// faces the same recursion one level up. Until it lands, provenance sits at MITIGATABLE and the
+// only containment is that jq's single public entry point is jq_invocation_cli_arguments -- a
+// convention, not a wall. DISSOLVES WITH: that sealed input carrier, not with "the first
+// production consumer", which was the previous trigger and would have fired without closing this.
 
 // One argv argument, as GRAMMAR: the fragments that compose it, before any spelling is resolved.
 // Not sealed -- it is an input shape a tool's rows author, and sealing an input a caller must
