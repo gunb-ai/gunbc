@@ -1,0 +1,32 @@
+module test.claim.long.extdeps_scope_placement_gate_seed_runner_loudness_witness
+
+import tools.extdeps_scope_placement_gate {
+  scope_placement_failure_reason,
+  scope_placement_membership_verdict,
+}
+import gunbc.extdeps_scope_frontier { AddedPathsObserved }
+import std.types { String, Bool }
+
+data seed_runner_loudness_split_note: String = "Split out of test.claim.long.extdeps_scope_placement_gate_loudness_witness (witness-cost-class lane, gunbc.roadmap_authority adhoc-0e6f8ea5-158 / adhoc-17a2c30b-7e0, 2026-08-19), on royal-hawk-392's direction during Wave B derivation. The reason is a module-grain actuation hazard, not a content defect: required_floor actuation restores an entire authored module by renaming it out of a long-home prefix, and this module carried seven identities of which only red_seed_runner_failure_detail_projects_located_receipt (moved here, with its seed_runner_loudness_probe_passes / seed_runner_loudness_probe_failure_receipt pair) is a confirmed cost defect — a real, completed, non-censored floor measurement of 75926ms (run 32177951514, [floor-witness-slow] line, BUDGET-REFUSED against the 1552ms ceiling, the witness ran to completion so this is an exact cost, not a right-censored bound), 15x over the 5000ms CPU safety limit. Restoring the seven-identity module whole would have dragged this row back into required_floor discovery alongside the six clean rows Wave B was restoring. THE CAUSE IS UNLOCATED, and that is load-bearing for how this row is read: the parent module's own loudness_witness_note records a THIRD falsified import-closure-pollution narrowing on this exact identity (718 modules/10.1MB -> 62/0.49MB import closure, floor cost unchanged at the same statistical order, 42983-97260ms pre-narrowing vs 75926ms post) — joining two other falsified candidates in the same lane (Class B / rust_test_fixtures_import_closure_witness, and the loop/bind dag_arrow_lambda_witness_test family). An unlocated cause is not a property of the witness's content: the working hypothesis across all three falsifications is a fixed, corpus-wide load/index cost (build_both_closure_edge_index, DESIGN.md's floor-shared-compute-memoization open thread) attributed to whichever claim happens to touch it first, not a defect in what this row asserts. This module is therefore DEFERRED, not disposed: it stays under a long-home prefix (DeclinedLongModule) until the attribution defect is root-caused and fixed at its actual source, tracked as its own lane by royal-hawk-392 rather than folded into Wave B's population."
+
+func seed_runner_loudness_probe_passes() -> Bool {
+  false
+}
+
+func seed_runner_loudness_probe_failure_receipt() -> String {
+  scope_placement_failure_reason(
+    exit: scope_placement_membership_verdict(
+      observation: AddedPathsObserved { paths: ["dag/extdeps/browser/opera.dag"] }
+    )
+  )
+}
+
+test fn red_seed_runner_failure_detail_projects_located_receipt() -> Bool {
+  let detail = seed_runner_bool_false_failure_detail(
+    witness: "seed_runner_loudness_probe_passes"
+  )
+  detail != "returned Bool(false)"
+    && string_contains(s: detail, pattern: "returned Bool(false) | ")
+    && string_contains(s: detail, pattern: "THIS CHANGE")
+    && string_contains(s: detail, pattern: "dag/extdeps/browser/opera.dag")
+}
