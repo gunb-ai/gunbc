@@ -32,7 +32,7 @@ fn body_lowering_atom_y() -> Node {
 }
 
 fn body_lowering_infix_atoms() -> List<Node> {
-  [body_lowering_atom_x(), body_lowering_atom_plus(), body_lowering_atom_y()]
+  [body_lowering_atom_x(), body_lowering_atom_plus(), body_lowering_atom_x()]
 }
 
 fn body_lowering_emitted() -> Outcome<Node> {

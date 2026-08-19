@@ -24,7 +24,7 @@ import v2.std.node {
 }
 
 data projection_test_section: Node = Node {
-  kind: TypeNode { connective: Atom { identity: ^projection_section_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^projection_other_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }

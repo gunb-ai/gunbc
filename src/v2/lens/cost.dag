@@ -502,8 +502,8 @@ fn symbolic_cost_dominates(a: SymbolicCost, b: SymbolicCost) -> Bool {
         ConstantCost { value: Zero } => true
         _ =>
           asymptotic_class_dominates(
-            a: asymptotic_class_of_cost(cost: a),
-            b: asymptotic_class_of_cost(cost: b)
+            a: asymptotic_class_of_cost(cost: b),
+            b: asymptotic_class_of_cost(cost: a)
           )
       }
   }

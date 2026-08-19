@@ -22,7 +22,7 @@ data spine_normalize_module_subject: Node = Node {
 fn spine_normalize_service_parse_tree() -> Node {
   Node {
     kind: TypeNode {
-      connective: Atom { identity: ^dag_c3_surface_sugar_service }
+      connective: Atom { identity: ^dag_c3_surface_sugar_fn }
     },
     children: [
       Edge {

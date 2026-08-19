@@ -50,7 +50,7 @@ data coverage_defect_wrong_home: CoverageDefectAcceptance = {
   concern: CoverageDefectAcceptanceKey { lens: WrongHome }
 }
 data coverage_defect_vacuous_arm: CoverageDefectAcceptance = {
-  concern: CoverageDefectAcceptanceKey { lens: VacuousArm }
+  concern: CoverageDefectAcceptanceKey { lens: ParallelAuthority }
 }
 data coverage_defect_canonical_carrier: CoverageDefectAcceptance = {
   concern: CoverageDefectAcceptanceKey { lens: CanonicalCarrier }

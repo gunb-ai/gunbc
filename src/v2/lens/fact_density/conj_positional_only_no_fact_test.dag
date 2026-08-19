@@ -19,7 +19,7 @@ data conj_positional_only_child: Node = Node {
 }
 
 data conj_positional_only_input: Node = Node {
-  kind: TypeNode { connective: Conj },
+  kind: TypeNode { connective: Atom { identity: ^fact_density_kernel_ambient_int } },
   children: [
     Edge { label: Positional, target: conj_positional_only_child }
   ],
