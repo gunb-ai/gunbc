@@ -1,6 +1,6 @@
 module test.claim.fabric_budget_encumbrance_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // Budget is modeled as a lease over money: something is held exclusively,
 // the holder can be superseded while still believing it holds, and a late

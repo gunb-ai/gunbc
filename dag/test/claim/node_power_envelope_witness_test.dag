@@ -23,7 +23,7 @@ data mod_2rx4_32g: extdeps.memory.types.DramModuleCatalogRow = extdeps.memory.ty
   data_rate_mts: 3200,
   ecc: true,
   buffering: extdeps.memory.types.Registered,
-  chip_width: extdeps.memory.types.bit_width(count: 4),
+  chip_width: std.measure.bit_width(count: 4),
   rank_count: 2,
 }
 
@@ -35,7 +35,7 @@ data mod_1rx4_16g: extdeps.memory.types.DramModuleCatalogRow = extdeps.memory.ty
   data_rate_mts: 2666,
   ecc: true,
   buffering: extdeps.memory.types.Registered,
-  chip_width: extdeps.memory.types.bit_width(count: 4),
+  chip_width: std.measure.bit_width(count: 4),
   rank_count: 1,
 }
 
@@ -47,7 +47,7 @@ data mod_1rx8_32g_impossible: extdeps.memory.types.DramModuleCatalogRow = extdep
   data_rate_mts: 3200,
   ecc: true,
   buffering: extdeps.memory.types.Registered,
-  chip_width: extdeps.memory.types.bit_width(count: 8),
+  chip_width: std.measure.bit_width(count: 8),
   rank_count: 1,
 }
 
@@ -320,7 +320,7 @@ data rdimm_64g_2rx4: extdeps.memory.types.DramModuleCatalogRow = extdeps.memory.
   data_rate_mts: 3200,
   ecc: true,
   buffering: extdeps.memory.types.Registered,
-  chip_width: extdeps.memory.types.bit_width(count: 4),
+  chip_width: std.measure.bit_width(count: 4),
   rank_count: 2,
 }
 

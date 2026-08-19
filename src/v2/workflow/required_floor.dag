@@ -91,7 +91,7 @@ fn long_home_storage_agreement(path_is_long: v2.std.logic.Bool, module_is_long: 
 // real modelling question, and when it is asked it will be asked against a live consumer.
 //
 // These rows are NOT COVERED by anything. The host reports the count every run.
-fn long_home_prefixes() -> v2.std.collection.List<v2.std.text.String> {
+fn long_home_prefixes() -> std.types.List<v2.std.text.String> {
   std.algebra.Cons {
     head: "test.claim.long.",
     tail: std.algebra.Cons {
@@ -222,6 +222,6 @@ fn required_floor_claim_warn_ms() -> Int {
 
 // The frame's edge to the expected-red roster (see the header). It delegates and holds nothing:
 // deleting the roster's own rows changes this function's answer with no edit here.
-fn required_floor_expected_red_roster() -> v2.std.collection.List<v2.std.text.String> {
+fn required_floor_expected_red_roster() -> std.types.List<v2.std.text.String> {
   v2.workflow.floor_expected_red.floor_expected_red_roster()
 }

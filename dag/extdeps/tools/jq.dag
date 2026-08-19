@@ -38,7 +38,7 @@ data jq_cli_tool: extdeps.tools.CliTool = extdeps.tools.CliTool {
 // reachable by every future caller.
 service jq.Process {
   operation RunWithStdin {
-    input { arguments: ProcessArgvExpansion, stdin_payload: String }
+    input { arguments: v2.std.compilers.cli_surface.ProcessArgvExpansion, stdin_payload: String }
     output {
       exit_code: Int from "exit_code"
       stdout: String from "stdout"
@@ -56,7 +56,7 @@ service jq.Process {
   }
 
   operation RunWithoutStdin {
-    input { arguments: ProcessArgvExpansion }
+    input { arguments: v2.std.compilers.cli_surface.ProcessArgvExpansion }
     output {
       exit_code: Int from "exit_code"
       stdout: String from "stdout"
@@ -209,7 +209,7 @@ fn jq_cli_lex_rules() -> v2.std.compilers.lexing.ModeledLexRules {
 // JSON payload through argv by mistake.
 type JqProcessPlan {
   arguments: std.types.List<v2.std.compilers.cli_surface.CliArgumentSyntax>
-  binding_spellings: v2.std.collection.Map<v2.std.node.Symbol, String>
+  binding_spellings: std.types.Map<v2.std.node.Symbol, String>
   process_input: JqProcessInput
 }
 
@@ -452,6 +452,6 @@ fn jq_execute_admitted_plan(plan: JqAdmittedProcessPlan) -> JqProcessObservation
 // The four-case receipt's entry point (test/manual/process_argv_expansion_receipt_test.dag). It
 // exists so the receipt asserts through the SAME handler production uses, rather than a
 // look-alike declared in the witness -- a witness-local service would prove nothing about this one.
-fn jq_argv_expansion_probe(expansion: ProcessArgvExpansion, payload: String) -> Int {
+fn jq_argv_expansion_probe(expansion: v2.std.compilers.cli_surface.ProcessArgvExpansion, payload: String) -> Int {
   jq.Process.RunWithStdin(arguments: expansion, stdin_payload: payload).exit_code
 }

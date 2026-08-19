@@ -15,8 +15,8 @@ fn deploy_raw(command: String) -> v2.std.orchestration.PipelineStep {
     run: v2.std.orchestration.Run {
       command: command,
       env: [],
-      redirect: v2.std.collection.Absent,
-      capture: v2.std.collection.Absent
+      redirect: v2.std.optional.Absent,
+      capture: v2.std.optional.Absent
     }
   }
 }
@@ -85,15 +85,15 @@ fn ensure_apt_package_step(pkg: std.types.NonEmptyStr, privileged: Bool) -> v2.s
       run: v2.std.orchestration.Run {
         command: gunbc.live_deploy.operations.dpkg_status_command(package: pkg),
         env: [],
-        redirect: v2.std.collection.Present { value: v2.std.orchestration.DiscardAll },
-        capture: v2.std.collection.Absent
+        redirect: v2.std.optional.Present { value: v2.std.orchestration.DiscardAll },
+        capture: v2.std.optional.Absent
       }
     } },
     then_: v2.std.orchestration.Pipeline {
       steps: [deploy_raw(command: gunbc.live_deploy.operations.apt_install_command(package: pkg, privileged: privileged))],
       on_failure: v2.std.orchestration.FailFast
     },
-    else_: v2.std.collection.Absent
+    else_: v2.std.optional.Absent
   }
 }
 
@@ -362,7 +362,7 @@ fn deployment_step_key_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr) ->
 fn deployment_step_value_eq(a: gunbc.live_deploy.spec.DeploymentStep, b: gunbc.live_deploy.spec.DeploymentStep) -> Bool { a == b }
 
 fn deployment_step_ownership_opt(step: gunbc.live_deploy.spec.DeploymentStep) -> gunbc.ownership.Ownership? {
-  v2.std.collection.Present { value: gunbc.live_deploy.spec.deployment_step_ownership(step: step) }
+  v2.std.optional.Present { value: gunbc.live_deploy.spec.deployment_step_ownership(step: step) }
 }
 
 fn deployment_apply_plan(spec: gunbc.live_deploy.spec.DeploymentSpec) -> gunbc.membership_reconcile.MembershipPlan<gunbc.live_deploy.spec.DeploymentStep, DeploymentStepMemberAt> {

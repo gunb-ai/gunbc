@@ -16,24 +16,24 @@ fn sg2_mode2_fail_node() -> v2.std.node.Node {
 }
 }
 
-fn sg2_mode2_target() -> v2.compiler.target_carriers.TargetModel {
+fn sg2_mode2_target() -> v2.std.compilers.target_model.TargetModel {
   v2.extdeps.languages.rust.rust_sg2_type_expr_target_model()
 }
 
-fn sg2_mode2_facts_lookup(_key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.infer.InferredFacts> {
+fn sg2_mode2_facts_lookup(_key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   v2.std.optional.optional_absent()
 }
 
-data sg2_mode2_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
+data sg2_mode2_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
   root: v2.extdeps.languages.rust.rust_sg2_instantiation_source_type_node(),
-  facts: v2.std.collection.Map {
+  facts: std.types.Map {
     lookup: sg2_mode2_facts_lookup
   }
 }
 
-data sg2_mode2_perturbed_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
+data sg2_mode2_perturbed_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
   root: v2.extdeps.languages.rust.rust_sg2_foobar_xy_no_rc_source_type_node(),
-  facts: v2.std.collection.Map {
+  facts: std.types.Map {
     lookup: sg2_mode2_facts_lookup
   }
 }

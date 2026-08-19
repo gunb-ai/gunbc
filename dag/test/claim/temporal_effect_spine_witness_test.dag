@@ -18,41 +18,41 @@ data witness_step_serve: std.types.NonEmptyStr = "nbd-serve" as std.types.NonEmp
 
 data witness_lease_key: std.types.NonEmptyStr = "srv3-nbd-proxy-10809" as std.types.NonEmptyStr
 
-data foreign_lease: HeldLease = held_lease(
-  epoch: LeaseEpoch {
+data foreign_lease: std.temporal_effect.HeldLease = held_lease(
+  epoch: std.temporal_effect.LeaseEpoch {
     lease_key: witness_lease_key,
-    resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
-    owner_fingerprint: content_hash_of_value(value: "foreign-owner" as NonEmptyStr),
+    resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as std.types.NonEmptyStr),
+    owner_fingerprint: content_hash_of_value(value: "foreign-owner" as std.types.NonEmptyStr),
     generation: 1,
   },
   observed: LeasePortForeign,
 )
 
-data stale_lease: HeldLease = held_lease(
-  epoch: LeaseEpoch {
+data stale_lease: std.temporal_effect.HeldLease = held_lease(
+  epoch: std.temporal_effect.LeaseEpoch {
     lease_key: witness_lease_key,
-    resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
-    owner_fingerprint: content_hash_of_value(value: "expected-owner" as NonEmptyStr),
+    resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as std.types.NonEmptyStr),
+    owner_fingerprint: content_hash_of_value(value: "expected-owner" as std.types.NonEmptyStr),
     generation: 2,
   },
   observed: LeaseRunningStale,
 )
 
-data expected_lease: HeldLease = held_lease(
-  epoch: LeaseEpoch {
+data expected_lease: std.temporal_effect.HeldLease = held_lease(
+  epoch: std.temporal_effect.LeaseEpoch {
     lease_key: witness_lease_key,
-    resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
-    owner_fingerprint: content_hash_of_value(value: "expected-owner" as NonEmptyStr),
+    resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as std.types.NonEmptyStr),
+    owner_fingerprint: content_hash_of_value(value: "expected-owner" as std.types.NonEmptyStr),
     generation: 3,
   },
   observed: LeaseRunningExpected,
 )
 
-data absent_lease: HeldLease = held_lease(
-  epoch: LeaseEpoch {
+data absent_lease: std.temporal_effect.HeldLease = held_lease(
+  epoch: std.temporal_effect.LeaseEpoch {
     lease_key: witness_lease_key,
-    resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
-    owner_fingerprint: content_hash_of_value(value: "no-owner" as NonEmptyStr),
+    resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as std.types.NonEmptyStr),
+    owner_fingerprint: content_hash_of_value(value: "no-owner" as std.types.NonEmptyStr),
     generation: 0,
   },
   observed: LeaseAbsent,
@@ -321,10 +321,10 @@ test fn inaccessible_lease_refuses() -> Bool {
     escalation_id: witness_escalation_id,
     grant: GrantAbsent,
     lease: held_lease(
-      epoch: LeaseEpoch {
+      epoch: std.temporal_effect.LeaseEpoch {
         lease_key: witness_lease_key,
-        resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
-        owner_fingerprint: content_hash_of_value(value: "no-owner" as NonEmptyStr),
+        resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as std.types.NonEmptyStr),
+        owner_fingerprint: content_hash_of_value(value: "no-owner" as std.types.NonEmptyStr),
         generation: 0,
       },
       observed: LeaseInaccessible,

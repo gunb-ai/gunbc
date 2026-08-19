@@ -25,7 +25,7 @@ fn parallelism_control_effect_is_effect_coupled() -> v2.std.logic.Bool {
           dependencies: [
             v2.std.dependency.ClassifiedDependencyView {
               dependency: parallelism_control_effect_dep,
-              classification: v2.lens.parallelism.EffectCoupled
+              classification: v2.lens.common.algebraic_composition.EffectCoupled
             }
           ]
         }

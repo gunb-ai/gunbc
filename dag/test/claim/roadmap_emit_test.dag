@@ -20,9 +20,9 @@ fn parent_node() -> gunbc.roadmap_model.RoadmapNode {
   }
 }
 
-fn roadmap_emit_child_node() -> RoadmapNode {
-  RoadmapNode {
-    identity: "rnfx_8P7AJ3QVQCM2E8W3AMR7" as RoadmapNodeIdentity,
+fn roadmap_emit_child_node() -> gunbc.roadmap_model.RoadmapNode {
+  gunbc.roadmap_model.RoadmapNode {
+    identity: "rnfx_8P7AJ3QVQCM2E8W3AMR7" as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: child_id,
     line: gunbc.roadmap_status.DerivableLine { prs: [5491], title: "**PR-checkbox status**", description: "" },
     carriers: [],
@@ -46,8 +46,8 @@ fn signed_child_node() -> gunbc.roadmap_model.RoadmapNode {
   }
 }
 
-fn nodes() -> List<RoadmapNode> { [parent_node(), roadmap_emit_child_node()] }
-fn edges() -> List<RoadmapEdge> { [RoadmapEdge { child: child_id, parent: parent_id }] }
+fn nodes() -> List<gunbc.roadmap_model.RoadmapNode> { [parent_node(), roadmap_emit_child_node()] }
+fn edges() -> List<gunbc.roadmap_model.RoadmapEdge> { [gunbc.roadmap_model.RoadmapEdge { child: child_id, parent: parent_id }] }
 
 fn emit_nodes(nodes: List<gunbc.roadmap_model.RoadmapNode>, merged: List<Int>) -> String {
   serialize_markdown_source(doc: project_roadmap_section(

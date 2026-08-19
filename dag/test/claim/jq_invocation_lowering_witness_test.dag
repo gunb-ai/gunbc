@@ -23,7 +23,7 @@ fn sensor_invocation() -> extdeps.tools.jq.JqInvocation {
   }
 }
 
-fn argv_of(invocation: extdeps.tools.jq.JqInvocation) -> v2.std.collection.List<String> {
+fn argv_of(invocation: extdeps.tools.jq.JqInvocation) -> std.types.List<String> {
   match extdeps.tools.jq.jq_invocation_cli_arguments(invocation: invocation) {
     Accepted { value: surface, diagnostics: _ } =>
       v2.std.algebra.fold_list(

@@ -249,8 +249,8 @@ fn witness_floor_run_script() -> String {
 // THE BINARY IS A REGISTERED SCAFFOLD AND STAYS ONE. Its dissolve-on is the modeled pipeline
 // parsing src/v1; wiring the scaffold does not satisfy that. Ordered BEFORE the fold because it
 // costs 0.7 seconds against the fold's tens of minutes, and a stopped line is cheapest early.
-fn witness_floor_v1_parse_step() -> Step {
-  RunStep {
+fn witness_floor_v1_parse_step() -> extdeps.github.actions.Step {
+  extdeps.github.actions.RunStep {
     name: Present { value: "src/v1 .dag sources parse" },
     id: none,
     run: concat(
@@ -266,8 +266,8 @@ fn witness_floor_v1_parse_step() -> Step {
   }
 }
 
-fn witness_floor_run_step() -> Step {
-  RunStep {
+fn witness_floor_run_step() -> extdeps.github.actions.Step {
+  extdeps.github.actions.RunStep {
     name: Present { value: "All witnesses (one prepared subject, one fold)" },
     id: none,
     run: witness_floor_run_script(),

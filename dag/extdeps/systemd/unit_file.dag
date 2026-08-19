@@ -34,23 +34,23 @@ data systemd_service_directive_authority: extdeps.external_authority.ExternalAut
 // Those rows became this repository's PRODUCTION authority for live-deploy unit emission, so
 // leaving their subjects uncited would declare a scope narrower than the grammar being claimed --
 // the extdeps citation duty (DESIGN section 3, ExtdepsExternalAuthorityGate), not documentation.
-data systemd_timer_directive_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data systemd_timer_directive_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.freedesktop.org/software/systemd/man/latest/systemd.timer.html"
   }
 }
 
-data systemd_exec_directive_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data systemd_exec_directive_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.freedesktop.org/software/systemd/man/latest/systemd.exec.html"
   }
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.systemd.unit_file",
       decl_name: "SystemdUnitFile",
       field: std.decl_ref.WholeDeclaration

@@ -48,7 +48,7 @@ fn probe_lex() -> v2.std.compilers.lexing.ModeledLexRules {
   }
 }
 
-fn two_argument_surface() -> v2.std.collection.List<v2.std.compilers.cli_surface.CliArgumentSyntax> {
+fn two_argument_surface() -> std.types.List<v2.std.compilers.cli_surface.CliArgumentSyntax> {
   [
     v2.std.compilers.cli_surface.CliArgumentSyntax { fragments: [v2.std.compilers.target_model.FixedToken { token_class: ^raw_output_opt }] },
     v2.std.compilers.cli_surface.CliArgumentSyntax { fragments: [v2.std.compilers.target_model.FixedToken { token_class: ^dot_filter }] }

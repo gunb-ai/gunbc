@@ -76,19 +76,19 @@ fn training_steps_required(module: extdeps.memory.types.DramModuleCatalogRow) ->
 // that has to say WHICH step. A projection of the closed coproduct, so it lives
 // beside the coproduct rather than being re-spelled by each consumer that needs
 // to name a step in a refusal.
-fn memory_training_step_label(step: MemoryTrainingStep) -> NonEmptyStr {
+fn memory_training_step_label(step: MemoryTrainingStep) -> std.types.NonEmptyStr {
   match step {
-    PhyWriteLeveling => "PHY write leveling" as NonEmptyStr
-    PhyReadGateLeveling => "PHY read gate leveling" as NonEmptyStr
-    PhyReadLeveling => "PHY read leveling" as NonEmptyStr
-    PhyVrefdqCalibration => "PHY VREFDQ calibration" as NonEmptyStr
-    LrdimmDataBufferMrep => "LRDIMM data-buffer read-phase calibration (MREP)" as NonEmptyStr
-    LrdimmDataBufferWriteLeveling => "LRDIMM data-buffer write leveling" as NonEmptyStr
-    LrdimmDataBufferReadTraining => "LRDIMM data-buffer read training" as NonEmptyStr
+    PhyWriteLeveling => "PHY write leveling" as std.types.NonEmptyStr
+    PhyReadGateLeveling => "PHY read gate leveling" as std.types.NonEmptyStr
+    PhyReadLeveling => "PHY read leveling" as std.types.NonEmptyStr
+    PhyVrefdqCalibration => "PHY VREFDQ calibration" as std.types.NonEmptyStr
+    LrdimmDataBufferMrep => "LRDIMM data-buffer read-phase calibration (MREP)" as std.types.NonEmptyStr
+    LrdimmDataBufferWriteLeveling => "LRDIMM data-buffer write leveling" as std.types.NonEmptyStr
+    LrdimmDataBufferReadTraining => "LRDIMM data-buffer read training" as std.types.NonEmptyStr
   }
 }
 
-fn module_executes_step(module: DramModuleCatalogRow, step: MemoryTrainingStep) -> Bool {
+fn module_executes_step(module: extdeps.memory.types.DramModuleCatalogRow, step: MemoryTrainingStep) -> Bool {
   any(training_steps_required(module: module), s => s == step)
 }
 

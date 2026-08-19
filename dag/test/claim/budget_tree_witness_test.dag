@@ -23,8 +23,8 @@ fn leaf_node(cap: std.nat.Nat) -> product.budget_tree.BudgetNode {
   product.budget_tree.BudgetNode { name: "host", appropriation: appr(n: cap), claims: sample_claims(), children: [] }
 }
 
-fn budget_tree_child_node(cap: std.nat.Nat) -> BudgetNode {
-  BudgetNode { name: "c", appropriation: appr(n: cap), claims: sample_claims(), children: [] }
+fn budget_tree_child_node(cap: std.nat.Nat) -> product.budget_tree.BudgetNode {
+  product.budget_tree.BudgetNode { name: "c", appropriation: appr(n: cap), claims: sample_claims(), children: [] }
 }
 
 fn root_with(child: product.budget_tree.BudgetNode) -> product.budget_tree.BudgetNode {
@@ -54,8 +54,8 @@ test fn witness_tree_conservation_recursive() -> Bool {
 
 test fn witness_divide_once() -> Bool {
   let two_children = [budget_tree_child_node(cap: 100), budget_tree_child_node(cap: 100)]
-  let tight = BudgetNode { name: "r", appropriation: appr(n: 150), claims: [], children: two_children }
-  let roomy = BudgetNode { name: "r", appropriation: appr(n: 250), claims: [], children: two_children }
+  let tight = product.budget_tree.BudgetNode { name: "r", appropriation: appr(n: 150), claims: [], children: two_children }
+  let roomy = product.budget_tree.BudgetNode { name: "r", appropriation: appr(n: 250), claims: [], children: two_children }
   return !node_conserves_local(node: tight) && node_conserves_local(node: roomy)
 }
 

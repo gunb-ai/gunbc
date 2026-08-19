@@ -32,7 +32,7 @@ data fixture_dimm: extdeps.memory.types.DramModuleCatalogRow = extdeps.memory.ty
   data_rate_mts: 3200,
   ecc: true,
   buffering: extdeps.memory.types.Registered,
-  chip_width: extdeps.memory.types.bit_width(count: 4),
+  chip_width: std.measure.bit_width(count: 4),
   rank_count: 2,
 }
 

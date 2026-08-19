@@ -33,7 +33,7 @@ fn compute_envelope_model_body() -> List<std.markdown.MarkdownBlock> {
     p(text: "The under-side and the over-side are the **same defect** seen twice: width bounded *below* the envelope (idle) and fan-out bursting *above* a cap that the envelope never informed (crash)."),
     h2(text: "3. The move: one ResourceEnvelope, every knob derived (§3 single authority)"),
     p(text: "Collapse the N hand-tuned dimensions into **one authority** — the host `ResourceEnvelope` (cores, memory, pids capacity; a type in `gunbc.fleet_container`, which is where #5904 moved it and where it lives now that `product.compute_fabric` is deleted) — and make **every knob a function of it**. Then the dimensions stop being N things to juggle: they are one measured fact with derivations, and the fleet gets **exactly one coherent operating point**. It *cannot* be both starved and thrashing, because both the width floor and the fan-out ceiling come from the same envelope."),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "Knob"), cell(text: "Derivation from the envelope"), cell(text: "Tier (§4)"), cell(text: "Owner"), cell(text: "Status")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [

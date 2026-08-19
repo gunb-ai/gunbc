@@ -32,9 +32,9 @@ fn status_node() -> gunbc.roadmap_model.RoadmapNode {
     signoff: Unsigned,
   }
 }
-fn roadmap_document_child_node() -> RoadmapNode {
-  RoadmapNode {
-    identity: "rnfx_ABYCNZ3BDSY98CHYC51T" as RoadmapNodeIdentity,
+fn roadmap_document_child_node() -> gunbc.roadmap_model.RoadmapNode {
+  gunbc.roadmap_model.RoadmapNode {
+    identity: "rnfx_ABYCNZ3BDSY98CHYC51T" as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: child_id,
     line: gunbc.roadmap_status.AuthoredLine { done: false, content: "**host-fed status bridge**" },
     carriers: [],
@@ -57,7 +57,7 @@ fn expansion_section() -> gunbc.roadmap_document.RoadmapSection {
     elements: [section_group(
       label: "",
       nodes: [status_node(), roadmap_document_child_node()],
-      edges: [RoadmapEdge { child: child_id, parent: status_id }],
+      edges: [gunbc.roadmap_model.RoadmapEdge { child: child_id, parent: status_id }],
     )],
   }
 }

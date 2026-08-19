@@ -52,7 +52,7 @@ module v2.std.compilers.cli_surface
 // One argv argument, as GRAMMAR: the fragments that compose it, before any spelling is resolved.
 // Not sealed -- it is an input shape a tool's rows author, and sealing an input a caller must
 // build would only push the forgery one level out. What is sealed is the OUTPUT.
-type CliArgumentSyntax { fragments: v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> }
+type CliArgumentSyntax { fragments: std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken> }
 
 // THE SHARED RENDERING RULE, owned here and not by any tool row. A tool declares WHICH names
 // exist and which form is canonical; how a long name becomes two hyphens plus the name is one
@@ -69,9 +69,9 @@ fn cli_long_option_spelling(name: std.types.NonEmptyStr) -> std.types.NonEmptySt
 
 type CliArgument sole_constructor { text: String }
 
-type CliSurface sole_constructor { arguments: v2.std.collection.List<CliArgument> }
+type CliSurface sole_constructor { arguments: std.types.List<CliArgument> }
 
-fn cli_surface_arguments(surface: CliSurface) -> v2.std.collection.List<CliArgument> {
+fn cli_surface_arguments(surface: CliSurface) -> std.types.List<CliArgument> {
   surface.arguments
 }
 
@@ -160,7 +160,7 @@ fn process_argv_expansion_surface(expansion: ProcessArgvExpansion) -> CliSurface
 // target_text_seq, an argv argument composes into a CliArgument here, and no already-composed
 // String is ever lifted into either carrier.
 fn required_bound_spelling(
-  binding_spellings: v2.std.collection.Map<v2.std.node.Symbol, String>,
+  binding_spellings: std.types.Map<v2.std.node.Symbol, String>,
   binding: v2.std.node.Symbol
 ) -> v2.std.diagnostic.Outcome<String> {
   match v2.std.collection.map_get(binding_spellings, binding) {
@@ -187,8 +187,8 @@ fn cli_binding_spelling_missing_diagnostic(binding: v2.std.node.Symbol) -> v2.st
 
 fn cli_fragment_spelling(
   fragment: v2.std.compilers.target_model.ConcreteSyntaxToken,
-  lex: v2.std.compilers.target_model.LexRules,
-  binding_spellings: v2.std.collection.Map<v2.std.node.Symbol, String>
+  lex: v2.std.compilers.lexing.LexRules,
+  binding_spellings: std.types.Map<v2.std.node.Symbol, String>
 ) -> v2.std.diagnostic.Outcome<String> {
   match fragment {
     FixedToken { token_class: tc } =>
@@ -199,9 +199,9 @@ fn cli_fragment_spelling(
 }
 
 fn cli_argument_from_fragments(
-  fragments: v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
-  lex: v2.std.compilers.target_model.LexRules,
-  binding_spellings: v2.std.collection.Map<v2.std.node.Symbol, String>
+  fragments: std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
+  lex: v2.std.compilers.lexing.LexRules,
+  binding_spellings: std.types.Map<v2.std.node.Symbol, String>
 ) -> v2.std.diagnostic.Outcome<CliArgument> {
   v2.std.diagnostic.bind_outcome(
     o: v2.std.algebra.fold_list(
@@ -233,9 +233,9 @@ fn cli_argument_from_fragments(
 // because these rows happen to return None today. A generic serializer must not drop diagnostics
 // because its first callers had none.
 fn serialize_cli_arguments(
-  arguments: v2.std.collection.List<CliArgumentSyntax>,
-  lex: v2.std.compilers.target_model.LexRules,
-  binding_spellings: v2.std.collection.Map<v2.std.node.Symbol, String>
+  arguments: std.types.List<CliArgumentSyntax>,
+  lex: v2.std.compilers.lexing.LexRules,
+  binding_spellings: std.types.Map<v2.std.node.Symbol, String>
 ) -> v2.std.diagnostic.Outcome<CliSurface> {
   v2.std.diagnostic.bind_outcome(
     o: v2.std.algebra.fold_list(
