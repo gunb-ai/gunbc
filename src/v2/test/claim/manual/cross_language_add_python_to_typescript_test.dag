@@ -4,7 +4,7 @@ module v2.test.manual.cross_language_add_python_to_typescript
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 type ParseTreeToTargetModelBridge {
   source_parse_tree: v2.std.node.Symbol
@@ -13,8 +13,8 @@ type ParseTreeToTargetModelBridge {
 
 type ParseTreeToTargetModelBridgeCheck = v2.std.witness.Witness<ParseTreeToTargetModelBridge>
 
-fn parse_tree_to_target_model_bridge_scaffold() -> Witness<ParseTreeToTargetModelBridge> {
-  if ingest_bridge_realized() {
+fn parse_tree_to_target_model_bridge_scaffold() -> v2.std.witness.Witness<ParseTreeToTargetModelBridge> {
+  if v2.test.manual.ingest_bridge.ingest_bridge_realized() {
     v2.std.witness.Holds {
       value: ParseTreeToTargetModelBridge {
         source_parse_tree: ^ingest_bridge_hermetic_fixture_parse_tree,
@@ -25,8 +25,8 @@ fn parse_tree_to_target_model_bridge_scaffold() -> Witness<ParseTreeToTargetMode
     v2.std.witness.Violates {
       diagnostic: v2.std.diagnostic.Diagnostic {
         reason: ^parse_tree_to_target_model_bridge_not_realized,
-        at: port_locus(port: ^cross_language_bridge_port),
-        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+        at: v2.std.diagnostic.port_locus(port: ^cross_language_bridge_port),
+        correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
       }
     }
   }
@@ -36,70 +36,70 @@ data cross_language_python_to_typescript_bridge_check: ParseTreeToTargetModelBri
 
 test fn parse_tree_to_target_model_bridge_realized() -> Bool {
   match parse_tree_to_target_model_bridge_scaffold() {
-    Holds { value: _ } => true
-    Violates { diagnostic: _ } => false
+    v2.std.witness.Holds { value: _ } => true
+    v2.std.witness.Violates { diagnostic: _ } => false
   }
 }
 
 test fn cross_language_emit_inhabitant_neutralization_fails_closed() -> Bool {
-  match infer(tree: python_emitted_add_fn_node()) {
-    Accepted { value: inferred, diagnostics: _ } =>
-      match emit(tree: inferred, target: ts_target_model()) {
-        Rejected { diagnostics: _ } => true
-        Accepted { value: _, diagnostics: _ } => false
+  match v2.compiler.infer.infer(tree: v2.extdeps.languages.python.python_emitted_add_fn_node()) {
+    v2.std.diagnostic.Accepted { value: inferred, diagnostics: _ } =>
+      match v2.compiler.emit.emit(tree: inferred, target: v2.extdeps.languages.typescript.ts_target_model()) {
+        v2.std.diagnostic.Rejected { diagnostics: _ } => true
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn cross_language_emit_inhabitant_neutralization_refuses_underived_holds() -> Bool {
-  match neutralize_core_for_target(
-    core: python_emitted_add_fn_node(),
-    target: ts_target_model()
+  match v2.std.inhabitant_neutralization.neutralize_core_for_target(
+    core: v2.extdeps.languages.python.python_emitted_add_fn_node(),
+    target: v2.extdeps.languages.typescript.ts_target_model()
   ) {
-    Accepted { value: neutralized, diagnostics: _ } =>
-      match infer(tree: neutralized) {
-        Accepted { value: inferred, diagnostics: _ } =>
-          match emit(tree: inferred, target: ts_target_model()) {
-            Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: neutralized, diagnostics: _ } =>
+      match v2.compiler.infer.infer(tree: neutralized) {
+        v2.std.diagnostic.Accepted { value: inferred, diagnostics: _ } =>
+          match v2.compiler.emit.emit(tree: inferred, target: v2.extdeps.languages.typescript.ts_target_model()) {
+            v2.std.diagnostic.Rejected { diagnostics: d } =>
               d.head.reason == ^infer_grounding_not_derived
-            Accepted { value: _, diagnostics: _ } => false
+            v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn cross_language_add_python_to_typescript_chain_status_holds() -> Bool {
 
-  match python_grammar_parse_fixture() {
-    Accepted { value: python_parse_tree, diagnostics: _ } =>
+  match v2.test.manual.python_grammar_claim.python_grammar_parse_fixture() {
+    v2.std.diagnostic.Accepted { value: python_parse_tree, diagnostics: _ } =>
 
-      match parse_tree_to_target_model_bridge(
+      match v2.compiler.ingest.parse_tree_to_target_model_bridge(
         parse_tree: python_parse_tree,
-        source_model: python_target_model()
+        source_model: v2.extdeps.languages.python.python_target_model()
       ) {
-        Accepted { value: python_core, diagnostics: _ } =>
-          python_core == python_emitted_add_fn_node()
+        v2.std.diagnostic.Accepted { value: python_core, diagnostics: _ } =>
+          python_core == v2.extdeps.languages.python.python_emitted_add_fn_node()
 
             && cross_language_compile_on_real_tree_refuses_underived_holds(parse_tree: python_parse_tree)
-            && ts_effect_io_emit_holds()
-        Rejected { diagnostics: _ } => false
+            && v2.test.manual.typescript_effect_io_emit.ts_effect_io_emit_holds()
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn cross_language_compile_on_real_tree_refuses_underived_holds(parse_tree: v2.std.grammar.ParseTree) -> Bool {
-  match cross_language_compile(
+  match v2.compiler.ingest.cross_language_compile(
     parse_tree: parse_tree,
-    source_model: python_target_model(),
-    target_model: ts_target_model()
+    source_model: v2.extdeps.languages.python.python_target_model(),
+    target_model: v2.extdeps.languages.typescript.ts_target_model()
   ) {
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       d.head.reason == ^infer_grounding_not_derived
-    Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
   }
 }
 

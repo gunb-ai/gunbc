@@ -53,7 +53,7 @@ type SqlTableConstraint
 type SqlTableDefinition {
   name: SqlIdentifier,
   columns: List<SqlColumnDefinition>,
-  primary_key: Optional<List<SqlIdentifier>>,
+  primary_key: v2.std.optional.Optional<List<SqlIdentifier>>,
   table_constraints: List<SqlTableConstraint>,
 }
 
@@ -174,58 +174,58 @@ data sql_nonnumeric_facts_catalog: List<SqlNonNumericPrimitiveFacts> = [
   sql_facts_timestamp_with_time_zone,
 ]
 
-fn sql_inhabitant_atom(id: v2.std.node.Symbol) -> Node {
+fn sql_inhabitant_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-fn sql_integer_facts_node(facts: SqlIntegerPrimitiveFacts) -> Node {
+fn sql_integer_facts_node(facts: SqlIntegerPrimitiveFacts) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      dag_named_edge(
+      v2.extdeps.languages.dag.dag_named_edge(
         name: discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}),
         target: sql_inhabitant_atom(id: facts.surface_spelling),
       ),
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-fn sql_float_facts_node(facts: SqlFloatPrimitiveFacts) -> Node {
+fn sql_float_facts_node(facts: SqlFloatPrimitiveFacts) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      dag_named_edge(
+      v2.extdeps.languages.dag.dag_named_edge(
         name: discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}),
         target: sql_inhabitant_atom(id: facts.surface_spelling),
       ),
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-fn sql_nonnumeric_facts_node(facts: SqlNonNumericPrimitiveFacts) -> Node {
+fn sql_nonnumeric_facts_node(facts: SqlNonNumericPrimitiveFacts) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      dag_named_edge(
+      v2.extdeps.languages.dag.dag_named_edge(
         name: discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}),
         target: sql_inhabitant_atom(id: facts.surface_spelling),
       ),
-      dag_named_edge(
+      v2.extdeps.languages.dag.dag_named_edge(
         name: discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}),
         target: sql_inhabitant_atom(id: facts.representation),
       ),
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-fn sql_integer_spec_facts(facts: SqlIntegerPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
+fn sql_integer_spec_facts(facts: SqlIntegerPrimitiveFacts) -> Map<v2.std.node.Symbol, v2.std.node.Node> {
   std.types.Map {
     lookup: fn(axis) {
       if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
@@ -239,7 +239,7 @@ fn sql_integer_spec_facts(facts: SqlIntegerPrimitiveFacts) -> Map<v2.std.node.Sy
   }
 }
 
-fn sql_float_spec_facts(facts: SqlFloatPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
+fn sql_float_spec_facts(facts: SqlFloatPrimitiveFacts) -> Map<v2.std.node.Symbol, v2.std.node.Node> {
   std.types.Map {
     lookup: fn(axis) {
       if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
@@ -251,7 +251,7 @@ fn sql_float_spec_facts(facts: SqlFloatPrimitiveFacts) -> Map<v2.std.node.Symbol
   }
 }
 
-fn sql_nonnumeric_spec_facts(facts: SqlNonNumericPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
+fn sql_nonnumeric_spec_facts(facts: SqlNonNumericPrimitiveFacts) -> Map<v2.std.node.Symbol, v2.std.node.Node> {
   std.types.Map {
     lookup: fn(axis) {
       if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
@@ -289,7 +289,7 @@ fn sql_primitive_bundle_from_nonnumeric_facts(
 }
 
 fn sql_list_reverse<T>(xs: List<T>) -> List<T> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: xs,
     empty: std.algebra.Empty,
     cons: fn(acc, item) {
@@ -300,7 +300,7 @@ fn sql_list_reverse<T>(xs: List<T>) -> List<T> {
 
 fn sql_list_map<T, U>(xs: List<T>, f: fn(T) -> U) -> List<U> {
   sql_list_reverse(
-    xs: fold_list(
+    xs: v2.std.algebra.fold_list(
       xs: xs,
       empty: std.algebra.Empty,
       cons: fn(acc, item) {
@@ -332,8 +332,8 @@ fn sql_primitive_bundles_from_nonnumeric_catalog() -> List<v2.std.model_core.Pri
 }
 
 fn sql_primitive_fact_bundles() -> List<v2.std.model_core.PrimitiveFactBundle> {
-  list_append(
-    left: list_append(
+  v2.std.algebra.list_append(
+    left: v2.std.algebra.list_append(
       left: sql_primitive_bundles_from_integer_catalog(),
       right: sql_primitive_bundles_from_float_catalog()
     ),
@@ -355,59 +355,59 @@ fn sql_join_strings(separator: String, parts: List<String>) -> String {
   })
 }
 
-data sql_serialize_diagnostic_anchor: Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Conj },
+data sql_serialize_diagnostic_anchor: v2.std.node.Node = v2.std.node.Node {
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 fn sql_serialize_unsupported_operation_diagnostic(variant: v2.std.node.Symbol) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: variant,
-    at: node_locus(node: sql_serialize_diagnostic_anchor),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: sql_serialize_diagnostic_anchor),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
 fn sql_serialize_unsupported_data_type_diagnostic(variant: v2.std.node.Symbol) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: variant,
-    at: node_locus(node: sql_serialize_diagnostic_anchor),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: sql_serialize_diagnostic_anchor),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
 data sql_serialize_policy: v2.std.diagnostic.StageDiagnosticPolicy = v2.std.diagnostic.StageDiagnosticPolicy {
-  accumulation: ShortCircuit
+  accumulation: v2.std.diagnostic.ShortCircuit
 }
 
-fn sql_serialize_data_type(dt: SqlDataType) -> Outcome<String> {
+fn sql_serialize_data_type(dt: SqlDataType) -> v2.std.diagnostic.Outcome<String> {
   match dt {
-    SqlTypeBoolean => outcome_accepted(value: "BOOLEAN")
-    SqlTypeSmallInt => outcome_accepted(value: "SMALLINT")
-    SqlTypeInteger => outcome_accepted(value: "INTEGER")
-    SqlTypeBigInt => outcome_accepted(value: "BIGINT")
-    SqlTypeReal => outcome_accepted(value: "REAL")
-    SqlTypeDoublePrecision => outcome_accepted(value: "DOUBLE PRECISION")
+    SqlTypeBoolean => v2.std.diagnostic.outcome_accepted(value: "BOOLEAN")
+    SqlTypeSmallInt => v2.std.diagnostic.outcome_accepted(value: "SMALLINT")
+    SqlTypeInteger => v2.std.diagnostic.outcome_accepted(value: "INTEGER")
+    SqlTypeBigInt => v2.std.diagnostic.outcome_accepted(value: "BIGINT")
+    SqlTypeReal => v2.std.diagnostic.outcome_accepted(value: "REAL")
+    SqlTypeDoublePrecision => v2.std.diagnostic.outcome_accepted(value: "DOUBLE PRECISION")
     SqlTypeNumeric { precision: _, scale: _ } =>
-      outcome_rejected(d: sql_serialize_unsupported_data_type_diagnostic(variant: ^sql_serialize_type_numeric))
+      v2.std.diagnostic.outcome_rejected(d: sql_serialize_unsupported_data_type_diagnostic(variant: ^sql_serialize_type_numeric))
     SqlTypeCharacter { length: _ } =>
-      outcome_rejected(d: sql_serialize_unsupported_data_type_diagnostic(variant: ^sql_serialize_type_character))
+      v2.std.diagnostic.outcome_rejected(d: sql_serialize_unsupported_data_type_diagnostic(variant: ^sql_serialize_type_character))
     SqlTypeCharacterVarying { length: _ } =>
-      outcome_rejected(d: sql_serialize_unsupported_data_type_diagnostic(variant: ^sql_serialize_type_character_varying))
-    SqlTypeCharacterLargeObject => outcome_accepted(value: "TEXT")
-    SqlTypeDate => outcome_accepted(value: "DATE")
-    SqlTypeTime => outcome_accepted(value: "TIME")
-    SqlTypeTimestamp => outcome_accepted(value: "TIMESTAMP")
-    SqlTypeTimestampWithTimeZone => outcome_accepted(value: "TIMESTAMP WITH TIME ZONE")
+      v2.std.diagnostic.outcome_rejected(d: sql_serialize_unsupported_data_type_diagnostic(variant: ^sql_serialize_type_character_varying))
+    SqlTypeCharacterLargeObject => v2.std.diagnostic.outcome_accepted(value: "TEXT")
+    SqlTypeDate => v2.std.diagnostic.outcome_accepted(value: "DATE")
+    SqlTypeTime => v2.std.diagnostic.outcome_accepted(value: "TIME")
+    SqlTypeTimestamp => v2.std.diagnostic.outcome_accepted(value: "TIMESTAMP")
+    SqlTypeTimestampWithTimeZone => v2.std.diagnostic.outcome_accepted(value: "TIMESTAMP WITH TIME ZONE")
   }
 }
 
-fn sql_serialize_column_definition(col: SqlColumnDefinition) -> Outcome<String> {
-  bind_outcome(
+fn sql_serialize_column_definition(col: SqlColumnDefinition) -> v2.std.diagnostic.Outcome<String> {
+  v2.std.diagnostic.bind_outcome(
     o: sql_serialize_data_type(dt: col.data_type),
     f: fn(type_spelling) {
-      outcome_accepted(value: concat(
+      v2.std.diagnostic.outcome_accepted(value: concat(
         sql_serialize_identifier(id: col.name),
         concat(
           " ",
@@ -421,12 +421,12 @@ fn sql_serialize_column_definition(col: SqlColumnDefinition) -> Outcome<String> 
   )
 }
 
-fn sql_serialize_column_definition_strings(cols: List<SqlColumnDefinition>) -> Outcome<List<String>> {
+fn sql_serialize_column_definition_strings(cols: List<SqlColumnDefinition>) -> v2.std.diagnostic.Outcome<List<String>> {
   fold(
     cols,
-    init: outcome_accepted(value: std.algebra.Empty),
+    init: v2.std.diagnostic.outcome_accepted(value: std.algebra.Empty),
     f: fn(acc, col) {
-      append_outcome_value(
+      v2.std.diagnostic.append_outcome_value(
         acc: acc,
         child: sql_serialize_column_definition(col: col),
         policy: sql_serialize_policy
@@ -435,11 +435,11 @@ fn sql_serialize_column_definition_strings(cols: List<SqlColumnDefinition>) -> O
   )
 }
 
-fn sql_serialize_column_definitions(cols: List<SqlColumnDefinition>) -> Outcome<String> {
-  bind_outcome(
+fn sql_serialize_column_definitions(cols: List<SqlColumnDefinition>) -> v2.std.diagnostic.Outcome<String> {
+  v2.std.diagnostic.bind_outcome(
     o: sql_serialize_column_definition_strings(cols: cols),
     f: fn(parts) {
-      outcome_accepted(value: sql_join_strings(separator: ", ", parts: parts))
+      v2.std.diagnostic.outcome_accepted(value: sql_join_strings(separator: ", ", parts: parts))
     }
   )
 }
@@ -455,9 +455,9 @@ fn sql_serialize_identifier_list(ids: List<SqlIdentifier>) -> String {
   )
 }
 
-fn sql_serialize_primary_key_clause(pk: Optional<List<SqlIdentifier>>) -> String {
+fn sql_serialize_primary_key_clause(pk: v2.std.optional.Optional<List<SqlIdentifier>>) -> String {
   match pk {
-    Absent => ""
+    v2.std.optional.Absent => ""
     v2.std.optional.Present { value: cols } =>
       concat(
         ", PRIMARY KEY (",
@@ -469,11 +469,11 @@ fn sql_serialize_primary_key_clause(pk: Optional<List<SqlIdentifier>>) -> String
   }
 }
 
-fn sql_serialize_table_definition(table: SqlTableDefinition) -> Outcome<String> {
-  bind_outcome(
+fn sql_serialize_table_definition(table: SqlTableDefinition) -> v2.std.diagnostic.Outcome<String> {
+  v2.std.diagnostic.bind_outcome(
     o: sql_serialize_column_definitions(cols: table.columns),
     f: fn(column_defs) {
-      outcome_accepted(value: concat(
+      v2.std.diagnostic.outcome_accepted(value: concat(
         "CREATE TABLE ",
         concat(
           sql_serialize_identifier(id: table.name),
@@ -493,25 +493,25 @@ fn sql_serialize_table_definition(table: SqlTableDefinition) -> Outcome<String> 
   )
 }
 
-fn sql_serialize_schema_operation(op: SqlSchemaOperation) -> Outcome<String> {
+fn sql_serialize_schema_operation(op: SqlSchemaOperation) -> v2.std.diagnostic.Outcome<String> {
   match op {
     SqlCreateTable { table: t } =>
       sql_serialize_table_definition(table: t)
     SqlRawStep { statement: s } =>
-      outcome_accepted(value: s)
+      v2.std.diagnostic.outcome_accepted(value: s)
     SqlDropTable { table_name: _ } =>
-      outcome_rejected(d: sql_serialize_unsupported_operation_diagnostic(variant: ^sql_serialize_op_drop_table))
+      v2.std.diagnostic.outcome_rejected(d: sql_serialize_unsupported_operation_diagnostic(variant: ^sql_serialize_op_drop_table))
     SqlAddColumn { table_name: _, column: _ } =>
-      outcome_rejected(d: sql_serialize_unsupported_operation_diagnostic(variant: ^sql_serialize_op_add_column))
+      v2.std.diagnostic.outcome_rejected(d: sql_serialize_unsupported_operation_diagnostic(variant: ^sql_serialize_op_add_column))
     SqlDropColumn { table_name: _, column_name: _ } =>
-      outcome_rejected(d: sql_serialize_unsupported_operation_diagnostic(variant: ^sql_serialize_op_drop_column))
+      v2.std.diagnostic.outcome_rejected(d: sql_serialize_unsupported_operation_diagnostic(variant: ^sql_serialize_op_drop_column))
     SqlAlterTableConstraint { table_name: _, constraint: _ } =>
-      outcome_rejected(d: sql_serialize_unsupported_operation_diagnostic(variant: ^sql_serialize_op_alter_table_constraint))
+      v2.std.diagnostic.outcome_rejected(d: sql_serialize_unsupported_operation_diagnostic(variant: ^sql_serialize_op_alter_table_constraint))
     SqlCreateIndex { index_name: _, table_name: _, columns: _ } =>
-      outcome_rejected(d: sql_serialize_unsupported_operation_diagnostic(variant: ^sql_serialize_op_create_index))
+      v2.std.diagnostic.outcome_rejected(d: sql_serialize_unsupported_operation_diagnostic(variant: ^sql_serialize_op_create_index))
     SqlDropIndex { index_name: _ } =>
-      outcome_rejected(d: sql_serialize_unsupported_operation_diagnostic(variant: ^sql_serialize_op_drop_index))
+      v2.std.diagnostic.outcome_rejected(d: sql_serialize_unsupported_operation_diagnostic(variant: ^sql_serialize_op_drop_index))
     SqlAlterTableRaw { table_name: _, alteration: _ } =>
-      outcome_rejected(d: sql_serialize_unsupported_operation_diagnostic(variant: ^sql_serialize_op_alter_table_raw))
+      v2.std.diagnostic.outcome_rejected(d: sql_serialize_unsupported_operation_diagnostic(variant: ^sql_serialize_op_alter_table_raw))
   }
 }

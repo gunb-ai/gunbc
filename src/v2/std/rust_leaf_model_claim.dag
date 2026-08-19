@@ -13,14 +13,14 @@ data rust_leaf_phase1_algebra_carrier_ordered_ring: AlgebraCarrier = AlgebraCarr
 type RustClaimSubject
   = RustPrimitiveTypeSubject { primitive: RustPrimitive }
   | RustAlgebraInhabitanceSubject { inhabitance_decl: v2.std.model_core.AlgebraInhabitanceDecl }
-  | RustAtomRealizationSubject { atom: Node }
+  | RustAtomRealizationSubject { atom: v2.std.node.Node }
 
   | RustAtomRealizationProjectionMismatchSubject {
-      atom: Node
+      atom: v2.std.node.Node
       declared_type_form: v2.std.node.Symbol
       exercised_value_form: v2.std.node.Symbol
     }
-  | RustCollectionRealizationSubject { collection: Node }
+  | RustCollectionRealizationSubject { collection: v2.std.node.Node }
   | RustGrammarProductionSubject { production: v2.std.grammar.GrammarProduction }
   | RustLexRuleSubject { rule: v2.std.compilers.lexing.LexRule }
 
@@ -46,7 +46,7 @@ type RustClaimExpectation
       expected_outcome: v2.std.runtime.RuntimeOutcome
     }
   | RustEmitProjectionEqualityExpectation {
-      atom_realization_row: Node
+      atom_realization_row: v2.std.node.Node
       type_emit_must_change: Bool
       value_emit_must_change: Bool
     }

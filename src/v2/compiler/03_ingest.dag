@@ -1,16 +1,16 @@
 module v2.compiler.ingest
 
 
-data ingest_module_note: String = "Gate-A flip wave lane: v2.compiler.ingest is the parse-tree-to-target bridge (neutralize → infer → emit over CoreNode). Curated seed-linked behavioral receipt compares this module-authority constant until full ingest-tree oracle greens under std_dup-resolved cargo."
+data ingest_module_note: String = "Gate-A flip wave lane: v2.compiler.ingest is the parse-tree-to-target bridge (neutralize → v2.compiler.infer.infer → v2.compiler.emit.emit over v2.compiler.compile.CoreNode). Curated seed-linked behavioral receipt compares this module-authority constant until full ingest-tree oracle greens under std_dup-resolved cargo."
 
 fn parse_atom_frontier_class(atom_identity: v2.std.node.Symbol, binding_to_class: Map<v2.std.node.Symbol, v2.std.node.Symbol>) -> v2.std.node.Symbol {
   match v2.std.collection.map_get(binding_to_class, atom_identity) {
-    Accepted { value: opt, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: opt, diagnostics: _ } =>
       match opt {
-        Present { value: token_class } => token_class
-        Absent => atom_identity
+        v2.std.collection.Present { value: token_class } => token_class
+        v2.std.collection.Absent => atom_identity
       }
-    Rejected { diagnostics: _ } => atom_identity
+    v2.std.diagnostic.Rejected { diagnostics: _ } => atom_identity
   }
 }
 
@@ -23,8 +23,8 @@ fn binding_class_map_merge_tokens(
     init: acc,
     f: fn(a, t) {
       match t {
-        BoundToken { token_class: c, binding: b } => map_insert(m: a, key: b, value: c)
-        FixedToken { token_class: _ } => a
+        v2.std.compilers.target_model.BoundToken { token_class: c, binding: b } => v2.std.collection.map_insert(m: a, key: b, value: c)
+        v2.std.compilers.target_model.FixedToken { token_class: _ } => a
       }
     }
   )
@@ -32,34 +32,34 @@ fn binding_class_map_merge_tokens(
 
 fn binding_class_map_merge_row(acc: Map<v2.std.node.Symbol, v2.std.node.Symbol>, row: v2.std.node.Node) -> std.types.Map<v2.std.node.Symbol, v2.std.node.Symbol> {
   match row_token_spine_tokens(row: row) {
-    Rejected { diagnostics: _ } => acc
-    Accepted { value: tokens, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } => acc
+    v2.std.diagnostic.Accepted { value: tokens, diagnostics: _ } =>
       binding_class_map_merge_tokens(acc: acc, tokens: tokens)
   }
 }
 
 fn grammar_relation_binding_to_token_class_map(rules: v2.std.node.Node) -> std.types.Map<v2.std.node.Symbol, v2.std.node.Symbol> {
   match rules.kind {
-    TypeNode { connective: Conj } =>
+    v2.std.node.TypeNode { connective: v2.std.node.Conj } =>
       fold(
         rules.children,
-        init: empty_map(),
+        init: v2.std.collection.empty_map(),
         f: fn(acc, e) {
           match e.label {
-            Named { name: _ } => binding_class_map_merge_row(acc: acc, row: e.target)
-            Positional => acc
+            v2.std.node.Named { name: _ } => binding_class_map_merge_row(acc: acc, row: e.target)
+            v2.std.node.Positional => acc
           }
         }
       )
-    _ => empty_map()
+    _ => v2.std.collection.empty_map()
   }
 }
 
 fn row_token_spine_tokens(row: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
-  bind_outcome(
-    o: find_named_child(root: row, name: ^grammar_relation_field_tokens),
+  v2.std.diagnostic.bind_outcome(
+    o: v2.std.node_query.find_named_child(root: row, name: ^grammar_relation_field_tokens),
     f: fn(tokens_root) {
-      concrete_syntax_token_list_from_node(list_node: tokens_root)
+      v2.std.compilers.target_model.concrete_syntax_token_list_from_node(list_node: tokens_root)
     }
   )
 }
@@ -68,23 +68,23 @@ fn operational_parse_tree_project_to_formal_captures(
   captured: v2.std.node.Node,
   binding_to_class: Map<v2.std.node.Symbol, v2.std.node.Symbol>
 ) -> v2.std.collection.List<v2.std.node.Symbol> {
-  match node_atom_identity_optional(node: captured) {
-    Present { value: id } =>
-      list_append(
+  match v2.std.grammar.node_atom_identity_optional(node: captured) {
+    v2.std.collection.Present { value: id } =>
+      v2.std.algebra.list_append(
         left: std.algebra.Empty,
         right: [parse_atom_frontier_class(atom_identity: id, binding_to_class: binding_to_class)]
       )
-    Absent =>
+    v2.std.collection.Absent =>
       fold(
         captured.children,
         init: std.algebra.Empty,
         f: fn(acc, edge) {
           match edge.label {
-            Named { name: n } =>
+            v2.std.node.Named { name: n } =>
               if n == ^grammar_production_identity_node_projection {
                 acc
               } else {
-                list_append(
+                v2.std.algebra.list_append(
                   left: acc,
                   right: operational_parse_tree_project_to_formal_captures(
                     captured: edge.target,
@@ -92,8 +92,8 @@ fn operational_parse_tree_project_to_formal_captures(
                   )
                 )
               }
-            Positional =>
-              list_append(
+            v2.std.node.Positional =>
+              v2.std.algebra.list_append(
                 left: acc,
                 right: operational_parse_tree_project_to_formal_captures(
                   captured: edge.target,
@@ -107,7 +107,7 @@ fn operational_parse_tree_project_to_formal_captures(
 }
 
 fn grammar_relation_row_forward_selection(frontier: List<v2.std.node.Symbol>, rules: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
-  grammar_relation_row_forward_token_spine_selection(frontier: frontier, rules: rules)
+  v2.std.grammar.grammar_relation_row_forward_token_spine_selection(frontier: frontier, rules: rules)
 }
 
 fn concrete_syntax_token_spine_classes(tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> v2.std.collection.List<v2.std.node.Symbol> {
@@ -115,7 +115,7 @@ fn concrete_syntax_token_spine_classes(tokens: List<v2.std.compilers.target_mode
     tokens,
     init: std.algebra.Empty,
     f: fn(acc, t) {
-      list_append(left: acc, right: [concrete_syntax_token_class(token: t)])
+      v2.std.algebra.list_append(left: acc, right: [v2.std.compilers.target_model.concrete_syntax_token_class(token: t)])
     }
   )
 }
@@ -127,19 +127,19 @@ fn grammar_relation_row_forward_token_selection(
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   let frontier = concrete_syntax_token_spine_classes(tokens: tokens)
   match grammar_relation_row_forward_selection(frontier: frontier, rules: rules) {
-    Accepted { value: emitted, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: emitted, diagnostics: d } =>
       v2.std.diagnostic.Accepted { value: emitted, diagnostics: d }
-    Rejected { diagnostics: _ } =>
-      bind_outcome(
-        o: grammar_relation_rules_formal_productions(rules: rules),
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
+      v2.std.diagnostic.bind_outcome(
+        o: v2.std.grammar.grammar_relation_rules_formal_productions(rules: rules),
         f: fn(productions) {
-          match grammar_relation_emitted_rebuild_from_token_spine(
+          match v2.std.grammar.grammar_relation_emitted_rebuild_from_token_spine(
             productions: productions,
             lhs: start_lhs,
             tokens: tokens
           ) {
-            Holds { value: emitted } => outcome_accepted(value: emitted)
-            Violates { diagnostic: d } => outcome_rejected(d)
+            v2.std.witness.Holds { value: emitted } => v2.std.diagnostic.outcome_accepted(value: emitted)
+            v2.std.witness.Violates { diagnostic: d } => v2.std.diagnostic.outcome_rejected(d)
           }
         }
       )
@@ -147,8 +147,8 @@ fn grammar_relation_row_forward_token_selection(
 }
 
 fn parse_tree_to_emitted_node(parse_tree: v2.std.grammar.ParseTree, source_model: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
-  bind_outcome(
-    o: target_bundle_child(target: source_model, edge_name: ^target_model_edge_translation_rules),
+  v2.std.diagnostic.bind_outcome(
+    o: v2.compiler.translate.target_bundle_child(target: source_model, edge_name: ^target_model_edge_translation_rules),
     f: fn(rules) {
       let binding_to_class = grammar_relation_binding_to_token_class_map(rules: rules)
       let frontier = operational_parse_tree_project_to_formal_captures(
@@ -161,15 +161,15 @@ fn parse_tree_to_emitted_node(parse_tree: v2.std.grammar.ParseTree, source_model
 }
 
 fn parse_tree_to_target_model_bridge(parse_tree: v2.std.grammar.ParseTree, source_model: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<v2.compiler.compile.CoreNode> {
-  bind_outcome(
+  v2.std.diagnostic.bind_outcome(
     o: parse_tree_to_emitted_node(parse_tree: parse_tree, source_model: source_model),
     f: fn(emitted) {
-      bind_outcome(
-        o: infer(tree: emitted),
+      v2.std.diagnostic.bind_outcome(
+        o: v2.compiler.infer.infer(tree: emitted),
         f: fn(inferred) {
-          bind_outcome(
-            o: coerce_grounded_node(source: emitted, tree: inferred, target: source_model),
-            f: fn(result) { outcome_accepted(value: result.target) }
+          v2.std.diagnostic.bind_outcome(
+            o: v2.compiler.translate.coerce_grounded_node(source: emitted, tree: inferred, target: source_model),
+            f: fn(result) { v2.std.diagnostic.outcome_accepted(value: result.target) }
           )
         }
       )
@@ -181,15 +181,15 @@ fn cross_language_compile(
   parse_tree: v2.std.grammar.ParseTree,
   source_model: v2.std.compilers.target_model.TargetModel,
   target_model: v2.std.compilers.target_model.TargetModel
-) -> v2.std.diagnostic.Outcome<Medium<String>> {
-  bind_outcome(
+) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
+  v2.std.diagnostic.bind_outcome(
     o: parse_tree_to_target_model_bridge(parse_tree: parse_tree, source_model: source_model),
     f: fn(core) {
-      bind_outcome(
-        o: neutralize_core_for_target(core: core, target: target_model),
+      v2.std.diagnostic.bind_outcome(
+        o: v2.std.inhabitant_neutralization.neutralize_core_for_target(core: core, target: target_model),
         f: fn(neutralized) {
-          bind_outcome(
-            o: infer(tree: neutralized),
+          v2.std.diagnostic.bind_outcome(
+            o: v2.compiler.infer.infer(tree: neutralized),
             f: fn(inferred) {
               v2.compiler.emit.emit(tree: inferred, target: target_model)
             }

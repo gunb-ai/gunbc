@@ -19,7 +19,7 @@ fn tokenize_lex_e0_source_not_exhausted_diagnostic(at: v2.std.diagnostic.Locus) 
   v2.std.diagnostic.Diagnostic {
     reason: ^tokenize_lex_e0_source_not_exhausted,
     at: at,
-    correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.UserInputBoundary }
   }
 }
 
@@ -27,55 +27,55 @@ fn tokenize_lex_e1_unrecognized_char_diagnostic(at: v2.std.diagnostic.Locus) -> 
   v2.std.diagnostic.Diagnostic {
     reason: ^tokenize_lex_e1_unrecognized_char,
     at: at,
-    correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.UserInputBoundary }
   }
 }
 
 fn char_in_class(c: std.types.Char, class: v2.std.compilers.lexing.LexCharClass) -> Bool {
   match class {
-    WhitespaceChar =>
+    v2.std.compilers.lexing.WhitespaceChar =>
       c == 32 || c == 9 || c == 10 || c == 13
-    DigitChar =>
-      nat_gte(a: c, b: 48) && nat_lte(a: c, b: 57)
-    HexDigitChar =>
-      (nat_gte(a: c, b: 48) && nat_lte(a: c, b: 57)) ||
-      (nat_gte(a: c, b: 65) && nat_lte(a: c, b: 70)) ||
-      (nat_gte(a: c, b: 97) && nat_lte(a: c, b: 102))
-    IdentStartChar =>
-      (nat_gte(a: c, b: 65) && nat_lte(a: c, b: 90)) ||
-      (nat_gte(a: c, b: 97) && nat_lte(a: c, b: 122)) ||
+    v2.std.compilers.lexing.DigitChar =>
+      v2.std.nat.nat_gte(a: c, b: 48) && v2.std.nat.nat_lte(a: c, b: 57)
+    v2.std.compilers.lexing.HexDigitChar =>
+      (v2.std.nat.nat_gte(a: c, b: 48) && v2.std.nat.nat_lte(a: c, b: 57)) ||
+      (v2.std.nat.nat_gte(a: c, b: 65) && v2.std.nat.nat_lte(a: c, b: 70)) ||
+      (v2.std.nat.nat_gte(a: c, b: 97) && v2.std.nat.nat_lte(a: c, b: 102))
+    v2.std.compilers.lexing.IdentStartChar =>
+      (v2.std.nat.nat_gte(a: c, b: 65) && v2.std.nat.nat_lte(a: c, b: 90)) ||
+      (v2.std.nat.nat_gte(a: c, b: 97) && v2.std.nat.nat_lte(a: c, b: 122)) ||
       c == 95
-    IdentContinueChar =>
-      (nat_gte(a: c, b: 65) && nat_lte(a: c, b: 90)) ||
-      (nat_gte(a: c, b: 97) && nat_lte(a: c, b: 122)) ||
+    v2.std.compilers.lexing.IdentContinueChar =>
+      (v2.std.nat.nat_gte(a: c, b: 65) && v2.std.nat.nat_lte(a: c, b: 90)) ||
+      (v2.std.nat.nat_gte(a: c, b: 97) && v2.std.nat.nat_lte(a: c, b: 122)) ||
       c == 95 ||
-      (nat_gte(a: c, b: 48) && nat_lte(a: c, b: 57))
-    StringTextChar =>
+      (v2.std.nat.nat_gte(a: c, b: 48) && v2.std.nat.nat_lte(a: c, b: 57))
+    v2.std.compilers.lexing.StringTextChar =>
       c != 34 && c != 10
-    LineCommentTextChar =>
+    v2.std.compilers.lexing.LineCommentTextChar =>
       c != 10
-    BlockCommentTextChar =>
+    v2.std.compilers.lexing.BlockCommentTextChar =>
       c != 42
   }
 }
 
 fn lex_strip_prefix(prefix: String, source: String) -> v2.std.algebra.ListTailResult<std.types.Char> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: prefix,
     empty: v2.std.algebra.TailFound { tail: source },
     cons: fn(acc, _) {
       match acc {
         v2.std.algebra.TailAbsent => v2.std.algebra.TailAbsent
-        TailFound { tail: r } => list_tail(xs: r)
+        v2.std.algebra.TailFound { tail: r } => v2.std.algebra.list_tail(xs: r)
       }
     }
   )
 }
 
 fn lex_match_prefix(prefix: String, source: String) -> v2.compiler.tokenize.LexMatchResult {
-  if is_prefix_of(prefix: prefix, xs: source, eq: fn(a, b) { a == b }) {
+  if v2.std.algebra.is_prefix_of(prefix: prefix, xs: source, eq: fn(a, b) { a == b }) {
     match lex_strip_prefix(prefix: prefix, source: source) {
-      TailFound { tail: rem } => LexMatchAccepted { remaining: rem, lexeme: prefix }
+      v2.std.algebra.TailFound { tail: rem } => LexMatchAccepted { remaining: rem, lexeme: prefix }
       v2.std.algebra.TailAbsent => LexMatchRejected
     }
   } else {
@@ -98,23 +98,23 @@ type DelimitedState {
 
 fn lex_rule_pattern(rule: v2.std.compilers.lexing.LexRule) -> v2.std.compilers.lexing.LexPattern {
   match rule {
-    TokenRule { token_class: _, pattern: p } => p
-    TriviaRule { pattern: p } => p
-    AnnotationRule { annotation_class: _, pattern: p } => p
+    v2.std.compilers.lexing.TokenRule { token_class: _, pattern: p } => p
+    v2.std.compilers.lexing.TriviaRule { pattern: p } => p
+    v2.std.compilers.lexing.AnnotationRule { annotation_class: _, pattern: p } => p
   }
 }
 
 fn lex_match_char_pred(pred: fn(Char) -> Bool, source: String) -> v2.compiler.tokenize.LexMatchResult {
-  match string_is_empty(s: source) {
+  match v2.std.text.string_is_empty(s: source) {
     true => LexMatchRejected
     false =>
-      match string_head(s: source) {
-        CharAbsent => LexMatchRejected
-        CharFound { value: c } =>
+      match v2.std.text.string_head(s: source) {
+        v2.std.text.CharAbsent => LexMatchRejected
+        v2.std.text.CharFound { value: c } =>
           match pred(c) {
             true =>
-              match string_tail(s: source) {
-                TailFound { tail: rest } =>
+              match v2.std.text.string_tail(s: source) {
+                v2.std.algebra.TailFound { tail: rest } =>
                   LexMatchAccepted { remaining: rest, lexeme: std.algebra.Cons { head: c, tail: std.algebra.Empty } }
                 v2.std.algebra.TailAbsent => LexMatchRejected
               }
@@ -132,7 +132,7 @@ fn lex_repeat_step(elem_r: v2.compiler.tokenize.LexMatchThunk, state: v2.compile
         LexMatchRejected =>
           RepeatState { remaining: state.remaining, lexeme: state.lexeme, done: true }
         LexMatchAccepted { remaining: rest, lexeme: consumed } =>
-          match string_is_empty(s: consumed) {
+          match v2.std.text.string_is_empty(s: consumed) {
             true =>
               RepeatState { remaining: state.remaining, lexeme: state.lexeme, done: true }
             false =>
@@ -140,7 +140,7 @@ fn lex_repeat_step(elem_r: v2.compiler.tokenize.LexMatchThunk, state: v2.compile
                 elem_r: elem_r,
                 state: v2.compiler.tokenize.RepeatState {
                   remaining: rest,
-                  lexeme: list_append(left: state.lexeme, right: consumed),
+                  lexeme: v2.std.algebra.list_append(left: state.lexeme, right: consumed),
                   done: false
                 }
               )
@@ -161,7 +161,7 @@ fn lex_delimited_step(close_r: v2.compiler.tokenize.LexMatchThunk, body_r: v2.co
         LexMatchAccepted { remaining: after_close, lexeme: close_lex } =>
           DelimitedState {
             remaining: after_close,
-            lexeme: list_append(left: state.lexeme, right: close_lex),
+            lexeme: v2.std.algebra.list_append(left: state.lexeme, right: close_lex),
             done: true,
             failed: false
           }
@@ -170,7 +170,7 @@ fn lex_delimited_step(close_r: v2.compiler.tokenize.LexMatchThunk, body_r: v2.co
             LexMatchRejected =>
               DelimitedState { remaining: state.remaining, lexeme: state.lexeme, done: true, failed: true }
             LexMatchAccepted { remaining: after_body, lexeme: body_lex } =>
-              match string_is_empty(s: body_lex) {
+              match v2.std.text.string_is_empty(s: body_lex) {
                 true =>
                   DelimitedState { remaining: state.remaining, lexeme: state.lexeme, done: true, failed: true }
                 false =>
@@ -179,7 +179,7 @@ fn lex_delimited_step(close_r: v2.compiler.tokenize.LexMatchThunk, body_r: v2.co
                     body_r: body_r,
                     state: v2.compiler.tokenize.DelimitedState {
                       remaining: after_body,
-                      lexeme: list_append(left: state.lexeme, right: body_lex),
+                      lexeme: v2.std.algebra.list_append(left: state.lexeme, right: body_lex),
                       done: false,
                       failed: false
                     }
@@ -196,7 +196,7 @@ type CompiledLexRule {
 }
 
 fn lex_rule_thunk(rule: v2.std.compilers.lexing.LexRule) -> v2.compiler.tokenize.LexMatchThunk {
-  fold_lex_pattern(
+  v2.std.compilers.lexing.fold_lex_pattern(
     pattern: lex_rule_pattern(rule: rule),
     algebra: v2.std.compilers.lexing.LexPatternFold {
       empty: v2.compiler.tokenize.LexMatchThunk { apply: fn(s) {
@@ -213,13 +213,13 @@ fn lex_rule_thunk(rule: v2.std.compilers.lexing.LexRule) -> v2.compiler.tokenize
           match lex_match_prefix(prefix: text, source: s) {
             LexMatchRejected => LexMatchRejected
             LexMatchAccepted { remaining: rest, lexeme: lex } =>
-              match string_is_empty(s: rest) {
+              match v2.std.text.string_is_empty(s: rest) {
                 true => LexMatchAccepted { remaining: rest, lexeme: lex }
                 false =>
-                  match string_head(s: rest) {
-                    CharAbsent => LexMatchAccepted { remaining: rest, lexeme: lex }
-                    CharFound { value: c } =>
-                      match v2.compiler.tokenize.char_in_class(c: c, class: IdentContinueChar) {
+                  match v2.std.text.string_head(s: rest) {
+                    v2.std.text.CharAbsent => LexMatchAccepted { remaining: rest, lexeme: lex }
+                    v2.std.text.CharFound { value: c } =>
+                      match v2.compiler.tokenize.char_in_class(c: c, class: v2.std.compilers.lexing.IdentContinueChar) {
                         true => LexMatchRejected
                         false => LexMatchAccepted { remaining: rest, lexeme: lex }
                       }
@@ -242,7 +242,7 @@ fn lex_rule_thunk(rule: v2.std.compilers.lexing.LexRule) -> v2.compiler.tokenize
               match right_r.apply(rest1) {
                 LexMatchRejected => LexMatchRejected
                 LexMatchAccepted { remaining: rest2, lexeme: lex2 } =>
-                  LexMatchAccepted { remaining: rest2, lexeme: list_append(left: lex1, right: lex2) }
+                  LexMatchAccepted { remaining: rest2, lexeme: v2.std.algebra.list_append(left: lex1, right: lex2) }
               }
           }
         } }
@@ -312,18 +312,18 @@ fn lex_try_compiled(compiled: v2.compiler.tokenize.CompiledLexRule, source: Stri
     LexMatchRejected => LexRuleNoMatch
     LexMatchAccepted { remaining: remaining, lexeme: lexeme } =>
       match compiled.rule {
-        TokenRule { token_class: class, pattern: _ } =>
+        v2.std.compilers.lexing.TokenRule { token_class: class, pattern: _ } =>
           LexRuleToken { class: class, lexeme: lexeme, remaining: remaining }
-        TriviaRule { pattern: _ } =>
+        v2.std.compilers.lexing.TriviaRule { pattern: _ } =>
           LexRuleTrivia { lexeme: lexeme, remaining: remaining }
-        AnnotationRule { annotation_class: class, pattern: _ } =>
+        v2.std.compilers.lexing.AnnotationRule { annotation_class: class, pattern: _ } =>
           LexRuleAnnotation { class: class, lexeme: lexeme, remaining: remaining }
       }
   }
 }
 
 fn lex_compile_rules(rules: List<v2.std.compilers.lexing.LexRule>) -> v2.std.collection.List<v2.compiler.tokenize.CompiledLexRule> {
-  let reversed = fold_list(
+  let reversed = v2.std.algebra.fold_list(
     xs: rules,
     empty: std.algebra.Empty,
     cons: fn(acc, rule) {
@@ -343,9 +343,9 @@ fn lex_try_rule(rule: v2.std.compilers.lexing.LexRule, source: String) -> v2.com
 fn lex_rule_apply_lexeme_length(apply: v2.compiler.tokenize.LexRuleApply) -> Int {
   match apply {
     LexRuleNoMatch => 0
-    LexRuleToken { lexeme: lexeme, remaining: _, class: _ } => length(xs: lexeme)
-    LexRuleTrivia { lexeme: lexeme, remaining: _ } => length(xs: lexeme)
-    LexRuleAnnotation { lexeme: lexeme, remaining: _, class: _ } => length(xs: lexeme)
+    LexRuleToken { lexeme: lexeme, remaining: _, class: _ } => v2.std.algebra.length(xs: lexeme)
+    LexRuleTrivia { lexeme: lexeme, remaining: _ } => v2.std.algebra.length(xs: lexeme)
+    LexRuleAnnotation { lexeme: lexeme, remaining: _, class: _ } => v2.std.algebra.length(xs: lexeme)
   }
 }
 
@@ -366,7 +366,7 @@ fn lex_try_rules_prefer_longer(acc: v2.compiler.tokenize.LexRuleApply, candidate
 }
 
 fn lex_try_rules(rules: List<v2.compiler.tokenize.CompiledLexRule>, source: String) -> v2.compiler.tokenize.LexRuleApply {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: rules,
     empty: LexRuleNoMatch,
     cons: fn(acc, compiled) {
@@ -410,7 +410,7 @@ fn lex_walk_is_done(acc: v2.compiler.tokenize.LexWalkAcc) -> Bool {
 }
 
 fn lex_walk_step(acc: v2.compiler.tokenize.LexWalkAcc) -> v2.compiler.tokenize.LexWalkAcc {
-  match string_is_empty(s: acc.remaining) {
+  match v2.std.text.string_is_empty(s: acc.remaining) {
     true =>
       LexWalkAcc {
         remaining: acc.remaining,
@@ -438,7 +438,7 @@ fn lex_walk_step(acc: v2.compiler.tokenize.LexWalkAcc) -> v2.compiler.tokenize.L
             rules: acc.rules
           }
         LexRuleTrivia { lexeme: lexeme, remaining: remaining } =>
-          match string_is_empty(s: lexeme) {
+          match v2.std.text.string_is_empty(s: lexeme) {
             true =>
               LexWalkAcc {
                 remaining: acc.remaining,
@@ -456,8 +456,8 @@ fn lex_walk_step(acc: v2.compiler.tokenize.LexWalkAcc) -> v2.compiler.tokenize.L
                 remaining: remaining,
                 tokens: acc.tokens,
                 annotations: acc.annotations,
-                line_prefix_indent_only: advance_line_prefix_indent_only(previous: acc.line_prefix_indent_only, code_points: lexeme),
-                pos: acc.pos + length(xs: lexeme),
+                line_prefix_indent_only: std.source_annotation.advance_line_prefix_indent_only(previous: acc.line_prefix_indent_only, code_points: lexeme),
+                pos: acc.pos + v2.std.algebra.length(xs: lexeme),
                 done: false,
                 error: false,
                 file: acc.file,
@@ -465,7 +465,7 @@ fn lex_walk_step(acc: v2.compiler.tokenize.LexWalkAcc) -> v2.compiler.tokenize.L
               }
           }
         LexRuleToken { class: class, lexeme: lexeme, remaining: remaining } =>
-          match string_is_empty(s: lexeme) {
+          match v2.std.text.string_is_empty(s: lexeme) {
             true =>
               LexWalkAcc {
                 remaining: acc.remaining,
@@ -487,13 +487,13 @@ fn lex_walk_step(acc: v2.compiler.tokenize.LexWalkAcc) -> v2.compiler.tokenize.L
                     lexeme: lexeme,
                     file: acc.file,
                     start: acc.pos,
-                    end: acc.pos + length(xs: lexeme)
+                    end: acc.pos + v2.std.algebra.length(xs: lexeme)
                   },
                   tail: acc.tokens
                 },
                 annotations: acc.annotations,
-                line_prefix_indent_only: advance_line_prefix_indent_only(previous: acc.line_prefix_indent_only, code_points: lexeme),
-                pos: acc.pos + length(xs: lexeme),
+                line_prefix_indent_only: std.source_annotation.advance_line_prefix_indent_only(previous: acc.line_prefix_indent_only, code_points: lexeme),
+                pos: acc.pos + v2.std.algebra.length(xs: lexeme),
                 done: false,
                 error: false,
                 file: acc.file,
@@ -501,7 +501,7 @@ fn lex_walk_step(acc: v2.compiler.tokenize.LexWalkAcc) -> v2.compiler.tokenize.L
               }
           }
         LexRuleAnnotation { class: class, lexeme: lexeme, remaining: remaining } =>
-          match string_is_empty(s: lexeme) {
+          match v2.std.text.string_is_empty(s: lexeme) {
             true =>
               LexWalkAcc {
                 remaining: acc.remaining,
@@ -522,15 +522,15 @@ fn lex_walk_step(acc: v2.compiler.tokenize.LexWalkAcc) -> v2.compiler.tokenize.L
                   head: v2.std.compilers.lexing.UnboundSourceAnnotation {
                     annotation_class: class,
                     lexeme: lexeme,
-                    placement: placement_from_line_prefix(indent_only: acc.line_prefix_indent_only),
+                    placement: std.source_annotation.placement_from_line_prefix(indent_only: acc.line_prefix_indent_only),
                     file: acc.file,
                     start: acc.pos,
-                    end: acc.pos + length(xs: lexeme)
+                    end: acc.pos + v2.std.algebra.length(xs: lexeme)
                   },
                   tail: acc.annotations
                 },
-                line_prefix_indent_only: advance_line_prefix_indent_only(previous: acc.line_prefix_indent_only, code_points: lexeme),
-                pos: acc.pos + length(xs: lexeme),
+                line_prefix_indent_only: std.source_annotation.advance_line_prefix_indent_only(previous: acc.line_prefix_indent_only, code_points: lexeme),
+                pos: acc.pos + v2.std.algebra.length(xs: lexeme),
                 done: false,
                 error: false,
                 file: acc.file,
@@ -551,17 +551,17 @@ fn lex_walk_source_algebra(file: v2.std.node.Symbol, rules: v2.std.compilers.lex
 
 // lex_walk_artifact is the authored result; lex_walk is its SEMANTIC PROJECTION and is what every existing caller keeps using. The direction matters: the projection is derived from the artifact by dropping the annotation channel, never the reverse, so a semantic consumer cannot reach annotation text and an annotation-aware consumer does not have to re-lex. Both fold the same walk exactly once — this is one traversal read two ways, not two traversals (DESIGN 4c erasure boundary at the lexical layer, mirroring AuthoredParseArtifact at the parse layer).
 fn lex_walk_artifact(source: String, file: v2.std.node.Symbol, rules: v2.std.compilers.lexing.LexRuleSet) -> v2.std.diagnostic.Outcome<v2.std.compilers.lexing.LexArtifact> {
-  let result = fold_source(
+  let result = v2.std.text.fold_source(
     src: source,
     algebra: lex_walk_source_algebra(file: file, rules: rules)
   )
   let at = v2.std.diagnostic.Textual { file: file, extent: v2.std.diagnostic.ByteRange { start: result.pos, end: result.pos } }
   if result.error {
-    v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e1_unrecognized_char_diagnostic(at: at)) }
+    v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.diagnostics_singleton(d: tokenize_lex_e1_unrecognized_char_diagnostic(at: at)) }
   } else {
     v2.std.diagnostic.Accepted {
-      value: lex_artifact_new(
-        tokens: token_stream_new(all: result.tokens.reverse()),
+      value: v2.std.compilers.lexing.lex_artifact_new(
+        tokens: v2.std.compilers.lexing.token_stream_new(all: result.tokens.reverse()),
         annotations: result.annotations.reverse()
       ),
       diagnostics: v2.std.diagnostic.None
@@ -574,25 +574,25 @@ fn lex_walk(source: String, file: v2.std.node.Symbol, rules: v2.std.compilers.le
     v2.std.diagnostic.Rejected { diagnostics: ds } =>
       v2.std.diagnostic.Rejected { diagnostics: ds }
     v2.std.diagnostic.Accepted { value: artifact, diagnostics: ds } =>
-      v2.std.diagnostic.Accepted { value: lex_artifact_semantic_tokens(artifact: artifact), diagnostics: ds }
+      v2.std.diagnostic.Accepted { value: v2.std.compilers.lexing.lex_artifact_semantic_tokens(artifact: artifact), diagnostics: ds }
   }
 }
 
 fn tokenize(text: String, file: v2.std.node.Symbol, rules: v2.std.compilers.lexing.LexRules) -> v2.std.diagnostic.Outcome<v2.std.compilers.lexing.TokenStream> {
   let at = v2.std.diagnostic.Textual {
     file: file,
-    extent: WholeFile
+    extent: v2.std.diagnostic.WholeFile
   }
   match rules {
-    VoidLexRules =>
-      if is_empty(xs: text) {
-        v2.std.diagnostic.Accepted { value: token_stream_empty(), diagnostics: v2.std.diagnostic.None }
+    v2.std.compilers.lexing.VoidLexRules =>
+      if v2.std.algebra.is_empty(xs: text) {
+        v2.std.diagnostic.Accepted { value: v2.std.compilers.lexing.token_stream_empty(), diagnostics: v2.std.diagnostic.None }
       } else {
-        v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e0_source_not_exhausted_diagnostic(at: at)) }
+        v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.diagnostics_singleton(d: tokenize_lex_e0_source_not_exhausted_diagnostic(at: at)) }
       }
-    ModeledLexRules { root: rule_set } =>
+    v2.std.compilers.lexing.ModeledLexRules { root: rule_set } =>
       lex_walk(source: text, file: file, rules: rule_set)
   }
 }
 
-data tokenize_module_authority_note: String = "Wave 2 Gate-A flip lane (01_tokenize self-emit): data-driven lexing via ModeledLexRules/LexRuleSet fold — no hand-rolled tokenizer. Curated seed-linked behavioral receipt compares emitted vs seed oracle constant; full token-stream equivalence oracle deferred until emit Rc/Optional surface greens (#6775)."
+data tokenize_module_authority_note: String = "Wave 2 Gate-A flip lane (01_tokenize self-emit): data-driven lexing via v2.std.compilers.lexing.ModeledLexRules/v2.std.compilers.lexing.LexRuleSet fold — no hand-rolled tokenizer. Curated seed-linked behavioral receipt compares emitted vs seed oracle constant; full token-stream equivalence oracle deferred until emit Rc/Optional surface greens (#6775)."

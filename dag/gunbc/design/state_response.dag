@@ -3,7 +3,7 @@ module gunbc.design.state_response
 
 data state_response_note: String = "The interaction-totality law's construction half (composition slice 1; operator question round 5: how do we prevent the flash class?). The defect's mechanism: a response row's decls are CONSTANTS, so a state-dependent channel is either hand-multiplied across state selectors or accidentally constant-ized — the press fill was authored in the one channel that bypassed the detent-table pattern. This module is the detent table generalized past transforms: a component declares its STATE FAMILY once (members = binding x family key, the single authority for the state-class-to-band mapping that was previously spelled at three sites), declares each stateful CHANNEL once as a function of state (a var role, never a literal), and the realize fold multiplies the channel across every member — a missing family member is unwritable by totality of the fold, exactly as a detent edge cannot skip the table.
 
-The scope axis is CONSTRUCTION, not lint: a channel enters a component's table only as PerStateFamily (fold-realized) or ConstantByLaw carrying a typed DeclarationRef to the recorded ruling row (management-lane strengthening, adopted: 'who signed this constant' is a click, not archaeology). The undeclared middle — where the flash bug lived — stops being representable, because the table's element type has no third arm."
+The scope axis is CONSTRUCTION, not lint: a channel enters a component's table only as PerStateFamily (fold-realized) or ConstantByLaw carrying a typed std.decl_ref.DeclarationRef to the recorded ruling row (management-lane strengthening, adopted: 'who signed this constant' is a click, not archaeology). The undeclared middle — where the flash bug lived — stops being representable, because the table's element type has no third arm."
 
 data state_response_census_note: String = "The census half, executed over the EMITTED CSS (never only over the rows — the original defect was precisely an emission path that bypassed the table): every (family member x per-family channel) cell must resolve in-family — the member's selector carries the channel's value drawn from the member's OWN var family, and the var family is defined in the emitted root blocks — or the channel sits under a declared ConstantByLaw. Cells are counted; faults are typed and located (member key + channel property), mirroring the detent-edge lesson: an undefined var, a missing value, and a cross-family value are three faults, never one, because the first census cut that conflates fault kinds is the one that fails open. Declared limitation: cross-family detection probes at block grain, which exists only for class-bound members — a cross-wired REST member surfaces as ChannelValueMissing (still red, less located), recorded here rather than papered over.
 
@@ -74,10 +74,10 @@ fn rest_member(f: gunbc.design.state_response.StateFamily) -> gunbc.design.state
 }
 
 fn member_channel_decl(f: gunbc.design.state_response.StateFamily, m: gunbc.design.state_response.StateFamilyMember, prop: extdeps.languages.css.properties.CssPropertyName, role: gunbc.design.state_response.StateVarRole) -> gunbc.design.material.CssDecl {
-  decl(prop: prop, value: state_var_ref(prefix: f.var_prefix, key: m.key, role: role))
+  gunbc.design.material.decl(prop: prop, value: state_var_ref(prefix: f.var_prefix, key: m.key, role: role))
 }
 
-data state_rest_decl_note: String = "The rest member's channel decls, for splicing into the component's base rule at the positions its authoring order demands. Returns a LIST so an absent rest member yields an absent decl rather than a fabricated one — the absence then surfaces through the byte oracle and the census, loudly, instead of a placeholder value surviving review."
+data state_rest_decl_note: String = "The rest member's channel decls, for splicing into the component's base rule at the positions its authoring order demands. Returns a LIST so an absent rest member yields an absent gunbc.design.material.decl rather than a fabricated one — the absence then surfaces through the byte oracle and the census, loudly, instead of a placeholder value surviving review."
 
 fn state_rest_decl(f: gunbc.design.state_response.StateFamily, prop: extdeps.languages.css.properties.CssPropertyName, role: gunbc.design.state_response.StateVarRole) -> List<gunbc.design.material.CssDecl> {
   match rest_member(f: f) {
@@ -96,7 +96,7 @@ fn scope_rest_decls(f: gunbc.design.state_response.StateFamily, m: gunbc.design.
   })
 }
 
-data state_paint_rules_note: String = "The rest-channel realize fold: one StaticRule per class-bound member, carrying every RestChannel of the table in table order, in roster order. This is what replaces the hand-multiplied per-state paint rules — a member added to the roster gets its paint block emitted by this fold with no further authoring, and a member skipped is not writable because there is no per-member call site left to forget."
+data state_paint_rules_note: String = "The rest-channel realize fold: one gunbc.design.material.StaticRule per class-bound member, carrying every RestChannel of the table in table order, in roster order. This is what replaces the hand-multiplied per-state paint rules — a member added to the roster gets its paint block emitted by this fold with no further authoring, and a member skipped is not writable because there is no per-member call site left to forget."
 
 fn state_paint_rules(f: gunbc.design.state_response.StateFamily, channels: List<gunbc.design.state_response.ChannelScope>) -> List<gunbc.design.material.BuildRule> {
   fold(f.members, init: [], f: (acc, m) => match m.binding {
@@ -106,13 +106,13 @@ fn state_paint_rules(f: gunbc.design.state_response.StateFamily, channels: List<
   })
 }
 
-data family_response_rules_note: String = "The response-channel realize fold — the press-fill law authored once as a function of state and multiplied across the family: every member (rest included — the base selector's own response) gets a ResponseRule whose response decl draws the channel's var role from the member's OWN key. Totality is the construction: the fold visits the roster, so the fault class 'one pressed var presenting as total' has no author-side spelling anymore. Timing flows in from the BehaviorRow that causes the response, exactly as detent realization takes its clock from the row rather than the table."
+data family_response_rules_note: String = "The response-channel realize fold — the press-fill law authored once as a function of state and multiplied across the family: every member (rest included — the base selector's own response) gets a gunbc.design.material.ResponseRule whose response gunbc.design.material.decl draws the channel's var role from the member's OWN key. Totality is the construction: the fold visits the roster, so the fault class 'one pressed var presenting as total' has no author-side spelling anymore. Timing flows in from the BehaviorRow that causes the response, exactly as detent realization takes its clock from the row rather than the table."
 
 fn channel_response_rules(f: gunbc.design.state_response.StateFamily, trigger: gunbc.design.material.MotionTrigger, prop: extdeps.languages.css.properties.CssPropertyName, role: gunbc.design.state_response.StateVarRole, transition_props: String, timing: gunbc.design.material.TimingToken) -> List<gunbc.design.material.BuildRule> {
   map(f.members, m =>
     gunbc.design.material.ResponseRule {
       subject: member_subject(f: f, m: m),
-      shape: SelfResponse,
+      shape: gunbc.design.material.SelfResponse,
       trigger: trigger,
       transition_props: transition_props,
       timing: timing,
@@ -145,8 +145,8 @@ type FamilyCensusDefect {
 
 fn channel_prop_wire(c: gunbc.design.state_response.StateChannel) -> String {
   match c {
-    RestChannel { prop, role: _ } => css_property_wire(p: prop)
-    ResponseChannel { trigger: _, prop, role: _, transition_props: _ } => css_property_wire(p: prop)
+    RestChannel { prop, role: _ } => extdeps.languages.css.properties.css_property_wire(p: prop)
+    ResponseChannel { trigger: _, prop, role: _, transition_props: _ } => extdeps.languages.css.properties.css_property_wire(p: prop)
   }
 }
 
@@ -165,7 +165,7 @@ fn foreign_cell_decl(f: gunbc.design.state_response.StateFamily, foreign_key: St
   join([channel_prop_wire(c: c), ": ", state_var_ref(prefix: f.var_prefix, key: foreign_key, role: channel_role(c: c))], "")
 }
 
-data census_block_probe_note: String = "A class-bound member's cell is probed as selector-adjacent text: the member's selector followed by a block containing the expected decl would be exact, but blocks interleave channels, so the probe pairs (selector present) with (expected decl present) and, on a miss, substitutes every other member's key into the same decl to name the foreign family it found instead. The rest member's decls live inside the component's base rule among geometry decls, so its probe is the decl alone and cross-family detection is declared out of its reach (state_response_census_note)."
+data census_block_probe_note: String = "A class-bound member's cell is probed as selector-adjacent text: the member's selector followed by a block containing the expected gunbc.design.material.decl would be exact, but blocks interleave channels, so the probe pairs (selector present) with (expected gunbc.design.material.decl present) and, on a miss, substitutes every other member's key into the same gunbc.design.material.decl to name the foreign family it found instead. The rest member's decls live inside the component's base rule among geometry decls, so its probe is the gunbc.design.material.decl alone and cross-family detection is declared out of its reach (state_response_census_note)."
 
 fn member_block_contains(css: String, f: gunbc.design.state_response.StateFamily, m: gunbc.design.state_response.StateFamilyMember, expected: String) -> Bool {
   string_contains(s: css, pattern: member_selector_text(f: f, m: m)) && string_contains(s: css, pattern: expected)

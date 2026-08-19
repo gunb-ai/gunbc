@@ -2,7 +2,7 @@ module v2.compiler.source_authority
 
 
 
-data source_authority_module_note: String = "Wave 2 Gate-A flip lane: v2.compiler.source_authority is the cross-tree ingest and round-trip authority (parse→normalize→resolve→serialize laws over DagSourceReadWitness / SourceRootIngest). Curated seed-linked scaffold defers full tree behavioral oracle until emitter Rc/Optional coherence (#6775) greens rustc on the closure."
+data source_authority_module_note: String = "Wave 2 Gate-A flip lane: v2.compiler.source_authority is the cross-tree ingest and round-trip authority (v2.compiler.parse.parse→v2.compiler.normalize.normalize→v2.compiler.resolve.resolve→serialize laws over DagSourceReadWitness / SourceRootIngest). Curated seed-linked scaffold defers full tree behavioral oracle until emitter Rc/v2.std.optional.Optional coherence (#6775) greens rustc on the closure."
 
 type DagSourceAst {
   tree: v2.std.grammar.ParseTree
@@ -27,7 +27,7 @@ type DagSourceReadWitness {
 
 type SourceRootIngest = std.algebra.FreeMonoid<DagSourceReadWitness>
 
-data source_root_coverage_note: String = "Capless closure transport (ingest-manifest-source-ref-carrier design stage 4): the manifest emitter no longer inlines Lossless source text. Every read is carried as a SourceRef row in host_source_root_closure_refs (path + source root + content hash). host_source_root_ingest stays Empty; consumers read through refs with hash verification at consumption time.
+data source_root_coverage_note: String = "Capless closure transport (ingest-manifest-source-ref-carrier design stage 4): the manifest emitter no longer inlines extdeps.communication.medium.Lossless source text. Every read is carried as a SourceRef row in host_source_root_closure_refs (path + source root + content hash). host_source_root_ingest stays std.algebra.Empty; consumers read through refs with hash verification at consumption time.
 
 manifest_inline_list_max (64) is the historical inline-text capacity boundary. Past it the INLINE carrier is refused via SourceRootManifestElided { read_count, cap } — typed, located, counted — while the closure-ref carrier still carries the full population (produced_row_count == ingest_read_count). Overflow must never render as zero rows and an empty ingest (DESIGN empty-observation narrow). At or below the cap, coverage is SourceRootCoverageComplete."
 
@@ -66,7 +66,7 @@ fn discovered_source_refs_digest_eq(
     DiscoveredSourceRefsDigestFromList { digest: left_digest } =>
       match right {
         DiscoveredSourceRefsDigestFromList { digest: right_digest } =>
-          content_hash_eq_structural(left: left_digest, right: right_digest)
+          std.content_hash.content_hash_eq_structural(left: left_digest, right: right_digest)
         _ => false
       }
     DiscoveredSourceRefsDigestUnavailable {
@@ -109,7 +109,7 @@ What it answers: 'is coverage complete?' — nothing else. It discards WHICH def
 
 What it is NOT: the old coverage_complete field. That was the receipt's ONLY representation of coverage, so a consumer had no way to learn the cause — the information did not exist anywhere. Now the cause is carried on the receipt, and any consumer that needs it matches SourceRootCoverage directly and gets read_count, cap, or produced_row_count. Nothing is lost; one caller-chosen question is answered.
 
-It carries no Disposition because it is not a scaffold: there is no future state in which this becomes wrong, so there is no honest dissolution trigger to declare, and inventing one would be a scaffold marker that can never fire (DESIGN section 6 — every scaffold lands with a named trigger, which equally means a non-scaffold must not fake one). The rule it must keep: this predicate may never become the only way to read coverage. If a consumer ever needs the reason and reaches for a Bool instead, that consumer is wrong, not this projection."
+It carries no std.disposition.Disposition because it is not a scaffold: there is no future state in which this becomes wrong, so there is no honest dissolution trigger to declare, and inventing one would be a scaffold marker that can never fire (DESIGN section 6 — every scaffold lands with a named trigger, which equally means a non-scaffold must not fake one). The rule it must keep: this predicate may never become the only way to read coverage. If a consumer ever needs the reason and reaches for a Bool instead, that consumer is wrong, not this projection."
 
 fn source_root_coverage_is_complete(coverage: SourceRootCoverage) -> Bool {
   match coverage {
@@ -126,7 +126,7 @@ fn source_root_closure_ref_transport_complete(
 ) -> Bool {
   (receipt.ingest_read_count > 0)
     && (receipt.produced_row_count == receipt.ingest_read_count)
-    && (length(xs: refs) == receipt.ingest_read_count)
+    && (v2.std.algebra.length(xs: refs) == receipt.ingest_read_count)
 }
 
 // Positive ingest_read_count requires produced_row_count and closure-ref population to match —
@@ -143,7 +143,7 @@ fn source_root_overflow_never_empty_population_holds(
 }
 
 type SourceIrArtifactProvenance {
-  node: Node
+  node: v2.std.node.Node
   artifact: v2.std.artifact.Artifact
   span_index: v2.std.provenance.SpanIndex
 }
@@ -154,13 +154,13 @@ What it names is deliberately NOT a module. A manifest row is a host-boundary ar
 
 This is a TYPE DECLARATION ONLY. The effect-boundary enforcement that makes bare-string file dependencies unwritable is Phase 3 and does not land here."
 
-data source_ref_no_fidelity_note: String = "SourceRef carries NO DecodeFidelity field, and that is a modeling decision rather than an omission. Fidelity is a property of a DECODE — how faithfully bytes became a value — and it already has a single authority in Medium<R> { carried, fidelity } (dag/extdeps/communication/medium.dag). A ref decodes nothing; it names a location. A fidelity ON the ref would therefore assert how faithfully something decodes BEFORE any read established it (§5 fabricated plausible output), and would stand a second fidelity authority beside Medium's (§3).
+data source_ref_no_fidelity_note: String = "SourceRef carries NO extdeps.communication.medium.DecodeFidelity field, and that is a modeling decision rather than an omission. Fidelity is a property of a DECODE — how faithfully bytes became a value — and it already has a single authority in extdeps.communication.medium.Medium<R> { carried, fidelity } (dag/extdeps/communication/medium.dag). A ref decodes nothing; it names a location. A fidelity ON the ref would therefore assert how faithfully something decodes BEFORE any read established it (§5 fabricated plausible output), and would stand a second fidelity authority beside extdeps.communication.medium.Medium's (§3).
 
-The requirement that a row declare its fidelity is real and is ALREADY SATISFIED: DagSourceReadWitness holds source: extdeps.communication.medium.Medium<String>, which carries it. The constraint this places on the later carrier migration — the stage-4 read-through must return extdeps.communication.medium.Medium<String>, never a bare String, or the Lossless boundary silently goes undeclared — is recorded as named constraint C1 in the design note, because that failure produces nothing red at the diff."
+The requirement that a row declare its fidelity is real and is ALREADY SATISFIED: DagSourceReadWitness holds source: extdeps.communication.medium.Medium<String>, which carries it. The constraint this places on the later carrier migration — the stage-4 read-through must return extdeps.communication.medium.Medium<String>, never a bare String, or the extdeps.communication.medium.Lossless boundary silently goes undeclared — is recorded as named constraint C1 in the design note, because that failure produces nothing red at the diff."
 
 data source_ref_seed_homonym_note: String = "NAME COLLISION, deliberate and marked. src/v1/01_tokenize.dag:53 declares a DIFFERENT type also called SourceRef — a tokenizer input handle { file, text, source_chars } that CARRIES the source bytes. The two are inverted on the exact axis this type turns on: that one contains the source, this one exists precisely so rows do not.
 
-The seed's use is itself the nickname violation (a ref that carries everything references nothing), so the correct name goes to the correct use rather than the correct use being renamed around a misnomer — renaming here would invert which use is authoritative and fork this spelling from the design docs' at the moment of declaration (§3; parent ruling 2026-07-19). No hard collision exists: the two resolve by subtree, and the fork-prevention wall keys on identical variant payloads, which two differently-shaped records do not trigger.
+The seed's use is itself the nickname violation (a ref that carries everything references nothing), so the correct name goes to the correct use rather than the correct use being renamed around a misnomer — renaming here would invert which use is authoritative and fork this spelling from the design docs' at the moment of declaration (§3; parent ruling 2026-07-19). No hard collision exists: the two v2.compiler.resolve.resolve by subtree, and the fork-prevention wall keys on identical variant payloads, which two differently-shaped records do not trigger.
 
 dissolve-on: the v1 tokenizer being next touched or deleted, at which point the seed's type is renamed to SourceBuffer — the honest name for a thing holding bytes. The v1_delete milestone discharges this naturally. The note is homed HERE rather than in src/v1/01_tokenize.dag so that an inert marker costs zero touches on a load-bearing v1 pipeline stage, and anyone about to collide with the name finds it by grepping the name itself."
 
@@ -189,14 +189,14 @@ fn source_storage_identity_eq(left: SourceStorageIdentity, right: SourceStorageI
 
 fn source_root_ref_identity_digest(root: v2.std.cross_tree.import_model.SourceRootRef) -> std.content_hash.Fnv1a64Structural {
   match root {
-    V2Tree => content_hash_atom(value: "V2Tree")
-    DagTree => content_hash_atom(value: "DagTree")
+    V2Tree => std.content_hash.content_hash_atom(value: "V2Tree")
+    DagTree => std.content_hash.content_hash_atom(value: "DagTree")
   }
 }
 
 fn source_storage_identity_digest(storage: SourceStorageIdentity) -> std.content_hash.Fnv1a64Structural {
-  content_hash_combine_structural(
-    left: content_hash_atom(value: storage.path as std.types.NonEmptyStr),
+  std.content_hash.content_hash_combine_structural(
+    left: std.content_hash.content_hash_atom(value: storage.path as std.types.NonEmptyStr),
     right: source_root_ref_identity_digest(root: storage.source_root)
   )
 }
@@ -216,7 +216,7 @@ fn source_ref_identity_digest_from_structural(
   ref: SourceRef,
   structural: std.content_hash.Fnv1a64Structural
 ) -> std.content_hash.Fnv1a64Structural {
-  content_hash_combine_structural(
+  std.content_hash.content_hash_combine_structural(
     left: source_storage_identity_digest(
       storage: source_storage_identity_from_ref(ref: ref)
     ),
@@ -231,10 +231,10 @@ type SourceRefListDigestBuild
 data source_ref_list_digest_seed: String = "source-ref-closure-list"
 
 fn source_ref_list_digest_build(refs: List<SourceRef>) -> SourceRefListDigestBuild {
-  match fold_list(
+  match v2.std.algebra.fold_list(
     xs: refs,
     empty: SourceRefListDigestOk {
-      digest: content_hash_atom(value: source_ref_list_digest_seed)
+      digest: std.content_hash.content_hash_atom(value: source_ref_list_digest_seed)
     },
     cons: fn(acc, ref) {
       match acc {
@@ -245,7 +245,7 @@ fn source_ref_list_digest_build(refs: List<SourceRef>) -> SourceRefListDigestBui
               SourceRefListDigestNonStructuralRefused { path: ref.path }
             SourceRefContentHashStructuralOk { digest: structural } =>
               SourceRefListDigestOk {
-                digest: content_hash_combine_structural(
+                digest: std.content_hash.content_hash_combine_structural(
                   left: prior,
                   right: source_ref_identity_digest_from_structural(
                     ref: ref,
@@ -268,7 +268,7 @@ fn source_ref_list_digest(refs: List<SourceRef>) -> std.content_hash.Fnv1a64Stru
   match source_ref_list_digest_build(refs: refs) {
     SourceRefListDigestOk { digest: d } => d
     SourceRefListDigestNonStructuralRefused { path: _ } =>
-      content_hash_atom(value: "source-ref-list-digest-non-structural-refused")
+      std.content_hash.content_hash_atom(value: "source-ref-list-digest-non-structural-refused")
   }
 }
 
@@ -289,7 +289,7 @@ fn source_storage_count_in_list(
   refs: List<SourceRef>,
   target: SourceStorageIdentity
 ) -> Int {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: refs,
     empty: 0,
     cons: fn(count, ref) {
@@ -306,7 +306,7 @@ fn source_storage_count_in_list(
 }
 
 fn source_storage_list_has_duplicate_storage(refs: List<SourceRef>) -> Bool {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: refs,
     empty: false,
     cons: fn(found, ref) {
@@ -323,7 +323,7 @@ fn source_storage_list_has_duplicate_storage(refs: List<SourceRef>) -> Bool {
 }
 
 fn source_storage_hash_conflict_in_list(refs: List<SourceRef>) -> Bool {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: refs,
     empty: false,
     cons: fn(found, ref) {
@@ -331,7 +331,7 @@ fn source_storage_hash_conflict_in_list(refs: List<SourceRef>) -> Bool {
         true
       } else {
         let storage = source_storage_identity_from_ref(ref: ref)
-        fold_list(
+        v2.std.algebra.fold_list(
           xs: refs,
           empty: false,
           cons: fn(inner_found, other) {
@@ -353,7 +353,7 @@ fn source_storage_hash_conflict_in_list(refs: List<SourceRef>) -> Bool {
   )
 }
 
-data source_ref_selection_unpinned_note: String = "Selection-grain placeholder hash for declared SourceRef rows (docs/plans/declared-source-ref-selection-design.md §7): content-hash-as-selection-key belongs to the resolve-cost lane, not this task. Rows carry the field for shape compatibility with the eventual pinned authority; selection today keys on storage path resolved through ModuleStorageIndex only."
+data source_ref_selection_unpinned_note: String = "Selection-grain placeholder hash for declared SourceRef rows (docs/plans/declared-source-ref-selection-design.md §7): content-hash-as-selection-key belongs to the v2.compiler.resolve.resolve-cost lane, not this task. Rows carry the field for shape compatibility with the eventual pinned authority; selection today keys on storage path resolved through ModuleStorageIndex only."
 
 fn source_ref_path(ref: SourceRef) -> String {
   ref.path
@@ -371,24 +371,24 @@ fn source_ref_for_storage_path(path: String) -> SourceRef {
   SourceRef {
     path: path,
     source_root: source_root_for_storage_path(path: path),
-    content_hash: content_hash_of_value(value: "selection-unpinned" as std.types.NonEmptyStr)
+    content_hash: std.content_hash.content_hash_of_value(value: "selection-unpinned" as std.types.NonEmptyStr)
   }
 }
 
 fn source_ref_for_observed_storage_path(path: String) -> SourceRef {
-  let read = Filesystem.Read(path: path)
+  let read = extdeps.filesystem.filesystem_io.Filesystem.Read(path: path)
   SourceRef {
     path: path,
     source_root: source_root_for_storage_path(path: path),
     content_hash: if read.success {
       dag_source_content_hash_for_text(text: read.content)
     } else {
-      content_hash_of_value(value: "filesystem-read-failed" as std.types.NonEmptyStr)
+      std.content_hash.content_hash_of_value(value: "filesystem-read-failed" as std.types.NonEmptyStr)
     }
   }
 }
 
-// Read-through for ingest-manifest SourceRef rows (ingest-manifest-source-ref-carrier-design.md stage 3): filesystem_read at consumption, content identity verified against the ref's ContentHash before parse. Hash mismatch refuses with both digests; missing/unreadable paths refuse as read failures rather than misclassified parse errors.
+// Read-through for ingest-manifest SourceRef rows (ingest-manifest-source-ref-carrier-design.md stage 3): filesystem_read at consumption, content identity verified against the ref's std.content_hash.ContentHash before v2.compiler.parse.parse. Hash mismatch refuses with both digests; missing/unreadable paths refuse as read failures rather than misclassified v2.compiler.parse.parse errors.
 data source_ref_read_refused: v2.std.node.Symbol = ^source_ref_read_refused
 
 data source_ref_content_hash_mismatch: v2.std.node.Symbol = ^source_ref_content_hash_mismatch
@@ -397,15 +397,15 @@ fn source_ref_eq(left: SourceRef, right: SourceRef) -> Bool {
   let paths_match = left.path == right.path
   let roots_match = left.source_root == right.source_root
   let hashes_match =
-    match compare_content_hash(left: left.content_hash, right: right.content_hash) {
-      ContentHashEqual => true
+    match std.content_hash.compare_content_hash(left: left.content_hash, right: right.content_hash) {
+      std.content_hash.ContentHashEqual => true
       _ => false
     }
   paths_match && roots_match && hashes_match
 }
 
 fn source_ref_count_in_list(refs: List<SourceRef>, target: SourceRef) -> Int {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: refs,
     empty: 0,
     cons: fn(count, ref) {
@@ -419,7 +419,7 @@ fn source_ref_count_in_list(refs: List<SourceRef>, target: SourceRef) -> Int {
 }
 
 fn source_ref_list_has_duplicate(refs: List<SourceRef>) -> Bool {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: refs,
     empty: false,
     cons: fn(found, ref) {
@@ -436,14 +436,14 @@ fn source_ref_read_failed_diagnostic(ref: SourceRef, error: String) -> v2.std.di
   v2.std.diagnostic.NonEmptyDiagnostics {
     head: v2.std.diagnostic.Diagnostic {
       reason: source_ref_read_refused,
-      at: textual_whole_file_locus(file: symbol_intern_lexeme(lexeme: ref.path)),
-      correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+      at: textual_whole_file_locus(file: v2.std.compilers.lexing.symbol_intern_lexeme(lexeme: ref.path)),
+      correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
     },
     tail: [
       v2.std.diagnostic.Diagnostic {
         reason: source_ref_read_refused,
-        at: port_locus(port: symbol_intern_lexeme(lexeme: error)),
-        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+        at: v2.std.diagnostic.port_locus(port: v2.std.compilers.lexing.symbol_intern_lexeme(lexeme: error)),
+        correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
       }
     ]
   }
@@ -458,23 +458,23 @@ fn source_ref_content_hash_mismatch_diagnostic(
       concat(
         concat(
           "expected=",
-          serialize_content_hash(hash: ref.content_hash) as String
+          std.content_hash.serialize_content_hash(hash: ref.content_hash) as String
         ),
         " observed="
       ),
-      serialize_content_hash(hash: observed) as String
+      std.content_hash.serialize_content_hash(hash: observed) as String
     )
   v2.std.diagnostic.NonEmptyDiagnostics {
     head: v2.std.diagnostic.Diagnostic {
       reason: source_ref_content_hash_mismatch,
-      at: textual_whole_file_locus(file: symbol_intern_lexeme(lexeme: ref.path)),
-      correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+      at: textual_whole_file_locus(file: v2.std.compilers.lexing.symbol_intern_lexeme(lexeme: ref.path)),
+      correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
     },
     tail: [
       v2.std.diagnostic.Diagnostic {
         reason: source_ref_content_hash_mismatch,
-        at: port_locus(port: symbol_intern_lexeme(lexeme: detail)),
-        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+        at: v2.std.diagnostic.port_locus(port: v2.std.compilers.lexing.symbol_intern_lexeme(lexeme: detail)),
+        correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
       }
     ]
   }
@@ -492,25 +492,25 @@ type SourceRefReadResult
       observed: std.content_hash.ContentHash
     }
 
-data source_ref_read_result_note: String = "Single filesystem observation for a SourceRef read-through. Accepted carries the witness and the observed hash from the SAME read. Refused and HashMismatch never perform a second read to reconstruct failure detail."
+data source_ref_read_result_note: String = "Single filesystem observation for a SourceRef read-through. v2.std.diagnostic.Accepted carries the witness and the observed hash from the SAME read. Refused and HashMismatch never perform a second read to reconstruct failure detail."
 
 fn dag_source_read_result_from_ref(ref: SourceRef) -> SourceRefReadResult {
-  let read = Filesystem.Read(path: ref.path)
+  let read = extdeps.filesystem.filesystem_io.Filesystem.Read(path: ref.path)
   if !read.success {
     SourceRefFilesystemReadRefused { ref: ref, error: read.error }
   } else {
     let observed = dag_source_content_hash_for_text(text: read.content)
-    match compare_content_hash(left: ref.content_hash, right: observed) {
-      ContentHashEqual =>
+    match std.content_hash.compare_content_hash(left: ref.content_hash, right: observed) {
+      std.content_hash.ContentHashEqual =>
         SourceRefReadAccepted {
           witness: DagSourceReadWitness {
-            source: extdeps.communication.medium.Medium { carried: read.content, fidelity: Lossless },
+            source: extdeps.communication.medium.Medium { carried: read.content, fidelity: extdeps.communication.medium.Lossless },
             artifact: v2.std.artifact.Artifact {
-              kind: SourceFile,
-              id: symbol_intern_lexeme(lexeme: ref.path),
+              kind: v2.std.artifact.SourceFile,
+              id: v2.std.compilers.lexing.symbol_intern_lexeme(lexeme: ref.path),
               file_path: ref.path
             },
-            compilation_unit: symbol_intern_lexeme(lexeme: ref.path),
+            compilation_unit: v2.std.compilers.lexing.symbol_intern_lexeme(lexeme: ref.path),
             source_root: ref.source_root
           },
           observed_hash: observed
@@ -528,13 +528,13 @@ fn dag_source_read_result_from_ref(ref: SourceRef) -> SourceRefReadResult {
 fn source_ref_read_result_to_outcome(result: SourceRefReadResult) -> v2.std.diagnostic.Outcome<DagSourceReadWitness> {
   match result {
     SourceRefReadAccepted { witness: witness, observed_hash: _ } =>
-      outcome_accepted(value: witness)
+      v2.std.diagnostic.outcome_accepted(value: witness)
     SourceRefFilesystemReadRefused { ref: ref, error: error } =>
-      outcome_rejected(
+      v2.std.diagnostic.outcome_rejected(
         d: source_ref_read_failed_diagnostic(ref: ref, error: error)
       )
     SourceRefReadHashMismatch { ref: ref, expected: _, observed: observed } =>
-      outcome_rejected(
+      v2.std.diagnostic.outcome_rejected(
         d: source_ref_content_hash_mismatch_diagnostic(
           ref: ref,
           observed: observed
@@ -544,7 +544,7 @@ fn source_ref_read_result_to_outcome(result: SourceRefReadResult) -> v2.std.diag
 }
 
 fn dag_source_content_hash_for_text(text: String) -> std.content_hash.ContentHash {
-  content_hash_of_value(value: text)
+  std.content_hash.content_hash_of_value(value: text)
 }
 
 fn dag_source_read_witness_from_source_ref(ref: SourceRef) -> v2.std.diagnostic.Outcome<DagSourceReadWitness> {
@@ -558,7 +558,7 @@ type SourceRootIngestBuild
 fn source_root_ingest_build_from_source_refs(
   refs: List<SourceRef>
 ) -> SourceRootIngestBuild {
-  match fold_list(
+  match v2.std.algebra.fold_list(
     xs: refs,
     empty: SourceRootIngestBuildOk { ingest: std.algebra.Empty },
     cons: fn(acc, ref) {
@@ -568,7 +568,7 @@ fn source_root_ingest_build_from_source_refs(
           match dag_source_read_result_from_ref(ref: ref) {
             SourceRefReadAccepted { witness: witness, observed_hash: _ } =>
               SourceRootIngestBuildOk {
-                ingest: list_snoc_item(xs: prior, item: witness)
+                ingest: v2.std.algebra.list_snoc_item(xs: prior, item: witness)
               }
             failed =>
               SourceRootIngestBuildReadFailed { result: failed }
@@ -587,9 +587,9 @@ fn source_root_ingest_from_source_refs(refs: List<SourceRef>) -> v2.std.diagnost
   match source_root_ingest_build_from_source_refs(refs: refs) {
     SourceRootIngestBuildReadFailed { result: r } =>
       match source_ref_read_result_to_outcome(result: r) {
-        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-        Accepted { value: _, diagnostics: _ } =>
-          outcome_rejected(
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
+          v2.std.diagnostic.outcome_rejected(
             d: source_ref_read_failed_diagnostic(
               ref: source_ref_for_storage_path(path: "source-root-ingest-build-impossible"),
               error: "internal: read-through accepted without ingest row"
@@ -597,19 +597,19 @@ fn source_root_ingest_from_source_refs(refs: List<SourceRef>) -> v2.std.diagnost
           )
       }
     SourceRootIngestBuildOk { ingest: ingest } =>
-      outcome_accepted(value: ingest)
+      v2.std.diagnostic.outcome_accepted(value: ingest)
   }
 }
 
-data module_storage_binding_authority_note: String = "Phase 1 of docs/plans/module-identity-storage-binding-design.md §2: a module is a node (containment subtree); a file is ONE storage realization of module content (§2 Realization). The path⇄module binding is therefore DERIVED at parse — the compiler parsed the files and knows which modules came out — never authored. This is the single home for that fact. It once shared the job with 27 hand-authored FrontierQualifiedModuleBinding rows in the self-host frontier module, kept in step by a standing parity witness; those rows and that witness are deleted with the frontier roster, so the duality this sentence used to describe as an interim is closed and the host-side build_module_path_index is now the only other projection. Task 4 repointed the host producer through v1_compiler_parse (src/v1/stage0/src/module_path_index); DeclarationScanned deleted. Scope is the LIVE 1:1 binding the tree enforces today; many-to-many (fragment identity/order, several-modules-one-file) is a NAMED DEFERRAL until a consumer prices it (§6), never a silent assumption. What lands now is the provenance coproduct, so zero-file produced modules are representable honestly rather than pretending they came from parse."
+data module_storage_binding_authority_note: String = "Phase 1 of docs/plans/module-identity-storage-binding-design.md §2: a module is a node (containment subtree); a file is ONE storage realization of module content (§2 Realization). The path⇄module binding is therefore DERIVED at v2.compiler.parse.parse — the compiler parsed the files and knows which modules came out — never authored. This is the single home for that fact. It once shared the job with 27 hand-authored FrontierQualifiedModuleBinding rows in the self-host frontier module, kept in step by a standing parity witness; those rows and that witness are deleted with the frontier roster, so the duality this sentence used to describe as an interim is closed and the host-side build_module_path_index is now the only other projection. Task 4 repointed the host producer through v1_compiler_parse (src/v1/stage0/src/module_path_index); DeclarationScanned deleted. Scope is the LIVE 1:1 binding the tree enforces today; many-to-many (fragment identity/order, several-modules-one-file) is a NAMED DEFERRAL until a consumer prices it (§6), never a silent assumption. What lands now is the provenance coproduct, so zero-file produced modules are representable honestly rather than pretending they came from v2.compiler.parse.parse."
 
 type ModuleStorageProvenance
   = ParsedFromSource { artifact: v2.std.artifact.Artifact, span_index: v2.std.provenance.SpanIndex }
   | ProducedByBehavior { producer: v2.std.node.Symbol }
 
-data module_storage_host_parse_note: String = "Task 4 (module-identity-storage-binding-design.md Phase 1): the host producer build_module_path_index (src/v1/stage0/src/module_path_index) routes through v1_compiler_parse::parse — the same bootstrap parse path the in-graph oracle uses at the module-name grain — so host rows are ParsedFromSource, not a parallel substring scan. DeclarationScanned was deleted with this repoint: it existed only to record honestly that extract_module_path never parsed; keeping it after the repoint would be a second way to say the same thing (§3). Bootstrap host emission records ident_span byte ranges in span_index via span_index_record; full OccurrenceId mint parity with v2.compiler.parse's stamp pipeline is a named follow-on (dissolve-on: v1 bootstrap parse stamps NodeOccurrenceId the way parse_production_prepared does)."
+data module_storage_host_parse_note: String = "Task 4 (module-identity-storage-binding-design.md Phase 1): the host producer build_module_path_index (src/v1/stage0/src/module_path_index) routes through v1_compiler_parse::v2.compiler.parse.parse — the same bootstrap v2.compiler.parse.parse path the in-graph oracle uses at the module-name grain — so host rows are ParsedFromSource, not a parallel substring scan. DeclarationScanned was deleted with this repoint: it existed only to record honestly that extract_module_path never parsed; keeping it after the repoint would be a second way to say the same thing (§3). Bootstrap host emission records ident_span byte ranges in span_index via span_index_record; full OccurrenceId mint parity with v2.compiler.parse's stamp pipeline is a named follow-on (dissolve-on: v1 bootstrap v2.compiler.parse.parse stamps NodeOccurrenceId the way parse_production_prepared does)."
 
-// Host manifest emission (discover_source_root_ingest --emit-module-binding-manifest) records the module declaration's ident_span as a FromSource Textual locus in span_index. The std.occurrence_identity.OccurrenceId is keyed by the span start offset within the file — deterministic and sufficient for binding-authority consumers that only need file⇄module, not full occurrence navigation. It is NOT the v2 parse stamp's minted occurrence graph; conflating the two would fabricate stamps the bootstrap parser never produced (§5).
+// Host manifest emission (discover_source_root_ingest --emit-module-binding-manifest) records the module declaration's ident_span as a FromSource Textual locus in span_index. The std.occurrence_identity.OccurrenceId is keyed by the span start offset within the file — deterministic and sufficient for binding-authority consumers that only need file⇄module, not full occurrence navigation. It is NOT the v2 v2.compiler.parse.parse stamp's minted occurrence graph; conflating the two would fabricate stamps the bootstrap parser never produced (§5).
 type ModuleStorageBinding {
   module: v2.std.qualified_name.QualifiedName
   provenance: ModuleStorageProvenance
@@ -666,8 +666,8 @@ type SourceAuthorityRoundTripLaw {
 fn source_authority_diagnostic(reason: v2.std.node.Symbol) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: reason,
-    at: port_locus(port: ^source_authority_port),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.port_locus(port: ^source_authority_port),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
@@ -676,13 +676,13 @@ fn parse_dag_source_ast_with_model(
   compilation_unit: v2.std.node.Symbol,
   lm: v2.std.language_model.LanguageModel
 ) -> v2.std.diagnostic.Outcome<DagSourceAst> {
-  bind_outcome(
-    o: tokenize(text: source.carried, file: compilation_unit, rules: lm.lex),
+  v2.std.diagnostic.bind_outcome(
+    o: v2.compiler.tokenize.tokenize(text: source.carried, file: compilation_unit, rules: lm.lex),
     f: fn(token_stream) {
-      bind_outcome(
-        o: parse(tokens: token_stream, grammar: lm.grammar),
+      v2.std.diagnostic.bind_outcome(
+        o: v2.compiler.parse.parse(tokens: token_stream, grammar: lm.grammar),
         f: fn(parse_tree) {
-          outcome_accepted(value: DagSourceAst { tree: parse_tree })
+          v2.std.diagnostic.outcome_accepted(value: DagSourceAst { tree: parse_tree })
         }
       )
     }
@@ -693,27 +693,27 @@ fn parse_dag_source_ast(source: extdeps.communication.medium.Medium<String>) -> 
   parse_dag_source_ast_with_model(
     source: source,
     compilation_unit: ^source_authority_port,
-    lm: dag_language_model()
+    lm: v2.extdeps.languages.dag.dag_language_model()
   )
 }
 
 fn normalize_dag_source_ast(ast: DagSourceAst) -> v2.std.diagnostic.Outcome<NormalizedDagSourceAst> {
-  bind_outcome(
-    o: normalize(parse_tree: ast.tree),
+  v2.std.diagnostic.bind_outcome(
+    o: v2.compiler.normalize.normalize(parse_tree: ast.tree),
     f: fn(normalized) {
-      outcome_accepted(value: NormalizedDagSourceAst { tree: normalized })
+      v2.std.diagnostic.outcome_accepted(value: NormalizedDagSourceAst { tree: normalized })
     }
   )
 }
 
 fn semantic_ir_from_ast_with_model(ast: DagSourceAst, lm: v2.std.language_model.LanguageModel) -> v2.std.diagnostic.Outcome<DagSemanticIr> {
-  bind_outcome(
-    o: normalize(parse_tree: ast.tree),
+  v2.std.diagnostic.bind_outcome(
+    o: v2.compiler.normalize.normalize(parse_tree: ast.tree),
     f: fn(normalized) {
-      bind_outcome(
+      v2.std.diagnostic.bind_outcome(
         o: v2.compiler.resolve.resolve(tree: normalized, lm: lm),
         f: fn(resolved) {
-          outcome_accepted(value: DagSemanticIr { tree: resolved })
+          v2.std.diagnostic.outcome_accepted(value: DagSemanticIr { tree: resolved })
         }
       )
     }
@@ -725,7 +725,7 @@ fn semantic_ir_from_source_with_model(
   compilation_unit: v2.std.node.Symbol,
   lm: v2.std.language_model.LanguageModel
 ) -> v2.std.diagnostic.Outcome<DagSemanticIr> {
-  bind_outcome(
+  v2.std.diagnostic.bind_outcome(
     o: parse_dag_source_ast_with_model(
       source: source,
       compilation_unit: compilation_unit,
@@ -741,7 +741,7 @@ fn semantic_ir_from_source(source: extdeps.communication.medium.Medium<String>) 
   semantic_ir_from_source_with_model(
     source: source,
     compilation_unit: ^source_authority_port,
-    lm: dag_language_model()
+    lm: v2.extdeps.languages.dag.dag_language_model()
   )
 }
 
@@ -750,18 +750,18 @@ fn source_ir_artifact_provenance_from_model(
   lm: v2.std.language_model.LanguageModel
 ) -> v2.std.diagnostic.Outcome<SourceIrArtifactProvenance> {
   match source_read.artifact.kind {
-    SourceFile =>
-      bind_outcome(
-        o: tokenize(
+    v2.std.artifact.SourceFile =>
+      v2.std.diagnostic.bind_outcome(
+        o: v2.compiler.tokenize.tokenize(
           text: source_read.source.carried,
           file: source_read.compilation_unit,
           rules: lm.lex
         ),
         f: fn(token_stream) {
-          bind_outcome(
-            o: parse_module(tokens: token_stream, grammar: lm.grammar),
+          v2.std.diagnostic.bind_outcome(
+            o: v2.compiler.parse.parse_module(tokens: token_stream, grammar: lm.grammar),
             f: fn(artifact) {
-              outcome_accepted(
+              v2.std.diagnostic.outcome_accepted(
                 value: SourceIrArtifactProvenance {
                   node: artifact.tree,
                   artifact: source_read.artifact,
@@ -773,7 +773,7 @@ fn source_ir_artifact_provenance_from_model(
         }
       )
     _ =>
-      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+      v2.std.diagnostic.outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
   }
 }
 
@@ -782,7 +782,7 @@ fn source_ir_artifact_provenance(
 ) -> v2.std.diagnostic.Outcome<SourceIrArtifactProvenance> {
   source_ir_artifact_provenance_from_model(
     source_read: source_read,
-    lm: dag_language_model()
+    lm: v2.extdeps.languages.dag.dag_language_model()
   )
 }
 
@@ -790,9 +790,9 @@ fn module_storage_binding_from_provenance(
   prov: SourceIrArtifactProvenance,
   source_root: v2.std.cross_tree.import_model.SourceRootRef
 ) -> v2.std.diagnostic.Outcome<ModuleStorageBinding> {
-  match qualified_name_from_module_node(root: prov.node) {
-    Accepted { value: qn, diagnostics: _ } =>
-      outcome_accepted(
+  match v2.extdeps.languages.dag.qualified_name_from_module_node(root: prov.node) {
+    v2.std.diagnostic.Accepted { value: qn, diagnostics: _ } =>
+      v2.std.diagnostic.outcome_accepted(
         value: ModuleStorageBinding {
           module: qn,
           provenance: ParsedFromSource {
@@ -802,14 +802,14 @@ fn module_storage_binding_from_provenance(
           source_root: source_root
         }
       )
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
-data module_storage_located_refusal_note: String = "The name-derivation refusal FORWARDS the derivation's own diagnostics unchanged rather than substituting a port-level source_authority_diagnostic. Substituting would satisfy 'typed' while destroying 'located' (§5 requires both): qualified_name_from_module_node reports at the offending node, whereas source_authority_port locates only the stage. Dropping that is the same loss of signal the silent-drop arm caused, one tier milder — the caller learns THAT a module name failed but not WHERE. This also keeps the authority path identical to the sibling arm in v2.compiler.program_assembly, so one derivation failure does not produce two different diagnostics depending on which entry point ran."
+data module_storage_located_refusal_note: String = "The name-derivation refusal FORWARDS the derivation's own diagnostics unchanged rather than substituting a port-level source_authority_diagnostic. Substituting would satisfy 'typed' while destroying 'located' (§5 requires both): v2.extdeps.languages.dag.qualified_name_from_module_node reports at the offending node, whereas source_authority_port locates only the stage. Dropping that is the same loss of signal the silent-drop arm caused, one tier milder — the caller learns THAT a module name failed but not WHERE. This also keeps the authority path identical to the sibling arm in v2.compiler.program_assembly, so one derivation failure does not produce two different diagnostics depending on which entry point ran."
 
-data module_storage_prepare_once_note: String = "prepare_grammar is hoisted ABOVE the fold, exactly as v2.compiler.program_assembly does (program_assembly_prepare_once_note): the grammar is well-formed-checked, validated, and FIRST/nullable-analyzed ONCE per ingest, then parse_module_prepared reuses the PreparedGrammar for every read. Deriving the binding over a K-module ingest therefore validates the grammar once, not K times — the recompute-per-module cost this dissolves (§6 bare-minimum cost: a proven cost-shape defect is always fixed, and 'K is small here' is not a time-stable fact — K becomes the whole tree once the projections replace the hand tables). Empty ingest is guarded so it never pays the one-time prepare for zero reads, and an invalid grammar fails the whole derivation before any read is parsed, carrying the validation diagnostic — never a per-read silent skip."
+data module_storage_prepare_once_note: String = "v2.compiler.parse.prepare_grammar is hoisted ABOVE the fold, exactly as v2.compiler.program_assembly does (program_assembly_prepare_once_note): the grammar is well-formed-checked, validated, and FIRST/nullable-analyzed ONCE per ingest, then v2.compiler.parse.parse_module_prepared reuses the v2.compiler.parse.PreparedGrammar for every read. Deriving the binding over a K-module ingest therefore validates the grammar once, not K times — the recompute-per-module cost this dissolves (§6 bare-minimum cost: a proven cost-shape defect is always fixed, and 'K is small here' is not a time-stable fact — K becomes the whole tree once the projections replace the hand tables). std.algebra.Empty ingest is guarded so it never pays the one-time prepare for zero reads, and an invalid grammar fails the whole derivation before any read is parsed, carrying the validation diagnostic — never a per-read silent skip."
 
 fn module_storage_binding_from_parse_artifact(
   artifact: v2.compiler.parse.ParseArtifact,
@@ -832,16 +832,16 @@ fn module_storage_binding_from_read_prepared(
   residue: v2.std.diagnostic.Diagnostics
 ) -> v2.std.diagnostic.Outcome<ModuleStorageBinding> {
   match source_read.artifact.kind {
-    SourceFile =>
-      bind_outcome(
-        o: tokenize(
+    v2.std.artifact.SourceFile =>
+      v2.std.diagnostic.bind_outcome(
+        o: v2.compiler.tokenize.tokenize(
           text: source_read.source.carried,
           file: source_read.compilation_unit,
           rules: lm.lex
         ),
         f: fn(token_stream) {
-          bind_outcome(
-            o: parse_module_prepared(
+          v2.std.diagnostic.bind_outcome(
+            o: v2.compiler.parse.parse_module_prepared(
               tokens: token_stream,
               prepared: prepared,
               validation_residue: residue
@@ -856,7 +856,7 @@ fn module_storage_binding_from_read_prepared(
         }
       )
     _ =>
-      outcome_rejected(
+      v2.std.diagnostic.outcome_rejected(
         d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file)
       )
   }
@@ -866,9 +866,9 @@ fn module_storage_binding_from_read_with_model(
   source_read: DagSourceReadWitness,
   lm: v2.std.language_model.LanguageModel
 ) -> v2.std.diagnostic.Outcome<ModuleStorageBinding> {
-  match prepare_grammar(grammar: lm.grammar) {
-    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-    Accepted { value: prepared, diagnostics: residue } =>
+  match v2.compiler.parse.prepare_grammar(grammar: lm.grammar) {
+    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    v2.std.diagnostic.Accepted { value: prepared, diagnostics: residue } =>
       module_storage_binding_from_read_prepared(
         source_read: source_read,
         lm: lm,
@@ -878,22 +878,22 @@ fn module_storage_binding_from_read_with_model(
   }
 }
 
-// §5 — a failure arm REFUSES, never widens. A read whose module name cannot be derived is a located refusal, NOT a dropped binding: the pre-Phase-1 derivation in v2.compiler.program_assembly kept the root and left the index unchanged on Rejected, so a module that failed name extraction became silently invisible to every downstream lookup (an absorbing fallback in drop form — the deficit's frequency zeroed by construction). Duplicate module within the index is likewise a typed refusal here: it is the modeled form of the host panic at src/v1/stage0/src/cli_run.rs module_path_collision_panic_message, so the live 1:1 binding is enforced by the model rather than incidentally by a Rust panic.
+// §5 — a failure arm REFUSES, never widens. A read whose module name cannot be derived is a located refusal, NOT a dropped binding: the pre-Phase-1 derivation in v2.compiler.program_assembly kept the root and left the index unchanged on v2.std.diagnostic.Rejected, so a module that failed name extraction became silently invisible to every downstream lookup (an absorbing fallback in drop form — the deficit's frequency zeroed by construction). Duplicate module within the index is likewise a typed refusal here: it is the modeled form of the host panic at src/v1/stage0/src/cli_run.rs module_path_collision_panic_message, so the live 1:1 binding is enforced by the model rather than incidentally by a Rust panic.
 fn module_storage_binding_module(binding: ModuleStorageBinding) -> v2.std.qualified_name.QualifiedName {
   binding.module
 }
 
 fn module_storage_binding_module_dotted(binding: ModuleStorageBinding) -> String {
-  qualified_name_to_dotted_string(qn: binding.module)
+  v2.std.qualified_name.qualified_name_to_dotted_string(qn: binding.module)
 }
 
-data module_storage_identity_note: String = "Module identity compares STRUCTURALLY on QualifiedName (= FreeMonoid<Symbol>), never through a rendered dotted string. Routing identity through qualified_name_to_dotted_string would allocate two strings per comparison — n per insert, so n^2 string builds over an ingest — to answer a question the symbol list already answers, and it would make a rendering function load-bearing for identity (§6 bare-minimum cost; §3 the dotted form is a projection FOR DISPLAY, not the identity authority). The hand-rolled qualified_name_eq was already dissolved into structural == when QualifiedName became a FreeMonoid alias; this reuses that, it does not re-mint it."
+data module_storage_identity_note: String = "Module identity compares STRUCTURALLY on v2.std.qualified_name.QualifiedName (= std.algebra.FreeMonoid<v2.std.node.Symbol>), never through a rendered dotted string. Routing identity through v2.std.qualified_name.qualified_name_to_dotted_string would allocate two strings per comparison — n per insert, so n^2 string builds over an ingest — to answer a question the symbol list already answers, and it would make a rendering function load-bearing for identity (§6 bare-minimum cost; §3 the dotted form is a projection FOR DISPLAY, not the identity authority). The hand-rolled qualified_name_eq was already dissolved into structural == when v2.std.qualified_name.QualifiedName became a std.algebra.FreeMonoid alias; this reuses that, it does not re-mint it."
 
 fn module_storage_index_contains_module(
   index: ModuleStorageIndex,
   module: v2.std.qualified_name.QualifiedName
 ) -> Bool {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: index,
     empty: false,
     cons: fn(found, binding) {
@@ -911,11 +911,11 @@ fn module_storage_index_insert(
   binding: ModuleStorageBinding
 ) -> v2.std.diagnostic.Outcome<ModuleStorageIndex> {
   if module_storage_index_contains_module(index: index, module: binding.module) {
-    outcome_rejected(
+    v2.std.diagnostic.outcome_rejected(
       d: source_authority_diagnostic(reason: ^source_authority_module_storage_binding_duplicate)
     )
   } else {
-    outcome_accepted(value: list_snoc_item(xs: index, item: binding))
+    v2.std.diagnostic.outcome_accepted(value: v2.std.algebra.list_snoc_item(xs: index, item: binding))
   }
 }
 
@@ -936,13 +936,13 @@ fn module_storage_fold_step(
         prepared: prepared,
         residue: residue
       ) {
-        Rejected { diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } =>
           ModuleStorageFoldFailed { diagnostics: d }
-        Accepted { value: binding, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: binding, diagnostics: _ } =>
           match module_storage_index_insert(index: acc, binding: binding) {
-            Rejected { diagnostics: d } =>
+            v2.std.diagnostic.Rejected { diagnostics: d } =>
               ModuleStorageFoldFailed { diagnostics: d }
-            Accepted { value: next, diagnostics: _ } =>
+            v2.std.diagnostic.Accepted { value: next, diagnostics: _ } =>
               ModuleStorageFoldOk { bindings: next }
           }
       }
@@ -955,7 +955,7 @@ fn module_storage_bindings_from_ingest_prepared(
   prepared: v2.compiler.parse.PreparedGrammar,
   residue: v2.std.diagnostic.Diagnostics
 ) -> v2.std.diagnostic.Outcome<ModuleStorageIndex> {
-  match fold_list(
+  match v2.std.algebra.fold_list(
     xs: ingest,
     empty: ModuleStorageFoldOk { bindings: std.algebra.Empty },
     cons: fn(state, read) {
@@ -968,7 +968,7 @@ fn module_storage_bindings_from_ingest_prepared(
       )
     }
   ) {
-    ModuleStorageFoldOk { bindings: b } => outcome_accepted(value: b)
+    ModuleStorageFoldOk { bindings: b } => v2.std.diagnostic.outcome_accepted(value: b)
     ModuleStorageFoldFailed { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
@@ -978,11 +978,11 @@ fn module_storage_bindings_from_ingest_with_model(
   lm: v2.std.language_model.LanguageModel
 ) -> v2.std.diagnostic.Outcome<ModuleStorageIndex> {
   match ingest {
-    Empty => outcome_accepted(value: std.algebra.Empty)
+    std.algebra.Empty => v2.std.diagnostic.outcome_accepted(value: std.algebra.Empty)
     _ =>
-      match prepare_grammar(grammar: lm.grammar) {
-        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-        Accepted { value: prepared, diagnostics: residue } =>
+      match v2.compiler.parse.prepare_grammar(grammar: lm.grammar) {
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        v2.std.diagnostic.Accepted { value: prepared, diagnostics: residue } =>
           module_storage_bindings_from_ingest_prepared(
             ingest: ingest,
             lm: lm,
@@ -998,11 +998,11 @@ fn module_storage_bindings_from_ingest(
 ) -> v2.std.diagnostic.Outcome<ModuleStorageIndex> {
   module_storage_bindings_from_ingest_with_model(
     ingest: ingest,
-    lm: dag_language_model()
+    lm: v2.extdeps.languages.dag.dag_language_model()
   )
 }
 
-data module_storage_produced_binding_note: String = "The zero-file case, representable by construction (§2): the body producer already creates modules with no file at all, which is the standing proof that identity cannot be the path. ProducedByBehavior carries the producing behavior instead of an artifact, so such a module enters the binding table honestly rather than being excluded (today source_ir_artifact_provenance_from_model rejects every non-SourceFile artifact, so produced modules cannot enter provenance at all)."
+data module_storage_produced_binding_note: String = "The zero-file case, representable by construction (§2): the body producer already creates modules with no file at all, which is the standing proof that identity cannot be the path. ProducedByBehavior carries the producing behavior instead of an artifact, so such a module enters the binding table honestly rather than being excluded (today source_ir_artifact_provenance_from_model rejects every non-v2.std.artifact.SourceFile artifact, so produced modules cannot enter provenance at all)."
 
 fn module_storage_produced_binding(
   module: v2.std.qualified_name.QualifiedName,
@@ -1032,18 +1032,18 @@ fn module_storage_parsed_binding(
   }
 }
 
-fn module_storage_binding_file_path(binding: ModuleStorageBinding) -> Optional<String> {
+fn module_storage_binding_file_path(binding: ModuleStorageBinding) -> v2.std.optional.Optional<String> {
   match binding.provenance {
     ParsedFromSource { artifact: a, span_index: _ } =>
-      optional_present(value: a.file_path)
+      v2.std.optional.optional_present(value: a.file_path)
     ProducedByBehavior { producer: _ } =>
-      optional_absent()
+      v2.std.optional.optional_absent()
   }
 }
 
-data module_storage_supply_op_note: String = "THE MODELED OP (docs/plans/module-identity-storage-binding-design.md §2; parent ruling 2026-07-18). Inputs: source roots. Output: ModuleStorageBinding rows — module, path, provenance — and deliberately NO source text: the binding never needed file CONTENTS, only module ⇄ path, which is why this is a different carrier from SourceRootIngest (whose witnesses inline the full Lossless source of every file and are therefore capped at corpus-protection scale). This declaration is the INTERFACE; the host is ONE HANDLER of it at the effect boundary (§2 Realization; §3's interface/transport split — the transport is not a fact about the binding). The handler carries ZERO independent policy: it records what the one parse pipeline already computed, which is precisely why repointing the host producer and supplying the rows are the SAME motion rather than two derivations to reconcile."
+data module_storage_supply_op_note: String = "THE MODELED OP (docs/plans/module-identity-storage-binding-design.md §2; parent ruling 2026-07-18). Inputs: source roots. Output: ModuleStorageBinding rows — module, path, provenance — and deliberately NO source text: the binding never needed file CONTENTS, only module ⇄ path, which is why this is a different carrier from SourceRootIngest (whose witnesses inline the full extdeps.communication.medium.Lossless source of every file and are therefore capped at corpus-protection scale). This declaration is the INTERFACE; the host is ONE HANDLER of it at the effect boundary (§2 Realization; §3's interface/transport split — the transport is not a fact about the binding). The handler carries ZERO independent policy: it records what the one v2.compiler.parse.parse pipeline already computed, which is precisely why repointing the host producer and supplying the rows are the SAME motion rather than two derivations to reconcile."
 
-data module_storage_supply_cost_note: String = "Why a host handler rather than deriving in-graph: module_storage_bindings_from_ingest re-parses every module, measured at ~6.5s of eval per module. That is fine at ORACLE scale (a handful of modules, off the gate path) and impossible at consumer scale — the frontier needs ~35 modules and compile-clean scope thousands. The host already knows (module, path) from its own parse, so re-deriving it in-graph is duplicated work (§2) as well as slow. The in-graph derivation is therefore retained as the ORACLE that pins this transport to the model, never as the consumer path."
+data module_storage_supply_cost_note: String = "Why a host handler rather than deriving in-graph: module_storage_bindings_from_ingest re-parses every module, measured at ~6.5s of eval per module. That is fine at ORACLE scale (a handful of modules, off the gate path) and impossible at consumer scale — the frontier needs ~35 modules and compile-clean scope thousands. The host already knows (module, path) from its own v2.compiler.parse.parse, so re-deriving it in-graph is duplicated work (§2) as well as slow. The in-graph derivation is therefore retained as the ORACLE that pins this transport to the model, never as the consumer path."
 
 data module_storage_supply_unbound_body_note: String = "The body REFUSES rather than recursing. This declaration is an interface whose realization is a host handler; until host-effect emission binds it, an in-graph caller must be told so, loudly and at once.
 
@@ -1051,26 +1051,26 @@ It was previously written as an unconditional self-call — fn f(x) { f(x: x) } 
 
 No in-graph caller exists today, so this changes no behavior — it changes what happens the first time one does."
 
-fn module_storage_bindings_for_source_roots(source_roots: FreeMonoid<String>) -> v2.std.diagnostic.Outcome<ModuleStorageIndex> {
-  outcome_rejected(
+fn module_storage_bindings_for_source_roots(source_roots: std.algebra.FreeMonoid<String>) -> v2.std.diagnostic.Outcome<ModuleStorageIndex> {
+  v2.std.diagnostic.outcome_rejected(
     d: source_authority_diagnostic(reason: ^module_storage_supply_host_dispatch_required)
   )
 }
 
-data module_storage_bindings_for_source_roots_host_disposition: std.disposition.Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
+data module_storage_bindings_for_source_roots_host_disposition: std.disposition.Disposition = std.disposition.Scaffold {
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.compiler.source_authority",
     decl_name: "module_storage_bindings_for_source_roots",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
-data module_storage_supply_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: host-effect emission (witness-realization lane). The host handler for module_storage_bindings_for_source_roots is hand-written Rust at the effect boundary TODAY; when host-effect emission lands, the producer is EMITTED from this .dag model instead, and the hand handler retires. Declared here rather than left implicit so the scaffold cannot linger unmarked (§6: every scaffold lands with a named dissolution trigger). Until then the consistency witness is what keeps the handler honest to this interface, in two enrolled halves: the LIVE half (v2.test.long.module_binding_host_consistency, on the module-binding supply gate's wet cadence) asserts host-emitted rows == module_storage_bindings_from_ingest over the same sources, and the DISCRIMINATING half (v2.test.claim.module_storage_binding, per-PR fast lane, zero parse cost) pins the comparator itself with perturbed rows — module_storage_agreement_reports_divergent_on_wrong_module and module_storage_agreement_reports_uncovered_on_missing_row both go RED if module_storage_host_agrees_with_oracle ever regresses to answering ModuleStorageAgrees unconditionally, which is the exact way the live half would go vacuously green (review 39735).")
+data module_storage_supply_dissolution_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "dissolve-on: host-effect emission (witness-realization lane). The host handler for module_storage_bindings_for_source_roots is hand-written Rust at the effect boundary TODAY; when host-effect emission lands, the producer is EMITTED from this .dag model instead, and the hand handler retires. Declared here rather than left implicit so the scaffold cannot linger unmarked (§6: every scaffold lands with a named dissolution trigger). Until then the consistency witness is what keeps the handler honest to this interface, in two enrolled halves: the LIVE half (v2.test.long.module_binding_host_consistency, on the module-binding supply gate's wet cadence) asserts host-emitted rows == module_storage_bindings_from_ingest over the same sources, and the DISCRIMINATING half (v2.test.claim.module_storage_binding, per-PR fast lane, zero v2.compiler.parse.parse cost) pins the comparator itself with perturbed rows — module_storage_agreement_reports_divergent_on_wrong_module and module_storage_agreement_reports_uncovered_on_missing_row both go RED if module_storage_host_agrees_with_oracle ever regresses to answering ModuleStorageAgrees unconditionally, which is the exact way the live half would go vacuously green (review 39735).")
 
-data module_storage_projection_note: String = "Both requested directions are queries against ONE table (design §2). file → graph region: given a path, the module parsed from it. module → file(s): given a module reference, its current storage — needed ONLY at host boundaries; user code and tool .dag reference modules and never see paths. A produced module answers Absent for storage, which is a real answer, not a miss."
+data module_storage_projection_note: String = "Both requested directions are queries against ONE table (design §2). file → graph region: given a path, the module parsed from it. module → file(s): given a module reference, its current storage — needed ONLY at host boundaries; user code and tool .dag reference modules and never see paths. A produced module answers v2.std.optional.Absent for storage, which is a real answer, not a miss."
 
-data module_storage_agreement_note: String = "After task 4 both the host transport and the in-graph oracle derive module names through parse — the host via v1_compiler_parse at the bootstrap boundary, the oracle via parse_module_prepared in-graph. module_storage_host_agrees_with_oracle therefore checks structural parity of the binding TABLE (module identity + storage path per row), not two different extraction code paths. Divergence still means a real authority disagreement; coverage gaps still mean the host index lacks a row the oracle carries. The witness remains the pin that keeps the host handler a transport of the modeled op rather than a rival authority (§3)."
+data module_storage_agreement_note: String = "After task 4 both the host transport and the in-graph oracle derive module names through v2.compiler.parse.parse — the host via v1_compiler_parse at the bootstrap boundary, the oracle via v2.compiler.parse.parse_module_prepared in-graph. module_storage_host_agrees_with_oracle therefore checks structural parity of the binding TABLE (module identity + storage path per row), not two different extraction code paths. Divergence still means a real authority disagreement; coverage gaps still mean the host index lacks a row the oracle carries. The witness remains the pin that keeps the host handler a transport of the modeled op rather than a rival authority (§3)."
 
 type ModuleStorageAgreement
   = ModuleStorageAgrees
@@ -1082,11 +1082,11 @@ fn module_storage_agreement_for_binding(
   host: ModuleStorageIndex
 ) -> ModuleStorageAgreement {
   match module_storage_binding_file_path(binding: oracle_binding) {
-    Absent => ModuleStorageAgrees
-    Present { value: p } =>
+    v2.std.optional.Absent => ModuleStorageAgrees
+    v2.std.optional.Present { value: p } =>
       match module_storage_module_for_path(index: host, file_path: p) {
-        Absent => ModuleStorageUncovered { path: p }
-        Present { value: host_module } =>
+        v2.std.optional.Absent => ModuleStorageUncovered { path: p }
+        v2.std.optional.Present { value: host_module } =>
           if host_module == module_storage_binding_module(binding: oracle_binding) {
             ModuleStorageAgrees
           } else {
@@ -1113,7 +1113,7 @@ fn module_storage_host_agrees_with_oracle(
   oracle: ModuleStorageIndex,
   host: ModuleStorageIndex
 ) -> ModuleStorageAgreement {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: oracle,
     empty: ModuleStorageAgrees,
     cons: fn(acc, oracle_binding) {
@@ -1125,22 +1125,22 @@ fn module_storage_host_agrees_with_oracle(
 fn module_storage_module_for_path(
   index: ModuleStorageIndex,
   file_path: String
-) -> Optional<v2.std.qualified_name.QualifiedName> {
-  fold_list(
+) -> v2.std.optional.Optional<v2.std.qualified_name.QualifiedName> {
+  v2.std.algebra.fold_list(
     xs: index,
-    empty: optional_absent(),
+    empty: v2.std.optional.optional_absent(),
     cons: fn(found, binding) {
       match found {
-        Present { value: v } => optional_present(value: v)
-        Absent =>
+        v2.std.optional.Present { value: v } => v2.std.optional.optional_present(value: v)
+        v2.std.optional.Absent =>
           match module_storage_binding_file_path(binding: binding) {
-            Present { value: p } =>
+            v2.std.optional.Present { value: p } =>
               if p == file_path {
-                optional_present(value: module_storage_binding_module(binding: binding))
+                v2.std.optional.optional_present(value: module_storage_binding_module(binding: binding))
               } else {
-                optional_absent()
+                v2.std.optional.optional_absent()
               }
-            Absent => optional_absent()
+            v2.std.optional.Absent => v2.std.optional.optional_absent()
           }
       }
     }
@@ -1150,18 +1150,18 @@ fn module_storage_module_for_path(
 fn module_storage_path_for_module(
   index: ModuleStorageIndex,
   module: v2.std.qualified_name.QualifiedName
-) -> Optional<String> {
-  fold_list(
+) -> v2.std.optional.Optional<String> {
+  v2.std.algebra.fold_list(
     xs: index,
-    empty: optional_absent(),
+    empty: v2.std.optional.optional_absent(),
     cons: fn(found, binding) {
       match found {
-        Present { value: v } => optional_present(value: v)
-        Absent =>
+        v2.std.optional.Present { value: v } => v2.std.optional.optional_present(value: v)
+        v2.std.optional.Absent =>
           if module_storage_binding_module(binding: binding) == module {
             module_storage_binding_file_path(binding: binding)
           } else {
-            optional_absent()
+            v2.std.optional.optional_absent()
           }
       }
     }
@@ -1173,14 +1173,14 @@ fn source_ir_node_artifact_provenance_from_model(
   lm: v2.std.language_model.LanguageModel
 ) -> v2.std.diagnostic.Outcome<v2.std.artifact.NodeArtifactProvenance> {
   match source_ir_artifact_provenance_from_model(source_read: source_read, lm: lm) {
-    Accepted { value: prov, diagnostics: _ } =>
-      outcome_accepted(
+    v2.std.diagnostic.Accepted { value: prov, diagnostics: _ } =>
+      v2.std.diagnostic.outcome_accepted(
         value: v2.std.artifact.NodeArtifactProvenance {
           node: prov.node,
           artifact: prov.artifact
         }
       )
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -1189,7 +1189,7 @@ fn source_ir_node_artifact_provenance(
 ) -> v2.std.diagnostic.Outcome<v2.std.artifact.NodeArtifactProvenance> {
   source_ir_node_artifact_provenance_from_model(
     source_read: source_read,
-    lm: dag_language_model()
+    lm: v2.extdeps.languages.dag.dag_language_model()
   )
 }
 
@@ -1197,7 +1197,7 @@ fn source_ir_node_artifact_provenance(
 
 type NodeArtifactProvenanceFoldState
   = NodeArtifactProvenanceFoldOk {
-      provenance: FreeMonoid<v2.std.artifact.NodeArtifactProvenance>
+      provenance: std.algebra.FreeMonoid<v2.std.artifact.NodeArtifactProvenance>
     }
   | NodeArtifactProvenanceFoldFailed {
       diagnostics: v2.std.diagnostic.NonEmptyDiagnostics
@@ -1212,11 +1212,11 @@ fn node_artifact_provenance_fold_step(
       NodeArtifactProvenanceFoldFailed { diagnostics: d }
     NodeArtifactProvenanceFoldOk { provenance: acc } =>
       match source_ir_node_artifact_provenance(source_read: read) {
-        Accepted { value: row, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: row, diagnostics: _ } =>
           NodeArtifactProvenanceFoldOk {
-            provenance: list_snoc_item(xs: acc, item: row)
+            provenance: v2.std.algebra.list_snoc_item(xs: acc, item: row)
           }
-        Rejected { diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } =>
           NodeArtifactProvenanceFoldFailed { diagnostics: d }
       }
   }
@@ -1224,8 +1224,8 @@ fn node_artifact_provenance_fold_step(
 
 fn node_artifact_provenance_from_source_root(
   ingest: SourceRootIngest
-) -> v2.std.diagnostic.Outcome<FreeMonoid<v2.std.artifact.NodeArtifactProvenance>> {
-  match fold_list(
+) -> v2.std.diagnostic.Outcome<std.algebra.FreeMonoid<v2.std.artifact.NodeArtifactProvenance>> {
+  match v2.std.algebra.fold_list(
     xs: ingest,
     empty: NodeArtifactProvenanceFoldOk { provenance: std.algebra.Empty },
     cons: fn(state, read) {
@@ -1233,7 +1233,7 @@ fn node_artifact_provenance_from_source_root(
     }
   ) {
     NodeArtifactProvenanceFoldOk { provenance: p } =>
-      outcome_accepted(value: p)
+      v2.std.diagnostic.outcome_accepted(value: p)
     NodeArtifactProvenanceFoldFailed { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
@@ -1241,45 +1241,45 @@ fn node_artifact_provenance_from_source_root(
 
 fn source_root_provenance_coverage_receipt(
   ingest: SourceRootIngest,
-  produced: FreeMonoid<v2.std.artifact.NodeArtifactProvenance>
+  produced: std.algebra.FreeMonoid<v2.std.artifact.NodeArtifactProvenance>
 ) -> SourceRootProvenanceCoverageReceipt {
   SourceRootProvenanceCoverageReceipt {
-    ingest_read_count: length(xs: ingest),
-    produced_row_count: length(xs: produced),
+    ingest_read_count: v2.std.algebra.length(xs: ingest),
+    produced_row_count: v2.std.algebra.length(xs: produced),
     discovered_source_refs_digest: DiscoveredSourceRefsDigestUnavailable {
       cause: DiscoveredSourceRefsDigestNoRefList {
         reason: "ingest-provenance-path-no-ref-list"
       }
     },
-    coverage: if length(xs: ingest) == length(xs: produced) {
+    coverage: if v2.std.algebra.length(xs: ingest) == v2.std.algebra.length(xs: produced) {
       SourceRootCoverageComplete
     } else {
       SourceRootRowsMissing {
-        read_count: length(xs: ingest),
-        produced_row_count: length(xs: produced)
+        read_count: v2.std.algebra.length(xs: ingest),
+        produced_row_count: v2.std.algebra.length(xs: produced)
       }
     }
   }
 }
 
 fn source_root_set_from_ingest(ingest: SourceRootIngest) -> v2.std.cross_tree.import_model.SourceRootSet {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: ingest,
     empty: std.algebra.Empty,
     cons: fn(acc, read) {
-      source_root_set_insert(roots: acc, r: read.source_root)
+      v2.std.cross_tree.resolution.source_root_set_insert(roots: acc, r: read.source_root)
     }
   )
 }
 
-fn source_authority_node_equal(left: Node, right: Node) -> Bool {
-  canonicalize_node_strip_provenance(n: left) == canonicalize_node_strip_provenance(n: right)
+fn source_authority_node_equal(left: v2.std.node.Node, right: v2.std.node.Node) -> Bool {
+  v2.std.node.canonicalize_node_strip_provenance(n: left) == v2.std.node.canonicalize_node_strip_provenance(n: right)
 }
 
 fn source_ast_equal_witness(
   original: DagSourceAst,
   reparsed: DagSourceAst
-) -> Witness<SourceAstEqual> {
+) -> v2.std.witness.Witness<SourceAstEqual> {
   if source_authority_node_equal(left: original.tree, right: reparsed.tree) {
     v2.std.witness.Holds { value: SourceAstEqual { original: original, reparsed: reparsed } }
   } else {
@@ -1292,7 +1292,7 @@ fn source_ast_equal_witness(
 fn normalized_source_ast_equal_witness(
   original: NormalizedDagSourceAst,
   reparsed: NormalizedDagSourceAst
-) -> Witness<NormalizedSourceAstEqual> {
+) -> v2.std.witness.Witness<NormalizedSourceAstEqual> {
   if source_authority_node_equal(left: original.tree, right: reparsed.tree) {
     v2.std.witness.Holds { value: NormalizedSourceAstEqual { original: original, reparsed: reparsed } }
   } else {
@@ -1305,7 +1305,7 @@ fn normalized_source_ast_equal_witness(
 fn semantic_ir_equal_witness(
   original: DagSemanticIr,
   reparsed: DagSemanticIr
-) -> Witness<SemanticIrEqual> {
+) -> v2.std.witness.Witness<SemanticIrEqual> {
   if source_authority_node_equal(left: original.tree, right: reparsed.tree) {
     v2.std.witness.Holds { value: SemanticIrEqual { original: original, reparsed: reparsed } }
   } else {
@@ -1318,8 +1318,8 @@ fn semantic_ir_equal_witness(
 fn deterministic_dag_source_serializer_witness(
   first: extdeps.communication.medium.Medium<String>,
   second: extdeps.communication.medium.Medium<String>
-) -> Witness<DeterministicDagSourceSerializerLaw> {
-  if medium_section_equal(left: first, right: second) {
+) -> v2.std.witness.Witness<DeterministicDagSourceSerializerLaw> {
+  if extdeps.communication.fidelity_carriers.medium_section_equal(left: first, right: second) {
     v2.std.witness.Holds {
       value: DeterministicDagSourceSerializerLaw {
         canonical_section: first.carried,
@@ -1338,11 +1338,11 @@ fn canonical_dag_source_emission_law_from_parts(
   canonical_source_first: extdeps.communication.medium.Medium<String>,
   canonical_source_second: extdeps.communication.medium.Medium<String>,
   reparsed_ast: DagSourceAst
-) -> v2.std.diagnostic.Outcome<Witness<CanonicalDagSourceEmissionLaw>> {
-  bind_outcome(
+) -> v2.std.diagnostic.Outcome<v2.std.witness.Witness<CanonicalDagSourceEmissionLaw>> {
+  v2.std.diagnostic.bind_outcome(
     o: normalize_dag_source_ast(ast: original_ast),
     f: fn(original_normalized_ast) {
-      bind_outcome(
+      v2.std.diagnostic.bind_outcome(
         o: normalize_dag_source_ast(ast: reparsed_ast),
         f: fn(reparsed_normalized_ast) {
           let serializer_law = deterministic_dag_source_serializer_witness(
@@ -1354,14 +1354,14 @@ fn canonical_dag_source_emission_law_from_parts(
             reparsed: reparsed_normalized_ast
           )
           match serializer_law {
-            Violates { diagnostic: d } =>
-              v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
-            Holds { value: serializer_law_value } =>
+            v2.std.witness.Violates { diagnostic: d } =>
+              v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.diagnostics_singleton(d: d) }
+            v2.std.witness.Holds { value: serializer_law_value } =>
               match parse_print_law {
-                Violates { diagnostic: d } =>
-                  v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
-                Holds { value: parse_print_law_value } =>
-                  outcome_accepted(
+                v2.std.witness.Violates { diagnostic: d } =>
+                  v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.diagnostics_singleton(d: d) }
+                v2.std.witness.Holds { value: parse_print_law_value } =>
+                  v2.std.diagnostic.outcome_accepted(
                     value: v2.std.witness.Holds {
                       value: CanonicalDagSourceEmissionLaw {
                         canonical_source: canonical_source_first,
@@ -1387,18 +1387,18 @@ fn source_authority_law_from_parts(
   original_ir: DagSemanticIr,
   reparsed_ir: DagSemanticIr,
   canonical_source_law: CanonicalDagSourceEmissionLaw
-) -> v2.std.diagnostic.Outcome<Witness<SourceAuthorityRoundTripLaw>> {
+) -> v2.std.diagnostic.Outcome<v2.std.witness.Witness<SourceAuthorityRoundTripLaw>> {
   let source_law = source_ast_equal_witness(original: original_ast, reparsed: reparsed_ast)
   let semantic_law = semantic_ir_equal_witness(original: original_ir, reparsed: reparsed_ir)
   match source_law {
-    Violates { diagnostic: d } =>
-      v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
-    Holds { value: source_law_value } =>
+    v2.std.witness.Violates { diagnostic: d } =>
+      v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.diagnostics_singleton(d: d) }
+    v2.std.witness.Holds { value: source_law_value } =>
       match semantic_law {
-        Violates { diagnostic: d } =>
-          v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
-        Holds { value: semantic_law_value } =>
-          outcome_accepted(
+        v2.std.witness.Violates { diagnostic: d } =>
+          v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.diagnostics_singleton(d: d) }
+        v2.std.witness.Holds { value: semantic_law_value } =>
+          v2.std.diagnostic.outcome_accepted(
             value: v2.std.witness.Holds {
               value: SourceAuthorityRoundTripLaw {
                 canonical_source: canonical_source,
@@ -1416,40 +1416,40 @@ fn source_authority_round_trip_with_model(
   source: extdeps.communication.medium.Medium<String>,
   canonical_source_target: v2.std.compilers.target_model.TargetModel,
   lm: v2.std.language_model.LanguageModel
-) -> v2.std.diagnostic.Outcome<Witness<SourceAuthorityRoundTripLaw>> {
-  bind_outcome(
+) -> v2.std.diagnostic.Outcome<v2.std.witness.Witness<SourceAuthorityRoundTripLaw>> {
+  v2.std.diagnostic.bind_outcome(
     o: parse_dag_source_ast_with_model(
       source: source,
       compilation_unit: ^source_authority_port,
       lm: lm
     ),
     f: fn(original_ast) {
-      bind_outcome(
+      v2.std.diagnostic.bind_outcome(
         o: semantic_ir_from_ast_with_model(ast: original_ast, lm: lm),
         f: fn(original_ir) {
-          bind_outcome(
-            o: target_serialize_source_from_model(
+          v2.std.diagnostic.bind_outcome(
+            o: v2.compiler.translate.target_serialize_source_from_model(
               target: canonical_source_target,
               emitted: original_ir.tree
             ),
             f: fn(canonical_source) {
-              bind_outcome(
-                o: target_serialize_source_from_model(
+              v2.std.diagnostic.bind_outcome(
+                o: v2.compiler.translate.target_serialize_source_from_model(
                   target: canonical_source_target,
                   emitted: original_ir.tree
                 ),
                 f: fn(canonical_source_again) {
-                  bind_outcome(
+                  v2.std.diagnostic.bind_outcome(
                     o: parse_dag_source_ast_with_model(
                       source: canonical_source,
                       compilation_unit: ^source_authority_port,
                       lm: lm
                     ),
                     f: fn(reparsed_ast) {
-                      bind_outcome(
+                      v2.std.diagnostic.bind_outcome(
                         o: semantic_ir_from_ast_with_model(ast: reparsed_ast, lm: lm),
                         f: fn(reparsed_ir) {
-                          bind_outcome(
+                          v2.std.diagnostic.bind_outcome(
                             o: canonical_dag_source_emission_law_from_parts(
                               original_ast: original_ast,
                               canonical_source_first: canonical_source,
@@ -1458,9 +1458,9 @@ fn source_authority_round_trip_with_model(
                             ),
                             f: fn(canonical_source_law_witness) {
                               match canonical_source_law_witness {
-                                Violates { diagnostic: d } =>
-                                  v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
-                                Holds { value: canonical_source_law } =>
+                                v2.std.witness.Violates { diagnostic: d } =>
+                                  v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.diagnostics_singleton(d: d) }
+                                v2.std.witness.Holds { value: canonical_source_law } =>
                                   source_authority_law_from_parts(
                                     original_ast: original_ast,
                                     canonical_source: canonical_source,
@@ -1489,29 +1489,29 @@ fn source_authority_round_trip_with_model(
 fn canonical_dag_source_parse_print_law(
   source: extdeps.communication.medium.Medium<String>,
   canonical_source_target: v2.std.compilers.target_model.TargetModel
-) -> v2.std.diagnostic.Outcome<Witness<CanonicalDagSourceEmissionLaw>> {
-  bind_outcome(
+) -> v2.std.diagnostic.Outcome<v2.std.witness.Witness<CanonicalDagSourceEmissionLaw>> {
+  v2.std.diagnostic.bind_outcome(
     o: parse_dag_source_ast(source: source),
     f: fn(original_ast) {
-      bind_outcome(
+      v2.std.diagnostic.bind_outcome(
         o: semantic_ir_from_ast_with_model(
           ast: original_ast,
-          lm: dag_language_model()
+          lm: v2.extdeps.languages.dag.dag_language_model()
         ),
         f: fn(original_ir) {
-          bind_outcome(
-            o: target_serialize_source_from_model(
+          v2.std.diagnostic.bind_outcome(
+            o: v2.compiler.translate.target_serialize_source_from_model(
               target: canonical_source_target,
               emitted: original_ir.tree
             ),
             f: fn(canonical_source) {
-              bind_outcome(
-                o: target_serialize_source_from_model(
+              v2.std.diagnostic.bind_outcome(
+                o: v2.compiler.translate.target_serialize_source_from_model(
                   target: canonical_source_target,
                   emitted: original_ir.tree
                 ),
                 f: fn(canonical_source_again) {
-                  bind_outcome(
+                  v2.std.diagnostic.bind_outcome(
                     o: parse_dag_source_ast(source: canonical_source),
                     f: fn(reparsed_ast) {
                       canonical_dag_source_emission_law_from_parts(
@@ -1535,10 +1535,10 @@ fn canonical_dag_source_parse_print_law(
 fn source_authority_round_trip(
   source: extdeps.communication.medium.Medium<String>,
   canonical_source_target: v2.std.compilers.target_model.TargetModel
-) -> v2.std.diagnostic.Outcome<Witness<SourceAuthorityRoundTripLaw>> {
+) -> v2.std.diagnostic.Outcome<v2.std.witness.Witness<SourceAuthorityRoundTripLaw>> {
   source_authority_round_trip_with_model(
     source: source,
     canonical_source_target: canonical_source_target,
-    lm: dag_language_model()
+    lm: v2.extdeps.languages.dag.dag_language_model()
   )
 }

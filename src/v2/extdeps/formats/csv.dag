@@ -126,6 +126,6 @@ type CsvDocument {
   numeric_lexeme_profile: CsvNumericLexemeProfile,
   unique_name_profile: CsvUniqueNameProfile,
   record_shape_profile: CsvRecordShapeProfile,
-  header: Optional<CsvRow>,
+  header: v2.std.optional.Optional<CsvRow>,
   records: List<CsvRow>,
 }

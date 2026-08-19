@@ -1,24 +1,24 @@
 module v2.test.long.decl_index_enumeration
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 test fn decl_facts_nonempty_over_witness_roots() -> Bool {
-  return decl_facts_count(pool_roots: gunbc.ci_layer_roots.witness_layer_roots) > 500
+  return v2.std.decl_index.decl_facts_count(pool_roots: gunbc.ci_layer_roots.witness_layer_roots) > 500
 }
 
 test fn decl_facts_fn_items_nonempty_over_witness_roots() -> Bool {
-  return decl_facts_fn_item_count(pool_roots: gunbc.ci_layer_roots.witness_layer_roots) > 100
+  return v2.std.decl_index.decl_facts_fn_item_count(pool_roots: gunbc.ci_layer_roots.witness_layer_roots) > 100
 }
 
 test fn decl_facts_rows_carry_locked_shape_fields() -> Bool {
-  fold(decl_facts(pool_roots: gunbc.ci_layer_roots.witness_layer_roots), init: false, f: fn(found, fact) {
+  fold(v2.std.decl_index.decl_facts(pool_roots: gunbc.ci_layer_roots.witness_layer_roots), init: false, f: fn(found, fact) {
     if found {
       found
     } else if fact.name == "eval_bind_node_eval" {
-      decl_facts_is_fn_like(kind: fact.kind)
+      v2.std.decl_index.decl_facts_is_fn_like(kind: fact.kind)
         && (fact.rel_path.length() > 0)
-        && decl_fact_node_has_body(node: fact.node)
+        && v2.std.decl_index.decl_fact_node_has_body(node: fact.node)
     } else {
       false
     }
@@ -26,7 +26,7 @@ test fn decl_facts_rows_carry_locked_shape_fields() -> Bool {
 }
 
 test fn logical_qualified_name_strips_v2_prefix() -> Bool {
-  return logical_qualified_name_from_module(
+  return v2.std.decl_index.logical_qualified_name_from_module(
     module_name: "v2.std.concept_index",
     name: "enumerate_concepts"
   ) == "std.concept_index.enumerate_concepts"

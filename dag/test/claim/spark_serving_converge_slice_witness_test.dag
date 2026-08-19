@@ -1,79 +1,79 @@
 module test.claim.spark_serving_converge_slice_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data witness_host_srv5: std.types.NonEmptyStr = "srv5" as std.types.NonEmptyStr
 
 test fn linger_slice_noop_when_linger_already_enabled() -> Bool {
-  spark_serving_linger_slice_noop_when_converged(linger_enabled: true)
+  gunbc.spark_serving_converge_plan.spark_serving_linger_slice_noop_when_converged(linger_enabled: true)
 }
 
 test fn linger_slice_plans_member_changed_when_linger_disabled() -> Bool {
-  let plan = spark_serving_linger_membership_plan(
-    host: operator_host_srv5,
+  let plan = gunbc.spark_serving_converge_plan.spark_serving_linger_membership_plan(
+    host: gunbc.fleet_intent_network.operator_host_srv5,
     linger_enabled: false,
   )
   any(plan.actions, a => match a {
-    MemberChanged { at: _, from: _, to: _ } => true
+    gunbc.membership_reconcile.MemberChanged { at: _, from: _, to: _ } => true
     _ => false
   })
 }
 
 test fn linger_slice_enable_linger_remote_argv_is_portable_word_list() -> Bool {
-  match spark_serving_enable_linger_remote_argv(
-    login: spark_serving_automation_principal_login(),
+  match gunbc.spark_serving_converge_realize.spark_serving_enable_linger_remote_argv(
+    login: gunbc.spark_serving_desired.spark_serving_automation_principal_login(),
   ) {
-    SparkServingInstallRemoteCommandsPresent { operations: ops } =>
-      remote_operations_argv_only(operations: ops).length() == 1
-        && spark_serving_enable_linger_argv_matches_expected(argv: remote_operations_argv_only(operations: ops).first())
+    gunbc.spark_serving_converge_realize.SparkServingInstallRemoteCommandsPresent { operations: ops } =>
+      gunbc.remote_operation.remote_operations_argv_only(operations: ops).length() == 1
+        && gunbc.spark_serving_converge_realize.spark_serving_enable_linger_argv_matches_expected(argv: gunbc.remote_operation.remote_operations_argv_only(operations: ops).first())
     _ => false
   }
 }
 
-// THE FUSION CONTROL. Before the command-sequence repair, realize_spark_serving_install_effect_commands
+// THE FUSION CONTROL. Before the command-sequence repair, gunbc.spark_serving_converge_realize.realize_spark_serving_install_effect_commands
 // appended argv WORDS across effects, so two effects produced ONE argv with the second command's
 // words as trailing operands of the first. Nothing refused it, because every word is individually
 // portable. Two of the same effect is the smallest input that exhibits it with the single arm that
 // exists today: it must yield TWO commands of five words each, never one command of ten. If this
 // ever reads one command, the words have fused again.
 test fn two_install_effects_realize_as_two_commands_not_one_fused_argv() -> Bool {
-  match realize_spark_serving_install_effect_commands(
-    effects: [EnableLingerForOwnAccount, EnableLingerForOwnAccount],
-    executor_login: spark_serving_automation_principal_login(),
+  match gunbc.spark_serving_converge_realize.realize_spark_serving_install_effect_commands(
+    effects: [gunbc.spark_serving_realization.EnableLingerForOwnAccount, gunbc.spark_serving_realization.EnableLingerForOwnAccount],
+    executor_login: gunbc.spark_serving_desired.spark_serving_automation_principal_login(),
   ) {
-    SparkServingInstallRemoteCommandsPresent { operations: ops } =>
-      remote_operations_argv_only(operations: ops).length() == 2
-        && remote_operations_argv_only(operations: ops).first().length() == 5
-        && spark_serving_enable_linger_argv_matches_expected(argv: remote_operations_argv_only(operations: ops).first())
-    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+    gunbc.spark_serving_converge_realize.SparkServingInstallRemoteCommandsPresent { operations: ops } =>
+      gunbc.remote_operation.remote_operations_argv_only(operations: ops).length() == 2
+        && gunbc.remote_operation.remote_operations_argv_only(operations: ops).first().length() == 5
+        && gunbc.spark_serving_converge_realize.spark_serving_enable_linger_argv_matches_expected(argv: gunbc.remote_operation.remote_operations_argv_only(operations: ops).first())
+    gunbc.spark_serving_converge_realize.SparkServingInstallRemoteCommandsRefused { reason: _ } => false
   }
 }
 
 test fn a_single_effect_still_realizes_to_exactly_one_command() -> Bool {
-  match realize_spark_serving_install_effect_commands(
-    effects: [EnableLingerForOwnAccount],
-    executor_login: spark_serving_automation_principal_login(),
+  match gunbc.spark_serving_converge_realize.realize_spark_serving_install_effect_commands(
+    effects: [gunbc.spark_serving_realization.EnableLingerForOwnAccount],
+    executor_login: gunbc.spark_serving_desired.spark_serving_automation_principal_login(),
   ) {
-    SparkServingInstallRemoteCommandsPresent { operations: ops } =>
-      remote_operations_argv_only(operations: ops).length() == 1
-        && spark_serving_enable_linger_argv_matches_expected(argv: remote_operations_argv_only(operations: ops).first())
-    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+    gunbc.spark_serving_converge_realize.SparkServingInstallRemoteCommandsPresent { operations: ops } =>
+      gunbc.remote_operation.remote_operations_argv_only(operations: ops).length() == 1
+        && gunbc.spark_serving_converge_realize.spark_serving_enable_linger_argv_matches_expected(argv: gunbc.remote_operation.remote_operations_argv_only(operations: ops).first())
+    gunbc.spark_serving_converge_realize.SparkServingInstallRemoteCommandsRefused { reason: _ } => false
   }
 }
 
 test fn an_unrealized_effect_still_refuses_the_whole_sequence() -> Bool {
-  match realize_spark_serving_install_effect_commands(
-    effects: [EnableLingerForOwnAccount, PullModelArtifact],
-    executor_login: spark_serving_automation_principal_login(),
+  match gunbc.spark_serving_converge_realize.realize_spark_serving_install_effect_commands(
+    effects: [gunbc.spark_serving_realization.EnableLingerForOwnAccount, gunbc.spark_serving_realization.PullModelArtifact],
+    executor_login: gunbc.spark_serving_desired.spark_serving_automation_principal_login(),
   ) {
-    SparkServingInstallRemoteCommandsRefused { reason: _ } => true
-    SparkServingInstallRemoteCommandsPresent { operations: _ } => false
+    gunbc.spark_serving_converge_realize.SparkServingInstallRemoteCommandsRefused { reason: _ } => true
+    gunbc.spark_serving_converge_realize.SparkServingInstallRemoteCommandsPresent { operations: _ } => false
   }
 }
 
 test fn linger_slice_freezes_enable_linger_typed_row() -> Bool {
-  match spark_serving_fleet_converge_plan_artifact(
+  match gunbc.spark_serving_converge_plan.spark_serving_fleet_converge_plan_artifact(
     host: witness_host_srv5,
     prior_generation: 0,
     observed_timers: [],
@@ -82,8 +82,8 @@ test fn linger_slice_freezes_enable_linger_typed_row() -> Bool {
   ) {
     Present { value: artifact } =>
       length(artifact.spark_serving_typed_actions) == 1
-        && match spark_serving_frozen_linger_effect(row: artifact.spark_serving_typed_actions[0]) {
-          Present { value: e } => e == EnableLingerForOwnAccount
+        && match gunbc.spark_serving_converge_plan.spark_serving_frozen_linger_effect(row: artifact.spark_serving_typed_actions[0]) {
+          Present { value: e } => e == gunbc.spark_serving_realization.EnableLingerForOwnAccount
           Absent => false
         }
         && string_contains(
@@ -96,7 +96,7 @@ test fn linger_slice_freezes_enable_linger_typed_row() -> Bool {
 }
 
 test fn linger_slice_converged_plan_has_empty_typed_rows() -> Bool {
-  match spark_serving_fleet_converge_plan_artifact(
+  match gunbc.spark_serving_converge_plan.spark_serving_fleet_converge_plan_artifact(
     host: witness_host_srv5,
     prior_generation: 0,
     observed_timers: [],
@@ -109,7 +109,7 @@ test fn linger_slice_converged_plan_has_empty_typed_rows() -> Bool {
 }
 
 test fn linger_slice_bundle_refuses_smuggled_v1_without_typed_rows() -> Bool {
-  match spark_serving_fleet_converge_plan_artifact(
+  match gunbc.spark_serving_converge_plan.spark_serving_fleet_converge_plan_artifact(
     host: witness_host_srv5,
     prior_generation: 0,
     observed_timers: [],
@@ -117,9 +117,9 @@ test fn linger_slice_bundle_refuses_smuggled_v1_without_typed_rows() -> Bool {
     linger_enabled: false,
   ) {
     Present { value: artifact } =>
-      match fleet_converge_plan_artifact_hash(artifact: artifact) {
+      match gunbc.fleet_converge_plan.fleet_converge_plan_artifact_hash(artifact: artifact) {
         Present { value: hex } =>
-          !fleet_converge_plan_artifact_bundle_admits(
+          !gunbc.fleet_converge_plan.fleet_converge_plan_artifact_bundle_admits(
             artifact: gunbc.fleet_converge_plan.FleetConvergePlanArtifact {
               subject: artifact.subject,
               prior_generation: artifact.prior_generation,
@@ -138,7 +138,7 @@ test fn linger_slice_bundle_refuses_smuggled_v1_without_typed_rows() -> Bool {
 }
 
 test fn linger_slice_apply_reads_frozen_rows_as_typed_argv_when_drift() -> Bool {
-  match spark_serving_fleet_converge_plan_artifact(
+  match gunbc.spark_serving_converge_plan.spark_serving_fleet_converge_plan_artifact(
     host: witness_host_srv5,
     prior_generation: 0,
     observed_timers: [],
@@ -146,19 +146,19 @@ test fn linger_slice_apply_reads_frozen_rows_as_typed_argv_when_drift() -> Bool 
     linger_enabled: false,
   ) {
     Present { value: artifact } =>
-      match fleet_converge_plan_artifact_hash(artifact: artifact) {
+      match gunbc.fleet_converge_plan.fleet_converge_plan_artifact_hash(artifact: artifact) {
         Present { value: hex } =>
-          match spark_serving_apply_reads_frozen_typed_rows(
+          match gunbc.spark_serving_converge_apply.spark_serving_apply_reads_frozen_typed_rows(
             artifact: artifact,
             claimed_bundle_hex: hex as String,
           ) {
-            SparkServingFrozenApplied { remote_operations: ops, effect_count: n } =>
+            gunbc.spark_serving_converge_apply.SparkServingFrozenApplied { remote_operations: ops, effect_count: n } =>
               n == 1
-                && remote_operations_argv_only(operations: ops).length() == 1
-                && spark_serving_enable_linger_argv_matches_expected(
-                  argv: remote_operations_argv_only(operations: ops).first(),
+                && gunbc.remote_operation.remote_operations_argv_only(operations: ops).length() == 1
+                && gunbc.spark_serving_converge_realize.spark_serving_enable_linger_argv_matches_expected(
+                  argv: gunbc.remote_operation.remote_operations_argv_only(operations: ops).first(),
                 )
-            SparkServingFrozenApplyRefused { reason: _ } => false
+            gunbc.spark_serving_converge_apply.SparkServingFrozenApplyRefused { reason: _ } => false
           }
         Absent => false
       }
@@ -167,7 +167,7 @@ test fn linger_slice_apply_reads_frozen_rows_as_typed_argv_when_drift() -> Bool 
 }
 
 test fn linger_slice_apply_noop_when_converged() -> Bool {
-  match spark_serving_fleet_converge_plan_artifact(
+  match gunbc.spark_serving_converge_plan.spark_serving_fleet_converge_plan_artifact(
     host: witness_host_srv5,
     prior_generation: 0,
     observed_timers: [],
@@ -175,15 +175,15 @@ test fn linger_slice_apply_noop_when_converged() -> Bool {
     linger_enabled: true,
   ) {
     Present { value: artifact } =>
-      match fleet_converge_plan_artifact_hash(artifact: artifact) {
+      match gunbc.fleet_converge_plan.fleet_converge_plan_artifact_hash(artifact: artifact) {
         Present { value: hex } =>
-          match spark_serving_apply_reads_frozen_typed_rows(
+          match gunbc.spark_serving_converge_apply.spark_serving_apply_reads_frozen_typed_rows(
             artifact: artifact,
             claimed_bundle_hex: hex as String,
           ) {
-            SparkServingFrozenApplied { remote_operations: ops, effect_count: n } =>
-              n == 0 && remote_operation_count(operations: ops) == 0
-            SparkServingFrozenApplyRefused { reason: _ } => false
+            gunbc.spark_serving_converge_apply.SparkServingFrozenApplied { remote_operations: ops, effect_count: n } =>
+              n == 0 && gunbc.remote_operation.remote_operation_count(operations: ops) == 0
+            gunbc.spark_serving_converge_apply.SparkServingFrozenApplyRefused { reason: _ } => false
           }
         Absent => false
       }
@@ -192,7 +192,7 @@ test fn linger_slice_apply_noop_when_converged() -> Bool {
 }
 
 test fn linger_slice_consistency_wall_requires_body_marker() -> Bool {
-  match spark_serving_fleet_converge_plan_artifact(
+  match gunbc.spark_serving_converge_plan.spark_serving_fleet_converge_plan_artifact(
     host: witness_host_srv5,
     prior_generation: 0,
     observed_timers: [],
@@ -200,7 +200,7 @@ test fn linger_slice_consistency_wall_requires_body_marker() -> Bool {
     linger_enabled: false,
   ) {
     Present { value: artifact } =>
-      fleet_converge_plan_spark_typed_actions_consistency_admits(
+      gunbc.fleet_converge_plan.fleet_converge_plan_spark_typed_actions_consistency_admits(
         plan_body: artifact.plan_body,
         spark_serving_typed_actions: artifact.spark_serving_typed_actions,
       )
@@ -214,43 +214,43 @@ test fn linger_slice_consistency_wall_requires_body_marker() -> Bool {
 // the full host population where these require a typed refusal, and it did so on the
 // path that actuates enable-linger.
 test fn spark_target_absent_while_executing_refuses_rather_than_widening() -> Bool {
-  match spark_converge_target_selection_of(raw: none, execute_apply: true) {
-    SparkConvergeTargetRefused { reason: _ } => true
-    SparkConvergeTargetAllObserveOnly => false
-    SparkConvergeTargetSingle { host: _ } => false
+  match gunbc.fleet_multi_principal_probe.spark_converge_target_selection_of(raw: none, execute_apply: true) {
+    gunbc.fleet_multi_principal_probe.SparkConvergeTargetRefused { reason: _ } => true
+    gunbc.fleet_multi_principal_probe.SparkConvergeTargetAllObserveOnly => false
+    gunbc.fleet_multi_principal_probe.SparkConvergeTargetSingle { host: _ } => false
   }
 }
 
 test fn spark_target_unrecognized_refuses_even_when_only_observing() -> Bool {
-  match spark_converge_target_selection_of(
+  match gunbc.fleet_multi_principal_probe.spark_converge_target_selection_of(
     raw: Present { value: "srv7" as std.types.NonEmptyStr },
     execute_apply: false,
   ) {
-    SparkConvergeTargetRefused { reason: _ } => true
-    SparkConvergeTargetAllObserveOnly => false
-    SparkConvergeTargetSingle { host: _ } => false
+    gunbc.fleet_multi_principal_probe.SparkConvergeTargetRefused { reason: _ } => true
+    gunbc.fleet_multi_principal_probe.SparkConvergeTargetAllObserveOnly => false
+    gunbc.fleet_multi_principal_probe.SparkConvergeTargetSingle { host: _ } => false
   }
 }
 
 // The observe-only widening that IS legitimate: no target named, nothing actuates.
 test fn spark_target_absent_while_observing_covers_all_enrolled_sparks() -> Bool {
-  match spark_converge_target_selection_of(raw: none, execute_apply: false) {
-    SparkConvergeTargetAllObserveOnly => true
-    SparkConvergeTargetRefused { reason: _ } => false
-    SparkConvergeTargetSingle { host: _ } => false
+  match gunbc.fleet_multi_principal_probe.spark_converge_target_selection_of(raw: none, execute_apply: false) {
+    gunbc.fleet_multi_principal_probe.SparkConvergeTargetAllObserveOnly => true
+    gunbc.fleet_multi_principal_probe.SparkConvergeTargetRefused { reason: _ } => false
+    gunbc.fleet_multi_principal_probe.SparkConvergeTargetSingle { host: _ } => false
   }
 }
 
 // Positive control: a named target still selects exactly that one host under execution,
 // so the refusals above are not a blanket refusal that would make the wall vacuous.
 test fn spark_target_named_selects_exactly_that_host_under_execution() -> Bool {
-  match spark_converge_target_selection_of(
+  match gunbc.fleet_multi_principal_probe.spark_converge_target_selection_of(
     raw: Present { value: "srv6" as std.types.NonEmptyStr },
     execute_apply: true,
   ) {
-    SparkConvergeTargetSingle { host: h } => h == operator_host_srv6
-    SparkConvergeTargetRefused { reason: _ } => false
-    SparkConvergeTargetAllObserveOnly => false
+    gunbc.fleet_multi_principal_probe.SparkConvergeTargetSingle { host: h } => h == gunbc.fleet_intent_network.operator_host_srv6
+    gunbc.fleet_multi_principal_probe.SparkConvergeTargetRefused { reason: _ } => false
+    gunbc.fleet_multi_principal_probe.SparkConvergeTargetAllObserveOnly => false
   }
 }
 
@@ -260,11 +260,11 @@ test fn spark_target_named_selects_exactly_that_host_under_execution() -> Bool {
 // with linger genuinely off. A reader or parser taking that field before the verdict would
 // plan from an observation that was never made.
 test fn observed_linger_renders_unobserved_distinctly_from_disabled() -> Bool {
-  render_observed_linger(state: LingerUnobserved) == "unobserved"
-    && render_observed_linger(state: gunbc.spark_serving_converge_slice_wet.LingerObserved { enabled: false }) == "no"
-    && render_observed_linger(state: gunbc.spark_serving_converge_slice_wet.LingerObserved { enabled: true }) == "yes"
-    && render_observed_linger(state: LingerUnobserved)
-         != render_observed_linger(state: gunbc.spark_serving_converge_slice_wet.LingerObserved { enabled: false })
+  gunbc.spark_serving_converge_slice_wet.render_observed_linger(state: gunbc.spark_serving_converge_slice_wet.LingerUnobserved) == "unobserved"
+    && gunbc.spark_serving_converge_slice_wet.render_observed_linger(state: gunbc.spark_serving_converge_slice_wet.LingerObserved { enabled: false }) == "no"
+    && gunbc.spark_serving_converge_slice_wet.render_observed_linger(state: gunbc.spark_serving_converge_slice_wet.LingerObserved { enabled: true }) == "yes"
+    && gunbc.spark_serving_converge_slice_wet.render_observed_linger(state: gunbc.spark_serving_converge_slice_wet.LingerUnobserved)
+         != gunbc.spark_serving_converge_slice_wet.render_observed_linger(state: gunbc.spark_serving_converge_slice_wet.LingerObserved { enabled: false })
 }
 
 // THE ACTUATION BOUNDARY FAILS CLOSED. Before review 52578, the wet entry returned
@@ -274,38 +274,38 @@ test fn observed_linger_renders_unobserved_distinctly_from_disabled() -> Bool {
 // converged verdicts count as converged, and every refusal and failure shape does not. RED
 // against any future arm that adds a verdict without deciding whether it means converged.
 test fn slice_verdict_classifier_admits_exactly_the_two_converged_verdicts() -> Bool {
-  spark_serving_slice_verdict_is_converged(verdict: spark_serving_slice_verdict_noop_converged)
-    && spark_serving_slice_verdict_is_converged(verdict: spark_serving_slice_verdict_applied_converged)
+  gunbc.spark_serving_converge_slice_wet.spark_serving_slice_verdict_is_converged(verdict: gunbc.spark_serving_converge_slice_wet.spark_serving_slice_verdict_noop_converged)
+    && gunbc.spark_serving_converge_slice_wet.spark_serving_slice_verdict_is_converged(verdict: gunbc.spark_serving_converge_slice_wet.spark_serving_slice_verdict_applied_converged)
 }
 
 test fn slice_verdict_classifier_rejects_every_refusal_and_failure_shape() -> Bool {
-  !spark_serving_slice_verdict_is_converged(verdict: "observation-refused probe-did-not-run")
-    && !spark_serving_slice_verdict_is_converged(verdict: "plan-refused")
-    && !spark_serving_slice_verdict_is_converged(verdict: "plan-hash-refused")
-    && !spark_serving_slice_verdict_is_converged(verdict: "apply-refused bundle mismatch")
-    && !spark_serving_slice_verdict_is_converged(verdict: "wet-apply-exec-failed exit=1 stderr=denied")
-    && !spark_serving_slice_verdict_is_converged(verdict: "wet-applied-readback-mismatch lingering-still-no")
-    && !spark_serving_slice_verdict_is_converged(verdict: "wet-applied-readback-refused probe-did-not-run")
-    && !spark_serving_slice_verdict_is_converged(verdict: "would-apply typed-argv membership_writes=1")
+  !gunbc.spark_serving_converge_slice_wet.spark_serving_slice_verdict_is_converged(verdict: "observation-refused probe-did-not-run")
+    && !gunbc.spark_serving_converge_slice_wet.spark_serving_slice_verdict_is_converged(verdict: "plan-refused")
+    && !gunbc.spark_serving_converge_slice_wet.spark_serving_slice_verdict_is_converged(verdict: "plan-hash-refused")
+    && !gunbc.spark_serving_converge_slice_wet.spark_serving_slice_verdict_is_converged(verdict: "apply-refused bundle mismatch")
+    && !gunbc.spark_serving_converge_slice_wet.spark_serving_slice_verdict_is_converged(verdict: "wet-apply-exec-failed exit=1 stderr=denied")
+    && !gunbc.spark_serving_converge_slice_wet.spark_serving_slice_verdict_is_converged(verdict: "wet-applied-readback-mismatch lingering-still-no")
+    && !gunbc.spark_serving_converge_slice_wet.spark_serving_slice_verdict_is_converged(verdict: "wet-applied-readback-refused probe-did-not-run")
+    && !gunbc.spark_serving_converge_slice_wet.spark_serving_slice_verdict_is_converged(verdict: "would-apply typed-argv membership_writes=1")
 }
 
 // A host report carries its verdict as DATA, not only as rendered text. This is what makes the
 // exit status derivable at all; if the report were a bare String the entry would be back to
 // classifying its own prose.
 test fn slice_host_report_carries_converged_as_data_matching_its_verdict() -> Bool {
-  let converged = spark_serving_converge_slice_host_line(
-    host: operator_host_srv5,
+  let converged = gunbc.spark_serving_converge_slice_wet.spark_serving_converge_slice_host_line(
+    host: gunbc.fleet_intent_network.operator_host_srv5,
     endpoint: "192.168.1.222",
     observed_linger: gunbc.spark_serving_converge_slice_wet.LingerObserved { enabled: true },
     typed_row_count: 0,
     apply_effect_count: 0,
     apply_command_count: 0,
-    verdict: spark_serving_slice_verdict_noop_converged,
+    verdict: gunbc.spark_serving_converge_slice_wet.spark_serving_slice_verdict_noop_converged,
   )
-  let failed = spark_serving_converge_slice_host_line(
-    host: operator_host_srv5,
+  let failed = gunbc.spark_serving_converge_slice_wet.spark_serving_converge_slice_host_line(
+    host: gunbc.fleet_intent_network.operator_host_srv5,
     endpoint: "192.168.1.222",
-    observed_linger: LingerUnobserved,
+    observed_linger: gunbc.spark_serving_converge_slice_wet.LingerUnobserved,
     typed_row_count: 0,
     apply_effect_count: 0,
     apply_command_count: 0,
@@ -318,12 +318,12 @@ test fn slice_host_report_carries_converged_as_data_matching_its_verdict() -> Bo
 // USER-SCOPE ARMS. A sudo word appearing in either of these would be a privilege escalation the
 // effect does not call for, so absence of sudo is asserted rather than assumed.
 test fn reload_user_manager_is_user_scope_and_carries_no_sudo() -> Bool {
-  match spark_serving_reload_user_manager_remote_argv() {
-    SparkServingInstallRemoteCommandsPresent { operations: ops } =>
-      remote_operations_argv_only(operations: ops).length() == 1
-        && join(remote_operations_argv_only(operations: ops).first(), "\0") == join(["systemctl", "--user", "daemon-reload"], "\0")
-        && !any(remote_operations_argv_only(operations: ops).first(), w => w == "sudo")
-    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+  match gunbc.spark_serving_converge_realize.spark_serving_reload_user_manager_remote_argv() {
+    gunbc.spark_serving_converge_realize.SparkServingInstallRemoteCommandsPresent { operations: ops } =>
+      gunbc.remote_operation.remote_operations_argv_only(operations: ops).length() == 1
+        && join(gunbc.remote_operation.remote_operations_argv_only(operations: ops).first(), "\0") == join(["systemctl", "--user", "daemon-reload"], "\0")
+        && !any(gunbc.remote_operation.remote_operations_argv_only(operations: ops).first(), w => w == "sudo")
+    gunbc.spark_serving_converge_realize.SparkServingInstallRemoteCommandsRefused { reason: _ } => false
   }
 }
 
@@ -331,13 +331,13 @@ test fn reload_user_manager_is_user_scope_and_carries_no_sudo() -> Bool {
 // repeated here. A literal would pass while the enabled unit and the observed unit drifted apart,
 // which is the single-authority failure this grounding exists to prevent.
 test fn enable_user_unit_targets_the_unit_identity_authority() -> Bool {
-  match spark_serving_enable_user_unit_remote_argv() {
-    SparkServingInstallRemoteCommandsPresent { operations: ops } =>
-      remote_operations_argv_only(operations: ops).length() == 1
-        && join(remote_operations_argv_only(operations: ops).first(), "\0")
-          == join(["systemctl", "--user", "enable", "--now", spark_serving_unit_name], "\0")
-        && !any(remote_operations_argv_only(operations: ops).first(), w => w == "sudo")
-    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+  match gunbc.spark_serving_converge_realize.spark_serving_enable_user_unit_remote_argv() {
+    gunbc.spark_serving_converge_realize.SparkServingInstallRemoteCommandsPresent { operations: ops } =>
+      gunbc.remote_operation.remote_operations_argv_only(operations: ops).length() == 1
+        && join(gunbc.remote_operation.remote_operations_argv_only(operations: ops).first(), "\0")
+          == join(["systemctl", "--user", "enable", "--now", gunbc.spark_serving_unit_identity.spark_serving_unit_name], "\0")
+        && !any(gunbc.remote_operation.remote_operations_argv_only(operations: ops).first(), w => w == "sudo")
+    gunbc.spark_serving_converge_realize.SparkServingInstallRemoteCommandsRefused { reason: _ } => false
   }
 }
 
@@ -345,15 +345,15 @@ test fn enable_user_unit_targets_the_unit_identity_authority() -> Bool {
 // manager that had not re-read the unit file. This is the first witness with two DIFFERENT
 // realized effects, so it is the first that can observe order at all.
 test fn realized_sequence_preserves_frozen_effect_order() -> Bool {
-  match realize_spark_serving_install_effect_commands(
-    effects: [ReloadUserManager, EnableUserUnit],
-    executor_login: spark_serving_automation_principal_login(),
+  match gunbc.spark_serving_converge_realize.realize_spark_serving_install_effect_commands(
+    effects: [gunbc.spark_serving_realization.ReloadUserManager, gunbc.spark_serving_realization.EnableUserUnit],
+    executor_login: gunbc.spark_serving_desired.spark_serving_automation_principal_login(),
   ) {
-    SparkServingInstallRemoteCommandsPresent { operations: ops } =>
-      remote_operations_argv_only(operations: ops).length() == 2
-        && join(remote_operations_argv_only(operations: ops)[0], "\0") == join(["systemctl", "--user", "daemon-reload"], "\0")
-        && join(remote_operations_argv_only(operations: ops)[1], "\0")
-          == join(["systemctl", "--user", "enable", "--now", spark_serving_unit_name], "\0")
-    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+    gunbc.spark_serving_converge_realize.SparkServingInstallRemoteCommandsPresent { operations: ops } =>
+      gunbc.remote_operation.remote_operations_argv_only(operations: ops).length() == 2
+        && join(gunbc.remote_operation.remote_operations_argv_only(operations: ops)[0], "\0") == join(["systemctl", "--user", "daemon-reload"], "\0")
+        && join(gunbc.remote_operation.remote_operations_argv_only(operations: ops)[1], "\0")
+          == join(["systemctl", "--user", "enable", "--now", gunbc.spark_serving_unit_identity.spark_serving_unit_name], "\0")
+    gunbc.spark_serving_converge_realize.SparkServingInstallRemoteCommandsRefused { reason: _ } => false
   }
 }

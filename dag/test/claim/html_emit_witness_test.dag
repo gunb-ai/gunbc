@@ -6,29 +6,29 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 fn sample_button() -> std.markup.Fragment {
   extdeps.browser.Element {
     tag: "button",
-    attributes: [ attr(name: "class", value: "primary" ) ],
+    attributes: [ std.markup.attr(name: "class", value: "primary" ) ],
     children: [ std.markup.FragmentText { content: "Go" } ],
   }
 }
 
 test fn witness_html_emit_reduces_and_serializes() -> Bool {
-  match try_serialize_html_source(node: sample_button()) {
-    EmitOk { html: h } => h == "<button class=\"primary\">Go</button>"
-    EmitRejected { reason: _ } => false
+  match extdeps.languages.html.try_serialize_html_source(node: sample_button()) {
+    extdeps.languages.html.EmitOk { html: h } => h == "<button class=\"primary\">Go</button>"
+    extdeps.languages.html.EmitRejected { reason: _ } => false
   }
 }
 
 test fn witness_html_emit_matches_markup_fold() -> Bool {
-  match try_serialize_html_source(node: sample_button()) {
-    EmitOk { html: h } => h == serialize_html_source(node: sample_button())
-    EmitRejected { reason: _ } => false
+  match extdeps.languages.html.try_serialize_html_source(node: sample_button()) {
+    extdeps.languages.html.EmitOk { html: h } => h == extdeps.languages.html.serialize_html_source(node: sample_button())
+    extdeps.languages.html.EmitRejected { reason: _ } => false
   }
 }
 
 fn hostile_javascript_href() -> std.markup.Fragment {
   extdeps.browser.Element {
     tag: "a",
-    attributes: [ attr(name: "href", value: "javascript:alert(1)" ) ],
+    attributes: [ std.markup.attr(name: "href", value: "javascript:alert(1)" ) ],
     children: [ std.markup.FragmentText { content: "click" } ],
   }
 }
@@ -36,64 +36,64 @@ fn hostile_javascript_href() -> std.markup.Fragment {
 fn hostile_data_href() -> std.markup.Fragment {
   extdeps.browser.Element {
     tag: "a",
-    attributes: [ attr(name: "href", value: "data:text/html,<script>alert(1)</script>" ) ],
+    attributes: [ std.markup.attr(name: "href", value: "data:text/html,<script>alert(1)</script>" ) ],
     children: [],
   }
 }
 
 test fn witness_javascript_reject_discriminates_from_char_escape() -> Bool {
-  match try_serialize_html_source(node: hostile_javascript_href()) {
-    EmitRejected { reason: _ } => {
-      let unchecked = serialize_html_source(node: hostile_javascript_href())
+  match extdeps.languages.html.try_serialize_html_source(node: hostile_javascript_href()) {
+    extdeps.languages.html.EmitRejected { reason: _ } => {
+      let unchecked = extdeps.languages.html.serialize_html_source(node: hostile_javascript_href())
       unchecked == "<a href=\"javascript:alert(1)\">click</a>"
     }
-    EmitOk { html: _ } => false
+    extdeps.languages.html.EmitOk { html: _ } => false
   }
 }
 
 test fn witness_data_reject_discriminates_from_char_escape() -> Bool {
-  match try_serialize_html_source(node: hostile_data_href()) {
-    EmitRejected { reason: _ } => {
-      let unchecked = serialize_html_source(node: hostile_data_href())
+  match extdeps.languages.html.try_serialize_html_source(node: hostile_data_href()) {
+    extdeps.languages.html.EmitRejected { reason: _ } => {
+      let unchecked = extdeps.languages.html.serialize_html_source(node: hostile_data_href())
       unchecked.starts_with(prefix: "<a href=\"data:")
     }
-    EmitOk { html: _ } => false
+    extdeps.languages.html.EmitOk { html: _ } => false
   }
 }
 
 test fn witness_serialize_rejects_javascript_href() -> Bool {
-  match try_serialize_html_source(node: hostile_javascript_href()) {
-    EmitRejected { reason: u } =>
+  match extdeps.languages.html.try_serialize_html_source(node: hostile_javascript_href()) {
+    extdeps.languages.html.EmitRejected { reason: u } =>
       u == "javascript:alert(1)"
-    EmitOk { html: _ } => false
+    extdeps.languages.html.EmitOk { html: _ } => false
   }
 }
 
 test fn witness_serialize_rejects_data_href() -> Bool {
-  match try_serialize_html_source(node: hostile_data_href()) {
-    EmitRejected { reason: u } =>
+  match extdeps.languages.html.try_serialize_html_source(node: hostile_data_href()) {
+    extdeps.languages.html.EmitRejected { reason: u } =>
       u.starts_with(prefix: "data:")
-    EmitOk { html: _ } => false
+    extdeps.languages.html.EmitOk { html: _ } => false
   }
 }
 
 test fn witness_http_href_serializes() -> Bool {
-  match try_serialize_html_source(
+  match extdeps.languages.html.try_serialize_html_source(
     node: extdeps.browser.Element {
       tag: "a",
-      attributes: [ attr(name: "href", value: "https://gunbc.dev" ) ],
+      attributes: [ std.markup.attr(name: "href", value: "https://gunbc.dev" ) ],
       children: [ std.markup.FragmentText { content: "home" } ],
     }
   ) {
-    EmitOk { html: h } => h == "<a href=\"https://gunbc.dev\">home</a>"
-    EmitRejected { reason: _ } => false
+    extdeps.languages.html.EmitOk { html: h } => h == "<a href=\"https://gunbc.dev\">home</a>"
+    extdeps.languages.html.EmitRejected { reason: _ } => false
   }
 }
 
 fn trusted_relative_link() -> std.markup.Fragment {
   extdeps.browser.Element {
     tag: "a",
-    attributes: [ attr(name: "href", value: "/tree/dag" ) ],
+    attributes: [ std.markup.attr(name: "href", value: "/tree/dag" ) ],
     children: [ std.markup.FragmentText { content: "dag" } ],
   }
 }
@@ -101,23 +101,23 @@ fn trusted_relative_link() -> std.markup.Fragment {
 fn req_a_hostile_but_trusted_scheme() -> std.markup.Fragment {
   extdeps.browser.Element {
     tag: "a",
-    attributes: [ attr(name: "href", value: "x\"&<y onmouseover=z" ) ],
+    attributes: [ std.markup.attr(name: "href", value: "x\"&<y onmouseover=z" ) ],
     children: [],
   }
 }
 
 test fn witness_trusted_href_serializes() -> Bool {
-  match try_serialize_html_source(node: trusted_relative_link()) {
-    EmitOk { html: h } => h == "<a href=\"/tree/dag\">dag</a>"
-    EmitRejected { reason: _ } => false
+  match extdeps.languages.html.try_serialize_html_source(node: trusted_relative_link()) {
+    extdeps.languages.html.EmitOk { html: h } => h == "<a href=\"/tree/dag\">dag</a>"
+    extdeps.languages.html.EmitRejected { reason: _ } => false
   }
 }
 
 test fn witness_req_a_hostile_href_still_emits_with_escaping() -> Bool {
-  match try_serialize_html_source(node: req_a_hostile_but_trusted_scheme()) {
-    EmitOk { html: h } =>
+  match extdeps.languages.html.try_serialize_html_source(node: req_a_hostile_but_trusted_scheme()) {
+    extdeps.languages.html.EmitOk { html: h } =>
       h == "<a href=\"x%22&amp;%3Cy%20onmouseover=z\"></a>"
-    EmitRejected { reason: _ } => false
+    extdeps.languages.html.EmitRejected { reason: _ } => false
   }
 }
 

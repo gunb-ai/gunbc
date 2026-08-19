@@ -70,23 +70,23 @@ fn classify_fallback_arm(input: FallbackArmClassifyInput) -> FallbackArmClass {
 }
 
 fn pattern_node_is_planted_wildcard(pattern: v2.std.node.Node) -> Bool {
-  match node_atom_identity_optional(node: pattern) {
-    Present { value: id } => id == fallback_planted_wildcard
-    Absent => false
+  match v2.std.grammar.node_atom_identity_optional(node: pattern) {
+    v2.std.collection.Present { value: id } => id == fallback_planted_wildcard
+    v2.std.collection.Absent => false
   }
 }
 
 fn body_node_marks_refuses(body: v2.std.node.Node) -> Bool {
-  match node_atom_identity_optional(node: body) {
-    Present { value: id } => id == fallback_body_refuses
-    Absent => false
+  match v2.std.grammar.node_atom_identity_optional(node: body) {
+    v2.std.collection.Present { value: id } => id == fallback_body_refuses
+    v2.std.collection.Absent => false
   }
 }
 
 fn body_node_marks_answers(body: v2.std.node.Node) -> Bool {
-  match node_atom_identity_optional(node: body) {
-    Present { value: id } => id == fallback_body_answers
-    Absent => false
+  match v2.std.grammar.node_atom_identity_optional(node: body) {
+    v2.std.collection.Present { value: id } => id == fallback_body_answers
+    v2.std.collection.Absent => false
   }
 }
 
@@ -95,10 +95,10 @@ fn classify_planted_arm(
   scrutinee_closed_total: Bool,
   interim_declared: Bool
 ) -> FallbackArmClass {
-  match find_named_child(root: arm, name: match_arm_pattern) {
-    Accepted { value: pat_node, diagnostics: _ } =>
-      match find_named_child(root: arm, name: match_arm_body) {
-        Accepted { value: body_node, diagnostics: _ } =>
+  match v2.std.node_query.find_named_child(root: arm, name: v2.std.node.match_arm_pattern) {
+    v2.std.diagnostic.Accepted { value: pat_node, diagnostics: _ } =>
+      match v2.std.node_query.find_named_child(root: arm, name: v2.std.node.match_arm_body) {
+        v2.std.diagnostic.Accepted { value: body_node, diagnostics: _ } =>
           classify_fallback_arm(
             input: FallbackArmClassifyInput {
               pattern_is_wildcard: pattern_node_is_planted_wildcard(pattern: pat_node),
@@ -108,41 +108,41 @@ fn classify_planted_arm(
               interim_declared: interim_declared
             }
           )
-        Rejected { diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: _ } =>
           ClassifierUnknown { cause: fallback_unknown_undecidable_body }
       }
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       ClassifierUnknown { cause: fallback_unknown_not_wildcard }
   }
 }
 
 fn planted_wildcard_arm(body_lit: v2.std.node.Symbol) -> v2.std.node.Node {
-  dag_match_arm_node(pattern_lit: fallback_planted_wildcard, body_lit: body_lit)
+  v2.extdeps.languages.dag.dag_match_arm_node(pattern_lit: fallback_planted_wildcard, body_lit: body_lit)
 }
 
 fn planted_named_arm(pattern_lit: v2.std.node.Symbol, body_lit: v2.std.node.Symbol) -> v2.std.node.Node {
-  dag_match_arm_node(pattern_lit: pattern_lit, body_lit: body_lit)
+  v2.extdeps.languages.dag.dag_match_arm_node(pattern_lit: pattern_lit, body_lit: body_lit)
 }
 
 fn planted_match_with_wildcard_answers() -> v2.std.node.Node {
-  dag_match_body_from_arms(
-    scrutinee: dag_type_atom_node(identity: ^scrutinee),
+  v2.extdeps.languages.dag.dag_match_body_from_arms(
+    scrutinee: v2.extdeps.languages.dag.dag_type_atom_node(identity: ^scrutinee),
     true_arm: planted_named_arm(pattern_lit: ^VariantA, body_lit: fallback_body_answers),
     false_arm: planted_wildcard_arm(body_lit: fallback_body_answers)
   )
 }
 
 fn planted_match_with_wildcard_refuses() -> v2.std.node.Node {
-  dag_match_body_from_arms(
-    scrutinee: dag_type_atom_node(identity: ^scrutinee),
+  v2.extdeps.languages.dag.dag_match_body_from_arms(
+    scrutinee: v2.extdeps.languages.dag.dag_type_atom_node(identity: ^scrutinee),
     true_arm: planted_named_arm(pattern_lit: ^VariantA, body_lit: fallback_body_answers),
     false_arm: planted_wildcard_arm(body_lit: fallback_body_refuses)
   )
 }
 
 fn planted_match_with_wildcard_opaque() -> v2.std.node.Node {
-  dag_match_body_from_arms(
-    scrutinee: dag_type_atom_node(identity: ^scrutinee),
+  v2.extdeps.languages.dag.dag_match_body_from_arms(
+    scrutinee: v2.extdeps.languages.dag.dag_type_atom_node(identity: ^scrutinee),
     true_arm: planted_named_arm(pattern_lit: ^VariantA, body_lit: fallback_body_answers),
     false_arm: planted_wildcard_arm(body_lit: fallback_body_opaque)
   )
@@ -150,21 +150,21 @@ fn planted_match_with_wildcard_opaque() -> v2.std.node.Node {
 
 fn match_positional_arms(match_node: v2.std.node.Node) -> List<v2.std.node.Node> {
   match match_node.kind {
-    ComputationNode { behavior: Match } =>
-      match list_tail(xs: node_positional_child_targets(node: match_node)) {
-        TailFound { tail: arms } => arms
-        TailAbsent => std.algebra.Empty
+    v2.std.node.ComputationNode { behavior: v2.std.node.Match } =>
+      match v2.std.algebra.list_tail(xs: v2.std.node_query.node_positional_child_targets(node: match_node)) {
+        v2.std.algebra.TailFound { tail: arms } => arms
+        v2.std.algebra.TailAbsent => std.algebra.Empty
       }
-    TypeNode { connective: _ } => std.algebra.Empty
-    ComputationNode { behavior: _ } => std.algebra.Empty
+    v2.std.node.TypeNode { connective: _ } => std.algebra.Empty
+    v2.std.node.ComputationNode { behavior: _ } => std.algebra.Empty
   }
 }
 
-fn last_list_node(xs: List<v2.std.node.Node>) -> Optional<v2.std.node.Node> {
-  fold_list(
+fn last_list_node(xs: List<v2.std.node.Node>) -> v2.std.collection.Optional<v2.std.node.Node> {
+  v2.std.algebra.fold_list(
     xs: xs,
-    empty: Absent,
-    cons: fn(_acc, n) { Present { value: n } }
+    empty: v2.std.collection.Absent,
+    cons: fn(_acc, n) { v2.std.collection.Present { value: n } }
   )
 }
 
@@ -174,13 +174,13 @@ fn classify_last_arm_of_planted_match(
   interim_declared: Bool
 ) -> FallbackArmClass {
   match last_list_node(xs: match_positional_arms(match_node: match_node)) {
-    Present { value: arm } =>
+    v2.std.collection.Present { value: arm } =>
       classify_planted_arm(
         arm: arm,
         scrutinee_closed_total: scrutinee_closed_total,
         interim_declared: interim_declared
       )
-    Absent => ClassifierUnknown { cause: fallback_unknown_not_wildcard }
+    v2.std.collection.Absent => ClassifierUnknown { cause: fallback_unknown_not_wildcard }
   }
 }
 
@@ -226,12 +226,12 @@ fn fallback_arm_census_reconciliation_holds_live() -> Bool {
 }
 
 fn fallback_arm_census_defect_facts_live() -> List<FallbackArmCensusFact> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: fallback_arm_census_facts_live(),
     empty: std.algebra.Empty,
     cons: fn(acc, f) {
       if f.class == "answers_on_open" {
-        list_snoc_item(xs: acc, item: f)
+        v2.std.algebra.list_snoc_item(xs: acc, item: f)
       } else {
         acc
       }
@@ -240,12 +240,12 @@ fn fallback_arm_census_defect_facts_live() -> List<FallbackArmCensusFact> {
 }
 
 fn fallback_arm_census_unknown_facts_live() -> List<FallbackArmCensusFact> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: fallback_arm_census_facts_live(),
     empty: std.algebra.Empty,
     cons: fn(acc, f) {
       if f.class == "unknown" {
-        list_snoc_item(xs: acc, item: f)
+        v2.std.algebra.list_snoc_item(xs: acc, item: f)
       } else {
         acc
       }
@@ -292,7 +292,7 @@ data fallback_arm_seed_compiled_fallback_inventory: List<SeedCompiledFallbackInv
 ]
 
 fn fallback_arm_seed_inventory_count() -> Int {
-  length(xs: fallback_arm_seed_compiled_fallback_inventory)
+  v2.std.algebra.length(xs: fallback_arm_seed_compiled_fallback_inventory)
 }
 
 fn fallback_arm_seed_inventory_count_is_24_holds() -> Bool {
@@ -300,7 +300,7 @@ fn fallback_arm_seed_inventory_count_is_24_holds() -> Bool {
 }
 
 fn fallback_arm_census_lens_path_has_no_answers_on_open() -> Bool {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: fallback_arm_census_facts_live(),
     empty: true,
     cons: fn(acc, f) {
@@ -314,5 +314,5 @@ fn fallback_arm_census_lens_path_has_no_answers_on_open() -> Bool {
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: RealizationDispatch }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.RealizationDispatch }
 }

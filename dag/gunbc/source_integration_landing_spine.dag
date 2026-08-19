@@ -106,7 +106,7 @@ type LandingStressProfile {
 data gunbc_landing_stress_profile: gunbc.source_integration_landing_spine.LandingStressProfile = LandingStressProfile {
   agents_per_developer: 50,
   overlapping_proposals: 10,
-  validation_path: minute(count: 30),
+  validation_path: std.measure.minute(count: 30),
 }
 
 type LandingReadyEvidenceReceipt {
@@ -171,7 +171,7 @@ fn landing_requirement_block(
   proposal: gunbc.source_integration_landing_spine.LandingProposalContract,
   readiness: gunbc.source_integration_landing_spine.LandingClaimRequirementReadiness,
 ) -> std.types.List<gunbc.source_integration_landing_spine.LandingEvidenceBlock> {
-  claim_requirement_readiness_fold(
+  std.claim_evidence.claim_requirement_readiness_fold(
     readiness: readiness,
     fold: std.claim_evidence.ClaimRequirementReadinessFold {
       ready: fn(claim, _) {
@@ -216,7 +216,7 @@ fn landing_evidence_readiness(
   admission: gunbc.source_integration_landing_spine.LandingEvidenceAdmissionPolicy,
   links: List<gunbc.source_integration_landing_spine.LandingEvidenceLink>,
 ) -> gunbc.source_integration_landing_spine.LandingEvidenceReadiness {
-  let readiness = claim_readiness_receipt(
+  let readiness = std.claim_evidence.claim_readiness_receipt(
     policy: std.claim_evidence.ClaimReadinessPolicy {
       first_required: proposal.ensures_guarantees.first,
       remaining_required: proposal.ensures_guarantees.remaining,
@@ -236,8 +236,8 @@ fn landing_evidence_readiness(
       )
     ),
   )
-  match list_head(xs: blocks) {
-    HeadAbsent =>
+  match v2.std.algebra.list_head(xs: blocks) {
+    v2.std.algebra.HeadAbsent =>
       LandingEvidenceReady {
         receipt: gunbc.source_integration_landing_spine.LandingReadyEvidenceReceipt {
           proposal: proposal,
@@ -245,7 +245,7 @@ fn landing_evidence_readiness(
           readiness: readiness,
         },
       }
-    HeadFound { value } =>
+    v2.std.algebra.HeadFound { value } =>
       LandingEvidenceBlocking {
         proposal: proposal,
         policy: policy,
@@ -482,12 +482,12 @@ fn landing_alternative_for_choice(
   choice: gunbc.native_scm_interaction_contract.NativeScmContinuationChoice,
 ) -> v2.std.optional.Optional<gunbc.source_integration_landing_spine.LandingNormativeAlternative> {
   match choice {
-    NativeScmFirstContinuationOption =>
-      Present { value: options.first_option.alternative }
-    NativeScmSecondContinuationOption =>
-      Present { value: options.second_option.alternative }
-    NativeScmAdditionalContinuationOption { index } =>
-      list_at_optional(
+    gunbc.native_scm_interaction_contract.NativeScmFirstContinuationOption =>
+      v2.std.optional.Present { value: options.first_option.alternative }
+    gunbc.native_scm_interaction_contract.NativeScmSecondContinuationOption =>
+      v2.std.optional.Present { value: options.second_option.alternative }
+    gunbc.native_scm_interaction_contract.NativeScmAdditionalContinuationOption { index } =>
+      v2.std.collection.list_at_optional(
         xs: options.additional_options,
         index: index,
       ) |> map(option => option.alternative)
@@ -500,17 +500,17 @@ fn landing_resolve_question(
 ) -> gunbc.source_integration_landing_spine.LandingChoiceResolution {
   let question = prior.question
   let continuation = landing_question_continuation(question: question)
-  match native_scm_resolve_choice(
+  match gunbc.native_scm_interaction_contract.native_scm_resolve_choice(
     continuation: continuation,
     choice: choice,
   ) {
-    NativeScmContinuationChoiceMatched { selected } => {
+    gunbc.native_scm_interaction_contract.NativeScmContinuationChoiceMatched { selected } => {
       let alternative = landing_alternative_for_choice(
         options: question.options,
         choice: selected.identity.choice,
       )
       match alternative {
-        Present { value } =>
+        v2.std.optional.Present { value } =>
           LandingChoiceAdvanced {
             continuation: gunbc.source_integration_landing_spine.LandingChoiceContinuation {
               prior: prior,
@@ -520,14 +520,14 @@ fn landing_resolve_question(
               ),
             },
           }
-        Absent =>
+        v2.std.optional.Absent =>
           LandingChoiceNotOffered {
             prior: prior,
             choice: selected.identity.choice,
           }
       }
     }
-    NativeScmContinuationChoiceNotOffered { choice: not_offered } =>
+    gunbc.native_scm_interaction_contract.NativeScmContinuationChoiceNotOffered { choice: not_offered } =>
       LandingChoiceNotOffered {
         prior: prior,
         choice: not_offered,
@@ -933,15 +933,15 @@ type LandingProjectionStatusFold<R> {
   projected: fn(gunbc.source_integration_landing_spine.LandingProjectionOfAcceptedTransition) -> R
   pending: fn(
     LandingTransitionReceipt,
-    CompatibilityRealizationHandle,
+    gunbc.scm_compatibility_shape.CompatibilityRealizationHandle,
     gunbc.source_integration_landing_spine.LandingCompatibilityTargetBinding,
-    NonEmptyStr,
+    std.types.NonEmptyStr,
   ) -> R
   failed: fn(
     LandingTransitionReceipt,
-    CompatibilityRealizationHandle,
+    gunbc.scm_compatibility_shape.CompatibilityRealizationHandle,
     gunbc.source_integration_landing_spine.LandingCompatibilityTargetBinding,
-    NonEmptyStr,
+    std.types.NonEmptyStr,
   ) -> R
 }
 

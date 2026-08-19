@@ -31,7 +31,7 @@ fn principle_ref(module_path: String, decl_name: String) -> std.decl_ref.Declara
   std.decl_ref.DeclarationRef {
     module_path: module_path,
     decl_name: decl_name,
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 

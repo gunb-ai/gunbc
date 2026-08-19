@@ -57,11 +57,11 @@ fn compute_host_primary_cpu(host: ComputeHost) -> extdeps.cpu.types.CpuFacts? {
 }
 
 fn compute_host_ram_bytes_total(host: ComputeHost) -> std.measure.ByteSize {
-  byte_size(
+  std.measure.byte_size(
     host.memory
       |> fold(
         init: 0,
-        f: (acc, dev) => acc + byte_size_count(dev.capacity),
+        f: (acc, dev) => acc + std.measure.byte_size_count(dev.capacity),
       ),
   )
 }
@@ -71,8 +71,8 @@ fn memory_devices_from_population(pop: extdeps.memory.types.HostMemoryPopulation
     |> map(
       row =>
         MemoryDevice {
-          capacity: memory_population_row_bytes(row: row),
-          memory_kind: Dram,
+          capacity: extdeps.memory.memory_population_row_bytes(row: row),
+          memory_kind: extdeps.memory.types.Dram,
           bandwidth: none,
         }
     )
@@ -98,11 +98,11 @@ data host_v1_interpreter_provider: ProviderIdentity = "host:v1-interpreter"
 
 data host_v1_interpreter_execution_surface: ExecutionSurface = ExecutionSurface {
   os: std.os.types.OperatingSystemSurface {
-    kernel: Linux,
+    kernel: std.os.types.Linux,
     distro_or_product: none,
     version: none,
-    filesystem_semantics: Posix,
-    process_semantics: PosixProcess,
+    filesystem_semantics: std.os.types.Posix,
+    process_semantics: std.os.types.PosixProcess,
   },
   isolation: SharedHostHome,
   container_runtime: none,
@@ -119,7 +119,7 @@ fn performance_receipt_host_single_sample(
   PerformanceReceipt {
     provider: host_v1_interpreter_provider,
     work_shape: work_shape,
-    cost: cost_account_measured_from_time_and_space(time: wall_time, space: space),
+    cost: std.realization_measurement.cost_account_measured_from_time_and_space(time: wall_time, space: space),
     cpu_seconds: none,
     sample_count: 1,
     measurement_context: host_v1_interpreter_execution_surface,
@@ -129,118 +129,118 @@ fn performance_receipt_host_single_sample(
 }
 
 fn performance_receipts_total_time(receipts: List<PerformanceReceipt>) -> std.verification.NanosecondDuration {
-  nanosecond_duration(
+  std.verification.nanosecond_duration(
     count: fold(
       receipts,
       init: 0,
-      f: (acc, receipt) => acc + measure_count(m: receipt.cost.time)
+      f: (acc, receipt) => acc + std.measure.measure_count(m: receipt.cost.time)
     )
   )
 }
 
 fn cost_account_from_performance_receipts(receipts: List<PerformanceReceipt>) -> std.realization_schedule.CostAccount<std.measure.Nano> {
-  cost_account_measured_from_time_and_space(
+  std.realization_measurement.cost_account_measured_from_time_and_space(
     time: performance_receipts_total_time(receipts: receipts),
-    space: space_measure_list_seq(spaces: map(receipts, receipt => receipt.cost.space))
+    space: std.realization_measurement.space_measure_list_seq(spaces: map(receipts, receipt => receipt.cost.space))
   )
 }
 
 data fleet_intent_cpu: extdeps.cpu.types.CpuFacts = extdeps.cpu.types.CpuFacts {
-  catalog: altra_max_m12830_catalog,
-  deployment: extdeps.cpu.types.CpuDeploymentFacts { sustained_per_thread_hz: hertz(3000000000) },
+  catalog: extdeps.cpu.ampere.altra_max_m12830_catalog,
+  deployment: extdeps.cpu.types.CpuDeploymentFacts { sustained_per_thread_hz: std.measure.hertz(3000000000) },
 }
 
 data fleet_intent_os_surface: std.os.types.OperatingSystemSurface = std.os.types.OperatingSystemSurface {
-  kernel: Linux,
+  kernel: std.os.types.Linux,
   distro_or_product: none,
   version: none,
-  filesystem_semantics: Posix,
-  process_semantics: PosixProcess,
+  filesystem_semantics: std.os.types.Posix,
+  process_semantics: std.os.types.PosixProcess,
 }
 
 data srv1_baseboard: extdeps.boards.types.ServerBaseboard = extdeps.boards.types.ServerBaseboard {
-  catalog: asrock_altrad8ud_1l2t_catalog,
-  bmc: std.bmc.BmcEndpoint { host: "192.168.1.183", protocol: Redfish },
+  catalog: extdeps.boards.asrock_rack.asrock_altrad8ud_1l2t_catalog,
+  bmc: std.bmc.BmcEndpoint { host: "192.168.1.183", protocol: std.bmc.Redfish },
 }
 data srv2_baseboard: extdeps.boards.types.ServerBaseboard = extdeps.boards.types.ServerBaseboard {
-  catalog: asrock_altrad8ud_1l2t_catalog,
-  bmc: std.bmc.BmcEndpoint { host: "192.168.1.184", protocol: Redfish },
+  catalog: extdeps.boards.asrock_rack.asrock_altrad8ud_1l2t_catalog,
+  bmc: std.bmc.BmcEndpoint { host: "192.168.1.184", protocol: std.bmc.Redfish },
 }
 data srv3_baseboard: extdeps.boards.types.ServerBaseboard = extdeps.boards.types.ServerBaseboard {
-  catalog: asrock_altrad8ud_1l2t_catalog,
-  bmc: std.bmc.BmcEndpoint { host: "192.168.1.192", protocol: Redfish },
+  catalog: extdeps.boards.asrock_rack.asrock_altrad8ud_1l2t_catalog,
+  bmc: std.bmc.BmcEndpoint { host: "192.168.1.192", protocol: std.bmc.Redfish },
 }
 data srv4_baseboard: extdeps.boards.types.ServerBaseboard = extdeps.boards.types.ServerBaseboard {
-  catalog: asrock_altrad8ud_1l2t_catalog,
-  bmc: std.bmc.BmcEndpoint { host: "192.168.1.195", protocol: Redfish },
+  catalog: extdeps.boards.asrock_rack.asrock_altrad8ud_1l2t_catalog,
+  bmc: std.bmc.BmcEndpoint { host: "192.168.1.195", protocol: std.bmc.Redfish },
 }
 
-data srv1_nvme0: extdeps.storage.types.StorageDevice = nvme_storage_device(
-  catalog: wd_black_sn850x_2tb_catalog,
-  persistence: Persistent,
+data srv1_nvme0: extdeps.storage.types.StorageDevice = extdeps.storage.types.nvme_storage_device(
+  catalog: extdeps.storage.western_digital.wd_black_sn850x_2tb_catalog,
+  persistence: extdeps.storage.types.Persistent,
 )
-data srv2_nvme0: extdeps.storage.types.StorageDevice = nvme_storage_device(
-  catalog: wd_black_sn850x_2tb_catalog,
-  persistence: Persistent,
+data srv2_nvme0: extdeps.storage.types.StorageDevice = extdeps.storage.types.nvme_storage_device(
+  catalog: extdeps.storage.western_digital.wd_black_sn850x_2tb_catalog,
+  persistence: extdeps.storage.types.Persistent,
 )
-data srv3_nvme0: extdeps.storage.types.StorageDevice = nvme_storage_device(
-  catalog: samsung_970_evo_plus_2tb_catalog,
-  persistence: Persistent,
+data srv3_nvme0: extdeps.storage.types.StorageDevice = extdeps.storage.types.nvme_storage_device(
+  catalog: extdeps.storage.samsung.samsung_970_evo_plus_2tb_catalog,
+  persistence: extdeps.storage.types.Persistent,
 )
-data srv4_nvme0: extdeps.storage.types.StorageDevice = nvme_storage_device(
-  catalog: samsung_970_evo_500gb_catalog,
-  persistence: Persistent,
+data srv4_nvme0: extdeps.storage.types.StorageDevice = extdeps.storage.types.nvme_storage_device(
+  catalog: extdeps.storage.samsung.samsung_970_evo_500gb_catalog,
+  persistence: extdeps.storage.types.Persistent,
 )
 
-data fleet_host_memory_nominal_vs_usable_note: String = "Two DISTINCT memory facts for fleet hosts, must not be conflated: (1) NOMINAL DIMM population — srv1/srv2/srv3 host memory derives from per-DIMM BMC Redfish observations through HostMemoryPopulation rows (module × stick_count), srv1/srv2/srv3 observed 2026-07-16 (deferral scaffolds retired on observation); srv4 is NOT yet observed — its 128 GiB literal carries srv4_memory_population_deferral, the same declared-deferral shape srv1/srv2 used pre-observation; (2) OS-USABLE budget — gunbc_ci_host.memory byte_size(134217728000) = exactly 125 GiB, MemTotal-shaped CI runner budget authority (roadmap 128c/125GiB; floor peak receipts from srv1/srv2). The usable figure requires its OWN OS MemTotal provenance — never a blind rewrite from 125 GiB usable to 128 GiB nominal."
+data fleet_host_memory_nominal_vs_usable_note: String = "Two DISTINCT memory facts for fleet hosts, must not be conflated: (1) NOMINAL DIMM population — srv1/srv2/srv3 host memory derives from per-DIMM BMC std.bmc.Redfish observations through extdeps.memory.types.HostMemoryPopulation rows (module × stick_count), srv1/srv2/srv3 observed 2026-07-16 (deferral scaffolds retired on observation); srv4 is NOT yet observed — its 128 GiB literal carries srv4_memory_population_deferral, the same declared-deferral shape srv1/srv2 used pre-observation; (2) OS-USABLE budget — gunbc_ci_host.memory std.measure.byte_size(134217728000) = exactly 125 GiB, MemTotal-shaped CI runner budget authority (roadmap 128c/125GiB; floor peak receipts from srv1/srv2). The usable figure requires its OWN OS MemTotal provenance — never a blind rewrite from 125 GiB usable to 128 GiB nominal."
 
-data srv1_memory_population_observation_note: String = "srv1 BMC 192.168.1.183 Redfish observation 2026-07-16 (rotated cred, operator-supplied): MemorySummary TotalSystemMemoryGiB=128; per-DIMM dimm0..dimm7 all HMA82GR7AFR4N-VK RankCount=1 DataWidthBits=64 BusWidthBits=72 CapacityMiB=16384 OperatingSpeedMhz=2666 (×8). Uniform 8-stick population of the existing cited row hma82gr7afr4n_vk_catalog (AFR4N=x4 1R) totals 128 GiB — dissolves the gibibyte(128) placeholder."
+data srv1_memory_population_observation_note: String = "srv1 BMC 192.168.1.183 std.bmc.Redfish observation 2026-07-16 (rotated cred, operator-supplied): MemorySummary TotalSystemMemoryGiB=128; per-DIMM dimm0..dimm7 all HMA82GR7AFR4N-VK RankCount=1 DataWidthBits=64 BusWidthBits=72 CapacityMiB=16384 OperatingSpeedMhz=2666 (×8). Uniform 8-stick population of the existing cited row extdeps.memory.sk_hynix.hma82gr7afr4n_vk_catalog (AFR4N=x4 1R) totals 128 GiB — dissolves the gibibyte(128) placeholder."
 
 data srv1_memory_population: extdeps.memory.types.HostMemoryPopulation = extdeps.memory.types.HostMemoryPopulation {
   rows: [
-    extdeps.memory.types.MemoryPopulationRow { module: hma82gr7afr4n_vk_catalog, stick_count: 8 },
+    extdeps.memory.types.MemoryPopulationRow { module: extdeps.memory.sk_hynix.hma82gr7afr4n_vk_catalog, stick_count: 8 },
   ],
 }
 
-data srv2_memory_population_observation_note: String = "srv2 BMC 192.168.1.184 Redfish observation 2026-07-16 (rotated cred, operator-supplied): MemorySummary TotalSystemMemoryGiB=128; per-DIMM dimm0..dimm7 all HMA82GR7AFR4N-VK RankCount=1 DataWidthBits=64 BusWidthBits=72 CapacityMiB=16384 OperatingSpeedMhz=2666 (×8). Uniform 8-stick population of the existing cited row hma82gr7afr4n_vk_catalog (AFR4N=x4 1R) totals 128 GiB — dissolves the gibibyte(128) placeholder."
+data srv2_memory_population_observation_note: String = "srv2 BMC 192.168.1.184 std.bmc.Redfish observation 2026-07-16 (rotated cred, operator-supplied): MemorySummary TotalSystemMemoryGiB=128; per-DIMM dimm0..dimm7 all HMA82GR7AFR4N-VK RankCount=1 DataWidthBits=64 BusWidthBits=72 CapacityMiB=16384 OperatingSpeedMhz=2666 (×8). Uniform 8-stick population of the existing cited row extdeps.memory.sk_hynix.hma82gr7afr4n_vk_catalog (AFR4N=x4 1R) totals 128 GiB — dissolves the gibibyte(128) placeholder."
 
 data srv2_memory_population: extdeps.memory.types.HostMemoryPopulation = extdeps.memory.types.HostMemoryPopulation {
   rows: [
-    extdeps.memory.types.MemoryPopulationRow { module: hma82gr7afr4n_vk_catalog, stick_count: 8 },
+    extdeps.memory.types.MemoryPopulationRow { module: extdeps.memory.sk_hynix.hma82gr7afr4n_vk_catalog, stick_count: 8 },
   ],
 }
 
-data srv3_memory_population_observation_note: String = "srv3 BMC 192.168.1.192 Redfish observation 2026-07-16 (factory cred): MemorySummary TotalSystemMemoryGiB=128; per-DIMM dimm0 HMA82GR7AFR8N-VK RankCount=2 DataWidthBits=64 BusWidthBits=72 CapacityMiB=16384 OperatingSpeedMhz=2666 (×7); dimm7 HMA82GR7AFR4N-VK RankCount=1 DataWidthBits=64 BusWidthBits=72 CapacityMiB=16384 OperatingSpeedMhz=2666 (×1). Part-number decode: AFR8N=x8 2R → hma82gr7afr8n_vk_catalog; AFR4N=x4 1R → existing hma82gr7afr4n_vk_catalog. Mixed 7+1 population totals 128 GiB — the fact the old gibibyte(128) literal was hiding."
+data srv3_memory_population_observation_note: String = "srv3 BMC 192.168.1.192 std.bmc.Redfish observation 2026-07-16 (factory cred): MemorySummary TotalSystemMemoryGiB=128; per-DIMM dimm0 HMA82GR7AFR8N-VK RankCount=2 DataWidthBits=64 BusWidthBits=72 CapacityMiB=16384 OperatingSpeedMhz=2666 (×7); dimm7 HMA82GR7AFR4N-VK RankCount=1 DataWidthBits=64 BusWidthBits=72 CapacityMiB=16384 OperatingSpeedMhz=2666 (×1). Part-number decode: AFR8N=x8 2R → extdeps.memory.sk_hynix.hma82gr7afr8n_vk_catalog; AFR4N=x4 1R → existing extdeps.memory.sk_hynix.hma82gr7afr4n_vk_catalog. Mixed 7+1 population totals 128 GiB — the fact the old gibibyte(128) literal was hiding."
 
 data srv3_memory_population: extdeps.memory.types.HostMemoryPopulation = extdeps.memory.types.HostMemoryPopulation {
   rows: [
-    extdeps.memory.types.MemoryPopulationRow { module: hma82gr7afr8n_vk_catalog, stick_count: 7 },
-    extdeps.memory.types.MemoryPopulationRow { module: hma82gr7afr4n_vk_catalog, stick_count: 1 },
+    extdeps.memory.types.MemoryPopulationRow { module: extdeps.memory.sk_hynix.hma82gr7afr8n_vk_catalog, stick_count: 7 },
+    extdeps.memory.types.MemoryPopulationRow { module: extdeps.memory.sk_hynix.hma82gr7afr4n_vk_catalog, stick_count: 1 },
   ],
 }
 
 data srv1_host: ComputeHost = ComputeHost {
-  identity: operator_host_srv1,
+  identity: gunbc.fleet_intent_network.operator_host_srv1,
   baseboard: Present { value: srv1_baseboard },
-  bmc_intent: Present { value: fleet_bmc_valid_state },
+  bmc_intent: Present { value: gunbc.bmc_intent.fleet_bmc_valid_state },
   processors: [CpuProcessor { cpu: fleet_intent_cpu }],
   memory: memory_devices_from_population(pop: srv1_memory_population),
   storage: [srv1_nvme0],
   network_interfaces: [],
 }
 data srv2_host: ComputeHost = ComputeHost {
-  identity: operator_host_srv2,
+  identity: gunbc.fleet_intent_network.operator_host_srv2,
   baseboard: Present { value: srv2_baseboard },
-  bmc_intent: Present { value: fleet_bmc_valid_state },
+  bmc_intent: Present { value: gunbc.bmc_intent.fleet_bmc_valid_state },
   processors: [CpuProcessor { cpu: fleet_intent_cpu }],
   memory: memory_devices_from_population(pop: srv2_memory_population),
   storage: [srv2_nvme0],
   network_interfaces: [],
 }
 data srv3_host: ComputeHost = ComputeHost {
-  identity: operator_host_srv3,
+  identity: gunbc.fleet_intent_network.operator_host_srv3,
   baseboard: Present { value: srv3_baseboard },
-  bmc_intent: Present { value: fleet_bmc_valid_state },
+  bmc_intent: Present { value: gunbc.bmc_intent.fleet_bmc_valid_state },
   processors: [CpuProcessor { cpu: fleet_intent_cpu }],
   memory: memory_devices_from_population(pop: srv3_memory_population),
   storage: [srv3_nvme0],
@@ -254,27 +254,27 @@ type FleetHostMemoryPopulationDeferral {
 }
 
 data srv4_memory_population_deferral: FleetHostMemoryPopulationDeferral = FleetHostMemoryPopulationDeferral {
-  host: operator_host_srv4,
+  host: gunbc.fleet_intent_network.operator_host_srv4,
   bmc_host: "192.168.1.195",
-  cause: "per-DIMM Redfish observation not yet taken: srv4 BMC credential is rotated and stored (bmc-srv4-admin) but this session has no reach-secrets path to authenticate the read (fleet_subsumption_manual_gaps A2)",
-  dissolution: unbound_dissolution(description: "authenticated read of 192.168.1.195 /redfish/v1/Systems/system/Memory — cite srv4_memory_population rows against the sk_hynix catalog (decode part numbers, never assume srv1's uniform AFR4N population), replace srv4_host.memory literal with memory_devices_from_population(pop: srv4_memory_population), and retire this deferral exactly as srv1/srv2's were at their 2026-07-16 observations (fleet_host_memory_nominal_vs_usable_note governs the usable-vs-nominal split)"),
+  cause: "per-DIMM std.bmc.Redfish observation not yet taken: srv4 BMC credential is rotated and stored (bmc-srv4-admin) but this session has no reach-secrets path to authenticate the read (fleet_subsumption_manual_gaps A2)",
+  dissolution: std.dissolution.unbound_dissolution(description: "authenticated read of 192.168.1.195 /redfish/v1/Systems/system/Memory — cite srv4_memory_population rows against the sk_hynix catalog (decode part numbers, never assume srv1's uniform AFR4N population), replace srv4_host.memory literal with memory_devices_from_population(pop: srv4_memory_population), and retire this deferral exactly as srv1/srv2's were at their 2026-07-16 observations (fleet_host_memory_nominal_vs_usable_note governs the usable-vs-nominal split)"),
 }
 
-data srv4_memory_population_deferral_disposition: std.disposition.Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
+data srv4_memory_population_deferral_disposition: std.disposition.Disposition = std.disposition.Scaffold {
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.fleet_intent",
     decl_name: "srv4_memory_population",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   },
 }
 
 data srv4_host: ComputeHost = ComputeHost {
-  identity: operator_host_srv4,
+  identity: gunbc.fleet_intent_network.operator_host_srv4,
   baseboard: Present { value: srv4_baseboard },
-  bmc_intent: Present { value: fleet_bmc_valid_state },
+  bmc_intent: Present { value: gunbc.bmc_intent.fleet_bmc_valid_state },
   processors: [CpuProcessor { cpu: fleet_intent_cpu }],
-  memory: [MemoryDevice { capacity: gibibyte_to_byte_size(g: gibibyte(128)), memory_kind: Dram, bandwidth: none }],
+  memory: [MemoryDevice { capacity: gibibyte_to_byte_size(g: gibibyte(128)), memory_kind: extdeps.memory.types.Dram, bandwidth: none }],
   storage: [srv4_nvme0],
   network_interfaces: [],
 }
@@ -286,7 +286,7 @@ fn fleet_intent_execution_surface() -> ExecutionSurface {
     os: fleet_intent_os_surface,
     isolation: PerJobFilesystem,
     container_runtime: Present { value: Docker },
-    toolchains: [sccache_toolchain_capability],
+    toolchains: [extdeps.cache.sccache.sccache_toolchain_capability],
     mounted_storage: [],
     network: [],
   }

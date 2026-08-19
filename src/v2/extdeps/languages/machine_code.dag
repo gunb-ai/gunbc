@@ -272,22 +272,22 @@ data mc_integer_facts_catalog: List<MachineIntegerPrimitiveFacts> = [
   mc_facts_uint64,
 ]
 
-fn mc_inhabitant_atom(id: v2.std.node.Symbol) -> Node {
+fn mc_inhabitant_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-fn mc_int_kind_node(kind: MachineIntKind) -> Node {
+fn mc_int_kind_node(kind: MachineIntKind) -> v2.std.node.Node {
   match kind {
     Signed => mc_inhabitant_atom(id: ^mc_tag_signed)
     Unsigned => mc_inhabitant_atom(id: ^mc_tag_unsigned)
   }
 }
 
-fn mc_int_width_node(width: MachineIntWidth) -> Node {
+fn mc_int_width_node(width: MachineIntWidth) -> v2.std.node.Node {
   match width {
     Bits8 => mc_inhabitant_atom(id: ^mc_tag_bits8)
     Bits16 => mc_inhabitant_atom(id: ^mc_tag_bits16)
@@ -297,7 +297,7 @@ fn mc_int_width_node(width: MachineIntWidth) -> Node {
   }
 }
 
-fn mc_overflow_node(overflow: MachineIntegerOverflowBehavior) -> Node {
+fn mc_overflow_node(overflow: MachineIntegerOverflowBehavior) -> v2.std.node.Node {
   match overflow {
     WrapModuloWidth => mc_inhabitant_atom(id: ^mc_tag_wrap_modulo)
     TrapOnOverflow => mc_inhabitant_atom(id: ^mc_tag_trap_on_overflow)
@@ -305,9 +305,9 @@ fn mc_overflow_node(overflow: MachineIntegerOverflowBehavior) -> Node {
   }
 }
 
-fn mc_integer_facts_node(facts: MachineIntegerPrimitiveFacts) -> Node {
+fn mc_integer_facts_node(facts: MachineIntegerPrimitiveFacts) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
         label: v2.std.node.Named { name: discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) },
@@ -334,11 +334,11 @@ fn mc_integer_facts_node(facts: MachineIntegerPrimitiveFacts) -> Node {
         target: mc_inhabitant_atom(id: facts.std_projection)
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-fn mc_integer_spec_facts(facts: MachineIntegerPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
+fn mc_integer_spec_facts(facts: MachineIntegerPrimitiveFacts) -> Map<v2.std.node.Symbol, v2.std.node.Node> {
   std.types.Map {
     lookup: fn(axis) {
       if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
@@ -366,7 +366,7 @@ fn mc_primitive_bundle_from_integer_facts(facts: MachineIntegerPrimitiveFacts) -
 }
 
 fn mc_primitive_bundles_from_integer_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
-  list_map(xs: mc_integer_facts_catalog, f: fn(facts) {
+  v2.std.algebra.list_map(xs: mc_integer_facts_catalog, f: fn(facts) {
     mc_primitive_bundle_from_integer_facts(facts: facts)
   })
 }
@@ -385,14 +385,14 @@ fn machine_code_lex_token(token_class: v2.std.node.Symbol, pattern: v2.std.compi
 }
 
 fn machine_code_grammar_terminal(token_class: v2.std.node.Symbol) -> v2.std.grammar.GrammarExpr {
-  Terminal { token_class: token_class, stamp: StampClass }
+  Terminal { token_class: token_class, stamp: v2.std.grammar.StampClass }
 }
 
 fn machine_code_lex(token_class: v2.std.node.Symbol, spelling: String) -> v2.std.compilers.lexing.LexRules {
   v2.std.compilers.lexing.ModeledLexRules {
     root: v2.std.compilers.lexing.LexRuleSet {
       rules: [
-        v2.std.compilers.lexing.TriviaRule { pattern: v2.std.compilers.lexing.OneOrMorePattern { element: v2.std.compilers.lexing.CharClassPattern { class: WhitespaceChar } } },
+        v2.std.compilers.lexing.TriviaRule { pattern: v2.std.compilers.lexing.OneOrMorePattern { element: v2.std.compilers.lexing.CharClassPattern { class: v2.std.compilers.lexing.WhitespaceChar } } },
         machine_code_lex_token(token_class: token_class, pattern: v2.std.compilers.lexing.LiteralPattern { text: spelling })
       ]
     }
@@ -407,21 +407,21 @@ fn machine_code_grammar(
   let start = v2.std.grammar.GrammarProduction {
     name: production_name,
     expression: machine_code_grammar_terminal(token_class: token_class),
-    emitted: grammar_atom(identity: emitted_identity)
+    emitted: v2.std.grammar.grammar_atom(identity: emitted_identity)
   }
   v2.std.grammar.ModeledGrammar {
     root: v2.std.grammar.GrammarRoot {
       start: production_name,
       productions: [start],
-      sync_tokens: grammar_empty_sync_tokens()
+      sync_tokens: v2.std.grammar.grammar_empty_sync_tokens()
     }
   }
 }
 
 fn machine_code_formal_production(production_name: v2.std.node.Symbol, token_class: v2.std.node.Symbol) -> v2.std.grammar.FormalProduction {
   v2.std.grammar.FormalProduction {
-    lhs: grammar_formal_nonterminal(identity: production_name),
-    rhs: [grammar_formal_terminal(identity: token_class)]
+    lhs: v2.std.grammar.grammar_formal_nonterminal(identity: production_name),
+    rhs: [v2.std.grammar.grammar_formal_terminal(identity: token_class)]
   }
 }
 
@@ -453,7 +453,7 @@ fn machine_code_x86_64_ingest_grammar_probe() -> v2.std.grammar.GrammarSchemaPro
         production_name: ^machine_code_production_x86_64_nop,
         token_class: ^machine_code_token_x86_64_nop
       ),
-      expected_parse_surface: grammar_atom(identity: ^machine_code_surface_x86_64_nop_instruction)
+      expected_parse_surface: v2.std.grammar.grammar_atom(identity: ^machine_code_surface_x86_64_nop_instruction)
     }
   }
 }
@@ -486,7 +486,7 @@ fn machine_code_aarch64_ingest_grammar_probe() -> v2.std.grammar.GrammarSchemaPr
         production_name: ^machine_code_production_aarch64_nop,
         token_class: ^machine_code_token_aarch64_nop
       ),
-      expected_parse_surface: grammar_atom(identity: ^machine_code_surface_aarch64_nop_instruction)
+      expected_parse_surface: v2.std.grammar.grammar_atom(identity: ^machine_code_surface_aarch64_nop_instruction)
     }
   }
 }
@@ -519,7 +519,7 @@ fn machine_code_riscv64_ingest_grammar_probe() -> v2.std.grammar.GrammarSchemaPr
         production_name: ^machine_code_production_riscv64_nop,
         token_class: ^machine_code_token_riscv64_nop
       ),
-      expected_parse_surface: grammar_atom(identity: ^machine_code_surface_riscv64_nop_instruction)
+      expected_parse_surface: v2.std.grammar.grammar_atom(identity: ^machine_code_surface_riscv64_nop_instruction)
     }
   }
 }

@@ -1,20 +1,20 @@
 module std.effect_grant
 
 
-data effect_grant_note: String = "P-A model for effect-namespace grants (docs/plans/effect-namespace-grants.md, owned silent-ibex-417). An effect target is a POSITION in a containment tree that already exists; permission is a GRANT of (verb x subtree) attached to a Frame; admissibility is the namespace prefix relation (target under a granted root). This is the reach layer standing ABOVE the single std.effects.EffectShape authority, never a fork of it. admit_effect constructs std.authorization_profile.EffectRequest and delegates the only allow/deny decision to std.access.AccessPolicy; the former EffectAdmission sum is dissolved. Grants reuse std.materialization_ladder.Frame (the scope/nesting authority) rather than mint a scope noun. DERIVED PROJECTIONS LANDED in std.effect_axes (P-C). Provisional operator defaults carried inline (Q1 verb set, Q2 target realization) pending confirmation -- each with a dissolve-on."
+data effect_grant_note: String = "P-A model for effect-namespace grants (docs/plans/effect-namespace-grants.md, owned silent-ibex-417). An effect target is a POSITION in a containment tree that already exists; permission is a GRANT of (verb x subtree) attached to a std.materialization_ladder.Frame; admissibility is the namespace prefix relation (target under a granted root). This is the reach layer standing ABOVE the single std.effects.EffectShape authority, never a fork of it. admit_effect constructs std.authorization_profile.EffectRequest and delegates the only allow/deny decision to std.access.AccessPolicy; the former EffectAdmission sum is dissolved. Grants reuse std.materialization_ladder.Frame (the scope/nesting authority) rather than mint a scope noun. DERIVED PROJECTIONS LANDED in std.effect_axes (P-C). Provisional operator defaults carried inline (Q1 verb set, Q2 target realization) pending confirmation -- each with a dissolve-on."
 
 type Verb = Read | Write | Execute
 
-data verb_set_note: String = "Q1 AMENDED (dissolve-on fired 2026-07-19, deploy-preflight sudo-probe displaced cost): the effect-derived verbs are Read/Write/Execute, each coarsened from the ONE std.effects.EffectShape authority via verb_of_effect_shape below -- never a parallel effect vocabulary (DESIGN 3). Execute arrives as ExecuteEffect (invoke-nature shape in std.effects, not REST-derived). Create remains deferred until a displaced cost names it. The frozen Reference and Publish additions from gunbc#7541 dissolved into std.authorization_profile.ReferenceRequest and PublicationAdmissionRequest: neither is an EffectShape. dissolve-on = none (landed authority; operator may amend verb set)."
+data verb_set_note: String = "Q1 AMENDED (dissolve-on fired 2026-07-19, deploy-preflight sudo-probe displaced cost): the effect-derived verbs are Read/Write/Execute, each coarsened from the ONE std.effects.EffectShape authority via verb_of_effect_shape below -- never a parallel effect vocabulary (DESIGN 3). Execute arrives as std.effects.ExecuteEffect (invoke-nature shape in std.effects, not REST-derived). Create remains deferred until a displaced cost names it. The frozen Reference and Publish additions from gunbc#7541 dissolved into std.authorization_profile.ReferenceRequest and PublicationAdmissionRequest: neither is an std.effects.EffectShape. dissolve-on = none (landed authority; operator may amend verb set)."
 
-data execute_verb_note: String = "Execute grant reach for process/binary invocation: target is a NamespacePosition in FilesystemPathTree naming the executable. The verb is shape-grounded: verb_of_effect_shape(ExecuteEffect) = Execute. Deploy-preflight sudo probes materialize via PosixSudoGrant -> std.effect_grant.Grant projection (gunbc.fleet_posix_accounts). WHO may execute stays GroundedPosixPrincipal/std.access. dissolve-on = deploy-preflight envelope admits via admit_effect (shell-intent Wave A follow-on)."
+data execute_verb_note: String = "Execute grant reach for process/binary invocation: target is a NamespacePosition in FilesystemPathTree naming the executable. The verb is shape-grounded: verb_of_effect_shape(std.effects.ExecuteEffect) = Execute. Deploy-preflight sudo probes materialize via PosixSudoGrant -> std.effect_grant.Grant projection (gunbc.fleet_posix_accounts). WHO may execute stays GroundedPosixPrincipal/std.access. dissolve-on = deploy-preflight envelope admits via admit_effect (shell-intent Wave A follow-on)."
 
 fn verb_of_effect_shape(shape: std.effects.EffectShape<std.effects.KeySource>) -> std.effect_grant.Verb {
   match shape {
     std.effects.ReadEffect => Read
-    UpsertEffect { key_source: key_source } => Write
-    DeleteEffect { key_source: key_source } => Write
-    CreateEffect { cause: cause } => Write
+    std.effects.UpsertEffect { key_source: key_source } => Write
+    std.effects.DeleteEffect { key_source: key_source } => Write
+    std.effects.CreateEffect { cause: cause } => Write
     std.effects.AppendEffect => Write
     std.effects.ExecuteEffect => Execute
   }
@@ -179,12 +179,12 @@ fn effect_grant_decide(
     verb: request.action.effect,
     target: request.object,
   ) {
-    CoveredBy { grant: grant } => Permit
+    CoveredBy { grant: grant } => std.access.Permit
     NoCoveringGrant { verb: verb, target: target, frame: frame } => std.access.Deny {
       refusal: std.access.AccessRefusal {
         cause: std.access.AccessActionNotGranted { action: effect_verb_label(verb: verb) },
         location: std.access.AccessRefusalLocation {
-          profile: "EffectRequest",
+          profile: "std.authorization_profile.EffectRequest",
           subject: frame.name,
           action: effect_verb_label(verb: verb),
           object: effect_target_label(target: target),
@@ -194,10 +194,10 @@ fn effect_grant_decide(
   }
 }
 
-data effect_grant_policy: AccessPolicy<Frame, EffectAuthorizationAction<std.effect_grant.Verb>, std.effect_grant.NamespacePosition, Frame, std.effect_grant.Envelope> = std.access.AccessPolicy { decide: effect_grant_decide }
+data effect_grant_policy: std.access.AccessPolicy<std.materialization_ladder.Frame, std.authorization_profile.EffectAuthorizationAction<std.effect_grant.Verb>, std.effect_grant.NamespacePosition, std.materialization_ladder.Frame, std.effect_grant.Envelope> = std.access.AccessPolicy { decide: effect_grant_decide }
 
 fn admit_effect(env: std.effect_grant.Envelope, verb: std.effect_grant.Verb, target: std.effect_grant.NamespacePosition) -> std.access.AccessDecision {
-  effect_grant_policy.decide(effect_access_request(request: std.authorization_profile.EffectRequest {
+  effect_grant_policy.decide(std.authorization_profile.effect_access_request(request: std.authorization_profile.EffectRequest {
     subject: env.frame,
     effect: verb,
     target: target,

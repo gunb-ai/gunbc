@@ -1,23 +1,23 @@
 module v2.lens.production_qualification_origin_probe
 
 
-data production_qualification_origin_probe_law: String = "Production-qualification origin PROBE (session keen-lark-681, wise-ram-22 recut): NOT a repository-wide census. fn_arrow_decl_facts_live() scope is entry-closure today; repository-wide frequency is unknown. This carrier reports fixture-origin mint surfaces discovered by STRUCTURAL skeleton rules (mint/advance callee atoms + direct_rust_door_inferred_tree fixture-tree marker only — never target-model proxy, never declaration-name recognition). Origin vocabulary: ProductionQualificationOrigin = CompilerDerived | FixtureDerived | UnknownOrigin only — ExecutionMeasured is ProductionEvidenceGrounding, not an origin (a fixture-derived artifact may also be execution-measured). Known direct-door fixture-origin mint surfaces detected in live scope: see known_fixture_origin_mint_surface_count_in_scope() (honest live-read; zero today per production_qualification_live_scope_fixture_origin_policy_note while G2 marshal prunes callee atoms). Classifier proof uses planted_fixture_origin_mint_site_count() against production_qualification_planted_fixture_origin_oracle_count. Repository-wide frequency: unknown. Dissolve-on: derive every resolved call occurrence capable of constructing or advancing a production qualification (effect_reach / call-occurrence substrate), classify origins with call/dataflow evidence, attach ProductionEvidenceGrounding orthogonally, and retire name/closure pins."
+data production_qualification_origin_probe_law: String = "Production-qualification origin PROBE (session keen-lark-681, wise-ram-22 recut): NOT a repository-wide census. v2.std.fn_index.fn_arrow_decl_facts_live() scope is entry-closure today; repository-wide frequency is unknown. This carrier reports fixture-origin mint surfaces discovered by STRUCTURAL skeleton rules (mint/advance callee atoms + direct_rust_door_inferred_tree fixture-tree marker only — never target-model proxy, never declaration-name recognition). Origin vocabulary: ProductionQualificationOrigin = CompilerDerived | FixtureDerived | UnknownOrigin only — ExecutionMeasured is ProductionEvidenceGrounding, not an origin (a fixture-derived artifact may also be execution-measured). Known direct-door fixture-origin mint surfaces detected in live scope: see known_fixture_origin_mint_surface_count_in_scope() (honest live-read; zero today per production_qualification_live_scope_fixture_origin_policy_note while G2 marshal prunes callee atoms). Classifier proof uses planted_fixture_origin_mint_site_count() against production_qualification_planted_fixture_origin_oracle_count. Repository-wide frequency: unknown. Dissolve-on: derive every resolved call occurrence capable of constructing or advancing a production qualification (effect_reach / call-occurrence substrate), classify origins with call/dataflow evidence, attach ProductionEvidenceGrounding orthogonally, and retire name/closure pins."
 
 data production_qualification_origin_call_occurrence_frontier_note: String = "SCAFFOLD frontier (wise-ram-22 required recut): population is NOT derived from resolved call occurrences yet — only fn-arrow skeleton callee/marker projection inside the witness entry's import closure. Ingest-inline surfaces whose mint callee is pruned by G2 marshal, indirect consumer reachability, and repository-wide mint sites outside the closure are invisible. No admitted RED witness keys on a manually flippable boolean — repository-wide closure waits for a queryable call-occurrence population authority. Dissolve-on when call-reachable production-qualification classification shares the effect_reach skeleton authority."
 
 data production_qualification_construction_wall_path_frontier_note: String = "Construction-wall path split (wise-ram-22 addendum, royal-crab-235 lane): sole_constructor record-literal refusal executes on the v1 seed infer path only — v2.compiler.04_infer carries zero sole_constructor handling today. A construction site this probe discovers is NOT automatically in a guarded population; guard presence is a property of the compiler PATH, not the site. This probe classifies structural skeleton origin only — it never infers 'sole_constructor exists therefore this form is walled'."
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SingleAuthority }
 }
 
-data production_qualification_counted_qualifications_note: String = "Axes derived_sites_for_decl can construct today at fn-arrow skeleton grain — SourceProduced and CargoGreen only. ProductionRouted and BehavioralEquivalent remain reserved for call-occurrence / dataflow grounding. Execution evidence is ProductionEvidenceGrounding, not an EmissionQualification axis."
+data production_qualification_counted_qualifications_note: String = "Axes derived_sites_for_decl can construct today at fn-arrow skeleton grain — v2.compiler.self_host.emitter_producer_provenance.SourceProduced and v2.compiler.self_host.emitter_producer_provenance.CargoGreen only. ProductionRouted and BehavioralEquivalent remain reserved for call-occurrence / dataflow grounding. Execution evidence is ProductionEvidenceGrounding, not an v2.compiler.self_host.emitter_producer_provenance.EmissionQualification axis."
 
 data production_evidence_grounding_vocabulary_note: String = "B0-aligned vocabulary (wise-ram-22): ProductionQualificationOrigin = CompilerDerived | FixtureDerived | UnknownOrigin. ProductionEvidenceGrounding = StructurallyGrounded | ExecutionMeasured | Unmeasured — measurement carries an origin, never replaces one. Rows do not populate grounding at skeleton grain yet; the carrier declares the split so probe and B0 share one epistemology."
 
 data production_qualification_counted_qualifications: List<v2.compiler.self_host.emitter_producer_provenance.EmissionQualification> = [
-  SourceProduced,
-  CargoGreen
+  v2.compiler.self_host.emitter_producer_provenance.SourceProduced,
+  v2.compiler.self_host.emitter_producer_provenance.CargoGreen
 ]
 
 type ProductionQualificationOrigin
@@ -89,11 +89,11 @@ fn site_row_already_present(
   qualified_name: String,
   axis: v2.compiler.self_host.emitter_producer_provenance.EmissionQualification
 ) -> Bool {
-  any(
+  v2.std.algebra.any(
     xs: sites,
     predicate: fn(row) {
       string_eq(a: row.qualified_name, b: qualified_name)
-        && emission_qualification_eq(
+        && v2.compiler.self_host.emitter_producer_provenance.emission_qualification_eq(
           left: row.qualification_axis,
           right: axis
         )
@@ -110,7 +110,7 @@ fn maybe_snoc_site_row(
   if site_row_already_present(sites: sites, qualified_name: qualified_name, axis: axis) {
     sites
   } else {
-    list_snoc_item(
+    v2.std.algebra.list_snoc_item(
       xs: sites,
       item: DerivedProductionQualificationMintSiteRow {
         qualified_name: qualified_name,
@@ -122,78 +122,78 @@ fn maybe_snoc_site_row(
 }
 
 type AtomCollectState {
-  node: Node
+  node: v2.std.node.Node
   atoms: List<v2.std.node.Symbol>
 }
 
-fn atom_collect_init(n: Node) -> AtomCollectState {
+fn atom_collect_init(n: v2.std.node.Node) -> AtomCollectState {
   AtomCollectState { node: n, atoms: empty_symbol_list }
 }
 
 fn atom_collect_step(acc: AtomCollectState, _edge: v2.std.node.Edge, child: AtomCollectState) -> AtomCollectState {
-  let atoms = match node_atom_identity_optional(node: child.node) {
-    Present { value: sym } =>
-      if contains(xs: acc.atoms, item: sym, eq: symbol_eq) {
+  let atoms = match v2.std.grammar.node_atom_identity_optional(node: child.node) {
+    v2.std.collection.Present { value: sym } =>
+      if v2.std.algebra.contains(xs: acc.atoms, item: sym, eq: symbol_eq) {
         acc.atoms
       } else {
-        list_snoc_item(xs: acc.atoms, item: sym)
+        v2.std.algebra.list_snoc_item(xs: acc.atoms, item: sym)
       }
-    Absent => acc.atoms
+    v2.std.collection.Absent => acc.atoms
   }
   AtomCollectState { node: acc.node, atoms: atoms }
 }
 
-fn atom_collect_algebra() -> NodeFold<AtomCollectState> {
+fn atom_collect_algebra() -> v2.std.node.NodeFold<AtomCollectState> {
   v2.std.node.NodeFold { init: atom_collect_init, step: atom_collect_step }
 }
 
-fn atom_identities_in_node(node: Node) -> List<v2.std.node.Symbol> {
-  let from_descendants = fold_node(n: node, algebra: atom_collect_algebra()).atoms
-  match node_atom_identity_optional(node: node) {
-    Present { value: sym } =>
-      if contains(xs: from_descendants, item: sym, eq: symbol_eq) {
+fn atom_identities_in_node(node: v2.std.node.Node) -> List<v2.std.node.Symbol> {
+  let from_descendants = v2.std.node.fold_node(n: node, algebra: atom_collect_algebra()).atoms
+  match v2.std.grammar.node_atom_identity_optional(node: node) {
+    v2.std.collection.Present { value: sym } =>
+      if v2.std.algebra.contains(xs: from_descendants, item: sym, eq: symbol_eq) {
         from_descendants
       } else {
-        list_snoc_item(xs: from_descendants, item: sym)
+        v2.std.algebra.list_snoc_item(xs: from_descendants, item: sym)
       }
-    Absent => from_descendants
+    v2.std.collection.Absent => from_descendants
   }
 }
 
-fn node_contains_atom_text(node: Node, wanted: String) -> Bool {
-  any(
+fn node_contains_atom_text(node: v2.std.node.Node, wanted: String) -> Bool {
+  v2.std.algebra.any(
     xs: atom_identities_in_node(node: node),
-    predicate: fn(sym) { string_eq(a: symbol_lexeme(sym: sym), b: wanted) }
+    predicate: fn(sym) { string_eq(a: v2.std.compilers.lexing.symbol_lexeme(sym: sym), b: wanted) }
   )
 }
 
 type CalleeCollectState {
-  node: Node
+  node: v2.std.node.Node
   callees: List<String>
 }
 
-fn callee_collect_init(n: Node) -> CalleeCollectState {
+fn callee_collect_init(n: v2.std.node.Node) -> CalleeCollectState {
   CalleeCollectState { node: n, callees: empty_string_list }
 }
 
 fn maybe_snoc_callee_text(callees: List<String>, text: String) -> List<String> {
-  if contains(xs: callees, item: text, eq: string_eq) {
+  if v2.std.algebra.contains(xs: callees, item: text, eq: string_eq) {
     callees
   } else {
-    list_snoc_item(xs: callees, item: text)
+    v2.std.algebra.list_snoc_item(xs: callees, item: text)
   }
 }
 
-fn callee_text_from_call_node(node: Node) -> List<String> {
-  if node_is_call(node: node) {
-    match call_callee_target(node: node) {
-      Accepted { value: callee_node, diagnostics: _ } =>
-        match node_atom_identity_optional(node: callee_node) {
-          Present { value: sym } =>
-            [symbol_lexeme(sym: sym)]
-          Absent => empty_string_list
+fn callee_text_from_call_node(node: v2.std.node.Node) -> List<String> {
+  if v2.std.node_query.node_is_call(node: node) {
+    match v2.std.node_query.call_callee_target(node: node) {
+      v2.std.diagnostic.Accepted { value: callee_node, diagnostics: _ } =>
+        match v2.std.grammar.node_atom_identity_optional(node: callee_node) {
+          v2.std.collection.Present { value: sym } =>
+            [v2.std.compilers.lexing.symbol_lexeme(sym: sym)]
+          v2.std.collection.Absent => empty_string_list
         }
-      Rejected { diagnostics: _ } => empty_string_list
+      v2.std.diagnostic.Rejected { diagnostics: _ } => empty_string_list
     }
   } else {
     empty_string_list
@@ -204,7 +204,7 @@ fn callee_collect_merge(
   left: List<String>,
   right: List<String>
 ) -> List<String> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: right,
     empty: left,
     cons: fn(acc, text) { maybe_snoc_callee_text(callees: acc, text: text) }
@@ -224,30 +224,30 @@ fn callee_collect_step(
   CalleeCollectState { node: acc.node, callees: with_call }
 }
 
-fn callee_collect_algebra() -> NodeFold<CalleeCollectState> {
+fn callee_collect_algebra() -> v2.std.node.NodeFold<CalleeCollectState> {
   v2.std.node.NodeFold { init: callee_collect_init, step: callee_collect_step }
 }
 
-fn callees_from_atom_scan(node: Node) -> List<String> {
-  fold_list(
+fn callees_from_atom_scan(node: v2.std.node.Node) -> List<String> {
+  v2.std.algebra.fold_list(
     xs: atom_identities_in_node(node: node),
     empty: empty_string_list,
     cons: fn(acc, sym) {
-      maybe_snoc_callee_text(callees: acc, text: symbol_lexeme(sym: sym))
+      maybe_snoc_callee_text(callees: acc, text: v2.std.compilers.lexing.symbol_lexeme(sym: sym))
     }
   )
 }
 
-fn callees_from_node(node: Node) -> List<String> {
+fn callees_from_node(node: v2.std.node.Node) -> List<String> {
   let from_call_walk = callee_collect_merge(
-    left: fold_node(n: node, algebra: callee_collect_algebra()).callees,
+    left: v2.std.node.fold_node(n: node, algebra: callee_collect_algebra()).callees,
     right: callee_text_from_call_node(node: node)
   )
   callee_collect_merge(left: from_call_walk, right: callees_from_atom_scan(node: node))
 }
 
 fn decl_contains_callee(decl: v2.std.fn_index.FnArrowDecl, callee: String) -> Bool {
-  contains(xs: callees_from_node(node: decl.output), item: callee, eq: string_eq)
+  v2.std.algebra.contains(xs: callees_from_node(node: decl.output), item: callee, eq: string_eq)
 }
 
 fn decl_contains_atom(decl: v2.std.fn_index.FnArrowDecl, atom: String) -> Bool {
@@ -291,7 +291,7 @@ fn derived_sites_for_decl(
         maybe_snoc_site_row(
           sites: sites,
           qualified_name: decl.qualified_name,
-          axis: SourceProduced,
+          axis: v2.compiler.self_host.emitter_producer_provenance.SourceProduced,
           origin: origin
         )
       } else {
@@ -301,7 +301,7 @@ fn derived_sites_for_decl(
       maybe_snoc_site_row(
         sites: with_source_produced,
         qualified_name: decl.qualified_name,
-        axis: CargoGreen,
+        axis: v2.compiler.self_host.emitter_producer_provenance.CargoGreen,
         origin: origin
       )
     } else {
@@ -315,7 +315,7 @@ fn derived_sites_for_decl(
 fn derived_production_qualification_mint_sites_from_facts(
   decls: List<v2.std.fn_index.FnArrowDecl>
 ) -> List<DerivedProductionQualificationMintSiteRow> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: decls,
     empty: empty_site_list,
     cons: fn(acc, decl) { derived_sites_for_decl(sites: acc, decl: decl) }
@@ -324,7 +324,7 @@ fn derived_production_qualification_mint_sites_from_facts(
 
 fn derived_production_qualification_mint_sites_live() -> List<DerivedProductionQualificationMintSiteRow> {
   derived_production_qualification_mint_sites_from_facts(
-    decls: fn_arrow_decl_facts_live()
+    decls: v2.std.fn_index.fn_arrow_decl_facts_live()
   )
 }
 
@@ -332,7 +332,7 @@ fn count_derived_mint_sites_with_origin(
   sites: List<DerivedProductionQualificationMintSiteRow>,
   origin: ProductionQualificationOrigin
 ) -> Int {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: sites,
     empty: 0,
     cons: fn(count, row) {
@@ -351,7 +351,7 @@ fn count_derived_fixture_origin_mint_sites(
   count_derived_mint_sites_with_origin(sites: sites, origin: FixtureDerived)
 }
 
-// Closed-subject oracle (DESIGN §5): structural_red_control_planted_decl carries exactly one FixtureDerived SourceProduced row by construction — independent of fn_arrow_decl_facts_live() population.
+// Closed-subject oracle (DESIGN §5): structural_red_control_planted_decl carries exactly one FixtureDerived v2.compiler.self_host.emitter_producer_provenance.SourceProduced row by construction — independent of v2.std.fn_index.fn_arrow_decl_facts_live() population.
 data production_qualification_planted_fixture_origin_oracle_count: Int = 1
 
 data production_qualification_live_scope_fixture_origin_policy_note: String = "Live-scope policy (DESIGN §5, review 48255): G2 fn-arrow marshal does not yet surface mint callees on live fixture fns in the witness entry closure, so known_fixture_origin_mint_surface_count_in_scope() reads zero today — documented expectation, NOT an executing tree-copied equality oracle. Discriminating signal is the planted closed-subject oracle (production_qualification_planted_fixture_origin_oracle_count). Frontier: witness_live_scope_fixture_origin_discoverable_in_entry_closure_reds (explicit_witness_admission) expects live FixtureDerived discovery once marshal exposes callee atoms — greens when count > 0, then row deletes and a closed-subject expected population or monotone debt contract may enroll."
@@ -372,13 +372,13 @@ fn known_fixture_origin_mint_surface_count_in_scope() -> Int {
 }
 
 fn ingest_mint_surface_discovered_in_live_scope() -> Bool {
-  any(
+  v2.std.algebra.any(
     xs: derived_production_qualification_mint_sites_live(),
     predicate: fn(row) {
       string_contains(s: row.qualified_name, pattern: ingest_mint_entry_name_suffix)
-        && emission_qualification_eq(
+        && v2.compiler.self_host.emitter_producer_provenance.emission_qualification_eq(
           left: row.qualification_axis,
-          right: SourceProduced
+          right: v2.compiler.self_host.emitter_producer_provenance.SourceProduced
         )
     }
   )
@@ -402,11 +402,11 @@ fn production_qualification_origin_probe_admission_holds_for_decls(
     && (count_derived_mint_sites_with_origin(sites: sites, origin: FixtureDerived) == 0)
 }
 
-fn probe_mint_callee_atom_node() -> Node {
+fn probe_mint_callee_atom_node() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: symbol_intern_lexeme(lexeme: mint_written_callee) } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: v2.std.compilers.lexing.symbol_intern_lexeme(lexeme: mint_written_callee) } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
@@ -417,9 +417,9 @@ fn unknown_origin_red_control_planted_decl() -> v2.std.fn_index.FnArrowDecl {
     output: v2.std.node.Node {
       kind: v2.std.node.TypeNode { connective: Conj },
       children: [
-        v2.std.node.Edge { label: Positional, target: probe_mint_callee_atom_node() }
+        v2.std.node.Edge { label: v2.std.node.Positional, target: probe_mint_callee_atom_node() }
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: v2.std.node.SyntheticOccurrence
     },
     params: []
   }
@@ -427,11 +427,11 @@ fn unknown_origin_red_control_planted_decl() -> v2.std.fn_index.FnArrowDecl {
 
 data structural_red_control_planted_qualified_name: String = "synthetic.production_qualification_origin_probe.structural_red_control_planted"
 
-fn probe_mint_provenanced_callee_atom_node() -> Node {
+fn probe_mint_provenanced_callee_atom_node() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: symbol_intern_lexeme(lexeme: mint_provenanced_callee) } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: v2.std.compilers.lexing.symbol_intern_lexeme(lexeme: mint_provenanced_callee) } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
@@ -442,35 +442,35 @@ fn parameter_borne_fixture_mint_planted_decl() -> v2.std.fn_index.FnArrowDecl {
     output: v2.std.node.Node {
       kind: v2.std.node.TypeNode { connective: Conj },
       children: [
-        v2.std.node.Edge { label: Positional, target: probe_mint_provenanced_callee_atom_node() }
+        v2.std.node.Edge { label: v2.std.node.Positional, target: probe_mint_provenanced_callee_atom_node() }
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: v2.std.node.SyntheticOccurrence
     },
     params: []
   }
 }
 
-fn probe_fixture_tree_atom_node() -> Node {
+fn probe_fixture_tree_atom_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode {
       connective: v2.std.node.Atom {
-        identity: symbol_intern_lexeme(lexeme: direct_rust_door_inferred_tree_atom)
+        identity: v2.std.compilers.lexing.symbol_intern_lexeme(lexeme: direct_rust_door_inferred_tree_atom)
       }
     },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
-fn probe_target_model_callee_atom_node() -> Node {
+fn probe_target_model_callee_atom_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode {
       connective: v2.std.node.Atom {
-        identity: symbol_intern_lexeme(lexeme: direct_rust_door_target_model_callee)
+        identity: v2.std.compilers.lexing.symbol_intern_lexeme(lexeme: direct_rust_door_target_model_callee)
       }
     },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
@@ -481,10 +481,10 @@ fn structural_red_control_planted_decl() -> v2.std.fn_index.FnArrowDecl {
     output: v2.std.node.Node {
       kind: v2.std.node.TypeNode { connective: Conj },
       children: [
-        v2.std.node.Edge { label: Positional, target: probe_mint_callee_atom_node() },
-        v2.std.node.Edge { label: Positional, target: probe_fixture_tree_atom_node() }
+        v2.std.node.Edge { label: v2.std.node.Positional, target: probe_mint_callee_atom_node() },
+        v2.std.node.Edge { label: v2.std.node.Positional, target: probe_fixture_tree_atom_node() }
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: v2.std.node.SyntheticOccurrence
     },
     params: []
   }
@@ -499,10 +499,10 @@ fn target_without_fixture_tree_red_control_planted_decl() -> v2.std.fn_index.FnA
     output: v2.std.node.Node {
       kind: v2.std.node.TypeNode { connective: Conj },
       children: [
-        v2.std.node.Edge { label: Positional, target: probe_mint_callee_atom_node() },
-        v2.std.node.Edge { label: Positional, target: probe_target_model_callee_atom_node() }
+        v2.std.node.Edge { label: v2.std.node.Positional, target: probe_mint_callee_atom_node() },
+        v2.std.node.Edge { label: v2.std.node.Positional, target: probe_target_model_callee_atom_node() }
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: v2.std.node.SyntheticOccurrence
     },
     params: []
   }
@@ -511,7 +511,7 @@ fn target_without_fixture_tree_red_control_planted_decl() -> v2.std.fn_index.FnA
 fn structural_red_control_live_fixture_mint_site_discovered(
   live_qualified_name: String
 ) -> Bool {
-  any(
+  v2.std.algebra.any(
     xs: derived_production_qualification_mint_sites_live(),
     predicate: fn(row) {
       string_eq(a: row.qualified_name, b: live_qualified_name)
@@ -519,9 +519,9 @@ fn structural_red_control_live_fixture_mint_site_discovered(
           left: row.evidence_origin,
           right: FixtureDerived
         )
-        && emission_qualification_eq(
+        && v2.compiler.self_host.emitter_producer_provenance.emission_qualification_eq(
           left: row.qualification_axis,
-          right: SourceProduced
+          right: v2.compiler.self_host.emitter_producer_provenance.SourceProduced
         )
     }
   )
@@ -529,6 +529,6 @@ fn structural_red_control_live_fixture_mint_site_discovered(
 
 fn production_qualification_origin_probe_admission_holds() -> Bool {
   production_qualification_origin_probe_admission_holds_for_decls(
-    decls: fn_arrow_decl_facts_live()
+    decls: v2.std.fn_index.fn_arrow_decl_facts_live()
   )
 }

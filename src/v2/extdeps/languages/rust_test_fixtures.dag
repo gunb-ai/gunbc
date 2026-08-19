@@ -4,19 +4,19 @@ module v2.extdeps.languages.rust_test
 
 
 
-data rust_test_fixtures_rust_import_unstrip_note: String = "Class B un-strip (2026-08-04, #7772): this module previously carried zero import statements and resolved v2.extdeps.languages.rust symbols only by pool-membership coincidence — an unrelated import elsewhere in the assembled closure dragged rust.dag in. Enrollment changes on the N3-A branch collapsed that accidental coverage; thirty-one discovery witnesses then failed at runtime with no such function on rust_selection_policy_node, rust_operator_realizations_catalog_node, rust_grammar_terminal, and rust_inhabitant_atom. The explicit import block above is the closure-independent binding fix DESIGN's import-strip Class B blocker requires; dissolve-on when bare-reference closure binding is construction-backed repo-wide."
+data rust_test_fixtures_rust_import_unstrip_note: String = "Class B un-strip (2026-08-04, #7772): this module previously carried zero import statements and resolved v2.extdeps.languages.rust symbols only by pool-membership coincidence — an unrelated import elsewhere in the assembled closure dragged rust.dag in. Enrollment changes on the N3-A branch collapsed that accidental coverage; thirty-one discovery witnesses then failed at runtime with no such function on v2.extdeps.languages.rust.rust_selection_policy_node, v2.extdeps.languages.rust.rust_operator_realizations_catalog_node, v2.extdeps.languages.rust.rust_grammar_terminal, and v2.extdeps.languages.rust.rust_inhabitant_atom. The explicit import block above is the closure-independent binding fix DESIGN's import-strip Class B blocker requires; dissolve-on when bare-reference closure binding is construction-backed repo-wide."
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data rust_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
 fn rust_grammar_production_fn_bind_literal() -> v2.std.grammar.GrammarProduction {
   v2.std.grammar.GrammarProduction {
     name: ^rust_production_fn_bind_literal,
-    expression: rust_grammar_sequence_from_concrete_tokens(
+    expression: v2.extdeps.languages.rust.rust_grammar_sequence_from_concrete_tokens(
       tokens: rust_bind_literal_golden_tokens()
     ),
-    emitted: rust_grammar_atom(id: ^rust_surface_fn_item)
+    emitted: v2.extdeps.languages.rust.rust_grammar_atom(id: ^rust_surface_fn_item)
   }
 }
 
@@ -80,20 +80,20 @@ fn rust_pick_grammar_sequence() -> v2.std.grammar.GrammarExpr {
       match state {
         RustGramBuild1StateInit =>
           v2.extdeps.languages.rust.RustGramBuild1StateReady {
-            expr: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+            expr: v2.extdeps.languages.rust.rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
           }
         RustGramBuild1StateReady { expr: acc } =>
           v2.extdeps.languages.rust.RustGramBuild1StateReady {
             expr: v2.std.grammar.Sequence {
               left: acc,
-              right: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+              right: v2.extdeps.languages.rust.rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
             }
           }
       }
     }
   ) {
     RustGramBuild1StateInit =>
-      rust_grammar_terminal(token_class: ^rust_token_kw_fn)
+      v2.extdeps.languages.rust.rust_grammar_terminal(token_class: ^rust_token_kw_fn)
     RustGramBuild1StateReady { expr: result } => result
   }
 }
@@ -101,7 +101,7 @@ fn rust_pick_grammar_sequence() -> v2.std.grammar.GrammarExpr {
 fn rust_formal_production_fn_pick() -> v2.std.grammar.FormalProduction {
   grammar_formal_production(
     lhs: ^rust_production_fn_pick,
-    rhs: rust_formal_rhs_from_tokens(tokens: rust_pick_concrete_tokens())
+    rhs: v2.extdeps.languages.rust.rust_formal_rhs_from_tokens(tokens: rust_pick_concrete_tokens())
   )
 }
 
@@ -109,20 +109,20 @@ fn rust_grammar_production_fn_pick() -> v2.std.grammar.GrammarProduction {
   v2.std.grammar.GrammarProduction {
     name: ^rust_production_fn_pick,
     expression: rust_pick_grammar_sequence(),
-    emitted: rust_grammar_atom(id: ^rust_surface_fn_item)
+    emitted: v2.extdeps.languages.rust.rust_grammar_atom(id: ^rust_surface_fn_item)
   }
 }
 
 fn rust_pick_grammar_relation_row() -> v2.extdeps.languages.rust.RustGrammarRelationRow {
   v2.extdeps.languages.rust.RustGrammarRelationRow {
     production: rust_grammar_production_fn_pick(),
-    emitted: rust_grammar_atom(id: ^rust_surface_fn_item),
+    emitted: v2.extdeps.languages.rust.rust_grammar_atom(id: ^rust_surface_fn_item),
     tokens: rust_pick_concrete_tokens()
   }
 }
 
 fn rust_pick_scaffold_relation_row_node() -> Node {
-  rust_grammar_relation_row_node(row: rust_pick_grammar_relation_row())
+  v2.extdeps.languages.rust.rust_grammar_relation_row_node(row: rust_pick_grammar_relation_row())
 }
 
 fn rust_pick_bodied_relation_row_node() -> Node {
@@ -136,7 +136,7 @@ fn rust_pick_translation_rules_node() -> Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      rust_named_edge(
+      v2.extdeps.languages.rust.rust_named_edge(
         name: ^rust_relation_rule_fn_pick,
         target: rust_pick_bodied_relation_row_node()
       )
@@ -147,13 +147,13 @@ fn rust_pick_translation_rules_node() -> Node {
 
 fn rust_pick_serialize_source_prefix_edges() -> List<v2.std.node.Edge> {
   [
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^serialize_source_field_source_text,
-      target: rust_inhabitant_atom(id: ^rust_pick_source_literal)
+      target: v2.extdeps.languages.rust.rust_inhabitant_atom(id: ^rust_pick_source_literal)
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^serialize_source_field_source_grammar,
-      target: rust_inhabitant_atom(id: ^rust_production_fn_pick)
+      target: v2.extdeps.languages.rust.rust_inhabitant_atom(id: ^rust_production_fn_pick)
     )
   ]
 }
@@ -165,11 +165,11 @@ fn rust_pick_serialize_source_node() -> Node {
     children: list_append(
       left: rust_pick_serialize_source_prefix_edges(),
       right: [
-        rust_named_edge(
+        v2.extdeps.languages.rust.rust_named_edge(
           name: ^grammar_relation_field_tokens,
           target: grammar_relation_tokens_node(
             tokens: rust_pick_concrete_tokens(),
-            token_to_node: rust_concrete_token_node
+            token_to_node: v2.extdeps.languages.rust.rust_concrete_token_node
           )
         )
       ]
@@ -186,8 +186,8 @@ fn rust_pick_binding_spellings() -> Map<v2.std.node.Symbol, String> {
 
 fn rust_pick_additional_lex_rules() -> List<v2.std.compilers.lexing.LexRule> {
   [
-    rust_lex_rule(token_class: ^rust_token_kw_if, text: "if "),
-    rust_lex_rule(token_class: ^rust_token_unwired_else, text: " } else { ")
+    v2.extdeps.languages.rust.rust_lex_rule(token_class: ^rust_token_kw_if, text: "if "),
+    v2.extdeps.languages.rust.rust_lex_rule(token_class: ^rust_token_unwired_else, text: " } else { ")
   ]
 }
 
@@ -195,10 +195,10 @@ fn rust_pick_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
   v2.std.compilers.lexing.LexRuleSet {
     rules: list_append(
       left: list_append(
-        left: rust_fn_add_lex_rules().rules,
+        left: v2.extdeps.languages.rust.rust_fn_add_lex_rules().rules,
         right: rust_pick_additional_lex_rules()
       ),
-      right: rust_value_expression_family_lex_rules()
+      right: v2.extdeps.languages.rust.rust_value_expression_family_lex_rules()
     )
   }
 }
@@ -209,53 +209,53 @@ fn rust_pick_lex() -> v2.std.compilers.lexing.LexRules {
 
 fn rust_pick_target_model_core_edges() -> List<v2.std.node.Edge> {
   [
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_selection_policy,
-      target: rust_selection_policy_node()
+      target: v2.extdeps.languages.rust.rust_selection_policy_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_declared_inhabitants,
-      target: rust_add_declared_inhabitants_root()
+      target: v2.extdeps.languages.rust.rust_add_declared_inhabitants_root()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_translation_rules,
       target: rust_pick_translation_rules_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_serialize_source,
       target: rust_pick_serialize_source_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_collection_realization,
-      target: rust_collection_realization_catalog_node()
+      target: v2.extdeps.languages.rust.rust_collection_realization_catalog_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_reference_layer_tokens,
-      target: target_reference_layer_tokens_node(tokens: rust_reference_layer_tokens())
+      target: target_reference_layer_tokens_node(tokens: v2.extdeps.languages.rust.rust_reference_layer_tokens())
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_use_site_ownership_realizations,
       target: target_use_site_ownership_catalog_node(
-        rows: rust_sg_rc_use_site_ownership_catalog()
+        rows: v2.extdeps.languages.rust.rust_sg_rc_use_site_ownership_catalog()
       )
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_value_semantics_carriers,
       target: target_value_semantics_carriers_node(
-        atoms: rust_value_semantics_carrier_atoms()
+        atoms: v2.extdeps.languages.rust.rust_value_semantics_carrier_atoms()
       )
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_type_expression_projection,
-      target: rust_type_expression_projection_bundle_node()
+      target: v2.extdeps.languages.rust.rust_type_expression_projection_bundle_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_value_expression_projection,
       target: value_expr_projection_bundle_node(
-        projection: rust_value_expression_projection()
+        projection: v2.extdeps.languages.rust.rust_value_expression_projection()
       )
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_operator_realizations,
       target: target_operator_realizations_catalog_node(rows: [])
     )
@@ -278,7 +278,7 @@ fn rust_pick_target_model_staging() -> v2.std.compilers.target_model.TargetModel
     binding_spellings: rust_pick_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: rust_pick_source_text,
-    runtime_row: rust_runtime_row()
+    runtime_row: v2.extdeps.languages.rust.rust_runtime_row()
   }
 }
 
@@ -344,20 +344,20 @@ fn rust_match_grammar_sequence() -> v2.std.grammar.GrammarExpr {
       match state {
         RustGramBuild1StateInit =>
           v2.extdeps.languages.rust.RustGramBuild1StateReady {
-            expr: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+            expr: v2.extdeps.languages.rust.rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
           }
         RustGramBuild1StateReady { expr: acc } =>
           v2.extdeps.languages.rust.RustGramBuild1StateReady {
             expr: v2.std.grammar.Sequence {
               left: acc,
-              right: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+              right: v2.extdeps.languages.rust.rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
             }
           }
       }
     }
   ) {
     RustGramBuild1StateInit =>
-      rust_grammar_terminal(token_class: ^rust_token_kw_fn)
+      v2.extdeps.languages.rust.rust_grammar_terminal(token_class: ^rust_token_kw_fn)
     RustGramBuild1StateReady { expr: result } => result
   }
 }
@@ -365,7 +365,7 @@ fn rust_match_grammar_sequence() -> v2.std.grammar.GrammarExpr {
 fn rust_formal_production_fn_match() -> v2.std.grammar.FormalProduction {
   grammar_formal_production(
     lhs: ^rust_production_fn_match,
-    rhs: rust_formal_rhs_from_tokens(tokens: rust_match_concrete_tokens())
+    rhs: v2.extdeps.languages.rust.rust_formal_rhs_from_tokens(tokens: rust_match_concrete_tokens())
   )
 }
 
@@ -373,20 +373,20 @@ fn rust_grammar_production_fn_match() -> v2.std.grammar.GrammarProduction {
   v2.std.grammar.GrammarProduction {
     name: ^rust_production_fn_match,
     expression: rust_match_grammar_sequence(),
-    emitted: rust_grammar_atom(id: ^rust_surface_fn_item)
+    emitted: v2.extdeps.languages.rust.rust_grammar_atom(id: ^rust_surface_fn_item)
   }
 }
 
 fn rust_match_grammar_relation_row() -> v2.extdeps.languages.rust.RustGrammarRelationRow {
   v2.extdeps.languages.rust.RustGrammarRelationRow {
     production: rust_grammar_production_fn_match(),
-    emitted: rust_grammar_atom(id: ^rust_surface_fn_item),
+    emitted: v2.extdeps.languages.rust.rust_grammar_atom(id: ^rust_surface_fn_item),
     tokens: rust_match_concrete_tokens()
   }
 }
 
 fn rust_match_scaffold_relation_row_node() -> Node {
-  rust_grammar_relation_row_node(row: rust_match_grammar_relation_row())
+  v2.extdeps.languages.rust.rust_grammar_relation_row_node(row: rust_match_grammar_relation_row())
 }
 
 fn rust_match_bodied_relation_row_node() -> Node {
@@ -400,7 +400,7 @@ fn rust_match_translation_rules_node() -> Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      rust_named_edge(
+      v2.extdeps.languages.rust.rust_named_edge(
         name: ^rust_relation_rule_fn_match,
         target: rust_match_bodied_relation_row_node()
       )
@@ -411,13 +411,13 @@ fn rust_match_translation_rules_node() -> Node {
 
 fn rust_match_serialize_source_prefix_edges() -> List<v2.std.node.Edge> {
   [
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^serialize_source_field_source_text,
-      target: rust_inhabitant_atom(id: ^rust_match_source_literal)
+      target: v2.extdeps.languages.rust.rust_inhabitant_atom(id: ^rust_match_source_literal)
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^serialize_source_field_source_grammar,
-      target: rust_inhabitant_atom(id: ^rust_production_fn_match)
+      target: v2.extdeps.languages.rust.rust_inhabitant_atom(id: ^rust_production_fn_match)
     )
   ]
 }
@@ -429,11 +429,11 @@ fn rust_match_serialize_source_node() -> Node {
     children: list_append(
       left: rust_match_serialize_source_prefix_edges(),
       right: [
-        rust_named_edge(
+        v2.extdeps.languages.rust.rust_named_edge(
           name: ^grammar_relation_field_tokens,
           target: grammar_relation_tokens_node(
             tokens: rust_match_concrete_tokens(),
-            token_to_node: rust_concrete_token_node
+            token_to_node: v2.extdeps.languages.rust.rust_concrete_token_node
           )
         )
       ]
@@ -450,8 +450,8 @@ fn rust_match_binding_spellings() -> Map<v2.std.node.Symbol, String> {
 
 fn rust_match_additional_lex_rules() -> List<v2.std.compilers.lexing.LexRule> {
   [
-    rust_lex_rule(token_class: ^rust_token_unwired_match, text: "match "),
-    rust_lex_rule(token_class: ^rust_token_unwired_fat_arrow, text: " => ")
+    v2.extdeps.languages.rust.rust_lex_rule(token_class: ^rust_token_unwired_match, text: "match "),
+    v2.extdeps.languages.rust.rust_lex_rule(token_class: ^rust_token_unwired_fat_arrow, text: " => ")
   ]
 }
 
@@ -459,10 +459,10 @@ fn rust_match_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
   v2.std.compilers.lexing.LexRuleSet {
     rules: list_append(
       left: list_append(
-        left: rust_fn_add_lex_rules().rules,
+        left: v2.extdeps.languages.rust.rust_fn_add_lex_rules().rules,
         right: rust_match_additional_lex_rules()
       ),
-      right: rust_value_expression_family_lex_rules()
+      right: v2.extdeps.languages.rust.rust_value_expression_family_lex_rules()
     )
   }
 }
@@ -473,15 +473,15 @@ fn rust_match_lex() -> v2.std.compilers.lexing.LexRules {
 
 fn rust_call_closure_additional_lex_rules() -> List<v2.std.compilers.lexing.LexRule> {
   [
-    rust_lex_rule(token_class: ^rust_token_closure_pipe, text: "|"),
-    rust_lex_rule(token_class: ^rust_token_closure_nop, text: "")
+    v2.extdeps.languages.rust.rust_lex_rule(token_class: ^rust_token_closure_pipe, text: "|"),
+    v2.extdeps.languages.rust.rust_lex_rule(token_class: ^rust_token_closure_nop, text: "")
   ]
 }
 
 fn rust_call_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
   v2.std.compilers.lexing.LexRuleSet {
     rules: list_append(
-      left: rust_fn_add_lex_rules().rules,
+      left: v2.extdeps.languages.rust.rust_fn_add_lex_rules().rules,
       right: rust_call_closure_additional_lex_rules()
     )
   }
@@ -492,7 +492,7 @@ fn rust_call_lex() -> v2.std.compilers.lexing.LexRules {
 }
 
 fn rust_call_binding_spellings() -> Map<v2.std.node.Symbol, String> {
-  let m0 = rust_binding_spellings()
+  let m0 = v2.extdeps.languages.rust.rust_binding_spellings()
   let m1 = map_insert(m0, ^rust_call_callee_fold, "fold_call")
   let m2 = map_insert(m1, ^rust_call_callee_helper, "helper")
   let m3 = map_insert(m2, ^rust_call_closure_acc, "acc")
@@ -509,11 +509,11 @@ fn rust_call_host_transport_descriptor() -> v2.std.host_transport.HostTransportD
     workspace: [
       v2.std.host_transport.WorkspaceFile {
         path: "Cargo.toml",
-        content: v2.std.host_transport.FixedText { text: rust_emit_host_cargo_manifest }
+        content: v2.std.host_transport.FixedText { text: v2.extdeps.languages.rust.rust_emit_host_cargo_manifest }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "rust-toolchain.toml",
-        content: v2.std.host_transport.FixedText { text: rust_emit_host_toolchain_pin }
+        content: v2.std.host_transport.FixedText { text: v2.extdeps.languages.rust.rust_emit_host_toolchain_pin }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "src/main.rs",
@@ -538,7 +538,7 @@ fn rust_call_runtime_row() -> v2.std.host_transport.TargetEmitHostRuntimeRow {
   v2.std.host_transport.HostRuntimeRowPresent {
     row: v2.std.host_transport.EmitHostRuntimeRow {
       transport: rust_call_host_transport_descriptor(),
-      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+      runtime_primitive_type: v2.extdeps.languages.rust.rust_emit_host_runtime_primitive_type_node()
     }
   }
 }
@@ -546,7 +546,7 @@ fn rust_call_runtime_row() -> v2.std.host_transport.TargetEmitHostRuntimeRow {
 fn rust_call_target_model_staging() -> v2.std.compilers.target_model.TargetModel {
   v2.std.compilers.target_model.TargetModel {
     produced_decl_support: ProducedDeclUnwired,
-    bundle: rust_target_model_bundle_core(),
+    bundle: v2.extdeps.languages.rust.rust_target_model_bundle_core(),
     lex: rust_call_lex(),
     binding_spellings: rust_call_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
@@ -557,53 +557,53 @@ fn rust_call_target_model_staging() -> v2.std.compilers.target_model.TargetModel
 
 fn rust_match_target_model_core_edges() -> List<v2.std.node.Edge> {
   [
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_selection_policy,
-      target: rust_selection_policy_node()
+      target: v2.extdeps.languages.rust.rust_selection_policy_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_declared_inhabitants,
-      target: rust_add_declared_inhabitants_root()
+      target: v2.extdeps.languages.rust.rust_add_declared_inhabitants_root()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_translation_rules,
       target: rust_match_translation_rules_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_serialize_source,
       target: rust_match_serialize_source_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_collection_realization,
-      target: rust_collection_realization_catalog_node()
+      target: v2.extdeps.languages.rust.rust_collection_realization_catalog_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_reference_layer_tokens,
-      target: target_reference_layer_tokens_node(tokens: rust_reference_layer_tokens())
+      target: target_reference_layer_tokens_node(tokens: v2.extdeps.languages.rust.rust_reference_layer_tokens())
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_use_site_ownership_realizations,
       target: target_use_site_ownership_catalog_node(
-        rows: rust_sg_rc_use_site_ownership_catalog()
+        rows: v2.extdeps.languages.rust.rust_sg_rc_use_site_ownership_catalog()
       )
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_value_semantics_carriers,
       target: target_value_semantics_carriers_node(
-        atoms: rust_value_semantics_carrier_atoms()
+        atoms: v2.extdeps.languages.rust.rust_value_semantics_carrier_atoms()
       )
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_type_expression_projection,
-      target: rust_type_expression_projection_bundle_node()
+      target: v2.extdeps.languages.rust.rust_type_expression_projection_bundle_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_value_expression_projection,
       target: value_expr_projection_bundle_node(
-        projection: rust_value_expression_projection()
+        projection: v2.extdeps.languages.rust.rust_value_expression_projection()
       )
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_operator_realizations,
       target: target_operator_realizations_catalog_node(rows: [])
     )
@@ -626,11 +626,11 @@ fn rust_match_host_transport_descriptor() -> v2.std.host_transport.HostTransport
     workspace: [
       v2.std.host_transport.WorkspaceFile {
         path: "Cargo.toml",
-        content: v2.std.host_transport.FixedText { text: rust_emit_host_cargo_manifest }
+        content: v2.std.host_transport.FixedText { text: v2.extdeps.languages.rust.rust_emit_host_cargo_manifest }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "rust-toolchain.toml",
-        content: v2.std.host_transport.FixedText { text: rust_emit_host_toolchain_pin }
+        content: v2.std.host_transport.FixedText { text: v2.extdeps.languages.rust.rust_emit_host_toolchain_pin }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "src/main.rs",
@@ -655,7 +655,7 @@ fn rust_match_runtime_row() -> v2.std.host_transport.TargetEmitHostRuntimeRow {
   v2.std.host_transport.HostRuntimeRowPresent {
     row: v2.std.host_transport.EmitHostRuntimeRow {
       transport: rust_match_host_transport_descriptor(),
-      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+      runtime_primitive_type: v2.extdeps.languages.rust.rust_emit_host_runtime_primitive_type_node()
     }
   }
 }
@@ -729,20 +729,20 @@ fn rust_loop_grammar_sequence() -> v2.std.grammar.GrammarExpr {
       match state {
         RustGramBuild1StateInit =>
           v2.extdeps.languages.rust.RustGramBuild1StateReady {
-            expr: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+            expr: v2.extdeps.languages.rust.rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
           }
         RustGramBuild1StateReady { expr: acc } =>
           v2.extdeps.languages.rust.RustGramBuild1StateReady {
             expr: v2.std.grammar.Sequence {
               left: acc,
-              right: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+              right: v2.extdeps.languages.rust.rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
             }
           }
       }
     }
   ) {
     RustGramBuild1StateInit =>
-      rust_grammar_terminal(token_class: ^rust_token_kw_fn)
+      v2.extdeps.languages.rust.rust_grammar_terminal(token_class: ^rust_token_kw_fn)
     RustGramBuild1StateReady { expr: result } => result
   }
 }
@@ -750,7 +750,7 @@ fn rust_loop_grammar_sequence() -> v2.std.grammar.GrammarExpr {
 fn rust_formal_production_fn_loop() -> v2.std.grammar.FormalProduction {
   grammar_formal_production(
     lhs: ^rust_production_fn_loop,
-    rhs: rust_formal_rhs_from_tokens(tokens: rust_loop_concrete_tokens())
+    rhs: v2.extdeps.languages.rust.rust_formal_rhs_from_tokens(tokens: rust_loop_concrete_tokens())
   )
 }
 
@@ -758,20 +758,20 @@ fn rust_grammar_production_fn_loop() -> v2.std.grammar.GrammarProduction {
   v2.std.grammar.GrammarProduction {
     name: ^rust_production_fn_loop,
     expression: rust_loop_grammar_sequence(),
-    emitted: rust_grammar_atom(id: ^rust_surface_fn_item)
+    emitted: v2.extdeps.languages.rust.rust_grammar_atom(id: ^rust_surface_fn_item)
   }
 }
 
 fn rust_loop_grammar_relation_row() -> v2.extdeps.languages.rust.RustGrammarRelationRow {
   v2.extdeps.languages.rust.RustGrammarRelationRow {
     production: rust_grammar_production_fn_loop(),
-    emitted: rust_grammar_atom(id: ^rust_surface_fn_item),
+    emitted: v2.extdeps.languages.rust.rust_grammar_atom(id: ^rust_surface_fn_item),
     tokens: rust_loop_concrete_tokens()
   }
 }
 
 fn rust_loop_scaffold_relation_row_node() -> Node {
-  rust_grammar_relation_row_node(row: rust_loop_grammar_relation_row())
+  v2.extdeps.languages.rust.rust_grammar_relation_row_node(row: rust_loop_grammar_relation_row())
 }
 
 fn rust_loop_bodied_relation_row_node() -> Node {
@@ -785,7 +785,7 @@ fn rust_loop_translation_rules_node() -> Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      rust_named_edge(
+      v2.extdeps.languages.rust.rust_named_edge(
         name: ^rust_relation_rule_fn_loop,
         target: rust_loop_bodied_relation_row_node()
       )
@@ -796,13 +796,13 @@ fn rust_loop_translation_rules_node() -> Node {
 
 fn rust_loop_serialize_source_prefix_edges() -> List<v2.std.node.Edge> {
   [
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^serialize_source_field_source_text,
-      target: rust_inhabitant_atom(id: ^rust_loop_source_literal)
+      target: v2.extdeps.languages.rust.rust_inhabitant_atom(id: ^rust_loop_source_literal)
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^serialize_source_field_source_grammar,
-      target: rust_inhabitant_atom(id: ^rust_production_fn_loop)
+      target: v2.extdeps.languages.rust.rust_inhabitant_atom(id: ^rust_production_fn_loop)
     )
   ]
 }
@@ -814,11 +814,11 @@ fn rust_loop_serialize_source_node() -> Node {
     children: list_append(
       left: rust_loop_serialize_source_prefix_edges(),
       right: [
-        rust_named_edge(
+        v2.extdeps.languages.rust.rust_named_edge(
           name: ^grammar_relation_field_tokens,
           target: grammar_relation_tokens_node(
             tokens: rust_loop_concrete_tokens(),
-            token_to_node: rust_concrete_token_node
+            token_to_node: v2.extdeps.languages.rust.rust_concrete_token_node
           )
         )
       ]
@@ -835,15 +835,15 @@ fn rust_loop_binding_spellings() -> Map<v2.std.node.Symbol, String> {
 
 fn rust_loop_additional_lex_rules() -> List<v2.std.compilers.lexing.LexRule> {
   [
-    rust_lex_rule(token_class: ^rust_token_unwired_loop, text: "loop { break "),
-    rust_lex_rule(token_class: ^rust_token_semicolon, text: ";")
+    v2.extdeps.languages.rust.rust_lex_rule(token_class: ^rust_token_unwired_loop, text: "loop { break "),
+    v2.extdeps.languages.rust.rust_lex_rule(token_class: ^rust_token_semicolon, text: ";")
   ]
 }
 
 fn rust_loop_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
   v2.std.compilers.lexing.LexRuleSet {
     rules: list_append(
-      left: rust_fn_add_lex_rules().rules,
+      left: v2.extdeps.languages.rust.rust_fn_add_lex_rules().rules,
       right: rust_loop_additional_lex_rules()
     )
   }
@@ -855,53 +855,53 @@ fn rust_loop_lex() -> v2.std.compilers.lexing.LexRules {
 
 fn rust_loop_target_model_core_edges() -> List<v2.std.node.Edge> {
   [
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_selection_policy,
-      target: rust_selection_policy_node()
+      target: v2.extdeps.languages.rust.rust_selection_policy_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_declared_inhabitants,
-      target: rust_add_declared_inhabitants_root()
+      target: v2.extdeps.languages.rust.rust_add_declared_inhabitants_root()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_translation_rules,
       target: rust_loop_translation_rules_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_serialize_source,
       target: rust_loop_serialize_source_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_collection_realization,
-      target: rust_collection_realization_catalog_node()
+      target: v2.extdeps.languages.rust.rust_collection_realization_catalog_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_reference_layer_tokens,
-      target: target_reference_layer_tokens_node(tokens: rust_reference_layer_tokens())
+      target: target_reference_layer_tokens_node(tokens: v2.extdeps.languages.rust.rust_reference_layer_tokens())
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_use_site_ownership_realizations,
       target: target_use_site_ownership_catalog_node(
-        rows: rust_sg_rc_use_site_ownership_catalog()
+        rows: v2.extdeps.languages.rust.rust_sg_rc_use_site_ownership_catalog()
       )
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_value_semantics_carriers,
       target: target_value_semantics_carriers_node(
-        atoms: rust_value_semantics_carrier_atoms()
+        atoms: v2.extdeps.languages.rust.rust_value_semantics_carrier_atoms()
       )
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_type_expression_projection,
-      target: rust_type_expression_projection_bundle_node()
+      target: v2.extdeps.languages.rust.rust_type_expression_projection_bundle_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_value_expression_projection,
       target: value_expr_projection_bundle_node(
-        projection: rust_value_expression_projection()
+        projection: v2.extdeps.languages.rust.rust_value_expression_projection()
       )
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_operator_realizations,
       target: target_operator_realizations_catalog_node(rows: [])
     )
@@ -924,11 +924,11 @@ fn rust_loop_host_transport_descriptor() -> v2.std.host_transport.HostTransportD
     workspace: [
       v2.std.host_transport.WorkspaceFile {
         path: "Cargo.toml",
-        content: v2.std.host_transport.FixedText { text: rust_emit_host_cargo_manifest }
+        content: v2.std.host_transport.FixedText { text: v2.extdeps.languages.rust.rust_emit_host_cargo_manifest }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "rust-toolchain.toml",
-        content: v2.std.host_transport.FixedText { text: rust_emit_host_toolchain_pin }
+        content: v2.std.host_transport.FixedText { text: v2.extdeps.languages.rust.rust_emit_host_toolchain_pin }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "src/main.rs",
@@ -953,7 +953,7 @@ fn rust_loop_runtime_row() -> v2.std.host_transport.TargetEmitHostRuntimeRow {
   v2.std.host_transport.HostRuntimeRowPresent {
     row: v2.std.host_transport.EmitHostRuntimeRow {
       transport: rust_loop_host_transport_descriptor(),
-      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+      runtime_primitive_type: v2.extdeps.languages.rust.rust_emit_host_runtime_primitive_type_node()
     }
   }
 }
@@ -978,11 +978,11 @@ fn rust_classical_not_ingested_host_transport_descriptor() -> v2.std.host_transp
     workspace: [
       v2.std.host_transport.WorkspaceFile {
         path: "Cargo.toml",
-        content: v2.std.host_transport.FixedText { text: rust_emit_host_cargo_manifest }
+        content: v2.std.host_transport.FixedText { text: v2.extdeps.languages.rust.rust_emit_host_cargo_manifest }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "rust-toolchain.toml",
-        content: v2.std.host_transport.FixedText { text: rust_emit_host_toolchain_pin }
+        content: v2.std.host_transport.FixedText { text: v2.extdeps.languages.rust.rust_emit_host_toolchain_pin }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "src/main.rs",
@@ -1007,7 +1007,7 @@ fn rust_classical_not_ingested_runtime_row() -> v2.std.host_transport.TargetEmit
   v2.std.host_transport.HostRuntimeRowPresent {
     row: v2.std.host_transport.EmitHostRuntimeRow {
       transport: rust_classical_not_ingested_host_transport_descriptor(),
-      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+      runtime_primitive_type: v2.extdeps.languages.rust.rust_emit_host_runtime_primitive_type_node()
     }
   }
 }
@@ -1043,7 +1043,7 @@ fn rust_classical_not_bodied_arrow_statement_scaffold() -> v2.std.compilers.targ
 
 fn rust_classical_not_bodied_relation_row_node() -> Node {
   grammar_relation_row_attach_bodied_scaffold(
-    row: rust_grammar_relation_row_node(row: rust_match_grammar_relation_row()),
+    row: v2.extdeps.languages.rust.rust_grammar_relation_row_node(row: rust_match_grammar_relation_row()),
     scaffold: rust_classical_not_bodied_arrow_statement_scaffold()
   )
 }
@@ -1052,7 +1052,7 @@ fn rust_classical_not_translation_rules_node() -> Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      rust_named_edge(
+      v2.extdeps.languages.rust.rust_named_edge(
         name: ^rust_relation_rule_fn_classical_not,
         target: rust_classical_not_bodied_relation_row_node()
       )
@@ -1062,8 +1062,8 @@ fn rust_classical_not_translation_rules_node() -> Node {
 }
 
 fn rust_classical_not_target_model_bundle_core() -> Node {
-  let core = rust_target_model_core_edges_with_operators(
-    operator_catalog: rust_operator_realizations_catalog_node()
+  let core = v2.extdeps.languages.rust.rust_target_model_core_edges_with_operators(
+    operator_catalog: v2.extdeps.languages.rust.rust_operator_realizations_catalog_node()
   )
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
@@ -1076,7 +1076,7 @@ fn rust_classical_not_target_model_bundle_core() -> Node {
             if n == ^target_model_edge_translation_rules {
               list_snoc_item(
                 xs: acc,
-                item: rust_named_edge(
+                item: v2.extdeps.languages.rust.rust_named_edge(
                   name: ^target_model_edge_translation_rules,
                   target: rust_classical_not_translation_rules_node()
                 )
@@ -1093,7 +1093,7 @@ fn rust_classical_not_target_model_bundle_core() -> Node {
 }
 
 fn rust_classical_not_ingested_binding_spellings() -> Map<v2.std.node.Symbol, String> {
-  let m0 = rust_binding_spellings()
+  let m0 = v2.extdeps.languages.rust.rust_binding_spellings()
   let m1 = map_insert(m0, ^dag_binding_fn_classical_not, "classical_not")
   let m2 = map_insert(m1, ^dag_binding_octet_one, "1")
   map_insert(m2, ^dag_binding_octet_zero, "0")
@@ -1103,10 +1103,10 @@ fn rust_classical_not_ingested_target_model_staging() -> v2.std.compilers.target
   v2.std.compilers.target_model.TargetModel {
     produced_decl_support: ProducedDeclUnwired,
     bundle: rust_classical_not_target_model_bundle_core(),
-    lex: rust_staging_lex(),
+    lex: v2.extdeps.languages.rust.rust_staging_lex(),
     binding_spellings: rust_classical_not_ingested_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
-    authority_source_text: rust_source_text_authority(),
+    authority_source_text: v2.extdeps.languages.rust.rust_source_text_authority(),
     runtime_row: rust_classical_not_ingested_runtime_row()
   }
 }
@@ -1171,20 +1171,20 @@ fn rust_field_access_grammar_sequence() -> v2.std.grammar.GrammarExpr {
       match state {
         RustGramBuild1StateInit =>
           v2.extdeps.languages.rust.RustGramBuild1StateReady {
-            expr: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+            expr: v2.extdeps.languages.rust.rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
           }
         RustGramBuild1StateReady { expr: acc } =>
           v2.extdeps.languages.rust.RustGramBuild1StateReady {
             expr: v2.std.grammar.Sequence {
               left: acc,
-              right: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+              right: v2.extdeps.languages.rust.rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
             }
           }
       }
     }
   ) {
     RustGramBuild1StateInit =>
-      rust_grammar_terminal(token_class: ^rust_token_kw_fn)
+      v2.extdeps.languages.rust.rust_grammar_terminal(token_class: ^rust_token_kw_fn)
     RustGramBuild1StateReady { expr: result } => result
   }
 }
@@ -1192,7 +1192,7 @@ fn rust_field_access_grammar_sequence() -> v2.std.grammar.GrammarExpr {
 fn rust_formal_production_fn_field_access() -> v2.std.grammar.FormalProduction {
   grammar_formal_production(
     lhs: ^rust_production_fn_field_access,
-    rhs: rust_formal_rhs_from_tokens(tokens: rust_field_access_concrete_tokens())
+    rhs: v2.extdeps.languages.rust.rust_formal_rhs_from_tokens(tokens: rust_field_access_concrete_tokens())
   )
 }
 
@@ -1200,20 +1200,20 @@ fn rust_grammar_production_fn_field_access() -> v2.std.grammar.GrammarProduction
   v2.std.grammar.GrammarProduction {
     name: ^rust_production_fn_field_access,
     expression: rust_field_access_grammar_sequence(),
-    emitted: rust_grammar_atom(id: ^rust_surface_fn_item)
+    emitted: v2.extdeps.languages.rust.rust_grammar_atom(id: ^rust_surface_fn_item)
   }
 }
 
 fn rust_field_access_grammar_relation_row() -> v2.extdeps.languages.rust.RustGrammarRelationRow {
   v2.extdeps.languages.rust.RustGrammarRelationRow {
     production: rust_grammar_production_fn_field_access(),
-    emitted: rust_grammar_atom(id: ^rust_surface_fn_item),
+    emitted: v2.extdeps.languages.rust.rust_grammar_atom(id: ^rust_surface_fn_item),
     tokens: rust_field_access_concrete_tokens()
   }
 }
 
 fn rust_field_access_scaffold_relation_row_node() -> Node {
-  rust_grammar_relation_row_node(row: rust_field_access_grammar_relation_row())
+  v2.extdeps.languages.rust.rust_grammar_relation_row_node(row: rust_field_access_grammar_relation_row())
 }
 
 fn rust_field_access_bodied_relation_row_node() -> Node {
@@ -1227,7 +1227,7 @@ fn rust_field_access_translation_rules_node() -> Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      rust_named_edge(
+      v2.extdeps.languages.rust.rust_named_edge(
         name: ^rust_relation_rule_fn_field_access,
         target: rust_field_access_bodied_relation_row_node()
       )
@@ -1238,13 +1238,13 @@ fn rust_field_access_translation_rules_node() -> Node {
 
 fn rust_field_access_serialize_source_prefix_edges() -> List<v2.std.node.Edge> {
   [
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^serialize_source_field_source_text,
-      target: rust_inhabitant_atom(id: ^rust_field_access_source_literal)
+      target: v2.extdeps.languages.rust.rust_inhabitant_atom(id: ^rust_field_access_source_literal)
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^serialize_source_field_production,
-      target: rust_inhabitant_atom(id: ^rust_production_fn_field_access)
+      target: v2.extdeps.languages.rust.rust_inhabitant_atom(id: ^rust_production_fn_field_access)
     )
   ]
 }
@@ -1256,11 +1256,11 @@ fn rust_field_access_serialize_source_node() -> Node {
     children: list_append(
       left: rust_field_access_serialize_source_prefix_edges(),
       right: [
-        rust_named_edge(
+        v2.extdeps.languages.rust.rust_named_edge(
           name: ^grammar_relation_field_tokens,
           target: grammar_relation_tokens_node(
             tokens: rust_field_access_concrete_tokens(),
-            token_to_node: rust_concrete_token_node
+            token_to_node: v2.extdeps.languages.rust.rust_concrete_token_node
           )
         )
       ]
@@ -1279,53 +1279,53 @@ fn rust_field_access_binding_spellings() -> Map<v2.std.node.Symbol, String> {
 
 fn rust_field_access_target_model_core_edges() -> List<v2.std.node.Edge> {
   [
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_selection_policy,
-      target: rust_selection_policy_node()
+      target: v2.extdeps.languages.rust.rust_selection_policy_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_declared_inhabitants,
-      target: rust_declared_inhabitants_root()
+      target: v2.extdeps.languages.rust.rust_declared_inhabitants_root()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_translation_rules,
       target: rust_field_access_translation_rules_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_serialize_source,
       target: rust_field_access_serialize_source_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_collection_realization,
-      target: rust_collection_realization_catalog_node()
+      target: v2.extdeps.languages.rust.rust_collection_realization_catalog_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_reference_layer_tokens,
-      target: target_reference_layer_tokens_node(tokens: rust_reference_layer_tokens())
+      target: target_reference_layer_tokens_node(tokens: v2.extdeps.languages.rust.rust_reference_layer_tokens())
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_use_site_ownership_realizations,
       target: target_use_site_ownership_catalog_node(
-        rows: rust_sg_rc_use_site_ownership_catalog()
+        rows: v2.extdeps.languages.rust.rust_sg_rc_use_site_ownership_catalog()
       )
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_value_semantics_carriers,
       target: target_value_semantics_carriers_node(
-        atoms: rust_value_semantics_carrier_atoms()
+        atoms: v2.extdeps.languages.rust.rust_value_semantics_carrier_atoms()
       )
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_type_expression_projection,
-      target: rust_type_expression_projection_bundle_node()
+      target: v2.extdeps.languages.rust.rust_type_expression_projection_bundle_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_value_expression_projection,
       target: value_expr_projection_bundle_node(
-        projection: rust_value_expression_projection()
+        projection: v2.extdeps.languages.rust.rust_value_expression_projection()
       )
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_operator_realizations,
       target: target_operator_realizations_catalog_node(rows: [])
     )
@@ -1348,11 +1348,11 @@ fn rust_field_access_host_transport_descriptor() -> v2.std.host_transport.HostTr
     workspace: [
       v2.std.host_transport.WorkspaceFile {
         path: "Cargo.toml",
-        content: v2.std.host_transport.FixedText { text: rust_emit_host_cargo_manifest }
+        content: v2.std.host_transport.FixedText { text: v2.extdeps.languages.rust.rust_emit_host_cargo_manifest }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "rust-toolchain.toml",
-        content: v2.std.host_transport.FixedText { text: rust_emit_host_toolchain_pin }
+        content: v2.std.host_transport.FixedText { text: v2.extdeps.languages.rust.rust_emit_host_toolchain_pin }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "src/main.rs",
@@ -1377,7 +1377,7 @@ fn rust_field_access_runtime_row() -> v2.std.host_transport.TargetEmitHostRuntim
   v2.std.host_transport.HostRuntimeRowPresent {
     row: v2.std.host_transport.EmitHostRuntimeRow {
       transport: rust_field_access_host_transport_descriptor(),
-      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+      runtime_primitive_type: v2.extdeps.languages.rust.rust_emit_host_runtime_primitive_type_node()
     }
   }
 }
@@ -1386,7 +1386,7 @@ fn rust_field_access_target_model_staging() -> v2.std.compilers.target_model.Tar
   v2.std.compilers.target_model.TargetModel {
     produced_decl_support: ProducedDeclUnwired,
     bundle: rust_field_access_target_model_bundle_core(),
-    lex: rust_fn_add_lex(),
+    lex: v2.extdeps.languages.rust.rust_fn_add_lex(),
     binding_spellings: rust_field_access_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: rust_field_access_source_text,
@@ -1466,20 +1466,20 @@ fn rust_variant_construct_grammar_sequence() -> v2.std.grammar.GrammarExpr {
       match state {
         RustGramBuild1StateInit =>
           v2.extdeps.languages.rust.RustGramBuild1StateReady {
-            expr: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+            expr: v2.extdeps.languages.rust.rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
           }
         RustGramBuild1StateReady { expr: acc } =>
           v2.extdeps.languages.rust.RustGramBuild1StateReady {
             expr: v2.std.grammar.Sequence {
               left: acc,
-              right: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+              right: v2.extdeps.languages.rust.rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
             }
           }
       }
     }
   ) {
     RustGramBuild1StateInit =>
-      rust_grammar_terminal(token_class: ^rust_token_kw_fn)
+      v2.extdeps.languages.rust.rust_grammar_terminal(token_class: ^rust_token_kw_fn)
     RustGramBuild1StateReady { expr: result } => result
   }
 }
@@ -1487,7 +1487,7 @@ fn rust_variant_construct_grammar_sequence() -> v2.std.grammar.GrammarExpr {
 fn rust_formal_production_fn_variant_construct() -> v2.std.grammar.FormalProduction {
   grammar_formal_production(
     lhs: ^rust_production_fn_variant_construct,
-    rhs: rust_formal_rhs_from_tokens(tokens: rust_variant_construct_concrete_tokens())
+    rhs: v2.extdeps.languages.rust.rust_formal_rhs_from_tokens(tokens: rust_variant_construct_concrete_tokens())
   )
 }
 
@@ -1495,20 +1495,20 @@ fn rust_grammar_production_fn_variant_construct() -> v2.std.grammar.GrammarProdu
   v2.std.grammar.GrammarProduction {
     name: ^rust_production_fn_variant_construct,
     expression: rust_variant_construct_grammar_sequence(),
-    emitted: rust_grammar_atom(id: ^rust_surface_fn_item)
+    emitted: v2.extdeps.languages.rust.rust_grammar_atom(id: ^rust_surface_fn_item)
   }
 }
 
 fn rust_variant_construct_grammar_relation_row() -> v2.extdeps.languages.rust.RustGrammarRelationRow {
   v2.extdeps.languages.rust.RustGrammarRelationRow {
     production: rust_grammar_production_fn_variant_construct(),
-    emitted: rust_grammar_atom(id: ^rust_surface_fn_item),
+    emitted: v2.extdeps.languages.rust.rust_grammar_atom(id: ^rust_surface_fn_item),
     tokens: rust_variant_construct_concrete_tokens()
   }
 }
 
 fn rust_variant_construct_scaffold_relation_row_node() -> Node {
-  rust_grammar_relation_row_node(row: rust_variant_construct_grammar_relation_row())
+  v2.extdeps.languages.rust.rust_grammar_relation_row_node(row: rust_variant_construct_grammar_relation_row())
 }
 
 fn rust_variant_construct_bodied_relation_row_node() -> Node {
@@ -1522,7 +1522,7 @@ fn rust_variant_construct_translation_rules_node() -> Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      rust_named_edge(
+      v2.extdeps.languages.rust.rust_named_edge(
         name: ^rust_relation_rule_fn_variant_construct,
         target: rust_variant_construct_bodied_relation_row_node()
       )
@@ -1533,13 +1533,13 @@ fn rust_variant_construct_translation_rules_node() -> Node {
 
 fn rust_variant_construct_serialize_source_prefix_edges() -> List<v2.std.node.Edge> {
   [
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^serialize_source_field_source_text,
-      target: rust_inhabitant_atom(id: ^rust_variant_construct_source_literal)
+      target: v2.extdeps.languages.rust.rust_inhabitant_atom(id: ^rust_variant_construct_source_literal)
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^serialize_source_field_source_grammar,
-      target: rust_inhabitant_atom(id: ^rust_production_fn_variant_construct)
+      target: v2.extdeps.languages.rust.rust_inhabitant_atom(id: ^rust_production_fn_variant_construct)
     )
   ]
 }
@@ -1551,11 +1551,11 @@ fn rust_variant_construct_serialize_source_node() -> Node {
     children: list_append(
       left: rust_variant_construct_serialize_source_prefix_edges(),
       right: [
-        rust_named_edge(
+        v2.extdeps.languages.rust.rust_named_edge(
           name: ^grammar_relation_field_tokens,
           target: grammar_relation_tokens_node(
             tokens: rust_variant_construct_concrete_tokens(),
-            token_to_node: rust_concrete_token_node
+            token_to_node: v2.extdeps.languages.rust.rust_concrete_token_node
           )
         )
       ]
@@ -1576,16 +1576,16 @@ fn rust_variant_construct_binding_spellings() -> Map<v2.std.node.Symbol, String>
 
 fn rust_variant_construct_additional_lex_rules() -> List<v2.std.compilers.lexing.LexRule> {
   [
-    rust_lex_rule(token_class: ^rust_token_unwired_match, text: "match "),
-    rust_lex_rule(token_class: ^rust_token_unwired_fat_arrow, text: " => "),
-    rust_lex_rule(token_class: ^dag_binding_type_variant_true, text: "True")
+    v2.extdeps.languages.rust.rust_lex_rule(token_class: ^rust_token_unwired_match, text: "match "),
+    v2.extdeps.languages.rust.rust_lex_rule(token_class: ^rust_token_unwired_fat_arrow, text: " => "),
+    v2.extdeps.languages.rust.rust_lex_rule(token_class: ^dag_binding_type_variant_true, text: "True")
   ]
 }
 
 fn rust_variant_construct_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
   v2.std.compilers.lexing.LexRuleSet {
     rules: list_append(
-      left: rust_fn_add_lex_rules().rules,
+      left: v2.extdeps.languages.rust.rust_fn_add_lex_rules().rules,
       right: rust_variant_construct_additional_lex_rules()
     )
   }
@@ -1597,53 +1597,53 @@ fn rust_variant_construct_lex() -> v2.std.compilers.lexing.LexRules {
 
 fn rust_variant_construct_target_model_core_edges() -> List<v2.std.node.Edge> {
   [
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_selection_policy,
-      target: rust_selection_policy_node()
+      target: v2.extdeps.languages.rust.rust_selection_policy_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_declared_inhabitants,
-      target: rust_declared_inhabitants_root()
+      target: v2.extdeps.languages.rust.rust_declared_inhabitants_root()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_translation_rules,
       target: rust_variant_construct_translation_rules_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_serialize_source,
       target: rust_variant_construct_serialize_source_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_collection_realization,
-      target: rust_collection_realization_catalog_node()
+      target: v2.extdeps.languages.rust.rust_collection_realization_catalog_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_reference_layer_tokens,
-      target: target_reference_layer_tokens_node(tokens: rust_reference_layer_tokens())
+      target: target_reference_layer_tokens_node(tokens: v2.extdeps.languages.rust.rust_reference_layer_tokens())
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_use_site_ownership_realizations,
       target: target_use_site_ownership_catalog_node(
-        rows: rust_sg_rc_use_site_ownership_catalog()
+        rows: v2.extdeps.languages.rust.rust_sg_rc_use_site_ownership_catalog()
       )
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_value_semantics_carriers,
       target: target_value_semantics_carriers_node(
-        atoms: rust_value_semantics_carrier_atoms()
+        atoms: v2.extdeps.languages.rust.rust_value_semantics_carrier_atoms()
       )
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_type_expression_projection,
-      target: rust_type_expression_projection_bundle_node()
+      target: v2.extdeps.languages.rust.rust_type_expression_projection_bundle_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_value_expression_projection,
       target: value_expr_projection_bundle_node(
-        projection: rust_value_expression_projection()
+        projection: v2.extdeps.languages.rust.rust_value_expression_projection()
       )
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_operator_realizations,
       target: target_operator_realizations_catalog_node(rows: [])
     )
@@ -1666,11 +1666,11 @@ fn rust_variant_construct_host_transport_descriptor() -> v2.std.host_transport.H
     workspace: [
       v2.std.host_transport.WorkspaceFile {
         path: "Cargo.toml",
-        content: v2.std.host_transport.FixedText { text: rust_emit_host_cargo_manifest }
+        content: v2.std.host_transport.FixedText { text: v2.extdeps.languages.rust.rust_emit_host_cargo_manifest }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "rust-toolchain.toml",
-        content: v2.std.host_transport.FixedText { text: rust_emit_host_toolchain_pin }
+        content: v2.std.host_transport.FixedText { text: v2.extdeps.languages.rust.rust_emit_host_toolchain_pin }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "src/main.rs",
@@ -1695,7 +1695,7 @@ fn rust_variant_construct_runtime_row() -> v2.std.host_transport.TargetEmitHostR
   v2.std.host_transport.HostRuntimeRowPresent {
     row: v2.std.host_transport.EmitHostRuntimeRow {
       transport: rust_variant_construct_host_transport_descriptor(),
-      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+      runtime_primitive_type: v2.extdeps.languages.rust.rust_emit_host_runtime_primitive_type_node()
     }
   }
 }
@@ -1781,20 +1781,20 @@ fn rust_logic_complement_grammar_sequence() -> v2.std.grammar.GrammarExpr {
       match state {
         RustGramBuild1StateInit =>
           v2.extdeps.languages.rust.RustGramBuild1StateReady {
-            expr: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+            expr: v2.extdeps.languages.rust.rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
           }
         RustGramBuild1StateReady { expr: acc } =>
           v2.extdeps.languages.rust.RustGramBuild1StateReady {
             expr: v2.std.grammar.Sequence {
               left: acc,
-              right: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+              right: v2.extdeps.languages.rust.rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
             }
           }
       }
     }
   ) {
     RustGramBuild1StateInit =>
-      rust_grammar_terminal(token_class: ^rust_token_kw_fn)
+      v2.extdeps.languages.rust.rust_grammar_terminal(token_class: ^rust_token_kw_fn)
     RustGramBuild1StateReady { expr: result } => result
   }
 }
@@ -1803,20 +1803,20 @@ fn rust_logic_complement_grammar_production() -> v2.std.grammar.GrammarProductio
   v2.std.grammar.GrammarProduction {
     name: ^rust_production_fn_logic_complement,
     expression: rust_logic_complement_grammar_sequence(),
-    emitted: rust_grammar_atom(id: ^rust_surface_fn_item)
+    emitted: v2.extdeps.languages.rust.rust_grammar_atom(id: ^rust_surface_fn_item)
   }
 }
 
 fn rust_logic_complement_grammar_relation_row() -> v2.extdeps.languages.rust.RustGrammarRelationRow {
   v2.extdeps.languages.rust.RustGrammarRelationRow {
     production: rust_logic_complement_grammar_production(),
-    emitted: rust_grammar_atom(id: ^rust_surface_fn_item),
+    emitted: v2.extdeps.languages.rust.rust_grammar_atom(id: ^rust_surface_fn_item),
     tokens: rust_logic_complement_concrete_tokens()
   }
 }
 
 fn rust_logic_complement_scaffold_relation_row_node() -> Node {
-  rust_grammar_relation_row_node(row: rust_logic_complement_grammar_relation_row())
+  v2.extdeps.languages.rust.rust_grammar_relation_row_node(row: rust_logic_complement_grammar_relation_row())
 }
 
 fn rust_logic_complement_bodied_relation_row_node() -> Node {
@@ -1830,7 +1830,7 @@ fn rust_logic_complement_translation_rules_node() -> Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      rust_named_edge(
+      v2.extdeps.languages.rust.rust_named_edge(
         name: ^rust_relation_rule_fn_logic_complement,
         target: rust_logic_complement_bodied_relation_row_node()
       )
@@ -1841,13 +1841,13 @@ fn rust_logic_complement_translation_rules_node() -> Node {
 
 fn rust_logic_complement_serialize_source_prefix_edges() -> List<v2.std.node.Edge> {
   [
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^serialize_source_field_source_text,
-      target: rust_inhabitant_atom(id: ^rust_logic_complement_source_literal)
+      target: v2.extdeps.languages.rust.rust_inhabitant_atom(id: ^rust_logic_complement_source_literal)
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^serialize_source_field_source_grammar,
-      target: rust_inhabitant_atom(id: ^rust_production_fn_logic_complement)
+      target: v2.extdeps.languages.rust.rust_inhabitant_atom(id: ^rust_production_fn_logic_complement)
     )
   ]
 }
@@ -1859,11 +1859,11 @@ fn rust_logic_complement_serialize_source_node() -> Node {
     children: list_append(
       left: rust_logic_complement_serialize_source_prefix_edges(),
       right: [
-        rust_named_edge(
+        v2.extdeps.languages.rust.rust_named_edge(
           name: ^grammar_relation_field_tokens,
           target: grammar_relation_tokens_node(
             tokens: rust_logic_complement_concrete_tokens(),
-            token_to_node: rust_concrete_token_node
+            token_to_node: v2.extdeps.languages.rust.rust_concrete_token_node
           )
         )
       ]
@@ -1879,19 +1879,19 @@ fn rust_logic_complement_binding_spellings() -> Map<v2.std.node.Symbol, String> 
 
 fn rust_logic_complement_additional_lex_rules() -> List<v2.std.compilers.lexing.LexRule> {
   [
-    rust_lex_rule(token_class: ^rust_token_unwired_match, text: "match "),
-    rust_lex_rule(token_class: ^rust_token_unwired_fat_arrow, text: " => "),
-    rust_lex_rule(token_class: ^rust_token_ty_bool, text: "Bool"),
-    rust_lex_rule(token_class: ^dag_binding_param_a, text: "a"),
-    rust_lex_rule(token_class: ^dag_complement_lit_true, text: "True"),
-    rust_lex_rule(token_class: ^dag_complement_lit_false, text: "False")
+    v2.extdeps.languages.rust.rust_lex_rule(token_class: ^rust_token_unwired_match, text: "match "),
+    v2.extdeps.languages.rust.rust_lex_rule(token_class: ^rust_token_unwired_fat_arrow, text: " => "),
+    v2.extdeps.languages.rust.rust_lex_rule(token_class: ^rust_token_ty_bool, text: "Bool"),
+    v2.extdeps.languages.rust.rust_lex_rule(token_class: ^dag_binding_param_a, text: "a"),
+    v2.extdeps.languages.rust.rust_lex_rule(token_class: ^dag_complement_lit_true, text: "True"),
+    v2.extdeps.languages.rust.rust_lex_rule(token_class: ^dag_complement_lit_false, text: "False")
   ]
 }
 
 fn rust_logic_complement_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
   v2.std.compilers.lexing.LexRuleSet {
     rules: list_append(
-      left: rust_fn_add_lex_rules().rules,
+      left: v2.extdeps.languages.rust.rust_fn_add_lex_rules().rules,
       right: rust_logic_complement_additional_lex_rules()
     )
   }
@@ -1903,53 +1903,53 @@ fn rust_logic_complement_lex() -> v2.std.compilers.lexing.LexRules {
 
 fn rust_logic_complement_target_model_core_edges() -> List<v2.std.node.Edge> {
   [
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_selection_policy,
-      target: rust_selection_policy_node()
+      target: v2.extdeps.languages.rust.rust_selection_policy_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_declared_inhabitants,
-      target: rust_declared_inhabitants_root()
+      target: v2.extdeps.languages.rust.rust_declared_inhabitants_root()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_translation_rules,
       target: rust_logic_complement_translation_rules_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_serialize_source,
       target: rust_logic_complement_serialize_source_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_collection_realization,
-      target: rust_collection_realization_catalog_node()
+      target: v2.extdeps.languages.rust.rust_collection_realization_catalog_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_reference_layer_tokens,
-      target: target_reference_layer_tokens_node(tokens: rust_reference_layer_tokens())
+      target: target_reference_layer_tokens_node(tokens: v2.extdeps.languages.rust.rust_reference_layer_tokens())
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_use_site_ownership_realizations,
       target: target_use_site_ownership_catalog_node(
-        rows: rust_sg_rc_use_site_ownership_catalog()
+        rows: v2.extdeps.languages.rust.rust_sg_rc_use_site_ownership_catalog()
       )
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_value_semantics_carriers,
       target: target_value_semantics_carriers_node(
-        atoms: rust_value_semantics_carrier_atoms()
+        atoms: v2.extdeps.languages.rust.rust_value_semantics_carrier_atoms()
       )
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_type_expression_projection,
-      target: rust_type_expression_projection_bundle_node()
+      target: v2.extdeps.languages.rust.rust_type_expression_projection_bundle_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_value_expression_projection,
       target: value_expr_projection_bundle_node(
-        projection: rust_value_expression_projection()
+        projection: v2.extdeps.languages.rust.rust_value_expression_projection()
       )
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_operator_realizations,
       target: target_operator_realizations_catalog_node(rows: [])
     )
@@ -1972,11 +1972,11 @@ fn rust_logic_complement_host_transport_descriptor() -> v2.std.host_transport.Ho
     workspace: [
       v2.std.host_transport.WorkspaceFile {
         path: "Cargo.toml",
-        content: v2.std.host_transport.FixedText { text: rust_emit_host_cargo_manifest }
+        content: v2.std.host_transport.FixedText { text: v2.extdeps.languages.rust.rust_emit_host_cargo_manifest }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "rust-toolchain.toml",
-        content: v2.std.host_transport.FixedText { text: rust_emit_host_toolchain_pin }
+        content: v2.std.host_transport.FixedText { text: v2.extdeps.languages.rust.rust_emit_host_toolchain_pin }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "src/main.rs",
@@ -2001,7 +2001,7 @@ fn rust_logic_complement_runtime_row() -> v2.std.host_transport.TargetEmitHostRu
   v2.std.host_transport.HostRuntimeRowPresent {
     row: v2.std.host_transport.EmitHostRuntimeRow {
       transport: rust_logic_complement_host_transport_descriptor(),
-      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+      runtime_primitive_type: v2.extdeps.languages.rust.rust_emit_host_runtime_primitive_type_node()
     }
   }
 }
@@ -2042,20 +2042,20 @@ fn rust_bool_fn_grammar_sequence(tokens: List<v2.std.compilers.target_model.Conc
       match state {
         RustGramBuild1StateInit =>
           v2.extdeps.languages.rust.RustGramBuild1StateReady {
-            expr: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+            expr: v2.extdeps.languages.rust.rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
           }
         RustGramBuild1StateReady { expr: acc } =>
           v2.extdeps.languages.rust.RustGramBuild1StateReady {
             expr: v2.std.grammar.Sequence {
               left: acc,
-              right: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+              right: v2.extdeps.languages.rust.rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
             }
           }
       }
     }
   ) {
     RustGramBuild1StateInit =>
-      rust_grammar_terminal(token_class: ^rust_token_kw_fn)
+      v2.extdeps.languages.rust.rust_grammar_terminal(token_class: ^rust_token_kw_fn)
     RustGramBuild1StateReady { expr: result } => result
   }
 }
@@ -2066,14 +2066,14 @@ fn rust_bool_fn_bodied_relation_row_node(
   signature_with_open: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 ) -> Node {
   grammar_relation_row_attach_bodied_scaffold(
-    row: rust_grammar_relation_row_node(
+    row: v2.extdeps.languages.rust.rust_grammar_relation_row_node(
       row: v2.extdeps.languages.rust.RustGrammarRelationRow {
         production: v2.std.grammar.GrammarProduction {
           name: production_sym,
           expression: rust_bool_fn_grammar_sequence(tokens: tokens),
-          emitted: rust_grammar_atom(id: ^rust_surface_fn_item)
+          emitted: v2.extdeps.languages.rust.rust_grammar_atom(id: ^rust_surface_fn_item)
         },
-        emitted: rust_grammar_atom(id: ^rust_surface_fn_item),
+        emitted: v2.extdeps.languages.rust.rust_grammar_atom(id: ^rust_surface_fn_item),
         tokens: tokens
       }
     ),
@@ -2094,7 +2094,7 @@ fn rust_bool_fn_translation_rules_node(
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      rust_named_edge(
+      v2.extdeps.languages.rust.rust_named_edge(
         name: relation_sym,
         target: rust_bool_fn_bodied_relation_row_node(
           production_sym: production_sym,
@@ -2115,19 +2115,19 @@ fn rust_bool_fn_serialize_source_node(
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      rust_named_edge(
+      v2.extdeps.languages.rust.rust_named_edge(
         name: ^serialize_source_field_source_text,
-        target: rust_inhabitant_atom(id: source_literal_sym)
+        target: v2.extdeps.languages.rust.rust_inhabitant_atom(id: source_literal_sym)
       ),
-      rust_named_edge(
+      v2.extdeps.languages.rust.rust_named_edge(
         name: ^serialize_source_field_source_grammar,
-        target: rust_inhabitant_atom(id: production_sym)
+        target: v2.extdeps.languages.rust.rust_inhabitant_atom(id: production_sym)
       ),
-      rust_named_edge(
+      v2.extdeps.languages.rust.rust_named_edge(
         name: ^grammar_relation_field_tokens,
         target: grammar_relation_tokens_node(
           tokens: tokens,
-          token_to_node: rust_concrete_token_node
+          token_to_node: v2.extdeps.languages.rust.rust_concrete_token_node
         )
       )
     ],
@@ -2137,13 +2137,13 @@ fn rust_bool_fn_serialize_source_node(
 
 fn rust_bool_fn_additional_lex_rules() -> List<v2.std.compilers.lexing.LexRule> {
   [
-    rust_lex_rule(token_class: ^rust_token_unwired_match, text: "match "),
-    rust_lex_rule(token_class: ^rust_token_unwired_fat_arrow, text: " => "),
-    rust_lex_rule(token_class: ^rust_token_ty_bool, text: "Bool"),
-    rust_lex_rule(token_class: ^dag_binding_param_a, text: "a"),
-    rust_lex_rule(token_class: ^dag_binding_param_b, text: "b"),
-    rust_lex_rule(token_class: ^dag_complement_lit_true, text: "True"),
-    rust_lex_rule(token_class: ^dag_complement_lit_false, text: "False")
+    v2.extdeps.languages.rust.rust_lex_rule(token_class: ^rust_token_unwired_match, text: "match "),
+    v2.extdeps.languages.rust.rust_lex_rule(token_class: ^rust_token_unwired_fat_arrow, text: " => "),
+    v2.extdeps.languages.rust.rust_lex_rule(token_class: ^rust_token_ty_bool, text: "Bool"),
+    v2.extdeps.languages.rust.rust_lex_rule(token_class: ^dag_binding_param_a, text: "a"),
+    v2.extdeps.languages.rust.rust_lex_rule(token_class: ^dag_binding_param_b, text: "b"),
+    v2.extdeps.languages.rust.rust_lex_rule(token_class: ^dag_complement_lit_true, text: "True"),
+    v2.extdeps.languages.rust.rust_lex_rule(token_class: ^dag_complement_lit_false, text: "False")
   ]
 }
 
@@ -2151,7 +2151,7 @@ fn rust_bool_fn_lex() -> v2.std.compilers.lexing.LexRules {
   v2.std.compilers.lexing.ModeledLexRules {
     root: v2.std.compilers.lexing.LexRuleSet {
       rules: list_append(
-        left: rust_fn_add_lex_rules().rules,
+        left: v2.extdeps.languages.rust.rust_fn_add_lex_rules().rules,
         right: rust_bool_fn_additional_lex_rules()
       )
     }
@@ -2163,53 +2163,53 @@ fn rust_bool_fn_target_model_core_edges(
   serialize_source: Node
 ) -> List<v2.std.node.Edge> {
   [
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_selection_policy,
-      target: rust_selection_policy_node()
+      target: v2.extdeps.languages.rust.rust_selection_policy_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_declared_inhabitants,
-      target: rust_declared_inhabitants_root()
+      target: v2.extdeps.languages.rust.rust_declared_inhabitants_root()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_translation_rules,
       target: translation_rules
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_serialize_source,
       target: serialize_source
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_collection_realization,
-      target: rust_collection_realization_catalog_node()
+      target: v2.extdeps.languages.rust.rust_collection_realization_catalog_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_reference_layer_tokens,
-      target: target_reference_layer_tokens_node(tokens: rust_reference_layer_tokens())
+      target: target_reference_layer_tokens_node(tokens: v2.extdeps.languages.rust.rust_reference_layer_tokens())
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_use_site_ownership_realizations,
       target: target_use_site_ownership_catalog_node(
-        rows: rust_sg_rc_use_site_ownership_catalog()
+        rows: v2.extdeps.languages.rust.rust_sg_rc_use_site_ownership_catalog()
       )
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_value_semantics_carriers,
       target: target_value_semantics_carriers_node(
-        atoms: rust_value_semantics_carrier_atoms()
+        atoms: v2.extdeps.languages.rust.rust_value_semantics_carrier_atoms()
       )
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_type_expression_projection,
-      target: rust_type_expression_projection_bundle_node()
+      target: v2.extdeps.languages.rust.rust_type_expression_projection_bundle_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_value_expression_projection,
       target: value_expr_projection_bundle_node(
-        projection: rust_value_expression_projection()
+        projection: v2.extdeps.languages.rust.rust_value_expression_projection()
       )
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_operator_realizations,
       target: target_operator_realizations_catalog_node(rows: [])
     )
@@ -2239,11 +2239,11 @@ fn rust_bool_fn_host_runtime_row_with_width(
         workspace: [
           v2.std.host_transport.WorkspaceFile {
             path: "Cargo.toml",
-            content: v2.std.host_transport.FixedText { text: rust_emit_host_cargo_manifest }
+            content: v2.std.host_transport.FixedText { text: v2.extdeps.languages.rust.rust_emit_host_cargo_manifest }
           },
           v2.std.host_transport.WorkspaceFile {
             path: "rust-toolchain.toml",
-            content: v2.std.host_transport.FixedText { text: rust_emit_host_toolchain_pin }
+            content: v2.std.host_transport.FixedText { text: v2.extdeps.languages.rust.rust_emit_host_toolchain_pin }
           },
           v2.std.host_transport.WorkspaceFile {
             path: "src/main.rs",
@@ -2262,7 +2262,7 @@ fn rust_bool_fn_host_runtime_row_with_width(
         },
         runtime_value_codec: v2.std.host_transport.FixedWidthBytes { width: codec_width }
       },
-      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+      runtime_primitive_type: v2.extdeps.languages.rust.rust_emit_host_runtime_primitive_type_node()
     }
   }
 }
@@ -2616,11 +2616,11 @@ fn rust_match_loop_fold_family_host_transport_descriptor() -> v2.std.host_transp
     workspace: [
       v2.std.host_transport.WorkspaceFile {
         path: "Cargo.toml",
-        content: v2.std.host_transport.FixedText { text: rust_emit_host_cargo_manifest }
+        content: v2.std.host_transport.FixedText { text: v2.extdeps.languages.rust.rust_emit_host_cargo_manifest }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "rust-toolchain.toml",
-        content: v2.std.host_transport.FixedText { text: rust_emit_host_toolchain_pin }
+        content: v2.std.host_transport.FixedText { text: v2.extdeps.languages.rust.rust_emit_host_toolchain_pin }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "src/main.rs",
@@ -2650,7 +2650,7 @@ fn rust_match_loop_fold_family_runtime_row() -> v2.std.host_transport.TargetEmit
   v2.std.host_transport.HostRuntimeRowPresent {
     row: v2.std.host_transport.EmitHostRuntimeRow {
       transport: rust_match_loop_fold_family_host_transport_descriptor(),
-      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+      runtime_primitive_type: v2.extdeps.languages.rust.rust_emit_host_runtime_primitive_type_node()
     }
   }
 }
@@ -2725,20 +2725,20 @@ fn rust_rec_grammar_sequence() -> v2.std.grammar.GrammarExpr {
       match state {
         RustGramBuild1StateInit =>
           v2.extdeps.languages.rust.RustGramBuild1StateReady {
-            expr: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+            expr: v2.extdeps.languages.rust.rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
           }
         RustGramBuild1StateReady { expr: acc } =>
           v2.extdeps.languages.rust.RustGramBuild1StateReady {
             expr: v2.std.grammar.Sequence {
               left: acc,
-              right: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+              right: v2.extdeps.languages.rust.rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
             }
           }
       }
     }
   ) {
     RustGramBuild1StateInit =>
-      rust_grammar_terminal(token_class: ^rust_token_kw_fn)
+      v2.extdeps.languages.rust.rust_grammar_terminal(token_class: ^rust_token_kw_fn)
     RustGramBuild1StateReady { expr: result } => result
   }
 }
@@ -2746,7 +2746,7 @@ fn rust_rec_grammar_sequence() -> v2.std.grammar.GrammarExpr {
 fn rust_formal_production_fn_rec() -> v2.std.grammar.FormalProduction {
   grammar_formal_production(
     lhs: ^rust_production_fn_rec,
-    rhs: rust_formal_rhs_from_tokens(tokens: rust_rec_concrete_tokens())
+    rhs: v2.extdeps.languages.rust.rust_formal_rhs_from_tokens(tokens: rust_rec_concrete_tokens())
   )
 }
 
@@ -2754,20 +2754,20 @@ fn rust_grammar_production_fn_rec() -> v2.std.grammar.GrammarProduction {
   v2.std.grammar.GrammarProduction {
     name: ^rust_production_fn_rec,
     expression: rust_rec_grammar_sequence(),
-    emitted: rust_grammar_atom(id: ^rust_surface_fn_item)
+    emitted: v2.extdeps.languages.rust.rust_grammar_atom(id: ^rust_surface_fn_item)
   }
 }
 
 fn rust_rec_grammar_relation_row() -> v2.extdeps.languages.rust.RustGrammarRelationRow {
   v2.extdeps.languages.rust.RustGrammarRelationRow {
     production: rust_grammar_production_fn_rec(),
-    emitted: rust_grammar_atom(id: ^rust_surface_fn_item),
+    emitted: v2.extdeps.languages.rust.rust_grammar_atom(id: ^rust_surface_fn_item),
     tokens: rust_rec_concrete_tokens()
   }
 }
 
 fn rust_rec_scaffold_relation_row_node() -> Node {
-  rust_grammar_relation_row_node(row: rust_rec_grammar_relation_row())
+  v2.extdeps.languages.rust.rust_grammar_relation_row_node(row: rust_rec_grammar_relation_row())
 }
 
 fn rust_rec_bodied_relation_row_node() -> Node {
@@ -2781,7 +2781,7 @@ fn rust_rec_translation_rules_node() -> Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      rust_named_edge(
+      v2.extdeps.languages.rust.rust_named_edge(
         name: ^rust_relation_rule_fn_rec,
         target: rust_rec_bodied_relation_row_node()
       )
@@ -2792,13 +2792,13 @@ fn rust_rec_translation_rules_node() -> Node {
 
 fn rust_rec_serialize_source_prefix_edges() -> List<v2.std.node.Edge> {
   [
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^serialize_source_field_source_text,
-      target: rust_inhabitant_atom(id: ^rust_rec_source_literal)
+      target: v2.extdeps.languages.rust.rust_inhabitant_atom(id: ^rust_rec_source_literal)
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^serialize_source_field_production,
-      target: rust_inhabitant_atom(id: ^rust_production_fn_rec)
+      target: v2.extdeps.languages.rust.rust_inhabitant_atom(id: ^rust_production_fn_rec)
     )
   ]
 }
@@ -2810,11 +2810,11 @@ fn rust_rec_serialize_source_node() -> Node {
     children: list_append(
       left: rust_rec_serialize_source_prefix_edges(),
       right: [
-        rust_named_edge(
+        v2.extdeps.languages.rust.rust_named_edge(
           name: ^grammar_relation_field_tokens,
           target: grammar_relation_tokens_node(
             tokens: rust_rec_concrete_tokens(),
-            token_to_node: rust_concrete_token_node
+            token_to_node: v2.extdeps.languages.rust.rust_concrete_token_node
           )
         )
       ]
@@ -2839,53 +2839,53 @@ fn rust_rec_wrong_field_binding_spellings() -> Map<v2.std.node.Symbol, String> {
 
 fn rust_rec_target_model_core_edges() -> List<v2.std.node.Edge> {
   [
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_selection_policy,
-      target: rust_selection_policy_node()
+      target: v2.extdeps.languages.rust.rust_selection_policy_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_declared_inhabitants,
-      target: rust_declared_inhabitants_root()
+      target: v2.extdeps.languages.rust.rust_declared_inhabitants_root()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_translation_rules,
       target: rust_rec_translation_rules_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_serialize_source,
       target: rust_rec_serialize_source_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_collection_realization,
-      target: rust_collection_realization_catalog_node()
+      target: v2.extdeps.languages.rust.rust_collection_realization_catalog_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_reference_layer_tokens,
-      target: target_reference_layer_tokens_node(tokens: rust_reference_layer_tokens())
+      target: target_reference_layer_tokens_node(tokens: v2.extdeps.languages.rust.rust_reference_layer_tokens())
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_use_site_ownership_realizations,
       target: target_use_site_ownership_catalog_node(
-        rows: rust_sg_rc_use_site_ownership_catalog()
+        rows: v2.extdeps.languages.rust.rust_sg_rc_use_site_ownership_catalog()
       )
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_value_semantics_carriers,
       target: target_value_semantics_carriers_node(
-        atoms: rust_value_semantics_carrier_atoms()
+        atoms: v2.extdeps.languages.rust.rust_value_semantics_carrier_atoms()
       )
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_type_expression_projection,
-      target: rust_type_expression_projection_bundle_node()
+      target: v2.extdeps.languages.rust.rust_type_expression_projection_bundle_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_value_expression_projection,
       target: value_expr_projection_bundle_node(
-        projection: rust_value_expression_projection()
+        projection: v2.extdeps.languages.rust.rust_value_expression_projection()
       )
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_operator_realizations,
       target: target_operator_realizations_catalog_node(rows: [])
     )
@@ -2904,7 +2904,7 @@ fn rust_rec_target_model_staging() -> v2.std.compilers.target_model.TargetModel 
   v2.std.compilers.target_model.TargetModel {
     produced_decl_support: ProducedDeclUnwired,
     bundle: rust_rec_target_model_bundle_core(),
-    lex: rust_fn_add_lex(),
+    lex: v2.extdeps.languages.rust.rust_fn_add_lex(),
     binding_spellings: rust_rec_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: rust_rec_source_text,
@@ -2916,7 +2916,7 @@ fn rust_rec_wrong_field_target_model_staging() -> v2.std.compilers.target_model.
   v2.std.compilers.target_model.TargetModel {
     produced_decl_support: ProducedDeclUnwired,
     bundle: rust_rec_target_model_bundle_core(),
-    lex: rust_fn_add_lex(),
+    lex: v2.extdeps.languages.rust.rust_fn_add_lex(),
     binding_spellings: rust_rec_wrong_field_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: rust_rec_wrong_value_source_text,
@@ -2983,20 +2983,20 @@ fn rust_rec_nine_grammar_sequence() -> v2.std.grammar.GrammarExpr {
       match state {
         RustGramBuild1StateInit =>
           v2.extdeps.languages.rust.RustGramBuild1StateReady {
-            expr: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+            expr: v2.extdeps.languages.rust.rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
           }
         RustGramBuild1StateReady { expr: acc } =>
           v2.extdeps.languages.rust.RustGramBuild1StateReady {
             expr: v2.std.grammar.Sequence {
               left: acc,
-              right: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+              right: v2.extdeps.languages.rust.rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
             }
           }
       }
     }
   ) {
     RustGramBuild1StateInit =>
-      rust_grammar_terminal(token_class: ^rust_token_kw_fn)
+      v2.extdeps.languages.rust.rust_grammar_terminal(token_class: ^rust_token_kw_fn)
     RustGramBuild1StateReady { expr: result } => result
   }
 }
@@ -3004,7 +3004,7 @@ fn rust_rec_nine_grammar_sequence() -> v2.std.grammar.GrammarExpr {
 fn rust_formal_production_fn_rec_nine() -> v2.std.grammar.FormalProduction {
   grammar_formal_production(
     lhs: ^rust_production_fn_rec_nine,
-    rhs: rust_formal_rhs_from_tokens(tokens: rust_rec_nine_concrete_tokens())
+    rhs: v2.extdeps.languages.rust.rust_formal_rhs_from_tokens(tokens: rust_rec_nine_concrete_tokens())
   )
 }
 
@@ -3012,20 +3012,20 @@ fn rust_grammar_production_fn_rec_nine() -> v2.std.grammar.GrammarProduction {
   v2.std.grammar.GrammarProduction {
     name: ^rust_production_fn_rec_nine,
     expression: rust_rec_nine_grammar_sequence(),
-    emitted: rust_grammar_atom(id: ^rust_surface_fn_item)
+    emitted: v2.extdeps.languages.rust.rust_grammar_atom(id: ^rust_surface_fn_item)
   }
 }
 
 fn rust_rec_nine_grammar_relation_row() -> v2.extdeps.languages.rust.RustGrammarRelationRow {
   v2.extdeps.languages.rust.RustGrammarRelationRow {
     production: rust_grammar_production_fn_rec_nine(),
-    emitted: rust_grammar_atom(id: ^rust_surface_fn_item),
+    emitted: v2.extdeps.languages.rust.rust_grammar_atom(id: ^rust_surface_fn_item),
     tokens: rust_rec_nine_concrete_tokens()
   }
 }
 
 fn rust_rec_nine_scaffold_relation_row_node() -> Node {
-  rust_grammar_relation_row_node(row: rust_rec_nine_grammar_relation_row())
+  v2.extdeps.languages.rust.rust_grammar_relation_row_node(row: rust_rec_nine_grammar_relation_row())
 }
 
 fn rust_rec_nine_bodied_relation_row_node() -> Node {
@@ -3039,7 +3039,7 @@ fn rust_rec_nine_translation_rules_node() -> Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      rust_named_edge(
+      v2.extdeps.languages.rust.rust_named_edge(
         name: ^rust_relation_rule_fn_rec_nine,
         target: rust_rec_nine_bodied_relation_row_node()
       )
@@ -3050,13 +3050,13 @@ fn rust_rec_nine_translation_rules_node() -> Node {
 
 fn rust_rec_nine_serialize_source_prefix_edges() -> List<v2.std.node.Edge> {
   [
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^serialize_source_field_source_text,
-      target: rust_inhabitant_atom(id: ^rust_rec_nine_source_literal)
+      target: v2.extdeps.languages.rust.rust_inhabitant_atom(id: ^rust_rec_nine_source_literal)
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^serialize_source_field_production,
-      target: rust_inhabitant_atom(id: ^rust_production_fn_rec_nine)
+      target: v2.extdeps.languages.rust.rust_inhabitant_atom(id: ^rust_production_fn_rec_nine)
     )
   ]
 }
@@ -3068,11 +3068,11 @@ fn rust_rec_nine_serialize_source_node() -> Node {
     children: list_append(
       left: rust_rec_nine_serialize_source_prefix_edges(),
       right: [
-        rust_named_edge(
+        v2.extdeps.languages.rust.rust_named_edge(
           name: ^grammar_relation_field_tokens,
           target: grammar_relation_tokens_node(
             tokens: rust_rec_nine_concrete_tokens(),
-            token_to_node: rust_concrete_token_node
+            token_to_node: v2.extdeps.languages.rust.rust_concrete_token_node
           )
         )
       ]
@@ -3097,53 +3097,53 @@ fn rust_rec_nine_wrong_field_binding_spellings() -> Map<v2.std.node.Symbol, Stri
 
 fn rust_rec_nine_target_model_core_edges() -> List<v2.std.node.Edge> {
   [
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_selection_policy,
-      target: rust_selection_policy_node()
+      target: v2.extdeps.languages.rust.rust_selection_policy_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_declared_inhabitants,
-      target: rust_declared_inhabitants_root()
+      target: v2.extdeps.languages.rust.rust_declared_inhabitants_root()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_translation_rules,
       target: rust_rec_nine_translation_rules_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_serialize_source,
       target: rust_rec_nine_serialize_source_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_collection_realization,
-      target: rust_collection_realization_catalog_node()
+      target: v2.extdeps.languages.rust.rust_collection_realization_catalog_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_reference_layer_tokens,
-      target: target_reference_layer_tokens_node(tokens: rust_reference_layer_tokens())
+      target: target_reference_layer_tokens_node(tokens: v2.extdeps.languages.rust.rust_reference_layer_tokens())
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_use_site_ownership_realizations,
       target: target_use_site_ownership_catalog_node(
-        rows: rust_sg_rc_use_site_ownership_catalog()
+        rows: v2.extdeps.languages.rust.rust_sg_rc_use_site_ownership_catalog()
       )
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_value_semantics_carriers,
       target: target_value_semantics_carriers_node(
-        atoms: rust_value_semantics_carrier_atoms()
+        atoms: v2.extdeps.languages.rust.rust_value_semantics_carrier_atoms()
       )
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_type_expression_projection,
-      target: rust_type_expression_projection_bundle_node()
+      target: v2.extdeps.languages.rust.rust_type_expression_projection_bundle_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_value_expression_projection,
       target: value_expr_projection_bundle_node(
-        projection: rust_value_expression_projection()
+        projection: v2.extdeps.languages.rust.rust_value_expression_projection()
       )
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_operator_realizations,
       target: target_operator_realizations_catalog_node(rows: [])
     )
@@ -3166,11 +3166,11 @@ fn rust_rec_nine_host_transport_descriptor() -> v2.std.host_transport.HostTransp
     workspace: [
       v2.std.host_transport.WorkspaceFile {
         path: "Cargo.toml",
-        content: v2.std.host_transport.FixedText { text: rust_emit_host_cargo_manifest }
+        content: v2.std.host_transport.FixedText { text: v2.extdeps.languages.rust.rust_emit_host_cargo_manifest }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "rust-toolchain.toml",
-        content: v2.std.host_transport.FixedText { text: rust_emit_host_toolchain_pin }
+        content: v2.std.host_transport.FixedText { text: v2.extdeps.languages.rust.rust_emit_host_toolchain_pin }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "src/main.rs",
@@ -3195,7 +3195,7 @@ fn rust_rec_nine_runtime_row() -> v2.std.host_transport.TargetEmitHostRuntimeRow
   v2.std.host_transport.HostRuntimeRowPresent {
     row: v2.std.host_transport.EmitHostRuntimeRow {
       transport: rust_rec_nine_host_transport_descriptor(),
-      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+      runtime_primitive_type: v2.extdeps.languages.rust.rust_emit_host_runtime_primitive_type_node()
     }
   }
 }
@@ -3204,7 +3204,7 @@ fn rust_rec_nine_target_model_staging() -> v2.std.compilers.target_model.TargetM
   v2.std.compilers.target_model.TargetModel {
     produced_decl_support: ProducedDeclUnwired,
     bundle: rust_rec_nine_target_model_bundle_core(),
-    lex: rust_fn_add_lex(),
+    lex: v2.extdeps.languages.rust.rust_fn_add_lex(),
     binding_spellings: rust_rec_nine_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: rust_rec_nine_source_text,
@@ -3216,7 +3216,7 @@ fn rust_rec_nine_wrong_field_target_model_staging() -> v2.std.compilers.target_m
   v2.std.compilers.target_model.TargetModel {
     produced_decl_support: ProducedDeclUnwired,
     bundle: rust_rec_nine_target_model_bundle_core(),
-    lex: rust_fn_add_lex(),
+    lex: v2.extdeps.languages.rust.rust_fn_add_lex(),
     binding_spellings: rust_rec_nine_wrong_field_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: rust_rec_nine_wrong_value_source_text,
@@ -3307,20 +3307,20 @@ fn rust_fold_call_grammar_sequence() -> v2.std.grammar.GrammarExpr {
       match state {
         RustGramBuild1StateInit =>
           v2.extdeps.languages.rust.RustGramBuild1StateReady {
-            expr: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+            expr: v2.extdeps.languages.rust.rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
           }
         RustGramBuild1StateReady { expr: acc } =>
           v2.extdeps.languages.rust.RustGramBuild1StateReady {
             expr: v2.std.grammar.Sequence {
               left: acc,
-              right: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+              right: v2.extdeps.languages.rust.rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
             }
           }
       }
     }
   ) {
     RustGramBuild1StateInit =>
-      rust_grammar_terminal(token_class: ^rust_token_kw_fn)
+      v2.extdeps.languages.rust.rust_grammar_terminal(token_class: ^rust_token_kw_fn)
     RustGramBuild1StateReady { expr: result } => result
   }
 }
@@ -3328,7 +3328,7 @@ fn rust_fold_call_grammar_sequence() -> v2.std.grammar.GrammarExpr {
 fn rust_formal_production_fn_fold_call() -> v2.std.grammar.FormalProduction {
   grammar_formal_production(
     lhs: ^rust_production_fn_fold_call,
-    rhs: rust_formal_rhs_from_tokens(tokens: rust_fold_call_concrete_tokens())
+    rhs: v2.extdeps.languages.rust.rust_formal_rhs_from_tokens(tokens: rust_fold_call_concrete_tokens())
   )
 }
 
@@ -3336,20 +3336,20 @@ fn rust_grammar_production_fn_fold_call() -> v2.std.grammar.GrammarProduction {
   v2.std.grammar.GrammarProduction {
     name: ^rust_production_fn_fold_call,
     expression: rust_fold_call_grammar_sequence(),
-    emitted: rust_grammar_atom(id: ^rust_surface_fn_item)
+    emitted: v2.extdeps.languages.rust.rust_grammar_atom(id: ^rust_surface_fn_item)
   }
 }
 
 fn rust_fold_call_grammar_relation_row() -> v2.extdeps.languages.rust.RustGrammarRelationRow {
   v2.extdeps.languages.rust.RustGrammarRelationRow {
     production: rust_grammar_production_fn_fold_call(),
-    emitted: rust_grammar_atom(id: ^rust_surface_fn_item),
+    emitted: v2.extdeps.languages.rust.rust_grammar_atom(id: ^rust_surface_fn_item),
     tokens: rust_fold_call_concrete_tokens()
   }
 }
 
 fn rust_fold_call_scaffold_relation_row_node() -> Node {
-  rust_grammar_relation_row_node(row: rust_fold_call_grammar_relation_row())
+  v2.extdeps.languages.rust.rust_grammar_relation_row_node(row: rust_fold_call_grammar_relation_row())
 }
 
 fn rust_fold_call_bodied_relation_row_node() -> Node {
@@ -3363,7 +3363,7 @@ fn rust_fold_call_translation_rules_node() -> Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      rust_named_edge(
+      v2.extdeps.languages.rust.rust_named_edge(
         name: ^rust_relation_rule_fn_fold_call,
         target: rust_fold_call_bodied_relation_row_node()
       )
@@ -3374,13 +3374,13 @@ fn rust_fold_call_translation_rules_node() -> Node {
 
 fn rust_fold_call_serialize_source_prefix_edges() -> List<v2.std.node.Edge> {
   [
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^serialize_source_field_source_text,
-      target: rust_inhabitant_atom(id: ^rust_fold_call_source_literal)
+      target: v2.extdeps.languages.rust.rust_inhabitant_atom(id: ^rust_fold_call_source_literal)
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^serialize_source_field_source_grammar,
-      target: rust_inhabitant_atom(id: ^rust_production_fn_fold_call)
+      target: v2.extdeps.languages.rust.rust_inhabitant_atom(id: ^rust_production_fn_fold_call)
     )
   ]
 }
@@ -3392,11 +3392,11 @@ fn rust_fold_call_serialize_source_node() -> Node {
     children: list_append(
       left: rust_fold_call_serialize_source_prefix_edges(),
       right: [
-        rust_named_edge(
+        v2.extdeps.languages.rust.rust_named_edge(
           name: ^grammar_relation_field_tokens,
           target: grammar_relation_tokens_node(
             tokens: rust_fold_call_concrete_tokens(),
-            token_to_node: rust_concrete_token_node
+            token_to_node: v2.extdeps.languages.rust.rust_concrete_token_node
           )
         )
       ]
@@ -3418,55 +3418,55 @@ fn rust_fold_call_binding_spellings() -> Map<v2.std.node.Symbol, String> {
 
 fn rust_fold_call_target_model_core_edges() -> List<v2.std.node.Edge> {
   [
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_selection_policy,
-      target: rust_selection_policy_node()
+      target: v2.extdeps.languages.rust.rust_selection_policy_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_declared_inhabitants,
-      target: rust_declared_inhabitants_root()
+      target: v2.extdeps.languages.rust.rust_declared_inhabitants_root()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_translation_rules,
       target: rust_fold_call_translation_rules_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_serialize_source,
       target: rust_fold_call_serialize_source_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_collection_realization,
-      target: rust_collection_realization_catalog_node()
+      target: v2.extdeps.languages.rust.rust_collection_realization_catalog_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_reference_layer_tokens,
-      target: target_reference_layer_tokens_node(tokens: rust_reference_layer_tokens())
+      target: target_reference_layer_tokens_node(tokens: v2.extdeps.languages.rust.rust_reference_layer_tokens())
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_use_site_ownership_realizations,
       target: target_use_site_ownership_catalog_node(
-        rows: rust_sg_rc_use_site_ownership_catalog()
+        rows: v2.extdeps.languages.rust.rust_sg_rc_use_site_ownership_catalog()
       )
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_value_semantics_carriers,
       target: target_value_semantics_carriers_node(
-        atoms: rust_value_semantics_carrier_atoms()
+        atoms: v2.extdeps.languages.rust.rust_value_semantics_carrier_atoms()
       )
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_type_expression_projection,
-      target: rust_type_expression_projection_bundle_node()
+      target: v2.extdeps.languages.rust.rust_type_expression_projection_bundle_node()
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_value_expression_projection,
       target: value_expr_projection_bundle_node(
-        projection: rust_value_expression_projection()
+        projection: v2.extdeps.languages.rust.rust_value_expression_projection()
       )
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_operator_realizations,
-      target: rust_operator_realizations_catalog_node()
+      target: v2.extdeps.languages.rust.rust_operator_realizations_catalog_node()
     )
   ]
 }
@@ -3487,11 +3487,11 @@ fn rust_fold_call_host_transport_descriptor() -> v2.std.host_transport.HostTrans
     workspace: [
       v2.std.host_transport.WorkspaceFile {
         path: "Cargo.toml",
-        content: v2.std.host_transport.FixedText { text: rust_emit_host_cargo_manifest }
+        content: v2.std.host_transport.FixedText { text: v2.extdeps.languages.rust.rust_emit_host_cargo_manifest }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "rust-toolchain.toml",
-        content: v2.std.host_transport.FixedText { text: rust_emit_host_toolchain_pin }
+        content: v2.std.host_transport.FixedText { text: v2.extdeps.languages.rust.rust_emit_host_toolchain_pin }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "src/main.rs",
@@ -3516,7 +3516,7 @@ fn rust_fold_call_runtime_row() -> v2.std.host_transport.TargetEmitHostRuntimeRo
   v2.std.host_transport.HostRuntimeRowPresent {
     row: v2.std.host_transport.EmitHostRuntimeRow {
       transport: rust_fold_call_host_transport_descriptor(),
-      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+      runtime_primitive_type: v2.extdeps.languages.rust.rust_emit_host_runtime_primitive_type_node()
     }
   }
 }
@@ -3536,7 +3536,7 @@ fn rust_fold_call_target_model_staging() -> v2.std.compilers.target_model.Target
 fn rust_target_model_bundle_core_with_operators(operator_catalog: Node) -> Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
-    children: rust_target_model_core_edges_with_operators(operator_catalog: operator_catalog),
+    children: v2.extdeps.languages.rust.rust_target_model_core_edges_with_operators(operator_catalog: operator_catalog),
     occurrence_id: SyntheticOccurrence
 }
 }
@@ -3546,15 +3546,15 @@ fn rust_target_model_with_operators_and_lex(operator_catalog: Node, lex: v2.std.
     produced_decl_support: ProducedDeclUnwired,
     bundle: rust_target_model_bundle_core_with_operators(operator_catalog: operator_catalog),
     lex: lex,
-    binding_spellings: rust_binding_spellings(),
+    binding_spellings: v2.extdeps.languages.rust.rust_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
-    authority_source_text: rust_source_text_authority(),
-    runtime_row: rust_runtime_row()
+    authority_source_text: v2.extdeps.languages.rust.rust_source_text_authority(),
+    runtime_row: v2.extdeps.languages.rust.rust_runtime_row()
   }
 }
 
 fn rust_literal_emit_binding_spellings() -> Map<v2.std.node.Symbol, String> {
-  let m0 = rust_binding_spellings()
+  let m0 = v2.extdeps.languages.rust.rust_binding_spellings()
   let m1 = map_insert(m0, ^dag_binding_fn_one, "one")
   let m2 = map_insert(m1, ^dag_binding_type_int, "i32")
   let m3 = map_insert(m2, ^dag_binding_bind_x, "x")
@@ -3566,20 +3566,20 @@ fn rust_literal_emit_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
   v2.std.compilers.lexing.LexRuleSet {
     rules: list_append(
       left: list_append(
-        left: rust_fn_add_lex_rules().rules,
+        left: v2.extdeps.languages.rust.rust_fn_add_lex_rules().rules,
         right: [
-          rust_int_literal_lex_rule(),
-          rust_lex_rule(token_class: ^rust_token_kw_let, text: "let "),
-          rust_lex_rule(token_class: ^rust_token_equal, text: " = "),
-          rust_lex_rule(token_class: ^rust_token_semicolon, text: "; ")
+          v2.extdeps.languages.rust.rust_int_literal_lex_rule(),
+          v2.extdeps.languages.rust.rust_lex_rule(token_class: ^rust_token_kw_let, text: "let "),
+          v2.extdeps.languages.rust.rust_lex_rule(token_class: ^rust_token_equal, text: " = "),
+          v2.extdeps.languages.rust.rust_lex_rule(token_class: ^rust_token_semicolon, text: "; ")
         ]
       ),
       right: [
-        rust_lex_rule(token_class: ^rust_token_lit_true, text: "true"),
-        rust_lex_rule(token_class: ^rust_token_lit_false, text: "false"),
-        rust_lex_rule(token_class: ^rust_token_ty_bool, text: "bool"),
-        rust_lex_rule(token_class: ^rust_lit_char_a, text: "'a'"),
-        rust_lex_rule(token_class: ^rust_lit_char_b, text: "'b'")
+        v2.extdeps.languages.rust.rust_lex_rule(token_class: ^rust_token_lit_true, text: "true"),
+        v2.extdeps.languages.rust.rust_lex_rule(token_class: ^rust_token_lit_false, text: "false"),
+        v2.extdeps.languages.rust.rust_lex_rule(token_class: ^rust_token_ty_bool, text: "bool"),
+        v2.extdeps.languages.rust.rust_lex_rule(token_class: ^rust_lit_char_a, text: "'a'"),
+        v2.extdeps.languages.rust.rust_lex_rule(token_class: ^rust_lit_char_b, text: "'b'")
       ]
     )
   }
@@ -3749,14 +3749,14 @@ fn rust_bind_literal_golden_tokens() -> List<v2.std.compilers.target_model.Concr
 fn rust_bind_literal_grammar_relation_row() -> v2.extdeps.languages.rust.RustGrammarRelationRow {
   v2.extdeps.languages.rust.RustGrammarRelationRow {
     production: rust_grammar_production_fn_bind_literal(),
-    emitted: dag_bind_arrow_with_body_fixture,
+    emitted: v2.extdeps.languages.dag.dag_bind_arrow_with_body_fixture,
     tokens: rust_bind_literal_golden_tokens()
   }
 }
 
 fn rust_bind_literal_bodied_relation_row_node() -> Node {
   grammar_relation_row_attach_bodied_scaffold(
-    row: rust_grammar_relation_row_node(row: rust_bind_literal_grammar_relation_row()),
+    row: v2.extdeps.languages.rust.rust_grammar_relation_row_node(row: rust_bind_literal_grammar_relation_row()),
     scaffold: rust_bind_literal_bodied_scaffold()
   )
 }
@@ -3765,7 +3765,7 @@ fn rust_bind_literal_translation_rules_node() -> Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      rust_named_edge(
+      v2.extdeps.languages.rust.rust_named_edge(
         name: ^rust_relation_rule_fn_bind_literal,
         target: rust_bind_literal_bodied_relation_row_node()
       )
@@ -3775,8 +3775,8 @@ fn rust_bind_literal_translation_rules_node() -> Node {
 }
 
 fn rust_bind_literal_target_model_bundle() -> Node {
-  let core = rust_target_model_core_edges_with_operators(
-    operator_catalog: rust_operator_realizations_catalog_node()
+  let core = v2.extdeps.languages.rust.rust_target_model_core_edges_with_operators(
+    operator_catalog: v2.extdeps.languages.rust.rust_operator_realizations_catalog_node()
   )
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
@@ -3789,7 +3789,7 @@ fn rust_bind_literal_target_model_bundle() -> Node {
             if n == ^target_model_edge_translation_rules {
               list_snoc_item(
                 xs: acc,
-                item: rust_named_edge(
+                item: v2.extdeps.languages.rust.rust_named_edge(
                   name: ^target_model_edge_translation_rules,
                   target: rust_bind_literal_translation_rules_node()
                 )
@@ -3813,7 +3813,7 @@ fn rust_bind_literal_target_model() -> v2.std.compilers.target_model.TargetModel
     binding_spellings: rust_literal_emit_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: rust_bind_int_literal_source_text,
-    runtime_row: rust_runtime_row()
+    runtime_row: v2.extdeps.languages.rust.rust_runtime_row()
   }
 }
 
@@ -3828,7 +3828,7 @@ fn rust_conj_emitted_from_tokens(tokens: List<v2.std.compilers.target_model.Conc
           BoundToken { binding: binding, token_class: _ } =>
             list_snoc_item(
               xs: acc,
-              item: v2.std.node.Edge { label: Positional, target: rust_inhabitant_atom(id: binding) }
+              item: v2.std.node.Edge { label: Positional, target: v2.extdeps.languages.rust.rust_inhabitant_atom(id: binding) }
             )
           FixedToken { token_class: _ } => acc
         }
@@ -3897,7 +3897,7 @@ fn rust_relation_translation_rules_node(
       v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: Conj },
         children: [
-          rust_named_edge(name: rule_name, target: row)
+          v2.extdeps.languages.rust.rust_named_edge(name: rule_name, target: row)
         ],
         occurrence_id: SyntheticOccurrence
       }
@@ -3907,13 +3907,13 @@ fn rust_relation_translation_rules_node(
 
 fn rust_serialize_source_prefix_edges(source_text_binding: v2.std.node.Symbol, production_binding: v2.std.node.Symbol) -> List<v2.std.node.Edge> {
   [
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^serialize_source_field_source_text,
-      target: rust_inhabitant_atom(id: source_text_binding)
+      target: v2.extdeps.languages.rust.rust_inhabitant_atom(id: source_text_binding)
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^serialize_source_field_source_grammar,
-      target: rust_inhabitant_atom(id: production_binding)
+      target: v2.extdeps.languages.rust.rust_inhabitant_atom(id: production_binding)
     )
   ]
 }
@@ -3931,11 +3931,11 @@ fn rust_serialize_source_node(
         production_binding: production_binding
       ),
       right: [
-        rust_named_edge(
+        v2.extdeps.languages.rust.rust_named_edge(
           name: ^grammar_relation_field_tokens,
           target: grammar_relation_tokens_node(
             tokens: tokens,
-            token_to_node: rust_concrete_token_node
+            token_to_node: v2.extdeps.languages.rust.rust_concrete_token_node
           )
         )
       ]
@@ -3948,8 +3948,8 @@ fn rust_target_model_bundle(rules: Node, serialize_source: Node) -> Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      rust_named_edge(name: ^target_model_edge_translation_rules, target: rules),
-      rust_named_edge(name: ^target_model_edge_serialize_source, target: serialize_source)
+      v2.extdeps.languages.rust.rust_named_edge(name: ^target_model_edge_translation_rules, target: rules),
+      v2.extdeps.languages.rust.rust_named_edge(name: ^target_model_edge_serialize_source, target: serialize_source)
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -3983,8 +3983,8 @@ fn rust_emit_directive_lex() -> v2.std.compilers.lexing.LexRules {
   v2.std.compilers.lexing.ModeledLexRules {
     root: v2.std.compilers.lexing.LexRuleSet {
       rules: [
-        rust_lex_rule(token_class: ^rust_token_macro_eprintln_open, text: "eprintln!("),
-        rust_lex_rule(token_class: ^rust_token_rparen, text: ")")
+        v2.extdeps.languages.rust.rust_lex_rule(token_class: ^rust_token_macro_eprintln_open, text: "eprintln!("),
+        v2.extdeps.languages.rust.rust_lex_rule(token_class: ^rust_token_rparen, text: ")")
       ]
     }
   }
@@ -4030,7 +4030,7 @@ fn rust_emit_directive_target_model(d: v2.std.diagnostic.EmitDirective) -> v2.st
 }
 
 fn rust_fn_add_formal_productions() -> List<v2.std.grammar.FormalProduction> {
-  [rust_formal_production_fn_add()]
+  [v2.extdeps.languages.rust.rust_formal_production_fn_add()]
 }
 
 fn rust_type_alias_decl_structural_formal_productions() -> List<v2.std.grammar.FormalProduction> {
@@ -4064,7 +4064,7 @@ fn rust_type_alias_decl_productions_only_translation_rules() -> Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      rust_named_edge(
+      v2.extdeps.languages.rust.rust_named_edge(
         name: ^grammar_relation_rules_formal_productions,
         target: formal_productions_catalog_to_node(
           productions: rust_type_alias_decl_structural_formal_productions()
@@ -4078,11 +4078,11 @@ fn rust_type_alias_decl_productions_only_translation_rules() -> Node {
 fn rust_type_alias_decl_structural_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
   v2.std.compilers.lexing.LexRuleSet {
     rules: [
-      rust_whitespace_trivia_rule(),
-      rust_lex_rule(token_class: ^rust_token_kw_type, text: "type "),
-      rust_lex_rule(token_class: ^rust_token_type_alias_eq, text: " = "),
-      rust_lex_rule(token_class: ^rust_token_semicolon, text: ";"),
-      rust_ident_lex_rule()
+      v2.extdeps.languages.rust.rust_whitespace_trivia_rule(),
+      v2.extdeps.languages.rust.rust_lex_rule(token_class: ^rust_token_kw_type, text: "type "),
+      v2.extdeps.languages.rust.rust_lex_rule(token_class: ^rust_token_type_alias_eq, text: " = "),
+      v2.extdeps.languages.rust.rust_lex_rule(token_class: ^rust_token_semicolon, text: ";"),
+      v2.extdeps.languages.rust.rust_ident_lex_rule()
     ]
   }
 }
@@ -4097,7 +4097,7 @@ fn rust_type_alias_decl_structural_target_model() -> v2.std.compilers.target_mod
     bundle: v2.std.node.Node {
       kind: v2.std.node.TypeNode { connective: Conj },
       children: [
-        rust_named_edge(
+        v2.extdeps.languages.rust.rust_named_edge(
           name: ^target_model_edge_translation_rules,
           target: rust_type_alias_decl_productions_only_translation_rules()
         )
@@ -4133,11 +4133,11 @@ fn rust_filesystem_read_family_host_transport_descriptor(fixture_content: String
     workspace: [
       v2.std.host_transport.WorkspaceFile {
         path: "Cargo.toml",
-        content: v2.std.host_transport.FixedText { text: rust_emit_host_cargo_manifest }
+        content: v2.std.host_transport.FixedText { text: v2.extdeps.languages.rust.rust_emit_host_cargo_manifest }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "rust-toolchain.toml",
-        content: v2.std.host_transport.FixedText { text: rust_emit_host_toolchain_pin }
+        content: v2.std.host_transport.FixedText { text: v2.extdeps.languages.rust.rust_emit_host_toolchain_pin }
       },
       v2.std.host_transport.WorkspaceFile {
         path: rust_filesystem_read_family_fixture_path,
@@ -4172,7 +4172,7 @@ fn rust_filesystem_read_family_runtime_row(fixture_content: String) -> v2.std.ho
     family: FilesystemReadFamily,
     present: v2.std.host_transport.EmitHostRuntimeRow {
       transport: rust_filesystem_read_family_host_transport_descriptor(fixture_content: fixture_content),
-      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+      runtime_primitive_type: v2.extdeps.languages.rust.rust_emit_host_runtime_primitive_type_node()
     }
   )
 }
@@ -4241,11 +4241,11 @@ fn rust_shell_exec_run_family_host_transport_descriptor() -> v2.std.host_transpo
     workspace: [
       v2.std.host_transport.WorkspaceFile {
         path: "Cargo.toml",
-        content: v2.std.host_transport.FixedText { text: rust_emit_host_cargo_manifest }
+        content: v2.std.host_transport.FixedText { text: v2.extdeps.languages.rust.rust_emit_host_cargo_manifest }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "rust-toolchain.toml",
-        content: v2.std.host_transport.FixedText { text: rust_emit_host_toolchain_pin }
+        content: v2.std.host_transport.FixedText { text: v2.extdeps.languages.rust.rust_emit_host_toolchain_pin }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "src/main.rs",
@@ -4276,7 +4276,7 @@ fn rust_shell_exec_run_family_runtime_row() -> v2.std.host_transport.TargetEmitH
     family: ShellExecRunFamily,
     present: v2.std.host_transport.EmitHostRuntimeRow {
       transport: rust_shell_exec_run_family_host_transport_descriptor(),
-      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+      runtime_primitive_type: v2.extdeps.languages.rust.rust_emit_host_runtime_primitive_type_node()
     }
   )
 }

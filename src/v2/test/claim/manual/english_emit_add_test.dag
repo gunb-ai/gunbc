@@ -1,15 +1,15 @@
 module v2.test.manual.english_emit_add
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-data english_emit_add_emitted_root: Node = english_add_fn_emitted_node()
+data english_emit_add_emitted_root: v2.std.node.Node = v2.extdeps.languages.english.english_add_fn_emitted_node()
 
-data english_emit_add_target_model: v2.std.compilers.target_model.TargetModel = english_add_fn_target_model()
+data english_emit_add_target_model: v2.std.compilers.target_model.TargetModel = v2.extdeps.languages.english.english_add_fn_target_model()
 
-data english_emit_add_noun_inhabitant: Node = english_noun_inhabitant_node()
+data english_emit_add_noun_inhabitant: v2.std.node.Node = v2.extdeps.languages.english.english_noun_inhabitant_node()
 
-data english_emit_add_noun_facts_node: Node = english_noun_facts_node()
+data english_emit_add_noun_facts_node: v2.std.node.Node = v2.extdeps.languages.english.english_noun_facts_node()
 
 fn english_emit_add_canonical_grounding(
   node: v2.std.node.Node,
@@ -30,7 +30,7 @@ fn english_emit_add_canonical_grounding(
   }
 }
 
-fn english_emit_add_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
+fn english_emit_add_canonical_grounding_for(node: v2.std.node.Node) -> v2.std.witness.Witness<v2.std.constraints.CanonicalGrounding> {
   if node == english_emit_add_emitted_root {
     v2.std.witness.Holds {
       value: english_emit_add_canonical_grounding(
@@ -45,7 +45,7 @@ fn english_emit_add_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v
         algebra: english_emit_add_noun_facts_node
       )
     }
-  } else if node == english_inhabitant_atom(id: ^english_inhabitant_noun) {
+  } else if node == v2.extdeps.languages.english.english_inhabitant_atom(id: ^english_inhabitant_noun) {
     v2.std.witness.Holds {
       value: english_emit_add_canonical_grounding(
         node: node,
@@ -59,14 +59,14 @@ fn english_emit_add_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v
         algebra: node
       )
     }
-  } else if node == english_inhabitant_atom(id: ^english_surface_spelling_noun) {
+  } else if node == v2.extdeps.languages.english.english_inhabitant_atom(id: ^english_surface_spelling_noun) {
     v2.std.witness.Holds {
       value: english_emit_add_canonical_grounding(
         node: node,
         algebra: english_emit_add_noun_facts_node
       )
     }
-  } else if node == english_inhabitant_atom(id: ^english_category_formal_noun_phrase) {
+  } else if node == v2.extdeps.languages.english.english_inhabitant_atom(id: ^english_category_formal_noun_phrase) {
     v2.std.witness.Holds {
       value: english_emit_add_canonical_grounding(
         node: node,
@@ -77,21 +77,21 @@ fn english_emit_add_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v
     v2.std.witness.Violates {
       diagnostic: v2.std.diagnostic.Diagnostic {
         reason: ^english_emit_add_grounding_miss,
-        at: node_locus(node: node),
-        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+        at: v2.std.diagnostic.node_locus(node: node),
+        correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
       }
     }
   }
 }
 
-fn english_emit_add_inferred_facts_for(node: v2.std.node.Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn english_emit_add_inferred_facts_for(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.infer.InferredFacts> {
   match english_emit_add_canonical_grounding_for(node: node) {
-    Violates { diagnostic: d } => optional_absent()
-    Holds { value: grounding } =>
-      match termination_proof_witness_for_node(n: node) {
-        Violates { diagnostic: d } => optional_absent()
-        Holds { value: proof } =>
-          optional_present(value: claim_inferred_facts_witness(
+    v2.std.witness.Violates { diagnostic: d } => v2.std.optional.optional_absent()
+    v2.std.witness.Holds { value: grounding } =>
+      match v2.std.cardinality.termination_proof_witness_for_node(n: node) {
+        v2.std.witness.Violates { diagnostic: d } => v2.std.optional.optional_absent()
+        v2.std.witness.Holds { value: proof } =>
+          v2.std.optional.optional_present(value: v2.test.lens_common.infer_fixture.claim_inferred_facts_witness(
               grounding: grounding,
               descent: v2.std.witness.Holds { value: proof }
             ))
@@ -99,7 +99,7 @@ fn english_emit_add_inferred_facts_for(node: v2.std.node.Node) -> Optional<v2.co
   }
 }
 
-fn english_emit_add_facts_lookup(key: v2.std.node.Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn english_emit_add_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.infer.InferredFacts> {
   english_emit_add_inferred_facts_for(node: key)
 }
 
@@ -111,66 +111,66 @@ data english_emit_add_inferred_tree: v2.compiler.infer.InferredTree = v2.compile
 }
 
 fn anchor_english_emit_add_accepts() -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
-  emit(tree: english_emit_add_inferred_tree, target: english_emit_add_target_model)
+  v2.compiler.emit.emit(tree: english_emit_add_inferred_tree, target: english_emit_add_target_model)
 }
 
 data english_emit_add_receipt: v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> = anchor_english_emit_add_accepts()
 
 test fn english_emit_add_prose_holds() -> Bool {
   match english_emit_add_receipt {
-    Accepted { value: source, diagnostics: d } =>
-      (source.carried == english_add_fn_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+      (source.carried == v2.extdeps.languages.english.english_add_fn_source_text) && (d == v2.std.diagnostic.None)
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn english_emit_add_matches_serialize_holds() -> Bool {
-  match target_serialize_source_from_model(
+  match v2.compiler.translate.target_serialize_source_from_model(
     target: english_emit_add_target_model,
     emitted: english_emit_add_emitted_root
   ) {
-    Accepted { value: authority, diagnostics: ad } =>
+    v2.std.diagnostic.Accepted { value: authority, diagnostics: ad } =>
       match english_emit_add_receipt {
-        Accepted { value: source, diagnostics: d } =>
+        v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
           (source == authority) && (d == v2.std.diagnostic.None) && (ad == v2.std.diagnostic.None)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn english_emit_add_grammar_inverse_holds() -> Bool {
-  match grammar_inverse_source_validated(
+  match v2.compiler.translate.grammar_inverse_source_validated(
     target: english_emit_add_target_model,
     emitted: english_emit_add_emitted_root
   ) {
-    Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn english_emit_add_ingest_parse(source: extdeps.communication.medium.Medium<String>) -> v2.std.diagnostic.Outcome<v2.std.grammar.ParseTree> {
-  match tokenize(
+  match v2.compiler.tokenize.tokenize(
     text: source.carried,
     file: ^english_emit_add_round_trip_fixture_file,
-    rules: english_lex()
+    rules: v2.extdeps.languages.english.english_lex()
   ) {
-    Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
-    Accepted { value: tokens, diagnostics: _ } =>
-      parse(tokens: tokens, grammar: english_add_fn_paragraph_grammar())
+    v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+    v2.std.diagnostic.Accepted { value: tokens, diagnostics: _ } =>
+      v2.compiler.parse.parse(tokens: tokens, grammar: v2.extdeps.languages.english.english_add_fn_paragraph_grammar())
   }
 }
 
 fn english_emit_add_identity_edge_matches(e: v2.std.node.Edge, expected: v2.std.node.Node) -> Bool {
   match e.label {
-    Named { name: n } =>
+    v2.std.node.Named { name: n } =>
       (n == ^grammar_production_identity_node_projection) && (e.target == expected)
-    Positional => false
+    v2.std.node.Positional => false
   }
 }
 
 fn english_emit_add_parse_identity_matches(root: v2.std.node.Node, expected: v2.std.node.Node) -> Bool {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: root.children,
     empty: false,
     cons: fn(acc, e) {
@@ -183,15 +183,15 @@ test fn english_emit_add_ingest_round_trip_holds() -> Bool {
   let serialize_ok = english_emit_add_matches_serialize_holds()
   let grammar_ok = english_emit_add_grammar_inverse_holds()
   let ingest_ok = match english_emit_add_receipt {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: source, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } =>
       match english_emit_add_ingest_parse(source: source) {
-        Accepted { value: tree, diagnostics: d } =>
+        v2.std.diagnostic.Accepted { value: tree, diagnostics: d } =>
           english_emit_add_parse_identity_matches(
             root: tree,
             expected: english_emit_add_emitted_root
           ) && (d == v2.std.diagnostic.None)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
   }
   serialize_ok && grammar_ok && ingest_ok

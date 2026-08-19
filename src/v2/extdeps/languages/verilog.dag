@@ -1,7 +1,7 @@
 module v2.extdeps.languages.verilog
 
 
-data verilog_std_integer_signedness_migration_note: String = "Signedness consumer migration: verilog imports std.integer.Signedness. Semantic equivalence: verilog signed/unsigned on net, port, and parameter declarations is the same interpretive axis as std.integer Signed/Unsigned — whether a bit pattern is read as two's-complement signed range or unsigned modular arithmetic; no Verilog-specific signedness semantics beyond this axis are modeled on these fields."
+data verilog_std_integer_signedness_migration_note: String = "std.integer.Signedness consumer migration: verilog imports std.integer.Signedness. Semantic equivalence: verilog signed/unsigned on net, port, and parameter declarations is the same interpretive axis as std.integer Signed/Unsigned — whether a bit pattern is read as two's-complement signed range or unsigned modular arithmetic; no Verilog-specific signedness semantics beyond this axis are modeled on these fields."
 
 type PortDirection
   = Input
@@ -576,7 +576,7 @@ fn verilog_lex_token(token_class: v2.std.node.Symbol, pattern: v2.std.compilers.
 }
 
 fn verilog_grammar_terminal(token_class: v2.std.node.Symbol) -> v2.std.grammar.GrammarExpr {
-  Terminal { token_class: token_class, stamp: StampClass }
+  Terminal { token_class: token_class, stamp: v2.std.grammar.StampClass }
 }
 
 fn verilog_grammar_sequence(left: v2.std.grammar.GrammarExpr, right: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
@@ -585,8 +585,8 @@ fn verilog_grammar_sequence(left: v2.std.grammar.GrammarExpr, right: v2.std.gram
 
 fn verilog_identifier_pattern() -> v2.std.compilers.lexing.LexPattern {
   v2.std.compilers.lexing.SequencePattern {
-    left: v2.std.compilers.lexing.CharClassPattern { class: IdentStartChar },
-    right: v2.std.compilers.lexing.RepeatPattern { element: v2.std.compilers.lexing.CharClassPattern { class: IdentContinueChar } }
+    left: v2.std.compilers.lexing.CharClassPattern { class: v2.std.compilers.lexing.IdentStartChar },
+    right: v2.std.compilers.lexing.RepeatPattern { element: v2.std.compilers.lexing.CharClassPattern { class: v2.std.compilers.lexing.IdentContinueChar } }
   }
 }
 
@@ -594,7 +594,7 @@ fn verilog_lex() -> v2.std.compilers.lexing.LexRules {
   v2.std.compilers.lexing.ModeledLexRules {
     root: v2.std.compilers.lexing.LexRuleSet {
       rules: [
-        v2.std.compilers.lexing.TriviaRule { pattern: v2.std.compilers.lexing.OneOrMorePattern { element: v2.std.compilers.lexing.CharClassPattern { class: WhitespaceChar } } },
+        v2.std.compilers.lexing.TriviaRule { pattern: v2.std.compilers.lexing.OneOrMorePattern { element: v2.std.compilers.lexing.CharClassPattern { class: v2.std.compilers.lexing.WhitespaceChar } } },
         verilog_lex_token(token_class: ^verilog_token_ident, pattern: verilog_identifier_pattern()),
         verilog_lex_token(token_class: ^verilog_token_kw_module, pattern: v2.std.compilers.lexing.KeywordPattern { text: "module" }),
         verilog_lex_token(token_class: ^verilog_token_kw_endmodule, pattern: v2.std.compilers.lexing.KeywordPattern { text: "endmodule" }),
@@ -642,25 +642,25 @@ fn verilog_grammar() -> v2.std.grammar.ParseGrammar {
   let start = v2.std.grammar.GrammarProduction {
     name: ^verilog_production_source_text_module,
     expression: verilog_source_text_module_expr(),
-    emitted: grammar_atom(identity: ^verilog_surface_module_decl)
+    emitted: v2.std.grammar.grammar_atom(identity: ^verilog_surface_module_decl)
   }
   v2.std.grammar.ModeledGrammar {
     root: v2.std.grammar.GrammarRoot {
       start: ^verilog_production_source_text_module,
       productions: [start],
-      sync_tokens: grammar_empty_sync_tokens()
+      sync_tokens: v2.std.grammar.grammar_empty_sync_tokens()
     }
   }
 }
 
 fn verilog_source_text_module_formal_production() -> v2.std.grammar.FormalProduction {
   v2.std.grammar.FormalProduction {
-    lhs: grammar_formal_nonterminal(identity: ^verilog_production_source_text_module),
+    lhs: v2.std.grammar.grammar_formal_nonterminal(identity: ^verilog_production_source_text_module),
     rhs: [
-      grammar_formal_terminal(identity: ^verilog_token_kw_module),
-      grammar_formal_terminal(identity: ^verilog_token_ident),
-      grammar_formal_terminal(identity: ^verilog_token_semicolon),
-      grammar_formal_terminal(identity: ^verilog_token_kw_endmodule)
+      v2.std.grammar.grammar_formal_terminal(identity: ^verilog_token_kw_module),
+      v2.std.grammar.grammar_formal_terminal(identity: ^verilog_token_ident),
+      v2.std.grammar.grammar_formal_terminal(identity: ^verilog_token_semicolon),
+      v2.std.grammar.grammar_formal_terminal(identity: ^verilog_token_kw_endmodule)
     ]
   }
 }
@@ -688,79 +688,79 @@ fn verilog_source_text_module_formal_production() -> v2.std.grammar.FormalProduc
 // moved into data.
 fn verilog_emission_formal_productions() -> v2.std.collection.List<v2.std.grammar.FormalProduction> {
   [
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^verilog_production_ansi_port,
       rhs: [
-        grammar_formal_terminal_free(identity: ^verilog_token_port_direction),
-        grammar_formal_terminal(identity: ^verilog_token_kw_wire),
-        grammar_formal_terminal_free(identity: ^verilog_token_ident)
+        v2.std.grammar.grammar_formal_terminal_free(identity: ^verilog_token_port_direction),
+        v2.std.grammar.grammar_formal_terminal(identity: ^verilog_token_kw_wire),
+        v2.std.grammar.grammar_formal_terminal_free(identity: ^verilog_token_ident)
       ]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^verilog_production_port_list,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: ^verilog_production_ansi_port)]
+      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^verilog_production_ansi_port)]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^verilog_production_port_list,
       rhs: [
-        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_ansi_port),
-        grammar_formal_terminal(identity: ^verilog_token_comma),
-        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_port_list)
+        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^verilog_production_ansi_port),
+        v2.std.grammar.grammar_formal_terminal(identity: ^verilog_token_comma),
+        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^verilog_production_port_list)
       ]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^verilog_production_expr,
-      rhs: [grammar_formal_terminal_free(identity: ^verilog_token_ident)]
+      rhs: [v2.std.grammar.grammar_formal_terminal_free(identity: ^verilog_token_ident)]
     ),
-    grammar_formal_production(
-      lhs: ^verilog_production_expr,
-      rhs: [
-        grammar_formal_terminal_free(identity: ^verilog_token_unary_operator),
-        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_expr)
-      ]
-    ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^verilog_production_expr,
       rhs: [
-        grammar_formal_terminal(identity: ^verilog_token_lparen),
-        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_expr),
-        grammar_formal_terminal_free(identity: ^verilog_token_binary_operator),
-        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_expr),
-        grammar_formal_terminal(identity: ^verilog_token_rparen)
+        v2.std.grammar.grammar_formal_terminal_free(identity: ^verilog_token_unary_operator),
+        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^verilog_production_expr)
       ]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
+      lhs: ^verilog_production_expr,
+      rhs: [
+        v2.std.grammar.grammar_formal_terminal(identity: ^verilog_token_lparen),
+        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^verilog_production_expr),
+        v2.std.grammar.grammar_formal_terminal_free(identity: ^verilog_token_binary_operator),
+        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^verilog_production_expr),
+        v2.std.grammar.grammar_formal_terminal(identity: ^verilog_token_rparen)
+      ]
+    ),
+    v2.std.grammar.grammar_formal_production(
       lhs: ^verilog_production_continuous_assign,
       rhs: [
-        grammar_formal_terminal(identity: ^verilog_token_kw_assign),
-        grammar_formal_terminal_free(identity: ^verilog_token_ident),
-        grammar_formal_terminal(identity: ^verilog_token_equals),
-        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_expr),
-        grammar_formal_terminal(identity: ^verilog_token_semicolon)
+        v2.std.grammar.grammar_formal_terminal(identity: ^verilog_token_kw_assign),
+        v2.std.grammar.grammar_formal_terminal_free(identity: ^verilog_token_ident),
+        v2.std.grammar.grammar_formal_terminal(identity: ^verilog_token_equals),
+        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^verilog_production_expr),
+        v2.std.grammar.grammar_formal_terminal(identity: ^verilog_token_semicolon)
       ]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^verilog_production_assign_list,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: ^verilog_production_continuous_assign)]
+      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^verilog_production_continuous_assign)]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^verilog_production_assign_list,
       rhs: [
-        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_continuous_assign),
-        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_assign_list)
+        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^verilog_production_continuous_assign),
+        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^verilog_production_assign_list)
       ]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^verilog_production_ansi_module_decl,
       rhs: [
-        grammar_formal_terminal(identity: ^verilog_token_kw_module),
-        grammar_formal_terminal_free(identity: ^verilog_token_ident),
-        grammar_formal_terminal_free(identity: ^verilog_token_lparen),
-        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_port_list),
-        grammar_formal_terminal_free(identity: ^verilog_token_rparen),
-        grammar_formal_terminal(identity: ^verilog_token_semicolon),
-        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_assign_list),
-        grammar_formal_terminal(identity: ^verilog_token_kw_endmodule)
+        v2.std.grammar.grammar_formal_terminal(identity: ^verilog_token_kw_module),
+        v2.std.grammar.grammar_formal_terminal_free(identity: ^verilog_token_ident),
+        v2.std.grammar.grammar_formal_terminal_free(identity: ^verilog_token_lparen),
+        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^verilog_production_port_list),
+        v2.std.grammar.grammar_formal_terminal_free(identity: ^verilog_token_rparen),
+        v2.std.grammar.grammar_formal_terminal(identity: ^verilog_token_semicolon),
+        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^verilog_production_assign_list),
+        v2.std.grammar.grammar_formal_terminal(identity: ^verilog_token_kw_endmodule)
       ]
     )
   ]
@@ -775,24 +775,24 @@ fn verilog_emission_formal_productions() -> v2.std.collection.List<v2.std.gramma
 // expression. The oracle needs both. Splitting the class is what makes the layout expressible;
 // the two classes lex the same literal, which is a REPARSE question and is called out in the
 // module note rather than papered over here.
-fn verilog_atom(id: v2.std.node.Symbol) -> Node {
+fn verilog_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-fn verilog_conj(children: List<v2.std.node.Edge>) -> Node {
+fn verilog_conj(children: List<v2.std.node.Edge>) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: children,
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-fn verilog_slot(target: Node) -> v2.std.node.Edge {
-  v2.std.node.Edge { label: Positional, target: target }
+fn verilog_slot(target: v2.std.node.Node) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: v2.std.node.Positional, target: target }
 }
 
 // THE EMITTED NODE CARRIES ONE SLOT PER VARIABLE POSITION, and its ARITY is what the backward
@@ -801,18 +801,18 @@ fn verilog_slot(target: Node) -> v2.std.node.Edge {
 // name, a unary application carries operator and operand, a binary one carries operand, operator
 // and operand. Concrete punctuation contributes no slot, which is exactly why the parentheses and
 // the keywords are invisible here and live entirely in the layout profile.
-fn verilog_signal_reference(name: v2.std.node.Symbol) -> Node {
+fn verilog_signal_reference(name: v2.std.node.Symbol) -> v2.std.node.Node {
   verilog_conj(children: [verilog_slot(target: verilog_atom(id: name))])
 }
 
-fn verilog_unary_application(operator: v2.std.node.Symbol, operand: Node) -> Node {
+fn verilog_unary_application(operator: v2.std.node.Symbol, operand: v2.std.node.Node) -> v2.std.node.Node {
   verilog_conj(children: [
     verilog_slot(target: verilog_atom(id: operator)),
     verilog_slot(target: operand)
   ])
 }
 
-fn verilog_binary_application(left: Node, operator: v2.std.node.Symbol, right: Node) -> Node {
+fn verilog_binary_application(left: v2.std.node.Node, operator: v2.std.node.Symbol, right: v2.std.node.Node) -> v2.std.node.Node {
   verilog_conj(children: [
     verilog_slot(target: left),
     verilog_slot(target: verilog_atom(id: operator)),
@@ -820,33 +820,33 @@ fn verilog_binary_application(left: Node, operator: v2.std.node.Symbol, right: N
   ])
 }
 
-fn verilog_ansi_port(direction: v2.std.node.Symbol, name: v2.std.node.Symbol) -> Node {
+fn verilog_ansi_port(direction: v2.std.node.Symbol, name: v2.std.node.Symbol) -> v2.std.node.Node {
   verilog_conj(children: [
     verilog_slot(target: verilog_atom(id: direction)),
     verilog_slot(target: verilog_atom(id: name))
   ])
 }
 
-fn verilog_port_list_one(port: Node) -> Node {
+fn verilog_port_list_one(port: v2.std.node.Node) -> v2.std.node.Node {
   verilog_conj(children: [verilog_slot(target: port)])
 }
 
-fn verilog_port_list_cons(port: Node, rest: Node) -> Node {
+fn verilog_port_list_cons(port: v2.std.node.Node, rest: v2.std.node.Node) -> v2.std.node.Node {
   verilog_conj(children: [verilog_slot(target: port), verilog_slot(target: rest)])
 }
 
-fn verilog_continuous_assign(lhs: v2.std.node.Symbol, value: Node) -> Node {
+fn verilog_continuous_assign(lhs: v2.std.node.Symbol, value: v2.std.node.Node) -> v2.std.node.Node {
   verilog_conj(children: [
     verilog_slot(target: verilog_atom(id: lhs)),
     verilog_slot(target: value)
   ])
 }
 
-fn verilog_assign_list_one(assignment: Node) -> Node {
+fn verilog_assign_list_one(assignment: v2.std.node.Node) -> v2.std.node.Node {
   verilog_conj(children: [verilog_slot(target: assignment)])
 }
 
-fn verilog_assign_list_cons(assignment: Node, rest: Node) -> Node {
+fn verilog_assign_list_cons(assignment: v2.std.node.Node, rest: v2.std.node.Node) -> v2.std.node.Node {
   verilog_conj(children: [verilog_slot(target: assignment), verilog_slot(target: rest)])
 }
 
@@ -856,7 +856,7 @@ fn verilog_assign_list_cons(assignment: Node, rest: Node) -> Node {
 // would have made reparse ambiguous, since the lexer cannot know which one it is looking at. A
 // bound slot takes its spelling from its emitted atom instead, so the header carries its own
 // layout and the expression parens stay bare. One class, no lexical ambiguity, same bytes.
-fn verilog_module_declaration(name: v2.std.node.Symbol, ports: Node, assignments: Node) -> Node {
+fn verilog_module_declaration(name: v2.std.node.Symbol, ports: v2.std.node.Node, assignments: v2.std.node.Node) -> v2.std.node.Node {
   verilog_conj(children: [
     verilog_slot(target: verilog_atom(id: name)),
     verilog_slot(target: verilog_atom(id: ^verilog_header_open)),
@@ -867,15 +867,15 @@ fn verilog_module_declaration(name: v2.std.node.Symbol, ports: Node, assignments
 }
 
 fn verilog_emit_layout_transforms() -> std.types.Map<v2.std.node.Symbol, fn(String) -> String> {
-  map_insert(
-    map_insert(
-      map_insert(
-        map_insert(
-          map_insert(
-            map_insert(
-              map_insert(
-                map_insert(
-                  map_insert(empty_map(), ^verilog_token_kw_module, fn(s) { concat(s, " ") }),
+  v2.std.collection.map_insert(
+    v2.std.collection.map_insert(
+      v2.std.collection.map_insert(
+        v2.std.collection.map_insert(
+          v2.std.collection.map_insert(
+            v2.std.collection.map_insert(
+              v2.std.collection.map_insert(
+                v2.std.collection.map_insert(
+                  v2.std.collection.map_insert(v2.std.collection.empty_map(), ^verilog_token_kw_module, fn(s) { concat(s, " ") }),
                   ^verilog_token_kw_wire,
                   fn(s) { concat(s, " ") }
                 ),
@@ -908,7 +908,7 @@ fn verilog_emit_layout_transforms() -> std.types.Map<v2.std.node.Symbol, fn(Stri
 // four ports share one production and still carry four different names, and it is why one signal
 // atom can serve as a port name, an assignment target and an expression reference at once: those
 // are the same identity spelled the same way, so forking them would be three names for one thing.
-fn verilog_interlock_ports() -> Node {
+fn verilog_interlock_ports() -> v2.std.node.Node {
   verilog_port_list_cons(
     port: verilog_ansi_port(direction: ^verilog_interlock_dir_input, name: ^verilog_interlock_conditioned_good),
     rest: verilog_port_list_cons(
@@ -923,7 +923,7 @@ fn verilog_interlock_ports() -> Node {
   )
 }
 
-fn verilog_interlock_assignments() -> Node {
+fn verilog_interlock_assignments() -> v2.std.node.Node {
   verilog_assign_list_cons(
     assignment: verilog_continuous_assign(
       lhs: ^verilog_interlock_power_permit,
@@ -949,7 +949,7 @@ fn verilog_interlock_assignments() -> Node {
   )
 }
 
-fn verilog_interlock_emitted() -> Node {
+fn verilog_interlock_emitted() -> v2.std.node.Node {
   verilog_module_declaration(
     name: ^verilog_interlock_module_name,
     ports: verilog_interlock_ports(),
@@ -961,17 +961,17 @@ fn verilog_interlock_emitted() -> Node {
 // oracle aligns them; that padding is layout and therefore lives here, on the target, exactly
 // like the transforms.
 fn verilog_binding_spellings() -> std.types.Map<v2.std.node.Symbol, String> {
-  map_insert(
-    map_insert(
-      map_insert(
-        map_insert(
-          map_insert(
-            map_insert(
-              map_insert(
-                map_insert(
-                  map_insert(
-                    map_insert(
-                      map_insert(empty_map(), ^verilog_interlock_op_not, "~"),
+  v2.std.collection.map_insert(
+    v2.std.collection.map_insert(
+      v2.std.collection.map_insert(
+        v2.std.collection.map_insert(
+          v2.std.collection.map_insert(
+            v2.std.collection.map_insert(
+              v2.std.collection.map_insert(
+                v2.std.collection.map_insert(
+                  v2.std.collection.map_insert(
+                    v2.std.collection.map_insert(
+                      v2.std.collection.map_insert(v2.std.collection.empty_map(), ^verilog_interlock_op_not, "~"),
                       ^verilog_header_open,
                       " (\n"
                     ),
@@ -1011,11 +1011,11 @@ fn verilog_binding_spellings() -> std.types.Map<v2.std.node.Symbol, String> {
 fn verilog_relation_row_for_productions(
   productions: List<v2.std.grammar.FormalProduction>,
   lhs: v2.std.node.Symbol,
-  emitted: Node
-) -> v2.std.witness.Witness<Node> {
-  match formal_production_for_lhs_exact(productions: productions, lhs: lhs, child: emitted) {
+  emitted: v2.std.node.Node
+) -> v2.std.witness.Witness<v2.std.node.Node> {
+  match v2.std.grammar.formal_production_for_lhs_exact(productions: productions, lhs: lhs, child: emitted) {
     Holds { value: production } =>
-      derive_grammar_relation_row_node(
+      v2.std.grammar.derive_grammar_relation_row_node(
         production: production,
         productions: productions,
         emitted: emitted
@@ -1031,11 +1031,11 @@ fn verilog_emission_formal_productions_reversed() -> v2.std.collection.List<v2.s
   reverse(verilog_emission_formal_productions())
 }
 
-fn verilog_relation_row_for(lhs: v2.std.node.Symbol, emitted: Node) -> v2.std.witness.Witness<Node> {
+fn verilog_relation_row_for(lhs: v2.std.node.Symbol, emitted: v2.std.node.Node) -> v2.std.witness.Witness<v2.std.node.Node> {
   let productions = verilog_emission_formal_productions()
-  match formal_production_for_lhs_exact(productions: productions, lhs: lhs, child: emitted) {
+  match v2.std.grammar.formal_production_for_lhs_exact(productions: productions, lhs: lhs, child: emitted) {
     Holds { value: production } =>
-      derive_grammar_relation_row_node(
+      v2.std.grammar.derive_grammar_relation_row_node(
         production: production,
         productions: productions,
         emitted: emitted
@@ -1044,18 +1044,18 @@ fn verilog_relation_row_for(lhs: v2.std.node.Symbol, emitted: Node) -> v2.std.wi
   }
 }
 
-fn verilog_module_relation_row() -> v2.std.witness.Witness<Node> {
+fn verilog_module_relation_row() -> v2.std.witness.Witness<v2.std.node.Node> {
   verilog_relation_row_for(
     lhs: ^verilog_production_ansi_module_decl,
     emitted: verilog_interlock_emitted()
   )
 }
 
-fn verilog_named_edge(name: v2.std.node.Symbol, target: Node) -> v2.std.node.Edge {
-  v2.std.node.Edge { label: Named { name: name }, target: target }
+fn verilog_named_edge(name: v2.std.node.Symbol, target: v2.std.node.Node) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: v2.std.node.Named { name: name }, target: target }
 }
 
-fn verilog_row_or_empty(lhs: v2.std.node.Symbol, emitted: Node) -> Node {
+fn verilog_row_or_empty(lhs: v2.std.node.Symbol, emitted: v2.std.node.Node) -> v2.std.node.Node {
   match verilog_relation_row_for(lhs: lhs, emitted: emitted) {
     Holds { value: row } => row
     Violates { diagnostic: _ } => verilog_conj(children: [])
@@ -1067,11 +1067,11 @@ fn verilog_row_or_empty(lhs: v2.std.node.Symbol, emitted: Node) -> Node {
 // identity, so the single ansi_port row serves all four ports and the single binary row serves
 // both assignments. Each row is derived from the sub-node of the exemplar that exhibits its
 // shape, which is why the exemplar has to contain every shape the profile claims to emit.
-fn verilog_first_port() -> Node {
+fn verilog_first_port() -> v2.std.node.Node {
   verilog_ansi_port(direction: ^verilog_interlock_dir_input, name: ^verilog_interlock_conditioned_good)
 }
 
-fn verilog_first_assign() -> Node {
+fn verilog_first_assign() -> v2.std.node.Node {
   verilog_continuous_assign(
     lhs: ^verilog_interlock_power_permit,
     value: verilog_binary_application(
@@ -1085,7 +1085,7 @@ fn verilog_first_assign() -> Node {
   )
 }
 
-fn verilog_emission_translation_rules() -> Node {
+fn verilog_emission_translation_rules() -> v2.std.node.Node {
   verilog_conj(children: [
     verilog_named_edge(
       name: ^grammar_relation_rules_formal_productions,
@@ -1171,7 +1171,7 @@ fn verilog_emission_target_model() -> v2.std.compilers.target_model.TargetModel 
     token_class_emit_transforms: verilog_emit_layout_transforms(),
     authority_source_text: "",
     runtime_row: target_emit_host_runtime_row_unconfigured,
-    produced_decl_support: ProducedDeclUnwired
+    produced_decl_support: v2.std.compilers.target_model.ProducedDeclUnwired
   }
 }
 
@@ -1180,7 +1180,7 @@ fn verilog_emission_target_model() -> v2.std.compilers.target_model.TargetModel 
 // program's token sequence; serialization then replays it. That means the rules population is not
 // a fixed language table that different programs select from — selecting a row derived from some
 // other program replays THAT program. The composition is real, and it happens at derivation.
-fn verilog_target_model_with_single_row(row: Node) -> v2.std.compilers.target_model.TargetModel {
+fn verilog_target_model_with_single_row(row: v2.std.node.Node) -> v2.std.compilers.target_model.TargetModel {
   v2.std.compilers.target_model.TargetModel {
     bundle: verilog_conj(children: [
       verilog_named_edge(
@@ -1199,7 +1199,7 @@ fn verilog_target_model_with_single_row(row: Node) -> v2.std.compilers.target_mo
     token_class_emit_transforms: verilog_emit_layout_transforms(),
     authority_source_text: "",
     runtime_row: target_emit_host_runtime_row_unconfigured,
-    produced_decl_support: ProducedDeclUnwired
+    produced_decl_support: v2.std.compilers.target_model.ProducedDeclUnwired
   }
 }
 
@@ -1242,13 +1242,13 @@ fn verilog_identifier_is_admissible(spelling: String) -> Bool {
 // these, so no consumer has to know that "input" is padded to align with "output" or that the
 // conjunction renders with surrounding spaces. Those are layout decisions and they stay here.
 fn verilog_base_spellings() -> std.types.Map<v2.std.node.Symbol, String> {
-  map_insert(
-    map_insert(
-      map_insert(
-        map_insert(
-          map_insert(
-            map_insert(
-              map_insert(empty_map(), ^verilog_header_open, " (\n"),
+  v2.std.collection.map_insert(
+    v2.std.collection.map_insert(
+      v2.std.collection.map_insert(
+        v2.std.collection.map_insert(
+          v2.std.collection.map_insert(
+            v2.std.collection.map_insert(
+              v2.std.collection.map_insert(v2.std.collection.empty_map(), ^verilog_header_open, " (\n"),
               ^verilog_header_close,
               "\n)"
             ),
@@ -1269,7 +1269,7 @@ fn verilog_base_spellings() -> std.types.Map<v2.std.node.Symbol, String> {
   )
 }
 
-fn verilog_emission_rules_for_row(row: Node) -> Node {
+fn verilog_emission_rules_for_row(row: v2.std.node.Node) -> v2.std.node.Node {
   verilog_conj(children: [
     verilog_named_edge(
       name: ^grammar_relation_rules_formal_productions,
@@ -1279,7 +1279,7 @@ fn verilog_emission_rules_for_row(row: Node) -> Node {
   ])
 }
 
-fn verilog_target_model_for(row: Node, spellings: Map<v2.std.node.Symbol, String>) -> v2.std.compilers.target_model.TargetModel {
+fn verilog_target_model_for(row: v2.std.node.Node, spellings: Map<v2.std.node.Symbol, String>) -> v2.std.compilers.target_model.TargetModel {
   v2.std.compilers.target_model.TargetModel {
     bundle: verilog_conj(children: [
       verilog_named_edge(
@@ -1298,7 +1298,7 @@ fn verilog_target_model_for(row: Node, spellings: Map<v2.std.node.Symbol, String
     token_class_emit_transforms: verilog_emit_layout_transforms(),
     authority_source_text: "",
     runtime_row: target_emit_host_runtime_row_unconfigured,
-    produced_decl_support: ProducedDeclUnwired
+    produced_decl_support: v2.std.compilers.target_model.ProducedDeclUnwired
   }
 }
 
@@ -1309,16 +1309,16 @@ type VerilogEmission
   = VerilogEmitted { source: String }
   | VerilogEmissionRefused { reason: v2.std.node.Symbol }
 
-fn verilog_emit_module(module_node: Node, spellings: Map<v2.std.node.Symbol, String>) -> VerilogEmission {
+fn verilog_emit_module(module_node: v2.std.node.Node, spellings: Map<v2.std.node.Symbol, String>) -> VerilogEmission {
   match verilog_relation_row_for(lhs: ^verilog_production_ansi_module_decl, emitted: module_node) {
     Holds { value: row } =>
-      match target_serialize_relation_row_from_model_bounded(
+      match v2.compiler.translate.target_serialize_relation_row_from_model_bounded(
         4096,
         verilog_target_model_for(row: row, spellings: spellings),
         module_node
       ) {
-        Accepted { value: text, diagnostics: _ } => VerilogEmitted { source: render_target_text(t: text) }
-        Rejected { diagnostics: d } => VerilogEmissionRefused { reason: d.head.reason }
+        v2.std.diagnostic.Accepted { value: text, diagnostics: _ } => VerilogEmitted { source: v2.std.compilers.target_model.render_target_text(t: text) }
+        v2.std.diagnostic.Rejected { diagnostics: d } => VerilogEmissionRefused { reason: d.head.reason }
       }
     Violates { diagnostic: d } => VerilogEmissionRefused { reason: d.reason }
   }
@@ -1337,7 +1337,7 @@ fn verilog_ingest_grammar_probe() -> v2.std.grammar.GrammarSchemaProbeBinding {
     probe: v2.std.grammar.GrammarSchemaProbe {
       fixture: "module m; endmodule",
       production: verilog_source_text_module_formal_production(),
-      expected_parse_surface: grammar_atom(identity: ^verilog_surface_module_decl)
+      expected_parse_surface: v2.std.grammar.grammar_atom(identity: ^verilog_surface_module_decl)
     }
   }
 }

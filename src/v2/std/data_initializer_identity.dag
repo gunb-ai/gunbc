@@ -6,36 +6,36 @@ data data_initializer_identity_authority_note: String = "Resolved parent/arm pro
 fn projection_kind_lexeme_optional(node: v2.std.node.Node) -> Optional<String> {
   match node.kind {
     TypeNode { connective: Atom { identity: sym } } =>
-      optional_present(value: symbol_lexeme(sym: sym))
-    _ => optional_absent()
+      v2.std.optional.optional_present(value: v2.std.compilers.lexing.symbol_lexeme(sym: sym))
+    _ => v2.std.optional.optional_absent()
   }
 }
 
 fn projection_named_child_optional(node: v2.std.node.Node, label: String) -> Optional<v2.std.node.Node> {
-  fold(node_labeled_child_edges(node: node), init: optional_absent(), f: fn(acc, e) {
+  fold(node_labeled_child_edges(node: node), init: v2.std.optional.optional_absent(), f: fn(acc, e) {
     match acc {
       Present { value: _ } => acc
       Absent =>
         if named_edge_sort_key(e: e) == label {
-          optional_present(value: e.target)
+          v2.std.optional.optional_present(value: e.target)
         } else {
-          optional_absent()
+          v2.std.optional.optional_absent()
         }
     }
   })
 }
 
 fn projection_atom_lexeme_optional(node: v2.std.node.Node) -> Optional<String> {
-  match node_atom_identity_optional(node: node) {
-    Present { value: sym } => optional_present(value: symbol_lexeme(sym: sym))
-    Absent => optional_absent()
+  match v2.std.grammar.node_atom_identity_optional(node: node) {
+    Present { value: sym } => v2.std.optional.optional_present(value: v2.std.compilers.lexing.symbol_lexeme(sym: sym))
+    Absent => v2.std.optional.optional_absent()
   }
 }
 
 fn projection_named_child_atom_lexeme(node: v2.std.node.Node, label: String) -> Optional<String> {
   match projection_named_child_optional(node: node, label: label) {
     Present { value: child } => projection_atom_lexeme_optional(node: child)
-    Absent => optional_absent()
+    Absent => v2.std.optional.optional_absent()
   }
 }
 
@@ -56,9 +56,9 @@ fn record_constructor_parent_qualified_name_optional(record: v2.std.node.Node) -
     Present { value: ctor } =>
       match projection_named_child_optional(node: ctor, label: "parent_type") {
         Present { value: parent } => declaration_identity_qualified_name_optional(node: parent)
-        Absent => optional_absent()
+        Absent => v2.std.optional.optional_absent()
       }
-    Absent => optional_absent()
+    Absent => v2.std.optional.optional_absent()
   }
 }
 
@@ -67,9 +67,9 @@ fn record_constructor_variant_name_optional(record: v2.std.node.Node) -> Optiona
     Present { value: ctor } =>
       match projection_named_child_optional(node: ctor, label: "constructor") {
         Present { value: variant } => variant_declaration_name_optional(node: variant)
-        Absent => optional_absent()
+        Absent => v2.std.optional.optional_absent()
       }
-    Absent => optional_absent()
+    Absent => v2.std.optional.optional_absent()
   }
 }
 
@@ -116,7 +116,7 @@ fn resolved_variant_name_optional(node: v2.std.node.Node) -> Optional<String> {
 fn ambiguous_candidate_projection_count(node: v2.std.node.Node) -> Int {
   length(
     xs: fold(node_labeled_child_edges(node: node), init: std.algebra.Empty, f: fn(acc, e) {
-      let key_lexeme = symbol_lexeme(sym: named_edge_sort_key(e: e))
+      let key_lexeme = v2.std.compilers.lexing.symbol_lexeme(sym: named_edge_sort_key(e: e))
       if key_lexeme.starts_with(prefix: "candidate_") {
         list_snoc_item(xs: acc, item: e.target)
       } else {
@@ -233,9 +233,9 @@ fn decl_fact_lookup_by_pool_declaration_identity(
 
 fn decl_fact_optional_by_qualified_name(qn: String, facts: List<v2.std.decl_index.DeclFact>) -> Optional<v2.std.decl_index.DeclFact> {
   match decl_fact_lookup_by_qualified_name(qn: qn, facts: facts) {
-    DeclFactUnique { fact: fact } => optional_present(value: fact)
-    DeclFactMissing => optional_absent()
-    DeclFactAmbiguous { candidates: _ } => optional_absent()
+    DeclFactUnique { fact: fact } => v2.std.optional.optional_present(value: fact)
+    DeclFactMissing => v2.std.optional.optional_absent()
+    DeclFactAmbiguous { candidates: _ } => v2.std.optional.optional_absent()
   }
 }
 
@@ -295,7 +295,7 @@ fn data_initializer_is_plain_record_projection(node: v2.std.node.Node) -> Bool {
 fn plain_record_parent_qualified_name_optional(record: v2.std.node.Node) -> Optional<String> {
   match projection_named_child_optional(node: record, label: "parent_type") {
     Present { value: parent } => declaration_identity_qualified_name_optional(node: parent)
-    Absent => optional_absent()
+    Absent => v2.std.optional.optional_absent()
   }
 }
 

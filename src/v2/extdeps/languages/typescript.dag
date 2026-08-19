@@ -51,7 +51,7 @@ data ts_facts_boolean: TsBooleanPrimitiveFacts = TsBooleanPrimitiveFacts {
   encoding: ^ts_repr_boolean_ecma_boolean,
 }
 
-data ts_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
+data ts_bool_grounding: v2.std.algebra.BooleanAlgebra<Bool> = v2.std.logic.bool_boolean_algebra
 
 data ts_numeric_facts_catalog: List<TsEcma262NumericPrimitiveFactsUnion> = [
   TsNumericFactsNumber { facts: ts_facts_number },
@@ -62,12 +62,12 @@ fn ts_inhabitant_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn ts_named_edge(name: v2.std.node.Symbol, target: v2.std.node.Node) -> v2.std.node.Edge {
-  v2.std.node.Edge { label: Named { name: name }, target: target }
+  v2.std.node.Edge { label: v2.std.node.Named { name: name }, target: target }
 }
 
 fn ts_primitive_algebra_witness_node(
@@ -79,7 +79,7 @@ fn ts_primitive_algebra_witness_node(
   std_projection: v2.std.node.Symbol
 ) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       ts_named_edge(
         name: witness_field_name,
@@ -94,7 +94,7 @@ fn ts_primitive_algebra_witness_node(
         target: ts_inhabitant_atom(id: std_projection)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
@@ -116,7 +116,7 @@ fn ts_bool_operation_semantics_node(facts: TsBooleanPrimitiveFacts) -> v2.std.no
 
 fn ts_number_facts_node(facts: TsNumberPrimitiveFacts) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       ts_named_edge(
         name: ^ts_facts_field_surface_spelling,
@@ -143,13 +143,13 @@ fn ts_number_facts_node(facts: TsNumberPrimitiveFacts) -> v2.std.node.Node {
         target: ts_inhabitant_atom(id: facts.std_projection)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn ts_bigint_facts_node(facts: TsBigIntPrimitiveFacts) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       ts_named_edge(
         name: ^ts_facts_field_surface_spelling,
@@ -168,13 +168,13 @@ fn ts_bigint_facts_node(facts: TsBigIntPrimitiveFacts) -> v2.std.node.Node {
         target: ts_inhabitant_atom(id: facts.encoding)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn ts_bool_facts_node(facts: TsBooleanPrimitiveFacts) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       ts_named_edge(
         name: ^ts_facts_field_surface_spelling,
@@ -193,13 +193,13 @@ fn ts_bool_facts_node(facts: TsBooleanPrimitiveFacts) -> v2.std.node.Node {
         target: ts_inhabitant_atom(id: facts.encoding)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn ts_number_inhabitant_node(id: v2.std.node.Symbol, facts: TsNumberPrimitiveFacts) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       ts_named_edge(name: ^ts_inhabitant_field_atom, target: ts_inhabitant_atom(id: id)),
       ts_named_edge(
@@ -207,13 +207,13 @@ fn ts_number_inhabitant_node(id: v2.std.node.Symbol, facts: TsNumberPrimitiveFac
         target: ts_number_facts_node(facts: facts)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn ts_bigint_inhabitant_node(id: v2.std.node.Symbol, facts: TsBigIntPrimitiveFacts) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       ts_named_edge(name: ^ts_inhabitant_field_atom, target: ts_inhabitant_atom(id: id)),
       ts_named_edge(
@@ -221,13 +221,13 @@ fn ts_bigint_inhabitant_node(id: v2.std.node.Symbol, facts: TsBigIntPrimitiveFac
         target: ts_bigint_facts_node(facts: facts)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn ts_bool_inhabitant_node(id: v2.std.node.Symbol, facts: TsBooleanPrimitiveFacts) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       ts_named_edge(name: ^ts_inhabitant_field_atom, target: ts_inhabitant_atom(id: id)),
       ts_named_edge(
@@ -235,7 +235,7 @@ fn ts_bool_inhabitant_node(id: v2.std.node.Symbol, facts: TsBooleanPrimitiveFact
         target: ts_bool_facts_node(facts: facts)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
@@ -253,13 +253,13 @@ fn ts_inhabitant_boolean_node() -> v2.std.node.Node {
 
 fn ts_declared_inhabitants_root() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       ts_named_edge(name: ^ts_inhabitant_field_number, target: ts_inhabitant_number_node()),
       ts_named_edge(name: ^ts_inhabitant_field_bigint, target: ts_inhabitant_bigint_node()),
       ts_named_edge(name: ^ts_inhabitant_field_boolean, target: ts_inhabitant_boolean_node())
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
@@ -305,7 +305,7 @@ fn ts_number_zip_fold_closure_edges() -> List<v2.std.node.Edge> {
 }
 
 fn ts_coercion_candidate_edges() -> List<v2.std.node.Edge> {
-  list_append(
+  v2.std.algebra.list_append(
     left: ts_declared_inhabitants_root().children,
     right: ts_number_zip_fold_closure_edges()
   )
@@ -313,9 +313,9 @@ fn ts_coercion_candidate_edges() -> List<v2.std.node.Edge> {
 
 fn ts_add_declared_inhabitants_root() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: ts_coercion_candidate_edges(),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
@@ -325,13 +325,13 @@ fn ts_selection_policy_node() -> v2.std.node.Node {
 
 fn ts_emitted_add_fn_node() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Arrow },
     children: [
-      v2.std.node.Edge { label: Positional, target: ts_inhabitant_number_node() },
-      v2.std.node.Edge { label: Positional, target: ts_inhabitant_number_node() },
-      v2.std.node.Edge { label: Positional, target: ts_inhabitant_number_node() }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: ts_inhabitant_number_node() },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: ts_inhabitant_number_node() },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: ts_inhabitant_number_node() }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
@@ -345,7 +345,7 @@ fn ts_emitted_add_fn_node() -> v2.std.node.Node {
 // loop either, so loop_token stays unspelled and the loop form refuses.
 fn ts_value_expression_projection() -> v2.std.compilers.target_model.TargetValueExpressionProjection {
   ts_value_expression_projection_full(
-    record_literal_names_type: Omit,
+    record_literal_names_type: v2.std.compilers.target_model.Omit,
     block_evaluation_mode: ts_block_evaluation_mode()
   )
 }
@@ -381,7 +381,7 @@ fn ts_value_expression_projection_with_block_evaluation_mode(
   block_evaluation_mode: v2.std.compilers.target_model.BlockEvaluationMode
 ) -> v2.std.compilers.target_model.TargetValueExpressionProjection {
   ts_value_expression_projection_full(
-    record_literal_names_type: Omit,
+    record_literal_names_type: v2.std.compilers.target_model.Omit,
     block_evaluation_mode: block_evaluation_mode
   )
 }
@@ -434,7 +434,7 @@ fn ts_value_expression_projection_full(
       if_token: ^ts_token_ternary_nop,
       then_token: ^ts_token_ternary_question,
       else_token: ^ts_token_ternary_colon,
-      delimiting: ConditionalSelfDelimiting
+      delimiting: v2.std.compilers.target_model.ConditionalSelfDelimiting
     },
 
     let_form: v2.std.compilers.target_model.TargetBindLetShape {
@@ -474,14 +474,14 @@ fn ts_value_expression_projection_full(
 }
 
 fn ts_add_operator_realization_row() -> v2.std.node.Node {
-  target_operator_realization_node(
-    operation: canonical_operation_op_add(),
+  v2.std.compilers.target_model.target_operator_realization_node(
+    operation: v2.std.compilers.target_model.canonical_operation_op_add(),
     shape: v2.std.compilers.target_model.InfixToken { token: ^ts_token_plus }
   )
 }
 
 fn ts_operator_realizations_catalog_node() -> v2.std.node.Node {
-  target_operator_realizations_catalog_node(rows: [ts_add_operator_realization_row()])
+  v2.std.compilers.target_model.target_operator_realizations_catalog_node(rows: [ts_add_operator_realization_row()])
 }
 
 fn ts_block_evaluation_mode() -> v2.std.compilers.target_model.BlockEvaluationMode {
@@ -517,7 +517,7 @@ fn ts_add_block_close() -> List<v2.std.compilers.target_model.ConcreteSyntaxToke
 }
 
 fn ts_bodied_arrow_statement_scaffold() -> v2.std.compilers.target_model.TargetBodiedArrowStatementScaffold {
-  derive_bodied_arrow_scaffold(
+  v2.std.compilers.target_model.derive_bodied_arrow_scaffold(
     signature_with_open: ts_add_signature_with_open(),
     block_close: ts_add_block_close(),
     mode: ts_block_evaluation_mode()
@@ -535,8 +535,8 @@ fn ts_fn_add_statement_suffix_tokens() -> List<v2.std.compilers.target_model.Con
 }
 
 fn ts_compose_add_fn_tokens(body_tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
-  list_append(
-    left: list_append(
+  v2.std.algebra.list_append(
+    left: v2.std.algebra.list_append(
       left: ts_fn_add_statement_prefix_tokens(),
       right: body_tokens
     ),
@@ -550,7 +550,7 @@ fn ts_source_text_authority() -> String {
 
 fn ts_concrete_token_node(token: v2.std.compilers.target_model.ConcreteSyntaxToken) -> v2.std.node.Node {
 
-  concrete_syntax_token_to_node(token: token)
+  v2.std.compilers.target_model.concrete_syntax_token_to_node(token: token)
 }
 
 fn ts_serialize_source_prefix_edges() -> List<v2.std.node.Edge> {
@@ -567,12 +567,12 @@ fn ts_serialize_source_prefix_edges() -> List<v2.std.node.Edge> {
 }
 
 fn ts_serialize_source_children() -> List<v2.std.node.Edge> {
-  list_append(
+  v2.std.algebra.list_append(
     left: ts_serialize_source_prefix_edges(),
     right: [
       ts_named_edge(
         name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
+        target: v2.std.grammar.grammar_relation_tokens_node(
           tokens: ts_canonical_add_fn_tokens(),
           token_to_node: ts_concrete_token_node
         )
@@ -584,14 +584,14 @@ fn ts_serialize_source_children() -> List<v2.std.node.Edge> {
 fn ts_serialize_source_node() -> v2.std.node.Node {
   let _authority = ts_source_text_authority()
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: ts_serialize_source_children(),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn ts_grammar_terminal(token_class: v2.std.node.Symbol) -> v2.std.grammar.GrammarExpr {
-  Terminal { token_class: token_class, stamp: StampClass }
+  v2.std.grammar.Terminal { token_class: token_class, stamp: v2.std.grammar.StampClass }
 }
 
 type TsGramBuild1State
@@ -599,20 +599,20 @@ type TsGramBuild1State
   | TsGramBuild1StateReady { expr: v2.std.grammar.GrammarExpr }
 
 fn ts_grammar_sequence_from_token_classes() -> v2.std.grammar.GrammarExpr {
-  match fold_list(
+  match v2.std.algebra.fold_list(
     xs: ts_canonical_add_fn_tokens(),
     empty: TsGramBuild1StateInit,
     cons: fn(state, token) {
       match state {
         TsGramBuild1StateInit =>
           TsGramBuild1StateReady {
-            expr: ts_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+            expr: ts_grammar_terminal(token_class: v2.std.compilers.target_model.concrete_syntax_token_class(token: token))
           }
         TsGramBuild1StateReady { expr: acc } =>
           TsGramBuild1StateReady {
             expr: v2.std.grammar.Sequence {
               left: acc,
-              right: ts_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+              right: ts_grammar_terminal(token_class: v2.std.compilers.target_model.concrete_syntax_token_class(token: token))
             }
           }
       }
@@ -645,7 +645,7 @@ fn ts_canonical_add_fn_tokens() -> List<v2.std.compilers.target_model.ConcreteSy
 }
 
 fn ts_fn_add_bodied_relation_row_node() -> v2.std.node.Node {
-  grammar_relation_row_attach_bodied_scaffold(
+  v2.std.compilers.target_model.grammar_relation_row_attach_bodied_scaffold(
     row: ts_fn_add_scaffold_relation_row_node(),
     scaffold: ts_bodied_arrow_statement_scaffold()
   )
@@ -657,52 +657,52 @@ fn ts_field_type_string_emitted() -> v2.std.node.Node {
 
 fn ts_type_annotation_name_emitted(binding: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      v2.std.node.Edge { label: Positional, target: ts_inhabitant_atom(id: binding) }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: ts_inhabitant_atom(id: binding) }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn ts_record_field_emitted(field_binding: v2.std.node.Symbol, type_child: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      v2.std.node.Edge { label: Positional, target: ts_inhabitant_atom(id: field_binding) },
-      v2.std.node.Edge { label: Positional, target: type_child }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: ts_inhabitant_atom(id: field_binding) },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: type_child }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn ts_record_fields_single_emitted(field: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      v2.std.node.Edge { label: Positional, target: field }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: field }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn ts_record_fields_pair_emitted(left: v2.std.node.Node, right: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      v2.std.node.Edge { label: Positional, target: left },
-      v2.std.node.Edge { label: Positional, target: right }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: left },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: right }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn ts_record_type_task_emitted() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: ts_record_fields_pair_emitted(
           left: ts_record_fields_pair_emitted(
             left: ts_record_fields_single_emitted(
@@ -723,28 +723,28 @@ fn ts_record_type_task_emitted() -> v2.std.node.Node {
         )
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn ts_type_annotation_task_record_emitted() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      v2.std.node.Edge { label: Positional, target: ts_record_type_task_emitted() }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: ts_record_type_task_emitted() }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn ts_type_alias_decl_emitted(name_binding: v2.std.node.Symbol, type_child: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      v2.std.node.Edge { label: Positional, target: ts_inhabitant_atom(id: name_binding) },
-      v2.std.node.Edge { label: Positional, target: type_child }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: ts_inhabitant_atom(id: name_binding) },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: type_child }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
@@ -757,84 +757,84 @@ fn ts_task_type_alias_emitted() -> v2.std.node.Node {
 
 fn ts_task_formal_productions() -> List<v2.std.grammar.FormalProduction> {
   [
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_type_string,
-      rhs: [grammar_formal_terminal(identity: ^ts_token_ty_string)]
+      rhs: [v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_ty_string)]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_type_annotation,
-      rhs: [grammar_formal_terminal(identity: ^ts_token_ty_string)]
+      rhs: [v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_ty_string)]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_type_annotation,
-      rhs: [grammar_formal_terminal_bound(identity: ^ts_token_ident, binding: ^ts_binding_type_task_id)]
+      rhs: [v2.std.grammar.grammar_formal_terminal_bound(identity: ^ts_token_ident, binding: ^ts_binding_type_task_id)]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_type_annotation,
-      rhs: [grammar_formal_terminal_bound(identity: ^ts_token_ident, binding: ^ts_binding_type_task_status)]
+      rhs: [v2.std.grammar.grammar_formal_terminal_bound(identity: ^ts_token_ident, binding: ^ts_binding_type_task_status)]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_type_annotation,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: ^ts_production_record_type)]
+      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_record_type)]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_record_field,
       rhs: [
-        grammar_formal_terminal_bound(identity: ^ts_token_ident, binding: ^ts_binding_field_id),
-        grammar_formal_terminal(identity: ^ts_token_colon),
-        grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_annotation)
+        v2.std.grammar.grammar_formal_terminal_bound(identity: ^ts_token_ident, binding: ^ts_binding_field_id),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_colon),
+        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_annotation)
       ]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_record_field,
       rhs: [
-        grammar_formal_terminal_bound(identity: ^ts_token_ident, binding: ^ts_binding_field_title),
-        grammar_formal_terminal(identity: ^ts_token_colon),
-        grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_annotation)
+        v2.std.grammar.grammar_formal_terminal_bound(identity: ^ts_token_ident, binding: ^ts_binding_field_title),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_colon),
+        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_annotation)
       ]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_record_field,
       rhs: [
-        grammar_formal_terminal_bound(identity: ^ts_token_ident, binding: ^ts_binding_field_status),
-        grammar_formal_terminal(identity: ^ts_token_colon),
-        grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_annotation)
+        v2.std.grammar.grammar_formal_terminal_bound(identity: ^ts_token_ident, binding: ^ts_binding_field_status),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_colon),
+        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_annotation)
       ]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_record_fields,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: ^ts_production_record_field)]
+      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_record_field)]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_record_fields,
       rhs: [
-        grammar_formal_nonterminal_occurrence(identity: ^ts_production_record_fields),
-        grammar_formal_terminal(identity: ^ts_token_comma),
-        grammar_formal_nonterminal_occurrence(identity: ^ts_production_record_field)
+        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_record_fields),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_comma),
+        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_record_field)
       ]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_record_type,
       rhs: [
-        grammar_formal_terminal(identity: ^ts_token_lbrace),
-        grammar_formal_nonterminal_occurrence(identity: ^ts_production_record_fields),
-        grammar_formal_terminal(identity: ^ts_token_rbrace)
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_lbrace),
+        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_record_fields),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_rbrace)
       ]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_type_alias_decl,
       rhs: [
-        grammar_formal_terminal(identity: ^ts_token_kw_type),
-        grammar_formal_terminal_bound(identity: ^ts_token_ident, binding: ^ts_binding_task),
-        grammar_formal_terminal(identity: ^ts_token_eq),
-        grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_annotation),
-        grammar_formal_terminal(identity: ^ts_token_semicolon)
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_kw_type),
+        v2.std.grammar.grammar_formal_terminal_bound(identity: ^ts_token_ident, binding: ^ts_binding_task),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_eq),
+        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_annotation),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_semicolon)
       ]
     )
   ]
 }
 
-fn ts_task_type_alias_relation_row_witness() -> Witness<v2.std.node.Node> {
+fn ts_task_type_alias_relation_row_witness() -> v2.std.witness.Witness<v2.std.node.Node> {
   ts_eager_grammar_relation_row_witness(lhs: ^ts_production_type_alias_decl)
 }
 
@@ -851,42 +851,42 @@ fn ts_task_serialize_source_children() -> List<v2.std.node.Edge> {
   ]
 }
 
-fn ts_grammar_relation_row_token_edges_witness(row: v2.std.node.Node) -> Witness<List<v2.std.node.Edge>> {
-  match find_named_child(root: row, name: ^grammar_relation_field_tokens) {
-    Accepted { value: tokens_root, diagnostics: _ } =>
+fn ts_grammar_relation_row_token_edges_witness(row: v2.std.node.Node) -> v2.std.witness.Witness<List<v2.std.node.Edge>> {
+  match v2.std.node_query.find_named_child(root: row, name: ^grammar_relation_field_tokens) {
+    v2.std.diagnostic.Accepted { value: tokens_root, diagnostics: _ } =>
       match tokens_root.kind {
-        TypeNode { connective: Conj } => v2.std.witness.Holds { value: tokens_root.children }
+        v2.std.node.TypeNode { connective: v2.std.node.Conj } => v2.std.witness.Holds { value: tokens_root.children }
         _ =>
           v2.std.witness.Violates {
             diagnostic: v2.std.diagnostic.Diagnostic {
               reason: ^grammar_relation_row_tokens_not_conj,
-              at: node_locus(node: tokens_root),
-              correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+              at: v2.std.diagnostic.node_locus(node: tokens_root),
+              correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
             }
           }
       }
-    Rejected { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
+    v2.std.diagnostic.Rejected { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
   }
 }
 
-fn ts_task_serialize_source_witness() -> Witness<v2.std.node.Node> {
+fn ts_task_serialize_source_witness() -> v2.std.witness.Witness<v2.std.node.Node> {
   match ts_task_type_alias_relation_row_witness() {
-    Holds { value: row } =>
+    v2.std.witness.Holds { value: row } =>
       match ts_grammar_relation_row_token_edges_witness(row: row) {
-        Holds { value: token_edges } =>
+        v2.std.witness.Holds { value: token_edges } =>
           v2.std.witness.Holds {
             value: v2.std.node.Node {
-              kind: v2.std.node.TypeNode { connective: Conj },
-              children: list_append(
+              kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+              children: v2.std.algebra.list_append(
                 left: ts_task_serialize_source_children(),
                 right: token_edges
               ),
-              occurrence_id: SyntheticOccurrence
+              occurrence_id: v2.std.node.SyntheticOccurrence
 }
           }
-        Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+        v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
       }
-    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -919,99 +919,99 @@ fn ts_pr3_identity_type_annotation_emitted() -> v2.std.node.Node {
 
 fn ts_pr3_identity_typed_param_emitted() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      v2.std.node.Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_param_x) },
-      v2.std.node.Edge { label: Positional, target: ts_pr3_identity_type_annotation_emitted() }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: ts_inhabitant_atom(id: ^ts_binding_param_x) },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: ts_pr3_identity_type_annotation_emitted() }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn ts_pr3_identity_typed_params_emitted() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      v2.std.node.Edge { label: Positional, target: ts_pr3_identity_typed_param_emitted() }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: ts_pr3_identity_typed_param_emitted() }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn ts_pr3_identity_typed_params_opt_emitted() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      v2.std.node.Edge { label: Positional, target: ts_pr3_identity_typed_params_emitted() }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: ts_pr3_identity_typed_params_emitted() }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn ts_pr3_identity_typed_fn_emitted() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      v2.std.node.Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_pr3_identity) },
-      v2.std.node.Edge { label: Positional, target: ts_pr3_identity_typed_params_opt_emitted() },
-      v2.std.node.Edge { label: Positional, target: ts_pr3_identity_type_annotation_emitted() },
-      v2.std.node.Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_param_x) }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: ts_inhabitant_atom(id: ^ts_binding_pr3_identity) },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: ts_pr3_identity_typed_params_opt_emitted() },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: ts_pr3_identity_type_annotation_emitted() },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: ts_inhabitant_atom(id: ^ts_binding_param_x) }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn ts_pr3_identity_formal_productions() -> List<v2.std.grammar.FormalProduction> {
   [
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_type_number,
-      rhs: [grammar_formal_terminal(identity: ^ts_token_ty_number)]
+      rhs: [v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_ty_number)]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_type_annotation,
-      rhs: [grammar_formal_terminal(identity: ^ts_token_ty_number)]
+      rhs: [v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_ty_number)]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_pr3_typed_param,
       rhs: [
-        grammar_formal_terminal_bound(identity: ^ts_token_ident, binding: ^ts_binding_param_x),
-        grammar_formal_terminal(identity: ^ts_token_colon),
-        grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_annotation)
+        v2.std.grammar.grammar_formal_terminal_bound(identity: ^ts_token_ident, binding: ^ts_binding_param_x),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_colon),
+        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_annotation)
       ]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_pr3_typed_params_opt,
       rhs: []
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_pr3_typed_params_opt,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: ^ts_production_pr3_typed_params)]
+      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_pr3_typed_params)]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_pr3_typed_params,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: ^ts_production_pr3_typed_param)]
+      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_pr3_typed_param)]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_pr3_typed_fn_decl,
       rhs: [
-        grammar_formal_terminal(identity: ^ts_token_kw_function),
-        grammar_formal_terminal_bound(identity: ^ts_token_ident, binding: ^ts_binding_pr3_identity),
-        grammar_formal_terminal(identity: ^ts_token_lparen),
-        grammar_formal_nonterminal_occurrence(identity: ^ts_production_pr3_typed_params_opt),
-        grammar_formal_terminal(identity: ^ts_token_rparen),
-        grammar_formal_terminal(identity: ^ts_token_colon),
-        grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_annotation),
-        grammar_formal_terminal(identity: ^ts_token_lbrace),
-        grammar_formal_terminal(identity: ^ts_token_kw_return),
-        grammar_formal_terminal_bound(identity: ^ts_token_ident, binding: ^ts_binding_param_x),
-        grammar_formal_terminal(identity: ^ts_token_semicolon),
-        grammar_formal_terminal(identity: ^ts_token_rbrace)
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_kw_function),
+        v2.std.grammar.grammar_formal_terminal_bound(identity: ^ts_token_ident, binding: ^ts_binding_pr3_identity),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_lparen),
+        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_pr3_typed_params_opt),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_rparen),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_colon),
+        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_annotation),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_lbrace),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_kw_return),
+        v2.std.grammar.grammar_formal_terminal_bound(identity: ^ts_token_ident, binding: ^ts_binding_param_x),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_semicolon),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_rbrace)
       ]
     )
   ]
 }
 
-fn ts_exemplar_emitted_for_lhs(lhs: v2.std.node.Symbol) -> Witness<v2.std.node.Node> {
+fn ts_exemplar_emitted_for_lhs(lhs: v2.std.node.Symbol) -> v2.std.witness.Witness<v2.std.node.Node> {
   if lhs == ^ts_production_type_alias_decl {
     v2.std.witness.Holds { value: ts_task_type_alias_emitted() }
   } else if lhs == ^ts_production_pr3_typed_fn_decl {
@@ -1020,16 +1020,16 @@ fn ts_exemplar_emitted_for_lhs(lhs: v2.std.node.Symbol) -> Witness<v2.std.node.N
     v2.std.witness.Violates {
       diagnostic: v2.std.diagnostic.Diagnostic {
         reason: ^grammar_relation_emitted_not_conj,
-        at: node_locus(node: ts_emitted_add_fn_node()),
-        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+        at: v2.std.diagnostic.node_locus(node: ts_emitted_add_fn_node()),
+        correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
       }
     }
   } else {
     v2.std.witness.Violates {
       diagnostic: v2.std.diagnostic.Diagnostic {
         reason: ^grammar_relation_production_not_found,
-        at: node_locus(node: ts_inhabitant_atom(id: lhs)),
-        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+        at: v2.std.diagnostic.node_locus(node: ts_inhabitant_atom(id: lhs)),
+        correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
       }
     }
   }
@@ -1045,24 +1045,24 @@ fn ts_exemplared_formal_productions_for_lhs(lhs: v2.std.node.Symbol) -> List<v2.
   }
 }
 
-fn ts_eager_grammar_relation_row_witness(lhs: v2.std.node.Symbol) -> Witness<v2.std.node.Node> {
+fn ts_eager_grammar_relation_row_witness(lhs: v2.std.node.Symbol) -> v2.std.witness.Witness<v2.std.node.Node> {
   match ts_exemplar_emitted_for_lhs(lhs: lhs) {
-    Holds { value: emitted } =>
+    v2.std.witness.Holds { value: emitted } =>
       let productions = ts_exemplared_formal_productions_for_lhs(lhs: lhs)
-      match formal_production_for_lhs_exact(
+      match v2.std.grammar.formal_production_for_lhs_exact(
         productions: productions,
         lhs: lhs,
         child: emitted
       ) {
-        Holds { value: production } =>
-          derive_grammar_relation_row_node(
+        v2.std.witness.Holds { value: production } =>
+          v2.std.grammar.derive_grammar_relation_row_node(
             production: production,
             productions: productions,
             emitted: emitted
           )
-        Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+        v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
       }
-    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -1070,7 +1070,7 @@ fn ts_fn_add_scaffold_relation_row_node() -> v2.std.node.Node {
   ts_grammar_relation_row_node(row: ts_grammar_relation_row())
 }
 
-fn ts_pr3_identity_relation_row_witness() -> Witness<v2.std.node.Node> {
+fn ts_pr3_identity_relation_row_witness() -> v2.std.witness.Witness<v2.std.node.Node> {
   ts_eager_grammar_relation_row_witness(lhs: ^ts_production_pr3_typed_fn_decl)
 }
 
@@ -1087,35 +1087,35 @@ fn ts_pr3_identity_serialize_source_children() -> List<v2.std.node.Edge> {
   ]
 }
 
-fn ts_pr3_identity_serialize_source_witness() -> Witness<v2.std.node.Node> {
+fn ts_pr3_identity_serialize_source_witness() -> v2.std.witness.Witness<v2.std.node.Node> {
   match ts_pr3_identity_relation_row_witness() {
-    Holds { value: row } =>
+    v2.std.witness.Holds { value: row } =>
       match ts_grammar_relation_row_token_edges_witness(row: row) {
-        Holds { value: token_edges } =>
+        v2.std.witness.Holds { value: token_edges } =>
           v2.std.witness.Holds {
             value: v2.std.node.Node {
-              kind: v2.std.node.TypeNode { connective: Conj },
-              children: list_append(
+              kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+              children: v2.std.algebra.list_append(
                 left: ts_pr3_identity_serialize_source_children(),
                 right: token_edges
               ),
-              occurrence_id: SyntheticOccurrence
+              occurrence_id: v2.std.node.SyntheticOccurrence
 }
           }
-        Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+        v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
       }
-    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
-fn ts_pr3_translation_rules_witness() -> Witness<v2.std.node.Node> {
+fn ts_pr3_translation_rules_witness() -> v2.std.witness.Witness<v2.std.node.Node> {
   match ts_task_type_alias_relation_row_witness() {
-    Holds { value: task_row } =>
+    v2.std.witness.Holds { value: task_row } =>
       match ts_pr3_identity_relation_row_witness() {
-        Holds { value: pr3_row } =>
+        v2.std.witness.Holds { value: pr3_row } =>
           v2.std.witness.Holds {
             value: v2.std.node.Node {
-              kind: v2.std.node.TypeNode { connective: Conj },
+              kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
               children: [
                 ts_named_edge(
                   name: ^ts_relation_rule_fn_add,
@@ -1130,23 +1130,23 @@ fn ts_pr3_translation_rules_witness() -> Witness<v2.std.node.Node> {
                   target: pr3_row
                 )
               ],
-              occurrence_id: SyntheticOccurrence
+              occurrence_id: v2.std.node.SyntheticOccurrence
 }
           }
-        Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+        v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
       }
-    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
-fn ts_pr3_identity_target_model_bundle_witness() -> Witness<v2.std.node.Node> {
+fn ts_pr3_identity_target_model_bundle_witness() -> v2.std.witness.Witness<v2.std.node.Node> {
   match ts_pr3_translation_rules_witness() {
-    Holds { value: rules } =>
+    v2.std.witness.Holds { value: rules } =>
       match ts_pr3_identity_serialize_source_witness() {
-        Holds { value: serialize } =>
+        v2.std.witness.Holds { value: serialize } =>
           v2.std.witness.Holds {
             value: v2.std.node.Node {
-              kind: v2.std.node.TypeNode { connective: Conj },
+              kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
               children: [
                 ts_named_edge(
                   name: ^target_model_edge_selection_policy,
@@ -1165,21 +1165,21 @@ fn ts_pr3_identity_target_model_bundle_witness() -> Witness<v2.std.node.Node> {
                   target: serialize
                 )
               ],
-              occurrence_id: SyntheticOccurrence
+              occurrence_id: v2.std.node.SyntheticOccurrence
 }
           }
-        Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+        v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
       }
-    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
 fn ts_pr3_identity_binding_spellings() -> Map<v2.std.node.Symbol, String> {
-  map_insert(
-    map_insert(
-      map_insert(
-        map_insert(
-          map_insert(empty_map(), ^ts_binding_fn_add, "add"),
+  v2.std.collection.map_insert(
+    v2.std.collection.map_insert(
+      v2.std.collection.map_insert(
+        v2.std.collection.map_insert(
+          v2.std.collection.map_insert(v2.std.collection.empty_map(), ^ts_binding_fn_add, "add"),
           ^ts_binding_param_x,
           "x"
         ),
@@ -1194,28 +1194,28 @@ fn ts_pr3_identity_binding_spellings() -> Map<v2.std.node.Symbol, String> {
   )
 }
 
-fn ts_pr3_identity_target_model_witness() -> Witness<v2.std.compilers.target_model.TargetModel> {
+fn ts_pr3_identity_target_model_witness() -> v2.std.witness.Witness<v2.std.compilers.target_model.TargetModel> {
   match ts_pr3_identity_target_model_bundle_witness() {
-    Holds { value: bundle } =>
+    v2.std.witness.Holds { value: bundle } =>
       v2.std.witness.Holds {
         value: v2.std.compilers.target_model.TargetModel {
-          produced_decl_support: ProducedDeclUnwired,
+          produced_decl_support: v2.std.compilers.target_model.ProducedDeclUnwired,
           bundle: bundle,
           lex: ts_lex(),
           binding_spellings: ts_pr3_identity_binding_spellings(),
-    token_class_emit_transforms: target_model_emit_transforms_empty,
+    token_class_emit_transforms: v2.std.compilers.target_model.target_model_emit_transforms_empty,
           authority_source_text: ts_pr3_identity_source_text,
-          runtime_row: target_emit_host_runtime_row_unconfigured
+          runtime_row: v2.std.host_transport.target_emit_host_runtime_row_unconfigured
         }
       }
-    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
 fn ts_grammar_relation_row_node(row: TsGrammarRelationRow) -> v2.std.node.Node {
-  grammar_relation_row_to_node(
-    row: derive_grammar_relation_row(production: row.production, emitted: row.emitted),
-    tokens: grammar_relation_tokens_node(
+  v2.std.grammar.grammar_relation_row_to_node(
+    row: v2.std.grammar.derive_grammar_relation_row(production: row.production, emitted: row.emitted),
+    tokens: v2.std.grammar.grammar_relation_tokens_node(
       tokens: row.tokens,
       token_to_node: ts_concrete_token_node
     )
@@ -1224,23 +1224,23 @@ fn ts_grammar_relation_row_node(row: TsGrammarRelationRow) -> v2.std.node.Node {
 
 fn ts_translation_rules_node() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       ts_named_edge(
         name: ^ts_relation_rule_fn_add,
         target: ts_fn_add_bodied_relation_row_node()
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-fn ts_translation_rules_witness() -> Witness<v2.std.node.Node> {
+fn ts_translation_rules_witness() -> v2.std.witness.Witness<v2.std.node.Node> {
   match ts_task_type_alias_relation_row_witness() {
-    Holds { value: task_row } =>
+    v2.std.witness.Holds { value: task_row } =>
       v2.std.witness.Holds {
         value: v2.std.node.Node {
-          kind: v2.std.node.TypeNode { connective: Conj },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
           children: [
             ts_named_edge(
               name: ^ts_relation_rule_fn_add,
@@ -1251,16 +1251,16 @@ fn ts_translation_rules_witness() -> Witness<v2.std.node.Node> {
               target: task_row
             )
           ],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: v2.std.node.SyntheticOccurrence
 }
       }
-    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
 fn ts_target_model_node() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       ts_named_edge(
         name: ^target_model_edge_selection_policy,
@@ -1280,7 +1280,7 @@ fn ts_target_model_node() -> v2.std.node.Node {
       ),
       ts_named_edge(
         name: ^target_model_edge_value_expression_projection,
-        target: value_expr_projection_bundle_node(
+        target: v2.std.compilers.target_model.value_expr_projection_bundle_node(
           projection: ts_value_expression_projection()
         )
       ),
@@ -1290,25 +1290,25 @@ fn ts_target_model_node() -> v2.std.node.Node {
       ),
       ts_named_edge(
         name: ^target_model_edge_module_import_projection,
-        target: module_import_projection_bundle_node(projection: ts_module_projection())
+        target: v2.std.compilers.target_model.module_import_projection_bundle_node(projection: ts_module_projection())
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn ts_binding_spellings() -> Map<v2.std.node.Symbol, String> {
-  map_insert(
-    map_insert(
-      map_insert(
-        map_insert(
-          map_insert(
-            map_insert(
-              map_insert(
-                map_insert(
-                  map_insert(
-                    map_insert(
-                      map_insert(empty_map(), ^ts_binding_fn_add, "add"),
+  v2.std.collection.map_insert(
+    v2.std.collection.map_insert(
+      v2.std.collection.map_insert(
+        v2.std.collection.map_insert(
+          v2.std.collection.map_insert(
+            v2.std.collection.map_insert(
+              v2.std.collection.map_insert(
+                v2.std.collection.map_insert(
+                  v2.std.collection.map_insert(
+                    v2.std.collection.map_insert(
+                      v2.std.collection.map_insert(v2.std.collection.empty_map(), ^ts_binding_fn_add, "add"),
                       ^ts_binding_param_x,
                       "x"
                     ),
@@ -1343,11 +1343,11 @@ fn ts_binding_spellings() -> Map<v2.std.node.Symbol, String> {
 
 fn ts_target_model() -> v2.std.compilers.target_model.TargetModel {
   v2.std.compilers.target_model.TargetModel {
-    produced_decl_support: ProducedDeclUnwired,
+    produced_decl_support: v2.std.compilers.target_model.ProducedDeclUnwired,
     bundle: ts_target_model_node(),
     lex: ts_fn_add_lex(),
     binding_spellings: ts_binding_spellings(),
-    token_class_emit_transforms: target_model_emit_transforms_empty,
+    token_class_emit_transforms: v2.std.compilers.target_model.target_model_emit_transforms_empty,
     authority_source_text: ts_source_text_authority(),
     runtime_row: ts_runtime_row()
   }
@@ -1390,7 +1390,7 @@ fn ts_host_transport_descriptor() -> v2.std.host_transport.HostTransportDescript
       program: v2.std.host_transport.HostToolProgram { executable: "node" },
       args: [v2.std.host_transport.ProducedArtifact { path: "fixture.js" }]
     },
-    runtime_value_codec: SignedI32Le
+    runtime_value_codec: v2.std.host_transport.SignedI32Le
   }
 }
 
@@ -1398,7 +1398,7 @@ fn ts_emit_host_runtime_primitive_type_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^ts_emit_host_runtime_primitive_symbol } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
@@ -1421,7 +1421,7 @@ fn ts_type_expression_projection() -> v2.std.compilers.target_model.TargetTypeEx
       surface: ^ts_surface_type_record,
       open: ^ts_token_lbrace,
       separator: ^ts_token_comma,
-      field_label_separator: optional_present(value: ^ts_token_colon),
+      field_label_separator: v2.std.optional.optional_present(value: ^ts_token_colon),
       close: ^ts_token_rbrace
     },
     disj_form: v2.std.compilers.target_model.TargetSumTypeShape {
@@ -1441,21 +1441,21 @@ fn ts_type_expression_projection() -> v2.std.compilers.target_model.TargetTypeEx
       surface: ^ts_surface_type_cardinality,
       open: ^ts_token_lt,
       separator: ^ts_token_comma,
-      field_label_separator: optional_absent(),
+      field_label_separator: v2.std.optional.optional_absent(),
       close: ^ts_token_gt
     },
     instantiation_form: v2.std.compilers.target_model.TargetGenericApply {
       surface: ^ts_surface_type_generic_apply,
       open: ^ts_token_lt,
       separator: ^ts_token_comma,
-      field_label_separator: optional_absent(),
+      field_label_separator: v2.std.optional.optional_absent(),
       close: ^ts_token_gt
     }
   }
 }
 
 fn ts_type_expression_projection_bundle_node() -> v2.std.node.Node {
-  type_expr_projection_step_algebra(projection: ts_type_expression_projection())
+  v2.std.compilers.target_model.type_expr_projection_step_algebra(projection: ts_type_expression_projection())
 }
 
 fn ts_target_atom_realization_target_model_staging() -> v2.std.compilers.target_model.TargetModel {
@@ -1463,33 +1463,33 @@ fn ts_target_atom_realization_target_model_staging() -> v2.std.compilers.target_
 }
 
 data ts_target_atom_realization_bool: v2.std.compilers.target_model.TargetAtomRealization = v2.std.compilers.target_model.TargetAtomRealization {
-  source_carrier: bool_node(),
+  source_carrier: v2.std.logic.bool_node(),
   target_model: ts_target_atom_realization_target_model_staging(),
   type_form: ts_target_atom_type_form(spelling: ^ts_surface_spelling_boolean),
-  value_form: target_value_template_for_kind(kind: ValueBoolLiteral),
-  constructor_form: optional_absent(),
+  value_form: v2.std.compilers.target_model.target_value_template_for_kind(kind: v2.std.compilers.target_model.ValueBoolLiteral),
+  constructor_form: v2.std.optional.optional_absent(),
   display_name: ^bool_node_symbol
 }
 
 fn ts_std_text_string_type_node() -> v2.std.node.Node {
-  free_monoid_type_node(inhabitant: char_kernel_type_node())
+  v2.std.algebra.free_monoid_type_node(inhabitant: v2.std.compilers.target_model.char_kernel_type_node())
 }
 
 data ts_target_atom_realization_string: v2.std.compilers.target_model.TargetAtomRealization = v2.std.compilers.target_model.TargetAtomRealization {
   source_carrier: ts_std_text_string_type_node(),
   target_model: ts_target_atom_realization_target_model_staging(),
   type_form: ts_target_atom_type_form(spelling: ^ts_surface_spelling_string),
-  value_form: target_value_template_for_kind(kind: ValueStringLiteral),
-  constructor_form: optional_absent(),
+  value_form: v2.std.compilers.target_model.target_value_template_for_kind(kind: v2.std.compilers.target_model.ValueStringLiteral),
+  constructor_form: v2.std.optional.optional_absent(),
   display_name: ^ts_surface_spelling_string
 }
 
 data ts_target_atom_realization_char: v2.std.compilers.target_model.TargetAtomRealization = v2.std.compilers.target_model.TargetAtomRealization {
-  source_carrier: char_kernel_type_node(),
+  source_carrier: v2.std.compilers.target_model.char_kernel_type_node(),
   target_model: ts_target_atom_realization_target_model_staging(),
   type_form: ts_target_atom_type_form(spelling: ^ts_surface_spelling_string),
-  value_form: target_value_template_for_kind(kind: ValueStringLiteral),
-  constructor_form: optional_absent(),
+  value_form: v2.std.compilers.target_model.target_value_template_for_kind(kind: v2.std.compilers.target_model.ValueStringLiteral),
+  constructor_form: v2.std.optional.optional_absent(),
   display_name: ^char_kernel_type_atom
 }
 
@@ -1502,7 +1502,7 @@ data ts_target_atom_realization_catalog: List<v2.std.compilers.target_model.Targ
 
 fn ts_sg2_type_expr_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
   v2.std.compilers.lexing.LexRuleSet {
-    rules: list_append(
+    rules: v2.std.algebra.list_append(
       left: ts_fn_add_lex_rules().rules,
       right: [
         ts_lex_rule(token_class: ^ts_token_lt, text: "<"),
@@ -1520,41 +1520,41 @@ fn ts_sg2_type_expr_lex() -> v2.std.compilers.lexing.LexRules {
 
 fn ts_sg2_type_expr_target_model_node() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
-    children: list_snoc_item(
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+    children: v2.std.algebra.list_snoc_item(
       xs: ts_target_model_node().children,
       item: ts_named_edge(
         name: ^target_model_edge_type_expression_projection,
         target: ts_type_expression_projection_bundle_node()
       )
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn ts_target_atom_realization_target_model_node() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
-    children: list_snoc_item(
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+    children: v2.std.algebra.list_snoc_item(
       xs: ts_sg2_type_expr_target_model_node().children,
       item: ts_named_edge(
         name: ^target_model_edge_atom_realizations,
-        target: target_atom_realization_catalog_node(
+        target: v2.std.compilers.target_model.target_atom_realization_catalog_node(
           rows: ts_target_atom_realization_catalog,
           host_bundle: ts_sg2_type_expr_target_model_node()
         )
       )
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn ts_sg2_binding_spellings() -> Map<v2.std.node.Symbol, String> {
-  map_insert(
-    map_insert(
-      map_insert(
-        map_insert(
-          map_insert(empty_map(), ^ts_binding_sg2_foobar, "FooBar"),
+  v2.std.collection.map_insert(
+    v2.std.collection.map_insert(
+      v2.std.collection.map_insert(
+        v2.std.collection.map_insert(
+          v2.std.collection.map_insert(v2.std.collection.empty_map(), ^ts_binding_sg2_foobar, "FooBar"),
           ^ts_binding_sg2_x,
           "X"
         ),
@@ -1571,29 +1571,29 @@ fn ts_sg2_binding_spellings() -> Map<v2.std.node.Symbol, String> {
 
 fn ts_sg2_type_expr_target_model() -> v2.std.compilers.target_model.TargetModel {
   v2.std.compilers.target_model.TargetModel {
-    produced_decl_support: ProducedDeclUnwired,
+    produced_decl_support: v2.std.compilers.target_model.ProducedDeclUnwired,
     bundle: ts_sg2_type_expr_target_model_node(),
     lex: ts_sg2_type_expr_lex(),
     binding_spellings: ts_sg2_binding_spellings(),
-    token_class_emit_transforms: target_model_emit_transforms_empty,
+    token_class_emit_transforms: v2.std.compilers.target_model.target_model_emit_transforms_empty,
     authority_source_text: ts_source_text_authority(),
-    runtime_row: target_emit_host_runtime_row_unconfigured
+    runtime_row: v2.std.host_transport.target_emit_host_runtime_row_unconfigured
   }
 }
 
 fn ts_sg2_foobar_xy_emitted() -> v2.std.node.Node {
-  target_type_expr_instantiation_emitted(
+  v2.std.compilers.target_model.target_type_expr_instantiation_emitted(
     form: ts_type_expression_projection().instantiation_form,
-    head: target_type_expr_atom_emitted(
+    head: v2.std.compilers.target_model.target_type_expr_atom_emitted(
       form: ts_type_expression_projection().atom_form,
       identity: ^ts_binding_sg2_foobar
     ),
     args: [
-      target_type_expr_atom_emitted(
+      v2.std.compilers.target_model.target_type_expr_atom_emitted(
         form: ts_type_expression_projection().atom_form,
         identity: ^ts_binding_sg2_x
       ),
-      target_type_expr_atom_emitted(
+      v2.std.compilers.target_model.target_type_expr_atom_emitted(
         form: ts_type_expression_projection().atom_form,
         identity: ^ts_binding_sg2_y
       )
@@ -1603,34 +1603,34 @@ fn ts_sg2_foobar_xy_emitted() -> v2.std.node.Node {
 
 fn ts_sg2_instantiation_source_type_node() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Instantiation },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Instantiation },
     children: [
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^ts_binding_sg2_foobar } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: v2.std.node.SyntheticOccurrence
         }
       },
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^ts_binding_sg2_x } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: v2.std.node.SyntheticOccurrence
         }
       },
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^ts_binding_sg2_y } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: v2.std.node.SyntheticOccurrence
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
@@ -1638,21 +1638,21 @@ fn ts_sg2_atom_node(binding: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: binding } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn ts_sg2_arrow_xy_emitted() -> v2.std.node.Node {
-  target_type_expr_arrow_emitted(
+  v2.std.compilers.target_model.target_type_expr_arrow_emitted(
     form: ts_type_expression_projection().arrow_form,
     inputs: std.algebra.Cons {
-      head: target_type_expr_atom_emitted(
+      head: v2.std.compilers.target_model.target_type_expr_atom_emitted(
         form: ts_type_expression_projection().atom_form,
         identity: ^ts_binding_sg2_x
       ),
       tail: std.algebra.Empty
     },
-    output: target_type_expr_atom_emitted(
+    output: v2.std.compilers.target_model.target_type_expr_atom_emitted(
       form: ts_type_expression_projection().atom_form,
       identity: ^ts_binding_sg2_y
     )
@@ -1660,18 +1660,18 @@ fn ts_sg2_arrow_xy_emitted() -> v2.std.node.Node {
 }
 
 fn ts_sg2_arrow_labeled_xy_emitted() -> v2.std.node.Node {
-  target_type_expr_arrow_emitted_named(
+  v2.std.compilers.target_model.target_type_expr_arrow_emitted_named(
     form: ts_type_expression_projection().arrow_form,
     params: [
       v2.std.compilers.target_model.TargetTypeExprArrowParamSlot {
         label: ^ts_binding_sg2_x,
-        type_expr: target_type_expr_atom_emitted(
+        type_expr: v2.std.compilers.target_model.target_type_expr_atom_emitted(
           form: ts_type_expression_projection().atom_form,
           identity: ^ts_binding_sg2_x
         )
       }
     ],
-    output: target_type_expr_atom_emitted(
+    output: v2.std.compilers.target_model.target_type_expr_atom_emitted(
       form: ts_type_expression_projection().atom_form,
       identity: ^ts_binding_sg2_y
     )
@@ -1682,33 +1682,33 @@ fn ts_sg2_arrow_mixed_wire_emitted() -> v2.std.node.Node {
   let golden = ts_sg2_arrow_xy_emitted()
   v2.std.node.Node {
     kind: golden.kind,
-    children: list_snoc_item(
+    children: v2.std.algebra.list_snoc_item(
       xs: golden.children,
       item: ts_named_edge(
         name: ^target_type_expr_field_codomain,
-        target: target_type_expr_atom_emitted(
+        target: v2.std.compilers.target_model.target_type_expr_atom_emitted(
           form: ts_type_expression_projection().atom_form,
           identity: ^ts_binding_sg2_y
         )
       )
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn ts_sg2_arrow_source_type_node() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Arrow },
     children: [
-      v2.std.node.Edge { label: Positional, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_x) },
-      v2.std.node.Edge { label: Positional, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_y) }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_x) },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_y) }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn ts_sg2_binary_fn_source_type_node() -> v2.std.node.Node {
-  algebra_binary_fn_node(
+  v2.std.algebra.algebra_binary_fn_node(
     domain: ts_sg2_atom_node(binding: ^ts_binding_sg2_x),
     codomain: ts_sg2_atom_node(binding: ^ts_binding_sg2_y)
   )
@@ -1716,28 +1716,28 @@ fn ts_sg2_binary_fn_source_type_node() -> v2.std.node.Node {
 
 fn ts_sg2_arrow_malformed_source_type_node() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Arrow },
     children: [
-      v2.std.node.Edge { label: Positional, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_x) }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_x) }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn ts_sg2_conj_xy_emitted() -> v2.std.node.Node {
-  target_type_expr_record_emitted(
+  v2.std.compilers.target_model.target_type_expr_record_emitted(
     form: ts_type_expression_projection().conj_form,
     fields: [
       v2.std.compilers.target_model.TargetTypeExprFieldSlot {
         label: ^ts_binding_sg2_x,
-        type_expr: target_type_expr_atom_emitted(
+        type_expr: v2.std.compilers.target_model.target_type_expr_atom_emitted(
           form: ts_type_expression_projection().atom_form,
           identity: ^ts_binding_sg2_x
         )
       },
       v2.std.compilers.target_model.TargetTypeExprFieldSlot {
         label: ^ts_binding_sg2_y,
-        type_expr: target_type_expr_atom_emitted(
+        type_expr: v2.std.compilers.target_model.target_type_expr_atom_emitted(
           form: ts_type_expression_projection().atom_form,
           identity: ^ts_binding_sg2_y
         )
@@ -1748,29 +1748,29 @@ fn ts_sg2_conj_xy_emitted() -> v2.std.node.Node {
 
 fn ts_sg2_conj_source_type_node() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       ts_named_edge(name: ^ts_binding_sg2_x, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_x)),
       ts_named_edge(name: ^ts_binding_sg2_y, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_y))
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn ts_sg2_sum_xy_emitted() -> v2.std.node.Node {
-  target_type_expr_sum_emitted(
+  v2.std.compilers.target_model.target_type_expr_sum_emitted(
     form: ts_type_expression_projection().disj_form,
     variants: [
       v2.std.compilers.target_model.TargetTypeExprVariantSlot {
         label: ^ts_binding_sg2_x,
-        type_expr: target_type_expr_atom_emitted(
+        type_expr: v2.std.compilers.target_model.target_type_expr_atom_emitted(
           form: ts_type_expression_projection().atom_form,
           identity: ^ts_binding_sg2_x
         )
       },
       v2.std.compilers.target_model.TargetTypeExprVariantSlot {
         label: ^ts_binding_sg2_y,
-        type_expr: target_type_expr_atom_emitted(
+        type_expr: v2.std.compilers.target_model.target_type_expr_atom_emitted(
           form: ts_type_expression_projection().atom_form,
           identity: ^ts_binding_sg2_y
         )
@@ -1781,23 +1781,23 @@ fn ts_sg2_sum_xy_emitted() -> v2.std.node.Node {
 
 fn ts_sg2_disj_source_type_node() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Disj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Disj },
     children: [
       ts_named_edge(name: ^ts_binding_sg2_x, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_x)),
       ts_named_edge(name: ^ts_binding_sg2_y, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_y))
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-fn ts_task_target_model_bundle_witness() -> Witness<v2.std.node.Node> {
+fn ts_task_target_model_bundle_witness() -> v2.std.witness.Witness<v2.std.node.Node> {
   match ts_translation_rules_witness() {
-    Holds { value: rules } =>
+    v2.std.witness.Holds { value: rules } =>
       match ts_task_serialize_source_witness() {
-        Holds { value: serialize } =>
+        v2.std.witness.Holds { value: serialize } =>
           v2.std.witness.Holds {
             value: v2.std.node.Node {
-              kind: v2.std.node.TypeNode { connective: Conj },
+              kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
               children: [
                 ts_named_edge(
                   name: ^target_model_edge_selection_policy,
@@ -1816,30 +1816,30 @@ fn ts_task_target_model_bundle_witness() -> Witness<v2.std.node.Node> {
                   target: serialize
                 )
               ],
-              occurrence_id: SyntheticOccurrence
+              occurrence_id: v2.std.node.SyntheticOccurrence
 }
           }
-        Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+        v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
       }
-    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
-fn ts_task_target_model_witness() -> Witness<v2.std.compilers.target_model.TargetModel> {
+fn ts_task_target_model_witness() -> v2.std.witness.Witness<v2.std.compilers.target_model.TargetModel> {
   match ts_task_target_model_bundle_witness() {
-    Holds { value: bundle } =>
+    v2.std.witness.Holds { value: bundle } =>
       v2.std.witness.Holds {
         value: v2.std.compilers.target_model.TargetModel {
-          produced_decl_support: ProducedDeclUnwired,
+          produced_decl_support: v2.std.compilers.target_model.ProducedDeclUnwired,
           bundle: bundle,
           lex: ts_lex(),
           binding_spellings: ts_binding_spellings(),
-    token_class_emit_transforms: target_model_emit_transforms_empty,
+    token_class_emit_transforms: v2.std.compilers.target_model.target_model_emit_transforms_empty,
           authority_source_text: ts_task_type_alias_source_text,
-          runtime_row: target_emit_host_runtime_row_unconfigured
+          runtime_row: v2.std.host_transport.target_emit_host_runtime_row_unconfigured
         }
       }
-    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -1856,8 +1856,8 @@ fn ts_lex_rule(token_class: v2.std.node.Symbol, text: String) -> v2.std.compiler
 
 fn ts_ident_lex_pattern() -> v2.std.compilers.lexing.LexPattern {
   v2.std.compilers.lexing.SequencePattern {
-    left: v2.std.compilers.lexing.CharClassPattern { class: IdentStartChar },
-    right: v2.std.compilers.lexing.RepeatPattern { element: v2.std.compilers.lexing.CharClassPattern { class: IdentContinueChar } }
+    left: v2.std.compilers.lexing.CharClassPattern { class: v2.std.compilers.lexing.IdentStartChar },
+    right: v2.std.compilers.lexing.RepeatPattern { element: v2.std.compilers.lexing.CharClassPattern { class: v2.std.compilers.lexing.IdentContinueChar } }
   }
 }
 
@@ -1913,7 +1913,7 @@ fn ts_grammar_production_fn_add() -> v2.std.grammar.GrammarProduction {
 
 fn ts_fn_add_grammar_root() -> v2.std.grammar.GrammarRoot {
   let start = ts_grammar_production_fn_add()
-  v2.std.grammar.GrammarRoot { start: ^ts_production_fn_add, productions: [start], sync_tokens: grammar_empty_sync_tokens() }
+  v2.std.grammar.GrammarRoot { start: ^ts_production_fn_add, productions: [start], sync_tokens: v2.std.grammar.grammar_empty_sync_tokens() }
 }
 
 fn ts_fn_add_grammar() -> v2.std.grammar.ParseGrammar {
@@ -1937,7 +1937,7 @@ fn ts_fn_add_lex_token_symbol(sym: v2.std.node.Symbol) -> Bool {
 
 fn ts_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   sym == ts_facts_boolean.surface_spelling ||
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: ts_numeric_facts_catalog,
     empty: false,
     cons: fn(acc, row) {
@@ -2027,11 +2027,11 @@ fn ts_primitive_bundle_from_bool_facts(facts: TsBooleanPrimitiveFacts) -> v2.std
 }
 
 fn ts_numeric_primitive_fact_bundles() -> List<v2.std.model_core.PrimitiveFactBundle> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: ts_numeric_facts_catalog,
     empty: std.algebra.Empty,
     cons: fn(acc, row) {
-      list_snoc_item(
+      v2.std.algebra.list_snoc_item(
         xs: acc,
         item: match row {
           TsNumericFactsNumber { facts: f } =>
@@ -2045,7 +2045,7 @@ fn ts_numeric_primitive_fact_bundles() -> List<v2.std.model_core.PrimitiveFactBu
 }
 
 fn ts_number_primitive_fact_bundles() -> List<v2.std.model_core.PrimitiveFactBundle> {
-  list_snoc_item(
+  v2.std.algebra.list_snoc_item(
     xs: ts_numeric_primitive_fact_bundles(),
     item: ts_primitive_bundle_from_bool_facts(facts: ts_facts_boolean)
   )
@@ -2087,7 +2087,7 @@ fn ts_bool_algebra_witness_node() -> v2.std.node.Node {
 fn ts_number_algebra_inhabitance(facts: TsNumberPrimitiveFacts) -> v2.std.model_core.AlgebraInhabitanceDecl {
   let inhabitant = ts_number_inhabitant_node(id: ^ts_inhabitant_number, facts: facts)
   v2.std.model_core.AlgebraInhabitanceDecl {
-    algebra: approximate_field_type_node(inhabitant: inhabitant),
+    algebra: v2.std.algebra.approximate_field_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
     witness: ts_number_algebra_witness_node(facts: facts)
   }
@@ -2096,7 +2096,7 @@ fn ts_number_algebra_inhabitance(facts: TsNumberPrimitiveFacts) -> v2.std.model_
 fn ts_bigint_algebra_inhabitance(facts: TsBigIntPrimitiveFacts) -> v2.std.model_core.AlgebraInhabitanceDecl {
   let inhabitant = ts_bigint_inhabitant_node(id: ^ts_inhabitant_bigint, facts: facts)
   v2.std.model_core.AlgebraInhabitanceDecl {
-    algebra: ordered_ring_type_node(inhabitant: inhabitant),
+    algebra: v2.std.algebra.ordered_ring_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
     witness: ts_bigint_algebra_witness_node(facts: facts)
   }
@@ -2105,7 +2105,7 @@ fn ts_bigint_algebra_inhabitance(facts: TsBigIntPrimitiveFacts) -> v2.std.model_
 fn ts_bool_algebra_inhabitance() -> v2.std.model_core.AlgebraInhabitanceDecl {
   let inhabitant = ts_inhabitant_boolean_node()
   v2.std.model_core.AlgebraInhabitanceDecl {
-    algebra: boolean_algebra_type_node(inhabitant: inhabitant),
+    algebra: v2.std.algebra.boolean_algebra_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
     witness: ts_bool_algebra_witness_node()
   }
@@ -2117,18 +2117,18 @@ data ts_bigint_algebra_inhabitance_ts_facts_bigint: v2.std.model_core.AlgebraInh
 data ts_bool_algebra_inhabitance_ts_facts_boolean: v2.std.model_core.AlgebraInhabitanceDecl = ts_bool_algebra_inhabitance()
 
 fn ts_target_atom_type_form(spelling: v2.std.node.Symbol) -> v2.std.compilers.target_model.TargetTypeExpression {
-  target_atom_alias_type_expression(
+  v2.std.compilers.target_model.target_atom_alias_type_expression(
     spelling: spelling,
     atom_form: ts_type_expression_projection().atom_form
   )
 }
 
 data ts_target_atom_realization_symbol: v2.std.compilers.target_model.TargetAtomRealization = v2.std.compilers.target_model.TargetAtomRealization {
-  source_carrier: symbol_kernel_type_node(),
+  source_carrier: v2.std.compilers.target_model.symbol_kernel_type_node(),
   target_model: ts_target_atom_realization_target_model_staging(),
   type_form: ts_target_atom_type_form(spelling: ^ts_surface_spelling_symbol),
-  value_form: target_value_template_for_kind(kind: ValueSymbolIdentityPassthrough),
-  constructor_form: optional_absent(),
+  value_form: v2.std.compilers.target_model.target_value_template_for_kind(kind: v2.std.compilers.target_model.ValueSymbolIdentityPassthrough),
+  constructor_form: v2.std.optional.optional_absent(),
   display_name: ^symbol_kernel_type_atom
 }
 
@@ -2138,12 +2138,12 @@ fn ts_numeric_algebra_inhabitance_step(
 ) -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   match row {
     TsNumericFactsNumber { facts: f } =>
-      list_snoc_item(
+      v2.std.algebra.list_snoc_item(
         xs: acc,
         item: ts_number_algebra_inhabitance(facts: f)
       )
     TsNumericFactsBigInt { facts: f } =>
-      list_snoc_item(
+      v2.std.algebra.list_snoc_item(
         xs: acc,
         item: ts_bigint_algebra_inhabitance(facts: f)
       )
@@ -2151,7 +2151,7 @@ fn ts_numeric_algebra_inhabitance_step(
 }
 
 fn ts_numeric_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: ts_numeric_facts_catalog,
     empty: std.algebra.Empty,
     cons: fn(acc, row) {
@@ -2167,7 +2167,7 @@ fn ts_bool_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabita
 }
 
 fn ts_model_core_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
-  list_append(
+  v2.std.algebra.list_append(
     left: ts_numeric_algebra_inhabitance_decls(),
     right: ts_bool_algebra_inhabitance_decls()
   )
@@ -2194,7 +2194,7 @@ fn ts_fn_add_language_model() -> v2.std.language_model.LanguageModel {
 }
 
 fn ts_num_lit_lex_pattern() -> v2.std.compilers.lexing.LexPattern {
-  v2.std.compilers.lexing.OneOrMorePattern { element: v2.std.compilers.lexing.CharClassPattern { class: DigitChar } }
+  v2.std.compilers.lexing.OneOrMorePattern { element: v2.std.compilers.lexing.CharClassPattern { class: v2.std.compilers.lexing.DigitChar } }
 }
 
 fn ts_num_lit_lex_rule() -> v2.std.compilers.lexing.LexRule {
@@ -2206,7 +2206,7 @@ fn ts_string_lit_lex_rule() -> v2.std.compilers.lexing.LexRule {
     token_class: ^ts_token_string_lit,
     pattern: v2.std.compilers.lexing.DelimitedPattern {
       open: v2.std.compilers.lexing.LiteralPattern { text: "'" },
-      body: v2.std.compilers.lexing.RepeatPattern { element: v2.std.compilers.lexing.CharClassPattern { class: StringTextChar } },
+      body: v2.std.compilers.lexing.RepeatPattern { element: v2.std.compilers.lexing.CharClassPattern { class: v2.std.compilers.lexing.StringTextChar } },
       close: v2.std.compilers.lexing.LiteralPattern { text: "'" }
     }
   }
@@ -2259,22 +2259,22 @@ fn ts_lex() -> v2.std.compilers.lexing.LexRules {
 }
 
 fn ts_lex_token_symbol(sym: v2.std.node.Symbol) -> Bool {
-  lex_rule_set_token_class_member(rules: ts_lex_rules(), token_class: sym)
+  v2.std.compilers.lexing.lex_rule_set_token_class_member(rules: ts_lex_rules(), token_class: sym)
 }
 
 fn ts_formal_grammar_symbol_from_token(token: v2.std.compilers.target_model.ConcreteSyntaxToken) -> v2.std.grammar.FormalGrammarSymbol {
   match token {
-    FixedToken { token_class: c } => grammar_formal_terminal(identity: c)
-    BoundToken { token_class: c, binding: b } => grammar_formal_terminal_bound(identity: c, binding: b)
+    v2.std.compilers.target_model.FixedToken { token_class: c } => v2.std.grammar.grammar_formal_terminal(identity: c)
+    v2.std.compilers.target_model.BoundToken { token_class: c, binding: b } => v2.std.grammar.grammar_formal_terminal_bound(identity: c, binding: b)
   }
 }
 
 fn ts_formal_rhs_from_tokens(tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> List<v2.std.grammar.FormalGrammarSymbol> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: tokens,
     empty: std.algebra.Empty,
     cons: fn(acc, token) {
-      list_snoc_item(
+      v2.std.algebra.list_snoc_item(
         xs: acc,
         item: ts_formal_grammar_symbol_from_token(token: token)
       )
@@ -2283,7 +2283,7 @@ fn ts_formal_rhs_from_tokens(tokens: List<v2.std.compilers.target_model.Concrete
 }
 
 fn ts_formal_production_fn_add() -> v2.std.grammar.FormalProduction {
-  grammar_formal_production(
+  v2.std.grammar.grammar_formal_production(
     lhs: ^ts_production_fn_add,
     rhs: ts_formal_rhs_from_tokens(tokens: ts_canonical_add_fn_tokens())
   )
@@ -2291,228 +2291,228 @@ fn ts_formal_production_fn_add() -> v2.std.grammar.FormalProduction {
 
 fn ts_formal_productions() -> List<v2.std.grammar.FormalProduction> {
   [
-    grammar_formal_production(lhs: ^ts_production_type_number, rhs: [grammar_formal_terminal(identity: ^ts_token_ty_number)]),
-    grammar_formal_production(lhs: ^ts_production_type_string, rhs: [grammar_formal_terminal(identity: ^ts_token_ty_string)]),
-    grammar_formal_production(lhs: ^ts_production_type_boolean, rhs: [grammar_formal_terminal(identity: ^ts_token_ty_boolean)]),
-    grammar_formal_production(lhs: ^ts_production_type_void, rhs: [grammar_formal_terminal(identity: ^ts_token_ty_void)]),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(lhs: ^ts_production_type_number, rhs: [v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_ty_number)]),
+    v2.std.grammar.grammar_formal_production(lhs: ^ts_production_type_string, rhs: [v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_ty_string)]),
+    v2.std.grammar.grammar_formal_production(lhs: ^ts_production_type_boolean, rhs: [v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_ty_boolean)]),
+    v2.std.grammar.grammar_formal_production(lhs: ^ts_production_type_void, rhs: [v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_ty_void)]),
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_type_annotation,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_number)]
+      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_number)]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_type_annotation,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_string)]
+      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_string)]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_type_annotation,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_boolean)]
+      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_boolean)]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_type_annotation,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_void)]
+      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_void)]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_union_type,
       rhs: [
-        grammar_formal_terminal(identity: ^ts_token_string_lit),
-        grammar_formal_terminal(identity: ^ts_token_pipe),
-        grammar_formal_terminal(identity: ^ts_token_string_lit)
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_string_lit),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_pipe),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_string_lit)
       ]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_union_type,
       rhs: [
-        grammar_formal_nonterminal_occurrence(identity: ^ts_production_union_type),
-        grammar_formal_terminal(identity: ^ts_token_pipe),
-        grammar_formal_terminal(identity: ^ts_token_string_lit)
+        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_union_type),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_pipe),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_string_lit)
       ]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_type_annotation,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: ^ts_production_union_type)]
+      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_union_type)]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_type_name,
-      rhs: [grammar_formal_terminal(identity: ^ts_token_ident)]
+      rhs: [v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_ident)]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_type_annotation,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_name)]
+      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_name)]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_record_field,
       rhs: [
-        grammar_formal_terminal(identity: ^ts_token_ident),
-        grammar_formal_terminal(identity: ^ts_token_colon),
-        grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_annotation)
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_ident),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_colon),
+        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_annotation)
       ]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_record_fields,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: ^ts_production_record_field)]
+      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_record_field)]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_record_fields,
       rhs: [
-        grammar_formal_nonterminal_occurrence(identity: ^ts_production_record_fields),
-        grammar_formal_terminal(identity: ^ts_token_comma),
-        grammar_formal_nonterminal_occurrence(identity: ^ts_production_record_field)
+        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_record_fields),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_comma),
+        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_record_field)
       ]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_record_type,
       rhs: [
-        grammar_formal_terminal(identity: ^ts_token_lbrace),
-        grammar_formal_nonterminal_occurrence(identity: ^ts_production_record_fields),
-        grammar_formal_terminal(identity: ^ts_token_rbrace)
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_lbrace),
+        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_record_fields),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_rbrace)
       ]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_type_annotation,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: ^ts_production_record_type)]
+      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_record_type)]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_type_alias_decl,
       rhs: [
-        grammar_formal_terminal(identity: ^ts_token_kw_type),
-        grammar_formal_terminal(identity: ^ts_token_ident),
-        grammar_formal_terminal(identity: ^ts_token_eq),
-        grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_annotation),
-        grammar_formal_terminal(identity: ^ts_token_semicolon)
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_kw_type),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_ident),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_eq),
+        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_annotation),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_semicolon)
       ]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_item,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_alias_decl)]
+      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_alias_decl)]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_let_decl,
       rhs: [
-        grammar_formal_terminal(identity: ^ts_token_kw_let),
-        grammar_formal_terminal(identity: ^ts_token_ident),
-        grammar_formal_terminal(identity: ^ts_token_colon),
-        grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_annotation),
-        grammar_formal_terminal(identity: ^ts_token_eq),
-        grammar_formal_terminal(identity: ^ts_token_ident),
-        grammar_formal_terminal(identity: ^ts_token_semicolon)
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_kw_let),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_ident),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_colon),
+        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_annotation),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_eq),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_ident),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_semicolon)
       ]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_const_decl,
       rhs: [
-        grammar_formal_terminal(identity: ^ts_token_kw_const),
-        grammar_formal_terminal(identity: ^ts_token_ident),
-        grammar_formal_terminal(identity: ^ts_token_colon),
-        grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_annotation),
-        grammar_formal_terminal(identity: ^ts_token_eq),
-        grammar_formal_terminal(identity: ^ts_token_ident),
-        grammar_formal_terminal(identity: ^ts_token_semicolon)
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_kw_const),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_ident),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_colon),
+        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_annotation),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_eq),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_ident),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_semicolon)
       ]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_item,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: ^ts_production_fn_add)]
+      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_fn_add)]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_item,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: ^ts_production_let_decl)]
+      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_let_decl)]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_item,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: ^ts_production_const_decl)]
+      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_const_decl)]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_pr3_primary_type,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_number)]
+      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_number)]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_pr3_primary_type,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_string)]
+      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_string)]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_pr3_primary_type,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_boolean)]
+      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_boolean)]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_pr3_primary_type,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_void)]
+      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_void)]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_pr3_primary_type,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_name)]
+      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_name)]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_pr3_primary_type,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: ^ts_production_record_type)]
+      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_record_type)]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_pr3_array_type,
       rhs: [
-        grammar_formal_nonterminal_occurrence(identity: ^ts_production_pr3_primary_type),
-        grammar_formal_terminal(identity: ^ts_token_lbracket),
-        grammar_formal_terminal(identity: ^ts_token_rbracket)
+        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_pr3_primary_type),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_lbracket),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_rbracket)
       ]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_pr3_array_type,
       rhs: [
-        grammar_formal_nonterminal_occurrence(identity: ^ts_production_pr3_array_type),
-        grammar_formal_terminal(identity: ^ts_token_lbracket),
-        grammar_formal_terminal(identity: ^ts_token_rbracket)
+        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_pr3_array_type),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_lbracket),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_rbracket)
       ]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_type_annotation,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: ^ts_production_pr3_array_type)]
+      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_pr3_array_type)]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_pr3_typed_param,
       rhs: [
-        grammar_formal_terminal(identity: ^ts_token_ident),
-        grammar_formal_terminal(identity: ^ts_token_colon),
-        grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_annotation)
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_ident),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_colon),
+        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_annotation)
       ]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_pr3_typed_params_opt,
       rhs: []
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_pr3_typed_params_opt,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: ^ts_production_pr3_typed_params)]
+      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_pr3_typed_params)]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_pr3_typed_params,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: ^ts_production_pr3_typed_param)]
+      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_pr3_typed_param)]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_pr3_typed_params,
       rhs: [
-        grammar_formal_nonterminal_occurrence(identity: ^ts_production_pr3_typed_param),
-        grammar_formal_terminal(identity: ^ts_token_comma),
-        grammar_formal_nonterminal_occurrence(identity: ^ts_production_pr3_typed_params)
+        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_pr3_typed_param),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_comma),
+        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_pr3_typed_params)
       ]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_pr3_typed_fn_decl,
       rhs: [
-        grammar_formal_terminal(identity: ^ts_token_kw_function),
-        grammar_formal_terminal(identity: ^ts_token_ident),
-        grammar_formal_terminal(identity: ^ts_token_lparen),
-        grammar_formal_nonterminal_occurrence(identity: ^ts_production_pr3_typed_params_opt),
-        grammar_formal_terminal(identity: ^ts_token_rparen),
-        grammar_formal_terminal(identity: ^ts_token_colon),
-        grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_annotation),
-        grammar_formal_terminal(identity: ^ts_token_lbrace),
-        grammar_formal_terminal(identity: ^ts_token_kw_return),
-        grammar_formal_terminal(identity: ^ts_token_ident),
-        grammar_formal_terminal(identity: ^ts_token_semicolon),
-        grammar_formal_terminal(identity: ^ts_token_rbrace)
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_kw_function),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_ident),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_lparen),
+        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_pr3_typed_params_opt),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_rparen),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_colon),
+        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_type_annotation),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_lbrace),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_kw_return),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_ident),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_semicolon),
+        v2.std.grammar.grammar_formal_terminal(identity: ^ts_token_rbrace)
       ]
     ),
-    grammar_formal_production(
+    v2.std.grammar.grammar_formal_production(
       lhs: ^ts_production_item,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: ^ts_production_pr3_typed_fn_decl)]
+      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^ts_production_pr3_typed_fn_decl)]
     ),
     ts_formal_production_fn_add()
   ]
@@ -2521,7 +2521,7 @@ fn ts_formal_productions() -> List<v2.std.grammar.FormalProduction> {
 fn ts_grammar_production_type_number() -> v2.std.grammar.GrammarProduction {
   v2.std.grammar.GrammarProduction {
     name: ^ts_production_type_number,
-    expression: Terminal { token_class: ^ts_token_ty_number, stamp: StampClass },
+    expression: v2.std.grammar.Terminal { token_class: ^ts_token_ty_number, stamp: v2.std.grammar.StampClass },
     emitted: ts_grammar_atom(id: ^ts_surface_type_number)
   }
 }
@@ -2529,7 +2529,7 @@ fn ts_grammar_production_type_number() -> v2.std.grammar.GrammarProduction {
 fn ts_grammar_production_type_string() -> v2.std.grammar.GrammarProduction {
   v2.std.grammar.GrammarProduction {
     name: ^ts_production_type_string,
-    expression: Terminal { token_class: ^ts_token_ty_string, stamp: StampClass },
+    expression: v2.std.grammar.Terminal { token_class: ^ts_token_ty_string, stamp: v2.std.grammar.StampClass },
     emitted: ts_grammar_atom(id: ^ts_surface_type_string)
   }
 }
@@ -2537,7 +2537,7 @@ fn ts_grammar_production_type_string() -> v2.std.grammar.GrammarProduction {
 fn ts_grammar_production_type_boolean() -> v2.std.grammar.GrammarProduction {
   v2.std.grammar.GrammarProduction {
     name: ^ts_production_type_boolean,
-    expression: Terminal { token_class: ^ts_token_ty_boolean, stamp: StampClass },
+    expression: v2.std.grammar.Terminal { token_class: ^ts_token_ty_boolean, stamp: v2.std.grammar.StampClass },
     emitted: ts_grammar_atom(id: ^ts_surface_type_boolean)
   }
 }
@@ -2545,7 +2545,7 @@ fn ts_grammar_production_type_boolean() -> v2.std.grammar.GrammarProduction {
 fn ts_grammar_production_type_void() -> v2.std.grammar.GrammarProduction {
   v2.std.grammar.GrammarProduction {
     name: ^ts_production_type_void,
-    expression: Terminal { token_class: ^ts_token_ty_void, stamp: StampClass },
+    expression: v2.std.grammar.Terminal { token_class: ^ts_token_ty_void, stamp: v2.std.grammar.StampClass },
     emitted: ts_grammar_atom(id: ^ts_surface_type_void)
   }
 }
@@ -2553,7 +2553,7 @@ fn ts_grammar_production_type_void() -> v2.std.grammar.GrammarProduction {
 fn ts_grammar_production_type_name() -> v2.std.grammar.GrammarProduction {
   v2.std.grammar.GrammarProduction {
     name: ^ts_production_type_name,
-    expression: Terminal { token_class: ^ts_token_ident, stamp: StampClass },
+    expression: v2.std.grammar.Terminal { token_class: ^ts_token_ident, stamp: v2.std.grammar.StampClass },
     emitted: ts_grammar_atom(id: ^ts_surface_type_name)
   }
 }
@@ -2562,9 +2562,9 @@ fn ts_grammar_production_record_field() -> v2.std.grammar.GrammarProduction {
   v2.std.grammar.GrammarProduction {
     name: ^ts_production_record_field,
     expression: v2.std.grammar.Sequence {
-      left: v2.std.grammar.Terminal { token_class: ^ts_token_ident, stamp: StampClass },
+      left: v2.std.grammar.Terminal { token_class: ^ts_token_ident, stamp: v2.std.grammar.StampClass },
       right: v2.std.grammar.Sequence {
-        left: v2.std.grammar.Terminal { token_class: ^ts_token_colon, stamp: StampClass },
+        left: v2.std.grammar.Terminal { token_class: ^ts_token_colon, stamp: v2.std.grammar.StampClass },
         right: v2.std.grammar.Nonterminal { production: ^ts_production_type_annotation }
       }
     },
@@ -2579,7 +2579,7 @@ fn ts_grammar_production_record_fields() -> v2.std.grammar.GrammarProduction {
       left: v2.std.grammar.Nonterminal { production: ^ts_production_record_field },
       right: v2.std.grammar.Repeat {
         element: v2.std.grammar.Sequence {
-          left: v2.std.grammar.Terminal { token_class: ^ts_token_comma, stamp: StampClass },
+          left: v2.std.grammar.Terminal { token_class: ^ts_token_comma, stamp: v2.std.grammar.StampClass },
           right: v2.std.grammar.Nonterminal { production: ^ts_production_record_field }
         }
       }
@@ -2592,10 +2592,10 @@ fn ts_grammar_production_record_type() -> v2.std.grammar.GrammarProduction {
   v2.std.grammar.GrammarProduction {
     name: ^ts_production_record_type,
     expression: v2.std.grammar.Sequence {
-      left: v2.std.grammar.Terminal { token_class: ^ts_token_lbrace, stamp: StampClass },
+      left: v2.std.grammar.Terminal { token_class: ^ts_token_lbrace, stamp: v2.std.grammar.StampClass },
       right: v2.std.grammar.Sequence {
         left: v2.std.grammar.Nonterminal { production: ^ts_production_record_fields },
-        right: v2.std.grammar.Terminal { token_class: ^ts_token_rbrace, stamp: StampClass }
+        right: v2.std.grammar.Terminal { token_class: ^ts_token_rbrace, stamp: v2.std.grammar.StampClass }
       }
     },
     emitted: ts_grammar_atom(id: ^ts_surface_record_type)
@@ -2635,16 +2635,16 @@ fn ts_grammar_production_union_type() -> v2.std.grammar.GrammarProduction {
   v2.std.grammar.GrammarProduction {
     name: ^ts_production_union_type,
     expression: v2.std.grammar.Sequence {
-      left: v2.std.grammar.Terminal { token_class: ^ts_token_string_lit, stamp: StampClass },
+      left: v2.std.grammar.Terminal { token_class: ^ts_token_string_lit, stamp: v2.std.grammar.StampClass },
       right: v2.std.grammar.Sequence {
         left: v2.std.grammar.Sequence {
-          left: v2.std.grammar.Terminal { token_class: ^ts_token_pipe, stamp: StampClass },
-          right: v2.std.grammar.Terminal { token_class: ^ts_token_string_lit, stamp: StampClass }
+          left: v2.std.grammar.Terminal { token_class: ^ts_token_pipe, stamp: v2.std.grammar.StampClass },
+          right: v2.std.grammar.Terminal { token_class: ^ts_token_string_lit, stamp: v2.std.grammar.StampClass }
         },
         right: v2.std.grammar.Repeat {
           element: v2.std.grammar.Sequence {
-            left: v2.std.grammar.Terminal { token_class: ^ts_token_pipe, stamp: StampClass },
-            right: v2.std.grammar.Terminal { token_class: ^ts_token_string_lit, stamp: StampClass }
+            left: v2.std.grammar.Terminal { token_class: ^ts_token_pipe, stamp: v2.std.grammar.StampClass },
+            right: v2.std.grammar.Terminal { token_class: ^ts_token_string_lit, stamp: v2.std.grammar.StampClass }
           }
         }
       }
@@ -2657,14 +2657,14 @@ fn ts_grammar_production_type_alias_decl() -> v2.std.grammar.GrammarProduction {
   v2.std.grammar.GrammarProduction {
     name: ^ts_production_type_alias_decl,
     expression: v2.std.grammar.Sequence {
-      left: v2.std.grammar.Terminal { token_class: ^ts_token_kw_type, stamp: StampClass },
+      left: v2.std.grammar.Terminal { token_class: ^ts_token_kw_type, stamp: v2.std.grammar.StampClass },
       right: v2.std.grammar.Sequence {
-        left: v2.std.grammar.Terminal { token_class: ^ts_token_ident, stamp: StampClass },
+        left: v2.std.grammar.Terminal { token_class: ^ts_token_ident, stamp: v2.std.grammar.StampClass },
         right: v2.std.grammar.Sequence {
-          left: v2.std.grammar.Terminal { token_class: ^ts_token_eq, stamp: StampClass },
+          left: v2.std.grammar.Terminal { token_class: ^ts_token_eq, stamp: v2.std.grammar.StampClass },
           right: v2.std.grammar.Sequence {
             left: v2.std.grammar.Nonterminal { production: ^ts_production_type_annotation },
-            right: v2.std.grammar.Terminal { token_class: ^ts_token_semicolon, stamp: StampClass }
+            right: v2.std.grammar.Terminal { token_class: ^ts_token_semicolon, stamp: v2.std.grammar.StampClass }
           }
         }
       }
@@ -2677,18 +2677,18 @@ fn ts_grammar_production_let_decl() -> v2.std.grammar.GrammarProduction {
   v2.std.grammar.GrammarProduction {
     name: ^ts_production_let_decl,
     expression: v2.std.grammar.Sequence {
-      left: v2.std.grammar.Terminal { token_class: ^ts_token_kw_let, stamp: StampClass },
+      left: v2.std.grammar.Terminal { token_class: ^ts_token_kw_let, stamp: v2.std.grammar.StampClass },
       right: v2.std.grammar.Sequence {
-        left: v2.std.grammar.Terminal { token_class: ^ts_token_ident, stamp: StampClass },
+        left: v2.std.grammar.Terminal { token_class: ^ts_token_ident, stamp: v2.std.grammar.StampClass },
         right: v2.std.grammar.Sequence {
-          left: v2.std.grammar.Terminal { token_class: ^ts_token_colon, stamp: StampClass },
+          left: v2.std.grammar.Terminal { token_class: ^ts_token_colon, stamp: v2.std.grammar.StampClass },
           right: v2.std.grammar.Sequence {
             left: v2.std.grammar.Nonterminal { production: ^ts_production_type_annotation },
             right: v2.std.grammar.Sequence {
-              left: v2.std.grammar.Terminal { token_class: ^ts_token_eq, stamp: StampClass },
+              left: v2.std.grammar.Terminal { token_class: ^ts_token_eq, stamp: v2.std.grammar.StampClass },
               right: v2.std.grammar.Sequence {
-                left: v2.std.grammar.Terminal { token_class: ^ts_token_ident, stamp: StampClass },
-                right: v2.std.grammar.Terminal { token_class: ^ts_token_semicolon, stamp: StampClass }
+                left: v2.std.grammar.Terminal { token_class: ^ts_token_ident, stamp: v2.std.grammar.StampClass },
+                right: v2.std.grammar.Terminal { token_class: ^ts_token_semicolon, stamp: v2.std.grammar.StampClass }
               }
             }
           }
@@ -2703,18 +2703,18 @@ fn ts_grammar_production_const_decl() -> v2.std.grammar.GrammarProduction {
   v2.std.grammar.GrammarProduction {
     name: ^ts_production_const_decl,
     expression: v2.std.grammar.Sequence {
-      left: v2.std.grammar.Terminal { token_class: ^ts_token_kw_const, stamp: StampClass },
+      left: v2.std.grammar.Terminal { token_class: ^ts_token_kw_const, stamp: v2.std.grammar.StampClass },
       right: v2.std.grammar.Sequence {
-        left: v2.std.grammar.Terminal { token_class: ^ts_token_ident, stamp: StampClass },
+        left: v2.std.grammar.Terminal { token_class: ^ts_token_ident, stamp: v2.std.grammar.StampClass },
         right: v2.std.grammar.Sequence {
-          left: v2.std.grammar.Terminal { token_class: ^ts_token_colon, stamp: StampClass },
+          left: v2.std.grammar.Terminal { token_class: ^ts_token_colon, stamp: v2.std.grammar.StampClass },
           right: v2.std.grammar.Sequence {
             left: v2.std.grammar.Nonterminal { production: ^ts_production_type_annotation },
             right: v2.std.grammar.Sequence {
-              left: v2.std.grammar.Terminal { token_class: ^ts_token_eq, stamp: StampClass },
+              left: v2.std.grammar.Terminal { token_class: ^ts_token_eq, stamp: v2.std.grammar.StampClass },
               right: v2.std.grammar.Sequence {
-                left: v2.std.grammar.Terminal { token_class: ^ts_token_ident, stamp: StampClass },
-                right: v2.std.grammar.Terminal { token_class: ^ts_token_semicolon, stamp: StampClass }
+                left: v2.std.grammar.Terminal { token_class: ^ts_token_ident, stamp: v2.std.grammar.StampClass },
+                right: v2.std.grammar.Terminal { token_class: ^ts_token_semicolon, stamp: v2.std.grammar.StampClass }
               }
             }
           }
@@ -2750,8 +2750,8 @@ fn ts_grammar_production_pr3_primary_type() -> v2.std.grammar.GrammarProduction 
 
 fn ts_pr3_bracket_pair() -> v2.std.grammar.GrammarExpr {
   v2.std.grammar.Sequence {
-    left: v2.std.grammar.Terminal { token_class: ^ts_token_lbracket, stamp: StampClass },
-    right: v2.std.grammar.Terminal { token_class: ^ts_token_rbracket, stamp: StampClass }
+    left: v2.std.grammar.Terminal { token_class: ^ts_token_lbracket, stamp: v2.std.grammar.StampClass },
+    right: v2.std.grammar.Terminal { token_class: ^ts_token_rbracket, stamp: v2.std.grammar.StampClass }
   }
 }
 
@@ -2772,7 +2772,7 @@ fn ts_grammar_production_pr3_array_type() -> v2.std.grammar.GrammarProduction {
 fn ts_grammar_production_pr3_typed_params_opt() -> v2.std.grammar.GrammarProduction {
   v2.std.grammar.GrammarProduction {
     name: ^ts_production_pr3_typed_params_opt,
-    expression: Optional { element: v2.std.grammar.Nonterminal { production: ^ts_production_pr3_typed_params } },
+    expression: v2.std.optional.Optional { element: v2.std.grammar.Nonterminal { production: ^ts_production_pr3_typed_params } },
     emitted: ts_grammar_atom(id: ^ts_surface_typed_params_opt)
   }
 }
@@ -2781,9 +2781,9 @@ fn ts_grammar_production_pr3_typed_param() -> v2.std.grammar.GrammarProduction {
   v2.std.grammar.GrammarProduction {
     name: ^ts_production_pr3_typed_param,
     expression: v2.std.grammar.Sequence {
-      left: v2.std.grammar.Terminal { token_class: ^ts_token_ident, stamp: StampClass },
+      left: v2.std.grammar.Terminal { token_class: ^ts_token_ident, stamp: v2.std.grammar.StampClass },
       right: v2.std.grammar.Sequence {
-        left: v2.std.grammar.Terminal { token_class: ^ts_token_colon, stamp: StampClass },
+        left: v2.std.grammar.Terminal { token_class: ^ts_token_colon, stamp: v2.std.grammar.StampClass },
         right: v2.std.grammar.Nonterminal { production: ^ts_production_type_annotation }
       }
     },
@@ -2798,7 +2798,7 @@ fn ts_grammar_production_pr3_typed_params() -> v2.std.grammar.GrammarProduction 
       left: v2.std.grammar.Sequence {
         left: v2.std.grammar.Nonterminal { production: ^ts_production_pr3_typed_param },
         right: v2.std.grammar.Sequence {
-          left: v2.std.grammar.Terminal { token_class: ^ts_token_comma, stamp: StampClass },
+          left: v2.std.grammar.Terminal { token_class: ^ts_token_comma, stamp: v2.std.grammar.StampClass },
           right: v2.std.grammar.Nonterminal { production: ^ts_production_pr3_typed_params }
         }
       },
@@ -2812,28 +2812,28 @@ fn ts_grammar_production_pr3_typed_fn_decl() -> v2.std.grammar.GrammarProduction
   v2.std.grammar.GrammarProduction {
     name: ^ts_production_pr3_typed_fn_decl,
     expression: v2.std.grammar.Sequence {
-      left: v2.std.grammar.Terminal { token_class: ^ts_token_kw_function, stamp: StampClass },
+      left: v2.std.grammar.Terminal { token_class: ^ts_token_kw_function, stamp: v2.std.grammar.StampClass },
       right: v2.std.grammar.Sequence {
-        left: v2.std.grammar.Terminal { token_class: ^ts_token_ident, stamp: StampClass },
+        left: v2.std.grammar.Terminal { token_class: ^ts_token_ident, stamp: v2.std.grammar.StampClass },
         right: v2.std.grammar.Sequence {
-          left: v2.std.grammar.Terminal { token_class: ^ts_token_lparen, stamp: StampClass },
+          left: v2.std.grammar.Terminal { token_class: ^ts_token_lparen, stamp: v2.std.grammar.StampClass },
           right: v2.std.grammar.Sequence {
             left: v2.std.grammar.Nonterminal { production: ^ts_production_pr3_typed_params_opt },
             right: v2.std.grammar.Sequence {
-              left: v2.std.grammar.Terminal { token_class: ^ts_token_rparen, stamp: StampClass },
+              left: v2.std.grammar.Terminal { token_class: ^ts_token_rparen, stamp: v2.std.grammar.StampClass },
               right: v2.std.grammar.Sequence {
-                left: v2.std.grammar.Terminal { token_class: ^ts_token_colon, stamp: StampClass },
+                left: v2.std.grammar.Terminal { token_class: ^ts_token_colon, stamp: v2.std.grammar.StampClass },
                 right: v2.std.grammar.Sequence {
                   left: v2.std.grammar.Nonterminal { production: ^ts_production_type_annotation },
                   right: v2.std.grammar.Sequence {
-                    left: v2.std.grammar.Terminal { token_class: ^ts_token_lbrace, stamp: StampClass },
+                    left: v2.std.grammar.Terminal { token_class: ^ts_token_lbrace, stamp: v2.std.grammar.StampClass },
                     right: v2.std.grammar.Sequence {
-                      left: v2.std.grammar.Terminal { token_class: ^ts_token_kw_return, stamp: StampClass },
+                      left: v2.std.grammar.Terminal { token_class: ^ts_token_kw_return, stamp: v2.std.grammar.StampClass },
                       right: v2.std.grammar.Sequence {
-                        left: v2.std.grammar.Terminal { token_class: ^ts_token_ident, stamp: StampClass },
+                        left: v2.std.grammar.Terminal { token_class: ^ts_token_ident, stamp: v2.std.grammar.StampClass },
                         right: v2.std.grammar.Sequence {
-                          left: v2.std.grammar.Terminal { token_class: ^ts_token_semicolon, stamp: StampClass },
-                          right: v2.std.grammar.Terminal { token_class: ^ts_token_rbrace, stamp: StampClass }
+                          left: v2.std.grammar.Terminal { token_class: ^ts_token_semicolon, stamp: v2.std.grammar.StampClass },
+                          right: v2.std.grammar.Terminal { token_class: ^ts_token_rbrace, stamp: v2.std.grammar.StampClass }
                         }
                       }
                     }
@@ -2894,7 +2894,7 @@ fn ts_grammar_root() -> v2.std.grammar.GrammarRoot {
   v2.std.grammar.GrammarRoot {
     start: ^ts_production_item,
     productions: [fn_add, ty_num, ty_str, ty_bool, ty_void, ty_name, rec_field, rec_fields, rec_type, union_type, type_annot, let_decl, const_decl, type_alias_decl, pr3_primary_type, pr3_array_type, pr3_typed_param, pr3_typed_params, pr3_typed_params_opt, pr3_typed_fn_decl, item],
-    sync_tokens: grammar_empty_sync_tokens()
+    sync_tokens: v2.std.grammar.grammar_empty_sync_tokens()
   }
 }
 
@@ -2907,7 +2907,7 @@ fn ts_grammar_canonical_symbols() -> Set<v2.std.node.Symbol> {
     member: fn(sym) {
       ts_catalog_surface_symbol(sym: sym) ||
         ts_lex_token_symbol(sym: sym) ||
-        grammar_carries_symbol(grammar: ts_grammar(), sym: sym) ||
+        v2.std.grammar.grammar_carries_symbol(grammar: ts_grammar(), sym: sym) ||
         sym == ^ts_source_literal
     }
   }
@@ -2928,7 +2928,7 @@ data ts_facts_string: TsStringPrimitiveFacts = TsStringPrimitiveFacts {
 
 fn ts_string_facts_node(facts: TsStringPrimitiveFacts) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       ts_named_edge(
         name: ^ts_facts_field_surface_spelling,
@@ -2943,13 +2943,13 @@ fn ts_string_facts_node(facts: TsStringPrimitiveFacts) -> v2.std.node.Node {
         target: ts_inhabitant_atom(id: facts.std_projection)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn ts_string_inhabitant_node(id: v2.std.node.Symbol, facts: TsStringPrimitiveFacts) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       ts_named_edge(name: ^ts_inhabitant_field_string, target: ts_inhabitant_atom(id: id)),
       ts_named_edge(name: ^ts_facts_field_encoding, target: ts_inhabitant_atom(id: facts.encoding)),
@@ -2958,7 +2958,7 @@ fn ts_string_inhabitant_node(id: v2.std.node.Symbol, facts: TsStringPrimitiveFac
         target: ts_inhabitant_atom(id: facts.surface_spelling)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
@@ -2977,7 +2977,7 @@ fn ts_string_algebra_inhabitance(facts: TsStringPrimitiveFacts) -> v2.std.model_
   let inhabitant = ts_string_inhabitant_node(id: ^ts_inhabitant_string, facts: facts)
   let code_unit = ts_inhabitant_atom(id: facts.code_unit_inhabitant)
   v2.std.model_core.AlgebraInhabitanceDecl {
-    algebra: free_monoid_type_node(inhabitant: code_unit),
+    algebra: v2.std.algebra.free_monoid_type_node(inhabitant: code_unit),
     inhabitant: inhabitant,
     witness: ts_string_algebra_witness_node(facts: facts)
   }
@@ -2992,20 +2992,20 @@ fn ts_string_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabi
 }
 
 fn ts_full_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
-  list_append(
+  v2.std.algebra.list_append(
     left: ts_model_core_inhabitance_decls(),
     right: ts_string_algebra_inhabitance_decls()
   )
 }
 
 fn ts_string_spec_facts(facts: TsStringPrimitiveFacts) -> Map<v2.std.node.Symbol, v2.std.node.Node> {
-  let m0 = empty_map()
-  let m1 = map_insert(
+  let m0 = v2.std.collection.empty_map()
+  let m1 = v2.std.collection.map_insert(
     m: m0,
     key: discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}),
     value: ts_inhabitant_atom(id: facts.surface_spelling)
   )
-  let m2 = map_insert(
+  let m2 = v2.std.collection.map_insert(
     m: m1,
     key: discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}),
     value: ts_inhabitant_atom(id: facts.encoding)
@@ -3021,7 +3021,7 @@ fn ts_primitive_bundle_from_string_facts(facts: TsStringPrimitiveFacts) -> v2.st
 }
 
 fn ts_primitive_fact_bundles() -> List<v2.std.model_core.PrimitiveFactBundle> {
-  list_append(
+  v2.std.algebra.list_append(
     left: ts_number_primitive_fact_bundles(),
     right: [ts_primitive_bundle_from_string_facts(facts: ts_facts_string)]
   )
@@ -3038,7 +3038,7 @@ fn ts_insert_per_language_primitive_axis(
   axis: v2.std.model_core.ModelCorePrimitiveFactAxis,
   value: v2.std.node.Node
 ) -> v2.std.diagnostic.Outcome<v2.std.grounding.PerLanguageFactBundleRegistry> {
-  insert_per_language_fact_bundle_entry(
+  v2.std.grounding.insert_per_language_fact_bundle_entry(
     registry: registry,
     key: v2.std.grounding.PerLanguageFactBundleKey {
       subject_carrier: subject,
@@ -3056,13 +3056,13 @@ fn ts_build_per_language_fact_bundle_registry() -> v2.std.diagnostic.Outcome<v2.
   let bool_subject = ts_bool_facts_node(facts: ts_facts_boolean)
   let string_subject = ts_string_facts_node(facts: ts_facts_string)
   match ts_insert_per_language_primitive_axis(
-    registry: empty_per_language_fact_bundle_registry(),
+    registry: v2.std.grounding.empty_per_language_fact_bundle_registry(),
     subject: number_subject,
     target: target,
     axis: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {},
     value: ts_inhabitant_atom(id: ts_facts_number.surface_spelling)
   ) {
-    Accepted { value: r0, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: r0, diagnostics: _ } =>
       match ts_insert_per_language_primitive_axis(
         registry: r0,
         subject: number_subject,
@@ -3070,7 +3070,7 @@ fn ts_build_per_language_fact_bundle_registry() -> v2.std.diagnostic.Outcome<v2.
         axis: v2.std.model_core.ModelCoreFactAxisWidth {},
         value: ts_inhabitant_atom(id: ^ts_tag_bits64)
       ) {
-        Accepted { value: r1, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: r1, diagnostics: _ } =>
           match ts_insert_per_language_primitive_axis(
             registry: r1,
             subject: number_subject,
@@ -3078,7 +3078,7 @@ fn ts_build_per_language_fact_bundle_registry() -> v2.std.diagnostic.Outcome<v2.
             axis: v2.std.model_core.ModelCoreFactAxisEncoding {},
             value: ts_inhabitant_atom(id: ts_facts_number.ieee754_binary)
           ) {
-            Accepted { value: r2, diagnostics: _ } =>
+            v2.std.diagnostic.Accepted { value: r2, diagnostics: _ } =>
               match ts_insert_per_language_primitive_axis(
                 registry: r2,
                 subject: bigint_subject,
@@ -3086,7 +3086,7 @@ fn ts_build_per_language_fact_bundle_registry() -> v2.std.diagnostic.Outcome<v2.
                 axis: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {},
                 value: ts_inhabitant_atom(id: ts_facts_bigint.surface_spelling)
               ) {
-                Accepted { value: r3, diagnostics: _ } =>
+                v2.std.diagnostic.Accepted { value: r3, diagnostics: _ } =>
                   match ts_insert_per_language_primitive_axis(
                     registry: r3,
                     subject: bigint_subject,
@@ -3094,7 +3094,7 @@ fn ts_build_per_language_fact_bundle_registry() -> v2.std.diagnostic.Outcome<v2.
                     axis: v2.std.model_core.ModelCoreFactAxisEncoding {},
                     value: ts_inhabitant_atom(id: ts_facts_bigint.encoding)
                   ) {
-                    Accepted { value: r4, diagnostics: _ } =>
+                    v2.std.diagnostic.Accepted { value: r4, diagnostics: _ } =>
                       match ts_insert_per_language_primitive_axis(
                         registry: r4,
                         subject: bool_subject,
@@ -3102,7 +3102,7 @@ fn ts_build_per_language_fact_bundle_registry() -> v2.std.diagnostic.Outcome<v2.
                         axis: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {},
                         value: ts_inhabitant_atom(id: ts_facts_boolean.surface_spelling)
                       ) {
-                        Accepted { value: r5, diagnostics: _ } =>
+                        v2.std.diagnostic.Accepted { value: r5, diagnostics: _ } =>
                           match ts_insert_per_language_primitive_axis(
                             registry: r5,
                             subject: bool_subject,
@@ -3110,7 +3110,7 @@ fn ts_build_per_language_fact_bundle_registry() -> v2.std.diagnostic.Outcome<v2.
                             axis: v2.std.model_core.ModelCoreFactAxisEncoding {},
                             value: ts_inhabitant_atom(id: ts_facts_boolean.encoding)
                           ) {
-                            Accepted { value: r6, diagnostics: _ } =>
+                            v2.std.diagnostic.Accepted { value: r6, diagnostics: _ } =>
                               match ts_insert_per_language_primitive_axis(
                                 registry: r6,
                                 subject: string_subject,
@@ -3118,7 +3118,7 @@ fn ts_build_per_language_fact_bundle_registry() -> v2.std.diagnostic.Outcome<v2.
                                 axis: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {},
                                 value: ts_inhabitant_atom(id: ts_facts_string.surface_spelling)
                               ) {
-                                Accepted { value: r7, diagnostics: _ } =>
+                                v2.std.diagnostic.Accepted { value: r7, diagnostics: _ } =>
                                   ts_insert_per_language_primitive_axis(
                                     registry: r7,
                                     subject: string_subject,
@@ -3126,33 +3126,33 @@ fn ts_build_per_language_fact_bundle_registry() -> v2.std.diagnostic.Outcome<v2.
                                     axis: v2.std.model_core.ModelCoreFactAxisEncoding {},
                                     value: ts_inhabitant_atom(id: ts_facts_string.encoding)
                                   )
-                                Rejected { diagnostics: d } =>
+                                v2.std.diagnostic.Rejected { diagnostics: d } =>
                                   v2.std.diagnostic.Rejected { diagnostics: d }
                               }
-                            Rejected { diagnostics: d } =>
+                            v2.std.diagnostic.Rejected { diagnostics: d } =>
                               v2.std.diagnostic.Rejected { diagnostics: d }
                           }
-                        Rejected { diagnostics: d } =>
+                        v2.std.diagnostic.Rejected { diagnostics: d } =>
                           v2.std.diagnostic.Rejected { diagnostics: d }
                       }
-                    Rejected { diagnostics: d } =>
+                    v2.std.diagnostic.Rejected { diagnostics: d } =>
                       v2.std.diagnostic.Rejected { diagnostics: d }
                   }
-                Rejected { diagnostics: d } =>
+                v2.std.diagnostic.Rejected { diagnostics: d } =>
                   v2.std.diagnostic.Rejected { diagnostics: d }
               }
-            Rejected { diagnostics: d } =>
+            v2.std.diagnostic.Rejected { diagnostics: d } =>
               v2.std.diagnostic.Rejected { diagnostics: d }
           }
-        Rejected { diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } =>
           v2.std.diagnostic.Rejected { diagnostics: d }
       }
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
-data ts_per_language_fact_bundle_registry_outcome: Outcome<v2.std.grounding.PerLanguageFactBundleRegistry> = ts_build_per_language_fact_bundle_registry()
+data ts_per_language_fact_bundle_registry_outcome: v2.std.diagnostic.Outcome<v2.std.grounding.PerLanguageFactBundleRegistry> = ts_build_per_language_fact_bundle_registry()
 
 type TsModelCoreLawKey
   = TsLawNumberIeee754Rounding
@@ -3171,7 +3171,7 @@ type TsModelCoreLawKey
 
 fn ts_model_core_law_node(witness: v2.std.node.Node, algebra: v2.std.node.Node, key: TsModelCoreLawKey) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       ts_named_edge(name: ^model_core_law_field_subject, target: witness),
       ts_named_edge(name: ^model_core_law_field_algebra, target: algebra),
@@ -3180,7 +3180,7 @@ fn ts_model_core_law_node(witness: v2.std.node.Node, algebra: v2.std.node.Node, 
         target: ts_inhabitant_atom(id: discriminant(v: key))
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
@@ -3194,7 +3194,7 @@ fn ts_model_core_law_obligation(witness: v2.std.node.Node, law: v2.std.node.Node
 fn ts_number_law_obligations(facts: TsNumberPrimitiveFacts) -> List<v2.std.model_core.AlgebraLawObligation> {
   let witness = ts_number_algebra_witness_node(facts: facts)
   let inhabitant = ts_number_inhabitant_node(id: ^ts_inhabitant_number, facts: facts)
-  let algebra = approximate_field_type_node(inhabitant: inhabitant)
+  let algebra = v2.std.algebra.approximate_field_type_node(inhabitant: inhabitant)
   [
     ts_model_core_law_obligation(
       witness: witness,
@@ -3218,7 +3218,7 @@ fn ts_number_law_obligations(facts: TsNumberPrimitiveFacts) -> List<v2.std.model
 fn ts_bigint_law_obligations(facts: TsBigIntPrimitiveFacts) -> List<v2.std.model_core.AlgebraLawObligation> {
   let witness = ts_bigint_algebra_witness_node(facts: facts)
   let inhabitant = ts_bigint_inhabitant_node(id: ^ts_inhabitant_bigint, facts: facts)
-  let algebra = ordered_ring_type_node(inhabitant: inhabitant)
+  let algebra = v2.std.algebra.ordered_ring_type_node(inhabitant: inhabitant)
   [
     ts_model_core_law_obligation(
       witness: witness,
@@ -3274,7 +3274,7 @@ fn ts_bigint_law_obligations(facts: TsBigIntPrimitiveFacts) -> List<v2.std.model
 fn ts_bool_law_obligations() -> List<v2.std.model_core.AlgebraLawObligation> {
   let witness = ts_bool_algebra_witness_node()
   let inhabitant = ts_inhabitant_boolean_node()
-  let algebra = boolean_algebra_type_node(inhabitant: inhabitant)
+  let algebra = v2.std.algebra.boolean_algebra_type_node(inhabitant: inhabitant)
   [
     ts_model_core_law_obligation(
       witness: witness,
@@ -3298,7 +3298,7 @@ fn ts_bool_law_obligations() -> List<v2.std.model_core.AlgebraLawObligation> {
 fn ts_string_law_obligations(facts: TsStringPrimitiveFacts) -> List<v2.std.model_core.AlgebraLawObligation> {
   let witness = ts_string_algebra_witness_node(facts: facts)
   let code_unit = ts_inhabitant_atom(id: facts.code_unit_inhabitant)
-  let algebra = free_monoid_type_node(inhabitant: code_unit)
+  let algebra = v2.std.algebra.free_monoid_type_node(inhabitant: code_unit)
   [
     ts_model_core_law_obligation(
       witness: witness,
@@ -3333,7 +3333,7 @@ fn ts_number_law_step(
 ) -> List<v2.std.model_core.AlgebraLawObligation> {
   match row {
     TsNumericFactsNumber { facts: f } =>
-      list_append(left: acc, right: ts_number_law_obligations(facts: f))
+      v2.std.algebra.list_append(left: acc, right: ts_number_law_obligations(facts: f))
     TsNumericFactsBigInt { facts: _ } => acc
   }
 }
@@ -3345,12 +3345,12 @@ fn ts_bigint_law_step(
   match row {
     TsNumericFactsNumber { facts: _ } => acc
     TsNumericFactsBigInt { facts: f } =>
-      list_append(left: acc, right: ts_bigint_law_obligations(facts: f))
+      v2.std.algebra.list_append(left: acc, right: ts_bigint_law_obligations(facts: f))
   }
 }
 
 fn ts_number_law_decls() -> List<v2.std.model_core.AlgebraLawObligation> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: ts_numeric_facts_catalog,
     empty: std.algebra.Empty,
     cons: fn(acc, row) { ts_number_law_step(acc: acc, row: row) }
@@ -3358,7 +3358,7 @@ fn ts_number_law_decls() -> List<v2.std.model_core.AlgebraLawObligation> {
 }
 
 fn ts_bigint_law_decls() -> List<v2.std.model_core.AlgebraLawObligation> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: ts_numeric_facts_catalog,
     empty: std.algebra.Empty,
     cons: fn(acc, row) { ts_bigint_law_step(acc: acc, row: row) }
@@ -3366,9 +3366,9 @@ fn ts_bigint_law_decls() -> List<v2.std.model_core.AlgebraLawObligation> {
 }
 
 fn ts_model_core_law_obligations() -> List<v2.std.model_core.AlgebraLawObligation> {
-  list_append(
-    left: list_append(
-      left: list_append(
+  v2.std.algebra.list_append(
+    left: v2.std.algebra.list_append(
+      left: v2.std.algebra.list_append(
         left: ts_number_law_decls(),
         right: ts_bigint_law_decls()
       ),

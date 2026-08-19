@@ -5,18 +5,18 @@ data verilog_emission_note: String = "THE PROOF THAT TARGET EMISSION COMPOSES. T
 
 data expected_interlock_verilog: String = "module board_power_interlock (\n  input  wire conditioned_good,\n  input  wire fault,\n  output wire power_permit,\n  output wire reset_release\n);\n  assign power_permit = (conditioned_good & ~fault);\n  assign reset_release = (conditioned_good & power_permit);\nendmodule\n"
 
-fn emit_verilog(emitted: Node) -> String {
-  match verilog_relation_row_for(lhs: ^verilog_production_ansi_module_decl, emitted: emitted) {
-    Holds { value: row } =>
-      match target_serialize_relation_row_from_model_bounded(
+fn emit_verilog(emitted: v2.std.node.Node) -> String {
+  match v2.extdeps.languages.verilog.verilog_relation_row_for(lhs: ^verilog_production_ansi_module_decl, emitted: emitted) {
+    v2.std.grammar.Holds { value: row } =>
+      match v2.compiler.translate.target_serialize_relation_row_from_model_bounded(
         4096,
-        verilog_target_model_with_single_row(row: row),
+        v2.extdeps.languages.verilog.verilog_target_model_with_single_row(row: row),
         emitted
       ) {
-        Accepted { value: text, diagnostics: _ } => render_target_text(t: text)
-        Rejected { diagnostics: _ } => "EMISSION_REFUSED"
+        v2.std.diagnostic.Accepted { value: text, diagnostics: _ } => v2.std.compilers.target_model.render_target_text(t: text)
+        v2.std.diagnostic.Rejected { diagnostics: _ } => "EMISSION_REFUSED"
       }
-    Violates { diagnostic: _ } => "ROW_NOT_DERIVED"
+    v2.std.grammar.Violates { diagnostic: _ } => "ROW_NOT_DERIVED"
   }
 }
 
@@ -24,44 +24,44 @@ fn emit_verilog(emitted: Node) -> String {
 // would pass on a module with a duplicated port, a missing assignment, or wrong indentation —
 // four different circuits' worth of difference — so the whole artifact is pinned at once.
 test fn w_interlock_emits_expected_bytes_through_the_generic_fold() -> Bool {
-  emit_verilog(emitted: verilog_interlock_emitted()) == expected_interlock_verilog
+  emit_verilog(emitted: v2.extdeps.languages.verilog.verilog_interlock_emitted()) == expected_interlock_verilog
 }
 
 // EVERY ROW MUST DERIVE, which is what keeps the rules population honest. The population is built
 // through a helper that yields an empty node when derivation fails, and an empty row cannot match
 // anything — so a silent derivation failure would surface only as a distant row-not-found. This
 // asserts the fallback is UNREACHABLE rather than trusting that it is.
-fn row_derives(lhs: v2.std.node.Symbol, emitted: Node) -> Bool {
-  match verilog_relation_row_for(lhs: lhs, emitted: emitted) {
-    Holds { value: _ } => true
-    Violates { diagnostic: _ } => false
+fn row_derives(lhs: v2.std.node.Symbol, emitted: v2.std.node.Node) -> Bool {
+  match v2.extdeps.languages.verilog.verilog_relation_row_for(lhs: lhs, emitted: emitted) {
+    v2.std.grammar.Holds { value: _ } => true
+    v2.std.grammar.Violates { diagnostic: _ } => false
   }
 }
 
 test fn w_every_relation_row_derives() -> Bool {
-  row_derives(lhs: ^verilog_production_ansi_module_decl, emitted: verilog_interlock_emitted())
+  row_derives(lhs: ^verilog_production_ansi_module_decl, emitted: v2.extdeps.languages.verilog.verilog_interlock_emitted())
     && row_derives(lhs: ^verilog_production_ansi_port, emitted: first_port())
-    && row_derives(lhs: ^verilog_production_expr, emitted: verilog_signal_reference(name: ^verilog_interlock_fault))
+    && row_derives(lhs: ^verilog_production_expr, emitted: v2.extdeps.languages.verilog.verilog_signal_reference(name: ^verilog_interlock_fault))
     && row_derives(lhs: ^verilog_production_expr, emitted: negated_fault())
     && row_derives(lhs: ^verilog_production_continuous_assign, emitted: permit_assignment())
 }
 
-fn first_port() -> Node {
-  verilog_ansi_port(direction: ^verilog_interlock_dir_input, name: ^verilog_interlock_conditioned_good)
+fn first_port() -> v2.std.node.Node {
+  v2.extdeps.languages.verilog.verilog_ansi_port(direction: ^verilog_interlock_dir_input, name: ^verilog_interlock_conditioned_good)
 }
 
-fn negated_fault() -> Node {
-  verilog_unary_application(
+fn negated_fault() -> v2.std.node.Node {
+  v2.extdeps.languages.verilog.verilog_unary_application(
     operator: ^verilog_interlock_op_not,
-    operand: verilog_signal_reference(name: ^verilog_interlock_fault)
+    operand: v2.extdeps.languages.verilog.verilog_signal_reference(name: ^verilog_interlock_fault)
   )
 }
 
-fn permit_assignment() -> Node {
-  verilog_continuous_assign(
+fn permit_assignment() -> v2.std.node.Node {
+  v2.extdeps.languages.verilog.verilog_continuous_assign(
     lhs: ^verilog_interlock_power_permit,
-    value: verilog_binary_application(
-      left: verilog_signal_reference(name: ^verilog_interlock_conditioned_good),
+    value: v2.extdeps.languages.verilog.verilog_binary_application(
+      left: v2.extdeps.languages.verilog.verilog_signal_reference(name: ^verilog_interlock_conditioned_good),
       operator: ^verilog_interlock_op_and,
       right: negated_fault()
     )
@@ -71,17 +71,17 @@ fn permit_assignment() -> Node {
 // PERTURBING THE EXPRESSION CHANGES THE EXPRESSION AND NOTHING ELSE. Dropping the negation must
 // alter the emitted bytes — otherwise the emission is not a function of the model and the equality
 // above pins a constant — while the module frame and every port stay byte-identical.
-fn unnegated_module() -> Node {
-  verilog_module_declaration(
+fn unnegated_module() -> v2.std.node.Node {
+  v2.extdeps.languages.verilog.verilog_module_declaration(
     name: ^verilog_interlock_module_name,
     ports: interlock_ports(),
-    assignments: verilog_assign_list_one(
-      assignment: verilog_continuous_assign(
+    assignments: v2.extdeps.languages.verilog.verilog_assign_list_one(
+      assignment: v2.extdeps.languages.verilog.verilog_continuous_assign(
         lhs: ^verilog_interlock_power_permit,
-        value: verilog_binary_application(
-          left: verilog_signal_reference(name: ^verilog_interlock_conditioned_good),
+        value: v2.extdeps.languages.verilog.verilog_binary_application(
+          left: v2.extdeps.languages.verilog.verilog_signal_reference(name: ^verilog_interlock_conditioned_good),
           operator: ^verilog_interlock_op_and,
-          right: verilog_signal_reference(name: ^verilog_interlock_fault)
+          right: v2.extdeps.languages.verilog.verilog_signal_reference(name: ^verilog_interlock_fault)
         )
       )
     )
@@ -101,15 +101,15 @@ test fn w_expression_perturbation_leaves_the_port_region_intact() -> Bool {
   )
 }
 
-fn interlock_ports() -> Node {
-  verilog_port_list_cons(
+fn interlock_ports() -> v2.std.node.Node {
+  v2.extdeps.languages.verilog.verilog_port_list_cons(
     port: first_port(),
-    rest: verilog_port_list_cons(
-      port: verilog_ansi_port(direction: ^verilog_interlock_dir_input, name: ^verilog_interlock_fault),
-      rest: verilog_port_list_cons(
-        port: verilog_ansi_port(direction: ^verilog_interlock_dir_output, name: ^verilog_interlock_power_permit),
-        rest: verilog_port_list_one(
-          port: verilog_ansi_port(direction: ^verilog_interlock_dir_output, name: ^verilog_interlock_reset_release)
+    rest: v2.extdeps.languages.verilog.verilog_port_list_cons(
+      port: v2.extdeps.languages.verilog.verilog_ansi_port(direction: ^verilog_interlock_dir_input, name: ^verilog_interlock_fault),
+      rest: v2.extdeps.languages.verilog.verilog_port_list_cons(
+        port: v2.extdeps.languages.verilog.verilog_ansi_port(direction: ^verilog_interlock_dir_output, name: ^verilog_interlock_power_permit),
+        rest: v2.extdeps.languages.verilog.verilog_port_list_one(
+          port: v2.extdeps.languages.verilog.verilog_ansi_port(direction: ^verilog_interlock_dir_output, name: ^verilog_interlock_reset_release)
         )
       )
     )
@@ -119,16 +119,16 @@ fn interlock_ports() -> Node {
 // THE PORT LIST IS A GRAMMAR, NOT THREE SLOTS. A two-port module emits through the same
 // productions as a four-port one, which is the claim a fixed-arity encoding could not make. The
 // assignment region is unchanged, so the difference is attributable to the port population.
-fn two_port_module() -> Node {
-  verilog_module_declaration(
+fn two_port_module() -> v2.std.node.Node {
+  v2.extdeps.languages.verilog.verilog_module_declaration(
     name: ^verilog_interlock_module_name,
-    ports: verilog_port_list_cons(
+    ports: v2.extdeps.languages.verilog.verilog_port_list_cons(
       port: first_port(),
-      rest: verilog_port_list_one(
-        port: verilog_ansi_port(direction: ^verilog_interlock_dir_output, name: ^verilog_interlock_power_permit)
+      rest: v2.extdeps.languages.verilog.verilog_port_list_one(
+        port: v2.extdeps.languages.verilog.verilog_ansi_port(direction: ^verilog_interlock_dir_output, name: ^verilog_interlock_power_permit)
       )
     ),
-    assignments: verilog_assign_list_one(assignment: permit_assignment())
+    assignments: v2.extdeps.languages.verilog.verilog_assign_list_one(assignment: permit_assignment())
   )
 }
 
@@ -149,23 +149,23 @@ test fn w_port_population_changes_only_the_port_region() -> Bool {
 // an ordered table pretending to be a relation. An earlier version of this control asserted a
 // production COUNT, which proves nothing about order and is a literal measured from the same
 // tree it checks.
-fn emit_with(productions: List<v2.std.grammar.FormalProduction>, emitted: Node) -> String {
-  match verilog_relation_row_for_productions(productions: productions, lhs: ^verilog_production_ansi_module_decl, emitted: emitted) {
-    Holds { value: row } =>
-      match target_serialize_relation_row_from_model_bounded(
+fn emit_with(productions: List<v2.std.grammar.FormalProduction>, emitted: v2.std.node.Node) -> String {
+  match v2.extdeps.languages.verilog.verilog_relation_row_for_productions(productions: productions, lhs: ^verilog_production_ansi_module_decl, emitted: emitted) {
+    v2.std.grammar.Holds { value: row } =>
+      match v2.compiler.translate.target_serialize_relation_row_from_model_bounded(
         4096,
-        verilog_target_model_with_single_row(row: row),
+        v2.extdeps.languages.verilog.verilog_target_model_with_single_row(row: row),
         emitted
       ) {
-        Accepted { value: text, diagnostics: _ } => render_target_text(t: text)
-        Rejected { diagnostics: _ } => "EMISSION_REFUSED"
+        v2.std.diagnostic.Accepted { value: text, diagnostics: _ } => v2.std.compilers.target_model.render_target_text(t: text)
+        v2.std.diagnostic.Rejected { diagnostics: _ } => "EMISSION_REFUSED"
       }
-    Violates { diagnostic: _ } => "ROW_NOT_DERIVED"
+    v2.std.grammar.Violates { diagnostic: _ } => "ROW_NOT_DERIVED"
   }
 }
 
 test fn w_production_order_does_not_change_the_bytes() -> Bool {
-  emit_with(productions: verilog_emission_formal_productions_reversed(), emitted: verilog_interlock_emitted()) == expected_interlock_verilog
+  emit_with(productions: v2.extdeps.languages.verilog.verilog_emission_formal_productions_reversed(), emitted: v2.extdeps.languages.verilog.verilog_interlock_emitted()) == expected_interlock_verilog
 }
 
 // THE GRAMMAR READ FORWARD. The same rows that render the module also recover it: taking the
@@ -179,28 +179,28 @@ test fn w_production_order_does_not_change_the_bytes() -> Bool {
 // 03_ingest begins at a ParseTree and takes no source string — so the step from "module ... \n"
 // back to tokens is not executable here and is not claimed. What is proven is that the token
 // sequence the row renders is the token sequence the grammar reads back to the same structure.
-fn module_row() -> Node {
-  match verilog_relation_row_for(lhs: ^verilog_production_ansi_module_decl, emitted: verilog_interlock_emitted()) {
-    Holds { value: row } => row
-    Violates { diagnostic: _ } => verilog_conj(children: [])
+fn module_row() -> v2.std.node.Node {
+  match v2.extdeps.languages.verilog.verilog_relation_row_for(lhs: ^verilog_production_ansi_module_decl, emitted: v2.extdeps.languages.verilog.verilog_interlock_emitted()) {
+    v2.std.grammar.Holds { value: row } => row
+    v2.std.grammar.Violates { diagnostic: _ } => v2.extdeps.languages.verilog.verilog_conj(children: [])
   }
 }
 
-fn rebuilt_from_spine() -> Node {
-  match row_token_spine_tokens(row: module_row()) {
-    Accepted { value: tokens, diagnostics: _ } =>
-      match grammar_relation_row_forward_token_selection(
+fn rebuilt_from_spine() -> v2.std.node.Node {
+  match v2.compiler.ingest.row_token_spine_tokens(row: module_row()) {
+    v2.std.diagnostic.Accepted { value: tokens, diagnostics: _ } =>
+      match v2.compiler.ingest.grammar_relation_row_forward_token_selection(
         tokens: tokens,
-        rules: verilog_emission_rules_for_row(row: module_row()),
+        rules: v2.extdeps.languages.verilog.verilog_emission_rules_for_row(row: module_row()),
         start_lhs: ^verilog_production_ansi_module_decl
       ) {
-        Accepted { value: node, diagnostics: _ } => node
-        Rejected { diagnostics: _ } => verilog_conj(children: [])
+        v2.std.diagnostic.Accepted { value: node, diagnostics: _ } => node
+        v2.std.diagnostic.Rejected { diagnostics: _ } => v2.extdeps.languages.verilog.verilog_conj(children: [])
       }
-    Rejected { diagnostics: _ } => verilog_conj(children: [])
+    v2.std.diagnostic.Rejected { diagnostics: _ } => v2.extdeps.languages.verilog.verilog_conj(children: [])
   }
 }
 
 test fn w_token_spine_reads_back_to_the_same_emitted_node() -> Bool {
-  rebuilt_from_spine() == verilog_interlock_emitted()
+  rebuilt_from_spine() == v2.extdeps.languages.verilog.verilog_interlock_emitted()
 }

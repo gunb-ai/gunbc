@@ -3,7 +3,7 @@ module gunbc.tools.frontier_ingestion_probe
 
 data frontier_read_refusal_disposition_note: String = "WHY THERE IS NO READ-REFUSAL ARM HERE, and what is owed instead. A read refusal collapsing into a frontend verdict would be the empty-observation conflation one layer earlier than the one this instrument guards, so it was worth checking. It is not reachable through this primitive: the seed's filesystem_read returns FilesystemReadResult, declared in v1_method filesystem_read_result_type and emitted by v1.runtime_rust rt_filesystem, and that record carries EXACTLY ONE field, content. There is no success or error field to consult — the service-level Filesystem.Read operation is a different carrier with a different shape, and reading its three-field contract onto this primitive would be a citation to the wrong authority.\n\nWhat the primitive does on failure is panic: rt_filesystem calls read_to_string with unwrap_or_else(|e| panic!). So a missing or unreadable member aborts the run loudly rather than presenting as LEX, PARSE or ACCEPTED, and a guard branching on a success flag this record does not carry would be machinery with no producer — a scaffold defending against a state the type cannot express.\n\nWHAT IS OWED: the primitive has no TYPED refusal, only an abort. A caller cannot distinguish absent from unreadable from empty, and cannot continue past either. That is a real modeling gap in the primitive rather than in this probe, and it dissolves when filesystem_read returns an outcome instead of panicking — at which point this fn gains a refusal arm and a discriminating control, both of which would be untestable today."
 
-data frontier_ingestion_probe_note: String = "THE REPRODUCTION INSTRUMENT for docs/plans/v2-frontend-std-ingestion-frontier-exact-head.md, deliberately homed OUTSIDE a *_test.dag module. take_frontend_census reads the live tree and reports, for each rostered member, which frontend stage it currently reaches. That reading is a revision-scoped OBSERVATION of the present frontier, not a claim that must hold: promoting it to a test declaration would enroll an assertion whose success depends on the current defects continuing to exist, so it would go RED on the repair and GREEN on a regression. The durable claims — that the stage classifier separates its states, that reasons are read by containment, and that census reconciliation is a two-directional join over the roster — live in gunbc.test.claim.normalize_retention_contract_probe_test and import classify_source from here, so there is one classifier authority and not two.\n\nReason reads are CONTAINMENT reads, never head reads: rejected_with_pending PREPENDS accepted-carrier diagnostics (the wrapper-retention carriers, which are not failures) to a later rejection, so the head of the list is systematically the retention carrier rather than the cause.\n\nStages are DISTINCT STATES. An earlier draft returned an empty reason list for both 'normalize accepted' and 'lex/parse rejected', which is the empty-observation narrow: an unlexable member read as an accepted one. classify_source matches each stage's Outcome in sequence so that collapse is unrepresentable."
+data frontier_ingestion_probe_note: String = "THE REPRODUCTION INSTRUMENT for docs/plans/v2-frontend-std-ingestion-frontier-exact-head.md, deliberately homed OUTSIDE a *_test.dag module. take_frontend_census reads the live tree and reports, for each rostered member, which frontend stage it currently reaches. That reading is a revision-scoped OBSERVATION of the present frontier, not a claim that must hold: promoting it to a test declaration would enroll an assertion whose success depends on the current defects continuing to exist, so it would go RED on the repair and GREEN on a regression. The durable claims — that the stage classifier separates its states, that reasons are read by containment, and that census reconciliation is a two-directional join over the roster — live in gunbc.test.claim.normalize_retention_contract_probe_test and import classify_source from here, so there is one classifier authority and not two.\n\nReason reads are CONTAINMENT reads, never head reads: rejected_with_pending PREPENDS accepted-carrier diagnostics (the wrapper-retention carriers, which are not failures) to a later rejection, so the head of the list is systematically the retention carrier rather than the cause.\n\nStages are DISTINCT STATES. An earlier draft returned an empty reason list for both 'v2.compiler.normalize.normalize accepted' and 'lex/parse rejected', which is the empty-observation narrow: an unlexable member read as an accepted one. classify_source matches each stage's Outcome in sequence so that collapse is unrepresentable."
 
 fn artifact_tree(artifact: v2.compiler.parse.ParseArtifact) -> v2.std.grammar.ParseTree {
   artifact.tree
@@ -14,18 +14,18 @@ fn diagnostic_reason(d: v2.std.diagnostic.Diagnostic) -> v2.std.node.Symbol {
 }
 
 fn all_reasons(d: v2.std.diagnostic.NonEmptyDiagnostics) -> List<v2.std.node.Symbol> {
-  fold_list(xs: d.tail, empty: [diagnostic_reason(d: d.head)], cons: fn(acc, item) {
+  v2.std.algebra.fold_list(xs: d.tail, empty: [diagnostic_reason(d: d.head)], cons: fn(acc, item) {
     concat(acc, [diagnostic_reason(d: item)])
   })
 }
 
 fn reasons_contain(reasons: List<v2.std.node.Symbol>, sym: v2.std.node.Symbol) -> Bool {
-  fold_list(xs: reasons, empty: false, cons: fn(acc, r) {
+  v2.std.algebra.fold_list(xs: reasons, empty: false, cons: fn(acc, r) {
     acc || (r == sym)
   })
 }
 
-data frontend_stage_result_space_note: String = "THE RESULT SPACE IS CLOSED, and two things about its membership are deliberate.\n\nIt no longer carries an invalid-empty arm. The previous classifier took List<Symbol> and had to answer NORM_REASON_SET_INVALID_EMPTY for the empty list, because that input was constructible and mapping it to any real stage would have rendered a missing observation as an observed one. It now takes NonEmptyDiagnostics, whose head field is not optional, so the empty reason set has no representation and the arm that defended against it has no subject. That is a climb from mechanically-preventable to structurally-impossible for this one class, and per the dissolution rule the production arm is deleted while the discriminating controls stay — the controls that survive are the ones that still have a writable input, and the RED that fed an empty list retires with the state it named, not with the wall.\n\nIt does NOT carry a ReadRefused arm. filesystem_read panics rather than returning an outcome (frontier_read_refusal_disposition_note records the exact contract), so a read failure aborts the run and never reaches a verdict. Adding the arm would be a constructor no producer can reach — machinery defending a state the primitive cannot express — and it would make the space look more total than the observation actually is. It enters when the primitive gains a typed refusal, and not before."
+data frontend_stage_result_space_note: String = "THE RESULT SPACE IS CLOSED, and two things about its membership are deliberate.\n\nIt no longer carries an invalid-empty arm. The previous classifier took List<v2.std.node.Symbol> and had to answer NORM_REASON_SET_INVALID_EMPTY for the empty list, because that input was constructible and mapping it to any real stage would have rendered a missing observation as an observed one. It now takes v2.std.diagnostic.NonEmptyDiagnostics, whose head field is not optional, so the empty reason set has no representation and the arm that defended against it has no subject. That is a climb from mechanically-preventable to structurally-impossible for this one class, and per the dissolution rule the production arm is deleted while the discriminating controls stay — the controls that survive are the ones that still have a writable input, and the RED that fed an empty list retires with the state it named, not with the wall.\n\nIt does NOT carry a ReadRefused arm. filesystem_read panics rather than returning an outcome (frontier_read_refusal_disposition_note records the exact contract), so a read failure aborts the run and never reaches a verdict. Adding the arm would be a constructor no producer can reach — machinery defending a state the primitive cannot express — and it would make the space look more total than the observation actually is. It enters when the primitive gains a typed refusal, and not before."
 
 type FrontendStage
   = LexRefused
@@ -129,7 +129,7 @@ fn classify_normalize_diagnostics(d: v2.std.diagnostic.NonEmptyDiagnostics) -> F
   }
 }
 
-data prepared_frontend_world_note: String = "ONE PREPARED WORLD, because the expensive part of a fifteen-member census is not the fifteen members. classify_source used to call dag_lex_rules() and dag_grammar() itself, so every member rebuilt the rule set, revalidated the grammar and recomputed the FIRST/nullable analysis — fifteen times over, for a grammar that does not vary between members.\n\nThe seam already existed and this reuses it rather than inventing one: 02_parse's prepared_grammar_carrier_note records that prepare_grammar exists precisely so a K-module walk validates once instead of K times, and parse_module_prepared is the per-module half. parse_module is prepare_grammar composed with it, which is the right shape for a single call and the wrong one for a census.\n\nPreparation can REFUSE — a malformed grammar rejects — and that refusal is a fact about the world rather than about any member, so it is not a FrontendStage. Reporting it as one would say fifteen members failed to parse when what actually happened is that no member was ever examined."
+data prepared_frontend_world_note: String = "ONE PREPARED WORLD, because the expensive part of a fifteen-member census is not the fifteen members. classify_source used to call v2.extdeps.languages.dag.dag_lex_rules() and v2.extdeps.languages.dag.dag_grammar() itself, so every member rebuilt the rule set, revalidated the grammar and recomputed the FIRST/nullable analysis — fifteen times over, for a grammar that does not vary between members.\n\nThe seam already existed and this reuses it rather than inventing one: 02_parse's prepared_grammar_carrier_note records that v2.compiler.parse.prepare_grammar exists precisely so a K-module walk validates once instead of K times, and v2.compiler.parse.parse_module_prepared is the per-module half. parse_module is v2.compiler.parse.prepare_grammar composed with it, which is the right shape for a single call and the wrong one for a census.\n\nPreparation can REFUSE — a malformed grammar rejects — and that refusal is a fact about the world rather than about any member, so it is not a FrontendStage. Reporting it as one would say fifteen members failed to parse when what actually happened is that no member was ever examined."
 
 type FrontendWorld {
   lex_rules: v2.std.compilers.lexing.LexRuleSet,
@@ -138,16 +138,16 @@ type FrontendWorld {
 }
 
 fn prepare_frontend_world() -> v2.std.diagnostic.Outcome<FrontendWorld> {
-  match prepare_grammar(grammar: dag_grammar()) {
-    v2.std.diagnostic.Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  match v2.compiler.parse.prepare_grammar(grammar: v2.extdeps.languages.dag.dag_grammar()) {
+    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     v2.std.diagnostic.Accepted { value: prepared, diagnostics: residue } =>
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: FrontendWorld {
-          lex_rules: dag_lex_rules(),
+          lex_rules: v2.extdeps.languages.dag.dag_lex_rules(),
           prepared: prepared,
           validation_residue: residue,
         },
-        diagnostics: None,
+        diagnostics: v2.std.diagnostic.None,
       }
   }
 }
@@ -157,14 +157,14 @@ fn classify_after_lex(
   residue: v2.std.diagnostic.Diagnostics,
   artifact: v2.std.compilers.lexing.LexArtifact
 ) -> FrontendStage {
-  match parse_module_prepared(
-    tokens: lex_artifact_semantic_tokens(artifact: artifact),
+  match v2.compiler.parse.parse_module_prepared(
+    tokens: v2.std.compilers.lexing.lex_artifact_semantic_tokens(artifact: artifact),
     prepared: prepared,
     validation_residue: residue
   ) {
     v2.std.diagnostic.Rejected { diagnostics: _ } => ParseRefused
     v2.std.diagnostic.Accepted { value: parsed, diagnostics: _ } =>
-      match normalize(parse_tree: artifact_tree(artifact: parsed)) {
+      match v2.compiler.normalize.normalize(parse_tree: artifact_tree(artifact: parsed)) {
         v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => NormalizeAccepted
         v2.std.diagnostic.Rejected { diagnostics: d } => classify_normalize_diagnostics(d: d)
       }
@@ -172,32 +172,32 @@ fn classify_after_lex(
 }
 
 fn classify_source_in(world: FrontendWorld, source: String) -> FrontendStage {
-  match lex_walk_artifact(source: source, file: ^frontier_probe, rules: world.lex_rules) {
+  match v2.compiler.tokenize.lex_walk_artifact(source: source, file: ^frontier_probe, rules: world.lex_rules) {
     v2.std.diagnostic.Rejected { diagnostics: _ } => LexRefused
     v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
       classify_after_lex(prepared: world.prepared, residue: world.validation_residue, artifact: a)
   }
 }
 
-data single_source_laziness_note: String = "classify_source PREPARES LAZILY, and that is a budget fact rather than a style choice. A lex refusal is decided before any grammar is consulted, which is the only reason the LEX claim in the durable witness executes inside the five-second fast lane at all; preparing the world first would build dag_grammar() for a source that never reaches the parser and push that claim over budget on its own.\n\nIt returns an Outcome rather than a bare FrontendStage because preparation can refuse, and a refused grammar is a fact about the world, not about the source. Reporting it as ParseRefused would say this source failed to parse when no parse was ever attempted — the state-space conflation the stage vocabulary exists to prevent, one level up. The census path does not have this shape: classify_source_in takes an already-prepared world, so every member it classifies has a stage by construction."
+data single_source_laziness_note: String = "classify_source PREPARES LAZILY, and that is a budget fact rather than a style choice. A lex refusal is decided before any grammar is consulted, which is the only reason the LEX claim in the durable witness executes inside the five-second fast lane at all; preparing the world first would build v2.extdeps.languages.dag.dag_grammar() for a source that never reaches the parser and push that claim over budget on its own.\n\nIt returns an Outcome rather than a bare FrontendStage because preparation can refuse, and a refused grammar is a fact about the world, not about the source. Reporting it as ParseRefused would say this source failed to parse when no parse was ever attempted — the state-space conflation the stage vocabulary exists to prevent, one level up. The census path does not have this shape: classify_source_in takes an already-prepared world, so every member it classifies has a stage by construction."
 
 fn classify_source(source: String) -> v2.std.diagnostic.Outcome<FrontendStage> {
-  match lex_walk_artifact(source: source, file: ^frontier_probe, rules: dag_lex_rules()) {
+  match v2.compiler.tokenize.lex_walk_artifact(source: source, file: ^frontier_probe, rules: v2.extdeps.languages.dag.dag_lex_rules()) {
     v2.std.diagnostic.Rejected { diagnostics: _ } =>
-      Accepted { value: LexRefused, diagnostics: None }
+      v2.std.diagnostic.Accepted { value: LexRefused, diagnostics: v2.std.diagnostic.None }
     v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
-      match prepare_grammar(grammar: dag_grammar()) {
-        v2.std.diagnostic.Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      match v2.compiler.parse.prepare_grammar(grammar: v2.extdeps.languages.dag.dag_grammar()) {
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
         v2.std.diagnostic.Accepted { value: prepared, diagnostics: residue } =>
-          Accepted {
+          v2.std.diagnostic.Accepted {
             value: classify_after_lex(prepared: prepared, residue: residue, artifact: a),
-            diagnostics: None,
+            diagnostics: v2.std.diagnostic.None,
           }
       }
   }
 }
 
-data frontier_roster_note: String = "THE ROSTER IS THE DENOMINATOR, and it is authored here so that the census can be reconciled against a denominator rather than counted. The fifteen hand-written m_* fns this replaces were fifteen independent facts with no denominator at all: a member could be dropped from the file and every remaining fn would still answer, so 'all fifteen were observed' was only ever 'fifteen fns happened to be present'. reconcile_census now joins observations against the roster in both directions and at multiplicity, so a dropped member, a stray one and a doubled one are three distinct located verdicts rather than a smaller number that nothing compares against.\n\nWhat this does NOT do is make the live census executable per PR. The accepted-classification path measured over the five-second fast-lane budget, and the roster reads fifteen live files on top of that. Which stage of that path owns the cost is NOT established — the figure is an aggregate over lex, grammar construction, preparation and validation, parse and normalize, and no nested span separated them. Preparing the world once removes the per-member multiplier but not that floor, so take_frontend_census stays in this non-test module as a reproduction instrument, and the durable claims over it are the classifier, identity and join laws exercised on synthetic inputs. The batched or realized execution that would let the live fifteen gate a PR is still owed, and is where the two stage-separation claims deleted in the previous increment return."
+data frontier_roster_note: String = "THE ROSTER IS THE DENOMINATOR, and it is authored here so that the census can be reconciled against a denominator rather than counted. The fifteen hand-written m_* fns this replaces were fifteen independent facts with no denominator at all: a member could be dropped from the file and every remaining fn would still answer, so 'all fifteen were observed' was only ever 'fifteen fns happened to be present'. reconcile_census now joins observations against the roster in both directions and at multiplicity, so a dropped member, a stray one and a doubled one are three distinct located verdicts rather than a smaller number that nothing compares against.\n\nWhat this does NOT do is make the live census executable per PR. The accepted-classification path measured over the five-second fast-lane budget, and the roster reads fifteen live files on top of that. Which stage of that path owns the cost is NOT established — the figure is an aggregate over lex, grammar construction, preparation and validation, parse and v2.compiler.normalize.normalize, and no nested span separated them. Preparing the world once removes the per-member multiplier but not that floor, so take_frontend_census stays in this non-test module as a reproduction instrument, and the durable claims over it are the classifier, identity and join laws exercised on synthetic inputs. The batched or realized execution that would let the live fifteen gate a PR is still owed, and is where the two stage-separation claims deleted in the previous increment return."
 
 type FrontierMember {
   label: v2.std.node.Symbol,
@@ -246,7 +246,7 @@ type FrontendCensusReceipt
 // roster is not the identity of the tag alone. It covers membership AND order.
 //
 // It does NOT cover the labels, and the reason is worth stating rather than hiding: the only
-// Symbol-to-text surface in the tree is v2.std.compilers.lexing symbol_lexeme, whose .dag body is
+// v2.std.node.Symbol-to-text surface in the tree is v2.std.compilers.lexing symbol_lexeme, whose .dag body is
 // a self-recursive stub reachable only through host interception — the shape DESIGN records as
 // deleted elsewhere for exactly that reason. Depending on it to compute an identity would ground
 // a provenance claim on machinery with no modeled producer. Labels are separately constrained:
@@ -254,12 +254,12 @@ type FrontendCensusReceipt
 // rosters differing ONLY by a permutation of labels over identical paths in identical order are
 // the one case this identity does not separate. Recorded as a known limit, not a solved problem.
 fn roster_identity(rows: List<FrontierMember>) -> std.content_hash.ContentHash {
-  as_content_hash_structural(
-    structural: fold_list(
+  std.content_hash.as_content_hash_structural(
+    structural: v2.std.algebra.fold_list(
       xs: rows,
-      empty: content_hash_atom(value: "gunbc.tools.frontier_ingestion_probe.frontier_roster" as std.types.NonEmptyStr),
+      empty: std.content_hash.content_hash_atom(value: "gunbc.tools.frontier_ingestion_probe.frontier_roster" as std.types.NonEmptyStr),
       cons: fn(acc, m) {
-        content_hash_combine_structural(left: acc, right: content_hash_atom(value: m.path as std.types.NonEmptyStr))
+        std.content_hash.content_hash_combine_structural(left: acc, right: std.content_hash.content_hash_atom(value: m.path as std.types.NonEmptyStr))
       }
     )
   )
@@ -274,7 +274,7 @@ fn observe_roster_in(world: FrontendWorld) -> List<MemberObservation> {
 }
 
 fn observe_rows_in(world: FrontendWorld, rows: List<FrontierMember>) -> List<MemberObservation> {
-  fold_list(xs: rows, empty: [] as List<MemberObservation>, cons: fn(acc, m) {
+  v2.std.algebra.fold_list(xs: rows, empty: [] as List<MemberObservation>, cons: fn(acc, m) {
     concat(acc, [classify_member_in(world: world, m: m)])
   })
 }
@@ -322,19 +322,19 @@ type FrontierRosterVerdict
 // constructible input. A validator that could only ever see the one live roster would be
 // unfalsifiable: it would report valid, and nothing could establish that it reports anything else.
 fn count_roster_label(rows: List<FrontierMember>, label: v2.std.node.Symbol) -> Int {
-  fold_list(xs: rows, empty: 0, cons: fn(acc, m) {
+  v2.std.algebra.fold_list(xs: rows, empty: 0, cons: fn(acc, m) {
     if m.label == label { acc + 1 } else { acc }
   })
 }
 
 fn count_roster_path(rows: List<FrontierMember>, path: String) -> Int {
-  fold_list(xs: rows, empty: 0, cons: fn(acc, m) {
+  v2.std.algebra.fold_list(xs: rows, empty: 0, cons: fn(acc, m) {
     if m.path == path { acc + 1 } else { acc }
   })
 }
 
 fn verify_roster(rows: List<FrontierMember>) -> FrontierRosterVerdict {
-  fold_list(xs: rows, empty: FrontierRosterValid, cons: fn(acc, m) {
+  v2.std.algebra.fold_list(xs: rows, empty: FrontierRosterValid, cons: fn(acc, m) {
     match acc {
       FrontierRosterValid =>
         if count_roster_label(rows: rows, label: m.label) == 1 {
@@ -356,7 +356,7 @@ fn verify_frontier_roster() -> FrontierRosterVerdict {
 }
 
 fn count_label(obs: List<MemberObservation>, label: v2.std.node.Symbol) -> Int {
-  fold_list(xs: obs, empty: 0, cons: fn(acc, o) {
+  v2.std.algebra.fold_list(xs: obs, empty: 0, cons: fn(acc, o) {
     if o.label == label { acc + 1 } else { acc }
   })
 }
@@ -366,7 +366,7 @@ fn roster_contains(label: v2.std.node.Symbol) -> Bool {
 }
 
 fn rows_contain_label(rows: List<FrontierMember>, label: v2.std.node.Symbol) -> Bool {
-  fold_list(xs: rows, empty: false, cons: fn(acc, m) {
+  v2.std.algebra.fold_list(xs: rows, empty: false, cons: fn(acc, m) {
     acc || (m.label == label)
   })
 }
@@ -390,7 +390,7 @@ fn reconcile_against_valid_rows(
   obs: List<MemberObservation>,
   rows: List<FrontierMember>
 ) -> CensusReconciliation {
-  let covered = fold_list(xs: rows, empty: CensusExact, cons: fn(acc, m) {
+  let covered = v2.std.algebra.fold_list(xs: rows, empty: CensusExact, cons: fn(acc, m) {
     match acc {
       CensusExact => {
         let n = count_label(obs: obs, label: m.label)
@@ -407,7 +407,7 @@ fn reconcile_against_valid_rows(
   })
   match covered {
     CensusExact =>
-      fold_list(xs: obs, empty: CensusExact, cons: fn(acc, o) {
+      v2.std.algebra.fold_list(xs: obs, empty: CensusExact, cons: fn(acc, o) {
         match acc {
           CensusExact =>
             if rows_contain_label(rows: rows, label: o.label) {

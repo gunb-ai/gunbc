@@ -1,7 +1,7 @@
 module v2.lens.live_read_classification
 
 // THE IMPORT THIS MODULE'S BARE REFERENCES WERE RELYING ON THE POOL TO SUPPLY. Every call to
-// witness_import_closure here resolved only when some unrelated module elsewhere in the assembled
+// v2.lens.witness_cost_locality.witness_import_closure here resolved only when some unrelated module elsewhere in the assembled
 // closure had already pulled v2.lens.witness_cost_locality in — the pool-membership coincidence
 // DESIGN records as the import-strip Class B failure. Under a whole-tree compile no such module
 // does, and the three call sites refuse. Named from the definer, as v2.lens.effect_reach already
@@ -81,7 +81,7 @@ fn live_read_classification_from_facts(
   carrier_homes: List<v2.std.live_read.LiveReadCarrierHome>
 ) -> v2.std.live_read.LiveReadClassification {
   live_read_classification_g1(
-    closure_modules: witness_import_closure(root: entry_module, facts: facts),
+    closure_modules: v2.lens.witness_cost_locality.witness_import_closure(root: entry_module, facts: facts),
     carrier_homes: carrier_homes
   )
 }
@@ -255,7 +255,7 @@ fn carrier_for_callee_text(
       HeadAbsent => v2.std.live_read.FilesystemReadPath { path_pattern: UnknownPath }
     }
   } else if string_eq(a: callee_text, b: "module_declaration_facts")
-    || string_eq(a: callee_text, b: "module_declaration_facts_live") {
+    || string_eq(a: callee_text, b: "v2.lens.module_graph.module_declaration_facts_live") {
     ModuleDeclarationFactsScan
   } else if string_eq(a: callee_text, b: "decl_facts") {
     v2.std.live_read.DeclFactsReflection { home: "v2.std.decl_index" }
@@ -528,7 +528,7 @@ fn live_read_classification_g2_from_facts(
   decls: List<v2.std.fn_index.FnArrowDecl>,
   carrier_homes: List<v2.std.live_read.LiveReadCarrierHome>
 ) -> v2.std.live_read.LiveReadClassification {
-  let closure_modules = witness_import_closure(root: entry_module, facts: facts)
+  let closure_modules = v2.lens.witness_cost_locality.witness_import_closure(root: entry_module, facts: facts)
   let reachable = call_reachable_decls(
     entry_module: entry_module,
     closure_modules: closure_modules,
@@ -587,7 +587,7 @@ fn live_read_selection_manifest_over(
   })
 }
 
-data whole_tree_subject_mint_site_law: String = "THE COMPLETE SUBJECT IS MINTED WHERE THE WHOLE-TREE PRODUCERS ARE CALLED, AND NOWHERE ELSE. WholeTreeFactSubject carried a caller-supplied subject_id in an earlier revision, which meant the completeness claim was a string a caller wrote beside a fact list it also chose — the two were never related, so a fixture population could be labelled whole-tree and would then be permitted to decide LocalRead. Making the variant nullary removes the thing a caller could author. It is constructed at exactly one site, live_read_selection_manifest_live, which is also the only site that calls dependency_resolution_facts_live, module_declaration_facts_live and fn_arrow_decl_facts_live — so the subject and the facts have one origin by construction rather than by a caller pairing them correctly. RESIDUE, STATED RATHER THAN CLAIMED AWAY: this makes the subject unforgeable from outside, and it does NOT yet prove that fn_arrow_decl_facts_live covers every module the consuming index holds. Until a control shows a declaration outside the producer entry's own closure appearing in that population, the mint site is a construction wall around an unproven premise, not a proof of coverage. The seed-side identity check is the other half — the manifest is stamped with the producing index's generation and refuses a lookup from any other index."
+data whole_tree_subject_mint_site_law: String = "THE COMPLETE SUBJECT IS MINTED WHERE THE WHOLE-TREE PRODUCERS ARE CALLED, AND NOWHERE ELSE. WholeTreeFactSubject carried a caller-supplied subject_id in an earlier revision, which meant the completeness claim was a string a caller wrote beside a fact list it also chose — the two were never related, so a fixture population could be labelled whole-tree and would then be permitted to decide LocalRead. Making the variant nullary removes the thing a caller could author. It is constructed at exactly one site, live_read_selection_manifest_live, which is also the only site that calls v2.lens.module_graph.dependency_resolution_facts_live, v2.lens.module_graph.module_declaration_facts_live and fn_arrow_decl_facts_live — so the subject and the facts have one origin by construction rather than by a caller pairing them correctly. RESIDUE, STATED RATHER THAN CLAIMED AWAY: this makes the subject unforgeable from outside, and it does NOT yet prove that fn_arrow_decl_facts_live covers every module the consuming index holds. Until a control shows a declaration outside the producer entry's own closure appearing in that population, the mint site is a construction wall around an unproven premise, not a proof of coverage. The seed-side identity check is the other half — the manifest is stamped with the producing index's generation and refuses a lookup from any other index."
 
 fn live_read_selection_manifest_live(
   requests: List<LiveReadSelectionRequest>,
@@ -598,17 +598,17 @@ fn live_read_selection_manifest_live(
   live_read_selection_manifest_over(
     requests: requests,
     subject: WholeTreeFactSubject,
-    edges: dependency_resolution_facts_live(
+    edges: v2.lens.module_graph.dependency_resolution_facts_live(
       pool_roots: pool_roots,
       importer_roots: importer_roots,
       exclude_substrings: exclude_substrings
     ),
-    nodes: module_declaration_facts_live(pool_roots: pool_roots),
+    nodes: v2.lens.module_graph.module_declaration_facts_live(pool_roots: pool_roots),
     decls: fn_arrow_decl_facts_live()
   )
 }
 
-data g2_live_production_boundary_law: String = "THE LIVE BOUNDARY IS ModuleDependencyEdge, NOT ModuleImportFact (operator ruling, 2026-08-07). v2.lens.module_graph declares dependency_resolution_facts_live the single swappable edge producer and forbids a second one, because the namespace terminal step replaces its BODY when the import grammar is deleted. Two consequences bind this module. Calling import_resolution_facts_live instead would omit the strict-tier reference-derived edges that producer already unions in, so a G2 closure would be narrower than the selection closure that decides the same question one axis over — an under-selection source. And it would bind live classification to the import grammar that is scheduled to disappear, so the namespace swap would silently narrow G2 instead of leaving it untouched, which is exactly what the edge-source-agnostic-by-construction note exists to prevent.
+data g2_live_production_boundary_law: String = "THE LIVE BOUNDARY IS ModuleDependencyEdge, NOT ModuleImportFact (operator ruling, 2026-08-07). v2.lens.module_graph declares v2.lens.module_graph.dependency_resolution_facts_live the single swappable edge producer and forbids a second one, because the namespace terminal step replaces its BODY when the import grammar is deleted. Two consequences bind this module. Calling import_resolution_facts_live instead would omit the strict-tier reference-derived edges that producer already unions in, so a G2 closure would be narrower than the selection closure that decides the same question one axis over — an under-selection source. And it would bind live classification to the import grammar that is scheduled to disappear, so the namespace swap would silently narrow G2 instead of leaving it untouched, which is exactly what the edge-source-agnostic-by-construction note exists to prevent.
 
 ModuleImportFact stays FIXTURE-FACING. It is a hand-authorable \{module, imports} view with no live producer in the corpus, which is what makes it good for planted tests and wrong for production: a shape nothing derives cannot be kept honest against the tree. The seed does not mint it either — asking the host to fabricate the fact shape would put fact production back in the layer this lane is repairing."
 
@@ -638,7 +638,7 @@ fn live_read_classification_g2_from_edges(
   decls: List<v2.std.fn_index.FnArrowDecl>
 ) -> v2.std.live_read.LiveReadClassification {
   let closure_modules = modules_of_closure_paths(
-    closure_paths: dependency_closure(
+    closure_paths: v2.lens.module_graph.dependency_closure(
       entry_path: entry_path,
       edges: edges,
       nodes: nodes
@@ -749,7 +749,7 @@ fn live_read_selection_projection_from_facts(
   decls: List<v2.std.fn_index.FnArrowDecl>,
   carrier_homes: List<v2.std.live_read.LiveReadCarrierHome>
 ) -> v2.std.live_read.LiveReadSelectionProjection {
-  let closure_modules = witness_import_closure(root: entry_module, facts: facts)
+  let closure_modules = v2.lens.witness_cost_locality.witness_import_closure(root: entry_module, facts: facts)
   if g2_facts_cover_reachable_carrier_homes(
     closure_modules: closure_modules,
     carrier_homes: carrier_homes,
@@ -905,7 +905,7 @@ fn filesystem_path_carrier_touched(
   touched_path: String
 ) -> Bool {
   match path_pattern {
-    LiteralPath { path: p } => path_matches_touched(closure_path: p, touched_path: touched_path)
+    LiteralPath { path: p } => v2.lens.module_graph.path_matches_touched(closure_path: p, touched_path: touched_path)
     UnknownPath => true
     ParamRef { name: _ } => true
   }

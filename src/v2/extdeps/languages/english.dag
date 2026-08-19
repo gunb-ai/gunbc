@@ -32,7 +32,7 @@ type EnglishFidelityFeature
   | AmbiguousConstruct
   | MalformedSentence
 
-fn english_feature_disposition(f: EnglishFidelityFeature) -> FidelityDisposition<EnglishFidelityFeature> {
+fn english_feature_disposition(f: EnglishFidelityFeature) -> v2.extdeps.languages.fidelity.FidelityDisposition<EnglishFidelityFeature> {
   match f {
     FormalSubsetSvo => Modeled
     FormalSubsetCopula => Modeled
@@ -50,8 +50,8 @@ fn english_lex_token(token_class: v2.std.node.Symbol, pattern: v2.std.compilers.
 
 fn english_word_pattern() -> v2.std.compilers.lexing.LexPattern {
   v2.std.compilers.lexing.SequencePattern {
-    left: v2.std.compilers.lexing.CharClassPattern { class: IdentStartChar },
-    right: v2.std.compilers.lexing.RepeatPattern { element: v2.std.compilers.lexing.CharClassPattern { class: IdentContinueChar } }
+    left: v2.std.compilers.lexing.CharClassPattern { class: v2.std.compilers.lexing.IdentStartChar },
+    right: v2.std.compilers.lexing.RepeatPattern { element: v2.std.compilers.lexing.CharClassPattern { class: v2.std.compilers.lexing.IdentContinueChar } }
   }
 }
 
@@ -59,7 +59,7 @@ fn english_lex() -> v2.std.compilers.lexing.LexRules {
   v2.std.compilers.lexing.ModeledLexRules {
     root: v2.std.compilers.lexing.LexRuleSet {
       rules: [
-        v2.std.compilers.lexing.TriviaRule { pattern: v2.std.compilers.lexing.OneOrMorePattern { element: v2.std.compilers.lexing.CharClassPattern { class: WhitespaceChar } } },
+        v2.std.compilers.lexing.TriviaRule { pattern: v2.std.compilers.lexing.OneOrMorePattern { element: v2.std.compilers.lexing.CharClassPattern { class: v2.std.compilers.lexing.WhitespaceChar } } },
         english_lex_token(token_class: ^english_token_word, pattern: english_word_pattern()),
         english_lex_token(token_class: ^english_token_period, pattern: v2.std.compilers.lexing.LiteralPattern { text: "." }),
         english_lex_token(token_class: ^english_token_indefinite_article, pattern: v2.std.compilers.lexing.KeywordPattern { text: "a" }),
@@ -72,7 +72,7 @@ fn english_lex() -> v2.std.compilers.lexing.LexRules {
 }
 
 fn english_grammar_terminal(token_class: v2.std.node.Symbol) -> v2.std.grammar.GrammarExpr {
-  Terminal { token_class: token_class, stamp: StampClass }
+  v2.std.grammar.Terminal { token_class: token_class, stamp: v2.std.grammar.StampClass }
 }
 
 fn english_grammar_sequence(left: v2.std.grammar.GrammarExpr, right: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
@@ -132,17 +132,17 @@ fn english_productions() -> List<v2.std.grammar.GrammarProduction> {
   let article = v2.std.grammar.GrammarProduction {
     name: ^english_production_article,
     expression: english_article_expr(),
-    emitted: grammar_atom(identity: ^english_surface_article)
+    emitted: v2.std.grammar.grammar_atom(identity: ^english_surface_article)
   }
   let svo = v2.std.grammar.GrammarProduction {
     name: ^english_production_svo_sentence,
     expression: english_svo_sentence_expr(),
-    emitted: grammar_atom(identity: ^english_surface_svo)
+    emitted: v2.std.grammar.grammar_atom(identity: ^english_surface_svo)
   }
   let copula = v2.std.grammar.GrammarProduction {
     name: ^english_production_copula_sentence,
     expression: english_copula_sentence_expr(),
-    emitted: grammar_atom(identity: ^english_surface_copula)
+    emitted: v2.std.grammar.grammar_atom(identity: ^english_surface_copula)
   }
   let sentence = v2.std.grammar.GrammarProduction {
     name: ^english_production_sentence,
@@ -150,7 +150,7 @@ fn english_productions() -> List<v2.std.grammar.GrammarProduction> {
       left: v2.std.grammar.Nonterminal { production: ^english_production_svo_sentence },
       right: v2.std.grammar.Nonterminal { production: ^english_production_copula_sentence }
     },
-    emitted: grammar_atom(identity: ^english_surface_sentence)
+    emitted: v2.std.grammar.grammar_atom(identity: ^english_surface_sentence)
   }
   [sentence, article, svo, copula]
 }
@@ -160,7 +160,7 @@ fn english_grammar() -> v2.std.grammar.ParseGrammar {
     root: v2.std.grammar.GrammarRoot {
       start: ^english_production_sentence,
       productions: english_productions(),
-      sync_tokens: grammar_empty_sync_tokens()
+      sync_tokens: v2.std.grammar.grammar_empty_sync_tokens()
     }
   }
 }
@@ -177,7 +177,7 @@ fn english_model_core() -> v2.std.model_core.ModelCore {
 
 fn english_language_model() -> v2.std.language_model.LanguageModel {
   v2.std.language_model.LanguageModel {
-    canonical_symbols: language_model_empty_canonical_symbols(),
+    canonical_symbols: v2.std.language_model.language_model_empty_canonical_symbols(),
     language_identity: ^english_language_identity,
     core: english_model_core(),
     lex: english_lex(),
@@ -206,42 +206,42 @@ fn english_ingest_grammar_schema() -> v2.std.grammar.GrammarSchema {
 
 fn english_article_formal_production_definite() -> v2.std.grammar.FormalProduction {
   v2.std.grammar.FormalProduction {
-    lhs: grammar_formal_nonterminal(identity: ^english_production_article),
-    rhs: [grammar_formal_terminal(identity: ^english_token_definite_article)]
+    lhs: v2.std.grammar.grammar_formal_nonterminal(identity: ^english_production_article),
+    rhs: [v2.std.grammar.grammar_formal_terminal(identity: ^english_token_definite_article)]
   }
 }
 
 fn english_article_formal_production_indefinite() -> v2.std.grammar.FormalProduction {
   v2.std.grammar.FormalProduction {
-    lhs: grammar_formal_nonterminal(identity: ^english_production_article),
-    rhs: [grammar_formal_terminal(identity: ^english_token_indefinite_article)]
+    lhs: v2.std.grammar.grammar_formal_nonterminal(identity: ^english_production_article),
+    rhs: [v2.std.grammar.grammar_formal_terminal(identity: ^english_token_indefinite_article)]
   }
 }
 
 fn english_svo_formal_production() -> v2.std.grammar.FormalProduction {
   v2.std.grammar.FormalProduction {
-    lhs: grammar_formal_nonterminal(identity: ^english_production_svo_sentence),
+    lhs: v2.std.grammar.grammar_formal_nonterminal(identity: ^english_production_svo_sentence),
     rhs: [
-      grammar_formal_nonterminal_occurrence(identity: ^english_production_article),
-      grammar_formal_terminal(identity: ^english_token_word),
-      grammar_formal_terminal(identity: ^english_token_word),
-      grammar_formal_nonterminal_occurrence(identity: ^english_production_article),
-      grammar_formal_terminal(identity: ^english_token_word),
-      grammar_formal_terminal(identity: ^english_token_period)
+      v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^english_production_article),
+      v2.std.grammar.grammar_formal_terminal(identity: ^english_token_word),
+      v2.std.grammar.grammar_formal_terminal(identity: ^english_token_word),
+      v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^english_production_article),
+      v2.std.grammar.grammar_formal_terminal(identity: ^english_token_word),
+      v2.std.grammar.grammar_formal_terminal(identity: ^english_token_period)
     ]
   }
 }
 
 fn english_copula_formal_production() -> v2.std.grammar.FormalProduction {
   v2.std.grammar.FormalProduction {
-    lhs: grammar_formal_nonterminal(identity: ^english_production_copula_sentence),
+    lhs: v2.std.grammar.grammar_formal_nonterminal(identity: ^english_production_copula_sentence),
     rhs: [
-      grammar_formal_nonterminal_occurrence(identity: ^english_production_article),
-      grammar_formal_terminal(identity: ^english_token_word),
-      grammar_formal_terminal(identity: ^english_token_copula),
-      grammar_formal_nonterminal_occurrence(identity: ^english_production_article),
-      grammar_formal_terminal(identity: ^english_token_word),
-      grammar_formal_terminal(identity: ^english_token_period)
+      v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^english_production_article),
+      v2.std.grammar.grammar_formal_terminal(identity: ^english_token_word),
+      v2.std.grammar.grammar_formal_terminal(identity: ^english_token_copula),
+      v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^english_production_article),
+      v2.std.grammar.grammar_formal_terminal(identity: ^english_token_word),
+      v2.std.grammar.grammar_formal_terminal(identity: ^english_token_period)
     ]
   }
 }
@@ -252,28 +252,28 @@ fn english_ingest_grammar_probe() -> v2.std.grammar.GrammarSchemaProbeBinding {
     probe: v2.std.grammar.GrammarSchemaProbe {
       fixture: "the function is a handler.",
       production: english_copula_formal_production(),
-      expected_parse_surface: grammar_atom(identity: ^english_surface_copula)
+      expected_parse_surface: v2.std.grammar.grammar_atom(identity: ^english_surface_copula)
     }
   }
 }
 
 data english_add_fn_source_text: String = "the add is a function. the add takes the x. the add takes the y. the add returns the sum. the sum adds the x. the sum adds the y."
 
-fn english_named_edge(name: v2.std.node.Symbol, target: Node) -> v2.std.node.Edge {
-  v2.std.node.Edge { label: Named { name: name }, target: target }
+fn english_named_edge(name: v2.std.node.Symbol, target: v2.std.node.Node) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: v2.std.node.Named { name: name }, target: target }
 }
 
-fn english_inhabitant_atom(id: v2.std.node.Symbol) -> Node {
+fn english_inhabitant_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-fn english_noun_facts_node() -> Node {
+fn english_noun_facts_node() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       english_named_edge(
         name: ^english_facts_field_surface_spelling,
@@ -284,13 +284,13 @@ fn english_noun_facts_node() -> Node {
         target: english_inhabitant_atom(id: ^english_category_formal_noun_phrase)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-fn english_noun_inhabitant_node() -> Node {
+fn english_noun_inhabitant_node() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       english_named_edge(
         name: ^english_inhabitant_field_atom,
@@ -301,19 +301,19 @@ fn english_noun_inhabitant_node() -> Node {
         target: english_noun_facts_node()
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-fn english_add_fn_emitted_node() -> Node {
+fn english_add_fn_emitted_node() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Arrow },
     children: [
-      v2.std.node.Edge { label: Positional, target: english_noun_inhabitant_node() },
-      v2.std.node.Edge { label: Positional, target: english_noun_inhabitant_node() },
-      v2.std.node.Edge { label: Positional, target: english_noun_inhabitant_node() }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: english_noun_inhabitant_node() },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: english_noun_inhabitant_node() },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: english_noun_inhabitant_node() }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
@@ -365,19 +365,19 @@ fn english_add_fn_concrete_tokens() -> List<v2.std.compilers.target_model.Concre
 }
 
 fn english_add_fn_binding_spellings() -> Map<v2.std.node.Symbol, String> {
-  map_insert(
-    map_insert(
-      map_insert(
-        map_insert(
-          map_insert(
-            map_insert(
-              map_insert(
-                map_insert(
-                  map_insert(
-                    map_insert(
-                      map_insert(
-                        map_insert(
-                          map_insert(empty_map(), ^english_binding_article_the, "the "),
+  v2.std.collection.map_insert(
+    v2.std.collection.map_insert(
+      v2.std.collection.map_insert(
+        v2.std.collection.map_insert(
+          v2.std.collection.map_insert(
+            v2.std.collection.map_insert(
+              v2.std.collection.map_insert(
+                v2.std.collection.map_insert(
+                  v2.std.collection.map_insert(
+                    v2.std.collection.map_insert(
+                      v2.std.collection.map_insert(
+                        v2.std.collection.map_insert(
+                          v2.std.collection.map_insert(v2.std.collection.empty_map(), ^english_binding_article_the, "the "),
                           ^english_binding_article_a,
                           "a "
                         ),
@@ -416,26 +416,26 @@ fn english_add_fn_binding_spellings() -> Map<v2.std.node.Symbol, String> {
   )
 }
 
-fn english_concrete_token_node(token: v2.std.compilers.target_model.ConcreteSyntaxToken) -> Node {
+fn english_concrete_token_node(token: v2.std.compilers.target_model.ConcreteSyntaxToken) -> v2.std.node.Node {
 
-  concrete_syntax_token_to_node(token: token)
+  v2.std.compilers.target_model.concrete_syntax_token_to_node(token: token)
 }
 
 fn english_add_fn_formal_rhs() -> List<v2.std.grammar.FormalGrammarSymbol> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: english_add_fn_concrete_tokens(),
     empty: std.algebra.Empty,
     cons: fn(acc, token) {
-      list_snoc_item(
+      v2.std.algebra.list_snoc_item(
         xs: acc,
-        item: grammar_formal_terminal(identity: concrete_syntax_token_class(token: token))
+        item: v2.std.grammar.grammar_formal_terminal(identity: v2.std.compilers.target_model.concrete_syntax_token_class(token: token))
       )
     }
   )
 }
 
 fn english_add_fn_formal_production() -> v2.std.grammar.FormalProduction {
-  grammar_formal_production(
+  v2.std.grammar.grammar_formal_production(
     lhs: ^english_production_add_fn_paragraph,
     rhs: english_add_fn_formal_rhs()
   )
@@ -443,7 +443,7 @@ fn english_add_fn_formal_production() -> v2.std.grammar.FormalProduction {
 
 type EnglishGrammarRelationRow {
   production: v2.std.grammar.FormalProduction
-  emitted: Node
+  emitted: v2.std.node.Node
   tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 }
 
@@ -455,43 +455,43 @@ fn english_add_fn_relation_row() -> EnglishGrammarRelationRow {
   }
 }
 
-fn english_grammar_relation_row_node(row: EnglishGrammarRelationRow) -> Node {
+fn english_grammar_relation_row_node(row: EnglishGrammarRelationRow) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       english_named_edge(
         name: ^grammar_relation_field_production,
-        target: formal_production_to_node(production: row.production)
+        target: v2.std.grammar.formal_production_to_node(production: row.production)
       ),
       english_named_edge(name: ^grammar_relation_field_emitted, target: row.emitted),
       english_named_edge(
         name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
+        target: v2.std.grammar.grammar_relation_tokens_node(
           tokens: row.tokens,
           token_to_node: english_concrete_token_node
         )
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-fn english_add_fn_translation_rules_node() -> Node {
+fn english_add_fn_translation_rules_node() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       english_named_edge(
         name: ^english_relation_rule_add_fn,
         target: english_grammar_relation_row_node(row: english_add_fn_relation_row())
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-fn english_add_fn_serialize_source_node() -> Node {
+fn english_add_fn_serialize_source_node() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       english_named_edge(
         name: ^serialize_source_field_source_text,
@@ -503,13 +503,13 @@ fn english_add_fn_serialize_source_node() -> Node {
       ),
       english_named_edge(
         name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
+        target: v2.std.grammar.grammar_relation_tokens_node(
           tokens: english_add_fn_concrete_tokens(),
           token_to_node: english_concrete_token_node
         )
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
@@ -538,10 +538,10 @@ fn english_add_fn_zip_fold_closure_edges() -> List<v2.std.node.Edge> {
   ]
 }
 
-fn english_declared_inhabitants_root() -> Node {
+fn english_declared_inhabitants_root() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
-    children: list_append(
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+    children: v2.std.algebra.list_append(
       left: [
         english_named_edge(
           name: ^english_inhabitant_field_noun,
@@ -550,36 +550,36 @@ fn english_declared_inhabitants_root() -> Node {
       ],
       right: english_add_fn_zip_fold_closure_edges()
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-fn english_selection_policy_node() -> Node {
+fn english_selection_policy_node() -> v2.std.node.Node {
   english_noun_inhabitant_node()
 }
 
-fn english_add_fn_target_model_node() -> Node {
+fn english_add_fn_target_model_node() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       english_named_edge(name: ^target_model_edge_selection_policy, target: english_selection_policy_node()),
       english_named_edge(name: ^target_model_edge_declared_inhabitants, target: english_declared_inhabitants_root()),
       english_named_edge(name: ^target_model_edge_translation_rules, target: english_add_fn_translation_rules_node()),
       english_named_edge(name: ^target_model_edge_serialize_source, target: english_add_fn_serialize_source_node())
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn english_add_fn_target_model() -> v2.std.compilers.target_model.TargetModel {
   v2.std.compilers.target_model.TargetModel {
-    produced_decl_support: ProducedDeclUnwired,
+    produced_decl_support: v2.std.compilers.target_model.ProducedDeclUnwired,
     bundle: english_add_fn_target_model_node(),
     lex: english_lex(),
     binding_spellings: english_add_fn_binding_spellings(),
-    token_class_emit_transforms: target_model_emit_transforms_empty,
+    token_class_emit_transforms: v2.std.compilers.target_model.target_model_emit_transforms_empty,
     authority_source_text: english_add_fn_source_text,
-    runtime_row: target_emit_host_runtime_row_unconfigured
+    runtime_row: v2.std.host_transport.target_emit_host_runtime_row_unconfigured
   }
 }
 
@@ -618,11 +618,11 @@ fn english_add_fn_paragraph_grammar() -> v2.std.grammar.ParseGrammar {
   v2.std.grammar.ModeledGrammar {
     root: v2.std.grammar.GrammarRoot {
       start: ^english_production_add_fn_paragraph,
-      productions: list_append(
+      productions: v2.std.algebra.list_append(
         left: [english_add_fn_paragraph_production()],
         right: english_productions()
       ),
-      sync_tokens: grammar_empty_sync_tokens()
+      sync_tokens: v2.std.grammar.grammar_empty_sync_tokens()
     }
   }
 }

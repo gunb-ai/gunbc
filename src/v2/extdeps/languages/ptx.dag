@@ -101,7 +101,7 @@ fn ptx_lex_token(token_class: v2.std.node.Symbol, pattern: v2.std.compilers.lexi
 }
 
 fn ptx_grammar_terminal(token_class: v2.std.node.Symbol) -> v2.std.grammar.GrammarExpr {
-  Terminal { token_class: token_class, stamp: StampClass }
+  v2.std.grammar.Terminal { token_class: token_class, stamp: v2.std.grammar.StampClass }
 }
 
 fn ptx_grammar_sequence(left: v2.std.grammar.GrammarExpr, right: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
@@ -110,8 +110,8 @@ fn ptx_grammar_sequence(left: v2.std.grammar.GrammarExpr, right: v2.std.grammar.
 
 fn ptx_identifier_pattern() -> v2.std.compilers.lexing.LexPattern {
   v2.std.compilers.lexing.SequencePattern {
-    left: v2.std.compilers.lexing.CharClassPattern { class: IdentStartChar },
-    right: v2.std.compilers.lexing.RepeatPattern { element: v2.std.compilers.lexing.CharClassPattern { class: IdentContinueChar } }
+    left: v2.std.compilers.lexing.CharClassPattern { class: v2.std.compilers.lexing.IdentStartChar },
+    right: v2.std.compilers.lexing.RepeatPattern { element: v2.std.compilers.lexing.CharClassPattern { class: v2.std.compilers.lexing.IdentContinueChar } }
   }
 }
 
@@ -119,7 +119,7 @@ fn ptx_lex() -> v2.std.compilers.lexing.LexRules {
   v2.std.compilers.lexing.ModeledLexRules {
     root: v2.std.compilers.lexing.LexRuleSet {
       rules: [
-        v2.std.compilers.lexing.TriviaRule { pattern: v2.std.compilers.lexing.OneOrMorePattern { element: v2.std.compilers.lexing.CharClassPattern { class: WhitespaceChar } } },
+        v2.std.compilers.lexing.TriviaRule { pattern: v2.std.compilers.lexing.OneOrMorePattern { element: v2.std.compilers.lexing.CharClassPattern { class: v2.std.compilers.lexing.WhitespaceChar } } },
         ptx_lex_token(token_class: ^ptx_token_ident, pattern: ptx_identifier_pattern()),
         ptx_lex_token(token_class: ^ptx_token_kw_entry, pattern: v2.std.compilers.lexing.KeywordPattern { text: ".entry" }),
         ptx_lex_token(token_class: ^ptx_token_lparen, pattern: v2.std.compilers.lexing.LiteralPattern { text: "(" }),
@@ -154,27 +154,27 @@ fn ptx_grammar() -> v2.std.grammar.ParseGrammar {
   let start = v2.std.grammar.GrammarProduction {
     name: ^ptx_production_entry_kernel,
     expression: ptx_entry_kernel_expr(),
-    emitted: grammar_atom(identity: ^ptx_surface_entry_kernel)
+    emitted: v2.std.grammar.grammar_atom(identity: ^ptx_surface_entry_kernel)
   }
   v2.std.grammar.ModeledGrammar {
     root: v2.std.grammar.GrammarRoot {
       start: ^ptx_production_entry_kernel,
       productions: [start],
-      sync_tokens: grammar_empty_sync_tokens()
+      sync_tokens: v2.std.grammar.grammar_empty_sync_tokens()
     }
   }
 }
 
 fn ptx_entry_kernel_formal_production() -> v2.std.grammar.FormalProduction {
   v2.std.grammar.FormalProduction {
-    lhs: grammar_formal_nonterminal(identity: ^ptx_production_entry_kernel),
+    lhs: v2.std.grammar.grammar_formal_nonterminal(identity: ^ptx_production_entry_kernel),
     rhs: [
-      grammar_formal_terminal(identity: ^ptx_token_kw_entry),
-      grammar_formal_terminal(identity: ^ptx_token_ident),
-      grammar_formal_terminal(identity: ^ptx_token_lparen),
-      grammar_formal_terminal(identity: ^ptx_token_rparen),
-      grammar_formal_terminal(identity: ^ptx_token_lbrace),
-      grammar_formal_terminal(identity: ^ptx_token_rbrace)
+      v2.std.grammar.grammar_formal_terminal(identity: ^ptx_token_kw_entry),
+      v2.std.grammar.grammar_formal_terminal(identity: ^ptx_token_ident),
+      v2.std.grammar.grammar_formal_terminal(identity: ^ptx_token_lparen),
+      v2.std.grammar.grammar_formal_terminal(identity: ^ptx_token_rparen),
+      v2.std.grammar.grammar_formal_terminal(identity: ^ptx_token_lbrace),
+      v2.std.grammar.grammar_formal_terminal(identity: ^ptx_token_rbrace)
     ]
   }
 }
@@ -192,7 +192,7 @@ fn ptx_ingest_grammar_probe() -> v2.std.grammar.GrammarSchemaProbeBinding {
     probe: v2.std.grammar.GrammarSchemaProbe {
       fixture: ".entry k() {}",
       production: ptx_entry_kernel_formal_production(),
-      expected_parse_surface: grammar_atom(identity: ^ptx_surface_entry_kernel)
+      expected_parse_surface: v2.std.grammar.grammar_atom(identity: ^ptx_surface_entry_kernel)
     }
   }
 }

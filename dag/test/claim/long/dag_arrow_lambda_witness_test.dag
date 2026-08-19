@@ -4,10 +4,10 @@ module test.claim.long.dag_arrow_lambda_witness_test
 data arrow_lambda_witness_note: String = "CI2-0 grammar-extension proof obligation (operator repair sequencing msg_7152180b item a; premise corrected by direct probe 2026-08-10): the v2 grammar already admits |> — the measured corpus-wide parse wall in dag/std/algebra.dag, a dependency the v2 compiler itself imports, is the ARROW LAMBDA, v1-only surface syntax. This witness admits it parse-only, mirroring the v1 frontend's exact admission (single bare ident, or parenthesized >=2 idents; () and (x) are NOT lambdas in v1 and stay refused). The rule-removed RED rebuilds the grammar with the EXPR production's expression swapped back to the pre-repair shape, selected by DECLARED production identity with the replacement count asserted, so the discrimination is single-variable at the production grain. Non-interference rows pin the neighbors that share tokens with the new arm: match-arm fat arrows, named args, parenthesized arithmetic, and the recently-landed leading-pipe sum admission."
 
 fn parse_accepts_with(source: String, grammar: v2.std.grammar.ParseGrammar) -> Bool {
-  match lex_walk_artifact(source: source, file: ^lambda_probe, rules: dag_lex_rules()) {
+  match v2.compiler.tokenize.lex_walk_artifact(source: source, file: ^lambda_probe, rules: v2.extdeps.languages.dag.dag_lex_rules()) {
     v2.std.diagnostic.Rejected { diagnostics: _ } => false
     v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
-      match parse_module(tokens: lex_artifact_semantic_tokens(artifact: a), grammar: grammar) {
+      match v2.compiler.parse.parse_module(tokens: v2.std.compilers.lexing.lex_artifact_semantic_tokens(artifact: a), grammar: grammar) {
         v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
         v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
@@ -15,7 +15,7 @@ fn parse_accepts_with(source: String, grammar: v2.std.grammar.ParseGrammar) -> B
 }
 
 fn parse_accepts(source: String) -> Bool {
-  parse_accepts_with(source: source, grammar: dag_grammar())
+  parse_accepts_with(source: source, grammar: v2.extdeps.languages.dag.dag_grammar())
 }
 
 data single_param_lambda_source: String = "module zz_lambda_probe\n\nfn f(xs: List<Int>) -> Bool {\n  any(xs, p => p == 1)\n}\n"
@@ -45,17 +45,17 @@ data single_paren_param_source: String = "module zz_lambda_probe\n\nfn f() -> In
 data zero_param_source: String = "module zz_lambda_probe\n\nfn f() -> Int {\n  g(() => 1)\n}\n"
 
 fn pre_repair_expr_expr() -> v2.std.grammar.GrammarExpr {
-  dag_grammar_choice(
-    left: dag_grammar_nonterminal(production: ^dag_production_match_expr),
-    right: dag_grammar_choice(
-      left: dag_grammar_nonterminal(production: ^dag_production_if_expr),
-      right: dag_grammar_choice(
-        left: dag_grammar_nonterminal(production: ^dag_production_loop_expr),
-        right: dag_grammar_choice(
-          left: dag_grammar_nonterminal(production: ^dag_production_fn_literal),
-          right: dag_grammar_choice(
-            left: dag_grammar_nonterminal(production: ^dag_production_block_expr),
-            right: dag_grammar_nonterminal(production: ^dag_production_binary_expr)
+  v2.extdeps.languages.dag.dag_grammar_choice(
+    left: v2.extdeps.languages.dag.dag_grammar_nonterminal(production: ^dag_production_match_expr),
+    right: v2.extdeps.languages.dag.dag_grammar_choice(
+      left: v2.extdeps.languages.dag.dag_grammar_nonterminal(production: ^dag_production_if_expr),
+      right: v2.extdeps.languages.dag.dag_grammar_choice(
+        left: v2.extdeps.languages.dag.dag_grammar_nonterminal(production: ^dag_production_loop_expr),
+        right: v2.extdeps.languages.dag.dag_grammar_choice(
+          left: v2.extdeps.languages.dag.dag_grammar_nonterminal(production: ^dag_production_fn_literal),
+          right: v2.extdeps.languages.dag.dag_grammar_choice(
+            left: v2.extdeps.languages.dag.dag_grammar_nonterminal(production: ^dag_production_block_expr),
+            right: v2.extdeps.languages.dag.dag_grammar_nonterminal(production: ^dag_production_binary_expr)
           )
         )
       )
@@ -68,7 +68,7 @@ fn no_productions() -> List<v2.std.grammar.GrammarProduction> {
 }
 
 fn swap_expr_production(productions: List<v2.std.grammar.GrammarProduction>) -> List<v2.std.grammar.GrammarProduction> {
-  fold_list(xs: productions, empty: no_productions(), cons: fn(acc, prod) {
+  v2.std.algebra.fold_list(xs: productions, empty: no_productions(), cons: fn(acc, prod) {
     match prod.name == ^dag_production_expr {
       true => concat(acc, [v2.std.grammar.GrammarProduction {
         name: prod.name,
@@ -81,7 +81,7 @@ fn swap_expr_production(productions: List<v2.std.grammar.GrammarProduction>) -> 
 }
 
 fn swapped_count(productions: List<v2.std.grammar.GrammarProduction>) -> Int {
-  fold_list(xs: productions, empty: 0, cons: fn(acc, prod) {
+  v2.std.algebra.fold_list(xs: productions, empty: 0, cons: fn(acc, prod) {
     match prod.name == ^dag_production_expr {
       true => acc + 1
       false => acc
@@ -90,8 +90,8 @@ fn swapped_count(productions: List<v2.std.grammar.GrammarProduction>) -> Int {
 }
 
 fn pre_repair_grammar() -> v2.std.grammar.ParseGrammar {
-  match dag_grammar() {
-    ModeledGrammar { root: r } =>
+  match v2.extdeps.languages.dag.dag_grammar() {
+    v2.std.grammar.ModeledGrammar { root: r } =>
       v2.std.grammar.ModeledGrammar {
         root: v2.std.grammar.GrammarRoot {
           start: r.start,
@@ -99,14 +99,14 @@ fn pre_repair_grammar() -> v2.std.grammar.ParseGrammar {
           sync_tokens: r.sync_tokens
         }
       }
-    VoidGrammar => VoidGrammar
+    v2.std.grammar.VoidGrammar => v2.std.grammar.VoidGrammar
   }
 }
 
 fn pre_repair_swap_targeted_exactly_one() -> Bool {
-  match dag_grammar() {
-    ModeledGrammar { root: r } => swapped_count(productions: r.productions) == 1
-    VoidGrammar => false
+  match v2.extdeps.languages.dag.dag_grammar() {
+    v2.std.grammar.ModeledGrammar { root: r } => swapped_count(productions: r.productions) == 1
+    v2.std.grammar.VoidGrammar => false
   }
 }
 

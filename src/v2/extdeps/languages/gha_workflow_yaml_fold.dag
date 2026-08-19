@@ -4,95 +4,95 @@ module v2.extdeps.languages.gha_workflow_yaml_fold
 type GhaFoldStepBundle {
   production_binding: v2.std.node.Symbol,
   relation_rule: v2.std.node.Symbol,
-  emitted: Node
+  emitted: v2.std.node.Node
 }
 
 type GhaFoldJobBundle {
   production_binding: v2.std.node.Symbol,
   relation_rule: v2.std.node.Symbol,
-  emitted: Node
+  emitted: v2.std.node.Node
 }
 
-fn gha_fold_prod_tag(binding: v2.std.node.Symbol) -> Node {
+fn gha_fold_prod_tag(binding: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: binding } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
 fn gha_fold_prod_kind_tag_terminal(binding: v2.std.node.Symbol) -> v2.std.grammar.FormalGrammarSymbol {
-  grammar_formal_terminal_bound(
+  v2.std.grammar.grammar_formal_terminal_bound(
     identity: ^gha_fold_prod_kind_tag,
     binding: binding
   )
 }
 
-data gha_fold_diagnostic_anchor: Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Conj },
+data gha_fold_diagnostic_anchor: v2.std.node.Node = v2.std.node.Node {
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 fn gha_fold_unsupported_variant_diagnostic(variant: v2.std.node.Symbol) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: variant,
-    at: node_locus(node: gha_fold_diagnostic_anchor),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: gha_fold_diagnostic_anchor),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
-fn gha_fold_scalar_emitted(text: String) -> Node {
+fn gha_fold_scalar_emitted(text: String) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^gha_fold_scalar_kind } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: v2.std.node.SyntheticOccurrence
         }
       },
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: v2.std.node.Node {
-          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: emit_inline_scalar_text(s: text) } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: extdeps.languages.yaml.emit.emit_inline_scalar_text(s: text) } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: v2.std.node.SyntheticOccurrence
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
-fn gha_fold_flow_labels_single_emitted(label: Node) -> Node {
+fn gha_fold_flow_labels_single_emitted(label: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
-    children: [v2.std.node.Edge { label: Positional, target: label }],
-    occurrence_id: SyntheticOccurrence
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+    children: [v2.std.node.Edge { label: v2.std.node.Positional, target: label }],
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
-fn gha_fold_flow_labels_pair_emitted(left: Node, right: Node) -> Node {
+fn gha_fold_flow_labels_pair_emitted(left: v2.std.node.Node, right: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      v2.std.node.Edge { label: Positional, target: left },
-      v2.std.node.Edge { label: Positional, target: right }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: left },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: right }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
 fn gha_fold_flow_labels_emitted_from_list_suffix_witness(
   labels: List<String>,
-  accumulated: Node,
+  accumulated: v2.std.node.Node,
   index: Int
-) -> Witness<Node> {
-  match list_at_optional(xs: labels, index: index) {
-    Present { value: label } =>
+) -> v2.std.witness.Witness<v2.std.node.Node> {
+  match v2.std.collection.list_at_optional(xs: labels, index: index) {
+    v2.std.collection.Present { value: label } =>
       gha_fold_flow_labels_emitted_from_list_suffix_witness(
         labels: labels,
         accumulated: gha_fold_flow_labels_pair_emitted(
@@ -101,17 +101,17 @@ fn gha_fold_flow_labels_emitted_from_list_suffix_witness(
         ),
         index: index + 1
       )
-    Absent => v2.std.witness.Holds { value: accumulated }
+    v2.std.collection.Absent => v2.std.witness.Holds { value: accumulated }
   }
 }
 
-fn gha_fold_flow_labels_emitted_witness(labels: List<String>) -> Witness<Node> {
-  match list_nth(
+fn gha_fold_flow_labels_emitted_witness(labels: List<String>) -> v2.std.witness.Witness<v2.std.node.Node> {
+  match v2.std.collection.list_nth(
     xs: labels,
     wanted: 0,
     absent: gha_fold_unsupported_variant_diagnostic(variant: ^gha_fold_flow_labels_empty)
   ) {
-    Holds { value: first } =>
+    v2.std.witness.Holds { value: first } =>
       gha_fold_flow_labels_emitted_from_list_suffix_witness(
         labels: labels,
         accumulated: gha_fold_flow_labels_single_emitted(
@@ -119,77 +119,77 @@ fn gha_fold_flow_labels_emitted_witness(labels: List<String>) -> Witness<Node> {
         ),
         index: 1
       )
-    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
-fn gha_fold_runs_on_self_hosted_emitted(labels: Node) -> Node {
+fn gha_fold_runs_on_self_hosted_emitted(labels: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: gha_fold_prod_tag(binding: ^gha_production_fold_runs_on_self_hosted)
       },
-      v2.std.node.Edge { label: Positional, target: labels }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: labels }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
-fn gha_fold_step_head_run_emitted(scalar: Node) -> Node {
+fn gha_fold_step_head_run_emitted(scalar: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: gha_fold_prod_tag(binding: ^gha_production_fold_step_head_run)
       },
-      v2.std.node.Edge { label: Positional, target: scalar }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: scalar }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
-fn gha_fold_step_head_uses_emitted(scalar: Node) -> Node {
+fn gha_fold_step_head_uses_emitted(scalar: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: gha_fold_prod_tag(binding: ^gha_production_fold_step_head_uses)
       },
-      v2.std.node.Edge { label: Positional, target: scalar }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: scalar }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
-fn gha_fold_step_tail_run_emitted(scalar: Node) -> Node {
+fn gha_fold_step_tail_run_emitted(scalar: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: gha_fold_prod_tag(binding: ^gha_production_fold_step_tail_run)
       },
-      v2.std.node.Edge { label: Positional, target: scalar }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: scalar }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
-fn gha_fold_step_tail_uses_emitted(scalar: Node) -> Node {
+fn gha_fold_step_tail_uses_emitted(scalar: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: gha_fold_prod_tag(binding: ^gha_production_fold_step_tail_uses)
       },
-      v2.std.node.Edge { label: Positional, target: scalar }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: scalar }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
@@ -200,15 +200,15 @@ fn gha_fold_uses_ref_text(uses: extdeps.github.actions.ActionRef) -> String {
   )
 }
 
-fn gha_fold_step_head_emitted_from_emit(emit: v2.extdeps.github.gha_fold_pilot_emit.GhaPilotStepEmit) -> Witness<Node> {
+fn gha_fold_step_head_emitted_from_emit(emit: v2.extdeps.github.gha_fold_pilot_emit.GhaPilotStepEmit) -> v2.std.witness.Witness<v2.std.node.Node> {
   match emit {
-    GhaPilotRunEmit { run: r } =>
+    v2.extdeps.github.gha_fold_pilot_emit.GhaPilotRunEmit { run: r } =>
       v2.std.witness.Holds {
         value: gha_fold_step_head_run_emitted(
           scalar: gha_fold_scalar_emitted(text: r)
         )
       }
-    GhaPilotUsesEmit { uses: u } =>
+    v2.extdeps.github.gha_fold_pilot_emit.GhaPilotUsesEmit { uses: u } =>
       v2.std.witness.Holds {
         value: gha_fold_step_head_uses_emitted(
           scalar: gha_fold_scalar_emitted(text: gha_fold_uses_ref_text(uses: u))
@@ -217,15 +217,15 @@ fn gha_fold_step_head_emitted_from_emit(emit: v2.extdeps.github.gha_fold_pilot_e
   }
 }
 
-fn gha_fold_step_tail_emitted_from_emit(emit: v2.extdeps.github.gha_fold_pilot_emit.GhaPilotStepEmit) -> Witness<Node> {
+fn gha_fold_step_tail_emitted_from_emit(emit: v2.extdeps.github.gha_fold_pilot_emit.GhaPilotStepEmit) -> v2.std.witness.Witness<v2.std.node.Node> {
   match emit {
-    GhaPilotRunEmit { run: r } =>
+    v2.extdeps.github.gha_fold_pilot_emit.GhaPilotRunEmit { run: r } =>
       v2.std.witness.Holds {
         value: gha_fold_step_tail_run_emitted(
           scalar: gha_fold_scalar_emitted(text: r)
         )
       }
-    GhaPilotUsesEmit { uses: u } =>
+    v2.extdeps.github.gha_fold_pilot_emit.GhaPilotUsesEmit { uses: u } =>
       v2.std.witness.Holds {
         value: gha_fold_step_tail_uses_emitted(
           scalar: gha_fold_scalar_emitted(text: gha_fold_uses_ref_text(uses: u))
@@ -236,115 +236,115 @@ fn gha_fold_step_tail_emitted_from_emit(emit: v2.extdeps.github.gha_fold_pilot_e
 
 fn gha_fold_step_list_emitted_from_suffix_witness(
   job: extdeps.github.actions.Job,
-  accumulated: Node,
+  accumulated: v2.std.node.Node,
   index: Int
-) -> Witness<Node> {
-  match list_at_optional(xs: job.steps, index: index) {
-    Present { value: step } =>
-      match gha_fold_pilot_emit_step(step: step) {
-        Present { value: emit } =>
+) -> v2.std.witness.Witness<v2.std.node.Node> {
+  match v2.std.collection.list_at_optional(xs: job.steps, index: index) {
+    v2.std.collection.Present { value: step } =>
+      match v2.extdeps.github.gha_fold_pilot_emit.gha_fold_pilot_emit_step(step: step) {
+        v2.std.collection.Present { value: emit } =>
           match gha_fold_step_tail_emitted_from_emit(emit: emit) {
-            Holds { value: tail } =>
+            v2.std.witness.Holds { value: tail } =>
               gha_fold_step_list_emitted_from_suffix_witness(
                 job: job,
                 accumulated: gha_fold_step_list_pair_emitted(left: accumulated, right: tail),
                 index: index + 1
               )
-            Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+            v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
           }
-        Absent =>
+        v2.std.collection.Absent =>
           v2.std.witness.Violates {
             diagnostic: gha_fold_unsupported_variant_diagnostic(variant: ^gha_fold_unsupported_step_kind)
           }
       }
-    Absent => v2.std.witness.Holds { value: accumulated }
+    v2.std.collection.Absent => v2.std.witness.Holds { value: accumulated }
   }
 }
 
-fn gha_fold_step_list_emitted_witness(job: extdeps.github.actions.Job) -> Witness<Node> {
-  match list_nth(
+fn gha_fold_step_list_emitted_witness(job: extdeps.github.actions.Job) -> v2.std.witness.Witness<v2.std.node.Node> {
+  match v2.std.collection.list_nth(
     xs: job.steps,
     wanted: 0,
     absent: gha_fold_unsupported_variant_diagnostic(variant: ^gha_fold_step_list_empty)
   ) {
-    Holds { value: first } =>
-      match gha_fold_pilot_emit_step(step: first) {
-        Present { value: emit } =>
+    v2.std.witness.Holds { value: first } =>
+      match v2.extdeps.github.gha_fold_pilot_emit.gha_fold_pilot_emit_step(step: first) {
+        v2.std.collection.Present { value: emit } =>
           match gha_fold_step_head_emitted_from_emit(emit: emit) {
-            Holds { value: head } =>
+            v2.std.witness.Holds { value: head } =>
               gha_fold_step_list_emitted_from_suffix_witness(
                 job: job,
                 accumulated: gha_fold_step_list_single_emitted(step_head: head),
                 index: 1
               )
-            Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+            v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
           }
-        Absent =>
+        v2.std.collection.Absent =>
           v2.std.witness.Violates {
             diagnostic: gha_fold_unsupported_variant_diagnostic(variant: ^gha_fold_unsupported_step_kind)
           }
       }
-    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
-fn gha_fold_step_list_single_emitted(step_head: Node) -> Node {
+fn gha_fold_step_list_single_emitted(step_head: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      v2.std.node.Edge { label: Positional, target: step_head }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: step_head }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
-fn gha_fold_step_list_pair_emitted(left: Node, right: Node) -> Node {
+fn gha_fold_step_list_pair_emitted(left: v2.std.node.Node, right: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      v2.std.node.Edge { label: Positional, target: left },
-      v2.std.node.Edge { label: Positional, target: right }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: left },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: right }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
-fn gha_fold_steps_block_emitted(step_list: Node) -> Node {
+fn gha_fold_steps_block_emitted(step_list: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: gha_fold_prod_tag(binding: ^gha_production_fold_steps_block)
       },
-      v2.std.node.Edge { label: Positional, target: step_list }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: step_list }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
-fn gha_fold_job_emitted(runs_on: Node, steps_block: Node) -> Node {
+fn gha_fold_job_emitted(runs_on: v2.std.node.Node, steps_block: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: gha_fold_prod_tag(binding: ^gha_production_fold_job)
       },
-      v2.std.node.Edge { label: Positional, target: runs_on },
-      v2.std.node.Edge { label: Positional, target: steps_block }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: runs_on },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: steps_block }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
-fn gha_fold_job_bundle_witness(job: extdeps.github.actions.Job) -> Witness<GhaFoldJobBundle> {
+fn gha_fold_job_bundle_witness(job: extdeps.github.actions.Job) -> v2.std.witness.Witness<GhaFoldJobBundle> {
   match job.runner {
-    SelfHosted { labels: ls } =>
+    extdeps.github.actions.SelfHosted { labels: ls } =>
       match gha_fold_flow_labels_emitted_witness(labels: ls) {
-        Holds { value: flow_labels } =>
+        v2.std.witness.Holds { value: flow_labels } =>
           match gha_fold_step_list_emitted_witness(job: job) {
-            Holds { value: step_list } =>
+            v2.std.witness.Holds { value: step_list } =>
               v2.std.witness.Holds {
                 value: GhaFoldJobBundle {
                   production_binding: ^gha_production_fold_job,
@@ -355,9 +355,9 @@ fn gha_fold_job_bundle_witness(job: extdeps.github.actions.Job) -> Witness<GhaFo
                   )
                 }
               }
-            Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+            v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
           }
-        Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+        v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
       }
     _ =>
       v2.std.witness.Violates {
@@ -367,161 +367,161 @@ fn gha_fold_job_bundle_witness(job: extdeps.github.actions.Job) -> Witness<GhaFo
 }
 
 fn gha_fold_scalar_leaf_production() -> v2.std.grammar.FormalProduction {
-  grammar_formal_production(
+  v2.std.grammar.grammar_formal_production(
     lhs: ^gha_production_fold_scalar,
     rhs: [
-      grammar_formal_terminal_bound(identity: ^gha_fold_scalar_kind, binding: ^gha_fold_scalar_kind),
-      grammar_formal_terminal_free(identity: ^gha_token_scalar_value)
+      v2.std.grammar.grammar_formal_terminal_bound(identity: ^gha_fold_scalar_kind, binding: ^gha_fold_scalar_kind),
+      v2.std.grammar.grammar_formal_terminal_free(identity: ^gha_token_scalar_value)
     ]
   )
 }
 
 fn gha_fold_flow_labels_leaf_production() -> v2.std.grammar.FormalProduction {
-  grammar_formal_production(
+  v2.std.grammar.grammar_formal_production(
     lhs: ^gha_production_fold_flow_labels,
-    rhs: [grammar_formal_nonterminal_occurrence(identity: ^gha_production_fold_scalar)]
+    rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^gha_production_fold_scalar)]
   )
 }
 
 fn gha_fold_flow_labels_pair_production() -> v2.std.grammar.FormalProduction {
-  grammar_formal_production(
+  v2.std.grammar.grammar_formal_production(
     lhs: ^gha_production_fold_flow_labels,
     rhs: [
-      grammar_formal_nonterminal_occurrence(identity: ^gha_production_fold_flow_labels),
-      grammar_formal_terminal(identity: ^gha_token_yaml_flow_sep),
-      grammar_formal_nonterminal_occurrence(identity: ^gha_production_fold_scalar)
+      v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^gha_production_fold_flow_labels),
+      v2.std.grammar.grammar_formal_terminal(identity: ^gha_token_yaml_flow_sep),
+      v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^gha_production_fold_scalar)
     ]
   )
 }
 
 fn gha_fold_step_head_run_production() -> v2.std.grammar.FormalProduction {
-  grammar_formal_production(
+  v2.std.grammar.grammar_formal_production(
     lhs: ^gha_production_fold_step_head,
     rhs: [
       gha_fold_prod_kind_tag_terminal(binding: ^gha_production_fold_step_head_run),
-      grammar_formal_terminal(identity: ^gha_token_yaml_block_run_head),
-      grammar_formal_nonterminal_occurrence(identity: ^gha_production_fold_scalar)
+      v2.std.grammar.grammar_formal_terminal(identity: ^gha_token_yaml_block_run_head),
+      v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^gha_production_fold_scalar)
     ]
   )
 }
 
 fn gha_fold_step_head_uses_production() -> v2.std.grammar.FormalProduction {
-  grammar_formal_production(
+  v2.std.grammar.grammar_formal_production(
     lhs: ^gha_production_fold_step_head,
     rhs: [
       gha_fold_prod_kind_tag_terminal(binding: ^gha_production_fold_step_head_uses),
-      grammar_formal_terminal(identity: ^gha_token_yaml_block_uses_head),
-      grammar_formal_nonterminal_occurrence(identity: ^gha_production_fold_scalar)
+      v2.std.grammar.grammar_formal_terminal(identity: ^gha_token_yaml_block_uses_head),
+      v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^gha_production_fold_scalar)
     ]
   )
 }
 
 fn gha_fold_step_tail_run_production() -> v2.std.grammar.FormalProduction {
-  grammar_formal_production(
+  v2.std.grammar.grammar_formal_production(
     lhs: ^gha_production_fold_step_tail,
     rhs: [
       gha_fold_prod_kind_tag_terminal(binding: ^gha_production_fold_step_tail_run),
-      grammar_formal_terminal(identity: ^gha_token_yaml_block_run_tail),
-      grammar_formal_nonterminal_occurrence(identity: ^gha_production_fold_scalar)
+      v2.std.grammar.grammar_formal_terminal(identity: ^gha_token_yaml_block_run_tail),
+      v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^gha_production_fold_scalar)
     ]
   )
 }
 
 fn gha_fold_step_tail_uses_production() -> v2.std.grammar.FormalProduction {
-  grammar_formal_production(
+  v2.std.grammar.grammar_formal_production(
     lhs: ^gha_production_fold_step_tail,
     rhs: [
       gha_fold_prod_kind_tag_terminal(binding: ^gha_production_fold_step_tail_uses),
-      grammar_formal_terminal(identity: ^gha_token_yaml_block_uses_tail),
-      grammar_formal_nonterminal_occurrence(identity: ^gha_production_fold_scalar)
+      v2.std.grammar.grammar_formal_terminal(identity: ^gha_token_yaml_block_uses_tail),
+      v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^gha_production_fold_scalar)
     ]
   )
 }
 
 fn gha_fold_step_list_leaf_production() -> v2.std.grammar.FormalProduction {
-  grammar_formal_production(
+  v2.std.grammar.grammar_formal_production(
     lhs: ^gha_production_fold_step_list,
-    rhs: [grammar_formal_nonterminal_occurrence(identity: ^gha_production_fold_step_head)]
+    rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^gha_production_fold_step_head)]
   )
 }
 
 fn gha_fold_step_list_pair_production() -> v2.std.grammar.FormalProduction {
-  grammar_formal_production(
+  v2.std.grammar.grammar_formal_production(
     lhs: ^gha_production_fold_step_list,
     rhs: [
-      grammar_formal_nonterminal_occurrence(identity: ^gha_production_fold_step_list),
-      grammar_formal_nonterminal_occurrence(identity: ^gha_production_fold_step_tail)
+      v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^gha_production_fold_step_list),
+      v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^gha_production_fold_step_tail)
     ]
   )
 }
 
 fn gha_fold_flat_step_head_run_production() -> v2.std.grammar.FormalProduction {
-  grammar_formal_production(
+  v2.std.grammar.grammar_formal_production(
     lhs: ^gha_production_fold_step_head,
     rhs: [
       gha_fold_prod_kind_tag_terminal(binding: ^gha_production_fold_flat_step_head_run),
-      grammar_formal_terminal(identity: ^gha_token_yaml_flat_run_head),
-      grammar_formal_nonterminal_occurrence(identity: ^gha_production_fold_scalar)
+      v2.std.grammar.grammar_formal_terminal(identity: ^gha_token_yaml_flat_run_head),
+      v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^gha_production_fold_scalar)
     ]
   )
 }
 
 fn gha_fold_flat_step_tail_uses_production() -> v2.std.grammar.FormalProduction {
-  grammar_formal_production(
+  v2.std.grammar.grammar_formal_production(
     lhs: ^gha_production_fold_step_tail,
     rhs: [
       gha_fold_prod_kind_tag_terminal(binding: ^gha_production_fold_flat_step_tail_uses),
-      grammar_formal_terminal(identity: ^gha_token_yaml_flat_uses_tail),
-      grammar_formal_nonterminal_occurrence(identity: ^gha_production_fold_scalar)
+      v2.std.grammar.grammar_formal_terminal(identity: ^gha_token_yaml_flat_uses_tail),
+      v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^gha_production_fold_scalar)
     ]
   )
 }
 
 fn gha_fold_runs_on_self_hosted_production() -> v2.std.grammar.FormalProduction {
-  grammar_formal_production(
+  v2.std.grammar.grammar_formal_production(
     lhs: ^gha_production_fold_runs_on,
     rhs: [
       gha_fold_prod_kind_tag_terminal(binding: ^gha_production_fold_runs_on_self_hosted),
-      grammar_formal_terminal(identity: ^gha_token_yaml_runs_on_prefix),
-      grammar_formal_nonterminal_occurrence(identity: ^gha_production_fold_flow_labels),
-      grammar_formal_terminal(identity: ^gha_token_yaml_runs_on_suffix)
+      v2.std.grammar.grammar_formal_terminal(identity: ^gha_token_yaml_runs_on_prefix),
+      v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^gha_production_fold_flow_labels),
+      v2.std.grammar.grammar_formal_terminal(identity: ^gha_token_yaml_runs_on_suffix)
     ]
   )
 }
 
 fn gha_fold_steps_block_production() -> v2.std.grammar.FormalProduction {
-  grammar_formal_production(
+  v2.std.grammar.grammar_formal_production(
     lhs: ^gha_production_fold_steps_block,
     rhs: [
       gha_fold_prod_kind_tag_terminal(binding: ^gha_production_fold_steps_block),
-      grammar_formal_terminal(identity: ^gha_token_yaml_steps_header),
-      grammar_formal_nonterminal_occurrence(identity: ^gha_production_fold_step_list)
+      v2.std.grammar.grammar_formal_terminal(identity: ^gha_token_yaml_steps_header),
+      v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^gha_production_fold_step_list)
     ]
   )
 }
 
 fn gha_fold_job_production() -> v2.std.grammar.FormalProduction {
-  grammar_formal_production(
+  v2.std.grammar.grammar_formal_production(
     lhs: ^gha_production_fold_job,
     rhs: [
       gha_fold_prod_kind_tag_terminal(binding: ^gha_production_fold_job),
-      grammar_formal_nonterminal_occurrence(identity: ^gha_production_fold_runs_on),
-      grammar_formal_nonterminal_occurrence(identity: ^gha_production_fold_steps_block),
-      grammar_formal_terminal(identity: ^gha_token_yaml_job_trailing_newline)
+      v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^gha_production_fold_runs_on),
+      v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^gha_production_fold_steps_block),
+      v2.std.grammar.grammar_formal_terminal(identity: ^gha_token_yaml_job_trailing_newline)
     ]
   )
 }
 
 fn gha_fold_formal_productions() -> List<v2.std.grammar.FormalProduction> {
-  list_append(
-    list_append(
+  v2.std.algebra.list_append(
+    v2.std.algebra.list_append(
       [gha_fold_scalar_leaf_production()],
       [
         gha_fold_flow_labels_leaf_production(),
         gha_fold_flow_labels_pair_production()
       ]
     ),
-    list_append(
+    v2.std.algebra.list_append(
       [
         gha_fold_step_head_run_production(),
         gha_fold_step_head_uses_production(),
@@ -541,32 +541,32 @@ fn gha_fold_formal_productions() -> List<v2.std.grammar.FormalProduction> {
   )
 }
 
-fn gha_fold_relation_row_witness(emitted: Node, lhs: v2.std.node.Symbol) -> Witness<Node> {
+fn gha_fold_relation_row_witness(emitted: v2.std.node.Node, lhs: v2.std.node.Symbol) -> v2.std.witness.Witness<v2.std.node.Node> {
   let productions = gha_fold_formal_productions()
-  match formal_production_for_lhs_exact(
+  match v2.std.grammar.formal_production_for_lhs_exact(
     productions: productions,
     lhs: lhs,
     child: emitted
   ) {
-    Holds { value: production } =>
-      derive_grammar_relation_row_node(
+    v2.std.witness.Holds { value: production } =>
+      v2.std.grammar.derive_grammar_relation_row_node(
         production: production,
         productions: productions,
         emitted: emitted
       )
-    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
-fn gha_fold_formal_production_for_job_witness(emitted: Node) -> Witness<v2.std.grammar.FormalProduction> {
-  formal_production_for_lhs_exact(
+fn gha_fold_formal_production_for_job_witness(emitted: v2.std.node.Node) -> v2.std.witness.Witness<v2.std.grammar.FormalProduction> {
+  v2.std.grammar.formal_production_for_lhs_exact(
     productions: gha_fold_formal_productions(),
     lhs: ^gha_production_fold_job,
     child: emitted
   )
 }
 
-data gha_fold_pilot_job_emitted: Node = gha_fold_job_emitted(
+data gha_fold_pilot_job_emitted: v2.std.node.Node = gha_fold_job_emitted(
   runs_on: gha_fold_runs_on_self_hosted_emitted(
     labels: gha_fold_flow_labels_pair_emitted(
       left: gha_fold_flow_labels_single_emitted(
@@ -590,63 +590,63 @@ data gha_fold_pilot_job_emitted: Node = gha_fold_job_emitted(
 )
 
 fn gha_fold_serialize_source_witness(
-  emitted: Node,
+  emitted: v2.std.node.Node,
   source_literal: v2.std.node.Symbol,
   production_binding: v2.std.node.Symbol
-) -> Witness<Node> {
+) -> v2.std.witness.Witness<v2.std.node.Node> {
   match gha_fold_relation_row_witness(emitted: emitted, lhs: production_binding) {
-    Holds { value: row } =>
-      match find_named_child(root: row, name: ^grammar_relation_field_tokens) {
+    v2.std.witness.Holds { value: row } =>
+      match v2.std.node_query.find_named_child(root: row, name: ^grammar_relation_field_tokens) {
         Accepted { value: tokens_root, diagnostics: _ } =>
           v2.std.witness.Holds {
             value: v2.std.node.Node {
-              kind: v2.std.node.TypeNode { connective: Conj },
+              kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
               children: [
-                bash_named_edge(
+                v2.extdeps.languages.bash.bash_named_edge(
                   name: ^serialize_source_field_source_text,
-                  target: bash_word_atom(id: source_literal)
+                  target: v2.extdeps.languages.bash.bash_word_atom(id: source_literal)
                 ),
-                bash_named_edge(
+                v2.extdeps.languages.bash.bash_named_edge(
                   name: ^serialize_source_field_source_grammar,
-                  target: bash_word_atom(id: production_binding)
+                  target: v2.extdeps.languages.bash.bash_word_atom(id: production_binding)
                 ),
-                bash_named_edge(
+                v2.extdeps.languages.bash.bash_named_edge(
                   name: ^grammar_relation_field_tokens,
                   target: tokens_root
                 )
               ],
-              occurrence_id: SyntheticOccurrence
+              occurrence_id: v2.std.node.SyntheticOccurrence
             }
           }
         Rejected { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
       }
-    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
 fn gha_fold_translation_rules_node_for_emitted(
-  emitted: Node,
+  emitted: v2.std.node.Node,
   lhs: v2.std.node.Symbol,
   rule_name: v2.std.node.Symbol
-) -> Witness<Node> {
+) -> v2.std.witness.Witness<v2.std.node.Node> {
   match gha_fold_relation_row_witness(emitted: emitted, lhs: lhs) {
-    Holds { value: row } =>
+    v2.std.witness.Holds { value: row } =>
       v2.std.witness.Holds {
         value: v2.std.node.Node {
-          kind: v2.std.node.TypeNode { connective: Conj },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
           children: [
-            bash_named_edge(
+            v2.extdeps.languages.bash.bash_named_edge(
               name: ^grammar_relation_rules_formal_productions,
-              target: formal_productions_catalog_to_node(
+              target: v2.std.grammar.formal_productions_catalog_to_node(
                 productions: gha_fold_formal_productions()
               )
             ),
-            bash_named_edge(name: rule_name, target: row)
+            v2.extdeps.languages.bash.bash_named_edge(name: rule_name, target: row)
           ],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: v2.std.node.SyntheticOccurrence
         }
       }
-    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -697,84 +697,84 @@ fn gha_fold_identity_emit_transform(spelling: String) -> String {
 }
 
 fn gha_fold_emit_transforms() -> Map<v2.std.node.Symbol, fn(String) -> String> {
-  let m0 = map_insert(empty_map(), ^gha_fold_prod_kind_tag, gha_fold_kind_emit_transform)
-  let m1 = map_insert(m0, ^gha_fold_scalar_kind, gha_fold_scalar_kind_emit_transform)
-  map_insert(m1, ^gha_token_scalar_value, gha_fold_identity_emit_transform)
+  let m0 = v2.std.collection.map_insert(v2.std.collection.empty_map(), ^gha_fold_prod_kind_tag, gha_fold_kind_emit_transform)
+  let m1 = v2.std.collection.map_insert(m0, ^gha_fold_scalar_kind, gha_fold_scalar_kind_emit_transform)
+  v2.std.collection.map_insert(m1, ^gha_token_scalar_value, gha_fold_identity_emit_transform)
 }
 
 fn gha_fold_binding_spellings() -> Map<v2.std.node.Symbol, String> {
-  let m0 = map_insert(empty_map(), ^gha_fold_prod_kind_tag, "")
-  map_insert(m0, ^gha_fold_scalar_kind, "")
+  let m0 = v2.std.collection.map_insert(v2.std.collection.empty_map(), ^gha_fold_prod_kind_tag, "")
+  v2.std.collection.map_insert(m0, ^gha_fold_scalar_kind, "")
 }
 
 fn gha_fold_target_model_bundle_witness(
-  emitted: Node,
+  emitted: v2.std.node.Node,
   source_literal: v2.std.node.Symbol,
   production_binding: v2.std.node.Symbol,
   rule_name: v2.std.node.Symbol
-) -> Witness<Node> {
+) -> v2.std.witness.Witness<v2.std.node.Node> {
   match gha_fold_serialize_source_witness(
     emitted: emitted,
     source_literal: source_literal,
     production_binding: production_binding
   ) {
-    Holds { value: serialize_source } =>
+    v2.std.witness.Holds { value: serialize_source } =>
       match gha_fold_translation_rules_node_for_emitted(
         emitted: emitted,
         lhs: production_binding,
         rule_name: rule_name
       ) {
-        Holds { value: rules } =>
+        v2.std.witness.Holds { value: rules } =>
           v2.std.witness.Holds {
-            value: bash_target_model_bundle(
+            value: v2.extdeps.languages.bash.bash_target_model_bundle(
               rules: rules,
               serialize_source: serialize_source
             )
           }
-        Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+        v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
       }
-    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
 fn gha_fold_target_model_for_emitted_witness(
-  emitted: Node,
+  emitted: v2.std.node.Node,
   source_literal: v2.std.node.Symbol,
   source_text: String,
   production_binding: v2.std.node.Symbol,
   rule_name: v2.std.node.Symbol
-) -> Witness<v2.std.compilers.target_model.TargetModel> {
+) -> v2.std.witness.Witness<v2.std.compilers.target_model.TargetModel> {
   match gha_fold_target_model_bundle_witness(
     emitted: emitted,
     source_literal: source_literal,
     production_binding: production_binding,
     rule_name: rule_name
   ) {
-    Holds { value: bundle } =>
+    v2.std.witness.Holds { value: bundle } =>
       v2.std.witness.Holds {
-        value: target_model_make_with_emit_transforms(
+        value: v2.std.compilers.target_model.target_model_make_with_emit_transforms(
           bundle: bundle,
           lex: gha_fold_lex(),
           binding_spellings: gha_fold_binding_spellings(),
           token_class_emit_transforms: gha_fold_emit_transforms(),
           authority_source_text: source_text,
-          runtime_row: target_emit_host_runtime_row_unconfigured
+          runtime_row: v2.std.host_transport.target_emit_host_runtime_row_unconfigured
         )
       }
-    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
-fn gha_fold_job_emitted_witness(job: extdeps.github.actions.Job) -> Witness<Node> {
+fn gha_fold_job_emitted_witness(job: extdeps.github.actions.Job) -> v2.std.witness.Witness<v2.std.node.Node> {
   match gha_fold_job_bundle_witness(job: job) {
-    Holds { value: bundle } => v2.std.witness.Holds { value: bundle.emitted }
-    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    v2.std.witness.Holds { value: bundle } => v2.std.witness.Holds { value: bundle.emitted }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
-fn gha_fold_target_model_for_job_witness(job: extdeps.github.actions.Job, source_text: String) -> Witness<v2.std.compilers.target_model.TargetModel> {
+fn gha_fold_target_model_for_job_witness(job: extdeps.github.actions.Job, source_text: String) -> v2.std.witness.Witness<v2.std.compilers.target_model.TargetModel> {
   match gha_fold_job_bundle_witness(job: job) {
-    Holds { value: bundle } =>
+    v2.std.witness.Holds { value: bundle } =>
       gha_fold_target_model_for_emitted_witness(
         emitted: bundle.emitted,
         source_literal: ^gha_fold_dynamic_source_literal,
@@ -782,47 +782,47 @@ fn gha_fold_target_model_for_job_witness(job: extdeps.github.actions.Job, source
         production_binding: bundle.production_binding,
         rule_name: bundle.relation_rule
       )
-    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
-fn gha_fold_flat_step_head_run_emitted(scalar: Node) -> Node {
+fn gha_fold_flat_step_head_run_emitted(scalar: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: gha_fold_prod_tag(binding: ^gha_production_fold_flat_step_head_run)
       },
-      v2.std.node.Edge { label: Positional, target: scalar }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: scalar }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
-fn gha_fold_flat_step_tail_uses_emitted(scalar: Node) -> Node {
+fn gha_fold_flat_step_tail_uses_emitted(scalar: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: gha_fold_prod_tag(binding: ^gha_production_fold_flat_step_tail_uses)
       },
-      v2.std.node.Edge { label: Positional, target: scalar }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: scalar }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
-data gha_fold_flat_steps_wrong_emitted: Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Conj },
+data gha_fold_flat_steps_wrong_emitted: v2.std.node.Node = v2.std.node.Node {
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
   children: [
     v2.std.node.Edge {
-      label: Positional,
+      label: v2.std.node.Positional,
       target: gha_fold_prod_tag(binding: ^gha_production_fold_job)
     },
     v2.std.node.Edge {
-      label: Positional,
+      label: v2.std.node.Positional,
       target: gha_fold_runs_on_self_hosted_emitted(
         labels: gha_fold_flow_labels_pair_emitted(
           left: gha_fold_flow_labels_single_emitted(
@@ -833,16 +833,16 @@ data gha_fold_flat_steps_wrong_emitted: Node = v2.std.node.Node {
       )
     },
     v2.std.node.Edge {
-      label: Positional,
+      label: v2.std.node.Positional,
       target: v2.std.node.Node {
-        kind: v2.std.node.TypeNode { connective: Conj },
+        kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
         children: [
           v2.std.node.Edge {
-            label: Positional,
+            label: v2.std.node.Positional,
             target: gha_fold_prod_tag(binding: ^gha_production_fold_steps_block)
           },
           v2.std.node.Edge {
-            label: Positional,
+            label: v2.std.node.Positional,
             target: gha_fold_step_list_pair_emitted(
               left: gha_fold_step_list_single_emitted(
                 step_head: gha_fold_flat_step_head_run_emitted(
@@ -855,14 +855,14 @@ data gha_fold_flat_steps_wrong_emitted: Node = v2.std.node.Node {
             )
           }
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: v2.std.node.SyntheticOccurrence
       }
     }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-fn gha_fold_flat_steps_wrong_target_model_witness(source_text: String) -> Witness<v2.std.compilers.target_model.TargetModel> {
+fn gha_fold_flat_steps_wrong_target_model_witness(source_text: String) -> v2.std.witness.Witness<v2.std.compilers.target_model.TargetModel> {
   gha_fold_target_model_for_emitted_witness(
     emitted: gha_fold_flat_steps_wrong_emitted,
     source_literal: ^gha_fold_flat_steps_wrong_source_literal,
@@ -872,24 +872,24 @@ fn gha_fold_flat_steps_wrong_target_model_witness(source_text: String) -> Witnes
   )
 }
 
-data gha_fold_job_wrong_production_emitted: Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Conj },
+data gha_fold_job_wrong_production_emitted: v2.std.node.Node = v2.std.node.Node {
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
   children: [
     v2.std.node.Edge {
-      label: Positional,
+      label: v2.std.node.Positional,
       target: gha_fold_prod_tag(binding: ^gha_production_fold_runs_on_self_hosted)
     },
     v2.std.node.Edge {
-      label: Positional,
+      label: v2.std.node.Positional,
       target: gha_fold_flow_labels_single_emitted(
         label: gha_fold_scalar_emitted(text: "self-hosted")
       )
     }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-fn gha_fold_job_wrong_production_target_model_witness(source_text: String) -> Witness<v2.std.compilers.target_model.TargetModel> {
+fn gha_fold_job_wrong_production_target_model_witness(source_text: String) -> v2.std.witness.Witness<v2.std.compilers.target_model.TargetModel> {
   gha_fold_target_model_for_emitted_witness(
     emitted: gha_fold_job_wrong_production_emitted,
     source_literal: ^gha_fold_job_wrong_production_source_literal,

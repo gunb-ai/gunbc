@@ -1,7 +1,7 @@
 module v2.test.manual.ingest_bridge
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 fn ingest_fixture_token() -> v2.std.compilers.lexing.Token {
   v2.std.compilers.lexing.Token {
@@ -19,138 +19,138 @@ fn ingest_fixture_root() -> v2.std.grammar.GrammarRoot {
     productions: std.algebra.Cons {
       head: v2.std.grammar.GrammarProduction {
         name: ^ingest_fixture_start,
-        expression: Terminal { token_class: ^ingest_fixture_tok, stamp: StampClass },
-        emitted: dag_fixture_emitted_add_fn
+        expression: v2.std.grammar.Terminal { token_class: ^ingest_fixture_tok, stamp: v2.std.grammar.StampClass },
+        emitted: v2.extdeps.languages.dag.dag_fixture_emitted_add_fn
       },
       tail: std.algebra.Empty
     },
-    sync_tokens: grammar_empty_sync_tokens()
+    sync_tokens: v2.std.grammar.grammar_empty_sync_tokens()
   }
 }
 
-fn ingest_parse() -> v2.std.diagnostic.Outcome<Node> {
-  let at = port_locus(port: ^parse_stage_locus_port)
-  match grammar_validate_for_parse(root: ingest_fixture_root(), at: at) {
-    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-    Accepted { value: validated, diagnostics: _ } =>
-      match parse_production(
+fn ingest_parse() -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+  let at = v2.std.diagnostic.port_locus(port: ^parse_stage_locus_port)
+  match v2.compiler.parse.grammar_validate_for_parse(root: ingest_fixture_root(), at: at) {
+    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    v2.std.diagnostic.Accepted { value: validated, diagnostics: _ } =>
+      match v2.compiler.parse.parse_production(
         tokens: std.algebra.Cons { head: ingest_fixture_token(), tail: std.algebra.Empty },
         validated: validated,
         production_name: ^ingest_fixture_start
       ) {
-        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-        Accepted { value: artifact, diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        v2.std.diagnostic.Accepted { value: artifact, diagnostics: _ } =>
           v2.std.diagnostic.Accepted { value: artifact.tree, diagnostics: v2.std.diagnostic.None }
       }
   }
 }
 
-fn ingest_fixture_row_node(emitted: Node, spine_class: v2.std.node.Symbol) -> Node {
+fn ingest_fixture_row_node(emitted: v2.std.node.Node, spine_class: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      v2.std.node.Edge { label: Named { name: ^grammar_relation_field_emitted }, target: emitted },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^grammar_relation_field_emitted }, target: emitted },
       v2.std.node.Edge {
-        label: Named { name: ^grammar_relation_field_tokens },
-        target: grammar_relation_tokens_node(
+        label: v2.std.node.Named { name: ^grammar_relation_field_tokens },
+        target: v2.std.grammar.grammar_relation_tokens_node(
           tokens: std.algebra.Cons { head: spine_class, tail: std.algebra.Empty },
-          token_to_node: grammar_concrete_fixed_token_node
+          token_to_node: v2.std.grammar.grammar_concrete_fixed_token_node
         )
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-fn ingest_fixture_bundle_with_rules(rules: Node) -> Node {
+fn ingest_fixture_bundle_with_rules(rules: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      v2.std.node.Edge { label: Named { name: ^target_model_edge_selection_policy }, target: dag_selection_policy_node() },
-      v2.std.node.Edge { label: Named { name: ^target_model_edge_declared_inhabitants }, target: dag_declared_inhabitants_root() },
-      v2.std.node.Edge { label: Named { name: ^target_model_edge_translation_rules }, target: rules },
-      v2.std.node.Edge { label: Named { name: ^target_model_edge_serialize_source }, target: dag_serialize_source_node() },
-      v2.std.node.Edge { label: Named { name: ^target_model_edge_fidelity_quotient }, target: dag_fidelity_quotient_node() }
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^target_model_edge_selection_policy }, target: v2.extdeps.languages.dag.dag_selection_policy_node() },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^target_model_edge_declared_inhabitants }, target: v2.extdeps.languages.dag.dag_declared_inhabitants_root() },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^target_model_edge_translation_rules }, target: rules },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^target_model_edge_serialize_source }, target: v2.extdeps.languages.dag.dag_serialize_source_node() },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^target_model_edge_fidelity_quotient }, target: v2.extdeps.languages.dag.dag_fidelity_quotient_node() }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-fn ingest_fixture_model_from_bundle(bundle: Node) -> v2.std.compilers.target_model.TargetModel {
+fn ingest_fixture_model_from_bundle(bundle: v2.std.node.Node) -> v2.std.compilers.target_model.TargetModel {
   v2.std.compilers.target_model.TargetModel {
-    produced_decl_support: ProducedDeclUnwired,
+    produced_decl_support: v2.std.compilers.target_model.ProducedDeclUnwired,
     bundle: bundle,
-    lex: dag_lex(),
-    binding_spellings: dag_binding_spellings(),
-    token_class_emit_transforms: target_model_emit_transforms_empty,
-    authority_source_text: dag_source_text,
-    runtime_row: target_emit_host_runtime_row_unconfigured
+    lex: v2.extdeps.languages.dag.dag_lex(),
+    binding_spellings: v2.extdeps.languages.dag.dag_binding_spellings(),
+    token_class_emit_transforms: v2.std.compilers.target_model.target_model_emit_transforms_empty,
+    authority_source_text: v2.extdeps.languages.dag.dag_source_text,
+    runtime_row: v2.std.host_transport.target_emit_host_runtime_row_unconfigured
   }
 }
 
-fn ingest_fixture_model(emitted: Node, spine_class: v2.std.node.Symbol) -> v2.std.compilers.target_model.TargetModel {
+fn ingest_fixture_model(emitted: v2.std.node.Node, spine_class: v2.std.node.Symbol) -> v2.std.compilers.target_model.TargetModel {
   let rules = v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      v2.std.node.Edge { label: Named { name: ^ingest_fixture_rule }, target: ingest_fixture_row_node(emitted: emitted, spine_class: spine_class) }
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^ingest_fixture_rule }, target: ingest_fixture_row_node(emitted: emitted, spine_class: spine_class) }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
   ingest_fixture_model_from_bundle(bundle: ingest_fixture_bundle_with_rules(rules: rules))
 }
 
-fn ingest_fixture_model_ambiguous(emitted: Node, spine_class: v2.std.node.Symbol) -> v2.std.compilers.target_model.TargetModel {
+fn ingest_fixture_model_ambiguous(emitted: v2.std.node.Node, spine_class: v2.std.node.Symbol) -> v2.std.compilers.target_model.TargetModel {
   let rules = v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      v2.std.node.Edge { label: Named { name: ^ingest_fixture_rule }, target: ingest_fixture_row_node(emitted: emitted, spine_class: spine_class) },
-      v2.std.node.Edge { label: Named { name: ^ingest_fixture_rule_alt }, target: ingest_fixture_row_node(emitted: emitted, spine_class: spine_class) }
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^ingest_fixture_rule }, target: ingest_fixture_row_node(emitted: emitted, spine_class: spine_class) },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^ingest_fixture_rule_alt }, target: ingest_fixture_row_node(emitted: emitted, spine_class: spine_class) }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
   ingest_fixture_model_from_bundle(bundle: ingest_fixture_bundle_with_rules(rules: rules))
 }
 
 test fn ingest_recovers_emitted_holds() -> Bool {
   match ingest_parse() {
-    Accepted { value: tree, diagnostics: _ } =>
-      match parse_tree_to_emitted_node(
+    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+      match v2.compiler.ingest.parse_tree_to_emitted_node(
         parse_tree: tree,
-        source_model: ingest_fixture_model(emitted: dag_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok)
+        source_model: ingest_fixture_model(emitted: v2.extdeps.languages.dag.dag_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok)
       ) {
-        Accepted { value: recovered, diagnostics: _ } =>
-          recovered == dag_fixture_emitted_add_fn
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Accepted { value: recovered, diagnostics: _ } =>
+          recovered == v2.extdeps.languages.dag.dag_fixture_emitted_add_fn
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn ingest_bridge_to_canonical_holds() -> Bool {
   match ingest_parse() {
-    Accepted { value: tree, diagnostics: _ } =>
-      match parse_tree_to_target_model_bridge(
+    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+      match v2.compiler.ingest.parse_tree_to_target_model_bridge(
         parse_tree: tree,
-        source_model: ingest_fixture_model(emitted: dag_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok)
+        source_model: ingest_fixture_model(emitted: v2.extdeps.languages.dag.dag_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok)
       ) {
-        Accepted { value: core, diagnostics: _ } =>
-          core == dag_fixture_emitted_add_fn
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Accepted { value: core, diagnostics: _ } =>
+          core == v2.extdeps.languages.dag.dag_fixture_emitted_add_fn
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn ingest_identity_coercion_needs_roster_membership_not_derived_grounding() -> Bool {
-  let source = dag_fixture_emitted_add_fn
-  match infer(tree: source) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: inferred, diagnostics: _ } =>
-      match canonical_grounding_for_node(tree: inferred, node: source) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: grounding_r } =>
+  let source = v2.extdeps.languages.dag.dag_fixture_emitted_add_fn
+  match v2.compiler.infer.infer(tree: source) {
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: inferred, diagnostics: _ } =>
+      match v2.compiler.infer.canonical_grounding_for_node(tree: inferred, node: source) {
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: grounding_r } =>
           (grounding_r.head.reason == ^infer_grounding_not_derived)
-            && match coerce_grounded_node(
+            && match v2.compiler.translate.coerce_grounded_node(
               source: source,
               tree: inferred,
               target: ingest_fixture_model(
@@ -158,9 +158,9 @@ test fn ingest_identity_coercion_needs_roster_membership_not_derived_grounding()
                 spine_class: ^ingest_fixture_tok
               )
             ) {
-              Rejected { diagnostics: _ } => false
-              Accepted { value: coerced, diagnostics: _ } =>
-                (coerced.quality == Identity) && (coerced.target == source)
+              v2.std.diagnostic.Rejected { diagnostics: _ } => false
+              v2.std.diagnostic.Accepted { value: coerced, diagnostics: _ } =>
+                (coerced.quality == v2.std.coercion.Identity) && (coerced.target == source)
             }
       }
   }
@@ -168,82 +168,82 @@ test fn ingest_identity_coercion_needs_roster_membership_not_derived_grounding()
 
 test fn ingest_identity_coercion_refuses_source_absent_from_authored_roster() -> Bool {
   let source = ingest_unstamped_node()
-  match infer(tree: source) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: inferred, diagnostics: _ } =>
-      match coerce_grounded_node(
+  match v2.compiler.infer.infer(tree: source) {
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: inferred, diagnostics: _ } =>
+      match v2.compiler.translate.coerce_grounded_node(
         source: source,
         tree: inferred,
         target: ingest_fixture_model(
-          emitted: dag_fixture_emitted_add_fn,
+          emitted: v2.extdeps.languages.dag.dag_fixture_emitted_add_fn,
           spine_class: ^ingest_fixture_tok
         )
       ) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: d } => d.head.reason == ^infer_grounding_not_derived
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == ^infer_grounding_not_derived
       }
   }
 }
 
 test fn ingest_fails_closed_off_frontier_holds() -> Bool {
   match ingest_parse() {
-    Accepted { value: tree, diagnostics: _ } =>
-      match parse_tree_to_emitted_node(
+    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+      match v2.compiler.ingest.parse_tree_to_emitted_node(
         parse_tree: tree,
-        source_model: ingest_fixture_model(emitted: dag_fixture_emitted_add_fn, spine_class: ^ingest_fixture_other_tok)
+        source_model: ingest_fixture_model(emitted: v2.extdeps.languages.dag.dag_fixture_emitted_add_fn, spine_class: ^ingest_fixture_other_tok)
       ) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: _ } => true
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => true
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn ingest_fails_closed_ambiguous_holds() -> Bool {
   match ingest_parse() {
-    Accepted { value: tree, diagnostics: _ } =>
-      match parse_tree_to_emitted_node(
+    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+      match v2.compiler.ingest.parse_tree_to_emitted_node(
         parse_tree: tree,
-        source_model: ingest_fixture_model_ambiguous(emitted: dag_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok)
+        source_model: ingest_fixture_model_ambiguous(emitted: v2.extdeps.languages.dag.dag_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok)
       ) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: _ } => true
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => true
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn ingest_unstamped_node() -> Node {
+fn ingest_unstamped_node() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 test fn ingest_fails_closed_on_unstamped_holds() -> Bool {
-  match parse_tree_to_emitted_node(
+  match v2.compiler.ingest.parse_tree_to_emitted_node(
     parse_tree: ingest_unstamped_node(),
-    source_model: ingest_fixture_model(emitted: dag_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok)
+    source_model: ingest_fixture_model(emitted: v2.extdeps.languages.dag.dag_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok)
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
 test fn ingest_cross_language_compile_refuses_underived_holds() -> Bool {
   match ingest_parse() {
-    Accepted { value: tree, diagnostics: _ } =>
-      match cross_language_compile(
+    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+      match v2.compiler.ingest.cross_language_compile(
         parse_tree: tree,
-        source_model: ingest_fixture_model(emitted: dag_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok),
-        target_model: dag_target_model()
+        source_model: ingest_fixture_model(emitted: v2.extdeps.languages.dag.dag_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok),
+        target_model: v2.extdeps.languages.dag.dag_target_model()
       ) {
-        Rejected { diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } =>
           d.head.reason == ^infer_grounding_not_derived
-        Accepted { value: _, diagnostics: _ } => false
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

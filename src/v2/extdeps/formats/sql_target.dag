@@ -1,49 +1,49 @@
 module v2.extdeps.formats.sql_target
 
 
-fn sql_atom(id: v2.std.node.Symbol) -> Node {
+fn sql_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
-fn sql_conj_emitted_from_tokens(tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> Node {
+fn sql_conj_emitted_from_tokens(tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
-    children: fold_list(
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+    children: v2.std.algebra.fold_list(
       xs: tokens,
       empty: std.algebra.Empty,
       cons: fn(acc, token) {
         match token {
-          BoundToken { binding: binding, token_class: _ } =>
-            list_snoc_item(
+          v2.std.compilers.target_model.BoundToken { binding: binding, token_class: _ } =>
+            v2.std.algebra.list_snoc_item(
               xs: acc,
-              item: v2.std.node.Edge { label: Positional, target: sql_atom(id: binding) }
+              item: v2.std.node.Edge { label: v2.std.node.Positional, target: sql_atom(id: binding) }
             )
-          FixedToken { token_class: _ } => acc
+          v2.std.compilers.target_model.FixedToken { token_class: _ } => acc
         }
       }
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
 fn sql_formal_symbol_from_token(token: v2.std.compilers.target_model.ConcreteSyntaxToken) -> v2.std.grammar.FormalGrammarSymbol {
   match token {
-    FixedToken { token_class: c } => grammar_formal_terminal(identity: c)
-    BoundToken { token_class: c, binding: b } =>
-      grammar_formal_terminal_bound(identity: c, binding: b)
+    v2.std.compilers.target_model.FixedToken { token_class: c } => v2.std.grammar.grammar_formal_terminal(identity: c)
+    v2.std.compilers.target_model.BoundToken { token_class: c, binding: b } =>
+      v2.std.grammar.grammar_formal_terminal_bound(identity: c, binding: b)
   }
 }
 
 fn sql_formal_rhs_from_tokens(tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> List<v2.std.grammar.FormalGrammarSymbol> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: tokens,
     empty: std.algebra.Empty,
     cons: fn(acc, token) {
-      list_snoc_item(xs: acc, item: sql_formal_symbol_from_token(token: token))
+      v2.std.algebra.list_snoc_item(xs: acc, item: sql_formal_symbol_from_token(token: token))
     }
   )
 }
@@ -52,43 +52,43 @@ fn sql_formal_production_from_fixture(
   lhs: v2.std.node.Symbol,
   tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 ) -> v2.std.grammar.FormalProduction {
-  grammar_formal_production(
+  v2.std.grammar.grammar_formal_production(
     lhs: lhs,
     rhs: sql_formal_rhs_from_tokens(tokens: tokens)
   )
 }
 
-fn sql_concrete_token_node(token: v2.std.compilers.target_model.ConcreteSyntaxToken) -> Node {
-  concrete_syntax_token_to_node(token: token)
+fn sql_concrete_token_node(token: v2.std.compilers.target_model.ConcreteSyntaxToken) -> v2.std.node.Node {
+  v2.std.compilers.target_model.concrete_syntax_token_to_node(token: token)
 }
 
-fn sql_empty_translation_rules_node() -> Node {
+fn sql_empty_translation_rules_node() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
 fn sql_lhs_exact_relation_row_witness(
   lhs: v2.std.node.Symbol,
   tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
-  emitted: Node
-) -> Witness<Node> {
+  emitted: v2.std.node.Node
+) -> v2.std.witness.Witness<v2.std.node.Node> {
   let production = sql_formal_production_from_fixture(lhs: lhs, tokens: tokens)
   let productions = [production]
-  match formal_production_for_lhs_exact(
+  match v2.std.grammar.formal_production_for_lhs_exact(
     productions: productions,
     lhs: lhs,
     child: emitted
   ) {
-    Holds { value: selected } =>
-      derive_grammar_relation_row_node(
+    v2.std.witness.Holds { value: selected } =>
+      v2.std.grammar.derive_grammar_relation_row_node(
         production: selected,
         productions: productions,
         emitted: emitted
       )
-    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -96,24 +96,24 @@ fn sql_relation_translation_rules_witness(
   rule_name: v2.std.node.Symbol,
   lhs: v2.std.node.Symbol,
   tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
-  emitted: Node
-) -> Witness<Node> {
+  emitted: v2.std.node.Node
+) -> v2.std.witness.Witness<v2.std.node.Node> {
   match sql_lhs_exact_relation_row_witness(
     lhs: lhs,
     tokens: tokens,
     emitted: emitted
   ) {
-    Holds { value: row } =>
+    v2.std.witness.Holds { value: row } =>
       v2.std.witness.Holds {
         value: v2.std.node.Node {
-          kind: v2.std.node.TypeNode { connective: Conj },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
           children: [
-            dag_named_edge(name: rule_name, target: row)
+            v2.extdeps.languages.dag.dag_named_edge(name: rule_name, target: row)
           ],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: v2.std.node.SyntheticOccurrence
         }
       }
-    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -121,16 +121,16 @@ fn sql_relation_translation_rules_node(
   rule_name: v2.std.node.Symbol,
   lhs: v2.std.node.Symbol,
   tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
-  emitted: Node
-) -> Node {
+  emitted: v2.std.node.Node
+) -> v2.std.node.Node {
   match sql_relation_translation_rules_witness(
     rule_name: rule_name,
     lhs: lhs,
     tokens: tokens,
     emitted: emitted
   ) {
-    Holds { value: rules } => rules
-    Violates { diagnostic: _ } => sql_empty_translation_rules_node()
+    v2.std.witness.Holds { value: rules } => rules
+    v2.std.witness.Violates { diagnostic: _ } => sql_empty_translation_rules_node()
   }
 }
 
@@ -139,7 +139,7 @@ fn sql_identity_emit_transform(spelling: String) -> String {
 }
 
 fn sql_token_class_emit_transforms() -> Map<v2.std.node.Symbol, fn(String) -> String> {
-  map_insert(empty_map(), ^sql_token_ident, sql_identity_emit_transform)
+  v2.std.collection.map_insert(v2.std.collection.empty_map(), ^sql_token_ident, sql_identity_emit_transform)
 }
 
 fn sql_kind_emit_transform(_spelling: String) -> String {
@@ -150,49 +150,49 @@ fn sql_serialize_source_node(
   source_text_binding: v2.std.node.Symbol,
   production_binding: v2.std.node.Symbol,
   tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
-) -> Node {
+) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      dag_named_edge(
+      v2.extdeps.languages.dag.dag_named_edge(
         name: ^serialize_source_field_source_text,
         target: sql_atom(id: source_text_binding)
       ),
-      dag_named_edge(
+      v2.extdeps.languages.dag.dag_named_edge(
         name: ^serialize_source_field_source_grammar,
         target: sql_atom(id: production_binding)
       ),
-      dag_named_edge(
+      v2.extdeps.languages.dag.dag_named_edge(
         name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
+        target: v2.std.grammar.grammar_relation_tokens_node(
           tokens: tokens,
           token_to_node: sql_concrete_token_node
         )
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
-fn sql_target_model_bundle(rules: Node, serialize_source: Node) -> Node {
+fn sql_target_model_bundle(rules: v2.std.node.Node, serialize_source: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      dag_named_edge(
+      v2.extdeps.languages.dag.dag_named_edge(
         name: ^target_model_edge_translation_rules,
         target: rules
       ),
-      dag_named_edge(
+      v2.extdeps.languages.dag.dag_named_edge(
         name: ^target_model_edge_serialize_source,
         target: serialize_source
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
 fn sql_make_bound_tokens_target_model(
-  rules: Node,
+  rules: v2.std.node.Node,
   source_literal: v2.std.node.Symbol,
   production_name: v2.std.node.Symbol,
   tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
@@ -200,7 +200,7 @@ fn sql_make_bound_tokens_target_model(
   lex: v2.std.compilers.lexing.LexRules,
   binding_spellings: Map<v2.std.node.Symbol, String>
 ) -> v2.std.compilers.target_model.TargetModel {
-  target_model_make_with_emit_transforms(
+  v2.std.compilers.target_model.target_model_make_with_emit_transforms(
     bundle: sql_target_model_bundle(
       rules: rules,
       serialize_source: sql_serialize_source_node(
@@ -213,7 +213,7 @@ fn sql_make_bound_tokens_target_model(
     binding_spellings: binding_spellings,
     token_class_emit_transforms: sql_token_class_emit_transforms(),
     authority_source_text: source_text,
-    runtime_row: target_emit_host_runtime_row_unconfigured
+    runtime_row: v2.std.host_transport.target_emit_host_runtime_row_unconfigured
   )
 }
 

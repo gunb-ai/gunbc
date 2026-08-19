@@ -1,9 +1,9 @@
 module v2.extdeps.formats.spice
 
 
-// A SPICE IDENTIFIER CARRIES ITS OWN SPELLING. It was a substrate Symbol, and the only route
-// from a Symbol to text in this module was a five-entry table covering r1/c1/v1/n1/n2 — so a deck
-// naming anything else emitted Absent, which spice_emit then rendered as the empty string. That
+// A SPICE IDENTIFIER CARRIES ITS OWN SPELLING. It was a substrate v2.std.node.Symbol, and the only route
+// from a v2.std.node.Symbol to text in this module was a five-entry table covering r1/c1/v1/n1/n2 — so a deck
+// naming anything else emitted v2.std.optional.Absent, which spice_emit then rendered as the empty string. That
 // is not a bounded profile, it is a fixture: the emitter worked for exactly the netlist the test
 // declared. The spelling now travels with the name, and nothing has to be extended to name a
 // sixth node.
@@ -29,11 +29,11 @@ fn spice_identifier_is_admissible(spelling: String) -> Bool {
   spelling != "" && !spice_identifier_contains_forbidden(spelling: spelling)
 }
 
-fn spice_identifier(spelling: String) -> Optional<SpiceIdentifier> {
+fn spice_identifier(spelling: String) -> v2.std.optional.Optional<SpiceIdentifier> {
   if spice_identifier_is_admissible(spelling: spelling) {
-    optional_present(value: spelling as SpiceIdentifier)
+    v2.std.optional.optional_present(value: spelling as SpiceIdentifier)
   } else {
-    optional_absent()
+    v2.std.optional.optional_absent()
   }
 }
 
@@ -197,7 +197,7 @@ type SpiceNetlist {
   body: List<DeckStatement>
 }
 
-type SpiceParse = fn(String) -> Outcome<SpiceNetlist>
+type SpiceParse = fn(String) -> v2.std.diagnostic.Outcome<SpiceNetlist>
 
 type SpiceEmit = fn(SpiceNetlist) -> String
 
@@ -210,7 +210,7 @@ fn spice_lex_token(token_class: v2.std.node.Symbol, pattern: v2.std.compilers.le
 }
 
 fn spice_grammar_terminal(token_class: v2.std.node.Symbol) -> v2.std.grammar.GrammarExpr {
-  Terminal { token_class: token_class, stamp: StampClass }
+  Terminal { token_class: token_class, stamp: v2.std.grammar.StampClass }
 }
 
 fn spice_grammar_sequence(left: v2.std.grammar.GrammarExpr, right: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
@@ -219,20 +219,20 @@ fn spice_grammar_sequence(left: v2.std.grammar.GrammarExpr, right: v2.std.gramma
 
 fn spice_identifier_pattern() -> v2.std.compilers.lexing.LexPattern {
   v2.std.compilers.lexing.SequencePattern {
-    left: v2.std.compilers.lexing.CharClassPattern { class: IdentStartChar },
-    right: v2.std.compilers.lexing.RepeatPattern { element: v2.std.compilers.lexing.CharClassPattern { class: IdentContinueChar } }
+    left: v2.std.compilers.lexing.CharClassPattern { class: v2.std.compilers.lexing.IdentStartChar },
+    right: v2.std.compilers.lexing.RepeatPattern { element: v2.std.compilers.lexing.CharClassPattern { class: v2.std.compilers.lexing.IdentContinueChar } }
   }
 }
 
 fn spice_value_pattern() -> v2.std.compilers.lexing.LexPattern {
-  v2.std.compilers.lexing.OneOrMorePattern { element: v2.std.compilers.lexing.CharClassPattern { class: DigitChar } }
+  v2.std.compilers.lexing.OneOrMorePattern { element: v2.std.compilers.lexing.CharClassPattern { class: v2.std.compilers.lexing.DigitChar } }
 }
 
 fn spice_lex() -> v2.std.compilers.lexing.LexRules {
   v2.std.compilers.lexing.ModeledLexRules {
     root: v2.std.compilers.lexing.LexRuleSet {
       rules: [
-        v2.std.compilers.lexing.TriviaRule { pattern: v2.std.compilers.lexing.OneOrMorePattern { element: v2.std.compilers.lexing.CharClassPattern { class: WhitespaceChar } } },
+        v2.std.compilers.lexing.TriviaRule { pattern: v2.std.compilers.lexing.OneOrMorePattern { element: v2.std.compilers.lexing.CharClassPattern { class: v2.std.compilers.lexing.WhitespaceChar } } },
         spice_lex_token(token_class: ^spice_token_ident, pattern: spice_identifier_pattern()),
         spice_lex_token(token_class: ^spice_token_value, pattern: spice_value_pattern())
       ]
@@ -257,25 +257,25 @@ fn spice_grammar() -> v2.std.grammar.ParseGrammar {
   let start = v2.std.grammar.GrammarProduction {
     name: ^spice_production_resistor_statement,
     expression: spice_resistor_statement_expr(),
-    emitted: grammar_atom(identity: ^spice_surface_resistor_statement)
+    emitted: v2.std.grammar.grammar_atom(identity: ^spice_surface_resistor_statement)
   }
   v2.std.grammar.ModeledGrammar {
     root: v2.std.grammar.GrammarRoot {
       start: ^spice_production_resistor_statement,
       productions: [start],
-      sync_tokens: grammar_empty_sync_tokens()
+      sync_tokens: v2.std.grammar.grammar_empty_sync_tokens()
     }
   }
 }
 
 fn spice_resistor_statement_formal_production() -> v2.std.grammar.FormalProduction {
   v2.std.grammar.FormalProduction {
-    lhs: grammar_formal_nonterminal(identity: ^spice_production_resistor_statement),
+    lhs: v2.std.grammar.grammar_formal_nonterminal(identity: ^spice_production_resistor_statement),
     rhs: [
-      grammar_formal_terminal(identity: ^spice_token_ident),
-      grammar_formal_terminal(identity: ^spice_token_ident),
-      grammar_formal_terminal(identity: ^spice_token_ident),
-      grammar_formal_terminal(identity: ^spice_token_value)
+      v2.std.grammar.grammar_formal_terminal(identity: ^spice_token_ident),
+      v2.std.grammar.grammar_formal_terminal(identity: ^spice_token_ident),
+      v2.std.grammar.grammar_formal_terminal(identity: ^spice_token_ident),
+      v2.std.grammar.grammar_formal_terminal(identity: ^spice_token_value)
     ]
   }
 }
@@ -293,7 +293,7 @@ fn spice_format_grammar_probe() -> v2.std.grammar.GrammarSchemaProbeBinding {
     probe: v2.std.grammar.GrammarSchemaProbe {
       fixture: "R1 n1 n2 1",
       production: spice_resistor_statement_formal_production(),
-      expected_parse_surface: grammar_atom(identity: ^spice_surface_resistor_statement)
+      expected_parse_surface: v2.std.grammar.grammar_atom(identity: ^spice_surface_resistor_statement)
     }
   }
 }
@@ -310,14 +310,14 @@ fn spice_text_concat4(a: String, b: String, c: String, d: String) -> String {
   spice_text_concat(left: spice_text_concat3(left: a, mid: b, right: c), right: d)
 }
 
-fn spice_emit_node_ref(node: NodeRef) -> Optional<String> {
+fn spice_emit_node_ref(node: NodeRef) -> v2.std.optional.Optional<String> {
   match node {
-    Ground => Present { value: "0" }
+    Ground => v2.std.optional.Present { value: "0" }
     Named { node: named } =>
       if spice_identifier_is_admissible(spelling: named.name as String) {
-        optional_present(value: named.name as String)
+        v2.std.optional.optional_present(value: named.name as String)
       } else {
-        optional_absent()
+        v2.std.optional.optional_absent()
       }
   }
 }
@@ -328,15 +328,15 @@ fn spice_emit_passive_line(
   n_plus: NodeRef,
   n_minus: NodeRef,
   value: SpiceValue
-) -> Optional<String> {
+) -> v2.std.optional.Optional<String> {
   match spice_emit_node_ref(node: n_plus) {
-    Present { value: plus_spelling } =>
+    v2.std.optional.Present { value: plus_spelling } =>
       match spice_emit_node_ref(node: n_minus) {
-        Present { value: minus_spelling } =>
+        v2.std.optional.Present { value: minus_spelling } =>
           if !spice_identifier_is_admissible(spelling: name as String) {
-            optional_absent()
+            v2.std.optional.optional_absent()
           } else {
-            optional_present(
+            v2.std.optional.optional_present(
               value: spice_text_concat4(
                 a: spice_text_concat3(left: element_letter, mid: name as String, right: " "),
                 b: spice_text_concat(left: plus_spelling, right: " "),
@@ -345,13 +345,13 @@ fn spice_emit_passive_line(
               )
             )
           }
-        Absent => Absent
+        v2.std.optional.Absent => v2.std.optional.Absent
       }
-    Absent => Absent
+    v2.std.optional.Absent => v2.std.optional.Absent
   }
 }
 
-fn spice_emit_component(component: Component) -> Optional<String> {
+fn spice_emit_component(component: Component) -> v2.std.optional.Optional<String> {
   match component {
     Resistor { name, n_plus, n_minus, value } =>
       spice_emit_passive_line(element_letter: "R", name: name, n_plus: n_plus, n_minus: n_minus, value: value)
@@ -361,19 +361,19 @@ fn spice_emit_component(component: Component) -> Optional<String> {
       spice_emit_passive_line(element_letter: "L", name: name, n_plus: n_plus, n_minus: n_minus, value: value)
     VoltageSource { name, n_plus, n_minus, value } =>
       spice_emit_passive_line(element_letter: "V", name: name, n_plus: n_plus, n_minus: n_minus, value: value)
-    CurrentSource { name: _, n_plus: _, n_minus: _, value: _ } => Absent
-    Diode { name: _, anode: _, cathode: _, model: _ } => Absent
-    Bjt { name: _, collector: _, base: _, emitter: _, substrate: _, model: _, modifiers: _ } => Absent
-    Mosfet { name: _, drain: _, gate: _, source: _, body: _, model: _, modifiers: _ } => Absent
-    MutualInductance { name: _, l1: _, l2: _, coupling: _ } => Absent
-    SubcircuitCall { name: _, connections: _, subcircuit: _, parameters: _ } => Absent
+    CurrentSource { name: _, n_plus: _, n_minus: _, value: _ } => v2.std.optional.Absent
+    Diode { name: _, anode: _, cathode: _, model: _ } => v2.std.optional.Absent
+    Bjt { name: _, collector: _, base: _, emitter: _, substrate: _, model: _, modifiers: _ } => v2.std.optional.Absent
+    Mosfet { name: _, drain: _, gate: _, source: _, body: _, model: _, modifiers: _ } => v2.std.optional.Absent
+    MutualInductance { name: _, l1: _, l2: _, coupling: _ } => v2.std.optional.Absent
+    SubcircuitCall { name: _, connections: _, subcircuit: _, parameters: _ } => v2.std.optional.Absent
   }
 }
 
-fn spice_emit_node_voltage_binding(binding: NodeVoltageBinding) -> Optional<String> {
+fn spice_emit_node_voltage_binding(binding: NodeVoltageBinding) -> v2.std.optional.Optional<String> {
   match spice_emit_node_ref(node: binding.node) {
-    Present { value: node_spelling } =>
-      Present {
+    v2.std.optional.Present { value: node_spelling } =>
+      v2.std.optional.Present {
         value: spice_text_concat4(
           a: "v(",
           b: node_spelling,
@@ -381,15 +381,15 @@ fn spice_emit_node_voltage_binding(binding: NodeVoltageBinding) -> Optional<Stri
           d: binding.value.lexeme
         )
       }
-    Absent => Absent
+    v2.std.optional.Absent => v2.std.optional.Absent
   }
 }
 
-fn spice_emit_directive(directive: Directive) -> Optional<String> {
+fn spice_emit_directive(directive: Directive) -> v2.std.optional.Optional<String> {
   match directive {
-    Op => Present { value: ".op" }
+    Op => v2.std.optional.Present { value: ".op" }
     Tran { tstep, tstop } =>
-      Present {
+      v2.std.optional.Present {
         value: spice_text_concat3(
           left: ".tran ",
           mid: spice_text_concat(left: tstep.lexeme, right: " "),
@@ -398,50 +398,50 @@ fn spice_emit_directive(directive: Directive) -> Optional<String> {
       }
     InitialCondition { assignments } =>
       match spice_emit_node_voltage_binding(binding: assignments.first) {
-        Present { value: binding_text } =>
-          Present {
+        v2.std.optional.Present { value: binding_text } =>
+          v2.std.optional.Present {
             value: spice_text_concat(left: ".ic ", right: binding_text)
           }
-        Absent => Absent
+        v2.std.optional.Absent => v2.std.optional.Absent
       }
-    Dc { source: _, vstart: _, vstop: _, vincr: _ } => Absent
-    Ac { sweep: _, n: _, fstart: _, fstop: _ } => Absent
-    NodeSet { assignments: _ } => Absent
-    Options { modifiers: _ } => Absent
-    Include { card: _ } => Absent
+    Dc { source: _, vstart: _, vstop: _, vincr: _ } => v2.std.optional.Absent
+    Ac { sweep: _, n: _, fstart: _, fstop: _ } => v2.std.optional.Absent
+    NodeSet { assignments: _ } => v2.std.optional.Absent
+    Options { modifiers: _ } => v2.std.optional.Absent
+    Include { card: _ } => v2.std.optional.Absent
   }
 }
 
-fn spice_emit_deck_statement(stmt: DeckStatement) -> Optional<String> {
+fn spice_emit_deck_statement(stmt: DeckStatement) -> v2.std.optional.Optional<String> {
   match stmt {
     DeckComponent { component } => spice_emit_component(component: component)
     DeckDirective { directive } => spice_emit_directive(directive: directive)
-    DeckModelCard { model: _ } => Absent
-    DeckSubcircuit { definition: _ } => Absent
+    DeckModelCard { model: _ } => v2.std.optional.Absent
+    DeckSubcircuit { definition: _ } => v2.std.optional.Absent
   }
 }
 
-fn spice_emit_body_lines(body: List<DeckStatement>) -> Optional<String> {
-  fold_list(
+fn spice_emit_body_lines(body: List<DeckStatement>) -> v2.std.optional.Optional<String> {
+  v2.std.algebra.fold_list(
     xs: body,
-    empty: Present { value: "" },
+    empty: v2.std.optional.Present { value: "" },
     cons: fn(acc, stmt) {
       match acc {
-        Absent => Absent
-        Present { value: prefix } =>
+        v2.std.optional.Absent => v2.std.optional.Absent
+        v2.std.optional.Present { value: prefix } =>
           match spice_emit_deck_statement(stmt: stmt) {
-            Present { value: line } =>
+            v2.std.optional.Present { value: line } =>
               if prefix == "" {
-                Present { value: line }
+                v2.std.optional.Present { value: line }
               } else {
-                Present {
+                v2.std.optional.Present {
                   value: spice_text_concat(
                     left: spice_text_concat(left: prefix, right: "\n"),
                     right: line
                   )
                 }
               }
-            Absent => Absent
+            v2.std.optional.Absent => v2.std.optional.Absent
           }
       }
     }
@@ -450,7 +450,7 @@ fn spice_emit_body_lines(body: List<DeckStatement>) -> Optional<String> {
 
 fn spice_emit(netlist: SpiceNetlist) -> String {
   match spice_emit_body_lines(body: netlist.body) {
-    Present { value: body_text } =>
+    v2.std.optional.Present { value: body_text } =>
       if netlist.title == "" {
         body_text
       } else {
@@ -459,7 +459,7 @@ fn spice_emit(netlist: SpiceNetlist) -> String {
           right: body_text
         )
       }
-    Absent => ""
+    v2.std.optional.Absent => ""
   }
 }
 
@@ -468,7 +468,7 @@ fn spice_emit_ngspice(netlist: SpiceNetlist) -> String {
   if base == "" {
     ""
   } else {
-    let has_tran = fold_list(
+    let has_tran = v2.std.algebra.fold_list(
       xs: netlist.body,
       empty: false,
       cons: fn(acc, stmt) {
@@ -510,12 +510,12 @@ data spice_probe_resistor_netlist: SpiceNetlist = SpiceNetlist {
 
 data spice_probe_resistor_line: String = "R1 n1 n2 1"
 
-fn spice_parse_reject_unsupported() -> Outcome<SpiceNetlist> {
-  outcome_rejected(
+fn spice_parse_reject_unsupported() -> v2.std.diagnostic.Outcome<SpiceNetlist> {
+  v2.std.diagnostic.outcome_rejected(
     d: v2.std.diagnostic.Diagnostic {
       reason: ^spice_parse_unsupported,
-      at: v2.std.diagnostic.Textual { file: ^spice_fixture_file, extent: WholeFile },
-      correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+      at: v2.std.diagnostic.Textual { file: ^spice_fixture_file, extent: v2.std.diagnostic.WholeFile },
+      correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
     }
   )
 }
@@ -525,11 +525,11 @@ fn spice_parse_is_probe_line(text: String) -> Bool {
     || (text == spice_emit(netlist: spice_probe_resistor_netlist))
 }
 
-fn spice_parse_accept_probe() -> Outcome<SpiceNetlist> {
-  outcome_accepted(value: spice_probe_resistor_netlist)
+fn spice_parse_accept_probe() -> v2.std.diagnostic.Outcome<SpiceNetlist> {
+  v2.std.diagnostic.outcome_accepted(value: spice_probe_resistor_netlist)
 }
 
-fn spice_parse(text: String) -> Outcome<SpiceNetlist> {
+fn spice_parse(text: String) -> v2.std.diagnostic.Outcome<SpiceNetlist> {
   if spice_parse_is_probe_line(text: text) {
     spice_parse_accept_probe()
   } else {
