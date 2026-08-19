@@ -147,6 +147,7 @@ pub use crate::v1_compiler_infer_types::{
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+pub use crate::v1_std_core::expr_is_any_literal;
 use crate::v1_std_core::CallSemantics::{
     FunctionValueCallSemantics, LookupCallSemantics, PlainCallSemantics,
 };
@@ -2350,14 +2351,20 @@ pub fn where_refinement_diags_for_predicate(
                         }
                     }
                 },
-                None => Rc::new(vec![where_refinement_unenforced_error(
-                    pname.clone(),
-                    formal.clone(),
-                    "non-literal value at refined position".to_string(),
-                    span.clone(),
-                    module_name.clone(),
-                    source_indices.clone(),
-                )]),
+                None => {
+                    if expr_is_any_literal(value_expr.clone()) {
+                        refinement_refusal
+                    } else {
+                        Rc::new(vec![where_refinement_unenforced_error(
+                            pname.clone(),
+                            formal.clone(),
+                            "non-literal value at refined position".to_string(),
+                            span.clone(),
+                            module_name.clone(),
+                            source_indices.clone(),
+                        )])
+                    }
+                }
             }
         } else {
             if where_refinement_is_string_literal_predicate(pname.clone()) {
@@ -2381,14 +2388,20 @@ pub fn where_refinement_diags_for_predicate(
                             )]),
                         }
                     }
-                    None => Rc::new(vec![where_refinement_unenforced_error(
-                        pname.clone(),
-                        formal.clone(),
-                        "non-literal value at refined position".to_string(),
-                        span.clone(),
-                        module_name.clone(),
-                        source_indices.clone(),
-                    )]),
+                    None => {
+                        if expr_is_any_literal(value_expr.clone()) {
+                            refinement_refusal
+                        } else {
+                            Rc::new(vec![where_refinement_unenforced_error(
+                                pname.clone(),
+                                formal.clone(),
+                                "non-literal value at refined position".to_string(),
+                                span.clone(),
+                                module_name.clone(),
+                                source_indices.clone(),
+                            )])
+                        }
+                    }
                 }
             } else {
                 if where_refinement_is_deferred_predicate(pname.clone()) {
@@ -2557,17 +2570,7 @@ pub fn kernel_value_declared_type_mismatch(
         false
     } else {
         {
-            let formal_base = if (((formal.connective.clone() == Connective::Conj)
-                && (formal.type_annotation.clone() != None))
-                && ((formal.children.clone().len() as i64) == 1))
-            {
-                match formal.children.clone().first().cloned() {
-                    Some(refinement_base) => refinement_base.clone(),
-                    None => formal.clone(),
-                }
-            } else {
-                formal.clone()
-            };
+            let formal_base = peel_where_refinement_base(formal.clone(), type_env.clone());
             let actual_name = authored_name_at(source_indices.clone(), actual.clone());
             if ((is_kernel_type(actual_name.clone()) == false)
                 || (actual_name.clone() == "Unit".to_string()))
@@ -2804,12 +2807,30 @@ pub fn structured_application_site_type_mismatch(
 ) -> bool {
     match (*actual_expr.expr_data.clone()).clone() {
         ExprData::ExprRecordLit { parent_enum: _, .. } => {
-            let source_indices = scope.type_env.clone().source_indices.clone();
-            let formal_peeled = peel_nominal_alias_identity(
+            structured_application_site_type_mismatch_with_peeled(
                 formal.clone(),
-                scope.type_env.clone(),
-                scope.module_name.clone(),
-            );
+                peel_nominal_alias_identity(
+                    formal.clone(),
+                    scope.type_env.clone(),
+                    scope.module_name.clone(),
+                ),
+                actual_expr.clone(),
+                scope.clone(),
+            )
+        }
+        _ => false,
+    }
+}
+
+pub fn structured_application_site_type_mismatch_with_peeled(
+    formal: Rc<Node>,
+    formal_peeled: Rc<Node>,
+    actual_expr: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    match (*actual_expr.expr_data.clone()).clone() {
+        ExprData::ExprRecordLit { parent_enum: _, .. } => {
+            let source_indices = scope.type_env.clone().source_indices.clone();
             if type_node_is_callable(formal_peeled.clone()) {
                 false
             } else {
@@ -3090,8 +3111,9 @@ pub fn direct_call_structured_application_mismatch_diags(
                         match app.matched_arg.clone() {
                             Some(ta) => {
                                 let actual_expr = arg_value(ta.clone());
-                                if (structured_application_site_type_mismatch(
+                                if (structured_application_site_type_mismatch_with_peeled(
                                     formal_subst.clone(),
+                                    formal.clone(),
                                     actual_expr.clone(),
                                     scope.clone(),
                                 )
@@ -5318,6 +5340,76 @@ pub fn derive_element_provenance(
     }
 }
 
+pub fn method_declared_arg_expected_types(
+    receiver_type: Rc<Node>,
+    method_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<Node>>> {
+    {
+        let tier0 = lookup_structural_method(
+            receiver_type.clone(),
+            method_name.clone(),
+            source_indices.clone(),
+        );
+        match tier0.resolution.clone() {
+            Some(mfr) => Rc::new({
+                let mut __result = Vec::new();
+                for p in Rc::new(
+                    mfr.field_node
+                        .clone()
+                        .params
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(1 as usize)
+                        .collect::<Vec<_>>(),
+                )
+                .iter()
+                .cloned()
+                {
+                    __result.push(param_node_type_expr(p.clone()));
+                }
+                __result
+            }),
+            None => Rc::new(vec![]),
+        }
+    }
+}
+
+pub fn type_at_position(types: Rc<Vec<Rc<Node>>>, idx: i64) -> Option<Rc<Node>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for pair in Rc::new({
+            let mut __result = Vec::new();
+            for pair in Rc::new(
+                types
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .enumerate()
+                    .map(|(i, v)| (i as i64, v))
+                    .collect::<Vec<_>>(),
+            )
+            .iter()
+            .cloned()
+            {
+                if (pair.0.clone() == idx.clone()) {
+                    __result.push(pair);
+                }
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        {
+            __result.push(pair.1.clone());
+        }
+        __result
+    })
+    .first()
+    .cloned()
+}
+
 pub fn infer_method_args_with_fold(
     method_name: Option<String>,
     method_args: Rc<Vec<Rc<Node>>>,
@@ -5325,6 +5417,7 @@ pub fn infer_method_args_with_fold(
     fold_acc_type: Rc<Node>,
     element_type: Rc<Node>,
     elem_provenance: Rc<SubValueRelation>,
+    param_expected_types: Rc<Vec<Rc<Node>>>,
     scope: Rc<InferScope>,
 ) -> Rc<Vec<Rc<ArgInferResult>>> {
     {
@@ -5457,7 +5550,8 @@ pub fn infer_method_args_with_fold(
                                         elem_provenance.clone(),
                                     ),
                                 };
-                                let nf_scope = if is_lambda_expr(nf_lam_value.clone()) {
+                                let nf_is_lambda = is_lambda_expr(nf_lam_value.clone());
+                                let nf_scope = if nf_is_lambda.clone() {
                                     Rc::new(InferScope {
                                         type_env: scope.type_env.clone(),
                                         func_env: scope.func_env.clone(),
@@ -5473,11 +5567,23 @@ pub fn infer_method_args_with_fold(
                                 } else {
                                     scope.clone()
                                 };
-                                infer_arg_with_element_type(
-                                    a.clone(),
-                                    element_type.clone(),
-                                    nf_scope.clone(),
-                                )
+                                let nf_declared_type = if nf_is_lambda.clone() {
+                                    None
+                                } else {
+                                    type_at_position(param_expected_types.clone(), idx.clone())
+                                };
+                                match nf_declared_type.clone() {
+                                    Some(dt) => infer_arg_with_element_type(
+                                        a.clone(),
+                                        dt.clone(),
+                                        nf_scope.clone(),
+                                    ),
+                                    None => infer_arg_with_element_type(
+                                        a.clone(),
+                                        element_type.clone(),
+                                        nf_scope.clone(),
+                                    ),
+                                }
                             }
                         }
                     }
@@ -6161,6 +6267,7 @@ pub fn infer_expr_body(
                                                 call_fold_acc_type.clone(),
                                                 elem_type.clone(),
                                                 call_elem_provenance.clone(),
+                                                Rc::new(vec![]),
                                                 scope.clone(),
                                             );
                                             v1_rt::concat(
@@ -7066,6 +7173,11 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
                         recv_elem_type.clone(),
                         scope.clone(),
                     );
+                    let mc_param_expected_types = method_declared_arg_expected_types(
+                        recv_rt.clone(),
+                        method_name.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                    );
                     let mc_arg_infer_results = infer_method_args_with_fold(
                         mc_method_name.clone(),
                         mc_args.clone(),
@@ -7073,6 +7185,7 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
                         fold_acc_type.clone(),
                         recv_elem_type.clone(),
                         mc_elem_provenance.clone(),
+                        mc_param_expected_types.clone(),
                         scope.clone(),
                     );
                     let typed_mc_args = Rc::new({
