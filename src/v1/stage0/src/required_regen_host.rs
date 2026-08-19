@@ -205,7 +205,12 @@ fn compile_stage0(workspace: &Path) -> Result<HashMap<String, String>, String> {
     }
     let mut out = HashMap::new();
     for file in result.files.iter() {
-        out.insert(file.path.clone(), file.content.clone());
+        let basename = Path::new(&file.path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(file.path.as_str())
+            .to_string();
+        out.insert(basename, file.content.clone());
     }
     Ok(out)
 }
@@ -411,9 +416,14 @@ fn write_emitted_tree(dest_src: &Path, emitted: &HashMap<String, String>) -> Res
         if let Some(parent) = out_path.parent() {
             fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
         }
-        let normalized = normalize_generated_source(content)?;
-        fs::write(&out_path, normalized)
-            .map_err(|e| format!("write {}: {e}", out_path.display()))?;
+        if path.ends_with(".rs") {
+            let normalized = normalize_generated_source(content)?;
+            fs::write(&out_path, normalized)
+                .map_err(|e| format!("write {}: {e}", out_path.display()))?;
+        } else {
+            fs::write(&out_path, content)
+                .map_err(|e| format!("write {}: {e}", out_path.display()))?;
+        }
     }
     Ok(())
 }
@@ -544,6 +554,7 @@ fn normalize_generated_source_attempt(content: &str) -> Result<String, String> {
 }
 
 fn normalize_with_workdir(content: &str, work_dir: &Path, label: &str) -> Result<String, String> {
+    fs::create_dir_all(work_dir).map_err(|e| format!("create {}: {e}", work_dir.display()))?;
     let path = work_dir.join(format!("{label}.rs"));
     fs::write(&path, content).map_err(|e| format!("write {}: {e}", path.display()))?;
     let output = Command::new("rustfmt")
