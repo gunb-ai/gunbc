@@ -1,0 +1,29 @@
+module v2.test.lens_synthesis.factorial_dominates_exponential
+
+import v2.lens.cost {
+  ExponentialBase,
+  ExponentialCost,
+  FactorialCost,
+  SizeVariable,
+  symbolic_cost_dominates
+}
+import v2.std.cardinality { NonZeroNat }
+import v2.std.logic { Bool }
+import v2.std.nat { Zero }
+import v2.std.node { Atom, Node, TypeNode, SyntheticOccurrence }
+
+data synthesis_fact_x: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^synthesis_fact_x_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+test fn factorial_dominates_exponential_claim_holds() -> Bool {
+  symbolic_cost_dominates(
+    a: FactorialCost { variable: SizeVariable { source: synthesis_fact_x } },
+    b: ExponentialCost {
+      variable: SizeVariable { source: synthesis_fact_x },
+      base: ExponentialBase { predecessor_after_one: NonZeroNat { prev: Zero } }
+    }
+  )
+}

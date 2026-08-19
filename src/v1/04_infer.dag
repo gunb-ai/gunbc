@@ -1563,10 +1563,15 @@ fn where_refinement_diags_for_predicate(
               )]
             }
         }
-      Absent => [where_refinement_unenforced_error(
-        predicate: pname, formal: formal, reason: "non-literal value at refined position",
-        span: span, module_name: module_name, source_indices: source_indices
-      )]
+      Absent =>
+        if expr_is_any_literal(expr: value_expr) {
+          refinement_refusal
+        } else {
+          [where_refinement_unenforced_error(
+            predicate: pname, formal: formal, reason: "non-literal value at refined position",
+            span: span, module_name: module_name, source_indices: source_indices
+          )]
+        }
     }
   } else if where_refinement_is_string_literal_predicate(pred_name: pname) {
     match expr_literal_string_optional(expr: value_expr) {
@@ -1579,10 +1584,15 @@ fn where_refinement_diags_for_predicate(
             span: span, module_name: module_name, source_indices: source_indices
           )]
         }
-      Absent => [where_refinement_unenforced_error(
-        predicate: pname, formal: formal, reason: "non-literal value at refined position",
-        span: span, module_name: module_name, source_indices: source_indices
-      )]
+      Absent =>
+        if expr_is_any_literal(expr: value_expr) {
+          refinement_refusal
+        } else {
+          [where_refinement_unenforced_error(
+            predicate: pname, formal: formal, reason: "non-literal value at refined position",
+            span: span, module_name: module_name, source_indices: source_indices
+          )]
+        }
     }
   } else if where_refinement_is_deferred_predicate(pred_name: pname) {
     [where_refinement_unenforced_error(
@@ -1688,12 +1698,7 @@ fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: Typ
   if formal.connective == Arrow || actual.connective == Arrow || (actual.children |> count) > 0 {
     false
   } else {
-    let formal_base = if formal.connective == Conj && formal.type_annotation != none && (formal.children |> count) == 1 {
-      match formal.children |> first {
-        Present { value: refinement_base } => refinement_base
-        Absent => formal
-      }
-    } else { formal }
+    let formal_base = peel_where_refinement_base(ty: formal, type_env: type_env)
     let actual_name = authored_name_at(source_indices: source_indices, node: actual)
     if is_kernel_type(name: actual_name) == false || actual_name == "Unit" {
       false
@@ -1839,6 +1844,9 @@ fn type_name_transparently_aliases_to(
   }
 }
 
+// The peeling entry point, retained for the record-literal FIELD site, which has
+// no prepared call plan to carry a peeled formal. It peels inside the ExprRecordLit
+// arm exactly as before, so a non-record-literal actual still pays nothing.
 fn structured_application_site_type_mismatch(
   formal: Node,
   actual_expr: Node,
@@ -1846,8 +1854,32 @@ fn structured_application_site_type_mismatch(
 ) -> Bool {
   match actual_expr.expr_data {
     ExprRecordLit { parent_enum: _ } =>
+      structured_application_site_type_mismatch_with_peeled(
+        formal: formal,
+        formal_peeled: peel_nominal_alias_identity(n: formal, env: scope.type_env, module_name: scope.module_name),
+        actual_expr: actual_expr,
+        scope: scope
+      )
+    _ => false
+  }
+}
+
+// Takes the peeled formal the caller ALREADY HAS instead of recomputing it. At the
+// direct-call seam build_call_application_plan stores peel(formal_subst) as
+// CallFormalApplication.formal, and this predicate was handed formal_subst and then
+// recomputed exactly that peel -- the same function on the same node, once per
+// structured record-literal argument. #8431 built the value and left this consumer
+// recomputing it. Both formals are carried because the body still needs the unpeeled
+// one for structured_application_lit_is_declared_optional_variant.
+fn structured_application_site_type_mismatch_with_peeled(
+  formal: Node,
+  formal_peeled: Node,
+  actual_expr: Node,
+  scope: InferScope
+) -> Bool {
+  match actual_expr.expr_data {
+    ExprRecordLit { parent_enum: _ } =>
       let source_indices = scope.type_env.source_indices
-      let formal_peeled = peel_nominal_alias_identity(n: formal, env: scope.type_env, module_name: scope.module_name)
       if type_node_is_callable(n: formal_peeled) {
         false
       } else {
@@ -2033,7 +2065,7 @@ fn direct_call_structured_application_mismatch_diags(
       match app.matched_arg {
         Present { value: ta } =>
           let actual_expr = arg_value(n: ta)
-          if structured_application_site_type_mismatch(formal: formal_subst, actual_expr: actual_expr, scope: scope)
+          if structured_application_site_type_mismatch_with_peeled(formal: formal_subst, formal_peeled: formal, actual_expr: actual_expr, scope: scope)
             || direct_call_structured_record_literal_resolved_type_mismatch(
               formal: formal, actual_expr: actual_expr, type_env: type_env, module_name: module_name, source_indices: source_indices) {
             let actual_raw = resolved_type(n: actual_expr)
@@ -9620,14 +9652,15 @@ fn build_enum_variant_shape_sets(modules: List<TypedModule>, type_summaries: Map
 fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
   let init = EmitInfoBuildState {
     type_summaries: empty_map(),
-    type_decl_items: empty_map()
+    type_decl_items: empty_map(),
+    fn_decl_items: empty_map()
   }
   let built_raw = modules |> fold(init: init, f: (state, typed_module) =>
     typed_module.items |> fold(init: state, f: (inner_state, item) =>
       add_emit_item_summary(state: inner_state, item: item, source_indices: typed_module.type_env.source_indices)
     )
   )
-  let built = EmitInfoBuildState { type_summaries: close_fn_fields(summaries: built_raw.type_summaries), type_decl_items: built_raw.type_decl_items }
+  let built = EmitInfoBuildState { type_summaries: close_fn_fields(summaries: built_raw.type_summaries), type_decl_items: built_raw.type_decl_items, fn_decl_items: built_raw.fn_decl_items }
   let all_recursive = modules |> fold(init: empty_set(), f: (acc, m) =>
     fold(map_keys(m.type_env.recursive_type_set), init: acc, f: (inner, ident) =>
       set_insert(inner, intern_str(table: m.type_env.intern_table, id: ident))
@@ -9638,6 +9671,7 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
   EmitGraphInfo {
     type_summaries: built.type_summaries,
     type_decl_items: built.type_decl_items,
+    fn_decl_items: built.fn_decl_items,
     recursive_type_set: all_recursive,
     fielded_variants: variant_shapes.fielded,
     positional_payload_variants: variant_shapes.positional_payload,

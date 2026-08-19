@@ -1,0 +1,59 @@
+module v2.test.lens_fact_density.fact_bundle_named
+
+import v2.lens.fact_density {
+  KernelAmbientAtom,
+  NamedFieldFacts,
+  NoFact,
+  NotATypeCarrier,
+  carrier_spec_fact
+}
+import v2.std.logic { Bool }
+import v2.std.nat { Succ, Zero }
+import v2.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Symbol,
+  TypeNode,
+  SyntheticOccurrence
+}
+
+data fact_bundle_alias: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^fact_bundle_alias_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data fact_bundle_input: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Named { name: ^fact_bundle_width_field },
+      target: fact_bundle_alias
+    },
+    Edge {
+      label: Named { name: ^fact_bundle_signedness_field },
+      target: fact_bundle_alias
+    }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+test fn fact_bundle_named_claim_holds() -> Bool {
+  match carrier_spec_fact(carrier: fact_bundle_input) {
+    NamedFieldFacts { density: d } =>
+      match d.prev {
+        Succ { prev: q } =>
+          match q {
+            Zero => true
+            Succ { prev: _ } => false
+          }
+        Zero => false
+      }
+    KernelAmbientAtom => false
+    NoFact => false
+    NotATypeCarrier => false
+  }
+}

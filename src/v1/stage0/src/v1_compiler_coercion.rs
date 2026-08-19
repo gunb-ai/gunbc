@@ -21,6 +21,8 @@ use crate::v1_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::qualified_last_segment;
+use crate::v1_std_core::InferredNode::Resolved;
+pub use crate::v1_std_core::{InferredNode, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -115,18 +117,85 @@ pub fn render_cast(expr_str: String, type_str: String, target: RenderTarget) -> 
     }
 }
 
-pub fn lookup_checkpoint(target: RenderTarget, dag_name: String) -> Option<Rc<TypeCheckpoint>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for cp in target_checkpoints(target.clone()).iter().cloned() {
-            if (cp.dag_name.clone() == dag_name.clone()) {
-                __result.push(cp);
+pub fn decl_identity_file(item: Rc<Node>) -> String {
+    match item.ident_span.clone() {
+        Some(sp) => sp.file.clone(),
+        None => "".to_string(),
+    }
+}
+
+pub fn type_reference_decl_file(n: Rc<Node>) -> String {
+    match n.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => decl_identity_file(rt.clone()),
+        _ => decl_identity_file(n.clone()),
+    }
+}
+
+pub fn type_reference_identity_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "A realization decision is made at REFERENCE sites, not only at the declaration site, so every site that asks what a named type realizes as must supply that name's resolved declaring module. decl_identity_file reads a DECLARATION's own ident_span; type_reference_decl_file is its reference-site counterpart, projecting the resolved node inference bound to the reference and falling back to the node's own ident_span when the reference IS the declaration. Passing the empty string here is not a neutral default: the empty string means identity is unknown, which yields NO realization, so a reference site that omits identity silently renders structurally. That is exactly the regression this function exists to prevent -- the seed's own dag/std/integer.dag aliases rendered as crate::std_nat::Nat instead of i64 because eight reference sites were passing an empty identity. Homed in v1.compiler.coercion, not v1.compiler.emit_rust, because lookup_checkpoint -- the identity-gated consumer -- is target-generic and shared by v1.compiler.emit as well as v1.compiler.emit_rust; the helper lived beside one caller only because that caller was written first.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn structural_declaration_modules_for(dag_name: String) -> Rc<Vec<String>> {
+    match dag_name.clone().as_str() {
+        "Hash" => Rc::new(vec!["src/v2/std/node.dag".to_string()]),
+        _ => Rc::new(vec![]),
+    }
+}
+
+pub fn structural_declaration_gate_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Companion to checkpoint_table_bypasses_identity_note (v1.compiler.emit_rust): a checkpoint row states how a target spells a name, never which declaration that name resolves to at a given reference site, so a bare-name-keyed table cannot by itself discriminate a name with two competing declarations. structural_declaration_modules_for is the corpus-side half DESIGN section 3 requires kept OUT of the extdeps row -- a row per colliding dag_name naming the module(s) whose declaration of that name is a structural (non-checkpoint-eligible) realization, never a positive roster of every module that realizes natively (that shape already exists for Nat/Int as numeric_realization_declaring_modules, in v1.compiler.emit_rust, because those two have a genuine native declaring module to match against). Hash has no native dag declaration anywhere -- lookup_checkpoint's row for Hash exists only because the seed's own runtime type happens to share the spelling -- so the correct gate is inverted: refuse the row when the reference resolves to the KNOWN structural declaration, and let every other decl_file (including unknown, the empty string) continue to answer from the row exactly as before. Widening this roster is bound by the same discipline numeric_realization_roster_extension_note states for the positive form: a name is added here because its structural declaration is a fact already true, never to silence a diagnostic at some call site by declaring victory over it.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn decl_file_declares_structurally(dag_name: String, decl_file: String) -> bool {
+    if (decl_file.clone() == "".to_string()) {
+        false
+    } else {
+        {
+            let mut __found = false;
+            for m in structural_declaration_modules_for(dag_name.clone())
+                .iter()
+                .cloned()
+            {
+                if v1_rt::contains(decl_file.clone(), m.clone()) {
+                    __found = true;
+                    break;
+                }
             }
+            __found
         }
-        __result
-    })
-    .first()
-    .cloned()
+    }
+}
+
+pub fn lookup_checkpoint(
+    target: RenderTarget,
+    dag_name: String,
+    decl_file: String,
+) -> Option<Rc<TypeCheckpoint>> {
+    if decl_file_declares_structurally(dag_name.clone(), decl_file.clone()) {
+        None
+    } else {
+        Rc::new({
+            let mut __result = Vec::new();
+            for cp in target_checkpoints(target.clone()).iter().cloned() {
+                if (cp.dag_name.clone() == dag_name.clone()) {
+                    __result.push(cp);
+                }
+            }
+            __result
+        })
+        .first()
+        .cloned()
+    }
 }
 
 pub fn coerce_primitive_type_dotted_fallback_note() -> String {
@@ -138,22 +207,22 @@ pub fn coerce_primitive_type_dotted_fallback_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn coerce_primitive_type(target: RenderTarget, dag_name: String) -> String {
-    match lookup_checkpoint(target.clone(), dag_name.clone()) {
+pub fn coerce_primitive_type(target: RenderTarget, dag_name: String, decl_file: String) -> String {
+    match lookup_checkpoint(target.clone(), dag_name.clone(), decl_file.clone()) {
         Some(cp) => cp.target_type.clone(),
         None => qualified_last_segment(dag_name.clone()),
     }
 }
 
-pub fn is_copy(target: RenderTarget, dag_name: String) -> Option<bool> {
-    match lookup_checkpoint(target.clone(), dag_name.clone()) {
+pub fn is_copy(target: RenderTarget, dag_name: String, decl_file: String) -> Option<bool> {
+    match lookup_checkpoint(target.clone(), dag_name.clone(), decl_file.clone()) {
         Some(cp) => cp.is_copy.clone(),
         None => None,
     }
 }
 
-pub fn literal_suffix(target: RenderTarget, dag_name: String) -> Option<String> {
-    match lookup_checkpoint(target.clone(), dag_name.clone()) {
+pub fn literal_suffix(target: RenderTarget, dag_name: String, decl_file: String) -> Option<String> {
+    match lookup_checkpoint(target.clone(), dag_name.clone(), decl_file.clone()) {
         Some(cp) => match cp.literal_suffix.clone() {
             Some(s) => Some(s.clone()),
             None => Some("".to_string()),
@@ -382,8 +451,10 @@ pub fn template_application_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
                     (*{
                         let inhs =
                             unique_inhabitants_for_template_tests(target_inhabitants(t.clone()));
-                        let int_target = coerce_primitive_type(t.clone(), "Int".to_string());
-                        let str_target = coerce_primitive_type(t.clone(), "String".to_string());
+                        let int_target =
+                            coerce_primitive_type(t.clone(), "Int".to_string(), "".to_string());
+                        let str_target =
+                            coerce_primitive_type(t.clone(), "String".to_string(), "".to_string());
                         Rc::new({
                             let mut __result = Vec::new();
                             for inh in inhs.clone().iter().cloned() {

@@ -1988,14 +1988,14 @@ fn go_lex_rules() -> LexRuleSet {
     rules: [
       go_whitespace_trivia_rule(),
       go_ident_lex_rule(),
-      go_keyword_lex_rule(token_class: ^go_token_kw_func, text: "func "),
+      go_lex_rule(token_class: ^go_token_kw_func, text: "func "),
       go_lex_rule(token_class: ^go_token_lparen, text: "("),
 
       go_lex_rule(token_class: ^go_token_ty_int, text: " int"),
       go_lex_rule(token_class: ^go_token_comma, text: ", "),
       go_lex_rule(token_class: ^go_token_rparen, text: ")"),
       go_lex_rule(token_class: ^go_token_lbrace, text: " { "),
-      go_keyword_lex_rule(token_class: ^go_token_kw_return, text: "return "),
+      go_lex_rule(token_class: ^go_token_kw_return, text: "return "),
       go_lex_rule(token_class: ^go_token_plus, text: " + "),
       go_lex_rule(token_class: ^go_token_rbrace, text: " }")
     ]

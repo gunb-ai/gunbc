@@ -130,6 +130,7 @@ pub mod v1_compiler_runtime_rust;
 pub mod v1_compiler_stage0_crates;
 pub mod v1_compiler_tokenize;
 pub mod v1_compiler_trace;
+pub mod v1_compiler_trait_bound_witness;
 pub mod v1_compiler_trait_derive_emit;
 pub mod v1_compiler_workspace_members;
 pub mod v1_gunbc_namespace_reference_derived_closure_production_observations;
