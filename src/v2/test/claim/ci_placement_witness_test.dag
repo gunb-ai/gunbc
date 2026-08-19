@@ -130,7 +130,7 @@ fn placement_shadow_multi_fn_identity() -> CommitCheckEnrollment {
 fn placement_shadow_entry_wide_identity() -> CommitCheckEnrollment {
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/execution/bind_eval_by_execution_test.dag",
+      entry: "src/v2/test/claim/execution/long/bind_eval_by_execution_test.dag",
       check_fns: [],
       kind: ExecutionWitnessKind,
       span: SpanUndeclared

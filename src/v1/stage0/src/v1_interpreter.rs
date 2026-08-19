@@ -942,6 +942,25 @@ pub enum InterpError {
     StringRealizationStraddle {
         detail: String,
     },
+    /// A pool root contributed NO `.dag` files to a parse-only corpus walk.
+    ///
+    /// Its own variant rather than a `TypeError` because the class is exactly the
+    /// empty-observation narrow DESIGN names: a pool that silently lost its subject was
+    /// indistinguishable from a pool that legitimately matched nothing, so every row over
+    /// it kept passing on a population smaller than its author declared.
+    ///
+    /// The variant CARRIES the classification rather than a rendered sentence: which of the
+    /// three states each root is in -- missing, naming a file, or a directory with no `.dag`
+    /// under it -- because they have different causes and different fixes, and collapsing them
+    /// re-commits the same state-space conflation one level down. A `String` here would have
+    /// done exactly that collapse at the boundary: the type would exist, be classified, and then
+    /// die into prose no consumer could match on. The message is derived from these fields in
+    /// `Display`, which is the one direction that cannot lose them.
+    PoolRootContributesNothing {
+        caller: &'static str,
+        declared: usize,
+        defects: Vec<(String, crate::coproduct_reflection::PoolRootDefect)>,
+    },
     PatternMatchFailure {
         value: String,
     },
@@ -1070,7 +1089,7 @@ impl fmt::Display for InterpError {
             } => {
                 write!(
                     f,
-                    "eval budget exceeded: {}ms thread-CPU > {}ms fast-lane budget (operator 5s rule 2026-07-12). This budget is enforced on THREAD CPU, not wall. RELOCATING THE FILE DOES NOT DISCHARGE IT: moving a witness under a long/ dir removes it from per-PR discovery without giving it an executing consumer, which deletes the coverage while retaining the source (the gunbc#7762 specimen behind the 2026-08-04 admission ruling). Either reduce the witness's cost, or enroll it in a lane that declares its own dated ceiling AND names the row as an executing consumer.",
+                    "eval budget exceeded: {}ms thread-CPU > {}ms fast-lane budget (operator ruling 2026-08-17, superseding the 5s rule of 2026-07-12; ceiling from required_floor_claim_budget_ms). This budget is enforced on THREAD CPU, not wall. RELOCATING THE FILE DOES NOT DISCHARGE IT: moving a witness under a long/ dir removes it from per-PR discovery without giving it an executing consumer, which deletes the coverage while retaining the source (the gunbc#7762 specimen behind the 2026-08-04 admission ruling). Either reduce the witness's cost, or enroll it in a lane that declares its own dated ceiling AND names the row as an executing consumer.",
                     elapsed_ms, budget_ms
                 )
             }
@@ -1089,6 +1108,19 @@ impl fmt::Display for InterpError {
             }
             InterpError::StringRealizationStraddle { detail } => {
                 write!(f, "string realization straddle: {}", detail)
+            }
+            InterpError::PoolRootContributesNothing {
+                caller,
+                declared,
+                defects,
+            } => {
+                write!(
+                    f,
+                    "pool root contributes nothing: {}",
+                    crate::coproduct_reflection::pool_root_refusal_message(
+                        defects, *declared, caller
+                    )
+                )
             }
             InterpError::PatternMatchFailure { value } => {
                 write!(f, "non-exhaustive pattern match on: {}", value)
@@ -1839,7 +1871,8 @@ pub struct InterpContext {
     published_mock_keys: RefCell<Option<Rc<std::collections::HashSet<String>>>>,
     whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
     governed_services: RefCell<Option<Rc<std::collections::HashSet<String>>>>,
-    // Cooperative per-witness eval deadline (fast-lane 5s rule, operator 2026-07-12).
+    // Cooperative per-witness eval deadline (operator ruling 2026-08-17; ceiling supplied by the
+    // caller from `v2.workflow.required_floor` `required_floor_claim_budget_ms`).
     // The bound must unwind from INSIDE eval as a typed error: witness evals run on
     // in-process worker threads with no kill authority, so a wall-clock bound imposed
     // from outside cannot terminate them (the Phase A governor lesson). The budget is
@@ -2820,7 +2853,7 @@ fn call_function_inner(
 /// It advances only while THIS thread is actually running on a core, so it excludes both
 /// blocking-I/O waits (a witness reading the live tree cold) and scheduler time-slicing (many
 /// witnesses sharing cores under the adaptive governor). That is exactly the "assuming the
-/// infra isn't the problem" clause of the operator's 5s rule: a genuine non-terminating eval
+/// infra isn't the problem" clause of the operator's eval-budget ruling: a genuine non-terminating eval
 /// burns CPU and is still caught, while a bounded scan whose WALL time was inflated by infra is
 /// not misclassified. On unix this reads `CLOCK_THREAD_CPUTIME_ID`; elsewhere (dev only — CI is
 /// linux) it falls back to a process-monotonic wall clock. A clock error yields 0, which makes
