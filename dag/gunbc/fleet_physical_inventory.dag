@@ -30,6 +30,19 @@ import extdeps.cooling.dynatron { dynatron_w1_catalog }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import gunbc.fleet_intent { srv3_baseboard, srv4_baseboard }
 import product.cooling_qualification { InstalledCoolingRealization }
+import std.nat { Nat }
+import product.inventory {
+  CatalogRowUnread,
+  InventoryEvent,
+  InventoryLotAllocator,
+  InventoryLotIdentity,
+  LandedCostUnsettled,
+  LotAcquired,
+  ProcurementLot,
+  ReceiptHeldPrivately,
+  inventory_lot_allocator_initial,
+  mint_inventory_lot_identity,
+}
 import gunbc.fleet_intent {
   srv1_memory_population,
   srv2_memory_population,
@@ -364,3 +377,89 @@ data fleet_processor_verdicts: List<ProcessorReconcileVerdict> = [
     observation: ProcessorObservationAbsent { host: host_srv4, cause: fleet_processor_observation_absent_cause },
   ),
 ]
+
+// ---------------------------------------------------------------------------
+// THE 64 GiB DIMM LOT: thirty-two sticks, in transit, part number unread.
+//
+// The lot goes on the ledger before anybody has read its part number, because
+// the supply commitment is real now and a planner that could not see it would
+// keep treating the current populations as the fleet's memory ceiling. What
+// the lot does NOT do is claim anything nobody has established: the catalog
+// identity is CatalogRowUnread with the read obligation stated, the landed
+// cost is LandedCostUnsettled because the lot has not settled, and the receipt
+// is ReceiptHeldPrivately per the operator's 2026-08-19 ruling that purchase
+// provenance and money are private-tree facts. No price and no order identity
+// appear here, and after the landed-cost split in product.inventory there is
+// no field for either to hide in.
+//
+// THE LEDGER HAS EXACTLY ONE EVENT, AND THE MISSING ONES ARE THE POINT. The
+// intended split is eight sticks per host, but a reservation in this ledger
+// moves stock out of Available, and nothing is Available: thirty-two units sit
+// in AwaitingReceipt until a LotReceived and a QuantityQualified say otherwise.
+// So authoring four QuantityReserved events today would be refused by the
+// ledger - correctly, because they would assert that stock on hand had been
+// allocated when the stock is on a truck. The per-host figures are therefore
+// carried as an INTENT below, which is what they actually are, and they become
+// reservations through ordinary ledger events when the sticks arrive.
+// ---------------------------------------------------------------------------
+
+data fleet_lot_allocation_seed: InventoryLotAllocator = inventory_lot_allocator_initial()
+
+data dimm_lot_64gib_32x_identity: InventoryLotIdentity = mint_inventory_lot_identity(alloc: fleet_lot_allocation_seed).id
+
+data fleet_lot_allocator_after_dimm_lot: InventoryLotAllocator = mint_inventory_lot_identity(alloc: fleet_lot_allocation_seed).alloc
+
+data dimm_lot_64gib_32x: ProcurementLot = ProcurementLot {
+  identity: dimm_lot_64gib_32x_identity,
+  receipt: ReceiptHeldPrivately,
+  catalog: CatalogRowUnread {
+    observed_family: "64 GiB DDR4 DIMM, exact vendor and part unread" as NonEmptyStr,
+    read_obligation: "read the manufacturer and exact part number off the delivered sticks or the order confirmation, author the cited DramModuleCatalogRow in extdeps.memory against the manufacturer datasheet with the part number decomposed onto chip_width, rank_count and buffering, then replace this arm with CatalogRowExact naming that row" as NonEmptyStr,
+  },
+  display_label: "64 GiB DIMM lot, 32 sticks, fleet memory uplift" as NonEmptyStr,
+  quantity_acquired: 32,
+  landed_cost: LandedCostUnsettled,
+}
+
+data dimm_lot_64gib_32x_ledger: List<InventoryEvent> = [
+  LotAcquired { lot: dimm_lot_64gib_32x_identity },
+]
+
+// The intended destination of the lot, one row per host. This is an INTENT and
+// says so in its name: it commits nothing in the ledger, holds no stock, and
+// is not consulted by any balance. It exists so the eight-per-host plan is a
+// typed fact rather than prose, and it is discharged - not restated - by the
+// QuantityReserved events that follow receipt and qualification.
+type FleetLotAllocationIntent {
+  lot: InventoryLotIdentity
+  host: HostIdentity
+  intended_quantity: Nat
+}
+
+data dimm_lot_64gib_32x_intended_allocation: List<FleetLotAllocationIntent> = [
+  FleetLotAllocationIntent { lot: dimm_lot_64gib_32x_identity, host: host_srv1, intended_quantity: 8 },
+  FleetLotAllocationIntent { lot: dimm_lot_64gib_32x_identity, host: host_srv2, intended_quantity: 8 },
+  FleetLotAllocationIntent { lot: dimm_lot_64gib_32x_identity, host: host_srv3, intended_quantity: 8 },
+  FleetLotAllocationIntent { lot: dimm_lot_64gib_32x_identity, host: host_srv4, intended_quantity: 8 },
+]
+
+fn intended_allocation_total(rows: List<FleetLotAllocationIntent>) -> Nat {
+  if rows.length() == 0 {
+    0
+  } else {
+    match rows.first() {
+      Absent => 0
+      Present { value: row } => row.intended_quantity + intended_allocation_total(rows: rows.skip(n: 1))
+    }
+  }
+}
+
+// The intent may not promise more sticks than the lot holds. This is a check
+// rather than a construction wall, and the honest reason is that the lot and
+// the intent rows are separately authored data with no shared constructor to
+// seal; the ledger's own over-reservation refusal is the structural wall, and
+// it takes effect the moment these intents become reservations.
+fn dimm_lot_intent_fits_the_lot() -> Bool {
+  intended_allocation_total(rows: dimm_lot_64gib_32x_intended_allocation)
+    <= dimm_lot_64gib_32x.quantity_acquired
+}

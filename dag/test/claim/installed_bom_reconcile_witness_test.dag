@@ -37,7 +37,36 @@ import extdeps.memory.types { MemoryPopulationRow }
 import extdeps.memory.sk_hynix { hma82gr7afr4n_vk_catalog, hma82gr7afr8n_vk_catalog }
 import extdeps.memory.samsung { m386a4g40dm0_cpb_catalog }
 import extdeps.cpu.ampere { altra_max_m12830_catalog, altra_q6430_catalog }
+import product.inventory {
+  Available,
+  BalanceDerived,
+  BalanceRefused,
+  EventBeforeAcquisition,
+  EventLotMismatch,
+  LotAlreadyAcquired,
+  MoreAssetsThanUnits,
+  InsufficientStock,
+  LandedCostReadingHeldPrivately,
+  LandedCostReadingMicros,
+  LandedCostReadingUnsettled,
+  QuantityReserved,
+  ReservationHolderUnknown,
+  ReservationOverRelease,
+  ZeroQuantityEvent,
+  derive_inventory_balance,
+  lot_catalog_is_read,
+  lot_catalog_read_obligation,
+  lot_landed_cost_reading,
+  lot_receipt_is_recorded,
+  stock_position_label,
+}
 import gunbc.fleet_physical_inventory {
+  dimm_lot_64gib_32x,
+  dimm_lot_64gib_32x_identity,
+  dimm_lot_64gib_32x_intended_allocation,
+  dimm_lot_64gib_32x_ledger,
+  dimm_lot_intent_fits_the_lot,
+  intended_allocation_total,
   fleet_dimm_verdicts,
   fleet_processor_verdicts,
   srv1_dimm_observation,
@@ -345,4 +374,78 @@ test fn a_processor_observation_of_another_host_refuses() -> Bool {
 test fn every_fleet_processor_verdict_is_unconfirmed_today() -> Bool {
   fleet_processor_verdicts.length() == 4
     && all(fleet_processor_verdicts, v => !processor_verdict_is_confirmed(verdict: v))
+}
+
+// --- the 64 GiB lot on the ledger --------------------------------------------------------------
+
+// THE LOT IS COMMITTED, UNREAD, AND UNSETTLED, and each of those is asserted by constructor rather
+// than inferred from a total. A lot that reported a read catalog, or a recorded cost, would be
+// claiming facts nobody has - and the read obligation is what makes the missing part number
+// countable instead of merely absent.
+test fn the_dimm_lot_is_committed_with_an_unread_catalog_and_no_public_cost() -> Bool {
+  let quantity = dimm_lot_64gib_32x.quantity_acquired == 32
+  let unread = !lot_catalog_is_read(catalog: dimm_lot_64gib_32x.catalog)
+  let obligation = match lot_catalog_read_obligation(catalog: dimm_lot_64gib_32x.catalog) {
+    Present { value: _ } => true
+    Absent => false
+  }
+  let no_public_cost = match lot_landed_cost_reading(lot: dimm_lot_64gib_32x) {
+    LandedCostReadingUnsettled => true
+    LandedCostReadingMicros { micros: _ } => false
+    LandedCostReadingHeldPrivately => false
+  }
+  let no_public_receipt = !lot_receipt_is_recorded(lot: dimm_lot_64gib_32x)
+  quantity && unread && obligation && no_public_cost && no_public_receipt
+}
+
+// EVERY STICK IS AWAITING RECEIPT AND NONE IS RESERVED. The intent says eight per host; the ledger
+// says nothing is allocated, because nothing has arrived. Asserting both in one claim is what keeps
+// the intent from being read as a holding.
+test fn the_dimm_lot_holds_all_thirty_two_sticks_awaiting_receipt() -> Bool {
+  match derive_inventory_balance(lot: dimm_lot_64gib_32x, events: dimm_lot_64gib_32x_ledger) {
+    BalanceRefused { cause: _, event_ordinal: _, event_label: _ } => false
+    BalanceDerived { balance: b } =>
+      b.acquired == 32 && b.received == 0 && b.available == 0 && b.reserved == 0 && b.installed == 0
+  }
+}
+
+// THE RED THAT KEEPS THE INTENT HONEST. Appending the four eight-stick reservations the plan calls
+// for is REFUSED, and refused for the exact reason that matters: there is no Available stock to
+// move, because the sticks are in transit. This is why the per-host figures are carried as an
+// intent and not as ledger events - the ledger would not have accepted them, and a model that
+// recorded them anyway would be asserting an allocation of stock nobody has.
+test fn reserving_the_lot_before_receipt_is_refused_for_insufficient_available_stock() -> Bool {
+  match derive_inventory_balance(
+    lot: dimm_lot_64gib_32x,
+    events: append(
+      dimm_lot_64gib_32x_ledger,
+      [QuantityReserved { lot: dimm_lot_64gib_32x_identity, quantity: 8, holder: "srv1" as NonEmptyStr }],
+    ),
+  ) {
+    BalanceDerived { balance: _ } => false
+    BalanceRefused { cause, event_ordinal: _, event_label: l } =>
+      l == ("QuantityReserved" as NonEmptyStr)
+        && match cause {
+          InsufficientStock { position: p, requested: q, held: h } =>
+            stock_position_label(position: p) == stock_position_label(position: Available)
+              && q == 8
+              && h == 0
+          EventBeforeAcquisition => false
+          ZeroQuantityEvent => false
+          ReservationHolderUnknown { holder: _ } => false
+          ReservationOverRelease { holder: _, requested: _, held: _ } => false
+          EventLotMismatch => false
+          LotAlreadyAcquired => false
+          MoreAssetsThanUnits { assets: _, quantity: _ } => false
+        }
+  }
+}
+
+// The intent totals the lot exactly: thirty-two sticks, four hosts, eight each. Asserting the
+// exact total rather than a fits-within bound is what would catch a fifth host being added without
+// the lot growing.
+test fn the_intended_allocation_totals_the_whole_lot() -> Bool {
+  dimm_lot_64gib_32x_intended_allocation.length() == 4
+    && intended_allocation_total(rows: dimm_lot_64gib_32x_intended_allocation) == 32
+    && dimm_lot_intent_fits_the_lot()
 }
