@@ -310,3 +310,47 @@ by `emit_fn_def` addresses **1b**; **1a** is the derive emitter, and the two can
 `deep-swift-570`'s 2 sites being small is therefore consistent with the row being 28: the row is
 not one lane's backlog, it is the module's whole Clone-bound population across two emitters.
 
+## 11. Pre-registered predictions, and what T7 actually costs this module
+
+Written **before** the repairs they concern land, so the tests are pre-registered rather than
+reconstructed after the fact. Denominator for all of them: the 51 errors measured on branch head
+`27077d456d` against `origin/main` `7a59ef751c`, by the instrument in §1.
+
+### 11.1 Prediction — `silent-raven-853`'s container-gate fix moves this module by ZERO
+
+Their fix makes the checkpoint-scalar identity path reachable from a non-generic container's
+fields. Per §10.2 that mechanism has **0 of 51** rows here, and `Nat` in this closure is the
+`dag/std/nat.dag` declaration emitted as the `i64` alias. So:
+
+- **predicted:** 51 → 51, and no row changes shape.
+- **falsifier:** any movement at all. If the count drops, the mechanism was present and §10.2 is
+  wrong. If a **new refusal family** appears, that is `smart-ram-730`'s v2-side hazard biting after
+  all — a name resolving to the bodyless `src/v2/std/nat.dag` declaration, which the path
+  deliberately refuses, so the error changes shape rather than disappearing.
+- Either outcome is reported as a delta receipt, not folded into row 1.
+
+### 11.2 T7's live footprint here is ONE row, and `99 E0308 sites` is not this module
+
+`stern-fox-619`'s task is titled "99 E0308 sites". Measured across three trees:
+
+| tree | total errors | E0308 | T7 rows (ContentHash ↔ String) |
+|---|---:|---:|---|
+| `11254b04fc` (session open) | 60 | 28 | **8** — all E0308, all `v2_std_node.rs` (`expected String, found Rc<Fnv1a64Structural>` and its inverse) |
+| `2c65eeacf3` (`origin/main`, includes #8410) | 53 | 20 | **1** — E0599 `partial_cmp` on `Rc<Fnv1a64Structural>` |
+| branch head | 51 | 15 | **1** — same row |
+
+So **#8410 already retired all 8 of this module's T7 E0308 sites**, and the residue here is a
+single E0599. Of the 15 E0308 rows that remain, **none is T7**: they are 4 Optional-carrier, 4
+branded-field literals, 3 alias-materialised-twice, 2 `&T`-cloned (row 1b), 2 Optional-in-`uri`.
+
+Therefore 99 is a different denominator — whole-corpus, or the July cause-signature census — and it
+should not be read as this module's backlog. Scoping a repair to retire "99 sites" against this
+module would find one.
+
+**One honesty note about how that table was produced.** The T7 column came from a keyword scan for
+`Fnv1a64`/`ContentHash` over the diagnostic JSON, and it produced a **false positive** in every
+row: `std_cache_interface.rs:580` matched on a substring while actually being the
+`CacheLookupResult<T>` derived-`Clone` row (1a). It is excluded from the counts above by reading the
+specimen. That is the same failure mode this receipt warns about in §1 — a keyword over text is a
+hypothesis, and the specimen is the measurement.
+
