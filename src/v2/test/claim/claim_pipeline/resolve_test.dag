@@ -1,0 +1,40 @@
+module v2.test.claim_pipeline.resolve
+
+import v2.compiler.normalize { normalize }
+import v2.compiler.resolve { resolve }
+import v2.extdeps.languages.dag {
+  dag_language_model_void
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Conj, Edge, Named, Node, TypeNode, SyntheticOccurrence }
+
+fn spine_resolve_service_parse_tree() -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Atom { identity: ^dag_c3_surface_sugar_service }
+    },
+    children: [
+      Edge {
+        label: Named { name: ^spine_resolve_service_decl },
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+}
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+test fn spine_resolve_accepts_normalized_tree() -> Bool {
+  match normalize(parse_tree: spine_resolve_service_parse_tree()) {
+    Accepted { value: normalized, diagnostics: _ } =>
+      match resolve(tree: normalized, lm: dag_language_model_void()) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}

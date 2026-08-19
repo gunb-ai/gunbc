@@ -1541,16 +1541,6 @@ mod cross_claim_memo_tests {
 struct ParseTableMemo {
     map: HashMap<(String, String, i64, Symbol), Value>,
     keepalive: Vec<Value>,
-    lookups: u64,
-    hits: u64,
-    inserts: u64,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct ParseTableMemoStats {
-    pub lookups: u64,
-    pub hits: u64,
-    pub inserts: u64,
 }
 
 // Recompute-trace ledger (diagnostic READ mode: reports, never gates — DESIGN §5
@@ -2217,15 +2207,6 @@ impl InterpContext {
 
     pub fn interner_stats_snapshot(&self) -> InternStats {
         self.symbols.borrow().stats()
-    }
-
-    pub fn parse_table_memo_stats_snapshot(&self) -> ParseTableMemoStats {
-        let st = self.parse_table_memo.borrow();
-        ParseTableMemoStats {
-            lookups: st.lookups,
-            hits: st.hits,
-            inserts: st.inserts,
-        }
     }
 
     pub fn account_retained_memory(&self, extra_roots: &[&Value]) -> MemoryAccounting {
@@ -5128,10 +5109,8 @@ macro_rules! v1_parse_table_arms {
                     };
                     let allows_memo = parse_table_materialization_allows_memo($ctx, table);
                     let mut st = $ctx.parse_table_memo.borrow_mut();
-                    st.lookups += 1;
                     if allows_memo {
                         if let Some(v) = st.map.get(&memo_key).cloned() {
-                            st.hits += 1;
                             drop(st);
                             record_parse_memo_lookup(&memo_key, true);
                             return Ok(Some(witness_holds(v, $ctx)));
@@ -5156,7 +5135,6 @@ macro_rules! v1_parse_table_arms {
                             st.keepalive.push((*key).clone());
                             st.keepalive.push((*value).clone());
                             st.map.insert(memo_key, (*value).clone());
-                            st.inserts += 1;
                         }
                     }
                     Ok(Some(result))
@@ -7620,8 +7598,138 @@ pub(crate) struct ShellResult {
     pub(crate) stderr: bounded_shell_host_drain::CapturedStreamEvidence,
 }
 
+/// Expand a `ProcessArgvExpansion` into argv words, one word per `CliArgument`.
+///
+/// SEED REALIZATION OF A MODELED LAW, not a seed-only special case. The authority is
+/// `v2.std.compilers.cli_surface` `ProcessArgvExpansion`, which states:
+///
+///     across the surface's arguments   -- ITERATE, never concatenate
+///     within one argument's fragments  -- CONCATENATE into exactly one word
+///
+/// WHY AN EXPLICIT ARM RATHER THAN A BETTER GUESS. `push_shell_argv_tokens` below decides
+/// "one word or many?" from the RUNTIME ENCODING of a generic value, and that distinction is
+/// genuinely erased: a `FreeMonoid<Str>` is equally a modeled String assembled from fragments
+/// and a modeled list whose members are strings. `value_as_host_string` and `free_monoid_to_vec`
+/// BOTH succeed on it, so no branch order recovers the intent -- reordering them would splice
+/// lists correctly and shred modeled strings. The missing fact is the transport ROLE, and this
+/// carrier supplies it nominally.
+///
+/// FAIL-CLOSED. Every shape mismatch is a typed error. There is deliberately no arm that falls
+/// through to the guessing path: a carrier that says "expand this" and then silently produced one
+/// joined word would be the exact defect it exists to remove (DESIGN section 5).
+fn push_process_argv_expansion(
+    argv: &mut Vec<String>,
+    fields: &[(Symbol, Value)],
+) -> InterpResult<()> {
+    let surface = fields
+        .iter()
+        .find(|(name, _)| resolve_sym(*name).rsplit('.').next() == Some("surface"))
+        .map(|(_, v)| v)
+        .ok_or_else(|| InterpError::TypeError {
+            msg: "ProcessArgvExpansion carries no `surface` field; argv expansion refuses rather \
+                  than emitting a guessed word"
+                .to_string(),
+        })?;
+    let arguments = match surface {
+        Value::Record { type_name, fields } => {
+            if resolve_sym(*type_name).rsplit('.').next() != Some("CliSurface") {
+                return Err(InterpError::TypeError {
+                    msg: format!(
+                        "ProcessArgvExpansion.surface must be a CliSurface record, found `{}`",
+                        resolve_sym(*type_name)
+                    ),
+                });
+            }
+            fields
+                .iter()
+                .find(|(name, _)| resolve_sym(*name).rsplit('.').next() == Some("arguments"))
+                .map(|(_, v)| v.clone())
+                .ok_or_else(|| InterpError::TypeError {
+                    msg: "CliSurface carries no `arguments` field".to_string(),
+                })?
+        }
+        other => {
+            return Err(InterpError::TypeError {
+                msg: format!(
+                    "ProcessArgvExpansion.surface must be a CliSurface record, found `{other}`"
+                ),
+            })
+        }
+    };
+    let items = match &arguments {
+        Value::List(items) => items.iter().cloned().collect::<Vec<_>>(),
+        variant @ Value::Variant { .. } => {
+            free_monoid_to_vec(variant).ok_or_else(|| InterpError::TypeError {
+                msg: "CliSurface.arguments is neither a native list nor a list-shaped value"
+                    .to_string(),
+            })?
+        }
+        other => {
+            return Err(InterpError::TypeError {
+                msg: format!("CliSurface.arguments must be a list, found `{other}`"),
+            })
+        }
+    };
+    for item in items {
+        let text = match &item {
+            Value::Record { type_name, fields } => {
+                if resolve_sym(*type_name).rsplit('.').next() != Some("CliArgument") {
+                    return Err(InterpError::TypeError {
+                        msg: format!(
+                            "CliSurface.arguments member must be a CliArgument record, found `{}`",
+                            resolve_sym(*type_name)
+                        ),
+                    });
+                }
+                fields
+                    .iter()
+                    .find(|(name, _)| resolve_sym(*name).rsplit('.').next() == Some("text"))
+                    .map(|(_, v)| v.clone())
+                    .ok_or_else(|| InterpError::TypeError {
+                        msg: "CliArgument carries no `text` field".to_string(),
+                    })?
+            }
+            other => {
+                return Err(InterpError::TypeError {
+                    msg: format!(
+                        "CliSurface.arguments member must be a CliArgument, found `{other}`"
+                    ),
+                })
+            }
+        };
+        // Concatenation is CORRECT here and only here: this is one argument's own text.
+        let word = value_as_host_string(&text).ok_or_else(|| InterpError::TypeError {
+            msg: "CliArgument.text is not a host string".to_string(),
+        })?;
+        // An EMPTY argument is a real argument and is pushed unchanged: `jq ""` passes one empty
+        // word, and silently dropping it would change arity -- the same boundary destruction the
+        // concatenating path performs, in the other direction.
+        //
+        // An embedded NUL REFUSES rather than reaching the exec boundary. A C argument vector is
+        // NUL-terminated, so no argument can contain one; std::process would reject it at spawn
+        // with an errno-shaped error naming neither the argument nor the surface. Refusing here
+        // yields a located diagnostic instead (DESIGN section 5: refuse, never widen or fabricate).
+        if word.contains('\0') {
+            return Err(InterpError::TypeError {
+                msg: format!(
+                    "CliArgument.text contains an embedded NUL at argv position {}; a process \
+                     argument vector is NUL-terminated and cannot carry one",
+                    argv.len()
+                ),
+            });
+        }
+        argv.push(word);
+    }
+    Ok(())
+}
+
 fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()> {
     match &val {
+        Value::Record { type_name, fields }
+            if resolve_sym(*type_name).rsplit('.').next() == Some("ProcessArgvExpansion") =>
+        {
+            push_process_argv_expansion(argv, fields)
+        }
         Value::Str(s) => {
             argv.push(s.to_string());
             Ok(())

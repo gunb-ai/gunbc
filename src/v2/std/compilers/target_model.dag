@@ -9135,9 +9135,13 @@ fn target_type_expr_emitted_surface_identity(node: Node) -> Outcome<Symbol> {
 }
 
 fn target_type_expression_spelling(form: TargetTypeExpression) -> Symbol {
-  match target_type_expr_emitted_surface_identity(node: form.node) {
-    Accepted { value: surface, diagnostics: _ } => surface
-    Rejected { diagnostics: _ } => ^target_type_expression_decode_invalid
+  match list_at_optional(xs: node_positional_child_targets(node: form.node), index: 0) {
+    Present { value: child } =>
+      match target_node_atom_identity(node: child) {
+        Accepted { value: id, diagnostics: _ } => id
+        Rejected { diagnostics: _ } => ^target_type_expression_decode_invalid
+      }
+    Absent => ^target_type_expression_decode_invalid
   }
 }
 

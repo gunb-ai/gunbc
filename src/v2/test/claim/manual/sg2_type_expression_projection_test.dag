@@ -1,0 +1,321 @@
+module v2.test.manual.sg2_type_expression_projection
+
+import v2.compiler.translate {
+  translate_type_expression_project,
+  target_bundle_child_optional_type_expr_projection,
+  target_serialize_source_from_model,
+  translate,
+  ProjectionAbsent
+}
+import v2.extdeps.languages.rust {
+  rust_target_model,
+  rust_sg2_arrow_malformed_source_type_node,
+  rust_sg2_arrow_source_type_node,
+  rust_sg2_binary_fn_source_type_node,
+  rust_sg2_arrow_xy_emitted,
+  rust_sg2_conj_source_type_node,
+  rust_sg2_conj_xy_emitted,
+  rust_sg2_instantiation_source_type_node,
+  rust_sg2_malformed_atom_extra_positional_emitted,
+  rust_sg2_malformed_atom_zero_positional_emitted,
+  rust_sg2_malformed_arrow_one_positional_emitted,
+  rust_sg2_malformed_instantiation_zero_positional_emitted,
+  rust_sg2_malformed_atom_missing_surface_emitted,
+  rust_sg2_malformed_atom_duplicate_surface_emitted,
+  rust_sg2_malformed_atom_wrong_surface_emitted,
+  rust_sg2_malformed_atom_extra_named_emitted,
+  rust_sg2_malformed_record_extra_positional_emitted,
+  rust_sg2_malformed_sum_extra_positional_emitted,
+  rust_sg2_rc_foobar_xy_emitted,
+  rust_sg2_type_expr_projection_probe_target_model,
+  rust_sg2_type_expr_target_model,
+  rust_type_expression_projection,
+  rust_type_expression_projection_bundle_node
+}
+import v2.std.compilers.target_model {
+  TargetFunctionTypeShape,
+  TargetModel,
+  TargetTypeExpressionProjection,
+  target_type_expr_arrow_emitted,
+  target_type_expr_atom_emitted,
+  target_type_expr_emitted_wire_decode,
+  type_expr_projection_bundle_shape_for_connective,
+  type_expr_projection_row_shape_witness_gate
+}
+import std.algebra { Cons, Empty }
+import v2.std.node { Arrow }
+import v2.test.manual.rust_add_emit_translate {
+  rust_add_inferred_tree,
+  rust_add_target_model
+}
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Node, Symbol, TypeNode, content_hash, SyntheticOccurrence }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data sg2_fail_text: String = ""
+data sg2_expected_type_text: String = "Rc<FooBar<X, Y>>"
+data sg2_expected_arrow_text: String = "(X) -> Y"
+data sg2_expected_conj_text: String = " { X: X, Y: Y }"
+
+fn sg2_fail_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^sg2_fail_sym } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+data sg2_type_expr_target: TargetModel = rust_sg2_type_expr_projection_probe_target_model()
+
+fn sg2_project_instantiation_emitted() -> Node {
+  match translate_type_expression_project(
+    node: rust_sg2_instantiation_source_type_node(),
+    target: sg2_type_expr_target,
+    projection: rust_type_expression_projection()
+  ) {
+    Accepted { value: emitted, diagnostics: _ } => emitted
+    Rejected { diagnostics: _ } => sg2_fail_node()
+  }
+}
+
+test fn sg2_projection_matches_golden() -> Bool {
+  content_hash(n: sg2_project_instantiation_emitted()) ==
+    content_hash(n: rust_sg2_rc_foobar_xy_emitted())
+}
+
+fn sg2_project_arrow_emitted() -> Node {
+  match translate_type_expression_project(
+    node: rust_sg2_arrow_source_type_node(),
+    target: sg2_type_expr_target,
+    projection: rust_type_expression_projection()
+  ) {
+    Accepted { value: emitted, diagnostics: _ } => emitted
+    Rejected { diagnostics: _ } => sg2_fail_node()
+  }
+}
+
+fn sg2_project_conj_emitted() -> Node {
+  match translate_type_expression_project(
+    node: rust_sg2_conj_source_type_node(),
+    target: sg2_type_expr_target,
+    projection: rust_type_expression_projection()
+  ) {
+    Accepted { value: emitted, diagnostics: _ } => emitted
+    Rejected { diagnostics: _ } => sg2_fail_node()
+  }
+}
+
+test fn sg2_binary_fn_projection_accepts() -> Bool {
+  match translate_type_expression_project(
+    node: rust_sg2_binary_fn_source_type_node(),
+    target: sg2_type_expr_target,
+    projection: rust_type_expression_projection()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn sg2_arrow_malformed_projection_rejects() -> Bool {
+  match translate_type_expression_project(
+    node: rust_sg2_arrow_malformed_source_type_node(),
+    target: sg2_type_expr_target,
+    projection: rust_type_expression_projection()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn sg2_serialize_accepts(emitted: Node) -> Bool {
+  match target_serialize_source_from_model(
+    target: sg2_type_expr_target,
+    emitted: emitted
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn sg2_serialized_text(emitted: Node) -> String {
+  match target_serialize_source_from_model(
+    target: sg2_type_expr_target,
+    emitted: emitted
+  ) {
+    Accepted { value: source, diagnostics: _ } => source.carried
+    Rejected { diagnostics: _ } => sg2_fail_text
+  }
+}
+
+test fn sg2_serialize_matches_expected() -> Bool {
+  sg2_serialized_text(emitted: rust_sg2_rc_foobar_xy_emitted()) == sg2_expected_type_text
+}
+
+test fn sg2_arrow_serialize_matches_expected() -> Bool {
+  sg2_serialized_text(emitted: rust_sg2_arrow_xy_emitted()) == sg2_expected_arrow_text
+}
+
+fn sg2_arrow_projected_serialized_text() -> String {
+  sg2_serialized_text(emitted: sg2_project_arrow_emitted())
+}
+
+test fn sg2_arrow_projected_serialize_matches_expected() -> Bool {
+  sg2_arrow_projected_serialized_text() == sg2_expected_arrow_text
+}
+
+test fn sg2_conj_projected_serialize_matches_expected() -> Bool {
+  sg2_serialized_text(emitted: sg2_project_conj_emitted()) == sg2_expected_conj_text
+}
+
+test fn sg2_instantiation_projected_serialize_matches_expected() -> Bool {
+  sg2_serialized_text(emitted: sg2_project_instantiation_emitted()) == sg2_expected_type_text
+}
+
+fn sg2_arrow_swapped_split_emitted() -> Node {
+  let row = rust_type_expression_projection()
+  target_type_expr_arrow_emitted(
+    form: row.arrow_form,
+    inputs: Cons {
+      head: target_type_expr_atom_emitted(
+        form: row.atom_form,
+        identity: ^rust_binding_sg2_y
+      ),
+      tail: Empty
+    },
+    output: target_type_expr_atom_emitted(
+      form: row.atom_form,
+      identity: ^rust_binding_sg2_x
+    )
+  )
+}
+
+test fn sg2_arrow_swapped_split_serialize_mismatches_expected() -> Bool {
+  sg2_serialized_text(emitted: sg2_arrow_swapped_split_emitted()) != sg2_expected_arrow_text
+}
+
+test fn sg2_arrow_projected_serialize_accepts() -> Bool {
+  sg2_serialize_accepts(emitted: sg2_project_arrow_emitted())
+}
+
+test fn sg2_conj_serialize_matches_expected() -> Bool {
+  sg2_serialized_text(emitted: rust_sg2_conj_xy_emitted()) == sg2_expected_conj_text
+}
+
+fn sg2_wire_decode_accepts(emitted: Node) -> Bool {
+  match target_type_expr_emitted_wire_decode(
+    node: emitted,
+    projection: rust_type_expression_projection()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn sg2_rust_add_projection_absent() -> Bool {
+  match target_bundle_child_optional_type_expr_projection(target: rust_target_model()) {
+    Accepted { value: ProjectionAbsent, diagnostics: _ } => true
+    _ => false
+  }
+}
+
+test fn sg2_rust_add_translate_fallback_accepts() -> Bool {
+  match translate(tree: rust_add_inferred_tree, target: rust_add_target_model) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn sg2_instantiation_delimiters_bidirectional() -> Bool {
+  let row = rust_type_expression_projection()
+  row.instantiation_form.open == ^rust_token_lt &&
+    row.instantiation_form.separator == ^rust_token_comma &&
+    row.instantiation_form.close == ^rust_token_gt
+}
+
+test fn witness_sg2_arrow_holds() -> Bool {
+  (content_hash(n: sg2_project_arrow_emitted()) == content_hash(n: rust_sg2_arrow_xy_emitted()))
+    && sg2_arrow_serialize_matches_expected()
+    && sg2_arrow_projected_serialize_matches_expected()
+    && sg2_conj_projected_serialize_matches_expected()
+    && sg2_instantiation_projected_serialize_matches_expected()
+    && sg2_binary_fn_projection_accepts()
+    && sg2_arrow_malformed_projection_rejects()
+    && sg2_arrow_swapped_split_serialize_mismatches_expected()
+}
+
+test fn witness_sg2_projection_falsification_holds() -> Bool {
+  !sg2_serialize_accepts(emitted: sg2_fail_node())
+    && !sg2_wire_decode_accepts(emitted: rust_sg2_malformed_atom_zero_positional_emitted())
+    && !sg2_wire_decode_accepts(emitted: rust_sg2_malformed_arrow_one_positional_emitted())
+    && !sg2_serialize_accepts(emitted: rust_sg2_malformed_atom_missing_surface_emitted())
+    && !sg2_serialize_accepts(emitted: rust_sg2_malformed_atom_extra_positional_emitted())
+}
+
+fn sg2_wrong_arrow_projection() -> TargetTypeExpressionProjection {
+  let row = rust_type_expression_projection()
+  TargetTypeExpressionProjection {
+    atom_form: row.atom_form,
+    conj_form: row.conj_form,
+    disj_form: row.disj_form,
+    arrow_form: TargetFunctionTypeShape {
+      surface: row.arrow_form.surface,
+      open: row.arrow_form.open,
+      close: row.arrow_form.close,
+      arrow: ^sg2_wrong_arrow_token,
+      param_ident_token: row.arrow_form.param_ident_token,
+      param_type_separator: row.arrow_form.param_type_separator,
+      param_list_separator: row.arrow_form.param_list_separator
+    },
+    cardinality_form: row.cardinality_form,
+    instantiation_form: row.instantiation_form
+  }
+}
+
+test fn witness_sg2_fold_row_delimiter_discriminates_holds() -> Bool {
+  match type_expr_projection_bundle_shape_for_connective(
+    bundle: rust_type_expression_projection_bundle_node(),
+    connective: Arrow
+  ) {
+    Accepted { value: good_shape, diagnostics: _ } =>
+      match type_expr_projection_row_shape_witness_gate(
+        source_facts: good_shape,
+        projection: sg2_wrong_arrow_projection(),
+        connective: Arrow
+      ) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => true
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn sg2_conj_projection_matches_golden() -> Bool {
+  content_hash(n: sg2_project_conj_emitted()) == content_hash(n: rust_sg2_conj_xy_emitted())
+}
+
+test fn sg2_serialize_rejects_record_extra_positional() -> Bool {
+  !sg2_serialize_accepts(emitted: rust_sg2_malformed_record_extra_positional_emitted())
+}
+
+test fn sg2_serialize_rejects_sum_extra_positional() -> Bool {
+  !sg2_serialize_accepts(emitted: rust_sg2_malformed_sum_extra_positional_emitted())
+}
+
+test fn sg2_serialize_rejects_atom_duplicate_surface() -> Bool {
+  !sg2_serialize_accepts(emitted: rust_sg2_malformed_atom_duplicate_surface_emitted())
+}
+
+test fn sg2_serialize_rejects_atom_wrong_surface() -> Bool {
+  !sg2_serialize_accepts(emitted: rust_sg2_malformed_atom_wrong_surface_emitted())
+}
+
+test fn sg2_serialize_rejects_atom_extra_named() -> Bool {
+  !sg2_serialize_accepts(emitted: rust_sg2_malformed_atom_extra_named_emitted())
+}
+
+test fn sg2_wire_decode_rejects_instantiation_zero_positional() -> Bool {
+  !sg2_wire_decode_accepts(emitted: rust_sg2_malformed_instantiation_zero_positional_emitted())
+}
