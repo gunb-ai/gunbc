@@ -4389,7 +4389,10 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let body_expected = if expected != none {
         let exp = expected.value
         if exp.params |> count > 0 {
-          Present { value: callable_inferred(n: exp) }
+          let declared_ret = resolved_type(n: exp)
+          if is_fully_resolved(n: declared_ret, source_indices: scope.type_env.source_indices) {
+            Present { value: declared_ret }
+          } else { none }
         } else { none }
       } else { none }
       let body_scope = InferScope {
