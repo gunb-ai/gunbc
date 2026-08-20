@@ -96,6 +96,28 @@ type MirrorDebtRow {
 // establishes the measurement REPRODUCES. It does NOT establish that the population is stable
 // across commits, and nothing here should be dispositioned on that premise.
 //
+// MEMBERSHIP IS AUTHORED TODAY, DERIVED LATER, AND THE DISTINCTION IS NOT PEDANTRY. The fifteen
+// paths below were TRANSCRIBED BY HAND from a measurement. Derived membership is the design and
+// the obligation, not the present state, because nothing today derives anything. Two reviews of
+// this file read the earlier wording in OPPOSITE directions — one as "membership derived not
+// authored", one as "authored-not-derived until a comparator lands" — which is how a sentence
+// reveals it was ambiguous. The second reading was right about today.
+//
+// THE TRANSCRIPTION HAS SINCE BEEN CHECKED AT IDENTITY GRAIN, which is the check this file asks
+// for and is not the same as a count agreeing with a count. A gate reading these rows against a
+// comparator-derived population on a main-based subject reported:
+//     compared=128 drifted=15 sideways=0 undispositioned=0 stale_rows=0 accounted=15
+// A row naming a path that does not drift would have surfaced as stale; a drifted path with no
+// row would have surfaced as undispositioned. Both are zero. Four planted controls each moved
+// exactly one counter family and named the planted subject, so those zeros are measured rather
+// than the output of a gate that cannot see.
+//
+// WHAT THAT STILL DOES NOT ESTABLISH: all three reproductions derive membership from the SAME
+// required-regen comparator. The population is stable under changes of subject, runner, day and
+// binary — it is not independent of the instrument. A systematic bias in the comparator would
+// reproduce across all three and look exactly like this. Closing that needs a differential
+// oracle or a hand-verified specimen, not further runs of the same one.
+//
 // An earlier revision of this comment claimed the two runs were at two different commits and
 // offered that as the strongest evidence for the baseline. It is WITHDRAWN. Both runs measured
 // the same tree: ctrl-build fetches a base, checks it out, then applies the dispatcher's local
@@ -120,6 +142,11 @@ type MirrorDebtRow {
 // Nothing here is a digest, for the same reason — a stored desired digest is not a fact about
 // this repository at all, it is a fact about the generator binary that produced it, and it
 // would go silently wrong the next time the emitter changes.
+//
+// EDITING THIS FILE BY HAND IS CHEAP TO GET WRONG AND CHEAP TO CHECK: the consumer's
+// malformed-path arm refuses at READ time, before the roughly 180-second emit, so a path shape
+// error reports in about a second rather than after a full regeneration. Not a correctness
+// property — a cost one, and the kind a future editor otherwise learns the slow way.
 //
 // A ROW CAN GO STALE WITHOUT ANYONE TOUCHING THE FILE OR THIS CARRIER. Ordinary authority
 // work on main closes a path's drift, and the judgement recorded here quietly stops applying —
