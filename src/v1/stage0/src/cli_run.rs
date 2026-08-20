@@ -39605,6 +39605,19 @@ pub struct RequiredFloorOutcome {
     pub subject_digest: String,
     pub modules_resolved: usize,
     pub modules_excluded: usize,
+    /// THE OFFERED POPULATION, CARRIED BESIDE THE ROUTED ONE so the headline states its own
+    /// subject rather than a number derived from it.
+    ///
+    /// `claims_planned` is what SURVIVED the site projection. Reporting only that made the
+    /// run's own receipt unable to say what it dropped: a projection that declined a thousand
+    /// identities and one that declined none print identical `planned = executed = receipted`
+    /// triples. These two are the other side of that seam — every discovered site is either
+    /// routed or declined, and `SitePartitionInexact` refuses if they do not add up.
+    pub sites_offered: usize,
+    /// Discovered sites declined because the module's AUTHORED name matches a long-home prefix.
+    /// A cost quarantine on a different axis from execution, and it is REPORTED rather than
+    /// silently subtracted: these identities have no executing consumer anywhere in the tree.
+    pub declined_long_module: usize,
     pub claims_planned: usize,
     pub claims_executed: usize,
     pub receipt_identities: usize,
@@ -40873,6 +40886,8 @@ pub fn run_required_floor(
         subject_digest: prepared.subject_digest.clone(),
         modules_resolved: prepared.modules_resolved,
         modules_excluded: prepared.modules_excluded,
+        sites_offered,
+        declined_long_module: long_declined,
         claims_planned,
         claims_executed: 0,
         receipt_identities: 0,

@@ -10522,6 +10522,17 @@ fn run() -> Result<ExitCode, ExitCode> {
                     "required-floor: subject={} modules_resolved={} modules_excluded={}",
                     outcome.subject_digest, outcome.modules_resolved, outcome.modules_excluded
                 );
+                // THE SUBJECT THE ROSTER WAS PROJECTED FROM, STATED BEFORE THE ROSTER.
+                // `planned` is the population that SURVIVED site projection; printing it
+                // without `offered` and `declined_long` made the receipt unable to say what it
+                // dropped, which is how a roster that narrowed read exactly like one that did
+                // not. The three are printed together so the subtraction is visible rather
+                // than inferable.
+                eprintln!(
+                    "required-floor: offered={} routed={} declined_long={} — every discovered \
+                     site is one or the other",
+                    outcome.sites_offered, outcome.claims_planned, outcome.declined_long_module
+                );
                 eprintln!(
                     "required-floor: planned={} executed={} terminal={} passed={} \
                      known_red_held={} failed={} stale_quarantine={} \
