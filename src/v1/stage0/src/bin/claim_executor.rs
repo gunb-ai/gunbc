@@ -18565,7 +18565,7 @@ fn visit_int_param_occurrences(
     enclosing: Option<(bool, &v1_compiler::v1_std_core::Node)>,
     literals: &mut Vec<i64>,
 ) -> Result<(), String> {
-    use v1_compiler::std_syntax::{BinOp, LiteralValue};
+    use v1_compiler::std_syntax::BinOp;
     use v1_compiler::v1_std_core::ExprData;
 
     if matches!(node.expr_data.as_ref(), ExprData::ExprVar { .. }) && node.name == param {
@@ -18613,7 +18613,6 @@ fn visit_int_param_occurrences(
     if let Some(b) = node.body.as_ref() {
         visit_int_param_occurrences(param, b, None, literals)?;
     }
-    let _ = LiteralValue::LitNull;
     Ok(())
 }
 
