@@ -19592,6 +19592,47 @@ fn behavioral_differential(
     }
     let driver = generate_receipt_driver(module_alias, plan);
     let shown = mirror_path.display().to_string();
+
+    // THE SEED MUST ACTUALLY BE THE SEED (review 54094). This function installs a candidate over
+    // the committed mirror and restores it on every path -- but a process killed between the two
+    // leaves the candidate in the tree, and the NEXT run would then read it as the committed
+    // bytes and compare the candidate against itself. That comparison answers EQUIVALENT, which
+    // is the worst available wrong answer: a green that means nothing, produced by a mechanism
+    // whose entire job is to be trusted.
+    //
+    // The residue cannot be prevented -- no arrangement of writes survives SIGKILL -- so it is
+    // made LOUD instead. A dirty path is a refusal, not a warning, and it names the recovery.
+    match git_stdout(
+        workspace,
+        &[
+            "status",
+            "--porcelain",
+            "--",
+            &mirror_path.to_string_lossy(),
+        ],
+    ) {
+        Ok(out) if !out.trim().is_empty() => {
+            return ReceiptVerdict::Refused {
+                reason: format!(
+                    "{shown} is modified in the working tree, so the bytes this would read as the \
+                     SEED are not the committed bytes. Most likely a previous run was killed \
+                     between installing a candidate and restoring it -- in which case this run \
+                     would compare that candidate against itself and answer EQUIVALENT. Restore \
+                     it (`git checkout -- {shown}`) before measuring: {}",
+                    out.trim()
+                ),
+            }
+        }
+        Ok(_) => {}
+        Err(e) => {
+            return ReceiptVerdict::Refused {
+                reason: format!(
+                    "cannot determine whether {shown} is clean ({e}), so cannot establish that the \
+                     seed transcript comes from committed bytes"
+                ),
+            }
+        }
+    }
     let committed = match fs::read_to_string(mirror_path) {
         Ok(c) => c,
         Err(e) => {
