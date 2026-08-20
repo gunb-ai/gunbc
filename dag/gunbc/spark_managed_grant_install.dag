@@ -134,9 +134,20 @@ import gunbc.spark_serving_converge_apply {
 // representation" would be inflation for the second case.
 //
 // Honest standing: phase ASSIGNMENT is structurally guaranteed against field swaps and
-// mutation-verified against rewrapping. Next-rung trigger: field-type enforcement for non-product
-// values in record construction -- at which point the rewrap mutation becomes a typecheck refusal
-// and this note collapses to one line.
+// mutation-verified against rewrapping. This is NOT a new error class and must not be named as one
+// (§3 -- a second name for one concept). The corpus already carries the family: std.realization_schedule
+// walk_finalization_note measured that return position and a data annotation are not checked at all
+// while ARGUMENT position is checked and refuses correctly, and its own second correction is a
+// record-field instance -- WalkPlan { finalization: NoWalkFinalization } typechecked because both
+// arms inhabit one sum, repaired by PARAMETERIZING the carrier rather than by the checker; and the
+// hollow-alias construction wall plan states the general form, that nominal-type discrimination is
+// not enforced at these seams and the class is wrapper-payload conflation generally. What the
+// measurement here ADDS to that family is one position not previously recorded: a record-literal
+// FIELD holding a wholly unrelated non-product value -- neither a sibling arm of the declared sum
+// nor a wrapper of its payload, so neither existing row covers it. Next-rung trigger is the family's,
+// not a private one: field-position type enforcement in the v2 typechecker, at which point the rewrap
+// mutation becomes a typecheck refusal and this note collapses to one line. Until then the local
+// remedy is the one walk_finalization_note already proved -- carry the distinction in the type.
 type StageGrantFile { write: TypedRemoteFileWrite }
 type CleanupGrantStaging { staged_path: NonEmptyStr, inner_staging_path: NonEmptyStr }
 
