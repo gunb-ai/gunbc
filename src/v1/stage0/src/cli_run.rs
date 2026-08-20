@@ -40701,6 +40701,58 @@ pub fn run_required_floor(
         expected_red_roster.len()
     );
 
+    // THE ROUTE-GAP ROSTER, read the same way and for the same reason: it must be decoded while
+    // the policy frame is alive. It answers a THIRD question, distinct from both of the two
+    // above — not which claims exist, and not which of them are known to fail, but which of
+    // them the floor currently has no route that can RUN. See
+    // `v2.workflow.floor_route_gap` for the contract; the short form is that enrollment
+    // changes which outcome counts as agreement and nothing else, and that an unenrolled route
+    // gap reds the build.
+    //
+    // NO EMPTY-ROSTER REFUSAL HERE, and the asymmetry with the expected-red roster above is
+    // deliberate rather than an omission. That refusal exists because an empty expected-red
+    // roster makes its OWN downstream guards vacuous — a partition sum of zero against zero,
+    // a did-not-execute walk over nothing. This roster has no such guard to disable: an
+    // identity that is not enrolled BLOCKS, so an empty roster is the strictest possible
+    // state, not the most permissive one. A read failure here therefore cannot flatter a run;
+    // it can only red one that would otherwise be green.
+    let route_gap_roster: HashSet<String> = {
+        let value = v1_interpreter::run_in_context(
+            &hermetic,
+            "v2.workflow.floor_route_gap.floor_route_gap_roster",
+            false,
+        )
+        .map_err(|e| format!("floor_route_gap_roster: {e}"))?;
+        let items = floor_decode_list(&hermetic, Some(&value))
+            .map_err(|e| format!("floor_route_gap_roster: {e}"))?;
+        let mut out = HashSet::new();
+        for item in items {
+            match item {
+                v1_interpreter::Value::Str(s) => {
+                    // A DUPLICATE REFUSES, for the same reason it does above: the roster's
+                    // length is read as the debt, and a repeated identity makes that length
+                    // report one more supplied route than exists.
+                    if !out.insert(s.to_string()) {
+                        return Err(format!(
+                            "floor_route_gap_roster: duplicate enrolled identity: {s}"
+                        ));
+                    }
+                }
+                other => {
+                    return Err(format!(
+                        "floor_route_gap_roster: expected a qualified name, got {}",
+                        floor_value_shape(Some(other))
+                    ));
+                }
+            }
+        }
+        out
+    };
+    eprintln!(
+        "[floor-route-gap] roster carries {} enrolled identity(ies)",
+        route_gap_roster.len()
+    );
+
     // CONTRADICTORY-INTERSECTION WALL: `floor_expected_red_roster` (this roster — removable
     // only by an OBSERVED PASS, per its own header) and `witness_deferral_freeze`'s
     // `frozen_path_deferrals` (`LegacyFrozenPathDeferral` — admitted as NEVER EXECUTED) make

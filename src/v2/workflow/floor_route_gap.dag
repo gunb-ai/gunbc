@@ -1,0 +1,51 @@
+module v2.workflow.floor_route_gap
+
+import v2.std.algebra { Cons, Empty }
+import v2.std.collection { List }
+import v2.std.text { String }
+
+// THE ROUTE-GAP ROSTER: identities the required floor EXECUTES, that reach a host effect the
+// hermetic route has no arm for, enrolled by exact qualified name.
+//
+// WHY IT EXISTS, and why it is not the decline it replaces. Until 2026-08-20 the floor answered
+// this class by never planning the population at all: a file declaring
+// `data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree` had every one of its
+// identities declined (`RequiredFloorDisposition.DeclinedLiveTree`), 778 of them across 112
+// files, and since `claim_executor --required-floor` is the only witness-executing consumer in
+// the tree, none of them ran anywhere. That arm is deleted. Every discovered identity is now
+// routed and executed, which turns a population that was invisible by construction into one
+// that is observed per identity, every run, by the interpreter's own typed refusal.
+//
+// SO THIS ROSTER IS NOT A SKIP LIST, for exactly the reason `floor_expected_red` is not one:
+// every identity here EXECUTES and its outcome is still asserted. What enrollment changes is
+// which outcome counts as agreement.
+//
+// - Enrolled, and the route gapped: agreement. Counted and held, never green.
+// - NOT enrolled, and the route gapped: reds the build. A new route gap is a new fact.
+// - Enrolled, and the route did NOT gap: reds the build as a stale row. A route that was
+//   supplied (or a witness that stopped reaching for the effect) is counted the moment it
+//   lands, so the roster shrinks monotonically instead of becoming a place rows go to be
+//   forgotten.
+// - Enrolled, and the identity did not execute at all: reds the build. The reverse join is
+//   what keeps a renamed or deleted identity from sitting here forever, unobserved.
+//
+// THE ORACLE THIS ROSTER IS ALLOWED TO BE (DESIGN §5, the 2026-08-01 ruling on numeric
+// literals). It is a monotone debt contract, and it is legitimate only because all four of that
+// ruling's conditions hold: the subject universe is INDEPENDENTLY DISCOVERED (the floor's own
+// discovered roster, not a hand-authored list of what someone remembered), it is CLOSED (every
+// discovered identity takes exactly one disposition), membership is checked AT IDENTITY GRAIN
+// rather than by count, and the direction is justified — every row names an operation that
+// needs a route, so supplying routes empties it. There is no count assertion anywhere in this
+// mechanism, and there must never be one: `planned == executed` is an identity join, and a
+// population equality is not a substitute for it.
+//
+// A ROW IS NOT A LICENCE TO STOP. Enrolling an identity here records that the floor has no
+// route for it TODAY; it does not make the gap acceptable. The remedy is always a route —
+// publish the mock case, author the operation's `mock_response`, or supply a lane that can run
+// the effect — never an edit to what the witness asserts.
+//
+// EMPTY IS THE INTENDED TERMINAL STATE, and there is deliberately no refusal on an empty
+// roster. When every discovered identity has a route that runs it, this module deletes.
+fn floor_route_gap_roster() -> List<String> {
+  Empty {}
+}
