@@ -10464,9 +10464,28 @@ fn run() -> Result<ExitCode, ExitCode> {
         return match v1_compiler::cli_run::run_required_regen_fixed_point(&regen_receipt_path, None)
         {
             Ok(outcome) => {
+                // The provenance is printed, not just carried. This line previously read
+                // `first_generation_equal={}` off the receipt as though the fixed-point pass had
+                // measured it; it never does. Labelling it `referenced_` and naming the commit it
+                // came from means the log itself distinguishes measured from quoted -- and since
+                // the host refuses a cross-tree reference, `referenced_at` equals HEAD on every
+                // line that is allowed to print.
+                let (referenced_fge, referenced_at) = match outcome.receipt.prior() {
+                    Some(prior) => (
+                        prior.first_generation_equal.to_string(),
+                        prior.commit_sha.clone(),
+                    ),
+                    None => ("unavailable".to_string(), "unavailable".to_string()),
+                };
                 eprintln!(
-                    "required-regen-fixed-point: fixed_point_equal={} first_generation_equal={}",
-                    outcome.receipt.fixed_point_equal, outcome.receipt.first_generation_equal
+                    "required-regen-fixed-point: fixed_point_equal={} referenced_first_generation_equal={} referenced_at={}",
+                    outcome
+                        .receipt
+                        .fixed_point_equal()
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "unmeasured".to_string()),
+                    referenced_fge,
+                    referenced_at
                 );
                 for failure in &outcome.failures {
                     eprintln!("required-regen-fixed-point: FAIL {failure}");
@@ -10490,10 +10509,25 @@ fn run() -> Result<ExitCode, ExitCode> {
             &regen_receipt_path,
         ) {
             Ok(outcome) => {
-                eprintln!(
-                    "required-regen: first_generation_equal={} candidate={}",
-                    outcome.receipt.first_generation_equal, outcome.receipt.candidate_artifact
-                );
+                // Both values here ARE measured by this pass, so they print unqualified. The
+                // accessors return Option because the sibling variant does not measure them; a
+                // None on this path would mean the first pass built the wrong variant, so it
+                // prints as `unmeasured` rather than defaulting to a plausible-looking value.
+                // Read through accessors rather than by matching the variant: the
+                // `required_regen_host` module is private to `cli_run`, so the type is usable here
+                // but not nameable. `None` would mean the first pass built the wrong variant, so
+                // it prints `unmeasured` rather than defaulting to a plausible-looking value.
+                let fge = outcome
+                    .receipt
+                    .first_generation_equal()
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "unmeasured".to_string());
+                let candidate = outcome
+                    .receipt
+                    .candidate_artifact()
+                    .unwrap_or("unmeasured")
+                    .to_string();
+                eprintln!("required-regen: first_generation_equal={fge} candidate={candidate}");
                 for failure in &outcome.failures {
                     eprintln!("required-regen: FAIL {failure}");
                 }
