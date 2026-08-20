@@ -113,3 +113,42 @@ enrolls anything, neither touches the emitted workflow.
    `RequiredFloorOutcome` and written to the receipt the batch path already knows how to write.
 2. **Give the surviving selection authority a counting entry point** that reports which entries a
    touched-path set reaches, instead of collapsing to `Bool`.
+
+## How the measurement must be built — and the wrong experiment to avoid
+
+Recorded here because the obvious design is wrong in the direction that flatters us, and someone
+will rebuild it once the instrumentation lands.
+
+**Summing full-run durations of the selected rows is not the counterfactual.** The full run has
+shared preparation, first-toucher attribution, cross-claim memoization and order-dependent warm
+state. If claim A pays a preparation that warms claim C, then C's full-run duration is *C's cost
+given A ran* — and executing `{C}` alone would make C pay it itself.
+
+```
+sum(full-run durations of selected rows)  ≠  cost of executing the selected population
+```
+
+It is a decomposition, possibly a lower bound. Reporting it as alpha would **understate selected
+cost and overstate the advantage** — the same direction as the log-parse trap above, which is the
+second time that bias appeared on this lane.
+
+**What it actually requires is paired execution, both arms observed and neither reconstructed:**
+
+| | |
+| --- | --- |
+| `C_full` | actual resource-minutes executing the complete roster for subject *s* |
+| `C_sel` | actual resource-minutes executing the selected population **in its own fresh process**, including selection, preparation and finalization |
+| alpha | `1 − C_sel / C_full`, matched on subject, runtime closure, execution class and roster authority |
+
+**And the selection entry point must publish a receipt, not a count.** A scalar `selected = 412`
+cannot answer *which* 412, whether cost rows join to those identities, whether a failed row was
+omitted, whether two selector versions selected different populations of the same size, or
+whether the roster moved while the count held — the same collapse as the `Bool` surface above,
+one value up. The receipt carries subject, complete-roster digest, selected identities, selected-
+roster digest, per-identity selection basis, and selector identity; **the count is a projection
+of it.**
+
+So the additive slice is: the floor keeps running the full roster and emits per-claim timings
+**and shared phase costs**; the selector publishes the would-select roster for the same subject;
+a bounded harness executes that roster in a separate fresh process; the two join on subject.
+Nothing feeds the merge gate. That is measurement, not restoration.

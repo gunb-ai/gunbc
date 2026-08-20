@@ -11007,9 +11007,14 @@ pub struct IndexRetentionSnapshot {
 /// Conservative per-entry estimate for deriving a typed-cache cap from the host
 /// memory envelope (v1-run-stability M0/M1 receipts: ~2–11 MiB/module; 3 MiB is
 /// the interim declared fraction denominator until measured space lands).
-const TYPED_MODULE_BYTES_PER_ENTRY_ESTIMATE: u64 = 3 * 1024 * 1024;
+/// SEED MIRROR of `gunbc.typed_module_cache_capacity` `typed_module_bytes_per_entry_estimate`.
+/// Written as a canonical decimal literal (3 * 1024 * 1024) so the mirror lens can join it to
+/// its authority row; see `test.claim.seed_mirror_constant_lens_witness_test`.
+const TYPED_MODULE_BYTES_PER_ENTRY_ESTIMATE: u64 = 3145728;
+/// SEED MIRROR of `gunbc.typed_module_cache_capacity` `typed_module_cache_entries_floor`.
 const TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR: usize = 100;
-const TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL: usize = 4_000;
+/// SEED MIRROR of `gunbc.typed_module_cache_capacity` `typed_module_cache_entries_ceiling`.
+const TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL: usize = 4000;
 
 /// One derivation of the typed-cache entry cap: env override, else the host
 /// budget divided by the per-entry estimate. Returns `(cap, source_label,
@@ -38665,8 +38670,9 @@ pub fn floor_prepared_subject_exclusions() -> Vec<String> {
         // re-enrolls when a wet lane exists again — which required_floor.dag deliberately defers
         // until it can be "asked against a live consumer".
         "test/manual/process_argv_expansion_receipt_test.dag".to_string(),
-        // Wet receipt for the command_runner local-argv cut. Excluded for the same reason as the
-        // line above and not a new class: hermetic evaluation replays an operation's declared
+        // Wet receipt for command_runner's transport-agnostic run site (the LocalExec/SshExec
+        // match collapsed onto command_over_transport). Excluded for the same reason as the line
+        // above and not a new class: hermetic evaluation replays an operation's declared
         // mock_response and never constructs an argv, so "the words reached the process unsplit"
         // is not observable hermetically. Enrolling it would assert the mock rather than the
         // behaviour -- specification without execution.

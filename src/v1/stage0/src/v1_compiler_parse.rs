@@ -40,6 +40,7 @@ pub use crate::std_syntax::{
 pub use crate::std_types::SourceSpan;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+pub use crate::v1_std_core::make_file_span;
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{InternalError, ParseError};
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
@@ -69,15 +70,14 @@ pub use crate::v1_std_core::{
     import_node, intern, intern_table_with_authored_token_ordinals, is_compiler_error,
     is_container_type, kernel_span, leaf_node_with_span, local_transport_node, make_arg_node,
     make_arm_node, make_error_node, make_expr_error_node, make_expr_node, make_field_binding_node,
-    make_field_init_node, make_field_node, make_file_span, make_interp_part_node,
-    make_named_expr_node, make_param_node, make_pattern_binder_declaration_node,
-    make_resource_use_node, make_span, make_text_part_node, make_variant_node, module_node,
-    no_span, node_name_span, param_node_default_value, param_node_type_expr, pre_intern_tokens,
-    rest_transport_node, service_config_properties, shell_transport_node, transport_auth_basic_key,
-    transport_body_key, transport_headers_key, transport_method_key, transport_path_key,
-    transport_path_template_key, transport_query_key, transport_response_format_key,
-    transport_stdin_key, transport_tls_key, transport_url_key, variant_node_fields,
-    variant_node_name_at, with_required_cardinality,
+    make_field_init_node, make_field_node, make_interp_part_node, make_named_expr_node,
+    make_param_node, make_pattern_binder_declaration_node, make_resource_use_node, make_span,
+    make_text_part_node, make_variant_node, module_node, no_span, node_name_span,
+    param_node_default_value, param_node_type_expr, pre_intern_tokens, rest_transport_node,
+    service_config_properties, shell_transport_node, transport_auth_basic_key, transport_body_key,
+    transport_headers_key, transport_method_key, transport_path_key, transport_path_template_key,
+    transport_query_key, transport_response_format_key, transport_stdin_key, transport_tls_key,
+    transport_url_key, variant_node_fields, variant_node_name_at, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind,
@@ -11657,7 +11657,8 @@ pub fn parse_caret_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                         err: r2.err.clone(),
                     });
                 }
-                let call_span = make_span(
+                let call_span = make_file_span(
+                    span.file.clone(),
                     span.start.clone(),
                     r2.token.clone().span.clone().end.clone(),
                 );
