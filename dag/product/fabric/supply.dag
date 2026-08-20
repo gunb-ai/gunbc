@@ -4,6 +4,7 @@ import std.types { Timestamp, Int }
 import std.measure {
   MoneyAmountMicro, MoneyPerSecond, MoneyPerHour, MoneyOnce,
   HardwareThreadCount, hardware_thread_count_value, money_amount_micro_count,
+  Second, second_count, minutes_per_hour, seconds_per_minute, measure_scale_fraction_ceil,
 }
 import std.currency { CurrencyCode }
 import product.fabric.identity { FabricIdentity, OfferKey }
@@ -146,29 +147,155 @@ type SelectionPolicy =
 // owns this fold is a consumer that will answer it differently from the next
 // consumer, which is the fork the fabric exists to prevent.
 //
-// AFFORDABILITY IS DELIBERATELY A SEPARATE ARM FROM CAPABILITY. A demand that
-// cannot afford an offer and a demand an offer cannot serve are different
-// facts with different remedies -- raise the buy order, or find another
-// supplier -- and collapsing them into one "not eligible" loses which.
+// FUNGIBILITY AND AFFORDABILITY ARE TWO FACTS WITH TWO HOMES, NOT ONE VERDICT.
+// A demand that cannot afford an offer and a demand an offer cannot serve are
+// different facts with different remedies -- raise the buy order, or find
+// another supplier. Per DESIGN section 3, fungibility is a SUPPLIER
+// CAPABILITY fact (does this executor satisfy this work's shape, trust domain
+// and capabilities -- true regardless of who is asking or what they will pay)
+// and affordability is BUYER POLICY (can this demand's ceiling, in this
+// currency, clear this supplier's asking price -- true regardless of whether
+// the executor can even run the work). An earlier revision fused both into
+// one OfferEligibility coproduct decided by one offer_eligibility_for fold
+// taking a budget ceiling as an argument, so "this offer cannot run your job"
+// and "this offer is currently too expensive" were the same verdict wearing
+// different constructors. Two coproducts and two folds below, each named for
+// the question it answers and neither importing the other's inputs:
+// offer_fungibility_for takes no money at all, and offer_affordability_for
+// takes no shape, trust domain or capabilities.
 
-type OfferEligibility
-  = OfferEligible
+type OfferFungibility
+  = Fungible
   | ShapeNotCovered { required_threads: HardwareThreadCount, offered_threads: HardwareThreadCount }
   | TrustDomainMismatch { required: TrustDomainRef, offered: TrustDomainRef }
   | CapabilitiesNotOffered { required: CapabilityManifestRef, offered: CapabilityManifestRef }
+
+// GRANT DURATION -- the fact a RATE quote needs before its per-unit price can
+// be compared to a per-grant ceiling AT ALL. "I cannot compare a $/hr rate to
+// a total ceiling" is true, but it is a UNITS problem -- ignorance about the
+// comparison -- not a fact about the offer, and rendering that ignorance as a
+// verdict on the supplier is the state-space conflation DESIGN section 5
+// names (an offer that is capable, in-currency and cheap must not be
+// unconditionally ineligible because the fold never received what it needed
+// to price it). The repair supplies the missing duration; it does not refuse
+// the supplier.
+//
+// EXACT and ESTIMATED are not decoration on top of that repair -- they are
+// the other half of it. Multiplying a rate by an estimated duration produces
+// a PROJECTED total whose error is inherited from the estimate, so
+// "affordable under a projected total" is a different fact from "affordable
+// under a known one", and collapsing the two into a bare Second would let an
+// estimate's uncertainty vanish the moment it is multiplied. A caller that
+// only knows an estimate cannot construct ExactGrantDuration and claim
+// otherwise -- the two arms are the wall, not a comment beside a single field.
+type GrantDuration
+  = ExactGrantDuration { seconds: Second }
+  | EstimatedGrantDuration { seconds: Second }
+
+fn grant_duration_seconds(d: GrantDuration) -> Second {
+  match d {
+    ExactGrantDuration { seconds: s } => s
+    EstimatedGrantDuration { seconds: s } => s
+  }
+}
+
+type DemandOfferAffordability
+  = Affordable
+  | AffordableUnderEstimate { duration_seconds: Second, projected_total: MoneyAmountMicro }
   | QuoteExceedsMaximumBuyOrder { quoted: MoneyAmountMicro, maximum: MoneyAmountMicro }
   | QuoteCurrencyMismatch { quoted: CurrencyCode, budgeted: CurrencyCode }
-  | RateQuoteNotPriceableAgainstGrantCeiling { quoted: MoneyAmountMicro }
 
 fn offer_covers_shape(offered: Shape, needed: Shape) -> Bool {
   hardware_thread_count_value(t: offered.hard.threads) >= hardware_thread_count_value(t: needed.hard.threads)
 }
 
-// THIS FOLD SCREENS AFFORDABILITY. IT DOES NOT SELECT.
+// THIS FOLD SCREENS FUNGIBILITY. IT DOES NOT SELECT, AND IT TAKES NO MONEY.
 //
-// It answers: can this demand pay this offer's asking price, in this currency,
-// for a shape and trust domain that fit. Nothing here chooses among several
-// eligible offers, and choosing is where the economics actually live.
+// It answers only: can this executor's shape, trust domain and capabilities
+// satisfy what this work requires. Nothing here chooses among several
+// fungible offers, and choosing -- like pricing -- is where economics live,
+// never here.
+
+fn offer_fungibility_for<P>(requirements: ExecutionRequirements, offer: Offer<P>) -> OfferFungibility {
+  if requirements.trust_domain != offer.trust_domain {
+    TrustDomainMismatch { required: requirements.trust_domain, offered: offer.trust_domain }
+  } else if requirements.capabilities != offer.capabilities {
+    CapabilitiesNotOffered { required: requirements.capabilities, offered: offer.capabilities }
+  } else if !offer_covers_shape(offered: offer.shape, needed: requirements.shape) {
+    ShapeNotCovered {
+      required_threads: requirements.shape.hard.threads,
+      offered_threads: offer.shape.hard.threads,
+    }
+  } else {
+    Fungible
+  }
+}
+
+fn seconds_per_hour() -> Nat {
+  minutes_per_hour() * seconds_per_minute()
+}
+
+// A BILLING QUANTUM: the smallest interval a supplier ever charges for, and
+// suppliers round UP a partial quantum rather than pro-rating it. Hetzner
+// bills a ONE HOUR MINIMUM, rounded up -- one second of use and 3601 seconds
+// of use both cost two hours if the run crosses an hour boundary. Modeling
+// duration as a bare scalar divided by 3600 (as the old fold modelled a bare
+// rate against a bare ceiling) would understate an hourly bill exactly the
+// way that fold once mispriced a rate as a total.
+//
+// This is a SYNTHETIC one-hour quantum, not the full supplier tariff --
+// gunb-ai/gunbc-private's dag/strategy/ci_product_surface.dag already models
+// a richer per-supplier tariff (attr_billing_quantum, quantum_fit,
+// BillingQuantumFit) for a provider whose minimum billed increment exceeds a
+// typical job; cited by name per DESIGN section 2 rather than reinvented,
+// and not imported because gunbc and gunbc-private are separate repos with
+// no shared symbols. A hard-coded one-hour quantum is enough to make the
+// positive hourly control well-formed without modeling the full assignment
+// economy (variable quantum, renewal boundary, paid-through commitment).
+fn billed_unit_count(seconds: Nat, quantum_seconds: Nat) -> Nat {
+  if quantum_seconds == 0 {
+    seconds
+  } else {
+    (seconds + (quantum_seconds - 1)) / quantum_seconds
+  }
+}
+
+// THE PROJECTED PER-GRANT TOTAL a quote would bill over one grant of this
+// duration. QuotedFlatPerGrant already IS a per-grant total, so duration does
+// not multiply it -- doing so would double-count a grant the quote already
+// prices whole. QuotedPerSecond and QuotedPerHour are RATES, so the total is
+// the rate times the duration expressed in that rate's own unit.
+//
+// QuotedPerSecond rounds UP via measure_scale_fraction_ceil, the SAME
+// ceiling authority std.measure already uses for scale conversion. QuotedPerHour
+// rounds up to whole BILLED HOURS first (billed_unit_count) and only then
+// multiplies by the hourly rate -- a coarser rounding than a fractional-hour
+// ceiling, because that is how the supplier actually bills. Rounding down
+// anywhere here would understate the bill and could admit an offer whose real
+// cost exceeds the ceiling, which is the absorbing-fallback failure (DESIGN
+// section 5) one level down: a refusal arm that quietly narrows instead of
+// refusing.
+fn offer_quoted_total_for_grant(quote: OfferQuote, duration: GrantDuration) -> MoneyAmountMicro {
+  let seconds = second_count(s: grant_duration_seconds(d: duration))
+  match quote {
+    QuotedFlatPerGrant(r) => r.amount
+    QuotedPerSecond(r) => measure_scale_fraction_ceil(m: r.amount, num: seconds, den: 1)
+    QuotedPerHour(r) =>
+      measure_scale_fraction_ceil(
+        m: r.amount,
+        num: billed_unit_count(seconds: seconds, quantum_seconds: seconds_per_hour()),
+        den: 1,
+      )
+  }
+}
+
+// THIS FOLD SCREENS AFFORDABILITY. IT DOES NOT SELECT, AND IT TAKES NO SHAPE,
+// TRUST DOMAIN OR CAPABILITIES.
+//
+// It answers: can this demand pay this offer's asking price, in this
+// currency, for one grant of the given duration. Nothing here chooses among
+// several affordable offers, and choosing is where the economics actually
+// live.
 //
 // WHAT AN OFFER CARRIES, AND WHAT IT DOES NOT. The quote is a supplier-side
 // ASKING PRICE for one grant. It is NOT an opportunity cost: what an hour could
@@ -185,13 +312,15 @@ fn offer_covers_shape(offered: Shape, needed: Shape) -> Bool {
 // being retained for accounting.
 //
 // WHAT SELECTION WOULD NEED, none of which exists here: the offer's availability
-// interval, the supplier tariff with its billing quantum, rounding and minimum
-// charge, the paid-through commitment state that makes an already-bought hour's
-// marginal cash zero until it expires, transition and start costs, and the
-// alternative uses that give an opportunity cost its value -- including the arm
-// where there is NO feasible alternative use, so an hour about to expire idle is
-// not priced as though a customer had been displaced, and the arm where the
-// alternative is simply UNREAD, so unknown does not silently become zero.
+// interval, the SUPPLIER'S OWN tariff (offer_quoted_total_for_grant's
+// billed_unit_count is a synthetic one-hour quantum for the affordability
+// screen, not a per-supplier tariff row), the paid-through commitment state
+// that makes an already-bought hour's marginal cash zero until it expires,
+// transition and start costs, and the alternative uses that give an
+// opportunity cost its value -- including the arm where there is NO feasible
+// alternative use, so an hour about to expire idle is not priced as though a
+// customer had been displaced, and the arm where the alternative is simply
+// UNREAD, so unknown does not silently become zero.
 //
 // Until those land, this fold is honest as a screen and would be a lie as a
 // selector.
@@ -199,33 +328,32 @@ fn offer_covers_shape(offered: Shape, needed: Shape) -> Bool {
 // The budget ceiling arrives as SCALARS rather than as demand.BuyTerms, because
 // supply must not import demand -- a backward edge this module already carries
 // once for ObservationReceiptRef and must not deepen. The demand side supplies
-// them at the call site, which is also where they are known.
+// them at the call site, which is also where they are known. The duration is a
+// third scalar for the same reason: it is a fact about the GRANT being priced,
+// known to whoever is asking, never stored on the offer.
 
-fn offer_eligibility_for<P>(
-  requirements: ExecutionRequirements,
+fn offer_affordability_for<P>(
   offer: Offer<P>,
   maximum_buy_order: MoneyAmountMicro,
   budget_currency: CurrencyCode,
-) -> OfferEligibility {
-  if requirements.trust_domain != offer.trust_domain {
-    TrustDomainMismatch { required: requirements.trust_domain, offered: offer.trust_domain }
-  } else if requirements.capabilities != offer.capabilities {
-    CapabilitiesNotOffered { required: requirements.capabilities, offered: offer.capabilities }
-  } else if !offer_covers_shape(offered: offer.shape, needed: requirements.shape) {
-    ShapeNotCovered {
-      required_threads: requirements.shape.hard.threads,
-      offered_threads: offer.shape.hard.threads,
-    }
-  } else if offer_quote_currency(q: offer.quote) != budget_currency {
+  duration: GrantDuration,
+) -> DemandOfferAffordability {
+  if offer_quote_currency(q: offer.quote) != budget_currency {
     QuoteCurrencyMismatch { quoted: offer_quote_currency(q: offer.quote), budgeted: budget_currency }
   } else {
-    match offer.quote {
-      QuotedPerSecond(r) => RateQuoteNotPriceableAgainstGrantCeiling { quoted: r.amount }
-      QuotedPerHour(r) => RateQuoteNotPriceableAgainstGrantCeiling { quoted: r.amount }
-      QuotedFlatPerGrant(r) => if money_amount_micro_count(m: r.amount) > money_amount_micro_count(m: maximum_buy_order) {
-        QuoteExceedsMaximumBuyOrder { quoted: r.amount, maximum: maximum_buy_order }
-      } else {
-        OfferEligible
+    let projected = offer_quoted_total_for_grant(quote: offer.quote, duration: duration)
+    if money_amount_micro_count(m: projected) > money_amount_micro_count(m: maximum_buy_order) {
+      QuoteExceedsMaximumBuyOrder { quoted: projected, maximum: maximum_buy_order }
+    } else {
+      match duration {
+        ExactGrantDuration { seconds: _ } => Affordable
+        EstimatedGrantDuration { seconds: s } => match offer.quote {
+          QuotedFlatPerGrant(_) => Affordable
+          QuotedPerSecond(_) =>
+            AffordableUnderEstimate { duration_seconds: s, projected_total: projected }
+          QuotedPerHour(_) =>
+            AffordableUnderEstimate { duration_seconds: s, projected_total: projected }
+        }
       }
     }
   }

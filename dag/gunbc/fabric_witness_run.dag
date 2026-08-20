@@ -3,7 +3,7 @@ module gunbc.fabric_witness_run
 import std.types { NonEmptyStr }
 import std.currency { CurrencyCode, Usd }
 import std.nat { Nat }
-import std.measure { HardwareThreadCount, hardware_thread_count, MoneyAmountMicro }
+import std.measure { HardwareThreadCount, hardware_thread_count, MoneyAmountMicro, Second, second }
 import product.fabric.identity {
   FabricIdentity, WorkKey, ExecutionAttemptKey, OfferKey, GrantKey,
   fabric_identity_eq,
@@ -14,7 +14,10 @@ import product.fabric.work {
   CapabilityManifestRef, TrustDomainRef,
   ProgramRef, SourceManifestRef, ArtifactManifestRef, EffectContractRef, OutputContractRef,
 }
-import product.fabric.supply { Offer, OfferEligibility, offer_eligibility_for }
+import product.fabric.supply {
+  Offer, OfferFungibility, DemandOfferAffordability, GrantDuration, EstimatedGrantDuration,
+  offer_fungibility_for, offer_affordability_for,
+}
 import product.fabric.demand {
   Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement, BudgetAccountId, ObservationReceiptRef,
 }
@@ -49,17 +52,36 @@ import std.types { String, List }
 // about where or when it runs -- scheduling facts live in ExecutionRequirements
 // beside it, so revising a thread estimate cannot mint a new semantic Work.
 //
-// Two steps, not one, because the workflow gates them separately and the v1
-// parse gate is a blocking step in its own right: collapsing them into one step
-// would make a parse failure and a floor failure indistinguishable in the
-// receipt, which is the distinction gunbc#8466 -> #8519 was paid to learn.
-
+// ONE STEP, FOUR PHASES (2026-08-20). This read "Two steps, not one, because the
+// workflow gates them separately and the v1 parse gate is a blocking step in its
+// own right: collapsing them into one step would make a parse failure and a floor
+// failure indistinguishable in the receipt, which is the distinction
+// gunbc#8466 -> #8519 was paid to learn."
+//
+// THE CONCERN WAS RIGHT AND IS NOW BETTER SERVED, which is why the row changed
+// rather than the concern being dropped. The workflow no longer gates the phases
+// separately -- the operator directed that the sequencing move out of the GitHub
+// Actions step list and into the binary -- so a contract listing two steps is a
+// SECOND, now-false description of a job shape that has one. What made the two
+// steps worth having was the receipt's ability to say WHICH part failed, and that
+// distinction survives at a finer grain: `--required-ci` reports four phases and
+// prints `FAILED PHASE <name>` per failure, so parse, regen, regen-determinism
+// and floor are four distinguishable outcomes where there were two. Measured on
+// the first CI run of the composed step (32347573121), which reported
+// `phases_run=4 failed=2` and named both -- a regen drift AND a floor failure --
+// where a step ladder would have surfaced them one merge at a time.
+//
+// WHAT THIS DOES COST, stated rather than glossed: resumability was per-step, so
+// a green parse could previously be receipt-satisfied and skipped on a rerun.
+// One step means one receipt and the whole run repeats. That is a real
+// consequence of the consolidation, not an oversight, and the phase-grain
+// resumability that would restore it belongs with the cost basis rather than
+// here.
 fn floor_work_contract(source: SourceManifestRef) -> WorkContract {
   WorkContract {
     program: "gunbc.claim_executor",
     steps: [
-      WorkStep { step_id: "v1-dag-parse", resumability: ReceiptSatisfiable },
-      WorkStep { step_id: "required-floor", resumability: ReceiptSatisfiable },
+      WorkStep { step_id: "required-ci", resumability: ReceiptSatisfiable },
     ],
     source: source,
     inputs: floor_inputs_manifest_ref(),
@@ -137,7 +159,7 @@ fn floor_run_command() -> ArgvCommand {
   ArgvCommand {
     argv: fold(
       witness_layer_roots,
-      init: ["target/release/claim_executor", "--required-floor"],
+      init: ["target/release/claim_executor", "--required-ci"],
       f: fn(acc, root) { append(acc, items: ["--source-root", root]) },
     ),
   }
@@ -156,16 +178,34 @@ fn floor_run_command() -> ArgvCommand {
 // Control-plane work is a separately privileged class. That exclusion must not
 // leak here: a floor run is customer work that happens to be ours.
 
-fn floor_offer_eligibility<P>(
+fn floor_offer_fungibility<P>(offer: Offer<P>) -> OfferFungibility {
+  offer_fungibility_for(requirements: floor_execution_requirements(), offer: offer)
+}
+
+// THE FLOOR'S GRANT DURATION IS AN ESTIMATE, NOT A MEASUREMENT. `~30 min wall`
+// is the wall-clock this document's own "Building & checks" section records
+// for the three consecutive green `--required-ci` runs on main (32203661157
+// and neighbors) -- a measured receipt, not a guess -- but it is still an
+// ESTIMATE of what THIS run will take, not the exact duration of a run that
+// has not happened yet. Spelling it as EstimatedGrantDuration rather than
+// ExactGrantDuration is therefore not caution for its own sake: it is the
+// only honest constructor available, and it is what lets a rate-quoted offer
+// land on AffordableUnderEstimate instead of silently borrowing the
+// certainty ExactGrantDuration would claim.
+fn floor_grant_duration() -> GrantDuration {
+  EstimatedGrantDuration { seconds: second(count: 1800) }
+}
+
+fn floor_offer_affordability<P>(
   offer: Offer<P>,
   maximum_buy_order: MoneyAmountMicro,
   budget_currency: CurrencyCode,
-) -> OfferEligibility {
-  offer_eligibility_for(
-    requirements: floor_execution_requirements(),
+) -> DemandOfferAffordability {
+  offer_affordability_for(
     offer: offer,
     maximum_buy_order: maximum_buy_order,
     budget_currency: budget_currency,
+    duration: floor_grant_duration(),
   )
 }
 
