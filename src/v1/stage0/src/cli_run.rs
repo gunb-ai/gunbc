@@ -24303,7 +24303,7 @@ fn run_discovery_rows(
                     row.function,
                     row.entry,
                     operation,
-                    hermetic_effect_ground_label(ground)
+                    hermetic_effect_ground_label(&ground)
                 ))
             }
             // Rendered so the elapsed value is never mistaken for a completed duration:
