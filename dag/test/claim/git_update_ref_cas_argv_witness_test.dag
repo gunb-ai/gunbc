@@ -1,0 +1,110 @@
+module test.claim.git_update_ref_cas_argv_witness
+
+import std.types { Bool, String, List }
+import extdeps.git.object_store {
+  GitObjectId,
+  GitRefName,
+  git_sha1_object_id,
+  shape_git_update_ref_cas_argv,
+}
+import v2.std.algebra { length, skip, list_head, HeadFound, HeadAbsent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A REF ADVANCE IS A COMPARE-AND-SWAP, AND THE ARGV IS WHERE THAT IS WON OR LOST.
+//
+// git-update-ref's two-argument form overwrites unconditionally; the three-argument form
+// refuses unless the ref currently holds the named prior. The difference between them is one
+// absent list element, and nothing downstream can recover the distinction: by the time the
+// process runs, an argv missing its third word IS the unconditional write. So these rows are
+// about arity and position, not about text prettiness.
+//
+// The pair that matters is the advance row and the creation row. They assert DIFFERENT values in
+// the SAME position -- the prior oid, and the empty string git spells for "must not exist" -- so
+// together they already forbid any constant there, which is the shape a CAS that can never fire
+// would have.
+//
+// A fourth row asserting "a creation and an advance do not render identically" stood here and was
+// DELETED as redundant, on measurement rather than on reading. Its stated justification was that
+// the two rows above "could both pass under a shape that ignored expected_old and emitted a
+// constant". That is false: any constant fails one of them, because they demand different values
+// in one slot. The mutation that was supposed to prove the row necessary (six words, new oid in
+// the prior slot) reds all three rows, so the fourth added no reach -- it restated a consequence
+// of the two above it, which is a second representation of one fact (DESIGN section 2).
+
+data alpha_hex: String = "1111111111111111111111111111111111111111"
+data beta_hex: String = "2222222222222222222222222222222222222222"
+
+fn alpha() -> GitObjectId? { git_sha1_object_id(hex: alpha_hex) }
+fn beta() -> GitObjectId? { git_sha1_object_id(hex: beta_hex) }
+
+fn argv_with_prior(prior: GitObjectId?) -> List<String> {
+  match alpha() {
+    Present { value: new_oid } =>
+      shape_git_update_ref_cas_argv(
+        repo: "/srv/repo",
+        ref_name: "refs/fleet/desired",
+        new_oid: new_oid,
+        expected_old: prior,
+      )
+    none => []
+  }
+}
+
+// The positive control for every row below: the fixtures decode. Without this, a typo in a hex
+// literal makes git_sha1_object_id return none, argv_with_prior returns [], and every arity and
+// absence assertion below is satisfied by the empty list -- green for the one reason that proves
+// nothing.
+test fn the_fixture_object_ids_decode() -> Bool {
+  match alpha() {
+    Present { value: _ } =>
+      match beta() {
+        Present { value: _ } => true
+        none => false
+      }
+    none => false
+  }
+}
+
+// Positional read, since .dag match has no list patterns: nth word or `none`. The absent arm
+// is a real answer here, not a default -- a short argv must fail these rows rather than
+// silently comparing against a filler value.
+fn word_at(xs: List<String>, n: Int) -> String? {
+  match list_head(xs: skip(xs: xs, n: n)) {
+    HeadFound { value: w } => Present { value: w }
+    HeadAbsent => none
+  }
+}
+
+fn word_is(xs: List<String>, n: Int, expected: String) -> Bool {
+  match word_at(xs: xs, n: n) {
+    Present { value: w } => w == expected
+    none => false
+  }
+}
+
+// SIX WORDS, ALWAYS. The third positional argument is present whether or not a prior exists,
+// because its ABSENCE is what selects the unconditional form.
+test fn the_cas_argv_always_carries_its_expected_prior_position() -> Bool {
+  length(xs: argv_with_prior(prior: beta())) == 6
+    && length(xs: argv_with_prior(prior: none)) == 6
+}
+
+// The advance case names the prior it expects to displace.
+test fn an_advance_names_the_expected_prior() -> Bool {
+  let argv = argv_with_prior(prior: beta())
+  word_is(xs: argv, n: 2, expected: "update-ref")
+    && word_is(xs: argv, n: 3, expected: "refs/fleet/desired")
+    && word_is(xs: argv, n: 4, expected: alpha_hex)
+    && word_is(xs: argv, n: 5, expected: beta_hex)
+}
+
+// THE DISCRIMINATING HALF. Creation renders the empty string in the prior position -- git's
+// spelling for "must not already exist". If this ever renders as a five-word argv, or borrows
+// the new oid into the prior slot, the created ref would be writable over an existing one and
+// the row above would still pass.
+test fn a_creation_renders_an_empty_prior_and_not_a_shorter_argv() -> Bool {
+  let argv = argv_with_prior(prior: none)
+  word_is(xs: argv, n: 4, expected: alpha_hex) && word_is(xs: argv, n: 5, expected: "")
+}

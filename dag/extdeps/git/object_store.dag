@@ -2,7 +2,7 @@ module extdeps.git.object_store
 
 import std.algebra { trim }
 
-import std.types { NonEmptyStr, Bytes, Map }
+import std.types { NonEmptyStr, Bytes, Map, FilePath }
 import std.content_hash {
   ContentHash,
   Sha1Digest,
@@ -543,6 +543,43 @@ type GitRefName = NonEmptyStr where brand("GitRefName")
 type RefTarget
   = DirectTarget { oid: GitObjectId }
   | SymbolicTarget { ref_name: GitRefName }
+
+// THE COMPARE-AND-SWAP FORM OF git-update-ref, cited to git_update_ref_authority above.
+//
+// `git update-ref <ref> <new> <old>` refuses unless the ref currently holds <old>. The
+// two-argument form overwrites unconditionally, and that is the fail-open this shape exists
+// to make unspellable: a ref advance is a compare-and-swap, never a write, so the expected
+// prior is a REQUIRED parameter here rather than an optional convenience.
+//
+// CREATION IS THE SAME OPERATION WITH AN EMPTY <old> -- git's documented spelling for "the
+// ref must not already exist". So an absent prior emits "" as a PRESENT argument rather than
+// omitting the argument, because omitting it silently selects the overwriting two-argument
+// form. That is the whole reason the prior is modeled as `GitObjectId?` and rendered here
+// instead of being passed in as text: a caller holding `none` cannot accidentally degrade it
+// into "no third argument", and a caller cannot spell the unconditional form at all.
+//
+// This shapes an argv. It executes nothing and observes nothing: per
+// git_modeled_ref_transition_boundary_note, a transition is Applied only on an executing
+// transport's observation, never on the strength of having produced the right command.
+fn shape_git_update_ref_cas_argv(
+  repo: FilePath,
+  ref_name: GitRefName,
+  new_oid: GitObjectId,
+  expected_old: GitObjectId?,
+) -> List<String> {
+  let expected_old_text = match expected_old {
+    Present { value: prior } => git_object_id_wire_hex(oid: prior) as String
+    none => ""
+  }
+  [
+    "-C",
+    repo as String,
+    "update-ref",
+    ref_name as String,
+    git_object_id_wire_hex(oid: new_oid) as String,
+    expected_old_text,
+  ]
+}
 
 type GitRefRecord {
   name: GitRefName
