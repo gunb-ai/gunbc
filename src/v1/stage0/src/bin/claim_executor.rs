@@ -19784,7 +19784,13 @@ fn behavioral_receipt_census(source_roots: &[String]) -> Result<bool, String> {
             .lines()
             .filter_map(|l| l.trim_start().strip_prefix("type "))
             .filter_map(|rest| {
-                rest.split(|c: char| c.is_whitespace() || c == '{' || c == '=')
+                // CUT AT `<` TOO. Without it the authored name of a generic declaration came out
+                // as `Magma<T>` or, worse, `Map<key,` -- while the reader registers the bare name
+                // -- so the comparison reported 11 modules as having gaps whose type_lines and
+                // types_read were EQUAL. The falsifier was manufacturing its own false positives,
+                // which is the one failure mode a cross-check cannot be allowed to have: it spends
+                // exactly the attention it exists to direct.
+                rest.split(|c: char| c.is_whitespace() || c == '{' || c == '=' || c == '<')
                     .find(|t| !t.is_empty())
                     .map(str::to_string)
             })
@@ -19874,7 +19880,7 @@ fn behavioral_receipt_census(source_roots: &[String]) -> Result<bool, String> {
                     .lines()
                     .filter_map(|l| l.trim_start().strip_prefix("type "))
                     .filter_map(|r| {
-                        r.split(|c: char| c.is_whitespace() || c == '{' || c == '=')
+                        r.split(|c: char| c.is_whitespace() || c == '{' || c == '=' || c == '<')
                             .find(|t| !t.is_empty())
                             .map(str::to_string)
                     })
