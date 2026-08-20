@@ -12002,12 +12002,36 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
         outcome.declined_long_module,
         outcome.declined_live_tree
     );
+    // WHY route_gap IS NOW SPELLED route_gap_unenrolled, AND WHY route_gap_held JOINS IT HERE.
+    // The old field printed `outcome.route_gap.len()` under the bare name `route_gap` — the
+    // UNENROLLED gaps alone. Measured on main run 32407436149 that printed `route_gap=0` while
+    // 101 enrolled identities were held as route-gapped on a `[floor-route-gap]` line ~300 lines
+    // away, and the headline's own categories did not close: executed 9810 − passed 9502 −
+    // known_red_held 207 − failed 0 left exactly those 101 unaccounted. A reader did not see an
+    // understated count they might interrogate; they saw a ZERO, which closes the question rather
+    // than opening it. The correcting evidence existed and was disjoint from the surface anyone
+    // reads, so it lands on THIS line — shipping it as yet another separate line would reproduce
+    // the defect it repairs.
+    //
+    // THESE COUNTERS ARE OVERLAPPING AXES, NOT A PARTITION, and the receipt must not be read as
+    // one. A single claim that is enrolled expected-red AND route-gapped increments
+    // `known_red_host_effect_refused` and `route_gap_held` both (see the ExpectedRedArm::
+    // HostEffectRefused arm in cli_run: the two rosters are different axes and the row sits on
+    // both). So `passed + known_red_held + … == executed` is NOT an invariant and asserting it
+    // would red on a legitimate state. The tree already has the vocabulary for this distinction —
+    // `InclusiveCostRow` carries "a counter deliberately INCLUSIVE of another … so the receipt can
+    // print it without it ever entering the exclusive sum" — but the floor's ledger has no such
+    // typed exclusive/inclusive split, which is why the sum silently failed to close instead of
+    // refusing. Modelling that split is a RequiredFloorDisposition question in
+    // src/v2/workflow/required_floor.dag, not something to decide inside an eprintln!.
     eprintln!(
         "required-floor: planned={} executed={} terminal={} passed={} \
          known_red_held={} failed={} stale_quarantine={} \
          interrupted_before_verdict={} completed_over_cost_requirement={} \
-         host_tool_unresolved={} route_gap={} stale_route_gap={} \
-         over_cost_line_diagnostic={}",
+         host_tool_unresolved={} route_gap_unenrolled={} route_gap_held={} \
+         stale_route_gap={} known_red_now_passing={} known_red_budget_refused={} \
+         known_red_passed_over_budget={} known_red_host_tool_unresolved={} \
+         known_red_host_effect_refused={} over_cost_line_diagnostic={}",
         outcome.claims_planned,
         outcome.claims_executed,
         outcome.receipt_identities,
@@ -12019,7 +12043,13 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
         outcome.completed_over_cost_requirement.len(),
         outcome.host_tool_unresolved.len(),
         outcome.route_gap.len(),
+        outcome.route_gap_held,
         outcome.stale_route_gap.len(),
+        outcome.known_red_now_passing,
+        outcome.known_red_budget_refused,
+        outcome.known_red_passed_over_budget,
+        outcome.known_red_host_tool_unresolved_held,
+        outcome.known_red_host_effect_refused,
         outcome.over_cost_line_diagnostic
     );
     // ONE receipt, both numbers (#8642). This replaced a per-miss trace line that had no hit

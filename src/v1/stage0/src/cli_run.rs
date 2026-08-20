@@ -39901,6 +39901,36 @@ pub struct RequiredFloorOutcome {
     /// witness, and a headline number that rises as debt is added has no direction left to
     /// report repayment in.
     pub known_red_held: usize,
+    /// THE 101 THAT DID NOT SUM. These six are already computed by the fold, at the right grain,
+    /// and were reported only on `[floor-known-red]` / `[floor-route-gap]` lines that no consumer
+    /// of the headline ledger reads. Lifting them here adds no fact and makes no new distinction;
+    /// it projects values the run already holds onto the line the run is read from.
+    ///
+    /// `route_gap_held` is the load-bearing one. Measured on main run 32407436149:
+    /// `executed=9810 passed=9502 known_red_held=207 failed=0` leaves 101 unaccounted, and the
+    /// headline printed `route_gap=0` because that field is `route_gap.len()` — the UNENROLLED
+    /// gaps alone. So the reader did not see an understated count they might interrogate; they
+    /// saw a zero, which closes the question instead of opening it. The correcting number lived
+    /// on another line ~300 lines away. Evidence present but disjoint from the surface anyone
+    /// reads is the defect, so these belong on the SAME line rather than in a second report —
+    /// a fix shipped as another separate line would reproduce exactly what it repairs.
+    ///
+    /// A route-gapped identity is refused at the hermetic boundary, never reaches its subject,
+    /// and produces no verdict. That refusal is CORRECT and must not be repaired: mocking it
+    /// would pass the witness against a fabricated exit status, which is the fabricated-plausible
+    /// -output failure the witness exists to catch (DESIGN §5).
+    ///
+    /// NOT RENAMED HERE, DELIBERATELY: `claims_executed` still counts entering the fold rather
+    /// than reaching a verdict. Whether that is the right name is a question about
+    /// `RequiredFloorDisposition`, whose authority is `src/v2/workflow/required_floor.dag`, and
+    /// changing .dag vocabulary from inside a Rust projection fix would put the authority in the
+    /// wrong place. Raised separately or not at all; this change only makes the line sum.
+    pub route_gap_held: usize,
+    pub known_red_now_passing: usize,
+    pub known_red_budget_refused: usize,
+    pub known_red_passed_over_budget: usize,
+    pub known_red_host_tool_unresolved_held: usize,
+    pub known_red_host_effect_refused: usize,
     /// UNEXPECTED GREEN IS NOT A WITNESS RED. An enrolled row that passed means someone fixed
     /// the bug and the roster is stale; folding it into `failures` makes an un-quarantine
     /// indistinguishable from a regression in the alert signature, which is the conflation
@@ -41239,6 +41269,12 @@ pub fn run_required_floor(
         receipt_identities: 0,
         passed: 0,
         known_red_held: 0,
+        route_gap_held: 0,
+        known_red_now_passing: 0,
+        known_red_budget_refused: 0,
+        known_red_passed_over_budget: 0,
+        known_red_host_tool_unresolved_held: 0,
+        known_red_host_effect_refused: 0,
         stale_quarantine: Vec::new(),
         interrupted_before_verdict: Vec::new(),
         completed_over_cost_requirement: Vec::new(),
@@ -41852,6 +41888,12 @@ pub fn run_required_floor(
         );
     }
     outcome.known_red_held = known_red_held;
+    outcome.route_gap_held = route_gap_held;
+    outcome.known_red_now_passing = known_red_now_passing;
+    outcome.known_red_budget_refused = known_red_budget_refused;
+    outcome.known_red_passed_over_budget = known_red_passed_over_budget;
+    outcome.known_red_host_tool_unresolved_held = known_red_host_tool_unresolved;
+    outcome.known_red_host_effect_refused = known_red_host_effect_refused;
     eprintln!(
         "[floor-route-gap] {} enrolled identity(ies) held as route-gapped; {} unenrolled route \
          gap(s) reported",
