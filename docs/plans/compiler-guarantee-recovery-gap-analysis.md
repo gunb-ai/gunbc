@@ -814,34 +814,52 @@ than argued.
    (`type Refined<B> sole_constructor`) — both hang on this audit.
    **One construction form measured (ARM 3, executed receipt, findings-only):** the Rust
    emission target. `extdeps.uri` `UriValidatedScalar` is `sole_constructor` with a single
-   sanctioned mint, `uri_validated_scalar_construction`, whose fixed law refuses surrogate
-   and out-of-range code points; the `.dag` wall refuses a cross-module record literal for
-   it at compile time (`SoleConstructorViolation`). The stage0 Rust mirror of that same
-   module emits it as `pub struct UriValidatedScalar { pub admitted_cp: i64 }` deriving
-   `serde::Serialize, serde::Deserialize`. Executed against the emitted target
+   sanctioned mint, `uri_validated_scalar_construction`, whose fixed law refuses whole RANGES
+   of code points — surrogate and out-of-range, each an infinite set, not a finite one; the
+   `.dag` wall refuses a cross-module record literal for it at compile time
+   (`SoleConstructorViolation`). The stage0 Rust mirror of that same module emits it as
+   `pub struct UriValidatedScalar { pub admitted_cp: i64 }` deriving `serde::Serialize,
+   serde::Deserialize`. Executed against the emitted target
    (`src/v1/stage0/tests/uri_scalar_forgery_receipt.rs`, run 2026-08-20 via a fresh remote
    BuildBuddy dispatch with a bogus-flag reachability control that failed as required): a
-   direct Rust struct literal for the refused surrogate value `55296` (0xD800) compiles with
-   no wall at all, and `serde_json::from_value::<UriValidatedScalar>` **admits** `55296`
-   (surrogate-refused), `-1` and `1114112` (out-of-range-refused) — every value the `.dag`
-   mint refuses. The positive control `65` (admitted by the mint) is admitted by serde too,
-   but that alone cannot discriminate a real forgery from a harness that never observes
-   `Err` at all, since it never separates the two — `serde_shape_control_rejects_malformed_input`
-   closes that hole: a non-integer `admitted_cp` and a missing `admitted_cp` field are both
-   refused by serde's own shape check, independent of the predicate, so the harness has
-   demonstrated it can and does report `Err`, which is what makes every "admits" verdict
-   above load-bearing. Two independent forgery routes into a type whose only declared
-   consumer, `uri_percent_encode_admitted_scalar_wire`, accepts `UriValidatedScalar` and
-   nothing upstream of it. **Reading against §4b:** the capability ceiling for this carrier
-   on the source→`.dag`-acceptance path is unaffected (that wall holds); on the
-   source→Rust-emission path it is **below floor, not merely below ceiling** — a value the
-   modeled system refuses is silently constructible and flows to the carrier's sole declared
-   consumer with no typed, located refusal at all, which is exactly the class §5 forbids
-   outright rather than ranks on the ladder. This is a genuine unmeasured completeness gap
-   this audit item names, not a repair — no change lands to `extdeps.uri`, the emitter, or
-   the derive roster in the PR carrying this receipt; the repair (omit `Deserialize`, emit a
-   validating one, or seal the field behind `TryFrom`) is a separate design decision. The
-   receipt's assertions are the discriminating RED (documenting the forgeries admitted
+   direct Rust struct literal for the refused surrogate value `55296` (0xD800, the first code
+   point in the surrogate range) compiles with no wall at all, and
+   `serde_json::from_value::<UriValidatedScalar>` **admits** one representative from each of
+   the mint's three refusal partitions — `55296` (surrogate), `-1` (negative), `1114112`
+   (above-max) — not every value in those infinite ranges; three representative points are
+   the evidence a finite receipt can discharge. The positive control `65` (admitted by the
+   mint) is admitted by serde too, but that alone cannot discriminate a real forgery from a
+   harness that never observes `Err` at all, since it never separates the two —
+   `serde_shape_control_rejects_malformed_input` closes that hole: a non-integer
+   `admitted_cp` and a missing `admitted_cp` field are both refused by serde's own shape
+   check, independent of the predicate, so the harness has demonstrated it can and does
+   report `Err`, which is what makes every "admits" verdict above load-bearing. Two
+   independent forgery routes into a type whose only declared consumer,
+   `uri_percent_encode_admitted_scalar_wire`, accepts `UriValidatedScalar` and reads
+   `admitted_cp` directly without re-running the mint. **Executed, not inferred:**
+   `known_hole_forged_scalars_reach_percent_encode_output` calls that consumer directly on
+   struct literals built from the three forged representatives. The surrogate representative
+   percent-encodes to `%ED%A0%80` and the above-max representative to `%F4%90%80%80` —
+   invalid-UTF-8 percent-encoding produced as *output*, not merely an invalid value existing.
+   The negative representative does **not** behave uniformly with the other two: the consumer
+   routes `cp < 128` through `uri_utf8_octet_construction(cp)` directly, which refuses
+   `byte < 0`, so the negative forgery is caught downstream of admission with a distinct
+   refusal (`UriPercentEncodeUtf8OctetOutOfRangeRefused`) rather than reaching output — a
+   different failure mode across the three partitions, not a contradiction of the finding.
+   **Reading against §4b:** the capability ceiling for this carrier on the source→`.dag`-
+   acceptance path is unaffected (that wall holds); on the source→Rust-emission path it is
+   **below floor, not merely below ceiling** for the surrogate and above-max partitions — a
+   value the modeled system refuses is silently constructible and flows to the carrier's sole
+   declared consumer, producing invalid output with no typed, located refusal at all, which
+   is exactly the class §5 forbids outright rather than ranks on the ladder. This is a genuine
+   unmeasured completeness gap this audit item names, not a repair — no change lands to
+   `extdeps.uri`, the emitter, or the derive roster in the PR carrying this receipt. **Repair
+   closes two independent doors and is a conjunction, not a menu of alternatives:** the field
+   must stop being publicly constructible (a struct literal needs no constructor) *and*
+   `Deserialize` must be absent or validating (a derived `Deserialize` constructs from inside
+   the type's own module, where field privacy does not apply, so making the field private
+   alone does not stop it) — that conjunction is a separate design decision, not made here.
+   The receipt's assertions are the discriminating RED (documenting the forgeries admitted
    today, with a demonstrated-capable `Err` path via the shape control) and, per §4b's
    dissolution-on-climb rule, they flip from "admits" to "refuses" rather than being deleted
    once a repair lands — the receipt becomes the permanent regression control at that point,

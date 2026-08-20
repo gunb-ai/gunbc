@@ -5,9 +5,11 @@
 //! source with a single field `admitted_cp: Int`; its only sanctioned mint is
 //! `uri_validated_scalar_construction`, whose fixed law refuses surrogate code
 //! points (`UriValidatedScalarSurrogateRefused`) and out-of-range code points
-//! (`UriValidatedScalarOutOfRangeRefused`). `uri_percent_encode_admitted_scalar_wire`
-//! accepts `UriValidatedScalar` only, so a forged scalar reaches percent-encoding
-//! output.
+//! (`UriValidatedScalarOutOfRangeRefused`) — each refusal covers a whole RANGE,
+//! not a finite set. `uri_percent_encode_admitted_scalar_wire` accepts
+//! `UriValidatedScalar` only and reads `admitted_cp` directly without re-running
+//! the mint, so a forged scalar reaches percent-encoding output — executed below,
+//! not inferred from the signature.
 //!
 //! The `.dag` `sole_constructor` wall refuses a cross-module record literal for this
 //! carrier at compile time (`SoleConstructorViolation`, see
@@ -17,8 +19,11 @@
 //! is emitted as `pub struct UriValidatedScalar { pub admitted_cp: i64 }` deriving
 //! `serde::Serialize, serde::Deserialize` (`extdeps_uri.rs`), so it is freely
 //! constructible both as a Rust struct literal (compile-time, no constructor call)
-//! and via `serde_json::from_value` — for every value the `.dag` mint refuses, not
-//! only the admitted ones.
+//! and via `serde_json::from_value` — for a representative of each of the three
+//! refusal partitions the `.dag` mint enforces (negative, surrogate, above-max),
+//! not for every value in those infinite ranges: three representative points are
+//! executed evidence of the class of gap, not a universal claim discharged by a
+//! finite test.
 //!
 //! KNOWN HOLE, asserted as it stands today — this test documents the gap, it does
 //! not close it. The positive control (`cp = 65`) controls the *mint's* behavior,
@@ -28,9 +33,16 @@
 //! regardless of the `admitted_cp` predicate (wrong JSON type, and the field
 //! missing entirely) — so every "ADMITTED" verdict elsewhere in this file is
 //! load-bearing: the harness has demonstrated it can and does report `Err`.
-//! Repair (omit `Deserialize`, emit a validating `Deserialize`, or seal the field
-//! behind `TryFrom`) is a separate design decision per the ARM 3 brief and is not
-//! made here. DISSOLVE-ON: `sole_constructor` completeness audit
+//!
+//! Repair closes TWO INDEPENDENT doors, and is a conjunction, not a menu of
+//! alternatives: the field must stop being publicly constructible (a Rust
+//! struct literal needs no constructor and does not go through `serde` at
+//! all) AND `Deserialize` must be absent or validating (removing only the
+//! field's public visibility does not stop the derived `Deserialize` impl,
+//! which constructs the struct from inside its own module, where privacy
+//! does not apply). Any repair that leaves one door open leaves the carrier
+//! forgeable. This is a separate design decision per the ARM 3 brief and is
+//! not made here. DISSOLVE-ON: `sole_constructor` completeness audit
 //! (compiler-guarantee-recovery-gap-analysis.md §11 item 1a) extends the
 //! unforgeable-construction wall through Rust emission for sealed carriers; at
 //! that point the `serde`/struct-literal assertions below flip from "admits" to
@@ -51,10 +63,12 @@
 //! change's to make.
 
 use v1_compiler::extdeps_uri::{
-    uri_validated_scalar_construction, UriValidatedScalar, UriValidatedScalarConstruction,
+    uri_percent_encode_admitted_scalar_wire, uri_validated_scalar_construction,
+    UriPercentEncodeFoldState, UriPercentEncodeRefusalCause, UriValidatedScalar,
+    UriValidatedScalarConstruction,
 };
 
-const SURROGATE_CP: i64 = 55_296; // 0xD800, first low surrogate
+const SURROGATE_CP: i64 = 55_296; // 0xD800, first code point in the surrogate range
 const NEGATIVE_CP: i64 = -1;
 const ABOVE_MAX_CP: i64 = 1_114_112; // 0x110000, one past the last scalar value
 const ADMITTED_CP: i64 = 65; // 'A' -- positive control, admitted by the .dag mint
@@ -86,24 +100,93 @@ fn serde_admits(cp: i64) -> bool {
 }
 
 #[test]
-fn known_hole_serde_admits_every_value_the_dag_mint_refuses() {
+fn known_hole_serde_admits_representatives_from_every_mint_refusal_partition() {
+    // The mint refuses whole RANGES (negative, surrogate, above-max), each an
+    // infinite set. This test executes one representative from each of the
+    // three refusal partitions -- it does not and cannot discharge a claim
+    // over every value in those ranges.
     assert!(
         serde_admits(SURROGATE_CP),
-        "known hole: serde forges the surrogate scalar the .dag mint refuses"
+        "known hole: serde forges a representative of the surrogate refusal partition"
     );
     assert!(
         serde_admits(NEGATIVE_CP),
-        "known hole: serde forges the negative scalar the .dag mint refuses"
+        "known hole: serde forges a representative of the negative refusal partition"
     );
     assert!(
         serde_admits(ABOVE_MAX_CP),
-        "known hole: serde forges the above-max scalar the .dag mint refuses"
+        "known hole: serde forges a representative of the above-max refusal partition"
     );
     // Positive control: must also succeed, or the harness is void.
     assert!(
         serde_admits(ADMITTED_CP),
         "positive control: serde must admit a value the .dag mint also admits"
     );
+}
+
+#[test]
+fn known_hole_forged_scalars_reach_percent_encode_output() {
+    // Executes the actual downstream consumer, uri_percent_encode_admitted_scalar_wire,
+    // on struct literals built directly from the three refusal-partition
+    // representatives -- not an inference from the function's signature. The
+    // consumer reads admitted_cp directly and does not re-run the scalar
+    // mint, so a forged value is not merely constructible: it produces
+    // percent-encoded OUTPUT.
+    let surrogate = UriValidatedScalar {
+        admitted_cp: SURROGATE_CP,
+    };
+    match &*uri_percent_encode_admitted_scalar_wire(surrogate) {
+        UriPercentEncodeFoldState::UriPercentEncodeBuilding { wire } => {
+            assert_eq!(
+                wire, "%ED%A0%80",
+                "known hole: forged surrogate scalar percent-encodes to invalid UTF-8 output"
+            );
+        }
+        UriPercentEncodeFoldState::UriPercentEncodeRefused { cause } => {
+            panic!("expected the forged surrogate to reach encoded output, got refusal: {cause:?}");
+        }
+    }
+
+    let above_max = UriValidatedScalar {
+        admitted_cp: ABOVE_MAX_CP,
+    };
+    match &*uri_percent_encode_admitted_scalar_wire(above_max) {
+        UriPercentEncodeFoldState::UriPercentEncodeBuilding { wire } => {
+            assert_eq!(
+                wire, "%F4%90%80%80",
+                "known hole: forged above-max scalar percent-encodes to invalid UTF-8 output"
+            );
+        }
+        UriPercentEncodeFoldState::UriPercentEncodeRefused { cause } => {
+            panic!("expected the forged above-max scalar to reach encoded output, got refusal: {cause:?}");
+        }
+    }
+
+    // The negative representative does NOT behave uniformly with the other
+    // two: uri_percent_encode_admitted_scalar_wire routes cp < 128 through
+    // uri_utf8_octet_construction(cp) directly, which refuses byte < 0. So
+    // the negative forgery is caught here, downstream of admission -- a
+    // different failure mode from the other two partitions, not a
+    // contradiction of the finding.
+    let negative = UriValidatedScalar {
+        admitted_cp: NEGATIVE_CP,
+    };
+    match &*uri_percent_encode_admitted_scalar_wire(negative) {
+        UriPercentEncodeFoldState::UriPercentEncodeRefused { cause } => {
+            assert!(
+                matches!(
+                    **cause,
+                    UriPercentEncodeRefusalCause::UriPercentEncodeUtf8OctetOutOfRangeRefused {
+                        value: NEGATIVE_CP
+                    }
+                ),
+                "expected the negative forgery to be refused as an out-of-range UTF-8 octet, got: {cause:?}"
+            );
+        }
+        UriPercentEncodeFoldState::UriPercentEncodeBuilding { wire } => {
+            panic!("expected the forged negative scalar to be refused downstream, got output: {wire:?}");
+        }
+    }
 }
 
 #[test]
