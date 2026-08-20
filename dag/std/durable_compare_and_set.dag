@@ -66,32 +66,55 @@ type CasReadableSlot<T>
   = CasReadableAbsent
   | CasReadablePresent { version: CasSlotVersion<T> }
 
+// One slot's committed content. It deliberately does NOT carry the slot key.
+//
+// It used to. That made the key a fact stored twice — once on the attempt and
+// once on the observed version — and two copies of one fact can disagree:
+// cas_decide compared generations only, so an attempt on key A against an
+// observation of key B with a coincidentally equal generation committed A. The
+// module's own text promises a caller can distinguish losing a race from
+// addressing the wrong slot, and that case was the second.
+//
+// A refusal arm would have caught it. Deleting the duplicate means there is
+// nothing to catch: an observation is of the slot the attempt names, because
+// no other slot can be described. Construction over validation (DESIGN 5), and
+// one fact in one place (DESIGN 3).
 type CasSlotVersion<T> {
-  key: NonEmptyStr
   generation: CasGeneration
   content: ContentHash
   value: T
 }
 
-// What the store found. The non-present arms are deliberately NOT folded into
-// CasSlotAbsent: "the slot holds nothing" and "I could not determine what the
-// slot holds" are different states with opposite remedies, and rendering the
-// second as the first is the empty-observation narrow (DESIGN 5) — a writer
-// would proceed to create a row on top of one it simply failed to read.
+// What the store found, as readable-or-not rather than five flat arms.
 //
-// Nor are the three failure arms one arm with a string on it. They have
-// different remedies: a malformed head is repaired by hand, a missing
-// referenced object is a write that did not land and may be re-derived, and a
-// refused read is retried against the store. A single arm discriminated by
-// `detail` would put that distinction in prose the compiler cannot see, which
-// is the anemic leaf DESIGN 2 names — the caller would have to parse a String
-// to decide which remedy applies.
+// The two carriers below are the authority for each half, and this type is
+// their sum — NOT a third enumeration restating them. Listing the five arms
+// here as well would put the same information in two representations, which
+// is the duplication DESIGN 3 forbids; adding CasUnreadableSlot beside a flat
+// five-arm observation would have created exactly that.
+//
+// "The slot holds nothing" and "I could not determine what the slot holds" are
+// different states with opposite remedies, and rendering the second as the
+// first is the empty-observation narrow (DESIGN 5) — a writer would create a
+// row on top of one it merely failed to read.
 type CasSlotObservation<T>
-  = CasSlotAbsent
-  | CasSlotPresent { version: CasSlotVersion<T> }
-  | CasSlotMalformed { detail: NonEmptyStr }
-  | CasSlotContentMissing { referenced: ContentHash }
-  | CasSlotReadRefused { detail: NonEmptyStr }
+  = CasObservedReadable { readable: CasReadableSlot<T> }
+  | CasObservedUnreadable { cause: CasUnreadableSlot }
+
+// Why the store could not read the slot, kept typed all the way out to the
+// caller.
+//
+// These are not one arm with a `detail` string: a malformed head is repaired
+// by hand, a missing referenced object is a write that did not land and may be
+// re-derived, and a refused read is retried against the store. Collapsing them
+// into prose would force a caller to parse a String to choose a remedy — the
+// anemic leaf DESIGN 2 names. This carrier exists because cas_decide used to
+// do precisely that: it mapped all three onto CasStoreRefused { detail }, so
+// the module erased one layer out the distinction it made one layer in.
+type CasUnreadableSlot
+  = CasUnreadableMalformed { detail: NonEmptyStr }
+  | CasUnreadableContentMissing { referenced: ContentHash }
+  | CasUnreadableReadRefused { detail: NonEmptyStr }
 
 // The outcome of one attempt.
 //
@@ -109,9 +132,9 @@ type CasOutcome<T>
   = CasCommitted { committed: CasSlotVersion<T> }
   | CasPreconditionFailed {
       expected: CasExpectation
-      observed: CasSlotObservation<T>
+      observed: CasReadableSlot<T>
     }
-  | CasStoreRefused { detail: NonEmptyStr }
+  | CasStoreRefused { cause: CasUnreadableSlot }
 
 type CasAttempt<T> {
   key: NonEmptyStr
@@ -188,37 +211,48 @@ fn cas_decide<T>(
   observed: CasSlotObservation<T>
 ) -> CasOutcome<T> {
   match observed {
-    CasSlotMalformed { detail: d } => CasStoreRefused { detail: d }
-    CasSlotContentMissing { referenced: _ } => CasStoreRefused { detail: "referenced state object is absent from the store" as NonEmptyStr }
-    CasSlotReadRefused { detail: d } => CasStoreRefused { detail: d }
-    CasSlotAbsent => cas_decide_readable(
-      attempt: attempt,
-      readable: CasReadableAbsent,
-      observed: observed
-    )
-    CasSlotPresent { version: v } => cas_decide_readable(
-      attempt: attempt,
-      readable: CasReadablePresent { version: v },
-      observed: observed
-    )
+    CasObservedUnreadable { cause: c } => CasStoreRefused { cause: c }
+    CasObservedReadable { readable: r } => cas_decide_readable(attempt: attempt, readable: r)
   }
 }
 
+// BOUNDARY OBLIGATION, DECLARED — not a rung, and not fixable here.
+//
+// Nothing in this module proves that `proposed_content` is the hash OF
+// `proposed`, so a caller can pair state A with the digest of state B and the
+// fold will commit it. The same gap exists between CasSlotVersion's `content`
+// and `value`.
+//
+// It cannot be closed by construction in a pure generic fold: std.content_hash
+// exposes `content_hash_of_value(value: NonEmptyStr) -> ContentHash`, which is
+// not generic over T, so no total hashing function over an arbitrary payload
+// exists to derive the digest from the value. Deriving it is therefore
+// unavailable rather than merely unwritten, and inventing a check here would
+// be validation that cannot actually verify anything.
+//
+// The obligation belongs to the immutable object store that realizes this
+// interface: it holds the bytes, so it can verify bytes against digest and
+// hand back a reference that only verification produces. The CAS head then
+// points at a verified reference rather than a caller-authored pair.
+//
+// Candidate wall for making the unverified pair unwritable once that store
+// exists: `sole_constructor`, the cross-module construction refusal DESIGN 4b
+// names as the live unforgeable-construction candidate. Until then this sits
+// OUTSIDE the modeled guarantee — observed and refused at the store boundary,
+// never proven here.
 fn cas_decide_readable<T>(
   attempt: CasAttempt<T>,
-  readable: CasReadableSlot<T>,
-  observed: CasSlotObservation<T>
+  readable: CasReadableSlot<T>
 ) -> CasOutcome<T> {
   if cas_expectation_admits(expected: attempt.expected, readable: readable) {
     CasCommitted {
       committed: CasSlotVersion {
-        key: attempt.key,
         generation: cas_committed_generation(readable: readable),
         content: attempt.proposed_content,
         value: attempt.proposed
       }
     }
   } else {
-    CasPreconditionFailed { expected: attempt.expected, observed: observed }
+    CasPreconditionFailed { expected: attempt.expected, observed: readable }
   }
 }

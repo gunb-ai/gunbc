@@ -10,22 +10,20 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_key: NonEmptyStr = "gunbc-owned-ci-fabric" as NonEmptyStr
 
-data occupied_at_seven: CasSlotObservation<NonEmptyStr> = CasSlotPresent {
-  version: CasSlotVersion {
-    key: witness_key,
+data occupied_at_seven: CasSlotObservation<NonEmptyStr> = CasObservedReadable {
+  readable: CasReadablePresent { version: CasSlotVersion {
     generation: 7,
     content: content_hash_of_value(value: "state-at-seven" as NonEmptyStr),
     value: "state-at-seven" as NonEmptyStr,
-  },
+  } },
 }
 
-data occupied_at_nine: CasSlotObservation<NonEmptyStr> = CasSlotPresent {
-  version: CasSlotVersion {
-    key: witness_key,
+data occupied_at_nine: CasSlotObservation<NonEmptyStr> = CasObservedReadable {
+  readable: CasReadablePresent { version: CasSlotVersion {
     generation: 9,
     content: content_hash_of_value(value: "state-at-nine" as NonEmptyStr),
     value: "state-at-nine" as NonEmptyStr,
-  },
+  } },
 }
 
 fn proposal(expected: CasExpectation) -> CasAttempt<NonEmptyStr> {
@@ -41,12 +39,12 @@ fn committed_generation_of(outcome: CasOutcome<NonEmptyStr>) -> Int {
   match outcome {
     CasCommitted { committed: v } => cas_generation_count(g: v.generation)
     CasPreconditionFailed { expected: _, observed: _ } => 0
-    CasStoreRefused { detail: _ } => 0
+    CasStoreRefused { cause: _ } => 0
   }
 }
 
 test fn a_create_against_an_absent_slot_commits_at_the_first_generation() -> Bool {
-  let outcome = cas_decide(attempt: proposal(expected: ExpectSlotAbsent), observed: CasSlotAbsent)
+  let outcome = cas_decide(attempt: proposal(expected: ExpectSlotAbsent), observed: CasObservedReadable { readable: CasReadableAbsent })
   committed_generation_of(outcome: outcome) == 1
 }
 
@@ -55,7 +53,7 @@ test fn a_create_against_an_occupied_slot_refuses() -> Bool {
   match outcome {
     CasPreconditionFailed { expected: _, observed: _ } => true
     CasCommitted { committed: _ } => false
-    CasStoreRefused { detail: _ } => false
+    CasStoreRefused { cause: _ } => false
   }
 }
 
@@ -78,14 +76,11 @@ test fn an_update_from_a_superseded_generation_refuses_and_reports_the_current_h
   )
   match outcome {
     CasPreconditionFailed { expected: _, observed: o } => match o {
-      CasSlotPresent { version: v } => cas_generation_count(g: v.generation) == 9
-      CasSlotAbsent => false
-      CasSlotMalformed { detail: _ } => false
-      CasSlotContentMissing { referenced: _ } => false
-      CasSlotReadRefused { detail: _ } => false
+      CasReadablePresent { version: v } => cas_generation_count(g: v.generation) == 9
+      CasReadableAbsent => false
     }
     CasCommitted { committed: _ } => false
-    CasStoreRefused { detail: _ } => false
+    CasStoreRefused { cause: _ } => false
   }
 }
 
@@ -114,7 +109,7 @@ test fn the_loser_of_a_race_can_commit_against_the_generation_that_won() -> Bool
   let loser_refused = match loser {
     CasPreconditionFailed { expected: _, observed: _ } => true
     CasCommitted { committed: _ } => false
-    CasStoreRefused { detail: _ } => false
+    CasStoreRefused { cause: _ } => false
   }
 
   let retry = cas_decide(
@@ -127,13 +122,12 @@ test fn the_loser_of_a_race_can_commit_against_the_generation_that_won() -> Bool
 }
 
 fn occupied_at_seven_after_winner() -> CasSlotObservation<NonEmptyStr> {
-  CasSlotPresent {
-    version: CasSlotVersion {
-      key: witness_key,
+  CasObservedReadable {
+    readable: CasReadablePresent { version: CasSlotVersion {
       generation: 8,
       content: content_hash_of_value(value: "proposed-state" as NonEmptyStr),
       value: "proposed-state" as NonEmptyStr,
-    },
+    } },
   }
 }
 
@@ -143,15 +137,15 @@ fn occupied_at_seven_after_winner() -> CasSlotObservation<NonEmptyStr> {
 test fn an_unreadable_slot_is_a_store_refusal_not_a_lost_race() -> Bool {
   let malformed = cas_decide(
     attempt: proposal(expected: ExpectSlotAbsent),
-    observed: CasSlotMalformed { detail: "head is not parseable" as NonEmptyStr },
+    observed: CasObservedUnreadable { cause: CasUnreadableMalformed { detail: "head is not parseable" as NonEmptyStr } },
   )
   let missing = cas_decide(
     attempt: proposal(expected: ExpectSlotAbsent),
-    observed: CasSlotContentMissing { referenced: content_hash_of_value(value: "absent-object" as NonEmptyStr) },
+    observed: CasObservedUnreadable { cause: CasUnreadableContentMissing { referenced: content_hash_of_value(value: "absent-object" as NonEmptyStr) } },
   )
   let refused = cas_decide(
     attempt: proposal(expected: ExpectSlotAbsent),
-    observed: CasSlotReadRefused { detail: "store unreachable" as NonEmptyStr },
+    observed: CasObservedUnreadable { cause: CasUnreadableReadRefused { detail: "store unreachable" as NonEmptyStr } },
   )
   is_store_refusal(outcome: malformed)
     && is_store_refusal(outcome: missing)
@@ -160,7 +154,7 @@ test fn an_unreadable_slot_is_a_store_refusal_not_a_lost_race() -> Bool {
 
 fn is_store_refusal(outcome: CasOutcome<NonEmptyStr>) -> Bool {
   match outcome {
-    CasStoreRefused { detail: _ } => true
+    CasStoreRefused { cause: _ } => true
     CasCommitted { committed: _ } => false
     CasPreconditionFailed { expected: _, observed: _ } => false
   }
@@ -171,6 +165,6 @@ fn is_store_refusal(outcome: CasOutcome<NonEmptyStr>) -> Bool {
 // and not to the expectation being unsatisfiable in general.
 test fn the_same_expectation_that_was_refused_when_unreadable_commits_when_absent() -> Bool {
   committed_generation_of(
-    outcome: cas_decide(attempt: proposal(expected: ExpectSlotAbsent), observed: CasSlotAbsent)
+    outcome: cas_decide(attempt: proposal(expected: ExpectSlotAbsent), observed: CasObservedReadable { readable: CasReadableAbsent })
   ) == 1
 }
