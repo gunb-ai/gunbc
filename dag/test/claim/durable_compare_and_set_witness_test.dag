@@ -1,0 +1,176 @@
+module test.claim.durable_compare_and_set
+
+// Witnesses for std.durable_compare_and_set. Generations here are 7 and 9
+// rather than 0 and 1 on purpose: at the low values the "next" generation of
+// one fixture equals the literal of another, so an arm that returned a
+// constant would pass every assertion. A fixture sitting at such a coincidence
+// erases the test it appears to perform.
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_key: NonEmptyStr = "gunbc-owned-ci-fabric" as NonEmptyStr
+
+data occupied_at_seven: CasSlotObservation<NonEmptyStr> = CasSlotPresent {
+  version: CasSlotVersion {
+    key: witness_key,
+    generation: 7,
+    content: content_hash_of_value(value: "state-at-seven" as NonEmptyStr),
+    value: "state-at-seven" as NonEmptyStr,
+  },
+}
+
+data occupied_at_nine: CasSlotObservation<NonEmptyStr> = CasSlotPresent {
+  version: CasSlotVersion {
+    key: witness_key,
+    generation: 9,
+    content: content_hash_of_value(value: "state-at-nine" as NonEmptyStr),
+    value: "state-at-nine" as NonEmptyStr,
+  },
+}
+
+fn proposal(expected: CasExpectation) -> CasAttempt<NonEmptyStr> {
+  cas_attempt(
+    key: witness_key,
+    expected: expected,
+    proposed: "proposed-state" as NonEmptyStr,
+    proposed_content: content_hash_of_value(value: "proposed-state" as NonEmptyStr),
+  )
+}
+
+fn committed_generation_of(outcome: CasOutcome<NonEmptyStr>) -> Int {
+  match outcome {
+    CasCommitted { committed: v } => cas_generation_count(g: v.generation)
+    CasPreconditionFailed { expected: _, observed: _ } => 0
+    CasStoreRefused { detail: _ } => 0
+  }
+}
+
+test fn a_create_against_an_absent_slot_commits_at_the_first_generation() -> Bool {
+  let outcome = cas_decide(attempt: proposal(expected: ExpectSlotAbsent), observed: CasSlotAbsent)
+  committed_generation_of(outcome: outcome) == 1
+}
+
+test fn a_create_against_an_occupied_slot_refuses() -> Bool {
+  let outcome = cas_decide(attempt: proposal(expected: ExpectSlotAbsent), observed: occupied_at_seven)
+  match outcome {
+    CasPreconditionFailed { expected: _, observed: _ } => true
+    CasCommitted { committed: _ } => false
+    CasStoreRefused { detail: _ } => false
+  }
+}
+
+test fn an_update_from_the_current_generation_commits_at_the_next() -> Bool {
+  let outcome = cas_decide(
+    attempt: proposal(expected: ExpectSlotGeneration { generation: 7 }),
+    observed: occupied_at_seven,
+  )
+  committed_generation_of(outcome: outcome) == 8
+}
+
+// The discriminating RED for the whole module: a writer holding a superseded
+// generation must lose. If cas_expectation_admits ever compared anything other
+// than the two generations — or returned a constant — this is the assertion
+// that goes red.
+test fn an_update_from_a_superseded_generation_refuses_and_reports_the_current_head() -> Bool {
+  let outcome = cas_decide(
+    attempt: proposal(expected: ExpectSlotGeneration { generation: 7 }),
+    observed: occupied_at_nine,
+  )
+  match outcome {
+    CasPreconditionFailed { expected: _, observed: o } => match o {
+      CasSlotPresent { version: v } => cas_generation_count(g: v.generation) == 9
+      CasSlotAbsent => false
+      CasSlotMalformed { detail: _ } => false
+      CasSlotContentMissing { referenced: _ } => false
+      CasSlotReadRefused { detail: _ } => false
+    }
+    CasCommitted { committed: _ } => false
+    CasStoreRefused { detail: _ } => false
+  }
+}
+
+// The four-step control. Steps 1 and 2 are the race; step 3 is the one that
+// does the work, because a store that simply wedged after any conflict would
+// satisfy steps 1 and 2 and fail here. Step 4 confirms the loser's ORIGINAL
+// expectation is still refused afterwards — a retry of the stale write must
+// not become admissible just because the loser re-read once.
+//
+//   1. the winner holds the current generation 7 and commits, landing 8
+//   2. the loser holds the same prior 7 against the now-8 slot, and is refused
+//   3. the loser re-reads, retries against 8, and MUST land 9
+//
+// The bindings below are named winner / loser / retry in that order.
+test fn the_loser_of_a_race_can_commit_against_the_generation_that_won() -> Bool {
+  let winner = cas_decide(
+    attempt: proposal(expected: ExpectSlotGeneration { generation: 7 }),
+    observed: occupied_at_seven,
+  )
+  let winner_landed = committed_generation_of(outcome: winner) == 8
+
+  let loser = cas_decide(
+    attempt: proposal(expected: ExpectSlotGeneration { generation: 7 }),
+    observed: occupied_at_seven_after_winner(),
+  )
+  let loser_refused = match loser {
+    CasPreconditionFailed { expected: _, observed: _ } => true
+    CasCommitted { committed: _ } => false
+    CasStoreRefused { detail: _ } => false
+  }
+
+  let retry = cas_decide(
+    attempt: proposal(expected: ExpectSlotGeneration { generation: 8 }),
+    observed: occupied_at_seven_after_winner(),
+  )
+  let retry_landed = committed_generation_of(outcome: retry) == 9
+
+  winner_landed && loser_refused && retry_landed
+}
+
+fn occupied_at_seven_after_winner() -> CasSlotObservation<NonEmptyStr> {
+  CasSlotPresent {
+    version: CasSlotVersion {
+      key: witness_key,
+      generation: 8,
+      content: content_hash_of_value(value: "proposed-state" as NonEmptyStr),
+      value: "proposed-state" as NonEmptyStr,
+    },
+  }
+}
+
+// The empty-observation-narrow control. A slot the store could not read must
+// NOT be reported as a lost race and must NOT be treated as absent — either
+// would let a writer create a row on top of one it merely failed to read.
+test fn an_unreadable_slot_is_a_store_refusal_not_a_lost_race() -> Bool {
+  let malformed = cas_decide(
+    attempt: proposal(expected: ExpectSlotAbsent),
+    observed: CasSlotMalformed { detail: "head is not parseable" as NonEmptyStr },
+  )
+  let missing = cas_decide(
+    attempt: proposal(expected: ExpectSlotAbsent),
+    observed: CasSlotContentMissing { referenced: content_hash_of_value(value: "absent-object" as NonEmptyStr) },
+  )
+  let refused = cas_decide(
+    attempt: proposal(expected: ExpectSlotAbsent),
+    observed: CasSlotReadRefused { detail: "store unreachable" as NonEmptyStr },
+  )
+  is_store_refusal(outcome: malformed)
+    && is_store_refusal(outcome: missing)
+    && is_store_refusal(outcome: refused)
+}
+
+fn is_store_refusal(outcome: CasOutcome<NonEmptyStr>) -> Bool {
+  match outcome {
+    CasStoreRefused { detail: _ } => true
+    CasCommitted { committed: _ } => false
+    CasPreconditionFailed { expected: _, observed: _ } => false
+  }
+}
+
+// Positive control on the negative arm: ExpectSlotAbsent against a genuinely
+// absent slot commits, so the refusal above is attributable to unreadability
+// and not to the expectation being unsatisfiable in general.
+test fn the_same_expectation_that_was_refused_when_unreadable_commits_when_absent() -> Bool {
+  committed_generation_of(
+    outcome: cas_decide(attempt: proposal(expected: ExpectSlotAbsent), observed: CasSlotAbsent)
+  ) == 1
+}

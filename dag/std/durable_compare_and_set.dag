@@ -1,0 +1,190 @@
+module std.durable_compare_and_set
+
+// A durable compare-and-set over one keyed slot: the conditional-write
+// primitive, modeled as a shape rather than a transport. The realization may
+// be an HTTP conditional request, a filesystem rename, or a row update with a
+// version predicate; none of those is a fact about the operation (DESIGN 3 —
+// transport is a Realization handler bound to the shape, never fused into it).
+//
+// WHY THIS IS NOT std.temporal_effect LeaseEpoch, which already carries a
+// generation: that generation is a FENCING TOKEN, and a fencing token excludes
+// nothing on its own. Holding generation N does not stop another writer from
+// acting; it only lets a store REJECT a stale writer, and only if the store
+// performs the check. In gunbc.fleet_converge_plan_cli the exclusion that
+// actually holds is flock, which is single-host by construction and therefore
+// cannot serialize two writers on different hosts. This module is the missing
+// half: the store-side check itself, whose refusal arm belongs to the store
+// rather than to a lock the caller happens to hold.
+
+import std.types { NonEmptyStr, Int }
+import std.content_hash { ContentHash }
+
+
+type CasGeneration =
+  Int where range(min: 1), brand("CasGeneration")
+
+// RUNG, DECLARED: the range(min: 1) above is NOT enforced at compile time —
+// the compiler reports it as `where-refinement unenforced: predicate deferred`,
+// the pre-existing refinement gap this module does not close. A generation of
+// zero or below is therefore writable here, and this carrier sits at
+// MITIGATABLE for that class. Next-rung trigger: refinement enforcement on
+// branded Int carriers. What is NOT deferred, and is the structural claim this
+// module actually makes, is the absent-versus-present distinction below: that
+// one has no representation to get wrong, refinement or no refinement.
+
+// The expected prior state, as a closed sum rather than a number.
+//
+// This is the structural half of the module. A store that encodes "absent" as
+// generation 0 has made absence and a real generation members of one ordered
+// type, so a caller that means create-if-absent and a caller that means
+// update-from-0 are indistinguishable — and one of them silently overwrites
+// the other's row. Here ExpectSlotAbsent is a distinct constructor, so that
+// conflation has no representation to be written in. Create-if-absent and
+// update-if-unchanged are then ONE operation with two expectations, not two
+// operations (DESIGN 2, horizontal).
+type CasExpectation
+  = ExpectSlotAbsent
+  | ExpectSlotGeneration { generation: CasGeneration }
+
+type CasSlotVersion<T> {
+  key: NonEmptyStr
+  generation: CasGeneration
+  content: ContentHash
+  value: T
+}
+
+// What the store found. The non-present arms are deliberately NOT folded into
+// CasSlotAbsent: "the slot holds nothing" and "I could not determine what the
+// slot holds" are different states with opposite remedies, and rendering the
+// second as the first is the empty-observation narrow (DESIGN 5) — a writer
+// would proceed to create a row on top of one it simply failed to read.
+//
+// Nor are the three failure arms one arm with a string on it. They have
+// different remedies: a malformed head is repaired by hand, a missing
+// referenced object is a write that did not land and may be re-derived, and a
+// refused read is retried against the store. A single arm discriminated by
+// `detail` would put that distinction in prose the compiler cannot see, which
+// is the anemic leaf DESIGN 2 names — the caller would have to parse a String
+// to decide which remedy applies.
+type CasSlotObservation<T>
+  = CasSlotAbsent
+  | CasSlotPresent { version: CasSlotVersion<T> }
+  | CasSlotMalformed { detail: NonEmptyStr }
+  | CasSlotContentMissing { referenced: ContentHash }
+  | CasSlotReadRefused { detail: NonEmptyStr }
+
+// The outcome of one attempt.
+//
+// There is deliberately no arm meaning "retried and assume it worked" and no
+// arm meaning "proceed as if the precondition had held". Every non-committed
+// arm is a typed, located refusal the caller must handle; a widening arm here
+// would be the absorbing fallback (DESIGN 5) sitting on the exact operation
+// whose whole purpose is to refuse.
+//
+// CasPreconditionFailed carries BOTH sides — what was expected and what was
+// observed — because a caller that only learns "it failed" cannot distinguish
+// losing a race from addressing the wrong slot, and would retry forever
+// against the second.
+type CasOutcome<T>
+  = CasCommitted { committed: CasSlotVersion<T> }
+  | CasPreconditionFailed {
+      expected: CasExpectation
+      observed: CasSlotObservation<T>
+    }
+  | CasStoreRefused { detail: NonEmptyStr }
+
+type CasAttempt<T> {
+  key: NonEmptyStr
+  expected: CasExpectation
+  proposed: T
+  proposed_content: ContentHash
+}
+
+fn cas_attempt<T>(
+  key: NonEmptyStr,
+  expected: CasExpectation,
+  proposed: T,
+  proposed_content: ContentHash
+) -> CasAttempt<T> {
+  CasAttempt {
+    key: key,
+    expected: expected,
+    proposed: proposed,
+    proposed_content: proposed_content
+  }
+}
+
+// The decision an in-memory store realization makes, and the single authority
+// on whether an expectation is satisfied by an observation. A realization that
+// re-spelled this comparison would be a second representation of the
+// precondition (DESIGN 3); every handler routes here.
+//
+// An unreadable slot admits NOTHING. That is not a mismatch to be reported as
+// a lost race — it is an absence of evidence, and cas_decide routes it to
+// CasStoreRefused rather than to a precondition failure.
+fn cas_expectation_admits<T>(
+  expected: CasExpectation,
+  observed: CasSlotObservation<T>
+) -> Bool {
+  match observed {
+    CasSlotAbsent => match expected {
+      ExpectSlotAbsent => true
+      ExpectSlotGeneration { generation: _ } => false
+    }
+    CasSlotPresent { version: v } => match expected {
+      ExpectSlotAbsent => false
+      ExpectSlotGeneration { generation: g } => cas_generation_count(g: g) == cas_generation_count(g: v.generation)
+    }
+    CasSlotMalformed { detail: _ } => false
+    CasSlotContentMissing { referenced: _ } => false
+    CasSlotReadRefused { detail: _ } => false
+  }
+}
+
+fn cas_generation_count(g: CasGeneration) -> Int {
+  g
+}
+
+fn cas_generation_next(g: CasGeneration) -> CasGeneration {
+  cas_generation_count(g: g) + 1
+}
+
+fn cas_generation_first() -> CasGeneration {
+  1
+}
+
+// The generation a successful commit lands on, derived from the observation
+// rather than from the caller's expectation — a caller cannot name the
+// generation it is about to occupy.
+fn cas_committed_generation<T>(observed: CasSlotObservation<T>) -> CasGeneration {
+  match observed {
+    CasSlotAbsent => cas_generation_first()
+    CasSlotPresent { version: v } => cas_generation_next(g: v.generation)
+    CasSlotMalformed { detail: _ } => cas_generation_first()
+    CasSlotContentMissing { referenced: _ } => cas_generation_first()
+    CasSlotReadRefused { detail: _ } => cas_generation_first()
+  }
+}
+
+fn cas_decide<T>(
+  attempt: CasAttempt<T>,
+  observed: CasSlotObservation<T>
+) -> CasOutcome<T> {
+  match observed {
+    CasSlotMalformed { detail: d } => CasStoreRefused { detail: d }
+    CasSlotContentMissing { referenced: _ } => CasStoreRefused { detail: "referenced state object is absent from the store" as NonEmptyStr }
+    CasSlotReadRefused { detail: d } => CasStoreRefused { detail: d }
+    _ => if cas_expectation_admits(expected: attempt.expected, observed: observed) {
+      CasCommitted {
+        committed: CasSlotVersion {
+          key: attempt.key,
+          generation: cas_committed_generation(observed: observed),
+          content: attempt.proposed_content,
+          value: attempt.proposed
+        }
+      }
+    } else {
+      CasPreconditionFailed { expected: attempt.expected, observed: observed }
+    }
+  }
+}
