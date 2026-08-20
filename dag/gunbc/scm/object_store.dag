@@ -5,8 +5,14 @@ import v2.std.node {
   Hash,
   Node,
   NodeKind,
+  TypeNode,
+  Connective,
+  Atom,
+  Conj,
   Edge,
   EdgeLabel,
+  Named,
+  Symbol,
   content_hash,
   node_synthetic,
   canonicalize_node_for_content_hash,
@@ -261,5 +267,126 @@ fn store_node(store: ObjectStore, n: Node) -> StoreOutcome {
           children: acc.edges,
         },
       )
+  }
+}
+
+// ================================================================================================
+// THE COLLISION ARM, EXECUTED.
+//
+// These claims live in the defining module rather than in dag/test/claim, and that placement is
+// forced rather than convenient: `ObjectRecord` is `sole_constructor`, so authoring a record whose
+// identity disagrees with its content is possible ONLY here. Exporting a fixture builder to let an
+// external witness do it would re-open the exact forge path the seal closes, which would be a worse
+// trade than housing four claims beside the code they exercise.
+//
+// WHY THEY EXIST AT ALL: `LocatorCollision` was modeled and never executed. The witness's
+// `no_fixture_collides` claim actively PROVED the arm was unexercised -- a useful denominator
+// control that also documented a specification-without-execution hole, which DESIGN §5 names as the
+// deepest trap. This PR's recurring failure has been walls described more strongly than they were
+// built; an unexecuted refusal arm is the same species, so it gets a discriminating input rather
+// than a promise.
+//
+// NOTE ON WHAT IS NOT BEING CLAIMED: these do not find an fnv1a64 collision, which would need a
+// preimage search. They construct the STATE a collision produces -- one locator, two different
+// canonical records -- and assert the store refuses it. The arm is what is under test, not the
+// digest's collision resistance.
+
+fn collision_probe_atom(identity: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: identity } }, children: [])
+}
+
+fn collision_probe_parent(child: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [Edge { label: Named { name: ^only_child }, target: child }],
+  )
+}
+
+fn collision_probe_stored(outcome: StoreOutcome) -> ObjectStore {
+  match outcome {
+    Stored { store: store, identity: _ } => store
+    LocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()
+  }
+}
+
+fn collision_probe_identity(outcome: StoreOutcome, fallback: ObjectId) -> ObjectId {
+  match outcome {
+    Stored { store: _, identity: identity } => identity
+    LocatorCollision { identity: _, existing: _, incoming: _ } => fallback
+  }
+}
+
+// A record carrying someone else's identity. Constructible here and nowhere else.
+fn collision_probe_impostor(identity: ObjectId) -> ObjectRecord {
+  ObjectRecord {
+    identity: identity,
+    kind: TypeNode { connective: Conj },
+    children: [],
+  }
+}
+
+// ONE LOCATOR, TWO DIFFERENT CANONICAL RECORDS -- the store must refuse, and the refusal must carry
+// both records so a caller can see what disagreed rather than merely that something did.
+test fn a_different_record_under_one_locator_refuses() -> Bool {
+  let real = store_node(store: empty_store(), n: collision_probe_atom(identity: ^collide_a))
+  let identity = collision_probe_identity(
+    outcome: real,
+    fallback: content_hash(n: collision_probe_atom(identity: ^collide_a)),
+  )
+  match insert_derived(
+    store: collision_probe_stored(outcome: real),
+    record: collision_probe_impostor(identity: identity),
+  ) {
+    Stored { store: _, identity: _ } => false
+    LocatorCollision { identity: reported, existing: existing, incoming: incoming } =>
+      object_id_eq(left: reported, right: identity)
+        && !records_equal(left: existing, right: incoming)
+  }
+}
+
+// CONTROL: re-inserting the SAME canonical record under that locator is idempotent, not a collision.
+// Without this, the claim above would pass against an insert that refused every second write.
+test fn the_same_record_under_one_locator_is_idempotent() -> Bool {
+  let real = store_node(store: empty_store(), n: collision_probe_atom(identity: ^collide_a))
+  let store = collision_probe_stored(outcome: real)
+  match store_node(store: store, n: collision_probe_atom(identity: ^collide_a)) {
+    LocatorCollision { identity: _, existing: _, incoming: _ } => false
+    Stored { store: again, identity: _ } =>
+      store_object_count(store: again) == store_object_count(store: store)
+  }
+}
+
+// A COLLISION ON A CHILD MUST PROPAGATE OUT OF THE RECURSION. This is the arm that matters most and
+// the one nothing exercised: a parent whose child refuses must not itself be reported Stored, or the
+// store would hand back a commit whose closure was never written.
+test fn a_child_collision_propagates_and_the_parent_is_not_stored() -> Bool {
+  let child = store_node(store: empty_store(), n: collision_probe_atom(identity: ^collide_child))
+  let child_identity = collision_probe_identity(
+    outcome: child,
+    fallback: content_hash(n: collision_probe_atom(identity: ^collide_child)),
+  )
+  let seeded = insert_derived(
+    store: empty_store(),
+    record: collision_probe_impostor(identity: child_identity),
+  )
+  match store_node(
+    store: collision_probe_stored(outcome: seeded),
+    n: collision_probe_parent(child: collision_probe_atom(identity: ^collide_child)),
+  ) {
+    Stored { store: _, identity: _ } => false
+    LocatorCollision { identity: reported, existing: _, incoming: _ } =>
+      object_id_eq(left: reported, right: child_identity)
+  }
+}
+
+// CONTROL for the propagation claim: the same parent stores cleanly against an UNSEEDED store, so
+// the refusal above is caused by the seeded impostor and not by the parent fixture being unstorable.
+test fn the_same_parent_stores_cleanly_without_the_impostor() -> Bool {
+  match store_node(
+    store: empty_store(),
+    n: collision_probe_parent(child: collision_probe_atom(identity: ^collide_child)),
+  ) {
+    LocatorCollision { identity: _, existing: _, incoming: _ } => false
+    Stored { store: store, identity: _ } => store_object_count(store: store) == 2
   }
 }
