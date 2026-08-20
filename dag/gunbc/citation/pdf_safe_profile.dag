@@ -65,7 +65,7 @@ fn admit_rfc_pdf_profile_parameter(construction: extdeps.standards.rfc_8118.PdfP
   match construction {
     ParameterConstructed(parameter) =>
       match parameter {
-        OpenPage(p) => SafeParameterConstructed(SafeOpenPage(p))
+        extdeps.standards.rfc_8118.OpenPage(p) => SafeParameterConstructed(SafeOpenPage(p))
         OpenNamedDest(d) => SafeParameterConstructed(SafeOpenNamedDest(d))
         OpenStructElem(e) => SafeParameterConstructed(SafeOpenStructElem(e))
         OpenZoom(_) =>
@@ -123,7 +123,7 @@ fn pdf_safe_parameter_sequence_to_rfc(sequence: PdfSafeParameterSequence) -> ext
     parameters: map(
       sequence.parameters,
       parameter => match parameter {
-        SafeOpenPage(p) => OpenPage(p)
+        SafeOpenPage(p) => extdeps.standards.rfc_8118.OpenPage(p)
         SafeOpenNamedDest(d) => extdeps.standards.rfc_8118.OpenNamedDest(d)
         SafeOpenStructElem(e) => extdeps.standards.rfc_8118.OpenStructElem(e)
       },

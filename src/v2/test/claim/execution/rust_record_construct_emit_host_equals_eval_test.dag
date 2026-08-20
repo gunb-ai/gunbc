@@ -77,7 +77,7 @@ fn rust_rec_nine_eval_diagnostic(reason: v2.std.node.Symbol, node: v2.std.node.N
 
 fn rust_rec_nine_eval_field_index_from_transform(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Int> {
   match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: node), index: 2) {
-    Present { value: v2.std.algebra.field_node } =>
+    Present { value: field_node } =>
       match field_node.kind {
         TypeNode { connective: Atom { identity: id } } =>
           if id == ^dag_binding_rec_v {

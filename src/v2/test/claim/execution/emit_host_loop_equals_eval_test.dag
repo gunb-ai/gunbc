@@ -24,7 +24,7 @@ fn emit_loop_eval_composed_facts(key: v2.std.node.Node) -> Optional<v2.compiler.
 
 fn emit_loop_eval_producer_tree() -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   match v2.test.complexity_gate.table_fixture_loop_subject_producer.table_fixture_loop_arrow_with_body() {
-    Accepted { value: test.claim.extdeps_llm_claude_trust_witness.root, diagnostics: _ } =>
+    Accepted { value: root, diagnostics: _ } =>
       v2.std.diagnostic.outcome_accepted(
         value: v2.compiler.inferred_tree.InferredTree {
           root: test.claim.extdeps_llm_claude_trust_witness.root,
@@ -37,7 +37,7 @@ fn emit_loop_eval_producer_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer
 
 fn emit_loop_eval_wrong_value_producer_tree() -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   match v2.test.complexity_gate.table_fixture_loop_subject_producer.table_fixture_loop_wrong_value_arrow_with_body() {
-    Accepted { value: test.claim.extdeps_llm_claude_trust_witness.root, diagnostics: _ } =>
+    Accepted { value: root, diagnostics: _ } =>
       v2.std.diagnostic.outcome_accepted(
         value: v2.compiler.inferred_tree.InferredTree {
           root: test.claim.extdeps_llm_claude_trust_witness.root,

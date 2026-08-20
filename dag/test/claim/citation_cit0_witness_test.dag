@@ -122,7 +122,7 @@ data witness_http_access_route: extdeps.uri.Uri = extdeps.uri.Uri {
   locator: "example.test/cit0-fixture",
 }
 
-data witness_text_quote: std.citation.CitationSelector = TextQuoteSelectorVariant(std.citation.TextQuoteSelector {
+data witness_text_quote: std.citation.CitationSelector = std.citation.TextQuoteSelectorVariant(std.citation.TextQuoteSelector {
   exact: "grounded selector text" as std.types.NonEmptyStr,
   prefix: none,
   suffix: none,
@@ -135,12 +135,12 @@ data witness_citation_target: std.citation.CitationTarget<std.citation.CitationS
 
 data witness_pdf_fragment_wire: std.types.NonEmptyStr = "page=1" as std.types.NonEmptyStr
 
-data witness_pdf_fragment_selector: std.citation.CitationSelector = FragmentSelectorVariant(std.citation.FragmentSelector {
+data witness_pdf_fragment_selector: std.citation.CitationSelector = std.citation.FragmentSelectorVariant(std.citation.FragmentSelector {
   conforms_to: witness_fragment_spec_authority,
   value: witness_pdf_fragment_wire,
 })
 
-data witness_false_web_annotation_fragment_selector: std.citation.CitationSelector = FragmentSelectorVariant(std.citation.FragmentSelector {
+data witness_false_web_annotation_fragment_selector: std.citation.CitationSelector = std.citation.FragmentSelectorVariant(std.citation.FragmentSelector {
   conforms_to: web_annotation_authority,
   value: witness_pdf_fragment_wire,
 })
@@ -185,8 +185,8 @@ test fn citation_target_carries_pin_and_selector_not_observation() -> Bool {
     right: witness_citation_pin.subject,
   )
     && match witness_citation_target.selector {
-      TextQuoteSelectorVariant(_) => true
-      FragmentSelectorVariant(_) => false
+      std.citation.TextQuoteSelectorVariant(_) => true
+      std.citation.FragmentSelectorVariant(_) => false
       TextPositionSelectorVariant(_) => false
     }
 }
@@ -504,12 +504,12 @@ test fn reconcile_incomparable_on_byte_domain_mismatch() -> Bool {
 
 test fn pdf_fragment_selector_conforms_to_rfc_8118_not_web_annotation() -> Bool {
   match witness_pdf_fragment_selector {
-    FragmentSelectorVariant(got) =>
+    std.citation.FragmentSelectorVariant(got) =>
       match fragment_selector(
         conforms_to: witness_fragment_spec_authority,
         value: witness_pdf_fragment_wire,
       ) {
-        CitationSelectorConstructed(FragmentSelectorVariant(want)) =>
+        CitationSelectorConstructed(std.citation.FragmentSelectorVariant(want)) =>
           got.value == want.value
             && got.conforms_to.uri.locator == want.conforms_to.uri.locator
             && got.conforms_to.uri.locator == witness_fragment_spec_authority.uri.locator
@@ -522,12 +522,12 @@ test fn pdf_fragment_selector_conforms_to_rfc_8118_not_web_annotation() -> Bool 
 
 test fn pdf_fragment_selector_red_wrong_conforms_to_web_annotation() -> Bool {
   match witness_false_web_annotation_fragment_selector {
-    FragmentSelectorVariant(got) =>
+    std.citation.FragmentSelectorVariant(got) =>
       match fragment_selector(
         conforms_to: web_annotation_authority,
         value: witness_pdf_fragment_wire,
       ) {
-        CitationSelectorConstructed(FragmentSelectorVariant(want)) =>
+        CitationSelectorConstructed(std.citation.FragmentSelectorVariant(want)) =>
           got.value == want.value
             && got.conforms_to.uri.locator == want.conforms_to.uri.locator
             && got.conforms_to.uri.locator == web_annotation_authority.uri.locator

@@ -194,13 +194,13 @@ fn emit_variant_construct_eval_choose_arm(
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   if emit_variant_construct_eval_scrutinee_is_holds(value: scrutinee) {
     match emit_variant_construct_eval_nth_arm_wire(node: node, wanted: 1) {
-      Accepted { value: extdeps.vendor.arm.arm, diagnostics: _ } =>
+      Accepted { value: arm, diagnostics: _ } =>
         emit_variant_construct_eval_arm_body_node(arm_wire: extdeps.vendor.arm.arm)
       Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     }
   } else if emit_variant_construct_eval_scrutinee_is_true(value: scrutinee) {
     match emit_variant_construct_eval_nth_arm_wire(node: node, wanted: 2) {
-      Accepted { value: extdeps.vendor.arm.arm, diagnostics: _ } =>
+      Accepted { value: arm, diagnostics: _ } =>
         emit_variant_construct_eval_arm_body_node(arm_wire: extdeps.vendor.arm.arm)
       Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     }

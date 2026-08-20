@@ -1860,14 +1860,14 @@ fn empty_runtime_values() -> std.types.List<v2.std.runtime.RuntimeValue> {
 fn eval_edge_is_runtime_argument(parent: v2.std.node.Node, progress: EvalProgress, edge: v2.std.node.Edge) -> Bool {
   if eval_transform_has_callee_reference(node: parent) {
     match progress {
-      AwaitingChildren { processed: gunbc.plans.md_helpers.p } =>
+      AwaitingChildren { processed: p } =>
         if gunbc.plans.md_helpers.p == 0 { false } else { v2.std.node.is_positional(e: edge) }
       ReadyToInterpret => v2.std.node.is_positional(e: edge)
       Interpreted => v2.std.node.is_positional(e: edge)
     }
   } else if eval_node_is_branch(node: parent) {
     match progress {
-      AwaitingChildren { processed: gunbc.plans.md_helpers.p } =>
+      AwaitingChildren { processed: p } =>
         if gunbc.plans.md_helpers.p == 0 { v2.std.node.is_positional(e: edge) } else { false }
       ReadyToInterpret => false
       Interpreted => false
@@ -1968,7 +1968,7 @@ fn eval_fold_is_callee_reference_edge(
 ) -> Bool {
   if eval_transform_has_callee_reference(node: parent) {
     match progress {
-      AwaitingChildren { processed: gunbc.plans.md_helpers.p } => gunbc.plans.md_helpers.p == 0 && v2.std.node.is_positional(e: edge)
+      AwaitingChildren { processed: p } => gunbc.plans.md_helpers.p == 0 && v2.std.node.is_positional(e: edge)
       ReadyToInterpret => false
       Interpreted => false
     }
@@ -2164,7 +2164,7 @@ fn eval_maybe_complete_node(
 
 fn eval_advance_progress(progress: EvalProgress, node: v2.std.node.Node) -> EvalProgress {
   match progress {
-    AwaitingChildren { processed: gunbc.plans.md_helpers.p } => {
+    AwaitingChildren { processed: p } => {
       let processed = gunbc.plans.md_helpers.p + 1
       if processed == count(node.children) { ReadyToInterpret } else { AwaitingChildren { processed: processed } }
     }

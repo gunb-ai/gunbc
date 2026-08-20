@@ -4938,6 +4938,38 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
                 return apply_closure(&closure, &arg_vals, env, ctx);
             }
             _ => {
+                // The qualified spelling of a payload-carrying coproduct arm. Resolution
+                // above has exhausted every function route, so nothing is being displaced.
+                if let Some(owner) = lookup_type_item_across_modules(ctx, &func_name) {
+                    if owner.connective == Connective::Disj {
+                        let last = func_name.rsplit('.').next().unwrap_or(&func_name);
+                        let arm = owner
+                            .children
+                            .iter()
+                            .find(|c| authored_name_at(ctx.si(), (*c).clone()) == last);
+                        if let Some(arm) = arm {
+                            if !arm.children.is_empty() {
+                                let ty_name = authored_name_at(ctx.si(), owner.clone());
+                                let fields: Vec<(Symbol, Value)> = args
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(i, (label, v))| {
+                                        let key = match label {
+                                            Some(l) => l.clone(),
+                                            None => i.to_string(),
+                                        };
+                                        (ctx.sym(&key), v.clone())
+                                    })
+                                    .collect();
+                                return Ok(Value::Variant {
+                                    type_name: ctx.sym(&ty_name),
+                                    variant_name: ctx.sym(last),
+                                    fields: Rc::new(fields),
+                                });
+                            }
+                        }
+                    }
+                }
                 return Err(InterpError::NoSuchFunction {
                     name: func_name.clone(),
                 });
@@ -6330,7 +6362,26 @@ fn lookup_type_item_across_modules(ctx: &InterpContext, type_name: &str) -> Opti
                             .or_insert_with(|| item.clone());
                     }
                     // First declaration wins, matching the scan's early return.
-                    built.entry(name).or_insert_with(|| item.clone());
+                    built.entry(name.clone()).or_insert_with(|| item.clone());
+                    // A COPRODUCT ARM ALSO GETS ITS OWN QUALIFIED ADDRESS, pointing at the
+                    // coproduct that owns it. The bare variant base an arm normally resolves
+                    // through is built only for names bound uniquely corpus-wide, and it is
+                    // reached by the spelling a caller writes AFTER IMPORTING the symbol --
+                    // so with import blocks gone a payload-carrying arm had no cross-module
+                    // spelling at all: bare refused as out of scope, qualified as
+                    // no-such-function. Only the QUALIFIED key is added, so this cannot
+                    // widen bare resolution or shadow a same-named declaration elsewhere.
+                    if item.connective == Connective::Disj && !module_path.is_empty() {
+                        for arm in item.children.iter() {
+                            let arm_name = authored_name_at(ctx.si(), arm.clone());
+                            if arm_name.is_empty() || arm_name.contains('.') {
+                                continue;
+                            }
+                            built
+                                .entry(format!("{}.{}", module_path, arm_name))
+                                .or_insert_with(|| item.clone());
+                        }
+                    }
                 }
             }
             let built = Rc::new(built);

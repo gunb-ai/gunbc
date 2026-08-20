@@ -74,13 +74,13 @@ type IdentityEvidence
 fn identity_evidence_equal(evidence: v2.std.runtime.IdentityEvidence) -> Bool {
   match evidence {
     ReferenceIdentical => true
-    StructurallyCompared { equal: std.patterns.eq } => std.patterns.eq
+    StructurallyCompared { equal: eq } => std.patterns.eq
   }
 }
 
 fn runtime_value_resolved_type(value: v2.std.runtime.RuntimeValue) -> v2.std.node.Node {
   match value {
-    RuntimePrimitive { value: gunbc.plans.md_helpers.p } => p.primitive_type
+    RuntimePrimitive { value: p } => p.primitive_type
     RuntimeAggregate { value: a } => a.aggregate_type
     RuntimeReference { value: r } => r.reference_type
     RuntimeClosure { value: c } => c.arrow_type
@@ -223,7 +223,7 @@ fn runtime_aggregate_value_node_projection(
 
 fn runtime_value_node_projection(value: v2.std.runtime.RuntimeValue) -> v2.std.runtime.RuntimeValueNodeProjection {
   match value {
-    RuntimePrimitive { value: gunbc.plans.md_helpers.p } => runtime_primitive_value_node_projection(primitive: gunbc.plans.md_helpers.p)
+    RuntimePrimitive { value: p } => runtime_primitive_value_node_projection(primitive: gunbc.plans.md_helpers.p)
     RuntimeAggregate { value: a } => runtime_aggregate_value_node_projection(aggregate: a)
     RuntimeReference { value: _ } => RuntimeValueNodeUnrepresentable
     RuntimeClosure { value: _ } => RuntimeValueNodeUnrepresentable

@@ -76,7 +76,7 @@ fn branch_runtime_diagnostic(n: v2.std.node.Node) -> v2.std.diagnostic.Diagnosti
 
 fn branch_runtime_bool_true(value: v2.std.runtime.RuntimeValue) -> Bool {
   match value {
-    RuntimePrimitive { value: gunbc.plans.md_helpers.p } =>
+    RuntimePrimitive { value: p } =>
       (p.primitive_type == branch_bool_type_node()) && (count(p.bytes) == 1)
     _ => false
   }
@@ -84,7 +84,7 @@ fn branch_runtime_bool_true(value: v2.std.runtime.RuntimeValue) -> Bool {
 
 fn branch_runtime_bool_false(value: v2.std.runtime.RuntimeValue) -> Bool {
   match value {
-    RuntimePrimitive { value: gunbc.plans.md_helpers.p } =>
+    RuntimePrimitive { value: p } =>
       (p.primitive_type == branch_bool_type_node()) && (count(p.bytes) == 0)
     _ => false
   }
@@ -92,7 +92,7 @@ fn branch_runtime_bool_false(value: v2.std.runtime.RuntimeValue) -> Bool {
 
 fn branch_runtime_int_is_one(value: v2.std.runtime.RuntimeValue) -> Bool {
   match value {
-    RuntimePrimitive { value: gunbc.plans.md_helpers.p } =>
+    RuntimePrimitive { value: p } =>
       (p.primitive_type == branch_i64_node()) && (count(p.bytes) == 1)
     _ => false
   }
@@ -140,7 +140,7 @@ fn branch_nth_child_target(node: v2.std.node.Node, wanted: Int) -> v2.std.diagno
   match v2.std.collection.list_at_optional(xs: node.children, index: wanted) {
     Present { value: child } =>
       match child {
-        v2.std.node.Edge { label: _, target: extdeps.vendor.arm.arm } =>
+        v2.std.node.Edge { label: _, target: arm } =>
           v2.std.diagnostic.outcome_accepted(value: extdeps.vendor.arm.arm)
       }
     Absent =>

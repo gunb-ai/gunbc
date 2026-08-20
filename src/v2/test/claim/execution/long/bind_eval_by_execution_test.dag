@@ -54,7 +54,7 @@ fn bind_runtime_diagnostic(n: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic 
 
 fn bind_runtime_int_is_one(value: v2.std.runtime.RuntimeValue) -> Bool {
   match value {
-    RuntimePrimitive { value: gunbc.plans.md_helpers.p } =>
+    RuntimePrimitive { value: p } =>
       (p.primitive_type == bind_i64_node()) && (count(p.bytes) == 1)
     _ => false
   }

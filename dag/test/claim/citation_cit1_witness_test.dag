@@ -16,7 +16,7 @@ test fn iso_32000_2_is_further_citation() -> Bool {
 
 test fn rfc_pdf_open_page_admits_positive_one() -> Bool {
   match pdf_open_page(page: 1) {
-    ParameterConstructed(OpenPage(PdfOpenPage { page: p })) => p == 1
+    ParameterConstructed(extdeps.standards.rfc_8118.OpenPage(PdfOpenPage { page: p })) => p == 1
     _ => false
   }
 }
@@ -158,7 +158,7 @@ test fn pdf_open_fragment_selector_conforms_to_rfc_8118() -> Bool {
   match rfc_pdf_open_parameter_sequence(constructions: [pdf_open_page(page: 1)]) {
     SequenceConstructed(sequence) =>
       match pdf_open_fragment_selector(sequence: sequence) {
-        PdfOpenFragmentSelectorConstructed(FragmentSelectorVariant(s)) =>
+        PdfOpenFragmentSelectorConstructed(std.citation.FragmentSelectorVariant(s)) =>
           s.conforms_to.uri.locator == extdeps.standards.rfc_8118.extdeps_external_authority_anchor.uri.locator
             && s.value == ("page=1" as std.types.NonEmptyStr)
         _ => false

@@ -337,7 +337,7 @@ test fn per_second_and_per_hour_quotes_both_refuse_rather_than_comparing_equal()
       threads: hardware_thread_count(count: 128),
       caps: "gunbc.capabilities.linux-rust-toolchain",
       trust: "gunbc.trust.internal-fleet",
-      quote: QuotedPerSecond(MoneyRate { amount: money_amount_micro(count: 1), currency: Usd }),
+      quote: product.fabric.supply.QuotedPerSecond(MoneyRate { amount: money_amount_micro(count: 1), currency: Usd }),
     ),
     maximum_buy_order: money_amount_micro(count: 1000),
     budget_currency: Usd,

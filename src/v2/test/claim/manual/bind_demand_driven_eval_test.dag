@@ -68,7 +68,7 @@ fn bind_eval_touch_key() -> v2.std.runtime.EnvironmentBindingKey {
 
 fn bind_eval_int_from_runtime(value: v2.std.runtime.RuntimeValue) -> Int {
   match value {
-    RuntimePrimitive { value: gunbc.plans.md_helpers.p } => count(p.bytes)
+    RuntimePrimitive { value: p } => count(p.bytes)
     _ => 0
   }
 }

@@ -186,7 +186,7 @@ fn v2_eval_allocate_literal(node: v2.std.node.Node, env: v2.std.runtime.Evaluati
 
 fn v2_eval_runtime_value_as_int(value: v2.std.runtime.RuntimeValue) -> v2.std.diagnostic.Outcome<Int> {
   match value {
-    RuntimePrimitive { value: gunbc.plans.md_helpers.p } =>
+    RuntimePrimitive { value: p } =>
       if p.primitive_type == v2_eval_int_type_node() {
         v2.std.integer.integer_signed_i32_le_bytes_to_int(bytes: p.bytes)
       } else {
@@ -200,7 +200,7 @@ data v2_eval_runtime_bool_predicate_dissolution_note: String = "🟡 dissolve-on
 
 fn v2_eval_runtime_bool_is_true(value: v2.std.runtime.RuntimeValue) -> Bool {
   match value {
-    RuntimePrimitive { value: gunbc.plans.md_helpers.p } =>
+    RuntimePrimitive { value: p } =>
       if p.primitive_type == v2_eval_bool_literal_pin {
         match v2.std.collection.list_at_optional(xs: p.bytes, index: 0) {
           Present { value: b } => v2.std.integer.integer_byte_bit_at(b: b, shift: 0) == 1
@@ -215,7 +215,7 @@ fn v2_eval_runtime_bool_is_true(value: v2.std.runtime.RuntimeValue) -> Bool {
 
 fn v2_eval_runtime_bool_is_false(value: v2.std.runtime.RuntimeValue) -> Bool {
   match value {
-    RuntimePrimitive { value: gunbc.plans.md_helpers.p } =>
+    RuntimePrimitive { value: p } =>
       p.primitive_type == v2_eval_bool_literal_pin && !v2_eval_runtime_bool_is_true(value: value)
     _ => false
   }
@@ -225,7 +225,7 @@ fn v2_eval_nth_child_target(node: v2.std.node.Node, wanted: Int) -> v2.std.diagn
   match v2.std.collection.list_at_optional(xs: node.children, index: wanted) {
     Present { value: child } =>
       match child {
-        v2.std.node.Edge { label: _, target: extdeps.vendor.arm.arm } =>
+        v2.std.node.Edge { label: _, target: arm } =>
           v2.std.diagnostic.outcome_accepted(value: extdeps.vendor.arm.arm)
       }
     Absent =>

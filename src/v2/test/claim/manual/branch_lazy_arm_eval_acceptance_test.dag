@@ -124,7 +124,7 @@ fn lazy_arm_binding_keys_equal(
 
 fn lazy_arm_int_from_runtime(value: v2.std.runtime.RuntimeValue) -> Int {
   match value {
-    RuntimePrimitive { value: gunbc.plans.md_helpers.p } => count(p.bytes)
+    RuntimePrimitive { value: p } => count(p.bytes)
     _ => 0
   }
 }
@@ -207,7 +207,7 @@ fn lazy_arm_allocate_literal(node: v2.std.node.Node, env: v2.std.runtime.Evaluat
 
 fn lazy_arm_runtime_bool_true(value: v2.std.runtime.RuntimeValue) -> Bool {
   match value {
-    RuntimePrimitive { value: gunbc.plans.md_helpers.p } =>
+    RuntimePrimitive { value: p } =>
       (p.primitive_type == lazy_arm_bool_type()) && (count(p.bytes) == 1)
     _ => false
   }
@@ -215,7 +215,7 @@ fn lazy_arm_runtime_bool_true(value: v2.std.runtime.RuntimeValue) -> Bool {
 
 fn lazy_arm_runtime_bool_false(value: v2.std.runtime.RuntimeValue) -> Bool {
   match value {
-    RuntimePrimitive { value: gunbc.plans.md_helpers.p } =>
+    RuntimePrimitive { value: p } =>
       (p.primitive_type == lazy_arm_bool_type()) && (count(p.bytes) == 0)
     _ => false
   }
@@ -225,7 +225,7 @@ fn lazy_arm_nth_child_target(node: v2.std.node.Node, wanted: Int) -> v2.std.diag
   match v2.std.collection.list_at_optional(xs: node.children, index: wanted) {
     Present { value: child } =>
       match child {
-        v2.std.node.Edge { label: _, target: extdeps.vendor.arm.arm } => v2.std.diagnostic.outcome_accepted(value: extdeps.vendor.arm.arm)
+        v2.std.node.Edge { label: _, target: arm } => v2.std.diagnostic.outcome_accepted(value: extdeps.vendor.arm.arm)
       }
     Absent => v2.std.diagnostic.outcome_rejected(d: lazy_arm_diagnostic(n: node))
   }
