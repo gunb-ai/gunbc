@@ -39037,6 +39037,12 @@ pub fn floor_prepared_subject_exclusions() -> Vec<String> {
         // re-enrolls when a wet lane exists again — which required_floor.dag deliberately defers
         // until it can be "asked against a live consumer".
         "test/manual/process_argv_expansion_receipt_test.dag".to_string(),
+        // Wet receipt for the command_runner local-argv cut. Excluded for the same reason as the
+        // line above and not a new class: hermetic evaluation replays an operation's declared
+        // mock_response and never constructs an argv, so "the words reached the process unsplit"
+        // is not observable hermetically. Enrolling it would assert the mock rather than the
+        // behaviour -- specification without execution.
+        "test/manual/command_runner_local_argv_receipt_test.dag".to_string(),
     ]
 }
 

@@ -582,7 +582,7 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "host_cli_dependency_wet_witness_test.dag",
     classification: BinWitnessWet,
-    reason: "WET shell.Which.Check probes for observe_host_cli_dependency: hermetic discovery refuses host effects (no mock_response for operation Check). Enrolled on bin-witness wet roster; falsifier Codex materialization reuses the same Which.Check.exists path.",
+    reason: "WET shell.PosixCommandV.Check probes for observe_host_cli_dependency: hermetic discovery refuses host effects (no mock_response for operation Check). Enrolled on bin-witness wet roster; falsifier Codex materialization reuses the same PosixCommandV.Check.exists path (migrated off shell.Which.Check, crisp-wren-896, PR #8590).",
     dissolution: excl_bin_wet_dissolve},
   gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "codex_package_delivery_wet_witness_test.dag",
@@ -982,8 +982,8 @@ data bin_witness_wet_entries: List<std.realization_schedule.ScheduleWitnessEntry
   bin_wet(entry: "dag/test/claim/transport_script_stdin_byte_fidelity_witness_test.dag", f: "transport_script_stdin_fidelity_is_independent_of_terminal_newline"),
   bin_wet(entry: "dag/test/claim/push_event_witness_wet_test.dag", f: "witness_push_before_from_fixture_file"),
   bin_wet(entry: "dag/test/claim/push_event_witness_wet_test.dag", f: "witness_push_before_payload_read_refused_on_missing_path"),
-  bin_wet(entry: "dag/test/claim/host_cli_dependency_wet_witness_test.dag", f: "observe_echo_wet_which_check_does_not_crash"),
-  bin_wet(entry: "dag/test/claim/host_cli_dependency_wet_witness_test.dag", f: "observe_npm_wet_which_check_does_not_crash"),
+  bin_wet(entry: "dag/test/claim/host_cli_dependency_wet_witness_test.dag", f: "observe_echo_wet_posix_command_v_check_does_not_crash"),
+  bin_wet(entry: "dag/test/claim/host_cli_dependency_wet_witness_test.dag", f: "observe_npm_wet_posix_command_v_check_does_not_crash"),
   bin_wet(entry: "dag/test/claim/stage0_rust_maintenance_census_report_live_witness_test.dag", f: "maintenance_census_report_positive_control_derives_from_current_head")
 ]
 

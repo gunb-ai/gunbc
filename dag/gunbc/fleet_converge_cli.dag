@@ -1,7 +1,6 @@
 module gunbc.fleet_converge_cli
 
-data gunbc_converge_cli_stage0_receiver_disposition: std.disposition.Disposition = std.disposition.Terminal {
-  reason: "THERE IS NO STAGE0 RECEIVER, AND THERE WILL NOT BE ONE — that is the terminal state this row records, not a gap awaiting repair. Corrected 2026-08-16 (PR #8286, review 52676) when the cli-run driver cut deleted cli_run handle_converge: until then this row named that handler as the live argv transport, so a canonical disposition asserted a terminal hand-Rust route that no longer existed. The stale half was not the arm but the reason — DESIGN §3's stale-citation class, in a carrier the cut itself falsified.
+data gunbc_converge_cli_stage0_receiver_disposition: Disposition = Terminal {  reason: "THERE IS NO STAGE0 RECEIVER, AND THERE WILL NOT BE ONE — that is the terminal state this row records, not a gap awaiting repair. Corrected 2026-08-16 (PR #8286, review 52676) when the cli-run driver cut deleted cli_run handle_converge: until then this row named that handler as the live argv transport, so a canonical disposition asserted a terminal hand-Rust route that no longer existed. The stale half was not the arm but the reason — DESIGN §3's stale-citation class, in a carrier the cut itself falsified.
 
 WHY TERMINAL SURVIVES THE DELETION. Transport is a handler, one of N, never a fact about the interface (DESIGN §3), so removing the stage0 CLI transport does not demote this .dag interface — it removes one binding. All interpretation, the byte-locked receipt grammar, and every typed refusal cause remain modeled here and in gunbc.host_converge / gunbc.fleet_converge_apply, exactly as before; what changed is only which host reaches them.
 
@@ -493,20 +492,22 @@ fn converge_cli_expected_receipt_owner_name() -> String {
 fn converge_cli_receipt_owner_readback(host: String) -> String? {
   let path = fleet_converge_receipt_path(host: host)
   let expected = converge_cli_expected_receipt_owner_name()
-  let r = gunbc.command_runner.stat_owner_name_capture(path: path)
-  if !r.success {
-    Present { value: concat("gunbc converge: receipt owner read-back refused (stat): ", std.algebra.trim(s: r.stderr)) }
-  } else {
-    let owner = std.algebra.trim(s: r.stdout)
-    if owner == expected {
-      none
-    } else {
-      Present {
-        value: concat(
-          concat("gunbc converge: receipt owner read-back mismatch — expected ", expected),
-          concat(" observed ", owner),
-        ),
-      }
+  match gunbc.command_runner.stat_owner_name_capture(path: path) {
+    ProcessRefused { exit_code: _, stderr: e } =>
+      Present { value: concat("gunbc converge: receipt owner read-back refused (stat): ", std.algebra.trim(s: e)) }
+    ProcessOutputAbsent =>
+      Present { value: "gunbc converge: receipt owner read-back refused (stat): admitted exit but no owner name on stdout" }
+    ProcessOutputPresent { text: t } => {
+      let owner = std.algebra.trim(s: t)
+      if owner == expected {
+        none
+      } else {
+        Present {
+          value: concat(
+            concat("gunbc converge: receipt owner read-back mismatch — expected ", expected),
+            concat(" observed ", owner),
+          ),
+        }      }
     }
   }
 }

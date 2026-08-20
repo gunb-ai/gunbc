@@ -45,11 +45,16 @@ fn interpreter_dispatch_bijection_real_roster_red_shell(root: String, cargo_bin:
 // here is a typed refusal carrying what was observed.
 // WHAT IS OBSERVED, AND WHAT IS NOT — stated because the gap is load-bearing.
 //
-// Only EXISTENCE is observed. `shell.Which.Check` also declares `path: FilePath?`, and
+// Only EXISTENCE is observed. `shell.PosixCommandV.Check` also declares `path: FilePath?`, and
 // that field is NOT consumed here on purpose: under wet execution it comes back as a bare
 // stdout String rather than an Optional, so matching Present/Absent raises a non-exhaustive
 // pattern match on the path itself. That is the Value::Null / Optional realization straddle
 // DESIGN carries as an open thread, sitting at the service-output boundary.
+//
+// Migrated off shell.Which.Check to shell.PosixCommandV.Check (crisp-wren-896, PR #8590): the
+// falsifier runner this resolves on carries the identical distro_or_product: none as srv1-4, so
+// `which`'s presence was never an established fact here either, and command -v's POSIX-shell
+// assumption strictly dominates it.
 //
 // The consequence is exact and must not be overstated: this resolves the ADMITTED arm to
 // the bare name `cargo`, which the transport's `env` execvp's through PATH. So the hardcoded
@@ -62,9 +67,8 @@ fn interpreter_dispatch_bijection_real_roster_red_shell(root: String, cargo_bin:
 // 🟡 dissolve-on: when the Value::Null split lands and `T? from "stdout"` decodes as a real
 // Optional, this reads the observed absolute path, hands it to decide_cargo_placement, and
 // the locality claim becomes established rather than assumed.
-fn real_roster_cargo_decision() -> gunbc.cargo_execution_placement.CargoPlacementDecision {
-  let observed = shell.Which.Check(command: "cargo")
-  if observed.exists {
+fn real_roster_cargo_decision() -> CargoPlacementDecision {
+  let observed = shell.PosixCommandV.Check(command: "cargo")  if observed.exists {
     decide_cargo_placement(
       requirement: real_roster_placement_requirement,
       placement: gunbc.cargo_execution_placement.LocalRunner { cargo_path: "cargo" }

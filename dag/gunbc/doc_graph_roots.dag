@@ -110,6 +110,17 @@ data mock_corpus_prefilter_control_note: String = "LIVE CONTROL FOR THE MOCK-COR
 data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "fabric-ci-replacement",
+    primary_work: DeclarationRef { module_path: "gunbc.witness_floor_workflow", decl_name: "witness_floor_job", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "extdeps.github.checks", decl_name: "CheckRun", field: WholeDeclaration },
+      DeclarationRef { module_path: "product.fabric.execution", decl_name: "ExecutionGrant", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.ci_runner_target", decl_name: "CiRunnerTarget", field: WholeDeclaration },
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the cutover lands: the fabric issues the grant that runs the required floor, the check verdict is reported through the modeled Checks surface, and .github/workflows/witnesses.yml is deleted along with the emitter that produced it -- at which point this document describes a shipped system rather than a planned one and the row deletes with it. Registered at subject grain: the four systems bound here are the ones whose movement would make this document's purpose false. witness_floor_job is the thing being replaced and is bound deliberately, so that if it is renamed or restructured before the cutover this document reds rather than silently describing a job that no longer exists.") },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "fabric-recut-program",
     primary_work: std.decl_ref.DeclarationRef { module_path: "std.temporal_effect", decl_name: "HeldLease", field: WholeDeclaration },
     additional_works: [

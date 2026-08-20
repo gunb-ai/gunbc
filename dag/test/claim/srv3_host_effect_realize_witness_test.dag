@@ -31,3 +31,26 @@ test fn os_install_actuator_toolchain_ensure_rejects_emit_artifact_transport() -
     _ => false
   }
 }
+
+test fn argv_with_bin_prepends_bin_path_to_args() -> Bool {
+  srv3_argv_with_bin(bin_path: "/usr/bin/apt-get", args: ["install", "-y", "curl"]) ==
+    ["/usr/bin/apt-get", "install", "-y", "curl"]
+}
+
+test fn argv_with_bin_on_empty_args_is_just_bin_path() -> Bool {
+  srv3_argv_with_bin(bin_path: "/usr/bin/apt-get", args: []) == ["/usr/bin/apt-get"]
+}
+
+test fn actuator_toolchain_chown_args_shapes_nonroot_chown() -> Bool {
+  srv3_actuator_toolchain_chown_args(owner: "1000:1000", path: "/opt/gunbc") ==
+    ["-n", "/usr/bin/chown", "1000:1000", "/opt/gunbc"]
+}
+
+test fn posix_command_v_check_argv_shapes_a_command_v_invocation() -> Bool {
+  posix_command_v_check_argv(command: "curl" as NonEmptyStr) ==
+    ["sh", "-c", "command -v \"$1\"", "sh", "curl"]
+}
+
+test fn shell_test_is_executable_argv_shapes_a_test_dash_x_invocation() -> Bool {
+  shell_test_is_executable_argv(path: "/usr/bin/curl" as FilePath) == ["test", "-x", "/usr/bin/curl"]
+}

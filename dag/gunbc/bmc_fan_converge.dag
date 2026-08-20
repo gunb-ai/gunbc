@@ -1469,7 +1469,7 @@ func bmc_fan_run(
 ) -> std.process.ProcessExit
   uses net: std.cache_interface.Network
 {
-  let sshpass = shell.Which.Check(command: "sshpass")
+  let sshpass = shell.PosixCommandV.Check(command: "sshpass")
   if !sshpass.exists {
     return exit_failure(
       reason: "BMC fan convergence needs sshpass (password is fed through fd 0, never argv)",

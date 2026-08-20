@@ -8,15 +8,7 @@ data shell_find_mock_case_list_dirs: std.hermetic_replay.PublishedMockCase = std
   case_id: 0
 }
 
-data shell_which_mock_case_check: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
-  operation_key: "shell.Which.Check",
-  service: "shell.Which",
-  operation: "Check",
-  case_id: 0
-}
-
-data shell_exec_mock_case_run: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
-  operation_key: "shell.Exec.Run",
+data shell_exec_mock_case_run: PublishedMockCase = PublishedMockCase {  operation_key: "shell.Exec.Run",
   service: "shell.Exec",
   operation: "Run",
   case_id: 0
@@ -31,7 +23,6 @@ data shell_exec_mock_case_check: std.hermetic_replay.PublishedMockCase = std.her
 
 data shell_published_mock_corpus: List<std.hermetic_replay.PublishedMockCase> = [
   shell_find_mock_case_list_dirs,
-  shell_which_mock_case_check,
   shell_exec_mock_case_run,
   shell_exec_mock_case_check
 ]

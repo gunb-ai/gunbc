@@ -125,3 +125,98 @@ type Offer<P> {
 
 type SelectionPolicy =
   | CheapestFungibleWithDelayValuation
+
+// FUNGIBILITY IS THE FABRIC'S QUESTION, NOT A CONSUMER'S.
+//
+// This fold arrived here from gunbc.fabric_witness_run, where it had been
+// written as authorize_floor_run with a FloorRunRefusal coproduct. Nothing in
+// it was ever about the floor: comparing a Work's requirements against an
+// Offer's capabilities is provider-neutral, and work.dag's own header already
+// calls fungibility "selection's first and load-bearing step". A consumer that
+// owns this fold is a consumer that will answer it differently from the next
+// consumer, which is the fork the fabric exists to prevent.
+//
+// AFFORDABILITY IS DELIBERATELY A SEPARATE ARM FROM CAPABILITY. A demand that
+// cannot afford an offer and a demand an offer cannot serve are different
+// facts with different remedies -- raise the buy order, or find another
+// supplier -- and collapsing them into one "not eligible" loses which.
+
+type OfferEligibility
+  = OfferEligible
+  | ShapeNotCovered { required_threads: HardwareThreadCount, offered_threads: HardwareThreadCount }
+  | TrustDomainMismatch { required: TrustDomainRef, offered: TrustDomainRef }
+  | CapabilitiesNotOffered { required: CapabilityManifestRef, offered: CapabilityManifestRef }
+  | QuoteExceedsMaximumBuyOrder { quoted: MoneyAmountMicro, maximum: MoneyAmountMicro }
+  | QuoteCurrencyMismatch { quoted: CurrencyCode, budgeted: CurrencyCode }
+  | RateQuoteNotPriceableAgainstGrantCeiling { quoted: MoneyAmountMicro }
+
+fn offer_covers_shape(offered: Shape, needed: Shape) -> Bool {
+  hardware_thread_count_value(t: offered.hard.threads) >= hardware_thread_count_value(t: needed.hard.threads)
+}
+
+// THIS FOLD SCREENS AFFORDABILITY. IT DOES NOT SELECT.
+//
+// It answers: can this demand pay this offer's asking price, in this currency,
+// for a shape and trust domain that fit. Nothing here chooses among several
+// eligible offers, and choosing is where the economics actually live.
+//
+// WHAT AN OFFER CARRIES, AND WHAT IT DOES NOT. The quote is a supplier-side
+// ASKING PRICE for one grant. It is NOT an opportunity cost: what an hour could
+// otherwise have earned depends on which OTHER demands could use it, so it is a
+// property of the assignment evaluation and of the decision receipt, never a
+// field on the supply row. Two earlier revisions of this note got this wrong in
+// opposite directions -- first calling opportunity cost a demand-side question,
+// then carrying it on the offer as a second cost -- and both are recorded here
+// rather than reworded, because the sentence was cited downstream each time.
+//
+// Nor is marginal cash cost zero for an owned host: power and cooling are
+// incurred by the act of running, so they are a real dispatch input. Only the
+// HISTORICAL PURCHASE is sunk, and sunk cost is excluded from dispatch while
+// being retained for accounting.
+//
+// WHAT SELECTION WOULD NEED, none of which exists here: the offer's availability
+// interval, the supplier tariff with its billing quantum, rounding and minimum
+// charge, the paid-through commitment state that makes an already-bought hour's
+// marginal cash zero until it expires, transition and start costs, and the
+// alternative uses that give an opportunity cost its value -- including the arm
+// where there is NO feasible alternative use, so an hour about to expire idle is
+// not priced as though a customer had been displaced, and the arm where the
+// alternative is simply UNREAD, so unknown does not silently become zero.
+//
+// Until those land, this fold is honest as a screen and would be a lie as a
+// selector.
+
+// The budget ceiling arrives as SCALARS rather than as demand.BuyTerms, because
+// supply must not import demand -- a backward edge this module already carries
+// once for ObservationReceiptRef and must not deepen. The demand side supplies
+// them at the call site, which is also where they are known.
+
+fn offer_eligibility_for<P>(
+  requirements: ExecutionRequirements,
+  offer: Offer<P>,
+  maximum_buy_order: MoneyAmountMicro,
+  budget_currency: CurrencyCode,
+) -> OfferEligibility {
+  if requirements.trust_domain != offer.trust_domain {
+    TrustDomainMismatch { required: requirements.trust_domain, offered: offer.trust_domain }
+  } else if requirements.capabilities != offer.capabilities {
+    CapabilitiesNotOffered { required: requirements.capabilities, offered: offer.capabilities }
+  } else if !offer_covers_shape(offered: offer.shape, needed: requirements.shape) {
+    ShapeNotCovered {
+      required_threads: requirements.shape.hard.threads,
+      offered_threads: offer.shape.hard.threads,
+    }
+  } else if offer_quote_currency(q: offer.quote) != budget_currency {
+    QuoteCurrencyMismatch { quoted: offer_quote_currency(q: offer.quote), budgeted: budget_currency }
+  } else {
+    match offer.quote {
+      QuotedPerSecond(r) => RateQuoteNotPriceableAgainstGrantCeiling { quoted: r.amount }
+      QuotedPerHour(r) => RateQuoteNotPriceableAgainstGrantCeiling { quoted: r.amount }
+      QuotedFlatPerGrant(r) => if money_amount_micro_count(m: r.amount) > money_amount_micro_count(m: maximum_buy_order) {
+        QuoteExceedsMaximumBuyOrder { quoted: r.amount, maximum: maximum_buy_order }
+      } else {
+        OfferEligible
+      }
+    }
+  }
+}

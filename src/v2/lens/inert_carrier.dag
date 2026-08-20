@@ -19,7 +19,6 @@ data inert_carrier_roster: List<std.roster_frontier.FrontierRow> = [
   inert_row(unit: "GitCliReportedVersion", reason: "modeled git-cli extdeps carrier with no live consumer yet"),
   inert_row(unit: "GitPushRequest", reason: "modeled git publication-transport carrier (extdeps.git.publication_transport slice 1): witness-tested in publication_publisher_witness_test with no non-test consumer yet; live transport binding awaits tools.publication_publisher slice"),
   inert_row(unit: "LocalAlias", reason: "inert G1 fixture type in qualified_module_projection_stripped_fixture.dag (see inert_carrier_local_alias_roster_note)"),
-  inert_row(unit: "Offer", reason: "modeled compute-fabric supply carrier from the terminal-contract slice (#8413): an executor's quoted/observed supply row, declared ahead of the grant issuance that matches demand against it, and referenced only by fabric_terminal_contract_witness_test so far"),
   inert_row(unit: "ReactHookSite", reason: "modeled typescript extdeps carrier with no live consumer yet"),
   inert_row(unit: "SystemdUnitStatus", reason: "modeled systemd extdeps carrier with no live consumer yet"),
   inert_row(unit: "TerminatingOneShotFrontier", reason: "modeled std.witness_purpose frontier coproduct from #7965 (Slice C-a): its variants name the two substrate absences that block a terminating one-shot classification, and only its own test file references it, so it is inert by the seed rule until the classifier consumes it"),

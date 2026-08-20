@@ -101,18 +101,20 @@ type HostEffectTransport =
 // invocation was a List<String> that portable_remote_words could admit or refuse, so routing them
 // through the sealed context was a change of producer and nothing else.
 //
-// The ten that remain (all in host_effect_realize, plus one in ci_deploy_target_host) call
-// ssh_session_exec with a CONCATENATED SHELL COMMAND STRING -- `cd <workdir> && <bin> <joined args>`
-// and similar. They cannot route through this context, and not because the work is tedious: the
-// context's whole guarantee is that what crosses to the far side is a vector of words each admitted
-// by a wall, and a pre-joined command string has already destroyed the structure that wall inspects.
-// Giving them a string-carrying path would reinstate exactly what portable_remote_words exists to
-// prevent, one function lower, while the type still read verified.
-//
-// So their blocker is a DIFFERENT migration -- command-string to typed argv, per site, which is the
-// same shell-to-intent work the corpus is doing elsewhere -- and only after that is each one a
-// producer swap like the six above. Recorded here so the count is not mistaken for remaining effort
-// of the same kind.
+// CORRECTED (2026-08-19, gunbc.host_effect_realize migration): this doc block previously read "the
+// ten that remain (all in host_effect_realize, plus one in ci_deploy_target_host) call ssh_session_exec
+// with a CONCATENATED SHELL COMMAND STRING" -- that population claim was already stale when found (a
+// grep against the live tree turned up exactly five call sites, all in host_effect_realize, and
+// ci_deploy_target_host's FleetSsh arms never called this function at all -- they resolve a typed
+// identity proof, an unrelated concern). Those five (the toolchain bin-witness, test-executable,
+// which-based tool-present, which-based tool-bin-path and chown leaves reachable from
+// realize_os_install_actuator_toolchain_ensure) now carry typed operation_argv rows and route
+// SshShell and FleetSsh through gunbc.typed_argv_exec, same as the six above -- so this function has
+// no live call site left in the corpus. It is not deleted here: it is still imported (unused) by
+// systemctl_show_read, hostname_read and systemctl_status_read, and removing it would force an edit
+// to those unrelated files' import lists, outside this migration's named cluster. Left as a zero-caller
+// backstop rather than silently re-growing a population; the next session touching one of those three
+// imports should drop the dead reference, and this function deletes once none remain.
 //
 // 🟡 dissolve-on: each leaf takes a FleetSshExecutionContext and calls the context-aware exec, at
 // which point its FleetSsh arm does real work and stops routing here. DELETED when the last one
