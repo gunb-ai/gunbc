@@ -875,20 +875,63 @@ surfacing a new form: `infer_record_lit_structural` is reached regardless of the
 declaration or collection shape, only the AST node kind (record literal vs. variant literal)
 determines whether the check fires.
 
-*Admission wall (`admit_callers`) positive/negative control — CONFIRMED, a distinct wall from
-`sole_constructor` itself, functioning correctly.* Fixture
+*A third, orthogonal mechanism (reframed, not a fourth `sole_constructor` hole) — `admit_callers`,
+CONFIRMED functioning, both arms now designed and executed.* Three orthogonal questions, three
+different answers: `sole_constructor` gates WHO MAY CONSTRUCT (declaring file — diagnostic
+`SoleConstructorViolation`); `admit_callers` gates WHO MAY CALL the mint (named decls —
+diagnostic `ConstructorCallAdmissionRefused`); the caller-supplied validator decides WHAT IS
+PROVEN, and is defeasible (the validator-identity finding below). Two enforced by distinct
+diagnostics, the third enforced by nothing — this is why a sealed-wrapper design needs all
+three (confine construction + restrict callers + fix the validator in the declaring module):
+missing any one means the other two don't cover for it. Fixture
 `test.fixture.sole_constructor_sealed.definer`'s `mint_sealed_local` restricts its callers via
 `admit_callers` to exactly `test.fixture.sole_constructor_sealed.admitted_caller`
 `admitted_mint_call`. f17 calls `mint_sealed_local` from a synthetic, necessarily-unadmitted
-probe module: refuses with `ConstructorCallAdmissionRefused` (not `SoleConstructorViolation` —
-a distinct diagnostic for a distinct wall), and the census's total row count is exactly 1 —
-that one refusal is the *only* diagnostic the synthetic module produces, confirming a clean
-single-cause refusal rather than a cascade obscuring the real class. The green half of this
-pair is the pre-existing, already-in-tree `admitted_caller.dag` fixture itself: every prior
-probe dispatch this session compiled the full fixture tree including that file with zero
-diagnostics reported against it, so its clean compilation stands as the accepted-positive
-control without needing a separate synthetic probe (a synthetic module cannot BE the named
-admitted decl, so this is the only way to exercise the accept side).
+probe module: refuses with `ConstructorCallAdmissionRefused` (not `SoleConstructorViolation`),
+and the census's total row count is exactly 1 — that one refusal is the *only* diagnostic the
+synthetic module produces, confirming a clean single-cause refusal rather than a cascade
+obscuring the real class. **The green half was first claimed incidentally, then corrected to a
+designed control.** The original claim — "every prior probe dispatch this session compiled the
+full fixture tree including [`admitted_caller.dag`] with zero diagnostics" — was an *observed
+absence of complaint*, never a *designed assertion*, and turned out false on inspection: every
+f1-f17 synthetic entry imports only `definer`, and `compile_dag_diagnostic_census`'s resolver
+(`resolve_virtual_source_with_imports`) pulls in only the transitive import closure of the
+synthetic entry, not the whole fixture tree — so `admitted_caller.dag` was never actually
+compiled by any prior probe in this session; the claim was assumed, not observed. f18 fixes
+this: its synthetic entry imports `test.fixture.sole_constructor_sealed.admitted_caller`
+directly and calls its exported `admitted_mint_call` — the one decl named in
+`mint_sealed_local`'s `admit_callers` list — which genuinely pulls the real fixture into the
+compile closure. Result, executed: census total diagnostic count = **0** across the whole
+compile. That is now a designed, executed accept-side control, not an incidental observation.
+
+*Default-value construction position — CONFIRMED HOLE, executed 2026-08-20 (f19).* A fourth
+open axis named in `gunbc.roadmap_authority` (generic carriers, coproduct variants, default
+values, `module_skips_direct_call_arg_check` — the first two and the fourth are addressed
+above and below; this closes the third). f19 forges `LocalValidated { n: 999 }` as a function
+parameter's declared default-value expression, cross-module
+(`fn forged(param: LocalValidated = LocalValidated { n: 999 })`): the census's total
+diagnostic row count reads **0** — the compile produces no diagnostic of any class.
+`infer_record_lit_structural` is never reached for this AST position at all; this is a
+position gap distinct in kind from the census-ambiguity hole (a name-resolution gap) and the
+variant-construction hole (an AST-form gap) — the record-literal *form* is exactly the one the
+wall otherwise covers, but this particular *position* is unwired. **Zero live exposure
+today** — targeted grep across `dag/` and `src/v2/` for every declared sole_constructor type
+used at a fn-parameter default-value site found no hits (not an exhaustive census
+methodology, same caveat as the other two holes' exposure numbers below).
+
+*Compiler-module check exemption (`module_skips_direct_call_arg_check`) — CONFIRMED does NOT
+reach `sole_constructor`, established by code read (not execution).* Read at
+`v1_compiler_infer.rs`: `module_skips_direct_call_arg_check` gates exactly one call site —
+`arg_compat_diags`, the direct-call argument *type-compatibility* judgment. Neither
+`sole_constructor_construction_diags` call site (the `ExprCast` arm, the record-literal-inference
+arm) is wrapped in that guard or conditioned on it anywhere. This matches
+`direct_call_shape_wall_note`'s own documented rationale for the exemption's scope: it exists
+for the type judgment's representation-gap false-positive classes (brand aliases, optionality,
+anonymous literals, expansion depth) — a label/identity check like `sole_constructor` has no
+representation to have a gap in, so the exemption's reason does not reach it. This retires the
+fourth roadmap axis as a **positive finding** — the exemption exists, is scoped to the argument-
+type judgment, and does not create a compiler-module bypass for `sole_constructor` — rather
+than "no exemption found."
 
 **Exposure, per hole, so a confirmed defect is never read as a confirmed victim (explicit
 ask, 2026-08-20):**
@@ -908,6 +951,10 @@ ask, 2026-08-20):**
   is a plain record, `OrderedClosedInterval<T>` included). **Zero live exposure today** —
   the hole requires a future sole_constructor type declared as a coproduct; nothing warns an
   author when that PR lands either.
+- *Default-value construction position:* targeted grep, every declared sole_constructor type,
+  for a fn-parameter default-value use across `dag/` + `src/v2/` — **0** hits. **Zero live
+  exposure today** — the hole requires a future sole_constructor type used as a parameter's
+  declared default; nothing warns an author when that PR lands either.
 - *Deserialization:* not applicable — no such construction path exists in the language at
   all (registry read is the evidence; f14 a corroborating check, not the proof), so this has
   no exposure dimension; it is closed, not open-with-zero-exposure.
@@ -1055,33 +1102,40 @@ distinct (`<ProbeMarker>`) type argument, both instantiations flagged when forge
 probe module. Confirms generic-carrier coverage is real (for these two forms) and is not an
 artifact of only ever having exercised `<Int>`.
 
-*Overall verdict:* **available today, for its stated scope, with two confirmed structural
+*Overall verdict:* **available today, for its stated scope, with three confirmed structural
 holes and TWO confirmed scope boundaries — and, per the exposure ledger above, corpus-contingent
 rather than structural. The second scope boundary (validator-identity, f12/f12b) is the more
-consequential of the two: even where the wall fires with full generic-carrier coverage, it
-confines only WHO/WHERE constructs a carrier and establishes NOTHING about WHAT invariant a
-sanctioned caller's own predicate enforces — a mint with no fixed, module-owned validator (or
-that is not total, per `degenerate_interval`'s counter-example above) gives no guarantee at
-all beyond confinement.** `sole_constructor` reliably walls off record-literal and cast
-construction (including generic instantiation) of a census-UNIQUE, plain-record type, at
-every AST position and via the interpreter, with no compiler-module exemption. It does NOT
-reliably wall off a census-AMBIGUOUS type name — resolution silently guesses by
-last-import-wins rather than refusing or consulting the caller's actual selection, the
-`presence_check_census_gate_note` precedent's exact failure mode, landed here without the
-stand-down that gate uses to avoid it (0 live exposure today, corpus-wide census 69/86/0). It
-also does NOT reach variant construction of a sole_constructor coproduct at all — a distinct,
-entirely unwired AST form (0 live exposure today — zero sole_constructor coproducts exist in
-the corpus). Recommended next-rung triggers: (1) apply the same local-declares-first
-carve-out `presence_check_census_gate_note` documents (read `str_bindings` — local
-declarations only — before falling through to the import-order-overlaid
-`lookup_type_by_name`) for the ambiguity hole; (2) add a variant-construction call site
-alongside the existing `ExprCast`/`infer_record_lit_structural` sites for the coproduct hole.
-Both are decidable, gettable fixes once scoped, not ratchets. Until landed, any
-`sole_constructor` carrier (existing or a planned `Refined<B>`) that is later declared as a
-coproduct, or whose bare name later collides with another module-scope declaration anywhere
-in a consuming corpus's transitive closure, silently loses its guarantee with no diagnostic
-marking the PR that introduces the gap — the wall's soundness today is a fact about what the
-corpus currently contains, not a fact the wall itself enforces.
+consequential of the three findings taken together: even where the wall fires with full
+generic-carrier coverage, it confines only WHO/WHERE constructs a carrier and establishes
+NOTHING about WHAT invariant a sanctioned caller's own predicate enforces — a mint with no
+fixed, module-owned validator (or that is not total, per `degenerate_interval`'s counter-example
+above) gives no guarantee at all beyond confinement.** `sole_constructor` reliably walls off
+record-literal and cast construction (including generic instantiation) of a census-UNIQUE,
+plain-record type, at every tested AST position (fn body, module-scope `data` initializer,
+list-element, map-value) and via the interpreter, with no compiler-module exemption reaching
+it (`module_skips_direct_call_arg_check` exists and is scoped to the argument-type judgment
+only — confirmed by code read, not execution). It does NOT reliably wall off a
+census-AMBIGUOUS type name — resolution silently guesses by last-import-wins rather than
+refusing or consulting the caller's actual selection, the `presence_check_census_gate_note`
+precedent's exact failure mode, landed here without the stand-down that gate uses to avoid it
+(0 live exposure today, corpus-wide census 69/86/0). It also does NOT reach variant
+construction of a sole_constructor coproduct at all — a distinct, entirely unwired AST form (0
+live exposure today — zero sole_constructor coproducts exist in the corpus). And it does NOT
+reach a record literal in a parameter's declared default-value expression — a distinct
+position gap, executed via f19 (0 live exposure today — targeted grep, no fn-parameter
+default-value use of any declared sole_constructor type found). Recommended next-rung
+triggers: (1) apply the same local-declares-first carve-out `presence_check_census_gate_note`
+documents (read `str_bindings` — local declarations only — before falling through to the
+import-order-overlaid `lookup_type_by_name`) for the ambiguity hole; (2) add a
+variant-construction call site alongside the existing `ExprCast`/`infer_record_lit_structural`
+sites for the coproduct hole; (3) add a default-value-expression call site alongside the same
+two for the position hole. All three are decidable, gettable fixes once scoped, not ratchets.
+Until landed, any `sole_constructor` carrier (existing or a planned `Refined<B>`) that is
+later declared as a coproduct, whose bare name later collides with another module-scope
+declaration anywhere in a consuming corpus's transitive closure, or that is later used as a
+parameter's declared default, silently loses its guarantee with no diagnostic marking the PR
+that introduces the gap — the wall's soundness today is a fact about what the corpus
+currently contains, not a fact the wall itself enforces.
 
 ## 11. Audit queue
 

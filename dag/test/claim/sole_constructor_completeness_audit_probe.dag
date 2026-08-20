@@ -318,17 +318,11 @@ test fn f16_record_lit_map_value_refuses() -> Bool {
 }
 
 // ---------------------------------------------------------------------------
-// admitted_caller positive control: mint_sealed_local's admit_callers list
-// names exactly test.fixture.sole_constructor_sealed.admitted_caller
-// admitted_mint_call. A synthetic probe module is necessarily a DIFFERENT,
-// non-admitted decl, so it exercises the REFUSAL half of the admission wall
-// (ConstructorCallAdmissionRefused) - not sole_constructor's own
-// SoleConstructorViolation class, a distinct diagnostic for a distinct wall.
-// The GREEN half (the real admitted_caller.dag fixture compiling clean when
-// it calls mint_sealed_local) is the existing, already-in-tree fixture pair
-// (definer.dag / admitted_caller.dag) - its own clean compilation across
-// every prior probe run in this session is the positive control: no probe
-// run has ever reported a diagnostic against admitted_caller.dag itself.
+// admit_callers: a THIRD, orthogonal mechanism (not another sole_constructor
+// hole). sole_constructor gates WHO MAY CONSTRUCT (SoleConstructorViolation);
+// admit_callers gates WHO MAY CALL the mint (ConstructorCallAdmissionRefused).
+// mint_sealed_local's admit_callers list names exactly
+// test.fixture.sole_constructor_sealed.admitted_caller admitted_mint_call.
 // ---------------------------------------------------------------------------
 data f17_unadmitted_caller_source: String = "module probe_f17_unadmitted_caller\nimport test.fixture.sole_constructor_sealed.definer { mint_sealed_local }\nfn forged() -> Int {\n  let v = mint_sealed_local(n: 999)\n  0\n}\n"
 
@@ -341,4 +335,53 @@ fn f17_diag_total_row_count() -> Int {
 
 test fn f17_unadmitted_caller_of_sealed_mint_refuses() -> Bool {
   violation_count(source: f17_unadmitted_caller_source, wanted: "ConstructorCallAdmissionRefused") >= 1
+}
+
+// ---------------------------------------------------------------------------
+// f18: DESIGNED accept-side control for admit_callers (not incidental). f17
+// alone only shows the refusal half; this probe's synthetic entry directly
+// imports admitted_caller (pulling it into resolve_virtual_source_with_imports'
+// transitive-import closure, per cli_run.rs resolve_virtual_source_with_imports
+// - f1-f17 never imported admitted_caller, so its clean compilation was never
+// actually exercised by any prior probe in this session; that earlier claim
+// was assumed, not observed) and calls its exported admitted_mint_call, the
+// one decl named in mint_sealed_local's admit_callers list. Asserts the
+// resulting census carries ZERO diagnostics of any class - the real admitted
+// call path compiles clean end to end.
+// ---------------------------------------------------------------------------
+data f18_admitted_caller_accept_source: String = "module probe_f18_admitted_caller_accept\nimport test.fixture.sole_constructor_sealed.admitted_caller { admitted_mint_call }\nfn probe() -> Int {\n  let v = admitted_mint_call(n: 1)\n  0\n}\n"
+
+fn f18_diag_total_row_count() -> Int {
+  match census_of(source: f18_admitted_caller_accept_source) {
+    CensusObserved { rows: rows } => census_total_count(rows: rows)
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+test fn f18_admitted_caller_accepted_clean() -> Bool {
+  f18_diag_total_row_count() == 0
+}
+
+// ---------------------------------------------------------------------------
+// Form 19: record literal in a PARAMETER'S DECLARED DEFAULT VALUE EXPRESSION
+// (gunbc.roadmap_authority's fourth unverified axis). CONFIRMED HOLE, executed
+// 2026-08-20: f19_diag_total_row_count reads 0 - the compile produces ZERO
+// diagnostics of any class for this position. infer_record_lit_structural is
+// never reached here; the wall does not exist for this AST position at all.
+// 0 live exposure today (targeted grep, every declared sole_constructor type,
+// for a fn-parameter default-value use - no hits). Deliberately RED: this
+// test asserts the wall SHOULD fire and fails, marking the hole rather than
+// hiding it, matching f13's convention for a confirmed hole.
+// ---------------------------------------------------------------------------
+data f19_default_value_source: String = "module probe_f19_default_value\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\nfn forged(param: LocalValidated = LocalValidated { n: 999 }) -> LocalValidated {\n  param\n}\n"
+
+fn f19_diag_total_row_count() -> Int {
+  match census_of(source: f19_default_value_source) {
+    CensusObserved { rows: rows } => census_total_count(rows: rows)
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+test fn f19_record_lit_default_value_position_refuses() -> Bool {
+  violation_count(source: f19_default_value_source, wanted: "SoleConstructorViolation") >= 1
 }
