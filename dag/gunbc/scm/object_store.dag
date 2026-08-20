@@ -16,6 +16,8 @@ import v2.std.node {
   content_hash,
   node_synthetic,
   canonicalize_node_for_content_hash,
+  LabeledChildHash,
+  content_hash_of_children,
 }
 
 // WHY A NODE IS STORED DECOMPOSED RATHER THAN WHOLE, which is the whole point of the slice and not
@@ -228,6 +230,19 @@ type StoreEdgeAcc {
 // The canonicalization is applied at EVERY node, not once at the root -- the recursion below
 // re-enters store_node for each child, and each call canonicalizes its own subject. Canonicalizing
 // only at the root would leave the identical defect one level down.
+//
+// THE IDENTITY IS ASSEMBLED FROM CHILD IDENTITIES ALREADY IN HAND, NOT BY RE-WALKING. An earlier
+// revision ended this function with `content_hash(n: canonical)`, which walks the entire subtree a
+// second time -- once by the recursion that stored the children, once by the hash. On a chain that
+// is quadratic, and DESIGN section 6's bare-minimum-cost rule fixes a proven cost shape regardless
+// of the realized n, because `n is small here` is not a time-stable fact.
+//
+// The repair is NOT a hash-combine written here: that would be a second identity authority beside
+// v2.std.node, agreeing until one of them is edited, and the disagreement would surface as objects
+// unreachable by the identity they were stored under. Instead `content_hash_of_children` is the same
+// fold `content_hash` performs, exposed there and consumed here, so the assembly rule has one home
+// and two callers. `acc.edges` already holds exactly what it wants -- StoredEdge carries the child's
+// ObjectId, and ObjectId IS the child's Hash -- so nothing is recomputed.
 fn store_node(store: ObjectStore, n: Node) -> StoreOutcome {
   let canonical = canonicalize_node_for_content_hash(n: n)
   let acc = fold(
@@ -262,7 +277,12 @@ fn store_node(store: ObjectStore, n: Node) -> StoreOutcome {
       insert_derived(
         store: acc.store,
         record: ObjectRecord {
-          identity: content_hash(n: canonical),
+          identity: content_hash_of_children(
+            kind: canonical.kind,
+            children: fold(acc.edges, init: [], f: fn(labeled, stored) {
+              concat(labeled, [LabeledChildHash { label: stored.label, hash: stored.target }])
+            }),
+          ),
           kind: canonical.kind,
           children: acc.edges,
         },
