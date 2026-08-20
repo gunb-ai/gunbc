@@ -548,13 +548,28 @@ test fn the_recursive_oracle_still_distinguishes_nested_content() -> Bool {
 // child identity must equal the child's own content_hash), and named-edge-reordered (where
 // canonicalization must still collapse both orders onto one identity).
 //
-// This claim is discriminating by construction: any change to the combine order, the seed, the label
-// contribution, or the canonical child order makes the two sides disagree.
+// WHAT THIS CLAIM CONCLUDES, AND WHERE IT STOPS. It proves a commuting square: the store path and
+// the direct node path consume the SAME identity authority. It does NOT prove that authority is the
+// intended identity rule. Both sides now route through `content_hash_step`, so a change to that
+// shared step moves both equally and this claim stays green -- common-mode blindness, and it is the
+// correct boundary rather than a defect. Strengthening it past that boundary would require either a
+// second node-hash implementation inside the SCM module (the second authority this change exists to
+// avoid) or another tautology that ends up calling the same step.
+//
+// So the naming is deliberate: it commutes WITH content_hash; it does not compute "the correct"
+// identity. Rule correctness is owned upstream beside v2.std.node by independent evidence -- frozen
+// digest vectors whose expected bytes are NOT derived through content_hash_step, plus the quotient
+// laws (occurrence provenance and authored named-edge order erased) and sensitivity controls (kind,
+// behavior, atom symbol, label, positional order, child content all distinguished). That corpus does
+// not exist yet; this claim does not stand in for it.
+//
+// Within its boundary it is discriminating by execution: reversing the child fold in the STORE path
+// only -- so the two paths genuinely diverge -- turns it red (DIVERGE_PROBE 1, "claim red").
 fn stored_identity_matches_content_hash(n: Node) -> Bool {
   object_id_eq(left: put_node(store: empty_store(), n: n).identity, right: content_hash(n: n))
 }
 
-test fn the_stored_identity_is_the_content_hash() -> Bool {
+test fn store_node_identity_commutes_with_content_hash() -> Bool {
   stored_identity_matches_content_hash(n: program_a())
     && stored_identity_matches_content_hash(n: program_ab())
     && stored_identity_matches_content_hash(n: alpha_first())
