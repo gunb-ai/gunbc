@@ -898,7 +898,29 @@ than argued.
    validation one:** the arm is KNOWN at the return site and thrown away, so a typed outcome
    does not add a check, it stops the loss. **Next trigger:** replace the `Bool` return with a
    typed outcome carrying the arm; consumers then read the arm instead of inferring it. Small
-   change, large readability gain on every future emit witness. No rung is authored here — the
+   change, large readability gain on every future emit witness.
+   **AMENDED 2026-08-20, by measurement: it is three arms PLUS A LIVENESS PRECONDITION, and the
+   precondition is the dangerous part.** Establishing the arm on a live red found that a
+   *compiler crash* produces the same observable surface as a legitimate arm 2 — the first
+   replication attempt returned `compile_exit=101`, `FILE_FOUND=no`, nothing emitted, which
+   reads as a clean arm-2 result and would have been reported as one. The actual cause was a
+   panic in `repo_relative_path_normalized`, which refuses a source root outside the workspace
+   root, because the probe module had been placed in `/tmp`. So **`FILE_FOUND=no` is arm 2 ONLY
+   IF THE COMPILER RAN**, and arm 2 needs its own liveness control — a positive control through
+   the identical invocation on a known-good in-tree module — before it can be claimed at all. A
+   typed outcome must therefore distinguish *did not emit this file* from *did not run*, or it
+   reproduces the same conflation one level in.
+   **A second finding from the same run, and it is the reason per-arm typing is not sufficient
+   on its own:** the arm was established as arm 3, and the *mechanism inside* the arm was still
+   wrong. The predicted tripwire — an EXCLUDE on the bounded item header `struct
+   FreeMonoidSupplementalStruct<T: Clone>` — **passes**. The header was already bare before the
+   change. What actually fails is three other assertions: two INCLUDEs for hand-written `Debug`
+   and `PartialEq` impls, and an EXCLUDE on `#[derive(Debug`. The missing mechanism is
+   hand-written impls, not a bound on the item. A per-assertion verdict caught that; a per-arm
+   verdict would not have. The general shape is that **a well-formed account can be correct at
+   the level it is checked and wrong one level down** — arm-vs-`Bool` caught the first level,
+   per-string-vs-arm caught the second — which argues for reporting the failing assertion, not
+   merely the failing arm. No rung is authored here — the
    rung is the thing that must be DERIVED from executed measurement (§1c, and the Stage 0
    carrier `gunbc.guarantee_measurement` deliberately stores none).
 
