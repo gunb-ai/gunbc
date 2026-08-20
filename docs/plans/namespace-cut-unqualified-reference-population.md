@@ -41,9 +41,12 @@ The refusal is available at the exact site of the silent pick and is discarded.
 ## The population, measured — and the grain correction
 
 An earlier draft of this note said "5,783 reference sites". **That was wrong and
-the error was 6.5x.** `tools/namespace_cut/binding_identity_oracle.py` emits one
-row per `(file, imported name)` pair and decides membership with `re.search`, so
-it records PRESENCE, not occurrences. Corrected:
+the error was 6.5x.** The instrument (`binding_identity_oracle.py`, deleted
+2026-08-20 with its receipts) emitted one row per `(file, imported name)` pair and
+decided membership with `re.search`, so it recorded PRESENCE, not occurrences. The
+finding is kept because the failure mode outlived the tool: a presence-grained
+instrument reporting an occurrence-grained number understates by whatever the mean
+occurrence-per-pair happens to be. Corrected:
 
     (file, name) pairs                     5,783
     bare occurrences, total               38,694

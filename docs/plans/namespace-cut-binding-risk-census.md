@@ -7,7 +7,9 @@
 > "Honest limits" below.
 
 **Status:** built and run, 2026-08-17.
-**Tool:** `tools/namespace_cut/binding_identity_oracle.py` (materializes both trees from git refs itself).
+**Tool: DELETED 2026-08-20** with its receipts. `binding_identity_oracle.py` and
+`occurrence_expander.py` were regex instruments whose only output was the census below;
+with the executed floor as the oracle they had nothing left to produce.
 **Receipt: DELETED 2026-08-20, and this document is now a reading of nothing it can cite.**
 The two census receipts (`binding_risk_census_receipt.json`, `occurrence_index_receipt.json`,
 11.5 MB and 545,775 lines between them — 81% of this branch's entire diff) are removed.
@@ -28,7 +30,9 @@ where the real defect population was a few hundred, and a qualified-reference ch
 needed four rounds of false-positive removal (2,450 -> 978 -> 451 -> 398 -> 17) before
 its number described the tree rather than its own regex. Committed as a `receipt`, that
 class of number acquires the standing of evidence without the execution to earn it.
-**Reproduce:** `python3 tools/namespace_cut/binding_identity_oracle.py e095c27543a HEAD out.json`
+**Reproduce:** not reproducible — the instrument is deleted. The question it asked is
+answered instead by `claim_executor --required-floor`, which runs both resolvers rather
+than modelling one.
 
 Numbers below are from an earlier tree, were superseded by the receipt, and the receipt
 is now deleted — so TREAT EVERY FIGURE IN THIS DOCUMENT AS UNVERIFIABLE. The reasoning
