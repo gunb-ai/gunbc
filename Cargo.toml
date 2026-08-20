@@ -13,6 +13,8 @@ members = [
     "src/v1/stage0_emit_core",
     # END generated stage0 crate members
     "src/v1/tests",
+    # Controlled fixture for the behavioral receipt's own arms. Hand-authored, never emitted.
+    "src/v1/receipt_fixture",
 ]
 
 [workspace.metadata]

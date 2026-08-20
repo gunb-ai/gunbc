@@ -10341,6 +10341,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut required_regen_fixed_point_mode = false;
     let mut required_mirror_drift_mode = false;
     let mut behavioral_receipt_plan_mode = false;
+    let mut behavioral_receipt_selftest_mode = false;
     let mut regen_candidate_dir = "target/stage0-regen-candidate".to_string();
     let mut regen_receipt_path = "target/stage0-regen-receipt.json".to_string();
 
@@ -10375,6 +10376,9 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             "--behavioral-receipt-plan" => {
                 behavioral_receipt_plan_mode = true;
+            }
+            "--behavioral-receipt-selftest" => {
+                behavioral_receipt_selftest_mode = true;
             }
             "--regen-candidate-dir" => {
                 i += 1;
@@ -10468,6 +10472,10 @@ fn run() -> Result<ExitCode, ExitCode> {
     // and the absence of those flags is the point rather than an omission. `run_required_floor`
     // refuses when planned, executed and terminal identity counts disagree, so a silently short
     // roster cannot report as a pass.
+    if behavioral_receipt_selftest_mode {
+        return run_behavioral_receipt_selftest(&source_roots);
+    }
+
     if behavioral_receipt_plan_mode {
         return run_behavioral_receipt_plan(&source_roots);
     }
@@ -19178,8 +19186,41 @@ fn generate_receipt_driver(module_alias: &str, plan: &ModuleCorpusPlan) -> Strin
 /// Build the crate as it currently stands, compile the driver against it, and return the
 /// transcript. Both halves of the differential go through THIS function, so the two transcripts
 /// cannot differ because of how they were produced.
+/// WHICH crate the driver is built against and linked to.
+///
+/// These three were literals inside `run_receipt_driver`. A hardwired `-p v1-compiler` is policy
+/// standing inside a mechanism (DESIGN §3: an argv carrying a literal it should receive as a
+/// parameter), and it is exactly what made the mode impossible to exercise against anything but
+/// the production mirror -- so its own arms could only ever be run by a human with a script.
+/// Parameterised, the control and the production path are ONE code path with one argument
+/// different, rather than two machineries that could drift apart while both looked green.
+struct ReceiptCrate {
+    package: String,
+    extern_name: String,
+    rlib: String,
+}
+
+impl ReceiptCrate {
+    fn v1_compiler() -> Self {
+        Self {
+            package: "v1-compiler".to_string(),
+            extern_name: "v1_compiler".to_string(),
+            rlib: "libv1_compiler.rlib".to_string(),
+        }
+    }
+
+    fn receipt_fixture() -> Self {
+        Self {
+            package: "v1-receipt-fixture".to_string(),
+            extern_name: "v1_receipt_fixture".to_string(),
+            rlib: "libv1_receipt_fixture.rlib".to_string(),
+        }
+    }
+}
+
 fn run_receipt_driver(
     workspace: &std::path::Path,
+    krate: &ReceiptCrate,
     driver_src: &str,
     label: &str,
 ) -> Result<Vec<String>, String> {
@@ -19189,7 +19230,7 @@ fn run_receipt_driver(
     fs::write(&src_path, driver_src).map_err(|e| format!("write driver: {e}"))?;
 
     let lib = Command::new("cargo")
-        .args(["build", "--release", "-p", "v1-compiler", "--lib"])
+        .args(["build", "--release", "-p", &krate.package, "--lib"])
         .current_dir(workspace)
         .output()
         .map_err(|e| format!("spawn cargo ({label}): {e}"))?;
@@ -19211,10 +19252,9 @@ fn run_receipt_driver(
         .arg(&src_path)
         .arg("--extern")
         .arg(format!(
-            "v1_compiler={}",
-            workspace
-                .join("target/release/libv1_compiler.rlib")
-                .display()
+            "{}={}",
+            krate.extern_name,
+            workspace.join("target/release").join(&krate.rlib).display()
         ))
         .arg("-L")
         .arg(workspace.join("target/release/deps"))
@@ -19265,7 +19305,8 @@ fn run_receipt_driver(
 /// discriminating corpus is.
 fn behavioral_differential(
     workspace: &std::path::Path,
-    mirror_basename: &str,
+    krate: &ReceiptCrate,
+    mirror_path: &std::path::Path,
     candidate_source: &str,
     plan: &ModuleCorpusPlan,
     module_alias: &str,
@@ -19281,32 +19322,32 @@ fn behavioral_differential(
         };
     }
     let driver = generate_receipt_driver(module_alias, plan);
-    let mirror_path = workspace.join("src/v1/stage0/src").join(mirror_basename);
-    let committed = match fs::read_to_string(&mirror_path) {
+    let shown = mirror_path.display().to_string();
+    let committed = match fs::read_to_string(mirror_path) {
         Ok(c) => c,
         Err(e) => {
             return ReceiptVerdict::Refused {
-                reason: format!("read {mirror_basename}: {e}"),
+                reason: format!("read {shown}: {e}"),
             }
         }
     };
 
-    let seed = match run_receipt_driver(workspace, &driver, "seed") {
+    let seed = match run_receipt_driver(workspace, krate, &driver, "seed") {
         Ok(t) => t,
         Err(e) => return ReceiptVerdict::Refused { reason: e },
     };
 
-    if let Err(e) = fs::write(&mirror_path, candidate_source) {
+    if let Err(e) = fs::write(mirror_path, candidate_source) {
         return ReceiptVerdict::Refused {
-            reason: format!("install candidate {mirror_basename}: {e}"),
+            reason: format!("install candidate {shown}: {e}"),
         };
     }
-    let candidate = run_receipt_driver(workspace, &driver, "candidate");
+    let candidate = run_receipt_driver(workspace, krate, &driver, "candidate");
     // Restore BEFORE interpreting the result, so no early return can leave the candidate in place.
-    if let Err(e) = fs::write(&mirror_path, &committed) {
+    if let Err(e) = fs::write(mirror_path, &committed) {
         return ReceiptVerdict::Refused {
             reason: format!(
-                "restore {mirror_basename} after the candidate build: {e}. The tree may still hold \
+                "restore {shown} after the candidate build: {e}. The tree may still hold \
                  the candidate; do not trust a later measurement without checking"
             ),
         };
@@ -19372,6 +19413,178 @@ fn emitted_mirror_for_module(
         }
     }
     Ok(None)
+}
+
+/// THE RECEIPT'S OWN ARMS, ENROLLED.
+///
+/// A behavioral receipt is only evidence if it can still tell equivalence from divergence. That
+/// property is not established by the mode existing, and it is not established by a transcript in
+/// a pull request: a red control that no longer discriminates looks exactly like a red control
+/// that does, until the day it is needed. So both arms live here and execute -- DESIGN §4b: the
+/// discriminating RED and the positive control REMAIN ENROLLED as the executing evidence that the
+/// rung stays real.
+///
+/// Run against a CONTROLLED FIXTURE (`src/v1/receipt_fixture`), never against the live corpus.
+/// The fixture independently authors its own input and its own expected outcome, which is what
+/// DESIGN §5 requires of an oracle -- a measurement copied from the current tree is not one. It
+/// also means this control cannot be satisfied by a tree in which nothing happens to have changed.
+///
+/// WHAT THIS CONTROL COVERS: the grammar-backed read of a declared surface, the derivation of the
+/// corpus from it, the enumeration of argument tuples, driver generation, both builds, the
+/// transcript comparison, and the verdict. WHAT IT DOES NOT COVER, stated rather than implied:
+/// the emit, and the emit-path-to-mirror lookup. Those have their own gates; this one would
+/// report a false green about them, so it does not speak about them at all.
+fn behavioral_receipt_selftest(source_roots: &[String]) -> Result<bool, String> {
+    let workspace = v1_compiler::cli_run::workspace_root();
+    let fixture = workspace.join("src/v1/receipt_fixture");
+    let module_path = "receipt.fixture";
+    let alias = "v1_receipt_fixture";
+
+    let authority = fixture.join("authority.dag");
+    let source =
+        fs::read_to_string(&authority).map_err(|e| format!("read {}: {e}", authority.display()))?;
+    let modules = collect_dag_module_sources(source_roots)?;
+    let node = parse_dag_module_node(&format!("{module_path}.dag"), &source)?;
+    let types = visible_type_decls(module_path, &source, &modules)?;
+    let plan = plan_module_corpus(module_path, &source, &node, &types, alias);
+
+    eprintln!(
+        "receipt-selftest: fixture parsed={} derivable={} refused={}",
+        plan.parsed_signatures,
+        plan.derivable.len(),
+        plan.refused.len()
+    );
+    for (f, d, tuples) in &plan.derivable {
+        eprintln!(
+            "receipt-selftest:   derivable {f} {} calls={}",
+            d.report(),
+            tuples.len()
+        );
+    }
+    for (f, why) in &plan.refused {
+        eprintln!("receipt-selftest:   REFUSED {f} — {why}");
+    }
+
+    // THE PRECONDITION THE ARMS DEPEND ON, checked before the arms rather than assumed by them.
+    //
+    // Arm 2 changes `band_of` at exactly one input in all of i64: level = 100. If the boundary
+    // enumeration ever regresses to sampling, or to a window that excludes 100, arm 2 goes GREEN
+    // and this whole control dies without a sound. So the tuple set is required to CONTAIN that
+    // input, and the requirement is stated over the enumerated corpus -- the thing that will
+    // actually run -- not over the domain description of it.
+    let band_of = plan
+        .derivable
+        .iter()
+        .find(|(f, _, _)| f == "band_of")
+        .ok_or_else(|| {
+            format!(
+                "the fixture's band_of did not derive, so arm 2 could not discriminate even if it \
+                 ran. Refusing rather than reporting a control that cannot fail. Refusals: {:?}",
+                plan.refused
+            )
+        })?;
+    if !matches!(
+        band_of.1,
+        EnumeratedDomain::ExhaustiveOverDerivedPartition { .. }
+    ) {
+        return Err(format!(
+            "band_of derived as {}, not over a derived partition. The Int partition is the thing \
+             arm 2 exercises; covering it some other way would leave that arm untested",
+            band_of.1.report()
+        ));
+    }
+    if !band_of.2.iter().any(|t| t == &vec!["100i64".to_string()]) {
+        return Err(format!(
+            "the enumerated corpus for band_of does not contain the boundary input 100i64, so arm \
+             2's single behavioural difference is outside what the receipt would run. Enumerated: \
+             {:?}",
+            band_of.2
+        ));
+    }
+
+    let seed_path = fixture.join("src/lib.rs");
+    let mut ok = true;
+    let krate = ReceiptCrate::receipt_fixture();
+
+    for (arm, candidate_file, expect_equivalent) in [
+        ("preserving", "behaviour_preserving.rs", true),
+        ("changing", "behaviour_changing.rs", false),
+    ] {
+        let cand_path = fixture.join("candidates").join(candidate_file);
+        let candidate = fs::read_to_string(&cand_path)
+            .map_err(|e| format!("read {}: {e}", cand_path.display()))?;
+        // An arm whose candidate bytes equal the seed's proves nothing in EITHER direction: the
+        // preserving arm would report equivalence for the trivial reason, and the changing arm
+        // would report equivalence and be read as a regression. Checked, not trusted.
+        let seed = fs::read_to_string(&seed_path)
+            .map_err(|e| format!("read {}: {e}", seed_path.display()))?;
+        if seed == candidate {
+            return Err(format!(
+                "arm {arm}: {candidate_file} is byte-identical to the fixture seed, so this arm \
+                 compares a file with itself"
+            ));
+        }
+
+        let verdict =
+            behavioral_differential(&workspace, &krate, &seed_path, &candidate, &plan, alias);
+        match (&verdict, expect_equivalent) {
+            (ReceiptVerdict::Equivalent { calls }, true) => {
+                eprintln!("receipt-selftest: arm {arm} EQUIVALENT over {calls} derived calls — as required");
+            }
+            (
+                ReceiptVerdict::Divergent {
+                    calls,
+                    first_difference,
+                },
+                false,
+            ) => {
+                // Not merely THAT it diverged: divergence at the wrong call would mean the arm is
+                // catching something other than the difference it was authored to catch, and a
+                // control that passes for the wrong reason is not a control.
+                if !(first_difference.contains("band_of") && first_difference.contains("100i64")) {
+                    eprintln!(
+                        "receipt-selftest: arm {arm} DIVERGENT over {calls} calls but at the WRONG \
+                         call — expected band_of(100i64): {first_difference}"
+                    );
+                    ok = false;
+                } else {
+                    eprintln!(
+                        "receipt-selftest: arm {arm} DIVERGENT over {calls} derived calls at the \
+                         authored difference — {first_difference}"
+                    );
+                }
+            }
+            (v, _) => {
+                eprintln!(
+                    "receipt-selftest: arm {arm} expected {} but got {v:?}",
+                    if expect_equivalent {
+                        "EQUIVALENT"
+                    } else {
+                        "DIVERGENT"
+                    }
+                );
+                ok = false;
+            }
+        }
+    }
+    Ok(ok)
+}
+
+fn run_behavioral_receipt_selftest(source_roots: &[String]) -> Result<ExitCode, ExitCode> {
+    match behavioral_receipt_selftest(source_roots) {
+        Ok(true) => Ok(ExitCode::SUCCESS),
+        Ok(false) => {
+            eprintln!(
+                "receipt-selftest: REFUSED — the behavioral receipt's own arms no longer \
+                 discriminate. Until this is green, no verdict the mode reports is evidence"
+            );
+            Err(ExitCode::from(1))
+        }
+        Err(e) => {
+            eprintln!("receipt-selftest: REFUSED — {e}");
+            Err(ExitCode::from(1))
+        }
+    }
 }
 
 fn run_behavioral_receipt_plan(source_roots: &[String]) -> Result<ExitCode, ExitCode> {
@@ -19520,7 +19733,14 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<bool, String> {
             all_equivalent = false;
             continue;
         };
-        match behavioral_differential(&workspace, mirror, candidate_source, plan, alias) {
+        match behavioral_differential(
+            &workspace,
+            &ReceiptCrate::v1_compiler(),
+            &workspace.join("src/v1/stage0/src").join(mirror),
+            candidate_source,
+            plan,
+            alias,
+        ) {
             ReceiptVerdict::Equivalent { calls } => eprintln!(
                 "behavioral-receipt: {} EQUIVALENT over {calls} derived calls",
                 plan.module_path
