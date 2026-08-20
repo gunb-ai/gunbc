@@ -18258,6 +18258,14 @@ fn required_mirror_drift_verdict(source_roots: &[String]) -> Result<bool, String
 /// Why a changed authority produced no receipt. Every arm is COUNTED and NAMED in the report:
 /// a module that silently produces nothing is indistinguishable from a module that passed, and
 /// that conflation is what makes an unexecuted receipt read as a green one.
+///
+/// ONE arm, because one arm has a producer. An earlier revision declared three, adding
+/// `NoEmissionChange` (authority moved but emission did not) and `CorpusNotDerivable`. Neither
+/// was ever constructed: the first needs the emission this fragment does not yet compute, and the
+/// second duplicates `ModuleCorpusPlan::refused`, which already carries every refusal with the
+/// function and type that caused it. A declared-but-unconstructed variant is vocabulary claiming
+/// a distinction nothing draws, so both are deleted rather than carried until a producer appears.
+/// `NoEmissionChange` returns when the two-build differential lands and can actually observe it.
 #[derive(Debug, Clone, PartialEq)]
 enum ReceiptExclusion {
     /// The authority has no emitted mirror carrying its `// Source module:` header. Real and
@@ -18267,36 +18275,44 @@ enum ReceiptExclusion {
     /// `compiler_tests.rs` is a `#[cfg(test)] mod`. Named rather than skipped, because a changed
     /// authority that maps to nothing must be visible.
     NoEmittedMirror { module_path: String },
-    /// The authority moved but the emission did not — a comment-only or otherwise
-    /// emission-neutral edit. Nothing to compare, and that is a pass, not a gap.
-    NoEmissionChange { module_path: String },
-    /// The corpus could not be derived. Names the function and the type that defeated it, so the
-    /// refusal ranks for work instead of being a bare count.
-    CorpusNotDerivable {
-        module_path: String,
-        function: String,
-        offending_type: String,
-    },
 }
 
 /// The domain a corpus actually enumerated, reported as a DERIVED FACT rather than a label.
 ///
-/// The distinction is not pedantry and it was paid for: an earlier revision of this work
-/// described a corpus as "exhaustive" when three of its seven function groups were finite-closed
-/// and four were bounded approximations of infinite domains. `Int` over a window and `List` to a
-/// bounded length have NOT covered the type — a behaviour change at length 4, or outside the
-/// window, sits in exactly the unsampled cell the whole design refuses to build for. Reporting
-/// both under one word claims a coverage that was never measured, which is the same inflation as
-/// an authored corpus arriving through a narrower door.
-///
-/// So `Exhaustive` is reserved for the finite-closed case where enumeration IS the domain, and
-/// every bounded case carries its bound in the output where a reader can see it.
+/// Both arms are COVERAGE CLAIMS. There is deliberately no "bounded sample" arm: an earlier
+/// revision enumerated `Int` over [-2,2] and `List` to length 3 and reported the result beside
+/// genuine exhaustive coverage. That arm is DELETED rather than widened, because a window is not
+/// a weaker proof of the same thing — it is a receipt that USUALLY cannot fail, and a
+/// usually-passing receipt reports as done while a refusal is counted and ranks for work. The
+/// window was also measurably absurd in place: it enumerated a lower-hex-digit predicate over
+/// five values containing no hex digit at all.
 #[derive(Debug, Clone, PartialEq)]
 enum EnumeratedDomain {
     /// Finite closed domain, fully covered: closed nullary enums, Bool, and records over them.
+    /// Enumeration IS the domain.
     Exhaustive { cardinality: usize },
-    /// Infinite domain, enumerated to a declared bound. The bound is part of the fact.
-    BoundedToDeclaredBound { cardinality: usize, bound: String },
+    /// Infinite domain, fully covered ANYWAY, because the function cannot distinguish the values
+    /// inside a class.
+    ///
+    /// The argument, in full, because the claim is only as good as it: if a parameter's every
+    /// occurrence in the body is an operand of a comparison against an integer literal, then the
+    /// literals cut the integers into finitely many classes -- the points themselves and the open
+    /// gaps between them -- and every comparison in the function yields the same answer for any
+    /// two values drawn from one class. The function's behaviour is therefore constant within a
+    /// class, so one representative per class covers the type. This is exhaustive in the same
+    /// sense as a closed enum, NOT an approximation of it.
+    ///
+    /// The premise is what makes it sound, and it is checked rather than assumed: the moment the
+    /// parameter is returned, embedded in a record, passed to another function, or arithmetically
+    /// combined, its VALUE reaches the output and two members of one class stop agreeing --
+    /// `fn shard_count_positive(n: Int) -> Int { if n <= 0 { 1 } else { n } }` returns 5 for 5 and
+    /// 7 for 7, both in the class `n > 0`. So any occurrence that is not a literal comparison
+    /// REFUSES the whole parameter. The check is conservative in the safe direction: an
+    /// occurrence it cannot classify refuses rather than being assumed harmless.
+    ExhaustiveOverDerivedPartition {
+        cardinality: usize,
+        partition: String,
+    },
 }
 
 impl EnumeratedDomain {
@@ -18305,13 +18321,17 @@ impl EnumeratedDomain {
             EnumeratedDomain::Exhaustive { cardinality } => {
                 format!("exhaustive(|domain|={cardinality})")
             }
-            EnumeratedDomain::BoundedToDeclaredBound { cardinality, bound } => {
-                format!("bounded(|enumerated|={cardinality}, bound={bound})")
-            }
+            EnumeratedDomain::ExhaustiveOverDerivedPartition {
+                cardinality,
+                partition,
+            } => format!("exhaustive-over-partition(|reps|={cardinality}, {partition})"),
         }
     }
-    fn is_exhaustive(&self) -> bool {
-        matches!(self, EnumeratedDomain::Exhaustive { .. })
+    fn cardinality(&self) -> usize {
+        match self {
+            EnumeratedDomain::Exhaustive { cardinality } => *cardinality,
+            EnumeratedDomain::ExhaustiveOverDerivedPartition { cardinality, .. } => *cardinality,
+        }
     }
 }
 
@@ -18325,14 +18345,6 @@ enum DagTypeDecl {
     /// `type DominanceTally { saw_better: Bool, saw_worse: Bool }` — a record over named fields.
     Record { fields: Vec<(String, String)> },
 }
-
-/// The bound this build enumerates infinite domains to. Both are declared here as named
-/// constants rather than buried at the use site, because they are the exact numbers that make
-/// the difference between `Exhaustive` and `BoundedToDeclaredBound` in the report, and a reader
-/// deciding whether a divergence-free result means anything needs to find them.
-const INT_WINDOW_LOW: i64 = -2;
-const INT_WINDOW_HIGH: i64 = 2;
-const LIST_MAX_LEN: usize = 3;
 
 fn parse_dag_type_decls(source: &str) -> std::collections::HashMap<String, DagTypeDecl> {
     let mut out = std::collections::HashMap::new();
@@ -18394,6 +18406,280 @@ fn parse_dag_type_decls(source: &str) -> std::collections::HashMap<String, DagTy
     out
 }
 
+/// The classes an `Int` parameter's own comparisons cut the integers into, with one
+/// representative per class.
+#[derive(Debug, Clone, PartialEq)]
+struct IntPartition {
+    /// The integer literals this parameter is compared against, sorted and deduplicated.
+    literals: Vec<i64>,
+    /// One value per equivalence class. For literals L the classes are each point `l` and each
+    /// open gap between consecutive points, plus the two unbounded ends; the representative set
+    /// below hits every non-empty one of them.
+    representatives: Vec<i64>,
+}
+
+impl IntPartition {
+    /// Representatives are `{l-1, l, l+1}` over every literal `l`.
+    ///
+    /// That this covers every class is a three-case check, not an approximation: the point class
+    /// `{l}` is hit by `l`; the gap `(l_i, l_{i+1})` is hit by `l_i + 1` unless the gap is empty
+    /// (`l_{i+1} == l_i + 1`); and the two unbounded ends are hit by `min-1` and `max+1`. The
+    /// `±1` values are also exactly where an off-by-one divergence lives, which is why they are
+    /// taken rather than an arbitrary interior point.
+    fn from_literals(mut literals: Vec<i64>) -> IntPartition {
+        literals.sort_unstable();
+        literals.dedup();
+        let mut reps: Vec<i64> = Vec::new();
+        for l in &literals {
+            for r in [l.saturating_sub(1), *l, l.saturating_add(1)] {
+                if !reps.contains(&r) {
+                    reps.push(r);
+                }
+            }
+        }
+        // No literals means the parameter is never compared against one. Reached only when it is
+        // never mentioned at all -- any other use refuses upstream -- so the function ignores it
+        // and a single arbitrary value covers the whole type.
+        if reps.is_empty() {
+            reps.push(0);
+        }
+        reps.sort_unstable();
+        IntPartition {
+            literals,
+            representatives: reps,
+        }
+    }
+
+    fn describe(&self) -> String {
+        let lits = if self.literals.is_empty() {
+            "unused by the body".to_string()
+        } else {
+            format!(
+                "literals {{{}}}",
+                self.literals
+                    .iter()
+                    .map(|l| l.to_string())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )
+        };
+        format!(
+            "{lits}, reps {{{}}}",
+            self.representatives
+                .iter()
+                .map(|r| r.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        )
+    }
+}
+
+/// One lexical token of a `.dag` body, at the resolution the partition check needs.
+#[derive(Debug, Clone, PartialEq)]
+enum BodyTok {
+    Ident(String),
+    Int(i64),
+    Op(String),
+}
+
+/// Tokenize a function body. Comments are stripped first: an annotation mentioning the parameter
+/// is not a use of it, and treating it as one would refuse functions for prose.
+fn tokenize_body(body: &str) -> Vec<BodyTok> {
+    let mut out = Vec::new();
+    for line in body.lines() {
+        let line = match line.find("//") {
+            Some(k) => &line[..k],
+            None => line,
+        };
+        let b: Vec<char> = line.chars().collect();
+        let mut k = 0usize;
+        while k < b.len() {
+            let c = b[k];
+            if c.is_whitespace() {
+                k += 1;
+            } else if c.is_ascii_alphabetic() || c == '_' {
+                let st = k;
+                while k < b.len() && (b[k].is_ascii_alphanumeric() || b[k] == '_') {
+                    k += 1;
+                }
+                out.push(BodyTok::Ident(b[st..k].iter().collect()));
+            } else if c.is_ascii_digit() {
+                let st = k;
+                while k < b.len() && b[k].is_ascii_digit() {
+                    k += 1;
+                }
+                let text: String = b[st..k].iter().collect();
+                match text.parse::<i64>() {
+                    Ok(v) => out.push(BodyTok::Int(v)),
+                    // A digit run that does not fit an i64 is NOT dropped and NOT clamped: it
+                    // becomes an opaque operator token, which refuses any parameter beside it.
+                    Err(_) => out.push(BodyTok::Op(text)),
+                }
+            } else {
+                // Two-character comparison operators must be read whole; splitting `<=` into `<`
+                // and `=` would read `k <= 0` as a comparison against nothing.
+                let two: String = b[k..(k + 2).min(b.len())].iter().collect();
+                if matches!(two.as_str(), "<=" | ">=" | "==" | "!=") {
+                    out.push(BodyTok::Op(two));
+                    k += 2;
+                } else {
+                    out.push(BodyTok::Op(c.to_string()));
+                    k += 1;
+                }
+            }
+        }
+    }
+    out
+}
+
+fn is_comparison(t: &BodyTok) -> bool {
+    matches!(t, BodyTok::Op(o) if matches!(o.as_str(), "<" | "<=" | ">" | ">=" | "==" | "!="))
+}
+
+/// Whether a token may sit immediately BEFORE a standalone integer operand.
+///
+/// A WHITELIST, not a blacklist, and that is the whole point: `a + 1 < n` has an integer token in
+/// the operand position, but the operand is `a + 1`, and reading the `1` out of it would derive a
+/// partition around the wrong literal. A wrong partition is worse than no partition -- it claims
+/// coverage of classes it never enumerated -- so anything not recognised here refuses.
+fn may_precede_operand(t: &BodyTok) -> bool {
+    if is_comparison(t) {
+        return true;
+    }
+    match t {
+        BodyTok::Op(o) => matches!(o.as_str(), "(" | "{" | "," | "&&" | "||" | "!" | ";" | ":"),
+        BodyTok::Ident(n) => matches!(n.as_str(), "if" | "else" | "return"),
+        BodyTok::Int(_) => false,
+    }
+}
+
+/// Whether a token may sit immediately AFTER a standalone integer operand. Same argument as
+/// `may_precede_operand`, in the other direction: `n < 1 - a` must refuse rather than read `1`.
+fn may_follow_operand(t: &BodyTok) -> bool {
+    if is_comparison(t) {
+        return true;
+    }
+    match t {
+        BodyTok::Op(o) => matches!(o.as_str(), ")" | "}" | "{" | "," | "&&" | "||" | ";"),
+        BodyTok::Ident(n) => matches!(n.as_str(), "else"),
+        BodyTok::Int(_) => false,
+    }
+}
+
+/// The right-hand operand of a comparison, when it is exactly an integer literal.
+///
+/// `first` is the index just after the comparison operator. A leading `-` is a negation here
+/// because an operator cannot precede a binary minus.
+fn right_operand_literal(toks: &[BodyTok], first: usize) -> Option<i64> {
+    let (value, after) = match toks.get(first)? {
+        BodyTok::Int(v) => (*v, first + 1),
+        BodyTok::Op(o) if o == "-" => match toks.get(first + 1)? {
+            BodyTok::Int(v) => (-*v, first + 2),
+            _ => return None,
+        },
+        _ => return None,
+    };
+    match toks.get(after) {
+        None => Some(value),
+        Some(t) if may_follow_operand(t) => Some(value),
+        Some(_) => None,
+    }
+}
+
+/// The left-hand operand of a comparison, when it is exactly an integer literal.
+///
+/// `last` is the index just before the comparison operator. Whether a preceding `-` is negation
+/// or subtraction is decided by what precedes IT: `n > -1` negates, `a - 1 < n` is a compound
+/// operand and refuses.
+fn left_operand_literal(toks: &[BodyTok], last: usize) -> Option<i64> {
+    let raw = match toks.get(last)? {
+        BodyTok::Int(v) => *v,
+        _ => return None,
+    };
+    let (value, before) = match last.checked_sub(1) {
+        Some(k) if matches!(&toks[k], BodyTok::Op(o) if o == "-") => match k.checked_sub(1) {
+            None => (-raw, None),
+            Some(k2) if may_precede_operand(&toks[k2]) => (-raw, Some(k2)),
+            Some(_) => return None,
+        },
+        other => (raw, other),
+    };
+    match before {
+        None => Some(value),
+        Some(k) if may_precede_operand(&toks[k]) => Some(value),
+        Some(_) => None,
+    }
+}
+
+/// Derive the partition for one `Int` parameter from the body that uses it, or REFUSE naming the
+/// occurrence that defeated it.
+///
+/// This is the whole soundness argument in code. Every occurrence of `param` must sit directly
+/// beside a comparison operator whose other operand is an integer literal. Everything else --
+/// being returned, passed as an argument, added, having a field read off it, being rebound by a
+/// lambda -- lets the parameter's VALUE reach the result, at which point members of one class
+/// stop agreeing and the partition claim is false.
+///
+/// The check is conservative in the safe direction by construction: it admits a closed list of
+/// shapes and refuses every occurrence it does not recognise, so a body form the tokenizer reads
+/// poorly produces a counted refusal rather than an unsound coverage claim.
+fn derive_int_partition(param: &str, body: &str) -> Result<IntPartition, String> {
+    let toks = tokenize_body(body);
+    let mut literals: Vec<i64> = Vec::new();
+    let mut idx = 0usize;
+    while idx < toks.len() {
+        // A lambda that rebinds the name shadows the parameter, and every occurrence after it
+        // would be about a different value. Refuse the whole parameter rather than reason about
+        // scope -- the fragment does not model scope, and pretending otherwise here is exactly
+        // the silent under-coverage the refusal exists to prevent.
+        if matches!(&toks[idx], BodyTok::Ident(n) if n == "fn")
+            && matches!(toks.get(idx + 1), Some(BodyTok::Op(o)) if o == "(")
+        {
+            let mut k = idx + 2;
+            while k < toks.len() && !matches!(&toks[k], BodyTok::Op(o) if o == ")") {
+                if matches!(&toks[k], BodyTok::Ident(n) if n == param) {
+                    return Err(format!(
+                        "{param} (rebound by a lambda parameter; scope is not modelled)"
+                    ));
+                }
+                k += 1;
+            }
+        }
+        if !matches!(&toks[idx], BodyTok::Ident(n) if n == param) {
+            idx += 1;
+            continue;
+        }
+        // `param <op> <literal>`
+        if let Some(next) = toks.get(idx + 1) {
+            if is_comparison(next) {
+                if let Some(v) = right_operand_literal(&toks, idx + 2) {
+                    literals.push(v);
+                    idx += 1;
+                    continue;
+                }
+                return Err(format!(
+                    "{param} (compared against a non-literal; the partition is derived from \
+                     literals, and a comparison against another parameter or a call would need a \
+                     joint partition this fragment does not derive)"
+                ));
+            }
+        }
+        // `<literal> <op> param`
+        if idx >= 2 && is_comparison(&toks[idx - 1]) {
+            if let Some(v) = left_operand_literal(&toks, idx - 2) {
+                literals.push(v);
+                idx += 1;
+                continue;
+            }
+        }
+        return Err(format!(
+            "{param} (used outside a literal comparison, so its value reaches the result and \
+             members of one class need not agree)"
+        ));
+    }
+    Ok(IntPartition::from_literals(literals))
+}
+
 /// Derive the domain for one parameter type, or refuse naming the type that defeated it.
 ///
 /// The refusal is the point of the fragment. Anything not listed here — an unbounded `String`, a
@@ -18402,10 +18688,16 @@ fn parse_dag_type_decls(source: &str) -> std::collections::HashMap<String, DagTy
 /// while a behaviour change hides in an unsampled cell: a receipt that USUALLY cannot fail,
 /// which is worse than a refusal, because a refusal is counted and ranks for work while a
 /// usually-passing receipt reports as done.
+///
+/// `int_partition` carries the partition derived for a DIRECTLY NAMED parameter. It is `None`
+/// everywhere else, and an `Int` reached with `None` refuses: the partition is a fact about one
+/// parameter's own occurrences, and there is no such trace for an `Int` sitting inside a record
+/// field or a list element.
 fn derive_parameter_domain(
     ty: &str,
     types: &std::collections::HashMap<String, DagTypeDecl>,
     depth: usize,
+    int_partition: Option<&IntPartition>,
 ) -> Result<EnumeratedDomain, String> {
     if depth > 4 {
         return Err(format!(
@@ -18417,34 +18709,28 @@ fn derive_parameter_domain(
         return Ok(EnumeratedDomain::Exhaustive { cardinality: 2 });
     }
     if ty == "Int" {
-        let n = (INT_WINDOW_HIGH - INT_WINDOW_LOW + 1) as usize;
-        return Ok(EnumeratedDomain::BoundedToDeclaredBound {
-            cardinality: n,
-            bound: format!("Int in [{INT_WINDOW_LOW},{INT_WINDOW_HIGH}]"),
-        });
+        return match int_partition {
+            Some(p) => Ok(EnumeratedDomain::ExhaustiveOverDerivedPartition {
+                cardinality: p.representatives.len(),
+                partition: p.describe(),
+            }),
+            None => Err(
+                "Int (reached through a container; a partition is derived from a parameter's own \
+                 comparisons and does not follow into a field or element)"
+                    .to_string(),
+            ),
+        };
     }
-    if let Some(inner) = ty.strip_prefix("List<").and_then(|s| s.strip_suffix('>')) {
-        let elem = derive_parameter_domain(inner, types, depth + 1)?;
-        let (elem_card, elem_exhaustive) = match &elem {
-            EnumeratedDomain::Exhaustive { cardinality } => (*cardinality, true),
-            EnumeratedDomain::BoundedToDeclaredBound { cardinality, .. } => (*cardinality, false),
-        };
-        // sequences of length 0..=LIST_MAX_LEN over the element domain
-        let mut total = 0usize;
-        let mut pow = 1usize;
-        for _ in 0..=LIST_MAX_LEN {
-            total = total.saturating_add(pow);
-            pow = pow.saturating_mul(elem_card.max(1));
-        }
-        let inner_note = if elem_exhaustive {
-            String::new()
-        } else {
-            format!(", element {}", elem.report())
-        };
-        return Ok(EnumeratedDomain::BoundedToDeclaredBound {
-            cardinality: total,
-            bound: format!("List length <= {LIST_MAX_LEN}{inner_note}"),
-        });
+    // `List<T>` REFUSES. It was previously enumerated to length 3, which is the deleted bounded
+    // arm: sequence length is unbounded, and nothing about a list parameter makes lengths 0..=3
+    // representative of the rest. The next rung is the same move made here for `Int` -- classes
+    // derived from the length comparisons the body actually performs -- and it is named rather
+    // than built, because deriving it needs the element domain and the fold's own behaviour, not
+    // just the length.
+    if ty.starts_with("List<") {
+        return Err(format!(
+            "{ty} (unbounded sequence length; a length partition is not derived)"
+        ));
     }
     match types.get(ty) {
         Some(DagTypeDecl::ClosedNullaryEnum { variants }) => Ok(EnumeratedDomain::Exhaustive {
@@ -18452,30 +18738,12 @@ fn derive_parameter_domain(
         }),
         Some(DagTypeDecl::Record { fields }) => {
             let mut card = 1usize;
-            let mut all_exhaustive = true;
-            let mut bounds = Vec::new();
             for (fname, fty) in fields {
-                let d = derive_parameter_domain(fty, types, depth + 1)
+                let d = derive_parameter_domain(fty, types, depth + 1, None)
                     .map_err(|e| format!("{ty}.{fname}: {e}"))?;
-                match d {
-                    EnumeratedDomain::Exhaustive { cardinality } => {
-                        card = card.saturating_mul(cardinality)
-                    }
-                    EnumeratedDomain::BoundedToDeclaredBound { cardinality, bound } => {
-                        card = card.saturating_mul(cardinality);
-                        all_exhaustive = false;
-                        bounds.push(format!("{fname}: {bound}"));
-                    }
-                }
+                card = card.saturating_mul(d.cardinality());
             }
-            if all_exhaustive {
-                Ok(EnumeratedDomain::Exhaustive { cardinality: card })
-            } else {
-                Ok(EnumeratedDomain::BoundedToDeclaredBound {
-                    cardinality: card,
-                    bound: bounds.join("; "),
-                })
-            }
+            Ok(EnumeratedDomain::Exhaustive { cardinality: card })
         }
         // NOT in the fragment. String is the common case and is named explicitly rather than
         // falling into a generic arm, because "unbounded String" is the single most likely
@@ -18488,11 +18756,16 @@ fn derive_parameter_domain(
     }
 }
 
-/// One function's signature as the authority declares it.
+/// One function's signature as the authority declares it, with the body that uses it.
+///
+/// The body is carried because an `Int` parameter's domain is a fact about HOW THIS FUNCTION USES
+/// IT, not about the type: `Int` has no finite domain, but the comparisons a body performs cut it
+/// into finitely many classes. A signature-only planner cannot ask that question at all.
 #[derive(Debug, Clone)]
 struct DagFnSignature {
     name: String,
     params: Vec<(String, String)>,
+    body: String,
 }
 
 fn parse_dag_fn_signatures(source: &str) -> Vec<DagFnSignature> {
@@ -18525,12 +18798,42 @@ fn parse_dag_fn_signatures(source: &str) -> Vec<DagFnSignature> {
                 params.push((pname.trim().to_string(), pty.trim().to_string()));
             }
         }
+        // The body runs from the signature's opening brace to its match. A body whose braces do
+        // not balance yields NO signature rather than a truncated one: a truncated body would
+        // hide the very occurrences the partition check exists to find, turning a parse gap into
+        // an unsound coverage claim. The dropped signature is visible instead, because the caller
+        // reports declared `fn` lines against parsed signatures.
+        let Some(body) = extract_braced_body(source, t) else {
+            continue;
+        };
         out.push(DagFnSignature {
             name: name.to_string(),
             params,
+            body,
         });
     }
     out
+}
+
+/// Return the text between the first `{` at or after the line `sig_line` and its matching `}`.
+fn extract_braced_body(source: &str, sig_line: &str) -> Option<String> {
+    let at = source.find(sig_line)?;
+    let bytes: Vec<char> = source[at..].chars().collect();
+    let open = bytes.iter().position(|c| *c == '{')?;
+    let mut depth = 0i32;
+    for (k, c) in bytes.iter().enumerate().skip(open) {
+        match c {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(bytes[open + 1..k].iter().collect());
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 /// What the fragment can say about one module's surface.
@@ -18648,18 +18951,31 @@ fn plan_module_corpus(
     let mut refused = Vec::new();
     for sig in &sigs {
         let mut card = 1usize;
-        let mut all_exhaustive = true;
-        let mut bounds = Vec::new();
+        let mut partitioned = false;
+        let mut partitions = Vec::new();
         let mut failure: Option<String> = None;
         for (pname, pty) in &sig.params {
-            match derive_parameter_domain(pty, types, 0) {
-                Ok(EnumeratedDomain::Exhaustive { cardinality }) => {
-                    card = card.saturating_mul(cardinality)
+            // An `Int` parameter is asked about its own occurrences first. The partition IS its
+            // domain, so a refusal here refuses the function -- there is no fallback window to
+            // drop to, by design.
+            let int_partition = if pty.trim() == "Int" {
+                match derive_int_partition(pname, &sig.body) {
+                    Ok(p) => Some(p),
+                    Err(e) => {
+                        failure = Some(e);
+                        break;
+                    }
                 }
-                Ok(EnumeratedDomain::BoundedToDeclaredBound { cardinality, bound }) => {
-                    card = card.saturating_mul(cardinality);
-                    all_exhaustive = false;
-                    bounds.push(format!("{pname}: {bound}"));
+            } else {
+                None
+            };
+            match derive_parameter_domain(pty, types, 0, int_partition.as_ref()) {
+                Ok(d) => {
+                    card = card.saturating_mul(d.cardinality());
+                    if let EnumeratedDomain::ExhaustiveOverDerivedPartition { partition, .. } = &d {
+                        partitioned = true;
+                        partitions.push(format!("{pname}: {partition}"));
+                    }
                 }
                 Err(offending) => {
                     failure = Some(offending);
@@ -18670,13 +18986,13 @@ fn plan_module_corpus(
         match failure {
             Some(offending) => refused.push((sig.name.clone(), offending)),
             None => {
-                let domain = if all_exhaustive {
-                    EnumeratedDomain::Exhaustive { cardinality: card }
-                } else {
-                    EnumeratedDomain::BoundedToDeclaredBound {
+                let domain = if partitioned {
+                    EnumeratedDomain::ExhaustiveOverDerivedPartition {
                         cardinality: card,
-                        bound: bounds.join("; "),
+                        partition: partitions.join("; "),
                     }
+                } else {
+                    EnumeratedDomain::Exhaustive { cardinality: card }
                 };
                 derivable.push((sig.name.clone(), domain));
             }
@@ -18806,33 +19122,26 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<bool, String> {
                 "behavioral-receipt: excluded {module_path} — no emitted mirror declares it as \
                  its source module"
             ),
-            ReceiptExclusion::NoEmissionChange { module_path } => eprintln!(
-                "behavioral-receipt: excluded {module_path} — authority moved, emission did not"
-            ),
-            ReceiptExclusion::CorpusNotDerivable {
-                module_path,
-                function,
-                offending_type,
-            } => eprintln!(
-                "behavioral-receipt: excluded {module_path} — corpus not derivable at \
-                 {function}: {offending_type}"
-            ),
         }
     }
     for p in &plans {
-        let exhaustive = p
+        // Both counts are coverage claims, so they are reported as the two ways coverage was
+        // ESTABLISHED -- closed type versus derived partition -- and not as strong-versus-weak.
+        // There is no third number here any more; the bounded column it replaced counted
+        // functions that had been sampled, not covered.
+        let closed = p
             .derivable
             .iter()
-            .filter(|(_, d)| d.is_exhaustive())
+            .filter(|(_, d)| matches!(d, EnumeratedDomain::Exhaustive { .. }))
             .count();
         eprintln!(
-            "behavioral-receipt: {} fn_lines={} parsed={} derivable={} (exhaustive={} bounded={}) refused={}",
+            "behavioral-receipt: {} fn_lines={} parsed={} derivable={} (closed-type={} derived-partition={}) refused={}",
             p.module_path,
             p.declared_fn_lines,
             p.parsed_signatures,
             p.derivable.len(),
-            exhaustive,
-            p.derivable.len() - exhaustive,
+            closed,
+            p.derivable.len() - closed,
             p.refused.len()
         );
         for (f, d) in &p.derivable {
