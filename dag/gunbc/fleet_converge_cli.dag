@@ -239,45 +239,6 @@ fn host_converge_for_identity(hosts: List<HostConverge>, identity: HostIdentity)
   find_by_identity(hosts, identity: identity, key: fn(h) { h.identity })
 }
 
-fn converge_cli_applied_knob_count(intent: HostEffectIntent, fallback: Int) -> Int {
-  match intent.effect {
-    ConvergePlan { policy: p } => p.knobs.length()
-    ShellCommand { script: _ } => fallback
-    RedfishAction { action: _ } => fallback
-    SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } => fallback
-    ReadEffectivePosixPrincipal { read: _ } => fallback
-    SudoNopasswdExecuteProbe { probe: _ } => fallback
-    SudoNopasswdGrantListProbe { probe: _ } => fallback
-    OsInstallActuatorToolchainEnsure {} => fallback
-    ProvisionBuildCache { catalog_id: _ } => fallback
-    ProvisionCodexRuntime {} => fallback
-    CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => fallback
-    Srv3InstallMediaFetch => fallback
-    Srv3SeededInstallMediaRemaster => fallback
-    Srv3SeededInstallMediaToolchainEnsure => fallback
-    Srv3BmcwebSessionLogin => fallback
-    Srv3BmcwebTokenExtract => fallback
-    Srv3NbdProxyServe { intent: _, lease_key: _ } => fallback
-    Srv3BootOnceReadBackSleep => fallback
-    Srv3ReceiptEmit { lines: _ } => fallback
-    HostIdentityShortHostnameRead => fallback
-    LiveDeployApply { spec: _, candidate: _ } => fallback
-    LiveDeployRetract { spec: _ } => fallback
-    LiveDeployEnsureDependency { dep: _ } => fallback
-    LiveDeployDigestReadback { port: _ } => fallback
-    DeployAccessPreflight {} => fallback
-    EnsureActionsRunnerRelease { runner_release: _ } => fallback
-    EnsureRunnerSlotDirectory { slot: _, artifact: _ } => fallback
-    EnsureRunnerJitWrapper { host_label: _ } => fallback
-    EnsureRunnerSystemdTemplate { host_label: _ } => fallback
-    EnsureRunnerMemoryCaps { slot: _ } => fallback
-    ActivateRunnerSlot { slot: _ } => fallback
-    ReplaceRunnerIncarnation { from: _, cause: _ } => fallback
-    ObserveRunnerLocalState { slot: _ } => fallback
-    ObserveGitHubRunnerRegistration { slot: _, organization: _ } => fallback
-  }
-}
-
 fn converge_cli_routes_to_slice1(host: String) -> Bool {
   host == (operator_host_srv1 as String) || host == (operator_host_srv3 as String)
 }
@@ -445,10 +406,10 @@ fn converge_cli_receipt_for_host(host_converge: HostConverge) -> ConvergeCliRece
   match converge_apply_for_host(host_converge: host_converge, transport: LocalShell) {
     Present { value: r } =>
       match r {
-        Converged { evidence: _, applied: intent } =>
+        Converged { evidence: _, applied: _ } =>
           ConvergeCliReceipt {
             host: host_converge.identity as String,
-            applied: converge_cli_applied_knob_count(intent: intent, fallback: host_converge.knobs.length()),
+            applied: host_converge.knobs.length(),
             drifted: 0,
             verdict: VerdictConverged,
             reason: none,

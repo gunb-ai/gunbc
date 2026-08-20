@@ -1,0 +1,111 @@
+module gunbc.systemctl_is_active_read
+
+import std.algebra { trim }
+
+import std.types { String, NonEmptyStr, List, Bool }
+import extdeps.systemd.systemctl
+import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
+import v2.std.operation_argv {
+  ArgvMaterialization,
+  ArgvMaterialized,
+  ArgvMaterializationRefused,
+  operation_argv_bind_text,
+  operation_argv_cause_label,
+}
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.typed_argv_exec {
+  typed_argv_exec_over_fleet_ssh,
+  typed_argv_exec_over_ssh,
+  typed_argv_shell_safe_refusal_argv,
+  TypedArgvExecConverged,
+  TypedArgvExecRefused,
+}
+
+data systemctl_is_active_path: String = "dag/extdeps/systemd/systemctl.dag"
+data systemctl_is_active_service: String = "systemd.Systemctl"
+data systemctl_is_active_operation: String = "IsActive"
+
+type UnitIsActiveCapture =
+    UnitIsActiveCaptured { state: NonEmptyStr, active: Bool }
+  | UnitIsActiveCaptureRefused { reason: String }
+
+fn systemctl_is_active_operation_argv(unit: NonEmptyStr) -> ArgvMaterialization {
+  shell_materialize_operation_argv(
+    systemctl_is_active_path,
+    systemctl_is_active_service,
+    systemctl_is_active_operation,
+    [operation_argv_bind_text(name: "unit", text: unit as String)]
+  )
+}
+
+fn unit_is_active_capture_from_result(state: String, active: Bool) -> UnitIsActiveCapture {
+  let trimmed = trim(state)
+  if trimmed == "" {
+    UnitIsActiveCaptureRefused { reason: "systemctl is-active returned empty stdout" }
+  } else {
+    UnitIsActiveCaptured { state: trimmed as NonEmptyStr, active: active }
+  }
+}
+
+fn systemctl_is_active_read_local(unit: NonEmptyStr) -> UnitIsActiveCapture {
+  let result = systemd.Systemctl.IsActive(unit: unit)
+  unit_is_active_capture_from_result(state: result.state, active: result.active)
+}
+
+fn unit_is_active_capture_from_outcome(outcome: TypedArgvExecOutcome) -> UnitIsActiveCapture {
+  match outcome {
+    TypedArgvExecConverged { result: r } =>
+      unit_is_active_capture_from_result(state: r.stdout, active: r.success)
+    TypedArgvExecRefused { reason: why } => UnitIsActiveCaptureRefused { reason: why }
+  }
+}
+
+fn systemctl_is_active_read_ssh_argv(host: NonEmptyStr, argv: List<String>) -> UnitIsActiveCapture {
+  match typed_argv_shell_safe_refusal_argv(argv: argv) {
+    Present { value: why } => UnitIsActiveCaptureRefused { reason: why }
+    Absent => unit_is_active_capture_from_outcome(outcome: typed_argv_exec_over_ssh(host: host, argv: argv))
+  }
+}
+
+fn systemctl_is_active_read_ssh(host: NonEmptyStr, unit: NonEmptyStr) -> UnitIsActiveCapture {
+  match systemctl_is_active_operation_argv(unit: unit) {
+    ArgvMaterialized { argv: argv } => systemctl_is_active_read_ssh_argv(host: host, argv: argv)
+    ArgvMaterializationRefused { at: _, cause: c } =>
+      UnitIsActiveCaptureRefused { reason: operation_argv_cause_label(cause: c) }
+  }
+}
+
+fn systemctl_is_active_read_fleet_ssh(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  unit: NonEmptyStr,
+) -> UnitIsActiveCapture {
+  match systemctl_is_active_operation_argv(unit: unit) {
+    ArgvMaterialized { argv: argv } =>
+      unit_is_active_capture_from_outcome(
+        outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv),
+      )
+    ArgvMaterializationRefused { at: _, cause: c } =>
+      UnitIsActiveCaptureRefused { reason: operation_argv_cause_label(cause: c) }
+  }
+}
+
+fn systemctl_is_active_read(transport: HostEffectTransport, unit: NonEmptyStr) -> UnitIsActiveCapture {
+  match transport {
+    LocalShell => systemctl_is_active_read_local(unit: unit)
+    SshShell { ssh_host: h } => systemctl_is_active_read_ssh(host: h, unit: unit)
+    FleetSsh { target: t, context: c } => systemctl_is_active_read_fleet_ssh(target: t, context: c, unit: unit)
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      UnitIsActiveCaptureRefused {
+        reason: "systemctl is-active refused EmitArtifactThenThinRun transport",
+      }
+  }
+}
+
+fn systemctl_is_active_operation_argv_matches_authority(unit: NonEmptyStr) -> Bool {
+  let authority = ["systemctl", "is-active", unit as String]
+  match systemctl_is_active_operation_argv(unit: unit) {
+    ArgvMaterialized { argv: materialized } => join(materialized, " ") == join(authority, " ")
+    ArgvMaterializationRefused { at: _, cause: _ } => false
+  }
+}
