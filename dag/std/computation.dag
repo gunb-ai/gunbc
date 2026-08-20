@@ -1,6 +1,5 @@
 module std.computation
 
-import std.iteration { }
 import std.termination {
   DescentEvidence, DescentUnknown, RankingDimension,
   PositiveDescentAmount, OneStep, AdditionalStep,

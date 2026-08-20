@@ -168,8 +168,8 @@ pub use crate::v1_std_core::{
     import_specific_names_at, index_base, index_expr, is_compiler_error, is_file_transport,
     is_rest_transport, is_shell_transport, lambda_body, lambda_param_names_at, let_binding_name_at,
     let_body, let_value, make_arg_node, make_error_node, make_expr_node, make_named_expr_node,
-    make_span, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_imports,
-    module_items, param_node_default_value, param_node_name_at, param_node_type_expr,
+    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_imports,
+    module_items, no_span, param_node_default_value, param_node_name_at, param_node_type_expr,
     qualified_last_segment, record_lit_type_name_at, resource_use_name_at, resource_use_resource,
     return_value, service_config_auth, service_config_auth_input, service_config_auth_source,
     service_config_endpoint, slice_base, slice_end, slice_start, transport_auth_basic,
@@ -2816,7 +2816,7 @@ pub fn render_rust_alias_rhs_type(
 pub fn type_variable_node(id: String) -> Rc<Node> {
     Rc::new(Node {
         name: "".to_string(),
-        span: make_span(0, 0),
+        span: no_span(),
         ident_span: None,
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
