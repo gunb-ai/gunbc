@@ -1634,7 +1634,7 @@ data codex_runtime_release_publish_note: String = "Publication uses a UNIQUE sam
 // not own would destroy whatever the other writer put there.
 type UniquePublishingRelocateOutcome
   = UniquePublishingRelocateReady {
-      path: FilePath
+      path: std.types.FilePath
     }
   | UniquePublishingPlaceholderNotEmpty
   | UniquePublishingRelocateRefused
@@ -1744,7 +1744,7 @@ fn release_codex_runtime_bundle_immutable(
           ) {
             UniquePublishingPlaceholderNotEmpty =>
               CodexRuntimeReleaseFailed {
-                cause: "unique publishing staging placeholder was not empty (exclusivity violation, not swept)" as NonEmptyStr,
+                cause: "unique publishing staging placeholder was not empty (exclusivity violation, not swept)" as std.types.NonEmptyStr,
               }
             UniquePublishingRelocateRefused =>
               CodexRuntimeReleaseFailed {

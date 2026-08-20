@@ -38,7 +38,7 @@ fn retired_flattened_serve_flags_key_eq(a: std.types.NonEmptyStr, b: std.types.N
   a as String == b as String
 }
 
-data retired_flattened_serve_flags_key_relation: KeyRelation<RetiredFlattenedServeFlagsKeyRelation, TailscaleServeRouteSubject, GlobalKeyScope, NonEmptyStr> = key_relation_global(
+data retired_flattened_serve_flags_key_relation: KeyRelation<RetiredFlattenedServeFlagsKeyRelation, TailscaleServeRouteSubject, GlobalKeyScope, std.types.NonEmptyStr> = key_relation_global(
   key_of: retired_flattened_serve_flags_key,
   key_eq: retired_flattened_serve_flags_key_eq,
 )
@@ -51,7 +51,7 @@ fn tailscale_enable_argv_identity_key_eq(a: std.types.NonEmptyStr, b: std.types.
   a as String == b as String
 }
 
-data tailscale_enable_argv_identity_key_relation: KeyRelation<TailscaleEnableArgvIdentityKeyRelation, TailscaleServeRouteSubject, GlobalKeyScope, NonEmptyStr> = key_relation_global(
+data tailscale_enable_argv_identity_key_relation: KeyRelation<TailscaleEnableArgvIdentityKeyRelation, TailscaleServeRouteSubject, GlobalKeyScope, std.types.NonEmptyStr> = key_relation_global(
   key_of: tailscale_enable_argv_identity_key,
   key_eq: tailscale_enable_argv_identity_key_eq,
 )
@@ -112,7 +112,7 @@ fn tailscale_enable_argv_endpoint_state_eq(a: std.types.NonEmptyStr, b: std.type
   a == b
 }
 
-data tailscale_enable_argv_resource_relation: KeyedResourceRelation<TailscaleEnableArgvIdentityKeyRelation, TailscaleServeRouteSubject, GlobalKeyScope, NonEmptyStr, NonEmptyStr> = std.key_relation.KeyedResourceRelation {
+data tailscale_enable_argv_resource_relation: KeyedResourceRelation<TailscaleEnableArgvIdentityKeyRelation, TailscaleServeRouteSubject, GlobalKeyScope, std.types.NonEmptyStr, std.types.NonEmptyStr> = std.key_relation.KeyedResourceRelation {
   key: tailscale_enable_argv_identity_key_relation,
   state: std.key_relation.StateRelation {
     state_of: tailscale_enable_argv_endpoint_state_of,

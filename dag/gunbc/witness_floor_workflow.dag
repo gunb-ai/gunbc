@@ -469,8 +469,8 @@ fn witness_required_regen_script() -> String {
   )
 }
 
-fn witness_required_regen_step() -> Step {
-  RunStep {
+fn witness_required_regen_step() -> extdeps.github.actions.Step {
+  extdeps.github.actions.RunStep {
     name: Present { value: "Regen fixed point: first generation matches committed candidate" },
     id: Present { value: "required_regen" },
     run: witness_required_regen_script(),
@@ -493,8 +493,8 @@ fn witness_required_regen_fixed_point_script() -> String {
   )
 }
 
-fn witness_required_regen_fixed_point_step() -> Step {
-  RunStep {
+fn witness_required_regen_fixed_point_step() -> extdeps.github.actions.Step {
+  extdeps.github.actions.RunStep {
     name: Present { value: "Regen determinism: G0 emit reproduces itself on a second pass" },
     id: none,
     run: witness_required_regen_fixed_point_script(),

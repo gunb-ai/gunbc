@@ -42,11 +42,11 @@ type ProbeObservation
   | ProbeNotRunnable { cause: std.types.NonEmptyStr }
 
 type ProbeObservationFold<R> {
-  refused: fn(NonEmptyStr, std.nat.Nat) -> R
+  refused: fn(std.types.NonEmptyStr, std.nat.Nat) -> R
   accepted_clean: R
-  accepted_counted: fn(NonEmptyStr, std.nat.Nat) -> R
-  diverged: fn(NonEmptyStr) -> R
-  not_runnable: fn(NonEmptyStr) -> R
+  accepted_counted: fn(std.types.NonEmptyStr, std.nat.Nat) -> R
+  diverged: fn(std.types.NonEmptyStr) -> R
+  not_runnable: fn(std.types.NonEmptyStr) -> R
 }
 
 fn probe_observation_fold<R>(o: ProbeObservation, fold: ProbeObservationFold<R>) -> R {

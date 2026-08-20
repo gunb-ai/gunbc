@@ -13,9 +13,9 @@ type ProbeEffectOnSubject
 
 type ProbeEffectOnSubjectFold<R> {
   inert: R
-  may_establish: fn(NonEmptyStr) -> R
-  answers_without_subject: fn(NonEmptyStr) -> R
-  unknown: fn(NonEmptyStr) -> R
+  may_establish: fn(std.types.NonEmptyStr) -> R
+  answers_without_subject: fn(std.types.NonEmptyStr) -> R
+  unknown: fn(std.types.NonEmptyStr) -> R
 }
 
 fn probe_effect_on_subject_fold<R>(

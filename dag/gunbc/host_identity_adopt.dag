@@ -157,7 +157,7 @@ fn host_identity_adopt_exit(receipt: HostIdentityAdoptReceipt) -> std.process.Pr
 }
 
 fn host_identity_adopt_wet(
-  live: fn(NonEmptyStr) -> HostIdentityAdoptReceipt?,
+  live: fn(std.types.NonEmptyStr) -> HostIdentityAdoptReceipt?,
 ) -> std.process.ProcessExit {
   let probed_at = host_identity_observed_probed_at()
   match live(probed_at) {

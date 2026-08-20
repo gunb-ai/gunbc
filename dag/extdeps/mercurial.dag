@@ -538,7 +538,7 @@ type MercurialRepositoryProjectionFold<R> {
     List<MercurialNodeId>,
     List<MercurialNodeId>,
   ) -> R
-  inaccessible: fn(NonEmptyStr) -> R
+  inaccessible: fn(std.types.NonEmptyStr) -> R
 }
 
 fn mercurial_repository_projection_fold<R>(

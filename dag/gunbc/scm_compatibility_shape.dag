@@ -74,8 +74,8 @@ type CompatibilityFidelityDisposition
 
 type CompatibilityFidelityDispositionFold<R> {
   preserved: fn() -> R
-  downgraded: fn(NonEmptyStr) -> R
-  unavailable: fn(NonEmptyStr) -> R
+  downgraded: fn(std.types.NonEmptyStr) -> R
+  unavailable: fn(std.types.NonEmptyStr) -> R
 }
 
 fn compatibility_fidelity_disposition_fold<R>(
@@ -116,7 +116,7 @@ type CompatibilityAdvanceCapability
 
 type CompatibilityAdvanceCapabilityFold<R> {
   modeled: fn(CompatibilityAdvanceGuarantee) -> R
-  unavailable: fn(NonEmptyStr) -> R
+  unavailable: fn(std.types.NonEmptyStr) -> R
 }
 
 fn compatibility_advance_capability_fold<R>(

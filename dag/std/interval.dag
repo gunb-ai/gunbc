@@ -58,7 +58,7 @@ fn interval_high<T>(interval: OrderedClosedInterval<T>) -> T {
 
 type IntervalConstructionFold<T, R> {
   ready: fn(OrderedClosedInterval<T>) -> R
-  refused: fn(NonEmptyStr) -> R
+  refused: fn(std.types.NonEmptyStr) -> R
 }
 
 fn interval_construction_fold<T, R>(

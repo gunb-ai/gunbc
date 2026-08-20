@@ -277,7 +277,7 @@ fn tailscale_serve_route_subject_value_eq(a: TailscaleServeRouteSubject, b: Tail
   tailscale_endpoint_value_eq(a: a.endpoint, b: b.endpoint)
 }
 
-data tailscale_serve_resource_relation: KeyedResourceRelation<TailscaleServeRouteKeyRelation, TailscaleServeRouteSubject, TailscaleServeScope, TailscaleServeRouteKey, NonEmptyStr> = std.key_relation.KeyedResourceRelation {
+data tailscale_serve_resource_relation: KeyedResourceRelation<TailscaleServeRouteKeyRelation, TailscaleServeRouteSubject, TailscaleServeScope, TailscaleServeRouteKey, std.types.NonEmptyStr> = std.key_relation.KeyedResourceRelation {
   key: tailscale_serve_route_key_relation,
   state: std.key_relation.StateRelation {
     state_of: tailscale_serve_route_endpoint_state_of,

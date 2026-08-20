@@ -93,7 +93,7 @@ service cargo.Build {
   }
 
   operation TestWithCwdEnv {
-    input { workdir: FilePath, cargo_bin: NonEmptyStr, env: List<String> = [], extra_args: List<String> = [] }
+    input { workdir: std.types.FilePath, cargo_bin: std.types.NonEmptyStr, env: List<String> = [], extra_args: List<String> = [] }
     output {
       success: Bool from "exit_success"
       exit_code: Int from "exit_code"

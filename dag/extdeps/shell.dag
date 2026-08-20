@@ -62,7 +62,7 @@ service shell.Find {
   }
 
   operation FilesByNameSorted {
-    input { root: FilePath, name_glob: NonEmptyStr }
+    input { root: std.types.FilePath, name_glob: std.types.NonEmptyStr }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
@@ -291,7 +291,7 @@ service shell.Remove {
   }
 
   operation EmptyDirectory {
-    input { path: FilePath }
+    input { path: std.types.FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["rmdir", "{path}"] }
     exit {
@@ -313,7 +313,7 @@ service shell.Move {
   }
 
   operation NoReplaceDirectory {
-    input { source: FilePath, destination: FilePath }
+    input { source: std.types.FilePath, destination: std.types.FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["mv", "-T", "{source}", "{destination}"] }
     exit {

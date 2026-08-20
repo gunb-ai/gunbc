@@ -206,9 +206,9 @@ type DocSourceKind    = Template | Generated | Static
 
 type FermiDepth = Xs | S | M | L | Xl
 
-type TextFilePath   = FilePath
+type TextFilePath   = std.types.FilePath
 
-type BinaryFilePath = FilePath
+type BinaryFilePath = std.types.FilePath
 
 type MimeType = String
 
@@ -235,7 +235,7 @@ type Credential {
   expires_in: Int?
 }
 
-type FilesystemHandle = FilePath where brand("FilesystemHandle")
+type FilesystemHandle = std.types.FilePath where brand("FilesystemHandle")
 type NetworkHandle    = Unit where brand("NetworkHandle")
 type ToolHandle       = String where brand("ToolHandle")
 

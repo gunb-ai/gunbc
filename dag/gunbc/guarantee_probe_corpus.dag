@@ -114,9 +114,9 @@ type ProbeExpectation
   | ExpectAcceptedCounted { diagnostic_class: std.types.NonEmptyStr }
 
 type ProbeExpectationFold<R> {
-  blocking_refusal: fn(NonEmptyStr) -> R
+  blocking_refusal: fn(std.types.NonEmptyStr) -> R
   zero_diagnostics: R
-  accepted_counted: fn(NonEmptyStr) -> R
+  accepted_counted: fn(std.types.NonEmptyStr) -> R
 }
 
 fn probe_expectation_fold<R>(e: ProbeExpectation, fold: ProbeExpectationFold<R>) -> R {

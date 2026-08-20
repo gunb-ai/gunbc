@@ -20,8 +20,8 @@ type EnsureCompilePoolAdmission
 data cache_placement_unknown_refuses_note: String = "A SERVER WHOSE PLACEMENT CANNOT BE ESTABLISHED IS NOT A CONVERGED SERVER, and ensuring a compile pool beside it would be deciding to parent every cache-miss compiler under a slice whose sibling cache endpoint may still be runner-owned or unread. ServerPlacementUnknown therefore refuses BEFORE slice observation is consulted — the same ordering build_cache_ensure uses for placement-unknown before path state, and for the same reason: unknown is not a positive reading that permits host mutation."
 
 type EnsureCompilePoolAdmissionFold<R> {
-  already_converged: fn(NonEmptyStr, ByteSize) -> R
-  admitted: fn(NonEmptyStr, ByteSize, List<String>) -> R
+  already_converged: fn(std.types.NonEmptyStr, ByteSize) -> R
+  admitted: fn(std.types.NonEmptyStr, ByteSize, List<String>) -> R
   refused: fn(CompilePoolEnsureRefusal) -> R
 }
 

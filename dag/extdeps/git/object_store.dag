@@ -474,9 +474,9 @@ type GitUnavailableObject
   | GitCorruptObject { oid: extdeps.git.object_store.GitObjectId, reason: std.types.NonEmptyStr }
 
 type GitUnavailableObjectFold<R> {
-  promisor: fn(extdeps.git.object_store.GitObjectId, NonEmptyStr) -> R
+  promisor: fn(extdeps.git.object_store.GitObjectId, std.types.NonEmptyStr) -> R
   unexpected_missing: fn(extdeps.git.object_store.GitObjectId) -> R
-  corrupt: fn(extdeps.git.object_store.GitObjectId, NonEmptyStr) -> R
+  corrupt: fn(extdeps.git.object_store.GitObjectId, std.types.NonEmptyStr) -> R
 }
 
 fn git_unavailable_object_fold<R>(

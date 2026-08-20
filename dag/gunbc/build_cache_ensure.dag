@@ -31,7 +31,7 @@ data canonical_fold_note: String = "THE ELIMINATION SURFACE IS A FOLD, NOT A SCA
 
 type EndpointPreflightFold<R> {
   clear_for_bind: R
-  cleared_by_unlink: fn(NonEmptyStr) -> R
+  cleared_by_unlink: fn(std.types.NonEmptyStr) -> R
 }
 
 fn endpoint_preflight_fold<R>(preflight: EndpointPreflight, fold: EndpointPreflightFold<R>) -> R {
@@ -42,7 +42,7 @@ fn endpoint_preflight_fold<R>(preflight: EndpointPreflight, fold: EndpointPrefli
 }
 
 type EnsureBuildCacheAdmissionFold<R> {
-  already_converged: fn(BuildCacheInstance, NonEmptyStr) -> R
+  already_converged: fn(BuildCacheInstance, std.types.NonEmptyStr) -> R
   admitted: fn(BuildCacheInstance, EndpointPreflight, List<String>) -> R
   refused: fn(BuildCacheInstance, EnsureRefusal) -> R
 }

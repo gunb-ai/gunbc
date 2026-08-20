@@ -144,7 +144,7 @@ data unconditional_unlink_sketch_note: String = "THE RED CONTROL, KEPT LIVE RATH
 
 type StaleSocketUnlinkOutcomeFold<R> {
   ready: fn(ArgvCommand) -> R
-  refused: fn(NonEmptyStr) -> R
+  refused: fn(std.types.NonEmptyStr) -> R
 }
 
 fn stale_socket_unlink_outcome_fold<R>(

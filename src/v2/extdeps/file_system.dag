@@ -54,12 +54,12 @@ type FileContent = FileBody
 
 type FileRead {
   resource: FileResource,
-  path: FilePath
+  path: std.types.FilePath
 }
 
 type FileWrite {
   resource: FileResource,
-  path: FilePath,
+  path: std.types.FilePath,
   content: FileContent
 }
 

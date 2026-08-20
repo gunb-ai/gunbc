@@ -80,7 +80,7 @@ fn real_roster_cargo_decision() -> gunbc.cargo_execution_placement.CargoPlacemen
 // the clone failed, or the compile wrongly SUCCEEDED when the test requires it to refuse
 // were indistinguishable, so the failure could not be triaged and therefore could not be
 // ranked or owned.
-fn real_roster_cargo_test_run(root: std.types.FilePath, cargo_bin: std.types.NonEmptyStr, exact_test_name: std.types.String) -> gunbc.cargo_execution_placement.CargoInvocationOutcome {
+fn real_roster_cargo_test_run(root: std.types.FilePath, cargo_bin: std.types.NonEmptyStr, exact_test_name: String) -> gunbc.cargo_execution_placement.CargoInvocationOutcome {
   let run = cargo.Build.TestWithCwdEnv(
     workdir: root,
     cargo_bin: cargo_bin,
@@ -97,7 +97,7 @@ fn real_roster_cargo_test_run(root: std.types.FilePath, cargo_bin: std.types.Non
 // Two sequential invocations, short-circuiting after the first failure — the structured
 // equivalent of `set -euo pipefail` chaining two commands: the second only runs when the
 // first passed, and a failure reports which of the two rows it came from.
-fn real_roster_cargo_run(cargo_bin: std.types.String) -> gunbc.cargo_execution_placement.CargoInvocationOutcome {
+fn real_roster_cargo_run(cargo_bin: String) -> gunbc.cargo_execution_placement.CargoInvocationOutcome {
   let root = git.Inspect.Toplevel()
   let first = real_roster_cargo_test_run(
     root: root.path,

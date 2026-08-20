@@ -8,7 +8,7 @@ type ProbeSelection {
 
 type ProbeKind = ProbeRuntime | ProbeDev
 
-fn node(key: std.types.NonEmptyStr, name: std.types.NonEmptyStr, v: std.types.NonEmptyStr) -> PackageLockNode<NonEmptyStr, ProbeSelection, String> {
+fn node(key: std.types.NonEmptyStr, name: std.types.NonEmptyStr, v: std.types.NonEmptyStr) -> PackageLockNode<std.types.NonEmptyStr, ProbeSelection, String> {
   extdeps.package.PackageLockNode {
     key: key,
     selection: ProbeSelection { name: name, version: v },
@@ -16,7 +16,7 @@ fn node(key: std.types.NonEmptyStr, name: std.types.NonEmptyStr, v: std.types.No
   }
 }
 
-fn graph() -> PackageLockGraph<NonEmptyStr, NonEmptyStr, ProbeSelection, String, ProbeKind> {
+fn graph() -> PackageLockGraph<std.types.NonEmptyStr, std.types.NonEmptyStr, ProbeSelection, String, ProbeKind> {
   extdeps.package.PackageLockGraph {
     manager: "probe-pm" as std.types.NonEmptyStr,
     roots: ["node_modules/a" as std.types.NonEmptyStr],

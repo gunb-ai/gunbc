@@ -56,7 +56,7 @@ type CodexAppServerExecutable {
 // module's method vocabulary was derived from, not a different product surface.
 service codex_app_server.Cli {
   operation GenerateJsonSchema {
-    input { executable: CodexAppServerExecutable, output_dir: FilePath }
+    input { executable: CodexAppServerExecutable, output_dir: std.types.FilePath }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
