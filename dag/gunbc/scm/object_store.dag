@@ -1,6 +1,6 @@
 module gunbc.scm.object_store
 
-import std.types { List, Bool, NonEmptyStr, String }
+import std.types { List, Bool, Int, NonEmptyStr, String }
 import v2.std.node {
   Hash,
   Node,
@@ -57,10 +57,25 @@ type ObjectRecord sole_constructor {
 // The store is a LIST rather than a map, deliberately and temporarily. std.determinism refuses the
 // uniquely named Map projections whose traversal order is host-unspecified, and a store whose
 // iteration order leaked into a digest would make one program hash two ways. A list keeps ordering
-// authored and observable. dissolve-on: a determinism-admitted keyed collection; the lookup below is
-// the only site that would change.
+// authored and observable.
+//
+// WHY THIS IS A REPRESENTATION AND NOT A SCAFFOLD, and what had to change to make that true.
+// `sole_constructor` seals CONSTRUCTION but not field reads, so an earlier revision's claim that
+// "the lookup below is the only site that would change" was false while any consumer could read
+// `.objects` -- and this module's own witness did, four times, to count stored objects. A swap to a
+// keyed collection would have broken those reads, which is precisely what a below-boundary
+// representation is not supposed to do. `store_object_count` exists so that no consumer outside this
+// module names the carrier's shape; with construction sealed and reads routed, the field is genuinely
+// interior and the claim is structural rather than aspirational.
+// dissolve-on: a determinism-admitted keyed collection; find_object and insert_derived are then the
+// only sites that change.
 type ObjectStore sole_constructor {
   objects: List<ObjectRecord>
+}
+
+// How many objects a store holds, without naming how it holds them.
+fn store_object_count(store: ObjectStore) -> Int {
+  length(store.objects)
 }
 
 fn empty_store() -> ObjectStore {
