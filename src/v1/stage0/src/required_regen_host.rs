@@ -275,6 +275,41 @@ pub fn run_required_regen(
     Ok(RequiredRegenOutcome { receipt, failures })
 }
 
+/// Reconcile the two available answers to "what did the first generation emit".
+///
+/// TWO SOURCES FOR ONE FACT, RECONCILED BY REFUSAL RATHER THAN BY PRECEDENCE. The receipt file
+/// is read unconditionally — the cross-tree refusal and the `PriorReceiptRef` are provenance
+/// facts only the file carries — so whenever a caller ALSO supplies the digest in memory it
+/// exists twice. The previous form was `pass1_digest.unwrap_or(prior)`, which silently preferred
+/// the argument: two representations of one fact with a precedence rule, so a disagreement
+/// decided nothing and reported nothing (DESIGN §3).
+///
+/// WHO MADE IT REACHABLE, stated because it changes whose defect this is: until the phases
+/// shared a process every caller passed `None`, so the file was the only source. The composed
+/// `--required-ci` run is what supplies the argument, so the change that creates the second
+/// source is the change that closes it.
+///
+/// AND WHAT IT IS *NOT*: this does not guard an active defect on the composed path. There,
+/// `run_required_regen` writes the receipt and returns the same digest in one pass, so the two
+/// agree by construction and this arm is unreachable. It guards the FUNCTION's contract, for a
+/// caller that supplies a digest against a receipt written by some other run at this commit —
+/// a rebuild between passes, a mutated `target/`, or a first pass that refused after writing.
+/// Extracted from the call site precisely so that claim can be tested without running a
+/// seven-minute emit to reach it.
+fn reconcile_pass1_digest(supplied: Option<String>, prior: &str) -> Result<String, String> {
+    match supplied {
+        Some(supplied) if supplied != prior => Err(format!(
+            "refusal: pass-1 digest disagreement — the caller supplied {supplied} but the \
+             receipt at this commit records {prior}. These are two answers to what the first \
+             generation emitted; the fixed-point comparison is meaningless until they agree. \
+             Re-run `claim_executor --required-regen` at this commit so the receipt and the \
+             in-memory pass agree."
+        )),
+        Some(supplied) => Ok(supplied),
+        None => Ok(prior.to_string()),
+    }
+}
+
 pub fn run_required_regen_fixed_point(
     receipt_rel: &str,
     pass1_digest: Option<String>,
@@ -307,7 +342,7 @@ pub fn run_required_regen_fixed_point(
         ));
     }
 
-    let pass1 = pass1_digest.unwrap_or(prior.candidate_generated_digest);
+    let pass1 = reconcile_pass1_digest(pass1_digest, &prior.candidate_generated_digest)?;
     let sources = super::regen_input_sources(&workspace)?;
     let authority_digest = authority_digest_from_sources(&sources)?;
     let emitted = compile_stage0(&workspace)?;
@@ -959,5 +994,36 @@ mod tests {
         fs::write(src.join("foo.rs"), "fn foo() {}\n").expect("write foo");
         verify_candidate_tree(&src, &["foo.rs".to_string()]).expect("candidate present");
         let _ = fs::remove_dir_all(&tmp);
+    }
+
+    // ENROLLED RED FOR THE DUAL-INPUT REFUSAL. The arm it guards is UNREACHABLE from the
+    // composed `--required-ci` path — there `run_required_regen` writes the receipt and returns
+    // the same digest in one pass, so the two agree by construction — which is exactly why the
+    // decision was extracted from its call site: reaching it through the real function would
+    // require a seven-minute emit, and a wall no test can reach is a wall nobody knows works.
+    //
+    // RED: restoring `pass1_digest.unwrap_or(prior)` makes the disagreement case return Ok and
+    // fails the first assertion. The None and agreeing cases are the positive controls, without
+    // which a function that refused everything would also pass.
+    #[test]
+    fn pass1_digest_disagreement_refuses_rather_than_preferring_one() {
+        let err = reconcile_pass1_digest(Some("supplied-abc".to_string()), "receipt-xyz")
+            .expect_err("two different answers to one fact must refuse");
+        assert!(
+            err.contains("supplied-abc") && err.contains("receipt-xyz"),
+            "the refusal must name BOTH values so the reader sees a contradiction rather than \
+             a comparison whose operand was chosen for them: {err}"
+        );
+
+        assert_eq!(
+            reconcile_pass1_digest(Some("same".to_string()), "same").expect("agreement is fine"),
+            "same",
+            "positive control: agreeing sources are not a refusal"
+        );
+        assert_eq!(
+            reconcile_pass1_digest(None, "from-receipt").expect("no second source, no conflict"),
+            "from-receipt",
+            "positive control: with one source the receipt is simply used"
+        );
     }
 }

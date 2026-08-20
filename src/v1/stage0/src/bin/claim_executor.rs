@@ -12014,8 +12014,17 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
         outcome.stale_route_gap.len(),
         outcome.over_cost_line_diagnostic
     );
-    // One receipt, both numbers. This replaces a per-miss trace line that had no
-    // hit counterpart, so the ratio it is really about was never readable.
+    // ONE receipt, both numbers (#8642). This replaced a per-miss trace line that had no hit
+    // counterpart, so the ratio it is really about was never readable.
+    //
+    // EXACTLY ONE OF THESE MAY EXIST, and a duplicate is not cosmetic: two lines reporting one
+    // pair is the second-representation shape the receipt was introduced to remove, so
+    // duplicating it degrades the property it asserts. There WAS a second copy here briefly —
+    // this function is re-derived from main's inline block on every merge that touches it, and
+    // a note reading "each merge has to graft it back deliberately" instructed the re-add
+    // without saying to check whether main's block already carried it. It did. Caught in
+    // review 54101. The instruction is deleted with the duplicate: re-derivation copies main's
+    // block wholesale, so this line arrives WITH it and needs no grafting.
     let (memo_hits, memo_misses) = v1_compiler::cli_run::compile_dag_rust_emit_check_memo_counts();
     eprintln!(
         "required-floor: compile_dag_rust_emit_check_memo hits={memo_hits} \
@@ -12061,14 +12070,6 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     for stale in &outcome.stale_route_gap {
         eprintln!("required-floor: STALE-ROUTE-GAP {stale}");
     }
-    // One receipt, both numbers (#8642). This replaced a per-miss trace line that had no hit
-    // counterpart, so the ratio it is really about was never readable. It reached main INSIDE
-    // the inline block this function replaced, so each merge has to graft it back deliberately.
-    let (memo_hits, memo_misses) = v1_compiler::cli_run::compile_dag_rust_emit_check_memo_counts();
-    eprintln!(
-        "required-floor: compile_dag_rust_emit_check_memo hits={memo_hits} \
-         misses={memo_misses}"
-    );
 }
 
 /// Whether the floor outcome permits a green run.
