@@ -1589,9 +1589,14 @@ fn v1_item_clone_bounded_param_names(
   }
 }
 
-fn v1_emit_type_params_with_clone_bounds(
+// Trait-agnostic renderer: one axis, keyed on the trait names a param has earned, so a param
+// earning two derivations renders `K: Clone + PartialEq` and a THIRD trait later is a row in the
+// caller's map rather than another parameter on this signature (DESIGN S2 -- model the concept
+// once, derive every use). The trait was previously a hardcoded literal here, which is why adding
+// equality needed this generalization rather than a second renderer beside it.
+fn v1_emit_type_params_with_bounds(
   params: List<Node>,
-  clone_param_names: List<String>,
+  bounds_by_param: Map<String, List<String>>,
   source_indices: Map<String, NewlineIndex>
 ) -> String {
   if params |> count == 0 { "" }
@@ -1599,14 +1604,34 @@ fn v1_emit_type_params_with_clone_bounds(
     let names = params |> map(p =>
       let pname = generic_param_name_at(n: p, source_indices: source_indices)
       let pascal = to_pascal(name: pname)
-      if clone_param_names |> any(c => c == pname) {
-        concat(pascal, ": Clone")
-      } else {
-        pascal
+      match map_get(bounds_by_param, pname) {
+        Present { value: traits } =>
+          if (traits |> count) == 0 {
+            pascal
+          } else {
+            concat(pascal, ": ", traits |> join(separator: " + "))
+          }
+        Absent => pascal
       }
     )
     concat("<", names |> join(separator: ", "), ">")
   }
+}
+
+// Adapter retained at its ORIGINAL signature on purpose: emit_item_type_params_with_clone_bounds
+// calls it, and that caller is out of scope for this lane, so generalizing in place would have
+// forced an edit there. Output is byte-identical to the literal it replaces --
+// concat(pascal, ": ", ["Clone"] |> join(" + ")) is concat(pascal, ": Clone").
+fn v1_emit_type_params_with_clone_bounds(
+  params: List<Node>,
+  clone_param_names: List<String>,
+  source_indices: Map<String, NewlineIndex>
+) -> String {
+  v1_emit_type_params_with_bounds(
+    params: params,
+    bounds_by_param: clone_param_names |> fold(init: empty_map(), f: (m, n) => map_insert(m, n, ["Clone"])),
+    source_indices: source_indices
+  )
 }
 
 fn v1_emit_struct_from_capability_table(
