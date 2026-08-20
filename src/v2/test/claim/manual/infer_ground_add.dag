@@ -174,7 +174,8 @@ fn infer_receipt_interpretation() -> InterpretationAlgebra {
       identity: ^infer_receipt_bind_value
     },
     match: MatchInterpreter {
-      choose_arm: v2.std.runtime.runtime_reject_match_arm
+      choose_arm: v2.std.runtime.runtime_reject_match_arm,
+      identity: ^runtime_reject_match_arm
     }
   }
 }

@@ -166,10 +166,13 @@ fn emit_eval_bind_value(_key: EnvironmentBindingKey, _value: RuntimeValue, env: 
   Accepted { value: env, diagnostics: None }
 }
 
-fn emit_eval_interpretation(call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> Outcome<RuntimeValue>) -> InterpretationAlgebra {
+fn emit_eval_interpretation(
+  call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> Outcome<RuntimeValue>,
+  call_primitive_identity: Symbol
+) -> InterpretationAlgebra {
   InterpretationAlgebra {
     value: ValueInterpreter { allocate_literal: emit_eval_allocate_literal, identity: ^emit_eval_allocate_literal },
-    transform: TransformInterpreter { call_primitive: call_primitive, identity: ^call_primitive },
+    transform: TransformInterpreter { call_primitive: call_primitive, identity: call_primitive_identity },
     branch: BranchInterpreter { choose_branch: emit_eval_choose_branch, identity: ^emit_eval_choose_branch },
     loop: LoopInterpreter { step_loop: emit_eval_step_loop, identity: ^emit_eval_step_loop },
     bind: BindInterpreter { bind_value: emit_eval_bind_value, identity: ^emit_eval_bind_value },
@@ -180,10 +183,10 @@ fn emit_eval_interpretation(call_primitive: fn(Node, List<RuntimeValue>, Evaluat
   }
 }
 
-fn emit_eval_structure_witness() -> InterpretationStructureWitness {
+fn emit_eval_structure_witness(call_primitive_identity: Symbol) -> InterpretationStructureWitness {
   InterpretationStructureWitness {
     allocate_literal: ^emit_eval_allocate_literal,
-    call_primitive: ^emit_eval_call_primitive,
+    call_primitive: call_primitive_identity,
     choose_branch: ^emit_eval_choose_branch,
     step_loop: ^emit_eval_step_loop,
     bind_value: ^emit_eval_bind_value,
@@ -191,11 +194,14 @@ fn emit_eval_structure_witness() -> InterpretationStructureWitness {
   }
 }
 
-fn emit_eval_context(call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> Outcome<RuntimeValue>) -> EvalContext {
+fn emit_eval_context(
+  call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> Outcome<RuntimeValue>,
+  call_primitive_identity: Symbol
+) -> EvalContext {
   eval_context_with_semantics(
     runtime_identity: ^emit_eval_interpretation_pin,
-    interpretation: emit_eval_interpretation(call_primitive: call_primitive),
-    structure_witness: emit_eval_structure_witness()
+    interpretation: emit_eval_interpretation(call_primitive: call_primitive, call_primitive_identity: call_primitive_identity),
+    structure_witness: emit_eval_structure_witness(call_primitive_identity: call_primitive_identity)
   )
 }
 
@@ -236,18 +242,24 @@ fn emit_eval_claim(rhs_result_node: Node) -> TestClaim {
   }
 }
 
-fn emit_eval_subject(call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> Outcome<RuntimeValue>) -> TestClaimEvalSubject<Node> {
+fn emit_eval_subject(
+  call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> Outcome<RuntimeValue>,
+  call_primitive_identity: Symbol
+) -> TestClaimEvalSubject<Node> {
   eval_test_claim_subject(
     claim: emit_eval_claim(rhs_result_node: eval_add_subgraph_node),
-    context: emit_eval_context(call_primitive: call_primitive),
+    context: emit_eval_context(call_primitive: call_primitive, call_primitive_identity: call_primitive_identity),
     tree: emit_eval_subject_tree(),
     evaluator_pin: ^emit_eval_evaluator_pin
   )
 }
 
-fn emit_eval_run(call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> Outcome<RuntimeValue>) -> TestClaimRun<Node, RuntimeValue> {
+fn emit_eval_run(
+  call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> Outcome<RuntimeValue>,
+  call_primitive_identity: Symbol
+) -> TestClaimRun<Node, RuntimeValue> {
   run_test_claim_emit_vs_eval(
-    subject: emit_eval_subject(call_primitive: call_primitive),
+    subject: emit_eval_subject(call_primitive: call_primitive, call_primitive_identity: call_primitive_identity),
     target: rust_target_model_staging()
   )
 }
@@ -273,10 +285,20 @@ fn emit_eval_verdict_is_semantic_mismatch(run: TestClaimRun<Node, RuntimeValue>)
 }
 
 test fn emit_host_add_equals_eval_holds() -> Bool {
-  emit_eval_verdict_is_pass(run: emit_eval_run(call_primitive: emit_eval_call_primitive_five))
+  emit_eval_verdict_is_pass(
+    run: emit_eval_run(
+      call_primitive: emit_eval_call_primitive_five,
+      call_primitive_identity: ^emit_eval_call_primitive_five
+    )
+  )
 }
 
 test fn emit_host_add_wrong_oracle_refuses_holds() -> Bool {
-  emit_eval_verdict_is_semantic_mismatch(run: emit_eval_run(call_primitive: emit_eval_call_primitive_six))
+  emit_eval_verdict_is_semantic_mismatch(
+    run: emit_eval_run(
+      call_primitive: emit_eval_call_primitive_six,
+      call_primitive_identity: ^emit_eval_call_primitive_six
+    )
+  )
 }
 
