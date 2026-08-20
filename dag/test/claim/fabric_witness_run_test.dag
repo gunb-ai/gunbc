@@ -202,3 +202,62 @@ test fn floor_inputs_manifest_ref_folds_the_same_authority() -> Bool {
 test fn floor_contract_keeps_the_parse_gate_as_its_own_step() -> Bool {
   length(xs: floor_work_contract(source: t_source()).steps) == 2
 }
+
+// THE FLOOR IS AN ORDINARY PRICED DEMAND. These pin the two properties that,
+// if they drift, silently turn gunbc's CI back into a privileged path -- which
+// is invisible precisely because everything keeps working when it happens.
+
+// Reuse is disabled for the cutover, and it is disabled ON THE DEMAND. If this
+// ever reads true while the floor's purity is unproven, an identical tree stops
+// re-running and today's Actions behaviour has been changed by a policy edit
+// nobody made deliberately.
+test fn floor_demand_requires_a_new_attempt() -> Bool {
+  let s = floor_satisfaction_requirement()
+  s.new_attempt_required && !s.terminal_receipt_may_satisfy
+}
+
+// Step reuse stays permitted: a materialization provider may accelerate a rerun.
+// That is not the same claim as "the step completed", and the two must not
+// collapse -- a build cache making the second attempt faster is not a receipt.
+test fn floor_demand_still_permits_step_reuse() -> Bool {
+  floor_satisfaction_requirement().step_reuse_permitted
+}
+
+// The buy terms carry a real ceiling that the eligibility fold reads. This is
+// the join between "the floor is priced" and "the price is checked": a demand
+// whose maximum buy order is below an offer's quote must not be eligible for it,
+// and that must hold through the floor's own terms rather than only through the
+// hand-built ones above.
+test fn floor_buy_terms_ceiling_is_the_one_eligibility_reads() -> Bool {
+  let terms = floor_buy_terms(
+    account: "gunbc.budget.ci",
+    reservation_price: money_amount_micro(count: 0),
+    maximum_buy_order: money_amount_micro(count: 5),
+  )
+  !eligible(e: floor_offer_eligibility(
+    offer: t_offer(
+      threads: hardware_thread_count(count: 128),
+      caps: "gunbc.capabilities.linux-rust-toolchain",
+      trust: "gunbc.trust.internal-fleet",
+      quote: t_quote(amount: money_amount_micro(count: 6), currency: Usd),
+    ),
+    maximum_buy_order: terms.maximum_buy_order,
+    budget_currency: terms.currency,
+  ))
+}
+
+// priority_class must not become a privilege escape. This asserts the floor
+// carries an ordinary class string and nothing structural distinguishes it from
+// any other demand's -- there is no field here that could admit an unaffordable
+// demand.
+test fn floor_admission_carries_no_privilege_field() -> Bool {
+  let terms = floor_admission_terms(
+    buy: floor_buy_terms(
+      account: "gunbc.budget.ci",
+      reservation_price: money_amount_micro(count: 0),
+      maximum_buy_order: money_amount_micro(count: 5),
+    ),
+    deadline: none,
+  )
+  terms.priority_class == "gunbc.ci.floor"
+}

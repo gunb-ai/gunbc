@@ -594,3 +594,34 @@ fact. Turning reuse on later must not mean editing what things *are*.
 step_reuse_permitted }` lives on the **Demand**. So identity stays `WorkContentKey`, reuse policy
 rides the Demand, and the cutover's "no reuse" is one Demand-side setting rather than a property
 baked into what a Work *is*.
+
+## 19. The arbitrage runs within an architecture, not across it
+
+I asked for the arch-independent share of CI minutes, on the reasoning that it bounds the pool the
+arbitrage operates over. **That framing was wrong and the number does not gate anything.**
+
+The arbitrage runs **between suppliers at a given architecture**:
+
+```
+arm64 work   ->  our Ampere fleet   vs   rented ARM (Hetzner CAX)
+amd64 work   ->  rented x86 (CPX/CCX) vs  any other x86 supplier
+```
+
+Every arm64 job — *including our entire floor, which is all arm64* — is already a live
+own-vs-rented decision with two real offers. That is exactly the operator's arbitrage (run my CI on
+my hardware, or sell that capacity and rent cheaper) and it requires **zero** architecture-independent
+work to exist.
+
+Architecture-independent work is a **second-order bonus pool** on top: it additionally lets a job
+cross arch lines to whichever is cheapest. Probably small — my guess there was likely right — but it
+is not the mechanism, and I had promoted a second-order term to the load-bearing one. Under that
+reading the pool looked nearly empty; under the correct one it is 100% of our floor plus 100% of
+arm64 customer work, which is measurable from our own usage rather than from a market statistic
+nobody publishes.
+
+**Open quantity, not a blocker:** the second-order cross-arch pool stays unmeasured. Not acquiring
+it is deliberate — this is a revenue lane, not a research project.
+
+**What it changes for the build:** the two-offer condition that makes pricing live rather than
+formal is satisfiable *today* with own-fleet plus one rented ARM offer. That is the next supply
+increment after this slice, and it is what turns the price check from a formality into a market.

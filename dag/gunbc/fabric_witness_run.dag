@@ -1,7 +1,7 @@
 module gunbc.fabric_witness_run
 
 import std.types { NonEmptyStr }
-import std.currency { CurrencyCode }
+import std.currency { CurrencyCode, Usd }
 import std.nat { Nat }
 import std.measure { HardwareThreadCount, hardware_thread_count, MoneyAmountMicro }
 import product.fabric.identity {
@@ -15,6 +15,10 @@ import product.fabric.work {
   ProgramRef, SourceManifestRef, ArtifactManifestRef, EffectContractRef, OutputContractRef,
 }
 import product.fabric.supply { Offer, OfferEligibility, offer_eligibility_for }
+import product.fabric.demand {
+  Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement, BudgetAccountId, ObservationReceiptRef,
+}
+import std.types { Timestamp }
 import extdeps.exec.command { ArgvCommand }
 import gunbc.ci_layer_roots { witness_layer_roots }
 import extdeps.toolchain.types { Architecture, Aarch64 }
@@ -159,4 +163,56 @@ fn floor_offer_eligibility<P>(
     maximum_buy_order: maximum_buy_order,
     budget_currency: budget_currency,
   )
+}
+
+// THE FLOOR'S DEMAND. This is where "ordinary priced demand" stops being a
+// property of a fold's signature and becomes a row someone can read.
+//
+// REUSE IS A POLICY ON THE DEMAND, NOT A PROPERTY OF THE WORK. The cutover runs
+// with terminal_receipt_may_satisfy = false and new_attempt_required = true, so
+// an identical Work that already has an accepted receipt still executes. That
+// is deliberately conservative -- it preserves today's Actions behaviour while
+// the purity of the floor as a function of the tree is unproven -- and it is
+// expressed HERE rather than in the Work key, because turning reuse on later
+// must edit a policy row and not edit what a Work IS. The two were conflated in
+// the plan's own section 13 and in the sign-off that answered it; the carriers
+// never conflated them, which is why this needed no new modeling.
+//
+// step_reuse_permitted stays TRUE: a materialization provider may still
+// accelerate a rerun. That is not the same claim as "the step completed" -- a
+// build cache making the second attempt faster is not a receipt.
+
+fn floor_satisfaction_requirement() -> SatisfactionRequirement {
+  SatisfactionRequirement {
+    terminal_receipt_may_satisfy: false,
+    new_attempt_required: true,
+    step_reuse_permitted: true,
+  }
+}
+
+fn floor_buy_terms(
+  account: BudgetAccountId,
+  reservation_price: MoneyAmountMicro,
+  maximum_buy_order: MoneyAmountMicro,
+) -> BuyTerms {
+  BuyTerms {
+    budget_account: account,
+    currency: Usd,
+    reservation_price: reservation_price,
+    maximum_buy_order: maximum_buy_order,
+  }
+}
+
+// priority_class is NOT a privilege escape. The floor competes on price like any
+// other demand; a priority class orders demands that can all be afforded, it
+// does not admit one that cannot. If this ever becomes the field that lets gunbc
+// jump the queue, the arbitrage has been lost and the opportunity cost of our
+// own work has stopped being computable.
+
+fn floor_admission_terms(buy: BuyTerms, deadline: Timestamp?) -> AdmissionTerms {
+  AdmissionTerms {
+    priority_class: "gunbc.ci.floor",
+    deadline: deadline,
+    buy: buy,
+  }
 }
