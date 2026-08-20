@@ -18404,10 +18404,15 @@ fn parse_dag_module_node(
 
 /// Render a type-annotation node back to the name the corpus writes, generics included.
 fn type_text(node: &v1_compiler::v1_std_core::Node) -> String {
-    if node.params.is_empty() {
+    // Generic ARGUMENTS are children of the type node. Reading `params` instead rendered
+    // `List<AxisComparison>` as bare `List`, which then failed the `List<` prefix test and fell
+    // through to "not a closed type declared by this authority" — a refusal naming the wrong
+    // cause for an entire population, and the reason the first corpus histogram had no List row
+    // at all despite lists being the second-largest blocker.
+    let args: Vec<String> = node.children.iter().map(|c| type_text(c)).collect();
+    if args.is_empty() {
         return node.name.clone();
     }
-    let args: Vec<String> = node.params.iter().map(|p| type_text(p)).collect();
     format!("{}<{}>", node.name, args.join(", "))
 }
 
@@ -18450,12 +18455,17 @@ fn type_decls_from_module(
                 }
             }
             Connective::Conj => {
+                // A field's TYPE is its child, exactly as a parameter's is. Reading
+                // `type_annotation` here yielded no fields for every record, so each one was
+                // dropped from the type environment and later refused as "not a closed type
+                // declared by this authority" — false, and pointing at the wrong repair.
                 let fields: Vec<(String, String)> = decl
                     .children
                     .iter()
                     .filter_map(|f| {
-                        f.type_annotation
-                            .as_ref()
+                        f.children
+                            .iter()
+                            .next()
                             .map(|t| (f.name.clone(), type_text(t)))
                     })
                     .collect();
@@ -18741,24 +18751,48 @@ struct DagFnSignature {
 /// line and then took the parameter list up to the first `)` on that same line, so a signature
 /// spanning lines produced no entry at all -- 14 of `v1.compiler.emit_rust`'s 631 went missing
 /// that way, and only a declared-versus-parsed counter made the gap visible rather than reading
-/// as a module with a smaller surface. A function is an `Arrow` node with its parameters already
-/// separated from its body, so none of that arises here.
+/// as a module with a smaller surface. The parser has already separated a declaration's
+/// parameters from its body, so none of that arises here.
+///
+/// That same counter then caught THIS function selecting on the wrong discriminator, which is why
+/// it is kept rather than retired once the parser owned the read: two independent readers of one
+/// fact disagreeing is the only cheap signal that one of them is wrong.
 fn fn_signatures_from_module(module: &v1_compiler::v1_std_core::Node) -> Vec<DagFnSignature> {
     use v1_compiler::v1_std_core::Connective;
     let mut out = Vec::new();
     for decl in module.children.iter() {
-        if decl.connective != Connective::Arrow {
+        // A declaration is a FUNCTION exactly when it carries a body. Measured against the live
+        // tree rather than assumed: `std.pareto`'s items report `compare_int` and friends as
+        // `conn=NoConnective children=0 params=N body=true`, while its types report `Disj` with
+        // variants or `Conj` with fields and no body. `Connective::Arrow` — which an earlier
+        // revision selected on — marks a `Callable` TYPE EXPRESSION, not a declaration, so that
+        // filter matched nothing and every module reported `parsed=0`.
+        // A FUNCTION carries a body AND a resolved return type in `inferred`. A `data` row also
+        // carries a body, which is why selecting on the body alone over-counted: `std.pareto`
+        // reported 36 parsed against 33 authored `fn` lines, its three `data` rows swept in.
+        // Measured discriminator — `data no_names: List<NonEmptyStr> = []` reports
+        // `ta=Some("List") inf=none`, while every function reports `ta=None inf=Resolved{..}`:
+        // the declared type of a constant lives in `type_annotation`, a function's return type in
+        // `inferred`.
+        let (Some(_), Some(_)) = (decl.body.as_ref(), decl.inferred.as_ref()) else {
             continue;
-        }
-        let params = decl
+        };
+        // A parameter's TYPE is its single CHILD, not a `type_annotation`. Measured: every
+        // parameter in `std.pareto` reports `ta=None children=1`. An earlier revision read
+        // `type_annotation`, got `None` for every parameter, and derived the empty string as the
+        // type name — so all 514 corpus refusals named the SAME empty type and the blocker
+        // histogram collapsed to one meaningless row. A refusal that names nothing ranks nothing,
+        // which is the defect this whole fragment exists to remove, reproduced in its purest form.
+        let params: Vec<(String, String)> = decl
             .params
             .iter()
             .map(|p| {
                 let ty = p
-                    .type_annotation
-                    .as_ref()
+                    .children
+                    .iter()
+                    .next()
                     .map(|t| type_text(t))
-                    .unwrap_or_default();
+                    .unwrap_or_else(|| "<parameter with no type node>".to_string());
                 (p.name.clone(), ty)
             })
             .collect();
