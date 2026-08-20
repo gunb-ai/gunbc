@@ -83,6 +83,14 @@ pub fn run_required_regen(
     }
 
     let sync = compare_generated_surfaces(&stage0_src, &emitted, &committed_basenames)?;
+    // The hand-file comparison normalizes through rustfmt on disk, so its scratch directory has
+    // to EXIST before it runs. It is handed `candidate_dir`, which at this point in the run is
+    // created only by the later `write_emitted_tree` -- so on a clean checkout every hand file
+    // reported `unverifiable: write .../committed.rs: No such file or directory`, an infra failure
+    // wearing the shape of a real finding, and `first_generation_equal` was false because of it.
+    // It only ever passed on a machine where a PREVIOUS run had left the directory behind.
+    fs::create_dir_all(&candidate_dir)
+        .map_err(|e| format!("create {}: {e}", candidate_dir.display()))?;
     let hand = verify_hand_maintained(&emitted, &stage0_src, &candidate_dir)?;
 
     let committed_digest =
