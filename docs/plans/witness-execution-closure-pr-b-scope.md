@@ -18,7 +18,28 @@ failed=0 route_gap=0 stale_route_gap=0 host_tool_unresolved=0
 `passed` / `known_red_held` / `route_gap` / `declined_*` are already disjoint and already
 printed. What is NOT yet true is the per-ROW label, below.
 
-## 1. The row label is a Bool where the run has five states
+## 1. The row label — LANDED, not PR B work
+
+**Superseded 2026-08-20 by #8642 plus this branch's merge, and recorded rather than deleted so
+the reasoning survives its own resolution.**
+
+#8642 (`CI console: delete the warn tier, split the one-bit verdict, count the memo`) replaced
+`passed: Bool` with `verdict: CiWitnessVerdict` at the same authority named below, so a held
+expected-red now prints `KNOWN-RED` and the misread that motivated this item cannot recur.
+
+One state remained that #8642 could not have known about, because it did not exist on main when
+that change was written: the route gap. Merging main into this branch made
+`CiWitnessVerdict::from_outcome` non-exhaustive over the widened `ClaimOutcome`, which forced
+the decision rather than allowing a default — `WitnessRouteGap` / `NO-ROUTE` is now the eighth
+arm, and the cross-representation distinctness witness was widened from seven to eight so it
+does not keep passing while silently no longer being complete.
+
+The original statement of the defect is kept below, because it is the evidence for why the
+eighth arm is not optional.
+
+### The original finding
+
+### (superseded) The row label is a Bool where the run has five states
 
 **Measured, not argued.** In the PR A fold log, a row the fold deliberately holds prints:
 
