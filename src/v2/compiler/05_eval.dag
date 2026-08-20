@@ -19,8 +19,8 @@ type Inputs {
 fn inputs_root_only(root: v2.std.node.Node) -> Inputs {
   Inputs {
     root: root,
-    expected_eval_root: optional_absent(),
-    host_claim_pin: optional_absent()
+    expected_eval_root: v2.std.optional.optional_absent(),
+    host_claim_pin: v2.std.optional.optional_absent()
   }
 }
 
@@ -39,8 +39,8 @@ fn inputs_for_emit_host(
 ) -> Inputs {
   Inputs {
     root: claim_input_root,
-    expected_eval_root: optional_present(value: expected_eval_root),
-    host_claim_pin: optional_present(value: symbol_atom_node(sym: claim_pin))
+    expected_eval_root: v2.std.optional.optional_present(value: expected_eval_root),
+    host_claim_pin: v2.std.optional.optional_present(value: symbol_atom_node(sym: claim_pin))
   }
 }
 
@@ -96,7 +96,7 @@ fn eval_context_with_effect_io(
   backend: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend,
   store: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoFixtureStore
 ) -> EvalContext {
-  let handler_bundle = effect_io_pure_handler_binding(store: store)
+  let handler_bundle = v2.extdeps.runtimes.v2_effect_io_pure.effect_io_pure_handler_binding(store: store)
   EvalContext {
     cache_authority: InterpretationCacheAuthority {
       runtime_identity: runtime_identity,
@@ -122,22 +122,22 @@ fn eval_context_with_effect_io(
 fn eval_context_v4_evaluator() -> EvalContext {
   eval_context_with_semantics(
     runtime_identity: ^v2_evaluator_runtime_id,
-    interpretation: v2_evaluator_interpretation(),
-    structure_witness: v2_evaluator_interpretation_structure_witness()
+    interpretation: v2.extdeps.runtimes.v2_evaluator.v2_evaluator_interpretation(),
+    structure_witness: v2.extdeps.runtimes.v2_evaluator.v2_evaluator_interpretation_structure_witness()
   )
 }
 
 fn interpretation_structure_witness_slots_digest(w: v2.std.runtime.InterpretationStructureWitness) -> v2.std.node.Hash {
-  combine_hash(
-    a: combine_hash(
-      a: combine_hash(
-        a: combine_hash(
+  v2.std.node.combine_hash(
+    a: v2.std.node.combine_hash(
+      a: v2.std.node.combine_hash(
+        a: v2.std.node.combine_hash(
           a: test_claim_symbol_digest(sym: w.allocate_literal),
           b: test_claim_symbol_digest(sym: w.call_primitive)
         ),
         b: test_claim_symbol_digest(sym: w.choose_branch)
       ),
-      b: combine_hash(
+      b: v2.std.node.combine_hash(
         a: test_claim_symbol_digest(sym: w.step_loop),
         b: test_claim_symbol_digest(sym: w.bind_value)
       )
@@ -150,115 +150,58 @@ fn interpretation_structure_witness_digest(
   runtime_identity: v2.std.node.Symbol,
   structure_witness: v2.std.runtime.InterpretationStructureWitness
 ) -> v2.std.node.Hash {
-  combine_hash(
+  v2.std.node.combine_hash(
     a: test_claim_symbol_digest(sym: runtime_identity),
     b: interpretation_structure_witness_slots_digest(w: structure_witness)
   )
 }
 
 fn interpretation_value_interpreter_executed_digest(v: v2.std.runtime.ValueInterpreter) -> v2.std.node.Hash {
-  if v.allocate_literal == v2_eval_allocate_literal {
-    test_claim_symbol_digest(sym: ^v2_eval_allocate_literal_sym)
-  } else if v.allocate_literal == v2_eval_represent_literal {
-    test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_fn_slot_represent_literal_tag)
-  } else {
-    test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_fn_slot_unregistered_allocate_tag)
-  }
+  test_claim_symbol_digest(sym: v.identity)
 }
 
 fn interpretation_transform_interpreter_executed_digest(t: v2.std.runtime.TransformInterpreter) -> v2.std.node.Hash {
-  if t.call_primitive == v2_eval_call_primitive {
-    test_claim_symbol_digest(sym: ^v2_eval_call_primitive_sym)
-  } else {
-    test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_fn_slot_unregistered_call_primitive_tag)
-  }
+  test_claim_symbol_digest(sym: t.identity)
 }
 
 fn interpretation_branch_interpreter_executed_digest(b: v2.std.runtime.BranchInterpreter) -> v2.std.node.Hash {
-  if b.choose_branch == v2_eval_choose_branch {
-    test_claim_symbol_digest(sym: ^v2_eval_choose_branch_sym)
-  } else {
-    test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_fn_slot_unregistered_branch_tag)
-  }
+  test_claim_symbol_digest(sym: b.identity)
 }
 
 fn interpretation_loop_interpreter_executed_digest(l: v2.std.runtime.LoopInterpreter) -> v2.std.node.Hash {
-  if l.step_loop == v2_eval_step_loop {
-    test_claim_symbol_digest(sym: ^v2_eval_step_loop_sym)
-  } else {
-    test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_fn_slot_unregistered_loop_tag)
-  }
+  test_claim_symbol_digest(sym: l.identity)
 }
 
 fn interpretation_bind_interpreter_executed_digest(b: v2.std.runtime.BindInterpreter) -> v2.std.node.Hash {
-  if b.bind_value == v2_eval_bind_value {
-    test_claim_symbol_digest(sym: ^v2_eval_bind_value_sym)
-  } else {
-    test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_fn_slot_unregistered_bind_tag)
-  }
+  test_claim_symbol_digest(sym: b.identity)
 }
 
-// match_pattern's InterpretationAlgebra sibling is the match slot: choose_arm.
-// The registered v4 evaluator wires choose_arm to runtime_reject_match_arm (Match
-// eval is unimplemented, not absent), so that is the recognized identity here,
-// same as every other slot recognizing its registered production function.
 fn interpretation_match_interpreter_executed_digest(m: v2.std.runtime.MatchInterpreter) -> v2.std.node.Hash {
-  if m.choose_arm == runtime_reject_match_arm {
-    test_claim_symbol_digest(sym: ^runtime_reject_match_arm)
-  } else {
-    test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_fn_slot_unregistered_match_tag)
-  }
+  test_claim_symbol_digest(sym: m.identity)
 }
 
 fn interpretation_value_interpreter_slot_coherent(v: v2.std.runtime.ValueInterpreter, witness_sym: v2.std.node.Symbol) -> Bool {
-  if v.allocate_literal == v2_eval_allocate_literal {
-    test_claim_symbol_digest(sym: ^v2_eval_allocate_literal_sym) == test_claim_symbol_digest(sym: witness_sym)
-  } else if v.allocate_literal == v2_eval_represent_literal {
-    test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_fn_slot_represent_literal_tag) == test_claim_symbol_digest(sym: witness_sym)
-  } else {
-    false
-  }
+  v.identity == witness_sym
 }
 
 fn interpretation_transform_interpreter_slot_coherent(t: v2.std.runtime.TransformInterpreter, witness_sym: v2.std.node.Symbol) -> Bool {
-  if t.call_primitive == v2_eval_call_primitive {
-    test_claim_symbol_digest(sym: ^v2_eval_call_primitive_sym) == test_claim_symbol_digest(sym: witness_sym)
-  } else {
-    false
-  }
+  t.identity == witness_sym
 }
 
 fn interpretation_branch_interpreter_slot_coherent(b: v2.std.runtime.BranchInterpreter, witness_sym: v2.std.node.Symbol) -> Bool {
-  if b.choose_branch == v2_eval_choose_branch {
-    test_claim_symbol_digest(sym: ^v2_eval_choose_branch_sym) == test_claim_symbol_digest(sym: witness_sym)
-  } else {
-    false
-  }
+  b.identity == witness_sym
 }
 
 fn interpretation_loop_interpreter_slot_coherent(l: v2.std.runtime.LoopInterpreter, witness_sym: v2.std.node.Symbol) -> Bool {
-  if l.step_loop == v2_eval_step_loop {
-    test_claim_symbol_digest(sym: ^v2_eval_step_loop_sym) == test_claim_symbol_digest(sym: witness_sym)
-  } else {
-    false
-  }
+  l.identity == witness_sym
 }
 
 fn interpretation_bind_interpreter_slot_coherent(b: v2.std.runtime.BindInterpreter, witness_sym: v2.std.node.Symbol) -> Bool {
-  if b.bind_value == v2_eval_bind_value {
-    test_claim_symbol_digest(sym: ^v2_eval_bind_value_sym) == test_claim_symbol_digest(sym: witness_sym)
-  } else {
-    false
-  }
+  b.identity == witness_sym
 }
 
 fn interpretation_match_interpreter_slot_coherent(m: v2.std.runtime.MatchInterpreter, witness_sym: v2.std.node.Symbol) -> Bool {
-  if m.choose_arm == runtime_reject_match_arm {
-    test_claim_symbol_digest(sym: ^runtime_reject_match_arm) == test_claim_symbol_digest(sym: witness_sym)
-  } else {
-    false
-  }
-}
+  m.identity == witness_sym}
 
 fn interpretation_structure_witness_coherent(
   interpretation: v2.std.runtime.InterpretationAlgebra,
@@ -273,16 +216,16 @@ fn interpretation_structure_witness_coherent(
 }
 
 fn interpretation_algebra_executed_slots_digest(interpretation: v2.std.runtime.InterpretationAlgebra) -> v2.std.node.Hash {
-  combine_hash(
-    a: combine_hash(
-      a: combine_hash(
-        a: combine_hash(
+  v2.std.node.combine_hash(
+    a: v2.std.node.combine_hash(
+      a: v2.std.node.combine_hash(
+        a: v2.std.node.combine_hash(
           a: interpretation_value_interpreter_executed_digest(v: interpretation.value),
           b: interpretation_transform_interpreter_executed_digest(t: interpretation.transform)
         ),
         b: interpretation_branch_interpreter_executed_digest(b: interpretation.branch)
       ),
-      b: combine_hash(
+      b: v2.std.node.combine_hash(
         a: interpretation_loop_interpreter_executed_digest(l: interpretation.loop),
         b: interpretation_bind_interpreter_executed_digest(b: interpretation.bind)
       )
@@ -296,7 +239,7 @@ fn interpretation_algebra_executed_structure_digest(
   interpretation: v2.std.runtime.InterpretationAlgebra,
   structure_witness: v2.std.runtime.InterpretationStructureWitness
 ) -> v2.std.node.Hash {
-  let executed = combine_hash(
+  let executed = v2.std.node.combine_hash(
     a: test_claim_symbol_digest(sym: runtime_identity),
     b: interpretation_algebra_executed_slots_digest(interpretation: interpretation)
   )
@@ -306,7 +249,7 @@ fn interpretation_algebra_executed_structure_digest(
   ) {
     executed
   } else {
-    combine_hash(
+    v2.std.node.combine_hash(
       a: executed,
       b: interpretation_structure_witness_digest(
         runtime_identity: runtime_identity,
@@ -319,7 +262,7 @@ fn interpretation_algebra_executed_structure_digest(
 fn interpretation_v4_evaluator_registry_semantics_digest(
   interpretation: v2.std.runtime.InterpretationAlgebra
 ) -> v2.std.node.Hash {
-  combine_hash(
+  v2.std.node.combine_hash(
     a: test_claim_symbol_digest(sym: ^v2_evaluator_runtime_id),
     b: interpretation_algebra_executed_slots_digest(interpretation: interpretation)
   )
@@ -331,7 +274,7 @@ fn interpretation_registry_semantics_digest(
   _structure_witness: v2.std.runtime.InterpretationStructureWitness
 ) -> v2.std.node.Hash {
   if runtime_identity == ^v2_evaluator_runtime_id {
-    if interpretation == v2_evaluator_interpretation() {
+    if interpretation == v2.extdeps.runtimes.v2_evaluator.v2_evaluator_interpretation() {
       interpretation_v4_evaluator_registry_semantics_digest(interpretation: interpretation)
     } else {
       test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_semantics_mismatch_tag)
@@ -375,7 +318,7 @@ type TestClaimCacheReceipt<T> {
 
 type TestClaimRun<S, A> {
   cache: TestClaimCacheReceipt<S>
-  verdict: Verdict<TestClaimEvalSubject<S>, A>
+  verdict: v2.std.verdict.Verdict<TestClaimEvalSubject<S>, A>
 }
 
 fn test_claim_cache_key_claim<T>(key: TestClaimCacheKey<T>) -> v2.std.verification.TestClaim {
@@ -390,7 +333,7 @@ fn test_claim_run_claim<S, A>(run: TestClaimRun<S, A>) -> v2.std.verification.Te
   test_claim_cache_receipt_claim(receipt: run.cache)
 }
 
-fn test_claim_run_verdict<S, A>(run: TestClaimRun<S, A>) -> Verdict<TestClaimEvalSubject<S>, A> {
+fn test_claim_run_verdict<S, A>(run: TestClaimRun<S, A>) -> v2.std.verdict.Verdict<TestClaimEvalSubject<S>, A> {
   run.verdict
 }
 
@@ -398,7 +341,7 @@ type EvalFoldState {
   node: v2.std.node.Node
   progress: EvalProgress
   structural: v2.std.diagnostic.Outcome<v2.std.node.Node>
-  child_values: v2.std.diagnostic.Outcome<List<v2.std.runtime.RuntimeValue>>
+  child_values: v2.std.diagnostic.Outcome<std.types.List<v2.std.runtime.RuntimeValue>>
   value: v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>
 }
 
@@ -423,11 +366,11 @@ fn test_claim_cache_digest_tag_node(tag: v2.std.node.Symbol) -> v2.std.node.Node
 }
 
 fn test_claim_evaluation_nodes_digest(c: v2.std.verification.TestClaim) -> v2.std.node.Hash {
-  fold_list(
-    xs: test_claim_evaluation_nodes(c: c),
-    empty: content_hash(n: test_claim_cache_digest_tag_node(tag: ^test_claim_cache_claim_digest_tag)),
+  v2.std.algebra.fold_list(
+    xs: v2.std.verification.test_claim_evaluation_nodes(c: c),
+    empty: v2.std.node.content_hash(n: test_claim_cache_digest_tag_node(tag: ^test_claim_cache_claim_digest_tag)),
     cons: fn(acc, n) {
-      combine_hash(a: acc, b: content_hash(n: n))
+      v2.std.node.combine_hash(a: acc, b: v2.std.node.content_hash(n: n))
     }
   )
 }
@@ -448,12 +391,12 @@ fn no_correction_reason_digest(reason: v2.std.diagnostic.NoCorrectionReason) -> 
 fn correction_verdict_digest(c: v2.std.diagnostic.Correction) -> v2.std.node.Hash {
   match c {
     Suggested { node: n } =>
-      combine_hash(
+      v2.std.node.combine_hash(
         a: test_claim_symbol_digest(sym: ^test_claim_cache_correction_suggested_tag),
-        b: content_hash(n: n)
+        b: v2.std.node.content_hash(n: n)
       )
     Unavailable { reason: r } =>
-      combine_hash(
+      v2.std.node.combine_hash(
         a: test_claim_symbol_digest(sym: ^test_claim_cache_correction_unavailable_tag),
         b: no_correction_reason_digest(reason: r)
       )
@@ -467,9 +410,9 @@ fn byte_offset_cache_key_extent_component(key: v2.std.node.ByteOffsetCacheKey) -
       boundary_tag: boundary_tag,
       witness: witness
     } =>
-      combine_hash(
+      v2.std.node.combine_hash(
         a: test_claim_symbol_digest(sym: ^test_claim_cache_byte_offset_cache_ineligible_tag),
-        b: combine_hash(
+        b: v2.std.node.combine_hash(
           a: test_claim_symbol_digest(sym: boundary_tag),
           b: witness
         )
@@ -482,12 +425,12 @@ fn extent_cache_digest(e: v2.std.diagnostic.Extent) -> v2.std.node.Hash {
     WholeFile =>
       test_claim_symbol_digest(sym: ^test_claim_cache_extent_whole_file_tag)
     ByteRange { start: sa, end: ea } =>
-      combine_hash(
-        a: combine_hash(
+      v2.std.node.combine_hash(
+        a: v2.std.node.combine_hash(
           a: test_claim_symbol_digest(sym: ^test_claim_cache_extent_byte_range_tag),
-          b: byte_offset_cache_key_extent_component(key: byte_offset_cache_key(i: sa))
+          b: byte_offset_cache_key_extent_component(key: v2.std.node.byte_offset_cache_key(i: sa))
         ),
-        b: byte_offset_cache_key_extent_component(key: byte_offset_cache_key(i: ea))
+        b: byte_offset_cache_key_extent_component(key: v2.std.node.byte_offset_cache_key(i: ea))
       )
   }
 }
@@ -495,19 +438,19 @@ fn extent_cache_digest(e: v2.std.diagnostic.Extent) -> v2.std.node.Hash {
 fn locus_cache_digest(at: v2.std.diagnostic.Locus) -> v2.std.node.Hash {
   match at {
     NodeLocus { anchor: a } =>
-      combine_hash(
+      v2.std.node.combine_hash(
         a: test_claim_symbol_digest(sym: ^test_claim_cache_locus_node_tag),
-        b: content_hash(n: a.at)
+        b: v2.std.node.content_hash(n: a.at)
       )
     PortLocus { anchor: a } =>
-      combine_hash(
+      v2.std.node.combine_hash(
         a: test_claim_symbol_digest(sym: ^test_claim_cache_locus_port_tag),
         b: test_claim_symbol_digest(sym: a.at)
       )
     Textual { file: f, extent: e } =>
-      combine_hash(
+      v2.std.node.combine_hash(
         a: test_claim_symbol_digest(sym: ^test_claim_cache_locus_textual_tag),
-        b: combine_hash(
+        b: v2.std.node.combine_hash(
           a: test_claim_symbol_digest(sym: f),
           b: extent_cache_digest(e: e)
         )
@@ -516,31 +459,31 @@ fn locus_cache_digest(at: v2.std.diagnostic.Locus) -> v2.std.node.Hash {
 }
 
 fn diagnostic_cache_digest(d: v2.std.diagnostic.Diagnostic) -> v2.std.node.Hash {
-  combine_hash(
+  v2.std.node.combine_hash(
     a: locus_cache_digest(at: d.at),
-    b: combine_hash(
+    b: v2.std.node.combine_hash(
       a: test_claim_symbol_digest(sym: d.reason),
       b: correction_verdict_digest(c: d.correction)
     )
   )
 }
 
-fn diagnostic_tail_bag_cache_digest(xs: List<v2.std.diagnostic.Diagnostic>) -> v2.std.node.Hash {
-  bag_hash_digest(
+fn diagnostic_tail_bag_cache_digest(xs: std.types.List<v2.std.diagnostic.Diagnostic>) -> v2.std.node.Hash {
+  v2.std.node.bag_hash_digest(
     empty: test_claim_symbol_digest(sym: ^test_claim_cache_diagnostic_tail_bag_empty_tag),
     xs: map(xs, diag => diagnostic_cache_digest(d: diag))
   )
 }
 
 fn non_empty_diagnostics_cache_digest(d: v2.std.diagnostic.NonEmptyDiagnostics) -> v2.std.node.Hash {
-  combine_hash(
+  v2.std.node.combine_hash(
     a: diagnostic_cache_digest(d: d.head),
     b: diagnostic_tail_bag_cache_digest(xs: d.tail)
   )
 }
 
 fn test_claim_variant_cache_digest(c: v2.std.verification.TestClaim) -> v2.std.node.Hash {
-  match test_claim_coproduct_variant(c: c) {
+  match v2.std.verification.test_claim_coproduct_variant(c: c) {
     TestClaimCompilesClaimVariant =>
       test_claim_symbol_digest(sym: ^test_claim_cache_variant_compiles_tag)
     TestClaimDiagnosticClaimVariant =>
@@ -560,7 +503,7 @@ fn test_claim_claim_body_cache_digest(c: v2.std.verification.TestClaim) -> v2.st
     CompilesClaim { label: _, anchor: _, input: _, expected_value: _, classification: _ } =>
       nodes_digest
     DiagnosticClaim { expected_rejection: e, label: _, anchor: _, classification: _, input: _ } =>
-      combine_hash(a: nodes_digest, b: non_empty_diagnostics_cache_digest(d: e))
+      v2.std.node.combine_hash(a: nodes_digest, b: non_empty_diagnostics_cache_digest(d: e))
     EqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } =>
       nodes_digest
     StructuralEqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } =>
@@ -571,20 +514,20 @@ fn test_claim_claim_body_cache_digest(c: v2.std.verification.TestClaim) -> v2.st
 }
 
 fn test_claim_claim_hash_digest(c: v2.std.verification.TestClaim) -> v2.std.node.Hash {
-  combine_hash(
+  v2.std.node.combine_hash(
     a: test_claim_variant_cache_digest(c: c),
     b: test_claim_claim_body_cache_digest(c: c)
   )
 }
 
 fn test_claim_symbol_digest(sym: v2.std.node.Symbol) -> v2.std.node.Hash {
-  content_hash(n: test_claim_cache_digest_tag_node(tag: sym))
+  v2.std.node.content_hash(n: test_claim_cache_digest_tag_node(tag: sym))
 }
 
 fn structural_property_witness_digest(w: v2.std.witness.StructuralPropertyWitness) -> v2.std.node.Hash {
-  combine_hash(
+  v2.std.node.combine_hash(
     a: test_claim_symbol_digest(sym: w.property),
-    b: content_hash(n: w.evidence)
+    b: v2.std.node.content_hash(n: w.evidence)
   )
 }
 
@@ -593,33 +536,33 @@ fn ranking_dimension_digest(d: v2.std.cardinality.RankingDimension) -> v2.std.no
 }
 
 fn termination_proof_digest(proof: v2.std.cardinality.TerminationProof) -> v2.std.node.Hash {
-  combine_hash(
+  v2.std.node.combine_hash(
     a: ranking_dimension_digest(d: proof.strict),
-    b: fold_list(
+    b: v2.std.algebra.fold_list(
       xs: proof.non_increasing,
       empty: test_claim_symbol_digest(sym: ^test_claim_cache_termination_non_increasing_empty_tag),
       cons: fn(acc, d) {
-        combine_hash(a: acc, b: ranking_dimension_digest(d: d))
+        v2.std.node.combine_hash(a: acc, b: ranking_dimension_digest(d: d))
       }
     )
   )
 }
 
 fn witness_cache_holds_digest(payload: v2.std.node.Hash) -> v2.std.node.Hash {
-  combine_hash(
+  v2.std.node.combine_hash(
     a: test_claim_symbol_digest(sym: ^test_claim_cache_witness_holds_tag),
     b: payload
   )
 }
 
 fn witness_cache_violates_digest(diag: v2.std.diagnostic.Diagnostic) -> v2.std.node.Hash {
-  combine_hash(
+  v2.std.node.combine_hash(
     a: test_claim_symbol_digest(sym: ^test_claim_cache_witness_violates_tag),
     b: diagnostic_cache_digest(d: diag)
   )
 }
 
-fn descent_witness_digest(d: Witness<v2.std.cardinality.TerminationProof>) -> v2.std.node.Hash {
+fn descent_witness_digest(d: v2.std.witness.Witness<v2.std.cardinality.TerminationProof>) -> v2.std.node.Hash {
   match d {
     Holds { value: proof } =>
       witness_cache_holds_digest(payload: termination_proof_digest(proof: proof))
@@ -638,30 +581,30 @@ fn eval_grounding_not_derived_digest_node() -> v2.std.node.Node {
 fn inferred_facts_digest(facts: v2.compiler.inferred_tree.InferredFacts) -> v2.std.node.Hash {
   match facts.grounding {
     DerivedGrounding { grounding: g } =>
-      combine_hash(
-        a: content_hash(n: g.node),
-        b: combine_hash(
-          a: combine_hash(
+      v2.std.node.combine_hash(
+        a: v2.std.node.content_hash(n: g.node),
+        b: v2.std.node.combine_hash(
+          a: v2.std.node.combine_hash(
             a: structural_property_witness_digest(w: g.witness.structural),
             b: structural_property_witness_digest(w: g.witness.closedness)
           ),
-          b: descent_witness_digest(d: inferred_facts_descent(facts: facts))
+          b: descent_witness_digest(d: v2.compiler.infer.inferred_facts_descent(facts: facts))
         )
       )
     GroundingNotDerived { node: n } =>
-      combine_hash(
-        a: combine_hash(
-          a: content_hash(n: eval_grounding_not_derived_digest_node()),
-          b: content_hash(n: n)
+      v2.std.node.combine_hash(
+        a: v2.std.node.combine_hash(
+          a: v2.std.node.content_hash(n: eval_grounding_not_derived_digest_node()),
+          b: v2.std.node.content_hash(n: n)
         ),
-        b: descent_witness_digest(d: inferred_facts_descent(facts: facts))
+        b: descent_witness_digest(d: v2.compiler.infer.inferred_facts_descent(facts: facts))
       )
   }
 }
 
 fn inferred_node_facts_cache_digest(tree: v2.compiler.inferred_tree.InferredTree, node: v2.std.node.Node) -> v2.std.node.Hash {
-  combine_hash(
-    a: content_hash(n: node),
+  v2.std.node.combine_hash(
+    a: v2.std.node.content_hash(n: node),
     b: match inferred_facts_witness_for_eval(tree: tree, node: node) {
       Holds { value: facts } =>
         witness_cache_holds_digest(payload: inferred_facts_digest(facts: facts))
@@ -671,22 +614,22 @@ fn inferred_node_facts_cache_digest(tree: v2.compiler.inferred_tree.InferredTree
 }
 
 fn inferred_tree_evaluated_facts_digest(tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.node.Hash {
-  fold_node(
+  v2.std.node.fold_node(
     n: tree.root,
     algebra: v2.std.node.NodeFold {
       init: fn(n0) {
         inferred_node_facts_cache_digest(tree: tree, node: n0)
       },
       step: fn(acc, e, child) {
-        combine_hash(a: acc, b: child)
+        v2.std.node.combine_hash(a: acc, b: child)
       }
     }
   )
 }
 
 fn inferred_tree_digest(tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.node.Hash {
-  combine_hash(
-    a: content_hash(n: tree.root),
+  v2.std.node.combine_hash(
+    a: v2.std.node.content_hash(n: tree.root),
     b: inferred_tree_evaluated_facts_digest(tree: tree)
   )
 }
@@ -710,11 +653,11 @@ fn test_claim_interpretation_cache_digest_authority(context: EvalContext) -> Int
     structure_witness: authority.structure_witness
   )
   let registered_semantics = interpretation_v4_evaluator_registry_semantics_digest(
-    interpretation: v2_evaluator_interpretation()
+    interpretation: v2.extdeps.runtimes.v2_evaluator.v2_evaluator_interpretation()
   )
   let registry_mismatch = test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_semantics_mismatch_tag)
   if authority.runtime_identity == ^v2_evaluator_runtime_id
-    && authority.interpretation == v2_evaluator_interpretation()
+    && authority.interpretation == v2.extdeps.runtimes.v2_evaluator.v2_evaluator_interpretation()
     && authority.semantics_digest == registered_semantics
     && registry_witness == registered_semantics
     && registry_witness != registry_mismatch {
@@ -741,9 +684,9 @@ fn interpretation_cache_digest_authority_hash(auth: InterpretationCacheDigestAut
       runtime_identity: runtime_identity,
       semantics_witness: semantics_witness
     } =>
-      combine_hash(
+      v2.std.node.combine_hash(
         a: test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_registered_tag),
-        b: combine_hash(
+        b: v2.std.node.combine_hash(
           a: test_claim_symbol_digest(sym: runtime_identity),
           b: semantics_witness
         )
@@ -753,10 +696,10 @@ fn interpretation_cache_digest_authority_hash(auth: InterpretationCacheDigestAut
       registry_witness: registry_witness,
       structure_digest: structure_digest
     } =>
-      combine_hash(
+      v2.std.node.combine_hash(
         a: test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_cache_ineligible_tag),
-        b: combine_hash(
-          a: combine_hash(
+        b: v2.std.node.combine_hash(
+          a: v2.std.node.combine_hash(
             a: test_claim_symbol_digest(sym: runtime_identity),
             b: registry_witness
           ),
@@ -773,20 +716,20 @@ fn test_claim_interpretation_cache_digest(context: EvalContext) -> v2.std.node.H
 }
 
 fn test_claim_evaluator_input_digest_node(input: TestClaimTypedInput<v2.std.node.Node>) -> v2.std.node.Hash {
-  content_hash(n: input.evaluator_input)
+  v2.std.node.content_hash(n: input.evaluator_input)
 }
 
 fn test_claim_evaluator_digest_node(input: TestClaimTypedInput<v2.std.node.Node>) -> v2.std.node.Hash {
-  combine_hash(
+  v2.std.node.combine_hash(
     a: test_claim_symbol_digest(sym: input.evaluator_pin),
     b: test_claim_evaluator_input_digest_node(input: input)
   )
 }
 
 fn test_claim_cache_interpretation_hash_node(subject: TestClaimEvalSubject<v2.std.node.Node>) -> v2.std.node.Hash {
-  combine_hash(
+  v2.std.node.combine_hash(
     a: inferred_tree_digest(tree: subject.tree),
-    b: combine_hash(
+    b: v2.std.node.combine_hash(
       a: test_claim_interpretation_cache_digest(context: subject.context),
       b: test_claim_evaluator_digest_node(input: subject.input)
     )
@@ -808,16 +751,16 @@ fn test_claim_cache_receipt(subject: TestClaimEvalSubject<v2.std.node.Node>) -> 
 fn eval_diagnostic(reason: v2.std.node.Symbol, node: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: reason,
-    at: node_locus(node: node),
+    at: v2.std.diagnostic.node_locus(node: node),
     correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
   }
 }
 
 fn runtime_binding_lookup_miss(key: v2.std.runtime.EnvironmentBindingKey) -> Optional<v2.std.runtime.RuntimeValue> {
-  optional_absent()
+  v2.std.optional.optional_absent()
 }
 
-fn empty_runtime_bindings() -> Map<v2.std.runtime.EnvironmentBindingKey, v2.std.runtime.RuntimeValue> {
+fn empty_runtime_bindings() -> std.types.Map<v2.std.runtime.EnvironmentBindingKey, v2.std.runtime.RuntimeValue> {
   std.types.Map {
     lookup: runtime_binding_lookup_miss
   }
@@ -830,53 +773,53 @@ fn empty_evaluation_environment() -> v2.std.runtime.EvaluationEnvironment {
 }
 
 fn eval_runtime() -> v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime {
-  v2_evaluator_runtime()
+  v2.extdeps.runtimes.v2_evaluator.v2_evaluator_runtime()
 }
 
 fn eval_default_interpretation() -> v2.std.runtime.InterpretationAlgebra {
-  v2_evaluator_interpretation()
+  v2.extdeps.runtimes.v2_evaluator.v2_evaluator_interpretation()
 }
 
-fn inferred_facts_witness_for_eval(tree: v2.compiler.inferred_tree.InferredTree, node: v2.std.node.Node) -> Witness<v2.compiler.inferred_tree.InferredFacts> {
-  witness_from_optional(opt: tree.facts.lookup(node), absent: infer_facts_lookup_miss_diagnostic(key: node))
+fn inferred_facts_witness_for_eval(tree: v2.compiler.inferred_tree.InferredTree, node: v2.std.node.Node) -> v2.std.witness.Witness<v2.compiler.inferred_tree.InferredFacts> {
+  v2.std.witness.witness_from_optional(opt: tree.facts.lookup(node), absent: v2.compiler.infer.infer_facts_lookup_miss_diagnostic(key: node))
 }
 
 fn inferred_facts_for_eval(tree: v2.compiler.inferred_tree.InferredTree, node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredFacts> {
   match inferred_facts_witness_for_eval(tree: tree, node: node) {
     Holds { value: facts } =>
-      if !inferred_facts_grounding_derived(facts: facts) {
+      if !v2.compiler.infer.inferred_facts_grounding_derived(facts: facts) {
         v2.std.diagnostic.Rejected {
-          diagnostics: diagnostics_singleton(
+          diagnostics: v2.std.diagnostic.diagnostics_singleton(
             d: eval_diagnostic(reason: ^eval_rejected_grounding_not_derived, node: node)
           )
         }
-      } else if !inferred_facts_cover_node(facts: facts, node: node) {
+      } else if !v2.compiler.infer.inferred_facts_cover_node(facts: facts, node: node) {
         v2.std.diagnostic.Rejected {
-          diagnostics: diagnostics_singleton(
+          diagnostics: v2.std.diagnostic.diagnostics_singleton(
             d: eval_diagnostic(reason: ^eval_rejected_grounding_node_mismatch, node: node)
           )
         }
-      } else if !inferred_facts_canonical_admitted(facts: facts) {
+      } else if !v2.compiler.infer.inferred_facts_canonical_admitted(facts: facts) {
         v2.std.diagnostic.Rejected {
-          diagnostics: diagnostics_singleton(
+          diagnostics: v2.std.diagnostic.diagnostics_singleton(
             d: eval_diagnostic(reason: ^eval_rejected_canonical_mismatch, node: node)
           )
         }
       } else {
-        match inferred_facts_descent(facts: facts) {
+        match v2.compiler.infer.inferred_facts_descent(facts: facts) {
           Holds { value: _ } =>
             v2.std.diagnostic.Accepted { value: facts, diagnostics: v2.std.diagnostic.None }
           Violates { diagnostic: d } =>
-            v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
+            v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.diagnostics_singleton(d: d) }
         }
       }
     Violates { diagnostic: d } =>
-      v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
+      v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.diagnostics_singleton(d: d) }
   }
 }
 
 fn eval_structural_node_for_eval(tree: v2.compiler.inferred_tree.InferredTree, node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
-  bind_outcome(
+  v2.std.diagnostic.bind_outcome(
     o: inferred_facts_for_eval(tree: tree, node: node),
     f: fn(_facts) {
       v2.std.diagnostic.Accepted { value: node, diagnostics: v2.std.diagnostic.None }
@@ -892,7 +835,7 @@ fn eval_absorb_structural_child(
   acc: v2.std.diagnostic.Outcome<v2.std.node.Node>,
   child: v2.std.diagnostic.Outcome<v2.std.node.Node>
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
-  absorb_outcome_diagnostics(
+  v2.std.diagnostic.absorb_outcome_diagnostics(
     acc: acc,
     child: child,
     policy: eval_short_circuit_policy()
@@ -912,9 +855,9 @@ fn control_transfer_value(
 }
 
 type RuntimeValueAcceptanceWitness {
-  resolved_type: Witness<v2.std.node.Node>
-  inhabitance: Witness<v2.compiler.inferred_tree.InferredFacts>
-  canonical: Witness<v2.compiler.inferred_tree.InferredFacts>
+  resolved_type: v2.std.witness.Witness<v2.std.node.Node>
+  inhabitance: v2.std.witness.Witness<v2.compiler.inferred_tree.InferredFacts>
+  canonical: v2.std.witness.Witness<v2.compiler.inferred_tree.InferredFacts>
 }
 
 fn eval_runtime_value_acceptance_witness(
@@ -923,28 +866,28 @@ fn eval_runtime_value_acceptance_witness(
   value: v2.std.runtime.RuntimeValue
 ) -> RuntimeValueAcceptanceWitness {
   RuntimeValueAcceptanceWitness {
-    resolved_type: match inferred_facts_resolved_type(facts: facts) {
+    resolved_type: match v2.compiler.infer.inferred_facts_resolved_type(facts: facts) {
       Violates { diagnostic: _ } =>
         v2.std.witness.Violates {
           diagnostic: eval_diagnostic(reason: ^eval_rejected_grounding_not_derived, node: node)
         }
       Holds { value: declared } =>
-        if declared == runtime_value_resolved_type(value: value) {
-          v2.std.witness.Holds { value: runtime_value_resolved_type(value: value) }
+        if declared == v2.std.runtime.runtime_value_resolved_type(value: value) {
+          v2.std.witness.Holds { value: v2.std.runtime.runtime_value_resolved_type(value: value) }
         } else {
           v2.std.witness.Violates {
             diagnostic: eval_diagnostic(reason: ^eval_rejected_resolved_type_mismatch, node: node)
           }
         }
     },
-    inhabitance: if inferred_facts_canonical_admitted(facts: facts) {
+    inhabitance: if v2.compiler.infer.inferred_facts_canonical_admitted(facts: facts) {
       v2.std.witness.Holds { value: facts }
     } else {
       v2.std.witness.Violates {
         diagnostic: eval_diagnostic(reason: ^eval_rejected_inhabitance_mismatch, node: node)
       }
     },
-    canonical: if inferred_facts_canonical_admitted(facts: facts) {
+    canonical: if v2.compiler.infer.inferred_facts_canonical_admitted(facts: facts) {
       v2.std.witness.Holds { value: facts }
     } else {
       v2.std.witness.Violates {
@@ -961,27 +904,27 @@ fn eval_accept_runtime_value_with_facts(
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   let witness = eval_runtime_value_acceptance_witness(node: node, facts: facts, value: value)
   match witness.resolved_type {
-    Violates { diagnostic: d } => outcome_rejected(d: d)
+    Violates { diagnostic: d } => v2.std.diagnostic.outcome_rejected(d: d)
     Holds { value: _ } => match witness.inhabitance {
-      Violates { diagnostic: d } => outcome_rejected(d: d)
+      Violates { diagnostic: d } => v2.std.diagnostic.outcome_rejected(d: d)
       Holds { value: _ } => match witness.canonical {
-        Violates { diagnostic: d } => outcome_rejected(d: d)
+        Violates { diagnostic: d } => v2.std.diagnostic.outcome_rejected(d: d)
         Holds { value: _ } => v2.std.diagnostic.Accepted { value: value, diagnostics: v2.std.diagnostic.None }
       }
     }
   }
 }
 
-fn eval_witness_outcome<T>(witness: Witness<T>) -> v2.std.diagnostic.Outcome<T> {
+fn eval_witness_outcome<T>(witness: v2.std.witness.Witness<T>) -> v2.std.diagnostic.Outcome<T> {
   match witness {
     Holds { value: v } => v2.std.diagnostic.Accepted { value: v, diagnostics: v2.std.diagnostic.None }
-    Violates { diagnostic: d } => outcome_rejected(d: d)
+    Violates { diagnostic: d } => v2.std.diagnostic.outcome_rejected(d: d)
   }
 }
 
-fn eval_first_runtime_argument(args: List<v2.std.runtime.RuntimeValue>, node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
+fn eval_first_runtime_argument(args: std.types.List<v2.std.runtime.RuntimeValue>, node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   eval_witness_outcome(
-    witness: list_nth(
+    witness: v2.std.collection.list_nth(
       xs: args,
       wanted: 0,
       absent: eval_diagnostic(reason: ^eval_rejected_branch_argument_absent, node: node)
@@ -989,9 +932,9 @@ fn eval_first_runtime_argument(args: List<v2.std.runtime.RuntimeValue>, node: v2
   )
 }
 
-fn eval_bind_value_argument(args: List<v2.std.runtime.RuntimeValue>, node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
+fn eval_bind_value_argument(args: std.types.List<v2.std.runtime.RuntimeValue>, node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   eval_witness_outcome(
-    witness: list_nth(
+    witness: v2.std.collection.list_nth(
       xs: args,
       wanted: 1,
       absent: eval_diagnostic(reason: ^eval_rejected_bind_value_absent, node: node)
@@ -1001,7 +944,7 @@ fn eval_bind_value_argument(args: List<v2.std.runtime.RuntimeValue>, node: v2.st
 
 fn eval_nth_child(node: v2.std.node.Node, wanted: Int, absent_reason: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<v2.std.node.Edge> {
   eval_witness_outcome(
-    witness: list_nth(
+    witness: v2.std.collection.list_nth(
       xs: node.children,
       wanted: wanted,
       absent: eval_diagnostic(reason: absent_reason, node: node)
@@ -1018,7 +961,7 @@ fn eval_branch_condition_edge(node: v2.std.node.Node) -> v2.std.diagnostic.Outco
 }
 
 fn eval_bind_key(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.runtime.EnvironmentBindingKey> {
-  bind_outcome(
+  v2.std.diagnostic.bind_outcome(
     o: eval_nth_child(
       node: node,
       wanted: 0,
@@ -1039,7 +982,7 @@ fn eval_bind_value_edge(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.
 }
 
 fn eval_bind_body(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
-  bind_outcome(
+  v2.std.diagnostic.bind_outcome(
     o: eval_nth_child(
       node: node,
       wanted: 2,
@@ -1058,8 +1001,8 @@ fn eval_binding_key_node(sym: v2.std.node.Symbol) -> v2.std.node.Node {
 fn eval_binding_key_from_atom(node: v2.std.node.Node) -> Optional<v2.std.runtime.EnvironmentBindingKey> {
   match node.kind {
     TypeNode { connective: Atom { identity: sym } } =>
-      optional_present(value: environment_binding_key_for_symbol(sym: sym))
-    _ => optional_absent()
+      v2.std.optional.optional_present(value: v2.std.runtime.environment_binding_key_for_symbol(sym: sym))
+    _ => v2.std.optional.optional_absent()
   }
 }
 
@@ -1068,18 +1011,18 @@ fn eval_environment_binding_key_from_node(declaration: v2.std.node.Node) -> v2.s
     Present { value: key } =>
       v2.std.diagnostic.Accepted { value: key, diagnostics: v2.std.diagnostic.None }
     Absent =>
-      outcome_rejected(
+      v2.std.diagnostic.outcome_rejected(
         d: eval_diagnostic(reason: ^eval_rejected_bind_key_absent, node: declaration)
       )
   }
 }
 
 fn eval_runtime_binding_lookup(node: v2.std.node.Node, environment: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
-  bind_outcome(
+  v2.std.diagnostic.bind_outcome(
     o: eval_environment_binding_key_from_node(declaration: node),
     f: fn(key) {
       eval_witness_outcome(
-        witness: witness_from_optional(
+        witness: v2.std.witness.witness_from_optional(
           opt: environment.bindings.lookup(key),
           absent: eval_diagnostic(
             reason: ^eval_rejected_runtime_binding_lookup_miss,
@@ -1098,7 +1041,7 @@ fn eval_type_node_atom(
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   match node.kind {
     TypeNode { connective: Atom { identity: _ } } =>
-      if v2_eval_is_literal_shaped_node(node: node) {
+      if v2.extdeps.runtimes.v2_evaluator.v2_eval_is_literal_shaped_node(node: node) {
         interpretation.value.allocate_literal(node, environment)
       } else {
         match eval_runtime_binding_lookup(node: node, environment: environment) {
@@ -1116,7 +1059,7 @@ fn eval_type_node_atom(
     TypeNode { connective: _ } =>
       interpretation.value.allocate_literal(node, environment)
     ComputationNode { behavior: _ } =>
-      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+      v2.std.diagnostic.outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
   }
 }
 
@@ -1128,7 +1071,7 @@ type EvalParamBindAcc {
 fn eval_bind_param_edge_step(
   state: EvalParamBindAcc,
   param_edge: v2.std.node.Edge,
-  args: List<v2.std.runtime.RuntimeValue>,
+  args: std.types.List<v2.std.runtime.RuntimeValue>,
   bind: v2.std.runtime.BindInterpreter,
   node: v2.std.node.Node
 ) -> EvalParamBindAcc {
@@ -1140,9 +1083,9 @@ fn eval_bind_param_edge_step(
         Named { name: binding_id } =>
           EvalParamBindAcc {
             idx: state.idx + 1,
-            acc: bind_outcome(
+            acc: v2.std.diagnostic.bind_outcome(
               o: eval_witness_outcome(
-                witness: list_nth(
+                witness: v2.std.collection.list_nth(
                   xs: args,
                   wanted: state.idx,
                   absent: eval_diagnostic(reason: ^eval_rejected_argument_bind_absent, node: node)
@@ -1150,7 +1093,7 @@ fn eval_bind_param_edge_step(
               ),
               f: fn(value) {
                 bind.bind_value(
-                  environment_binding_key_for_symbol(sym: binding_id),
+                  v2.std.runtime.environment_binding_key_for_symbol(sym: binding_id),
                   value,
                   env
                 )
@@ -1165,15 +1108,15 @@ fn eval_bind_param_edge_step(
 
 fn eval_bind_arrow_params(
   arrow: v2.std.node.Node,
-  args: List<v2.std.runtime.RuntimeValue>,
+  args: std.types.List<v2.std.runtime.RuntimeValue>,
   environment: v2.std.runtime.EvaluationEnvironment,
   bind: v2.std.runtime.BindInterpreter,
   node: v2.std.node.Node
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.EvaluationEnvironment> {
-  bind_outcome(
+  v2.std.diagnostic.bind_outcome(
     o: eval_nth_child(node: arrow, wanted: 0, absent_reason: ^eval_rejected_callee_absent),
     f: fn(domain_edge) {
-      match fold_list(
+      match v2.std.algebra.fold_list(
         xs: domain_edge.target.children,
         empty: EvalParamBindAcc { idx: 0, acc: v2.std.diagnostic.Accepted { value: environment, diagnostics: v2.std.diagnostic.None } },
         cons: fn(state, param_edge) {
@@ -1188,7 +1131,7 @@ fn eval_bind_arrow_params(
       ) {
         EvalParamBindAcc { idx: param_count, acc: bound } =>
           if eval_actual_present(args: args, wanted: param_count, node: node) {
-            outcome_rejected(
+            v2.std.diagnostic.outcome_rejected(
               d: eval_diagnostic(reason: ^eval_rejected_argument_arity_excess, node: node)
             )
           } else {
@@ -1199,8 +1142,8 @@ fn eval_bind_arrow_params(
   )
 }
 
-fn eval_actual_present(args: List<v2.std.runtime.RuntimeValue>, wanted: Int, node: v2.std.node.Node) -> Bool {
-  match list_nth(
+fn eval_actual_present(args: std.types.List<v2.std.runtime.RuntimeValue>, wanted: Int, node: v2.std.node.Node) -> Bool {
+  match v2.std.collection.list_nth(
     xs: args,
     wanted: wanted,
     absent: eval_diagnostic(reason: ^eval_rejected_argument_bind_absent, node: node)
@@ -1246,7 +1189,7 @@ fn eval_child_absent(node: v2.std.node.Node, wanted: Int) -> Bool {
 
 fn eval_arrow_admits_callee_dispatch(arrow: v2.std.node.Node) -> Bool {
 
-  match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 3) {
+  match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: arrow), index: 3) {
     Present { value: _ } => false
     Absent => true
   }
@@ -1312,8 +1255,8 @@ fn eval_invoke_effect_handler(
   bundle: EffectIoEvalBundle,
   request: v2.std.runtime.EffectRequest
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
-  let handler = effect_handler_for_kind(binding: bundle.handlers, kind: request.kind)
-  effect_io_pure_invoke_handler(handler: handler, request: request)
+  let handler = v2.std.runtime.effect_handler_for_kind(binding: bundle.handlers, kind: request.kind)
+  v2.extdeps.runtimes.v2_effect_io_pure.effect_io_pure_invoke_handler(handler: handler, request: request)
 }
 
 fn eval_bundle_with_receipt_appended(
@@ -1325,7 +1268,7 @@ fn eval_bundle_with_receipt_appended(
     backend: bundle.backend,
     store: bundle.store,
     handlers: bundle.handlers,
-    receipt_log: effect_io_pure_append_receipt(
+    receipt_log: v2.extdeps.runtimes.v2_effect_io_pure.effect_io_pure_append_receipt(
       log: bundle.receipt_log,
       request: request,
       result: result
@@ -1353,44 +1296,44 @@ fn eval_yield_effect_request(
   }
 }
 
-fn eval_effect_io_roundtrip_args_present(args: List<v2.std.runtime.RuntimeValue>) -> Bool {
+fn eval_effect_io_roundtrip_args_present(args: std.types.List<v2.std.runtime.RuntimeValue>) -> Bool {
   eval_actual_present(args: args, wanted: 0, node: symbol_atom_node(sym: ^effect_io_roundtrip_marker))
     && eval_actual_present(args: args, wanted: 1, node: symbol_atom_node(sym: ^effect_io_roundtrip_marker))
 }
 
 fn eval_effect_io_roundtrip(
   bundle: EffectIoEvalBundle,
-  args: List<v2.std.runtime.RuntimeValue>,
+  args: std.types.List<v2.std.runtime.RuntimeValue>,
   node: v2.std.node.Node
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   if eval_effect_io_roundtrip_args_present(args: args) {
-    bind_outcome(
+    v2.std.diagnostic.bind_outcome(
       o: eval_first_runtime_argument(args: args, node: node),
       f: fn(locator_arg) {
-        bind_outcome(
+        v2.std.diagnostic.bind_outcome(
           o: eval_bind_value_argument(args: args, node: node),
           f: fn(payload) {
             let write_args = std.algebra.Cons {
               head: locator_arg,
               tail: std.algebra.Cons { head: payload, tail: std.algebra.Empty }
             }
-            let write_request = effect_io_pure_write_request(args: write_args)
-            bind_outcome(
+            let write_request = v2.extdeps.runtimes.v2_effect_io_pure.effect_io_pure_write_request(args: write_args)
+            v2.std.diagnostic.bind_outcome(
               o: eval_yield_effect_request(bundle: bundle, request: write_request),
               f: fn(write_yield) {
                 let written = write_yield.value
                 if written == payload {
-                  match effect_io_pure_locator_from_args(
+                  match v2.extdeps.runtimes.v2_effect_io_pure.effect_io_pure_locator_from_args(
                     backend: bundle.backend,
                     args: write_args
                   ) {
                     Holds { value: locator } =>
-                      let store1 = effect_io_pure_apply_write(
+                      let store1 = v2.extdeps.runtimes.v2_effect_io_pure.effect_io_pure_apply_write(
                         store: bundle.store,
                         locator: locator,
                         payload: written
                       )
-                      let rebound = effect_io_pure_handler_binding(store: store1)
+                      let rebound = v2.extdeps.runtimes.v2_effect_io_pure.effect_io_pure_handler_binding(store: store1)
                       let read_bundle = EffectIoEvalBundle {
                         backend: bundle.backend,
                         store: store1,
@@ -1398,18 +1341,18 @@ fn eval_effect_io_roundtrip(
                         receipt_log: write_yield.bundle.receipt_log
                       }
                       let read_args = std.algebra.Cons { head: locator_arg, tail: std.algebra.Empty }
-                      let read_request = effect_io_pure_read_request(args: read_args)
-                      bind_outcome(
+                      let read_request = v2.extdeps.runtimes.v2_effect_io_pure.effect_io_pure_read_request(args: read_args)
+                      v2.std.diagnostic.bind_outcome(
                         o: eval_yield_effect_request(bundle: read_bundle, request: read_request),
                         f: fn(read_yield) {
                           v2.std.diagnostic.Accepted { value: read_yield.value, diagnostics: v2.std.diagnostic.None }
                         }
                       )
                     Violates { diagnostic: d } =>
-                      v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
+                      v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.diagnostics_singleton(d: d) }
                   }
                 } else {
-                  outcome_rejected(
+                  v2.std.diagnostic.outcome_rejected(
                     d: eval_diagnostic(reason: ^eval_rejected_effect_io_write_payload_mismatch, node: node)
                   )
                 }
@@ -1420,7 +1363,7 @@ fn eval_effect_io_roundtrip(
       }
     )
   } else {
-    outcome_rejected(
+    v2.std.diagnostic.outcome_rejected(
       d: eval_diagnostic(reason: ^eval_rejected_effect_io_roundtrip_arity, node: node)
     )
   }
@@ -1428,7 +1371,7 @@ fn eval_effect_io_roundtrip(
 
 fn eval_value_node(
   node: v2.std.node.Node,
-  _args: List<v2.std.runtime.RuntimeValue>,
+  _args: std.types.List<v2.std.runtime.RuntimeValue>,
   _facts: v2.compiler.inferred_tree.InferredFacts,
   _tree: v2.compiler.inferred_tree.InferredTree,
   interpreter: v2.std.runtime.RuntimeBehaviorInterpreter,
@@ -1438,13 +1381,13 @@ fn eval_value_node(
   match interpreter {
     ValueRuntimeInterpreter { interpreter: value } =>
       value.allocate_literal(node, environment)
-    _ => outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    _ => v2.std.diagnostic.outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
   }
 }
 
 fn eval_transform_node(
   node: v2.std.node.Node,
-  args: List<v2.std.runtime.RuntimeValue>,
+  args: std.types.List<v2.std.runtime.RuntimeValue>,
   _facts: v2.compiler.inferred_tree.InferredFacts,
   tree: v2.compiler.inferred_tree.InferredTree,
   interpretation: v2.std.runtime.InterpretationAlgebra,
@@ -1461,20 +1404,20 @@ fn eval_transform_node(
             eval_effect_io_roundtrip(bundle: b, args: args, node: node)
 
           EffectIoEvalAbsent =>
-            outcome_rejected(
+            v2.std.diagnostic.outcome_rejected(
               d: eval_diagnostic(reason: ^eval_rejected_effect_io_unbound, node: node)
             )
         }
       } else if eval_transform_has_callee_reference(node: node) {
-        bind_outcome(
+        v2.std.diagnostic.bind_outcome(
           o: eval_transform_callee_edge(node: node),
           f: fn(callee_edge) {
-            match find_arrow_body_child(root: callee_edge.target) {
+            match v2.std.node_query.find_arrow_body_child(root: callee_edge.target) {
               Accepted { value: body, diagnostics: _ } =>
-                let body_form = classify_arrow_body_form(target: body)
+                let body_form = v2.std.node.classify_arrow_body_form(target: body)
                 if eval_arrow_admits_callee_dispatch(arrow: callee_edge.target)
-                  && arrow_body_admits_eval_entry(form: body_form) {
-                  bind_outcome(
+                  && v2.std.node.arrow_body_admits_eval_entry(form: body_form) {
+                  v2.std.diagnostic.bind_outcome(
                     o: eval_bind_arrow_params(
                       arrow: callee_edge.target,
                       args: args,
@@ -1503,13 +1446,13 @@ fn eval_transform_node(
                     }
                   )
                 } else {
-                  outcome_rejected(
+                  v2.std.diagnostic.outcome_rejected(
                     d: eval_diagnostic(reason: ^eval_rejected_unsupported_callee, node: callee_edge.target)
                   )
                 }
               Rejected { diagnostics: _ } =>
                 if eval_node_is_arrow(node: callee_edge.target) {
-                  outcome_rejected(
+                  v2.std.diagnostic.outcome_rejected(
                     d: eval_diagnostic(reason: ^eval_rejected_unsupported_callee, node: callee_edge.target)
                   )
                 } else {
@@ -1521,7 +1464,7 @@ fn eval_transform_node(
       } else {
         transform.call_primitive(node, args, environment)
       }
-    _ => outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    _ => v2.std.diagnostic.outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
   }
 }
 
@@ -1536,10 +1479,10 @@ fn eval_branch_node_eval(
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   match interpreter {
     BranchRuntimeInterpreter { interpreter: branch } =>
-      bind_outcome(
+      v2.std.diagnostic.bind_outcome(
         o: eval_branch_condition_edge(node: node),
         f: fn(cond_edge) {
-          bind_outcome(
+          v2.std.diagnostic.bind_outcome(
             o: eval_runtime_node(
               node: cond_edge.target,
               tree: tree,
@@ -1549,7 +1492,7 @@ fn eval_branch_node_eval(
               effect_io: effect_io
             ),
             f: fn(condition) {
-              bind_outcome(
+              v2.std.diagnostic.bind_outcome(
                 o: branch.choose_branch(node, condition, environment),
                 f: fn(chosen) {
                   eval_runtime_node(
@@ -1566,13 +1509,13 @@ fn eval_branch_node_eval(
           )
         }
       )
-    _ => outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    _ => v2.std.diagnostic.outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
   }
 }
 
 fn eval_branch_node(
   node: v2.std.node.Node,
-  _args: List<v2.std.runtime.RuntimeValue>,
+  _args: std.types.List<v2.std.runtime.RuntimeValue>,
   _facts: v2.compiler.inferred_tree.InferredFacts,
   tree: v2.compiler.inferred_tree.InferredTree,
   interpretation: v2.std.runtime.InterpretationAlgebra,
@@ -1594,7 +1537,7 @@ fn eval_branch_node(
 
 fn eval_loop_node(
   node: v2.std.node.Node,
-  _args: List<v2.std.runtime.RuntimeValue>,
+  _args: std.types.List<v2.std.runtime.RuntimeValue>,
   _facts: v2.compiler.inferred_tree.InferredFacts,
   _tree: v2.compiler.inferred_tree.InferredTree,
   interpreter: v2.std.runtime.RuntimeBehaviorInterpreter,
@@ -1603,7 +1546,7 @@ fn eval_loop_node(
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   match interpreter {
     LoopRuntimeInterpreter { interpreter: loop_interpreter } =>
-      bind_outcome(
+      v2.std.diagnostic.bind_outcome(
         o: loop_interpreter.step_loop(node, environment),
         f: fn(control) {
           control_transfer_value(
@@ -1614,7 +1557,7 @@ fn eval_loop_node(
           )
         }
       )
-    _ => outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    _ => v2.std.diagnostic.outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
   }
 }
 
@@ -1629,23 +1572,23 @@ fn eval_bind_node_eval(
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   match interpreter {
     ValueRuntimeInterpreter { interpreter: _ } =>
-      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+      v2.std.diagnostic.outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
     TransformRuntimeInterpreter { interpreter: _ } =>
-      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+      v2.std.diagnostic.outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
     BranchRuntimeInterpreter { interpreter: _ } =>
-      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+      v2.std.diagnostic.outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
     LoopRuntimeInterpreter { interpreter: _ } =>
-      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+      v2.std.diagnostic.outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
     MatchRuntimeInterpreter { interpreter: _ } =>
-      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+      v2.std.diagnostic.outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
     BindRuntimeInterpreter { interpreter: bind } =>
-      bind_outcome(
+      v2.std.diagnostic.bind_outcome(
         o: eval_bind_key(node: node),
         f: fn(key) {
-          bind_outcome(
+          v2.std.diagnostic.bind_outcome(
             o: eval_bind_value_edge(node: node),
             f: fn(value_edge) {
-              bind_outcome(
+              v2.std.diagnostic.bind_outcome(
                 o: eval_runtime_node(
                   node: value_edge.target,
                   tree: tree,
@@ -1655,10 +1598,10 @@ fn eval_bind_node_eval(
                   effect_io: effect_io
                 ),
                 f: fn(bound_value) {
-                  bind_outcome(
+                  v2.std.diagnostic.bind_outcome(
                     o: bind.bind_value(key, bound_value, environment),
                     f: fn(bound_environment) {
-                      bind_outcome(
+                      v2.std.diagnostic.bind_outcome(
                         o: eval_bind_body(node: node),
                         f: fn(body) {
                           eval_runtime_node(
@@ -1684,7 +1627,7 @@ fn eval_bind_node_eval(
 
 fn eval_bind_node(
   node: v2.std.node.Node,
-  _args: List<v2.std.runtime.RuntimeValue>,
+  _args: std.types.List<v2.std.runtime.RuntimeValue>,
   _facts: v2.compiler.inferred_tree.InferredFacts,
   tree: v2.compiler.inferred_tree.InferredTree,
   interpretation: v2.std.runtime.InterpretationAlgebra,
@@ -1723,10 +1666,10 @@ fn eval_match_node_eval(
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   match interpreter {
     MatchRuntimeInterpreter { interpreter: match_interpreter } =>
-      bind_outcome(
+      v2.std.diagnostic.bind_outcome(
         o: eval_match_scrutinee_edge(node: node),
         f: fn(scrutinee_edge) {
-          bind_outcome(
+          v2.std.diagnostic.bind_outcome(
             o: eval_runtime_node(
               node: scrutinee_edge.target,
               tree: tree,
@@ -1736,7 +1679,7 @@ fn eval_match_node_eval(
               effect_io: effect_io
             ),
             f: fn(scrutinee_value) {
-              bind_outcome(
+              v2.std.diagnostic.bind_outcome(
                 o: match_interpreter.choose_arm(node, scrutinee_value, environment),
                 f: fn(chosen) {
                   eval_runtime_node(
@@ -1754,7 +1697,7 @@ fn eval_match_node_eval(
         }
       )
     _ =>
-      outcome_rejected(
+      v2.std.diagnostic.outcome_rejected(
         eval_diagnostic(reason: ^eval_rejected_type_node, node: node)
       )
   }
@@ -1762,7 +1705,7 @@ fn eval_match_node_eval(
 
 fn eval_match_node(
   node: v2.std.node.Node,
-  _args: List<v2.std.runtime.RuntimeValue>,
+  _args: std.types.List<v2.std.runtime.RuntimeValue>,
   _facts: v2.compiler.inferred_tree.InferredFacts,
   tree: v2.compiler.inferred_tree.InferredTree,
   interpretation: v2.std.runtime.InterpretationAlgebra,
@@ -1785,7 +1728,7 @@ fn eval_match_node(
 fn eval_computation_node(
   behavior: v2.std.node.Behavior,
   node: v2.std.node.Node,
-  args: List<v2.std.runtime.RuntimeValue>,
+  args: std.types.List<v2.std.runtime.RuntimeValue>,
   facts: v2.compiler.inferred_tree.InferredFacts,
   tree: v2.compiler.inferred_tree.InferredTree,
   interpretation: v2.std.runtime.InterpretationAlgebra,
@@ -1793,11 +1736,11 @@ fn eval_computation_node(
   runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime,
   effect_io: EffectIoEvalContext
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
-  let dispatch = interpretation_behavior_dispatch(
+  let dispatch = v2.std.runtime.interpretation_behavior_dispatch(
     interpretation: interpretation,
     behavior: behavior
   )
-  bind_outcome(
+  v2.std.diagnostic.bind_outcome(
     o: match dispatch {
       ValueRuntimeInterpreter { interpreter: _ } =>
         eval_value_node(
@@ -1876,14 +1819,14 @@ fn eval_computation_node(
 
 fn eval_interpret_node(
   node: v2.std.node.Node,
-  args: List<v2.std.runtime.RuntimeValue>,
+  args: std.types.List<v2.std.runtime.RuntimeValue>,
   tree: v2.compiler.inferred_tree.InferredTree,
   interpretation: v2.std.runtime.InterpretationAlgebra,
   environment: v2.std.runtime.EvaluationEnvironment,
   runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime,
   effect_io: EffectIoEvalContext
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
-  bind_outcome(
+  v2.std.diagnostic.bind_outcome(
     o: inferred_facts_for_eval(tree: tree, node: node),
     f: fn(facts) {
       match node.kind {
@@ -1910,29 +1853,29 @@ fn eval_interpret_node(
   )
 }
 
-fn empty_runtime_values() -> List<v2.std.runtime.RuntimeValue> {
+fn empty_runtime_values() -> std.types.List<v2.std.runtime.RuntimeValue> {
   []
 }
 
 fn eval_edge_is_runtime_argument(parent: v2.std.node.Node, progress: EvalProgress, edge: v2.std.node.Edge) -> Bool {
   if eval_transform_has_callee_reference(node: parent) {
     match progress {
-      AwaitingChildren { processed: p } =>
-        if p == 0 { false } else { is_positional(e: edge) }
-      ReadyToInterpret => is_positional(e: edge)
-      Interpreted => is_positional(e: edge)
+      AwaitingChildren { processed: gunbc.plans.md_helpers.p } =>
+        if gunbc.plans.md_helpers.p == 0 { false } else { v2.std.node.is_positional(e: edge) }
+      ReadyToInterpret => v2.std.node.is_positional(e: edge)
+      Interpreted => v2.std.node.is_positional(e: edge)
     }
   } else if eval_node_is_branch(node: parent) {
     match progress {
-      AwaitingChildren { processed: p } =>
-        if p == 0 { is_positional(e: edge) } else { false }
+      AwaitingChildren { processed: gunbc.plans.md_helpers.p } =>
+        if gunbc.plans.md_helpers.p == 0 { v2.std.node.is_positional(e: edge) } else { false }
       ReadyToInterpret => false
       Interpreted => false
     }
   } else if eval_node_is_loop(node: parent) {
     false
   } else {
-    is_positional(e: edge)
+    v2.std.node.is_positional(e: edge)
   }
 }
 
@@ -1941,10 +1884,10 @@ fn eval_fold_state_value(state: EvalFoldState) -> v2.std.diagnostic.Outcome<v2.s
 }
 
 fn eval_absorb_child_diagnostics(
-  acc: v2.std.diagnostic.Outcome<List<v2.std.runtime.RuntimeValue>>,
+  acc: v2.std.diagnostic.Outcome<std.types.List<v2.std.runtime.RuntimeValue>>,
   child: v2.std.diagnostic.Outcome<v2.std.node.Node>
-) -> v2.std.diagnostic.Outcome<List<v2.std.runtime.RuntimeValue>> {
-  absorb_outcome_diagnostics(
+) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.runtime.RuntimeValue>> {
+  v2.std.diagnostic.absorb_outcome_diagnostics(
     acc: acc,
     child: child,
     policy: eval_short_circuit_policy()
@@ -1952,10 +1895,10 @@ fn eval_absorb_child_diagnostics(
 }
 
 fn eval_append_child_value(
-  acc: v2.std.diagnostic.Outcome<List<v2.std.runtime.RuntimeValue>>,
+  acc: v2.std.diagnostic.Outcome<std.types.List<v2.std.runtime.RuntimeValue>>,
   child: v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>
-) -> v2.std.diagnostic.Outcome<List<v2.std.runtime.RuntimeValue>> {
-  append_outcome_value(
+) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.runtime.RuntimeValue>> {
+  v2.std.diagnostic.append_outcome_value(
     acc: acc,
     child: child,
     policy: eval_short_circuit_policy()
@@ -1987,7 +1930,7 @@ fn eval_fold_init(
         effect_io: effect_io
       )
     } else {
-      outcome_rejected(
+      v2.std.diagnostic.outcome_rejected(
         d: eval_diagnostic(reason: ^eval_rejected_pending_children, node: node)
       )
     }
@@ -2025,7 +1968,7 @@ fn eval_fold_is_callee_reference_edge(
 ) -> Bool {
   if eval_transform_has_callee_reference(node: parent) {
     match progress {
-      AwaitingChildren { processed: p } => p == 0 && is_positional(e: edge)
+      AwaitingChildren { processed: gunbc.plans.md_helpers.p } => gunbc.plans.md_helpers.p == 0 && v2.std.node.is_positional(e: edge)
       ReadyToInterpret => false
       Interpreted => false
     }
@@ -2043,7 +1986,7 @@ fn eval_fold_callee_reference_child_state(
     progress: Interpreted,
     structural: eval_structural_node_for_eval(tree: tree, node: edge.target),
     child_values: v2.std.diagnostic.Accepted { value: empty_runtime_values(), diagnostics: v2.std.diagnostic.None },
-    value: outcome_rejected(
+    value: v2.std.diagnostic.outcome_rejected(
       d: eval_diagnostic(reason: ^eval_rejected_pending_children, node: edge.target)
     )
   }
@@ -2167,7 +2110,7 @@ fn eval_fold_tree(
       effect_io: effect_io
     )
   } else {
-    fold_list(
+    v2.std.algebra.fold_list(
       xs: n.children,
       empty: eval_fold_init(
         node: n,
@@ -2195,7 +2138,7 @@ fn eval_fold_tree(
 fn eval_maybe_complete_node(
   node: v2.std.node.Node,
   progress: EvalProgress,
-  args: List<v2.std.runtime.RuntimeValue>,
+  args: std.types.List<v2.std.runtime.RuntimeValue>,
   tree: v2.compiler.inferred_tree.InferredTree,
   interpretation: v2.std.runtime.InterpretationAlgebra,
   environment: v2.std.runtime.EvaluationEnvironment,
@@ -2221,8 +2164,8 @@ fn eval_maybe_complete_node(
 
 fn eval_advance_progress(progress: EvalProgress, node: v2.std.node.Node) -> EvalProgress {
   match progress {
-    AwaitingChildren { processed: p } => {
-      let processed = p + 1
+    AwaitingChildren { processed: gunbc.plans.md_helpers.p } => {
+      let processed = gunbc.plans.md_helpers.p + 1
       if processed == count(node.children) { ReadyToInterpret } else { AwaitingChildren { processed: processed } }
     }
     ReadyToInterpret => Interpreted
@@ -2252,10 +2195,10 @@ fn eval_fold_step(
     progress: progress,
     structural: structural,
     child_values: next_args,
-    value: bind_outcome(
+    value: v2.std.diagnostic.bind_outcome(
       o: structural,
       f: fn(_) {
-        bind_outcome(
+        v2.std.diagnostic.bind_outcome(
           o: next_args,
           f: fn(args) {
             eval_maybe_complete_node(
@@ -2294,18 +2237,18 @@ fn eval_runtime_control_node(
   runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime,
   effect_io: EffectIoEvalContext
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
-  bind_outcome(
+  v2.std.diagnostic.bind_outcome(
     o: inferred_facts_for_eval(tree: tree, node: node),
     f: fn(facts) {
       let dispatch = match node.kind {
         ComputationNode { behavior: b } =>
-          interpretation_behavior_dispatch(interpretation: interpretation, behavior: b)
+          v2.std.runtime.interpretation_behavior_dispatch(interpretation: interpretation, behavior: b)
         _ =>
           v2.std.runtime.TransformRuntimeInterpreter {
             interpreter: interpretation.transform
           }
       }
-      bind_outcome(
+      v2.std.diagnostic.bind_outcome(
         o: match node.kind {
           ComputationNode { behavior: Branch } =>
             eval_branch_node_eval(
@@ -2348,7 +2291,7 @@ fn eval_runtime_control_node(
               effect_io: effect_io
             )
           _ =>
-            outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+            v2.std.diagnostic.outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
         },
         f: fn(value) {
           eval_accept_runtime_value_with_facts(node: node, facts: facts, value: value)
@@ -2411,8 +2354,8 @@ fn eval_with_context(
   context: EvalContext,
   inputs: Inputs
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
-  if well_formed(n: tree.root) {
-    if well_formed(n: inputs.root) {
+  if v2.std.node.well_formed(n: tree.root) {
+    if v2.std.node.well_formed(n: inputs.root) {
       eval_runtime_node(
         node: inputs.root,
         tree: tree,
@@ -2422,16 +2365,16 @@ fn eval_with_context(
         effect_io: eval_context_effect_io(context: context)
       )
     } else {
-      v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: inputs.root)) }
+      v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.diagnostics_singleton(d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: inputs.root)) }
     }
   } else {
-    v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: tree.root)) }
+    v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.diagnostics_singleton(d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: tree.root)) }
   }
 }
 
 fn eval(tree: v2.compiler.inferred_tree.InferredTree, interpretation: v2.std.runtime.InterpretationAlgebra, inputs: Inputs) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
-  if well_formed(n: tree.root) {
-    if well_formed(n: inputs.root) {
+  if v2.std.node.well_formed(n: tree.root) {
+    if v2.std.node.well_formed(n: inputs.root) {
       eval_runtime_node(
         node: inputs.root,
         tree: tree,
@@ -2441,22 +2384,22 @@ fn eval(tree: v2.compiler.inferred_tree.InferredTree, interpretation: v2.std.run
         effect_io: EffectIoEvalAbsent
       )
     } else {
-      v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: inputs.root)) }
+      v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.diagnostics_singleton(d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: inputs.root)) }
     }
   } else {
-    v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: tree.root)) }
+    v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.diagnostics_singleton(d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: tree.root)) }
   }
 }
 
 fn eval_node(tree: v2.compiler.inferred_tree.InferredTree, inputs: Inputs) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
-  bind_outcome(
+  v2.std.diagnostic.bind_outcome(
     o: eval(tree: tree, interpretation: eval_default_interpretation(), inputs: inputs),
     f: fn(value) {
-      match runtime_value_node_projection(value: value) {
+      match v2.std.runtime.runtime_value_node_projection(value: value) {
         RuntimeValueNodeProjected { node: n } =>
           v2.std.diagnostic.Accepted { value: n, diagnostics: v2.std.diagnostic.None }
         RuntimeValueNodeUnrepresentable =>
-          outcome_rejected(
+          v2.std.diagnostic.outcome_rejected(
             d: eval_diagnostic(
               reason: ^eval_rejected_runtime_value_node_unrepresentable,
               node: inputs.root
@@ -2468,11 +2411,11 @@ fn eval_node(tree: v2.compiler.inferred_tree.InferredTree, inputs: Inputs) -> v2
 }
 
 fn eval_round_trip_claim_input_for_verdict(input: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
-  if well_formed(n: input) {
+  if v2.std.node.well_formed(n: input) {
     v2.std.diagnostic.Accepted { value: input, diagnostics: v2.std.diagnostic.None }
   } else {
     v2.std.diagnostic.Rejected {
-      diagnostics: diagnostics_singleton(
+      diagnostics: v2.std.diagnostic.diagnostics_singleton(
         d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: input)
       )
     }
@@ -2482,15 +2425,15 @@ fn eval_round_trip_claim_input_for_verdict(input: v2.std.node.Node) -> v2.std.di
 fn run_test_claim_round_trip_verdict(
   actual: v2.std.diagnostic.Outcome<v2.std.node.Node>,
   at: v2.std.node.Node
-) -> Verdict<TestClaimEvalSubject<v2.std.node.Node>, v2.std.node.Node> {
+) -> v2.std.verdict.Verdict<TestClaimEvalSubject<v2.std.node.Node>, v2.std.node.Node> {
   match actual {
-    Rejected { diagnostics: _ } => verdict_fail(actual: actual)
+    Rejected { diagnostics: _ } => v2.std.verdict.verdict_fail(actual: actual)
     Accepted { value: _, diagnostics: _ } =>
-      if dag_round_trip_authorities_ready() {
+      if v2.extdeps.languages.dag.dag_round_trip_authorities_ready() {
         Pass
       } else {
-        verdict_fail(
-          actual: outcome_rejected(
+        v2.std.verdict.verdict_fail(
+          actual: v2.std.diagnostic.outcome_rejected(
             d: eval_diagnostic(reason: ^eval_rejected_roundtrip_precondition, node: at)
           )
         )
@@ -2501,20 +2444,20 @@ fn run_test_claim_round_trip_verdict(
 fn run_test_claim_round_trip_verdict_runtime(
   actual: v2.std.diagnostic.Outcome<v2.std.node.Node>,
   at: v2.std.node.Node
-) -> Verdict<TestClaimEvalSubject<v2.std.node.Node>, RuntimeValue> {
+) -> v2.std.verdict.Verdict<TestClaimEvalSubject<v2.std.node.Node>, v2.std.runtime.RuntimeValue> {
   match actual {
     Rejected { diagnostics: _ } =>
-      verdict_fail(
-        actual: outcome_rejected(
+      v2.std.verdict.verdict_fail(
+        actual: v2.std.diagnostic.outcome_rejected(
           d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: at)
         )
       )
     Accepted { value: _, diagnostics: _ } =>
-      if dag_round_trip_authorities_ready() {
+      if v2.extdeps.languages.dag.dag_round_trip_authorities_ready() {
         Pass
       } else {
-        verdict_fail(
-          actual: outcome_rejected(
+        v2.std.verdict.verdict_fail(
+          actual: v2.std.diagnostic.outcome_rejected(
             d: eval_diagnostic(reason: ^eval_rejected_roundtrip_precondition, node: at)
           )
         )
@@ -2526,7 +2469,7 @@ fn run_test_claim_assert(
   claim: v2.std.verification.TestClaim,
   actual: v2.std.diagnostic.Outcome<v2.std.node.Node>,
   at: v2.std.node.Node
-) -> Verdict<TestClaimEvalSubject<v2.std.node.Node>, v2.std.node.Node> {
+) -> v2.std.verdict.Verdict<TestClaimEvalSubject<v2.std.node.Node>, v2.std.node.Node> {
   run_test_claim_assert_decided(claim: claim, actual: actual, at: at)
 }
 
@@ -2534,23 +2477,23 @@ fn run_test_claim_structural_equals_verdict(
   actual: v2.std.diagnostic.Outcome<v2.std.node.Node>,
   rhs: v2.std.node.Node,
   at: v2.std.node.Node
-) -> Verdict<TestClaimEvalSubject<v2.std.node.Node>, RuntimeValue> {
+) -> v2.std.verdict.Verdict<TestClaimEvalSubject<v2.std.node.Node>, v2.std.runtime.RuntimeValue> {
   match actual {
     Rejected { diagnostics: _ } =>
-      verdict_fail(
-        actual: outcome_rejected(
+      v2.std.verdict.verdict_fail(
+        actual: v2.std.diagnostic.outcome_rejected(
           d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: at)
         )
       )
     Accepted { value: admitted, diagnostics: _ } =>
-      if outcome_node_eq(
+      if v2.std.diagnostic.outcome_node_eq(
         a: v2.std.diagnostic.Accepted { value: admitted, diagnostics: v2.std.diagnostic.None },
         b: v2.std.diagnostic.Accepted { value: rhs, diagnostics: v2.std.diagnostic.None }
       ) {
         Pass
       } else {
-        verdict_fail(
-          actual: outcome_rejected(
+        v2.std.verdict.verdict_fail(
+          actual: v2.std.diagnostic.outcome_rejected(
             d: eval_diagnostic(reason: ^eval_structural_equals_mismatch, node: at)
           )
         )
@@ -2562,28 +2505,28 @@ fn run_test_claim_assert_decided(
   claim: v2.std.verification.TestClaim,
   actual: v2.std.diagnostic.Outcome<v2.std.node.Node>,
   at: v2.std.node.Node
-) -> Verdict<TestClaimEvalSubject<v2.std.node.Node>, v2.std.node.Node> {
+) -> v2.std.verdict.Verdict<TestClaimEvalSubject<v2.std.node.Node>, v2.std.node.Node> {
   match claim {
     EqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } =>
-      if outcome_node_eq(a: actual, b: v2.std.diagnostic.Accepted { value: rhs, diagnostics: v2.std.diagnostic.None }) {
+      if v2.std.diagnostic.outcome_node_eq(a: actual, b: v2.std.diagnostic.Accepted { value: rhs, diagnostics: v2.std.diagnostic.None }) {
         Pass
       } else {
-        verdict_fail(actual: actual)
+        v2.std.verdict.verdict_fail(actual: actual)
       }
     StructuralEqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } =>
-      if outcome_node_eq(a: actual, b: v2.std.diagnostic.Accepted { value: rhs, diagnostics: v2.std.diagnostic.None }) {
+      if v2.std.diagnostic.outcome_node_eq(a: actual, b: v2.std.diagnostic.Accepted { value: rhs, diagnostics: v2.std.diagnostic.None }) {
         Pass
       } else {
-        verdict_fail(actual: actual)
+        v2.std.verdict.verdict_fail(actual: actual)
       }
     CompilesClaim { expected_value: expected, label: _, anchor: _, input: _, classification: _ } =>
-      if outcome_node_eq(
+      if v2.std.diagnostic.outcome_node_eq(
         a: actual,
         b: v2.std.diagnostic.Accepted { value: expected, diagnostics: v2.std.diagnostic.None }
       ) {
         Pass
       } else {
-        verdict_fail(actual: actual)
+        v2.std.verdict.verdict_fail(actual: actual)
       }
     RoundTripClaim { label: _, anchor: _, input: input, classification: _ } =>
       run_test_claim_round_trip_verdict(
@@ -2593,12 +2536,12 @@ fn run_test_claim_assert_decided(
     DiagnosticClaim { expected_rejection: expected, input: input, label: _, anchor: _, classification: _ } =>
       match actual {
         Rejected { diagnostics: _ } =>
-          if outcome_node_eq(a: actual, b: v2.std.diagnostic.Rejected { diagnostics: expected }) {
+          if v2.std.diagnostic.outcome_node_eq(a: actual, b: v2.std.diagnostic.Rejected { diagnostics: expected }) {
             Pass
           } else {
-            verdict_fail(actual: actual)
+            v2.std.verdict.verdict_fail(actual: actual)
           }
-        _ => verdict_fail(actual: actual)
+        _ => v2.std.verdict.verdict_fail(actual: actual)
       }
   }
 }
@@ -2608,7 +2551,7 @@ fn runtime_value_eq(a: v2.std.runtime.RuntimeValue, b: v2.std.runtime.RuntimeVal
 }
 
 fn outcome_runtime_value_eq(a: v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>, b: v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>) -> Bool {
-  outcome_eq(a: a, b: b, payload_eq: runtime_value_eq)
+  v2.std.diagnostic.outcome_eq(a: a, b: b, payload_eq: runtime_value_eq)
 }
 
 fn accepted_runtime_value_outcome_eq(a: v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>, b: v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>) -> Bool {
@@ -2624,14 +2567,14 @@ fn run_test_claim_runtime_assert(
   interpretation: v2.std.runtime.InterpretationAlgebra,
   actual: v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>,
   at: v2.std.node.Node
-) -> Verdict<TestClaimEvalSubject<v2.std.node.Node>, RuntimeValue> {
+) -> v2.std.verdict.Verdict<TestClaimEvalSubject<v2.std.node.Node>, v2.std.runtime.RuntimeValue> {
   match claim {
     EqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } => {
       let expected = eval(tree: tree, interpretation: interpretation, inputs: inputs_root_only(root: rhs))
       if accepted_runtime_value_outcome_eq(a: actual, b: expected) {
         Pass
       } else {
-        verdict_fail(actual: actual)
+        v2.std.verdict.verdict_fail(actual: actual)
       }
     }
 
@@ -2640,7 +2583,7 @@ fn run_test_claim_runtime_assert(
       if accepted_runtime_value_outcome_eq(a: actual, b: expected) {
         Pass
       } else {
-        verdict_fail(actual: actual)
+        v2.std.verdict.verdict_fail(actual: actual)
       }
     }
     CompilesClaim { expected_value: expected, label: _, anchor: _, input: _, classification: _ } => {
@@ -2648,7 +2591,7 @@ fn run_test_claim_runtime_assert(
       if accepted_runtime_value_outcome_eq(a: actual, b: expected_outcome) {
         Pass
       } else {
-        verdict_fail(actual: actual)
+        v2.std.verdict.verdict_fail(actual: actual)
       }
     }
     RoundTripClaim { label: _, anchor: _, input: input, classification: _ } =>
@@ -2662,21 +2605,21 @@ fn run_test_claim_runtime_assert(
           if outcome_runtime_value_eq(a: actual, b: v2.std.diagnostic.Rejected { diagnostics: expected }) {
             Pass
           } else {
-            verdict_fail(actual: actual)
+            v2.std.verdict.verdict_fail(actual: actual)
           }
-        _ => verdict_fail(actual: actual)
+        _ => v2.std.verdict.verdict_fail(actual: actual)
       }
   }
 }
 
 fn aggregate_verdicts<S, T>(
-  rs: List<Verdict<TestClaimEvalSubject<S>, T>>,
+  rs: std.types.List<v2.std.verdict.Verdict<TestClaimEvalSubject<S>, T>>,
   at: v2.std.node.Node
-) -> Verdict<TestClaimEvalSubject<S>, T> {
-  verdict_fold(
+) -> v2.std.verdict.Verdict<TestClaimEvalSubject<S>, T> {
+  v2.std.verdict.verdict_fold(
     rs: rs,
-    empty_verdict: verdict_fail(
-      actual: outcome_rejected(
+    empty_verdict: v2.std.verdict.verdict_fail(
+      actual: v2.std.diagnostic.outcome_rejected(
         d: eval_diagnostic(reason: ^eval_empty_verdict_list, node: at)
       )
     )
@@ -2686,7 +2629,7 @@ fn aggregate_verdicts<S, T>(
 fn run_test_claim(
   subject: TestClaimEvalSubject<v2.std.node.Node>
 ) -> TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue> {
-  let at = test_claim_input(c: subject.claim)
+  let at = v2.std.verification.test_claim_input(c: subject.claim)
   match subject.claim {
     RoundTripClaim { label: _, anchor: _, input: _, classification: _ } =>
       TestClaimRun {
@@ -2741,7 +2684,7 @@ fn eval_test_claim_subject(
   tree: v2.compiler.inferred_tree.InferredTree,
   evaluator_pin: v2.std.node.Symbol
 ) -> TestClaimEvalSubject<v2.std.node.Node> {
-  let input = test_claim_input(c: claim)
+  let input = v2.std.verification.test_claim_input(c: claim)
   TestClaimEvalSubject {
     claim: claim,
     context: context,

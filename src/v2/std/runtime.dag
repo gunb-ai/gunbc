@@ -21,33 +21,33 @@ fn environment_binding_key_for_symbol(sym: v2.std.node.Symbol) -> v2.std.runtime
 }
 
 type EvaluationEnvironment {
-  bindings: Map<v2.std.runtime.EnvironmentBindingKey, v2.std.runtime.RuntimeValue>
+  bindings: std.types.Map<v2.std.runtime.EnvironmentBindingKey, v2.std.runtime.RuntimeValue>
 }
 
 type RuntimePrimitiveValue {
-  primitive_type: Node
-  bytes: List<std.bit.Byte>
+  primitive_type: v2.std.node.Node
+  bytes: std.types.List<std.bit.Byte>
 }
 
 type RuntimeAggregateValue {
-  aggregate_type: Node
-  fields: List<v2.std.runtime.RuntimeFieldValue>
+  aggregate_type: v2.std.node.Node
+  fields: std.types.List<v2.std.runtime.RuntimeFieldValue>
 }
 
 type RuntimeReferenceValue {
-  reference_type: Node
+  reference_type: v2.std.node.Node
   identity: v2.std.runtime.RuntimeIdentity
-  referent_type: Node
+  referent_type: v2.std.node.Node
 }
 
 type RuntimeClosureValue {
-  arrow_type: Node
-  arrow: Node
+  arrow_type: v2.std.node.Node
+  arrow: v2.std.node.Node
   environment: v2.std.runtime.EvaluationEnvironment
 }
 
 type RuntimeUnitValue {
-  unit_type: Node
+  unit_type: v2.std.node.Node
 }
 
 type RuntimeValue
@@ -60,11 +60,11 @@ type RuntimeValue
 type RuntimeOutcome
   = Panic { panic_classification: v2.std.node.Symbol }
   | Wrap
-  | CheckedReturn { wrapped_value: Node }
-  | ExceptionRaise { exception_node: Node }
+  | CheckedReturn { wrapped_value: v2.std.node.Node }
+  | ExceptionRaise { exception_node: v2.std.node.Node }
 
 type RuntimeValueNodeProjection
-  = RuntimeValueNodeProjected { node: Node }
+  = RuntimeValueNodeProjected { node: v2.std.node.Node }
   | RuntimeValueNodeUnrepresentable
 
 type IdentityEvidence
@@ -74,13 +74,13 @@ type IdentityEvidence
 fn identity_evidence_equal(evidence: v2.std.runtime.IdentityEvidence) -> Bool {
   match evidence {
     ReferenceIdentical => true
-    StructurallyCompared { equal: eq } => eq
+    StructurallyCompared { equal: std.patterns.eq } => std.patterns.eq
   }
 }
 
-fn runtime_value_resolved_type(value: v2.std.runtime.RuntimeValue) -> Node {
+fn runtime_value_resolved_type(value: v2.std.runtime.RuntimeValue) -> v2.std.node.Node {
   match value {
-    RuntimePrimitive { value: p } => p.primitive_type
+    RuntimePrimitive { value: gunbc.plans.md_helpers.p } => p.primitive_type
     RuntimeAggregate { value: a } => a.aggregate_type
     RuntimeReference { value: r } => r.reference_type
     RuntimeClosure { value: c } => c.arrow_type
@@ -88,36 +88,36 @@ fn runtime_value_resolved_type(value: v2.std.runtime.RuntimeValue) -> Node {
   }
 }
 
-fn runtime_value_named_edge(name: v2.std.node.Symbol, target: Node) -> v2.std.node.Edge {
+fn runtime_value_named_edge(name: v2.std.node.Symbol, target: v2.std.node.Node) -> v2.std.node.Edge {
   v2.std.node.Edge { label: Named { name: name }, target: target }
 }
 
-fn runtime_value_conj_node(children: List<v2.std.node.Edge>) -> Node {
-  node_synthetic(kind: v2.std.node.TypeNode { connective: Conj }, children: children)
+fn runtime_value_conj_node(children: std.types.List<v2.std.node.Edge>) -> v2.std.node.Node {
+  v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: Conj }, children: children)
 }
 
-fn runtime_value_symbol_atom(sym: v2.std.node.Symbol) -> Node {
-  node_synthetic(
+fn runtime_value_symbol_atom(sym: v2.std.node.Symbol) -> v2.std.node.Node {
+  v2.std.node.node_synthetic(
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
     children: []
   )
 }
 
-fn runtime_bit_node_projection(bit: Bool) -> Node {
+fn runtime_bit_node_projection(bit: Bool) -> v2.std.node.Node {
   match bit {
     true => runtime_value_symbol_atom(sym: ^runtime_bit_true_tag)
     false => runtime_value_symbol_atom(sym: ^runtime_bit_false_tag)
   }
 }
 
-fn runtime_bits_list_node(bits: List<Bool>) -> Node {
-  fold_list_node(
+fn runtime_bits_list_node(bits: std.types.List<Bool>) -> v2.std.node.Node {
+  v2.std.algebra.fold_list_node(
     xs: bits,
     item_node: fn(bit) { runtime_bit_node_projection(bit: bit) }
   )
 }
 
-fn runtime_byte_node_projection(byte: std.bit.Byte) -> Node {
+fn runtime_byte_node_projection(byte: std.bit.Byte) -> v2.std.node.Node {
   runtime_value_conj_node(children: [
     runtime_value_named_edge(
       name: ^runtime_byte_bits_node_projection,
@@ -126,8 +126,8 @@ fn runtime_byte_node_projection(byte: std.bit.Byte) -> Node {
   ])
 }
 
-fn runtime_bytes_list_node(bytes: List<std.bit.Byte>) -> Node {
-  fold_list_node(
+fn runtime_bytes_list_node(bytes: std.types.List<std.bit.Byte>) -> v2.std.node.Node {
+  v2.std.algebra.fold_list_node(
     xs: bytes,
     item_node: fn(byte) { runtime_byte_node_projection(byte: byte) }
   )
@@ -171,10 +171,10 @@ fn runtime_field_value_node_projection(
   }
 }
 
-fn runtime_fields_list_node(fields: List<v2.std.runtime.RuntimeFieldValue>) -> v2.std.runtime.RuntimeValueNodeProjection {
-  fold_list(
+fn runtime_fields_list_node(fields: std.types.List<v2.std.runtime.RuntimeFieldValue>) -> v2.std.runtime.RuntimeValueNodeProjection {
+  v2.std.algebra.fold_list(
     xs: fields,
-    empty: RuntimeValueNodeProjected { node: algebra_empty_conj() },
+    empty: RuntimeValueNodeProjected { node: v2.std.algebra.algebra_empty_conj() },
     cons: fn(acc, field_value) {
       match acc {
         RuntimeValueNodeProjected { node: tail_node } =>
@@ -223,7 +223,7 @@ fn runtime_aggregate_value_node_projection(
 
 fn runtime_value_node_projection(value: v2.std.runtime.RuntimeValue) -> v2.std.runtime.RuntimeValueNodeProjection {
   match value {
-    RuntimePrimitive { value: p } => runtime_primitive_value_node_projection(primitive: p)
+    RuntimePrimitive { value: gunbc.plans.md_helpers.p } => runtime_primitive_value_node_projection(primitive: gunbc.plans.md_helpers.p)
     RuntimeAggregate { value: a } => runtime_aggregate_value_node_projection(aggregate: a)
     RuntimeReference { value: _ } => RuntimeValueNodeUnrepresentable
     RuntimeClosure { value: _ } => RuntimeValueNodeUnrepresentable
@@ -232,18 +232,18 @@ fn runtime_value_node_projection(value: v2.std.runtime.RuntimeValue) -> v2.std.r
 }
 
 type ValueRepresentationModel {
-  represent_literal: fn(Node, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>
+  represent_literal: fn(v2.std.node.Node, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>
   represent_result: fn(v2.std.runtime.RuntimeValue) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>
 }
 
 type EvaluationFrame {
-  current: Node
+  current: v2.std.node.Node
   environment: v2.std.runtime.EvaluationEnvironment
 }
 
 type EvaluationCall {
-  callee: Node
-  arguments: List<v2.std.runtime.RuntimeValue>
+  callee: v2.std.node.Node
+  arguments: std.types.List<v2.std.runtime.RuntimeValue>
 }
 
 type ControlTransfer
@@ -273,28 +273,33 @@ type ExecutionSemantics {
 }
 
 type ValueInterpreter {
-  allocate_literal: fn(Node, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>
+  allocate_literal: fn(v2.std.node.Node, EvaluationEnvironment) -> v2.std.diagnostic.Outcome<RuntimeValue>
+  identity: v2.std.node.Symbol
 }
 
 type TransformInterpreter {
-  call_primitive: fn(Node, List<v2.std.runtime.RuntimeValue>, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>
+  call_primitive: fn(v2.std.node.Node, std.types.List<RuntimeValue>, EvaluationEnvironment) -> v2.std.diagnostic.Outcome<RuntimeValue>
+  identity: v2.std.node.Symbol
 }
 
 type BranchInterpreter {
-  choose_branch: fn(Node, v2.std.runtime.RuntimeValue, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<Node>
+  choose_branch: fn(v2.std.node.Node, RuntimeValue, EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.node.Node>
+  identity: v2.std.node.Symbol
 }
 
 type LoopInterpreter {
-  step_loop: fn(Node, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.ControlTransfer>
+  step_loop: fn(v2.std.node.Node, EvaluationEnvironment) -> v2.std.diagnostic.Outcome<ControlTransfer>
+  identity: v2.std.node.Symbol
 }
 
 type BindInterpreter {
-  bind_value: fn(v2.std.runtime.EnvironmentBindingKey, v2.std.runtime.RuntimeValue, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.EvaluationEnvironment>
+  bind_value: fn(EnvironmentBindingKey, RuntimeValue, EvaluationEnvironment) -> v2.std.diagnostic.Outcome<EvaluationEnvironment>
+  identity: v2.std.node.Symbol
 }
 
 type MatchInterpreter {
-  choose_arm: fn(Node, v2.std.runtime.RuntimeValue, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<Node>
-}
+  choose_arm: fn(v2.std.node.Node, RuntimeValue, EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.node.Node>
+  identity: v2.std.node.Symbol}
 
 type InterpretationAlgebra {
   value: v2.std.runtime.ValueInterpreter
@@ -339,14 +344,14 @@ fn interpretation_behavior_dispatch(
 data runtime_match_unimplemented: v2.std.node.Symbol = ^runtime_match_unimplemented
 
 fn runtime_reject_match_arm(
-  node: Node,
+  node: v2.std.node.Node,
   _value: v2.std.runtime.RuntimeValue,
   _env: v2.std.runtime.EvaluationEnvironment
-) -> v2.std.diagnostic.Outcome<Node> {
-  outcome_rejected(
+) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+  v2.std.diagnostic.outcome_rejected(
     v2.std.diagnostic.Diagnostic {
       reason: runtime_match_unimplemented,
-      at: node_locus(node: node),
+      at: v2.std.diagnostic.node_locus(node: node),
       correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
     }
   )
@@ -373,7 +378,7 @@ type EffectRequestKind
 type EffectRequest {
   kind: v2.std.runtime.EffectRequestKind
   operation: v2.std.model_core.PrimitiveOperationRef
-  arguments: List<v2.std.runtime.RuntimeValue>
+  arguments: std.types.List<v2.std.runtime.RuntimeValue>
   continuation: v2.std.runtime.EvaluationFrame
 }
 
@@ -399,5 +404,5 @@ type EffectReceipt {
 }
 
 type EffectReceiptLog {
-  entries: List<v2.std.runtime.EffectReceipt>
+  entries: std.types.List<v2.std.runtime.EffectReceipt>
 }

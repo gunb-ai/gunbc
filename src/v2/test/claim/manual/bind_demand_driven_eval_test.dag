@@ -29,7 +29,7 @@ fn bind_eval_one_value() -> v2.std.runtime.RuntimeValue {
 }
 
 fn bind_eval_lit_one() -> v2.std.node.Node {
-  match dag_int_literal_node_from_lexeme(lexeme: "1", occurrence_id: SyntheticOccurrence) {
+  match v2.extdeps.languages.dag.dag_int_literal_node_from_lexeme(lexeme: "1", occurrence_id: SyntheticOccurrence) {
     Accepted { value: n, diagnostics: _ } => n
     Rejected { diagnostics: _ } =>
       v2.std.node.Node {
@@ -40,7 +40,7 @@ fn bind_eval_lit_one() -> v2.std.node.Node {
   }
 }
 
-data bind_eval_counted_value_node: Node = v2.std.node.Node {
+data bind_eval_counted_value_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.ComputationNode { behavior: Value },
   occurrence_id: SyntheticOccurrence,
   children: []
@@ -68,7 +68,7 @@ fn bind_eval_touch_key() -> v2.std.runtime.EnvironmentBindingKey {
 
 fn bind_eval_int_from_runtime(value: v2.std.runtime.RuntimeValue) -> Int {
   match value {
-    RuntimePrimitive { value: p } => count(p.bytes)
+    RuntimePrimitive { value: gunbc.plans.md_helpers.p } => count(p.bytes)
     _ => 0
   }
 }
@@ -87,19 +87,19 @@ fn bind_eval_touch_from_env(env: v2.std.runtime.EvaluationEnvironment, key: v2.s
 fn bind_eval_diagnostic(n: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^bind_eval_runtime_rejected,
-    at: node_locus(node: n),
+    at: v2.std.diagnostic.node_locus(node: n),
     correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
 fn bind_eval_allocate_literal(node: v2.std.node.Node, env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
-  if dag_node_is_int_literal_atom(node: node) {
-    match dag_int_literal_magnitude_int_from_node(node: node) {
+  if v2.extdeps.languages.dag.dag_node_is_int_literal_atom(node: node) {
+    match v2.extdeps.languages.dag.dag_int_literal_magnitude_int_from_node(node: node) {
       Accepted { value: mag, diagnostics: _ } =>
         if mag == 1 {
-          outcome_accepted(value: bind_eval_one_value())
+          v2.std.diagnostic.outcome_accepted(value: bind_eval_one_value())
         } else {
-          outcome_rejected(d: bind_eval_diagnostic(n: node))
+          v2.std.diagnostic.outcome_rejected(d: bind_eval_diagnostic(n: node))
         }
       Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     }
@@ -108,24 +108,24 @@ fn bind_eval_allocate_literal(node: v2.std.node.Node, env: v2.std.runtime.Evalua
       ComputationNode { behavior: Value } =>
         if node == bind_eval_counted_value_node {
           if bind_eval_touch_from_env(env: env, key: bind_eval_touch_key()) >= 1 {
-            outcome_rejected(d: bind_eval_diagnostic(n: node))
+            v2.std.diagnostic.outcome_rejected(d: bind_eval_diagnostic(n: node))
           } else {
-            outcome_accepted(value: bind_eval_one_value())
+            v2.std.diagnostic.outcome_accepted(value: bind_eval_one_value())
           }
         } else {
-          outcome_rejected(d: bind_eval_diagnostic(n: node))
+          v2.std.diagnostic.outcome_rejected(d: bind_eval_diagnostic(n: node))
         }
-      _ => outcome_rejected(d: bind_eval_diagnostic(n: node))
+      _ => v2.std.diagnostic.outcome_rejected(d: bind_eval_diagnostic(n: node))
     }
   }
 }
 
 fn bind_eval_call_primitive(
   _node: v2.std.node.Node,
-  _args: List<v2.std.runtime.RuntimeValue>,
+  _args: std.types.List<v2.std.runtime.RuntimeValue>,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
-  outcome_rejected(d: bind_eval_diagnostic(n: _node))
+  v2.std.diagnostic.outcome_rejected(d: bind_eval_diagnostic(n: _node))
 }
 
 fn bind_eval_choose_branch(
@@ -133,11 +133,11 @@ fn bind_eval_choose_branch(
   _condition: v2.std.runtime.RuntimeValue,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
-  outcome_rejected(d: bind_eval_diagnostic(n: _node))
+  v2.std.diagnostic.outcome_rejected(d: bind_eval_diagnostic(n: _node))
 }
 
 fn bind_eval_step_loop(node: v2.std.node.Node, _env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.ControlTransfer> {
-  outcome_rejected(d: bind_eval_diagnostic(n: node))
+  v2.std.diagnostic.outcome_rejected(d: bind_eval_diagnostic(n: node))
 }
 
 fn bind_eval_bind_value(
@@ -146,12 +146,12 @@ fn bind_eval_bind_value(
   env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.EvaluationEnvironment> {
   let bound = v2.std.runtime.EvaluationEnvironment {
-    bindings: map_insert(m: env.bindings, key: key, value: value)
+    bindings: v2.std.collection.map_insert(m: env.bindings, key: key, value: value)
   }
   let touched = if key.identity == bind_eval_counted_slot_key().identity {
     let next = bind_eval_touch_from_env(env: bound, key: bind_eval_touch_key()) + 1
     v2.std.runtime.EvaluationEnvironment {
-      bindings: map_insert(
+      bindings: v2.std.collection.map_insert(
         m: bound.bindings,
         key: bind_eval_touch_key(),
         value: v2.std.runtime.RuntimePrimitive {
@@ -170,28 +170,27 @@ fn bind_eval_bind_value(
 
 fn bind_eval_interpretation() -> v2.std.runtime.InterpretationAlgebra {
   v2.std.runtime.InterpretationAlgebra {
-    value: v2.std.runtime.ValueInterpreter { allocate_literal: bind_eval_allocate_literal },
-    transform: v2.std.runtime.TransformInterpreter { call_primitive: bind_eval_call_primitive },
-    branch: v2.std.runtime.BranchInterpreter { choose_branch: bind_eval_choose_branch },
-    loop: v2.std.runtime.LoopInterpreter { step_loop: bind_eval_step_loop },
-    bind: v2.std.runtime.BindInterpreter { bind_value: bind_eval_bind_value },
-    match: v2.std.runtime.MatchInterpreter { choose_arm: runtime_reject_match_arm }
+    value: v2.std.runtime.ValueInterpreter { allocate_literal: bind_eval_allocate_literal, identity: ^bind_eval_allocate_literal },
+    transform: v2.std.runtime.TransformInterpreter { call_primitive: bind_eval_call_primitive, identity: ^bind_eval_call_primitive },
+    branch: v2.std.runtime.BranchInterpreter { choose_branch: bind_eval_choose_branch, identity: ^bind_eval_choose_branch },
+    loop: v2.std.runtime.LoopInterpreter { step_loop: bind_eval_step_loop, identity: ^bind_eval_step_loop },
+    bind: v2.std.runtime.BindInterpreter { bind_value: bind_eval_bind_value, identity: ^bind_eval_bind_value },
+    match: v2.std.runtime.MatchInterpreter { choose_arm: v2.std.runtime.runtime_reject_match_arm, identity: ^v2.std.runtime.runtime_reject_match_arm }
   }
 }
 
 fn bind_eval_interpretation_structure_witness() -> v2.std.runtime.InterpretationStructureWitness {
   v2.std.runtime.InterpretationStructureWitness {
-    allocate_literal: ^bind_eval_allocate_literal_sym,
-    call_primitive: ^bind_eval_call_primitive_sym,
-    choose_branch: ^bind_eval_choose_branch_sym,
-    step_loop: ^bind_eval_step_loop_sym,
-    bind_value: ^bind_eval_bind_value_sym,
-    choose_arm: ^runtime_reject_match_arm
+    allocate_literal: ^bind_eval_allocate_literal,
+    call_primitive: ^bind_eval_call_primitive,
+    choose_branch: ^bind_eval_choose_branch,
+    step_loop: ^bind_eval_step_loop,
+    bind_value: ^bind_eval_bind_value,    choose_arm: ^v2.std.runtime.runtime_reject_match_arm
   }
 }
 
 fn bind_eval_context() -> v2.compiler.eval.EvalContext {
-  eval_context_with_semantics(
+  v2.compiler.eval.eval_context_with_semantics(
     runtime_identity: ^bind_eval_runtime_id,
     interpretation: bind_eval_interpretation(),
     structure_witness: bind_eval_interpretation_structure_witness()
@@ -250,10 +249,10 @@ fn bind_eval_tree_root(call: v2.std.node.Node, expected: v2.std.node.Node) -> v2
 }
 
 fn bind_eval_facts_lookup(key: v2.std.node.Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
-  optional_present(value: claim_inferred_facts_from_nodes(
+  v2.std.optional.optional_present(value: v2.test.lens_common.infer_fixture.claim_inferred_facts_from_nodes(
       resolved: key,
       algebra: bind_eval_i64(),
-      descent: termination_proof_witness_for_node(n: key)
+      descent: v2.std.cardinality.termination_proof_witness_for_node(n: key)
     ))
 }
 
@@ -264,24 +263,24 @@ fn bind_eval_admitted_tree(root: v2.std.node.Node) -> v2.compiler.inferred_tree.
   }
 }
 
-fn bind_eval_run(body: v2.std.node.Node, expected: v2.std.node.Node) -> v2.std.diagnostic.Outcome<TestClaimRun<v2.std.node.Node, RuntimeValue>> {
+fn bind_eval_run(body: v2.std.node.Node, expected: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>> {
   let arrow = bind_eval_arrow_with_body(body: body)
   let call = bind_eval_pick_call(callee: arrow)
   let root = bind_eval_tree_root(call: call, expected: expected)
   let tree = bind_eval_admitted_tree(root: root)
-  outcome_accepted(
-    value: run_test_claim(
+  v2.std.diagnostic.outcome_accepted(
+    value: v2.compiler.eval.run_test_claim(
       subject: v2.compiler.eval.TestClaimEvalSubject {
         claim: v2.std.verification.CompilesClaim {
           label: "manual/bind_demand_driven_eval: demand-driven Bind eval acceptance",
-          anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+          anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
           input: call,
           expected_value: expected,
           classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
         },
         context: bind_eval_context(),
         tree: tree,
-        input: test_claim_typed_input_node(
+        input: v2.compiler.eval.test_claim_typed_input_node(
           evaluator_input: call,
           evaluator_pin: ^bind_eval_pick_call_pin
         )
@@ -290,10 +289,10 @@ fn bind_eval_run(body: v2.std.node.Node, expected: v2.std.node.Node) -> v2.std.d
   )
 }
 
-fn bind_eval_run_passes(run: v2.std.diagnostic.Outcome<TestClaimRun<v2.std.node.Node, RuntimeValue>>) -> Bool {
+fn bind_eval_run_passes(run: v2.std.diagnostic.Outcome<v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>>) -> Bool {
   match run {
     Accepted { value: r, diagnostics: _ } =>
-      match test_claim_run_verdict(run: r) {
+      match v2.compiler.eval.test_claim_run_verdict(run: r) {
         Pass => true
         _ => false
       }
@@ -322,7 +321,7 @@ test fn bind_eval_divergent_value_rejects_holds() -> Bool {
     expected: bind_eval_lit_one()
   ) {
     Accepted { value: r, diagnostics: _ } =>
-      match test_claim_run_verdict(run: r) {
+      match v2.compiler.eval.test_claim_run_verdict(run: r) {
         Pass => false
         _ => true
       }
@@ -396,10 +395,10 @@ test fn bind_eval_minted_occurrence_equal_reference_reads_holds() -> Bool {
 test fn bind_eval_unbound_reference_refuses_holds() -> Bool {
   let ref_node = bind_eval_atom(s: ^bind_eval_unbound_ref_sym)
   let tree = bind_eval_admitted_tree(root: ref_node)
-  match eval_with_context(
+  match v2.compiler.eval.eval_with_context(
     tree: tree,
     context: bind_eval_context(),
-    inputs: inputs_root_only(root: ref_node)
+    inputs: v2.compiler.eval.inputs_root_only(root: ref_node)
   ) {
     Rejected { diagnostics: d } =>
       d.head.reason == ^eval_rejected_runtime_binding_lookup_miss
@@ -408,20 +407,20 @@ test fn bind_eval_unbound_reference_refuses_holds() -> Bool {
 }
 
 fn bind_eval_default_context() -> v2.compiler.eval.EvalContext {
-  eval_context_with_semantics(
+  v2.compiler.eval.eval_context_with_semantics(
     runtime_identity: ^bind_eval_runtime_id,
-    interpretation: v2_evaluator_interpretation(),
-    structure_witness: v2_evaluator_interpretation_structure_witness()
+    interpretation: v2.extdeps.runtimes.v2_evaluator.v2_evaluator_interpretation(),
+    structure_witness: v2.extdeps.runtimes.v2_evaluator.v2_evaluator_interpretation_structure_witness()
   )
 }
 
 test fn bind_eval_unbound_reference_default_algebra_refuses_holds() -> Bool {
   let ref_node = bind_eval_atom(s: ^bind_eval_unbound_ref_sym)
   let tree = bind_eval_admitted_tree(root: ref_node)
-  match eval_with_context(
+  match v2.compiler.eval.eval_with_context(
     tree: tree,
     context: bind_eval_default_context(),
-    inputs: inputs_root_only(root: ref_node)
+    inputs: v2.compiler.eval.inputs_root_only(root: ref_node)
   ) {
     Rejected { diagnostics: d } =>
       d.head.reason == ^eval_rejected_runtime_binding_lookup_miss

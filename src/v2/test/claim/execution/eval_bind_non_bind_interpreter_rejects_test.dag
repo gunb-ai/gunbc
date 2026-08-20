@@ -17,17 +17,17 @@ test fn eval_bind_node_eval_rejects_value_interpreter_holds() -> Bool {
       }
     }
   }
-  match eval_bind_node_eval(
+  match v2.compiler.eval.eval_bind_node_eval(
     node: node,
     tree: tree,
-    interpretation: eval_default_interpretation(),
-    interpreter: v2.std.runtime.ValueRuntimeInterpreter {
+    interpretation: v2.compiler.eval.eval_default_interpretation(),
+    interpreter: ValueRuntimeInterpreter {
       interpreter: v2.std.runtime.ValueInterpreter {
-        allocate_literal: v2_eval_allocate_literal
-      }
+        allocate_literal: v2.extdeps.runtimes.v2_evaluator.v2_eval_allocate_literal,
+        identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_allocate_literal      }
     },
-    environment: empty_evaluation_environment(),
-    runtime: eval_runtime(),
+    environment: v2.compiler.eval.empty_evaluation_environment(),
+    runtime: v2.compiler.eval.eval_runtime(),
     effect_io: EffectIoEvalAbsent
   ) {
     Rejected { diagnostics: d } => d.head.reason == ^eval_rejected_type_node

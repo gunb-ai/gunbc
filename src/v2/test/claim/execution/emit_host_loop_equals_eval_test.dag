@@ -3,12 +3,12 @@ module v2.test.execution.emit_host_loop_equals_eval
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data emit_loop_eval_subgraph_node: Node = dag_loop_body_fixture
+data emit_loop_eval_subgraph_node: v2.std.node.Node = v2.extdeps.languages.dag.dag_loop_body_fixture
 
-fn emit_loop_eval_generic_facts(node: Node) -> v2.compiler.inferred_tree.InferredFacts {
-  claim_inferred_facts_from_nodes(
+fn emit_loop_eval_generic_facts(node: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredFacts {
+  v2.test.lens_common.infer_fixture.claim_inferred_facts_from_nodes(
     resolved: node,
-    algebra: rust_emit_host_runtime_primitive_type_node(),
+    algebra: v2.extdeps.languages.rust.rust_emit_host_runtime_primitive_type_node(),
     descent: v2.std.witness.Holds {
       value: v2.std.cardinality.TerminationProof {
         non_increasing: [],
@@ -18,16 +18,16 @@ fn emit_loop_eval_generic_facts(node: Node) -> v2.compiler.inferred_tree.Inferre
   )
 }
 
-fn emit_loop_eval_composed_facts(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
-  optional_present(value: emit_loop_eval_generic_facts(node: key))
+fn emit_loop_eval_composed_facts(key: v2.std.node.Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+  v2.std.optional.optional_present(value: emit_loop_eval_generic_facts(node: key))
 }
 
 fn emit_loop_eval_producer_tree() -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   match v2.test.complexity_gate.table_fixture_loop_subject_producer.table_fixture_loop_arrow_with_body() {
-    Accepted { value: root, diagnostics: _ } =>
-      outcome_accepted(
+    Accepted { value: test.claim.extdeps_llm_claude_trust_witness.root, diagnostics: _ } =>
+      v2.std.diagnostic.outcome_accepted(
         value: v2.compiler.inferred_tree.InferredTree {
-          root: root,
+          root: test.claim.extdeps_llm_claude_trust_witness.root,
           facts: std.types.Map { lookup: emit_loop_eval_composed_facts }
         }
       )
@@ -36,11 +36,11 @@ fn emit_loop_eval_producer_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer
 }
 
 fn emit_loop_eval_wrong_value_producer_tree() -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
-  match table_fixture_loop_wrong_value_arrow_with_body() {
-    Accepted { value: root, diagnostics: _ } =>
-      outcome_accepted(
+  match v2.test.complexity_gate.table_fixture_loop_subject_producer.table_fixture_loop_wrong_value_arrow_with_body() {
+    Accepted { value: test.claim.extdeps_llm_claude_trust_witness.root, diagnostics: _ } =>
+      v2.std.diagnostic.outcome_accepted(
         value: v2.compiler.inferred_tree.InferredTree {
-          root: root,
+          root: test.claim.extdeps_llm_claude_trust_witness.root,
           facts: std.types.Map { lookup: emit_loop_eval_composed_facts }
         }
       )
@@ -51,68 +51,68 @@ fn emit_loop_eval_wrong_value_producer_tree() -> v2.std.diagnostic.Outcome<v2.co
 fn emit_loop_eval_octet_value(n: Int) -> v2.std.runtime.RuntimeValue {
   v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
-      primitive_type: rust_emit_host_runtime_primitive_type_node(),
-      bytes: emit_host_octets_byte_string(octets: [0, n, 0, 0, 0])
+      primitive_type: v2.extdeps.languages.rust.rust_emit_host_runtime_primitive_type_node(),
+      bytes: v2.compiler.emit_host.emit_host_octets_byte_string(octets: [0, n, 0, 0, 0])
     }
   }
 }
 
-fn emit_loop_eval_diagnostic(reason: v2.std.node.Symbol, node: Node) -> v2.std.diagnostic.Diagnostic {
+fn emit_loop_eval_diagnostic(reason: v2.std.node.Symbol, node: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: reason,
-    at: node_locus(node: node),
+    at: v2.std.diagnostic.node_locus(node: node),
     correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn emit_loop_eval_allocate_literal(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
-  if dag_node_is_int_literal_atom(node: node) {
-    match dag_int_literal_magnitude_int_from_node(node: node) {
+fn emit_loop_eval_allocate_literal(node: v2.std.node.Node, _env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
+  if v2.extdeps.languages.dag.dag_node_is_int_literal_atom(node: node) {
+    match v2.extdeps.languages.dag.dag_int_literal_magnitude_int_from_node(node: node) {
       Accepted { value: mag, diagnostics: _ } =>
-        outcome_accepted(value: emit_loop_eval_octet_value(n: mag))
+        v2.std.diagnostic.outcome_accepted(value: emit_loop_eval_octet_value(n: mag))
       Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     }
   } else {
-    outcome_rejected(
+    v2.std.diagnostic.outcome_rejected(
       d: emit_loop_eval_diagnostic(reason: ^emit_loop_eval_literal_miss, node: node)
     )
   }
 }
 
 fn emit_loop_eval_call_primitive(
-  node: Node,
-  _args: List<v2.std.runtime.RuntimeValue>,
+  node: v2.std.node.Node,
+  _args: std.types.List<v2.std.runtime.RuntimeValue>,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
-  outcome_rejected(
+  v2.std.diagnostic.outcome_rejected(
     d: emit_loop_eval_diagnostic(reason: ^emit_loop_eval_call_primitive_miss, node: node)
   )
 }
 
 fn emit_loop_eval_choose_branch(
-  node: Node,
+  node: v2.std.node.Node,
   _value: v2.std.runtime.RuntimeValue,
   _env: v2.std.runtime.EvaluationEnvironment
-) -> v2.std.diagnostic.Outcome<Node> {
-  outcome_rejected(
+) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+  v2.std.diagnostic.outcome_rejected(
     d: emit_loop_eval_diagnostic(reason: ^emit_loop_eval_branch_miss, node: node)
   )
 }
 
 fn emit_loop_eval_step_loop(
-  node: Node,
+  node: v2.std.node.Node,
   env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.ControlTransfer> {
-  match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+  match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: node), index: 0) {
     Present { value: body } =>
-      bind_outcome(
+      v2.std.diagnostic.bind_outcome(
         o: emit_loop_eval_allocate_literal(node: body, _env: env),
         f: fn(value) {
-          outcome_accepted(value: v2.std.runtime.Continue { value: value })
+          v2.std.diagnostic.outcome_accepted(value: v2.std.runtime.Continue { value: value })
         }
       )
     Absent =>
-      outcome_rejected(
+      v2.std.diagnostic.outcome_rejected(
         d: emit_loop_eval_diagnostic(reason: ^emit_loop_eval_step_miss, node: node)
       )
   }
@@ -123,53 +123,52 @@ fn emit_loop_eval_bind_value(
   _value: v2.std.runtime.RuntimeValue,
   env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.EvaluationEnvironment> {
-  outcome_accepted(value: env)
+  v2.std.diagnostic.outcome_accepted(value: env)
 }
 
 fn emit_loop_eval_interpretation() -> v2.std.runtime.InterpretationAlgebra {
   v2.std.runtime.InterpretationAlgebra {
-    value: v2.std.runtime.ValueInterpreter { allocate_literal: emit_loop_eval_allocate_literal },
-    transform: v2.std.runtime.TransformInterpreter { call_primitive: emit_loop_eval_call_primitive },
-    branch: v2.std.runtime.BranchInterpreter { choose_branch: emit_loop_eval_choose_branch },
-    loop: v2.std.runtime.LoopInterpreter { step_loop: emit_loop_eval_step_loop },
-    bind: v2.std.runtime.BindInterpreter { bind_value: emit_loop_eval_bind_value },
+    value: v2.std.runtime.ValueInterpreter { allocate_literal: emit_loop_eval_allocate_literal, identity: ^emit_loop_eval_allocate_literal },
+    transform: v2.std.runtime.TransformInterpreter { call_primitive: emit_loop_eval_call_primitive, identity: ^emit_loop_eval_call_primitive },
+    branch: v2.std.runtime.BranchInterpreter { choose_branch: emit_loop_eval_choose_branch, identity: ^emit_loop_eval_choose_branch },
+    loop: v2.std.runtime.LoopInterpreter { step_loop: emit_loop_eval_step_loop, identity: ^emit_loop_eval_step_loop },
+    bind: v2.std.runtime.BindInterpreter { bind_value: emit_loop_eval_bind_value, identity: ^emit_loop_eval_bind_value },
     match: v2.std.runtime.MatchInterpreter {
-      choose_arm: runtime_reject_match_arm
-    }
+      choose_arm: v2.std.runtime.runtime_reject_match_arm,
+      identity: ^v2.std.runtime.runtime_reject_match_arm    }
   }
 }
 
 fn emit_loop_eval_structure_witness() -> v2.std.runtime.InterpretationStructureWitness {
   v2.std.runtime.InterpretationStructureWitness {
-    allocate_literal: ^emit_loop_eval_allocate_literal_sym,
-    call_primitive: ^emit_loop_eval_call_primitive_sym,
-    choose_branch: ^emit_loop_eval_choose_branch_sym,
-    step_loop: ^emit_loop_eval_step_loop_sym,
-    bind_value: ^emit_loop_eval_bind_value_sym,
-    choose_arm: ^runtime_reject_match_arm
+    allocate_literal: ^emit_loop_eval_allocate_literal,
+    call_primitive: ^emit_loop_eval_call_primitive,
+    choose_branch: ^emit_loop_eval_choose_branch,
+    step_loop: ^emit_loop_eval_step_loop,
+    bind_value: ^emit_loop_eval_bind_value,    choose_arm: ^v2.std.runtime.runtime_reject_match_arm
   }
 }
 
 fn emit_loop_eval_context() -> v2.compiler.eval.EvalContext {
-  eval_context_with_semantics(
+  v2.compiler.eval.eval_context_with_semantics(
     runtime_identity: ^emit_loop_eval_interpretation_pin,
     interpretation: emit_loop_eval_interpretation(),
     structure_witness: emit_loop_eval_structure_witness()
   )
 }
 
-fn emit_loop_eval_claim(rhs_result_node: Node) -> v2.std.verification.TestClaim {
+fn emit_loop_eval_claim(rhs_result_node: v2.std.node.Node) -> v2.std.verification.TestClaim {
   v2.std.verification.EqualsClaim {
     label: "S2 B8: rust emit(loop-fn) host-run == eval(loop-body) via shared octet codec",
-    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+    anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
     lhs: rhs_result_node,
     rhs: rhs_result_node,
     classification: v2.std.verification.TestClassification { tier: Tier3, layer: Integration }
   }
 }
 
-fn emit_loop_eval_subject(tree: v2.compiler.inferred_tree.InferredTree) -> TestClaimEvalSubject<Node> {
-  eval_test_claim_subject(
+fn emit_loop_eval_subject(tree: v2.compiler.inferred_tree.InferredTree) -> v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node> {
+  v2.compiler.eval.eval_test_claim_subject(
     claim: emit_loop_eval_claim(rhs_result_node: emit_loop_eval_subgraph_node),
     context: emit_loop_eval_context(),
     tree: tree,
@@ -177,14 +176,14 @@ fn emit_loop_eval_subject(tree: v2.compiler.inferred_tree.InferredTree) -> TestC
   )
 }
 
-fn emit_loop_eval_run(tree: v2.compiler.inferred_tree.InferredTree) -> v2.compiler.eval.TestClaimRun<Node, v2.std.runtime.RuntimeValue> {
-  run_test_claim_emit_vs_eval(
+fn emit_loop_eval_run(tree: v2.compiler.inferred_tree.InferredTree) -> v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue> {
+  v2.compiler.emit_host.run_test_claim_emit_vs_eval(
     subject: emit_loop_eval_subject(tree: tree),
-    target: rust_loop_target_model_staging()
+    target: v2.extdeps.languages.rust_test.rust_loop_target_model_staging()
   )
 }
 
-fn emit_loop_eval_verdict_is_pass(run: v2.compiler.eval.TestClaimRun<Node, v2.std.runtime.RuntimeValue>) -> Bool {
+fn emit_loop_eval_verdict_is_pass(run: v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>) -> Bool {
   match run.verdict {
     Pass => true
     SemanticMismatch { actual: _, falsification: _ } => false
@@ -194,7 +193,7 @@ fn emit_loop_eval_verdict_is_pass(run: v2.compiler.eval.TestClaimRun<Node, v2.st
   }
 }
 
-fn emit_loop_eval_verdict_is_fail(run: v2.compiler.eval.TestClaimRun<Node, v2.std.runtime.RuntimeValue>) -> Bool {
+fn emit_loop_eval_verdict_is_fail(run: v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>) -> Bool {
   match run.verdict {
     SemanticMismatch { actual: _, falsification: _ } => true
     Pass => false

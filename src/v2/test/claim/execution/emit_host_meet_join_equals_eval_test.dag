@@ -4,9 +4,9 @@ module v2.test.execution.emit_host_meet_join_equals_eval
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn meet_join_eval_generic_facts(node: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredFacts {
-  claim_inferred_facts_from_nodes(
+  v2.test.lens_common.infer_fixture.claim_inferred_facts_from_nodes(
     resolved: node,
-    algebra: rust_emit_host_runtime_primitive_type_node(),
+    algebra: v2.extdeps.languages.rust.rust_emit_host_runtime_primitive_type_node(),
     descent: v2.std.witness.Holds {
       value: v2.std.cardinality.TerminationProof {
         non_increasing: [],
@@ -17,7 +17,7 @@ fn meet_join_eval_generic_facts(node: v2.std.node.Node) -> v2.compiler.inferred_
 }
 
 fn meet_join_eval_composed_facts(key: v2.std.node.Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
-  optional_present(value: meet_join_eval_generic_facts(node: key))
+  v2.std.optional.optional_present(value: meet_join_eval_generic_facts(node: key))
 }
 
 fn meet_join_eval_tree_for(root: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredTree {
@@ -30,8 +30,8 @@ fn meet_join_eval_tree_for(root: v2.std.node.Node) -> v2.compiler.inferred_tree.
 fn meet_join_eval_octet_value(n: Int) -> v2.std.runtime.RuntimeValue {
   v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
-      primitive_type: rust_emit_host_runtime_primitive_type_node(),
-      bytes: emit_host_octets_byte_string(octets: [0, n, 0, 0, 0])
+      primitive_type: v2.extdeps.languages.rust.rust_emit_host_runtime_primitive_type_node(),
+      bytes: v2.compiler.emit_host.emit_host_octets_byte_string(octets: [0, n, 0, 0, 0])
     }
   }
 }
@@ -39,7 +39,7 @@ fn meet_join_eval_octet_value(n: Int) -> v2.std.runtime.RuntimeValue {
 fn meet_join_eval_diagnostic(reason: v2.std.node.Symbol, node: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: reason,
-    at: node_locus(node: node),
+    at: v2.std.diagnostic.node_locus(node: node),
     correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -56,16 +56,16 @@ fn meet_join_eval_allocate_literal(node: v2.std.node.Node, _env: v2.std.runtime.
   match node.kind {
     TypeNode { connective: Atom { identity: id } } =>
       if id == ^dag_complement_lit_true {
-        outcome_accepted(value: meet_join_eval_octet_value(n: 1))
+        v2.std.diagnostic.outcome_accepted(value: meet_join_eval_octet_value(n: 1))
       } else if id == ^dag_complement_lit_false {
-        outcome_accepted(value: meet_join_eval_octet_value(n: 0))
+        v2.std.diagnostic.outcome_accepted(value: meet_join_eval_octet_value(n: 0))
       } else {
-        outcome_rejected(
+        v2.std.diagnostic.outcome_rejected(
           d: meet_join_eval_diagnostic(reason: ^meet_join_eval_literal_miss, node: node)
         )
       }
     _ =>
-      outcome_rejected(
+      v2.std.diagnostic.outcome_rejected(
         d: meet_join_eval_diagnostic(reason: ^meet_join_eval_literal_miss, node: node)
       )
   }
@@ -73,10 +73,10 @@ fn meet_join_eval_allocate_literal(node: v2.std.node.Node, _env: v2.std.runtime.
 
 fn meet_join_eval_call_primitive(
   node: v2.std.node.Node,
-  _args: List<v2.std.runtime.RuntimeValue>,
+  _args: std.types.List<v2.std.runtime.RuntimeValue>,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
-  outcome_rejected(
+  v2.std.diagnostic.outcome_rejected(
     d: meet_join_eval_diagnostic(reason: ^meet_join_eval_call_primitive_miss, node: node)
   )
 }
@@ -86,7 +86,7 @@ fn meet_join_eval_choose_branch(
   _value: v2.std.runtime.RuntimeValue,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
-  outcome_rejected(
+  v2.std.diagnostic.outcome_rejected(
     d: meet_join_eval_diagnostic(reason: ^meet_join_eval_branch_miss, node: node)
   )
 }
@@ -95,7 +95,7 @@ fn meet_join_eval_step_loop(
   node: v2.std.node.Node,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.ControlTransfer> {
-  outcome_rejected(
+  v2.std.diagnostic.outcome_rejected(
     d: meet_join_eval_diagnostic(reason: ^meet_join_eval_loop_miss, node: node)
   )
 }
@@ -105,25 +105,25 @@ fn meet_join_eval_bind_value(
   _value: v2.std.runtime.RuntimeValue,
   env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.EvaluationEnvironment> {
-  outcome_accepted(value: env)
+  v2.std.diagnostic.outcome_accepted(value: env)
 }
 
 fn meet_join_eval_nth_arm_wire(node: v2.std.node.Node, wanted: Int) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
-  match list_at_optional(xs: node.children, index: wanted) {
+  match v2.std.collection.list_at_optional(xs: node.children, index: wanted) {
     Present { value: child } =>
       match child {
-        Edge { label: _, target: arm_wire } => outcome_accepted(value: arm_wire)
+        v2.std.node.Edge { label: _, target: arm_wire } => v2.std.diagnostic.outcome_accepted(value: arm_wire)
       }
     Absent =>
-      outcome_rejected(
+      v2.std.diagnostic.outcome_rejected(
         d: meet_join_eval_diagnostic(reason: ^meet_join_eval_arm_miss, node: node)
       )
   }
 }
 
 fn meet_join_eval_arm_body_node(arm_wire: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
-  match find_named_child(root: arm_wire, name: match_arm_body) {
-    Accepted { value: body, diagnostics: _ } => outcome_accepted(value: body)
+  match v2.std.node_query.find_named_child(root: arm_wire, name: v2.std.node.match_arm_body) {
+    Accepted { value: body, diagnostics: _ } => v2.std.diagnostic.outcome_accepted(value: body)
     Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
@@ -135,18 +135,18 @@ fn meet_join_eval_choose_arm(
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   if meet_join_eval_bool_true(value: scrutinee) {
     match meet_join_eval_nth_arm_wire(node: node, wanted: 1) {
-      Accepted { value: arm, diagnostics: _ } =>
-        meet_join_eval_arm_body_node(arm_wire: arm)
+      Accepted { value: extdeps.vendor.arm.arm, diagnostics: _ } =>
+        meet_join_eval_arm_body_node(arm_wire: extdeps.vendor.arm.arm)
       Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     }
   } else if meet_join_eval_bool_false(value: scrutinee) {
     match meet_join_eval_nth_arm_wire(node: node, wanted: 2) {
-      Accepted { value: arm, diagnostics: _ } =>
-        meet_join_eval_arm_body_node(arm_wire: arm)
+      Accepted { value: extdeps.vendor.arm.arm, diagnostics: _ } =>
+        meet_join_eval_arm_body_node(arm_wire: extdeps.vendor.arm.arm)
       Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     }
   } else {
-    outcome_rejected(
+    v2.std.diagnostic.outcome_rejected(
       d: meet_join_eval_diagnostic(reason: ^meet_join_eval_arm_miss, node: node)
     )
   }
@@ -154,28 +154,27 @@ fn meet_join_eval_choose_arm(
 
 fn meet_join_eval_interpretation() -> v2.std.runtime.InterpretationAlgebra {
   v2.std.runtime.InterpretationAlgebra {
-    value: v2.std.runtime.ValueInterpreter { allocate_literal: meet_join_eval_allocate_literal },
-    transform: v2.std.runtime.TransformInterpreter { call_primitive: meet_join_eval_call_primitive },
-    branch: v2.std.runtime.BranchInterpreter { choose_branch: meet_join_eval_choose_branch },
-    loop: v2.std.runtime.LoopInterpreter { step_loop: meet_join_eval_step_loop },
-    bind: v2.std.runtime.BindInterpreter { bind_value: meet_join_eval_bind_value },
-    match: v2.std.runtime.MatchInterpreter { choose_arm: meet_join_eval_choose_arm }
+    value: v2.std.runtime.ValueInterpreter { allocate_literal: meet_join_eval_allocate_literal, identity: ^meet_join_eval_allocate_literal },
+    transform: v2.std.runtime.TransformInterpreter { call_primitive: meet_join_eval_call_primitive, identity: ^meet_join_eval_call_primitive },
+    branch: v2.std.runtime.BranchInterpreter { choose_branch: meet_join_eval_choose_branch, identity: ^meet_join_eval_choose_branch },
+    loop: v2.std.runtime.LoopInterpreter { step_loop: meet_join_eval_step_loop, identity: ^meet_join_eval_step_loop },
+    bind: v2.std.runtime.BindInterpreter { bind_value: meet_join_eval_bind_value, identity: ^meet_join_eval_bind_value },
+    match: v2.std.runtime.MatchInterpreter { choose_arm: meet_join_eval_choose_arm, identity: ^meet_join_eval_choose_arm }
   }
 }
 
 fn meet_join_eval_structure_witness() -> v2.std.runtime.InterpretationStructureWitness {
   v2.std.runtime.InterpretationStructureWitness {
-    allocate_literal: ^meet_join_eval_allocate_literal_sym,
-    call_primitive: ^meet_join_eval_call_primitive_sym,
-    choose_branch: ^meet_join_eval_choose_branch_sym,
-    step_loop: ^meet_join_eval_step_loop_sym,
-    bind_value: ^meet_join_eval_bind_value_sym,
-    choose_arm: ^meet_join_eval_choose_arm_sym
-  }
+    allocate_literal: ^meet_join_eval_allocate_literal,
+    call_primitive: ^meet_join_eval_call_primitive,
+    choose_branch: ^meet_join_eval_choose_branch,
+    step_loop: ^meet_join_eval_step_loop,
+    bind_value: ^meet_join_eval_bind_value,
+    choose_arm: ^meet_join_eval_choose_arm  }
 }
 
 fn meet_join_eval_context() -> v2.compiler.eval.EvalContext {
-  eval_context_with_semantics(
+  v2.compiler.eval.eval_context_with_semantics(
     runtime_identity: ^meet_join_eval_interpretation_pin,
     interpretation: meet_join_eval_interpretation(),
     structure_witness: meet_join_eval_structure_witness()
@@ -185,15 +184,15 @@ fn meet_join_eval_context() -> v2.compiler.eval.EvalContext {
 fn meet_join_eval_claim(rhs_result_node: v2.std.node.Node) -> v2.std.verification.TestClaim {
   v2.std.verification.EqualsClaim {
     label: "S2 std/logic meet/join: rust emit host-run == eval via shared octet codec",
-    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+    anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
     lhs: rhs_result_node,
     rhs: rhs_result_node,
     classification: v2.std.verification.TestClassification { tier: Tier3, layer: Integration }
   }
 }
 
-fn meet_join_eval_subject(tree: v2.compiler.inferred_tree.InferredTree, subgraph: v2.std.node.Node) -> TestClaimEvalSubject<v2.std.node.Node> {
-  eval_test_claim_subject(
+fn meet_join_eval_subject(tree: v2.compiler.inferred_tree.InferredTree, subgraph: v2.std.node.Node) -> v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node> {
+  v2.compiler.eval.eval_test_claim_subject(
     claim: meet_join_eval_claim(rhs_result_node: subgraph),
     context: meet_join_eval_context(),
     tree: tree,
@@ -206,7 +205,7 @@ fn meet_join_eval_run(
   target: v2.std.compilers.target_model.TargetModel,
   subgraph: v2.std.node.Node
 ) -> v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue> {
-  run_test_claim_emit_vs_eval(
+  v2.compiler.emit_host.run_test_claim_emit_vs_eval(
     subject: meet_join_eval_subject(tree: meet_join_eval_tree_for(root: root), subgraph: subgraph),
     target: target
   )
@@ -235,9 +234,9 @@ fn meet_join_eval_verdict_is_semantic_mismatch(run: v2.compiler.eval.TestClaimRu
 test fn emit_host_meet_equals_eval_holds() -> Bool {
   meet_join_eval_verdict_is_pass(
     run: meet_join_eval_run(
-      root: dag_meet_arrow_with_body_fixture,
-      target: rust_logic_meet_target_model_staging(),
-      subgraph: dag_meet_eval_subgraph_fixture
+      root: v2.extdeps.languages.dag.dag_meet_arrow_with_body_fixture,
+      target: v2.extdeps.languages.rust_test.rust_logic_meet_target_model_staging(),
+      subgraph: v2.extdeps.languages.dag.dag_meet_eval_subgraph_fixture
     )
   )
 }
@@ -245,9 +244,9 @@ test fn emit_host_meet_equals_eval_holds() -> Bool {
 test fn emit_host_meet_wrong_fixture_refuses_holds() -> Bool {
   meet_join_eval_verdict_is_semantic_mismatch(
     run: meet_join_eval_run(
-      root: dag_meet_arrow_with_body_swapped_arms_fixture,
-      target: rust_logic_meet_target_model_staging(),
-      subgraph: dag_meet_eval_subgraph_fixture
+      root: v2.extdeps.languages.dag.dag_meet_arrow_with_body_swapped_arms_fixture,
+      target: v2.extdeps.languages.rust_test.rust_logic_meet_target_model_staging(),
+      subgraph: v2.extdeps.languages.dag.dag_meet_eval_subgraph_fixture
     )
   )
 }
@@ -255,9 +254,9 @@ test fn emit_host_meet_wrong_fixture_refuses_holds() -> Bool {
 test fn emit_host_join_equals_eval_holds() -> Bool {
   meet_join_eval_verdict_is_pass(
     run: meet_join_eval_run(
-      root: dag_join_arrow_with_body_fixture,
-      target: rust_logic_join_target_model_staging(),
-      subgraph: dag_join_eval_subgraph_fixture
+      root: v2.extdeps.languages.dag.dag_join_arrow_with_body_fixture,
+      target: v2.extdeps.languages.rust_test.rust_logic_join_target_model_staging(),
+      subgraph: v2.extdeps.languages.dag.dag_join_eval_subgraph_fixture
     )
   )
 }
@@ -265,9 +264,9 @@ test fn emit_host_join_equals_eval_holds() -> Bool {
 test fn emit_host_join_wrong_fixture_refuses_holds() -> Bool {
   meet_join_eval_verdict_is_semantic_mismatch(
     run: meet_join_eval_run(
-      root: dag_join_arrow_with_body_swapped_arms_fixture,
-      target: rust_logic_join_target_model_staging(),
-      subgraph: dag_join_eval_subgraph_fixture
+      root: v2.extdeps.languages.dag.dag_join_arrow_with_body_swapped_arms_fixture,
+      target: v2.extdeps.languages.rust_test.rust_logic_join_target_model_staging(),
+      subgraph: v2.extdeps.languages.dag.dag_join_eval_subgraph_fixture
     )
   )
 }

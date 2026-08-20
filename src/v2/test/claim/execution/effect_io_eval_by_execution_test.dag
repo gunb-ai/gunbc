@@ -13,61 +13,61 @@ fn effect_io_eval_termination_proof() -> v2.std.cardinality.TerminationProof {
 fn effect_io_eval_literal_value() -> v2.std.runtime.RuntimeValue {
   v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
-      primitive_type: effect_io_pure_unit_type_node(),
+      primitive_type: v2.extdeps.runtimes.v2_effect_io_pure.effect_io_pure_unit_type_node(),
       bytes: []
     }
   }
 }
 
-data effect_io_eval_locator_literal: Node = v2.std.node.Node {
+data effect_io_eval_locator_literal: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.ComputationNode { behavior: Value },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data effect_io_eval_payload_literal: Node = v2.std.node.Node {
+data effect_io_eval_payload_literal: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.ComputationNode { behavior: Value },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data effect_io_eval_roundtrip_node: Node = effect_io_roundtrip_transform(
+data effect_io_eval_roundtrip_node: v2.std.node.Node = v2.compiler.eval.effect_io_roundtrip_transform(
   locator: effect_io_eval_locator_literal,
   payload: effect_io_eval_payload_literal
 )
 
-fn effect_io_eval_allocate_literal(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.RuntimeValue> {
+fn effect_io_eval_allocate_literal(node: v2.std.node.Node, _env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   v2.std.diagnostic.Accepted { value: effect_io_eval_literal_value(), diagnostics: v2.std.diagnostic.None }
 }
 
 fn effect_io_eval_reject_primitive(
-  node: Node,
-  _args: List<v2.std.runtime.RuntimeValue>,
+  node: v2.std.node.Node,
+  _args: std.types.List<v2.std.runtime.RuntimeValue>,
   _env: v2.std.runtime.EvaluationEnvironment
-) -> Outcome<v2.std.runtime.RuntimeValue> {
+) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   v2.std.diagnostic.Rejected {
-    diagnostics: diagnostics_singleton(
-      d: eval_diagnostic(reason: ^effect_io_eval_primitive_rejected, node: node)
+    diagnostics: v2.std.diagnostic.diagnostics_singleton(
+      d: v2.compiler.eval.eval_diagnostic(reason: ^effect_io_eval_primitive_rejected, node: node)
     )
   }
 }
 
 fn effect_io_eval_reject_branch(
-  node: Node,
+  node: v2.std.node.Node,
   _value: v2.std.runtime.RuntimeValue,
   _env: v2.std.runtime.EvaluationEnvironment
-) -> Outcome<Node> {
+) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   v2.std.diagnostic.Rejected {
-    diagnostics: diagnostics_singleton(
-      d: eval_diagnostic(reason: ^effect_io_eval_primitive_rejected, node: node)
+    diagnostics: v2.std.diagnostic.diagnostics_singleton(
+      d: v2.compiler.eval.eval_diagnostic(reason: ^effect_io_eval_primitive_rejected, node: node)
     )
   }
 }
 
-fn effect_io_eval_step_loop(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.ControlTransfer> {
+fn effect_io_eval_step_loop(node: v2.std.node.Node, _env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.ControlTransfer> {
   v2.std.diagnostic.Rejected {
-    diagnostics: diagnostics_singleton(
-      d: eval_diagnostic(reason: ^effect_io_eval_primitive_rejected, node: node)
+    diagnostics: v2.std.diagnostic.diagnostics_singleton(
+      d: v2.compiler.eval.eval_diagnostic(reason: ^effect_io_eval_primitive_rejected, node: node)
     )
   }
 }
@@ -76,67 +76,66 @@ fn effect_io_eval_bind_value(
   _key: v2.std.runtime.EnvironmentBindingKey,
   _value: v2.std.runtime.RuntimeValue,
   env: v2.std.runtime.EvaluationEnvironment
-) -> Outcome<v2.std.runtime.EvaluationEnvironment> {
+) -> v2.std.diagnostic.Outcome<v2.std.runtime.EvaluationEnvironment> {
   v2.std.diagnostic.Accepted { value: env, diagnostics: v2.std.diagnostic.None }
 }
 
 fn effect_io_eval_interpretation() -> v2.std.runtime.InterpretationAlgebra {
   v2.std.runtime.InterpretationAlgebra {
-    value: v2.std.runtime.ValueInterpreter { allocate_literal: effect_io_eval_allocate_literal },
-    transform: v2.std.runtime.TransformInterpreter { call_primitive: effect_io_eval_reject_primitive },
-    branch: v2.std.runtime.BranchInterpreter { choose_branch: effect_io_eval_reject_branch },
-    loop: v2.std.runtime.LoopInterpreter { step_loop: effect_io_eval_step_loop },
-    bind: v2.std.runtime.BindInterpreter { bind_value: effect_io_eval_bind_value },
-    match: v2.std.runtime.MatchInterpreter { choose_arm: runtime_reject_match_arm }
+    value: v2.std.runtime.ValueInterpreter { allocate_literal: effect_io_eval_allocate_literal, identity: ^effect_io_eval_allocate_literal },
+    transform: v2.std.runtime.TransformInterpreter { call_primitive: effect_io_eval_reject_primitive, identity: ^effect_io_eval_reject_primitive },
+    branch: v2.std.runtime.BranchInterpreter { choose_branch: effect_io_eval_reject_branch, identity: ^effect_io_eval_reject_branch },
+    loop: v2.std.runtime.LoopInterpreter { step_loop: effect_io_eval_step_loop, identity: ^effect_io_eval_step_loop },
+    bind: v2.std.runtime.BindInterpreter { bind_value: effect_io_eval_bind_value, identity: ^effect_io_eval_bind_value },
+    match: v2.std.runtime.MatchInterpreter { choose_arm: v2.std.runtime.runtime_reject_match_arm, identity: ^v2.std.runtime.runtime_reject_match_arm }
   }
 }
 
 fn effect_io_eval_structure_witness() -> v2.std.runtime.InterpretationStructureWitness {
   v2.std.runtime.InterpretationStructureWitness {
-    allocate_literal: ^effect_io_eval_allocate_literal_sym,
-    call_primitive: ^effect_io_eval_reject_primitive_sym,
-    choose_branch: ^effect_io_eval_reject_branch_sym,
-    step_loop: ^effect_io_eval_step_loop_sym,
-    bind_value: ^effect_io_eval_bind_value_sym,
-    choose_arm: ^runtime_reject_match_arm
+    allocate_literal: ^effect_io_eval_allocate_literal,
+    call_primitive: ^effect_io_eval_reject_primitive,
+    choose_branch: ^effect_io_eval_reject_branch,
+    step_loop: ^effect_io_eval_step_loop,
+    bind_value: ^effect_io_eval_bind_value,    choose_arm: ^v2.std.runtime.runtime_reject_match_arm
   }
 }
 
 fn effect_io_eval_context_bound() -> v2.compiler.eval.EvalContext {
-  eval_context_with_effect_io(
+  v2.compiler.eval.eval_context_with_effect_io(
     runtime_identity: ^effect_io_eval_runtime_id,
     interpretation: effect_io_eval_interpretation(),
     structure_witness: effect_io_eval_structure_witness(),
     backend: FileResourceBackend,
-    store: effect_io_pure_empty_fixture_store(backend: FileResourceBackend)
+    store: v2.extdeps.runtimes.v2_effect_io_pure.effect_io_pure_empty_fixture_store(backend: FileResourceBackend)
   )
 }
 
 fn effect_io_eval_context_unbound() -> v2.compiler.eval.EvalContext {
-  eval_context_with_semantics(
+  v2.compiler.eval.eval_context_with_semantics(
     runtime_identity: ^effect_io_eval_runtime_id,
     interpretation: effect_io_eval_interpretation(),
     structure_witness: effect_io_eval_structure_witness()
   )
 }
 
-fn effect_io_eval_facts_for(node: Node) -> v2.compiler.inferred_tree.InferredFacts {
-  claim_inferred_facts_from_nodes(
+fn effect_io_eval_facts_for(node: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredFacts {
+  v2.test.lens_common.infer_fixture.claim_inferred_facts_from_nodes(
     resolved: node,
-    algebra: effect_io_pure_unit_type_node(),
+    algebra: v2.extdeps.runtimes.v2_effect_io_pure.effect_io_pure_unit_type_node(),
     descent: v2.std.witness.Holds { value: effect_io_eval_termination_proof() }
   )
 }
 
-fn effect_io_eval_fact_lookup(node: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn effect_io_eval_fact_lookup(node: v2.std.node.Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   if node == effect_io_eval_roundtrip_node {
-    optional_present(value: effect_io_eval_facts_for(node: effect_io_eval_roundtrip_node))
+    v2.std.optional.optional_present(value: effect_io_eval_facts_for(node: effect_io_eval_roundtrip_node))
   } else if node == effect_io_eval_locator_literal {
-    optional_present(value: effect_io_eval_facts_for(node: effect_io_eval_locator_literal))
+    v2.std.optional.optional_present(value: effect_io_eval_facts_for(node: effect_io_eval_locator_literal))
   } else if node == effect_io_eval_payload_literal {
-    optional_present(value: effect_io_eval_facts_for(node: effect_io_eval_payload_literal))
+    v2.std.optional.optional_present(value: effect_io_eval_facts_for(node: effect_io_eval_payload_literal))
   } else {
-    optional_absent()
+    v2.std.optional.optional_absent()
   }
 }
 
@@ -148,10 +147,10 @@ fn effect_io_eval_tree() -> v2.compiler.inferred_tree.InferredTree {
 }
 
 test fn effect_io_eval_roundtrip_holds() -> Bool {
-  match eval_with_context(
+  match v2.compiler.eval.eval_with_context(
     tree: effect_io_eval_tree(),
     context: effect_io_eval_context_bound(),
-    inputs: inputs_root_only(root: effect_io_eval_roundtrip_node)
+    inputs: v2.compiler.eval.inputs_root_only(root: effect_io_eval_roundtrip_node)
   ) {
     Accepted { value: v, diagnostics: None } => v == effect_io_eval_literal_value()
     _ => false
@@ -159,10 +158,10 @@ test fn effect_io_eval_roundtrip_holds() -> Bool {
 }
 
 test fn effect_io_eval_unbound_fail_closed_holds() -> Bool {
-  match eval_with_context(
+  match v2.compiler.eval.eval_with_context(
     tree: effect_io_eval_tree(),
     context: effect_io_eval_context_unbound(),
-    inputs: inputs_root_only(root: effect_io_eval_roundtrip_node)
+    inputs: v2.compiler.eval.inputs_root_only(root: effect_io_eval_roundtrip_node)
   ) {
     Rejected { diagnostics: d } => d.head.reason == ^effect_io_eval_primitive_rejected
     Accepted { value: _, diagnostics: _ } => false
@@ -171,19 +170,19 @@ test fn effect_io_eval_unbound_fail_closed_holds() -> Bool {
 
 data claim_effect_io_eval_roundtrip: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "V4-EFFECTS-IO: eval yields ReadResource→WriteResource round-trip through handler binding",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: effect_io_eval_roundtrip_node,
   rhs: effect_io_eval_payload_literal,
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data subject_effect_io_eval_roundtrip: TestClaimEvalSubject<Node> = eval_test_claim_subject(
+data subject_effect_io_eval_roundtrip: v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node> = v2.compiler.eval.eval_test_claim_subject(
   claim: claim_effect_io_eval_roundtrip,
   context: effect_io_eval_context_bound(),
   tree: effect_io_eval_tree(),
   evaluator_pin: ^effect_io_eval_pin
 )
 
-data run_effect_io_eval_roundtrip: TestClaimRun<Node, RuntimeValue> = run_test_claim(
+data run_effect_io_eval_roundtrip: v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue> = v2.compiler.eval.run_test_claim(
   subject: subject_effect_io_eval_roundtrip
 )

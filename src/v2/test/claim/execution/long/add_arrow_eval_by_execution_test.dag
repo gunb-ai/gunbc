@@ -24,7 +24,7 @@ fn add_arrow_eval_int_literal_optional(lexeme: String) -> v2.std.optional.Option
 
 fn add_arrow_eval_runtime_int_equals(value: v2.std.runtime.RuntimeValue, n: Int) -> Bool {
   match value {
-    RuntimePrimitive { value: p } =>
+    RuntimePrimitive { value: gunbc.plans.md_helpers.p } =>
       match v2.std.integer.integer_signed_i32_le_bytes_to_int(bytes: p.bytes) {
         Accepted { value: magnitude, diagnostics: _ } => magnitude == n
         Rejected { diagnostics: _ } => false
@@ -41,7 +41,7 @@ fn add_arrow_eval_runtime_diagnostic(n: v2.std.node.Node) -> v2.std.diagnostic.D
   }
 }
 
-fn add_arrow_eval_ordered_add_args(args: List<v2.std.runtime.RuntimeValue>) -> Bool {
+fn add_arrow_eval_ordered_add_args(args: std.types.List<v2.std.runtime.RuntimeValue>) -> Bool {
   if count(args) == 2 {
     match v2.std.collection.list_at_optional(xs: args, index: 0) {
       Present { value: left } =>
@@ -69,7 +69,7 @@ fn add_arrow_eval_int_runtime_value(n: Int) -> v2.std.runtime.RuntimeValue {
 
 fn add_arrow_eval_call_primitive(
   node: v2.std.node.Node,
-  args: List<v2.std.runtime.RuntimeValue>,
+  args: std.types.List<v2.std.runtime.RuntimeValue>,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   if add_arrow_eval_ordered_add_args(args: args) {
@@ -81,7 +81,7 @@ fn add_arrow_eval_call_primitive(
 
 fn add_arrow_eval_choose_first_arm(node: v2.std.node.Node, _value: v2.std.runtime.RuntimeValue, _env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: node), index: 1) {
-    Present { value: arm } => v2.std.diagnostic.outcome_accepted(value: arm)
+    Present { value: extdeps.vendor.arm.arm } => v2.std.diagnostic.outcome_accepted(value: extdeps.vendor.arm.arm)
     v2.std.optional.Absent => v2.std.diagnostic.outcome_rejected(d: add_arrow_eval_runtime_diagnostic(n: node))
   }
 }
@@ -89,23 +89,28 @@ fn add_arrow_eval_choose_first_arm(node: v2.std.node.Node, _value: v2.std.runtim
 fn add_arrow_eval_lazy_arm_interpretation() -> v2.std.runtime.InterpretationAlgebra {
   v2.std.runtime.InterpretationAlgebra {
     value: v2.std.runtime.ValueInterpreter {
-      allocate_literal: v2.extdeps.runtimes.v2_evaluator.v2_eval_allocate_literal
+      allocate_literal: v2.extdeps.runtimes.v2_evaluator.v2_eval_allocate_literal,
+      identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_allocate_literal
     },
     transform: v2.std.runtime.TransformInterpreter {
-      call_primitive: add_arrow_eval_call_primitive
+      call_primitive: add_arrow_eval_call_primitive,
+      identity: ^add_arrow_eval_call_primitive
     },
     branch: v2.std.runtime.BranchInterpreter {
-      choose_branch: add_arrow_eval_choose_first_arm
+      choose_branch: add_arrow_eval_choose_first_arm,
+      identity: ^add_arrow_eval_choose_first_arm
     },
     loop: v2.std.runtime.LoopInterpreter {
-      step_loop: add_arrow_eval_step_loop
+      step_loop: add_arrow_eval_step_loop,
+      identity: ^add_arrow_eval_step_loop
     },
     bind: v2.std.runtime.BindInterpreter {
-      bind_value: add_arrow_eval_bind_value
+      bind_value: add_arrow_eval_bind_value,
+      identity: ^add_arrow_eval_bind_value
     },
     match: v2.std.runtime.MatchInterpreter {
-      choose_arm: v2.std.runtime.runtime_reject_match_arm
-    }
+      choose_arm: v2.std.runtime.runtime_reject_match_arm,
+      identity: ^v2.std.runtime.runtime_reject_match_arm    }
   }
 }
 
@@ -348,7 +353,7 @@ fn add_arrow_eval_run(
     left_lex: left_lex,
     right_lex: right_lex
   ) {
-    Present { value: call_node } =>
+    Present { value: v2.lens.no_dual_representation_test.scan.call_node } =>
       match add_arrow_eval_int_literal_optional(lexeme: expected_lex) {
         Present { value: expected } =>
           v2.std.diagnostic.bind_outcome(
@@ -361,7 +366,7 @@ fn add_arrow_eval_run(
             f: fn(tree) {
               v2.std.diagnostic.outcome_accepted(
                 value: v2.compiler.eval.run_test_claim(
-                  subject: add_arrow_eval_subject(tree: tree, input: call_node, expected: expected)
+                  subject: add_arrow_eval_subject(tree: tree, input: v2.lens.no_dual_representation_test.scan.call_node, expected: expected)
                 )
               )
             }
@@ -524,7 +529,7 @@ test fn add_arrow_eval_direct_runtime_holds() -> Bool {
   match v2.test.complexity_gate.table_fixture_add_subject_producer.table_fixture_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       match add_arrow_eval_add_call_optional(callee: arrow, left_lex: "2", right_lex: "3") {
-        Present { value: call_node } =>
+        Present { value: v2.lens.no_dual_representation_test.scan.call_node } =>
           match add_arrow_eval_inferred_run_tree(
             callee: arrow,
             left_lex: "2",
@@ -535,7 +540,7 @@ test fn add_arrow_eval_direct_runtime_holds() -> Bool {
               match v2.compiler.eval.eval(
                 tree: tree,
                 interpretation: v2.extdeps.runtimes.v2_evaluator.v2_evaluator_interpretation(),
-                inputs: v2.compiler.eval.inputs_root_only(root: call_node)
+                inputs: v2.compiler.eval.inputs_root_only(root: v2.lens.no_dual_representation_test.scan.call_node)
               ) {
                 Accepted { value: actual, diagnostics: v2.std.diagnostic.None } =>
                   add_arrow_eval_runtime_value_is_n(value: actual, n: 5)
@@ -636,7 +641,7 @@ fn add_arrow_excess_actual_executes_to_five() -> Bool {
   match v2.test.complexity_gate.table_fixture_add_subject_producer.table_fixture_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       match add_arrow_excess_actual_call_optional(callee: arrow) {
-        Present { value: call_node } =>
+        Present { value: v2.lens.no_dual_representation_test.scan.call_node } =>
           match add_arrow_eval_inferred_run_tree(
             callee: arrow,
             left_lex: "2",
@@ -647,7 +652,7 @@ fn add_arrow_excess_actual_executes_to_five() -> Bool {
               match v2.compiler.eval.eval(
                 tree: tree,
                 interpretation: v2.extdeps.runtimes.v2_evaluator.v2_evaluator_interpretation(),
-                inputs: v2.compiler.eval.inputs_root_only(root: call_node)
+                inputs: v2.compiler.eval.inputs_root_only(root: v2.lens.no_dual_representation_test.scan.call_node)
               ) {
                 Accepted { value: actual, diagnostics: v2.std.diagnostic.None } =>
                   add_arrow_eval_runtime_value_is_n(value: actual, n: 5)
@@ -685,13 +690,12 @@ fn add_arrow_eval_step_loop_continue(node: v2.std.node.Node, _env: v2.std.runtim
 
 fn add_arrow_eval_lazy_arm_loop_interpretation() -> v2.std.runtime.InterpretationAlgebra {
   v2.std.runtime.InterpretationAlgebra {
-    value: v2.std.runtime.ValueInterpreter { allocate_literal: v2.extdeps.runtimes.v2_evaluator.v2_eval_allocate_literal },
-    transform: v2.std.runtime.TransformInterpreter { call_primitive: add_arrow_eval_call_primitive },
-    branch: v2.std.runtime.BranchInterpreter { choose_branch: add_arrow_eval_choose_first_arm },
-    loop: v2.std.runtime.LoopInterpreter { step_loop: add_arrow_eval_step_loop_continue },
-    bind: v2.std.runtime.BindInterpreter { bind_value: add_arrow_eval_bind_value },
-    match: v2.std.runtime.MatchInterpreter { choose_arm: v2.std.runtime.runtime_reject_match_arm }
-  }
+    value: v2.std.runtime.ValueInterpreter { allocate_literal: v2.extdeps.runtimes.v2_evaluator.v2_eval_allocate_literal, identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_allocate_literal },
+    transform: v2.std.runtime.TransformInterpreter { call_primitive: add_arrow_eval_call_primitive, identity: ^add_arrow_eval_call_primitive },
+    branch: v2.std.runtime.BranchInterpreter { choose_branch: add_arrow_eval_choose_first_arm, identity: ^add_arrow_eval_choose_first_arm },
+    loop: v2.std.runtime.LoopInterpreter { step_loop: add_arrow_eval_step_loop_continue, identity: ^add_arrow_eval_step_loop_continue },
+    bind: v2.std.runtime.BindInterpreter { bind_value: add_arrow_eval_bind_value, identity: ^add_arrow_eval_bind_value },
+    match: v2.std.runtime.MatchInterpreter { choose_arm: v2.std.runtime.runtime_reject_match_arm, identity: ^v2.std.runtime.runtime_reject_match_arm }  }
 }
 
 fn add_arrow_eval_lazy_arm_loop_node() -> v2.std.node.Node {

@@ -6,64 +6,64 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 fn emit_call_eval_octet_value(n: Int) -> v2.std.runtime.RuntimeValue {
   v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
-      primitive_type: rust_emit_host_runtime_primitive_type_node(),
-      bytes: emit_host_octets_byte_string(octets: [0, n, 0, 0, 0])
+      primitive_type: v2.extdeps.languages.rust.rust_emit_host_runtime_primitive_type_node(),
+      bytes: v2.compiler.emit_host.emit_host_octets_byte_string(octets: [0, n, 0, 0, 0])
     }
   }
 }
 
-fn emit_call_eval_diagnostic(reason: v2.std.node.Symbol, node: Node) -> v2.std.diagnostic.Diagnostic {
+fn emit_call_eval_diagnostic(reason: v2.std.node.Symbol, node: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: reason,
-    at: node_locus(node: node),
+    at: v2.std.diagnostic.node_locus(node: node),
     correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn emit_call_eval_allocate_literal(_node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.RuntimeValue> {
-  outcome_accepted(value: emit_call_eval_octet_value(n: 3))
+fn emit_call_eval_allocate_literal(_node: v2.std.node.Node, _env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
+  v2.std.diagnostic.outcome_accepted(value: emit_call_eval_octet_value(n: 3))
 }
 
 fn emit_call_eval_call_primitive_seven(
-  _node: Node,
-  _args: List<v2.std.runtime.RuntimeValue>,
+  _node: v2.std.node.Node,
+  _args: std.types.List<v2.std.runtime.RuntimeValue>,
   _env: v2.std.runtime.EvaluationEnvironment
-) -> Outcome<v2.std.runtime.RuntimeValue> {
-  outcome_accepted(value: emit_call_eval_octet_value(n: 7))
+) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
+  v2.std.diagnostic.outcome_accepted(value: emit_call_eval_octet_value(n: 7))
 }
 
 fn emit_call_eval_call_primitive_eight(
-  _node: Node,
-  _args: List<v2.std.runtime.RuntimeValue>,
+  _node: v2.std.node.Node,
+  _args: std.types.List<v2.std.runtime.RuntimeValue>,
   _env: v2.std.runtime.EvaluationEnvironment
-) -> Outcome<v2.std.runtime.RuntimeValue> {
-  outcome_accepted(value: emit_call_eval_octet_value(n: 8))
+) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
+  v2.std.diagnostic.outcome_accepted(value: emit_call_eval_octet_value(n: 8))
 }
 
 fn emit_call_eval_choose_branch(
-  _node: Node,
+  _node: v2.std.node.Node,
   _value: v2.std.runtime.RuntimeValue,
   _env: v2.std.runtime.EvaluationEnvironment
-) -> Outcome<Node> {
+) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   v2.std.diagnostic.Rejected {
-    diagnostics: diagnostics_singleton(
+    diagnostics: v2.std.diagnostic.diagnostics_singleton(
       d: emit_call_eval_diagnostic(
         reason: ^emit_call_eval_branch_miss,
-        node: rust_call_helper_eval_subgraph
+        node: v2.test.emit.rust_call_emit.rust_call_helper_eval_subgraph
       )
     )
   }
 }
 
 fn emit_call_eval_step_loop(
-  _node: Node,
+  _node: v2.std.node.Node,
   _env: v2.std.runtime.EvaluationEnvironment
-) -> Outcome<v2.std.runtime.ControlTransfer> {
+) -> v2.std.diagnostic.Outcome<v2.std.runtime.ControlTransfer> {
   v2.std.diagnostic.Rejected {
-    diagnostics: diagnostics_singleton(
+    diagnostics: v2.std.diagnostic.diagnostics_singleton(
       d: emit_call_eval_diagnostic(
         reason: ^emit_call_eval_loop_miss,
-        node: rust_call_helper_eval_subgraph
+        node: v2.test.emit.rust_call_emit.rust_call_helper_eval_subgraph
       )
     )
   }
@@ -73,50 +73,50 @@ fn emit_call_eval_bind_value(
   _key: v2.std.runtime.EnvironmentBindingKey,
   _value: v2.std.runtime.RuntimeValue,
   env: v2.std.runtime.EvaluationEnvironment
-) -> Outcome<v2.std.runtime.EvaluationEnvironment> {
-  outcome_accepted(value: env)
+) -> v2.std.diagnostic.Outcome<v2.std.runtime.EvaluationEnvironment> {
+  v2.std.diagnostic.outcome_accepted(value: env)
 }
 
 fn emit_call_eval_interpretation(
-  call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> Outcome<RuntimeValue>
+  call_primitive: fn(v2.std.node.Node, std.types.List<v2.std.runtime.RuntimeValue>, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>,
+  call_primitive_identity: v2.std.node.Symbol
 ) -> v2.std.runtime.InterpretationAlgebra {
   v2.std.runtime.InterpretationAlgebra {
-    value: v2.std.runtime.ValueInterpreter { allocate_literal: emit_call_eval_allocate_literal },
-    transform: v2.std.runtime.TransformInterpreter { call_primitive: call_primitive },
-    branch: v2.std.runtime.BranchInterpreter { choose_branch: emit_call_eval_choose_branch },
-    loop: v2.std.runtime.LoopInterpreter { step_loop: emit_call_eval_step_loop },
-    bind: v2.std.runtime.BindInterpreter { bind_value: emit_call_eval_bind_value },
+    value: v2.std.runtime.ValueInterpreter { allocate_literal: emit_call_eval_allocate_literal, identity: ^emit_call_eval_allocate_literal },
+    transform: v2.std.runtime.TransformInterpreter { call_primitive: call_primitive, identity: call_primitive_identity },
+    branch: v2.std.runtime.BranchInterpreter { choose_branch: emit_call_eval_choose_branch, identity: ^emit_call_eval_choose_branch },
+    loop: v2.std.runtime.LoopInterpreter { step_loop: emit_call_eval_step_loop, identity: ^emit_call_eval_step_loop },
+    bind: v2.std.runtime.BindInterpreter { bind_value: emit_call_eval_bind_value, identity: ^emit_call_eval_bind_value },
     match: v2.std.runtime.MatchInterpreter {
-      choose_arm: runtime_reject_match_arm
-    }
+      choose_arm: v2.std.runtime.runtime_reject_match_arm,
+      identity: ^v2.std.runtime.runtime_reject_match_arm    }
   }
 }
 
-fn emit_call_eval_structure_witness() -> v2.std.runtime.InterpretationStructureWitness {
+fn emit_call_eval_structure_witness(call_primitive_identity: v2.std.node.Symbol) -> v2.std.runtime.InterpretationStructureWitness {
   v2.std.runtime.InterpretationStructureWitness {
-    allocate_literal: ^emit_call_eval_allocate_literal_sym,
-    call_primitive: ^emit_call_eval_call_primitive_sym,
-    choose_branch: ^emit_call_eval_choose_branch_sym,
-    step_loop: ^emit_call_eval_step_loop_sym,
-    bind_value: ^emit_call_eval_bind_value_sym,
-    choose_arm: ^runtime_reject_match_arm
+    allocate_literal: ^emit_call_eval_allocate_literal,
+    call_primitive: call_primitive_identity,
+    choose_branch: ^emit_call_eval_choose_branch,
+    step_loop: ^emit_call_eval_step_loop,
+    bind_value: ^emit_call_eval_bind_value,    choose_arm: ^v2.std.runtime.runtime_reject_match_arm
   }
 }
 
 fn emit_call_eval_context(
-  call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> Outcome<RuntimeValue>
-) -> v2.compiler.eval.EvalContext {
-  eval_context_with_semantics(
+  call_primitive: fn(v2.std.node.Node, std.types.List<v2.std.runtime.RuntimeValue>, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>,
+  call_primitive_identity: v2.std.node.Symbol
+) -> v2.compiler.eval.EvalContext {  v2.compiler.eval.eval_context_with_semantics(
     runtime_identity: ^emit_call_eval_interpretation_pin,
-    interpretation: emit_call_eval_interpretation(call_primitive: call_primitive),
-    structure_witness: emit_call_eval_structure_witness()
+    interpretation: emit_call_eval_interpretation(call_primitive: call_primitive, call_primitive_identity: call_primitive_identity),
+    structure_witness: emit_call_eval_structure_witness(call_primitive_identity: call_primitive_identity)
   )
 }
 
-fn emit_call_eval_generic_facts(node: Node) -> v2.compiler.inferred_tree.InferredFacts {
-  claim_inferred_facts_from_nodes(
+fn emit_call_eval_generic_facts(node: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredFacts {
+  v2.test.lens_common.infer_fixture.claim_inferred_facts_from_nodes(
     resolved: node,
-    algebra: rust_emit_host_runtime_primitive_type_node(),
+    algebra: v2.extdeps.languages.rust.rust_emit_host_runtime_primitive_type_node(),
     descent: v2.std.witness.Holds {
       value: v2.std.cardinality.TerminationProof {
         non_increasing: [],
@@ -126,24 +126,24 @@ fn emit_call_eval_generic_facts(node: Node) -> v2.compiler.inferred_tree.Inferre
   )
 }
 
-fn emit_call_eval_composed_facts(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
-  match rust_call_facts_miss(key: key) {
-    Present { value: f } => optional_present(value: f)
-    Absent => optional_present(value: emit_call_eval_generic_facts(node: key))
+fn emit_call_eval_composed_facts(key: v2.std.node.Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+  match v2.test.emit.rust_call_emit.rust_call_facts_miss(key: key) {
+    Present { value: f } => v2.std.optional.optional_present(value: f)
+    Absent => v2.std.optional.optional_present(value: emit_call_eval_generic_facts(node: key))
   }
 }
 
 fn emit_call_eval_producer_tree() -> v2.compiler.inferred_tree.InferredTree {
   v2.compiler.inferred_tree.InferredTree {
-    root: rust_call_helper_arrow(),
+    root: v2.test.emit.rust_call_emit.rust_call_helper_arrow(),
     facts: std.types.Map { lookup: emit_call_eval_composed_facts }
   }
 }
 
-fn emit_call_eval_claim(rhs_result_node: Node) -> v2.std.verification.TestClaim {
+fn emit_call_eval_claim(rhs_result_node: v2.std.node.Node) -> v2.std.verification.TestClaim {
   v2.std.verification.EqualsClaim {
     label: "S2 F2: rust emit(call-fn) host-run == eval(call-subgraph) via shared octet codec",
-    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+    anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
     lhs: rhs_result_node,
     rhs: rhs_result_node,
     classification: v2.std.verification.TestClassification { tier: Tier3, layer: Integration }
@@ -151,26 +151,27 @@ fn emit_call_eval_claim(rhs_result_node: Node) -> v2.std.verification.TestClaim 
 }
 
 fn emit_call_eval_subject(
-  call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> Outcome<RuntimeValue>
-) -> TestClaimEvalSubject<Node> {
-  eval_test_claim_subject(
-    claim: emit_call_eval_claim(rhs_result_node: rust_call_helper_eval_subgraph),
-    context: emit_call_eval_context(call_primitive: call_primitive),
+  call_primitive: fn(v2.std.node.Node, std.types.List<v2.std.runtime.RuntimeValue>, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>,
+  call_primitive_identity: v2.std.node.Symbol
+) -> v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node> {
+  v2.compiler.eval.eval_test_claim_subject(
+    claim: emit_call_eval_claim(rhs_result_node: v2.test.emit.rust_call_emit.rust_call_helper_eval_subgraph),
+    context: emit_call_eval_context(call_primitive: call_primitive, call_primitive_identity: call_primitive_identity),
     tree: emit_call_eval_producer_tree(),
     evaluator_pin: ^emit_call_eval_evaluator_pin
   )
 }
 
 fn emit_call_eval_run(
-  call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> Outcome<RuntimeValue>
-) -> v2.compiler.eval.TestClaimRun<Node, v2.std.runtime.RuntimeValue> {
-  run_test_claim_emit_vs_eval(
-    subject: emit_call_eval_subject(call_primitive: call_primitive),
-    target: rust_call_target_model_staging()
+  call_primitive: fn(v2.std.node.Node, std.types.List<v2.std.runtime.RuntimeValue>, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>,
+  call_primitive_identity: v2.std.node.Symbol
+) -> v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue> {  v2.compiler.emit_host.run_test_claim_emit_vs_eval(
+    subject: emit_call_eval_subject(call_primitive: call_primitive, call_primitive_identity: call_primitive_identity),
+    target: v2.extdeps.languages.rust_test.rust_call_target_model_staging()
   )
 }
 
-fn emit_call_eval_verdict_is_pass(run: v2.compiler.eval.TestClaimRun<Node, v2.std.runtime.RuntimeValue>) -> Bool {
+fn emit_call_eval_verdict_is_pass(run: v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>) -> Bool {
   match run.verdict {
     Pass => true
     SemanticMismatch { actual: _, falsification: _ } => false
@@ -180,7 +181,7 @@ fn emit_call_eval_verdict_is_pass(run: v2.compiler.eval.TestClaimRun<Node, v2.st
   }
 }
 
-fn emit_call_eval_verdict_is_semantic_mismatch(run: v2.compiler.eval.TestClaimRun<Node, v2.std.runtime.RuntimeValue>) -> Bool {
+fn emit_call_eval_verdict_is_semantic_mismatch(run: v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>) -> Bool {
   match run.verdict {
     SemanticMismatch { actual: _, falsification: _ } => true
     Pass => false
@@ -191,12 +192,13 @@ fn emit_call_eval_verdict_is_semantic_mismatch(run: v2.compiler.eval.TestClaimRu
 }
 
 test fn rust_emit_host_call_eval_subgraph_holds() -> Bool {
-  match eval(
+  match v2.compiler.eval.eval(
     tree: emit_call_eval_producer_tree(),
     interpretation: emit_call_eval_interpretation(
-      call_primitive: emit_call_eval_call_primitive_seven
+      call_primitive: emit_call_eval_call_primitive_seven,
+      call_primitive_identity: ^emit_call_eval_call_primitive_seven
     ),
-    inputs: inputs_root_only(root: rust_call_helper_eval_subgraph)
+    inputs: v2.compiler.eval.inputs_root_only(root: v2.test.emit.rust_call_emit.rust_call_helper_eval_subgraph)
   ) {
     Accepted { value: v, diagnostics: d } =>
       (v == emit_call_eval_octet_value(n: 7)) && (d == v2.std.diagnostic.None)
@@ -206,13 +208,19 @@ test fn rust_emit_host_call_eval_subgraph_holds() -> Bool {
 
 test fn rust_emit_host_call_equals_eval_holds() -> Bool {
   emit_call_eval_verdict_is_pass(
-    run: emit_call_eval_run(call_primitive: emit_call_eval_call_primitive_seven)
+    run: emit_call_eval_run(
+      call_primitive: emit_call_eval_call_primitive_seven,
+      call_primitive_identity: ^emit_call_eval_call_primitive_seven
+    )
   )
 }
 
 test fn rust_emit_host_call_wrong_oracle_refuses_holds() -> Bool {
   emit_call_eval_verdict_is_semantic_mismatch(
-    run: emit_call_eval_run(call_primitive: emit_call_eval_call_primitive_eight)
+    run: emit_call_eval_run(
+      call_primitive: emit_call_eval_call_primitive_eight,
+      call_primitive_identity: ^emit_call_eval_call_primitive_eight
+    )
   )
 }
 

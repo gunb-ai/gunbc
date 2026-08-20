@@ -23,7 +23,7 @@ fn branch_i64_node() -> v2.std.node.Node {
   branch_atom(s: ^branch_i64)
 }
 
-fn branch_int_value(bytes: List<std.bit.Byte>) -> v2.std.runtime.RuntimeValue {
+fn branch_int_value(bytes: std.types.List<std.bit.Byte>) -> v2.std.runtime.RuntimeValue {
   v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: branch_i64_node(),
@@ -59,24 +59,24 @@ fn branch_two_value() -> v2.std.runtime.RuntimeValue {
 }
 
 fn branch_literal_one_node() -> v2.std.node.Node {
-  dag_int_literal_fixture_one()
+  v2.extdeps.languages.dag.dag_int_literal_fixture_one()
 }
 
 fn branch_literal_two_node() -> v2.std.node.Node {
-  dag_int_literal_fixture_two()
+  v2.extdeps.languages.dag.dag_int_literal_fixture_two()
 }
 
 fn branch_runtime_diagnostic(n: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^branch_runtime_rejected,
-    at: node_locus(node: n),
+    at: v2.std.diagnostic.node_locus(node: n),
     correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
 fn branch_runtime_bool_true(value: v2.std.runtime.RuntimeValue) -> Bool {
   match value {
-    RuntimePrimitive { value: p } =>
+    RuntimePrimitive { value: gunbc.plans.md_helpers.p } =>
       (p.primitive_type == branch_bool_type_node()) && (count(p.bytes) == 1)
     _ => false
   }
@@ -84,7 +84,7 @@ fn branch_runtime_bool_true(value: v2.std.runtime.RuntimeValue) -> Bool {
 
 fn branch_runtime_bool_false(value: v2.std.runtime.RuntimeValue) -> Bool {
   match value {
-    RuntimePrimitive { value: p } =>
+    RuntimePrimitive { value: gunbc.plans.md_helpers.p } =>
       (p.primitive_type == branch_bool_type_node()) && (count(p.bytes) == 0)
     _ => false
   }
@@ -92,7 +92,7 @@ fn branch_runtime_bool_false(value: v2.std.runtime.RuntimeValue) -> Bool {
 
 fn branch_runtime_int_is_one(value: v2.std.runtime.RuntimeValue) -> Bool {
   match value {
-    RuntimePrimitive { value: p } =>
+    RuntimePrimitive { value: gunbc.plans.md_helpers.p } =>
       (p.primitive_type == branch_i64_node()) && (count(p.bytes) == 1)
     _ => false
   }
@@ -107,44 +107,44 @@ fn branch_kw_false_node() -> v2.std.node.Node {
 }
 
 fn branch_allocate_literal(node: v2.std.node.Node, _env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
-  if dag_node_is_int_literal_atom(node: node) {
-    match dag_int_literal_magnitude_int_from_node(node: node) {
+  if v2.extdeps.languages.dag.dag_node_is_int_literal_atom(node: node) {
+    match v2.extdeps.languages.dag.dag_int_literal_magnitude_int_from_node(node: node) {
       Accepted { value: mag, diagnostics: _ } =>
         if mag == 1 {
-          outcome_accepted(value: branch_one_value())
+          v2.std.diagnostic.outcome_accepted(value: branch_one_value())
         } else if mag == 2 {
-          outcome_accepted(value: branch_two_value())
+          v2.std.diagnostic.outcome_accepted(value: branch_two_value())
         } else {
-          outcome_rejected(d: branch_runtime_diagnostic(n: node))
+          v2.std.diagnostic.outcome_rejected(d: branch_runtime_diagnostic(n: node))
         }
       Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     }
   } else if node == branch_kw_true_node() {
-    outcome_accepted(value: branch_bool_value(is_true: true))
+    v2.std.diagnostic.outcome_accepted(value: branch_bool_value(is_true: true))
   } else if node == branch_kw_false_node() {
-    outcome_accepted(value: branch_bool_value(is_true: false))
+    v2.std.diagnostic.outcome_accepted(value: branch_bool_value(is_true: false))
   } else {
-    outcome_rejected(d: branch_runtime_diagnostic(n: node))
+    v2.std.diagnostic.outcome_rejected(d: branch_runtime_diagnostic(n: node))
   }
 }
 
 fn branch_call_primitive(
   _node: v2.std.node.Node,
-  _args: List<v2.std.runtime.RuntimeValue>,
+  _args: std.types.List<v2.std.runtime.RuntimeValue>,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
-  outcome_rejected(d: branch_runtime_diagnostic(n: _node))
+  v2.std.diagnostic.outcome_rejected(d: branch_runtime_diagnostic(n: _node))
 }
 
 fn branch_nth_child_target(node: v2.std.node.Node, wanted: Int) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
-  match list_at_optional(xs: node.children, index: wanted) {
+  match v2.std.collection.list_at_optional(xs: node.children, index: wanted) {
     Present { value: child } =>
       match child {
-        Edge { label: _, target: arm } =>
-          outcome_accepted(value: arm)
+        v2.std.node.Edge { label: _, target: extdeps.vendor.arm.arm } =>
+          v2.std.diagnostic.outcome_accepted(value: extdeps.vendor.arm.arm)
       }
     Absent =>
-      outcome_rejected(d: branch_runtime_diagnostic(n: node))
+      v2.std.diagnostic.outcome_rejected(d: branch_runtime_diagnostic(n: node))
   }
 }
 
@@ -159,15 +159,15 @@ fn branch_choose_branch_bool_if_else(
     } else if branch_runtime_bool_false(value: condition) {
       branch_nth_child_target(node: node, wanted: 2)
     } else {
-      outcome_rejected(d: branch_runtime_diagnostic(n: node))
+      v2.std.diagnostic.outcome_rejected(d: branch_runtime_diagnostic(n: node))
     }
   } else {
-    outcome_rejected(d: branch_runtime_diagnostic(n: node))
+    v2.std.diagnostic.outcome_rejected(d: branch_runtime_diagnostic(n: node))
   }
 }
 
 fn branch_step_loop(node: v2.std.node.Node, _env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.ControlTransfer> {
-  outcome_rejected(d: branch_runtime_diagnostic(n: node))
+  v2.std.diagnostic.outcome_rejected(d: branch_runtime_diagnostic(n: node))
 }
 
 fn branch_bind_value(
@@ -177,7 +177,7 @@ fn branch_bind_value(
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.EvaluationEnvironment> {
   v2.std.diagnostic.Accepted {
     value: v2.std.runtime.EvaluationEnvironment {
-      bindings: map_insert(m: env.bindings, key: key, value: value)
+      bindings: v2.std.collection.map_insert(m: env.bindings, key: key, value: value)
     },
     diagnostics: v2.std.diagnostic.None
   }
@@ -186,39 +186,43 @@ fn branch_bind_value(
 fn branch_interpretation() -> v2.std.runtime.InterpretationAlgebra {
   v2.std.runtime.InterpretationAlgebra {
     value: v2.std.runtime.ValueInterpreter {
-      allocate_literal: branch_allocate_literal
+      allocate_literal: branch_allocate_literal,
+      identity: ^branch_allocate_literal
     },
     transform: v2.std.runtime.TransformInterpreter {
-      call_primitive: branch_call_primitive
+      call_primitive: branch_call_primitive,
+      identity: ^branch_call_primitive
     },
     branch: v2.std.runtime.BranchInterpreter {
-      choose_branch: branch_choose_branch_bool_if_else
+      choose_branch: branch_choose_branch_bool_if_else,
+      identity: ^branch_choose_branch_bool_if_else
     },
     loop: v2.std.runtime.LoopInterpreter {
-      step_loop: branch_step_loop
+      step_loop: branch_step_loop,
+      identity: ^branch_step_loop
     },
     bind: v2.std.runtime.BindInterpreter {
-      bind_value: branch_bind_value
+      bind_value: branch_bind_value,
+      identity: ^branch_bind_value
     },
     match: v2.std.runtime.MatchInterpreter {
-      choose_arm: runtime_reject_match_arm
-    }
+      choose_arm: v2.std.runtime.runtime_reject_match_arm,
+      identity: ^v2.std.runtime.runtime_reject_match_arm    }
   }
 }
 
 fn branch_interpretation_structure_witness() -> v2.std.runtime.InterpretationStructureWitness {
   v2.std.runtime.InterpretationStructureWitness {
-    allocate_literal: ^branch_allocate_literal_sym,
-    call_primitive: ^branch_call_primitive_sym,
-    choose_branch: ^branch_choose_branch_bool_if_else_sym,
-    step_loop: ^branch_step_loop_sym,
-    bind_value: ^branch_bind_value_sym,
-    choose_arm: ^runtime_reject_match_arm
+    allocate_literal: ^branch_allocate_literal,
+    call_primitive: ^branch_call_primitive,
+    choose_branch: ^branch_choose_branch_bool_if_else,
+    step_loop: ^branch_step_loop,
+    bind_value: ^branch_bind_value,    choose_arm: ^v2.std.runtime.runtime_reject_match_arm
   }
 }
 
 fn branch_context() -> v2.compiler.eval.EvalContext {
-  eval_context_with_semantics(
+  v2.compiler.eval.eval_context_with_semantics(
     runtime_identity: ^branch_runtime_id,
     interpretation: branch_interpretation(),
     structure_witness: branch_interpretation_structure_witness()
@@ -247,10 +251,10 @@ fn branch_tree_root(call: v2.std.node.Node, expected: v2.std.node.Node) -> v2.st
 }
 
 fn branch_facts_lookup(key: v2.std.node.Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
-  optional_present(value: claim_inferred_facts_from_nodes(
+  v2.std.optional.optional_present(value: v2.test.lens_common.infer_fixture.claim_inferred_facts_from_nodes(
       resolved: key,
       algebra: branch_i64_node(),
-      descent: termination_proof_witness_for_node(n: key)
+      descent: v2.std.cardinality.termination_proof_witness_for_node(n: key)
     ))
 }
 
@@ -266,13 +270,13 @@ fn branch_admitted_tree(root: v2.std.node.Node) -> v2.compiler.inferred_tree.Inf
 fn branch_inferred_run_tree(callee: v2.std.node.Node, expected: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   let call = branch_pick_call(callee: callee)
   let root = branch_tree_root(call: call, expected: expected)
-  outcome_accepted(value: branch_admitted_tree(root: root))
+  v2.std.diagnostic.outcome_accepted(value: branch_admitted_tree(root: root))
 }
 
 fn branch_claim(input: v2.std.node.Node, expected: v2.std.node.Node) -> v2.std.verification.TestClaim {
   v2.std.verification.CompilesClaim {
     label: "manual/branch: source-bridged if-then-else Branch.body executes through eval",
-    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+    anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
     input: input,
     expected_value: expected,
     classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
@@ -283,12 +287,12 @@ fn branch_subject(
   tree: v2.compiler.inferred_tree.InferredTree,
   input: v2.std.node.Node,
   expected: v2.std.node.Node
-) -> TestClaimEvalSubject<v2.std.node.Node> {
+) -> v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node> {
   v2.compiler.eval.TestClaimEvalSubject {
     claim: branch_claim(input: input, expected: expected),
     context: branch_context(),
     tree: tree,
-    input: test_claim_typed_input_node(
+    input: v2.compiler.eval.test_claim_typed_input_node(
       evaluator_input: input,
       evaluator_pin: ^branch_pick_call_pin
     )
@@ -298,13 +302,13 @@ fn branch_subject(
 fn branch_run(
   callee: v2.std.node.Node,
   expected: v2.std.node.Node
-) -> v2.std.diagnostic.Outcome<TestClaimRun<v2.std.node.Node, RuntimeValue>> {
+) -> v2.std.diagnostic.Outcome<v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>> {
   let input = branch_pick_call(callee: callee)
-  bind_outcome(
+  v2.std.diagnostic.bind_outcome(
     o: branch_inferred_run_tree(callee: callee, expected: expected),
     f: fn(tree) {
-      outcome_accepted(
-        value: run_test_claim(
+      v2.std.diagnostic.outcome_accepted(
+        value: v2.compiler.eval.run_test_claim(
           subject: branch_subject(tree: tree, input: input, expected: expected)
         )
       )
@@ -312,10 +316,10 @@ fn branch_run(
   )
 }
 
-fn branch_run_passes(run: v2.std.diagnostic.Outcome<TestClaimRun<v2.std.node.Node, RuntimeValue>>) -> Bool {
+fn branch_run_passes(run: v2.std.diagnostic.Outcome<v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>>) -> Bool {
   match run {
     Accepted { value: r, diagnostics: _ } =>
-      match test_claim_run_verdict(run: r) {
+      match v2.compiler.eval.test_claim_run_verdict(run: r) {
         Pass => true
         _ => false
       }
@@ -344,7 +348,7 @@ test fn branch_source_driven_pick_true_executes_holds() -> Bool {
 }
 
 test fn branch_source_driven_pick_false_executes_holds() -> Bool {
-  match table_fixture_pick_false_if_arrow_with_body() {
+  match v2.test.complexity_gate.table_fixture_branch_subject_producer.table_fixture_pick_false_if_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       branch_run_passes(
         run: branch_run(
@@ -378,10 +382,10 @@ test fn branch_direct_runtime_true_holds() -> Bool {
         expected: branch_literal_one_node()
       ) {
         Accepted { value: tree, diagnostics: _ } =>
-          match eval(
+          match v2.compiler.eval.eval(
             tree: tree,
             interpretation: branch_interpretation(),
-            inputs: inputs_root_only(root: input)
+            inputs: v2.compiler.eval.inputs_root_only(root: input)
           ) {
             Accepted { value: actual, diagnostics: None } =>
               branch_runtime_int_is_one(value: actual)
@@ -395,7 +399,7 @@ test fn branch_direct_runtime_true_holds() -> Bool {
 }
 
 test fn branch_swapped_arms_red_holds() -> Bool {
-  match table_fixture_pick_if_arrow_with_body_swapped_arms() {
+  match v2.test.complexity_gate.table_fixture_branch_subject_producer.table_fixture_pick_if_arrow_with_body_swapped_arms() {
     Accepted { value: arrow, diagnostics: _ } =>
       branch_run_passes(
         run: branch_run(

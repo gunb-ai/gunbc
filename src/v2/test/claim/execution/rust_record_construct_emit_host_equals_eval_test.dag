@@ -9,15 +9,15 @@ fn rust_rec_nine_field_access_body_node() -> v2.std.node.Node {
     children: [
       v2.std.node.Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: ^dag_token_dot)
+        target: v2.extdeps.languages.dag.dag_type_atom_node(identity: ^dag_token_dot)
       },
       v2.std.node.Edge {
         label: Positional,
-        target: dag_rec_construct_body_fixture
+        target: v2.extdeps.languages.dag.dag_rec_construct_body_fixture
       },
       v2.std.node.Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: ^dag_binding_rec_v)
+        target: v2.extdeps.languages.dag.dag_type_atom_node(identity: ^dag_binding_rec_v)
       }
     ],
     occurrence_id: SyntheticOccurrence
@@ -25,19 +25,19 @@ fn rust_rec_nine_field_access_body_node() -> v2.std.node.Node {
 }
 
 fn rust_rec_nine_arrow_node() -> v2.std.node.Node {
-  dag_arrow_with_body_node(
-    domain: dag_pick_arrow_domain_conj_node(),
+  v2.extdeps.languages.dag.dag_arrow_with_body_node(
+    domain: v2.extdeps.languages.dag.dag_pick_arrow_domain_conj_node(),
     return_type_binding: ^dag_binding_type_int,
     body: rust_rec_nine_field_access_body_node()
   )
 }
 
-data rust_rec_nine_eval_subgraph_node: Node = rust_rec_nine_field_access_body_node()
+data rust_rec_nine_eval_subgraph_node: v2.std.node.Node = rust_rec_nine_field_access_body_node()
 
 fn rust_rec_nine_eval_generic_facts(node: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredFacts {
-  claim_inferred_facts_from_nodes(
+  v2.test.lens_common.infer_fixture.claim_inferred_facts_from_nodes(
     resolved: node,
-    algebra: rust_emit_host_runtime_primitive_type_node(),
+    algebra: v2.extdeps.languages.rust.rust_emit_host_runtime_primitive_type_node(),
     descent: v2.std.witness.Holds {
       value: v2.std.cardinality.TerminationProof {
         non_increasing: [],
@@ -48,7 +48,7 @@ fn rust_rec_nine_eval_generic_facts(node: v2.std.node.Node) -> v2.compiler.infer
 }
 
 fn rust_rec_nine_eval_composed_facts(key: v2.std.node.Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
-  optional_present(value: rust_rec_nine_eval_generic_facts(node: key))
+  v2.std.optional.optional_present(value: rust_rec_nine_eval_generic_facts(node: key))
 }
 
 fn rust_rec_nine_eval_inferred_tree() -> v2.compiler.inferred_tree.InferredTree {
@@ -61,8 +61,8 @@ fn rust_rec_nine_eval_inferred_tree() -> v2.compiler.inferred_tree.InferredTree 
 fn rust_rec_nine_eval_octet_value(n: Int) -> v2.std.runtime.RuntimeValue {
   v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
-      primitive_type: rust_emit_host_runtime_primitive_type_node(),
-      bytes: emit_host_octets_byte_string(octets: [0, n, 0, 0, 0])
+      primitive_type: v2.extdeps.languages.rust.rust_emit_host_runtime_primitive_type_node(),
+      bytes: v2.compiler.emit_host.emit_host_octets_byte_string(octets: [0, n, 0, 0, 0])
     }
   }
 }
@@ -70,20 +70,20 @@ fn rust_rec_nine_eval_octet_value(n: Int) -> v2.std.runtime.RuntimeValue {
 fn rust_rec_nine_eval_diagnostic(reason: v2.std.node.Symbol, node: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: reason,
-    at: node_locus(node: node),
+    at: v2.std.diagnostic.node_locus(node: node),
     correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
 fn rust_rec_nine_eval_field_index_from_transform(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Int> {
-  match list_at_optional(xs: node_positional_child_targets(node: node), index: 2) {
-    Present { value: field_node } =>
+  match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: node), index: 2) {
+    Present { value: v2.std.algebra.field_node } =>
       match field_node.kind {
         TypeNode { connective: Atom { identity: id } } =>
           if id == ^dag_binding_rec_v {
-            outcome_accepted(0)
+            v2.std.diagnostic.outcome_accepted(0)
           } else {
-            outcome_rejected(
+            v2.std.diagnostic.outcome_rejected(
               d: rust_rec_nine_eval_diagnostic(
                 reason: ^rust_rec_nine_eval_field_miss,
                 node: node
@@ -91,7 +91,7 @@ fn rust_rec_nine_eval_field_index_from_transform(node: v2.std.node.Node) -> v2.s
             )
           }
         _ =>
-          outcome_rejected(
+          v2.std.diagnostic.outcome_rejected(
             d: rust_rec_nine_eval_diagnostic(
               reason: ^rust_rec_nine_eval_field_miss,
               node: node
@@ -99,7 +99,7 @@ fn rust_rec_nine_eval_field_index_from_transform(node: v2.std.node.Node) -> v2.s
           )
       }
     Absent =>
-      outcome_rejected(
+      v2.std.diagnostic.outcome_rejected(
         d: rust_rec_nine_eval_diagnostic(reason: ^rust_rec_nine_eval_field_miss, node: node)
       )
   }
@@ -108,16 +108,16 @@ fn rust_rec_nine_eval_field_index_from_transform(node: v2.std.node.Node) -> v2.s
 fn rust_rec_nine_eval_allocate_literal(node: v2.std.node.Node, _env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   match node.kind {
     TypeNode { connective: Conj } =>
-      outcome_accepted(value: rust_rec_nine_eval_octet_value(n: 9))
+      v2.std.diagnostic.outcome_accepted(value: rust_rec_nine_eval_octet_value(n: 9))
     TypeNode { connective: Atom { identity: id } } =>
       if id == ^dag_binding_type_rec {
-        outcome_accepted(value: rust_rec_nine_eval_octet_value(n: 0))
+        v2.std.diagnostic.outcome_accepted(value: rust_rec_nine_eval_octet_value(n: 0))
       } else if id == ^dag_rec_lit_nine {
-        outcome_accepted(value: rust_rec_nine_eval_octet_value(n: 9))
+        v2.std.diagnostic.outcome_accepted(value: rust_rec_nine_eval_octet_value(n: 9))
       } else if id == ^dag_binding_rec_v {
-        outcome_accepted(value: rust_rec_nine_eval_octet_value(n: 0))
+        v2.std.diagnostic.outcome_accepted(value: rust_rec_nine_eval_octet_value(n: 0))
       } else {
-        outcome_rejected(
+        v2.std.diagnostic.outcome_rejected(
           d: rust_rec_nine_eval_diagnostic(
             reason: ^rust_rec_nine_eval_literal_miss,
             node: node
@@ -125,7 +125,7 @@ fn rust_rec_nine_eval_allocate_literal(node: v2.std.node.Node, _env: v2.std.runt
         )
       }
     _ =>
-      outcome_rejected(
+      v2.std.diagnostic.outcome_rejected(
         d: rust_rec_nine_eval_diagnostic(
           reason: ^rust_rec_nine_eval_literal_miss,
           node: node
@@ -136,17 +136,17 @@ fn rust_rec_nine_eval_allocate_literal(node: v2.std.node.Node, _env: v2.std.runt
 
 fn rust_rec_nine_eval_call_primitive(
   node: v2.std.node.Node,
-  args: List<v2.std.runtime.RuntimeValue>,
+  args: std.types.List<v2.std.runtime.RuntimeValue>,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   match rust_rec_nine_eval_field_index_from_transform(node: node) {
     Accepted { value: field_index, diagnostics: _ } =>
       if field_index == 0 {
-        if length(xs: args) == 2 {
-          match list_at_optional(xs: args, index: 0) {
-            Present { value: base } => outcome_accepted(value: base)
+        if v2.std.algebra.length(xs: args) == 2 {
+          match v2.std.collection.list_at_optional(xs: args, index: 0) {
+            Present { value: base } => v2.std.diagnostic.outcome_accepted(value: base)
             Absent =>
-              outcome_rejected(
+              v2.std.diagnostic.outcome_rejected(
                 d: rust_rec_nine_eval_diagnostic(
                   reason: ^rust_rec_nine_eval_args_bad,
                   node: node
@@ -154,7 +154,7 @@ fn rust_rec_nine_eval_call_primitive(
               )
           }
         } else {
-          outcome_rejected(
+          v2.std.diagnostic.outcome_rejected(
             d: rust_rec_nine_eval_diagnostic(
               reason: ^rust_rec_nine_eval_args_bad,
               node: node
@@ -162,7 +162,7 @@ fn rust_rec_nine_eval_call_primitive(
           )
         }
       } else {
-        outcome_accepted(value: rust_rec_nine_eval_octet_value(n: 0))
+        v2.std.diagnostic.outcome_accepted(value: rust_rec_nine_eval_octet_value(n: 0))
       }
     Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
@@ -173,7 +173,7 @@ fn rust_rec_nine_eval_choose_branch(
   _value: v2.std.runtime.RuntimeValue,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
-  outcome_rejected(
+  v2.std.diagnostic.outcome_rejected(
     d: rust_rec_nine_eval_diagnostic(reason: ^rust_rec_nine_eval_branch_miss, node: node)
   )
 }
@@ -182,7 +182,7 @@ fn rust_rec_nine_eval_step_loop(
   node: v2.std.node.Node,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.ControlTransfer> {
-  outcome_rejected(
+  v2.std.diagnostic.outcome_rejected(
     d: rust_rec_nine_eval_diagnostic(reason: ^rust_rec_nine_eval_loop_miss, node: node)
   )
 }
@@ -192,7 +192,7 @@ fn rust_rec_nine_eval_bind_value(
   _value: v2.std.runtime.RuntimeValue,
   env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.EvaluationEnvironment> {
-  outcome_accepted(value: env)
+  v2.std.diagnostic.outcome_accepted(value: env)
 }
 
 fn rust_rec_nine_eval_choose_arm(
@@ -200,35 +200,34 @@ fn rust_rec_nine_eval_choose_arm(
   _scrutinee: v2.std.runtime.RuntimeValue,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
-  outcome_rejected(
+  v2.std.diagnostic.outcome_rejected(
     d: rust_rec_nine_eval_diagnostic(reason: ^rust_rec_nine_eval_match_miss, node: node)
   )
 }
 
 fn rust_rec_nine_eval_interpretation() -> v2.std.runtime.InterpretationAlgebra {
   v2.std.runtime.InterpretationAlgebra {
-    value: v2.std.runtime.ValueInterpreter { allocate_literal: rust_rec_nine_eval_allocate_literal },
-    transform: v2.std.runtime.TransformInterpreter { call_primitive: rust_rec_nine_eval_call_primitive },
-    branch: v2.std.runtime.BranchInterpreter { choose_branch: rust_rec_nine_eval_choose_branch },
-    loop: v2.std.runtime.LoopInterpreter { step_loop: rust_rec_nine_eval_step_loop },
-    bind: v2.std.runtime.BindInterpreter { bind_value: rust_rec_nine_eval_bind_value },
-    match: v2.std.runtime.MatchInterpreter { choose_arm: rust_rec_nine_eval_choose_arm }
+    value: v2.std.runtime.ValueInterpreter { allocate_literal: rust_rec_nine_eval_allocate_literal, identity: ^rust_rec_nine_eval_allocate_literal },
+    transform: v2.std.runtime.TransformInterpreter { call_primitive: rust_rec_nine_eval_call_primitive, identity: ^rust_rec_nine_eval_call_primitive },
+    branch: v2.std.runtime.BranchInterpreter { choose_branch: rust_rec_nine_eval_choose_branch, identity: ^rust_rec_nine_eval_choose_branch },
+    loop: v2.std.runtime.LoopInterpreter { step_loop: rust_rec_nine_eval_step_loop, identity: ^rust_rec_nine_eval_step_loop },
+    bind: v2.std.runtime.BindInterpreter { bind_value: rust_rec_nine_eval_bind_value, identity: ^rust_rec_nine_eval_bind_value },
+    match: v2.std.runtime.MatchInterpreter { choose_arm: rust_rec_nine_eval_choose_arm, identity: ^rust_rec_nine_eval_choose_arm }
   }
 }
 
 fn rust_rec_nine_eval_structure_witness() -> v2.std.runtime.InterpretationStructureWitness {
   v2.std.runtime.InterpretationStructureWitness {
-    allocate_literal: ^rust_rec_nine_eval_allocate_literal_sym,
-    call_primitive: ^rust_rec_nine_eval_call_primitive_sym,
-    choose_branch: ^rust_rec_nine_eval_choose_branch_sym,
-    step_loop: ^rust_rec_nine_eval_step_loop_sym,
-    bind_value: ^rust_rec_nine_eval_bind_value_sym,
-    choose_arm: ^rust_rec_nine_eval_choose_arm_sym
-  }
+    allocate_literal: ^rust_rec_nine_eval_allocate_literal,
+    call_primitive: ^rust_rec_nine_eval_call_primitive,
+    choose_branch: ^rust_rec_nine_eval_choose_branch,
+    step_loop: ^rust_rec_nine_eval_step_loop,
+    bind_value: ^rust_rec_nine_eval_bind_value,
+    choose_arm: ^rust_rec_nine_eval_choose_arm  }
 }
 
 fn rust_rec_nine_eval_context() -> v2.compiler.eval.EvalContext {
-  eval_context_with_semantics(
+  v2.compiler.eval.eval_context_with_semantics(
     runtime_identity: ^rust_rec_nine_eval_interpretation_pin,
     interpretation: rust_rec_nine_eval_interpretation(),
     structure_witness: rust_rec_nine_eval_structure_witness()
@@ -238,15 +237,15 @@ fn rust_rec_nine_eval_context() -> v2.compiler.eval.EvalContext {
 fn rust_rec_nine_eval_claim(rhs_result_node: v2.std.node.Node) -> v2.std.verification.TestClaim {
   v2.std.verification.EqualsClaim {
     label: "S2 F3: rust emit(record-construct.field) host-run == eval(construct-then-field-access) via shared octet codec",
-    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+    anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
     lhs: rhs_result_node,
     rhs: rhs_result_node,
     classification: v2.std.verification.TestClassification { tier: Tier3, layer: Integration }
   }
 }
 
-fn rust_rec_nine_eval_subject(tree: v2.compiler.inferred_tree.InferredTree) -> TestClaimEvalSubject<v2.std.node.Node> {
-  eval_test_claim_subject(
+fn rust_rec_nine_eval_subject(tree: v2.compiler.inferred_tree.InferredTree) -> v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node> {
+  v2.compiler.eval.eval_test_claim_subject(
     claim: rust_rec_nine_eval_claim(rhs_result_node: rust_rec_nine_eval_subgraph_node),
     context: rust_rec_nine_eval_context(),
     tree: tree,
@@ -258,7 +257,7 @@ fn rust_rec_nine_eval_run(
   tree: v2.compiler.inferred_tree.InferredTree,
   target: v2.std.compilers.target_model.TargetModel
 ) -> v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue> {
-  run_test_claim_emit_vs_eval(
+  v2.compiler.emit_host.run_test_claim_emit_vs_eval(
     subject: rust_rec_nine_eval_subject(tree: tree),
     target: target
   )
@@ -288,7 +287,7 @@ test fn rust_record_construct_emit_host_equals_eval_holds() -> Bool {
   rust_rec_nine_eval_verdict_is_pass(
     run: rust_rec_nine_eval_run(
       tree: rust_rec_nine_eval_inferred_tree(),
-      target: rust_rec_nine_target_model_staging()
+      target: v2.extdeps.languages.rust_test.rust_rec_nine_target_model_staging()
     )
   )
 }
@@ -297,7 +296,7 @@ test fn rust_record_construct_emit_host_wrong_field_refuses_holds() -> Bool {
   rust_rec_nine_eval_verdict_is_semantic_mismatch(
     run: rust_rec_nine_eval_run(
       tree: rust_rec_nine_eval_inferred_tree(),
-      target: rust_rec_nine_wrong_field_target_model_staging()
+      target: v2.extdeps.languages.rust_test.rust_rec_nine_wrong_field_target_model_staging()
     )
   )
 }
