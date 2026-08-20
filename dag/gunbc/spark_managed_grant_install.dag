@@ -57,6 +57,10 @@ import gunbc.spark_grant_privileged_operation {
 import gunbc.spark_managed_grant_reconcile {
   spark_managed_grants_to_install,
   spark_managed_grant_report,
+  spark_managed_grant_standing_from_outcome,
+  GrantHeld,
+  GrantNotHeld,
+  GrantStandingUnobserved,
   spark_managed_grant_dropin_name,
   spark_managed_grant_dropin_path,
   spark_managed_grant_sudoers_content,
@@ -262,6 +266,21 @@ fn spark_grant_install_transport(
 // already frozen, on a host it could already reach, and the result would then be unobserved by the
 // thing that needed it. This arm now means exactly "no credential was supplied", and its remedy is
 // the credential the authorization model has specified all along.
+// AN INSTALL THAT REPORTED SUCCESS IS NOT A HOST THAT HOLDS THE GRANT, and the gap between those two
+// sentences is where this whole vertical started: a sudoers line applied by hand converged nothing
+// the process could see. `install` exiting zero says a file was placed; whether sudo now grants the
+// command is a separate fact that only sudo can state, and it can disagree -- a drop-in with the
+// wrong account name, a syntactically valid rule for a path that does not exist, or a sudoers set
+// whose earlier entry takes precedence all place a file successfully and grant nothing.
+//
+// So the install re-reads the enumeration through the grantee's own principal and requires the grant
+// to appear. Not attempted when nothing was installed, because a readback of an install that never
+// ran would report the pre-existing state as the result.
+type SparkGrantReadback
+  = GrantReadbackConfirmed
+  | GrantReadbackDisagreed { standing: NonEmptyStr }
+  | GrantReadbackNotAttempted
+
 type SparkGrantInstallOutcome
   = SparkGrantInstallAwaitingOperatorCredential {
       host: HostIdentity
@@ -273,6 +292,7 @@ type SparkGrantInstallOutcome
       grant: SparkManagedGrant
       standings: List<RemoteStepStanding>
       privileged: List<PrivilegedStepOutcome>
+      readback: SparkGrantReadback
     }
   | SparkGrantInstallNotAttempted {
       host: HostIdentity
@@ -323,7 +343,10 @@ func spark_grant_install_execute(
             transport: spark_grant_install_transport(context: context, host: host, principal: principal),
           )
           if spark_serving_step_sequence_failed(standings: staged) {
-            SparkGrantInstallExecuted { host: host, grant: g, standings: staged, privileged: [] }
+            SparkGrantInstallExecuted {
+              host: host, grant: g, standings: staged, privileged: [],
+              readback: GrantReadbackNotAttempted,
+            }
           } else {
             {
               let validated = run_privileged_step(
@@ -335,7 +358,10 @@ func spark_grant_install_execute(
                 },
               )
               if privileged_step_succeeded(outcome: validated) == false {
-                spark_grant_install_from_privileged(host: host, grant: g, principal: principal, staged: staged, outcomes: [validated])
+                spark_grant_install_from_privileged(
+                  host: host, grant: g, principal: principal, staged: staged,
+                  outcomes: [validated], readback: GrantReadbackNotAttempted,
+                )
               } else {
                 {
                   let installed = run_privileged_step(
@@ -347,10 +373,17 @@ func spark_grant_install_execute(
                       dropin_path: spark_managed_grant_dropin_path(grant: g),
                     },
                   )
-                  spark_grant_install_from_privileged(
-                    host: host, grant: g, principal: principal, staged: staged,
-                    outcomes: [validated, installed],
-                  )
+                  {
+                    let readback = if privileged_step_succeeded(outcome: installed) {
+                      spark_grant_read_back(context: context, host: host, grant: g)
+                    } else {
+                      GrantReadbackNotAttempted
+                    }
+                    spark_grant_install_from_privileged(
+                      host: host, grant: g, principal: principal, staged: staged,
+                      outcomes: [validated, installed], readback: readback,
+                    )
+                  }
                 }
               }
             }
@@ -369,6 +402,7 @@ fn spark_grant_install_from_privileged(
   principal: NonEmptyStr,
   staged: List<RemoteStepStanding>,
   outcomes: List<PrivilegedStepOutcome>,
+  readback: SparkGrantReadback,
 ) -> SparkGrantInstallOutcome {
   if any(outcomes, o => match o {
     CredentialNotEnrolled { lease: _ } => true
@@ -378,7 +412,33 @@ fn spark_grant_install_from_privileged(
   }) {
     SparkGrantInstallAwaitingOperatorCredential { host: host, grant: grant, principal: principal }
   } else {
-    SparkGrantInstallExecuted { host: host, grant: grant, standings: staged, privileged: outcomes }
+    SparkGrantInstallExecuted {
+      host: host, grant: grant, standings: staged, privileged: outcomes, readback: readback,
+    }
+  }
+}
+
+// THE READBACK IS THE GRANTEE'S OWN ENUMERATION, not the installer's. sudo answers "may THIS account
+// run THIS command", and the account that matters is the one the serving lane will use -- asking as
+// the installing principal would confirm a grant for the wrong subject entirely.
+func spark_grant_read_back(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+  grant: SparkManagedGrant,
+) -> SparkGrantReadback
+  uses net: Network
+{
+  let outcome = spark_grant_probe_outcome(context: context, host: host)
+  match spark_managed_grant_standing_from_outcome(grant: grant, outcome: outcome) {
+    GrantHeld { grant: _ } => GrantReadbackConfirmed
+    GrantNotHeld { grant: _ } =>
+      GrantReadbackDisagreed {
+        standing: "the install reported success and the grantee's own sudo enumeration does not name the command" as NonEmptyStr,
+      }
+    GrantStandingUnobserved { grant: _, cause: c } =>
+      GrantReadbackDisagreed {
+        standing: join(["the grant could not be re-observed after installing it: ", c as String], "") as NonEmptyStr,
+      }
   }
 }
 
@@ -390,10 +450,15 @@ fn spark_grant_install_succeeded(outcome: SparkGrantInstallOutcome) -> Bool {
   match outcome {
     SparkGrantInstallAwaitingOperatorCredential { host: _, grant: _, principal: _ } => false
     SparkGrantInstallNotAttempted { host: _, grant: _, cause: _ } => false
-    SparkGrantInstallExecuted { host: _, grant: _, standings: st, privileged: pr } =>
+    SparkGrantInstallExecuted { host: _, grant: _, standings: st, privileged: pr, readback: rb } =>
       spark_serving_step_sequence_failed(standings: st) == false
         && pr.length() > 0
         && fold(pr, init: true, f: fn(acc, o) { acc && privileged_step_succeeded(outcome: o) })
+        && match rb {
+             GrantReadbackConfirmed => true
+             GrantReadbackDisagreed { standing: _ } => false
+             GrantReadbackNotAttempted => false
+           }
   }
 }
 
@@ -444,7 +509,7 @@ fn spark_grant_install_outcome_wire(outcome: SparkGrantInstallOutcome) -> String
         " grant=", spark_managed_grant_wire(grant: g) as String,
         " NOT-ATTEMPTED cause=", c as String, "\n",
       ], "")
-    SparkGrantInstallExecuted { host: h, grant: g, standings: st, privileged: pr } =>
+    SparkGrantInstallExecuted { host: h, grant: g, standings: st, privileged: pr, readback: rb } =>
       join([
         "grant-install host=", h as String,
         " grant=", spark_managed_grant_wire(grant: g) as String,
@@ -455,6 +520,12 @@ fn spark_grant_install_outcome_wire(outcome: SparkGrantInstallOutcome) -> String
         },
         "\n",
         join(map(pr, o => privileged_step_outcome_wire(outcome: o)), ""),
+        match rb {
+          GrantReadbackConfirmed => "    grant-readback CONFIRMED by the grantee's own sudo enumeration\n"
+          GrantReadbackDisagreed { standing: why } =>
+            join(["    grant-readback DISAGREED ", why as String, "\n"], "")
+          GrantReadbackNotAttempted => "    grant-readback not attempted: nothing was installed\n"
+        },
       ], "")
   }
 }

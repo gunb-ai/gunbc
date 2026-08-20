@@ -25,6 +25,9 @@ import gunbc.spark_managed_grant_install {
   spark_grant_install_from_privileged,
   spark_grant_install_succeeded,
   SparkGrantInstallExecuted,
+  GrantReadbackConfirmed,
+  GrantReadbackDisagreed,
+  GrantReadbackNotAttempted,
   SparkGrantInstallAwaitingOperatorCredential,
 }
 import gunbc.remote_operation { remote_operation_argv, remote_operation_label }
@@ -34,6 +37,9 @@ import gunbc.spark_grant_privileged_operation {
   spark_bootstrap_credential_lease,
   CredentialNotEnrolled,
   CredentialRejected,
+  PrivilegedCommandSucceeded,
+  ValidateStagedSudoers,
+  InstallStagedSudoers,
 }
 
 // The installing principal, which is deliberately NOT the grantee: an account cannot install its own
@@ -157,7 +163,54 @@ test fn staging_alone_never_counts_as_an_installed_grant() -> Bool {
     grant: RebootThisHost,
     standings: [],
     privileged: [],
+    readback: GrantReadbackNotAttempted,
   })
+}
+
+// A SUCCESSFUL INSTALL WITH NO CONFIRMING READBACK IS NOT A GRANT. `install` exiting zero says a
+// file was placed; whether sudo now grants the command is a separate fact only sudo can state, and
+// it can disagree -- a drop-in naming the wrong account, a valid rule for a path that does not
+// exist, or an earlier sudoers entry taking precedence all place a file successfully and grant
+// nothing. This is the gap the whole vertical started in: a hand-applied sudoers line converged
+// nothing the process could see.
+test fn a_privileged_success_without_a_confirmed_readback_is_not_an_installed_grant() -> Bool {
+  let steps = [
+    PrivilegedCommandSucceeded { command: ValidateStagedSudoers { staged_path: "p" as NonEmptyStr } },
+    PrivilegedCommandSucceeded {
+      command: InstallStagedSudoers { staged_path: "p" as NonEmptyStr, dropin_path: "d" as NonEmptyStr },
+    },
+  ]
+  spark_grant_install_succeeded(outcome: SparkGrantInstallExecuted {
+    host: "srv6", grant: RebootThisHost, standings: [], privileged: steps,
+    readback: GrantReadbackConfirmed,
+  })
+    && !spark_grant_install_succeeded(outcome: SparkGrantInstallExecuted {
+         host: "srv6", grant: RebootThisHost, standings: [], privileged: steps,
+         readback: GrantReadbackDisagreed { standing: "sudo does not name the command" as NonEmptyStr },
+       })
+    && !spark_grant_install_succeeded(outcome: SparkGrantInstallExecuted {
+         host: "srv6", grant: RebootThisHost, standings: [], privileged: steps,
+         readback: GrantReadbackNotAttempted,
+       })
+}
+
+// The receipt says which of the three happened, because "installed" and "installed and confirmed"
+// are the two sentences this vertical exists to stop conflating.
+test fn the_receipt_states_the_readback_outcome() -> Bool {
+  string_contains(
+    spark_grant_install_outcome_wire(outcome: SparkGrantInstallExecuted {
+      host: "srv6", grant: RebootThisHost, standings: [], privileged: [],
+      readback: GrantReadbackConfirmed,
+    }),
+    "grant-readback CONFIRMED",
+  )
+    && string_contains(
+         spark_grant_install_outcome_wire(outcome: SparkGrantInstallExecuted {
+           host: "srv6", grant: RebootThisHost, standings: [], privileged: [],
+           readback: GrantReadbackDisagreed { standing: "fixture disagreement" as NonEmptyStr },
+         }),
+         "grant-readback DISAGREED fixture disagreement",
+       )
 }
 
 // A credential that was never enrolled is not a failed install: "nobody has supplied authorization
@@ -165,10 +218,10 @@ test fn staging_alone_never_counts_as_an_installed_grant() -> Bool {
 test fn a_never_enrolled_credential_is_awaiting_and_not_a_failure() -> Bool {
   match spark_grant_install_from_privileged(
     host: "srv6", grant: RebootThisHost, principal: installer(), staged: [],
-    outcomes: [CredentialNotEnrolled { lease: pending_lease() }],
+    outcomes: [CredentialNotEnrolled { lease: pending_lease() }], readback: GrantReadbackNotAttempted,
   ) {
     SparkGrantInstallAwaitingOperatorCredential { host: _, grant: _, principal: _ } => true
-    SparkGrantInstallExecuted { host: _, grant: _, standings: _, privileged: _ } => false
+    SparkGrantInstallExecuted { host: _, grant: _, standings: _, privileged: _, readback: _ } => false
     SparkGrantInstallNotAttempted { host: _, grant: _, cause: _ } => false
   }
 }
@@ -178,15 +231,16 @@ test fn a_never_enrolled_credential_is_awaiting_and_not_a_failure() -> Bool {
 test fn a_rejected_credential_is_an_executed_failure_not_an_awaiting_one() -> Bool {
   match spark_grant_install_from_privileged(
     host: "srv6", grant: RebootThisHost, principal: installer(), staged: [],
-    outcomes: [CredentialRejected { lease: pending_lease() }],
+    outcomes: [CredentialRejected { lease: pending_lease() }], readback: GrantReadbackNotAttempted,
   ) {
-    SparkGrantInstallExecuted { host: _, grant: _, standings: _, privileged: pr } => pr.length() == 1
+    SparkGrantInstallExecuted { host: _, grant: _, standings: _, privileged: pr, readback: _ } => pr.length() == 1
     SparkGrantInstallAwaitingOperatorCredential { host: _, grant: _, principal: _ } => false
     SparkGrantInstallNotAttempted { host: _, grant: _, cause: _ } => false
   }
     && !spark_grant_install_succeeded(outcome: SparkGrantInstallExecuted {
          host: "srv6", grant: RebootThisHost, standings: [],
          privileged: [CredentialRejected { lease: pending_lease() }],
+         readback: GrantReadbackNotAttempted,
        })
 }
 
