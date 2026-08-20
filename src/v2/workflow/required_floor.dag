@@ -237,6 +237,12 @@ fn required_floor_claim_warn_ms() -> Int {
   100
 }
 
+// The frame's edge to the expected-red roster (see the header). It delegates and holds nothing:
+// deleting the roster's own rows changes this function's answer with no edit here.
+fn required_floor_expected_red_roster() -> std.types.List<v2.std.text.String> {
+  v2.workflow.floor_expected_red.floor_expected_red_roster()
+}
+
 // PREEMPTION-1 TYPED MODEL (operator-directed, 2026-08-19; reworked on gunbc#8584 per
 // royal-hawk-392's REWORK, which correctly held that a prose note is not the model S1 asked
 // for -- everything above this point that reads as a description of the residue is now backed
