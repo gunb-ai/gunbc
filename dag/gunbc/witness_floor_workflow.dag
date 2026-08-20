@@ -235,7 +235,7 @@ fn witness_floor_run_script() -> String {
   concat(
     concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
     concat(
-      "\"$ROOT/target/release/claim_executor\" --required-floor",
+      "\"$ROOT/target/release/claim_executor\" --required-ci",
       concat(witness_floor_source_root_flags(), "\n")
     )
   )

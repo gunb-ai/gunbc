@@ -10580,7 +10580,8 @@ fn run() -> Result<ExitCode, ExitCode> {
                 // did not run because its input does not exist; saying nothing here would make
                 // an unrun determinism check indistinguishable from a passing one.
                 eprintln!(
-                    "required-ci: phase regen-fixed-point SKIPPED — regen produced no pass-1                      digest, so there is nothing to compare a second pass against"
+                    "required-ci: phase regen-fixed-point SKIPPED — regen produced no \
+                     pass-1 digest, so there is nothing to compare a second pass against"
                 );
                 phase_failures
                     .push("regen-fixed-point skipped (no pass-1 digest from regen)".to_string());
