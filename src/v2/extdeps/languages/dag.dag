@@ -103,8 +103,8 @@ import v2.std.node {
   TypeNode,
   SyntheticOccurrence,
   is_empty_conj_root,
-  OccurrenceId,
 }
+import std.occurrence_identity { OccurrenceId }
 import v2.std.node_query { find_named_child }
 import v2.std.compilers.target_model {
   ProducedDeclUnwired,

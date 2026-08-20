@@ -1,8 +1,7 @@
 module std.selected_witness_bundle
 
 import std.types { NonEmptyStr, List, Int, Bool }
-import std.verification { NanosecondDuration }
-import std.measure { ByteSize }
+import std.measure { ByteSize, Nanosecond }
 import std.content_hash {
   Fnv1a64Structural,
   content_hash_atom,
@@ -309,8 +308,8 @@ type NativeWitnessBundleExecutionReceipt {
   compiler_identity: Fnv1a64Structural
   process_count: Int
   compile_skipped: Bool
-  native_wall_nanos: NanosecondDuration
-  interpreted_wall_nanos: NanosecondDuration
+  native_wall_nanos: Nanosecond
+  interpreted_wall_nanos: Nanosecond
   member_equivalence: List<NativeBundleMemberEquivalence>
   interpreter_frontier_count: Int
 }
@@ -329,10 +328,10 @@ type NativeWitnessProductionTransitionReceipt {
   diverged_count: Int
   bundle_count: Int
   shard_count: Int
-  cold_compile_wall_nanos: NanosecondDuration
-  warm_artifact_hit_wall_nanos: NanosecondDuration
-  native_execution_wall_nanos: NanosecondDuration
-  interpreter_oracle_wall_nanos: NanosecondDuration
+  cold_compile_wall_nanos: Nanosecond
+  warm_artifact_hit_wall_nanos: Nanosecond
+  native_execution_wall_nanos: Nanosecond
+  interpreter_oracle_wall_nanos: Nanosecond
   fallback_count: Int
   rss_peak_bytes: ByteSize
   cgroup_peak_bytes: ByteSize
