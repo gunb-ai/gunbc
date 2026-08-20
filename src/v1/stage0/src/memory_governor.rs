@@ -190,15 +190,14 @@ pub fn render_governor_hold_line_mirror(hold: &HoldReason, emoji: bool) -> Strin
     let glyph = if emoji { "⏳" } else { "◷" };
     format!("{glyph} {}", mirror_ci_hold_cause_text(hold))
 }
-/// SEED MIRROR of `gunbc.runner_slot_allocation` `gunbc_runner_slot_desired` field `memory_high`
-/// — the declared per-slot throttle line. This constant is a mirror, not an independent value:
-/// it may only move toward its authority row. Joined by
+/// SEED MIRROR of `gunbc.runner_slot_allocation` `gunbc_runner_slot_desired`
+/// — the declared per-slot throttle line (field `memory_high`). This constant is a mirror, not
+/// an independent value: it may only move toward its authority row. Joined by
 /// `test.claim.seed_mirror_constant_lens_witness_test`.
 pub const DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES: u64 = 16106127360;
 
-/// SCAFFOLD (§7 seed-retained HAND-RUST — authority: `dag/gunbc/runner_slot_allocation.dag`
-/// `gunbc_floor_minimum_viable_armed_budget` = `byte_size(12884901888)`; doomed/success witness
-/// receipts in the same module):
+/// SEED MIRROR of `gunbc.runner_slot_allocation` `gunbc_floor_minimum_viable_armed_budget`
+/// — SCAFFOLD (§7 seed-retained HAND-RUST; doomed/success witness receipts in that module):
 /// arm-time floor refusal when the governor budget is below the measured minimum viable
 /// footprint — crowded uncapped hosts with low MemAvailable would otherwise start a doomed
 /// ~30min walk (runs 29834380839, 29845210061).
