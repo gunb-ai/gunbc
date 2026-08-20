@@ -10,6 +10,10 @@ import gunbc.guarantee_probe_corpus {
   guarantee_probe_rows,
   guarantee_probe_class_ids,
   guarantee_probe_ids,
+  bare_none_field_admission_class,
+  bare_none_scalar_red_probe,
+  bare_none_collection_red_probe,
+  bare_none_green_probe,
   call_label_surplus_class,
   method_established_surface_class,
   declared_conformance_ground_class,
@@ -129,6 +133,14 @@ fn witness_harness_revision(probe: GuaranteeProbeId) -> MeasurementRevision {
   }
 }
 
+data bare_none_scalar_red_source: String = "module probe_bare_none_scalar\ntype Diags = None | Some { n: Int }\ntype Holder { n: Int }\nfn f() -> Holder { Holder { n: None } }\n"
+
+data bare_none_collection_red_source: String = "module probe_bare_none_collection\ntype Diags = None | Some { n: Int }\ntype ListHolder { xs: List<Int> }\ntype StrHolder { s: String }\nfn f() -> ListHolder { ListHolder { xs: None } }\nfn g() -> StrHolder { StrHolder { s: None } }\n"
+
+data bare_none_green_source: String = "module probe_bare_none_green\ntype Diags = None | Some { n: Int }\ntype OptHolder { n: Int? }\ntype DiagHolder { d: Diags }\nfn optional_field() -> OptHolder { OptHolder { n: None } }\nfn none_variant_field() -> DiagHolder { DiagHolder { d: None } }\nfn some_variant_field() -> DiagHolder { DiagHolder { d: Some { n: 1 } } }\n"
+
+data bare_none_field_admission_scope_note: String = "THE CLASS: a bare `None` reference carries absence and nothing else, so a construction position whose declared field type cannot carry absence must refuse it. MEASURED ON THE PRE-WALL BINARY (the discriminating fact, not a prediction): bare_none_scalar_red_source and bare_none_collection_red_source both compiled with ZERO blocking diagnostics and emitted `n: Rc::new(Diags::None)` for `n: Int` — a Rust program the declared type refutes, produced silently, which is the below-floor class DESIGN 4b names (values inhabit declared types). THE GREEN CONTROL IS TWO-ARMED ON PURPOSE, because a wall that refuses every bare `None` would be indistinguishable from this one on the REDs alone: optional_field is the `T?` carrier and none_variant_field is a coproduct declaring its own `None` variant at its own level (the shape std.cache_interface AuthScope and v2.std.diagnostic Diagnostics both have, and the reason ~561 corpus sites are legitimate). some_variant_field holds the sibling arm green so the control cannot pass by the field type being unresolved. WHY A SYNTACTIC SLICE RATHER THAN THE GENERAL CONFORMANCE RULE: v1.compiler.infer conformance_unjudged_live_hole_note records five attempts at a general named-vs-named refusal, each of which red correct code because the produced side carries no separable type identity; a bare `None` needs none, since admissibility is decided entirely from the declared side."
+
 data call_mislabel_source: String = "module probe_call_mislabel\nfn sub(a: Int, b: Int) -> Int { a - b }\nfn f() -> Int { sub(a: 10, bb: 3) }\n"
 
 data call_surplus_source: String = "module probe_call_surplus\nfn two(a: Int, b: Int) -> Int { a + b }\nfn f() -> Int { two(1, 2, 3) }\n"
@@ -182,6 +194,54 @@ test fn probe_set_digest_is_stable() -> Bool {
   let a = probe_set_digest(probe_ids: guarantee_probe_ids()) as String
   let b = probe_set_digest(probe_ids: guarantee_probe_ids()) as String
   a == b && a != ""
+}
+
+test fn bare_none_scalar_red_refuses_blocking_field_admission() -> Bool {
+  let census = census_of(source: bare_none_scalar_red_source)
+  match active_probe_row(probe: bare_none_scalar_red_probe) {
+    Present { value: row } =>
+      probe_row_expectation_holds(census: census, row: row)
+        && match census_blocking_count_for_class(census: census, wanted: "BareNoneNotAdmittedByFieldType") {
+          Present { value: n } => n == 1
+          Absent => false
+        }
+    Absent => false
+  }
+}
+
+test fn bare_none_collection_red_refuses_blocking_field_admission() -> Bool {
+  let census = census_of(source: bare_none_collection_red_source)
+  match active_probe_row(probe: bare_none_collection_red_probe) {
+    Present { value: row } =>
+      probe_row_expectation_holds(census: census, row: row)
+        && match census_blocking_count_for_class(census: census, wanted: "BareNoneNotAdmittedByFieldType") {
+          Present { value: n } => n == 2
+          Absent => false
+        }
+    Absent => false
+  }
+}
+
+test fn bare_none_green_control_has_zero_diagnostics() -> Bool {
+  match active_probe_row(probe: bare_none_green_probe) {
+    Present { value: row } =>
+      probe_row_expectation_holds(census: census_of(source: bare_none_green_source), row: row)
+    Absent => false
+  }
+}
+
+test fn bare_none_red_does_not_satisfy_green_expectation() -> Bool {
+  let census = census_of(source: bare_none_scalar_red_source)
+  match active_probe_row(probe: bare_none_scalar_red_probe) {
+    Present { value: red_row } =>
+      match active_probe_row(probe: bare_none_green_probe) {
+        Present { value: green_row } =>
+          probe_row_expectation_holds(census: census, row: red_row)
+            && !probe_row_expectation_holds(census: census, row: green_row)
+        Absent => false
+      }
+    Absent => false
+  }
 }
 
 test fn call_mislabel_red_refuses_blocking_call_argument_name_unknown() -> Bool {
@@ -738,6 +798,9 @@ test fn dark_suite_dispositions_cover_migrated_v1_probes() -> Bool {
     distinct_string_count(values: disposition_probe_ids) == count(disposition_probe_ids)
   let known_v1_migration_gap_ids: List<String> = [sole_ctor_mint_fn_hole_probe as String]
   let dag_native_v1_compile_probe_ids: List<String> = [
+    bare_none_collection_red_probe as String,
+    bare_none_green_probe as String,
+    bare_none_scalar_red_probe as String,
     sole_ctor_admitted_caller_green_probe as String,
     sole_ctor_cast_red_probe as String,
     sole_ctor_unadmitted_caller_red_probe as String,
