@@ -257,15 +257,88 @@ Per the instruction that a declared gap is not a finding, these were examined an
 - **`fleet-converge.yml`'s sccache arm.** Prints `CiSccacheProviderReceipt: provider=SKIPPED …
   the release build runs UNCACHED — a counted degradation, not a supported mode`.
 
-## One undeclared residue inside a declared gap
+## One undeclared residue inside a declared gap — enumerated
 
-Several hermetic-discovery **exclusion** rows justify themselves in prose by naming
-`bin_witness_wet_entries` as their real per-PR executing consumer — for example the row for
-`stage0_rust_host_observation_live_witness_test.dag`. The *class's* lack of an executor is
-declared (above); the fact that these individual exclusions now rest on a dead lane is not. Each
-such row is a green (the witness is absent from the floor and nothing reds) resting on a stated
-scope that has ceased to be true. Inference, not measurement: I read the exclusion prose and
-confirmed the lane is dead; I did not enumerate every exclusion row that cites it.
+The **class's** lack of an executor is declared: `gunbc.ci_layer_roots` `excl_bin_wet_reason` was
+corrected on 2026-08-19 to say, in its own words, that nothing has run that batch since
+2026-08-15 and that "94 bin_wet rows across 38 entry files name an executing consumer that does
+not execute." The 21 `WitnessExclusionRow`s that take `reason: excl_bin_wet_reason` therefore
+inherit a correct statement and are **not** residue.
+
+What is *not* declared is every other carrier that still names `bin_witness_wet_entries` as a
+live executing consumer in the present tense. Enumerated at `026a709a716` by identity grain
+(method: every `bin_witness_wet_entries` occurrence in `dag/`, read for tense and role; control:
+the same sweep surfaces the corrected `excl_bin_wet_reason` and the explicit negatives below, so
+it is not selecting only for one answer). **No fix and no proposal is offered for any of these.**
+
+**A. Exclusion rows in `gunbc.ci_layer_roots` whose own `reason` names the dead lane as the
+executing consumer — 4:**
+
+| exclusion row `pattern` | what its reason still asserts |
+|---|---|
+| `run_verdict_exit_status_witness_test.dag` (via `excl_run_verdict_exit_status_reason`) | "all three fns are ALSO enrolled in `bin_witness_wet_entries` below, which is their real per-PR executing consumer under `WitnessHasExecutingConsumer` standing" |
+| `stage0_rust_host_observation_live_witness_test.dag` (inline) | "The closing contract `live_rust_observation_matches_actions_subject` is enrolled in `bin_witness_wet_entries` for the per-PR wet corpora batch" |
+| `stage0_rust_maintenance_census_report_live_witness_test.dag` (inline) | "the function is ALSO enrolled in `bin_witness_wet_entries` below …, which is its real per-PR executing consumer under `WitnessHasExecutingConsumer` standing" |
+| `host_effect_plan_real_execution_witness_test.dag` (inline) | "its shell witness fn runs via `bin_witness_wet_entries`, checked before this classification" |
+
+**B. Non-exclusion carriers asserting the same thing — 3:**
+
+- `gunbc.live_rust_observation` `live_rust_observation_note`: "The closing contract is enrolled in
+  `gunbc.ci_layer_roots` `bin_witness_wet_entries` for the per-PR wet corpora batch … where GitHub
+  supplies `GITHUB_SHA`."
+- `gunbc.roadmap_authority` `roadmap_receipt_continuity_execution_contract_note`: "Live git-observed
+  integrity **executes** in `test.claim.roadmap_receipt_continuity_live_witness` (ReadsLiveTree,
+  `bin_witness_wet_entries`)."
+- `gunbc.commit_workflow` `commit_workflow_long_lane_note`: a different shape of the same
+  dependency — two rows were **deleted** from the hermetic surface on the ground that "the same
+  `check_fns` are declared in `gunbc.ci_layer_roots` `bin_witness_wet_entries` (the Wet
+  bin-execution lane)". The deletion's justification, not merely an exclusion's, rests on the
+  dead lane.
+
+**C. Witness files whose own module note states the same coverage in the present tense — 18.**
+Each says some form of *excluded from hermetic discovery … and enrolled in
+`bin_witness_wet_entries`*, which is the sentence a reader consults to answer "is this file
+covered":
+
+`roadmap_authority_test.dag` · `proc_self_cgroup_witness_test.dag` ·
+`proc_self_cgroup_real_execution_witness_test.dag` ·
+`self_host_artifact_materialization_real_execution_witness_test.dag` ·
+`stage0_regen_convergence_real_execution_witness_test.dag` ·
+`host_build_cache_provision_real_execution_witness_test.dag` ·
+`host_effect_plan_real_execution_witness_test.dag` ·
+`generated_artifact_merge_driver_real_execution_witness_test.dag` ·
+`commit_writer_heal_admission_real_execution_witness_test.dag` ·
+`materialized_ssh_key_file_real_execution_witness_test.dag` ·
+`repo_local_git_config_real_execution_witness_test.dag` ·
+`http_client_get_real_execution_witness_test.dag` ·
+`claude_sdk_parser_drop_live_witness_test.dag` · `push_event_witness_wet_test.dag` ·
+`srv3_install_media_fetch_real_execution_witness_test.dag` ·
+`srv3_seeded_install_media_real_execution_witness_test.dag` ·
+`stage0_rust_host_observation_live_witness_test.dag` ·
+`test/manual/process_argv_expansion_receipt_test.dag`
+
+**D. The class note contradicts the corrected row, inside one file.**
+`gunbc.ci_layer_roots` `bin_witness_wet_note` still reads: "They carry core per-PR compiler
+coverage, so unlike the offline four they **DO keep running on every PR** — as the declared
+bin-witness wet batch." The corrected `excl_bin_wet_reason` points readers *at* this note
+("restoration is not this row to decide (`bin_witness_wet_note`)"), so the correction forwards to
+the uncorrected sentence.
+
+**E. One adjacent row, different dead lane, recorded because the sweep surfaced it.**
+`dag_compile_clean_shard_totality_witness_test.dag` is the *negative* of the pattern above — it
+declares itself "Excluded from per-PR `bin_witness_wet_entries`; runs on the falsifier wet cadence
+(batch 5, `ci_floor_plan.dag`) as its named consumer." `falsifier.yml` was deleted 2026-08-15 and
+`gunbc.ci_layer_roots` `falsifier_self_host_wet_note` declares that lane dead, so this row names a
+consumer for a second dead lane. Same shape, and its class *is* declared elsewhere.
+
+**Explicit negatives found by the same sweep, confirming it was not selecting for one answer:**
+`gunbc.explicit_witness_admission` carries two rows that say a witness is *not* on
+`bin_witness_wet_entries` and names its actual consumer instead.
+
+**Total silently changing meaning if the lane returns: 25 carriers** (4 exclusion rows + 3
+non-exclusion carriers + 18 witness-file notes), plus the class note in D that currently
+contradicts its own file's correction. The 21 rows on `excl_bin_wet_reason` are already correct
+and would need no re-reading.
 
 ## Routing
 
