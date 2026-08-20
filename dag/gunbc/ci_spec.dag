@@ -871,9 +871,12 @@ fn gunbc_ci_authorized_key_enroll_invoke() -> String {
 
 // THE UNGATED FLEET-DESIRED ADVANCE WAS DELETED HERE, and the deletion is the point rather than a
 // tidy-up. What stood here was gunbc_ci_advance_fleet_desired_script, a concat-built shell step
-// that pushed $GITHUB_SHA onto refs/fleet/desired with a compare-and-swap on the observed prior.
-// The CAS half was correct. The ADMISSION half did not exist: gunbc.fleet_main_revision requires
-// the desired revision to derive from merged, FLOOR-GREEN main and models that gate as
+// that pushed $GITHUB_SHA onto refs/fleet/desired -- with a compare-and-swap on the observed prior
+// on the advance branch, and on the CREATE branch a bare `git push origin "$GITHUB_SHA:$DESIRED_REF"`
+// carrying no lease at all, which is the branch that runs when the ref does not yet exist.
+//
+// The CAS half was correct. The ADMISSION half did not exist: gunbc.fleet_main_revision requires the
+// desired revision to derive from merged, FLOOR-GREEN main and models that gate as
 // admit_fleet_desired_advance, and this script never called it -- so the gate's only caller was its
 // own witness test while the unproven path ran on every push to main. That is exactly the raw-HEAD
 // advance the authority names as its prevented class, and it reached further than the ref:
@@ -884,11 +887,21 @@ fn gunbc_ci_authorized_key_enroll_invoke() -> String {
 // floor conclusion observed from the floor run's own workflow_run payload, and which renders the
 // authorized push itself so the surrounding shell carries no ref, revision or prior of its own. It
 // is cut at the root rather than kept beside the replacement: two answers to how the fleet's
-// admitted revision advances is the fork DESIGN section 3 forbids, and the weaker one is the one
-// that was live. The scaffold and dissolution trigger that tracked this script's medium-as-string
-// debt went with it -- the replacement's actuation is a model-rendered script, so that debt is
-// re-declared where the remaining shell actually lives, not inherited here.
-data gunbc_ci_advance_fleet_desired_deleted_note: String = "The ungated fleet-desired advance was deleted; gunbc.fleet_desired_admission replaces it. See the annotation above."
+// admitted revision advances is the fork DESIGN section 3 forbids, and the weaker one was the live
+// one. Keeping a function that can still render the raw form would leave the unsafe spelling one
+// call site from returning. The script's only other consumers were gunbc.live_deploy_workflow and
+// its witness file, both deleted with the deploy workflow authority.
+//
+// The Scaffold disposition and dissolution trigger that tracked this script's medium-as-string debt
+// went with it -- the replacement's actuation is a model-rendered script, so that debt is re-declared
+// where the remaining shell actually lives, not inherited here.
+//
+// This annotation was itself a merge conflict: the root cut and the admission change each deleted
+// this script and each wrote their own account of why. Two annotations for one deletion is the
+// duplication section 3 forbids, so they are merged here rather than stacked, and the accompanying
+// `data ..._deleted_note: String` row is dropped -- a String declaration whose sole purpose is
+// commentary is the misplaced data section 4c names, and the annotation above already carries it.
+
 
 data gunbc_ci_srv1_tasks_observation_shell_emit_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,

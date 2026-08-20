@@ -1528,7 +1528,7 @@ mod cross_claim_memo_tests {
 
     use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
-    use crate::v1_std_core::{make_expr_node, make_span, ExprData};
+    use crate::v1_std_core::{make_expr_node, no_span, ExprData};
 
     use super::{
         list_value, store_cross_claim_pure_memo, try_cross_claim_pure_memo, ExecutionMode,
@@ -1574,7 +1574,7 @@ mod cross_claim_memo_tests {
             Rc::new(ExprData::NoExprData),
             Rc::new(im_vec![]),
             None,
-            make_span(0, 0),
+            no_span(),
         );
 
         // A non-empty List argument routes through `EvalRecomputeArgKey::ContentHash`
@@ -1643,7 +1643,7 @@ mod cross_claim_memo_tests {
             Rc::new(ExprData::NoExprData),
             Rc::new(im_vec![]),
             None,
-            make_span(0, 0),
+            no_span(),
         );
 
         let args_a = [(
@@ -1693,7 +1693,7 @@ mod cross_claim_memo_tests {
             Rc::new(ExprData::NoExprData),
             Rc::new(im_vec![]),
             None,
-            make_span(0, 0),
+            no_span(),
         );
 
         let args_a = [(
@@ -1738,7 +1738,7 @@ mod cross_claim_memo_tests {
             Rc::new(ExprData::NoExprData),
             Rc::new(im_vec![]),
             None,
-            make_span(0, 0),
+            no_span(),
         );
         let result = Value::Str(Rc::from("ok"));
 
@@ -1778,7 +1778,7 @@ mod cross_claim_memo_tests {
             Rc::new(ExprData::NoExprData),
             Rc::new(im_vec![]),
             None,
-            make_span(0, 0),
+            no_span(),
         );
         let result = Value::Str(Rc::from("ok"));
 
@@ -15602,7 +15602,7 @@ mod map_shell_outputs_optional_stream_tests {
     use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
     use crate::v1_std_core::{
-        make_field_init_node, make_field_node, make_span, make_text_part_node, Cardinality,
+        make_field_init_node, make_field_node, make_text_part_node, no_span, Cardinality,
         Connective, ExprData, InferredNode, Node,
     };
 
@@ -15664,7 +15664,7 @@ mod map_shell_outputs_optional_stream_tests {
 
     fn map_optional_stream_field(exit_code: i32, from_key: &str) -> Value {
         let ctx = map_shell_outputs_test_context();
-        let span = make_span(0, 0);
+        let span = no_span();
         let str_type = bare_type_node("String", span.clone());
         let mut field = make_field_node(
             from_key.to_string(),
@@ -16096,7 +16096,7 @@ mod argv_arg_limit_test {
 
     use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
-    use crate::v1_std_core::{make_span, make_text_part_node, shell_transport_node, Node};
+    use crate::v1_std_core::{make_text_part_node, no_span, shell_transport_node, Node};
 
     use super::{
         argv_arg_limit_refusal, dispatch_shell, Env, ExecutionMode, ExpectedOutcome, InterpContext,
@@ -16115,7 +16115,7 @@ mod argv_arg_limit_test {
 
     /// `shell.Exec.Check`-shaped argv: `sh -c "<command>"` as three literal tokens.
     fn shell_check_style_transport(command: &str) -> Rc<Node> {
-        let span = make_span(0, 0);
+        let span = no_span();
         shell_transport_node(
             Rc::new(im_vec![
                 make_text_part_node("sh".to_string(), span.clone()),

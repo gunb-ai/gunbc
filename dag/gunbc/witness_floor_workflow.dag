@@ -101,8 +101,23 @@ data witness_floor_concurrency_group: String = "witness-floor-${{ github.event.p
 // `gunbc` is the CLI the repository's own tooling invokes. The predecessor build job named
 // nineteen binaries, most of which this cut deleted; naming a binary that no step runs buys
 // nothing and costs a compile.
-// `v1_src_dag_parse` ADDED 2026-08-19 for the step below, which is the only thing that runs it.
-data witness_floor_required_bins: List<String> = ["claim_executor", "gunbc", "v1_src_dag_parse"]
+// `v1_src_dag_parse` was ADDED 2026-08-19 for a step that ran it, and REMOVED 2026-08-20 with
+// that step. The consolidation folded the parse sweep into `--required-ci` as an in-process
+// phase calling the same `cli_run` walk, so nothing in this job invokes the standalone binary
+// any more -- and the rule stated two lines above is exactly the one its row was breaking:
+// naming a binary that no step runs buys nothing and costs a compile.
+//
+// Caught in review of gunbc#8647 rather than by me, and the way I got it wrong is worth the
+// line: the consolidation witness I wrote ASSERTED `--bin v1_src_dag_parse` was present, using
+// "CI builds the parse bin" as a proxy for "the parse sweep survives". It is a bad proxy --
+// survival is established by the composed run EXECUTING the phase (`parse OK 50 file(s)
+// parse-clean`, run 32371293567), never by compiling a binary nothing runs -- so the witness
+// was pinning the surplus in place as a requirement.
+//
+// The binary itself stays in the tree: running the parse sweep alone is the cheapest check
+// available while editing src/v1, and it is a thin caller of the same function, not a second
+// implementation. What it no longer is, is CI's business.
+data witness_floor_required_bins: List<String> = ["claim_executor", "gunbc"]
 
 fn witness_floor_checkout_step() -> Step {
   UsesStep {
@@ -217,71 +232,35 @@ fn witness_floor_source_root_flags() -> String {
 // decided in .dag by v2.workflow.required_floor. This step passes the source roots and
 // nothing else: there is no plan entry, no plan function, no batch id, no worker role and no
 // selection flag, because the fold has no such concepts to configure.
+// ONE INVOCATION, FOUR PHASES, AND THE ORDER IS THE PROGRAM'S RATHER THAN THE JOB'S
+// (operator directive, 2026-08-20: "i would much prefer if it was all handled within the
+// witnesses step and within the gunbc binary, not at a github actions job level").
+//
+// WHAT THIS REPLACES: four steps -- parse, regen, regen-fixed-point, floor -- each its own
+// process, their ORDER a YAML list, and each one's precondition an `if:` naming another
+// step's `outcome`. The fixed-point step additionally received pass 1's digest by READING
+// THE RECEIPT FILE the regen process had just written, which is the tell that a process
+// boundary sat where a function call belonged: `run_required_regen_fixed_point` has taken
+// `pass1_digest: Option<String>` all along and CI passed it `None`.
+//
+// `--required-ci` runs all four in one process, hands the digest over in memory, and reports
+// the complete ledger: every phase but the fixed point is independent, so an earlier failure
+// no longer skips a later phase and one defect can no longer hide the others. The line still
+// stops -- nonzero exit on any failed phase -- and a phase that could not run reports SKIPPED
+// as its own state, never as silence and never as a pass.
+//
+// NOT CLAIMED: this shares no COMPILE. Regen and its fixed point each call `compile_stage0`
+// and the second call stays, because re-emitting and comparing digests is exactly what the
+// fixed point measures. What is removed is process startup, the receipt round-trip, and the
+// job-level orchestration.
 fn witness_floor_run_script() -> String {
   concat(
     concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
     concat(
-      "\"$ROOT/target/release/claim_executor\" --required-floor",
+      "\"$ROOT/target/release/claim_executor\" --required-ci",
       concat(witness_floor_source_root_flags(), "\n")
     )
   )
-}
-
-// src/v1's .dag SOURCES HAVE NO REQUIRED GATE, AND THE REASON IS STRUCTURAL RATHER THAN AN
-// OVERSIGHT. Two things were tried before this step, and both were measured wrong.
-//
-// (1) `--source-root src/v1` on the fold refuses. Measured, CI run 32219326621: one flat
-// namespace over both trees yields 12 last-segment collisions -- `tokenize`, `parse`, `resolve`,
-// `emit`, `infer`, `normalize` and six more -- because the v1 and v2 compilers name their stages
-// identically. All 532 diagnostics that run produced were in src/v2 and dag/test; ZERO in src/v1.
-// The blocker is bare cross-module reference binding, and it dissolves with namespace-only
-// resolution rather than with a flag.
-//
-// (2) `test.claim.v1_dag_parse_witness.v1_dag_parse_witnesses` EXISTS and is discovered by the
-// fold, which looks like the gate already being present. It is not, and the reason is the one
-// `gunbc.ci_layer_roots` `excl_bin_wet_reason` states: this fold is HERMETIC, the witness reaches
-// `shell.Test.IsExecutable` through `tools.host_prelude`, and the hermetic envelope refuses host
-// effects by construction. Measured, CI run 32223611085:
-//
-//   FAIL test.claim.v1_dag_parse_witness.v1_dag_parse_witnesses errored:
-//     type error: hermetic mode: no mock_response for operation IsExecutable
-//     -- refusing to fabricate Unit
-//
-// That refusal is CORRECT and the witness cannot be made hermetic -- its subject is a subprocess
-// exit status, which no in-process assertion can observe, and mocking it would let the witness
-// pass against a fabricated status. So the row stays on `floor_expected_red`. What is actually
-// missing is its executing consumer: `bin_witness_wet_entries` was the declared per-PR wet batch
-// for this whole class, and it died with the old floor. The class has had no executor since.
-//
-// THIS STEP IS THAT EXECUTOR, for one member of the class, and it runs OUTSIDE the fold because
-// outside the fold is the only place a host effect can happen. It is not a second authority over
-// the witness: the witness cannot execute, so there is no verdict for this to duplicate.
-//
-// WHAT IT CLAIMS. Each src/v1 .dag file parses INDEPENDENTLY -- no shared pool, no cross-module
-// resolution -- so (1)'s collision class never arises. One rung: a parse error cannot land
-// silently. NOTHING about resolution, types, or whether those modules mean anything.
-// `tests/fixtures/` is excluded; those are deliberately malformed inputs authored FOR the
-// parser's own tests, and the existing corpus discovery in `compiler_tests` excludes them on the
-// same grounds.
-//
-// THE BINARY IS A REGISTERED SCAFFOLD AND STAYS ONE. Its dissolve-on is the modeled pipeline
-// parsing src/v1; wiring the scaffold does not satisfy that. Ordered BEFORE the fold because it
-// costs 0.7 seconds against the fold's tens of minutes, and a stopped line is cheapest early.
-fn witness_floor_v1_parse_step() -> Step {
-  RunStep {
-    name: Present { value: "src/v1 .dag sources parse" },
-    id: none,
-    run: concat(
-      concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
-      "cd \"$ROOT\" && \"$ROOT/target/release/v1_src_dag_parse\"\n"
-    ),
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: none
-  }
 }
 
 // THE FLOOR RUNS LAST AND THEREFORE DECLARES ITS PRECONDITION TOO (operator directive,
@@ -336,198 +315,13 @@ fn witness_floor_precondition() -> String {
 
 fn witness_floor_run_step() -> Step {
   RunStep {
-    name: Present { value: "All witnesses (one prepared subject, one fold)" },
+    name: Present { value: "Required CI: parse, regen, regen determinism, witness floor" },
     id: none,
     run: witness_floor_run_script(),
     shell: none,
     env: none,
     working_directory: none,
     if_condition: Present { value: witness_floor_precondition() },
-    continue_on_error: none,
-    timeout_minutes: none
-  }
-}
-
-// TWO MORE INVOCATIONS OF THE SAME BINARY, mirroring witness_floor_run_step() exactly: the
-// `--source-root` flags are the same fold over gunbc.ci_layer_roots witness_layer_roots (DESIGN
-// §3 -- one authority, not a second literal roster), and each mode decides its own subject in
-// .dag; this step passes only the source roots. `--required-regen` proves the fold's first
-// generation matches the committed candidate -- a genuine committed-vs-emitted staleness probe.
-// Both currently require at least one --source-root flag to pass claim_executor's own CLI gate
-// even though neither mode's function consumes it (src/v1/stage0/src/bin/claim_executor.rs, the
-// empty-source-roots check runs ahead of all three mode dispatches) -- fixing that gate is out
-// of scope here; supplying the flag is the correct interim, not a workaround, since the flag is
-// otherwise meaningful for every other mode this binary serves.
-//
-// WHY THESE TWO STEPS WERE STRIPPED ON 2026-08-20 AND RESTORED THE SAME DAY, recorded because the
-// strip's argument was CORRECT AT THE TIME and a reader who finds only the restoration will
-// re-derive the strip. The admission test that removed them (deep-ant-102): is every red closable,
-// by the author who caused it, at the moment they caused it? It was not. `--required-regen`
-// reported 16 drifting files on a tree carrying every fix then available, and no sequence of
-// regenerations could clear them, so the only accessible green was a hand-edited mirror -- a
-// required gate whose only path to green is the violation it guards against, which launders the
-// workaround under a green check and is worse than no gate. What changed is not the test, it is
-// the answer: TWO INDEPENDENT BLOCKERS WERE ROOT-CAUSED AND CLOSED, and the gate now has a
-// reachable green that is reached by regenerating, never by editing.
-//
-// BLOCKER 1 -- THE TWO-GENERATION LAG (closed by #8637 plus a staged install, no hand edit). The
-// duplicate `SeedRetainedIntrinsicRegistration` row was deleted from the .dag authority, but the
-// first regenerated `lib.rs` STILL emitted the bare `pub mod expected_red_roster_join;` with no
-// matching file (E0583), because `lib.rs`'s module list is emitted from the COMPILED-IN constant
-// in `gunbc_stage0_crate_layout_generated.rs`, not from the .dag read at runtime. The route that
-// closes it installs the regenerated constant ALONE, rebuilds, and re-runs: the emitted `lib.rs`
-// is then clean and drift drops 16 -> 15. Every step is an install of generated bytes; nothing is
-// authored by hand. Recorded because the tempting alternative -- deleting the offending line from
-// the mirror to make the build proceed -- is the author-side absorbing fallback (DESIGN §5), and
-// it had already conditioned three "generation 1 builds clean" reports from this session that had
-// to be retracted.
-//
-// BLOCKER 2 -- THE COMPARATOR HAD NO REACHABLE GREEN, and this one is invisible to every
-// candidate-side check because the candidate on disk is BYTE-IDENTICAL to the committed file the
-// gate is refusing. After the staged install, drift stuck at exactly one file,
-// `v1_compiler_infer.rs`, at generations 2, 3 and 4 -- deterministic, with `diff` returning zero
-// lines each time. `compare_generated_surfaces` normalized BOTH sides through rustfmt while
-// `write_emitted_tree` writes `normalize(emitted)`; once a candidate is installed the comparison
-// is therefore `normalize(normalize(emitted))` vs `normalize(emitted)`, an identity only if
-// rustfmt is idempotent -- and it is not: on that file a `let x = if (long.receiver.chain)`
-// re-splits on a second pass. So the check refused a tree that already equalled its own artifact,
-// forever, and the only way to silence it was to hand-edit the mirror.
-//
-// THE FIRST FIX WAS WRONG AND THE PRE-COMMIT HOOK CAUGHT IT, which is worth recording because it
-// located the real defect. Comparing the committed side RAW against the single-pass bytes made
-// `--required-regen` green and `cargo fmt --all --check` RED on the same file: the fmt gate
-// re-formats what is committed, so it demands pass N+1, while the comparator had just demanded
-// pass N. The two gates were in direct contradiction, and satisfying either broke the other in a
-// loop with no exit. So the defect is not in either gate's comparison -- it is that the emitted
-// artifact was written in a form that is not a FIXED POINT of the formatter, and a non-fixed-point
-// artifact cannot satisfy two consumers that consume different passes of it.
-//
-// THE FIX: `normalize_generated_source` now iterates rustfmt to a fixed point (bounded at 8
-// passes, exceeding it is a typed refusal -- a widened arm there would be the absorbing fallback
-// DESIGN §5 forbids and would restore the unclosable state), and the committed side is compared
-// RAW against exactly those bytes. `cargo fmt` is then a no-op on the artifact by definition, so
-// the contradiction is unrepresentable rather than detected: construction over validation
-// (DESIGN §5), and the compared artifact and the written artifact become ONE derivation instead
-// of two (DESIGN §3), which is what makes "install the candidate" a guaranteed remedy.
-// Verified in both directions on the installed candidate: `cargo fmt --all --check` exits 0 AND
-// `--required-regen` exits 0.
-//
-// EVIDENCE FOR THE RESTORATION, executed rather than argued: `--required-regen` exits 0 with
-// `first_generation_equal=true planned=129 executed=129`; `--required-regen-fixed-point` exits 0
-// with `fixed_point_equal=true`; and the discriminating RED refuses -- one comment line prepended
-// to a generated file yields exit 1 naming `std_pareto.rs`, with the restore verified afterwards.
-// A green without that RED would establish nothing, since this comparator's failure mode was
-// precisely a verdict that could not respond to the tree.
-//
-// COST, measured over seven full passes on an arm64 session container: `elapsed_ms` 206705,
-// 220041, 221086, 231461, 234069, 235851, 253731 -- 3.4 to 4.2 minutes per pass. The fixed-point
-// step performs a second full emit, so the pair adds roughly 8 minutes to a ~30-minute job. That
-// is the price of the gate and it is stated here so a future reader trading it away is trading a
-// known quantity.
-//
-// WHAT `--required-regen-fixed-point` ACTUALLY MEASURES, CORRECTED (2026-08-19, fierce-ram-721
-// review + operator verification, both against the source rather than the flag's name): despite
-// its name, `run_required_regen_fixed_point` (required_regen_host.rs) never builds or invokes a
-// candidate binary. `compile_stage0` calls `compile_sources`, a Rust fn linked into the SAME
-// running claim_executor process that already emitted pass 1 -- there is no `Command::new` for
-// cargo or a candidate executable anywhere in that path. So `fixed_point_equal` compares two
-// emissions from the same in-process G0, not G0's emission against a rebuilt G1's. That is
-// EMISSION REPEATABILITY (the compiler emits the same bytes twice), a real and useful property,
-// but it is not a self-host fixed point, which requires G0 emit R1, BUILD G1 from R1, run G1 to
-// emit R2, and compare R1 to R2 -- the build-and-run leg does not exist in this binary. The step
-// below is named for what it measures, not for the CLI flag's name, to avoid publishing an
-// authoritative CI green for a proposition nothing here evaluates (DESIGN §4b: a carrier named
-// for a guarantee it does not hold is rung inflation, and ranks worse than sitting low, because
-// it never gets fixed). The real self-host fixed point -- G0 builds and invokes G1 -- remains
-// unanswered; a modeled v2 route (src/v2/compiler/self_host.dag) exists but has zero production
-// consumers and sits in gunbc.witness_deferral_freeze, so it cannot hold that boundary today
-// either. Whoever builds the real G0->G1->R2 chain should prove it with a candidate-use canary:
-// swap the built candidate for a binary that prints a marker and exits nonzero, and confirm the
-// boundary observes it -- a mechanism that only recomputes through G0 stays green and is caught.
-// WHY THESE TWO STEPS DECLARE A PRECONDITION INSTEAD OF INHERITING THEIR POSITION.
-//
-// A step with no `if` inherits GitHub's default `success()`, which means the conjunction of
-// every earlier step in the job. Ordered after the witness floor, both regen steps therefore
-// carried an undeclared dependency on the floor's verdict -- and the regen claim does not
-// depend on the floor's verdict. Its actual precondition is that the binary exists.
-//
-// Two costs, and the second is the reason this is a defect rather than a preference. The
-// measurement cost: on the only run that has ever carried these steps (32312549861), both
-// report `skipped` with zero duration, because the floor went red for main's own corpus
-// defect -- a population with no relation to regen. So the regen wall cannot be measured on
-// CI at all while any unrelated floor red stands. The correctness cost: once merged, a floor
-// red DISARMS the regen gate, so the stale-mirror class this enrollment exists to catch goes
-// unchecked on exactly the runs where the tree is already known to be unhealthy -- and a
-// skipped step does not report as failing, so the check surface reads `floor red, regen fine`
-// when regen was never asked. That is the empty-observation narrow from DESIGN's failure-mode
-// list -- same class, new instance: bottom-as-answer conflated with bottom-as-ignorance, here
-// `regen did not fail` standing in for `regen was never evaluated`. The named instance in
-// DESIGN is a diff observation rendered as `nothing is affected`; this one is a skipped gate
-// rendered as an unbroken gate.
-//
-// Binding to the build step's own outcome states the real dependency: the two claims are
-// independent, they fail independently, and neither silences the other. This is a narrowing
-// of an undeclared condition to a declared one, NOT a climb -- nothing here checks that a
-// future step keeps declaring its precondition rather than inheriting one.
-fn witness_regen_precondition() -> String {
-  concat(witness_step_status_guard(), "steps.build_witness_fold.outcome == 'success'")
-}
-
-// The fixed-point step's precondition is the REGEN step, not the build, and this is measured
-// rather than assumed: run standalone on a clean tree it exits nonzero in under a second with
-// `refused: read receipt target/stage0-regen-receipt.json: No such file or directory`. It
-// consumes a receipt the regen step above produces, so that is a genuine data dependency and
-// the two steps are NOT peers. Binding it to the build alone would have replaced an undeclared
-// condition that was too strong with one that is too weak -- it would run on every build and
-// refuse for a missing receipt, reporting a receipt-plumbing failure where the real event is
-// that regen did not get far enough to write one.
-fn witness_regen_fixed_point_precondition() -> String {
-  concat(witness_step_status_guard(), "steps.required_regen.outcome == 'success'")
-}
-
-fn witness_required_regen_script() -> String {
-  concat(
-    concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
-    concat(
-      "\"$ROOT/target/release/claim_executor\" --required-regen",
-      concat(witness_floor_source_root_flags(), "\n")
-    )
-  )
-}
-
-fn witness_required_regen_step() -> Step {
-  RunStep {
-    name: Present { value: "Regen fixed point: first generation matches committed candidate" },
-    id: Present { value: "required_regen" },
-    run: witness_required_regen_script(),
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: Present { value: witness_regen_precondition() },
-    continue_on_error: none,
-    timeout_minutes: none
-  }
-}
-
-fn witness_required_regen_fixed_point_script() -> String {
-  concat(
-    concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
-    concat(
-      "\"$ROOT/target/release/claim_executor\" --required-regen-fixed-point",
-      concat(witness_floor_source_root_flags(), "\n")
-    )
-  )
-}
-
-fn witness_required_regen_fixed_point_step() -> Step {
-  RunStep {
-    name: Present { value: "Regen determinism: G0 emit reproduces itself on a second pass" },
-    id: none,
-    run: witness_required_regen_fixed_point_script(),
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: Present { value: witness_regen_fixed_point_precondition() },
     continue_on_error: none,
     timeout_minutes: none
   }
@@ -568,9 +362,6 @@ fn witness_floor_job() -> Job {
       witness_floor_checkout_step(),
       witness_floor_toolchain_step(),
       witness_floor_build_step(),
-      witness_floor_v1_parse_step(),
-      witness_required_regen_step(),
-      witness_required_regen_fixed_point_step(),
       witness_floor_run_step()
     ],
     needs: [],

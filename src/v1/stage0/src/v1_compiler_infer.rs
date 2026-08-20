@@ -203,7 +203,7 @@ pub use crate::v1_std_core::{
     is_tree_size_reducing, lambda_body, lambda_param_names_at, let_binding_name_at, let_body,
     let_value, local_transport_node, make_arg_node, make_arm_node, make_error_node,
     make_expr_error_node, make_expr_node, make_field_binding_node, make_field_init_node,
-    make_interp_part_node, make_named_expr_node, make_param_node, make_span, make_text_part_node,
+    make_interp_part_node, make_named_expr_node, make_param_node, make_text_part_node,
     make_transport_node, map_children, match_arm_nodes, match_scrutinee, method_arg_nodes,
     method_receiver, module_imports, module_items, module_node, no_span, node_name_span, none_type,
     param_node_default_value, param_node_name_at, param_node_type_expr,
@@ -2090,6 +2090,83 @@ pub fn where_refinement_predicates_equivalent(
     }
 }
 
+pub fn where_refinement_min_length_implication_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "THE FRAGMENT IS TWO PARTIAL FUNCTIONS, NOT AN IMPLICATION ENGINE, and the asymmetry between them is the entire soundness argument. Predicate implication in general is undecidable, so this decides exactly one relation and refuses outside it: a value whose refinement GUARANTEES a minimum length satisfies a formal position whose refinement DEMANDS a minimum length AND NOTHING ELSE. Provider and demander are separate partial functions over the same closed predicate vocabulary because a predicate can inhabit one side and not the other, and collapsing them into one min-length table is a FAIL-OPEN that the obvious framing walks straight into: model lower_hex_64 as min-length 64 on both sides and a formal lower_hex_64 is then satisfied by an actual lower_hex_128, since 128 >= 64 — but those predicates demand DIFFERENT EXACT LENGTHS and a 128-digit string is not a valid sha256 hex. lower_hex_N therefore appears as a PROVIDER only (it guarantees exactly N lower-hex digits, hence at least N characters) and never as a demander (it demands an exact length and a charset, neither of which a length lower bound establishes). non_empty is the only predicate in the live vocabulary that is a pure length lower bound, so it is the only demander, and it is a provider too because it demands what it guarantees. Everything outside both tables answers Absent and the caller falls through to the pre-existing name-equality path unchanged, so this widens what the wall can DECIDE and narrows nothing it already decided. oci_other_digest_algorithm and oci_other_digest_encoded are deliberately NOT providers even though their grammars happen to exclude the empty string: that fact lives in oci_digest_algorithm_wire_holds / oci_encoded_digest_syntax_valid as a consequence of a syntax walk, not as a declared constant this table could cite, and asserting a bound the predicate does not state is the fabrication DESIGN §5 forbids. The four lower_hex_N bounds ARE declared constants — each is content_hash_validate_lower_hex_length(text, expected_hex_digits: N), whose body is text.length() == N — so the number in this table is the number in the predicate, cited rather than restated. WHY THIS IS A WALL AND NOT A WIDENING: the two corpus sites it closes (std.content_hash serialize_content_hash, `s.digest as NonEmptyStr` over Fnv1a64StructuralDigestHex and `d.hex as NonEmptyStr` over Sha1DigestHex) were carrying WhereRefinementUnenforced advisories for REFUSED evidence, not absent evidence — the value's own declared type already proved the property and where_refinement_predicates_equivalent could not see it because it compares predicate NAMES for equality, and lower_hex_40 != non_empty. WHAT IS NOT STRUCTURAL, STATED AT ITS HONEST RUNG (§4b) BECAUSE A TABLE PAIR WHOSE SOUNDNESS LIVES IN PROSE DECAYS SILENTLY: nothing prevents a predicate from being enrolled in BOTH tables, and membership in both is NOT the fail-open — non_empty is deliberately in both and is sound there, because it demands exactly what it guarantees. The real enrollment condition is narrower: a predicate may take a REQUIRED row only if its entire semantics is a length lower bound and nothing else. lower_hex_64 in both tables would be unsound not because it appears twice but because it demands an exact length and a charset that a lower bound does not establish. That condition is enforced by nobody: these are two hand-written name-keyed partial functions, so a future demander row asserting more than length would fail open and no check would fire. The decided relation guaranteed >= required is mechanically enforced; the authoring discipline that populates the demander table is DILIGENCE, rung MITIGATABLE, and it is contained only by the vocabulary being closed and small. Next-rung trigger is the same dissolve-on below: once the bounds are fields on WhereRefinementPredicateKind's own declaration, a predicate states its guarantee and its demand once and the mis-enrollment has no place to be written. Dissolve-on: feature:where-refinement-predicate-coproduct — when WhereRefinementPredicateKind replaces the string classifiers, the guaranteed and required bounds become fields on the predicate's own declaration rather than two tables a reader must keep in lockstep with where_refinement_is_string_literal_predicate and decidable_where_string_predicate_holds.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn where_predicate_guaranteed_min_length(pred_name: String) -> Option<i64> {
+    if (pred_name.clone() == "non_empty".to_string()) {
+        Some(1)
+    } else {
+        if (pred_name.clone() == "lower_hex_16".to_string()) {
+            Some(16)
+        } else {
+            if (pred_name.clone() == "lower_hex_40".to_string()) {
+                Some(40)
+            } else {
+                if (pred_name.clone() == "lower_hex_64".to_string()) {
+                    Some(64)
+                } else {
+                    if (pred_name.clone() == "lower_hex_128".to_string()) {
+                        Some(128)
+                    } else {
+                        None
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn where_predicate_required_min_length(pred_name: String) -> Option<i64> {
+    if (pred_name.clone() == "non_empty".to_string()) {
+        Some(1)
+    } else {
+        None
+    }
+}
+
+pub fn where_refinement_predicate_min_length_implies(
+    formal_pred: Rc<Node>,
+    actual_pred: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match where_predicate_required_min_length(where_predicate_canonical_name(
+        where_predicate_name_at(formal_pred.clone(), source_indices.clone()),
+    )) {
+        Some(required) => {
+            match where_predicate_guaranteed_min_length(where_predicate_canonical_name(
+                where_predicate_name_at(actual_pred.clone(), source_indices.clone()),
+            )) {
+                Some(guaranteed) => (guaranteed.clone() >= required.clone()),
+                None => false,
+            }
+        }
+        None => false,
+    }
+}
+
+pub fn where_refinement_predicate_satisfied_by(
+    formal_pred: Rc<Node>,
+    actual_pred: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    (where_refinement_predicates_equivalent(
+        formal_pred.clone(),
+        actual_pred.clone(),
+        source_indices.clone(),
+    ) || where_refinement_predicate_min_length_implies(
+        formal_pred.clone(),
+        actual_pred.clone(),
+        source_indices.clone(),
+    ))
+}
+
 pub fn where_refinement_predicates_covered(
     formal_preds: Rc<Vec<Rc<Node>>>,
     actual_preds: Rc<Vec<Rc<Node>>>,
@@ -2101,7 +2178,7 @@ pub fn where_refinement_predicates_covered(
             if !({
                 let mut __found = false;
                 for ap in actual_preds.clone().iter().cloned() {
-                    if where_refinement_predicates_equivalent(
+                    if where_refinement_predicate_satisfied_by(
                         fp.clone(),
                         ap.clone(),
                         source_indices.clone(),
@@ -4710,7 +4787,7 @@ pub fn validate_cast(
 pub fn type_variable_node(id: String) -> Rc<Node> {
     Rc::new(Node {
         name: "".to_string(),
-        span: make_span(0, 0),
+        span: no_span(),
         ident_span: None,
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
@@ -18235,7 +18312,7 @@ pub fn build_type_env_unresolved(
             .fold(intern_table.clone(), |t: Rc<InternTable>, name: String| {
                 intern(t, name.clone()).table.clone()
             });
-        let zero_span = make_span(0, 0);
+        let zero_span = no_span();
         let kernel_bindings = Rc::new(v1_rt::map_keys(&kernel_type_set()))
             .iter()
             .cloned()

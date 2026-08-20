@@ -19,7 +19,6 @@ import gunbc.fleet_desired_admission {
   fleet_desired_admission_authorized_push_path,
 }
 import gunbc.fleet_desired_admission_workflow { expected_fleet_desired_yml }
-import gunbc.live_deploy_workflow { expected_deploy_yml }
 
 data fixture_prior_hex: String = "1111111111111111111111111111111111111111"
 data fixture_candidate_hex: String = "2222222222222222222222222222222222222222"
@@ -216,16 +215,21 @@ test fn the_admission_workflow_push_step_names_no_revision_of_its_own() -> Bool 
     && !string_contains(s: yml, pattern: "ls-remote")
 }
 
-// THE REGRESSION CONTROL FOR THE DEFECT ITSELF. deploy.yml must no longer advance the ref, and the
-// positive half proves the file is still the deploy workflow rather than empty or broken — an
-// assertion of absence alone would pass against a file that lost everything.
-test fn the_deploy_workflow_no_longer_advances_the_fleet_revision() -> Bool {
-  let yml = expected_deploy_yml()
-  string_contains(s: yml, pattern: "live_deploy_apply_srv1_wet")
-    && string_contains(s: yml, pattern: "materialize_codex_runtime_on_local_host")
-    && !string_contains(s: yml, pattern: "refs/fleet/desired")
-    && !string_contains(s: yml, pattern: "force-with-lease")
-}
+// the_deploy_workflow_no_longer_advances_the_fleet_revision WAS HERE and is deleted, not
+// relocated. It asserted that deploy.yml still ran the modeled apply while no longer mutating
+// refs/fleet/desired -- a claim about a workflow that no longer exists, since the root cut
+// deleted the deploy workflow authority outright. A claim whose subject is gone cannot be kept
+// alive by repointing it at something else; that would be a witness named for one fact
+// asserting another.
+//
+// The property it guarded is not lost, it is subsumed: a workflow that does not exist cannot
+// advance the ref, and test.claim.deploy_workflow_retirement_witness asserts the retired path
+// is absent from the committed artifact roster -- which is what stops the file being
+// regenerated, and is strictly stronger than "the file exists but no longer pushes".
+//
+// Found by a dangling import after merging the root cut: this file had NO merge conflict, so
+// git reported nothing. The enumeration has to be re-run after every refresh for exactly this
+// reason -- the hazard was in a file neither side touched.
 
 // deploy.yml invoked cargo on this same srv1 runner with no toolchain and exited
 // 127 on all 14 of its runs -- the actuator never once reached its own terminal
