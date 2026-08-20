@@ -40624,10 +40624,10 @@ pub fn run_required_floor(
                 .to_string()
         };
         Some(
-            crate::expected_red_roster_join::ExpectedRedRosterJoinReport::new(
+            crate::v1_compiler_expected_red_roster_join::new_expected_red_roster_join_report(
                 run_head,
                 run_note,
-                &roster_identities,
+                std::rc::Rc::new(roster_identities.into_iter().collect::<im::Vector<_>>()),
             ),
         )
     } else {
@@ -40947,9 +40947,11 @@ pub fn run_required_floor(
         if expected_red {
             expected_red_seen.insert(claim.qualified.clone());
             if let Some(ref mut join) = roster_join_report {
-                join.record_observed(
-                    &claim.qualified,
-                    &witness_eval_verdict_from_claim_outcome(&result),
+                let verdict = witness_eval_verdict_from_claim_outcome(&result);
+                *join = crate::v1_compiler_expected_red_roster_join::record_observed(
+                    join.clone(),
+                    claim.qualified.clone(),
+                    std::rc::Rc::new(verdict),
                 );
             }
         }
@@ -41316,11 +41318,11 @@ pub fn run_required_floor(
             outcome.claims_planned, outcome.claims_executed, outcome.receipt_identities
         ));
     }
-    if let Some(mut join) = roster_join_report {
-        join.finalize_not_observed();
-        crate::expected_red_roster_join::emit_join_summary(&join);
+    if let Some(join) = roster_join_report {
+        let join = crate::v1_compiler_expected_red_roster_join::finalize_not_observed(join);
+        emit_expected_red_roster_join_summary(&join);
         if let Some(path) = roster_join_path {
-            crate::expected_red_roster_join::write_join_tsv(&path, &join)?;
+            write_expected_red_roster_join_tsv(&path, &join)?;
         }
     }
     if let Some(path) = required_floor_disposition_path {
@@ -41330,6 +41332,81 @@ pub fn run_required_floor(
         write_long_home_storage_agreement_tsv(&path, &outcome.long_home_storage_agreement)?;
     }
     Ok(outcome)
+}
+
+fn emit_expected_red_roster_join_summary(
+    report: &Rc<crate::v1_compiler_expected_red_roster_join::ExpectedRedRosterJoinReport>,
+) {
+    use crate::v1_compiler_expected_red_roster_join::{
+        expected_red_roster_join_not_evaluated, expected_red_roster_join_now_passes,
+        expected_red_roster_join_roster_len, expected_red_roster_join_still_red, is_not_evaluated,
+        not_evaluated_reason,
+    };
+    let head = report.run_head.as_deref().unwrap_or("(unresolved)");
+    eprintln!(
+        "[expected-red-roster-join] roster={} still_red={} now_passes={} not_evaluated={} \
+         (head={head})",
+        expected_red_roster_join_roster_len(report.clone()),
+        expected_red_roster_join_still_red(report.clone()),
+        expected_red_roster_join_now_passes(report.clone()),
+        expected_red_roster_join_not_evaluated(report.clone()),
+    );
+    eprintln!("[expected-red-roster-join] {}", report.run_note);
+    let mut reason_counts: std::collections::BTreeMap<String, usize> =
+        std::collections::BTreeMap::new();
+    for row in report.rows.iter() {
+        if is_not_evaluated(row.disposition.clone()) {
+            let reason = not_evaluated_reason(row.disposition.clone());
+            *reason_counts.entry(reason).or_default() += 1;
+        }
+    }
+    for (reason, count) in reason_counts {
+        eprintln!("[expected-red-roster-join] not_evaluated.{reason}={count}");
+    }
+}
+
+fn write_expected_red_roster_join_tsv(
+    path: &str,
+    report: &Rc<crate::v1_compiler_expected_red_roster_join::ExpectedRedRosterJoinReport>,
+) -> Result<(), String> {
+    use crate::v1_compiler_expected_red_roster_join::{
+        disposition_label, expected_red_roster_join_not_evaluated,
+        expected_red_roster_join_now_passes, expected_red_roster_join_roster_len,
+        expected_red_roster_join_still_red, not_evaluated_reason,
+    };
+    let mut file = std::fs::File::create(path)
+        .map_err(|e| format!("expected_red_roster_join create {path}: {e}"))?;
+    match &report.run_head {
+        Some(head) => writeln!(file, "# run_head\t{head}")
+            .map_err(|e| format!("expected_red_roster_join header: {e}"))?,
+        None => writeln!(file, "# run_head\t")
+            .map_err(|e| format!("expected_red_roster_join header: {e}"))?,
+    }
+    writeln!(file, "# run_note\t{}", report.run_note.replace('\t', " "))
+        .map_err(|e| format!("expected_red_roster_join header: {e}"))?;
+    writeln!(
+        file,
+        "# summary\troster={}\tstill_red={}\tnow_passes={}\tnot_evaluated={}",
+        expected_red_roster_join_roster_len(report.clone()),
+        expected_red_roster_join_still_red(report.clone()),
+        expected_red_roster_join_now_passes(report.clone()),
+        expected_red_roster_join_not_evaluated(report.clone()),
+    )
+    .map_err(|e| format!("expected_red_roster_join header: {e}"))?;
+    writeln!(file, "identity\tdisposition\tnot_evaluated_reason\tdetail")
+        .map_err(|e| format!("expected_red_roster_join header: {e}"))?;
+    for row in report.rows.iter() {
+        writeln!(
+            file,
+            "{}\t{}\t{}\t{}",
+            row.identity,
+            disposition_label(row.disposition.clone()),
+            not_evaluated_reason(row.disposition.clone()),
+            row.detail.replace('\t', " ").replace('\n', " ")
+        )
+        .map_err(|e| format!("expected_red_roster_join row: {e}"))?;
+    }
+    Ok(())
 }
 
 fn required_floor_disposition_label(disposition: &RequiredFloorDisposition) -> &'static str {
@@ -41642,20 +41719,28 @@ mod required_floor_disposition_and_storage_agreement_law {
 
 fn witness_eval_verdict_from_claim_outcome(
     outcome: &ClaimOutcome,
-) -> crate::expected_red_roster_join::WitnessEvalVerdict {
+) -> crate::v1_compiler_expected_red_roster_join::WitnessEvalVerdict {
     match outcome {
-        ClaimOutcome::Pass => crate::expected_red_roster_join::WitnessEvalVerdict::Passed,
-        ClaimOutcome::Fail => crate::expected_red_roster_join::WitnessEvalVerdict::BoolFalse,
+        ClaimOutcome::Pass => {
+            crate::v1_compiler_expected_red_roster_join::WitnessEvalVerdict::Passed
+        }
+        ClaimOutcome::Fail => {
+            crate::v1_compiler_expected_red_roster_join::WitnessEvalVerdict::BoolFalse
+        }
         ClaimOutcome::NotBool { got } => {
-            crate::expected_red_roster_join::WitnessEvalVerdict::NotBool(got.clone())
+            crate::v1_compiler_expected_red_roster_join::WitnessEvalVerdict::NotBool {
+                got: got.clone(),
+            }
         }
         ClaimOutcome::RuntimeError { message } => {
-            crate::expected_red_roster_join::WitnessEvalVerdict::RuntimeError(message.clone())
+            crate::v1_compiler_expected_red_roster_join::WitnessEvalVerdict::RuntimeError {
+                message: message.clone(),
+            }
         }
         ClaimOutcome::HostToolUnresolved { name, probed } => {
-            crate::expected_red_roster_join::WitnessEvalVerdict::HostToolUnresolved {
+            crate::v1_compiler_expected_red_roster_join::WitnessEvalVerdict::HostToolUnresolved {
                 name: name.clone(),
-                probed: probed.clone(),
+                probed: std::rc::Rc::new(probed.iter().cloned().collect::<im::Vector<_>>()),
             }
         }
         ClaimOutcome::TimedOut {
@@ -41663,16 +41748,16 @@ fn witness_eval_verdict_from_claim_outcome(
             budget_ms,
             kind,
             completion,
-        } => crate::expected_red_roster_join::WitnessEvalVerdict::BudgetExceeded {
-            elapsed_ms: *elapsed_ms,
-            budget_ms: *budget_ms,
-            kind: kind.label(),
+        } => crate::v1_compiler_expected_red_roster_join::WitnessEvalVerdict::BudgetExceeded {
+            elapsed_ms: *elapsed_ms as i64,
+            budget_ms: *budget_ms as i64,
+            kind: kind.label().to_string(),
             completion: match completion {
                 BudgetCompletion::Interrupted => {
-                    crate::expected_red_roster_join::BudgetVerdictCompletion::Interrupted
+                    crate::v1_compiler_expected_red_roster_join::BudgetVerdictCompletion::Interrupted
                 }
                 BudgetCompletion::CompletedOverBudget => {
-                    crate::expected_red_roster_join::BudgetVerdictCompletion::CompletedOverBudget
+                    crate::v1_compiler_expected_red_roster_join::BudgetVerdictCompletion::CompletedOverBudget
                 }
             },
         },

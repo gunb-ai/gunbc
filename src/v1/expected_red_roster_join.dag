@@ -1,0 +1,202 @@
+module v1.compiler.expected_red_roster_join
+
+import v1.compiler.emit_core_support { to_string }
+
+// Identity-grain join of the floor's expected-red roster against witness verdicts.
+//
+// Every enrolled identity receives exactly one of three outcomes:
+// - StillRed — the witness ran and failed on its subject (not infra/budget flake).
+// - NowPasses — the witness ran and returned true; retire the enrollment, keep the witness.
+// - NotEvaluated — no subject verdict (not in manifest, host tool missing, ...).
+//
+// Completeness is an identity join over the full roster, never a scan of failure-log lines.
+// This module is pure logic ported from the hand-authored expected_red_roster_join.rs
+// (#8428) so its .rs realization is emitted, not hand-maintained; file I/O and
+// diagnostic printing stay in cli_run.rs, which is already a registered hand-maintained
+// support module (v2.compiler.self_host.stage0_crate_layout).
+
+type BudgetVerdictCompletion
+  = Interrupted
+  | CompletedOverBudget
+
+type WitnessEvalVerdict
+  = Passed
+  | BoolFalse
+  | NotBool { got: String }
+  | RuntimeError { message: String }
+  | HostToolUnresolved { name: String, probed: List<String> }
+  | BudgetExceeded { elapsed_ms: Int, budget_ms: Int, kind: String, completion: BudgetVerdictCompletion }
+
+type ExpectedRedJoinDisposition
+  = StillRed
+  | NowPasses
+  | NotEvaluated { reason: String }
+
+type ExpectedRedRosterJoinRow {
+  identity: String
+  disposition: ExpectedRedJoinDisposition
+  detail: String
+}
+
+type ExpectedRedRosterJoinReport {
+  run_head: String?
+  run_note: String
+  rows: List<ExpectedRedRosterJoinRow>
+}
+
+fn new_expected_red_roster_join_report(run_head: String?, run_note: String, roster: List<String>) -> ExpectedRedRosterJoinReport {
+  ExpectedRedRosterJoinReport {
+    run_head: run_head,
+    run_note: run_note,
+    rows: roster |> map(identity => ExpectedRedRosterJoinRow {
+      identity: identity,
+      disposition: NotEvaluated { reason: "not_observed" },
+      detail: ""
+    })
+  }
+}
+
+fn expected_red_roster_join_roster_len(report: ExpectedRedRosterJoinReport) -> Int {
+  report.rows |> count
+}
+
+fn is_still_red(disposition: ExpectedRedJoinDisposition) -> Bool {
+  match disposition {
+    StillRed => true,
+    _ => false
+  }
+}
+
+fn is_now_passes(disposition: ExpectedRedJoinDisposition) -> Bool {
+  match disposition {
+    NowPasses => true,
+    _ => false
+  }
+}
+
+fn is_not_evaluated(disposition: ExpectedRedJoinDisposition) -> Bool {
+  match disposition {
+    NotEvaluated { reason: _ } => true,
+    _ => false
+  }
+}
+
+fn expected_red_roster_join_still_red(report: ExpectedRedRosterJoinReport) -> Int {
+  report.rows |> filter(row => is_still_red(disposition: row.disposition)) |> count
+}
+
+fn expected_red_roster_join_now_passes(report: ExpectedRedRosterJoinReport) -> Int {
+  report.rows |> filter(row => is_now_passes(disposition: row.disposition)) |> count
+}
+
+fn expected_red_roster_join_not_evaluated(report: ExpectedRedRosterJoinReport) -> Int {
+  report.rows |> filter(row => is_not_evaluated(disposition: row.disposition)) |> count
+}
+
+type VerdictClassification {
+  disposition: ExpectedRedJoinDisposition
+  detail: String
+}
+
+fn classify_verdict(verdict: WitnessEvalVerdict) -> VerdictClassification {
+  match verdict {
+    Passed =>
+      VerdictClassification { disposition: NowPasses, detail: "witness returned Bool(true)" },
+    BoolFalse =>
+      VerdictClassification { disposition: StillRed, detail: "witness returned Bool(false)" },
+    NotBool { got: got } =>
+      VerdictClassification { disposition: StillRed, detail: concat("witness answered ", got, ", not a Bool") },
+    RuntimeError { message: message } =>
+      VerdictClassification { disposition: StillRed, detail: message },
+    HostToolUnresolved { name: name, probed: probed } =>
+      VerdictClassification {
+        disposition: NotEvaluated { reason: "host_tool_unresolved" },
+        detail: concat("host tool unresolved: ", name, " (probed: ", probed |> join(separator: ", "), ")")
+      },
+    BudgetExceeded { elapsed_ms: elapsed_ms, budget_ms: budget_ms, kind: kind, completion: Interrupted } =>
+      VerdictClassification {
+        disposition: NotEvaluated { reason: "budget_refused" },
+        detail: concat(
+          "exceeded ", kind, " budget (", to_string(elapsed_ms), "ms elapsed against ",
+          to_string(budget_ms), "ms; interrupted — no subject verdict)"
+        )
+      },
+    BudgetExceeded { elapsed_ms: elapsed_ms, budget_ms: budget_ms, kind: kind, completion: CompletedOverBudget } =>
+      VerdictClassification {
+        disposition: NowPasses,
+        detail: concat(
+          "passed then exceeded ", kind, " budget (", to_string(elapsed_ms), "ms against ",
+          to_string(budget_ms), "ms; stale roster row — prune enrollment, cost debt is separate)"
+        )
+      }
+  }
+}
+
+fn disposition_label(disposition: ExpectedRedJoinDisposition) -> String {
+  match disposition {
+    StillRed => "still_red",
+    NowPasses => "now_passes",
+    NotEvaluated { reason: _ } => "not_evaluated"
+  }
+}
+
+fn not_evaluated_reason(disposition: ExpectedRedJoinDisposition) -> String {
+  match disposition {
+    NotEvaluated { reason: reason } => reason,
+    _ => ""
+  }
+}
+
+fn row_with_recorded_verdict(row: ExpectedRedRosterJoinRow, verdict: WitnessEvalVerdict) -> ExpectedRedRosterJoinRow {
+  let classification = classify_verdict(verdict: verdict)
+  ExpectedRedRosterJoinRow {
+    identity: row.identity,
+    disposition: classification.disposition,
+    detail: classification.detail
+  }
+}
+
+// Pure equivalent of ExpectedRedRosterJoinReport::record_observed: returns a report whose
+// row matching `identity` reflects `verdict`, all other rows unchanged.
+fn record_observed(report: ExpectedRedRosterJoinReport, identity: String, verdict: WitnessEvalVerdict) -> ExpectedRedRosterJoinReport {
+  ExpectedRedRosterJoinReport {
+    run_head: report.run_head,
+    run_note: report.run_note,
+    rows: report.rows |> map(row =>
+      if row.identity == identity {
+        row_with_recorded_verdict(row: row, verdict: verdict)
+      } else {
+        row
+      }
+    )
+  }
+}
+
+fn is_not_observed(disposition: ExpectedRedJoinDisposition) -> Bool {
+  match disposition {
+    NotEvaluated { reason: reason } => reason == "not_observed",
+    _ => false
+  }
+}
+
+fn row_finalized_if_not_observed(row: ExpectedRedRosterJoinRow) -> ExpectedRedRosterJoinRow {
+  if is_not_observed(disposition: row.disposition) {
+    ExpectedRedRosterJoinRow {
+      identity: row.identity,
+      disposition: NotEvaluated { reason: "not_in_executed_manifest" },
+      detail: "enrolled on roster but no matching claim executed in this run"
+    }
+  } else {
+    row
+  }
+}
+
+// Pure equivalent of ExpectedRedRosterJoinReport::finalize_not_observed: every row still
+// carrying the initial "not_observed" placeholder is reclassified to "not_in_executed_manifest".
+fn finalize_not_observed(report: ExpectedRedRosterJoinReport) -> ExpectedRedRosterJoinReport {
+  ExpectedRedRosterJoinReport {
+    run_head: report.run_head,
+    run_note: report.run_note,
+    rows: report.rows |> map(row_finalized_if_not_observed)
+  }
+}

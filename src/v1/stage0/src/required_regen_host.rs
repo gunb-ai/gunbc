@@ -83,6 +83,11 @@ pub fn run_required_regen(
     }
 
     let sync = compare_generated_surfaces(&stage0_src, &emitted, &committed_basenames)?;
+    // verify_hand_maintained writes scratch normalize files into candidate_dir; on a clean
+    // tree nothing has created that directory yet (write_emitted_tree does so later), so it
+    // must exist before this call.
+    fs::create_dir_all(&candidate_dir)
+        .map_err(|e| format!("create {}: {e}", candidate_dir.display()))?;
     let hand = verify_hand_maintained(&emitted, &stage0_src, &candidate_dir)?;
 
     let committed_digest =
@@ -217,14 +222,29 @@ fn generated_basenames_from_emit(emitted: &HashMap<String, String>) -> Vec<Strin
             // Basename, not the emit key: `committed_generated_basenames` keys on
             // `file_name()`, and emit keys carry a `src/` prefix. Comparing the two
             // key spaces made every file mismatch in both directions.
-            let basename = Path::new(path)
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or(path);
-            names.insert(basename.to_string());
+            names.insert(emit_path_basename(path).to_string());
         }
     }
     names.into_iter().collect()
+}
+
+// Emit keys are the target-relative artifact path (e.g. "src/cli_run.rs" for
+// every Rust module — see rust_source_root()); committed-tree comparisons key
+// on the bare basename. This is the single place that bridges the two, so
+// every consumer below compares/looks up on equal footing instead of each
+// re-deriving its own normalization (or, as before, silently comparing
+// "src/x.rs" against "x.rs" as unequal strings for the whole corpus).
+fn emit_path_basename(path: &str) -> &str {
+    Path::new(path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(path)
+}
+
+fn lookup_emitted<'a>(emitted: &'a HashMap<String, String>, basename: &str) -> Option<&'a String> {
+    emitted
+        .get(&format!("src/{basename}"))
+        .or_else(|| emitted.get(basename))
 }
 
 fn committed_generated_basenames(stage0_src: &Path) -> Result<Vec<String>, String> {
@@ -344,11 +364,7 @@ fn regen_refusal_outcome(
 }
 
 fn is_hand_maintained_path(path: &str) -> bool {
-    let basename = Path::new(path)
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or(path);
-    HAND_MAINTAINED_STAGE0_FILES.contains(&basename)
+    HAND_MAINTAINED_STAGE0_FILES.contains(&emit_path_basename(path))
 }
 
 fn compare_generated_surfaces(
@@ -362,11 +378,12 @@ fn compare_generated_surfaces(
         let committed = normalize_generated_source(
             &fs::read_to_string(&committed_path)
                 .map_err(|e| format!("read committed {}: {e}", committed_path.display()))?,
-        )?;
-        let candidate = emitted
-            .get(basename)
+        )
+        .map_err(|e| format!("normalize committed {basename}: {e}"))?;
+        let candidate = lookup_emitted(emitted, basename)
             .ok_or_else(|| format!("emit missing generated file {basename}"))?;
-        let candidate_norm = normalize_generated_source(candidate)?;
+        let candidate_norm = normalize_generated_source(candidate)
+            .map_err(|e| format!("normalize candidate {basename}: {e}"))?;
         if committed != candidate_norm {
             drifted.push(basename.clone());
         }
@@ -414,11 +431,17 @@ fn write_emitted_tree(dest_src: &Path, emitted: &HashMap<String, String>) -> Res
     }
     fs::create_dir_all(dest_src).map_err(|e| format!("create {}: {e}", dest_src.display()))?;
     for (path, content) in emitted {
-        let out_path = dest_src.join(path);
-        if let Some(parent) = out_path.parent() {
-            fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
-        }
-        let normalized = normalize_generated_source(content)?;
+        let out_path = dest_src.join(emit_path_basename(path));
+        // Only `.rs` surfaces are the generated-Rust population this comparator reasons
+        // about (see committed_generated_basenames / generated_basenames_from_emit); a
+        // non-Rust emitted artifact (e.g. Cargo.toml from the crate-layout emit) is not
+        // rustfmt-normalizable and is written through verbatim.
+        let normalized = if emit_path_basename(path).ends_with(".rs") {
+            normalize_generated_source(content)
+                .map_err(|e| format!("normalize emitted {path}: {e}"))?
+        } else {
+            content.clone()
+        };
         fs::write(&out_path, normalized)
             .map_err(|e| format!("write {}: {e}", out_path.display()))?;
     }
@@ -487,7 +510,8 @@ fn tree_digest_for_basenames(
         let path = src_dir.join(name);
         let content = fs::read_to_string(&path)
             .map_err(|e| format!("read {label} {}: {e}", path.display()))?;
-        let norm = normalize_generated_source(&content)?;
+        let norm = normalize_generated_source(&content)
+            .map_err(|e| format!("normalize {label} {name}: {e}"))?;
         payload.push_str(name);
         payload.push('\0');
         payload.push_str(&digest_label(norm.as_bytes()));
@@ -505,10 +529,10 @@ fn tree_digest_from_map(
     }
     let mut payload = String::new();
     for name in basenames {
-        let content = emitted
-            .get(name)
+        let content = lookup_emitted(emitted, name)
             .ok_or_else(|| format!("emit missing {name} for digest"))?;
-        let norm = normalize_generated_source(content)?;
+        let norm = normalize_generated_source(content)
+            .map_err(|e| format!("normalize candidate {name}: {e}"))?;
         payload.push_str(name);
         payload.push('\0');
         payload.push_str(&digest_label(norm.as_bytes()));
