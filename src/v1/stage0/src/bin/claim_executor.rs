@@ -18443,6 +18443,14 @@ enum DagTypeDecl {
     /// closed type declared by this authority" about a type that is declared and IS closed sends
     /// the reader to close something already closed.
     PayloadCoproduct { variant_count: usize },
+    /// DECLARED, but carrying no constructor set this fragment can enumerate: an opaque type, an
+    /// alias, a form the reader does not model, or a record whose field types it could not read.
+    ///
+    /// This arm exists so those declarations are REGISTERED rather than dropped. Dropped, they
+    /// were reported as "no module in the corpus declares this type" -- a positive claim about the
+    /// corpus produced by the reader's own silence, which is the empty-observation narrow with a
+    /// wildcard for a cause. Registered, they refuse honestly and rank at zero work.
+    DeclaredNotEnumerable { form: String },
 }
 
 /// Parse one `.dag` source through the GRAMMAR-OWNED parser and return its module node.
@@ -18552,21 +18560,60 @@ fn type_decls_from_module(
                 // `type_annotation` here yielded no fields for every record, so each one was
                 // dropped from the type environment and later refused as "not a closed type
                 // declared by this authority" — false, and pointing at the wrong repair.
-                let fields: Vec<(String, String)> = decl
-                    .children
-                    .iter()
-                    .filter_map(|f| {
-                        f.children
-                            .iter()
-                            .next()
-                            .map(|t| (f.name.clone(), type_text(t)))
-                    })
-                    .collect();
-                if !fields.is_empty() {
+                // A RECORD FIELD'S TYPE IS IN `inferred`, NOT IN `children`. Measured, not
+                // assumed -- the fourth node-shape fact this reader needed and the third one an
+                // assumption got wrong. A PARAMETER's type is its child, which is true and stays
+                // true; reading a field the same way returned nothing for every field of every
+                // record, so `filter_map` emptied the list and the guard below dropped the whole
+                // declaration. std.pareto read 6 of 13 types and ZERO of its 7 records.
+                let mut fields: Vec<(String, String)> = Vec::new();
+                let mut unreadable: Vec<String> = Vec::new();
+                for f in decl.children.iter() {
+                    match f.inferred.as_ref().map(|i| i.as_ref()) {
+                        Some(v1_compiler::v1_std_core::InferredNode::Resolved { node }) => {
+                            fields.push((f.name.clone(), type_text(node)))
+                        }
+                        _ => unreadable.push(f.name.clone()),
+                    }
+                }
+                // A PARTIALLY READ RECORD IS NOT A RECORD. Enumerating the fields that happened
+                // to resolve would produce a Cartesian product over a SUBSET of the record's
+                // fields -- a constructor expression missing fields, which does not compile, and
+                // a domain claim that is simply false. So the whole declaration refuses, naming
+                // the fields responsible, rather than silently narrowing itself.
+                if unreadable.is_empty() && !fields.is_empty() {
                     out.insert(decl.name.clone(), DagTypeDecl::Record { fields });
+                } else {
+                    out.insert(
+                        decl.name.clone(),
+                        DagTypeDecl::DeclaredNotEnumerable {
+                            form: format!(
+                                "record with {} field(s) whose declared type the reader could not \
+                                 read: {}",
+                                unreadable.len(),
+                                unreadable.join(", ")
+                            ),
+                        },
+                    );
                 }
             }
-            _ => {}
+            // NO WILDCARD. The declaration vocabulary is CLOSED, and a catch-all here discards
+            // exactly the guarantee that closure exists to provide -- silently, in the seed, where
+            // nothing enforces the exhaustiveness the substrate would. Every remaining form is
+            // registered as declared-but-not-enumerable so it refuses by name instead of becoming
+            // a false claim that the corpus does not declare it. Opaque types and aliases are the
+            // bulk of this arm and are genuinely not enumerable; that answer is now SAID rather
+            // than inferred from an absence.
+            other => {
+                out.insert(
+                    decl.name.clone(),
+                    DagTypeDecl::DeclaredNotEnumerable {
+                        form: format!(
+                            "declaration form {other:?} carries no enumerable constructor set"
+                        ),
+                    },
+                );
+            }
         }
     }
     out
@@ -18681,6 +18728,10 @@ enum RefusalCause {
         ty: String,
         variants: usize,
     },
+    DeclaredNotEnumerable {
+        ty: String,
+        form: String,
+    },
     /// The type is declared SOMEWHERE in the corpus but is not visible from the module under
     /// plan -- an import-closure gap in the reader, not a property of the type.
     TypeNotVisibleHere {
@@ -18729,6 +18780,7 @@ impl RefusalCause {
             RefusalCause::UnboundedString { ty }
             | RefusalCause::UnboundedSequence { ty }
             | RefusalCause::PayloadCoproduct { ty, .. }
+            | RefusalCause::DeclaredNotEnumerable { ty, .. }
             | RefusalCause::ProductTooLarge { ty }
             | RefusalCause::NestedTooDeep { ty } => ty.clone(),
             // THE KIND IS PART OF THE KEY for these two, because the two name different work and
@@ -18776,6 +18828,9 @@ impl RefusalCause {
             // unbounded String, a recursive List<Node>, and self-reference. Splitting the arm is
             // what makes the difference between "my reader cannot see it" and "the corpus does
             // not have it" reportable, and only the first is work anyone can do.
+            RefusalCause::DeclaredNotEnumerable { ty, form } => {
+                format!("{ty} (declared, but not enumerable: {form})")
+            }
             RefusalCause::TypeNotVisibleHere { ty } => format!(
                 "{ty} (declared elsewhere in the corpus but not visible from this module -- an \
                  import-closure gap in the reader, not a property of the type)"
@@ -18954,6 +19009,12 @@ fn enumerate_parameter_values(
             Err(RefusalCause::PayloadCoproduct {
                 ty: ty.to_string(),
                 variants: *variant_count,
+            })
+        }
+        Some(DagTypeDecl::DeclaredNotEnumerable { form }) => {
+            Err(RefusalCause::DeclaredNotEnumerable {
+                ty: ty.to_string(),
+                form: form.clone(),
             })
         }
         Some(DagTypeDecl::Record { fields }) => {
