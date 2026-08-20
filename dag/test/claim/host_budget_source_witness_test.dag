@@ -3,6 +3,7 @@ module test.claim.host_budget_source_witness
 import std.logic { Bool }
 import std.types { String, List }
 import std.measure { byte_size, byte_size_count }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 import std.os.types { KernelFamily, Linux, Darwin, WindowsNt, LinuxGuestOnWindows }
 import extdeps.linux.procfs {
   ProcfsPath,
@@ -45,11 +46,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // These rows are about the RELATION between a kernel family and a budget source, not about the machine running them, so they are SubstrateInputsOnly and give the same verdict on every platform. That is deliberate and is the point: the defect being walled is a claim the code makes about a platform, and a check that could only run on the affected platform would be untestable from the fleet's own Linux CI — which is how the fabricated label survived in the first place.
 data all_kernels: List<KernelFamily> = [Linux, Darwin, WindowsNt, LinuxGuestOnWindows]
 
+data declared_high_is_derived_not_retyped_note: String = "THIS ROW USED TO RETYPE THE MIRROR VALUE IT WAS MEASURING. Both call sites constructed BudgetSourceMemAvailableCappedAtDeclaredHigh with byte_size(13958643712) -- the seed constant's own number, copied into the expectation -- so the witness greened whichever way the mirror went and could not have caught the eleven-day drift it sat next to. A measurement copied from the tree under test is not an oracle (2026-08-01 ruling). The value now comes from gunbc.runner_slot_allocation gunbc_runner_slot_desired, the authority the seed constant mirrors, so it moves with the declaration and cannot be satisfied by editing this file."
+
 data all_sources: List<HostBudgetSource> = [
   BudgetSourceEnvOverride,
   BudgetSourceCgroupMemoryHigh { cgroup_dir: "/sys/fs/cgroup/system.slice" },
   BudgetSourceCgroupMemoryMax { cgroup_dir: "/sys/fs/cgroup/system.slice" },
-  BudgetSourceMemAvailableCappedAtDeclaredHigh { declared_high: byte_size(13958643712) },
+  BudgetSourceMemAvailableCappedAtDeclaredHigh { declared_high: gunbc_runner_slot_desired().memory_high },
   BudgetSourceMemAvailable,
   BudgetSourceMemTotal,
   BudgetSourceDarwinPhysicalMemory,
@@ -86,7 +89,7 @@ test fn degraded_is_exactly_the_non_private_sources() -> Bool {
     && !host_budget_source_is_degraded(s: BudgetSourceCgroupMemoryMax { cgroup_dir: "/sys/fs/cgroup" })
     && host_budget_source_is_degraded(s: BudgetSourceMemAvailable)
     && host_budget_source_is_degraded(s: BudgetSourceMemTotal)
-    && host_budget_source_is_degraded(s: BudgetSourceMemAvailableCappedAtDeclaredHigh { declared_high: byte_size(13958643712) })
+    && host_budget_source_is_degraded(s: BudgetSourceMemAvailableCappedAtDeclaredHigh { declared_high: gunbc_runner_slot_desired().memory_high })
     && host_budget_source_is_degraded(s: BudgetSourceDarwinPhysicalMemory)
 }
 
