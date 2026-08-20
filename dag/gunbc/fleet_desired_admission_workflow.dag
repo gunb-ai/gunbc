@@ -210,6 +210,7 @@ fn fleet_desired_admission_job() -> Job {
 // QueueMax would buy the in-order queue this comment used to claim and then have to justify why the
 // fleet wants to walk through revisions it has already passed.
 //
+// DECLARED GAP -- SEARCH KEY: FleetDesiredAdvanceForwardOnly
 // WHAT ORDERING DOES NOT COVER: THE DESIRED REF CAN MOVE BACKWARD, AND THIS IS ORDINARY RATHER
 // THAN AN EDGE CASE. An earlier revision of this annotation said reaching it "requires deliberately
 // re-running an old floor run". THAT UNDERSTATED IT AND WAS WRONG. The floor's own concurrency
@@ -238,6 +239,7 @@ fn fleet_desired_admission_job() -> Job {
 // adding a typed ancestry operation to the git authority, which is a separate change with its own
 // citation duty.
 
+// DECLARED GAP -- SEARCH KEY: FleetDesiredAdmissionJudgeIdentity
 // A SECOND DECLARED GAP: THE IDENTITY OF THE CODE MAKING THE ADMISSION DECISION IS NOT MODELLED.
 // On a workflow_run event GitHub sets the checkout's default ref to the DEFAULT BRANCH HEAD, not to
 // the triggering run's head_sha, and the checkout step below names no ref. So the binary that
@@ -272,6 +274,22 @@ data fleet_desired_admission_workflow: Workflow = Workflow {
   jobs: [fleet_desired_admission_job()],
 }
 
+// WHY THESE TWO CLASSES ARE NAMED IN PROSE RATHER THAN CARRIED AS ROWS, since section 4c says a
+// machine-consumed fact belongs in a typed carrier and these are not in one. The intended owner
+// EXISTS AS A PLAN AND NOT AS A MODULE: gunbc.roadmap_authority specifies GuaranteeRequirement
+// (class identity, domain, harm, ceiling with typed reason, next_rung_trigger) with GuaranteePath
+// and GuaranteeMeasurement beside it and the disposition DERIVED rather than stored, as Stage 1b.
+// Grepping the tree finds that vocabulary only in that roadmap prose; no module declares it.
+//
+// So the only way to give these typed owners today is a bespoke registry here, and that is refused
+// on three of this repository's own grounds: it is a second authority for facts Stage 1b exists to
+// own (section 3), it is a representation whose whole future is migration-then-deletion and so
+// fails section 6's survival test, and section 6 forbids a scaffold authorized by its own author.
+// A private registry would make this module look more modeled while trading visible incompleteness
+// for false completion. The annotation is untyped debt that is honest about being debt; that is the
+// least-wrong representation available until the real carrier lands, at which point these two
+// classes move straight into GuaranteeRequirement rows with no interim registry to dissolve first.
+// The SEARCH KEYS above exist so that migration can find them by name rather than by memory.
 fn expected_fleet_desired_yml() -> String {
   serialize_yaml(v: project_workflow_to_yaml(workflow: fleet_desired_admission_workflow))
 }
