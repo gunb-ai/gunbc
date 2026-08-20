@@ -5252,8 +5252,37 @@ fn emit_item_clone_bound_refusal(item: Node, item_name: String, emit_info: EmitG
 // produced by a DIFFERENT emitter than the one under test, not a literal copied from this tree.
 //
 // An exception clause would have made the correlate agree on one more case; deriving from the
-// field-level record makes the question go away. `has_fn_fields` is retained because a callable
-// field is a genuinely different carrier shape, not a correlate of the bound question.
+// field-level record makes the question go away.
+//
+// DECLARED BOUNDARY — `has_fn_fields` IS ITSELF PARTLY A PROXY, and the honest state is "no
+// instance today", NOT "cannot occur". It is a real discriminator for the DERIVE half: a derive
+// emits PER-IMPL bounds, so `Monoid<T> { identity: T, .. }` with `#[derive(Clone)]` gets
+// `impl<T: Clone> Clone for Monoid<T>` generated and needs no header bound. It has NO authority
+// over the WELL-FORMEDNESS half, which is independent of derives entirely — naming a declared type
+// whose parameters are bounded is ill-formed whatever the struct derives — yet it gates that
+// computation too.
+//
+// Measured, not assumed: the seed closure holds 17 callable-field generic structs (16 derive
+// Clone); their complete set of non-callable, non-phantom fields is `&'a str`, `identity: T`,
+// `zero: T`, `one: T`, `top: T`, `bottom: T`, and `Rc<PartialFunction<K, V>>`. Exactly one names a
+// declared type, and `PartialFunction<K, V>` is itself emitted bare, so it carries no obligation.
+// The exposing population is therefore EMPTY. That is a closed enumeration, not a spot check.
+//
+// WHY THIS IS DEFERRED, and it is NOT that evidence is unavailable: the new arm is provable by a
+// controlled fixture, and the regression risk — re-bounding the 16 derive carriers that correctly
+// stay bare — is testable against the real corpus by regenerating to a fixed point over the live
+// 17. Both are available today. The reason is §6 displaced cost: with the population empty the
+// benefit is ZERO, while the change carries nonzero regression risk against 17 live carriers and
+// consumes the one scarce slot on this file, ahead of work with a live population. It is worth
+// less than what it displaces, today — not unverifiable.
+//
+// NEXT-RUNG TRIGGER: the first carrier with a callable field that ALSO names a
+// well-formedness-bounded declared type (the `AmbiguousBindingCandidates` shape with a callable
+// field added — the callable field is irrelevant to why the bound is owed). The repair is the same
+// move as above: split `has_fn_fields` into the two questions it answers, so the derive half keeps
+// suppressing the header bound and the WF half is never consulted about callable fields at all.
+// EVIDENCE IT OWES, both halves: a controlled fixture for the new arm, PLUS a regen fixed point
+// over the existing 17 callable-field carriers as the regression control. A fixture alone is thin.
 fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo, wire_contract_item: Node?, data_items: Map<String, List<Node>>, module_items: List<Node>, imports: List<Node>) -> String {
   let item_text = authored_name(env: env, node: item)
   let is_product = is_product_type(n: item)
