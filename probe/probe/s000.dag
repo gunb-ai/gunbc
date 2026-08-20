@@ -1,0 +1,57 @@
+module probe.s000
+
+import std.types { String, List }
+import extdeps.communication.medium { Medium, Lossless }
+import v2.compiler.source_authority { parse_dag_source_ast }
+import v2.std.diagnostic { Accepted, Rejected, NonEmptyDiagnostics }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.compiler.self_host.frontier_probe_assemble_detail {
+  frontier_probe_assemble_located_reason_from_diagnostics,
+  diagnostic_reason_is_overlap_residue
+}
+import v2.std.algebra { fold_list, length }
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+data paths: List<String> = [
+  "dag/test/fixture/sole_constructor_sealed/admitted_caller.dag",
+  "dag/test/claim/filesystem_read_hermetic_witness.dag",
+  "dag/test/claim/realization_reconcile_witness_test.dag",
+  "dag/test/fixture/leaf_key_collision/module_a.dag",
+  "src/v2/lens/unit_modeling/flat_scalar_unit_leaf_flagged_test.dag",
+  "dag/gunbc/plans/md_helpers.dag",
+  "src/v2/std/grounding/runtime_value_node_projection_test.dag",
+  "dag/test/claim/gcp_oauth_access_token_witness.dag",
+  "src/v2/compiler/self_host/native_agreement_support.dag",
+  "src/v2/lens/enforcement/standing_intent.dag",
+  "dag/test/claim/generic_item_clone_bound_witness_test.dag",
+  "dag/test/claim/live_deploy/service_ready_witness_test.dag",
+  "src/v2/extdeps/languages/cpp.dag",
+  "src/v2/test/claim/execution/c_type_decl_emit_host_run_test.dag",
+  "src/v2/test/claim/execution/emit_host_filesystem_read_equals_eval_test.dag",
+  "dag/test/claim/cli_run_witness_admission_hand_rust_witness_test.dag",
+  "dag/test/claim/witness_purpose_taxonomy_witness_test.dag"
+]
+
+fn refusal_row(path: String, ds: NonEmptyDiagnostics) -> String {
+  let head_reason = symbol_lexeme(sym: ds.head.reason)
+  let located = symbol_lexeme(sym: frontier_probe_assemble_located_reason_from_diagnostics(d: ds))
+  let tail_len = to_string(length(xs: ds.tail))
+  let masked = if diagnostic_reason_is_overlap_residue(d: ds.head) { "HEAD_IS_RESIDUE" } else { "HEAD_IS_CAUSE" }
+  let a = concat("\nR\t", path)
+  let b = concat(a, concat("\t", head_reason))
+  let c = concat(b, concat("\t", located))
+  let d = concat(c, concat("\t", tail_len))
+  concat(d, concat("\t", masked))
+}
+
+fn one(path: String) -> String {
+  let r = Filesystem.Read(path: path)
+  match parse_dag_source_ast(source: Medium { carried: r.content, fidelity: Lossless }) {
+    Accepted { value: _, diagnostics: _ } => concat("\nA\t", path)
+    Rejected { diagnostics: ds } => refusal_row(path: path, ds: ds)
+  }
+}
+
+fn run_s000() -> String {
+  fold_list(xs: paths, empty: "", cons: fn(acc, p) { concat(acc, one(path: p)) })
+}

@@ -1,0 +1,57 @@
+module probe.s008
+
+import std.types { String, List }
+import extdeps.communication.medium { Medium, Lossless }
+import v2.compiler.source_authority { parse_dag_source_ast }
+import v2.std.diagnostic { Accepted, Rejected, NonEmptyDiagnostics }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.compiler.self_host.frontier_probe_assemble_detail {
+  frontier_probe_assemble_located_reason_from_diagnostics,
+  diagnostic_reason_is_overlap_residue
+}
+import v2.std.algebra { fold_list, length }
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+data paths: List<String> = [
+  "dag/test/fixture/sole_constructor_sealed/admitted_caller.dag",
+  "dag/test/claim/filesystem_read_hermetic_witness.dag",
+  "dag/tools/self_host_module_behavioral_transport_roster.dag",
+  "src/v2/extdeps/typecheckers/mypy.dag",
+  "dag/extdeps/cloud/gcp/iam.dag",
+  "src/v2/test/claim/live_tree/live_tree_import_peer.dag",
+  "dag/test/claim/host_identity_observation_witness_test.dag",
+  "src/v2/test/claim/duplicate_computation/placement_grain_witness_test.dag",
+  "src/v2/test/claim/body_lowering/wave1_gate1_b1_bare_call_helpers.dag",
+  "dag/test/claim/ssh_client_options_witness_test.dag",
+  "dag/gunbc/systemctl_set_property.dag",
+  "src/v2/test/claim/manual/verilog_concurrency_anchor.dag",
+  "dag/gunbc/fleet_receipt_collector.dag",
+  "src/v2/test/lens_mock_totality/sec_edgar_mock_totality_test.dag",
+  "src/v2/extdeps/github/diagnostic_emit.dag",
+  "src/v2/test/claim/parse/rust.dag",
+  "src/v2/test/claim/impossible_bug/nested_optional_flatten.dag"
+]
+
+fn refusal_row(path: String, ds: NonEmptyDiagnostics) -> String {
+  let head_reason = symbol_lexeme(sym: ds.head.reason)
+  let located = symbol_lexeme(sym: frontier_probe_assemble_located_reason_from_diagnostics(d: ds))
+  let tail_len = to_string(length(xs: ds.tail))
+  let masked = if diagnostic_reason_is_overlap_residue(d: ds.head) { "HEAD_IS_RESIDUE" } else { "HEAD_IS_CAUSE" }
+  let a = concat("\nR\t", path)
+  let b = concat(a, concat("\t", head_reason))
+  let c = concat(b, concat("\t", located))
+  let d = concat(c, concat("\t", tail_len))
+  concat(d, concat("\t", masked))
+}
+
+fn one(path: String) -> String {
+  let r = Filesystem.Read(path: path)
+  match parse_dag_source_ast(source: Medium { carried: r.content, fidelity: Lossless }) {
+    Accepted { value: _, diagnostics: _ } => concat("\nA\t", path)
+    Rejected { diagnostics: ds } => refusal_row(path: path, ds: ds)
+  }
+}
+
+fn run_s008() -> String {
+  fold_list(xs: paths, empty: "", cons: fn(acc, p) { concat(acc, one(path: p)) })
+}

@@ -1,0 +1,55 @@
+module probe.s011
+
+import std.types { String, List }
+import extdeps.communication.medium { Medium, Lossless }
+import v2.compiler.source_authority { parse_dag_source_ast }
+import v2.std.diagnostic { Accepted, Rejected, NonEmptyDiagnostics }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.compiler.self_host.frontier_probe_assemble_detail {
+  frontier_probe_assemble_located_reason_from_diagnostics,
+  diagnostic_reason_is_overlap_residue
+}
+import v2.std.algebra { fold_list, length }
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+data paths: List<String> = [
+  "dag/test/fixture/sole_constructor_sealed/admitted_caller.dag",
+  "dag/test/claim/filesystem_read_hermetic_witness.dag",
+  "src/v2/std/compilers/coproduct_variant_shape.dag",
+  "src/v2/test/claim/parse/parse_binding_fidelity_support.dag",
+  "dag/std/logic.dag",
+  "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
+  "dag/extdeps/color/solarized.dag",
+  "src/v2/workflow/bootstrap.dag",
+  "src/v2/test/claim/emit/semantic_decl_all_lex_parity_test.dag",
+  "src/v2/test/claim/long/decl_index_enumeration_test.dag",
+  "src/v2/test/claim/computation_shapes/branch_dispatch.dag",
+  "dag/test/claim/package_graph_witness_test.dag",
+  "src/v2/test/claim/self_host/production_qualification_origin_probe_structural_fixture.dag",
+  "dag/gunbc/plans/v2_self_hosting.dag",
+  "dag/gunbc/design/principles.dag"
+]
+
+fn refusal_row(path: String, ds: NonEmptyDiagnostics) -> String {
+  let head_reason = symbol_lexeme(sym: ds.head.reason)
+  let located = symbol_lexeme(sym: frontier_probe_assemble_located_reason_from_diagnostics(d: ds))
+  let tail_len = to_string(length(xs: ds.tail))
+  let masked = if diagnostic_reason_is_overlap_residue(d: ds.head) { "HEAD_IS_RESIDUE" } else { "HEAD_IS_CAUSE" }
+  let a = concat("\nR\t", path)
+  let b = concat(a, concat("\t", head_reason))
+  let c = concat(b, concat("\t", located))
+  let d = concat(c, concat("\t", tail_len))
+  concat(d, concat("\t", masked))
+}
+
+fn one(path: String) -> String {
+  let r = Filesystem.Read(path: path)
+  match parse_dag_source_ast(source: Medium { carried: r.content, fidelity: Lossless }) {
+    Accepted { value: _, diagnostics: _ } => concat("\nA\t", path)
+    Rejected { diagnostics: ds } => refusal_row(path: path, ds: ds)
+  }
+}
+
+fn run_s011() -> String {
+  fold_list(xs: paths, empty: "", cons: fn(acc, p) { concat(acc, one(path: p)) })
+}

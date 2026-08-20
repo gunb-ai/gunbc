@@ -1,0 +1,49 @@
+module probe.s014
+
+import std.types { String, List }
+import extdeps.communication.medium { Medium, Lossless }
+import v2.compiler.source_authority { parse_dag_source_ast }
+import v2.std.diagnostic { Accepted, Rejected, NonEmptyDiagnostics }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.compiler.self_host.frontier_probe_assemble_detail {
+  frontier_probe_assemble_located_reason_from_diagnostics,
+  diagnostic_reason_is_overlap_residue
+}
+import v2.std.algebra { fold_list, length }
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+data paths: List<String> = [
+  "dag/test/fixture/sole_constructor_sealed/admitted_caller.dag",
+  "dag/test/claim/filesystem_read_hermetic_witness.dag",
+  "src/v2/lens/unit_modeling/unit_modeling_blocked_via_always_required_lenses_test.dag",
+  "dag/test/claim/host_phase_status_witness_test.dag",
+  "dag/extdeps/git/mock_corpus.dag",
+  "dag/test/claim/cli_run_repo_grant_hand_rust_equivalence_witness_test.dag",
+  "dag/test/claim/host_reach_identity_probe_witness_test.dag",
+  "src/v2/lens/lifecycle_carrier/raw_prose_field_flagged_test.dag",
+  "dag/extdeps/tools/npm.dag"
+]
+
+fn refusal_row(path: String, ds: NonEmptyDiagnostics) -> String {
+  let head_reason = symbol_lexeme(sym: ds.head.reason)
+  let located = symbol_lexeme(sym: frontier_probe_assemble_located_reason_from_diagnostics(d: ds))
+  let tail_len = to_string(length(xs: ds.tail))
+  let masked = if diagnostic_reason_is_overlap_residue(d: ds.head) { "HEAD_IS_RESIDUE" } else { "HEAD_IS_CAUSE" }
+  let a = concat("\nR\t", path)
+  let b = concat(a, concat("\t", head_reason))
+  let c = concat(b, concat("\t", located))
+  let d = concat(c, concat("\t", tail_len))
+  concat(d, concat("\t", masked))
+}
+
+fn one(path: String) -> String {
+  let r = Filesystem.Read(path: path)
+  match parse_dag_source_ast(source: Medium { carried: r.content, fidelity: Lossless }) {
+    Accepted { value: _, diagnostics: _ } => concat("\nA\t", path)
+    Rejected { diagnostics: ds } => refusal_row(path: path, ds: ds)
+  }
+}
+
+fn run_s014() -> String {
+  fold_list(xs: paths, empty: "", cons: fn(acc, p) { concat(acc, one(path: p)) })
+}
