@@ -881,6 +881,33 @@ than argued.
    ladder-probe-corpus class/path identities, at which point the Evidence cells name the
    executing probe the way the parse-separator row already names `tidy-deer-730`'s.
 
+11. **`explicit_witness_admission`'s `known_red_probe` is an inert lens against the required
+   floor — rung `mitigatable`** (measured 2026-08-20, gunbc#8625/#8627). Traced
+   `explicit_witness_admission_pairs()`'s one consumption site in `cli_run.rs`
+   (`deferred_discovery_rows`, ~line 18861): it feeds only a diagnostic `DeferredDiscoveryRow`
+   receipt. `v2.workflow.required_floor`'s discovery-exclusion inputs are `long_home_prefixes()`
+   and `ReadsLiveTree` alone; `known_red_held` — the required floor's actual known-red
+   pass/fail counter — is driven solely by `v2.workflow.floor_expected_red.floor_expected_red_roster`
+   (`cli_run.rs` ~line 40514–40575, single write site ~line 41086). Neither reads
+   `explicit_witness_admission` at all. `known_red_probe`'s `expected: ExpectAssertionFalse`
+   field is asserted in `.dag` data with zero read sites in `cli_run.rs` outside test code, and
+   its `QuarantineProbeExpectRed` cadence tag names the falsifier as intended consumer — deleted
+   in the 2026-08-15 floor cut (see "Building & checks" in DESIGN.md), so the row's own
+   documented consumer no longer exists. **The honest present-tense description of a
+   `known_red_probe` row today is documentation, not a hold**: it records that a witness is
+   expected red and why, readable by a human or a future consumer, but nothing in the required
+   floor's pass/fail path reads it. It is coverage by illusion in the exact §6 shape — the
+   machinery exists, nothing gates on it, and its presence reads as real coverage to anyone who
+   greps for the row, worse here because the consumer it names was actively deleted rather than
+   merely never built. **Ceiling and trigger:** decidable and grounded once a consumer is
+   authored to join `known_red_probe` rows against required-floor discovery/hold decisions (or
+   the row is re-scoped to state plainly that it is documentation); until then this sits at
+   `mitigatable`, i.e. review diligence must independently notice a `known_red_probe` row is not
+   protection, exactly as `v2.workflow.floor_expected_red.floor_expected_red_roster` is. **Not
+   a call to build that consumer now** — gunbc#8625/#8627's actual known-red hold was
+   discharged by enrolling in `floor_expected_red_roster` directly (operator ruling,
+   deep-ant-102, 2026-08-20: no new mechanism), which is the one live authority for this case.
+
 ## 12. Proposed sequencing (reconciled with the independent review; for operator sign-off)
 
 **(2026-07-31 restructure.)** The canonical dependency order now lives in the roadmap
