@@ -46,7 +46,7 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
       field: WholeDeclaration
     }
   },
-  first_citation: extdeps_external_authority_anchor,
+  first_citation: extdeps.cpu_attachment.ilm4926.extdeps_external_authority_anchor,
   further_citations: [altra_classic_datasheet_authority, ocp_mt_jade_specification_authority]
 }
 
@@ -98,7 +98,7 @@ type DesignationAttestation {
 
 data ilm4926_attestations: List<DesignationAttestation> = [
   DesignationAttestation {
-    authority: extdeps_external_authority_anchor,
+    authority: extdeps.cpu_attachment.ilm4926.extdeps_external_authority_anchor,
     wording: "device seated in ILM4926 socket",
     context: "Altra Max Rev A1 datasheet, Document Issue 1.15, thermal specification note stating where case temperature TC is measured",
   },
@@ -127,7 +127,7 @@ fn attestations_from_authority(authority: extdeps.external_authority.ExternalAut
 }
 
 fn attested_by_ampere_datasheets() -> Bool {
-  count(attestations_from_authority(authority: extdeps_external_authority_anchor)) > 0
+  count(attestations_from_authority(authority: extdeps.cpu_attachment.ilm4926.extdeps_external_authority_anchor)) > 0
     && count(attestations_from_authority(authority: altra_classic_datasheet_authority)) > 0
 }
 

@@ -8,7 +8,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
   }
 }
 
-data sacm_claim_evidence_authority: extdeps.external_authority.ExternalAuthority = extdeps_external_authority_anchor
+data sacm_claim_evidence_authority: extdeps.external_authority.ExternalAuthority = extdeps.assurance.claim_evidence.extdeps_external_authority_anchor
 
 data w3c_prov_dm_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {

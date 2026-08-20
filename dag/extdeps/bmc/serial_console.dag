@@ -58,7 +58,7 @@ fn sol_console_transport_wire(transport: SolConsoleTransport) -> std.types.NonEm
 
 fn sol_console_transport_authority_for(transport: SolConsoleTransport) -> extdeps.external_authority.ExternalAuthority {
   match transport {
-    ObmcConsoleCli => extdeps_external_authority_anchor
+    ObmcConsoleCli => extdeps.bmc.serial_console.extdeps_external_authority_anchor
     RedfishSerialInterface => redfish_serial_interface_authority
     IpmiSol => ipmi_sol_authority
   }

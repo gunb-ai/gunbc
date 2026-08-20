@@ -28,6 +28,6 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
       field: WholeDeclaration
     }
   },
-  first_citation: extdeps_external_authority_anchor,
+  first_citation: extdeps.storage.amphenol_mdt420m01001.extdeps_external_authority_anchor,
   further_citations: []
 }

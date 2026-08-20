@@ -24,7 +24,7 @@ data ti_tps53688_note: String = "THIS ROW IS A MECHANICAL CANDIDATE AND NOT A SE
 data tps53688_rsb0040a_drawing: extdeps.land_pattern.types.PackageDrawingRef = extdeps.land_pattern.types.PackageDrawingRef {
   drawing_number: "4215000/A",
   revision_date: "08/2016",
-  reprinted_in: extdeps_external_authority_anchor,
+  reprinted_in: extdeps.power.ti_tps53688.extdeps_external_authority_anchor,
 }
 
 data tps53688_rsb0040a_body: extdeps.land_pattern.types.PackageBodyDimensions = extdeps.land_pattern.types.PackageBodyDimensions {
@@ -70,6 +70,6 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
       field: WholeDeclaration
     }
   },
-  first_citation: extdeps_external_authority_anchor,
+  first_citation: extdeps.power.ti_tps53688.extdeps_external_authority_anchor,
   further_citations: [tps53688rsbr_part_details_authority]
 }

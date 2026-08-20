@@ -462,7 +462,7 @@ data ampere_altra_package_model_scope: extdeps.external_authority.ExternalModelS
       field: WholeDeclaration
     }
   },
-  first_citation: extdeps_external_authority_anchor,
+  first_citation: extdeps.cpu.ampere_altra_package.extdeps_external_authority_anchor,
   further_citations: [ampere_altra_rev_a1_datasheet_authority, ampere_customer_reference_boards_authority]
 }
 

@@ -7,7 +7,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
   }
 }
 
-data systemd_run_authority: extdeps.external_authority.ExternalAuthority = extdeps_external_authority_anchor
+data systemd_run_authority: extdeps.external_authority.ExternalAuthority = extdeps.systemd.systemd_run.extdeps_external_authority_anchor
 
 fn systemd_run_transient_unit_argv(unit: std.types.NonEmptyStr, command_argv: std.types.List<String>) -> std.types.List<String> {
   fold(

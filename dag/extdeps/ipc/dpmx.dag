@@ -54,42 +54,42 @@ data ipc_dpmx_semantic_carriage: List<FormatSemanticRow> = [
   FormatSemanticRow {
     semantic: LayerImagery,
     carriage: CarriedInFormat,
-    authority: extdeps_external_authority_anchor,
+    authority: extdeps.ipc.dpmx.extdeps_external_authority_anchor,
   },
   FormatSemanticRow {
     semantic: Stackup,
     carriage: CarriedInFormat,
-    authority: extdeps_external_authority_anchor,
+    authority: extdeps.ipc.dpmx.extdeps_external_authority_anchor,
   },
   FormatSemanticRow {
     semantic: NetlistConnectivity,
     carriage: CarriedInFormat,
-    authority: extdeps_external_authority_anchor,
+    authority: extdeps.ipc.dpmx.extdeps_external_authority_anchor,
   },
   FormatSemanticRow {
     semantic: DrillData,
     carriage: CarriedInFormat,
-    authority: extdeps_external_authority_anchor,
+    authority: extdeps.ipc.dpmx.extdeps_external_authority_anchor,
   },
   FormatSemanticRow {
     semantic: ComponentPlacement,
     carriage: CarriedInFormat,
-    authority: extdeps_external_authority_anchor,
+    authority: extdeps.ipc.dpmx.extdeps_external_authority_anchor,
   },
   FormatSemanticRow {
     semantic: BillOfMaterials,
     carriage: CarriedInFormat,
-    authority: extdeps_external_authority_anchor,
+    authority: extdeps.ipc.dpmx.extdeps_external_authority_anchor,
   },
   FormatSemanticRow {
     semantic: AssemblyInstruction,
     carriage: CarriedInFormat,
-    authority: extdeps_external_authority_anchor,
+    authority: extdeps.ipc.dpmx.extdeps_external_authority_anchor,
   },
   FormatSemanticRow {
     semantic: ImpedanceRequirement,
     carriage: CarriedInFormat,
-    authority: extdeps_external_authority_anchor,
+    authority: extdeps.ipc.dpmx.extdeps_external_authority_anchor,
   },
 ]
 
@@ -101,7 +101,7 @@ data ipc_dpmx_model_scope: extdeps.external_authority.ExternalModelScope = extde
       field: WholeDeclaration
     }
   },
-  first_citation: extdeps_external_authority_anchor,
+  first_citation: extdeps.ipc.dpmx.extdeps_external_authority_anchor,
   further_citations: []
 }
 

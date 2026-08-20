@@ -25,7 +25,7 @@ data posix_shell_model_scope: extdeps.external_authority.ExternalModelScope = ex
       field: WholeDeclaration
     }
   },
-  first_citation: extdeps_external_authority_anchor,
+  first_citation: extdeps.posix.shell_command_language.extdeps_external_authority_anchor,
   further_citations: []
 }
 

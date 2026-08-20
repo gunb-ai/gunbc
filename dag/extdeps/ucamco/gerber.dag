@@ -31,42 +31,42 @@ data gerber_semantic_carriage: List<extdeps.ipc.dpmx.FormatSemanticRow> = [
   extdeps.ipc.dpmx.FormatSemanticRow {
     semantic: LayerImagery,
     carriage: CarriedInFormat,
-    authority: extdeps_external_authority_anchor,
+    authority: extdeps.ucamco.gerber.extdeps_external_authority_anchor,
   },
   extdeps.ipc.dpmx.FormatSemanticRow {
     semantic: DrillData,
     carriage: extdeps.ipc.dpmx.CarriedInCompanionArtifact { artifact: "drill file" },
-    authority: extdeps_external_authority_anchor,
+    authority: extdeps.ucamco.gerber.extdeps_external_authority_anchor,
   },
   extdeps.ipc.dpmx.FormatSemanticRow {
     semantic: extdeps.ipc.dpmx.Stackup,
     carriage: extdeps.ipc.dpmx.CarriedInCompanionArtifact { artifact: "Gerber job file" },
-    authority: extdeps_external_authority_anchor,
+    authority: extdeps.ucamco.gerber.extdeps_external_authority_anchor,
   },
   extdeps.ipc.dpmx.FormatSemanticRow {
     semantic: NetlistConnectivity,
     carriage: NotCarried,
-    authority: extdeps_external_authority_anchor,
+    authority: extdeps.ucamco.gerber.extdeps_external_authority_anchor,
   },
   extdeps.ipc.dpmx.FormatSemanticRow {
     semantic: ImpedanceRequirement,
     carriage: NotCarried,
-    authority: extdeps_external_authority_anchor,
+    authority: extdeps.ucamco.gerber.extdeps_external_authority_anchor,
   },
   extdeps.ipc.dpmx.FormatSemanticRow {
     semantic: extdeps.ipc.dpmx.ComponentPlacement,
     carriage: NotCarried,
-    authority: extdeps_external_authority_anchor,
+    authority: extdeps.ucamco.gerber.extdeps_external_authority_anchor,
   },
   extdeps.ipc.dpmx.FormatSemanticRow {
     semantic: BillOfMaterials,
     carriage: NotCarried,
-    authority: extdeps_external_authority_anchor,
+    authority: extdeps.ucamco.gerber.extdeps_external_authority_anchor,
   },
   extdeps.ipc.dpmx.FormatSemanticRow {
     semantic: AssemblyInstruction,
     carriage: NotCarried,
-    authority: extdeps_external_authority_anchor,
+    authority: extdeps.ucamco.gerber.extdeps_external_authority_anchor,
   },
 ]
 
@@ -78,7 +78,7 @@ data gerber_model_scope: extdeps.external_authority.ExternalModelScope = extdeps
       field: WholeDeclaration
     }
   },
-  first_citation: extdeps_external_authority_anchor,
+  first_citation: extdeps.ucamco.gerber.extdeps_external_authority_anchor,
   further_citations: []
 }
 

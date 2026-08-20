@@ -23,7 +23,7 @@ data commonmark_format_model_scope: extdeps.external_authority.ExternalModelScop
       field: WholeDeclaration
     }
   },
-  first_citation: extdeps_external_authority_anchor,
+  first_citation: extdeps.languages.markdown.subject.extdeps_external_authority_anchor,
   further_citations: []
 }
 

@@ -9,7 +9,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
   }
 }
 
-data circleci_catalog_authority: extdeps.external_authority.ExternalAuthority = extdeps_external_authority_anchor
+data circleci_catalog_authority: extdeps.external_authority.ExternalAuthority = extdeps.ci_runner.circleci.extdeps_external_authority_anchor
 
 data circleci_provider_identity: std.decl_ref.DeclarationRef = std.decl_ref.decl_ref(
   module_path: "extdeps.ci_runner.circleci",

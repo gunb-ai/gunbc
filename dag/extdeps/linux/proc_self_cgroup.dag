@@ -51,7 +51,7 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     }
   },
   first_citation: proc_self_cgroup_proc_authority,
-  further_citations: [extdeps_external_authority_anchor]
+  further_citations: [extdeps.linux.proc_self_cgroup.extdeps_external_authority_anchor]
 }
 
 type ProcSelfCgroupMalformedScan

@@ -8,7 +8,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
   }
 }
 
-data web_annotation_authority: extdeps.external_authority.ExternalAuthority = extdeps_external_authority_anchor
+data web_annotation_authority: extdeps.external_authority.ExternalAuthority = extdeps.standards.web_annotation.extdeps_external_authority_anchor
 
 data web_annotation_selector_grounding_note: String = "Cited upstream: W3C Web Annotation Data Model (retrieved 2026-08-04). std.citation FragmentSelector, TextQuoteSelector, and TextPositionSelector ground on this specification's selector vocabulary (FragmentSelector with conformsTo, TextQuoteSelector, TextPositionSelector). TRAP: the Recommendation's example table still points PDF fragment selectors at RFC 3778; application/pdf fragments cite extdeps.standards.rfc_8118 instead, with explicit supersession evidence — do not copy the stale table."
 
@@ -22,6 +22,6 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
       field: WholeDeclaration,
     }
   },
-  first_citation: extdeps_external_authority_anchor,
+  first_citation: extdeps.standards.web_annotation.extdeps_external_authority_anchor,
   further_citations: [],
 }

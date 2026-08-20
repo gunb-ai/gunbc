@@ -23,7 +23,7 @@ data trusted_firmware_a_model_scope: extdeps.external_authority.ExternalModelSco
       field: WholeDeclaration
     }
   },
-  first_citation: extdeps_external_authority_anchor,
+  first_citation: extdeps.firmware.trusted_firmware_a.subject.extdeps_external_authority_anchor,
   further_citations: []
 }
 

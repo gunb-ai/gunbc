@@ -23,7 +23,7 @@ data icarus_verilog_simulator_model_scope: extdeps.external_authority.ExternalMo
       field: WholeDeclaration
     }
   },
-  first_citation: extdeps_external_authority_anchor,
+  first_citation: extdeps.simulators.icarus_verilog.subject.extdeps_external_authority_anchor,
   further_citations: []
 }
 

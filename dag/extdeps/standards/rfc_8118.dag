@@ -45,7 +45,7 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
       field: WholeDeclaration,
     }
   },
-  first_citation: extdeps_external_authority_anchor,
+  first_citation: extdeps.standards.rfc_8118.extdeps_external_authority_anchor,
   further_citations: [iso_32000_2_authority],
 }
 
@@ -416,7 +416,7 @@ fn pdf_open_fragment_selector(sequence: PdfOpenParameterSequence) -> PdfOpenFrag
       }
     PdfOpenParameterSequenceWired { wire: fragment } =>
       match fragment_selector(
-        conforms_to: extdeps_external_authority_anchor,
+        conforms_to: extdeps.standards.rfc_8118.extdeps_external_authority_anchor,
         value: fragment as std.types.NonEmptyStr,
       ) {
         CitationSelectorConstructed(selector) => PdfOpenFragmentSelectorConstructed(selector)

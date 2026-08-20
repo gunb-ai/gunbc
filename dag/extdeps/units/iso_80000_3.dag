@@ -33,7 +33,7 @@ data iso_80000_3_model_scope: extdeps.external_authority.ExternalModelScope = ex
       field: WholeDeclaration
     }
   },
-  first_citation: extdeps_external_authority_anchor,
+  first_citation: extdeps.units.iso_80000_3.extdeps_external_authority_anchor,
   further_citations: [iso_80000_3_amendment_1_authority]
 }
 

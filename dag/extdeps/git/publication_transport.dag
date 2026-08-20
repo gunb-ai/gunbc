@@ -23,7 +23,7 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
       field: WholeDeclaration
     }
   },
-  first_citation: extdeps_external_authority_anchor,
+  first_citation: extdeps.git.publication_transport.extdeps_external_authority_anchor,
   further_citations: [git_commit_external_authority_anchor]
 }
 

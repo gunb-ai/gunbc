@@ -11,7 +11,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 
 // A NAMED alias for the anchor, so a consumer cites this platform's authority by
 // a symbol naming the platform rather than by the generic per-module anchor name.
-data mt_collins_product_brief_authority: extdeps.external_authority.ExternalAuthority = extdeps_external_authority_anchor
+data mt_collins_product_brief_authority: extdeps.external_authority.ExternalAuthority = extdeps.ampere.mt_collins_product_brief.platform.extdeps_external_authority_anchor
 
 data platform_subject_edge_note: String = "PLATFORM FACTS JOIN THE ENTITY THEY DESCRIBE, on the extdeps.ocp.mt_jade.platform pattern: extdeps.ampere.mt_collins_product_brief.subject owns mt_collins_public_product_brief, and this row is the typed subject edge binding the mechanical facts below to that declaration."
 
@@ -45,7 +45,7 @@ data mt_collins_platform_model_scope: extdeps.external_authority.ExternalModelSc
       field: std.decl_ref.WholeDeclaration,
     }
   },
-  first_citation: extdeps_external_authority_anchor,
+  first_citation: extdeps.ampere.mt_collins_product_brief.platform.extdeps_external_authority_anchor,
   further_citations: [],
 }
 

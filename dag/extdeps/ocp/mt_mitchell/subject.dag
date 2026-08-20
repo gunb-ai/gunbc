@@ -60,7 +60,7 @@ data mt_mitchell_model_scope: extdeps.external_authority.ExternalModelScope = ex
       field: WholeDeclaration,
     }
   },
-  first_citation: extdeps_external_authority_anchor,
+  first_citation: extdeps.ocp.mt_mitchell.subject.extdeps_external_authority_anchor,
   further_citations: [internet_archive_mt_mitchell_capture_authority],
 }
 

@@ -8,7 +8,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
   }
 }
 
-data im_15_1_0_vector_debug_impl_authority: extdeps.external_authority.ExternalAuthority = extdeps_external_authority_anchor
+data im_15_1_0_vector_debug_impl_authority: extdeps.external_authority.ExternalAuthority = extdeps.languages.rust.derive_contracts.extdeps_external_authority_anchor
 
 data im_15_1_0_vector_clone_impl_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {

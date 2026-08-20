@@ -7,7 +7,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
   }
 }
 
-data systemctl_authority: extdeps.external_authority.ExternalAuthority = extdeps_external_authority_anchor
+data systemctl_authority: extdeps.external_authority.ExternalAuthority = extdeps.systemd.systemctl.extdeps_external_authority_anchor
 
 fn systemctl_daemon_reload_argv() -> std.types.List<String> {
   ["systemctl", "daemon-reload"]

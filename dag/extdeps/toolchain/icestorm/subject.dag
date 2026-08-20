@@ -151,7 +151,7 @@ data icestorm_model_scope: extdeps.external_authority.ExternalModelScope = extde
       field: WholeDeclaration
     }
   },
-  first_citation: extdeps_external_authority_anchor,
+  first_citation: extdeps.toolchain.icestorm.subject.extdeps_external_authority_anchor,
   further_citations: []
 }
 

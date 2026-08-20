@@ -16,7 +16,7 @@ data ti_dp83867_note: String = "THIS ROW IS A MECHANICAL CANDIDATE AND NOT A SEL
 data dp83867_rgz0048b_drawing: extdeps.land_pattern.types.PackageDrawingRef = extdeps.land_pattern.types.PackageDrawingRef {
   drawing_number: "4218795/B",
   revision_date: "02/2017",
-  reprinted_in: extdeps_external_authority_anchor,
+  reprinted_in: extdeps.network.ti_dp83867.extdeps_external_authority_anchor,
 }
 
 data dp83867_rgz0048b_body: extdeps.land_pattern.types.PackageBodyDimensions = extdeps.land_pattern.types.PackageBodyDimensions {
@@ -62,6 +62,6 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
       field: WholeDeclaration
     }
   },
-  first_citation: extdeps_external_authority_anchor,
+  first_citation: extdeps.network.ti_dp83867.extdeps_external_authority_anchor,
   further_citations: []
 }
