@@ -274,7 +274,7 @@ authority. So "the route exists in `.dag`" was not evidence that it works, and i
 measured. That specimen is worth a row wherever the enforcement-intent registry ends up,
 independent of this census.
 
-### Correctness: it accepts real corpus files, and refuses some — with a typed reason
+### Correctness: one named grammar class refuses a large fraction of the corpus
 
 Three arms in one run, the first a positive control so a refusal cannot be blamed on the harness:
 
@@ -285,32 +285,64 @@ REAL          (dag/extdeps/shell/exec.dag)                   => REJECTED
                                                 reason = parse_grammar_choice_overlap_residue
 ```
 
-So the route is real — it parses authored corpus source, not just fixtures — and its failure is a
-**located, typed refusal naming a specific grammar deficiency**, not a crash or a silent wrong
-tree. That is the fail-closed shape the brief already anticipates with
-`ParseRefused { path, cause }`.
+The route is real — it parses authored corpus source, not just fixtures — and its failure is a
+**located, typed refusal naming a specific grammar deficiency**, which is the fail-closed
+`ParseRefused { path, cause }` shape the brief anticipates.
 
-It is also pointed: the file it refuses is `extdeps/shell/exec.dag`, which declares
-`shell.Exec.Run`, `RunArgv` and `Check` — the single most load-bearing file for this census. A
-census whose seed file is in the refusal set has a hole exactly where it must not have one, and
-the brief's merge bar of "zero production parse refusals" is not met by construction today.
+`extdeps/shell/exec.dag` is not a corner case. On a random 10-file sample of the real corpus:
 
-### Affordability: the axis that decides between three outcomes, not two
+```text
+A  src/v2/std/constraint_satisfaction_predicate.dag
+R  dag/test/claim/filesystem_read_hermetic_witness.dag                    parse_grammar_choice_overlap_residue
+R  dag/test/claim/wet_hermetic_equivalence_witness_test.dag               parse_grammar_choice_overlap_residue
+R  src/v2/test/claim/.../cargo_fmt_dead_param_test.dag                    parse_grammar_choice_overlap_residue
+A  dag/test/fixture/sole_constructor_sealed/admitted_caller.dag
+A  dag/extdeps/transports/file.dag
+A  src/v2/workflow/host_discovered_owned_data_manifest.dag
+A  src/v2/lens/structural_similarity.dag
+R  src/v2/test/claim/round_trip/source_authority_contract_test.dag        parse_grammar_choice_overlap_residue
+A  dag/extdeps/cache/catalog_placement.dag
 
-Correctness alone would send a detector out that cannot run, so the framing of accepts-or-refuses
-was wrong and there are three outcomes: refuses (substrate cut); accepts and is affordable at
-corpus grain (projection lands first, census rebases); **accepts and is unaffordable at corpus
-grain**, which is neither.
+6 accepted, 4 refused
+```
 
-The prior cost signal is adverse: `v2.compiler.ingested_fixture_arrows` drives the same
-tokenize→parse→normalize→resolve path on `"module m\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"`
-and its witnesses are enrolled in the **long** lane for exceeding the 5s fast-lane eval budget
-(`wave1_gate1_long_witness_note`). The census subject is 3,733 `.dag` files and 761,844 lines.
-Fixed overhead and per-byte cost are different curves, though, and one sample cannot separate
-them, so this is being measured as a slope over a random 40-file sample at 1 / 10 / 40 files
-(372 B, 5,332 B, 388,527 B) rather than extrapolated.
+The grouping is the finding, not the rate: **all four refusals, and the `shell/exec.dag` refusal,
+carry the same reason** — `parse_grammar_choice_overlap_residue`. This is one grammar deficiency
+with many victims, not a scattered set of file-specific problems. That matters in both directions:
+the route is a single repair away from a much larger accepted population, and no census can run on
+it until that repair lands, because the brief's merge bar is *zero* production parse refusals and
+the refusal set includes the census's own seed file.
 
-### If it is unaffordable, DESIGN has already rejected this shape once
+### Affordability: measured, and it is the third outcome
+
+Correctness alone would send a detector out that cannot run, so accepts-or-refuses was the wrong
+frame. There are three outcomes: refuses (substrate cut); accepts and is affordable at corpus
+grain (projection lands first, census rebases); and **accepts but is unaffordable at corpus
+grain**, which is neither. Measured on a random 40-file sample, ascending by size, one process per
+run:
+
+| files | source bytes | wall | exit |
+| --- | --- | --- | --- |
+| 1 | 372 | 63.1 s | returned `A` |
+| 10 | 5,332 | 67.5 s | returned 6 A / 4 R |
+| 40 | 388,527 | 187.3 s | **`EXIT=137` — OOM-killed after 34 files** |
+
+Two numbers fall out, and they point at different walls:
+
+- **Time is not the wall.** 63.1 s → 67.5 s for nine more files is ≈ **0.49 s marginal per file**
+  against ≈ **62.6 s fixed overhead**. That fixed cost is itself the shape under discussion: it is
+  paid to stand the whole corpus up before any question is asked.
+- **Memory is the wall, and it is not about big files.** The kill came at file ~34 of 40 with only
+  **94 KB of source consumed**, on files of ~7.8 KB each — the 212 KB outlier sorts last and was
+  never reached. So ~94 KB of parsed source exhausted the runner's ≈1.6 GB budget. Whether that is
+  parse-tree retention, interpreter heap growth, or both is **not** established by this probe and
+  is not claimed here; what is established is that the process cannot hold the result of parsing
+  34 small files, against a census subject of 3,733 files and 31.3 MiB.
+
+The census fold accumulated only a short result string, so the retention is not the probe's
+accumulator. A corpus-grain fold over this route does not fit in a process today.
+
+### The verdict: outcome 3, and DESIGN has already rejected this shape once
 
 Recorded here because it converts a performance observation into a repository ruling. DESIGN §6's
 lens bullet records the deletion of the corpus-wide censuses in #8140 (2026-08-11) and states the
@@ -324,6 +356,22 @@ consumer that wanted something else."*
 That is axis 1's remedy with a precedent and a cost argument already attached. A `ServiceItem`
 accessor plus a non-lossy body projection pays per module at the point the module is *already*
 being parsed; a corpus-wide parse fold re-parses the world on every run to answer a question about
-shell routes. If the affordability measurement lands on the third outcome, the corpus-parse route
-is the exact cost-shape defect this repository deleted machinery over, and the increment is the
-ingestion-side projection rather than a census-side fold.
+shell routes — 62.6 s of fixed world-acquisition before the first question, and an OOM before the
+34th file.
+
+The measurement lands on outcome 3, so this is not a hypothetical: the corpus-parse route is the
+exact cost-shape defect this repository deleted machinery over, and it additionally fails the
+correctness axis today. **The recommended increment is therefore the ingestion-side projection,
+not a census-side fold**, and 0A rebases onto it:
+
+1. a `ServiceItem` accessor carrying operations, transports, argv and stdin channels (axis 1);
+2. a non-lossy body projection — total over statements (axis 2), labelled argument edges (axis 3),
+   arm and occurrence identity (axis 4), resolved callee identity with a node-kind discriminator
+   (axis 5);
+3. a corpus-grain denominator that is an enumerated file set rather than an import closure
+   (axis 6).
+
+`parse_grammar_choice_overlap_residue` is worth filing separately regardless of which route wins:
+it is a single named grammar deficiency refusing a large fraction of authored source in the
+compiler's own parser, currently invisible because the only code path that would surface it —
+`canonical_dag_source_parse_print_law` — has no callers.
