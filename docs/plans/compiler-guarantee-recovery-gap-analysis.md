@@ -881,7 +881,7 @@ than argued.
    ladder-probe-corpus class/path identities, at which point the Evidence cells name the
    executing probe the way the parse-separator row already names `tidy-deer-730`'s.
 
-**Rows 11–15 are one class, and the class is the finding.** They were opened separately
+**Rows 11–16 are one class, and the class is the finding.** They were opened separately
    over one night's auditing and read as four unrelated defects until the fourth arrived; what
    they share is not a subsystem but a *property*. Each is a diagnostic channel that **reports
    something other than what it appears to report**, and in every case the misreport is silent
@@ -1133,6 +1133,34 @@ than argued.
    no filter to invert. **Next trigger:** the report path stops predicating on location-presence
    and carries `<synthetic>` as a typed span variant rather than a sentinel string, so an
    unlocated diagnostic is *reported as unlocated* instead of being the only thing reported.
+
+16. **The regen refusal receipt reports NOT-COMPUTED as MEASURED-AND-CLEAN** (opened 2026-08-20;
+   measured by `snappy-eagle-615` reading `required_regen_host.rs` `run_required_regen` control
+   flow, confirmed in tree). `validate_compared_populations` returns `Some(reason)` whenever the
+   emitted and committed basename sets differ, and that arm **returns early** — so
+   `compare_generated_surfaces` is never called and **no content comparison runs at all**. The
+   population gate is a hard fail-fast ahead of every content check, not a parallel signal. The
+   receipt written on that path then asserts, as facts, five values nothing computed:
+   `committed_generated_digest` and `candidate_generated_digest` set to the literal string
+   `"refused:population"`, `changed_paths` set to an **actually-empty** `Vec`, and
+   `first_generation_equal` / `fixed_point_equal` set to **`false`** — a Bool whose `false` reads
+   as *measured and unequal*, never as *not measured*. **Harm:** a receipt reader — including
+   anything keying off `changed_paths.is_empty()` — cannot distinguish **no drift** from **drift
+   never checked**, and the two have opposite remedies. **Measured consequence:** at
+   `9b29509e5c9` the mirror `infer_method_args_with_fold` was carrying **six parameters against
+   the authority's seven** (the missing `arg_contract: DeclaredArgContract`), and that drift was
+   in the emitted set, comparable, and simply never compared — masked behind a two-file population
+   mismatch unrelated to it. **This is the class DESIGN names as the absorbing fallback's mirror,
+   the empty-observation narrow** (⊥-as-answer conflated with ⊥-as-ignorance) and it is the
+   strictly worse direction: a widen is merely expensive, a narrow is silently uncovered. It is
+   also distinct from rows 11–15 in *where* it sits — those are reporting channels, this is a
+   **receipt**, the artifact whose entire purpose is to be believed later by a reader who did not
+   watch the run. **Ceiling:** structurally impossible — a receipt for a comparison that did not
+   run has no honest values to carry, so the refusal arm should construct a *different type* with
+   no digest, equality or changed-path fields, rather than the same record filled with sentinels.
+   **Next trigger:** `RegenReceipt` splits into computed and refused variants, at which point the
+   `"refused:population"` sentinel and the two fabricated `false`s become unwritable rather than
+   discouraged.
 
 
 ## 12. Proposed sequencing (reconciled with the independent review; for operator sign-off)
