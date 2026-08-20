@@ -104,7 +104,7 @@ fn spark_serving_address_establishes(address: SparkServingResourceAddress) -> Sp
 // restating it here would be a second representation of one edge.
 //
 // The model pull talks to the serving API, so it requires the unit to be enabled -- this is the same
-// fact `the_pull_waits_for_the_serving_api_first` already asserts, now stated once as a requirement
+// fact `the_frozen_order_enables_the_unit_before_pulling_the_model` asserts, now stated once as a requirement
 // instead of twice as an assertion and an authored position.
 //
 // Linger requires nothing. It is an account property, not a service one, and giving it a spurious
