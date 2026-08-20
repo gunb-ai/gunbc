@@ -1,0 +1,113 @@
+module test.claim.preemption_reachability
+
+import v2.std.text { String }
+import v2.workflow.required_floor {
+  ClaimPreemptionReachability,
+  CooperativelyPollable,
+  OpaqueHostCallUnbounded,
+  ClaimSafetyOutcome,
+  CompletedWithinSafetyLimits,
+  SafetyInterrupted,
+  CompletedPastSafetyLimit,
+  claim_safety_outcome,
+  claim_safety_outcome_blocks,
+  claim_preemption_admission,
+  required_floor_claim_cpu_safety_limit_ms,
+  required_floor_claim_wall_safety_limit_ms,
+}
+
+data root_d_receipt_note: String = "PREEMPTION-1 (gunbc#8584 REWORK): floor run 32301212975 recorded root_d_checkpoint_scalar_declared_arity_witness_holds reaching a verdict at 60317ms CPU against a 5000ms required_floor_claim_cpu_safety_limit_ms, dominated by one compile_dag_rust_emit_check call. The floor log named the CPU figure exactly; it did not report a wall figure for this occurrence, so the wall_ms used below (8000, comfortably inside the 10000ms wall limit) is a representative in-range value for exercising the derivation's wall branch, not a second claim about what floor run 32301212975 measured on that clock -- only the CPU figure and the VerdictReached/not-SafetyInterrupted fact are the measured receipt this witness derives from."
+
+test fn w_root_d_shape_derives_completed_past_safety_limit_with_opaque_host_preemption() -> Bool {
+  match claim_safety_outcome(
+    reached_verdict: true,
+    observed_cpu_ms: 60317,
+    observed_wall_ms: 8000,
+    cpu_limit_ms: required_floor_claim_cpu_safety_limit_ms(),
+    wall_limit_ms: required_floor_claim_wall_safety_limit_ms(),
+    raised_by: "",
+    preemption: OpaqueHostCallUnbounded { operation: "compile_dag_rust_emit_check" },
+  ) {
+    CompletedWithinSafetyLimits => false
+    SafetyInterrupted { raised_by: _, elapsed_cpu_at_least: _, elapsed_wall_at_least: _ } => false
+    CompletedPastSafetyLimit { observed_cpu: cpu, observed_wall: _, preemption: p } =>
+      (cpu == 60317)
+        && match p {
+          CooperativelyPollable => false
+          OpaqueHostCallUnbounded { operation: op } => (op) == "compile_dag_rust_emit_check"
+        }
+  }
+}
+
+data blocking_control_note: String = "BINDING CONSTRAINT: a completed-past-limit occurrence blocks exactly as an interrupt does -- no amount of later completion converts a missed interrupt into successful enforcement. This is the discriminating half: it would pass if claim_safety_outcome_blocks silently returned false for CompletedPastSafetyLimit, so it is asserted directly rather than folded into the shape test above."
+
+test fn w_completed_past_safety_limit_blocks() -> Bool {
+  claim_safety_outcome_blocks(
+    CompletedPastSafetyLimit {
+      observed_cpu: 60317,
+      observed_wall: 8000,
+      preemption: OpaqueHostCallUnbounded { operation: "compile_dag_rust_emit_check" },
+    }
+  ) == true
+}
+
+data no_relabel_control_note: String = "BINDING CONSTRAINT: root_d was terminal -- it completed -- and must never be relabelled SafetyInterrupted. reached_verdict is the one fact the derivation switches on; this asserts that a claim which never reached a verdict (a genuine interrupt) is classified SafetyInterrupted and NOT CompletedPastSafetyLimit, so the two terminal-but-over-limit and non-terminal cases cannot be silently swapped by an edit to claim_safety_outcome."
+
+test fn w_genuine_interrupt_is_not_relabelled_completed() -> Bool {
+  match claim_safety_outcome(
+    reached_verdict: false,
+    observed_cpu_ms: 5200,
+    observed_wall_ms: 5200,
+    cpu_limit_ms: required_floor_claim_cpu_safety_limit_ms(),
+    wall_limit_ms: required_floor_claim_wall_safety_limit_ms(),
+    raised_by: "CpuDeadlineRaised",
+    preemption: CooperativelyPollable,
+  ) {
+    CompletedWithinSafetyLimits => false
+    CompletedPastSafetyLimit { observed_cpu: _, observed_wall: _, preemption: _ } => false
+    SafetyInterrupted { raised_by: r, elapsed_cpu_at_least: cpu, elapsed_wall_at_least: _ } =>
+      ((r) == "CpuDeadlineRaised") && (cpu == 5200)
+  }
+}
+
+test fn w_genuine_interrupt_blocks_too() -> Bool {
+  claim_safety_outcome_blocks(
+    SafetyInterrupted {
+      raised_by: "CpuDeadlineRaised",
+      elapsed_cpu_at_least: 5200,
+      elapsed_wall_at_least: 5200,
+    }
+  ) == true
+}
+
+data red_control_note: String = "THE DISCRIMINATION CONTROL: an ordinary claim safely inside both limits must reach CompletedWithinSafetyLimits and must not block. This asserts the opposite direction of the three above, so a derivation collapsed to a constant CompletedPastSafetyLimit or a constant blocks=true would not pass silently."
+
+test fn w_within_limits_does_not_block() -> Bool {
+  match claim_safety_outcome(
+    reached_verdict: true,
+    observed_cpu_ms: 42,
+    observed_wall_ms: 42,
+    cpu_limit_ms: required_floor_claim_cpu_safety_limit_ms(),
+    wall_limit_ms: required_floor_claim_wall_safety_limit_ms(),
+    raised_by: "",
+    preemption: CooperativelyPollable,
+  ) {
+    SafetyInterrupted { raised_by: _, elapsed_cpu_at_least: _, elapsed_wall_at_least: _ } => false
+    CompletedPastSafetyLimit { observed_cpu: _, observed_wall: _, preemption: _ } => false
+    CompletedWithinSafetyLimits => true
+  } && (claim_safety_outcome_blocks(CompletedWithinSafetyLimits) == false)
+}
+
+data migration_wall_note: String = "THE MIGRATION WALL, both arms. compile_dag_rust_emit_check is the one grandfathered opaque host operation and is admitted; a hypothetical second operation that has never been measured reaching this shape is refused; and cooperative reachability is always admitted, because it is the case the safety limits genuinely protect."
+
+test fn w_grandfathered_operation_is_admitted() -> Bool {
+  claim_preemption_admission(OpaqueHostCallUnbounded { operation: "compile_dag_rust_emit_check" }) == true
+}
+
+test fn w_new_opaque_operation_is_refused() -> Bool {
+  claim_preemption_admission(OpaqueHostCallUnbounded { operation: "some_unmeasured_new_host_call" }) == false
+}
+
+test fn w_cooperatively_pollable_is_always_admitted() -> Bool {
+  claim_preemption_admission(CooperativelyPollable) == true
+}
