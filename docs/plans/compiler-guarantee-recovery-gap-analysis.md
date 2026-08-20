@@ -1160,8 +1160,20 @@ than argued.
    repairs it by switching two parse call sites to `make_file_span`, and its own message names the
    population independently: *"46-72 refinement diagnostics across the corpus went unlocated because
    file information was discarded even though byte offsets were correct and positions were
-   recoverable."* **PROVISIONAL — THE ARM-D DENOMINATOR IS NOT ESTABLISHED (flagged 2026-08-20, before
-   any consumer acts on it).** The post-repair figures below come from one run whose COMPILE-step
+   recoverable."* **DENOMINATOR ESTABLISHED, AND ITS SUBJECT NAMED (resolved 2026-08-20).** The
+   truncation concern below was raised and is now **withdrawn**: exit status was captured on ten
+   completed compiles across five dispatches, `exit=1` throughout — a completed compile refusing on
+   blocking diagnostics — with `137` (SIGKILL) and `124` (the `timeout 800` guard) excluded on
+   every arm, and no pipe in the capture, so `$?` is the process's own status. Four separate builds
+   on four separate runners produced identical ten-pair distributions; a truncation would have to
+   stop at the same point four times on four machines. **THE SUBJECT MATTERS AS MUCH AS THE EXIT
+   CODE AND IS STATED HERE SO NO READER INFERS IT:** these figures are **entry-scoped** — one
+   import closure resolved through the `run` verb — NOT corpus-wide. A corpus-wide grep over the
+   same class yields a different and larger candidate population, and comparing the two produces an
+   apparent contradiction that is purely a denominator. That is the dated-measurement trap on the
+   SPACE axis rather than the time axis, and it cost an hour here before it was recognised. Every
+   figure in this row carries both its revision and its subject for that reason. **The original
+   provisional flag, preserved because the rule it produced outlives it:** The post-repair figures below come from one run whose COMPILE-step
    exit status has not been printed. A sibling whole-root compile was `Killed` at EXIT=137 on the
    same infrastructure while its dispatch still reported 0, because redirect-then-echo does not
    propagate status — and *a process killed partway through a corpus compile does not produce
@@ -1218,12 +1230,25 @@ than argued.
    authority — the running binary executes the mirror.** At `origin/main`: authority
    `src/v1/*.dag` carries 56 `make_span` occurrences (58 before #8607; the delta of 2 is that
    fix, so 56 is already post-fix and subtracting again double-charges it); the GENERATED mirror
-   carries 57. **The +1 is localized, not aggregate:** joining each generated mirror to the
-   authority its own line 2 declares gives six of seven pairs at exactly zero, with the entire
-   delta in `v1_compiler_parse.rs` (22 vs 21) — the exact file and direction of #8607's unapplied
-   `call_span`. Three instruments with no shared step now agree: a diff read locating line 11660,
-   an aggregate count, and a per-file join. An offsetting explanation would need a nonzero pair
-   somewhere and there is none. **A hand-file bucket was proposed and WITHDRAWN**: 22 further
+   carries 57. **TWO OF THE THREE LEGS THAT ONCE SUPPORTED THIS ARE RETRACTED, INCLUDING THE ONE
+   THIS DOCUMENT CALLED STRONGEST.** An aggregate `make_span` count and a per-file join of each
+   generated mirror to the authority its own line 2 declares (six of seven pairs zero, the whole
+   delta in `v1_compiler_parse.rs`) were both cited here as independent corroboration. **Neither is
+   evidence: a symbol-count difference across the emission boundary is not a drift test**, because
+   emission is not obligated to preserve occurrence counts — and the single file showing a delta is
+   the one file where emission is *provably* non-1:1, so the +1 is exactly what emission arithmetic
+   produces there and cannot be separated from drift by counting. Seven rows of an unsound test is
+   one unsound test. **What survives is the METHOD, not the inference:** pairing a mirror to the
+   authority its own header declares — rather than by filename or by aggregate — remains the
+   correct way to identify the pair, and the third clause of that rule (classify the residue that
+   matched no form; a member can be *authority contradicted elsewhere*, not merely undeclared)
+   stands. **THE FINDING ITSELF IS UNAFFECTED, because it never rested on the counts.** Its two
+   sound legs are a SITE-LEVEL observation — `call_span` still calling `make_span` at a named site
+   in the committed mirror, immune to emission arithmetic — and `required-regen` refusing on that
+   file independently, which is the only sound form of the test: committed versus REGENERATED, same
+   representation, same emitter, one variable. Recorded at length because the retracted legs were
+   the most-cited artifact in the investigation, and a reader meeting the finding later would
+   otherwise inherit the unsound support along with the sound. **A hand-file bucket was proposed and WITHDRAWN**: 22 further
    `make_span` sites live in non-generated files, but 18 are `make_span(0, 0)` — a null span has
    no file to lose, so the fabricated-plausible-location harm does not apply — and the rest are
    the test asserting the distinction (one named `make_file_span_distinct_from_make_span`). Its
