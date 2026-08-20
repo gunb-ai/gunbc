@@ -10,7 +10,14 @@ import extdeps.exec.command {
   CommandTransport,
   LocalExec,
   command_over_transport,
+  CommandOverTransportBuilt,
+  CommandOverTransportRefused,
   shell_command_render,
+}
+import gunbc.remote_shell_command {
+  RemoteExecCommandRefusalCause,
+  RemoteExecInterpretationUnknown,
+  SimpleCommandArgvRefused,
 }
 import extdeps.shell
 import gunbc.shell_bash_runner { shell_exec_via_bash }
@@ -32,17 +39,33 @@ data command_runner_dissolution_trigger: DissolutionCondition = unbound_dissolut
 func run_shell_command(command: ArgvCommand, transport: CommandTransport) -> ProcessExit
   uses net: Network
 {
-  let rendered = shell_command_render(command: command_over_transport(command: command, transport: transport))
-  let run = shell.Exec.Run(
-    script: retained_runtime(
-      body: shell_exec_via_bash(body: rendered),
-      reason: "generic ArgvCommand runner heredoc transport, pending the typed host_effect_apply argv handler" as NonEmptyStr,
-    )
-  )
-  if run.success {
-    ExitSuccess
-  } else {
-    exit_failure(reason: concat("command failed: ", run.stderr))
+  match command_over_transport(command: command, transport: transport) {
+    CommandOverTransportRefused { cause: c } =>
+      exit_failure(reason: concat("command_over_transport refused: ", command_over_transport_refusal_reason(cause: c)))
+    CommandOverTransportBuilt { command: over } =>
+      let rendered = shell_command_render(command: over)
+      let run = shell.Exec.Run(
+        script: retained_runtime(
+          body: shell_exec_via_bash(body: rendered),
+          reason: "generic ArgvCommand runner heredoc transport, pending the typed host_effect_apply argv handler" as NonEmptyStr,
+        )
+      )
+      if run.success {
+        ExitSuccess
+      } else {
+        exit_failure(reason: concat("command failed: ", run.stderr))
+      }
+  }
+}
+
+data command_over_transport_refusal_reason_note: String = "Renders RemoteExecCommandRefusalCause (gunbc.remote_shell_command) into a diagnostic String for ProcessExit -- the only refusal this generic runner can hit today is RemoteExecInterpretationUnknown, since every SshExec constructed in-tree names a determined interpretation (openssh_login_shell_interpretation / openbmc_dropbear_interpretation); the cause stays a match over the full type rather than a partial one so a newly added cause fails to compile here instead of falling through silently (DESIGN 4b: no untracked stall)."
+
+fn command_over_transport_refusal_reason(cause: RemoteExecCommandRefusalCause) -> String {
+  match cause {
+    RemoteExecInterpretationUnknown =>
+      "the SSH target's RemoteExecCommandInterpretation is Unknown -- refusing rather than assuming a POSIX shell on the far side"
+    SimpleCommandArgvRefused { cause: _ } =>
+      "the inner command's argv was empty"
   }
 }
 
@@ -59,14 +82,23 @@ type ShellCaptureResult {
 func run_shell_command_capture(command: ArgvCommand, transport: CommandTransport) -> ShellCaptureResult
   uses net: Network
 {
-  let rendered = shell_command_render(command: command_over_transport(command: command, transport: transport))
-  let run = shell.Exec.Run(
-    script: retained_runtime(
-      body: shell_exec_via_bash(body: rendered),
-      reason: "generic ArgvCommand capture runner heredoc transport, pending the typed host_effect_apply argv handler" as NonEmptyStr,
-    )
-  )
-  ShellCaptureResult { success: run.success, stdout: run.stdout, stderr: run.stderr }
+  match command_over_transport(command: command, transport: transport) {
+    CommandOverTransportRefused { cause: c } =>
+      ShellCaptureResult {
+        success: false,
+        stdout: "",
+        stderr: concat("command_over_transport refused: ", command_over_transport_refusal_reason(cause: c)),
+      }
+    CommandOverTransportBuilt { command: over } =>
+      let rendered = shell_command_render(command: over)
+      let run = shell.Exec.Run(
+        script: retained_runtime(
+          body: shell_exec_via_bash(body: rendered),
+          reason: "generic ArgvCommand capture runner heredoc transport, pending the typed host_effect_apply argv handler" as NonEmptyStr,
+        )
+      )
+      ShellCaptureResult { success: run.success, stdout: run.stdout, stderr: run.stderr }
+  }
 }
 
 // Receipt owner probe — admitted under command_runner_scaffold until

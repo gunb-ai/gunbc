@@ -5,6 +5,7 @@ import std.types { list_length, NonEmptyStr }
 import extdeps.firmware.uefi_http_boot { uefi_http_boot_uri_wire }
 import extdeps.exec.command { shell_command_render, scp_command }
 import gunbc.bmc_netboot_serve {
+  BmcNetbootServePlan,
   srv4_bmc_netboot_serve_plan,
   bmc_netboot_grub_cfg_text,
   bmc_netboot_http_boot_entry,
@@ -12,6 +13,8 @@ import gunbc.bmc_netboot_serve {
   bmc_netboot_staging_manifest,
   bmc_netboot_serve_command_local,
   bmc_netboot_serve_command_text,
+  BmcNetbootServeCommandTextBuilt,
+  BmcNetbootServeCommandTextRefused,
   InlineText,
   LocalArtifact,
   FetchFromUri,
@@ -37,12 +40,26 @@ test fn srv4_bmc_served_seed_carries_fleet_keys() -> Bool {
     && string_contains(s: ud, pattern: "fleet-automation@gunbc")
 }
 
+fn bmc_netboot_serve_command_text_unwrap(plan: BmcNetbootServePlan) -> String {
+  match bmc_netboot_serve_command_text(plan: plan) {
+    BmcNetbootServeCommandTextRefused { cause: _ } => "REFUSED -- test fixture expected PosixShellInterpreted, got a refusal"
+    BmcNetbootServeCommandTextBuilt { text: t } => t
+  }
+}
+
+// The inner busybox command is now ONE RFC 4254 command string carried as ssh's final
+// argument (extdeps.exec.command command_over_transport_composition_note), not a suffix
+// of separately-quoted argv members after the target -- so the old wrong-in-kind shape
+// ('root@...' '/tmp/netboot/busybox' 'httpd' ...) must NOT appear, and the escaped-quote
+// marker from re-quoting the already-quoted inner string for the LOCAL shell must.
 test fn serve_command_one_shape_two_transports() -> Bool {
   let local = shell_command_render(command: bmc_netboot_serve_command_local(plan: srv4_bmc_netboot_serve_plan))
-  let over_bmc = bmc_netboot_serve_command_text(plan: srv4_bmc_netboot_serve_plan)
+  let over_bmc = bmc_netboot_serve_command_text_unwrap(plan: srv4_bmc_netboot_serve_plan)
   string_contains(s: local, pattern: "'/tmp/netboot/busybox' 'httpd' '-p' '8080' '-h' '/tmp/netboot'")
     && string_contains(s: over_bmc, pattern: "'sshpass' '-e' 'ssh'")
-    && string_contains(s: over_bmc, pattern: "'root@192.168.1.195' '/tmp/netboot/busybox' 'httpd'")
+    && string_contains(s: over_bmc, pattern: "'root@192.168.1.195'")
+    && string_contains(s: over_bmc, pattern: "'\\''") == true
+    && string_contains(s: over_bmc, pattern: "'root@192.168.1.195' '/tmp/netboot/busybox' 'httpd'") == false
 }
 
 test fn srv4_scp_put_uses_shared_ssh_posture_not_a_fork() -> Bool {

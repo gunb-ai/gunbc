@@ -1,0 +1,88 @@
+module gunbc.remote_shell_command
+
+import std.types { String, List, NonEmptyStr, Bool, Int }
+import v2.std.algebra { list_map }
+import extdeps.posix.shell_command_language { posix_single_quote }
+
+data remote_shell_command_scope_note: String = "CliSurface -> shell simple-command tree -> shell-word serialization -> one RFC 4254 command string. This is the SECOND handler for the class typed_argv_exec.dag's portable-word allowlist refuses (a jq program, a path with a space, anything quoted): where that allowlist REFUSES the word rather than transporting it, this module makes it SAFE to transport instead, by composing it into the single command-STRING field extdeps.ssh.session ssh.Session.Exec already carries (RFC 4254 section 6.5: one string-typed command field, no argv). It does not widen the allowlist and it is not wired into gunbc.typed_argv_exec or ssh.Session.Exec by this module. It IS now wired into extdeps.exec.command command_over_transport's SshExec branch (operator directive, 2026-08-19: LAND THE FIRST CONSUMER) -- that import runs extdeps.exec.command -> gunbc.remote_shell_command, the opposite direction, so this module stays unaware of its consumer, only of the POSIX authority it cites."
+
+data remote_shell_command_grammar_note: String = "The grammar this module emits is intentionally NOT the full bash TargetModel in v2.extdeps.languages.bash (control structures, redirection, expansion -- built for local script emission, a different concern at a different scale). It is the minimal RESTRICTED form: a simple command is a sequence of words, each wrapped whole in single quotes and joined by single spaces -- never an unquoted byte, never a double-quoted or unquoted word, never a metacharacter table. emit_remote_shell reuses extdeps.posix.shell_command_language posix_single_quote for the encoding rather than re-deriving the same algorithm (DESIGN 2/3: one escaping fact, not two) -- the encoding's home is the POSIX authority it is cited against, not bash's emitter, which is itself just another consumer of the same function (operator finding, 2026-08-19)."
+
+data remote_shell_command_single_quote_encoding_law_note: String = "CORRECTNESS ARGUMENT (operator directive, 2026-08-19, replacing an earlier round-trip-parser design): IEEE 1003.1-2017 section 2.2.2 (Single-Quotes) states -- 'A single-quote ( ' ) shall preserve the literal value of each character within the single-quotes. A single-quote cannot occur within single-quotes' (extdeps.posix.shell_command_language extdeps_external_authority_anchor names the locator; this module cites the clause directly rather than modeling the full grammar). That single sentence is a complete correctness proof for shell_quote_word's encoding -- wrap the word in single quotes, and represent each embedded single quote as the four characters quote-backslash-quote-quote (close the quoting, emit an escaped literal quote via backslash, reopen the quoting) -- for EVERY byte sequence, with no metacharacter table and no word-expansion model, because inside single quotes every byte is literal and only the single-quote character itself needs special handling. This is a property of THIS MODULE'S OWN OUTPUT (every byte sits inside single-quote-delimited spans; the only construct with any interpretation, the single quote, never appears un-escaped inside a span), checkable without modeling a reader at all -- construction, not validation (DESIGN 4b: this climbs from mitigatable to structurally-guaranteed-by-citation, not by a stronger parser). It replaces an earlier design that proved shell_parse(emit_remote_shell(x)) == x: that was a self-consistent oracle (this module authored both halves), green by construction, and it would have stayed green under one shared wrong quoting rule -- exactly the failure mode quoting invites. shell_parse and its supporting types are deliberately NOT present in this module: once the emitter is restricted to the cited single-quote form and the correctness argument no longer needs a reader model, a hand-rolled inverse parser is residue with no consumer, not a convenience kept for its own sake."
+
+type RemoteExecCommandInterpretation
+  = PosixShellInterpreted
+  | Unknown
+
+data remote_exec_command_interpretation_note: String = "RFC 4254 section 6.5 gives the exec channel request one string-typed command field and does not mandate that any shell interprets it (extdeps.ssh.session ssh_remote_exec_carries_a_command_string_note). Whether the far side hands that string to a POSIX-conformant shell is therefore an IMPLEMENTATION fact, observed per deployment, not derived from the protocol. Two deployments are observed below; every other target is Unknown, which remote_exec_command_string refuses rather than assumes -- DESIGN 5 construction-over-validation: the refusal has no arm that proceeds on an unobserved shell. The single-quote encoding is a property of the PosixShellInterpreted arm, not of the transport: if a target ever executes the RFC 4254 command string without any shell, single-quoting it would be wrong in the same way prefix-concatenation onto the outer ssh argv is wrong -- that target names a third interpretation variant when observed, it does not widen this one."
+
+data openssh_login_shell_interpretation: RemoteExecCommandInterpretation = PosixShellInterpreted
+
+data openssh_login_shell_interpretation_note: String = "OpenSSH's sshd(8) executes the exec request's command string through the target user's login shell, which re-parses it -- documented OpenSSH behavior, not an RFC 4254 mandate (extdeps.ssh.session ssh_remote_exec_carries_a_command_string_note). A login shell on every host this corpus deploys to is POSIX-conformant (bash or a POSIX sh)."
+
+data openbmc_dropbear_interpretation: RemoteExecCommandInterpretation = PosixShellInterpreted
+
+data openbmc_dropbear_interpretation_note: String = "OpenBMC ships Dropbear, whose sshd invokes the command string via `<shell> -c <command>` against the device's configured shell -- BusyBox ash on the OpenBMC images this fleet targets, a POSIX-conformant shell (not bash; single-quote semantics are the shared POSIX core this module's encoding targets, so the interpretation is the same PosixShellInterpreted, not a distinct arm). Unverified against a specific OpenBMC firmware build until the live confirmation below executes -- carried as an observed deployment fact from OpenBMC's documented architecture, not yet as a per-host measurement."
+
+type ShellSimpleCommand {
+  words: List<NonEmptyStr>
+}
+
+type SimpleCommandRefusalCause
+  = SimpleCommandEmptyArgv {}
+
+type SimpleCommandOutcome
+  = SimpleCommandBuilt { command: ShellSimpleCommand }
+  | SimpleCommandRefused { cause: SimpleCommandRefusalCause }
+
+fn simple_command(argv: List<NonEmptyStr>) -> SimpleCommandOutcome {
+  if length(xs: argv) == 0 {
+    SimpleCommandRefused { cause: SimpleCommandEmptyArgv {} }
+  } else {
+    SimpleCommandBuilt { command: ShellSimpleCommand { words: argv } }
+  }
+}
+
+data shell_quote_word_citation_note: String = "IEEE 1003.1-2017 section 2.2.2 (Single-Quotes), cited via extdeps.posix.shell_command_language: 'A single-quote shall preserve the literal value of each character within the single-quotes. A single-quote cannot occur within single-quotes.' That clause is the correctness proof for this function -- see remote_shell_command_single_quote_encoding_law_note for the full argument."
+
+fn shell_quote_word(word: NonEmptyStr) -> NonEmptyStr {
+  posix_single_quote(spelling: word as String) as NonEmptyStr
+}
+
+fn emit_remote_shell(command: ShellSimpleCommand) -> NonEmptyStr {
+  join(list_map(xs: command.words, f: fn(w) { shell_quote_word(word: w) as String }), " ") as NonEmptyStr
+}
+
+type RemoteExecCommandRefusalCause
+  = SimpleCommandArgvRefused { cause: SimpleCommandRefusalCause }
+  | RemoteExecInterpretationUnknown
+
+type RemoteExecCommandOutcome
+  = RemoteExecCommandBuilt { command: NonEmptyStr }
+  | RemoteExecCommandRefused { cause: RemoteExecCommandRefusalCause }
+
+data remote_exec_command_string_note: String = "The composition constraint, spelled as code rather than as prose: append(ssh_exec_prefix, inner.argv) -- what extdeps.exec.command command_over_transport's SshExec branch does today -- is wrong in KIND, because RFC 4254 carries one command STRING, not a suffixed argv. This function produces that one string as its OWN typed output (RemoteExecCommandBuilt.command: NonEmptyStr), for a caller to hand to ssh.Session.Exec's `command` field -- a composition of two targets (outer local ssh/sshpass argv, inner serialized shell program), never a concatenation of one into the other."
+
+fn remote_exec_command_string(
+  argv: List<NonEmptyStr>,
+  interpretation: RemoteExecCommandInterpretation
+) -> RemoteExecCommandOutcome {
+  match interpretation {
+    Unknown => RemoteExecCommandRefused { cause: RemoteExecInterpretationUnknown }
+    PosixShellInterpreted =>
+      match simple_command(argv: argv) {
+        SimpleCommandRefused { cause: c } => RemoteExecCommandRefused { cause: SimpleCommandArgvRefused { cause: c } }
+        SimpleCommandBuilt { command: cmd } => RemoteExecCommandBuilt { command: emit_remote_shell(command: cmd) }
+      }
+  }
+}
+
+type RemoteExecCommandLiveConfirmation
+  = RemoteExecCommandLiveConfirmationUnexecuted { trigger: NonEmptyStr }
+  | RemoteExecCommandLiveConfirmationObserved { target: NonEmptyStr, result: NonEmptyStr }
+
+data remote_exec_command_live_confirmation: RemoteExecCommandLiveConfirmation = RemoteExecCommandLiveConfirmationUnexecuted {
+  trigger: "run remote_exec_command_string over a real unsafe word (jq program, path with a space, or shell metacharacter) against a live SSH target -- an OpenSSH host to confirm openssh_login_shell_interpretation and an OpenBMC/Dropbear BMC to confirm openbmc_dropbear_interpretation -- and record the exact stdout/exit_code observed here, replacing this row with RemoteExecCommandLiveConfirmationObserved. What cannot execute in CI is this half: CI has no live BMC, so this receipt stays UNEXECUTED rather than being folded into the hermetic witnesses, which prove only that emit_remote_shell's output matches the cited single-quote encoding exactly -- never that the far side agrees" as NonEmptyStr
+}
+
+data remote_exec_command_live_confirmation_note: String = "DECLARED, UNEXECUTED, WITH A TRIGGER (DESIGN 4b: no untracked stall). The hermetic witnesses below are green by execution and prove the emitter matches the cited encoding on fixtures. This receipt is the honest ceiling on the REMOTE half: a hermetic green must never be read as evidence the far side agrees, so this row stays Unexecuted until an operator runs the live check named in its trigger."
