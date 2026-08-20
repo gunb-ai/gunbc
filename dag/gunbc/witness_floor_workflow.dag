@@ -126,11 +126,18 @@ fn witness_floor_checkout_step() -> Step {
 // a hardlink to the rustup binary that rustup-init unlinks and re-creates.
 //
 // So every concurrent job unlinks and re-creates the same `rustfmt` file, while other jobs are
-// spawning it. Both halves of that window are observable and both were observed. ETXTBSY,
-// run 32390076311: `required-regen: refused: normalize emitted src/main.rs: spawn rustfmt: Text
-// file busy (os error 26)` -- exec of a file another process holds open for writing. ENOENT is
-// the same window read a few milliseconds earlier, between the unlink and the re-link, and it
-// surfaces through the same refusal with `os error 2`. Neither is a defect in
+// spawning it. ONE HALF OF THAT WINDOW IS OBSERVED AND THE OTHER IS INFERRED, and the two are
+// kept apart here because the repair does not need the second and would be overstated by
+// claiming it. OBSERVED -- ETXTBSY, run 32390076311: `required-regen: refused: normalize emitted
+// src/main.rs: spawn rustfmt: Text file busy (os error 26)`, exec of a file another process holds
+// open for writing. INFERRED -- ENOENT, the same window read a few milliseconds earlier between
+// the unlink and the re-link, which would surface through the same refusal with `os error 2`. It
+// is inferred rather than measured: zero occurrences of that spelling across the 44 failed
+// witnesses runs read on 2026-08-20, and no run id for it has been produced. The brief that
+// commissioned this work asserts it; that assertion is not upgraded to a measurement by being
+// repeated here (DESIGN §4b -- a claim citing the stronger path while the other stays silent is
+// inflation). Nothing downstream rests on it: removing the write removes both halves whether or
+// not the second ever occurred. Neither is a defect in
 // `normalize_generated_source`, and neither is repairable at the spawn: a retry there would
 // convert a fleet-level write race into an unobservable latency (DESIGN section 5, the absorbing
 // fallback -- the deficit's frequency zeroed by construction), and dropping rustfmt from
@@ -141,8 +148,8 @@ fn witness_floor_checkout_step() -> Step {
 //
 //   1. PUT `$CARGO_HOME/bin` ON `GITHUB_PATH` OURSELVES. That is the entire reason the action's
 //      installer branch fires, so once this step runs first, `command -v rustup` succeeds and
-//      rustup-init never executes again. The proxy rewrite -- the thing that produced both
-//      errnos -- stops happening at all, on every job, rather than being serialized.
+//      rustup-init never executes again. The proxy rewrite -- the thing that produced the
+//      observed ETXTBSY -- stops happening at all, on every job, rather than being serialized.
 //   2. INSTALL THE PINNED TOOLCHAIN AT MOST ONCE, UNDER AN EXCLUSIVE `flock` ON THE SHARED HOME.
 //      The lock makes concurrent installers mutually exclusive; the completeness check inside it
 //      makes the ordinary case install NOTHING, so after the first job on a host there is no
@@ -172,6 +179,27 @@ fn witness_floor_checkout_step() -> Step {
 // trigger is a CARGO_HOME that is not shared across slots -- per-slot, or host-provisioned
 // out of band -- at which point concurrent jobs have no common file to race on and this step's
 // lock dissolves with the sharing that motivated it.
+//
+// THE CARRIER IS A SECOND, INDEPENDENT DEBT, and it is named here because the residue paragraph
+// above discharges only the RACE -- a reader would otherwise take one declaration as covering
+// both (review 54129, non-blocking). This script is glued from string fragments, so the shell is
+// a medium the substrate cannot see into: nothing here can decide that the lock is acquired
+// before the install, that each refusal arm exits nonzero, or that the body is even
+// syntactically shell. Every sibling script helper in this file carries the same debt, so this
+// is INHERITED CONVENTION rather than authority introduced by this change -- which is the reason
+// it must not be climbed here. One modeled step beside seven string-glued ones is the
+// parallel-authority tell DESIGN section 6 lists, and the repair belongs to all of them at once
+// or to none. The trigger is a bash grammar in extdeps/languages/ read in both directions the
+// way the target grammars already are (DESIGN section 4), at which point these bodies become
+// Step values composed from rows and the glue helpers dissolve together. Until then the class
+// sits at mitigatable for the same reason the race does and for an unrelated cause.
+//
+// WHAT THE SCRIPT THEREFORE STAYS INSIDE, stated because its correctness is review-borne rather
+// than checked, and an unstated constraint is one a later edit breaks silently: no brace
+// expansion of any kind, because braces are the substrate's interpolation and escape syntax and
+// a shell parameter-expansion brace would be read by the tokenizer rather than by bash; no
+// `set -u`, because the CARGO_HOME default test would trip it; no arrays and no arithmetic. The
+// default is spelled with a plain `if [ -z ... ]` test for exactly that reason.
 fn witness_floor_toolchain_provision_script() -> String {
   concat(
     concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
