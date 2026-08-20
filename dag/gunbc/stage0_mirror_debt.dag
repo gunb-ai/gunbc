@@ -103,11 +103,13 @@ type MirrorDebtRow {
 // fact about the generator binary that produced it, and it would go silently wrong the next
 // time the emitter changes.
 //
-// CarriedNoWriter is currently UNINHABITED and that is deliberate rather than an oversight.
-// The absent writer is why NO row gets repaired — it is a global fact about main, not a
-// discriminating per-row cause — so claiming it for a specific path would assert more than
-// was measured. The arm stays declared because the gate switches on it and because a row
-// will earn it as soon as one file's drift is shown to be ordinary staleness.
+// MEMBERSHIP JOINS ON BASENAME, NOT ON THE PATH COLUMN. The comparator that supplies the
+// population reports basenames ("std_algebra.rs"); the path field below is the DISPLAY form
+// and is not the key. The join is sound because the generated surface is one flat directory,
+// so basenames are unique — but it is a second key space over one population, and this has
+// already cost a dispatch: a regen run refused with "emit missing generated file
+// compiler_tests.rs" purely because the emit map keys on emit path while the committed roster
+// keys on basename. Stated here so the next reader does not rediscover it.
 
 data stage0_mirror_debt_rows: List<MirrorDebtRow> = [
   MirrorDebtRow {
