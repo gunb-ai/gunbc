@@ -960,6 +960,15 @@ than argued.
    (`src/v1/00_core.dag`, which already carries `offsets` and `char_codes`, so byte-to-line is
    already modeled and simply not consulted) or names its unit. **Blast radius:** every
    diagnostic carrying a `SourceSpan`, i.e. the general renderer.
+   **The class is GROWING, not static — a second instance landed the same day, in a NEW module**
+   (review 53871 on gunbc#8527): `src/v1/expected_red_roster_join.dag` declares
+   `BudgetExceeded { elapsed_ms: Int, budget_ms: Int, ... }` — Duration-semantic fields as bare
+   `Int`, ported from hand-Rust `u64`/`u128`, with no `feature:` or dissolve-on row, at the exact
+   moment `std.measure.Duration` was available to ground them. Same shape one domain over:
+   nothing prevents a caller passing seconds, a count, or the other field. That matters for how
+   this row is priced — the 17 `SourceSpan` construction sites are inherited debt, but new
+   modules are still extending the class, so the population is not a fixed backlog waiting for a
+   sweep. Any fix that grounds only the existing sites leaves the authoring path open.
    **The §3 reading, which is the durable half:** the compiler emitted a POSITIONAL citation
    about its own input at a moment when the declaration NAME was in hand — the diagnostic knows
    it sits inside a declaration body, that is its entire complaint. §3's cite-the-symbol rule
