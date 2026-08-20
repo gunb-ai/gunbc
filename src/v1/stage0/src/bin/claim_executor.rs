@@ -18375,13 +18375,18 @@ fn parse_dag_module_node(
     use v1_compiler::v1_compiler_tokenize::tokenize;
     use v1_compiler::v1_std_core::{build_newline_index, empty_intern_table, NewlineIndex};
 
+    // The map is built with the runtime's own constructors rather than a `std::HashMap`: the
+    // parser's source-index map is an `im::HashMap`, and reaching for the concrete type here
+    // would be this file asserting a representation the parser owns.
     let index = build_newline_index(file.to_string(), source.to_string());
-    let mut indices: std::collections::HashMap<String, Rc<NewlineIndex>> =
-        std::collections::HashMap::new();
-    indices.insert(file.to_string(), index);
+    let indices = v1_compiler::v1_rt::rc_map_insert(
+        v1_compiler::v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+        file.to_string(),
+        index,
+    );
     let parsed = parse_with_table(
         tokenize(source.to_string(), file.to_string()),
-        Rc::new(indices),
+        indices,
         empty_intern_table(),
     );
     if let Some(err) = parsed.result.error.clone() {
@@ -18690,6 +18695,14 @@ fn derive_parameter_domain(
         Some(DagTypeDecl::ClosedNullaryEnum { variants }) => Ok(EnumeratedDomain::Exhaustive {
             cardinality: variants.len(),
         }),
+        // Declared, closed, and still NOT enumerable: each variant's payload needs its own
+        // domain. Named as its own refusal because the alternative wording — "not a closed type
+        // declared by this authority" — is FALSE for this population and sends the reader to
+        // close a type that is already closed.
+        Some(DagTypeDecl::PayloadCoproduct { variant_count }) => Err(format!(
+            "{ty} (closed coproduct, but {variant_count} variants carry payloads whose domains \
+             are not enumerated)"
+        )),
         Some(DagTypeDecl::Record { fields }) => {
             let mut card = 1usize;
             for (fname, fty) in fields {
