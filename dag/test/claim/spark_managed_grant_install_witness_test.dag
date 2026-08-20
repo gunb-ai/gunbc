@@ -193,7 +193,7 @@ test fn the_awaiting_credential_arm_asks_for_a_credential_and_not_a_hand_mutatio
   })
   string_contains(text, "AWAITING-OPERATOR-CREDENTIAL")
     && string_contains(text, "REQUIRED: an administrator credential")
-    && string_contains(text, "/secrets/spark-srv6-bootstrap-admin")
+    && string_contains(text, "supplied, never derived")
     && !string_contains(text, "NOPASSWD:")
     && !string_contains(text, "visudo -c -f")
 }

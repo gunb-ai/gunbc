@@ -38,8 +38,8 @@ import gunbc.spark_managed_access_bootstrap {
 }
 import gunbc.host_effect_realize { run_typed_argv_transport }
 import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
-import extdeps.cloud.gcp.secret_ref { secret_ref_secret_resource }
-import gunbc.spark_bootstrap_credential { spark_bootstrap_credential_lease }
+import gunbc.spark_bootstrap_credential { CredentialMaterializationPending }
+import gunbc.spark_grant_privileged_operation { spark_bootstrap_credential_lease, lease_secret_resource }
 import gunbc.spark_managed_grant_reconcile {
   spark_managed_grants_to_install,
   spark_managed_grant_report,
@@ -336,12 +336,17 @@ fn spark_grant_standings_demanded_a_password(standings: List<RemoteStepStanding>
 fn spark_grant_credential_requirement(host: HostIdentity, grant: SparkManagedGrant) -> String {
   let l = spark_bootstrap_credential_lease(
     host: host,
+    administrator: CredentialMaterializationPending,
     grant: grant,
     attempt_identity: spark_grant_install_ci_attempt_raw as NonEmptyStr,
   )
   join([
     "REQUIRED: an administrator credential for ", l.bootstrap_principal as String,
-    " on ", l.host as String, ", enrolled at ", secret_ref_secret_resource(ref: l.secret),
+    " on ", l.host as String,
+    match lease_secret_resource(lease: l) {
+      Absent => " (no secret is enrolled for this host yet; its name is supplied, never derived)"
+      Present { value: r } => join([", enrolled at ", r], "")
+    },
     ". Authorized purpose: ", l.authorized_purpose as String,
     ". The credential is materialized only for this step, delivered over stdin, and never enters an",
     " argv, a plan artifact, a workflow input or this receipt. Supplying it is the whole of the",
