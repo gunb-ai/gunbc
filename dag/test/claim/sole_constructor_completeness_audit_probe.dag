@@ -9,6 +9,7 @@ import gunbc.compile_diagnostic_census {
 }
 import std.types { String, Bool, Int }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.interval { closed_interval, IntervalConstruction, IntervalReady, IntervalRefused }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -213,7 +214,6 @@ test fn f11b_generic_carrier_both_type_args_each_refuse() -> Bool {
 // EXECUTES it (not just compile-checks it) to see whether the confined mint
 // still emits an IntervalReady whose invariant is violated.
 // ---------------------------------------------------------------------------
-import std.interval { closed_interval, IntervalConstruction, IntervalReady, IntervalRefused }
 
 fn always_true_le(a: Int, b: Int) -> Bool { true }
 
