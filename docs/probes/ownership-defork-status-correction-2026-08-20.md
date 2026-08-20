@@ -58,16 +58,49 @@ consumption are implemented"*.
 | `take_owned_counted` | **0** | | `owned_bindings` | 3 |
 | | | | `FoldAccUnwrapProof` | 1 |
 
-And **PR #6248 — the PR the plan says increment 1 is "in this PR" — is CLOSED, not merged.** #6249
-and #6250 merged.
+**It was BUILT, then deliberately DELETED — not never built.** `git log -S move_sites_index --all`:
 
-Increment 1's *core* did land by some other route: `build_movable_set` today filters on
-`make_decision(usage) == SoleOwner` and admits params via `param_names`, exactly as described.
-**Increment 2's per-site licensing did not.** The status line is **false for this tree**.
+```
+3a1b87d6e0  2026-07-06  #6307  "Persistent value carriers: lists+sets -> im_rc;
+                                delete clone-fallback guard + move licenses (atomic)"
 
-This is the finding with the shortest path to a decision, and it is not a compiler finding — it is a
-plan whose recorded status does not match the tree, so any work planned against that status is
-planned against a premise that is not true.
+move_sites_index          before 3 files → after 0
+build_move_site_licenses  before 2       → after 0
+move_licensed_at_site     before 1       → after 0
+```
+
+**The distinction is load-bearing.** *"Absent while the status line claims it landed"* reads as
+*someone forgot to build it*, and the next person picks it up as greenfield work. *"Built, then
+deleted atomically with the im_rc carrier migration"* says two things they need: **the
+implementation exists in history at `3a1b87d6e08^`** — a backward liveness walk in reverse
+evaluation order, span-keyed, with the guards the plan describes, so nobody has to design it again —
+**and it was removed for a reason that may still hold.**
+
+**The doc and the code were never coupled:** the plan entered main via **#6249**; **#6248 — the PR
+the plan says increment 1 is "in this PR" — is CLOSED, not merged**; and then a third PR removed the
+implementation. Increment 1's *core* did land by some other route (`build_movable_set` today filters
+on `make_decision(usage) == SoleOwner` and admits params via `param_names`, as described).
+
+> **So the plan is not merely stale. It describes as WIRED a mechanism a later merged PR
+> deliberately removed, and has said so in main since 2026-07-05** — worse than an un-updated plan,
+> because a reader who greps the symbols finds nothing and concludes the plan was aspirational, when
+> it is a description of code that ran and was withdrawn.
+
+### Why it was deleted — OPEN, three readings
+
+**The commit states what it deleted, not why.** Its bullet is *"Persistent carriers: lists+sets ->
+im_rc Vector/OrdSet; delete clone-fallback guard + per-site move licenses"*; the body's rationale
+paragraphs are all about the clone-fallback guard, none about licensing.
+
+1. **im_rc made licensing unnecessary.** The guard and the licensing both existed to avoid expensive
+   clones — the guard by refusing them, the licensing by proving them unneeded. If persistent
+   carriers made clones cheap, both lose their motivation together, which would explain an atomic
+   deletion the commit felt no need to justify. *Consistent with everything read here; not confirmed.*
+2. **im_rc made licensing unsound** — if the carrier change altered what a whole-value use site means.
+3. **The two could not be landed together** — which the word *"atomic"* in the title equally supports.
+
+**Which one holds decides whether re-implementing it is correct or reintroduces a bug.** The next
+read is `3a1b87d6e08`'s diff against `ownership.dag` — not more reasoning about its message.
 
 ## 3. POPULATION BOUND — at most 446 of 775 clone sites
 
@@ -87,12 +120,16 @@ repair can reach** (that arm emits unsound Rust — §1), and this counts clone 
 membership, so it bounds the *consequence* rather than observing the *cause*. **Do not restate it as
 "58% of clones are spurious."**
 
-**It is a different quantity from the census's 139**, which counts E0599-causing lowering sites. This
-bounds total clone sites attributable to non-movability — the first number attached to the population
-from that end, and it complements the plan's own cost denomination (whole-tree `compile --target dag`
-at ~72 min, ~85–90% emit, the default-clone paths keeping `Rc` refcounts ≥ 2 so every
-`rc_map_insert`/`rc_list_push` copy-on-writes the whole container — O(n²) surfacing as the CI
-timeout).
+**It is a different quantity from the census's 139**, which counts E0599-causing lowering sites.
+
+> **IT IS ALSO NOT A COST MEASURE, and an earlier draft of this document wrongly made it one.** That
+> draft paired the 446 with the plan's cost denomination — whole-tree `compile --target dag` at
+> ~72 min, ~85–90% emit, `Rc::make_mut` copy-on-writing whole containers, O(n²). **That denomination
+> is PRE-`im_rc`.** The live carriers are persistent —
+> `use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec}` — on which a clone is a
+> **refcount bump with structural sharing**, not a deep copy. Joining the two silently re-inflates
+> cheap clones into expensive ones. The 446 bounds clone **sites**; it says nothing about what they
+> cost.
 
 **What it does not settle:** whether `movable` is **inert** (near-empty — coverage by illusion) or
 merely **partial**. The delta measures the consequence and cannot separate them; that needs set
@@ -127,6 +164,14 @@ body that had been quoted repeatedly and never read.
 the probe marker present **and the construct being removed absent** — plus a positive control so a
 zero is readable, and a **sensitivity control** (total `clone()` across the whole emit) so "nothing
 changed" is distinguishable from "the probe did nothing".
+
+**A corpus finding, not a confession — the repository's most complete analyses are stored where
+nothing reads them.** The `data …_note: String` rows at the top of `.dag` modules run to one–three
+thousand words, are written once at peak context, and are surfaced by nothing: no lens reads them,
+no gate checks them, and reading the module's *code* does not show them. DESIGN §4c requires prose
+to be classified rather than loose; **it says nothing about whether classified prose is ever read.**
+Both of the rediscoveries here were of text sitting in exactly that position — one in a plan, one in
+the note of a file under the author's own sole-write ownership.
 
 **And the meta-failure this document is itself an instance of:** four separate findings here were
 rediscoveries of things already written down — in the plan, and in the note at the top of a file
