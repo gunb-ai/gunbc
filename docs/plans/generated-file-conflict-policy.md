@@ -193,7 +193,7 @@ projection + the emitted `.gitattributes` itself).
 
 ## Lane 3 — derive stage0 output membership (gates the emitted-Rust extension)
 
-`generated_stage0_files` (dag/gunbc/stage0_emit_model.dag) is a handwritten filename
+`generated_stage0_files` (dag/gunbc/stage0_emit_plan_generated.dag) is a handwritten filename
 list — the second-authority shape exactly. It becomes a derivation:
 
 ```text
