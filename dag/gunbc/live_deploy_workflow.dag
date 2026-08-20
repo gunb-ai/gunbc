@@ -13,8 +13,11 @@ import extdeps.github.actions {
 import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
 import gunbc.repo_identity { gunbc_default_branch_name }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
-import gunbc.fleet_main_revision { fleet_desired_ref_name }
-import gunbc.ci_spec { live_deploy_apply_entry, live_deploy_apply_srv1_wet_function }
+import gunbc.ci_spec {
+  live_deploy_apply_entry,
+  live_deploy_apply_srv1_wet_function,
+  gunbc_ci_advance_fleet_desired_script,
+}
 import v2.std.optional { Present }
 import std.types { String }
 
@@ -134,31 +137,31 @@ fn live_deploy_apply_step() -> Step {
   }
 }
 
-// THE ADVANCE IS A COMPARE-AND-SWAP, not a push. The ref is fleet-wide admitted state, so a blind
-// push would silently overwrite an advance made by a concurrent run or by an operator; the lease
-// expects the exact prior value this run observed and refuses otherwise, which turns a lost update
-// into a failed step. The create arm exists because force-with-lease has no expected-prior to hold
-// against a ref that does not exist yet.
-fn live_deploy_advance_fleet_desired_script() -> String {
-  join([
-    "set -eu\n",
-    "DESIRED_REF=", fleet_desired_ref_name, "\n",
-    "CURRENT=$(git ls-remote origin \"$DESIRED_REF\" | cut -f1)\n",
-    "if [ -z \"$CURRENT\" ]; then\n",
-    "git push origin \"$GITHUB_SHA:$DESIRED_REF\"\n",
-    "echo \"[fleet-desired] created $DESIRED_REF -> $GITHUB_SHA\"\n",
-    "else\n",
-    "git push --force-with-lease=\"$DESIRED_REF:$CURRENT\" origin \"$GITHUB_SHA:$DESIRED_REF\"\n",
-    "echo \"[fleet-desired] advanced $DESIRED_REF: $CURRENT -> $GITHUB_SHA\"\n",
-    "fi\n",
-  ], "")
-}
-
+// THE ADVANCE REUSES THE ADMITTED AUTHORITY RATHER THAN RESTATING IT, and the first cut of this
+// module got that wrong in two ways at once (review 53944 caught the second; the first is worse and
+// went unnamed). It authored its own copy of a script gunbc.ci_spec already owns -- a byte-for-byte
+// re-derivation. That is the DESIGN section 3 fork: two functions answering one question,
+// guaranteed to drift, and drift here means two different opinions about how the fleet's admitted
+// revision advances.
+//
+// The review's mechanical finding was that the script builds shell by concatenation, which
+// section 3 names as the medium-as-string blocker. That is true of the text -- and it is ALREADY
+// ADMITTED DEBT rather than new debt: gunbc_ci_advance_fleet_desired_shell_emit_scaffold declares
+// it a Scaffold dissolving to SingleAuthority, and its dissolution trigger names this exact
+// concat-built foreign-executor CAS advance. So the correct repair is not to mark the copy as a
+// scaffold -- section 6 is explicit that an author cannot admit their own -- and not to hand-roll a
+// second bash rendering beside the one that trigger already tracks. It is to consume the admitted
+// authority and let its existing trigger carry the conversion for both consumers at once.
+//
+// A consequence worth stating because it is visible in the emitted file: the shared script prefixes
+// itself with its own dissolution description, so deploy.yml now carries the debt marker inline.
+// That is the correct direction -- the generated artifact declares the scaffold it came from,
+// rather than laundering it into anonymous yaml.
 fn live_deploy_advance_fleet_desired_step() -> Step {
   RunStep {
     name: Present { value: "Advance the admitted fleet revision" },
     id: none,
-    run: live_deploy_advance_fleet_desired_script(),
+    run: gunbc_ci_advance_fleet_desired_script(),
     shell: none,
     env: none,
     working_directory: none,
