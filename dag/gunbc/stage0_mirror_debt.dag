@@ -36,24 +36,44 @@ type MirrorGenerator
 //                                                               path named in gunbc.generated_artifact
 
 type MirrorDebtDisposition
-  = CarriedNoWriter
-  | CarriedEmissionDefective { defect: String }
+  = CarriedAuthorityAdvanced
   | CarriedReasonNotEstablished
 
+// CarriedAuthorityAdvanced: MEASURED as ordinary staleness — the authority moved and the
+// committed mirror did not follow, so a regeneration would close it and nothing more is wrong.
+// Two mechanisms were observed directly in the emitted-versus-committed diff:
+//   MODULE-SET DRIFT     the emitted crate names modules the committed mirror does not, and
+//                        renames one (`expected_red_roster_join` becomes
+//                        `v1_compiler_expected_red_roster_join`). Seen in lib.rs, which is
+//                        short exactly one `pub mod` line, and in the crate-layout mirror,
+//                        whose three string-literal module lists are each behind.
+//   MATCH-GUARD EMISSION the emitter now emits `if matches!(..)` guards on match arms that the
+//                        committed mirror carries unguarded. Seen in
+//                        std_occurrence_binding_candidates.rs, v1_compiler_infer_resolve.rs and
+//                        v1_compiler_emit.rs.
+//
 // CarriedReasonNotEstablished is a DEFERRED question about a real thing, not an invented one:
-// each row below measurably drifts, so a cause exists for every one of them; which cause is
-// simply not established yet. Defaulting these into CarriedNoWriter would assert a cause
-// nobody measured, and authoring bespoke reasons that cannot be defended would be fabricated
-// plausible output. The arm is deliberately cheap to write: forcing an author to produce a
-// reason at the moment of refusal manufactures exactly the plausible-sounding cause this
-// column exists to keep out.
+// every row below measurably drifts, so a cause exists for each; which cause is simply not
+// established yet. These ten were not individually diffed. Defaulting them into
+// CarriedAuthorityAdvanced would generalise from five files to fifteen — the drift ranges over
+// three orders of magnitude (1 to 492 changed lines), so a shared mechanism is a hypothesis and
+// not a measurement. The arm is deliberately cheap to write: forcing an author to produce a
+// reason at the moment of refusal manufactures exactly the plausible-sounding cause this column
+// exists to keep out.
 //
 // SO THE CLAIM THIS CARRIER SUPPORTS IS NARROW, AND IS STATED HERE RATHER THAN LEFT TO BE
 // DISCOVERED AS A WEAKNESS: every drifted path is ACCOUNTED FOR. Not every drifted path is
-// UNDERSTOOD. The count of rows on this arm is reported and ranked every run, and it is
-// NEVER gated — membership is derived, so ordinary authority work grows the population
+// UNDERSTOOD. The count of rows on the unestablished arm is reported and ranked every run, and
+// it is NEVER gated — membership is derived, so ordinary authority work grows the population
 // through no fault of any author, and a monotone cap would make legitimate work unlandable
 // behind a red the contributor cannot close.
+//
+// NO ARM CLAIMS A DEFECTIVE EMISSION. An earlier revision of this file dispositioned the
+// crate-layout mirror as emission-defective, citing a report that the regenerated crate fails
+// rustc E0583. That disposition was withdrawn: the emitted candidate measured here carries the
+// CORRECTED module name, so this file's own evidence does not support the defect claim, and the
+// E0583 report belongs to another session's measurement that was not reproduced here. Filing an
+// unverified defect would have been the fabricated-cause failure this column exists to prevent.
 
 type MirrorDebtRow {
   path: String
@@ -86,22 +106,20 @@ data stage0_mirror_debt_rows: List<MirrorDebtRow> = [
     path: "src/v1/stage0/src/gunbc_stage0_crate_layout_generated.rs",
     authority: SourceModule { name: "gunbc.stage0_crate_layout_generated" },
     generator: Stage0Emit,
-    disposition: CarriedEmissionDefective {
-      defect: "Regenerating this path emits a bare `pub mod` name inside a Rust string literal, so the emitted crate fails rustc E0583 (unresolved module). The bare names sit in a string constant of the committed mirror, which is why no emitter change reaches them and why the repair is a regeneration rather than a code edit. Blocked while regenerating main is refused."
-    }
+    disposition: CarriedAuthorityAdvanced
   },
-  MirrorDebtRow { path: "src/v1/stage0/src/lib.rs", authority: CrateRootAggregate, generator: Stage0Emit, disposition: CarriedReasonNotEstablished },
+  MirrorDebtRow { path: "src/v1/stage0/src/lib.rs", authority: CrateRootAggregate, generator: Stage0Emit, disposition: CarriedAuthorityAdvanced },
   MirrorDebtRow { path: "src/v1/stage0/src/std_algebra.rs", authority: SourceModule { name: "std.algebra" }, generator: Stage0Emit, disposition: CarriedReasonNotEstablished },
   MirrorDebtRow { path: "src/v1/stage0/src/std_measure.rs", authority: SourceModule { name: "std.measure" }, generator: Stage0Emit, disposition: CarriedReasonNotEstablished },
-  MirrorDebtRow { path: "src/v1/stage0/src/std_occurrence_binding_candidates.rs", authority: SourceModule { name: "std.occurrence_binding_candidates" }, generator: Stage0Emit, disposition: CarriedReasonNotEstablished },
+  MirrorDebtRow { path: "src/v1/stage0/src/std_occurrence_binding_candidates.rs", authority: SourceModule { name: "std.occurrence_binding_candidates" }, generator: Stage0Emit, disposition: CarriedAuthorityAdvanced },
   MirrorDebtRow { path: "src/v1/stage0/src/std_pareto.rs", authority: SourceModule { name: "std.pareto" }, generator: Stage0Emit, disposition: CarriedReasonNotEstablished },
   MirrorDebtRow { path: "src/v1/stage0/src/std_witness_admission.rs", authority: SourceModule { name: "std.witness_admission" }, generator: Stage0Emit, disposition: CarriedReasonNotEstablished },
   MirrorDebtRow { path: "src/v1/stage0/src/v1_compiler_complexity.rs", authority: SourceModule { name: "v1.compiler.complexity" }, generator: Stage0Emit, disposition: CarriedReasonNotEstablished },
-  MirrorDebtRow { path: "src/v1/stage0/src/v1_compiler_emit.rs", authority: SourceModule { name: "v1.compiler.emit" }, generator: Stage0Emit, disposition: CarriedReasonNotEstablished },
+  MirrorDebtRow { path: "src/v1/stage0/src/v1_compiler_emit.rs", authority: SourceModule { name: "v1.compiler.emit" }, generator: Stage0Emit, disposition: CarriedAuthorityAdvanced },
   MirrorDebtRow { path: "src/v1/stage0/src/v1_compiler_emit_rust.rs", authority: SourceModule { name: "v1.compiler.emit_rust" }, generator: Stage0Emit, disposition: CarriedReasonNotEstablished },
   MirrorDebtRow { path: "src/v1/stage0/src/v1_compiler_infer.rs", authority: SourceModule { name: "v1.compiler.infer" }, generator: Stage0Emit, disposition: CarriedReasonNotEstablished },
   MirrorDebtRow { path: "src/v1/stage0/src/v1_compiler_infer_lookup.rs", authority: SourceModule { name: "v1.compiler.infer_lookup" }, generator: Stage0Emit, disposition: CarriedReasonNotEstablished },
-  MirrorDebtRow { path: "src/v1/stage0/src/v1_compiler_infer_resolve.rs", authority: SourceModule { name: "v1.compiler.infer_resolve" }, generator: Stage0Emit, disposition: CarriedReasonNotEstablished },
+  MirrorDebtRow { path: "src/v1/stage0/src/v1_compiler_infer_resolve.rs", authority: SourceModule { name: "v1.compiler.infer_resolve" }, generator: Stage0Emit, disposition: CarriedAuthorityAdvanced },
   MirrorDebtRow { path: "src/v1/stage0/src/v1_compiler_parse.rs", authority: SourceModule { name: "v1.compiler.parse" }, generator: Stage0Emit, disposition: CarriedReasonNotEstablished },
   MirrorDebtRow { path: "src/v1/stage0/src/v1_std_core.rs", authority: SourceModule { name: "v1.std.core" }, generator: Stage0Emit, disposition: CarriedReasonNotEstablished }
 ]
