@@ -33,7 +33,7 @@ jobs:
         id: build_witness_fold
         run: |
           cargo build --release -p v1-compiler --bin claim_executor --bin gunbc
-      - name: "Required CI: parse, regen, regen determinism, witness floor"
+      - name: "Required CI: parse, regen, regen determinism, behavioral receipt, witness floor"
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/claim_executor" --required-ci --source-root "$ROOT/dag" --source-root "$ROOT/src/v2"

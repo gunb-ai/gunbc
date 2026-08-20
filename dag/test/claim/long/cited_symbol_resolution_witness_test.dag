@@ -1,6 +1,7 @@
 module test.claim.long.cited_symbol_resolution_witness_test
 
 import gunbc.ci_layer_roots { witness_layer_roots }
+import gunbc.roster_registry { ByDerivation, RosterRegistration, roster_decl, roster_registry }
 import gunbc.doc_graph_roots {
   hand_authored_cited_symbol_control_declaration_refs,
   hand_authored_doc_declaration_refs,
@@ -18,6 +19,10 @@ import v2.lens.cited_symbol_resolution {
 }
 import v2.lens.enforcement.receipts { enforcement_red_probe_body_leaf }
 import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_live }
+import v2.lens.roster_registry {
+  roster_registry_declaration_refs,
+  roster_registry_declaration_refs_from,
+}
 import v2.std.decl_index { DeclFact, FnItem, decl_facts }
 import v2.std.decl_ref_resolution {
   cited_declaration_ref_refusal_count,
@@ -244,4 +249,41 @@ test fn cited_symbol_refuses_named_field_absent() -> Bool {
     DeclarationRefDeclarationAbsent { reference: _ } => false
     DeclarationRefAmbiguous { reference: _, candidates: _ } => false
   }
+}
+
+data roster_registry_ref_witness_note: String = "The roster registry joined this lens's production population because a registration named a deleted producer and nothing noticed (cited_symbol_roster_registry_widening_note, v2.lens.cited_symbol_resolution). These two witnesses are that widening's evidence, and they are a PAIR by DESIGN 4b(1): the green measures the live registry, and the red plants the exact defect that shipped — a ByDerivation predicate naming a declaration that does not exist — so the green cannot pass by measuring an empty population or a resolver that resolves everything. The red is constructed rather than drawn from history so it stays discriminating after the live defect is repaired; it does not retire when production goes green (4b(4))."
+
+test fn roster_registry_declaration_refs_all_resolve() -> Bool {
+  let pool = hand_authored_works_resolution_pool_roots()
+  cited_declaration_ref_refusal_count(
+    refs: roster_registry_declaration_refs(),
+    facts: decl_facts(pool_roots: pool),
+    modules: module_declaration_facts_live(pool_roots: pool)
+  ) == 0
+}
+
+test fn roster_registry_ref_population_is_not_empty() -> Bool {
+  length(xs: roster_registry_declaration_refs()) >= length(xs: roster_registry)
+}
+
+test fn roster_registry_dangling_predicate_red_control_refuses() -> Bool {
+  let planted = [
+    RosterRegistration {
+      roster: roster_decl(module_path: "v2.std.node", decl_name: "NodeKind"),
+      unit_kind: "planted control unit",
+      membership: ByDerivation {
+        predicate: roster_decl(
+          module_path: "v2.std.node",
+          decl_name: "NoSuchProducer_G1_ROSTER_RED"
+        )
+      }
+    }
+  ]
+  let refs = roster_registry_declaration_refs_from(registrations: planted)
+  (length(xs: refs) == 2)
+    && cited_declaration_ref_refusal_count(
+      refs: refs,
+      facts: cited_symbol_long_witness_layer_facts,
+      modules: cited_symbol_long_witness_layer_modules
+    ) == 1
 }
