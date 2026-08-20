@@ -207,7 +207,7 @@ fn branch_interpretation() -> v2.std.runtime.InterpretationAlgebra {
     },
     match: v2.std.runtime.MatchInterpreter {
       choose_arm: v2.std.runtime.runtime_reject_match_arm,
-      identity: ^v2.std.runtime.runtime_reject_match_arm    }
+      identity: ^runtime_reject_match_arm    }
   }
 }
 
@@ -217,7 +217,7 @@ fn branch_interpretation_structure_witness() -> v2.std.runtime.InterpretationStr
     call_primitive: ^branch_call_primitive,
     choose_branch: ^branch_choose_branch_bool_if_else,
     step_loop: ^branch_step_loop,
-    bind_value: ^branch_bind_value,    choose_arm: ^v2.std.runtime.runtime_reject_match_arm
+    bind_value: ^branch_bind_value,    choose_arm: ^runtime_reject_match_arm
   }
 }
 

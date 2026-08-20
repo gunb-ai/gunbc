@@ -346,23 +346,23 @@ fn tcc_interp_stub_allocate_body() -> v2.std.runtime.InterpretationAlgebra {
     },
     transform: v2.std.runtime.TransformInterpreter {
       call_primitive: v2.extdeps.runtimes.v2_evaluator.v2_eval_call_primitive,
-      identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_call_primitive
+      identity: ^v2_eval_call_primitive
     },
     branch: v2.std.runtime.BranchInterpreter {
       choose_branch: v2.extdeps.runtimes.v2_evaluator.v2_eval_choose_branch,
-      identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_choose_branch
+      identity: ^v2_eval_choose_branch
     },
     loop: v2.std.runtime.LoopInterpreter {
       step_loop: v2.extdeps.runtimes.v2_evaluator.v2_eval_step_loop,
-      identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_step_loop
+      identity: ^v2_eval_step_loop
     },
     bind: v2.std.runtime.BindInterpreter {
       bind_value: v2.extdeps.runtimes.v2_evaluator.v2_eval_bind_value,
-      identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_bind_value
+      identity: ^v2_eval_bind_value
     },
     match: v2.std.runtime.MatchInterpreter {
       choose_arm: v2.std.runtime.runtime_reject_match_arm,
-      identity: ^v2.std.runtime.runtime_reject_match_arm    }
+      identity: ^runtime_reject_match_arm    }
   }
 }
 
@@ -370,7 +370,7 @@ fn tcc_interp_stub_call_body() -> v2.std.runtime.InterpretationAlgebra {
   v2.std.runtime.InterpretationAlgebra {
     value: v2.std.runtime.ValueInterpreter {
       allocate_literal: v2.extdeps.runtimes.v2_evaluator.v2_eval_allocate_literal,
-      identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_allocate_literal
+      identity: ^v2_eval_allocate_literal
     },
     transform: v2.std.runtime.TransformInterpreter {
       call_primitive: tcc_stub_call_b,
@@ -378,39 +378,39 @@ fn tcc_interp_stub_call_body() -> v2.std.runtime.InterpretationAlgebra {
     },
     branch: v2.std.runtime.BranchInterpreter {
       choose_branch: v2.extdeps.runtimes.v2_evaluator.v2_eval_choose_branch,
-      identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_choose_branch
+      identity: ^v2_eval_choose_branch
     },
     loop: v2.std.runtime.LoopInterpreter {
       step_loop: v2.extdeps.runtimes.v2_evaluator.v2_eval_step_loop,
-      identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_step_loop
+      identity: ^v2_eval_step_loop
     },
     bind: v2.std.runtime.BindInterpreter {
       bind_value: v2.extdeps.runtimes.v2_evaluator.v2_eval_bind_value,
-      identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_bind_value
+      identity: ^v2_eval_bind_value
     },
     match: v2.std.runtime.MatchInterpreter {
       choose_arm: v2.std.runtime.runtime_reject_match_arm,
-      identity: ^v2.std.runtime.runtime_reject_match_arm    }
+      identity: ^runtime_reject_match_arm    }
   }
 }
 
 fn tcc_witness_stub_allocate_body() -> v2.std.runtime.InterpretationStructureWitness {
   v2.std.runtime.InterpretationStructureWitness {
     allocate_literal: ^tcc_stub_alloc_a,
-    call_primitive: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_call_primitive,
-    choose_branch: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_choose_branch,
-    step_loop: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_step_loop,
-    bind_value: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_bind_value,    choose_arm: ^v2.std.runtime.runtime_reject_match_arm
+    call_primitive: ^v2_eval_call_primitive,
+    choose_branch: ^v2_eval_choose_branch,
+    step_loop: ^v2_eval_step_loop,
+    bind_value: ^v2_eval_bind_value,    choose_arm: ^runtime_reject_match_arm
   }
 }
 
 fn tcc_witness_stub_call_body() -> v2.std.runtime.InterpretationStructureWitness {
   v2.std.runtime.InterpretationStructureWitness {
-    allocate_literal: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_allocate_literal,
+    allocate_literal: ^v2_eval_allocate_literal,
     call_primitive: ^tcc_stub_call_b,
-    choose_branch: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_choose_branch,
-    step_loop: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_step_loop,
-    bind_value: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_bind_value,    choose_arm: ^v2.std.runtime.runtime_reject_match_arm
+    choose_branch: ^v2_eval_choose_branch,
+    step_loop: ^v2_eval_step_loop,
+    bind_value: ^v2_eval_bind_value,    choose_arm: ^runtime_reject_match_arm
   }
 }
 
@@ -450,43 +450,43 @@ fn tcc_stub_choose_arm(
 
 fn tcc_interp_match_default_body() -> v2.std.runtime.InterpretationAlgebra {
   v2.std.runtime.InterpretationAlgebra {
-    value: v2.std.runtime.ValueInterpreter { allocate_literal: v2.extdeps.runtimes.v2_evaluator.v2_eval_allocate_literal, identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_allocate_literal },
-    transform: v2.std.runtime.TransformInterpreter { call_primitive: v2.extdeps.runtimes.v2_evaluator.v2_eval_call_primitive, identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_call_primitive },
-    branch: v2.std.runtime.BranchInterpreter { choose_branch: v2.extdeps.runtimes.v2_evaluator.v2_eval_choose_branch, identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_choose_branch },
-    loop: v2.std.runtime.LoopInterpreter { step_loop: v2.extdeps.runtimes.v2_evaluator.v2_eval_step_loop, identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_step_loop },
-    bind: v2.std.runtime.BindInterpreter { bind_value: v2.extdeps.runtimes.v2_evaluator.v2_eval_bind_value, identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_bind_value },
-    match: v2.std.runtime.MatchInterpreter { choose_arm: v2.std.runtime.runtime_reject_match_arm, identity: ^v2.std.runtime.runtime_reject_match_arm }
+    value: v2.std.runtime.ValueInterpreter { allocate_literal: v2.extdeps.runtimes.v2_evaluator.v2_eval_allocate_literal, identity: ^v2_eval_allocate_literal },
+    transform: v2.std.runtime.TransformInterpreter { call_primitive: v2.extdeps.runtimes.v2_evaluator.v2_eval_call_primitive, identity: ^v2_eval_call_primitive },
+    branch: v2.std.runtime.BranchInterpreter { choose_branch: v2.extdeps.runtimes.v2_evaluator.v2_eval_choose_branch, identity: ^v2_eval_choose_branch },
+    loop: v2.std.runtime.LoopInterpreter { step_loop: v2.extdeps.runtimes.v2_evaluator.v2_eval_step_loop, identity: ^v2_eval_step_loop },
+    bind: v2.std.runtime.BindInterpreter { bind_value: v2.extdeps.runtimes.v2_evaluator.v2_eval_bind_value, identity: ^v2_eval_bind_value },
+    match: v2.std.runtime.MatchInterpreter { choose_arm: v2.std.runtime.runtime_reject_match_arm, identity: ^runtime_reject_match_arm }
   }
 }
 
 fn tcc_interp_match_stub_body() -> v2.std.runtime.InterpretationAlgebra {
   v2.std.runtime.InterpretationAlgebra {
-    value: v2.std.runtime.ValueInterpreter { allocate_literal: v2.extdeps.runtimes.v2_evaluator.v2_eval_allocate_literal, identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_allocate_literal },
-    transform: v2.std.runtime.TransformInterpreter { call_primitive: v2.extdeps.runtimes.v2_evaluator.v2_eval_call_primitive, identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_call_primitive },
-    branch: v2.std.runtime.BranchInterpreter { choose_branch: v2.extdeps.runtimes.v2_evaluator.v2_eval_choose_branch, identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_choose_branch },
-    loop: v2.std.runtime.LoopInterpreter { step_loop: v2.extdeps.runtimes.v2_evaluator.v2_eval_step_loop, identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_step_loop },
-    bind: v2.std.runtime.BindInterpreter { bind_value: v2.extdeps.runtimes.v2_evaluator.v2_eval_bind_value, identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_bind_value },
+    value: v2.std.runtime.ValueInterpreter { allocate_literal: v2.extdeps.runtimes.v2_evaluator.v2_eval_allocate_literal, identity: ^v2_eval_allocate_literal },
+    transform: v2.std.runtime.TransformInterpreter { call_primitive: v2.extdeps.runtimes.v2_evaluator.v2_eval_call_primitive, identity: ^v2_eval_call_primitive },
+    branch: v2.std.runtime.BranchInterpreter { choose_branch: v2.extdeps.runtimes.v2_evaluator.v2_eval_choose_branch, identity: ^v2_eval_choose_branch },
+    loop: v2.std.runtime.LoopInterpreter { step_loop: v2.extdeps.runtimes.v2_evaluator.v2_eval_step_loop, identity: ^v2_eval_step_loop },
+    bind: v2.std.runtime.BindInterpreter { bind_value: v2.extdeps.runtimes.v2_evaluator.v2_eval_bind_value, identity: ^v2_eval_bind_value },
     match: v2.std.runtime.MatchInterpreter { choose_arm: tcc_stub_choose_arm, identity: ^tcc_stub_choose_arm }
   }
 }
 
 fn tcc_witness_match_default_body() -> v2.std.runtime.InterpretationStructureWitness {
   v2.std.runtime.InterpretationStructureWitness {
-    allocate_literal: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_allocate_literal,
-    call_primitive: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_call_primitive,
-    choose_branch: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_choose_branch,
-    step_loop: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_step_loop,
-    bind_value: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_bind_value,    choose_arm: ^v2.std.runtime.runtime_reject_match_arm
+    allocate_literal: ^v2_eval_allocate_literal,
+    call_primitive: ^v2_eval_call_primitive,
+    choose_branch: ^v2_eval_choose_branch,
+    step_loop: ^v2_eval_step_loop,
+    bind_value: ^v2_eval_bind_value,    choose_arm: ^runtime_reject_match_arm
   }
 }
 
 fn tcc_witness_match_stub_body() -> v2.std.runtime.InterpretationStructureWitness {
   v2.std.runtime.InterpretationStructureWitness {
-    allocate_literal: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_allocate_literal,
-    call_primitive: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_call_primitive,
-    choose_branch: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_choose_branch,
-    step_loop: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_step_loop,
-    bind_value: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_bind_value,
+    allocate_literal: ^v2_eval_allocate_literal,
+    call_primitive: ^v2_eval_call_primitive,
+    choose_branch: ^v2_eval_choose_branch,
+    step_loop: ^v2_eval_step_loop,
+    bind_value: ^v2_eval_bind_value,
     choose_arm: ^tcc_stub_choose_arm  }
 }
 

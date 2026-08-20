@@ -87,7 +87,7 @@ fn effect_io_eval_interpretation() -> v2.std.runtime.InterpretationAlgebra {
     branch: v2.std.runtime.BranchInterpreter { choose_branch: effect_io_eval_reject_branch, identity: ^effect_io_eval_reject_branch },
     loop: v2.std.runtime.LoopInterpreter { step_loop: effect_io_eval_step_loop, identity: ^effect_io_eval_step_loop },
     bind: v2.std.runtime.BindInterpreter { bind_value: effect_io_eval_bind_value, identity: ^effect_io_eval_bind_value },
-    match: v2.std.runtime.MatchInterpreter { choose_arm: v2.std.runtime.runtime_reject_match_arm, identity: ^v2.std.runtime.runtime_reject_match_arm }
+    match: v2.std.runtime.MatchInterpreter { choose_arm: v2.std.runtime.runtime_reject_match_arm, identity: ^runtime_reject_match_arm }
   }
 }
 
@@ -97,7 +97,7 @@ fn effect_io_eval_structure_witness() -> v2.std.runtime.InterpretationStructureW
     call_primitive: ^effect_io_eval_reject_primitive,
     choose_branch: ^effect_io_eval_reject_branch,
     step_loop: ^effect_io_eval_step_loop,
-    bind_value: ^effect_io_eval_bind_value,    choose_arm: ^v2.std.runtime.runtime_reject_match_arm
+    bind_value: ^effect_io_eval_bind_value,    choose_arm: ^runtime_reject_match_arm
   }
 }
 

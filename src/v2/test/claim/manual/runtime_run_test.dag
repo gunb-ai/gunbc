@@ -113,7 +113,7 @@ fn runtime_run_interpretation() -> v2.std.runtime.InterpretationAlgebra {
     branch: v2.std.runtime.BranchInterpreter { choose_branch: runtime_run_reject_branch, identity: ^runtime_run_reject_branch },
     loop: v2.std.runtime.LoopInterpreter { step_loop: runtime_run_reject_loop, identity: ^runtime_run_reject_loop },
     bind: v2.std.runtime.BindInterpreter { bind_value: runtime_run_bind_value, identity: ^runtime_run_bind_value },
-    match: v2.std.runtime.MatchInterpreter { choose_arm: v2.std.runtime.runtime_reject_match_arm, identity: ^v2.std.runtime.runtime_reject_match_arm }
+    match: v2.std.runtime.MatchInterpreter { choose_arm: v2.std.runtime.runtime_reject_match_arm, identity: ^runtime_reject_match_arm }
   }
 }
 
@@ -123,7 +123,7 @@ fn runtime_run_structure_witness() -> v2.std.runtime.InterpretationStructureWitn
     call_primitive: ^runtime_run_reject_primitive,
     choose_branch: ^runtime_run_reject_branch,
     step_loop: ^runtime_run_reject_loop,
-    bind_value: ^runtime_run_bind_value,    choose_arm: ^v2.std.runtime.runtime_reject_match_arm
+    bind_value: ^runtime_run_bind_value,    choose_arm: ^runtime_reject_match_arm
   }
 }
 

@@ -114,7 +114,7 @@ fn loop_eval_interpretation() -> v2.std.runtime.InterpretationAlgebra {
     branch: v2.std.runtime.BranchInterpreter { choose_branch: loop_eval_choose_branch, identity: ^loop_eval_choose_branch },
     loop: v2.std.runtime.LoopInterpreter { step_loop: loop_eval_step_loop_continue, identity: ^loop_eval_step_loop_continue },
     bind: v2.std.runtime.BindInterpreter { bind_value: loop_eval_bind_value, identity: ^loop_eval_bind_value },
-    match: v2.std.runtime.MatchInterpreter { choose_arm: v2.std.runtime.runtime_reject_match_arm, identity: ^v2.std.runtime.runtime_reject_match_arm }
+    match: v2.std.runtime.MatchInterpreter { choose_arm: v2.std.runtime.runtime_reject_match_arm, identity: ^runtime_reject_match_arm }
   }
 }
 
@@ -124,7 +124,7 @@ fn loop_eval_interpretation_structure_witness() -> v2.std.runtime.Interpretation
     call_primitive: ^loop_eval_call_primitive,
     choose_branch: ^loop_eval_choose_branch,
     step_loop: ^loop_eval_step_loop_continue,
-    bind_value: ^loop_eval_bind_value,    choose_arm: ^v2.std.runtime.runtime_reject_match_arm
+    bind_value: ^loop_eval_bind_value,    choose_arm: ^runtime_reject_match_arm
   }
 }
 

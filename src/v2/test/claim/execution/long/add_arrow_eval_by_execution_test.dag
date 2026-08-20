@@ -90,7 +90,7 @@ fn add_arrow_eval_lazy_arm_interpretation() -> v2.std.runtime.InterpretationAlge
   v2.std.runtime.InterpretationAlgebra {
     value: v2.std.runtime.ValueInterpreter {
       allocate_literal: v2.extdeps.runtimes.v2_evaluator.v2_eval_allocate_literal,
-      identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_allocate_literal
+      identity: ^v2_eval_allocate_literal
     },
     transform: v2.std.runtime.TransformInterpreter {
       call_primitive: add_arrow_eval_call_primitive,
@@ -110,7 +110,7 @@ fn add_arrow_eval_lazy_arm_interpretation() -> v2.std.runtime.InterpretationAlge
     },
     match: v2.std.runtime.MatchInterpreter {
       choose_arm: v2.std.runtime.runtime_reject_match_arm,
-      identity: ^v2.std.runtime.runtime_reject_match_arm    }
+      identity: ^runtime_reject_match_arm    }
   }
 }
 
@@ -690,12 +690,12 @@ fn add_arrow_eval_step_loop_continue(node: v2.std.node.Node, _env: v2.std.runtim
 
 fn add_arrow_eval_lazy_arm_loop_interpretation() -> v2.std.runtime.InterpretationAlgebra {
   v2.std.runtime.InterpretationAlgebra {
-    value: v2.std.runtime.ValueInterpreter { allocate_literal: v2.extdeps.runtimes.v2_evaluator.v2_eval_allocate_literal, identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_allocate_literal },
+    value: v2.std.runtime.ValueInterpreter { allocate_literal: v2.extdeps.runtimes.v2_evaluator.v2_eval_allocate_literal, identity: ^v2_eval_allocate_literal },
     transform: v2.std.runtime.TransformInterpreter { call_primitive: add_arrow_eval_call_primitive, identity: ^add_arrow_eval_call_primitive },
     branch: v2.std.runtime.BranchInterpreter { choose_branch: add_arrow_eval_choose_first_arm, identity: ^add_arrow_eval_choose_first_arm },
     loop: v2.std.runtime.LoopInterpreter { step_loop: add_arrow_eval_step_loop_continue, identity: ^add_arrow_eval_step_loop_continue },
     bind: v2.std.runtime.BindInterpreter { bind_value: add_arrow_eval_bind_value, identity: ^add_arrow_eval_bind_value },
-    match: v2.std.runtime.MatchInterpreter { choose_arm: v2.std.runtime.runtime_reject_match_arm, identity: ^v2.std.runtime.runtime_reject_match_arm }  }
+    match: v2.std.runtime.MatchInterpreter { choose_arm: v2.std.runtime.runtime_reject_match_arm, identity: ^runtime_reject_match_arm }  }
 }
 
 fn add_arrow_eval_lazy_arm_loop_node() -> v2.std.node.Node {

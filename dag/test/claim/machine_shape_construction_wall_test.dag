@@ -27,7 +27,7 @@ fn ms_call(callee: v2.std.node.Symbol, arg: Node) -> Node {
 
 fn machine_shape_literal_fixture() -> Node {
   ms_call(
-    callee: ^v2.lens.registry.MachineShape,
+    callee: ^MachineShape,
     arg: v2.std.node.Node {
       kind: v2.std.node.TypeNode { connective: Conj },
       children: [],

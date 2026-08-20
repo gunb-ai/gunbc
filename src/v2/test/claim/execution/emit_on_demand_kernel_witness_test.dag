@@ -219,7 +219,7 @@ fn kernel_cached_agreement_pass(workspace: String) -> Bool {
     run: v2.compiler.emit_host.run_test_claim_from_source_emit_vs_eval_cached(
       subject: kernel_add_subject(
         call_primitive: v2.test.execution.emit_host_add_equals_eval.emit_eval_call_primitive_five,
-        call_primitive_identity: ^v2.test.execution.emit_host_add_equals_eval.emit_eval_call_primitive_five
+        call_primitive_identity: ^emit_eval_call_primitive_five
       ),
       source_outcome: v2.compiler.emit.emit(tree: v2.test.execution.emit_host_add_equals_eval.emit_eval_subject_tree(), target: v2.extdeps.languages.rust.rust_target_model_staging()),
       target: v2.extdeps.languages.rust.rust_target_model_staging(),
@@ -234,7 +234,7 @@ fn kernel_cached_wrong_oracle_mismatch(workspace: String) -> Bool {
     run: v2.compiler.emit_host.run_test_claim_from_source_emit_vs_eval_cached(
       subject: kernel_add_subject(
         call_primitive: v2.test.execution.emit_host_add_equals_eval.emit_eval_call_primitive_six,
-        call_primitive_identity: ^v2.test.execution.emit_host_add_equals_eval.emit_eval_call_primitive_six
+        call_primitive_identity: ^emit_eval_call_primitive_six
       ),
       source_outcome: v2.compiler.emit.emit(tree: v2.test.execution.emit_host_add_equals_eval.emit_eval_subject_tree(), target: v2.extdeps.languages.rust.rust_target_model_staging()),
       target: v2.extdeps.languages.rust.rust_target_model_staging(),

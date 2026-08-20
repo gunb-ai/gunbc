@@ -135,7 +135,7 @@ fn emit_loop_eval_interpretation() -> v2.std.runtime.InterpretationAlgebra {
     bind: v2.std.runtime.BindInterpreter { bind_value: emit_loop_eval_bind_value, identity: ^emit_loop_eval_bind_value },
     match: v2.std.runtime.MatchInterpreter {
       choose_arm: v2.std.runtime.runtime_reject_match_arm,
-      identity: ^v2.std.runtime.runtime_reject_match_arm    }
+      identity: ^runtime_reject_match_arm    }
   }
 }
 
@@ -145,7 +145,7 @@ fn emit_loop_eval_structure_witness() -> v2.std.runtime.InterpretationStructureW
     call_primitive: ^emit_loop_eval_call_primitive,
     choose_branch: ^emit_loop_eval_choose_branch,
     step_loop: ^emit_loop_eval_step_loop,
-    bind_value: ^emit_loop_eval_bind_value,    choose_arm: ^v2.std.runtime.runtime_reject_match_arm
+    bind_value: ^emit_loop_eval_bind_value,    choose_arm: ^runtime_reject_match_arm
   }
 }
 

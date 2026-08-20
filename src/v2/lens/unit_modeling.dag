@@ -35,8 +35,8 @@ data unit_field_rows: List<UnitFieldRow> = [
   UnitFieldRow { field: ^hardware_threads, carrier: ^HardwareThreadCount },
   UnitFieldRow { field: ^thread_count, carrier: ^HardwareThreadCount },
 
-  UnitFieldRow { field: ^microvolts, carrier: ^v2.extdeps.formats.spice.Voltage },
-  UnitFieldRow { field: ^microamperes, carrier: ^v2.extdeps.formats.spice.Current },
+  UnitFieldRow { field: ^microvolts, carrier: ^Voltage },
+  UnitFieldRow { field: ^microamperes, carrier: ^Current },
   UnitFieldRow { field: ^microohms, carrier: ^ResistanceMicro },
   UnitFieldRow { field: ^microfarads, carrier: ^CapacitanceMicro },
   UnitFieldRow { field: ^microhenries, carrier: ^InductanceMicro },
