@@ -1140,11 +1140,17 @@ than argued.
    emitted and committed basename sets differ, and that arm **returns early** — so
    `compare_generated_surfaces` is never called and **no content comparison runs at all**. The
    population gate is a hard fail-fast ahead of every content check, not a parallel signal. The
-   receipt written on that path then asserts, as facts, five values nothing computed:
-   `committed_generated_digest` and `candidate_generated_digest` set to the literal string
-   `"refused:population"`, `changed_paths` set to an **actually-empty** `Vec`, and
-   `first_generation_equal` / `fixed_point_equal` set to **`false`** — a Bool whose `false` reads
-   as *measured and unequal*, never as *not measured*. **Harm:** a receipt reader — including
+   receipt written on that path then asserts, as facts, five values nothing computed, and they are
+   **not equally bad**. `first_generation_equal` and `fixed_point_equal` are set to **`false`** —
+   and a Bool has no arm for *not measured*, so `false` reads as **measured and unequal**: the
+   receipt asserts a negative RESULT for a comparison that never ran. The other three are at least
+   self-describing to a careful reader — both digests carry the literal sentinel
+   `"refused:population"`, and `changed_paths` is an **actually-empty** `Vec` rather than a typed
+   absence. **The compounding is the real harm:** this receipt shape was live *while* the
+   population gate was masking content drift, so a reader held a receipt asserting
+   `fixed_point_equal=false` — measured, unequal — produced by a run that compared nothing. Two
+   defects that individually mislead, composed into an artifact that is confidently wrong in the
+   format designed to be believed. **Harm:** a receipt reader — including
    anything keying off `changed_paths.is_empty()` — cannot distinguish **no drift** from **drift
    never checked**, and the two have opposite remedies. **Measured consequence:** at
    `9b29509e5c9` the mirror `infer_method_args_with_fold` was carrying **six parameters against
@@ -1160,7 +1166,10 @@ than argued.
    no digest, equality or changed-path fields, rather than the same record filled with sentinels.
    **Next trigger:** `RegenReceipt` splits into computed and refused variants, at which point the
    `"refused:population"` sentinel and the two fabricated `false`s become unwritable rather than
-   discouraged.
+   discouraged. **Under the convergence model the operator ruled for (2026-08-20) that split is not
+   optional:** a *converged* verdict and a *could-not-determine* must not inhabit one Bool, which is
+   the same hazard on the read-back side — a converged verdict derived from the staged candidate
+   rather than the committed tree would report success while the committed files stayed stale.
 
 
 ## 12. Proposed sequencing (reconciled with the independent review; for operator sign-off)
