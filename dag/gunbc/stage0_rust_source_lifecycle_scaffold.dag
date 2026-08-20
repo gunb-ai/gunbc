@@ -200,6 +200,16 @@ fn count_observed_manifest_duplicate_excess(
   )
 }
 
+// A CARGO TARGET MUST BE NAMED BY AN AUTHORITY, NOT MERELY FALL UNDER THE EMITTER'S COMPLEMENT.
+// CargoTargetMissingLifecycleDisposition asks whether some authority accounts for a [[bin]]
+// path. It formerly compared against the whole lifecycle population, which was safe while the
+// generated half was an enumerated roster. It is not safe now: the derived half claims EVERY
+// unclaimed direct child of the stage0 root, so any new [[bin]] under that root would answer
+// "dispositioned" by construction and the refusal could never fire again. That is the DESIGN 5
+// absorbing fallback exactly -- the arm widens instead of refusing, and its firing rate goes to
+// zero by construction rather than because the defect stopped occurring. Caught by execution:
+// scaffold_observed_cargo_role_does_not_supply_lifecycle_disposition went red on the floor while
+// two reviews passed over the change. The comparison is against the AUTHORED classification.
 fn rust_source_manifest_state_verdict(observation: RustSourceHostObservation) -> RustSourceManifestStateVerdict {
   match observation {
     RustManifestReadRefused { detail: detail } =>
@@ -241,7 +251,7 @@ fn rust_source_manifest_state_verdict(observation: RustSourceHostObservation) ->
         )
         let cargo_without_disposition = first_untracked_cargo_path(
           cargo_bin_repo_paths: cargo_bin_repo_paths,
-          tracked_paths: file_grain_paths
+          tracked_paths: non_generated_classified_repo_paths()
         )
         if length(xs: cargo_bin_repo_paths) == 0 {
           ManifestStateScaffoldRefused { cause: HostManifestParseRefused { detail: "observed manifest missing cargo_bin_repo_paths evidence" } }
