@@ -8,7 +8,7 @@ import std.pareto {
   SelectionAxis, AxisReading, ParetoEntry, ParetoStanding, Domination,
   ProvisionallyNonDominated, DominatedBy, IncomparablePendingEvidence, SelectionRefused,
   PairStanding, PairDominates, PairNoDominance, PairRefused,
-  compare_pair, pair_dominates, entry_standing, pareto_label,
+  compare_pair, entry_standing, pareto_label,
 }
 
 // SYNTHETIC FIXTURES ONLY. The spine is domain-blind, so its witness plants exact entries
@@ -250,6 +250,12 @@ test fn witness_missing_inputs_neither_dominate_nor_die() -> Bool {
   standing_is_incomparable(s: pending) && cheap_unmoved && pareto_label(s: pending) == "not computable"
 }
 
+// RE-ENROLLED 2026-08-19 against the standing path: pair_dominates is deleted.
+// Its Bool answered false for PairRefused, so the hole_never_dominates line
+// below used to be satisfied by the very conflation this control was written to
+// catch. The hole must not merely fail to dominate — the comparison must
+// REFUSE, and the arm is named.
+//
 // CONTROL 4 - THE FAIL-CLOSED DISCRIMINATOR. An entry that claims complete inputs while
 // lacking a compared reading REFUSES the pair, and the refusal reaches the standing as
 // incomparable rather than being skipped: a partial comparison never silently survives.
@@ -262,7 +268,11 @@ test fn witness_absent_reading_refuses_the_pair() -> Bool {
     PairNoDominance => false,
   }
   let standing_surfaces_it = standing_is_incomparable(s: entry_standing(subject: entry_reading_hole, field: holed_field, axes: both_axes, sensitivities: spine_sensitivities))
-  let hole_never_dominates = pair_dominates(a: entry_reading_hole, b: entry_dear_weak, axes: both_axes) == false
+  let hole_never_dominates = match compare_pair(a: entry_reading_hole, b: entry_dear_weak, axes: both_axes) {
+    PairRefused { cause } => true,
+    PairDominates { winning_axes } => false,
+    PairNoDominance => false,
+  }
   let hole_poisons_the_field = standing_is_incomparable(s: entry_standing(subject: entry_cheap_strong, field: holed_field, axes: both_axes, sensitivities: spine_sensitivities))
   let hole_poisons_from_the_front = standing_is_incomparable(s: entry_standing(subject: entry_dear_weak, field: holed_field_hole_first, axes: both_axes, sensitivities: spine_sensitivities))
   pair_refuses && standing_surfaces_it && hole_never_dominates && hole_poisons_the_field && hole_poisons_from_the_front
@@ -271,9 +281,21 @@ test fn witness_absent_reading_refuses_the_pair() -> Bool {
 // CONTROL 5. Orientation: the same pair flips winner when the axis flips direction, so
 // the axis goal orientation is provably consulted rather than decorative.
 test fn witness_axis_orientation_is_consulted() -> Bool {
-  pair_dominates(a: entry_cheap_strong, b: entry_dear_strong, axes: cost_only)
-    && pair_dominates(a: entry_dear_strong, b: entry_cheap_strong, axes: power_only)
-    && pair_dominates(a: entry_dear_strong, b: entry_cheap_strong, axes: cost_only) == false
+  standing_dominates(a: entry_cheap_strong, b: entry_dear_strong, axes: cost_only)
+    && standing_dominates(a: entry_dear_strong, b: entry_cheap_strong, axes: power_only)
+    && !standing_dominates(a: entry_dear_strong, b: entry_cheap_strong, axes: cost_only)
+}
+
+// The local helper the deleted pair_dominates used to be, EXCEPT that it is
+// local to a witness that has already established what a refusal does: a
+// refusal here is false because this claim compares two entries with complete
+// readings, and a refusal would be a fixture defect the claim above catches.
+fn standing_dominates(a: ParetoEntry, b: ParetoEntry, axes: List<SelectionAxis>) -> Bool {
+  match compare_pair(a: a, b: b, axes: axes) {
+    PairDominates { winning_axes } => true,
+    PairNoDominance => false,
+    PairRefused { cause } => false,
+  }
 }
 
 // CONTROL 6 - LABEL CARRIES NO AUTHORITY. Two entries share the display label "twin" with

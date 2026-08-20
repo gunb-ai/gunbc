@@ -1618,7 +1618,7 @@ fn project_set_collection_type_node(
                 f: fn(elem_projected) {
                   Accepted {
                     value: target_type_expr_instantiation_emitted(
-                      form: choice.form.apply,
+                      form: projection.instantiation_form,
                       head: target_type_expr_atom_emitted(
                         form: projection.atom_form,
                         identity: choice.form.apply.surface
@@ -1690,7 +1690,7 @@ fn project_free_monoid_via_vec_choice(
             f: fn(elem_storage) {
               Accepted {
                 value: target_type_expr_instantiation_emitted(
-                  form: choice.form.apply,
+                  form: projection.instantiation_form,
                   head: target_type_expr_atom_emitted(
                     form: projection.atom_form,
                     identity: choice.form.apply.surface

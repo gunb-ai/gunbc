@@ -14,7 +14,7 @@ import extdeps.git {
   git_remote_url_config_key,
 }
 import extdeps.github.github { github_https_clone_url }
-import gunbc.roadmap_dashboard_instance { srv1_green_dashboard_instance }
+import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.live_deploy.spec {
   OwnedArtifactKind,
   GunbcSourceTree,
@@ -28,7 +28,7 @@ import gunbc.live_deploy.spec {
   DeployedTreeRemoteUnit,
   DeploymentArtifactStep,
   deployment_owned_steps,
-  srv1_green_deployment_names,
+  srv1_live_deployment_names,
 }
 
 import gunbc.repository { gunbc_repository }
@@ -46,9 +46,9 @@ import gunbc.deployed_tree_remote {
   deployed_tree_remote_name,
 }
 
-fn green_at() -> GitRemoteUrlAt {
+fn other_at() -> GitRemoteUrlAt {
   GitRemoteUrlAt {
-    repository_path: "/opt/gunbc-green/gunbc" as FilePath,
+    repository_path: "/opt/gunbc-lab/gunbc" as FilePath,
     name: deployed_tree_remote_name,
   }
 }
@@ -74,20 +74,20 @@ fn observed_url(o: GitRemoteUrlObservation) -> String {
 // `remote get-url origin (exit=2)` with `error: No such remote 'origin'`.
 test fn an_unconfigured_remote_is_absent_not_unusable() -> Bool {
   observed_url(o: git_remote_url_observation_of(
-    at: green_at(), exit_code: 2, stderr: "error: No such remote 'origin'", url: "",
+    at: other_at(), exit_code: 2, stderr: "error: No such remote 'origin'", url: "",
   )) == "<absent>"
 }
 
 test fn a_path_that_is_not_a_repository_is_unusable_not_absent() -> Bool {
   observed_url(o: git_remote_url_observation_of(
-    at: green_at(), exit_code: 128, stderr: "fatal: not a git repository", url: "",
+    at: other_at(), exit_code: 128, stderr: "fatal: not a git repository", url: "",
   )) == "<unusable>"
 }
 
 // The pair asserted together, because each alone passes under a decoder that answers one constant.
 test fn absent_and_unusable_are_distinct_observations() -> Bool {
-  let absent = observed_url(o: git_remote_url_observation_of(at: green_at(), exit_code: 2, stderr: "", url: ""))
-  let unusable = observed_url(o: git_remote_url_observation_of(at: green_at(), exit_code: 128, stderr: "", url: ""))
+  let absent = observed_url(o: git_remote_url_observation_of(at: other_at(), exit_code: 2, stderr: "", url: ""))
+  let unusable = observed_url(o: git_remote_url_observation_of(at: other_at(), exit_code: 128, stderr: "", url: ""))
   absent != unusable
 }
 
@@ -95,19 +95,19 @@ test fn absent_and_unusable_are_distinct_observations() -> Bool {
 // print nothing, and an empty string is not an address. Precedent: the same rule in
 // `gunbc.roadmap_publish_observe` `worktree_head_observation_note`.
 test fn a_zero_exit_with_no_output_is_refused_not_an_empty_url() -> Bool {
-  let blank = observed_url(o: git_remote_url_observation_of(at: green_at(), exit_code: 0, stderr: "", url: "   "))
+  let blank = observed_url(o: git_remote_url_observation_of(at: other_at(), exit_code: 0, stderr: "", url: "   "))
   blank == "<refused>"
 }
 
 test fn an_observed_url_is_trimmed() -> Bool {
   observed_url(o: git_remote_url_observation_of(
-    at: green_at(), exit_code: 0, stderr: "", url: "https://github.com/gunb-ai/gunbc.git\n",
+    at: other_at(), exit_code: 0, stderr: "", url: "https://github.com/gunb-ai/gunbc.git\n",
   )) == "https://github.com/gunb-ai/gunbc.git"
 }
 
 // An unrecognised nonzero exit refuses rather than guessing which of the two known causes it was.
 test fn an_unknown_exit_code_is_refused() -> Bool {
-  let unknown = observed_url(o: git_remote_url_observation_of(at: green_at(), exit_code: 7, stderr: "?", url: ""))
+  let unknown = observed_url(o: git_remote_url_observation_of(at: other_at(), exit_code: 7, stderr: "?", url: ""))
   unknown == "<refused>"
 }
 
@@ -121,24 +121,32 @@ test fn the_config_key_is_projected_from_the_remote_name() -> Bool {
 // pass against a hand-spelled URL too. Both sides are asserted: the exact bytes, and that those
 // bytes are what the projection produces.
 test fn the_desired_url_is_the_derived_public_clone_url() -> Bool {
-  let desired = deployed_tree_remote_desired(repository_path: "/opt/gunbc-green/gunbc" as FilePath)
+  let desired = deployed_tree_remote_desired(repository_path: "/opt/gunbc-lab/gunbc" as FilePath)
   let url = desired.url as String
   let derived = github_https_clone_url(repo: gunbc_repository) as String
   url == derived && url == "https://github.com/gunb-ai/gunbc.git"
 }
 
-// Identity is repository x remote name. Two slots on one host both call their remote `origin`, so a
-// key that dropped the repository would fuse blue's member and green's into one.
-test fn identity_separates_two_slots_on_one_host() -> Bool {
-  let green = deployed_tree_remote_desired(repository_path: "/opt/gunbc-green/gunbc" as FilePath)
-  let blue = deployed_tree_remote_desired(repository_path: "/opt/gunbc/gunbc" as FilePath)
-  let gp = green.at.repository_path as String
-  let bp = blue.at.repository_path as String
-  let gn = green.at.name as String
-  let bn = blue.at.name as String
-  let gu = green.url as String
-  let bu = blue.url as String
-  gp != bp && gn == bn && gu == bu
+// Identity is repository x remote name. Two instances on one host both call their remote `origin`,
+// so a key that dropped the repository would fuse their members into one.
+// The deleted second slot was this claim's second path, not its subject: the member is keyed on the
+// repository path it is HANDED, so any two distinct paths exercise it, and an arbitrary second path
+// is the better fixture precisely because the law is about the key rather than about any instance.
+// /opt/gunbc-lab/gunbc is NOT srv1-lab's root -- that is
+// gunbc.roadmap_dashboard_instance srv1_dashboard_lab_root, under
+// /home/briansrls/.local/share/gunbc-dashboard-instances -- and an earlier version of this comment
+// called it one, which review caught. It is a synthetic path owned by nothing, chosen only to be
+// distinct from the live root, and it is named as such here so nobody reads it as a live location.
+test fn identity_separates_two_instances_on_one_host() -> Bool {
+  let other = deployed_tree_remote_desired(repository_path: "/opt/gunbc-lab/gunbc" as FilePath)
+  let live = deployed_tree_remote_desired(repository_path: "/opt/gunbc/gunbc" as FilePath)
+  let op = other.at.repository_path as String
+  let lp = live.at.repository_path as String
+  let on = other.at.name as String
+  let ln = live.at.name as String
+  let ou = other.url as String
+  let lu = live.url as String
+  op != lp && on == ln && ou == lu
 }
 
 // ── A zero exit from the setter is not convergence ──────────────────────────────────────────────
@@ -151,7 +159,7 @@ fn exit_is_success(e: ProcessExit) -> Bool {
 }
 
 fn member() -> GitRemoteUrlMember {
-  deployed_tree_remote_desired(repository_path: "/opt/gunbc-green/gunbc" as FilePath)
+  deployed_tree_remote_desired(repository_path: "/opt/gunbc-lab/gunbc" as FilePath)
 }
 
 // Only an exact read-back reports success. Every other terminal state fails, including the two that
@@ -162,25 +170,25 @@ test fn only_an_exact_read_back_reports_success() -> Bool {
     && exit_is_success(e: deployed_tree_remote_exit(
       outcome: RemoteConverged {
         member: member(),
-        previous: GitRemoteUrlAbsent { at: green_at() },
+        previous: GitRemoteUrlAbsent { at: other_at() },
       },
     ))
     && !exit_is_success(e: deployed_tree_remote_exit(
       outcome: RemoteReadBackMismatched {
-        at: green_at(),
+        at: other_at(),
         expected: "https://github.com/gunb-ai/gunbc.git" as NonEmptyStr,
         observed: "https://example.invalid/other.git" as NonEmptyStr,
       },
     ))
-    && !exit_is_success(e: deployed_tree_remote_exit(outcome: RemoteReadBackAbsent { at: green_at() }))
+    && !exit_is_success(e: deployed_tree_remote_exit(outcome: RemoteReadBackAbsent { at: other_at() }))
     && !exit_is_success(e: deployed_tree_remote_exit(
-      outcome: RemoteSetRefused { at: green_at(), stderr: "denied" },
+      outcome: RemoteSetRefused { at: other_at(), stderr: "denied" },
     ))
     && !exit_is_success(e: deployed_tree_remote_exit(
-      outcome: RemoteRepositoryUnusable { at: green_at(), exit_code: 128, stderr: "fatal" },
+      outcome: RemoteRepositoryUnusable { at: other_at(), exit_code: 128, stderr: "fatal" },
     ))
     && !exit_is_success(e: deployed_tree_remote_exit(
-      outcome: RemoteReadBackRefused { at: green_at(), exit_code: 7, stderr: "?" },
+      outcome: RemoteReadBackRefused { at: other_at(), exit_code: 7, stderr: "?" },
     ))
 }
 
@@ -220,8 +228,8 @@ fn ordering_tag(kind: OwnedArtifactKind) -> String {
 fn ordered_tags() -> List<String> {
   fold(
     deployment_owned_steps(
-      instance: srv1_green_dashboard_instance(),
-      names: srv1_green_deployment_names(instance: srv1_green_dashboard_instance()),
+      instance: srv1_live_dashboard_instance(),
+      names: srv1_live_deployment_names(instance: srv1_live_dashboard_instance()),
     ),
     init: [],
     f: (acc, step) => {

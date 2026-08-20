@@ -8,7 +8,9 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 use crate::coproduct_reflection::{decl_facts_corpus_walk, DeclFactRaw};
-use crate::module_path_index::{parse_module_binding, ParsedModuleBinding};
+use crate::module_path_index::{
+    parse_module_binding, ModuleBindingOutcome, ModuleBindingRefusal, ParsedModuleBinding,
+};
 use crate::shared_typecheck_store::{self, SharedTypecheckCaches};
 use crate::std_node::compiler_recursive_types;
 use crate::std_syntax::LiteralValue;
@@ -1478,10 +1480,16 @@ fn insert_module_path(index: &mut HashMap<String, String>, module_path: &str, re
     index.insert(module_path.to_string(), rel);
 }
 
+/// Walks every `.dag` under `source_roots`, visiting each module-bound file.
+///
+/// Parse failures do not panic and are not skipped: each becomes a typed located
+/// `ModuleBindingRefusal`, all of them are collected, and the walk refuses as a
+/// counted set at the end.
 fn for_each_parsed_module_binding(
     source_roots: &[String],
     mut visit: impl FnMut(usize, &Path, ParsedModuleBinding),
 ) {
+    let mut refusals: Vec<ModuleBindingRefusal> = Vec::new();
     for (root_idx, root) in source_roots.iter().enumerate() {
         let anchored_root = anchor_source_root(root);
         let root_path = Path::new(&anchored_root);
@@ -1495,13 +1503,47 @@ fn for_each_parsed_module_binding(
                 )
             });
             let binding = match parse_module_binding(&path, &content) {
-                Ok(Some(binding)) => binding,
-                Ok(None) => continue,
-                Err(msg) => panic!("for_each_parsed_module_binding: {msg}"),
+                Ok(ModuleBindingOutcome::Bound(binding)) => binding,
+                Ok(ModuleBindingOutcome::ModuleBindingUnclassified) => continue,
+                // Fail-closed, but the line stops with a TYPED, LOCATED refusal
+                // rather than an untyped panic that discarded the span. Siblings
+                // continue so the report is COUNTED and complete: one run names
+                // every unparseable file, not just the first (§5 factory model —
+                // a stopped-line audit ledgers every deficit before restart).
+                Err(refusal) => {
+                    refusals.push(refusal);
+                    continue;
+                }
             };
             visit(root_idx, &path, binding);
         }
     }
+    refuse_unparseable_module_sources(&refusals);
+}
+
+/// The refusal arm of the module-index walk. Typed (each carries the parser's own
+/// `CompilerDiagnostic`), located (path + span), and counted (every offender is
+/// named, with a total). Replaces `panic!` with a formatted string, which stopped
+/// the line but discarded the span and reported only the first offender.
+///
+/// RUNG, stated exactly rather than by implication: the PER-FILE refusal is typed
+/// and located; the AGGREGATE is retained structurally until rendering; the
+/// OPERATION-LEVEL outcome is still a process exit, NOT a typed result returned to
+/// a caller. Consequence for any future run receipt: an in-process observer cannot
+/// witness this arm, because the process is gone. Such a receipt must be produced
+/// by an EXTERNAL observer until the exit moves to the command boundary.
+fn refuse_unparseable_module_sources(refusals: &[ModuleBindingRefusal]) {
+    if refusals.is_empty() {
+        return;
+    }
+    eprintln!(
+        "module index refused: {} unparseable .dag source(s)",
+        refusals.len()
+    );
+    for refusal in refusals {
+        eprintln!("  {}", refusal.rendered());
+    }
+    std::process::exit(1);
 }
 
 fn collect_module_binding_manifest_rows(source_roots: &[String]) -> Vec<ModuleBindingManifestRow> {
@@ -2111,18 +2153,6 @@ pub(crate) fn string_list_data_from_module_source(
         return values;
     }
     panic!("lens table reader: no `data {data_name}` def in {module_rel_path}")
-}
-
-/// Read a `List<String>` data table from a live `.dag` lens authority on disk.
-pub fn lens_string_list_data(
-    module_rel_path: &str,
-    data_name: &str,
-    allow_empty: bool,
-) -> Vec<String> {
-    let path = workspace_root().join(module_rel_path);
-    let content = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("lens table reader: failed to read {}: {e}", path.display()));
-    string_list_data_from_module_source(module_rel_path, &content, data_name, allow_empty)
 }
 
 /// Project a `List<String>` data literal out of the ci_layer_roots authority's SOURCE TEXT via the
@@ -2995,48 +3025,12 @@ pub fn compile_clean_pipeline_has_hard_errors(diagnostics: &im::Vector<Rc<ErrorN
     diagnostics.iter().any(compile_clean_diagnostic_is_hard)
 }
 
-/// `PipelineResult` adapter for the compile CLI transport.
-pub fn compile_clean_vec_has_hard_errors(diagnostics: &Rc<Vec<Rc<ErrorNode>>>) -> bool {
-    if compile_clean_policy_read_refuses_gate() {
-        return true;
-    }
-    diagnostics.iter().any(compile_clean_diagnostic_is_hard)
-}
-
 /// `ResolvedPipelineResult` / `im::Vector` adapter for compile-clean checks.
 pub fn compile_clean_im_vector_has_hard_errors(diagnostics: &im::Vector<Rc<ErrorNode>>) -> bool {
     if compile_clean_policy_read_refuses_gate() {
         return true;
     }
     diagnostics.iter().any(compile_clean_diagnostic_is_hard)
-}
-
-pub fn compile_clean_im_vector_hard_error_count(diagnostics: &im::Vector<Rc<ErrorNode>>) -> usize {
-    diagnostics
-        .iter()
-        .filter(|d| compile_clean_diagnostic_is_hard(d))
-        .count()
-}
-
-pub fn compile_clean_im_vector_advisory_count(diagnostics: &im::Vector<Rc<ErrorNode>>) -> usize {
-    diagnostics
-        .iter()
-        .filter(|d| compile_clean_diagnostic_is_advisory(d))
-        .count()
-}
-
-pub fn compile_clean_vec_hard_error_count(diagnostics: &Rc<Vec<Rc<ErrorNode>>>) -> usize {
-    diagnostics
-        .iter()
-        .filter(|d| compile_clean_diagnostic_is_hard(d))
-        .count()
-}
-
-pub fn compile_clean_vec_advisory_count(diagnostics: &Rc<Vec<Rc<ErrorNode>>>) -> usize {
-    diagnostics
-        .iter()
-        .filter(|d| compile_clean_diagnostic_is_advisory(d))
-        .count()
 }
 
 fn format_compile_clean_hard_diagnostic_line(d: &Rc<ErrorNode>) -> String {
@@ -4858,19 +4852,6 @@ pub fn import_closure_from_adjacency(
     let mut result: Vec<String> = reached.into_iter().collect();
     result.sort();
     result
-}
-
-/// Host realization of `v2.lens.module_graph.import_closure` over modeled fact rows.
-/// Authority: `src/v2/lens/module_graph.dag` — this is the consumer repoint surface for
-/// `cli_run.rs` resolve/reconcile (Phase 1 de-fork); fact extraction stays on the existing
-/// `import_resolution_facts` / `module_declaration_facts` builtins.
-pub fn import_closure_from_facts(
-    entry_path: &str,
-    edges: &[ImportResolutionFactRaw],
-    nodes: &[ModuleDeclarationFactRaw],
-) -> Vec<String> {
-    let adjacency = build_import_adjacency(edges, nodes);
-    import_closure_from_adjacency(entry_path, &adjacency)
 }
 
 /// Pre-built `import_resolution_facts` / `module_declaration_facts` rows for one pool-root
@@ -7473,6 +7454,203 @@ pub enum ClaimOutcome {
     },
 }
 
+/// Which clock a completed claim's cost is judged on. Operator ruling 2026-08-19 (BUDGET
+/// POLICY CUT): chosen by the witness's PURPOSE — pure modeled computation is judged on CPU,
+/// external/blocking interaction is judged on wall — and NEVER by which clock happened to
+/// read higher. Both clocks are always recorded on a reached verdict regardless of which one
+/// is the judged basis; the basis says which figure the completed-cost line is compared
+/// against, not which figure exists.
+///
+/// Named `RequiredFloorCostBasis`, not the bare `WitnessCostBasis` the ruling's prose uses,
+/// because `std_realization_schedule.rs` already declares a `WitnessCostBasis` for an
+/// unrelated concept (`MeasuredAtExactSubject | EstimatedFromSiblingClass`, a realization
+/// schedule's provenance for a cost figure, not a policy choice of which clock judges a
+/// completed claim). Two same-named public enums in one crate is the exact citation ambiguity
+/// DESIGN.md §3 rules against, so this type is scoped to the one lane that declares it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RequiredFloorCostBasis {
+    CpuCost,
+    WallCost,
+}
+
+/// `v2.workflow.required_floor`'s claims execute Hermetic (pure in-process evaluation), so
+/// CPU is the judged basis. A lane that later admits an execution mode whose purpose is
+/// external or blocking interaction picks wall instead — but the choice is made here, by
+/// declaring the lane's purpose, not derived from a measurement.
+pub fn required_floor_cost_basis() -> RequiredFloorCostBasis {
+    RequiredFloorCostBasis::CpuCost
+}
+
+/// Which safety mechanism raised THIS occurrence — nothing stronger. Operator ruling
+/// 2026-08-19 (BUDGET POLICY CUT, superseding correction): even "which deadline was crossed"
+/// overstates the fact, because both the CPU and wall safety limits may already be crossed by
+/// the time the interpreter next polls and only one check happens to be the one that raises
+/// the stop. `raised_by` names the mechanism that raised this occurrence, not a claim about
+/// which clock is "responsible" for the interruption — a `WallDeadlineRaised` occurrence does
+/// NOT make the claim a wall-cost witness; that is `RequiredFloorCostBasis`'s question, decided
+/// by the witness's declared purpose and never by which mechanism happened to fire
+/// (`interrupt trigger -/-> cost basis` is the load-bearing independence the ruling states).
+///
+/// Distinct from `BudgetKind`, which stays the interpreter's internal raise-path vocabulary
+/// (in-eval poll vs. completion-side backstop, consulted at many unrelated call sites); this is
+/// the admission-facing fact of which mechanism raised one occurrence. `From<BudgetKind>` is
+/// the one translation between them, kept at this seam so the two names never drift apart by
+/// accident.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SafetyInterruptTrigger {
+    CpuDeadlineRaised,
+    WallDeadlineRaised,
+}
+
+impl From<BudgetKind> for SafetyInterruptTrigger {
+    fn from(kind: BudgetKind) -> Self {
+        match kind {
+            BudgetKind::Cpu => SafetyInterruptTrigger::CpuDeadlineRaised,
+            BudgetKind::Wall => SafetyInterruptTrigger::WallDeadlineRaised,
+        }
+    }
+}
+
+/// Whether one claim reached a verdict, or was interrupted before it could. Operator ruling
+/// 2026-08-19 (BUDGET POLICY CUT, corrected by the operator's superseding message the same
+/// day — read this doc comment, not an older diff, if the two disagree): the prior fused model
+/// let a scheduler-sensitive wall crossing stand in for a judgment about a pure computation's
+/// cost. `ClaimTerminality` separates that: did the claim finish, and what did it exactly cost
+/// on both clocks (`VerdictReached`) — or did a safety deadline fire before it could
+/// (`SafetyInterrupted`).
+///
+/// FIELD NAMES ARE CHOSEN FOR THEIR CONSUMER, not for how the number was obtained, and the two
+/// arms are named for OPPOSITE facts on purpose:
+///
+/// - `VerdictReached.observed_cpu_ms` / `observed_wall_ms` — exact readings, but neither is a
+///   canonical "cost of the witness": they are honest facts about this one occurrence, and nothing
+///   stronger. (`exact_*_ms` was the prior spelling; retired because "exact" invited reading these
+///   as a canonical cost rather than an occurrence fact.)
+/// - `SafetyInterrupted.elapsed_cpu_at_least_ms` / `elapsed_wall_at_least_ms` — also exact
+///   measurements of work observed up to the stopped return, but only LOWER BOUNDS on what
+///   reaching a verdict would have required. The `_at_least` suffix stays on this arm because the
+///   lower bound is the fact downstream admission actually needs: a consumer must not read either
+///   duration as the claim's true cost, and the field name says so without requiring the consumer
+///   to already know that `SafetyInterrupted` implies censoring. (An interim revision moved
+///   `_at_least` off this arm entirely — that revision is withdrawn; the names stay here.)
+///
+/// `raised_by: SafetyInterruptTrigger` names the mechanism that raised this occurrence — see that
+/// type's doc comment for why it is not "which clock the claim ran over".
+///
+/// TWO INDEPENDENT SAFETY LIMITS are carried on `SafetyInterrupted`, not one shared value: CPU
+/// and wall protect against different failures (runaway evaluation vs. a blocked/descheduled
+/// process) and must never be a mechanical copy of one figure into both fields — see
+/// `WitnessSafetyPolicy` below.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ClaimTerminality {
+    VerdictReached {
+        verdict: ClaimOutcome,
+        observed_cpu_ms: u64,
+        observed_wall_ms: u64,
+    },
+    SafetyInterrupted {
+        raised_by: SafetyInterruptTrigger,
+        elapsed_cpu_at_least_ms: u64,
+        elapsed_wall_at_least_ms: u64,
+        cpu_safety_limit_ms: u64,
+        wall_safety_limit_ms: u64,
+    },
+}
+
+/// Two independently derived safety limits, never a scalar copied into both. For a Hermetic
+/// pure in-process claim, CPU safety protects against runaway evaluation while wall safety
+/// protects against a blocked or descheduled process — different jobs, so the wall limit must
+/// be independently derived and LOOSER than the CPU limit, so ordinary host scheduling cannot
+/// preempt a computation still inside its CPU envelope. For a genuinely blocking or effectful
+/// claim wall may instead be the primary per-row guard. Neither limit is a cost allowance;
+/// crossing either is `NotEvaluated` and blocks — see `RequiredFloorClaim`'s
+/// `cpu_safety_limit_ms` / `wall_safety_limit_ms` fields for the live-wired instantiation of
+/// this policy (`v2.workflow.required_floor`'s two `.dag` constants are its declared values).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WitnessSafetyPolicy {
+    pub cpu_ms: u64,
+    pub wall_ms: u64,
+}
+
+/// The single translation from a raw `(ClaimOutcome, PerformanceReceipt)` pair into the
+/// terminality the policy layer reasons over. `run_claim`/`run_claim_measured` and the two
+/// completion-side backstops (`budget_completion_outcome`, `wall_budget_completion_outcome`)
+/// are unchanged by this — they still raise/detect exactly as before. Only an outcome that is
+/// `TimedOut` with `completion: Interrupted` — a genuine pre-verdict abort — becomes
+/// `SafetyInterrupted`; every other outcome, including a `TimedOut { completion:
+/// CompletedOverBudget }` (the claim DID finish; the completion-side backstop only reclassified
+/// its label), reached a verdict and carries exact costs read off the receipt.
+///
+/// `outcome`'s own `TimedOut.budget_ms` names only the ONE limit that was checked when the
+/// interrupt fired, never the other clock's limit — so both limits are threaded in here from
+/// the caller's `WitnessSafetyPolicy`, the same policy that armed both deadlines in the first
+/// place, rather than reconstructed from a single-limit outcome.
+///
+/// `SafetyInterrupted`'s two elapsed readings are read off `receipt`, not off `outcome`'s single
+/// `elapsed_ms`: `run_claim_measured` samples both clocks around the same call regardless of how
+/// it ends, so both are genuine observations at interrupt time.
+pub fn claim_terminality(
+    outcome: &ClaimOutcome,
+    receipt: &v1_interpreter::PerformanceReceipt,
+    policy: WitnessSafetyPolicy,
+) -> ClaimTerminality {
+    match outcome {
+        ClaimOutcome::TimedOut {
+            kind,
+            completion: BudgetCompletion::Interrupted,
+            ..
+        } => ClaimTerminality::SafetyInterrupted {
+            raised_by: SafetyInterruptTrigger::from(*kind),
+            elapsed_cpu_at_least_ms: (receipt.cpu_nanos / 1_000_000) as u64,
+            elapsed_wall_at_least_ms: (receipt.wall_nanos / 1_000_000) as u64,
+            cpu_safety_limit_ms: policy.cpu_ms,
+            wall_safety_limit_ms: policy.wall_ms,
+        },
+        _ => ClaimTerminality::VerdictReached {
+            verdict: outcome.clone(),
+            observed_cpu_ms: (receipt.cpu_nanos / 1_000_000) as u64,
+            observed_wall_ms: (receipt.wall_nanos / 1_000_000) as u64,
+        },
+    }
+}
+
+/// DIAGNOSTIC ONLY — never a merge-admission, quarantine, or cost-debt-population decision.
+/// Operator ruling 2026-08-19 (BUDGET POLICY CUT, superseding correction): the completed-cost
+/// line (`cost_line_ms`, presently 1552) is retired from deciding completed-cost admission, not
+/// only from interruption. It was one 1527ms observation plus a scheduler quantum, and the
+/// exact 1792ms/1928ms pair observed since shows terminal measurements vary materially across
+/// admissible envelopes — a single literal line cannot honestly gate on that spread. This
+/// function may remain historical calibration evidence and a diagnostic comparison; nothing in
+/// the required-floor loop may call it to decide whether a run blocks. (Consistent with the
+/// live code today: `RequiredFloorOutcome.completed_over_cost_requirement` is populated from
+/// `BudgetCompletion::CompletedOverBudget` against the safety limit, never from this function or
+/// from `cost_line_ms` — this comment states that constraint explicitly so a future edit cannot
+/// wire this function back into admission by accident.)
+///
+/// Evaluated only on `VerdictReached` — an interrupted claim's cost is a lower bound, and
+/// comparing a lower bound against a line is not the question this answers, so
+/// `SafetyInterrupted` always reads `false` here.
+pub fn exceeds_completed_cost_line(
+    terminality: &ClaimTerminality,
+    cost_line_ms: u64,
+    basis: RequiredFloorCostBasis,
+) -> bool {
+    match terminality {
+        ClaimTerminality::VerdictReached {
+            observed_cpu_ms,
+            observed_wall_ms,
+            ..
+        } => {
+            let exact = match basis {
+                RequiredFloorCostBasis::CpuCost => *observed_cpu_ms,
+                RequiredFloorCostBasis::WallCost => *observed_wall_ms,
+            };
+            exact > cost_line_ms
+        }
+        ClaimTerminality::SafetyInterrupted { .. } => false,
+    }
+}
+
 pub fn resolve_entry_graph(
     source_roots: &[String],
     entry_file: &str,
@@ -7546,12 +7724,6 @@ static PROVIDER_BOOTSTRAP_STORE_SKIPS: std::sync::atomic::AtomicUsize =
 
 fn record_provider_bootstrap_store_skip() {
     PROVIDER_BOOTSTRAP_STORE_SKIPS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-}
-
-/// Observed count of bootstrap-window store skips — the countable half of the
-/// disclosed refusal (§5).
-pub fn provider_bootstrap_store_skip_count() -> usize {
-    PROVIDER_BOOTSTRAP_STORE_SKIPS.load(std::sync::atomic::Ordering::SeqCst)
 }
 
 pub(crate) fn with_cross_process_provider_routing_suppressed<F, R>(f: F) -> R
@@ -9119,19 +9291,6 @@ fn stripped_fn_body_marker() -> Rc<Node> {
 pub fn is_census_heads_fn_stand_in(node: &Rc<Node>) -> bool {
     node.name == CENSUS_HEADS_FN_STAND_IN_NAME
         || STRIPPED_FN_BODY_MARKER.with(|marker| Rc::ptr_eq(node, marker))
-}
-
-/// Optional query helper for non-inference traversals. Loud refusal on inference is
-/// enforced by `ExprErrorKind::CensusHeadsBodyStripped` in `infer_expr`, not this API.
-pub fn census_heads_body_traversal_refusal(node: &Rc<Node>) -> Option<String> {
-    if is_census_heads_fn_stand_in(node) {
-        Some(format!(
-            "census heads-only pool parse refused: body traversal hit stand-in '{}'",
-            CENSUS_HEADS_FN_STAND_IN_NAME
-        ))
-    } else {
-        None
-    }
 }
 
 #[cfg(any(test, feature = "interp_test_witness"))]
@@ -10893,20 +11052,6 @@ fn typed_module_cache_cap_derivation() -> (usize, String, bool) {
         TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL,
     );
     (cap, source_label, degraded)
-}
-
-/// Host-budget-derived cap on `typed_module_cache` entries for the private
-/// per-index store (width=1 drain path). `GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES`
-/// is an operator/test probe: still clamped to `1..CEIL` (never unbounded); a
-/// malformed override falls through to the derived cap (fail-closed).
-///
-/// This is the pure, un-cached derivation — kept for direct env-override
-/// tests. Runtime call sites must go through `typed_module_cache_cap`
-/// instead, which samples this exactly once per index lifetime; re-deriving
-/// from a live host-shared signal on every insert was the 2026-07-21 fleet
-/// OOM incident (see the doc comment on `MultiEntryIndex::typed_module_cache_cap`).
-pub fn typed_module_cache_max_entries() -> usize {
-    typed_module_cache_cap_derivation().0
 }
 
 /// The typed-cache cap for `index`, sampled exactly ONCE for this index's
@@ -15851,7 +15996,14 @@ pub fn run_claims_in_process(
 /// builtin-heavy) can finish over budget without ever hitting a poll. A Pass that
 /// exceeded the budget converts to the same typed refusal here — the witness is over
 /// the fast-lane classification either way, and silent green would fail open on the
-/// operator eval-budget ruling (2026-08-17; ceiling at `required_floor_claim_budget_ms`).
+/// operator eval-budget ruling (2026-08-17). The budget compared here is the caller's
+/// armed `witness_eval_budget`/`witness_wall_budget`; the required-floor caller arms
+/// them independently from `required_floor_claim_cpu_safety_limit_ms` and
+/// `required_floor_claim_wall_safety_limit_ms` (BUDGET POLICY CUT, 2026-08-19,
+/// superseding correction — two safety deadlines, never one scalar copied into both
+/// clocks) — the separate completed-cost line, `required_floor_claim_cost_line_ms`, is
+/// diagnostic only and is judged above this function, once a claim has already reached a
+/// verdict, and decides nothing about admission.
 /// A Fail/RuntimeError stays itself: those are already loud, and
 /// replacing a genuine finding with the budget message would discard it. `cpu_nanos` is
 /// THREAD CPU time (not wall), matching the stride-poll metric — a witness whose wall time
@@ -16485,6 +16637,12 @@ fn capture_scoped_run_stderr<T>(_f: impl FnOnce() -> T) -> Result<(T, Vec<u8>), 
 /// deploy then has to refuse; the `.dag` one refuses to TRUST wire bytes read
 /// back from some other process. Same rule, two boundaries, and the boundary
 /// each guards is the reason it cannot be deleted in favour of the other.
+fn release_revision_text_valid(text: &str) -> bool {
+    text.len() == 40
+        && text
+            .chars()
+            .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
+}
 
 /// The process-wide evaluation budget this serve process enforces.
 ///
@@ -16505,10 +16663,244 @@ pub struct ServeEvaluationBudget {
 /// The machine-readable refusal. The stable `code` is the contract — `std.evaluation_budget`
 /// `evaluation_budget_refusal_code` — and both quantities plus the clock are reported so a
 /// consumer can tell a spin from a stall without parsing prose.
+fn serve_budget_refusal_body(
+    entry: &str,
+    clock_key: &str,
+    elapsed_nanos: u128,
+    limit_ms: u64,
+) -> String {
+    format!(
+        "{{\"code\":\"evaluation_budget_exceeded\",\"entry\":{},\"clock\":\"{}\",\"elapsed_ns\":{},\"limit_ms\":{}}}\n",
+        serve_json_string(entry),
+        clock_key,
+        elapsed_nanos,
+        limit_ms
+    )
+}
 
 /// Minimal JSON string escaping for the refusal body. The entry name comes from a launch
 /// argument rather than a request, but it is escaped anyway: a body that can be malformed by its
 /// own configuration is a fabricated-output path, and the cost of not assuming is two lines.
+fn serve_json_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+pub fn handle_serve(
+    source_roots: Vec<String>,
+    entry_file: String,
+    function: String,
+    host: String,
+    port: u16,
+    release_revision: String,
+    serve_budget: ServeEvaluationBudget,
+) {
+    if source_roots.is_empty() {
+        eprintln!("error: provide at least one --source-root");
+        std::process::exit(1);
+    }
+    // Bound BEFORE the graph is compiled and before the listener binds: a
+    // process that cannot say which release it is must never reach a state
+    // where something can route traffic to it and read its identity back.
+    if !release_revision_text_valid(&release_revision) {
+        eprintln!(
+            "error: --release-revision must be exactly 40 lowercase hex digits \
+             (git object name); got {:?} ({} chars). This is the identity this \
+             process publishes through /healthz and that deployment ordering \
+             reads back — a branch name, an abbreviated sha, or an empty value \
+             is not a revision.",
+            release_revision,
+            release_revision.chars().count()
+        );
+        std::process::exit(1);
+    }
+    let index = process_shared_index(&source_roots);
+    let sources = match load_sources_for_entry_with_pool(&index, &entry_file) {
+        Ok(sources) => sources,
+        Err(msg) => {
+            eprintln!("error: {}", msg);
+            std::process::exit(1);
+        }
+    };
+    eprintln!("resolved {} sources", sources.len());
+    let (graph, source_indices, compile_clean_diags) = match resolved_graph_from_sources_with_index(
+        &index,
+        sources,
+        ResolveTypecheckGate::Strict,
+        &entry_file,
+        ResolvedGraphMemoShare::Memoize,
+    ) {
+        Ok(parts) => parts,
+        Err(msg) => {
+            eprintln!("error: {}", msg);
+            std::process::exit(1);
+        }
+    };
+    if compile_clean_diags
+        .iter()
+        .any(|d| compile_clean_diagnostic_is_hard(d))
+    {
+        for d in compile_clean_diags
+            .iter()
+            .filter(|d| compile_clean_diagnostic_is_hard(d))
+        {
+            eprintln!("error: {}", format_error_node(d, &source_indices));
+        }
+        std::process::exit(1);
+    }
+    let ctx = v1_interpreter::InterpContext::new(
+        &graph,
+        source_indices.clone(),
+        v1_interpreter::ExecutionMode::Wet,
+    );
+    let listener = match std::net::TcpListener::bind((host.as_str(), port)) {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("error: failed to bind {}:{}: {}", host, port, e);
+            std::process::exit(1);
+        }
+    };
+    // The budget is announced at startup because "unset" is a policy state that must be visible.
+    // A process serving with no bound and a process serving with a bound are different
+    // operational facts, and the difference has to be readable without inspecting argv.
+    eprintln!(
+        "gunbc serve listening on {}:{} -> {}() release_revision={} eval_budget_cpu_ms={} eval_budget_wall_ms={}",
+        host,
+        port,
+        function,
+        release_revision,
+        serve_budget
+            .cpu_limit_ms
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "unset".to_string()),
+        serve_budget
+            .wall_limit_ms
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "unset".to_string()),
+    );
+    v1_interpreter::with_active_context(&ctx, || {
+        for stream in listener.incoming() {
+            let mut stream = match stream {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("serve: accept error: {}", e);
+                    continue;
+                }
+            };
+            match serve_read_request(&mut stream) {
+                Err(reason) => serve_write_response(
+                    &mut stream,
+                    400,
+                    "text/plain; charset=utf-8",
+                    &format!("bad request: {}\n", reason),
+                ),
+                Ok((method, path, body)) => {
+                    let args: Vec<(Option<String>, v1_interpreter::Value)> = vec![
+                        (Some("method".to_string()), str_value(method)),
+                        (Some("path".to_string()), str_value(path)),
+                        (Some("body".to_string()), str_value(body)),
+                        // Captured once above and cloned per request: the value
+                        // is fixed for the process lifetime, so no request can
+                        // observe a different release than any other request.
+                        (
+                            Some("release_revision".to_string()),
+                            str_value(release_revision.clone()),
+                        ),
+                    ];
+                    // THE DEADLINE IS ARMED HERE, AROUND THIS CALL, AND THE SCOPE IS THE POINT.
+                    // Before this existed the serve path armed nothing, so a route evaluation
+                    // that did not return also prevented the `Err` arm below from ever running:
+                    // the 500 existed and was unreachable, and because the loop is serial the
+                    // stuck request held the accept queue for every later one. The guard both
+                    // arms and restores — a leaked deadline would be worse than none here,
+                    // since `ctx` outlives every request and a stale CPU baseline would refuse
+                    // all subsequent requests for the life of the process.
+                    let result = {
+                        let _budget = ctx.enter_evaluation_budget(
+                            &function,
+                            serve_budget.cpu_limit_ms,
+                            serve_budget.wall_limit_ms,
+                        );
+                        v1_interpreter::run_in_context_with_args(&ctx, &function, &args, true)
+                    };
+                    match result {
+                        Err(v1_interpreter::InterpError::EvaluationBudgetExceeded {
+                            entry,
+                            clock,
+                            elapsed_nanos,
+                            limit_ms,
+                        }) => {
+                            // Refusal rendering is HOST-SIDE by necessity, not by preference:
+                            // the evaluation that would have rendered it is the one that was
+                            // just aborted, so asking it to describe its own abort would put
+                            // recovery behind the evaluator that failed.
+                            //
+                            // 500, not 503: this request is deterministic against a fixed
+                            // policy, so it will cross again on retry. A status meaning
+                            // "temporary capacity" would assert something the model does not
+                            // know, and no `Retry-After` is attached for the same reason
+                            // (`std.evaluation_budget.evaluation_budget_retry_semantics_note`).
+                            eprintln!(
+                                "serve: refused {} on {} clock: elapsed_ns={} limit_ms={}",
+                                entry,
+                                clock.key(),
+                                elapsed_nanos,
+                                limit_ms
+                            );
+                            serve_write_response(
+                                &mut stream,
+                                500,
+                                "application/json; charset=utf-8",
+                                &serve_budget_refusal_body(
+                                    &entry,
+                                    clock.key(),
+                                    elapsed_nanos,
+                                    limit_ms,
+                                ),
+                            )
+                        }
+                        Err(e) => serve_write_response(
+                            &mut stream,
+                            500,
+                            "text/plain; charset=utf-8",
+                            &format!("handler error: {}\n", e),
+                        ),
+                        Ok(val) => match serve_wire_fields(&val, &ctx) {
+                            Some((status, content_type, resp_body)) => serve_write_response(
+                                &mut stream,
+                                status,
+                                &content_type,
+                                &resp_body,
+                            ),
+                            None => serve_write_response(
+                                &mut stream,
+                                500,
+                                "text/plain; charset=utf-8",
+                                &format!(
+                                    "handler returned `{}`, not ServeWireResponse {{ status: Int, content_type_label: String, body: String }}\n",
+                                    ctx.format_value(&val)
+                                ),
+                            ),
+                        },
+                    }
+                }
+            }
+        }
+    });
+}
 
 /// Read one HTTP/1.1 request: request line + headers (only Content-Length is
 /// consumed) + exactly Content-Length body bytes. Anything else is a typed
@@ -16517,9 +16909,142 @@ pub struct ServeEvaluationBudget {
 /// (request line + headers) at MAX_HEAD cumulative, the body at MAX_BODY,
 /// with the underlying stream capped via Read::take so no read path can
 /// allocate past head+body even before the typed checks fire.
+fn serve_read_request(
+    stream: &mut std::net::TcpStream,
+) -> Result<(String, String, String), String> {
+    use std::io::{BufRead, Read};
+    const MAX_HEAD: usize = 16 << 10;
+    const MAX_BODY: usize = 1 << 20;
+    stream
+        .set_read_timeout(Some(std::time::Duration::from_secs(10)))
+        .map_err(|e| format!("set_read_timeout: {}", e))?;
+    let mut reader = std::io::BufReader::new((&mut *stream).take((MAX_HEAD + MAX_BODY) as u64));
+    let mut request_line = String::new();
+    let mut head_bytes = reader
+        .read_line(&mut request_line)
+        .map_err(|e| format!("read request line: {}", e))?;
+    if head_bytes > MAX_HEAD {
+        return Err(format!(
+            "request line of {} bytes exceeds the {} byte serve head limit",
+            head_bytes, MAX_HEAD
+        ));
+    }
+    let mut parts = request_line.split_whitespace();
+    let method = parts.next().ok_or("empty request line")?.to_string();
+    let target = parts.next().ok_or("missing request target")?.to_string();
+    if !target.starts_with('/') {
+        return Err(format!(
+            "request target must be origin-form, got {:?}",
+            target
+        ));
+    }
+    let mut content_length: Option<usize> = None;
+    loop {
+        let mut line = String::new();
+        let n = reader
+            .read_line(&mut line)
+            .map_err(|e| format!("read header: {}", e))?;
+        if n == 0 {
+            return Err("connection closed before end of headers".to_string());
+        }
+        head_bytes += n;
+        if head_bytes > MAX_HEAD {
+            return Err(format!(
+                "headers of {} bytes exceed the {} byte serve head limit",
+                head_bytes, MAX_HEAD
+            ));
+        }
+        let line = line.trim_end();
+        if line.is_empty() {
+            break;
+        }
+        if let Some((name, value)) = line.split_once(':') {
+            if name.eq_ignore_ascii_case("content-length") {
+                if content_length.is_some() {
+                    return Err("duplicate Content-Length header".to_string());
+                }
+                content_length = Some(
+                    value
+                        .trim()
+                        .parse()
+                        .map_err(|e| format!("bad Content-Length: {}", e))?,
+                );
+            }
+        }
+    }
+    let content_length = content_length.unwrap_or(0);
+    if content_length > MAX_BODY {
+        return Err(format!(
+            "body of {} bytes exceeds the {} byte serve limit",
+            content_length, MAX_BODY
+        ));
+    }
+    let mut body_bytes = vec![0u8; content_length];
+    reader
+        .read_exact(&mut body_bytes)
+        .map_err(|e| format!("read body: {}", e))?;
+    let body = String::from_utf8(body_bytes).map_err(|e| format!("body not utf-8: {}", e))?;
+    Ok((method, target, body))
+}
+
+fn serve_write_response(
+    stream: &mut std::net::TcpStream,
+    status: u16,
+    content_type: &str,
+    body: &str,
+) {
+    use std::io::Write;
+    let reason = match status {
+        200 => "OK",
+        400 => "Bad Request",
+        404 => "Not Found",
+        405 => "Method Not Allowed",
+        409 => "Conflict",
+        500 => "Internal Server Error",
+        501 => "Not Implemented",
+        502 => "Bad Gateway",
+        503 => "Service Unavailable",
+        _ => "",
+    };
+    let response = format!(
+        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        status,
+        reason,
+        content_type,
+        body.len(),
+        body
+    );
+    if let Err(e) = stream.write_all(response.as_bytes()) {
+        eprintln!("serve: write error: {}", e);
+    }
+}
 
 /// Read back the .dag handler's ServeWireResponse record. None = wrong shape
 /// (surfaced as a typed 500 by the caller, never a fabricated response).
+fn serve_wire_fields(
+    val: &v1_interpreter::Value,
+    ctx: &v1_interpreter::InterpContext,
+) -> Option<(u16, String, String)> {
+    if let v1_interpreter::Value::Record { type_name, fields } = val {
+        if !ctx.sym_eq(*type_name, "ServeWireResponse") {
+            return None;
+        }
+        let status = match ctx.field(fields, "status") {
+            Some(v1_interpreter::Value::Int(n)) if (100..=599).contains(n) => *n as u16,
+            _ => return None,
+        };
+        let content_type = match ctx.field(fields, "content_type_label") {
+            Some(Value::Str(s)) => s.to_string(),
+            _ => return None,
+        };
+        let body = match ctx.field(fields, "body") {
+            Some(Value::Str(s)) => s.to_string(),
+            _ => return None,
+        };
+        return Some((status, content_type, body));
+    }
+    None
+}
 
 /// VISIBILITY WIDENED by the cli-run cut for the same §3 reason as `witness_layer_roots`:
 /// this is the SINGLE AUTHORITY for reading a `.dag` `ProcessExit` value, and the driver
@@ -18170,78 +18695,6 @@ pub(crate) fn resolve_entry_file_under_roots(
     ))
 }
 
-pub fn wet_hermetic_scaffold_roster_entry_prefix(
-    source_roots: &[String],
-) -> Result<String, String> {
-    let entry =
-        resolve_entry_file_under_roots(source_roots, WET_HERMETIC_EQUIVALENCE_WITNESS_ENTRY)?;
-    let (graph, source_indices) = resolve_entry_graph_shared(source_roots, &entry)?;
-    let sources = load_sources_for_entry(source_roots, &entry)?;
-    let entry_source = sources
-        .iter()
-        .find(|s| s.path == entry || s.path.ends_with(WET_HERMETIC_EQUIVALENCE_WITNESS_ENTRY))
-        .ok_or_else(|| format!("{entry}: missing from entry closure"))?;
-    let entry_module = extract_module_path(&entry_source.content)
-        .ok_or_else(|| format!("{entry}: missing module declaration"))?;
-    let typed_module = entry_typed_module(&graph, &source_indices, &entry_module)?;
-    let si = Rc::new((*source_indices).clone());
-    for item in typed_module.items.iter() {
-        if item.body.is_none() {
-            continue;
-        }
-        let decl_name = authored_name_at(si.clone(), item.clone());
-        if decl_name != WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA {
-            continue;
-        }
-        let body = item.body.as_ref().ok_or_else(|| {
-            format!("{entry}: data '{WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA}' missing body")
-        })?;
-        return literal_string_from_expr(body).ok_or_else(|| {
-            format!(
-                "{entry}: data '{WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA}' must be a string literal"
-            )
-        });
-    }
-    Err(format!(
-        "{entry}: missing data '{WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA}'"
-    ))
-}
-
-pub fn is_governed_service_representative_row(row: &DiscoveryRow, prefix: &str) -> bool {
-    !prefix.is_empty() && row.entry.contains(prefix)
-}
-
-pub fn wet_hermetic_discovery_outcome_divergences(
-    wet: &[DiscoveryWitnessOutcome],
-    hermetic: &[DiscoveryWitnessOutcome],
-) -> Vec<String> {
-    let mut divergences = Vec::new();
-    if wet.len() != hermetic.len() {
-        divergences.push(format!(
-            "roster size mismatch: wet={} hermetic={}",
-            wet.len(),
-            hermetic.len()
-        ));
-        return divergences;
-    }
-    for (w, h) in wet.iter().zip(hermetic.iter()) {
-        if w.entry != h.entry || w.function != h.function {
-            divergences.push(format!(
-                "roster order mismatch: wet=({},{}) hermetic=({},{})",
-                w.function, w.entry, h.function, h.entry
-            ));
-            continue;
-        }
-        if w.outcome != h.outcome {
-            divergences.push(format!(
-                "{} ({}): wet={:?} hermetic={:?}",
-                w.function, w.entry, w.outcome, h.outcome
-            ));
-        }
-    }
-    divergences
-}
-
 fn proc_status_kb_field(prefix: &str) -> Option<u64> {
     let status = std::fs::read_to_string("/proc/self/status").ok()?;
     let line = status.lines().find(|l| l.starts_with(prefix))?;
@@ -18329,20 +18782,6 @@ pub fn peak_rss_vhwm_bytes() -> Option<u64> {
     {
         Some(raw.saturating_mul(1024))
     }
-}
-
-/// `memory.events` `high` counter from the process leaf cgroup, when readable.
-pub fn cgroup_memory_events_high() -> Option<u64> {
-    let dir = crate::memory_governor::leaf_cgroup_dir()?;
-    let raw = crate::memory_governor::read_cgroup_raw(&dir, "memory.events")?;
-    raw.lines().find_map(|line| {
-        let mut parts = line.split_whitespace();
-        let key = parts.next()?;
-        if key != "high" {
-            return None;
-        }
-        parts.next()?.parse().ok()
-    })
 }
 
 pub fn floor_discovery_path_excluded(path: &str) -> bool {
@@ -20442,8 +20881,14 @@ pub struct DiscoveryCorpusOptions {
     /// When non-empty, scopes the source-root `test fn` tree walk to files under one of these
     /// directories. Import resolution still uses the full source_roots. Empty = full walk.
     pub discovery_scope_dirs: Vec<String>,
-    /// Fast-lane per-witness eval budget (operator ruling 2026-08-17; the ceiling itself is
-    /// `v2.workflow.required_floor` `required_floor_claim_budget_ms`). When set, every
+    /// Fast-lane per-witness eval budget (operator ruling 2026-08-17). This is a distinct
+    /// PR-path posture from the required-floor claim loop; that loop's own constant split
+    /// into `required_floor_claim_cpu_safety_limit_ms` / `required_floor_claim_wall_safety_limit_ms`
+    /// (interrupt, now two independent deadlines) and `required_floor_claim_cost_line_ms`
+    /// (completed-cost, diagnostic only) under the BUDGET POLICY CUT (2026-08-19,
+    /// superseding correction) — this field is unaffected by that split and still names one
+    /// ceiling.
+    /// When set, every
     /// discovered witness eval is deadline-armed and an over-budget eval unwinds as the
     /// typed EvalBudgetExceeded runtime error (a FAIL row naming the witness). None = no
     /// bound (the long-lane / local recipe posture).
@@ -29808,134 +30253,6 @@ pub struct BareRefReachability {
     pub cross_subtree_unique_sites: usize,
 }
 
-/// Count bare-reference reachability for `name` using the same nearest-wins producer as
-/// `reference_resolution_facts` (import-less files only).
-pub fn bare_ref_reachability_for_name(
-    pool_roots: &[String],
-    importer_roots: &[String],
-    exclude_substrings: &[String],
-    name: &str,
-) -> BareRefReachability {
-    let abs_pool_roots = pool_roots_abs(pool_roots);
-    let abs_importer_roots = pool_roots_abs(importer_roots);
-    let mut decl_index: HashMap<String, std::collections::BTreeSet<String>> = HashMap::new();
-    let mut module_names: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut seen_modules: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut pool_trees: HashMap<String, (String, Rc<crate::v1_std_core::Node>, bool)> =
-        HashMap::new();
-    for root in &abs_pool_roots {
-        let root_path = Path::new(root);
-        if !root_path.is_dir() {
-            continue;
-        }
-        let mut files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(root_path, &mut files);
-        files.sort();
-        for file in files {
-            let rel = rel_path_for_layer_import(&file);
-            let content = match std::fs::read_to_string(&file) {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
-            let module_name = match extract_module_path(&content) {
-                Some(m) => m,
-                None => continue,
-            };
-            let tree = match parse_module_node_tolerant(&rel, &content) {
-                Some(t) => t,
-                None => continue,
-            };
-            let has_imports = !extract_import_paths(&content).is_empty();
-            if seen_modules.insert(module_name.clone()) {
-                module_names.insert(module_name.clone());
-                for decl_name in collect_module_decl_names(&tree) {
-                    decl_index
-                        .entry(decl_name)
-                        .or_default()
-                        .insert(module_name.clone());
-                }
-            }
-            pool_trees
-                .entry(rel)
-                .or_insert((module_name, tree, has_imports));
-        }
-    }
-
-    let mut stats = BareRefReachability::default();
-    for root in &abs_importer_roots {
-        let root_path = Path::new(root);
-        if !root_path.is_dir() {
-            continue;
-        }
-        let mut files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(root_path, &mut files);
-        files.sort();
-        for file in files {
-            let rel = rel_path_for_layer_import(&file);
-            if is_excluded_import_path(&rel, exclude_substrings) {
-                continue;
-            }
-            let (self_module, tree) = match pool_trees.get(&rel) {
-                Some((_, _, true)) => continue,
-                Some((m, t, false)) => (m.clone(), t.clone()),
-                None => {
-                    let content = match std::fs::read_to_string(&file) {
-                        Ok(c) => c,
-                        Err(_) => continue,
-                    };
-                    if !extract_import_paths(&content).is_empty() {
-                        continue;
-                    }
-                    let module_name = match extract_module_path(&content) {
-                        Some(m) => m,
-                        None => continue,
-                    };
-                    match parse_module_node_tolerant(&rel, &content) {
-                        Some(t) => (module_name, t),
-                        None => continue,
-                    }
-                }
-            };
-            let mut bare: std::collections::HashSet<String> = std::collections::HashSet::new();
-            let mut chains: Vec<Vec<String>> = Vec::new();
-            for item in tree.children.iter() {
-                collect_node_refs(item, &mut bare, &mut chains);
-            }
-            if !bare.contains(name) {
-                continue;
-            }
-            let Some(mods) = decl_index.get(name) else {
-                continue;
-            };
-            if mods.contains(&self_module) {
-                continue;
-            }
-            let mut best_len = 0usize;
-            let mut winners: Vec<&String> = Vec::new();
-            for m in mods.iter() {
-                let shared = module_prefix_shared_len(&self_module, m);
-                if winners.is_empty() || shared > best_len {
-                    best_len = shared;
-                    winners.clear();
-                    winners.push(m);
-                } else if shared == best_len {
-                    winners.push(m);
-                }
-            }
-            match winners.len() {
-                0 => {}
-                1 => {
-                    if module_prefix_shared_len(&self_module, winners[0]) == 0 {
-                        stats.cross_subtree_unique_sites += 1;
-                    }
-                }
-                _ => stats.ambiguous_sites += 1,
-            }
-        }
-    }
-    stats
-}
-
 #[cfg(test)]
 mod reference_edge_producer_tests {
     use super::reference_resolution_facts;
@@ -30686,10 +31003,6 @@ pub fn commit_witness_claim_roster_unresolvable_count() -> i64 {
     defects.len() as i64
 }
 
-pub fn commit_witness_claim_roster_holds() -> bool {
-    commit_witness_claim_roster_unresolvable_count() == 0
-}
-
 pub fn non_fold_residue_wildcard_red_fixture_holds() -> bool {
     let fixture = vec![(
         "m.dag".to_string(),
@@ -31243,14 +31556,6 @@ pub fn non_fold_residue_stale_roster_count() -> i64 {
 
 pub fn non_fold_residue_coproduct_universe_count() -> i64 {
     nfr_build_report().coproduct_universe as i64
-}
-
-pub fn non_fold_residue_live_sites() -> &'static [String] {
-    &nfr_build_report().sites
-}
-
-pub fn non_fold_residue_roster_size() -> i64 {
-    non_fold_residue_roster_entries().len() as i64
 }
 
 #[cfg(test)]
@@ -38324,6 +38629,25 @@ pub fn floor_prepared_subject_exclusions() -> Vec<String> {
     vec![
         "test/fixture/meta_exec_confinement_scan/".to_string(),
         "test/manual/ownership_movable_test.dag".to_string(),
+        // WET RECEIPT, AND IT HAS NO CI CONSUMER TODAY — stated plainly rather than dressed up
+        // as an enrollment. case4_expansion_carrier_splices dispatches a real jq through
+        // jq.Process.RunWithStdin, which carries no mock_response, so the hermetic floor refuses
+        // it and one refusing member fails the run. Mocking is not the repair: the witness exists
+        // to prove that a REAL jq exits 0 only on two argv words rather than one concatenated
+        // one, and a mocked dispatch passes it without any process running.
+        //
+        // The first attempt at this fix added rows to gunbc.ci_layer_roots
+        // (witness_exclusion_frontier + bin_witness_wet_entries) and asserted they would take
+        // effect. They did not: run_required_floor consults THIS list and nothing else, the CI
+        // receipt was an unchanged modules_excluded=2, and the wet batches those rosters feed
+        // were deleted with the old floor. Adding a row to a roster with no live consumer is
+        // specification-without-execution, so both rows were reverted rather than left standing.
+        //
+        // What this exclusion buys is a green floor; what it does NOT buy is coverage. The claim
+        // sits at UNEXECUTED-IN-CI with a local recipe recorded in the design note (§15), and
+        // re-enrolls when a wet lane exists again — which required_floor.dag deliberately defers
+        // until it can be "asked against a live consumer".
+        "test/manual/process_argv_expansion_receipt_test.dag".to_string(),
     ]
 }
 
@@ -39046,8 +39370,127 @@ pub struct RequiredFloorClaim {
     pub function: String,
     pub qualified: String,
     pub execution_mode: v1_interpreter::ExecutionMode,
-    pub budget_ms: u64,
+    /// The CPU SAFETY DEADLINE: arms the CPU interrupt clock. Never `budget_ms` — operator
+    /// ruling 2026-08-19 (BUDGET POLICY CUT) — because it does not express what a claim is
+    /// allowed to cost, only the point past which it is presumed runaway on the CPU clock and
+    /// interrupted before reaching a verdict. Independently derived from `wall_safety_limit_ms`
+    /// and TIGHTER than it (superseding correction, same date): CPU and wall protect against
+    /// different failures — runaway evaluation vs. a blocked/descheduled process — so a
+    /// mechanical copy of one figure into both is forbidden.
+    pub cpu_safety_limit_ms: u64,
+    /// The WALL SAFETY DEADLINE: arms the wall interrupt clock, independently derived and
+    /// LOOSER than `cpu_safety_limit_ms` so ordinary host scheduling delay cannot itself trip an
+    /// interrupt on a computation still inside its CPU envelope.
+    pub wall_safety_limit_ms: u64,
+    /// The COMPLETED-COST LINE. DIAGNOSTIC ONLY — never a merge-admission, quarantine, or
+    /// cost-debt-population decision (operator ruling 2026-08-19, superseding correction: 1552ms
+    /// is retired from completed-cost admission too, not only from interruption — a single
+    /// literal line cannot honestly gate a merge decision when the observed exact-cost spread
+    /// (1792ms/1928ms) already exceeds it under admissible envelopes). Retained as historical
+    /// calibration evidence and read only by the diagnostic `exceeds_completed_cost_line`; no
+    /// admission-path code may consult it.
+    pub cost_line_ms: u64,
     pub warn_ms: u64,
+}
+
+/// The site-projection loop's one decision, per identity, kept instead of discarded into three
+/// anonymous `usize` counters. Execution/admission derives from THIS alone — never from
+/// `LongHomeStorageAgreement` below, which observes a different, purely diagnostic fact.
+///
+/// Modeled authority: `v2.workflow.required_floor` `RequiredFloorDisposition`
+/// (`src/v2/workflow/required_floor.dag`). This Rust type is the realization of that `.dag`
+/// declaration, not its origin — the three arms and their meaning are declared there first; this
+/// enum's shape must track it rather than the reverse.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RequiredFloorDisposition {
+    /// Admitted into `claims`: the module's authored name did not match a long-home prefix and
+    /// the module does not declare `ReadsLiveTree`.
+    Planned,
+    /// Declined because the module's AUTHORED name (read from its own source, never its path)
+    /// matches a `long_home_prefixes()` entry. Carries the exact prefix that matched, which the
+    /// former bare `long_declined` counter discarded.
+    DeclinedLongModule { matched_prefix: String },
+    /// Declined because the module declares `LiveTreeDisposition = ReadsLiveTree` and cannot
+    /// execute in the hermetic frame this floor runs.
+    DeclinedLiveTree,
+}
+
+/// One identity's `RequiredFloorDisposition`, keyed by the qualified `module.function` name so
+/// downstream consumers can join on identity rather than reconstruct a population from filenames
+/// or intended-rename lists.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RequiredFloorDispositionRow {
+    pub identity: String,
+    pub disposition: RequiredFloorDisposition,
+}
+
+/// A storage/name-hygiene DIAGNOSTIC, cross-checking a witness file's PHYSICAL PATH (does it sit
+/// under a `long`-shaped directory) against its AUTHORED module declaration (does `module_path`
+/// match a `long_home_prefixes()` entry). This is NOT an admission fact: the 2026-08-04 ruling
+/// forbids deriving admission from a path, `RequiredFloorDisposition` above is the sole
+/// admission authority, and this value must never feed, reshape, or serve as a fallback for that
+/// decision. It exists because the tree has drifted in BOTH directions between path and
+/// declared module — a `git mv` can land a file under `long/` without updating its declaration
+/// (still executing) or a file can be renamed out of `long/` while keeping a long-prefixed
+/// declaration (still declined).
+///
+/// Modeled authority: `v2.workflow.required_floor` `LongHomeStorageAgreement`
+/// (`src/v2/workflow/required_floor.dag`), including the derivation
+/// `long_home_storage_agreement(path_is_long: Bool, module_is_long: Bool)` that names the same
+/// Cartesian product this file's `long_home_storage_agreement(bool, bool)` below realizes. The
+/// four arms are not a hand-picked enum: they are total over `(path_is_long, module_is_long)`,
+/// and that totality is declared in `.dag`, not invented here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LongHomeStorageAgreement {
+    /// Path and module agree: both long.
+    LongPathAndLongModule,
+    /// Path and module agree: both short.
+    ShortPathAndShortModule,
+    /// Disagreement whose consequence is EXECUTION: the path looks quarantined but the module is
+    /// not long-prefixed, so the floor runs it anyway.
+    LongPathButExecutingModule,
+    /// Disagreement whose consequence is DECLINE: the path looks ordinary but the module is
+    /// long-prefixed, so the floor excludes it anyway.
+    ShortPathButDeclinedModule,
+}
+
+/// One identity's `LongHomeStorageAgreement`, keyed the same way as `RequiredFloorDispositionRow`
+/// so the two receipts join on `identity`. The agreement itself is computed once per file (the
+/// fact it observes is file-grained); this row repeats it per site purely for joinability.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LongHomeStorageAgreementRow {
+    pub identity: String,
+    pub agreement: LongHomeStorageAgreement,
+}
+
+/// A generic path-segment predicate: true when `path` contains a `long` directory component
+/// anywhere in its ancestry. This is deliberately NOT a hardcoded substring match against one
+/// literal directory — the corpus carries multiple real, only loosely-correlated `long`-shaped
+/// homes (`dag/test/claim/long/`, `src/v2/test/long/`, `src/v2/test/claim/long/`, mirroring the
+/// three `long_home_prefixes()` module-name prefixes above), and a single hardcoded string would
+/// silently miss the others.
+fn is_long_home_path(path: &str) -> bool {
+    path.split('/').any(|segment| segment == "long")
+}
+
+/// The pure (bool, bool) -> LongHomeStorageAgreement mapping. Takes no file, no module name, no
+/// prefix list -- only the two booleans the caller has already derived -- so this function
+/// cannot itself read a path or a module name and cannot become a second admission authority by
+/// accretion.
+///
+/// Realizes `v2.workflow.required_floor` `long_home_storage_agreement` in
+/// `src/v2/workflow/required_floor.dag` — the match arms below must stay in exact correspondence
+/// with that `.dag` function's arms.
+fn long_home_storage_agreement(
+    path_is_long: bool,
+    module_is_long: bool,
+) -> LongHomeStorageAgreement {
+    match (path_is_long, module_is_long) {
+        (true, true) => LongHomeStorageAgreement::LongPathAndLongModule,
+        (false, false) => LongHomeStorageAgreement::ShortPathAndShortModule,
+        (true, false) => LongHomeStorageAgreement::LongPathButExecutingModule,
+        (false, true) => LongHomeStorageAgreement::ShortPathButDeclinedModule,
+    }
 }
 
 /// What one required-floor attempt did. The three identity counts are separate fields rather
@@ -39073,13 +39516,39 @@ pub struct RequiredFloorOutcome {
     /// indistinguishable from a regression in the alert signature, which is the conflation
     /// `std.witness_admission` already ruled on for exactly this case.
     pub stale_quarantine: Vec<String>,
-    /// AND A BUDGET REFUSAL IS NEITHER. The row went undecided; the remedy is cost, not a
-    /// roster edit and not a bug fix. Three causes with three remedies get three counts.
-    pub budget_refused: Vec<String>,
+    /// A CLAIM INTERRUPTED BEFORE REACHING A VERDICT IS A THIRD THING, SEPARATE FROM COST.
+    /// Operator ruling 2026-08-19 (BUDGET POLICY CUT): the prior single `budget_refused`
+    /// collection fused this population together with `completed_over_cost_requirement` below
+    /// — a claim that never answered, and a claim that answered but cost too much, are
+    /// different facts with different remedies, and fusing them into one undecided bucket hid
+    /// which remedy applied. `NotEvaluated` is never green: this population still blocks
+    /// admission exactly as `budget_refused` did. What changed is that it is now visible
+    /// separately from `completed_over_cost_requirement`, not that either stops blocking.
+    pub interrupted_before_verdict: Vec<String>,
+    /// A CLAIM THAT REACHED A VERDICT BUT COST MORE THAN THE COMPLETED-COST LINE. Separate
+    /// from `interrupted_before_verdict` for the same reason: this claim answered, and the
+    /// remedy is reducing what it costs, not investigating why it never returned. Still
+    /// blocking, per the same ruling.
+    pub completed_over_cost_requirement: Vec<String>,
     /// Host tool could not be resolved — infra undecided, not budget-refused.
     pub host_tool_unresolved: Vec<String>,
     pub over_warn: usize,
+    /// DIAGNOSTIC ONLY, NEVER ADMISSION. A `VerdictReached` claim whose exact cost (on the
+    /// `RequiredFloorCostBasis` clock) exceeded `required_floor_claim_cost_line_ms`, per
+    /// `exceeds_completed_cost_line`. Counted so `ClaimTerminality`/`exceeds_completed_cost_line`
+    /// have a real executing consumer (DESIGN §6 — no scaffold without one) without smuggling the
+    /// retired 1552ms figure back into a blocking decision: this count is reported and nothing
+    /// reads it to fail the run, unlike `completed_over_cost_requirement` above, which blocks on
+    /// the independently-derived safety limit and is unaffected by this field.
+    pub over_cost_line_diagnostic: usize,
     pub failures: Vec<String>,
+    /// Per-identity `RequiredFloorDisposition`, one row per (module, function) site the
+    /// site-projection loop considered. This is the sole admission authority for the site; see
+    /// the type's doc comment.
+    pub required_floor_disposition: Vec<RequiredFloorDispositionRow>,
+    /// Per-identity `LongHomeStorageAgreement`, a storage/name-hygiene diagnostic that never
+    /// feeds admission. See the type's doc comment.
+    pub long_home_storage_agreement: Vec<LongHomeStorageAgreementRow>,
 }
 
 /// A witness site as preparation found it — the file's path, its module, and the `test fn`
@@ -39157,13 +39626,13 @@ fn str_list(items: impl IntoIterator<Item = String>) -> v1_interpreter::Value {
 
 /// The module carrying the floor's authored thresholds and the long-home roster. Named once,
 /// and evaluated in its OWN exact scope exactly as every claim is, so the module that supplies
-/// the admission facts is not privileged with a wider namespace than the claims they admit.
-const REQUIRED_FLOOR_MANIFEST_MODULE: &str = "v2.workflow.required_floor";
+/// the policy constants is not privileged with a wider namespace than the claims they bound.
+const REQUIRED_FLOOR_POLICY_MODULE: &str = "v2.workflow.required_floor";
 
 /// THE REQUIRED FLOOR, AS ONE ATTEMPT.
 ///
-/// Read the active sources once, strict-prepare one subject once, evaluate the manifest inside
-/// that subject, fold the manifest once, reduce one receipt. There is no plan resolve, no
+/// Read the active sources once, strict-prepare one subject once, project the claim roster from
+/// that subject's inventory, fold it once, reduce one receipt. There is no plan resolve, no
 /// policy resolve, no compile-clean resolve, no discovery-producer resolve, no batch, no
 /// positional clamp, no worker, no coordinator, no child process and no prepared-subject
 /// cache — not because they are switched off on this path but because this function does not
@@ -39384,8 +39853,11 @@ fn floor_value_shape(v: Option<&v1_interpreter::Value>) -> String {
 /// a budget is applied, never what it is.
 fn floor_required_int(ctx: &v1_interpreter::InterpContext, func: &str) -> Result<u64, String> {
     let qualified = format!("v2.workflow.required_floor.{func}");
+    // STRICTLY POSITIVE, because the deleted admission decoder refused non-positive budgets and
+    // a replacement that accepts zero is a weaker wall wearing the same name. A zero ceiling is
+    // not a lenient policy — it refuses every witness before it evaluates one.
     match v1_interpreter::run_in_context(ctx, &qualified, false) {
-        Ok(v1_interpreter::Value::Int(n)) if n >= 0 => Ok(n as u64),
+        Ok(v1_interpreter::Value::Int(n)) if n > 0 => Ok(n as u64),
         Ok(other) => Err(format!(
             "{qualified}: expected a non-negative Int, got {}",
             floor_value_shape(Some(&other))
@@ -39817,9 +40289,9 @@ pub fn run_required_floor(
         published_started.elapsed().as_millis(),
         published.as_ref().map(|k| k.len()).unwrap_or(0)
     );
-    let manifest_scope = claim_scope_for(&prepared, REQUIRED_FLOOR_MANIFEST_MODULE)?;
+    let policy_scope = claim_scope_for(&prepared, REQUIRED_FLOOR_POLICY_MODULE)?;
     let hermetic = evaluation_frame(
-        &manifest_scope,
+        &policy_scope,
         v1_interpreter::ExecutionMode::Hermetic,
         None,
         published.clone(),
@@ -39829,7 +40301,7 @@ pub fn run_required_floor(
     // five channel decisions out of a world this function had already built.
     install_output_policy_in(&hermetic, source_roots);
 
-    // ── 3. the manifest, folded in .dag ───────────────────────────────────────────────────
+    // ── 3. the claim roster, projected from the prepared inventory ───────────────────────
     //
     // T3/T4/T5 SPLIT THIS REGION because it is the whole blank interval. Between the
     // preparation line and the first `floor: claims = ...` line nothing is printed, so a run
@@ -39873,8 +40345,36 @@ pub fn run_required_floor(
     // `ClaimIdentityCountsDisagree` refuses. The manifest's enrollment map was a second mechanism
     // for that one invariant — and, being a growing `Value::Map` re-hashed once per fold step,
     // was the whole of the phase's quadratic cost.
-    let claim_budget_ms = floor_required_int(&hermetic, "required_floor_claim_budget_ms")?;
+    // THREE INDEPENDENT NUMBERS, not one and not two. Operator ruling 2026-08-19 (BUDGET POLICY
+    // CUT), superseding correction the same date: the CPU and wall safety deadlines are
+    // independently derived — never one figure copied into both clocks — and the completed-cost
+    // line is diagnostic only and reads from its own constant, unconsulted by admission.
+    // Reading all three from separate `.dag` constants is what makes the fusion structurally
+    // impossible to reintroduce here — there is no longer a single value a future edit could
+    // hand to more than one role by accident.
+    let claim_cpu_safety_limit_ms =
+        floor_required_int(&hermetic, "required_floor_claim_cpu_safety_limit_ms")?;
+    let claim_wall_safety_limit_ms =
+        floor_required_int(&hermetic, "required_floor_claim_wall_safety_limit_ms")?;
+    let claim_cost_line_ms = floor_required_int(&hermetic, "required_floor_claim_cost_line_ms")?;
     let claim_warn_ms = floor_required_int(&hermetic, "required_floor_claim_warn_ms")?;
+    // THE TIERS ARE ORDERED, and reading them independently cannot see that. The warn tier
+    // reports a row an order of magnitude above where an ordinary witness lands and lets it
+    // finish; the safety deadlines are what actually stop it (BUDGET POLICY CUT, 2026-08-19 —
+    // the completed-cost line never interrupts anything, so it is not a "hard ceiling" this
+    // check protects: only the two safety limits arm the interrupt clocks). The warn tier must
+    // sit strictly below the TIGHTER of the two safety limits, or it can never fire before the
+    // interrupt it is meant to precede.
+    let claim_tighter_safety_limit_ms = claim_cpu_safety_limit_ms.min(claim_wall_safety_limit_ms);
+    if claim_warn_ms >= claim_tighter_safety_limit_ms {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=ClaimBudgetTiersInverted warn_ms={claim_warn_ms} \
+             cpu_safety_limit_ms={claim_cpu_safety_limit_ms} \
+             wall_safety_limit_ms={claim_wall_safety_limit_ms} — the warning tier must sit \
+             strictly below the tighter of the two safety deadlines or it can never fire before \
+             the interrupt it is meant to precede"
+        ));
+    }
     let long_home_prefixes: Vec<String> = {
         let value = v1_interpreter::run_in_context(
             &hermetic,
@@ -39896,40 +40396,85 @@ pub fn run_required_floor(
                 }
             }
         }
-        if out.is_empty() {
-            return Err(
-                "REQUIRED-FLOOR REFUSAL cause=LongHomePrefixesEmpty — the long-home roster \
-                 decoded to zero prefixes, which would silently admit the long home into the \
-                 required floor"
-                    .to_string(),
-            );
-        }
+        // NO EMPTY-ROSTER REFUSAL, and the first version of this decode had one. It was
+        // backwards: an empty exception roster is the DESIRED terminal state, so refusing on it
+        // would make "at least one exclusion must exist forever" a structural requirement of the
+        // floor. Once the long home is discharged, admitting those witnesses to the ordinary
+        // population is the intended result, not an error. A decode that fails still refuses
+        // above — a failed read and a legitimately empty roster are different states.
         out
     };
     let mut claims: Vec<RequiredFloorClaim> = Vec::new();
+    let mut planned_identities: HashSet<String> = HashSet::new();
     let mut long_declined = 0usize;
     let mut live_declined = 0usize;
     let mut sites_offered = 0usize;
+    let mut disposition_rows: Vec<RequiredFloorDispositionRow> = Vec::new();
+    let mut storage_agreement_rows: Vec<LongHomeStorageAgreementRow> = Vec::new();
     for file in files {
-        let long_home = long_home_prefixes
+        let matched_prefix = long_home_prefixes
             .iter()
-            .any(|prefix| file.module_path.starts_with(prefix.as_str()));
+            .find(|prefix| file.module_path.starts_with(prefix.as_str()));
+        let long_home = matched_prefix.is_some();
+        // Diagnostic only -- computed once per file and never consulted by the admission
+        // branching below. See `LongHomeStorageAgreement`'s doc comment.
+        let path_is_long = is_long_home_path(&file.path);
+        let storage_agreement = long_home_storage_agreement(path_is_long, long_home);
         for function in &file.functions {
             sites_offered += 1;
+            let identity = format!("{}.{}", file.module_path, function);
+            storage_agreement_rows.push(LongHomeStorageAgreementRow {
+                identity: identity.clone(),
+                agreement: storage_agreement,
+            });
             if long_home {
                 long_declined += 1;
+                disposition_rows.push(RequiredFloorDispositionRow {
+                    identity,
+                    disposition: RequiredFloorDisposition::DeclinedLongModule {
+                        matched_prefix: matched_prefix
+                            .expect("long_home is true only when matched_prefix is Some")
+                            .clone(),
+                    },
+                });
                 continue;
             }
             if file.reads_live_tree {
                 live_declined += 1;
+                disposition_rows.push(RequiredFloorDispositionRow {
+                    identity,
+                    disposition: RequiredFloorDisposition::DeclinedLiveTree,
+                });
                 continue;
             }
+            // ONE EXECUTABLE CLAIM PER QUALIFIED IDENTITY, REFUSED HERE AND NAMED.
+            //
+            // The deleted manifest carried this invariant and refused BEFORE running anything,
+            // naming the offending declaration. `receipt_identities` is NOT the same wall: it
+            // compares populations after all 9,122 claims have executed, so a duplicate costs a
+            // full duplicated evaluation before anything notices, and a count mismatch says only
+            // that two populations disagree -- never which identity caused it. Planned-identity
+            // uniqueness and receipt completeness are different properties, and the terminal
+            // `planned == executed == receipted` check remains as the second, separate one.
+            if let Some(prior) = planned_identities.replace(identity.clone()) {
+                return Err(format!(
+                    "REQUIRED-FLOOR REFUSAL cause=DuplicateWitnessIdentity identity={prior} — \
+                     one qualified declaration resolved to more than one executable claim; the \
+                     roster cannot name the same witness twice"
+                ));
+            }
+            disposition_rows.push(RequiredFloorDispositionRow {
+                identity: identity.clone(),
+                disposition: RequiredFloorDisposition::Planned,
+            });
             claims.push(RequiredFloorClaim {
-                qualified: format!("{}.{}", file.module_path, function),
+                qualified: identity,
                 module_path: file.module_path.clone(),
                 function: function.clone(),
                 execution_mode: v1_interpreter::ExecutionMode::Hermetic,
-                budget_ms: claim_budget_ms,
+                cpu_safety_limit_ms: claim_cpu_safety_limit_ms,
+                wall_safety_limit_ms: claim_wall_safety_limit_ms,
+                cost_line_ms: claim_cost_line_ms,
                 warn_ms: claim_warn_ms,
             });
         }
@@ -39945,7 +40490,7 @@ pub fn run_required_floor(
         live_declined
     );
 
-    // THE EXPECTED-RED ROSTER, read from its .dag authority in the manifest's own frame — it
+    // THE EXPECTED-RED ROSTER, read from its .dag authority in the policy module's frame — it
     // must be decoded BEFORE that frame is dropped below, and it is a separate evaluation from
     // the manifest because it answers a different question: the manifest says which claims
     // exist, this says which of them are known to fail while someone fixes them.
@@ -40051,6 +40596,8 @@ pub fn run_required_floor(
         .ok()
         .is_some_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
     let roster_join_active = roster_join_path.is_some() || roster_join_only;
+    let required_floor_disposition_path = std::env::var("GUNBC_REQUIRED_FLOOR_DISPOSITION").ok();
+    let long_home_storage_agreement_path = std::env::var("GUNBC_LONG_HOME_STORAGE_AGREEMENT").ok();
     let mut roster_join_report = if roster_join_active {
         let mut roster_identities: Vec<String> = expected_red_roster.iter().cloned().collect();
         roster_identities.sort();
@@ -40106,7 +40653,7 @@ pub fn run_required_floor(
     // the next run says, and if the step survives then the cost is elsewhere and this was still
     // correct — an unread value held across the longest phase of the program has no defence.
     drop(hermetic);
-    drop(manifest_scope);
+    drop(policy_scope);
 
     // ── 4. fold the manifest ──────────────────────────────────────────────────────────────
     eprintln!("floor: claims = {}", claims.len());
@@ -40130,10 +40677,14 @@ pub fn run_required_floor(
         passed: 0,
         known_red_held: 0,
         stale_quarantine: Vec::new(),
-        budget_refused: Vec::new(),
+        interrupted_before_verdict: Vec::new(),
+        completed_over_cost_requirement: Vec::new(),
         host_tool_unresolved: Vec::new(),
         over_warn: 0,
+        over_cost_line_diagnostic: 0,
         failures: Vec::new(),
+        required_floor_disposition: disposition_rows,
+        long_home_storage_agreement: storage_agreement_rows,
     };
     let mut receipted: HashSet<String> = HashSet::new();
 
@@ -40259,12 +40810,17 @@ pub fn run_required_floor(
         // complete in the interpreter and simply never switched on here, so a CPU budget stood
         // in for it while printing the wall rule's own error text.
         //
-        // Both clocks are armed deliberately. CPU catches a spin; wall catches a witness that
-        // is slow because of what it reaches for, which CPU cannot see: the worst row measured
-        // burned 504 SECONDS of wall under a 5-second ceiling and returned an ordinary Bool,
-        // because its time was filesystem reads and its CPU never approached the limit.
-        frame.set_witness_eval_budget(Some(claim.budget_ms));
-        frame.set_witness_wall_budget(Some(claim.budget_ms));
+        // Both clocks are armed deliberately, and INDEPENDENTLY (operator ruling 2026-08-19,
+        // BUDGET POLICY CUT, superseding correction — "DO NOT set CPU and wall to the same
+        // 5000ms"). CPU catches a spin; wall catches a witness that is slow because of what it
+        // reaches for, which CPU cannot see: the worst row measured burned 504 SECONDS of wall
+        // under a 5-second ceiling and returned an ordinary Bool, because its time was
+        // filesystem reads and its CPU never approached the limit. The wall limit is
+        // deliberately looser than the CPU limit so ordinary host scheduling delay on a pure
+        // in-process claim cannot itself trip an interrupt while the claim is still within its
+        // CPU envelope.
+        frame.set_witness_eval_budget(Some(claim.cpu_safety_limit_ms));
+        frame.set_witness_wall_budget(Some(claim.wall_safety_limit_ms));
         // NAME WHO IS RUNNING, so a shared computation filled during this claim is attributed to
         // it rather than to nobody. The wall time this row is about to be charged is not
         // necessarily its own; `shared_fill` records which part was a first touch of a
@@ -40303,6 +40859,27 @@ pub fn run_required_floor(
                 claim_rss_kb as f64 / 1048576.0,
                 claim_rss_after as f64 / 1048576.0
             );
+        }
+        // DIAGNOSTIC-ONLY COST-LINE COMPARISON. This is the executing consumer of
+        // `claim_terminality`/`exceeds_completed_cost_line`/`ClaimTerminality`/
+        // `RequiredFloorCostBasis` (BUDGET POLICY CUT, 2026-08-19) — reported and counted so the
+        // types are not review §6 scaffolds, never gated on: `over_cost_line_diagnostic` has no
+        // reader that fails the run, unlike `completed_over_cost_requirement` above, which blocks
+        // on the safety limit and is computed independently of this comparison.
+        let terminality = claim_terminality(
+            &result,
+            &receipt,
+            WitnessSafetyPolicy {
+                cpu_ms: claim.cpu_safety_limit_ms,
+                wall_ms: claim.wall_safety_limit_ms,
+            },
+        );
+        if exceeds_completed_cost_line(
+            &terminality,
+            claim.cost_line_ms,
+            required_floor_cost_basis(),
+        ) {
+            outcome.over_cost_line_diagnostic += 1;
         }
         // RETURN WHAT THE FRAME NO LONGER OWNS, on a cadence rather than every row.
         //
@@ -40345,7 +40922,7 @@ pub fn run_required_floor(
                 &claim.qualified,
                 wall_ms,
                 claim.warn_ms,
-                claim.budget_ms,
+                claim.wall_safety_limit_ms,
             ) {
                 Some(line) => eprintln!("{line}"),
                 None => eprintln!(
@@ -40417,7 +40994,7 @@ pub fn run_required_floor(
                         ),
                         other => format!("{other:?}"),
                     };
-                    outcome.budget_refused.push(format!(
+                    outcome.interrupted_before_verdict.push(format!(
                         "{} is enrolled as expected-red but was BUDGET-REFUSED, not failed: \
                          {}. Enrollment asserts an expected verdict and a budget refusal \
                          produces none, so the enrolled claim went undecided — THIS ROW'S \
@@ -40439,8 +41016,8 @@ pub fn run_required_floor(
                 // unaffected because it counts receipts, not verdicts.
                 // BOTH REMEDIES, because the row is true on both axes. The semantic half goes
                 // to stale_quarantine (the claim passed, so the roster row must come out) and
-                // the cost half to budget_refused (an exact overrun that still has to be paid
-                // down). Choosing one would silently drop the other, and the one the code used
+                // the cost half to completed_over_cost_requirement (an exact overrun that still
+                // has to be paid down). Choosing one would silently drop the other, and the one the code used
                 // to drop was the repaid-debt signal the roster exists to surface.
                 ExpectedRedArm::PassedOverBudget => {
                     known_red_passed_over_budget += 1;
@@ -40459,7 +41036,7 @@ pub fn run_required_floor(
                          reported separately and is not a reason to keep the row",
                         claim.qualified, cost
                     ));
-                    outcome.budget_refused.push(format!(
+                    outcome.completed_over_cost_requirement.push(format!(
                         "{} PASSED but exceeded its budget: {}. This is an exact measurement, \
                          not a bound — the witness ran to completion — so the cost is known and \
                          actionable. Reduce it, or move the row to a lane declaring its own \
@@ -40541,8 +41118,8 @@ pub fn run_required_floor(
                 // is EXACT. Printing one sentence for both would repeat the conflation this arm
                 // exists to remove — asserting "correctness unknown" over a row that demonstrably
                 // answered is as wrong as calling a cost a defect.
-            } => outcome.budget_refused.push(match completion {
-                BudgetCompletion::Interrupted => format!(
+            } => match completion {
+                BudgetCompletion::Interrupted => outcome.interrupted_before_verdict.push(format!(
                     "{} was BUDGET-REFUSED and went UNDECIDED: {kind:?}, cost at least \
                      {elapsed_ms}ms against {budget_ms}ms. Not enrolled as expected-red, so \
                      nothing claims it is broken — but the deadline preempted the verdict, so \
@@ -40550,17 +41127,19 @@ pub fn run_required_floor(
                      is the interrupt point, not this row's cost. Reduce the cost, or move it \
                      to a lane declaring its own ceiling, so the witness reaches a verdict.",
                     claim.qualified
-                ),
-                BudgetCompletion::CompletedOverBudget => format!(
-                    "{} reached its verdict and then exceeded its budget: {kind:?}, cost \
+                )),
+                BudgetCompletion::CompletedOverBudget => {
+                    outcome.completed_over_cost_requirement.push(format!(
+                        "{} reached its verdict and then exceeded its budget: {kind:?}, cost \
                      exactly {elapsed_ms}ms against {budget_ms}ms. The witness ran to \
                      completion, so this is a measurement rather than a bound and the cost is \
                      known and actionable. This is a cost debt only — it is not a defect and \
                      it does not belong on the expected-red roster, which asserts an expected \
                      FAILURE this row does not exhibit.",
-                    claim.qualified
-                ),
-            }),
+                        claim.qualified
+                    ))
+                }
+            },
         }
     }
     outcome.receipt_identities = receipted.len();
@@ -40744,7 +41323,321 @@ pub fn run_required_floor(
             crate::expected_red_roster_join::write_join_tsv(&path, &join)?;
         }
     }
+    if let Some(path) = required_floor_disposition_path {
+        write_required_floor_disposition_tsv(&path, &outcome.required_floor_disposition)?;
+    }
+    if let Some(path) = long_home_storage_agreement_path {
+        write_long_home_storage_agreement_tsv(&path, &outcome.long_home_storage_agreement)?;
+    }
     Ok(outcome)
+}
+
+fn required_floor_disposition_label(disposition: &RequiredFloorDisposition) -> &'static str {
+    match disposition {
+        RequiredFloorDisposition::Planned => "planned",
+        RequiredFloorDisposition::DeclinedLongModule { .. } => "declined_long_module",
+        RequiredFloorDisposition::DeclinedLiveTree => "declined_live_tree",
+    }
+}
+
+fn required_floor_disposition_matched_prefix(disposition: &RequiredFloorDisposition) -> &str {
+    match disposition {
+        RequiredFloorDisposition::DeclinedLongModule { matched_prefix } => matched_prefix,
+        RequiredFloorDisposition::Planned | RequiredFloorDisposition::DeclinedLiveTree => "",
+    }
+}
+
+/// Writes the per-identity `RequiredFloorDisposition` receipt as TSV: one row per site the
+/// site-projection loop considered, joinable on `identity`. This is a receipt of the admission
+/// decision already made above -- writing it changes nothing about which claims execute.
+fn write_required_floor_disposition_tsv(
+    path: &str,
+    rows: &[RequiredFloorDispositionRow],
+) -> Result<(), String> {
+    use std::io::Write;
+    let mut file = std::fs::File::create(path)
+        .map_err(|e| format!("write_required_floor_disposition_tsv: create {path}: {e}"))?;
+    let mut planned = 0usize;
+    let mut declined_long = 0usize;
+    let mut declined_live = 0usize;
+    for row in rows {
+        match &row.disposition {
+            RequiredFloorDisposition::Planned => planned += 1,
+            RequiredFloorDisposition::DeclinedLongModule { .. } => declined_long += 1,
+            RequiredFloorDisposition::DeclinedLiveTree => declined_live += 1,
+        }
+    }
+    writeln!(
+        file,
+        "# summary\ttotal={}\tplanned={}\tdeclined_long_module={}\tdeclined_live_tree={}",
+        rows.len(),
+        planned,
+        declined_long,
+        declined_live
+    )
+    .map_err(|e| format!("write_required_floor_disposition_tsv: write {path}: {e}"))?;
+    writeln!(file, "identity\tdisposition\tmatched_prefix")
+        .map_err(|e| format!("write_required_floor_disposition_tsv: write {path}: {e}"))?;
+    for row in rows {
+        writeln!(
+            file,
+            "{}\t{}\t{}",
+            row.identity.replace(['\t', '\n'], " "),
+            required_floor_disposition_label(&row.disposition),
+            required_floor_disposition_matched_prefix(&row.disposition).replace(['\t', '\n'], " "),
+        )
+        .map_err(|e| format!("write_required_floor_disposition_tsv: write {path}: {e}"))?;
+    }
+    Ok(())
+}
+
+fn long_home_storage_agreement_label(agreement: LongHomeStorageAgreement) -> &'static str {
+    match agreement {
+        LongHomeStorageAgreement::LongPathAndLongModule => "long_path_and_long_module",
+        LongHomeStorageAgreement::ShortPathAndShortModule => "short_path_and_short_module",
+        LongHomeStorageAgreement::LongPathButExecutingModule => "long_path_but_executing_module",
+        LongHomeStorageAgreement::ShortPathButDeclinedModule => "short_path_but_declined_module",
+    }
+}
+
+/// Writes the per-identity `LongHomeStorageAgreement` receipt as TSV: a storage/name-hygiene
+/// DIAGNOSTIC, joinable on `identity` with the disposition receipt above, that never feeds
+/// admission. See the type's doc comment for why the two receipts are kept separate.
+fn write_long_home_storage_agreement_tsv(
+    path: &str,
+    rows: &[LongHomeStorageAgreementRow],
+) -> Result<(), String> {
+    use std::io::Write;
+    let mut file = std::fs::File::create(path)
+        .map_err(|e| format!("write_long_home_storage_agreement_tsv: create {path}: {e}"))?;
+    let mut agree_long = 0usize;
+    let mut agree_short = 0usize;
+    let mut long_path_executing = 0usize;
+    let mut short_path_declined = 0usize;
+    for row in rows {
+        match row.agreement {
+            LongHomeStorageAgreement::LongPathAndLongModule => agree_long += 1,
+            LongHomeStorageAgreement::ShortPathAndShortModule => agree_short += 1,
+            LongHomeStorageAgreement::LongPathButExecutingModule => long_path_executing += 1,
+            LongHomeStorageAgreement::ShortPathButDeclinedModule => short_path_declined += 1,
+        }
+    }
+    writeln!(
+        file,
+        "# summary\ttotal={}\tlong_path_and_long_module={}\tshort_path_and_short_module={}\t\
+         long_path_but_executing_module={}\tshort_path_but_declined_module={}",
+        rows.len(),
+        agree_long,
+        agree_short,
+        long_path_executing,
+        short_path_declined
+    )
+    .map_err(|e| format!("write_long_home_storage_agreement_tsv: write {path}: {e}"))?;
+    writeln!(file, "identity\tagreement")
+        .map_err(|e| format!("write_long_home_storage_agreement_tsv: write {path}: {e}"))?;
+    for row in rows {
+        writeln!(
+            file,
+            "{}\t{}",
+            row.identity.replace(['\t', '\n'], " "),
+            long_home_storage_agreement_label(row.agreement),
+        )
+        .map_err(|e| format!("write_long_home_storage_agreement_tsv: write {path}: {e}"))?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod required_floor_disposition_and_storage_agreement_law {
+    //! `RequiredFloorDisposition` decides admission; `LongHomeStorageAgreement` never does.
+    //! Tested on the pure boundary functions the site-projection loop composes, plus one real
+    //! corpus specimen so the storage-agreement classification is grounded in an actual file
+    //! rather than only in synthetic strings. Fixtures deliberately never touch the filesystem
+    //! or the live tree — the whole subject is representable as (path, module) pairs.
+
+    use super::*;
+
+    // ── is_long_home_path: a path-segment predicate, not a substring match ──────────────────
+
+    #[test]
+    fn a_long_segment_anywhere_in_the_path_is_detected() {
+        assert!(is_long_home_path("dag/test/claim/long/foo_test.dag"));
+    }
+
+    #[test]
+    fn a_path_with_no_long_segment_is_not_long() {
+        assert!(!is_long_home_path("dag/test/claim/foo_test.dag"));
+    }
+
+    #[test]
+    fn a_substring_match_is_not_a_segment_match() {
+        // "belong" contains the letters "long" but is not the path SEGMENT "long" — the
+        // predicate splits on '/' rather than scanning for a substring, so this must not match.
+        assert!(!is_long_home_path("dag/test/claim/belong/foo_test.dag"));
+    }
+
+    // ── long_home_storage_agreement: all four arms, by construction exhaustive ──────────────
+
+    #[test]
+    fn long_path_and_long_module_agree() {
+        assert_eq!(
+            long_home_storage_agreement(true, true),
+            LongHomeStorageAgreement::LongPathAndLongModule
+        );
+    }
+
+    #[test]
+    fn short_path_and_short_module_agree() {
+        assert_eq!(
+            long_home_storage_agreement(false, false),
+            LongHomeStorageAgreement::ShortPathAndShortModule
+        );
+    }
+
+    #[test]
+    fn long_path_but_executing_module_disagree() {
+        assert_eq!(
+            long_home_storage_agreement(true, false),
+            LongHomeStorageAgreement::LongPathButExecutingModule
+        );
+    }
+
+    #[test]
+    fn short_path_but_declined_module_disagree() {
+        assert_eq!(
+            long_home_storage_agreement(false, true),
+            LongHomeStorageAgreement::ShortPathButDeclinedModule
+        );
+    }
+
+    /// The live specimen named at the ruling that grounded these arms: a `git mv` landed the
+    /// file under `dag/test/claim/long/` without updating its own module declaration, so the
+    /// directory says one thing and the authored name says another. This is the exact
+    /// discrepancy `LongHomeStorageAgreement` exists to surface, on the actual file rather than
+    /// a stand-in for it.
+    #[test]
+    fn qualified_declaration_reference_specimen_is_long_path_but_executing_module() {
+        let path = "dag/test/claim/long/qualified_declaration_reference_emit_cross_module_witness_test.dag";
+        let module = "test.claim.qualified_declaration_reference_emit_cross_module_witness";
+
+        let path_is_long = is_long_home_path(path);
+        let matched_prefix = long_home_prefixes_for_test()
+            .iter()
+            .any(|prefix| module.starts_with(prefix.as_str()));
+
+        assert!(
+            path_is_long,
+            "the file lives under a long/-shaped directory"
+        );
+        assert!(
+            !matched_prefix,
+            "the module declaration does not carry a long-home prefix"
+        );
+        assert_eq!(
+            long_home_storage_agreement(path_is_long, matched_prefix),
+            LongHomeStorageAgreement::LongPathButExecutingModule,
+            "path-long/module-short must classify as the specimen's known disagreement"
+        );
+    }
+
+    /// Mirrors `long_home_prefixes()` in `src/v2/workflow/required_floor.dag` — the `.dag`
+    /// authority the host already reads for admission. Restated here rather than imported
+    /// because the loop's own matched-prefix decision is driven by the `.dag`-evaluated roster
+    /// at runtime; this fixture exists only to ground the specimen test above against the same
+    /// three literal prefixes without requiring a live interpreter frame in a unit test.
+    fn long_home_prefixes_for_test() -> Vec<String> {
+        vec![
+            "test.claim.long.".to_string(),
+            "v2.test.long.".to_string(),
+            "v2.test.claim.long.".to_string(),
+        ]
+    }
+
+    // ── disposition/agreement TSV writers: identity-grain, not a summary-only receipt ───────
+
+    #[test]
+    fn disposition_tsv_carries_one_row_per_identity_with_matched_prefix() {
+        let dir = std::env::temp_dir().join(format!(
+            "required_floor_disposition_tsv_test_{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let path = dir.join("disposition.tsv");
+        let path_str = path.to_string_lossy().to_string();
+
+        let rows = vec![
+            RequiredFloorDispositionRow {
+                identity: "m.one.a".to_string(),
+                disposition: RequiredFloorDisposition::Planned,
+            },
+            RequiredFloorDispositionRow {
+                identity: "test.claim.long.two.b".to_string(),
+                disposition: RequiredFloorDisposition::DeclinedLongModule {
+                    matched_prefix: "test.claim.long.".to_string(),
+                },
+            },
+            RequiredFloorDispositionRow {
+                identity: "m.three.c".to_string(),
+                disposition: RequiredFloorDisposition::DeclinedLiveTree,
+            },
+        ];
+
+        write_required_floor_disposition_tsv(&path_str, &rows).expect("write tsv");
+        let content = std::fs::read_to_string(&path).expect("read tsv");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let lines: Vec<&str> = content.lines().collect();
+        assert_eq!(lines.len(), 5, "summary + header + 3 rows: {lines:?}");
+        assert!(lines[0].starts_with("# summary"));
+        assert!(lines[0].contains("total=3"));
+        assert!(lines[0].contains("planned=1"));
+        assert!(lines[0].contains("declined_long_module=1"));
+        assert!(lines[0].contains("declined_live_tree=1"));
+        assert_eq!(lines[1], "identity\tdisposition\tmatched_prefix");
+        assert_eq!(lines[2], "m.one.a\tplanned\t");
+        assert_eq!(
+            lines[3],
+            "test.claim.long.two.b\tdeclined_long_module\ttest.claim.long."
+        );
+        assert_eq!(lines[4], "m.three.c\tdeclined_live_tree\t");
+    }
+
+    #[test]
+    fn storage_agreement_tsv_carries_one_row_per_identity() {
+        let dir = std::env::temp_dir().join(format!(
+            "long_home_storage_agreement_tsv_test_{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let path = dir.join("agreement.tsv");
+        let path_str = path.to_string_lossy().to_string();
+
+        let rows = vec![
+            LongHomeStorageAgreementRow {
+                identity: "m.one.a".to_string(),
+                agreement: LongHomeStorageAgreement::LongPathAndLongModule,
+            },
+            LongHomeStorageAgreementRow {
+                identity: "m.two.b".to_string(),
+                agreement: LongHomeStorageAgreement::LongPathButExecutingModule,
+            },
+        ];
+
+        write_long_home_storage_agreement_tsv(&path_str, &rows).expect("write tsv");
+        let content = std::fs::read_to_string(&path).expect("read tsv");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let lines: Vec<&str> = content.lines().collect();
+        assert_eq!(lines.len(), 4, "summary + header + 2 rows: {lines:?}");
+        assert!(lines[0].contains("total=2"));
+        assert!(lines[0].contains("long_path_and_long_module=1"));
+        assert!(lines[0].contains("long_path_but_executing_module=1"));
+        assert!(lines[0].contains("short_path_and_short_module=0"));
+        assert!(lines[0].contains("short_path_but_declined_module=0"));
+        assert_eq!(lines[1], "identity\tagreement");
+        assert_eq!(lines[2], "m.one.a\tlong_path_and_long_module");
+        assert_eq!(lines[3], "m.two.b\tlong_path_but_executing_module");
+    }
 }
 
 fn witness_eval_verdict_from_claim_outcome(

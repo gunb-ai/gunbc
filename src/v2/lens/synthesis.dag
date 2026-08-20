@@ -1,5 +1,7 @@
 module v2.lens.synthesis
 
+import v2.lens.complexity { complexity_lens }
+
 
 type LowerBoundTechnique
   = DecisionTree
