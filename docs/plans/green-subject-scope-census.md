@@ -44,11 +44,17 @@ the release profile.
 
 | population | measured | in the green |
 |---|---|---|
-| `src/v1/stage0/src/bin/*.rs` | 31 | 3 |
+| **declared `[[bin]]` targets in `src/v1/stage0/Cargo.toml`** | **32** | **3 (29 unbuilt)** |
 | workspace members (root `Cargo.toml`) | 9 | reached only as deps of `v1-compiler` |
 | `src/v1/tests` | a declared workspace member | never built |
 | `src/v1/stage0_core` | has a `Cargo.toml`; named by **no** manifest in the tree — not a member, not in `exclude` (`[".stage1"]`), not a path dependency (grep over every `Cargo.toml` → 0; control: `stage0_runtime` matches three) | never built |
 | `#[cfg(test)]` code | no `--all-targets` anywhere | never compiled |
+
+**Denominator reconciled across two independent counts (verification pass).** `src/v1/stage0/Cargo.toml`
+declares **32** `[[bin]]` blocks; `src/bin/` holds **31** `.rs` files; the difference is exactly one
+declared bin whose `path = "src/main.rs"` (`name = "gunbc"`). Nothing left over. **32 is the
+denominator that cannot be argued down** — it is what `cargo build --bins` would build, and all three
+built binaries are declared there. 3 of 32; **29 declared bin targets are never compiled in CI.**
 
 **Grep control (house rule).** `cargo test`, `cargo clippy` and `--all-targets` return **zero
 matches** across `.github/workflows/` and `.githooks/`. The instrument could have returned
@@ -182,21 +188,42 @@ cannot outrange it.
 
 ---
 
-## Rank 5 — `lifecycle_totality_witness_observation`: the axis is its own input (confirmed, owned elsewhere)
 
-**Mechanism.** `gunbc.stage0_rust_lifecycle_totality` `lifecycle_totality_witness_observation`;
-consumers in `dag/test/claim/stage0_rust_lifecycle_totality_witness_test.dag`,
-`…_maintenance_census_report_witness_test.dag`, `…_honest_frontier_integration_witness_test.dag`.
 
-**Confirmed by reading, not re-measured** (a separate child owns the repair): every enrolled
-consumer supplies the observation's tracked set as *the classified set concatenated with the
-test's own `extra_paths`*, so the derived `unclassified_paths` axis is identically `extra_paths`.
-The witness greens on a subject constructed from its own answer. The live arm — which would put
-the axis against every tracked `.rs` in the repo — is excluded from hermetic discovery in
-`gunbc.ci_layer_roots`.
 
-This is the class in its purest form and is the calibration specimen for this census: not a weak
-check, an unfalsifiable one. **Routed to the manager, not to the owning child, per instruction.**
+
+
+## Rank 5 — the 757 live-tree-declined witnesses include at least one that would RED today
+
+This is Rank 2's declared gap, measured for **content** rather than count — and it is the reason the
+1490 matters beyond arithmetic.
+
+**Mechanism.** `test.claim.v1_source_audit_witness_test`
+`regen_stage0_write_and_verify_share_compile_refusal`.
+
+**Measured chain, closed end to end:**
+
+1. The witness reads `data regen_stage0_path: String = "src/v1/stage0/src/bin/regen_stage0.rs"` through
+   `filesystem_read` and requires `src_has(regen_stage0_path, "stage0_self_compile_refusal_message")`.
+2. That file was deleted 2026-08-18 (`3b431f34a9e`) and is absent at `189fce5cf3`, the head of the most
+   recent green main run (`32392067228`).
+3. `v1_interpreter` `eval_filesystem_read_builtin` returns `Err(InterpError::TypeError)` on a failed
+   read — it does **not** return empty content. So the claim, if planned, becomes
+   `ClaimOutcome::RuntimeError` → `outcome.failures` → `failed > 0`.
+4. Run `32392067228` reported `planned=9790 executed=9790 passed=9482 known_red_held=308 failed=0`.
+5. The module is on no exclusion, expected-red, or route-gap roster (control: the same grep finds
+   `run_verdict_exit_status_witness_test` in `gunbc.ci_layer_roots`).
+6. **The resolution:** the module declares `data live_tree_disposition: LiveTreeDisposition =
+   ReadsLiveTree`, so it is live-tree-declined — one of the 757 — and is never planned.
+
+**What is stated:** the count. `[floor-disposition]` says 757 live-tree-declined and that no cadence
+picks them up. **What is not stated anywhere:** that the declined population contains rows which are
+not merely unrun but **currently wrong** — this one reads a path deleted two days before the run. A
+reader of "757 declined, no consumer" takes it as deferred coverage. It is also unmeasured breakage.
+
+**Scope of this row, stated honestly.** I established one member by exhaustive chain. I did **not**
+enumerate how many of the 757 are in the same state; that would require executing the declined
+population, which is exactly what nothing does.
 
 ---
 
@@ -224,6 +251,92 @@ longer runs. A witnesses.yml green is read as "the merge gates passed"; these di
 **Rank.** Below the four above because the misreading is confined to readers of those two
 carriers, and because it is a floor-cut consequence rather than a scope statement that is wrong
 on its own terms.
+
+---
+
+## Rank 7 — the merge driver's recovery recipe fails at step 2 of 4: it names a deleted binary
+
+**Mechanism.** `.githooks/generated-artifact-merge`, whose authority is
+`gunbc.generated_artifact_merge_driver` `generated_artifact_merge_driver_repair_steps`.
+
+Git reaches this driver exactly when both sides changed a generated path — the moment a human most
+needs correct instructions. The driver's own design is exemplary: it **refuses** rather than
+answering `true`, leaves the path unmerged, and prints a recovery recipe. Steps 2 and 3 of that
+recipe read:
+
+    2. rebuild and run the seed emitter: cargo build --release --bin regen_stage0 && target/release/regen_stage0
+    3. rebuild and verify AGAIN: cargo build --release --bin regen_stage0 && target/release/regen_stage0 --verify
+
+**`regen_stage0` does not exist.** Deleted at the root by `3b431f34a9e` ("REGEN ROOT CUT: delete
+regen_stage0, rebuild as claim_executor --required-regen fold", #8406, 2026-08-18). Measured: no
+`[[bin]]` block declares it in `src/v1/stage0/Cargo.toml`, and `src/v1/stage0/src/bin/regen_stage0.rs`
+does not exist at `026a709a716` (control: the same `ls` resolves `claim_executor.rs`).
+
+**A green here** — the driver firing and printing its advice — asserts that the conflict was refused
+loudly. **A reader takes it to assert** that following the printed four steps recovers the tree. It
+fails at step 2.
+
+**Two carriers, not one.** The hook is emitted from the `.dag` authority, so repairing the hook alone
+regenerates the defect on the next emit. `DESIGN.md` names this driver's own repair recipe as the
+mechanism's next-rung trigger, which makes the recipe load-bearing rather than decorative.
+
+---
+
+## Rank 8 — the workspace manifest names a deleted binary as the writer of a region of itself
+
+**Mechanism.** root `Cargo.toml` line 6, emitted from `v1.compiler.workspace_members`
+(`src/v1/workspace_members.dag`, mirrored in `v1_compiler_workspace_members.rs`):
+
+    # BEGIN generated stage0 crate members -- regen_stage0 writes this region (authority: v1.compiler.workspace_members)
+
+**It interlocks with Rank 1.** The most surprising thing Rank 1 surfaced is that `src/v1/tests` is a
+declared workspace member that nothing builds. The comment that would tell a reader who maintains
+that member list points at a binary that does not exist — so the question "who owns this list, and is
+`src/v1/tests` supposed to be here?" has no reachable answer from the manifest itself.
+
+**Three carriers**, since the line is generated: the manifest, the `.dag` authority, and the emitted
+Rust mirror.
+
+---
+
+### The `regen_stage0` reference population is not two, and not all prose
+
+Recorded because rows 7 and 8 were handed to me as "the only two references in tracked source, both
+prose, neither an invocation". Measured at `026a709a716` over tracked source, excluding `docs/plans/`
+and `dag/gunbc/plans/` (plan documents describing history, correctly past-tense): **five subjects
+across eight carriers, of which two are executable witnesses rather than prose.**
+
+| subject | carriers | kind |
+|---|---|---|
+| merge-driver recipe (row 7) | `.githooks/generated-artifact-merge` + `gunbc.generated_artifact_merge_driver` `generated_artifact_merge_driver_repair_steps` | prose, but generated — fixing the hook alone regenerates it |
+| workspace-members region (row 8) | root `Cargo.toml` + `v1.compiler.workspace_members` + `v1_compiler_workspace_members.rs` | prose, generated, three carriers |
+| **`test.claim.stage0_regen_convergence_real_execution_witness`** | `a_real_regen_stage0_verify_run_reports_zero_divergence` calls `cargo.Build.Run(package: "v1-compiler", bin: "regen_stage0", args: ["--verify"])`, plus a RED control invoking the same deleted bin | **executable, not prose** — and enrolled in `bin_witness_wet_entries`, the dead lane enumerated below, so it cannot red |
+| **`test.claim.v1_source_audit_witness_test`** | `regen_stage0_path` read through `filesystem_read` | **executable, not prose** — this is row 5 |
+| `gunbc.ci_release_bins` | records the deletion explicitly ("regen_stage0 … regen root cut; verification is `claim_executor --required-regen`") | the declared **negative** |
+
+That last row is the control: a sweep that surfaces the correct, already-updated carrier alongside the
+stale ones is not selecting for its own answer. The two executable references are the load-bearing
+half — and each is invisible for a *different* reason already on this census: one sits on the dead
+`bin_witness_wet_entries` lane (residue section), the other on the live-tree decline (row 5).
+
+
+---
+
+## Rank 9 — `lifecycle_totality_witness_observation`: the axis is its own input (confirmed, owned elsewhere)
+
+**Mechanism.** `gunbc.stage0_rust_lifecycle_totality` `lifecycle_totality_witness_observation`;
+consumers in `dag/test/claim/stage0_rust_lifecycle_totality_witness_test.dag`,
+`…_maintenance_census_report_witness_test.dag`, `…_honest_frontier_integration_witness_test.dag`.
+
+**Confirmed by reading, not re-measured** (a separate child owns the repair): every enrolled
+consumer supplies the observation's tracked set as *the classified set concatenated with the
+test's own `extra_paths`*, so the derived `unclassified_paths` axis is identically `extra_paths`.
+The witness greens on a subject constructed from its own answer. The live arm — which would put
+the axis against every tracked `.rs` in the repo — is excluded from hermetic discovery in
+`gunbc.ci_layer_roots`.
+
+This is the class in its purest form and is the calibration specimen for this census: not a weak
+check, an unfalsifiable one. **Routed to the manager, not to the owning child, per instruction.**
 
 ---
 
@@ -271,6 +384,16 @@ live executing consumer in the present tense. Enumerated at `026a709a716` by ide
 the same sweep surfaces the corrected `excl_bin_wet_reason` and the explicit negatives below, so
 it is not selecting only for one answer). **No fix and no proposal is offered for any of these.**
 
+**THE SHARPEST ONE FIRST — the correction forwards the reader to the uncorrected sentence.**
+`gunbc.ci_layer_roots` `bin_witness_wet_note` still reads: "They carry core per-PR compiler coverage,
+so unlike the offline four they **DO keep running on every PR** — as the declared bin-witness wet
+batch." The corrected `excl_bin_wet_reason` (line 67) points readers *at* that note (line 882) —
+"restoration is not this row to decide (`bin_witness_wet_note`)" — so a reader who does exactly what
+the corrected row tells them to do lands, ~815 lines later in the same file, on the wrong answer.
+**The repair is one hop from undoing itself.** This is the strongest evidence on the census that a
+prose correction is not a fix: this one was made carefully, by someone who understood the problem,
+and still leaves the wrong answer reachable in two steps.
+
 **A. Exclusion rows in `gunbc.ci_layer_roots` whose own `reason` names the dead lane as the
 executing consumer — 4:**
 
@@ -289,11 +412,12 @@ executing consumer — 4:**
 - `gunbc.roadmap_authority` `roadmap_receipt_continuity_execution_contract_note`: "Live git-observed
   integrity **executes** in `test.claim.roadmap_receipt_continuity_live_witness` (ReadsLiveTree,
   `bin_witness_wet_entries`)."
-- `gunbc.commit_workflow` `commit_workflow_long_lane_note`: a different shape of the same
-  dependency — two rows were **deleted** from the hermetic surface on the ground that "the same
-  `check_fns` are declared in `gunbc.ci_layer_roots` `bin_witness_wet_entries` (the Wet
-  bin-execution lane)". The deletion's justification, not merely an exclusion's, rests on the
-  dead lane.
+
+**B-severe — a coverage decision already executed on a false premise, not merely a stale citation.**
+`gunbc.commit_workflow` `commit_workflow_long_lane_note`: two rows were **deleted** from the hermetic
+surface on the ground that "the same `check_fns` are declared in `gunbc.ci_layer_roots`
+`bin_witness_wet_entries` (the Wet bin-execution lane)". The other 24 carriers mislead a reader;
+this one already **removed** something. Different severity, recorded separately for that reason.
 
 **C. Witness files whose own module note states the same coverage in the present tense — 18.**
 Each says some form of *excluded from hermetic discovery … and enrolled in
@@ -317,19 +441,18 @@ covered":
 `stage0_rust_host_observation_live_witness_test.dag` ·
 `test/manual/process_argv_expansion_receipt_test.dag`
 
-**D. The class note contradicts the corrected row, inside one file.**
-`gunbc.ci_layer_roots` `bin_witness_wet_note` still reads: "They carry core per-PR compiler
-coverage, so unlike the offline four they **DO keep running on every PR** — as the declared
-bin-witness wet batch." The corrected `excl_bin_wet_reason` points readers *at* this note
-("restoration is not this row to decide (`bin_witness_wet_note`)"), so the correction forwards to
-the uncorrected sentence.
-
 **E. One adjacent row, different dead lane, recorded because the sweep surfaced it.**
 `dag_compile_clean_shard_totality_witness_test.dag` is the *negative* of the pattern above — it
 declares itself "Excluded from per-PR `bin_witness_wet_entries`; runs on the falsifier wet cadence
 (batch 5, `ci_floor_plan.dag`) as its named consumer." `falsifier.yml` was deleted 2026-08-15 and
 `gunbc.ci_layer_roots` `falsifier_self_host_wet_note` declares that lane dead, so this row names a
 consumer for a second dead lane. Same shape, and its class *is* declared elsewhere.
+
+**One carrier is HALF corrected, which is harder to catch than a wholly stale one.**
+`stage0_rust_host_observation_live_witness_test.dag` appears in both A and C: one sentence correctly
+says the scaffold trio is not on the roster and the falsifier cadence is not scheduled; the very next
+says the closing contract "is enrolled in `bin_witness_wet_entries` and runs on the per-PR wet corpora
+batch." The presence of a correction in the paragraph reads as evidence the paragraph was reviewed.
 
 **Explicit negatives found by the same sweep, confirming it was not selecting for one answer:**
 `gunbc.explicit_witness_admission` carries two rows that say a witness is *not* on
