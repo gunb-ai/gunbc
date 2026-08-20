@@ -84,6 +84,69 @@ declined population was two integers in a `[floor-phase]` line.
 
 ---
 
+## The measurement, and what it settles
+
+The decline arm was deleted on a branch and the whole population executed — floor run
+**32345970386**, sha `c812b9fb6d0`, the first run in which every discovered identity was routed:
+
+```
+offered=11103 routed=10565 declined_long=538      (partition exact)
+planned=10565 executed=10565 terminal=10565 passed=10116
+known_red_held=207 failed=36 route_gap=157
+interrupted_before_verdict=47 completed_over_cost_requirement=2
+```
+
+**Of ~783 identities admitted, 626 pass.** 157 route-gap, and the operations they name are
+exactly what this corpus's own exclusion notes have named in prose for months — `Mktemp.Dir` 54,
+`IsExecutable` 26, `Run` 17, `emit_host_native_cache_evict` 10, `Check` 10, `Write` 8,
+`git.Inspect.HeadCommit` 5, then a tail. **Not one is a committed-source read.** The premise was
+stale for the large majority of the population it excluded, not for an interesting minority.
+
+The cost worry did not materialise: 49 of 783 in the cost tail (~6%), 32 minutes wall against a
+180-minute timeout.
+
+### The finding nobody was looking for: a third of the expected-red roster was never red
+
+That run carried **308** enrolled expected-red identities and held **207**. The difference is
+**101** — and the 101 enrolled identities that route-gapped are *precisely* that set, by
+intersection, not by coincidence of counts.
+
+Those 101 were already executing on main every run, already reaching a hermetic refusal. Because
+that refusal arrived as a `TypeError` carrying prose, `ExpectedRedArm` could only read it as an
+ordinary failure and **held it as agreement**. The debt ledger recorded "this witness runs and
+fails and someone is fixing it" about 101 rows that never reached their subject. Nothing was
+fixing them, because there was nothing to fix: **they needed a route, not a repair.**
+
+This is the state-space conflation §5 names, hiding inside the mechanism whose entire job is
+making debt visible. It also means main's `passed=8702 / known_red_held=306` counted something
+narrower than executed coverage, by 101 identities, independently of the 778.
+
+### The cost tail is two mechanisms, not one budget
+
+The CPU histogram over the 49 is bimodal with a **14.4-second empty gap**:
+
+| band | rows |
+|---|---|
+| 5001–5013 ms | 23 |
+| 6682 ms | 1 |
+| *(nothing from 6.7s to 21.1s)* | 0 |
+| 21109–53301 ms | 25 |
+
+A 12ms spread across 23 rows is **the interrupt firing**, not 23 witnesses that each need five
+seconds — and an interrupted claim's cost is a *lower bound*, so those rows' true cost is
+**unmeasured**. The low mode cannot be used to argue the budget is too tight.
+
+24 of the high-mode 25 are *also* interrupted, having accrued 21–53s against a 5000ms deadline —
+only possible where the stride poll cannot land. That is
+`ClaimPreemptionReachability::OpaqueHostCallUnbounded`, already modeled in
+`v2.workflow.required_floor`. **Exactly one of the 25 is the known member** of
+`opaque_host_call_grandfather_population()`, which declares itself *exhaustive at one member* and
+says it "grows only when a DIFFERENT operation is found to share this shape, which is a new
+finding, not a declaration." This is that finding: the other 24 reach host-fed `*_live` builtins
+in `enforcement_live`, `cost_coverage`, `grammar_coverage`, `lifecycle_survivor_corpus_census`,
+and `realization_vocabulary_containment`. The declared "bounded population" was bounded by what
+anyone had observed on a floor that was not executing the population where the others live.
+
 ## What replaced it
 
 **Delete-first at the root** (DESIGN §3 replacement migration). `DeclinedLiveTree` and the text
@@ -116,6 +179,22 @@ Nothing gets a wet route. No live shell, no write, no network — that is a sepa
 own admission question, and this change deliberately does not open it.
 
 ---
+
+## What landed here, and what is staged
+
+This change carries the **mechanism** and the **101 reclassification**. It does **not** delete
+the decline arm.
+
+The seam is exact rather than chosen: the full-closure run surfaced **55 blockers — 6 witnesses
+that do not RESOLVE** (`undefined variable`, `no such function`; never caught because nothing
+ever evaluated them) **and 49 in the cost tail — and all 55 are newly-admitted, none previously
+routed.** So the part that carries no blocker is a complete change that happens to be smaller,
+not a partial one. The 101 route-gap on main today and need nothing deleted to be reclassified.
+
+Staged behind their owners: the 6 broken artifacts (route to author or delete — enrolling a
+non-resolving witness as expected-red would assert it runs and fails, re-minting the very
+conflation this change removes), and the cost-tail policy call, which the histogram above says
+is two questions rather than one.
 
 ## What is NOT claimed
 
