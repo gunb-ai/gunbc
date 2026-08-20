@@ -868,6 +868,15 @@ fn run() -> Result<ExitCode, ExitCode> {
         );
     }
 
+    if v1_compiler::v1_interpreter::eval_profile_enabled() {
+        let (kernel_calls, lookup_calls, lookup_items) =
+            v1_compiler::v1_interpreter::cast_lookup_counters();
+        eprintln!(
+            "[cast-profile] kernel_calls={kernel_calls} type_lookup_calls={lookup_calls} \
+             type_lookup_items={lookup_items}"
+        );
+    }
+
     emit_rss_measurement("per-shard-peak-rss");
     if let Some(bytes) = children_max_rss_bytes() {
         let emoji = std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true");
