@@ -131,7 +131,7 @@ type SparkBootstrapEffect
   = CreateManagedAccount { occurrence: PosixAccountOccurrence, login: NonEmptyStr }
   | InstallFleetAuthorizedKey { occurrence: PosixAccountOccurrence, public_material_identity: ContentHash }
   | ProveKeyOnlyAuthentication { occurrence: PosixAccountOccurrence }
-  | InstallNarrowPrivilegeGrant { occurrence: PosixAccountOccurrence, grant: NonEmptyStr }
+  | InstallNarrowPrivilegeGrant { occurrence: PosixAccountOccurrence, grant: SparkManagedGrant }
   | CreateNoLoginServiceIdentity { occurrence: PosixAccountOccurrence, login: NonEmptyStr }
 
 // Whether an effect can be performed by the bootstrap transport itself or needs privilege it does
@@ -164,11 +164,54 @@ fn spark_bootstrap_plan_effects(plan: SparkBootstrapPlan) -> List<SparkBootstrap
   concat([plan.first], plan.more)
 }
 
-// The narrow grant, stated as exactly what the serving realization needs rather than a general
-// privilege. Which grant is required is a function of the SELECTED REALIZATION -- a user unit under
-// lingering needs `loginctl enable-linger` for its own account and nothing else, which is why this
-// is one named grant and not sudo.
-data spark_managed_narrow_grant: String = "loginctl enable-linger for this account only"
+// A GRANT IS A CAPABILITY, NOT A SENTENCE ABOUT ONE. This was a bare String, and the cost was that
+// the sudoers entry and the argv that exercises it were two representations of one fact with nothing
+// joining them: a grant could be installed that no effect could use, or an effect attempted against
+// a grant nobody installed, and neither would refuse. So each grant now carries both projections,
+// and the actuator derives its argv from the same row the installer reads.
+//
+// Which grants are required is a function of the SELECTED REALIZATION and stays narrow: enumerated
+// capabilities, never blanket sudo. A user unit under lingering needs enable-linger for its own
+// account; standing a host up and proving the unit survives a power cycle needs reboot.
+//
+// REBOOT IS ADMITTED BY OPERATOR RULING (2026-08-20): at this level -- software development, standing
+// a host up -- reboot is an ordinary procedure, and convergence holds it. The ruling names its own
+// horizon: when the model is more mature this gets harder to mess up. Recorded because the reason a
+// privilege was granted is exactly what a later reader needs in order to narrow it again.
+type SparkManagedGrant
+  = EnableLingerForOwnAccount
+  | RebootThisHost
+
+fn spark_managed_grant_sudoers_command(grant: SparkManagedGrant) -> NonEmptyStr {
+  match grant {
+    EnableLingerForOwnAccount => "/usr/bin/loginctl enable-linger" as NonEmptyStr
+    RebootThisHost => "/usr/bin/systemctl reboot" as NonEmptyStr
+  }
+}
+
+// THE ARGV THE GRANT AUTHORIZES, and the reason the carrier exists: the actuator calls this rather
+// than spelling `sudo -n ...` again, so an argv that no installed grant covers cannot be written.
+fn spark_managed_grant_argv(grant: SparkManagedGrant) -> List<String> {
+  concat(
+    ["sudo", "-n"],
+    match grant {
+      EnableLingerForOwnAccount => ["loginctl", "enable-linger"]
+      RebootThisHost => ["systemctl", "reboot"]
+    },
+  )
+}
+
+fn spark_managed_grant_wire(grant: SparkManagedGrant) -> NonEmptyStr {
+  match grant {
+    EnableLingerForOwnAccount => "enable-linger for this account only" as NonEmptyStr
+    RebootThisHost => "reboot this host" as NonEmptyStr
+  }
+}
+
+data spark_managed_grant_population: List<SparkManagedGrant> = [
+  EnableLingerForOwnAccount,
+  RebootThisHost,
+]
 
 fn derive_spark_bootstrap_plan(
   standing: SparkManagedAccessStanding,
@@ -185,7 +228,8 @@ fn derive_spark_bootstrap_plan(
         more: [
           InstallFleetAuthorizedKey { occurrence: m, public_material_identity: fleet_public_material_identity },
           ProveKeyOnlyAuthentication { occurrence: m },
-          InstallNarrowPrivilegeGrant { occurrence: m, grant: spark_managed_narrow_grant as NonEmptyStr },
+          InstallNarrowPrivilegeGrant { occurrence: m, grant: EnableLingerForOwnAccount },
+          InstallNarrowPrivilegeGrant { occurrence: m, grant: RebootThisHost },
           CreateNoLoginServiceIdentity {
             occurrence: PosixAccountOccurrence { host: h, principal: FleetAccountInferenceService },
             login: "gunbc-inference" as NonEmptyStr,
@@ -246,7 +290,11 @@ fn spark_bootstrap_effect_label(effect: SparkBootstrapEffect) -> String {
     InstallFleetAuthorizedKey { occurrence: _, public_material_identity: i } =>
       join(["install-fleet-authorized-key public_material_identity=", serialize_content_hash(hash: i) as String], "")
     ProveKeyOnlyAuthentication { occurrence: _ } => "prove-key-only-authentication"
-    InstallNarrowPrivilegeGrant { occurrence: _, grant: g } => join(["install-narrow-privilege-grant grant=", g as String], "")
+    InstallNarrowPrivilegeGrant { occurrence: _, grant: g } =>
+      join([
+        "install-narrow-privilege-grant grant=", spark_managed_grant_wire(grant: g) as String,
+        " command=", spark_managed_grant_sudoers_command(grant: g) as String,
+      ], "")
     CreateNoLoginServiceIdentity { occurrence: _, login: l } => join(["create-no-login-service-identity login=", l as String], "")
   }
 }

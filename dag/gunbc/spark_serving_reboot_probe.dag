@@ -20,6 +20,7 @@ import gunbc.fleet_multi_principal_probe {
 }
 import gunbc.host_effect_realize { run_typed_argv_transport }
 import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.spark_managed_access_bootstrap { spark_managed_grant_argv, RebootThisHost }
 import gunbc.clock_read { clock_now_probed_at }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 
@@ -66,8 +67,11 @@ type SparkServingRebootOutcome
 // `sudo -n` and no interactive fallback: the automation account escalates non-interactively or the
 // step refuses, exactly as the linger effect does. A reboot that prompted for a password would hang
 // a job rather than fail it.
+// DERIVED FROM THE GRANT, never spelled again here. The sudoers command the bootstrap installs and
+// the argv this actuator runs are one fact; writing `sudo -n systemctl reboot` a second time would
+// be the fork that lets the two drift until a rejected reboot looks like a host problem.
 fn spark_serving_reboot_argv() -> List<String> {
-  ["sudo", "-n", "systemctl", "reboot"]
+  spark_managed_grant_argv(grant: RebootThisHost)
 }
 
 // THE CONNECTION DYING IS THE EXPECTED OUTCOME AND IS NOT INTERPRETED HERE.
