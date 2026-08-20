@@ -1,4 +1,3 @@
-use std::rc::Rc;
 use v1_compiler::v1_std_core::{make_file_span, make_span};
 
 #[test]
