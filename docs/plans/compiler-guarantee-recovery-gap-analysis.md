@@ -1193,9 +1193,23 @@ than argued.
    Symbol rows match the symbol-keyed list exactly — `canonical_hash_of_connective`,
    `canonical_hash_of_edge_label`, `symbol_identity_digest`,
    `byte_offset_cache_digest_ineligible_hash`, `byte_offset_cache_key_fingerprint` — and 46 + 5 + 1
-   = 52. **What would settle it is a per-file × per-type-pair CROSS-TAB**, which no one holds: the
-   two dimensions were captured as separate aggregates and never joined. That is the same axis
-   error this row already records, committed by the instrument that measured it. **A SECOND
+   = 52. **NARROWED, AND THE NARROWING IS SHARPER THAN THE GAP:** `content_hash_atom(` occurs
+   exactly 51 times in that file (verified at `origin/main`), so the partition is COMPLETE over
+   `content_hash_atom` call sites and the 52nd row is **not a missed member — it is a DIFFERENT
+   REFINED POSITION.** The candidate is in the same file and visible:
+   `content_hash_combine_structural(` at 5 sites and `combine_hash(` at 53. Different function,
+   different formal, so it could never appear in a `content_hash_atom` census however carefully
+   that census was run — which is why an off-by-one here is a category gap rather than an arithmetic
+   one. **STANDING OBLIGATION, recorded in these terms deliberately:** whatever the regen retires,
+   the degenerate-span row is carried as its own NAMED obligation keyed by ENCLOSING FN, never as a
+   residual of a count. A row that can only be named one way gets named that way once, while
+   someone still knows it exists. **What would settle the composition outright is a per-file ×
+   per-type-pair CROSS-TAB**, which no one holds: the two dimensions were captured as separate
+   aggregates and never joined. **Two aggregates side by side are not a cross-tab, and the gap
+   between them is exactly where a row can live undetected** — the fourth instance of this axis
+   error in one investigation, and the first committed by the measuring instrument rather than by a
+   reader of it. No rerun is dispatched for it: the population closes on regen and the one row that
+   does not close is now named. **A SECOND
    CORRECTION ALREADY LANDED ON THE FRAMING BELOW:** a source partition of the 52 shows 46 of them are
    `content_hash_atom(value: ^caret literal)` — the #8608 class exactly, *already fixed in
    authority* and inert only because that fix is unmirrored. So the file is not the unit of repair;
