@@ -153,6 +153,34 @@ fn cli_argument_text(argument: CliArgument) -> String {
 // host boundary already names. A shell-hosted transport, if one is ever modeled, is a DIFFERENT
 // realization binding, not the thing this carrier describes.
 
+// LITERAL WORDS INTO A SURFACE, and this is the ONE route for arguments whose spelling is a
+// runtime value rather than a declared token.
+//
+// WHY IT IS NOT THE AMBIGUITY THIS CARRIER EXISTS TO CLOSE. The refused state is a List<String>
+// arriving at an argv position with NO declared role, where "one word whose text is the
+// concatenation" and "N separate words" are both well-formed readings of the same value and the
+// realization has to guess. This constructor IS the declaration: its name says each element is
+// exactly one argv word, so the caller has chosen the reading rather than leaving it to be
+// inferred. It is the same resolution the interpreter's refusal diagnostic tells authors to
+// reach for.
+//
+// WHAT IT DOES NOT LICENSE. It is not a general escape from structural modeling. An argument
+// whose spelling is known when the program is written belongs in CliArgumentSyntax fragments,
+// which carry token classes and bindings and can be checked; this route carries none of that and
+// can check none of it. It exists because argv words like a filesystem path or a hostname are
+// genuinely runtime strings, and no fragment vocabulary can express a value that does not exist
+// until the program runs. Reaching for it when fragments would have served is modeling debt, not
+// a shortcut.
+fn cli_surface_of_literal_words(words: List<String>) -> CliSurface {
+  CliSurface {
+    arguments: fold_list(
+      xs: words,
+      empty: Empty,
+      cons: fn(acc, word) { list_snoc_item(xs: acc, item: CliArgument { text: word }) }
+    )
+  }
+}
+
 type ProcessArgvExpansion sole_constructor { surface: CliSurface }
 
 fn process_argv_expansion(surface: CliSurface) -> ProcessArgvExpansion {

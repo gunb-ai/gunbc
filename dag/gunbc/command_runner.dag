@@ -5,6 +5,10 @@ import std.dissolution { DissolutionCondition, dissolution_description, unbound_
 import std.types { List, String, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
+import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import std.algebra { Empty }
+import v2.std.compilers.cli_surface { cli_surface_of_literal_words, process_argv_expansion }
+import extdeps.shell.exec { ExitZeroSucceeds, process_exit_is_admitted }
 import extdeps.exec.command {
   ArgvCommand,
   CommandTransport,
@@ -12,7 +16,6 @@ import extdeps.exec.command {
   command_over_transport,
   CommandOverTransportBuilt,
   CommandOverTransportRefused,
-  shell_command_render,
 }
 import gunbc.remote_shell_command {
   RemoteExecCommandRefusalCause,
@@ -20,8 +23,6 @@ import gunbc.remote_shell_command {
   SimpleCommandArgvRefused,
 }
 import extdeps.shell
-import gunbc.shell_bash_runner { shell_exec_via_bash }
-import gunbc.retained_shell_script { retained_runtime }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -34,8 +35,29 @@ data command_runner_scaffold: Disposition = Scaffold {
   }
 }
 
-data command_runner_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: run_shell_command — generic ArgvCommand runner routes the typed extdeps.exec.command shape through shell.Exec.Run via the shell_bash_runner heredoc transport; DISSOLVES WHEN host_effect_apply binds ArgvCommand execution as a typed transport handler and dag/gunbc/command_runner.dag retires its shell_exec_via_bash glue")
+data command_runner_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: run_shell_command — generic ArgvCommand runner routes the typed extdeps.exec.command shape directly at shell.Exec.RunArgv, one uniform arm for every CommandTransport rather than a per-transport bash heredoc; DISSOLVES WHEN host_effect_apply binds ArgvCommand execution as a typed transport handler and dag/gunbc/command_runner.dag retires run_shell_command in favor of it")
 
+// THE RUN SITE NO LONGER MATCHES ON TRANSPORT.
+//
+// command_over_transport is ALREADY transport-agnostic at its output: LocalExec is the identity
+// and SshExec folds the inner command into ONE RFC-4254 command string carried as the final word
+// of an outer sshpass/ssh argv (extdeps.exec.command command_over_transport_composition_note).
+// Either way the result is one plain ArgvCommand of local-machine words -- there is no longer a
+// reason to ask which transport built it. A per-transport match here would be re-deciding a
+// question command_over_transport already answered (DESIGN §3: dispatch belongs at one seam, not
+// duplicated at its consumer).
+//
+// So this runner has exactly one execution path: decompose the outer argv into program + operand
+// words and hand them straight to shell.Exec.RunArgv, with no shell, no quoting, and no re-parse
+// on this machine -- for LocalExec the words go directly to the named binary; for SshExec the
+// words go directly to sshpass/ssh, whose own single final argument already carries the correctly
+// composed and quoted remote command string. Nothing about that composition depends on running it
+// through a local shell first.
+//
+// EMPTY ARGV REFUSES rather than defaulting. A command with no words names no program to execute,
+// and inventing one would be the fabricated output DESIGN §5 forbids. command_over_transport never
+// produces an empty argv on either arm (SshExec always prepends sshpass/ssh/target/opts), so this
+// arm is reachable only from a caller-constructed empty ArgvCommand on LocalExec.
 func run_shell_command(command: ArgvCommand, transport: CommandTransport) -> ProcessExit
   uses net: Network
 {
@@ -43,18 +65,32 @@ func run_shell_command(command: ArgvCommand, transport: CommandTransport) -> Pro
     CommandOverTransportRefused { cause: c } =>
       exit_failure(reason: concat("command_over_transport refused: ", command_over_transport_refusal_reason(cause: c)))
     CommandOverTransportBuilt { command: over } =>
-      let rendered = shell_command_render(command: over)
-      let run = shell.Exec.Run(
-        script: retained_runtime(
-          body: shell_exec_via_bash(body: rendered),
-          reason: "generic ArgvCommand runner heredoc transport, pending the typed host_effect_apply argv handler" as NonEmptyStr,
-        )
-      )
-      if run.success {
-        ExitSuccess
-      } else {
-        exit_failure(reason: concat("command failed: ", run.stderr))
+      match list_head(xs: over.argv) {
+        HeadAbsent =>
+          exit_failure(reason: "empty argv: a command with no words names no program to execute")
+        HeadFound { value: program } => {
+          let run = shell.Exec.RunArgv(
+            program: program as NonEmptyStr,
+            arguments: process_argv_expansion(
+              surface: cli_surface_of_literal_words(words: argv_operands(command: over))
+            ),
+          )
+          if process_exit_is_admitted(policy: ExitZeroSucceeds, exit_code: run.exit_code) {
+            ExitSuccess
+          } else {
+            exit_failure(reason: concat("command failed: ", run.stderr))
+          }
+        }
       }
+  }
+}
+
+// The operands are everything after the program. A missing tail is the one-word command, whose
+// operand list is empty -- not an error, and not the same state as an empty argv.
+fn argv_operands(command: ArgvCommand) -> List<String> {
+  match list_tail(xs: command.argv) {
+    TailAbsent => Empty
+    TailFound { tail: rest } => rest
   }
 }
 
@@ -79,6 +115,12 @@ type ShellCaptureResult {
   stderr: String
 }
 
+// THE success FIELD IS DERIVED THROUGH A NAMED POLICY, not a bare exit_code == 0. RunArgv
+// deliberately carries no success field, because success is a POLICY judgement about an
+// observation rather than part of it -- jq exits 4 to mean "no output" and 1 to mean "false
+// result", neither of which is failure. Routing through process_exit_is_admitted(ExitZeroSucceeds)
+// states which convention this runner applies, so a caller needing a different one has something
+// to change rather than a literal to discover.
 func run_shell_command_capture(command: ArgvCommand, transport: CommandTransport) -> ShellCaptureResult
   uses net: Network
 {
@@ -90,14 +132,27 @@ func run_shell_command_capture(command: ArgvCommand, transport: CommandTransport
         stderr: concat("command_over_transport refused: ", command_over_transport_refusal_reason(cause: c)),
       }
     CommandOverTransportBuilt { command: over } =>
-      let rendered = shell_command_render(command: over)
-      let run = shell.Exec.Run(
-        script: retained_runtime(
-          body: shell_exec_via_bash(body: rendered),
-          reason: "generic ArgvCommand capture runner heredoc transport, pending the typed host_effect_apply argv handler" as NonEmptyStr,
-        )
-      )
-      ShellCaptureResult { success: run.success, stdout: run.stdout, stderr: run.stderr }
+      match list_head(xs: over.argv) {
+        HeadAbsent =>
+          ShellCaptureResult {
+            success: false,
+            stdout: "",
+            stderr: "empty argv: a command with no words names no program to execute",
+          }
+        HeadFound { value: program } => {
+          let run = shell.Exec.RunArgv(
+            program: program as NonEmptyStr,
+            arguments: process_argv_expansion(
+              surface: cli_surface_of_literal_words(words: argv_operands(command: over))
+            ),
+          )
+          ShellCaptureResult {
+            success: process_exit_is_admitted(policy: ExitZeroSucceeds, exit_code: run.exit_code),
+            stdout: run.stdout,
+            stderr: run.stderr,
+          }
+        }
+      }
   }
 }
 
