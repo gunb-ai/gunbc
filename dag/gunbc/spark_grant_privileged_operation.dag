@@ -129,6 +129,7 @@ fn admitted_root_argv_label(command: AdmittedRootArgv) -> String {
 // after sudo admitted it is a host problem. Collapsing these sends a reader to the wrong place.
 type PrivilegedStepOutcome
   = CredentialNotEnrolled { lease: OperatorBootstrapCredentialLease }
+  | CredentialNotMaterialized { lease: OperatorBootstrapCredentialLease, cause: String }
   | CredentialRejected { lease: OperatorBootstrapCredentialLease }
   | PrivilegedCommandFailed { command: AdmittedRootArgv, exit_code: Int, stderr: String }
   | PrivilegedCommandSucceeded { command: AdmittedRootArgv }
@@ -139,6 +140,7 @@ fn privileged_step_succeeded(outcome: PrivilegedStepOutcome) -> Bool {
     PrivilegedCommandFailed { command: _, exit_code: _, stderr: _ } => false
     CredentialRejected { lease: _ } => false
     CredentialNotEnrolled { lease: _ } => false
+    CredentialNotMaterialized { lease: _, cause: _ } => false
   }
 }
 
@@ -164,6 +166,18 @@ fn privileged_step_outcome_wire(outcome: PrivilegedStepOutcome) -> String {
         " purpose=", l.authorized_purpose as String,
         " -- no administrator credential is materialized for this host, so the privileged step was",
         " never attempted; enrol one and the process applies the mutation itself\n",
+      ], "")
+    CredentialNotMaterialized { lease: l, cause: why } =>
+      join([
+        "    privileged-step CREDENTIAL-NOT-MATERIALIZED host=", l.host as String,
+        " principal=", l.bootstrap_principal as String,
+        match lease_secret_resource(lease: l) {
+          Absent => ""
+          Present { value: r } => join([" secret=", r], "")
+        },
+        " -- an administrator credential IS enrolled for this host, but this run never received its",
+        " bytes, so the privileged step was never attempted: ", why,
+        ". The remedy is this run's credential materialization, NOT enrolment\n",
       ], "")
     CredentialRejected { lease: l } =>
       join([
@@ -290,7 +304,8 @@ func run_privileged_step(
     CredentialMaterializationPending => CredentialNotEnrolled { lease: lease }
     CredentialMaterialized { ref: _ } =>
       match read_bootstrap_credential() {
-        BootstrapCredentialNotMaterialized { cause: _ } => CredentialNotEnrolled { lease: lease }
+        BootstrapCredentialNotMaterialized { cause: why } =>
+          CredentialNotMaterialized { lease: lease, cause: why }
         BootstrapCredentialReady { secret: secret } =>
           match portable_remote_words(raws: admitted_root_argv_words(command: command)) {
             Absent =>

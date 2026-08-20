@@ -22,6 +22,7 @@ import gunbc.spark_grant_privileged_operation {
   ValidateStagedSudoers,
   InstallStagedSudoers,
   CredentialNotEnrolled,
+  CredentialNotMaterialized,
   CredentialRejected,
   PrivilegedCommandFailed,
   PrivilegedCommandSucceeded,
@@ -115,14 +116,22 @@ test fn the_lease_names_the_exact_grant_it_authorizes() -> Bool {
     && string_contains(lease_with(standing: enrolled()).authorized_purpose as String, "not retained")
 }
 
-// THE THREE FAILURE LAYERS STAY DISTINGUISHABLE because their remedies differ: nothing enrolled is
-// an enrolment problem, a rejected credential is a wrong or stale version, and a command that failed
-// after sudo admitted it is a host problem.
-test fn the_three_failure_layers_are_distinguishable() -> Bool {
+// THE FOUR FAILURE LAYERS STAY DISTINGUISHABLE because their remedies differ: nothing enrolled is an
+// enrolment problem, an enrolled credential whose bytes this run never received is a materialization
+// problem, a rejected credential is a wrong or stale version, and a command that failed after sudo
+// admitted it is a host problem.
+test fn the_four_failure_layers_are_distinguishable() -> Bool {
   string_contains(
     privileged_step_outcome_wire(outcome: CredentialNotEnrolled { lease: lease_with(standing: CredentialMaterializationPending) }),
     "CREDENTIAL-NOT-ENROLLED",
   )
+    && string_contains(
+         privileged_step_outcome_wire(outcome: CredentialNotMaterialized {
+           lease: lease_with(standing: enrolled()),
+           cause: "the credential file named by the environment does not exist",
+         }),
+         "CREDENTIAL-NOT-MATERIALIZED",
+       )
     && string_contains(
          privileged_step_outcome_wire(outcome: CredentialRejected { lease: lease_with(standing: enrolled()) }),
          "CREDENTIAL-REJECTED",
@@ -152,6 +161,24 @@ test fn the_not_enrolled_receipt_names_no_secret() -> Bool {
     privileged_step_outcome_wire(outcome: CredentialNotEnrolled { lease: lease_with(standing: CredentialMaterializationPending) }),
     "/secrets/",
   )
+}
+
+// AN ENROLLED CREDENTIAL THIS RUN COULD NOT READ IS NOT AN UNENROLLED ONE. The two collapsed into a
+// single arm until the standing became materialized on the production path, at which point the LIVE
+// failure would have told a reader to enrol a secret that was already enrolled. The receipt names
+// the enrolled secret and carries the reader's own cause, and it must not say "not enrolled".
+test fn a_credential_that_could_not_be_read_is_not_an_unenrolled_one() -> Bool {
+  let text = privileged_step_outcome_wire(outcome: CredentialNotMaterialized {
+    lease: lease_with(standing: enrolled()),
+    cause: "fixture read failure",
+  })
+  string_contains(text, "fixture read failure")
+    && string_contains(text, "/secrets/")
+    && !string_contains(text, "CREDENTIAL-NOT-ENROLLED")
+    && !privileged_step_succeeded(outcome: CredentialNotMaterialized {
+         lease: lease_with(standing: enrolled()),
+         cause: "fixture read failure",
+       })
 }
 
 test fn only_a_succeeded_command_counts_as_success() -> Bool {
