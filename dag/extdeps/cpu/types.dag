@@ -16,7 +16,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 // The split is by what the fact is ABOUT. A termination is a property of the PACKAGE: it says how
 // the die's carrier presents its contacts, and every part has one whether or not a socket is
 // involved. An attachment is a property of the BOARD RELATIONSHIP: it says how the part is held.
-// v2.lens.registry.Grounding both on one enum made a package property answer a board question.
+// Grounding both on one enum made a package property answer a board question.
 type ProcessorPackageTermination = LandGridArray | PinGridArray | BallGridArray
 
 // THE SOCKETABLE SUBSET. A socket accepts a land grid or a pin grid; it cannot accept a ball grid,

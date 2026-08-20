@@ -182,8 +182,8 @@ fn classify_field_recursion(field_node: v1.std.core.Node, parent_name: String, r
       CardOptional => Present { value: v1.compiler.infer.FieldRecursionResult { shape: std.induction.OptionalRecursion, element_type: parent_name } }
       _ => Present { value: v1.compiler.infer.FieldRecursionResult { shape: std.induction.DirectRecursion, element_type: parent_name } }
     }
-  } else if v1.std.core.is_container_type(name: field_type_name) {
-    let arity = match v1.std.core.container_expected_arity(name: field_type_name) {
+  } else if std.types.is_container_type(name: field_type_name) {
+    let arity = match std.types.container_expected_arity(name: field_type_name) {
       Present { value: a } => a
       Absent => 0
     }
@@ -5210,7 +5210,7 @@ fn classify_size_expr(val: v1.std.core.Node, ctx: v1.compiler.infer.DescentConte
       let left = v1.std.core.binop_left(texpr: val)
       let right = v1.std.core.binop_right(texpr: val)
       match val.expr_data {
-        ExprBinOp { op: v1.std.core.Div, algebra_field: _ } =>
+        ExprBinOp { op: Div, algebra_field: _ } =>
           match left.expr_data {
             ExprVar { binding_kind: _ } =>
               let lname = v1.std.core.expr_var_name_at(texpr: left, source_indices: ctx.type_env.source_indices)
@@ -5608,7 +5608,7 @@ fn classify_let_value(val: v1.std.core.Node, ctx: v1.compiler.infer.DescentConte
     _ =>
       let type_based = match val.inferred {
         Present { value: v1.std.core.Resolved { node: rt } } =>
-          if v1.std.core.is_container_type(name: v1.std.core.authored_name_at(source_indices: ctx.type_env.source_indices, node: rt)) {
+          if std.types.is_container_type(name: v1.std.core.authored_name_at(source_indices: ctx.type_env.source_indices, node: rt)) {
             let elem = match rt.children |> first {
               Present { value: c } => v1.std.core.authored_name_at(source_indices: ctx.type_env.source_indices, node: c)
               Absent => ""
@@ -5654,7 +5654,7 @@ fn classify_let_value(val: v1.std.core.Node, ctx: v1.compiler.infer.DescentConte
             ExprVar { binding_kind: _ } =>
               let lname = v1.std.core.expr_var_name_at(texpr: left, source_indices: ctx.type_env.source_indices)
               if map_get(ctx.param_names, lname) != none || map_get(ctx.sub_value_vars, lname) != none { lname } else { "" }
-            ExprBinOp { op: v1.std.core.Sub } =>
+            ExprBinOp { op: Sub } =>
               let inner_left = v1.std.core.binop_left(texpr: left)
               match inner_left.expr_data {
                 ExprVar { binding_kind: _ } =>
@@ -5885,7 +5885,7 @@ fn classify_argument(arg_expr: v1.std.core.Node, param_name: String, ctx: v1.com
         Div =>
           let left_is_param = match left.expr_data {
             ExprVar { binding_kind: _ } => v1.std.core.expr_var_name_at(texpr: left, source_indices: ctx.type_env.source_indices) == param_name || map_get(ctx.sub_value_vars, v1.std.core.expr_var_name_at(texpr: left, source_indices: ctx.type_env.source_indices)) != none
-            ExprBinOp { op: v1.std.core.Sub } =>
+            ExprBinOp { op: Sub } =>
               let inner_left = v1.std.core.binop_left(texpr: left)
               match inner_left.expr_data {
                 ExprVar { binding_kind: _ } => v1.std.core.expr_var_name_at(texpr: inner_left, source_indices: ctx.type_env.source_indices) == param_name || map_get(ctx.sub_value_vars, v1.std.core.expr_var_name_at(texpr: inner_left, source_indices: ctx.type_env.source_indices)) != none
@@ -8465,7 +8465,7 @@ data direct_import_export_precedence_note: String = "Direct-selected exports bea
 
 fn overlay_skips_kernel_name(name: String) -> Bool {
   std.types.is_kernel_type(name: name)
-    || v1.std.core.is_container_type(name: name)
+    || std.types.is_container_type(name: name)
     || name == "Unit"
     || name == "Optional"
     || name == "Present"
@@ -9354,7 +9354,7 @@ fn build_emit_graph_info(modules: List<v1.compiler.infer_items.TypedModule>) -> 
     map_key_required_type_names: empty_set(),
     clone_impl_required_type_params: empty_map(),
     fn_generic_param_names: [],
-    fn_type_env: v1.compiler.infer_emit_info.empty_type_env(),
+    fn_type_env: v1.compiler.infer_env.empty_type_env(),
     fn_return_type: none
   }
 }

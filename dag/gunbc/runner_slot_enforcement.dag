@@ -18,7 +18,7 @@ fn runner_slot_apply_effect(slot_unit: std.types.NonEmptyStr, expected_cap: std.
   }
 }
 
-fn ground_runner_slot_from_read(effective: gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness, expected_cap: std.measure.ByteSize) -> v2.lens.registry.Grounding<RunnerSlotEnforcement> {
+fn ground_runner_slot_from_read(effective: gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness, expected_cap: std.measure.ByteSize) -> std.realization_reconcile.Grounding<RunnerSlotEnforcement> {
   match effective {
     CapUnbounded =>
       std.realization_reconcile.DoesNotGround { reason: "per-slot MemoryMax reads infinity (uncapped): the inert-cap OOM-reboot vector (two concurrent heavy jobs exceed the shared runner slice); refuse to ground RunnerSlotEnforced" }

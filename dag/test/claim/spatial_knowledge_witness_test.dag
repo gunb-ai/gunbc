@@ -61,7 +61,7 @@ fn dimension_at(standing: product.spatial_dimension.RoomDimensionStanding) -> pr
   product.spatial_dimension.RoomDimensionKnowledge { room: the_room(), axis: ClearWidth, standing: standing }
 }
 
-// std.realization_schedule.Measured to +/- 10 mm: uncertainty interval spans 20 mm.
+// Measured to +/- 10 mm: uncertainty interval spans 20 mm.
 fn measured_precise() -> product.spatial_dimension.RoomDimensionKnowledge {
   dimension_at(standing: std.spatial_knowledge.SpatialMeasured {
     value: millimeter(count: 3660),
@@ -70,7 +70,7 @@ fn measured_precise() -> product.spatial_dimension.RoomDimensionKnowledge {
   })
 }
 
-// std.realization_schedule.Measured, but to +/- 250 mm: same STANDING, 500 mm span. The standing-only guard admitted this
+// Measured, but to +/- 250 mm: same STANDING, 500 mm span. The standing-only guard admitted this
 // exactly as readily as the specimen above; the precision budget is what separates them.
 fn measured_coarse() -> product.spatial_dimension.RoomDimensionKnowledge {
   dimension_at(standing: std.spatial_knowledge.SpatialMeasured {

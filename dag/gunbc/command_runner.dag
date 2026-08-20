@@ -57,7 +57,7 @@ fn command_over_transport_refusal_reason(cause: gunbc.remote_shell_command.Remot
 // THE SSH ARM IS UNTOUCHED, deliberately and not by oversight. Its prefix-append shape is wrong in
 // kind -- RFC 4254 carries one string, so the inner command is a nested serialization target
 // rather than a concatenation -- and that target is being built in another lane. Two sessions
-// editing one contested branch is worse than either fix. std.realization_schedule.Measured before leaving it: every one of
+// editing one contested branch is worse than either fix. Measured before leaving it: every one of
 // the 22 live call sites of this module's entry points passes LocalExec, so this arm currently
 // carries no traffic through here at all.
 func run_shell_command(command: extdeps.exec.command.ArgvCommand, transport: extdeps.exec.command.CommandTransport) -> std.process.ProcessExit
@@ -119,7 +119,7 @@ fn argv_operands(command: extdeps.exec.command.ArgvCommand) -> std.types.List<St
 // Success/stdout/stderr travel together so a refusal cannot be read as empty output.
 
 // SPAWN FAILURE IS ALREADY FAIL-CLOSED, and this is the transport fact that decides what the
-// capture surface can and cannot say. std.realization_schedule.Measured wet against the real local path: a command whose
+// capture surface can and cannot say. Measured wet against the real local path: a command whose
 // program does not exist does NOT come back as a failed result. It REFUSES the evaluation with a
 // typed diagnostic naming the program and the OS error --
 //   failed to execute 'no_such_binary': No such file or directory (os error 2)

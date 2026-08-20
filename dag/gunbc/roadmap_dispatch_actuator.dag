@@ -1138,7 +1138,7 @@ data dispatch_event_pipe_seam_note: String = "tmux pipe-pane is the one foreign-
 // Filesystem.Write intrinsic is a bare write with no parent creation, and it emits its
 // `[file] write <path>` trace BEFORE attempting -- so a publication receipt written into a
 // directory that does not exist logs exactly like a successful write and fails with ENOENT, which
-// is how this went unnoticed. std.realization_schedule.Measured on srv1 2026-08-19: zero of twelve attempt directories had
+// is how this went unnoticed. Measured on srv1 2026-08-19: zero of twelve attempt directories had
 // a publication/ subdirectory, and every publish pass reported failed while the journal showed the
 // write line for each one.
 //

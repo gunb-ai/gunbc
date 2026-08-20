@@ -158,7 +158,7 @@ fn first_grounding_failure(checks: List<OomdGroundingCheck>) -> String? {
   })
 }
 
-fn ground_oomd_from_read(read: OomdEffectiveRead, req: OomdGroundingThresholds) -> v2.lens.registry.Grounding<gunbc.ci_floor_measurement.OomdEnforcementEvidence> {
+fn ground_oomd_from_read(read: OomdEffectiveRead, req: OomdGroundingThresholds) -> std.realization_reconcile.Grounding<gunbc.ci_floor_measurement.OomdEnforcementEvidence> {
   match first_grounding_failure(checks: grounding_checks(read: read, req: req)) {
     Absent => std.realization_reconcile.Grounds { evidence: OomdEnforced }
     Present { value: reason } => std.realization_reconcile.DoesNotGround { reason: reason }

@@ -6,7 +6,7 @@ module gunbc.deployed_tree_remote
 // `gunbc.fleet_desired_observe` reads refs/fleet/desired with `git ls-remote origin`, which is a
 // network call THROUGH A CONFIGURED REMOTE. The belt performs that observation on every tick, so a
 // deployed tree with no remote cannot answer it and the belt refuses -- spawn and reap withheld,
-// every roadmap node rendering a fault. std.realization_schedule.Measured on srv1 2026-08-18: `/opt/gunbc-green/gunbc`
+// every roadmap node rendering a fault. Measured on srv1 2026-08-18: `/opt/gunbc-green/gunbc`
 // carried no `.git/config` at all, while `/opt/gunbc/gunbc` carried a working one because it
 // predates the sync whitelist and was cloned by hand.
 //

@@ -71,7 +71,7 @@ type WitnessSite {
 // AN UNCHANGED ROW COUNT. The receipt is then indistinguishable from a healthy
 // run, which is silent wrongness rather than a degradation.
 //
-// std.realization_schedule.Measured on the live roster: 30 names covering 63 rows. Predicted first from
+// Measured on the live roster: 30 names covering 63 rows. Predicted first from
 // the CI receipt at the same 30/63 and reproduced by execution.
 //
 // Qualification is CONSTRUCTION, not validation: the ambiguous call has no

@@ -17,7 +17,7 @@ fn mock_totality_missing<C>(
   published: List<C>,
   handled: List<C>,
   eq: fn(C, C) -> Bool
-) -> List<v2.lens.registry.Coverage<C>> {
+) -> List<v2.lens.coverage.Coverage<C>> {
   missing_coverage(expected: published, actual: handled, eq: eq)
 }
 

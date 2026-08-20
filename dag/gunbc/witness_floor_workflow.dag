@@ -48,7 +48,7 @@ module gunbc.witness_floor_workflow
 // checking main and a reader checking the cut branch would otherwise disagree about whether this
 // obligation exists at all. Whichever cut merges second owns the reconciliation.
 //
-// THE DRIFT GATES DO NOT RIDE ON THIS. std.realization_schedule.Measured on the v1-cut branch: heal_generated_artifacts
+// THE DRIFT GATES DO NOT RIDE ON THIS. Measured on the v1-cut branch: heal_generated_artifacts
 // PASSES while regen is RED. So "the regen fixed point and the generated-artifact drift gates"
 // is two obligations with two subjects, and only the regen half is order-dependent. The drift
 // gates stay on the queue above unconditionally, and a future reader must not retire them by
@@ -211,7 +211,7 @@ fn witness_floor_run_script() -> String {
 // src/v1's .dag SOURCES HAVE NO REQUIRED GATE, AND THE REASON IS STRUCTURAL RATHER THAN AN
 // OVERSIGHT. Two things were tried before this step, and both were measured wrong.
 //
-// (1) `--source-root src/v1` on the fold refuses. std.realization_schedule.Measured, CI run 32219326621: one flat
+// (1) `--source-root src/v1` on the fold refuses. Measured, CI run 32219326621: one flat
 // namespace over both trees yields 12 last-segment collisions -- `tokenize`, `parse`, `resolve`,
 // `emit`, `infer`, `normalize` and six more -- because the v1 and v2 compilers name their stages
 // identically. All 532 diagnostics that run produced were in src/v2 and dag/test; ZERO in src/v1.
@@ -222,7 +222,7 @@ fn witness_floor_run_script() -> String {
 // fold, which looks like the gate already being present. It is not, and the reason is the one
 // `gunbc.ci_layer_roots` `excl_bin_wet_reason` states: this fold is HERMETIC, the witness reaches
 // `shell.Test.IsExecutable` through `tools.host_prelude`, and the hermetic envelope refuses host
-// effects by construction. std.realization_schedule.Measured, CI run 32223611085:
+// effects by construction. Measured, CI run 32223611085:
 //
 //   FAIL test.claim.v1_dag_parse_witness.v1_dag_parse_witnesses errored:
 //     type error: hermetic mode: no mock_response for operation IsExecutable

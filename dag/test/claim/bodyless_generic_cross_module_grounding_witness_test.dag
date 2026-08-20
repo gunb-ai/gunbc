@@ -4,7 +4,7 @@ module test.claim.bodyless_generic_cross_module_grounding_witness
 // of it from another module reaches the name itself and re-enters bare lookup,
 // which filters to the REFERENCING module's containment chain. Off the chain it
 // missed, and the miss was reported at the DECLARATION rather than at the use,
-// which made a correct declaration read as broken. std.realization_schedule.Measured on v2.std.patch
+// which made a correct declaration read as broken. Measured on v2.std.patch
 // ConfigPatchRecord (nine rows) and v2.extdeps.cpp_abi (four).
 //
 // The green claim is the off-chain consumer. The red claim is what keeps the

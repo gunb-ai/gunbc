@@ -1260,7 +1260,7 @@ fn compute_production_first_rows_round(
 
 // The same monotone measure as the nullable fixpoint, one level down: a FIRST row only ever gains
 // terminals (`first_list_union` inserts, never removes), so the total across all rows rises until
-// a round adds nothing. std.realization_schedule.Measured on the live `.dag` grammar this one needs MORE than four rounds —
+// a round adds nothing. Measured on the live `.dag` grammar this one needs MORE than four rounds —
 // unlike nullable — which is why the stopping rule is a measured convergence rather than a
 // constant anybody picked.
 fn production_first_rows_total(root: v2.std.grammar.GrammarRoot, rows: Map<v2.std.node.Symbol, List<v2.std.node.Symbol>>) -> Int {
@@ -1594,7 +1594,7 @@ fn left_corner_list_union(left: List<v2.std.node.Symbol>, right: List<v2.std.nod
 // lookup in it. The previous form asked the question 38 separate times on the live `.dag` grammar
 // — a complete transitive closure rebuilt from scratch per production, each running a fixed number
 // of rounds with no convergence check, and each step re-finding a production by filtering the whole
-// list. std.realization_schedule.Measured, that was 7272ms of an 11.7s grammar preparation, and the preparation runs on
+// list. Measured, that was 7272ms of an 11.7s grammar preparation, and the preparation runs on
 // every parse.
 //
 // The rows below are seeded with each production's DIRECT left corners and then expanded to their
