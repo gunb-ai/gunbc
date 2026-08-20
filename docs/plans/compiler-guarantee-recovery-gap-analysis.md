@@ -1233,8 +1233,22 @@ than argued.
    populated by different paths agreeing on all 52; 52 DISTINCT `(start,end)` pairs, so not one
    site counted 52 times; offsets 22970–51589 against a 51825-byte file, in range with the maximum
    just under the size; and spacing sequential and tight (23032, 23082, 23140, 23199), consistent
-   with consecutive declarations rather than a fabricated constant. **#8607 changed LOCATEDNESS
-   ONLY** — the ten type pairs are identical count-for-count across all four arms, so it recovered
+   with consecutive declarations rather than a fabricated constant. **THE OPERATIVE STATE OF THIS CLASS AS OF #8607: THE REPORTER IS BLIND AND THE CLASS
+   IS AT 72.** Combine the measurement above (main tip: 72 constructed, **zero** `<synthetic>`) with the
+   filter rule this row establishes (the reporter shows *exactly* the rows whose file field is
+   `<synthetic>` and hides every row that carries one) and the consequence is that **the reporter now
+   prints zero rows while all 72 mismatches still exist.** Nothing was repaired. The class went silent
+   because the constructor stopped destroying the file field, and the reporter only ever displayed what
+   the constructor had broken — **a fail-open wearing the appearance of a fix**, and one that would
+   otherwise have been discovered months later as a class everyone believed closed. The 72-constructed /
+   0-synthetic figure is MEASURED; the unpatched reporter's output is INFERRED from the filter rule, and a
+   confirming run reading ordinary diagnostic output with the instrument OFF is cheap and still owed — if
+   it prints refinement rows, the filter rule is wrong. **Standing consequence, binding rather than
+   precautionary: a quiet reporter is not a closed class.** This is also why the row's `Next trigger`
+   below is not satisfied by #8607: locating the diagnostics moved them from *reported* to *censored*
+   without changing how many exist, so the trigger — report an unlocated diagnostic AS unlocated instead
+   of reporting only those — is now the difference between a silent class and a visible one.
+   **#8607 changed LOCATEDNESS ONLY** — the ten type pairs are identical count-for-count across all four arms, so it recovered
    no diagnostics and suppressed none. Combined with the pin/`#8579`/main arms: all 72 rows are
    pre-existing and nothing in the `#8579`→`#8592`→`#8607` sequence introduced or removed one.
    **A prediction of a non-zero residue, registered as falsifiable beforehand, was refuted** — the
