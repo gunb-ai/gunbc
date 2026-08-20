@@ -46,6 +46,26 @@ type CasExpectation
   = ExpectSlotAbsent
   | ExpectSlotGeneration { generation: CasGeneration }
 
+// The readable slots, and the only thing the decision helpers below accept.
+//
+// This exists because the helpers used to take the full CasSlotObservation and
+// answer for its unreadable arms — cas_committed_generation returned
+// generation 1 for a slot it could not read, which is precisely the number a
+// writer with no knowledge of the current head would use to clobber it. That
+// the intended path never reached those arms (cas_decide classifies first)
+// made the refusal a CALLER-ORDERING property rather than a construction one:
+// any later realization importing the helper directly would recreate the
+// narrow this module exists to forbid. Validation standing where construction
+// was available, in the module whose whole job is to make the class unwritable.
+//
+// Narrowing the input deletes the arms instead of checking them. The
+// classification cas_decide already performs is now a type transition, so the
+// ordering that used to be a convention is the only way to obtain the
+// argument at all.
+type CasReadableSlot<T>
+  = CasReadableAbsent
+  | CasReadablePresent { version: CasSlotVersion<T> }
+
 type CasSlotVersion<T> {
   key: NonEmptyStr
   generation: CasGeneration
@@ -119,25 +139,25 @@ fn cas_attempt<T>(
 // re-spelled this comparison would be a second representation of the
 // precondition (DESIGN 3); every handler routes here.
 //
-// An unreadable slot admits NOTHING. That is not a mismatch to be reported as
-// a lost race — it is an absence of evidence, and cas_decide routes it to
-// CasStoreRefused rather than to a precondition failure.
+// An unreadable slot cannot reach this function at all — it is not in
+// CasReadableSlot. That is the point: this used to accept the full
+// observation and answer `false` for the unreadable arms, which reported an
+// absence of evidence as a lost race. The arms are now gone rather than
+// handled, and cas_decide routes unreadability to CasStoreRefused before any
+// classification happens.
 fn cas_expectation_admits<T>(
   expected: CasExpectation,
-  observed: CasSlotObservation<T>
+  readable: CasReadableSlot<T>
 ) -> Bool {
-  match observed {
-    CasSlotAbsent => match expected {
+  match readable {
+    CasReadableAbsent => match expected {
       ExpectSlotAbsent => true
       ExpectSlotGeneration { generation: _ } => false
     }
-    CasSlotPresent { version: v } => match expected {
+    CasReadablePresent { version: v } => match expected {
       ExpectSlotAbsent => false
       ExpectSlotGeneration { generation: g } => cas_generation_count(g: g) == cas_generation_count(g: v.generation)
     }
-    CasSlotMalformed { detail: _ } => false
-    CasSlotContentMissing { referenced: _ } => false
-    CasSlotReadRefused { detail: _ } => false
   }
 }
 
@@ -156,13 +176,10 @@ fn cas_generation_first() -> CasGeneration {
 // The generation a successful commit lands on, derived from the observation
 // rather than from the caller's expectation — a caller cannot name the
 // generation it is about to occupy.
-fn cas_committed_generation<T>(observed: CasSlotObservation<T>) -> CasGeneration {
-  match observed {
-    CasSlotAbsent => cas_generation_first()
-    CasSlotPresent { version: v } => cas_generation_next(g: v.generation)
-    CasSlotMalformed { detail: _ } => cas_generation_first()
-    CasSlotContentMissing { referenced: _ } => cas_generation_first()
-    CasSlotReadRefused { detail: _ } => cas_generation_first()
+fn cas_committed_generation<T>(readable: CasReadableSlot<T>) -> CasGeneration {
+  match readable {
+    CasReadableAbsent => cas_generation_first()
+    CasReadablePresent { version: v } => cas_generation_next(g: v.generation)
   }
 }
 
@@ -174,17 +191,34 @@ fn cas_decide<T>(
     CasSlotMalformed { detail: d } => CasStoreRefused { detail: d }
     CasSlotContentMissing { referenced: _ } => CasStoreRefused { detail: "referenced state object is absent from the store" as NonEmptyStr }
     CasSlotReadRefused { detail: d } => CasStoreRefused { detail: d }
-    _ => if cas_expectation_admits(expected: attempt.expected, observed: observed) {
-      CasCommitted {
-        committed: CasSlotVersion {
-          key: attempt.key,
-          generation: cas_committed_generation(observed: observed),
-          content: attempt.proposed_content,
-          value: attempt.proposed
-        }
+    CasSlotAbsent => cas_decide_readable(
+      attempt: attempt,
+      readable: CasReadableAbsent,
+      observed: observed
+    )
+    CasSlotPresent { version: v } => cas_decide_readable(
+      attempt: attempt,
+      readable: CasReadablePresent { version: v },
+      observed: observed
+    )
+  }
+}
+
+fn cas_decide_readable<T>(
+  attempt: CasAttempt<T>,
+  readable: CasReadableSlot<T>,
+  observed: CasSlotObservation<T>
+) -> CasOutcome<T> {
+  if cas_expectation_admits(expected: attempt.expected, readable: readable) {
+    CasCommitted {
+      committed: CasSlotVersion {
+        key: attempt.key,
+        generation: cas_committed_generation(readable: readable),
+        content: attempt.proposed_content,
+        value: attempt.proposed
       }
-    } else {
-      CasPreconditionFailed { expected: attempt.expected, observed: observed }
     }
+  } else {
+    CasPreconditionFailed { expected: attempt.expected, observed: observed }
   }
 }
