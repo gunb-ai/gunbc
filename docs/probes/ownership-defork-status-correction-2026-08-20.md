@@ -214,9 +214,15 @@ path (`lambda-capture` = 0 in the mirror, guard passed), the null was unreadable
 made decisive by being maximal.** The decisive direction was additive.
 
 **(c) Reasoning about signatures while treating bodies as illustration.** A draft made `cached_stage`
-a zero-diagnostic/two-defect specimen. Counting the uses of `x` — `lookup(x.clone())` *and*
+a zero-diagnostic/**two**-defect specimen. Counting the uses of `x` — `lookup(x.clone())` *and*
 `x.clone()`, **twice** — shows its `A: Clone` is **required**. The discriminator was in a two-line
 body that had been quoted repeatedly and never read.
+
+**(c′) The retraction then OVERSHOT, and that is the harder failure.** The whole row was withdrawn
+when only half of it was wrong — see §5, where `cached_stage` returns as a **one**-defect
+zero-diagnostic specimen. **A retraction is a claim and owes the same evidence as an assertion**, but
+it reads as humility, so nobody audits it. Of the failures listed here this is the only one that
+would have survived review indefinitely: an over-retraction leaves no wrong sentence behind to catch.
 
 **The guards that replace (a) and (b):** assert on the **compiled** artifact in *both* directions —
 the probe marker present **and the construct being removed absent** — plus a positive control so a
@@ -235,6 +241,51 @@ the note of a file under the author's own sole-write ownership.
 rediscoveries of things already written down — in the plan, and in the note at the top of a file
 under the author's own sole-write ownership, whose functions were quoted repeatedly without its note
 being read. **Read the note on the file you are about to claim a finding about.**
+
+## 5. Established specimens, and how to read the diagnostics
+
+**Two spurious clones, both at emitted-body grain. Rust evaluates call operands left to right, so a
+value's LAST use can move.**
+
+| | required | measured | diagnostic |
+|---|---|---|---|
+| `then_outcome`<br>`bind_outcome(f(x), g)` | **zero** clones, no `A: Clone` | one spurious clone | **E0599 — visible** |
+| `cached_stage`<br>`resolve_probe(lookup(x.clone()), stage.clone(), x)` | **one** clone, `A: Clone` **retained** | **two** clones | **none — silent** |
+
+`cached_stage`'s first use must clone (`x` is needed again); its **last** use is final and can move.
+So the correct emission keeps one clone *and* the bound — **the spurious-BOUND reading is dead, the
+zero-diagnostic OWNERSHIP defect survives, narrowed from two defects to one.**
+
+> **This makes `cached_stage` the sharpest positive control available**, not a healthy multi-use
+> control. A repair's discriminating prediction on it is **2 clones → 1, with `A: Clone` RETAINED.**
+> Losing *both* clones, or losing the bound, is **over-elision and fails the control** — and the
+> additive probe already demonstrated that failure mode by emitting
+> `resolve_probe(lookup(x), stage, x)`, moving `x` twice.
+
+### How to read Clone diagnostics — not as a census
+
+An earlier revision said diagnostic counts are a *floor* on this family's defects. **That still
+claims more than the evidence carries**, and it fails in **both** directions: **incomplete** —
+silent correctly-bounded spurious clones never appear (`cached_stage` is one); and **inflated** —
+one causal root can produce several diagnostics, so count ≠ root count. Neither a lower nor an upper
+bound.
+
+> **Clone diagnostics are a COMPILE-REFUSAL PROJECTION, not a defect census.** They omit ownership
+> defects already made compilable by valid or widened bounds, and diagnostic multiplicity need not
+> equal causal-root multiplicity. **Use these rows to identify refusing specimens, not to size or
+> rank the Clone defect population.**
+
+### Ordering — established, and scoped precisely
+
+**Do not widen call-forwarding onto `then_outcome` before removing or justifying the originating
+clone.** Otherwise the manufactured bound makes the spurious clone compile and the only signal it was
+wrong is a diagnostic that no longer fires — the absorbing-fallback shape of DESIGN §5, with a
+*repair* as the absorbing arm.
+
+**Scope, kept separate deliberately:** *"the originating operation before the propagated bound"* is a
+**scheduling rule** and is established. **Which root emits `then_outcome`'s clone is NOT established**
+— §1 and the probes in §4 are exactly why. Conflating the two would convert a valid schedule into an
+unearned root claim.
 
 ## 5. Genuinely open, and deliberately small
 
