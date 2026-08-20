@@ -1034,6 +1034,7 @@ pub fn declared_arg_types_for_method(
     receiver_type: Rc<Node>,
     method_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    expand_field_type: impl Fn(Rc<Node>) -> Rc<Node> + Clone,
 ) -> Rc<DeclaredArgContract> {
     {
         let lookup = lookup_structural_method(
@@ -1084,11 +1085,16 @@ pub fn declared_arg_types_for_method(
                 }
                 None => match mfr.field_node.clone().inferred.clone().as_deref().cloned() {
                     Some(InferredNode::Resolved { node: callable, .. }) => {
-                        if ((callable.params.clone().len() as i64) > 0) {
+                        let expanded = if ((callable.params.clone().len() as i64) > 0) {
+                            callable.clone()
+                        } else {
+                            expand_field_type(callable.clone())
+                        };
+                        if ((expanded.params.clone().len() as i64) > 0) {
                             Rc::new(DeclaredArgContract::ContractKnown {
                                 types: Rc::new({
                                     let mut __result = Vec::new();
-                                    for p in callable.params.clone().iter().cloned() {
+                                    for p in expanded.params.clone().iter().cloned() {
                                         __result.push(param_node_type_expr(p.clone()));
                                     }
                                     __result

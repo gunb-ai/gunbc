@@ -19,12 +19,31 @@ type BudgetVerdictCompletion
   = Interrupted
   | CompletedOverBudget
 
+// WHY THE HERMETIC ROUTE HAS NO ARM FOR ONE OPERATION, closed and companion-local exactly as
+// BudgetVerdictCompletion above is. Each arm names a DIFFERENT remedy, which is the whole
+// reason it is not one String: an unpublished mock case is closed by publishing the case, a
+// missing mock_response by authoring one, and a filesystem removal only by a wet route, since
+// removal's whole content is the effect and there is no mock arm to author.
+type HermeticEffectGround
+  = UnpublishedMockCase
+  | NoMockResponse
+  | FilesystemRemoval
+
+// HostEffectRefused IS A ROUTE GAP, NOT A VERDICT. The witness never reached its subject: the
+// route it was given has no arm for a host effect it reached for. That is the same distinction
+// HostToolUnresolved and BudgetExceeded/Interrupted already draw here — an outcome that
+// produces no verdict is NotEvaluated, never StillRed — and the arm exists for the same reason
+// they do. Before it, the three hermetic refusal sites produced RuntimeError-shaped prose, so a
+// witness never given a runnable route was indistinguishable from a witness that ran and
+// errored on its subject. The required floor resolved that ambiguity by declining the whole
+// population instead, which is how 778 identities came to be discovered and never executed.
 type WitnessEvalVerdict
   = Passed
   | BoolFalse
   | NotBool { got: String }
   | RuntimeError { message: String }
   | HostToolUnresolved { name: String, probed: List<String> }
+  | HostEffectRefused { operation: String, ground: HermeticEffectGround }
   | BudgetExceeded { elapsed_ms: Int, budget_ms: Int, kind: String, completion: BudgetVerdictCompletion }
 
 type ExpectedRedJoinDisposition
@@ -98,6 +117,14 @@ type VerdictClassification {
   detail: String
 }
 
+fn hermetic_effect_ground_label(ground: HermeticEffectGround) -> String {
+  match ground {
+    UnpublishedMockCase => "no published mock case for a corpus-governed service"
+    NoMockResponse => "operation declares no mock_response"
+    FilesystemRemoval => "filesystem removal has no mock arm; only a wet route can run it"
+  }
+}
+
 fn classify_verdict(verdict: WitnessEvalVerdict) -> VerdictClassification {
   match verdict {
     Passed =>
@@ -112,6 +139,14 @@ fn classify_verdict(verdict: WitnessEvalVerdict) -> VerdictClassification {
       VerdictClassification {
         disposition: NotEvaluated { reason: "host_tool_unresolved" },
         detail: concat("host tool unresolved: ", name, " (probed: ", probed |> join(separator: ", "), ")")
+      },
+    HostEffectRefused { operation: operation, ground: ground } =>
+      VerdictClassification {
+        disposition: NotEvaluated { reason: "host_effect_refused" },
+        detail: concat(
+          "hermetic route has no arm for ", operation, " (", hermetic_effect_ground_label(ground: ground),
+          ") — the witness never reached its subject, so this is a route gap, not a verdict"
+        )
       },
     BudgetExceeded { elapsed_ms: elapsed_ms, budget_ms: budget_ms, kind: kind, completion: Interrupted } =>
       VerdictClassification {

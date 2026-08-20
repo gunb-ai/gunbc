@@ -2,6 +2,7 @@ module extdeps.realization.reconcile_in_process
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import v2.std.optional { Absent }
 
 import extdeps.cache.types {
   CacheInterfaceCatalogFacts,
@@ -80,14 +81,14 @@ data parse_cache_facts: CacheInterfaceCatalogFacts = {
       field: "key_derivation"
       evidence: OperatorObserved {
         note: "cli_run.rs MultiEntryIndex.parse_cache keys on source.path (file path string), not content digest — cache-impurity witness; converge in Phase 2c"
-        observed_at: 0
+        observed_at: Absent
       }
     },
     {
       field: "locality"
       evidence: OperatorObserved {
         note: "scoped to MultiEntryIndex; shared across entry resolves in one batch; drops when index is dropped"
-        observed_at: 0
+        observed_at: Absent
       }
     },
   ]
@@ -125,14 +126,14 @@ data typed_module_cache_facts: CacheInterfaceCatalogFacts = {
       field: "key_derivation"
       evidence: OperatorObserved {
         note: "cli_run.rs reconcile_with_typed_cache keys on std.interface_summary.typed_module_key — module source hash + direct-import interface hashes (UpsertSubject) + compiler-binary identity via resolved_graph_cache::transform_content_digest (ToolchainSpec); the former authored-name key (the Phase-2c cache-impurity witness) is dissolved (cross-entry-typed-module-memo-sketch.md stage PR-alpha)"
-        observed_at: 0
+        observed_at: Absent
       }
     },
     {
       field: "locality"
       evidence: OperatorObserved {
         note: "scoped to MultiEntryIndex.typed_module_cache; warms across batch entry resolves; drops when index is dropped"
-        observed_at: 0
+        observed_at: Absent
       }
     },
   ]
