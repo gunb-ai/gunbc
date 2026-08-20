@@ -1711,30 +1711,48 @@ fn validate_existing_codex_runtime_release(
 
 data codex_runtime_release_publish_note: String = "Publication uses a UNIQUE same-parent staging directory (mktemp -d .<hex>.publishing.XXXXXX), never a deterministic .<hex>.publishing path. Tree-identity scratch (materialized-tree.canonical) is ALWAYS outside the publishing/release tree — passed as scratch_dir — so validation cannot plant a file into the tree it is measuring. Final install is GNU mv -T (no-target-directory): equivalent to renameat2(RENAME_NOREPLACE) for directories on Linux — never nests into an existing winner. On AlreadyExists, delete the contender staging tree and validate the winner with the same external scratch."
 
+// `emptied.success == false` and `moved.success == false` are NOT the same state (review
+// on #8621): the former means the mktemp placeholder was not empty -- something else wrote
+// into a name this call believed was exclusively its own, an exclusivity violation with no
+// established remedy -- while the latter is an ordinary move refusal (destination exists,
+// cross-device, permissions) against a placeholder this call knows is empty and its own.
+// Collapsing both to one Bool, which the pre-typed shell script necessarily did (one exit
+// code), is the state-space conflation DESIGN lists under recurring failure modes; the typed
+// operations below create the distinction, so it is kept to the caller rather than discarded
+// at the binding. The recursive-force cleanup therefore only runs on the move-refusal arm --
+// not-empty is left untouched rather than swept, since rm -rf on a placeholder this call does
+// not own would destroy whatever the other writer put there.
+type UniquePublishingRelocateOutcome
+  = UniquePublishingRelocateReady {
+      path: FilePath
+    }
+  | UniquePublishingPlaceholderNotEmpty
+  | UniquePublishingRelocateRefused
+
 fn relocate_build_root_to_unique_publishing(
   build_root: FilePath,
   parent: FilePath,
   hex: String,
-) -> FilePath? {
+) -> UniquePublishingRelocateOutcome {
   let template = concat(
     parent as String,
     concat("/.", concat(hex, ".publishing.XXXXXX")),
   ) as FilePath
   let staged = shell.Mktemp.DirWithTemplate(template: template)
   if staged.success == false {
-    none
+    UniquePublishingRelocateRefused
   } else {
     let emptied = shell.Remove.EmptyDirectory(path: staged.path)
-    let moved = if emptied.success == false {
-      false
+    if emptied.success == false {
+      UniquePublishingPlaceholderNotEmpty
     } else {
-      shell.Move.NoReplaceDirectory(source: build_root, destination: staged.path).success
-    }
-    if moved == false {
-      let _ = shell.Remove.RecursiveForce(path: staged.path)
-      none
-    } else {
-      Present { value: staged.path }
+      let moved = shell.Move.NoReplaceDirectory(source: build_root, destination: staged.path)
+      if moved.success == false {
+        let _ = shell.Remove.RecursiveForce(path: staged.path)
+        UniquePublishingRelocateRefused
+      } else {
+        UniquePublishingRelocateReady { path: staged.path }
+      }
     }
   }
 }
@@ -1814,11 +1832,15 @@ fn release_codex_runtime_bundle_immutable(
             parent: parent,
             hex: hex,
           ) {
-            Absent =>
+            UniquePublishingPlaceholderNotEmpty =>
+              CodexRuntimeReleaseFailed {
+                cause: "unique publishing staging placeholder was not empty (exclusivity violation, not swept)" as NonEmptyStr,
+              }
+            UniquePublishingRelocateRefused =>
               CodexRuntimeReleaseFailed {
                 cause: "unique publishing staging relocate refused" as NonEmptyStr,
               }
-            Present { value: publishing } =>
+            UniquePublishingRelocateReady { path: publishing } =>
               if write_codex_runtime_receipt_sidecar(
                 release_root: publishing,
                 receipt_identity: receipt.receipt_identity,
