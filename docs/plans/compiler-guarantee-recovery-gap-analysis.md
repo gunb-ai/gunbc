@@ -1456,15 +1456,22 @@ than argued.
    discharged by enrolling in `floor_expected_red_roster` directly (operator ruling,
    deep-ant-102, 2026-08-20: no new mechanism), which is the one live authority for this case.
 
-20. **Reconstruction doors: `value_from_fixture_json` and `map_response_to_value_json` build
-   typed `Value::Record`/`Value::Variant` from untrusted bytes with no declaration lookup, no
-   `sole_constructor` check, and no refinement predicate — **below the floor: silent wrongness, which §4b places OUTSIDE the ladder rather than on it, and §5 forbids outright** (an earlier revision of this row said rung `mitigatable`; that is inflation — `mitigatable` means the failure occurs and harm is CONTAINED by typed outcomes, bounds, or rollback, and here nothing is contained: the violating value is admitted silently, no diagnostic is emitted, nothing is counted, and the consumer proceeds. It is also inconsistent with the emission-path row, which correctly records the same shape of defect as below floor), first non-zero
-   live exposure this lane has produced** (measured 2026-08-20, bold-bear-246; scope handed
-   down from fierce-ant-91, distinct from and complementary to item 1a's `sole_constructor`
-   audit — that audit covers ordinary *construction* call sites, this item covers the two
-   places a value is *reconstructed* from serialized bytes outside any construction call at
-   all). **This item is measurement only. It lands no change to either mechanism, to
-   `sole_constructor`, or to where-refinements — see "What repair is not in this item," below.**
+20. **Reconstruction doors, umbrella.** Two functions build a typed `Value::Record`/
+   `Value::Variant` from untrusted bytes outside any construction call site, and this queue
+   item covers both — but external review (2026-08-20) found they are **different mechanisms
+   that need separate rows**, corrected here as 20a/20b rather than one joint claim: 20a
+   (`value_from_fixture_json`) mints a nominally tagged value **without ever establishing the
+   named declaration exists**; 20b (`map_response_to_value_json`) **does** honor the
+   operation's declared output shape — it looks up the real field names — but never validates
+   a field's *value* against that field's declared refinement predicate. The earlier joint
+   headline ("no declaration lookup" for both) was true only of 20a; stating it jointly
+   over-answered for 20b. Both share: measurement only, no change to either mechanism, to
+   `sole_constructor`, or to where-refinement machinery (see "What repair is not in this
+   item," below); distinct from and complementary to item 1a's `sole_constructor` audit, which
+   covers ordinary *construction* call sites, not reconstruction from serialized bytes; and
+   distinct from #8661, which proves the analogous `sole_constructor` bypass on the **emitted
+   Rust** target — this item does not restate that claim for the interpreter, it is a
+   different door on a different target.
 
    **Background — why this needed its own audit.** An earlier pass over the emitted-Rust
    `#[derive(Deserialize)]` door found it writable but structurally unreached in the current
@@ -1475,6 +1482,16 @@ than argued.
    audited. The lesson generalizes: "decodes to untyped JSON, therefore inert" is not a
    sound inference once a second, typed reconstruction step exists downstream.
 
+20a. **Fixture-replay door: `value_from_fixture_json` mints a value of a type it never checks
+   was declared — below the floor: silent wrongness, which §4b places OUTSIDE the ladder
+   rather than on it, and §5 forbids outright** (an earlier revision of this row said rung
+   `mitigatable`; that is inflation — `mitigatable` means the failure occurs and harm is
+   CONTAINED by typed outcomes, bounds, or rollback, and here nothing is contained: the
+   violating value is admitted silently, no diagnostic is emitted, nothing is counted, and the
+   consumer proceeds. It is also inconsistent with the emission-path row, which correctly
+   records the same shape of defect as below floor) (measured 2026-08-20, bold-bear-246; scope
+   handed down from fierce-ant-91).
+
    **Mechanism, confirmed by source read then by execution.** `value_from_fixture_json`'s
    Record arm reads a `__type` string out of the fixture JSON verbatim, interns it, reads
    whatever field names the same JSON object happens to carry, and returns
@@ -1482,16 +1499,7 @@ than argued.
    `sole_constructor` check, no refinement-predicate evaluation. Its Variant arm does the
    same plus an equally unchecked `__variant` string. `src/v1/stage0/src/v1_interpreter.rs`
    calls this on `fixture.response` during hermetic replay, so the door is reached on the
-   ordinary replay path, not a corner case. The second door, `map_response_to_value_json`
-   in the same module, is reached from a genuinely live REST round trip: `dispatch_rest` →
-   `decide_rest_exchange` → (for a `Json` response format) `map_response_to_value_json` on the
-   real HTTP response body. It walks the operation's declared output shape field-by-field,
-   converting each JSON value with the untyped `json_to_value` and assembling a
-   `Value::Record` — with zero validation of any field's value against its declared type's
-   refinement predicate, on every branch, including the branch that skips straight to
-   `json_to_value` when the operation's return type did not resolve and the branch that
-   fills a field with `Null` when the JSON body has no matching key. (Those two fallback
-   branches are a source-level read only — see "What was NOT executed," below.)
+   ordinary replay path, not a corner case.
 
    **ARM 1 — fixture-decoder door, executed.** Probe: `dag/test/claim/reconstruction_door_fixture_probe.dag`,
    a scratch service `DoorProbe.Fetch` (shell transport, `printf "%s" "positive-control"`,
@@ -1521,6 +1529,29 @@ than argued.
        shape, `witness_id_equals_variant_value`. **Observed: PASS, exit 0.** Confirms the
        Variant arm is the same hole as the Record arm, not a narrower one.
 
+20b. **REST JSON-projection door: `map_response_to_value_json` honors the declared field
+   names but never validates a field's value against its declared refinement predicate — same
+   below-floor rung as 20a (silent wrongness, §4b/§5), a distinct mechanism** (measured
+   2026-08-20, bold-bear-246).
+
+   **Mechanism, confirmed by source read then by execution.** `map_response_to_value_json` is
+   reached from a genuinely live REST round trip: `dispatch_rest` → `decide_rest_exchange` →
+   (for a `Json` response format) `map_response_to_value_json` on the real HTTP response body.
+   It reads `op_node.inferred` and, when the operation's return type resolves, projects into
+   that operation's **declared** output shape field-by-field — unlike 20a, the field names
+   here are checked against the real declaration, not read verbatim off the wire. The gap is
+   narrower and specifically in field *values*: each field's JSON value is converted with the
+   untyped `json_to_value` and assembled into a `Value::Record` with zero validation against
+   that field's declared type's refinement predicate, on every branch, including the branch
+   that skips straight to `json_to_value` when the return type did not resolve and the branch
+   that fills a field with `Null` when the JSON body has no matching key. (Those two fallback
+   branches are a source-level read only — see "What was NOT executed," below.) **A third,
+   separate path exists and is unmeasured by this item:** when the operation's response format
+   is `Text` rather than `Json`, `decide_rest_exchange` routes to `map_response_to_value`, not
+   to `map_response_to_value_json` — a different function this item did not execute a case
+   against. It is named here, source-read only, so Text/shell-transport outputs are not
+   silently misclassified as covered by this item's executed evidence.
+
    **ARM 2 — REST-mapper door, executed, and the stronger of the two results.** Probe:
    `dag/test/claim/reconstruction_door_rest_probe.dag`, a scratch service `DoorProbeRest.Fetch`
    (`transport rest { method: GET, path: "/fetch" }`, `output { id: NonEmptyStr from "id" }`,
@@ -1543,14 +1574,13 @@ than argued.
        and was placed into the `NonEmptyStr`-declared field unchecked.
 
    **What was NOT executed (source-level read, stated as such, not overclaimed):** the two
-   fallback branches inside `map_response_to_value_json` — return-type-did-not-resolve
-   (falls through to untyped `json_to_value`) and array-response-with-non-empty-declared-fields
-   (also falls through to `json_to_value`) — were read from source, not driven by a
-   constructed executing case. They are named here as source-level evidence only; no rung
-   claim rests on them.
+   fallback branches named in 20b's mechanism paragraph above (return-type-did-not-resolve,
+   array-response-with-non-empty-declared-fields) and the `Text`-format third path
+   (`map_response_to_value`) were read from source, not driven by a constructed executing
+   case. Named here as source-level evidence only; no rung claim rests on them.
 
    **ARM 3 — exposure, both doors are reached by bytes this repo does not author, and the
-   two doors reach that exposure differently.** The fixture-decoder door is reached by
+   two doors reach that exposure differently.** 20a's fixture-replay door is reached by
    *repo-committed but externally-sourced* bytes: `dag/test/fixture/` carries JSON files
    recorded from real external effects — a live GCP OAuth token refresh
    (`dag/test/fixture/gcp_oauth_access_token_store/oauth2__Google__Refresh/991775fc306dcac0.json`,
@@ -1558,55 +1588,71 @@ than argued.
    shape `value_from_fixture_json` parses), a `gcloud` ADC read, a Tailscale ACL fetch, a
    GitHub push event — and those fixtures are not idle: numerous `.dag` witness tests under
    `dag/test/claim/` name `dag/test/fixture` as their fixture store, so the door executes
-   during ordinary witness-test replay, not only under ad hoc probing. The REST-mapper door
-   is reached straightforwardly externally: any production `transport rest` service dispatch
-   during a wet run hits it directly, no repo-committed intermediary at all.
+   during ordinary witness-test replay, not only under ad hoc probing. 20b's REST-projection
+   door is reached straightforwardly externally: any production `transport rest` service
+   dispatch during a wet run hits it directly, no repo-committed intermediary at all.
 
    **The two doors' Case-2-class findings have different reachability stories, and
-   collapsing them would overstate the fixture door.** ARM 2's Case 2 needed *no* tampering
-   whatsoever: an ordinary, legitimate upstream HTTP response of `{"id":""}` is exactly what
-   a real service can return, gets faithfully recorded if a fixture is taken of it, and every
-   subsequent hermetic replay of that fixture reconstructs the violating value forever —
-   nobody edited anything, ever. ARM 1's Case 2 demonstrates the identical bypass on the
-   fixture door, but reaching it there required an on-disk tamper of the recorded JSON (a
-   deterministic way to reach the same state in one run, not the threat model — the threat
-   model is that an ordinary recorded response can already carry it, which ARM 2 proves
-   directly and which nothing distinguishes the fixture door from once a fixture is taken of
-   a real service that happens to return an edge-case value). ARM 1's Cases 3 and 4 are a
-   different claim and must not be folded into Case 2's "no tampering needed" framing: a
-   real service does not spontaneously emit a `__type` naming a type your program never
-   declared, or a `Variant`-tagged envelope your service never promised — reaching those
-   requires a malformed or hand-edited fixture, and what they demonstrate is the decoder's
-   **admission scope** (it accepts input shapes with no declaration and no invariant to check
-   at all), not its ordinary-case reachability. Both findings are real; stating them as one
-   claim would let a reader dismiss the whole result as "if you can edit files you can do bad
-   things," which is true only of Cases 3–4.
+   collapsing them would overstate 20a.** 20b's Case 2 needed *no* tampering whatsoever: an
+   ordinary, legitimate upstream HTTP response of `{"id":""}` is exactly what a real service
+   can return, gets faithfully recorded if a fixture is taken of it, and every subsequent
+   hermetic replay of that fixture reconstructs the violating value forever — nobody edited
+   anything, ever. 20a's Case 2 demonstrates the identical bypass on the fixture-replay door,
+   but reaching it there required an on-disk tamper of the recorded JSON (a deterministic way
+   to reach the same state in one run, not the threat model — the threat model is that an
+   ordinary recorded response can already carry it, which 20b proves directly and which
+   nothing distinguishes the fixture-replay door from once a fixture is taken of a real
+   service that happens to return an edge-case value). 20a's Cases 3 and 4 are a different
+   claim and must not be folded into Case 2's "no tampering needed" framing: a real service
+   does not spontaneously emit a `__type` naming a type your program never declared, or a
+   `Variant`-tagged envelope your service never promised — reaching those requires a malformed
+   or hand-edited fixture, and what they demonstrate is the decoder's **admission scope** (it
+   accepts input shapes with no declaration and no invariant to check at all), not its
+   ordinary-case reachability. Both findings are real; stating them as one claim would let a
+   reader dismiss the whole result as "if you can edit files you can do bad things," which is
+   true only of Cases 3–4.
 
-   **Live production exposure — a number with caveats, not a census.** A scan of production
-   `.dag` (`dag/extdeps/`, excluding `test`/`fixture` trees) for `output { ... }` blocks whose
-   field types name a **genuinely `where`-refined** alias found **22** matching fields:
-   `NonEmptyStr` (10), `SmResolvedVersionIdentity` (6), `FilePath` (5), `BrowserContext` (1).
-   **CORRECTION, AND THE ERROR WAS IN THE ORIGINAL SCAN'S TYPE SET, NOT ITS ARITHMETIC.** An earlier
-   revision of this row reported **33** and led with `sha: CommitSha` across three git modules and
-   `access_token: Secret`. Neither type carries a refinement predicate at all: `CommitSha` is declared
-   `type CommitSha = String`, a bare alias with no `where` clause, and `Secret` is declared
-   `type Secret nominal_opaque = String` — opacity is a different mechanism from a predicate, and an
-   opaque carrier has no proposition that reconstruction could violate. Those fields were counted as
-   refined because the scan enumerated alias-shaped types rather than types with a `where` clause, so
-   the figure was inflated by roughly a third AND its two most-cited examples were exactly the two
-   that did not belong. The re-measurement restricts the type set to the 219 declarations matching
-   `^type ... = ... where `.
-   The door split survives the correction where it still has subjects: `extdeps.shell`'s
-   `path: FilePath` outputs are `transport shell` (ARM 1's door) and `extdeps.github.workflows`'s
-   `run_url: NonEmptyStr` is `transport rest` (ARM 2's door), so the 22 still spans both doors and
-   citing it as one undifferentiated REST total would overstate ARM 2. The `CommitSha` shell examples
-   that previously carried that argument are withdrawn with the type.
-   Caveats, unchanged and still binding: the scan matches single-line `output { ... }` blocks only, so
-   multi-line and nested declarations are missed — **22 is a lower bound, not a census**; operations
-   were not deduplicated; and **none of the 22 was executed** — they are declarations sitting on the
-   path ARM 1/ARM 2 demonstrate is unchecked, which is an inference from the mechanism, not a
-   per-field measurement. Write it as: 22 declared fields sit on a path proven unchecked, not
-   "22 fields are bypassed."
+   **Live production exposure — a scanned figure, corrected in its type set, split on the
+   axes that actually govern reachability.** A scan of production `.dag` (`dag/extdeps/`,
+   excluding `test`/`fixture` trees) for `output { ... }` blocks whose field types name a
+   **genuinely `where`-refined** alias found **22** matching field occurrences (identified at
+   `(module, service, operation, field)` grain): `NonEmptyStr` (10), `SmResolvedVersionIdentity`
+   (6), `FilePath` (5), `BrowserContext` (1). **CORRECTION, AND THE ERROR WAS IN THE ORIGINAL
+   SCAN'S TYPE SET, NOT ITS ARITHMETIC.** An earlier revision of this row reported **33** and
+   led with `sha: CommitSha` across three git modules and `access_token: Secret`. Neither type
+   carries a refinement predicate at all: `CommitSha` is declared `type CommitSha = String`, a
+   bare alias with no `where` clause, and `Secret` is declared `type Secret nominal_opaque =
+   String` — opacity is a different mechanism from a predicate, and an opaque carrier has no
+   proposition that reconstruction could violate (one nuance worth keeping: `SecretValue =
+   Secret where non_empty` **is** a refined secret carrier, so dropping bare `Secret` does not
+   mean secrets are categorically unrefined — none of this scan's 22 happens to be
+   `SecretValue`, but a future re-scan should not assume the whole `Secret` family is exempt).
+   Those `CommitSha`/`Secret` fields were counted as refined because the scan enumerated
+   alias-shaped types rather than types with a `where` clause, so the figure was inflated by
+   roughly a third AND its two most-cited examples were exactly the two that did not belong.
+   The re-measurement restricts the type set to the 219 declarations matching `^type ... = ...
+   where `.
+   **The split axis is corrected too — transport (shell vs REST) is the wrong one and is
+   dropped.** Fixture replay (20a) is **transport-independent**: a recorded shell- or
+   REST-transport result can equally end up replayed through `value_from_fixture_json` later,
+   so partitioning by transport implied a boundary 20a does not respect. `map_response_to_value_json`
+   (20b) is **format-dependent**, not transport-dependent — it is the `Json`-response-format
+   branch specifically, with the sibling `Text`-format branch routing elsewhere (named above,
+   unmeasured). The two axes that actually govern which door's evidence covers a given field
+   are: **wet/observed JSON projection (20b) vs. stored-fixture replay (20a)**, and **JSON vs.
+   Text** response format. This scan did not re-classify the 22 occurrences along those axes
+   (that reclassification, and the full `(module, service, operation, field)` tuple list
+   rather than the per-type counts given here, is unmeasured — future work if this row is
+   revisited); it withdraws the earlier shell/REST framing rather than replacing it with a
+   verified new split.
+   Caveats, unchanged and still binding: the scan matches single-line `output { ... }` blocks
+   only, so multi-line and nested declarations are missed, and this session has not
+   independently re-verified deduplication at `(module, service, operation, field)` grain —
+   both are directions the 22 could move in either direction, so **it is not stated as a lower
+   bound**; and **none of the 22 was executed** — they are declarations sitting on the path
+   20a/20b's executed evidence demonstrates is unchecked, which is an inference from the
+   mechanism, not a per-field measurement. Write it as: 22 declared fields sit on a path
+   proven unchecked, not "22 fields are bypassed."
 
    **What repair is NOT in this item, and why.** This item is measurement only — no change to
    `value_from_fixture_json`, `map_response_to_value_json`, `dispatch_rest`,
