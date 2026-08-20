@@ -38,8 +38,22 @@ import gunbc.spark_managed_access_bootstrap {
 }
 import gunbc.host_effect_realize { run_typed_argv_transport }
 import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
-import gunbc.spark_bootstrap_credential { CredentialMaterializationPending }
-import gunbc.spark_grant_privileged_operation { spark_bootstrap_credential_lease, lease_secret_resource }
+import gunbc.spark_bootstrap_credential { CredentialMaterializationPending, CredentialMaterialized, SparkCredentialStanding }
+import gunbc.spark_credential_workflow { spark_administrator_password_secret_ref }
+import gunbc.spark_grant_privileged_operation {
+  spark_bootstrap_credential_lease,
+  lease_secret_resource,
+  run_privileged_step,
+  privileged_step_succeeded,
+  privileged_step_outcome_wire,
+  PrivilegedStepOutcome,
+  CredentialNotEnrolled,
+  CredentialRejected,
+  PrivilegedCommandFailed,
+  PrivilegedCommandSucceeded,
+  ValidateStagedSudoers,
+  InstallStagedSudoers,
+}
 import gunbc.spark_managed_grant_reconcile {
   spark_managed_grants_to_install,
   spark_managed_grant_report,
@@ -258,6 +272,7 @@ type SparkGrantInstallOutcome
       host: HostIdentity
       grant: SparkManagedGrant
       standings: List<RemoteStepStanding>
+      privileged: List<PrivilegedStepOutcome>
     }
   | SparkGrantInstallNotAttempted {
       host: HostIdentity
@@ -265,10 +280,21 @@ type SparkGrantInstallOutcome
       cause: NonEmptyStr
     }
 
+// THE SEQUENCE IS MIXED, AND DELIBERATELY NOT HOMOGENEOUS. Staging and cleanup are ordinary
+// unprivileged operations; validation and installation are credential-bound. Running all four
+// through one sequencer would have required a RemoteOperation that carries a credential, which is
+// the generic { argv, stdin } carrier the ruling forbids -- it would reopen arbitrary script bodies
+// through stdin under root. So the two privileged steps are their own operation with their own
+// closed argv set, and the fold below halts across both kinds.
+//
+// The order is load-bearing and is asserted separately as a property of the plan: validation runs
+// against the STAGED copy before anything reaches /etc/sudoers.d, because a malformed drop-in there
+// stops every privileged operation on the host including the one that would repair it.
 func spark_grant_install_execute(
   context: FleetSshExecutionContext,
   host: HostIdentity,
   principal: NonEmptyStr,
+  administrator: SparkCredentialStanding,
   grant: SparkManagedGrant,
 ) -> SparkGrantInstallOutcome
   uses net: Network
@@ -277,7 +303,7 @@ func spark_grant_install_execute(
   match plan {
     SparkGrantInstallRefused { grant: g, cause: c } =>
       SparkGrantInstallNotAttempted { host: host, grant: g, cause: c }
-    SparkGrantInstallSteps { grant: g, first: _, more: _ } =>
+    SparkGrantInstallSteps { grant: g, first: staged_step, more: _ } =>
       if spark_grant_install_validates_before_installing(plan: plan) == false {
         SparkGrantInstallNotAttempted {
           host: host,
@@ -286,17 +312,73 @@ func spark_grant_install_execute(
         }
       } else {
         {
-          let standings = spark_serving_run_step_sequence(
-            steps: spark_grant_install_steps(plan: plan),
+          let lease = spark_bootstrap_credential_lease(
+            host: host,
+            administrator: administrator,
+            grant: g,
+            attempt_identity: spark_grant_install_ci_attempt_raw as NonEmptyStr,
+          )
+          let staged = spark_serving_run_step_sequence(
+            steps: [staged_step],
             transport: spark_grant_install_transport(context: context, host: host, principal: principal),
           )
-          if spark_grant_standings_demanded_a_password(standings: standings) {
-            SparkGrantInstallAwaitingOperatorCredential { host: host, grant: g, principal: principal }
+          if spark_serving_step_sequence_failed(standings: staged) {
+            SparkGrantInstallExecuted { host: host, grant: g, standings: staged, privileged: [] }
           } else {
-            SparkGrantInstallExecuted { host: host, grant: g, standings: standings }
+            {
+              let validated = run_privileged_step(
+                context: context,
+                host: host,
+                lease: lease,
+                command: ValidateStagedSudoers {
+                  staged_path: spark_grant_staging_path(grant: g, principal: principal) as NonEmptyStr,
+                },
+              )
+              if privileged_step_succeeded(outcome: validated) == false {
+                spark_grant_install_from_privileged(host: host, grant: g, principal: principal, staged: staged, outcomes: [validated])
+              } else {
+                {
+                  let installed = run_privileged_step(
+                    context: context,
+                    host: host,
+                    lease: lease,
+                    command: InstallStagedSudoers {
+                      staged_path: spark_grant_staging_path(grant: g, principal: principal) as NonEmptyStr,
+                      dropin_path: spark_managed_grant_dropin_path(grant: g),
+                    },
+                  )
+                  spark_grant_install_from_privileged(
+                    host: host, grant: g, principal: principal, staged: staged,
+                    outcomes: [validated, installed],
+                  )
+                }
+              }
+            }
           }
         }
       }
+  }
+}
+
+// A CREDENTIAL THAT WAS NEVER ENROLLED IS NOT A FAILED INSTALL, and separating the two is what keeps
+// "nobody has supplied authorization yet" from reading like "the installer is broken". Every other
+// privileged failure stays an executed-and-failed install, because something was actually attempted.
+fn spark_grant_install_from_privileged(
+  host: HostIdentity,
+  grant: SparkManagedGrant,
+  principal: NonEmptyStr,
+  staged: List<RemoteStepStanding>,
+  outcomes: List<PrivilegedStepOutcome>,
+) -> SparkGrantInstallOutcome {
+  if any(outcomes, o => match o {
+    CredentialNotEnrolled { lease: _ } => true
+    CredentialRejected { lease: _ } => false
+    PrivilegedCommandFailed { command: _, exit_code: _, stderr: _ } => false
+    PrivilegedCommandSucceeded { command: _ } => false
+  }) {
+    SparkGrantInstallAwaitingOperatorCredential { host: host, grant: grant, principal: principal }
+  } else {
+    SparkGrantInstallExecuted { host: host, grant: grant, standings: staged, privileged: outcomes }
   }
 }
 
@@ -308,18 +390,10 @@ fn spark_grant_install_succeeded(outcome: SparkGrantInstallOutcome) -> Bool {
   match outcome {
     SparkGrantInstallAwaitingOperatorCredential { host: _, grant: _, principal: _ } => false
     SparkGrantInstallNotAttempted { host: _, grant: _, cause: _ } => false
-    SparkGrantInstallExecuted { host: _, grant: _, standings: st } =>
+    SparkGrantInstallExecuted { host: _, grant: _, standings: st, privileged: pr } =>
       spark_serving_step_sequence_failed(standings: st) == false
-  }
-}
-
-// SUDO SAYING "a password is required" TO THE INSTALLER IS THE ROOT-OF-TRUST SIGNAL, and it is read
-// off sudo's own diagnostic rather than the exit code: exit 1 is also what a malformed sudoers file
-// or a missing staged path produces, and those have entirely different remedies.
-fn spark_grant_standings_demanded_a_password(standings: List<RemoteStepStanding>) -> Bool {
-  match spark_grant_install_first_failure_cause(standings: standings) {
-    Absent => false
-    Present { value: c } => string_contains(c, "a password is required")
+        && pr.length() > 0
+        && fold(pr, init: true, f: fn(acc, o) { acc && privileged_step_succeeded(outcome: o) })
   }
 }
 
@@ -370,7 +444,7 @@ fn spark_grant_install_outcome_wire(outcome: SparkGrantInstallOutcome) -> String
         " grant=", spark_managed_grant_wire(grant: g) as String,
         " NOT-ATTEMPTED cause=", c as String, "\n",
       ], "")
-    SparkGrantInstallExecuted { host: h, grant: g, standings: st } =>
+    SparkGrantInstallExecuted { host: h, grant: g, standings: st, privileged: pr } =>
       join([
         "grant-install host=", h as String,
         " grant=", spark_managed_grant_wire(grant: g) as String,
@@ -380,6 +454,7 @@ fn spark_grant_install_outcome_wire(outcome: SparkGrantInstallOutcome) -> String
           Present { value: c } => join([" cause=", c], "")
         },
         "\n",
+        join(map(pr, o => privileged_step_outcome_wire(outcome: o)), ""),
       ], "")
   }
 }
@@ -413,6 +488,7 @@ func spark_grant_install_host(
   context: FleetSshExecutionContext,
   host: HostIdentity,
   principal: NonEmptyStr,
+  administrator: SparkCredentialStanding,
 ) -> SparkGrantInstallRun
   uses net: Network
 {
@@ -420,7 +496,10 @@ func spark_grant_install_host(
   SparkGrantInstallRun {
     standing_report: spark_managed_grant_report(host: host, outcome: outcome),
     outcomes: map(spark_managed_grants_to_install(outcome: outcome), g =>
-      spark_grant_install_execute(context: context, host: host, principal: principal, grant: g)),
+      spark_grant_install_execute(
+        context: context, host: host, principal: principal,
+        administrator: administrator, grant: g,
+      )),
   }
 }
 
@@ -492,6 +571,7 @@ func spark_grant_install_ci_wet() -> ProcessExit
             context: context,
             host: only,
             principal: spark_grant_install_principal(),
+            administrator: spark_grant_install_administrator_standing(),
           )
           let body = join([
             "spark_grant_install_ci_wet probed_at=", now as String, "\n",
@@ -517,4 +597,14 @@ func spark_grant_install_ci_wet() -> ProcessExit
 // run refuses with sudo's own diagnostic rather than leaving a human to guess who could.
 fn spark_grant_install_principal() -> NonEmptyStr {
   spark_operator_bootstrap_login as NonEmptyStr
+}
+
+// THE STANDING IS PENDING UNTIL A SECRET IS AUTHORED, and this row is the honest state rather than a
+// deficiency. Secret names are CARRIED, never derived (operator ruling 2026-08-07), and creating the
+// secret is SECRET-MATERIALIZE-0'"'"'s subject -- so a reference authored here would be a claim about
+// Secret Manager'"'"'s contents that this lane never checked. The row becomes CredentialMaterialized
+// with an explicit ref the day the administrator credential is enrolled, and until then every
+// privileged step refuses with "no credential enrolled" rather than attempting one.
+fn spark_grant_install_administrator_standing() -> SparkCredentialStanding {
+  CredentialMaterializationPending
 }

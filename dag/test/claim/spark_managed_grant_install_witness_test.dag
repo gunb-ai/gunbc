@@ -22,17 +22,32 @@ import gunbc.spark_managed_grant_install {
   spark_grant_install_run_text,
   spark_grant_install_outcome_wire,
   spark_grant_credential_requirement,
-  spark_grant_standings_demanded_a_password,
+  spark_grant_install_from_privileged,
+  spark_grant_install_succeeded,
+  SparkGrantInstallExecuted,
   SparkGrantInstallAwaitingOperatorCredential,
 }
-import gunbc.remote_operation { RemoteStepFailed, RemoteArgvExecution }
-import gunbc.typed_argv_exec { TypedArgvExecConverged }
-import extdeps.ssh.session { SshSessionExecResult }
 import gunbc.remote_operation { remote_operation_argv, remote_operation_label }
+import gunbc.spark_bootstrap_credential { CredentialMaterializationPending }
+import gunbc.spark_grant_privileged_operation {
+  OperatorBootstrapCredentialLease,
+  spark_bootstrap_credential_lease,
+  CredentialNotEnrolled,
+  CredentialRejected,
+}
 
 // The installing principal, which is deliberately NOT the grantee: an account cannot install its own
 // sudoers entries, and the fixtures below would pass against either if the two were the same string.
 fn installer() -> NonEmptyStr { "briansrls" as NonEmptyStr }
+
+fn pending_lease() -> OperatorBootstrapCredentialLease {
+  spark_bootstrap_credential_lease(
+    host: "srv6",
+    administrator: CredentialMaterializationPending,
+    grant: RebootThisHost,
+    attempt_identity: "fixture" as NonEmptyStr,
+  )
+}
 
 
 test fn the_reboot_grant_plans_stage_validate_install_unstage() -> Bool {
@@ -133,6 +148,48 @@ test fn a_refused_plan_renders_its_cause_and_plans_no_steps() -> Bool {
 // once: an exit decided by string_contains(body, "REFUSED") passed a run whose refusal arm spells
 // "probe-refused" in lower case. A run holding one not-attempted outcome must refuse whatever its
 // receipt happens to read like.
+// AN EXECUTED INSTALL WITH NO PRIVILEGED STEPS IS NOT A SUCCESS. The staging write alone converges
+// nothing -- the drop-in is still absent -- and an outcome that counted it would put a grant in the
+// receipt the host does not hold, which is the exact confusion the reconcile exists to end.
+test fn staging_alone_never_counts_as_an_installed_grant() -> Bool {
+  !spark_grant_install_succeeded(outcome: SparkGrantInstallExecuted {
+    host: "srv6",
+    grant: RebootThisHost,
+    standings: [],
+    privileged: [],
+  })
+}
+
+// A credential that was never enrolled is not a failed install: "nobody has supplied authorization
+// yet" and "the installer is broken" send a reader to different places.
+test fn a_never_enrolled_credential_is_awaiting_and_not_a_failure() -> Bool {
+  match spark_grant_install_from_privileged(
+    host: "srv6", grant: RebootThisHost, principal: installer(), staged: [],
+    outcomes: [CredentialNotEnrolled { lease: pending_lease() }],
+  ) {
+    SparkGrantInstallAwaitingOperatorCredential { host: _, grant: _, principal: _ } => true
+    SparkGrantInstallExecuted { host: _, grant: _, standings: _, privileged: _ } => false
+    SparkGrantInstallNotAttempted { host: _, grant: _, cause: _ } => false
+  }
+}
+
+// A REJECTED credential IS an executed-and-failed install, because something was actually attempted
+// against an enrolled secret -- the remedy is a different version, not a first enrolment.
+test fn a_rejected_credential_is_an_executed_failure_not_an_awaiting_one() -> Bool {
+  match spark_grant_install_from_privileged(
+    host: "srv6", grant: RebootThisHost, principal: installer(), staged: [],
+    outcomes: [CredentialRejected { lease: pending_lease() }],
+  ) {
+    SparkGrantInstallExecuted { host: _, grant: _, standings: _, privileged: pr } => pr.length() == 1
+    SparkGrantInstallAwaitingOperatorCredential { host: _, grant: _, principal: _ } => false
+    SparkGrantInstallNotAttempted { host: _, grant: _, cause: _ } => false
+  }
+    && !spark_grant_install_succeeded(outcome: SparkGrantInstallExecuted {
+         host: "srv6", grant: RebootThisHost, standings: [],
+         privileged: [CredentialRejected { lease: pending_lease() }],
+       })
+}
+
 test fn a_run_holding_a_not_attempted_outcome_refuses() -> Bool {
   !spark_grant_install_run_succeeded(run: SparkGrantInstallRun {
     standing_report: "grant-standing host=srv6 converged=false\n",
@@ -221,33 +278,3 @@ test fn the_credential_request_names_the_exact_grant_it_authorizes() -> Bool {
   })
 }
 
-// Read off sudo's own diagnostic, not the exit code: exit 1 is also what a malformed sudoers file
-// or a missing staged path produces, and those have entirely different remedies.
-test fn only_the_password_demand_selects_the_root_of_trust_arm() -> Bool {
-  spark_grant_standings_demanded_a_password(standings: [
-    RemoteStepFailed {
-      identity: "validate-gunbc-reboot" as NonEmptyStr,
-      execution: RemoteArgvExecution {
-        outcome: TypedArgvExecConverged {
-          result: SshSessionExecResult {
-            exit_code: 1, success: false, stdout: "",
-            stderr: "sudo: a password is required",
-          },
-        },
-      },
-    },
-  ])
-    && !spark_grant_standings_demanded_a_password(standings: [
-         RemoteStepFailed {
-           identity: "validate-gunbc-reboot" as NonEmptyStr,
-           execution: RemoteArgvExecution {
-             outcome: TypedArgvExecConverged {
-               result: SshSessionExecResult {
-                 exit_code: 1, success: false, stdout: "",
-                 stderr: "visudo: /home/briansrls/.gunbc-staged-sudoers-gunbc-reboot: parse error near line 1",
-               },
-             },
-           },
-         },
-       ])
-}

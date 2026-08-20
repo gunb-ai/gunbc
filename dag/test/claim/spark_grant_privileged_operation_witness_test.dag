@@ -13,6 +13,7 @@ import gunbc.spark_grant_privileged_operation {
   OperatorBootstrapCredentialLease,
   spark_bootstrap_credential_lease,
   lease_secret_resource,
+  lease_secret_version_resource,
   admitted_root_argv_words,
   admitted_root_argv_label,
   privileged_step_succeeded,
@@ -207,5 +208,25 @@ test fn a_materialized_credential_is_trimmed_of_its_file_newline() -> Bool {
   match classify_credential_read(success: true, error: "", content: "hunter2\n") {
     BootstrapCredentialReady { secret: s } => s == "hunter2"
     BootstrapCredentialNotMaterialized { cause: _ } => false
+  }
+}
+
+// THE STEP FETCHES WHAT THE LEASE AUTHORIZED, at the exact version, read off the lease rather than
+// spelled a second time. A step fetching a different secret than the lease authorized would be a
+// second naming authority for one fact -- and the version matters: "latest" and "1" are different
+// credentials the day someone adds a version.
+test fn the_materialization_target_is_read_from_the_lease_at_an_exact_version() -> Bool {
+  match lease_secret_version_resource(lease: lease_with(standing: enrolled())) {
+    Absent => false
+    Present { value: r } =>
+      string_contains(r, "/secrets/host-srv6-admin/versions/latest")
+  }
+}
+
+// A pending standing authorizes no fetch at all, so there is nothing for a step to materialize.
+test fn a_pending_standing_authorizes_no_fetch() -> Bool {
+  match lease_secret_version_resource(lease: lease_with(standing: CredentialMaterializationPending)) {
+    Absent => true
+    Present { value: _ } => false
   }
 }

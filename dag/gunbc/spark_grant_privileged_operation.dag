@@ -198,6 +198,19 @@ fn privileged_step_outcome_wire(outcome: PrivilegedStepOutcome) -> String {
 // not the secret; whoever cannot read the file learns nothing from knowing where it was.
 data spark_grant_credential_path_env: NonEmptyStr = "GUNBC_SPARK_BOOTSTRAP_CREDENTIAL_FILE" as NonEmptyStr
 
+// WHICH SECRET THE STEP MUST MATERIALIZE, read off the lease rather than spelled a second time. The
+// CI step that fetches the version and the code that consumes it are then one authority: a step
+// fetching a different secret than the lease authorized is unwritable rather than merely unlikely.
+fn lease_secret_version_resource(lease: OperatorBootstrapCredentialLease) -> String? {
+  match lease.administrator {
+    CredentialMaterializationPending => none
+    CredentialMaterialized { ref: r } =>
+      Present {
+        value: join([secret_ref_secret_resource(ref: r), "/versions/", r.version as String], ""),
+      }
+  }
+}
+
 // The materialized credential, held only long enough to reach stdin. There is deliberately no
 // renderer for this type and no arm of any receipt that takes one: a carrier that could be printed
 // would put "is this safe to log" into whoever writes the next diagnostic.
