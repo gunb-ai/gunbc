@@ -3,30 +3,25 @@ module std.trait_derive_shape
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import std.algebra { Cons, Empty }
+import v2.std.node { Symbol }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-data trait_derive_shape_note: String = "Target-agnostic authority for ReprGroundingDeriveTrait × ReprGroundingDeriveElemShape capability table and derive-trait list builders. Rust spellings: extdeps.languages.rust.emit. Consumed by v2.compiler.trait_derive_completeness and v1.compiler.trait_derive_emit. #7174 (operator 2026-07-25): v1 emit wires (a) clone bounds on generic params for fn signatures and derive-only generic struct items and (c) serde/Debug/Ord #[derive] on named structs/enums. Root-4 arm (b): predicate-gated supplemental impl { … } blocks for coproduct-native arithmetic carriers — see trait_derive_shape_grounding_lane_handoff; ReprDeriveAdd/Sub/… rows on KernelInt are capability-table authority for repr_grounding_derive_completeness_predicate, not spellings."
+data trait_derive_shape_note: String = "Target-AGNOSTIC half of the capability model: the TargetCapabilityKey brand, the ReprGroundingDeriveElemShape source-shape vocabulary, and the GENERIC table lookup and completeness predicate that take a TargetCapabilityShapeTable as a parameter. THE ROWS ARE NOT HERE. B1 (operator ruling 2026-08-19) replaced the ReprGroundingDeriveTrait coproduct -- sixteen Rust and serde trait names sitting in a std interface -- with TargetCapabilityKey, and moved every Rust-specific row (the shape-by-capability table, the derive-trait list builders, the emission rank, the spellings) into extdeps.languages.rust, so a new target is ROWS in its own extdeps module and never an edit to this fold (DESIGN section 4 N-times-M; section 3 puts realization-selecting dispatch peripheral, never in the interface). THIS FIRES THIS MODULE OWN DECLARED TRIGGER rather than overriding it: trait_derive_shape_dissolve_on said those members migrate beside each target spelling table WHEN A SECOND CONSUMER EXISTS, and the C-linkage realization is that second consumer. DECLARED RESIDUE: this module name now says derive_shape for something that is a capability authority -- a section 3 nickname for what it has become. Not renamed here because a mechanical rename across every importer bundled into a migration that is already reshaping contents makes both unreviewable; the trigger is the next change that touches this module for its own sake. Consumed by v2.compiler.trait_derive_completeness and v1.compiler.trait_derive_emit. #7174 (operator 2026-07-25): v1 emit wires (a) clone bounds on generic params for fn signatures and derive-only generic struct items and (c) serde/Debug/Ord #[derive] on named structs/enums. Root-4 arm (b): predicate-gated supplemental impl { … } blocks for coproduct-native arithmetic carriers — see trait_derive_shape_grounding_lane_handoff; ReprDeriveAdd/Sub/… rows on KernelInt are capability-table authority for repr_grounding_derive_completeness_predicate, not spellings."
 
 data trait_derive_shape_grounding_lane_handoff: String = "Root-4 arm (b): coproduct-native arithmetic + PartialOrd/PartialEq impl blocks for algebra carriers (GroupCompletion<Nat>, Vector). Capability table + repr_grounding_derive_completeness_predicate remain the shared authority; v1.compiler.trait_derive_emit emits impl { … } from shape rows (not #[derive]) through the seed emitter. GroupCompletion<M> pos/neg pair Add/Sub/Mul/Div landed in #7197 (dissolves interim CommutativeSemiring<Magnitude> stubs)."
 
-type ReprGroundingDeriveTrait
-  = ReprDeriveDebug
-  | ReprDeriveClone
-  | ReprDeriveCopy
-  | ReprDerivePartialEq
-  | ReprDeriveEq
-  | ReprDerivePartialOrd
-  | ReprDeriveOrd
-  | ReprDeriveHash
-  | ReprDeriveSerialize
-  | ReprDeriveDeserialize
-  | ReprDeriveAdd
-  | ReprDeriveSub
-  | ReprDeriveMul
-  | ReprDeriveDiv
-  | ReprDeriveRem
-  | ReprDeriveNeg
+type TargetCapabilityKey = Symbol where brand("TargetCapabilityKey")
+
+type TargetCapabilityShapeRow {
+  shape: ReprGroundingDeriveElemShape
+  capabilities: List<TargetCapabilityKey>
+}
+
+type TargetCapabilityShapeTable {
+  rows: List<TargetCapabilityShapeRow>
+}
 
 type ReprGroundingDeriveElemShape
   = ReprDeriveElemKernelString
@@ -38,342 +33,74 @@ type ReprGroundingDeriveElemShape
   | ReprDeriveElemPayloadCoproduct
   | ReprDeriveElemUnknown
 
-fn repr_grounding_derive_shape_has_trait(
-  shape: ReprGroundingDeriveElemShape,
-  derive_trait: ReprGroundingDeriveTrait
-) -> Bool {
+fn repr_grounding_elem_shape_rank(shape: ReprGroundingDeriveElemShape) -> Int {
   match shape {
-    ReprDeriveElemKernelString =>
-      match derive_trait {
-        ReprDeriveDebug => true
-        ReprDeriveClone => true
-        ReprDerivePartialEq => true
-        ReprDeriveEq => true
-        ReprDerivePartialOrd => true
-        ReprDeriveOrd => true
-        ReprDeriveHash => true
-        ReprDeriveSerialize => true
-        ReprDeriveDeserialize => true
-        _ => false
-      }
-    ReprDeriveElemKernelInt =>
-      match derive_trait {
-        ReprDeriveDebug => true
-        ReprDeriveClone => true
-        ReprDeriveCopy => true
-        ReprDerivePartialEq => true
-        ReprDeriveEq => true
-        ReprDerivePartialOrd => true
-        ReprDeriveOrd => true
-        ReprDeriveHash => true
-        ReprDeriveSerialize => true
-        ReprDeriveDeserialize => true
-        ReprDeriveAdd => true
-        ReprDeriveSub => true
-        ReprDeriveMul => true
-        ReprDeriveDiv => true
-        ReprDeriveRem => true
-        ReprDeriveNeg => true
-      }
-    ReprDeriveElemKernelBool =>
-      match derive_trait {
-        ReprDeriveDebug => true
-        ReprDeriveClone => true
-        ReprDeriveCopy => true
-        ReprDerivePartialEq => true
-        ReprDeriveEq => true
-        ReprDerivePartialOrd => true
-        ReprDeriveOrd => true
-        ReprDeriveHash => true
-        ReprDeriveSerialize => true
-        ReprDeriveDeserialize => true
-        _ => false
-      }
-    ReprDeriveElemKernelUnit =>
-      match derive_trait {
-        ReprDeriveDebug => true
-        ReprDeriveClone => true
-        ReprDeriveCopy => true
-        ReprDerivePartialEq => true
-        ReprDeriveEq => true
-        ReprDerivePartialOrd => true
-        ReprDeriveOrd => true
-        ReprDeriveHash => true
-        ReprDeriveSerialize => true
-        ReprDeriveDeserialize => true
-        _ => false
-      }
-    ReprDeriveElemNullaryEnumCopy =>
-      match derive_trait {
-        ReprDeriveDebug => true
-        ReprDeriveClone => true
-        ReprDeriveCopy => true
-        ReprDerivePartialEq => true
-        ReprDeriveEq => true
-        ReprDerivePartialOrd => true
-        ReprDeriveOrd => true
-        ReprDeriveHash => true
-        ReprDeriveSerialize => true
-        ReprDeriveDeserialize => true
-        _ => false
-      }
-    ReprDeriveElemSymbolWrappedOrdCarrier =>
-      match derive_trait {
-        ReprDeriveDebug => true
-        ReprDeriveClone => true
-        ReprDerivePartialEq => true
-        ReprDeriveEq => true
-        ReprDerivePartialOrd => true
-        ReprDeriveOrd => true
-        ReprDeriveHash => true
-        ReprDeriveSerialize => true
-        ReprDeriveDeserialize => true
-        _ => false
-      }
-    ReprDeriveElemPayloadCoproduct =>
-      match derive_trait {
-        ReprDeriveDebug => true
-        ReprDeriveClone => true
-        ReprDerivePartialEq => true
-        ReprDeriveEq => true
-        ReprDeriveHash => true
-        ReprDeriveSerialize => true
-        ReprDeriveDeserialize => true
-        _ => false
-      }
-    ReprDeriveElemUnknown => false
+    ReprDeriveElemKernelString => 0
+    ReprDeriveElemKernelInt => 1
+    ReprDeriveElemKernelBool => 2
+    ReprDeriveElemKernelUnit => 3
+    ReprDeriveElemNullaryEnumCopy => 4
+    ReprDeriveElemSymbolWrappedOrdCarrier => 5
+    ReprDeriveElemPayloadCoproduct => 6
+    ReprDeriveElemUnknown => 7
   }
 }
 
-// Eq and Hash on a payload coproduct are CAPABILITY rows, not roster rows, and the distinction is why
-// they read false until the usage-derived requirement needed them. The capability table answers what a
-// shape CAN derive; the roster answers what it DOES. Rust derives Eq and Hash on an enum with payloads
-// exactly as it derives PartialEq — the macro emits an impl bounded by the payload types, so the
-// capability is the payload types' problem and not the enum shape's, and PartialEq was already true
-// here for that same reason. Setting these false conflated the two questions: it said the shape cannot
-// support the trait when the fact was only that payload_coproduct_derive_traits does not ask for it.
-// The rows change no existing emission, because the completeness predicate is evaluated against the
-// roster actually chosen and that roster is unchanged; what they unblock is a payload coproduct
-// reaching a map-key position, which before this refused with compile_error! at a shape that could
-// have carried the derive. Where a payload genuinely is not Eq or Hash — a Float, a callable field —
-// the emitted impl fails at rustc with a located E0277 against the offending payload, which is a
-// better refusal than one against the enum, because it names the field that cannot hold rather than
-// the shape that could.
-fn repr_grounding_derive_completeness_predicate(
-  required: List<ReprGroundingDeriveTrait>,
+fn target_capability_shape_row_for(
+  table: TargetCapabilityShapeTable,
   shape: ReprGroundingDeriveElemShape
-) -> Bool {
-  required |> all(dt => repr_grounding_derive_shape_has_trait(shape, dt))
-}
-
-fn record_derive_traits_heap() -> List<ReprGroundingDeriveTrait> {
-  Cons {
-    head: ReprDeriveDebug,
-    tail: Cons {
-      head: ReprDeriveClone,
-      tail: Cons {
-        head: ReprDerivePartialEq,
-        tail: Cons {
-          head: ReprDeriveSerialize,
-          tail: Cons { head: ReprDeriveDeserialize, tail: Empty }
+) -> Optional<TargetCapabilityShapeRow> {
+  table.rows |> fold(init: optional_absent(), f: (acc, row) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if repr_grounding_elem_shape_rank(shape: row.shape)
+             == repr_grounding_elem_shape_rank(shape: shape) {
+          optional_present(value: row)
+        } else {
+          optional_absent()
         }
-      }
     }
-  }
-}
-
-fn record_derive_traits_copy() -> List<ReprGroundingDeriveTrait> {
-  Cons {
-    head: ReprDeriveDebug,
-    tail: Cons {
-      head: ReprDeriveClone,
-      tail: Cons {
-        head: ReprDeriveCopy,
-        tail: Cons {
-          head: ReprDerivePartialEq,
-          tail: Cons {
-            head: ReprDeriveSerialize,
-            tail: Cons { head: ReprDeriveDeserialize, tail: Empty }
-          }
-        }
-      }
-    }
-  }
-}
-
-fn nullary_coproduct_derive_traits() -> List<ReprGroundingDeriveTrait> {
-  Cons {
-    head: ReprDeriveDebug,
-    tail: Cons {
-      head: ReprDeriveClone,
-      tail: Cons {
-        head: ReprDeriveCopy,
-        tail: Cons {
-          head: ReprDerivePartialEq,
-          tail: Cons {
-            head: ReprDeriveEq,
-            tail: Cons {
-              head: ReprDerivePartialOrd,
-              tail: Cons {
-                head: ReprDeriveOrd,
-                tail: Cons {
-                  head: ReprDeriveSerialize,
-                  tail: Cons { head: ReprDeriveDeserialize, tail: Empty }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
-fn symbol_wrapped_ord_carrier_derive_traits() -> List<ReprGroundingDeriveTrait> {
-  Cons {
-    head: ReprDeriveDebug,
-    tail: Cons {
-      head: ReprDeriveClone,
-      tail: Cons {
-        head: ReprDerivePartialEq,
-        tail: Cons {
-          head: ReprDeriveEq,
-          tail: Cons {
-            head: ReprDerivePartialOrd,
-            tail: Cons {
-              head: ReprDeriveOrd,
-              tail: Cons {
-                head: ReprDeriveSerialize,
-                tail: Cons { head: ReprDeriveDeserialize, tail: Empty }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
-fn fn_field_derive_traits() -> List<ReprGroundingDeriveTrait> {
-  Cons { head: ReprDeriveClone, tail: Empty }
-}
-
-fn payload_coproduct_derive_traits() -> List<ReprGroundingDeriveTrait> {
-  Cons {
-    head: ReprDeriveDebug,
-    tail: Cons {
-      head: ReprDeriveClone,
-      tail: Cons {
-        head: ReprDerivePartialEq,
-        tail: Cons {
-          head: ReprDeriveSerialize,
-          tail: Cons { head: ReprDeriveDeserialize, tail: Empty }
-        }
-      }
-    }
-  }
-}
-
-// USAGE-DERIVED half of the roster, distinct from the SHAPE-derived rosters above and additive to
-// them. The rosters above answer what a type's own structure can support; they cannot answer what a
-// type's USE demands, so a record reaching a keyed-collection key position carries a requirement no
-// shape classification produces. map_key_required_derive_traits names that requirement once: a keyed
-// collection realized as a hash map bounds its key parameter by Hash + Eq (im 15.1.0 HashMap<K, V>
-// declares K: Hash + Eq, matching std::collections::HashMap), so the key type must derive both. The
-// requirement is target-agnostic here and spelled per target in extdeps.languages.rust.emit. Union is
-// append-only and idempotent (derive_traits_union), so a type that already earns a trait from its
-// shape roster gains nothing and its emitted bytes do not move — the asymmetry a fixed wider roster
-// cannot express: a Symbol-wrapped ord carrier already derives Eq and needs only Hash, while a plain
-// record needs both. NOT the same axis as the Ord requirement BTreeSet elements carry
-// (rust_btree_set_element_ord_eligible), which is answered today by refusing at the use site rather
-// than by propagating to the declaration; unifying the two on this fn is the named next step and
-// deliberately not taken here.
-fn phantom_opaque_carrier_derive_traits() -> List<ReprGroundingDeriveTrait> {
-  Cons {
-    head: ReprDeriveDebug,
-    tail: Cons {
-      head: ReprDeriveClone,
-      tail: Cons {
-        head: ReprDeriveCopy,
-        tail: Cons {
-          head: ReprDerivePartialEq,
-          tail: Cons {
-            head: ReprDeriveEq,
-            tail: Cons {
-              head: ReprDeriveSerialize,
-              tail: Cons { head: ReprDeriveDeserialize, tail: Empty }
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
-fn map_key_required_derive_traits() -> List<ReprGroundingDeriveTrait> {
-  Cons { head: ReprDeriveEq, tail: Cons { head: ReprDeriveHash, tail: Empty } }
-}
-
-fn repr_grounding_derive_trait_rank(derive_trait: ReprGroundingDeriveTrait) -> Int {
-  match derive_trait {
-    ReprDeriveDebug => 0
-    ReprDeriveClone => 1
-    ReprDeriveCopy => 2
-    ReprDerivePartialEq => 3
-    ReprDeriveEq => 4
-    ReprDerivePartialOrd => 5
-    ReprDeriveOrd => 6
-    ReprDeriveHash => 7
-    ReprDeriveSerialize => 8
-    ReprDeriveDeserialize => 9
-    ReprDeriveAdd => 10
-    ReprDeriveSub => 11
-    ReprDeriveMul => 12
-    ReprDeriveDiv => 13
-    ReprDeriveRem => 14
-    ReprDeriveNeg => 15
-  }
-}
-
-fn derive_traits_contain(
-  traits: List<ReprGroundingDeriveTrait>,
-  derive_trait: ReprGroundingDeriveTrait
-) -> Bool {
-  traits |> any(t => repr_grounding_derive_trait_rank(t) == repr_grounding_derive_trait_rank(derive_trait))
-}
-
-fn derive_traits_union(
-  base: List<ReprGroundingDeriveTrait>,
-  extra: List<ReprGroundingDeriveTrait>
-) -> List<ReprGroundingDeriveTrait> {
-  extra |> fold(init: base, f: (acc, t) =>
-    if derive_traits_contain(traits: acc, derive_trait: t) { acc } else { concat(acc, [t]) }
   )
 }
 
-fn kernel_int_arithmetic_traits() -> List<ReprGroundingDeriveTrait> {
-  Cons {
-    head: ReprDeriveAdd,
-    tail: Cons {
-      head: ReprDeriveSub,
-      tail: Cons {
-        head: ReprDeriveMul,
-        tail: Cons {
-          head: ReprDeriveDiv,
-          tail: Cons {
-            head: ReprDeriveRem,
-            tail: Cons {
-              head: ReprDeriveNeg,
-              tail: Cons {
-                head: ReprDerivePartialEq,
-                tail: Cons { head: ReprDerivePartialOrd, tail: Empty }
-              }
-            }
-          }
-        }
-      }
-    }
+fn repr_grounding_derive_shape_has_trait(
+  table: TargetCapabilityShapeTable,
+  shape: ReprGroundingDeriveElemShape,
+  capability_key: TargetCapabilityKey
+) -> Bool {
+  match target_capability_shape_row_for(table: table, shape: shape) {
+    Present { value: row } => row.capabilities |> any(k => k == capability_key)
+    Absent => false
   }
+}
+
+fn repr_grounding_derive_completeness_predicate(
+  table: TargetCapabilityShapeTable,
+  required: List<TargetCapabilityKey>,
+  shape: ReprGroundingDeriveElemShape
+) -> Bool {
+  required |> all(k => repr_grounding_derive_shape_has_trait(
+    table: table,
+    shape: shape,
+    capability_key: k
+  ))
+}
+
+fn derive_traits_contain(
+  traits: List<TargetCapabilityKey>,
+  capability_key: TargetCapabilityKey
+) -> Bool {
+  traits |> any(k => k == capability_key)
+}
+
+fn derive_traits_union(
+  base: List<TargetCapabilityKey>,
+  extra: List<TargetCapabilityKey>
+) -> List<TargetCapabilityKey> {
+  extra |> fold(init: base, f: (acc, k) =>
+    if derive_traits_contain(traits: acc, capability_key: k) { acc } else { concat(acc, [k]) }
+  )
 }
 
 data pair_completion_shape_note: String = "Target-agnostic authority for the Grothendieck pair-completion operator BODIES on GroupCompletion<M> (std.algebra). Each output component is a polynomial over the four operand components self.pos, self.neg, rhs.pos, rhs.neg: an arm is a sum of terms, a term is a product of factors, a factor names one operand component. Selection (which traits apply) stays in the capability table above; SPELLING (trait paths, where-clauses, field syntax) lives per target in extdeps.languages.rust.emit. Reuses ReprGroundingDeriveTrait as the op key rather than minting a parallel operator enum."
@@ -405,7 +132,7 @@ type PairCompletionBody
   | PairCompletionCanonicalQuotient
 
 type PairCompletionOpRow {
-  op: ReprGroundingDeriveTrait
+  op: TargetCapabilityKey
   body: PairCompletionBody
 }
 
@@ -419,7 +146,7 @@ fn pair_completion_factor(
 fn pair_completion_op_rows() -> List<PairCompletionOpRow> {
   [
     PairCompletionOpRow {
-      op: ReprDeriveNeg,
+      op: ^target_capability_neg,
       body: PairCompletionSumOfProducts {
         pos: PairCompletionArm {
           terms: [
@@ -438,7 +165,7 @@ fn pair_completion_op_rows() -> List<PairCompletionOpRow> {
       }
     },
     PairCompletionOpRow {
-      op: ReprDeriveAdd,
+      op: ^target_capability_add,
       body: PairCompletionSumOfProducts {
         pos: PairCompletionArm {
           terms: [
@@ -462,9 +189,9 @@ fn pair_completion_op_rows() -> List<PairCompletionOpRow> {
         }
       }
     },
-    PairCompletionOpRow { op: ReprDeriveSub, body: PairCompletionNegatedAddend },
+    PairCompletionOpRow { op: ^target_capability_sub, body: PairCompletionNegatedAddend },
     PairCompletionOpRow {
-      op: ReprDeriveMul,
+      op: ^target_capability_mul,
       body: PairCompletionSumOfProducts {
         pos: PairCompletionArm {
           terms: [
@@ -500,7 +227,7 @@ fn pair_completion_op_rows() -> List<PairCompletionOpRow> {
         }
       }
     },
-    PairCompletionOpRow { op: ReprDeriveDiv, body: PairCompletionCanonicalQuotient }
+    PairCompletionOpRow { op: ^target_capability_div, body: PairCompletionCanonicalQuotient }
   ]
 }
 

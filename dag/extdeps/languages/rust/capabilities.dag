@@ -1,0 +1,321 @@
+module extdeps.languages.rust.capabilities
+
+import std.trait_derive_shape {
+  ReprGroundingDeriveElemShape,
+  ReprDeriveElemKernelString,
+  ReprDeriveElemKernelInt,
+  ReprDeriveElemKernelBool,
+  ReprDeriveElemKernelUnit,
+  ReprDeriveElemNullaryEnumCopy,
+  ReprDeriveElemSymbolWrappedOrdCarrier,
+  ReprDeriveElemPayloadCoproduct,
+  ReprDeriveElemUnknown,
+  TargetCapabilityKey,
+  TargetCapabilityShapeRow,
+  TargetCapabilityShapeTable
+}
+import std.algebra { Cons, Empty }
+import v2.std.collection { List }
+
+data rust_capabilities_note: String = "Rust and serde CAPABILITY ROWS for the B1 capability-keyed model (operator ruling 2026-08-19, option b). std.trait_derive_shape holds the AGNOSTIC half -- the TargetCapabilityKey brand, the source-shape vocabulary, and a generic table lookup parameterised by a TargetCapabilityShapeTable. THIS module holds the RUST-SPECIFIC half: the sixteen capability keys, the shape-by-capability rows, the derive-trait list builders and the emission order. A new target language adds a sibling module of rows here and edits neither the fold nor std -- DESIGN section 4: a new target language is ROWS in extdeps/languages, never an edit to the fold; section 3 puts realization-selecting dispatch peripheral, never in the interface. WHY THE COPRODUCT WAS THE WRONG CARRIER: Serialize and Deserialize are serde names, not Rust language names -- an independently versioned upstream -- and their spellings were ALREADY cited in extdeps.languages.rust.emit rust_trait_derive_spelling, so the std coproduct was a redundant KEY SET forked from a key extdeps already spelled out. This migration finishes a move someone had already started rather than opening a new one. ROW FIDELITY: the shape-by-capability rows below were extracted mechanically from the predecessor nested match and verified cell-for-cell -- 71 admitted pairs extracted against 71 in the source -- rather than re-derived by hand."
+
+data rust_capability_debug: TargetCapabilityKey = ^target_capability_debug
+data rust_capability_clone: TargetCapabilityKey = ^target_capability_clone
+data rust_capability_copy: TargetCapabilityKey = ^target_capability_copy
+data rust_capability_partialeq: TargetCapabilityKey = ^target_capability_partialeq
+data rust_capability_eq: TargetCapabilityKey = ^target_capability_eq
+data rust_capability_partialord: TargetCapabilityKey = ^target_capability_partialord
+data rust_capability_ord: TargetCapabilityKey = ^target_capability_ord
+data rust_capability_hash: TargetCapabilityKey = ^target_capability_hash
+data rust_capability_serialize: TargetCapabilityKey = ^target_capability_serialize
+data rust_capability_deserialize: TargetCapabilityKey = ^target_capability_deserialize
+data rust_capability_add: TargetCapabilityKey = ^target_capability_add
+data rust_capability_sub: TargetCapabilityKey = ^target_capability_sub
+data rust_capability_mul: TargetCapabilityKey = ^target_capability_mul
+data rust_capability_div: TargetCapabilityKey = ^target_capability_div
+data rust_capability_rem: TargetCapabilityKey = ^target_capability_rem
+data rust_capability_neg: TargetCapabilityKey = ^target_capability_neg
+
+data rust_capability_emission_order: List<TargetCapabilityKey> = [
+  ^target_capability_debug,
+  ^target_capability_clone,
+  ^target_capability_copy,
+  ^target_capability_partialeq,
+  ^target_capability_eq,
+  ^target_capability_partialord,
+  ^target_capability_ord,
+  ^target_capability_hash,
+  ^target_capability_serialize,
+  ^target_capability_deserialize,
+  ^target_capability_add,
+  ^target_capability_sub,
+  ^target_capability_mul,
+  ^target_capability_div,
+  ^target_capability_rem,
+  ^target_capability_neg
+]
+
+fn rust_capability_shape_table() -> TargetCapabilityShapeTable {
+  TargetCapabilityShapeTable {
+    rows: [
+      TargetCapabilityShapeRow {
+        shape: ReprDeriveElemKernelString,
+        capabilities: [
+          ^target_capability_debug,
+          ^target_capability_clone,
+          ^target_capability_partialeq,
+          ^target_capability_eq,
+          ^target_capability_partialord,
+          ^target_capability_ord,
+          ^target_capability_hash,
+          ^target_capability_serialize,
+          ^target_capability_deserialize
+        ]
+      },
+      TargetCapabilityShapeRow {
+        shape: ReprDeriveElemKernelInt,
+        capabilities: [
+          ^target_capability_debug,
+          ^target_capability_clone,
+          ^target_capability_copy,
+          ^target_capability_partialeq,
+          ^target_capability_eq,
+          ^target_capability_partialord,
+          ^target_capability_ord,
+          ^target_capability_hash,
+          ^target_capability_serialize,
+          ^target_capability_deserialize,
+          ^target_capability_add,
+          ^target_capability_sub,
+          ^target_capability_mul,
+          ^target_capability_div,
+          ^target_capability_rem,
+          ^target_capability_neg
+        ]
+      },
+      TargetCapabilityShapeRow {
+        shape: ReprDeriveElemKernelBool,
+        capabilities: [
+          ^target_capability_debug,
+          ^target_capability_clone,
+          ^target_capability_copy,
+          ^target_capability_partialeq,
+          ^target_capability_eq,
+          ^target_capability_partialord,
+          ^target_capability_ord,
+          ^target_capability_hash,
+          ^target_capability_serialize,
+          ^target_capability_deserialize
+        ]
+      },
+      TargetCapabilityShapeRow {
+        shape: ReprDeriveElemKernelUnit,
+        capabilities: [
+          ^target_capability_debug,
+          ^target_capability_clone,
+          ^target_capability_copy,
+          ^target_capability_partialeq,
+          ^target_capability_eq,
+          ^target_capability_partialord,
+          ^target_capability_ord,
+          ^target_capability_hash,
+          ^target_capability_serialize,
+          ^target_capability_deserialize
+        ]
+      },
+      TargetCapabilityShapeRow {
+        shape: ReprDeriveElemNullaryEnumCopy,
+        capabilities: [
+          ^target_capability_debug,
+          ^target_capability_clone,
+          ^target_capability_copy,
+          ^target_capability_partialeq,
+          ^target_capability_eq,
+          ^target_capability_partialord,
+          ^target_capability_ord,
+          ^target_capability_hash,
+          ^target_capability_serialize,
+          ^target_capability_deserialize
+        ]
+      },
+      TargetCapabilityShapeRow {
+        shape: ReprDeriveElemSymbolWrappedOrdCarrier,
+        capabilities: [
+          ^target_capability_debug,
+          ^target_capability_clone,
+          ^target_capability_partialeq,
+          ^target_capability_eq,
+          ^target_capability_partialord,
+          ^target_capability_ord,
+          ^target_capability_hash,
+          ^target_capability_serialize,
+          ^target_capability_deserialize
+        ]
+      },
+      TargetCapabilityShapeRow {
+        shape: ReprDeriveElemPayloadCoproduct,
+        capabilities: [
+          ^target_capability_debug,
+          ^target_capability_clone,
+          ^target_capability_partialeq,
+          ^target_capability_eq,
+          ^target_capability_hash,
+          ^target_capability_serialize,
+          ^target_capability_deserialize
+        ]
+      },
+      TargetCapabilityShapeRow {
+        shape: ReprDeriveElemUnknown,
+        capabilities: []
+      }
+    ]
+  }
+}
+
+fn record_derive_traits_heap() -> List<TargetCapabilityKey> {
+  Cons {
+    head: ^target_capability_debug,
+    tail: Cons {
+      head: ^target_capability_clone,
+      tail: Cons {
+        head: ^target_capability_partialeq,
+        tail: Cons {
+          head: ^target_capability_serialize,
+          tail: Cons { head: ^target_capability_deserialize, tail: Empty }
+        }
+      }
+    }
+  }
+}
+
+fn record_derive_traits_copy() -> List<TargetCapabilityKey> {
+  Cons {
+    head: ^target_capability_debug,
+    tail: Cons {
+      head: ^target_capability_clone,
+      tail: Cons {
+        head: ^target_capability_copy,
+        tail: Cons {
+          head: ^target_capability_partialeq,
+          tail: Cons {
+            head: ^target_capability_serialize,
+            tail: Cons { head: ^target_capability_deserialize, tail: Empty }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn nullary_coproduct_derive_traits() -> List<TargetCapabilityKey> {
+  Cons {
+    head: ^target_capability_debug,
+    tail: Cons {
+      head: ^target_capability_clone,
+      tail: Cons {
+        head: ^target_capability_copy,
+        tail: Cons {
+          head: ^target_capability_partialeq,
+          tail: Cons {
+            head: ^target_capability_eq,
+            tail: Cons {
+              head: ^target_capability_partialord,
+              tail: Cons {
+                head: ^target_capability_ord,
+                tail: Cons {
+                  head: ^target_capability_serialize,
+                  tail: Cons { head: ^target_capability_deserialize, tail: Empty }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn symbol_wrapped_ord_carrier_derive_traits() -> List<TargetCapabilityKey> {
+  Cons {
+    head: ^target_capability_debug,
+    tail: Cons {
+      head: ^target_capability_clone,
+      tail: Cons {
+        head: ^target_capability_partialeq,
+        tail: Cons {
+          head: ^target_capability_eq,
+          tail: Cons {
+            head: ^target_capability_partialord,
+            tail: Cons {
+              head: ^target_capability_ord,
+              tail: Cons {
+                head: ^target_capability_serialize,
+                tail: Cons { head: ^target_capability_deserialize, tail: Empty }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn fn_field_derive_traits() -> List<TargetCapabilityKey> {
+  Cons { head: ^target_capability_clone, tail: Empty }
+}
+
+fn payload_coproduct_derive_traits() -> List<TargetCapabilityKey> {
+  Cons {
+    head: ^target_capability_debug,
+    tail: Cons {
+      head: ^target_capability_clone,
+      tail: Cons {
+        head: ^target_capability_partialeq,
+        tail: Cons {
+          head: ^target_capability_serialize,
+          tail: Cons { head: ^target_capability_deserialize, tail: Empty }
+        }
+      }
+    }
+  }
+}
+
+// USAGE-DERIVED half of the roster, distinct from the SHAPE-derived rosters above and additive to
+// them. The rosters above answer what a type's own structure can support; they cannot answer what a
+// type's USE demands, so a record reaching a keyed-collection key position carries a requirement no
+// shape classification produces. map_key_required_derive_traits names that requirement once: a keyed
+// collection realized as a hash map bounds its key parameter by Hash + Eq (im 15.1.0 HashMap<K, V>
+// declares K: Hash + Eq, matching std::collections::HashMap), so the key type must derive both. The
+// requirement is target-agnostic here and spelled per target in extdeps.languages.rust.emit. Union is
+// append-only and idempotent (derive_traits_union), so a type that already earns a trait from its
+// shape roster gains nothing and its emitted bytes do not move — the asymmetry a fixed wider roster
+// cannot express: a Symbol-wrapped ord carrier already derives Eq and needs only Hash, while a plain
+// record needs both. NOT the same axis as the Ord requirement BTreeSet elements carry
+// (rust_btree_set_element_ord_eligible), which is answered today by refusing at the use site rather
+// than by propagating to the declaration; unifying the two on this fn is the named next step and
+// deliberately not taken here.
+fn phantom_opaque_carrier_derive_traits() -> List<TargetCapabilityKey> {
+  Cons {
+    head: ^target_capability_debug,
+    tail: Cons {
+      head: ^target_capability_clone,
+      tail: Cons {
+        head: ^target_capability_copy,
+        tail: Cons {
+          head: ^target_capability_partialeq,
+          tail: Cons {
+            head: ^target_capability_eq,
+            tail: Cons {
+              head: ^target_capability_serialize,
+              tail: Cons { head: ^target_capability_deserialize, tail: Empty }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn map_key_required_derive_traits() -> List<TargetCapabilityKey> {
+  Cons { head: ^target_capability_eq, tail: Cons { head: ^target_capability_hash, tail: Empty } }
+}
