@@ -22,8 +22,16 @@ use bootstrap_stage0_crate_layout_generated::{
 };
 
 /// Bumped from `.v1` when the flat eight-field record split into the two-variant carrier below.
-/// A stale `.v1` receipt on disk now fails to deserialize into the new shape, which surfaces as a
-/// typed refusal rather than as a silently mixed-provenance artifact -- the fail-closed direction.
+///
+/// THE BUMP IS LOAD-BEARING ONLY BECAUSE `read_receipt` COMPARES IT. An earlier revision of this
+/// comment claimed a stale `.v1` receipt "fails to deserialize into the new shape". That was
+/// FALSE, and review caught it: serde ignores unknown fields by default, and a v1 record carries
+/// every field the reader requires plus the removed `fixed_point_equal`, so it parsed cleanly.
+/// The version string was written three times and read zero times -- decoration, not a version.
+/// Two things now make the claim true rather than aspirational: `deny_unknown_fields` on the
+/// carrier, and an explicit equality check in `read_receipt`. Writing a version nobody compares is
+/// the same class of defect as the impersonation this module exists to close -- an artifact
+/// asserting a property that nothing establishes.
 const RECEIPT_SCHEMA: &str = "gunbc.regen_receipt.v2";
 
 /// Evidence produced by the FIRST regen pass, referenced by the second.
@@ -59,12 +67,12 @@ pub struct PriorReceiptRef {
 /// question, fusing two authorities into one row (DESIGN 3).
 ///
 /// Authority: `gunbc.regen_receipt`.
-#[derive(Debug, Serialize)]
-#[serde(tag = "pass")]
+#[derive(Debug, Serialize, serde::Deserialize)]
+#[serde(tag = "pass", deny_unknown_fields)]
 pub enum RegenReceipt {
     #[serde(rename = "first_generation")]
     FirstGeneration {
-        schema: &'static str,
+        schema: String,
         commit_sha: String,
         authority_digest: String,
         committed_generated_digest: String,
@@ -75,7 +83,7 @@ pub enum RegenReceipt {
     },
     #[serde(rename = "fixed_point")]
     FixedPoint {
-        schema: &'static str,
+        schema: String,
         commit_sha: String,
         authority_digest: String,
         candidate_generated_digest: String,
@@ -210,7 +218,7 @@ pub fn run_required_regen(
     // that question, so a literal `false` asserted a negative answer where the honest content was
     // "not asked". The variant has no such field, so the placeholder is now unwritable.
     let receipt = RegenReceipt::FirstGeneration {
-        schema: RECEIPT_SCHEMA,
+        schema: RECEIPT_SCHEMA.to_string(),
         commit_sha,
         authority_digest,
         committed_generated_digest: committed_digest,
@@ -296,7 +304,7 @@ pub fn run_required_regen_fixed_point(
     // reference whose subject is only guaranteed by an upstream check is one refactor away from
     // being a reference that does not name its subject.
     let receipt = RegenReceipt::FixedPoint {
-        schema: RECEIPT_SCHEMA,
+        schema: RECEIPT_SCHEMA.to_string(),
         commit_sha,
         authority_digest,
         candidate_generated_digest: pass2.clone(),
@@ -486,7 +494,7 @@ fn regen_refusal_outcome(
     // and mistakes for a measured digest: `first_generation_equal: false` below is likewise "not
     // asked", not "asked and answered no".
     let receipt = RegenReceipt::FirstGeneration {
-        schema: RECEIPT_SCHEMA,
+        schema: RECEIPT_SCHEMA.to_string(),
         commit_sha,
         authority_digest,
         committed_generated_digest: "refused:population".to_string(),
@@ -788,14 +796,15 @@ fn git_head_sha(workspace: &Path) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-#[derive(serde::Deserialize)]
-/// The on-disk form the second pass reads back. Only the FIRST-generation shape is accepted here:
-/// the second pass must build on a first-pass measurement, and a receipt left by another
-/// second pass is not one. Deserialization therefore refuses a `fixed_point` receipt by
-/// construction rather than by an equality check someone must remember to write.
-struct RegenReceiptStored {
+/// The first-pass measurement the second pass builds on.
+///
+/// This was a separate `RegenReceiptStored` struct mirroring the carrier's field list -- a second
+/// representation of one fact (DESIGN 3), and the place the false fail-closed claim hid: it
+/// silently accepted any JSON containing its fields, so it read a v1 record as happily as a v2
+/// one. It is gone. `read_receipt` now deserializes the REAL carrier and destructures it, so the
+/// reader cannot drift from the writer -- there is only one shape.
+struct PriorMeasurement {
     commit_sha: String,
-    authority_digest: String,
     committed_generated_digest: String,
     candidate_generated_digest: String,
     first_generation_equal: bool,
@@ -803,10 +812,61 @@ struct RegenReceiptStored {
     candidate_artifact: String,
 }
 
-fn read_receipt(path: &Path) -> Result<RegenReceiptStored, String> {
+/// Read the prior receipt, refusing everything that is not a first-generation measurement written
+/// by this version of the carrier.
+///
+/// THREE REFUSALS, each closing a state the previous shape accepted silently:
+///
+///   * `deny_unknown_fields` on the carrier rejects a record carrying a field this shape does not
+///     know -- which is exactly a stale `.v1` receipt, whose removed `fixed_point_equal` serde
+///     would otherwise ignore;
+///   * the schema equality check rejects a record whose version differs, so the version string is
+///     compared rather than merely written;
+///   * the variant match rejects a `fixed_point` receipt, because the second pass must build on a
+///     FIRST-pass measurement and a receipt left by another second pass is not one.
+///
+/// The third was already true by construction (a `fixed_point` record lacks four required fields),
+/// but it is stated as an explicit arm rather than left to a missing-field parse error, because a
+/// parse error would report the symptom -- a missing field name -- instead of the cause.
+fn read_receipt(path: &Path) -> Result<PriorMeasurement, String> {
     let bytes =
         fs::read_to_string(path).map_err(|e| format!("read receipt {}: {e}", path.display()))?;
-    serde_json::from_str(&bytes).map_err(|e| format!("parse receipt {}: {e}", path.display()))
+    let receipt: RegenReceipt = serde_json::from_str(&bytes)
+        .map_err(|e| format!("parse receipt {}: {e}", path.display()))?;
+    match receipt {
+        RegenReceipt::FirstGeneration {
+            schema,
+            commit_sha,
+            authority_digest: _,
+            committed_generated_digest,
+            candidate_generated_digest,
+            first_generation_equal,
+            changed_paths,
+            candidate_artifact,
+        } => {
+            if schema != RECEIPT_SCHEMA {
+                return Err(format!(
+                    "refusal: prior receipt {} declares schema {schema} but this reader is \
+                     {RECEIPT_SCHEMA} -- re-run `claim_executor --required-regen` to rewrite it",
+                    path.display()
+                ));
+            }
+            Ok(PriorMeasurement {
+                commit_sha,
+                committed_generated_digest,
+                candidate_generated_digest,
+                first_generation_equal,
+                changed_paths,
+                candidate_artifact,
+            })
+        }
+        RegenReceipt::FixedPoint { .. } => Err(format!(
+            "refusal: prior receipt {} is a fixed-point receipt, not a first-generation \
+             measurement -- the fixed-point pass cannot build on another fixed-point pass. \
+             Re-run `claim_executor --required-regen` first.",
+            path.display()
+        )),
+    }
 }
 
 fn write_receipt(path: &Path, receipt: &RegenReceipt) -> Result<(), String> {
