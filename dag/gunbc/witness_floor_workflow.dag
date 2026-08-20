@@ -597,6 +597,55 @@ fn witness_receipt_selftest_step() -> Step {
   }
 }
 
+// THE PROMOTION VERDICT ITSELF, PER-PR, GATED ON A NON-EMPTY SELECTION (operator ruling,
+// 2026-08-20). The selftest step above proves the receipt's ARMS discriminate on a controlled
+// fixture; this step runs the receipt against the REAL modules a pull request changed. Without
+// it the promise is exercised only on the fixture -- specification-without-execution one level
+// down, which is what review 54089 named.
+//
+// PER-PR RATHER THAN ON A CADENCE, and the deciding argument is attribution rather than cost: a
+// behavioural divergence found on a cadence lands on a window of many commits, and recovering
+// which one caused it costs far more than the minutes the cadence saved. Divergence is exactly
+// the class where a narrow window is the whole value. Not on-demand either: a mode nobody runs
+// is the inert tier where machinery exists, compiles, and gates nothing.
+//
+// AFFORDABLE BECAUSE THE COST IS CONDITIONAL, not because it is small. The mode selects on
+// CHANGED authorities and exits immediately when that selection is empty, so a pull request
+// touching no authority module with an emitted mirror pays nothing at all. Above a declared cap
+// of selected modules it REFUSES rather than sampling -- a partial check reported as a pass is
+// how a gate stops covering things without anyone finding out.
+//
+// It binds to the BUILD, like the selftest and for the same reason: it consumes no receipt and
+// shares no state with either regen step, so binding it to them would silence it on an unrelated
+// failure.
+fn witness_behavioral_receipt_precondition() -> String {
+  concat(witness_step_status_guard(), "steps.build_witness_fold.outcome == 'success'")
+}
+
+fn witness_behavioral_receipt_script() -> String {
+  concat(
+    concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
+    concat(
+      "\"$ROOT/target/release/claim_executor\" --behavioral-receipt-plan",
+      concat(witness_floor_source_root_flags(), "\n")
+    )
+  )
+}
+
+fn witness_behavioral_receipt_step() -> Step {
+  RunStep {
+    name: Present { value: "Behavioral receipt: changed authorities are equivalent to their mirrors" },
+    id: none,
+    run: witness_behavioral_receipt_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: witness_behavioral_receipt_precondition() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
 fn witness_floor_job() -> Job {
   Job {
     id: witness_floor_workflow_job_id,
@@ -610,6 +659,7 @@ fn witness_floor_job() -> Job {
       witness_required_regen_step(),
       witness_required_regen_fixed_point_step(),
       witness_receipt_selftest_step(),
+      witness_behavioral_receipt_step(),
       witness_floor_run_step()
     ],
     needs: [],

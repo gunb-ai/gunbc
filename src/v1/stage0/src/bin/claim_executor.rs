@@ -20295,8 +20295,38 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<bool, String> {
     // expensive step, and asking for it per candidate would make a two-module change cost twice
     // what a one-module change costs for no additional information.
     if plans.is_empty() {
+        eprintln!(
+            "behavioral-receipt: no changed authority module has an emitted mirror, so there is \
+             nothing to compare and this run costs nothing. That is a real pass over an EMPTY \
+             selection, stated rather than printed as a bare PASS"
+        );
         return Ok(true);
     }
+
+    // A DECLARED CAP, REFUSED ABOVE RATHER THAN SAMPLED (operator ruling, 2026-08-20).
+    //
+    // The differential costs one crate build per selected module plus one for the seed. The
+    // tempting arm when a PR touches many authorities is to check the first few and report a pass
+    // -- the absorbing fallback exactly: the deficit's frequency goes to zero by construction and
+    // nobody learns the gate stopped covering things. So an over-cap selection REFUSES, typed and
+    // counted, and an over-cap PR is visible rather than quietly under-checked.
+    const MAX_SELECTED_MODULES_PER_RUN: usize = 3;
+    if plans.len() > MAX_SELECTED_MODULES_PER_RUN {
+        eprintln!(
+            "behavioral-receipt: REFUSED — {} authority modules selected, above the declared cap \
+             of {MAX_SELECTED_MODULES_PER_RUN}. Not sampling the first {MAX_SELECTED_MODULES_PER_RUN}: \
+             a partial check reported as a pass is how a gate stops covering things without anyone \
+             finding out. Selected: {}",
+            plans.len(),
+            plans
+                .iter()
+                .map(|(_, p, _)| p.module_path.clone())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        return Ok(false);
+    }
+
     let emitted = v1_compiler::cli_run::emitted_generated_sources()?;
     let mut all_equivalent = true;
     for (mirror, plan, alias) in &plans {
@@ -20339,6 +20369,20 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<bool, String> {
                 all_equivalent = false;
             }
         }
+    }
+    // THE DENOMINATOR, EVERY RUN (operator ruling, 2026-08-20). A green here means the DERIVED
+    // CALLS in the selected modules agreed -- never that a module is behaviourally equivalent.
+    // Printing a bare PASS is how, inside a week, someone reads this as promotion evidence.
+    for (_m, plan, _a) in &plans {
+        let calls: usize = plan.derivable.iter().map(|(_, _, t)| t.len()).sum();
+        eprintln!(
+            "behavioral-receipt: DENOMINATOR {} — {calls} derived calls over {} of {} declared \
+             functions; the other {} refused and are NOT covered by this verdict",
+            plan.module_path,
+            plan.derivable.len(),
+            plan.parsed_signatures,
+            plan.refused.len()
+        );
     }
     Ok(all_equivalent)
 }
