@@ -552,6 +552,51 @@ fn witness_required_regen_fixed_point_step() -> Step {
 // RESTORATION TRIGGER: the first run that completes this fold, floor and regen alike. Real wall
 // times replace this constant -- at which point this note dissolves with the provisional bound
 // it explains.
+// THE BEHAVIORAL RECEIPT'S OWN ARMS, ENROLLED AS A STEP.
+//
+// The two steps above answer whether the emitted mirrors EQUAL what the authority emits, and
+// whether that emit repeats. Neither compiles a candidate, and neither runs one -- so a rename
+// and a semantic change are the same event to both of them. DESIGN section 7 says a
+// byte-identical fixed point is explicitly NOT the goal and names behavioural equivalence on a
+// discriminating corpus instead; `--behavioral-receipt-plan` is that comparison, and this step
+// is the evidence that the comparison still discriminates.
+//
+// It runs against a CONTROLLED FIXTURE, not the live corpus, and that is deliberate rather than
+// a reduction in ambition. The fixture authors its own input and its own expected outcome, so
+// the control cannot be satisfied by a tree in which nothing happens to have changed, and it
+// costs one small crate build per arm rather than one v1-compiler build per arm.
+//
+// It binds to the BUILD, not to regen: it consumes no receipt and shares no state with either
+// regen step, so binding it to them would silence it on an unrelated failure -- the same
+// empty-observation narrow the fixed-point precondition note above describes.
+fn witness_receipt_selftest_precondition() -> String {
+  concat(witness_step_status_guard(), "steps.build_witness_fold.outcome == 'success'")
+}
+
+fn witness_receipt_selftest_script() -> String {
+  concat(
+    concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
+    concat(
+      "\"$ROOT/target/release/claim_executor\" --behavioral-receipt-selftest",
+      concat(witness_floor_source_root_flags(), "\n")
+    )
+  )
+}
+
+fn witness_receipt_selftest_step() -> Step {
+  RunStep {
+    name: Present { value: "Behavioral receipt discriminates: equivalent arm and divergent arm" },
+    id: none,
+    run: witness_receipt_selftest_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: witness_receipt_selftest_precondition() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
 fn witness_floor_job() -> Job {
   Job {
     id: witness_floor_workflow_job_id,
@@ -564,6 +609,7 @@ fn witness_floor_job() -> Job {
       witness_floor_v1_parse_step(),
       witness_required_regen_step(),
       witness_required_regen_fixed_point_step(),
+      witness_receipt_selftest_step(),
       witness_floor_run_step()
     ],
     needs: [],
