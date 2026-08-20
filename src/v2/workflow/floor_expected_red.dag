@@ -353,7 +353,16 @@ fn floor_expected_red_chunk_12() -> List<String> {
 }
 
 fn floor_expected_red_chunk_13() -> List<String> {
-  Empty {}
+  // Enrolled per deep-ant-102's 2026-08-20 ruling on gunbc#8625/#8627: the witness is
+  // permanent (dissolve-on: none, DESIGN §4b executing evidence for #8592), but the RED is
+  // not -- it is red for one dated, owned reason (the .dag-authority fix is not yet in the
+  // stage0 Rust mirror the required floor executes) and this roster's own self-emptying arm
+  // (an enrolled row that PASSES also reds the build, naming itself for removal) makes the
+  // dissolve event -- the stage0 mirror regen -- self-announcing rather than something anyone
+  // has to remember. See dag/test/claim/method_arg_declared_contract_witness_test.dag and
+  // gunbc.explicit_witness_admission's known_red_probe row for this identity, which documents
+  // the same red but (per the same ruling) does not itself gate the required floor.
+  Cons { head: "test.claim.method_arg_declared_contract_witness_test.w_method_arg_infers_against_declared_contract_not_element_type_test", tail: Empty {} }
 }
 
 fn floor_expected_red_chunk_14() -> List<String> {
