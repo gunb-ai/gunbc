@@ -10571,9 +10571,12 @@ fn run() -> Result<ExitCode, ExitCode> {
                 // not. The three are printed together so the subtraction is visible rather
                 // than inferable.
                 eprintln!(
-                    "required-floor: offered={} routed={} declined_long={} — every discovered \
-                     site is one or the other",
-                    outcome.sites_offered, outcome.claims_planned, outcome.declined_long_module
+                    "required-floor: offered={} routed={} declined_long={} declined_live={} \
+                     — every discovered site is exactly one of these",
+                    outcome.sites_offered,
+                    outcome.claims_planned,
+                    outcome.declined_long_module,
+                    outcome.declined_live_tree
                 );
                 eprintln!(
                     "required-floor: planned={} executed={} terminal={} passed={} \
