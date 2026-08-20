@@ -97,11 +97,20 @@ type MirrorDebtRow {
 //
 // Neither run is independent evidence about the COMPARATOR: both used it.
 //
-// These rows are transcribed from that measurement and are NOT the gate's oracle. The gate
-// recomputes both sides per run and takes its baseline from git. Nothing here is a digest,
-// deliberately: a stored desired digest is not a fact about this repository at all, it is a
-// fact about the generator binary that produced it, and it would go silently wrong the next
-// time the emitter changes.
+// THESE ROWS ENFORCE NOTHING TODAY. NO CODE READS THEM. The gate that will consume them is
+// unlanded, so this file is a declared debt record and not a control: it cannot refuse, cannot
+// fail a build, and cannot detect a sixteenth mirror drifting. That is the ruled sequence —
+// disposition now, re-gate next — and not an oversight, but the honest present-tense fact is
+// that the population is REPORTED here by hand and CHECKED by nothing. Read any statement
+// below about what the gate does as a description of the intended consumer, not of behaviour
+// that exists. Until a comparator actually joins on these rows, treating them as enforcement
+// would be the specification-without-execution shape DESIGN section 5 names.
+//
+// The rows are transcribed from the measurement above and are deliberately NOT intended as the
+// gate's oracle: the consumer recomputes both sides per run and takes its baseline from git.
+// Nothing here is a digest, for the same reason — a stored desired digest is not a fact about
+// this repository at all, it is a fact about the generator binary that produced it, and it
+// would go silently wrong the next time the emitter changes.
 //
 // MEMBERSHIP JOINS ON BASENAME, NOT ON THE PATH COLUMN. The comparator that supplies the
 // population reports basenames ("std_algebra.rs"); the path field below is the DISPLAY form
