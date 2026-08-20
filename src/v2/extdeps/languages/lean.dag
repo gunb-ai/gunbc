@@ -718,7 +718,7 @@ fn lean_def_dec_parse_expr() -> v2.std.grammar.GrammarExpr {
   )
 }
 
-fn lean_lex_rule(token_class: v2.std.node.Symbol, text: v2.std.text.String) -> v2.std.compilers.lexing.LexRule {
+fn lean_lex_rule(token_class: v2.std.node.Symbol, text: String) -> v2.std.compilers.lexing.LexRule {
   v2.std.compilers.lexing.TokenRule {
     token_class: token_class,
     pattern: v2.std.compilers.lexing.LiteralPattern { text: text }

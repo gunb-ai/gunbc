@@ -6,7 +6,7 @@ data synthesis_fact_x: v2.std.node.Node = v2.std.node.Node {
   occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-test fn factorial_dominates_exponential_claim_holds() -> v2.std.logic.Bool {
+test fn factorial_dominates_exponential_claim_holds() -> Bool {
   v2.lens.cost.symbolic_cost_dominates(
     a: v2.lens.cost.FactorialCost { variable: v2.lens.cost.SizeVariable { source: synthesis_fact_x } },
     b: v2.lens.cost.ExponentialCost {

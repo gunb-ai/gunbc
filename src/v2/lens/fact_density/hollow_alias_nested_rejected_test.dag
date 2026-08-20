@@ -19,7 +19,7 @@ data hollow_alias_nested_root: v2.std.node.Node = v2.std.node.Node {
 
 data hollow_alias_nested_authority: v2.std.node.Node = v2.test.lens_common.infer_fixture.claim_atom_node(s: ^hollow_alias_nested_el_symbol)
 
-test fn hollow_alias_nested_rejected_holds() -> v2.std.logic.Bool {
+test fn hollow_alias_nested_rejected_holds() -> Bool {
   match validate_then_compile(
     source: hollow_alias_nested_root,
     lenses: [],

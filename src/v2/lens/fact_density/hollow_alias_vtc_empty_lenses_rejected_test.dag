@@ -8,7 +8,7 @@ data hollow_alias_el_root: v2.std.node.Node = v2.std.node.Node {
 
 data hollow_alias_el_authority: v2.std.node.Node = v2.test.lens_common.infer_fixture.claim_atom_node(s: ^hollow_alias_el_symbol)
 
-test fn hollow_alias_vtc_empty_lenses_rejected_holds() -> v2.std.logic.Bool {
+test fn hollow_alias_vtc_empty_lenses_rejected_holds() -> Bool {
   match v2.compiler.compile.validate_then_compile(
     source: hollow_alias_el_root,
     lenses: [],

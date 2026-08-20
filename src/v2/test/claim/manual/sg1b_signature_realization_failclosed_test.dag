@@ -34,7 +34,7 @@ fn sg1b_fc_non_conj_catalog() -> v2.std.node.Node {
 }
 }
 
-test fn sg1b_fc_boundary_site_with_children_rejects_decode_invalid() -> v2.std.logic.Bool {
+test fn sg1b_fc_boundary_site_with_children_rejects_decode_invalid() -> Bool {
   match v2.std.compilers.target_model.target_function_boundary_site_from_node(
     n: sg1b_fc_boundary_param_with_children(),
     source_carrier: sg1b_fc_probe_node()
@@ -44,7 +44,7 @@ test fn sg1b_fc_boundary_site_with_children_rejects_decode_invalid() -> v2.std.l
   }
 }
 
-test fn sg1b_fc_boundary_site_nullary_accepts() -> v2.std.logic.Bool {
+test fn sg1b_fc_boundary_site_nullary_accepts() -> Bool {
   match v2.std.compilers.target_model.target_function_boundary_site_from_node(
     n: sg1b_fc_boundary_param_nullary(),
     source_carrier: sg1b_fc_probe_node()
@@ -54,7 +54,7 @@ test fn sg1b_fc_boundary_site_nullary_accepts() -> v2.std.logic.Bool {
   }
 }
 
-test fn sg1b_fc_atom_catalog_non_conj_rejects_decode_invalid() -> v2.std.logic.Bool {
+test fn sg1b_fc_atom_catalog_non_conj_rejects_decode_invalid() -> Bool {
   match v2.std.compilers.target_model.target_atom_realization_lookup_in_catalog_node(
     catalog: sg1b_fc_non_conj_catalog(),
     source_carrier: sg1b_fc_probe_node(),
@@ -65,7 +65,7 @@ test fn sg1b_fc_atom_catalog_non_conj_rejects_decode_invalid() -> v2.std.logic.B
   }
 }
 
-test fn sg1b_fc_signature_catalog_non_conj_rejects_decode_invalid() -> v2.std.logic.Bool {
+test fn sg1b_fc_signature_catalog_non_conj_rejects_decode_invalid() -> Bool {
   match v2.std.compilers.target_model.target_function_signature_realization_lookup_in_catalog_node(
     catalog: sg1b_fc_non_conj_catalog(),
     source_carrier: sg1b_fc_probe_node(),

@@ -1,7 +1,7 @@
 module test.claim.long.gauntlet_lane_enrollment_witness
 
 
-data gauntlet_lane_enrollment_note: v2.std.text.String = "Executing consumer for the gunbc.commit_workflow.FalsifierCadenceJob lane (gunbc.commit_workflow falsifier_cadence_surface_note / bare_deenrollment_wall_note). It exists because the lane's whole value is the difference between 're-homed' and 'dropped', and that difference is invisible in a diff: both look like a surface list edit. Three claims, the third a RED control so the first two cannot pass vacuously. This file lives under test/claim/long/ for HOMING consistency with the rows it guards, but is enrolled per-PR on gunbc.commit_workflow.GithubActionsCiJob deliberately — it is a pure roster fold with no live-tree read and no host effect, measured well inside the fast-lane budget, and its whole point is to red on the PR that de-enrolls something rather than up to 4 hours later."
+data gauntlet_lane_enrollment_note: String = "Executing consumer for the gunbc.commit_workflow.FalsifierCadenceJob lane (gunbc.commit_workflow falsifier_cadence_surface_note / bare_deenrollment_wall_note). It exists because the lane's whole value is the difference between 're-homed' and 'dropped', and that difference is invisible in a diff: both look like a surface list edit. Three claims, the third a RED control so the first two cannot pass vacuously. This file lives under test/claim/long/ for HOMING consistency with the rows it guards, but is enrolled per-PR on gunbc.commit_workflow.GithubActionsCiJob deliberately — it is a pure roster fold with no live-tree read and no host effect, measured well inside the fast-lane budget, and its whole point is to red on the PR that de-enrolls something rather than up to 4 hours later."
 
 fn synthetic_rehomed_row() -> gunbc.commit_workflow.CommitCheckEnrollment {
   gunbc.commit_workflow.CommitCheckEnrollment {
@@ -39,13 +39,13 @@ fn synthetic_bare_deenrolled_row() -> gunbc.commit_workflow.CommitCheckEnrollmen
   }
 }
 
-fn falsifier_entries_contain(entries: List<std.realization_schedule.ScheduleWitnessEntry>, f: v2.std.text.String) -> Bool {
+fn falsifier_entries_contain(entries: List<std.realization_schedule.ScheduleWitnessEntry>, f: String) -> Bool {
   v2.std.algebra.any(entries, e => e.function == f)
 }
 
-data substrate_long_lane_is_a_sibling_cadence_note: v2.std.text.String = "wave1_gate1_d_census_subsumption_witness_holds moved off gunbc.commit_workflow.FalsifierCadenceJob onto gunbc.ci_layer_roots.falsifier_substrate_long_lane_rows (nightly falsifier batch 6) when main landed the Class C split. That is a re-home between two cadence lanes, NOT a de-enrollment, so the invariant this file guards still holds — but the pin has to read the lane the row actually sits on. Dropping the pin instead would have been the narrowing this witness exists to prevent: the row would then be free to vanish from BOTH lanes with nothing red. The check below therefore asserts substrate-long-lane membership by function name, which is the same claim ('this re-homed row still executes on a cadence') read against the correct authority."
+data substrate_long_lane_is_a_sibling_cadence_note: String = "wave1_gate1_d_census_subsumption_witness_holds moved off gunbc.commit_workflow.FalsifierCadenceJob onto gunbc.ci_layer_roots.falsifier_substrate_long_lane_rows (nightly falsifier batch 6) when main landed the Class C split. That is a re-home between two cadence lanes, NOT a de-enrollment, so the invariant this file guards still holds — but the pin has to read the lane the row actually sits on. Dropping the pin instead would have been the narrowing this witness exists to prevent: the row would then be free to vanish from BOTH lanes with nothing red. The check below therefore asserts substrate-long-lane membership by function name, which is the same claim ('this re-homed row still executes on a cadence') read against the correct authority."
 
-fn substrate_long_lane_contains(f: v2.std.text.String) -> Bool {
+fn substrate_long_lane_contains(f: String) -> Bool {
   v2.std.algebra.any(gunbc.ci_layer_roots.falsifier_substrate_long_lane_rows, row => row.function == f)
 }
 

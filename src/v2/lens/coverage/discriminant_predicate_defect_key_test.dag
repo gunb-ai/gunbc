@@ -10,6 +10,6 @@ data expected_discriminant_predicate_acceptance: v2.lens.coverage.CoverageDefect
   concern: v2.lens.coverage.CoverageDefectAcceptanceKey { lens: v2.lens.coverage.DiscriminantPredicate }
 }
 
-test fn discriminant_predicate_defect_key_claim_holds() -> v2.std.logic.Bool {
+test fn discriminant_predicate_defect_key_claim_holds() -> Bool {
   v2.lens.coverage.coverage_defect_discriminant_predicate == expected_discriminant_predicate_acceptance
 }

@@ -15,6 +15,6 @@ data conj_positional_only_input: v2.std.node.Node = v2.std.node.Node {
   occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-test fn conj_positional_only_no_fact_claim_holds() -> v2.std.logic.Bool {
+test fn conj_positional_only_no_fact_claim_holds() -> Bool {
   v2.lens.fact_density.carrier_spec_fact(carrier: conj_positional_only_input) == v2.lens.fact_density.NoFact
 }

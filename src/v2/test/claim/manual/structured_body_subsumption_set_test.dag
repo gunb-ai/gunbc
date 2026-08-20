@@ -11,7 +11,7 @@ fn int_pair_arrow_signature() -> v2.std.node.Node {
   )
 }
 
-fn subsumes(structured_body: v2.std.node.Node, table_target: v2.std.node.Node) -> v2.std.logic.Bool {
+fn subsumes(structured_body: v2.std.node.Node, table_target: v2.std.node.Node) -> Bool {
   match v2.compiler.body_producer.produce_arrow_with_structured_body(
     signature: int_pair_arrow_signature(),
     structured_body: structured_body
@@ -21,15 +21,15 @@ fn subsumes(structured_body: v2.std.node.Node, table_target: v2.std.node.Node) -
   }
 }
 
-test fn subsumption_pick() -> v2.std.logic.Bool {
+test fn subsumption_pick() -> Bool {
   subsumes(structured_body: v2.extdeps.languages.dag.dag_pick_if_body_node(), table_target: v2.extdeps.languages.dag.dag_pick_arrow_with_body_node())
 }
 
-test fn subsumption_loop() -> v2.std.logic.Bool {
+test fn subsumption_loop() -> Bool {
   subsumes(structured_body: v2.extdeps.languages.dag.dag_loop_body_node(), table_target: v2.extdeps.languages.dag.dag_loop_arrow_with_body_node())
 }
 
-test fn subsumption_bind() -> v2.std.logic.Bool {
+test fn subsumption_bind() -> Bool {
   subsumes(structured_body: v2.extdeps.languages.dag.dag_bind_let_body_node(), table_target: v2.extdeps.languages.dag.dag_bind_arrow_with_body_node())
 }
 

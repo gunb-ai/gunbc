@@ -1,24 +1,24 @@
 module v2.std.decl_facts_skeleton
 
-type OuterRecordConstructorLexeme = std.types.String
+type OuterRecordConstructorLexeme = String
 
-type SkeletonMarshalAtomLexeme = std.types.String
+type SkeletonMarshalAtomLexeme = String
 
 
 
-data decl_facts_nullary_variant_value_identity_gap_note: std.types.String = "BOUNDED constructor-lexeme reflection (parse-only decl_facts_corpus_walk metadata): outer ExprRecordLit authored names surface as SkeletonMarshalAtomLexeme / OuterRecordConstructorLexeme atoms (Scaffold, Terminal, DeclarationRef, NamedField, etc.) — constructor SPELLING only, not parent coproduct or declaration identity. DataItem node marshaling in eval_decl_facts delegates to marshal_data_initializer_projection (ctx.lookup_fn_node on the resolved graph), so merge-blocking witnesses that read resolved nullary parent/arm identity through decl_facts() exercise the same typechecked seam as marshal_data_initializer_projection Rust tests — infer-stamped VarBindingKind::VariantValueBinding and InferredNode::Resolved on variant-value ExprVars. Remaining open at this grain: exact parent-variant occurrence identity (this lane lands ResolvedDeclarationLocator qualified-name parent/arm only, not occurrence coordinates). Dissolve-on: occurrence-grain projection or a single marshal authority that folds spelling atoms and resolved identity without a parse-only fork."
+data decl_facts_nullary_variant_value_identity_gap_note: String = "BOUNDED constructor-lexeme reflection (parse-only decl_facts_corpus_walk metadata): outer ExprRecordLit authored names surface as SkeletonMarshalAtomLexeme / OuterRecordConstructorLexeme atoms (Scaffold, Terminal, DeclarationRef, NamedField, etc.) — constructor SPELLING only, not parent coproduct or declaration identity. DataItem node marshaling in eval_decl_facts delegates to marshal_data_initializer_projection (ctx.lookup_fn_node on the resolved graph), so merge-blocking witnesses that read resolved nullary parent/arm identity through decl_facts() exercise the same typechecked seam as marshal_data_initializer_projection Rust tests — infer-stamped VarBindingKind::VariantValueBinding and InferredNode::Resolved on variant-value ExprVars. Remaining open at this grain: exact parent-variant occurrence identity (this lane lands ResolvedDeclarationLocator qualified-name parent/arm only, not occurrence coordinates). Dissolve-on: occurrence-grain projection or a single marshal authority that folds spelling atoms and resolved identity without a parse-only fork."
 
-data decl_facts_outer_record_constructor_lexeme_authority_note: std.types.String = "OuterRecordConstructorLexeme is the honest name for ExprRecordLit-authored constructor spelling reflected in decl_facts skeleton atoms. It is not variant identity: parent coproduct, module, declaration, and variant resolution are separate open obligations. skeleton_contains_outer_record_constructor_lexeme reads the same marshal atom spine as skeleton_contains_marshal_atom_lexeme but types the query parameter honestly."
+data decl_facts_outer_record_constructor_lexeme_authority_note: String = "OuterRecordConstructorLexeme is the honest name for ExprRecordLit-authored constructor spelling reflected in decl_facts skeleton atoms. It is not variant identity: parent coproduct, module, declaration, and variant resolution are separate open obligations. skeleton_contains_outer_record_constructor_lexeme reads the same marshal atom spine as skeleton_contains_marshal_atom_lexeme but types the query parameter honestly."
 
 type DeclFactQualifiedNameResolution
   = DeclFactResolvedUnique { fact: v2.std.decl_index.DeclFact }
-  | DeclFactResolvedMissing { qualified_name: std.types.String }
-  | DeclFactResolvedAmbiguous { qualified_name: std.types.String, match_count: Int }
+  | DeclFactResolvedMissing { qualified_name: String }
+  | DeclFactResolvedAmbiguous { qualified_name: String, match_count: Int }
 
-fn decl_facts_matching_qualified_name(qn: std.types.String, facts: std.types.List<v2.std.decl_index.DeclFact>) -> std.types.List<v2.std.decl_index.DeclFact> {
-  v2.std.algebra.list_reverse(xs: fold(facts, init: v2.std.algebra.Empty, f: fn(acc, fact) {
+fn decl_facts_matching_qualified_name(qn: String, facts: std.types.List<v2.std.decl_index.DeclFact>) -> std.types.List<v2.std.decl_index.DeclFact> {
+  v2.std.algebra.list_reverse(xs: fold(facts, init: Empty, f: fn(acc, fact) {
     if fact.qualified_name == qn {
-      Cons { head: fact, tail: acc }
+      std.algebra.Cons { head: fact, tail: acc }
     } else {
       acc
     }
@@ -27,7 +27,7 @@ fn decl_facts_matching_qualified_name(qn: std.types.String, facts: std.types.Lis
 
 fn resolve_decl_fact_by_qualified_name(
   facts: std.types.List<v2.std.decl_index.DeclFact>,
-  qn: std.types.String
+  qn: String
 ) -> DeclFactQualifiedNameResolution {
   let matches = decl_facts_matching_qualified_name(qn: qn, facts: facts)
   let n = v2.std.algebra.length(xs: matches)
@@ -46,11 +46,11 @@ fn resolve_decl_fact_by_qualified_name(
 fn skeleton_marshal_atom_lexeme_optional(node: v2.std.node.Node) -> SkeletonMarshalAtomLexeme? {
   match node.kind {
     v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } } =>
-      v2.std.collection.Present { value: v2.std.compilers.lexing.symbol_lexeme(sym: sym) }
+      Present { value: v2.std.compilers.lexing.symbol_lexeme(sym: sym) }
     TypeNode { connective: v2.std.node.Conj } =>
       fold(
         v2.std.node_query.node_positional_child_targets(node: node),
-        init: v2.std.collection.Absent,
+        init: Absent,
         f: fn(acc, nested) {
           match acc {
             Present { value: _ } => acc
@@ -58,31 +58,31 @@ fn skeleton_marshal_atom_lexeme_optional(node: v2.std.node.Node) -> SkeletonMars
           }
         }
       )
-    _ => v2.std.collection.Absent
+    _ => Absent
   }
 }
 
 fn node_skeleton_edge_targets(node: v2.std.node.Node) -> std.types.List<v2.std.node.Node> {
-  v2.std.algebra.list_reverse(xs: fold(node.children, init: v2.std.algebra.Empty, f: fn(acc, e) {
-    Cons { head: e.target, tail: acc }
+  v2.std.algebra.list_reverse(xs: fold(node.children, init: Empty, f: fn(acc, e) {
+    std.algebra.Cons { head: e.target, tail: acc }
   }))
 }
 
 fn node_skeleton_marshal_atom_lexemes(node: v2.std.node.Node) -> std.types.List<SkeletonMarshalAtomLexeme> {
   let child_lexemes = v2.std.algebra.fold_list_right(
     xs: node_skeleton_edge_targets(node: node),
-    empty: v2.std.algebra.Empty,
+    empty: Empty,
     snoc: fn(acc, child) {
       v2.std.algebra.fold_list_right(
         xs: node_skeleton_marshal_atom_lexemes(node: child),
         empty: acc,
-        snoc: fn(inner_acc, lex) { Cons { head: lex, tail: inner_acc } }
+        snoc: fn(inner_acc, lex) { std.algebra.Cons { head: lex, tail: inner_acc } }
       )
     }
   )
   match node.kind {
     v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } } =>
-      Cons { head: v2.std.compilers.lexing.symbol_lexeme(sym: sym), tail: child_lexemes }
+      std.algebra.Cons { head: v2.std.compilers.lexing.symbol_lexeme(sym: sym), tail: child_lexemes }
     _ => child_lexemes
   }
 }
@@ -119,9 +119,9 @@ fn decl_fact_skeleton_for_resolution(
   resolution: DeclFactQualifiedNameResolution
 ) -> v2.std.node.Node? {
   match resolution {
-    DeclFactResolvedUnique { fact } => v2.std.collection.Present { value: fact.node }
-    DeclFactResolvedMissing { qualified_name: _ } => v2.std.collection.Absent
-    DeclFactResolvedAmbiguous { qualified_name: _, match_count: _ } => v2.std.collection.Absent
+    DeclFactResolvedUnique { fact } => Present { value: fact.node }
+    DeclFactResolvedMissing { qualified_name: _ } => Absent
+    DeclFactResolvedAmbiguous { qualified_name: _, match_count: _ } => Absent
   }
 }
 
@@ -174,14 +174,14 @@ fn skeleton_atom_lexeme_census_fold(n: v2.std.node.Node) -> AtomLexemeCensus {
           v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } } =>
             AtomLexemeCensus {
               all_atom_lexemes: [v2.std.compilers.lexing.symbol_lexeme(sym: s)],
-              construction_spelling_lexemes: v2.std.algebra.Empty,
+              construction_spelling_lexemes: Empty,
               self_is_atom: true,
               self_lexeme: v2.std.compilers.lexing.symbol_lexeme(sym: s)
             }
           _ =>
             AtomLexemeCensus {
-              all_atom_lexemes: v2.std.algebra.Empty,
-              construction_spelling_lexemes: v2.std.algebra.Empty,
+              all_atom_lexemes: Empty,
+              construction_spelling_lexemes: Empty,
               self_is_atom: false,
               self_lexeme: ""
             }
@@ -193,7 +193,7 @@ fn skeleton_atom_lexeme_census_fold(n: v2.std.node.Node) -> AtomLexemeCensus {
           construction_spelling_lexemes: concat(
             acc.construction_spelling_lexemes,
             if skeleton_edge_is_construction_spelling(e: e) && child.self_is_atom {
-              Cons { head: child.self_lexeme, tail: child.construction_spelling_lexemes }
+              std.algebra.Cons { head: child.self_lexeme, tail: child.construction_spelling_lexemes }
             } else {
               child.construction_spelling_lexemes
             }

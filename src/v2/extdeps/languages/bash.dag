@@ -639,7 +639,7 @@ fn bash_pipe_and_or_flat_wrong_target_model() -> v2.std.compilers.target_model.T
   )
 }
 
-fn bash_binding_spellings() -> v2.std.collection.Map<v2.std.node.Symbol, String> {
+fn bash_binding_spellings() -> std.types.Map<v2.std.node.Symbol, String> {
   let m0 = v2.std.collection.map_insert(v2.std.collection.empty_map(), ^bash_binding_var_ROOT, "ROOT")
   let m1 = v2.std.collection.map_insert(m0, ^bash_binding_lit_ROOT, "ROOT")
   let m2 = v2.std.collection.map_insert(m1, ^bash_binding_lit_a_quote_b, "a'b")
@@ -663,7 +663,7 @@ fn bash_var_ref_spelling(spelling: String) -> String {
   concat("\"$", concat(spelling, "\""))
 }
 
-fn bash_token_class_emit_transforms() -> v2.std.collection.Map<v2.std.node.Symbol, fn(String) -> String> {
+fn bash_token_class_emit_transforms() -> std.types.Map<v2.std.node.Symbol, fn(String) -> String> {
   let m0 = v2.std.collection.map_insert(v2.std.collection.empty_map(), ^bash_token_lit, extdeps.posix.shell_command_language.posix_single_quote)
   let m1 = v2.std.collection.map_insert(m0, ^bash_token_lit_spaced, bash_single_quote_spaced)
   v2.std.collection.map_insert(m1, ^bash_token_var_ref, bash_var_ref_spelling)
@@ -858,7 +858,7 @@ fn bash_make_bound_tokens_target_model(
   tokens: std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
   source_text: String,
   lex: v2.std.compilers.lexing.LexRules,
-  binding_spellings: v2.std.collection.Map<v2.std.node.Symbol, String>
+  binding_spellings: std.types.Map<v2.std.node.Symbol, String>
 ) -> v2.std.compilers.target_model.TargetModel {
   v2.std.compilers.target_model.target_model_make_with_emit_transforms(
     bundle: bash_target_model_bundle(
@@ -984,7 +984,7 @@ fn emit_directive_bash_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn emit_directive_bash_message_spellings(d: v2.std.diagnostic.EmitDirective) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
+fn emit_directive_bash_message_spellings(d: v2.std.diagnostic.EmitDirective) -> std.types.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(v2.std.collection.empty_map(), ^emit_directive_message, d.message)
 }
 
@@ -1144,7 +1144,7 @@ fn orch_seq2_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn orch_seq2_binding_spellings(left: String, right: String) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
+fn orch_seq2_binding_spellings(left: String, right: String) -> std.types.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(
     v2.std.collection.map_insert(v2.std.collection.empty_map(), ^orch_seq2_left, left),
     ^orch_seq2_right, right
@@ -1244,7 +1244,7 @@ fn orch_retry_binding_spellings(
   warn1: String,
   warn2: String,
   exhausted: String
-) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
+) -> std.types.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(
   v2.std.collection.map_insert(
   v2.std.collection.map_insert(
@@ -1379,7 +1379,7 @@ fn orch_retry_1level_binding_spellings(
   pattern1: String,
   warn1: String,
   exhausted: String
-) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
+) -> std.types.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(
   v2.std.collection.map_insert(
   v2.std.collection.map_insert(
@@ -1459,7 +1459,7 @@ fn orch_retry_escalation_final_translation_rules_node() -> v2.std.node.Node {
 fn orch_retry_escalation_final_binding_spellings(
   occ: String,
   exhausted: String
-) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
+) -> std.types.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(
     v2.std.collection.map_insert(v2.std.collection.empty_map(), ^orch_retry_escalation_final_occ, occ),
     ^orch_retry_escalation_final_exhausted, exhausted
@@ -1575,7 +1575,7 @@ fn orch_retry_escalation_step_binding_spellings(
   warn: String,
   inner: String,
   exhausted: String
-) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
+) -> std.types.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(
   v2.std.collection.map_insert(
   v2.std.collection.map_insert(
@@ -1642,7 +1642,7 @@ fn bash_word_pass_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_word_pass_binding_spellings(spelling: String) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
+fn bash_word_pass_binding_spellings(spelling: String) -> std.types.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(v2.std.collection.empty_map(), ^bash_word_pass_spelling, spelling)
 }
 
@@ -1690,7 +1690,7 @@ fn bash_word_cmdsubst_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_word_cmdsubst_binding_spellings(body: String) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
+fn bash_word_cmdsubst_binding_spellings(body: String) -> std.types.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(v2.std.collection.empty_map(), ^bash_word_cmdsubst_body, body)
 }
 
@@ -1738,7 +1738,7 @@ fn bash_stmt_subshell_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_stmt_subshell_binding_spellings(body: String) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
+fn bash_stmt_subshell_binding_spellings(body: String) -> std.types.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(v2.std.collection.empty_map(), ^bash_stmt_subshell_body, body)
 }
 
@@ -1786,7 +1786,7 @@ fn bash_stmt_brace_group_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_stmt_brace_group_binding_spellings(body: String) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
+fn bash_stmt_brace_group_binding_spellings(body: String) -> std.types.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(v2.std.collection.empty_map(), ^bash_stmt_brace_group_body, body)
 }
 
@@ -1832,7 +1832,7 @@ fn bash_stmt_exit_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_stmt_exit_binding_spellings(code: String) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
+fn bash_stmt_exit_binding_spellings(code: String) -> std.types.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(v2.std.collection.empty_map(), ^bash_stmt_exit_code, code)
 }
 
@@ -1881,7 +1881,7 @@ fn bash_stmt_assign_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_stmt_assign_binding_spellings(name: String, value: String) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
+fn bash_stmt_assign_binding_spellings(name: String, value: String) -> std.types.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(
     v2.std.collection.map_insert(v2.std.collection.empty_map(), ^bash_stmt_assign_name, name),
     ^bash_stmt_assign_value, value
@@ -1934,7 +1934,7 @@ fn bash_stmt_andor_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_stmt_andor_binding_spellings(left: String, op: String, right: String) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
+fn bash_stmt_andor_binding_spellings(left: String, op: String, right: String) -> std.types.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(
     v2.std.collection.map_insert(
       v2.std.collection.map_insert(v2.std.collection.empty_map(), ^bash_stmt_andor_left, left),
@@ -1987,7 +1987,7 @@ fn bash_stmt_pipe_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_stmt_pipe_binding_spellings(left: String, right: String) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
+fn bash_stmt_pipe_binding_spellings(left: String, right: String) -> std.types.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(
     v2.std.collection.map_insert(v2.std.collection.empty_map(), ^bash_stmt_pipe_left, left),
     ^bash_stmt_pipe_right, right
@@ -2037,7 +2037,7 @@ fn bash_stmt_with_redir_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_stmt_with_redir_binding_spellings(stmt: String, redir: String) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
+fn bash_stmt_with_redir_binding_spellings(stmt: String, redir: String) -> std.types.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(
     v2.std.collection.map_insert(v2.std.collection.empty_map(), ^bash_stmt_with_redir_stmt, stmt),
     ^bash_stmt_with_redir_redir, redir
@@ -2090,7 +2090,7 @@ fn bash_stmt_env_prefixed_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_stmt_env_prefixed_binding_spellings(name: String, value: String, command: String) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
+fn bash_stmt_env_prefixed_binding_spellings(name: String, value: String, command: String) -> std.types.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(
     v2.std.collection.map_insert(
       v2.std.collection.map_insert(v2.std.collection.empty_map(), ^bash_stmt_envp_name, name),
@@ -2145,7 +2145,7 @@ fn bash_stmt_env_unset_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_stmt_env_unset_binding_spellings(name: String, command: String) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
+fn bash_stmt_env_unset_binding_spellings(name: String, command: String) -> std.types.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(
     v2.std.collection.map_insert(v2.std.collection.empty_map(), ^bash_stmt_envp_unset_name, name),
     ^bash_stmt_envp_unset_command, command
@@ -2195,7 +2195,7 @@ fn bash_stmt_if_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_stmt_if_binding_spellings(cond: String, body: String) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
+fn bash_stmt_if_binding_spellings(cond: String, body: String) -> std.types.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(
     v2.std.collection.map_insert(v2.std.collection.empty_map(), ^bash_stmt_if_cond, cond),
     ^bash_stmt_if_body, body
@@ -2321,7 +2321,7 @@ fn bash_stmt_heredoc_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_stmt_heredoc_binding_spellings(path: String, delimiter: String, body: String) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
+fn bash_stmt_heredoc_binding_spellings(path: String, delimiter: String, body: String) -> std.types.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(
     v2.std.collection.map_insert(
       v2.std.collection.map_insert(
@@ -2377,7 +2377,7 @@ fn bash_program_set_e_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_program_set_e_binding_spellings(body: String) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
+fn bash_program_set_e_binding_spellings(body: String) -> std.types.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(v2.std.collection.empty_map(), ^bash_program_body, body)
 }
 
@@ -2423,7 +2423,7 @@ fn bash_stmt_negation_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_stmt_negation_binding_spellings(inner: String) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
+fn bash_stmt_negation_binding_spellings(inner: String) -> std.types.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(v2.std.collection.empty_map(), ^bash_stmt_negation_inner, inner)
 }
 
@@ -2629,7 +2629,7 @@ fn bash_redir_to_file_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_redir_to_file_binding_spellings(path: String) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
+fn bash_redir_to_file_binding_spellings(path: String) -> std.types.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(v2.std.collection.empty_map(), ^bash_redir_to_file_path, path)
 }
 

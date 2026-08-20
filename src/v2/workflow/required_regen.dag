@@ -6,38 +6,38 @@ module v2.workflow.required_regen
 // this module owns the verdict only.
 
 type RegenSurfaceOutcome
-  = SurfaceMatches { relative_path: v2.std.text.String }
+  = SurfaceMatches { relative_path: String }
   | SurfaceDrifted {
-      relative_path: v2.std.text.String
-      committed_digest: v2.std.text.String
-      candidate_digest: v2.std.text.String
+      relative_path: String
+      committed_digest: String
+      candidate_digest: String
     }
-  | EmittedNotCommitted { relative_path: v2.std.text.String }
-  | CommittedNotEmitted { relative_path: v2.std.text.String }
+  | EmittedNotCommitted { relative_path: String }
+  | CommittedNotEmitted { relative_path: String }
 
 type HandMaintainedOutcome
-  = HandMatches { filename: v2.std.text.String }
-  | HandDrifted { filename: v2.std.text.String }
-  | HandNoCandidate { filename: v2.std.text.String }
-  | HandUnverifiable { filename: v2.std.text.String, reason: v2.std.text.String }
+  = HandMatches { filename: String }
+  | HandDrifted { filename: String }
+  | HandNoCandidate { filename: String }
+  | HandUnverifiable { filename: String, reason: String }
 
 type RequiredRegenRefusal
-  = GeneratedDrift { paths: List<v2.std.text.String> }
+  = GeneratedDrift { paths: List<String> }
   | SurfacePopulationMismatch {
-      emitted_not_committed: List<v2.std.text.String>
-      committed_not_emitted: List<v2.std.text.String>
+      emitted_not_committed: List<String>
+      committed_not_emitted: List<String>
     }
-  | CompileRefused { reason: v2.std.text.String }
-  | HandUnverifiableRefused { entries: List<v2.std.text.String> }
+  | CompileRefused { reason: String }
+  | HandUnverifiableRefused { entries: List<String> }
   | PlannedExecutedMismatch { planned: Int, executed: Int }
   | EmptyCommittedPopulation
   | EmptyEmitResult
-  | CandidateTreeAbsent { reason: v2.std.text.String }
+  | CandidateTreeAbsent { reason: String }
 
 type RequiredRegenAttempt {
   generated_outcomes: List<RegenSurfaceOutcome>
   hand_outcomes: List<HandMaintainedOutcome>
-  authority_digest: v2.std.text.String
+  authority_digest: String
 }
 
 type RequiredRegenSyncAdmission
@@ -46,7 +46,7 @@ type RequiredRegenSyncAdmission
 
 data no_regen_refusals: List<RequiredRegenRefusal> = []
 
-data no_string_paths: List<v2.std.text.String> = []
+data no_string_paths: List<String> = []
 
 fn surface_is_drift(o: RegenSurfaceOutcome) -> Bool {
   match o {
@@ -58,9 +58,9 @@ fn surface_is_drift(o: RegenSurfaceOutcome) -> Bool {
 }
 
 fn collect_generated_drift_paths(
-  acc: List<v2.std.text.String>,
+  acc: List<String>,
   o: RegenSurfaceOutcome
-) -> List<v2.std.text.String> {
+) -> List<String> {
   match o {
     SurfaceDrifted { relative_path: path } => std.algebra.Cons { head: path, tail: acc }
     EmittedNotCommitted { relative_path: path } => std.algebra.Cons { head: path, tail: acc }
@@ -79,9 +79,9 @@ fn hand_is_unverifiable(o: HandMaintainedOutcome) -> Bool {
 }
 
 fn collect_hand_unverifiable(
-  acc: List<v2.std.text.String>,
+  acc: List<String>,
   o: HandMaintainedOutcome
-) -> List<v2.std.text.String> {
+) -> List<String> {
   match o {
     HandUnverifiable { filename: name, reason: reason } =>
       std.algebra.Cons { head: concat(name, concat(": ", reason)), tail: acc }

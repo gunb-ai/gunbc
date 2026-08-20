@@ -30,7 +30,7 @@ fn fact_bundle_cl_tree() -> v2.compiler.inferred_tree.InferredTree {
   )
 }
 
-test fn fact_bundle_compile_lens_passes_holds() -> v2.std.logic.Bool {
+test fn fact_bundle_compile_lens_passes_holds() -> Bool {
   match v2.compiler.compile.apply_compile_lens(
     lens: v2.compiler.compile.fact_density_lens,
     inferred: fact_bundle_cl_tree(),

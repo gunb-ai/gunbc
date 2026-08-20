@@ -10,7 +10,7 @@ data synthesis_polynomial_degree_two: v2.lens.cost.PolynomialDegree = v2.lens.co
   predecessor_after_linear: v2.std.cardinality.NonZeroNat { prev: v2.std.nat.Zero }
 }
 
-test fn linear_not_dominated_by_polynomial_claim_holds() -> v2.std.logic.Bool {
+test fn linear_not_dominated_by_polynomial_claim_holds() -> Bool {
   !v2.lens.cost.symbolic_cost_dominates(
     a: v2.lens.cost.LinearCost { variable: v2.lens.cost.SizeVariable { source: synthesis_lin_poly_x } },
     b: v2.lens.cost.PolynomialCost {

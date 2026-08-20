@@ -6,7 +6,7 @@ data synthesis_const_x: v2.std.node.Node = v2.std.node.Node {
   occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-test fn constant_not_dominated_by_linear_claim_holds() -> v2.std.logic.Bool {
+test fn constant_not_dominated_by_linear_claim_holds() -> Bool {
   !v2.lens.cost.symbolic_cost_dominates(
     a: v2.lens.cost.unit_cost(),
     b: v2.lens.cost.LinearCost { variable: v2.lens.cost.SizeVariable { source: synthesis_const_x } }

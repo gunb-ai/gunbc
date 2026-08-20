@@ -48,7 +48,7 @@ data idempotency_write_effect_claim: LensIdempotencyClaim = LensIdempotencyClaim
   actual: v2.lens.idempotency.idempotency_witness(tree: idempotency_claim_tree(), dependencies: [idempotency_dependency])
 }
 
-test fn idempotency_write_effect_claim_holds() -> v2.std.logic.Bool {
+test fn idempotency_write_effect_claim_holds() -> Bool {
   match idempotency_write_effect_claim.actual {
     Violates { diagnostic: _ } =>
       v2.lens.idempotency.idempotency_fact_eq(

@@ -48,7 +48,7 @@ data parallelism_data_dependency_claim: LensParallelismClaim = LensParallelismCl
   actual: v2.lens.parallelism.parallelism_witness(tree: parallelism_claim_tree(), dependencies: [parallelism_dependency])
 }
 
-test fn parallelism_data_dependency_claim_holds() -> v2.std.logic.Bool {
+test fn parallelism_data_dependency_claim_holds() -> Bool {
   match parallelism_data_dependency_claim.actual {
     Holds { value: actual } =>
       v2.lens.parallelism.parallelism_fact_eq(a: actual, b: parallelism_data_dependency_claim.expected)

@@ -1,7 +1,7 @@
 module test.claim.stage0_rust_source_lifecycle_scaffold_witness
 
 
-data stage0_rust_source_lifecycle_scaffold_witness_note: v2.std.text.String = "Stage0 lifecycle scaffold witnesses after the PR B host activation. The live observation must inhabit gunbc.stage0_rust_host_observation.RustManifestObserved with path evidence; typed host refusals remain distinct inputs to the existing verdict. The lifecycle classification is still an honest scaffold and may remain red on the repository-wide unclassified population."
+data stage0_rust_source_lifecycle_scaffold_witness_note: String = "Stage0 lifecycle scaffold witnesses after the PR B host activation. The live observation must inhabit gunbc.stage0_rust_host_observation.RustManifestObserved with path evidence; typed host refusals remain distinct inputs to the existing verdict. The lifecycle classification is still an honest scaffold and may remain red on the repository-wide unclassified population."
 
 test fn scaffold_note_declares_scaffold_not_live_instrument() -> Bool {
   string_contains(s: gunbc.stage0_rust_source_lifecycle_scaffold.stage0_rust_source_lifecycle_scaffold_note, pattern: "SCAFFOLD")
@@ -46,7 +46,7 @@ test fn scaffold_host_observation_hand_rust_receipt_is_bounded() -> Bool {
     )
     && (refs |> all(r => !(r.module_path == "") && !(r.decl_name == "")))
     && (expected |> all(e => named |> any(n => n == e)))
-    && gunbc.stage0_rust_host_observation.stage0_rust_observation_seed_growth_justification.owning_dissolution_lane as v2.std.text.String == "v1-hand-queue-drain"
+    && gunbc.stage0_rust_host_observation.stage0_rust_observation_seed_growth_justification.owning_dissolution_lane as String == "v1-hand-queue-drain"
     && match gunbc.stage0_rust_host_observation.stage0_cargo_manifest_parser_seed_scaffold {
       Scaffold { dissolves_to: std.disposition.RealizationDispatch, bind: bind } =>
         bind.module_path == "v1_compiler.cli_run"
@@ -221,11 +221,11 @@ test fn scaffold_observed_manifest_parse_refusal_surfaces_typed_cause() -> Bool 
 // downstream well-formedness guard defends -- and this control has to reach it
 // through the gap in order to keep proving the guard works (DESIGN 4b(4):
 // production machinery dissolves on a climb, the evidence stays enrolled).
-fn synthetic_nonliteral_text(text: v2.std.text.String) -> std.types.NonEmptyStr {
+fn synthetic_nonliteral_text(text: String) -> std.types.NonEmptyStr {
   concat(text, "")
 }
 
-fn synthetic_empty_condition(text: v2.std.text.String) -> std.dissolution.DissolutionCondition {
+fn synthetic_empty_condition(text: String) -> std.dissolution.DissolutionCondition {
   std.dissolution.unbound_dissolution(description: test.claim.stage0_rust_source_lifecycle_scaffold_witness.synthetic_nonliteral_text(text: text))
 }
 

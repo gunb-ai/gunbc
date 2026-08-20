@@ -36,7 +36,7 @@ data synthesis_gap_poly_sentinel: v2.std.node.Node = v2.std.node.Node {
   occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-test fn synthesis_gap_poly_lens_non_empty() -> v2.std.logic.Bool {
+test fn synthesis_gap_poly_lens_non_empty() -> Bool {
   v2.std.algebra.non_empty(v2.lens.synthesis.synthesis_lens(n: synthesis_gap_poly_input, declared_technique: v2.lens.synthesis.DecisionTree))
 }
 
@@ -61,6 +61,6 @@ fn synthesis_gap_poly_first_reason_node() -> v2.std.node.Node {
   }
 }
 
-test fn synthesis_gap_poly_reason_claim_holds() -> v2.std.logic.Bool {
+test fn synthesis_gap_poly_reason_claim_holds() -> Bool {
   synthesis_gap_poly_first_reason_node() == synthesis_gap_poly_input
 }

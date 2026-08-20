@@ -40,7 +40,7 @@ type VacuityEvidence
   | Unknown
 
 type VacuityCensusRow {
-  label: v2.std.text.String
+  label: String
   evidence: VacuityEvidence
   carries_parallel_authority_debt: Bool
 }
@@ -266,7 +266,7 @@ data vacuity_bool_witness_body_lowering_ceiling_note: String = "SECOND, INDEPEND
 
 data vacuity_bool_witness_fn_decl_collection_ceiling_note: String = "THIRD, BROADER CEILING (empirically executed, not guessed; found while wiring the item-5 consumer witness's derived-site enumeration): fn-declaration COLLECTION itself — vacuity_collect_fn_decls, via dag_node_is_fn_decl/parse_production_emitted_identity_optional over normalize() output — returns EMPTY for real corpus files, independent of body shape and broader than the bare-`==`-body case above. This is NOT specific to vacuity.dag: src/v2/lens/enforcement/cost_coverage.dag's cost_coverage_collect_fn_decls is byte-identical logic over the byte-identical three-stage ingest (filesystem_read -> tokenize -> parse_module -> normalize), and running BOTH collectors over the SAME successfully-normalized module_root (src/v2/std/nat.dag, four known fn declarations) in one execution returned empty for both, ruling out a vacuity-specific bug. Independently reconfirmed by executing cost_coverage's OWN already-merged witnesses directly — cost_coverage_dag_logic_has_three_fn_bodies (asserts fn_attempted == 3 for dag/std/logic.dag) and cost_coverage_v2_tree_receipt_by_execution (asserts fn_attempted > 0 for real src/v2 files including nat.dag) — both FAIL by direct execution today. And reconfirmed a second time on a pristine origin/main checkout (git worktree add against origin/main, this branch's compiled claim_batch binary, cd into the worktree with relative --source-root paths): cost_coverage_dag_logic_has_three_fn_bodies FAILS on clean main too, so this is pre-existing and corpus-wide, not introduced by this branch and not limited to vacuity's own mandate. Consequence for this lens: vacuity_consumer_witness_live_derived_sites() (v2.test.claim.vacuity_consumer_witness) legitimately enumerates zero sites against its declared fixture file today, even though that file is independently confirmed to normalize() cleanly — the derived-site/shadow join still holds by real execution (empty == empty, never vacuously skipped), and the fixture-module-reach requirement (DESIGN.md §6 inert-lens hygiene) is separately satisfied by a direct compile-time symbol reference (vacuity_consumer_witness_fixture_module_reached_by_direct_call), not by fn-decl collection. This is the SAME \"general body producer\" DESIGN.md open thread the body-lowering ceiling above already cites — broader in scope (declaration discovery, not just one body shape) but the same authority and the same dissolve-on trigger, per §3 single authority, not a second independently-named trigger. Mechanism-vs-reachability stays separated exactly as above: classify_vacuity_same_eval_record's correctness is proven by the direct-call RED control regardless of this ceiling."
 
-fn vacuity_witness_ingest_source_text(source_text: v2.std.text.String, file: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<v2.compiler.normalized_tree.NormalizedTree> {
+fn vacuity_witness_ingest_source_text(source_text: String, file: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<v2.compiler.normalized_tree.NormalizedTree> {
   let lm = dag_language_model()
   match tokenize(text: source_text, file: file, rules: lm.lex) {
     Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
@@ -459,7 +459,7 @@ fn vacuity_carries_parallel_authority_debt(
 }
 
 fn vacuity_census_row(
-  label: v2.std.text.String,
+  label: String,
   evidence: VacuityEvidence,
   carries_parallel_authority_debt: Bool
 ) -> VacuityCensusRow {

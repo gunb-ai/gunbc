@@ -27,7 +27,7 @@ data ambiguous_duplicate_name_root: v2.std.node.Node = v2.std.node.Node {
   occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-test fn subterm_at_ambiguous_duplicate_name_claim_holds() -> v2.std.logic.Bool {
+test fn subterm_at_ambiguous_duplicate_name_claim_holds() -> Bool {
   match v2.lens.application.subterm_at(
     root: ambiguous_duplicate_name_root,
     path: v2.std.node.Path { steps: [^ambiguous_dup_step] }

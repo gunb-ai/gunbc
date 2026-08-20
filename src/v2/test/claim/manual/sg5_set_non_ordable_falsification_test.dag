@@ -1,6 +1,6 @@
 module v2.test.manual.sg5_set_non_ordable_falsification
 
-test fn sg5_set_non_ordable_projection_rejects() -> v2.std.logic.Bool {
+test fn sg5_set_non_ordable_projection_rejects() -> Bool {
   match v2.compiler.translate.translate_type_expression_project(
     node: v2.extdeps.languages.rust.rust_sg5_set_non_ordable_source_type_node(),
     target: v2.extdeps.languages.rust.rust_sg2_type_expr_target_model(),

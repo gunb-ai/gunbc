@@ -10,6 +10,6 @@ data expected_parallel_authority_acceptance: v2.lens.coverage.CoverageDefectAcce
   concern: v2.lens.coverage.CoverageDefectAcceptanceKey { lens: v2.lens.coverage.ParallelAuthority }
 }
 
-test fn parallel_authority_defect_key_claim_holds() -> v2.std.logic.Bool {
+test fn parallel_authority_defect_key_claim_holds() -> Bool {
   v2.lens.coverage.coverage_defect_parallel_authority == expected_parallel_authority_acceptance
 }

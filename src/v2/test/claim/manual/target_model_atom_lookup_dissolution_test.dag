@@ -8,7 +8,7 @@ fn atom_lookup_dissolution_probe_node() -> v2.std.node.Node {
 }
 }
 
-test fn passing_candidate_fold_duplicate_produces_many() -> v2.std.logic.Bool {
+test fn passing_candidate_fold_duplicate_produces_many() -> Bool {
   match v2.std.algebra.fold_list(
     xs: [atom_lookup_dissolution_probe_node(), atom_lookup_dissolution_probe_node()],
     empty: v2.std.passing_candidate_fold.NoPassingCandidate,
@@ -26,7 +26,7 @@ test fn passing_candidate_fold_duplicate_produces_many() -> v2.std.logic.Bool {
   }
 }
 
-test fn atom_lookup_in_catalog_known_carrier_accepts() -> v2.std.logic.Bool {
+test fn atom_lookup_in_catalog_known_carrier_accepts() -> Bool {
   match v2.std.compilers.target_model.target_atom_realization_lookup_in_catalog(
     catalog: v2.extdeps.languages.typescript.ts_target_atom_realization_catalog,
     source_carrier: v2.std.compilers.target_model.symbol_kernel_type_node()
@@ -36,7 +36,7 @@ test fn atom_lookup_in_catalog_known_carrier_accepts() -> v2.std.logic.Bool {
   }
 }
 
-test fn atom_lookup_in_catalog_unknown_carrier_rejects_miss() -> v2.std.logic.Bool {
+test fn atom_lookup_in_catalog_unknown_carrier_rejects_miss() -> Bool {
   match v2.std.compilers.target_model.target_atom_realization_lookup_in_catalog(
     catalog: v2.extdeps.languages.typescript.ts_target_atom_realization_catalog,
     source_carrier: atom_lookup_dissolution_probe_node()
@@ -46,7 +46,7 @@ test fn atom_lookup_in_catalog_unknown_carrier_rejects_miss() -> v2.std.logic.Bo
   }
 }
 
-test fn atom_lookup_in_catalog_node_non_conj_rejects_decode_invalid() -> v2.std.logic.Bool {
+test fn atom_lookup_in_catalog_node_non_conj_rejects_decode_invalid() -> Bool {
   match v2.std.compilers.target_model.target_atom_realization_lookup_in_catalog_node(
     catalog: atom_lookup_dissolution_probe_node(),
     source_carrier: atom_lookup_dissolution_probe_node(),
@@ -57,7 +57,7 @@ test fn atom_lookup_in_catalog_node_non_conj_rejects_decode_invalid() -> v2.std.
   }
 }
 
-test fn atom_catalog_with_malformed_row_skips_accepts_valid() -> v2.std.logic.Bool {
+test fn atom_catalog_with_malformed_row_skips_accepts_valid() -> Bool {
   match v2.std.compilers.target_model.target_atom_realization_lookup_in_catalog_node(
     catalog: v2.std.node.Node {
       kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },

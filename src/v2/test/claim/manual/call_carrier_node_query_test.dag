@@ -46,37 +46,37 @@ fn call_carrier_callee_free_transform() -> v2.std.node.Node {
   )
 }
 
-test fn call_carrier_call_recognized() -> v2.std.logic.Bool {
+test fn call_carrier_call_recognized() -> Bool {
   v2.std.node_query.node_is_call(node: call_carrier_call_node())
 }
 
-test fn call_carrier_callee_free_not_call() -> v2.std.logic.Bool {
+test fn call_carrier_callee_free_not_call() -> Bool {
   !v2.std.node_query.node_is_call(node: call_carrier_callee_free_transform())
 }
 
-test fn call_carrier_callee_is_reference() -> v2.std.logic.Bool {
+test fn call_carrier_callee_is_reference() -> Bool {
   v2.std.node_query.node_is_callee_reference(node: call_carrier_callee_ref())
 }
 
-test fn call_carrier_value_not_callee_reference() -> v2.std.logic.Bool {
+test fn call_carrier_value_not_callee_reference() -> Bool {
   !v2.std.node_query.node_is_callee_reference(node: call_carrier_value_node())
 }
 
-test fn call_carrier_callee_target_matches() -> v2.std.logic.Bool {
+test fn call_carrier_callee_target_matches() -> Bool {
   match v2.std.node_query.call_callee_target(node: call_carrier_call_node()) {
     Accepted { value: callee, diagnostics: _ } => callee == call_carrier_callee_ref()
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn call_carrier_callee_target_rejects_non_call() -> v2.std.logic.Bool {
+test fn call_carrier_callee_target_rejects_non_call() -> Bool {
   match v2.std.node_query.call_callee_target(node: call_carrier_callee_free_transform()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }
 }
 
-test fn call_carrier_arguments_match() -> v2.std.logic.Bool {
+test fn call_carrier_arguments_match() -> Bool {
   let args = v2.std.node_query.call_argument_targets(node: call_carrier_call_node())
   let arity_two = count(args) == 2
   let first_is_x = match v2.std.collection.list_at_optional(xs: args, index: 0) {

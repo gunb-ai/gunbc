@@ -22,7 +22,7 @@ data map_linear_input: v2.std.node.Node = v2.std.node.Node {
   occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-test fn map_linear_claim_holds() -> v2.std.logic.Bool {
+test fn map_linear_claim_holds() -> Bool {
   match v2.lens.cost.cost_lens(n: map_linear_input) {
     Holds { value: actual } =>
       actual == v2.lens.cost.LinearCost { variable: v2.lens.cost.SizeVariable { source: map_linear_input } }

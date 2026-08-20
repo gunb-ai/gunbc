@@ -272,7 +272,7 @@ type GrammarSchema {
 }
 
 type GrammarSchemaProbe {
-  fixture: v2.std.text.String
+  fixture: String
   production: FormalProduction
   expected_parse_surface: v2.std.node.Node
 }

@@ -242,7 +242,7 @@ fn resolve_import_target() -> v2.std.qualified_name.QualifiedName {
   std.algebra.Cons { head: ^anchor_imported_path_segment, tail: std.algebra.Empty }
 }
 
-test fn resolve_with_admission_imported_binding_accepts() -> v2.std.logic.Bool {
+test fn resolve_with_admission_imported_binding_accepts() -> Bool {
   match resolve_roots_single_import() {
     Rejected { diagnostics: _ } => false
     Accepted { value: admitted, diagnostics: _ } =>

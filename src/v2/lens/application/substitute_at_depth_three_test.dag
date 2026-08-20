@@ -74,7 +74,7 @@ data depth_three_expected_root: v2.std.node.Node = v2.std.node.Node {
   occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-test fn substitute_at_depth_three_claim_holds() -> v2.std.logic.Bool {
+test fn substitute_at_depth_three_claim_holds() -> Bool {
   match v2.lens.application.substitute_at(
     root: depth_three_root,
     path: v2.std.node.Path {

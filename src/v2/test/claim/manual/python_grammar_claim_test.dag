@@ -1,6 +1,6 @@
 module v2.test.manual.python_grammar_claim
 
-test fn python_grammar_validates_fixture() -> v2.std.logic.Bool {
+test fn python_grammar_validates_fixture() -> Bool {
   let at = v2.std.diagnostic.port_locus(port: ^parse_stage_locus_port)
   match v2.compiler.parse.grammar_validate_for_parse(root: v2.extdeps.languages.python.python_grammar_root(), at: at) {
     Accepted { value: _, diagnostics: _ } => true
@@ -8,7 +8,7 @@ test fn python_grammar_validates_fixture() -> v2.std.logic.Bool {
   }
 }
 
-test fn python_grammar_parse_accepts() -> v2.std.logic.Bool {
+test fn python_grammar_parse_accepts() -> Bool {
   match python_grammar_parse_fixture() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false

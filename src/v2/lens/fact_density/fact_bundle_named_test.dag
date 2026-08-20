@@ -21,7 +21,7 @@ data fact_bundle_input: v2.std.node.Node = v2.std.node.Node {
   occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-test fn fact_bundle_named_claim_holds() -> v2.std.logic.Bool {
+test fn fact_bundle_named_claim_holds() -> Bool {
   match v2.lens.fact_density.carrier_spec_fact(carrier: fact_bundle_input) {
     NamedFieldFacts { density: d } =>
       match d.prev {

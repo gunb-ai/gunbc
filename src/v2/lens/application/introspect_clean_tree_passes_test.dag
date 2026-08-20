@@ -19,7 +19,7 @@ fn introspect_passing_gate(_tree: v2.compiler.inferred_tree.InferredTree) -> v2.
 
 data introspect_passing_lens: v2.compiler.compile.CompileLens = v2.compiler.compile.CompileLens { gate: introspect_passing_gate }
 
-test fn introspect_clean_tree_passes_claim_holds() -> v2.std.logic.Bool {
+test fn introspect_clean_tree_passes_claim_holds() -> Bool {
   match v2.compiler.compile.apply_compile_lens(lens: introspect_passing_lens, inferred: introspect_tree(), mode: v2.compiler.compile.CompileLensIntrospect) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
