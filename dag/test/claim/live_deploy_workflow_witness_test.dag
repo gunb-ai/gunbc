@@ -107,3 +107,38 @@ test fn the_emitted_workflow_carries_the_authoritys_own_advance_script() -> Bool
   string_contains(s: yml, pattern: marker)
     && string_contains(s: gunbc_ci_advance_fleet_desired_script(), pattern: marker)
 }
+
+// THE REGRESSION CONTROL FOR A DEFECT THAT MADE THIS WORKFLOW NEVER RUN ONCE.
+//
+// The first cut of this module omitted the Rust toolchain install. The job targets a self-hosted
+// runner where cargo is NOT on the default PATH, so every deploy run from the moment the workflow
+// landed died at its first build step with `cargo: command not found`, exit 127. There was never a
+// successful deploy run, and nothing in the repository noticed: the workflow emitted, parsed,
+// registered as a generated artifact, and passed review, because every one of those checks reads
+// the artifact rather than a run of it.
+//
+// ORDER IS THE CLAIM, not presence. A toolchain step emitted AFTER the build is exactly as useless
+// as no toolchain step, and a containment check for the action name cannot tell the two apart. So
+// this splits the document at the first cargo invocation and requires the install to appear in the
+// prefix. The positive half -- that a cargo invocation exists at all -- keeps the claim from passing
+// vacuously against a document that lost its build step.
+test fn the_deploy_workflow_installs_a_toolchain_before_its_first_cargo_invocation() -> Bool {
+  let yml = expected_deploy_yml()
+  let before_cargo = split(s: yml, delimiter: "cargo build").first()
+  string_contains(s: yml, pattern: "cargo build")
+    && string_contains(s: before_cargo, pattern: "setup-rust-toolchain")
+}
+
+// cache:false travels with the step rather than being re-decided here. gunbc.witness_floor_workflow
+// records why at length: setup-rust-toolchain's default cache registers a post step whose cleanBin
+// and cleanRegistry delete against a /home/ghrunner/.cargo shared by every slot on a self-hosted
+// host, so it removes files other concurrently-running jobs are building against. That reasoning is
+// about the fleet, not about the witness floor, and it applies to this job for the same reason. A
+// hand-copied toolchain step here would very plausibly have dropped the flag as an unexplained
+// default, which is why the step is imported rather than restated -- and why this claim pins the
+// emitted flag rather than trusting the import to have carried it.
+test fn the_deploy_toolchain_step_disables_the_shared_home_cache() -> Bool {
+  let yml = expected_deploy_yml()
+  let after_toolchain = split(s: yml, delimiter: "setup-rust-toolchain").last()
+  string_contains(s: after_toolchain, pattern: "cache: false")
+}

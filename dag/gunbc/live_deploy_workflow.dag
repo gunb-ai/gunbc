@@ -11,6 +11,7 @@ import extdeps.github.actions {
   checkout_action
 }
 import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
+import gunbc.witness_floor_workflow { self_hosted_rust_toolchain_step }
 import gunbc.repo_identity { gunbc_default_branch_name }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
 import gunbc.ci_spec {
@@ -73,6 +74,16 @@ fn live_deploy_build_script() -> String {
   "cargo build --release -p v1-compiler --bin gunbc"
 }
 
+// THE TOOLCHAIN STEP BEFORE THIS ONE IS LOAD-BEARING, AND ITS ABSENCE MEANT THIS WORKFLOW NEVER
+// RAN ONCE. This job targets a self-hosted runner where cargo is NOT on the default PATH, and the
+// first cut of this module omitted the toolchain install that gunbc.witness_floor_workflow has
+// always carried. Every deploy run from the moment this workflow landed failed at this step with
+// `cargo: command not found`, exit 127 -- there has never been a successful deploy run.
+//
+// The failure was invisible in the way DESIGN section 5 names: the workflow emitted, parsed,
+// registered as a generated artifact, passed review and merged, and its own author then reported
+// "srv1 deploys on merge" without ever reading a deploy run's outcome. A green-looking artifact is
+// not an executed one, and the receipt that would have caught it was one `gh run list` away.
 fn live_deploy_build_step() -> Step {
   RunStep {
     name: Present { value: "Build the deploy binary" },
@@ -189,6 +200,7 @@ fn live_deploy_job() -> Job {
     runner: gunbc_ci_deploy_srv1_runner_spec(),
     steps: [
       live_deploy_checkout_step(),
+      self_hosted_rust_toolchain_step(),
       live_deploy_build_step(),
       live_deploy_provider_runtime_step(),
       live_deploy_apply_step(),

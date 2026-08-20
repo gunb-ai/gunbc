@@ -152,7 +152,14 @@ fn witness_floor_checkout_step() -> Step {
 // becomes a disk-pressure question instead of a correctness one. That is the right trade —
 // a full disk refuses loudly, a deleted source file mid-compile does not — but it is a real
 // obligation and it belongs to whoever owns fleet disk, not to this file.
-fn witness_floor_toolchain_step() -> Step {
+// RENAMED FROM witness_floor_toolchain_step BECAUSE IT NOW HAS TWO CONSUMERS. The step is not a
+// witness-floor fact: it is a fact about how THIS FLEET installs a Rust toolchain, and the
+// cache:false reasoning above is about a shared /home/ghrunner/.cargo on self-hosted runners, which
+// is equally true of the deploy job. gunbc.live_deploy_workflow now consumes it, and a hand-copied
+// second UsesStep there would have forked the one decision the paragraph above paid to establish --
+// including the cache:false, which a copier would very plausibly drop as an unexplained default.
+// The home stays here (a path is a discriminator, not gospel); only the name stops lying.
+fn self_hosted_rust_toolchain_step() -> Step {
   UsesStep {
     name: Present { value: "Install Rust toolchain" },
     id: none,
@@ -559,7 +566,7 @@ fn witness_floor_job() -> Job {
     runner: gunbc_ci_selected_runner_spec(),
     steps: [
       witness_floor_checkout_step(),
-      witness_floor_toolchain_step(),
+      self_hosted_rust_toolchain_step(),
       witness_floor_build_step(),
       witness_floor_v1_parse_step(),
       witness_required_regen_step(),
