@@ -236,6 +236,46 @@ fn active_ctx() -> Option<&'static InterpContext> {
     ACTIVE_CTX.with(|cell| cell.get().map(|ptr| unsafe { &*ptr }))
 }
 
+/// Render a value with symbol names RESOLVED, for refusal messages.
+///
+/// The derived Debug prints `Symbol(122)`, which names nothing a reader can
+/// search for: symbol ids are interned per run, so the same type prints a
+/// different number in the next one and the reader cannot join the refusal to
+/// a declaration. A refusal that cannot be joined to a declaration is located
+/// in the log but not in the corpus (DESIGN §5).
+fn describe_value_shape(v: &Value) -> String {
+    fn field_names(fields: &[(Symbol, Value)]) -> String {
+        fields
+            .iter()
+            .take(8)
+            .map(|(k, fv)| format!("{}: {}", resolve_sym(*k), fv.type_label_public()))
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+    match v {
+        Value::Record { type_name, fields } => format!(
+            "Record {} {{ {} }}",
+            resolve_sym(*type_name),
+            field_names(fields)
+        ),
+        Value::Variant {
+            type_name,
+            variant_name,
+            fields,
+        } => format!(
+            "Variant {}.{} {{ {} }}",
+            resolve_sym(*type_name),
+            resolve_sym(*variant_name),
+            field_names(fields)
+        ),
+        Value::Str(s) => {
+            let t: String = s.chars().take(60).collect();
+            format!("Str({:?})", t)
+        }
+        other => format!("{}", other.type_label_public()),
+    }
+}
+
 fn resolve_sym(sym: Symbol) -> String {
     active_ctx()
         .map(|ctx| ctx.resolve(sym).to_string())
@@ -12718,13 +12758,7 @@ macro_rules! v1_builtin_arms {
                         $positional.len(),
                         $positional
                             .iter()
-                            .map(|v| {
-                                let d = format!("{:?}", v);
-                                match d.char_indices().nth(400) {
-                                    Some((cut, _)) => format!("{}...", &d[..cut]),
-                                    None => d,
-                                }
-                            })
+                            .map(|v| describe_value_shape(v))
                             .collect::<Vec<_>>()
                             .join(", ")
                     ),
