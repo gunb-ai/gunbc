@@ -10,6 +10,7 @@ import gunbc.host_budget_source {
   BudgetSourceMemAvailable,
   BudgetSourceCgroupMemoryHigh,
 }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 import gunbc.whole_corpus_compile_admission {
   WholeCorpusCompileAdmitted,
   WholeCorpusCompileRefusedBudgetBelowMeasuredDemand,
@@ -22,7 +23,7 @@ import gunbc.whole_corpus_compile_admission {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data witness_subject_note: String = "BOTH ARMS STAND ON INDEPENDENTLY MEASURED MACHINES, which is what makes the pair fail for a reason worth knowing in either direction rather than restating its own input.\n\nThe REFUSING budget is the one the BuildBuddy remote-execution runner actually answered with on invocation 13cf8d2e-173a-42d2-9a56-101bb3332740, the run that was SIGKILLed at exit 137. It is not chosen to make the assertion true: it is recovered from the cap=1675 line that run printed, by inverting the integer division cli_run performs.\n\nThe ADMITTING budget is gunbc.runner_slot_allocation's declared per-slot memory.high, which is what the fleet runner CI actually runs this instrument on reports. So a refusal that stopped firing would mean the measured doomed run had become admissible, and an admission that stopped holding would mean CI's own runner had been refused — two different regressions, each with its own arm here."
+data witness_subject_note: String = "BOTH ARMS STAND ON INDEPENDENTLY MEASURED MACHINES, which is what makes the pair fail for a reason worth knowing in either direction rather than restating its own input.\n\nThe REFUSING budget is the one the BuildBuddy remote-execution runner actually answered with on invocation 13cf8d2e-173a-42d2-9a56-101bb3332740, the run that was SIGKILLed at exit 137. It is not chosen to make the assertion true: it is recovered from the cap=1675 line that run printed, by inverting the integer division cli_run performs.\n\nThe ADMITTING budget is gunbc.runner_slot_allocation's declared per-slot memory.high, READ FROM THAT AUTHORITY rather than retyped here. Retyping it would have been the exact defect this PR's own threshold note argues against, and it has a live specimen one module over: host_budget_source_witness_test built its expectation from the seed mirror value retyped, so it greened whichever way the mirror went (found by stern-heron-695, corrected in gunbc#8638). A fixture input is still an input, and one that silently tracks nothing is worse than one that fails. So a refusal that stopped firing would mean the measured doomed run had become admissible, and an admission that stopped holding would mean CI's own runner had been refused — two different regressions, each with its own arm here."
 
 fn observed_doomed_budget() -> HostBudgetResolution {
   HostBudgetResolved {
@@ -36,7 +37,7 @@ fn fleet_runner_slot_budget() -> HostBudgetResolution {
     source: BudgetSourceCgroupMemoryHigh {
       cgroup_dir: "/sys/fs/cgroup/system.slice/system-actions-runner.slice/actions-runner@srv1-01.service" as NonEmptyStr,
     },
-    bytes: byte_size(16106127360),
+    bytes: gunbc_runner_slot_desired().memory_high,
   }
 }
 

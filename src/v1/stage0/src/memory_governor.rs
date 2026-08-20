@@ -236,9 +236,23 @@ pub fn floor_budget_below_minimum_footprint(budget: Option<u64>) -> Option<Strin
 /// reading rounded UP to whole-gibibyte grain: for a DEMAND figure, rounding up refuses the
 /// marginal case and rounding down admits it.
 ///
+/// This is the seed's copy of `gunbc.whole_corpus_compile_admission`
+/// `whole_corpus_compile_measured_peak_demand`, written as a canonical decimal literal so the
+/// mirror lens can join it to that row — an underscored or arithmetic literal is the same
+/// value written so that no join can reach it.
+///
+/// THE ENROLLMENT MARKER IS DELIBERATELY WITHHELD, and that is a merge-order fact rather than
+/// an oversight. `test.claim.seed_mirror_constant_lens_witness_test` (gunbc#8638) carries a
+/// BACKWARD arm requiring marker occurrences per seed file to equal roster rows homed in that
+/// file, and the marker is the enrollment act — so a marked constant with no roster row reds
+/// main for however long the two land apart. This constant is therefore left unmarked and
+/// unenrolled: invisible to both arms, which is the honest state until the row exists. The
+/// row and the marker land together, in whichever PR is second, and the doc comment above is
+/// already in the shape that makes that a one-liner.
+///
 /// dissolve-on: the emit path that retires this seed's other budget mirrors; re-measure
 /// trigger: a dated uncensored whole-tree peak taken on the `gunbc compile` route itself.
-pub const DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES: u64 = 7_516_192_768;
+pub const DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES: u64 = 7516192768;
 
 /// Arm-time admission for a WHOLE-CORPUS compile — the seed mirror of
 /// `gunbc.whole_corpus_compile_admission` `whole_corpus_compile_admission`.
