@@ -1,17 +1,6 @@
 module std.verification
 
-import std.nat { Nat }
-import std.measure { Measure, Time, Nano, measure_count }
-
-type NanosecondDuration = Measure<Time, Nano, Nat>
-
-fn nanosecond_duration(count: Nat) -> NanosecondDuration {
-  NanosecondDuration { count: count }
-}
-
-fn nanosecond_duration_count(d: NanosecondDuration) -> Nat {
-  measure_count(m: d)
-}
+import std.measure { Nanosecond, nanosecond_count }
 
 type AssertKind
   = AssertEqual
@@ -35,10 +24,10 @@ type TestNodeRef
 
 type TestNodeCostDimension {
   node: TestNodeRef
-  budget_time: NanosecondDuration
-  measured_time: NanosecondDuration
+  budget_time: Nanosecond
+  measured_time: Nanosecond
 }
 
 fn test_node_cost_within_budget(fact: TestNodeCostDimension) -> Bool {
-  nanosecond_duration_count(d: fact.measured_time) <= nanosecond_duration_count(d: fact.budget_time)
+  nanosecond_count(n: fact.measured_time) <= nanosecond_count(n: fact.budget_time)
 }
