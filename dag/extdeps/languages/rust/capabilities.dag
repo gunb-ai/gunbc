@@ -19,43 +19,7 @@ import std.algebra {
   Empty
 }
 
-data rust_capabilities_note: String = "Rust and serde CAPABILITY ROWS for the B1 capability-keyed model (operator ruling 2026-08-19, option b). std.trait_derive_shape holds the AGNOSTIC half -- the TargetCapabilityKey brand, the source-shape vocabulary, and a generic table lookup parameterised by a TargetCapabilityShapeTable. THIS module holds the RUST-SPECIFIC half: the sixteen capability keys, the shape-by-capability rows, the derive-trait list builders and the emission order. A new target language adds a sibling module of rows here and edits neither the fold nor std -- DESIGN section 4: a new target language is ROWS in extdeps/languages, never an edit to the fold; section 3 puts realization-selecting dispatch peripheral, never in the interface. WHY THE COPRODUCT WAS THE WRONG CARRIER: Serialize and Deserialize are serde names, not Rust language names -- an independently versioned upstream -- and their spellings were ALREADY cited in extdeps.languages.rust.emit rust_trait_derive_spelling, so the std coproduct was a redundant KEY SET forked from a key extdeps already spelled out. This migration finishes a move someone had already started rather than opening a new one. ROW FIDELITY: the shape-by-capability rows below were extracted mechanically from the predecessor nested match and verified cell-for-cell -- 71 admitted pairs extracted against 71 in the source -- rather than re-derived by hand."
-
-data rust_capability_debug: TargetCapabilityKey = ^target_capability_debug
-data rust_capability_clone: TargetCapabilityKey = ^target_capability_clone
-data rust_capability_copy: TargetCapabilityKey = ^target_capability_copy
-data rust_capability_partialeq: TargetCapabilityKey = ^target_capability_partialeq
-data rust_capability_eq: TargetCapabilityKey = ^target_capability_eq
-data rust_capability_partialord: TargetCapabilityKey = ^target_capability_partialord
-data rust_capability_ord: TargetCapabilityKey = ^target_capability_ord
-data rust_capability_hash: TargetCapabilityKey = ^target_capability_hash
-data rust_capability_serialize: TargetCapabilityKey = ^target_capability_serialize
-data rust_capability_deserialize: TargetCapabilityKey = ^target_capability_deserialize
-data rust_capability_add: TargetCapabilityKey = ^target_capability_add
-data rust_capability_sub: TargetCapabilityKey = ^target_capability_sub
-data rust_capability_mul: TargetCapabilityKey = ^target_capability_mul
-data rust_capability_div: TargetCapabilityKey = ^target_capability_div
-data rust_capability_rem: TargetCapabilityKey = ^target_capability_rem
-data rust_capability_neg: TargetCapabilityKey = ^target_capability_neg
-
-data rust_capability_emission_order: List<TargetCapabilityKey> = [
-  ^target_capability_debug,
-  ^target_capability_clone,
-  ^target_capability_copy,
-  ^target_capability_partialeq,
-  ^target_capability_eq,
-  ^target_capability_partialord,
-  ^target_capability_ord,
-  ^target_capability_hash,
-  ^target_capability_serialize,
-  ^target_capability_deserialize,
-  ^target_capability_add,
-  ^target_capability_sub,
-  ^target_capability_mul,
-  ^target_capability_div,
-  ^target_capability_rem,
-  ^target_capability_neg
-]
+data rust_capabilities_note: String = "Rust and serde CAPABILITY ROWS for the B1 capability-keyed model (operator ruling 2026-08-19, option b). std.trait_derive_shape holds the AGNOSTIC half -- the TargetCapabilityKey brand, the source-shape vocabulary, and a generic table lookup parameterised by a TargetCapabilityShapeTable. THIS module holds the RUST-SPECIFIC half: the closed RustCapability alphabet, the shape-by-capability rows, the derive-trait list builders, and the single lift from alphabet to key. A new target language adds a sibling module of rows here and edits neither the fold nor std -- DESIGN section 4: a new target language is ROWS in extdeps/languages, never an edit to the fold; section 3 puts realization-selecting dispatch peripheral, never in the interface. WHY THE COPRODUCT WAS THE WRONG CARRIER: Serialize and Deserialize are serde names, not Rust language names -- an independently versioned upstream -- and their spellings were ALREADY cited in extdeps.languages.rust.emit rust_trait_derive_spelling, so the std coproduct was a redundant KEY SET forked from a key extdeps already spelled out. This migration finishes a move someone had already started rather than opening a new one. ROW FIDELITY: the shape-by-capability rows below were extracted mechanically from the predecessor nested match and verified cell-for-cell -- 71 admitted pairs extracted against 71 in the source -- rather than re-derived by hand. WHAT IS DELIBERATELY ABSENT: an earlier revision of this module also declared sixteen one-line data rows binding each key name to its own symbol literal, plus a rust_capability_emission_order list. Both were authored in this migration and NEITHER WAS EVER REFERENCED -- zero call sites corpus-wide -- so they were experimental residue by DESIGN section 6, a new artifact with no final consumer, and they are deleted rather than left to read as authority. Emission order is carried by the list builders, which is where it was before this migration; a key is spelled as its symbol literal at the one place that needs it."
 
 fn rust_capability_shape_table() -> TargetCapabilityShapeTable {
   TargetCapabilityShapeTable {
@@ -390,4 +354,22 @@ fn kernel_int_arithmetic_traits() -> List<RustCapability> {
 
 fn rust_capability_keys(capabilities: List<RustCapability>) -> List<TargetCapabilityKey> {
   capabilities |> map(c => rust_capability_key(c))
+}
+
+data rust_capability_list_ops_home_note: String = "derive_traits_contain and derive_traits_union live HERE, typed on the closed RustCapability alphabet, and not in std.trait_derive_shape. They arrived in this migration by relocation rather than by authoring: in std they were typed on the OPEN TargetCapabilityKey brand while their only consumer, v1.compiler.trait_derive_emit v1_with_map_key_requirement, threads RustCapability end to end -- so the signature laundered the closed alphabet into the open key space, which is exactly the guarantee the alphabet exists to hold (DESIGN section 4b). Caught in review, not by the compiler. THE ALTERNATIVE REPAIR WAS WORSE AND IS RECORDED SO IT IS NOT RETRIED: keeping them in std and lifting to keys at the call site would have forced the union result back through a key-to-spelling step that no longer exists, since spelling is total only over the alphabet. DECLARED SECTION 2 RESIDUE: these are a set-union and a membership test over a list, specialized to one element type because this corpus carries no generic list union to instance. That is duplication waiting to happen -- the next element type that needs a union will either copy these or finally write the generic. Dissolves into a generic std list union when a second element type asks for one; deliberately not minted here, because authoring a new std primitive is a wider change than the review finding that produced this move."
+
+fn derive_traits_contain(
+  traits: List<RustCapability>,
+  capability: RustCapability
+) -> Bool {
+  traits |> any(k => k == capability)
+}
+
+fn derive_traits_union(
+  base: List<RustCapability>,
+  extra: List<RustCapability>
+) -> List<RustCapability> {
+  extra |> fold(init: base, f: (acc, k) =>
+    if derive_traits_contain(traits: acc, capability: k) { acc } else { concat(acc, [k]) }
+  )
 }

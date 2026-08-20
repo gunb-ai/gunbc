@@ -68,22 +68,6 @@ fn repr_grounding_derive_completeness_predicate(
   ))
 }
 
-fn derive_traits_contain(
-  traits: List<TargetCapabilityKey>,
-  capability_key: TargetCapabilityKey
-) -> Bool {
-  traits |> any(k => k == capability_key)
-}
-
-fn derive_traits_union(
-  base: List<TargetCapabilityKey>,
-  extra: List<TargetCapabilityKey>
-) -> List<TargetCapabilityKey> {
-  extra |> fold(init: base, f: (acc, k) =>
-    if derive_traits_contain(traits: acc, capability_key: k) { acc } else { concat(acc, [k]) }
-  )
-}
-
 data pair_completion_shape_note: String = "Target-agnostic authority for the Grothendieck pair-completion operator BODIES on GroupCompletion<M> (std.algebra). Each output component is a polynomial over the four operand components self.pos, self.neg, rhs.pos, rhs.neg: an arm is a sum of terms, a term is a product of factors, a factor names one operand component. Selection (which traits apply) stays in the capability table above; SPELLING (trait paths, where-clauses, field syntax) lives per target in extdeps.languages.rust.emit. Reuses ReprGroundingDeriveTrait as the op key rather than minting a parallel operator enum."
 
 type PairCompletionOperand

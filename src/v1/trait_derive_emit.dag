@@ -28,12 +28,13 @@ import std.trait_derive_shape {
   ReprDeriveElemUnknown,
   ReprGroundingDeriveElemShape,
   TargetCapabilityKey,
-  derive_traits_union,
   repr_grounding_derive_completeness_predicate,
   repr_grounding_group_completion_carrier,
   repr_grounding_supplemental_bool_host_bridge_target
 }
 import extdeps.languages.rust.capabilities {
+  RustCapability,
+  derive_traits_union,
   rust_capability_keys,
   fn_field_derive_traits,
   kernel_int_arithmetic_traits,
@@ -155,9 +156,9 @@ fn v1_repr_grounding_derive_elem_shape_for_ord_carrier(
 // onto this fixpoint is the named next step and is deliberately not taken here, because it would move
 // emitted bytes for a population this change has not measured.
 fn v1_with_map_key_requirement(
-  base: List<TargetCapabilityKey>,
+  base: List<RustCapability>,
   map_key_required: Bool
-) -> List<TargetCapabilityKey> {
+) -> List<RustCapability> {
   if map_key_required {
     derive_traits_union(base: base, extra: map_key_required_derive_traits())
   } else {
