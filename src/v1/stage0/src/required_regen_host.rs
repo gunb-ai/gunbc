@@ -351,11 +351,51 @@ fn is_hand_maintained_path(path: &str) -> bool {
     HAND_MAINTAINED_STAGE0_FILES.contains(&basename)
 }
 
+/// The emitted map re-keyed by basename, refusing on a collision.
+///
+/// THE EMIT AND THE COMMITTED TREE ARE TWO KEY SPACES, and every consumer here must be told
+/// which one it is holding. `compile_stage0` returns emit-relative paths (`src/foo.rs`);
+/// `committed_generated_basenames` returns bare basenames. `generated_basenames_from_emit`
+/// already carried a comment recording that comparing the two spaces "made every file mismatch
+/// in both directions" -- but only that one function was repaired. `compare_generated_surfaces`
+/// and `tree_digest_from_map` kept looking up bare basenames in the emit-keyed map, so the
+/// FIRST file they reached refused with `emit missing generated file compiler_tests.rs` and no
+/// byte was ever compared. Measured 2026-08-19: with the population mismatch cleared, that
+/// refusal is what regen returned instead of a verdict.
+///
+/// One re-keying, consumed by both, rather than a `.get(name).or_else(get("src/" + name))`
+/// fallback at each site: a per-site fallback is a second representation of the key space
+/// (DESIGN section 3) and it silently succeeds when the two spaces disagree, which is exactly
+/// the failure this function exists to make impossible. A basename collision refuses, because
+/// two emitted files sharing a basename means the committed tree cannot be compared against
+/// them by basename at all.
+fn emitted_by_basename(
+    emitted: &HashMap<String, String>,
+) -> Result<HashMap<String, String>, String> {
+    let mut out: HashMap<String, String> = HashMap::new();
+    for (path, content) in emitted {
+        let basename = Path::new(path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(path.as_str())
+            .to_string();
+        if let Some(prior) = out.insert(basename.clone(), content.clone()) {
+            if prior != *content {
+                return Err(format!(
+                    "refusal: emitted basename collision for {basename} — two emit paths differ under one basename"
+                ));
+            }
+        }
+    }
+    Ok(out)
+}
+
 fn compare_generated_surfaces(
     stage0_src: &Path,
     emitted: &HashMap<String, String>,
     generated_basenames: &[String],
 ) -> Result<SyncReport, String> {
+    let by_basename = emitted_by_basename(emitted)?;
     let mut drifted = Vec::new();
     for basename in generated_basenames {
         let committed_path = stage0_src.join(basename);
@@ -363,7 +403,7 @@ fn compare_generated_surfaces(
             &fs::read_to_string(&committed_path)
                 .map_err(|e| format!("read committed {}: {e}", committed_path.display()))?,
         )?;
-        let candidate = emitted
+        let candidate = by_basename
             .get(basename)
             .ok_or_else(|| format!("emit missing generated file {basename}"))?;
         let candidate_norm = normalize_generated_source(candidate)?;
@@ -382,12 +422,15 @@ fn verify_hand_maintained(
     stage0_src: &Path,
     work_dir: &Path,
 ) -> Result<HandVerifyReport, String> {
+    let by_basename = emitted_by_basename(emitted)?;
     let mut unverifiable = Vec::new();
     for file_name in HAND_MAINTAINED_STAGE0_FILES {
-        let candidate = emitted
-            .get(&format!("src/{file_name}"))
-            .or_else(|| emitted.get(*file_name));
-        let Some(candidate) = candidate else {
+        // The same single re-keying the two functions above use. This site previously carried the
+        // per-site `get("src/" + name).or_else(get(name))` fallback that `emitted_by_basename`
+        // exists to replace; it happened to be the one site where the fallback was written
+        // correctly, which is precisely why the class stayed invisible at the two sites where it
+        // was not.
+        let Some(candidate) = by_basename.get(*file_name) else {
             continue;
         };
         let committed_path = stage0_src.join(file_name);
@@ -503,9 +546,10 @@ fn tree_digest_from_map(
     if basenames.is_empty() {
         return Err("refusal: cannot compute candidate digest over empty population".to_string());
     }
+    let by_basename = emitted_by_basename(emitted)?;
     let mut payload = String::new();
     for name in basenames {
-        let content = emitted
+        let content = by_basename
             .get(name)
             .ok_or_else(|| format!("emit missing {name} for digest"))?;
         let norm = normalize_generated_source(content)?;
