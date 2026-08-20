@@ -904,8 +904,22 @@ Those are different claims and only the second is checkable, so the lens must as
 
 That is coproduct-variant observation coverage — decidable by execution, no intent inference, and it
 catches the class from the **evidence side** rather than the naming side, which is where the class is
-actually observable. It reports *untested*, never *unfireable*; conflating them would re-introduce
-the undecidable claim inside the mechanism meant to avoid it.
+actually observable. It reports *untested*, never *unfireable*.
+
+**And that distinction is not a new caution — it is a failure mode DESIGN.md already names.**
+
+| | claim | about |
+| --- | --- | --- |
+| **unfireable** | no fixture could ever construct this | all *possible* fixtures |
+| **untested** | no witness in the floor run constructed it | the corpus we *ran* |
+
+That is **⊥-as-answer conflated with ⊥-as-ignorance** — the *empty-observation narrow*, one level up
+and pointed at our own evidence rather than at a diff. *"I did not observe it"* rendered as *"it
+cannot happen"* is the same conflation as *"I could not compute what changed"* rendered as *"nothing
+is affected"*, and it is strictly worse than the widen for the same reason: a widen is merely
+expensive, a narrow is silently uncovered. So the lens says **untested** in those words, and
+conflating them would re-introduce the undecidable claim inside the mechanism built to avoid it —
+which is precisely the failure this scoping exists to prevent.
 
 Rejected as a candidate: **a declared vocabulary of guarantee words** (`epoch`, `fence`, `lease`,
 `token`, `lock`, `guard`, `validated`) whose module declares no durable operation. It is decidable
