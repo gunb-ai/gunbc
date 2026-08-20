@@ -77,26 +77,7 @@ service shell.Env {
   }
 }
 
-data shell_which_vs_posix_command_v_selection_note: String = "Two operations answer 'is tool X present on this target': this one and shell.PosixCommandV.Check. Reach for shell.Which.Check ONLY when the target's package set is an established in-tree fact -- an image we provision and hold operational evidence for, such as gunbc.host_cli_dependency's codex_wet_materialization_host_cli_requirements, which records an apt-install incident for the falsifier cadence runner (apt implies the Debian/Ubuntu family, and debianutils -- which ships `which` -- installs by default there). Reach for shell.PosixCommandV.Check for every other target, and always for one whose OperatingSystemSurface carries `distro_or_product: none` with no other package-set evidence beside it -- srv1-4 today (gunbc.fleet_intent), and any host reached the same way (crisp-wren-896 finding, PR #8590). The split tracks a real distinction, established-package-set vs unestablished, not whichever operation an author happened to see first; see posix_command_v_semantic_note for why command -v's own residual assumption is narrower but still not a proof."
-
-service shell.Which {
-  operation Check {
-    input { command: NonEmptyStr }
-    output { exists: Bool from "exit_success", path: FilePath? from "stdout" }
-    readonly
-    transport shell { argv: ["which", "{command}"] }
-    exit {
-      0 => Unit "Command found"
-      1 => Unit "Command not found"
-    }
-  }
-}
-
-fn shell_which_check_argv(command: NonEmptyStr) -> List<String> {
-  ["which", command as String]
-}
-
-data posix_command_v_semantic_note: String = "`command -v` is a POSIX shell builtin (IEEE 1003.1-2017 section 2.9.1.1, Command Search and Execution, invoked here through `sh -c` rather than by name), present wherever a POSIX-conforming shell is -- unlike shell.Which.Check's `which`, an EXTERNAL BINARY (part of debianutils on Debian/Ubuntu, not part of POSIX or a base busybox install) that may be absent on stripped appliance images, BMC firmware shells (Dropbear), or minimal containers. This operation's own assumption is not unconditional either: it still requires a POSIX shell at `sh` on the target's PATH. gunbc.fleet_intent's srv1-4 ComputeHost carries `fleet_intent_os_surface: OperatingSystemSurface \{ distro_or_product: none, ... \}` -- no distro or package-set authority for those hosts (crisp-wren-896 finding, PR #8590) -- so neither `which`'s presence NOR a POSIX shell's presence is an established in-tree fact for this fleet. This operation only narrows which external fact the caller is trusting, from 'a specific external binary is installed' to 'a POSIX shell is on PATH', a materially smaller and more portable assumption -- not a proof. If even that narrower assumption cannot be established for a target, the honest realization is a typed refusal, not a silent fall-through inheriting this operation's result as ground truth. See shell_which_vs_posix_command_v_selection_note for the rule choosing between this operation and shell.Which.Check."
+data posix_command_v_semantic_note: String = "`command -v` is a POSIX shell builtin (IEEE 1003.1-2017 section 2.9.1.1, Command Search and Execution, invoked here through `sh -c` rather than by name), present wherever a POSIX-conforming shell is -- unlike `which`, an EXTERNAL BINARY (part of debianutils on Debian/Ubuntu, not part of POSIX or a base busybox install) that may be absent on stripped appliance images, BMC firmware shells (Dropbear), or minimal containers. This operation's own assumption is not unconditional either: it still requires a POSIX shell at `sh` on the target's PATH. gunbc.fleet_intent's srv1-4 ComputeHost, and gunbc.ci_fleet's own CI/falsifier runner, both carry an `OperatingSystemSurface \{ distro_or_product: none, ... \}` -- no distro or package-set authority anywhere in this fleet, our own runner included (crisp-wren-896 finding, PR #8590; the modeling gap is named at std.os.types operating_system_surface_package_authority_gap_note). This operation's assumption strictly dominates `which`'s -- every target that can run `which` can run `command -v`, and the converse fails on busybox and stripped images -- which is why the former shell.Which.Check operation was deleted rather than kept as a second, narrower-scope choice (crisp-wren-896, PR #8590): a selection rule between two operations is only worth its cost when each is right somewhere the other is wrong, and here nothing was. If even the POSIX-shell assumption cannot be established for a target, the honest realization is a typed refusal, not a silent fall-through inheriting this operation's result as ground truth."
 
 data posix_command_v_argv_construction_note: String = "The probed command name is carried in its OWN argv slot (`\{command\}` bound to the shell's trailing positional parameter), never concatenated into the `-c` script text -- the same `-c script scriptname arg1` positional-parameter binding shell.Find.FilesAndSymlinksWithMode already uses. The value never touches the string parsed as shell code, so there is no escaping table to maintain and no quoting authority this operation depends on."
 
