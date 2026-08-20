@@ -10379,6 +10379,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut floor_worker_role: Option<FloorWorkerRole> = None;
     let mut scoped_batch_id: Option<String> = None;
     let mut required_floor_mode = false;
+    let mut required_ci_mode = false;
     let mut required_regen_mode = false;
     let mut required_regen_fixed_point_mode = false;
     let mut behavioral_receipt_plan_mode = false;
@@ -10406,6 +10407,9 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             "--required-floor" => {
                 required_floor_mode = true;
+            }
+            "--required-ci" => {
+                required_ci_mode = true;
             }
             "--required-regen" => {
                 required_regen_mode = true;
@@ -10526,6 +10530,235 @@ fn run() -> Result<ExitCode, ExitCode> {
         return run_behavioral_receipt_plan(&source_roots);
     }
 
+    // THE COMPOSED CI RUN — one process, one ordered fold over the phases the job used to
+    // express as four GitHub Actions steps.
+    //
+    // WHAT WAS WRONG WITH THE STEP LADDER, and it is not verbosity. Four steps meant four
+    // processes; the ORDER lived in a YAML list; each step's precondition was an `if:` naming
+    // another step's `outcome`; and the fixed-point phase received pass 1's digest by READING
+    // THE RECEIPT FILE the previous process had written. That last one is the tell — the
+    // function has taken `pass1_digest: Option<String>` all along, and the file round-trip
+    // existed only because a process boundary sat where a function call belonged. Sequencing a
+    // program's phases is the program's job (DESIGN §3: the workflow is a realization of the
+    // intent, not the place the intent lives).
+    //
+    // WHAT THE ORDER IS, AND WHY EACH PHASE RUNS ANYWAY. Only ONE real dependency exists:
+    // fixed-point needs regen's pass-1 digest, so it is skipped — visibly, as its own reported
+    // state — when regen did not produce one. Everything else is independent, so every other
+    // phase RUNS EVEN AFTER AN EARLIER FAILURE and the run reports the complete ledger. That is
+    // deliberate and it is the one behavioural change here: under the step ladder a regen
+    // failure skipped the fixed point AND, before stern-tern-636's correction, could leave the
+    // floor's own precondition reading someone else's verdict — so one defect hid the others,
+    // and a fix landed blind to whatever else was red. The line still stops (a nonzero exit on
+    // any failed phase); it stops with every deficit named. This is the stopped-line AUDIT
+    // DESIGN §5 sanctions: it reports, it never greens.
+    //
+    // WHAT IS *NOT* SHARED, stated so the saving is not overclaimed. `run_required_regen` and
+    // `run_required_regen_fixed_point` each call `compile_stage0`, and the second call STAYS:
+    // re-emitting the same input and comparing digests IS what the fixed point measures, so
+    // collapsing the two compiles would delete the measurement. The floor's own preparation is
+    // a different computation again (resolving witnesses, not emitting Rust) and shares with
+    // neither. What this removes is process startup, the receipt file round-trip, and the
+    // YAML-level orchestration — NOT a redundant compile.
+    if required_ci_mode {
+        let mut phase_failures: Vec<String> = Vec::new();
+        let mut ran: Vec<&'static str> = Vec::new();
+
+        // PHASE 1 — src/v1 .dag parse sweep. Independent of everything below it.
+        eprintln!("required-ci: phase parse (src/v1 .dag)");
+        match v1_compiler::cli_run::run_v1_src_dag_parse(&v1_compiler::cli_run::workspace_root()) {
+            Ok(count) => eprintln!("required-ci: parse OK {count} file(s) parse-clean"),
+            Err(errors) => {
+                for e in &errors {
+                    eprintln!("required-ci: parse FAIL {e}");
+                }
+                phase_failures.push(format!("parse ({} error(s))", errors.len()));
+            }
+        }
+        ran.push("parse");
+
+        // PHASE 2 — regen first generation. Produces the pass-1 digest phase 3 needs.
+        eprintln!("required-ci: phase regen (first generation vs committed)");
+        let pass1_digest: Option<String> = match v1_compiler::cli_run::run_required_regen(
+            &regen_candidate_dir,
+            &regen_receipt_path,
+        ) {
+            Ok(outcome) => {
+                // Read through accessors, and print `unmeasured` rather than a plausible
+                // default when the pass built the wrong variant (#8650's shape).
+                let fge = outcome
+                    .receipt
+                    .first_generation_equal()
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "unmeasured".to_string());
+                let candidate = outcome.receipt.candidate_artifact().unwrap_or("unmeasured");
+                eprintln!("required-ci: regen first_generation_equal={fge} candidate={candidate}");
+                for failure in &outcome.failures {
+                    eprintln!("required-ci: regen FAIL {failure}");
+                }
+                if !outcome.failures.is_empty() {
+                    phase_failures.push(format!("regen ({} failure(s))", outcome.failures.len()));
+                }
+                // THE DIGEST IS HANDED OVER IN MEMORY, and it is produced whether or not the
+                // comparison agreed: pass 1 emitted a tree either way, and asking whether the
+                // emitter reproduces itself is a SEPARATE question from whether it matches what
+                // is committed. Skipping the fixed point on a regen mismatch would conflate
+                // them and lose a determinism signal exactly when drift makes it interesting.
+                //
+                // DRIFT AND REFUSAL ARE DIFFERENT, though, and the receipt cannot tell them
+                // apart -- a population refusal writes the sentinel `refused:population` into
+                // the same `String` field a real digest occupies. Reading the receipt here would
+                // hand that sentinel to phase three, which would dutifully compare it against a
+                // real pass-two digest and report a determinism failure nobody measured. So the
+                // digest comes from the outcome's typed `FirstGeneration`, where a refusal has
+                // no digest field to read.
+                v1_compiler::cli_run::pass1_digest_for_fixed_point(&outcome).map(str::to_string)
+            }
+            Err(e) => {
+                // A REFUSAL IS NOT A MISMATCH. Nothing was emitted, so there is no pass-1
+                // digest, and phase 3 has no subject rather than a failing one.
+                eprintln!("required-ci: regen refused: {e}");
+                phase_failures.push(format!("regen refused: {e}"));
+                None
+            }
+        };
+        ran.push("regen");
+
+        // PHASE 3 — regen determinism. The ONLY phase with a real precondition.
+        match pass1_digest {
+            Some(pass1) => {
+                eprintln!("required-ci: phase regen-fixed-point (G0 reproduces itself)");
+                match v1_compiler::cli_run::run_required_regen_fixed_point(
+                    &regen_receipt_path,
+                    Some(pass1),
+                ) {
+                    Ok(outcome) => {
+                        let fpe = outcome
+                            .receipt
+                            .fixed_point_equal()
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "unmeasured".to_string());
+                        eprintln!("required-ci: regen-fixed-point fixed_point_equal={fpe}");
+                        for failure in &outcome.failures {
+                            eprintln!("required-ci: regen-fixed-point FAIL {failure}");
+                        }
+                        if !outcome.failures.is_empty() {
+                            phase_failures.push(format!(
+                                "regen-fixed-point ({} failure(s))",
+                                outcome.failures.len()
+                            ));
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("required-ci: regen-fixed-point refused: {e}");
+                        phase_failures.push(format!("regen-fixed-point refused: {e}"));
+                    }
+                }
+                ran.push("regen-fixed-point");
+            }
+            None => {
+                // SKIPPED IS ITS OWN REPORTED STATE, never silence and never a pass. The phase
+                // did not run because its input does not exist; saying nothing here would make
+                // an unrun determinism check indistinguishable from a passing one.
+                eprintln!(
+                    "required-ci: phase regen-fixed-point SKIPPED — regen produced no \
+                     pass-1 digest, so there is nothing to compare a second pass against"
+                );
+                phase_failures
+                    .push("regen-fixed-point skipped (no pass-1 digest from regen)".to_string());
+            }
+        }
+
+        // PHASE 4 — the behavioral receipt's own arms, on a controlled fixture. Independent.
+        //
+        // The two regen phases answer whether the emitted mirrors EQUAL what the authority emits
+        // and whether that emit repeats. Neither compiles a candidate and neither runs one, so a
+        // rename and a semantic change are the same event to both. DESIGN §7 says a byte-identical
+        // fixed point is explicitly NOT the goal and names behavioural equivalence on a
+        // discriminating corpus instead; this phase is the evidence that comparison still
+        // discriminates, and it runs against a fixture that authors its own input and its own
+        // expected outcome, so it cannot be satisfied by a tree in which nothing happened to change.
+        eprintln!("required-ci: phase receipt-selftest (equivalent arm and divergent arm)");
+        match behavioral_receipt_selftest(&source_roots) {
+            Ok(true) => eprintln!("required-ci: receipt-selftest OK both arms discriminate"),
+            Ok(false) => {
+                eprintln!(
+                    "required-ci: receipt-selftest FAIL — the receipt's own arms no longer \
+                     discriminate, so no verdict phase 5 reports is evidence"
+                );
+                phase_failures.push("receipt-selftest".to_string());
+            }
+            Err(e) => {
+                eprintln!("required-ci: receipt-selftest refused: {e}");
+                phase_failures.push(format!("receipt-selftest refused: {e}"));
+            }
+        }
+        ran.push("receipt-selftest");
+
+        // PHASE 5 — the receipt against the REAL modules this diff changed.
+        //
+        // SKIPPED IS A REPORTED STATE HERE AND IT IS NOT A FAILURE, which differs from phase 3
+        // deliberately. Phase 3's input is produced by phase 2 inside this same run, so its
+        // absence means something went wrong. This phase's subject is a DIFF, and on a push to
+        // main the merge base is the head — there is no pull request to check, and never was.
+        // Counting that as a failure would red every main push over a check that has no subject;
+        // reporting it as a pass is the vacuous arm review 54102 caught. So it is neither.
+        eprintln!("required-ci: phase receipt (changed authorities vs their mirrors)");
+        match behavioral_receipt_plan(&source_roots) {
+            Ok(ReceiptPlanOutcome::Ran { agreed: true }) => {
+                eprintln!("required-ci: receipt OK every selected module is equivalent")
+            }
+            Ok(ReceiptPlanOutcome::Ran { agreed: false }) => {
+                phase_failures.push("receipt".to_string())
+            }
+            Ok(ReceiptPlanOutcome::NoSubject { head }) => eprintln!(
+                "required-ci: phase receipt SKIPPED — the merge base resolves to HEAD ({head}), \
+                 so this run has no diff to observe. Not a pass over an empty selection: the \
+                 subject is absent, not agreed"
+            ),
+            Err(e) => {
+                eprintln!("required-ci: receipt refused: {e}");
+                phase_failures.push(format!("receipt refused: {e}"));
+            }
+        }
+        ran.push("receipt");
+
+        // PHASE 6 — the witness floor. Independent; runs whatever happened above.
+        eprintln!("required-ci: phase floor (one prepared subject, one fold)");
+        let commit = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
+        match v1_compiler::cli_run::run_required_floor(
+            &source_roots,
+            &commit,
+            v1_compiler::cli_run::ShardStyle::single_shard(),
+        ) {
+            Ok(outcome) => {
+                report_required_floor_outcome(&outcome);
+                if !required_floor_outcome_is_clean(&outcome) {
+                    phase_failures.push("floor".to_string());
+                }
+            }
+            Err(e) => {
+                eprintln!("required-ci: floor refused: {e}");
+                phase_failures.push(format!("floor refused: {e}"));
+            }
+        }
+        ran.push("floor");
+
+        eprintln!(
+            "required-ci: phases_run={} failed={}",
+            ran.len(),
+            phase_failures.len()
+        );
+        for failure in &phase_failures {
+            eprintln!("required-ci: FAILED PHASE {failure}");
+        }
+        return if phase_failures.is_empty() {
+            Ok(ExitCode::SUCCESS)
+        } else {
+            Err(ExitCode::from(1))
+        };
+    }
+
     if required_regen_fixed_point_mode {
         return match v1_compiler::cli_run::run_required_regen_fixed_point(&regen_receipt_path, None)
         {
@@ -10617,100 +10850,8 @@ fn run() -> Result<ExitCode, ExitCode> {
             v1_compiler::cli_run::ShardStyle::single_shard(),
         ) {
             Ok(outcome) => {
-                eprintln!(
-                    "required-floor: subject={} modules_resolved={} modules_excluded={}",
-                    outcome.subject_digest, outcome.modules_resolved, outcome.modules_excluded
-                );
-                // THE SUBJECT THE ROSTER WAS PROJECTED FROM, STATED BEFORE THE ROSTER.
-                // `planned` is the population that SURVIVED site projection; printing it
-                // without `offered` and `declined_long` made the receipt unable to say what it
-                // dropped, which is how a roster that narrowed read exactly like one that did
-                // not. The three are printed together so the subtraction is visible rather
-                // than inferable.
-                eprintln!(
-                    "required-floor: offered={} routed={} declined_long={} declined_live={} \
-                     — every discovered site is exactly one of these",
-                    outcome.sites_offered,
-                    outcome.claims_planned,
-                    outcome.declined_long_module,
-                    outcome.declined_live_tree
-                );
-                eprintln!(
-                    "required-floor: planned={} executed={} terminal={} passed={} \
-                     known_red_held={} failed={} stale_quarantine={} \
-                     interrupted_before_verdict={} completed_over_cost_requirement={} \
-                     host_tool_unresolved={} route_gap={} stale_route_gap={} \
-                     over_cost_line_diagnostic={}",
-                    outcome.claims_planned,
-                    outcome.claims_executed,
-                    outcome.receipt_identities,
-                    outcome.passed,
-                    outcome.known_red_held,
-                    outcome.failures.len(),
-                    outcome.stale_quarantine.len(),
-                    outcome.interrupted_before_verdict.len(),
-                    outcome.completed_over_cost_requirement.len(),
-                    outcome.host_tool_unresolved.len(),
-                    outcome.route_gap.len(),
-                    outcome.stale_route_gap.len(),
-                    outcome.over_cost_line_diagnostic
-                );
-                // One receipt, both numbers. This replaces a per-miss trace line that had no
-                // hit counterpart, so the ratio it is really about was never readable.
-                let (memo_hits, memo_misses) =
-                    v1_compiler::cli_run::compile_dag_rust_emit_check_memo_counts();
-                eprintln!(
-                    "required-floor: compile_dag_rust_emit_check_memo hits={memo_hits} \
-                     misses={memo_misses}"
-                );
-                for failure in &outcome.failures {
-                    eprintln!("required-floor: FAIL {failure}");
-                }
-                // SEVEN CAUSES, SEVEN COUNTS, ONE STOPPED LINE. All seven refuse the run, and
-                // they are reported apart because their remedies differ: a FAIL is a defect to
-                // fix, a STALE-QUARANTINE is a fix that already landed and a roster row to
-                // delete, an INTERRUPTED-BEFORE-VERDICT is an undecided claim whose real cost
-                // is unmeasured (operator ruling 2026-08-19, BUDGET POLICY CUT), a
-                // COMPLETED-OVER-COST-REQUIREMENT is a claim that reached a verdict and then
-                // was found to cost too much (an exact measurement, not a bound), and a
-                // HOST-TOOL-UNRESOLVED is an infra gap to provision (never a witness-cost
-                // chase), and a ROUTE-GAP is a claim that never reached its subject because
-                // its execution route has no arm for a host effect it reached for — remedied by
-                // supplying a route, never by editing the witness, and a STALE-ROUTE-GAP is
-                // that same roster's other direction — a route that WAS supplied, whose
-                // enrollment must now be deleted. Summing them into `failed` would make an un-quarantine
-                // indistinguishable from a regression in the alert signature, which is the
-                // conflation `std.witness_admission` rules out. Splitting the former
-                // `budget_refused` collection in two makes it visible whether a stopped run
-                // is a cost debt on a claim that actually finished, or a claim the safety
-                // deadline preempted before it could answer at all — but both still stop the
-                // line: an interruption is NotEvaluated, and NotEvaluated is never green.
-                for stale in &outcome.stale_quarantine {
-                    eprintln!("required-floor: STALE-QUARANTINE {stale}");
-                }
-                for refused in &outcome.interrupted_before_verdict {
-                    eprintln!("required-floor: INTERRUPTED-BEFORE-VERDICT {refused}");
-                }
-                for over_cost in &outcome.completed_over_cost_requirement {
-                    eprintln!("required-floor: COMPLETED-OVER-COST-REQUIREMENT {over_cost}");
-                }
-                for unresolved in &outcome.host_tool_unresolved {
-                    eprintln!("required-floor: HOST-TOOL-UNRESOLVED {unresolved}");
-                }
-                for gap in &outcome.route_gap {
-                    eprintln!("required-floor: ROUTE-GAP {gap}");
-                }
-                for stale in &outcome.stale_route_gap {
-                    eprintln!("required-floor: STALE-ROUTE-GAP {stale}");
-                }
-                if outcome.failures.is_empty()
-                    && outcome.stale_quarantine.is_empty()
-                    && outcome.interrupted_before_verdict.is_empty()
-                    && outcome.completed_over_cost_requirement.is_empty()
-                    && outcome.host_tool_unresolved.is_empty()
-                    && outcome.route_gap.is_empty()
-                    && outcome.stale_route_gap.is_empty()
-                {
+                report_required_floor_outcome(&outcome);
+                if required_floor_outcome_is_clean(&outcome) {
                     Ok(ExitCode::SUCCESS)
                 } else {
                     Err(ExitCode::from(1))
@@ -11915,6 +12056,122 @@ fn emit_worker_terminal_before_return(code: ExitCode) -> ExitCode {
     };
     emit_floor_terminal_outcome(outcome, &detail);
     code
+}
+
+/// Print the floor's complete ledger. ONE implementation, called by `--required-floor` and by
+/// the composed `--required-ci` run, so the two modes cannot drift into reporting the same
+/// outcome differently (DESIGN §3).
+fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOutcome) {
+    eprintln!(
+        "required-floor: subject={} modules_resolved={} modules_excluded={}",
+        outcome.subject_digest, outcome.modules_resolved, outcome.modules_excluded
+    );
+    // THE SUBJECT THE ROSTER WAS PROJECTED FROM, STATED BEFORE THE ROSTER.
+    // `planned` is the population that SURVIVED site projection; printing it
+    // without `offered` and `declined_long` made the receipt unable to say what it
+    // dropped, which is how a roster that narrowed read exactly like one that did
+    // not. The three are printed together so the subtraction is visible rather
+    // than inferable.
+    eprintln!(
+        "required-floor: offered={} routed={} declined_long={} declined_live={} \
+         — every discovered site is exactly one of these",
+        outcome.sites_offered,
+        outcome.claims_planned,
+        outcome.declined_long_module,
+        outcome.declined_live_tree
+    );
+    eprintln!(
+        "required-floor: planned={} executed={} terminal={} passed={} \
+         known_red_held={} failed={} stale_quarantine={} \
+         interrupted_before_verdict={} completed_over_cost_requirement={} \
+         host_tool_unresolved={} route_gap={} stale_route_gap={} \
+         over_cost_line_diagnostic={}",
+        outcome.claims_planned,
+        outcome.claims_executed,
+        outcome.receipt_identities,
+        outcome.passed,
+        outcome.known_red_held,
+        outcome.failures.len(),
+        outcome.stale_quarantine.len(),
+        outcome.interrupted_before_verdict.len(),
+        outcome.completed_over_cost_requirement.len(),
+        outcome.host_tool_unresolved.len(),
+        outcome.route_gap.len(),
+        outcome.stale_route_gap.len(),
+        outcome.over_cost_line_diagnostic
+    );
+    // ONE receipt, both numbers (#8642). This replaced a per-miss trace line that had no hit
+    // counterpart, so the ratio it is really about was never readable.
+    //
+    // EXACTLY ONE OF THESE MAY EXIST, and a duplicate is not cosmetic: two lines reporting one
+    // pair is the second-representation shape the receipt was introduced to remove, so
+    // duplicating it degrades the property it asserts. There WAS a second copy here briefly —
+    // this function is re-derived from main's inline block on every merge that touches it, and
+    // a note reading "each merge has to graft it back deliberately" instructed the re-add
+    // without saying to check whether main's block already carried it. It did. Caught in
+    // review 54101. The instruction is deleted with the duplicate: re-derivation copies main's
+    // block wholesale, so this line arrives WITH it and needs no grafting.
+    let (memo_hits, memo_misses) = v1_compiler::cli_run::compile_dag_rust_emit_check_memo_counts();
+    eprintln!(
+        "required-floor: compile_dag_rust_emit_check_memo hits={memo_hits} \
+         misses={memo_misses}"
+    );
+    for failure in &outcome.failures {
+        eprintln!("required-floor: FAIL {failure}");
+    }
+    // SEVEN CAUSES, SEVEN COUNTS, ONE STOPPED LINE. All seven refuse the run, and
+    // they are reported apart because their remedies differ: a FAIL is a defect to
+    // fix, a STALE-QUARANTINE is a fix that already landed and a roster row to
+    // delete, an INTERRUPTED-BEFORE-VERDICT is an undecided claim whose real cost
+    // is unmeasured (operator ruling 2026-08-19, BUDGET POLICY CUT), a
+    // COMPLETED-OVER-COST-REQUIREMENT is a claim that reached a verdict and then
+    // was found to cost too much (an exact measurement, not a bound), and a
+    // HOST-TOOL-UNRESOLVED is an infra gap to provision (never a witness-cost
+    // chase), and a ROUTE-GAP is a claim that never reached its subject because
+    // its execution route has no arm for a host effect it reached for — remedied by
+    // supplying a route, never by editing the witness, and a STALE-ROUTE-GAP is
+    // that same roster's other direction — a route that WAS supplied, whose
+    // enrollment must now be deleted. Summing them into `failed` would make an un-quarantine
+    // indistinguishable from a regression in the alert signature, which is the
+    // conflation `std.witness_admission` rules out. Splitting the former
+    // `budget_refused` collection in two makes it visible whether a stopped run
+    // is a cost debt on a claim that actually finished, or a claim the safety
+    // deadline preempted before it could answer at all — but both still stop the
+    // line: an interruption is NotEvaluated, and NotEvaluated is never green.
+    for stale in &outcome.stale_quarantine {
+        eprintln!("required-floor: STALE-QUARANTINE {stale}");
+    }
+    for refused in &outcome.interrupted_before_verdict {
+        eprintln!("required-floor: INTERRUPTED-BEFORE-VERDICT {refused}");
+    }
+    for over_cost in &outcome.completed_over_cost_requirement {
+        eprintln!("required-floor: COMPLETED-OVER-COST-REQUIREMENT {over_cost}");
+    }
+    for unresolved in &outcome.host_tool_unresolved {
+        eprintln!("required-floor: HOST-TOOL-UNRESOLVED {unresolved}");
+    }
+    for gap in &outcome.route_gap {
+        eprintln!("required-floor: ROUTE-GAP {gap}");
+    }
+    for stale in &outcome.stale_route_gap {
+        eprintln!("required-floor: STALE-ROUTE-GAP {stale}");
+    }
+}
+
+/// Whether the floor outcome permits a green run.
+///
+/// SEVEN CAUSES, ONE STOPPED LINE — and the conjunction is written once here rather than at each
+/// caller, because a mode that forgot one of them would green a run the other refused. (The
+/// count is stated because a reader checks it; it was five before main added `route_gap` and
+/// `stale_route_gap`, and the sentence went on saying five through the merge that added them.)
+fn required_floor_outcome_is_clean(outcome: &v1_compiler::cli_run::RequiredFloorOutcome) -> bool {
+    outcome.failures.is_empty()
+        && outcome.stale_quarantine.is_empty()
+        && outcome.interrupted_before_verdict.is_empty()
+        && outcome.completed_over_cost_requirement.is_empty()
+        && outcome.host_tool_unresolved.is_empty()
+        && outcome.route_gap.is_empty()
+        && outcome.stale_route_gap.is_empty()
 }
 
 fn main() -> ExitCode {
@@ -18011,7 +18268,7 @@ fn git_stdout(workspace: &Path, args: &[&str]) -> Result<String, String> {
 // not a per-PR gate, it is a budget denominated in the corpus rather than in the change — the
 // cost shape DESIGN §5 names, where the bill grows with the repository until it breaks. So the
 // subject is the modules whose `.dag` AUTHORITY moved in this diff, and the mapping from an
-// authority to its emitted mirror is read off the mirror's own `// Source module:` header rather
+// authority to its emitted mirror is read off the mirror's own authority header rather
 // than from any authored roster. Nothing here can be forged by editing a list.
 //
 // AND IF THE SELECTION CANNOT BE COMPUTED IT REFUSES. It does not widen to the whole population.
@@ -18033,12 +18290,12 @@ fn git_stdout(workspace: &Path, args: &[&str]) -> Result<String, String> {
 /// `NoEmissionChange` returns when the two-build differential lands and can actually observe it.
 #[derive(Debug, Clone, PartialEq)]
 enum ReceiptExclusion {
-    /// The authority has no emitted mirror carrying its `// Source module:` header. Real and
-    /// legitimate for exactly three files in the generated population, each for its own reason:
-    /// `lib.rs` is the crate aggregate and is derived from the module SET rather than from any
-    /// one authority; `v1_rt.rs` is emitted by the v2 compiler, a different producer; and
-    /// `compiler_tests.rs` is a `#[cfg(test)] mod`. Named rather than skipped, because a changed
-    /// authority that maps to nothing must be visible.
+    /// No emitted mirror in the generated population names this authority, under EITHER header
+    /// convention the corpus uses (`MirrorIndex`). This is a fact rather than a lookup failure:
+    /// the index refuses outright if any self-declared generated file is unindexable, so it
+    /// cannot reach this arm while blind. Legitimate whenever an authority emits something that
+    /// is not a Rust module mirror -- a workflow YAML, a fixture -- and named rather than
+    /// skipped, because a changed authority that maps to nothing must be visible.
     NoEmittedMirror { module_path: String },
 }
 
@@ -19367,18 +19624,70 @@ fn behavioral_differential(
     ReceiptVerdict::Equivalent { calls: seed.len() }
 }
 
-/// Map an authority module path to the emitted mirror that declares it as its source.
+/// Map an authority module path to the emitted mirror that declares it as its authority.
 ///
-/// DERIVED, never authored: each generated file carries `// Source module: <path>` on its second
-/// line, written by the emitter. So the mapping is a property of the artifact rather than of a
-/// list someone maintains, and it cannot be forged by editing a roster. 126 of the 129 generated
-/// files carry it; the three that do not are excluded BY NAME above rather than by silence.
-fn emitted_mirror_for_module(
-    stage0_src: &std::path::Path,
-    module_path: &str,
-) -> Result<Option<String>, String> {
+/// DERIVED, never authored: each generated file names its authority in its own header, written
+/// by the emitter, so the mapping is a property of the artifact rather than of a roster someone
+/// maintains, and it cannot be forged by editing a list.
+///
+/// TWO HEADER KEYS, BECAUSE THE CORPUS HAS TWO EMITTERS. The v1 compiler writes
+/// `// Source module: <mod>`; `gunbc`'s own artifact emitters write `// Authority: <mod> ...`.
+/// Measured over `src/v1/stage0/src`: 130 files declare themselves generated -- 126 by the first
+/// key, 2 by the second (`bootstrap_stage0_crate_layout_generated.rs`,
+/// `v1_interpreter_dispatch_generated.rs`), and `lib.rs`/`main.rs`, which are crate roots rather
+/// than module mirrors. An earlier revision of this function read ONLY the first key, so those
+/// two real mirrors of two real authorities were invisible to it: a change to either would have
+/// been reported as "no emitted mirror declares it" -- FALSE, and false in the direction that
+/// silently skips the check.
+///
+/// THAT WAS THE SAME TWO-ZEROS CONFLATION THIS MODE FIXES ONE LEVEL UP: "nothing mirrors this
+/// authority" and "I could not find what mirrors it under the key I searched" are different
+/// states with different remedies, and they printed the same exclusion line. So the index does
+/// not merely learn the second key -- learning keys one incident at a time is how the blind spot
+/// recurs. It ASSERTS ITS OWN KEY-SPACE COMPLETENESS: any file that declares itself generated
+/// and yet carries neither key is a THIRD convention, which means this index has just gone blind
+/// again, and the whole selection REFUSES rather than excluding authorities it cannot see.
+///
+/// The two crate roots are exempt by KIND, not by roster: `lib.rs` and `main.rs` are cargo's
+/// crate-root names (an external, versioned authority), they aggregate the module SET rather
+/// than mirroring any one authority, and no authority module path can ever select them.
+struct MirrorIndex {
+    by_module: std::collections::HashMap<String, String>,
+}
+
+/// The header keys, as a closed set read in one place. A key added here is a decision recorded
+/// once; a key MISSING here is caught by the completeness refusal below rather than by silence.
+const MIRROR_AUTHORITY_HEADER_KEYS: [&str; 2] = ["// Source module: ", "// Authority: "];
+
+fn mirror_authority_of_header(content: &str) -> Option<String> {
+    for line in content.lines().take(6) {
+        let line = line.trim();
+        for key in MIRROR_AUTHORITY_HEADER_KEYS {
+            if let Some(rest) = line.strip_prefix(key) {
+                // The `Authority:` form carries a symbol and a regen recipe after the module
+                // path, separated by whitespace or `;`. Take the module path and nothing else --
+                // comparing the whole remainder against a module path matches nothing, which is
+                // the same silent miss one layer down.
+                let module = rest
+                    .trim()
+                    .split([' ', ';', '\t'])
+                    .next()
+                    .unwrap_or_default()
+                    .trim();
+                if !module.is_empty() {
+                    return Some(module.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+fn build_mirror_index(stage0_src: &std::path::Path) -> Result<MirrorIndex, String> {
     let entries =
         fs::read_dir(stage0_src).map_err(|e| format!("read_dir {}: {e}", stage0_src.display()))?;
+    let mut by_module: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut unindexable: Vec<String> = Vec::new();
     for entry in entries {
         let entry = entry.map_err(|e| format!("dir entry: {e}"))?;
         let path = entry.path();
@@ -19388,20 +19697,42 @@ fn emitted_mirror_for_module(
         let Ok(content) = fs::read_to_string(&path) else {
             continue;
         };
-        for line in content.lines().take(3) {
-            if let Some(declared) = line.trim().strip_prefix("// Source module: ") {
-                if declared.trim() == module_path {
-                    return Ok(Some(
-                        path.file_name()
-                            .and_then(|n| n.to_str())
-                            .unwrap_or_default()
-                            .to_string(),
-                    ));
+        let base = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default()
+            .to_string();
+        match mirror_authority_of_header(&content) {
+            Some(module) => {
+                by_module.insert(module, base);
+            }
+            None => {
+                let declares_generated = content
+                    .lines()
+                    .next()
+                    .map(|l| l.trim_start().starts_with("// Generated by "))
+                    .unwrap_or(false);
+                let is_crate_root = matches!(base.as_str(), "lib.rs" | "main.rs");
+                if declares_generated && !is_crate_root {
+                    unindexable.push(base);
                 }
             }
         }
     }
-    Ok(None)
+    if !unindexable.is_empty() {
+        unindexable.sort();
+        return Err(format!(
+            "the mirror index cannot see {} generated file(s) that declare themselves generated \
+             but carry neither known authority header ({}): {}. A third header convention means \
+             every \"no emitted mirror\" answer below is IGNORANCE rather than a fact, so the \
+             selection refuses instead of excluding authorities it cannot see. Either the new \
+             convention joins MIRROR_AUTHORITY_HEADER_KEYS, or the emitter writes an existing one",
+            unindexable.len(),
+            MIRROR_AUTHORITY_HEADER_KEYS.join("| "),
+            unindexable.join(", ")
+        ));
+    }
+    Ok(MirrorIndex { by_module })
 }
 
 /// THE POPULATION, AND WHAT DEFEATS IT -- a census, not a gate.
@@ -19413,8 +19744,8 @@ fn emitted_mirror_for_module(
 /// exits SUCCESS on any population -- a census that refused would be a gate, and nothing here
 /// establishes what the right coverage is.
 ///
-/// The population is DERIVED, never authored: every emitted mirror names its authority on its
-/// second line, so the roster is a property of the artifacts. A module whose authority source is
+/// The population is DERIVED, never authored: every emitted mirror names its authority in its
+/// own header, so the roster is a property of the artifacts. A module whose authority source is
 /// missing is REPORTED, not skipped -- a census that silently drops what it cannot read reports a
 /// smaller corpus as a cleaner one.
 fn behavioral_receipt_census(source_roots: &[String]) -> Result<bool, String> {
@@ -19434,17 +19765,17 @@ fn behavioral_receipt_census(source_roots: &[String]) -> Result<bool, String> {
         let Ok(content) = fs::read_to_string(&path) else {
             continue;
         };
-        for line in content.lines().take(3) {
-            if let Some(declared) = line.trim().strip_prefix("// Source module: ") {
-                roster.push((
-                    declared.trim().to_string(),
-                    path.file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or_default()
-                        .to_string(),
-                ));
-                break;
-            }
+        // Same reader as the plan mode's index, so the census and the gate cannot disagree
+        // about which files mirror an authority -- including the two that name it with the
+        // second header convention.
+        if let Some(declared) = mirror_authority_of_header(&content) {
+            roster.push((
+                declared,
+                path.file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or_default()
+                    .to_string(),
+            ));
         }
     }
     roster.sort();
@@ -19874,10 +20205,27 @@ fn run_behavioral_receipt_selftest(source_roots: &[String]) -> Result<ExitCode, 
     }
 }
 
+/// STANDALONE INVOCATION, where an absent subject is a MISUSE rather than a state to report.
+///
+/// Naming this mode on the command line asserts there is a pull request to check. If the merge
+/// base is the head there is not, so the invocation is answered rather than silently succeeding
+/// -- the composed CI fold, which runs every phase whether or not each has a subject, treats the
+/// same state as a reported skip instead. Same state, two dispositions, because the two callers
+/// assert different things by calling.
 fn run_behavioral_receipt_plan(source_roots: &[String]) -> Result<ExitCode, ExitCode> {
     match behavioral_receipt_plan(source_roots) {
-        Ok(true) => Ok(ExitCode::SUCCESS),
-        Ok(false) => Err(ExitCode::from(1)),
+        Ok(ReceiptPlanOutcome::Ran { agreed: true }) => Ok(ExitCode::SUCCESS),
+        Ok(ReceiptPlanOutcome::Ran { agreed: false }) => Err(ExitCode::from(1)),
+        Ok(ReceiptPlanOutcome::NoSubject { head }) => {
+            eprintln!(
+                "behavioral-receipt: NO SUBJECT — the merge base resolves to HEAD ({head}), so \
+                 the diff compares this commit against itself and cannot observe what changed. \
+                 This is not an empty selection and is not reported as a pass: `nothing changed` \
+                 and `I could not see what changed` are different states. This mode's subject is \
+                 a pull request against main; invoke it there"
+            );
+            Err(ExitCode::from(1))
+        }
         Err(refusal) => {
             eprintln!("behavioral-receipt: refused: {refusal}");
             Err(ExitCode::from(1))
@@ -19885,7 +20233,21 @@ fn run_behavioral_receipt_plan(source_roots: &[String]) -> Result<ExitCode, Exit
     }
 }
 
-fn behavioral_receipt_plan(source_roots: &[String]) -> Result<bool, String> {
+/// What the per-PR receipt phase found, as a state rather than a bool.
+///
+/// `NoSubject` exists because "this run has nothing to check" and "this run checked and agreed"
+/// are the two zeros this mode was corrected for once already, one level down. Collapsing them
+/// into `Ok(true)` is precisely how the vacuous pass on `push: main` was written.
+#[derive(Debug, Clone, PartialEq)]
+enum ReceiptPlanOutcome {
+    /// The merge base resolves to HEAD, so no diff exists to read. Not a pass, not a failure --
+    /// an absent subject.
+    NoSubject { head: String },
+    /// A selection was computed and every selected module reached a verdict.
+    Ran { agreed: bool },
+}
+
+fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome, String> {
     let workspace = v1_compiler::cli_run::workspace_root();
     let stage0_src = workspace.join("src/v1/stage0/src");
 
@@ -19920,13 +20282,7 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<bool, String> {
     // makes sense instead of guessing at a substitute baseline: the subject of this gate is a
     // pull request, and a push to a branch that IS the baseline has no such subject.
     if base == head {
-        return Err(format!(
-            "the merge base resolves to HEAD ({head}), so the diff compares this commit against \
-             itself and CANNOT observe what changed. Refusing rather than reporting the resulting \
-             zero-path observation as an empty selection: `nothing changed` and `I could not see \
-             what changed` are different states. This mode's subject is a pull request against \
-             main; invoke it there"
-        ));
+        return Ok(ReceiptPlanOutcome::NoSubject { head });
     }
 
     let changed = git_stdout(
@@ -19944,6 +20300,11 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<bool, String> {
     let modules = collect_dag_module_sources(source_roots)?;
     let declared_anywhere = declared_type_names(&modules)?;
 
+    // Built ONCE, before any authority is classified, and it refuses if it cannot see the whole
+    // generated population -- so an exclusion below is a fact about the corpus rather than a fact
+    // about what this reader happened to recognise.
+    let mirror_index = build_mirror_index(&stage0_src)?;
+
     let mut exclusions: Vec<ReceiptExclusion> = Vec::new();
     let mut plans: Vec<(String, ModuleCorpusPlan, String)> = Vec::new();
 
@@ -19955,7 +20316,7 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<bool, String> {
         let Some(module_path) = v1_compiler::cli_run::extract_module_path_public(&source) else {
             continue;
         };
-        match emitted_mirror_for_module(&stage0_src, &module_path)? {
+        match mirror_index.by_module.get(&module_path).cloned() {
             None => exclusions.push(ReceiptExclusion::NoEmittedMirror { module_path }),
             Some(mirror) => {
                 // The Rust module path is the mirror's basename without its extension — derived
@@ -19991,8 +20352,10 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<bool, String> {
     for e in &exclusions {
         match e {
             ReceiptExclusion::NoEmittedMirror { module_path } => eprintln!(
-                "behavioral-receipt: excluded {module_path} — no emitted mirror declares it as \
-                 its source module"
+                "behavioral-receipt: excluded {module_path} — no emitted mirror in the \
+                 generated population names it as its authority, under either header \
+                 convention (the index refuses outright if any generated file is \
+                 unindexable, so this is a fact about the corpus and not a lookup miss)"
             ),
         }
     }
@@ -20043,7 +20406,7 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<bool, String> {
              nothing to compare and this run costs nothing. That is a real pass over an EMPTY \
              selection, stated rather than printed as a bare PASS"
         );
-        return Ok(true);
+        return Ok(ReceiptPlanOutcome::Ran { agreed: true });
     }
 
     // A DECLARED CAP, REFUSED ABOVE RATHER THAN SAMPLED (operator ruling, 2026-08-20).
@@ -20083,7 +20446,7 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<bool, String> {
                 .collect::<Vec<_>>()
                 .join(", ")
         );
-        return Ok(false);
+        return Ok(ReceiptPlanOutcome::Ran { agreed: false });
     }
 
     let emitted = v1_compiler::cli_run::emitted_generated_sources()?;
@@ -20143,5 +20506,7 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<bool, String> {
             plan.refused.len()
         );
     }
-    Ok(all_equivalent)
+    Ok(ReceiptPlanOutcome::Ran {
+        agreed: all_equivalent,
+    })
 }
