@@ -55,6 +55,18 @@ type SeedRetainedSupportDirRegistration {
 // `gunbc_stage0_crate_layout_generated.rs`, which is itself one of the files
 // `--required-regen` reports as drifted -- so these declarations reach the built crate when the
 // seed is regenerated, not when this row merges.
+//
+// ONE ROW DELETED (2026-08-20): `v1_compiler_expected_red_roster_join`. #8527 modelled that module
+// in `src/v1/expected_red_roster_join.dag` and deleted its hand-authored `.rs`, so it became
+// compiler-emitted -- but that commit RENAMED its registration row here (`expected_red_roster_join`
+// -> `v1_compiler_expected_red_roster_join`) instead of deleting it. A module cannot be both
+// emitted and seed-retained: the emitted lib.rs declares the file-derived set AND splices this
+// hand-maintained block, so the basename appeared twice. The failure is two-generation and neither
+// generation names the cause: generation 1 emits the block from the STALE committed
+// `gunbc_stage0_crate_layout_generated.rs` carrying the pre-#8527 bare `expected_red_roster_join`,
+// giving `E0583 file not found for module`; generation 2 emits the current basename and gives
+// `E0428 defined multiple times`. Measured, not predicted -- an earlier reading of this file
+// concluded the class self-heals in generation 2, which the E0428 refutes.
 data seed_retained_intrinsic_registrations: List<SeedRetainedIntrinsicRegistration> = [
   SeedRetainedIntrinsicRegistration { basename: "v1_interpreter", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "bounded_shell_host_drain", has_pub_mod: false, is_dir: false },
@@ -70,7 +82,6 @@ data seed_retained_intrinsic_registrations: List<SeedRetainedIntrinsicRegistrati
   SeedRetainedIntrinsicRegistration { basename: "pre_push", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "census_exclude_derive", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "derived_realization_schedule", has_pub_mod: true, is_dir: false },
-  SeedRetainedIntrinsicRegistration { basename: "v1_compiler_expected_red_roster_join", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "memory_governor", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "std_lens_verdict", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "module_path_index", has_pub_mod: true, is_dir: true },

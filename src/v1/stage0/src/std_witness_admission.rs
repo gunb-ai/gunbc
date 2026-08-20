@@ -20,7 +20,7 @@ use std::rc::Rc;
 pub fn witness_admission_authority_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Phase 0(b) admission invariant (docs/plans/module-identity-storage-binding-design.md): every enrolled witness row names an executing consumer — discovery rows run per selection; SelfEmitted receipts run on the falsifier wet cadence; known-red quarantined rows run on a probe cadence expecting red (greening is a counted un-quarantine event); operator-ruled OFFLINE rows carry an explicit local-recipe consumer. Enrolled-with-zero-consumers is a typed refusal, never silent. The prior dissolve-on FIRED 2026-07-22: witness exclusion rows now carry derived consumer classification on this module's WitnessConsumerCadence authority (gunbc.ci_layer_roots.witness_exclusion_frontier; group-of-units ruling, gunbc.roster_registry). Homed in dag/std (std.witness_admission) so dag-tree consumers resolve it in dag-only closures — the authority moved here from src/v2/std 2026-07-23 when gunbc.ci_layer_roots became a consumer. This module remains the cadence vocabulary authority; dissolves into the enforcement-intent registry when that thread lands.".to_string()
+            "Phase 0(b) admission invariant (docs/plans/module-identity-storage-binding-design.md): every enrolled witness row names an executing consumer — discovery rows run per selection; SelfEmitted receipts run on the falsifier wet cadence; known-red quarantined rows run on a probe cadence expecting red (greening is a counted un-quarantine event); operator-ruled OFFLINE rows carry an explicit local-recipe consumer. Enrolled-with-zero-consumers is a typed refusal, never silent. The prior dissolve-on FIRED 2026-07-22: witness exclusion rows now carry derived consumer classification on this module's WitnessConsumerCadence authority (gunbc.ci_layer_roots.witness_exclusion_frontier; group-of-units ruling, gunbc.roster_registry). Homed in dag/std (std.witness_admission) so dag-tree consumers resolve it in dag-only closures — the authority moved here from src/v2/std 2026-07-23 when gunbc.ci_layer_roots became a consumer. This module remains the cadence vocabulary authority; dissolves into the enforcement-intent registry when that thread lands.\n\nLIVE-EXECUTION CAVEAT (2026-08-19, dashboard node adhoc-1eb1a9f9-ad9; operator ruling relayed by royal-hawk-392, revised same day to withdraw an earlier restore-the-executor instruction): the sentence above describes what each cadence arm MEANS, not that a scheduler for it is currently running. falsifier.yml, the workflow that scheduled FalsifierSelfHostWet / FalsifierRehomedBinWet / FalsifierSubstrateLongLane / BinWitnessWet / QuarantineProbeExpectRed, was deleted at 611fd02770 (2026-08-15, #8283) — FLOOR-Y's deliberate cut, which reserved re-adding a scheduled executor for a separate future operator agreement rather than restoring or improvising one here. Cadence membership (WitnessConsumerCadence) is a classification of WHICH policy claims a row and stays correct; it is not proof anything executes that row — v2.workflow.witness_admission witness_execution_standing_for_row answers coverage only through DeclaredCadenceUnrealized | WitnessHasExecutingConsumer, gated on a closed per-cadence predicate naming which of the nine cadences presently have a live scheduled route (today: DiscoverySelection, OfflineLocalRecipe, FixtureExplicitRoster only), never on enum membership alone and never on a registry carrier — no WitnessCadenceRealization mechanism exists or is planned by this change. This is a RETROSPECTIVE declaration, not a new drop: the five falsifier-family cadences above lost their executing consumer at 611fd02770/#8283, and every row classified into one of them has read as covered ever since despite executing nowhere. DeclaredCadenceUnrealized types that gap rather than closing it; restoring a scheduled route for any of these cadences is a separate, later operator decision, not implied by this note.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -146,6 +146,29 @@ pub fn witness_consumer_cadence_eq(a: WitnessConsumerCadence, b: WitnessConsumer
     }
 }
 
+pub fn witness_cadence_has_scheduled_route_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "THE CLOSED PER-CADENCE REALIZATION GATE (added 2026-08-19, dashboard node adhoc-1eb1a9f9-ad9). Cadence membership answers WHICH POLICY a row belongs to; this answers whether that policy currently has anything executing it. It is an exhaustive match over the nine WitnessConsumerCadence arms, not a registry carrier — no WitnessCadenceRealization mechanism exists, per the operator's explicit reversal of an earlier instruction to build one. Today exactly three arms have a live scheduled route: DiscoverySelection (per-PR discovery), OfflineLocalRecipe (an explicit local-recipe consumer is, by definition, the executing consumer), and FixtureExplicitRoster (an explicit admission row IS the enrollment). The five falsifier-family arms — FalsifierSelfHostWet, FalsifierRehomedBinWet, FalsifierSubstrateLongLane, BinWitnessWet, QuarantineProbeExpectRed — return false: falsifier.yml, the workflow that scheduled all five, was deleted at 611fd02770 (2026-08-15, #8283), and no replacement executor exists. NoConsumer also returns false and is unreachable at the one call site that consults this gate, since that site only reaches it after NoConsumer has already been dispatched separately. Restoring a scheduled route for any of the five is a separate, later, explicitly-agreed operator decision — this gate is the mechanical fact of today's state, not a policy choice made here.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn witness_cadence_has_scheduled_route(cadence: WitnessConsumerCadence) -> bool {
+    match cadence.clone() {
+        WitnessConsumerCadence::DiscoverySelection => true,
+        WitnessConsumerCadence::FalsifierSelfHostWet => false,
+        WitnessConsumerCadence::FalsifierRehomedBinWet => false,
+        WitnessConsumerCadence::FalsifierSubstrateLongLane => false,
+        WitnessConsumerCadence::BinWitnessWet => false,
+        WitnessConsumerCadence::QuarantineProbeExpectRed => false,
+        WitnessConsumerCadence::OfflineLocalRecipe => true,
+        WitnessConsumerCadence::FixtureExplicitRoster => true,
+        WitnessConsumerCadence::NoConsumer => false,
+    }
+}
+
 pub fn witness_consumer_cadence_content_hash_structural(
     cadence: WitnessConsumerCadence,
 ) -> Rc<Fnv1a64Structural> {
@@ -264,7 +287,7 @@ impl WitnessExpectedVerdict {
 pub fn witness_execution_standing_axis_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "TWO INDEPENDENT AXES, because ALLOWED TO REMAIN and HAS AN EXECUTING CONSUMER are different facts and one success arm cannot carry both (operator ruling on gunbc#7804, 2026-08-04). The first shape of the freeze wall returned WitnessAdmissionHolds — the same arm an executing consumer returns — for a frozen legacy row, and then reported the live gate green as evidence that every current row is admitted. But a frozen row has NO executing consumer; that is the entire content of its debt. Freezing establishes that the unexecuted hole existed at the cut and cannot grow. It does not establish coverage, and returning the success arm made the same fact answer differently depending on which door it entered: exact function-grain admission correctly REFUSES OfflineLocalRecipe because a local recipe is not an executing cadence, while path policy was returning success for exactly that.\n\nAXIS ONE — WitnessExecutionStanding, what actually runs this witness. WitnessHasExecutingConsumer is the only arm that means covered, and it carries WHICH cadence so the claim is checkable rather than a bare yes. LegacyFrozenPathDeferral means the identity is in the frozen baseline: tolerated by the migration ratchet, NOT covered, and anything downstream asking whether the behavior is covered must receive no from this arm. UnclassifiedPathDeferral is a row a broad OfflineLocalRecipe path policy claims but the freeze does not — the forward hole, refused. UnexecutedDeferredWitness is a row nothing claims at all; its remedy is to name a cadence or delete the witness, and it is nearly empty while the path-policy class is in the hundreds, which is why one arm would have hidden the larger population behind the rarer one.\n\nAXIS TWO — FrozenBaselineStanding, whether the migration ratchet still holds, a property of the ROSTER rather than of any row. Allowed and Shrank both permit the tolerated arm; Grew and Stale refuse regardless of any individual row, because a baseline that grew is the escape hatch reopening and a baseline naming a departed witness is an exemption the next witness to take that name inherits.\n\nTHE GATES DERIVE, and they are deliberately different: the coverage question admits ONLY WitnessHasExecutingConsumer, so seven hundred dark witnesses never read as covered; the floor gate additionally tolerates LegacyFrozenPathDeferral while axis two holds, so the tree stays green under the ratchet without anything claiming those rows execute.".to_string()
+            "TWO INDEPENDENT AXES, because ALLOWED TO REMAIN and HAS AN EXECUTING CONSUMER are different facts and one success arm cannot carry both (operator ruling on gunbc#7804, 2026-08-04). The first shape of the freeze wall returned WitnessAdmissionHolds — the same arm an executing consumer returns — for a frozen legacy row, and then reported the live gate green as evidence that every current row is admitted. But a frozen row has NO executing consumer; that is the entire content of its debt. Freezing establishes that the unexecuted hole existed at the cut and cannot grow. It does not establish coverage, and returning the success arm made the same fact answer differently depending on which door it entered: exact function-grain admission correctly REFUSES OfflineLocalRecipe because a local recipe is not an executing cadence, while path policy was returning success for exactly that.\n\nAXIS ONE — WitnessExecutionStanding, what actually runs this witness. WitnessHasExecutingConsumer is the only arm that means covered, and it carries WHICH cadence so the claim is checkable rather than a bare yes. LegacyFrozenPathDeferral means the identity is in the frozen baseline: tolerated by the migration ratchet, NOT covered, and anything downstream asking whether the behavior is covered must receive no from this arm. UnclassifiedPathDeferral is a row a broad OfflineLocalRecipe path policy claims but the freeze does not — the forward hole, refused. UnexecutedDeferredWitness is a row nothing claims at all; its remedy is to name a cadence or delete the witness, and it is nearly empty while the path-policy class is in the hundreds, which is why one arm would have hidden the larger population behind the rarer one.\n\nAXIS TWO — FrozenBaselineStanding, whether the migration ratchet still holds, a property of the ROSTER rather than of any row. Allowed and Shrank both permit the tolerated arm; Grew and Stale refuse regardless of any individual row, because a baseline that grew is the escape hatch reopening and a baseline naming a departed witness is an exemption the next witness to take that name inherits.\n\nTHE GATES DERIVE, and they are deliberately different: the coverage question admits ONLY WitnessHasExecutingConsumer, so seven hundred dark witnesses never read as covered; the floor gate additionally tolerates LegacyFrozenPathDeferral while axis two holds, so the tree stays green under the ratchet without anything claiming those rows execute.\n\nAXIS ONE, FIFTH ARM (added 2026-08-19, dashboard node adhoc-1eb1a9f9-ad9): DeclaredCadenceUnrealized is distinct from every other refusing arm because it is not a path-policy classification at all — it is an explicit or legacy roster row whose cadence names a real policy (FalsifierSelfHostWet, FalsifierRehomedBinWet, FalsifierSubstrateLongLane, BinWitnessWet, QuarantineProbeExpectRed today) that currently has no scheduled executing route, since falsifier.yml was deleted at 611fd02770 (#8283). It differs from UnexecutedDeferredWitness (nothing claims the row) and from LegacyFrozenPathDeferral (a path-policy tolerance, not a named cadence): here a cadence claims the row and would cover it once realized, but does not today. Like every refusing arm it reads false from both witness_has_executing_consumer and witness_floor_admission_holds — a declared-but-unrealized cadence is not floor-tolerated debt, it is an uncovered gap that happens to already have a name.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -273,10 +296,26 @@ pub fn witness_execution_standing_axis_note() -> String {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum WitnessExecutionStanding {
-    WitnessHasExecutingConsumer { cadence: WitnessConsumerCadence },
-    LegacyFrozenPathDeferral { entry: String, function: String },
-    UnclassifiedPathDeferral { entry: String, function: String },
-    UnexecutedDeferredWitness { entry: String, function: String },
+    WitnessHasExecutingConsumer {
+        cadence: WitnessConsumerCadence,
+    },
+    LegacyFrozenPathDeferral {
+        entry: String,
+        function: String,
+    },
+    UnclassifiedPathDeferral {
+        entry: String,
+        function: String,
+    },
+    UnexecutedDeferredWitness {
+        entry: String,
+        function: String,
+    },
+    DeclaredCadenceUnrealized {
+        cadence: WitnessConsumerCadence,
+        entry: String,
+        function: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

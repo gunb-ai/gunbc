@@ -77,10 +77,13 @@ Measured on `dag/**` and `src/v2/**`, excluding `/test/`, `*_test.dag` and fixtu
 | counted retained-script bridge call sites | 48 across 13 files, enumerated below |
 | distinct `fn *_argv` builders (whole tree) | 333, of which ~158 lead with `shape`/`witness`/`operation`/`typed` and model no tool at all |
 
-The 13 files, named rather than counted, because a count cannot expose a misfiled row:
+The files, named rather than counted, because a count cannot expose a misfiled row. **12 at `98d7147f9e`, not the 13
+first measured** — `gunbc.provider_wire_evidence` is struck below, having migrated fully to typed `extdeps.shell`
+operations; it is retained in the list struck-through rather than silently dropped, because a census row that vanishes
+without explanation cannot be told from one that was never measured:
 
 `gunbc.command_runner` · `gunbc.host_effect_realize` · `gunbc.retained_shell_script` · `gunbc.package_delivery` ·
-`gunbc.codex_app_server_press` · `gunbc.bmc_netboot_serve` · `gunbc.provider_wire_evidence` · `gunbc.design_document` ·
+`gunbc.codex_app_server_press` · `gunbc.bmc_netboot_serve` · ~~`gunbc.provider_wire_evidence`~~ · `gunbc.design_document` ·
 `tools.gunbc_ci` · `tools.emit_host_gate` · `tools.host_prelude` · `tools.interpreter_dispatch_bijection_real_roster_transport` ·
 `v2.lens.meta_exec_confinement`
 
@@ -89,13 +92,40 @@ The 13 files, named rather than counted, because a count cannot expose a misfile
 "complete, current" claim is true as of its stated commit and false as of this one; it is a snapshot, and this row is
 its correction rather than a second census.
 
-**And a classification question the count concealed, flagged not settled.** `package_delivery` (7 calls) and
-`codex_app_server_press` (3) route through `retained_foreign`, whose `dissolves_to` is `retained_foreign_emit_ref` —
-the Bash emitter, the destination for foreign executors and pre-runtime bootstrap. Both appear to run inside a present
-gunbc runtime, which would make their destination typed effects (`retained_runtime`) instead. If that is right, ten
-bridge calls declare the wrong dissolution target, and the bucket is precisely what a future session reads to decide
-where they go. Recorded as a question for their owners — the executor window is the deciding fact and this document
-does not own it — not as a verdict rendered from a grep.
+**The classification question is now SETTLED, by measurement rather than by grep, and the answer is the one the
+question feared.** These three modules were flagged as possibly-misfiled because they route through `retained_foreign`,
+whose `dissolves_to` is the Bash emitter — the destination for *foreign executors and pre-runtime bootstrap* — while
+appearing to run inside a present gunbc runtime. Measured on `98d7147f9e`:
+
+| module | `retained_foreign(` call sites | at the flag | now |
+|---|---|---|---|
+| `gunbc.package_delivery` | 5 | 7 | partially migrated |
+| `gunbc.codex_app_server_press` | 1 | 3 | partially migrated |
+| `gunbc.provider_wire_evidence` | **0** | (flagged) | **fully migrated; import is dead** |
+
+**The executor window is decided by construction, not by inspection of intent.** `package_delivery` calls
+`shell.Mkdir.Parents` and `shell.Find.FilesAndSymlinksWithMode` — typed operations that *cannot execute without a
+present gunbc runtime* — in the same function bodies that then fall back to `retained_foreign`. A function that
+interleaves a typed operation with a retained foreign script is runtime-present by the fact that its first half ran.
+So the destination for the remaining six calls is typed effects (`retained_runtime`), not the Bash emitter, and the
+`dissolves_to` on those sites is wrong. This is a *decidable* question and it did not need its owners: the presence of
+a typed operation in the same scope answers it.
+
+**`provider_wire_evidence` is no longer a bridge file at all** and should be struck from the 13 above, leaving 12. Its
+effects became typed `extdeps.shell` operations under review 50540; what survives is an unused
+`import gunbc.retained_shell_script { retained_foreign }`, which is dead and should be deleted. A module counted as a
+bridge on the strength of an import it does not use is the census direction over-reporting in the same way §0c records
+it over-reporting elsewhere.
+
+**A partial migration left a second instance of the exact defect its own note claims to have fixed.**
+`package_materialized_tree_observation_note` records that the `find`-piped-to-`sort` string was replaced by
+`shell.Find.FilesAndSymlinksWithMode` plus in-substrate `std` sort, because the string form escaped its quoting on a
+root containing an apostrophe and forked an authority `extdeps.shell` already owned. That migration landed at one site.
+Another `find '…' -type f -name '*.json' | sort` remains in the same module, built by the same concat-into-a-quoted-string
+shape, with the same escape exposure and the same locale-dependent collation the note calls out. The note is true about
+the site it describes and reads as true about the module. **A carrier that records a fix should name the population it
+fixed**, or the next reader takes the note as coverage — which is what happened here, to me, until the count disagreed
+with the prose.
 
 **The load-bearing reading:** `transport shell` is overwhelmingly an `extdeps` population — 230 of 236 production lines — i.e. it sits *beneath already-typed operations*, in the interface layer, not in the intent. This lane's original job, getting shell out of the intent, is therefore substantially done, and most of what remains is transport depth inside a CLI-backed cell. That is #8467's subject, not this document's.
 
@@ -103,7 +133,7 @@ Two cautions against over-reading it. The `dag/gunbc` argv residue is **172 line
 
 **Do not turn these counts into a work plan.** Under the replacement-migration rule the unit is a root consumer × subject population, and the census direction reliably overestimates: sizing by argv occurrence, then by executable head, then by tool, each produced an inflated number, because a tool vertical, its site cutovers and its `host_effect_apply` caller are commonly **one** vertical whose acceptance condition is the old site's deletion — not three workstreams. The domain clusters this document already tracks in §5.D, each with its own un-defer trigger, are the better unit.
 
-**This section is a boundary and scoping increment, NOT a migration closeout receipt.** Neither finish line below is met at the commit introducing this text: `HostEffect.ShellCommand` still exists and is still constructed (including `host_effect_plan`'s empty placeholder), `command_runner`'s argv → text → heredoc route is live, and `retained_runtime` / `retained_srvn` remain defined and populated. Stated because a section naming a finish line reads, at a glance, like a claim to have reached it.
+**This section is a boundary and scoping increment, NOT a migration closeout receipt.** Neither finish line below is met at the commit introducing this text: `HostEffect.ShellCommand` still exists and is still constructed (including `host_effect_plan`'s empty placeholder), and `retained_runtime` / `retained_srvn` remain defined and populated (elsewhere in the tree — `bmc_netboot_serve`, `host_effect_realize`). Stated because a section naming a finish line reads, at a glance, like a claim to have reached it. *(Corrected 2026-08-20: this previously also named `command_runner`'s argv → text → heredoc route as live. That route is now deleted — `run_shell_command`/`run_shell_command_capture` ask `command_over_transport` once for the outer `ArgvCommand`, for either transport, and hand it directly to `shell.Exec.RunArgv`, with no per-transport match and no shell round trip. `command_runner_dissolution_trigger`'s first clause — `host_effect_apply` binding `ArgvCommand` execution — is unaffected and stays open.)*
 
 ### Two finish lines, named separately
 
@@ -124,7 +154,7 @@ SHELL-DAG is this document's; CLI-AUTHORITY is `cli-invocation-emission-design.m
 
 `extdeps.exec.command` `command_over_transport` constructs `ArgvCommand { argv: append(ssh_exec_prefix(target: t), items: command.argv) }`. That is exactly the `append(ssh_prefix, inner.argv)` composition §0c forbids — SSH is a nested target whose carrier is one RFC 4254 command string, not a prefix on an argument vector. It is production code beneath the generic runner, so every SSH-transported `ArgvCommand` in the tree flows through it, and it is the concrete mechanism by which argument boundaries are lost remotely.
 
-It sits in the same file as `gunbc.command_runner`'s round trip — `run_shell_command` takes a typed `ArgvCommand`, renders it to quoted text via `shell_command_render`, and posts it through `shell.Exec.Run`'s heredoc transport. That carrier already declares the repair in `command_runner_dissolution_trigger`: *dissolves when `host_effect_apply` binds `ArgvCommand` execution as a typed transport handler*. So the runner cut and the SSH target are one vertical, not two, and the debt was declared before it was scoped.
+It sits in the same file as `gunbc.command_runner`. *(Corrected 2026-08-20: this paragraph previously described `run_shell_command` as rendering the outer `ArgvCommand` to quoted text via `shell_command_render` and posting it through `shell.Exec.Run`'s heredoc transport. That round trip is deleted — `run_shell_command` now asks `command_over_transport` once, per transport, and hands the resulting outer argv directly to `shell.Exec.RunArgv`, with no shell and no per-transport match at the run site.)* `command_runner_dissolution_trigger` still declares the repair its first clause owns: *dissolves when `host_effect_apply` binds `ArgvCommand` execution as a typed transport handler*. So the runner cut and the SSH target were one vertical, not two, and the debt was declared before it was scoped — the SSH target landed in #8596, and the runner's own heredoc hop is now gone for both arms; what remains open is `host_effect_apply` itself.
 
 ### What is owed, and by whom
 

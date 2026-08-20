@@ -18,16 +18,16 @@ data echo_cli_tool: CliTool = CliTool {
   installable_via: [SourceCoreutils],
 }
 
-data witness_note: String = "WET EXECUTION: observe_host_cli_dependency must not match shell.Which.Check.path (Optional straddle). Present and absent are both successful typed observations — only a runtime error is RED."
+data witness_note: String = "WET EXECUTION: observe_host_cli_dependency must not match shell.PosixCommandV.Check.path (Optional straddle; migrated off shell.Which.Check, crisp-wren-896, PR #8590). Present and absent are both successful typed observations — only a runtime error is RED."
 
-test fn observe_echo_wet_which_check_does_not_crash() -> Bool {
+test fn observe_echo_wet_posix_command_v_check_does_not_crash() -> Bool {
   match observe_host_cli_dependency(tool: echo_cli_tool) {
     HostCliDependencyPresent => true
     HostCliDependencyAbsent { tool: _, hint: _ } => true
   }
 }
 
-test fn observe_npm_wet_which_check_does_not_crash() -> Bool {
+test fn observe_npm_wet_posix_command_v_check_does_not_crash() -> Bool {
   match observe_host_cli_dependency(tool: npm_cli_tool) {
     HostCliDependencyPresent => true
     HostCliDependencyAbsent { tool: _, hint: _ } => true
