@@ -37,16 +37,25 @@ type MirrorGenerator
 
 type MirrorDebtDisposition
   = CarriedAuthorityAdvanced
+  | CarriedRegenerationBlocked { blocker: String }
   | CarriedReasonNotEstablished
 
 // CarriedAuthorityAdvanced: MEASURED as ordinary staleness — the authority moved and the
 // committed mirror did not follow, so a regeneration would close it and nothing more is wrong.
 // Two mechanisms were observed directly in the emitted-versus-committed diff:
-//   MODULE-SET DRIFT     the emitted crate names modules the committed mirror does not, and
-//                        renames one (`expected_red_roster_join` becomes
-//                        `v1_compiler_expected_red_roster_join`). Seen in lib.rs, which is
-//                        short exactly one `pub mod` line, and in the crate-layout mirror,
-//                        whose three string-literal module lists are each behind.
+//   MODULE-SET DRIFT     the emitted crate names modules the committed mirror does not. Seen
+//                        in lib.rs, short exactly one `pub mod` line, and in the crate-layout
+//                        mirror, whose three string-literal module lists are each behind.
+//                        CAUTION, corrected after this note was first written: the apparent
+//                        RENAME of `expected_red_roster_join` to
+//                        `v1_compiler_expected_red_roster_join` is NOT lag. It is two
+//                        producers declaring one module — the .dag authority makes it
+//                        compiler-emitted while a SeedRetainedIntrinsicRegistration row still
+//                        claims it as seed-retained — so the stale literal ADDS rather than
+//                        REPLACES, which is what duplicated authority does and lag does not.
+//                        Those two paths are therefore CarriedRegenerationBlocked, not
+//                        CarriedAuthorityAdvanced; reading the symptom as staleness is what
+//                        put a false disposition on them.
 //   MATCH-GUARD EMISSION the emitter now emits `if matches!(..)` guards on match arms that the
 //                        committed mirror carries unguarded. Seen in
 //                        std_occurrence_binding_candidates.rs, v1_compiler_infer_resolve.rs and
@@ -143,9 +152,18 @@ data stage0_mirror_debt_rows: List<MirrorDebtRow> = [
     path: "src/v1/stage0/src/gunbc_stage0_crate_layout_generated.rs",
     authority: SourceModule { name: "gunbc.stage0_crate_layout_generated" },
     generator: Stage0Emit,
-    disposition: CarriedAuthorityAdvanced
+    disposition: CarriedRegenerationBlocked {
+      blocker: "Same duplicated authority as lib.rs: this mirror splices the generated_pub_mod_block that carries the second declaration of v1_compiler_expected_red_roster_join. Regenerating yields E0428 at generation 2."
+    }
   },
-  MirrorDebtRow { path: "src/v1/stage0/src/lib.rs", authority: CrateRootAggregate, generator: Stage0Emit, disposition: CarriedAuthorityAdvanced },
+  MirrorDebtRow {
+    path: "src/v1/stage0/src/lib.rs",
+    authority: CrateRootAggregate,
+    generator: Stage0Emit,
+    disposition: CarriedRegenerationBlocked {
+      blocker: "v1_compiler_expected_red_roster_join is declared by TWO producers: src/v1/expected_red_roster_join.dag makes it compiler-emitted (file-derived), while v2.compiler.self_host.stage0_crate_layout still carries SeedRetainedIntrinsicRegistration { basename: \"v1_compiler_expected_red_roster_join\", has_pub_mod: true } for it. Both splice a pub mod line, so the regenerated crate declares the basename twice and fails rustc E0428 at generation 2. Generation 1 builds clean because the duplicate only becomes an error once the candidate replaces the mirror."
+    }
+  },
   MirrorDebtRow { path: "src/v1/stage0/src/std_algebra.rs", authority: SourceModule { name: "std.algebra" }, generator: Stage0Emit, disposition: CarriedReasonNotEstablished },
   MirrorDebtRow { path: "src/v1/stage0/src/std_measure.rs", authority: SourceModule { name: "std.measure" }, generator: Stage0Emit, disposition: CarriedReasonNotEstablished },
   MirrorDebtRow { path: "src/v1/stage0/src/std_occurrence_binding_candidates.rs", authority: SourceModule { name: "std.occurrence_binding_candidates" }, generator: Stage0Emit, disposition: CarriedAuthorityAdvanced },
