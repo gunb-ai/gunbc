@@ -30,7 +30,6 @@ import v2.std.compilers.target_model {
 }
 import v2.std.diagnostic {
   Accepted,
-  None,
   Outcome,
   Rejected,
   bind_outcome,
@@ -346,7 +345,7 @@ fn type_decl_perturbed_rules_for_point_source() -> Outcome<Node> {
   ) {
     Accepted { value: pixel_row, diagnostics: _ } =>
       outcome_accepted(value: type_decl_translation_rules_with_row(row: pixel_row))
-    Rejected { diagnostics: _ } => Rejected { diagnostics: None }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
 

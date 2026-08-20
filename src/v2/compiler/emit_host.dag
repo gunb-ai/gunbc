@@ -64,8 +64,10 @@ import v2.std.diagnostic {
   Outcome,
   Accepted,
   Rejected,
+  CorrectionNotModeled,
   None,
   Some,
+  Unavailable,
   diagnostics_singleton,
   port_locus,
   node_locus,
@@ -125,7 +127,7 @@ fn emit_host_run_unsupported_target_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^emit_host_run_unsupported_target,
     at: port_locus(port: ^emit_host_transport_port),
-    correction: None
+    correction: Unavailable { reason: CorrectionNotModeled }
   }
 }
 
@@ -133,7 +135,7 @@ fn emit_host_emit_vs_eval_deferred_diagnostic(at: Node) -> Diagnostic {
   Diagnostic {
     reason: ^emit_host_emit_vs_eval_deferred,
     at: node_locus(node: at),
-    correction: None
+    correction: Unavailable { reason: CorrectionNotModeled }
   }
 }
 
@@ -141,7 +143,7 @@ fn emit_host_exit_not_ok_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^emit_host_exit_not_ok,
     at: port_locus(port: ^emit_host_transport_port),
-    correction: None
+    correction: Unavailable { reason: CorrectionNotModeled }
   }
 }
 
@@ -149,7 +151,7 @@ fn emit_host_transport_outside_grant_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^emit_host_transport_outside_grant,
     at: port_locus(port: ^emit_host_transport_port),
-    correction: None
+    correction: Unavailable { reason: CorrectionNotModeled }
   }
 }
 
@@ -157,7 +159,7 @@ fn emit_host_build_failed_diagnostic(at: Node) -> Diagnostic {
   Diagnostic {
     reason: ^emit_host_build_failed,
     at: node_locus(node: at),
-    correction: None
+    correction: Unavailable { reason: CorrectionNotModeled }
   }
 }
 

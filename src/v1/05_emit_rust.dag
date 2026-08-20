@@ -26,6 +26,7 @@ import v1.std.core {
   expr_has_self_call, expr_has_non_tail_self_call, field_access_base, foreach_variable_at,
   expr_method_name_at, let_binding_name_at, record_lit_type_name_at, arg_name_at, arg_value,
   arm_body, arm_pattern, arm_guard, field_init_node_name_at, field_init_node_value,
+  record_lit_named_field_value_optional,
   find_property, make_arg_node, make_named_expr_node, let_value, let_body, lambda_body,
   lambda_param_names_at, foreach_collection, foreach_body, method_receiver, method_arg_nodes,
   match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base,
@@ -11296,24 +11297,46 @@ fn build_data_body_index(modules: List<TypedModule>) -> Map<String, Node> {
   )
 }
 
-fn resolve_param_default(param: Node, registry: Map<String, ItemInfo>, data_body_index: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> String? {
-  match param_node_default_value(n: param) {
-    Present { value: dv } => match dv.expr_data {
-      ExprLiteral { value: _ } => extract_literal_string(expr: dv)
+data workflow_default_fold_depth_limit: Int = 8
+
+fn fold_constant_default_expr(expr: Node, registry: Map<String, ItemInfo>, data_body_index: Map<String, Node>, source_indices: Map<String, NewlineIndex>, depth: Int) -> Node? {
+  if depth > workflow_default_fold_depth_limit { none }
+  else {
+    match expr.expr_data {
       ExprVar { binding_kind: _ } =>
-        match lookup_item(registry: registry, name: authored_name_at(source_indices: source_indices, node: dv)) {
+        let var_name = authored_name_at(source_indices: source_indices, node: expr)
+        match lookup_item(registry: registry, name: var_name) {
           Present { value: info } => match info.kind {
             DataItem =>
-              match map_get(data_body_index, authored_name_at(source_indices: source_indices, node: dv)) {
-                Present { value: body } => extract_literal_string(expr: body)
+              match map_get(data_body_index, var_name) {
+                Present { value: body } => fold_constant_default_expr(expr: body, registry: registry, data_body_index: data_body_index, source_indices: source_indices, depth: depth + 1)
                 Absent => none
               }
             _ => none
           }
           Absent => none
         }
-      _ => none
+      ExprFieldAccess { summary: _ } =>
+        match fold_constant_default_expr(expr: field_access_base(texpr: expr), registry: registry, data_body_index: data_body_index, source_indices: source_indices, depth: depth + 1) {
+          Present { value: base } =>
+            match record_lit_named_field_value_optional(record_expr: base, field: field_access_field_at(texpr: expr, source_indices: source_indices), source_indices: source_indices) {
+              Present { value: field_value } => fold_constant_default_expr(expr: field_value, registry: registry, data_body_index: data_body_index, source_indices: source_indices, depth: depth + 1)
+              Absent => none
+            }
+          Absent => none
+        }
+      _ => Present { value: expr }
     }
+  }
+}
+
+fn resolve_param_default(param: Node, registry: Map<String, ItemInfo>, data_body_index: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> String? {
+  match param_node_default_value(n: param) {
+    Present { value: dv } =>
+      match fold_constant_default_expr(expr: dv, registry: registry, data_body_index: data_body_index, source_indices: source_indices, depth: 0) {
+        Present { value: folded } => extract_literal_string(expr: folded)
+        Absent => none
+      }
     Absent => none
   }
 }

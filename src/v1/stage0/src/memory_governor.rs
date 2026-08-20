@@ -244,14 +244,14 @@ pub fn floor_budget_below_minimum_footprint(budget: Option<u64>) -> Option<Strin
 /// mirror lens can join it to that row — an underscored or arithmetic literal is the same
 /// value written so that no join can reach it.
 ///
-/// THE ENROLLMENT MARKER IS DELIBERATELY WITHHELD, and that is a merge-order fact rather than
-/// an oversight. `test.claim.seed_mirror_constant_lens_witness_test` (gunbc#8638) carries a
-/// BACKWARD arm requiring marker occurrences per seed file to equal roster rows homed in that
-/// file, and the marker is the enrollment act — so a marked constant with no roster row reds
-/// main for however long the two land apart. This constant is therefore left unmarked and
-/// unenrolled: invisible to both arms, which is the honest state until the row exists. The
-/// row and the marker land together, in whichever PR is second, and the doc comment above is
-/// already in the shape that makes that a one-liner.
+/// SEED MIRROR of `gunbc.whole_corpus_compile_admission` `whole_corpus_compile_measured_peak_demand`
+///
+/// The marker was withheld until now for a merge-order reason, recorded here because the
+/// reason is the mechanism rather than an accident: the lens's BACKWARD arm requires marker
+/// occurrences per seed file to equal roster rows homed in that file, and the marker is the
+/// enrollment act, so a marked constant with no roster row reds main for however long the two
+/// land apart. gunbc#8635 and gunbc#8638 have both merged, so the marker and the row land
+/// together here, which is the coupling that was always required.
 ///
 /// dissolve-on: the emit path that retires this seed's other budget mirrors; re-measure
 /// trigger: a dated uncensored whole-tree peak taken on the `gunbc compile` route itself.

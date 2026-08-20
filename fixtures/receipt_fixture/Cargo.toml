@@ -1,0 +1,11 @@
+[package]
+name = "v1-receipt-fixture"
+version = "0.1.0"
+edition = "2021"
+license = "BUSL-1.1"
+
+[lib]
+name = "v1_receipt_fixture"
+path = "src/lib.rs"
+
+[dependencies]

@@ -1583,19 +1583,47 @@ fn bag_hash_digest(empty: Hash, xs: List<Hash>) -> Hash {
   )
 }
 
+// ONE ASSEMBLY RULE, TWO CONSUMERS. `content_hash` walks a Node and needs each child's hash; a
+// content-addressed store already HOLDS its children's hashes by the time it identifies their
+// parent, and re-deriving them by re-walking the subtree is what makes such a store quadratic. Both
+// need the same question answered -- given a kind and this node's labeled child hashes, what is the
+// node's hash -- so it is answered in exactly one place here rather than reimplemented by each
+// caller. A caller-local combine would be a second identity authority beside this one (DESIGN
+// section 3), agreeing with it right up until an edit to one of them, and the disagreement would
+// surface as objects that cannot be found by the identity they were stored under.
+type LabeledChildHash {
+  label: EdgeLabel
+  hash: Hash
+}
+
+// The single combine step: fold one labeled child into the accumulated hash. `content_hash`'s
+// algebra and `content_hash_of_children` both route through this, so the operation order that
+// defines a node's identity exists once.
+fn content_hash_step(acc: Hash, label: EdgeLabel, child: Hash) -> Hash {
+  combine_hash(
+    a: combine_hash(a: acc, b: canonical_hash_of_edge_label(label: label)),
+    b: child
+  )
+}
+
+// Assemble a node's content hash from its kind and its children's ALREADY-COMPUTED hashes, in
+// canonical child order. The caller owns the obligation that `children` is the canonical order and
+// that each hash is that child's `content_hash` -- this function cannot check either, and says so
+// rather than pretending to: it is the same fold `content_hash` performs, exposed for callers that
+// already paid for the child hashes.
+fn content_hash_of_children(kind: NodeKind, children: List<LabeledChildHash>) -> Hash {
+  fold(children, init: canonical_hash_of_node_kind(kind: kind), f: fn(acc, c) {
+    content_hash_step(acc: acc, label: c.label, child: c.hash)
+  })
+}
+
 fn content_hash(n: Node) -> Hash {
   fold_node_content_hash(
     n: n,
     algebra: NodeFold {
       init: fn(n0) { canonical_hash_of_node_kind(kind: n0.kind) },
       step: fn(acc, e, child_hash) {
-        combine_hash(
-          a: combine_hash(
-            a: acc,
-            b: canonical_hash_of_edge_label(label: e.label)
-          ),
-          b: child_hash
-        )
+        content_hash_step(acc: acc, label: e.label, child: child_hash)
       }
     }
   )

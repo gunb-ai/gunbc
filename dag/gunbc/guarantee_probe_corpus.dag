@@ -98,6 +98,7 @@ fn guarantee_probe_paths() -> List<GuaranteePath> {
   [v1_compile_rust_path(), v2_infer_eval_path()]
 }
 
+data bare_none_field_admission_class: GuaranteeClassId = "bare-none-field-admission" as GuaranteeClassId
 data call_label_surplus_class: GuaranteeClassId = "call-label-and-surplus" as GuaranteeClassId
 data method_established_surface_class: GuaranteeClassId = "method-established-surface" as GuaranteeClassId
 data declared_conformance_ground_class: GuaranteeClassId = "declared-conformance-ground-fragment" as GuaranteeClassId
@@ -106,6 +107,7 @@ data v2_self_grounding_frontier_class: GuaranteeClassId = "v2-self-grounding-fro
 
 fn guarantee_probe_class_ids() -> List<GuaranteeClassId> {
   [
+    bare_none_field_admission_class,
     call_label_surplus_class,
     declared_conformance_ground_class,
     method_established_surface_class,
@@ -114,6 +116,9 @@ fn guarantee_probe_class_ids() -> List<GuaranteeClassId> {
   ]
 }
 
+data bare_none_scalar_red_probe: GuaranteeProbeId = "bare-none-field-admission-scalar-red" as GuaranteeProbeId
+data bare_none_collection_red_probe: GuaranteeProbeId = "bare-none-field-admission-collection-red" as GuaranteeProbeId
+data bare_none_green_probe: GuaranteeProbeId = "bare-none-field-admission-green-control" as GuaranteeProbeId
 data call_mislabel_red_probe: GuaranteeProbeId = "call-label-surplus-mislabel-red" as GuaranteeProbeId
 data call_surplus_red_probe: GuaranteeProbeId = "call-label-surplus-surplus-red" as GuaranteeProbeId
 data call_deficit_red_probe: GuaranteeProbeId = "call-label-surplus-deficit-red" as GuaranteeProbeId
@@ -341,6 +346,24 @@ type ProbeRowResolution
 
 fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
   [
+    GuaranteeProbeRow {
+      probe: bare_none_collection_red_probe,
+      class: bare_none_field_admission_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "BareNoneNotAdmittedByFieldType" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
+      probe: bare_none_green_probe,
+      class: bare_none_field_admission_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectZeroDiagnostics,
+    },
+    GuaranteeProbeRow {
+      probe: bare_none_scalar_red_probe,
+      class: bare_none_field_admission_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "BareNoneNotAdmittedByFieldType" as NonEmptyStr },
+    },
     GuaranteeProbeRow {
       probe: call_deficit_red_probe,
       class: call_label_surplus_class,
