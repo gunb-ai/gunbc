@@ -34,14 +34,6 @@ type VacuousValidation<B> {
   vacuous: VacuousAdmits
 }
 
-fn vacuous_admits<B>(_: B) -> Bool {
-  true
-}
-
-fn validation_from_vacuous<B>(by: VacuousValidation<B>) -> Validation<B> {
-  Validation { reason: by.reason, admits: vacuous_admits }
-}
-
 type Refined<B> {
   base: B
 }
@@ -68,21 +60,6 @@ fn refine<B>(base: B, by: Validation<B>, at: Locus) -> Outcome<Refined<B>> {
 
 fn refined_base<B>(r: Refined<B>) -> B {
   r.base
-}
-
-fn refined_vacuous_oracle_terminal<B>(base: B, by: VacuousValidation<B>, at: Locus) -> Outcome<Refined<B>> {
-  let validation = validation_from_vacuous(by: by)
-  match refine(base: base, by: validation, at: at) {
-    Accepted { value: refined, diagnostics: _ } => Accepted { value: refined, diagnostics: None }
-    Rejected { diagnostics: rejected } => Rejected { diagnostics: rejected }
-  }
-}
-
-fn refined_vacuous_stub_pack<B>(base: B, by: VacuousValidation<B>, at: Locus) -> Refined<B> {
-  match refined_vacuous_oracle_terminal(base: base, by: by, at: at) {
-    Accepted { value: refined, diagnostics: _ } => refined
-    Rejected { diagnostics: _ } => Refined { base: base }
-  }
 }
 
 fn positive_int_admits(value: Int) -> Bool {
