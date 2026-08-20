@@ -67,7 +67,7 @@ fn membership_plain_roster_build<M, K>(
   key_eq: fn(K, K) -> Bool,
 ) -> std.keyed_roster.KeyedRosterBuild<K, M> {
   std.keyed_roster.keyed_roster_build(
-    incomings: plain_member_rows(members: members, key_of: key_of),
+    incomings: gunbc.membership_reconcile.plain_member_rows(members: members, key_of: key_of),
     key_eq: key_eq,
   )
 }
@@ -97,7 +97,7 @@ fn plain_hunk_to_action<M, K>(
     KeyedDiffAddedHunk { hunk_key: at, to: m } => MemberAdded { at: at, to: m }
     KeyedDiffModifiedHunk { hunk_key: at, from: f, to: t } => MemberChanged { at: at, from: f, to: t }
     KeyedDiffRemovedHunk { hunk_key: at, from: m } =>
-      match removal_admission(existing: m, ownership_of: ownership_of) {
+      match gunbc.membership_reconcile.removal_admission(existing: m, ownership_of: ownership_of) {
         RemovalAdmitted => MemberRemoved { at: at, from: m }
         RemovalRefused { cause: c } => MemberRemovalRefused { from: m, cause: c }
       }
@@ -117,8 +117,8 @@ fn membership_reconcile_built<M, K>(
     key_eq: key_eq,
     value_eq: value_eq,
   )
-  MembershipPlan {
-    actions: map(patch.hunks, h => plain_hunk_to_action(hunk: h, ownership_of: ownership_of))
+  gunbc.membership_reconcile.MembershipPlan {
+    actions: map(patch.hunks, h => gunbc.membership_reconcile.plain_hunk_to_action(hunk: h, ownership_of: ownership_of))
   }
 }
 
@@ -130,7 +130,7 @@ fn membership_reconcile<M, K>(
   value_eq: fn(M, M) -> Bool,
   ownership_of: fn(M) -> gunbc.ownership.Ownership?,
 ) -> gunbc.membership_reconcile.MembershipReconcileOutcome<M, K> {
-  match membership_plain_roster_build(members: desired, key_of: key_of, key_eq: key_eq) {
+  match gunbc.membership_reconcile.membership_plain_roster_build(members: desired, key_of: key_of, key_eq: key_eq) {
     KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
       MembershipReconcileDuplicateKey {
         roster: MembershipDesiredRoster,
@@ -139,7 +139,7 @@ fn membership_reconcile<M, K>(
         duplicate: d,
       }
     KeyedRosterBuilt { rows: desired_rows } =>
-      match membership_plain_roster_build(members: observed, key_of: key_of, key_eq: key_eq) {
+      match gunbc.membership_reconcile.membership_plain_roster_build(members: observed, key_of: key_of, key_eq: key_eq) {
         KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
           MembershipReconcileDuplicateKey {
             roster: MembershipObservedRoster,
@@ -149,7 +149,7 @@ fn membership_reconcile<M, K>(
           }
         KeyedRosterBuilt { rows: observed_rows } =>
           MembershipReconcileReady {
-            plan: membership_reconcile_built(
+            plan: gunbc.membership_reconcile.membership_reconcile_built(
               desired_rows: desired_rows,
               observed_rows: observed_rows,
               key_eq: key_eq,
@@ -167,7 +167,7 @@ fn membership_plan_admitting_outcome<M, K>(
   match outcome {
     MembershipReconcileReady { plan: plan } => plan
     MembershipReconcileDuplicateKey { first: f, duplicate: d, key: _, roster: r } =>
-      MembershipPlan {
+      gunbc.membership_reconcile.MembershipPlan {
         actions: [
           MemberRosterDuplicateKeyRefused { roster: r, first: f.value, duplicate: d.value }
         ]
@@ -192,7 +192,7 @@ fn membership_scoped_roster_build<M, Relation, Scope, K>(
   relation: std.key_relation.KeyRelation<Relation, M, Scope, K>,
 ) -> std.keyed_roster.KeyedRosterBuild<std.key_relation.ScopedKey<Relation, Scope, K>, M> {
   std.keyed_roster.keyed_roster_build(
-    incomings: scoped_member_rows(members: members, relation: relation),
+    incomings: gunbc.membership_reconcile.scoped_member_rows(members: members, relation: relation),
     key_eq: fn(a, b) { std.key_relation.key_relation_scoped_key_eq(relation: relation, a: a, b: b) },
   )
 }
@@ -205,7 +205,7 @@ fn scoped_hunk_to_action<M, Relation, Scope, K>(
     KeyedDiffAddedHunk { hunk_key: at, to: m } => MemberAdded { at: at, to: m }
     KeyedDiffModifiedHunk { hunk_key: at, from: f, to: t } => MemberChanged { at: at, from: f, to: t }
     KeyedDiffRemovedHunk { hunk_key: at, from: m } =>
-      match removal_admission(existing: m, ownership_of: ownership_of) {
+      match gunbc.membership_reconcile.removal_admission(existing: m, ownership_of: ownership_of) {
         RemovalAdmitted => MemberRemoved { at: at, from: m }
         RemovalRefused { cause: c } => MemberRemovalRefused { from: m, cause: c }
       }
@@ -226,8 +226,8 @@ fn membership_reconcile_scoped_built<M, Relation, Scope, K, State>(
     key_eq: fn(a, b) { std.key_relation.key_relation_scoped_key_eq(relation: relation, a: a, b: b) },
     value_eq: value_eq,
   )
-  MembershipPlan {
-    actions: map(patch.hunks, h => scoped_hunk_to_action(hunk: h, ownership_of: ownership_of))
+  gunbc.membership_reconcile.MembershipPlan {
+    actions: map(patch.hunks, h => gunbc.membership_reconcile.scoped_hunk_to_action(hunk: h, ownership_of: ownership_of))
   }
 }
 
@@ -238,7 +238,7 @@ fn membership_reconcile_scoped<M, Relation, Scope, K, State>(
   ownership_of: fn(M) -> gunbc.ownership.Ownership?,
 ) -> gunbc.membership_reconcile.MembershipReconcileScopedOutcome<M, Relation, Scope, K> {
   let relation = resource.key
-  match membership_scoped_roster_build(members: desired, relation: relation) {
+  match gunbc.membership_reconcile.membership_scoped_roster_build(members: desired, relation: relation) {
     KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
       MembershipReconcileDuplicateScopedKey {
         roster: MembershipDesiredRoster,
@@ -247,7 +247,7 @@ fn membership_reconcile_scoped<M, Relation, Scope, K, State>(
         duplicate: d,
       }
     KeyedRosterBuilt { rows: desired_rows } =>
-      match membership_scoped_roster_build(members: observed, relation: relation) {
+      match gunbc.membership_reconcile.membership_scoped_roster_build(members: observed, relation: relation) {
         KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
           MembershipReconcileDuplicateScopedKey {
             roster: MembershipObservedRoster,
@@ -257,7 +257,7 @@ fn membership_reconcile_scoped<M, Relation, Scope, K, State>(
           }
         KeyedRosterBuilt { rows: observed_rows } =>
           MembershipReconcileScopedReady {
-            plan: membership_reconcile_scoped_built(
+            plan: gunbc.membership_reconcile.membership_reconcile_scoped_built(
               desired_rows: desired_rows,
               observed_rows: observed_rows,
               resource: resource,
@@ -274,7 +274,7 @@ fn membership_plan_admitting_scoped_outcome<M, Relation, Scope, K>(
   match outcome {
     MembershipReconcileScopedReady { plan: plan } => plan
     MembershipReconcileDuplicateScopedKey { first: f, duplicate: d, key: _, roster: r } =>
-      MembershipPlan {
+      gunbc.membership_reconcile.MembershipPlan {
         actions: [
           MemberRosterDuplicateKeyRefused { roster: r, first: f.value, duplicate: d.value }
         ]
@@ -289,9 +289,9 @@ data membership_effects_note: String = "The APPLY-grain projection of a plan: pa
 fn membership_effects<M, At>(plan: gunbc.membership_reconcile.MembershipPlan<M, At>) -> gunbc.membership_reconcile.EffectsOrRefusal<M> {
   let refusals = flat_map(plan.actions, a =>
     match a {
-      MemberRemovalRefused { from: m, cause: c } => [MemberRefusal { member: m, cause: c }]
+      MemberRemovalRefused { from: m, cause: c } => [gunbc.membership_reconcile.MemberRefusal { member: m, cause: c }]
       MemberRosterDuplicateKeyRefused { roster: r, first: f, duplicate: _ } =>
-        [MemberRefusal { member: f, cause: RosterDuplicateKey { roster: r } }]
+        [gunbc.membership_reconcile.MemberRefusal { member: f, cause: RosterDuplicateKey { roster: r } }]
       MemberAdded { at: _, to: _ } => []
       MemberChanged { at: _, from: _, to: _ } => []
       MemberRemoved { at: _, from: _ } => []
@@ -327,40 +327,40 @@ fn membership_tally<M, At>(plan: gunbc.membership_reconcile.MembershipPlan<M, At
   fold(plan.actions, init: gunbc.membership_reconcile.MembershipTally { adds: 0, changes: 0, removals: 0, refusals: 0 }, f: (acc, a) =>
     match a {
       MemberAdded { at: _, to: _ } =>
-        MembershipTally { adds: acc.adds + 1, changes: acc.changes, removals: acc.removals, refusals: acc.refusals }
+        gunbc.membership_reconcile.MembershipTally { adds: acc.adds + 1, changes: acc.changes, removals: acc.removals, refusals: acc.refusals }
       MemberChanged { at: _, from: _, to: _ } =>
-        MembershipTally { adds: acc.adds, changes: acc.changes + 1, removals: acc.removals, refusals: acc.refusals }
+        gunbc.membership_reconcile.MembershipTally { adds: acc.adds, changes: acc.changes + 1, removals: acc.removals, refusals: acc.refusals }
       MemberRemoved { at: _, from: _ } =>
-        MembershipTally { adds: acc.adds, changes: acc.changes, removals: acc.removals + 1, refusals: acc.refusals }
+        gunbc.membership_reconcile.MembershipTally { adds: acc.adds, changes: acc.changes, removals: acc.removals + 1, refusals: acc.refusals }
       MemberRemovalRefused { from: _, cause: _ } =>
-        MembershipTally { adds: acc.adds, changes: acc.changes, removals: acc.removals, refusals: acc.refusals + 1 }
+        gunbc.membership_reconcile.MembershipTally { adds: acc.adds, changes: acc.changes, removals: acc.removals, refusals: acc.refusals + 1 }
       MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } =>
-        MembershipTally { adds: acc.adds, changes: acc.changes, removals: acc.removals, refusals: acc.refusals + 1 }
+        gunbc.membership_reconcile.MembershipTally { adds: acc.adds, changes: acc.changes, removals: acc.removals, refusals: acc.refusals + 1 }
     }
   )
 }
 
 fn membership_added_count<M, At>(plan: gunbc.membership_reconcile.MembershipPlan<M, At>) -> Int {
-  membership_tally(plan: plan).adds
+  gunbc.membership_reconcile.membership_tally(plan: plan).adds
 }
 
 fn membership_change_count<M, At>(plan: gunbc.membership_reconcile.MembershipPlan<M, At>) -> Int {
-  membership_tally(plan: plan).changes
+  gunbc.membership_reconcile.membership_tally(plan: plan).changes
 }
 
 data membership_write_count_note: String = "adds + changes — the count of members this plan will WRITE, which is what the former membership_upsert_count actually answered for its consumers ('how much work is left'). It is kept as a DERIVED projection over the two separate tally fields, never as a stored merged counter: an add and a change have different realizations (gunbc.change_realization), so a single stored 'upserts' number is the conflation this change removed and re-storing it would reinstate it. A consumer that genuinely cares which kind of write it is reads adds and changes directly."
 
 fn membership_write_count<M, At>(plan: gunbc.membership_reconcile.MembershipPlan<M, At>) -> Int {
-  let t = membership_tally(plan: plan)
+  let t = gunbc.membership_reconcile.membership_tally(plan: plan)
   t.adds + t.changes
 }
 
 fn membership_removal_count<M, At>(plan: gunbc.membership_reconcile.MembershipPlan<M, At>) -> Int {
-  membership_tally(plan: plan).removals
+  gunbc.membership_reconcile.membership_tally(plan: plan).removals
 }
 
 fn membership_refusal_count<M, At>(plan: gunbc.membership_reconcile.MembershipPlan<M, At>) -> Int {
-  membership_tally(plan: plan).refusals
+  gunbc.membership_reconcile.membership_tally(plan: plan).refusals
 }
 
 data membership_effects_wholesale_refuse_policy_trigger: std.disposition.Disposition = std.disposition.Scaffold {

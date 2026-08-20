@@ -1,7 +1,7 @@
 module gunbc.workflow_reconcile
 
 
-type WorkflowFactMemberAt = WorkflowFactKey
+type WorkflowFactMemberAt = gunbc.workflow_reconcile.WorkflowFactKey
 
 type WorkflowFactState
   = WorkflowFactPending
@@ -17,9 +17,9 @@ type WorkflowFactKey {
 }
 
 type WorkflowFact {
-  key: WorkflowFactKey
+  key: gunbc.workflow_reconcile.WorkflowFactKey
   intent_revision: String
-  state: WorkflowFactState
+  state: gunbc.workflow_reconcile.WorkflowFactState
   detail: String
 }
 
@@ -27,16 +27,16 @@ type WorkflowFactTree
   = WorkflowFactLeaf { fact: WorkflowFact }
   | WorkflowFactDecomposed {
       fact: WorkflowFact,
-      children: List<WorkflowFactTree>,
+      children: List<gunbc.workflow_reconcile.WorkflowFactTree>,
     }
 
 type WorkflowFactParent
   = WorkflowFactRoot
-  | WorkflowFactChild { parent_key: WorkflowFactKey }
+  | WorkflowFactChild { parent_key: gunbc.workflow_reconcile.WorkflowFactKey }
 
 type WorkflowFactMember {
   fact: WorkflowFact
-  parent: WorkflowFactParent
+  parent: gunbc.workflow_reconcile.WorkflowFactParent
 }
 
 type WorkflowFactTreeFold<R> {
@@ -46,7 +46,7 @@ type WorkflowFactTreeFold<R> {
 
 type WorkflowFactMembershipFold {
   root: WorkflowFact
-  descendants: List<WorkflowFactMember>
+  descendants: List<gunbc.workflow_reconcile.WorkflowFactMember>
 }
 
 type WorkflowReconcileFold {
@@ -67,13 +67,13 @@ type WorkflowReconcileReport {
   observed_failure_count: Int
   observed_refusal_count: Int
   plan_refusal_count: Int
-  plan: gunbc.membership_reconcile.MembershipPlan<WorkflowFactMember, WorkflowFactMemberAt>
+  plan: gunbc.membership_reconcile.MembershipPlan<gunbc.workflow_reconcile.WorkflowFactMember, gunbc.workflow_reconcile.WorkflowFactMemberAt>
   verdict: std.reducible.ReduceVerdict
 }
 
 data workflow_recursive_reconcile_note: String = "A workflow is desired facts reconciled against observed facts, not a stored stage enum. WorkflowFactTree is recursive at every grain: a fact may be a leaf or may be decomposed into child workflow facts while retaining its own verdict. fold_workflow_fact_tree is THE catamorphism over that shape; membership, verdict, and observation tallies are algebras over the same traversal rather than independent recursive walkers. Its membership algebra DERIVES each WorkflowFactMember parent_key from the tree edge, so moving an unchanged child between parents is one MemberChanged rather than an invisible no-op or hand-authored remove/add pair. Desired and observed members feed the existing generic membership_reconcile; Added members become a MemberAdded obligation and Modified members a MemberChanged obligation (both are work remaining; they differ in how they realize — gunbc.change_realization), unchanged members disappear by monoid identity, and an observed member removed from desired REFUSES because workflow facts are Ensured rather than Owned. Goal shrink therefore cannot compile into evidence deletion: an intentional removal must remain as an explicit WorkflowFactWaived desired fact. intent_revision is per-obligation semantic identity, so an approved refinement produces a Modified hunk while unchanged sibling facts remain noops. The verdict projection reuses std.workflow_recursive: a decomposed parent participates beside its descendants, so green children cannot silently complete a pending parent and one deep refusal latches the whole tree. Observed failure/refusal and plan refusal are separate typed counts: a provider refusal cannot degrade into generic not-converged, and an unsafe goal removal cannot masquerade as provider failure. Realizations consume the generic MemberAdded/MemberChanged as either a direct effect or another planned workflow; they do not each reimplement desired-vs-observed mutation logic."
 
-fn workflow_fact_state_key(state: WorkflowFactState) -> String {
+fn workflow_fact_state_key(state: gunbc.workflow_reconcile.WorkflowFactState) -> String {
   match state {
     WorkflowFactPending => "pending"
     WorkflowFactActive => "active"
@@ -85,15 +85,15 @@ fn workflow_fact_state_key(state: WorkflowFactState) -> String {
 }
 
 fn workflow_fact_states_equal(
-  a: WorkflowFactState,
-  b: WorkflowFactState,
+  a: gunbc.workflow_reconcile.WorkflowFactState,
+  b: gunbc.workflow_reconcile.WorkflowFactState,
 ) -> Bool {
-  workflow_fact_state_key(state: a) == workflow_fact_state_key(state: b)
+  gunbc.workflow_reconcile.workflow_fact_state_key(state: a) == gunbc.workflow_reconcile.workflow_fact_state_key(state: b)
 }
 
 fn workflow_fact_key_equal(
-  a: WorkflowFactKey,
-  b: WorkflowFactKey,
+  a: gunbc.workflow_reconcile.WorkflowFactKey,
+  b: gunbc.workflow_reconcile.WorkflowFactKey,
 ) -> Bool {
   a.workflow_id == b.workflow_id
     && a.obligation_id == b.obligation_id
@@ -104,7 +104,7 @@ fn workflow_fact_value_equal(
   b: WorkflowFact,
 ) -> Bool {
   a.intent_revision == b.intent_revision
-    && workflow_fact_states_equal(a: a.state, b: b.state)
+    && gunbc.workflow_reconcile.workflow_fact_states_equal(a: a.state, b: b.state)
 }
 
 fn workflow_fact_ownership(fact: WorkflowFact) -> gunbc.ownership.Ownership? {
@@ -121,8 +121,8 @@ fn workflow_fact_locus(fact: WorkflowFact) -> String {
 }
 
 fn fold_workflow_fact_tree<R>(
-  tree: WorkflowFactTree,
-  algebra: WorkflowFactTreeFold<R>,
+  tree: gunbc.workflow_reconcile.WorkflowFactTree,
+  algebra: gunbc.workflow_reconcile.WorkflowFactTreeFold<R>,
 ) -> R {
   match tree {
     WorkflowFactLeaf { fact } => algebra.init(fact)
@@ -133,7 +133,7 @@ fn fold_workflow_fact_tree<R>(
         f: fn(acc, child) {
           algebra.step(
             acc,
-            fold_workflow_fact_tree(tree: child, algebra: algebra),
+            gunbc.workflow_reconcile.fold_workflow_fact_tree(tree: child, algebra: algebra),
           )
         },
       )
@@ -142,24 +142,24 @@ fn fold_workflow_fact_tree<R>(
 
 fn workflow_fact_membership_init(
   fact: WorkflowFact,
-) -> WorkflowFactMembershipFold {
-  WorkflowFactMembershipFold {
+) -> gunbc.workflow_reconcile.WorkflowFactMembershipFold {
+  gunbc.workflow_reconcile.WorkflowFactMembershipFold {
     root: fact,
     descendants: [],
   }
 }
 
 fn workflow_fact_membership_step(
-  acc: WorkflowFactMembershipFold,
-  child: WorkflowFactMembershipFold,
-) -> WorkflowFactMembershipFold {
-  WorkflowFactMembershipFold {
+  acc: gunbc.workflow_reconcile.WorkflowFactMembershipFold,
+  child: gunbc.workflow_reconcile.WorkflowFactMembershipFold,
+) -> gunbc.workflow_reconcile.WorkflowFactMembershipFold {
+  gunbc.workflow_reconcile.WorkflowFactMembershipFold {
     root: acc.root,
     descendants: concat(
       acc.descendants,
       concat(
         [
-          WorkflowFactMember {
+          gunbc.workflow_reconcile.WorkflowFactMember {
             fact: child.root,
             parent: WorkflowFactChild {
               parent_key: acc.root.key,
@@ -173,24 +173,24 @@ fn workflow_fact_membership_step(
 }
 
 fn workflow_fact_membership_fold(
-  tree: WorkflowFactTree,
-) -> WorkflowFactMembershipFold {
-  fold_workflow_fact_tree(
+  tree: gunbc.workflow_reconcile.WorkflowFactTree,
+) -> gunbc.workflow_reconcile.WorkflowFactMembershipFold {
+  gunbc.workflow_reconcile.fold_workflow_fact_tree(
     tree: tree,
-    algebra: WorkflowFactTreeFold {
-      init: workflow_fact_membership_init,
-      step: workflow_fact_membership_step,
+    algebra: gunbc.workflow_reconcile.WorkflowFactTreeFold {
+      init: gunbc.workflow_reconcile.workflow_fact_membership_init,
+      step: gunbc.workflow_reconcile.workflow_fact_membership_step,
     },
   )
 }
 
 fn workflow_fact_tree_members(
-  tree: WorkflowFactTree,
-) -> List<WorkflowFactMember> {
-  let folded = workflow_fact_membership_fold(tree: tree)
+  tree: gunbc.workflow_reconcile.WorkflowFactTree,
+) -> List<gunbc.workflow_reconcile.WorkflowFactMember> {
+  let folded = gunbc.workflow_reconcile.workflow_fact_membership_fold(tree: tree)
   concat(
     [
-      WorkflowFactMember {
+      gunbc.workflow_reconcile.WorkflowFactMember {
         fact: folded.root,
         parent: WorkflowFactRoot,
       },
@@ -200,17 +200,17 @@ fn workflow_fact_tree_members(
 }
 
 fn workflow_fact_forest_members(
-  forest: List<WorkflowFactTree>,
-) -> List<WorkflowFactMember> {
+  forest: List<gunbc.workflow_reconcile.WorkflowFactTree>,
+) -> List<gunbc.workflow_reconcile.WorkflowFactMember> {
   flat_map(
     forest,
-    tree => workflow_fact_tree_members(tree: tree),
+    tree => gunbc.workflow_reconcile.workflow_fact_tree_members(tree: tree),
   )
 }
 
 fn workflow_fact_parents_equal(
-  a: WorkflowFactParent,
-  b: WorkflowFactParent,
+  a: gunbc.workflow_reconcile.WorkflowFactParent,
+  b: gunbc.workflow_reconcile.WorkflowFactParent,
 ) -> Bool {
   match a {
     WorkflowFactRoot => match b {
@@ -220,29 +220,29 @@ fn workflow_fact_parents_equal(
     WorkflowFactChild { parent_key: a_key } => match b {
       WorkflowFactRoot => false
       WorkflowFactChild { parent_key: b_key } =>
-        workflow_fact_key_equal(a: a_key, b: b_key)
+        gunbc.workflow_reconcile.workflow_fact_key_equal(a: a_key, b: b_key)
     }
   }
 }
 
 fn workflow_fact_member_value_equal(
-  a: WorkflowFactMember,
-  b: WorkflowFactMember,
+  a: gunbc.workflow_reconcile.WorkflowFactMember,
+  b: gunbc.workflow_reconcile.WorkflowFactMember,
 ) -> Bool {
-  workflow_fact_value_equal(a: a.fact, b: b.fact)
-    && workflow_fact_parents_equal(
+  gunbc.workflow_reconcile.workflow_fact_value_equal(a: a.fact, b: b.fact)
+    && gunbc.workflow_reconcile.workflow_fact_parents_equal(
       a: a.parent,
       b: b.parent,
     )
 }
 
 fn workflow_fact_member_ownership(
-  member: WorkflowFactMember,
+  member: gunbc.workflow_reconcile.WorkflowFactMember,
 ) -> gunbc.ownership.Ownership? {
-  workflow_fact_ownership(fact: member.fact)
+  gunbc.workflow_reconcile.workflow_fact_ownership(fact: member.fact)
 }
 
-fn workflow_fact_member_key(member: WorkflowFactMember) -> WorkflowFactKey {
+fn workflow_fact_member_key(member: gunbc.workflow_reconcile.WorkflowFactMember) -> gunbc.workflow_reconcile.WorkflowFactKey {
   member.fact.key
 }
 
@@ -252,30 +252,30 @@ fn workflow_fact_reduce_verdict(fact: WorkflowFact) -> std.reducible.ReduceVerdi
     WorkflowFactWaived => std.reducible.Reduced { last_parts: 1 }
     WorkflowFactPending =>
       std.reducible.Unknown {
-        missing: join([workflow_fact_locus(fact: fact), ":pending"], ""),
+        missing: join([gunbc.workflow_reconcile.workflow_fact_locus(fact: fact), ":pending"], ""),
       }
     WorkflowFactActive =>
       std.reducible.Unknown {
-        missing: join([workflow_fact_locus(fact: fact), ":active"], ""),
+        missing: join([gunbc.workflow_reconcile.workflow_fact_locus(fact: fact), ":active"], ""),
       }
     WorkflowFactFailed =>
       std.reducible.Unknown {
-        missing: join([workflow_fact_locus(fact: fact), ":failed"], ""),
+        missing: join([gunbc.workflow_reconcile.workflow_fact_locus(fact: fact), ":failed"], ""),
       }
     WorkflowFactRefused =>
       std.reducible.Unknown {
-        missing: join([workflow_fact_locus(fact: fact), ":refused"], ""),
+        missing: join([gunbc.workflow_reconcile.workflow_fact_locus(fact: fact), ":refused"], ""),
       }
   }
 }
 
-fn workflow_fact_tree_verdict_tree(tree: WorkflowFactTree) -> std.workflow_recursive.VerdictTree {
-  fold_workflow_fact_tree(
+fn workflow_fact_tree_verdict_tree(tree: gunbc.workflow_reconcile.WorkflowFactTree) -> std.workflow_recursive.VerdictTree {
+  gunbc.workflow_reconcile.fold_workflow_fact_tree(
     tree: tree,
-    algebra: WorkflowFactTreeFold {
+    algebra: gunbc.workflow_reconcile.WorkflowFactTreeFold {
       init: fn(fact) {
         std.workflow_recursive.Leaf {
-          verdict: workflow_fact_reduce_verdict(fact: fact),
+          verdict: gunbc.workflow_reconcile.workflow_fact_reduce_verdict(fact: fact),
         }
       },
       step: fn(acc, child) {
@@ -288,10 +288,10 @@ fn workflow_fact_tree_verdict_tree(tree: WorkflowFactTree) -> std.workflow_recur
 }
 
 fn workflow_observation_tally_combine(
-  a: WorkflowObservationTally,
-  b: WorkflowObservationTally,
-) -> WorkflowObservationTally {
-  WorkflowObservationTally {
+  a: gunbc.workflow_reconcile.WorkflowObservationTally,
+  b: gunbc.workflow_reconcile.WorkflowObservationTally,
+) -> gunbc.workflow_reconcile.WorkflowObservationTally {
+  gunbc.workflow_reconcile.WorkflowObservationTally {
     failures: a.failures + b.failures,
     refusals: a.refusals + b.refusals,
   }
@@ -299,20 +299,20 @@ fn workflow_observation_tally_combine(
 
 fn workflow_fact_observation_tally(
   fact: WorkflowFact,
-) -> WorkflowObservationTally {
+) -> gunbc.workflow_reconcile.WorkflowObservationTally {
   match fact.state {
     WorkflowFactFailed =>
-      WorkflowObservationTally {
+      gunbc.workflow_reconcile.WorkflowObservationTally {
         failures: 1,
         refusals: 0,
       }
     WorkflowFactRefused =>
-      WorkflowObservationTally {
+      gunbc.workflow_reconcile.WorkflowObservationTally {
         failures: 0,
         refusals: 1,
       }
     _ =>
-      WorkflowObservationTally {
+      gunbc.workflow_reconcile.WorkflowObservationTally {
         failures: 0,
         refusals: 0,
       }
@@ -320,119 +320,119 @@ fn workflow_fact_observation_tally(
 }
 
 fn workflow_fact_tree_observation_tally(
-  tree: WorkflowFactTree,
-) -> WorkflowObservationTally {
-  fold_workflow_fact_tree(
+  tree: gunbc.workflow_reconcile.WorkflowFactTree,
+) -> gunbc.workflow_reconcile.WorkflowObservationTally {
+  gunbc.workflow_reconcile.fold_workflow_fact_tree(
     tree: tree,
-    algebra: WorkflowFactTreeFold {
+    algebra: gunbc.workflow_reconcile.WorkflowFactTreeFold {
       init: fn(fact) {
-        workflow_fact_observation_tally(fact: fact)
+        gunbc.workflow_reconcile.workflow_fact_observation_tally(fact: fact)
       },
       step: fn(acc, child) {
-        workflow_observation_tally_combine(a: acc, b: child)
+        gunbc.workflow_reconcile.workflow_observation_tally_combine(a: acc, b: child)
       },
     },
   )
 }
 
 fn workflow_fact_forest_observation_tally(
-  forest: List<WorkflowFactTree>,
-) -> WorkflowObservationTally {
+  forest: List<gunbc.workflow_reconcile.WorkflowFactTree>,
+) -> gunbc.workflow_reconcile.WorkflowObservationTally {
   fold(
     forest,
-    init: WorkflowObservationTally {
+    init: gunbc.workflow_reconcile.WorkflowObservationTally {
       failures: 0,
       refusals: 0,
     },
     f: fn(acc, tree) {
-      workflow_observation_tally_combine(
+      gunbc.workflow_reconcile.workflow_observation_tally_combine(
         a: acc,
-        b: workflow_fact_tree_observation_tally(tree: tree),
+        b: gunbc.workflow_reconcile.workflow_fact_tree_observation_tally(tree: tree),
       )
     },
   )
 }
 
 fn workflow_fact_forest_verdict(
-  forest: List<WorkflowFactTree>,
+  forest: List<gunbc.workflow_reconcile.WorkflowFactTree>,
 ) -> std.reducible.ReduceVerdict {
   std.workflow_recursive.settle_verdict_tree(
     w: std.workflow_recursive.Decomposed {
       children: map(
         forest,
-        tree => workflow_fact_tree_verdict_tree(tree: tree),
+        tree => gunbc.workflow_reconcile.workflow_fact_tree_verdict_tree(tree: tree),
       ),
     },
   )
 }
 
 fn workflow_fact_reconcile(
-  desired: List<WorkflowFactTree>,
-  observed: List<WorkflowFactTree>,
-) -> gunbc.membership_reconcile.MembershipPlan<WorkflowFactMember, WorkflowFactMemberAt> {
+  desired: List<gunbc.workflow_reconcile.WorkflowFactTree>,
+  observed: List<gunbc.workflow_reconcile.WorkflowFactTree>,
+) -> gunbc.membership_reconcile.MembershipPlan<gunbc.workflow_reconcile.WorkflowFactMember, gunbc.workflow_reconcile.WorkflowFactMemberAt> {
   gunbc.membership_reconcile.membership_plan_admitting_outcome(
     outcome: gunbc.membership_reconcile.membership_reconcile(
-      desired: workflow_fact_forest_members(forest: desired),
-      observed: workflow_fact_forest_members(forest: observed),
-      key_of: workflow_fact_member_key,
-      key_eq: workflow_fact_key_equal,
-      value_eq: workflow_fact_member_value_equal,
-      ownership_of: workflow_fact_member_ownership,
+      desired: gunbc.workflow_reconcile.workflow_fact_forest_members(forest: desired),
+      observed: gunbc.workflow_reconcile.workflow_fact_forest_members(forest: observed),
+      key_of: gunbc.workflow_reconcile.workflow_fact_member_key,
+      key_eq: gunbc.workflow_reconcile.workflow_fact_key_equal,
+      value_eq: gunbc.workflow_reconcile.workflow_fact_member_value_equal,
+      ownership_of: gunbc.workflow_reconcile.workflow_fact_member_ownership,
     )
   )
 }
 
 fn workflow_reconcile_fold_action(
-  acc: WorkflowReconcileFold,
-  action: gunbc.membership_reconcile.MemberAction<WorkflowFactMember, WorkflowFactMemberAt>,
-) -> WorkflowReconcileFold {
+  acc: gunbc.workflow_reconcile.WorkflowReconcileFold,
+  action: gunbc.membership_reconcile.MemberAction<gunbc.workflow_reconcile.WorkflowFactMember, gunbc.workflow_reconcile.WorkflowFactMemberAt>,
+) -> gunbc.workflow_reconcile.WorkflowReconcileFold {
   match action {
     MemberAdded { at: _, to: member } =>
-      WorkflowReconcileFold {
+      gunbc.workflow_reconcile.WorkflowReconcileFold {
         remaining: acc.remaining + 1,
         plan_refusals: acc.plan_refusals,
         first_missing: if acc.first_missing == "" {
-          workflow_fact_locus(fact: member.fact)
+          gunbc.workflow_reconcile.workflow_fact_locus(fact: member.fact)
         } else {
           acc.first_missing
         },
       }
     MemberChanged { at: _, from: _, to: member } =>
-      WorkflowReconcileFold {
+      gunbc.workflow_reconcile.WorkflowReconcileFold {
         remaining: acc.remaining + 1,
         plan_refusals: acc.plan_refusals,
         first_missing: if acc.first_missing == "" {
-          workflow_fact_locus(fact: member.fact)
+          gunbc.workflow_reconcile.workflow_fact_locus(fact: member.fact)
         } else {
           acc.first_missing
         },
       }
     MemberRemoved { at: _, from: member } =>
-      WorkflowReconcileFold {
+      gunbc.workflow_reconcile.WorkflowReconcileFold {
         remaining: acc.remaining + 1,
         plan_refusals: acc.plan_refusals + 1,
         first_missing: if acc.first_missing == "" {
-          join([workflow_fact_locus(fact: member.fact), ":unexpected-teardown"], "")
+          join([gunbc.workflow_reconcile.workflow_fact_locus(fact: member.fact), ":unexpected-teardown"], "")
         } else {
           acc.first_missing
         },
       }
     MemberRemovalRefused { from: member, cause: _ } =>
-      WorkflowReconcileFold {
+      gunbc.workflow_reconcile.WorkflowReconcileFold {
         remaining: acc.remaining + 1,
         plan_refusals: acc.plan_refusals + 1,
         first_missing: if acc.first_missing == "" {
-          join([workflow_fact_locus(fact: member.fact), ":goal-removal-refused"], "")
+          join([gunbc.workflow_reconcile.workflow_fact_locus(fact: member.fact), ":goal-removal-refused"], "")
         } else {
           acc.first_missing
         },
       }
     MemberRosterDuplicateKeyRefused { roster: _, first: member, duplicate: _ } =>
-      WorkflowReconcileFold {
+      gunbc.workflow_reconcile.WorkflowReconcileFold {
         remaining: acc.remaining + 1,
         plan_refusals: acc.plan_refusals + 1,
         first_missing: if acc.first_missing == "" {
-          join([workflow_fact_locus(fact: member.fact), ":duplicate-roster-key"], "")
+          join([gunbc.workflow_reconcile.workflow_fact_locus(fact: member.fact), ":duplicate-roster-key"], "")
         } else {
           acc.first_missing
         },
@@ -441,34 +441,34 @@ fn workflow_reconcile_fold_action(
 }
 
 fn workflow_reconcile_fold(
-  plan: gunbc.membership_reconcile.MembershipPlan<WorkflowFactMember, WorkflowFactMemberAt>,
-) -> WorkflowReconcileFold {
+  plan: gunbc.membership_reconcile.MembershipPlan<gunbc.workflow_reconcile.WorkflowFactMember, gunbc.workflow_reconcile.WorkflowFactMemberAt>,
+) -> gunbc.workflow_reconcile.WorkflowReconcileFold {
   fold(
     plan.actions,
-    init: WorkflowReconcileFold {
+    init: gunbc.workflow_reconcile.WorkflowReconcileFold {
       remaining: 0,
       plan_refusals: 0,
       first_missing: "",
     },
     f: fn(acc, action) {
-      workflow_reconcile_fold_action(acc: acc, action: action)
+      gunbc.workflow_reconcile.workflow_reconcile_fold_action(acc: acc, action: action)
     },
   )
 }
 
 fn workflow_reconcile_report(
-  desired: List<WorkflowFactTree>,
-  observed: List<WorkflowFactTree>,
-) -> WorkflowReconcileReport {
-  let plan = workflow_fact_reconcile(
+  desired: List<gunbc.workflow_reconcile.WorkflowFactTree>,
+  observed: List<gunbc.workflow_reconcile.WorkflowFactTree>,
+) -> gunbc.workflow_reconcile.WorkflowReconcileReport {
+  let plan = gunbc.workflow_reconcile.workflow_fact_reconcile(
     desired: desired,
     observed: observed,
   )
-  let folded = workflow_reconcile_fold(plan: plan)
-  let observation_tally = workflow_fact_forest_observation_tally(
+  let folded = gunbc.workflow_reconcile.workflow_reconcile_fold(plan: plan)
+  let observation_tally = gunbc.workflow_reconcile.workflow_fact_forest_observation_tally(
     forest: observed,
   )
-  let observed_verdict = workflow_fact_forest_verdict(forest: observed)
+  let observed_verdict = gunbc.workflow_reconcile.workflow_fact_forest_verdict(forest: observed)
   let verdict = match observed_verdict {
     Unknown { missing: _ } => observed_verdict
     _ =>
@@ -478,9 +478,9 @@ fn workflow_reconcile_report(
         std.reducible.Unknown { missing: folded.first_missing }
       }
   }
-  WorkflowReconcileReport {
-    desired_count: count(workflow_fact_forest_members(forest: desired)),
-    observed_count: count(workflow_fact_forest_members(forest: observed)),
+  gunbc.workflow_reconcile.WorkflowReconcileReport {
+    desired_count: count(gunbc.workflow_reconcile.workflow_fact_forest_members(forest: desired)),
+    observed_count: count(gunbc.workflow_reconcile.workflow_fact_forest_members(forest: observed)),
     remaining_count: folded.remaining,
     observed_failure_count: observation_tally.failures,
     observed_refusal_count: observation_tally.refusals,
@@ -491,7 +491,7 @@ fn workflow_reconcile_report(
 }
 
 fn workflow_reconcile_status_key(
-  report: WorkflowReconcileReport,
+  report: gunbc.workflow_reconcile.WorkflowReconcileReport,
 ) -> String {
   if report.plan_refusal_count > 0
     || report.observed_refusal_count > 0 {
