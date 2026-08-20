@@ -35,9 +35,6 @@ import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name }
 
 import v1.compiler.infer_types { resolved_type, normalize_access_type_node, node_is_keyed_collection }
 
-import v1.compiler.infer_method {
-}
-
 import v1.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 
 import v1.compiler.infer_items {
