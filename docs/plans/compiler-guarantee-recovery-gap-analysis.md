@@ -1160,7 +1160,28 @@ than argued.
    repairs it by switching two parse call sites to `make_file_span`, and its own message names the
    population independently: *"46-72 refinement diagnostics across the corpus went unlocated because
    file information was discarded even though byte offsets were correct and positions were
-   recoverable."* **MEASURED AFTER THE REPAIR (`swift-moth-294`, four-arm pinned run; arms built by
+   recoverable."* **PROVISIONAL — THE ARM-D DENOMINATOR IS NOT ESTABLISHED (flagged 2026-08-20, before
+   any consumer acts on it).** The post-repair figures below come from one run whose COMPILE-step
+   exit status has not been printed. A sibling whole-root compile was `Killed` at EXIT=137 on the
+   same infrastructure while its dispatch still reported 0, because redirect-then-echo does not
+   propagate status — and *a process killed partway through a corpus compile does not produce
+   zero, it produces a truncated population indistinguishable from a complete one.* The specific
+   reason for suspicion: 46 of 46 recovered with residue EXACTLY zero, on a population three lanes
+   independently predicted would be non-zero, is as consistent with a run that stopped before
+   reaching the residue-bearing files as with a clean result. **Standing rule adopted from this:
+   any command reporting a count must print the exit status OF THE PROCESS THAT PRODUCED THE
+   COUNT, beside the count — not the dispatch's status.** What survives regardless is
+   source-derived and decidable; what does not survive is the denominator. **A SECOND CORRECTION
+   ALREADY LANDED ON THE FRAMING BELOW:** a source partition of the 52 shows 46 of them are
+   `content_hash_atom(value: ^caret literal)` — the #8608 class exactly, *already fixed in
+   authority* and inert only because that fix is unmirrored. So the file is not the unit of repair;
+   **the regen is** — one change retires 46 rows across every file at once. Both the corpus-sweep
+   framing and the one-file framing were wrong for the same reason: **both count DIAGNOSTICS, which
+   are distributed by where values FLOW, not by where the defect LIVES.** Counting ROOTS makes it
+   one landed fix plus one named capability. Same shape as the type-pair axis error one level up,
+   and both times the misleading grouping was the one that looked most like a natural unit of work.
+
+   **MEASURED AFTER THE REPAIR (`swift-moth-294`, four-arm pinned run; arms built by
    `git checkout -B <name> <sha>` so no branch-merge could pin their mirrors): THE 46 WERE ONE
    FILE.** At main tip the synthetic count is **zero** and all 72 rows are located, with every
    previously-unlocated row resolving to `src/v2/std/node.dag` — 52 rows there, 6 already located
