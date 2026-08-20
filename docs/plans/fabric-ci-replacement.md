@@ -716,6 +716,29 @@ parameter that separates them. This is worse than the quantum gap because the ca
 exists: no new modeling is needed to refuse, only to stop erasing. It is the §5 tell exactly —
 the arm is satisfiable while the realization lies.
 
+**FIXED on this branch.** The affordability arm now matches the quote:
+`QuotedFlatPerGrant` is a per-grant total and compares as before, while the two rate arms refuse
+with `RateQuoteNotPriceableAgainstGrantCeiling` carrying the amount they could not price. A
+refusal, not a widen — being offered a rate we cannot yet price is now countable rather than
+absorbed into `OfferEligible` — and it dissolves once the offer carries its billing rule and the
+demand an expected duration, at which point pricing a rate is total.
+
+Evidence, executed in both directions rather than argued. Against the old comparison, with the
+variant kept so the tests still resolve:
+
+| witness | old arm | new arm |
+| --- | --- | --- |
+| `an_hourly_rate_is_not_priceable_against_a_per_grant_ceiling` | `false` | `true` |
+| `per_second_and_per_hour_quotes_both_refuse_rather_than_comparing_equal` | `false` | `true` |
+| `a_per_grant_total_under_the_ceiling_is_still_eligible` | `true` | `true` |
+
+The positive control holding in **both** directions is what separates a specific refusal from a
+fold broken into refusing everything — which would have passed both reds.
+
+**Found by verification, not by review.** Review 53896 approved this arm by name as *"split arms
+with typed diagnostics — no absorbing fallback"* while it was comparing a rate to a total. It
+surfaced only because a claim already sent upstream was checked against the landed code.
+
 ### Acquisition is a third concept, not a case of placement
 
 Product direction, on this section: every arm of `OfferQuote` and the whole eligibility fold assume
@@ -745,5 +768,6 @@ manufactures one at a cost floor of an hour. Not built in this slice.
 
 Per the operator's steer this is a make-money lane: the model must be correct enough to **bill
 honestly**, not complete. That bounds the above to rate + quantum + rounding + minimum on both
-sides, plus a named placeholder for acquisition. The dimensional defect is not in that bound — it
-is a live wrong answer in landed code, and it is cheap, so it is fixed on its own terms.
+sides, plus a named placeholder for acquisition. The dimensional defect was not in that bound — it
+was a live wrong answer in landed code and cheap to fix, so it was fixed on its own terms rather
+than scheduled.
