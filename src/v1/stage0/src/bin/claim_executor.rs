@@ -19786,6 +19786,35 @@ fn behavioral_receipt_census(source_roots: &[String]) -> Result<bool, String> {
                 missed.join(", ")
             );
         }
+        // WHAT SHAPE the missed declarations actually have, for one module, printed rather than
+        // assumed. Three times now a node-shape assumption has been wrong and each time the cost
+        // was a whole measurement built on it; the shape is cheap to report and there is no reason
+        // for the next reader of this output to have to re-derive it.
+        if let Some((m, _, _, missed)) = worst.iter().find(|(m, _, _, _)| m == "std.pareto") {
+            if let Some(src) = modules.get(m) {
+                if let Ok(node) = parse_dag_module_node(&format!("{m}.dag"), src) {
+                    for name in missed {
+                        match node.children.iter().find(|c| &c.name == name) {
+                            Some(c) => eprintln!(
+                                "receipt-census:   SHAPE {m}::{name} connective={:?} children={} \
+                                 first_child_children={}",
+                                c.connective,
+                                c.children.len(),
+                                c.children
+                                    .iter()
+                                    .next()
+                                    .map(|f| f.children.len())
+                                    .unwrap_or(0)
+                            ),
+                            None => eprintln!(
+                                "receipt-census:   SHAPE {m}::{name} — NO module child carries \
+                                 this name; the declaration is not where the reader looks"
+                            ),
+                        }
+                    }
+                }
+            }
+        }
     }
     eprintln!("receipt-census: refusals ranked by the type responsible");
     for (why, n) in ranked.iter().take(40) {
