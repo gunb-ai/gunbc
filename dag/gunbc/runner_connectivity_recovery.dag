@@ -140,7 +140,7 @@ fn recovery_runner_slot_unit_name(slot: gunbc.build_cache_instance.RunnerSlotIde
   ) as std.types.NonEmptyStr
 }
 
-fn gunbc.runner_connectivity_recovery.process_identity_eq(a: gunbc.build_cache_instance.ProcessIdentity, b: gunbc.build_cache_instance.ProcessIdentity) -> Bool {
+fn process_identity_eq(a: gunbc.build_cache_instance.ProcessIdentity, b: gunbc.build_cache_instance.ProcessIdentity) -> Bool {
   (a.boot_id as String) == (b.boot_id as String)
     && a.pid == b.pid
     && (a.start_time as String) == (b.start_time as String)

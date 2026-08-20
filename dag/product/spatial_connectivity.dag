@@ -95,7 +95,7 @@ fn opening_identity_eq(a: OpeningIdentity, b: OpeningIdentity) -> Bool {
   (a as String) == (b as String)
 }
 
-fn product.spatial_connectivity.find_room(w: product.spatial_world.World, identity: product.placement_supply.RoomIdentity) -> product.spatial_world.PlacedSpace? {
+fn find_room(w: product.spatial_world.World, identity: product.placement_supply.RoomIdentity) -> product.spatial_world.PlacedSpace? {
   fold(world_rooms(w: w), init: none, f: (acc, r) =>
     match acc {
       Present { value: found } => Present { value: found }

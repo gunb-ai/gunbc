@@ -18,7 +18,7 @@ fn design(intent_is_production: Bool, chans: List<product.altra_motherboard.mini
 
 fn one_dimm() -> List<product.altra_motherboard.minimal_design.DimmSlotPosition> { [FirstDimmOnChannel] }
 
-fn test.claim.altra_minimal_design_witness.admits(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard) -> Bool {
+fn admits(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard) -> Bool {
   match admit_design(d: d) {
     DesignAdmitted { design: _ } => true
     DesignRefused { causes: _ } => false
@@ -37,7 +37,7 @@ fn refusal_is(r: product.altra_motherboard.minimal_design.DesignRefusal, wanted:
   }
 }
 
-fn test.claim.altra_minimal_design_witness.refuses_naming(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard, wanted: String) -> Bool {
+fn refuses_naming(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard, wanted: String) -> Bool {
   match admit_design(d: d) {
     DesignAdmitted { design: _ } => false
     DesignRefused { causes: cs } =>

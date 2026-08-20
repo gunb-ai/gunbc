@@ -52,7 +52,7 @@ fn unsized_node(id: String) -> gunbc.roadmap_model.RoadmapNode {
   }
 }
 
-fn test.claim.roadmap_forecast_witness.observation(id: String, cell: gunbc.roadmap_forecast.SizingCell, duration_ms: Int) -> gunbc.roadmap_forecast.CycleTimeObservation {
+fn observation(id: String, cell: gunbc.roadmap_forecast.SizingCell, duration_ms: Int) -> gunbc.roadmap_forecast.CycleTimeObservation {
   gunbc.roadmap_forecast.CycleTimeObservation {
     node: id as gunbc.roadmap_model.RoadmapNodeId,
     sizing_cell: cell,

@@ -19,7 +19,7 @@ fn failed(gate: std.content_hash.ContentHash) -> gunbc.merge_admission.CoveredGa
   gunbc.merge_admission.CoveredGateConclusion { gate: gate, conclusion: Failure }
 }
 
-fn test.claim.check_coverage_admission_witness.admits(coverage: gunbc.merge_admission.CheckCoverage) -> Bool {
+fn admits(coverage: gunbc.merge_admission.CheckCoverage) -> Bool {
   check_coverage_admits(
     coverage: coverage,
     required_head: required_head,

@@ -82,7 +82,7 @@ fn subcircuit_binding(c: product.compute_board.analog.ElectricalComponentInstanc
   }
 }
 
-fn test.claim.compute_board_spice_projection_witness.project(
+fn project(
   components: List<product.compute_board.analog.ElectricalComponentInstance>,
   bindings: List<product.compute_board.analog.ComponentModelBinding>
 ) -> product.compute_board.spice_projection.SpiceProjection {

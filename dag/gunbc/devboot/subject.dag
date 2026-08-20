@@ -156,7 +156,7 @@ fn admitted_optional_nonempty(value: String?) -> std.types.NonEmptyStr? {
   }
 }
 
-fn gunbc.devboot.subject.first_refusal(left: BuildSubjectRefusalCause?, right: BuildSubjectRefusalCause?) -> BuildSubjectRefusalCause? {
+fn first_refusal(left: BuildSubjectRefusalCause?, right: BuildSubjectRefusalCause?) -> BuildSubjectRefusalCause? {
   match left {
     Present { value: cause } => Present { value: cause }
     Absent => right

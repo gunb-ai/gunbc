@@ -13,7 +13,7 @@ data bad_interlock_bindings: List<product.compute_board.verilog_projection.Veril
   product.compute_board.verilog_projection.VerilogBinding { signal: "never_declared" as product.compute_board.digital_control.SignalName, symbol: ^probe_never_declared, spelling: "never_declared" },
 ]
 
-fn test.claim.compute_board_verilog_projection_witness.project(intent: product.compute_board.digital_control.DigitalControlIntent, bindings: List<product.compute_board.verilog_projection.VerilogBinding>) -> product.compute_board.verilog_projection.VerilogProjection {
+fn project(intent: product.compute_board.digital_control.DigitalControlIntent, bindings: List<product.compute_board.verilog_projection.VerilogBinding>) -> product.compute_board.verilog_projection.VerilogProjection {
   project_intent_to_verilog(article_identity: witness_article_identity, intent: intent, bindings: bindings)
 }
 

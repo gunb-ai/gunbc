@@ -80,7 +80,7 @@ fn refusal_is(r: product.pcb.physical.PhysicalRefusal, wanted: String) -> Bool {
   }
 }
 
-fn test.claim.compute_board_physical_witness.refuses_naming(placements: List<product.pcb.physical.ComponentPlacement>, wanted: String) -> Bool {
+fn refuses_naming(placements: List<product.pcb.physical.ComponentPlacement>, wanted: String) -> Bool {
   match article_with(placements: placements) {
     Absent => false
     Present { value: a } =>

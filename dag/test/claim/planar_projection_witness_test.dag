@@ -49,7 +49,7 @@ fn depth_of(kind: std.planar_projection.ProjectionKind, x: Int, y: Int, z: Int) 
   }
 }
 
-fn test.claim.planar_projection_witness.at(p: std.planar_projection.ViewPoint2?, u: Int, v: Int) -> Bool {
+fn at(p: std.planar_projection.ViewPoint2?, u: Int, v: Int) -> Bool {
   match p {
     Absent => false
     Present { value: q } => q.u == u && q.v == v && q.view.occurrence == 2
