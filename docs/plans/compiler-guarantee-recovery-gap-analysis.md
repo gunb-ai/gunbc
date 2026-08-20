@@ -1160,8 +1160,28 @@ than argued.
    repairs it by switching two parse call sites to `make_file_span`, and its own message names the
    population independently: *"46-72 refinement diagnostics across the corpus went unlocated because
    file information was discarded even though byte offsets were correct and positions were
-   recoverable."* **Consequence for every measurement in this row:** the 72/46/26 split is a property
-   of the corpus *before* that merge, not of the corpus. Post-#8607 runs should show substantially
+   recoverable."* **MEASURED AFTER THE REPAIR (`swift-moth-294`, four-arm pinned run; arms built by
+   `git checkout -B <name> <sha>` so no branch-merge could pin their mirrors): THE 46 WERE ONE
+   FILE.** At main tip the synthetic count is **zero** and all 72 rows are located, with every
+   previously-unlocated row resolving to `src/v2/std/node.dag` — 52 rows there, 6 already located
+   plus 46 recovered. So the population described as *"46-72 refinement diagnostics across the
+   corpus"* — #8607's own commit message — was never corpus-wide. **The author of the fix made the
+   same misreading, from the same broken artifact:** the constructor that destroyed the file field
+   hid the CONCENTRATION as well as the location, and it misled the one person who understood the
+   mechanism well enough to repair it. That is the defect's last damage on its way out, and it is
+   why the remaining repair is one file and 52 sites rather than the corpus sweep the work was
+   being scoped as. The attribution is verified rather than assumed — `module` and `file` fields
+   populated by different paths agreeing on all 52; 52 DISTINCT `(start,end)` pairs, so not one
+   site counted 52 times; offsets 22970–51589 against a 51825-byte file, in range with the maximum
+   just under the size; and spacing sequential and tight (23032, 23082, 23140, 23199), consistent
+   with consecutive declarations rather than a fabricated constant. **#8607 changed LOCATEDNESS
+   ONLY** — the ten type pairs are identical count-for-count across all four arms, so it recovered
+   no diagnostics and suppressed none. Combined with the pin/`#8579`/main arms: all 72 rows are
+   pre-existing and nothing in the `#8579`→`#8592`→`#8607` sequence introduced or removed one.
+   **A prediction of a non-zero residue, registered as falsifiable beforehand, was refuted** — the
+   reasoning (40-odd unconverted callers, ten in `04_types`) was sound for a corpus-wide population
+   and the population was never corpus-wide. **Consequence for every measurement in this row:** the
+   72/46/26 split is a property of the corpus *before* that merge, not of the corpus. Post-#8607 runs should show substantially
    more located rows, and a reader comparing them to these numbers is seeing a fix, not a regression.
    **Ceiling:** structurally impossible. **Why the defect looked survivable, and this is the part that generalizes:** a span
    with a *missing* file would have refused somewhere. A span carrying the STRING `"<synthetic>"`
