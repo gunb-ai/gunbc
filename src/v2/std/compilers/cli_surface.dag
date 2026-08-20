@@ -104,6 +104,51 @@ type CliArgument sole_constructor { text: String }
 
 type CliSurface sole_constructor { arguments: List<CliArgument> }
 
+// LITERAL WORDS INTO A SURFACE, and this is the ONE route for arguments whose spelling is a
+// runtime value rather than a declared token.
+//
+// WHY IT IS NOT THE AMBIGUITY THIS CARRIER EXISTS TO CLOSE. The refused state is a List<String>
+// arriving at an argv position with NO declared role, where "one word whose text is the
+// concatenation" and "N separate words" are both well-formed readings of the same value and the
+// realization has to guess. This constructor IS the declaration: its name says each element is
+// exactly one argv word, so the caller has chosen the reading rather than leaving it to be
+// inferred. It is the same resolution the interpreter's refusal diagnostic tells authors to
+// reach for.
+//
+// WHAT IT DOES NOT LICENSE. It is not a general escape from structural modeling. An argument
+// whose spelling is known when the program is written belongs in CliArgumentSyntax fragments,
+// which carry token classes and bindings and can be checked; this route carries none of that and
+// can check none of it. It exists because argv words like a filesystem path or a hostname are
+// genuinely runtime strings, and no fragment vocabulary can express a value that does not exist
+// until the program runs. Reaching for it when fragments would have served is modeling debt, not
+// a shortcut.
+// RESTRICTED, because an unbounded declaration is a nominal wall rather than a structural one.
+// sole_constructor stops other modules writing CliSurface directly, so adding a mint here breaks
+// no seal -- but it widens THIS module's mint surface, and an unrestricted mint would let any
+// module turn an arbitrary List<String> into a surface. The interpreter's argv refusal would then
+// be one import away from being routed around: not defeated, but satisfied by declaring an intent
+// nobody checked was true.
+//
+// The admitted population is the two runner entry points that genuinely hold runtime words -- a
+// filesystem path, a hostname -- and it is enumerable at TWO today, which is what makes the
+// restriction honest rather than aspirational. Adding a third is an edit to this list in the
+// declaring module: a conspicuous, counted review event rather than an import written elsewhere.
+// This mechanism is verified to enforce at fn grain (a refused call names the caller and lists the
+// roster); it is NOT verified at operation grain, which is a separate filed defect and does not
+// affect this row.
+fn cli_surface_of_literal_words(words: List<String>) -> CliSurface
+  admit_callers: [
+    decl_ref(module_path: "gunbc.command_runner", decl_name: "run_shell_command"),
+    decl_ref(module_path: "gunbc.command_runner", decl_name: "run_shell_command_capture"),
+  ]
+  = CliSurface {
+    arguments: fold_list(
+      xs: words,
+      empty: Empty,
+      cons: fn(acc, word) { list_snoc_item(xs: acc, item: CliArgument { text: word }) }
+    )
+  }
+
 fn cli_surface_arguments(surface: CliSurface) -> List<CliArgument> {
   surface.arguments
 }
@@ -152,34 +197,6 @@ fn cli_argument_text(argument: CliArgument) -> String {
 // nicknaming: a second name for a concept -- process argument-vector construction -- that the
 // host boundary already names. A shell-hosted transport, if one is ever modeled, is a DIFFERENT
 // realization binding, not the thing this carrier describes.
-
-// LITERAL WORDS INTO A SURFACE, and this is the ONE route for arguments whose spelling is a
-// runtime value rather than a declared token.
-//
-// WHY IT IS NOT THE AMBIGUITY THIS CARRIER EXISTS TO CLOSE. The refused state is a List<String>
-// arriving at an argv position with NO declared role, where "one word whose text is the
-// concatenation" and "N separate words" are both well-formed readings of the same value and the
-// realization has to guess. This constructor IS the declaration: its name says each element is
-// exactly one argv word, so the caller has chosen the reading rather than leaving it to be
-// inferred. It is the same resolution the interpreter's refusal diagnostic tells authors to
-// reach for.
-//
-// WHAT IT DOES NOT LICENSE. It is not a general escape from structural modeling. An argument
-// whose spelling is known when the program is written belongs in CliArgumentSyntax fragments,
-// which carry token classes and bindings and can be checked; this route carries none of that and
-// can check none of it. It exists because argv words like a filesystem path or a hostname are
-// genuinely runtime strings, and no fragment vocabulary can express a value that does not exist
-// until the program runs. Reaching for it when fragments would have served is modeling debt, not
-// a shortcut.
-fn cli_surface_of_literal_words(words: List<String>) -> CliSurface {
-  CliSurface {
-    arguments: fold_list(
-      xs: words,
-      empty: Empty,
-      cons: fn(acc, word) { list_snoc_item(xs: acc, item: CliArgument { text: word }) }
-    )
-  }
-}
 
 type ProcessArgvExpansion sole_constructor { surface: CliSurface }
 

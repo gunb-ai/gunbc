@@ -5,7 +5,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-import gunbc.host_effect { fleet_ssh_leaf_unmigrated_refused,
+import gunbc.host_effect {
   HostEffect, ShellCommand, RedfishAction, ConvergePlan,
   OsInstallActuatorToolchainEnsure, EnsureBuildCacheInstance, ProvisionCodexRuntime,
   SetHostnameCas,
@@ -50,9 +50,11 @@ import std.realization_reconcile {
   ReadObserved, Grounds, DoesNotGround,
   reconcile_grounded
 }
-import v2.std.algebra { fold_list }
+import v2.std.algebra { fold_list, list_snoc_item }
 import extdeps.shell
+import extdeps.shell { posix_command_v_check_argv, shell_test_is_executable_argv }
 import extdeps.shell.exec
+import extdeps.tools.id { id_uid_argv, id_gid_argv }
 import gunbc.retained_shell_script {
   RetainedShellScript,
   retained_shell_script_to_transport,
@@ -731,8 +733,10 @@ fn realize_bmcweb_session_login_on_host(
 }
 
 // THE VERDICT IS PRODUCED BEFORE THE WRITE, NOT CHECKED AFTER IT (DESIGN §5).
-// This extraction ran `jq -r '.token // empty'`, and jq's `//` alternative makes an ABSENT
-// or NULL `.token` a run that prints nothing and exits 0 — indistinguishable, at the exit
+// This extraction ran a `jq -r` filter of `.token` falling back to `empty` via jq's
+// alternative operator (two literal slashes in the filter text, elided here so this
+// comment itself stays parseable), and that alternative makes an ABSENT or NULL
+// `.token` a run that prints nothing and exits 0 — indistinguishable, at the exit
 // status the caller reads, from a token that was found. The realization then wrote
 // jq_run.stdout to srv3_bmcweb_token_path unconditionally and reconciled on the WRITE's
 // success, so a rejected or malformed BMC login produced an EMPTY CREDENTIAL FILE reported
@@ -1185,17 +1189,7 @@ fn realize_provision_codex_runtime(
   }
 }
 
-data srv3_join_shell_words_controlled_args_note: String = "SshShell argv composer for toolchain transport helpers only; callers must pass controlled literals (package names, modeled paths) — no shell-quoting until typed argv dispatch lands."
-
-fn srv3_join_shell_words(words: List<String>) -> String {
-  fold(
-    words,
-    init: "",
-    f: (acc, word) => if acc == "" { word } else { concat(acc, concat(" ", word)) },
-  )
-}
-
-data srv3_actuator_toolchain_emit_artifact_transport_helper_note: String = "realize_os_install_actuator_toolchain_ensure refuses EmitArtifactThenThinRun at entry; srv3_actuator_toolchain_emit_artifact_transport_helper_refused false arms are fail-closed backstop only — not a silent widen (DESIGN §5).\\n\\nFleetSsh joined that class rather than being migrated leaf-by-leaf, and the reason is worth stating because the two dispositions look alike and are not. These five probe leaves (test -x, command -v, tool bin path, apt version check, chown) each build a CONCATENATED SHELL COMMAND STRING; the fleet path admits only portable remote words, so there is no argv to hand it without first decomposing each probe into its own typed operation. Left in place, every leaf would answer its Bool with `false` — and a Bool-typed probe has no room to say `I could not measure`, so `could not run the probe` renders as `the tool is absent`, which then AUTHORIZES AN INSTALL on a host nobody observed. That is a fabricated negative observation, the mirror of the fabricated positive DESIGN §5 forbids, and it is why the gate is at the entry: one located refusal replaces five false measurements. The leaf arms stay only as unreachable backstops, exactly as the EmitArtifactThenThinRun arms beside them. DISSOLVES WHEN each probe carries a typed operation_argv row, at which point the entry admits FleetSsh and the leaves route through typed_argv_exec_over_fleet_ssh like the principal, sudo-probe and grant-list leaves already do.\\n\\nRUNG, STATED HONESTLY BECAUSE THE OBVIOUS READING OVERSTATES IT. This refusal is compile-verified only: the match is exhaustive and the arm demonstrably does not reach the body, but NO EXECUTING WITNESS DISCRIMINATES IT, and the reason is structural rather than an omission. A FleetSshExecutionContext is reachable only through materialize_fleet_known_hosts_anchor, which is a `func` using Network, and the KnownHostsAnchor seal admits that one declaration alone -- so a pure `test fn` cannot construct the transport this arm matches on. THE SEAL THAT MAKES A FLEET CONTEXT UNFORGEABLE ALSO MAKES IT UNFIXTURABLE. That is a real cost of the wall and it is recorded here rather than paid down by widening the wall, because admitting a test declaration to the seal to make one's own change testable is the trade a reviewer should refuse. NEXT-RUNG TRIGGER: a fixture route to a context that does not weaken the production seal -- an effect-level test harness for the materializer, not a second minter."
+data srv3_actuator_toolchain_emit_artifact_transport_helper_note: String = "realize_os_install_actuator_toolchain_ensure refuses EmitArtifactThenThinRun at entry; srv3_actuator_toolchain_emit_artifact_transport_helper_refused false arms are fail-closed backstop only — not a silent widen (DESIGN §5). EmitArtifactThenThinRun defers execution to a materialized artifact run elsewhere, so an inline bin-witness probe has no host to observe; refusing here is a permanent boundary of that transport, not unmigrated debt.\\n\\nThe five probe leaves that used to build a concatenated shell command string (bin-witness success, test -x, which-based tool presence, which-based tool bin path, chown) now carry typed operation_argv rows and route SshShell and FleetSsh through typed_argv_exec_over_ssh / typed_argv_exec_over_fleet_ssh (gunbc.typed_argv_exec), the same wall the principal, sudo-probe and grant-list leaves already used. FleetSsh is admitted at realize_os_install_actuator_toolchain_ensure's entry gate.\\n\\nRUNG, STATED HONESTLY BECAUSE THE OBVIOUS READING OVERSTATES IT. The FleetSsh arms are compile-verified only: the match is exhaustive and each arm demonstrably reaches typed dispatch, but NO EXECUTING WITNESS DISCRIMINATES THEM, and the reason is structural rather than an omission. A FleetSshExecutionContext is reachable only through materialize_fleet_known_hosts_anchor, which is a `func` using Network, and the KnownHostsAnchor seal admits that one declaration alone -- so a pure `test fn` cannot construct the transport these arms match on. THE SEAL THAT MAKES A FLEET CONTEXT UNFORGEABLE ALSO MAKES IT UNFIXTURABLE. That is a real cost of the wall and it is recorded here rather than paid down by widening the wall, because admitting a test declaration to the seal to make one's own change testable is the trade a reviewer should refuse. NEXT-RUNG TRIGGER: a fixture route to a context that does not weaken the production seal -- an effect-level test harness for the materializer, not a second minter."
 
 fn srv3_actuator_toolchain_emit_artifact_transport_helper_refused() -> Bool {
   false
@@ -1203,6 +1197,40 @@ fn srv3_actuator_toolchain_emit_artifact_transport_helper_refused() -> Bool {
 
 fn srv3_actuator_toolchain_emit_artifact_transport_helper_refused_opt() -> String? {
   none
+}
+
+fn srv3_typed_argv_outcome_success(outcome: TypedArgvExecOutcome) -> Bool {
+  match outcome {
+    TypedArgvExecConverged { result: r } => r.success
+    TypedArgvExecRefused { reason: _ } => false
+  }
+}
+
+fn srv3_typed_argv_outcome_stdout(outcome: TypedArgvExecOutcome) -> String? {
+  match outcome {
+    TypedArgvExecConverged { result: r } =>
+      if r.success {
+        let out = trim(r.stdout)
+        if out == "" { none } else { Present { value: out } }
+      } else {
+        none
+      }
+    TypedArgvExecRefused { reason: _ } => none
+  }
+}
+
+fn srv3_argv_with_bin(bin_path: String, args: List<String>) -> List<String> {
+  fold_list(xs: args, empty: [bin_path], cons: fn(acc, a) { list_snoc_item(xs: acc, item: a) })
+}
+
+fn srv3_actuator_toolchain_chown_args(owner: String, path: String) -> List<String> {
+  ["-n", "/usr/bin/chown", owner, path]
+}
+
+data srv3_transport_witness_bin_nonroot_workdir_refused_note: String = "typed_argv_exec_over_\{ssh,fleet_ssh} carries a bare argv with no shell to `cd` first, so a non-root workdir has no typed form to hand it. Every in-tree caller passes workdir: \"/\" (checked at review time), so this arm is unreachable dead debt today -- named rather than folded into the workdir == \"/\" condition so a non-root workdir renders as a located refusal instead of an indistinguishable-from-measured `false` (DESIGN §5, fabricated negative). DISSOLVES WHEN a typed remote cd/chdir primitive lands and this reroutes to it, or when workdir is dropped from the signature because no caller ever varies it."
+
+fn srv3_transport_witness_bin_nonroot_workdir_refused() -> Bool {
+  false
 }
 
 fn srv3_transport_witness_bin_success(
@@ -1214,19 +1242,29 @@ fn srv3_transport_witness_bin_success(
   match transport {
     LocalShell =>
       gunbc.WitnessBin.Run(workdir: workdir, bin_path: bin_path, args: args).success
-    SshShell { ssh_host: h } => {
-      let argv = srv3_join_shell_words(words: args)
-      let cmd = if workdir == "/" {
-        if argv == "" { bin_path } else { concat(bin_path, concat(" ", argv)) }
-      } else {
-        concat(
-          concat("cd ", concat(workdir, " && ")),
-          if argv == "" { bin_path } else { concat(bin_path, concat(" ", argv)) },
+    SshShell { ssh_host: h } =>
+      if workdir == "/" {
+        srv3_typed_argv_outcome_success(
+          outcome: typed_argv_exec_over_ssh(
+            host: h,
+            argv: srv3_argv_with_bin(bin_path: bin_path, args: args),
+          ),
         )
+      } else {
+        srv3_transport_witness_bin_nonroot_workdir_refused()
       }
-      ssh_session_exec(host: h, command: cmd as NonEmptyStr).success
-    }
-    FleetSsh { target: _, context: _ } => fleet_ssh_leaf_unmigrated_refused()
+    FleetSsh { target: t, context: c } =>
+      if workdir == "/" {
+        srv3_typed_argv_outcome_success(
+          outcome: typed_argv_exec_over_fleet_ssh(
+            target: t,
+            context: c,
+            argv: srv3_argv_with_bin(bin_path: bin_path, args: args),
+          ),
+        )
+      } else {
+        srv3_transport_witness_bin_nonroot_workdir_refused()
+      }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       srv3_actuator_toolchain_emit_artifact_transport_helper_refused()
   }
@@ -1236,8 +1274,17 @@ fn srv3_transport_test_executable(path: String, transport: HostEffectTransport) 
   match transport {
     LocalShell => shell.Test.IsExecutable(path: path).executable
     SshShell { ssh_host: h } =>
-      ssh_session_exec(host: h, command: concat("test -x ", path) as NonEmptyStr).success
-    FleetSsh { target: _, context: _ } => fleet_ssh_leaf_unmigrated_refused()
+      srv3_typed_argv_outcome_success(
+        outcome: typed_argv_exec_over_ssh(host: h, argv: shell_test_is_executable_argv(path: path)),
+      )
+    FleetSsh { target: t, context: c } =>
+      srv3_typed_argv_outcome_success(
+        outcome: typed_argv_exec_over_fleet_ssh(
+          target: t,
+          context: c,
+          argv: shell_test_is_executable_argv(path: path),
+        ),
+      )
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       srv3_actuator_toolchain_emit_artifact_transport_helper_refused()
   }
@@ -1245,13 +1292,19 @@ fn srv3_transport_test_executable(path: String, transport: HostEffectTransport) 
 
 fn srv3_apt_tool_present(tool_name: NonEmptyStr, transport: HostEffectTransport) -> Bool {
   match transport {
-    LocalShell => shell.Which.Check(command: tool_name).exists
+    LocalShell => shell.PosixCommandV.Check(command: tool_name).exists
     SshShell { ssh_host: h } =>
-      ssh_session_exec(
-        host: h,
-        command: concat("command -v ", tool_name as String) as NonEmptyStr,
-      ).success
-    FleetSsh { target: _, context: _ } => fleet_ssh_leaf_unmigrated_refused()
+      srv3_typed_argv_outcome_success(
+        outcome: typed_argv_exec_over_ssh(host: h, argv: posix_command_v_check_argv(command: tool_name)),
+      )
+    FleetSsh { target: t, context: c } =>
+      srv3_typed_argv_outcome_success(
+        outcome: typed_argv_exec_over_fleet_ssh(
+          target: t,
+          context: c,
+          argv: posix_command_v_check_argv(command: tool_name),
+        ),
+      )
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       srv3_actuator_toolchain_emit_artifact_transport_helper_refused()
   }
@@ -1260,7 +1313,7 @@ fn srv3_apt_tool_present(tool_name: NonEmptyStr, transport: HostEffectTransport)
 fn srv3_tool_bin_path(tool_name: NonEmptyStr, transport: HostEffectTransport) -> String? {
   match transport {
     LocalShell => {
-      let found = shell.Which.Check(command: tool_name)
+      let found = shell.PosixCommandV.Check(command: tool_name)
       if found.exists {
         match found.path {
           Present { value: tool_path } => Present { value: tool_path as String }
@@ -1270,19 +1323,18 @@ fn srv3_tool_bin_path(tool_name: NonEmptyStr, transport: HostEffectTransport) ->
         none
       }
     }
-    SshShell { ssh_host: h } => {
-      let result = ssh_session_exec(
-        host: h,
-        command: concat("command -v ", tool_name as String) as NonEmptyStr,
+    SshShell { ssh_host: h } =>
+      srv3_typed_argv_outcome_stdout(
+        outcome: typed_argv_exec_over_ssh(host: h, argv: posix_command_v_check_argv(command: tool_name)),
       )
-      if result.success {
-        let tool_path = trim(result.stdout)
-        if tool_path == "" { none } else { Present { value: tool_path } }
-      } else {
-        none
-      }
-    }
-    FleetSsh { target: _, context: _ } => fleet_ssh_leaf_unmigrated_refused()
+    FleetSsh { target: t, context: c } =>
+      srv3_typed_argv_outcome_stdout(
+        outcome: typed_argv_exec_over_fleet_ssh(
+          target: t,
+          context: c,
+          argv: posix_command_v_check_argv(command: tool_name),
+        ),
+      )
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       srv3_actuator_toolchain_emit_artifact_transport_helper_refused_opt()
   }
@@ -1311,28 +1363,58 @@ fn srv3_chown_directory_to_current_user(path: String, transport: HostEffectTrans
         gunbc.WitnessBin.Run(
           workdir: "/",
           bin_path: "/usr/bin/sudo",
-          args: ["-n", "/usr/bin/chown", owner, path],
+          args: srv3_actuator_toolchain_chown_args(owner: owner, path: path),
         ).success
       } else {
         false
       }
     }
     SshShell { ssh_host: h } => {
-      let uid = ssh_session_exec(host: h, command: "id -u" as NonEmptyStr)
-      let gid = ssh_session_exec(host: h, command: "id -g" as NonEmptyStr)
-      if uid.success && gid.success {
-        let owner = concat(trim(uid.stdout), concat(":", trim(gid.stdout)))
-        srv3_transport_witness_bin_success(
-          transport: transport,
-          workdir: "/",
-          bin_path: "/usr/bin/sudo",
-          args: ["-n", "/usr/bin/chown", owner, path],
-        )
-      } else {
-        false
+      let uid = srv3_typed_argv_outcome_stdout(outcome: typed_argv_exec_over_ssh(host: h, argv: id_uid_argv()))
+      let gid = srv3_typed_argv_outcome_stdout(outcome: typed_argv_exec_over_ssh(host: h, argv: id_gid_argv()))
+      match uid {
+        Present { value: uid_value } =>
+          match gid {
+            Present { value: gid_value } =>
+              srv3_transport_witness_bin_success(
+                transport: transport,
+                workdir: "/",
+                bin_path: "/usr/bin/sudo",
+                args: srv3_actuator_toolchain_chown_args(
+                  owner: concat(uid_value, concat(":", gid_value)),
+                  path: path,
+                ),
+              )
+            Absent => false
+          }
+        Absent => false
       }
     }
-    FleetSsh { target: _, context: _ } => fleet_ssh_leaf_unmigrated_refused()
+    FleetSsh { target: t, context: c } => {
+      let uid = srv3_typed_argv_outcome_stdout(
+        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: id_uid_argv()),
+      )
+      let gid = srv3_typed_argv_outcome_stdout(
+        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: id_gid_argv()),
+      )
+      match uid {
+        Present { value: uid_value } =>
+          match gid {
+            Present { value: gid_value } =>
+              srv3_transport_witness_bin_success(
+                transport: transport,
+                workdir: "/",
+                bin_path: "/usr/bin/sudo",
+                args: srv3_actuator_toolchain_chown_args(
+                  owner: concat(uid_value, concat(":", gid_value)),
+                  path: path,
+                ),
+              )
+            Absent => false
+          }
+        Absent => false
+      }
+    }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       srv3_actuator_toolchain_emit_artifact_transport_helper_refused()
   }
@@ -1494,19 +1576,11 @@ fn realize_os_install_actuator_toolchain_ensure(
         transport: effect_intent.transport,
         effect_intent: effect_intent,
       )
-    FleetSsh { target: t, context: _ } =>
-      NotConverged {
-        reason: join([
-          "host_effect_apply: OsInstallActuatorToolchainEnsure refuses the FleetSsh transport at entry for endpoint=",
-          t.endpoint as String,
-          ". Its probe leaves (test -x, command -v, tool bin path, apt version, chown) build concatenated shell",
-          " command strings rather than typed argv, so they have no portable-word form to hand the fleet shaper.",
-          " Refusing here rather than in each leaf is the difference between one located refusal and five",
-          " FABRICATED NEGATIVE OBSERVATIONS: a Bool-typed leaf that cannot run its probe reports `tool absent`,",
-          " which is not ignorance rendered honestly but a false measurement that then authorizes an install.",
-        ], ""),
-        applied: effect_intent,
-      }
+    FleetSsh { target: _, context: _ } =>
+      srv3_realize_os_install_actuator_toolchain_ensure_body(
+        transport: effect_intent.transport,
+        effect_intent: effect_intent,
+      )
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       NotConverged {
         reason: "host_effect_apply: OsInstallActuatorToolchainEnsure cannot use EmitArtifactThenThinRun transport; typed mismatch.",
