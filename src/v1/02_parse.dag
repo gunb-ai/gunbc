@@ -4134,7 +4134,7 @@ fn parse_caret_expr(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
     Present { value: ShIdent } => {
       let spelling = next.value.text
       let end_span = token_span(tok: next)
-      let lit_span = make_span(start: span.start, end: end_span.end)
+      let lit_span = make_file_span(file: span.file, start: span.start, end: end_span.end)
       ExprResult {
         expr: make_expr_node(expr_data: ExprLiteral { value: LitSymbol { value: spelling } }, children: [], inferred: none, span: lit_span),
         tokens: token_stream_advance(stream: after_caret, n: 1),
@@ -4148,7 +4148,7 @@ fn parse_caret_expr(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
       let tokens = skip_newlines(tokens: r.tokens)
       let r2 = expect(tokens: tokens, expected: ExpectRParen)
       if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
-      let call_span = make_span(start: span.start, end: r2.token.span.end)
+      let call_span = make_file_span(file: span.file, start: span.start, end: r2.token.span.end)
       let callee = make_named_expr_node(name: "discriminant", expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: call_span, name_span: kernel_span(name: "discriminant"))
       let call = make_call_expr(lhs: callee, args: [r.expr], span: call_span, source_indices: ctx.source_indices)
       ExprResult { expr: call, tokens: r2.tokens, ctx: ctx, err: none }
