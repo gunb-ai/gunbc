@@ -59,6 +59,9 @@ import gunbc.spark_serving_observed_members {
   SparkServingObservedMembers,
   spark_serving_observed_members,
   spark_serving_projection_supports_empty_replan,
+  UnitActivityNoSuchUnit,
+  spark_serving_activity_was_observed,
+  spark_serving_observed_unit_activity_members,
 }
 import gunbc.spark_serving_converge_plan {
   SparkServingTypedActionProjection,
@@ -1197,4 +1200,29 @@ test fn a_host_needing_only_the_model_schedules_that_one_row() -> Bool {
     linger: LingerObservedEnabled,
   )
   length(order) == 1 && schedule_index_of(order: order, address_wire: "model-slot:") == 0
+}
+
+// A BARE HOST IS OBSERVABLE, and this is the arm whose absence blocked srv5's first provisioning.
+// `is-active` exits 4 for a unit that does not exist -- a definite reading -- and folding it into
+// Unobserved made a host with nothing installed indistinguishable from a host we failed to measure,
+// so the plan refused instead of installing. The projection must treat it as observed.
+test fn a_host_with_no_unit_at_all_is_observed_not_unobserved() -> Bool {
+  spark_serving_activity_was_observed(activity: UnitActivityNoSuchUnit)
+    && !spark_serving_activity_was_observed(activity: UnitActivityUnobserved)
+}
+
+// It is NOT Stopped either, and the difference is not cosmetic: a stopped unit exists and could be
+// started; a unit that does not exist must be installed and registered first, and collapsing the two
+// would let a plan select StartUserUnit against a unit file that is not there. A stopped unit
+// projects a member; a missing one projects none.
+test fn a_missing_unit_projects_no_activity_member_but_a_stopped_one_does() -> Bool {
+  spark_serving_observed_unit_activity_members(host: subject_host, activity: UnitActivityNoSuchUnit).length() == 0
+    && spark_serving_observed_unit_activity_members(host: subject_host, activity: UnitActivityStopped).length() == 1
+    && spark_serving_observed_unit_activity_members(host: subject_host, activity: UnitActivityUnobserved).length() == 0
+}
+
+// The silence arm stays load-bearing: a manager we could not reach has not told us the unit is dead,
+// and the plan must still refuse rather than start off a probe that never answered.
+test fn a_genuinely_unobserved_activity_still_refuses() -> Bool {
+  !spark_serving_activity_was_observed(activity: UnitActivityUnobserved)
 }

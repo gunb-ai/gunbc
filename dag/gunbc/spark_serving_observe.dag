@@ -837,16 +837,22 @@ type SparkServingObservedUnit {
   activity: SparkServingObservedActivityState
 }
 
-// `systemctl --user is-active` and nothing else decides this. Exit 0 with "active" is running;
-// exit 3 is systemd's documented answer for a unit that is simply not running, which is a healthy
-// observation and not a probe failure; every other outcome leaves the activity UNOBSERVED, because
-// a manager we could not reach has not told us the unit is dead, and planning a start on that
-// silence would actuate off a probe that never answered.
+// `systemctl --user is-active` and nothing else decides this, and it answers in THREE definite ways
+// before it answers in none. Exit 0 with "active" is running. Exit 3 is systemd's documented answer
+// for a unit that exists and is not running. Exit 4 is "no such unit" -- equally definite, and the
+// arm whose absence blocked first provisioning: folded into Unobserved, a host with nothing
+// installed read as a host we had failed to measure, so the plan refused instead of installing.
+//
+// Every OTHER outcome does leave the activity unobserved, and that arm is still load-bearing: a
+// manager we could not reach has not told us the unit is dead, and planning a start on that silence
+// would actuate off a probe that never answered.
 fn classify_is_active_result(result: SshSessionExecResult) -> SparkServingObservedActivityState {
   if result.success && trim(s: result.stdout) == "active" {
     UnitActivityRunning
   } else if result.exit_code == 3 {
     UnitActivityStopped
+  } else if result.exit_code == 4 {
+    UnitActivityNoSuchUnit
   } else if result.success {
     UnitActivityStopped
   } else {

@@ -496,15 +496,26 @@ fn classify_observed_user_unit(
 // running, exit 3 is a healthy stopped unit, and anything else is a failure to observe -- because a
 // manager that could not be reached has not established that the unit is stopped, and reporting it
 // as stopped would plan a start against evidence nobody has.
+// FOUR ARMS, AND THE FOURTH IS WHY A BARE HOST CAN BE PROVISIONED AT ALL. `is-active` exits 4 when
+// there is no such unit -- a DEFINITE answer, not a silence -- and folding it into Unobserved read a
+// host with nothing installed as a host we failed to measure, so the plan refused rather than
+// installing. That is the empty-observation narrow with the sign flipped: ignorance manufactured out
+// of a clear reading.
+//
+// It is not Stopped either. A stopped unit exists and could be started; a unit that does not exist
+// yet must be installed and registered before starting is even meaningful, and collapsing the two
+// would let a plan select StartUserUnit for a unit file that is not there.
 type SparkServingObservedActivityState
   = UnitActivityRunning
   | UnitActivityStopped
+  | UnitActivityNoSuchUnit
   | UnitActivityUnobserved
 
 fn spark_serving_activity_was_observed(activity: SparkServingObservedActivityState) -> Bool {
   match activity {
     UnitActivityRunning => true
     UnitActivityStopped => true
+    UnitActivityNoSuchUnit => true
     UnitActivityUnobserved => false
   }
 }
@@ -519,6 +530,7 @@ fn spark_serving_observed_unit_activity_members(
 ) -> List<SparkServingMember> {
   match activity {
     UnitActivityUnobserved => []
+    UnitActivityNoSuchUnit => []
     UnitActivityRunning => [
       spark_serving_member(
         host: host,
