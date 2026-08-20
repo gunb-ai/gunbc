@@ -647,44 +647,6 @@ mod tests {
     }
 
     #[test]
-    fn scratch_content_sync_two_files() {
-        let workspace = super::super::workspace_root();
-        let emitted = compile_stage0(&workspace).expect("compile_stage0 must succeed");
-        let stage0_src = workspace.join("src/v1/stage0/src");
-        for basename in ["v1_compiler_infer.rs", "std_algebra.rs"] {
-            let emitted_content = emitted
-                .iter()
-                .find(|(path, _)| {
-                    Path::new(path.as_str())
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        == Some(basename)
-                })
-                .map(|(_, content)| content.clone());
-            let committed_content =
-                fs::read_to_string(stage0_src.join(basename)).expect("read committed file");
-            match emitted_content {
-                Some(emitted) if emitted == committed_content => {
-                    eprintln!("SCRATCH_SYNC_RESULT {basename} MATCH");
-                }
-                Some(emitted) => {
-                    eprintln!(
-                        "SCRATCH_SYNC_RESULT {basename} MISMATCH emitted_len={} committed_len={}",
-                        emitted.len(),
-                        committed_content.len()
-                    );
-                    let out = std::env::temp_dir().join(format!("scratch_emitted_{basename}"));
-                    fs::write(&out, &emitted).expect("write emitted scratch file");
-                    eprintln!("SCRATCH_SYNC_EMITTED_WRITTEN {}", out.display());
-                }
-                None => {
-                    eprintln!("SCRATCH_SYNC_RESULT {basename} NOT_EMITTED");
-                }
-            }
-        }
-    }
-
-    #[test]
     fn empty_population_digest_refuses() {
         let err = tree_digest_for_basenames(Path::new("/tmp"), &[], "committed").unwrap_err();
         assert!(err.contains("empty population"));
