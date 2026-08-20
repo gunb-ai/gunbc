@@ -36256,15 +36256,58 @@ pub fn qualified_name_resolves_in_derived_module_set(qn: &crate::v1_interpreter:
         && build_module_path_index_from_witness_roots().contains_key(&module_path)
 }
 
+/// Project one argv element of an `extdeps` transport declaration into the census token the
+/// `v2.lens.extdeps_shape_transport_policy` reading folds over.
+///
+/// TWO CHANGES HERE, AND THE SECOND IS DELIBERATELY WEAKER THAN THE FIRST.
+///
+/// (1) THE INTERPOLATION ARM READS PARTS, NOT RAW CHILDREN -- a repair, not a restatement.
+/// The old arm walked `node.children` and answered the empty string for any child that was
+/// neither a literal nor a var. A `StringPart` node is not an expression node -- an
+/// interpolated string's TEXT parts carry `NoExprData` -- so the old arm silently dropped
+/// the literal text of every interpolated argv element, surviving only because the var part
+/// happened to carry the whole token in this corpus's specimens. This arm goes through
+/// `extract_string_interp_parts`, the same authority `bind_argv_expr` uses for the same job.
+///
+/// (2) AN UNPROJECTABLE FORM IS ANNOUNCED BY NAME RATHER THAN REFUSED, and that is a
+/// DECLARED DEGRADATION rather than the wall this census set out to build. The wall was
+/// built, and running it against the live corpus is what produced the reason it cannot land
+/// yet: `extdeps.git` `git.Core.DiffUnified0` argv[3] is an `ExprCall`, so a hard refusal
+/// here stops `corpus_git_policy_leak_defused_holds`, and that red is NOT closable by the
+/// author who causes it -- the same seven operations are already typed and counted debt on
+/// the MATERIALIZATION side (`v2.std.operation_argv` `ArgvRowExpressionResidue`, pinned in
+/// `test.claim.operation_argv_corpus_witness`), owned by the argv-evaluation lane.
+///
+/// So the two readings of one corpus disagree and this comment is where that is recorded:
+/// materialization counts the unreadable element as residue, the policy census renders it as
+/// the empty string, and an empty token matches no policy predicate -- so a leak carried by a
+/// form the reader cannot read is reported as clean. The line below makes that occurrence
+/// LOCATED AND COUNTABLE instead of silent; it does not make it correct.
+///
+/// NEXT RUNG, and it is a modelling decision rather than a seed edit: `ExtdepsTransportArgvFact`
+/// carries a typed projection (`ProjectedToken` / `UnprojectableForm { form }`) the way the
+/// materialization row already does, and the policy fold reads it. At that point the empty
+/// string has no way to be written and this arm becomes a refusal at the boundary rather
+/// than a degradation inside it. Carried as a row in
+/// `gunbc.seed_closed_vocabulary_wildcard_census`.
 fn extdeps_argv_expr_token(
     node: &Rc<crate::v1_std_core::Node>,
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    located: &str,
 ) -> String {
-    use crate::v1_std_core::{expr_var_name_at, ExprData, LiteralValue};
+    use crate::v1_interpreter::{expr_data_form_name, literal_value_form_name};
+    use crate::v1_std_core::{expr_var_name_at, ExprData, StringPart};
     match node.expr_data.as_ref() {
         ExprData::ExprLiteral { value } => match value.as_ref() {
-            LiteralValue::LitStr { value } => value.clone(),
-            other => format!("{other:?}"),
+            crate::std_syntax::LiteralValue::LitStr { value } => value.clone(),
+            other => {
+                eprintln!(
+                    "[extdeps-argv-unprojectable] {located}: `{}` literal has no argv token \
+                     projection; the census token is empty and matches no policy predicate",
+                    literal_value_form_name(other)
+                );
+                String::new()
+            }
         },
         ExprData::ExprVar { .. } => {
             let name = expr_var_name_at(node.clone(), source_indices.clone());
@@ -36274,26 +36317,26 @@ fn extdeps_argv_expr_token(
                 format!("{{{name}}}")
             }
         }
-        ExprData::ExprStringInterp => node
-            .children
-            .iter()
-            .map(|child| match child.expr_data.as_ref() {
-                ExprData::ExprLiteral { value } => match value.as_ref() {
-                    LiteralValue::LitStr { value } => value.clone(),
-                    _ => String::new(),
-                },
-                ExprData::ExprVar { .. } => {
-                    let name = expr_var_name_at(child.clone(), source_indices.clone());
-                    if name.is_empty() {
-                        child.name.clone()
-                    } else {
-                        format!("{{{name}}}")
+        ExprData::ExprStringInterp => {
+            let mut out = String::new();
+            for part in crate::v1_compiler_emit::extract_string_interp_parts(node.clone()).iter() {
+                match part.as_ref() {
+                    StringPart::Text { value } => out.push_str(value),
+                    StringPart::Interpolation { expr } => {
+                        out.push_str(&extdeps_argv_expr_token(expr, source_indices, located))
                     }
                 }
-                _ => String::new(),
-            })
-            .collect(),
-        _ => String::new(),
+            }
+            out
+        }
+        other => {
+            eprintln!(
+                "[extdeps-argv-unprojectable] {located}: `{}` expression has no argv token \
+                 projection; the census token is empty and matches no policy predicate",
+                expr_data_form_name(other)
+            );
+            String::new()
+        }
     }
 }
 
@@ -36463,7 +36506,11 @@ pub fn extdeps_shape_transport_policy_module_facts(
                     "Shell"
                 };
             for (idx, arg) in eff.children.iter().enumerate() {
-                let token = extdeps_argv_expr_token(arg, &source_indices);
+                let token = extdeps_argv_expr_token(
+                    arg,
+                    &source_indices,
+                    &format!("{module_path} `{}.{}` argv[{idx}]", item.name, op.name),
+                );
                 argv_facts.push(ExtdepsArgvFactRaw {
                     module_path: module_path.to_string(),
                     service: item.name.clone(),
