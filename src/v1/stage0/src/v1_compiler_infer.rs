@@ -203,7 +203,7 @@ pub use crate::v1_std_core::{
     is_tree_size_reducing, lambda_body, lambda_param_names_at, let_binding_name_at, let_body,
     let_value, local_transport_node, make_arg_node, make_arm_node, make_error_node,
     make_expr_error_node, make_expr_node, make_field_binding_node, make_field_init_node,
-    make_interp_part_node, make_named_expr_node, make_param_node, make_span, make_text_part_node,
+    make_interp_part_node, make_named_expr_node, make_param_node, make_text_part_node,
     make_transport_node, map_children, match_arm_nodes, match_scrutinee, method_arg_nodes,
     method_receiver, module_imports, module_items, module_node, no_span, node_name_span, none_type,
     param_node_default_value, param_node_name_at, param_node_type_expr,
@@ -4710,7 +4710,7 @@ pub fn validate_cast(
 pub fn type_variable_node(id: String) -> Rc<Node> {
     Rc::new(Node {
         name: "".to_string(),
-        span: make_span(0, 0),
+        span: no_span(),
         ident_span: None,
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
@@ -18226,7 +18226,7 @@ pub fn build_type_env_unresolved(
             .fold(intern_table.clone(), |t: Rc<InternTable>, name: String| {
                 intern(t, name.clone()).table.clone()
             });
-        let zero_span = make_span(0, 0);
+        let zero_span = no_span();
         let kernel_bindings = Rc::new(v1_rt::map_keys(&kernel_type_set()))
             .iter()
             .cloned()
