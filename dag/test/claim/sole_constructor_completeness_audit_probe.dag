@@ -296,3 +296,49 @@ fn f14_diag_total_row_count() -> Int {
 fn f14_diag_sole_ctor_count() -> Int {
   violation_count(source: f14_deserialize_attempt_source, wanted: "SoleConstructorViolation")
 }
+
+// ---------------------------------------------------------------------------
+// Form 15: record literal in a top-level DATA-DECLARATION initializer
+// (module-scope, not inside any fn body).
+// ---------------------------------------------------------------------------
+data f15_data_init_source: String = "module probe_f15_data_init\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\ndata forged: LocalValidated = LocalValidated { n: 999 }\n"
+
+test fn f15_record_lit_data_initializer_refuses() -> Bool {
+  violation_count(source: f15_data_init_source, wanted: "SoleConstructorViolation") >= 1
+}
+
+// ---------------------------------------------------------------------------
+// Form 16: record literal as a MAP-LITERAL VALUE (collection-value position,
+// distinct from form 4's list-element position).
+// ---------------------------------------------------------------------------
+data f16_map_value_source: String = "module probe_f16_map_value\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\nimport std.types { Map }\ndata forged: Map<String, LocalValidated> = { \"k\": LocalValidated { n: 999 } }\n"
+
+test fn f16_record_lit_map_value_refuses() -> Bool {
+  violation_count(source: f16_map_value_source, wanted: "SoleConstructorViolation") >= 1
+}
+
+// ---------------------------------------------------------------------------
+// admitted_caller positive control: mint_sealed_local's admit_callers list
+// names exactly test.fixture.sole_constructor_sealed.admitted_caller
+// admitted_mint_call. A synthetic probe module is necessarily a DIFFERENT,
+// non-admitted decl, so it exercises the REFUSAL half of the admission wall
+// (ConstructorCallAdmissionRefused) - not sole_constructor's own
+// SoleConstructorViolation class, a distinct diagnostic for a distinct wall.
+// The GREEN half (the real admitted_caller.dag fixture compiling clean when
+// it calls mint_sealed_local) is the existing, already-in-tree fixture pair
+// (definer.dag / admitted_caller.dag) - its own clean compilation across
+// every prior probe run in this session is the positive control: no probe
+// run has ever reported a diagnostic against admitted_caller.dag itself.
+// ---------------------------------------------------------------------------
+data f17_unadmitted_caller_source: String = "module probe_f17_unadmitted_caller\nimport test.fixture.sole_constructor_sealed.definer { mint_sealed_local }\nfn forged() -> Int {\n  let v = mint_sealed_local(n: 999)\n  0\n}\n"
+
+fn f17_diag_total_row_count() -> Int {
+  match census_of(source: f17_unadmitted_caller_source) {
+    CensusObserved { rows: rows } => census_total_count(rows: rows)
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+test fn f17_unadmitted_caller_of_sealed_mint_refuses() -> Bool {
+  violation_count(source: f17_unadmitted_caller_source, wanted: "ConstructorCallAdmissionRefused") >= 1
+}

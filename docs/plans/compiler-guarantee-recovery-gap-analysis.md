@@ -865,6 +865,31 @@ recorded as its own ledger row rather than folded into either the record-literal
 finding or the deserialization finding, because "a form the wall doesn't cover" and "a
 representation the wall has no jurisdiction over" are different claims.
 
+*Remaining record-literal AST positions (module-scope data initializer, map-literal value) —
+CONFIRMED, wall holds, no new hole.* Two further positions beyond forms 1-8: f15 forges
+`LocalValidated { n: 999 }` as a top-level `data` declaration's initializer (module scope,
+outside any fn body) — refuses. f16 forges the same literal as a `Map<String,
+LocalValidated>` literal's value (collection-value position, distinct from form 4's
+list-element position) — refuses. Both reconfirm the two-call-site finding rather than
+surfacing a new form: `infer_record_lit_structural` is reached regardless of the enclosing
+declaration or collection shape, only the AST node kind (record literal vs. variant literal)
+determines whether the check fires.
+
+*Admission wall (`admit_callers`) positive/negative control — CONFIRMED, a distinct wall from
+`sole_constructor` itself, functioning correctly.* Fixture
+`test.fixture.sole_constructor_sealed.definer`'s `mint_sealed_local` restricts its callers via
+`admit_callers` to exactly `test.fixture.sole_constructor_sealed.admitted_caller`
+`admitted_mint_call`. f17 calls `mint_sealed_local` from a synthetic, necessarily-unadmitted
+probe module: refuses with `ConstructorCallAdmissionRefused` (not `SoleConstructorViolation` —
+a distinct diagnostic for a distinct wall), and the census's total row count is exactly 1 —
+that one refusal is the *only* diagnostic the synthetic module produces, confirming a clean
+single-cause refusal rather than a cascade obscuring the real class. The green half of this
+pair is the pre-existing, already-in-tree `admitted_caller.dag` fixture itself: every prior
+probe dispatch this session compiled the full fixture tree including that file with zero
+diagnostics reported against it, so its clean compilation stands as the accepted-positive
+control without needing a separate synthetic probe (a synthetic module cannot BE the named
+admitted decl, so this is the only way to exercise the accept side).
+
 **Exposure, per hole, so a confirmed defect is never read as a confirmed victim (explicit
 ask, 2026-08-20):**
 - *Order-dependence (census-ambiguous bare name):* sole_constructor type declarations
