@@ -885,7 +885,38 @@ review shape will not catch this class.
 
 **Next trigger:** the lens lands **between this PR and the cutover PR**, because durable
 single-writer CAS is the exact next place the class can bite — a `CasToken` type name standing where
-a durable compare-and-set was needed is the same defect with worse consequences.
+a durable compare-and-set was needed is the same defect with worse consequences: it fails as a
+**lost update** rather than as a wrong number, and a lost update is the failure class that cannot be
+detected after the fact.
+
+**Scoped to a decidable sub-class first, per §5's "never" trap.** *"A name promises more than the
+construction delivers"* is **not decidable** — the promise lives in a reader's head, not in the
+`Node` tree — so a lens scoped that way is an unbounded project that will not land between two PRs,
+and the class sits unguarded while it is attempted. The general form stays a **reviewer's question**,
+honestly and permanently, per the undecidable-residue rule.
+
+What is decidable, and the correction that matters: the tell above says an arm is *unfireable*,
+which is **not** what any mechanism can measure. Whether a refusal arm *could* fire under some
+unwritten fixture is undecidable; whether it *did* fire under the corpus we run is a measurement.
+Those are different claims and only the second is checkable, so the lens must assert the second:
+
+> **no witness in the floor run ever constructed this refusal variant.**
+
+That is coproduct-variant observation coverage — decidable by execution, no intent inference, and it
+catches the class from the **evidence side** rather than the naming side, which is where the class is
+actually observable. It reports *untested*, never *unfireable*; conflating them would re-introduce
+the undecidable claim inside the mechanism meant to avoid it.
+
+Rejected as a candidate: **a declared vocabulary of guarantee words** (`epoch`, `fence`, `lease`,
+`token`, `lock`, `guard`, `validated`) whose module declares no durable operation. It is decidable
+and cheap, and it is **grep by another name** — §6 enforces with lenses, not greps — and it fires on
+the naming layer we just established is exactly where the promise is *not* legible. An honest
+`LeaseEpoch` and a lying one are spelled identically.
+
+**And the lens is the backstop, not the proof.** The CAS site needs a two-way executed control on
+its own terms regardless of whether any lens lands — one run that loses an update against a
+non-durable token, one that does not against the durable one. A lens that reports which arms went
+unobserved cannot establish that the observed ones are correct.
 
 ### Merge state, corrected
 
