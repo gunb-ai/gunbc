@@ -19780,7 +19780,7 @@ fn behavioral_receipt_census(source_roots: &[String]) -> Result<bool, String> {
         );
         let mut worst = type_reader_gaps.clone();
         worst.sort_by(|a, b| b.3.len().cmp(&a.3.len()));
-        for (m, lines, read, missed) in worst.iter().take(12) {
+        for (m, lines, read, missed) in worst.iter() {
             eprintln!(
                 "receipt-census:   GAP {m} type_lines={lines} types_read={read} missed={}",
                 missed.join(", ")
