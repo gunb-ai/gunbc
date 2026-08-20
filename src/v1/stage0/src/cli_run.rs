@@ -41800,3 +41800,12 @@ pub fn run_required_regen_fixed_point(
 ) -> Result<required_regen_host::RequiredRegenOutcome, String> {
     required_regen_host::run_required_regen_fixed_point(receipt_rel, pass1_digest)
 }
+
+pub use required_regen_host::GeneratedDriftMeasurement;
+
+/// The emit-and-compare half of regen with NO equality verdict attached, for the mirror-drift
+/// gate. Exposed beside `run_required_regen` rather than inside it because the two answer
+/// different questions off one measurement; see `GeneratedDriftMeasurement`.
+pub fn measure_generated_drift() -> Result<GeneratedDriftMeasurement, String> {
+    required_regen_host::measure_generated_drift()
+}

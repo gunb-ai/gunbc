@@ -10339,6 +10339,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut required_floor_mode = false;
     let mut required_regen_mode = false;
     let mut required_regen_fixed_point_mode = false;
+    let mut required_mirror_drift_mode = false;
     let mut regen_candidate_dir = "target/stage0-regen-candidate".to_string();
     let mut regen_receipt_path = "target/stage0-regen-receipt.json".to_string();
 
@@ -10367,6 +10368,9 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             "--required-regen-fixed-point" => {
                 required_regen_fixed_point_mode = true;
+            }
+            "--required-mirror-drift" => {
+                required_mirror_drift_mode = true;
             }
             "--regen-candidate-dir" => {
                 i += 1;
@@ -10460,6 +10464,10 @@ fn run() -> Result<ExitCode, ExitCode> {
     // and the absence of those flags is the point rather than an omission. `run_required_floor`
     // refuses when planned, executed and terminal identity counts disagree, so a silently short
     // roster cannot report as a pass.
+    if required_mirror_drift_mode {
+        return run_required_mirror_drift(&source_roots);
+    }
+
     if required_regen_fixed_point_mode {
         return match v1_compiler::cli_run::run_required_regen_fixed_point(&regen_receipt_path, None)
         {
@@ -17760,4 +17768,446 @@ mod scoped_execution_request_tests {
             "the refusal must name what it refused and where: {refusal}"
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// THE MIRROR-DRIFT GATE
+// ---------------------------------------------------------------------------
+//
+// WHAT QUESTION THIS ASKS, AND WHY IT IS NOT THE ONE `--required-regen` ASKS.
+//
+// `--required-regen` asks whether the committed stage0 mirrors EQUAL what their `.dag`
+// authority emits. That is the right question for a repository whose mirrors are written by
+// something. This one is not: the regen cut deleted `regen_stage0`, `RegenVerifyGate` and
+// `SelfHostStalenessGate` at the root, so nothing on main writes a mirror. Enrolling equality
+// as required therefore lands a red with NO CLOSING MOVE — and a required gate a contributor
+// cannot satisfy has exactly one accessible green, which is to hand-edit the generated mirror
+// until it matches. That is the half-application this gate exists to refuse, so equality-as-
+// required does not merely report the hole, it applies pressure toward the mechanism that
+// widened it.
+//
+// So the gate asks WHICH SIDE MOVED, per drifted path, against the merge base:
+//
+//   drifted AND this change touched the mirror   -> SIDEWAYS MIRROR MOVE (refuse)
+//   drifted AND this change did not touch it     -> pre-existing debt; must carry an authored
+//                                                   disposition, else UNDISPOSITIONED (refuse)
+//   not drifted                                  -> silent, whether or not it was touched: an
+//                                                   author who advanced the authority AND
+//                                                   regenerated leaves no drift behind
+//
+// A THIRD refusal runs the join the other way: a disposition row whose path does NOT drift is
+// STALE and refuses too — BUT ONLY WHEN THE SUBJECT CONTAINS THE MAIN TIP, for a reason paid for
+// in a false verdict rather than reasoned out in advance. On its first live run this arm reported
+// `v1_compiler_parse.rs` as a closed debt and I relayed that as an instruction to delete the row.
+// The row was CORRECT. The subject was a branch whose merge base sat fifteen commits behind
+// #8607, the commit that CREATED that path's drift by taking two `make_file_span(` call sites in
+// the authority and one in the mirror. On that tree the two genuinely agreed.
+//
+// So "the debt is closed" and "the debt was not yet open on this tree" are two states, and
+// reading the second as the first is a state-space conflation that authorises a DELETION. That
+// direction is what makes this arm different from the other two: they fail toward refusing, this
+// one fails toward destroying a correct row. Only the arm that can destroy something gets the
+// guard.
+//
+// The guard is derived, not configured — `git merge-base --is-ancestor origin/main HEAD`. When
+// the subject contains the main tip the arm is live and refuses as approved. When it does not,
+// stale rows are still COUNTED AND NAMED under their own label and do not refuse; nothing is
+// silenced, so the observation stays visible and rankable, and what stops happening is an
+// unreadable observation being reported as a verdict. Where it matters this holds by
+// construction: GitHub checks out `refs/pull/N/merge` for pull_request events, so CI's subject is
+// main plus the PR and always contains the tip — the arm is fully live for every PR CI sees, and
+// declining to merge main does not duck it there. The design this gate was approved with had two arms and stopped at the
+// second; the third is added here rather than left out, and the reason is that without it the
+// carrier is a one-way ledger. Rows enter when drift is found and nothing ever removes one, so a
+// path that was regenerated keeps a row asserting debt that no longer exists — a second
+// representation of the population that only ever disagrees with the measurement in the safe-
+// looking direction, which is the parallel-ledger failure and exactly the accretion the carrier's
+// own header worries about in the opposite direction. It is closable in one edit, by the author
+// whose regeneration made the row stale, at the moment they made it stale. It is also the
+// dissolution rule applied to this carrier: the row is the lower-rung machinery, and closing the
+// drift is the climb that must delete it.
+//
+// All three refusals are closable by an action available to the author of the change that caused
+// them, which is the property equality lacks.
+//
+// WHERE EACH FACT COMES FROM, BECAUSE THE SPLIT IS THE WHOLE DESIGN.
+//
+//   MEMBERSHIP   derived, `measure_generated_drift` — emit and compare, every run
+//   BASELINE     derived, git merge base — resolved, PRINTED, and asserted before use
+//   DISPOSITION  authored, `gunbc.stage0_mirror_debt`
+//
+// Only the third is authored, and it is the only one that CANNOT silence a finding: a path with
+// no row refuses. Had membership been authored the gate would be forgeable — deleting a row
+// would delete the drift — which is the hole smart-ram-730 found in this gate's first design and
+// the reason the carrier states, in its own header, that membership is not authored there.
+//
+// THIS GATE WRITES NOTHING, AND THAT IS A DECISION RATHER THAN AN OMISSION. It prints its
+// measurement and returns an exit code; there is no receipt file. Two reasons, and the second is
+// the one that matters. A receipt with no consumer is scaffold. And a receipt is exactly where
+// the mode this gate replaces went wrong: `run_required_regen_fixed_point` writes a receipt whose
+// pass-2 emission INHERITS four fields verbatim from a prior receipt and computes only two, so on
+// a warm `target/` it stamps this commit's sha onto another commit's `first_generation_equal` and
+// `changed_paths` — internally consistent, structurally valid, and false about which tree it
+// describes. That is the fabricated-plausible-output arm wearing a schema, and it is invisible
+// precisely because the artifact validates. The standing rule it produced (operator, 2026-08-20):
+// A RECEIPT MUST NOT INHERIT A FIELD IT DID NOT MEASURE — a run that computes two of six fields
+// emits two and refuses on the rest, or it measures all six. Every fact this gate reports is
+// computed in the invocation that reports it, from the tree that invocation is looking at, and
+// nothing is carried across runs through `target/` or anywhere else. If a receipt is ever added
+// here, that rule is the bar it has to clear.
+//
+// ONE FACT FOR WHOEVER ENROLS THIS AS A CI STEP, carried here rather than left to be
+// rediscovered, because the way it fails is the way a working gate gets switched off.
+// `witnesses.yml` checks out with `actions/checkout@v5`, which does not guarantee a usable
+// `origin/main` remote-tracking ref. If that ref is absent the refusal below fires — correctly,
+// fail-closed — but it presents as a required check failing for a reason unrelated to any drift,
+// which reads as gate flakiness rather than as a finding. The step must therefore run
+// `git fetch --no-tags origin main` BEFORE invoking this mode. That belongs in the step, not
+// here: a gate asserting its baseline is correct, and a gate manufacturing one would not be.
+//
+// WHY THE BASELINE IS ASSERTED RATHER THAN DEFAULTED. `git merge-base origin/main HEAD` fails on
+// a shallow clone that never fetched main, and the tempting arm is to fall back to HEAD. Under
+// that fallback the touched set is EMPTY, every sideways move reclassifies as pre-existing debt,
+// and the gate greens on exactly the change it exists to catch. That is the empty-observation
+// narrow: a baseline that could not be resolved is ignorance, not the fact that nothing moved.
+// The refusal below carries the fetch recipe instead.
+
+/// The gate switches on WHAT ROWS CARRY, and it enumerates the arms it understands rather than
+/// stringifying whichever variant name it finds. The difference is the failure direction when
+/// the carrier grows a third arm: a stringified name would fall through every comparison below
+/// and still count as ACCOUNTED, so a disposition this gate has never heard of would silence a
+/// drift. Enumerating refuses instead, and the refusal is closable in one edit here.
+enum MirrorDriftDisposition {
+    CarriedAuthorityAdvanced,
+    CarriedReasonNotEstablished,
+}
+
+impl MirrorDriftDisposition {
+    fn label(&self) -> &'static str {
+        match self {
+            MirrorDriftDisposition::CarriedAuthorityAdvanced => "CarriedAuthorityAdvanced",
+            MirrorDriftDisposition::CarriedReasonNotEstablished => "CarriedReasonNotEstablished",
+        }
+    }
+}
+
+struct MirrorDebtRow {
+    path: String,
+    disposition: MirrorDriftDisposition,
+}
+
+/// Read the AUTHORED half. Refuses on a malformed row rather than skipping it — a row the gate
+/// cannot read is a row whose judgement is unknown, and dropping it would quietly reclassify its
+/// path as undispositioned or, worse, leave it accounted for by a row that says nothing.
+fn read_mirror_debt_dispositions(source_roots: &[String]) -> Result<Vec<MirrorDebtRow>, String> {
+    const ENTRY: &str = "dag/gunbc/stage0_mirror_debt.dag";
+    const ROWS: &str = "stage0_mirror_debt_rows";
+
+    // AN ABSENT CARRIER IS NO DECLARED DEBT. It is NOT a refusal, and the distinction was paid
+    // for: the debt carrier's whole purpose ends the moment the drift it describes converges, so
+    // the correct disposition of a carrier whose population no longer exists is to WITHDRAW it
+    // rather than edit its rows to nothing. Reading the file before measuring anything meant a
+    // converged tree with the carrier withdrawn refused at resolve — zero drift, nothing wrong,
+    // and no action closing the red except re-authoring a carrier that correctly describes
+    // nothing. That is exactly the unclosable red this whole mode exists to replace, rebuilt
+    // inside its own fix.
+    //
+    // Absence is safe here for one reason and it is worth stating rather than trusting: MEMBERSHIP
+    // IS DERIVED, so the carrier can never contribute a path to the population. Therefore
+    //   drift present + carrier absent -> every drifted path is UNDISPOSITIONED -> refuses
+    //   drift empty   + carrier absent -> nothing to disposition -> green, correctly
+    // and absence cannot hide a drift in either direction. Nothing widens and nothing narrows;
+    // in every case where something is actually wrong the failure arm is unchanged, which is what
+    // separates this from the absorbing fallback it superficially resembles.
+    //
+    // AN UNPARSEABLE CARRIER STILL REFUSES, below. Absent and malformed are different states — one
+    // is a world where no debt is declared, the other is a carrier that cannot be read — and
+    // collapsing them would be the state-space conflation this file argues against everywhere
+    // else.
+    let entry_path = v1_compiler::cli_run::workspace_root().join(ENTRY);
+    if !entry_path.exists() {
+        return Ok(Vec::new());
+    }
+
+    let (graph, indices) = resolve_entry_graph(source_roots, ENTRY)
+        .map_err(|msg| format!("resolve failed for {ENTRY}:\n{msg}"))?;
+    let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    let value = run_value(&ctx, ROWS).map_err(|msg| format!("eval {ENTRY}::{ROWS}: {msg}"))?;
+    let items = match value {
+        Value::List(items) => items,
+        other => {
+            return Err(format!(
+                "{ENTRY}::{ROWS} must be a List<MirrorDebtRow>, got {}",
+                other.type_label_public()
+            ))
+        }
+    };
+    let mut out = Vec::new();
+    for item in items.iter() {
+        let fields = match item {
+            Value::Record { fields, .. } | Value::Variant { fields, .. } => fields.as_slice(),
+            other => {
+                return Err(format!(
+                    "{ROWS} element must be a MirrorDebtRow record, got {}",
+                    other.type_label_public()
+                ))
+            }
+        };
+        let path = str_field(fields, "path", "MirrorDebtRow", &ctx)?;
+        // A row outside the flat generated surface can never join against a measured basename, so
+        // it would otherwise surface as STALE — a true refusal with a false cause, sending the
+        // author to delete a row when the real defect is its path. Refuse here, where the cause
+        // is known.
+        match path.strip_prefix("src/v1/stage0/src/") {
+            Some(rest) if !rest.is_empty() && !rest.contains('/') => {}
+            _ => {
+                return Err(format!(
+                    "MirrorDebtRow path `{path}` is not a file directly in \
+                     `src/v1/stage0/src/` — the generated surface is one flat directory and the \
+                     join keys on its basenames, so a path outside it can never match a measured \
+                     drift and would report as a stale row rather than as the malformed path it is"
+                ))
+            }
+        }
+        let disposition = match ctx.field(fields, "disposition") {
+            Some(Value::Variant { variant_name, .. })
+                if ctx.sym_eq(*variant_name, "CarriedAuthorityAdvanced") =>
+            {
+                MirrorDriftDisposition::CarriedAuthorityAdvanced
+            }
+            Some(Value::Variant { variant_name, .. })
+                if ctx.sym_eq(*variant_name, "CarriedReasonNotEstablished") =>
+            {
+                MirrorDriftDisposition::CarriedReasonNotEstablished
+            }
+            Some(other) => {
+                return Err(format!(
+                    "MirrorDebtRow `{path}`.disposition is {} — the gate understands only \
+                     `CarriedAuthorityAdvanced` and `CarriedReasonNotEstablished`. A disposition \
+                     this gate has not been taught refuses rather than counting as accounted, \
+                     because falling through would let a new arm silence a real drift.",
+                    ctx.format_value(other)
+                ))
+            }
+            None => {
+                return Err(format!(
+                    "MirrorDebtRow `{path}` missing field `disposition`"
+                ))
+            }
+        };
+        out.push(MirrorDebtRow { path, disposition });
+    }
+    Ok(out)
+}
+
+fn git_stdout(workspace: &Path, args: &[&str]) -> Result<String, String> {
+    let out = Command::new("git")
+        .args(args)
+        .current_dir(workspace)
+        .env("GIT_PAGER", "cat")
+        .output()
+        .map_err(|e| format!("spawn git {}: {e}", args.join(" ")))?;
+    if !out.status.success() {
+        return Err(format!(
+            "git {} failed: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+fn basename_of(path: &str) -> &str {
+    path.rsplit('/').next().unwrap_or(path)
+}
+
+fn run_required_mirror_drift(source_roots: &[String]) -> Result<ExitCode, ExitCode> {
+    match required_mirror_drift_verdict(source_roots) {
+        Ok(true) => Ok(ExitCode::SUCCESS),
+        Ok(false) => Err(ExitCode::from(1)),
+        Err(refusal) => {
+            eprintln!("required-mirror-drift: refused: {refusal}");
+            Err(ExitCode::from(1))
+        }
+    }
+}
+
+fn required_mirror_drift_verdict(source_roots: &[String]) -> Result<bool, String> {
+    let workspace = v1_compiler::cli_run::workspace_root();
+    let started = Instant::now();
+
+    // BASELINE FIRST, and loudly. Resolved before anything expensive runs so an unusable
+    // baseline costs a git call rather than a full emit, and PRINTED so a reader of the log can
+    // check which two commits the "which side moved" question was actually asked about. A gate
+    // whose baseline is invisible cannot be audited from its own output.
+    let head = git_stdout(&workspace, &["rev-parse", "HEAD"])?;
+    let base = git_stdout(&workspace, &["merge-base", "origin/main", "HEAD"]).map_err(|e| {
+        format!(
+            "cannot resolve the merge base against origin/main ({e}). The gate does NOT fall \
+             back to HEAD: under that fallback the touched set is empty, every hand-edited \
+             mirror reclassifies as pre-existing debt, and this gate greens on exactly the \
+             change it exists to catch. Fetch the base first: \
+             `git fetch --depth=200 origin main:refs/remotes/origin/main`"
+        )
+    })?;
+    eprintln!("required-mirror-drift: merge_base={base} head={head}");
+
+    let dispositions = read_mirror_debt_dispositions(source_roots)?;
+
+    // MEMBERSHIP, derived. Nothing above can add to or remove from this set.
+    let measurement = v1_compiler::cli_run::measure_generated_drift()?;
+
+    // The mirrors this change itself moved. `--diff-filter` is deliberately absent: a mirror
+    // DELETED by this change is as much a sideways move as one edited, and filtering to
+    // modifications would hide it.
+    let touched_raw = git_stdout(
+        &workspace,
+        &[
+            "diff",
+            "--name-only",
+            &base,
+            &head,
+            "--",
+            "src/v1/stage0/src",
+        ],
+    )?;
+    // ONLY files DIRECTLY in the generated surface's flat directory count as touched. The
+    // subdirectories under it (`bin/`, `cli_run/`, `module_path_index/`) are excluded, and not as
+    // tidiness: basenames are unique WITHIN the flat directory but not across it and its
+    // subtrees. `codex_app_server_stdio_session.rs` exists at both levels today. Collapsing a
+    // subdirectory path to its basename would let an edit to `bin/x.rs` mark the generated `x.rs`
+    // as touched by this change, converting a pre-existing debt row into a sideways-move refusal
+    // the author cannot close by any edit to the file they actually changed. That today's one
+    // collision happens to sit on a hand-maintained file is a coincidence about the current tree,
+    // not a property of the join, so the prefix is checked rather than relied on.
+    const SURFACE_DIR: &str = "src/v1/stage0/src/";
+    let touched: std::collections::HashSet<String> = touched_raw
+        .lines()
+        .map(str::trim)
+        .filter_map(|line| line.strip_prefix(SURFACE_DIR))
+        .filter(|rest| !rest.is_empty() && !rest.contains('/'))
+        .map(str::to_string)
+        .collect();
+
+    let mut sideways: Vec<String> = Vec::new();
+    let mut undispositioned: Vec<String> = Vec::new();
+    let mut accounted: Vec<(String, &'static str)> = Vec::new();
+    for basename in &measurement.drifted_basenames {
+        if touched.contains(basename) {
+            sideways.push(basename.clone());
+            continue;
+        }
+        // The carrier's `path` column is the display form; the join key is the basename,
+        // because that is the key space the comparator reports in and the generated surface is
+        // one flat directory, so basenames are unique within it.
+        match dispositions
+            .iter()
+            .find(|row| basename_of(&row.path) == basename.as_str())
+        {
+            Some(row) => accounted.push((basename.clone(), row.disposition.label())),
+            None => undispositioned.push(basename.clone()),
+        }
+    }
+
+    // The join run backwards: authored rows whose path the measurement did not report.
+    let drifted: std::collections::HashSet<&str> = measurement
+        .drifted_basenames
+        .iter()
+        .map(|s| s.as_str())
+        .collect();
+    // Derived, never configured: does the tree under test actually contain main's tip?
+    let subject_contains_main_tip = Command::new("git")
+        .args(["merge-base", "--is-ancestor", "origin/main", "HEAD"])
+        .current_dir(&workspace)
+        .status()
+        .map_err(|e| format!("spawn git merge-base --is-ancestor: {e}"))?
+        .success();
+
+    let mut stale: Vec<String> = dispositions
+        .iter()
+        .filter(|row| !drifted.contains(basename_of(&row.path)))
+        .map(|row| row.path.clone())
+        .collect();
+    stale.sort();
+
+    // COUNT AND NAMES, both classes and the accounted subset, on every run including a passing
+    // one. The report is not decoration beside the gate: the gate refuses only on the two
+    // classes below, so the accounted population is invisible unless it is printed, and a debt
+    // nobody can see is a debt nobody ranks. The two are load-bearing for each other and
+    // neither is separately removable.
+    let unestablished = accounted
+        .iter()
+        .filter(|(_, d)| *d == "CarriedReasonNotEstablished")
+        .count();
+    eprintln!(
+        "required-mirror-drift: compared={} drifted={} sideways={} undispositioned={} {}={} accounted={} (reason_not_established={}) elapsed_ms={}",
+        measurement.compared,
+        measurement.drifted_basenames.len(),
+        sideways.len(),
+        undispositioned.len(),
+        if subject_contains_main_tip {
+            "stale_rows"
+        } else {
+            "stale_rows_unreadable"
+        },
+        stale.len(),
+        accounted.len(),
+        unestablished,
+        started.elapsed().as_millis()
+    );
+    for (basename, disposition) in &accounted {
+        eprintln!("required-mirror-drift: accounted {basename} {disposition}");
+    }
+
+    // REFUSAL 1 — the mirror moved and still does not match its authority. Either it was
+    // hand-edited, or an authority change was applied to the mirror only in part.
+    for basename in &sideways {
+        eprintln!(
+            "required-mirror-drift: FAIL sideways mirror move `{basename}` — this change edits a \
+             generated mirror and the result still differs from what its authority emits. The \
+             mirror is not an authority; edit the `.dag` module and regenerate."
+        );
+    }
+    // REFUSAL 2 — pre-existing drift with no authored judgement. Closable by authoring one row.
+    for basename in &undispositioned {
+        eprintln!(
+            "required-mirror-drift: FAIL undispositioned drift `{basename}` — this path drifts \
+             from its authority and carries no disposition in `gunbc.stage0_mirror_debt`. Author \
+             one row saying why it is carried, or regenerate it."
+        );
+    }
+
+    // REFUSAL 3 — an authored row for a path that no longer drifts. Closable by deleting it.
+    if subject_contains_main_tip {
+        for path in &stale {
+            eprintln!(
+                "required-mirror-drift: FAIL stale disposition `{path}` — this path carries a row \
+                 in `gunbc.stage0_mirror_debt` but does not drift from its authority. The debt is \
+                 closed; delete the row. A row nothing measures is a second account of the \
+                 population that can only ever disagree with it."
+            );
+        }
+    } else {
+        for path in &stale {
+            eprintln!(
+                "required-mirror-drift: stale-unreadable `{path}` — this path does not drift ON \
+                 THIS SUBJECT, which does not contain main's tip. `the debt is closed` and `the \
+                 debt is not yet open on this tree` are indistinguishable here, so this is \
+                 reported and NOT refused. Merge main and rerun to get a verdict; do not delete \
+                 the row on the strength of this line."
+            );
+        }
+        if !stale.is_empty() {
+            eprintln!(
+                "required-mirror-drift: {} stale row(s) unreadable — subject does not contain \
+                 origin/main's tip. CI's pull_request subject always does, so this relaxation \
+                 does not reach a PR check.",
+                stale.len()
+            );
+        }
+    }
+
+    Ok(sideways.is_empty()
+        && undispositioned.is_empty()
+        && (stale.is_empty() || !subject_contains_main_tip))
 }

@@ -189,6 +189,52 @@ pub fn run_required_regen_fixed_point(
     Ok(RequiredRegenOutcome { receipt, failures })
 }
 
+/// The measured generated-mirror drift, with NO judgement attached.
+///
+/// This is the same emit-and-compare `run_required_regen` performs, exposed on its own so the
+/// mirror-drift gate can ask WHICH SIDE MOVED without also inheriting regen's equality verdict.
+/// The split matters: regen answers "is the committed surface equal to what the authority emits",
+/// which on main today is unsatisfiable by any action a contributor can take, because the regen
+/// cut deleted the writer. The gate asks a question a contributor CAN close.
+///
+/// Membership is derived here and nowhere else. Nothing in the `.dag` debt carrier can add a path
+/// to this set or remove one from it; the carrier only says what to do about a path this function
+/// already reported. A forgeable-membership hole would let an author silence a real drift by
+/// deleting a row, which is why the two facts live on opposite sides of the boundary.
+///
+/// `drifted_basenames` are BASENAMES (`std_algebra.rs`), not repository paths — that is the key
+/// space `compare_generated_surfaces` reports in, and the generated surface is one flat directory
+/// so basenames are unique within it. Callers that join against repository paths must derive the
+/// basename rather than the other way round.
+pub struct GeneratedDriftMeasurement {
+    pub compared: usize,
+    pub drifted_basenames: Vec<String>,
+}
+
+/// Every arm here REFUSES. There is deliberately no arm that reports "no drift" because the
+/// measurement could not be taken — an emit that produced zero files, or a population the two
+/// sides disagree about, is ignorance, and rendering ignorance as the clean verdict is the
+/// empty-observation narrow DESIGN names: strictly worse than widening, because a widen is
+/// merely expensive and a narrow is silently uncovered.
+pub fn measure_generated_drift() -> Result<GeneratedDriftMeasurement, String> {
+    let workspace = workspace_root();
+    let stage0_src = workspace.join("src/v1/stage0/src");
+    let emitted = compile_stage0(&workspace)?;
+    if emitted.is_empty() {
+        return Err("refusal: emit produced zero files".to_string());
+    }
+    let committed = committed_generated_basenames(&stage0_src)?;
+    let emitted_basenames = generated_basenames_from_emit(&emitted);
+    if let Some(reason) = validate_compared_populations(&committed, &emitted_basenames) {
+        return Err(reason);
+    }
+    let sync = compare_generated_surfaces(&stage0_src, &emitted, &committed)?;
+    Ok(GeneratedDriftMeasurement {
+        compared: committed.len(),
+        drifted_basenames: sync.drifted_paths,
+    })
+}
+
 struct SyncReport {
     matches: bool,
     drifted_paths: Vec<String>,
