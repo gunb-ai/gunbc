@@ -305,7 +305,8 @@ pub fn emitted_generated_sources() -> Result<HashMap<String, String>, String> {
         if let Some(prior) = out.insert(base.clone(), content) {
             let _ = prior;
             return Err(format!(
-                "refusal: two emitted paths share the basename {base}; the generated surface is                  no longer flat and a basename join would compare the wrong candidate"
+                "refusal: two emitted paths share the basename {base}; the generated surface \
+                 is no longer flat and a basename join would compare the wrong candidate"
             ));
         }
     }

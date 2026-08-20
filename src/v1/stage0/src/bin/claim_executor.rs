@@ -19641,10 +19641,21 @@ fn behavioral_receipt_census(source_roots: &[String]) -> Result<bool, String> {
         modules_planned,
         out_of_scope.len()
     );
+    // A COUNT IS NOT A SAFE REPORT HERE. Read as a small number, out-of-scope looks like a rounding
+    // error; but the same shape at a wrong root set is a hole centred on whatever nobody scanned,
+    // and this arm has already been that hole once -- it swallowed 55 of 127 as "no authority"
+    // because src/v1 was not a root. So the fraction is stated against the population, and any
+    // out-of-scope module at all makes the run say what its coverage actually is rather than
+    // leading with the modules it managed to plan.
     if !out_of_scope.is_empty() {
         eprintln!(
-            "receipt-census: the roots scanned were {}. A module below is NOT evidence that its \
-             authority is missing -- it is evidence that this run could not see it",
+            "receipt-census: COVERAGE {}/{} modules planned; {} of the corpus was NOT measured \
+             because no scanned root holds its authority. Roots given: {}. A module below is not \
+             evidence that its authority is missing -- it is evidence that this run could not see \
+             it, and if this fraction is large the root set is the finding, not the corpus",
+            modules_planned,
+            roster.len(),
+            out_of_scope.len(),
             source_roots.join(", ")
         );
     }
