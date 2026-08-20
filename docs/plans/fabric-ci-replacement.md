@@ -1019,3 +1019,70 @@ the fold screens affordability and would be a lie as a selector, the quote is na
 price**, and the two witnesses that named opportunity cost are renamed to match what they test. The
 cost model lands in its own PR under the corrected objective above — which is the same narrow-next-PR
 conclusion §22 reached from two other directions.
+
+## 24. The first completed floor run, and what it caught
+
+**Nineteen runs on this branch were cancelled by the next push before finishing; three failed; none
+had ever completed.** The first one allowed to finish:
+
+```
+required-floor: planned=9747 executed=9747 terminal=9747 passed=9440
+                known_red_held=306 failed=1 stale_quarantine=0
+required-floor: FAIL v2.test.lens_inert_carrier.inert_carrier_test.inert_carrier_no_unrostered_or_stale
+```
+
+Main was green at the same hour, so the failure is this branch's. Localised by running the lens's two
+halves rather than guessing: `unrostered=0`, `stale=1` — a **rostered carrier had become live**.
+
+### It was `Offer`, and the row dissolved exactly as written
+
+`v2.lens.inert_carrier` rostered `Offer` with the reason *"modeled compute-fabric supply carrier
+from the terminal-contract slice (#8413): declared ahead of the grant issuance that matches demand
+against it, and **referenced only by `fabric_terminal_contract_witness_test` so far**"*, under the
+dissolution condition *"a live consumer reads the carrier; the stale-roster check then forces this
+row's deletion."*
+
+**This PR is that consumer** — `offer_eligibility_for` reads `offer.trust_domain`,
+`.capabilities`, `.shape` and `.quote`. So the red is a **climb, not a regression**: a carrier left
+the inert roster because something started reading it, and the lens refused to let the stale row
+survive its own condition. The row is deleted; `unrostered=0`, `stale=0`, witness `true`.
+
+**This is the strongest evidence in the plan that the fabric acquired a real consumer**, and it is
+better than any assertion the PR could make about itself: an independent lens, written before this
+work, measured that `Offer` stopped being inert.
+
+### What the cancelled runs cost
+
+The stale-premise defect of §23 was live for four commits and the floor would have caught it. The
+failure above was also live for the whole branch. Both were invisible because **a ~30-minute check
+against a sub-30-minute push interval produces evidence at rate zero**, and nothing reports that —
+cancelled runs do not look like failures and the PR reads *in progress* indefinitely.
+
+**Detection:** read the **conclusion histogram**, `gh run list --branch X --json conclusion`, not the
+latest check. Successes of zero over nineteen attempts is the signal, and no surface shows it.
+
+## 25. Recorded and handed off, not fixed here
+
+While measuring the cost of §22's proposed lens, the same class turned up **inside the enforcement
+layer**. Recorded precisely and deliberately left alone — it is not this lane's work, and the lane is
+being narrowed for exactly this reason.
+
+`v2.lens.coverage` declares `CoverageDefectKey`, a 13-variant vocabulary of DESIGN's failure modes
+including **`VacuousArm`** — §22's erased-test class, already named. Everything that consumes it is a
+`data` row, a doc binding, and one witness whose entire body is
+`coverage_defect_vacuous_arm != coverage_defect_parallel_authority`. **No fold anywhere produces a
+list of *detected* defect keys from the corpus**; the module's generic `missing_coverage` helper is
+consumed only by `v2.lens.mock_totality`, for an unrelated concern.
+
+**The receipt:** `v2.test.lens_coverage.near_miss_vacuous_not_parallel` declares
+`near_miss_vacuous_node: Node` **and never reads it.** The input a detector would consume was
+authored; the detector never was. Intent is normally unobservable — this is one of the rare cases
+where an abandoned build leaves a receipt rather than an inference.
+
+**The method lesson, which generalises furthest:** *name plus green witness is the evidence shape
+that reads as done.* To establish a class is covered, do not search for the **vocabulary** — search
+for **the fold that produces a finding from the corpus**. A 13-variant enum with six hits and a
+passing test is exactly what full coverage and zero coverage both look like from a grep.
+
+Not fixed here: the taxonomy exists but the detector and observation plumbing do not, and that is the
+expensive half. Owner to be assigned outside this lane.
