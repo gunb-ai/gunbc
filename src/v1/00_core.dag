@@ -1279,6 +1279,17 @@ fn expr_literal_string_optional(expr: Node) -> String? {
   }
 }
 
+fn expr_literal_symbol_optional(expr: Node) -> String? {
+  match expr.expr_data {
+    ExprLiteral { value: lit } =>
+      match lit {
+        LitSymbol { value: v } => Present { value: v }
+        _ => none
+      }
+    _ => none
+  }
+}
+
 fn expr_is_any_literal(expr: Node) -> Bool {
   match expr.expr_data {
     ExprLiteral { value: lit } =>
