@@ -523,8 +523,10 @@ cheaper and more likely repair.
 
 **(b) There is no emitted-artifact-to-module join.** `GeneratedArtifact` is a closed enum of
 specific artifacts and emitted stage0 Rust as a surface is not among them
-(`gunbc.stage0_emit_plan_generated` `generated_stage0_paths` is a separate roster), and nothing
-today derives **which compiler module emitted a given `.rs` path**. So an authorization minted
+(the generated stage0 surface is now a derived population, `gunbc.stage0_rust_source_lifecycle_scaffold`
+`derived_generated_stage0_repo_paths`, not a roster), and nothing
+today derives **which compiler module emitted a given `.rs` path** -- which is exactly why that
+derivation is the complement of the crate-layout claim rather than a module-to-path join. So an authorization minted
 for a `.dag` module cannot be checked against a `.rs` surface at all. This also constrains
 §10 stage 5: a transition exercise over an emitted `.rs` artifact has no identity join today,
 and condition 4 of §3.8 — every receipt naming the same exact artifact identities — cannot be
