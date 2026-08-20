@@ -181,6 +181,67 @@ test fn a_credential_that_could_not_be_read_is_not_an_unenrolled_one() -> Bool {
        })
 }
 
+// A PASSWORD IS BYTES. This read used to `trim` the file and hand the result to sudo, which
+// corrupts any credential whose real bytes begin or end with a space -- and the resulting sudo
+// rejection would read as a stale Secret Manager version rather than as this lane damaging the
+// secret in transit. Only the terminator the materialization itself wrote may be removed.
+test fn a_credential_keeps_its_own_leading_and_trailing_spaces() -> Bool {
+  match classify_credential_read(success: true, error: "", content: " password ") {
+    BootstrapCredentialReady { secret: secret } => secret == " password "
+    BootstrapCredentialNotMaterialized { cause: _ } => false
+  }
+}
+
+// Exactly one trailing terminator is removed, in either shape a file writer may have used. This
+// subsumes an earlier LF-only witness that described the removal as a `trim`: the file's own
+// trailing newline would otherwise become a second line sudo never reads, while the terminator
+// run_privileged_step appends is what ends sudo's read at all -- without it the step hangs rather
+// than failing. What changed is the RULE, not that a terminator is removed: only the materialization's
+// own line ending goes, and never a byte of the password.
+test fn one_trailing_terminator_is_removed_in_either_shape() -> Bool {
+  let lf = from_code_point(cp: 10)
+  let crlf = join([from_code_point(cp: 13), from_code_point(cp: 10)], "")
+  match classify_credential_read(success: true, error: "", content: join(["password", lf], "")) {
+    BootstrapCredentialReady { secret: a } =>
+      a == "password"
+        && match classify_credential_read(success: true, error: "", content: join(["password", crlf], "")) {
+             BootstrapCredentialReady { secret: b } => b == "password"
+             BootstrapCredentialNotMaterialized { cause: _ } => false
+           }
+    BootstrapCredentialNotMaterialized { cause: _ } => false
+  }
+}
+
+// AN EMBEDDED BREAK REFUSES rather than being stripped or passed through. sudo -S takes the first
+// line of stdin as the password, so a secret containing a break would authenticate with only its
+// first line and feed the remainder to the command running under root.
+test fn an_embedded_line_break_refuses_instead_of_being_stripped() -> Bool {
+  let content = join(["pass", from_code_point(cp: 10), "word"], "")
+  match classify_credential_read(success: true, error: "", content: content) {
+    BootstrapCredentialNotMaterialized { cause: c } => string_contains(c as String, "line break")
+    BootstrapCredentialReady { secret: _ } => false
+  }
+}
+
+// A lone carriage return is not a terminator this lane admits, so it refuses rather than being
+// quietly deleted from the middle of a password.
+test fn a_bare_carriage_return_is_not_an_admitted_terminator() -> Bool {
+  let content = join(["password", from_code_point(cp: 13)], "")
+  match classify_credential_read(success: true, error: "", content: content) {
+    BootstrapCredentialNotMaterialized { cause: _ } => true
+    BootstrapCredentialReady { secret: _ } => false
+  }
+}
+
+// A file holding only its own terminator is a failed materialization, exactly as an empty one is --
+// admitting it would send an empty first line to sudo and be answered as a wrong password.
+test fn a_file_holding_only_a_terminator_is_a_failed_materialization() -> Bool {
+  match classify_credential_read(success: true, error: "", content: from_code_point(cp: 10)) {
+    BootstrapCredentialNotMaterialized { cause: c } => string_contains(c as String, "empty")
+    BootstrapCredentialReady { secret: _ } => false
+  }
+}
+
 test fn only_a_succeeded_command_counts_as_success() -> Bool {
   privileged_step_succeeded(outcome: PrivilegedCommandSucceeded {
     command: ValidateStagedSudoers { staged_path: "p" as NonEmptyStr },
@@ -209,12 +270,16 @@ test fn the_environment_carries_a_path_and_not_a_credential() -> Bool {
     && !string_contains(spark_grant_credential_path_env as String, "SECRET")
 }
 
-// AN EMPTY CREDENTIAL FILE IS A FAILED MATERIALIZATION, never a blank password. Admitting it would
-// send an empty first line to sudo, which sudo would treat as a wrong password -- reporting a
-// broken fetch as a bad credential and sending the reader to re-enrol a secret that was fine.
-test fn an_empty_credential_file_is_not_a_blank_password() -> Bool {
-  match classify_credential_read(success: true, error: "", content: "  \n") {
-    BootstrapCredentialNotMaterialized { cause: c } => string_contains(c as String, "never a blank password")
+// AN ALL-WHITESPACE CREDENTIAL FILE IS A FAILED MATERIALIZATION, never a blank password. Admitting
+// it would send a blank-looking first line to sudo, which sudo treats as a wrong password --
+// reporting a broken fetch as a bad credential and sending the reader to re-enrol a secret that was
+// fine. This is the discriminating pair for byte preservation: the spaces AROUND content are kept
+// (see the leading/trailing-space witness), while a file that is ONLY spaces has no content to keep.
+test fn an_all_whitespace_credential_file_is_not_a_blank_password() -> Bool {
+  match classify_credential_read(success: true, error: "", content: join(["  ", from_code_point(cp: 10)], "")) {
+    BootstrapCredentialNotMaterialized { cause: c } =>
+      string_contains(c as String, "never a blank password")
+        && string_contains(c as String, "only whitespace")
     BootstrapCredentialReady { secret: _ } => false
   }
 }
@@ -225,16 +290,6 @@ test fn an_unreadable_credential_file_reports_the_read_error() -> Bool {
   match classify_credential_read(success: false, error: "No such file or directory", content: "") {
     BootstrapCredentialNotMaterialized { cause: c } => string_contains(c as String, "No such file or directory")
     BootstrapCredentialReady { secret: _ } => false
-  }
-}
-
-// The credential is trimmed before it reaches stdin, because a trailing newline in the file would
-// otherwise become a second line sudo never reads, and the terminating newline this code appends is
-// what ends sudo's read at all -- without it the step hangs rather than failing.
-test fn a_materialized_credential_is_trimmed_of_its_file_newline() -> Bool {
-  match classify_credential_read(success: true, error: "", content: "hunter2\n") {
-    BootstrapCredentialReady { secret: s } => s == "hunter2"
-    BootstrapCredentialNotMaterialized { cause: _ } => false
   }
 }
 
