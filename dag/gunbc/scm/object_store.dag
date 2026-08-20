@@ -88,10 +88,13 @@ fn store_contains(store: ObjectStore, identity: ObjectId) -> Bool {
   }
 }
 
-// WRITING IS IDEMPOTENT BY CONSTRUCTION, not by a check the caller must remember. An identity already
-// present is the same content by definition of a content address, so re-storing returns the store
-// unchanged. This is what lets the same object appear at many positions in one program while being
-// stored once -- content is fungible, positions are not.
+// WRITING IS IDEMPOTENT FOR THE SAME CANONICAL RECORD, and refuses for a different one under the
+// same locator. An earlier revision of this note said an identity already present is "the same
+// content by definition of a content address" -- that sentence is FALSE at the declared fnv1a64
+// rung, and the collision arm below exists precisely because it is. Re-inserting the same canonical
+// record returns the store unchanged; the same locator carrying a DIFFERENT canonical record is a
+// typed refusal. Idempotence is what lets one object appear at many positions in a program while
+// being stored once -- content is fungible, positions are not.
 // NO CALLER CAN INTRODUCE A RECORD, AND THE WALL IS THE `sole_constructor` ON ObjectRecord AND
 // ObjectStore ABOVE -- not any function's name.
 //
@@ -151,12 +154,32 @@ fn insert_derived(store: ObjectStore, record: ObjectRecord) -> StoreOutcome {
 
 // Grafting an entry between stores cannot forge, because it can only move a pairing some earlier
 // store_node already derived. This is what lets a caller build a deliberately INCOMPLETE closure --
-// a root without its children -- without ever being able to build a DISHONEST one. It can still
-// collide, so it answers the same outcome.
-fn copy_object(from: ObjectStore, to: ObjectStore, identity: ObjectId) -> StoreOutcome {
+// a root without its children -- without ever being able to build a DISHONEST one.
+//
+// ITS OWN OUTCOME TYPE, AND THE ABSENT ARM IS A REFUSAL. An earlier revision answered
+// `Stored { store: to, identity }` when the source store did not hold the object -- reporting that
+// an object had been stored when nothing had been, so a caller reading `Stored` would believe `to`
+// now contained that identity. That is the fabricated plausible output this whole module exists to
+// remove, and it survived because the witness only ever grafted a root that was present: the corpus
+// never presented the discriminating input. Caught by external review.
+//
+// The type is separate from StoreOutcome rather than reusing it, because store_node cannot produce
+// a source-absent result. Folding the two together would force every store_node consumer to handle
+// an arm that cannot occur, which widens the state space instead of describing it.
+type CopyOutcome
+  = Copied { store: ObjectStore, identity: ObjectId }
+  | CopySourceAbsent { identity: ObjectId }
+  | CopyLocatorCollision { identity: ObjectId, existing: ObjectRecord, incoming: ObjectRecord }
+
+fn copy_object(from: ObjectStore, to: ObjectStore, identity: ObjectId) -> CopyOutcome {
   match find_object(store: from, identity: identity) {
-    Absent => Stored { store: to, identity: identity }
-    Present { value: record } => insert_derived(store: to, record: record)
+    Absent => CopySourceAbsent { identity: identity }
+    Present { value: record } =>
+      match insert_derived(store: to, record: record) {
+        Stored { store: store, identity: i } => Copied { store: store, identity: i }
+        LocatorCollision { identity: i, existing: e, incoming: c } =>
+          CopyLocatorCollision { identity: i, existing: e, incoming: c }
+      }
   }
 }
 

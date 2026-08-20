@@ -51,7 +51,12 @@ import gunbc.scm.object_store {
   ObjectStore,
   ObjectRecord,
   find_object,
+  store_contains,
   copy_object,
+  CopyOutcome,
+  Copied,
+  CopySourceAbsent,
+  CopyLocatorCollision,
   empty_store,
   store_node,
   object_id_eq,
@@ -127,8 +132,29 @@ fn minted_program_ab(base: Int) -> Node {
 // NodeKind arm, every Behavior, every label and every child, with no wildcard and no digest
 // projection anywhere. Canonicalization is applied to both sides because checkout returns the
 // canonical program; it remints occurrences as synthetic, so provenance cannot interfere either.
+// CANONICALIZATION IS APPLIED AT EVERY LEVEL, not just the root. An earlier revision called
+// canonicalize_node_for_content_hash on each side and stopped -- but that function is a LOCAL
+// canonicalizer: it reorders the supplied node's own named edges and remints ITS occurrence, and
+// nothing more. The substrate reaches every descendant because fold_node_content_hash re-invokes it
+// at each level; a single top-level call does not. So the oracle compared root-canonical nodes while
+// claiming to compare the canonical equivalence class, and would have called two programs different
+// over a nested reorder or a descendant occurrence id -- both of which the commit quotient erases.
+//
+// This is not a second canonicalization authority: it applies the existing one recursively, which is
+// exactly what the substrate's own fold does.
+fn canonicalize_tree(n: Node) -> Node {
+  canonicalize_node_for_content_hash(
+    n: node_synthetic(
+      kind: n.kind,
+      children: fold(n.children, init: [], f: fn(acc, e) {
+        concat(acc, [Edge { label: e.label, target: canonicalize_tree(n: e.target) }])
+      }),
+    )
+  )
+}
+
 fn structurally_same(left: Node, right: Node) -> Bool {
-  canonicalize_node_for_content_hash(n: left) == canonicalize_node_for_content_hash(n: right)
+  canonicalize_tree(n: left) == canonicalize_tree(n: right)
 }
 
 // store_node now answers a coproduct, because a locator collision is a real state at the declared
@@ -186,8 +212,9 @@ fn checkout_refuses(store: ObjectStore, commit: Commit) -> Bool {
 // fixture can be incomplete but cannot be dishonest.
 fn store_of_root_only(full: ObjectStore, root: ObjectId) -> ObjectStore {
   match copy_object(from: full, to: empty_store(), identity: root) {
-    Stored { store: store, identity: _ } => store
-    LocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()
+    Copied { store: store, identity: _ } => store
+    CopySourceAbsent { identity: _ } => empty_store()
+    CopyLocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()
   }
 }
 
@@ -451,5 +478,60 @@ test fn the_oracle_distinguishes_node_kinds() -> Bool {
   !structurally_same(
     left: computation(behavior: Value),
     right: node_synthetic(kind: TypeNode { connective: Conj }, children: []),
+  )
+}
+
+// GRAFTING AN OBJECT THE SOURCE DOES NOT HAVE MUST REFUSE, not report success. An earlier revision
+// answered "stored" here with the destination unchanged, so a caller would believe the identity was
+// present when it was not. Every fixture above grafts a root that IS present, which is exactly why
+// this went unnoticed -- so the absent case gets its own claim rather than relying on a path no
+// fixture takes.
+test fn grafting_an_absent_object_refuses() -> Bool {
+  let stored = put_node(store: empty_store(), n: program_ab())
+  match copy_object(from: empty_store(), to: empty_store(), identity: stored.identity) {
+    CopySourceAbsent { identity: identity } => object_id_eq(left: identity, right: stored.identity)
+    Copied { store: _, identity: _ } => false
+    CopyLocatorCollision { identity: _, existing: _, incoming: _ } => false
+  }
+}
+
+// CONTROL: grafting a PRESENT object does not refuse, so the claim above is about absence rather
+// than about copy_object refusing unconditionally.
+test fn grafting_a_present_object_copies_it() -> Bool {
+  let stored = put_node(store: empty_store(), n: program_ab())
+  match copy_object(from: stored.store, to: empty_store(), identity: stored.identity) {
+    Copied { store: store, identity: _ } => store_contains(store: store, identity: stored.identity)
+    CopySourceAbsent { identity: _ } => false
+    CopyLocatorCollision { identity: _, existing: _, incoming: _ } => false
+  }
+}
+
+// THE ORACLE SEES THE WHOLE EQUIVALENCE CLASS, NOT JUST THE ROOT'S. These two programs differ only
+// in DESCENDANT occurrence ids (11/12 versus 901/902), which the commit quotient erases. A root-only
+// canonicalization reports them different -- and did, until canonicalize_tree recursed. This is the
+// discriminating input the fixture set never presented while every other claim passed.
+test fn the_oracle_erases_descendant_occurrence_ids() -> Bool {
+  structurally_same(left: minted_program_ab(base: 10), right: minted_program_ab(base: 900))
+}
+
+// The same defect reached through named-edge order instead of occurrence: a reorder NESTED one level
+// below an otherwise identical root.
+fn nested_under(inner: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [named_edge(name: ^outer, target: inner)],
+  )
+}
+
+test fn the_oracle_erases_nested_named_edge_order() -> Bool {
+  structurally_same(left: nested_under(inner: alpha_first()), right: nested_under(inner: beta_first()))
+}
+
+// CONTROL: the recursive oracle has not become permissive -- a nested difference that is NOT in the
+// quotient still reads as different.
+test fn the_recursive_oracle_still_distinguishes_nested_content() -> Bool {
+  !structurally_same(
+    left: nested_under(inner: alpha_first()),
+    right: nested_under(inner: atom_node(identity: ^A)),
   )
 }
