@@ -42478,3 +42478,16 @@ pub fn run_required_regen_fixed_point(
 ) -> Result<required_regen_host::RequiredRegenOutcome, String> {
     required_regen_host::run_required_regen_fixed_point(receipt_rel, pass1_digest)
 }
+
+/// The emitted generated surface, keyed by basename, off the SAME `measure_generated_surface`
+/// producer the regen path uses -- so the bytes a behavioural receipt compiles are the bytes
+/// regen compared. A second emit here would be a second producer of the candidate itself.
+pub use required_regen_host::emitted_generated_sources;
+
+/// The authority's own declared module path, for consumers outside this module.
+///
+/// Exposed rather than re-implemented: a second parser for `module <path>` would be a second
+/// answer to a question this one already answers, and the two would drift.
+pub fn extract_module_path_public(content: &str) -> Option<String> {
+    extract_module_path(content)
+}

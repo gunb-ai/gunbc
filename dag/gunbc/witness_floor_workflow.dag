@@ -308,7 +308,7 @@ fn witness_floor_precondition() -> String {
 
 fn witness_floor_run_step() -> Step {
   RunStep {
-    name: Present { value: "Required CI: parse, regen, regen determinism, witness floor" },
+    name: Present { value: "Required CI: parse, regen, regen determinism, behavioral receipt, witness floor" },
     id: none,
     run: witness_floor_run_script(),
     shell: none,
@@ -346,6 +346,22 @@ fn witness_floor_run_step() -> Step {
 // RESTORATION TRIGGER: the first run that completes this fold, floor and regen alike. Real wall
 // times replace this constant -- at which point this note dissolves with the provisional bound
 // it explains.
+// THE BEHAVIORAL RECEIPT IS NOT A STEP HERE, AND THAT IS THE POINT.
+//
+// It was two steps until #8647 collapsed this job's step ladder into one invocation. Re-adding
+// two more would have rebuilt the ladder that PR removed: order in a YAML list, preconditions
+// naming another step's outcome, one process per phase. The receipt's two phases -- the
+// controlled-fixture control and the per-PR comparison against the modules a diff changed --
+// therefore live INSIDE `--required-ci`, sequenced by the program whose phases they are.
+//
+// The consequence worth recording, because it is a behavioural difference and not a relocation:
+// the per-PR phase used to be gated by `github.event_name == 'pull_request'` in this file. A
+// single invocation cannot carry a per-phase trigger condition, so the phase now decides for
+// itself from what it can OBSERVE -- when the merge base resolves to the head there is no diff
+// to read, and it reports SKIPPED with that reason rather than passing over an empty selection.
+// That is strictly better than the trigger name: it is derived from the state that actually
+// makes the observation impossible, so it holds on any trigger anyone adds later.
+
 fn witness_floor_job() -> Job {
   Job {
     id: witness_floor_workflow_job_id,
