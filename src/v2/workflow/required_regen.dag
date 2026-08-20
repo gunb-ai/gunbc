@@ -7,7 +7,26 @@ import v2.std.text { String }
 
 // ONE FOLD OVER EMITTED SURFACES — no roster, no skip arm, no bare Bool at the seam.
 // The host derives the compared populations from emit output and a directory read;
-// this module owns the verdict only.
+// this module owns the verdict, and the ORDER of production against adjudication.
+//
+// PRODUCTION PRECEDES ADJUDICATION, AND THE CARRIER IS WHAT MAKES THAT TRUE.
+// A regen run answers two different questions with one emit: WHAT DOES THE EMITTER
+// PRODUCE (the candidate tree) and DOES THE COMMITTED MIRROR AGREE WITH IT (the verdict).
+// They were fused into one sequence whose refusal arms returned before the tree was
+// written, so the single population asymmetry an author can actually cause — adding a
+// module to the v1 seed closure, whose mirror is EmittedNotCommitted by construction on
+// its first commit — refused with the remedy artifact destroyed. The refusal named a
+// file the author was required to commit and no route in the repository produced it:
+// regen_stage0, the binary that used to write the tree unconditionally, was deleted at
+// the root by the regen cut and its PRODUCER half was never re-derived, only its
+// VERIFIER half. A gate whose only closing move is unavailable does not refuse, it
+// strands.
+//
+// RequiredRegenRunOutcome fixes the order in the type: every arm that reports a verdict
+// carries the CandidateTree the verdict was computed against, so "refused, and no tree
+// exists" has no spelling once emit succeeded. The one arm without a tree, RegenUnproduced,
+// is reachable only where emit itself produced nothing — there is no candidate to name
+// because none was produced, which is a different state from a verdict about one.
 
 type RegenSurfaceOutcome
   = SurfaceMatches { relative_path: String }
@@ -37,6 +56,23 @@ type RequiredRegenRefusal
   | EmptyCommittedPopulation
   | EmptyEmitResult
   | CandidateTreeAbsent { reason: String }
+
+// The emitter's product, named by where the author finds it. `produced_paths` are the
+// generated surfaces actually written under `root`, which is the population a first
+// mirror is drawn from — including the surface the committed tree does not yet have.
+type CandidateTree {
+  root: String
+  produced_paths: List<String>
+}
+
+type CandidateTreeProduction
+  = CandidateTreeProduced { tree: CandidateTree }
+  | CandidateTreeUnproduced { cause: RequiredRegenRefusal }
+
+type RequiredRegenRunOutcome
+  = RegenUnproduced { cause: RequiredRegenRefusal }
+  | RegenProducedRefused { tree: CandidateTree, refusals: List<RequiredRegenRefusal> }
+  | RegenProducedRunnable { tree: CandidateTree, attempt: RequiredRegenAttempt }
 
 type RequiredRegenAttempt {
   generated_outcomes: List<RegenSurfaceOutcome>
@@ -169,5 +205,39 @@ fn required_regen_sync_admission(
       hand_outcomes: hand_outcomes,
       authority_digest: authority_digest
     }
+  }
+}
+
+// The whole run, in the order the two questions are actually answerable: the emitter
+// produces, then the comparison judges what was produced. A caller cannot reach a
+// verdict arm without supplying the tree, so the stranding above is unwritable here
+// rather than caught by a check downstream of it (DESIGN §5 construction over
+// validation). The host realization in `v1_compiler.required_regen_host`
+// `run_required_regen` mirrors this ordering; that mirroring is hand-maintained, so the
+// wall stands at *structurally guaranteed* in this carrier and at *mitigatable* in the
+// host until the host is derived from it.
+fn required_regen_run(
+  production: CandidateTreeProduction,
+  generated_outcomes: List<RegenSurfaceOutcome>,
+  hand_outcomes: List<HandMaintainedOutcome>,
+  authority_digest: String,
+  planned_surfaces: Int,
+  executed_surfaces: Int
+) -> RequiredRegenRunOutcome {
+  match production {
+    CandidateTreeUnproduced { cause: cause } => RegenUnproduced { cause: cause }
+    CandidateTreeProduced { tree: tree } =>
+      match required_regen_sync_admission(
+        generated_outcomes: generated_outcomes,
+        hand_outcomes: hand_outcomes,
+        authority_digest: authority_digest,
+        planned_surfaces: planned_surfaces,
+        executed_surfaces: executed_surfaces
+      ) {
+        RequiredRegenSyncRefused { refusals: refusals } =>
+          RegenProducedRefused { tree: tree, refusals: refusals }
+        RequiredRegenSyncRunnable { attempt: attempt } =>
+          RegenProducedRunnable { tree: tree, attempt: attempt }
+      }
   }
 }

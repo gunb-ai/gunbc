@@ -11,8 +11,15 @@ import v2.workflow.required_regen {
   HandUnverifiable,
   HandUnverifiableRefused,
   PlannedExecutedMismatch,
+  CandidateTree,
+  CandidateTreeProduced,
+  CandidateTreeUnproduced,
+  RegenProducedRefused,
+  RegenProducedRunnable,
+  RegenUnproduced,
   RequiredRegenSyncRefused,
   RequiredRegenSyncRunnable,
+  required_regen_run,
   SurfaceDrifted,
   SurfaceMatches,
   required_regen_sync_admission
@@ -180,6 +187,86 @@ test fn witness_hand_drift_alone_admits() -> Bool {
   }
 }
 
+data production_ordering_witness_note: String = "Discriminating RED controls for the production-before-adjudication ordering. The subject is the one population asymmetry an author can actually cause: a module added to the v1 seed closure emits a mirror the committed tree does not have, so the run REFUSES — and the author's only remedy is the very file the refusing run produced. The pre-#8663 host sequenced that refusal ahead of the write and returned with the tree unwritten, while regen_stage0 (the binary that used to write it unconditionally) had been deleted at the root, so the refusal named a file no route in the repository produced. These controls go red against a carrier whose refusal arms can omit the tree."
+
+// THE DISCRIMINATING RED. It is not enough that the asymmetry refuses — the
+// pre-existing witness above already proves that. What must hold is that the refusal
+// arrives WITH the candidate tree, and that the tree contains the mirror the committed
+// population lacks. A carrier that permitted a bare `RequiredRegenSyncRefused` here
+// would fail to typecheck this test at all, which is the wall being asserted.
+test fn witness_new_seed_module_refuses_and_carries_the_first_mirror() -> Bool {
+  match required_regen_run(
+    production: CandidateTreeProduced {
+      tree: CandidateTree {
+        root: "target/stage0-regen-candidate/src",
+        produced_paths: ["std_algebra.rs", "brand_new_surface.rs"]
+      }
+    },
+    generated_outcomes: [
+      SurfaceMatches { relative_path: "std_algebra.rs" },
+      EmittedNotCommitted { relative_path: "brand_new_surface.rs" }
+    ],
+    hand_outcomes: [],
+    authority_digest: "fnv1a64:deadbeefdeadbeef",
+    planned_surfaces: 2,
+    executed_surfaces: 2
+  ) {
+    RegenProducedRefused { tree: tree, refusals: refusals } =>
+      (tree.root == "target/stage0-regen-candidate/src")
+        && (tree.produced_paths |> any(p => p == "brand_new_surface.rs"))
+        && (refusals |> any(r => match r {
+          GeneratedDrift { paths } => paths |> any(p => p == "brand_new_surface.rs")
+          _ => false
+        }))
+    _ => false
+  }
+}
+
+// The near-miss control on the other side: emit itself producing nothing is NOT a
+// verdict about a tree, so it must land on the one arm that carries none. Without this,
+// the test above would be satisfied by a carrier that simply always carries a tree,
+// including one it fabricated for a run that produced no files.
+test fn witness_unproduced_run_carries_no_tree_and_names_its_cause() -> Bool {
+  match required_regen_run(
+    production: CandidateTreeUnproduced { cause: EmptyEmitResult },
+    generated_outcomes: [],
+    hand_outcomes: [],
+    authority_digest: "fnv1a64:deadbeefdeadbeef",
+    planned_surfaces: 0,
+    executed_surfaces: 0
+  ) {
+    RegenUnproduced { cause: cause } => match cause {
+      EmptyEmitResult => true
+      _ => false
+    }
+    _ => false
+  }
+}
+
+// The positive control: a clean tree admits, and the admitting arm carries the tree too
+// — so the tree is a fact about every run that reached a verdict, not a decoration
+// attached to failures.
+test fn witness_clean_run_admits_and_still_carries_the_tree() -> Bool {
+  match required_regen_run(
+    production: CandidateTreeProduced {
+      tree: CandidateTree {
+        root: "target/stage0-regen-candidate/src",
+        produced_paths: ["std_algebra.rs"]
+      }
+    },
+    generated_outcomes: [SurfaceMatches { relative_path: "std_algebra.rs" }],
+    hand_outcomes: [HandDrifted { filename: "main.rs" }],
+    authority_digest: "fnv1a64:deadbeefdeadbeef",
+    planned_surfaces: 1,
+    executed_surfaces: 1
+  ) {
+    RegenProducedRunnable { tree: tree, attempt: attempt } =>
+      (attempt.authority_digest == "fnv1a64:deadbeefdeadbeef")
+        && (tree.produced_paths |> any(p => p == "std_algebra.rs"))
+    _ => false
+  }
+}
+
 test fn witness_holds() -> Bool {
   witness_zero_planned_population_refuses()
     && witness_zero_executed_population_refuses()
@@ -189,4 +276,7 @@ test fn witness_holds() -> Bool {
     && witness_surface_population_asymmetry_refuses()
     && witness_hand_unverifiable_refuses_naming_the_entry()
     && witness_hand_drift_alone_admits()
+    && witness_new_seed_module_refuses_and_carries_the_first_mirror()
+    && witness_unproduced_run_carries_no_tree_and_names_its_cause()
+    && witness_clean_run_admits_and_still_carries_the_tree()
 }

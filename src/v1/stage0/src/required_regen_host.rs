@@ -165,18 +165,50 @@ pub fn run_required_regen(
 
     let emitted = compile_stage0(&workspace)?;
 
-    let committed_basenames = committed_generated_basenames(&stage0_src)?;
+    // EMIT PRODUCED NOTHING IS NOT A VERDICT ABOUT A TREE. It used to write a receipt whose
+    // `candidate_artifact` named a directory no pass had written, which is the impersonation the
+    // receipt split above exists to end, one field over. `CandidateTreeUnproduced` in
+    // `v2.workflow.required_regen` is the modeled arm and it carries no tree; the host spelling of
+    // an outcome with no tree and no verdict is a refusal of the run itself.
     if emitted.is_empty() {
-        return regen_refusal_outcome(
-            &workspace,
-            candidate_dir_rel,
-            receipt_rel,
-            commit_sha,
-            authority_digest,
-            "refusal: emit produced zero files".to_string(),
+        return Err(
+            "refusal: emit produced zero files — no candidate tree produced, nothing to compare"
+                .to_string(),
         );
     }
+
+    // PRODUCTION, THEN ADJUDICATION -- and the order is the whole repair.
+    //
+    // Every refusal below used to return BEFORE this block ran, so the run that refuses is
+    // exactly the run that destroyed the artifact needed to close it. The population arm is not a
+    // hypothetical: adding a module to the v1 seed closure emits a mirror the committed tree does
+    // not have, which is `emitted_not_committed` by construction on that module's first commit,
+    // and the author's only route to the file they are being told to commit is this tree.
+    // `regen_stage0` used to write it unconditionally and was deleted at the root by the regen
+    // cut; only its verifier half was re-derived, so between that cut and this change no
+    // sanctioned producer of a first mirror existed at all.
+    //
+    // Writing first is not a relaxation. The gate refuses exactly the same populations it refused
+    // before, with the same typed causes; what changes is that the emitter's product survives the
+    // refusal, because it is emit's output and not a reward for agreeing with the committed tree.
+    // Authority for the ordering: `v2.workflow.required_regen` `required_regen_run`, whose verdict
+    // arms cannot be spelled without the tree they judged.
+    if candidate_dir.exists() {
+        fs::remove_dir_all(&candidate_dir)
+            .map_err(|e| format!("remove {}: {e}", candidate_dir.display()))?;
+    }
+    let fresh_src = candidate_dir.join("src");
+    write_emitted_tree(&fresh_src, &emitted)?;
+    copy_hand_maintained_support(&stage0_src, &fresh_src)?;
     let emitted_basenames = generated_basenames_from_emit(&emitted);
+    // Verified against what EMIT produced, not against what is committed. Those two populations
+    // are equal on a clean tree and differ in precisely the case this ordering exists to serve, so
+    // checking the committed population here would re-impose the refusal one line after the write
+    // and fail the producer on the run that needs it. The invariant a producer owes is that its
+    // own product landed whole.
+    verify_candidate_tree(&fresh_src, &emitted_basenames)?;
+
+    let committed_basenames = committed_generated_basenames(&stage0_src)?;
     let population_err = validate_compared_populations(&committed_basenames, &emitted_basenames);
     if let Some(reason) = population_err {
         return regen_refusal_outcome(
@@ -185,16 +217,14 @@ pub fn run_required_regen(
             receipt_rel,
             commit_sha,
             authority_digest,
-            reason,
+            format!(
+                "{reason} — first mirrors for the emitted-not-committed surfaces are written under {}; install them and commit",
+                fresh_src.display()
+            ),
         );
     }
 
     let sync = compare_generated_surfaces(&stage0_src, &emitted, &committed_basenames)?;
-    // verify_hand_maintained writes scratch normalize files into candidate_dir; on a clean
-    // tree nothing has created that directory yet (write_emitted_tree does so later), so it
-    // must exist before this call.
-    fs::create_dir_all(&candidate_dir)
-        .map_err(|e| format!("create {}: {e}", candidate_dir.display()))?;
     let hand = verify_hand_maintained(&emitted, &stage0_src, &candidate_dir)?;
 
     let committed_digest =
@@ -203,15 +233,6 @@ pub fn run_required_regen(
 
     let first_generation_equal = sync.matches && hand.unverifiable.is_empty();
     let changed_paths = sync.drifted_paths.clone();
-
-    if candidate_dir.exists() {
-        fs::remove_dir_all(&candidate_dir)
-            .map_err(|e| format!("remove {}: {e}", candidate_dir.display()))?;
-    }
-    let fresh_src = candidate_dir.join("src");
-    write_emitted_tree(&fresh_src, &emitted)?;
-    copy_hand_maintained_support(&stage0_src, &fresh_src)?;
-    verify_candidate_tree(&fresh_src, &committed_basenames)?;
 
     // Every field here was measured by THIS pass against THIS tree. The old shape also carried
     // `fixed_point_equal: false`, which was not a measurement at all -- the first pass never asks
