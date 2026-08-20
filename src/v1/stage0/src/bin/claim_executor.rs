@@ -19472,7 +19472,12 @@ fn behavioral_receipt_census(source_roots: &[String]) -> Result<bool, String> {
     let mut fns_refused = 0usize;
     let mut calls_total = 0usize;
     let mut modules_planned = 0usize;
-    let mut unreadable: Vec<String> = Vec::new();
+    // NOT "no authority": the census cannot distinguish an authority that does not exist from one
+    // that exists outside the roots it was given, so it reports what it actually knows and names
+    // the roots. The first revision of this line said NO AUTHORITY SOURCE, and 55 of 127 modules
+    // hit it -- every one of them a v1.compiler module whose .dag lives under src/v1, which is
+    // simply not a scanned root. A refusal that names the wrong cause ranks the wrong work.
+    let mut out_of_scope: Vec<String> = Vec::new();
     // Keyed on the TYPE that defeated derivation, because that is the unit of work: grounding one
     // type unlocks every function whose only obstacle was that type. Counting refusals instead
     // would rank the same fix once per site.
@@ -19480,7 +19485,7 @@ fn behavioral_receipt_census(source_roots: &[String]) -> Result<bool, String> {
 
     for (module_path, mirror) in &roster {
         let Some(source) = modules.get(module_path) else {
-            unreadable.push(module_path.clone());
+            out_of_scope.push(module_path.clone());
             continue;
         };
         let alias = format!("v1_compiler::{}", mirror.trim_end_matches(".rs"));
@@ -19509,13 +19514,20 @@ fn behavioral_receipt_census(source_roots: &[String]) -> Result<bool, String> {
     ranked.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
 
     eprintln!(
-        "receipt-census: modules_with_mirror={} planned={} unreadable_authority={}",
+        "receipt-census: modules_with_mirror={} planned={} authority_outside_scanned_roots={}",
         roster.len(),
         modules_planned,
-        unreadable.len()
+        out_of_scope.len()
     );
-    for m in &unreadable {
-        eprintln!("receipt-census: NO AUTHORITY SOURCE for {m} — counted, not skipped");
+    if !out_of_scope.is_empty() {
+        eprintln!(
+            "receipt-census: the roots scanned were {}. A module below is NOT evidence that its \
+             authority is missing -- it is evidence that this run could not see it",
+            source_roots.join(", ")
+        );
+    }
+    for m in &out_of_scope {
+        eprintln!("receipt-census: OUT OF SCOPE {m} — counted, not skipped");
     }
     eprintln!(
         "receipt-census: functions parsed={fns_total} derivable={fns_derivable} refused={fns_refused} calls={calls_total}"
