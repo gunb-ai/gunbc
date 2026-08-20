@@ -1545,7 +1545,7 @@ than argued.
    calls this on `fixture.response` during hermetic replay, so the door is reached on the
    ordinary replay path, not a corner case.
 
-   **ARM 1 — fixture-decoder door, executed.** Probe: `dag/test/claim/reconstruction_door_fixture_probe.dag`,
+   **20a's door — fixture decoder, executed.** (This was labelled "ARM 1"; the arm vocabulary is retired here because 20a/20b already name these two doors, and a second naming scheme for one concept is the §3 nickname violation — the same reason the exposure survey stopped being called "ARM 3".) Probe: `dag/test/claim/reconstruction_door_fixture_probe.dag`,
    a scratch service `DoorProbe.Fetch` (shell transport, `printf "%s" "positive-control"`,
    `output { id: NonEmptyStr from "stdout" }`). Built `claim_batch` at current head
    (`cargo build --release -p v1-compiler --bin claim_batch`, remote), recorded once wet
@@ -1596,7 +1596,7 @@ than argued.
    against. It is named here, source-read only, so Text/shell-transport outputs are not
    silently misclassified as covered by this item's executed evidence.
 
-   **ARM 2 — REST-mapper door, executed, and the stronger of the two results.** Probe:
+   **20b's door — REST JSON projection, executed, and the stronger of the two results.** (was "ARM 2") Probe:
    `dag/test/claim/reconstruction_door_rest_probe.dag`, a scratch service `DoorProbeRest.Fetch`
    (`transport rest { method: GET, path: "/fetch" }`, `output { id: NonEmptyStr from "id" }`,
    deliberately **no** `mock_response`). `claim_batch`'s default hermetic-mock mode refuses an
@@ -1745,7 +1745,7 @@ than argued.
    mechanics above, not a claim that nothing reads the files. Unenrolled-with-a-named-obstacle
    is the §4b *no untracked stall* shape, not an omission.
 
-   **Reproduction, recoverable without the session that ran it.** ARM 1: build
+   **Reproduction, recoverable without the session that ran it.** 20a's door: build
    `v1-compiler`'s `claim_batch` binary at current head; run it against
    `dag/test/claim/reconstruction_door_fixture_probe.dag` (with `--source-root` covering
    `dag/` and the probe's own directory) once with `--function
@@ -1757,7 +1757,7 @@ than argued.
    `--function witness_id_equals_whatever --hermetic --fixture-store <dir>`; for Case 4,
    replace the whole `response` object with the `__tag: "Variant"` shape shown in the probe
    file's comment, re-run with `--function witness_id_equals_variant_value --hermetic
-   --fixture-store <dir>`. ARM 2: run any HTTP server on `127.0.0.1:8991` that answers
+   --fixture-store <dir>`. 20b's door: run any HTTP server on `127.0.0.1:8991` that answers
    `GET /fetch` with `{"id":"valid-value"}`; run `claim_batch` against
    `dag/test/claim/reconstruction_door_rest_probe.dag` with `--function
    witness_rest_id_equals_valid --record --fixture-store <dir1>`; point the same server at
