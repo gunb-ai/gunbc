@@ -249,7 +249,7 @@ fn lifecycle_totality_witness_classified_paths() -> std.types.List<String> {
   )
 }
 
-fn lifecycle_totality_witness_observation(extra_paths: std.types.List<String>) -> gunbc.stage0_rust_host_observation.RustManifestObserved {
+fn lifecycle_totality_witness_observation(extra_paths: std.types.List<String>) -> gunbc.stage0_rust_host_observation.RustSourceHostObservation {
   let classified = lifecycle_totality_witness_classified_paths()
   gunbc.stage0_rust_host_observation.RustManifestObserved {
     repository_revision: "witness-deadbeef",

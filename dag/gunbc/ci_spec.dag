@@ -4,7 +4,7 @@ type DiffMode = DiffMergeBase | DiffTwoDot
 
 type FloorBatchStopPolicy = StopBeforeDependents | FullLedger
 
-type RuntimeUnitCount = RuntimeUnitCountObserved { units: Nat } | RuntimeUnitCountUnavailable { cause: String }
+type RuntimeUnitCount = RuntimeUnitCountObserved { units: std.nat.Nat } | RuntimeUnitCountUnavailable { cause: String }
 
 data gunbc_ci_floor_batch_runtime_unit_count_note: String = "RUNTIME UNIT COUNT for the derived batch clamp (gunbc_ci_floor_batch_clamp_note): claim_executor alone knows the affected-set-selected unit count at enforcement time. RuntimeUnitCountObserved carries the count used in clamp_ms = overhead_seconds*1000 + units * per_unit_ms. RuntimeUnitCountUnavailable means the count was lost — typically a hard discovery error discarded DiscoverySummary at the Result boundary so corpus_witnesses reads 0 while the batch is a discovery aggregate, not a single-claim gate row. When unavailable the clamp comparison is REFUSED (verdict ClampRefused): a third state, not WithinBudget and not OverBudget — never map zero to one and render a corpus failure as FLOOR-BATCH-OVER-BUDGET. Authority type here; observation and enforcement live in claim_executor.rs (see gunbc_ci_floor_batch_runtime_unit_count_claim_executor_seed_note)."
 

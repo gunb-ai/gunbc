@@ -19,9 +19,7 @@ fn census_spelling_names_target(spelling: String, target: v2.std.node.Symbol) ->
 }
 
 fn census_construction_fold(n: v2.std.node.Node, target: v2.std.node.Symbol) -> CensusConstructionCount {
-  v2.std.node.fold_node(
-    n: n,
-    algebra: v2.std.node.NodeFold {
+  let alg: v2.std.node.NodeFold<CensusConstructionCount> = v2.std.node.NodeFold {
       init: fn(n0) {
         match n0.kind {
           v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } } =>
@@ -36,7 +34,7 @@ fn census_construction_fold(n: v2.std.node.Node, target: v2.std.node.Symbol) -> 
         }
       }
     }
-  )
+  v2.std.node.fold_node(n: n, algebra: alg)
 }
 
 fn census_construction_count(n: v2.std.node.Node, target: v2.std.node.Symbol) -> Int {
