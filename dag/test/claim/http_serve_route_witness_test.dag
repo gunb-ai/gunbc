@@ -37,7 +37,7 @@ fn selected_dynamic_is(sel: extdeps.http.server.RouteSelection<test.claim.http_s
       }
     SelectedStatic { route: _ } => false
     MethodNotAllowed { allowed: _ } => false
-    extdeps.http.server.NoRouteMatched => false
+    NoRouteMatched => false
   }
 }
 
@@ -47,7 +47,7 @@ fn selection_param(sel: extdeps.http.server.RouteSelection<test.claim.http_serve
       fold(ps, init: "", f: (acc, p) => if p.name == name { p.value } else { acc })
     SelectedStatic { route: _ } => ""
     MethodNotAllowed { allowed: _ } => ""
-    extdeps.http.server.NoRouteMatched => ""
+    NoRouteMatched => ""
   }
 }
 
@@ -60,7 +60,7 @@ test fn witness_static_row_selects_static() -> Bool {
     SelectedStatic { route: r } => r.body == "ok" && r.status_on_hit == 200
     SelectedDynamic { handler: _, params: _ } => false
     MethodNotAllowed { allowed: _ } => false
-    extdeps.http.server.NoRouteMatched => false
+    NoRouteMatched => false
   }
 }
 
@@ -76,13 +76,13 @@ test fn witness_wrong_method_folds_405_with_allowed() -> Bool {
       count(ms) == 1 && any(ms, m => m == std.types.POST)
     SelectedStatic { route: _ } => false
     SelectedDynamic { handler: _, params: _ } => false
-    extdeps.http.server.NoRouteMatched => false
+    NoRouteMatched => false
   }
 }
 
 test fn witness_unknown_path_folds_404() -> Bool {
   match serve_select_route(table: probe_table(), method: GET, path: "/nope") {
-    extdeps.http.server.NoRouteMatched => true
+    NoRouteMatched => true
     SelectedStatic { route: _ } => false
     SelectedDynamic { handler: _, params: _ } => false
     MethodNotAllowed { allowed: _ } => false

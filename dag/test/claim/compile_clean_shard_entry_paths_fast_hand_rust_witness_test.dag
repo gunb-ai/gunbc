@@ -8,7 +8,7 @@ data compile_clean_shard_entry_paths_fast_hand_rust_duplicate_semantics_dedup_no
 
 test fn compile_clean_shard_entry_paths_fast_hand_rust_scaffold_is_seed_retained() -> Bool {
   match tools.dag_compile_clean_shard_roster.compile_clean_shard_entry_paths_fast_hand_rust_scaffold {
-    std.disposition.Scaffold { dissolves_to: std.disposition.SingleAuthority, bind: _ } => true
+    Scaffold { dissolves_to: std.disposition.SingleAuthority, bind: _ } => true
     _ => false
   }
 }

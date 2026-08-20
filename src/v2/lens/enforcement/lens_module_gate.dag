@@ -116,406 +116,406 @@ data lens_module_gate_surface_table_dissolve_on: std.dissolution.DissolutionCond
 
 fn lens_module_gate_surface_for_lens_id(id: v2.lens.registry.LensIdV0, module: String) -> LensInvariantSurface {
   match id {
-    v2.lens.registry.Cost => LensInvariantSurface {
+    Cost => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictAsymptoticCost,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.ComplexityDerivedKernel => LensInvariantSurface {
+    ComplexityDerivedKernel => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictAsymptoticCost,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.ComplexityOptimality => LensInvariantSurface {
+    ComplexityOptimality => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictAsymptoticCost,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.ComplexityAccumulatorCopy => LensInvariantSurface {
+    ComplexityAccumulatorCopy => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictAsymptoticCost,
       remedy: RemedyConstructionWall,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.ComplexityLinearityAudit => LensInvariantSurface {
+    ComplexityLinearityAudit => LensInvariantSurface {
       module: module,
       projection: ProjectionImportGraph,
       verdict_authority: VerdictLensVerdict,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.FallbackArmCensus => LensInvariantSurface {
+    FallbackArmCensus => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictLensVerdict,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.ComplexityLowering => LensInvariantSurface {
+    ComplexityLowering => LensInvariantSurface {
       module: module,
       projection: ProjectionTermChain,
       verdict_authority: VerdictLensVerdict,
       remedy: RemedyShare,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.FnFamily => LensInvariantSurface {
+    FnFamily => LensInvariantSurface {
       module: module,
       projection: ProjectionDeclForest,
       verdict_authority: VerdictLensVerdict,
       remedy: RemedyShare,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.Synthesis => LensInvariantSurface {
+    Synthesis => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictAsymptoticCost,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.ScheduleLens => LensInvariantSurface {
+    ScheduleLens => LensInvariantSurface {
       module: module,
       projection: ProjectionModuleGraph,
       verdict_authority: VerdictLensVerdict,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.TableDecisionTree => LensInvariantSurface {
+    TableDecisionTree => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictLensVerdict,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.WitnessCostLocality => LensInvariantSurface {
+    WitnessCostLocality => LensInvariantSurface {
       module: module,
       projection: ProjectionImportGraph,
       verdict_authority: VerdictLensVerdict,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.RosterRegistry => LensInvariantSurface {
+    RosterRegistry => LensInvariantSurface {
       module: module,
       projection: ProjectionDeclForest,
       verdict_authority: VerdictLensVerdict,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.DuplicateComputation => LensInvariantSurface {
+    DuplicateComputation => LensInvariantSurface {
       module: module,
       projection: ProjectionShellProgram,
       verdict_authority: VerdictLadderVerdict,
       remedy: RemedyShare,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.Subsumption => LensInvariantSurface {
+    Subsumption => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictLadderVerdict,
       remedy: RemedyShare,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.IntentLinearity => LensInvariantSurface {
+    IntentLinearity => LensInvariantSurface {
       module: module,
       projection: ProjectionTermChain,
       verdict_authority: VerdictLensVerdict,
       remedy: RemedyShare,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.StructuralSimilarity => LensInvariantSurface {
+    StructuralSimilarity => LensInvariantSurface {
       module: module,
       projection: ProjectionTypeForest,
       verdict_authority: VerdictLensVerdict,
       remedy: RemedyShare,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.SimulatedRelationship => LensInvariantSurface {
+    SimulatedRelationship => LensInvariantSurface {
       module: module,
       projection: ProjectionTermChain,
       verdict_authority: VerdictLensVerdict,
       remedy: RemedyShare,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.Vacuity => LensInvariantSurface {
+    Vacuity => LensInvariantSurface {
       module: module,
       projection: ProjectionTestClaim,
       verdict_authority: VerdictVacuityEvidence,
       remedy: RemedyIndependentOracle,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.FactCardinality => LensInvariantSurface {
+    FactCardinality => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictLensVerdict,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.IdenticalVariantPayload => LensInvariantSurface {
+    IdenticalVariantPayload => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictLensVerdict,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.DispositionRedundancy => LensInvariantSurface {
+    DispositionRedundancy => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictLensVerdict,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.MandatoryTag => LensInvariantSurface {
+    MandatoryTag => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictLensVerdict,
       remedy: RemedyConstructionWall,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.DependencyFidelity => LensInvariantSurface {
+    DependencyFidelity => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictFidelityVerdict,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.InterfaceSummary => LensInvariantSurface {
+    InterfaceSummary => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictFidelityVerdict,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.LanguagesConsumerCensus => LensInvariantSurface {
+    LanguagesConsumerCensus => LensInvariantSurface {
       module: module,
       projection: ProjectionModuleGraph,
       verdict_authority: VerdictFidelityVerdict,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.LifecycleCarrier => LensInvariantSurface {
+    LifecycleCarrier => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictGroundingVerdict,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.LiveReadClassification => LensInvariantSurface {
+    LiveReadClassification => LensInvariantSurface {
       module: module,
       projection: ProjectionModuleGraph,
       verdict_authority: VerdictFidelityVerdict,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.Visibility => LensInvariantSurface {
+    Visibility => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictFidelityVerdict,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.ExtdepsShapeTransportPolicy => LensInvariantSurface {
+    ExtdepsShapeTransportPolicy => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictFidelityVerdict,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.RealizationVocabularyContainment => LensInvariantSurface {
+    RealizationVocabularyContainment => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictFidelityVerdict,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.HostLanguageTransportScript => LensInvariantSurface {
+    HostLanguageTransportScript => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictLensVerdict,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.EffectEnumeration => LensInvariantSurface {
+    EffectEnumeration => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictEffectFact,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.EffectReach => LensInvariantSurface {
+    EffectReach => LensInvariantSurface {
       module: module,
       projection: ProjectionModuleGraph,
       verdict_authority: VerdictEffectFact,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.ProductionQualificationOriginProbe => LensInvariantSurface {
+    ProductionQualificationOriginProbe => LensInvariantSurface {
       module: module,
       projection: ProjectionModuleGraph,
       verdict_authority: VerdictLensVerdict,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.EmittedBinaryEffectConfinement => LensInvariantSurface {
+    EmittedBinaryEffectConfinement => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictLensVerdict,
       remedy: RemedyConstructionWall,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.Idempotency => LensInvariantSurface {
+    Idempotency => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictIdempotencyFact,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.Provenance => LensInvariantSurface {
+    Provenance => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictOwnershipFact,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.Parallelism => LensInvariantSurface {
+    Parallelism => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictParallelismFact,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.Determinism => LensInvariantSurface {
+    Determinism => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictDeterminismFact,
       remedy: RemedyConstructionWall,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.InertCarrier => LensInvariantSurface {
+    InertCarrier => LensInvariantSurface {
       module: module,
       projection: ProjectionImportGraph,
       verdict_authority: VerdictLensVerdict,
       remedy: RemedyDelete,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.DocReachability => LensInvariantSurface {
+    DocReachability => LensInvariantSurface {
       module: module,
       projection: ProjectionDocGraph,
       verdict_authority: VerdictLensVerdict,
       remedy: RemedyDelete,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.WiringLiveness => LensInvariantSurface {
+    WiringLiveness => LensInvariantSurface {
       module: module,
       projection: ProjectionImportGraph,
       verdict_authority: VerdictLensVerdict,
       remedy: RemedyDelete,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.UnusedParameters => LensInvariantSurface {
+    UnusedParameters => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictLensVerdict,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.StructuralResolution => LensInvariantSurface {
+    StructuralResolution => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictLensVerdict,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.CitedSymbolResolution => LensInvariantSurface {
+    CitedSymbolResolution => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictLensVerdict,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.NonFoldResidue => LensInvariantSurface {
+    NonFoldResidue => LensInvariantSurface {
       module: module,
       projection: ProjectionImportGraph,
       verdict_authority: VerdictLensVerdict,
       remedy: RemedyDelete,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.MetaExecConfinement => LensInvariantSurface {
+    MetaExecConfinement => LensInvariantSurface {
       module: module,
       projection: ProjectionModuleGraph,
       verdict_authority: VerdictFidelityVerdict,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.MockTotality => LensInvariantSurface {
+    MockTotality => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictLensVerdict,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.MutationAdequacy => LensInvariantSurface {
+    MutationAdequacy => LensInvariantSurface {
       module: module,
       projection: ProjectionTestClaim,
       verdict_authority: VerdictLensVerdict,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.Coverage => LensInvariantSurface {
+    Coverage => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictLensVerdict,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.TestMigrationDebt => LensInvariantSurface {
+    TestMigrationDebt => LensInvariantSurface {
       module: module,
       projection: ProjectionTestClaim,
       verdict_authority: VerdictLensVerdict,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.Discrimination => LensInvariantSurface {
+    Discrimination => LensInvariantSurface {
       module: module,
       projection: ProjectionTestClaim,
       verdict_authority: VerdictLensVerdict,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.Grounding => LensInvariantSurface {
+    Grounding => LensInvariantSurface {
       module: module,
       projection: ProjectionDocGraph,
       verdict_authority: VerdictGroundingVerdict,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.FactDensity => LensInvariantSurface {
+    FactDensity => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictGroundingVerdict,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.UnitModeling => LensInvariantSurface {
+    UnitModeling => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictGroundingVerdict,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.LeafModelVerification => LensInvariantSurface {
+    LeafModelVerification => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictGroundingVerdict,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.MachineShape => LensInvariantSurface {
+    MachineShape => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictLensVerdict,
@@ -570,8 +570,8 @@ fn lens_module_gate_surfaces() -> List<LensInvariantSurface> {
     empty: lens_module_gate_consolidated_surfaces,
     cons: fn(acc, entry) {
       match entry.module_path {
-        v2.lens.registry.Bound { path } => v2.std.algebra.list_snoc_item(xs: acc, item: lens_module_gate_surface_from_bound_entry(id: entry.lens_id, path: path))
-        v2.lens.registry.Unbound => acc
+        Bound { path } => v2.std.algebra.list_snoc_item(xs: acc, item: lens_module_gate_surface_from_bound_entry(id: entry.lens_id, path: path))
+        Unbound => acc
       }
     }
   )
@@ -639,7 +639,7 @@ fn lens_module_gate_redundant_blocking_step(
       }
     )
     match v2.std.algebra.list_head(xs: prior) {
-      v2.std.algebra.HeadFound { value: earlier } =>
+      HeadFound { value: earlier } =>
         if lens_module_gate_is_audit_residue_pair(left: earlier.module, right: surface.module) {
           RedundantBlockingAcc {
             redundant: acc.redundant,
@@ -651,7 +651,7 @@ fn lens_module_gate_redundant_blocking_step(
             seen: v2.std.algebra.list_snoc_item(xs: acc.seen, item: surface)
           }
         }
-      v2.std.algebra.HeadAbsent =>
+      HeadAbsent =>
         RedundantBlockingAcc {
           redundant: acc.redundant,
           seen: v2.std.algebra.list_snoc_item(xs: acc.seen, item: surface)

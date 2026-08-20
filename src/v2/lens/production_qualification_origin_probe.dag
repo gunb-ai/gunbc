@@ -138,7 +138,7 @@ fn atom_collect_step(acc: AtomCollectState, _edge: v2.std.node.Edge, child: Atom
       } else {
         v2.std.algebra.list_snoc_item(xs: acc.atoms, item: sym)
       }
-    v2.std.optional.Absent => acc.atoms
+    Absent => acc.atoms
   }
   AtomCollectState { node: acc.node, atoms: atoms }
 }
@@ -156,7 +156,7 @@ fn atom_identities_in_node(node: v2.std.node.Node) -> List<v2.std.node.Symbol> {
       } else {
         v2.std.algebra.list_snoc_item(xs: from_descendants, item: sym)
       }
-    v2.std.optional.Absent => from_descendants
+    Absent => from_descendants
   }
 }
 
@@ -191,7 +191,7 @@ fn callee_text_from_call_node(node: v2.std.node.Node) -> List<String> {
         match v2.std.grammar.node_atom_identity_optional(node: callee_node) {
           Present { value: sym } =>
             [v2.std.compilers.lexing.symbol_lexeme(sym: sym)]
-          v2.std.optional.Absent => empty_string_list
+          Absent => empty_string_list
         }
       Rejected { diagnostics: _ } => empty_string_list
     }

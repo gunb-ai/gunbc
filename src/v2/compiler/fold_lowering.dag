@@ -24,7 +24,7 @@ fn fold_family_head(sym: v2.std.node.Symbol) -> Bool {
 fn fold_call_step_fn(fold_call: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Node> {
   match v2.extdeps.languages.dag.parse_subtree_find_production_captured(root: fold_call, emitted: ^dag_surface_fn_literal) {
     ParseSubtreeFound { captured: fn_literal } => v2.std.optional.Present { value: fn_literal }
-    v2.extdeps.languages.dag.ParseSubtreeAbsent => v2.std.optional.Absent
+    ParseSubtreeAbsent => v2.std.optional.Absent
   }
 }
 
@@ -33,7 +33,7 @@ fn step_fn_iteration_body(fn_literal: v2.std.node.Node) -> v2.std.optional.Optio
     root: fn_literal,
     emitted: ^dag_surface_fn_body
   ) {
-    v2.extdeps.languages.dag.ParseSubtreeAbsent => v2.std.optional.Absent
+    ParseSubtreeAbsent => v2.std.optional.Absent
     ParseSubtreeFound { captured: body } => v2.std.optional.Present { value: body }
   }
 }
@@ -49,16 +49,16 @@ data step_fn_carrier_binder_note: String = "The step fn's FIRST param is the fol
 
 fn step_fn_carrier_binder_symbol(fn_literal: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Symbol> {
   match fold_seq_child(node: fn_literal, name: ^grammar_sequence_right_node_projection) {
-    v2.std.optional.Absent => v2.std.optional.Absent
+    Absent => v2.std.optional.Absent
     Present { value: after_kw_fn } =>
       match fold_seq_child(node: after_kw_fn, name: ^grammar_sequence_right_node_projection) {
-        v2.std.optional.Absent => v2.std.optional.Absent
+        Absent => v2.std.optional.Absent
         Present { value: after_lparen } =>
           match fold_seq_child(node: after_lparen, name: ^grammar_sequence_left_node_projection) {
-            v2.std.optional.Absent => v2.std.optional.Absent
+            Absent => v2.std.optional.Absent
             Present { value: params } =>
               match fold_seq_child(node: params, name: ^grammar_sequence_left_node_projection) {
-                v2.std.optional.Absent => v2.std.optional.Absent
+                Absent => v2.std.optional.Absent
                 Present { value: first_param } => v2.std.grammar.node_atom_identity_optional(node: first_param)
               }
           }
@@ -102,20 +102,20 @@ fn fold_call_seam_loop(body: v2.std.node.Node, carrier: v2.std.node.Symbol) -> v
 
 fn fold_call_to_loop(fold_call: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match fold_call_head_symbol(fold_call: fold_call) {
-    v2.std.optional.Absent =>
+    Absent =>
       v2.std.diagnostic.outcome_rejected(d: fold_lowering_not_a_fold_call_diagnostic(n: fold_call))
     Present { value: head } =>
       if fold_family_head(sym: head) {
         match fold_call_step_fn(fold_call: fold_call) {
-          v2.std.optional.Absent =>
+          Absent =>
             v2.std.diagnostic.outcome_rejected(d: fold_lowering_shape_invalid_diagnostic(n: fold_call))
           Present { value: fn_literal } =>
             match step_fn_iteration_body(fn_literal: fn_literal) {
-              v2.std.optional.Absent =>
+              Absent =>
                 v2.std.diagnostic.outcome_rejected(d: fold_lowering_shape_invalid_diagnostic(n: fold_call))
               Present { value: body } =>
                 match step_fn_carrier_binder_symbol(fn_literal: fn_literal) {
-                  v2.std.optional.Absent =>
+                  Absent =>
                     v2.std.diagnostic.outcome_rejected(d: fold_lowering_shape_invalid_diagnostic(n: fold_call))
                   Present { value: carrier } =>
                     v2.std.diagnostic.outcome_accepted(value: fold_call_seam_loop(body: body, carrier: carrier))

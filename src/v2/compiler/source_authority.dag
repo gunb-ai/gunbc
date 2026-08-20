@@ -398,7 +398,7 @@ fn source_ref_eq(left: SourceRef, right: SourceRef) -> Bool {
   let roots_match = left.source_root == right.source_root
   let hashes_match =
     match std.content_hash.compare_content_hash(left: left.content_hash, right: right.content_hash) {
-      std.content_hash.ContentHashEqual => true
+      ContentHashEqual => true
       _ => false
     }
   paths_match && roots_match && hashes_match
@@ -501,7 +501,7 @@ fn dag_source_read_result_from_ref(ref: SourceRef) -> SourceRefReadResult {
   } else {
     let observed = dag_source_content_hash_for_text(text: read.content)
     match std.content_hash.compare_content_hash(left: ref.content_hash, right: observed) {
-      std.content_hash.ContentHashEqual =>
+      ContentHashEqual =>
         SourceRefReadAccepted {
           witness: DagSourceReadWitness {
             source: extdeps.communication.medium.Medium { carried: read.content, fidelity: extdeps.communication.medium.Lossless },
@@ -750,7 +750,7 @@ fn source_ir_artifact_provenance_from_model(
   lm: v2.std.language_model.LanguageModel
 ) -> v2.std.diagnostic.Outcome<SourceIrArtifactProvenance> {
   match source_read.artifact.kind {
-    v2.std.artifact.SourceFile =>
+    SourceFile =>
       v2.std.diagnostic.bind_outcome(
         o: v2.compiler.tokenize.tokenize(
           text: source_read.source.carried,
@@ -832,7 +832,7 @@ fn module_storage_binding_from_read_prepared(
   residue: v2.std.diagnostic.Diagnostics
 ) -> v2.std.diagnostic.Outcome<ModuleStorageBinding> {
   match source_read.artifact.kind {
-    v2.std.artifact.SourceFile =>
+    SourceFile =>
       v2.std.diagnostic.bind_outcome(
         o: v2.compiler.tokenize.tokenize(
           text: source_read.source.carried,
@@ -978,7 +978,7 @@ fn module_storage_bindings_from_ingest_with_model(
   lm: v2.std.language_model.LanguageModel
 ) -> v2.std.diagnostic.Outcome<ModuleStorageIndex> {
   match ingest {
-    std.algebra.Empty => v2.std.diagnostic.outcome_accepted(value: std.algebra.Empty)
+    Empty => v2.std.diagnostic.outcome_accepted(value: std.algebra.Empty)
     _ =>
       match v2.compiler.parse.prepare_grammar(grammar: lm.grammar) {
         Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
@@ -1082,10 +1082,10 @@ fn module_storage_agreement_for_binding(
   host: ModuleStorageIndex
 ) -> ModuleStorageAgreement {
   match module_storage_binding_file_path(binding: oracle_binding) {
-    v2.std.optional.Absent => ModuleStorageAgrees
+    Absent => ModuleStorageAgrees
     Present { value: p } =>
       match module_storage_module_for_path(index: host, file_path: p) {
-        v2.std.optional.Absent => ModuleStorageUncovered { path: p }
+        Absent => ModuleStorageUncovered { path: p }
         Present { value: host_module } =>
           if host_module == module_storage_binding_module(binding: oracle_binding) {
             ModuleStorageAgrees
@@ -1132,7 +1132,7 @@ fn module_storage_module_for_path(
     cons: fn(found, binding) {
       match found {
         Present { value: v } => v2.std.optional.optional_present(value: v)
-        v2.std.optional.Absent =>
+        Absent =>
           match module_storage_binding_file_path(binding: binding) {
             Present { value: p } =>
               if p == file_path {
@@ -1140,7 +1140,7 @@ fn module_storage_module_for_path(
               } else {
                 v2.std.optional.optional_absent()
               }
-            v2.std.optional.Absent => v2.std.optional.optional_absent()
+            Absent => v2.std.optional.optional_absent()
           }
       }
     }
@@ -1157,7 +1157,7 @@ fn module_storage_path_for_module(
     cons: fn(found, binding) {
       match found {
         Present { value: v } => v2.std.optional.optional_present(value: v)
-        v2.std.optional.Absent =>
+        Absent =>
           if module_storage_binding_module(binding: binding) == module {
             module_storage_binding_file_path(binding: binding)
           } else {

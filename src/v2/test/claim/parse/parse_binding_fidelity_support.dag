@@ -64,9 +64,9 @@ fn pbf_arrow_body_operand_lexeme(arrow: v2.std.node.Node, index: Int) -> v2.std.
         Present { value: e } =>
           match v2.std.grammar.node_atom_identity_optional(node: e.target) {
             Present { value: id } => v2.std.optional.Present { value: v2.std.compilers.lexing.symbol_lexeme(sym: id) }
-            v2.std.optional.Absent => v2.std.optional.Absent
+            Absent => v2.std.optional.Absent
           }
-        v2.std.optional.Absent => v2.std.optional.Absent
+        Absent => v2.std.optional.Absent
       }
     Rejected { diagnostics: _ } => v2.std.optional.Absent
   }
@@ -77,7 +77,7 @@ fn pbf_arrow_body_operand_id(arrow: v2.std.node.Node, index: Int) -> v2.std.opti
     Accepted { value: body, diagnostics: _ } =>
       match v2.std.collection.list_at_optional(xs: body.children, index: index) {
         Present { value: e } => v2.std.grammar.node_atom_identity_optional(node: e.target)
-        v2.std.optional.Absent => v2.std.optional.Absent
+        Absent => v2.std.optional.Absent
       }
     Rejected { diagnostics: _ } => v2.std.optional.Absent
   }
@@ -88,9 +88,9 @@ fn pbf_parse_preserves_param_x_binding() -> Bool {
     Present { value: arrow } =>
       match pbf_arrow_body_operand_lexeme(arrow: arrow, index: 1) {
         Present { value: lex } => lex == "x"
-        v2.std.optional.Absent => false
+        Absent => false
       }
-    v2.std.optional.Absent => false
+    Absent => false
   }
 }
 
@@ -99,9 +99,9 @@ fn pbf_parse_preserves_param_y_binding() -> Bool {
     Present { value: arrow } =>
       match pbf_arrow_body_operand_lexeme(arrow: arrow, index: 2) {
         Present { value: lex } => lex == "y"
-        v2.std.optional.Absent => false
+        Absent => false
       }
-    v2.std.optional.Absent => false
+    Absent => false
   }
 }
 
@@ -112,11 +112,11 @@ fn pbf_parse_does_not_collapse_to_token_ident() -> Bool {
         Present { value: left } =>
           match pbf_arrow_body_operand_lexeme(arrow: arrow, index: 2) {
             Present { value: right } => (left == "x") && (right == "y") && (left != right)
-            v2.std.optional.Absent => false
+            Absent => false
           }
-        v2.std.optional.Absent => false
+        Absent => false
       }
-    v2.std.optional.Absent => false
+    Absent => false
   }
 }
 
@@ -134,11 +134,11 @@ fn pbf_resolved_tree_has_distinct_param_bindings() -> Bool {
         Present { value: left } =>
           match pbf_arrow_body_operand_id(arrow: arrow, index: 2) {
             Present { value: right } => (left != right) && (v2.std.compilers.lexing.symbol_lexeme(sym: left) == "x") && (v2.std.compilers.lexing.symbol_lexeme(sym: right) == "y")
-            v2.std.optional.Absent => false
+            Absent => false
           }
-        v2.std.optional.Absent => false
+        Absent => false
       }
-    v2.std.optional.Absent => false
+    Absent => false
   }
 }
 

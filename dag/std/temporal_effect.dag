@@ -162,7 +162,7 @@ fn next_step_plan_from_apply_decision(
   pending_step_id: std.types.NonEmptyStr,
 ) -> NextStepPlan {
   match decision {
-    std.upsert_decision.Noop => PlanNoop { step_id: pending_step_id }
+    Noop => PlanNoop { step_id: pending_step_id }
     Refuse { reason: r } => PlanRefuse { step_id: pending_step_id, reason: r }
     Apply { plan: p } => match p {
       ApplyAtStep { step_id: s } => PlanApply { step_id: s }

@@ -37,9 +37,9 @@ fn is_idempotent_effect(shape: EffectShape<KeySource>) -> Bool {
     DeleteEffect => true
     CreateEffect { cause: cause } =>
       match cause {
-        std.effects.CreateIfAbsent { key_source: key_source } => true
-        std.effects.PostAlways => false
-        std.effects.KeylessFallback { method: method } => false
+        CreateIfAbsent { key_source: key_source } => true
+        PostAlways => false
+        KeylessFallback { method: method } => false
       }
     AppendEffect => false
     ExecuteEffect => false
@@ -67,9 +67,9 @@ fn create_effect_is_dedupable(shape: EffectShape<KeySource>) -> Bool {
   match shape {
     CreateEffect { cause: cause } =>
       match cause {
-        std.effects.CreateIfAbsent { key_source: key_source } => true
-        std.effects.PostAlways => false
-        std.effects.KeylessFallback { method: method } => false
+        CreateIfAbsent { key_source: key_source } => true
+        PostAlways => false
+        KeylessFallback { method: method } => false
       }
     ReadEffect => false
     UpsertEffect { key_source: key_source } => false
@@ -83,13 +83,13 @@ fn create_double_init_collapsible(a: EffectShape<KeySource>, b: EffectShape<KeyS
   match a {
     CreateEffect { cause: cause_a } =>
       match cause_a {
-        std.effects.CreateIfAbsent { key_source: ka } =>
+        CreateIfAbsent { key_source: ka } =>
           match b {
             CreateEffect { cause: cause_b } =>
               match cause_b {
-                std.effects.CreateIfAbsent { key_source: kb } => key_source_eq(left: ka, right: kb)
-                std.effects.PostAlways => false
-                std.effects.KeylessFallback { method: method } => false
+                CreateIfAbsent { key_source: kb } => key_source_eq(left: ka, right: kb)
+                PostAlways => false
+                KeylessFallback { method: method } => false
               }
             ReadEffect => false
             UpsertEffect { key_source: key_source } => false
@@ -97,8 +97,8 @@ fn create_double_init_collapsible(a: EffectShape<KeySource>, b: EffectShape<KeyS
             AppendEffect => false
             ExecuteEffect => false
           }
-        std.effects.PostAlways => false
-        std.effects.KeylessFallback { method: method } => false
+        PostAlways => false
+        KeylessFallback { method: method } => false
       }
     ReadEffect => false
     UpsertEffect { key_source: key_source } => false
@@ -215,11 +215,11 @@ fn check_modifier_vs_derivation(
     match op.shape {
       CreateEffect { cause: cause } =>
         match cause {
-          std.effects.PostAlways =>
+          PostAlways =>
             DerivationUnknown { reason: "POST with no path key derives CreateEffect; idempotency may be spec-declared" }
-          std.effects.KeylessFallback { method: method } =>
+          KeylessFallback { method: method } =>
             DerivationUnknown { reason: "keyless PUT/PATCH/DELETE derives CreateEffect; idempotency may be method-derived" }
-          std.effects.CreateIfAbsent { key_source: key_source } =>
+          CreateIfAbsent { key_source: key_source } =>
             Disagrees { reason: "derivation says non-idempotent but modifier declares idempotent" }
         }
       ReadEffect =>
@@ -237,10 +237,10 @@ fn check_modifier_vs_derivation(
     match op.shape {
       CreateEffect { cause: cause } =>
         match cause {
-          std.effects.CreateIfAbsent { key_source: key_source } =>
+          CreateIfAbsent { key_source: key_source } =>
             Disagrees { reason: "create-if-absent has proven identity but modifier declares non-idempotent" }
-          std.effects.PostAlways => Agrees
-          std.effects.KeylessFallback { method: method } => Agrees
+          PostAlways => Agrees
+          KeylessFallback { method: method } => Agrees
         }
       ReadEffect => Agrees
       UpsertEffect { key_source: key_source } => Agrees

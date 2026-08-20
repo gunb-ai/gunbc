@@ -35,7 +35,7 @@ fn ordering_invert(o: std.algebra.Ordering) -> std.algebra.Ordering {
   match o {
     Less => Greater
     Greater => Less
-    std.algebra.Equal => std.algebra.Equal
+    Equal => std.algebra.Equal
   }
 }
 fn float_finite_unsigned_field_order(
@@ -48,7 +48,7 @@ fn float_finite_unsigned_field_order(
   match o2 {
     Less => Less
     Greater => Greater
-    std.algebra.Equal => v2.std.nat.nat_compare(a: fa, b: fb)
+    Equal => v2.std.nat.nat_compare(a: fa, b: fb)
   }
 }
 
@@ -79,7 +79,7 @@ fn float_body_compare_semantic_total(a: FloatBody, b: FloatBody) -> std.algebra.
         match o {
           Less => Less
           Greater => Greater
-          std.algebra.Equal => {
+          Equal => {
             let mag = float_finite_unsigned_field_order(
               ea: ea,
               fa: fa,

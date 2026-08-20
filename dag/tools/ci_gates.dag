@@ -7,14 +7,14 @@ fn exit_ok(e: std.process.ProcessExit) -> Bool {
 
 fn run_spec_gate(g: gunbc.ci_gate.Gate) -> std.process.ProcessExit {
   match g {
-    gunbc.ci_gate.EmitHostGate => tools.emit_host_gate.run_emit_host_ci_gate()
-    gunbc.ci_gate.CheapClaimPoolGate => tools.cheap_claim_pool_gate.run_cheap_claim_pool_ci_gate()
-    gunbc.ci_gate.ExtdepsExternalAuthorityGate => tools.extdeps_external_authority_gate.run_extdeps_external_authority_ci_gate()
-    gunbc.ci_gate.DagCompileCleanGate => tools.dag_compile_clean_gate.run_dag_compile_clean_gate()
-    gunbc.ci_gate.GeneratedArtifactDriftGate => tools.generated_artifact_gate.run_generated_artifact_drift_gate()
-    gunbc.ci_gate.ExtdepsScopePlacementGate => tools.extdeps_scope_placement_gate.run_extdeps_scope_placement_gate()
-    gunbc.ci_gate.ProseRowIntroductionGate => tools.prose_row_introduction_gate.run_prose_row_introduction_gate()
-    gunbc.ci_gate.SourceRootIngestGate => std.process.exit_failure(
+    EmitHostGate => tools.emit_host_gate.run_emit_host_ci_gate()
+    CheapClaimPoolGate => tools.cheap_claim_pool_gate.run_cheap_claim_pool_ci_gate()
+    ExtdepsExternalAuthorityGate => tools.extdeps_external_authority_gate.run_extdeps_external_authority_ci_gate()
+    DagCompileCleanGate => tools.dag_compile_clean_gate.run_dag_compile_clean_gate()
+    GeneratedArtifactDriftGate => tools.generated_artifact_gate.run_generated_artifact_drift_gate()
+    ExtdepsScopePlacementGate => tools.extdeps_scope_placement_gate.run_extdeps_scope_placement_gate()
+    ProseRowIntroductionGate => tools.prose_row_introduction_gate.run_prose_row_introduction_gate()
+    SourceRootIngestGate => std.process.exit_failure(
       reason: "SourceRootIngestGate: run via ci_floor_plan v2.workflow.source_root_ingest_gate (slice 3)"
     )
   }

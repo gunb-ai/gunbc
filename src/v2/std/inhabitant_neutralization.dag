@@ -75,7 +75,7 @@ fn inhabitant_std_projection_symbol(inhabitant: v2.std.node.Node) -> v2.std.diag
           match v2.std.grammar.node_atom_identity_optional(node: atom_node) {
             Present { value: sym } =>
               v2.std.diagnostic.Accepted { value: sym, diagnostics: v2.std.diagnostic.None }
-            v2.std.optional.Absent =>
+            Absent =>
               v2.std.diagnostic.outcome_rejected(
                 inhabitant_neutralization_std_projection_missing_diagnostic(node: inhabitant)
               )
@@ -92,7 +92,7 @@ fn inhabitant_type_atom_symbol(inhabitant: v2.std.node.Node) -> v2.std.diagnosti
       match v2.std.grammar.node_atom_identity_optional(node: atom_node) {
         Present { value: sym } =>
           v2.std.diagnostic.Accepted { value: sym, diagnostics: v2.std.diagnostic.None }
-        v2.std.optional.Absent =>
+        Absent =>
           v2.std.diagnostic.outcome_rejected(
             inhabitant_neutralization_type_atom_missing_diagnostic(node: inhabitant)
           )
@@ -113,7 +113,7 @@ fn inhabitant_surface_spelling_symbol(inhabitant: v2.std.node.Node) -> v2.std.di
           match v2.std.grammar.node_atom_identity_optional(node: atom_node) {
             Present { value: sym } =>
               v2.std.diagnostic.Accepted { value: sym, diagnostics: v2.std.diagnostic.None }
-            v2.std.optional.Absent =>
+            Absent =>
               v2.std.diagnostic.outcome_rejected(
                 inhabitant_neutralization_surface_spelling_missing_diagnostic(
                   node: inhabitant
@@ -188,9 +188,9 @@ fn target_inhabitant_selection_policy_fold_step(
           selection: selection_policy
         ) {
         match acc {
-          v2.std.passing_candidate_fold.NoPassingCandidate => v2.std.passing_candidate_fold.OnePassingCandidate { candidate: candidate }
+          NoPassingCandidate => v2.std.passing_candidate_fold.OnePassingCandidate { candidate: candidate }
           OnePassingCandidate { candidate: _ } => v2.std.passing_candidate_fold.ManyPassingCandidates
-          v2.std.passing_candidate_fold.ManyPassingCandidates => v2.std.passing_candidate_fold.ManyPassingCandidates
+          ManyPassingCandidates => v2.std.passing_candidate_fold.ManyPassingCandidates
         }
       } else {
         acc
@@ -217,13 +217,13 @@ fn target_inhabitant_for_std_projection_with_selection_policy(
     }
   )
   match fold_result {
-    v2.std.passing_candidate_fold.NoPassingCandidate =>
+    NoPassingCandidate =>
       v2.std.diagnostic.outcome_rejected(
         inhabitant_neutralization_no_target_diagnostic(std_projection: std_projection)
       )
     OnePassingCandidate { candidate: c } =>
       v2.std.diagnostic.Accepted { value: c, diagnostics: v2.std.diagnostic.None }
-    v2.std.passing_candidate_fold.ManyPassingCandidates =>
+    ManyPassingCandidates =>
       v2.std.diagnostic.outcome_rejected(
         inhabitant_neutralization_ambiguous_target_diagnostic(
           std_projection: std_projection
@@ -241,9 +241,9 @@ fn target_inhabitant_fold_step(
     Accepted { value: proj, diagnostics: _ } =>
       if proj == std_projection {
         match acc {
-          v2.std.passing_candidate_fold.NoPassingCandidate => v2.std.passing_candidate_fold.OnePassingCandidate { candidate: candidate }
+          NoPassingCandidate => v2.std.passing_candidate_fold.OnePassingCandidate { candidate: candidate }
           OnePassingCandidate { candidate: _ } => v2.std.passing_candidate_fold.ManyPassingCandidates
-          v2.std.passing_candidate_fold.ManyPassingCandidates => v2.std.passing_candidate_fold.ManyPassingCandidates
+          ManyPassingCandidates => v2.std.passing_candidate_fold.ManyPassingCandidates
         }
       } else {
         acc
@@ -271,7 +271,7 @@ fn target_inhabitant_for_std_projection(
         }
       )
       match fold_result {
-        v2.std.passing_candidate_fold.NoPassingCandidate =>
+        NoPassingCandidate =>
           v2.std.diagnostic.outcome_rejected(
             inhabitant_neutralization_no_target_diagnostic(
               std_projection: std_projection
@@ -279,7 +279,7 @@ fn target_inhabitant_for_std_projection(
           )
         OnePassingCandidate { candidate: c } =>
           v2.std.diagnostic.Accepted { value: c, diagnostics: v2.std.diagnostic.None }
-        v2.std.passing_candidate_fold.ManyPassingCandidates =>
+        ManyPassingCandidates =>
           v2.std.diagnostic.bind_outcome(
             o: v2.std.node_query.find_named_child(
               root: target.bundle,

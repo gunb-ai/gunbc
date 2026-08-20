@@ -81,13 +81,13 @@ type LongHomeStorageAgreement =
 
 fn long_home_storage_agreement(path_is_long: Bool, module_is_long: Bool) -> LongHomeStorageAgreement {
   match path_is_long {
-    v2.std.logic.True => match module_is_long {
-      v2.std.logic.True => LongPathAndLongModule {}
-      v2.std.logic.False => LongPathButExecutingModule {}
+    True => match module_is_long {
+      True => LongPathAndLongModule {}
+      False => LongPathButExecutingModule {}
     }
-    v2.std.logic.False => match module_is_long {
-      v2.std.logic.True => ShortPathButDeclinedModule {}
-      v2.std.logic.False => ShortPathAndShortModule {}
+    False => match module_is_long {
+      True => ShortPathButDeclinedModule {}
+      False => ShortPathAndShortModule {}
     }
   }
 }
@@ -352,7 +352,7 @@ fn opaque_host_call_grandfather_population() -> List<String> {
 fn string_in_grandfather_population(needle: String, population: List<String>) -> Bool {
   match population {
     Empty {} => false
-    std.algebra.Cons { head: h, tail: t } =>
+    Cons { head: h, tail: t } =>
       if needle == h {
         true
       } else {

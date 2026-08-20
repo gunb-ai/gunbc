@@ -262,8 +262,8 @@ test fn w_a_passing_witness_folds_into_its_batch_and_emits_nothing() -> Bool {
     event: proj_event(subject: proj_leaf_subject(entry: "dag/a.dag"), transition: std.observation.Concluded { outcome: std.observation.Done }),
     grain: Present { value: std.observation.BatchGrain },
   ) {
-    gunbc.observation_ci_render.FoldedIntoRollup { at: a } => std.observation.observation_subject_contains(ancestor: a, descendant: proj_leaf_subject(entry: "dag/a.dag"))
-    gunbc.observation_ci_render.EmittedAtLeaf { reason: _ } => false
+    FoldedIntoRollup { at: a } => std.observation.observation_subject_contains(ancestor: a, descendant: proj_leaf_subject(entry: "dag/a.dag"))
+    EmittedAtLeaf { reason: _ } => false
   }
 }
 
@@ -272,9 +272,9 @@ test fn w_RED_a_failure_pierces_the_fold_at_its_exact_leaf() -> Bool {
     event: proj_event(subject: proj_leaf_subject(entry: "dag/b.dag"), transition: std.observation.Concluded { outcome: std.observation.Failed { error: "witness red", output: "" } }),
     grain: Present { value: std.observation.BatchGrain },
   ) {
-    gunbc.observation_ci_render.FoldedIntoRollup { at: _ } => false
-    gunbc.observation_ci_render.EmittedAtLeaf { reason: r } => match r {
-      gunbc.observation_ci_render.AnomalyPierces => true
+    FoldedIntoRollup { at: _ } => false
+    EmittedAtLeaf { reason: r } => match r {
+      AnomalyPierces => true
       _ => false
     }
   }
@@ -285,8 +285,8 @@ test fn w_RED_a_refusal_pierces_the_fold_too() -> Bool {
     event: proj_event(subject: proj_leaf_subject(entry: "dag/c.dag"), transition: std.observation.Concluded { outcome: std.observation.Refused { diagnostic: "admission refused" } }),
     grain: Present { value: std.observation.BatchGrain },
   ) {
-    gunbc.observation_ci_render.FoldedIntoRollup { at: _ } => false
-    gunbc.observation_ci_render.EmittedAtLeaf { reason: r } => match r { gunbc.observation_ci_render.AnomalyPierces => true, _ => false }
+    FoldedIntoRollup { at: _ } => false
+    EmittedAtLeaf { reason: r } => match r { gunbc.observation_ci_render.AnomalyPierces => true, _ => false }
   }
 }
 
@@ -295,8 +295,8 @@ test fn w_verbose_leaf_grain_emits_every_routine_event() -> Bool {
     event: proj_event(subject: proj_leaf_subject(entry: "dag/d.dag"), transition: std.observation.Concluded { outcome: std.observation.Done }),
     grain: none,
   ) {
-    gunbc.observation_ci_render.FoldedIntoRollup { at: _ } => false
-    gunbc.observation_ci_render.EmittedAtLeaf { reason: r } => match r { gunbc.observation_ci_render.LeafGrainRequested => true, _ => false }
+    FoldedIntoRollup { at: _ } => false
+    EmittedAtLeaf { reason: r } => match r { gunbc.observation_ci_render.LeafGrainRequested => true, _ => false }
   }
 }
 
@@ -305,8 +305,8 @@ test fn w_RED_an_event_with_no_ancestor_at_the_grain_is_emitted_not_dropped() ->
     event: proj_event(subject: proj_batch_subject(), transition: std.observation.Concluded { outcome: std.observation.Done }),
     grain: Present { value: std.observation.ModuleGrain },
   ) {
-    gunbc.observation_ci_render.FoldedIntoRollup { at: _ } => false
-    gunbc.observation_ci_render.EmittedAtLeaf { reason: r } => match r { gunbc.observation_ci_render.NoAncestorAtGrain => true, _ => false }
+    FoldedIntoRollup { at: _ } => false
+    EmittedAtLeaf { reason: r } => match r { gunbc.observation_ci_render.NoAncestorAtGrain => true, _ => false }
   }
 }
 
@@ -319,8 +319,8 @@ test fn w_batch_summary_reports_the_folded_counts() -> Bool {
     ],
     init: std.observation.observation_rollup_open(subject: proj_batch_subject()),
     f: (acc, e) => match std.observation.observation_rollup_accept(rollup: acc, event: e) {
-      std.observation.RollupAccepted { rollup: r } => r
-      std.observation.RollupSubjectOutOfScope { subject: _ } => acc
+      RollupAccepted { rollup: r } => r
+      RollupSubjectOutOfScope { subject: _ } => acc
     }
   )
   let line = gunbc.observation_ci_render.ci_batch_summary_line(rollup: folded)
@@ -338,8 +338,8 @@ test fn w_RED_a_batch_carrying_a_failure_summarises_as_an_anomaly() -> Bool {
     ],
     init: std.observation.observation_rollup_open(subject: proj_batch_subject()),
     f: (acc, e) => match std.observation.observation_rollup_accept(rollup: acc, event: e) {
-      std.observation.RollupAccepted { rollup: r } => r
-      std.observation.RollupSubjectOutOfScope { subject: _ } => acc
+      RollupAccepted { rollup: r } => r
+      RollupSubjectOutOfScope { subject: _ } => acc
     }
   )
   let line = gunbc.observation_ci_render.ci_batch_summary_line(rollup: folded)
@@ -454,8 +454,8 @@ test fn w_RED_verbose_does_not_fold_but_normal_and_quiet_do() -> Bool {
 
 fn proj_folds_at_batch(e: std.observation.ObservationEvent) -> Bool {
   match gunbc.observation_ci_render.ci_routine_projection(event: e, grain: Present { value: std.observation.BatchGrain }) {
-    gunbc.observation_ci_render.FoldedIntoRollup { at: _ } => true
-    gunbc.observation_ci_render.EmittedAtLeaf { reason: _ } => false
+    FoldedIntoRollup { at: _ } => true
+    EmittedAtLeaf { reason: _ } => false
   }
 }
 

@@ -45,7 +45,7 @@ test fn witness_idle_thread_without_terminal_receipt_refuses_duplicate_execution
 
 test fn witness_absent_thread_admits_turn_start() -> Bool {
   match gunbc.codex_supervised_turn.codex_turn_start_admission(terminal_receipt: none, thread: gunbc.codex_supervised_turn.CodexThreadAbsent) {
-    gunbc.codex_supervised_turn.CodexTurnStartAdmitted => true
+    CodexTurnStartAdmitted => true
     _ => false
   }
 }
@@ -66,7 +66,7 @@ test fn witness_running_lease_observation_is_expected_not_absent() -> Bool {
     standing_receipt: none,
   )
   match binding.lease.observed {
-    std.temporal_effect.LeaseRunningExpected => true
+    LeaseRunningExpected => true
     _ => false
   }
 }
@@ -87,7 +87,7 @@ test fn witness_parse_supervised_stdout_extracts_thread_and_turn_ids() -> Bool {
 test fn witness_parse_supervised_stdout_turn_completed_disposition() -> Bool {
   let parse = gunbc.codex_supervised_turn.parse_supervised_turn_stdout(stdout: supervised_turn_fixture_stdout)
   match gunbc.codex_supervised_turn.disposition_from_supervised_parse(parse: parse, exit_code: Present { value: 0 }) {
-    gunbc.provider_turn_adjudication.ProviderTurnCompleted => true
+    ProviderTurnCompleted => true
     _ => false
   }
 }
@@ -126,7 +126,7 @@ test fn witness_exit_zero_without_terminal_is_not_observed() -> Bool {
     "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"thread\":{\"id\":\"t1\"}}}\n{\"jsonrpc\":\"2.0\",\"id\":5,\"result\":{\"turn\":{\"id\":\"u1\"}}}\n"
   let parse = gunbc.codex_supervised_turn.parse_supervised_turn_stdout(stdout: stdout)
   match gunbc.codex_supervised_turn.disposition_from_supervised_parse(parse: parse, exit_code: Present { value: 0 }) {
-    gunbc.provider_turn_adjudication.ProviderTurnNotObserved => true
+    ProviderTurnNotObserved => true
     _ => false
   }
 }
@@ -163,7 +163,7 @@ test fn witness_missing_generation_store_reads_as_zero() -> Bool {
     read_success: true,
     content: "",
   ) {
-    gunbc.codex_supervised_turn.GenerationAbsent => true
+    GenerationAbsent => true
     _ => false
   }
 }
@@ -208,7 +208,7 @@ test fn witness_whitespace_generation_store_is_malformed_not_absent() -> Bool {
     content: "   ",
   ) {
     GenerationStoreMalformed { content: _ } => true
-    gunbc.codex_supervised_turn.GenerationAbsent => false
+    GenerationAbsent => false
     _ => false
   }
 }

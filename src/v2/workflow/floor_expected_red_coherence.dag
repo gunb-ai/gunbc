@@ -104,7 +104,7 @@ fn all_checked_chunk_authored_identities(
             std.algebra.Cons { head: identity, tail: inner_acc }
           }
         })
-      v2.std.optional.Absent => acc
+      Absent => acc
     }
   }))
 }
@@ -181,7 +181,7 @@ fn floor_expected_red_chunk_coherence_check(
   let per_chunk_causes = v2.std.algebra.list_reverse(xs: fold(chunks, init: std.algebra.Empty, f: fn(acc, chunk) {
     let resolution = v2.std.decl_facts_skeleton.resolve_decl_fact_by_qualified_name(facts: facts, qn: chunk.qualified_name)
     match v2.std.decl_facts_skeleton.decl_fact_skeleton_for_resolution(resolution: resolution) {
-      v2.std.optional.Absent =>
+      Absent =>
         std.algebra.Cons {
           head: ChunkDeclarationUnresolved { qualified_name: chunk.qualified_name, resolution: resolution },
           tail: acc
@@ -202,7 +202,7 @@ fn floor_expected_red_chunk_coherence_check(
                 tail: std.algebra.Empty
               }
             }
-          v2.std.optional.Absent => std.algebra.Empty
+          Absent => std.algebra.Empty
         }
         v2.std.algebra.list_append(left: identity_causes, right: v2.std.algebra.list_append(left: link_causes, right: acc))
       }

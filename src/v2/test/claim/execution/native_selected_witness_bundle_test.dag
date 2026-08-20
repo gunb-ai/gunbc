@@ -1,7 +1,6 @@
 module v2.test.execution.native_selected_witness_bundle
 
-
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 // First executable SelectedWitnessPlan slice: meet, join, and complement are emitted into one content-addressed Rust artifact. Its generated main directly invokes all three functions and one run_emit_host_cached call launches one process for the whole selected population. The interpreter is executed beside both the correct bundle and the deliberately all-wrong bundle; verdict equality admits failure==failure as the family's live discriminating RED. A second host invocation proves compile_skipped=true against the same content address.
 data selected_logic_bundle_cache_root: String = std.emit_on_demand.emit_on_demand_family_cache_root(
@@ -19,7 +18,7 @@ fn selected_logic_identity(
   std.selected_witness_bundle.SelectedWitnessIdentity {
     entry: "src/v2/test/claim/execution/native_selected_witness_bundle_test.dag",
     function: function_name,
-    subject_digest: inferred_tree_digest(tree: tree)
+    subject_digest: v2.compiler.eval.inferred_tree_digest(tree: tree)
   }
 }
 
@@ -31,7 +30,7 @@ fn selected_logic_native_member(
     witness: selected_logic_identity(function_name: function_name, tree: tree),
     realization: std.selected_witness_bundle.NativeRealizationIdentity {
       family: "logic",
-      realization_digest: inferred_tree_digest(tree: tree)
+      realization_digest: v2.compiler.eval.inferred_tree_digest(tree: tree)
     }
   }
 }
@@ -56,17 +55,17 @@ fn selected_logic_plan_for(
 
 fn selected_logic_primary_plan() -> std.selected_witness_bundle.SelectedWitnessPlan {
   selected_logic_plan_for(
-    meet_tree: family_crate_meet_tree(),
-    join_tree: family_crate_join_tree(),
-    complement_tree: family_crate_complement_tree()
+    meet_tree: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_meet_tree(),
+    join_tree: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_join_tree(),
+    complement_tree: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_complement_tree()
   )
 }
 
 fn selected_logic_alt_plan() -> std.selected_witness_bundle.SelectedWitnessPlan {
   selected_logic_plan_for(
-    meet_tree: family_crate_meet_alt_tree(),
-    join_tree: family_crate_join_alt_tree(),
-    complement_tree: family_crate_complement_alt_tree()
+    meet_tree: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_meet_alt_tree(),
+    join_tree: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_join_alt_tree(),
+    complement_tree: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_complement_alt_tree()
   )
 }
 
@@ -87,7 +86,7 @@ type SelectedLogicVerdicts {
 
 fn selected_verdict_for_byte(actual: Optional<std.bit.Byte>, expected_octet: Int) -> std.selected_witness_bundle.SelectedWitnessVerdict {
   match actual {
-    Present { value: value } => if value == emit_host_byte_from_octet(octet: expected_octet) {
+    Present { value: value } => if value == v2.compiler.emit_host.emit_host_byte_from_octet(octet: expected_octet) {
       std.selected_witness_bundle.SelectedWitnessPassed
     } else {
       std.selected_witness_bundle.SelectedWitnessFailed
@@ -96,23 +95,23 @@ fn selected_verdict_for_byte(actual: Optional<std.bit.Byte>, expected_octet: Int
   }
 }
 
-fn interpreted_value(tree: v2.compiler.inferred_tree.InferredTree, context: v2.compiler.eval.EvalContext, root: Node) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
-  eval_with_context(
+fn interpreted_value(tree: v2.compiler.inferred_tree.InferredTree, context: v2.compiler.eval.EvalContext, root: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
+  v2.compiler.eval.eval_with_context(
     tree: tree,
     context: context,
-    inputs: inputs_root_only(root: root)
+    inputs: v2.compiler.eval.inputs_root_only(root: root)
   )
 }
 
 fn interpreted_meet_join_verdict(
   tree: v2.compiler.inferred_tree.InferredTree,
-  root: Node,
+  root: v2.std.node.Node,
   expected_true: Bool
 ) -> std.selected_witness_bundle.SelectedWitnessVerdict {
-  match interpreted_value(tree: tree, context: meet_join_eval_context(), root: root) {
+  match interpreted_value(tree: tree, context: v2.test.execution.emit_host_meet_join_equals_eval.meet_join_eval_context(), root: root) {
     Accepted { value: value, diagnostics: _ } =>
-      if (expected_true && meet_join_eval_bool_true(value: value))
-        || (!expected_true && meet_join_eval_bool_false(value: value)) {
+      if (expected_true && v2.test.execution.emit_host_meet_join_equals_eval.meet_join_eval_bool_true(value: value))
+        || (!expected_true && v2.test.execution.emit_host_meet_join_equals_eval.meet_join_eval_bool_false(value: value)) {
         std.selected_witness_bundle.SelectedWitnessPassed
       } else {
         std.selected_witness_bundle.SelectedWitnessFailed
@@ -127,12 +126,12 @@ fn interpreted_complement_verdict(
 ) -> std.selected_witness_bundle.SelectedWitnessVerdict {
   match interpreted_value(
     tree: tree,
-    context: emit_complement_eval_context(),
-    root: dag_complement_eval_subgraph_fixture
+    context: v2.test.execution.emit_host_complement_equals_eval.emit_complement_eval_context(),
+    root: v2.extdeps.languages.dag.dag_complement_eval_subgraph_fixture
   ) {
     Accepted { value: value, diagnostics: _ } =>
-      if (expected_true && emit_complement_eval_bool_true(value: value))
-        || (!expected_true && emit_complement_eval_bool_false(value: value)) {
+      if (expected_true && v2.test.execution.emit_host_complement_equals_eval.emit_complement_eval_bool_true(value: value))
+        || (!expected_true && v2.test.execution.emit_host_complement_equals_eval.emit_complement_eval_bool_false(value: value)) {
         std.selected_witness_bundle.SelectedWitnessPassed
       } else {
         std.selected_witness_bundle.SelectedWitnessFailed
@@ -143,15 +142,15 @@ fn interpreted_complement_verdict(
 
 fn interpreted_value_meet_join_equals(
   tree: v2.compiler.inferred_tree.InferredTree,
-  root: Node,
+  root: v2.std.node.Node,
   expected_true: Bool
 ) -> Bool {
-  match interpreted_value(tree: tree, context: meet_join_eval_context(), root: root) {
+  match interpreted_value(tree: tree, context: v2.test.execution.emit_host_meet_join_equals_eval.meet_join_eval_context(), root: root) {
     Accepted { value: value, diagnostics: _ } =>
       if expected_true {
-        meet_join_eval_bool_true(value: value)
+        v2.test.execution.emit_host_meet_join_equals_eval.meet_join_eval_bool_true(value: value)
       } else {
-        meet_join_eval_bool_false(value: value)
+        v2.test.execution.emit_host_meet_join_equals_eval.meet_join_eval_bool_false(value: value)
       }
     Rejected { diagnostics: _ } => false
   }
@@ -160,14 +159,14 @@ fn interpreted_value_meet_join_equals(
 fn interpreted_value_complement_equals(tree: v2.compiler.inferred_tree.InferredTree, expected_true: Bool) -> Bool {
   match interpreted_value(
     tree: tree,
-    context: emit_complement_eval_context(),
-    root: dag_complement_eval_subgraph_fixture
+    context: v2.test.execution.emit_host_complement_equals_eval.emit_complement_eval_context(),
+    root: v2.extdeps.languages.dag.dag_complement_eval_subgraph_fixture
   ) {
     Accepted { value: value, diagnostics: _ } =>
       if expected_true {
-        emit_complement_eval_bool_true(value: value)
+        v2.test.execution.emit_host_complement_equals_eval.emit_complement_eval_bool_true(value: value)
       } else {
-        emit_complement_eval_bool_false(value: value)
+        v2.test.execution.emit_host_complement_equals_eval.emit_complement_eval_bool_false(value: value)
       }
     Rejected { diagnostics: _ } => false
   }
@@ -175,46 +174,46 @@ fn interpreted_value_complement_equals(tree: v2.compiler.inferred_tree.InferredT
 
 test fn native_selected_witness_bundle_interpreter_meet_green_holds() -> Bool {
   interpreted_value_meet_join_equals(
-    tree: family_crate_meet_tree(),
-    root: dag_meet_eval_subgraph_fixture,
+    tree: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_meet_tree(),
+    root: v2.extdeps.languages.dag.dag_meet_eval_subgraph_fixture,
     expected_true: true
   )
 }
 
 test fn native_selected_witness_bundle_interpreter_join_green_holds() -> Bool {
   interpreted_value_meet_join_equals(
-    tree: family_crate_join_tree(),
-    root: dag_join_eval_subgraph_fixture,
+    tree: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_join_tree(),
+    root: v2.extdeps.languages.dag.dag_join_eval_subgraph_fixture,
     expected_true: true
   )
 }
 
 test fn native_selected_witness_bundle_interpreter_complement_green_holds() -> Bool {
   interpreted_value_complement_equals(
-    tree: family_crate_complement_tree(),
+    tree: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_complement_tree(),
     expected_true: false
   )
 }
 
 test fn native_selected_witness_bundle_interpreter_meet_wrong_body_oracle_holds() -> Bool {
   interpreted_value_meet_join_equals(
-    tree: family_crate_meet_alt_tree(),
-    root: dag_meet_eval_subgraph_fixture,
+    tree: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_meet_alt_tree(),
+    root: v2.extdeps.languages.dag.dag_meet_eval_subgraph_fixture,
     expected_true: true
   )
 }
 
 test fn native_selected_witness_bundle_interpreter_join_wrong_body_oracle_holds() -> Bool {
   interpreted_value_meet_join_equals(
-    tree: family_crate_join_alt_tree(),
-    root: dag_join_eval_subgraph_fixture,
+    tree: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_join_alt_tree(),
+    root: v2.extdeps.languages.dag.dag_join_eval_subgraph_fixture,
     expected_true: true
   )
 }
 
 test fn native_selected_witness_bundle_interpreter_complement_wrong_body_oracle_holds() -> Bool {
   interpreted_value_complement_equals(
-    tree: family_crate_complement_alt_tree(),
+    tree: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_complement_alt_tree(),
     expected_true: false
   )
 }
@@ -227,12 +226,12 @@ fn selected_logic_interpreted_verdicts(
   SelectedLogicVerdicts {
     meet: interpreted_meet_join_verdict(
       tree: meet_tree,
-      root: dag_meet_eval_subgraph_fixture,
+      root: v2.extdeps.languages.dag.dag_meet_eval_subgraph_fixture,
       expected_true: true
     )
     join: interpreted_meet_join_verdict(
       tree: join_tree,
-      root: dag_join_eval_subgraph_fixture,
+      root: v2.extdeps.languages.dag.dag_join_eval_subgraph_fixture,
       expected_true: true
     )
     complement: interpreted_complement_verdict(
@@ -245,15 +244,15 @@ fn selected_logic_interpreted_verdicts(
 fn selected_logic_native_verdicts(stdout: v2.std.host_transport.ByteString) -> SelectedLogicVerdicts {
   SelectedLogicVerdicts {
     meet: selected_verdict_for_byte(
-      actual: list_at_optional(xs: stdout, index: 1),
+      actual: v2.std.collection.list_at_optional(xs: stdout, index: 1),
       expected_octet: 1
     )
     join: selected_verdict_for_byte(
-      actual: list_at_optional(xs: stdout, index: 6),
+      actual: v2.std.collection.list_at_optional(xs: stdout, index: 6),
       expected_octet: 1
     )
     complement: selected_verdict_for_byte(
-      actual: list_at_optional(xs: stdout, index: 11),
+      actual: v2.std.collection.list_at_optional(xs: stdout, index: 11),
       expected_octet: 0
     )
   }
@@ -263,18 +262,18 @@ fn selected_logic_equivalence_rows(
   plan: std.selected_witness_bundle.SelectedWitnessPlan,
   interpreted: SelectedLogicVerdicts,
   native: SelectedLogicVerdicts
-) -> std.algebra.FreeMonoid<std.selected_witness_bundle.NativeBundleMemberEquivalence> {
+) -> List<std.selected_witness_bundle.NativeBundleMemberEquivalence> {
   let meet_tree = match plan.members {
-    Cons { head: NativeSelected { witness: witness, realization: _ }, tail: _ } => witness
-    _ => selected_logic_identity(function_name: "meet", tree: family_crate_meet_tree())
+    std.algebra.Cons { head: std.selected_witness_bundle.NativeSelected { witness: witness, realization: _ }, tail: _ } => witness
+    _ => selected_logic_identity(function_name: "meet", tree: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_meet_tree())
   }
   let join_tree = match plan.members {
-    Cons { head: _, tail: Cons { head: NativeSelected { witness: witness, realization: _ }, tail: _ } } => witness
-    _ => selected_logic_identity(function_name: "join", tree: family_crate_join_tree())
+    std.algebra.Cons { head: _, tail: std.algebra.Cons { head: std.selected_witness_bundle.NativeSelected { witness: witness, realization: _ }, tail: _ } } => witness
+    _ => selected_logic_identity(function_name: "join", tree: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_join_tree())
   }
   let complement_tree = match plan.members {
-    Cons { head: _, tail: Cons { head: _, tail: Cons { head: NativeSelected { witness: witness, realization: _ }, tail: _ } } } => witness
-    _ => selected_logic_identity(function_name: "complement", tree: family_crate_complement_tree())
+    std.algebra.Cons { head: _, tail: std.algebra.Cons { head: _, tail: std.algebra.Cons { head: std.selected_witness_bundle.NativeSelected { witness: witness, realization: _ }, tail: _ } } } => witness
+    _ => selected_logic_identity(function_name: "complement", tree: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_complement_tree())
   }
   [
     std.selected_witness_bundle.NativeBundleMemberEquivalence {
@@ -301,26 +300,26 @@ fn selected_logic_equivalence_rows(
 type SelectedBundleNativeObservation {
   cold: v2.std.host_run.EmitHostRunReceipt
   warm: v2.std.host_run.EmitHostRunReceipt
-  warm_wall: std.verification.NanosecondDuration
+  warm_wall: std.measure.Nanosecond
 }
 
 fn observe_selected_bundle_native(
   workspace: String,
-  source: Medium<String>
+  source: extdeps.communication.medium.Medium<String>
 ) -> v2.std.diagnostic.Outcome<SelectedBundleNativeObservation> {
-  match run_emit_host_cached(
+  match v2.compiler.emit_host.run_emit_host_cached(
     workspace_dir: workspace,
-    target: rust_logic_selected_bundle_target_model_staging(),
+    target: v2.extdeps.languages.rust_test.rust_logic_selected_bundle_target_model_staging(),
     source: source,
-    fixture_inputs: family_crate_fixture_inputs()
+    fixture_inputs: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_fixture_inputs()
   ) {
     Accepted { value: cold, diagnostics: _ } => {
       let start = observed_monotonic_nanos("selected-bundle-native-warm-start")
-      match run_emit_host_cached(
+      match v2.compiler.emit_host.run_emit_host_cached(
         workspace_dir: workspace,
-        target: rust_logic_selected_bundle_target_model_staging(),
+        target: v2.extdeps.languages.rust_test.rust_logic_selected_bundle_target_model_staging(),
         source: source,
-        fixture_inputs: family_crate_fixture_inputs()
+        fixture_inputs: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_fixture_inputs()
       ) {
         Accepted { value: warm, diagnostics: _ } => {
           let finish = observed_monotonic_nanos("selected-bundle-native-warm-finish")
@@ -328,7 +327,7 @@ fn observe_selected_bundle_native(
             value: SelectedBundleNativeObservation {
               cold: cold
               warm: warm
-              warm_wall: std.verification.nanosecond_duration(count: finish - start)
+              warm_wall: std.measure.nanosecond(count: finish - start)
             },
             diagnostics: v2.std.diagnostic.None
           }
@@ -342,16 +341,16 @@ fn observe_selected_bundle_native(
 
 fn selected_logic_stdout(receipt: v2.std.host_run.EmitHostRunReceipt) -> Optional<v2.std.host_transport.ByteString> {
   match receipt.logical_run {
-    Accepted {
-      value: HostLogicalRun { stdout: stdout },
-      diagnostics: None
-    } => Present { value: stdout.bytes }
-    _ => Absent
+    v2.std.diagnostic.Accepted {
+      value: v2.std.host_run.HostLogicalRun { stdout: stdout },
+      diagnostics: v2.std.diagnostic.None
+    } => v2.std.optional.Present { value: stdout.bytes }
+    _ => v2.std.optional.Absent
   }
 }
 
 fn selected_logic_expected_stdout(primary: Bool) -> v2.std.host_transport.ByteString {
-  emit_host_octets_byte_string(octets: selected_logic_expected_stdout_octets(primary: primary))
+  v2.compiler.emit_host.emit_host_octets_byte_string(octets: selected_logic_expected_stdout_octets(primary: primary))
 }
 
 fn selected_logic_expected_stdout_octets(primary: Bool) -> List<Int> {
@@ -374,7 +373,7 @@ fn selected_logic_receipt(
   plan: std.selected_witness_bundle.SelectedWitnessPlan,
   observation: SelectedBundleNativeObservation,
   interpreted: SelectedLogicVerdicts,
-  interpreted_wall: std.verification.NanosecondDuration,
+  interpreted_wall: std.measure.Nanosecond,
   native_stdout: v2.std.host_transport.ByteString
 ) -> std.selected_witness_bundle.NativeWitnessBundleExecutionReceipt {
   let bundle = std.selected_witness_bundle.native_witness_bundle_from_plan(plan: plan)
@@ -415,8 +414,8 @@ fn selected_logic_sample_cutover_evidence_for_plan(
       compiler_identity: plan.compiler_identity
       process_count: 1
       compile_skipped: true
-      native_wall_nanos: std.verification.nanosecond_duration(count: 1)
-      interpreted_wall_nanos: std.verification.nanosecond_duration(count: 1)
+      native_wall_nanos: std.measure.nanosecond(count: 1)
+      interpreted_wall_nanos: std.measure.nanosecond(count: 1)
       member_equivalence: selected_logic_equivalence_rows(
         plan: plan,
         interpreted: interpreted,
@@ -472,17 +471,17 @@ test fn native_selected_witness_bundle_monotonic_observation_holds() -> Bool {
 test fn native_selected_witness_bundle_primary_typed_admission_holds() -> Bool {
   let plan = selected_logic_primary_plan()
   let interpreted = selected_logic_interpreted_verdicts(
-    meet_tree: family_crate_meet_tree(),
-    join_tree: family_crate_join_tree(),
-    complement_tree: family_crate_complement_tree()
+    meet_tree: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_meet_tree(),
+    join_tree: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_join_tree(),
+    complement_tree: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_complement_tree()
   )
   let receipt = std.selected_witness_bundle.NativeWitnessBundleExecutionReceipt {
     bundle_identity: std.selected_witness_bundle.native_witness_bundle_from_plan(plan: plan).identity
     compiler_identity: plan.compiler_identity
     process_count: 1
     compile_skipped: true
-    native_wall_nanos: std.verification.nanosecond_duration(count: 1)
-    interpreted_wall_nanos: std.verification.nanosecond_duration(count: 1)
+    native_wall_nanos: std.measure.nanosecond(count: 1)
+    interpreted_wall_nanos: std.measure.nanosecond(count: 1)
     member_equivalence: selected_logic_equivalence_rows(
       plan: plan,
       interpreted: interpreted,
@@ -505,9 +504,9 @@ test fn native_selected_witness_bundle_primary_typed_admission_holds() -> Bool {
 test fn native_selected_witness_bundle_primary_rows_holds() -> Bool {
   let plan = selected_logic_primary_plan()
   let interpreted = selected_logic_interpreted_verdicts(
-    meet_tree: family_crate_meet_tree(),
-    join_tree: family_crate_join_tree(),
-    complement_tree: family_crate_complement_tree()
+    meet_tree: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_meet_tree(),
+    join_tree: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_join_tree(),
+    complement_tree: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_complement_tree()
   )
   match selected_logic_equivalence_rows(
     plan: plan,
@@ -516,19 +515,19 @@ test fn native_selected_witness_bundle_primary_rows_holds() -> Bool {
       stdout: selected_logic_expected_stdout(primary: true)
     )
   ) {
-    Cons {
-      head: NativeBundleMemberEquivalence {
+    std.algebra.Cons {
+      head: std.selected_witness_bundle.NativeBundleMemberEquivalence {
         witness: _, family: _, interpreted: std.selected_witness_bundle.SelectedWitnessPassed, native: std.selected_witness_bundle.SelectedWitnessPassed
       },
-      tail: Cons {
-        head: NativeBundleMemberEquivalence {
+      tail: std.algebra.Cons {
+        head: std.selected_witness_bundle.NativeBundleMemberEquivalence {
           witness: _, family: _, interpreted: std.selected_witness_bundle.SelectedWitnessPassed, native: std.selected_witness_bundle.SelectedWitnessPassed
         },
-        tail: Cons {
-          head: NativeBundleMemberEquivalence {
+        tail: std.algebra.Cons {
+          head: std.selected_witness_bundle.NativeBundleMemberEquivalence {
             witness: _, family: _, interpreted: std.selected_witness_bundle.SelectedWitnessPassed, native: std.selected_witness_bundle.SelectedWitnessPassed
           },
-          tail: Empty
+          tail: std.algebra.Empty
         }
       }
     } => true
@@ -538,9 +537,9 @@ test fn native_selected_witness_bundle_primary_rows_holds() -> Bool {
 
 test fn native_selected_witness_bundle_primary_interpreted_verdicts_holds() -> Bool {
   let interpreted = selected_logic_interpreted_verdicts(
-    meet_tree: family_crate_meet_tree(),
-    join_tree: family_crate_join_tree(),
-    complement_tree: family_crate_complement_tree()
+    meet_tree: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_meet_tree(),
+    join_tree: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_join_tree(),
+    complement_tree: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_complement_tree()
   )
   interpreted.meet == std.selected_witness_bundle.SelectedWitnessPassed
     && interpreted.join == std.selected_witness_bundle.SelectedWitnessPassed
@@ -584,9 +583,9 @@ fn selected_logic_execution_holds(
   )
   let interpreter_finish = observed_monotonic_nanos("selected-bundle-interpreter-finish")
   let workspace = selected_logic_workspace(test_id: test_id, plan: plan)
-  match emit_family(
+  match v2.compiler.emit_module.emit_family(
     members: members,
-    transport_target: rust_logic_selected_bundle_target_model_staging()
+    transport_target: v2.extdeps.languages.rust_test.rust_logic_selected_bundle_target_model_staging()
   ) {
     Accepted { value: source, diagnostics: _ } =>
       match observe_selected_bundle_native(workspace: workspace, source: source) {
@@ -599,7 +598,7 @@ fn selected_logic_execution_holds(
                     plan: plan,
                     observation: observation,
                     interpreted: interpreted,
-                    interpreted_wall: std.verification.nanosecond_duration(
+                    interpreted_wall: std.measure.nanosecond(
                       count: interpreter_finish - interpreter_start
                     ),
                     native_stdout: warm_stdout
@@ -618,8 +617,8 @@ fn selected_logic_execution_holds(
                     && observation.warm.compile_skipped
                     && cold_stdout == expected_stdout
                     && warm_stdout == expected_stdout
-                    && std.verification.nanosecond_duration_count(d: observation.warm_wall) > 0
-                    && std.verification.nanosecond_duration_count(d: receipt.interpreted_wall_nanos) > 0
+                    && std.measure.nanosecond_count(n: observation.warm_wall) > 0
+                    && std.measure.nanosecond_count(n: receipt.interpreted_wall_nanos) > 0
                     && expected_interpreted
                     && (match selected_logic_execution_admit(
                       plan: plan,
@@ -648,10 +647,10 @@ test fn native_selected_witness_bundle_cold_warm_equivalence_holds() -> Bool {
   selected_logic_execution_holds(
     test_id: "primary",
     plan: selected_logic_primary_plan(),
-    members: family_crate_members(),
-    meet_tree: family_crate_meet_tree(),
-    join_tree: family_crate_join_tree(),
-    complement_tree: family_crate_complement_tree(),
+    members: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_members(),
+    meet_tree: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_meet_tree(),
+    join_tree: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_join_tree(),
+    complement_tree: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_complement_tree(),
     primary: true,
     family_evidence: executed_red_evidence
   )
@@ -661,15 +660,15 @@ fn selected_logic_discriminating_red_evidence() -> List<std.selected_witness_bun
   let plan = selected_logic_alt_plan()
   let interpreter_start = observed_monotonic_nanos("selected-bundle-red-interpreter-start")
   let interpreted = selected_logic_interpreted_verdicts(
-    meet_tree: family_crate_meet_alt_tree(),
-    join_tree: family_crate_join_alt_tree(),
-    complement_tree: family_crate_complement_alt_tree()
+    meet_tree: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_meet_alt_tree(),
+    join_tree: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_join_alt_tree(),
+    complement_tree: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_complement_alt_tree()
   )
   let interpreter_finish = observed_monotonic_nanos("selected-bundle-red-interpreter-finish")
   let workspace = selected_logic_workspace(test_id: "all_wrong_red", plan: plan)
-  match emit_family(
-    members: family_crate_alt_members(),
-    transport_target: rust_logic_selected_bundle_target_model_staging()
+  match v2.compiler.emit_module.emit_family(
+    members: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_alt_members(),
+    transport_target: v2.extdeps.languages.rust_test.rust_logic_selected_bundle_target_model_staging()
   ) {
     Accepted { value: source, diagnostics: _ } =>
       match observe_selected_bundle_native(workspace: workspace, source: source) {
@@ -682,7 +681,7 @@ fn selected_logic_discriminating_red_evidence() -> List<std.selected_witness_bun
                     plan: plan,
                     observation: observation,
                     interpreted: interpreted,
-                    interpreted_wall: std.verification.nanosecond_duration(
+                    interpreted_wall: std.measure.nanosecond(
                       count: interpreter_finish - interpreter_start
                     ),
                     native_stdout: warm_stdout
@@ -743,8 +742,8 @@ fn selected_logic_sample_receipt() -> std.selected_witness_bundle.NativeWitnessB
     compiler_identity: plan.compiler_identity
     process_count: 1
     compile_skipped: true
-    native_wall_nanos: std.verification.nanosecond_duration(count: 1)
-    interpreted_wall_nanos: std.verification.nanosecond_duration(count: 1)
+    native_wall_nanos: std.measure.nanosecond(count: 1)
+    interpreted_wall_nanos: std.measure.nanosecond(count: 1)
     member_equivalence: selected_logic_equivalence_rows(
       plan: plan,
       interpreted: interpreted,
@@ -765,19 +764,19 @@ test fn native_selected_witness_bundle_divergence_hard_red_holds() -> Bool {
     native_wall_nanos: receipt.native_wall_nanos
     interpreted_wall_nanos: receipt.interpreted_wall_nanos
     member_equivalence: [std.selected_witness_bundle.NativeBundleMemberEquivalence {
-      witness: selected_logic_identity(function_name: "meet", tree: family_crate_meet_tree())
+      witness: selected_logic_identity(function_name: "meet", tree: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_meet_tree())
       family: "logic"
       interpreted: std.selected_witness_bundle.SelectedWitnessFailed
       native: std.selected_witness_bundle.SelectedWitnessPassed
     }, std.selected_witness_bundle.NativeBundleMemberEquivalence {
-      witness: selected_logic_identity(function_name: "join", tree: family_crate_join_tree())
+      witness: selected_logic_identity(function_name: "join", tree: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_join_tree())
       family: "logic"
       interpreted: std.selected_witness_bundle.SelectedWitnessPassed
       native: std.selected_witness_bundle.SelectedWitnessPassed
     }, std.selected_witness_bundle.NativeBundleMemberEquivalence {
       witness: selected_logic_identity(
         function_name: "complement",
-        tree: family_crate_complement_tree()
+        tree: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_complement_tree()
       )
       family: "logic"
       interpreted: std.selected_witness_bundle.SelectedWitnessPassed
@@ -790,7 +789,7 @@ test fn native_selected_witness_bundle_divergence_hard_red_holds() -> Bool {
     receipt: divergent,
     family_evidence: selected_logic_sample_cutover_evidence()
   ) {
-    NativeBundleExecutionRefusedDivergence {
+    std.selected_witness_bundle.NativeBundleExecutionRefusedDivergence {
       witness: witness,
       interpreted: std.selected_witness_bundle.SelectedWitnessFailed,
       native: std.selected_witness_bundle.SelectedWitnessPassed
@@ -900,8 +899,8 @@ test fn native_selected_witness_bundle_no_native_members_refuses_holds() -> Bool
     compiler_identity: plan.compiler_identity
     process_count: 1
     compile_skipped: true
-    native_wall_nanos: std.verification.nanosecond_duration(count: 1)
-    interpreted_wall_nanos: std.verification.nanosecond_duration(count: 1)
+    native_wall_nanos: std.measure.nanosecond(count: 1)
+    interpreted_wall_nanos: std.measure.nanosecond(count: 1)
     member_equivalence: []
     interpreter_frontier_count: 0
   }
@@ -939,7 +938,7 @@ test fn native_selected_witness_bundle_execution_stale_compiler_refuses_holds() 
     receipt: selected_logic_sample_receipt(),
     family_evidence: selected_logic_sample_cutover_evidence()
   ) {
-    NativeBundleExecutionRefusedStaleCompiler {
+    std.selected_witness_bundle.NativeBundleExecutionRefusedStaleCompiler {
       receipt_compiler_identity: observed,
       current_compiler_identity: current
     } => !std.content_hash.content_hash_eq_structural(left: observed, right: current)
@@ -967,7 +966,7 @@ test fn native_selected_witness_bundle_execution_stale_plan_compiler_refuses_hol
     receipt: forged_current_receipt,
     family_evidence: selected_logic_sample_cutover_evidence()
   ) {
-    NativeBundleExecutionRefusedStalePlanCompiler {
+    std.selected_witness_bundle.NativeBundleExecutionRefusedStalePlanCompiler {
       plan_compiler_identity: observed,
       current_compiler_identity: required
     } => !std.content_hash.content_hash_eq_structural(left: observed, right: required)
@@ -1030,7 +1029,7 @@ test fn native_selected_witness_bundle_stale_compiler_refuses_holds() -> Bool {
     bundle: bundle,
     current_compiler_identity: std.content_hash.content_hash_atom(value: "different-compiler")
   ) {
-    NativeBundleRefusedStaleCompiler {
+    std.selected_witness_bundle.NativeBundleRefusedStaleCompiler {
       bundle_compiler_identity: observed,
       current_compiler_identity: current
     } => !std.content_hash.content_hash_eq_structural(left: observed, right: current)
@@ -1052,7 +1051,7 @@ test fn native_selected_witness_bundle_stale_plan_compiler_refuses_holds() -> Bo
     bundle: forged_current_bundle,
     current_compiler_identity: current
   ) {
-    NativeBundleRefusedStalePlanCompiler {
+    std.selected_witness_bundle.NativeBundleRefusedStalePlanCompiler {
       plan_compiler_identity: observed,
       current_compiler_identity: required_identity
     } => !std.content_hash.content_hash_eq_structural(left: observed, right: required_identity)

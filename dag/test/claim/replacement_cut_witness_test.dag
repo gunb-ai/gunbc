@@ -123,11 +123,11 @@ fn cause_matches(c: gunbc.replacement_cut.CutRefusalCause, tag: String, subject:
     ConsumerDuplicated { consumer: w } => tag == "consumer-duplicated" && (w as String) == subject
     EvidenceDuplicated { evidence: w } => tag == "evidence-duplicated" && (w as String) == subject
     RegionMemberDuplicated { member: w } => tag == "region-member-duplicated" && (w as String) == subject
-    gunbc.replacement_cut.EnumeratedCensusEmpty => tag == "enumerated-census-empty" && subject == ""
-    gunbc.replacement_cut.ExternalRolesEnumeratedEmpty => tag == "external-roles-enumerated-empty" && subject == ""
-    gunbc.replacement_cut.EmptyCoveredRegion => tag == "empty-covered-region" && subject == ""
-    gunbc.replacement_cut.NewRootEqualsOldRoot => tag == "new-root-equals-old-root" && subject == ""
-    gunbc.replacement_cut.SelfReferentialDescent => tag == "self-referential-descent" && subject == ""
+    EnumeratedCensusEmpty => tag == "enumerated-census-empty" && subject == ""
+    ExternalRolesEnumeratedEmpty => tag == "external-roles-enumerated-empty" && subject == ""
+    EmptyCoveredRegion => tag == "empty-covered-region" && subject == ""
+    NewRootEqualsOldRoot => tag == "new-root-equals-old-root" && subject == ""
+    SelfReferentialDescent => tag == "self-referential-descent" && subject == ""
   }
 }
 
@@ -398,7 +398,7 @@ test fn descended_cut_names_its_parent_by_typed_identity() -> Bool {
   match cut.why_not_higher {
     DescendedFromRefusedCut { parent_cut: p, refusal_summary: r } =>
       (p as String) == "cut-a0" && (r as String) == "escaping consumer q0 uncovered"
-    gunbc.replacement_cut.OutermostBoundary => false
+    OutermostBoundary => false
     DescentParentUnauthored { intended_parent_boundary: _, basis: _ } => false
   }
 }
@@ -440,7 +440,7 @@ test fn unauthored_parent_boundary_admits_without_naming_an_id() -> Bool {
     && match cut.why_not_higher {
       DescentParentUnauthored { intended_parent_boundary: b, basis: _ } =>
         (b as String) == "the engine cut through the v1 driver region"
-      gunbc.replacement_cut.OutermostBoundary => false
+      OutermostBoundary => false
       DescendedFromRefusedCut { parent_cut: _, refusal_summary: _ } => false
     }
 }

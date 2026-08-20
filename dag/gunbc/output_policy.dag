@@ -39,23 +39,23 @@ fn resolve_verbosity(env: VerbosityEnv) -> Verbosity {
 
 fn channel_decision(channel: gunbc.output_policy.OutputChannel, verbosity: Verbosity) -> OutputDecision {
   match channel {
-    gunbc.output_policy.Diagnostic => Full
-    gunbc.output_policy.ClaimResult => match verbosity {
+    Diagnostic => Full
+    ClaimResult => match verbosity {
       Quiet => Suppressed
       Normal => Full
       Verbose => Full
     }
-    gunbc.output_policy.Progress => match verbosity {
+    Progress => match verbosity {
       Quiet => Suppressed
       Normal => Condensed
       Verbose => Full
     }
-    gunbc.output_policy.ShellTrace => match verbosity {
+    ShellTrace => match verbosity {
       Quiet => Suppressed
       Normal => Suppressed
       Verbose => Full
     }
-    gunbc.output_policy.Instrumentation => match verbosity {
+    Instrumentation => match verbosity {
       Quiet => Suppressed
       Normal => Suppressed
       Verbose => Full

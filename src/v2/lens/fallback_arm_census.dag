@@ -72,21 +72,21 @@ fn classify_fallback_arm(input: FallbackArmClassifyInput) -> FallbackArmClass {
 fn pattern_node_is_planted_wildcard(pattern: v2.std.node.Node) -> Bool {
   match v2.std.grammar.node_atom_identity_optional(node: pattern) {
     Present { value: id } => id == fallback_planted_wildcard
-    v2.std.optional.Absent => false
+    Absent => false
   }
 }
 
 fn body_node_marks_refuses(body: v2.std.node.Node) -> Bool {
   match v2.std.grammar.node_atom_identity_optional(node: body) {
     Present { value: id } => id == fallback_body_refuses
-    v2.std.optional.Absent => false
+    Absent => false
   }
 }
 
 fn body_node_marks_answers(body: v2.std.node.Node) -> Bool {
   match v2.std.grammar.node_atom_identity_optional(node: body) {
     Present { value: id } => id == fallback_body_answers
-    v2.std.optional.Absent => false
+    Absent => false
   }
 }
 
@@ -153,7 +153,7 @@ fn match_positional_arms(match_node: v2.std.node.Node) -> List<v2.std.node.Node>
     ComputationNode { behavior: v2.std.node.Match } =>
       match v2.std.algebra.list_tail(xs: v2.std.node_query.node_positional_child_targets(node: match_node)) {
         TailFound { tail: arms } => arms
-        v2.std.algebra.TailAbsent => std.algebra.Empty
+        TailAbsent => std.algebra.Empty
       }
     TypeNode { connective: _ } => std.algebra.Empty
     ComputationNode { behavior: _ } => std.algebra.Empty
@@ -180,7 +180,7 @@ fn classify_last_arm_of_planted_match(
         scrutinee_closed_total: scrutinee_closed_total,
         interim_declared: interim_declared
       )
-    v2.std.optional.Absent => ClassifierUnknown { cause: fallback_unknown_not_wildcard }
+    Absent => ClassifierUnknown { cause: fallback_unknown_not_wildcard }
   }
 }
 

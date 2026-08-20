@@ -13,7 +13,7 @@ fn example_root() -> std.decl_ref.DeclarationRef {
 
 fn det_is_deterministic(c: std.determinism.Determinism) -> Bool {
   match c {
-    std.determinism.Deterministic => true
+    Deterministic => true
     NonDeterministic { source: _ } => false
   }
 }

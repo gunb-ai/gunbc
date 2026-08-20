@@ -366,8 +366,8 @@ data witness_integer_interval_bound_compare_orders_pointer_width_bounds: Bool = 
     left: integer_pointer_width_bound(signedness: Signed, endpoint: v2.std.integer.IntegerRangeInclusiveMin),
     right: integer_pointer_width_bound(signedness: Unsigned, endpoint: IntegerRangeInclusiveMin)
   ) {
-    std.algebra.Less => true
-    std.algebra.Equal => false
+    Less => true
+    Equal => false
     Greater => false
   }
     && integer_interval_bound_compare(

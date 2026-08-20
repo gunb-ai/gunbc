@@ -29,8 +29,8 @@ test fn the_budget_that_was_sigkilled_refuses_and_names_its_source() -> Bool {
     } => std.measure.byte_size_count(b: b) == 5269094400
       && std.measure.byte_size_count(b: r) == 7516192768
       && (s as String) == "/proc/meminfo MemAvailable"
-    gunbc.whole_corpus_compile_admission.WholeCorpusCompileAdmitted { budget: _, required: _ } => false
-    gunbc.whole_corpus_compile_admission.WholeCorpusCompileRefusedBudgetUnreadable { reason: _ } => false
+    WholeCorpusCompileAdmitted { budget: _, required: _ } => false
+    WholeCorpusCompileRefusedBudgetUnreadable { reason: _ } => false
   }
 }
 
@@ -61,8 +61,8 @@ test fn an_unreadable_budget_refuses_rather_than_admitting_the_widest_cap() -> B
       reason: "no modeled host memory source answered on this platform" as std.types.NonEmptyStr,
     }
   ) {
-    gunbc.whole_corpus_compile_admission.WholeCorpusCompileRefusedBudgetUnreadable { reason: r } => !((r as String) == "")
-    gunbc.whole_corpus_compile_admission.WholeCorpusCompileAdmitted { budget: _, required: _ } => false
-    gunbc.whole_corpus_compile_admission.WholeCorpusCompileRefusedBudgetBelowMeasuredDemand { budget: _, required: _, source: _ } => false
+    WholeCorpusCompileRefusedBudgetUnreadable { reason: r } => !((r as String) == "")
+    WholeCorpusCompileAdmitted { budget: _, required: _ } => false
+    WholeCorpusCompileRefusedBudgetBelowMeasuredDemand { budget: _, required: _, source: _ } => false
   }
 }

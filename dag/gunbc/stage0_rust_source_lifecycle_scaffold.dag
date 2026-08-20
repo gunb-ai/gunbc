@@ -178,11 +178,11 @@ fn count_observed_manifest_duplicate_excess(
 
 fn rust_source_manifest_state_verdict(observation: gunbc.stage0_rust_host_observation.RustSourceHostObservation) -> RustSourceManifestStateVerdict {
   match observation {
-    gunbc.stage0_rust_host_observation.RustManifestReadRefused { detail: detail } =>
+    RustManifestReadRefused { detail: detail } =>
       ManifestStateScaffoldRefused { cause: HostManifestReadRefused { detail: detail } }
-    gunbc.stage0_rust_host_observation.RustManifestParseRefused { detail: detail } =>
+    RustManifestParseRefused { detail: detail } =>
       ManifestStateScaffoldRefused { cause: HostManifestParseRefused { detail: detail } }
-    gunbc.stage0_rust_host_observation.GitObservationRefused { detail: detail } =>
+    GitObservationRefused { detail: detail } =>
       ManifestStateScaffoldRefused { cause: HostGitObservationRefused { detail: detail } }
     gunbc.stage0_rust_host_observation.RustManifestObserved {
       repository_revision: repository_revision,

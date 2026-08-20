@@ -1,69 +1,67 @@
 module extdeps.realization.resolved_graph
 
-
-
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/realization"
   }
 }
 
 data resolved_graph_cache_faithful_probe_support_dissolve_trigger: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: RealizationDispatch,
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.realization.resolved_graph",
     decl_name: "resolved_graph_cache_faithful_probe_support",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
 data resolved_graph_cache_faithful_probe_support: String = "dissolve-on: resolved_graph_cache FORMAT_VERSION >= 2 — faithful probe support lands when the cache format persists per-output digests and byte sizes for resolved_graph/source_indices, so the transport can build a faithful probe instead of refusing the v1 seam."
 
-data resolved_graph_cache_cap_bytes: std.measure.ByteSize = byte_size(count: 10737418240)
+data resolved_graph_cache_cap_bytes: std.measure.ByteSize = std.measure.byte_size(count: 10737418240)
 
 data resolved_graph_cache_id: std.cache_identity.CacheInterfaceId = "resolved_graph_cache"
 
 data resolved_graph_cache_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = {
   identity: resolved_graph_cache_id
   backing_surface: "gunbc-resolved-graph-per-host-cache"
-  transport_encoding: CatalogCasContentEncoding
+  transport_encoding: extdeps.cache.types.CatalogCasContentEncoding
   key_derivation: {
 
-    key_inputs: ContentAddressed
+    key_inputs: extdeps.cache.types.ContentAddressed
     overwritable: false
     prefix_fallback_allowed: false
     content_verified_on_read: true
-    visibility_scope: Org
-    invalidation_triggers: [ToolchainChange, ManualPurge]
+    visibility_scope: std.cache_interface.Org
+    invalidation_triggers: [std.cache_interface.ToolchainChange, std.cache_interface.ManualPurge]
   }
   io: {
-    lookup_semantics: ContentAddressLookup
-    write_semantics: WriteOnce
-    miss_semantics: MissThenCreate
+    lookup_semantics: std.cache_interface.ContentAddressLookup
+    write_semantics: std.cache_interface.WriteOnce
+    miss_semantics: std.cache_interface.MissThenCreate
   }
   placement: {
-    value_shape: StructuredArtifact
-    locality: PerHostFilesystem
-    retention: { release_policy: ReleasedNever, capacity: std.cache_interface.CapacityBounded { limit: std.cache_interface.ByteCapacity { limit: std.cache_interface.ExactLimit { value: resolved_graph_cache_cap_bytes } }, at_capacity: std.cache_interface.ReplaceExisting { strategy: ProviderNativeReplacement } } }
-    atomicity: WriteThenRename
-    auth: FilesystemPerms
-    read_latency: LocalDiskUs
-    consistency: ReadYourWrites
+    value_shape: std.cache_interface.StructuredArtifact
+    locality: std.cache_interface.PerHostFilesystem
+    retention: { release_policy: std.cache_interface.ReleasedNever, capacity: std.cache_interface.CapacityBounded { limit: std.cache_interface.ByteCapacity { limit: std.cache_interface.ExactLimit { value: resolved_graph_cache_cap_bytes } }, at_capacity: std.cache_interface.ReplaceExisting { strategy: std.cache_interface.ProviderNativeReplacement } } }
+    atomicity: std.cache_interface.WriteThenRename
+    auth: std.cache_interface.FilesystemPerms
+    read_latency: std.cache_interface.LocalDiskUs
+    consistency: std.cache_interface.ReadYourWrites
   }
   evidence: [
     {
       field: "atomicity"
       evidence: std.cache_interface.OperatorObserved {
         note: "resolved_graph_cache.rs temp-file + rename write path (WriteOnce under race)"
-        observed_at: 0
+        observed_at: v2.std.optional.Absent
       }
     },
     {
       field: "lookup_semantics"
       evidence: std.cache_interface.OperatorObserved {
         note: "subject_digest content-addresses the closure content AND the resolve transform via the ToolchainSpec input (content(toolchain)) — NOT hand-authored resolve-logic/intern-seed version strings (cache-key-by-construction)"
-        observed_at: 0
+        observed_at: v2.std.optional.Absent
       }
     },
   ]

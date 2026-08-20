@@ -11,7 +11,7 @@ data materialization_carriers_tail_probe_note: String = "TAIL probe 2026-07-17 (
 
 fn materialization_allows_memo_store(m: std.realization.Materialization) -> Bool {
   match m {
-    std.realization.Memoize => true
+    Memoize => true
     Recompute => false
     Share => false
   }

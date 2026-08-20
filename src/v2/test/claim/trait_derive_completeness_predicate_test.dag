@@ -64,7 +64,7 @@ fn tdc_unknown_atom_node() -> Node {
 
 fn tdc_elem_shape_is_payload_coproduct(elem: Node) -> Bool {
   match repr_grounding_derive_elem_shape(elem: elem) {
-    std.trait_derive_shape.ReprDeriveElemPayloadCoproduct => true
+    ReprDeriveElemPayloadCoproduct => true
     _ => false
   }
 }

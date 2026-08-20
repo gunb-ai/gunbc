@@ -9,14 +9,14 @@ fn sample() -> std.algebra.FreeMonoid<Int> {
 
 fn list_eq(xs: std.algebra.FreeMonoid<Int>, ys: std.algebra.FreeMonoid<Int>) -> Bool {
   match xs {
-    std.algebra.Empty =>
+    Empty =>
       match ys {
-        std.algebra.Empty => true
+        Empty => true
         Cons { head: _, tail: _ } => false
       }
     Cons { head: xh, tail: xt } =>
       match ys {
-        std.algebra.Empty => false
+        Empty => false
         Cons { head: yh, tail: yt } =>
           (xh == yh) && list_eq(xs: xt, ys: yt)
       }

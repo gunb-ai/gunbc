@@ -8,7 +8,7 @@ fn parse_atom_frontier_class(atom_identity: v2.std.node.Symbol, binding_to_class
     Accepted { value: opt, diagnostics: _ } =>
       match opt {
         Present { value: token_class } => token_class
-        v2.std.optional.Absent => atom_identity
+        Absent => atom_identity
       }
     Rejected { diagnostics: _ } => atom_identity
   }
@@ -47,7 +47,7 @@ fn grammar_relation_binding_to_token_class_map(rules: v2.std.node.Node) -> std.t
         f: fn(acc, e) {
           match e.label {
             Named { name: _ } => binding_class_map_merge_row(acc: acc, row: e.target)
-            v2.std.node.Positional => acc
+            Positional => acc
           }
         }
       )
@@ -74,7 +74,7 @@ fn operational_parse_tree_project_to_formal_captures(
         left: std.algebra.Empty,
         right: [parse_atom_frontier_class(atom_identity: id, binding_to_class: binding_to_class)]
       )
-    v2.std.optional.Absent =>
+    Absent =>
       fold(
         captured.children,
         init: std.algebra.Empty,
@@ -92,7 +92,7 @@ fn operational_parse_tree_project_to_formal_captures(
                   )
                 )
               }
-            v2.std.node.Positional =>
+            Positional =>
               v2.std.algebra.list_append(
                 left: acc,
                 right: operational_parse_tree_project_to_formal_captures(

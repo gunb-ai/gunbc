@@ -99,8 +99,8 @@ test fn w_a_selected_layer_carries_the_function_it_found() -> Bool {
         LayerSelected { layer: l } =>
           product.pcb.copper.copper_layer_ordinal(r: l) == 1
             && match product.pcb.copper.copper_layer_function(r: l) {
-              product.pcb.stackup.GroundPlane => true
-              product.pcb.stackup.SignalLayer => false
+              GroundPlane => true
+              SignalLayer => false
               PowerPlane => false
               MixedSignalAndPlane => false
             }
@@ -123,8 +123,8 @@ test fn w_selection_distinguishes_the_layers_it_walks_past() -> Bool {
               product.pcb.copper.copper_layer_ordinal(r: top) == 0
                 && product.pcb.copper.copper_layer_ordinal(r: bottom) == 2
                 && match product.pcb.copper.copper_layer_function(r: top) {
-                  product.pcb.stackup.SignalLayer => true
-                  product.pcb.stackup.GroundPlane => false
+                  SignalLayer => true
+                  GroundPlane => false
                   PowerPlane => false
                   MixedSignalAndPlane => false
                 }

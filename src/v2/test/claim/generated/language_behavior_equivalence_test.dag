@@ -217,7 +217,7 @@ data witness_lbe_conj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from
   label: v2.lens.testgen.lbe_label_conj_dag_surface,
   mock: v2.lens.testgen.lbe_io_mock_conj_dag_surface()
 ) {
-  v2.std.verdict.Pass => true
+  Pass => true
   SemanticMismatch { actual: _, falsification: _ } => false
     BuildFailed { actual: _, diagnostic: _ } => false
     RunFailed { actual: _, diagnostic: _ } => false
@@ -229,7 +229,7 @@ data witness_lbe_disj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from
   label: v2.lens.testgen.lbe_label_disj_dag_surface,
   mock: v2.lens.testgen.lbe_io_mock_disj_dag_surface()
 ) {
-  v2.std.verdict.Pass => true
+  Pass => true
   SemanticMismatch { actual: _, falsification: _ } => false
     BuildFailed { actual: _, diagnostic: _ } => false
     RunFailed { actual: _, diagnostic: _ } => false
@@ -241,7 +241,7 @@ data witness_lbe_transform_snapshot_pass: Bool = match lbe_run_test_claim_assert
   label: v2.lens.testgen.lbe_label_transform_dag_surface,
   mock: v2.lens.testgen.lbe_io_mock_transform_dag_surface()
 ) {
-  v2.std.verdict.Pass => true
+  Pass => true
   SemanticMismatch { actual: _, falsification: _ } => false
     BuildFailed { actual: _, diagnostic: _ } => false
     RunFailed { actual: _, diagnostic: _ } => false

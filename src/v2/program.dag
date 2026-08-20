@@ -138,7 +138,7 @@ fn program_nth_child(node: v2.std.node.Node, wanted: Int) -> v2.std.diagnostic.O
   match v2.std.collection.list_at_optional(xs: node.children, index: wanted) {
     Present { value: child } =>
       match child {
-        v2.std.node.Edge { label: _, target: arm } =>
+        Edge { label: _, target: arm } =>
           v2.std.diagnostic.Accepted { value: extdeps.vendor.arm.arm, diagnostics: v2.std.diagnostic.None }
       }
     Absent =>

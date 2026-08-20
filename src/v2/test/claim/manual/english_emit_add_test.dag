@@ -165,7 +165,7 @@ fn english_emit_add_identity_edge_matches(e: v2.std.node.Edge, expected: v2.std.
   match e.label {
     Named { name: n } =>
       (n == ^grammar_production_identity_node_projection) && (e.target == expected)
-    v2.std.node.Positional => false
+    Positional => false
   }
 }
 

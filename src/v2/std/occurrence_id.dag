@@ -1,7 +1,5 @@
 module v2.std.occurrence_id
 
-
-
 data occurrence_identity_v2_facade_note: String = "Source-compatible v2 facade over std.occurrence_identity while existing v2 consumers still import v2.std.occurrence_id. It contains no allocator body or identity rule."
 
 data occurrence_identity_v2_facade_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "DISSOLVE-ON: the counted v2.std.occurrence_id import census reaches zero after consumers import std.occurrence_identity directly; then delete this facade.")

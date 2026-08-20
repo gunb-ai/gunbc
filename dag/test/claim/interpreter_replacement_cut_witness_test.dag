@@ -20,11 +20,11 @@ fn is_undecided_consumer(c: gunbc.replacement_cut.CutRefusalCause) -> Bool {
     ConsumerDuplicated { consumer: _ } => false
     EvidenceDuplicated { evidence: _ } => false
     RegionMemberDuplicated { member: _ } => false
-    gunbc.replacement_cut.EnumeratedCensusEmpty => false
-    gunbc.replacement_cut.ExternalRolesEnumeratedEmpty => false
-    gunbc.replacement_cut.EmptyCoveredRegion => false
-    gunbc.replacement_cut.NewRootEqualsOldRoot => false
-    gunbc.replacement_cut.SelfReferentialDescent => false
+    EnumeratedCensusEmpty => false
+    ExternalRolesEnumeratedEmpty => false
+    EmptyCoveredRegion => false
+    NewRootEqualsOldRoot => false
+    SelfReferentialDescent => false
   }
 }
 
@@ -38,11 +38,11 @@ fn is_uncovered_surviving(c: gunbc.replacement_cut.CutRefusalCause) -> Bool {
     ConsumerDuplicated { consumer: _ } => false
     EvidenceDuplicated { evidence: _ } => false
     RegionMemberDuplicated { member: _ } => false
-    gunbc.replacement_cut.EnumeratedCensusEmpty => false
-    gunbc.replacement_cut.ExternalRolesEnumeratedEmpty => false
-    gunbc.replacement_cut.EmptyCoveredRegion => false
-    gunbc.replacement_cut.NewRootEqualsOldRoot => false
-    gunbc.replacement_cut.SelfReferentialDescent => false
+    EnumeratedCensusEmpty => false
+    ExternalRolesEnumeratedEmpty => false
+    EmptyCoveredRegion => false
+    NewRootEqualsOldRoot => false
+    SelfReferentialDescent => false
   }
 }
 
@@ -83,7 +83,7 @@ fn is_causeless_disposition(d: gunbc.replacement_cut.ConsumerDisposition) -> Boo
     RetainSameContract { justification: _, coverage: _ } => false
     RetainChangedContract { terminal_contract: _, justification: _, coverage: _ } => false
     EvidenceOnly { surviving_claim: _, reenrolled_witness: _ } => false
-    gunbc.replacement_cut.Undecided => false
+    Undecided => false
   }
 }
 
@@ -98,7 +98,7 @@ fn is_retire(d: gunbc.replacement_cut.ConsumerDisposition) -> Bool {
     RetainSameContract { justification: _, coverage: _ } => false
     RetainChangedContract { terminal_contract: _, justification: _, coverage: _ } => false
     EvidenceOnly { surviving_claim: _, reenrolled_witness: _ } => false
-    gunbc.replacement_cut.Undecided => false
+    Undecided => false
   }
 }
 
@@ -109,7 +109,7 @@ fn is_replaced(d: gunbc.replacement_cut.ConsumerDisposition) -> Bool {
     RetainSameContract { justification: _, coverage: _ } => false
     RetainChangedContract { terminal_contract: _, justification: _, coverage: _ } => false
     EvidenceOnly { surviving_claim: _, reenrolled_witness: _ } => false
-    gunbc.replacement_cut.Undecided => false
+    Undecided => false
   }
 }
 
@@ -136,7 +136,7 @@ test fn descent_names_a_boundary_and_carries_no_cut_id() -> Bool {
   match gunbc.interpreter_replacement_cut.interpreter_cut_why_not_higher() {
     DescentParentUnauthored { intended_parent_boundary: b, basis: _ } =>
       (b as String) == "the engine cut through the v1 driver region"
-    gunbc.replacement_cut.OutermostBoundary => false
+    OutermostBoundary => false
     DescendedFromRefusedCut { parent_cut: _, refusal_summary: _ } => false
   }
 }

@@ -84,7 +84,7 @@ fn gi_perturbed(axis: v2.compiler.self_host.generation.GenerationAxis) -> v2.com
         build_configuration: gi_digest(label: "build-configuration-MOVED"),
         materialized_artifact: base.materialized_artifact
       }
-    v2.compiler.self_host.generation.MaterializedArtifactAxis =>
+    MaterializedArtifactAxis =>
       v2.compiler.self_host.generation.GenerationIdentity {
         producer_compiler: base.producer_compiler,
         source_closure: base.source_closure,
@@ -342,14 +342,14 @@ fn gi_ordered(roster: v2.compiler.self_host.generation.SourceClosureRoster) -> B
 test fn unobserved_text_cannot_become_a_materialized_artifact() -> Bool {
   match gi_artifact(hex: "not-a-digest") {
     ArtifactMaterialized { digest: _ } => false
-    v2.compiler.self_host.generation.ArtifactNotMaterialized => true
+    ArtifactNotMaterialized => true
   }
     && match gi_artifact(hex: "") {
       ArtifactMaterialized { digest: _ } => false
-      v2.compiler.self_host.generation.ArtifactNotMaterialized => true
+      ArtifactNotMaterialized => true
     }
     && match gi_artifact(hex: gi_artifact_baseline_hex) {
       ArtifactMaterialized { digest: _ } => true
-      v2.compiler.self_host.generation.ArtifactNotMaterialized => false
+      ArtifactNotMaterialized => false
     }
 }

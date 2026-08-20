@@ -128,14 +128,14 @@ type IterationDimension
 
 fn algebra_profile_to_dimension(profile: std.algebra.AlgebraProfile) -> IterationDimension? {
   match profile {
-    std.algebra.FreeMonoidCollectionProfile     => Present { value: CollectionFold }
-    std.algebra.FreeMonoidScalarProfile         => Present { value: CollectionFold }
-    std.algebra.BooleanAlgebraCollectionProfile => Present { value: CollectionFold }
-    std.algebra.PointwisePowerCollectionProfile => none
-    std.algebra.PartialFunctionProfile          => Present { value: CollectionFold }
-    std.algebra.OrderedRingProfile              => Present { value: ArithmeticRepeat }
-    std.algebra.ApproximateFieldProfile         => Present { value: ArithmeticRepeat }
-    std.algebra.BooleanAlgebraProfile           => none
+    FreeMonoidCollectionProfile     => Present { value: CollectionFold }
+    FreeMonoidScalarProfile         => Present { value: CollectionFold }
+    BooleanAlgebraCollectionProfile => Present { value: CollectionFold }
+    PointwisePowerCollectionProfile => none
+    PartialFunctionProfile          => Present { value: CollectionFold }
+    OrderedRingProfile              => Present { value: ArithmeticRepeat }
+    ApproximateFieldProfile         => Present { value: ArithmeticRepeat }
+    BooleanAlgebraProfile           => none
   }
 }
 

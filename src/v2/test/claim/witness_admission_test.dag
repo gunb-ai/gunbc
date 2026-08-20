@@ -15,7 +15,7 @@ test fn witness_03_normalize_wet_known_red_consumer_holds() -> Bool {
     function: normalize_fn,
     excluded_from_discovery: true
   ) {
-    std.witness_admission.QuarantineProbeExpectRed => true
+    QuarantineProbeExpectRed => true
     _ => false
   }
 }
@@ -30,7 +30,7 @@ test fn witness_synthetic_orphan_has_no_consumer_holds() -> Bool {
     function: synthetic_orphan_fn,
     excluded_from_discovery: true
   ) {
-    std.witness_admission.NoConsumer => true
+    NoConsumer => true
     _ => false
   }
 }
@@ -48,7 +48,7 @@ test fn witness_known_red_probe_consumer_holds() -> Bool {
     function: "english_emit_add_ingest_round_trip_holds",
     excluded_from_discovery: true
   ) {
-    std.witness_admission.QuarantineProbeExpectRed => true
+    QuarantineProbeExpectRed => true
     _ => false
   }
 }
@@ -59,7 +59,7 @@ test fn witness_field_access_wet_falsifier_consumer_holds() -> Bool {
     function: "emit_on_demand_field_access_grain_keys_differ_holds",
     excluded_from_discovery: true
   ) {
-    std.witness_admission.OfflineLocalRecipe => true
+    OfflineLocalRecipe => true
     _ => false
   }
 }
@@ -70,7 +70,7 @@ test fn witness_self_host_logic_falsifier_wet_consumer_holds() -> Bool {
     function: "self_host_logic_behavioral_receipt_holds",
     excluded_from_discovery: true
   ) {
-    std.witness_admission.FalsifierSelfHostWet => true
+    FalsifierSelfHostWet => true
     _ => false
   }
 }
@@ -81,7 +81,7 @@ test fn witness_namespace_import_closure_falsifier_wet_consumer_holds() -> Bool 
     function: "namespace_import_closure_receipt_holds",
     excluded_from_discovery: true
   ) {
-    std.witness_admission.FalsifierSelfHostWet => true
+    FalsifierSelfHostWet => true
     _ => false
   }
 }
@@ -92,7 +92,7 @@ test fn witness_dispatch_bijection_real_roster_falsifier_wet_consumer_holds() ->
     function: "interpreter_dispatch_bijection_real_roster_red_holds",
     excluded_from_discovery: true
   ) {
-    std.witness_admission.FalsifierSelfHostWet => true
+    FalsifierSelfHostWet => true
     _ => false
   }
 }
@@ -105,7 +105,7 @@ test fn witness_infer_transform_add_vertical_substrate_long_consumer_holds() -> 
     function: "infer_transform_add_vertical_witness_holds",
     excluded_from_discovery: true
   ) {
-    std.witness_admission.FalsifierSubstrateLongLane => true
+    FalsifierSubstrateLongLane => true
     _ => false
   }
     && match witness_execution_standing_for_live_row(
@@ -123,7 +123,7 @@ test fn witness_complement_wet_falsifier_consumer_holds() -> Bool {
     function: "emit_on_demand_complement_grain_keys_differ_holds",
     excluded_from_discovery: true
   ) {
-    std.witness_admission.OfflineLocalRecipe => true
+    OfflineLocalRecipe => true
     _ => false
   }
 }
@@ -134,7 +134,7 @@ test fn witness_offline_execution_lane_consumer_holds() -> Bool {
     function: "synthetic_optin_exec_witness",
     excluded_from_discovery: true
   ) {
-    std.witness_admission.OfflineLocalRecipe => true
+    OfflineLocalRecipe => true
     _ => false
   }
 }
@@ -145,7 +145,7 @@ test fn witness_discovery_row_consumer_holds() -> Bool {
     function: "effect_reach_path_data_init_derived_host_reading_holds",
     excluded_from_discovery: false
   ) {
-    std.witness_admission.DiscoverySelection => true
+    DiscoverySelection => true
     _ => false
   }
 }
@@ -156,7 +156,7 @@ test fn witness_bin_wet_live_rust_observation_consumer_holds() -> Bool {
     function: "live_rust_observation_matches_actions_subject",
     excluded_from_discovery: true
   ) {
-    std.witness_admission.BinWitnessWet => true
+    BinWitnessWet => true
     _ => false
   }
 }
@@ -167,7 +167,7 @@ test fn witness_substrate_long_lane_consumer_holds() -> Bool {
     function: "census_counters_exhaustively_partition_the_rows",
     excluded_from_discovery: true
   ) {
-    std.witness_admission.FalsifierSubstrateLongLane => true
+    FalsifierSubstrateLongLane => true
     _ => false
   }
 }

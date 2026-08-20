@@ -52,15 +52,15 @@ fn ground_body_against_surface(
 
 fn grounding_refuses(g: std.realization_reconcile.Grounding<gunbc.live_deploy.readiness.ServiceReadyEvidence>) -> Bool {
   match g {
-    std.realization_reconcile.DoesNotGround { reason: _ } => true
-    std.realization_reconcile.Grounds { evidence: _ } => false
+    DoesNotGround { reason: _ } => true
+    Grounds { evidence: _ } => false
   }
 }
 
 fn grounding_refusal_mentions(g: std.realization_reconcile.Grounding<gunbc.live_deploy.readiness.ServiceReadyEvidence>, fragment: String) -> Bool {
   match g {
-    std.realization_reconcile.DoesNotGround { reason: why } => string_contains(s: why, pattern: fragment)
-    std.realization_reconcile.Grounds { evidence: _ } => false
+    DoesNotGround { reason: why } => string_contains(s: why, pattern: fragment)
+    Grounds { evidence: _ } => false
   }
 }
 
@@ -71,8 +71,8 @@ test fn witness_matching_release_and_surface_grounds() -> Bool {
     body: healthz_body_at_revision(revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision),
     expected_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision,
   ) {
-    std.realization_reconcile.Grounds { evidence: _ } => true
-    std.realization_reconcile.DoesNotGround { reason: _ } => false
+    Grounds { evidence: _ } => true
+    DoesNotGround { reason: _ } => false
   }
 }
 
@@ -171,27 +171,27 @@ test fn witness_identity_round_trips_from_served_body() -> Bool {
 
 test fn witness_absent_identity_is_typed_absent_not_unparseable() -> Bool {
   match gunbc.running_release_identity.observe_running_release_identity(healthz_body: witness_bundle().healthz_body) {
-    gunbc.running_release_identity.RunningReleaseUnidentified { cause: why } =>
+    RunningReleaseUnidentified { cause: why } =>
       match why {
-        gunbc.running_release_identity.ReleaseRevisionAbsent => true
-        gunbc.running_release_identity.ReleaseIdentityBodyUnparseable => false
-        gunbc.running_release_identity.ReleaseRevisionDuplicated { count: _ } => false
-        gunbc.running_release_identity.ReleaseRevisionMalformed { text: _ } => false
-        gunbc.running_release_identity.SurfaceBundleIdentityAbsent => false
+        ReleaseRevisionAbsent => true
+        ReleaseIdentityBodyUnparseable => false
+        ReleaseRevisionDuplicated { count: _ } => false
+        ReleaseRevisionMalformed { text: _ } => false
+        SurfaceBundleIdentityAbsent => false
         _ => false
       }
-    gunbc.running_release_identity.RunningReleaseIdentified { observation: _ } => false
+    RunningReleaseIdentified { observation: _ } => false
   }
 }
 
 test fn witness_unparseable_body_is_typed_unparseable() -> Bool {
   match gunbc.running_release_identity.observe_running_release_identity(healthz_body: "not json at all") {
-    gunbc.running_release_identity.RunningReleaseUnidentified { cause: why } =>
+    RunningReleaseUnidentified { cause: why } =>
       match why {
-        gunbc.running_release_identity.ReleaseIdentityBodyUnparseable => true
+        ReleaseIdentityBodyUnparseable => true
         _ => false
       }
-    gunbc.running_release_identity.RunningReleaseIdentified { observation: _ } => false
+    RunningReleaseIdentified { observation: _ } => false
   }
 }
 
@@ -206,24 +206,24 @@ test fn witness_revision_shape_validation_discriminates() -> Bool {
 test fn witness_malformed_revision_on_the_wire_refuses() -> Bool {
   let body = "{\"status\": \"ok\", \"service\": \"gunbc-roadmap\", \"artifacts\": {}, \"revision\": \"main\", \"surface_bundle_identity\": \"0000000000000000\"}"
   match gunbc.running_release_identity.observe_running_release_identity(healthz_body: body) {
-    gunbc.running_release_identity.RunningReleaseUnidentified { cause: why } =>
+    RunningReleaseUnidentified { cause: why } =>
       match why {
-        gunbc.running_release_identity.ReleaseRevisionMalformed { text: t } => t == "main"
+        ReleaseRevisionMalformed { text: t } => t == "main"
         _ => false
       }
-    gunbc.running_release_identity.RunningReleaseIdentified { observation: _ } => false
+    RunningReleaseIdentified { observation: _ } => false
   }
 }
 
 test fn witness_duplicate_revision_member_refuses() -> Bool {
   let body = "{\"revision\": \"0123456789abcdef0123456789abcdef01234567\", \"revision\": \"89abcdef0123456789abcdef0123456789abcdef\", \"surface_bundle_identity\": \"0000000000000000\"}"
   match gunbc.running_release_identity.observe_running_release_identity(healthz_body: body) {
-    gunbc.running_release_identity.RunningReleaseUnidentified { cause: why } =>
+    RunningReleaseUnidentified { cause: why } =>
       match why {
-        gunbc.running_release_identity.ReleaseRevisionDuplicated { count: n } => n == 2
+        ReleaseRevisionDuplicated { count: n } => n == 2
         _ => false
       }
-    gunbc.running_release_identity.RunningReleaseIdentified { observation: _ } => false
+    RunningReleaseIdentified { observation: _ } => false
   }
 }
 

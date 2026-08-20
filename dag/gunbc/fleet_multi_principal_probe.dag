@@ -441,9 +441,9 @@ fn spark_exact_grant_report(context: gunbc.fleet_known_hosts_anchor.FleetSshExec
   let rows = map(spark_standing_hosts, h =>
     spark_exact_grant_row(context: context, host: h, principal: "gunbc-automation"))
   match v2.std.algebra.list_head(rows) {
-    v2.std.algebra.HeadAbsent => GrantProbeNotAttempted { cause: "no standing hosts are declared" }
+    HeadAbsent => GrantProbeNotAttempted { cause: "no standing hosts are declared" }
     HeadFound { value: f } => match v2.std.algebra.list_tail(rows) {
-      v2.std.algebra.TailAbsent => GrantsObserved { first: f, more: [] }
+      TailAbsent => GrantsObserved { first: f, more: [] }
       TailFound { tail: t } => GrantsObserved { first: f, more: t }
     }
   }

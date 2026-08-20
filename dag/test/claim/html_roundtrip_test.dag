@@ -76,8 +76,8 @@ test fn witness_core_advertised_lossless() -> Bool {
   let node = roundtrip_core_node()
   let m = extdeps.languages.html.html_medium_lossless(node: node)
   match m.fidelity {
-    extdeps.communication.medium.Lossless => m.carried == node
-    extdeps.communication.medium.Lossy => false
+    Lossless => m.carried == node
+    Lossy => false
   }
 }
 

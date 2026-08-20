@@ -208,12 +208,12 @@ fn build_receipt_causes(
 ) -> List<PromotionRefusalCause> {
   let stale = stale_causes_for(receipt: receipt, subject: r.subject, expected: expected)
   match r.outcome {
-    v2.compiler.self_host.promotion_admission.ObservationUnavailable { cause: c } =>
+    ObservationUnavailable { cause: c } =>
       list_snoc_item(
         xs: stale,
         item: ReceiptObservationUnavailable { receipt: receipt, cause: c }
       )
-    v2.compiler.self_host.promotion_admission.Observed { value: v } =>
+    Observed { value: v } =>
       match v {
         BuildGreen => stale
         BuildFailed { cause: _ } =>
@@ -275,12 +275,12 @@ fn equivalence_receipt_causes(
     )
   }
   match r.outcome {
-    v2.compiler.self_host.promotion_admission.ObservationUnavailable { cause: c } =>
+    ObservationUnavailable { cause: c } =>
       list_snoc_item(
         xs: sized,
         item: ReceiptObservationUnavailable { receipt: receipt, cause: c }
       )
-    v2.compiler.self_host.promotion_admission.Observed { value: v } =>
+    Observed { value: v } =>
       match v {
         BehaviorAgrees => sized
         BehaviorDiverges { at_case: c } =>
@@ -302,7 +302,7 @@ fn fault_receipt_causes(
     expected: expected
   )
   match r.outcome {
-    v2.compiler.self_host.promotion_admission.ObservationUnavailable { cause: c } =>
+    ObservationUnavailable { cause: c } =>
       list_snoc_item(
         xs: stale,
         item: ReceiptObservationUnavailable {
@@ -310,7 +310,7 @@ fn fault_receipt_causes(
           cause: c
         }
       )
-    v2.compiler.self_host.promotion_admission.Observed { value: v } =>
+    Observed { value: v } =>
       match v {
         FaultCaught => stale
         FaultNotCaught { at_case: c } =>

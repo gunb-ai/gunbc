@@ -65,14 +65,14 @@ fn stale_surface_read_does_not_ground_for_bundle(
       expected_revision: release_revision,
       expected_surface_identity: bundle.bundle_identity,
     ) {
-      std.realization_reconcile.DoesNotGround { reason: why } =>
+      DoesNotGround { reason: why } =>
         string_contains(s: why, pattern: "ServedSurfaceStale")
           && string_contains(s: why, pattern: witness_stale_artifact_digest_hex)
           && !string_contains(s: why, pattern: "JSON.parse")
           && !string_contains(s: why, pattern: "ProcessIdentityAbsent")
           && !string_contains(s: why, pattern: "ProcessRevisionMismatch")
           && !string_contains(s: why, pattern: "ProcessSurfaceMismatch")
-      std.realization_reconcile.Grounds { evidence: _ } => false
+      Grounds { evidence: _ } => false
     }
 }
 

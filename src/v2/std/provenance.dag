@@ -1,6 +1,5 @@
 module v2.std.provenance
 
-
 type OriginEvent
   = FromSource { locus: v2.std.diagnostic.Locus }
   | DerivedBy { producer: v2.std.node.Symbol, from: List<std.occurrence_identity.OccurrenceId> }
@@ -15,30 +14,30 @@ type SpanIndex {
 }
 
 fn span_index_empty() -> SpanIndex {
-  SpanIndex { entries: empty_map() }
+  SpanIndex { entries: v2.std.collection.empty_map() }
 }
 
 fn span_index_record(index: SpanIndex, id: std.occurrence_identity.OccurrenceId, event: OriginEvent) -> SpanIndex {
   SpanIndex {
-    entries: map_insert(m: index.entries, key: id, value: event)
+    entries: v2.std.collection.map_insert(m: index.entries, key: id, value: event)
   }
 }
 
 fn span_index_occurrence_absent_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^span_index_occurrence_absent,
-    at: port_locus(port: ^span_index_lookup_port),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.port_locus(port: ^span_index_lookup_port),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
-fn span_index_lookup(index: SpanIndex, id: std.occurrence_identity.OccurrenceId) -> Witness<OriginEvent> {
-  witness_from_optional(opt: index.entries.lookup(id), absent: span_index_occurrence_absent_diagnostic())
+fn span_index_lookup(index: SpanIndex, id: std.occurrence_identity.OccurrenceId) -> v2.std.witness.Witness<OriginEvent> {
+  v2.std.witness.witness_from_optional(opt: index.entries.lookup(id), absent: span_index_occurrence_absent_diagnostic())
 }
 
 fn span_index_merge(base: SpanIndex, incoming: SpanIndex) -> SpanIndex {
   SpanIndex {
-    entries: fold_list(
+    entries: v2.std.algebra.fold_list(
       xs: incoming.entries.keys(),
       empty: base.entries,
       cons: fn(acc, id) {
@@ -46,7 +45,7 @@ fn span_index_merge(base: SpanIndex, incoming: SpanIndex) -> SpanIndex {
           Present { value: _ } => acc
           Absent =>
             match incoming.entries.lookup(id) {
-              Present { value: event } => map_insert(m: acc, key: id, value: event)
+              Present { value: event } => v2.std.collection.map_insert(m: acc, key: id, value: event)
               Absent => acc
             }
         }
@@ -58,16 +57,16 @@ fn span_index_merge(base: SpanIndex, incoming: SpanIndex) -> SpanIndex {
 fn span_index_origin_chain_exhausted_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^span_index_origin_chain_exhausted,
-    at: port_locus(port: ^span_index_lookup_port),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.port_locus(port: ^span_index_lookup_port),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
 fn span_index_resolve_textual_locus_from_ids(
   index: SpanIndex,
   ids: List<std.occurrence_identity.OccurrenceId>
-) -> Witness<v2.std.diagnostic.Locus> {
-  fold_list(
+) -> v2.std.witness.Witness<v2.std.diagnostic.Locus> {
+  v2.std.algebra.fold_list(
     xs: ids,
     empty: v2.std.witness.Violates { diagnostic: span_index_origin_chain_exhausted_diagnostic() },
     cons: fn(acc, id) {
@@ -80,7 +79,7 @@ fn span_index_resolve_textual_locus_from_ids(
   )
 }
 
-fn span_index_resolve_textual_locus(index: SpanIndex, id: std.occurrence_identity.OccurrenceId) -> Witness<v2.std.diagnostic.Locus> {
+fn span_index_resolve_textual_locus(index: SpanIndex, id: std.occurrence_identity.OccurrenceId) -> v2.std.witness.Witness<v2.std.diagnostic.Locus> {
   match span_index_lookup(index: index, id: id) {
     Holds { value: event } =>
       match event {
@@ -98,6 +97,6 @@ fn span_index_resolve_textual_locus(index: SpanIndex, id: std.occurrence_identit
   }
 }
 
-fn node_artifact_provenance(node: Node, artifact: v2.std.artifact.Artifact) -> v2.std.artifact.NodeArtifactProvenance {
+fn node_artifact_provenance(node: v2.std.node.Node, artifact: v2.std.artifact.Artifact) -> v2.std.artifact.NodeArtifactProvenance {
   v2.std.artifact.NodeArtifactProvenance { node: node, artifact: artifact }
 }

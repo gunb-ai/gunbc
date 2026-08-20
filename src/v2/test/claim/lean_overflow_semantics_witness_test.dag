@@ -35,7 +35,7 @@ test fn lean_admit_accepts_catalog_wrapping_returns() -> Bool {
         OverflowReturns { value_rule: std.integer.ReturnWrapping } => true
         OverflowReturns { value_rule: ReturnSaturating } => false
         OverflowRaises { effect: _ } => false
-        std.integer.OverflowUndefined => false
+        OverflowUndefined => false
       }
     LeanOverflowRefused { observed: _, reason: _ } => false
   }
@@ -66,7 +66,7 @@ test fn lean_catalog_int32_carries_wrapping_not_raises() -> Bool {
         OverflowReturns { value_rule: std.integer.ReturnWrapping } => true
         OverflowReturns { value_rule: ReturnSaturating } => false
         OverflowRaises { effect: _ } => false
-        std.integer.OverflowUndefined => false
+        OverflowUndefined => false
       }
     _ => false
   }

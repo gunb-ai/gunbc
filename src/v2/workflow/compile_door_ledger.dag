@@ -267,7 +267,7 @@ data list_find_first_promotion_note: String = "list_find_first is a short-circui
 
 fn list_find_first<T>(xs: std.algebra.FreeMonoid<T>, predicate: fn(T) -> Bool) -> Optional<T> {
   match xs {
-    std.algebra.Empty => optional_absent()
+    Empty => optional_absent()
     Cons { head: h, tail: t } =>
       if predicate(h) {
         optional_present(value: h)

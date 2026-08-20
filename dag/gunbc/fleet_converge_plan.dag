@@ -168,8 +168,8 @@ fn timer_retirement_observed_legacy_srv1() -> std.types.List<TimerRetirementMemb
 
 fn teardown_refusal_cause_label(cause: gunbc.membership_reconcile.TeardownRefusalCause) -> String {
   match cause {
-    gunbc.membership_reconcile.MemberNotOwned => "MemberNotOwned"
-    gunbc.membership_reconcile.OwnershipUnknown => "OwnershipUnknown"
+    MemberNotOwned => "MemberNotOwned"
+    OwnershipUnknown => "OwnershipUnknown"
     RosterDuplicateKey { roster: _ } => "RosterDuplicateKey"
   }
 }
@@ -276,7 +276,7 @@ type FleetConvergePlanArtifact {
 // effect the linger vertical realizes.
 fn fleet_converge_spark_serving_effect_wire(effect: gunbc.spark_serving_realization.ServingInstallEffect) -> String {
   match effect {
-    gunbc.spark_serving_realization.EnableLingerForOwnAccount => "EnableLingerForOwnAccount"
+    EnableLingerForOwnAccount => "EnableLingerForOwnAccount"
     WriteSystemUnitFile => "WriteSystemUnitFile"
     ReloadSystemManager => "ReloadSystemManager"
     EnableSystemUnit => "EnableSystemUnit"

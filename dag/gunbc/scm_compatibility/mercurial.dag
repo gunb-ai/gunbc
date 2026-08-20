@@ -215,8 +215,8 @@ fn mercurial_compatibility_tag_source_identity(
   source: extdeps.mercurial.MercurialTagSource,
 ) -> std.content_hash.Fnv1a64Structural {
   let label = match source {
-    extdeps.mercurial.MercurialVersionedTag => "versioned"
-    extdeps.mercurial.MercurialLocalTag => "local"
+    MercurialVersionedTag => "versioned"
+    MercurialLocalTag => "local"
   }
   gunbc.scm_compatibility_shape.compatibility_identity_text(
     tag: "mercurial-tag-source",
@@ -247,9 +247,9 @@ fn mercurial_compatibility_phase_value_identity(
   phase: extdeps.mercurial.MercurialPhase,
 ) -> std.content_hash.Fnv1a64Structural {
   let label = match phase {
-    extdeps.mercurial.MercurialPublic => "public"
-    extdeps.mercurial.MercurialDraft => "draft"
-    extdeps.mercurial.MercurialSecret => "secret"
+    MercurialPublic => "public"
+    MercurialDraft => "draft"
+    MercurialSecret => "secret"
   }
   gunbc.scm_compatibility_shape.compatibility_identity_text(
     tag: "mercurial-phase",
@@ -276,8 +276,8 @@ fn mercurial_compatibility_publishing_identity(
   publishing: extdeps.mercurial.MercurialPublishingBehavior,
 ) -> std.content_hash.Fnv1a64Structural {
   let label = match publishing {
-    extdeps.mercurial.MercurialPublishingServer => "publishing"
-    extdeps.mercurial.MercurialNonPublishingServer => "non-publishing"
+    MercurialPublishingServer => "publishing"
+    MercurialNonPublishingServer => "non-publishing"
   }
   gunbc.scm_compatibility_shape.compatibility_identity_text(
     tag: "mercurial-publishing",
@@ -339,7 +339,7 @@ fn mercurial_compatibility_evolution_identity(
   evolution: extdeps.mercurial.MercurialEvolutionMetadata,
 ) -> std.content_hash.Fnv1a64Structural {
   match evolution {
-    extdeps.mercurial.MercurialEvolutionNotEnabled =>
+    MercurialEvolutionNotEnabled =>
       gunbc.scm_compatibility_shape.compatibility_identity_sequence(
         tag: "mercurial-evolution-disabled",
         members: [],

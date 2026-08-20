@@ -10,14 +10,14 @@ test fn scaffold_note_declares_scaffold_not_live_instrument() -> Bool {
 
 test fn scaffold_manifest_state_verdict_query_is_scaffold_disposition() -> Bool {
   match gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_manifest_state_verdict_query_scaffold {
-    std.disposition.Scaffold { dissolves_to: std.disposition.SingleAuthority, bind: _ } => true
+    Scaffold { dissolves_to: std.disposition.SingleAuthority, bind: _ } => true
     _ => false
   }
 }
 
 test fn scaffold_lifecycle_row_well_formed_query_is_scaffold_disposition() -> Bool {
   match gunbc.stage0_rust_source_lifecycle_scaffold.lifecycle_row_well_formed_query_scaffold {
-    std.disposition.Scaffold { dissolves_to: std.disposition.SingleAuthority, bind: _ } => true
+    Scaffold { dissolves_to: std.disposition.SingleAuthority, bind: _ } => true
     _ => false
   }
 }
@@ -48,13 +48,13 @@ test fn scaffold_host_observation_hand_rust_receipt_is_bounded() -> Bool {
     && (expected |> all(e => named |> any(n => n == e)))
     && gunbc.stage0_rust_host_observation.stage0_rust_observation_seed_growth_justification.owning_dissolution_lane as v2.std.text.String == "v1-hand-queue-drain"
     && match gunbc.stage0_rust_host_observation.stage0_cargo_manifest_parser_seed_scaffold {
-      std.disposition.Scaffold { dissolves_to: std.disposition.RealizationDispatch, bind: bind } =>
+      Scaffold { dissolves_to: std.disposition.RealizationDispatch, bind: bind } =>
         bind.module_path == "v1_compiler.cli_run"
           && bind.decl_name == "parse_stage0_cargo_manifest_bin_paths"
       _ => false
     }
     && match gunbc.stage0_rust_host_observation.stage0_cargo_manifest_projection_seed_scaffold {
-      std.disposition.Scaffold { dissolves_to: std.disposition.RealizationDispatch, bind: bind } =>
+      Scaffold { dissolves_to: std.disposition.RealizationDispatch, bind: bind } =>
         bind.module_path == "v1_compiler.v1_interpreter"
           && bind.decl_name == "eval_builtin_inner"
       _ => false
@@ -145,14 +145,14 @@ test fn scaffold_observed_refuses_missing_host_evidence_fields() -> Bool {
       cargo_bin_repo_paths: []
     }
   ) {
-    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: _ } => true
-    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldOk => false
+    ManifestStateScaffoldRefused { cause: _ } => true
+    ManifestStateScaffoldOk => false
   }
 }
 
 test fn scaffold_observed_honest_minimal_observation_ok() -> Bool {
   match gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_manifest_state_verdict(observation: gunbc.stage0_rust_source_lifecycle_scaffold.witness_honest_minimal_observation_ok()) {
-    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldOk => true
+    ManifestStateScaffoldOk => true
     _ => false
   }
 }
@@ -289,7 +289,7 @@ test fn scaffold_v1_interpreter_dispatch_generated_disposition_is_emit_from_gene
           xs: row.maintenance_dispositions,
           predicate: fn(disposition) {
             match disposition {
-              gunbc.stage0_rust_source_lifecycle_scaffold.EmitFrom { authority: authority } =>
+              EmitFrom { authority: authority } =>
                 authority.module_path == "gunbc.generated_artifact_emit"
                   && authority.decl_name == "artifact_generate"
               _ => false
@@ -316,7 +316,7 @@ test fn scaffold_bootstrap_stage0_crate_layout_generated_disposition_is_emit_fro
           xs: row.maintenance_dispositions,
           predicate: fn(disposition) {
             match disposition {
-              gunbc.stage0_rust_source_lifecycle_scaffold.EmitFrom { authority: authority } =>
+              EmitFrom { authority: authority } =>
                 authority.module_path == "gunbc.generated_artifact_emit"
                   && authority.decl_name == "artifact_generate"
               _ => false

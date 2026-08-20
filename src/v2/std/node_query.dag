@@ -29,7 +29,7 @@ fn edge_field_type_name(target: v2.std.node.Node) -> v2.std.node.Symbol {
 
 fn conj_payload_type_name_go(xs: std.algebra.FreeMonoid<v2.std.node.Edge>, acc: String) -> String {
   match xs {
-    std.algebra.Empty => acc
+    Empty => acc
     Cons { head: h, tail: t } =>
       let field_name = named_edge_sort_key(e: h)
       let type_name = edge_field_type_name(target: h.target)
@@ -273,7 +273,7 @@ fn node_envelope_without_named_coordinate_go(
   saw_coordinate: Bool
 ) -> v2.std.diagnostic.Outcome<std.algebra.FreeMonoid<v2.std.node.Edge>> {
   match xs {
-    std.algebra.Empty => outcome_accepted(value: acc)
+    Empty => outcome_accepted(value: acc)
     Cons { head: h, tail: t } =>
       match h.label {
         Named { name: n } =>

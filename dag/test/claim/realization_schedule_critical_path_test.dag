@@ -4,32 +4,32 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 test fn witness_parallel_batch_takes_max_not_sum() -> Bool {
   let batch = [
-    nanosecond_duration(count: 100),
-    nanosecond_duration(count: 5),
+    nanosecond(count: 100),
+    nanosecond(count: 5),
   ]
   let critical = schedule_batch_critical_path(batch_times: batch)
   let summed = time_measure_list_total(times: batch)
-  nanosecond_duration_count(d: critical) == 100
-    && nanosecond_duration_count(d: summed) == 105
-    && nanosecond_duration_count(d: critical) != nanosecond_duration_count(d: summed)
+  nanosecond_count(n: critical) == 100
+    && nanosecond_count(n: summed) == 105
+    && nanosecond_count(n: critical) != nanosecond_count(n: summed)
 }
 
 test fn witness_sequential_batches_add_critical_paths() -> Bool {
   let batches = [
-    [nanosecond_duration(count: 50)],
+    [nanosecond(count: 50)],
     [
-      nanosecond_duration(count: 100),
-      nanosecond_duration(count: 5),
+      nanosecond(count: 100),
+      nanosecond(count: 5),
     ],
   ]
-  nanosecond_duration_count(d: schedule_critical_path_time(batch_times: batches)) == 150
+  nanosecond_count(n: schedule_critical_path_time(batch_times: batches)) == 150
 }
 
 test fn witness_measured_total_uses_critical_path_basis() -> Bool {
   let batches = [
     [
-      nanosecond_duration(count: 200),
-      nanosecond_duration(count: 10),
+      nanosecond(count: 200),
+      nanosecond(count: 10),
     ],
   ]
   let account = cost_account_measured_from_schedule_critical_path(batch_times: batches)

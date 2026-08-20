@@ -345,9 +345,9 @@ fn spice_emit_passive_line(
               )
             )
           }
-        v2.std.optional.Absent => v2.std.optional.Absent
+        Absent => v2.std.optional.Absent
       }
-    v2.std.optional.Absent => v2.std.optional.Absent
+    Absent => v2.std.optional.Absent
   }
 }
 
@@ -381,7 +381,7 @@ fn spice_emit_node_voltage_binding(binding: NodeVoltageBinding) -> v2.std.option
           d: binding.value.lexeme
         )
       }
-    v2.std.optional.Absent => v2.std.optional.Absent
+    Absent => v2.std.optional.Absent
   }
 }
 
@@ -402,7 +402,7 @@ fn spice_emit_directive(directive: Directive) -> v2.std.optional.Optional<String
           v2.std.optional.Present {
             value: spice_text_concat(left: ".ic ", right: binding_text)
           }
-        v2.std.optional.Absent => v2.std.optional.Absent
+        Absent => v2.std.optional.Absent
       }
     Dc { source: _, vstart: _, vstop: _, vincr: _ } => v2.std.optional.Absent
     Ac { sweep: _, n: _, fstart: _, fstop: _ } => v2.std.optional.Absent
@@ -427,7 +427,7 @@ fn spice_emit_body_lines(body: List<DeckStatement>) -> v2.std.optional.Optional<
     empty: v2.std.optional.Present { value: "" },
     cons: fn(acc, stmt) {
       match acc {
-        v2.std.optional.Absent => v2.std.optional.Absent
+        Absent => v2.std.optional.Absent
         Present { value: prefix } =>
           match spice_emit_deck_statement(stmt: stmt) {
             Present { value: line } =>
@@ -441,7 +441,7 @@ fn spice_emit_body_lines(body: List<DeckStatement>) -> v2.std.optional.Optional<
                   )
                 }
               }
-            v2.std.optional.Absent => v2.std.optional.Absent
+            Absent => v2.std.optional.Absent
           }
       }
     }
@@ -459,7 +459,7 @@ fn spice_emit(netlist: SpiceNetlist) -> String {
           right: body_text
         )
       }
-    v2.std.optional.Absent => ""
+    Absent => ""
   }
 }
 

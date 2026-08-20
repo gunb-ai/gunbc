@@ -234,10 +234,10 @@ type CpuEntitlementSupply
 
 fn cpu_entitlement_supply(cpu: extdeps.cpu.types.CpuModelCatalogRow, entitlement: extdeps.ci_runner.types.CpuEntitlement) -> CpuEntitlementSupply {
   match entitlement {
-    extdeps.ci_runner.types.DedicatedPhysicalCore => EntitlementsAvailable { count: cpu.cores }
+    DedicatedPhysicalCore => EntitlementsAvailable { count: cpu.cores }
     SmtSharedVcpu { threads_per_core } =>
       EntitlementsAvailable { count: std.measure.hardware_thread_count_value(t: cpu.threads) }
-    extdeps.ci_runner.types.EntitlementUnstated => EntitlementKindUnstated
+    EntitlementUnstated => EntitlementKindUnstated
   }
 }
 
@@ -460,8 +460,8 @@ fn geometry_slot_count(g: MemoryChannelGeometry) -> std.nat.Nat {
 // authority does not admit has no way into the candidate set.
 fn admitted_topologies(g: MemoryChannelGeometry) -> List<extdeps.cpu.ampere_altra_platform_hw_design.platform.DimmsPerChannelTopology> {
   match g.max_topology {
-    extdeps.cpu.ampere_altra_platform_hw_design.platform.OneDimmPerChannel => [extdeps.cpu.ampere_altra_platform_hw_design.platform.OneDimmPerChannel]
-    extdeps.cpu.ampere_altra_platform_hw_design.platform.TwoDimmsPerChannel => [extdeps.cpu.ampere_altra_platform_hw_design.platform.OneDimmPerChannel, extdeps.cpu.ampere_altra_platform_hw_design.platform.TwoDimmsPerChannel]
+    OneDimmPerChannel => [extdeps.cpu.ampere_altra_platform_hw_design.platform.OneDimmPerChannel]
+    TwoDimmsPerChannel => [extdeps.cpu.ampere_altra_platform_hw_design.platform.OneDimmPerChannel, extdeps.cpu.ampere_altra_platform_hw_design.platform.TwoDimmsPerChannel]
   }
 }
 

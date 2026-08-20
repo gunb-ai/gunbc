@@ -15,9 +15,9 @@ fn native_only_stdout_matches(stdout: v2.std.host_run.HostRunStdout, expected_oc
 
 fn native_only_matches_expected(source: v2.std.text.String, expected_octet: v2.std.integer.Int) -> Bool {
   match v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_wet_emit_eval_composed_tree_from_source(source: source) {
-    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+    Accepted { value: tree, diagnostics: _ } =>
       match v2.compiler.emit.emit(tree: tree, target: v2.extdeps.languages.rust_test.rust_classical_not_ingested_target_model_staging()) {
-        v2.std.diagnostic.Accepted { value: emitted, diagnostics: _ } =>
+        Accepted { value: emitted, diagnostics: _ } =>
           let workspace = extdeps.realization.emit_on_demand_host.native_cache_workspace_root(
             cache_root: v2.test.execution.emit_on_demand_classical_not_ingested_family_witness.classical_not_family_cache_root_for(test_id: "native_one_build"),
             key: v2.test.execution.emit_on_demand_classical_not_ingested_family_witness.classical_not_family_native_key_for(tree: tree)
@@ -28,17 +28,17 @@ fn native_only_matches_expected(source: v2.std.text.String, expected_octet: v2.s
             source: emitted,
             fixture_inputs: v2.compiler.eval.inputs_root_only(root: tree.root)
           ) {
-            v2.std.diagnostic.Accepted { value: receipt, diagnostics: _ } =>
+            Accepted { value: receipt, diagnostics: _ } =>
               match receipt.logical_run {
                 v2.std.diagnostic.Accepted { value: v2.std.host_run.HostLogicalRun { stdout: stdout }, diagnostics: v2.std.diagnostic.None } =>
                   native_only_stdout_matches(stdout: stdout, expected_octet: expected_octet)
                 _ => false
               }
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

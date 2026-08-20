@@ -163,7 +163,7 @@ fn lean_admit_fixed_width_overflow_semantics(
         observed: semantics,
         reason: ^lean_overflow_refuse_raises_not_fixed_width_catalog
       }
-    std.integer.OverflowUndefined =>
+    OverflowUndefined =>
       LeanOverflowRefused {
         observed: semantics,
         reason: ^lean_overflow_refuse_undefined_not_fixed_width_catalog
@@ -177,7 +177,7 @@ fn lean_overflow_semantics_arm_tag(
   match semantics {
     OverflowReturns { value_rule: _ } => ^lean_overflow_arm_returns
     OverflowRaises { effect: _ } => ^lean_overflow_arm_raises
-    std.integer.OverflowUndefined => ^lean_overflow_arm_undefined
+    OverflowUndefined => ^lean_overflow_arm_undefined
   }
 }
 
@@ -417,8 +417,8 @@ fn lean_integer_width_node(width: LeanIntegerWidth) -> v2.std.node.Node {
 
 fn lean_overflow_return_value_rule_node(rule: std.integer.OverflowReturnValueRule) -> v2.std.node.Node {
   match rule {
-    std.integer.ReturnWrapping => lean_inhabitant_atom(id: ^lean_tag_overflow_return_wrapping)
-    std.integer.ReturnSaturating => lean_inhabitant_atom(id: ^lean_tag_overflow_return_saturating)
+    ReturnWrapping => lean_inhabitant_atom(id: ^lean_tag_overflow_return_wrapping)
+    ReturnSaturating => lean_inhabitant_atom(id: ^lean_tag_overflow_return_saturating)
   }
 }
 
@@ -461,7 +461,7 @@ fn lean_overflow_semantics_node(
       ],
       occurrence_id: v2.std.node.SyntheticOccurrence
 }
-    std.integer.OverflowUndefined =>
+    OverflowUndefined =>
       lean_inhabitant_atom(id: ^lean_tag_overflow_undefined)
   }
 }
@@ -884,7 +884,7 @@ fn lean_scalar_algebra_inhabitance_optional(facts: LeanPrimitiveFacts) -> v2.std
 fn lean_inhabitance_decl_step(acc: List<v2.std.model_core.AlgebraInhabitanceDecl>, facts: LeanPrimitiveFacts) -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   match lean_scalar_algebra_inhabitance_optional(facts: facts) {
     Present { value: decl } => v2.std.algebra.list_snoc_item(xs: acc, item: decl)
-    v2.std.optional.Absent => acc
+    Absent => acc
   }
 }
 

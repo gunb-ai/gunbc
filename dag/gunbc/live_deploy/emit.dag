@@ -61,7 +61,7 @@ fn bash_intent_command_or_poison(intent: v2.std.node.Node) -> String {
   match v2.workflow.bash_command_fold_serialize.bash_fold_serialize_node(stmt: intent) {
     Accepted { value: source, diagnostics: d } =>
       match d {
-        v2.std.diagnostic.None => source
+        None => source
         Some { diagnostics: _ } => live_deploy_systemd_retirement_emit_refused_poison
       }
     Rejected { diagnostics: _ } => live_deploy_systemd_retirement_emit_refused_poison
@@ -101,7 +101,7 @@ fn emit_pipeline_or_poison(p: v2.std.orchestration.Pipeline, refused: String) ->
   match v2.compiler.emit_orchestration.orch_emit_pipeline(p: p, medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: d } =>
       match d {
-        v2.std.diagnostic.None => source.carried
+        None => source.carried
         Some { diagnostics: _ } => refused
       }
     Rejected { diagnostics: _ } => refused
@@ -125,7 +125,7 @@ data release_revision_not_installed_poison: String = "__GUNBC_DEPLOY_UNREACHABLE
 // today. What changes is that production no longer REACHES that arm by omission.
 fn eval_budget_flag_text(flag: String, limit: std.evaluation_budget.EvaluationLimit) -> String {
   match limit {
-    std.evaluation_budget.LimitUnset => ""
+    LimitUnset => ""
     LimitSet { limit: l } =>
       join([" ", flag, " ", to_string(std.measure.positive_millisecond_count(m: l))], "")
   }
@@ -469,7 +469,7 @@ data serve_binary_parent_was_a_literal_note: String = "THE BINARY PATH BECAME A 
 
 fn path_parent_dir(path: String) -> String {
   match v2.std.algebra.list_tail(xs: reverse(split(s: path, delimiter: "/"))) {
-    v2.std.algebra.TailAbsent => "/"
+    TailAbsent => "/"
     TailFound { tail: rest } => join(reverse(rest), "/")
   }
 }
@@ -535,7 +535,7 @@ data apply_tree_split_sync_note: String = "GunbcSourceTree apply is a SPLIT sync
 
 fn emit_artifact_upsert(art: gunbc.live_deploy.spec.DeploymentArtifactStep, spec: gunbc.live_deploy.spec.DeploymentSpec, revision: ReleaseRevisionBinding) -> std.types.List<v2.std.orchestration.PipelineStep> {
   match art.kind {
-    gunbc.live_deploy.spec.GunbcSourceTree => [
+    GunbcSourceTree => [
       deploy_raw(command: "sudo -n install -d -m 0755 /opt/gunbc"),
       deploy_raw(command: install_d_owned_command(spec: spec, path: art.path as String)),
       deploy_raw(command: "printf 'GUNBC_TREE_SRC=%s\\n' \"$PWD\" > \"$_gunbc_stage/gunbc-tree-sync.env\""),
@@ -545,7 +545,7 @@ fn emit_artifact_upsert(art: gunbc.live_deploy.spec.DeploymentArtifactStep, spec
       deploy_raw(command: gunbc.live_deploy.operations.systemctl_daemon_reload_command(privileged: true)),
       tree_sync_restart_step_with_diagnosis(spec: spec),
     ]
-    gunbc.live_deploy.spec.ServeBinary => [
+    ServeBinary => [
       deploy_raw(command: concat(
         "sudo -n install -d -m 0755 ",
         path_parent_dir(path: art.path as String),
@@ -556,15 +556,15 @@ fn emit_artifact_upsert(art: gunbc.live_deploy.spec.DeploymentArtifactStep, spec
         " target/release/gunbc ", art.path as String,
       ], "")),
     ]
-    gunbc.live_deploy.spec.DispatchWorktreeRoot => [
+    DispatchWorktreeRoot => [
       deploy_raw(command: install_d_owned_command(spec: spec, path: art.path as String)),
     ]
-    gunbc.live_deploy.spec.AttemptStateRoot => [
+    AttemptStateRoot => [
       deploy_raw(command: install_d_managed_command(
         dir: gunbc.managed_directory.attempt_state_directory_at(path: art.path as String as std.types.FilePath),
       )),
     ]
-    gunbc.live_deploy.spec.SystemdUnit => [
+    SystemdUnit => [
       apply_systemd_unit_write_step(spec: spec, revision: revision),
       deploy_raw(command: join([
         "sudo -n install -m 0644 \"$_gunbc_stage/", spec.service.unit_name as String, "\" ",
@@ -593,10 +593,10 @@ fn emit_artifact_upsert(art: gunbc.live_deploy.spec.DeploymentArtifactStep, spec
       deploy_raw(command: gunbc.live_deploy.operations.systemctl_enable_command(unit: gunbc.live_deploy.spec.deployment_belt_timer_unit_name(names: spec.names), privileged: true)),
       deploy_raw(command: gunbc.live_deploy.operations.systemctl_restart_command(unit: gunbc.live_deploy.spec.deployment_belt_timer_unit_name(names: spec.names), privileged: true)),
     ]
-    gunbc.live_deploy.spec.FleetConvergeTimerUnit => [
+    FleetConvergeTimerUnit => [
       deploy_raw(command: "__GUNBC_FLEET_CONVERGE_REFUSED__ FleetConvergeTimerUnit retired from deployment membership — timer cadence is on-demand via fleet-converge.yml plan/apply, not live_deploy apply (sleek-heron-218)"),
     ]
-    gunbc.live_deploy.spec.TailscaleServeMapping => [
+    TailscaleServeMapping => [
       tailscale_serve_apply_step(spec: spec),
     ]
     DeployedTreeRemoteUnit => [
@@ -618,17 +618,17 @@ data teardown_worktree_rmdir_note: String = "DispatchWorktreeRoot teardown is rm
 
 fn emit_artifact_teardown(art: gunbc.live_deploy.spec.DeploymentArtifactStep, spec: gunbc.live_deploy.spec.DeploymentSpec) -> std.types.List<v2.std.orchestration.PipelineStep> {
   match art.kind {
-    gunbc.live_deploy.spec.TailscaleServeMapping => [
+    TailscaleServeMapping => [
       tailscale_serve_teardown_step(spec: spec),
     ]
-    gunbc.live_deploy.spec.SystemdUnit => concat(
+    SystemdUnit => concat(
       systemctl_disable_now_if_present_steps(unit: spec.service.unit_name, privileged: true),
       [
         deploy_raw(command: concat("sudo -n rm -f ", art.path as String)),
         deploy_raw(command: gunbc.live_deploy.operations.systemctl_daemon_reload_command(privileged: true)),
       ]
     )
-    gunbc.live_deploy.spec.BeltTimerUnit => concat(
+    BeltTimerUnit => concat(
       systemctl_disable_now_if_present_steps(unit: gunbc.live_deploy.spec.deployment_belt_timer_unit_name(names: spec.names), privileged: true),
       [
         deploy_raw(command: join([
@@ -637,7 +637,7 @@ fn emit_artifact_teardown(art: gunbc.live_deploy.spec.DeploymentArtifactStep, sp
         deploy_raw(command: gunbc.live_deploy.operations.systemctl_daemon_reload_command(privileged: true)),
       ]
     )
-    gunbc.live_deploy.spec.FleetConvergeTimerUnit => concat(
+    FleetConvergeTimerUnit => concat(
       systemctl_disable_now_if_present_steps(unit: gunbc.live_deploy.spec.deployment_fleet_converge_timer_unit_name(names: spec.names), privileged: true),
       [
         deploy_raw(command: join([
@@ -656,13 +656,13 @@ fn emit_artifact_teardown(art: gunbc.live_deploy.spec.DeploymentArtifactStep, sp
     DispatchWorktreeRoot => [
       deploy_raw(command: concat("sudo -n rm -d ", art.path as String)),
     ]
-    gunbc.live_deploy.spec.AttemptStateRoot => [
+    AttemptStateRoot => [
       deploy_raw(command: concat("sudo -n rm -d ", art.path as String)),
     ]
-    gunbc.live_deploy.spec.ServeBinary => [
+    ServeBinary => [
       deploy_raw(command: concat("sudo -n rm -f ", art.path as String)),
     ]
-    gunbc.live_deploy.spec.GunbcSourceTree => [
+    GunbcSourceTree => [
       deploy_raw(command: concat("sudo -n rm -f ", concat(gunbc.live_deploy.spec.tree_sync_unit_path(names: spec.names) as String, concat(" ", spec.names.tree_sync_env_path as String)))),
       deploy_raw(command: gunbc.live_deploy.operations.systemctl_daemon_reload_command(privileged: true)),
       deploy_raw(command: concat("sudo -n rm -rf ", art.path as String)),

@@ -1014,7 +1014,7 @@ fn rust_signature_one_param_tokens(edge: v2.std.node.Edge) -> v2.std.diagnostic.
           )
         }
       )
-    v2.std.node.Positional =>
+    Positional =>
       v2.std.diagnostic.outcome_rejected(
         d: rust_signature_diagnostic(reason: ^rust_signature_param_unnamed, node: edge.target)
       )
@@ -1023,7 +1023,7 @@ fn rust_signature_one_param_tokens(edge: v2.std.node.Edge) -> v2.std.diagnostic.
 
 fn rust_signature_params_tail_tokens(params: std.algebra.FreeMonoid<v2.std.node.Edge>) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match params {
-    std.algebra.Empty => v2.std.diagnostic.outcome_accepted(value: std.algebra.Empty)
+    Empty => v2.std.diagnostic.outcome_accepted(value: std.algebra.Empty)
     Cons { head: e, tail: rest } =>
       v2.std.diagnostic.bind_outcome(
         o: rust_signature_one_param_tokens(edge: e),
@@ -1049,7 +1049,7 @@ fn rust_signature_params_tail_tokens(params: std.algebra.FreeMonoid<v2.std.node.
 
 fn rust_signature_params_tokens(params: std.algebra.FreeMonoid<v2.std.node.Edge>) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match params {
-    std.algebra.Empty => v2.std.diagnostic.outcome_accepted(value: std.algebra.Empty)
+    Empty => v2.std.diagnostic.outcome_accepted(value: std.algebra.Empty)
     Cons { head: e, tail: rest } =>
       v2.std.diagnostic.bind_outcome(
         o: rust_signature_one_param_tokens(edge: e),
@@ -1110,12 +1110,12 @@ fn rust_signature_from_name_and_arrow(fn_name: v2.std.node.Symbol, arrow: v2.std
               )
             }
           )
-        v2.std.optional.Absent =>
+        Absent =>
           v2.std.diagnostic.outcome_rejected(
             d: rust_signature_diagnostic(reason: ^rust_signature_codomain_missing, node: arrow)
           )
       }
-    v2.std.optional.Absent =>
+    Absent =>
       v2.std.diagnostic.outcome_rejected(
         d: rust_signature_diagnostic(reason: ^rust_signature_domain_missing, node: arrow)
       )
@@ -1130,12 +1130,12 @@ fn rust_signature_with_open_from_decl(decl: v2.std.node.Node) -> v2.std.diagnost
           match decl_edge.label {
             Named { name: fn_name } =>
               rust_signature_from_name_and_arrow(fn_name: fn_name, arrow: decl_edge.target)
-            v2.std.node.Positional =>
+            Positional =>
               v2.std.diagnostic.outcome_rejected(
                 d: rust_signature_diagnostic(reason: ^rust_signature_decl_unnamed, node: decl)
               )
           }
-        v2.std.optional.Absent =>
+        Absent =>
           v2.std.diagnostic.outcome_rejected(
             d: rust_signature_diagnostic(reason: ^rust_signature_decl_empty, node: decl)
           )
@@ -4576,7 +4576,7 @@ fn rust_sg2_emitted_without_named_edge(base: v2.std.node.Node, field: v2.std.nod
           } else {
             v2.std.algebra.list_snoc_item(xs: acc, item: e)
           }
-        v2.std.node.Positional => v2.std.algebra.list_snoc_item(xs: acc, item: e)
+        Positional => v2.std.algebra.list_snoc_item(xs: acc, item: e)
       }
     }),
     occurrence_id: v2.std.node.SyntheticOccurrence
@@ -4670,7 +4670,7 @@ fn rust_sg2_malformed_atom_zero_positional_emitted() -> v2.std.node.Node {
     kind: base.kind,
     children: fold(base.children, init: std.algebra.Empty, f: fn(acc, e) {
       match e.label {
-        v2.std.node.Positional => acc
+        Positional => acc
         _ => v2.std.algebra.list_snoc_item(xs: acc, item: e)
       }
     }),

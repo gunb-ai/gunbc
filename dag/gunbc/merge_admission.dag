@@ -53,14 +53,14 @@ data gate_content_hash_variant_tag_scaffold: std.disposition.Disposition = std.d
 
 fn gate_content_hash_structural(g: gunbc.ci_gate.Gate) -> std.content_hash.Fnv1a64Structural {
   match g {
-    gunbc.ci_gate.EmitHostGate => std.content_hash.content_hash_atom(value: "EmitHostGate")
-    gunbc.ci_gate.CheapClaimPoolGate => std.content_hash.content_hash_atom(value: "CheapClaimPoolGate")
-    gunbc.ci_gate.ExtdepsExternalAuthorityGate => std.content_hash.content_hash_atom(value: "ExtdepsExternalAuthorityGate")
-    gunbc.ci_gate.DagCompileCleanGate => std.content_hash.content_hash_atom(value: "DagCompileCleanGate")
-    gunbc.ci_gate.GeneratedArtifactDriftGate => std.content_hash.content_hash_atom(value: "GeneratedArtifactDriftGate")
-    gunbc.ci_gate.ExtdepsScopePlacementGate => std.content_hash.content_hash_atom(value: "ExtdepsScopePlacementGate")
-    gunbc.ci_gate.ProseRowIntroductionGate => std.content_hash.content_hash_atom(value: "ProseRowIntroductionGate")
-    gunbc.ci_gate.SourceRootIngestGate => std.content_hash.content_hash_atom(value: "SourceRootIngestGate")
+    EmitHostGate => std.content_hash.content_hash_atom(value: "EmitHostGate")
+    CheapClaimPoolGate => std.content_hash.content_hash_atom(value: "CheapClaimPoolGate")
+    ExtdepsExternalAuthorityGate => std.content_hash.content_hash_atom(value: "ExtdepsExternalAuthorityGate")
+    DagCompileCleanGate => std.content_hash.content_hash_atom(value: "DagCompileCleanGate")
+    GeneratedArtifactDriftGate => std.content_hash.content_hash_atom(value: "GeneratedArtifactDriftGate")
+    ExtdepsScopePlacementGate => std.content_hash.content_hash_atom(value: "ExtdepsScopePlacementGate")
+    ProseRowIntroductionGate => std.content_hash.content_hash_atom(value: "ProseRowIntroductionGate")
+    SourceRootIngestGate => std.content_hash.content_hash_atom(value: "SourceRootIngestGate")
   }
 }
 
@@ -80,9 +80,9 @@ fn witness_fn_list_hash(fns: List<String>) -> std.content_hash.ContentHash {
 
 fn witness_kind_content_hash_structural(kind: std.realization_schedule.WitnessKind) -> std.content_hash.Fnv1a64Structural {
   match kind {
-    std.realization_schedule.CorpusWitnessKind => std.content_hash.content_hash_atom(value: "CorpusWitnessKind")
-    std.realization_schedule.ExecutionWitnessKind => std.content_hash.content_hash_atom(value: "ExecutionWitnessKind")
-    std.realization_schedule.NativeBundleWitnessKind => std.content_hash.content_hash_atom(value: "NativeBundleWitnessKind")
+    CorpusWitnessKind => std.content_hash.content_hash_atom(value: "CorpusWitnessKind")
+    ExecutionWitnessKind => std.content_hash.content_hash_atom(value: "ExecutionWitnessKind")
+    NativeBundleWitnessKind => std.content_hash.content_hash_atom(value: "NativeBundleWitnessKind")
   }
 }
 
@@ -103,14 +103,14 @@ fn witness_seam_content_hash(seam: std.realization_schedule.WitnessSeam) -> std.
 
 fn clock_basis_content_hash_structural(clock: std.measure.ClockBasis) -> std.content_hash.Fnv1a64Structural {
   match clock {
-    std.measure.WallClock => std.content_hash.content_hash_atom(value: "WallClock")
-    std.measure.CpuClock => std.content_hash.content_hash_atom(value: "CpuClock")
+    WallClock => std.content_hash.content_hash_atom(value: "WallClock")
+    CpuClock => std.content_hash.content_hash_atom(value: "CpuClock")
   }
 }
 
 fn witness_cost_basis_content_hash_structural(basis: std.realization_schedule.WitnessCostBasis) -> std.content_hash.Fnv1a64Structural {
   match basis {
-    std.realization_schedule.MeasuredAtExactSubject { clock, duration, receipt } =>
+    MeasuredAtExactSubject { clock, duration, receipt } =>
       std.content_hash.content_hash_combine_structural(
         left: std.content_hash.content_hash_combine_structural(
           left: clock_basis_content_hash_structural(clock: clock),
@@ -121,7 +121,7 @@ fn witness_cost_basis_content_hash_structural(basis: std.realization_schedule.Wi
         ),
         right: std.content_hash.content_hash_atom(value: concat("", std.measure.millisecond_count(m: duration)))
       )
-    std.realization_schedule.EstimatedFromSiblingClass { clock, source_witness, basis } =>
+    EstimatedFromSiblingClass { clock, source_witness, basis } =>
       std.content_hash.content_hash_combine_structural(
         left: std.content_hash.content_hash_combine_structural(
           left: clock_basis_content_hash_structural(clock: clock),
@@ -147,15 +147,15 @@ fn scheduled_witness_envelope_content_hash_structural(envelope: std.realization_
 
 fn witness_span_content_hash_structural(span: std.realization_schedule.WitnessSpan) -> std.content_hash.Fnv1a64Structural {
   match span {
-    std.realization_schedule.SpanUndeclared => std.content_hash.content_hash_atom(value: "SpanUndeclared")
-    std.realization_schedule.SpanSeams { seams } =>
+    SpanUndeclared => std.content_hash.content_hash_atom(value: "SpanUndeclared")
+    SpanSeams { seams } =>
       fold(seams, init: std.content_hash.content_hash_atom(value: "SpanSeams"), f: fn(acc, seam) {
         std.content_hash.content_hash_combine_structural(
           acc,
           witness_seam_content_hash_structural(seam: seam)
         )
       })
-    std.realization_schedule.SpanEnrolled { seams, cost_basis, envelope } =>
+    SpanEnrolled { seams, cost_basis, envelope } =>
       std.content_hash.content_hash_combine_structural(
         left: std.content_hash.content_hash_combine_structural(
           left: fold(seams, init: std.content_hash.content_hash_atom(value: "SpanEnrolled"), f: fn(acc, seam) {
@@ -177,9 +177,9 @@ fn witness_span_content_hash(span: std.realization_schedule.WitnessSpan) -> std.
 
 fn check_kind_content_hash_structural(check: gunbc.commit_workflow.CommitCheckKind) -> std.content_hash.Fnv1a64Structural {
   match check {
-    gunbc.commit_workflow.CommitSpecGate { gate: g } =>
+    CommitSpecGate { gate: g } =>
       std.content_hash.content_hash_tagged_structural(tag: "CommitSpecGate", payload: gate_content_hash_structural(g: g))
-    gunbc.commit_workflow.CommitWitnessClaim { entry, check_fns, kind, span } =>
+    CommitWitnessClaim { entry, check_fns, kind, span } =>
       std.content_hash.content_hash_combine_structural(
         left: std.content_hash.content_hash_combine_structural(
           left: std.content_hash.content_hash_tagged_structural(
@@ -193,7 +193,7 @@ fn check_kind_content_hash_structural(check: gunbc.commit_workflow.CommitCheckKi
           right: witness_span_content_hash_structural(span: span)
         )
       )
-    gunbc.commit_workflow.CommitCargoFmtCheck =>
+    CommitCargoFmtCheck =>
       std.content_hash.content_hash_atom(value: "CommitCargoFmtCheck")
   }
 }
@@ -543,14 +543,14 @@ data merge_admission_enforcement_policy: AdmissionPolicy = KeyedReceipt
 
 fn check_conclusion_admits_merge_admission_floor(c: extdeps.github.checks.CheckConclusion) -> Bool {
   match c {
-    extdeps.github.checks.Success => true
-    extdeps.github.checks.Skipped => false
-    extdeps.github.checks.ActionRequired => false
-    extdeps.github.checks.Cancelled => false
-    extdeps.github.checks.Failure => false
-    extdeps.github.checks.Neutral => false
-    extdeps.github.checks.Stale => false
-    extdeps.github.checks.TimedOut => false
+    Success => true
+    Skipped => false
+    ActionRequired => false
+    Cancelled => false
+    Failure => false
+    Neutral => false
+    Stale => false
+    TimedOut => false
   }
 }
 

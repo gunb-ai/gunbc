@@ -12,15 +12,15 @@ test fn medium_node_carried_is_expected() -> Bool {
 
 test fn medium_node_fidelity_is_lossless() -> Bool {
   match medium_node_lossless().fidelity {
-    extdeps.communication.medium.Lossless => true
-    extdeps.communication.medium.Lossy => false
+    Lossless => true
+    Lossy => false
   }
 }
 
 test fn medium_node_lossy_tag_not_lossless() -> Bool {
   match (extdeps.communication.medium.Medium { carried: v2_eval_bool_literal_pin, fidelity: extdeps.communication.medium.Lossy }).fidelity {
-    extdeps.communication.medium.Lossless => false
-    extdeps.communication.medium.Lossy => true
+    Lossless => false
+    Lossy => true
   }
 }
 

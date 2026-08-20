@@ -1,21 +1,19 @@
 module extdeps.realization.eval_memo
 
-
-
 data eval_memo_note: String = "The eval-frame memo: the ladder's single-site discharge provider, realized in the seed interpreter (v1_interpreter.rs eval_pure_named_call / EvalCallMemo). Serves every repeated pure named-fn demand from its first evaluation within one InterpContext. SOUNDNESS IS CONSTRUCTION, NOT PROBABILITY: buckets by the demand-ledger key (fn identity x argument content identity) but serves ONLY after the stored call's argument names AND values verify equal (Value equality, the one equality authority) — a hash collision degrades to recompute, never to a wrong value. A memo hit still records the DEMAND in the ledger: plurality is the fact the receipt counts; the provider changes its cost, never its count (so the multi-site rewire worklist survives discharge intact). Release is ReleasedAtProviderScopeExit and the provider scope is the WITNESS FRAME (corrected 2026-07-10, same-day regression owned at confession grade: the first landing evicted at ctx lifetime while batch surfaces share one ctx across an entry's witnesses, so retained argument+result values were byte-unbounded by construction — measured single-witness plateau ~3.4GiB vs six-witness climb past ~20GiB to SIGKILL on a quiet host, eager-ram-612's A/B; batch surfaces now call eval_call_memo_frame_exit after each claim fn, counters cumulative). Cross-witness serving is an outer-frame promotion that must arrive as a conscious provider row with byte-bounded admission, never a default; the count cap (1M entries) is admission at the wrong unit and is slated to become a DECLARED byte cap consuming the single value-size authority (one fn beside Value; merry-owl-649's space-lens predictor binds to the same authority). Admission stops at the cap with the refusal COUNTED (memo_overflow), never silent. COUNTER INVARIANT (review-pinned 2026-07-10): a miss means the call was NOT served, so it evaluated — a cap-refused store attempt is still a miss; overflow is a subset of misses, and hits + misses equals the keyed Ok-resulting calls through the memo path, including under overflow (misses is NOT entries-stored). Default ON in every binary; GUNBC_EVAL_MEMO=0 is a diagnostic realization switch (recompute instead of serve, semantics identical) and the receipt discloses memo_hits/memo_misses so a disabled or ineffective memo is visible, never assumed working. The switch is PER-CTX (read at InterpContext construction; set_eval_call_memo_enabled), because a covering provider at an outer frame legitimately quiets an inner provider's hit counters: an inner door's by-execution receipt suite (the parse-table MemoTier amortization tests) pins this provider off on its own ctxs so pass-2 demands re-execute and the door's counters keep discriminating — provider-attribution receipts select their realization explicitly, they do not race a process latch. MEASURED (2026-07-10, artifact-regen workload): single-site duplicated keys 7285 -> 505 (93.1 percent discharged), wasted_ms 586 -> 57, misses == distinct keys (every distinct computation evaluated exactly once), regenerated artifacts byte-identical with the memo on and off — the purity oracle by execution."
 
 data eval_memo_seed_handler_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: RealizationDispatch,
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "std.materialization_ladder",
     decl_name: "materialization_ladder",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/realization"
   }
 }
@@ -25,43 +23,43 @@ data eval_memo_id: std.cache_identity.CacheInterfaceId = "eval_call_memo_cache"
 data eval_memo_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = {
   identity: eval_memo_id
   backing_surface: "gunbc-eval-call-in-process"
-  transport_encoding: CatalogCasContentEncoding
+  transport_encoding: extdeps.cache.types.CatalogCasContentEncoding
   key_derivation: {
 
-    key_inputs: ContentAddressed
+    key_inputs: extdeps.cache.types.ContentAddressed
     overwritable: true
     prefix_fallback_allowed: false
     content_verified_on_read: true
-    visibility_scope: Repo
-    invalidation_triggers: [ManualPurge]
+    visibility_scope: std.cache_interface.Repo
+    invalidation_triggers: [std.cache_interface.ManualPurge]
   }
   io: {
-    lookup_semantics: ContentAddressLookup
-    write_semantics: OverwriteAllowed
-    miss_semantics: MissThenCreate
+    lookup_semantics: std.cache_interface.ContentAddressLookup
+    write_semantics: std.cache_interface.OverwriteAllowed
+    miss_semantics: std.cache_interface.MissThenCreate
   }
   placement: {
-    value_shape: StructuredArtifact
-    locality: InProcess
-    retention: { release_policy: ReleasedAtProviderScopeExit, capacity: std.cache_interface.CapacityBounded { limit: std.cache_interface.EntryCountCapacity { limit: std.cache_interface.ExactLimit { value: 1000000 } }, at_capacity: RefuseNewStore } }
-    atomicity: PerFile
+    value_shape: std.cache_interface.StructuredArtifact
+    locality: std.cache_interface.InProcess
+    retention: { release_policy: std.cache_interface.ReleasedAtProviderScopeExit, capacity: std.cache_interface.CapacityBounded { limit: std.cache_interface.EntryCountCapacity { limit: std.cache_interface.ExactLimit { value: 1000000 } }, at_capacity: std.cache_interface.RefuseNewStore } }
+    atomicity: std.cache_interface.PerFile
     auth: std.cache_interface.None
-    read_latency: InProcessNs
-    consistency: Strong
+    read_latency: std.cache_interface.InProcessNs
+    consistency: std.cache_interface.Strong
   }
   evidence: [
     {
       field: "locality"
       evidence: std.cache_interface.OperatorObserved {
         note: "scoped to InterpContext for the resolve-side share, but EVICTED at the witness frame (eval_call_memo_frame_exit after each claim fn on batch surfaces — ctx-lifetime retention across witnesses was the 2026-07-10 20GiB-class regression); entry-cap refusals counted as memo_overflow in the floor materialization receipt"
-        observed_at: 0
+        observed_at: v2.std.optional.Absent
       }
     },
     {
       field: "key_derivation"
       evidence: std.cache_interface.OperatorObserved {
         note: "EvalRecomputeKey = fn identity x per-argument identity (scalars exact; composites recursive content hash, allocation-memoized with Weak liveness); content_verified_on_read is TRUE structurally: a hit serves only after stored argument names and values verify equal via Value equality, so a collision recomputes rather than lies"
-        observed_at: 0
+        observed_at: v2.std.optional.Absent
       }
     },
   ]

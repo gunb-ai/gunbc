@@ -18,9 +18,9 @@ test fn witness_zero_planned_population_refuses() -> Bool {
     planned_surfaces: 0,
     executed_surfaces: 0
   ) {
-    v2.workflow.required_regen.RequiredRegenSyncRefused { refusals } =>
+    RequiredRegenSyncRefused { refusals } =>
       refusals |> any(r => match r { v2.workflow.required_regen.EmptyCommittedPopulation => true _ => false })
-    v2.workflow.required_regen.RequiredRegenSyncRunnable { attempt: _ } => false
+    RequiredRegenSyncRunnable { attempt: _ } => false
   }
 }
 
@@ -32,9 +32,9 @@ test fn witness_zero_executed_population_refuses() -> Bool {
     planned_surfaces: 3,
     executed_surfaces: 0
   ) {
-    v2.workflow.required_regen.RequiredRegenSyncRefused { refusals } =>
+    RequiredRegenSyncRefused { refusals } =>
       refusals |> any(r => match r { v2.workflow.required_regen.EmptyEmitResult => true _ => false })
-    v2.workflow.required_regen.RequiredRegenSyncRunnable { attempt: _ } => false
+    RequiredRegenSyncRunnable { attempt: _ } => false
   }
 }
 
@@ -46,12 +46,12 @@ test fn witness_planned_executed_mismatch_refuses() -> Bool {
     planned_surfaces: 3,
     executed_surfaces: 2
   ) {
-    v2.workflow.required_regen.RequiredRegenSyncRefused { refusals } =>
+    RequiredRegenSyncRefused { refusals } =>
       refusals |> any(r => match r {
-        v2.workflow.required_regen.PlannedExecutedMismatch { planned: 3, executed: 2 } => true
+        PlannedExecutedMismatch { planned: 3, executed: 2 } => true
         _ => false
       })
-    v2.workflow.required_regen.RequiredRegenSyncRunnable { attempt: _ } => false
+    RequiredRegenSyncRunnable { attempt: _ } => false
   }
 }
 
@@ -63,9 +63,9 @@ test fn witness_nonempty_matching_population_admits() -> Bool {
     planned_surfaces: 1,
     executed_surfaces: 1
   ) {
-    v2.workflow.required_regen.RequiredRegenSyncRunnable { attempt: attempt } =>
+    RequiredRegenSyncRunnable { attempt: attempt } =>
       attempt.authority_digest == "fnv1a64:deadbeefdeadbeef"
-    v2.workflow.required_regen.RequiredRegenSyncRefused { refusals: _ } => false
+    RequiredRegenSyncRefused { refusals: _ } => false
   }
 }
 

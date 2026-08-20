@@ -60,12 +60,12 @@ test fn ubicloud_and_blacksmith_publish_three_gb_per_arm_vcpu() -> Bool {
           RatioNotUniformAcrossSizes { first_per_vcpu, divergent_label, divergent_per_vcpu } => false
           NonIntegralRatioInSizes { label } => false
           UnitLabelNotUniformAcrossSizes { first_label, divergent_label } => false
-          gunbc.runner_shape_census.NoShapesForProviderArchitecture => false
+          NoShapesForProviderArchitecture => false
         }
     RatioNotUniformAcrossSizes { first_per_vcpu, divergent_label, divergent_per_vcpu } => false
     NonIntegralRatioInSizes { label } => false
     UnitLabelNotUniformAcrossSizes { first_label, divergent_label } => false
-    gunbc.runner_shape_census.NoShapesForProviderArchitecture => false
+    NoShapesForProviderArchitecture => false
   }
 }
 
@@ -80,7 +80,7 @@ test fn depot_publishes_four_gb_per_arm_vcpu() -> Bool {
     RatioNotUniformAcrossSizes { first_per_vcpu, divergent_label, divergent_per_vcpu } => false
     NonIntegralRatioInSizes { label } => false
     UnitLabelNotUniformAcrossSizes { first_label, divergent_label } => false
-    gunbc.runner_shape_census.NoShapesForProviderArchitecture => false
+    NoShapesForProviderArchitecture => false
   }
 }
 
@@ -98,7 +98,7 @@ test fn a_provider_with_non_uniform_sizes_refuses_a_single_ratio() -> Bool {
     UnitLabelNotUniformAcrossSizes { first_label, divergent_label } => false
     RatioNotUniformAcrossSizes { first_per_vcpu, divergent_label, divergent_per_vcpu } => true
     UniformMemoryPerVcpu { per_vcpu, sizes_agreeing } => false
-    gunbc.runner_shape_census.NoShapesForProviderArchitecture => false
+    NoShapesForProviderArchitecture => false
   }
 }
 
@@ -114,7 +114,7 @@ test fn circleci_x86_docker_is_two_gb_per_vcpu() -> Bool {
     RatioNotUniformAcrossSizes { first_per_vcpu, divergent_label, divergent_per_vcpu } => false
     NonIntegralRatioInSizes { label } => false
     UnitLabelNotUniformAcrossSizes { first_label, divergent_label } => false
-    gunbc.runner_shape_census.NoShapesForProviderArchitecture => false
+    NoShapesForProviderArchitecture => false
   }
 }
 
@@ -132,14 +132,14 @@ test fn only_ubicloud_states_a_dedicated_core_entitlement() -> Bool {
   )
   count(ubicloud_arm) != 0
     && all(ubicloud_arm, r => match r.entitlement {
-      extdeps.ci_runner.types.DedicatedPhysicalCore => true
+      DedicatedPhysicalCore => true
       SmtSharedVcpu { threads_per_core } => false
-      extdeps.ci_runner.types.EntitlementUnstated => false
+      EntitlementUnstated => false
     })
     && count(blacksmith_arm) != 0
     && all(blacksmith_arm, r => match r.entitlement {
-      extdeps.ci_runner.types.EntitlementUnstated => true
-      extdeps.ci_runner.types.DedicatedPhysicalCore => false
+      EntitlementUnstated => true
+      DedicatedPhysicalCore => false
       SmtSharedVcpu { threads_per_core } => false
     })
 }
@@ -152,8 +152,8 @@ test fn ubicloud_x64_entitlement_is_an_smt_thread() -> Bool {
     filter(extdeps.ci_runner.types.runner_shape_rows(availability: extdeps.cloud.ubicloud.ubicloud_runner_catalog_shapes), r => r.architecture == extdeps.toolchain.types.X86_64),
     r => match r.entitlement {
       SmtSharedVcpu { threads_per_core } => threads_per_core == 2
-      extdeps.ci_runner.types.DedicatedPhysicalCore => false
-      extdeps.ci_runner.types.EntitlementUnstated => false
+      DedicatedPhysicalCore => false
+      EntitlementUnstated => false
     },
   )
 }
@@ -848,7 +848,7 @@ test fn the_same_quoted_figure_differs_under_a_binary_basis() -> Bool {
   ) {
     EntitlementBytesDeclared { bytes } =>
       std.measure.byte_size_count(b: bytes) == 3 * 1073741824 && std.measure.byte_size_count(b: bytes) != 3 * gb
-    gunbc.memory_provisioning.EntitlementBytesBasisUndeclared => false
+    EntitlementBytesBasisUndeclared => false
   }
 }
 
@@ -1064,7 +1064,7 @@ test fn a_mixed_unit_label_sample_refuses_a_ratio() -> Bool {
     UniformMemoryPerVcpu { per_vcpu, sizes_agreeing } => false
     RatioNotUniformAcrossSizes { first_per_vcpu, divergent_label, divergent_per_vcpu } => false
     NonIntegralRatioInSizes { label } => false
-    gunbc.runner_shape_census.NoShapesForProviderArchitecture => false
+    NoShapesForProviderArchitecture => false
   }
 }
 
@@ -1085,7 +1085,7 @@ test fn the_same_sample_in_one_unit_yields_a_ratio() -> Bool {
     UnitLabelNotUniformAcrossSizes { first_label, divergent_label } => false
     RatioNotUniformAcrossSizes { first_per_vcpu, divergent_label, divergent_per_vcpu } => false
     NonIntegralRatioInSizes { label } => false
-    gunbc.runner_shape_census.NoShapesForProviderArchitecture => false
+    NoShapesForProviderArchitecture => false
   }
 }
 

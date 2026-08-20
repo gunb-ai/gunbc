@@ -46,7 +46,7 @@ fn normalize_sugar_key_optional(folded: v2.std.node.Node) -> v2.std.compilers.su
       match v2.extdeps.languages.dag.parse_production_emitted_identity_optional(node: folded) {
         Present { value: id } =>
           v2.std.optional.optional_present(value: v2.std.compilers.sugar.ProductionIdentityKey { identity: id })
-        v2.std.optional.Absent => v2.std.optional.optional_absent()
+        Absent => v2.std.optional.optional_absent()
       }
     ComputationNode { behavior: _ } => v2.std.optional.optional_absent()
   }
@@ -68,10 +68,10 @@ fn normalize_sugar_finish(n: v2.std.node.Node, folded: v2.std.node.Node, cd: v2.
                 diagnostics: v2.std.diagnostic.diagnostics_merge(outer: cd, inner: d)
               }
           }
-        v2.std.optional.Absent =>
+        Absent =>
           v2.std.diagnostic.Accepted { value: folded, diagnostics: cd }
       }
-    v2.std.optional.Absent =>
+    Absent =>
       v2.std.diagnostic.Accepted { value: folded, diagnostics: cd }
   }
 }
@@ -120,7 +120,7 @@ fn normalize_node_ctx(n: v2.std.node.Node, under_fn_decl: Bool) -> v2.std.diagno
           )
         )
       }
-    v2.std.optional.Absent => normalize_node_fold_children_ctx(n: n, under_fn_decl: under_fn_decl)
+    Absent => normalize_node_fold_children_ctx(n: n, under_fn_decl: under_fn_decl)
   }
 }
 

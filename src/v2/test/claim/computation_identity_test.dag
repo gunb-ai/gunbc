@@ -23,7 +23,7 @@ test fn witness_unknown_cause_arms_construct() -> Bool {
 
 test fn witness_materialize_share_is_structural() -> Bool {
   match materialize_share_identity_grade() {
-    std.computation_identity.StructurallyIdentical => materialize_share_grade_permits_share()
+    StructurallyIdentical => materialize_share_grade_permits_share()
     NormalizedIdentical { normalizer: _ } => false
     ExtensionallyIdentical { bound: _ } => false
     IdentityUnknown { cause: _ } => false

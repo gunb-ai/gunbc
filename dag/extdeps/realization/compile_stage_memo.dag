@@ -1,10 +1,8 @@
 module extdeps.realization.compile_stage_memo
 
-
-
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/realization"
   }
 }
@@ -14,43 +12,43 @@ data compile_stage_memo_id: std.cache_identity.CacheInterfaceId = "compile_stage
 data compile_stage_memo_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = {
   identity: compile_stage_memo_id
   backing_surface: "gunbc-v2-compile-stage-in-process"
-  transport_encoding: CatalogCasContentEncoding
+  transport_encoding: extdeps.cache.types.CatalogCasContentEncoding
   key_derivation: {
 
-    key_inputs: ContentAddressed
+    key_inputs: extdeps.cache.types.ContentAddressed
     overwritable: true
     prefix_fallback_allowed: false
     content_verified_on_read: false
-    visibility_scope: Repo
-    invalidation_triggers: [ManualPurge]
+    visibility_scope: std.cache_interface.Repo
+    invalidation_triggers: [std.cache_interface.ManualPurge]
   }
   io: {
-    lookup_semantics: ContentAddressLookup
-    write_semantics: OverwriteAllowed
-    miss_semantics: MissThenCreate
+    lookup_semantics: std.cache_interface.ContentAddressLookup
+    write_semantics: std.cache_interface.OverwriteAllowed
+    miss_semantics: std.cache_interface.MissThenCreate
   }
   placement: {
-    value_shape: StructuredArtifact
-    locality: InProcess
-    retention: { release_policy: ReleasedAtProviderScopeExit, capacity: CapacityUnbounded }
-    atomicity: PerFile
+    value_shape: std.cache_interface.StructuredArtifact
+    locality: std.cache_interface.InProcess
+    retention: { release_policy: std.cache_interface.ReleasedAtProviderScopeExit, capacity: std.cache_interface.CapacityUnbounded }
+    atomicity: std.cache_interface.PerFile
     auth: std.cache_interface.None
-    read_latency: InProcessNs
-    consistency: Strong
+    read_latency: std.cache_interface.InProcessNs
+    consistency: std.cache_interface.Strong
   }
   evidence: [
     {
       field: "locality"
       evidence: std.cache_interface.OperatorObserved {
         note: "scoped to compile_ingest_staging pipeline; drops with the ingest walk — within-run stage memo (v2.std.staging.cached_stage)"
-        observed_at: 0
+        observed_at: v2.std.optional.Absent
       }
     },
     {
       field: "key_derivation"
       evidence: std.cache_interface.OperatorObserved {
         note: "stage input content-addressed at the cached_stage lookup site; miss runs the stage, hit skips recompute"
-        observed_at: 0
+        observed_at: v2.std.optional.Absent
       }
     },
   ]

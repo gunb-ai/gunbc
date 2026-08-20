@@ -101,7 +101,7 @@ fn gha_fold_flow_labels_emitted_from_list_suffix_witness(
         ),
         index: index + 1
       )
-    v2.std.optional.Absent => v2.std.witness.Holds { value: accumulated }
+    Absent => v2.std.witness.Holds { value: accumulated }
   }
 }
 
@@ -252,12 +252,12 @@ fn gha_fold_step_list_emitted_from_suffix_witness(
               )
             Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
           }
-        v2.std.optional.Absent =>
+        Absent =>
           v2.std.witness.Violates {
             diagnostic: gha_fold_unsupported_variant_diagnostic(variant: ^gha_fold_unsupported_step_kind)
           }
       }
-    v2.std.optional.Absent => v2.std.witness.Holds { value: accumulated }
+    Absent => v2.std.witness.Holds { value: accumulated }
   }
 }
 
@@ -279,7 +279,7 @@ fn gha_fold_step_list_emitted_witness(job: extdeps.github.actions.Job) -> v2.std
               )
             Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
           }
-        v2.std.optional.Absent =>
+        Absent =>
           v2.std.witness.Violates {
             diagnostic: gha_fold_unsupported_variant_diagnostic(variant: ^gha_fold_unsupported_step_kind)
           }

@@ -1,10 +1,8 @@
 module extdeps.realization.native_artifact_cache
 
-
-
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/realization"
   }
 }
@@ -16,50 +14,50 @@ data native_artifact_cache_id: std.cache_identity.CacheInterfaceId = "native_art
 data native_artifact_cache_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = {
   identity: native_artifact_cache_id
   backing_surface: "gunbc-native-artifact-per-runner-cache"
-  transport_encoding: CatalogCasContentEncoding
+  transport_encoding: extdeps.cache.types.CatalogCasContentEncoding
   key_derivation: {
 
-    key_inputs: ContentAddressed
+    key_inputs: extdeps.cache.types.ContentAddressed
     overwritable: false
     prefix_fallback_allowed: false
     content_verified_on_read: false
-    visibility_scope: Repo
-    invalidation_triggers: [ToolchainChange, ManualPurge]
+    visibility_scope: std.cache_interface.Repo
+    invalidation_triggers: [std.cache_interface.ToolchainChange, std.cache_interface.ManualPurge]
   }
   io: {
-    lookup_semantics: ContentAddressLookup
-    write_semantics: WriteOnce
-    miss_semantics: MissThenCreate
+    lookup_semantics: std.cache_interface.ContentAddressLookup
+    write_semantics: std.cache_interface.WriteOnce
+    miss_semantics: std.cache_interface.MissThenCreate
   }
   placement: {
-    value_shape: FileTree
-    locality: PerRunnerFilesystem
-    retention: { release_policy: ReleasedManually, capacity: CapacityUnobserved }
-    atomicity: WriteThenCommit
-    auth: FilesystemPerms
-    read_latency: LocalDiskUs
-    consistency: ReadYourWrites
+    value_shape: std.cache_interface.FileTree
+    locality: std.cache_interface.PerRunnerFilesystem
+    retention: { release_policy: std.cache_interface.ReleasedManually, capacity: std.cache_interface.CapacityUnobserved }
+    atomicity: std.cache_interface.WriteThenCommit
+    auth: std.cache_interface.FilesystemPerms
+    read_latency: std.cache_interface.LocalDiskUs
+    consistency: std.cache_interface.ReadYourWrites
   }
   evidence: [
     {
       field: "atomicity"
       evidence: std.cache_interface.OperatorObserved {
         note: ".native_ready marker written ONLY after a successful cold build+run (v1_interpreter emit_host_run_transport_cached_in_workspace) — the marker IS the commit record; a half-written workspace is never warm-served"
-        observed_at: 0
+        observed_at: v2.std.optional.Absent
       }
     },
     {
       field: "key_inputs"
       evidence: std.cache_interface.OperatorObserved {
         note: "effective workspace identity is emit_on_demand_key / artifact_realization_digest / resolved_build_context_identity. The input digest covers exact workspace paths+texts and structured build argv; the host boundary materializes those files at the input-realization root, then observes resolved build executable bytes/version, Cargo's selected rustc, the exact constructed subprocess environment, and discoverable Cargo configuration before consulting .native_ready. family_crate_dispatch_change_cold_rebuild_holds proves a target runtime-row change with an unchanged inferred tree selects a cold child; native_realization_toolchain_change_cold_rebuild_holds holds files+argv constant and changes only the resolved toolchain; native_realization_environment_change_cold_rebuild_holds holds toolchain and configuration constant and changes only the admitted environment"
-        observed_at: 0
+        observed_at: v2.std.optional.Absent
       }
     },
     {
       field: "content_verified_on_read"
       evidence: std.cache_interface.OperatorObserved {
         note: "warm path trusts the marker without re-hashing the workspace (no digest re-verification on read) — declared false; the falsifier cold control is the standing falsifier for a poisoned warm entry"
-        observed_at: 0
+        observed_at: v2.std.optional.Absent
       }
     },
   ]

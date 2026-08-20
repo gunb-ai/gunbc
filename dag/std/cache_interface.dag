@@ -1,7 +1,5 @@
 module std.cache_interface
 
-
-
 type StorageSurface = std.types.NonEmptyStr where brand("StorageSurface")
 
 type ValueShape = RawBytes | StructuredArtifact | TarArchive | FileTree
@@ -210,7 +208,7 @@ type KeyDerivationFacts {
 type CacheRowEvidence
   = VendorCitation { source: std.types.NonEmptyStr, url: std.types.NonEmptyStr }
   | RunnerObserved { receipt: std.types.NonEmptyStr, observed_at: std.types.LogicalTime }
-  | OperatorObserved { note: std.types.NonEmptyStr, observed_at: std.types.LogicalTime }
+  | OperatorObserved { note: std.types.NonEmptyStr, observed_at: Optional<std.types.LogicalTime> }
   | CiReceiptCitation { workflow_run_id: std.types.NonEmptyStr, step_id: std.types.NonEmptyStr }
 
 type CacheEvidence {
@@ -349,28 +347,28 @@ fn read_latency_rank(latency: ReadLatencyClass) -> Int {
   }
 }
 
-fn read_latency_cost(facts: CacheInterfaceFacts) -> std.verification.NanosecondDuration {
+fn read_latency_cost(facts: CacheInterfaceFacts) -> std.measure.Nanosecond {
   match facts.read_latency {
-    InProcessNs => nanosecond_duration(count: 1)
-    LocalDiskUs => nanosecond_duration(count: 1000)
-    LanMs => nanosecond_duration(count: 1000000)
-    WanTensMs => nanosecond_duration(count: 10000000)
+    InProcessNs => std.measure.nanosecond(count: 1)
+    LocalDiskUs => std.measure.nanosecond(count: 1000)
+    LanMs => std.measure.nanosecond(count: 1000000)
+    WanTensMs => std.measure.nanosecond(count: 10000000)
   }
 }
 
 type CacheReachCandidate {
   layer: std.cache_identity.CacheInterfaceId?
-  fetch_cost: std.verification.NanosecondDuration
-  recompute_saved: std.verification.NanosecondDuration
-  latency: std.verification.NanosecondDuration
+  fetch_cost: std.measure.Nanosecond
+  recompute_saved: std.measure.Nanosecond
+  latency: std.measure.Nanosecond
 }
 
 fn cache_reach_candidate_recompute() -> CacheReachCandidate {
   CacheReachCandidate {
     layer: none
-    fetch_cost: nanosecond_duration(count: 0)
-    recompute_saved: nanosecond_duration(count: 0)
-    latency: nanosecond_duration(count: 0)
+    fetch_cost: std.measure.nanosecond(count: 0)
+    recompute_saved: std.measure.nanosecond(count: 0)
+    latency: std.measure.nanosecond(count: 0)
   }
 }
 
@@ -391,26 +389,26 @@ fn cache_reach_candidate_probe(
 
 fn cache_reach_comparisons(a: CacheReachCandidate, b: CacheReachCandidate) -> List<std.pareto.AxisComparison> {
   [
-    axis_comparison_int(
-      goal: LowerIsBetter,
-      a: nanosecond_duration_count(d: a.fetch_cost),
-      b: nanosecond_duration_count(d: b.fetch_cost),
+    std.pareto.axis_comparison_int(
+      goal: std.pareto.LowerIsBetter,
+      a: std.measure.nanosecond_count(n: a.fetch_cost),
+      b: std.measure.nanosecond_count(n: b.fetch_cost),
     ),
-    axis_comparison_int(
-      goal: HigherIsBetter,
-      a: nanosecond_duration_count(d: a.recompute_saved),
-      b: nanosecond_duration_count(d: b.recompute_saved),
+    std.pareto.axis_comparison_int(
+      goal: std.pareto.HigherIsBetter,
+      a: std.measure.nanosecond_count(n: a.recompute_saved),
+      b: std.measure.nanosecond_count(n: b.recompute_saved),
     ),
-    axis_comparison_int(
-      goal: LowerIsBetter,
-      a: nanosecond_duration_count(d: a.latency),
-      b: nanosecond_duration_count(d: b.latency),
+    std.pareto.axis_comparison_int(
+      goal: std.pareto.LowerIsBetter,
+      a: std.measure.nanosecond_count(n: a.latency),
+      b: std.measure.nanosecond_count(n: b.latency),
     ),
   ]
 }
 
 fn cache_reach_dominates(a: CacheReachCandidate, b: CacheReachCandidate) -> std.pareto.DominanceVerdict {
-  dominance_of_comparisons(comparisons: cache_reach_comparisons(a: a, b: b))
+  std.pareto.dominance_of_comparisons(comparisons: cache_reach_comparisons(a: a, b: b))
 }
 
 fn cache_layer_cost_justified(
@@ -418,7 +416,7 @@ fn cache_layer_cost_justified(
   catalog: List<CacheInterfaceFacts>,
   recompute: std.realization_schedule.CostAccount<std.measure.Nano>,
 ) -> Bool {
-  nanosecond_duration_count(d: recompute.time) >= nanosecond_duration_count(d: read_latency_cost(facts: cache_facts_for_id(id: id, catalog: catalog)))
+  std.measure.nanosecond_count(n: recompute.time) >= std.measure.nanosecond_count(n: read_latency_cost(facts: cache_facts_for_id(id: id, catalog: catalog)))
 }
 
 fn cache_layer_beats_recompute_path(

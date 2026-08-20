@@ -1,19 +1,17 @@
 module extdeps.realization.parse_table_memo
 
-
-
 data parse_table_memo_seed_handler_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: RealizationDispatch,
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.compiler.materialization_carriers",
     decl_name: "materialization_allows_memo_store",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/realization"
   }
 }
@@ -23,43 +21,43 @@ data parse_table_memo_id: std.cache_identity.CacheInterfaceId = "parse_table_mem
 data parse_table_memo_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = {
   identity: parse_table_memo_id
   backing_surface: "gunbc-parse-table-in-process"
-  transport_encoding: CatalogCasContentEncoding
+  transport_encoding: extdeps.cache.types.CatalogCasContentEncoding
   key_derivation: {
 
-    key_inputs: ContentAddressed
+    key_inputs: extdeps.cache.types.ContentAddressed
     overwritable: true
     prefix_fallback_allowed: false
     content_verified_on_read: false
-    visibility_scope: Repo
-    invalidation_triggers: [ManualPurge]
+    visibility_scope: std.cache_interface.Repo
+    invalidation_triggers: [std.cache_interface.ManualPurge]
   }
   io: {
-    lookup_semantics: ContentAddressLookup
-    write_semantics: OverwriteAllowed
-    miss_semantics: MissThenCreate
+    lookup_semantics: std.cache_interface.ContentAddressLookup
+    write_semantics: std.cache_interface.OverwriteAllowed
+    miss_semantics: std.cache_interface.MissThenCreate
   }
   placement: {
-    value_shape: StructuredArtifact
-    locality: InProcess
-    retention: { release_policy: ReleasedAtProviderScopeExit, capacity: CapacityUnbounded }
-    atomicity: PerFile
+    value_shape: std.cache_interface.StructuredArtifact
+    locality: std.cache_interface.InProcess
+    retention: { release_policy: std.cache_interface.ReleasedAtProviderScopeExit, capacity: std.cache_interface.CapacityUnbounded }
+    atomicity: std.cache_interface.PerFile
     auth: std.cache_interface.None
-    read_latency: InProcessNs
-    consistency: Strong
+    read_latency: std.cache_interface.InProcessNs
+    consistency: std.cache_interface.Strong
   }
   evidence: [
     {
       field: "locality"
       evidence: std.cache_interface.OperatorObserved {
         note: "scoped to InterpContext; drops with evaluation — within-run memo (design-recompute-memoization §4.1)"
-        observed_at: 0
+        observed_at: v2.std.optional.Absent
       }
     },
     {
       field: "key_derivation"
       evidence: std.cache_interface.OperatorObserved {
         note: "ParseTableSubject = grammar_digest + token_stream_digest (full stream content-address incl. lexemes) + position + production"
-        observed_at: 0
+        observed_at: v2.std.optional.Absent
       }
     },
   ]

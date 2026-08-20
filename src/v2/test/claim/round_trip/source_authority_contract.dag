@@ -18,8 +18,8 @@ fn contract_target_advertises_declared_loss() -> Bool {
   match decode_fidelity_from_target(target: source_authority_contract_target_model) {
     Accepted { value: fidelity, diagnostics: _ } =>
       match fidelity {
-        extdeps.communication.medium.Lossy => true
-        extdeps.communication.medium.Lossless => false
+        Lossy => true
+        Lossless => false
       }
     Rejected { diagnostics: _ } => false
   }
@@ -32,8 +32,8 @@ fn contract_source_medium_matches_compose_up() -> Bool {
   ) {
     Accepted { value: medium, diagnostics: _ } =>
       match medium.fidelity {
-        extdeps.communication.medium.Lossy => medium.carried == dag_source_text
-        extdeps.communication.medium.Lossless => false
+        Lossy => medium.carried == dag_source_text
+        Lossless => false
       }
     Rejected { diagnostics: _ } => false
   }

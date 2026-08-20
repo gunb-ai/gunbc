@@ -27,10 +27,10 @@ test fn srv1_live_population_confirms_the_expectation() -> Bool {
     expectation: uniform_expectation(host: w_host_a, count: 8),
     observation: gunbc.fleet_physical_inventory.srv1_dimm_observation,
   ) {
-    product.installed_bom_reconcile.DimmPopulationConfirmed { host: _, stick_count: n } => n == 8
-    product.installed_bom_reconcile.DimmPopulationRefused { host: _, discrepancies: _, count: _ } => false
-    product.installed_bom_reconcile.DimmObservationHostMismatch { expectation_host: _, observation_host: _ } => false
-    product.installed_bom_reconcile.DimmPopulationUnconfirmed { host: _, cause: _ } => false
+    DimmPopulationConfirmed { host: _, stick_count: n } => n == 8
+    DimmPopulationRefused { host: _, discrepancies: _, count: _ } => false
+    DimmObservationHostMismatch { expectation_host: _, observation_host: _ } => false
+    DimmPopulationUnconfirmed { host: _, cause: _ } => false
   }
 }
 
@@ -48,30 +48,30 @@ test fn srv3_live_population_refuses_with_a_located_part_difference() -> Bool {
     },
     observation: gunbc.fleet_physical_inventory.srv3_dimm_observation,
   ) {
-    product.installed_bom_reconcile.DimmPopulationRefused { host: _, discrepancies, count } => {
+    DimmPopulationRefused { host: _, discrepancies, count } => {
       let one = discrepancies.length() == 1
       let counted = match count {
-        product.installed_bom_reconcile.DimmCountMatches { count: n } => n == 8
-        product.installed_bom_reconcile.DimmCountDiffers { expected: _, observed: _ } => false
+        DimmCountMatches { count: n } => n == 8
+        DimmCountDiffers { expected: _, observed: _ } => false
       }
       let located = match discrepancies.first() {
         Absent => false
         Present { value: d } =>
           d.expected_part == extdeps.memory.sk_hynix.hma82gr7afr4n_vk_catalog.part_number
             && match d.observed {
-              product.installed_bom_reconcile.ObservedDimmCataloged { catalog: c } => c.part_number == extdeps.memory.sk_hynix.hma82gr7afr8n_vk_catalog.part_number
-              product.installed_bom_reconcile.ObservedDimmUncataloged { part_number: _ } => false
+              ObservedDimmCataloged { catalog: c } => c.part_number == extdeps.memory.sk_hynix.hma82gr7afr8n_vk_catalog.part_number
+              ObservedDimmUncataloged { part_number: _ } => false
             }
             && match d.location {
-              product.installed_bom_reconcile.AtPopulationGrain => true
-              product.installed_bom_reconcile.AtSlot { locator: _ } => false
+              AtPopulationGrain => true
+              AtSlot { locator: _ } => false
             }
       }
       one && counted && located
     }
-    product.installed_bom_reconcile.DimmPopulationConfirmed { host: _, stick_count: _ } => false
-    product.installed_bom_reconcile.DimmObservationHostMismatch { expectation_host: _, observation_host: _ } => false
-    product.installed_bom_reconcile.DimmPopulationUnconfirmed { host: _, cause: _ } => false
+    DimmPopulationConfirmed { host: _, stick_count: _ } => false
+    DimmObservationHostMismatch { expectation_host: _, observation_host: _ } => false
+    DimmPopulationUnconfirmed { host: _, cause: _ } => false
   }
 }
 
@@ -90,31 +90,31 @@ test fn every_differing_slot_appears_in_the_report() -> Bool {
       ],
     },
   ) {
-    product.installed_bom_reconcile.DimmPopulationRefused { host: _, discrepancies, count } =>
+    DimmPopulationRefused { host: _, discrepancies, count } =>
       discrepancies.length() == 2
         && match count {
-          product.installed_bom_reconcile.DimmCountMatches { count: n } => n == 4
-          product.installed_bom_reconcile.DimmCountDiffers { expected: _, observed: _ } => false
+          DimmCountMatches { count: n } => n == 4
+          DimmCountDiffers { expected: _, observed: _ } => false
         }
         && match discrepancies.first() {
           Absent => false
           Present { value: d } =>
             match d.location {
-              product.installed_bom_reconcile.AtSlot { locator: l } => l == ("DIMM_B1" as product.installed_bom_reconcile.DimmSlotLocator)
-              product.installed_bom_reconcile.AtPopulationGrain => false
+              AtSlot { locator: l } => l == ("DIMM_B1" as product.installed_bom_reconcile.DimmSlotLocator)
+              AtPopulationGrain => false
             }
         }
         && match discrepancies.skip(n: 1).first() {
           Absent => false
           Present { value: d } =>
             match d.location {
-              product.installed_bom_reconcile.AtSlot { locator: l } => l == ("DIMM_F1" as product.installed_bom_reconcile.DimmSlotLocator)
-              product.installed_bom_reconcile.AtPopulationGrain => false
+              AtSlot { locator: l } => l == ("DIMM_F1" as product.installed_bom_reconcile.DimmSlotLocator)
+              AtPopulationGrain => false
             }
         }
-    product.installed_bom_reconcile.DimmPopulationConfirmed { host: _, stick_count: _ } => false
-    product.installed_bom_reconcile.DimmObservationHostMismatch { expectation_host: _, observation_host: _ } => false
-    product.installed_bom_reconcile.DimmPopulationUnconfirmed { host: _, cause: _ } => false
+    DimmPopulationConfirmed { host: _, stick_count: _ } => false
+    DimmObservationHostMismatch { expectation_host: _, observation_host: _ } => false
+    DimmPopulationUnconfirmed { host: _, cause: _ } => false
   }
 }
 
@@ -135,19 +135,19 @@ test fn an_uncataloged_observed_part_refuses() -> Bool {
       ],
     },
   ) {
-    product.installed_bom_reconcile.DimmPopulationRefused { host: _, discrepancies, count: _ } =>
+    DimmPopulationRefused { host: _, discrepancies, count: _ } =>
       discrepancies.length() == 1
         && match discrepancies.first() {
           Absent => false
           Present { value: d } =>
             match d.observed {
-              product.installed_bom_reconcile.ObservedDimmUncataloged { part_number: p } => p == "MTA36ASF8G72PZ-3G2R"
-              product.installed_bom_reconcile.ObservedDimmCataloged { catalog: _ } => false
+              ObservedDimmUncataloged { part_number: p } => p == "MTA36ASF8G72PZ-3G2R"
+              ObservedDimmCataloged { catalog: _ } => false
             }
         }
-    product.installed_bom_reconcile.DimmPopulationConfirmed { host: _, stick_count: _ } => false
-    product.installed_bom_reconcile.DimmObservationHostMismatch { expectation_host: _, observation_host: _ } => false
-    product.installed_bom_reconcile.DimmPopulationUnconfirmed { host: _, cause: _ } => false
+    DimmPopulationConfirmed { host: _, stick_count: _ } => false
+    DimmObservationHostMismatch { expectation_host: _, observation_host: _ } => false
+    DimmPopulationUnconfirmed { host: _, cause: _ } => false
   }
 }
 
@@ -162,15 +162,15 @@ test fn a_short_population_of_the_right_part_refuses_on_count_alone() -> Bool {
       rows: [extdeps.memory.types.MemoryPopulationRow { module: extdeps.memory.sk_hynix.hma82gr7afr4n_vk_catalog, stick_count: 6 }],
     },
   ) {
-    product.installed_bom_reconcile.DimmPopulationRefused { host: _, discrepancies, count } =>
+    DimmPopulationRefused { host: _, discrepancies, count } =>
       discrepancies.length() == 0
         && match count {
-          product.installed_bom_reconcile.DimmCountDiffers { expected: e, observed: o } => e == 8 && o == 6
-          product.installed_bom_reconcile.DimmCountMatches { count: _ } => false
+          DimmCountDiffers { expected: e, observed: o } => e == 8 && o == 6
+          DimmCountMatches { count: _ } => false
         }
-    product.installed_bom_reconcile.DimmPopulationConfirmed { host: _, stick_count: _ } => false
-    product.installed_bom_reconcile.DimmObservationHostMismatch { expectation_host: _, observation_host: _ } => false
-    product.installed_bom_reconcile.DimmPopulationUnconfirmed { host: _, cause: _ } => false
+    DimmPopulationConfirmed { host: _, stick_count: _ } => false
+    DimmObservationHostMismatch { expectation_host: _, observation_host: _ } => false
+    DimmPopulationUnconfirmed { host: _, cause: _ } => false
   }
 }
 
@@ -185,10 +185,10 @@ test fn an_observation_of_another_host_refuses() -> Bool {
       rows: [extdeps.memory.types.MemoryPopulationRow { module: extdeps.memory.sk_hynix.hma82gr7afr4n_vk_catalog, stick_count: 8 }],
     },
   ) {
-    product.installed_bom_reconcile.DimmObservationHostMismatch { expectation_host: e, observation_host: o } => e == w_host_a && o == w_host_b
-    product.installed_bom_reconcile.DimmPopulationConfirmed { host: _, stick_count: _ } => false
-    product.installed_bom_reconcile.DimmPopulationRefused { host: _, discrepancies: _, count: _ } => false
-    product.installed_bom_reconcile.DimmPopulationUnconfirmed { host: _, cause: _ } => false
+    DimmObservationHostMismatch { expectation_host: e, observation_host: o } => e == w_host_a && o == w_host_b
+    DimmPopulationConfirmed { host: _, stick_count: _ } => false
+    DimmPopulationRefused { host: _, discrepancies: _, count: _ } => false
+    DimmPopulationUnconfirmed { host: _, cause: _ } => false
   }
 }
 
@@ -204,10 +204,10 @@ test fn srv4_unobserved_reaches_neither_confirmed_nor_refused() -> Bool {
     },
     observation: gunbc.fleet_physical_inventory.srv4_dimm_observation,
   ) {
-    product.installed_bom_reconcile.DimmPopulationUnconfirmed { host: h, cause: _ } => h == ("srv4" as product.placement_supply.HostIdentity)
-    product.installed_bom_reconcile.DimmPopulationConfirmed { host: _, stick_count: _ } => false
-    product.installed_bom_reconcile.DimmPopulationRefused { host: _, discrepancies: _, count: _ } => false
-    product.installed_bom_reconcile.DimmObservationHostMismatch { expectation_host: _, observation_host: _ } => false
+    DimmPopulationUnconfirmed { host: h, cause: _ } => h == ("srv4" as product.placement_supply.HostIdentity)
+    DimmPopulationConfirmed { host: _, stick_count: _ } => false
+    DimmPopulationRefused { host: _, discrepancies: _, count: _ } => false
+    DimmObservationHostMismatch { expectation_host: _, observation_host: _ } => false
   }
 }
 
@@ -262,10 +262,10 @@ test fn an_observed_matching_processor_model_confirms() -> Bool {
     expectation: product.installed_bom_reconcile.HostProcessorExpectation { host: w_host_a, catalog: extdeps.cpu.ampere.altra_max_m12830_catalog },
     observation: product.installed_bom_reconcile.ProcessorModelObserved { host: w_host_a, model_number: "M128-30" },
   ) {
-    product.installed_bom_reconcile.ProcessorModelConfirmed { host: _, model_number: m } => m == "M128-30"
-    product.installed_bom_reconcile.ProcessorModelRefused { host: _, expected: _, observed: _ } => false
-    product.installed_bom_reconcile.ProcessorObservationHostMismatch { expectation_host: _, observation_host: _ } => false
-    product.installed_bom_reconcile.ProcessorModelUnconfirmed { host: _, cause: _ } => false
+    ProcessorModelConfirmed { host: _, model_number: m } => m == "M128-30"
+    ProcessorModelRefused { host: _, expected: _, observed: _ } => false
+    ProcessorObservationHostMismatch { expectation_host: _, observation_host: _ } => false
+    ProcessorModelUnconfirmed { host: _, cause: _ } => false
   }
 }
 
@@ -276,10 +276,10 @@ test fn an_observed_q64_30_refuses_against_the_m128_30_expectation() -> Bool {
     expectation: product.installed_bom_reconcile.HostProcessorExpectation { host: w_host_a, catalog: extdeps.cpu.ampere.altra_max_m12830_catalog },
     observation: product.installed_bom_reconcile.ProcessorModelObserved { host: w_host_a, model_number: extdeps.cpu.ampere.altra_q6430_catalog.model_number },
   ) {
-    product.installed_bom_reconcile.ProcessorModelRefused { host: _, expected: e, observed: o } => e == "M128-30" && o == "Q64-30"
-    product.installed_bom_reconcile.ProcessorModelConfirmed { host: _, model_number: _ } => false
-    product.installed_bom_reconcile.ProcessorObservationHostMismatch { expectation_host: _, observation_host: _ } => false
-    product.installed_bom_reconcile.ProcessorModelUnconfirmed { host: _, cause: _ } => false
+    ProcessorModelRefused { host: _, expected: e, observed: o } => e == "M128-30" && o == "Q64-30"
+    ProcessorModelConfirmed { host: _, model_number: _ } => false
+    ProcessorObservationHostMismatch { expectation_host: _, observation_host: _ } => false
+    ProcessorModelUnconfirmed { host: _, cause: _ } => false
   }
 }
 
@@ -288,10 +288,10 @@ test fn a_processor_observation_of_another_host_refuses() -> Bool {
     expectation: product.installed_bom_reconcile.HostProcessorExpectation { host: w_host_a, catalog: extdeps.cpu.ampere.altra_max_m12830_catalog },
     observation: product.installed_bom_reconcile.ProcessorModelObserved { host: w_host_b, model_number: "M128-30" },
   ) {
-    product.installed_bom_reconcile.ProcessorObservationHostMismatch { expectation_host: e, observation_host: o } => e == w_host_a && o == w_host_b
-    product.installed_bom_reconcile.ProcessorModelConfirmed { host: _, model_number: _ } => false
-    product.installed_bom_reconcile.ProcessorModelRefused { host: _, expected: _, observed: _ } => false
-    product.installed_bom_reconcile.ProcessorModelUnconfirmed { host: _, cause: _ } => false
+    ProcessorObservationHostMismatch { expectation_host: e, observation_host: o } => e == w_host_a && o == w_host_b
+    ProcessorModelConfirmed { host: _, model_number: _ } => false
+    ProcessorModelRefused { host: _, expected: _, observed: _ } => false
+    ProcessorModelUnconfirmed { host: _, cause: _ } => false
   }
 }
 
@@ -317,9 +317,9 @@ test fn the_dimm_lot_is_committed_with_an_unread_catalog_and_no_public_cost() ->
     Absent => false
   }
   let no_public_cost = match product.inventory.lot_landed_cost_reading(lot: gunbc.fleet_physical_inventory.dimm_lot_64gib_32x) {
-    product.inventory.LandedCostReadingUnsettled => true
-    product.inventory.LandedCostReadingMicros { micros: _ } => false
-    product.inventory.LandedCostReadingHeldPrivately => false
+    LandedCostReadingUnsettled => true
+    LandedCostReadingMicros { micros: _ } => false
+    LandedCostReadingHeldPrivately => false
   }
   let no_public_receipt = !product.inventory.lot_receipt_is_recorded(lot: gunbc.fleet_physical_inventory.dimm_lot_64gib_32x)
   quantity && unread && obligation && no_public_cost && no_public_receipt
@@ -330,8 +330,8 @@ test fn the_dimm_lot_is_committed_with_an_unread_catalog_and_no_public_cost() ->
 // the intent from being read as a holding.
 test fn the_dimm_lot_holds_all_thirty_two_sticks_awaiting_receipt() -> Bool {
   match product.inventory.derive_inventory_balance(lot: gunbc.fleet_physical_inventory.dimm_lot_64gib_32x, events: gunbc.fleet_physical_inventory.dimm_lot_64gib_32x_ledger) {
-    product.inventory.BalanceRefused { cause: _, event_ordinal: _, event_label: _ } => false
-    product.inventory.BalanceDerived { balance: b } =>
+    BalanceRefused { cause: _, event_ordinal: _, event_label: _ } => false
+    BalanceDerived { balance: b } =>
       b.acquired == 32 && b.received == 0 && b.available == 0 && b.reserved == 0 && b.installed == 0
   }
 }
@@ -349,21 +349,21 @@ test fn reserving_the_lot_before_receipt_is_refused_for_insufficient_available_s
       [product.inventory.QuantityReserved { lot: gunbc.fleet_physical_inventory.dimm_lot_64gib_32x_identity, quantity: 8, holder: "srv1" as std.types.NonEmptyStr }],
     ),
   ) {
-    product.inventory.BalanceDerived { balance: _ } => false
-    product.inventory.BalanceRefused { cause, event_ordinal: _, event_label: l } =>
+    BalanceDerived { balance: _ } => false
+    BalanceRefused { cause, event_ordinal: _, event_label: l } =>
       l == ("QuantityReserved" as std.types.NonEmptyStr)
         && match cause {
-          product.inventory.InsufficientStock { position: p, requested: q, held: h } =>
+          InsufficientStock { position: p, requested: q, held: h } =>
             product.inventory.stock_position_label(position: p) == product.inventory.stock_position_label(position: product.inventory.Available)
               && q == 8
               && h == 0
-          product.inventory.EventBeforeAcquisition => false
-          product.inventory.ZeroQuantityEvent => false
-          product.inventory.ReservationHolderUnknown { holder: _ } => false
-          product.inventory.ReservationOverRelease { holder: _, requested: _, held: _ } => false
-          product.inventory.EventLotMismatch => false
-          product.inventory.LotAlreadyAcquired => false
-          product.inventory.MoreAssetsThanUnits { assets: _, quantity: _ } => false
+          EventBeforeAcquisition => false
+          ZeroQuantityEvent => false
+          ReservationHolderUnknown { holder: _ } => false
+          ReservationOverRelease { holder: _, requested: _, held: _ } => false
+          EventLotMismatch => false
+          LotAlreadyAcquired => false
+          MoreAssetsThanUnits { assets: _, quantity: _ } => false
         }
   }
 }

@@ -5,37 +5,37 @@ type Independence = Independent | Dependent | Unknown
 
 fn independence_from_effect_shapes(left: std.effects.EffectShape<std.effects.KeySource>, right: std.effects.EffectShape<std.effects.KeySource>) -> Independence {
   match left {
-    std.effects.ReadEffect => match right {
-      std.effects.ReadEffect => Independent
+    ReadEffect => match right {
+      ReadEffect => Independent
       UpsertEffect { key_source: _ } => Unknown
       DeleteEffect { key_source: _ } => Unknown
       CreateEffect { cause: _ } => Unknown
-      std.effects.AppendEffect => Unknown
-      std.effects.ExecuteEffect => Unknown
+      AppendEffect => Unknown
+      ExecuteEffect => Unknown
     }
     UpsertEffect { key_source: lk } => match right {
-      std.effects.ReadEffect => Unknown
+      ReadEffect => Unknown
       UpsertEffect { key_source: rk } =>
         if key_source_eq(left: lk, right: rk) { Dependent } else { Independent }
       DeleteEffect { key_source: rk } =>
         if key_source_eq(left: lk, right: rk) { Dependent } else { Independent }
       CreateEffect { cause: _ } => Unknown
-      std.effects.AppendEffect => Unknown
-      std.effects.ExecuteEffect => Unknown
+      AppendEffect => Unknown
+      ExecuteEffect => Unknown
     }
     DeleteEffect { key_source: lk } => match right {
-      std.effects.ReadEffect => Unknown
+      ReadEffect => Unknown
       UpsertEffect { key_source: rk } =>
         if key_source_eq(left: lk, right: rk) { Dependent } else { Independent }
       DeleteEffect { key_source: rk } =>
         if key_source_eq(left: lk, right: rk) { Dependent } else { Independent }
       CreateEffect { cause: _ } => Unknown
-      std.effects.AppendEffect => Unknown
-      std.effects.ExecuteEffect => Unknown
+      AppendEffect => Unknown
+      ExecuteEffect => Unknown
     }
     CreateEffect { cause: _ } => Unknown
-    std.effects.AppendEffect => Unknown
-    std.effects.ExecuteEffect => Unknown
+    AppendEffect => Unknown
+    ExecuteEffect => Unknown
   }
 }
 

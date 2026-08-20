@@ -82,8 +82,8 @@ fn removal_admission<M>(existing: M, ownership_of: fn(M) -> gunbc.ownership.Owne
   match ownership_of(existing) {
     Present { value: own } =>
       match own {
-        gunbc.ownership.Owned => RemovalAdmitted
-        gunbc.ownership.Ensured => RemovalRefused { cause: MemberNotOwned }
+        Owned => RemovalAdmitted
+        Ensured => RemovalRefused { cause: MemberNotOwned }
       }
     Absent => RemovalRefused { cause: OwnershipUnknown }
   }

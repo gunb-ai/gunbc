@@ -4339,9 +4339,9 @@ fn target_operator_realization_catalog_lookup_step(
         canonical_op: canonical_op
       ) {
         match acc {
-          v2.std.passing_candidate_fold.NoPassingCandidate => v2.std.passing_candidate_fold.OnePassingCandidate { candidate: row_node }
+          NoPassingCandidate => v2.std.passing_candidate_fold.OnePassingCandidate { candidate: row_node }
           OnePassingCandidate { candidate: _ } => v2.std.passing_candidate_fold.ManyPassingCandidates
-          v2.std.passing_candidate_fold.ManyPassingCandidates => v2.std.passing_candidate_fold.ManyPassingCandidates
+          ManyPassingCandidates => v2.std.passing_candidate_fold.ManyPassingCandidates
         }
       } else {
         acc
@@ -4378,13 +4378,13 @@ fn target_operator_realization_catalog_lookup(
               }
             }
           ) {
-            v2.std.passing_candidate_fold.NoPassingCandidate =>
+            NoPassingCandidate =>
               outcome_rejected(
                 target_operator_realization_catalog_miss_diagnostic(catalog: catalog)
               )
             OnePassingCandidate { candidate: row_node } =>
               target_operator_realization_from_wire_row(row: row_node)
-            v2.std.passing_candidate_fold.ManyPassingCandidates =>
+            ManyPassingCandidates =>
               outcome_rejected(
                 target_operator_realization_catalog_ambiguous_diagnostic(catalog: catalog)
               )
@@ -7726,9 +7726,9 @@ fn target_atom_realization_lookup_step(
 ) -> v2.std.passing_candidate_fold.PassingCandidateFold<v2.std.node.Node> {
   if content_hash(n: row.source_carrier) == content_hash(n: source_carrier) {
     match acc {
-      v2.std.passing_candidate_fold.NoPassingCandidate => v2.std.passing_candidate_fold.OnePassingCandidate { candidate: row.source_carrier }
+      NoPassingCandidate => v2.std.passing_candidate_fold.OnePassingCandidate { candidate: row.source_carrier }
       OnePassingCandidate { candidate: _ } => v2.std.passing_candidate_fold.ManyPassingCandidates
-      v2.std.passing_candidate_fold.ManyPassingCandidates => v2.std.passing_candidate_fold.ManyPassingCandidates
+      ManyPassingCandidates => v2.std.passing_candidate_fold.ManyPassingCandidates
     }
   } else {
     acc
@@ -7779,7 +7779,7 @@ fn target_atom_realization_lookup_in_catalog(
       )
     }
   ) {
-    v2.std.passing_candidate_fold.NoPassingCandidate =>
+    NoPassingCandidate =>
       outcome_rejected(target_atom_realization_lookup_miss_diagnostic(source_carrier: source_carrier))
     OnePassingCandidate { candidate: _ } =>
       match target_atom_realization_lookup_extract_row(
@@ -7790,7 +7790,7 @@ fn target_atom_realization_lookup_in_catalog(
         Absent =>
           outcome_rejected(target_atom_realization_lookup_miss_diagnostic(source_carrier: source_carrier))
       }
-    v2.std.passing_candidate_fold.ManyPassingCandidates =>
+    ManyPassingCandidates =>
       outcome_rejected(target_atom_realization_lookup_ambiguous_diagnostic(source_carrier: source_carrier))
   }
 }
@@ -8053,9 +8053,9 @@ fn target_atom_realization_catalog_lookup_step(
     Accepted { value: row, diagnostics: _ } =>
       if content_hash(n: row.source_carrier) == content_hash(n: source_carrier) {
         match acc {
-          v2.std.passing_candidate_fold.NoPassingCandidate => v2.std.passing_candidate_fold.OnePassingCandidate { candidate: row_node }
+          NoPassingCandidate => v2.std.passing_candidate_fold.OnePassingCandidate { candidate: row_node }
           OnePassingCandidate { candidate: _ } => v2.std.passing_candidate_fold.ManyPassingCandidates
-          v2.std.passing_candidate_fold.ManyPassingCandidates => v2.std.passing_candidate_fold.ManyPassingCandidates
+          ManyPassingCandidates => v2.std.passing_candidate_fold.ManyPassingCandidates
         }
       } else {
         acc
@@ -8286,14 +8286,14 @@ fn target_atom_realization_lookup_in_catalog_node(
           )
         }
       ) {
-        v2.std.passing_candidate_fold.NoPassingCandidate =>
+        NoPassingCandidate =>
           outcome_rejected(target_atom_realization_lookup_miss_diagnostic(source_carrier: source_carrier))
         OnePassingCandidate { candidate: row_node } =>
           target_atom_realization_from_row_node(
             row_node: row_node,
             host_target_model: host_target_model
           )
-        v2.std.passing_candidate_fold.ManyPassingCandidates =>
+        ManyPassingCandidates =>
           outcome_rejected(target_atom_realization_lookup_ambiguous_diagnostic(source_carrier: source_carrier))
       }
     _ =>

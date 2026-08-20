@@ -49,9 +49,9 @@ fn add_arrow_eval_ordered_add_args(args: std.types.List<v2.std.runtime.RuntimeVa
           Present { value: right } =>
             add_arrow_eval_runtime_int_equals(value: left, n: 2)
               && add_arrow_eval_runtime_int_equals(value: right, n: 3)
-          v2.std.optional.Absent => false
+          Absent => false
         }
-      v2.std.optional.Absent => false
+      Absent => false
     }
   } else {
     false
@@ -82,7 +82,7 @@ fn add_arrow_eval_call_primitive(
 fn add_arrow_eval_choose_first_arm(node: v2.std.node.Node, _value: v2.std.runtime.RuntimeValue, _env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: node), index: 1) {
     Present { value: arm } => v2.std.diagnostic.outcome_accepted(value: extdeps.vendor.arm.arm)
-    v2.std.optional.Absent => v2.std.diagnostic.outcome_rejected(d: add_arrow_eval_runtime_diagnostic(n: node))
+    Absent => v2.std.diagnostic.outcome_rejected(d: add_arrow_eval_runtime_diagnostic(n: node))
   }
 }
 
@@ -131,10 +131,10 @@ fn add_arrow_eval_lazy_arm_branch_node() -> v2.std.node.Node {
               }
             ]
           }
-        v2.std.optional.Absent =>
+        Absent =>
           add_arrow_eval_atom(s: ^add_arrow_eval_lazy_arm_branch_miss)
       }
-    v2.std.optional.Absent =>
+    Absent =>
       add_arrow_eval_atom(s: ^add_arrow_eval_lazy_arm_branch_miss)
   }
 }
@@ -257,9 +257,9 @@ fn add_arrow_eval_add_call_optional(
               ]
             }
           }
-        v2.std.optional.Absent => v2.std.optional.Absent
+        Absent => v2.std.optional.Absent
       }
-    v2.std.optional.Absent => v2.std.optional.Absent
+    Absent => v2.std.optional.Absent
   }
 }
 
@@ -304,14 +304,14 @@ fn add_arrow_eval_inferred_run_tree(
           let root = add_arrow_eval_tree_root(call: call, expected: expected)
           v2.std.diagnostic.outcome_accepted(value: add_arrow_eval_admitted_tree(root: root))
         }
-        v2.std.optional.Absent =>
+        Absent =>
           v2.std.diagnostic.outcome_rejected(
             d: add_arrow_eval_runtime_diagnostic(
               n: add_arrow_eval_atom(s: ^add_arrow_eval_literal_miss)
             )
           )
       }
-    v2.std.optional.Absent =>
+    Absent =>
       v2.std.diagnostic.outcome_rejected(
         d: add_arrow_eval_runtime_diagnostic(
           n: add_arrow_eval_atom(s: ^add_arrow_eval_literal_miss)
@@ -371,14 +371,14 @@ fn add_arrow_eval_run(
               )
             }
           )
-        v2.std.optional.Absent =>
+        Absent =>
           v2.std.diagnostic.outcome_rejected(
             d: add_arrow_eval_runtime_diagnostic(
               n: add_arrow_eval_atom(s: ^add_arrow_eval_literal_miss)
             )
           )
       }
-    v2.std.optional.Absent =>
+    Absent =>
       v2.std.diagnostic.outcome_rejected(
         d: add_arrow_eval_runtime_diagnostic(
           n: add_arrow_eval_atom(s: ^add_arrow_eval_literal_miss)
@@ -481,9 +481,9 @@ fn add_arrow_excess_actual_call_optional(callee: v2.std.node.Node) -> v2.std.opt
               ]
             }
           }
-        v2.std.optional.Absent => v2.std.optional.Absent
+        Absent => v2.std.optional.Absent
       }
-    v2.std.optional.Absent => v2.std.optional.Absent
+    Absent => v2.std.optional.Absent
   }
 }
 
@@ -491,7 +491,7 @@ fn add_arrow_eval_run_passes(run: v2.std.diagnostic.Outcome<v2.compiler.eval.Tes
   match run {
     Accepted { value: r, diagnostics: _ } =>
       match v2.compiler.eval.test_claim_run_verdict(run: r) {
-        v2.std.verdict.Pass => true
+        Pass => true
         _ => false
       }
     Rejected { diagnostics: _ } => false
@@ -548,7 +548,7 @@ test fn add_arrow_eval_direct_runtime_holds() -> Bool {
               }
             Rejected { diagnostics: _ } => false
           }
-        v2.std.optional.Absent => false
+        Absent => false
       }
     Rejected { diagnostics: _ } => false
   }
@@ -660,7 +660,7 @@ fn add_arrow_excess_actual_executes_to_five() -> Bool {
               }
             Rejected { diagnostics: _ } => false
           }
-        v2.std.optional.Absent => false
+        Absent => false
       }
     Rejected { diagnostics: _ } => false
   }

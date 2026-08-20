@@ -82,7 +82,7 @@ fn capability_ensure_receipt(
     ], ""),
   )
   match decision {
-    std.upsert_decision.Noop =>
+    Noop =>
       CapabilityEnsureReceipt {
         capability: realization.capability,
         capability_label: execution_capability_label(capability: realization.capability),

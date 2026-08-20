@@ -9,10 +9,10 @@ fn spark_serving_user_unit_install_effects() -> List<gunbc.spark_serving_realiza
 
 fn spark_serving_install_effects_for_address(address: gunbc.spark_serving_membership.SparkServingResourceAddress) -> List<gunbc.spark_serving_realization.ServingInstallEffect> {
   match address {
-    gunbc.spark_serving_membership.SparkServingRuntimeRootAddress => [gunbc.spark_serving_realization.InstallOwnedRuntimeClosure]
-    gunbc.spark_serving_membership.SparkServingUserUnitAddress => spark_serving_user_unit_install_effects()
+    SparkServingRuntimeRootAddress => [gunbc.spark_serving_realization.InstallOwnedRuntimeClosure]
+    SparkServingUserUnitAddress => spark_serving_user_unit_install_effects()
     SparkServingModelSlotAddress { slot: _ } => [gunbc.spark_serving_realization.PullModelArtifact]
-    gunbc.spark_serving_membership.SparkServingLingerAddress => [gunbc.spark_serving_realization.EnableLingerForOwnAccount]
+    SparkServingLingerAddress => [gunbc.spark_serving_realization.EnableLingerForOwnAccount]
   }
 }
 

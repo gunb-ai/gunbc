@@ -45,8 +45,8 @@ fn wet_supervised_turn_terminal_ok(
   (terminal.client_command_id as String) ==
     (gunbc.codex_supervised_turn.codex_supervised_turn_client_command_id(turn: turn) as String)
     && match terminal.binding.lease.observed {
-      std.temporal_effect.LeaseAbsent => true
-      std.temporal_effect.LeaseRunningExpected => false
+      LeaseAbsent => true
+      LeaseRunningExpected => false
       LeaseRunningStale => false
       LeasePortForeign => false
       LeaseInaccessible => false

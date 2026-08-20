@@ -196,13 +196,13 @@ fn diagnostics_eq(a: v2.std.diagnostic.Diagnostics, b: v2.std.diagnostic.Diagnos
 }
 fn outcome_node_eq(a: v2.std.diagnostic.Outcome<Node>, b: v2.std.diagnostic.Outcome<Node>) -> Bool {
   match a {
-    v2.std.diagnostic.Accepted { value: av, diagnostics: ad } => match b {
-      v2.std.diagnostic.Accepted { value: bv, diagnostics: bd } => (av == bv) && diagnostics_eq(a: ad, b: bd)
-      v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: av, diagnostics: ad } => match b {
+      Accepted { value: bv, diagnostics: bd } => (av == bv) && diagnostics_eq(a: ad, b: bd)
+      Rejected { diagnostics: _ } => false
     }
-    v2.std.diagnostic.Rejected { diagnostics: ar } => match b {
-      v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
-      v2.std.diagnostic.Rejected { diagnostics: br } => non_empty_diagnostics_eq(a: ar, b: br)
+    Rejected { diagnostics: ar } => match b {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: br } => non_empty_diagnostics_eq(a: ar, b: br)
     }
   }
 }
@@ -221,19 +221,19 @@ fn accepted_thread_diagnostics<T>(
 }
 fn bind_outcome_accepted<U>(od: v2.std.diagnostic.Diagnostics, inner: v2.std.diagnostic.Outcome<U>) -> v2.std.diagnostic.Outcome<U> {
   match inner {
-    v2.std.diagnostic.Accepted { value: u, diagnostics: ud } =>
+    Accepted { value: u, diagnostics: ud } =>
       outcome_with_diagnostics(
         value: u,
         diagnostics: diagnostics_merge(outer: od, inner: ud)
       )
-    v2.std.diagnostic.Rejected { diagnostics: r } =>
+    Rejected { diagnostics: r } =>
       v2.std.diagnostic.Rejected { diagnostics: rejected_with_pending(pending: od, rejected: r) }
   }
 }
 fn bind_outcome<T, U>(o: v2.std.diagnostic.Outcome<T>, f: fn(T) -> v2.std.diagnostic.Outcome<U>) -> v2.std.diagnostic.Outcome<U> {
   match o {
-    v2.std.diagnostic.Accepted { value: v, diagnostics: od } => bind_outcome_accepted(od: od, inner: f(v))
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Accepted { value: v, diagnostics: od } => bind_outcome_accepted(od: od, inner: f(v))
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -244,25 +244,25 @@ fn absorb_outcome_diagnostics<T, U>(
 ) -> v2.std.diagnostic.Outcome<T> {
   match policy.accumulation {
     ShortCircuit => match acc {
-      v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-      v2.std.diagnostic.Accepted { value: v, diagnostics: ad } => match child {
-        v2.std.diagnostic.Rejected { diagnostics: cr } =>
+      Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+      Accepted { value: v, diagnostics: ad } => match child {
+        Rejected { diagnostics: cr } =>
           v2.std.diagnostic.Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: cr) }
-        v2.std.diagnostic.Accepted { value: _, diagnostics: cd } =>
+        Accepted { value: _, diagnostics: cd } =>
           accepted_thread_diagnostics(value: v, accumulated: ad, incoming: cd)
       }
     }
     Accumulate => match acc {
-      v2.std.diagnostic.Accepted { value: v, diagnostics: ad } => match child {
-        v2.std.diagnostic.Accepted { value: _, diagnostics: cd } =>
+      Accepted { value: v, diagnostics: ad } => match child {
+        Accepted { value: _, diagnostics: cd } =>
           accepted_thread_diagnostics(value: v, accumulated: ad, incoming: cd)
-        v2.std.diagnostic.Rejected { diagnostics: cr } =>
+        Rejected { diagnostics: cr } =>
           v2.std.diagnostic.Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: cr) }
       }
-      v2.std.diagnostic.Rejected { diagnostics: r } => match child {
-        v2.std.diagnostic.Accepted { value: _, diagnostics: cd } =>
+      Rejected { diagnostics: r } => match child {
+        Accepted { value: _, diagnostics: cd } =>
           v2.std.diagnostic.Rejected { diagnostics: rejected_with_pending(pending: cd, rejected: r) }
-        v2.std.diagnostic.Rejected { diagnostics: cr } =>
+        Rejected { diagnostics: cr } =>
           v2.std.diagnostic.Rejected {
             diagnostics: non_empty_diagnostics_append(a: r, b: cr)
           }
@@ -278,11 +278,11 @@ fn append_outcome_value<T>(
 ) -> v2.std.diagnostic.Outcome<List<T>> {
   match policy.accumulation {
     ShortCircuit => match acc {
-      v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-      v2.std.diagnostic.Accepted { value: values, diagnostics: ad } => match child {
-        v2.std.diagnostic.Rejected { diagnostics: cr } =>
+      Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+      Accepted { value: values, diagnostics: ad } => match child {
+        Rejected { diagnostics: cr } =>
           v2.std.diagnostic.Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: cr) }
-        v2.std.diagnostic.Accepted { value: child_value, diagnostics: cd } =>
+        Accepted { value: child_value, diagnostics: cd } =>
           accepted_thread_diagnostics(
             value: list_snoc_item(xs: values, item: child_value),
             accumulated: ad,
@@ -291,20 +291,20 @@ fn append_outcome_value<T>(
       }
     }
     Accumulate => match acc {
-      v2.std.diagnostic.Accepted { value: values, diagnostics: ad } => match child {
-        v2.std.diagnostic.Accepted { value: child_value, diagnostics: cd } =>
+      Accepted { value: values, diagnostics: ad } => match child {
+        Accepted { value: child_value, diagnostics: cd } =>
           accepted_thread_diagnostics(
             value: list_snoc_item(xs: values, item: child_value),
             accumulated: ad,
             incoming: cd
           )
-        v2.std.diagnostic.Rejected { diagnostics: cr } =>
+        Rejected { diagnostics: cr } =>
           v2.std.diagnostic.Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: cr) }
       }
-      v2.std.diagnostic.Rejected { diagnostics: r } => match child {
-        v2.std.diagnostic.Accepted { value: _, diagnostics: cd } =>
+      Rejected { diagnostics: r } => match child {
+        Accepted { value: _, diagnostics: cd } =>
           v2.std.diagnostic.Rejected { diagnostics: rejected_with_pending(pending: cd, rejected: r) }
-        v2.std.diagnostic.Rejected { diagnostics: cr } =>
+        Rejected { diagnostics: cr } =>
           v2.std.diagnostic.Rejected {
             diagnostics: non_empty_diagnostics_append(a: r, b: cr)
           }
@@ -328,14 +328,14 @@ fn sequence_outcome<T>(
 
 fn outcome_eq<T>(a: v2.std.diagnostic.Outcome<T>, b: v2.std.diagnostic.Outcome<T>, payload_eq: fn(T, T) -> Bool) -> Bool {
   match a {
-    v2.std.diagnostic.Accepted { value: av, diagnostics: ad } => match b {
-      v2.std.diagnostic.Accepted { value: bv, diagnostics: bd } =>
+    Accepted { value: av, diagnostics: ad } => match b {
+      Accepted { value: bv, diagnostics: bd } =>
         payload_eq(av, bv) && diagnostics_eq(a: ad, b: bd)
-      v2.std.diagnostic.Rejected { diagnostics: _ } => false
+      Rejected { diagnostics: _ } => false
     }
-    v2.std.diagnostic.Rejected { diagnostics: ar } => match b {
-      v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
-      v2.std.diagnostic.Rejected { diagnostics: br } => non_empty_diagnostics_eq(a: ar, b: br)
+    Rejected { diagnostics: ar } => match b {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: br } => non_empty_diagnostics_eq(a: ar, b: br)
     }
   }
 }

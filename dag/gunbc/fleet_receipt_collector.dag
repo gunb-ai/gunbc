@@ -152,12 +152,12 @@ fn classify_receipt_stdout(host: String, raw: String) -> gunbc.fleet_receipt_col
       match parse_converge_receipt_line(line: line) {
         Present { value: receipt } =>
           match receipt.verdict {
-            gunbc.host_converge.VerdictConverged =>
+            VerdictConverged =>
               match converge_revision_observed_hex(raw: raw) {
                 Present { value: _ } => ReceiptCollected { host: host, receipt: receipt }
                 Absent => ReceiptConvergedUnbacked { host: host, line: line }
               }
-            gunbc.host_converge.Drifted => ReceiptCollected { host: host, receipt: receipt }
+            Drifted => ReceiptCollected { host: host, receipt: receipt }
             Absent => ReceiptCollected { host: host, receipt: receipt }
           }
         Absent => ReceiptUnparseable { host: host, line: line }

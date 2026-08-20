@@ -60,7 +60,7 @@ fn loci_from_bindings_for_path(
   acc: std.algebra.FreeMonoid<Node>
 ) -> std.algebra.FreeMonoid<Node> {
   match bindings {
-    std.algebra.Empty => acc
+    Empty => acc
     Cons { head: binding, tail: rest } =>
       let acc2 = if read.path_regex_matches(changed: changed, pattern: binding.pattern) {
         push_locus_if_absent(acc: acc, locus: binding.locus)
@@ -125,7 +125,7 @@ fn collect_edit_loci_on_paths(
   acc: std.algebra.FreeMonoid<Node>
 ) -> std.algebra.FreeMonoid<Node> {
   match changed_paths {
-    std.algebra.Empty => acc
+    Empty => acc
     Cons { head: changed, tail: rest } =>
       let with_bindings = loci_from_bindings_for_path(
         read: read,
@@ -168,7 +168,7 @@ fn resolve_edit_locus_from_loci(loci: std.algebra.FreeMonoid<Node>) -> Witness<N
       match loci {
         Cons { head: head, tail: _ } =>
           v2.std.witness.Holds { value: head }
-        std.algebra.Empty =>
+        Empty =>
           v2.std.witness.Violates { diagnostic: edit_locus_no_match_diagnostic() }
       }
     _ =>

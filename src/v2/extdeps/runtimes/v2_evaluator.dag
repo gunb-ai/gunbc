@@ -225,7 +225,7 @@ fn v2_eval_nth_child_target(node: v2.std.node.Node, wanted: Int) -> v2.std.diagn
   match v2.std.collection.list_at_optional(xs: node.children, index: wanted) {
     Present { value: child } =>
       match child {
-        v2.std.node.Edge { label: _, target: arm } =>
+        Edge { label: _, target: arm } =>
           v2.std.diagnostic.outcome_accepted(value: extdeps.vendor.arm.arm)
       }
     Absent =>

@@ -74,7 +74,7 @@ fn derived_raw_modifier_unknown(name: String, method: std.types.HttpMethod, raw:
 
 fn is_read(shape: std.effects.EffectShape<std.effects.KeySource>) -> Bool {
   match shape {
-    std.effects.ReadEffect => true
+    ReadEffect => true
     _ => false
   }
 }

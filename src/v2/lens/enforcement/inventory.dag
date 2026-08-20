@@ -86,9 +86,9 @@ fn pr_floor_scheduling_disposition(
     DiscoverySelection => SchedulingEnrolled
     FalsifierSelfHostWet => disposition_when_bool(enrolled: ci_enrolled)
     FalsifierRehomedBinWet => disposition_when_bool(enrolled: ci_enrolled)
-    std.witness_admission.FalsifierSubstrateLongLane => disposition_when_bool(enrolled: ci_enrolled)
+    FalsifierSubstrateLongLane => disposition_when_bool(enrolled: ci_enrolled)
     BinWitnessWet => disposition_when_bool(enrolled: ci_enrolled)
-    std.witness_admission.QuarantineProbeExpectRed => disposition_when_bool(enrolled: ci_enrolled)
+    QuarantineProbeExpectRed => disposition_when_bool(enrolled: ci_enrolled)
     OfflineLocalRecipe => disposition_when_bool(enrolled: ci_enrolled)
     FixtureExplicitRoster => disposition_when_bool(enrolled: ci_enrolled)
     NoConsumer => disposition_when_bool(enrolled: ci_enrolled)
@@ -102,8 +102,8 @@ fn wet_falsifier_scheduling_disposition(primary: std.witness_admission.WitnessCo
     BinWitnessWet => SchedulingEnrolled
     OfflineLocalRecipe => SchedulingDark
     DiscoverySelection => SchedulingExcluded
-    std.witness_admission.FalsifierSubstrateLongLane => SchedulingExcluded
-    std.witness_admission.QuarantineProbeExpectRed => SchedulingExcluded
+    FalsifierSubstrateLongLane => SchedulingExcluded
+    QuarantineProbeExpectRed => SchedulingExcluded
     FixtureExplicitRoster => SchedulingExcluded
     NoConsumer => SchedulingExcluded
   }
@@ -113,8 +113,8 @@ fn scheduled_falsifier_scheduling_disposition(primary: std.witness_admission.Wit
   match primary {
     FalsifierSelfHostWet => SchedulingEnrolled
     FalsifierRehomedBinWet => SchedulingEnrolled
-    std.witness_admission.FalsifierSubstrateLongLane => SchedulingEnrolled
-    std.witness_admission.QuarantineProbeExpectRed => SchedulingEnrolled
+    FalsifierSubstrateLongLane => SchedulingEnrolled
+    QuarantineProbeExpectRed => SchedulingEnrolled
     DiscoverySelection => SchedulingExcluded
     BinWitnessWet => SchedulingExcluded
     OfflineLocalRecipe => SchedulingExcluded

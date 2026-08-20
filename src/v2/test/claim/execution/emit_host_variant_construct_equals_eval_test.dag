@@ -163,7 +163,7 @@ fn emit_variant_construct_eval_nth_arm_wire(node: v2.std.node.Node, wanted: Int)
   match v2.std.collection.list_at_optional(xs: node.children, index: wanted) {
     Present { value: child } =>
       match child {
-        v2.std.node.Edge { label: _, target: arm_wire } => v2.std.diagnostic.outcome_accepted(value: arm_wire)
+        Edge { label: _, target: arm_wire } => v2.std.diagnostic.outcome_accepted(value: arm_wire)
       }
     Absent =>
       v2.std.diagnostic.outcome_rejected(

@@ -60,7 +60,7 @@ fn accepted_reasons(id: v2.std.node.Symbol) -> List<v2.std.node.Symbol> {
     Accepted { value: _, diagnostics: d } =>
       match d {
         Some { diagnostics: ne } => gunbc.test.claim.body_lowering_rejection_propagation_test.all_reasons(d: ne)
-        v2.std.diagnostic.None => []
+        None => []
       }
     Rejected { diagnostics: _ } => []
   }

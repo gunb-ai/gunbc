@@ -254,7 +254,7 @@ test fn witness_absent_reading_refuses_the_pair() -> Bool {
   let pair_refuses = match pair {
     PairRefused { cause } => true,
     PairDominates { winning_axes } => false,
-    std.pareto.PairNoDominance => false,
+    PairNoDominance => false,
   }
   let standing_surfaces_it = standing_is_incomparable(s: std.pareto.entry_standing(subject: entry_reading_hole, field: holed_field, axes: both_axes, sensitivities: spine_sensitivities))
   let hole_never_dominates = match std.pareto.compare_pair(a: entry_reading_hole, b: entry_dear_weak, axes: both_axes) {
@@ -328,7 +328,7 @@ test fn witness_duplicate_reading_refuses_the_pair() -> Bool {
   match std.pareto.compare_pair(a: entry_double_reading, b: entry_dear_weak, axes: both_axes) {
     PairRefused { cause } => true,
     PairDominates { winning_axes } => false,
-    std.pareto.PairNoDominance => false,
+    PairNoDominance => false,
   }
 }
 

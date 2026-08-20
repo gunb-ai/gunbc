@@ -157,7 +157,7 @@ type DecimalDigitsStep {
 
 fn decimal_digits_double(digits: std.algebra.FreeMonoid<DecimalDigit>) -> DecimalDigitsStep {
   match digits {
-    std.algebra.Empty => DecimalDigitsStep { digits: std.algebra.Empty, carry: false }
+    Empty => DecimalDigitsStep { digits: std.algebra.Empty, carry: false }
     Cons { head, tail } =>
       match decimal_digits_double(digits: tail) {
         DecimalDigitsStep { digits: doubled_tail, carry: tail_carry } =>
@@ -171,7 +171,7 @@ fn decimal_digits_double(digits: std.algebra.FreeMonoid<DecimalDigit>) -> Decima
 
 fn decimal_digits_sub_one(digits: std.algebra.FreeMonoid<DecimalDigit>) -> DecimalDigitsStep {
   match digits {
-    std.algebra.Empty => DecimalDigitsStep { digits: std.algebra.Empty, carry: true }
+    Empty => DecimalDigitsStep { digits: std.algebra.Empty, carry: true }
     Cons { head, tail } =>
       match decimal_digits_sub_one(digits: tail) {
         DecimalDigitsStep { digits: sub_tail, carry: tail_borrow } =>
@@ -185,7 +185,7 @@ fn decimal_digits_sub_one(digits: std.algebra.FreeMonoid<DecimalDigit>) -> Decim
 
 fn decimal_digits_to_magnitude(digits: std.algebra.FreeMonoid<DecimalDigit>) -> DecimalMagnitude {
   match digits {
-    std.algebra.Empty => DecimalZero
+    Empty => DecimalZero
     Cons { head, tail } =>
       if decimal_digit_value(d: head) == 0 {
         decimal_digits_to_magnitude(digits: tail)
@@ -257,12 +257,12 @@ fn decimal_digit_compare(left: DecimalDigit, right: DecimalDigit) -> std.algebra
 
 fn decimal_digit_list_compare(left: std.algebra.FreeMonoid<DecimalDigit>, right: std.algebra.FreeMonoid<DecimalDigit>) -> std.algebra.Ordering {
   match left {
-    std.algebra.Empty => match right {
-      std.algebra.Empty => Equal
+    Empty => match right {
+      Empty => Equal
       Cons { head: _, tail: _ } => Less
     }
     Cons { head: left_head, tail: left_tail } => match right {
-      std.algebra.Empty => Greater
+      Empty => Greater
       Cons { head: right_head, tail: right_tail } =>
         match decimal_digit_compare(left: left_head, right: right_head) {
           Equal => decimal_digit_list_compare(left: left_tail, right: right_tail)
@@ -1011,7 +1011,7 @@ fn integer_decimal_digits_snoc(
   digit: DecimalDigit
 ) -> std.algebra.FreeMonoid<DecimalDigit> {
   match xs {
-    std.algebra.Empty => std.algebra.Cons { head: digit, tail: std.algebra.Empty }
+    Empty => std.algebra.Cons { head: digit, tail: std.algebra.Empty }
     Cons { head, tail } =>
       std.algebra.Cons { head: head, tail: integer_decimal_digits_snoc(xs: tail, digit: digit) }
   }

@@ -19,8 +19,8 @@ fn infer_grounding_not_derived_diagnostic(at: v2.std.diagnostic.Locus) -> v2.std
 
 fn inferred_facts_subject_node(facts: v2.compiler.inferred_tree.InferredFacts) -> v2.std.node.Node {
   match facts.grounding {
-    v2.compiler.inferred_tree.DerivedGrounding { grounding: g } => g.node
-    v2.compiler.inferred_tree.GroundingNotDerived { node: n } => n
+    DerivedGrounding { grounding: g } => g.node
+    GroundingNotDerived { node: n } => n
   }
 }
 
@@ -30,47 +30,47 @@ fn inferred_facts_cover_node(facts: v2.compiler.inferred_tree.InferredFacts, nod
 
 fn inferred_facts_grounding_derived(facts: v2.compiler.inferred_tree.InferredFacts) -> Bool {
   match facts.grounding {
-    v2.compiler.inferred_tree.DerivedGrounding { grounding: _ } => true
-    v2.compiler.inferred_tree.GroundingNotDerived { node: _ } => false
+    DerivedGrounding { grounding: _ } => true
+    GroundingNotDerived { node: _ } => false
   }
 }
 
 fn inferred_facts_canonical_admitted(facts: v2.compiler.inferred_tree.InferredFacts) -> Bool {
   match facts.grounding {
-    v2.compiler.inferred_tree.DerivedGrounding { grounding: g } => canonical_grounding_admits_infer_facts(grounding: g)
-    v2.compiler.inferred_tree.GroundingNotDerived { node: _ } => false
+    DerivedGrounding { grounding: g } => canonical_grounding_admits_infer_facts(grounding: g)
+    GroundingNotDerived { node: _ } => false
   }
 }
 
 fn inferred_facts_grounding_witness(facts: v2.compiler.inferred_tree.InferredFacts) -> Witness<v2.std.constraints.CanonicalGrounding> {
   match facts.grounding {
-    v2.compiler.inferred_tree.DerivedGrounding { grounding: g } => v2.std.witness.Holds { value: g }
-    v2.compiler.inferred_tree.GroundingNotDerived { node: n } =>
+    DerivedGrounding { grounding: g } => v2.std.witness.Holds { value: g }
+    GroundingNotDerived { node: n } =>
       v2.std.witness.Violates { diagnostic: infer_grounding_not_derived_diagnostic(at: node_locus(node: n)) }
   }
 }
 
 fn inferred_facts_resolved_type(facts: v2.compiler.inferred_tree.InferredFacts) -> Witness<v2.std.node.Node> {
   match facts.grounding {
-    v2.compiler.inferred_tree.DerivedGrounding { grounding: g } => v2.std.witness.Holds { value: g.witness.structural.evidence }
-    v2.compiler.inferred_tree.GroundingNotDerived { node: n } =>
+    DerivedGrounding { grounding: g } => v2.std.witness.Holds { value: g.witness.structural.evidence }
+    GroundingNotDerived { node: n } =>
       v2.std.witness.Violates { diagnostic: infer_grounding_not_derived_diagnostic(at: node_locus(node: n)) }
   }
 }
 
 fn inferred_facts_algebra_ref(facts: v2.compiler.inferred_tree.InferredFacts) -> Witness<AlgebraRef> {
   match facts.grounding {
-    v2.compiler.inferred_tree.DerivedGrounding { grounding: g } =>
+    DerivedGrounding { grounding: g } =>
       v2.std.witness.Holds { value: algebra_ref_from_grounding(grounding: g) }
-    v2.compiler.inferred_tree.GroundingNotDerived { node: n } =>
+    GroundingNotDerived { node: n } =>
       v2.std.witness.Violates { diagnostic: infer_grounding_not_derived_diagnostic(at: node_locus(node: n)) }
   }
 }
 
 fn inferred_facts_canonical_witness(facts: v2.compiler.inferred_tree.InferredFacts) -> Witness<v2.std.constraints.CanonicalGroundingWitness> {
   match facts.grounding {
-    v2.compiler.inferred_tree.DerivedGrounding { grounding: g } => v2.std.witness.Holds { value: g.witness }
-    v2.compiler.inferred_tree.GroundingNotDerived { node: n } =>
+    DerivedGrounding { grounding: g } => v2.std.witness.Holds { value: g.witness }
+    GroundingNotDerived { node: n } =>
       v2.std.witness.Violates { diagnostic: infer_grounding_not_derived_diagnostic(at: node_locus(node: n)) }
   }
 }
@@ -433,9 +433,9 @@ fn canonical_grounding_from_inferred_facts(
   facts: v2.compiler.inferred_tree.InferredFacts,
 ) -> v2.std.diagnostic.Outcome<v2.std.constraints.CanonicalGrounding> {
   match facts.grounding {
-    v2.compiler.inferred_tree.GroundingNotDerived { node: n } =>
+    GroundingNotDerived { node: n } =>
       outcome_rejected(infer_grounding_not_derived_diagnostic(at: node_locus(node: n)))
-    v2.compiler.inferred_tree.DerivedGrounding { grounding: g } =>
+    DerivedGrounding { grounding: g } =>
       if node != g.node {
         outcome_rejected(infer_canonical_grounding_incoherent_diagnostic(node: node))
       } else if !algebra_ref_is_grounded(algebra: algebra_ref_from_grounding(grounding: g).algebra) {

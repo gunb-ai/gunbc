@@ -274,11 +274,11 @@ fn codex_supervised_turn_session_standing_admits(
   classification: gunbc.codex_app_server_press.AccountStandingClassification,
 ) -> Bool {
   match classification {
-    gunbc.codex_app_server_press.AccountStandingAuthenticatedRateLimitsReadable => true
-    gunbc.codex_app_server_press.AccountStandingLoginRequired => false
-    gunbc.codex_app_server_press.AccountStandingQuotaReached => false
-    gunbc.codex_app_server_press.AccountStandingInitializeMissing => false
-    gunbc.codex_app_server_press.AccountStandingIncomplete => false
+    AccountStandingAuthenticatedRateLimitsReadable => true
+    AccountStandingLoginRequired => false
+    AccountStandingQuotaReached => false
+    AccountStandingInitializeMissing => false
+    AccountStandingIncomplete => false
   }
 }
 
@@ -387,7 +387,7 @@ fn supervised_rpc_from_id_response(
           concat(to_string(n: id), concat(": ", serialize_supervised_rpc_error(err: err))),
         ) as std.types.NonEmptyStr,
       }
-    extdeps.languages.json.parse.JsonMemberAbsent =>
+    JsonMemberAbsent =>
       match extdeps.languages.json.parse.json_object_unique_member(v: obj, key: "result") {
         JsonMemberFound { value: result } =>
           match native_id_from_entity_result(result: result, entity_key: entity_key) {
@@ -403,7 +403,7 @@ fn supervised_rpc_from_id_response(
                 ) as std.types.NonEmptyStr,
               }
           }
-        extdeps.languages.json.parse.JsonMemberAbsent =>
+        JsonMemberAbsent =>
           SupervisedRpcError {
             reason: concat("id ", concat(to_string(n: id), ": missing result")) as std.types.NonEmptyStr,
           }
@@ -411,7 +411,7 @@ fn supervised_rpc_from_id_response(
           SupervisedRpcError {
             reason: concat("id ", concat(to_string(n: id), ": duplicate result")) as std.types.NonEmptyStr,
           }
-        extdeps.languages.json.parse.JsonMemberNotAnObject =>
+        JsonMemberNotAnObject =>
           SupervisedRpcError {
             reason: concat("id ", concat(to_string(n: id), ": result not object")) as std.types.NonEmptyStr,
           }
@@ -420,7 +420,7 @@ fn supervised_rpc_from_id_response(
       SupervisedRpcError {
         reason: concat("id ", concat(to_string(n: id), ": duplicate error")) as std.types.NonEmptyStr,
       }
-    extdeps.languages.json.parse.JsonMemberNotAnObject =>
+    JsonMemberNotAnObject =>
       SupervisedRpcError {
         reason: concat("id ", concat(to_string(n: id), ": error not object")) as std.types.NonEmptyStr,
       }
@@ -430,7 +430,7 @@ fn supervised_rpc_from_id_response(
 fn serialize_supervised_rpc_error(err: extdeps.languages.json.emit.JsonValue) -> String {
   match err {
     JsonObject { members: _ } => "structured error" as String
-    extdeps.languages.json.emit.JsonNull => "unstructured error" as String
+    JsonNull => "unstructured error" as String
     JsonBool { value: _ } => "unstructured error" as String
     JsonNumber { lexeme: _ } => "unstructured error" as String
     JsonString { value: _ } => "unstructured error" as String
@@ -541,7 +541,7 @@ fn absorb_supervised_turn_line(
 fn json_rpc_id_as_int(v: extdeps.languages.json.emit.JsonValue) -> Int? {
   match v {
     JsonNumber { lexeme: l } => parse_int(s: l as String)
-    extdeps.languages.json.emit.JsonNull => none
+    JsonNull => none
     JsonBool { value: _ } => none
     JsonString { value: _ } => none
     JsonArray { elements: _ } => none

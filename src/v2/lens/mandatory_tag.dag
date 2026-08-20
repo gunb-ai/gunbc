@@ -80,7 +80,7 @@ fn mandatory_tag_subtree_has_production(n: v2.std.node.Node, want: v2.std.node.S
       init: fn(n0) {
         match v2.extdeps.languages.dag.parse_production_emitted_identity_optional(node: n0) {
           Present { value: id } => id == want
-          v2.std.optional.Absent => false
+          Absent => false
         }
       },
       step: fn(acc, _edge, child) { acc || child }
@@ -91,7 +91,7 @@ fn mandatory_tag_subtree_has_production(n: v2.std.node.Node, want: v2.std.node.S
 fn mandatory_tag_node_production_is(n: v2.std.node.Node, want: v2.std.node.Symbol) -> Bool {
   match v2.extdeps.languages.dag.parse_production_emitted_identity_optional(node: n) {
     Present { value: id } => id == want
-    v2.std.optional.Absent => false
+    Absent => false
   }
 }
 
@@ -123,10 +123,10 @@ fn mandatory_tag_parse_captured(d: v2.std.node.Node) -> v2.std.optional.Optional
 
 fn mandatory_tag_parse_name_node(d: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Node> {
   match mandatory_tag_parse_captured(d: d) {
-    v2.std.optional.Absent => v2.std.optional.optional_absent()
+    Absent => v2.std.optional.optional_absent()
     Present { value: captured } =>
       match mandatory_tag_seq_right(n: captured) {
-        v2.std.optional.Absent => v2.std.optional.optional_absent()
+        Absent => v2.std.optional.optional_absent()
         Present { value: r1 } => mandatory_tag_seq_left(n: r1)
       }
   }
@@ -134,16 +134,16 @@ fn mandatory_tag_parse_name_node(d: v2.std.node.Node) -> v2.std.optional.Optiona
 
 fn mandatory_tag_parse_type_node(d: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Node> {
   match mandatory_tag_parse_captured(d: d) {
-    v2.std.optional.Absent => v2.std.optional.optional_absent()
+    Absent => v2.std.optional.optional_absent()
     Present { value: captured } =>
       match mandatory_tag_seq_right(n: captured) {
-        v2.std.optional.Absent => v2.std.optional.optional_absent()
+        Absent => v2.std.optional.optional_absent()
         Present { value: r1 } =>
           match mandatory_tag_seq_right(n: r1) {
-            v2.std.optional.Absent => v2.std.optional.optional_absent()
+            Absent => v2.std.optional.optional_absent()
             Present { value: r2 } =>
               match mandatory_tag_seq_right(n: r2) {
-                v2.std.optional.Absent => v2.std.optional.optional_absent()
+                Absent => v2.std.optional.optional_absent()
                 Present { value: r3 } => mandatory_tag_seq_left(n: r3)
               }
           }
@@ -153,19 +153,19 @@ fn mandatory_tag_parse_type_node(d: v2.std.node.Node) -> v2.std.optional.Optiona
 
 fn mandatory_tag_parse_value_node(d: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Node> {
   match mandatory_tag_parse_captured(d: d) {
-    v2.std.optional.Absent => v2.std.optional.optional_absent()
+    Absent => v2.std.optional.optional_absent()
     Present { value: captured } =>
       match mandatory_tag_seq_right(n: captured) {
-        v2.std.optional.Absent => v2.std.optional.optional_absent()
+        Absent => v2.std.optional.optional_absent()
         Present { value: r1 } =>
           match mandatory_tag_seq_right(n: r1) {
-            v2.std.optional.Absent => v2.std.optional.optional_absent()
+            Absent => v2.std.optional.optional_absent()
             Present { value: r2 } =>
               match mandatory_tag_seq_right(n: r2) {
-                v2.std.optional.Absent => v2.std.optional.optional_absent()
+                Absent => v2.std.optional.optional_absent()
                 Present { value: r3 } =>
                   match mandatory_tag_seq_right(n: r3) {
-                    v2.std.optional.Absent => v2.std.optional.optional_absent()
+                    Absent => v2.std.optional.optional_absent()
                     Present { value: r4 } => mandatory_tag_seq_right(n: r4)
                   }
               }
@@ -179,15 +179,15 @@ fn mandatory_tag_decl_name(d: v2.std.node.Node) -> v2.lens.mandatory_tag.Mandato
     Accepted { value: nm, diagnostics: _ } =>
       match v2.std.grammar.node_atom_identity_optional(node: nm) {
         Present { value: s } => DeclNameRead { name: s }
-        v2.std.optional.Absent =>
+        Absent =>
           match mandatory_tag_subtree_atoms(n: nm) {
             Cons { head: first, tail: _ } => DeclNameRead { name: first }
-            std.algebra.Empty => DeclNameUnreadable
+            Empty => DeclNameUnreadable
           }
       }
     Rejected { diagnostics: _ } =>
       match mandatory_tag_parse_name_node(d: d) {
-        v2.std.optional.Absent => DeclNameUnreadable
+        Absent => DeclNameUnreadable
         Present { value: nm } =>
           match v2.std.grammar.node_atom_identity_optional(node: nm) {
             Present { value: s } =>
@@ -196,7 +196,7 @@ fn mandatory_tag_decl_name(d: v2.std.node.Node) -> v2.lens.mandatory_tag.Mandato
               } else {
                 DeclNameRead { name: s }
               }
-            v2.std.optional.Absent => DeclNameUnreadable
+            Absent => DeclNameUnreadable
           }
       }
   }
@@ -239,7 +239,7 @@ fn mandatory_tag_scan_decls(subtree: v2.std.node.Node, required_name: v2.std.nod
     fold(subtree.children, init: v2.lens.mandatory_tag.MandatoryTagDeclScan { found: v2.std.optional.optional_absent(), projection_gated_count: 0 }, f: fn(acc, e) {
       match acc.found {
         Present { value: _ } => acc
-        v2.std.optional.Absent =>
+        Absent =>
           let child_scan = mandatory_tag_scan_decls(subtree: e.target, required_name: required_name)
           MandatoryTagDeclScan {
             found: child_scan.found,
@@ -292,7 +292,7 @@ fn mandatory_tag_value_not_accepted_diagnostic(d: v2.std.node.Node) -> v2.std.di
 
 fn mandatory_tag_type_findings(d: v2.std.node.Node, region: v2.lens.mandatory_tag.MandatoryTagRegion) -> List<v2.std.diagnostic.Diagnostic> {
   match mandatory_tag_decl_type_node(d: d) {
-    v2.std.optional.Absent => [mandatory_tag_type_mismatch_diagnostic(d: d)]
+    Absent => [mandatory_tag_type_mismatch_diagnostic(d: d)]
     Present { value: ty } =>
       if mandatory_tag_symbols_contain(
         xs: mandatory_tag_subtree_atoms(n: ty),
@@ -317,13 +317,13 @@ fn mandatory_tag_vocabulary_hits(atoms: std.algebra.FreeMonoid<v2.std.node.Symbo
 
 fn mandatory_tag_value_findings(d: v2.std.node.Node, region: v2.lens.mandatory_tag.MandatoryTagRegion) -> List<v2.std.diagnostic.Diagnostic> {
   match mandatory_tag_decl_value_node(d: d) {
-    v2.std.optional.Absent => []
+    Absent => []
     Present { value: v } =>
       match mandatory_tag_vocabulary_hits(
         atoms: mandatory_tag_subtree_atoms(n: v),
         vocabulary: region.value_vocabulary
       ) {
-        std.algebra.Empty =>
+        Empty =>
           if mandatory_tag_subtree_has_production(n: v, want: ^dag_surface_expr) {
             [mandatory_tag_value_unreadable_diagnostic(d: d)]
           } else {
@@ -359,7 +359,7 @@ fn mandatory_tag_region_module_findings(
           mandatory_tag_type_findings(d: d, region: region),
           mandatory_tag_value_findings(d: d, region: region)
         )
-      v2.std.optional.Absent =>
+      Absent =>
         if scan.projection_gated_count == 0 {
           [mandatory_tag_missing_decl_diagnostic(module_node: module_node)]
         } else {
@@ -414,7 +414,7 @@ fn mandatory_tag_compile_gate(node: v2.std.node.Node) -> v2.std.diagnostic.Outco
       v2.std.diagnostic.Rejected {
         diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: first, tail: rest }
       }
-    std.algebra.Empty => v2.std.diagnostic.outcome_accepted(value: v2.std.witness.Holds { value: node })
+    Empty => v2.std.diagnostic.outcome_accepted(value: v2.std.witness.Holds { value: node })
   }
 }
 

@@ -1,10 +1,8 @@
 module extdeps.realization.hermetic_fixture
 
-
-
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/realization"
   }
 }
@@ -15,43 +13,43 @@ data hermetic_fixture_in_process_id: std.cache_identity.CacheInterfaceId = "herm
 data hermetic_fixture_file_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = {
   identity: hermetic_fixture_file_store_id
   backing_surface: "gunbc-recorded-fixture-on-disk"
-  transport_encoding: CatalogCasContentEncoding
+  transport_encoding: extdeps.cache.types.CatalogCasContentEncoding
   key_derivation: {
 
-    key_inputs: ContentAddressed
+    key_inputs: extdeps.cache.types.ContentAddressed
     overwritable: false
     prefix_fallback_allowed: false
     content_verified_on_read: true
-    visibility_scope: Repo
-    invalidation_triggers: [std.cache_interface.TtlExpiry { window: second(count: 2592000) }, ManualPurge]
+    visibility_scope: std.cache_interface.Repo
+    invalidation_triggers: [std.cache_interface.TtlExpiry { window: std.measure.second(count: 2592000) }, std.cache_interface.ManualPurge]
   }
   io: {
-    lookup_semantics: ContentAddressLookup
-    write_semantics: WriteOnce
-    miss_semantics: MissIsDiagnostic
+    lookup_semantics: std.cache_interface.ContentAddressLookup
+    write_semantics: std.cache_interface.WriteOnce
+    miss_semantics: std.cache_interface.MissIsDiagnostic
   }
   placement: {
-    value_shape: StructuredArtifact
-    locality: PerHostFilesystem
-    retention: { release_policy: ReleasedNever, capacity: CapacityUnobserved }
-    atomicity: PerFile
-    auth: FilesystemPerms
-    read_latency: LocalDiskUs
-    consistency: ReadYourWrites
+    value_shape: std.cache_interface.StructuredArtifact
+    locality: std.cache_interface.PerHostFilesystem
+    retention: { release_policy: std.cache_interface.ReleasedNever, capacity: std.cache_interface.CapacityUnobserved }
+    atomicity: std.cache_interface.PerFile
+    auth: std.cache_interface.FilesystemPerms
+    read_latency: std.cache_interface.LocalDiskUs
+    consistency: std.cache_interface.ReadYourWrites
   }
   evidence: [
     {
       field: "key_derivation"
       evidence: std.cache_interface.OperatorObserved {
         note: "input_hash = content_hash_service_inputs(op, bound inputs); stored inputs verified on lookup (collision safety) — recorded_fixture.rs RecordedFixtureStore::lookup"
-        observed_at: 0
+        observed_at: v2.std.optional.Absent
       }
     },
     {
       field: "write_semantics"
       evidence: std.cache_interface.OperatorObserved {
         note: "WriteOnce: re-record with a different response for the same input_hash => FixtureError::ResponseDrift (cache-purity oracle). The freshness window is carried typed on this row's TtlExpiry trigger, cited to recorded_fixture.rs FIXTURE_FRESHNESS_SECS"
-        observed_at: 0
+        observed_at: v2.std.optional.Absent
       }
     },
   ]
@@ -60,43 +58,43 @@ data hermetic_fixture_file_facts: extdeps.cache.types.CacheInterfaceCatalogFacts
 data hermetic_fixture_in_process_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = {
   identity: hermetic_fixture_in_process_id
   backing_surface: "gunbc-effect-io-fixture-in-memory"
-  transport_encoding: CatalogCasContentEncoding
+  transport_encoding: extdeps.cache.types.CatalogCasContentEncoding
   key_derivation: {
 
-    key_inputs: ContentAddressed
+    key_inputs: extdeps.cache.types.ContentAddressed
     overwritable: true
     prefix_fallback_allowed: false
     content_verified_on_read: true
-    visibility_scope: Repo
-    invalidation_triggers: [ManualPurge]
+    visibility_scope: std.cache_interface.Repo
+    invalidation_triggers: [std.cache_interface.ManualPurge]
   }
   io: {
-    lookup_semantics: ExactKeyOnly
-    write_semantics: OverwriteAllowed
-    miss_semantics: MissIsDiagnostic
+    lookup_semantics: std.cache_interface.ExactKeyOnly
+    write_semantics: std.cache_interface.OverwriteAllowed
+    miss_semantics: std.cache_interface.MissIsDiagnostic
   }
   placement: {
-    value_shape: StructuredArtifact
-    locality: InProcess
-    retention: { release_policy: ReleasedAtProviderScopeExit, capacity: CapacityUnbounded }
-    atomicity: PerFile
+    value_shape: std.cache_interface.StructuredArtifact
+    locality: std.cache_interface.InProcess
+    retention: { release_policy: std.cache_interface.ReleasedAtProviderScopeExit, capacity: std.cache_interface.CapacityUnbounded }
+    atomicity: std.cache_interface.PerFile
     auth: std.cache_interface.None
-    read_latency: InProcessNs
-    consistency: Strong
+    read_latency: std.cache_interface.InProcessNs
+    consistency: std.cache_interface.Strong
   }
   evidence: [
     {
       field: "key_derivation"
       evidence: std.cache_interface.OperatorObserved {
         note: "locator identity = content_hash(runtime_value_node_projection(arg)) — v2_effect_io_pure.dag effect_io_pure_locator_identity; the same content digest the v1 on-disk handler keys on (converged node://adhoc-7e32be31-47c); RuntimeValue with no faithful reification fails closed"
-        observed_at: 0
+        observed_at: v2.std.optional.Absent
       }
     },
     {
       field: "miss_semantics"
       evidence: std.cache_interface.OperatorObserved {
         note: "Absent entry => ^effect_io_pure_resource_absent rejected (fail-closed) — effect_io_pure_store_lookup"
-        observed_at: 0
+        observed_at: v2.std.optional.Absent
       }
     },
   ]

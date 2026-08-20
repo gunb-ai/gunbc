@@ -137,8 +137,8 @@ fn placement_after_spanning_token(token_text: String) -> String {
         empty: "",
         cons: fn(acc, ann) {
           concat(acc, match ann.placement {
-            std.source_annotation.LeadingAfterLineIndent => "LEADING"
-            std.source_annotation.TrailingAfterSemanticToken => "TRAILING"
+            LeadingAfterLineIndent => "LEADING"
+            TrailingAfterSemanticToken => "TRAILING"
           })
         }
       )

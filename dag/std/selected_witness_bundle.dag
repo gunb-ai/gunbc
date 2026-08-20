@@ -1,6 +1,5 @@
 module std.selected_witness_bundle
 
-
 data selected_witness_bundle_note: std.types.NonEmptyStr = "Selected-entry native execution authority (native-selected-witness-bundle, 2026-08-01). Selection and realization remain separate facts: SelectedWitnessPlan records the complete production-selected population; each member is either NativeSelected or a counted InterpreterFrontier row with a reason and dissolution trigger. A native bundle contains only NativeSelected members, runs them as direct calls in one process, and returns a typed receipt. InterpreterFrontier is coverage-preserving compatibility, never an uncounted skip. During cutover the interpreter is the equivalence oracle; a family enters native-consumed production only after every selected member has executed verdict equivalence and the family has a live discriminating RED. Native-vs-interpreter divergence is a hard refusal, never an auto-pick."
 
 type SelectedWitnessIdentity {
@@ -20,11 +19,11 @@ type NativeUnavailableCause
 
 type SelectedWitnessMember
   = NativeSelected {
-      witness: std.selected_witness_bundle.SelectedWitnessIdentity
+      witness: SelectedWitnessIdentity
       realization: NativeRealizationIdentity
     }
   | InterpreterFrontier {
-      witness: std.selected_witness_bundle.SelectedWitnessIdentity
+      witness: SelectedWitnessIdentity
       cause: NativeUnavailableCause
       reason: std.types.NonEmptyStr
       dissolution: std.dissolution.DissolutionCondition
@@ -45,23 +44,23 @@ type NativeWitnessBundleIdentity {
 }
 
 type NativeWitnessBundleMember {
-  witness: std.selected_witness_bundle.SelectedWitnessIdentity
+  witness: SelectedWitnessIdentity
   realization: NativeRealizationIdentity
 }
 
 type NativeWitnessBundle {
-  identity: std.selected_witness_bundle.NativeWitnessBundleIdentity
+  identity: NativeWitnessBundleIdentity
   compiler_identity: std.content_hash.Fnv1a64Structural
   members: List<NativeWitnessBundleMember>
 }
 
-fn selected_witness_identity_hash(witness: std.selected_witness_bundle.SelectedWitnessIdentity) -> std.content_hash.Fnv1a64Structural {
-  content_hash_tagged_structural(
+fn selected_witness_identity_hash(witness: SelectedWitnessIdentity) -> std.content_hash.Fnv1a64Structural {
+  std.content_hash.content_hash_tagged_structural(
     tag: "selected-witness-identity",
-    payload: content_hash_combine_structural(
-      left: content_hash_atom(value: witness.entry),
-      right: content_hash_combine_structural(
-        left: content_hash_atom(value: witness.function),
+    payload: std.content_hash.content_hash_combine_structural(
+      left: std.content_hash.content_hash_atom(value: witness.entry),
+      right: std.content_hash.content_hash_combine_structural(
+        left: std.content_hash.content_hash_atom(value: witness.function),
         right: witness.subject_digest
       )
     )
@@ -69,19 +68,19 @@ fn selected_witness_identity_hash(witness: std.selected_witness_bundle.SelectedW
 }
 
 fn native_realization_identity_hash(realization: NativeRealizationIdentity) -> std.content_hash.Fnv1a64Structural {
-  content_hash_tagged_structural(
+  std.content_hash.content_hash_tagged_structural(
     tag: "selected-witness-native-realization",
-    payload: content_hash_combine_structural(
-      left: content_hash_atom(value: realization.family),
+    payload: std.content_hash.content_hash_combine_structural(
+      left: std.content_hash.content_hash_atom(value: realization.family),
       right: realization.realization_digest
     )
   )
 }
 
 fn native_bundle_member_hash(member: NativeWitnessBundleMember) -> std.content_hash.Fnv1a64Structural {
-  content_hash_tagged_structural(
+  std.content_hash.content_hash_tagged_structural(
     tag: "selected-witness-native-member",
-    payload: content_hash_combine_structural(
+    payload: std.content_hash.content_hash_combine_structural(
       left: selected_witness_identity_hash(witness: member.witness),
       right: native_realization_identity_hash(realization: member.realization)
     )
@@ -91,8 +90,8 @@ fn native_bundle_member_hash(member: NativeWitnessBundleMember) -> std.content_h
 fn native_bundle_members_hash(members: List<NativeWitnessBundleMember>) -> std.content_hash.Fnv1a64Structural {
   fold(
     members,
-    init: content_hash_atom(value: "selected-witness-native-members"),
-    f: (acc, member) => content_hash_combine_structural(
+    init: std.content_hash.content_hash_atom(value: "selected-witness-native-members"),
+    f: (acc, member) => std.content_hash.content_hash_combine_structural(
       left: acc,
       right: native_bundle_member_hash(member: member)
     )
@@ -100,12 +99,12 @@ fn native_bundle_members_hash(members: List<NativeWitnessBundleMember>) -> std.c
 }
 
 fn selected_witness_identity_eq(
-  left: std.selected_witness_bundle.SelectedWitnessIdentity,
-  right: std.selected_witness_bundle.SelectedWitnessIdentity
+  left: SelectedWitnessIdentity,
+  right: SelectedWitnessIdentity
 ) -> Bool {
   left.entry == right.entry
     && left.function == right.function
-    && content_hash_eq_structural(
+    && std.content_hash.content_hash_eq_structural(
       left: left.subject_digest,
       right: right.subject_digest
     )
@@ -116,7 +115,7 @@ fn native_realization_identity_eq(
   right: NativeRealizationIdentity
 ) -> Bool {
   left.family == right.family
-    && content_hash_eq_structural(
+    && std.content_hash.content_hash_eq_structural(
       left: left.realization_digest,
       right: right.realization_digest
     )
@@ -178,8 +177,8 @@ fn selected_witness_plan_interpreter_frontier_count(plan: SelectedWitnessPlan) -
 
 fn native_bundle_shard_policy_hash(policy: NativeBundleShardPolicy) -> std.content_hash.Fnv1a64Structural {
   match policy {
-    OneSelectedBundle { reason: _ } => content_hash_atom(value: "one-selected-bundle")
-    StableBundleShards { shard_count: count, reason: _ } => content_hash_tagged_structural(
+    OneSelectedBundle { reason: _ } => std.content_hash.content_hash_atom(value: "one-selected-bundle")
+    StableBundleShards { shard_count: count, reason: _ } => std.content_hash.content_hash_tagged_structural(
       tag: "stable-selected-bundle-shards",
       payload: native_bundle_shard_count_hash(count: count)
     )
@@ -188,24 +187,24 @@ fn native_bundle_shard_policy_hash(policy: NativeBundleShardPolicy) -> std.conte
 
 fn native_bundle_shard_count_hash(count: Int) -> std.content_hash.Fnv1a64Structural {
   if count <= 0 {
-    content_hash_atom(value: "selected-bundle-shard-count-zero")
+    std.content_hash.content_hash_atom(value: "selected-bundle-shard-count-zero")
   } else {
-    content_hash_tagged_structural(
+    std.content_hash.content_hash_tagged_structural(
       tag: "selected-bundle-shard-count-successor",
       payload: native_bundle_shard_count_hash(count: count - 1)
     )
   }
 }
 
-fn native_witness_bundle_identity(plan: SelectedWitnessPlan) -> std.selected_witness_bundle.NativeWitnessBundleIdentity {
+fn native_witness_bundle_identity(plan: SelectedWitnessPlan) -> NativeWitnessBundleIdentity {
   let members = selected_witness_plan_native_members(plan: plan)
   let member_fingerprint = native_bundle_members_hash(members: members)
-  std.selected_witness_bundle.NativeWitnessBundleIdentity {
-    structural_fingerprint: content_hash_tagged_structural(
+  NativeWitnessBundleIdentity {
+    structural_fingerprint: std.content_hash.content_hash_tagged_structural(
       tag: "selected-witness-native-bundle-v1",
-      payload: content_hash_combine_structural(
+      payload: std.content_hash.content_hash_combine_structural(
         left: plan.compiler_identity,
-        right: content_hash_combine_structural(
+        right: std.content_hash.content_hash_combine_structural(
           left: native_bundle_shard_policy_hash(policy: plan.shard_policy),
           right: member_fingerprint
         )
@@ -214,8 +213,8 @@ fn native_witness_bundle_identity(plan: SelectedWitnessPlan) -> std.selected_wit
   }
 }
 
-fn native_witness_bundle_from_plan(plan: SelectedWitnessPlan) -> std.selected_witness_bundle.NativeWitnessBundle {
-  std.selected_witness_bundle.NativeWitnessBundle {
+fn native_witness_bundle_from_plan(plan: SelectedWitnessPlan) -> NativeWitnessBundle {
+  NativeWitnessBundle {
     identity: native_witness_bundle_identity(plan: plan),
     compiler_identity: plan.compiler_identity,
     members: selected_witness_plan_native_members(plan: plan)
@@ -223,7 +222,7 @@ fn native_witness_bundle_from_plan(plan: SelectedWitnessPlan) -> std.selected_wi
 }
 
 type NativeBundleAdmission
-  = NativeBundleAdmitted { bundle: std.selected_witness_bundle.NativeWitnessBundle }
+  = NativeBundleAdmitted { bundle: NativeWitnessBundle }
   | NativeBundleRefusedStaleCompiler {
       bundle_compiler_identity: std.content_hash.Fnv1a64Structural
       current_compiler_identity: std.content_hash.Fnv1a64Structural
@@ -233,8 +232,8 @@ type NativeBundleAdmission
       current_compiler_identity: std.content_hash.Fnv1a64Structural
     }
   | NativeBundleRefusedPlanIdentity {
-      observed: std.selected_witness_bundle.NativeWitnessBundleIdentity
-      required: std.selected_witness_bundle.NativeWitnessBundleIdentity
+      observed: NativeWitnessBundleIdentity
+      required: NativeWitnessBundleIdentity
     }
   | NativeBundleRefusedMemberCoverage {
       observed: List<NativeWitnessBundleMember>
@@ -243,12 +242,12 @@ type NativeBundleAdmission
 
 fn native_witness_bundle_admit(
   plan: SelectedWitnessPlan,
-  bundle: std.selected_witness_bundle.NativeWitnessBundle,
+  bundle: NativeWitnessBundle,
   current_compiler_identity: std.content_hash.Fnv1a64Structural
 ) -> NativeBundleAdmission {
   let required = native_witness_bundle_identity(plan: plan)
   let required_members = selected_witness_plan_native_members(plan: plan)
-  if !content_hash_eq_structural(
+  if !std.content_hash.content_hash_eq_structural(
     left: bundle.compiler_identity,
     right: current_compiler_identity
   ) {
@@ -256,7 +255,7 @@ fn native_witness_bundle_admit(
       bundle_compiler_identity: bundle.compiler_identity,
       current_compiler_identity: current_compiler_identity
     }
-  } else if !content_hash_eq_structural(
+  } else if !std.content_hash.content_hash_eq_structural(
     left: plan.compiler_identity,
     right: current_compiler_identity
   ) {
@@ -264,7 +263,7 @@ fn native_witness_bundle_admit(
       plan_compiler_identity: plan.compiler_identity,
       current_compiler_identity: current_compiler_identity
     }
-  } else if !content_hash_eq_structural(
+  } else if !std.content_hash.content_hash_eq_structural(
     left: bundle.identity.structural_fingerprint,
     right: required.structural_fingerprint
   ) {
@@ -287,19 +286,19 @@ type SelectedWitnessVerdict
   | SelectedWitnessFailed
 
 type NativeBundleMemberEquivalence {
-  witness: std.selected_witness_bundle.SelectedWitnessIdentity
+  witness: SelectedWitnessIdentity
   family: std.types.NonEmptyStr
   interpreted: SelectedWitnessVerdict
   native: SelectedWitnessVerdict
 }
 
 type NativeWitnessBundleExecutionReceipt {
-  bundle_identity: std.selected_witness_bundle.NativeWitnessBundleIdentity
+  bundle_identity: NativeWitnessBundleIdentity
   compiler_identity: std.content_hash.Fnv1a64Structural
   process_count: Int
   compile_skipped: Bool
-  native_wall_nanos: std.verification.NanosecondDuration
-  interpreted_wall_nanos: std.verification.NanosecondDuration
+  native_wall_nanos: std.measure.Nanosecond
+  interpreted_wall_nanos: std.measure.Nanosecond
   member_equivalence: List<NativeBundleMemberEquivalence>
   interpreter_frontier_count: Int
 }
@@ -318,10 +317,10 @@ type NativeWitnessProductionTransitionReceipt {
   diverged_count: Int
   bundle_count: Int
   shard_count: Int
-  cold_compile_wall_nanos: std.verification.NanosecondDuration
-  warm_artifact_hit_wall_nanos: std.verification.NanosecondDuration
-  native_execution_wall_nanos: std.verification.NanosecondDuration
-  interpreter_oracle_wall_nanos: std.verification.NanosecondDuration
+  cold_compile_wall_nanos: std.measure.Nanosecond
+  warm_artifact_hit_wall_nanos: std.measure.Nanosecond
+  native_execution_wall_nanos: std.measure.Nanosecond
+  interpreter_oracle_wall_nanos: std.measure.Nanosecond
   fallback_count: Int
   rss_peak_bytes: std.measure.ByteSize
   cgroup_peak_bytes: std.measure.ByteSize
@@ -354,11 +353,11 @@ fn native_production_transition_population_holds(
 
 type NativeBundleFamilyCutoverEvidence {
   planted_plan: SelectedWitnessPlan
-  execution: std.selected_witness_bundle.NativeWitnessBundleExecutionReceipt
+  execution: NativeWitnessBundleExecutionReceipt
 }
 
 type NativeWitnessBundleExecutionVerdict
-  = NativeBundleExecutionAccepted { receipt: std.selected_witness_bundle.NativeWitnessBundleExecutionReceipt }
+  = NativeBundleExecutionAccepted { receipt: NativeWitnessBundleExecutionReceipt }
   | NativeBundleExecutionRefusedNoNativeMembers
   | NativeBundleExecutionRefusedStaleCompiler {
       receipt_compiler_identity: std.content_hash.Fnv1a64Structural
@@ -369,8 +368,8 @@ type NativeWitnessBundleExecutionVerdict
       current_compiler_identity: std.content_hash.Fnv1a64Structural
     }
   | NativeBundleExecutionRefusedPlanIdentity {
-      observed: std.selected_witness_bundle.NativeWitnessBundleIdentity
-      required: std.selected_witness_bundle.NativeWitnessBundleIdentity
+      observed: NativeWitnessBundleIdentity
+      required: NativeWitnessBundleIdentity
     }
   | NativeBundleExecutionRefusedMemberCoverage {
       observed: std.content_hash.Fnv1a64Structural
@@ -378,7 +377,7 @@ type NativeWitnessBundleExecutionVerdict
     }
   | NativeBundleExecutionRefusedFrontierCount { observed: Int, required: Int }
   | NativeBundleExecutionRefusedDivergence {
-      witness: std.selected_witness_bundle.SelectedWitnessIdentity
+      witness: SelectedWitnessIdentity
       interpreted: SelectedWitnessVerdict
       native: SelectedWitnessVerdict
     }
@@ -387,14 +386,14 @@ type NativeWitnessBundleExecutionVerdict
   | NativeBundleExecutionRefusedWarmArtifactMiss
 
 fn native_bundle_execution_member_hash(
-  witness: std.selected_witness_bundle.SelectedWitnessIdentity,
+  witness: SelectedWitnessIdentity,
   family: std.types.NonEmptyStr
 ) -> std.content_hash.Fnv1a64Structural {
-  content_hash_tagged_structural(
+  std.content_hash.content_hash_tagged_structural(
     tag: "selected-witness-executed-member",
-    payload: content_hash_combine_structural(
+    payload: std.content_hash.content_hash_combine_structural(
       left: selected_witness_identity_hash(witness: witness),
-      right: content_hash_atom(value: family)
+      right: std.content_hash.content_hash_atom(value: family)
     )
   )
 }
@@ -404,8 +403,8 @@ fn native_bundle_required_execution_roster_hash(
 ) -> std.content_hash.Fnv1a64Structural {
   fold(
     members,
-    init: content_hash_atom(value: "selected-witness-execution-roster"),
-    f: (acc, member) => content_hash_combine_structural(
+    init: std.content_hash.content_hash_atom(value: "selected-witness-execution-roster"),
+    f: (acc, member) => std.content_hash.content_hash_combine_structural(
       left: acc,
       right: native_bundle_execution_member_hash(
         witness: member.witness,
@@ -420,8 +419,8 @@ fn native_bundle_observed_execution_roster_hash(
 ) -> std.content_hash.Fnv1a64Structural {
   fold(
     rows,
-    init: content_hash_atom(value: "selected-witness-execution-roster"),
-    f: (acc, row) => content_hash_combine_structural(
+    init: std.content_hash.content_hash_atom(value: "selected-witness-execution-roster"),
+    f: (acc, row) => std.content_hash.content_hash_combine_structural(
       left: acc,
       right: native_bundle_execution_member_hash(
         witness: row.witness,
@@ -464,16 +463,16 @@ fn native_bundle_red_receipt_matches_plan(
   let observed_roster = native_bundle_observed_execution_roster_hash(
     rows: evidence.execution.member_equivalence
   )
-  content_hash_eq_structural(
+  std.content_hash.content_hash_eq_structural(
     left: evidence.planted_plan.compiler_identity,
     right: current_compiler_identity
   )
-    && content_hash_eq_structural(
+    && std.content_hash.content_hash_eq_structural(
       left: evidence.execution.compiler_identity,
       right: current_compiler_identity
     )
     && evidence.execution.process_count == 1
-    && content_hash_eq_structural(
+    && std.content_hash.content_hash_eq_structural(
       left: evidence.execution.bundle_identity.structural_fingerprint,
       right: planted_bundle.identity.structural_fingerprint
     )
@@ -481,7 +480,7 @@ fn native_bundle_red_receipt_matches_plan(
       plan: evidence.planted_plan
     )
     && required_members.count() > 0
-    && content_hash_eq_structural(left: observed_roster, right: required_roster)
+    && std.content_hash.content_hash_eq_structural(left: observed_roster, right: required_roster)
 }
 
 fn planted_red_row_matches_production_member(
@@ -497,7 +496,7 @@ fn planted_red_row_matches_production_member(
         && row.family == family
         && row.witness.entry == member.witness.entry
         && row.witness.function == member.witness.function
-        && !content_hash_eq_structural(
+        && !std.content_hash.content_hash_eq_structural(
           left: row.witness.subject_digest,
           right: member.witness.subject_digest
         )
@@ -568,7 +567,7 @@ fn first_native_bundle_family_without_red(
 fn native_witness_bundle_execution_admit(
   plan: SelectedWitnessPlan,
   current_compiler_identity: std.content_hash.Fnv1a64Structural,
-  receipt: std.selected_witness_bundle.NativeWitnessBundleExecutionReceipt,
+  receipt: NativeWitnessBundleExecutionReceipt,
   family_evidence: List<NativeBundleFamilyCutoverEvidence>
 ) -> NativeWitnessBundleExecutionVerdict {
   let required_bundle = native_witness_bundle_from_plan(plan: plan)
@@ -580,7 +579,7 @@ fn native_witness_bundle_execution_admit(
   )
   if receipt.process_count != 1 {
     NativeBundleExecutionRefusedProcessCount { observed: receipt.process_count }
-  } else if !content_hash_eq_structural(
+  } else if !std.content_hash.content_hash_eq_structural(
     left: receipt.compiler_identity,
     right: current_compiler_identity
   ) {
@@ -588,7 +587,7 @@ fn native_witness_bundle_execution_admit(
       receipt_compiler_identity: receipt.compiler_identity,
       current_compiler_identity: current_compiler_identity
     }
-  } else if !content_hash_eq_structural(
+  } else if !std.content_hash.content_hash_eq_structural(
     left: plan.compiler_identity,
     right: current_compiler_identity
   ) {
@@ -596,7 +595,7 @@ fn native_witness_bundle_execution_admit(
       plan_compiler_identity: plan.compiler_identity,
       current_compiler_identity: current_compiler_identity
     }
-  } else if !content_hash_eq_structural(
+  } else if !std.content_hash.content_hash_eq_structural(
     left: receipt.bundle_identity.structural_fingerprint,
     right: required_bundle.identity.structural_fingerprint
   ) {
@@ -611,7 +610,7 @@ fn native_witness_bundle_execution_admit(
       observed: receipt.interpreter_frontier_count,
       required: required_frontier_count
     }
-  } else if !content_hash_eq_structural(left: observed_roster, right: required_roster) {
+  } else if !std.content_hash.content_hash_eq_structural(left: observed_roster, right: required_roster) {
     NativeBundleExecutionRefusedMemberCoverage {
       observed: observed_roster,
       required: required_roster

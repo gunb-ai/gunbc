@@ -1,6 +1,5 @@
 module std.realization_measurement
 
-
 type RealizationMeasureEffect
   = ObserveElapsedAtSubject {
       subject: std.content_hash.ContentHash
@@ -18,33 +17,33 @@ data elapsed_observation_realization_note: String = "ObserveElapsedAtSubject rea
 data elapsed_observation_hand_rust_deferral_note: String = "HAND-RUST GATE explicit deferral. The observed_monotonic_nanos Instant bridge in v1_interpreter.rs is a bounded seed-retained realization of this modeled ObserveElapsedAtSubject effect, not a new decision authority. Lane: v1-hand-queue-drain. Concrete ROADMAP row: 'Get hand-written Rust in this repository down to zero' (authority dag/gunbc/v1_deletion_plan.dag). Dissolve-on: the emitted runtime owns the host monotonic-observation realization and v1-interpreter-delete removes this seed arm; the .dag effect and receipts remain. Until then the arm is counted here, covered by the selected-witness bundle's monotonic positive control, and exercised by the cold/warm plus interpreter/native execution receipts."
 
 fn space_measure_seq(a: std.measure.ByteSize, b: std.measure.ByteSize) -> std.measure.ByteSize {
-  byte_size(count: std.nat.nat_max(a: measure_count(m: a), b: measure_count(m: b)))
+  std.measure.byte_size(count: std.nat.nat_max(a: std.measure.measure_count(m: a), b: std.measure.measure_count(m: b)))
 }
 
 fn space_measure_par(a: std.measure.ByteSize, b: std.measure.ByteSize) -> std.measure.ByteSize {
-  byte_size(count: measure_count(m: a) + measure_count(m: b))
+  std.measure.byte_size(count: std.measure.measure_count(m: a) + std.measure.measure_count(m: b))
 }
 
 fn space_measure_list_seq(spaces: List<std.measure.ByteSize>) -> std.measure.ByteSize {
-  fold(spaces, init: byte_size(count: 0), f: (acc, s) => space_measure_seq(a: acc, b: s))
+  fold(spaces, init: std.measure.byte_size(count: 0), f: (acc, s) => space_measure_seq(a: acc, b: s))
 }
 
-fn cost_account_measured_from_time<S>(time: Measure<Time, S, std.nat.Nat>) -> std.realization_schedule.CostAccount<S> {
-  cost_account_measured(time: time)
+fn cost_account_measured_from_time<S>(time: std.measure.Measure<std.measure.Time, S, std.nat.Nat>) -> std.realization_schedule.CostAccount<S> {
+  std.realization_schedule.cost_account_measured(time: time)
 }
 
-fn cost_account_measured_from_time_and_space<S>(time: Measure<Time, S, std.nat.Nat>, space: std.measure.ByteSize) -> std.realization_schedule.CostAccount<S> {
+fn cost_account_measured_from_time_and_space<S>(time: std.measure.Measure<std.measure.Time, S, std.nat.Nat>, space: std.measure.ByteSize) -> std.realization_schedule.CostAccount<S> {
   std.realization_schedule.CostAccount {
     time: time
     space: space
-    power: watt(count: 0)
+    power: std.measure.watt(count: 0)
     basis: std.realization_schedule.Measured
   }
 }
 
-fn time_measure_list_total<S>(times: List<Measure<Time, S, std.nat.Nat>>) -> Measure<Time, S, std.nat.Nat> {
-  time_measure(
-    count: fold(times, init: 0, f: (acc, t) => acc + measure_count(m: t))
+fn time_measure_list_total<S>(times: List<std.measure.Measure<std.measure.Time, S, std.nat.Nat>>) -> std.measure.Measure<std.measure.Time, S, std.nat.Nat> {
+  std.measure.time_measure(
+    count: fold(times, init: 0, f: (acc, t) => acc + std.measure.measure_count(m: t))
   )
 }
 
@@ -56,62 +55,62 @@ type ConcurrentMemoryPeakSample {
 fn concurrent_memory_peak_per_share(sample: ConcurrentMemoryPeakSample) -> std.measure.ByteSize {
 
   let shares = if sample.concurrency <= 0 { 1 } else { sample.concurrency }
-  measure_scale_fraction_ceil(m: sample.peak, num: 1, den: shares)
+  std.measure.measure_scale_fraction_ceil(m: sample.peak, num: 1, den: shares)
 }
 
 fn witness_concurrent_memory_peak_per_share_divides() -> Bool {
-  let sample = ConcurrentMemoryPeakSample { peak: byte_size(8400113664), concurrency: 4 }
-  let degenerate = ConcurrentMemoryPeakSample { peak: byte_size(2100028416), concurrency: 0 }
-  let indivisible = ConcurrentMemoryPeakSample { peak: byte_size(10), concurrency: 4 }
-  measure_count(m: concurrent_memory_peak_per_share(sample: sample)) == 2100028416
-    && measure_count(m: concurrent_memory_peak_per_share(sample: degenerate)) == 2100028416
-    && measure_count(m: concurrent_memory_peak_per_share(sample: indivisible)) == 3
+  let sample = ConcurrentMemoryPeakSample { peak: std.measure.byte_size(8400113664), concurrency: 4 }
+  let degenerate = ConcurrentMemoryPeakSample { peak: std.measure.byte_size(2100028416), concurrency: 0 }
+  let indivisible = ConcurrentMemoryPeakSample { peak: std.measure.byte_size(10), concurrency: 4 }
+  std.measure.measure_count(m: concurrent_memory_peak_per_share(sample: sample)) == 2100028416
+    && std.measure.measure_count(m: concurrent_memory_peak_per_share(sample: degenerate)) == 2100028416
+    && std.measure.measure_count(m: concurrent_memory_peak_per_share(sample: indivisible)) == 3
 }
 
-fn time_measure_is_zero<S>(d: Measure<Time, S, std.nat.Nat>) -> Bool {
-  measure_count(m: d) == 0
+fn time_measure_is_zero<S>(d: std.measure.Measure<std.measure.Time, S, std.nat.Nat>) -> Bool {
+  std.measure.measure_count(m: d) == 0
 }
 
-fn time_measure_seq<S>(a: Measure<Time, S, std.nat.Nat>, b: Measure<Time, S, std.nat.Nat>) -> Measure<Time, S, std.nat.Nat> {
+fn time_measure_seq<S>(a: std.measure.Measure<std.measure.Time, S, std.nat.Nat>, b: std.measure.Measure<std.measure.Time, S, std.nat.Nat>) -> std.measure.Measure<std.measure.Time, S, std.nat.Nat> {
   if time_measure_is_zero(d: a) {
     b
   } else if time_measure_is_zero(d: b) {
     a
   } else {
-    time_measure(
-      count: measure_count(m: a) + measure_count(m: b)
+    std.measure.time_measure(
+      count: std.measure.measure_count(m: a) + std.measure.measure_count(m: b)
     )
   }
 }
 
-fn time_measure_par<S>(a: Measure<Time, S, std.nat.Nat>, b: Measure<Time, S, std.nat.Nat>) -> Measure<Time, S, std.nat.Nat> {
+fn time_measure_par<S>(a: std.measure.Measure<std.measure.Time, S, std.nat.Nat>, b: std.measure.Measure<std.measure.Time, S, std.nat.Nat>) -> std.measure.Measure<std.measure.Time, S, std.nat.Nat> {
   if time_measure_is_zero(d: a) {
     b
   } else if time_measure_is_zero(d: b) {
     a
   } else {
-    time_measure(
-      count: std.nat.nat_max(a: measure_count(m: a), b: measure_count(m: b))
+    std.measure.time_measure(
+      count: std.nat.nat_max(a: std.measure.measure_count(m: a), b: std.measure.measure_count(m: b))
     )
   }
 }
 
-fn time_measure_list_par<S>(times: List<Measure<Time, S, std.nat.Nat>>) -> Measure<Time, S, std.nat.Nat> {
+fn time_measure_list_par<S>(times: List<std.measure.Measure<std.measure.Time, S, std.nat.Nat>>) -> std.measure.Measure<std.measure.Time, S, std.nat.Nat> {
   fold(
     times,
-    init: time_measure(count: 0),
+    init: std.measure.time_measure(count: 0),
     f: (acc, t) => time_measure_par(a: acc, b: t)
   )
 }
 
-fn schedule_batch_critical_path<S>(batch_times: List<Measure<Time, S, std.nat.Nat>>) -> Measure<Time, S, std.nat.Nat> {
+fn schedule_batch_critical_path<S>(batch_times: List<std.measure.Measure<std.measure.Time, S, std.nat.Nat>>) -> std.measure.Measure<std.measure.Time, S, std.nat.Nat> {
   time_measure_list_par(times: batch_times)
 }
 
-fn schedule_critical_path_time<S>(batch_times: List<List<Measure<Time, S, std.nat.Nat>>>) -> Measure<Time, S, std.nat.Nat> {
+fn schedule_critical_path_time<S>(batch_times: List<List<std.measure.Measure<std.measure.Time, S, std.nat.Nat>>>) -> std.measure.Measure<std.measure.Time, S, std.nat.Nat> {
   fold(
     batch_times,
-    init: time_measure(count: 0),
+    init: std.measure.time_measure(count: 0),
     f: (acc, batch) => time_measure_seq(
       a: acc,
       b: schedule_batch_critical_path(batch_times: batch)
@@ -120,24 +119,23 @@ fn schedule_critical_path_time<S>(batch_times: List<List<Measure<Time, S, std.na
 }
 
 fn cost_account_measured_from_schedule_critical_path<S>(
-  batch_times: List<List<Measure<Time, S, std.nat.Nat>>>
+  batch_times: List<List<std.measure.Measure<std.measure.Time, S, std.nat.Nat>>>
 ) -> std.realization_schedule.CostAccount<S> {
   cost_account_measured_from_time(time: schedule_critical_path_time(batch_times: batch_times))
 }
 
-fn cost_account_measured_from_time_list<S>(times: List<Measure<Time, S, std.nat.Nat>>) -> std.realization_schedule.CostAccount<S> {
+fn cost_account_measured_from_time_list<S>(times: List<std.measure.Measure<std.measure.Time, S, std.nat.Nat>>) -> std.realization_schedule.CostAccount<S> {
   cost_account_measured_from_time(time: time_measure_list_total(times: times))
 }
 
-fn witness_measured_rollup_differs_from_predicted_zero<S>(wall_time: Measure<Time, S, std.nat.Nat>) -> Bool {
-  if measure_count(m: wall_time) == 0 {
+fn witness_measured_rollup_differs_from_predicted_zero<S>(wall_time: std.measure.Measure<std.measure.Time, S, std.nat.Nat>) -> Bool {
+  if std.measure.measure_count(m: wall_time) == 0 {
     false
   } else {
-    let measured_count = cost_account_time_count(
+    let measured_count = std.realization_schedule.cost_account_time_count(
       account: cost_account_measured_from_time(time: wall_time)
     )
-    let predicted_count = cost_account_time_count(account: cost_account_predicted_zero())
-    measured_count != predicted_count
-      && measured_count == measure_count(m: wall_time)
+    measured_count != 0
+      && measured_count == std.measure.measure_count(m: wall_time)
   }
 }

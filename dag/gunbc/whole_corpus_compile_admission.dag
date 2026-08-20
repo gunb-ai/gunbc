@@ -50,8 +50,8 @@ fn whole_corpus_compile_admission_at_budget(
 
 fn whole_corpus_compile_admission(budget: gunbc.host_budget_source.HostBudgetResolution) -> WholeCorpusCompileAdmission {
   match budget {
-    gunbc.host_budget_source.HostBudgetUnreadable { reason: r } => WholeCorpusCompileRefusedBudgetUnreadable { reason: r }
-    gunbc.host_budget_source.HostBudgetResolved { source: s, bytes: b } =>
+    HostBudgetUnreadable { reason: r } => WholeCorpusCompileRefusedBudgetUnreadable { reason: r }
+    HostBudgetResolved { source: s, bytes: b } =>
       whole_corpus_compile_admission_at_budget(bytes: b, source: s)
   }
 }

@@ -11,12 +11,12 @@ data execute_verb_note: String = "Execute grant reach for process/binary invocat
 
 fn verb_of_effect_shape(shape: std.effects.EffectShape<std.effects.KeySource>) -> std.effect_grant.Verb {
   match shape {
-    std.effects.ReadEffect => Read
+    ReadEffect => Read
     UpsertEffect { key_source: key_source } => Write
     DeleteEffect { key_source: key_source } => Write
     CreateEffect { cause: cause } => Write
-    std.effects.AppendEffect => Write
-    std.effects.ExecuteEffect => Execute
+    AppendEffect => Write
+    ExecuteEffect => Execute
   }
 }
 

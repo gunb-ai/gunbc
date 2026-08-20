@@ -1,36 +1,35 @@
 module test.claim.realization_measurement_keystone
 
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
-
-data sample_subject: std.content_hash.ContentHash = content_hash_of_value(value: "witness-subject-realization-measurement-keystone")
+data sample_subject: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "witness-subject-realization-measurement-keystone")
 data sample_work_shape: gunbc.fleet_intent.WorkUnitId = "witness:realization_measurement_keystone"
-data sample_wall_time: std.verification.NanosecondDuration = nanosecond_duration(count: 5000000)
-data sample_space_a: std.measure.ByteSize = byte_size(count: 1024)
-data sample_space_b: std.measure.ByteSize = byte_size(count: 2048)
+data sample_wall_time: std.measure.Nanosecond = std.measure.nanosecond(count: 5000000)
+data sample_space_a: std.measure.ByteSize = std.measure.byte_size(count: 1024)
+data sample_space_b: std.measure.ByteSize = std.measure.byte_size(count: 2048)
 
-data sample_measure_effect: std.realization_measurement.RealizationMeasureEffect = std.realization_measurement.ObserveElapsedAtSubject {
+data sample_measure_effect: std.realization_measurement.RealizationMeasureEffect = ObserveElapsedAtSubject {
   subject: sample_subject
   work_shape: "realization_measurement_keystone_witnesses"
 }
 
 fn witness_predicted_zero_is_predicted_basis() -> Bool {
-  match cost_account_predicted_zero().basis {
+  match std.realization_schedule.cost_account_predicted_zero().basis {
     Predicted => true
     Measured => false
   }
 }
 
 fn witness_measured_receipt_rollup_uses_lens() -> Bool {
-  let receipt = performance_receipt_host_single_sample(
+  let receipt = gunbc.fleet_intent.performance_receipt_host_single_sample(
     work_shape: sample_work_shape,
     wall_time: sample_wall_time,
     space: sample_space_a,
   )
-  let total = cost_account_from_performance_receipts(receipts: [receipt])
-  let rolled = cost_account_time_count(account: total)
-  let observed = nanosecond_duration_count(
-    d: performance_receipts_total_time(receipts: [receipt])
+  let total = gunbc.fleet_intent.cost_account_from_performance_receipts(receipts: [receipt])
+  let rolled = std.realization_schedule.cost_account_time_count(account: total)
+  let observed = std.measure.nanosecond_count(
+    n: gunbc.fleet_intent.performance_receipts_total_time(receipts: [receipt])
   )
   match total.basis {
     Measured => rolled == observed
@@ -39,23 +38,23 @@ fn witness_measured_receipt_rollup_uses_lens() -> Bool {
 }
 
 fn witness_space_rolls_up_across_receipts() -> Bool {
-  let r1 = performance_receipt_host_single_sample(
+  let r1 = gunbc.fleet_intent.performance_receipt_host_single_sample(
     work_shape: sample_work_shape,
     wall_time: sample_wall_time,
     space: sample_space_a,
   )
-  let r2 = performance_receipt_host_single_sample(
+  let r2 = gunbc.fleet_intent.performance_receipt_host_single_sample(
     work_shape: sample_work_shape,
     wall_time: sample_wall_time,
     space: sample_space_b,
   )
-  let total = cost_account_from_performance_receipts(receipts: [r1, r2])
-  byte_size_count(total.space) == byte_size_count(sample_space_b)
-    && byte_size_count(total.space) != byte_size_count(sample_space_a) + byte_size_count(sample_space_b)
+  let total = gunbc.fleet_intent.cost_account_from_performance_receipts(receipts: [r1, r2])
+  std.measure.byte_size_count(total.space) == std.measure.byte_size_count(sample_space_b)
+    && std.measure.byte_size_count(total.space) != std.measure.byte_size_count(sample_space_a) + std.measure.byte_size_count(sample_space_b)
 }
 
 fn witness_measured_rollup_red_on_predicted_zero() -> Bool {
-  witness_measured_rollup_differs_from_predicted_zero(wall_time: sample_wall_time)
+  std.realization_measurement.witness_measured_rollup_differs_from_predicted_zero(wall_time: sample_wall_time)
 }
 
 fn witness_v1_handler_id_declared() -> Bool {
@@ -69,5 +68,5 @@ test fn realization_measurement_keystone_witnesses() -> Bool {
     && witness_space_rolls_up_across_receipts()
     && witness_measured_rollup_red_on_predicted_zero()
     && witness_v1_handler_id_declared()
-    && witness_concurrent_memory_peak_per_share_divides()
+    && std.realization_measurement.witness_concurrent_memory_peak_per_share_divides()
 }

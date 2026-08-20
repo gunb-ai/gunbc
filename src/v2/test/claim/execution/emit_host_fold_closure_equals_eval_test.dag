@@ -50,8 +50,8 @@ fn emit_fold_eval_nth_positional_target(node: v2.std.node.Node, wanted: Int) -> 
   match v2.std.collection.list_at_optional(xs: node.children, index: wanted) {
     Present { value: child } =>
       match child {
-        v2.std.node.Edge { label: Positional, target: t } => v2.std.diagnostic.outcome_accepted(value: test.claim.pcb_footprint_witness.t)
-        v2.std.node.Edge { label: _, target: _ } =>
+        Edge { label: Positional, target: t } => v2.std.diagnostic.outcome_accepted(value: test.claim.pcb_footprint_witness.t)
+        Edge { label: _, target: _ } =>
           v2.std.diagnostic.outcome_rejected(
             d: emit_fold_eval_diagnostic(reason: ^emit_fold_eval_child_miss, node: node)
           )

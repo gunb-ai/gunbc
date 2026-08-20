@@ -6,7 +6,7 @@ data layer_transition_note: v2.std.text.String = "Executing controls for v2.std.
 fn lt_is_wrap_into(transition: v2.std.compilers.target_model.TargetLayerTransition, expected: v2.std.compilers.target_model.TargetReferenceLayer) -> v2.std.logic.Bool {
   match transition {
     LayerTransitionWrap { into: got } => got == expected
-    v2.std.compilers.target_model.LayerTransitionIdentity => false
+    LayerTransitionIdentity => false
     LayerTransitionUnwrap { from: _ } => false
     LayerTransitionRefused { from: _, to: _, cause: _ } => false
   }
@@ -15,7 +15,7 @@ fn lt_is_wrap_into(transition: v2.std.compilers.target_model.TargetLayerTransiti
 fn lt_is_unwrap_from(transition: v2.std.compilers.target_model.TargetLayerTransition, expected: v2.std.compilers.target_model.TargetReferenceLayer) -> v2.std.logic.Bool {
   match transition {
     LayerTransitionUnwrap { from: got } => got == expected
-    v2.std.compilers.target_model.LayerTransitionIdentity => false
+    LayerTransitionIdentity => false
     LayerTransitionWrap { into: _ } => false
     LayerTransitionRefused { from: _, to: _, cause: _ } => false
   }
@@ -23,7 +23,7 @@ fn lt_is_unwrap_from(transition: v2.std.compilers.target_model.TargetLayerTransi
 
 fn lt_is_identity(transition: v2.std.compilers.target_model.TargetLayerTransition) -> v2.std.logic.Bool {
   match transition {
-    v2.std.compilers.target_model.LayerTransitionIdentity => true
+    LayerTransitionIdentity => true
     LayerTransitionWrap { into: _ } => false
     LayerTransitionUnwrap { from: _ } => false
     LayerTransitionRefused { from: _, to: _, cause: _ } => false
@@ -34,10 +34,10 @@ fn lt_refused_by_shared_duplication(transition: v2.std.compilers.target_model.Ta
   match transition {
     LayerTransitionRefused { from: _, to: _, cause: c } =>
       match c {
-        v2.std.compilers.target_model.SharedValueDuplication => true
-        v2.std.compilers.target_model.UniqueIndirectionResharing => false
+        SharedValueDuplication => true
+        UniqueIndirectionResharing => false
       }
-    v2.std.compilers.target_model.LayerTransitionIdentity => false
+    LayerTransitionIdentity => false
     LayerTransitionWrap { into: _ } => false
     LayerTransitionUnwrap { from: _ } => false
   }
@@ -47,10 +47,10 @@ fn lt_refused_by_unique_resharing(transition: v2.std.compilers.target_model.Targ
   match transition {
     LayerTransitionRefused { from: _, to: _, cause: c } =>
       match c {
-        v2.std.compilers.target_model.UniqueIndirectionResharing => true
-        v2.std.compilers.target_model.SharedValueDuplication => false
+        UniqueIndirectionResharing => true
+        SharedValueDuplication => false
       }
-    v2.std.compilers.target_model.LayerTransitionIdentity => false
+    LayerTransitionIdentity => false
     LayerTransitionWrap { into: _ } => false
     LayerTransitionUnwrap { from: _ } => false
   }

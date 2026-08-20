@@ -67,8 +67,8 @@ test fn witness_ssh_mock_stdout_is_discriminating_red() -> Bool {
       expected_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision,
       expected_surface_identity: witness_expected_surface_identity(),
     ) {
-      std.realization_reconcile.DoesNotGround { reason: _ } => true
-      std.realization_reconcile.Grounds { evidence: _ } => false
+      DoesNotGround { reason: _ } => true
+      Grounds { evidence: _ } => false
     }
 }
 
@@ -102,8 +102,8 @@ test fn witness_accept_no_response_probe_fails_fast_not_hangs() -> Bool {
     expected_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision,
     expected_surface_identity: witness_expected_surface_identity(),
   ) {
-    std.realization_reconcile.DoesNotGround { reason: _ } => true
-    std.realization_reconcile.Grounds { evidence: _ } => false
+    DoesNotGround { reason: _ } => true
+    Grounds { evidence: _ } => false
   }
 }
 
@@ -144,7 +144,7 @@ test fn witness_sleep_flat_scalar_dissolution_trigger_tracked() -> Bool {
       bind: std.decl_ref.DeclarationRef { module_path: m, decl_name: n, field: std.decl_ref.WholeDeclaration },
     } =>
       m == "extdeps.tools.sleep" && n == "sleep_delay_seconds_second_carrier_projection"
-    std.disposition.Terminal { reason: _ } => false
+    Terminal { reason: _ } => false
   }
 }
 
@@ -181,7 +181,7 @@ test fn witness_red_control_never_ready_refuses_at_poll_bound() -> Bool {
     last_probe: "health probe never succeeded"
   )
   match r {
-    std.realization_reconcile.NotConverged { reason: why, applied: _ } =>
+    NotConverged { reason: why, applied: _ } =>
       string_contains(s: why, pattern: "ServiceNotReady")
         && string_contains(s: why, pattern: "waited_s=120")
         && string_contains(s: why, pattern: "health probe never succeeded")

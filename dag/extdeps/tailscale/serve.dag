@@ -70,9 +70,9 @@ fn tailscale_serve_mount_status_key(mount: TailscaleServeMount) -> String {
 fn json_unique_member_value(v: extdeps.languages.json.emit.JsonValue, key: String) -> extdeps.languages.json.emit.JsonValue? {
   match extdeps.languages.json.parse.json_object_unique_member(v: v, key: key) {
     JsonMemberFound { value } => Present { value: value }
-    extdeps.languages.json.parse.JsonMemberAbsent => none
+    JsonMemberAbsent => none
     JsonMemberDuplicated { count: _ } => none
-    extdeps.languages.json.parse.JsonMemberNotAnObject => none
+    JsonMemberNotAnObject => none
   }
 }
 
@@ -98,7 +98,7 @@ fn tailscale_status_web_entry_proxies(entry: extdeps.languages.json.emit.JsonVal
 fn tailscale_status_web_proxies(web: extdeps.languages.json.emit.JsonValue, mount: TailscaleServeMount) -> List<String> {
   match web {
     JsonObject { members } => flat_map(members, member => tailscale_status_web_entry_proxies(entry: member.value, mount: mount))
-    extdeps.languages.json.emit.JsonNull => []
+    JsonNull => []
     JsonBool { value: _ } => []
     JsonNumber { lexeme: _ } => []
     JsonString { value: _ } => []
@@ -137,9 +137,9 @@ type TailscaleServeCapability
 // THE VERDICT CARRIES WHAT IT WAS COMPUTED FROM. A Bool capability cannot be re-derived when the boundary moves or the host is upgraded, and cannot say WHICH client it is describing — so the observed version rides on both decided arms and only the undecided arm carries prose.\n\nIt is a SemVerVersion rather than the version string tailscale prints, grounded on extdeps.version.semver, because an earlier draft of this row held both a display string and a parsed major/minor pair — two representations of one fact, free to disagree, which is the exact defect class this module is being repaired for. The label is a projection (semver_version_label), so there is nothing to keep in sync.\n\nComparison is semver_compare rather than a hand-written major/minor ladder, for the same reason: the ordering is already modeled, and a second ladder would be a second answer.
 fn tailscale_scoped_removal_capability(observed: extdeps.version.semver.SemVerVersion) -> TailscaleServeCapability {
   match extdeps.version.semver.semver_compare(a: observed, b: tailscale_scoped_serve_off_minimum) {
-    std.algebra.Less => ScopedRemovalUnsupported { observed: observed }
-    std.algebra.Equal => ScopedRemovalSupported { observed: observed }
-    std.algebra.Greater => ScopedRemovalSupported { observed: observed }
+    Less => ScopedRemovalUnsupported { observed: observed }
+    Equal => ScopedRemovalSupported { observed: observed }
+    Greater => ScopedRemovalSupported { observed: observed }
   }
 }
 

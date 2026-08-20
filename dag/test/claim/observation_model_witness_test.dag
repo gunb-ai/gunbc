@@ -368,7 +368,7 @@ test fn w_watchdog_converts_quiet_past_budget_into_a_typed_line() -> Bool {
   std.observation.observation_watchdog_attention(v: within) == std.observation.Ambient &&
   std.observation.observation_watchdog_attention(v: past) == std.observation.Anomaly &&
   match past {
-    std.observation.WatchdogQuiet => false
+    WatchdogQuiet => false
     WatchdogOrphanedBegin { subject: s, elapsed: _, budget: _ } => count(s.segments) == 3
   }
 }

@@ -15,10 +15,10 @@ data healthz_surface_projection_member_count: Int = 3
 
 fn healthz_projected_member_or_empty(doc: extdeps.languages.json.emit.JsonValue, key: String) -> List<extdeps.languages.json.emit.JsonKeyValue> {
   match extdeps.languages.json.parse.json_object_unique_member(v: doc, key: key) {
-    extdeps.languages.json.parse.JsonMemberFound { value: v } => [extdeps.languages.json.emit.json_kv(key: key, value: v)]
-    extdeps.languages.json.parse.JsonMemberAbsent => []
-    extdeps.languages.json.parse.JsonMemberDuplicated { count: _ } => []
-    extdeps.languages.json.parse.JsonMemberNotAnObject => []
+    JsonMemberFound { value: v } => [extdeps.languages.json.emit.json_kv(key: key, value: v)]
+    JsonMemberAbsent => []
+    JsonMemberDuplicated { count: _ } => []
+    JsonMemberNotAnObject => []
   }
 }
 
@@ -91,8 +91,8 @@ fn healthz_round_trip_receipt_holds(bundle: gunbc.roadmap_site_surface_types.Roa
 
 fn healthz_read_grounds(bundle: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceBundle, read: gunbc.roadmap_site_surface_types.HealthzEffectiveRead) -> Bool {
   match read {
-    gunbc.roadmap_site_surface_types.HealthzProbeRefused { probe_error: _ } => false
-    gunbc.roadmap_site_surface_types.HealthzBodyRead { body: observed_body } =>
+    HealthzProbeRefused { probe_error: _ } => false
+    HealthzBodyRead { body: observed_body } =>
       roadmap_site_healthz_json_string_parses(body: observed_body)
         && roadmap_site_healthz_surface_is_current(bundle: bundle, observed_body: observed_body)
   }

@@ -352,7 +352,7 @@ fn loop_multiplicity_from_rows(rows: List<MeasureDimensionEvidence>) -> Multipli
     match dimension_rows_meet(rows: rows) {
       DescentUnknown => RequiresTerminationProof
       NonIncreasing => lexicographic_multiplicity(rows: rows)
-      std.termination.Strict => lexicographic_multiplicity(rows: rows)
+      Strict => lexicographic_multiplicity(rows: rows)
     }
   }
 }

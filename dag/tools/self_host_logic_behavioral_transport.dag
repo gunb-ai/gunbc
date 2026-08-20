@@ -191,11 +191,11 @@ fn slb_behavioral_receipt_holds() -> Bool {
           match o.equivalence {
             Observed { value: e } =>
               match e {
-                v2.compiler.self_host.promotion_admission.BehaviorAgrees =>
+                BehaviorAgrees =>
                   match o.fault {
                     Observed { value: f } =>
                       match f {
-                        v2.compiler.self_host.promotion_admission.FaultCaught => true
+                        FaultCaught => true
                         FaultNotCaught { at_case: _ } => false
                       }
                     ObservationUnavailable { cause: _ } => false

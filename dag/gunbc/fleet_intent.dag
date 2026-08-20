@@ -1,6 +1,5 @@
 module gunbc.fleet_intent
 
-
 type IsolationBoundary = SharedHostHome | PerJobFilesystem | ContainerHermetic | Vm
 type ContainerRuntime = Docker | Podman | Gvisor | Ubicloud | GcloudRun
 
@@ -113,7 +112,7 @@ data host_v1_interpreter_execution_surface: ExecutionSurface = ExecutionSurface 
 
 fn performance_receipt_host_single_sample(
   work_shape: WorkUnitId,
-  wall_time: std.verification.NanosecondDuration,
+  wall_time: std.measure.Nanosecond,
   space: std.measure.ByteSize,
 ) -> PerformanceReceipt {
   PerformanceReceipt {
@@ -128,8 +127,8 @@ fn performance_receipt_host_single_sample(
   }
 }
 
-fn performance_receipts_total_time(receipts: List<PerformanceReceipt>) -> std.verification.NanosecondDuration {
-  std.verification.nanosecond_duration(
+fn performance_receipts_total_time(receipts: List<PerformanceReceipt>) -> std.measure.Nanosecond {
+  std.measure.nanosecond(
     count: fold(
       receipts,
       init: 0,
@@ -192,9 +191,9 @@ data srv4_nvme0: extdeps.storage.types.StorageDevice = extdeps.storage.types.nvm
   persistence: extdeps.storage.types.Persistent,
 )
 
-data fleet_host_memory_nominal_vs_usable_note: String = "Two DISTINCT memory facts for fleet hosts, must not be conflated: (1) NOMINAL DIMM population — srv1/srv2/srv3 host memory derives from per-DIMM BMC std.bmc.Redfish observations through extdeps.memory.types.HostMemoryPopulation rows (module × stick_count), srv1/srv2/srv3 observed 2026-07-16 (deferral scaffolds retired on observation); srv4 is NOT yet observed — its 128 GiB literal carries srv4_memory_population_deferral, the same declared-deferral shape srv1/srv2 used pre-observation; (2) OS-USABLE budget — gunbc_ci_host.memory std.measure.byte_size(134217728000) = exactly 125 GiB, MemTotal-shaped CI runner budget authority (roadmap 128c/125GiB; floor peak receipts from srv1/srv2). The usable figure requires its OWN OS MemTotal provenance — never a blind rewrite from 125 GiB usable to 128 GiB nominal."
+data fleet_host_memory_nominal_vs_usable_note: String = "Two DISTINCT memory facts for fleet hosts, must not be conflated: (1) NOMINAL DIMM population — srv1/srv2/srv3 host memory derives from per-DIMM BMC Redfish observations through HostMemoryPopulation rows (module × stick_count), srv1/srv2/srv3 observed 2026-07-16 (deferral scaffolds retired on observation); srv4 is NOT yet observed — its 128 GiB literal carries srv4_memory_population_deferral, the same declared-deferral shape srv1/srv2 used pre-observation; (2) OS-USABLE budget — gunbc_ci_host.memory byte_size(134217728000) = exactly 125 GiB, MemTotal-shaped CI runner budget authority (roadmap 128c/125GiB; floor peak receipts from srv1/srv2). The usable figure requires its OWN OS MemTotal provenance — never a blind rewrite from 125 GiB usable to 128 GiB nominal."
 
-data srv1_memory_population_observation_note: String = "srv1 BMC 192.168.1.183 std.bmc.Redfish observation 2026-07-16 (rotated cred, operator-supplied): MemorySummary TotalSystemMemoryGiB=128; per-DIMM dimm0..dimm7 all HMA82GR7AFR4N-VK RankCount=1 DataWidthBits=64 BusWidthBits=72 CapacityMiB=16384 OperatingSpeedMhz=2666 (×8). Uniform 8-stick population of the existing cited row extdeps.memory.sk_hynix.hma82gr7afr4n_vk_catalog (AFR4N=x4 1R) totals 128 GiB — dissolves the gibibyte(128) placeholder."
+data srv1_memory_population_observation_note: String = "srv1 BMC 192.168.1.183 Redfish observation 2026-07-16 (rotated cred, operator-supplied): MemorySummary TotalSystemMemoryGiB=128; per-DIMM dimm0..dimm7 all HMA82GR7AFR4N-VK RankCount=1 DataWidthBits=64 BusWidthBits=72 CapacityMiB=16384 OperatingSpeedMhz=2666 (×8). Uniform 8-stick population of the existing cited row hma82gr7afr4n_vk_catalog (AFR4N=x4 1R) totals 128 GiB — dissolves the gibibyte(128) placeholder."
 
 data srv1_memory_population: extdeps.memory.types.HostMemoryPopulation = extdeps.memory.types.HostMemoryPopulation {
   rows: [
@@ -202,7 +201,7 @@ data srv1_memory_population: extdeps.memory.types.HostMemoryPopulation = extdeps
   ],
 }
 
-data srv2_memory_population_observation_note: String = "srv2 BMC 192.168.1.184 std.bmc.Redfish observation 2026-07-16 (rotated cred, operator-supplied): MemorySummary TotalSystemMemoryGiB=128; per-DIMM dimm0..dimm7 all HMA82GR7AFR4N-VK RankCount=1 DataWidthBits=64 BusWidthBits=72 CapacityMiB=16384 OperatingSpeedMhz=2666 (×8). Uniform 8-stick population of the existing cited row extdeps.memory.sk_hynix.hma82gr7afr4n_vk_catalog (AFR4N=x4 1R) totals 128 GiB — dissolves the gibibyte(128) placeholder."
+data srv2_memory_population_observation_note: String = "srv2 BMC 192.168.1.184 Redfish observation 2026-07-16 (rotated cred, operator-supplied): MemorySummary TotalSystemMemoryGiB=128; per-DIMM dimm0..dimm7 all HMA82GR7AFR4N-VK RankCount=1 DataWidthBits=64 BusWidthBits=72 CapacityMiB=16384 OperatingSpeedMhz=2666 (×8). Uniform 8-stick population of the existing cited row hma82gr7afr4n_vk_catalog (AFR4N=x4 1R) totals 128 GiB — dissolves the gibibyte(128) placeholder."
 
 data srv2_memory_population: extdeps.memory.types.HostMemoryPopulation = extdeps.memory.types.HostMemoryPopulation {
   rows: [
@@ -210,7 +209,7 @@ data srv2_memory_population: extdeps.memory.types.HostMemoryPopulation = extdeps
   ],
 }
 
-data srv3_memory_population_observation_note: String = "srv3 BMC 192.168.1.192 std.bmc.Redfish observation 2026-07-16 (factory cred): MemorySummary TotalSystemMemoryGiB=128; per-DIMM dimm0 HMA82GR7AFR8N-VK RankCount=2 DataWidthBits=64 BusWidthBits=72 CapacityMiB=16384 OperatingSpeedMhz=2666 (×7); dimm7 HMA82GR7AFR4N-VK RankCount=1 DataWidthBits=64 BusWidthBits=72 CapacityMiB=16384 OperatingSpeedMhz=2666 (×1). Part-number decode: AFR8N=x8 2R → extdeps.memory.sk_hynix.hma82gr7afr8n_vk_catalog; AFR4N=x4 1R → existing extdeps.memory.sk_hynix.hma82gr7afr4n_vk_catalog. Mixed 7+1 population totals 128 GiB — the fact the old gibibyte(128) literal was hiding."
+data srv3_memory_population_observation_note: String = "srv3 BMC 192.168.1.192 Redfish observation 2026-07-16 (factory cred): MemorySummary TotalSystemMemoryGiB=128; per-DIMM dimm0 HMA82GR7AFR8N-VK RankCount=2 DataWidthBits=64 BusWidthBits=72 CapacityMiB=16384 OperatingSpeedMhz=2666 (×7); dimm7 HMA82GR7AFR4N-VK RankCount=1 DataWidthBits=64 BusWidthBits=72 CapacityMiB=16384 OperatingSpeedMhz=2666 (×1). Part-number decode: AFR8N=x8 2R → hma82gr7afr8n_vk_catalog; AFR4N=x4 1R → existing hma82gr7afr4n_vk_catalog. Mixed 7+1 population totals 128 GiB — the fact the old gibibyte(128) literal was hiding."
 
 data srv3_memory_population: extdeps.memory.types.HostMemoryPopulation = extdeps.memory.types.HostMemoryPopulation {
   rows: [
@@ -256,7 +255,7 @@ type FleetHostMemoryPopulationDeferral {
 data srv4_memory_population_deferral: FleetHostMemoryPopulationDeferral = FleetHostMemoryPopulationDeferral {
   host: gunbc.fleet_intent_network.operator_host_srv4,
   bmc_host: "192.168.1.195",
-  cause: "per-DIMM std.bmc.Redfish observation not yet taken: srv4 BMC credential is rotated and stored (bmc-srv4-admin) but this session has no reach-secrets path to authenticate the read (fleet_subsumption_manual_gaps A2)",
+  cause: "per-DIMM Redfish observation not yet taken: srv4 BMC credential is rotated and stored (bmc-srv4-admin) but this session has no reach-secrets path to authenticate the read (fleet_subsumption_manual_gaps A2)",
   dissolution: std.dissolution.unbound_dissolution(description: "authenticated read of 192.168.1.195 /redfish/v1/Systems/system/Memory — cite srv4_memory_population rows against the sk_hynix catalog (decode part numbers, never assume srv1's uniform AFR4N population), replace srv4_host.memory literal with memory_devices_from_population(pop: srv4_memory_population), and retire this deferral exactly as srv1/srv2's were at their 2026-07-16 observations (fleet_host_memory_nominal_vs_usable_note governs the usable-vs-nominal split)"),
 }
 

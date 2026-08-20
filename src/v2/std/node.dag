@@ -1,19 +1,16 @@
 module v2.std.node
 
-
-
 type Symbol
 type Hash = std.content_hash.Fnv1a64Structural
 
-
-data node_occurrence_id_v2_facade_note: String = "TEMPORARY COMPATIBILITY: v2 callers still construct and match this source-compatible coproduct while v2.std.node.NodeOccurrenceId is the sole shared semantic authority. The total conversions below are the only bridge; new consumers use the shared carrier directly."
+data node_occurrence_id_v2_facade_note: String = "TEMPORARY COMPATIBILITY: v2 callers still construct and match this source-compatible coproduct while std.occurrence_identity.NodeOccurrenceId is the sole shared semantic authority. The total conversions below are the only bridge; new consumers use the shared carrier directly."
 
 type NodeOccurrenceId
   = SyntheticOccurrence
   | MintedOccurrence { id: std.occurrence_identity.OccurrenceId }
 
 fn node_occurrence_id_to_shared(
-  occurrence: v2.std.node.NodeOccurrenceId
+  occurrence: NodeOccurrenceId
 ) -> std.occurrence_identity.NodeOccurrenceIdentity {
   match occurrence {
     SyntheticOccurrence =>
@@ -25,23 +22,23 @@ fn node_occurrence_id_to_shared(
 
 fn node_occurrence_id_from_shared(
   occurrence: std.occurrence_identity.NodeOccurrenceIdentity
-) -> v2.std.node.NodeOccurrenceId {
+) -> NodeOccurrenceId {
   match occurrence {
     std.occurrence_identity.OccurrenceSynthetic =>
       SyntheticOccurrence
-    OccurrenceMinted { id: id } =>
+    std.occurrence_identity.OccurrenceMinted { id: id } =>
       MintedOccurrence { id: id }
   }
 }
 
-fn node_occurrence_minted(id: std.occurrence_identity.OccurrenceId) -> v2.std.node.NodeOccurrenceId {
+fn node_occurrence_minted(id: std.occurrence_identity.OccurrenceId) -> NodeOccurrenceId {
   node_occurrence_id_from_shared(
     occurrence: std.occurrence_identity.node_occurrence_identity_minted(id: id)
   )
 }
 
 type Connective
-  = Atom { identity: v2.std.node.Symbol }
+  = Atom { identity: Symbol }
   | Conj
   | Disj
   | Arrow
@@ -56,25 +53,25 @@ type Behavior
   | Bind
   | Match
 
-fn resolve_type_node(type_name: v2.std.node.Symbol) -> v2.std.node.Node {
+fn resolve_type_node(type_name: Symbol) -> Node {
   resolve_type_node(type_name: type_name)
 }
 
 type ArmPayload
   = Nullary
-  | Typed { target_ref: v2.std.node.Symbol }
+  | Typed { target_ref: Symbol }
 
 type CoproductArm {
-  label: v2.std.node.Symbol
-  payload: v2.std.node.ArmPayload
+  label: Symbol
+  payload: ArmPayload
 }
 
 type CoproductArmPayloadPair {
-  label: v2.std.node.Symbol
-  payload_type_name: v2.std.node.Symbol
+  label: Symbol
+  payload_type_name: Symbol
 }
 
-data coproduct_nullary_payload_type_name: v2.std.node.Symbol = ^coproduct_nullary_payload
+data coproduct_nullary_payload_type_name: Symbol = ^coproduct_nullary_payload
 
 type ConnectiveCoproductVariant
   = ConnectiveAtomArm
@@ -84,7 +81,7 @@ type ConnectiveCoproductVariant
   | ConnectiveCardinalityArm
   | ConnectiveInstantiationArm
 
-fn connective_coproduct_variant_keys() -> List<v2.std.node.ConnectiveCoproductVariant> {
+fn connective_coproduct_variant_keys() -> List<ConnectiveCoproductVariant> {
   [
     ConnectiveAtomArm,
     ConnectiveConjArm,
@@ -96,9 +93,9 @@ fn connective_coproduct_variant_keys() -> List<v2.std.node.ConnectiveCoproductVa
 }
 
 fn connective_from_coproduct_variant(
-  variant: v2.std.node.ConnectiveCoproductVariant,
-  atom_identity: v2.std.node.Symbol
-) -> v2.std.node.Connective {
+  variant: ConnectiveCoproductVariant,
+  atom_identity: Symbol
+) -> Connective {
   match variant {
     ConnectiveAtomArm => Atom { identity: atom_identity }
     ConnectiveConjArm => Conj
@@ -109,43 +106,43 @@ fn connective_from_coproduct_variant(
   }
 }
 
-fn behavior_coproduct_variants() -> List<v2.std.node.Behavior> {
+fn behavior_coproduct_variants() -> List<Behavior> {
   [Value, Transform, Branch, Loop, Bind, Match]
 }
 
-data match_arm_pattern: v2.std.node.Symbol = ^match_arm_pattern
-data match_arm_body: v2.std.node.Symbol = ^match_arm_body
+data match_arm_pattern: Symbol = ^match_arm_pattern
+data match_arm_body: Symbol = ^match_arm_body
 
 type NodeKind
-  = TypeNode { connective: v2.std.node.Connective }
-  | ComputationNode { behavior: v2.std.node.Behavior }
+  = TypeNode { connective: Connective }
+  | ComputationNode { behavior: Behavior }
 
 type EdgeLabel
-  = Named { name: v2.std.node.Symbol }
+  = Named { name: Symbol }
   | Positional
 type Edge {
-  label: v2.std.node.EdgeLabel
-  target: v2.std.node.Node
+  label: EdgeLabel
+  target: Node
 }
 
 type EdgeShape {
-  label: v2.std.node.EdgeLabel
-  target: v2.std.node.NodeShape
+  label: EdgeLabel
+  target: NodeShape
 }
 type NodeShape {
-  kind: v2.std.node.NodeKind
-  children: List<v2.std.node.EdgeShape>
+  kind: NodeKind
+  children: List<EdgeShape>
 }
 
 fn node_with_occurrence_id(
-  kind: v2.std.node.NodeKind,
-  children: List<v2.std.node.Edge>,
-  occurrence_id: v2.std.node.NodeOccurrenceId
-) -> v2.std.node.Node {
-  v2.std.node.Node { kind: kind, children: children, occurrence_id: occurrence_id }
+  kind: NodeKind,
+  children: List<Edge>,
+  occurrence_id: NodeOccurrenceId
+) -> Node {
+  Node { kind: kind, children: children, occurrence_id: occurrence_id }
 }
 
-fn node_rebuild(n: v2.std.node.Node, children: List<v2.std.node.Edge>) -> v2.std.node.Node {
+fn node_rebuild(n: Node, children: List<Edge>) -> Node {
   node_with_occurrence_id(
     kind: n.kind,
     children: children,
@@ -153,7 +150,7 @@ fn node_rebuild(n: v2.std.node.Node, children: List<v2.std.node.Edge>) -> v2.std
   )
 }
 
-fn node_synthetic(kind: v2.std.node.NodeKind, children: List<v2.std.node.Edge>) -> v2.std.node.Node {
+fn node_synthetic(kind: NodeKind, children: List<Edge>) -> Node {
   node_with_occurrence_id(
     kind: kind,
     children: children,
@@ -161,7 +158,7 @@ fn node_synthetic(kind: v2.std.node.NodeKind, children: List<v2.std.node.Edge>) 
   )
 }
 
-fn node_for_structural_equality(n: v2.std.node.Node) -> v2.std.node.Node {
+fn node_for_structural_equality(n: Node) -> Node {
   node_with_occurrence_id(
     kind: n.kind,
     children: n.children,
@@ -169,57 +166,57 @@ fn node_for_structural_equality(n: v2.std.node.Node) -> v2.std.node.Node {
   )
 }
 
-fn strip_provenance_fold_init(n: v2.std.node.Node) -> v2.std.node.Node {
+fn strip_provenance_fold_init(n: Node) -> Node {
   node_synthetic(kind: n.kind, children: [])
 }
 
-fn strip_provenance_fold_step(acc: v2.std.node.Node, edge: v2.std.node.Edge, child: v2.std.node.Node) -> v2.std.node.Node {
+fn strip_provenance_fold_step(acc: Node, edge: Edge, child: Node) -> Node {
   node_rebuild(
     n: acc,
-    children: concat(acc.children, [v2.std.node.Edge { label: edge.label, target: child }])
+    children: concat(acc.children, [Edge { label: edge.label, target: child }])
   )
 }
 
-fn strip_provenance_fold_algebra() -> v2.std.node.NodeFold<v2.std.node.Node> {
+fn strip_provenance_fold_algebra() -> NodeFold<Node> {
   NodeFold {
     init: strip_provenance_fold_init,
     step: strip_provenance_fold_step
   }
 }
 
-fn canonicalize_node_strip_provenance(n: v2.std.node.Node) -> v2.std.node.Node {
+fn canonicalize_node_strip_provenance(n: Node) -> Node {
   fold_node(n: n, algebra: strip_provenance_fold_algebra())
 }
 
 type Node {
-  kind: v2.std.node.NodeKind
-  children: List<v2.std.node.Edge>
-  occurrence_id: v2.std.node.NodeOccurrenceId
+  kind: NodeKind
+  children: List<Edge>
+  occurrence_id: NodeOccurrenceId
 }
 type NodeFold<R> {
-  init: fn(v2.std.node.Node) -> R
-  step: fn(R, v2.std.node.Edge, R) -> R
+  init: fn(Node) -> R
+  step: fn(R, Edge, R) -> R
 }
-fn fold_node<R>(n: v2.std.node.Node, algebra: v2.std.node.NodeFold<R>) -> R {
+fn fold_node<R>(n: Node, algebra: NodeFold<R>) -> R {
   fold(n.children, init: algebra.init(n), f: fn(acc, e) {
     algebra.step(acc, e, fold_node(n: e.target, algebra: algebra))
   })
 }
 
-fn node_subtree_nodes(root: v2.std.node.Node) -> List<v2.std.node.Node> {
+fn node_subtree_nodes(root: Node) -> List<Node> {
   fold_node(
     n: root,
-    algebra: v2.std.node.NodeFold {
+    algebra: NodeFold {
       init: fn(self) { [self] },
       step: fn(acc, _edge, sub) { concat(acc, sub) }
     }
   )
 }
 
-fn node_subtree_count(n: v2.std.node.Node) -> Int {
+fn node_subtree_count(n: Node) -> Int {
   fold_node(
     n: n,
-    algebra: v2.std.node.NodeFold {
+    algebra: NodeFold {
       init: fn(_) { 1 },
       step: fn(acc, _edge, child_count) { acc + child_count }
     }
@@ -227,11 +224,11 @@ fn node_subtree_count(n: v2.std.node.Node) -> Int {
 }
 
 type NodeFoldTopDown<A,R> {
-  init: fn(v2.std.node.Node, A) -> R
-  child_context: fn(v2.std.node.Node, A, v2.std.node.Edge) -> A
-  step: fn(R, v2.std.node.Edge, R) -> R
+  init: fn(Node, A) -> R
+  child_context: fn(Node, A, Edge) -> A
+  step: fn(R, Edge, R) -> R
 }
-fn fold_node_topdown<A,R>(n: v2.std.node.Node, ctx: A, algebra: v2.std.node.NodeFoldTopDown<A,R>) -> R {
+fn fold_node_topdown<A,R>(n: Node, ctx: A, algebra: NodeFoldTopDown<A,R>) -> R {
   fold(n.children, init: algebra.init(n, ctx), f: fn(acc, e) {
     algebra.step(acc, e, fold_node_topdown(n: e.target, ctx: algebra.child_context(n, ctx, e), algebra: algebra))
   })
@@ -248,7 +245,7 @@ type EdgeDiscipline
 
 data atom_payload_labeled_edges_scaffold_note: String = "🟡 dissolve-on: Atom connectives with labeled payload children (int-literal magnitude on ^dag_token_int_literal via ^integer_literal_magnitude_field) — atom_connective_edge_discipline(child_count) is the single authority (NoEdges when child_count==0, LabeledEdges otherwise); connective_edge_discipline_for_children delegates Atom through it. Not a new connective: the payload is a typed named field, not an open Conj record. Reconcile when int-literal lowering lands a dedicated connective or magnitude lives only on the magnitude subnode without widening Atom discipline."
 
-fn atom_connective_edge_discipline(child_count: Int) -> v2.std.node.EdgeDiscipline {
+fn atom_connective_edge_discipline(child_count: Int) -> EdgeDiscipline {
   if child_count == 0 {
     NoEdges
   } else {
@@ -256,7 +253,7 @@ fn atom_connective_edge_discipline(child_count: Int) -> v2.std.node.EdgeDiscipli
   }
 }
 
-fn connective_edge_discipline(c: v2.std.node.Connective) -> v2.std.node.EdgeDiscipline {
+fn connective_edge_discipline(c: Connective) -> EdgeDiscipline {
   match c {
     Atom { identity: _ } => atom_connective_edge_discipline(child_count: 0)
     Conj => LabeledEdges
@@ -267,7 +264,7 @@ fn connective_edge_discipline(c: v2.std.node.Connective) -> v2.std.node.EdgeDisc
   }
 }
 
-fn connective_edge_discipline_for_children(c: v2.std.node.Connective, children: List<v2.std.node.Edge>) -> v2.std.node.EdgeDiscipline {
+fn connective_edge_discipline_for_children(c: Connective, children: List<Edge>) -> EdgeDiscipline {
   match c {
     Atom { identity: _ } =>
       atom_connective_edge_discipline(child_count: count(children))
@@ -275,32 +272,32 @@ fn connective_edge_discipline_for_children(c: v2.std.node.Connective, children: 
   }
 }
 
-fn is_named(e: v2.std.node.Edge) -> Bool {
+fn is_named(e: Edge) -> Bool {
   match e.label {
     Named { name: _ } => true
     Positional => false
   }
 }
 
-fn is_positional(e: v2.std.node.Edge) -> Bool {
+fn is_positional(e: Edge) -> Bool {
   match e.label {
     Named { name: _ } => false
     Positional => true
   }
 }
 
-fn all_edges_named(children: List<v2.std.node.Edge>) -> Bool {
+fn all_edges_named(children: List<Edge>) -> Bool {
   fold(children, init: true, f: fn(acc, e) {
     acc && is_named(e: e)
   })
 }
 
-fn all_edges_positional(children: List<v2.std.node.Edge>) -> Bool {
+fn all_edges_positional(children: List<Edge>) -> Bool {
   fold(children, init: true, f: fn(acc, e) {
     acc && is_positional(e: e)
   })
 }
-fn name_occurrences(name: v2.std.node.Symbol, children: List<v2.std.node.Edge>) -> Int {
+fn name_occurrences(name: Symbol, children: List<Edge>) -> Int {
   fold(children, init: 0, f: fn(acc, e) {
     match e.label {
       Named { name: n } => if n == name { acc + 1 } else { acc }
@@ -308,7 +305,7 @@ fn name_occurrences(name: v2.std.node.Symbol, children: List<v2.std.node.Edge>) 
     }
   })
 }
-fn positional_child_count(children: List<v2.std.node.Edge>) -> Int {
+fn positional_child_count(children: List<Edge>) -> Int {
   fold(children, init: 0, f: fn(acc, e) {
     match e.label {
       Positional => acc + 1
@@ -317,11 +314,11 @@ fn positional_child_count(children: List<v2.std.node.Edge>) -> Int {
   })
 }
 
-fn loop_positional_child_count(children: List<v2.std.node.Edge>) -> Int {
+fn loop_positional_child_count(children: List<Edge>) -> Int {
   positional_child_count(children: children)
 }
 
-fn loop_body_edges_conform(children: List<v2.std.node.Edge>) -> Bool {
+fn loop_body_edges_conform(children: List<Edge>) -> Bool {
   fold(children, init: true, f: fn(acc, e) {
     match e.label {
       Positional => acc
@@ -330,7 +327,7 @@ fn loop_body_edges_conform(children: List<v2.std.node.Edge>) -> Bool {
   })
 }
 
-fn loop_behavior_edges_conform(children: List<v2.std.node.Edge>) -> Bool {
+fn loop_behavior_edges_conform(children: List<Edge>) -> Bool {
   let bound_edges = name_occurrences(name: ^loop_bound_edge, children: children)
   let carrier_edges = name_occurrences(name: ^loop_carrier_edge, children: children)
   (bound_edges == 1)
@@ -339,7 +336,7 @@ fn loop_behavior_edges_conform(children: List<v2.std.node.Edge>) -> Bool {
   && (loop_positional_child_count(children: children) >= 1)
 }
 
-fn arrow_signature_edges_conform(children: List<v2.std.node.Edge>) -> Bool {
+fn arrow_signature_edges_conform(children: List<Edge>) -> Bool {
   fold(children, init: true, f: fn(acc, e) {
     match e.label {
       Positional => acc
@@ -349,11 +346,11 @@ fn arrow_signature_edges_conform(children: List<v2.std.node.Edge>) -> Bool {
 }
 
 type NamedEdgeTargetLookup
-  = Found { target: v2.std.node.Node }
+  = Found { target: Node }
   | Ambiguous
   | Absent
 
-fn named_edge_target_lookup(children: List<v2.std.node.Edge>, name: v2.std.node.Symbol) -> v2.std.node.NamedEdgeTargetLookup {
+fn named_edge_target_lookup(children: List<Edge>, name: Symbol) -> NamedEdgeTargetLookup {
   fold(children, init: Absent, f: fn(acc, e) {
     match e.label {
       Named { name: sym } =>
@@ -371,7 +368,7 @@ fn named_edge_target_lookup(children: List<v2.std.node.Edge>, name: v2.std.node.
   })
 }
 
-fn arrow_body_target_lookup(children: List<v2.std.node.Edge>) -> v2.std.node.NamedEdgeTargetLookup {
+fn arrow_body_target_lookup(children: List<Edge>) -> NamedEdgeTargetLookup {
   named_edge_target_lookup(children: children, name: ^arrow_body_edge)
 }
 
@@ -391,10 +388,10 @@ fn arrow_body_target_lookup(children: List<v2.std.node.Edge>) -> v2.std.node.Nam
 type ArrowBodyForm
   = DirectAtomBody
   | RecordConstructBody
-  | ComputationBody { behavior: v2.std.node.Behavior }
+  | ComputationBody { behavior: Behavior }
   | UnsupportedArrowBody
 
-fn classify_arrow_body_form(target: v2.std.node.Node) -> v2.std.node.ArrowBodyForm {
+fn classify_arrow_body_form(target: Node) -> ArrowBodyForm {
   match target.kind {
     TypeNode { connective: Atom { identity: _ } } => DirectAtomBody
     TypeNode { connective: Conj } => RecordConstructBody
@@ -403,7 +400,7 @@ fn classify_arrow_body_form(target: v2.std.node.Node) -> v2.std.node.ArrowBodyFo
   }
 }
 
-fn arrow_body_admits_eval_entry(form: v2.std.node.ArrowBodyForm) -> Bool {
+fn arrow_body_admits_eval_entry(form: ArrowBodyForm) -> Bool {
   match form {
     UnsupportedArrowBody => false
     DirectAtomBody => true
@@ -417,7 +414,7 @@ fn arrow_body_admits_eval_entry(form: v2.std.node.ArrowBodyForm) -> Bool {
   }
 }
 
-fn arrow_body_record_construct_conforms(node: v2.std.node.Node) -> Bool {
+fn arrow_body_record_construct_conforms(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Conj } =>
       if !all_edges_named(children: node.children) {
@@ -442,7 +439,7 @@ fn arrow_body_record_construct_conforms(node: v2.std.node.Node) -> Bool {
   }
 }
 
-fn arrow_body_target_is_valid_realization(target: v2.std.node.Node) -> Bool {
+fn arrow_body_target_is_valid_realization(target: Node) -> Bool {
   match classify_arrow_body_form(target: target) {
     UnsupportedArrowBody => false
     RecordConstructBody => arrow_body_record_construct_conforms(node: target)
@@ -451,7 +448,7 @@ fn arrow_body_target_is_valid_realization(target: v2.std.node.Node) -> Bool {
   }
 }
 
-fn arrow_body_target_conforms(children: List<v2.std.node.Edge>) -> Bool {
+fn arrow_body_target_conforms(children: List<Edge>) -> Bool {
   match arrow_body_target_lookup(children: children) {
     Absent => true
     Found { target: t } => arrow_body_target_is_valid_realization(target: t)
@@ -459,22 +456,22 @@ fn arrow_body_target_conforms(children: List<v2.std.node.Edge>) -> Bool {
   }
 }
 
-fn arrow_body_edges_conform(children: List<v2.std.node.Edge>) -> Bool {
+fn arrow_body_edges_conform(children: List<Edge>) -> Bool {
   let body_edges = name_occurrences(name: ^arrow_body_edge, children: children)
   (body_edges <= 1)
   && arrow_signature_edges_conform(children: children)
   && (positional_child_count(children: children) >= 1)
   && arrow_body_target_conforms(children: children)
 }
-fn loop_bound_measure_target(children: List<v2.std.node.Edge>) -> v2.std.node.NamedEdgeTargetLookup {
+fn loop_bound_measure_target(children: List<Edge>) -> NamedEdgeTargetLookup {
   named_edge_target_lookup(children: children, name: ^loop_bound_edge)
 }
 
-fn loop_carrier_binder_target(children: List<v2.std.node.Edge>) -> v2.std.node.NamedEdgeTargetLookup {
+fn loop_carrier_binder_target(children: List<Edge>) -> NamedEdgeTargetLookup {
   named_edge_target_lookup(children: children, name: ^loop_carrier_edge)
 }
 
-fn loop_edge_contributes_to_iteration_fold(parent: v2.std.node.Node, e: v2.std.node.Edge) -> Bool {
+fn loop_edge_contributes_to_iteration_fold(parent: Node, e: Edge) -> Bool {
   match parent.kind {
     ComputationNode { behavior: Loop } =>
       match e.label {
@@ -491,7 +488,7 @@ fn loop_edge_contributes_to_iteration_fold(parent: v2.std.node.Node, e: v2.std.n
 
 data edge_contributes_to_cost_fold_note: String = "Wave 1 Gate 1 C1: the symbolic cost fold prices only runtime work. Arrow signature/type positional children and domain Named edges are NOT runtime cost — only ^arrow_body_edge carries the body the fold must price (general-body-producer-design Stage C prerequisite). Loop keeps the iteration-fold edge discipline from loop_edge_contributes_to_iteration_fold; infer continues to use that function directly."
 
-fn edge_contributes_to_cost_fold(parent: v2.std.node.Node, e: v2.std.node.Edge) -> Bool {
+fn edge_contributes_to_cost_fold(parent: Node, e: Edge) -> Bool {
   match parent.kind {
     ComputationNode { behavior: Loop } =>
       match e.label {
@@ -510,7 +507,7 @@ fn edge_contributes_to_cost_fold(parent: v2.std.node.Node, e: v2.std.node.Edge) 
       }
   }
 }
-fn all_names_distinct(children: List<v2.std.node.Edge>) -> Bool {
+fn all_names_distinct(children: List<Edge>) -> Bool {
   fold(children, init: true, f: fn(acc, e) {
     match e.label {
       Named { name: n } => acc && (name_occurrences(name: n, children: children) == 1)
@@ -518,7 +515,7 @@ fn all_names_distinct(children: List<v2.std.node.Edge>) -> Bool {
     }
   })
 }
-fn edges_conform(children: List<v2.std.node.Edge>, d: v2.std.node.EdgeDiscipline) -> Bool {
+fn edges_conform(children: List<Edge>, d: EdgeDiscipline) -> Bool {
   match d {
     NoEdges => count(children) == 0
     LabeledEdges =>
@@ -529,7 +526,7 @@ fn edges_conform(children: List<v2.std.node.Edge>, d: v2.std.node.EdgeDiscipline
   }
 }
 
-fn connective_edges_conform(children: List<v2.std.node.Edge>, c: v2.std.node.Connective) -> Bool {
+fn connective_edges_conform(children: List<Edge>, c: Connective) -> Bool {
   match c {
     Atom { identity: _ } =>
       edges_conform(
@@ -546,7 +543,7 @@ fn connective_edges_conform(children: List<v2.std.node.Edge>, c: v2.std.node.Con
   }
 }
 
-fn match_arm_node_conforms(arm: v2.std.node.Node) -> Bool {
+fn match_arm_node_conforms(arm: Node) -> Bool {
   match arm.kind {
     TypeNode { connective: Conj } =>
       name_occurrences(name: match_arm_pattern, children: arm.children) == 1
@@ -560,10 +557,10 @@ type MatchArmChildrenConformFold {
   skipped_scrutinee: Bool
 }
 
-fn match_arm_children_conform_skip_first(children: List<v2.std.node.Edge>, skipped_scrutinee: Bool) -> Bool {
+fn match_arm_children_conform_skip_first(children: List<Edge>, skipped_scrutinee: Bool) -> Bool {
   let folded = fold(
     children,
-    init: v2.std.node.MatchArmChildrenConformFold { ok: true, skipped_scrutinee: skipped_scrutinee },
+    init: MatchArmChildrenConformFold { ok: true, skipped_scrutinee: skipped_scrutinee },
     f: fn(acc, edge) {
       if !acc.ok {
         acc
@@ -585,7 +582,7 @@ fn match_arm_children_conform_skip_first(children: List<v2.std.node.Edge>, skipp
   folded.ok && folded.skipped_scrutinee
 }
 
-fn behavior_edges_conform(children: List<v2.std.node.Edge>, b: v2.std.node.Behavior) -> Bool {
+fn behavior_edges_conform(children: List<Edge>, b: Behavior) -> Bool {
   match b {
     Value => count(children) == 0
     Transform => edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
@@ -598,16 +595,16 @@ fn behavior_edges_conform(children: List<v2.std.node.Edge>, b: v2.std.node.Behav
         && match_arm_children_conform_skip_first(children: children, skipped_scrutinee: false)
   }
 }
-fn locally_well_formed(n: v2.std.node.Node) -> Bool {
+fn locally_well_formed(n: Node) -> Bool {
   match n.kind {
       TypeNode { connective: c } => connective_edges_conform(children: n.children, c: c)
       ComputationNode { behavior: b } => behavior_edges_conform(children: n.children, b: b)
     }
 }
-fn well_formed(n: v2.std.node.Node) -> Bool {
+fn well_formed(n: Node) -> Bool {
   fold_node(
     n: n,
-    algebra: v2.std.node.NodeFold {
+    algebra: NodeFold {
       init: fn(n0) {
         locally_well_formed(n: n0)
       },
@@ -618,14 +615,14 @@ fn well_formed(n: v2.std.node.Node) -> Bool {
   )
 }
 
-fn is_empty_conj_root(n: v2.std.node.Node) -> Bool {
+fn is_empty_conj_root(n: Node) -> Bool {
   match n.kind {
     TypeNode { connective: Conj } => count(n.children) == 0
     _ => false
   }
 }
 
-fn behavior_edge_discipline(b: v2.std.node.Behavior) -> v2.std.node.EdgeDiscipline {
+fn behavior_edge_discipline(b: Behavior) -> EdgeDiscipline {
   match b {
     Value => NoEdges
     Transform => PositionalEdges
@@ -635,21 +632,21 @@ fn behavior_edge_discipline(b: v2.std.node.Behavior) -> v2.std.node.EdgeDiscipli
     Match => PositionalEdges
   }
 }
-fn node_edge_discipline(n: v2.std.node.Node) -> v2.std.node.EdgeDiscipline {
+fn node_edge_discipline(n: Node) -> EdgeDiscipline {
   match n.kind {
     TypeNode { connective: c } =>
       connective_edge_discipline_for_children(c: c, children: n.children)
     ComputationNode { behavior: b } => behavior_edge_discipline(b: b)
   }
 }
-fn named_edge_sort_key(e: v2.std.node.Edge) -> v2.std.node.Symbol {
+fn named_edge_sort_key(e: Edge) -> Symbol {
   match e.label {
     Named { name: sym } => sym
     Positional => ^canonical_tag_positional_edge
   }
 }
 
-fn arrow_signature_edges_for_content_hash(children: List<v2.std.node.Edge>) -> List<v2.std.node.Edge> {
+fn arrow_signature_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
   filter(children, fn(e) {
     match e.label {
       Positional => true
@@ -657,7 +654,7 @@ fn arrow_signature_edges_for_content_hash(children: List<v2.std.node.Edge>) -> L
     }
   })
 }
-fn arrow_body_edges_for_content_hash(children: List<v2.std.node.Edge>) -> List<v2.std.node.Edge> {
+fn arrow_body_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
   filter(children, fn(e) {
     match e.label {
       Named { name: sym } => sym == ^arrow_body_edge
@@ -665,7 +662,7 @@ fn arrow_body_edges_for_content_hash(children: List<v2.std.node.Edge>) -> List<v
     }
   })
 }
-fn arrow_other_named_edges_for_content_hash(children: List<v2.std.node.Edge>) -> List<v2.std.node.Edge> {
+fn arrow_other_named_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
   sort_by(
     filter(children, fn(e) {
       match e.label {
@@ -676,7 +673,7 @@ fn arrow_other_named_edges_for_content_hash(children: List<v2.std.node.Edge>) ->
     fn(e) { named_edge_sort_key(e: e) }
   )
 }
-fn canonicalize_arrow_children_for_content_hash(children: List<v2.std.node.Edge>) -> List<v2.std.node.Edge> {
+fn canonicalize_arrow_children_for_content_hash(children: List<Edge>) -> List<Edge> {
   concat(
     arrow_signature_edges_for_content_hash(children: children),
     concat(
@@ -685,7 +682,7 @@ fn canonicalize_arrow_children_for_content_hash(children: List<v2.std.node.Edge>
     )
   )
 }
-fn loop_body_edges_for_content_hash(children: List<v2.std.node.Edge>) -> List<v2.std.node.Edge> {
+fn loop_body_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
   filter(children, fn(e) {
     match e.label {
       Positional => true
@@ -693,7 +690,7 @@ fn loop_body_edges_for_content_hash(children: List<v2.std.node.Edge>) -> List<v2
     }
   })
 }
-fn loop_bound_edges_for_content_hash(children: List<v2.std.node.Edge>) -> List<v2.std.node.Edge> {
+fn loop_bound_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
   filter(children, fn(e) {
     match e.label {
       Named { name: sym } => sym == ^loop_bound_edge
@@ -701,7 +698,7 @@ fn loop_bound_edges_for_content_hash(children: List<v2.std.node.Edge>) -> List<v
     }
   })
 }
-fn loop_other_named_edges_for_content_hash(children: List<v2.std.node.Edge>) -> List<v2.std.node.Edge> {
+fn loop_other_named_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
   sort_by(
     filter(children, fn(e) {
       match e.label {
@@ -712,7 +709,7 @@ fn loop_other_named_edges_for_content_hash(children: List<v2.std.node.Edge>) -> 
     fn(e) { named_edge_sort_key(e: e) }
   )
 }
-fn canonicalize_loop_children_for_content_hash(children: List<v2.std.node.Edge>) -> List<v2.std.node.Edge> {
+fn canonicalize_loop_children_for_content_hash(children: List<Edge>) -> List<Edge> {
   concat(
     loop_body_edges_for_content_hash(children: children),
     concat(
@@ -721,35 +718,35 @@ fn canonicalize_loop_children_for_content_hash(children: List<v2.std.node.Edge>)
     )
   )
 }
-fn canonicalize_node_for_content_hash(n: v2.std.node.Node) -> v2.std.node.Node {
+fn canonicalize_node_for_content_hash(n: Node) -> Node {
   let base = node_for_structural_equality(n: n)
   match node_edge_discipline(n: n) {
     LabeledEdges =>
-      v2.std.node.Node {
+      Node {
         kind: base.kind,
         children: sort_by(base.children, fn(e) { named_edge_sort_key(e: e) }),
         occurrence_id: SyntheticOccurrence
       }
     NoEdges =>
-      v2.std.node.Node {
+      Node {
         kind: base.kind,
         children: base.children,
         occurrence_id: SyntheticOccurrence
       }
     PositionalEdges =>
-      v2.std.node.Node {
+      Node {
         kind: base.kind,
         children: base.children,
         occurrence_id: SyntheticOccurrence
       }
     ArrowBodyEdges =>
-      v2.std.node.Node {
+      Node {
         kind: base.kind,
         children: canonicalize_arrow_children_for_content_hash(children: base.children),
         occurrence_id: SyntheticOccurrence
       }
     LoopBoundEdges =>
-      v2.std.node.Node {
+      Node {
         kind: base.kind,
         children: canonicalize_loop_children_for_content_hash(children: base.children),
         occurrence_id: SyntheticOccurrence
@@ -757,14 +754,14 @@ fn canonicalize_node_for_content_hash(n: v2.std.node.Node) -> v2.std.node.Node {
   }
 }
 
-fn fold_node_content_hash<R>(n: v2.std.node.Node, algebra: v2.std.node.NodeFold<R>) -> R {
+fn fold_node_content_hash<R>(n: Node, algebra: NodeFold<R>) -> R {
   let n = canonicalize_node_for_content_hash(n: n)
   fold(n.children, init: algebra.init(n), f: fn(acc, e) {
     algebra.step(acc, e, fold_node_content_hash(n: e.target, algebra: algebra))
   })
 }
 
-fn canonical_hash_of_connective(c: v2.std.node.Connective) -> std.content_hash.Fnv1a64Structural {
+fn canonical_hash_of_connective(c: Connective) -> std.content_hash.Fnv1a64Structural {
   match c {
     Atom { identity: sym } =>
       std.content_hash.content_hash_combine_structural(
@@ -779,7 +776,7 @@ fn canonical_hash_of_connective(c: v2.std.node.Connective) -> std.content_hash.F
   }
 }
 
-fn canonical_hash_of_behavior(b: v2.std.node.Behavior) -> std.content_hash.Fnv1a64Structural {
+fn canonical_hash_of_behavior(b: Behavior) -> std.content_hash.Fnv1a64Structural {
   match b {
     Value => std.content_hash.content_hash_atom(value: ^canonical_tag_value)
     Transform => std.content_hash.content_hash_atom(value: ^canonical_tag_transform)
@@ -790,7 +787,7 @@ fn canonical_hash_of_behavior(b: v2.std.node.Behavior) -> std.content_hash.Fnv1a
   }
 }
 
-fn canonical_hash_of_node_kind(kind: v2.std.node.NodeKind) -> std.content_hash.Fnv1a64Structural {
+fn canonical_hash_of_node_kind(kind: NodeKind) -> std.content_hash.Fnv1a64Structural {
   match kind {
     TypeNode { connective: c } =>
       std.content_hash.content_hash_combine_structural(
@@ -805,7 +802,7 @@ fn canonical_hash_of_node_kind(kind: v2.std.node.NodeKind) -> std.content_hash.F
   }
 }
 
-fn canonical_hash_of_edge_label(label: v2.std.node.EdgeLabel) -> std.content_hash.Fnv1a64Structural {
+fn canonical_hash_of_edge_label(label: EdgeLabel) -> std.content_hash.Fnv1a64Structural {
   match label {
     Named { name: sym } =>
       std.content_hash.content_hash_combine_structural(
@@ -820,7 +817,7 @@ fn combine_hash(a: std.content_hash.Fnv1a64Structural, b: std.content_hash.Fnv1a
   std.content_hash.content_hash_combine_structural(left: a, right: b)
 }
 
-fn symbol_identity_digest(sym: v2.std.node.Symbol) -> v2.std.node.Hash {
+fn symbol_identity_digest(sym: Symbol) -> Hash {
   std.content_hash.content_hash_atom(value: sym)
 }
 
@@ -839,14 +836,14 @@ type ByteOffsetCacheDigestAuthority
     }
   | ByteOffsetCacheDigestIneligible {
       within_ceiling_digest: std.content_hash.Fnv1a64Structural,
-      boundary_tag: v2.std.node.Symbol,
+      boundary_tag: Symbol,
       residual_quotient: Int
     }
 
 type ByteOffsetCacheKey
   = ByteOffsetCacheEligible { digest: std.content_hash.Fnv1a64Structural }
   | ByteOffsetCacheIneligible {
-      boundary_tag: v2.std.node.Symbol,
+      boundary_tag: Symbol,
       witness: std.content_hash.Fnv1a64Structural
     }
 
@@ -1026,7 +1023,7 @@ fn byte_offset_overflow_residual_discarded_high_digest(quotient: Int) -> std.con
 
 fn byte_offset_cache_digest_ineligible_witness_digest(
   within_ceiling_digest: std.content_hash.Fnv1a64Structural,
-  boundary_tag: v2.std.node.Symbol,
+  boundary_tag: Symbol,
   quotient: Int
 ) -> std.content_hash.Fnv1a64Structural {
   if boundary_tag == ^canonical_tag_byte_offset_overflow_residual_unrepresentable {
@@ -1050,7 +1047,7 @@ fn byte_offset_cache_digest_ineligible_witness_digest(
 
 fn byte_offset_cache_digest_ineligible_hash(
   within_ceiling_digest: std.content_hash.Fnv1a64Structural,
-  boundary_tag: v2.std.node.Symbol
+  boundary_tag: Symbol
 ) -> std.content_hash.Fnv1a64Structural {
   combine_hash(
     a: std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_cache_digest_ineligible),
@@ -1064,7 +1061,7 @@ fn byte_offset_cache_digest_ineligible_hash(
 fn byte_offset_cache_digest_overflow_quotient_peel_bounded_authority(
   quotient: Int,
   limbs_remaining: Int
-) -> v2.std.node.ByteOffsetCacheDigestAuthority {
+) -> ByteOffsetCacheDigestAuthority {
   if limbs_remaining == 0 {
     if quotient == 0 {
       ByteOffsetWithinCeiling {
@@ -1138,7 +1135,7 @@ fn byte_offset_cache_digest_overflow_quotient_peel_bounded_authority(
   }
 }
 
-fn byte_offset_cache_digest_overflow_tail_authority(quotient: Int) -> v2.std.node.ByteOffsetCacheDigestAuthority {
+fn byte_offset_cache_digest_overflow_tail_authority(quotient: Int) -> ByteOffsetCacheDigestAuthority {
   match byte_offset_cache_digest_nonneg_bounded_authority(
     i: quotient,
     limbs_remaining: byte_offset_cache_digest_overflow_limbs
@@ -1193,7 +1190,7 @@ fn byte_offset_cache_digest_overflow_tail_authority(quotient: Int) -> v2.std.nod
   }
 }
 
-fn byte_offset_cache_key_from_authority(auth: v2.std.node.ByteOffsetCacheDigestAuthority) -> v2.std.node.ByteOffsetCacheKey {
+fn byte_offset_cache_key_from_authority(auth: ByteOffsetCacheDigestAuthority) -> ByteOffsetCacheKey {
   match auth {
     ByteOffsetWithinCeiling { digest: digest } =>
       ByteOffsetCacheEligible { digest: digest }
@@ -1263,7 +1260,7 @@ fn byte_offset_cache_key_from_authority(auth: v2.std.node.ByteOffsetCacheDigestA
 fn byte_offset_cache_digest_nonneg_bounded_authority(
   i: Int,
   limbs_remaining: Int
-) -> v2.std.node.ByteOffsetCacheDigestAuthority {
+) -> ByteOffsetCacheDigestAuthority {
   if limbs_remaining == 0 {
     if i == 0 {
       ByteOffsetWithinCeiling {
@@ -1319,14 +1316,14 @@ fn byte_offset_cache_digest_nonneg_bounded_authority(
   }
 }
 
-fn byte_offset_cache_digest_nonneg_authority(i: Int) -> v2.std.node.ByteOffsetCacheDigestAuthority {
+fn byte_offset_cache_digest_nonneg_authority(i: Int) -> ByteOffsetCacheDigestAuthority {
   byte_offset_cache_digest_nonneg_bounded_authority(
     i: i,
     limbs_remaining: byte_offset_cache_digest_max_limbs
   )
 }
 
-fn byte_offset_cache_digest_authority(i: Int) -> v2.std.node.ByteOffsetCacheDigestAuthority {
+fn byte_offset_cache_digest_authority(i: Int) -> ByteOffsetCacheDigestAuthority {
   if i < 0 {
     match byte_offset_cache_digest_nonneg_authority(i: 0 - i) {
       ByteOffsetWithinCeiling { digest: digest } =>
@@ -1366,25 +1363,25 @@ fn byte_offset_cache_digest_authority(i: Int) -> v2.std.node.ByteOffsetCacheDige
   }
 }
 
-fn node_offset_atom(sym: v2.std.node.Symbol) -> v2.std.node.Node {
+fn node_offset_atom(sym: Symbol) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Atom { identity: sym } },
     children: []
   )
 }
 
-fn node_offset_named_edge(name: v2.std.node.Symbol, target: v2.std.node.Node) -> v2.std.node.Edge {
-  v2.std.node.Edge { label: Named { name: name }, target: target }
+fn node_offset_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
 }
 
-fn node_offset_conj(children: List<v2.std.node.Edge>) -> v2.std.node.Node {
+fn node_offset_conj(children: List<Edge>) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: children
   )
 }
 
-fn byte_offset_byte_limb_projection_node(limb: Int) -> v2.std.node.Node {
+fn byte_offset_byte_limb_projection_node(limb: Int) -> Node {
   if limb < 0 || limb > 255 {
     node_offset_atom(sym: ^canonical_tag_byte_limb_out_of_range)
   } else if limb == 0 {
@@ -1405,7 +1402,7 @@ fn byte_offset_byte_limb_projection_node(limb: Int) -> v2.std.node.Node {
   }
 }
 
-fn byte_offset_digest_nonneg_projection_bounded(i: Int, limbs_remaining: Int) -> v2.std.node.Node {
+fn byte_offset_digest_nonneg_projection_bounded(i: Int, limbs_remaining: Int) -> Node {
   if limbs_remaining <= 0 {
     if i == 0 {
       node_offset_atom(sym: ^canonical_tag_byte_offset_zero)
@@ -1450,7 +1447,7 @@ fn byte_offset_digest_nonneg_projection_bounded(i: Int, limbs_remaining: Int) ->
   }
 }
 
-fn byte_offset_cache_digest_authority_projection_node(i: Int) -> v2.std.node.Node {
+fn byte_offset_cache_digest_authority_projection_node(i: Int) -> Node {
   if i < 0 {
     node_offset_conj(children: [
       node_offset_named_edge(
@@ -1473,7 +1470,7 @@ fn byte_offset_cache_digest_authority_projection_node(i: Int) -> v2.std.node.Nod
   }
 }
 
-fn byte_offset_cache_key_projection_node(i: Int) -> v2.std.node.Node {
+fn byte_offset_cache_key_projection_node(i: Int) -> Node {
   match byte_offset_cache_key(i: i) {
     ByteOffsetCacheEligible { digest: _ } =>
       match byte_offset_cache_digest_authority(i: i) {
@@ -1541,11 +1538,11 @@ fn byte_offset_cache_key_projection_node(i: Int) -> v2.std.node.Node {
   }
 }
 
-fn byte_offset_cache_key(i: Int) -> v2.std.node.ByteOffsetCacheKey {
+fn byte_offset_cache_key(i: Int) -> ByteOffsetCacheKey {
   byte_offset_cache_key_from_authority(auth: byte_offset_cache_digest_authority(i: i))
 }
 
-fn byte_offset_cache_key_fingerprint(key: v2.std.node.ByteOffsetCacheKey) -> v2.std.node.Hash {
+fn byte_offset_cache_key_fingerprint(key: ByteOffsetCacheKey) -> Hash {
   match key {
     ByteOffsetCacheEligible { digest: digest } =>
       combine_hash(
@@ -1566,7 +1563,7 @@ fn byte_offset_cache_key_fingerprint(key: v2.std.node.ByteOffsetCacheKey) -> v2.
   }
 }
 
-fn bag_hash_digest(empty: v2.std.node.Hash, xs: List<v2.std.node.Hash>) -> v2.std.node.Hash {
+fn bag_hash_digest(empty: Hash, xs: List<Hash>) -> Hash {
   fold(
     sort_by(xs, fn(h) { h.digest }),
     init: empty,
@@ -1576,10 +1573,10 @@ fn bag_hash_digest(empty: v2.std.node.Hash, xs: List<v2.std.node.Hash>) -> v2.st
   )
 }
 
-fn content_hash(n: v2.std.node.Node) -> v2.std.node.Hash {
+fn content_hash(n: Node) -> Hash {
   fold_node_content_hash(
     n: n,
-    algebra: v2.std.node.NodeFold {
+    algebra: NodeFold {
       init: fn(n0) { canonical_hash_of_node_kind(kind: n0.kind) },
       step: fn(acc, e, child_hash) {
         combine_hash(
@@ -1595,18 +1592,18 @@ fn content_hash(n: v2.std.node.Node) -> v2.std.node.Hash {
 }
 
 type NodeQuery
-  = NodeQueryByConnective { connective: v2.std.node.Connective }
-  | NodeQueryByPath { at: v2.std.node.Path }
+  = NodeQueryByConnective { connective: Connective }
+  | NodeQueryByPath { at: Path }
 
 type Path {
-  steps: List<v2.std.node.Symbol>
+  steps: List<Symbol>
 }
 type Edit {
-  at: v2.std.node.Path
-  replacement: v2.std.node.Node
+  at: Path
+  replacement: Node
 }
 type Diff {
-  edits: List<v2.std.node.Edit>
+  edits: List<Edit>
 }
 
 data node_occurrence_id_v2_facade_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "DISSOLVE-ON: the counted v2.std.node imports of NodeOccurrenceId, SyntheticOccurrence, and MintedOccurrence reach zero after the bounded v2 import migration; then delete this compatibility coproduct and its two conversions.")

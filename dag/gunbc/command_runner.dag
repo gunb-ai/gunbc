@@ -94,9 +94,9 @@ func run_shell_command(command: extdeps.exec.command.ArgvCommand, transport: ext
   uses net: std.resources.Network
 {
   match extdeps.exec.command.command_over_transport(command: command, transport: transport) {
-    extdeps.exec.command.CommandOverTransportRefused { cause: c } =>
+    CommandOverTransportRefused { cause: c } =>
       std.process.exit_failure(reason: concat("command_over_transport refused: ", command_over_transport_refusal_reason(cause: c)))
-    extdeps.exec.command.CommandOverTransportBuilt { command: over } =>
+    CommandOverTransportBuilt { command: over } =>
       match v2.std.algebra.list_head(xs: over.argv) {
         HeadAbsent =>
           std.process.exit_failure(reason: "empty argv: a command with no words names no program to execute")
@@ -189,12 +189,12 @@ func run_shell_command_capture(command: extdeps.exec.command.ArgvCommand, transp
   uses net: std.resources.Network
 {
   match extdeps.exec.command.command_over_transport(command: command, transport: transport) {
-    extdeps.exec.command.CommandOverTransportRefused { cause: c } =>
+    CommandOverTransportRefused { cause: c } =>
       extdeps.shell.exec.ProcessRefused {
         exit_code: 0 - 1,
         stderr: concat("command_over_transport refused: ", command_over_transport_refusal_reason(cause: c)),
       }
-    extdeps.exec.command.CommandOverTransportBuilt { command: over } =>
+    CommandOverTransportBuilt { command: over } =>
       match v2.std.algebra.list_head(xs: over.argv) {
         HeadAbsent =>
           extdeps.shell.exec.ProcessRefused {

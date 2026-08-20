@@ -138,7 +138,7 @@ fn validation_overlap_choice_validate_accepts_with_residue() -> Bool {
     Accepted { value: _, diagnostics: d } =>
       match d {
         Some { diagnostics: residue } => residue.head.reason == ^parse_grammar_choice_overlap_residue
-        v2.std.diagnostic.None => false
+        None => false
       }
     Rejected { diagnostics: _ } => false
   }
@@ -173,7 +173,7 @@ fn validation_disjoint_choice_residue_is_none() -> Bool {
   match v2.compiler.parse.grammar_validate_for_parse(root: validation_disjoint_choice_root, at: at) {
     Accepted { value: _, diagnostics: d } =>
       match d {
-        v2.std.diagnostic.None => true
+        None => true
         Some { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
