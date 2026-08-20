@@ -92,9 +92,14 @@ fn well_formed_maintenance_disposition_paths() -> List<String> {
   )
 }
 
-fn derived_file_grain_classified_repo_paths() -> List<String> {
+// Both the generated population and the classified universe are now functions of the OBSERVED
+// tracked list rather than of a stored roster, so they are threaded from the receipt's own
+// subject. Before this, `generated_paths` was the same 100+ hand rows on every observation --
+// the receipt reported a fact about a list someone maintained, under the name of a fact about
+// the tree it had just observed.
+fn derived_file_grain_classified_repo_paths(tracked_paths: List<String>) -> List<String> {
   list_concat_unique(
-    acc: derived_generated_stage0_repo_paths(),
+    acc: derived_generated_stage0_repo_paths(tracked_paths: tracked_paths),
     items: well_formed_maintenance_disposition_paths()
   )
 }
@@ -162,10 +167,10 @@ fn lifecycle_totality_receipt(
       if revision == "" {
         LifecycleTotalityObservationRefused
       } else {
-        let generated_paths = derived_generated_stage0_repo_paths()
+        let generated_paths = derived_generated_stage0_repo_paths(tracked_paths: tracked_paths)
         let raw_disposition_paths = raw_disposition_authority_paths()
         let maintenance_disposition_paths = well_formed_maintenance_disposition_paths()
-        let classified_paths = derived_file_grain_classified_repo_paths()
+        let classified_paths = derived_file_grain_classified_repo_paths(tracked_paths: tracked_paths)
         LifecycleTotalityDerived {
           tracked_paths: tracked_paths,
           generated_paths: generated_paths,

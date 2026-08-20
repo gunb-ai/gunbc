@@ -8,9 +8,18 @@ Enumerates every top-level Rust item in git-tracked .rs files.
 Primary denominator is item identity; LOC is secondary metadata.
 
 Generated-vs-hand classification is derived from corpus authorities only:
-  - gunbc.stage0_emit_plan_generated generated_stage0_files (basenames)
+  - gunbc.stage0_crate_layout_generated generated_stage0_filenames (the projection of
+    v2.compiler.self_host.stage0_crate_layout hand_maintained_stage0_filenames -- the
+    basenames the crate-layout authority CLAIMS as seed-retained)
   - gunbc.generated_artifact artifact_path rows (repo paths)
-Unclassified stage0/src paths refuse rather than defaulting to hand.
+
+THE STAGE0 TEST IS THE CLAIM, NOT A GENERATED ROSTER, AND THAT IS AN INVERSION.
+This script used to ask "is this basename on gunbc.stage0_emit_plan_generated
+generated_stage0_files" -- a hand list whose producer died in the #8406 regen cut, so it
+answered from a snapshot nobody maintained. It now asks the complement question, which is
+what required_regen_host committed_generated_basenames has always asked: a direct-child .rs
+under the stage0 source root that the crate-layout authority does not claim IS generated.
+One authority, and the census cannot disagree with the regen gate about who owns a file.
 """
 
 from __future__ import annotations
@@ -24,7 +33,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 STAGE0_SRC_PREFIX = "src/v1/stage0/src/"
-GENERATED_STAGE0_DAG = "dag/gunbc/stage0_emit_plan_generated.dag"
+STAGE0_CRATE_LAYOUT_DAG = "dag/gunbc/stage0_crate_layout_generated.dag"
 GENERATED_ARTIFACT_DAG = "dag/gunbc/generated_artifact.dag"
 
 
@@ -92,26 +101,30 @@ def _parse_artifact_paths(dag_text: str) -> set[str]:
 
 
 def load_generation_authorities(repo_root: Path) -> tuple[set[str], set[str]]:
-    stage0_dag = (repo_root / GENERATED_STAGE0_DAG).read_text(encoding="utf-8")
+    layout_dag = (repo_root / STAGE0_CRATE_LAYOUT_DAG).read_text(encoding="utf-8")
     artifact_dag = (repo_root / GENERATED_ARTIFACT_DAG).read_text(encoding="utf-8")
-    basenames = set(_parse_dag_string_list(stage0_dag, "generated_stage0_files"))
+    claimed = set(_parse_dag_string_list(layout_dag, "generated_stage0_filenames"))
     artifact_paths = _parse_artifact_paths(artifact_dag)
-    return basenames, artifact_paths
+    return claimed, artifact_paths
 
 
 def classify_repo_path(
     repo_path: str,
-    generated_basenames: set[str],
+    crate_layout_claimed_basenames: set[str],
     artifact_paths: set[str],
 ) -> str:
     """Return generated | hand | unclassified."""
     if repo_path in artifact_paths:
         return "generated"
     if repo_path.startswith(STAGE0_SRC_PREFIX):
-        basename = Path(repo_path).name
-        if basename in generated_basenames:
-            return "generated"
-        return "hand"
+        relative = repo_path[len(STAGE0_SRC_PREFIX):]
+        if "/" in relative:
+            # Not a direct child of the stage0 source root: the emit produces only direct
+            # children, so a subdirectory file is hand-maintained (module_path_index/).
+            return "hand"
+        if Path(repo_path).name in crate_layout_claimed_basenames:
+            return "hand"
+        return "generated"
     if repo_path.endswith(".rs"):
         return "hand"
     return "unclassified"
@@ -205,7 +218,7 @@ def parse_items(repo_path: str, content: str, generated: bool) -> list[RustItem]
 
 
 def census(repo_root: Path) -> dict:
-    generated_basenames, artifact_paths = load_generation_authorities(repo_root)
+    crate_layout_claimed, artifact_paths = load_generation_authorities(repo_root)
     files = git_tracked_rs_files(repo_root)
     all_items: list[RustItem] = []
     file_loc: dict[str, int] = {}
@@ -217,7 +230,7 @@ def census(repo_root: Path) -> dict:
 
     for repo_path in files:
         disposition = classify_repo_path(
-            repo_path, generated_basenames, artifact_paths
+            repo_path, crate_layout_claimed, artifact_paths
         )
         path_disposition[repo_path] = disposition
         if disposition == "unclassified":
@@ -241,7 +254,8 @@ def census(repo_root: Path) -> dict:
     if unclassified_paths:
         print(
             f"REFUSED: {len(unclassified_paths)} unclassified .rs path(s) "
-            f"(not in generated_stage0_files or generated_artifact artifact_path)",
+            f"(not a stage0 direct child, not claimed by generated_stage0_filenames, "
+            f"not a generated_artifact artifact_path)",
             file=sys.stderr,
         )
         for path in unclassified_paths[:20]:
@@ -277,9 +291,9 @@ def census(repo_root: Path) -> dict:
             ["git", "-C", str(repo_root), "rev-parse", "HEAD"], text=True
         ).strip(),
         "authority": {
-            "generated_stage0_files_dag": GENERATED_STAGE0_DAG,
+            "stage0_crate_layout_dag": STAGE0_CRATE_LAYOUT_DAG,
             "generated_artifact_dag": GENERATED_ARTIFACT_DAG,
-            "generated_stage0_basenames": len(generated_basenames),
+            "stage0_crate_layout_claimed_basenames": len(crate_layout_claimed),
             "generated_artifact_paths": len(artifact_paths),
         },
         "tracked_rs_files": len(files),
@@ -325,14 +339,14 @@ def item_key(item: RustItem) -> str:
 
 def diff_census(repo_root: Path, base_ref: str) -> dict:
     """G0 diff: items added/removed between base_ref and HEAD (hand only)."""
-    generated_basenames, artifact_paths = load_generation_authorities(repo_root)
+    crate_layout_claimed, artifact_paths = load_generation_authorities(repo_root)
     files = git_tracked_rs_files(repo_root)
     added: list[dict] = []
     removed: list[dict] = []
     modified_paths: list[str] = []
 
     for repo_path in files:
-        if classify_repo_path(repo_path, generated_basenames, artifact_paths) != "hand":
+        if classify_repo_path(repo_path, crate_layout_claimed, artifact_paths) != "hand":
             continue
         full = repo_root / repo_path
         if not full.exists():
@@ -408,7 +422,7 @@ def main() -> None:
         f"G0 census: {result['hand_items']} hand items / "
         f"{result['hand_loc']} hand LOC across "
         f"{result['hand_files']} files "
-        f"(authorities: {GENERATED_STAGE0_DAG}, {GENERATED_ARTIFACT_DAG})",
+        f"(authorities: {STAGE0_CRATE_LAYOUT_DAG}, {GENERATED_ARTIFACT_DAG})",
         file=sys.stderr,
     )
 
