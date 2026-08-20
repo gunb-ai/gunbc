@@ -3,6 +3,7 @@ module test.claim.spark_serving_observe_witness_test
 import std.types { String, NonEmptyStr }
 import extdeps.ssh.session { SshSessionExecResult }
 import gunbc.spark_serving_boot_provenance { BootProvenanceUnobserved, UnitStartedByManagerAtBoot, UnitStartedAfterBoot, UnitNotActiveAtAll }
+import gunbc.spark_managed_access_bootstrap { GrantProbeRefused }
 import gunbc.spark_serving_release {
   SparkServingObservation, SparkServingAbsent, SparkServingObserved,
   SparkServingObservationRefused,
@@ -94,6 +95,7 @@ fn readback_absent() -> SparkServingReadback {
     nvidia_driver: SparkServingReadbackAbsent,
     bind_address: SparkServingReadbackAbsent,
     boot_provenance: BootProvenanceUnobserved { cause: "fixture readback carries no boot probe" as NonEmptyStr },
+    grants: GrantProbeRefused { cause: "fixture readback carries no grant probe" },
   }
 }
 
@@ -111,6 +113,7 @@ fn readback_unreachable() -> SparkServingReadback {
     nvidia_driver: SparkServingReadbackAbsent,
     bind_address: SparkServingReadbackAbsent,
     boot_provenance: BootProvenanceUnobserved { cause: "fixture readback carries no boot probe" as NonEmptyStr },
+    grants: GrantProbeRefused { cause: "fixture readback carries no grant probe" },
   }
 }
 
@@ -126,6 +129,7 @@ fn readback_active_incomplete() -> SparkServingReadback {
     nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_satisfied_wire),
     bind_address: SparkServingReadbackAbsent,
     boot_provenance: BootProvenanceUnobserved { cause: "fixture readback carries no boot probe" as NonEmptyStr },
+    grants: GrantProbeRefused { cause: "fixture readback carries no grant probe" },
   }
 }
 
@@ -141,6 +145,7 @@ fn readback_active_complete() -> SparkServingReadback {
     nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_satisfied_wire),
     bind_address: SparkServingReadbackAbsent,
     boot_provenance: BootProvenanceUnobserved { cause: "fixture readback carries no boot probe" as NonEmptyStr },
+    grants: GrantProbeRefused { cause: "fixture readback carries no grant probe" },
   }
 }
 
@@ -315,6 +320,7 @@ test fn different_runtime_version_refuses_loaded_identity() -> Bool {
     nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_satisfied_wire),
     bind_address: SparkServingReadbackAbsent,
     boot_provenance: BootProvenanceUnobserved { cause: "fixture readback carries no boot probe" as NonEmptyStr },
+    grants: GrantProbeRefused { cause: "fixture readback carries no grant probe" },
   }) {
     Absent => true
     Present { value: _ } => false
@@ -333,6 +339,7 @@ test fn different_runtime_version_refuses_observation() -> Bool {
     nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_satisfied_wire),
     bind_address: SparkServingReadbackAbsent,
     boot_provenance: BootProvenanceUnobserved { cause: "fixture readback carries no boot probe" as NonEmptyStr },
+    grants: GrantProbeRefused { cause: "fixture readback carries no grant probe" },
   }) {
     SparkServingObservationRefused { host: _, cause: _ } => true
     SparkServingObserved { host: _, loaded_release: _ } => false
@@ -388,6 +395,7 @@ test fn missing_runtime_receipt_probe_refuses_active_observation() -> Bool {
     nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_satisfied_wire),
     bind_address: SparkServingReadbackAbsent,
     boot_provenance: BootProvenanceUnobserved { cause: "fixture readback carries no boot probe" as NonEmptyStr },
+    grants: GrantProbeRefused { cause: "fixture readback carries no grant probe" },
   }) {
     SparkServingObservationRefused { host: _, cause: c } =>
       string_contains(s: c as String, pattern: "install receipt")
@@ -430,6 +438,7 @@ test fn inactive_unit_readback_refuses_observation() -> Bool {
     nvidia_driver: SparkServingReadbackAbsent,
     bind_address: SparkServingReadbackAbsent,
     boot_provenance: BootProvenanceUnobserved { cause: "fixture readback carries no boot probe" as NonEmptyStr },
+    grants: GrantProbeRefused { cause: "fixture readback carries no grant probe" },
   }) {
     SparkServingObservationRefused { host: h, cause: c } =>
       h == "srv6" && string_contains(s: c as String, pattern: "inactive")
@@ -452,6 +461,7 @@ test fn api_field_refusal_surfaces_before_fingerprint_refusal() -> Bool {
     nvidia_driver: SparkServingReadbackAbsent,
     bind_address: SparkServingReadbackAbsent,
     boot_provenance: BootProvenanceUnobserved { cause: "fixture readback carries no boot probe" as NonEmptyStr },
+    grants: GrantProbeRefused { cause: "fixture readback carries no grant probe" },
   }) {
     SparkServingObservationRefused { host: _, cause: c } =>
       string_contains(s: c as String, pattern: "not parseable JSON")
@@ -505,6 +515,7 @@ test fn unobserved_nvidia_driver_refuses_active_observation() -> Bool {
     nvidia_driver: SparkServingReadbackAbsent,
     bind_address: SparkServingReadbackAbsent,
     boot_provenance: BootProvenanceUnobserved { cause: "fixture readback carries no boot probe" as NonEmptyStr },
+    grants: GrantProbeRefused { cause: "fixture readback carries no grant probe" },
   }) {
     SparkServingObservationRefused { host: _, cause: c } =>
       string_contains(s: c as String, pattern: "unobserved")
@@ -525,6 +536,7 @@ test fn driver_too_old_refuses_active_observation() -> Bool {
     nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_too_old_wire),
     bind_address: SparkServingReadbackAbsent,
     boot_provenance: BootProvenanceUnobserved { cause: "fixture readback carries no boot probe" as NonEmptyStr },
+    grants: GrantProbeRefused { cause: "fixture readback carries no grant probe" },
   }) {
     SparkServingObservationRefused { host: _, cause: c } =>
       string_contains(s: c as String, pattern: "below minimum")
@@ -545,6 +557,7 @@ test fn driver_too_old_report_is_not_success() -> Bool {
     nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_too_old_wire),
     bind_address: SparkServingReadbackAbsent,
     boot_provenance: BootProvenanceUnobserved { cause: "fixture readback carries no boot probe" as NonEmptyStr },
+    grants: GrantProbeRefused { cause: "fixture readback carries no grant probe" },
   }) {
     SparkServingObservationRefused { host: h, cause: c } =>
       !spark_serving_observation_report_succeeded(
@@ -579,6 +592,7 @@ test fn version_only_without_asset_digest_refuses_loaded_identity() -> Bool {
     nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_satisfied_wire),
     bind_address: SparkServingReadbackAbsent,
     boot_provenance: BootProvenanceUnobserved { cause: "fixture readback carries no boot probe" as NonEmptyStr },
+    grants: GrantProbeRefused { cause: "fixture readback carries no grant probe" },
   }) {
     Absent => true
     Present { value: _ } => false
@@ -723,4 +737,22 @@ test fn the_emitted_report_text_carries_boot_provenance_per_host() -> Bool {
   string_contains(text, "boot-provenance=")
     && string_contains(text, "observation host=srv5")
     && string_contains(text, "observation host=srv6")
+}
+
+// The grant standing rides the same receipt, because a host that is serving but cannot be rebooted
+// is a fact about that host, and the run that reads everything else about it is where an operator
+// will look. Asserting on the text keeps it from becoming another renderer nobody calls.
+test fn the_emitted_report_text_carries_the_grant_standing() -> Bool {
+  let text = spark_serving_observation_report_text(
+    report: SparkServingObservationsProduced {
+      first: ho(observation: SparkServingAbsent { host: "srv5" }),
+      more: [],
+    },
+    probed_at: "2026-08-20T00:00:00Z",
+    attempt_raw: "fixture",
+    materialization_receipt: "",
+  )
+  string_contains(text, "grant-standing host=srv5")
+    && string_contains(text, "converged=false")
+    && string_contains(text, "standing=unobserved")
 }

@@ -7,6 +7,7 @@ import extdeps.ollama.binary_release { ollama_required_release, ollama_reported_
 import gunbc.model_artifact { ModelArtifact, model_artifact_from_observed_digest }
 import extdeps.ollama.api { OllamaModelRef, ollama_model_digest_from_wire }
 import gunbc.spark_serving_boot_provenance { SparkServingBootProvenance }
+import gunbc.spark_managed_access_bootstrap { SparkGrantOutcome }
 import gunbc.spark_serving_readback_parse {
   SparkServingReadbackField,
   spark_serving_readback_field_present_value,
@@ -45,6 +46,7 @@ type SparkServingReadback {
   nvidia_driver: SparkServingReadbackField
   bind_address: SparkServingReadbackField
   boot_provenance: SparkServingBootProvenance
+  grants: SparkGrantOutcome
 }
 
 fn spark_serving_loaded_model_artifact(

@@ -95,6 +95,8 @@ import gunbc.spark_serving_release {
   SparkServingObservationRefused,
 }
 import gunbc.spark_serving_unit_identity { spark_serving_unit_name }
+import gunbc.spark_managed_access_bootstrap { SparkGrantOutcome, GrantEnumerated, GrantAbsent, GrantProbeRefused }
+import gunbc.spark_managed_grant_reconcile { spark_managed_grant_report }
 import gunbc.spark_serving_boot_provenance {
   spark_serving_active_enter_probe_argv,
   spark_serving_uptime_probe_argv,
@@ -177,6 +179,28 @@ data spark_serving_nvidia_driver_probe_words: List<String> = [
   "nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader",
 ]
 
+// PRIVILEGE IS PART OF WHAT A HOST HOLDS, so it is read on the leg that reads everything else. This
+// is not a new probe entry: the automation principal is the account that needs the grants, and this
+// path already connects as it, so measuring here costs one more leg and no new workflow mode.
+//
+// It is a READ. `sudo -n -l` enumerates and never actuates, which is why it can ride an observation
+// at all -- and why a failure of it is an observation too, not an error.
+data spark_serving_grant_probe_words: List<String> = [
+  "sudo", "-n", "-l",
+]
+
+fn spark_serving_grant_outcome_from_probe(probe: SshSessionExecResult?) -> SparkGrantOutcome {
+  match probe {
+    Absent => GrantProbeRefused { cause: "the grant probe leg did not run" }
+    Present { value: r } =>
+      if r.success {
+        GrantEnumerated { listing: r.stdout }
+      } else {
+        GrantAbsent { detail: join(["exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
+      }
+  }
+}
+
 // THE READBACK TRAVELS WITH THE OBSERVATION, and it is not bookkeeping. The observation line says
 // only observed/absent/refused plus a release digest; every fact the derivation CONSUMED to reach
 // that verdict -- unit outcome, runtime version, model digest, and now boot provenance -- lived on
@@ -248,6 +272,7 @@ fn spark_serving_observe_host_via_locus(
     runtime_receipt: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_runtime_materialization_receipt_probe_argv()),
     active_enter: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_active_enter_probe_argv()),
     uptime: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_uptime_probe_argv()),
+    grants: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_grant_probe_words),
   )
   SparkServingHostObservation {
     readback: readback,
@@ -420,6 +445,7 @@ fn spark_serving_readback_from_probe_results(
   runtime_receipt: SshSessionExecResult?,
   active_enter: SshSessionExecResult?,
   uptime: SshSessionExecResult?,
+  grants: SshSessionExecResult?,
 ) -> SparkServingReadback {
   let tags_fields = spark_serving_tags_fields_from_probe(probe: tags)
   SparkServingReadback {
@@ -436,6 +462,7 @@ fn spark_serving_readback_from_probe_results(
     nvidia_driver: spark_serving_nvidia_driver_field_from_probe(probe: nvidia_driver),
     bind_address: SparkServingReadbackAbsent,
     boot_provenance: spark_serving_boot_provenance_from_probes(active_enter: active_enter, uptime: uptime),
+    grants: spark_serving_grant_outcome_from_probe(probe: grants),
   }
 }
 
@@ -468,6 +495,7 @@ fn spark_serving_readback_line(readback: SparkServingReadback) -> String {
     " nvidia_driver=", spark_serving_readback_field_label(field: readback.nvidia_driver),
     " ", spark_serving_boot_provenance_wire(p: readback.boot_provenance),
     "\n",
+    spark_managed_grant_report(host: readback.host, outcome: readback.grants),
   ], "")
 }
 
@@ -500,6 +528,7 @@ fn spark_serving_observe_host(
   )
   let active_enter = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_active_enter_probe_argv())
   let uptime = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_uptime_probe_argv())
+  let grants = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_grant_probe_words)
   let readback = spark_serving_readback_from_probe_results(
     host: host,
     load_state: load_state,
@@ -510,6 +539,7 @@ fn spark_serving_observe_host(
     runtime_receipt: runtime_receipt,
     active_enter: active_enter,
     uptime: uptime,
+    grants: grants,
   )
   SparkServingHostObservation {
     readback: readback,
