@@ -44,13 +44,22 @@ module test.claim.workflow_default_field_projection_fold_witness_test
 // stated rather than left implicit because a bare `== false` on a compile oracle
 // is otherwise satisfied by any breakage.
 //
-// COST, stated because it is real: each arm is one full frontend-and-emitter
-// crossing over a fixture whose imports resolve transitively against the real
-// corpus, so this file costs two crossings per run.
+// COST. Each arm is one full frontend-and-emitter crossing, but the fixture
+// imports NOTHING: `Network` is replaced by a locally declared `WdpNet`, which
+// satisfies `uses` (all is_workflow_item asks of it) without pulling std into
+// the closure. That is not a weakening -- the subject is the emitter's treatment
+// of a param default, and which type the `uses` clause names is irrelevant to it.
+// It is the difference between a two-module closure and the whole corpus: the
+// first revision of this file imported std.resources and std.types and the floor
+// measured ONE of its arms at 62567ms CPU against a 5000ms budget, with a 1.12GB
+// RSS growth, failing the run on cost with both arms passing. The import-free
+// fixture compiles in ~27ms locally. Recorded rather than silently fixed, because
+// the cost of a witness is a property of its fixture's import closure and that is
+// not visible from the assertion.
 
-data wdp_admitted_source: String = "module wdp_probe_admit\n\nimport std.resources \{ Network }\nimport std.types \{ String }\n\ntype WdpCfg \{\n  host: String\n  joined: String\n}\n\ndata wdp_cfg: WdpCfg = WdpCfg \{ host: \"wdp.invalid\", joined: concat(\"wdp\", \".computed\") }\n\nfunc wdp_run(target: String = wdp_cfg.host) -> String\n  uses net: Network\n\{\n  target\n}\n"
+data wdp_admitted_source: String = "module wdp_probe_admit\n\ntype WdpNet \{\n  id: Int\n}\n\ntype WdpCfg \{\n  host: String\n  joined: String\n}\n\ndata wdp_cfg: WdpCfg = WdpCfg \{ host: \"wdp.invalid\", joined: concat(\"wdp\", \".computed\") }\n\nfunc wdp_run(target: String = wdp_cfg.host) -> String\n  uses net: WdpNet\n\{\n  target\n}\n"
 
-data wdp_refused_source: String = "module wdp_probe_refuse\n\nimport std.resources \{ Network }\nimport std.types \{ String }\n\ntype WdpCfg \{\n  host: String\n  joined: String\n}\n\ndata wdp_cfg: WdpCfg = WdpCfg \{ host: \"wdp.invalid\", joined: concat(\"wdp\", \".computed\") }\n\nfunc wdp_run(target: String = wdp_cfg.joined) -> String\n  uses net: Network\n\{\n  target\n}\n"
+data wdp_refused_source: String = "module wdp_probe_refuse\n\ntype WdpNet \{\n  id: Int\n}\n\ntype WdpCfg \{\n  host: String\n  joined: String\n}\n\ndata wdp_cfg: WdpCfg = WdpCfg \{ host: \"wdp.invalid\", joined: concat(\"wdp\", \".computed\") }\n\nfunc wdp_run(target: String = wdp_cfg.joined) -> String\n  uses net: WdpNet\n\{\n  target\n}\n"
 
 // ADMITTED: the projection folds to the literal the record authored, and the
 // emitted clap default carries exactly that string. The exclusion proves the
