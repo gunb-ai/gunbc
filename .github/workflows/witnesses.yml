@@ -46,6 +46,11 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/claim_executor" --required-regen-fixed-point --source-root "$ROOT/dag" --source-root "$ROOT/src/v2"
         if: "!cancelled() && steps.required_regen.outcome == 'success'"
+      - name: "Behavioral receipt discriminates: equivalent arm and divergent arm"
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/claim_executor" --behavioral-receipt-selftest --source-root "$ROOT/dag" --source-root "$ROOT/src/v2"
+        if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
       - name: All witnesses (one prepared subject, one fold)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
