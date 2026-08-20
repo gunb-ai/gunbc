@@ -881,6 +881,59 @@ than argued.
    ladder-probe-corpus class/path identities, at which point the Evidence cells name the
    executing probe the way the parse-separator row already names `tidy-deer-730`'s.
 
+11. **The emit-check oracle collapses three arms into one `Bool`** (opened 2026-08-19;
+   measured by `swift-moth-294` reading `cli_run.rs` `compile_dag_rust_emit_check_uncached`).
+   The function returns `false` from three structurally distinct arms — hard diagnostics
+   nonzero · the requested file absent from `result.files` · the includes/excludes **content**
+   assertion failed — and discards which one fired. **Harm:** every consumer must
+   hand-establish the mechanism, so the honest reading of any red is "one of three things
+   happened", and a *stale realization* is indistinguishable from a *misaimed test* and from a
+   *broken emitter*. **Live cost already paid:** a session gave a confident mechanism account
+   of a CI red that their evidence could not establish — arm 3 is exactly the shape a stale
+   seed produces — and caught it themselves only on reading the implementation. The sharper
+   half is second-order: a coordinator's own record of this instrument listed **two** arms, so
+   every positive control recommended against it that day covered arm 2 alone. A conflated
+   oracle does not merely mislead its readers; it silently narrows what anyone thinks to
+   control for. **Ceiling — structurally impossible, and it is a construction fix rather than a
+   validation one:** the arm is KNOWN at the return site and thrown away, so a typed outcome
+   does not add a check, it stops the loss. **Next trigger:** replace the `Bool` return with a
+   typed outcome carrying the arm; consumers then read the arm instead of inferring it. Small
+   change, large readability gain on every future emit witness. No rung is authored here — the
+   rung is the thing that must be DERIVED from executed measurement (§1c, and the Stage 0
+   carrier `gunbc.guarantee_measurement` deliberately stores none).
+
+12. **A diagnostic prints a byte offset in line-number shape** (opened 2026-08-19; verified
+   independently by two sessions). `dag/std/source_annotation.dag`'s in-body refusal — *"source
+   annotation sits inside a declaration body"* — renders its span as
+   `(src/v1/trait_derive_emit.dag:29073-29163)`. That file is **1407 lines** and 62288 bytes, so
+   29073 exceeds the line count more than twentyfold and cannot be a line number; byte 29073
+   lands on **line 478**. **Lead the row with the defect, not the arithmetic:** the compiler
+   emitted a POSITIONAL citation about its own input at a moment when the declaration NAME was
+   in hand — the diagnostic knows it sits inside a declaration body, that is its entire
+   complaint. §3's cite-the-symbol rule was written against human prose citations; this is a
+   machine-side instance of the same defect in the compiler's own diagnostic channel, and the
+   rule's argument applies unchanged — a symbol is decidable and stable, a position rots
+   without anyone touching it. **Why the wrong number is the worse failure mode:** an absent
+   location announces its absence and sends the reader looking; a plausible wrong one does not.
+   The reader jumps to line 29073, finds the file ended long ago, and concludes the diagnostic
+   or the path is broken — never that the answer is line 478, three lines from what they
+   wanted. That is fabricated plausible output (§5) sitting in the one channel whose entire
+   function is to be believed. **Mechanism: NOT YET READ.** The formatter has not been
+   inspected, and the session that found this declined to describe a mechanism it had not read
+   — an honestly incomplete row beats a plausible mechanism nobody verified, which is precisely
+   the failure this row is about. Ceiling and next trigger land when the formatter is read.
+
+**These three classes are one class, and it is worth naming as such** (items 11 and 12, plus
+the ~48 unlocated synthetic `expected Product(NonEmptyStr), got Primitive(String)` mismatches
+opened against #8544). One diagnostic will not say WHY, one will not say WHERE, and one says
+where and is WRONG — three failure modes of the single channel whose only function is to be
+believed. The third is the worst: the first two fail loudly enough to send a reader looking
+elsewhere, while the third sends them looking *confidently* in the wrong place, which costs
+more than silence. Each needs a row whatever happens to its current instances, because fixing
+the instances removes instances and leaves the reporting defect intact for the next cause —
+which will be rarer, and equally untraceable.
+
+
 ## 12. Proposed sequencing (reconciled with the independent review; for operator sign-off)
 
 **(2026-07-31 restructure.)** The canonical dependency order now lives in the roadmap
