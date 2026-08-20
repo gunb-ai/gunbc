@@ -8,8 +8,8 @@ echo "  Both sides changed this generated projection since the merge base, so ne
 echo "  Git resolved nothing here. The path is left UNMERGED and the worktree file carries the ours side verbatim — no conflict markers — so the regenerators run against it as-is." >&2
 echo "  Do NOT resolve these bytes by hand or by picking a side. Regenerate them:" >&2
 echo "1. regenerate the derived projections: gunbc run --source-root dag --source-root src/v2 --entry dag/tools/generated_artifact_gate.dag --function main_wet" >&2
-echo "2. rebuild and run the seed emitter: cargo build --release --bin regen_stage0 && target/release/regen_stage0" >&2
-echo "3. rebuild and verify AGAIN: cargo build --release --bin regen_stage0 && target/release/regen_stage0 --verify" >&2
+echo "2. rebuild and run the seed emitter: cargo build --release --bin claim_executor && target/release/claim_executor --required-regen --source-root dag --source-root src/v2 (it writes the candidate tree under target/stage0-regen-candidate/src BEFORE it judges it; install every generated file it names into src/v1/stage0/src)" >&2
+echo "3. rebuild from the installed seed and verify AGAIN: cargo build --release --bin claim_executor && target/release/claim_executor --required-regen --source-root dag --source-root src/v2 && target/release/claim_executor --required-regen-fixed-point" >&2
 echo "   (the first pass runs a binary that predates the change it emits, so one pass can self-verify at divergence 0 for the wrong reason)" >&2
 echo "4. git add -- $merged_path" >&2
 exit 1
