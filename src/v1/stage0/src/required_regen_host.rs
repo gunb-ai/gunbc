@@ -269,7 +269,7 @@ pub fn run_required_regen(
             commit_sha,
             authority_digest,
             format!(
-                "{reason} — first mirrors for the emitted-not-committed surfaces are written under {}; install them and commit",
+                "{reason} — the produced candidate tree is at {}",
                 fresh_src.display()
             ),
         );
@@ -550,14 +550,34 @@ fn validate_compared_populations(committed: &[String], emitted: &[String]) -> Op
             committed_not_emitted.push(name.clone());
         }
     }
-    if !emitted_not_committed.is_empty() || !committed_not_emitted.is_empty() {
-        return Some(format!(
-            "refusal: surface population mismatch — emitted_not_committed={:?} committed_not_emitted={:?}",
-            emitted_not_committed,
-            committed_not_emitted
+    // TWO OPPOSITE STATES, TWO REFUSALS, TWO REMEDIES -- this refused on their union, so a module
+    // being introduced was indistinguishable from the emitter having LOST a surface. Authority for
+    // the split: `v2.workflow.required_regen` `MirrorMissingForEmittedSurface` and
+    // `CommittedMirrorNoLongerEmitted`.
+    //
+    // NEITHER IS ADMITTED, and the first one is where that matters. "An author introduced a module"
+    // and "the emitter invented a surface nobody authored" produce the SAME population, and the
+    // second is what this check exists to catch, so no arm computed from the populations can tell
+    // them apart -- admitting the first would be this same conflation pointing the other way. The
+    // refusal therefore names the fork and leaves the decision with the author; what changed is
+    // that the install branch is now actionable, because the ordering above wrote the bytes before
+    // this check ran instead of discarding them.
+    let mut reasons = Vec::new();
+    if !emitted_not_committed.is_empty() {
+        reasons.push(format!(
+            "refusal: emitted surface has no committed mirror — {emitted_not_committed:?}; if you introduced these modules, install the produced mirror(s) named below and commit them; if you did not, the emitter produced a surface nobody authored and installing it would launder that"
         ));
     }
-    None
+    if !committed_not_emitted.is_empty() {
+        reasons.push(format!(
+            "refusal: committed mirror is no longer emitted — {committed_not_emitted:?}; the emitter stopped producing these surfaces, so either the authority that emitted them was removed on purpose (delete the committed mirror) or it regressed (restore it) — do NOT install anything for this class"
+        ));
+    }
+    if reasons.is_empty() {
+        None
+    } else {
+        Some(reasons.join(" | "))
+    }
 }
 
 fn verify_candidate_tree(
