@@ -1,6 +1,5 @@
 module gunbc.stage0_crate_partition_generated
 
-
 type GeneratedPartitionCrateKind
   = GeneratedFoundationCrate
   | GeneratedLayeredCoreCrate
@@ -60,7 +59,6 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
         "std_termination",
         "std_checked_arithmetic",
         "std_induction",
-        "std_iteration",
         "std_graph",
         "extdeps_uri",
         "extdeps_external_authority",

@@ -526,7 +526,7 @@ type DeclaredArgContract
   | MethodUnresolved
   | ContractUnavailable
 
-fn declared_arg_types_for_method(receiver_type: Node, method_name: String, source_indices: Map<String, NewlineIndex>) -> DeclaredArgContract {
+fn declared_arg_types_for_method(receiver_type: Node, method_name: String, source_indices: Map<String, NewlineIndex>, expand_field_type: fn(Node) -> Node) -> DeclaredArgContract {
   let lookup = lookup_structural_method(receiver_type: receiver_type, method_name: method_name, source_indices: source_indices)
   match lookup.resolution {
     Absent => MethodUnresolved
@@ -542,8 +542,9 @@ fn declared_arg_types_for_method(receiver_type: Node, method_name: String, sourc
         Absent =>
           match mfr.field_node.inferred {
             Present { value: Resolved { node: callable } } =>
-              if callable.params |> count > 0 {
-                ContractKnown { types: callable.params |> map(p => param_node_type_expr(n: p)) }
+              let expanded = if callable.params |> count > 0 { callable } else { expand_field_type(callable) }
+              if expanded.params |> count > 0 {
+                ContractKnown { types: expanded.params |> map(p => param_node_type_expr(n: p)) }
               } else {
                 ContractUnavailable
               }

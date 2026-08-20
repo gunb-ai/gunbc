@@ -3784,7 +3784,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
         Absent => v1.std.core.error_type
       }
       let mc_elem_provenance = derive_element_provenance(coll_expr: recv_typed, elem_type: recv_elem_type, scope: scope)
-      let mc_arg_contract = v1.compiler.infer_lookup.declared_arg_types_for_method(receiver_type: recv_rt, method_name: method_name, source_indices: scope.type_env.source_indices)
+      let mc_arg_contract = v1.compiler.infer_lookup.declared_arg_types_for_method(receiver_type: recv_rt, method_name: method_name, source_indices: scope.type_env.source_indices, expand_field_type: n => expand_type_for_field_access(n: n, env: scope.type_env, module_name: scope.module_name).resolved)
       let mc_arg_infer_results = infer_method_args_with_fold(method_name: mc_method_name, method_args: mc_args, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, elem_provenance: mc_elem_provenance, arg_contract: mc_arg_contract, scope: scope)
       let typed_mc_args = mc_arg_infer_results |> map(air => air.typed_arg)
       let mc_arg_diags = flat_map(mc_arg_infer_results, air => air.diagnostics)
