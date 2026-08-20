@@ -1128,11 +1128,28 @@ than argued.
    bounded by judgement. The test is **three-armed, not two**: pin · `76e96333af` (#8579 hardcode
    live) · main — because a two-point test cannot distinguish *pre-existing* from *suppressed by
    #8579 and now resurfacing*, and suppression is precisely what a fail-open hardcode produces.
-   **Ceiling:** structurally impossible — a diagnostic whose location is absent is a distinct
-   state from one whose location is present, and a channel that cannot silently drop either has
-   no filter to invert. **Next trigger:** the report path stops predicating on location-presence
-   and carries `<synthetic>` as a typed span variant rather than a sentinel string, so an
-   unlocated diagnostic is *reported as unlocated* instead of being the only thing reported.
+   **ROOT CAUSE FOUND AND ALREADY REPAIRED — and it is not a filter** (2026-08-20, found while
+   verifying an unrelated measurement base; the row above is preserved because the *reporter's*
+   selection rule is described correctly, but its cause was not). `src/v1/00_core.dag` declares
+   `fn make_span(start, end) -> SourceSpan { file: "<synthetic>", .. }` — **a constructor with no
+   file parameter that substitutes the sentinel for the argument it cannot accept.** Diagnostics
+   built from a *combined* span (start from one token, end from another) therefore lost their file
+   while keeping correct offsets; diagnostics built from a single token's span kept it. That is why
+   the split was *exactly* location-presence and why every hidden row carried a real file — not a
+   filter selecting, **a constructor destroying.** `b0b061764e3` (#8607, merged 2026-08-19 21:40)
+   repairs it by switching two parse call sites to `make_file_span`, and its own message names the
+   population independently: *"46-72 refinement diagnostics across the corpus went unlocated because
+   file information was discarded even though byte offsets were correct and positions were
+   recoverable."* **Consequence for every measurement in this row:** the 72/46/26 split is a property
+   of the corpus *before* that merge, not of the corpus. Post-#8607 runs should show substantially
+   more located rows, and a reader comparing them to these numbers is seeing a fix, not a regression.
+   **Ceiling:** structurally impossible. **Next trigger — the residue, which is what survives the
+   repair:** `make_span` still fabricates `"<synthetic>"` for any future caller, so the invalid state
+   remains writable and the class sits at *mitigatable* on that axis rather than repaired; the climb
+   is a span constructor that cannot be called without a file, at which point the sentinel has no
+   constructor rather than a discouraged one. Secondarily, the count of genuinely-unlocatable rows
+   remaining after #8607 has never been measured, and that residue — not the 46 — is the real
+   remaining population.
 
 16. **The regen refusal receipt reports NOT-COMPUTED as MEASURED-AND-CLEAN** (opened 2026-08-20;
    measured by `snappy-eagle-615` reading `required_regen_host.rs` `run_required_regen` control
