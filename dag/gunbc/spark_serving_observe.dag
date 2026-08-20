@@ -742,7 +742,10 @@ func spark_serving_observe_ci_with_context(
         join(["credential_locus=", spark_serving_slice_locus_label(context: context), "\n"], ""),
         context_receipt,
       ],
-      map(observations, o => spark_serving_observation_line(observation: o)),
+      map(observations, o => join([
+        spark_serving_readback_line(readback: o.readback),
+        spark_serving_observation_line(observation: o.observation),
+      ], "")),
     ),
     "",
   )
