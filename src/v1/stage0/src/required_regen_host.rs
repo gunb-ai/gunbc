@@ -400,13 +400,14 @@ fn compare_generated_surfaces(
     for basename in generated_basenames {
         let committed_path = stage0_src.join(basename);
         let committed = normalize_generated_source(
+            &format!("committed {basename}"),
             &fs::read_to_string(&committed_path)
                 .map_err(|e| format!("read committed {}: {e}", committed_path.display()))?,
         )?;
         let candidate = by_basename
             .get(basename)
             .ok_or_else(|| format!("emit missing generated file {basename}"))?;
-        let candidate_norm = normalize_generated_source(candidate)?;
+        let candidate_norm = normalize_generated_source(&format!("emitted {basename}"), candidate)?;
         if committed != candidate_norm {
             drifted.push(basename.clone());
         }
@@ -461,7 +462,17 @@ fn write_emitted_tree(dest_src: &Path, emitted: &HashMap<String, String>) -> Res
         if let Some(parent) = out_path.parent() {
             fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
         }
-        let normalized = normalize_generated_source(content)?;
+        // ONLY RUST IS RUST-NORMALIZED. The emit produces the crate's manifests as well as its
+        // modules, and this loop used to hand every emitted artifact to rustfmt -- so writing the
+        // candidate tree died on a `Cargo.toml` with `error: expected item, found `[``, after
+        // compare and the digests had already succeeded. It surfaced only once the key-space
+        // repair let the run reach this far; before that, regen refused at the first comparison
+        // and never wrote a tree at all.
+        let normalized = if path.ends_with(".rs") {
+            normalize_generated_source(&format!("emitted {path}"), content)?
+        } else {
+            content.clone()
+        };
         fs::write(&out_path, normalized)
             .map_err(|e| format!("write {}: {e}", out_path.display()))?;
     }
@@ -530,7 +541,7 @@ fn tree_digest_for_basenames(
         let path = src_dir.join(name);
         let content = fs::read_to_string(&path)
             .map_err(|e| format!("read {label} {}: {e}", path.display()))?;
-        let norm = normalize_generated_source(&content)?;
+        let norm = normalize_generated_source(&format!("{label} {name}"), &content)?;
         payload.push_str(name);
         payload.push('\0');
         payload.push_str(&digest_label(norm.as_bytes()));
@@ -552,7 +563,7 @@ fn tree_digest_from_map(
         let content = by_basename
             .get(name)
             .ok_or_else(|| format!("emit missing {name} for digest"))?;
-        let norm = normalize_generated_source(content)?;
+        let norm = normalize_generated_source(&format!("emitted {name} (digest)"), content)?;
         payload.push_str(name);
         payload.push('\0');
         payload.push_str(&digest_label(norm.as_bytes()));
@@ -561,8 +572,15 @@ fn tree_digest_from_map(
     Ok(digest_label(payload.as_bytes()))
 }
 
-fn normalize_generated_source(content: &str) -> Result<String, String> {
-    normalize_generated_source_attempt(content)
+/// Normalize one generated surface, naming the subject in every refusal.
+///
+/// A LOCATED DIAGNOSTIC, because the unlocated one cost a measurement cycle. rustfmt reports
+/// against `<stdin>`, so an unparseable surface refused with `error: expected item, found `[``
+/// and no indication of WHICH file or WHICH side (committed or emitted) carried it -- a typed
+/// failure with no subject, which DESIGN section 5 requires to be located. The subject is known
+/// at every call site and is now threaded through.
+fn normalize_generated_source(subject: &str, content: &str) -> Result<String, String> {
+    normalize_generated_source_attempt(content).map_err(|e| format!("normalize {subject}: {e}"))
 }
 
 fn normalize_generated_source_attempt(content: &str) -> Result<String, String> {
@@ -604,7 +622,10 @@ fn normalize_with_workdir(content: &str, work_dir: &Path, label: &str) -> Result
         .output()
         .map_err(|e| format!("rustfmt {label}: {e}"))?;
     if !output.status.success() {
-        return Err(String::from_utf8_lossy(&output.stderr).to_string());
+        return Err(format!(
+            "rustfmt {label}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
     }
     fs::read_to_string(&path).map_err(|e| format!("read normalized {label}: {e}"))
 }
@@ -616,7 +637,10 @@ fn git_head_sha(workspace: &Path) -> Result<String, String> {
         .output()
         .map_err(|e| format!("git rev-parse HEAD: {e}"))?;
     if !output.status.success() {
-        return Err(String::from_utf8_lossy(&output.stderr).to_string());
+        return Err(format!(
+            "rustfmt {label}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
     }
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
