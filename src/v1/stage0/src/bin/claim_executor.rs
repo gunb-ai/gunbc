@@ -2114,7 +2114,13 @@ impl ExpectedRedDisposition {
                 completion: v1_compiler::cli_run::BudgetCompletion::CompletedOverBudget,
                 ..
             } => Self::StaleQuarantineAssertionReturnedTrue,
-            ClaimOutcome::HostToolUnresolved { .. }
+            // A ROUTE GAP JOINS THE INFRASTRUCTURE ARM, not the assertion arm, and for the
+            // same reason `HostToolUnresolved` already sits there: enrollment asserts an
+            // expected VERDICT, and a claim whose route has no arm for a host effect never
+            // reached its subject to produce one. Mapping it to
+            // `AgreementAssertionReturnedFalse` would report an unrun witness as agreement.
+            ClaimOutcome::HostEffectRefused { .. }
+            | ClaimOutcome::HostToolUnresolved { .. }
             | ClaimOutcome::RuntimeError { .. }
             | ClaimOutcome::NotBool { .. } => Self::InfrastructureOrReferentFailure,
         }
@@ -2684,6 +2690,31 @@ fn claim_result_for_outcome(
                 resolve_realization,
             }
         }
+        // NOT ok, and NOT a host_dependency_refusal either. The row did not answer, so `ok`
+        // is false; but the remedy is a route for an effect this execution mode cannot
+        // realize, not a missing binary to provision, so it does not borrow
+        // `HostDependencyRefusal`'s channel and misreport itself as a tool-chain gap.
+        ClaimOutcome::HostEffectRefused { operation, ground } => ClaimResult {
+            function,
+            entry: entry.clone(),
+            ok: false,
+            detail: format!(
+                "hermetic route has no arm for {}: {} — the claim never reached its subject",
+                operation,
+                v1_compiler::cli_run::hermetic_effect_ground_label(&ground)
+            ),
+            wall_nanos,
+            resolve_nanos,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
+            witness_row_costs: Vec::new(),
+            expectation_refusal: None,
+            budget_refusal: None,
+            host_dependency_refusal: None,
+            resolve_realization,
+        },
         ClaimOutcome::TimedOut {
             elapsed_ms,
             budget_ms,
@@ -4159,6 +4190,17 @@ fn scoped_witness_summary_outcome(
             | ClaimOutcome::NotBool { .. }
             | ClaimOutcome::RuntimeError { .. }
             | ClaimOutcome::HostToolUnresolved { .. } => ("executed", "false".to_string()),
+            // ITS OWN TAG, never "executed". The tag is what downstream reads, and this row
+            // did NOT execute its subject — reporting it as an execution that answered false
+            // is the conflation the typed outcome exists to remove.
+            ClaimOutcome::HostEffectRefused { operation, ground } => (
+                "route-gap",
+                format!(
+                    "operation={} ground={}",
+                    operation,
+                    v1_compiler::cli_run::hermetic_effect_ground_label(ground)
+                ),
+            ),
             ClaimOutcome::TimedOut {
                 elapsed_ms,
                 budget_ms,
@@ -10555,11 +10597,26 @@ fn run() -> Result<ExitCode, ExitCode> {
                     "required-floor: subject={} modules_resolved={} modules_excluded={}",
                     outcome.subject_digest, outcome.modules_resolved, outcome.modules_excluded
                 );
+                // THE SUBJECT THE ROSTER WAS PROJECTED FROM, STATED BEFORE THE ROSTER.
+                // `planned` is the population that SURVIVED site projection; printing it
+                // without `offered` and `declined_long` made the receipt unable to say what it
+                // dropped, which is how a roster that narrowed read exactly like one that did
+                // not. The three are printed together so the subtraction is visible rather
+                // than inferable.
+                eprintln!(
+                    "required-floor: offered={} routed={} declined_long={} declined_live={} \
+                     — every discovered site is exactly one of these",
+                    outcome.sites_offered,
+                    outcome.claims_planned,
+                    outcome.declined_long_module,
+                    outcome.declined_live_tree
+                );
                 eprintln!(
                     "required-floor: planned={} executed={} terminal={} passed={} \
                      known_red_held={} failed={} stale_quarantine={} \
                      interrupted_before_verdict={} completed_over_cost_requirement={} \
-                     host_tool_unresolved={} over_cost_line_diagnostic={}",
+                     host_tool_unresolved={} route_gap={} stale_route_gap={} \
+                     over_cost_line_diagnostic={}",
                     outcome.claims_planned,
                     outcome.claims_executed,
                     outcome.receipt_identities,
@@ -10570,6 +10627,8 @@ fn run() -> Result<ExitCode, ExitCode> {
                     outcome.interrupted_before_verdict.len(),
                     outcome.completed_over_cost_requirement.len(),
                     outcome.host_tool_unresolved.len(),
+                    outcome.route_gap.len(),
+                    outcome.stale_route_gap.len(),
                     outcome.over_cost_line_diagnostic
                 );
                 // One receipt, both numbers. This replaces a per-miss trace line that had no
@@ -10583,7 +10642,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                 for failure in &outcome.failures {
                     eprintln!("required-floor: FAIL {failure}");
                 }
-                // FIVE CAUSES, FIVE COUNTS, ONE STOPPED LINE. All five refuse the run, and
+                // SEVEN CAUSES, SEVEN COUNTS, ONE STOPPED LINE. All seven refuse the run, and
                 // they are reported apart because their remedies differ: a FAIL is a defect to
                 // fix, a STALE-QUARANTINE is a fix that already landed and a roster row to
                 // delete, an INTERRUPTED-BEFORE-VERDICT is an undecided claim whose real cost
@@ -10591,7 +10650,11 @@ fn run() -> Result<ExitCode, ExitCode> {
                 // COMPLETED-OVER-COST-REQUIREMENT is a claim that reached a verdict and then
                 // was found to cost too much (an exact measurement, not a bound), and a
                 // HOST-TOOL-UNRESOLVED is an infra gap to provision (never a witness-cost
-                // chase). Summing them into `failed` would make an un-quarantine
+                // chase), and a ROUTE-GAP is a claim that never reached its subject because
+                // its execution route has no arm for a host effect it reached for — remedied by
+                // supplying a route, never by editing the witness, and a STALE-ROUTE-GAP is
+                // that same roster's other direction — a route that WAS supplied, whose
+                // enrollment must now be deleted. Summing them into `failed` would make an un-quarantine
                 // indistinguishable from a regression in the alert signature, which is the
                 // conflation `std.witness_admission` rules out. Splitting the former
                 // `budget_refused` collection in two makes it visible whether a stopped run
@@ -10610,11 +10673,19 @@ fn run() -> Result<ExitCode, ExitCode> {
                 for unresolved in &outcome.host_tool_unresolved {
                     eprintln!("required-floor: HOST-TOOL-UNRESOLVED {unresolved}");
                 }
+                for gap in &outcome.route_gap {
+                    eprintln!("required-floor: ROUTE-GAP {gap}");
+                }
+                for stale in &outcome.stale_route_gap {
+                    eprintln!("required-floor: STALE-ROUTE-GAP {stale}");
+                }
                 if outcome.failures.is_empty()
                     && outcome.stale_quarantine.is_empty()
                     && outcome.interrupted_before_verdict.is_empty()
                     && outcome.completed_over_cost_requirement.is_empty()
                     && outcome.host_tool_unresolved.is_empty()
+                    && outcome.route_gap.is_empty()
+                    && outcome.stale_route_gap.is_empty()
                 {
                     Ok(ExitCode::SUCCESS)
                 } else {
@@ -15029,11 +15100,11 @@ mod tests {
 
         // Every arm of the verdict coproduct is rendered by the mirror byte-equal to the
         // `.dag` oracle, and every arm produces a DISTINCT token. The bool this parameter
-        // used to be could only witness two of these seven; five typed outcomes were
+        // used to be could only witness two of these eight; five typed outcomes were
         // flattened into FAILED at the call site before the renderer was ever reached.
         // RED: collapsing any two arms to one token fails the distinctness assert;
         // drifting one arm's spelling in either representation fails byte-equality.
-        let arms: [(&str, v1_compiler::cli_run::CiWitnessVerdict); 7] = [
+        let arms: [(&str, v1_compiler::cli_run::CiWitnessVerdict); 8] = [
             (
                 "WitnessPassed",
                 v1_compiler::cli_run::CiWitnessVerdict::Passed,
@@ -15061,6 +15132,10 @@ mod tests {
             (
                 "WitnessKnownRed",
                 v1_compiler::cli_run::CiWitnessVerdict::KnownRed,
+            ),
+            (
+                "WitnessRouteGap",
+                v1_compiler::cli_run::CiWitnessVerdict::RouteGap,
             ),
         ];
         let mut rendered: Vec<String> = Vec::new();
