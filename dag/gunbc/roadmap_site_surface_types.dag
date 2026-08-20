@@ -41,9 +41,25 @@ import gunbc.roadmap_model { RoadmapNodeId }
 //
 // So the honest ceiling for the CONSTRUCTION half is mechanically preventable, not structurally
 // impossible: the invalid value is writable, and what stops it is a runtime refusal that has to
-// execute. NEXT-RUNG TRIGGER, and it is a compiler capability rather than anything this module can
-// author: a record literal naming a coproduct type with no variant tag should refuse at resolve,
-// where the field-access form already does. Until that lands, saying this carrier makes the state
+// execute. NEXT-RUNG TRIGGER: a record literal naming a coproduct type with no variant tag should
+// refuse at resolve, where the field-access form already does. SHARPENED after measuring what the
+// compiler already computes, because "a compiler capability" -- how an earlier revision of this
+// line read -- implies infrastructure that has to be built, and that is not what is missing. The
+// predicate exists and is one expression: v1.compiler.types is_coproduct_type answers it as
+// n.connective == Disj. Record-literal inference already resolves the named type and already
+// reasons about coproduct membership on the neighbouring path -- lookup_variant_parent_enum,
+// variant_owner_node, record_lit_variant_from_expected and record_lit_expected_coproduct all sit
+// in v1.compiler.infer. What is absent is the refusal, not the fact. NOTED AT THE REACH MEASURED
+// AND NO FURTHER: those symbols answer the VARIANT-named literal (this name is an arm, whose
+// parent is X), while the case here is the PARENT-named literal, which is a different question,
+// and I have neither built nor tested the refusal. So this is DESIGN section 4b's third category
+// -- can climb now but unbuilt -- rather than its second, and the distinction is the whole reason
+// for correcting the line. ONE TRAP FOR WHOEVER BUILDS IT, named here because a trigger exists to
+// stop a future implementation being wrong: is_coproduct_type is sufficient for the DIRECT,
+// exactly-resolved specimen this row measured. Generalizing it must apply the predicate to the
+// RESOLVED STRUCTURAL declaration, not assume every authored alias node itself carries Disj -- an
+// alias to a coproduct need not, and a check that tested the alias node would silently admit
+// exactly the construction it was written to refuse. Until that lands, saying this carrier makes the state
 // unwritable would be the rung inflation DESIGN §4b calls worse than sitting low -- which is why
 // the paragraph above says what it says, and why the probes that established it are cited here by
 // their measurement rather than left enrolled: both are hard refusals, so neither can survive in
