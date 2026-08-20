@@ -5,6 +5,7 @@ import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus,
   CensusObserved,
   CensusNotRunnable,
+  census_advisory_rows,
   census_blocking_rows,
   census_rows_of_class,
   census_total_count,
@@ -562,4 +563,40 @@ test fn where_refinement_wrong_kind_literal_direct_return_refuses() -> Bool {
 
 test fn where_refinement_wrong_kind_literal_direct_return_accepts() -> Bool {
   w_wrong_kind_literal_direct_return_green()
+}
+
+data where_refinement_min_length_implication_witness_note: String = "WHY THESE ASSERT A COUNT AND NOT A Bool, which is the whole reason this block exists. WhereRefinementUnenforced is ADVISORY — compile-clean GREEN. So compile_dag_rust_emit_check returns true for the implication sites both BEFORE and AFTER the fix, and a Bool-shaped witness pair over them would have passed identically against the unfixed compiler: a green control satisfied by the fact that nothing ever refused. That is the specification-without-execution trap in its exact local form, and the only instrument that escapes it is the one that can see a diagnostic the severity filter discards. These therefore go through compile_dag_diagnostic_census and assert the ADVISORY WhereRefinementUnenforced count at each site, which moves 1 -> 0 for a credited implication and STAYS 1 for an uncredited one. THE THIRD WITNESS IS THE ONE THAT MATTERS MOST and it is a fail-open control, not a feature: a formal lower_hex_64 position fed a lower_hex_128 value must REMAIN advisory. If where_predicate_required_min_length ever grows a lower_hex_* row — the single most natural-looking edit anyone will propose to this table, since it already sits beside a guaranteed-length table carrying exactly those names — then 128 >= 64 credits a 128-digit string as a valid sha256 hex and this witness goes red. It is a permanent regression control on the asymmetry, not a probe of a landed behavior, and it does not retire when the wall lands (DESIGN 4b meta-obligation 4: a climb deletes the redundant production machinery, never the evidence)."
+
+fn where_refinement_advisory_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(
+        rows: census_advisory_rows(
+          rows: census_rows_of_class(rows: rows, wanted: "WhereRefinementUnenforced")
+        )
+      )
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+test fn where_refinement_lower_hex_40_implies_non_empty_credits_evidence() -> Bool {
+  where_refinement_advisory_count(
+    source: "module whereref_minlen_implies\nimport std.types { NonEmptyStr }\ntype Sha1Hex = String where lower_hex_40\nfn f(h: Sha1Hex) -> NonEmptyStr { h as NonEmptyStr }\n"
+  ) == 0
+}
+
+test fn where_refinement_bare_string_at_non_empty_stays_advisory() -> Bool {
+  where_refinement_advisory_count(
+    source: "module whereref_minlen_bare\nimport std.types { NonEmptyStr }\nfn f(s: String) -> NonEmptyStr { s as NonEmptyStr }\n"
+  ) == 1
+}
+
+test fn where_refinement_exact_length_predicate_is_not_a_min_length_demander() -> Bool {
+  where_refinement_advisory_count(
+    source: "module whereref_minlen_failopen_control\ntype Hex128 = String where lower_hex_128\ntype Hex64 = String where lower_hex_64\nfn f(h: Hex128) -> Hex64 { h as Hex64 }\n"
+  ) == 1
+}
+
+test fn where_refinement_min_length_implication_does_not_relax_literal_refusal() -> Bool {
+  !w_non_empty_string_cast_literal_red()
 }
