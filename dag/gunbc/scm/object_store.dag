@@ -9,6 +9,7 @@ import v2.std.node {
   EdgeLabel,
   content_hash,
   node_synthetic,
+  canonicalize_node_for_content_hash,
 }
 
 // WHY A NODE IS STORED DECOMPOSED RATHER THAN WHOLE, which is the whole point of the slice and not
@@ -126,19 +127,37 @@ type StoreEdgeAcc {
   edges: List<StoredEdge>
 }
 
+// THE STORED RECORD IS THE CANONICAL ONE, and this is not defensive tidying -- it closes a real
+// ambiguity found by review on gunbc#8578 and initially, wrongly, dismissed by the author.
+//
+// `content_hash` does NOT hash a node as authored: fold_node_content_hash canonicalizes first, and
+// canonicalize_node_for_content_hash SORTS named edges under LabeledEdges. So two authored orders of
+// the same named bindings are ONE identity. An earlier revision of this function keyed on that
+// canonical identity while persisting `n.children` in AUTHORED order -- so whichever order was
+// stored first won, the second silently deduplicated against it, and a caller could store one
+// program and check out a different child order under the same commit. One identity denoted two
+// records depending on write order.
+//
+// Storing the canonical form makes that unrepresentable rather than checked: the record whose
+// identity is derived and the record that is persisted are now the same value, so there is no pair
+// to disagree. The consequence is worth stating plainly because it is a real semantic commitment
+// and not an implementation detail -- CHECKOUT RETURNS THE CANONICAL PROGRAM, not the authored one.
+// Named-edge order is not a fact this store preserves, because it is not a fact the substrate's own
+// identity preserves.
 fn store_node(store: ObjectStore, n: Node) -> StoreResult {
-  let acc = fold(n.children, init: StoreEdgeAcc { store: store, edges: [] }, f: fn(acc, edge) {
+  let canonical = canonicalize_node_for_content_hash(n: n)
+  let acc = fold(canonical.children, init: StoreEdgeAcc { store: store, edges: [] }, f: fn(acc, edge) {
     let child = store_node(store: acc.store, n: edge.target)
     StoreEdgeAcc {
       store: child.store,
       edges: concat(acc.edges, [StoredEdge { label: edge.label, target: child.identity }]),
     }
   })
-  let identity = content_hash(n: n)
+  let identity = content_hash(n: canonical)
   StoreResult {
     store: insert_derived(
       store: acc.store,
-      record: ObjectRecord { identity: identity, kind: n.kind, children: acc.edges },
+      record: ObjectRecord { identity: identity, kind: canonical.kind, children: acc.edges },
     ),
     identity: identity,
   }

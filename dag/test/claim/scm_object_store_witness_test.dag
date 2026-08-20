@@ -30,10 +30,13 @@ import v2.std.node {
   node_occurrence_minted,
   content_hash,
   symbol_identity_digest,
+  canonicalize_node_for_content_hash,
 }
 
 import gunbc.scm.object_store {
   ObjectId,
+  ObjectRecord,
+  StoredEdge,
   ObjectStore,
   ObjectRecord,
   find_object,
@@ -148,10 +151,16 @@ fn structurally_same(left: Node, right: Node) -> Bool {
   render_node(n: left) == render_node(n: right)
 }
 
+// CHECKOUT RETURNS THE CANONICAL PROGRAM, so the expectation is canonicalized too. This is not the
+// oracle quietly adopting the subject: canonicalization is a Node-to-Node normalization, and the
+// comparison below still walks structure without hashing anything. What it concedes -- honestly --
+// is that named-edge order is not a fact a commit preserves, because it is not a fact the
+// substrate's identity preserves either.
 fn checkout_matches(store: ObjectStore, commit: Commit, expected: Node) -> Bool {
   match checkout(store: store, commit: commit) {
     CheckoutRefused { cause: _ } => false
-    CheckedOut { program: got } => structurally_same(left: got, right: expected)
+    CheckedOut { program: got } =>
+      structurally_same(left: got, right: canonicalize_node_for_content_hash(n: expected))
   }
 }
 
@@ -261,6 +270,100 @@ test fn a_complete_closure_does_not_refuse() -> Bool {
     store: stored.store,
     commit: commit_of_root(root: stored.identity),
   )
+}
+
+// ONE IDENTITY, ONE RECORD -- the ambiguity review found and the author first dismissed.
+//
+// content_hash is a QUOTIENT: it identifies a node up to a deliberate equivalence relation, erasing
+// occurrence provenance and named-edge order alike. That is the substrate's intended semantics, not
+// a hazard, and this witness does not reopen it. The defect was one layer up: the key identified the
+// canonical equivalence CLASS while the payload stored an arbitrary FIRST-OBSERVED REPRESENTATIVE of
+// that class. So the commit identity stayed a perfectly valid class identity, and what broke was
+// that reconstruction became insertion-history dependent -- store one program, check out a different
+// child order, depending on what some earlier caller happened to write first.
+fn alpha_first() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      named_edge(name: ^alpha, target: atom_node(identity: ^A)),
+      named_edge(name: ^beta, target: atom_node(identity: ^B)),
+    ],
+  )
+}
+
+fn beta_first() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      named_edge(name: ^beta, target: atom_node(identity: ^B)),
+      named_edge(name: ^alpha, target: atom_node(identity: ^A)),
+    ],
+  )
+}
+
+test fn reordered_named_children_share_one_identity() -> Bool {
+  object_id_eq(left: content_hash(n: alpha_first()), right: content_hash(n: beta_first()))
+}
+
+// A record rendered as its canonical edge sequence: labels and child identities in stored order.
+// Comparing RECORDS rather than counting them is what makes the next claim discriminating -- an
+// object count of one was already true under the defect, because dedup was keyed on identity and
+// the identity was never in question.
+fn render_record(store: ObjectStore, identity: ObjectId) -> String {
+  match find_object(store: store, identity: identity) {
+    Absent => "absent"
+    Present { value: record } =>
+      fold(record.children, init: "", f: fn(acc, stored) {
+        concat(acc, concat(render_label(label: stored.label), stored.target.digest as String))
+      })
+  }
+}
+
+// THE DISCRIMINATING CLAIM. Both insertion histories must yield the SAME stored record, not merely
+// the same number of them. Under the defect this was false: the payload was whichever order arrived
+// first, so these two renderings differed while every count and every identity agreed.
+test fn both_insertion_orders_produce_the_same_canonical_record() -> Bool {
+  let a_then_b = store_node(store: store_node(store: empty_store(), n: alpha_first()).store, n: beta_first())
+  let b_then_a = store_node(store: store_node(store: empty_store(), n: beta_first()).store, n: alpha_first())
+  render_record(store: a_then_b.store, identity: a_then_b.identity)
+    == render_record(store: b_then_a.store, identity: b_then_a.identity)
+}
+
+// CONTROL for the claim above: the rendering is not vacuously equal for everything, and in
+// particular an absent record does not read as equal to a present one.
+test fn the_record_rendering_discriminates() -> Bool {
+  let stored = store_node(store: empty_store(), n: alpha_first())
+  render_record(store: stored.store, identity: stored.identity)
+    != render_record(store: empty_store(), identity: stored.identity)
+}
+
+// The store holds ONE record for that one identity, whichever order arrived first.
+test fn storing_both_orders_adds_one_object_in_either_write_order() -> Bool {
+  let a_then_b = store_node(store: store_node(store: empty_store(), n: alpha_first()).store, n: beta_first())
+  let b_then_a = store_node(store: store_node(store: empty_store(), n: beta_first()).store, n: alpha_first())
+  length(a_then_b.store.objects) == length(store_node(store: empty_store(), n: alpha_first()).store.objects)
+    && length(b_then_a.store.objects) == length(a_then_b.store.objects)
+}
+
+// And checking that identity out gives the SAME program regardless of which order was written
+// first. This is the claim the old store failed: it returned whichever order happened to be stored.
+test fn checkout_is_independent_of_which_order_was_written_first() -> Bool {
+  let a_then_b = store_node(store: store_node(store: empty_store(), n: alpha_first()).store, n: beta_first())
+  let b_then_a = store_node(store: store_node(store: empty_store(), n: beta_first()).store, n: alpha_first())
+  match checkout(store: a_then_b.store, commit: commit_of_root(root: a_then_b.identity)) {
+    CheckoutRefused { cause: _ } => false
+    CheckedOut { program: first } =>
+      match checkout(store: b_then_a.store, commit: commit_of_root(root: b_then_a.identity)) {
+        CheckoutRefused { cause: _ } => false
+        CheckedOut { program: second } => structurally_same(left: first, right: second)
+      }
+  }
+}
+
+// CONTROL: the two orders are genuinely different authored values, so the three claims above are
+// about canonicalization rather than about comparing a program with itself.
+test fn the_two_orders_are_different_as_authored() -> Bool {
+  !structurally_same(left: alpha_first(), right: beta_first())
 }
 
 // CRITERION 3, first half -- identical content stores identically no matter how it was built. Both
