@@ -82,12 +82,20 @@ type MirrorDebtRow {
   disposition: MirrorDebtDisposition
 }
 
-// THE POPULATION AS MEASURED. Two independent runs on two different commits returned this
-// same 15-name list: snappy-eagle-615's run at 102bd1533150d04e9fc8bcf423a24c43e09a3713 (SHA
-// baked as a literal and asserted in-script, EXPECT == ACTUAL) and a second run at main tip
-// 23dd9f6abbaa18720ba6272f40851003c0747c76. Two commits, two runs, identical membership.
-// That corroborates the POPULATION only — both runs used the same comparator, so it is not
-// independent evidence about the comparator itself.
+// THE POPULATION AS MEASURED, AT ONE COMMIT: 102bd1533150d04e9fc8bcf423a24c43e09a3713.
+// Two operators dispatched independently and both returned this same 15-name list. That
+// establishes the measurement REPRODUCES. It does NOT establish that the population is stable
+// across commits, and nothing here should be dispositioned on that premise.
+//
+// An earlier revision of this comment claimed the two runs were at two different commits and
+// offered that as the strongest evidence for the baseline. It is WITHDRAWN. Both runs measured
+// the same tree: ctrl-build fetches a base, checks it out, then applies the dispatcher's local
+// diff as patches, and patches do not move HEAD — so the second run reported a main-tip SHA
+// while its content had been patched back to this commit. The retraction is recorded here
+// rather than silently deleted, because the withdrawn claim was broadcast and acted on, and a
+// carrier that quietly drops a premise leaves every consumer still holding it.
+//
+// Neither run is independent evidence about the COMPARATOR: both used it.
 //
 // These rows are transcribed from that measurement and are NOT the gate's oracle. The gate
 // recomputes both sides per run and takes its baseline from git. Nothing here is a digest,
