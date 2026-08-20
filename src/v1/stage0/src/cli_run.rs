@@ -14680,10 +14680,31 @@ impl CiWitnessVerdict {
     /// roster membership in `v2.workflow.floor_expected_red`; it dominates the outcome arm only
     /// for NON-passing outcomes, because an enrolled row that PASSES is the roster's own
     /// stale-quarantine signal and must not be dressed as expected.
+    /// ENROLLMENT ALONE DOES NOT DECIDE THIS, and the correction is worth stating because the
+    /// first version of this function got it wrong in a way that only the console could show.
+    ///
+    /// That version matched `_ if enrolled => KnownRed` above every failing arm, so an enrolled
+    /// row that was INTERRUPTED at a budget, or whose host tool could not be resolved, printed
+    /// KNOWN-RED — reading as owned semantic debt when neither is a semantic verdict at all. A
+    /// budget interruption is a lower bound on cost and decides nothing about the subject; an
+    /// unresolved host tool is an infra gap whose remedy is provisioning, not witness cost.
+    /// Enrollment cannot hold a claim that was never decided.
+    ///
+    /// The counting side already refuses exactly that absorption — `expected_red_arm` gives
+    /// `BudgetRefused` and `HostToolUnresolved` their own arms rather than folding them into
+    /// `Held`. So the bug was not a missing rule; it was a SECOND, coarser copy of a join this
+    /// file already performs correctly (DESIGN §3). This now derives from that one authority:
+    /// only `Held` — enrolled AND semantically failed — renders as KNOWN-RED, and every other
+    /// arm falls through to the outcome's own token, so the console says what the ledger says.
+    ///
+    /// `enrolled` states whether the identity is on the expected-red roster. Passing `false`
+    /// where the roster is genuinely not in scope is a statement of that fact, not a default.
     pub fn from_outcome(outcome: &ClaimOutcome, enrolled: bool) -> Self {
+        if enrolled && matches!(expected_red_arm(outcome), ExpectedRedArm::Held) {
+            return CiWitnessVerdict::KnownRed;
+        }
         match outcome {
             ClaimOutcome::Pass => CiWitnessVerdict::Passed,
-            _ if enrolled => CiWitnessVerdict::KnownRed,
             ClaimOutcome::Fail => CiWitnessVerdict::Failed,
             ClaimOutcome::NotBool { .. } => CiWitnessVerdict::NotBool,
             ClaimOutcome::RuntimeError { .. } => CiWitnessVerdict::RuntimeError,

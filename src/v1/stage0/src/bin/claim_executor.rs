@@ -14867,6 +14867,58 @@ mod tests {
         }
     }
 
+    // ENROLLMENT MAY ONLY HOLD A CLAIM THAT WAS DECIDED. Found on gunbc#8642 by the side
+    // thread: the first version of `from_outcome` matched `_ if enrolled => KnownRed` above
+    // every failing arm, so an enrolled row that was INTERRUPTED at a budget, or whose host
+    // tool could not be resolved, printed KNOWN-RED — owned semantic debt, for two states that
+    // carry no semantic verdict at all.
+    //
+    // RED: restoring the blanket `_ if enrolled` arm turns the two interruption cases into
+    // KnownRed and fails this test. The `Fail` case is the positive control — without it, a
+    // `from_outcome` that never returned KnownRed at all would also pass.
+    #[test]
+    fn enrollment_holds_only_semantic_failures_not_undecided_claims() {
+        use v1_compiler::cli_run::{BudgetCompletion, BudgetKind, CiWitnessVerdict, ClaimOutcome};
+
+        let interrupted = ClaimOutcome::TimedOut {
+            elapsed_ms: 5_000,
+            budget_ms: 5_000,
+            kind: BudgetKind::Cpu,
+            completion: BudgetCompletion::Interrupted,
+        };
+        let missing_tool = ClaimOutcome::HostToolUnresolved {
+            name: "git".to_string(),
+            probed: vec!["/usr/bin/git".to_string()],
+        };
+
+        assert_eq!(
+            CiWitnessVerdict::from_outcome(&ClaimOutcome::Fail, true),
+            CiWitnessVerdict::KnownRed,
+            "positive control: an enrolled SEMANTIC failure is the one thing enrollment holds"
+        );
+        assert_eq!(
+            CiWitnessVerdict::from_outcome(&interrupted, true),
+            CiWitnessVerdict::BudgetRefused,
+            "an interruption is a lower bound on cost, not a verdict enrollment can hold"
+        );
+        assert_eq!(
+            CiWitnessVerdict::from_outcome(&missing_tool, true),
+            CiWitnessVerdict::HostToolUnresolved,
+            "an unresolved host tool is an infra gap, not owned semantic debt"
+        );
+        assert_eq!(
+            CiWitnessVerdict::from_outcome(&interrupted, false),
+            CiWitnessVerdict::from_outcome(&interrupted, true),
+            "enrollment must not change the token for an undecided claim, either direction"
+        );
+        assert_eq!(
+            CiWitnessVerdict::from_outcome(&ClaimOutcome::Pass, true),
+            CiWitnessVerdict::Passed,
+            "an enrolled row that passes still prints PASSED; the roster staleness is the \
+             ledger's to report, not a token the console invents"
+        );
+    }
+
     #[test]
     fn render_witness_claim_result_text_mirror_matches_seed_oracle() {
         let root = workspace_root();
