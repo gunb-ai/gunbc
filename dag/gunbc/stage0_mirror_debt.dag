@@ -1,0 +1,107 @@
+module gunbc.stage0_mirror_debt
+
+// The committed stage0 Rust mirrors that differ from what their authority emits today.
+//
+// MEMBERSHIP IS NOT AUTHORED HERE. The population is whatever the required-regen comparator
+// reports as drifted on the run. What is authored is the per-row DISPOSITION: why a drifted
+// path is carried rather than repaired. A drifted path with no authored disposition refuses.
+// That is the honest failure direction — forgetting a judgement breaks loudly, whereas
+// forgetting a row would be invisible and the reported count would still read as stable.
+//
+// WHY THE DEBT EXISTS AT ALL: nothing on main writes these mirrors. RegenVerifyGate and
+// SelfHostStalenessGate were deleted at the root in the regen cut, and no workflow computes
+// the fixed point, so drift accumulates unobserved. Operator ruling 2026-08-20 (relayed via
+// deep-ant-102): disposition the population as declared debt now, re-gate next; regenerating
+// main is REFUSED while no writer exists and while the emitter produces the defect below.
+
+type MirrorAuthority
+  = SourceModule { name: String }
+  | CrateRootAggregate
+
+// CrateRootAggregate is NULLARY on purpose. lib.rs is assembled by the emitter from the set it
+// actually emitted; it carries no `// Source module:` line and there is no module to name.
+// It must NOT cite gunbc.stage0_emit_plan_generated even though that roster lists lib.rs among
+// its paths: that projection's generator gunbc.stage0_emit_plan is DELETED, so the citation
+// would point at a dead producer and be wrong in a way nothing would catch. A payload here
+// would say something false; nullary says the true thing.
+
+type MirrorGenerator
+  = Stage0Emit
+  | WetActuator
+
+// Stage0Emit is the required-regen population. WetActuator is the separately actuated kind.
+// READ THE NEXT TWO NAMES CAREFULLY, THEY DIFFER BY ONE LEADING WORD AND ARE OPPOSITE KINDS:
+//   gunbc_stage0_crate_layout_generated.rs      Stage0Emit    — IS in this population
+//   bootstrap_stage0_crate_layout_generated.rs  WetActuator   — is NOT, and is the only stage0
+//                                                               path named in gunbc.generated_artifact
+
+type MirrorDebtDisposition
+  = CarriedNoWriter
+  | CarriedEmissionDefective { defect: String }
+  | CarriedReasonNotEstablished
+
+// CarriedReasonNotEstablished is a DEFERRED question about a real thing, not an invented one:
+// each row below measurably drifts, so a cause exists for every one of them; which cause is
+// simply not established yet. Defaulting these into CarriedNoWriter would assert a cause
+// nobody measured, and authoring bespoke reasons that cannot be defended would be fabricated
+// plausible output. The arm is deliberately cheap to write: forcing an author to produce a
+// reason at the moment of refusal manufactures exactly the plausible-sounding cause this
+// column exists to keep out.
+//
+// SO THE CLAIM THIS CARRIER SUPPORTS IS NARROW, AND IS STATED HERE RATHER THAN LEFT TO BE
+// DISCOVERED AS A WEAKNESS: every drifted path is ACCOUNTED FOR. Not every drifted path is
+// UNDERSTOOD. The count of rows on this arm is reported and ranked every run, and it is
+// NEVER gated — membership is derived, so ordinary authority work grows the population
+// through no fault of any author, and a monotone cap would make legitimate work unlandable
+// behind a red the contributor cannot close.
+
+type MirrorDebtRow {
+  path: String
+  authority: MirrorAuthority
+  generator: MirrorGenerator
+  disposition: MirrorDebtDisposition
+}
+
+// THE POPULATION AS MEASURED. Two independent runs on two different commits returned this
+// same 15-name list: snappy-eagle-615's run at 102bd1533150d04e9fc8bcf423a24c43e09a3713 (SHA
+// baked as a literal and asserted in-script, EXPECT == ACTUAL) and a second run at main tip
+// 23dd9f6abbaa18720ba6272f40851003c0747c76. Two commits, two runs, identical membership.
+// That corroborates the POPULATION only — both runs used the same comparator, so it is not
+// independent evidence about the comparator itself.
+//
+// These rows are transcribed from that measurement and are NOT the gate's oracle. The gate
+// recomputes both sides per run and takes its baseline from git. Nothing here is a digest,
+// deliberately: a stored desired digest is not a fact about this repository at all, it is a
+// fact about the generator binary that produced it, and it would go silently wrong the next
+// time the emitter changes.
+//
+// CarriedNoWriter is currently UNINHABITED and that is deliberate rather than an oversight.
+// The absent writer is why NO row gets repaired — it is a global fact about main, not a
+// discriminating per-row cause — so claiming it for a specific path would assert more than
+// was measured. The arm stays declared because the gate switches on it and because a row
+// will earn it as soon as one file's drift is shown to be ordinary staleness.
+
+data stage0_mirror_debt_rows: List<MirrorDebtRow> = [
+  MirrorDebtRow {
+    path: "src/v1/stage0/src/gunbc_stage0_crate_layout_generated.rs",
+    authority: SourceModule { name: "gunbc.stage0_crate_layout_generated" },
+    generator: Stage0Emit,
+    disposition: CarriedEmissionDefective {
+      defect: "Regenerating this path emits a bare `pub mod` name inside a Rust string literal, so the emitted crate fails rustc E0583 (unresolved module). The bare names sit in a string constant of the committed mirror, which is why no emitter change reaches them and why the repair is a regeneration rather than a code edit. Blocked while regenerating main is refused."
+    }
+  },
+  MirrorDebtRow { path: "src/v1/stage0/src/lib.rs", authority: CrateRootAggregate, generator: Stage0Emit, disposition: CarriedReasonNotEstablished },
+  MirrorDebtRow { path: "src/v1/stage0/src/std_algebra.rs", authority: SourceModule { name: "std.algebra" }, generator: Stage0Emit, disposition: CarriedReasonNotEstablished },
+  MirrorDebtRow { path: "src/v1/stage0/src/std_measure.rs", authority: SourceModule { name: "std.measure" }, generator: Stage0Emit, disposition: CarriedReasonNotEstablished },
+  MirrorDebtRow { path: "src/v1/stage0/src/std_occurrence_binding_candidates.rs", authority: SourceModule { name: "std.occurrence_binding_candidates" }, generator: Stage0Emit, disposition: CarriedReasonNotEstablished },
+  MirrorDebtRow { path: "src/v1/stage0/src/std_pareto.rs", authority: SourceModule { name: "std.pareto" }, generator: Stage0Emit, disposition: CarriedReasonNotEstablished },
+  MirrorDebtRow { path: "src/v1/stage0/src/std_witness_admission.rs", authority: SourceModule { name: "std.witness_admission" }, generator: Stage0Emit, disposition: CarriedReasonNotEstablished },
+  MirrorDebtRow { path: "src/v1/stage0/src/v1_compiler_complexity.rs", authority: SourceModule { name: "v1.compiler.complexity" }, generator: Stage0Emit, disposition: CarriedReasonNotEstablished },
+  MirrorDebtRow { path: "src/v1/stage0/src/v1_compiler_emit.rs", authority: SourceModule { name: "v1.compiler.emit" }, generator: Stage0Emit, disposition: CarriedReasonNotEstablished },
+  MirrorDebtRow { path: "src/v1/stage0/src/v1_compiler_emit_rust.rs", authority: SourceModule { name: "v1.compiler.emit_rust" }, generator: Stage0Emit, disposition: CarriedReasonNotEstablished },
+  MirrorDebtRow { path: "src/v1/stage0/src/v1_compiler_infer.rs", authority: SourceModule { name: "v1.compiler.infer" }, generator: Stage0Emit, disposition: CarriedReasonNotEstablished },
+  MirrorDebtRow { path: "src/v1/stage0/src/v1_compiler_infer_lookup.rs", authority: SourceModule { name: "v1.compiler.infer_lookup" }, generator: Stage0Emit, disposition: CarriedReasonNotEstablished },
+  MirrorDebtRow { path: "src/v1/stage0/src/v1_compiler_infer_resolve.rs", authority: SourceModule { name: "v1.compiler.infer_resolve" }, generator: Stage0Emit, disposition: CarriedReasonNotEstablished },
+  MirrorDebtRow { path: "src/v1/stage0/src/v1_compiler_parse.rs", authority: SourceModule { name: "v1.compiler.parse" }, generator: Stage0Emit, disposition: CarriedReasonNotEstablished },
+  MirrorDebtRow { path: "src/v1/stage0/src/v1_std_core.rs", authority: SourceModule { name: "v1.std.core" }, generator: Stage0Emit, disposition: CarriedReasonNotEstablished }
+]
