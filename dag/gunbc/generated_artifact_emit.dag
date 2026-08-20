@@ -14,11 +14,11 @@ fn artifact_generate(a: gunbc.generated_artifact.GeneratedArtifact) -> ArtifactG
   match a {
     gunbc.generated_artifact.WitnessFloorYamlArtifact => artifact_generated(content: gunbc.witness_floor_workflow.expected_witness_floor_yml())
     gunbc.generated_artifact.FleetConvergeYamlArtifact => artifact_generated(content: gunbc.fleet_converge_workflow.expected_fleet_converge_yml())
+    gunbc.generated_artifact.LiveDeployYamlArtifact => artifact_generated(content: gunbc.live_deploy_workflow.expected_deploy_yml())
     gunbc.generated_artifact.GitignoreArtifact => artifact_generated(content: gunbc.gitignore_emit.expected_gitignore())
     gunbc.generated_artifact.GitattributesArtifact => match gunbc.gitattributes_emit.expected_gitattributes() {
       gunbc.gitattributes_emit.GitattributesGenerated { content } => artifact_generated(content: content)
-      gunbc.gitattributes_emit.GitattributesGenerationRefused => ArtifactGenerationRefused { reason: "generated projection path population refused" }
-    }
+      gunbc.gitattributes_emit.GitattributesGenerationRefused => ArtifactGenerationRefused { reason: "generated projection path population refused" }    }
     gunbc.generated_artifact.RoadmapArtifact => artifact_generated(content: gunbc.roadmap_authority.expected_roadmap_md())
     gunbc.generated_artifact.DesignArtifact => artifact_generated(content: gunbc.design_document.expected_design_md())
     gunbc.generated_artifact.GithooksPrePushArtifact => artifact_generated(content: gunbc.githooks_pre_push_emit.expected_githooks_pre_push_sh())
@@ -45,6 +45,7 @@ fn artifact_extra_valid(a: gunbc.generated_artifact.GeneratedArtifact, generated
   match a {
     gunbc.generated_artifact.WitnessFloorYamlArtifact => gunbc.ci_yaml_validate.ci_yml_parses(path: gunbc.generated_artifact.artifact_path(a: a))
     gunbc.generated_artifact.FleetConvergeYamlArtifact => gunbc.ci_yaml_validate.ci_yml_parses(path: gunbc.generated_artifact.artifact_path(a: a))
+    gunbc.generated_artifact.LiveDeployYamlArtifact => gunbc.ci_yaml_validate.ci_yml_parses(path: gunbc.generated_artifact.artifact_path(a: a))
     gunbc.generated_artifact.GitignoreArtifact => true
     gunbc.generated_artifact.GitattributesArtifact => true
     gunbc.generated_artifact.RoadmapArtifact => true
@@ -56,8 +57,7 @@ fn artifact_extra_valid(a: gunbc.generated_artifact.GeneratedArtifact, generated
     gunbc.generated_artifact.Stage0CrateLayoutGeneratedDagArtifact => true
     gunbc.generated_artifact.Stage0CrateLayoutGeneratedRsArtifact => true
     gunbc.generated_artifact.Stage0CratePartitionGeneratedDagArtifact => true
-    gunbc.generated_artifact.V1InterpreterDispatchGeneratedRsArtifact => match generated {
-      ArtifactGenerated { content: _ } => true
+    gunbc.generated_artifact.V1InterpreterDispatchGeneratedRsArtifact => match generated {      ArtifactGenerated { content: _ } => true
       ArtifactGenerationRefused { reason: _ } => false
     }
     gunbc.generated_artifact.AutoinstallUserDataArtifact { spec: _ } => true
