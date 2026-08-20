@@ -13,6 +13,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data find_files_and_symlinks_positional_note: String = "The script body is a FIXED literal owned here, and root arrives as the positional parameter $1 rather than being spliced into it — so no path can escape a quote, which is exactly what a caller-side concat into a single-quoted find string permitted (review 50535). The pipe to sort stays inside the operation because it is load-bearing: find walks directories in filesystem order, and the caller digests the resulting listing into a tree identity, so an unsorted read would make that identity depend on traversal order. It cannot move into the substrate today — std.primitives declares a sort contract but no callable sort exists (probed, 2026-08-08), which is the dissolve-on for folding this ordering back out of the shell. GNU find -printf keeps this operation Linux-only, per the caller's own linux_find_note."
 
+data files_by_name_sorted_positional_note: String = "shell.Find.FilesByNameSorted: root and name_glob arrive as positional parameters ($1, $2) rather than being spliced into the script body, for the same reason as FilesAndSymlinksWithMode above — no path or glob can escape a quote. The pipe to sort stays inside the operation because the caller digests the listing into a manifest and needs traversal-order independence (SHELL-DAG dissolution of package_delivery.dag's protocol-schema-bundle file listing, previously a retained_foreign concat-built find | sort script)."
+
 
 service shell.Find {
   operation ListDirs {
@@ -56,6 +58,27 @@ service shell.Find {
     }
     readonly
     transport shell { argv: ["env", "-C", "{workdir}", "find", "{root}", "-name", "{name_glob}"] }
+    exit {
+      0 => Unit
+      nonzero => String "Find command failed"
+    }
+  }
+
+  operation FilesByNameSorted {
+    input { root: FilePath, name_glob: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: [
+        "sh", "-c",
+        "find \"$1\" -type f -name \"$2\" | sort",
+        "sh", "{root}", "{name_glob}",
+      ]
+    }
     exit {
       0 => Unit
       nonzero => String "Find command failed"
@@ -269,6 +292,16 @@ service shell.Remove {
       nonzero => String "rm -rf failed"
     }
   }
+
+  operation EmptyDirectory {
+    input { path: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["rmdir", "{path}"] }
+    exit {
+      0 => Unit "Directory removed; rmdir refuses when non-empty, which is the safety this relies on"
+      nonzero => String "rmdir failed"
+    }
+  }
 }
 
 service shell.Move {
@@ -279,6 +312,16 @@ service shell.Move {
     exit {
       0 => Unit
       nonzero => String "mv failed"
+    }
+  }
+
+  operation NoReplaceDirectory {
+    input { source: FilePath, destination: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["mv", "-T", "{source}", "{destination}"] }
+    exit {
+      0 => Unit "Directory moved; -T treats destination as a normal path (no nest into an existing dir), equivalent to renameat2(RENAME_NOREPLACE) for directories on Linux"
+      nonzero => String "mv -T failed"
     }
   }
 }

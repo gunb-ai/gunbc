@@ -153,7 +153,9 @@ pub fn collect_unit_variant_phantom_matches(
 
 pub fn is_width_nat_type_literal(n: Rc<Node>) -> bool {
     match (*n.expr_data.clone()).clone() {
-        ExprData::ExprLiteral { ref value, .. } => {
+        ExprData::ExprLiteral { ref value, .. }
+            if matches!(value.as_ref(), LiteralValue::LitInt { .. }) =>
+        {
             let LiteralValue::LitInt { value: _, .. } = value.as_ref() else {
                 unreachable!()
             };
