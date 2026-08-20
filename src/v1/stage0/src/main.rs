@@ -464,6 +464,35 @@ fn main() {
             // census only (fill = whole tree; the compile scope stays the closure).
             let mut census_only_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::new();
             let sources = if !source_roots.is_empty() {
+                // ARM-TIME ADMISSION for a whole-corpus compile (no --entry). The host
+                // budget was already readable at this point and was joined to nothing: the
+                // run started a resolve it could not hold and was SIGKILLed — exit 137, no
+                // diagnostic, and a harness grepping the captured output reads a fabricated
+                // zero rather than a failure. Refusing here stops the line where it can
+                // still be reported.
+                //
+                // Placed BEFORE the index because nothing about the corpus is an input to
+                // the decision — the threshold is a measured whole-tree demand figure, not a
+                // per-module derivation — so the cheapest correct place is the earliest one.
+                // Deliberately NOT applied to --entry: a scoped compile's working set is its
+                // closure, not the whole tree, and it was measured to fit on the very runner
+                // that killed the whole-corpus run. That is an unasked question, not an
+                // all-clear. Authority: gunbc.whole_corpus_compile_admission.
+                if entry.is_none() {
+                    let (budget, source) = v1_compiler::memory_governor::read_host_budget_bytes();
+                    let admission = v1_compiler::memory_governor::whole_corpus_compile_admission(
+                        budget, &source,
+                    );
+                    if let Some(diagnostic) =
+                        v1_compiler::memory_governor::whole_corpus_compile_refusal_diagnostic(
+                            &admission,
+                        )
+                    {
+                        eprintln!("gunbc compile: {diagnostic}");
+                        std::process::exit(1);
+                    }
+                }
+
                 let index = build_module_index(&source_roots, pool_index);
                 eprintln!(
                     "indexed {} modules from {} source roots",

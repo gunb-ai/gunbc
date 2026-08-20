@@ -329,6 +329,20 @@ fn report_outcome(function: &str, outcome: ClaimOutcome, any_failed: &mut bool) 
             );
             *any_failed = true;
         }
+        // ALSO A FAILURE HERE, and deliberately so despite not being a verdict. This
+        // transport reports one line per row and has no third channel; between "green" and
+        // "failed", a claim that never reached its subject must not be green. The line says
+        // what it actually is, so the reader is not told the witness answered false.
+        ClaimOutcome::HostEffectRefused { operation, ground } => {
+            println!(
+                "FAIL {} (hermetic route has no arm for {}: {} — the claim never reached its \
+                 subject, so this is a route gap and not a verdict)",
+                function,
+                operation,
+                v1_compiler::cli_run::hermetic_effect_ground_label(&ground)
+            );
+            *any_failed = true;
+        }
         // The clock is named because a cpu-budget kill and a wall-budget kill have different
         // remedies — and `completion` is named because whether the number BOUNDS the cost or
         // MEASURES it differs by arm. This line used to say "killed ... elapsed is a ceiling"
