@@ -214,33 +214,29 @@ pub fn run_required_regen(
     let sources = super::regen_input_sources(&workspace)?;
     let authority_digest = authority_digest_from_sources(&sources)?;
 
-    let emitted = compile_stage0(&workspace)?;
-
-    let committed_basenames = committed_generated_basenames(&stage0_src)?;
-    if emitted.is_empty() {
-        return regen_refusal_outcome(
-            &workspace,
-            candidate_dir_rel,
-            receipt_rel,
-            commit_sha,
-            authority_digest,
-            "refusal: emit produced zero files".to_string(),
-        );
-    }
-    let emitted_basenames = generated_basenames_from_emit(&emitted);
-    let population_err = validate_compared_populations(&committed_basenames, &emitted_basenames);
-    if let Some(reason) = population_err {
-        return regen_refusal_outcome(
-            &workspace,
-            candidate_dir_rel,
-            receipt_rel,
-            commit_sha,
-            authority_digest,
-            reason,
-        );
-    }
-
-    let sync = compare_generated_surfaces(&stage0_src, &emitted, &committed_basenames)?;
+    // ONE producer of the drift fact, shared with `measure_generated_drift`. What differs between
+    // the two callers is only what a refusal MEANS here — a receipt plus an `Ok` carrying
+    // failures, rather than an `Err` — so the policy is applied at this call site and the
+    // measurement is not re-typed.
+    let (emitted, committed_basenames, emitted_basenames, sync) =
+        match measure_generated_surface(&workspace, &stage0_src)? {
+            GeneratedSurfaceMeasured::Refused { reason } => {
+                return regen_refusal_outcome(
+                    &workspace,
+                    candidate_dir_rel,
+                    receipt_rel,
+                    commit_sha,
+                    authority_digest,
+                    reason,
+                );
+            }
+            GeneratedSurfaceMeasured::Measured {
+                emitted,
+                committed,
+                emitted_basenames,
+                sync,
+            } => (emitted, committed, emitted_basenames, sync),
+        };
     // verify_hand_maintained writes scratch normalize files into candidate_dir; on a clean
     // tree nothing has created that directory yet (write_emitted_tree does so later), so it
     // must exist before this call.
@@ -427,6 +423,107 @@ pub fn run_required_regen_fixed_point(
             "this outcome is the fixed-point pass, not a first generation".to_string(),
         ),
     })
+}
+
+/// The emit-and-compare sequence, performed ONCE and in ONE place.
+///
+/// This exists because an earlier revision of this file had two producers of a single fact —
+/// which mirrors drifted. `measure_generated_drift` re-typed the same five calls that
+/// `run_required_regen` performs, and nothing kept the copies in step. The receipt is on the
+/// record: #8618 repaired a defect INSIDE `compare_generated_surfaces` (the committed side was
+/// being normalized, so the comparison was `normalize(normalize(x))` against `normalize(x)` — a
+/// false-positive drift with no reachable green). A repair landing in one of two copies of this
+/// sequence leaves the other answering the old way, and the copies agreeing on the day they are
+/// written is exactly what makes the duplication easy to leave in place.
+///
+/// The two callers genuinely differ, but they differ in their FAILURE POLICY, not in the
+/// measurement: `run_required_regen` routes a refusal to `regen_refusal_outcome`, which writes a
+/// receipt and returns `Ok` carrying failures, while the drift gate wants `Err`. So the refusal
+/// is returned as a value and each caller applies its own policy — one `match` at the call site
+/// rather than a second copy of the five calls above it.
+enum GeneratedSurfaceMeasured {
+    /// The comparison was taken. `emitted` and `committed` are returned because the regen path
+    /// needs them for the candidate tree and its digests, and recomputing them would mean running
+    /// the whole emit twice.
+    Measured {
+        emitted: HashMap<String, String>,
+        committed: Vec<String>,
+        /// Returned rather than recomputed by the caller: it is part of THIS measurement, and a
+        /// caller deriving it again would be a second producer of the same fact one level down.
+        emitted_basenames: Vec<String>,
+        sync: SyncReport,
+    },
+    /// The comparison could NOT be taken. This is ignorance, never "no drift" — see the refusal
+    /// note on `measure_generated_drift`.
+    Refused { reason: String },
+}
+
+fn measure_generated_surface(
+    workspace: &Path,
+    stage0_src: &Path,
+) -> Result<GeneratedSurfaceMeasured, String> {
+    let emitted = compile_stage0(workspace)?;
+    if emitted.is_empty() {
+        return Ok(GeneratedSurfaceMeasured::Refused {
+            reason: "refusal: emit produced zero files".to_string(),
+        });
+    }
+    let committed = committed_generated_basenames(stage0_src)?;
+    let emitted_basenames = generated_basenames_from_emit(&emitted);
+    if let Some(reason) = validate_compared_populations(&committed, &emitted_basenames) {
+        return Ok(GeneratedSurfaceMeasured::Refused { reason });
+    }
+    let sync = compare_generated_surfaces(stage0_src, &emitted, &committed)?;
+    Ok(GeneratedSurfaceMeasured::Measured {
+        emitted,
+        committed,
+        emitted_basenames,
+        sync,
+    })
+}
+
+/// The emitted generated surface, keyed by basename.
+///
+/// Routed through the SAME `measure_generated_surface` the drift gate and the regen path use, so
+/// the bytes a behavioural receipt compiles are the bytes the drift gate compared. A second emit
+/// here would be a second producer of the candidate itself -- the one fact a receipt absolutely
+/// cannot afford to have two of.
+pub fn emitted_generated_sources() -> Result<HashMap<String, String>, String> {
+    let workspace = workspace_root();
+    let stage0_src = workspace.join("src/v1/stage0/src");
+    let emitted = match measure_generated_surface(&workspace, &stage0_src)? {
+        GeneratedSurfaceMeasured::Refused { reason } => return Err(reason),
+        GeneratedSurfaceMeasured::Measured { emitted, .. } => emitted,
+    };
+    // KEYED BY BASENAME, and the conversion happens HERE rather than at the call site.
+    //
+    // Emit keys carry a `src/` prefix; everything that joins against a committed mirror keys on
+    // `file_name()`. `generated_basenames_from_emit` already carries the warning that comparing
+    // the two key spaces "made every file mismatch in both directions" -- and a caller of this
+    // function walked straight into it anyway, looking up `std_pareto.rs` in a map keyed by emit
+    // path and getting nothing. It refused rather than reporting equivalence, which is the design
+    // working, but the refusal was about the key space rather than about the candidate.
+    //
+    // Returning the raw map invites that mistake from every future caller. Doing the derivation
+    // once, through the same `emit_path_basename` the population census uses, removes it.
+    let mut out: HashMap<String, String> = HashMap::new();
+    for (path, content) in emitted {
+        if !path.ends_with(".rs") || is_hand_maintained_path(&path) {
+            continue;
+        }
+        let base = emit_path_basename(&path).to_string();
+        // A collision would silently drop one candidate and compare the wrong bytes. The flat
+        // generated surface makes basenames unique, so a duplicate means that assumption has
+        // stopped holding, and a receipt built on a stale assumption is worse than no receipt.
+        if let Some(prior) = out.insert(base.clone(), content) {
+            let _ = prior;
+            return Err(format!(
+                "refusal: two emitted paths share the basename {base}; the generated surface \
+                 is no longer flat and a basename join would compare the wrong candidate"
+            ));
+        }
+    }
+    Ok(out)
 }
 
 struct SyncReport {

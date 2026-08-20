@@ -152,6 +152,7 @@ type CompilerDiagnostic
   | OwnershipViolation   { binding: String, fn_name: String, consumers: Int, span: std.types.SourceSpan }
   | VariantCollision { variant: String, enum1: String, enum2: String, span: std.types.SourceSpan }
   | SoleConstructorViolation { type_name: String, span: std.types.SourceSpan }
+  | BareNoneNotAdmittedByFieldType { field: String, type_name: String, declared_type: String, span: std.types.SourceSpan }
   | SourceAnnotationRefused { refusal: std.source_annotation.AnnotationAttachmentRefusal }
   | ConstructorCallAdmissionRefused {
       constructor_module_path: String,
@@ -185,26 +186,26 @@ fn occurrence_transport_refusal_diagnostic_span(
   refusal: std.occurrence_identity.OccurrenceTransportRefusal
 ) -> std.types.SourceSpan? {
   match refusal {
-    std.occurrence_identity.MissingAuthoredOccurrenceIdentity { diagnostic_span: span } => Present { value: span }
-    std.occurrence_identity.DuplicateAuthoredOccurrenceIdentity {
+    MissingAuthoredOccurrenceIdentity { diagnostic_span: span } => Present { value: span }
+    DuplicateAuthoredOccurrenceIdentity {
       occurrence: _,
       diagnostic_span: span,
     } => Present { value: span }
-    std.occurrence_identity.DuplicateSuppliedCandidateIdentity {
+    DuplicateSuppliedCandidateIdentity {
       occurrence: _,
       diagnostic_span: span,
     } => Present { value: span }
-    std.occurrence_identity.InconsistentOccurrenceContainment {
+    InconsistentOccurrenceContainment {
       occurrence: _,
       diagnostic_span: span,
     } => Present { value: span }
-    std.occurrence_identity.WrongOccurrenceRole {
+    WrongOccurrenceRole {
       occurrence: _,
       expected: _,
       observed: _,
       diagnostic_span: span,
     } => Present { value: span }
-    std.occurrence_identity.UnknownOccurrenceIdentity { occurrence: _ } => Absent
+    UnknownOccurrenceIdentity { occurrence: _ } => Absent
   }
 }
 
@@ -212,30 +213,30 @@ fn occurrence_transport_refusal_diagnostic_message(
   refusal: std.occurrence_identity.OccurrenceTransportRefusal
 ) -> String {
   match refusal {
-    std.occurrence_identity.MissingAuthoredOccurrenceIdentity { diagnostic_span: _ } =>
+    MissingAuthoredOccurrenceIdentity { diagnostic_span: _ } =>
       "occurrence transport refused: missing authored occurrence identity"
-    std.occurrence_identity.DuplicateAuthoredOccurrenceIdentity {
+    DuplicateAuthoredOccurrenceIdentity {
       occurrence: occurrence,
       diagnostic_span: _,
     } => concat(
       "occurrence transport refused: duplicate authored occurrence identity ",
       to_string(value: occurrence.value)
     )
-    std.occurrence_identity.DuplicateSuppliedCandidateIdentity {
+    DuplicateSuppliedCandidateIdentity {
       occurrence: occurrence,
       diagnostic_span: _,
     } => concat(
       "occurrence binding refused: duplicate supplied candidate identity ",
       to_string(value: occurrence.value)
     )
-    std.occurrence_identity.InconsistentOccurrenceContainment {
+    InconsistentOccurrenceContainment {
       occurrence: occurrence,
       diagnostic_span: _,
     } => concat(
       "occurrence transport refused: inconsistent containment for authored occurrence identity ",
       to_string(value: occurrence.value)
     )
-    std.occurrence_identity.WrongOccurrenceRole {
+    WrongOccurrenceRole {
       occurrence: occurrence,
       expected: _,
       observed: _,
@@ -244,7 +245,7 @@ fn occurrence_transport_refusal_diagnostic_message(
       "occurrence transport refused: wrong role for authored occurrence identity ",
       to_string(value: occurrence.value)
     )
-    std.occurrence_identity.UnknownOccurrenceIdentity { occurrence: occurrence } =>
+    UnknownOccurrenceIdentity { occurrence: occurrence } =>
       concat(
         "occurrence transport refused: unknown occurrence identity ",
         to_string(value: occurrence.value)
@@ -278,6 +279,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> std.types.SourceSpan {
     OwnershipViolation   { binding: _, fn_name: _, consumers: _, span: s } => s
     VariantCollision { variant: _, enum1: _, enum2: _, span: s } => s
     SoleConstructorViolation { type_name: _, span: s } => s
+    BareNoneNotAdmittedByFieldType { field: _, type_name: _, declared_type: _, span: s } => s
     SourceAnnotationRefused { refusal: r } => std.source_annotation.annotation_attachment_refusal_origin(refusal: r)
     ConstructorCallAdmissionRefused {
       constructor_module_path: _,
@@ -330,6 +332,8 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     OwnershipViolation   { binding: b, fn_name: f, consumers: c, span: _ } => concat("ownership: binding '", b, "' in '", f, "' has ", to_string(value: c), " consumers")
     VariantCollision { variant: v, enum1: e1, enum2: e2, span: _ } => concat("variant '", v, "' appears in both '", e1, "' and '", e2, "'")
     SoleConstructorViolation { type_name: t, span: _ } => concat("sole_constructor type '", t, "' cannot be constructed outside its defining module")
+    BareNoneNotAdmittedByFieldType { field: f, type_name: t, declared_type: dt, span: _ } =>
+      concat("bare 'None' cannot inhabit field '", f, "' of '", t, "': declared type '", dt, "' carries no absence — it is not optional and declares no 'None' variant")
     SourceAnnotationRefused { refusal: r } => std.source_annotation.annotation_attachment_refusal_message(refusal: r)
     ConstructorCallAdmissionRefused {
       constructor_module_path: cm,
@@ -1232,7 +1236,7 @@ fn expr_literal_int_optional(expr: Node) -> Int? {
   match expr.expr_data {
     ExprLiteral { value: lit } =>
       match lit {
-        std.syntax.LitInt { value: v } => Present { value: v }
+        LitInt { value: v } => Present { value: v }
         _ => none
       }
     ExprUnaryOp { op: Neg } =>
@@ -1248,7 +1252,7 @@ fn expr_literal_string_optional(expr: Node) -> String? {
   match expr.expr_data {
     ExprLiteral { value: lit } =>
       match lit {
-        std.syntax.LitStr { value: v } => Present { value: v }
+        LitStr { value: v } => Present { value: v }
         _ => none
       }
     _ => none
@@ -1259,7 +1263,7 @@ fn expr_literal_symbol_optional(expr: Node) -> String? {
   match expr.expr_data {
     ExprLiteral { value: lit } =>
       match lit {
-        std.syntax.LitSymbol { value: v } => Present { value: v }
+        LitSymbol { value: v } => Present { value: v }
         _ => none
       }
     _ => none
@@ -1270,7 +1274,7 @@ fn expr_is_any_literal(expr: Node) -> Bool {
   match expr.expr_data {
     ExprLiteral { value: lit } =>
       match lit {
-        std.syntax.LitNull => false
+        LitNull => false
         _ => true
       }
     ExprUnaryOp { op: Neg } => expr_is_any_literal(expr: unaryop_operand(texpr: expr))

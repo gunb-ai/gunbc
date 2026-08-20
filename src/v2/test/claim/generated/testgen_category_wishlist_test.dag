@@ -1,42 +1,5 @@
 module v2.test.generated.testgen_category_wishlist
 
-fn refinement_preservation_stub_locus() -> v2.std.diagnostic.Locus {
-  v2.std.diagnostic.port_locus(port: ^refinement_preservation_stub_locus_port)
-}
-
-fn refinement_preservation_stub_admits(xs: List<v2.std.node.Node>) -> Bool {
-  true
-}
-
-data refinement_preservation_stub_validation: v2.std.refinement.Validation<List<v2.std.node.Node>> = v2.std.refinement.Validation {
-  reason: ^refinement_preservation_stub_invalid,
-  admits: refinement_preservation_stub_admits
-}
-
-data refinement_preservation_stub_vacuous_validation: v2.std.refinement.VacuousValidation<List<v2.std.node.Node>> = v2.std.refinement.VacuousValidation {
-  reason: ^refinement_preservation_stub_invalid,
-  vacuous: v2.std.refinement.vacuous_admits_marker
-}
-
-fn refinement_preservation_stub_generator_refined_terminal() -> v2.std.refinement.Refined<List<v2.std.node.Node>> {
-  v2.std.refinement.refined_vacuous_stub_pack(
-    base: [v2.test.manual.connective_anchors.stub_empty_conj],
-    by: refinement_preservation_stub_vacuous_validation,
-    at: refinement_preservation_stub_locus()
-  )
-}
-
-fn refinement_preservation_stub_generator_refined() -> v2.std.refinement.Refined<List<v2.std.node.Node>> {
-  match v2.std.refinement.refine(
-    base: [v2.test.manual.connective_anchors.stub_empty_conj],
-    by: refinement_preservation_stub_validation,
-    at: refinement_preservation_stub_locus()
-  ) {
-    Accepted { value: refined, diagnostics: _ } => refined
-    Rejected { diagnostics: _ } => refinement_preservation_stub_generator_refined_terminal()
-  }
-}
-
 type TestgenOracleBasis
   = StructuralConstructionWitness
   | AlgebraLawWitness
@@ -47,122 +10,144 @@ type TestgenOracleBasis
   | RefinementProjectionWitness
 
 type TestgenWishlistRow {
-  generator: Generator<v2.lens.testgen.TestgenConcept>
+  generator: v2.std.diagnostic.Outcome<v2.lens.testgen.Generator<v2.lens.testgen.TestgenConcept>>
   oracle: TestgenOracleBasis
   dispatch_key: v2.std.node.Symbol
 }
-fn wishlist_type_construction_generator() -> Generator<v2.lens.testgen.TestgenConcept> {
-  v2.lens.testgen.Generator {
-    kind: v2.std.verification.TestClaimCompilesClaimVariant,
-    classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: v2.std.verification.Unit },
-    anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
-    slot: v2.lens.testgen.TypeConstruction {
-      subject: v2.lens.testgen.ConnectiveKernel { connective: v2.std.node.Conj },
-    },
-    provenance: generator_provenance(id: ^wishlist_gen_id_type_construction),
-    profile_metadata: default_generator_profile(),
-  }
-}
-
-fn dispatched_algebra_law_generator() -> Generator<v2.lens.testgen.TestgenConcept> {
-  v2.lens.testgen.Generator {
-    kind: v2.std.verification.TestClaimEqualsClaimVariant,
-    classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: v2.std.verification.Unit },
-    anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualNatAddAssociativity),
-    slot: v2.lens.testgen.AlgebraLaw {
-      subject: v2.lens.testgen.AlgebraLawSubject {
-        algebra: ^nat_algebra_law_subject_symbol_additive_monoid,
-        inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
-        law: ^law_nat_add_associativity,
+fn wishlist_type_construction_generator() -> v2.std.diagnostic.Outcome<v2.lens.testgen.Generator<v2.lens.testgen.TestgenConcept>> {
+  v2.std.diagnostic.Accepted {
+    value: v2.lens.testgen.Generator {
+      kind: v2.std.verification.TestClaimCompilesClaimVariant,
+      classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: v2.std.verification.Unit },
+      anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
+      slot: v2.lens.testgen.TypeConstruction {
+        subject: v2.lens.testgen.ConnectiveKernel { connective: v2.std.node.Conj },
       },
+      provenance: v2.lens.testgen.generator_provenance(id: ^wishlist_gen_id_type_construction),
+      profile_metadata: v2.lens.testgen.default_generator_profile(),
     },
-    provenance: generator_provenance(id: ^wishlist_gen_id_algebra_law),
-    profile_metadata: default_generator_profile(),
+    diagnostics: v2.std.diagnostic.None,
   }
 }
 
-fn dispatched_diagnostic_exhaustiveness_generator() -> Generator<v2.lens.testgen.TestgenConcept> {
-  v2.lens.testgen.Generator {
-    kind: v2.std.verification.TestClaimDiagnosticClaimVariant,
-    classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: v2.std.verification.Unit },
-    anchor: v2.std.verification.generated_claim_anchor(
-      anchor: v2.std.verification.GeneratedCoproductExhaustiveness {
+fn dispatched_algebra_law_generator() -> v2.std.diagnostic.Outcome<v2.lens.testgen.Generator<v2.lens.testgen.TestgenConcept>> {
+  v2.std.diagnostic.Accepted {
+    value: v2.lens.testgen.Generator {
+      kind: v2.std.verification.TestClaimEqualsClaimVariant,
+      classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: v2.std.verification.Unit },
+      anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualNatAddAssociativity),
+      slot: v2.lens.testgen.AlgebraLaw {
+        subject: v2.lens.testgen.AlgebraLawSubject {
+          algebra: ^nat_algebra_law_subject_symbol_additive_monoid,
+          inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
+          law: ^law_nat_add_associativity,
+        },
+      },
+      provenance: v2.lens.testgen.generator_provenance(id: ^wishlist_gen_id_algebra_law),
+      profile_metadata: v2.lens.testgen.default_generator_profile(),
+    },
+    diagnostics: v2.std.diagnostic.None,
+  }
+}
+
+fn dispatched_diagnostic_exhaustiveness_generator() -> v2.std.diagnostic.Outcome<v2.lens.testgen.Generator<v2.lens.testgen.TestgenConcept>> {
+  v2.std.diagnostic.Accepted {
+    value: v2.lens.testgen.Generator {
+      kind: v2.std.verification.TestClaimDiagnosticClaimVariant,
+      classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: v2.std.verification.Unit },
+      anchor: v2.std.verification.generated_claim_anchor(
+        anchor: v2.std.verification.GeneratedCoproductExhaustiveness {
+          coproduct_type: ^TestClaim,
+          omitted_variant: ^DiagnosticClaim,
+        }
+      ),
+      slot: v2.lens.testgen.DiagnosticExhaustiveness {
         coproduct_type: ^TestClaim,
         omitted_variant: ^DiagnosticClaim,
+      },
+      provenance: v2.lens.testgen.generator_provenance(id: ^wishlist_gen_id_diagnostic_exhaustiveness),
+      profile_metadata: v2.lens.testgen.default_generator_profile(),
+    },
+    diagnostics: v2.std.diagnostic.None,
+  }
+}
+
+fn wishlist_lens_applicability_generator() -> v2.std.diagnostic.Outcome<v2.lens.testgen.Generator<v2.lens.testgen.TestgenConcept>> {
+  v2.std.diagnostic.Accepted {
+    value: v2.lens.testgen.Generator {
+      kind: v2.std.verification.TestClaimCompilesClaimVariant,
+      classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier2, layer: v2.std.verification.Integration },
+      anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
+      slot: v2.lens.testgen.LensApplicability {
+        subject: v2.lens.testgen.LensApplicabilitySubject {
+          lens: ^t19_generator_wishlist_lens_structural_resolution,
+          program: v2.test.manual.connective_anchors.stub_empty_conj,
+        },
+      },
+      provenance: v2.lens.testgen.generator_provenance(id: ^wishlist_gen_id_lens_applicability),
+      profile_metadata: v2.lens.testgen.default_generator_profile(),
+    },
+    diagnostics: v2.std.diagnostic.None,
+  }
+}
+
+fn wishlist_bidirectional_roundtrip_generator() -> v2.std.diagnostic.Outcome<v2.lens.testgen.Generator<v2.lens.testgen.TestgenConcept>> {
+  v2.std.diagnostic.Accepted {
+    value: v2.lens.testgen.Generator {
+      kind: v2.std.verification.TestClaimRoundTripClaimVariant,
+      classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier3, layer: v2.std.verification.Integration },
+      anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
+      slot: v2.lens.testgen.BidirectionalRoundtrip {
+        subject: v2.lens.testgen.BidirectionalRoundtripSubject {
+          language: ^dag_language_model_surface_id,
+          production: ^t19_generator_wishlist_dag_surface_production,
+        },
+      },
+      provenance: v2.lens.testgen.generator_provenance(id: ^wishlist_gen_id_bidirectional_roundtrip),
+      profile_metadata: v2.lens.testgen.default_generator_profile(),
+    },
+    diagnostics: v2.std.diagnostic.None,
+  }
+}
+
+fn dispatched_language_behavior_equivalence_generator() -> v2.std.diagnostic.Outcome<v2.lens.testgen.Generator<v2.lens.testgen.TestgenConcept>> {
+  v2.std.diagnostic.Accepted {
+    value: v2.lens.testgen.Generator {
+      kind: v2.std.verification.TestClaimCompilesClaimVariant,
+      classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: v2.std.verification.Unit },
+      anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualLbeConjDagSurface),
+      slot: v2.lens.testgen.LanguageBehaviorEquivalence {
+        subject: v2.lens.testgen.lbe_subject_conj_dag_surface(),
+        mock: v2.lens.testgen.lbe_io_mock_conj_dag_surface(),
+      },
+      provenance: v2.lens.testgen.generator_provenance(id: ^wishlist_gen_id_language_behavior_equivalence),
+      profile_metadata: v2.lens.testgen.default_generator_profile(),
+    },
+    diagnostics: v2.std.diagnostic.None,
+  }
+}
+
+fn dispatched_refinement_preservation_generator() -> v2.std.diagnostic.Outcome<v2.lens.testgen.Generator<v2.lens.testgen.TestgenConcept>> {
+  match v2.lens.testgen.refinement_preservation_subject_nonempty_list_base() {
+    Accepted { value: subject, diagnostics: d } =>
+      v2.std.diagnostic.Accepted {
+        value: v2.lens.testgen.Generator {
+          kind: v2.std.verification.TestClaimEqualsClaimVariant,
+          classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: v2.std.verification.Unit },
+          anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualRefinementNonEmptyListBase),
+          slot: v2.lens.testgen.RefinementPreservation {
+            subject: subject,
+          },
+          provenance: v2.lens.testgen.generator_provenance(id: ^wishlist_gen_id_refinement_preservation),
+          profile_metadata: v2.lens.testgen.default_generator_profile(),
+        },
+        diagnostics: d,
       }
-    ),
-    slot: v2.lens.testgen.DiagnosticExhaustiveness {
-      coproduct_type: ^TestClaim,
-      omitted_variant: ^DiagnosticClaim,
-    },
-    provenance: generator_provenance(id: ^wishlist_gen_id_diagnostic_exhaustiveness),
-    profile_metadata: default_generator_profile(),
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
 
-fn wishlist_lens_applicability_generator() -> Generator<v2.lens.testgen.TestgenConcept> {
-  v2.lens.testgen.Generator {
-    kind: v2.std.verification.TestClaimCompilesClaimVariant,
-    classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier2, layer: v2.std.verification.Integration },
-    anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
-    slot: v2.lens.testgen.LensApplicability {
-      subject: v2.lens.testgen.LensApplicabilitySubject {
-        lens: ^t19_generator_wishlist_lens_structural_resolution,
-        program: v2.test.manual.connective_anchors.stub_empty_conj,
-      },
-    },
-    provenance: generator_provenance(id: ^wishlist_gen_id_lens_applicability),
-    profile_metadata: default_generator_profile(),
-  }
-}
-
-fn wishlist_bidirectional_roundtrip_generator() -> Generator<v2.lens.testgen.TestgenConcept> {
-  v2.lens.testgen.Generator {
-    kind: v2.std.verification.TestClaimRoundTripClaimVariant,
-    classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier3, layer: v2.std.verification.Integration },
-    anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
-    slot: v2.lens.testgen.BidirectionalRoundtrip {
-      subject: v2.lens.testgen.BidirectionalRoundtripSubject {
-        language: ^dag_language_model_surface_id,
-        production: ^t19_generator_wishlist_dag_surface_production,
-      },
-    },
-    provenance: generator_provenance(id: ^wishlist_gen_id_bidirectional_roundtrip),
-    profile_metadata: default_generator_profile(),
-  }
-}
-
-fn dispatched_language_behavior_equivalence_generator() -> Generator<v2.lens.testgen.TestgenConcept> {
-  v2.lens.testgen.Generator {
-    kind: v2.std.verification.TestClaimCompilesClaimVariant,
-    classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: v2.std.verification.Unit },
-    anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualLbeConjDagSurface),
-    slot: v2.lens.testgen.LanguageBehaviorEquivalence {
-      subject: lbe_subject_conj_dag_surface(),
-      mock: lbe_io_mock_conj_dag_surface(),
-    },
-    provenance: generator_provenance(id: ^wishlist_gen_id_language_behavior_equivalence),
-    profile_metadata: default_generator_profile(),
-  }
-}
-
-fn dispatched_refinement_preservation_generator() -> Generator<v2.lens.testgen.TestgenConcept> {
-  v2.lens.testgen.Generator {
-    kind: v2.std.verification.TestClaimEqualsClaimVariant,
-    classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: v2.std.verification.Unit },
-    anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualRefinementNonEmptyListBase),
-    slot: v2.lens.testgen.RefinementPreservation {
-      subject: v2.lens.testgen.RefinementPreservationSubject {
-        refined: refinement_preservation_stub_generator_refined(),
-        original: [v2.test.manual.connective_anchors.stub_empty_conj],
-      },
-    },
-    provenance: generator_provenance(id: ^wishlist_gen_id_refinement_preservation),
-    profile_metadata: default_generator_profile(),
-  }
-}
-
-fn testgen_pending_non_tautological_generator_wishlist() -> List<TestgenWishlistRow> {
+fn testgen_pending_non_tautological_generator_wishlist() -> std.types.List<TestgenWishlistRow> {
   [
     TestgenWishlistRow {
       generator: wishlist_type_construction_generator(),
@@ -182,7 +167,7 @@ fn testgen_pending_non_tautological_generator_wishlist() -> List<TestgenWishlist
   ]
 }
 
-fn testgen_dispatched_non_tautological_generators() -> List<TestgenWishlistRow> {
+fn testgen_dispatched_non_tautological_generators() -> std.types.List<TestgenWishlistRow> {
   [
     TestgenWishlistRow {
       generator: dispatched_language_behavior_equivalence_generator(),
@@ -208,9 +193,9 @@ fn testgen_dispatched_non_tautological_generators() -> List<TestgenWishlistRow> 
 }
 
 test fn pending_non_tautological_generator_count_is_three() -> Bool {
-  length(xs: testgen_pending_non_tautological_generator_wishlist()) == 3
+  v2.std.algebra.length(xs: testgen_pending_non_tautological_generator_wishlist()) == 3
 }
 
 test fn dispatched_non_tautological_generator_count_is_four() -> Bool {
-  length(xs: testgen_dispatched_non_tautological_generators()) == 4
+  v2.std.algebra.length(xs: testgen_dispatched_non_tautological_generators()) == 4
 }

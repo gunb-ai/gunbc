@@ -1,10 +1,9 @@
 module test.claim.stage0_rust_host_observation_live_witness
 
-
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 test fn live_rust_observation_matches_actions_subject() -> Bool {
-  match live_rust_observation_wet() {
+  match gunbc.live_rust_observation.live_rust_observation_wet() {
     LiveObservationAdmitted { receipt: receipt } =>
       receipt.expected_repository_revision == receipt.observed_repository_revision
         && receipt.tracked_path_count > 0
@@ -12,10 +11,10 @@ test fn live_rust_observation_matches_actions_subject() -> Bool {
   }
 }
 
-data live_observation_split_note: String = "SPLIT OUT OF stage0_rust_source_lifecycle_scaffold_witness_test.dag SO THE HERMETIC DISCOVERY CORPUS CAN RUN. These three witnesses evaluate rust_source_host_observation, which reaches git.Inspect.HeadCommit and git.Inspect.MergeBase. Neither operation carries a mock_response, so under the hermetic envelope the run REFUSES rather than skipping -- and because a discovery-batch member that refuses fails the whole batch, one unmocked operation took down the entire per-PR witness corpus (CI receipt: batch 3 discovery-corpus, 2 roots + 105 explicit, on PR 7562). Splitting the file is what restores those 105 rows; the exclusion row below is what keeps this file honest about not running.\n\nWHY NOT JUST PUBLISH THE MOCKS. That was tried and deliberately reverted. Mocking HeadCommit makes the next unmocked operation refuse (MergeBase), and mocking the whole revision-addressed chain would make a witness named scaffold_host_observation_is_live_and_observed assert a fabricated sha. That is reflection-evidence-mistaken-for-structural-proof: the witness exists to prove the read axis reaches THIS repository state, and a constant satisfies its assertions while proving none of it. A green witness that cannot fail is worth less than a counted gap.\n\nTHE SPLIT WAS NOT DONE WHEN THE FUNCTIONS MOVED -- THE IMPORT WAS THE TRIGGER, AND THAT CLASS IS NOW CLOSED BY CONSTRUCTION. The observation used to be `data rust_source_host_observation`, and a top-level data declaration is evaluated by IMPORTING it. The first cut of this split moved all three witnesses here but left the now-dead import of that symbol in the origin file, whose only remaining mention of the name was a quoted string in an authority-ref comparison -- so every by-name reading, grep included, said the symbol was still legitimately used, while the one thing the import did was fire the live read. CI failed identically to before the split, on a file whose test bodies no longer touched the observation at all.\n\nDeleting the import fixed that incident but not the class: the next module to import the symbol would have done the same. The observation is therefore now the function current_stage0_rust_source_observation(), so the effect is reachable only by CALLING it and no import can perform Git I/O. That is the wall; this paragraph is the receipt for why it exists rather than a note asking the next author to be careful.\n\nWHAT IS ACTUALLY LOST. Only the three scaffold witnesses below remain offline-local: they are excluded from hermetic discovery and are not on bin_witness_wet_entries, and the falsifier wet cadence is not scheduled (falsifier_self_host_wet_cadence_active is false). The closing contract live_rust_observation_matches_actions_subject is enrolled in bin_witness_wet_entries and runs on the per-PR wet corpora batch where GitHub supplies GITHUB_SHA. Local recipe for the scaffold trio: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/stage0_rust_host_observation_live_witness_test.dag --functions scaffold_host_observation_is_live_and_observed,scaffold_host_observation_reaches_path_derived_verdict,scaffold_mechanical_checks_reflect_live_classification"
+data live_observation_split_note: String = "SPLIT OUT OF stage0_rust_source_lifecycle_scaffold_witness_test.dag SO THE HERMETIC DISCOVERY CORPUS CAN RUN. These three witnesses evaluate rust_source_host_observation, which reaches git.Inspect.HeadCommit and git.Inspect.MergeBase. Neither operation carries a mock_response, so under the hermetic envelope the run REFUSES rather than skipping -- and because a discovery-batch member that refuses fails the whole batch, one unmocked operation took down the entire per-PR witness corpus (CI receipt: batch 3 discovery-corpus, 2 roots + 105 explicit, on PR 7562). Splitting the file is what restores those 105 rows; the exclusion row below is what keeps this file honest about not running.\n\nWHY NOT JUST PUBLISH THE MOCKS. That was tried and deliberately reverted. Mocking HeadCommit makes the next unmocked operation refuse (MergeBase), and mocking the whole revision-addressed chain would make a witness named scaffold_host_observation_is_live_and_observed assert a fabricated sha. That is reflection-evidence-mistaken-for-structural-proof: the witness exists to prove the read axis reaches THIS repository state, and a constant satisfies its assertions while proving none of it. A green witness that cannot fail is worth less than a counted gap.\n\nTHE SPLIT WAS NOT DONE WHEN THE FUNCTIONS MOVED -- THE IMPORT WAS THE TRIGGER, AND THAT CLASS IS NOW CLOSED BY CONSTRUCTION. The observation used to be `data rust_source_host_observation`, and a top-level data declaration is evaluated by IMPORTING it. The first cut of this split moved all three witnesses here but left the now-dead import of that symbol in the origin file, whose only remaining mention of the name was a quoted string in an authority-ref comparison -- so every by-name reading, grep included, said the symbol was still legitimately used, while the one thing the import did was fire the live read. CI failed identically to before the split, on a file whose test bodies no longer touched the observation at all.\n\nDeleting the import fixed that incident but not the class: the next module to import the symbol would have done the same. The observation is therefore now the function current_stage0_rust_source_observation(), so the effect is reachable only by CALLING it and no import can perform Git I/O. That is the wall; this paragraph is the receipt for why it exists rather than a note asking the next author to be careful.\n\nWHAT IS ACTUALLY LOST -- AND THE SECOND HALF OF THIS PARAGRAPH WAS FALSE AND IS CORRECTED HERE (2026-08-20). It read that the closing contract live_rust_observation_matches_actions_subject `is enrolled in bin_witness_wet_entries and runs on the per-PR wet corpora batch where GitHub supplies GITHUB_SHA`, present tense. The enrolment is real; the RUN is not. Measured at 026a709a71: .github/workflows/ holds exactly two files, witnesses.yml has five steps (build, v1_src_dag_parse, --required-regen, --required-regen-fixed-point, --required-floor) with no wet step and no batch plan, and fleet-converge.yml is workflow_dispatch-only carrying no witness batch. The per-PR wet job lived in ci.yml, deleted at 611fd02770 (#8283, the floor cut), so all 94 bin_wet rows across 38 entry files -- this one included -- name an executing consumer that does not execute. gunbc.ci_layer_roots excl_bin_wet_reason carries the same correction for the class; this is its instance. So ALL FOUR witnesses in this file are offline-local now, not three: the three scaffold witnesses because they were never on the roster, and the closing contract because its roster lost its consumer. The falsifier wet cadence is also not scheduled (falsifier_self_host_wet_cadence_active is false). Restoring any of it is not this file's decision and is deliberately not attempted here -- what IS this file's duty is to stop telling a reader that its coverage question is answered YES. Local recipe for the scaffold trio: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/stage0_rust_host_observation_live_witness_test.dag --functions scaffold_host_observation_is_live_and_observed,scaffold_host_observation_reaches_path_derived_verdict,scaffold_mechanical_checks_reflect_live_classification"
 
 test fn scaffold_host_observation_is_live_and_observed() -> Bool {
-  match current_stage0_rust_source_observation() {
+  match gunbc.stage0_rust_host_observation.current_stage0_rust_source_observation() {
     RustManifestObserved {
       repository_revision: revision,
       manifest_content_identity: digest,
@@ -31,16 +30,50 @@ test fn scaffold_host_observation_is_live_and_observed() -> Bool {
   }
 }
 
-test fn scaffold_host_observation_reaches_path_derived_verdict() -> Bool {
-  match rust_source_manifest_state_verdict(observation: current_stage0_rust_source_observation()) {
-    ManifestStateScaffoldRefused { cause: DerivedUnclassifiedTracked { count: count } } => count > 0
-    ManifestStateScaffoldRefused { cause: CargoTargetMissingLifecycleDisposition { path: path } } => path != ""
-    ManifestStateScaffoldOk => true
-    ManifestStateScaffoldRefused { cause: _ } => false
+// One authority for "the live verdict is the classification frontier", consumed by both
+// witnesses below so they cannot drift into disagreeing about what they are measuring.
+//
+// WHAT THIS REPLACED, AND WHY IT WAS NOT A CONSERVATIVE READING. The prior arm list accepted
+// DerivedUnclassifiedTracked{count>0} OR CargoTargetMissingLifecycleDisposition OR
+// ManifestStateScaffoldOk. Those are three mutually contradictory states -- a nonempty frontier, a
+// Cargo target nobody dispositioned, and total classification -- so the witness was green whatever
+// the tree said. Measured at 026a709a71 under claim_batch --wet it passed with 137 paths
+// unclassified, and it would have passed identically at zero. A disjunction over contradictory
+// states is a green that asserts nothing (DESIGN section 5: no fabricated plausible output), and
+// the two arms dropped here are the ones that made it vacuous: Ok is a DIFFERENT finish line, not
+// a pass for this one, and a missing Cargo disposition is a defect rather than an alternative
+// success.
+//
+// Both unclassified arms are admitted because which one fires is a property of the DIFF, not of
+// the frontier: a PR that adds an unclassified .rs reaches the newly arm, one that does not
+// reaches the standing arm. Refusing either would make this flap on the shape of the branch. The
+// hermetic pair in stage0_rust_source_lifecycle_scaffold_witness_test.dag is what separates the
+// two arms, on a fixture, where separating them is decidable.
+//
+// HONEST BOUNDARY, because this repair must not be read as a climb: this file declares
+// ReadsLiveTree and the required floor declines it, and bin_witness_wet_entries -- named by its
+// exclusion row as its real executing consumer -- lost that consumer when the ci.yml wet job was
+// deleted at 611fd02770. So these witnesses still execute nowhere. What changed is that they no
+// longer report a green they did not earn; the rung is unchanged and is declared at
+// gunbc.stage0_rust_source_lifecycle_scaffold unclassified_axis_rung_note.
+fn live_verdict_is_unclassified_frontier() -> Bool {
+  match gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_manifest_state_verdict(observation: gunbc.stage0_rust_host_observation.current_stage0_rust_source_observation()) {
+    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.DerivedUnclassifiedTracked { count: count } } => count > 0
+    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.DerivedNewlyUnclassified { count: count } } => count > 0
+    _ => false
   }
 }
 
+test fn scaffold_host_observation_reaches_path_derived_verdict() -> Bool {
+  live_verdict_is_unclassified_frontier()
+}
+
+// The two Bools are false FOR THE CLASSIFICATION REASON. Asserting only that they are false was
+// satisfied by any refusal at all -- a git outage, an unreadable manifest, a Cargo parse failure --
+// so it could not distinguish a 137-file frontier from the host being unavailable, which is the
+// state-space conflation DESIGN's failure-mode list names.
 test fn scaffold_mechanical_checks_reflect_live_classification() -> Bool {
-  !stage0_rust_lifecycle_scaffold_mechanical_checks_holds()
-    && !manifest_state_verdict_scaffold_holds()
+  !gunbc.stage0_rust_source_lifecycle_scaffold.stage0_rust_lifecycle_scaffold_mechanical_checks_holds()
+    && !gunbc.stage0_rust_source_lifecycle_scaffold.manifest_state_verdict_scaffold_holds()
+    && live_verdict_is_unclassified_frontier()
 }

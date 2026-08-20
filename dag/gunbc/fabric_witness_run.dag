@@ -152,16 +152,34 @@ fn floor_run_command() -> extdeps.exec.command.ArgvCommand {
 // Control-plane work is a separately privileged class. That exclusion must not
 // leak here: a floor run is customer work that happens to be ours.
 
-fn floor_offer_eligibility<P>(
+fn floor_offer_fungibility<P>(offer: product.fabric.supply.Offer<P>) -> product.fabric.supply.OfferFungibility {
+  product.fabric.supply.offer_fungibility_for(requirements: floor_execution_requirements(), offer: offer)
+}
+
+// THE FLOOR'S GRANT DURATION IS AN ESTIMATE, NOT A MEASUREMENT. `~30 min wall`
+// is the wall-clock this document's own "Building & checks" section records
+// for the three consecutive green `--required-ci` runs on main (32203661157
+// and neighbors) -- a measured receipt, not a guess -- but it is still an
+// ESTIMATE of what THIS run will take, not the exact duration of a run that
+// has not happened yet. Spelling it as EstimatedGrantDuration rather than
+// ExactGrantDuration is therefore not caution for its own sake: it is the
+// only honest constructor available, and it is what lets a rate-quoted offer
+// land on AffordableUnderEstimate instead of silently borrowing the
+// certainty ExactGrantDuration would claim.
+fn floor_grant_duration() -> product.fabric.supply.GrantDuration {
+  product.fabric.supply.EstimatedGrantDuration { seconds: std.measure.second(count: 1800) }
+}
+
+fn floor_offer_affordability<P>(
   offer: product.fabric.supply.Offer<P>,
   maximum_buy_order: std.measure.MoneyAmountMicro,
   budget_currency: std.currency.CurrencyCode,
-) -> product.fabric.supply.OfferEligibility {
-  product.fabric.supply.offer_eligibility_for(
-    requirements: floor_execution_requirements(),
+) -> product.fabric.supply.DemandOfferAffordability {
+  product.fabric.supply.offer_affordability_for(
     offer: offer,
     maximum_buy_order: maximum_buy_order,
     budget_currency: budget_currency,
+    duration: floor_grant_duration(),
   )
 }
 

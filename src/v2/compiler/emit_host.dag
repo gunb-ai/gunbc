@@ -1,7 +1,5 @@
 module v2.compiler.emit_host
 
-
-
 data emit_host_access_decision_seed_transport_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
@@ -18,40 +16,40 @@ data emit_host_access_decision_seed_transport_dissolve_trigger: std.dissolution.
 fn emit_host_run_unsupported_target_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^emit_host_run_unsupported_target,
-    at: port_locus(port: ^emit_host_transport_port),
-    correction: v2.std.diagnostic.None
+    at: v2.std.diagnostic.port_locus(port: ^emit_host_transport_port),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.CorrectionNotModeled }
   }
 }
 
-fn emit_host_emit_vs_eval_deferred_diagnostic(at: Node) -> v2.std.diagnostic.Diagnostic {
+fn emit_host_emit_vs_eval_deferred_diagnostic(at: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^emit_host_emit_vs_eval_deferred,
-    at: node_locus(node: at),
-    correction: v2.std.diagnostic.None
+    at: v2.std.diagnostic.node_locus(node: at),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.CorrectionNotModeled }
   }
 }
 
 fn emit_host_exit_not_ok_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^emit_host_exit_not_ok,
-    at: port_locus(port: ^emit_host_transport_port),
-    correction: v2.std.diagnostic.None
+    at: v2.std.diagnostic.port_locus(port: ^emit_host_transport_port),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.CorrectionNotModeled }
   }
 }
 
 fn emit_host_transport_outside_grant_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^emit_host_transport_outside_grant,
-    at: port_locus(port: ^emit_host_transport_port),
-    correction: v2.std.diagnostic.None
+    at: v2.std.diagnostic.port_locus(port: ^emit_host_transport_port),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.CorrectionNotModeled }
   }
 }
 
-fn emit_host_build_failed_diagnostic(at: Node) -> v2.std.diagnostic.Diagnostic {
+fn emit_host_build_failed_diagnostic(at: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^emit_host_build_failed,
-    at: node_locus(node: at),
-    correction: v2.std.diagnostic.None
+    at: v2.std.diagnostic.node_locus(node: at),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.CorrectionNotModeled }
   }
 }
 
@@ -61,10 +59,10 @@ fn emit_host_run_failed_diagnostic() -> v2.std.diagnostic.Diagnostic {
 
 fn host_exit_failure_outcome(exit: v2.std.host_run.HostExit) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   match exit.outcome {
-    Accepted { value: Violates { diagnostic: d }, diagnostics: None } =>
-      outcome_rejected(d: d)
-    Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
-    _ => outcome_rejected(d: emit_host_exit_not_ok_diagnostic())
+    v2.std.diagnostic.Accepted { value: v2.std.witness.Violates { diagnostic: d }, diagnostics: v2.std.diagnostic.None } =>
+      v2.std.diagnostic.outcome_rejected(d: d)
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+    _ => v2.std.diagnostic.outcome_rejected(d: emit_host_exit_not_ok_diagnostic())
   }
 }
 
@@ -81,7 +79,7 @@ fn emit_host_receipt_from_source(
     target: target,
     source_text: source.carried,
     exit: exit,
-    logical_run: host_logical_run_from_exit(exit: exit, stdout_bytes: stdout_bytes),
+    logical_run: v2.std.host_run.host_logical_run_from_exit(exit: exit, stdout_bytes: stdout_bytes),
     stderr_bytes: stderr_bytes,
     build_log: build_log,
     compile_skipped: compile_skipped
@@ -89,10 +87,10 @@ fn emit_host_receipt_from_source(
 }
 
 fn runtime_value_parse(target: v2.std.compilers.target_model.TargetModel, stdout: v2.std.host_run.HostRunStdout) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
-  bind_outcome(
-    o: runtime_row_from_target(target: target),
+  v2.std.diagnostic.bind_outcome(
+    o: v2.std.compilers.target_model.runtime_row_from_target(target: target),
     f: fn(row) {
-      runtime_value_parse_from_row(row: row, bytes: stdout.bytes)
+      v2.std.host_transport.runtime_value_parse_from_row(row: row, bytes: stdout.bytes)
     }
   )
 }
@@ -100,12 +98,12 @@ fn runtime_value_parse(target: v2.std.compilers.target_model.TargetModel, stdout
 fn runtime_value_signed_i32_le_as_int(value: v2.std.runtime.RuntimeValue) -> v2.std.diagnostic.Outcome<Int> {
   match value {
     RuntimePrimitive { value: p } =>
-      integer_signed_i32_le_bytes_to_int(bytes: p.bytes)
-    _ => outcome_rejected(d: emit_host_run_unsupported_target_diagnostic())
+      v2.std.integer.integer_signed_i32_le_bytes_to_int(bytes: p.bytes)
+    _ => v2.std.diagnostic.outcome_rejected(d: emit_host_run_unsupported_target_diagnostic())
   }
 }
 
-fn emit_host_list_map<T, U>(xs: std.algebra.FreeMonoid<T>, f: fn(T) -> U) -> List<U> {
+fn emit_host_list_map<T, U>(xs: std.types.List<T>, f: fn(T) -> U) -> std.types.List<U> {
   match xs {
     Empty => []
     Cons { head: h, tail: t } => concat([f(h)], emit_host_list_map(xs: t, f: f))
@@ -133,8 +131,8 @@ fn invocation_arg_text(arg: v2.std.host_transport.InvocationArg) -> String {
   }
 }
 
-fn invocation_argv(inv: v2.std.host_transport.ProcessInvocation) -> v2.std.diagnostic.Outcome<List<String>> {
-  bind_outcome(
+fn invocation_argv(inv: v2.std.host_transport.ProcessInvocation) -> v2.std.diagnostic.Outcome<std.types.List<String>> {
+  v2.std.diagnostic.bind_outcome(
     o: process_program_name(program: inv.program),
     f: fn(program) {
       v2.std.diagnostic.Accepted {
@@ -148,18 +146,18 @@ fn invocation_argv(inv: v2.std.host_transport.ProcessInvocation) -> v2.std.diagn
   )
 }
 
-fn empty_argv_lists() -> List<List<String>> {
+fn empty_argv_lists() -> std.types.List<std.types.List<String>> {
   []
 }
 
-fn build_invocation_argvs(builds: std.algebra.FreeMonoid<v2.std.host_transport.ProcessInvocation>) -> v2.std.diagnostic.Outcome<List<List<String>>> {
+fn build_invocation_argvs(builds: std.types.List<v2.std.host_transport.ProcessInvocation>) -> v2.std.diagnostic.Outcome<std.types.List<std.types.List<String>>> {
   match builds {
     Empty => v2.std.diagnostic.Accepted { value: empty_argv_lists(), diagnostics: v2.std.diagnostic.None }
     Cons { head: inv, tail: rest } =>
-      bind_outcome(
+      v2.std.diagnostic.bind_outcome(
         o: invocation_argv(inv: inv),
         f: fn(argv) {
-          bind_outcome(
+          v2.std.diagnostic.bind_outcome(
             o: build_invocation_argvs(builds: rest),
             f: fn(acc) {
               v2.std.diagnostic.Accepted { value: concat([argv], acc), diagnostics: v2.std.diagnostic.None }
@@ -178,7 +176,7 @@ fn workspace_content_text(content: v2.std.host_transport.WorkspaceContent, emitt
   }
 }
 
-fn emit_host_string_list_digest(xs: List<String>, seed: String) -> std.content_hash.ContentHash {
+fn emit_host_string_list_digest(xs: std.types.List<String>, seed: String) -> std.content_hash.ContentHash {
   fold(
     xs,
     init: std.content_hash.content_hash_atom(value: seed),
@@ -190,9 +188,9 @@ fn emit_host_string_list_digest(xs: List<String>, seed: String) -> std.content_h
 }
 
 fn emit_host_materialized_workspace_files(
-  workspace: List<v2.std.host_transport.WorkspaceFile>,
+  workspace: std.types.List<v2.std.host_transport.WorkspaceFile>,
   emitted: String
-) -> List<v2.std.host_transport.MaterializedWorkspaceFile> {
+) -> std.types.List<v2.std.host_transport.MaterializedWorkspaceFile> {
   emit_host_list_map(
     xs: workspace,
     f: fn(w) {
@@ -205,8 +203,8 @@ fn emit_host_materialized_workspace_files(
 }
 
 fn emit_host_workspace_realization_inputs(
-  files: List<v2.std.host_transport.MaterializedWorkspaceFile>
-) -> List<std.artifact_store.ArtifactRealizationInput> {
+  files: std.types.List<v2.std.host_transport.MaterializedWorkspaceFile>
+) -> std.types.List<std.artifact_store.ArtifactRealizationInput> {
   emit_host_list_map(
     xs: files,
     f: fn(file) {
@@ -219,8 +217,8 @@ fn emit_host_workspace_realization_inputs(
 }
 
 fn emit_host_build_realization_inputs(
-  builds: std.algebra.FreeMonoid<List<String>>
-) -> List<std.artifact_store.ArtifactRealizationInput> {
+  builds: std.types.List<std.types.List<String>>
+) -> std.types.List<std.artifact_store.ArtifactRealizationInput> {
   match builds {
     Empty => []
     Cons { head: argv, tail: rest } =>
@@ -240,8 +238,8 @@ fn emit_host_build_realization_inputs(
 }
 
 fn emit_host_input_realization_digest(
-  files: List<v2.std.host_transport.MaterializedWorkspaceFile>,
-  builds: List<List<String>>
+  files: std.types.List<v2.std.host_transport.MaterializedWorkspaceFile>,
+  builds: std.types.List<std.types.List<String>>
 ) -> std.content_hash.ContentHash {
   std.artifact_store.artifact_realization_digest(
     inputs: concat(
@@ -255,8 +253,8 @@ fn emit_host_octet_bit(octet: Int, place: Int) -> Bool {
   ((octet / place) % 2) == 1
 }
 
-fn emit_host_byte_from_octet(octet: Int) -> std.bit.Byte {
-  std.bit.Byte {
+fn emit_host_byte_from_octet(octet: Int) -> v2.std.machine.Byte {
+  v2.std.machine.Byte {
     bits: [
       emit_host_octet_bit(octet: octet, place: 1),
       emit_host_octet_bit(octet: octet, place: 2),
@@ -270,7 +268,7 @@ fn emit_host_byte_from_octet(octet: Int) -> std.bit.Byte {
   }
 }
 
-fn emit_host_octets_byte_string(octets: List<Int>) -> v2.std.host_transport.ByteString {
+fn emit_host_octets_byte_string(octets: std.types.List<Int>) -> v2.std.host_transport.ByteString {
   emit_host_list_map(xs: octets, f: fn(o) { emit_host_byte_from_octet(octet: o) })
 }
 
@@ -318,16 +316,16 @@ fn run_host_process_with_cache(
   source: extdeps.communication.medium.Medium<String>,
   fixture_inputs: v2.compiler.eval.Inputs,
   use_cache: Bool,
-  run_args: List<String>
+  run_args: std.types.List<String>
 ) -> v2.std.diagnostic.Outcome<v2.std.host_run.EmitHostRunReceipt> {
   let _inputs = fixture_inputs
   let transport = row.transport
-  match build_transport_admissible(transport: transport) {
+  match v2.compiler.build_transport_admission.build_transport_admissible(transport: transport) {
     Deny { refusal: refusal } =>
-      outcome_rejected(d: emit_host_transport_outside_grant_diagnostic())
+      v2.std.diagnostic.outcome_rejected(d: emit_host_transport_outside_grant_diagnostic())
     Permit =>
       run_host_process_admitted(
-        admission: Permit,
+        admission: std.access.Permit,
         workspace_dir: workspace_dir,
         transport: transport,
         target: target,
@@ -345,12 +343,12 @@ fn run_host_process_admitted(
   target: v2.std.compilers.target_model.TargetModel,
   source: extdeps.communication.medium.Medium<String>,
   use_cache: Bool,
-  run_args: List<String>
+  run_args: std.types.List<String>
 ) -> v2.std.diagnostic.Outcome<v2.std.host_run.EmitHostRunReceipt> {
-  bind_outcome(
+  v2.std.diagnostic.bind_outcome(
     o: build_invocation_argvs(builds: transport.build),
     f: fn(builds) {
-      bind_outcome(
+      v2.std.diagnostic.bind_outcome(
         o: invocation_argv(inv: transport.run),
         f: fn(descriptor_run_argv) {
           let run_argv = concat(descriptor_run_argv, run_args)
@@ -415,8 +413,8 @@ fn run_emit_host(
   source: extdeps.communication.medium.Medium<String>,
   fixture_inputs: v2.compiler.eval.Inputs
 ) -> v2.std.diagnostic.Outcome<v2.std.host_run.EmitHostRunReceipt> {
-  bind_outcome(
-    o: runtime_row_from_target(target: target),
+  v2.std.diagnostic.bind_outcome(
+    o: v2.std.compilers.target_model.runtime_row_from_target(target: target),
     f: fn(row) {
       run_host_process(
         row: row,
@@ -434,8 +432,8 @@ fn run_emit_host_cached(
   source: extdeps.communication.medium.Medium<String>,
   fixture_inputs: v2.compiler.eval.Inputs
 ) -> v2.std.diagnostic.Outcome<v2.std.host_run.EmitHostRunReceipt> {
-  bind_outcome(
-    o: runtime_row_from_target(target: target),
+  v2.std.diagnostic.bind_outcome(
+    o: v2.std.compilers.target_model.runtime_row_from_target(target: target),
     f: fn(row) {
       run_host_process_cached(
         workspace_dir: workspace_dir,
@@ -453,10 +451,10 @@ fn run_emit_host_cached_with_run_args(
   target: v2.std.compilers.target_model.TargetModel,
   source: extdeps.communication.medium.Medium<String>,
   fixture_inputs: v2.compiler.eval.Inputs,
-  run_args: List<String>
+  run_args: std.types.List<String>
 ) -> v2.std.diagnostic.Outcome<v2.std.host_run.EmitHostRunReceipt> {
-  bind_outcome(
-    o: runtime_row_from_target(target: target),
+  v2.std.diagnostic.bind_outcome(
+    o: v2.std.compilers.target_model.runtime_row_from_target(target: target),
     f: fn(row) {
       run_host_process_with_cache(
         workspace_dir: workspace_dir,
@@ -472,63 +470,63 @@ fn run_emit_host_cached_with_run_args(
 }
 
 fn run_test_claim_emit_vs_eval_verdict(
-  subject: v2.compiler.eval.TestClaimEvalSubject<Node>,
+  subject: v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node>,
   target: v2.std.compilers.target_model.TargetModel,
   host_receipt: v2.std.host_run.EmitHostRunReceipt,
   host_actual: v2.std.runtime.RuntimeValue,
   expected: v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>
-) -> Verdict<v2.compiler.eval.TestClaimEvalSubject<Node>, RuntimeValue> {
+) -> v2.std.verdict.Verdict<v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node>, v2.std.runtime.RuntimeValue> {
   match expected {
-    Accepted { value: exp_val, diagnostics: None } =>
-      if accepted_runtime_value_outcome_eq(
+    Accepted { value: exp_val, diagnostics: v2.std.diagnostic.None } =>
+      if v2.compiler.eval.accepted_runtime_value_outcome_eq(
         a: v2.std.diagnostic.Accepted { value: host_actual, diagnostics: v2.std.diagnostic.None },
         b: expected
       ) {
-        Pass
+        v2.std.verdict.Pass
       } else {
-        verdict_semantic_mismatch(
+        v2.std.verdict.verdict_semantic_mismatch(
           actual: v2.std.diagnostic.Accepted { value: host_actual, diagnostics: v2.std.diagnostic.None },
-          falsification: optional_present(
+          falsification: v2.std.collection.optional_present(
             value: v2.std.test_claim_falsification.FalsificationReceipt {
               subject: subject,
               expected: exp_val,
               actual: host_actual,
               divergence: v2.std.host_run.ValueDiff { expected: exp_val, actual: host_actual },
-              evidence: Host { receipt: host_receipt }
+              evidence: v2.std.test_claim_falsification.Host { receipt: host_receipt }
             }
           )
         )
       }
     Rejected { diagnostics: ds } =>
-      verdict_build_failed(
+      v2.std.verdict.verdict_build_failed(
         actual: expected,
         diagnostic: ds.head
       )
-    Accepted { value: _, diagnostics: Some { diagnostics: ds } } =>
-      verdict_build_failed(
+    v2.std.diagnostic.Accepted { value: _, diagnostics: v2.std.diagnostic.Some { diagnostics: ds } } =>
+      v2.std.verdict.verdict_build_failed(
         actual: expected,
         diagnostic: ds.head
       )
   }
 }
 
-fn emit_host_no_run_args() -> List<String> {
+fn emit_host_no_run_args() -> std.types.List<String> {
   []
 }
 
 fn run_test_claim_emit_vs_eval_verdict_from_run(
-  subject: v2.compiler.eval.TestClaimEvalSubject<Node>,
+  subject: v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node>,
   target: v2.std.compilers.target_model.TargetModel,
   run_outcome: v2.std.diagnostic.Outcome<v2.std.host_run.EmitHostRunReceipt>,
   expected: v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>,
-  at: Node
-) -> Verdict<v2.compiler.eval.TestClaimEvalSubject<Node>, RuntimeValue> {
+  at: v2.std.node.Node
+) -> v2.std.verdict.Verdict<v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node>, v2.std.runtime.RuntimeValue> {
   match run_outcome {
     Accepted { value: host_receipt, diagnostics: _ } =>
       match host_receipt.logical_run {
-        Accepted {
-          value: HostLogicalRun { stdout: stdout },
-          diagnostics: None
+        v2.std.diagnostic.Accepted {
+          value: v2.std.host_run.HostLogicalRun { stdout: stdout },
+          diagnostics: v2.std.diagnostic.None
         } =>
           match runtime_value_parse(target: target, stdout: stdout) {
             Accepted { value: host_actual, diagnostics: _ } =>
@@ -540,13 +538,13 @@ fn run_test_claim_emit_vs_eval_verdict_from_run(
                 expected: expected
               )
             Rejected { diagnostics: ds } =>
-              verdict_run_failed(
+              v2.std.verdict.verdict_run_failed(
                 actual: v2.std.diagnostic.Rejected { diagnostics: ds },
                 diagnostic: ds.head
               )
           }
         _ =>
-          verdict_run_failed(
+          v2.std.verdict.verdict_run_failed(
             actual: host_exit_failure_outcome(exit: host_receipt.exit),
             diagnostic: emit_host_run_failed_diagnostic()
           )
@@ -560,14 +558,14 @@ fn run_test_claim_emit_vs_eval_verdict_from_run(
 }
 
 fn run_test_claim_emit_vs_eval_verdict_from_source(
-  subject: v2.compiler.eval.TestClaimEvalSubject<Node>,
+  subject: v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node>,
   target: v2.std.compilers.target_model.TargetModel,
   source_outcome: v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>>,
-  claim_input_root: Node,
-  expected_eval_root: Node,
+  claim_input_root: v2.std.node.Node,
+  expected_eval_root: v2.std.node.Node,
   expected: v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>,
-  at: Node
-) -> Verdict<v2.compiler.eval.TestClaimEvalSubject<Node>, RuntimeValue> {
+  at: v2.std.node.Node
+) -> v2.std.verdict.Verdict<v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node>, v2.std.runtime.RuntimeValue> {
   match source_outcome {
     Accepted { value: source, diagnostics: _ } =>
       run_test_claim_emit_vs_eval_verdict_from_run(
@@ -576,7 +574,7 @@ fn run_test_claim_emit_vs_eval_verdict_from_source(
         run_outcome: run_emit_host(
           target: target,
           source: source,
-          fixture_inputs: inputs_for_emit_host(
+          fixture_inputs: v2.compiler.eval.inputs_for_emit_host(
             claim_input_root: claim_input_root,
             expected_eval_root: expected_eval_root,
             claim_pin: subject.input.evaluator_pin
@@ -586,7 +584,7 @@ fn run_test_claim_emit_vs_eval_verdict_from_source(
         at: at
       )
     Rejected { diagnostics: ds } =>
-      verdict_build_failed(
+      v2.std.verdict.verdict_build_failed(
         actual: v2.std.diagnostic.Rejected { diagnostics: ds },
         diagnostic: emit_host_build_failed_diagnostic(at: at)
       )
@@ -594,16 +592,16 @@ fn run_test_claim_emit_vs_eval_verdict_from_source(
 }
 
 fn run_test_claim_emit_vs_eval_verdict_from_source_cached(
-  subject: v2.compiler.eval.TestClaimEvalSubject<Node>,
+  subject: v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node>,
   target: v2.std.compilers.target_model.TargetModel,
   source_outcome: v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>>,
   workspace_dir: String,
-  run_args: List<String>,
-  claim_input_root: Node,
-  expected_eval_root: Node,
+  run_args: std.types.List<String>,
+  claim_input_root: v2.std.node.Node,
+  expected_eval_root: v2.std.node.Node,
   expected: v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>,
-  at: Node
-) -> Verdict<v2.compiler.eval.TestClaimEvalSubject<Node>, RuntimeValue> {
+  at: v2.std.node.Node
+) -> v2.std.verdict.Verdict<v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node>, v2.std.runtime.RuntimeValue> {
   match source_outcome {
     Accepted { value: source, diagnostics: _ } =>
       run_test_claim_emit_vs_eval_verdict_from_run(
@@ -613,7 +611,7 @@ fn run_test_claim_emit_vs_eval_verdict_from_source_cached(
           workspace_dir: workspace_dir,
           target: target,
           source: source,
-          fixture_inputs: inputs_for_emit_host(
+          fixture_inputs: v2.compiler.eval.inputs_for_emit_host(
             claim_input_root: claim_input_root,
             expected_eval_root: expected_eval_root,
             claim_pin: subject.input.evaluator_pin
@@ -624,7 +622,7 @@ fn run_test_claim_emit_vs_eval_verdict_from_source_cached(
         at: at
       )
     Rejected { diagnostics: ds } =>
-      verdict_build_failed(
+      v2.std.verdict.verdict_build_failed(
         actual: v2.std.diagnostic.Rejected { diagnostics: ds },
         diagnostic: emit_host_build_failed_diagnostic(at: at)
       )
@@ -632,17 +630,17 @@ fn run_test_claim_emit_vs_eval_verdict_from_source_cached(
 }
 
 fn run_test_claim_emit_vs_eval_for_claim(
-  subject: v2.compiler.eval.TestClaimEvalSubject<Node>,
+  subject: v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node>,
   target: v2.std.compilers.target_model.TargetModel,
-  claim_input_root: Node,
-  expected_eval_root: Node
-) -> Verdict<v2.compiler.eval.TestClaimEvalSubject<Node>, RuntimeValue> {
-  let at = test_claim_input(c: subject.claim)
-  let interpretation = eval_context_interpretation(context: subject.context)
-  let expected = eval(
+  claim_input_root: v2.std.node.Node,
+  expected_eval_root: v2.std.node.Node
+) -> v2.std.verdict.Verdict<v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node>, v2.std.runtime.RuntimeValue> {
+  let at = v2.std.verification.test_claim_input(c: subject.claim)
+  let interpretation = v2.compiler.eval.eval_context_interpretation(context: subject.context)
+  let expected = v2.compiler.eval.eval(
     tree: subject.tree,
     interpretation: interpretation,
-    inputs: inputs_root_only(root: expected_eval_root)
+    inputs: v2.compiler.eval.inputs_root_only(root: expected_eval_root)
   )
   run_test_claim_emit_vs_eval_verdict_from_source(
     subject: subject,
@@ -656,18 +654,18 @@ fn run_test_claim_emit_vs_eval_for_claim(
 }
 
 fn run_test_claim_from_source_emit_vs_eval_for_claim(
-  subject: v2.compiler.eval.TestClaimEvalSubject<Node>,
+  subject: v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node>,
   source_outcome: v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>>,
   target: v2.std.compilers.target_model.TargetModel,
-  claim_input_root: Node,
-  expected_eval_root: Node
-) -> Verdict<v2.compiler.eval.TestClaimEvalSubject<Node>, RuntimeValue> {
-  let at = test_claim_input(c: subject.claim)
-  let interpretation = eval_context_interpretation(context: subject.context)
-  let expected = eval(
+  claim_input_root: v2.std.node.Node,
+  expected_eval_root: v2.std.node.Node
+) -> v2.std.verdict.Verdict<v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node>, v2.std.runtime.RuntimeValue> {
+  let at = v2.std.verification.test_claim_input(c: subject.claim)
+  let interpretation = v2.compiler.eval.eval_context_interpretation(context: subject.context)
+  let expected = v2.compiler.eval.eval(
     tree: subject.tree,
     interpretation: interpretation,
-    inputs: inputs_root_only(root: expected_eval_root)
+    inputs: v2.compiler.eval.inputs_root_only(root: expected_eval_root)
   )
   run_test_claim_emit_vs_eval_verdict_from_source(
     subject: subject,
@@ -681,20 +679,20 @@ fn run_test_claim_from_source_emit_vs_eval_for_claim(
 }
 
 fn run_test_claim_emit_vs_eval_run(
-  subject: v2.compiler.eval.TestClaimEvalSubject<Node>,
+  subject: v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node>,
   target: v2.std.compilers.target_model.TargetModel,
-  verdict: Verdict<v2.compiler.eval.TestClaimEvalSubject<Node>, RuntimeValue>
-) -> TestClaimRun<Node, RuntimeValue> {
+  verdict: v2.std.verdict.Verdict<v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node>, v2.std.runtime.RuntimeValue>
+) -> v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue> {
   v2.compiler.eval.TestClaimRun {
-    cache: test_claim_cache_receipt_node(subject: subject),
+    cache: v2.compiler.eval.test_claim_cache_receipt_node(subject: subject),
     verdict: verdict
   }
 }
 
 fn run_test_claim_emit_vs_eval(
-  subject: v2.compiler.eval.TestClaimEvalSubject<Node>,
+  subject: v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node>,
   target: v2.std.compilers.target_model.TargetModel
-) -> TestClaimRun<Node, RuntimeValue> {
+) -> v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue> {
   match subject.claim {
     EqualsClaim { rhs: rhs, label: _, anchor: _, lhs: lhs, classification: _ } =>
       run_test_claim_emit_vs_eval_run(
@@ -718,15 +716,15 @@ fn run_test_claim_emit_vs_eval(
           expected_eval_root: expected_value
         )
       )
-    _ => run_test_claim(subject: subject)
+    _ => v2.compiler.eval.run_test_claim(subject: subject)
   }
 }
 
 fn run_test_claim_from_source_emit_vs_eval(
-  subject: v2.compiler.eval.TestClaimEvalSubject<Node>,
+  subject: v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node>,
   source_outcome: v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>>,
   target: v2.std.compilers.target_model.TargetModel
-) -> TestClaimRun<Node, RuntimeValue> {
+) -> v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue> {
   match subject.claim {
     EqualsClaim { rhs: rhs, label: _, anchor: _, lhs: lhs, classification: _ } =>
       run_test_claim_emit_vs_eval_run(
@@ -752,25 +750,25 @@ fn run_test_claim_from_source_emit_vs_eval(
           expected_eval_root: expected_value
         )
       )
-    _ => run_test_claim(subject: subject)
+    _ => v2.compiler.eval.run_test_claim(subject: subject)
   }
 }
 
 fn run_test_claim_from_source_emit_vs_eval_cached_for_claim(
-  subject: v2.compiler.eval.TestClaimEvalSubject<Node>,
+  subject: v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node>,
   source_outcome: v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>>,
   target: v2.std.compilers.target_model.TargetModel,
   workspace_dir: String,
-  run_args: List<String>,
-  claim_input_root: Node,
-  expected_eval_root: Node
-) -> Verdict<v2.compiler.eval.TestClaimEvalSubject<Node>, RuntimeValue> {
-  let at = test_claim_input(c: subject.claim)
-  let interpretation = eval_context_interpretation(context: subject.context)
-  let expected = eval(
+  run_args: std.types.List<String>,
+  claim_input_root: v2.std.node.Node,
+  expected_eval_root: v2.std.node.Node
+) -> v2.std.verdict.Verdict<v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node>, v2.std.runtime.RuntimeValue> {
+  let at = v2.std.verification.test_claim_input(c: subject.claim)
+  let interpretation = v2.compiler.eval.eval_context_interpretation(context: subject.context)
+  let expected = v2.compiler.eval.eval(
     tree: subject.tree,
     interpretation: interpretation,
-    inputs: inputs_root_only(root: expected_eval_root)
+    inputs: v2.compiler.eval.inputs_root_only(root: expected_eval_root)
   )
   run_test_claim_emit_vs_eval_verdict_from_source_cached(
     subject: subject,
@@ -786,12 +784,12 @@ fn run_test_claim_from_source_emit_vs_eval_cached_for_claim(
 }
 
 fn run_test_claim_from_source_emit_vs_eval_cached(
-  subject: v2.compiler.eval.TestClaimEvalSubject<Node>,
+  subject: v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node>,
   source_outcome: v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>>,
   target: v2.std.compilers.target_model.TargetModel,
   workspace_dir: String,
-  run_args: List<String>
-) -> TestClaimRun<Node, RuntimeValue> {
+  run_args: std.types.List<String>
+) -> v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue> {
   match subject.claim {
     EqualsClaim { rhs: rhs, label: _, anchor: _, lhs: lhs, classification: _ } =>
       run_test_claim_emit_vs_eval_run(
@@ -821,18 +819,18 @@ fn run_test_claim_from_source_emit_vs_eval_cached(
           expected_eval_root: expected_value
         )
       )
-    _ => run_test_claim(subject: subject)
+    _ => v2.compiler.eval.run_test_claim(subject: subject)
   }
 }
 
 fn run_test_claim_module_emit_vs_eval(
-  subject: v2.compiler.eval.TestClaimEvalSubject<Node>,
-  module_decls: List<v2.compiler.inferred_tree.InferredTree>,
+  subject: v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node>,
+  module_decls: std.types.List<v2.compiler.infer.InferredTree>,
   target: v2.std.compilers.target_model.TargetModel
-) -> TestClaimRun<Node, RuntimeValue> {
+) -> v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue> {
   run_test_claim_from_source_emit_vs_eval(
     subject: subject,
-    source_outcome: emit_module(decls: module_decls, target: target),
+    source_outcome: v2.compiler.emit_module.emit_module(decls: module_decls, target: target),
     target: target
   )
 }

@@ -1,6 +1,5 @@
 module v2.lens.roster_registry
 
-
 data roster_registry_lens_note: String = "Group-of-units standard-representation lens (operator ruling 2026-07-22, roadmap group 5a): every registration in gunbc.roster_registry must carry standard membership provenance — ByContainment (positional), ByDerivation (computed relation), or DeclaredFrontier with a nonempty reason AND a nonempty dissolve_on trigger. A DeclaredFrontier row with an empty reason or trigger is the NICKNAME class (asserted, string-keyed, no trigger) and reds. Scope honesty: this lens checks ENROLLED registrations only — unregistered bare lists are invisible to it and are caught at review by the 5a rule until the enforcement-intent thread absorbs the registry (see roster_registry_visibility_note and roster_registry_enforcement_intent_convergence_note on the carrier)."
 
 type NonStandardRegistration {
@@ -8,19 +7,19 @@ type NonStandardRegistration {
   roster_decl_name: String
 }
 
-data empty_nonstandard_registrations: List<NonStandardRegistration> = []
+data empty_nonstandard_registrations: std.types.List<NonStandardRegistration> = []
 
 fn nonstandard_registrations_from(
-  registrations: List<gunbc.roster_registry.RosterRegistration>
-) -> List<NonStandardRegistration> {
-  fold_list(
+  registrations: std.types.List<gunbc.roster_registry.RosterRegistration>
+) -> std.types.List<NonStandardRegistration> {
+  v2.std.algebra.fold_list(
     xs: registrations,
     empty: empty_nonstandard_registrations,
     cons: fn(acc, r) {
       if gunbc.roster_registry.registration_membership_is_standard(r: r) {
         acc
       } else {
-        list_snoc_item(
+        v2.std.algebra.list_snoc_item(
           xs: acc,
           item: NonStandardRegistration {
             roster_module_path: r.roster.module_path,
@@ -32,8 +31,8 @@ fn nonstandard_registrations_from(
   )
 }
 
-fn roster_registry_nonstandard_count_from(registrations: List<gunbc.roster_registry.RosterRegistration>) -> Int {
-  count_where(
+fn roster_registry_nonstandard_count_from(registrations: std.types.List<gunbc.roster_registry.RosterRegistration>) -> Int {
+  v2.std.algebra.count_where(
     xs: registrations,
     predicate: fn(r) { !gunbc.roster_registry.registration_membership_is_standard(r: r) }
   )
@@ -47,6 +46,32 @@ fn roster_registry_standard_holds() -> Bool {
   roster_registry_nonstandard_count() == 0
 }
 
+data roster_registry_declaration_refs_note: String = "WHY THIS PROJECTION EXISTS: a registration is built out of typed DeclarationRefs — the roster it names, and, for a ByDerivation row, the predicate it claims computes membership. Nothing resolved either of them, so a registration could name a declaration that had been deleted and stay green forever, and one did: gunbc.stage0_emit_plan_generated generated_stage0_files was registered ByDerivation from gunbc.stage0_emit_plan generated_stage0_files_from_emission_plan long after that module was deleted, so the registry reported the DERIVED rung over a roster that had become hand-maintained in fact. The registration passed registration_membership_is_standard because that check reads the membership SHAPE and never asks whether the shape's payload names anything real. This projection is the population that closes it: v2.lens.cited_symbol_resolution folds these refs into the enrolled cited-symbol resolution census, which is exactly the widening that lens's own law names as its next step (enrollment widens to every structural DeclarationRef carrier). A ByDerivation row contributes BOTH refs deliberately — the predicate is the half that rotted, and a projection carrying only the roster would have left the defect it was written for undetected."
+
+data empty_declaration_refs: std.types.List<std.decl_ref.DeclarationRef> = []
+
+fn declaration_refs_from_registration(r: gunbc.roster_registry.RosterRegistration) -> std.types.List<std.decl_ref.DeclarationRef> {
+  match r.membership {
+    ByContainment => [r.roster]
+    ByDerivation { predicate: p } => [r.roster, p]
+    DeclaredFrontier { reason: _, dissolution: _ } => [r.roster]
+  }
+}
+
+fn roster_registry_declaration_refs_from(
+  registrations: std.types.List<gunbc.roster_registry.RosterRegistration>
+) -> std.types.List<std.decl_ref.DeclarationRef> {
+  v2.std.algebra.fold_list(
+    xs: registrations,
+    empty: empty_declaration_refs,
+    cons: fn(acc, r) { concat(acc, declaration_refs_from_registration(r: r)) }
+  )
+}
+
+fn roster_registry_declaration_refs() -> std.types.List<std.decl_ref.DeclarationRef> {
+  roster_registry_declaration_refs_from(registrations: gunbc.roster_registry.roster_registry)
+}
+
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SingleAuthority }
 }

@@ -4979,6 +4979,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::OwnershipViolation { .. } => "OwnershipViolation",
         CompilerDiagnostic::VariantCollision { .. } => "VariantCollision",
         CompilerDiagnostic::SoleConstructorViolation { .. } => "SoleConstructorViolation",
+        CompilerDiagnostic::BareNoneNotAdmittedByFieldType { .. } => {
+            "BareNoneNotAdmittedByFieldType"
+        }
         CompilerDiagnostic::ConstructorCallAdmissionRefused { .. } => {
             "ConstructorCallAdmissionRefused"
         }
@@ -5018,6 +5021,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::OwnershipViolation { binding, .. } => binding.clone(),
         CompilerDiagnostic::VariantCollision { variant, .. } => variant.clone(),
         CompilerDiagnostic::SoleConstructorViolation { type_name, .. } => type_name.clone(),
+        CompilerDiagnostic::BareNoneNotAdmittedByFieldType { field, .. } => field.clone(),
         CompilerDiagnostic::ConstructorCallAdmissionRefused {
             constructor_decl_name,
             ..
@@ -36735,15 +36739,58 @@ pub fn qualified_name_resolves_in_derived_module_set(qn: &crate::v1_interpreter:
         && build_module_path_index_from_witness_roots().contains_key(&module_path)
 }
 
+/// Project one argv element of an `extdeps` transport declaration into the census token the
+/// `v2.lens.extdeps_shape_transport_policy` reading folds over.
+///
+/// TWO CHANGES HERE, AND THE SECOND IS DELIBERATELY WEAKER THAN THE FIRST.
+///
+/// (1) THE INTERPOLATION ARM READS PARTS, NOT RAW CHILDREN -- a repair, not a restatement.
+/// The old arm walked `node.children` and answered the empty string for any child that was
+/// neither a literal nor a var. A `StringPart` node is not an expression node -- an
+/// interpolated string's TEXT parts carry `NoExprData` -- so the old arm silently dropped
+/// the literal text of every interpolated argv element, surviving only because the var part
+/// happened to carry the whole token in this corpus's specimens. This arm goes through
+/// `extract_string_interp_parts`, the same authority `bind_argv_expr` uses for the same job.
+///
+/// (2) AN UNPROJECTABLE FORM IS ANNOUNCED BY NAME RATHER THAN REFUSED, and that is a
+/// DECLARED DEGRADATION rather than the wall this census set out to build. The wall was
+/// built, and running it against the live corpus is what produced the reason it cannot land
+/// yet: `extdeps.git` `git.Core.DiffUnified0` argv[3] is an `ExprCall`, so a hard refusal
+/// here stops `corpus_git_policy_leak_defused_holds`, and that red is NOT closable by the
+/// author who causes it -- the same seven operations are already typed and counted debt on
+/// the MATERIALIZATION side (`v2.std.operation_argv` `ArgvRowExpressionResidue`, pinned in
+/// `test.claim.operation_argv_corpus_witness`), owned by the argv-evaluation lane.
+///
+/// So the two readings of one corpus disagree and this comment is where that is recorded:
+/// materialization counts the unreadable element as residue, the policy census renders it as
+/// the empty string, and an empty token matches no policy predicate -- so a leak carried by a
+/// form the reader cannot read is reported as clean. The line below makes that occurrence
+/// LOCATED AND COUNTABLE instead of silent; it does not make it correct.
+///
+/// NEXT RUNG, and it is a modelling decision rather than a seed edit: `ExtdepsTransportArgvFact`
+/// carries a typed projection (`ProjectedToken` / `UnprojectableForm { form }`) the way the
+/// materialization row already does, and the policy fold reads it. At that point the empty
+/// string has no way to be written and this arm becomes a refusal at the boundary rather
+/// than a degradation inside it. Carried as a row in
+/// `gunbc.seed_closed_vocabulary_wildcard_census`.
 fn extdeps_argv_expr_token(
     node: &Rc<crate::v1_std_core::Node>,
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    located: &str,
 ) -> String {
-    use crate::v1_std_core::{expr_var_name_at, ExprData, LiteralValue};
+    use crate::v1_interpreter::{expr_data_form_name, literal_value_form_name};
+    use crate::v1_std_core::{expr_var_name_at, ExprData, StringPart};
     match node.expr_data.as_ref() {
         ExprData::ExprLiteral { value } => match value.as_ref() {
-            LiteralValue::LitStr { value } => value.clone(),
-            other => format!("{other:?}"),
+            crate::std_syntax::LiteralValue::LitStr { value } => value.clone(),
+            other => {
+                eprintln!(
+                    "[extdeps-argv-unprojectable] {located}: `{}` literal has no argv token \
+                     projection; the census token is empty and matches no policy predicate",
+                    literal_value_form_name(other)
+                );
+                String::new()
+            }
         },
         ExprData::ExprVar { .. } => {
             let name = expr_var_name_at(node.clone(), source_indices.clone());
@@ -36753,26 +36800,26 @@ fn extdeps_argv_expr_token(
                 format!("{{{name}}}")
             }
         }
-        ExprData::ExprStringInterp => node
-            .children
-            .iter()
-            .map(|child| match child.expr_data.as_ref() {
-                ExprData::ExprLiteral { value } => match value.as_ref() {
-                    LiteralValue::LitStr { value } => value.clone(),
-                    _ => String::new(),
-                },
-                ExprData::ExprVar { .. } => {
-                    let name = expr_var_name_at(child.clone(), source_indices.clone());
-                    if name.is_empty() {
-                        child.name.clone()
-                    } else {
-                        format!("{{{name}}}")
+        ExprData::ExprStringInterp => {
+            let mut out = String::new();
+            for part in crate::v1_compiler_emit::extract_string_interp_parts(node.clone()).iter() {
+                match part.as_ref() {
+                    StringPart::Text { value } => out.push_str(value),
+                    StringPart::Interpolation { expr } => {
+                        out.push_str(&extdeps_argv_expr_token(expr, source_indices, located))
                     }
                 }
-                _ => String::new(),
-            })
-            .collect(),
-        _ => String::new(),
+            }
+            out
+        }
+        other => {
+            eprintln!(
+                "[extdeps-argv-unprojectable] {located}: `{}` expression has no argv token \
+                 projection; the census token is empty and matches no policy predicate",
+                expr_data_form_name(other)
+            );
+            String::new()
+        }
     }
 }
 
@@ -36942,7 +36989,11 @@ pub fn extdeps_shape_transport_policy_module_facts(
                     "Shell"
                 };
             for (idx, arg) in eff.children.iter().enumerate() {
-                let token = extdeps_argv_expr_token(arg, &source_indices);
+                let token = extdeps_argv_expr_token(
+                    arg,
+                    &source_indices,
+                    &format!("{module_path} `{}.{}` argv[{idx}]", item.name, op.name),
+                );
                 argv_facts.push(ExtdepsArgvFactRaw {
                     module_path: module_path.to_string(),
                     service: item.name.clone(),
@@ -40198,6 +40249,36 @@ pub struct RequiredFloorOutcome {
     /// witness, and a headline number that rises as debt is added has no direction left to
     /// report repayment in.
     pub known_red_held: usize,
+    /// THE 101 THAT DID NOT SUM. These six are already computed by the fold, at the right grain,
+    /// and were reported only on `[floor-known-red]` / `[floor-route-gap]` lines that no consumer
+    /// of the headline ledger reads. Lifting them here adds no fact and makes no new distinction;
+    /// it projects values the run already holds onto the line the run is read from.
+    ///
+    /// `route_gap_held` is the load-bearing one. Measured on main run 32407436149:
+    /// `executed=9810 passed=9502 known_red_held=207 failed=0` leaves 101 unaccounted, and the
+    /// headline printed `route_gap=0` because that field is `route_gap.len()` — the UNENROLLED
+    /// gaps alone. So the reader did not see an understated count they might interrogate; they
+    /// saw a zero, which closes the question instead of opening it. The correcting number lived
+    /// on another line ~300 lines away. Evidence present but disjoint from the surface anyone
+    /// reads is the defect, so these belong on the SAME line rather than in a second report —
+    /// a fix shipped as another separate line would reproduce exactly what it repairs.
+    ///
+    /// A route-gapped identity is refused at the hermetic boundary, never reaches its subject,
+    /// and produces no verdict. That refusal is CORRECT and must not be repaired: mocking it
+    /// would pass the witness against a fabricated exit status, which is the fabricated-plausible
+    /// -output failure the witness exists to catch (DESIGN §5).
+    ///
+    /// NOT RENAMED HERE, DELIBERATELY: `claims_executed` still counts entering the fold rather
+    /// than reaching a verdict. Whether that is the right name is a question about
+    /// `RequiredFloorDisposition`, whose authority is `src/v2/workflow/required_floor.dag`, and
+    /// changing .dag vocabulary from inside a Rust projection fix would put the authority in the
+    /// wrong place. Raised separately or not at all; this change only makes the line sum.
+    pub route_gap_held: usize,
+    pub known_red_now_passing: usize,
+    pub known_red_budget_refused: usize,
+    pub known_red_passed_over_budget: usize,
+    pub known_red_host_tool_unresolved_held: usize,
+    pub known_red_host_effect_refused: usize,
     /// UNEXPECTED GREEN IS NOT A WITNESS RED. An enrolled row that passed means someone fixed
     /// the bug and the roster is stale; folding it into `failures` makes an un-quarantine
     /// indistinguishable from a regression in the alert signature, which is the conflation
@@ -41539,6 +41620,12 @@ pub fn run_required_floor(
         receipt_identities: 0,
         passed: 0,
         known_red_held: 0,
+        route_gap_held: 0,
+        known_red_now_passing: 0,
+        known_red_budget_refused: 0,
+        known_red_passed_over_budget: 0,
+        known_red_host_tool_unresolved_held: 0,
+        known_red_host_effect_refused: 0,
         stale_quarantine: Vec::new(),
         interrupted_before_verdict: Vec::new(),
         completed_over_cost_requirement: Vec::new(),
@@ -42142,6 +42229,12 @@ pub fn run_required_floor(
         );
     }
     outcome.known_red_held = known_red_held;
+    outcome.route_gap_held = route_gap_held;
+    outcome.known_red_now_passing = known_red_now_passing;
+    outcome.known_red_budget_refused = known_red_budget_refused;
+    outcome.known_red_passed_over_budget = known_red_passed_over_budget;
+    outcome.known_red_host_tool_unresolved_held = known_red_host_tool_unresolved;
+    outcome.known_red_host_effect_refused = known_red_host_effect_refused;
     eprintln!(
         "[floor-route-gap] {} enrolled identity(ies) held as route-gapped; {} unenrolled route \
          gap(s) reported",
@@ -42725,4 +42818,17 @@ pub fn run_required_regen_fixed_point(
     pass1_digest: Option<String>,
 ) -> Result<required_regen_host::RequiredRegenOutcome, String> {
     required_regen_host::run_required_regen_fixed_point(receipt_rel, pass1_digest)
+}
+
+/// The emitted generated surface, keyed by basename, off the SAME `measure_generated_surface`
+/// producer the regen path uses -- so the bytes a behavioural receipt compiles are the bytes
+/// regen compared. A second emit here would be a second producer of the candidate itself.
+pub use required_regen_host::emitted_generated_sources;
+
+/// The authority's own declared module path, for consumers outside this module.
+///
+/// Exposed rather than re-implemented: a second parser for `module <path>` would be a second
+/// answer to a question this one already answers, and the two would drift.
+pub fn extract_module_path_public(content: &str) -> Option<String> {
+    extract_module_path(content)
 }

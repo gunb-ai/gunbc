@@ -12,7 +12,7 @@ module test.claim.witness_floor_workflow_consolidation_witness_test
 //
 // Stated so a reader does not over-read the green: this is the CHEAP half of the pair.
 
-data consolidation_note: String = "The step ladder these replace was four steps: parse, regen, regen-fixed-point, floor. Each was its own process, the ORDER was a YAML list, each precondition was an `if:` naming another step's `outcome`, and the fixed-point step received pass 1's digest by re-reading the receipt FILE the regen process had written — a process boundary standing where a function call belonged, since run_required_regen_fixed_point has taken pass1_digest: Option<String> all along and CI passed None."
+data consolidation_note: std.types.String = "The step ladder these replace was four steps: parse, regen, regen-fixed-point, floor. Each was its own process, the ORDER was a YAML list, each precondition was an `if:` naming another step's `outcome`, and the fixed-point step received pass 1's digest by re-reading the receipt FILE the regen process had written — a process boundary standing where a function call belonged, since run_required_regen_fixed_point has taken pass1_digest: Option<String> all along and CI passed None."
 
 // ONE RUN STEP REACHES THE BINARY, and it names the composed mode. The negative half is what
 // makes this discriminating: if any of the three retired invocations reappears as its own step,
@@ -71,9 +71,21 @@ test fn w_the_required_workflow_does_not_build_the_parse_binary() -> std.types.B
 // An earlier revision of this file put a near-impossible literal here instead. It would have
 // gone green forever without ever being able to fail, which is worse than having no control:
 // a vacuous assertion reads as coverage on the roster.
+//
+// THE POSITIVE CONTROL PINS THE COMPOSED STEP'S IDENTITY, NOT ITS PHASE LIST.
+//
+// It read the full name -- "...regen determinism, witness floor" -- until the behavioral
+// receipt became a phase inside the same invocation and the step name grew to say so. That
+// reddened this witness, which is about RETIRED STEP NAMES and has nothing to say about how
+// many phases the composed run has. A control that breaks whenever an unrelated phase is
+// added is measuring the wrong thing: it makes every phase addition edit a witness that does
+// not own the fact. Keying on the step-name PREFIX keeps exactly the property this control
+// needs -- the composed step exists and was read -- and still fails loudly if the composed
+// step is removed or renamed out of its family, which is the state the negative arms below
+// exist to detect.
 test fn w_RED_the_retired_step_names_do_not_return() -> std.types.Bool {
   let yml = gunbc.witness_floor_workflow.expected_witness_floor_yml()
-  let positive_control = string_contains(s: yml, pattern: "Required CI: parse, regen, regen determinism, witness floor")
+  let positive_control = string_contains(s: yml, pattern: "Required CI:")
   positive_control
     && !string_contains(s: yml, pattern: "name: src/v1 .dag sources parse")
     && !string_contains(s: yml, pattern: "Regen fixed point:")

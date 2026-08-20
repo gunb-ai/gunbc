@@ -1,6 +1,5 @@
 module v2.test.long.validate_ingest_staging_stage_bisect
 
-
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data bisect_empty_source: extdeps.communication.medium.Medium<String> = extdeps.communication.medium.Medium { carried: "module stage0.bisect.empty\n", fidelity: extdeps.communication.medium.Lossless }
@@ -75,7 +74,15 @@ fn bisect_through_grammar_validate() -> v2.std.diagnostic.Outcome<v2.std.grammar
     ModeledGrammar { root: root } =>
       v2.compiler.parse.grammar_validate_for_parse(root: root, at: v2.std.diagnostic.port_locus(port: ^parse_stage_locus_port))
     _ =>
-      v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.None }
+      v2.std.diagnostic.Rejected {
+        diagnostics: v2.std.diagnostic.diagnostics_singleton(
+          d: v2.std.diagnostic.Diagnostic {
+            reason: ^bisect_language_model_grammar_unmodeled,
+            at: v2.std.diagnostic.port_locus(port: ^parse_stage_locus_port),
+            correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.CorrectionNotModeled }
+          }
+        )
+      }
   }
 }
 
@@ -193,7 +200,7 @@ test fn witness_bisect_parse_module_add_correctness_holds() -> Bool {
 
 data bisect_unbound_reference_source: extdeps.communication.medium.Medium<String> = extdeps.communication.medium.Medium { carried: "module bisect.add\n\nfn add(x:Int, y:Int) -> Int { x + zzz }", fidelity: extdeps.communication.medium.Lossless }
 data bisect_unbound_reference_no_binding_source: extdeps.communication.medium.Medium<String> = extdeps.communication.medium.Medium { carried: "module bisect.add\n\nfn add() -> Int { zzz }", fidelity: extdeps.communication.medium.Lossless }
-data bisect_unbound_reference_note: String = "Discriminating red controls for resolution vacuity (DESIGN section 5). Before the StampLexeme binding migration, every class-stamped identifier collapsed to ^dag_token_ident, which is grammar-carried and therefore canonical, so v2.compiler.resolve.resolve accepted ANY body reference - including unbound ones (proven on main: both sources below resolved v2.std.diagnostic.Accepted). These witnesses pin the non-vacuous behavior: a body reference with no binding (zzz, with and without params in scope) must v2.compiler.resolve.resolve-reject. They go false if the vacuity ever returns - a canonical-symbol arm widening, a stamp regression, or an over-broad scope harvest."
+data bisect_unbound_reference_note: String = "Discriminating red controls for resolution vacuity (DESIGN section 5). Before the StampLexeme binding migration, every class-stamped identifier collapsed to ^dag_token_ident, which is grammar-carried and therefore canonical, so resolve accepted ANY body reference - including unbound ones (proven on main: both sources below resolved Accepted). These witnesses pin the non-vacuous behavior: a body reference with no binding (zzz, with and without params in scope) must resolve-reject. They go false if the vacuity ever returns - a canonical-symbol arm widening, a stamp regression, or an over-broad scope harvest."
 
 fn bisect_resolve_accepts_text(text: String) -> Bool {
   let lm = v2.extdeps.languages.dag.dag_language_model()

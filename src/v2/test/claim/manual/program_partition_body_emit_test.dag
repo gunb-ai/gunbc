@@ -1,25 +1,32 @@
 module v2.test.manual.program_partition_body_emit
 
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
-
-fn program_partition_node_list_member_seen(seen: List<Node>, needle: Node) -> Bool {
-  any(xs: seen, predicate: fn(member) { member == needle })
+fn program_partition_node_list_member_seen(seen: std.types.List<v2.std.node.Node>, needle: v2.std.node.Node) -> Bool {
+  v2.std.algebra.any(xs: seen, predicate: fn(member) { member == needle })
 }
 
-fn program_partition_node_list_is_duplicate_free(xs: List<Node>) -> Bool {
-  match fold_list(
+fn program_partition_node_list_is_duplicate_free(xs: std.types.List<v2.std.node.Node>) -> Bool {
+  match v2.std.algebra.fold_list(
     xs: xs,
     empty: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
     cons: fn(acc, member) {
       match acc {
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: seen, diagnostics: _ } =>
           if program_partition_node_list_member_seen(seen: seen, needle: member) {
-            v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.None }
+            v2.std.diagnostic.Rejected {
+              diagnostics: v2.std.diagnostic.diagnostics_singleton(
+                d: v2.std.diagnostic.Diagnostic {
+                  reason: ^program_partition_node_list_duplicate,
+                  at: v2.std.diagnostic.node_locus(node: member),
+                  correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.CorrectionNotModeled }
+                }
+              )
+            }
           } else {
             v2.std.diagnostic.Accepted {
-              value: list_snoc_item(xs: seen, item: member),
+              value: v2.std.algebra.list_snoc_item(xs: seen, item: member),
               diagnostics: v2.std.diagnostic.None
             }
           }
@@ -32,12 +39,12 @@ fn program_partition_node_list_is_duplicate_free(xs: List<Node>) -> Bool {
 }
 
 test fn program_partition_body_canonical_closure_enumeration_is_duplicate_free() -> Bool {
-  match add_body_ts_producer_inferred_tree() {
+  match v2.test.manual.add_body_emit_typescript.add_body_ts_producer_inferred_tree() {
     Accepted { value: program, diagnostics: _ } =>
-      match find_arrow_body_child(root: program.root) {
+      match v2.std.node_query.find_arrow_body_child(root: program.root) {
         Accepted { value: body, diagnostics: _ } =>
           program_partition_node_list_is_duplicate_free(
-            xs: node_subtree_nodes(root: body)
+            xs: v2.std.node.node_subtree_nodes(root: body)
           )
         Rejected { diagnostics: _ } => false
       }
@@ -46,17 +53,17 @@ test fn program_partition_body_canonical_closure_enumeration_is_duplicate_free()
 }
 
 test fn program_partition_body_fail_closed_facts_closure_fold_accepts() -> Bool {
-  match add_body_ts_producer_inferred_tree() {
+  match v2.test.manual.add_body_emit_typescript.add_body_ts_producer_inferred_tree() {
     Accepted { value: program, diagnostics: _ } =>
-      match find_arrow_body_child(root: program.root) {
+      match v2.std.node_query.find_arrow_body_child(root: program.root) {
         Accepted { value: body, diagnostics: _ } =>
-          match resolve_program_partition(
+          match v2.compiler.program_partition.resolve_program_partition(
             program: program,
-            segment: program_segment_subtree_root(root: body),
-            boundary: partition_boundary_fail_closed()
+            segment: v2.std.program_segment.program_segment_subtree_root(root: body),
+            boundary: v2.std.program_segment.partition_boundary_fail_closed()
           ) {
             Accepted { value: partition, diagnostics: _ } =>
-              match facts_closure_fold(partition: partition) {
+              match v2.compiler.program_partition.facts_closure_fold(partition: partition) {
                 Accepted { value: _, diagnostics: _ } => true
                 Rejected { diagnostics: _ } => false
               }
@@ -69,23 +76,23 @@ test fn program_partition_body_fail_closed_facts_closure_fold_accepts() -> Bool 
 }
 
 test fn program_partition_body_emit_accepts_and_differs_from_whole() -> Bool {
-  match add_body_ts_producer_inferred_tree() {
+  match v2.test.manual.add_body_emit_typescript.add_body_ts_producer_inferred_tree() {
     Accepted { value: program, diagnostics: _ } =>
-      match find_arrow_body_child(root: program.root) {
+      match v2.std.node_query.find_arrow_body_child(root: program.root) {
         Accepted { value: body, diagnostics: _ } =>
-          match add_body_ts_emit_from_producer_tree(target: ts_target_model()) {
+          match v2.test.manual.add_body_emit_typescript.add_body_ts_emit_from_producer_tree(target: v2.extdeps.languages.typescript.ts_target_model()) {
             Accepted { value: whole_source, diagnostics: whole_d } =>
-              match emit_for_target(
+              match v2.compiler.program_partition.emit_for_target(
                 program: program,
-                segment: program_segment_subtree_root(root: body),
-                target: ts_target_model(),
-                boundary: partition_boundary_ambient_context()
+                segment: v2.std.program_segment.program_segment_subtree_root(root: body),
+                target: v2.extdeps.languages.typescript.ts_target_model(),
+                boundary: v2.std.program_segment.partition_boundary_ambient_context()
               ) {
                 Accepted { value: body_source, diagnostics: body_d } =>
                   (body_d == v2.std.diagnostic.None)
                     && (whole_d == v2.std.diagnostic.None)
                     && (body_source != whole_source)
-                    && (whole_source.carried == ts_source_text)
+                    && (whole_source.carried == v2.extdeps.languages.typescript.ts_source_text)
                 Rejected { diagnostics: _ } => false
               }
             Rejected { diagnostics: _ } => false
@@ -97,21 +104,21 @@ test fn program_partition_body_emit_accepts_and_differs_from_whole() -> Bool {
 }
 
 test fn program_partition_whole_program_emit_matches_direct() -> Bool {
-  match add_body_ts_producer_inferred_tree() {
+  match v2.test.manual.add_body_emit_typescript.add_body_ts_producer_inferred_tree() {
     Accepted { value: program, diagnostics: _ } =>
-      match add_body_ts_emit_from_producer_tree(target: ts_target_model()) {
+      match v2.test.manual.add_body_emit_typescript.add_body_ts_emit_from_producer_tree(target: v2.extdeps.languages.typescript.ts_target_model()) {
         Accepted { value: direct_source, diagnostics: direct_d } =>
-          match emit_for_target(
+          match v2.compiler.program_partition.emit_for_target(
             program: program,
-            segment: program_segment_whole_program(),
-            target: ts_target_model(),
-            boundary: partition_boundary_ambient_context()
+            segment: v2.std.program_segment.program_segment_whole_program(),
+            target: v2.extdeps.languages.typescript.ts_target_model(),
+            boundary: v2.std.program_segment.partition_boundary_ambient_context()
           ) {
             Accepted { value: partition_source, diagnostics: partition_d } =>
               (direct_d == v2.std.diagnostic.None)
                 && (partition_d == v2.std.diagnostic.None)
                 && (direct_source == partition_source)
-                && (direct_source.carried == ts_source_text)
+                && (direct_source.carried == v2.extdeps.languages.typescript.ts_source_text)
             Rejected { diagnostics: _ } => false
           }
         Rejected { diagnostics: _ } => false
@@ -121,7 +128,7 @@ test fn program_partition_whole_program_emit_matches_direct() -> Bool {
 }
 
 test fn program_partition_section_adapter_unavailable_rejects() -> Bool {
-  match program_segment_from_section_unavailable() {
+  match v2.compiler.program_partition.program_segment_from_section_unavailable() {
     Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }

@@ -1,33 +1,32 @@
 module test.claim.long.cited_symbol_resolution_witness_test
 
-
 data cited_symbol_resolution_long_witness_note: String = "G1 corpus-scale cited-symbol resolution witnesses — production HandAuthoredDocBind census and planted-control mutation proofs over live decl_facts + module_declaration_facts. Long lane only: each witness pays full witness-layer decl_facts scan(s) (operator 5s fast-lane rule 2026-07-12)."
 
-data cited_symbol_long_witness_layer_facts: List<v2.std.decl_index.DeclFact> = decl_facts(pool_roots: gunbc.ci_layer_roots.witness_layer_roots)
+data cited_symbol_long_witness_layer_facts: List<v2.std.decl_index.DeclFact> = v2.std.decl_index.decl_facts(pool_roots: gunbc.ci_layer_roots.witness_layer_roots)
 
 data cited_symbol_long_witness_layer_modules: List<v2.lens.module_graph.ModuleDeclarationFact> = v2.lens.module_graph.module_declaration_facts_live(pool_roots: gunbc.ci_layer_roots.witness_layer_roots)
 
 fn cited_symbol_hand_authored_census_live() -> v2.std.decl_ref_resolution.DeclarationRefResolutionCensus {
-  let pool = hand_authored_works_resolution_pool_roots()
-  let facts = decl_facts(pool_roots: pool)
+  let pool = gunbc.doc_graph_roots.hand_authored_works_resolution_pool_roots()
+  let facts = v2.std.decl_index.decl_facts(pool_roots: pool)
   let modules = v2.lens.module_graph.module_declaration_facts_live(pool_roots: pool)
   v2.std.decl_ref_resolution.declaration_ref_resolution_census(
-    refs: hand_authored_production_doc_declaration_refs(),
+    refs: gunbc.doc_graph_roots.hand_authored_production_doc_declaration_refs(),
     facts: facts,
     modules: modules
   )
 }
 
 test fn cited_symbol_hand_authored_binds_all_resolve() -> Bool {
-  hand_authored_works_refs_all_resolve()
+  gunbc.doc_graph_roots.hand_authored_works_refs_all_resolve()
 }
 
 test fn cited_symbol_hand_authored_census_is_zero_refusals() -> Bool {
-  let pool = hand_authored_works_resolution_pool_roots()
-  let facts = decl_facts(pool_roots: pool)
+  let pool = gunbc.doc_graph_roots.hand_authored_works_resolution_pool_roots()
+  let facts = v2.std.decl_index.decl_facts(pool_roots: pool)
   let modules = v2.lens.module_graph.module_declaration_facts_live(pool_roots: pool)
   let census = v2.std.decl_ref_resolution.declaration_ref_resolution_census(
-    refs: hand_authored_production_doc_declaration_refs(),
+    refs: gunbc.doc_graph_roots.hand_authored_production_doc_declaration_refs(),
     facts: facts,
     modules: modules
   )
@@ -35,7 +34,7 @@ test fn cited_symbol_hand_authored_census_is_zero_refusals() -> Bool {
     && census.declaration_absent_count == 0
     && census.field_absent_count == 0
     && census.ambiguous_count == 0
-    && census.resolved_count == length(xs: hand_authored_production_doc_declaration_refs())
+    && census.resolved_count == length(xs: gunbc.doc_graph_roots.hand_authored_production_doc_declaration_refs())
 }
 
 test fn cited_symbol_resolution_lens_is_green_on_live_corpus() -> Bool {
@@ -43,7 +42,7 @@ test fn cited_symbol_resolution_lens_is_green_on_live_corpus() -> Bool {
 }
 
 test fn doc_graph_works_refs_all_resolve() -> Bool {
-  hand_authored_works_refs_all_resolve()
+  gunbc.doc_graph_roots.hand_authored_works_refs_all_resolve()
 }
 
 test fn cited_symbol_post7688_production_census_is_zero_violations() -> Bool {
@@ -52,15 +51,15 @@ test fn cited_symbol_post7688_production_census_is_zero_violations() -> Bool {
     && census.module_absent_count == 0
     && census.field_absent_count == 0
     && census.ambiguous_count == 0
-    && census.resolved_count == length(xs: hand_authored_production_doc_declaration_refs())
+    && census.resolved_count == length(xs: gunbc.doc_graph_roots.hand_authored_production_doc_declaration_refs())
 }
 
 test fn cited_symbol_refusal_count_red_on_dangling_fixture() -> Bool {
   let dangling = [
     std.decl_ref.DeclarationRef {
-      module_path: "std.node",
+      module_path: "v2.std.node",
       decl_name: "NoSuchDecl_G1_RED",
-      field: WholeDeclaration,
+      field: std.decl_ref.WholeDeclaration,
     },
   ]
   v2.std.decl_ref_resolution.cited_declaration_ref_refusal_count(
@@ -99,9 +98,9 @@ test fn cited_symbol_production_census_ambiguous_count_is_zero() -> Bool {
 test fn cited_symbol_resolves_node_kind_authority() -> Bool {
   match v2.std.decl_ref_resolution.resolve_declaration_ref(
     ref: std.decl_ref.DeclarationRef {
-      module_path: "std.node",
+      module_path: "v2.std.node",
       decl_name: "NodeKind",
-      field: WholeDeclaration,
+      field: std.decl_ref.WholeDeclaration,
     },
     facts: cited_symbol_long_witness_layer_facts,
     modules: cited_symbol_long_witness_layer_modules
@@ -116,7 +115,7 @@ test fn cited_symbol_resolves_node_kind_authority() -> Bool {
 
 test fn cited_symbol_resolves_decl_ref_constructor() -> Bool {
   match v2.std.decl_ref_resolution.resolve_declaration_ref(
-    ref: decl_ref(module_path: "std.decl_ref", decl_name: "decl_ref"),
+    ref: std.decl_ref.decl_ref(module_path: "std.decl_ref", decl_name: "decl_ref"),
     facts: cited_symbol_long_witness_layer_facts,
     modules: cited_symbol_long_witness_layer_modules
   ) {
@@ -133,7 +132,7 @@ test fn cited_symbol_refuses_module_absent() -> Bool {
     ref: std.decl_ref.DeclarationRef {
       module_path: "synthetic.g1_module_absent_RED",
       decl_name: "any",
-      field: WholeDeclaration,
+      field: std.decl_ref.WholeDeclaration,
     },
     facts: cited_symbol_long_witness_layer_facts,
     modules: cited_symbol_long_witness_layer_modules
@@ -149,9 +148,9 @@ test fn cited_symbol_refuses_module_absent() -> Bool {
 test fn cited_symbol_refuses_declaration_absent() -> Bool {
   match v2.std.decl_ref_resolution.resolve_declaration_ref(
     ref: std.decl_ref.DeclarationRef {
-      module_path: "std.node",
+      module_path: "v2.std.node",
       decl_name: "NoSuchDecl_G1_RED",
-      field: WholeDeclaration,
+      field: std.decl_ref.WholeDeclaration,
     },
     facts: cited_symbol_long_witness_layer_facts,
     modules: cited_symbol_long_witness_layer_modules
@@ -169,23 +168,23 @@ test fn cited_symbol_refuses_ambiguous_binding() -> Bool {
     v2.std.decl_index.DeclFact {
       qualified_name: "std.node.g1_ambiguous",
       name: "g1_ambiguous",
-      kind: FnItem,
+      kind: v2.std.decl_index.FnItem,
       node: v2.lens.enforcement.receipts.enforcement_red_probe_body_leaf,
       rel_path: "synthetic/a.dag",
     },
     v2.std.decl_index.DeclFact {
       qualified_name: "std.node.g1_ambiguous",
       name: "g1_ambiguous",
-      kind: FnItem,
+      kind: v2.std.decl_index.FnItem,
       node: v2.lens.enforcement.receipts.enforcement_red_probe_body_leaf,
       rel_path: "synthetic/b.dag",
     },
   ]
   match v2.std.decl_ref_resolution.resolve_declaration_ref(
     ref: std.decl_ref.DeclarationRef {
-      module_path: "std.node",
+      module_path: "v2.std.node",
       decl_name: "g1_ambiguous",
-      field: WholeDeclaration,
+      field: std.decl_ref.WholeDeclaration,
     },
     facts: facts,
     modules: cited_symbol_long_witness_layer_modules
@@ -201,7 +200,7 @@ test fn cited_symbol_refuses_ambiguous_binding() -> Bool {
 test fn cited_symbol_refuses_named_field_absent() -> Bool {
   match v2.std.decl_ref_resolution.resolve_declaration_ref(
     ref: std.decl_ref.DeclarationRef {
-      module_path: "std.node",
+      module_path: "v2.std.node",
       decl_name: "NodeKind",
       field: std.decl_ref.NamedField { field_name: "NoSuchField_G1_RED" },
     },
@@ -214,4 +213,41 @@ test fn cited_symbol_refuses_named_field_absent() -> Bool {
     DeclarationRefDeclarationAbsent { reference: _ } => false
     DeclarationRefAmbiguous { reference: _, candidates: _ } => false
   }
+}
+
+data roster_registry_ref_witness_note: String = "The roster registry joined this lens's production population because a registration named a deleted producer and nothing noticed (cited_symbol_roster_registry_widening_note, v2.lens.cited_symbol_resolution). These two witnesses are that widening's evidence, and they are a PAIR by DESIGN 4b(1): the green measures the live registry, and the red plants the exact defect that shipped — a ByDerivation predicate naming a declaration that does not exist — so the green cannot pass by measuring an empty population or a resolver that resolves everything. The red is constructed rather than drawn from history so it stays discriminating after the live defect is repaired; it does not retire when production goes green (4b(4))."
+
+test fn roster_registry_declaration_refs_all_resolve() -> Bool {
+  let pool = gunbc.doc_graph_roots.hand_authored_works_resolution_pool_roots()
+  v2.std.decl_ref_resolution.cited_declaration_ref_refusal_count(
+    refs: v2.lens.roster_registry.roster_registry_declaration_refs(),
+    facts: v2.std.decl_index.decl_facts(pool_roots: pool),
+    modules: v2.lens.module_graph.module_declaration_facts_live(pool_roots: pool)
+  ) == 0
+}
+
+test fn roster_registry_ref_population_is_not_empty() -> Bool {
+  length(xs: v2.lens.roster_registry.roster_registry_declaration_refs()) >= length(xs: gunbc.roster_registry.roster_registry)
+}
+
+test fn roster_registry_dangling_predicate_red_control_refuses() -> Bool {
+  let planted = [
+    gunbc.roster_registry.RosterRegistration {
+      roster: gunbc.roster_registry.roster_decl(module_path: "v2.std.node", decl_name: "NodeKind"),
+      unit_kind: "planted control unit",
+      membership: gunbc.roster_registry.ByDerivation {
+        predicate: gunbc.roster_registry.roster_decl(
+          module_path: "v2.std.node",
+          decl_name: "NoSuchProducer_G1_ROSTER_RED"
+        )
+      }
+    }
+  ]
+  let refs = v2.lens.roster_registry.roster_registry_declaration_refs_from(registrations: planted)
+  (length(xs: refs) == 2)
+    && v2.std.decl_ref_resolution.cited_declaration_ref_refusal_count(
+      refs: refs,
+      facts: cited_symbol_long_witness_layer_facts,
+      modules: cited_symbol_long_witness_layer_modules
+    ) == 1
 }

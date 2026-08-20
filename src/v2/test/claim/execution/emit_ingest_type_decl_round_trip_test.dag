@@ -1,6 +1,5 @@
 module v2.test.execution.emit_ingest_type_decl_round_trip
 
-
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data type_decl_round_trip_foreign_binding: v2.std.node.Symbol = ^type_decl_round_trip_foreign_binding
@@ -123,7 +122,7 @@ fn type_decl_foreign_emitted() -> v2.std.node.Node {
   )
 }
 
-fn type_decl_row_token_spine_classes(row: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<v2.std.node.Symbol>> {
+fn type_decl_row_token_spine_classes(row: v2.std.node.Node) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.node.Symbol>> {
   v2.std.diagnostic.bind_outcome(
     o: v2.std.node_query.find_named_child(root: row, name: ^grammar_relation_field_tokens),
     f: fn(tokens_root) {
@@ -181,7 +180,7 @@ fn type_decl_lexer_token_to_concrete(token: v2.std.compilers.lexing.Token) -> v2
   }
 }
 
-fn type_decl_lexer_tokens_to_concrete_syntax(tokens: List<v2.std.compilers.lexing.Token>) -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn type_decl_lexer_tokens_to_concrete_syntax(tokens: std.types.List<v2.std.compilers.lexing.Token>) -> std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   v2.std.algebra.fold_list(
     xs: tokens,
     empty: std.algebra.Empty,
@@ -194,7 +193,7 @@ fn type_decl_lexer_tokens_to_concrete_syntax(tokens: List<v2.std.compilers.lexin
   )
 }
 
-fn type_decl_tokenize_source_text(source: String) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.lexing.Token>> {
+fn type_decl_tokenize_source_text(source: String) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.lexing.Token>> {
   v2.std.diagnostic.bind_outcome(
     o: v2.compiler.tokenize.tokenize(
       text: source,
@@ -207,7 +206,7 @@ fn type_decl_tokenize_source_text(source: String) -> v2.std.diagnostic.Outcome<L
   )
 }
 
-fn type_decl_emit_row_tokens(emitted: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+fn type_decl_emit_row_tokens(emitted: v2.std.node.Node) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   v2.std.diagnostic.bind_outcome(
     o: v2.compiler.translate.grammar_relation_row_for_emitted(rules: type_decl_rules(), emitted: emitted),
     f: fn(row) {
@@ -253,7 +252,7 @@ fn type_decl_reparse_from_source_with_rules(source: String, rules: v2.std.node.N
   )
 }
 
-fn type_decl_emit_frontier(emitted: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<v2.std.node.Symbol>> {
+fn type_decl_emit_frontier(emitted: v2.std.node.Node) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.node.Symbol>> {
   v2.std.diagnostic.bind_outcome(
     o: v2.compiler.translate.grammar_relation_row_for_emitted(rules: type_decl_rules(), emitted: emitted),
     f: fn(row) { type_decl_row_token_spine_classes(row: row) }
@@ -296,7 +295,7 @@ fn type_decl_perturbed_rules_for_point_source() -> v2.std.diagnostic.Outcome<v2.
   ) {
     Accepted { value: pixel_row, diagnostics: _ } =>
       v2.std.diagnostic.outcome_accepted(value: type_decl_translation_rules_with_row(row: pixel_row))
-    Rejected { diagnostics: _ } => v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.None }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
 
