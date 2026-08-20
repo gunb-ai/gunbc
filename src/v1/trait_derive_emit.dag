@@ -27,7 +27,6 @@ import std.trait_derive_shape {
   ReprDeriveElemSymbolWrappedOrdCarrier,
   ReprDeriveElemUnknown,
   ReprGroundingDeriveElemShape,
-  TargetCapabilityKey,
   repr_grounding_derive_completeness_predicate,
   repr_grounding_group_completion_carrier,
   repr_grounding_supplemental_bool_host_bridge_target
@@ -35,7 +34,6 @@ import std.trait_derive_shape {
 import extdeps.languages.rust.capabilities {
   RustCapability,
   derive_traits_union,
-  rust_capability_keys,
   fn_field_derive_traits,
   kernel_int_arithmetic_traits,
   map_key_required_derive_traits,
@@ -337,7 +335,7 @@ fn v1_emit_struct_derives(
   } else if rust_symbol_wrapped_ord_carrier_shape_eligible(children: children, source_indices: source_indices) {
     let shape = v1_repr_grounding_derive_elem_shape_for_ord_carrier(children: children, source_indices: source_indices)
     let traits = v1_with_map_key_requirement(base: symbol_wrapped_ord_carrier_derive_traits(), map_key_required: map_key_required)
-    if repr_grounding_derive_completeness_predicate(rust_capability_shape_table(), rust_capability_keys(traits), shape) {
+    if repr_grounding_derive_completeness_predicate(rust_capability_shape_table(), traits, shape) {
       rust_trait_derive_attr_from_traits(traits)
     } else {
       v1_trait_derive_refuse("trait_derive_emit: symbol-wrapped ord carrier refused")
@@ -361,13 +359,13 @@ fn v1_emit_enum_derives(
   let payload_traits = v1_with_map_key_requirement(base: payload_coproduct_derive_traits(), map_key_required: map_key_required)
   match shape {
     ReprDeriveElemNullaryEnumCopy =>
-      if repr_grounding_derive_completeness_predicate(rust_capability_shape_table(), rust_capability_keys(nullary_traits), shape) {
+      if repr_grounding_derive_completeness_predicate(rust_capability_shape_table(), nullary_traits, shape) {
         rust_trait_derive_attr_from_traits(nullary_traits)
       } else {
         v1_trait_derive_refuse("trait_derive_emit: nullary coproduct derive completeness refused")
       }
     ReprDeriveElemPayloadCoproduct =>
-      if repr_grounding_derive_completeness_predicate(rust_capability_shape_table(), rust_capability_keys(payload_traits), shape) {
+      if repr_grounding_derive_completeness_predicate(rust_capability_shape_table(), payload_traits, shape) {
         rust_trait_derive_attr_from_traits(payload_traits)
       } else {
         v1_trait_derive_refuse("trait_derive_emit: payload coproduct derive completeness refused")
@@ -1395,7 +1393,7 @@ fn v1_emit_struct_from_capability_table(
   let impl_bodies = if repr_grounding_group_completion_carrier(module_path: module_path, name: name)
     && repr_grounding_derive_completeness_predicate(
       rust_capability_shape_table(),
-      rust_capability_keys(kernel_int_arithmetic_traits()),
+      kernel_int_arithmetic_traits(),
       ReprDeriveElemKernelInt
     ) {
     rust_supplemental_impls_group_completion()
@@ -1409,7 +1407,7 @@ fn v1_emit_enum_supplemental_impls(module_path: String, name: String) -> String 
   if repr_grounding_supplemental_bool_host_bridge_target(module_path: module_path, name: name)
     && repr_grounding_derive_completeness_predicate(
       rust_capability_shape_table(),
-      rust_capability_keys(nullary_coproduct_derive_traits()),
+      nullary_coproduct_derive_traits(),
       ReprDeriveElemNullaryEnumCopy
     ) {
     rust_supplemental_impls_bool_coproduct()

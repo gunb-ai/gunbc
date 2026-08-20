@@ -1,7 +1,23 @@
 module v2.test.emit.trait_derive_seed_emit_binding_test
 
 import extdeps.languages.rust.capabilities {
-  rust_capability_keys,
+  RustCapability,
+  RustDebug,
+  RustClone,
+  RustCopy,
+  RustPartialEq,
+  RustEq,
+  RustPartialOrd,
+  RustOrd,
+  RustHash,
+  RustSerialize,
+  RustDeserialize,
+  RustAdd,
+  RustSub,
+  RustMul,
+  RustDiv,
+  RustRem,
+  RustNeg,
   kernel_int_arithmetic_traits,
   nullary_coproduct_derive_traits,
   payload_coproduct_derive_traits,
@@ -34,7 +50,7 @@ data trait_derive_seed_emit_binding_note: String = "Layer-boundary mock: std.tra
 test fn nullary_coproduct_predicate_satisfied() -> Bool {
   repr_grounding_derive_completeness_predicate(
     rust_capability_shape_table(),
-    rust_capability_keys(nullary_coproduct_derive_traits()),
+    nullary_coproduct_derive_traits(),
     ReprDeriveElemNullaryEnumCopy
   )
 }
@@ -48,7 +64,7 @@ test fn record_heap_attr_contains_serde() -> Bool {
 test fn ord_carrier_shape_rejects_nullary_copy_traits() -> Bool {
   repr_grounding_derive_completeness_predicate(
     rust_capability_shape_table(),
-    rust_capability_keys(nullary_coproduct_derive_traits()),
+    nullary_coproduct_derive_traits(),
     ReprDeriveElemSymbolWrappedOrdCarrier
   ) == false
 }
@@ -62,7 +78,7 @@ test fn ord_carrier_attr_differs_from_nullary() -> Bool {
 test fn payload_coproduct_predicate_satisfied() -> Bool {
   repr_grounding_derive_completeness_predicate(
     rust_capability_shape_table(),
-    rust_capability_keys(payload_coproduct_derive_traits()),
+    payload_coproduct_derive_traits(),
     ReprDeriveElemPayloadCoproduct
   )
 }
@@ -75,7 +91,7 @@ test fn group_completion_supplemental_impl_present() -> Bool {
   )
   let predicate_ok = repr_grounding_derive_completeness_predicate(
     rust_capability_shape_table(),
-    rust_capability_keys(kernel_int_arithmetic_traits()),
+    kernel_int_arithmetic_traits(),
     ReprDeriveElemKernelInt
   )
   let wrong_module = repr_grounding_group_completion_carrier(
@@ -126,7 +142,7 @@ test fn bool_supplemental_impl_present() -> Bool {
   )
   let predicate_ok = repr_grounding_derive_completeness_predicate(
     rust_capability_shape_table(),
-    rust_capability_keys(nullary_coproduct_derive_traits()),
+    nullary_coproduct_derive_traits(),
     ReprDeriveElemNullaryEnumCopy
   )
   let wrong_module = repr_grounding_supplemental_bool_host_bridge_target(

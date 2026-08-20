@@ -10,7 +10,6 @@ import std.trait_derive_shape {
   ReprDeriveElemSymbolWrappedOrdCarrier,
   ReprDeriveElemPayloadCoproduct,
   ReprDeriveElemUnknown,
-  TargetCapabilityKey,
   TargetCapabilityShapeRow,
   TargetCapabilityShapeTable
 }
@@ -19,115 +18,115 @@ import std.algebra {
   Empty
 }
 
-data rust_capabilities_note: String = "Rust and serde CAPABILITY ROWS for the B1 capability-keyed model (operator ruling 2026-08-19, option b). std.trait_derive_shape holds the AGNOSTIC half -- the TargetCapabilityKey brand, the source-shape vocabulary, and a generic table lookup parameterised by a TargetCapabilityShapeTable. THIS module holds the RUST-SPECIFIC half: the closed RustCapability alphabet, the shape-by-capability rows, the derive-trait list builders, and the single lift from alphabet to key. A new target language adds a sibling module of rows here and edits neither the fold nor std -- DESIGN section 4: a new target language is ROWS in extdeps/languages, never an edit to the fold; section 3 puts realization-selecting dispatch peripheral, never in the interface. WHY THE COPRODUCT WAS THE WRONG CARRIER: Serialize and Deserialize are serde names, not Rust language names -- an independently versioned upstream -- and their spellings were ALREADY cited in extdeps.languages.rust.emit rust_trait_derive_spelling, so the std coproduct was a redundant KEY SET forked from a key extdeps already spelled out. This migration finishes a move someone had already started rather than opening a new one. ROW FIDELITY: the shape-by-capability rows below were extracted mechanically from the predecessor nested match and verified cell-for-cell -- 71 admitted pairs extracted against 71 in the source -- rather than re-derived by hand. WHAT IS DELIBERATELY ABSENT: an earlier revision of this module also declared sixteen one-line data rows binding each key name to its own symbol literal, plus a rust_capability_emission_order list. Both were authored in this migration and NEITHER WAS EVER REFERENCED -- zero call sites corpus-wide -- so they were experimental residue by DESIGN section 6, a new artifact with no final consumer, and they are deleted rather than left to read as authority. Emission order is carried by the list builders, which is where it was before this migration; a key is spelled as its symbol literal at the one place that needs it."
+data rust_capabilities_note: String = "Rust and serde CAPABILITY ROWS for the B1 capability-keyed model (operator ruling 2026-08-19, option b). std.trait_derive_shape holds the AGNOSTIC half -- the source-shape vocabulary and a table lookup PARAMETERIZED on the capability carrier, naming no carrier itself. THIS module holds the RUST-SPECIFIC half: the closed RustCapability alphabet, the shape-by-capability rows instantiated at K = RustCapability, and the derive-trait list builders. A new target language adds a sibling module of rows here and edits neither the fold nor std -- DESIGN section 4: a new target language is ROWS in extdeps/languages, never an edit to the fold. WHY THE COPRODUCT WAS THE WRONG CARRIER FOR THE INTERFACE: Serialize and Deserialize are serde names, not Rust language names -- an independently versioned upstream -- and their spellings were ALREADY cited in extdeps.languages.rust.emit, so the std coproduct was a redundant KEY SET forked from a key extdeps already spelled out. WHY IT IS STILL THE RIGHT CARRIER FOR THE REALIZATION: an open Symbol brand cannot be matched exhaustively, and rust_trait_derive_spelling is TOTAL by exhaustive match. So the alphabet is re-homed here rather than deleted, and because the std predicate is generic the seed path speaks the alphabet END TO END -- v1.compiler.trait_derive_emit instantiates the predicate at K = RustCapability and needs no lift into the open key space at all. An earlier revision of this migration carried rust_capability_key and rust_capability_keys to perform exactly that lift; parameterizing std deleted both, which is the usual tell that the decomposition is right. ROW FIDELITY: the rows below were extracted mechanically from the predecessor nested match and verified cell-for-cell -- 71 admitted pairs extracted against 71 in the source -- rather than re-derived by hand. WHAT IS DELIBERATELY ABSENT: sixteen one-line data rows binding each key name to its symbol literal, and a rust_capability_emission_order list, were authored in this migration and NEVER REFERENCED -- experimental residue by DESIGN section 6, deleted rather than left to read as authority. Emission order is carried by the list builders, which is where it was before this migration."
 
-fn rust_capability_shape_table() -> TargetCapabilityShapeTable {
+fn rust_capability_shape_table() -> TargetCapabilityShapeTable<RustCapability> {
   TargetCapabilityShapeTable {
     rows: [
       TargetCapabilityShapeRow {
         shape: ReprDeriveElemKernelString,
         capabilities: [
-          ^target_capability_debug,
-          ^target_capability_clone,
-          ^target_capability_partialeq,
-          ^target_capability_eq,
-          ^target_capability_partialord,
-          ^target_capability_ord,
-          ^target_capability_hash,
-          ^target_capability_serialize,
-          ^target_capability_deserialize
+          RustDebug,
+          RustClone,
+          RustPartialEq,
+          RustEq,
+          RustPartialOrd,
+          RustOrd,
+          RustHash,
+          RustSerialize,
+          RustDeserialize
         ]
       },
       TargetCapabilityShapeRow {
         shape: ReprDeriveElemKernelInt,
         capabilities: [
-          ^target_capability_debug,
-          ^target_capability_clone,
-          ^target_capability_copy,
-          ^target_capability_partialeq,
-          ^target_capability_eq,
-          ^target_capability_partialord,
-          ^target_capability_ord,
-          ^target_capability_hash,
-          ^target_capability_serialize,
-          ^target_capability_deserialize,
-          ^target_capability_add,
-          ^target_capability_sub,
-          ^target_capability_mul,
-          ^target_capability_div,
-          ^target_capability_rem,
-          ^target_capability_neg
+          RustDebug,
+          RustClone,
+          RustCopy,
+          RustPartialEq,
+          RustEq,
+          RustPartialOrd,
+          RustOrd,
+          RustHash,
+          RustSerialize,
+          RustDeserialize,
+          RustAdd,
+          RustSub,
+          RustMul,
+          RustDiv,
+          RustRem,
+          RustNeg
         ]
       },
       TargetCapabilityShapeRow {
         shape: ReprDeriveElemKernelBool,
         capabilities: [
-          ^target_capability_debug,
-          ^target_capability_clone,
-          ^target_capability_copy,
-          ^target_capability_partialeq,
-          ^target_capability_eq,
-          ^target_capability_partialord,
-          ^target_capability_ord,
-          ^target_capability_hash,
-          ^target_capability_serialize,
-          ^target_capability_deserialize
+          RustDebug,
+          RustClone,
+          RustCopy,
+          RustPartialEq,
+          RustEq,
+          RustPartialOrd,
+          RustOrd,
+          RustHash,
+          RustSerialize,
+          RustDeserialize
         ]
       },
       TargetCapabilityShapeRow {
         shape: ReprDeriveElemKernelUnit,
         capabilities: [
-          ^target_capability_debug,
-          ^target_capability_clone,
-          ^target_capability_copy,
-          ^target_capability_partialeq,
-          ^target_capability_eq,
-          ^target_capability_partialord,
-          ^target_capability_ord,
-          ^target_capability_hash,
-          ^target_capability_serialize,
-          ^target_capability_deserialize
+          RustDebug,
+          RustClone,
+          RustCopy,
+          RustPartialEq,
+          RustEq,
+          RustPartialOrd,
+          RustOrd,
+          RustHash,
+          RustSerialize,
+          RustDeserialize
         ]
       },
       TargetCapabilityShapeRow {
         shape: ReprDeriveElemNullaryEnumCopy,
         capabilities: [
-          ^target_capability_debug,
-          ^target_capability_clone,
-          ^target_capability_copy,
-          ^target_capability_partialeq,
-          ^target_capability_eq,
-          ^target_capability_partialord,
-          ^target_capability_ord,
-          ^target_capability_hash,
-          ^target_capability_serialize,
-          ^target_capability_deserialize
+          RustDebug,
+          RustClone,
+          RustCopy,
+          RustPartialEq,
+          RustEq,
+          RustPartialOrd,
+          RustOrd,
+          RustHash,
+          RustSerialize,
+          RustDeserialize
         ]
       },
       TargetCapabilityShapeRow {
         shape: ReprDeriveElemSymbolWrappedOrdCarrier,
         capabilities: [
-          ^target_capability_debug,
-          ^target_capability_clone,
-          ^target_capability_partialeq,
-          ^target_capability_eq,
-          ^target_capability_partialord,
-          ^target_capability_ord,
-          ^target_capability_hash,
-          ^target_capability_serialize,
-          ^target_capability_deserialize
+          RustDebug,
+          RustClone,
+          RustPartialEq,
+          RustEq,
+          RustPartialOrd,
+          RustOrd,
+          RustHash,
+          RustSerialize,
+          RustDeserialize
         ]
       },
       TargetCapabilityShapeRow {
         shape: ReprDeriveElemPayloadCoproduct,
         capabilities: [
-          ^target_capability_debug,
-          ^target_capability_clone,
-          ^target_capability_partialeq,
-          ^target_capability_eq,
-          ^target_capability_hash,
-          ^target_capability_serialize,
-          ^target_capability_deserialize
+          RustDebug,
+          RustClone,
+          RustPartialEq,
+          RustEq,
+          RustHash,
+          RustSerialize,
+          RustDeserialize
         ]
       },
       TargetCapabilityShapeRow {
@@ -158,26 +157,6 @@ type RustCapability
 
 data rust_capability_alphabet_note: String = "CLOSED Rust capability alphabet. The B1 keyed contract makes TargetCapabilityKey an OPEN Symbol brand so unrelated modules can share one key space without a coproduct edit -- but an open brand cannot be matched exhaustively, and rust_trait_derive_spelling was TOTAL by exhaustive match before this migration. Deleting the coproduct outright would have traded a structural guarantee (DESIGN section 4b: no Accepted program can spell an unknown capability) for a runtime refusal, which is a rung DROP dressed as a migration. So the coproduct is RE-HOMED rather than deleted: this closed alphabet is Rust s own realization vocabulary, exhaustive at every spelling site, and rust_capability_key is the single total producer that lifts it into the shared open key space. Interface speaks keys; realization speaks the alphabet (DESIGN section 3)."
 
-fn rust_capability_key(c: RustCapability) -> TargetCapabilityKey {
-  match c {
-    RustDebug => ^target_capability_debug
-    RustClone => ^target_capability_clone
-    RustCopy => ^target_capability_copy
-    RustPartialEq => ^target_capability_partialeq
-    RustEq => ^target_capability_eq
-    RustPartialOrd => ^target_capability_partialord
-    RustOrd => ^target_capability_ord
-    RustHash => ^target_capability_hash
-    RustSerialize => ^target_capability_serialize
-    RustDeserialize => ^target_capability_deserialize
-    RustAdd => ^target_capability_add
-    RustSub => ^target_capability_sub
-    RustMul => ^target_capability_mul
-    RustDiv => ^target_capability_div
-    RustRem => ^target_capability_rem
-    RustNeg => ^target_capability_neg
-  }
-}
 
 fn record_derive_traits_heap() -> List<RustCapability> {
   Cons {
@@ -352,9 +331,6 @@ fn kernel_int_arithmetic_traits() -> List<RustCapability> {
   }
 }
 
-fn rust_capability_keys(capabilities: List<RustCapability>) -> List<TargetCapabilityKey> {
-  capabilities |> map(c => rust_capability_key(c))
-}
 
 data rust_capability_list_ops_home_note: String = "derive_traits_contain and derive_traits_union live HERE, typed on the closed RustCapability alphabet, and not in std.trait_derive_shape. They arrived in this migration by relocation rather than by authoring: in std they were typed on the OPEN TargetCapabilityKey brand while their only consumer, v1.compiler.trait_derive_emit v1_with_map_key_requirement, threads RustCapability end to end -- so the signature laundered the closed alphabet into the open key space, which is exactly the guarantee the alphabet exists to hold (DESIGN section 4b). Caught in review, not by the compiler. THE ALTERNATIVE REPAIR WAS WORSE AND IS RECORDED SO IT IS NOT RETRIED: keeping them in std and lifting to keys at the call site would have forced the union result back through a key-to-spelling step that no longer exists, since spelling is total only over the alphabet. DECLARED SECTION 2 RESIDUE: these are a set-union and a membership test over a list, specialized to one element type because this corpus carries no generic list union to instance. That is duplication waiting to happen -- the next element type that needs a union will either copy these or finally write the generic. Dissolves into a generic std list union when a second element type asks for one; deliberately not minted here, because authoring a new std primitive is a wider change than the review finding that produced this move."
 

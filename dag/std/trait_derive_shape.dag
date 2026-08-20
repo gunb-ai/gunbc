@@ -3,23 +3,20 @@ module std.trait_derive_shape
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import std.algebra { Cons, Empty }
-import v2.std.node { Symbol }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-data trait_derive_shape_note: String = "Target-AGNOSTIC half of the capability model: the TargetCapabilityKey brand, the ReprGroundingDeriveElemShape source-shape vocabulary, and the GENERIC table lookup and completeness predicate that take a TargetCapabilityShapeTable as a parameter. THE ROWS ARE NOT HERE. B1 (operator ruling 2026-08-19) replaced the ReprGroundingDeriveTrait coproduct -- sixteen Rust and serde trait names sitting in a std interface -- with TargetCapabilityKey, and moved every Rust-specific row (the shape-by-capability table, the derive-trait list builders, the emission rank, the spellings) into extdeps.languages.rust, so a new target is ROWS in its own extdeps module and never an edit to this fold (DESIGN section 4 N-times-M; section 3 puts realization-selecting dispatch peripheral, never in the interface). THIS FIRES THIS MODULE OWN DECLARED TRIGGER rather than overriding it: trait_derive_shape_dissolve_on said those members migrate beside each target spelling table WHEN A SECOND CONSUMER EXISTS, and the C-linkage realization is that second consumer. DECLARED RESIDUE: this module name now says derive_shape for something that is a capability authority -- a section 3 nickname for what it has become. Not renamed here because a mechanical rename across every importer bundled into a migration that is already reshaping contents makes both unreviewable; the trigger is the next change that touches this module for its own sake. Consumed by v2.compiler.trait_derive_completeness and v1.compiler.trait_derive_emit. #7174 (operator 2026-07-25): v1 emit wires (a) clone bounds on generic params for fn signatures and derive-only generic struct items and (c) serde/Debug/Ord #[derive] on named structs/enums. Root-4 arm (b): predicate-gated supplemental impl { … } blocks for coproduct-native arithmetic carriers — see trait_derive_shape_grounding_lane_handoff; ReprDeriveAdd/Sub/… rows on KernelInt are capability-table authority for repr_grounding_derive_completeness_predicate, not spellings."
+data trait_derive_shape_note: String = "Target-AGNOSTIC half of the capability model: the ReprGroundingDeriveElemShape source-shape vocabulary and the GENERIC table lookup and completeness predicate, PARAMETERIZED ON THE CAPABILITY CARRIER. THE ROWS ARE NOT HERE and NEITHER IS THE CARRIER. B1 (operator ruling 2026-08-19) replaced the ReprGroundingDeriveTrait coproduct -- sixteen Rust and serde trait names sitting in a std interface -- and moved every Rust-specific row into extdeps.languages.rust.capabilities, so a new target is ROWS in its own extdeps module and never an edit to this fold (DESIGN section 4 N-times-M). WHY THE CARRIER IS A TYPE PARAMETER AND NOT A TYPE, which is the part that was learned the expensive way: an intermediate revision of this migration declared TargetCapabilityKey HERE as Symbol where brand(...), which forced import v2.std.node into this module. required_regen_host compiles stage0 from regen_input_sources, whose roots are HARDCODED to src/v1 and dag (cli_run.rs regen_source_roots) -- src/v2 is not a regen root and never will be, because stage0 IS the v1 seed and a seed that reached into src/v2 would depend on the successor it bootstraps toward. This module is inside that closure: src/v1.compiler.trait_derive_emit and src/v1.compiler.emit_rust both import it. So the import made a closure member depend on a module the closure cannot contain, and required-regen refused BEFORE comparing any bytes. THE INVARIANT, stated so the next person does not rediscover it: A MODULE REACHABLE BY IMPORT FROM src/v1 CANNOT IMPORT v2 ANYTHING. It is closure membership, not seed-projection -- 591 dag/ modules import v2.* quite legally because src/v1 does not reach them. A seed-visible carrier would have satisfied the gate by putting the target-model concept back inside the seed closure, which is the coupling that made the predecessor work by accident; a TYPE PARAMETER removes the dependency instead of relocating it, so this module cannot violate the boundary by construction. There is also no retype target: zero type Symbol declarations exist under src/v1 or dag. Consumed by v2.compiler.trait_derive_completeness at K = TargetCapabilityKey and by v1.compiler.trait_derive_emit at K = RustCapability. NOTHING CAUGHT THIS EXCEPT THE GATE: zero blocking errors on every entry under three source roots, and 9687 of 9687 witnesses green with failed=0 on a self-provenanced floor run. Entry scope is not gate scope, a green floor is not a green regen, and a green regen is not a green corpus -- the three src/v2 consumers of these signatures are outside the regen closure and must be compiled separately."
 
 data trait_derive_shape_grounding_lane_handoff: String = "Root-4 arm (b): coproduct-native arithmetic + PartialOrd/PartialEq impl blocks for algebra carriers (GroupCompletion<Nat>, Vector). Capability table + repr_grounding_derive_completeness_predicate remain the shared authority; v1.compiler.trait_derive_emit emits impl { … } from shape rows (not #[derive]) through the seed emitter. GroupCompletion<M> pos/neg pair Add/Sub/Mul/Div landed in #7197 (dissolves interim CommutativeSemiring<Magnitude> stubs)."
 
-type TargetCapabilityKey = Symbol where brand("TargetCapabilityKey")
-
-type TargetCapabilityShapeRow {
+type TargetCapabilityShapeRow<K> {
   shape: ReprGroundingDeriveElemShape
-  capabilities: List<TargetCapabilityKey>
+  capabilities: List<K>
 }
 
-type TargetCapabilityShapeTable {
-  rows: List<TargetCapabilityShapeRow>
+type TargetCapabilityShapeTable<K> {
+  rows: List<TargetCapabilityShapeRow<K>>
 }
 
 type ReprGroundingDeriveElemShape
@@ -45,10 +42,10 @@ fn repr_grounding_elem_shape_rank(shape: ReprGroundingDeriveElemShape) -> Int {
   }
 }
 
-fn repr_grounding_derive_shape_has_trait(
-  table: TargetCapabilityShapeTable,
+fn repr_grounding_derive_shape_has_trait<K>(
+  table: TargetCapabilityShapeTable<K>,
   shape: ReprGroundingDeriveElemShape,
-  capability_key: TargetCapabilityKey
+  capability_key: K
 ) -> Bool {
   table.rows
     |> any(row => repr_grounding_elem_shape_rank(shape: row.shape)
@@ -56,9 +53,9 @@ fn repr_grounding_derive_shape_has_trait(
                   && (row.capabilities |> any(k => k == capability_key)))
 }
 
-fn repr_grounding_derive_completeness_predicate(
-  table: TargetCapabilityShapeTable,
-  required: List<TargetCapabilityKey>,
+fn repr_grounding_derive_completeness_predicate<K>(
+  table: TargetCapabilityShapeTable<K>,
+  required: List<K>,
   shape: ReprGroundingDeriveElemShape
 ) -> Bool {
   required |> all(k => repr_grounding_derive_shape_has_trait(
@@ -68,7 +65,7 @@ fn repr_grounding_derive_completeness_predicate(
   ))
 }
 
-data pair_completion_shape_note: String = "Target-agnostic authority for the Grothendieck pair-completion operator BODIES on GroupCompletion<M> (std.algebra). Each output component is a polynomial over the four operand components self.pos, self.neg, rhs.pos, rhs.neg: an arm is a sum of terms, a term is a product of factors, a factor names one operand component. Selection (which traits apply) stays in the capability table above; SPELLING (trait paths, where-clauses, field syntax) lives per target in extdeps.languages.rust.emit. Reuses ReprGroundingDeriveTrait as the op key rather than minting a parallel operator enum."
+data pair_completion_shape_note: String = "Target-agnostic authority for the Grothendieck pair-completion operator BODIES on GroupCompletion<M> (std.algebra). Each output component is a polynomial over the four operand components self.pos, self.neg, rhs.pos, rhs.neg: an arm is a sum of terms, a term is a product of factors, a factor names one operand component. Selection (which traits apply) stays in the capability table above; SPELLING (trait paths, where-clauses, field syntax) lives per target in extdeps.languages.rust.emit. PairCompletionOp IS A DELIBERATE MINT AND THE PREDECESSOR NOTE DECLINED TO MAKE IT, so the reversal is recorded rather than left as drift: that note said it reused ReprGroundingDeriveTrait as the op key RATHER THAN MINTING A PARALLEL OPERATOR ENUM, which was right while one key set was visible to both this module and its consumers. It no longer is -- the capability carrier is now a type parameter here and a branded Symbol in v2, and neither can be named from inside the src/v1 regen closure that contains this module. The alternative was to parameterize these rows too, which is impossible: a generic K cannot be CONSTRUCTED, and pair_completion_op_rows constructs its keys. So the choice was mint or move the Grothendieck arithmetic into a target module, and moving it would be the section 3 violation. What is minted is also genuinely smaller and different: five algebraic operators, not sixteen target capabilities, and the mapping between them is the target's business -- extdeps.languages.rust.emit joins on this operator identity."
 
 type PairCompletionOperand
   = PairCompletionSelf
@@ -96,8 +93,15 @@ type PairCompletionBody
   | PairCompletionNegatedAddend
   | PairCompletionCanonicalQuotient
 
+type PairCompletionOp
+  = PairCompletionOpNeg
+  | PairCompletionOpAdd
+  | PairCompletionOpSub
+  | PairCompletionOpMul
+  | PairCompletionOpDiv
+
 type PairCompletionOpRow {
-  op: TargetCapabilityKey
+  op: PairCompletionOp
   body: PairCompletionBody
 }
 
@@ -111,7 +115,7 @@ fn pair_completion_factor(
 fn pair_completion_op_rows() -> List<PairCompletionOpRow> {
   [
     PairCompletionOpRow {
-      op: ^target_capability_neg,
+      op: PairCompletionOpNeg,
       body: PairCompletionSumOfProducts {
         pos: PairCompletionArm {
           terms: [
@@ -130,7 +134,7 @@ fn pair_completion_op_rows() -> List<PairCompletionOpRow> {
       }
     },
     PairCompletionOpRow {
-      op: ^target_capability_add,
+      op: PairCompletionOpAdd,
       body: PairCompletionSumOfProducts {
         pos: PairCompletionArm {
           terms: [
@@ -154,9 +158,9 @@ fn pair_completion_op_rows() -> List<PairCompletionOpRow> {
         }
       }
     },
-    PairCompletionOpRow { op: ^target_capability_sub, body: PairCompletionNegatedAddend },
+    PairCompletionOpRow { op: PairCompletionOpSub, body: PairCompletionNegatedAddend },
     PairCompletionOpRow {
-      op: ^target_capability_mul,
+      op: PairCompletionOpMul,
       body: PairCompletionSumOfProducts {
         pos: PairCompletionArm {
           terms: [
@@ -192,7 +196,7 @@ fn pair_completion_op_rows() -> List<PairCompletionOpRow> {
         }
       }
     },
-    PairCompletionOpRow { op: ^target_capability_div, body: PairCompletionCanonicalQuotient }
+    PairCompletionOpRow { op: PairCompletionOpDiv, body: PairCompletionCanonicalQuotient }
   ]
 }
 

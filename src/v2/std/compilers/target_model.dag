@@ -146,9 +146,7 @@ import v2.std.text {
   Char,
   String
 }
-import std.trait_derive_shape {
-  TargetCapabilityKey
-}
+
 import v2.std.host_transport {
   EmitHostRuntimeRow,
   TargetEmitHostRuntimeRow,
@@ -9553,7 +9551,9 @@ data target_external_authority_field_uri_scheme: Symbol = ^target_external_autho
 data target_external_authority_field_uri_locator: Symbol = ^target_external_authority_field_uri_locator
 
 
-data target_capability_key_fork_state_note: String = "TargetCapabilityKey is the SINGLE brand for a named target capability and it is declared ONCE, in std.trait_derive_shape; this module IMPORTS it. B1 collapsed two predecessors into it. TargetDeriveTraitKey was not an independent authority -- every value of it came from one producer -- so it was the section 3 nickname pair and it is gone. An earlier revision of this migration additionally left a LOCAL type TargetCapabilityKey declared here while ALSO importing the identical declaration from std.trait_derive_shape: two byte-identical brand declarations for one concept, one shadowing the other inside a single module. It compiled clean and was removed on sight. STATED AT THE STRENGTH OF THE EVIDENCE, because the temptation was to bundle it with the interpreter failure found the same hour: the duplicate declaration is a section 3 violation on its own terms, and NOTHING MEASURED SHOWS IT CAUSED A RUNTIME FAILURE -- removing it did NOT fix the NoSuchFunction, which came from the wrapper described in target_capability_key_wire_identity_note. Two defects in one migration, found in sequence, each with its own evidence."
+type TargetCapabilityKey = Symbol where brand("TargetCapabilityKey")
+
+data target_capability_key_fork_state_note: String = "TargetCapabilityKey is the SINGLE brand for a named target capability and it is declared HERE, in v2.std.compilers.target_model. B1 collapsed TargetDeriveTraitKey into it -- that brand was not an independent authority, every value of it came from one producer, so it was the section 3 nickname pair and it is gone. THE BRAND WAS BRIEFLY MOVED DOWN INTO std.trait_derive_shape AND MOVED BACK, and the round trip is recorded because the reason is structural rather than a change of mind. The brand carrier is Symbol, which is declared only in src/v2/std/node.dag; std.trait_derive_shape is inside the src/v1 regen import closure, whose roots are hardcoded to src/v1 and dag (cli_run.rs regen_source_roots), so a Symbol-carried brand cannot live there. required-regen refused before comparing any bytes, while zero blocking errors under three source roots and a 9687-witness green floor run all reported success. std now names NO carrier at all: its shape table and completeness predicate are parameterized on K, instantiated at TargetCapabilityKey by v2 consumers and at RustCapability by the seed path. That is stronger than moving the declaration -- a type parameter removes the dependency rather than relocating it, so the closure boundary is not something std can violate. THE SECTION 3 PROPERTY SURVIVES THE ROUND TRIP: one declaration, here, imported by everything that needs it. An intermediate revision additionally left a LOCAL declaration here while ALSO importing the identical one from std -- two byte-identical brand declarations, one shadowing the other in a single module. It compiled clean and was removed on sight, and nothing measured shows it caused any runtime failure."
 
 
 type TargetCapabilityRequirement {

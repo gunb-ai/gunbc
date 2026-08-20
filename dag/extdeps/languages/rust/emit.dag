@@ -9,6 +9,12 @@ import std.emit_model {
   SimpleMethodSpec
 }
 import std.trait_derive_shape {
+  PairCompletionOp,
+  PairCompletionOpNeg,
+  PairCompletionOpAdd,
+  PairCompletionOpSub,
+  PairCompletionOpMul,
+  PairCompletionOpDiv,
   PairCompletionArm,
   PairCompletionBody,
   PairCompletionCanonicalQuotient,
@@ -23,7 +29,6 @@ import std.trait_derive_shape {
   PairCompletionSelf,
   PairCompletionSumOfProducts,
   PairCompletionTerm,
-  TargetCapabilityKey,
   pair_completion_body_uses_rhs,
   pair_completion_op_rows
 }
@@ -316,7 +321,7 @@ fn rust_qualified_module_mod_filename(qualified_module: String) -> String {
 data rust_pair_completion_spelling_note: String = "Rust spellings for the target-agnostic pair-completion rows in std.trait_derive_shape. Terminals only: trait paths, method names, where-bounds, carrier field syntax. The ARITHMETIC is not spelled here — each impl body is rendered from the row's polynomial arms, so a change to the Grothendieck construction is a row edit, never a string edit."
 
 type RustPairCompletionSpelling {
-  capability_key: TargetCapabilityKey
+  capability_key: PairCompletionOp
   method: String
   trait_path: String
   where_bounds: String
@@ -325,16 +330,16 @@ type RustPairCompletionSpelling {
 data rust_pair_completion_carrier: String = "GroupCompletion"
 
 data rust_pair_completion_spellings: List<RustPairCompletionSpelling> = [
-  { capability_key: ^target_capability_neg, method: "neg", trait_path: "std::ops::Neg", where_bounds: "" },
-  { capability_key: ^target_capability_add, method: "add", trait_path: "std::ops::Add", where_bounds: "where M: std::ops::Add<Output = M>," },
-  { capability_key: ^target_capability_sub, method: "sub", trait_path: "std::ops::Sub", where_bounds: "where M: std::ops::Add<Output = M> + std::ops::Neg<Output = M>," },
-  { capability_key: ^target_capability_mul, method: "mul", trait_path: "std::ops::Mul", where_bounds: "where M: std::ops::Add<Output = M> + std::ops::Mul<Output = M> + Clone," },
-  { capability_key: ^target_capability_div, method: "div", trait_path: "std::ops::Div", where_bounds: "where M: std::ops::Add<Output = M> + std::ops::Sub<Output = M> + std::ops::Div<Output = M> + Default," }
+  { capability_key: PairCompletionOpNeg, method: "neg", trait_path: "std::ops::Neg", where_bounds: "" },
+  { capability_key: PairCompletionOpAdd, method: "add", trait_path: "std::ops::Add", where_bounds: "where M: std::ops::Add<Output = M>," },
+  { capability_key: PairCompletionOpSub, method: "sub", trait_path: "std::ops::Sub", where_bounds: "where M: std::ops::Add<Output = M> + std::ops::Neg<Output = M>," },
+  { capability_key: PairCompletionOpMul, method: "mul", trait_path: "std::ops::Mul", where_bounds: "where M: std::ops::Add<Output = M> + std::ops::Mul<Output = M> + Clone," },
+  { capability_key: PairCompletionOpDiv, method: "div", trait_path: "std::ops::Div", where_bounds: "where M: std::ops::Add<Output = M> + std::ops::Sub<Output = M> + std::ops::Div<Output = M> + Default," }
 ]
 
 data rust_pair_completion_key_join_note: String = "The spelling rows carry the TargetCapabilityKey they answer for, so the join to std.trait_derive_shape pair_completion_op_rows is an identity match on the key itself. This REPLACES a sixteen-arm rust_pair_completion_op_key that mapped every capability to a method-name String purely to compare Strings -- a second, positional naming scheme for something the key already names (DESIGN section 3). That function was total-with-no-wildcard, which was the right repair for the coproduct it matched on; once the key became the open TargetCapabilityKey brand an exhaustive match was no longer available, and reconstructing one would have meant re-closing the brand. Joining on the key is the construction the totality argument was standing in for: a capability with no pair-completion spelling still resolves to Absent and still surfaces through the compile_error! arm. ONE THING GOT WEAKER AND IT IS NOT PAPERED OVER: the old arm printed the missing op's own method name, which it could only do because op_key was total over a closed coproduct. TargetCapabilityKey is an open Symbol brand and this corpus has no Symbol-to-String projection, so the arm now prints the keys that ARE spelled and says one row is unmatched, rather than naming the unmatched key. That is less precise and it is a real loss; it is not a silent one -- the arm still refuses at Rust compile time, still identifies the drifted pair of tables, and the reader can difference the printed list against pair_completion_op_rows in one step. NEXT-RUNG TRIGGER: a Symbol-to-String projection in v2.std.node, at which point the key names itself again."
 
-fn rust_pair_completion_spelling_for(op: TargetCapabilityKey) -> RustPairCompletionSpelling? {
+fn rust_pair_completion_spelling_for(op: PairCompletionOp) -> RustPairCompletionSpelling? {
   rust_pair_completion_spellings
     |> filter(s => s.capability_key == op)
     |> first

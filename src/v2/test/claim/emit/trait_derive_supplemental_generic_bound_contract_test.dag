@@ -12,9 +12,7 @@ import std.disposition {
   Scaffold,
   SingleAuthority
 }
-import std.trait_derive_shape {
-  TargetCapabilityKey
-}
+
 import extdeps.external_authority {
   ExternalAuthority
 }
@@ -34,6 +32,7 @@ import extdeps.languages.rust.derive_contracts {
   serde_1_0_228_hash_set_serialize_authority
 }
 import v2.std.compilers.target_model {
+  TargetCapabilityKey,
   TargetCollectionRealization,
   TargetCapabilityEligibilityRow,
   TargetCapabilityEligibilityTable,
