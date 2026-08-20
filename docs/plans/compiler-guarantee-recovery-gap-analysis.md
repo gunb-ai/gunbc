@@ -836,9 +836,49 @@ registered in `v1_interpreter_dispatch_generated.rs`'s dispatch table: none retu
 generic/parametric `T` from untyped input (String/JSON/YAML) — every builtin's return type
 is a fixed concrete shape. There is no reflection-based or serde-style mechanism in v1 that
 constructs an arbitrary user-declared nominal type from external data outside of ordinary
-record-literal, cast, or (per above) variant-literal expression forms. This closes the
-deserialization sub-question as not a distinct bypass route, rather than leaving it
-untested — the only unwired literal-construction form found is variant construction, above.
+record-literal, cast, or (per above) variant-literal expression forms. Turned into an EXECUTED
+confirmation rather than resting on the registry read alone: probe f14 calls a guessed
+`from_json`-shaped builtin against the sealed fixture type, cross-module. Measured: 1 total
+diagnostic row, 0 `SoleConstructorViolation` rows — the one diagnostic is name-resolution
+failure (the call never resolves to anything), not a construction-site check outcome. So
+the call fails before reaching any construction semantics at all, closing the
+deserialization sub-question by execution: not a distinct bypass route, and not something
+that silently succeeds past `sole_constructor` — it never gets that far. The only unwired
+literal-construction form found is variant construction, above.
+
+**Exposure, per hole, so a confirmed defect is never read as a confirmed victim (explicit
+ask, 2026-08-20):**
+- *Order-dependence (census-ambiguous bare name):* sole_constructor type declarations
+  corpus-wide (`dag/` + `src/v2/`, excluding this audit's own planted fixtures) = 69 names
+  (fierce-ant-91's independent count-based measurement: 70/86/zero — the 1-name delta is
+  immaterial, likely a `^type` regex-boundary difference such as a generic `<T>` line);
+  names declared more than once anywhere in that corpus = 86; intersection today = **0**.
+  Verified by two independent methods (count-based and name-list-intersection-based); the
+  intersection method was itself positive-controlled by re-including this audit's own
+  planted `DupShape` collision fixture, which the method correctly surfaced. **Zero live
+  exposure today** — the hole requires a future sole_constructor type whose bare name
+  collides with any other module-scope declaration anywhere in a consuming corpus's
+  transitive closure; nothing warns an author when that PR lands.
+- *Variant construction:* fierce-ant-91 independently measured **zero sole_constructor
+  coproducts exist in the production corpus today** (every existing sole_constructor type
+  is a plain record, `OrderedClosedInterval<T>` included). **Zero live exposure today** —
+  the hole requires a future sole_constructor type declared as a coproduct; nothing warns an
+  author when that PR lands either.
+- *Deserialization/emit-reconstruction:* not applicable — no such construction path exists
+  in the language at all (confirmed both by registry read and by execution above), so this
+  has no exposure dimension; it is closed, not open-with-zero-exposure.
+
+**The pattern across every hole, stated as the headline finding rather than left implicit:**
+`sole_constructor` covers exactly the construction shapes the corpus happens to use today
+(plain records, census-unique names); its boundary was undocumented until this pass; and its
+current safety is a property of the corpus's current contents, not a property of the wall
+itself. Every confirmed hole here has zero live victims today, and every one of them is
+exactly one ordinary PR away from becoming real — a sole_constructor type declared as a
+coproduct, or given a bare name that collides with anything else in scope — with no
+diagnostic, warning, or review signal marking that PR as the one that lands in the gap. This
+is neither "sole_constructor is broken" (nothing accepted today is wrong) nor "sole_constructor
+holds" (its guarantee is narrower than its name claims) — it is a wall whose current
+soundness is corpus-contingent, not structural.
 
 *Generic carriers — CONFIRMED for the two forms above, on a parameterized carrier.* A
 cross-module record literal and a cross-module cast of `OrderedClosedInterval<T>`
@@ -916,21 +956,28 @@ through the carrier's own accepted mint path. This is a distinct invariant from 
 should treat it as a separate open question rather than something the construction wall
 retires.
 
-*Overall verdict:* **available today, for its stated scope, with one confirmed structural
-hole and one confirmed scope boundary.** `sole_constructor` reliably walls off record-literal
-and cast construction (including generic instantiation) of a census-UNIQUE type name, at
+*Overall verdict:* **available today, for its stated scope, with two confirmed structural
+holes and one confirmed scope boundary — and, per the exposure ledger above, corpus-contingent
+rather than structural.** `sole_constructor` reliably walls off record-literal and cast
+construction (including generic instantiation) of a census-UNIQUE, plain-record type, at
 every AST position and via the interpreter, with no compiler-module exemption. It does NOT
 reliably wall off a census-AMBIGUOUS type name — resolution silently guesses by
 last-import-wins rather than refusing or consulting the caller's actual selection, the
 `presence_check_census_gate_note` precedent's exact failure mode, landed here without the
-stand-down that gate uses to avoid it. Recommended next-rung trigger: apply the same
-local-declares-first carve-out `presence_check_census_gate_note` documents (read
-`str_bindings` — local declarations only — before falling through to the
-import-order-overlaid `lookup_type_by_name`), which is a decidable, gettable fix once
-grounded, not a ratchet. Until landed, any `sole_constructor` carrier (existing or a planned
-`Refined<B>`) whose bare name could collide with another module-scope declaration anywhere
-in a consuming corpus's transitive closure carries this risk, and that population has not
-been census-surveyed for actual bare-name collisions today.
+stand-down that gate uses to avoid it (0 live exposure today, corpus-wide census 69/86/0). It
+also does NOT reach variant construction of a sole_constructor coproduct at all — a distinct,
+entirely unwired AST form (0 live exposure today — zero sole_constructor coproducts exist in
+the corpus). Recommended next-rung triggers: (1) apply the same local-declares-first
+carve-out `presence_check_census_gate_note` documents (read `str_bindings` — local
+declarations only — before falling through to the import-order-overlaid
+`lookup_type_by_name`) for the ambiguity hole; (2) add a variant-construction call site
+alongside the existing `ExprCast`/`infer_record_lit_structural` sites for the coproduct hole.
+Both are decidable, gettable fixes once scoped, not ratchets. Until landed, any
+`sole_constructor` carrier (existing or a planned `Refined<B>`) that is later declared as a
+coproduct, or whose bare name later collides with another module-scope declaration anywhere
+in a consuming corpus's transitive closure, silently loses its guarantee with no diagnostic
+marking the PR that introduces the gap — the wall's soundness today is a fact about what the
+corpus currently contains, not a fact the wall itself enforces.
 
 ## 11. Audit queue
 
@@ -953,7 +1000,14 @@ been census-surveyed for actual bare-name collisions today.
    and `src/v2/std/refinement.dag`'s `refine` both accept a caller-supplied validator predicate,
    so `sole_constructor` alone — even fully applied — cannot make a refinement carrier's
    accepted values honor their nominal invariant; the caller can supply a validator that always
-   admits. Full form-by-form table, generic-carrier verdict, and open sub-questions in §10.
+   admits. Separately CONFIRMED HOLE BY EXECUTION: variant construction of a
+   `sole_constructor` coproduct is entirely unwired — a distinct third AST form from the
+   record-literal/cast pair, never reaching `sole_constructor_construction_diags` at all.
+   Both holes carry zero live exposure today (corpus-wide census, §10) — no existing
+   sole_constructor type is a coproduct, and no sole_constructor bare name collides with
+   another declaration today — but neither is a structural property of the wall: either
+   condition is one ordinary PR away, with no diagnostic marking that PR. Full form-by-form
+   table, generic-carrier verdict, exposure ledger, and open sub-questions in §10.
 1b. **Author the missing Tier 1 RED controls** (new, and the cheapest item here). They never
    existed. Start with the cardinality archetype, method existence, and declared-return
    conformance — each a three-line `.dag` program with an expected-error acceptance criterion,
