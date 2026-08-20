@@ -17,7 +17,7 @@ pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "pre_push.rs",
     "census_exclude_derive.rs",
     "derived_realization_schedule.rs",
-    "expected_red_roster_join.rs",
+    "v1_compiler_expected_red_roster_join.rs",
     "memory_governor.rs",
     "std_lens_verdict.rs",
     "v2_compiler_body_producer.rs",
@@ -26,9 +26,11 @@ pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "v2_compiler_discovery_enumeration.rs",
     "v2_compiler_parse_engine_hooks.rs",
     "v2_compiler_use_site_verdict.rs",
-    "required_regen_host.rs",
-    "bootstrap_stage0_crate_layout_generated.rs",
     "cssl_seed_linked_closure_assembly.rs",
+    "required_regen_host.rs",
+    "v2_compiler_compile.rs",
+    "v2_compiler_program_assembly.rs",
+    "v2_compiler_source_authority.rs",
     "usv_pilot_v2_std_algebra.rs",
     "usv_pilot_v2_std_collection.rs",
     "usv_pilot_v2_std_node.rs",
@@ -37,9 +39,7 @@ pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "v2_compiler_tokenize.rs",
     "v2_compiler_infer.rs",
     "v1_interpreter_dispatch_generated.rs",
-    "v2_compiler_compile.rs",
-    "v2_compiler_program_assembly.rs",
-    "v2_compiler_source_authority.rs"
+    "bootstrap_stage0_crate_layout_generated.rs"
 ];
 
 #[rustfmt::skip]

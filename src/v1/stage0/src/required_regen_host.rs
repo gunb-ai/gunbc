@@ -83,12 +83,9 @@ pub fn run_required_regen(
     }
 
     let sync = compare_generated_surfaces(&stage0_src, &emitted, &committed_basenames)?;
-    // The hand-file comparison normalizes through rustfmt on disk, so its scratch directory has
-    // to EXIST before it runs. It is handed `candidate_dir`, which at this point in the run is
-    // created only by the later `write_emitted_tree` -- so on a clean checkout every hand file
-    // reported `unverifiable: write .../committed.rs: No such file or directory`, an infra failure
-    // wearing the shape of a real finding, and `first_generation_equal` was false because of it.
-    // It only ever passed on a machine where a PREVIOUS run had left the directory behind.
+    // verify_hand_maintained writes scratch normalize files into candidate_dir; on a clean
+    // tree nothing has created that directory yet (write_emitted_tree does so later), so it
+    // must exist before this call.
     fs::create_dir_all(&candidate_dir)
         .map_err(|e| format!("create {}: {e}", candidate_dir.display()))?;
     let hand = verify_hand_maintained(&emitted, &stage0_src, &candidate_dir)?;
@@ -104,15 +101,8 @@ pub fn run_required_regen(
         fs::remove_dir_all(&candidate_dir)
             .map_err(|e| format!("remove {}: {e}", candidate_dir.display()))?;
     }
-    // THE CANDIDATE IS WRITTEN AT THE CRATE ROOT, because the emit keys already carry their own
-    // `src/` prefix. Writing them under `candidate/src` nested that prefix a second time, so every
-    // generated module landed at `candidate/src/src/<name>.rs` while `verify_candidate_tree`
-    // looked for `candidate/src/<name>.rs` and found none of them -- the run then refused with
-    // "candidate tree has zero generated files" over a directory holding 41 entries. That is the
-    // same emit-path-vs-basename key-space confusion `emitted_by_basename` exists to end, in its
-    // third and last instance: two spaces, no single place saying which one a path is in.
-    write_emitted_tree(&candidate_dir, &emitted)?;
     let fresh_src = candidate_dir.join("src");
+    write_emitted_tree(&fresh_src, &emitted)?;
     copy_hand_maintained_support(&stage0_src, &fresh_src)?;
     verify_candidate_tree(&fresh_src, &committed_basenames)?;
 
@@ -232,14 +222,29 @@ fn generated_basenames_from_emit(emitted: &HashMap<String, String>) -> Vec<Strin
             // Basename, not the emit key: `committed_generated_basenames` keys on
             // `file_name()`, and emit keys carry a `src/` prefix. Comparing the two
             // key spaces made every file mismatch in both directions.
-            let basename = Path::new(path)
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or(path);
-            names.insert(basename.to_string());
+            names.insert(emit_path_basename(path).to_string());
         }
     }
     names.into_iter().collect()
+}
+
+// Emit keys are the target-relative artifact path (e.g. "src/cli_run.rs" for
+// every Rust module — see rust_source_root()); committed-tree comparisons key
+// on the bare basename. This is the single place that bridges the two, so
+// every consumer below compares/looks up on equal footing instead of each
+// re-deriving its own normalization (or, as before, silently comparing
+// "src/x.rs" against "x.rs" as unequal strings for the whole corpus).
+fn emit_path_basename(path: &str) -> &str {
+    Path::new(path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(path)
+}
+
+fn lookup_emitted<'a>(emitted: &'a HashMap<String, String>, basename: &str) -> Option<&'a String> {
+    emitted
+        .get(&format!("src/{basename}"))
+        .or_else(|| emitted.get(basename))
 }
 
 fn committed_generated_basenames(stage0_src: &Path) -> Result<Vec<String>, String> {
@@ -359,50 +364,7 @@ fn regen_refusal_outcome(
 }
 
 fn is_hand_maintained_path(path: &str) -> bool {
-    let basename = Path::new(path)
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or(path);
-    HAND_MAINTAINED_STAGE0_FILES.contains(&basename)
-}
-
-/// The emitted map re-keyed by basename, refusing on a collision.
-///
-/// THE EMIT AND THE COMMITTED TREE ARE TWO KEY SPACES, and every consumer here must be told
-/// which one it is holding. `compile_stage0` returns emit-relative paths (`src/foo.rs`);
-/// `committed_generated_basenames` returns bare basenames. `generated_basenames_from_emit`
-/// already carried a comment recording that comparing the two spaces "made every file mismatch
-/// in both directions" -- but only that one function was repaired. `compare_generated_surfaces`
-/// and `tree_digest_from_map` kept looking up bare basenames in the emit-keyed map, so the
-/// FIRST file they reached refused with `emit missing generated file compiler_tests.rs` and no
-/// byte was ever compared. Measured 2026-08-19: with the population mismatch cleared, that
-/// refusal is what regen returned instead of a verdict.
-///
-/// One re-keying, consumed by both, rather than a `.get(name).or_else(get("src/" + name))`
-/// fallback at each site: a per-site fallback is a second representation of the key space
-/// (DESIGN section 3) and it silently succeeds when the two spaces disagree, which is exactly
-/// the failure this function exists to make impossible. A basename collision refuses, because
-/// two emitted files sharing a basename means the committed tree cannot be compared against
-/// them by basename at all.
-fn emitted_by_basename(
-    emitted: &HashMap<String, String>,
-) -> Result<HashMap<String, String>, String> {
-    let mut out: HashMap<String, String> = HashMap::new();
-    for (path, content) in emitted {
-        let basename = Path::new(path)
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or(path.as_str())
-            .to_string();
-        if let Some(prior) = out.insert(basename.clone(), content.clone()) {
-            if prior != *content {
-                return Err(format!(
-                    "refusal: emitted basename collision for {basename} — two emit paths differ under one basename"
-                ));
-            }
-        }
-    }
-    Ok(out)
+    HAND_MAINTAINED_STAGE0_FILES.contains(&emit_path_basename(path))
 }
 
 fn compare_generated_surfaces(
@@ -410,19 +372,18 @@ fn compare_generated_surfaces(
     emitted: &HashMap<String, String>,
     generated_basenames: &[String],
 ) -> Result<SyncReport, String> {
-    let by_basename = emitted_by_basename(emitted)?;
     let mut drifted = Vec::new();
     for basename in generated_basenames {
         let committed_path = stage0_src.join(basename);
         let committed = normalize_generated_source(
-            &format!("committed {basename}"),
             &fs::read_to_string(&committed_path)
                 .map_err(|e| format!("read committed {}: {e}", committed_path.display()))?,
-        )?;
-        let candidate = by_basename
-            .get(basename)
+        )
+        .map_err(|e| format!("normalize committed {basename}: {e}"))?;
+        let candidate = lookup_emitted(emitted, basename)
             .ok_or_else(|| format!("emit missing generated file {basename}"))?;
-        let candidate_norm = normalize_generated_source(&format!("emitted {basename}"), candidate)?;
+        let candidate_norm = normalize_generated_source(candidate)
+            .map_err(|e| format!("normalize candidate {basename}: {e}"))?;
         if committed != candidate_norm {
             drifted.push(basename.clone());
         }
@@ -438,15 +399,12 @@ fn verify_hand_maintained(
     stage0_src: &Path,
     work_dir: &Path,
 ) -> Result<HandVerifyReport, String> {
-    let by_basename = emitted_by_basename(emitted)?;
     let mut unverifiable = Vec::new();
     for file_name in HAND_MAINTAINED_STAGE0_FILES {
-        // The same single re-keying the two functions above use. This site previously carried the
-        // per-site `get("src/" + name).or_else(get(name))` fallback that `emitted_by_basename`
-        // exists to replace; it happened to be the one site where the fallback was written
-        // correctly, which is precisely why the class stayed invisible at the two sites where it
-        // was not.
-        let Some(candidate) = by_basename.get(*file_name) else {
+        let candidate = emitted
+            .get(&format!("src/{file_name}"))
+            .or_else(|| emitted.get(*file_name));
+        let Some(candidate) = candidate else {
             continue;
         };
         let committed_path = stage0_src.join(file_name);
@@ -473,18 +431,14 @@ fn write_emitted_tree(dest_src: &Path, emitted: &HashMap<String, String>) -> Res
     }
     fs::create_dir_all(dest_src).map_err(|e| format!("create {}: {e}", dest_src.display()))?;
     for (path, content) in emitted {
-        let out_path = dest_src.join(path);
-        if let Some(parent) = out_path.parent() {
-            fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
-        }
-        // ONLY RUST IS RUST-NORMALIZED. The emit produces the crate's manifests as well as its
-        // modules, and this loop used to hand every emitted artifact to rustfmt -- so writing the
-        // candidate tree died on a `Cargo.toml` with `error: expected item, found `[``, after
-        // compare and the digests had already succeeded. It surfaced only once the key-space
-        // repair let the run reach this far; before that, regen refused at the first comparison
-        // and never wrote a tree at all.
-        let normalized = if path.ends_with(".rs") {
-            normalize_generated_source(&format!("emitted {path}"), content)?
+        let out_path = dest_src.join(emit_path_basename(path));
+        // Only `.rs` surfaces are the generated-Rust population this comparator reasons
+        // about (see committed_generated_basenames / generated_basenames_from_emit); a
+        // non-Rust emitted artifact (e.g. Cargo.toml from the crate-layout emit) is not
+        // rustfmt-normalizable and is written through verbatim.
+        let normalized = if emit_path_basename(path).ends_with(".rs") {
+            normalize_generated_source(content)
+                .map_err(|e| format!("normalize emitted {path}: {e}"))?
         } else {
             content.clone()
         };
@@ -556,7 +510,8 @@ fn tree_digest_for_basenames(
         let path = src_dir.join(name);
         let content = fs::read_to_string(&path)
             .map_err(|e| format!("read {label} {}: {e}", path.display()))?;
-        let norm = normalize_generated_source(&format!("{label} {name}"), &content)?;
+        let norm = normalize_generated_source(&content)
+            .map_err(|e| format!("normalize {label} {name}: {e}"))?;
         payload.push_str(name);
         payload.push('\0');
         payload.push_str(&digest_label(norm.as_bytes()));
@@ -572,13 +527,12 @@ fn tree_digest_from_map(
     if basenames.is_empty() {
         return Err("refusal: cannot compute candidate digest over empty population".to_string());
     }
-    let by_basename = emitted_by_basename(emitted)?;
     let mut payload = String::new();
     for name in basenames {
-        let content = by_basename
-            .get(name)
+        let content = lookup_emitted(emitted, name)
             .ok_or_else(|| format!("emit missing {name} for digest"))?;
-        let norm = normalize_generated_source(&format!("emitted {name} (digest)"), content)?;
+        let norm = normalize_generated_source(content)
+            .map_err(|e| format!("normalize candidate {name}: {e}"))?;
         payload.push_str(name);
         payload.push('\0');
         payload.push_str(&digest_label(norm.as_bytes()));
@@ -587,15 +541,8 @@ fn tree_digest_from_map(
     Ok(digest_label(payload.as_bytes()))
 }
 
-/// Normalize one generated surface, naming the subject in every refusal.
-///
-/// A LOCATED DIAGNOSTIC, because the unlocated one cost a measurement cycle. rustfmt reports
-/// against `<stdin>`, so an unparseable surface refused with `error: expected item, found `[``
-/// and no indication of WHICH file or WHICH side (committed or emitted) carried it -- a typed
-/// failure with no subject, which DESIGN section 5 requires to be located. The subject is known
-/// at every call site and is now threaded through.
-fn normalize_generated_source(subject: &str, content: &str) -> Result<String, String> {
-    normalize_generated_source_attempt(content).map_err(|e| format!("normalize {subject}: {e}"))
+fn normalize_generated_source(content: &str) -> Result<String, String> {
+    normalize_generated_source_attempt(content)
 }
 
 fn normalize_generated_source_attempt(content: &str) -> Result<String, String> {
@@ -637,10 +584,7 @@ fn normalize_with_workdir(content: &str, work_dir: &Path, label: &str) -> Result
         .output()
         .map_err(|e| format!("rustfmt {label}: {e}"))?;
     if !output.status.success() {
-        return Err(format!(
-            "rustfmt {label}: {}",
-            String::from_utf8_lossy(&output.stderr)
-        ));
+        return Err(String::from_utf8_lossy(&output.stderr).to_string());
     }
     fs::read_to_string(&path).map_err(|e| format!("read normalized {label}: {e}"))
 }
@@ -652,10 +596,7 @@ fn git_head_sha(workspace: &Path) -> Result<String, String> {
         .output()
         .map_err(|e| format!("git rev-parse HEAD: {e}"))?;
     if !output.status.success() {
-        return Err(format!(
-            "git rev-parse HEAD: {}",
-            String::from_utf8_lossy(&output.stderr)
-        ));
+        return Err(String::from_utf8_lossy(&output.stderr).to_string());
     }
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
