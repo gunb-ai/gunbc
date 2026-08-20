@@ -18,6 +18,7 @@ import gunbc.scm.object_store {
   the_same_record_under_one_locator_is_idempotent,
   a_child_collision_propagates_and_the_parent_is_not_stored,
   the_same_parent_stores_cleanly_without_the_impostor,
+  a_copy_into_a_colliding_destination_refuses,
 }
 
 // One locator, two different canonical records -- refused, and the refusal names both records so a
@@ -42,4 +43,11 @@ test fn a_child_collision_propagates_out_of_the_recursion() -> Bool {
 // by the seeded impostor rather than by an unstorable fixture.
 test fn the_parent_fixture_stores_cleanly_on_its_own() -> Bool {
   the_same_parent_stores_cleanly_without_the_impostor()
+}
+
+// copy_object's OWN collision arm. It was modeled and then never reached -- every mention of
+// CopyLocatorCollision in this corpus was a match arm rejecting it, never an input producing it.
+// The existing present-source and absent-source copy claims are its controls.
+test fn copying_into_a_colliding_destination_refuses() -> Bool {
+  a_copy_into_a_colliding_destination_refuses()
 }

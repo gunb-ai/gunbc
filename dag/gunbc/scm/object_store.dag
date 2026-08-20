@@ -326,14 +326,19 @@ fn collision_probe_identity(outcome: StoreOutcome, fallback: ObjectId) -> Object
   }
 }
 
-// A record carrying someone else's identity. Constructible here and nowhere else.
-fn collision_probe_impostor(identity: ObjectId) -> ObjectRecord {
-  ObjectRecord {
-    identity: identity,
-    kind: TypeNode { connective: Conj },
-    children: [],
-  }
-}
+// NO FUNCTION MINTS A FORGED RECORD, and an earlier revision of this file did exactly that.
+//
+// It had `collision_probe_impostor(identity) -> ObjectRecord`, an ordinary exported function that
+// built a record whose identity disagreed with its content. `sole_constructor` stops an external
+// caller from WRITING the literal; it does not stop them from calling a function in the defining
+// module that writes it on their behalf. So the seal was reopened by the very helper written to
+// prove the seal -- an importable forge factory, one call from the pairing the wall exists to make
+// unwritable. Caught by external review.
+//
+// The forged literals are now inline in the claim bodies below and nothing returns one. THE CENSUS
+// THAT MUST KEEP HOLDING: outside this module, every ObjectRecord value originates from find_object
+// over a real store or from another operation returning an already-derived record. No ordinary
+// function mints an arbitrary ObjectRecord from an ObjectId.
 
 // ONE LOCATOR, TWO DIFFERENT CANONICAL RECORDS -- the store must refuse, and the refusal must carry
 // both records so a caller can see what disagreed rather than merely that something did.
@@ -345,7 +350,7 @@ fn a_different_record_under_one_locator_refuses() -> Bool {
   )
   match insert_derived(
     store: collision_probe_stored(outcome: real),
-    record: collision_probe_impostor(identity: identity),
+    record: ObjectRecord { identity: identity, kind: TypeNode { connective: Conj }, children: [] },
   ) {
     Stored { store: _, identity: _ } => false
     LocatorCollision { identity: reported, existing: existing, incoming: incoming } =>
@@ -377,7 +382,11 @@ fn a_child_collision_propagates_and_the_parent_is_not_stored() -> Bool {
   )
   let seeded = insert_derived(
     store: empty_store(),
-    record: collision_probe_impostor(identity: child_identity),
+    record: ObjectRecord {
+      identity: child_identity,
+      kind: TypeNode { connective: Conj },
+      children: [],
+    },
   )
   match store_node(
     store: collision_probe_stored(outcome: seeded),
@@ -398,5 +407,37 @@ fn the_same_parent_stores_cleanly_without_the_impostor() -> Bool {
   ) {
     LocatorCollision { identity: _, existing: _, incoming: _ } => false
     Stored { store: store, identity: _ } => store_object_count(store: store) == 2
+  }
+}
+
+// COPY'S OWN COLLISION ARM, EXECUTED. `CopyLocatorCollision` was modeled when copy_object got its
+// own outcome type and then never reached -- the same specification-without-execution pattern this
+// file already names for LocatorCollision, repeated on the arm added immediately after it. Every
+// mention of it in the witness was a match arm REJECTING an unexpected result; nothing constructed
+// the state that produces it. Caught by external review, and the lesson is that naming a pattern is
+// not the same as checking for it again.
+//
+// The existing present-source and absent-source claims are the controls: together they establish
+// that copy_object does not always answer collision.
+fn a_copy_into_a_colliding_destination_refuses() -> Bool {
+  let real = store_node(store: empty_store(), n: collision_probe_atom(identity: ^collide_copy))
+  let identity = collision_probe_identity(
+    outcome: real,
+    fallback: content_hash(n: collision_probe_atom(identity: ^collide_copy)),
+  )
+  let seeded = insert_derived(
+    store: empty_store(),
+    record: ObjectRecord { identity: identity, kind: TypeNode { connective: Conj }, children: [] },
+  )
+  match copy_object(
+    from: collision_probe_stored(outcome: real),
+    to: collision_probe_stored(outcome: seeded),
+    identity: identity,
+  ) {
+    Copied { store: _, identity: _ } => false
+    CopySourceAbsent { identity: _ } => false
+    CopyLocatorCollision { identity: reported, existing: existing, incoming: incoming } =>
+      object_id_eq(left: reported, right: identity)
+        && !records_equal(left: existing, right: incoming)
   }
 }
