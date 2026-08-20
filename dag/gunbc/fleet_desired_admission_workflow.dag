@@ -210,17 +210,51 @@ fn fleet_desired_admission_job() -> Job {
 // QueueMax would buy the in-order queue this comment used to claim and then have to justify why the
 // fleet wants to walk through revisions it has already passed.
 //
-// WHAT ORDERING DOES NOT COVER, named here rather than left to be discovered. Neither variant
-// prevents an OLDER floor run from admitting after a newer one -- a manually re-run floor for an
-// earlier commit completes later, observes the current prior, and its compare-and-swap succeeds,
-// moving the desired ref BACKWARD onto a revision the fleet has already advanced past. The gate
-// models floor-greenness, not ancestry, so nothing in the decision refuses it. This is a real class
-// at mitigatable: reaching it requires deliberately re-running an old floor run, and the resulting
-// state is a valid earlier revision rather than an unproven one, so hosts converge to something
-// floor-green either way. NEXT-RUNG TRIGGER: an ancestry operand on the admission -- candidate must
-// be a descendant of the observed prior -- which needs a git ancestry read the Core surface does
-// not yet model (RevList is the nearest existing operation). Until that lands the class is declared
-// here, not silently absent.
+// WHAT ORDERING DOES NOT COVER: THE DESIRED REF CAN MOVE BACKWARD, AND THIS IS ORDINARY RATHER
+// THAN AN EDGE CASE. An earlier revision of this annotation said reaching it "requires deliberately
+// re-running an old floor run". THAT UNDERSTATED IT AND WAS WRONG. The floor's own concurrency
+// group is `witness-floor-${{ github.event.pull_request.number || github.run_id }}`, and on a
+// default-branch push there is no pull-request number, so the group is unique per run -- the floor
+// imposes NO ordering between main pushes. Two merges therefore race by construction:
+//
+//   floor(C1) starts;  floor(C2) starts
+//   floor(C2) finishes first  -> admission advances D -> C2
+//   floor(C1) finishes later  -> observes C2 as prior -> CAS SUCCEEDS -> C2 -> C1, backward
+//
+// --force-with-lease does not prevent this. The lease refuses an UNOBSERVED concurrent write; here
+// the older admission observes the newer prior correctly and overwrites it on purpose. The gate
+// models floor-greenness, not ancestry, so nothing in the decision refuses a backward move.
+//
+// The class stays at mitigatable -- the ref lands on a revision that IS floor-green, so hosts
+// converge to something proven rather than to something unproven, and a host behind it refuses
+// dispatch loudly. But its REACHABILITY is ordinary merge traffic, not operator action, and saying
+// otherwise made a live race read as a curiosity.
+//
+// NEXT-RUNG TRIGGER, and it is blocked on a modelling gap rather than on effort: the admission
+// needs a forward-only operand -- candidate must be a descendant of the observed prior. git.Core
+// models no ancestry read. RevList is the nearest operation and cannot express it: its argv is
+// hardcoded to `{since}..HEAD`, so it answers only HEAD-relative questions, and the discriminating
+// test (is the prior reachable FROM the candidate) needs both endpoints named. Closing this means
+// adding a typed ancestry operation to the git authority, which is a separate change with its own
+// citation duty.
+
+// A SECOND DECLARED GAP: THE IDENTITY OF THE CODE MAKING THE ADMISSION DECISION IS NOT MODELLED.
+// On a workflow_run event GitHub sets the checkout's default ref to the DEFAULT BRANCH HEAD, not to
+// the triggering run's head_sha, and the checkout step below names no ref. So the binary that
+// adjudicates candidate C is built from whatever the default branch happens to be when the
+// admission runs -- call it J -- and J is not necessarily C, nor necessarily admitted, nor
+// necessarily floor-green. The decision is correct about WHICH revision it admits (the candidate
+// comes from the event payload, not from the checkout), but the JUDGE's provenance is an accident
+// of timing.
+//
+// The naive repair -- checking out github.event.workflow_run.head_sha -- is NOT automatically safe:
+// workflow_run is a privileged trigger carrying write credentials, and building the candidate's own
+// code under those credentials is the pattern GitHub's own guidance warns against. The trust wall
+// in gunbc.fleet_desired_admission runs AFTER checkout and compilation, so it cannot protect a step
+// that already executed candidate code. Two honest constructions exist -- build the judge from the
+// currently admitted revision so the authority has an explicit identity, or split trusted validation
+// from candidate execution so the privileged CAS never runs candidate code -- and both are larger
+// than this change. Declared here rather than left to be discovered.
 data fleet_desired_admission_workflow: Workflow = Workflow {
   name: "fleet-desired",
   on: [
