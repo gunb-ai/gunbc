@@ -483,7 +483,11 @@ fn main() {
                     let admission = v1_compiler::memory_governor::whole_corpus_compile_admission(
                         budget, &source,
                     );
-                    if let Some(diagnostic) = admission.refusal_diagnostic() {
+                    if let Some(diagnostic) =
+                        v1_compiler::memory_governor::whole_corpus_compile_refusal_diagnostic(
+                            &admission,
+                        )
+                    {
                         eprintln!("gunbc compile: {diagnostic}");
                         std::process::exit(1);
                     }

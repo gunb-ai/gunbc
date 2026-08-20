@@ -4,6 +4,8 @@ import std.types { Int, String, NonEmptyStr, Bool }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
 import gunbc.host_budget_source {
   HostBudgetResolution,
   HostBudgetResolved,
@@ -91,4 +93,49 @@ data whole_corpus_compile_seed_mirror_disposition: Disposition = Scaffold {
   }
 }
 
-data whole_corpus_compile_seed_mirror_note: String = "v1 HAND-REALIZES THIS, FOR THE SAME BOOTSTRAP REASON gunbc.host_budget_source host_budget_source_seed_mirror_note gives and no other: the decision runs BEFORE any .dag value could exist, because it is the decision about whether resolving the corpus may begin at all. It cannot be a value obtained by resolving the corpus. The seed mirror is v1_compiler.memory_governor whole_corpus_compile_admission over the same budget authority read_host_budget_bytes, joined at v1_compiler main.rs's Compile arm immediately after the module index is built — the first point the run has a corpus and the last point before whole-tree file contents are held resident. DISSOLVE-ON: the same emit path that retires the seed's other budget mirrors (DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES, DECLARED_FLOOR_MINIMUM_VIABLE_ARMED_BUDGET_BYTES), at which point these rows are read rather than mirrored. Until then this module is the authority a reviewer checks the seed against, and — as that sibling note already records for its own constants — nothing executes that check."
+data whole_corpus_compile_seed_mirror_note: String = "v1 HAND-REALIZES THIS, FOR THE SAME BOOTSTRAP REASON gunbc.host_budget_source host_budget_source_seed_mirror_note and gunbc.typed_module_cache_capacity typed_module_cache_capacity_seed_mirror_note give, and no other: the decision runs BEFORE any .dag value could exist, because it is the decision about whether resolving the corpus may begin at all. It cannot be a value obtained by resolving the corpus. That is a bootstrap constraint, not ordinary seed-shrink debt, and conflating the two would misprice the work. The mirror is v1_compiler.memory_governor DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES and whole_corpus_compile_admission over the same budget authority read_host_budget_bytes, joined at v1_compiler main.rs's Compile arm immediately after argument parsing and before the module index is built.\n\nTHIS ROW DECLARES NO DISSOLUTION OF ITS OWN, AND THAT IS THE POINT. typed_module_cache_capacity_seed_mirror_note already specifies the exact mechanism that retires this constant: one lens reading the seed's constants against the rows that own them, which it says would cover gunbc.typed_module_cache_capacity, gunbc.host_budget_source and DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES together. DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES lives in the same file as that last one and is retired by the same lens on the same day. Authoring a fourth locally-argued dissolution beside three identical ones is the forked-logic tell DESIGN section 3 names — the merge is already specified, so this row joins it rather than restating it. The wider dissolution is the same one those notes carry: the emit path bakes these constants into the seed and the seed stops composing its own arithmetic.\n\nTHE TRIGGER IS INERT TODAY AND A READER MUST NOT INFER OTHERWISE (measured by stern-heron-695 at 517fdac4dd, and recorded here because the sibling notes read as though the drift were guarded). dag/test/claim/typed_module_cache_capacity_witness_test.dag carries eight test fns and references no .rs path, no stage0 projection, and not the per-entry byte literal — it checks the model against itself. memory_governor.rs has zero rows in gunbc.stage0_emit_model, confirming it is hand-maintained source rather than a generated projection, so this constant is knowingly-added seed source whose agreement with this module is guarded by review diligence and by nothing that executes. That is strictly weaker than the notes imply and is the honest state of all four instances, not a defect this row introduces."
+
+
+data whole_corpus_compile_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_compiler.memory_governor",
+      decl_name: "DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.memory_governor",
+      decl_name: "WholeCorpusCompileAdmission",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.memory_governor",
+      decl_name: "whole_corpus_compile_admission",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.memory_governor",
+      decl_name: "whole_corpus_compile_refusal_diagnostic",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.memory_governor.tests",
+      decl_name: "whole_corpus_compile_refuses_the_budget_that_was_sigkilled_and_admits_the_ci_runner",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.memory_governor.tests",
+      decl_name: "whole_corpus_compile_admission_is_tight_at_the_measured_demand",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.memory_governor.tests",
+      decl_name: "whole_corpus_compile_unreadable_budget_refuses_rather_than_widening",
+      field: WholeDeclaration
+    }
+  ],
+  reason: "WHY RUST IS STILL NEEDED, and it is the bootstrap constraint rather than seed-shrink debt: this decides whether resolving the corpus may BEGIN, so it cannot be a value obtained by resolving the corpus. whole_corpus_compile_seed_mirror_note argues that at length and binds this growth to the dissolution the sibling mirrors already specify rather than authoring a fourth.\n\nWHY IT IS ADMITTED AGAINST THE v1 FREEZE: gunbc.v1_maintenance_standing v1_seed_standing admits a change by PURPOSE — it serves the v2 self-host program. The instrument this refusal guards, gunbc compile --target dag over both source roots, IS the self-emission instrument, and it was OOM-killed into a silent exit-137 zero. This is defect repair on the self-host path, not growth of the seed for its own sake.\n\nHAND-ITEM DELTA: +7, all citable above, enumerated rather than counted from what was touched — the method stage0_rust_observation_seed_growth_justification records having got wrong twice. Four are production (the demand constant, the admission coproduct, the fold over it, the refusal renderer) and three are the tests that discriminate it. HAND-LOC DELTA: +173 in memory_governor.rs and +29 in main.rs against origin/main, a large share of it the doc comments carrying the receipts and the refusal strings.\n\nNO NEW UNCITABLE ITEM, DELIBERATELY. whole_corpus_compile_refusal_diagnostic is a free function and not an inherent method on WholeCorpusCompileAdmission, because DeclField offers WholeDeclaration or NamedField and neither names a method on an impl block. The sibling receipt carries one such item in prose only because its Display realization had no citable form; this one had a citable form available and takes it rather than growing that class.\n\nWHAT IS NOT GROWTH AND IS NOT LISTED: the main.rs join itself. It adds no declaration — it is an arm inside the existing Compile match, so its disposition is ExistingSeedItemModified, and listing it would net a modification into an addition census.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete all seven declarations when the emit path bakes gunbc.whole_corpus_compile_admission into the seed and main.rs reads the modeled admission instead of composing it — the same trigger gunbc.typed_module_cache_capacity typed_module_cache_capacity_seed_mirror_note and gunbc.host_budget_source host_budget_source_seed_mirror_note carry for their own mirrors, joined rather than restated.",
+  current_boundary: "gunbc.whole_corpus_compile_admission whole_corpus_compile_admission -> v1_compiler.memory_governor whole_corpus_compile_admission -> v1_compiler.main Commands::Compile"
+}
