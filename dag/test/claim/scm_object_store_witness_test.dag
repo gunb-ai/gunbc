@@ -541,7 +541,9 @@ test fn the_recursive_oracle_still_distinguishes_nested_content() -> Bool {
 // store_node no longer ends by re-walking the subtree with `content_hash`; it assembles the identity
 // from the child identities the recursion already produced, through v2.std.node
 // `content_hash_of_children`. That removes a quadratic, and it would be worth nothing if it changed
-// what an identity IS: 323 files in this corpus consume `content_hash`, and a store keyed on a
+// what an identity IS: 106 .dag files call `content_hash` and 284 import the surface (measured, not
+// estimated -- an earlier revision of this annotation said "323 files consume content_hash", which
+// counted mere textual mentions and overstated the consumer population), and a store keyed on a
 // second, subtly different rule would produce objects unreachable by the identity they were stored
 // under. So the convergence is asserted directly, at every shape whose assembly could differ:
 // childless, single-child, multi-child (where fold ORDER matters), nested (where the recursion's
