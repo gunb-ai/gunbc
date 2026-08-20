@@ -625,3 +625,65 @@ it is deliberate — this is a revenue lane, not a research project.
 **What it changes for the build:** the two-offer condition that makes pricing live rather than
 formal is satisfiable *today* with own-fleet plus one rented ARM offer. That is the next supply
 increment after this slice, and it is what turns the price check from a formality into a market.
+
+## 20. The hourly minimum breaks the affordability fold I just built
+
+Price census finding (product direction, 2026-08-19): **Hetzner Cloud bills a one-hour minimum and
+rounds every partial hour up.** An agent firing 200 five-minute jobs pays 200 hours and bills ~17.
+So one-fresh-VM-per-job is not viable, and execution must **multiplex jobs onto long-lived hosts**
+with per-job isolation from a microVM or container rather than a cloud-server lifecycle.
+
+Two things follow that are about this branch rather than about infrastructure.
+
+### `OfferQuote` cannot express the rule that changed the design
+
+```
+type OfferQuote =
+  | QuotedPerSecond(MoneyPerSecond)
+  | QuotedPerHour(MoneyPerHour)
+  | QuotedFlatPerGrant(MoneyOnce)
+```
+
+Every arm is a **rate and nothing else**. There is no minimum billable quantum, no rounding
+direction, no minimum charge. So these three suppliers are indistinguishable in the model and
+differ by ~12x in fact:
+
+| supplier | rate | rule the model cannot hold |
+| --- | --- | --- |
+| Hetzner Cloud | hourly | **1-hour minimum, partial hours round UP** |
+| Ubicloud | 0.00125/min | per-minute, no stated minimum |
+| Namespace | 0.002/min prepaid | 1-minute minimum, next 15s rounds **DOWN** |
+
+**The fabric already names this concept and does not carry it.** `execution.dag` states that the
+supplier binding owns the billing rule — *"when billing starts, the quantum and rounding, minimum
+charge, fixed and setup charges, caps, and when billing stops — because those differ per supplier"*.
+That sentence is correct and there is no such carrier anywhere. The census turned a theoretical gap
+into a load-bearing one.
+
+### The defect in `offer_eligibility_for`
+
+The affordability arm I landed compares `offer_quote_amount(q: offer.quote)` against the demand's
+`maximum_buy_order`. **With a minimum billable quantum that is the wrong number.** For a five-minute
+job against an hourly-minimum supplier the amount actually charged is the full hour, so the fold
+would admit an offer the demand cannot afford — and it would do so silently, which is worse than
+refusing: the refusal arm exists precisely so an unaffordable offer cannot be selected.
+
+The fold is not wrong for the own-fleet zero-quote case that exercises it today, which is exactly
+why this is worth writing down now: **the first consumer does not exercise the defect**, and the
+first consumer is the one whose shape hardens.
+
+**What affordability actually needs:** rate, quantum, minimum charge, rounding direction, and the
+demand's expected duration — the last of which the `Demand` does not carry either. Until that
+lands, the affordability arm is honest only for suppliers whose quantum is their rate's unit and
+whose minimum is zero.
+
+### The asymmetry that is the business
+
+We rent by the hour and sell by the minute. That is not an accident to be normalised away — it *is*
+the margin, and it means the fabric must express **two different billing rules on the two sides of
+the same execution**: the supplier's rule on the offer we consume, and our rule on the offer we
+publish. A model that assumes one billing rule per fabric cannot represent the arbitrage it exists
+to run.
+
+Namespace's customer-facing rule is worth copying on our own side: minimum one minute, next 15
+seconds rounded **down**. Customer-favourable, nearly free, and legible.
