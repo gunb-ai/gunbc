@@ -11,7 +11,6 @@
 .githooks/generated-artifact-merge merge=generated-artifact
 .githooks/pre-commit merge=generated-artifact
 .githooks/pre-push merge=generated-artifact
-.github/workflows/deploy.yml merge=generated-artifact
 .github/workflows/fleet-converge.yml merge=generated-artifact
 .github/workflows/witnesses.yml merge=generated-artifact
 .gitignore merge=generated-artifact

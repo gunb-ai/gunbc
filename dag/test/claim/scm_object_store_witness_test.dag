@@ -536,14 +536,14 @@ test fn the_recursive_oracle_still_distinguishes_nested_content() -> Bool {
 }
 
 // ================================================================================================
-// THE STORED IDENTITY IS THE CONTENT HASH -- the equivalence the linear-time assembly must preserve.
+// THE STORE PATH COMMUTES WITH content_hash -- the convergence the linear-time assembly must preserve.
 //
 // store_node no longer ends by re-walking the subtree with `content_hash`; it assembles the identity
 // from the child identities the recursion already produced, through v2.std.node
 // `content_hash_of_children`. That removes a quadratic, and it would be worth nothing if it changed
 // what an identity IS: 323 files in this corpus consume `content_hash`, and a store keyed on a
 // second, subtly different rule would produce objects unreachable by the identity they were stored
-// under. So the equivalence is asserted directly, at every shape whose assembly could differ:
+// under. So the convergence is asserted directly, at every shape whose assembly could differ:
 // childless, single-child, multi-child (where fold ORDER matters), nested (where the recursion's
 // child identity must equal the child's own content_hash), and named-edge-reordered (where
 // canonicalization must still collapse both orders onto one identity).
