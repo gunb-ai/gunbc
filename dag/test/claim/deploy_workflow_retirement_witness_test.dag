@@ -1,0 +1,39 @@
+module test.claim.deploy_workflow_retirement_witness
+
+import std.types { Bool, String }
+import gunbc.generated_artifact { committed_generated_artifact_paths }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// EXECUTING EVIDENCE FOR A DELETION, which is a thing the corpus otherwise has no way to
+// hold. The operator deleted .github/workflows/deploy.yml under an unclear-ownership
+// ruling; #8676 removed the FILE and left the authority that writes it, so the ordinary
+// regeneration recreated it -- measured, 2050 bytes, with the ungated raw-$GITHUB_SHA push
+// intact. A deletion recorded only as an absent file is reversed by the next person who
+// runs the actuator, and nothing detects it: DESIGN records the generated-artifact drift
+// gates as UNGUARDED after the floor cut, so neither the re-addition nor the absence is
+// currently caught by anything else.
+//
+// This is not a replacement registry and not a substitute authority. It is one claim that
+// the retired path is absent from the artifact roster, which is the fact that stops the
+// regeneration. It retires when the drift gates come back off the re-add queue and enforce
+// roster membership in both directions.
+data deploy_workflow_retired_path: String = ".github/workflows/deploy.yml"
+
+fn roster_contains(path: String) -> Bool {
+  fold(committed_generated_artifact_paths(), init: false, f: (acc, p) => acc || (p == path))
+}
+
+test fn the_retired_deploy_workflow_is_not_in_the_committed_artifact_roster() -> Bool {
+  !roster_contains(path: deploy_workflow_retired_path)
+}
+
+// The discriminating control for the claim above. A roster membership test can pass because
+// the entry is genuinely gone OR because the projection returned nothing at all -- an empty
+// list satisfies every "does not contain" assertion. This asserts the roster is populated
+// and still carries the workflow that DOES survive, so the negative above is a statement
+// about deploy.yml rather than about an empty read.
+test fn the_roster_is_populated_and_still_carries_the_surviving_workflow() -> Bool {
+  roster_contains(path: ".github/workflows/witnesses.yml")
+}

@@ -263,7 +263,7 @@ Read before starting. These are all paid-for lessons from 2026-08-16.
    (`v2_std_algebra.rs`, `std_measure.rs`, `v2_std_compilers_target_model.rs`) sit in every
    closure. "05_eval's errors" is not a unit of work.
 4. **The emitter is generated.** Authority is `src/v1/05_emit_rust.dag`; `v1_compiler_emit_rust.rs`
-   is its output and is listed in `gunbc.stage0_emit_plan_generated`. Probe the `.rs` for fast
+   is its output, and it is a member of the derived generated population (`gunbc.stage0_rust_source_lifecycle_scaffold` `derived_generated_stage0_repo_paths`) because the crate-layout authority does not claim it. Probe the `.rs` for fast
    feedback if you like, but revert it — real fixes land in the `.dag` and regenerate.
 5. **Measure before/after in your own worktree.** Concurrent fixes to a shared tree make every
    before/after unattributable, which is the failure this whole document exists to prevent.

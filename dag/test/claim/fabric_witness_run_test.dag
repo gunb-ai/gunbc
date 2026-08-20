@@ -231,10 +231,18 @@ test fn floor_argv_carries_every_declared_source_root() -> Bool {
     && length(xs: argv) == 2 + 2 * length(xs: witness_layer_roots)
 }
 
+// AGREEMENT INCLUDES THE MODE, NOT ONLY THE ROOTS. This checked that both
+// representations carry every source root and that the script names the mode --
+// but it never checked that the ARGV names the same mode as the script, so the
+// two could drift apart on the one flag that decides what actually runs and
+// nothing would notice. Found while re-pointing both at `--required-ci`: the
+// argv was still `--required-floor` and this witness was green.
 test fn fabric_argv_and_workflow_step_agree_on_source_roots() -> Bool {
   let argv = floor_run_command().argv
   all(witness_layer_roots, r => any(argv, a => a == r))
-    && string_contains(s: witness_floor_run_script(), pattern: "--required-floor")
+    && any(argv, a => a == "--required-ci")
+    && !any(argv, a => a == "--required-floor")
+    && string_contains(s: witness_floor_run_script(), pattern: "--required-ci")
     && all(witness_layer_roots, r =>
          string_contains(s: witness_floor_run_script(), pattern: concat("--source-root \"$ROOT/", concat(r, "\""))))
 }
@@ -243,10 +251,19 @@ test fn floor_inputs_manifest_ref_folds_the_same_authority() -> Bool {
   floor_inputs_manifest_ref() == "gunbc.floor.inputs.source-roots:dag+src/v2"
 }
 
-// The floor and the v1 parse gate are TWO steps, so a receipt can say which one
-// failed. That distinction is what gunbc#8466 -> #8519 paid to learn.
-test fn floor_contract_keeps_the_parse_gate_as_its_own_step() -> Bool {
-  length(xs: floor_work_contract(source: t_source()).steps) == 2
+// ONE STEP, AND THE RECEIPT DISTINGUISHES MORE THAN IT USED TO.
+//
+// This asserted `steps == 2` -- the floor and the v1 parse gate as separate
+// steps, so a receipt could say which one failed (gunbc#8466 -> #8519). The
+// workflow no longer gates them separately: the phases moved into the binary, so
+// the contract describes one step and the receipt names one of FOUR phases
+// rather than one of two steps. The claim is not weakened by the change, so the
+// witness is re-pointed rather than retired -- what it defends is that the
+// contract matches the job shape, and the number is the thing that moved.
+test fn floor_contract_is_one_composed_step() -> Bool {
+  let steps = floor_work_contract(source: t_source()).steps
+  length(xs: steps) == 1
+    && all(steps, s => s.step_id == "required-ci")
 }
 
 // THE FLOOR IS AN ORDINARY PRICED DEMAND. These pin the two properties that,
