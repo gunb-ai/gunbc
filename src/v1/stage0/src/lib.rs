@@ -158,10 +158,19 @@ pub mod usv_pilot_v2_std_algebra;
 pub mod usv_pilot_v2_std_collection;
 pub mod usv_pilot_v2_std_node;
 pub mod v1_interpreter;
+pub mod v2_compiler_body_producer;
+pub mod v2_compiler_compile;
+pub mod v2_compiler_discovery_enumeration;
 pub mod v2_compiler_infer;
+pub mod v2_compiler_normalize;
+pub mod v2_compiler_parse_engine_hooks;
+pub mod v2_compiler_program_assembly;
 pub mod v2_compiler_program_partition;
 pub mod v2_compiler_resolve;
+pub mod v2_compiler_source_authority;
+pub mod v2_compiler_target_carriers;
 pub mod v2_compiler_tokenize;
+pub mod v2_compiler_use_site_verdict;
 
 pub struct NonEmptyVec<T>(Vec<T>);
 
