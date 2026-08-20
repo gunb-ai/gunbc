@@ -15,10 +15,29 @@ type CompileOutput
 
 type CompileLensOutcome = v2.std.diagnostic.Outcome<v2.std.witness.Witness<v2.std.node.Node>>
 
-type CompileLensGate = fn(InferredTree) -> CompileLensOutcome
-
+// THE GATE TYPE IS WRITTEN INLINE, AND THIS IS AN INTERIM AGAINST A LOCATED COMPILER DEFECT --
+// NOT A STYLE CHOICE, AND NOT A CLAIM THAT THE DEFECT IS FIXED. A record field whose declared
+// type is an ALIAS to a `fn` type loses its declared argument contract when the method is called
+// from another module, so `lens.gate(inferred)` in
+// v2.test.claim.long.mandatory_tag_gate_witness_test refused with "no declared argument contract
+// is available for this method call" -- at RESOLVE time, which refuses preparation for the whole
+// prepared subject and therefore takes every witness in the required floor down with it, not
+// just its own. The bisect, the mechanism, and the next-rung trigger are one place:
+// v2.test.claim.cross_module_alias_fn_field_contract_test, whose positive control executes.
+//
+// WHAT MAKES THIS DEFENSIBLE RATHER THAN A DODGE: the alias was declared once and used once, so
+// inlining removes a second name for one shape (DESIGN section 2) and changes no type -- an
+// alias and its expansion ARE the same type. I am stating the real reason anyway, because a
+// change made to route around a substrate deficit is a workaround whatever else is true of it,
+// and the DESIGN section 5 rule is that noticing that is the line-stop signal. The line stopped:
+// the defect is root-caused to a minimal pair rather than guessed at, and the repair is named.
+//
+// DISSOLVES WHEN declared_arg_types_for_method (src/v1/04_lookup.dag) is given a TypeEnv and
+// expands the field's declared type before answering ContractUnavailable, and that authority is
+// regenerated into the seed mirror. At that point this becomes an ordinary free choice and the
+// alias may return. It is NOT dissolved by anyone editing the .rs mirror by hand.
 type CompileLens {
-  gate: CompileLensGate
+  gate: fn(v2.compiler.inferred_tree.InferredTree) -> CompileLensOutcome
 }
 
 type CompileLensMode

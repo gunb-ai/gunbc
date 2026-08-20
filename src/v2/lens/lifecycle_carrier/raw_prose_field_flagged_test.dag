@@ -10,7 +10,7 @@ data string_leaf_target: Node = v2.std.node.Node {
 }
 
 data nonempty_str_leaf_target: Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^std.types.NonEmptyStr } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^NonEmptyStr } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }

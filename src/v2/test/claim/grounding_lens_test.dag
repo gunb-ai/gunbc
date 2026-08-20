@@ -52,7 +52,7 @@ fn fixture_decls() -> List<v2.std.concept_index.ConceptDecl> {
       nm: "Url",
       node: record_type(fields: [
         field_edge(field: ^scheme, type_sym: ^UriScheme),
-        field_edge(field: ^host, type_sym: ^std.types.NonEmptyStr)
+        field_edge(field: ^host, type_sym: ^NonEmptyStr)
       ])
     ),
     concept_decl(
@@ -103,7 +103,7 @@ fn layer_inversion_fixture_decls() -> List<v2.std.concept_index.ConceptDecl> {
       nm: "Url",
       node: record_type(fields: [
         field_edge(field: ^scheme, type_sym: ^UriScheme),
-        field_edge(field: ^host, type_sym: ^std.types.NonEmptyStr)
+        field_edge(field: ^host, type_sym: ^NonEmptyStr)
       ])
     )
   ]

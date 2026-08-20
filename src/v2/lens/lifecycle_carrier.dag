@@ -58,7 +58,7 @@ fn decl_name_is_lifecycle_carrier(name: String) -> Bool {
 
 fn type_is_bare_string(target: v2.std.node.Node) -> Bool {
   let nm = edge_field_type_name(target: target)
-  (nm == ^String) || (nm == ^std.types.NonEmptyStr)
+  (nm == ^String) || (nm == ^NonEmptyStr)
 }
 
 fn lifecycle_carrier_diagnostic(carrier: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {

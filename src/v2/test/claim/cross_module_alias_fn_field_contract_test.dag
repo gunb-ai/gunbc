@@ -1,0 +1,80 @@
+module v2.test.claim.cross_module_alias_fn_field_contract_test
+
+// THE MINIMAL PAIR FOR A COMPILER DEFECT, KEPT AS EXECUTING EVIDENCE RATHER THAN AS PROSE.
+//
+// A record field whose declared type is an ALIAS to a `fn` type loses its declared argument
+// contract when the method is called FROM ANOTHER MODULE. Bisected 2026-08-20 against a binary
+// built from this branch's merged seed, one variable at a time:
+//
+//     same module + alias      PASS        cross module + alias      REFUSED
+//     same module + inlined    PASS        cross module + inlined    PASS
+//
+// So neither "alias" nor "cross-module" is sufficient alone; the conjunction is the defect.
+// Qualifying the alias in its DECLARING module does not help either, which rules out name
+// visibility and locates it in contract computation rather than in resolution.
+//
+// WHERE IT LIVES: v1.compiler.infer_lookup declared_arg_types_for_method reads
+// mfr.field_node.inferred and answers ContractUnavailable when that is not a resolved callable.
+// Cross-module, the field's inferred type is the alias REFERENCE, never the expanded `fn` node,
+// and that function has no TypeEnv to expand it with -- it takes only receiver_type, method_name
+// and source_indices. The corpus already has the expander it would need
+// (v1.compiler.infer expand_alias_chain_for_field_access), but that one is given an env.
+//
+// WHY THE REFUSAL ITSELF IS CORRECT AND MUST NOT BE RELAXED: the sibling arm, MethodUnresolved,
+// substitutes the receiver's element type, and the whole point of ContractUnavailable is to
+// refuse rather than substitute. The defect is that this case is CLASSIFIED as unavailable when
+// the contract is in fact derivable -- not that unavailable refuses.
+//
+// RUNG: mitigatable. This witness executes the distinction; nothing prevents the state.
+// NEXT-RUNG TRIGGER: thread the TypeEnv into declared_arg_types_for_method and expand the
+// field's declared type before answering, in src/v1/04_lookup.dag -- then regenerate. The .dag
+// is the authority and the .rs mirror follows from it; hand-editing the mirror is the splice
+// that broke main on 2026-08-20 and is not an option.
+
+// WHY THE DISCRIMINATING RED IS NOT ENROLLED HERE, which is a real gap and not an oversight.
+// The failure is a RESOLVE-time refusal, and the required floor prepares ONE subject over the
+// whole corpus -- so a module carrying the failing cross-module arm does not fail its own
+// witness, it refuses PREPARATION and takes all ~9,700 witnesses down with it. That is exactly
+// the state this branch is climbing out of. An expecting-red probe is only affordable at a grain
+// where the red is CONTAINED, and this class has no such grain today.
+//
+// So what is enrolled below is the positive control alone, and this comment is the honest
+// statement of what that does and does not establish: it establishes that the inlined form
+// carries its contract, and it does NOT establish that the alias form still fails. Reproduce the
+// red on demand with two throwaway modules -- declare `type G = fn(P) -> O` and a record field
+// `gate: G` in one, call `h.gate(p)` from the other -- and it refuses in one run. When the
+// next-rung fix lands, the red becomes containable and enrolls beside this control.
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+type ContractProbePayload {
+  n: Int
+}
+
+type ContractProbeOutcome = v2.std.diagnostic.Outcome<ContractProbePayload>
+
+type ContractProbeGate = fn(ContractProbePayload) -> ContractProbeOutcome
+
+// THE ARM THAT WORKS. Inlined, so no alias stands between the field and its callable.
+type ContractProbeHolderInlined {
+  gate: fn(ContractProbePayload) -> ContractProbeOutcome
+}
+
+fn contract_probe_gate(p: ContractProbePayload) -> ContractProbeOutcome {
+  v2.std.diagnostic.Accepted { value: p, diagnostics: std.algebra.Empty {} }
+}
+
+fn contract_probe_holders_inlined() -> List<ContractProbeHolderInlined> {
+  [ContractProbeHolderInlined { gate: contract_probe_gate }]
+}
+
+// POSITIVE CONTROL: the inlined field type carries its contract across the module boundary, so a
+// red here is a real regression rather than this defect. Same shape, same call, one variable.
+test fn cross_module_inlined_fn_field_keeps_its_contract() -> Bool {
+  fold(contract_probe_holders_inlined(), init: false, f: fn(acc, h) {
+    acc || match h.gate(ContractProbePayload { n: 1 }) {
+      Accepted { value: _, diagnostics: _ } => true
+      Rejected { diagnostics: _ } => false
+    }
+  })
+}
