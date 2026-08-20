@@ -46,6 +46,9 @@ import extdeps.llm.cli {
   reasoning_effort_label,
 }
 import gunbc.roadmap_dispatch_actuator {
+  attempt_state_prepare_argv_for_instance,
+  dispatch_attempt_publication_dir_for_instance,
+  dispatch_attempt_state_path_for_instance,
   dispatch_actuator_selection,
   dispatch_actuator_selection_for_provider,
   DispatchActuatorSelectionOk,
@@ -421,6 +424,10 @@ fn lab_instance_command_shape_holds(commands: DispatchSpawnCommands, lab: HostDa
     && string_contains(
       s: state_wire,
       pattern: "\0/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/attempt-state/ts-dispatch-provider-events-afeedfacefeedface",
+    )
+    && string_contains(
+      s: state_wire,
+      pattern: "\0/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/attempt-state/ts-dispatch-provider-events-afeedfacefeedface/publication",
     )
     && commands.attempt_current_pointer.program == "/usr/bin/ln"
     && string_contains(
@@ -844,4 +851,64 @@ test fn witness_legacy_brief_still_stubs_with_title() -> Bool {
   let brief = filled_dispatch_brief_for_node(node: node)
   string_contains(s: brief, pattern: "Brief Title")
     && !string_contains(s: brief, pattern: "the real displaced cost")
+}
+
+// ── The publication directory is prepared with the attempt directory ────────────────────────────
+//
+// THE DEFECT: Filesystem.Write does not create parent directories, so a publication receipt written
+// into a directory that was never prepared fails with ENOENT — while the interpreter's
+// `[file] write <path>` trace, emitted BEFORE the attempt, makes the journal look identical to a
+// success. Measured on srv1 2026-08-19: zero of twelve attempt directories had publication/, every
+// publish pass reported failed, and the journal showed a write line for each one.
+//
+// Both operands are asserted through the SAME projections the actuator uses, never as literals, so
+// this cannot pass by agreeing with a transcription of today's paths. The third conjunct is the
+// discriminating one: it is the publication path SPECIFICALLY, so restoring the single-directory
+// install -d reds it while the attempt-directory conjunct stays green.
+test fn the_prepare_step_creates_the_publication_directory_with_the_attempt_directory() -> Bool {
+  let instance = srv1_live_dashboard_instance()
+  let node_id = "belt-cause-probe" as RoadmapNodeId
+  let key = "a0123456789abcdef"
+  let argv = attempt_state_prepare_argv_for_instance(
+    instance: instance,
+    node_id: node_id,
+    attempt_key: key,
+  )
+  let wire = join(argv.args, separator: "\0")
+  let attempt_dir = dispatch_attempt_state_path_for_instance(
+    instance: instance,
+    node_id: node_id,
+    attempt_key: key,
+  )
+  let publication_dir = dispatch_attempt_publication_dir_for_instance(
+    instance: instance,
+    node_id: node_id,
+    attempt_key: key,
+  )
+  argv.program == "/usr/bin/install"
+    && string_contains(s: wire, pattern: attempt_dir)
+    && string_contains(s: wire, pattern: publication_dir)
+    && string_contains(s: wire, pattern: "-d")
+}
+
+// The publication directory must be UNDER the attempt directory, not beside it. install -d takes a
+// list and would happily create a sibling, so a projection that lost the containment would still
+// produce two created directories and satisfy the claim above. This is the control that says the
+// second operand is the attempt's own subdirectory.
+test fn the_prepared_publication_directory_is_inside_the_attempt_directory() -> Bool {
+  let instance = srv1_live_dashboard_instance()
+  let node_id = "belt-cause-probe" as RoadmapNodeId
+  let key = "a0123456789abcdef"
+  let attempt_dir = dispatch_attempt_state_path_for_instance(
+    instance: instance,
+    node_id: node_id,
+    attempt_key: key,
+  )
+  let publication_dir = dispatch_attempt_publication_dir_for_instance(
+    instance: instance,
+    node_id: node_id,
+    attempt_key: key,
+  )
+  publication_dir == join([attempt_dir, "/publication"], "")
+    && publication_dir != attempt_dir
 }
