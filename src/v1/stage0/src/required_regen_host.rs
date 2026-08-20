@@ -278,10 +278,38 @@ fn measure_generated_surface(
 pub fn emitted_generated_sources() -> Result<HashMap<String, String>, String> {
     let workspace = workspace_root();
     let stage0_src = workspace.join("src/v1/stage0/src");
-    match measure_generated_surface(&workspace, &stage0_src)? {
-        GeneratedSurfaceMeasured::Refused { reason } => Err(reason),
-        GeneratedSurfaceMeasured::Measured { emitted, .. } => Ok(emitted),
+    let emitted = match measure_generated_surface(&workspace, &stage0_src)? {
+        GeneratedSurfaceMeasured::Refused { reason } => return Err(reason),
+        GeneratedSurfaceMeasured::Measured { emitted, .. } => emitted,
+    };
+    // KEYED BY BASENAME, and the conversion happens HERE rather than at the call site.
+    //
+    // Emit keys carry a `src/` prefix; everything that joins against a committed mirror keys on
+    // `file_name()`. `generated_basenames_from_emit` already carries the warning that comparing
+    // the two key spaces "made every file mismatch in both directions" -- and a caller of this
+    // function walked straight into it anyway, looking up `std_pareto.rs` in a map keyed by emit
+    // path and getting nothing. It refused rather than reporting equivalence, which is the design
+    // working, but the refusal was about the key space rather than about the candidate.
+    //
+    // Returning the raw map invites that mistake from every future caller. Doing the derivation
+    // once, through the same `emit_path_basename` the population census uses, removes it.
+    let mut out: HashMap<String, String> = HashMap::new();
+    for (path, content) in emitted {
+        if !path.ends_with(".rs") || is_hand_maintained_path(&path) {
+            continue;
+        }
+        let base = emit_path_basename(&path).to_string();
+        // A collision would silently drop one candidate and compare the wrong bytes. The flat
+        // generated surface makes basenames unique, so a duplicate means that assumption has
+        // stopped holding, and a receipt built on a stale assumption is worse than no receipt.
+        if let Some(prior) = out.insert(base.clone(), content) {
+            let _ = prior;
+            return Err(format!(
+                "refusal: two emitted paths share the basename {base}; the generated surface is                  no longer flat and a basename join would compare the wrong candidate"
+            ));
+        }
     }
+    Ok(out)
 }
 
 pub fn measure_generated_drift() -> Result<GeneratedDriftMeasurement, String> {
