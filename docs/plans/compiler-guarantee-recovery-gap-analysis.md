@@ -1247,10 +1247,21 @@ than argued.
    generated mirror to the authority its own line 2 declares (six of seven pairs zero, the whole
    delta in `v1_compiler_parse.rs`) were both cited here as independent corroboration. **Neither is
    evidence: a symbol-count difference across the emission boundary is not a drift test**, because
-   emission is not obligated to preserve occurrence counts — and the single file showing a delta is
-   the one file where emission is *provably* non-1:1, so the +1 is exactly what emission arithmetic
-   produces there and cannot be separated from drift by counting. Seven rows of an unsound test is
-   one unsound test. **What survives is the METHOD, not the inference:** pairing a mirror to the
+   emission is not obligated to preserve occurrence counts, so a delta cannot be separated from
+   drift by counting alone. Seven rows of an unsound test is one unsound test. **A first attempt to
+   explain the delta AS emission arithmetic is itself withdrawn, and the correction matters:**
+   decomposing the regenerated file gives 3 = 1 `pub use` import + 2 calls, against the authority's
+   2 call sites — **so emission IS 1:1 for this symbol**, and the committed-to-regenerated gap is
+   not arithmetic at all, it is exactly the missing `call_span` site. The join's conclusion was
+   therefore ACCIDENTALLY RIGHT, which does not restore the method: an unsound test that happens to
+   agree with a sound one is still unsound, and the distinction has to be held or the method returns
+   the next time it agrees. **And the digit itself was an occurrence count masquerading as a call
+   count** — `grep -c 'make_file_span'` on the committed mirror returns 2, of which line 72 is the
+   `pub use` import and line 11623 is THE ONLY CALL. Committed call sites: 1. Authority: 2. The
+   correction that briefly reported 2-vs-2 would have restored the appearance of doneness on the
+   one file where doneness is the illusion — worse than the error it corrected. **Standing clause:
+   count CALL SITES (`foo(`), never string occurrences, and PRINT THE MATCHING LINES so a reader can
+   see what was counted.** **What survives is the METHOD, not the inference:** pairing a mirror to the
    authority its own header declares — rather than by filename or by aggregate — remains the
    correct way to identify the pair, and the third clause of that rule (classify the residue that
    matched no form; a member can be *authority contradicted elsewhere*, not merely undeclared)
