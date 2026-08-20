@@ -2114,7 +2114,13 @@ impl ExpectedRedDisposition {
                 completion: v1_compiler::cli_run::BudgetCompletion::CompletedOverBudget,
                 ..
             } => Self::StaleQuarantineAssertionReturnedTrue,
-            ClaimOutcome::HostToolUnresolved { .. }
+            // A ROUTE GAP JOINS THE INFRASTRUCTURE ARM, not the assertion arm, and for the
+            // same reason `HostToolUnresolved` already sits there: enrollment asserts an
+            // expected VERDICT, and a claim whose route has no arm for a host effect never
+            // reached its subject to produce one. Mapping it to
+            // `AgreementAssertionReturnedFalse` would report an unrun witness as agreement.
+            ClaimOutcome::HostEffectRefused { .. }
+            | ClaimOutcome::HostToolUnresolved { .. }
             | ClaimOutcome::RuntimeError { .. }
             | ClaimOutcome::NotBool { .. } => Self::InfrastructureOrReferentFailure,
         }
@@ -2684,6 +2690,31 @@ fn claim_result_for_outcome(
                 resolve_realization,
             }
         }
+        // NOT ok, and NOT a host_dependency_refusal either. The row did not answer, so `ok`
+        // is false; but the remedy is a route for an effect this execution mode cannot
+        // realize, not a missing binary to provision, so it does not borrow
+        // `HostDependencyRefusal`'s channel and misreport itself as a tool-chain gap.
+        ClaimOutcome::HostEffectRefused { operation, ground } => ClaimResult {
+            function,
+            entry: entry.clone(),
+            ok: false,
+            detail: format!(
+                "hermetic route has no arm for {}: {} — the claim never reached its subject",
+                operation,
+                v1_compiler::cli_run::hermetic_effect_ground_label(&ground)
+            ),
+            wall_nanos,
+            resolve_nanos,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
+            witness_row_costs: Vec::new(),
+            expectation_refusal: None,
+            budget_refusal: None,
+            host_dependency_refusal: None,
+            resolve_realization,
+        },
         ClaimOutcome::TimedOut {
             elapsed_ms,
             budget_ms,
@@ -4159,6 +4190,17 @@ fn scoped_witness_summary_outcome(
             | ClaimOutcome::NotBool { .. }
             | ClaimOutcome::RuntimeError { .. }
             | ClaimOutcome::HostToolUnresolved { .. } => ("executed", "false".to_string()),
+            // ITS OWN TAG, never "executed". The tag is what downstream reads, and this row
+            // did NOT execute its subject — reporting it as an execution that answered false
+            // is the conflation the typed outcome exists to remove.
+            ClaimOutcome::HostEffectRefused { operation, ground } => (
+                "route-gap",
+                format!(
+                    "operation={} ground={}",
+                    operation,
+                    v1_compiler::cli_run::hermetic_effect_ground_label(ground)
+                ),
+            ),
             ClaimOutcome::TimedOut {
                 elapsed_ms,
                 budget_ms,

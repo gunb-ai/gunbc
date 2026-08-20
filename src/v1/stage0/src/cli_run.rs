@@ -16091,7 +16091,7 @@ enum ExpectedRedArm {
 
 /// One label per `HermeticEffectGround`, in one place. The ground names the REMEDY, so a
 /// caller that re-spells it per site is re-deriving the remedy per site.
-fn hermetic_effect_ground_label(ground: &v1_interpreter::HermeticEffectGround) -> &'static str {
+pub fn hermetic_effect_ground_label(ground: &v1_interpreter::HermeticEffectGround) -> &'static str {
     match ground {
         v1_interpreter::HermeticEffectGround::UnpublishedMockCase { .. } => {
             "no published mock case for a corpus-governed service"
