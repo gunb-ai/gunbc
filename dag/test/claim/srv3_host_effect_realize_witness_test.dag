@@ -47,10 +47,10 @@ test fn actuator_toolchain_chown_args_shapes_nonroot_chown() -> Bool {
 }
 
 test fn posix_command_v_check_argv_shapes_a_command_v_invocation() -> Bool {
-  posix_command_v_check_argv(command: "curl" as NonEmptyStr) ==
+  posix_command_v_check_argv(command: "curl" as std.types.NonEmptyStr) ==
     ["sh", "-c", "command -v \"$1\"", "sh", "curl"]
 }
 
 test fn shell_test_is_executable_argv_shapes_a_test_dash_x_invocation() -> Bool {
-  shell_test_is_executable_argv(path: "/usr/bin/curl" as FilePath) == ["test", "-x", "/usr/bin/curl"]
+  shell_test_is_executable_argv(path: "/usr/bin/curl" as std.types.FilePath) == ["test", "-x", "/usr/bin/curl"]
 }

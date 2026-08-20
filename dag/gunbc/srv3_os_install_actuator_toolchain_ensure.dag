@@ -15,7 +15,7 @@ data os_install_actuator_toolchain_ensure_dissolution_trigger: std.disposition.D
 }
 
 func srv3_os_install_actuator_toolchain_ensure() -> std.process.ProcessExit
-  uses net: std.cache_interface.Network
+  uses net: std.resources.Network
 {
   host_toolchain_ensure(host: operator_host_srv3, kind: OsInstallActuator)
 }

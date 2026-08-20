@@ -332,7 +332,7 @@ data altra_pcb_installation_note: String = "Section 1.9 states PCB installation:
 // the row that keeps a permissive ruling from being read as more than it is:
 // even with every section 1.9 number carried, the array could be sized and
 // counted and still not placed, because no coordinate origin is stated in text
-// anywhere in this document. extdeps.firmware.uefi_shell.Pin A1 is an orientation datum with no origin
+// anywhere in this document. Pin A1 is an orientation datum with no origin
 // attached to it.
 fn pad_array_is_positionable_from_running_text() -> Bool {
   match altra_platform_coordinate_origin_availability {

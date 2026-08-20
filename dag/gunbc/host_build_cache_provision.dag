@@ -295,7 +295,7 @@ fn misconfigured_matches_cited_fragment() -> Bool {
 }
 
 func provision_build_cache(host: product.placement_supply.HostIdentity, catalog_id: std.cache_identity.CacheInterfaceId) -> std.process.ProcessExit
-  uses net: std.cache_interface.Network
+  uses net: std.resources.Network
 {
   match gunbc.host_build_cache_catalog_gate.provision_build_cache_catalog_gate_verdict(catalog_id: catalog_id) {
     ProvisionBuildCacheCatalogRefused { reason: reason } => std.process.exit_failure(reason: reason as String)

@@ -244,7 +244,7 @@ fn deploy_memory_cap_apply_script_ordered(units: List<std.types.NonEmptyStr>) ->
   concat(deploy_runner_memory_cap_author_script(), deploy_memory_cap_shadow_revert_script(units: units))
 }
 
-// extdeps.firmware.uefi_shell.Pin external script to deploy_memory_cap_apply_script_ordered's concat(author, reverts).
+// Pin external script to deploy_memory_cap_apply_script_ordered's concat(author, reverts).
 fn deploy_memory_cap_script_matches_ordered_composition(script: String, units: List<std.types.NonEmptyStr>) -> Bool {
   script == deploy_memory_cap_apply_script_ordered(units: units)
 }

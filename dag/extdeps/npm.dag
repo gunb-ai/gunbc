@@ -145,7 +145,7 @@ fn npm_registry_integrity_content_hash(integrity: NpmRegistryIntegrity) -> std.c
 
 fn npm_registry_artifact_pin(
   artifact: NpmRegistryArtifact,
-) -> extdeps.firmware.uefi_shell.Pin<PackageCoordinate<NpmRegistry>> {
+) -> Pin<PackageCoordinate<NpmRegistry>> {
   extdeps.pin.Pin {
     subject: artifact.package,
     version: artifact.version,

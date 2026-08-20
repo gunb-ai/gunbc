@@ -67,14 +67,14 @@ fn interpreter_dispatch_bijection_real_roster_red_shell(root: String, cargo_bin:
 // 🟡 dissolve-on: when the Value::Null split lands and `T? from "stdout"` decodes as a real
 // Optional, this reads the observed absolute path, hands it to decide_cargo_placement, and
 // the locality claim becomes established rather than assumed.
-fn real_roster_cargo_decision() -> CargoPlacementDecision {
+fn real_roster_cargo_decision() -> gunbc.cargo_execution_placement.CargoPlacementDecision {
   let observed = shell.PosixCommandV.Check(command: "cargo")  if observed.exists {
     decide_cargo_placement(
       requirement: real_roster_placement_requirement,
       placement: gunbc.cargo_execution_placement.LocalRunner { cargo_path: "cargo" }
     )
   } else {
-    PlacementRefused { cause: gunbc.cargo_execution_placement.CargoExecutableUnobserved { observation: "which cargo" } }
+    gunbc.cargo_execution_placement.PlacementRefused { cause: gunbc.cargo_execution_placement.CargoExecutableUnobserved { observation: "which cargo" } }
   }
 }
 
@@ -101,7 +101,7 @@ fn real_roster_cargo_run(cargo_bin: String) -> gunbc.cargo_execution_placement.C
 
 fn run_interpreter_dispatch_bijection_real_roster_outcome() -> gunbc.cargo_execution_placement.CargoInvocationOutcome {
   match real_roster_cargo_decision() {
-    PlacementRefused { cause: c } => gunbc.cargo_execution_placement.CargoInvocationNotAttempted { refusal: c }
+    gunbc.cargo_execution_placement.PlacementRefused { cause: c } => gunbc.cargo_execution_placement.CargoInvocationNotAttempted { refusal: c }
     PlacementAdmitted { cargo_path: cargo_bin } => real_roster_cargo_run(cargo_bin: cargo_bin)
   }
 }

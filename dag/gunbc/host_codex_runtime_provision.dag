@@ -39,7 +39,7 @@ fn committed_admitted_codex_runtime_source() -> gunbc.package_delivery.AdmittedC
 }
 
 func materialize_codex_runtime_on_local_host() -> std.process.ProcessExit
-  uses net: std.cache_interface.Network
+  uses net: std.resources.Network
 {
   match provider_runtime_placement_for_host(host: "srv1" as product.placement_supply.HostIdentity) {
     Absent =>
@@ -64,7 +64,7 @@ func materialize_codex_runtime_on_local_host() -> std.process.ProcessExit
 }
 
 func provision_codex_runtime(host: product.placement_supply.HostIdentity) -> std.process.ProcessExit
-  uses net: std.cache_interface.Network
+  uses net: std.resources.Network
 {
   host_toolchain_ensure(host: host, kind: CodexRuntime)
 }

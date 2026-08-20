@@ -237,7 +237,7 @@ fn stat_owner_name_capture(path: String) -> extdeps.shell.exec.ProcessOutcome {
 }
 
 func run_shell_commands(commands: std.types.List<extdeps.exec.command.ArgvCommand>, transport: extdeps.exec.command.CommandTransport) -> std.process.ProcessExit
-  uses net: std.cache_interface.Network
+  uses net: std.resources.Network
 {
   fold(
     commands,

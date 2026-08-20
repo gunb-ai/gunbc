@@ -112,7 +112,7 @@ func spark_serving_run_operation(
   operation: gunbc.remote_operation.RemoteOperation,
   transport: gunbc.host_effect.HostEffectTransport,
 ) -> gunbc.remote_operation.RemoteOperationOutcome
-  uses net: std.cache_interface.Network
+  uses net: std.resources.Network
 {
   match operation {
     RemoteArgv { argv: argv } =>
@@ -180,7 +180,7 @@ func spark_serving_sequence_step(
   operation: gunbc.remote_operation.RemoteOperation,
   transport: gunbc.host_effect.HostEffectTransport,
 ) -> SparkServingSequenceAcc
-  uses net: std.cache_interface.Network
+  uses net: std.resources.Network
 {
   match acc {
     SparkServingSequenceNotStarted =>
@@ -202,7 +202,7 @@ func spark_serving_run_operation_sequence(
   operations: List<gunbc.remote_operation.RemoteOperation>,
   transport: gunbc.host_effect.HostEffectTransport,
 ) -> gunbc.remote_operation.RemoteOperationOutcome
-  uses net: std.cache_interface.Network
+  uses net: std.resources.Network
 {
   match fold(
     operations,

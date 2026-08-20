@@ -97,7 +97,7 @@ fn runner_memory_converge_effect(host: product.placement_supply.HostIdentity) ->
 }
 
 func provision_runner_memory_caps(host: product.placement_supply.HostIdentity) -> std.process.ProcessExit
-  uses net: std.cache_interface.Network
+  uses net: std.resources.Network
 {
   match host_toolchain_direct_access(host: host) {
     Present { value: access } =>

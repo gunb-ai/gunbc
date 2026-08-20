@@ -77,7 +77,7 @@ fn host_toolchain_ensure_target_host(kind: HostToolchainKind, host: product.plac
 }
 
 func host_toolchain_ensure(host: product.placement_supply.HostIdentity, kind: HostToolchainKind) -> std.process.ProcessExit
-  uses net: std.cache_interface.Network
+  uses net: std.resources.Network
 {
   match host_toolchain_ensure_reach(kind: kind, host: host) {
     ReachResolved { reach: reach } =>

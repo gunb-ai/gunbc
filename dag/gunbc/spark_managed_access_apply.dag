@@ -324,7 +324,7 @@ fn spark_managed_access_apply_with_resolved_credentials(
 // Administrator password and fleet SSH private key material resolve inside this boundary via
 // Secret Manager — never as argv parameters on gunbc run.
 func spark_managed_access_apply_wet(attempt_raw: String, host: String) -> std.process.ProcessExit
-  uses net: std.cache_interface.Network
+  uses net: std.resources.Network
 {
   let now = clock_now_probed_at()
   let token_source = GcloudPrintToken

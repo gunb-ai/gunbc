@@ -77,7 +77,7 @@ fn access_token_upsert_required_reason(plan: gunbc.auth.access_token_source.Acce
 }
 
 func ensure_access_token(source: gunbc.auth.access_token_source.AccessTokenSource) -> gunbc.auth.access_token_source.AccessTokenResolution
-  uses net: std.cache_interface.Network
+  uses net: std.resources.Network
 {
   match source {
     GcloudPrintToken => {

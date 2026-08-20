@@ -25,7 +25,7 @@ type X86_64AbiPdfCitationSelectorConstruction = X86_64AbiPdfCitationSelectorCons
 
 type X86_64AbiPdfNavigableUriProjection = X86_64AbiPdfNavigableUriProjected { uri: extdeps.uri.Uri } | X86_64AbiPdfNavigableUriRefused { cause: gunbc.citation.pdf_safe_profile.NavigableUriSafeRefusalCause }
 
-type X86_64AbiPdfPinConstruction = X86_64AbiPdfPinConstructed(extdeps.firmware.uefi_shell.Pin<std.citation.CitedRepresentationIdentity>) | X86_64AbiPdfPinRefused { cause: gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfPinRefusalCause }
+type X86_64AbiPdfPinConstruction = X86_64AbiPdfPinConstructed(Pin<std.citation.CitedRepresentationIdentity>) | X86_64AbiPdfPinRefused { cause: gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfPinRefusalCause }
 
 type X86_64AbiCitationFactConstruction = X86_64AbiCitationFactConstructed(RecordedFact<CitationRecordedFact<std.citation.CitationSelector>>) | X86_64AbiCitationFactRefused { pin: gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfPinConstruction, selector: gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfCitationSelectorConstruction }
 

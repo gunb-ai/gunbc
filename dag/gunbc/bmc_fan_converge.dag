@@ -1467,7 +1467,7 @@ func bmc_fan_run(
   target: BmcFanConvergeTarget,
   action: BmcFanRequestedAction,
 ) -> std.process.ProcessExit
-  uses net: std.cache_interface.Network
+  uses net: std.resources.Network
 {
   let sshpass = shell.PosixCommandV.Check(command: "sshpass")
   if !sshpass.exists {
@@ -1531,7 +1531,7 @@ func bmc_fan_run(
 }
 
 func srv3_bmc_fan_observe() -> std.process.ProcessExit
-  uses net: std.cache_interface.Network
+  uses net: std.resources.Network
 {
   bmc_fan_run(
     target: srv3_bmc_fan_converge_target,
@@ -1540,7 +1540,7 @@ func srv3_bmc_fan_observe() -> std.process.ProcessExit
 }
 
 func srv3_bmc_fan_converge() -> std.process.ProcessExit
-  uses net: std.cache_interface.Network
+  uses net: std.resources.Network
 {
   bmc_fan_run(
     target: srv3_bmc_fan_converge_target,
@@ -1549,7 +1549,7 @@ func srv3_bmc_fan_converge() -> std.process.ProcessExit
 }
 
 func srv4_bmc_fan_observe() -> std.process.ProcessExit
-  uses net: std.cache_interface.Network
+  uses net: std.resources.Network
 {
   bmc_fan_run(
     target: srv4_bmc_fan_converge_target,
@@ -1558,7 +1558,7 @@ func srv4_bmc_fan_observe() -> std.process.ProcessExit
 }
 
 func srv4_bmc_fan_converge() -> std.process.ProcessExit
-  uses net: std.cache_interface.Network
+  uses net: std.resources.Network
 {
   bmc_fan_run(
     target: srv4_bmc_fan_converge_target,
@@ -1567,7 +1567,7 @@ func srv4_bmc_fan_converge() -> std.process.ProcessExit
 }
 
 func srv4_bmc_fan_rollback_previous() -> std.process.ProcessExit
-  uses net: std.cache_interface.Network
+  uses net: std.resources.Network
 {
   bmc_fan_run(
     target: srv4_bmc_fan_converge_target,

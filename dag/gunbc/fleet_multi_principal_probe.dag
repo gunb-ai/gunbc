@@ -147,7 +147,7 @@ fn probe_agent_socket() -> std.types.NonEmptyStr? {
 // second time on this one. The identity now comes from a binding that exists only because the agent
 // was observed to hold the declared fingerprint.
 func probe_agent_credential_verification(attempt: gunbc.fleet_known_hosts_anchor.FleetSshAttemptIdentity) -> gunbc.fleet_ssh_credential_verify.FleetSshCredentialVerification
-  uses net: std.cache_interface.Network
+  uses net: std.resources.Network
 {
   match probe_agent_socket() {
     Absent =>
@@ -317,7 +317,7 @@ func fleet_multi_principal_probe_wet() -> std.process.ProcessExit {
 // boundary (trusted anchor + exact IdentityFile). NOT valid on GHA runner slots — use
 // fleet_multi_principal_probe_wet for CI.
 func fleet_multi_principal_probe_with_attempt(attempt_raw: String) -> std.process.ProcessExit
-  uses net: std.cache_interface.Network
+  uses net: std.resources.Network
 {
   let now = gunbc.clock_read.clock_now_probed_at()
   let token_source = gunbc.auth.access_token_source.GcloudPrintToken
@@ -450,7 +450,7 @@ fn spark_exact_grant_report(context: gunbc.fleet_known_hosts_anchor.FleetSshExec
 }
 
 func spark_exact_grant_probe_wet(attempt_raw: String) -> std.process.ProcessExit
-  uses net: std.cache_interface.Network
+  uses net: std.resources.Network
 {
   gunbc.spark_credential_workflow.run_with_materialized_fleet_ssh_binding(
     attempt_raw: attempt_raw,
@@ -544,7 +544,7 @@ data spark_standing_receipt_path: String = "target/spark-managed-access-standing
 data spark_standing_hosts: List<String> = ["srv5", "srv6"]
 
 func spark_managed_access_standing_wet() -> std.process.ProcessExit
-  uses net: std.cache_interface.Network
+  uses net: std.resources.Network
 {
   match fleet_ssh_attempt_raw_from_env() {
     Absent =>
@@ -591,7 +591,7 @@ func spark_managed_access_standing_for_attempt(
   attempt_raw: String,
   attempt: gunbc.fleet_known_hosts_anchor.FleetSshAttemptIdentity,
 ) -> std.process.ProcessExit
-  uses net: std.cache_interface.Network
+  uses net: std.resources.Network
 {
   match probe_agent_credential_verification(attempt: attempt) {
     FleetSshCredentialIdentityMismatch { expected_line: expected, observed_line: observed } =>
@@ -619,7 +619,7 @@ func spark_managed_access_standing_with_verified_credential(
   attempt_raw: String,
   credential_identity: std.content_hash.ContentHash,
 ) -> std.process.ProcessExit
-  uses net: std.cache_interface.Network
+  uses net: std.resources.Network
 {
   let now = gunbc.clock_read.clock_now_probed_at()
   let observations = flat_map(spark_standing_hosts, h =>

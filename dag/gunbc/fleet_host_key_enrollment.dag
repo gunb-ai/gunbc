@@ -161,7 +161,7 @@ data fleet_host_key_scan_receipt_path: String = "target/fleet-host-key-scan-rece
 // verify that REFUSED emitted the literal receipt line "outcome=" -- a fabricated plausible output
 // standing where the answer was unknown, written into a receipt someone would later read as fact.
 func verify_enrollment_outcome() -> String
-  uses net: std.cache_interface.Network
+  uses net: std.resources.Network
 {
   match gunbc.command_runner.run_shell_command_capture(
     command: extdeps.exec.command.ArgvCommand { argv: ["sh", "-c", "H=$(getent passwd \"$(whoami)\" | cut -d: -f6); grep -qxF \"$(cat target/fleet-authorized-key-line | head -1)\" \"$H/.ssh/authorized_keys\" && echo enrolled || echo ABSENT-after-apply"] },
@@ -220,7 +220,7 @@ fn scan_host_key_lines(host: String) -> String {
 }
 
 func fleet_host_key_scan_wet() -> std.process.ProcessExit
-  uses net: std.cache_interface.Network
+  uses net: std.resources.Network
 {
   let body = join(map(fleet_reach_probe_targets, h => scan_host_key_lines(host: h)), "")
   let w = Filesystem.Write(path: fleet_host_key_scan_receipt_path, content: body)
@@ -266,7 +266,7 @@ data fleet_host_key_enroll_receipt_path: String = "target/fleet-host-key-enroll-
 // HOME by fleet_host_key_enroll_apply, which the probe entry calls FIRST — enrollment
 // rides with every probe run instead of pretending to persist.
 func fleet_host_key_enroll_apply() -> String
-  uses net: std.cache_interface.Network
+  uses net: std.resources.Network
 {
   if v2.std.algebra.length(fleet_host_key_enrollments) == 0 {
     "enroll outcome=refused cause=registry-empty\n"
@@ -310,7 +310,7 @@ func fleet_host_key_enroll_apply() -> String
 }
 
 func fleet_host_key_enroll_wet() -> std.process.ProcessExit
-  uses net: std.cache_interface.Network
+  uses net: std.resources.Network
 {
   let receipt = fleet_host_key_enroll_apply()
   let wr = Filesystem.Write(path: fleet_host_key_enroll_receipt_path, content: receipt)
@@ -350,7 +350,7 @@ fn fleet_automation_authorized_keys_line() -> String {
 // state impossible to fall through: a refusal now refuses instead of mutating the file.
 
 func fleet_authorized_key_self_enroll_wet() -> std.process.ProcessExit
-  uses net: std.cache_interface.Network{
+  uses net: std.resources.Network{
   let user = gunbc.command_runner.run_shell_command_capture(command: extdeps.exec.command.ArgvCommand { argv: ["whoami"] }, transport: LocalExec)
   let hostname = gunbc.command_runner.run_shell_command_capture(command: extdeps.exec.command.ArgvCommand { argv: ["hostname"] }, transport: LocalExec)
   let line = fleet_automation_authorized_keys_line()

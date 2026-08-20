@@ -962,18 +962,18 @@ fn srv3_actuator_toolchain_emit_artifact_transport_helper_refused_opt() -> Strin
   none
 }
 
-fn srv3_typed_argv_outcome_success(outcome: TypedArgvExecOutcome) -> Bool {
+fn srv3_typed_argv_outcome_success(outcome: gunbc.typed_argv_exec.TypedArgvExecOutcome) -> Bool {
   match outcome {
     TypedArgvExecConverged { result: r } => r.success
     TypedArgvExecRefused { reason: _ } => false
   }
 }
 
-fn srv3_typed_argv_outcome_stdout(outcome: TypedArgvExecOutcome) -> String? {
+fn srv3_typed_argv_outcome_stdout(outcome: gunbc.typed_argv_exec.TypedArgvExecOutcome) -> String? {
   match outcome {
     TypedArgvExecConverged { result: r } =>
       if r.success {
-        let out = trim(r.stdout)
+        let out = std.algebra.trim(r.stdout)
         if out == "" { none } else { Present { value: out } }
       } else {
         none
