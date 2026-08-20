@@ -48,6 +48,7 @@ import extdeps.version { VersionIdentity }
 import extdeps.http.client
 import extdeps.shell
 import extdeps.shell.exec
+import extdeps.llm.codex_app_server { CodexAppServerExecutable }
 import extdeps.filesystem.filesystem_io
 import extdeps.tools.npm
 import gunbc.host_cli_dependency {
@@ -72,7 +73,6 @@ import extdeps.languages.json.emit {
   JsonKeyValue, serialize_json,
 }
 import extdeps.languages.json.parse { parse_json }
-import gunbc.retained_shell_script { retained_foreign }
 import extdeps.ollama.binary_release {
   OllamaBinaryRelease,
   ollama_required_release,
@@ -1409,31 +1409,17 @@ fn observe_protocol_schema_identity(
   if made.success == false {
     none
   } else {
-    let script = retained_foreign(
-      body: concat(
-        "'",
-        concat(
-          native_executable as String,
-          concat(
-            "' app-server generate-json-schema -o '",
-            concat(schema_dir as String, "'"),
-          ),
-        ),
-      ),
-      reason: "Codex generate-json-schema observation pending typed WitnessBin argv enrollment" as NonEmptyStr,
+    let gen = codex_app_server.Cli.GenerateJsonSchema(
+      executable: CodexAppServerExecutable { path: native_executable },
+      output_dir: schema_dir,
     )
-    let gen = shell.Exec.Run(script: script)
     if gen.success == false {
       none
     } else {
-      let list_script = retained_foreign(
-        body: concat(
-          "find '",
-          concat(schema_dir as String, "' -type f -name '*.json' | sort"),
-        ),
-        reason: "Protocol schema bundle file list pending typed Find enrollment" as NonEmptyStr,
+      let listed = shell.Find.FilesByNameSorted(
+        root: schema_dir,
+        name_glob: "*.json" as NonEmptyStr,
       )
-      let listed = shell.Exec.Run(script: list_script)
       if listed.success == false {
         none
       } else {
@@ -1738,24 +1724,13 @@ fn relocate_build_root_to_unique_publishing(
   if staged.success == false {
     none
   } else {
-    let script = retained_foreign(
-      body: concat(
-        "rmdir '",
-        concat(
-          staged.path as String,
-          concat(
-            "' && mv -T '",
-            concat(
-              build_root as String,
-              concat("' '", concat(staged.path as String, "'")),
-            ),
-          ),
-        ),
-      ),
-      reason: "Exclusive unique publishing relocate: rmdir mktemp placeholder then mv -T build root onto that name" as NonEmptyStr,
-    )
-    let run = shell.Exec.Run(script: script)
-    if run.success == false {
+    let emptied = shell.Remove.EmptyDirectory(path: staged.path)
+    let moved = if emptied.success == false {
+      false
+    } else {
+      shell.Move.NoReplaceDirectory(source: build_root, destination: staged.path).success
+    }
+    if moved == false {
       let _ = shell.Remove.RecursiveForce(path: staged.path)
       none
     } else {
@@ -1768,17 +1743,7 @@ fn rename_publishing_noreplace(
   publishing: FilePath,
   dest: FilePath,
 ) -> Bool {
-  let script = retained_foreign(
-    body: concat(
-      "mv -T '",
-      concat(
-        publishing as String,
-        concat("' '", concat(dest as String, "'")),
-      ),
-    ),
-    reason: "Atomic no-nest publication rename (GNU mv -T / renameat2 RENAME_NOREPLACE equivalent for dirs)" as NonEmptyStr,
-  )
-  shell.Exec.Run(script: script).success
+  shell.Move.NoReplaceDirectory(source: publishing, destination: dest).success
 }
 
 fn codex_runtime_release_ready_with_current_link(
@@ -2568,20 +2533,10 @@ fn finish_bisect_generate_protocol_schema_dir(
   if made.success == false {
     false
   } else {
-    let script = retained_foreign(
-      body: concat(
-        "'",
-        concat(
-          native_executable as String,
-          concat(
-            "' app-server generate-json-schema -o '",
-            concat(schema_dir as String, "'"),
-          ),
-        ),
-      ),
-      reason: "Protocol schema interpreter bisect generate-json-schema pending typed WitnessBin argv enrollment" as NonEmptyStr,
-    )
-    shell.Exec.Run(script: script).success
+    codex_app_server.Cli.GenerateJsonSchema(
+      executable: CodexAppServerExecutable { path: native_executable },
+      output_dir: schema_dir,
+    ).success
   }
 }
 
