@@ -1,6 +1,9 @@
 module gunbc.host_effect_realize
 
 import std.algebra { trim }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 import gunbc.host_effect { fleet_ssh_leaf_unmigrated_refused,
   HostEffect, ShellCommand, RedfishAction, ConvergePlan,
@@ -1620,6 +1623,17 @@ fn build_cache_provision_shell_script(instance: BuildCacheInstance, arch_token: 
   shell_exec_via_bash(
     body: build_cache_provision_script_body(instance: instance, arch_token: arch_token, digest: digest),
   )
+}
+
+data build_cache_provision_shell_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.host_effect_realize.build_cache_provision_shell_script (relocated here, unchanged in kind, from the deleted gunbc.host_build_cache_provision_script) — concat-built systemd/sccache ensure shell run over shell_exec_via_bash transport; DISSOLVES WHEN bash-emit (#5828) realizes EnsureBuildCacheInstance observe/ensure/read-back as typed host-effect argv and realize_provision_build_cache retires this shell_exec_via_bash transport.")
+
+data build_cache_provision_shell_script_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_effect_realize",
+    decl_name: "build_cache_provision_shell_script_dissolution_trigger",
+    field: WholeDeclaration,
+  }
 }
 
 fn build_cache_provision_read_back_fails_closed() -> Bool {
