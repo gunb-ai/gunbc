@@ -2925,9 +2925,22 @@ pub fn reference_derived_provider_files_for_assembled_closure(
     closure: Rc<AssembledCrossFileBindingClosure>,
 ) -> Rc<ReferenceDerivedProviderFilesForAssembledClosure> {
     match (*reference_derived_dependency_projection_for_assembled_closure(closure.clone())).clone() {
-    AssembledClosureDependencyProjection::AssembledClosureDependencyProjectionReady { ref projection, .. } => { let ReferenceDerivedDependencyProjection::ReferenceDerivedDependencyProjectionReady { file_dependencies: dependencies, .. } = projection.as_ref() else { unreachable!() }; Rc::new(ReferenceDerivedProviderFilesForAssembledClosure::ReferenceDerivedProviderFilesForAssembledClosureReady {
+    AssembledClosureDependencyProjection::AssembledClosureDependencyProjectionReady { projection: projection, .. } => match (*projection.clone()).clone() {
+    ReferenceDerivedDependencyProjection::ReferenceDerivedDependencyProjectionReady { file_dependencies: dependencies, .. } => Rc::new(ReferenceDerivedProviderFilesForAssembledClosure::ReferenceDerivedProviderFilesForAssembledClosureReady {
     provider_files: Rc::new({ let mut __result = Vec::new(); for edge in dependencies.clone().iter().cloned() { __result.push(edge.provider_file.clone()); } __result }),
-}) },
+}),
+    ReferenceDerivedDependencyProjection::ReferenceDerivedDependencyProjectionBindingRefused { population: population, .. } => Rc::new(ReferenceDerivedProviderFilesForAssembledClosure::ReferenceDerivedProviderFilesForAssembledClosureRefused {
+    refusal: Rc::new(AssembledClosureDependencyProjectionRefusal::AssembledClosureDependencyProjectionBindingRefused {
+    population: population.clone(),
+}),
+}),
+    ReferenceDerivedDependencyProjection::ReferenceDerivedDependencyProjectionFileRefused { first_failure, more_failures, .. } => Rc::new(ReferenceDerivedProviderFilesForAssembledClosure::ReferenceDerivedProviderFilesForAssembledClosureRefused {
+    refusal: Rc::new(AssembledClosureDependencyProjectionRefusal::AssembledClosureDependencyProjectionFileRefused {
+    first_failure: first_failure.clone(),
+    more_failures: more_failures.clone(),
+}),
+}),
+},
     AssembledClosureDependencyProjection::AssembledClosureDependencyProjectionRefused { refusal: refusal, .. } => Rc::new(ReferenceDerivedProviderFilesForAssembledClosure::ReferenceDerivedProviderFilesForAssembledClosureRefused {
     refusal: refusal.clone(),
 }),
@@ -2973,14 +2986,31 @@ pub fn reference_derived_clause_e_production_from_assembled_closure(
 }),
 }),
     AssembledCrossFileBindingClosure::AssembledCrossFileBindingClosureReady { consumer_file, .. } => match (*reference_derived_dependency_projection_for_assembled_closure(closure.clone())).clone() {
-    AssembledClosureDependencyProjection::AssembledClosureDependencyProjectionReady { ref projection, .. } => { let ReferenceDerivedDependencyProjection::ReferenceDerivedDependencyProjectionReady { binding_provenance: provenances, file_dependencies: dependencies, bound_population, .. } = projection.as_ref() else { unreachable!() }; Rc::new(ReferenceDerivedClauseEProduction::ReferenceDerivedClauseEProductionReady {
+    AssembledClosureDependencyProjection::AssembledClosureDependencyProjectionReady { projection: projection, .. } => match (*projection.clone()).clone() {
+    ReferenceDerivedDependencyProjection::ReferenceDerivedDependencyProjectionReady { binding_provenance: provenances, file_dependencies: dependencies, bound_population, .. } => Rc::new(ReferenceDerivedClauseEProduction::ReferenceDerivedClauseEProductionReady {
     projection: Rc::new(ReferenceDerivedDependencyProjection::ReferenceDerivedDependencyProjectionReady {
     binding_provenance: provenances.clone(),
     file_dependencies: dependencies.clone(),
     bound_population: bound_population.clone(),
 }),
     consumer_file: consumer_file.clone(),
-}) },
+}),
+    ReferenceDerivedDependencyProjection::ReferenceDerivedDependencyProjectionBindingRefused { population: population, .. } => Rc::new(ReferenceDerivedClauseEProduction::ReferenceDerivedClauseEProductionRefused {
+    refusal: Rc::new(ReferenceDerivedClauseEProductionRefusal::ReferenceDerivedClauseEProductionProjectionRefused {
+    refusal: Rc::new(AssembledClosureDependencyProjectionRefusal::AssembledClosureDependencyProjectionBindingRefused {
+    population: population.clone(),
+}),
+}),
+}),
+    ReferenceDerivedDependencyProjection::ReferenceDerivedDependencyProjectionFileRefused { first_failure, more_failures, .. } => Rc::new(ReferenceDerivedClauseEProduction::ReferenceDerivedClauseEProductionRefused {
+    refusal: Rc::new(ReferenceDerivedClauseEProductionRefusal::ReferenceDerivedClauseEProductionProjectionRefused {
+    refusal: Rc::new(AssembledClosureDependencyProjectionRefusal::AssembledClosureDependencyProjectionFileRefused {
+    first_failure: first_failure.clone(),
+    more_failures: more_failures.clone(),
+}),
+}),
+}),
+},
     AssembledClosureDependencyProjection::AssembledClosureDependencyProjectionRefused { refusal: refusal, .. } => Rc::new(ReferenceDerivedClauseEProduction::ReferenceDerivedClauseEProductionRefused {
     refusal: Rc::new(ReferenceDerivedClauseEProductionRefusal::ReferenceDerivedClauseEProductionProjectionRefused {
     refusal: refusal.clone(),

@@ -1273,11 +1273,19 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
         }),
         Rc::new(AlgebraFieldTemplate {
             name: "sort_by".to_string(),
-            param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+            param_types: Rc::new(vec![
+                Rc::new(AlgebraTypeTemplate::ReceiverSelf),
+                Rc::new(AlgebraTypeTemplate::CallableOf {
+                    params: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverElement)]),
+                    return_type: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
+                        id: "SortKey".to_string(),
+                    }),
+                }),
+            ]),
             return_type: Rc::new(AlgebraTypeTemplate::ReceiverSelf),
             size_effect: Some(CollectionSizeEffect::IdentityEffect),
             cost_shape: Some(CostShape::ShapeSortBody),
-            callback_element_position: None,
+            callback_element_position: Some(0),
         }),
         Rc::new(AlgebraFieldTemplate {
             name: "append".to_string(),

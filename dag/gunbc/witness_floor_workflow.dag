@@ -277,20 +277,29 @@ fn witness_floor_v1_parse_step() -> Step {
   }
 }
 
-// THE FLOOR DECLARES ITS PRECONDITION RATHER THAN INHERITING ITS POSITION, AND THAT SURVIVES THE
-// REMOVAL OF THE REGEN STEPS THAT PROMPTED IT. The hazard is general and has nothing to do with
-// regen: a step with no `if` inherits GitHub's default `success()` -- the conjunction of every
-// EARLIER step -- so ANY step inserted ahead of the floor silently becomes one of its
-// preconditions. Under that default, an unrelated red DISARMS the whole witness floor and 9,008
-// witnesses report `skipped`, which is the empty-observation narrow -- `the floor did not fail`
-// standing in for `the floor was never evaluated`. The population silenced that way is three
-// orders of magnitude larger than any step that could cause it, so the asymmetry alone justifies
-// declaring the condition.
+// THE FLOOR RUNS LAST AND THEREFORE DECLARES ITS PRECONDITION TOO (operator directive,
+// 2026-08-20: "move regen before witnesses"). Regen costs ~4 minutes and the floor ~30, so
+// ordering the cheap total check first turns a drift report from a 35-minute wait into a
+// 5-minute one -- the ordinary cheap-refusal-first argument, and the reason the directive is
+// right.
 //
-// The floor's real precondition is that the binary exists, and it now says so. Order is free to
-// change without silently rewiring any step's condition, which is the property that made the
-// original ordering a hazard rather than a preference -- and it is why this hardening is worth
-// keeping on its own after the steps that motivated it were refused.
+// But the reorder is not a pure move, and shipping it as one would have re-created the exact
+// defect the two regen steps were added to fix, pointing the other way. A step with no `if`
+// inherits GitHub's default `success()` -- the conjunction of every EARLIER step -- so once
+// regen sits ahead of the floor, an unconditioned floor would silently acquire regen's verdict
+// as a precondition. A regen red would then DISARM the whole witness floor, and 9,008 witnesses
+// would report `skipped` because a stale stage0 mirror is a materially different fact that has
+// nothing to say about whether the corpus's claims hold. That is the empty-observation narrow
+// again -- `the floor did not fail` standing in for `the floor was never evaluated` -- and it
+// would be strictly worse than the original, because the population silenced is three orders of
+// magnitude larger than the one silenced before.
+//
+// So the floor's real precondition is stated for the same reason regen's is, and it is the same
+// one: the binary exists. The three claims -- floor, regen, regen determinism -- are mutually
+// independent except where regen's receipt genuinely feeds the fixed-point step, and after this
+// change every step in the job declares what it actually needs rather than inheriting its
+// position. Order is now free to change again without silently rewiring any step's condition,
+// which is the property that made the original ordering a hazard rather than a preference.
 //
 // MEASURED CORRECTION, run 32323690924. The paragraph above was right about the hazard and wrong
 // about the remedy, and CI refused the remedy rather than any reasoning catching it. On that run
@@ -332,64 +341,190 @@ fn witness_floor_run_step() -> Step {
   }
 }
 
-// THE TWO REGEN STEPS WERE REMOVED BEFORE THEY EVER MERGED (2026-08-20, deep-ant-102 ruling), AND
-// WHAT FOLLOWS IS THE PART OF THEIR ANALYSIS THAT OUTLIVES THEM. This branch had enrolled
-// `claim_executor --required-regen` and `--required-regen-fixed-point` as required steps; main
-// carried neither, so removing them restores main's state rather than weakening a standing gate.
+// TWO MORE INVOCATIONS OF THE SAME BINARY, mirroring witness_floor_run_step() exactly: the
+// `--source-root` flags are the same fold over gunbc.ci_layer_roots witness_layer_roots (DESIGN
+// §3 -- one authority, not a second literal roster), and each mode decides its own subject in
+// .dag; this step passes only the source roots. `--required-regen` proves the fold's first
+// generation matches the committed candidate -- a genuine committed-vs-emitted staleness probe.
+// Both currently require at least one --source-root flag to pass claim_executor's own CLI gate
+// even though neither mode's function consumes it (src/v1/stage0/src/bin/claim_executor.rs, the
+// empty-source-roots check runs ahead of all three mode dispatches) -- fixing that gate is out
+// of scope here; supplying the flag is the correct interim, not a workaround, since the flag is
+// otherwise meaningful for every other mode this binary serves.
 //
-// THE ADMISSION TEST THAT REFUSED THEM: is every red closable, by the author who caused it, at the
-// moment they caused it? `--required-regen` asserts equality between the .dag authority and the
-// committed stage0 mirror. The regen root cut deleted the writer that closed that gap, so the only
-// accessible green is to hand-edit a mirror -- precisely the act mirror-drift work exists to
-// refuse. A required gate whose only path to green is the violation it guards against does not
-// enforce the rule; it manufactures the workaround AND launders it, because the hand edit then
-// ships under a green required check. That is strictly worse than no gate, which at least leaves
-// the violation visible as a violation.
+// WHY THESE TWO STEPS WERE STRIPPED ON 2026-08-20 AND RESTORED THE SAME DAY, recorded because the
+// strip's argument was CORRECT AT THE TIME and a reader who finds only the restoration will
+// re-derive the strip. The admission test that removed them (deep-ant-102): is every red closable,
+// by the author who caused it, at the moment they caused it? It was not. `--required-regen`
+// reported 16 drifting files on a tree carrying every fix then available, and no sequence of
+// regenerations could clear them, so the only accessible green was a hand-edited mirror -- a
+// required gate whose only path to green is the violation it guards against, which launders the
+// workaround under a green check and is worse than no gate. What changed is not the test, it is
+// the answer: TWO INDEPENDENT BLOCKERS WERE ROOT-CAUSED AND CLOSED, and the gate now has a
+// reachable green that is reached by regenerating, never by editing.
 //
-// MEASURED, not argued: on a tree carrying every fix available to its author (the occurrence-binding
-// refusal propagation, the CallableOf param-node wrap, the ExprLambda body_expected accessor, and
-// the duplicated-authority row below), `--required-regen` still reported
-// `first_generation_equal=false planned=129 executed=129` with 16 files drifting -- twelve of them
-// in files that author never touched. The gate is unclosable in the strong sense: the work required
-// to close it is not the author's to do.
+// BLOCKER 1 -- THE TWO-GENERATION LAG (closed by #8637 plus a staged install, no hand edit). The
+// duplicate `SeedRetainedIntrinsicRegistration` row was deleted from the .dag authority, but the
+// first regenerated `lib.rs` STILL emitted the bare `pub mod expected_red_roster_join;` with no
+// matching file (E0583), because `lib.rs`'s module list is emitted from the COMPILED-IN constant
+// in `gunbc_stage0_crate_layout_generated.rs`, not from the .dag read at runtime. The route that
+// closes it installs the regenerated constant ALONE, rebuilds, and re-runs: the emitted `lib.rs`
+// is then clean and drift drops 16 -> 15. Every step is an install of generated bytes; nothing is
+// authored by hand. Recorded because the tempting alternative -- deleting the offending line from
+// the mirror to make the build proceed -- is the author-side absorbing fallback (DESIGN §5), and
+// it had already conditioned three "generation 1 builds clean" reports from this session that had
+// to be retracted.
 //
-// WHY THE DETERMINISM STEP COULD NOT BE KEPT AS A PEER, which is the non-obvious half. The two are
-// ONE INSTRUMENT SPLIT ACROSS TWO INVOCATIONS, not two independent claims.
-// `run_required_regen_fixed_point` (required_regen_host.rs) opens with `read_receipt(&receipt_path)?`
-// and takes pass 1's digest from it; the receipt defaults to `target/stage0-regen-receipt.json` and
-// is not a committed file. So standalone on a clean tree it exits nonzero in under a second with
-// `refused: read receipt target/stage0-regen-receipt.json: No such file or directory`.
-// The read is UNCONDITIONAL and precedes the `unwrap_or`, so passing the digest in via the
-// `pass1_digest: Option<String>` parameter does NOT rescue it -- the `Option` in the signature is
-// exactly the shape that invites that repair and the file read happens first regardless.
-// And the warm arm is worse than stale, it is FABRICATED: the receipt pass 2 writes inherits
-// `committed_generated_digest`, `first_generation_equal`, `changed_paths` and `candidate_artifact`
-// straight off `prior`, computing only `candidate_generated_digest` and `fixed_point_equal`. On a
-// self-hosted runner with a surviving `target/`, that emits a receipt carrying ANOTHER commit's
-// verdict and changed-path list under THIS commit's sha -- internally consistent, structurally
-// valid, and false about which tree it describes.
+// BLOCKER 2 -- THE COMPARATOR HAD NO REACHABLE GREEN, and this one is invisible to every
+// candidate-side check because the candidate on disk is BYTE-IDENTICAL to the committed file the
+// gate is refusing. After the staged install, drift stuck at exactly one file,
+// `v1_compiler_infer.rs`, at generations 2, 3 and 4 -- deterministic, with `diff` returning zero
+// lines each time. `compare_generated_surfaces` normalized BOTH sides through rustfmt while
+// `write_emitted_tree` writes `normalize(emitted)`; once a candidate is installed the comparison
+// is therefore `normalize(normalize(emitted))` vs `normalize(emitted)`, an identity only if
+// rustfmt is idempotent -- and it is not: on that file a `let x = if (long.receiver.chain)`
+// re-splits on a second pass. So the check refused a tree that already equalled its own artifact,
+// forever, and the only way to silence it was to hand-edit the mirror.
 //
-// THE CONSTRAINT THIS LEAVES FOR THE REPLACEMENT GATE: a determinism check that stands alone must
-// compute both passes in ONE invocation and must not persist a digest through `target/` between
-// steps. That constraint was discovered by the failure of the thing it replaces, which is the only
-// way it was going to be found before being re-derived at cost.
+// THE FIRST FIX WAS WRONG AND THE PRE-COMMIT HOOK CAUGHT IT, which is worth recording because it
+// located the real defect. Comparing the committed side RAW against the single-pass bytes made
+// `--required-regen` green and `cargo fmt --all --check` RED on the same file: the fmt gate
+// re-formats what is committed, so it demands pass N+1, while the comparator had just demanded
+// pass N. The two gates were in direct contradiction, and satisfying either broke the other in a
+// loop with no exit. So the defect is not in either gate's comparison -- it is that the emitted
+// artifact was written in a form that is not a FIXED POINT of the formatter, and a non-fixed-point
+// artifact cannot satisfy two consumers that consume different passes of it.
 //
-// A NAMING CORRECTION WORTH PRESERVING, because it would otherwise be rediscovered from the flag
-// name: despite being called a fixed point, that mode never builds or invokes a candidate binary.
-// `compile_stage0` calls `compile_sources`, linked into the running process -- there is no
-// `Command::new` for cargo or a candidate executable in that path. It measures EMISSION
-// REPEATABILITY (the compiler emits the same bytes twice), a real property, but not a self-host
-// fixed point, which requires G0 emit R1, BUILD G1 from R1, run G1 to emit R2, compare R1 to R2.
-// The build-and-run leg does not exist in this binary, and CI contains exactly one `cargo build`,
-// from the committed mirror. Whoever builds the real G0->G1->R2 chain should prove it with a
-// candidate-use canary: swap the built candidate for a binary that prints a marker and exits
-// nonzero, and confirm the boundary observes it -- a mechanism that only recomputes through G0
-// stays green and is caught.
+// THE FIX: `normalize_generated_source` now iterates rustfmt to a fixed point (bounded at 8
+// passes, exceeding it is a typed refusal -- a widened arm there would be the absorbing fallback
+// DESIGN §5 forbids and would restore the unclosable state), and the committed side is compared
+// RAW against exactly those bytes. `cargo fmt` is then a no-op on the artifact by definition, so
+// the contradiction is unrepresentable rather than detected: construction over validation
+// (DESIGN §5), and the compared artifact and the written artifact become ONE derivation instead
+// of two (DESIGN §3), which is what makes "install the candidate" a guaranteed remedy.
+// Verified in both directions on the installed candidate: `cargo fmt --all --check` exits 0 AND
+// `--required-regen` exits 0.
 //
-// WHAT WAS NOT DONE, and deliberately: the steps were not retained under `continue_on_error`. A
-// step enrolled-but-harmless is the escape hatch DESIGN section 5 forbids -- a toggle whose only
-// effect is to proceed as if the refusal had not fired -- and it would have read as progress on
-// the enrolment goal while enforcing nothing.
+// EVIDENCE FOR THE RESTORATION, executed rather than argued: `--required-regen` exits 0 with
+// `first_generation_equal=true planned=129 executed=129`; `--required-regen-fixed-point` exits 0
+// with `fixed_point_equal=true`; and the discriminating RED refuses -- one comment line prepended
+// to a generated file yields exit 1 naming `std_pareto.rs`, with the restore verified afterwards.
+// A green without that RED would establish nothing, since this comparator's failure mode was
+// precisely a verdict that could not respond to the tree.
+//
+// COST, measured over seven full passes on an arm64 session container: `elapsed_ms` 206705,
+// 220041, 221086, 231461, 234069, 235851, 253731 -- 3.4 to 4.2 minutes per pass. The fixed-point
+// step performs a second full emit, so the pair adds roughly 8 minutes to a ~30-minute job. That
+// is the price of the gate and it is stated here so a future reader trading it away is trading a
+// known quantity.
+//
+// WHAT `--required-regen-fixed-point` ACTUALLY MEASURES, CORRECTED (2026-08-19, fierce-ram-721
+// review + operator verification, both against the source rather than the flag's name): despite
+// its name, `run_required_regen_fixed_point` (required_regen_host.rs) never builds or invokes a
+// candidate binary. `compile_stage0` calls `compile_sources`, a Rust fn linked into the SAME
+// running claim_executor process that already emitted pass 1 -- there is no `Command::new` for
+// cargo or a candidate executable anywhere in that path. So `fixed_point_equal` compares two
+// emissions from the same in-process G0, not G0's emission against a rebuilt G1's. That is
+// EMISSION REPEATABILITY (the compiler emits the same bytes twice), a real and useful property,
+// but it is not a self-host fixed point, which requires G0 emit R1, BUILD G1 from R1, run G1 to
+// emit R2, and compare R1 to R2 -- the build-and-run leg does not exist in this binary. The step
+// below is named for what it measures, not for the CLI flag's name, to avoid publishing an
+// authoritative CI green for a proposition nothing here evaluates (DESIGN §4b: a carrier named
+// for a guarantee it does not hold is rung inflation, and ranks worse than sitting low, because
+// it never gets fixed). The real self-host fixed point -- G0 builds and invokes G1 -- remains
+// unanswered; a modeled v2 route (src/v2/compiler/self_host.dag) exists but has zero production
+// consumers and sits in gunbc.witness_deferral_freeze, so it cannot hold that boundary today
+// either. Whoever builds the real G0->G1->R2 chain should prove it with a candidate-use canary:
+// swap the built candidate for a binary that prints a marker and exits nonzero, and confirm the
+// boundary observes it -- a mechanism that only recomputes through G0 stays green and is caught.
+// WHY THESE TWO STEPS DECLARE A PRECONDITION INSTEAD OF INHERITING THEIR POSITION.
+//
+// A step with no `if` inherits GitHub's default `success()`, which means the conjunction of
+// every earlier step in the job. Ordered after the witness floor, both regen steps therefore
+// carried an undeclared dependency on the floor's verdict -- and the regen claim does not
+// depend on the floor's verdict. Its actual precondition is that the binary exists.
+//
+// Two costs, and the second is the reason this is a defect rather than a preference. The
+// measurement cost: on the only run that has ever carried these steps (32312549861), both
+// report `skipped` with zero duration, because the floor went red for main's own corpus
+// defect -- a population with no relation to regen. So the regen wall cannot be measured on
+// CI at all while any unrelated floor red stands. The correctness cost: once merged, a floor
+// red DISARMS the regen gate, so the stale-mirror class this enrollment exists to catch goes
+// unchecked on exactly the runs where the tree is already known to be unhealthy -- and a
+// skipped step does not report as failing, so the check surface reads `floor red, regen fine`
+// when regen was never asked. That is the empty-observation narrow from DESIGN's failure-mode
+// list -- same class, new instance: bottom-as-answer conflated with bottom-as-ignorance, here
+// `regen did not fail` standing in for `regen was never evaluated`. The named instance in
+// DESIGN is a diff observation rendered as `nothing is affected`; this one is a skipped gate
+// rendered as an unbroken gate.
+//
+// Binding to the build step's own outcome states the real dependency: the two claims are
+// independent, they fail independently, and neither silences the other. This is a narrowing
+// of an undeclared condition to a declared one, NOT a climb -- nothing here checks that a
+// future step keeps declaring its precondition rather than inheriting one.
+fn witness_regen_precondition() -> String {
+  concat(witness_step_status_guard(), "steps.build_witness_fold.outcome == 'success'")
+}
+
+// The fixed-point step's precondition is the REGEN step, not the build, and this is measured
+// rather than assumed: run standalone on a clean tree it exits nonzero in under a second with
+// `refused: read receipt target/stage0-regen-receipt.json: No such file or directory`. It
+// consumes a receipt the regen step above produces, so that is a genuine data dependency and
+// the two steps are NOT peers. Binding it to the build alone would have replaced an undeclared
+// condition that was too strong with one that is too weak -- it would run on every build and
+// refuse for a missing receipt, reporting a receipt-plumbing failure where the real event is
+// that regen did not get far enough to write one.
+fn witness_regen_fixed_point_precondition() -> String {
+  concat(witness_step_status_guard(), "steps.required_regen.outcome == 'success'")
+}
+
+fn witness_required_regen_script() -> String {
+  concat(
+    concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
+    concat(
+      "\"$ROOT/target/release/claim_executor\" --required-regen",
+      concat(witness_floor_source_root_flags(), "\n")
+    )
+  )
+}
+
+fn witness_required_regen_step() -> Step {
+  RunStep {
+    name: Present { value: "Regen fixed point: first generation matches committed candidate" },
+    id: Present { value: "required_regen" },
+    run: witness_required_regen_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: witness_regen_precondition() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn witness_required_regen_fixed_point_script() -> String {
+  concat(
+    concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
+    concat(
+      "\"$ROOT/target/release/claim_executor\" --required-regen-fixed-point",
+      concat(witness_floor_source_root_flags(), "\n")
+    )
+  )
+}
+
+fn witness_required_regen_fixed_point_step() -> Step {
+  RunStep {
+    name: Present { value: "Regen determinism: G0 emit reproduces itself on a second pass" },
+    id: none,
+    run: witness_required_regen_fixed_point_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: witness_regen_fixed_point_precondition() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
 
 // A DECLARED PROVISIONAL BOUND, NOT A DERIVED ONE, AND THE DIFFERENCE IS THE WHOLE POINT.
 //
@@ -427,6 +562,8 @@ fn witness_floor_job() -> Job {
       witness_floor_toolchain_step(),
       witness_floor_build_step(),
       witness_floor_v1_parse_step(),
+      witness_required_regen_step(),
+      witness_required_regen_fixed_point_step(),
       witness_floor_run_step()
     ],
     needs: [],
