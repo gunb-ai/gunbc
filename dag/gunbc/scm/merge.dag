@@ -1,0 +1,273 @@
+module gunbc.scm.merge
+
+import std.types { Bool, Int, List }
+
+import v2.std.node {
+  Node,
+  Edge,
+  Named,
+  Symbol,
+  TypeNode,
+  Conj,
+  node_synthetic,
+}
+
+import gunbc.scm.object_store {
+  ObjectId,
+  ObjectStore,
+  StoreOutcome,
+  Stored,
+  LocatorCollision,
+  object_id_eq,
+  store_node,
+}
+
+import gunbc.scm.checkout { Commit }
+
+// A PROPOSAL IS AUTHORED, NOT INFERRED. It is a set of `name -> value` requirements, each meaning
+// "the resulting program must contain this exact value at this named binding". Nothing here reads a
+// file, diffs two endpoints, or reconstructs what an author meant from what changed: the design note
+// section 7 rules that without authoring capture, inferring a proposal from two file endpoints is
+// patch inference wearing new vocabulary. So the requirement is stated, and the operation is total
+// over what was stated.
+type Requirement {
+  name: Symbol
+  value: Node
+}
+
+type Proposal {
+  requirements: List<Requirement>
+}
+
+// THE BINDING CARRIES AN IDENTITY, NOT A NODE, because two authored values that differ only in
+// occurrence provenance or named-edge order ARE the same value, and the store is what decides that.
+// Comparing Nodes here would reintroduce a second equality beside content addressing -- the DESIGN
+// section 3 nickname, applied to equality rather than to a name.
+type Binding {
+  name: Symbol
+  object: ObjectId
+}
+
+type MergeRefusal
+  = DuplicateBinding { name: Symbol }
+  | BindingLocatorCollision { name: Symbol, identity: ObjectId }
+
+// CHOICE IS AN ANSWER, NOT A FAILURE, and it is the reason this type has three arms rather than the
+// familiar two. Two different objects required at one binding is a QUESTION the system is not
+// entitled to answer: latest-wins, first-wins and branch-priority-wins are all fabricated plausible
+// output (DESIGN section 5), and each silently discards an authored requirement. So the outcome
+// carries BOTH candidates and asks. CouldNotLand is the separate arm for an input the operation
+// cannot accept at all -- keeping "I need you to choose" apart from "this input is malformed" is the
+// state-space split DESIGN names, since their remedies differ.
+type MergeOutcome
+  = Merged { store: ObjectStore, commit: Commit }
+  | ChoiceRequired { name: Symbol, first: ObjectId, second: ObjectId }
+  | CouldNotLand { cause: MergeRefusal }
+
+fn binding_named(bindings: List<Binding>, name: Symbol) -> Binding? {
+  fold(bindings, init: none, f: fn(found, b) {
+    match found {
+      Present { value: _ } => found
+      Absent => if b.name == name { Present { value: b } } else { none }
+    }
+  })
+}
+
+// STORING EVERY REQUIREMENT IS WHAT TURNS AUTHORED VALUES INTO COMPARABLE IDENTITIES. It also means
+// a merge cannot report success while leaving the commit's closure incomplete: every value is in the
+// store before any commit root is built.
+type BindAcc {
+  store: ObjectStore
+  bindings: List<Binding>
+  refusal: MergeRefusal?
+}
+
+fn bind_requirement(acc: BindAcc, req: Requirement) -> BindAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match binding_named(bindings: acc.bindings, name: req.name) {
+        Present { value: _ } =>
+          BindAcc {
+            store: acc.store,
+            bindings: acc.bindings,
+            refusal: Present { value: DuplicateBinding { name: req.name } },
+          }
+        Absent =>
+          match store_node(store: acc.store, n: req.value) {
+            LocatorCollision { identity: identity, existing: _, incoming: _ } =>
+              BindAcc {
+                store: acc.store,
+                bindings: acc.bindings,
+                refusal: Present {
+                  value: BindingLocatorCollision { name: req.name, identity: identity },
+                },
+              }
+            Stored { store: store, identity: identity } =>
+              BindAcc {
+                store: store,
+                bindings: concat(acc.bindings, [Binding { name: req.name, object: identity }]),
+                refusal: acc.refusal,
+              }
+          }
+      }
+  }
+}
+
+fn bind_proposal(store: ObjectStore, p: Proposal) -> BindAcc {
+  fold(
+    p.requirements,
+    init: BindAcc { store: store, bindings: [], refusal: none },
+    f: fn(acc, req) { bind_requirement(acc: acc, req: req) },
+  )
+}
+
+// COMBINING IS THE WHOLE SEMANTIC CLAIM, and it has exactly three cases with no fourth. A name only
+// one side binds lands by construction. A name both sides bind to the SAME identity deduplicates --
+// which is why identity is content-addressed rather than authored: convergent work agrees without
+// anyone coordinating. A name both sides bind DIFFERENTLY asks. There is no priority rule to get
+// wrong because there is no priority rule.
+type CombineAcc {
+  bindings: List<Binding>
+  choice: MergeOutcome?
+}
+
+fn combine_binding(acc: CombineAcc, incoming: Binding) -> CombineAcc {
+  match acc.choice {
+    Present { value: _ } => acc
+    Absent =>
+      match binding_named(bindings: acc.bindings, name: incoming.name) {
+        Absent =>
+          CombineAcc { bindings: concat(acc.bindings, [incoming]), choice: acc.choice }
+        Present { value: existing } =>
+          if object_id_eq(left: existing.object, right: incoming.object) {
+            acc
+          } else {
+            CombineAcc {
+              bindings: acc.bindings,
+              choice: Present {
+                value: ChoiceRequired {
+                  name: incoming.name,
+                  first: existing.object,
+                  second: incoming.object,
+                },
+              },
+            }
+          }
+      }
+  }
+}
+
+// THE COMMIT ROOT IS AN ORDINARY NODE, stored through the ordinary path. It is NOT assembled from
+// child identities by a hash-combine written here: that would be a second identity authority beside
+// v2.std.node content_hash, and DESIGN section 3 forbids the fork even when it would be faster. The
+// consequence is load-bearing rather than incidental -- because store_node canonicalizes named edges,
+// the root identity does not depend on the order the bindings were visited, so `arrival order is not
+// authority` holds BY CONSTRUCTION and not by a sort this module performs and must keep correct.
+fn root_node(bindings: List<Binding>, values: List<Requirement>) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: fold(bindings, init: [], f: fn(edges, b) {
+      match requirement_named(values: values, name: b.name) {
+        Absent => edges
+        Present { value: req } =>
+          concat(edges, [Edge { label: Named { name: b.name }, target: req.value }])
+      }
+    }),
+  )
+}
+
+fn requirement_named(values: List<Requirement>, name: Symbol) -> Requirement? {
+  fold(values, init: none, f: fn(found, r) {
+    match found {
+      Present { value: _ } => found
+      Absent => if r.name == name { Present { value: r } } else { none }
+    }
+  })
+}
+
+fn merge(store: ObjectStore, first: Proposal, second: Proposal) -> MergeOutcome {
+  let left = bind_proposal(store: store, p: first)
+  match left.refusal {
+    Present { value: cause } => CouldNotLand { cause: cause }
+    Absent => {
+      let right = bind_proposal(store: left.store, p: second)
+      match right.refusal {
+        Present { value: cause } => CouldNotLand { cause: cause }
+        Absent => {
+          let combined = fold(
+            concat(left.bindings, right.bindings),
+            init: CombineAcc { bindings: [], choice: none },
+            f: fn(acc, b) { combine_binding(acc: acc, incoming: b) },
+          )
+          match combined.choice {
+            Present { value: outcome } => outcome
+            Absent =>
+              match store_node(
+                store: right.store,
+                n: root_node(
+                  bindings: combined.bindings,
+                  values: concat(first.requirements, second.requirements),
+                ),
+              ) {
+                LocatorCollision { identity: identity, existing: _, incoming: _ } =>
+                  CouldNotLand {
+                    cause: BindingLocatorCollision { name: ^commit_root, identity: identity },
+                  }
+                Stored { store: store, identity: identity } =>
+                  Merged { store: store, commit: Commit { root: identity } }
+              }
+          }
+        }
+      }
+    }
+  }
+}
+
+// ACCEPT CANNOT CHANGE THE COMMIT, AND THE GUARANTEE IS STRUCTURAL RATHER THAN CHECKED. The design
+// note requires that an acceptance is appended and never alters what was agreed. The weak way to
+// hold that is to return a Commit and assert in a test that it equals the input. The strong way is
+// the one taken here: `accept` does not return a Commit at all, so "the commit changed" has no
+// representation in the result type -- DESIGN section 4b's top rung, where validation is unnecessary
+// because the invalid state cannot be written. The claim below still executes, because a climb
+// deletes the redundant production check, never the evidence that the rung is real.
+type Acceptance {
+  commit: Commit
+  authority: Symbol
+  contract: Symbol
+}
+
+// AN APPEND-ONLY LOG, SEPARATE FROM THE STORE. Who agreed to what is not a fact about the program's
+// content -- fusing it into the commit is exactly what forces a single timeline and a whole-tree
+// snapshot. Two parties can accept the same commit under different contracts without either
+// acceptance touching the other or the program.
+type AcceptanceLog {
+  entries: List<Acceptance>
+}
+
+fn empty_log() -> AcceptanceLog {
+  AcceptanceLog { entries: [] }
+}
+
+fn accept(log: AcceptanceLog, commit: Commit, authority: Symbol, contract: Symbol) -> AcceptanceLog {
+  AcceptanceLog {
+    entries: concat(
+      log.entries,
+      [Acceptance { commit: commit, authority: authority, contract: contract }],
+    ),
+  }
+}
+
+fn acceptance_count(log: AcceptanceLog) -> Int {
+  length(log.entries)
+}
+
+// MERGE DOES NOT IMPLY AGREEMENT. A merged commit exists and can be checked out while no one has
+// accepted it; the design note lists that as a claim precisely because collapsing the two is the
+// familiar mistake -- it is what makes "it landed" and "we agreed" the same event and leaves no way
+// to state a merged-but-unagreed program.
+fn commit_is_accepted(log: AcceptanceLog, commit: Commit) -> Bool {
+  fold(log.entries, init: false, f: fn(found, e) {
+    found || object_id_eq(left: e.commit.root, right: commit.root)
+  })
+}

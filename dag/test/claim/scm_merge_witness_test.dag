@@ -1,0 +1,325 @@
+module test.claim.scm_merge_witness
+
+import std.types { Bool, List }
+import std.occurrence_identity { OccurrenceId }
+
+import v2.std.node {
+  Node,
+  Edge,
+  Named,
+  Symbol,
+  TypeNode,
+  ComputationNode,
+  Atom,
+  Conj,
+  Value,
+  node_synthetic,
+  node_with_occurrence_id,
+  node_occurrence_minted,
+}
+
+import gunbc.scm.object_store {
+  ObjectId,
+  ObjectStore,
+  Stored,
+  LocatorCollision,
+  empty_store,
+  object_id_eq,
+  store_contains,
+}
+
+import gunbc.scm.checkout {
+  Commit,
+  CheckoutOutcome,
+  CheckedOut,
+  CheckoutRefused,
+  checkout,
+}
+
+import gunbc.scm.merge {
+  Requirement,
+  Proposal,
+  MergeOutcome,
+  Merged,
+  ChoiceRequired,
+  CouldNotLand,
+  DuplicateBinding,
+  AcceptanceLog,
+  empty_log,
+  accept,
+  acceptance_count,
+  commit_is_accepted,
+  merge,
+}
+
+// FIXTURES. Two distinct authored values and two distinct binding names, so that "different
+// bindings combine" and "one binding disagrees" are different inputs rather than the same one
+// described twice.
+fn leaf(identity: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: identity } }, children: [])
+}
+
+fn alpha() -> Node { leaf(identity: ^alpha) }
+fn beta() -> Node { leaf(identity: ^beta) }
+
+fn proposal_one(name: Symbol, value: Node) -> Proposal {
+  Proposal { requirements: [Requirement { name: name, value: value }] }
+}
+
+// A Commit? rather than a sentinel commit: there is no "no commit" value to invent, and inventing
+// one would be the fabricated-plausible-output arm in a test helper.
+fn merged_commit(outcome: MergeOutcome) -> Commit? {
+  match outcome {
+    Merged { store: _, commit: commit } => Present { value: commit }
+    ChoiceRequired { name: _, first: _, second: _ } => none
+    CouldNotLand { cause: _ } => none
+  }
+}
+
+fn merged_store(outcome: MergeOutcome) -> ObjectStore {
+  match outcome {
+    Merged { store: store, commit: _ } => store
+    ChoiceRequired { name: _, first: _, second: _ } => empty_store()
+    CouldNotLand { cause: _ } => empty_store()
+  }
+}
+
+fn same_commit(left: Commit?, right: Commit?) -> Bool {
+  match left {
+    Absent => false
+    Present { value: l } =>
+      match right {
+        Absent => false
+        Present { value: r } => object_id_eq(left: l.root, right: r.root)
+      }
+  }
+}
+
+// CLAIM: distinct bindings combine by construction, with no choice asked.
+test fn distinct_bindings_combine_without_a_choice() -> Bool {
+  match merge(
+    store: empty_store(),
+    first: proposal_one(name: ^a, value: alpha()),
+    second: proposal_one(name: ^b, value: beta()),
+  ) {
+    Merged { store: _, commit: _ } => true
+    ChoiceRequired { name: _, first: _, second: _ } => false
+    CouldNotLand { cause: _ } => false
+  }
+}
+
+// CLAIM: the same exact object required twice deduplicates rather than conflicting. This is the
+// control that keeps the claim above from being satisfied by an implementation that simply never
+// asks -- and the one below from being satisfied by one that always asks.
+test fn the_same_object_at_one_binding_deduplicates() -> Bool {
+  match merge(
+    store: empty_store(),
+    first: proposal_one(name: ^a, value: alpha()),
+    second: proposal_one(name: ^a, value: alpha()),
+  ) {
+    Merged { store: _, commit: _ } => true
+    ChoiceRequired { name: _, first: _, second: _ } => false
+    CouldNotLand { cause: _ } => false
+  }
+}
+
+// CLAIM: conflicting bindings ask rather than guess, and the question carries BOTH candidates. The
+// wrong control the design note names is "any winner rule": an implementation with one would answer
+// Merged here, so this claim goes red on every latest-wins, first-wins and priority-wins variant.
+test fn conflicting_bindings_ask_and_name_both_candidates() -> Bool {
+  match merge(
+    store: empty_store(),
+    first: proposal_one(name: ^a, value: alpha()),
+    second: proposal_one(name: ^a, value: beta()),
+  ) {
+    Merged { store: _, commit: _ } => false
+    CouldNotLand { cause: _ } => false
+    ChoiceRequired { name: name, first: first, second: second } =>
+      name == ^a && !object_id_eq(left: first, right: second)
+  }
+}
+
+// CLAIM: arrival order is not authority. Both orders must produce the SAME commit, not merely both
+// succeed -- an implementation that appended bindings in visit order would pass a both-succeed test
+// and fail this one.
+test fn arrival_order_does_not_change_the_commit() -> Bool {
+  same_commit(
+    left: merged_commit(outcome: merge(
+      store: empty_store(),
+      first: proposal_one(name: ^a, value: alpha()),
+      second: proposal_one(name: ^b, value: beta()),
+    )),
+    right: merged_commit(outcome: merge(
+      store: empty_store(),
+      first: proposal_one(name: ^b, value: beta()),
+      second: proposal_one(name: ^a, value: alpha()),
+    )),
+  )
+}
+
+// CONTROL for the order claim: the two orders really are different inputs producing a non-empty
+// commit, so the equality above is not two absent values comparing equal.
+test fn both_orders_actually_produce_a_commit() -> Bool {
+  match merged_commit(outcome: merge(
+    store: empty_store(),
+    first: proposal_one(name: ^a, value: alpha()),
+    second: proposal_one(name: ^b, value: beta()),
+  )) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+// The same two proposals with every occurrence id REMINTED. Occurrence ids are graph-scoped
+// allocator output, so two independently-built copies of one program carry different ones.
+fn minted_leaf(identity: Symbol, id: Int) -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Atom { identity: identity } },
+    children: [],
+    occurrence_id: node_occurrence_minted(id: OccurrenceId { value: id }),
+  )
+}
+
+// CLAIM: proposals combine without node identity. The design note's wrong control is "a merge
+// requiring matching occurrence ids" -- such a merge would either refuse or produce a different
+// commit here, so this is the discriminating input for the whole content-addressing premise.
+test fn proposals_combine_across_reminted_occurrences() -> Bool {
+  same_commit(
+    left: merged_commit(outcome: merge(
+      store: empty_store(),
+      first: proposal_one(name: ^a, value: alpha()),
+      second: proposal_one(name: ^b, value: beta()),
+    )),
+    right: merged_commit(outcome: merge(
+      store: empty_store(),
+      first: proposal_one(name: ^a, value: minted_leaf(identity: ^alpha, id: 41)),
+      second: proposal_one(name: ^b, value: minted_leaf(identity: ^beta, id: 77)),
+    )),
+  )
+}
+
+// CONTROL for the remint claim: the reminted nodes really do carry different occurrence ids, so the
+// claim above is not comparing a program against itself.
+test fn the_reminted_fixtures_carry_different_occurrences() -> Bool {
+  minted_leaf(identity: ^alpha, id: 41).occurrence_id != alpha().occurrence_id
+}
+
+// CLAIM: a duplicate binding within ONE proposal is an input refusal, not a silent dedup or a
+// choice. The design note lists "duplicate named siblings in any input" as a refusal; answering
+// ChoiceRequired here would be treating a malformed input as a question to the author.
+test fn a_duplicate_binding_in_one_proposal_refuses() -> Bool {
+  match merge(
+    store: empty_store(),
+    first: Proposal {
+      requirements: [
+        Requirement { name: ^a, value: alpha() },
+        Requirement { name: ^a, value: beta() },
+      ],
+    },
+    second: proposal_one(name: ^b, value: beta()),
+  ) {
+    Merged { store: _, commit: _ } => false
+    ChoiceRequired { name: _, first: _, second: _ } => false
+    CouldNotLand { cause: cause } =>
+      match cause {
+        DuplicateBinding { name: name } => name == ^a
+        BindingLocatorCollision { name: _, identity: _ } => false
+      }
+  }
+}
+
+// CLAIM: a commit rebuilds from its own closure alone. Proposals, the acceptance log and every
+// binding name are discarded here; only the store and the root identity survive into the checkout.
+// The design note's wrong control is "a checkout that queries live names" -- which cannot even be
+// written against this signature, because checkout takes no name.
+test fn a_commit_rebuilds_from_its_closure_alone() -> Bool {
+  let outcome = merge(
+    store: empty_store(),
+    first: proposal_one(name: ^a, value: alpha()),
+    second: proposal_one(name: ^b, value: beta()),
+  )
+  match merged_commit(outcome: outcome) {
+    Absent => false
+    Present { value: commit } =>
+      match checkout(store: merged_store(outcome: outcome), commit: commit) {
+        CheckedOut { program: _ } => true
+        CheckoutRefused { cause: _ } => false
+      }
+  }
+}
+
+// CLAIM: a later object cannot change an agreed program. A SECOND merge binding the same name to a
+// different value produces a DIFFERENT commit; the original commit still checks out, unchanged, from
+// the store that now holds both. This is the property that makes an agreement durable without
+// locking the store: agreement is pinned to a closure, not to a mutable name.
+test fn a_later_object_cannot_change_an_agreed_program() -> Bool {
+  let agreed = merge(
+    store: empty_store(),
+    first: proposal_one(name: ^a, value: alpha()),
+    second: proposal_one(name: ^b, value: beta()),
+  )
+  match merged_commit(outcome: agreed) {
+    Absent => false
+    Present { value: commit } => {
+      let later = merge(
+        store: merged_store(outcome: agreed),
+        first: proposal_one(name: ^a, value: beta()),
+        second: proposal_one(name: ^c, value: alpha()),
+      )
+      match checkout(store: merged_store(outcome: later), commit: commit) {
+        CheckoutRefused { cause: _ } => false
+        CheckedOut { program: _ } =>
+          !same_commit(left: Present { value: commit }, right: merged_commit(outcome: later))
+      }
+    }
+  }
+}
+
+// CLAIM: merge does not imply agreement. A merged commit exists and checks out while the acceptance
+// log is empty; accepting it appends without producing a new commit. `accept` returning no Commit at
+// all is what makes "the acceptance changed the commit" unrepresentable rather than merely untrue.
+test fn merge_does_not_imply_agreement() -> Bool {
+  let outcome = merge(
+    store: empty_store(),
+    first: proposal_one(name: ^a, value: alpha()),
+    second: proposal_one(name: ^b, value: beta()),
+  )
+  match merged_commit(outcome: outcome) {
+    Absent => false
+    Present { value: commit } => {
+      let before = empty_log()
+      let after = accept(log: before, commit: commit, authority: ^reviewer, contract: ^slice_two)
+      !commit_is_accepted(log: before, commit: commit)
+        && commit_is_accepted(log: after, commit: commit)
+        && acceptance_count(log: before) == 0
+        && acceptance_count(log: after) == 1
+    }
+  }
+}
+
+// CONTROL: an acceptance of a DIFFERENT commit does not make this one accepted -- otherwise
+// commit_is_accepted could answer true for everything and the claim above would still pass.
+test fn accepting_one_commit_does_not_accept_another() -> Bool {
+  let first = merge(
+    store: empty_store(),
+    first: proposal_one(name: ^a, value: alpha()),
+    second: proposal_one(name: ^b, value: beta()),
+  )
+  let second = merge(
+    store: empty_store(),
+    first: proposal_one(name: ^a, value: beta()),
+    second: proposal_one(name: ^b, value: alpha()),
+  )
+  match merged_commit(outcome: first) {
+    Absent => false
+    Present { value: one } =>
+      match merged_commit(outcome: second) {
+        Absent => false
+        Present { value: other } =>
+          !commit_is_accepted(
+            log: accept(log: empty_log(), commit: other, authority: ^reviewer, contract: ^slice_two),
+            commit: one,
+          )
+      }
+  }
+}
