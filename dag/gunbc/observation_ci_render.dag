@@ -710,7 +710,7 @@ fn ci_batch_summary_text(
 
 data ci_witness_claim_result_note: String = "Bazel-shaped claim-result lines for every witness the floor executes. The seed transports subject, function, verdict and wall time; every choice about how the line READS lives here. Subject is either a dotted module path (test.claim.foo) or a repo-relative entry path (dag/test/claim/foo_test.dag); both normalize to a //package:target label. Column width is a display policy, not a semantic fact — the outcome and duration are always present so a fast green and a slow green read differently at arm's length."
 
-data ci_witness_claim_result_interim_scalar_note: String = "KNOWN BLIND SPOT, NOT A FORMATTING SIMPLIFICATION. Wave 6 routes E1 formatting through this authority but the seed still collapses ClaimOutcome to passed: Bool at the boundary because the hot path cannot afford per-line interpreter eval. That collapse is lossy in the direction that hides the class gunbc#8423 just surfaced: Pass, Fail, and TimedOut all become two display tokens, and TimedOut — budget interruption, not a semantic verdict — is the one that matters. The Bool must not become the shared interface other consumers key on. Warn-tier cost debt remains a separate projection (ci_witness_budget_warn_text). Dissolve-on: replace subject/function/passed/wall with ONE typed per-witness receipt the floor produces once; the renderer projects human lines from the PRODUCT of two independent facts — (1) outcome: ClaimOutcome (Pass | Fail | NotBool | RuntimeError | TimedOut\{elapsed_ms,budget_ms,kind:BudgetKind\}) where TimedOut is the sole budget-refusal variant and elapsed_ms is a lower bound, not a measured duration; (2) disposition: ExpectedRedArm Held | NowPassing | BudgetRefused when enrolled, else not enrolled. The failed / stale_quarantine / budget_refused reporting channels on RequiredFloorOutcome are a run-level partition, not per-witness facts — do not key the renderer on them. Held rows currently print nothing (261 of 795 measured); a follow-up renderer must not assume only refusals get lines."
+data ci_witness_claim_result_interim_scalar_note: String = "KNOWN BLIND SPOT, NOT A FORMATTING SIMPLIFICATION. Wave 6 routes E1 formatting through this authority but the seed still collapses ClaimOutcome to passed: Bool at the boundary because the hot path cannot afford per-line interpreter eval. That collapse is lossy in the direction that hides the class gunbc#8423 just surfaced: Pass, Fail, and TimedOut all become two display tokens, and TimedOut — budget interruption, not a semantic verdict — is the one that matters. The Bool must not become the shared interface other consumers key on. Warn-tier cost debt was a separate projection until 2026-08-20, when the tier and its renderer were deleted outright (see ci_witness_budget_warn_retirement_receipt). Dissolve-on: replace subject/function/passed/wall with ONE typed per-witness receipt the floor produces once; the renderer projects human lines from the PRODUCT of two independent facts — (1) outcome: ClaimOutcome (Pass | Fail | NotBool | RuntimeError | TimedOut\{elapsed_ms,budget_ms,kind:BudgetKind\}) where TimedOut is the sole budget-refusal variant and elapsed_ms is a lower bound, not a measured duration; (2) disposition: ExpectedRedArm Held | NowPassing | BudgetRefused when enrolled, else not enrolled. The failed / stale_quarantine / budget_refused reporting channels on RequiredFloorOutcome are a run-level partition, not per-witness facts — do not key the renderer on them. Held rows currently print nothing (261 of 795 measured); a follow-up renderer must not assume only refusals get lines."
 
 data ci_witness_claim_column_width: Nat = 60
 
@@ -734,17 +734,36 @@ fn ci_witness_bazel_target_label(subject: String, function: String) -> String {
   concat("//", concat(ci_witness_package_path(subject: subject), concat(":", function)))
 }
 
-fn ci_witness_outcome_token(passed: Bool) -> String {
-  if passed {
-    "PASSED"
-  } else {
-    "FAILED"
+data ci_witness_verdict_note: String = "ONE BIT WAS CARRYING SEVEN STATES (2026-08-20). The per-row token was derived from a Bool that the CALLER had already produced -- cli_run `stream_witness` receives matches!(outcome, ClaimOutcome::Pass), so Fail, NotBool, RuntimeError, TimedOut and HostToolUnresolved were flattened into one FAILED token BEFORE this renderer was reached, and no change confined to the renderer could have recovered them. The console was the only place the typed outcome was lost. Enrollment is the seventh state: a witness ENROLLED in v2.workflow.floor_expected_red that fails exactly as enrolled printed the identical FAILED line as a genuine regression. The distinction existed only in the run-summary counters -- known_red_held versus failed -- and nowhere in the per-row output that a human or a grep actually reads. On a nine-thousand-row console with a roster of ~180 enrolled identities, that is the DESIGN §5 state-space conflation with the worst possible consequence attached: the one signal that must never be lost is rendered indistinguishable from the several hundred that are expected. This is the same shape the corpus already names at run_verdict_refusal_polarity_note -- one bit cannot carry \"ran, verdict false\" and \"failed as enrolled\" as different states, and no care in the caller fixes it, because the caller has already collapsed them before this function is reached. The remedy is the one DESIGN prescribes for a conflation: split the state space, do not annotate the collapsed one. KNOWN-RED is deliberately NOT spelled as a decoration on FAILED: anything scanning the console for FAILED must stop matching enrolled rows, which is precisely the behaviour that was missing."
+
+// The arms mirror v1_compiler.cli_run `ClaimOutcome` one-for-one, plus the enrollment state the
+// outcome alone cannot express. That correspondence is the point: `ClaimOutcome` is ALREADY a
+// typed coproduct and the console was the only place it got flattened, so this is not a new
+// vocabulary -- it is the existing one surviving as far as the reader.
+type CiWitnessVerdict
+  = WitnessPassed
+  | WitnessFailed
+  | WitnessNotBool
+  | WitnessRuntimeError
+  | WitnessBudgetRefused
+  | WitnessHostToolUnresolved
+  | WitnessKnownRed
+
+fn ci_witness_outcome_token(verdict: CiWitnessVerdict) -> String {
+  match verdict {
+    WitnessPassed => "PASSED"
+    WitnessFailed => "FAILED"
+    WitnessNotBool => "NOT-BOOL"
+    WitnessRuntimeError => "ERROR"
+    WitnessBudgetRefused => "BUDGET-REFUSED"
+    WitnessHostToolUnresolved => "TOOL-UNRESOLVED"
+    WitnessKnownRed => "KNOWN-RED"
   }
 }
 
-fn ci_witness_claim_suffix(passed: Bool, wall: Nanosecond) -> String {
+fn ci_witness_claim_suffix(verdict: CiWitnessVerdict, wall: Nanosecond) -> String {
   concat(
-    ci_witness_outcome_token(passed: passed),
+    ci_witness_outcome_token(verdict: verdict),
     concat(" in ", ci_human_elapsed(d: wall))
   )
 }
@@ -763,44 +782,17 @@ fn ci_witness_pad_to_column(label: String, width: Nat) -> String {
 fn ci_witness_claim_result_text(
   subject: String,
   function: String,
-  passed: Bool,
+  verdict: CiWitnessVerdict,
   wall: Nanosecond,
 ) -> String {
   let label = ci_witness_bazel_target_label(subject: subject, function: function)
   let padded = ci_witness_pad_to_column(label: label, width: ci_witness_claim_column_width)
-  concat(padded, ci_witness_claim_suffix(passed: passed, wall: wall))
+  concat(padded, ci_witness_claim_suffix(verdict: verdict, wall: wall))
 }
 
-data ci_witness_budget_warn_note: String = "Per-witness budget warning for the floor fold's warn tier — distinct from S1 claim-result lines. A witness over its warn threshold but under the hard budget is reported and allowed to finish; the line names qualified identity, observed wall, warn threshold and ceiling so the population is observable rather than reconstructed from timings. Durations cross as std.measure Millisecond at this seam; the seed converts wall_nanos and policy thresholds at the boundary."
+data ci_witness_budget_warn_retirement_receipt: String = "RETIRED 2026-08-20 with the warn tier itself. ci_witness_budget_warn_text rendered the floor fold's [floor-witness-slow] line; the tier it served is deleted at its authority (v2.workflow.required_floor, see the deletion note there), so the renderer has no subject. Its evidence is retired with it rather than left standing, per DESIGN 4b: a witness whose only subject is behaviour the tree deliberately rejects would otherwise become the mechanism by which the rejected behaviour grants itself immortality. What went with it: the two witnesses w_witness_budget_warn_line_holds and w_RED_witness_budget_warn_requires_ceiling_clause, the seed mirror render_witness_budget_warn_text_mirror and its parity test, RequiredFloorClaim.warn_ms, RequiredFloorOutcome.over_warn (which no consumer ever read), the ClaimBudgetTiersInverted refusal, and the emit-census site row witness_budget_warn_site. The two safety deadlines and the diagnostic completed-cost line are untouched — this retires an advisory tier, not a limit."
 
-fn ci_witness_budget_warn_text(
-  qualified: String,
-  wall: Millisecond,
-  warn: Millisecond,
-  budget: Millisecond,
-) -> String {
-  concat(
-    "[floor-witness-slow] ",
-    concat(
-      qualified,
-      concat(
-        " ",
-        concat(
-          to_string(millisecond_count(m: wall)),
-          concat(
-            "ms > ",
-            concat(
-              to_string(millisecond_count(m: warn)),
-              concat("ms warn (ceiling ", concat(to_string(millisecond_count(m: budget)), "ms)"))
-            )
-          )
-        )
-      )
-    )
-  )
-}
-
-data ci_shared_fill_row_note: String = "fill_ms is SELF time and inclusive_ms includes the fills nested inside this one, because these caches compose: building the module graph builds the reference edges and the path index on its way, so a sum over inclusive figures counts each inner scan once per enclosing scan. Measured on the first floor receipt, a 17890ms module-graph fill contained a 12054ms path-index fill and a 5141ms reference-edge fill and was ~695ms of its own. The total is summed over SELF; inclusive is carried beside it because it is what names the caller that caused the inner scans. One line per SHARED FILL in the floor fold — a process-global corpus computation, what it cost, which claim paid it, and how many claims and modules read that same fill for free. Distinct from ci_witness_budget_warn_text, which reports the wall time of one row: this reports the part of that wall time that did not belong to that row. The disposition is derived from the payer and the consumer breadth by gunbc.witness_row_cost shared_fill_disposition, so the line never carries a verdict the seed authored beside the numbers that decide it."
+data ci_shared_fill_row_note: String = "fill_ms is SELF time and inclusive_ms includes the fills nested inside this one, because these caches compose: building the module graph builds the reference edges and the path index on its way, so a sum over inclusive figures counts each inner scan once per enclosing scan. Measured on the first floor receipt, a 17890ms module-graph fill contained a 12054ms path-index fill and a 5141ms reference-edge fill and was ~695ms of its own. The total is summed over SELF; inclusive is carried beside it because it is what names the caller that caused the inner scans. One line per SHARED FILL in the floor fold — a process-global corpus computation, what it cost, which claim paid it, and how many claims and modules read that same fill for free. This reports the part of a row's wall time that did not belong to that row. It was formerly contrasted here with ci_witness_budget_warn_text, the warn-tier line, which is deleted (see ci_witness_budget_warn_retirement_receipt) — this row-cost projection is unaffected by that retirement and remains live. The disposition is derived from the payer and the consumer breadth by gunbc.witness_row_cost shared_fill_disposition, so the line never carries a verdict the seed authored beside the numbers that decide it."
 
 fn ci_shared_fill_row_text(
   cache: String,
