@@ -1,7 +1,7 @@
 module gunbc.host_budget_source
 
 
-data host_budget_source_authority_disposition: std.disposition.Disposition = Terminal {
+data host_budget_source_authority_disposition: std.disposition.Disposition = std.disposition.Terminal {
   reason: "Single authority for the SOURCE half of the host memory budget the v1 memory governor arms against. The BUDGET VALUE stays where it is measured (a cgroup read, a meminfo read, an operator env override); what this module owns is the closed set of places that value can come from, whether each is degraded, and how each is rendered. It exists because those three facts were carried by a free-text label string and re-derived from it by substring scan."
 }
 

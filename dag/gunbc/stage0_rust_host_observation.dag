@@ -1,16 +1,14 @@
 module gunbc.stage0_rust_host_observation
 
-
-
 data stage0_rust_host_observation_note: String = "Rust-source OBSERVATION prerequisite only; lifecycle totality remains downstream in gunbc.stage0_rust_source_lifecycle_scaffold / v1-honest-frontier. extdeps.git owns the Git operation shapes. This module supplies repository policy (HEAD versus gunbc_merge_target_ref), filters the exact revision-addressed path population, normalizes authored Cargo target paths, hashes the exact manifest text through std.content_hash, and joins those facts. The temporary Rust seed owns only TOML decoding into CargoManifestBinParse plus its interpreter projection. CargoBin is a source role and cannot satisfy a maintenance disposition."
 
 type RustSourceHostObservation
   = RustManifestObserved {
       repository_revision: std.types.CommitSha,
       manifest_content_identity: std.content_hash.Fnv1a64Structural,
-      tracked_rust_repo_paths: List<String>,
-      prior_tracked_rust_repo_paths: List<String>,
-      cargo_bin_repo_paths: List<String>
+      tracked_rust_repo_paths: std.types.List<String>,
+      prior_tracked_rust_repo_paths: std.types.List<String>,
+      cargo_bin_repo_paths: std.types.List<String>
     }
   | RustManifestReadRefused { detail: String }
   | RustManifestParseRefused { detail: String }
@@ -21,11 +19,11 @@ type CargoBinRepoPathProjection
   | CargoBinRepoPathProjectionRefused { authored_path: String, detail: String }
 
 type CargoBinRepoPathsProjection
-  = CargoBinRepoPathsProjected { paths: List<String> }
+  = CargoBinRepoPathsProjected { paths: std.types.List<String> }
   | CargoBinRepoPathsProjectionRefused { authored_path: String, detail: String }
 
 fn git_refusal_detail(operation: String, stderr: String) -> String {
-  let detail = trim(stderr)
+  let detail = std.algebra.trim(stderr)
   if detail == "" {
     concat(operation, " refused without stderr")
   } else {
@@ -33,7 +31,7 @@ fn git_refusal_detail(operation: String, stderr: String) -> String {
   }
 }
 
-fn rust_paths_from_nul(raw: String) -> List<String> {
+fn rust_paths_from_nul(raw: String) -> std.types.List<String> {
   filter(
     xs: split(s: raw, delimiter: from_code_point(0)),
     predicate: fn(path) {
@@ -79,7 +77,7 @@ fn normalize_cargo_bin_repo_path(package_root: String, authored_path: String) ->
 
 fn normalize_cargo_bin_repo_paths(
   package_root: String,
-  authored_paths: List<String>
+  authored_paths: std.types.List<String>
 ) -> CargoBinRepoPathsProjection {
   v2.std.algebra.fold_list(
     xs: authored_paths,
@@ -108,7 +106,7 @@ fn observe_stage0_rust_sources(
   package_root: String,
   base_ref: String
 ) -> RustSourceHostObservation {
-  let head = git.Inspect.HeadCommit(expect: ExpectSuccess)
+  let head = git.Inspect.HeadCommit(expect: gunbc.output_policy.ExpectSuccess)
   if !head.success || (head.sha as String) == "" {
     GitObservationRefused { detail: "git.Inspect.HeadCommit refused or returned an empty revision" }
   } else {
@@ -116,20 +114,20 @@ fn observe_stage0_rust_sources(
     let baseline = git.Inspect.MergeBase(
       left: revision as std.types.GitRef,
       right: base_ref as std.types.GitRef,
-      expect: ExpectSuccess
+      expect: gunbc.output_policy.ExpectSuccess
     )
     if !baseline.success || (baseline.sha as String) == "" {
       GitObservationRefused {
-        detail: gunbc.stage0_rust_host_observation.git_refusal_detail(operation: "git.Inspect.MergeBase", stderr: baseline.stderr)
+        detail: git_refusal_detail(operation: "git.Inspect.MergeBase", stderr: baseline.stderr)
       }
     } else {
       let current_tree = git.Inspect.ListTreePathsAtRevision(
         ref: revision as std.types.GitRef,
-        expect: ExpectSuccess
+        expect: gunbc.output_policy.ExpectSuccess
       )
       if !current_tree.success {
         GitObservationRefused {
-          detail: gunbc.stage0_rust_host_observation.git_refusal_detail(
+          detail: git_refusal_detail(
             operation: "git.Inspect.ListTreePathsAtRevision(HEAD)",
             stderr: current_tree.stderr
           )
@@ -137,11 +135,11 @@ fn observe_stage0_rust_sources(
       } else {
         let prior_tree = git.Inspect.ListTreePathsAtRevision(
           ref: baseline.sha as std.types.GitRef,
-          expect: ExpectSuccess
+          expect: gunbc.output_policy.ExpectSuccess
         )
         if !prior_tree.success {
           GitObservationRefused {
-            detail: gunbc.stage0_rust_host_observation.git_refusal_detail(
+            detail: git_refusal_detail(
               operation: "git.Inspect.ListTreePathsAtRevision(merge-base)",
               stderr: prior_tree.stderr
             )
@@ -150,11 +148,11 @@ fn observe_stage0_rust_sources(
           let manifest = git.Core.Show(
             ref: revision as std.types.GitRef,
             path: manifest_repo_path,
-            expect: ExpectSuccess
+            expect: gunbc.output_policy.ExpectSuccess
           )
           if !manifest.success {
             RustManifestReadRefused {
-              detail: gunbc.stage0_rust_host_observation.git_refusal_detail(operation: "git.Core.Show(manifest)", stderr: manifest.stderr)
+              detail: git_refusal_detail(operation: "git.Core.Show(manifest)", stderr: manifest.stderr)
             }
           } else {
             match parse_stage0_cargo_manifest_bins(manifest: manifest.content) {
@@ -175,7 +173,7 @@ fn observe_stage0_rust_sources(
                   CargoBinRepoPathsProjected { paths: cargo_bin_repo_paths } =>
                     RustManifestObserved {
                       repository_revision: revision,
-                      manifest_content_identity: content_hash_atom(value: manifest.content),
+                      manifest_content_identity: std.content_hash.content_hash_atom(value: manifest.content),
                       tracked_rust_repo_paths: rust_paths_from_nul(raw: current_tree.paths_nul),
                       prior_tracked_rust_repo_paths: rust_paths_from_nul(raw: prior_tree.paths_nul),
                       cargo_bin_repo_paths: cargo_bin_repo_paths
@@ -193,27 +191,27 @@ data host_observation_invocation_note: String = "THIS IS A FUNCTION AND NOT A TO
 
 fn current_stage0_rust_source_observation() -> RustSourceHostObservation {
   observe_stage0_rust_sources(
-    manifest_repo_path: stage0_cargo_toml_repo_path,
-    package_root: stage0_package_root,
-    base_ref: gunbc_merge_target_ref as String
+    manifest_repo_path: gunbc.stage0_cargo_manifest.stage0_cargo_toml_repo_path,
+    package_root: gunbc.stage0_cargo_manifest.stage0_package_root,
+    base_ref: gunbc.repo_identity.gunbc_merge_target_ref as String
   )
 }
 
 data stage0_cargo_manifest_parser_seed_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: RealizationDispatch,
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v1_compiler.cli_run",
     decl_name: "parse_stage0_cargo_manifest_bin_paths",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
 data stage0_cargo_manifest_projection_seed_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: RealizationDispatch,
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v1_compiler.v1_interpreter",
     decl_name: "eval_builtin_inner",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
@@ -222,35 +220,35 @@ data stage0_rust_observation_seed_growth_justification: gunbc.seed_growth.SeedGr
     std.decl_ref.DeclarationRef {
       module_path: "v1_compiler.cli_run",
       decl_name: "Stage0CargoManifestBinParse",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     },
     std.decl_ref.DeclarationRef {
       module_path: "v1_compiler.cli_run",
       decl_name: "Stage0CargoBinManifestParseRefusal",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     },
     std.decl_ref.DeclarationRef {
       module_path: "v1_compiler.cli_run",
       decl_name: "stage0_cargo_bin_paths_from_manifest_text",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     },
     std.decl_ref.DeclarationRef {
       module_path: "v1_compiler.cli_run",
       decl_name: "parse_stage0_cargo_manifest_bin_paths",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     },
     std.decl_ref.DeclarationRef {
       module_path: "v1_compiler.cli_run",
       decl_name: "stage0_cargo_manifest_parser_tests",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     },
     std.decl_ref.DeclarationRef {
       module_path: "v1_compiler.v1_interpreter",
       decl_name: "eval_builtin_inner",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   ],
-  reason: "The substrate can execute modeled Git operations and own path policy, but it cannot yet decode Cargo TOML into typed [[bin]] facts. The seed parser and value projection are the bounded compatibility bridge; generated builtin registry output is not hand-authored growth, which is why the v1_compiler_infer_method.rs delta is absent from this census -- that file is on gunbc.stage0_emit_model generated_stage0_files and is regenerated from src/v1/04_method.dag rather than authored.\n\nAN EARLIER REVISION OF THIS ROW LISTED TWO DECLARATIONS AND WAS WRONG. The count is recorded here rather than quietly corrected because it is the precise failure this receipt exists to prevent. It named the two declarations someone had looked at -- the seed parser entry point and the interpreter arm -- and omitted the coproduct Stage0CargoManifestBinParse, the refusal enum Stage0CargoBinManifestParseRefusal, the Display realization on that refusal enum, the private helper stage0_cargo_bin_paths_from_manifest_text, and the stage0_cargo_manifest_parser_tests module. A witness then pinned the census at exactly two, so the understatement was enshrined as the contract instead of being exposed by it. The census is now taken by ENUMERATING every hand-authored declaration this change adds to the seed, which is the only method that does not silently understate: counting the declarations one happens to have touched is how a census goes wrong twice.\n\nTHE SEVENTH ITEM IS REAL BUT NOT CITABLE, AND THAT IS RECORDED HERE RATHER THAN FORCED INTO A FIELD IT IS NOT. The hand-authored surface this change adds is seven Rust items; the list above carries six. The missing one is the Display realization named above: `impl std::fmt::Display for Stage0CargoBinManifestParseRefusal`, an item in its own right and not part of the enum declaration already cited. std.decl_ref DeclField offers exactly WholeDeclaration or NamedField, and a trait-impl method is neither -- the impl block has no name, and fmt is a method on it, not a field of the enum, which has three unit variants and no fields at all. Two earlier revisions each tried to make the vocabulary say it anyway: the first invented the symbol Stage0CargoBinManifestParseRefusal_Display, which resolves to nothing (review 46351); the second wrote a NamedField citing fmt, which type-checks and greps clean while asserting a field that does not exist (review 46383). Both are one defect -- a citation shaped to fit the carrier rather than the code -- and the second is the DESIGN 5 workaround class exactly: the obstacle was the vocabulary, and respelling around it concealed that instead of stopping the line. So the row is dropped, the citable count is six, and the seventh is named here in prose where it is at least true; scaffold_host_observation_hand_rust_receipt_is_bounded asserts both the six and this paragraph, so the item cannot go missing by someone editing the list alone. Dissolve-on: DeclField gains a variant naming a trait-impl method, at which point this paragraph deletes and the row returns. That is a corpus-wide std change -- 161 modules import std.decl_ref and several match DeclField exhaustively -- so it is deliberately not carried here, and saying so is the honest boundary rather than a reason to fabricate a seventh row.",
+  reason: "The substrate can execute modeled Git operations and own path policy, but it cannot yet decode Cargo TOML into typed [[bin]] facts. The seed parser and value projection are the bounded compatibility bridge; generated builtin registry output is not hand-authored growth, which is why the v1_compiler_infer_method.rs delta is absent from this census -- that file is claimed by the derived generated population (gunbc.stage0_rust_source_lifecycle_scaffold derived_generated_stage0_repo_paths) and is regenerated from src/v1/04_method.dag rather than authored. (This clause formerly cited gunbc.stage0_emit_model generated_stage0_files -- a module path that had ALREADY been deleted when it was written, so the citation named nothing; it is repointed at the live derivation rather than at a second dead roster.)\n\nAN EARLIER REVISION OF THIS ROW LISTED TWO DECLARATIONS AND WAS WRONG. The count is recorded here rather than quietly corrected because it is the precise failure this receipt exists to prevent. It named the two declarations someone had looked at -- the seed parser entry point and the interpreter arm -- and omitted the coproduct Stage0CargoManifestBinParse, the refusal enum Stage0CargoBinManifestParseRefusal, the Display realization on that refusal enum, the private helper stage0_cargo_bin_paths_from_manifest_text, and the stage0_cargo_manifest_parser_tests module. A witness then pinned the census at exactly two, so the understatement was enshrined as the contract instead of being exposed by it. The census is now taken by ENUMERATING every hand-authored declaration this change adds to the seed, which is the only method that does not silently understate: counting the declarations one happens to have touched is how a census goes wrong twice.\n\nTHE SEVENTH ITEM IS REAL BUT NOT CITABLE, AND THAT IS RECORDED HERE RATHER THAN FORCED INTO A FIELD IT IS NOT. The hand-authored surface this change adds is seven Rust items; the list above carries six. The missing one is the Display realization named above: `impl std::fmt::Display for Stage0CargoBinManifestParseRefusal`, an item in its own right and not part of the enum declaration already cited. std.decl_ref DeclField offers exactly WholeDeclaration or NamedField, and a trait-impl method is neither -- the impl block has no name, and fmt is a method on it, not a field of the enum, which has three unit variants and no fields at all. Two earlier revisions each tried to make the vocabulary say it anyway: the first invented the symbol Stage0CargoBinManifestParseRefusal_Display, which resolves to nothing (review 46351); the second wrote a NamedField citing fmt, which type-checks and greps clean while asserting a field that does not exist (review 46383). Both are one defect -- a citation shaped to fit the carrier rather than the code -- and the second is the DESIGN 5 workaround class exactly: the obstacle was the vocabulary, and respelling around it concealed that instead of stopping the line. So the row is dropped, the citable count is six, and the seventh is named here in prose where it is at least true; scaffold_host_observation_hand_rust_receipt_is_bounded asserts both the six and this paragraph, so the item cannot go missing by someone editing the list alone. Dissolve-on: DeclField gains a variant naming a trait-impl method, at which point this paragraph deletes and the row returns. That is a corpus-wide std change -- 161 modules import std.decl_ref and several match DeclField exhaustively -- so it is deliberately not carried here, and saying so is the honest boundary rather than a reason to fabricate a seventh row.",
   owning_dissolution_lane: "v1-hand-queue-drain" as gunbc.roadmap_model.RoadmapNodeId,
   trigger: "Delete all seven declarations when a modeled Cargo-manifest grammar/ingestion realization produces CargoManifestBinParse, or when the v1 interpreter and cli_run seed retire.",
   current_boundary: "gunbc.stage0_cargo_manifest CargoManifestBinParse -> v1_compiler.cli_run parse_stage0_cargo_manifest_bin_paths -> v1_compiler.v1_interpreter eval_builtin_inner"
