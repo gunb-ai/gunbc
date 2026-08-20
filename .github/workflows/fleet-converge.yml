@@ -252,7 +252,7 @@ jobs:
         run: |
           # 🟡 dissolve-on: gunbc_ci_spark_serving_converge_slice_invoke — foreign-executor shell invoking spark_serving_converge_slice_ci_wet (the runner-side entry: in-run ssh-agent, no gcloud, no Secret Manager fetch) with SPARK_CONVERGE_TARGET/SPARK_CONVERGE_EXECUTE env; DISSOLVES WHEN bash-emit binds the step to orchestration emit over typed WitnessBin.Run
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark_serving_converge_slice_wet.dag --function spark_serving_converge_slice_ci_wet
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/serving_converge_slice_wet.dag --function spark_serving_converge_slice_ci_wet
           cat "$ROOT/target/spark-serving-converge-slice-wet-receipt.txt"
         env:
           SPARK_CONVERGE_TARGET: ${{ github.event.inputs.target }}
@@ -264,7 +264,7 @@ jobs:
         run: |
           # 🟡 dissolve-on: gunbc_ci_spark_grant_install_invoke — foreign-executor shell invoking spark_grant_install_ci_wet (reads the grant standing at a NAMED target and installs only the grants measured missing, staging and validating each sudoers drop-in before it is placed) with SPARK_CONVERGE_TARGET env; DISSOLVES WHEN bash-emit binds the step to orchestration emit over typed WitnessBin.Run
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark_managed_grant_install.dag --function spark_grant_install_ci_wet
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/managed_grant_install.dag --function spark_grant_install_ci_wet
           cat "$ROOT/target/spark-grant-install-receipt.txt"
         env:
           SPARK_CONVERGE_TARGET: ${{ github.event.inputs.target }}
@@ -275,7 +275,7 @@ jobs:
         run: |
           # 🟡 dissolve-on: gunbc_ci_spark_serving_observe_invoke — foreign-executor shell invoking spark_serving_observe_ci_wet (runner-side, read-only: unit state, ollama version, model tags, driver); DISSOLVES WHEN bash-emit binds the step to orchestration emit over typed WitnessBin.Run
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark_serving_observe.dag --function spark_serving_observe_ci_wet
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/serving_observe.dag --function spark_serving_observe_ci_wet
           cat "$ROOT/target/spark-serving-observe-ci-receipt.txt"
         if: github.event.inputs.mode == 'spark_observe'
         timeout-minutes: 60
@@ -284,7 +284,7 @@ jobs:
         run: |
           # 🟡 dissolve-on: gunbc_ci_spark_serving_reboot_invoke — foreign-executor shell invoking spark_serving_reboot_ci_wet (the durability probe: issues one reboot at a NAMED target and reports what the far side said; establishes nothing about durability itself, the receipt being the post-reboot converge) with SPARK_CONVERGE_TARGET env; DISSOLVES WHEN bash-emit binds the step to orchestration emit over typed WitnessBin.Run
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark_serving_reboot_probe.dag --function spark_serving_reboot_ci_wet
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/serving_reboot_probe.dag --function spark_serving_reboot_ci_wet
           cat "$ROOT/target/spark-serving-reboot-receipt.txt"
         env:
           SPARK_CONVERGE_TARGET: ${{ github.event.inputs.target }}
