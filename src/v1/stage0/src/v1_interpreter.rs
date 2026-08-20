@@ -3535,11 +3535,17 @@ fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> Int
             }),
         },
         _ => Err(InterpError::TypeError {
+            // Names the evaluating `.dag` function: an operand type alone does not
+            // locate the defect when the operator is reached through a callee, and
+            // this arm is the one that fires when a name binds to the wrong kind of
+            // thing entirely (a bare reference resolving to an unapplied function
+            // rather than to a value). Located, per DESIGN §5.
             msg: format!(
-                "cannot apply {:?} to {} and {}",
+                "cannot apply {:?} to {} and {} (in dag fn `{}`)",
                 op,
                 left.type_label(),
-                right.type_label()
+                right.type_label(),
+                current_dag_fn()
             ),
         }),
     }
@@ -12707,7 +12713,8 @@ macro_rules! v1_builtin_arms {
                     // received shape makes the refusal diagnosable at its own frequency
                     // (DESIGN §5 — a degradation must be typed, located and countable).
                     msg: format!(
-                        "atom_identity_hash requires exactly one string argument; received {} positional argument(s): [{}]",
+                        "atom_identity_hash requires exactly one string argument; in dag fn `{}`; received {} positional argument(s): [{}]",
+                        current_dag_fn(),
                         $positional.len(),
                         $positional
                             .iter()
