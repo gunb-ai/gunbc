@@ -80,11 +80,13 @@ fn row_value_matches(row: SeedMirrorRow) -> Bool {
 }
 
 fn seed_marker_occurrences(path: String) -> Int {
-  length(xs: split(s: seed_text(path: path), delimiter: seed_mirror_marker)) - 1
+  list_length(items: seed_text(path: path) |> split(delimiter: seed_mirror_marker)) - 1
 }
 
 fn rows_homed_in(path: String) -> Int {
-  length(xs: filter(xs: seed_mirror_constant_rows(), f: r => r.seed_path == path))
+  fold(seed_mirror_constant_rows(), init: 0, f: fn(acc, r) {
+    if r.seed_path == path { acc + 1 } else { acc }
+  })
 }
 
 test fn seed_mirror_lens_can_read_both_seed_files() -> Bool {
