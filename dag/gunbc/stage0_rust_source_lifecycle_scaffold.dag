@@ -62,12 +62,6 @@ fn path_in_list(path: String, paths: List<String>) -> Bool {
   any(xs: paths, predicate: fn(p) { p == path })
 }
 
-fn observed_classified_repo_paths(
-  file_grain_paths: List<String>
-) -> List<String> {
-  file_grain_paths
-}
-
 fn observed_cargo_paths_subset_of_tracked(
   cargo_bin_repo_paths: List<String>,
   tracked_paths: List<String>
@@ -219,8 +213,7 @@ fn rust_source_manifest_state_verdict(observation: RustSourceHostObservation) ->
       if repository_revision == "" {
         ManifestStateScaffoldRefused { cause: HostManifestReadRefused { detail: "observed manifest missing repository_revision" } }
       } else {
-        let file_grain_paths = file_grain_lifecycle_repo_paths()
-        let classified_paths = observed_classified_repo_paths(file_grain_paths: file_grain_paths)
+        let classified_paths = file_grain_lifecycle_repo_paths()
         let lifecycle_paths = classified_paths
         let newly_unclassified = count_newly_unclassified_tracked(
           tracked_paths: tracked_paths,
@@ -242,7 +235,7 @@ fn rust_source_manifest_state_verdict(observation: RustSourceHostObservation) ->
         )
         let cargo_without_disposition = first_untracked_cargo_path(
           cargo_bin_repo_paths: cargo_bin_repo_paths,
-          tracked_paths: file_grain_paths
+          tracked_paths: classified_paths
         )
         if length(xs: cargo_bin_repo_paths) == 0 {
           ManifestStateScaffoldRefused { cause: HostManifestParseRefused { detail: "observed manifest missing cargo_bin_repo_paths evidence" } }
@@ -546,10 +539,7 @@ fn file_grain_lifecycle_repo_paths() -> List<String> {
 }
 
 fn witness_observation_covering_lifecycle_plus_extra(extra_path: String) -> RustManifestObserved {
-  let lifecycle_paths = file_grain_lifecycle_repo_paths()
-  let classified = observed_classified_repo_paths(
-    file_grain_paths: lifecycle_paths
-  )
+  let classified = file_grain_lifecycle_repo_paths()
   RustManifestObserved {
     repository_revision: "witness-deadbeef",
     manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
@@ -561,14 +551,8 @@ fn witness_observation_covering_lifecycle_plus_extra(extra_path: String) -> Rust
 
 fn witness_hand_maintained_growth_observation() -> RustManifestObserved {
   let from_generated = derived_generated_stage0_repo_paths()
-  let prior_file_grain = list_concat_unique(acc: from_generated, items: residue_lifecycle_repo_paths())
-  let current_file_grain = file_grain_lifecycle_repo_paths()
-  let classified = observed_classified_repo_paths(
-    file_grain_paths: current_file_grain
-  )
-  let prior_classified = observed_classified_repo_paths(
-    file_grain_paths: prior_file_grain
-  )
+  let prior_classified = list_concat_unique(acc: from_generated, items: residue_lifecycle_repo_paths())
+  let classified = file_grain_lifecycle_repo_paths()
   RustManifestObserved {
     repository_revision: "witness-deadbeef",
     manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
@@ -579,15 +563,40 @@ fn witness_hand_maintained_growth_observation() -> RustManifestObserved {
 }
 
 fn witness_honest_minimal_observation_ok() -> RustManifestObserved {
-  let lifecycle_paths = file_grain_lifecycle_repo_paths()
-  let classified = observed_classified_repo_paths(
-    file_grain_paths: lifecycle_paths
-  )
+  let classified = file_grain_lifecycle_repo_paths()
   RustManifestObserved {
     repository_revision: "witness-deadbeef",
     manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
     tracked_rust_repo_paths: classified,
     prior_tracked_rust_repo_paths: classified,
+    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+  }
+}
+
+// The standing-unclassified fixture, and the reason it is authored separately from the
+// sibling constructors above rather than being one more `extra_path` argument to them.
+//
+// count_newly_unclassified_tracked is checked BEFORE count_tracked_unclassified in the verdict
+// fold, and it is the narrower predicate: a tracked path that is unclassified AND absent from
+// prior_tracked. So every constructor that adds its extra path to tracked alone lands on
+// DerivedNewlyUnclassified and can never reach the arm below it. That is not a second way of
+// exercising the same axis -- it is the reason DerivedUnclassifiedTracked had no discriminating
+// input at all, while a witness NAMED for the unclassified axis asserted the newly arm and
+// passed. This constructor puts the planted path in BOTH tracked and prior_tracked, which is the
+// only shape that reaches the standing arm, and it is what makes the two arms distinguishable by
+// execution rather than by reading the fold.
+//
+// Controlled fixture, not a tree-copied pin: the input population and the expected population are
+// authored independently here (one planted path in, exactly one counted out), so automating the
+// expected value would not collapse the assertion to measure() == measure().
+fn witness_standing_unclassified_observation(planted_path: String) -> RustManifestObserved {
+  let classified = file_grain_lifecycle_repo_paths()
+  let tracked = list_concat_unique(acc: classified, items: [planted_path])
+  RustManifestObserved {
+    repository_revision: "witness-deadbeef",
+    manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
+    tracked_rust_repo_paths: tracked,
+    prior_tracked_rust_repo_paths: tracked,
     cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
   }
 }
@@ -607,10 +616,7 @@ fn first_classified_repo_path(classified: List<String>) -> String {
 }
 
 fn witness_duplicate_tracked_observation() -> RustManifestObserved {
-  let lifecycle_paths = file_grain_lifecycle_repo_paths()
-  let classified = observed_classified_repo_paths(
-    file_grain_paths: lifecycle_paths
-  )
+  let classified = file_grain_lifecycle_repo_paths()
   let dup_path = first_classified_repo_path(classified: classified)
   let tracked_with_dup = list_snoc_item(xs: classified, item: dup_path)
   RustManifestObserved {
@@ -746,5 +752,9 @@ fn stage0_rust_lifecycle_scaffold_mechanical_checks_holds() -> Bool {
   stage0_rust_lifecycle_scaffold_join_mechanical_checks_holds()
     && manifest_state_verdict_scaffold_holds()
 }
+
+data unclassified_axis_rung_note: String = "RUNG DROP, DECLARED (2026-08-20). SUBJECT: the unclassified axis -- count_tracked_unclassified here, and unclassified_paths in gunbc.stage0_rust_lifecycle_totality, which answer the same question over the same two authorities. DECLARED RUNG: mitigatable. It is NOT mechanically preventable, and it was reported as though it were by carriers that derive the axis correctly while nothing executing can make it fire.\n\nMEASURED AT 026a709a71636d60df325f9183b78febff22901d, by execution, both directions. LIVE: current_stage0_rust_source_observation() through lifecycle_totality_receipt gives tracked=270, generated=126, disposition=7, stale=0, UNCLASSIFIED=137, paths enumerated. HERMETIC: the same predicate over lifecycle_totality_witness_observation(extra_paths: []) gives ZERO. The predicate is not wrong; the subject is. That constructor sets tracked := classified ++ extra_paths, so unclassified_paths is IDENTICALLY extra_paths -- confirmed by planting a path that does not exist on disk and getting back exactly it. A hermetic witness of this carrier can only discover what its author already typed into the call.\n\nTHE LIVE ARM DOES NOT RESCUE IT, FOR TWO REASONS THAT ARE INDEPENDENT OF EACH OTHER. First, it executes nowhere: both files reaching it declare ReadsLiveTree, which the required floor declines, and their exclusion rows name bin_witness_wet_entries as their real executing consumer -- a roster of 94 rows across 38 entry files whose consumer, the ci.yml wet job, was deleted at 611fd02770. Second, and worse, the live witnesses would not detect the frontier even when run: measured under claim_batch --wet at this ref, all three PASS at 137 unclassified. One accepted DerivedUnclassifiedTracked with a positive count OR CargoTargetMissingLifecycleDisposition OR ManifestStateScaffoldOk -- three mutually contradictory states, so it was green at 137 and would have been green at 0. The other asserted only that two Bools are false, which any refusal satisfies, including a git outage. Both disjunctions are repaired in this change; that repair removes a fabricated green and does NOT change the rung, because the witnesses still execute nowhere.\n\nWHAT THIS CHANGE ACTUALLY BUYS, stated narrowly so it is not mistaken for the climb: DerivedUnclassifiedTracked now has a discriminating RED that runs on the required floor. It had none. count_newly_unclassified_tracked is checked first and is the narrower predicate, so every pre-existing constructor reached the newly arm and the standing arm was unreachable by any executing input -- including from a witness named for the unclassified axis that asserted the newly arm and passed. That is one arm of one carrier made falsifiable. The AXIS is still measured over a manufactured subject.\n\nCEILING AND WHY: mechanically preventable is not the ceiling and structural impossibility is. Classification is decidable and fully modeled -- a tracked path either is or is not a member of two closed authorities -- so the reachable end state is that an unclassified file cannot be WRITTEN, not that a check finds it. That is section 4b's construction rung and it is a property of the file, not of two lists that can both omit it.\n\nNEXT-RUNG TRIGGER, and it is deliberately not a wall: an executing consumer for the live observation. Not a restored wet lane by itself -- ReadsLiveTree declines these files from the floor independently, so a wet lane alone leaves them off. Until some executing path reaches the real tracked population, a construction wall over the live arm would be a SECOND unexecuted artifact sitting at exactly this rung while looking like a climb, which is the rung inflation 4b names as worse than sitting low. The 137 is a decision about what this repository intends to classify and is routed to the operator as a discovery rather than landed as a refusal.\n\nRESTORATION: this row is rewritten as an ordinary description -- not amended -- when the axis has an executing consumer over the live population, at which point the honest rung can be re-measured instead of re-argued."
+
+data unclassified_axis_rung_restoration: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the unclassified axis acquires an executing consumer over the LIVE tracked population (not a manufactured observation), at which point unclassified_axis_rung_note is rewritten in one pass and this row deletes with it")
 
 data rust_source_lifecycle_partition_contradiction_note: String = "OPEN: src/v1/stage0_core/src/lib.rs is tracked on disk but stage0_partition_crate_rows has no src/v1/stage0_core row. Residue row surfaces the contradiction; operator resolves via partition row or crate deletion."
