@@ -41329,6 +41329,15 @@ pub fn run_required_floor(
     if let Some(path) = long_home_storage_agreement_path {
         write_long_home_storage_agreement_tsv(&path, &outcome.long_home_storage_agreement)?;
     }
+    // Diagnosis-only, never gated on: PREPARE_GRAMMAR_CROSS_CLAIM_MEMO has no eval_call_memo-style
+    // hit/miss disclosure, so whether it amortizes grammar preparation across claims has been
+    // unobservable except by inferring it from wall-clock cost after the fact (gunbc#8581's own
+    // premise). This prints the raw counts so that inference is no longer necessary.
+    let (cross_claim_hits, cross_claim_misses, cross_claim_stores) =
+        crate::v1_interpreter::prepare_grammar_cross_claim_memo_counters();
+    eprintln!(
+        "[cross-claim-memo] prepare_grammar hits={cross_claim_hits} misses={cross_claim_misses} stores={cross_claim_stores}"
+    );
     Ok(outcome)
 }
 

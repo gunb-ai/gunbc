@@ -1382,12 +1382,28 @@ thread_local! {
     static PREPARE_GRAMMAR_CROSS_CLAIM_MEMO: RefCell<PrepareGrammarCrossClaimMemo> =
         RefCell::new(PrepareGrammarCrossClaimMemo::default());
     static CROSS_CLAIM_FN_KEEPALIVE: RefCell<Vec<Rc<Node>>> = RefCell::new(Vec::new());
+    // Diagnosis-only counters: this memo has no eval_call_memo-style hit/miss disclosure, so its
+    // amortization behavior is currently unobservable short of instrumenting it. These count
+    // exactly the three decisions the memo can make — never gate, never change behavior.
+    static PREPARE_GRAMMAR_CROSS_CLAIM_MEMO_HITS: Cell<u64> = Cell::new(0);
+    static PREPARE_GRAMMAR_CROSS_CLAIM_MEMO_MISSES: Cell<u64> = Cell::new(0);
+    static PREPARE_GRAMMAR_CROSS_CLAIM_MEMO_STORES: Cell<u64> = Cell::new(0);
 }
 
 pub fn clear_cross_claim_pure_memos() {
     PREPARE_GRAMMAR_CROSS_CLAIM_MEMO
         .with(|m| *m.borrow_mut() = PrepareGrammarCrossClaimMemo::default());
     CROSS_CLAIM_FN_KEEPALIVE.with(|k| k.borrow_mut().clear());
+}
+
+/// Diagnosis-only: (hits, misses, stores) since process start or the last clear. Never read by
+/// any decision path — added to make the memo's amortization behavior observable at all.
+pub fn prepare_grammar_cross_claim_memo_counters() -> (u64, u64, u64) {
+    (
+        PREPARE_GRAMMAR_CROSS_CLAIM_MEMO_HITS.with(|c| c.get()),
+        PREPARE_GRAMMAR_CROSS_CLAIM_MEMO_MISSES.with(|c| c.get()),
+        PREPARE_GRAMMAR_CROSS_CLAIM_MEMO_STORES.with(|c| c.get()),
+    )
 }
 
 fn keep_cross_claim_fn(fn_node: &Rc<Node>) {
@@ -1427,8 +1443,18 @@ fn try_cross_claim_pure_memo(
             _ => return None,
         };
         let memo_key = (Rc::as_ptr(fn_node) as usize, content_hash);
-        let portable =
-            PREPARE_GRAMMAR_CROSS_CLAIM_MEMO.with(|m| m.borrow().map.get(&memo_key).cloned())?;
+        let found =
+            PREPARE_GRAMMAR_CROSS_CLAIM_MEMO.with(|m| m.borrow().map.get(&memo_key).cloned());
+        let portable = match found {
+            Some(p) => {
+                PREPARE_GRAMMAR_CROSS_CLAIM_MEMO_HITS.with(|c| c.set(c.get() + 1));
+                p
+            }
+            None => {
+                PREPARE_GRAMMAR_CROSS_CLAIM_MEMO_MISSES.with(|c| c.set(c.get() + 1));
+                return None;
+            }
+        };
         return Some(value_from_portable_ctx(ctx, &portable));
     }
     None
@@ -1459,6 +1485,7 @@ fn store_cross_claim_pure_memo(
                             .map
                             .insert((Rc::as_ptr(fn_node) as usize, h), portable)
                     });
+                    PREPARE_GRAMMAR_CROSS_CLAIM_MEMO_STORES.with(|c| c.set(c.get() + 1));
                 }
             }
         }
