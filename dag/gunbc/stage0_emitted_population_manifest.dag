@@ -40,6 +40,13 @@ data emitted_population_manifest_basename: String = "emitted_population.rs"
 // read by splitting and stripping a literal prefix -- no Rust grammar is involved on the
 // reading side at all. It is deliberately NOT a module: it is appended to the emitted file list
 // AFTER `lib.rs` is rendered, so no `pub mod` line names it and nothing compiles it.
+// DISSOLUTION: this shape is owed to the compared population being Rust-shaped end to end, not
+// to anything about the fact itself. When that population becomes medium-agnostic -- when
+// `required_regen`'s comparison normalizes an artifact by its declared medium rather than by
+// assuming Rust -- the manifest becomes the line-delimited text it wants to be, this paragraph
+// deletes, and the `.rs` extension goes with it. Until then the extension is load-bearing and
+// "cleaning it up" into a `const &[&str]` would silently reintroduce a Rust parse on the read
+// side, which is the class gunbc#8690 deleted.
 data emitted_population_manifest_line_prefix: String = "// "
 
 data emitted_population_manifest_line_separator: String = "\n"
