@@ -31,6 +31,30 @@ type SeedRetainedSupportDirRegistration {
   basename: String
 }
 
+// NINE ROWS FLIPPED TO `has_pub_mod: true` (2026-08-20), AND THIS CORRECTS A CLAIM THE ROW BELOW
+// MAKES. `pre_existing_hand_retained_registration_backfill_note` states that the Gate-A oracles are
+// "never part of the stage0 crate's own mod tree at all" because the CSSL harness compiles them
+// standalone. The first half is what the harness does; the second half does not follow, and the
+// drivers say so directly: every `dag/tools/self_host_*_shims/witness_main.rs` opens with
+// `use v1_compiler::v2_compiler_X as seed;` -- the SEED crate, reached as an ordinary cargo
+// dependency of the generated `v1_compiled` crate. Their roster rows in
+// `tools.self_host_module_behavioral_transport_roster` carry `shim_lib_rel: ""` and
+// `shim_writes: []`, so the harness writes nothing into the seed crate that could supply that path,
+// and `tools.self_host_curated_seed_linked_harness` `cssl_closure_assembly_note` says plainly that
+// "seed lib.rs pub mod presence is external-oracle only" -- present, and read, on the oracle side.
+//
+// A module the seed crate does not declare cannot be imported from it, so those drivers do not
+// compile, so no behavioral receipt over these modules can be green OR red. That is the shape
+// DESIGN section 5 names specification-without-execution, one layer below the harness that was
+// believed to be the blocker: the machinery exists, and the seed side of the comparison has no
+// path to link against.
+//
+// WHAT THIS DOES NOT CLAIM. Declaring the modules is necessary, not sufficient, and it is not a
+// receipt: nothing here has executed a behavioral transport. It is also a TWO-GENERATION change --
+// the emitted lib.rs takes its pub-mod block from the committed
+// `gunbc_stage0_crate_layout_generated.rs`, which is itself one of the files
+// `--required-regen` reports as drifted -- so these declarations reach the built crate when the
+// seed is regenerated, not when this row merges.
 data seed_retained_intrinsic_registrations: List<SeedRetainedIntrinsicRegistration> = [
   SeedRetainedIntrinsicRegistration { basename: "v1_interpreter", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "bounded_shell_host_drain", has_pub_mod: false, is_dir: false },
@@ -46,17 +70,24 @@ data seed_retained_intrinsic_registrations: List<SeedRetainedIntrinsicRegistrati
   SeedRetainedIntrinsicRegistration { basename: "pre_push", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "census_exclude_derive", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "derived_realization_schedule", has_pub_mod: true, is_dir: false },
-  SeedRetainedIntrinsicRegistration { basename: "expected_red_roster_join", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "v1_compiler_expected_red_roster_join", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "memory_governor", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "std_lens_verdict", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "module_path_index", has_pub_mod: true, is_dir: true },
-  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_body_producer", has_pub_mod: false, is_dir: false },
-  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_normalize", has_pub_mod: false, is_dir: false },
-  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_target_carriers", has_pub_mod: false, is_dir: false },
-  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_discovery_enumeration", has_pub_mod: false, is_dir: false },
-  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_parse_engine_hooks", has_pub_mod: false, is_dir: false },
-  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_use_site_verdict", has_pub_mod: false, is_dir: false }
+  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_body_producer", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_normalize", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_target_carriers", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_discovery_enumeration", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_parse_engine_hooks", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_use_site_verdict", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "cssl_seed_linked_closure_assembly", has_pub_mod: false, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "required_regen_host", has_pub_mod: false, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_compile", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_program_assembly", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_source_authority", has_pub_mod: true, is_dir: false }
 ]
+
+data pre_existing_hand_retained_registration_backfill_note: String = "Five files were already committed as declared hand-retained Rust oracles (each self-documents its own authority + dissolve-on trigger: cssl_seed_linked_closure_assembly cites tools.self_host_curated_seed_linked_harness; required_regen_host realizes v2.workflow.required_regen; v2_compiler_compile / v2_compiler_program_assembly / v2_compiler_source_authority are Wave 2 Gate-A-flip oracles, same shape as the v2_compiler_resolve/tokenize/infer rows already registered above) but were missing rows here, so required_regen_host's compile_stage0()-population comparison correctly reported them as committed_not_emitted. Backfilled during the #8428 regen-survivability fix (gunbc issue: main cannot survive a clean regen) — this population mismatch was pre-existing and unrelated to #8428 itself, but required_regen_host hard-refuses on any mismatch, so it blocked verifying the #8428 fix end-to-end. All five carry has_pub_mod: false, verified against lib.rs (zero pub-mod lines for any of the five) rather than assumed: cssl_seed_linked_closure_assembly is #[path]-wired inside bin/cssl_assemble.rs, required_regen_host is #[path]-wired inside cli_run.rs, and v2_compiler_compile / v2_compiler_program_assembly / v2_compiler_source_authority are Gate-A curated seed-linked (CSSL) oracles compiled standalone by tools.self_host_curated_seed_linked_harness for each frontier row's behavioral-transport witness (dag/tools/self_host_module_behavioral_transport_roster.dag) — never part of the stage0 crate's own mod tree at all."
 
 data data_initializer_identity_seed_retained_note: String = "SeedRetained hand-Rust for resolved data-initializer projection marshaling (decl_facts initializer identity lane, PR #7924). Reason: marshal requires InterpContext typechecked subjects, inferred Node stamps, and owning type-item lookup not yet modeled in .dag. Migration trigger: v2.std.data_initializer_identity projection carriers self-emit and coproduct_reflection routes through the modeled marshal surface; then this module deletes with its SeedRetainedIntrinsicRegistration row. Frontier row schema lacks reason/trigger fields — this note is the counted scaffold until the schema lands."
 
@@ -208,7 +239,30 @@ fn emit_hand_maintained_pub_mod_block() -> String {
 }
 
 fn hand_maintained_stage0_filenames() -> List<String> {
-  concat(seed_retained_intrinsic_stage0_files(), seed_retained_scaffold_stage0_files())
+  concat(
+    concat(seed_retained_intrinsic_stage0_files(), seed_retained_scaffold_stage0_files()),
+    wet_actuator_generated_stage0_files()
+  )
+}
+
+type WetActuatorGeneratedRegistration {
+  basename: String
+}
+
+data wet_actuator_generated_registrations: List<WetActuatorGeneratedRegistration> = [
+  WetActuatorGeneratedRegistration { basename: "bootstrap_stage0_crate_layout_generated" }
+]
+
+data wet_actuator_generated_files_note: String = "bootstrap_stage0_crate_layout_generated.rs is NOT hand-Rust — it IS modeled, by this exact module (v2.compiler.self_host.stage0_crate_layout), and its content (HAND_MAINTAINED_STAGE0_FILES and friends) is exactly what hand_maintained_stage0_filenames/hand_maintained_pub_mod_basenames above derive. It reaches disk through dag/tools/generated_artifact_gate.dag main_wet, a wet actuator distinct from the ordinary per-module Rust emit compile_stage0() performs, so it structurally never appears in compile_stage0()'s emitted population and would misreport as committed_not_emitted without this row. It gets its own registration type rather than folding into SeedRetainedIntrinsicRegistration because that type asserts hand-authored source with no .dag authority, which is false here; this row instead names the real reason — a second, wet-actuator generation path compile_stage0() does not observe. It carries no pub mod line (wired via #[path=...] mod inside required_regen_host.rs, not lib.rs), so it contributes to the stage0 filename exclusion only, never to hand_maintained_pub_mod_basenames."
+
+fn wet_actuator_generated_stage0_files() -> List<String> {
+  fold(
+    wet_actuator_generated_registrations,
+    init: [],
+    f: fn(acc, row) {
+      concat(acc, [concat(row.basename, ".rs")])
+    }
+  )
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {

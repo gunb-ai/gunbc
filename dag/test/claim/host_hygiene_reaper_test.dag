@@ -1,5 +1,15 @@
 module test.claim.host_hygiene_reaper
 
+import gunbc.host_hygiene_reaper_observe { host_hygiene_override_dir_for_unit }
+import gunbc.host_hygiene_reaper_remediate {
+  ResidualReapEffect,
+  NoEffect,
+  RemoveOverrideDirEffect,
+  TerminateOccupantsAndRemoveOverrideEffect,
+  ReapEffectRefused,
+  residual_reap_effect_for,
+}
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data reaper_test_active_slot: ResidualSlotObservation = ResidualSlotObservation {
@@ -146,14 +156,43 @@ test fn exempt_causes_are_counted_not_silently_dropped() -> Bool {
   collect_exempt_causes(obs_list: rows).length() == 1
 }
 
-test fn reap_script_refuses_build_cache_occupant_is_an_executing_witness() -> Bool {
-  host_hygiene_reap_refuses_build_cache_occupant()
+test fn typed_reap_effect_refuses_build_cache_occupant() -> Bool {
+  match residual_reap_effect_for(obs: reaper_test_stranded_build_cache_slot, occupant_pids: ["4242" as NonEmptyStr]) {
+    ReapEffectRefused { unit: _, cause: RefusalBuildCacheServerOccupant { unit: _ } } => true
+    _ => false
+  }
 }
 
-test fn reap_script_skips_active_units_is_an_executing_witness() -> Bool {
-  host_hygiene_reap_skips_active_units()
+test fn typed_reap_effect_skips_active_units() -> Bool {
+  match residual_reap_effect_for(obs: reaper_test_active_slot, occupant_pids: ["1111" as NonEmptyStr]) {
+    ReapEffectRefused { unit: _, cause: RefusalUnitActive } => true
+    _ => false
+  }
 }
 
-test fn reap_script_removes_only_disabled_overrides_is_an_executing_witness() -> Bool {
-  host_hygiene_reap_removes_only_disabled_overrides()
+test fn typed_reap_effect_removes_only_disabled_overrides_not_the_occupant() -> Bool {
+  match residual_reap_effect_for(obs: reaper_test_dead_slot_stale_override, occupant_pids: []) {
+    RemoveOverrideDirEffect { unit: u, dir: d } =>
+      u == reaper_test_dead_slot_stale_override.unit
+        && d == host_hygiene_override_dir_for_unit(unit: reaper_test_dead_slot_stale_override.unit)
+    _ => false
+  }
+}
+
+test fn typed_reap_effect_terminates_occupant_and_removes_override_for_ordinary_residue() -> Bool {
+  let pids = ["5150" as NonEmptyStr]
+  match residual_reap_effect_for(obs: reaper_test_dead_slot_ordinary_residue, occupant_pids: pids) {
+    TerminateOccupantsAndRemoveOverrideEffect { unit: u, pids: p, dir: d } =>
+      u == reaper_test_dead_slot_ordinary_residue.unit
+        && p == pids
+        && d == host_hygiene_override_dir_for_unit(unit: reaper_test_dead_slot_ordinary_residue.unit)
+    _ => false
+  }
+}
+
+test fn typed_reap_effect_needs_no_action_for_empty_dead_slot_with_no_override() -> Bool {
+  match residual_reap_effect_for(obs: reaper_test_dead_slot_empty_no_override, occupant_pids: []) {
+    NoEffect { unit: u } => u == reaper_test_dead_slot_empty_no_override.unit
+    _ => false
+  }
 }

@@ -13,7 +13,7 @@ import extdeps.github.actions {
   RunnerSpec,
   checkout_action, setup_rust_action
 }
-import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
+import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.repo_identity { gunbc_default_branch_name }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
 import gunbc.ci_layer_roots { witness_layer_roots }
@@ -322,7 +322,7 @@ fn witness_floor_job() -> Job {
   Job {
     id: witness_floor_workflow_job_id,
     name: none,
-    runner: gunbc_ci_runner_spec(),
+    runner: gunbc_ci_selected_runner_spec(),
     steps: [
       witness_floor_checkout_step(),
       witness_floor_toolchain_step(),
