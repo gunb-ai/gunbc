@@ -1,6 +1,6 @@
 module gunbc.scm.object_store
 
-import std.types { List, Bool, Int, NonEmptyStr, String }
+import std.types { List, Bool, Int, String }
 import v2.std.node {
   Hash,
   Node,
@@ -273,23 +273,33 @@ fn store_node(store: ObjectStore, n: Node) -> StoreOutcome {
 // ================================================================================================
 // THE COLLISION ARM, EXECUTED.
 //
-// These claims live in the defining module rather than in dag/test/claim, and that placement is
-// forced rather than convenient: `ObjectRecord` is `sole_constructor`, so authoring a record whose
-// identity disagrees with its content is possible ONLY here. Exporting a fixture builder to let an
-// external witness do it would re-open the exact forge path the seal closes, which would be a worse
-// trade than housing four claims beside the code they exercise.
+// These claim bodies live in the defining module and their `test fn` wrappers live in
+// dag/test/claim/scm_object_store_collision_witness_test.dag. The split is forced by three rules
+// pulling against each other, and getting it wrong twice is why it is written down:
 //
-// WHY THEY EXIST AT ALL: `LocatorCollision` was modeled and never executed. The witness's
+//   - `ObjectRecord` is `sole_constructor`, so a record whose identity disagrees with its content
+//     can be authored ONLY inside this module. That is the point of the seal and the reason these
+//     fixtures cannot be built anywhere else.
+//   - Floor discovery collects witnesses from files whose PATH ends `_test.dag` (v1 cli_run
+//     `is_test_dag`). A `test fn` in this file would never be discovered and never run -- which
+//     would recreate the exact hole these claims close: a typed refusal arm with no executing
+//     consumer, invisible to CI while looking covered.
+//   - DESIGN §3 forbids two files declaring one module. A second file named `*_test.dag` declaring
+//     `module gunbc.scm.object_store` is refused outright: "one module, one authority ... silent
+//     last-root-wins shadowing broke the floor (extdeps.shell, 2026-07-01)".
+//
+// So the bodies are ordinary functions here, where the seal lets them build an impostor, and the
+// enrolled `test fn` declarations are in the witness file, where discovery finds them. What crosses
+// the module boundary is a Bool verdict, never forged material, so no forge path is exported.
+//
+// WHY THEY EXIST AT ALL: `LocatorCollision` was modeled and never executed, and the witness's own
 // `no_fixture_collides` claim actively PROVED the arm was unexercised -- a useful denominator
 // control that also documented a specification-without-execution hole, which DESIGN §5 names as the
-// deepest trap. This PR's recurring failure has been walls described more strongly than they were
-// built; an unexecuted refusal arm is the same species, so it gets a discriminating input rather
-// than a promise.
+// deepest trap.
 //
-// NOTE ON WHAT IS NOT BEING CLAIMED: these do not find an fnv1a64 collision, which would need a
-// preimage search. They construct the STATE a collision produces -- one locator, two different
-// canonical records -- and assert the store refuses it. The arm is what is under test, not the
-// digest's collision resistance.
+// WHAT IS NOT CLAIMED: these do not find an fnv1a64 collision, which would need a preimage search.
+// They construct the STATE a collision produces -- one locator, two different canonical records --
+// and assert the store refuses it. The arm is under test, not the digest's collision resistance.
 
 fn collision_probe_atom(identity: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: identity } }, children: [])
@@ -327,7 +337,7 @@ fn collision_probe_impostor(identity: ObjectId) -> ObjectRecord {
 
 // ONE LOCATOR, TWO DIFFERENT CANONICAL RECORDS -- the store must refuse, and the refusal must carry
 // both records so a caller can see what disagreed rather than merely that something did.
-test fn a_different_record_under_one_locator_refuses() -> Bool {
+fn a_different_record_under_one_locator_refuses() -> Bool {
   let real = store_node(store: empty_store(), n: collision_probe_atom(identity: ^collide_a))
   let identity = collision_probe_identity(
     outcome: real,
@@ -346,7 +356,7 @@ test fn a_different_record_under_one_locator_refuses() -> Bool {
 
 // CONTROL: re-inserting the SAME canonical record under that locator is idempotent, not a collision.
 // Without this, the claim above would pass against an insert that refused every second write.
-test fn the_same_record_under_one_locator_is_idempotent() -> Bool {
+fn the_same_record_under_one_locator_is_idempotent() -> Bool {
   let real = store_node(store: empty_store(), n: collision_probe_atom(identity: ^collide_a))
   let store = collision_probe_stored(outcome: real)
   match store_node(store: store, n: collision_probe_atom(identity: ^collide_a)) {
@@ -359,7 +369,7 @@ test fn the_same_record_under_one_locator_is_idempotent() -> Bool {
 // A COLLISION ON A CHILD MUST PROPAGATE OUT OF THE RECURSION. This is the arm that matters most and
 // the one nothing exercised: a parent whose child refuses must not itself be reported Stored, or the
 // store would hand back a commit whose closure was never written.
-test fn a_child_collision_propagates_and_the_parent_is_not_stored() -> Bool {
+fn a_child_collision_propagates_and_the_parent_is_not_stored() -> Bool {
   let child = store_node(store: empty_store(), n: collision_probe_atom(identity: ^collide_child))
   let child_identity = collision_probe_identity(
     outcome: child,
@@ -381,7 +391,7 @@ test fn a_child_collision_propagates_and_the_parent_is_not_stored() -> Bool {
 
 // CONTROL for the propagation claim: the same parent stores cleanly against an UNSEEDED store, so
 // the refusal above is caused by the seeded impostor and not by the parent fixture being unstorable.
-test fn the_same_parent_stores_cleanly_without_the_impostor() -> Bool {
+fn the_same_parent_stores_cleanly_without_the_impostor() -> Bool {
   match store_node(
     store: empty_store(),
     n: collision_probe_parent(child: collision_probe_atom(identity: ^collide_child)),

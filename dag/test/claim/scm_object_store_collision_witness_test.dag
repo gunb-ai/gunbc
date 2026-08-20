@@ -1,0 +1,45 @@
+module test.claim.scm_object_store_collision_witness
+
+// THE ENROLLED HALF of gunbc.scm.object_store's collision claims.
+//
+// The bodies cannot live here: they build an ObjectRecord whose identity disagrees with its content,
+// and that carrier is `sole_constructor`, so only its defining module may construct one. They also
+// cannot be declared `test fn` in that module, because floor discovery collects witnesses by a
+// `_test.dag` path suffix and would never see them. And the module cannot be split across two files
+// -- DESIGN §3 refuses a module-path collision outright.
+//
+// So the bodies are plain functions there and the enrolled declarations are here. Only a Bool
+// verdict crosses the boundary; no forged material is exported.
+
+import std.types { Bool }
+
+import gunbc.scm.object_store {
+  a_different_record_under_one_locator_refuses,
+  the_same_record_under_one_locator_is_idempotent,
+  a_child_collision_propagates_and_the_parent_is_not_stored,
+  the_same_parent_stores_cleanly_without_the_impostor,
+}
+
+// One locator, two different canonical records -- refused, and the refusal names both records so a
+// caller sees WHAT disagreed rather than only that something did.
+test fn locator_collision_refuses_a_different_record() -> Bool {
+  a_different_record_under_one_locator_refuses()
+}
+
+// CONTROL: re-inserting the SAME canonical record is idempotent, not a collision. Without this the
+// claim above would pass against an insert that refused every second write.
+test fn locator_collision_does_not_fire_on_the_same_record() -> Bool {
+  the_same_record_under_one_locator_is_idempotent()
+}
+
+// The arm that matters most and the one nothing exercised: a parent whose CHILD refuses must not be
+// reported Stored, or the store hands back a commit whose closure was never written.
+test fn a_child_collision_propagates_out_of_the_recursion() -> Bool {
+  a_child_collision_propagates_and_the_parent_is_not_stored()
+}
+
+// CONTROL: the same parent stores cleanly against an unseeded store, so the refusal above is caused
+// by the seeded impostor rather than by an unstorable fixture.
+test fn the_parent_fixture_stores_cleanly_on_its_own() -> Bool {
+  the_same_parent_stores_cleanly_without_the_impostor()
+}
