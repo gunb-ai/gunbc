@@ -40,7 +40,7 @@ import v2.std.compilers.target_model {
   TargetDeriveSupplementalGenericBoundContractAuthority,
   TargetDeriveSupplementalGenericBoundRequirementAuthority,
   TargetDeriveSupplementalGenericBoundRequirementSet,
-  TargetDeriveTraitKey,
+  TargetCapabilityKey,
   TargetGenericApply,
   TargetRepresentation,
   TargetRepresentationChoice,
@@ -55,7 +55,7 @@ import v2.std.compilers.target_model {
   target_derive_supplemental_generic_bound_requirement_set_empty,
   target_derive_supplemental_generic_bound_contract_wire_node,
   target_derive_supplemental_generic_bound_requirement_wire_node,
-  target_grounding_derive_trait_key,
+  target_capability_key_for_derive_trait,
   target_representation_parameter_slot_empty,
   target_representation_parameter_slots_empty
 }
@@ -180,7 +180,7 @@ fn sgb_requirement_set(
 ) -> TargetDeriveSupplementalGenericBoundRequirementSet {
   map_insert(
     m: target_derive_supplemental_generic_bound_requirement_set_empty(),
-    key: target_grounding_derive_trait_key(derive_trait: required_trait),
+    key: target_capability_key_for_derive_trait(derive_trait: required_trait),
     value: TargetDeriveSupplementalGenericBoundRequirementAuthority {
       authority: authority
     }
@@ -235,10 +235,10 @@ fn sgb_contract(
   }
 }
 
-fn sgb_nested_contracts() -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
+fn sgb_nested_contracts() -> Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
   let debug_contracts = map_insert(
     m: target_derive_supplemental_generic_bound_contract_authorities_empty(),
-    key: target_grounding_derive_trait_key(derive_trait: ReprDeriveDebug),
+    key: target_capability_key_for_derive_trait(derive_trait: ReprDeriveDebug),
     value: sgb_contract(
       authority: im_15_1_0_vector_debug_impl_authority,
       requirements: sgb_single_clone_requirement(
@@ -248,7 +248,7 @@ fn sgb_nested_contracts() -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalG
   )
   let partial_eq_contracts = map_insert(
     m: debug_contracts,
-    key: target_grounding_derive_trait_key(derive_trait: ReprDerivePartialEq),
+    key: target_capability_key_for_derive_trait(derive_trait: ReprDerivePartialEq),
     value: sgb_contract(
       authority: im_15_1_0_vector_partial_eq_impl_authority,
       requirements: sgb_single_clone_requirement(
@@ -258,7 +258,7 @@ fn sgb_nested_contracts() -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalG
   )
   let serialize_contracts = map_insert(
     m: partial_eq_contracts,
-    key: target_grounding_derive_trait_key(derive_trait: ReprDeriveSerialize),
+    key: target_capability_key_for_derive_trait(derive_trait: ReprDeriveSerialize),
     value: sgb_contract(
       authority: im_15_1_0_vector_serialize_impl_authority,
       requirements: sgb_single_clone_requirement(
@@ -268,7 +268,7 @@ fn sgb_nested_contracts() -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalG
   )
   let deserialize_contracts = map_insert(
     m: serialize_contracts,
-    key: target_grounding_derive_trait_key(derive_trait: ReprDeriveDeserialize),
+    key: target_capability_key_for_derive_trait(derive_trait: ReprDeriveDeserialize),
     value: sgb_contract(
       authority: im_15_1_0_vector_deserialize_impl_authority,
       requirements: sgb_deserialize_requirements(
@@ -278,7 +278,7 @@ fn sgb_nested_contracts() -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalG
   )
   map_insert(
     m: deserialize_contracts,
-    key: target_grounding_derive_trait_key(derive_trait: ReprDeriveClone),
+    key: target_capability_key_for_derive_trait(derive_trait: ReprDeriveClone),
     value: sgb_contract(
       authority: im_15_1_0_vector_clone_impl_authority,
       requirements: target_derive_supplemental_generic_bound_contract_requirements_empty()
@@ -300,7 +300,7 @@ fn sgb_nested_representation_parameters() -> Map<Symbol, TargetRepresentationPar
 
 fn sgb_choice(
   representation_parameters: Map<Symbol, TargetRepresentationParameterSlot>,
-  contracts: Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority>
+  contracts: Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority>
 ) -> TargetRepresentationChoice {
   TargetRepresentationChoice {
     form: sgb_vec_representation(),

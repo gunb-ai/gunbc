@@ -9510,6 +9510,9 @@ data target_external_authority_field_uri_locator: Symbol = ^target_external_auth
 
 type TargetCapabilityKey = Symbol where brand("TargetCapabilityKey")
 
+data target_capability_key_fork_state_note: String = "TargetCapabilityKey is the single brand for a named target capability. B1 PR 2 collapsed TargetDeriveTraitKey into it: that brand was not an independent authority -- every value of it in the corpus came from one producer, target_capability_key_for_derive_trait, which is discriminant(ReprGroundingDeriveTrait) -- so two brands stood over one overlapping key space in this module, which is the section 3 nickname pair. FORK NOT CLOSED, STATED PLAINLY RATHER THAN LEFT TO THE WORD COLLAPSE: std.trait_derive_shape ReprGroundingDeriveTrait still exists and still overlaps this key space on Ord, Hash, Eq and Clone. The fork went from three representations to two; it is not closed. WHY IT COULD NOT BE CLOSED HERE, measured rather than assumed: src/v1/trait_derive_emit.dag imports twenty symbols from std.trait_derive_shape, of which record_derive_traits_heap, record_derive_traits_copy, nullary_coproduct_derive_traits, symbol_wrapped_ord_carrier_derive_traits and repr_grounding_derive_completeness_predicate are the SAME declarations that v2 and dag.extdeps.languages.rust.emit consume -- not parallel copies -- and their signatures are typed in the coproduct; extdeps.languages.rust.emit rust_trait_derive_attr_from_traits additionally takes List<ReprGroundingDeriveTrait> and is imported by v1 directly. So the coproduct crosses the frozen v1 boundary through BOTH std and extdeps, and every route to migrating a consumer either changes a signature v1 shares (breaking frozen v1) or adds a keyed surface beside the coproduct in std (a dual authority, worse than the current state). Both arms refuse, which is what makes this a block rather than a preference. NEXT-RUNG TRIGGER: an operator ruling on whether a carrier migration driven by upstream retirement is admissible under the v1 freeze -- it is neither the admitted defect-repair class nor the refused feature-completion class, so the freeze vocabulary has no row for it. That ruling gates the BULK of the remaining migration, not one final re-home step; an earlier reading that placed it off the critical path was refuted by the import measurement above."
+
+
 type TargetCapabilityRequirement {
   representation_parameter: Symbol
   capability_key: TargetCapabilityKey
@@ -9527,14 +9530,13 @@ type TargetCapabilityEligibilityRow {
   eligibility: TargetCapabilityElementEligibility
 }
 
-type TargetDeriveTraitKey = Symbol where brand("TargetDeriveTraitKey")
 
 type TargetDeriveSupplementalGenericBoundRequirementAuthority {
   authority: ExternalAuthority
 }
 
 type TargetDeriveSupplementalGenericBoundRequirementSet =
-  Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundRequirementAuthority>
+  Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundRequirementAuthority>
 
 type TargetRepresentationParameterSlot {}
 
@@ -9547,7 +9549,7 @@ type TargetRepresentationChoice {
   form: TargetRepresentation
   representation_parameters: Map<Symbol, TargetRepresentationParameterSlot>
   constraints: List<TargetCapabilityRequirement>
-  supplemental_generic_bound_contracts: Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority>
+  supplemental_generic_bound_contracts: Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority>
 }
 
 type TargetTextCarrier {
@@ -9584,7 +9586,7 @@ type TargetDeriveSupplementalGenericBoundContractWire {
 
 type TargetDeriveSupplementalGenericBoundContractCatalog {
   representation_parameters: Map<Symbol, TargetRepresentationParameterSlot>
-  contracts: Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority>
+  contracts: Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority>
 }
 
 fn target_grounding_derive_trait_discriminant(
@@ -9593,9 +9595,9 @@ fn target_grounding_derive_trait_discriminant(
   discriminant(v: derive_trait)
 }
 
-fn target_grounding_derive_trait_key(
+fn target_capability_key_for_derive_trait(
   derive_trait: ReprGroundingDeriveTrait
-) -> TargetDeriveTraitKey {
+) -> TargetCapabilityKey {
   target_grounding_derive_trait_discriminant(derive_trait: derive_trait)
 }
 
@@ -9615,19 +9617,19 @@ fn target_representation_parameter_slots_empty() -> Map<Symbol, TargetRepresenta
   empty_map()
 }
 
-fn target_derive_supplemental_generic_bound_contract_authorities_empty() -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
+fn target_derive_supplemental_generic_bound_contract_authorities_empty() -> Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
   empty_map()
 }
 
 fn target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements(
-  contracts: Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority>,
+  contracts: Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority>,
   derive_trait: ReprGroundingDeriveTrait,
   authority: ExternalAuthority,
   requirements: Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet>
-) -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
+) -> Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
   map_insert(
     m: contracts,
-    key: target_grounding_derive_trait_key(derive_trait: derive_trait),
+    key: target_capability_key_for_derive_trait(derive_trait: derive_trait),
     value: TargetDeriveSupplementalGenericBoundContractAuthority {
       authority: authority,
       requirements: requirements
@@ -9636,10 +9638,10 @@ fn target_derive_supplemental_generic_bound_contract_authority_insert_with_requi
 }
 
 fn target_derive_supplemental_generic_bound_contract_authority_insert(
-  contracts: Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority>,
+  contracts: Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority>,
   derive_trait: ReprGroundingDeriveTrait,
   authority: ExternalAuthority
-) -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
+) -> Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
   target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements(
     contracts: contracts,
     derive_trait: derive_trait,
@@ -9986,7 +9988,7 @@ fn target_derive_supplemental_generic_bound_contract_requirements_for_parameter(
 fn target_derive_supplemental_generic_bound_contract_requirements_insert(
   requirements: Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet>,
   representation_parameter: Symbol,
-  required_key: TargetDeriveTraitKey,
+  required_key: TargetCapabilityKey,
   parameter_requirements: TargetDeriveSupplementalGenericBoundRequirementSet,
   authority: ExternalAuthority
 ) -> Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet> {
@@ -10020,7 +10022,7 @@ fn target_derive_supplemental_generic_bound_wire_requirement_apply(
             )
           )
         Present { value: _ } =>
-          let required_key = target_grounding_derive_trait_key(
+          let required_key = target_capability_key_for_derive_trait(
             derive_trait: requirement.required_trait
           )
           let parameter_requirements = target_derive_supplemental_generic_bound_contract_requirements_for_parameter(
@@ -10078,7 +10080,7 @@ fn target_derive_supplemental_generic_bound_contract_catalog_insert_wire(
   match acc {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: catalog, diagnostics: _ } =>
-      let derive_key = target_grounding_derive_trait_key(
+      let derive_key = target_capability_key_for_derive_trait(
         derive_trait: row.derive_trait
       )
       match catalog.contracts.lookup(derive_key) {
@@ -10197,7 +10199,7 @@ fn target_derive_supplemental_generic_bound_requirement_nodes_for_contract(
 }
 
 fn target_derive_supplemental_generic_bound_contract_node_from_key(
-  derive_key: TargetDeriveTraitKey,
+  derive_key: TargetCapabilityKey,
   contract_authority: TargetDeriveSupplementalGenericBoundContractAuthority
 ) -> Node {
   target_model_type_conj_node(
@@ -10268,7 +10270,7 @@ fn target_derive_supplemental_generic_bound_requirement_authority(
     Absent => Absent
     Present { value: requirements } =>
       match requirements.lookup(
-        target_grounding_derive_trait_key(derive_trait: required_trait)
+        target_capability_key_for_derive_trait(derive_trait: required_trait)
       ) {
         Absent => Absent
         Present { value: row } => Present { value: row.authority }
@@ -10291,7 +10293,7 @@ fn target_derive_supplemental_generic_bound_contract_lookup_in_choice(
   source_carrier: Node,
   derive_trait: ReprGroundingDeriveTrait
 ) -> Outcome<TargetDeriveSupplementalGenericBoundContract> {
-  let derive_key = target_grounding_derive_trait_key(derive_trait: derive_trait)
+  let derive_key = target_capability_key_for_derive_trait(derive_trait: derive_trait)
   match choice.supplemental_generic_bound_contracts.lookup(derive_key) {
     Absent =>
       outcome_rejected(

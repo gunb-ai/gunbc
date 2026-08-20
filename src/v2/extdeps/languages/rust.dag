@@ -219,7 +219,7 @@ import v2.std.compilers.target_model {
   TargetDeriveSupplementalGenericBoundContractAuthority,
   TargetDeriveSupplementalGenericBoundRequirementAuthority,
   TargetDeriveSupplementalGenericBoundRequirementSet,
-  TargetDeriveTraitKey,
+  TargetCapabilityKey,
   TargetRepresentationParameterSlot,
   TargetCapabilityElementEligibility,
   TargetCapabilityEligibilityRow,
@@ -236,7 +236,7 @@ import v2.std.compilers.target_model {
   target_derive_supplemental_generic_bound_contract_authority_insert,
   target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements,
   target_derive_supplemental_generic_bound_requirement_set_empty,
-  target_grounding_derive_trait_key,
+  target_capability_key_for_derive_trait,
   target_representation_choice_parameters_bundle_node,
   target_representation_choice_supplemental_generic_bound_contracts_bundle_node,
   target_representation_parameter_slot_empty,
@@ -1595,7 +1595,7 @@ fn rust_single_parameter_supplemental_generic_bound_requirements(
     key: ^target_collection_type_param_t,
     value: map_insert(
       m: target_derive_supplemental_generic_bound_requirement_set_empty(),
-      key: target_grounding_derive_trait_key(derive_trait: required_trait),
+      key: target_capability_key_for_derive_trait(derive_trait: required_trait),
       value: TargetDeriveSupplementalGenericBoundRequirementAuthority {
         authority: authority
       }
@@ -1603,7 +1603,7 @@ fn rust_single_parameter_supplemental_generic_bound_requirements(
   )
 }
 
-fn rust_vec_supplemental_generic_bound_contracts() -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
+fn rust_vec_supplemental_generic_bound_contracts() -> Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
   let debug_contract = target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements(
       contracts: target_derive_supplemental_generic_bound_contract_authorities_empty(),
       derive_trait: ReprDeriveDebug,
@@ -1647,7 +1647,7 @@ fn rust_vec_supplemental_generic_bound_contracts() -> Map<TargetDeriveTraitKey, 
   )
 }
 
-fn rust_btree_set_supplemental_generic_bound_contracts() -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
+fn rust_btree_set_supplemental_generic_bound_contracts() -> Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
   let debug_contract = target_derive_supplemental_generic_bound_contract_authority_insert(
       contracts: target_derive_supplemental_generic_bound_contract_authorities_empty(),
       derive_trait: ReprDeriveDebug,
@@ -1679,7 +1679,7 @@ fn rust_btree_set_supplemental_generic_bound_contracts() -> Map<TargetDeriveTrai
   )
 }
 
-fn rust_hash_set_supplemental_generic_bound_contracts() -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
+fn rust_hash_set_supplemental_generic_bound_contracts() -> Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
   let debug_contract = target_derive_supplemental_generic_bound_contract_authority_insert(
       contracts: target_derive_supplemental_generic_bound_contract_authorities_empty(),
       derive_trait: ReprDeriveDebug,
