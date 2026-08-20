@@ -952,6 +952,50 @@ than argued.
    layer too shallow; it is recorded here because two readers repeated it before the formatter
    was read.
 
+13. **§4c comment-placement cannot be swept by text grep, and three shapes are therefore
+   UNKNOWN** (opened 2026-08-19; two sessions, independently sampled). A bot commit landed an
+   11-line rationale comment inside a fold lambda body in `04_infer.dag`
+   `symbol_index_insert_unique_disj_variant_aliases`, which blocked `required-regen`
+   **corpus-wide** with 11 §4c refusals and sat on main undetected — self-compile and regen are
+   not live gates under the CI rung-drop, so it surfaced only because someone needed regen for
+   an unrelated reason. Relocated verbatim to module-item grain in `10542cb3bb4`.
+   **What IS established, as a controlled zero:** a sweep for the exact shape that fired —
+   *indented* `//` lines across `dag/` and `src/` — returns **0**, and the zero is readable
+   because the instrument carries controls in both directions: it finds 22,429 column-0
+   comments, and it detects a planted violation of that shape in a temp copy.
+   **What is NOT established, and cannot be by this method:** trailing `//` after code on the
+   same line, block-comment `/* */` forms, and column-0 comments in a between-items position
+   §4c refuses for a different reason. A text grep returned 225 and 75 hits for the first two;
+   **both are essentially all false positive**, independently sampled by two sessions at 6 and 8
+   hits respectively with not one instance of comment syntax among them — every hit was inside
+   a string literal. **The reason is structural rather than incidental, which is why no better
+   filter exists:** this corpus's job is to carry other languages' syntax as data. Emitters hold
+   target-language comments as template strings (`extdeps/languages/rust/emit.dag`), witnesses
+   hold `.dag` source as fixtures (`compiler_tests_rust.dag`, and
+   `dag_line_comment_annotation_channel_test` which is *literally* a comment-annotation
+   fixture), goldens hold generated do-not-hand-edit banners
+   (`gunbc/stage0_crate_layout_emit.dag`), plan rows hold `CodeBlock.code`, and an rsync pattern
+   holds `objects/pack/*.keep`. A regex for comment syntax over a corpus built to carry syntax
+   as data is measuring the wrong thing **by construction**.
+   **Status is UNKNOWN-with-a-named-reason, deliberately, and that is a real state rather than a
+   gap:** reporting 0 or reporting 225 would both be fabrications in opposite directions, and
+   the 225 would be the more expensive one — it would send someone to audit 225 string
+   literals. §5's objection to the absorbing fallback is exactly that ⊥-as-ignorance gets
+   rendered as a verdict; this row declines to render it as either.
+   **Next trigger:** a lens over `Node` with string-literal awareness, which is the only
+   instrument that can separate comment syntax from carried data. **Priority: file, do not
+   staff** — the class that actually fired is covered by the controlled zero above.
+   **A standing measurement rule falls out of this one, and it inverts the common intuition:**
+   a ZERO looks like nothing and therefore invites a control; a NONZERO looks like a finding and
+   therefore does not. That is backwards. A false nonzero is strictly more expensive than a
+   false zero — a false zero costs an unnoticed gap, a false nonzero manufactures work at
+   phantom sites *and* discredits every number reported beside it — and it is self-reinforcing,
+   because a count that arrives looking like evidence invites explanation rather than doubt.
+   **Control the instrument before reading the number, and sample a nonzero before reporting
+   it.** Note also that cheap-to-RUN is not cheap-to-BELIEVE: the marginal cost of one more
+   grep is near zero, but the marginal cost of an uncontrolled grep is unbounded once its
+   number enters the record. Cost scales with instruments, not with keystrokes.
+
 **These three classes are one class, and it is worth naming as such** (items 11 and 12, plus
 the ~48 unlocated synthetic `expected Product(NonEmptyStr), got Primitive(String)` mismatches
 opened against #8544). One diagnostic will not say WHY, one will not say WHERE, and one says
