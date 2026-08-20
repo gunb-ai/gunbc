@@ -830,21 +830,40 @@ node), so `sole_constructor_construction_diags` is never invoked for this form a
 is a real, third construction form the wall does not cover, not a variant of the
 already-known order-dependence hole.
 
-*Deserialization / from_value / emit-side reconstruction — CONFIRMED NOT APPLICABLE: no
-such generic construction path exists in the language.* Enumerated all 124 host builtins
+*Deserialization / from_value — CONFIRMED NOT APPLICABLE: no such generic construction path
+exists in the language. The registry read is the evidence; f14 is a consistency check on
+it, not the reverse.* The load-bearing evidence is enumerating all 124 host builtins
 registered in `v1_interpreter_dispatch_generated.rs`'s dispatch table: none returns a
 generic/parametric `T` from untyped input (String/JSON/YAML) — every builtin's return type
-is a fixed concrete shape. There is no reflection-based or serde-style mechanism in v1 that
-constructs an arbitrary user-declared nominal type from external data outside of ordinary
-record-literal, cast, or (per above) variant-literal expression forms. Turned into an EXECUTED
-confirmation rather than resting on the registry read alone: probe f14 calls a guessed
-`from_json`-shaped builtin against the sealed fixture type, cross-module. Measured: 1 total
-diagnostic row, 0 `SoleConstructorViolation` rows — the one diagnostic is name-resolution
-failure (the call never resolves to anything), not a construction-site check outcome. So
-the call fails before reaching any construction semantics at all, closing the
-deserialization sub-question by execution: not a distinct bypass route, and not something
-that silently succeeds past `sole_constructor` — it never gets that far. The only unwired
-literal-construction form found is variant construction, above.
+is a fixed concrete shape, so there is no reflection-based or serde-style mechanism in v1
+that constructs an arbitrary user-declared nominal type from external data outside of
+ordinary record-literal, cast, or (per above) variant-literal expression forms. Probe f14
+(calls a guessed `from_json`-shaped name against the sealed fixture type, cross-module;
+measured 1 total diagnostic row, 0 `SoleConstructorViolation` rows, the one row being
+name-resolution failure) does **not**, by itself, distinguish "no such path exists" from "a
+path exists under some other name I didn't guess" — a single failed guess is consistent with
+either. What actually carries the "not applicable" conclusion is the exhaustive registry
+enumeration; f14 is only a corroborating data point (confirms the guessed name specifically
+isn't the gap) on top of that closed enumeration, stated in the correct evidentiary
+direction rather than the reverse.
+
+*Emit-side reconstruction — a DIFFERENT question from deserialization, and its own finding:
+a construction path with NO WALL AT ALL, not a form with a hole in an existing wall.*
+Checked directly in emitted Rust: the only occurrences of `SoleConstructor` anywhere in
+generated output are the compiler's own `CompilerDiagnostic` variant (`v1_std_core.rs`) —
+its match arm, span accessor, and message renderer. No emitted user-defined data type
+carries any confinement in the emitted target; emitted structs are plain `pub`-field
+records. Two things both hold and neither should be read as implying the other: (i) this is
+**not automatically a defect** — emitted Rust is generated *from* `.dag` source that already
+passed the wall at `.dag`-authoring time, so nothing hand-writes a violating construction
+through the emitted-struct door under ordinary self-hosting use; (ii) but the v1 seed also
+carries **hand-written Rust beside the generated mirrors** (`v1_interpreter.rs`, `cli_run.rs`,
+and others) that sits entirely outside `.dag`'s type system and therefore outside
+`sole_constructor` with no mechanism even in principle — not an unwired form of an existing
+check, but a construction surface the check was never positioned to reach at all. This is
+recorded as its own ledger row rather than folded into either the record-literal/cast
+finding or the deserialization finding, because "a form the wall doesn't cover" and "a
+representation the wall has no jurisdiction over" are different claims.
 
 **Exposure, per hole, so a confirmed defect is never read as a confirmed victim (explicit
 ask, 2026-08-20):**
@@ -864,9 +883,29 @@ ask, 2026-08-20):**
   is a plain record, `OrderedClosedInterval<T>` included). **Zero live exposure today** —
   the hole requires a future sole_constructor type declared as a coproduct; nothing warns an
   author when that PR lands either.
-- *Deserialization/emit-reconstruction:* not applicable — no such construction path exists
-  in the language at all (confirmed both by registry read and by execution above), so this
-  has no exposure dimension; it is closed, not open-with-zero-exposure.
+- *Deserialization:* not applicable — no such construction path exists in the language at
+  all (registry read is the evidence; f14 a corroborating check, not the proof), so this has
+  no exposure dimension; it is closed, not open-with-zero-exposure.
+- *Emit-side reconstruction:* not a hole in the wall — a construction surface (hand-written
+  Rust beside the generated mirrors) the wall was never positioned to reach. No exposure
+  ledger entry in the same sense as the two holes above; recorded as its own row (§10) rather
+  than merged with either.
+- *Validator-identity forgeability (f12/f12b, executed — `always_true_le` accepts `low: 10,
+  high: 1` via `closed_interval`, `IntervalReady`; honest `le` control correctly refuses via
+  `IntervalRefused`) — CATEGORICALLY DIFFERENT EXPOSURE SHAPE, do not flatten alongside the
+  three above.* The other three holes require an author to write an unusual, not-yet-existing
+  declaration (a sole_constructor coproduct, a colliding bare name) before the gap is live.
+  This one requires nothing new: `closed_interval`'s signature already accepts an arbitrary
+  caller-supplied predicate at all 4 of its production call sites today (fierce-ant-91's
+  count: `millimeter_le` x1, `nanosecond_le` x3, all honest — so zero exploitation today), and
+  the trigger is "pass a subtly-wrong comparator to an existing API," not "author a new
+  shape." It is also not, strictly, a `sole_constructor` completeness hole at all:
+  `sole_constructor` confines *who/where* constructs the carrier and does so correctly here;
+  this finding is that confinement alone says nothing about *what invariant* the confined
+  mint's caller-supplied predicate actually enforces. Load-bearing for the `Refined<B>`
+  roadmap design: a sealed wrapper's safety requires the validator to be **fixed by the
+  declaring module**, not caller-supplied — confinement without a fixed validator provides no
+  invariant guarantee, and `closed_interval` is the in-tree specimen proving it.
 
 **The pattern across every hole, stated as the headline finding rather than left implicit:**
 `sole_constructor` covers exactly the construction shapes the corpus happens to use today
