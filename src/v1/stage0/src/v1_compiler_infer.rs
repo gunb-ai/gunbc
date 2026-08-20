@@ -156,12 +156,12 @@ use crate::v1_std_core::CallSemantics::{
 };
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
-    AmbiguousReference, BareNoneNotAdmittedByFieldType, CallArgumentDuplicate,
-    CallArgumentNameUnknown, CallNamedArgOnFunctionValue, CallPositionalDeficit,
-    CallPositionalSurplus, ConstructorCallAdmissionRefused, FieldNotFound,
-    FrontierOccurrenceBudgetExceeded, InternalError, MethodExistenceFrontierAdmitted,
-    MethodExistenceUndecided, MethodNotFound, MissingField, ReceiverTypeUnestablished,
-    SoleConstructorViolation, TypeMismatch, UnresolvedType, VariantCollision,
+    AmbiguousReference, CallArgumentDuplicate, CallArgumentNameUnknown,
+    CallNamedArgOnFunctionValue, CallPositionalDeficit, CallPositionalSurplus,
+    ConstructorCallAdmissionRefused, FieldNotFound, FrontierOccurrenceBudgetExceeded,
+    InternalError, MethodExistenceFrontierAdmitted, MethodExistenceUndecided, MethodNotFound,
+    MissingField, ReceiverTypeUnestablished, SoleConstructorViolation, TypeMismatch,
+    UnresolvedType, VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -203,7 +203,7 @@ pub use crate::v1_std_core::{
     is_tree_size_reducing, lambda_body, lambda_param_names_at, let_binding_name_at, let_body,
     let_value, local_transport_node, make_arg_node, make_arm_node, make_error_node,
     make_expr_error_node, make_expr_node, make_field_binding_node, make_field_init_node,
-    make_interp_part_node, make_named_expr_node, make_param_node, make_text_part_node,
+    make_interp_part_node, make_named_expr_node, make_param_node, make_span, make_text_part_node,
     make_transport_node, map_children, match_arm_nodes, match_scrutinee, method_arg_nodes,
     method_receiver, module_imports, module_items, module_node, no_span, node_name_span, none_type,
     param_node_default_value, param_node_name_at, param_node_type_expr,
@@ -1418,82 +1418,6 @@ pub fn rejects_string_for_optional_coproduct_field(
             == "Primitive(String)".to_string())
             || (authored_name_at(source_indices.clone(), got.clone()) == "String".to_string()));
         (expected_is_optional_coproduct.clone() && got_is_string.clone())
-    }
-}
-
-pub fn bare_none_construction_wall_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "CONSTRUCTION WALL (DESIGN 4b): the bare name `None` carries absence and NOTHING else, so a construction position whose declared field type cannot carry absence must refuse it rather than adopt whichever `None` variant happens to be in scope. MEASURED HOLE this closes, on the pre-wall binary: with `type Diags = None | Some { n: Int }` in scope, `Holder { n: None }` for `n: Int` and `ListHolder { xs: None }` for `xs: List<Int>` compiled with ZERO blocking diagnostics and emitted `n: Rc::new(Diags::None)` / `xs: Rc::new(Diags::None)` — a Rust program the declared types refute, produced silently. WHY THIS SLICE AND NOT THE GENERAL CONFORMANCE RULE: conformance_unjudged_live_hole_note records five successive attempts at a general named-vs-named refusal, each of which red correct code because the produced side carries no separable type identity. A bare `None` reference needs no produced-side identity — it is a SYNTACTIC form whose only meaning is absence — so admissibility is decided entirely from the DECLARED side, which is exactly why this class is decidable where the general one is not. ADMISSION is deliberately two-armed and nothing else: optional cardinality (the `T?` carrier), or a coproduct that declares a `None` variant at its own level (std.cache_interface AuthScope, v2.std.diagnostic Diagnostics — the two live carriers). A qualified `Owner.None` is not a bare reference and is not judged here. COVERAGE BOUNDARY, stated rather than left to be found: the wall fires only where the field s declared type is known at this site; a field whose declared type does not resolve is not judged, which is the check s precision frontier and not a failure arm.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn field_type_admits_bare_none(ft: Rc<Node>, scope: Rc<InferScope>) -> bool {
-    {
-        let required = match lookup_type_for(
-            scope.type_env.clone(),
-            with_required_cardinality(ft.clone()),
-        ) {
-            Some(resolved) => resolved.clone(),
-            None => with_required_cardinality(ft.clone()),
-        };
-        let expanded =
-            expand_scrut_type_for_variant_lookup(required.clone(), scope.type_env.clone());
-        let declares_none_variant = ((expanded.connective.clone() == Connective::Disj)
-            && has_child_named(
-                expanded.clone(),
-                "None".to_string(),
-                scope.type_env.clone().source_indices.clone(),
-            ));
-        ((ft.return_cardinality.clone() == Cardinality::CardOptional)
-            || declares_none_variant.clone())
-    }
-}
-
-pub fn expr_is_bare_none_reference(texpr: Rc<Node>, scope: Rc<InferScope>) -> bool {
-    match (*texpr.expr_data.clone()).clone() {
-        ExprData::ExprVar {
-            binding_kind: _, ..
-        } => {
-            (expr_var_name_at(texpr.clone(), scope.type_env.clone().source_indices.clone())
-                == "None".to_string())
-        }
-        _ => false,
-    }
-}
-
-pub fn bare_none_field_construction_diags(
-    fi: Rc<Node>,
-    fi_name: String,
-    field_declared_type: Option<Rc<Node>>,
-    type_name_for_message: String,
-    scope: Rc<InferScope>,
-) -> Rc<Vec<Rc<ErrorNode>>> {
-    match field_declared_type.clone() {
-        None => Rc::new(vec![]),
-        Some(ft) => {
-            let value_expr = field_init_node_value(fi.clone());
-            if (expr_is_bare_none_reference(value_expr.clone(), scope.clone())
-                && (field_type_admits_bare_none(ft.clone(), scope.clone()) == false))
-            {
-                Rc::new(vec![make_error_node(
-                    Rc::new(CompilerDiagnostic::BareNoneNotAdmittedByFieldType {
-                        field: fi_name.clone(),
-                        type_name: type_name_for_message.clone(),
-                        declared_type: node_type_shape(
-                            ft.clone(),
-                            scope.type_env.clone().source_indices.clone(),
-                        ),
-                        span: value_expr.span.clone(),
-                    }),
-                    scope.module_name.clone(),
-                )])
-            } else {
-                Rc::new(vec![])
-            }
-        }
     }
 }
 
@@ -4786,7 +4710,7 @@ pub fn validate_cast(
 pub fn type_variable_node(id: String) -> Rc<Node> {
     Rc::new(Node {
         name: "".to_string(),
-        span: no_span(),
+        span: make_span(0, 0),
         ident_span: None,
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
@@ -9857,17 +9781,8 @@ pub fn infer_record_lit_structural(
                         ),
                         infer_result: ar.clone(),
                         diagnostics: v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(ar_diags.clone(), field_type_diags.clone()),
-                                unknown_field_diags.clone(),
-                            ),
-                            bare_none_field_construction_diags(
-                                fi.clone(),
-                                fi_name.clone(),
-                                field_declared_type.clone(),
-                                tn_str.clone(),
-                                scope.clone(),
-                            ),
+                            v1_rt::concat(ar_diags.clone(), field_type_diags.clone()),
+                            unknown_field_diags.clone(),
                         ),
                     })
                 });
@@ -18311,7 +18226,7 @@ pub fn build_type_env_unresolved(
             .fold(intern_table.clone(), |t: Rc<InternTable>, name: String| {
                 intern(t, name.clone()).table.clone()
             });
-        let zero_span = no_span();
+        let zero_span = make_span(0, 0);
         let kernel_bindings = Rc::new(v1_rt::map_keys(&kernel_type_set()))
             .iter()
             .cloned()
