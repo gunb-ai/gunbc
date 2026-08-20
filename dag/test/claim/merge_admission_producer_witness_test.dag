@@ -7,14 +7,14 @@ data scenario_base: extdeps.git.object_store.GitObjectId = merge_admission_witne
 data scenario_head: std.types.CommitSha = "abc1234def5678901234567890abcd1234567890"
 data green_receipt: gunbc.merge_admission.MergeAdmissionReceipt = stamp_floor_receipt(
   pr_number: Present { value: 5933 },
-  head_sha: scenario_head,
+  head_sha: test.claim.merge_admission_producer_witness.scenario_head,
   base_tree_hash: scenario_base,
   floor_exit_code: 0,
 )
 
 data red_receipt: gunbc.merge_admission.MergeAdmissionReceipt = stamp_floor_receipt(
   pr_number: Present { value: 5933 },
-  head_sha: scenario_head,
+  head_sha: test.claim.merge_admission_producer_witness.scenario_head,
   base_tree_hash: scenario_base,
   floor_exit_code: 1,
 )
@@ -42,7 +42,7 @@ test fn wire_roundtrip_preserves_admission_fields() -> Bool {
       (parsed.base_tree_hash == scenario_base)
         && (parsed.gate_roster_hash == current_gate_roster_hash)
         && (parsed.conclusion == extdeps.github.checks.Success)
-        && (parsed.head_sha == scenario_head)
+        && (parsed.head_sha == test.claim.merge_admission_producer_witness.scenario_head)
         && match parsed.pr_number {
           Present { value: n } => n == 5933
           Absent => false
@@ -71,7 +71,7 @@ test fn wire_missing_pr_number_parses_as_absent_field() -> Bool {
       concat(concat(git_object_id_wire_hex(oid: scenario_base), "\n"), concat(render_gate_roster_hash_wire(hash: current_gate_roster_hash), "\n")),
       concat(check_conclusion_wire_label(c: extdeps.github.checks.Success), "\n")
     ),
-    scenario_head
+    test.claim.merge_admission_producer_witness.scenario_head
   )
   match parse_receipt_wire(text: wire) {
     Present { value: parsed } =>
@@ -86,7 +86,7 @@ test fn wire_missing_pr_number_parses_as_absent_field() -> Bool {
 test fn wire_omitted_pr_roundtrips_without_fabricated_zero() -> Bool {
   let receipt = stamp_floor_receipt(
     pr_number: none,
-    head_sha: scenario_head,
+    head_sha: test.claim.merge_admission_producer_witness.scenario_head,
     base_tree_hash: scenario_base,
     floor_exit_code: 0,
   )
@@ -97,7 +97,7 @@ test fn wire_omitted_pr_roundtrips_without_fabricated_zero() -> Bool {
         Absent =>
           (parsed.base_tree_hash == scenario_base)
             && (parsed.conclusion == extdeps.github.checks.Success)
-            && (parsed.head_sha == scenario_head)
+            && (parsed.head_sha == test.claim.merge_admission_producer_witness.scenario_head)
         Present { value: _ } => false
       }
     Absent => false
@@ -105,7 +105,7 @@ test fn wire_omitted_pr_roundtrips_without_fabricated_zero() -> Bool {
 }
 
 test fn red_floor_stamps_failure_conclusion() -> Bool {
-  red_receipt.conclusion == extdeps.github.checks.Failure
+  test.claim.merge_admission_producer_witness.red_receipt.conclusion == extdeps.github.checks.Failure
 }
 
 test fn receipt_schema_and_path_are_stable() -> Bool {
@@ -116,7 +116,7 @@ test fn receipt_schema_and_path_are_stable() -> Bool {
 test fn mint_matches_explicit_constructor() -> Bool {
   let explicit = mint_merge_admission_receipt(
     pr_number: Present { value: 5933 },
-    head_sha: scenario_head,
+    head_sha: test.claim.merge_admission_producer_witness.scenario_head,
     base_tree_hash: scenario_base,
     gate_roster_hash: current_gate_roster_hash,
     conclusion: Success,

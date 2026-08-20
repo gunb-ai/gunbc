@@ -5,7 +5,7 @@ module test.claim.orthogonal_topology_witness
 // The rooms this witness builds are millimetre-framed, which is what makes reading their heights
 // as millimetres true rather than assumed.
 fn mm_registry() -> std.spatial_frame.SpatialFrameRegistry {
-  match register_frame(r: empty_frame_registry(), identity: room(), length_scale: Milli) {
+  match register_frame(r: empty_frame_registry(), identity: test.claim.orthogonal_topology_witness.room(), length_scale: Milli) {
     FrameRegistered { frame: f } => registry_with(r: empty_frame_registry(), f: f)
     FrameRegistrationRefused { cause: _ } => empty_frame_registry()
   }
@@ -16,8 +16,8 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 fn room() -> std.coordinate_frame.CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 1) }
 fn building() -> std.coordinate_frame.CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 2) }
 
-fn p2(x: Int, y: Int) -> std.affine_space.Point2 { point2(frame: room(), x: x, y: y) }
-fn p3(x: Int, y: Int, z: Int) -> std.affine_space.Point3 { point3(frame: room(), x: x, y: y, z: z) }
+fn p2(x: Int, y: Int) -> std.affine_space.Point2 { point2(frame: test.claim.orthogonal_topology_witness.room(), x: x, y: y) }
+fn p3(x: Int, y: Int, z: Int) -> std.affine_space.Point3 { point3(frame: test.claim.orthogonal_topology_witness.room(), x: x, y: y, z: z) }
 
 // FIXTURES ARE THREADED AS CONSTRUCTIONS, never unwrapped through a fallback. An unwrap helper
 // needs something to return when the mint refuses, and every candidate is a fabrication: a
@@ -55,13 +55,13 @@ fn sequence_spaces(cs: List<std.orthogonal_geometry.OrthogonalConstruction<std.o
 // Every claim below uses this rather than a rectangle deliberately - a rectangle's area agrees with
 // its bounding box, so it cannot tell a derived area from an authored width-times-depth.
 fn l_shape() -> List<std.affine_space.Point2> {
-  [p2(x: 0, y: 0), p2(x: 4000, y: 0), p2(x: 4000, y: 2000), p2(x: 2000, y: 2000), p2(x: 2000, y: 3000), p2(x: 0, y: 3000)]
+  [test.claim.orthogonal_topology_witness.p2(x: 0, y: 0), test.claim.orthogonal_topology_witness.p2(x: 4000, y: 0), test.claim.orthogonal_topology_witness.p2(x: 4000, y: 2000), test.claim.orthogonal_topology_witness.p2(x: 2000, y: 2000), test.claim.orthogonal_topology_witness.p2(x: 2000, y: 3000), test.claim.orthogonal_topology_witness.p2(x: 0, y: 3000)]
 }
 
-fn l_space() -> std.orthogonal_geometry.OrthogonalConstruction<std.orthogonal_topology.EnclosedSpace> { space_ctor(vertices: l_shape(), low: 0, high: 2400) }
+fn l_space() -> std.orthogonal_geometry.OrthogonalConstruction<std.orthogonal_topology.EnclosedSpace> { space_ctor(vertices: test.claim.orthogonal_topology_witness.l_shape(), low: 0, high: 2400) }
 
 fn rect_ctor(x0: Int, y0: Int, x1: Int, y1: Int, low: Int, high: Int) -> std.orthogonal_geometry.OrthogonalConstruction<std.orthogonal_topology.EnclosedSpace> {
-  space_ctor(vertices: [p2(x: x0, y: y0), p2(x: x1, y: y0), p2(x: x1, y: y1), p2(x: x0, y: y1)], low: low, high: high)
+  space_ctor(vertices: [test.claim.orthogonal_topology_witness.p2(x: x0, y: y0), test.claim.orthogonal_topology_witness.p2(x: x1, y: y0), test.claim.orthogonal_topology_witness.p2(x: x1, y: y1), test.claim.orthogonal_topology_witness.p2(x: x0, y: y1)], low: low, high: high)
 }
 
 // Every projection below answers -1 on a refusal rather than a plausible number, so a claim can
@@ -70,7 +70,7 @@ fn area_of(c: std.orthogonal_geometry.OrthogonalConstruction<std.orthogonal_topo
   match c {
     OrthogonalRefused { cause: _ } => 0 - 1
     OrthogonalReady { value: s } =>
-      match space_floor_area(registry: mm_registry(), s: s) {
+      match space_floor_area(registry: test.claim.orthogonal_topology_witness.mm_registry(), s: s) {
         OrthogonalReady { value: a } => square_millimeter_count(m: a)
         OrthogonalRefused { cause: _ } => 0 - 1
       }
@@ -81,7 +81,7 @@ fn volume_of(c: std.orthogonal_geometry.OrthogonalConstruction<std.orthogonal_to
   match c {
     OrthogonalRefused { cause: _ } => 0 - 1
     OrthogonalReady { value: s } =>
-      match space_volume(registry: mm_registry(), s: s) {
+      match space_volume(registry: test.claim.orthogonal_topology_witness.mm_registry(), s: s) {
         OrthogonalReady { value: v } => cubic_millimeter_count(m: v)
         OrthogonalRefused { cause: _ } => 0 - 1
       }
@@ -95,7 +95,7 @@ fn height_of(c: std.orthogonal_geometry.OrthogonalConstruction<std.orthogonal_to
   match c {
     OrthogonalRefused { cause: _ } => 0 - 1
     OrthogonalReady { value: s } =>
-      match space_height(registry: mm_registry(), s: s) {
+      match space_height(registry: test.claim.orthogonal_topology_witness.mm_registry(), s: s) {
         ExtentInFrame { length: l } =>
           match frame_length_as_millimeter(l: l) {
             LengthProjected { value: mm } => millimeter_count(m: mm)
@@ -166,7 +166,7 @@ test fn area_is_derived_from_the_boundary_not_the_extents() -> Bool {
 }
 
 test fn volume_is_area_times_height_and_agrees_with_the_footprint() -> Bool {
-  height_of(c: l_space()) == 2400 && volume_of(c: l_space()) == 10000000 * 2400
+  height_of(c: l_space()) == 2400 && test.claim.orthogonal_topology_witness.volume_of(c: l_space()) == 10000000 * 2400
 }
 
 // Two spaces with the SAME bounding box and the same height whose volumes differ. Nothing authored
@@ -174,7 +174,7 @@ test fn volume_is_area_times_height_and_agrees_with_the_footprint() -> Bool {
 // claim stated as an executable difference rather than as a property of a type name.
 test fn same_extents_different_boundaries_have_different_volumes() -> Bool {
   let rect = rect_ctor(x0: 0, y0: 0, x1: 4000, y1: 3000, low: 0, high: 2400)
-  volume_of(c: rect) == 12000000 * 2400 && volume_of(c: l_space()) < volume_of(c: rect)
+  test.claim.orthogonal_topology_witness.volume_of(c: rect) == 12000000 * 2400 && test.claim.orthogonal_topology_witness.volume_of(c: l_space()) < test.claim.orthogonal_topology_witness.volume_of(c: rect)
 }
 
 test fn face_count_is_walls_plus_floor_and_ceiling() -> Bool {
@@ -191,20 +191,20 @@ test fn face_count_is_walls_plus_floor_and_ceiling() -> Bool {
 // are counted twice and the parity flips. An earlier revision of this witness omitted them and a
 // mutation to the rule stayed green, so the rule was untested while looking tested.
 test fn containment_distinguishes_inside_boundary_and_the_notch() -> Bool {
-  located(c: l_space(), p: p3(x: 1000, y: 1000, z: 1200)) == 1
-    && located(c: l_space(), p: p3(x: 3000, y: 2500, z: 1200)) == 3
-    && located(c: l_space(), p: p3(x: 0, y: 1000, z: 1200)) == 2
-    && located(c: l_space(), p: p3(x: 1000, y: 1000, z: 0)) == 2
-    && located(c: l_space(), p: p3(x: 1000, y: 1000, z: 2500)) == 3
-    && located(c: l_space(), p: p3(x: 1000, y: 2000, z: 1200)) == 1
-    && located(c: l_space(), p: p3(x: 3000, y: 2000, z: 1200)) == 2
+  located(c: l_space(), p: test.claim.orthogonal_topology_witness.p3(x: 1000, y: 1000, z: 1200)) == 1
+    && located(c: l_space(), p: test.claim.orthogonal_topology_witness.p3(x: 3000, y: 2500, z: 1200)) == 3
+    && located(c: l_space(), p: test.claim.orthogonal_topology_witness.p3(x: 0, y: 1000, z: 1200)) == 2
+    && located(c: l_space(), p: test.claim.orthogonal_topology_witness.p3(x: 1000, y: 1000, z: 0)) == 2
+    && located(c: l_space(), p: test.claim.orthogonal_topology_witness.p3(x: 1000, y: 1000, z: 2500)) == 3
+    && located(c: l_space(), p: test.claim.orthogonal_topology_witness.p3(x: 1000, y: 2000, z: 1200)) == 1
+    && located(c: l_space(), p: test.claim.orthogonal_topology_witness.p3(x: 3000, y: 2000, z: 1200)) == 2
 }
 
 test fn containment_refuses_across_frames() -> Bool {
   match l_space() {
     OrthogonalRefused { cause: _ } => false
     OrthogonalReady { value: s } =>
-      match space_locate_point(s: s, p: point3(frame: building(), x: 1000, y: 1000, z: 1200)) {
+      match space_locate_point(s: s, p: point3(frame: test.claim.orthogonal_topology_witness.building(), x: 1000, y: 1000, z: 1200)) {
         OrthogonalReady { value: _ } => false
         OrthogonalRefused { cause: c } =>
           match c { OrthogonalFrameMismatch { expected: _, observed: _ } => true  _ => false }
@@ -227,7 +227,7 @@ test fn genuinely_overlapping_spaces_interpenetrate() -> Bool {
 // Stacked floors share a slab plane and must not count as interpenetrating: the vertical ranges
 // touch at one coordinate, and touching is adjacency, not overlap.
 test fn stacked_floors_touch_without_interpenetrating() -> Bool {
-  overlaps(ca: l_space(), cb: space_ctor(vertices: l_shape(), low: 2400, high: 4800)) == 0
+  overlaps(ca: l_space(), cb: space_ctor(vertices: test.claim.orthogonal_topology_witness.l_shape(), low: 2400, high: 4800)) == 0
 }
 
 // TWO SPACES AT THE SAME PLACE. This is the case the first version of the overlap predicate got
@@ -284,7 +284,7 @@ test fn complex_admits_disjoint_spaces_and_sums_their_volumes() -> Bool {
         OrthogonalRefused { cause: _ } => false
         OrthogonalReady { value: c } =>
           complex_space_count(c: c) == 2
-            && match complex_total_volume(registry: mm_registry(), c: c) {
+            && match complex_total_volume(registry: test.claim.orthogonal_topology_witness.mm_registry(), c: c) {
                  OrthogonalReady { value: v } => cubic_millimeter_count(m: v) == 2 * 9000000 * 2400
                  OrthogonalRefused { cause: _ } => false
                }
@@ -306,10 +306,10 @@ test fn complex_refuses_interpenetrating_members() -> Bool {
 test fn complex_refuses_members_in_different_frames() -> Bool {
   let elsewhere = space_ctor(
     vertices: [
-      point2(frame: building(), x: 0, y: 0),
-      point2(frame: building(), x: 3000, y: 0),
-      point2(frame: building(), x: 3000, y: 3000),
-      point2(frame: building(), x: 0, y: 3000),
+      point2(frame: test.claim.orthogonal_topology_witness.building(), x: 0, y: 0),
+      point2(frame: test.claim.orthogonal_topology_witness.building(), x: 3000, y: 0),
+      point2(frame: test.claim.orthogonal_topology_witness.building(), x: 3000, y: 3000),
+      point2(frame: test.claim.orthogonal_topology_witness.building(), x: 0, y: 3000),
     ],
     low: 0,
     high: 2400,
@@ -332,7 +332,7 @@ test fn complex_refuses_members_in_different_frames() -> Bool {
 // million, from arithmetic that is right. The millimetre frame is the positive control on the
 // same space, so the frame decides the outcome rather than the fold refusing everything.
 fn micro_registry() -> std.spatial_frame.SpatialFrameRegistry {
-  match register_frame(r: empty_frame_registry(), identity: room(), length_scale: Micro) {
+  match register_frame(r: empty_frame_registry(), identity: test.claim.orthogonal_topology_witness.room(), length_scale: Micro) {
     FrameRegistered { frame: f } => registry_with(r: empty_frame_registry(), f: f)
     FrameRegistrationRefused { cause: _ } => empty_frame_registry()
   }
@@ -349,7 +349,7 @@ test fn w_metric_folds_refuse_a_frame_they_cannot_label() -> Bool {
   match l_space() {
     OrthogonalRefused { cause: _ } => false
     OrthogonalReady { value: s } => {
-      let area_refused = match space_floor_area(registry: micro_registry(), s: s) {
+      let area_refused = match space_floor_area(registry: test.claim.orthogonal_topology_witness.micro_registry(), s: s) {
         OrthogonalRefused { cause: c } =>
           match c {
             MillimetreFrameRequiredForMetric { frame: _ } => true
@@ -368,7 +368,7 @@ test fn w_metric_folds_refuse_a_frame_they_cannot_label() -> Bool {
           }
         OrthogonalReady { value: _ } => false
       }
-      let area_answered = match space_floor_area(registry: mm_registry(), s: s) {
+      let area_answered = match space_floor_area(registry: test.claim.orthogonal_topology_witness.mm_registry(), s: s) {
         OrthogonalReady { value: _ } => true
         OrthogonalRefused { cause: _ } => false
       }
@@ -376,11 +376,11 @@ test fn w_metric_folds_refuse_a_frame_they_cannot_label() -> Bool {
         ExtentFrameUnregistered { identity: _ } => true
         ExtentInFrame { length: _ } => false
       }
-      let volume_refused = match space_volume(registry: micro_registry(), s: s) {
+      let volume_refused = match space_volume(registry: test.claim.orthogonal_topology_witness.micro_registry(), s: s) {
         OrthogonalRefused { cause: _ } => true
         OrthogonalReady { value: _ } => false
       }
-      let volume_answered = match space_volume(registry: mm_registry(), s: s) {
+      let volume_answered = match space_volume(registry: test.claim.orthogonal_topology_witness.mm_registry(), s: s) {
         OrthogonalReady { value: v } => cubic_millimeter_count(m: v) > 0
         OrthogonalRefused { cause: _ } => false
       }

@@ -10,27 +10,27 @@ fn emitted(argv: List<std.types.NonEmptyStr>) -> String {
 }
 
 test fn witness_plain_word_holds() -> Bool {
-  emitted(argv: ["whoami"]) == "'whoami'"
+  test.claim.remote_shell_command_witness.emitted(argv: ["whoami"]) == "'whoami'"
 }
 
 test fn witness_multi_word_argv_holds() -> Bool {
-  emitted(argv: ["jq", "-r", ".status"]) == "'jq' '-r' '.status'"
+  test.claim.remote_shell_command_witness.emitted(argv: ["jq", "-r", ".status"]) == "'jq' '-r' '.status'"
 }
 
 test fn witness_single_quote_word_holds() -> Bool {
-  emitted(argv: ["it's-a-test"]) == "'it'\\''s-a-test'"
+  test.claim.remote_shell_command_witness.emitted(argv: ["it's-a-test"]) == "'it'\\''s-a-test'"
 }
 
 test fn witness_space_word_holds() -> Bool {
-  emitted(argv: ["a path with spaces/file.txt"]) == "'a path with spaces/file.txt'"
+  test.claim.remote_shell_command_witness.emitted(argv: ["a path with spaces/file.txt"]) == "'a path with spaces/file.txt'"
 }
 
 test fn witness_metacharacter_word_holds() -> Bool {
-  emitted(argv: ["$(whoami); rm -rf / #"]) == "'$(whoami); rm -rf / #'"
+  test.claim.remote_shell_command_witness.emitted(argv: ["$(whoami); rm -rf / #"]) == "'$(whoami); rm -rf / #'"
 }
 
 test fn witness_jq_program_holds() -> Bool {
-  emitted(argv: [".data[] | select(.ready == true) | .name"]) == "'.data[] | select(.ready == true) | .name'"
+  test.claim.remote_shell_command_witness.emitted(argv: [".data[] | select(.ready == true) | .name"]) == "'.data[] | select(.ready == true) | .name'"
 }
 
 test fn witness_emit_remote_shell_produces_one_string_holds() -> Bool {

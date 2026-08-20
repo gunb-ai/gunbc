@@ -23,7 +23,7 @@ fn owner_fixture() -> gunbc.build_cache_instance.ProcessIdentity {
 fn fully_verified_ready(host: product.placement_supply.HostIdentity, unit: std.types.NonEmptyStr) -> gunbc.runner_activation.BuildCacheInstanceReady {
   gunbc.runner_activation.BuildCacheInstanceReady {
     instance: ready_instance_fixture(host: host),
-    owner: owner_fixture(),
+    owner: test.claim.runner_activation_wall.owner_fixture(),
     managed_unit: unit,
     endpoint_verified: true,
     executable_verified: true,
@@ -165,7 +165,7 @@ test fn witness_partially_verified_instance_refuses() -> Bool {
   let intended = ready_instance_fixture(host: d.host_label as product.placement_supply.HostIdentity).intended_unit
   let partial = gunbc.runner_activation.BuildCacheInstanceReady {
     instance: ready_instance_fixture(host: d.host_label as product.placement_supply.HostIdentity),
-    owner: owner_fixture(),
+    owner: test.claim.runner_activation_wall.owner_fixture(),
     managed_unit: intended,
     endpoint_verified: true,
     executable_verified: true,

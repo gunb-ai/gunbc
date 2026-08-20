@@ -7,7 +7,7 @@ fn nest_leaf(_: Bit) -> v2.std.nat.Nat { 0 }
 
 fn nested_depth(x: Bit) -> v2.std.nat.Nat {
   match x {
-    B0 => nest_leaf(B0)
-    B1 => nest_leaf(B1)
+    B0 => synthetic.parse_mechanism.nest_d1.nest_leaf(B0)
+    B1 => synthetic.parse_mechanism.nest_d1.nest_leaf(B1)
   }
 }

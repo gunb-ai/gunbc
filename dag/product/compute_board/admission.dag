@@ -49,7 +49,7 @@ fn count_matching(names: List<std.types.NonEmptyStr>, name: std.types.NonEmptySt
 
 fn duplicated_names(names: List<std.types.NonEmptyStr>) -> List<std.types.NonEmptyStr> {
   fold(names, init: [], f: fn(acc, n) {
-    if count_matching(names: names, name: n) > 1 && count_matching(names: acc, name: n) == 0 {
+    if product.compute_board.admission.count_matching(names: names, name: n) > 1 && product.compute_board.admission.count_matching(names: acc, name: n) == 0 {
       concat(acc, [n])
     } else {
       acc

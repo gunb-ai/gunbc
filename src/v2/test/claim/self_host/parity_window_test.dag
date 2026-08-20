@@ -32,15 +32,15 @@ fn observed(family: String, id: String, seq: Int, green: Bool, warm: Bool) -> v2
 }
 
 fn green_obs(id: String, seq: Int) -> v2.compiler.self_host.parity_window.ParityObservation {
-  observed(family: "add", id: id, seq: seq, green: true, warm: true)
+  v2.test.claim.self_host.parity_window_test.observed(family: "add", id: id, seq: seq, green: true, warm: true)
 }
 
 fn red_obs(id: String, seq: Int) -> v2.compiler.self_host.parity_window.ParityObservation {
-  observed(family: "add", id: id, seq: seq, green: false, warm: true)
+  v2.test.claim.self_host.parity_window_test.observed(family: "add", id: id, seq: seq, green: false, warm: true)
 }
 
 fn cold_obs(id: String, seq: Int) -> v2.compiler.self_host.parity_window.ParityObservation {
-  observed(family: "add", id: id, seq: seq, green: true, warm: false)
+  v2.test.claim.self_host.parity_window_test.observed(family: "add", id: id, seq: seq, green: true, warm: false)
 }
 
 fn ack_obs(id: String, seq: Int) -> v2.compiler.self_host.parity_window.ParityObservation {
@@ -141,7 +141,7 @@ test fn witness_mixed_family_while_latched_refuses() -> Bool {
   let obs = [
     green_obs(id: "w1", seq: 1),
     red_obs(id: "w2", seq: 2),
-    observed(family: "other_family", id: "w3", seq: 3, green: true, warm: true)
+    v2.test.claim.self_host.parity_window_test.observed(family: "other_family", id: "w3", seq: 3, green: true, warm: true)
   ]
   verdict_is_evidence_refused(v: parity_monitor_verdict(family: "add", observations: obs))
     && (parity_routing_admitted(family: "add", observations: obs) == false)
@@ -170,7 +170,7 @@ test fn witness_ack_from_other_family_refuses_and_never_clears() -> Bool {
 test fn witness_unqualified_observation_blocks_later_ack_recovery() -> Bool {
   let obs = [
     red_obs(id: "w1", seq: 1),
-    observed(family: "other_family", id: "w2", seq: 2, green: true, warm: true),
+    v2.test.claim.self_host.parity_window_test.observed(family: "other_family", id: "w2", seq: 2, green: true, warm: true),
     ack_obs(id: "ack-1", seq: 3),
     green_obs(id: "w3", seq: 4)
   ]
@@ -198,7 +198,7 @@ test fn witness_mixed_family_receipt_refused() -> Bool {
     family: "add",
     observations: [
       green_obs(id: "w1", seq: 1),
-      observed(family: "meet_join", id: "w2", seq: 2, green: true, warm: true)
+      v2.test.claim.self_host.parity_window_test.observed(family: "meet_join", id: "w2", seq: 2, green: true, warm: true)
     ]
   ) {
     ParityHolding { family: _, consecutive_green: _ } => false
@@ -218,7 +218,7 @@ test fn witness_refusal_is_absorbing() -> Bool {
     v: parity_monitor_verdict(
       family: "add",
       observations: [
-        observed(family: "meet_join", id: "w1", seq: 1, green: true, warm: true),
+        v2.test.claim.self_host.parity_window_test.observed(family: "meet_join", id: "w1", seq: 1, green: true, warm: true),
         green_obs(id: "w2", seq: 2)
       ]
     )
@@ -228,7 +228,7 @@ test fn witness_refusal_is_absorbing() -> Bool {
 test fn witness_refused_evidence_denies_routing_admission() -> Bool {
   let refused_evidence = [
     green_obs(id: "w1", seq: 1),
-    observed(family: "meet_join", id: "w2", seq: 2, green: true, warm: true)
+    v2.test.claim.self_host.parity_window_test.observed(family: "meet_join", id: "w2", seq: 2, green: true, warm: true)
   ]
   let out_of_order = [green_obs(id: "w1", seq: 2), green_obs(id: "w2", seq: 2)]
   verdict_is_evidence_refused(

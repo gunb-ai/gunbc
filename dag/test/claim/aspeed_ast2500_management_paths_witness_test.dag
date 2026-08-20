@@ -83,27 +83,27 @@ test fn w_mode_projection_classifies_each_path() -> Bool {
 
 // CITED CAPACITIES FROM THE DATASHEET SECTIONS, NOT ROUNDED PROSE.
 test fn w_cited_path_capacities_match_the_datasheet_rows() -> Bool {
-  list_contains_path(
+  test.claim.aspeed_ast2500_management_paths_witness.list_contains_path(
     paths: ast2500_management_acquisition_paths,
     wanted: extdeps.bmc.aspeed_ast2500.GpioDigitalTripInput { gpio_pin_count: 228 },
   )
-    && list_contains_path(
+    && test.claim.aspeed_ast2500_management_paths_witness.list_contains_path(
       paths: ast2500_management_acquisition_paths,
       wanted: extdeps.bmc.aspeed_ast2500.SgpioShiftRegisterTripInput { sgpio_input_port_count: 80 },
     )
-    && list_contains_path(
+    && test.claim.aspeed_ast2500_management_paths_witness.list_contains_path(
       paths: ast2500_management_acquisition_paths,
       wanted: extdeps.bmc.aspeed_ast2500.I2cSmbusSensorBus { controller_count: 14 },
     )
-    && list_contains_path(
+    && test.claim.aspeed_ast2500_management_paths_witness.list_contains_path(
       paths: ast2500_management_acquisition_paths,
       wanted: extdeps.bmc.aspeed_ast2500.AdcAnalogInput { channel_count: 16 },
     )
-    && list_contains_path(
+    && test.claim.aspeed_ast2500_management_paths_witness.list_contains_path(
       paths: ast2500_management_acquisition_paths,
       wanted: extdeps.bmc.aspeed_ast2500.PeciProcessorTelemetry { max_cpu_count: 8, max_domain_per_cpu: 2 },
     )
-    && list_contains_path(
+    && test.claim.aspeed_ast2500_management_paths_witness.list_contains_path(
       paths: ast2500_management_acquisition_paths,
       wanted: extdeps.bmc.aspeed_ast2500.FanTachPulseCounter { tach_input_count: 16 },
     )
@@ -113,6 +113,6 @@ test fn w_cited_path_capacities_match_the_datasheet_rows() -> Bool {
 test fn w_catalog_management_paths_match_the_authority_roster() -> Bool {
   list_length(items: aspeed_ast2500_catalog.management_acquisition_paths) == 6
     && fold(aspeed_ast2500_catalog.management_acquisition_paths, init: true, f: fn(acc, p) {
-      acc && list_contains_path(paths: ast2500_management_acquisition_paths, wanted: p)
+      acc && test.claim.aspeed_ast2500_management_paths_witness.list_contains_path(paths: ast2500_management_acquisition_paths, wanted: p)
     })
 }

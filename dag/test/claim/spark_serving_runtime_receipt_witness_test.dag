@@ -14,12 +14,12 @@ test fn witness_materialization_writer_targets_reader_wire_path() -> Bool {
 test fn witness_runtime_archive_admission_receipt_json_round_trips_digest() -> Bool {
   let json = spark_serving_runtime_archive_admission_receipt_json(
     receipt: gunbc.spark_serving_runtime_receipt.SparkServingRuntimeArchiveAdmissionReceipt {
-      release_asset_digest_hex: witness_required_release_asset_digest_hex as std.types.NonEmptyStr,
+      release_asset_digest_hex: test.claim.spark_serving_runtime_receipt_witness_test.witness_required_release_asset_digest_hex as std.types.NonEmptyStr,
     },
   )
   match spark_serving_parse_runtime_receipt_json(stdout: json) {
     SparkServingReadbackPresent { value: hex } =>
-      hex == witness_required_release_asset_digest_hex
+      hex == test.claim.spark_serving_runtime_receipt_witness_test.witness_required_release_asset_digest_hex
     SparkServingReadbackAbsent => false
     SparkServingReadbackRefused { cause: _ } => false
   }

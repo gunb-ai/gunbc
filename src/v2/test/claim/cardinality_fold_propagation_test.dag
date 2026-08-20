@@ -41,9 +41,9 @@ fn is_rejected(o: v2.std.diagnostic.Outcome<Refined<Int>>) -> Bool {
 }
 
 test fn fold_within_bound_accepts() -> Bool {
-  is_accepted(o: checked_byte_sum(values: [100, 50, 50], at: fold_locus()))
+  v2.test.claim.cardinality_fold_propagation.is_accepted(o: checked_byte_sum(values: [100, 50, 50], at: fold_locus()))
 }
 
 test fn fold_overflow_rejects() -> Bool {
-  is_rejected(o: checked_byte_sum(values: [100, 100, 100], at: fold_locus()))
+  v2.test.claim.cardinality_fold_propagation.is_rejected(o: checked_byte_sum(values: [100, 100, 100], at: fold_locus()))
 }

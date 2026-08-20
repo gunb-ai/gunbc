@@ -24,21 +24,21 @@ fn is_admitted(a: std.access.AccessDecision) -> Bool {
 }
 
 test fn artifact_store_scratch_grant_admits_gunbc_tmp_holds() -> Bool {
-  is_admitted(a: artifact_store_scratch_write_admissible(store_root: witness_scratch_root))
-    && is_admitted(a: artifact_store_scratch_read_admissible(store_root: witness_scratch_root))
+  test.claim.artifact_store_scratch_grant_witness.is_admitted(a: artifact_store_scratch_write_admissible(store_root: witness_scratch_root))
+    && test.claim.artifact_store_scratch_grant_witness.is_admitted(a: artifact_store_scratch_read_admissible(store_root: witness_scratch_root))
 }
 
 test fn artifact_store_scratch_grant_refuses_repo_tree_holds() -> Bool {
-  is_refused(a: artifact_store_scratch_write_admissible(store_root: repo_tree_root))
-    && is_refused(a: artifact_store_scratch_read_admissible(store_root: repo_tree_root))
+  test.claim.artifact_store_scratch_grant_witness.is_refused(a: artifact_store_scratch_write_admissible(store_root: repo_tree_root))
+    && test.claim.artifact_store_scratch_grant_witness.is_refused(a: artifact_store_scratch_read_admissible(store_root: repo_tree_root))
 }
 
 test fn artifact_store_scratch_grant_refuses_non_gunbc_tmp_holds() -> Bool {
-  is_refused(a: artifact_store_scratch_write_admissible(store_root: non_gunbc_tmp_root))
+  test.claim.artifact_store_scratch_grant_witness.is_refused(a: artifact_store_scratch_write_admissible(store_root: non_gunbc_tmp_root))
 }
 
 test fn artifact_store_scratch_grant_refuses_gunbc_prefix_without_separator_holds() -> Bool {
-  is_refused(a: artifact_store_scratch_write_admissible(store_root: gunbc_prefix_without_separator_root))
+  test.claim.artifact_store_scratch_grant_witness.is_refused(a: artifact_store_scratch_write_admissible(store_root: gunbc_prefix_without_separator_root))
 }
 
 test fn artifact_store_scratch_grant_refusal_is_located() -> Bool {

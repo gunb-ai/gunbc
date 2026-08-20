@@ -481,7 +481,7 @@ fn absorb_supervised_turn_line(
       Present { value: parsed } =>
         match extdeps.languages.json.parse.json_object_unique_member(v: parsed, key: "id") {
           JsonMemberFound { value: idv } =>
-            match json_rpc_id_as_int(v: idv) {
+            match gunbc.codex_supervised_turn.json_rpc_id_as_int(v: idv) {
               Present { value: n } =>
                 if n == extdeps.llm.codex_app_server.codex_supervised_thread_start_id {
                   SupervisedTurnParseAcc {

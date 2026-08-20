@@ -174,9 +174,9 @@ test fn w_touched_paths_derives_both_sides_of_a_rename() -> Bool {
   let entries = well_formed_entries(raw: raw)
   let touched = git_diff_status_entries_touched_paths(entries: entries)
   touched.length() == 3
-    && list_contains_string(xs: touched, needle: "a.txt")
-    && list_contains_string(xs: touched, needle: "old_d.txt")
-    && list_contains_string(xs: touched, needle: "new_d.txt")
+    && test.claim.extdeps_git_diff_name_status_witness.list_contains_string(xs: touched, needle: "a.txt")
+    && test.claim.extdeps_git_diff_name_status_witness.list_contains_string(xs: touched, needle: "old_d.txt")
+    && test.claim.extdeps_git_diff_name_status_witness.list_contains_string(xs: touched, needle: "new_d.txt")
 }
 
 test fn w_departed_paths_names_deletions_and_rename_sources_only() -> Bool {
@@ -189,12 +189,12 @@ test fn w_departed_paths_names_deletions_and_rename_sources_only() -> Bool {
   let entries = well_formed_entries(raw: raw)
   let departed = git_diff_status_entries_departed_paths(entries: entries)
   departed.length() == 2
-    && list_contains_string(xs: departed, needle: "gone.txt")
-    && list_contains_string(xs: departed, needle: "old_d.txt")
-    && !list_contains_string(xs: departed, needle: "source.txt")
-    && !list_contains_string(xs: departed, needle: "a.txt")
-    && !list_contains_string(xs: departed, needle: "new_d.txt")
-    && !list_contains_string(xs: departed, needle: "copy.txt")
+    && test.claim.extdeps_git_diff_name_status_witness.list_contains_string(xs: departed, needle: "gone.txt")
+    && test.claim.extdeps_git_diff_name_status_witness.list_contains_string(xs: departed, needle: "old_d.txt")
+    && !test.claim.extdeps_git_diff_name_status_witness.list_contains_string(xs: departed, needle: "source.txt")
+    && !test.claim.extdeps_git_diff_name_status_witness.list_contains_string(xs: departed, needle: "a.txt")
+    && !test.claim.extdeps_git_diff_name_status_witness.list_contains_string(xs: departed, needle: "new_d.txt")
+    && !test.claim.extdeps_git_diff_name_status_witness.list_contains_string(xs: departed, needle: "copy.txt")
 }
 
 test fn w_empty_raw_produces_no_entries() -> Bool {

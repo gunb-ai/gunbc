@@ -59,7 +59,7 @@ fn prior_history_from_merge_base_carrier_or_authority_bootstrap(
   )
   if !base_authority.success {
     PriorHistoryGitObservationRefused {
-      detail: git_refusal_detail(
+      detail: gunbc.roadmap_acceptance_history_observation.git_refusal_detail(
         operation: "git.Core.Show(merge-base carrier and authority)",
         stderr: concat(carrier_stderr, concat("; ", base_authority.stderr)),
       ),
@@ -89,7 +89,7 @@ fn observe_roadmap_acceptance_history_prior(
     )
     if !baseline.success || (baseline.sha as String) == "" {
       PriorHistoryGitObservationRefused {
-        detail: git_refusal_detail(operation: "git.Inspect.MergeBase", stderr: baseline.stderr),
+        detail: gunbc.roadmap_acceptance_history_observation.git_refusal_detail(operation: "git.Inspect.MergeBase", stderr: baseline.stderr),
       }
     } else {
       let head_manifest = git.Core.Show(
@@ -99,7 +99,7 @@ fn observe_roadmap_acceptance_history_prior(
       )
       if !head_manifest.success {
         PriorHistoryGitObservationRefused {
-          detail: git_refusal_detail(operation: "git.Core.Show(HEAD carrier)", stderr: head_manifest.stderr),
+          detail: gunbc.roadmap_acceptance_history_observation.git_refusal_detail(operation: "git.Core.Show(HEAD carrier)", stderr: head_manifest.stderr),
         }
       } else {
         let base_manifest = git.Core.Show(
@@ -116,7 +116,7 @@ fn observe_roadmap_acceptance_history_prior(
             )
           } else {
             PriorHistoryGitObservationRefused {
-              detail: git_refusal_detail(
+              detail: gunbc.roadmap_acceptance_history_observation.git_refusal_detail(
                 operation: "git.Core.Show(merge-base carrier)",
                 stderr: base_manifest.stderr,
               ),

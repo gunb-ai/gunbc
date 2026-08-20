@@ -20,15 +20,15 @@ fn round_trips(text: String) -> Bool {
 }
 
 test fn an_object_round_trips_through_both_readings() -> Bool {
-  round_trips(text: "\{\"a\": [1, 2], \"b\": \"x\"}")
+  test.claim.json_parse_witness.round_trips(text: "\{\"a\": [1, 2], \"b\": \"x\"}")
 }
 
 test fn a_nested_object_round_trips() -> Bool {
-  round_trips(text: "\{\"reading\": \{\"0\": 40, \"1\": 55}, \"output\": \{\"0\": 30}}")
+  test.claim.json_parse_witness.round_trips(text: "\{\"reading\": \{\"0\": 40, \"1\": 55}, \"output\": \{\"0\": 30}}")
 }
 
 test fn literals_and_numbers_round_trip() -> Bool {
-  round_trips(text: "[true, false, null, -7, 1.5]")
+  test.claim.json_parse_witness.round_trips(text: "[true, false, null, -7, 1.5]")
 }
 
 test fn garbage_is_refused() -> Bool {
@@ -48,19 +48,19 @@ test fn trailing_content_after_a_complete_value_is_refused() -> Bool {
 test fn a_newline_inside_a_string_survives_the_round_trip() -> Bool {
   let expected = concat("a", concat(from_code_point(cp: 10), "b"))
   parsed_string_of(text: "\"a\\nb\"") == expected
-    && round_trips(text: "\"a\\nb\"")
+    && test.claim.json_parse_witness.round_trips(text: "\"a\\nb\"")
 }
 
 test fn a_tab_inside_a_string_survives_the_round_trip() -> Bool {
   let expected = concat("a", concat(from_code_point(cp: 9), "b"))
   parsed_string_of(text: "\"a\\tb\"") == expected
-    && round_trips(text: "\"a\\tb\"")
+    && test.claim.json_parse_witness.round_trips(text: "\"a\\tb\"")
 }
 
 test fn a_quote_and_a_backslash_survive_the_round_trip() -> Bool {
   let expected = concat("a", concat("\"", concat("\\", "b")))
   parsed_string_of(text: "\"a\\\"\\\\b\"") == expected
-    && round_trips(text: "\"a\\\"\\\\b\"")
+    && test.claim.json_parse_witness.round_trips(text: "\"a\\\"\\\\b\"")
 }
 
 test fn a_literal_backslash_t_does_not_become_a_tab() -> Bool {
@@ -77,7 +77,7 @@ test fn a_unicode_escape_is_decoded_not_passed_through() -> Bool {
 test fn a_control_character_with_no_short_escape_survives_the_round_trip() -> Bool {
   let vertical_tab = from_code_point(cp: 11)
   parsed_string_of(text: "\"\\u000B\"") == vertical_tab
-    && round_trips(text: "\"\\u000B\"")
+    && test.claim.json_parse_witness.round_trips(text: "\"\\u000B\"")
     && serialize_json(v: extdeps.languages.json.emit.JsonString { value: vertical_tab }) == "\"\\u000B\""
 }
 
@@ -107,61 +107,61 @@ fn parses(text: String) -> Bool {
 data trailing_comma_regression_note: String = "These exist because the recovered parser accepted a trailing comma and the roadmap_provider_events witness caught it, not this file. The accumulator checked for the closing bracket at the top of each round, so after consuming a separator it reached the empty-container case again and closed the container. Nothing in a round-trip claim can see this: serialize_json never EMITS a trailing comma, so emitter-to-parser round-trips stay green over exactly the documents that cannot expose it. The defect is only reachable from foreign text, which is what json_text_parseable guards - the Codex JSONL reader refuses a malformed provider line with it, and a truncated-then-closed event would have read as well-formed. The last claim names the fixture that failed."
 
 test fn a_trailing_comma_is_refused_in_objects_and_arrays() -> Bool {
-  parses(text: "\{\"a\": 1}")
-    && parses(text: "[1]")
-    && !parses(text: "\{\"a\": 1,}")
-    && !parses(text: "[1,]")
-    && !parses(text: "\{\"a\": 1, \"b\": 2,}")
-    && !parses(text: "[1, 2,]")
+  test.claim.json_parse_witness.parses(text: "\{\"a\": 1}")
+    && test.claim.json_parse_witness.parses(text: "[1]")
+    && !test.claim.json_parse_witness.parses(text: "\{\"a\": 1,}")
+    && !test.claim.json_parse_witness.parses(text: "[1,]")
+    && !test.claim.json_parse_witness.parses(text: "\{\"a\": 1, \"b\": 2,}")
+    && !test.claim.json_parse_witness.parses(text: "[1, 2,]")
 }
 
 test fn empty_containers_still_parse() -> Bool {
-  parses(text: "\{}")
-    && parses(text: "[]")
-    && parses(text: "\{\"a\": [], \"b\": \{}}")
+  test.claim.json_parse_witness.parses(text: "\{}")
+    && test.claim.json_parse_witness.parses(text: "[]")
+    && test.claim.json_parse_witness.parses(text: "\{\"a\": [], \"b\": \{}}")
 }
 
 test fn a_lone_comma_is_not_a_member_or_an_element() -> Bool {
-  !parses(text: "\{,}")
-    && !parses(text: "[,]")
-    && !parses(text: "\{\"a\": 1,,\"b\": 2}")
+  !test.claim.json_parse_witness.parses(text: "\{,}")
+    && !test.claim.json_parse_witness.parses(text: "[,]")
+    && !test.claim.json_parse_witness.parses(text: "\{\"a\": 1,,\"b\": 2}")
 }
 
 test fn the_provider_event_line_that_caught_the_trailing_comma_is_refused() -> Bool {
-  !parses(text: "\{\"type\":\"turn.completed\",}")
-    && parses(text: "\{\"type\":\"turn.completed\"}")
+  !test.claim.json_parse_witness.parses(text: "\{\"type\":\"turn.completed\",}")
+    && test.claim.json_parse_witness.parses(text: "\{\"type\":\"turn.completed\"}")
 }
 
 data unknown_escape_note: String = "review 45642 RED. RFC 8259 section 7 closes the escape set, and the scanner used to consume the backslash and whatever followed without deciding whether it named an escape - so the unescaper's unknown arm dropped the backslash and `p\\assed` became `passed`. The first claim is the reviewer's exact case and it is the one that matters, because the fabricated string is not merely wrong: it equals a verdict the receipt reader accepts, so a malformed document produced a pass. The rest pin the boundary in both directions - every escape the RFC lists still decodes, and every shape it does not list refuses - because a fix that simply refused more would also have broken the emitter's own output."
 
 test fn an_unknown_escape_refuses_rather_than_dropping_the_backslash() -> Bool {
-  !parses(text: "\"p\\assed\"")
-    && !parses(text: "\"\\a\"")
-    && !parses(text: "\"\\x41\"")
-    && !parses(text: "\"\\'\"")
+  !test.claim.json_parse_witness.parses(text: "\"p\\assed\"")
+    && !test.claim.json_parse_witness.parses(text: "\"\\a\"")
+    && !test.claim.json_parse_witness.parses(text: "\"\\x41\"")
+    && !test.claim.json_parse_witness.parses(text: "\"\\'\"")
 }
 
 test fn a_short_or_non_hex_unicode_escape_refuses() -> Bool {
-  !parses(text: "\"\\uZZZZ\"")
-    && !parses(text: "\"\\u00\"")
-    && !parses(text: "\"\\u00G1\"")
-    && !parses(text: "\"\\u\"")
+  !test.claim.json_parse_witness.parses(text: "\"\\uZZZZ\"")
+    && !test.claim.json_parse_witness.parses(text: "\"\\u00\"")
+    && !test.claim.json_parse_witness.parses(text: "\"\\u00G1\"")
+    && !test.claim.json_parse_witness.parses(text: "\"\\u\"")
 }
 
 test fn every_escape_the_rfc_lists_still_decodes() -> Bool {
-  parses(text: "\"\\\"\"")
-    && parses(text: "\"\\\\\"")
-    && parses(text: "\"\\/\"")
-    && parses(text: "\"\\b\"")
-    && parses(text: "\"\\f\"")
-    && parses(text: "\"\\n\"")
-    && parses(text: "\"\\r\"")
-    && parses(text: "\"\\t\"")
-    && parses(text: "\"\\u0041\"")
+  test.claim.json_parse_witness.parses(text: "\"\\\"\"")
+    && test.claim.json_parse_witness.parses(text: "\"\\\\\"")
+    && test.claim.json_parse_witness.parses(text: "\"\\/\"")
+    && test.claim.json_parse_witness.parses(text: "\"\\b\"")
+    && test.claim.json_parse_witness.parses(text: "\"\\f\"")
+    && test.claim.json_parse_witness.parses(text: "\"\\n\"")
+    && test.claim.json_parse_witness.parses(text: "\"\\r\"")
+    && test.claim.json_parse_witness.parses(text: "\"\\t\"")
+    && test.claim.json_parse_witness.parses(text: "\"\\u0041\"")
     && parsed_string_of(text: "\"\\/\"") == "/"
 }
 
 test fn a_forged_verdict_escape_does_not_survive_into_a_string() -> Bool {
-  !parses(text: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"verdict\": \"p\\assed\"}")
-    && parses(text: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"verdict\": \"passed\"}")
+  !test.claim.json_parse_witness.parses(text: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"verdict\": \"p\\assed\"}")
+    && test.claim.json_parse_witness.parses(text: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"verdict\": \"passed\"}")
 }

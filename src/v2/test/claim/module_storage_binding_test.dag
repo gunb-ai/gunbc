@@ -16,13 +16,13 @@ data msb_other_qn: v2.std.qualified_name.QualifiedName = std.algebra.Cons {
 }
 
 data msb_produced_binding: v2.compiler.source_authority.ModuleStorageBinding = module_storage_produced_binding(
-  module: msb_fixture_qn,
+  module: v2.test.claim.module_storage_binding.msb_fixture_qn,
   producer: ^msb_body_producer,
   source_root: V2Tree
 )
 
 data msb_produced_duplicate_binding: v2.compiler.source_authority.ModuleStorageBinding = module_storage_produced_binding(
-  module: msb_fixture_qn,
+  module: v2.test.claim.module_storage_binding.msb_fixture_qn,
   producer: ^msb_other_body_producer,
   source_root: V2Tree
 )

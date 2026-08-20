@@ -19,8 +19,8 @@ fn argv_text(m: v2.std.operation_argv.ArgvMaterialization) -> String {
 
 fn show_property_with(bindings: List<v2.std.operation_argv.OperationInputBinding>) -> v2.std.operation_argv.ArgvMaterialization {
   shell_materialize_operation_argv(
-    systemctl_path,
-    systemctl_service,
+    test.claim.operation_argv_binding_wall_witness.systemctl_path,
+    test.claim.operation_argv_binding_wall_witness.systemctl_service,
     systemctl_show_property,
     bindings
   )

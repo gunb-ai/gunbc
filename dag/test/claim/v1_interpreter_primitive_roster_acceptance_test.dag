@@ -31,8 +31,8 @@ fn known_dispatch_sites_contribute_rows() -> Bool {
 fn duplicate_row_keys_refuse() -> Bool {
   count(duplicate_row_keys(rows: v1_interpreter_primitive_arms())) == 0
     && count(duplicate_row_keys(rows: [
-        planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "planted_dispatch"),
-        planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "planted_dispatch"),
+        test.claim.v1_interpreter_primitive_roster_acceptance.planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "planted_dispatch"),
+        test.claim.v1_interpreter_primitive_roster_acceptance.planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "planted_dispatch"),
       ])) == 1
 }
 
@@ -43,8 +43,8 @@ fn shadows_are_exactly_the_known_named_set() -> Bool {
     && count(method) == 1
     && (method |> all(x => x == "lookup"))
     && !form_has_no_shadowed_spelling(rows: [
-        planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "planted_dispatch"),
-        planted_row(identity: "planted.beta", spelling: "alpha", symbol: "planted_dispatch"),
+        test.claim.v1_interpreter_primitive_roster_acceptance.planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "planted_dispatch"),
+        test.claim.v1_interpreter_primitive_roster_acceptance.planted_row(identity: "planted.beta", spelling: "alpha", symbol: "planted_dispatch"),
       ])
 }
 
@@ -58,7 +58,7 @@ fn declared_rows_carry_exact_triggers() -> Bool {
 }
 
 fn arms_without_semantic_identity_stay_representable() -> Bool {
-  let unjoined = planted_row(
+  let unjoined = test.claim.v1_interpreter_primitive_roster_acceptance.planted_row(
     identity: "unjoined.arm",
     spelling: "unjoined_spelling",
     symbol: "unjoined_dispatch",

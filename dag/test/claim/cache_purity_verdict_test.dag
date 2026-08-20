@@ -19,14 +19,14 @@ fn sample_violation() -> extdeps.realization.cache_purity.CachePurityViolation {
 }
 
 test fn witness_pure_on_match() -> Bool {
-  match cache_purity_verdict(warm_equals_cold: true, violation: sample_violation()) {
+  match cache_purity_verdict(warm_equals_cold: true, violation: test.claim.cache_purity_verdict.sample_violation()) {
     Pure => true
     _ => false
   }
 }
 
 test fn witness_impure_on_divergence() -> Bool {
-  match cache_purity_verdict(warm_equals_cold: false, violation: sample_violation()) {
+  match cache_purity_verdict(warm_equals_cold: false, violation: test.claim.cache_purity_verdict.sample_violation()) {
     Impure { violation: _ } => true
     _ => false
   }

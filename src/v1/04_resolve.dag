@@ -332,7 +332,7 @@ fn resolve_nominal_alias_rhs(n: v1.std.core.Node, env: v1.compiler.infer_env.Typ
     let arg_results = n.children |> map(child => resolve_nominal_alias_rhs(n: child, env: env, module_name: module_name))
     let resolved_args = map(arg_results, ar => ar.resolved)
     let arg_diags = flat_map(arg_results, ar => ar.diagnostics)
-    let validation = resolve_node(n: n, env: env, module_name: module_name)
+    let validation = v1.compiler.infer_resolve.resolve_node(n: n, env: env, module_name: module_name)
     NodeResolveResult {
       resolved: v1.std.core.Node {
         name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span, children: resolved_args,
@@ -344,7 +344,7 @@ fn resolve_nominal_alias_rhs(n: v1.std.core.Node, env: v1.compiler.infer_env.Typ
       diagnostics: concat(arg_diags, validation.diagnostics)
     }
   } else {
-    resolve_node(n: n, env: env, module_name: module_name)
+    v1.compiler.infer_resolve.resolve_node(n: n, env: env, module_name: module_name)
   }
 }
 
@@ -559,7 +559,7 @@ fn resolve_node_bounded(n: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv,
           }
         Absent =>
           let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
-          let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
+          let n_is_type_var = if n.inferred != none { v1.compiler.infer_resolve.is_type_variable(inferred: n.inferred.value) } else { false }
 
           if is_width_nat_type_literal(n: n) || is_kernel_type(name: authored_name(env: env, node: n)) || n_is_type_var || n_is_error {
             NodeResolveResult { resolved: n, diagnostics: [] }
@@ -599,7 +599,7 @@ fn resolve_optional_node(n: InferredNode?, env: v1.compiler.infer_env.TypeEnv, m
   if n == none { NodeResolveResult { resolved: unit_type, diagnostics: [] } }
   else {
     match n.value {
-      Resolved { node: inner } => resolve_node(n: inner, env: env, module_name: module_name)
+      Resolved { node: inner } => v1.compiler.infer_resolve.resolve_node(n: inner, env: env, module_name: module_name)
       CompilerError { message: msg, span: sp } =>
         NodeResolveResult {
           resolved: make_expr_error_node(kind: SemanticExprError, message: msg, span: sp),
@@ -613,7 +613,7 @@ fn resolve_optional_node(n: InferredNode?, env: v1.compiler.infer_env.TypeEnv, m
 
 fn resolve_field(field: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv, module_name: String) -> FieldResolveResult {
   let authored_type = field_node_type_expr(n: field)
-  let type_result = resolve_node(n: authored_type, env: env, module_name: module_name)
+  let type_result = v1.compiler.infer_resolve.resolve_node(n: authored_type, env: env, module_name: module_name)
   let type_resolved = type_result.resolved
   let type_diags = concat(type_result.diagnostics, missing_generic_args_diagnostics(n: authored_type, env: env, module_name: module_name))
   let default_resolved = match field_node_default_value(n: field) {
@@ -642,7 +642,7 @@ fn resolve_field(field: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv, mo
 
 fn resolve_param(param: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv, module_name: String) -> ParamResolveResult {
   let authored_type = param_node_type_expr(n: param)
-  let type_result = resolve_node(n: authored_type, env: env, module_name: module_name)
+  let type_result = v1.compiler.infer_resolve.resolve_node(n: authored_type, env: env, module_name: module_name)
   let type_resolved = type_result.resolved
   let rendered_type = if authored_type.children |> count > 0 {
     v1.std.core.Node { name: authored_type.name, span: authored_type.span, ident_span: authored_type.ident_span, children: type_resolved.children, connective: authored_type.connective, params: authored_type.params, inferred: Present { value: v1.std.core.Resolved { node: type_resolved } }, return_cardinality: authored_type.return_cardinality, uses: authored_type.uses, body: authored_type.body, transport: authored_type.transport, properties: type_resolved.properties, type_annotation: authored_type.type_annotation, is_self_recursive: authored_type.is_self_recursive, has_non_tail_self_call: authored_type.has_non_tail_self_call, match_pattern: authored_type.match_pattern, expr_data: authored_type.expr_data }
@@ -676,7 +676,7 @@ fn resolve_param(param: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv, mo
 }
 
 fn resolve_resource_use(ru: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv, module_name: String) -> ResourceUseResult {
-  let type_result = resolve_node(n: resource_use_resource(n: ru), env: env, module_name: module_name)
+  let type_result = v1.compiler.infer_resolve.resolve_node(n: resource_use_resource(n: ru), env: env, module_name: module_name)
   let type_resolved = type_result.resolved
   let type_diags = type_result.diagnostics
   ResourceUseResult {
@@ -858,7 +858,7 @@ fn resolve_expr_types(texpr: v1.std.core.Node, env: v1.compiler.infer_env.TypeEn
       let anno_resolved = if texpr.type_annotation == none {
         NodeResolveResult { resolved: unit_type, diagnostics: [] }
       } else if is_type_expr_annotation(n: texpr.type_annotation.value) {
-        resolve_node(n: texpr.type_annotation.value, env: env, module_name: module_name)
+        v1.compiler.infer_resolve.resolve_node(n: texpr.type_annotation.value, env: env, module_name: module_name)
       } else {
         NodeResolveResult { resolved: texpr.type_annotation.value, diagnostics: [] }
       }
@@ -935,7 +935,7 @@ fn resolve_expr_types(texpr: v1.std.core.Node, env: v1.compiler.infer_env.TypeEn
     ExprCast =>
       let ch = texpr.children
       let r = match ch |> first { Present { value: inner } => resolve_expr_types(texpr: inner, env: env, module_name: module_name)  Absent => ExprResolveResult { expr: texpr, diagnostics: [] } }
-      let tr = match ch |> skip(1) |> first { Present { value: target } => resolve_node(n: target, env: env, module_name: module_name)  Absent => NodeResolveResult { resolved: unit_type, diagnostics: [] } }
+      let tr = match ch |> skip(1) |> first { Present { value: target } => v1.compiler.infer_resolve.resolve_node(n: target, env: env, module_name: module_name)  Absent => NodeResolveResult { resolved: unit_type, diagnostics: [] } }
       ExprResolveResult { expr: make_expr_node(expr_data: ExprCast, children: [r.expr, tr.resolved], inferred: texpr.inferred, span: texpr.span), diagnostics: concat(r.diagnostics, tr.diagnostics) }
     ExprForEach =>
       let ch = texpr.children
@@ -1015,7 +1015,7 @@ fn resolve_item_types(item: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv
   let anno_resolved = if item.type_annotation == none {
     NodeResolveResult { resolved: unit_type, diagnostics: [] }
   } else {
-    resolve_node(n: item.type_annotation.value, env: env, module_name: module_name)
+    v1.compiler.infer_resolve.resolve_node(n: item.type_annotation.value, env: env, module_name: module_name)
   }
   let resolved_anno = if item.type_annotation == none { none } else { Present { value: anno_resolved.resolved } }
   let anno_diags = anno_resolved.diagnostics
@@ -1035,7 +1035,7 @@ fn resolve_item_types(item: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv
   let child_results = if item.connective == v1.std.core.Conj && item.transport == none {
     item.children |> map(child =>
       let authored_type = field_node_type_expr(n: child)
-      let tr = resolve_node(n: authored_type, env: env, module_name: module_name)
+      let tr = v1.compiler.infer_resolve.resolve_node(n: authored_type, env: env, module_name: module_name)
       let type_diags = concat(tr.diagnostics, missing_generic_args_diagnostics(n: authored_type, env: env, module_name: module_name))
       ItemResolveResult {
         item: v1.std.core.Node { name: child.name, span: child.span, ident_span: child.ident_span, children: child.children, connective: child.connective, params: child.params, inferred: child.inferred, return_cardinality: child.return_cardinality, uses: child.uses, body: child.body, transport: child.transport, properties: concat(child.properties, tr.resolved.properties), type_annotation: child.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
@@ -1046,7 +1046,7 @@ fn resolve_item_types(item: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv
     item.children |> map(variant =>
       let field_results = variant.children |> map(field =>
         let authored_type = field_node_type_expr(n: field)
-        let tr = resolve_node(n: authored_type, env: env, module_name: module_name)
+        let tr = v1.compiler.infer_resolve.resolve_node(n: authored_type, env: env, module_name: module_name)
         let type_diags = concat(tr.diagnostics, missing_generic_args_diagnostics(n: authored_type, env: env, module_name: module_name))
         ItemResolveResult {
           item: v1.std.core.Node { name: field.name, span: field.span, ident_span: field.ident_span, children: field.children, connective: field.connective, params: field.params, inferred: field.inferred, return_cardinality: field.return_cardinality, uses: field.uses, body: field.body, transport: field.transport, properties: concat(field.properties, tr.resolved.properties), type_annotation: field.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },

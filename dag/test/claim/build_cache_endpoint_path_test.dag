@@ -37,11 +37,11 @@ fn srv4_stale() -> gunbc.build_cache_endpoint_path.EndpointPathState {
 }
 
 test fn witness_the_srv4_stale_socket_is_the_one_state_that_unlinks() -> Bool {
-  unlinks(observed: srv4_stale(), currency: current())
+  unlinks(observed: srv4_stale(), currency: test.claim.build_cache_endpoint_path.current())
 }
 
 test fn witness_a_live_listener_is_never_unlinked() -> Bool {
-  let refused = unlinks(observed: gunbc.build_cache_endpoint_path.EndpointListening { owner: live_owner() }, currency: current())
+  let refused = unlinks(observed: gunbc.build_cache_endpoint_path.EndpointListening { owner: live_owner() }, currency: test.claim.build_cache_endpoint_path.current())
   let naive = unconditional_unlink_sketch(observed: gunbc.build_cache_endpoint_path.EndpointListening { owner: live_owner() })
   (refused == false) && naive
 }
@@ -50,13 +50,13 @@ test fn witness_a_non_socket_path_is_never_unlinked() -> Bool {
   let conflict = gunbc.build_cache_endpoint_path.EndpointPathConflict {
     detail: "path exists and stat reports a regular file, not a socket" as std.types.NonEmptyStr,
   }
-  let refused = unlinks(observed: conflict, currency: current())
+  let refused = unlinks(observed: conflict, currency: test.claim.build_cache_endpoint_path.current())
   let naive = unconditional_unlink_sketch(observed: conflict)
   (refused == false) && naive
 }
 
 test fn witness_an_absent_path_refuses_rather_than_no_ops() -> Bool {
-  unlinks(observed: EndpointPathAbsent, currency: current()) == false
+  unlinks(observed: EndpointPathAbsent, currency: test.claim.build_cache_endpoint_path.current()) == false
 }
 
 test fn witness_an_unreadable_path_does_not_default_to_stale() -> Bool {
@@ -64,7 +64,7 @@ test fn witness_an_unreadable_path_does_not_default_to_stale() -> Bool {
     observed: gunbc.build_cache_endpoint_path.EndpointPathObservationUnavailable {
       reason: gunbc.build_cache_instance.EndpointPathUnreadable { detail: "permission denied reading /proc/net/unix" as std.types.NonEmptyStr },
     },
-    currency: current(),
+    currency: test.claim.build_cache_endpoint_path.current(),
   ) == false
 }
 
@@ -97,7 +97,7 @@ test fn witness_a_tcp_endpoint_has_no_stale_socket_state() -> Bool {
     admission: admit_stale_socket_unlink(
       instance: tcp,
       observed: srv4_stale(),
-      currency: current(),
+      currency: test.claim.build_cache_endpoint_path.current(),
     ),
   ) == false
 }
@@ -109,5 +109,5 @@ test fn witness_the_unconditional_sketch_differs_where_it_is_destructive() -> Bo
     gunbc.build_cache_endpoint_path.EndpointListening { owner: live_owner() },
     gunbc.build_cache_endpoint_path.EndpointPathConflict { detail: "regular file" as std.types.NonEmptyStr },
   ]
-  states |> all(s => unconditional_unlink_sketch(observed: s) && (unlinks(observed: s, currency: current()) == false))
+  states |> all(s => unconditional_unlink_sketch(observed: s) && (unlinks(observed: s, currency: test.claim.build_cache_endpoint_path.current()) == false))
 }

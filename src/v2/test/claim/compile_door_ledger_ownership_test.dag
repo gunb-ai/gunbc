@@ -65,7 +65,7 @@ test fn affected_set_diff_failure_refuses_fail_closed() -> Bool {
     diff: v2.workflow.floor_diff_observe.NameStatusDiffFail { reason: "invalid ref or not a git repository" },
     pool_roots: []
   ) {
-    AffectedDiffRefused { reason: r } => string_eq(a: r, b: "invalid ref or not a git repository")
+    AffectedDiffRefused { reason: r } => v2.test.compile_door_ledger_ownership.string_eq(a: r, b: "invalid ref or not a git repository")
     AffectedLedgered { rows: _ } => false
   }
 }

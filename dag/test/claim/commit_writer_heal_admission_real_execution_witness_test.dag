@@ -10,7 +10,7 @@ fn witness_repo_file(repo: std.types.FilePath, name: String) -> String {
 }
 
 fn write_witness_file(repo: std.types.FilePath, name: String, content: String) -> Bool {
-  Filesystem.Write(path: witness_repo_file(repo: repo, name: name), content: content).success
+  Filesystem.Write(path: test.claim.commit_writer_heal_admission_real_execution.witness_repo_file(repo: repo, name: name), content: content).success
 }
 
 fn seed_witness_repository(repo: std.types.FilePath) -> Bool {
@@ -50,7 +50,7 @@ fn refusals_contain_conflict_marker_text(refusals: std.algebra.FreeMonoid<gunbc.
 
 fn with_witness_repo(scenario: fn(std.types.FilePath) -> Bool) -> Bool {
   let dir = shell.Mktemp.Dir()
-  let seeded = seed_witness_repository(repo: dir.path)
+  let seeded = test.claim.commit_writer_heal_admission_real_execution.seed_witness_repository(repo: dir.path)
   let observed = scenario(dir.path)
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   dir.success && seeded && observed && cleaned.success
@@ -68,8 +68,8 @@ test fn clean_staged_index_admits_by_real_execution() -> Bool {
 
 test fn unmerged_index_with_no_markers_refuses_by_real_execution() -> Bool {
   with_witness_repo(scenario: repo => {
-    let theirs = commit_witness_side(repo: repo, branch: "theirs", content: "theirs\n")
-    let ours = commit_witness_side(repo: repo, branch: "ours", content: "ours\n")
+    let theirs = test.claim.commit_writer_heal_admission_real_execution.commit_witness_side(repo: repo, branch: "theirs", content: "theirs\n")
+    let ours = test.claim.commit_writer_heal_admission_real_execution.commit_witness_side(repo: repo, branch: "ours", content: "ours\n")
     let merged = git.Core.MergeNoEditInRepo(repo: repo, branch: "theirs", expect: ExpectFailure)
     let unmerged = git.Core.LsFilesUnmergedInRepo(repo: repo, path: "unclaimed.txt")
     let gated = commit_writer_heal_admission_gate(repo: repo, writer: HealAutocommit)

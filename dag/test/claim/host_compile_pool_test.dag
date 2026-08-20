@@ -40,7 +40,7 @@ fn readiness_for(
 test fn witness_the_live_fleet_topology_yields_no_ready_pool() -> Bool {
   readiness_for(
     placement: gunbc_compile_pool_placement,
-    sizing: sized(),
+    sizing: test.claim.host_compile_pool.sized(),
     observed: observed_slice(name: gunbc_managed_compile_pool_slice as String),
   ) == false
 }
@@ -50,7 +50,7 @@ data live_topology_doc: String = "This reads the REAL gunbc_compile_pool_placeme
 test fn witness_a_declared_and_observed_slice_is_ready() -> Bool {
   readiness_for(
     placement: gunbc.fleet_host_budget.CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
-    sizing: sized(),
+    sizing: test.claim.host_compile_pool.sized(),
     observed: observed_slice(name: gunbc_managed_compile_pool_slice as String),
   )
 }
@@ -58,7 +58,7 @@ test fn witness_a_declared_and_observed_slice_is_ready() -> Bool {
 test fn witness_an_absent_slice_on_a_declaring_fleet_is_not_ready() -> Bool {
   readiness_for(
     placement: gunbc.fleet_host_budget.CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
-    sizing: sized(),
+    sizing: test.claim.host_compile_pool.sized(),
     observed: gunbc.host_compile_pool.CompilePoolSliceAbsent { slice_unit: gunbc_managed_compile_pool_slice },
   ) == false
 }
@@ -74,7 +74,7 @@ test fn witness_unresolved_sizing_refuses_rather_than_defaulting() -> Bool {
 test fn witness_an_unobservable_pool_is_not_ready() -> Bool {
   readiness_for(
     placement: gunbc.fleet_host_budget.CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
-    sizing: sized(),
+    sizing: test.claim.host_compile_pool.sized(),
     observed: gunbc.host_compile_pool.CompilePoolObservationUnavailable {
       reason: ReachRefused { detail: "Permission denied (publickey)" as std.types.NonEmptyStr },
     },
@@ -84,7 +84,7 @@ test fn witness_an_unobservable_pool_is_not_ready() -> Bool {
 test fn witness_a_differently_named_slice_is_not_the_intended_pool() -> Bool {
   readiness_for(
     placement: gunbc.fleet_host_budget.CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
-    sizing: sized(),
+    sizing: test.claim.host_compile_pool.sized(),
     observed: observed_slice(name: "some-other.slice"),
   ) == false
 }
@@ -95,7 +95,7 @@ test fn witness_undeclared_and_unprovisioned_are_distinguishable_in_the_receipt(
   let undeclared = compile_pool_ready_receipt(
     readiness: derive_compile_pool_readiness(
       placement: CompilePoolInRunnerSlots,
-      sizing: sized(),
+      sizing: test.claim.host_compile_pool.sized(),
       observed: observed_slice(name: gunbc_managed_compile_pool_slice as String),
     ),
     intended_slice: gunbc_managed_compile_pool_slice,
@@ -104,7 +104,7 @@ test fn witness_undeclared_and_unprovisioned_are_distinguishable_in_the_receipt(
   let unprovisioned = compile_pool_ready_receipt(
     readiness: derive_compile_pool_readiness(
       placement: gunbc.fleet_host_budget.CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
-      sizing: sized(),
+      sizing: test.claim.host_compile_pool.sized(),
       observed: gunbc.host_compile_pool.CompilePoolSliceAbsent { slice_unit: gunbc_managed_compile_pool_slice },
     ),
     intended_slice: gunbc_managed_compile_pool_slice,
@@ -121,7 +121,7 @@ data undersized_slice_doc: String = "The control review 46655 forced. The previo
 test fn witness_a_slice_below_the_derived_size_is_not_ready() -> Bool {
   readiness_for(
     placement: gunbc.fleet_host_budget.CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
-    sizing: sized(),
+    sizing: test.claim.host_compile_pool.sized(),
     observed: gunbc.host_compile_pool.CompilePoolSliceObserved {
       slice_unit: gunbc_managed_compile_pool_slice,
       limits: gunbc.build_cache_instance.CgroupMemoryLimits {

@@ -21,9 +21,9 @@ test fn w_a_slave_spi_row_is_out_of_scope_for_a_master_spi_board() -> Bool {
 // carried, checked by nothing, and every consumer would still see every row. Slave SPI sees more
 // rows than master SPI, and both see the all-modes rows.
 test fn w_the_mode_selects_which_timings_apply() -> Bool {
-  let under_master = count_of(xs: timings_for_mode(m: MasterSpiConfiguration))
-  let under_slave = count_of(xs: timings_for_mode(m: SlaveSpiConfiguration))
-  let total = count_of(xs: ice40_configuration_timings)
+  let under_master = test.claim.ice40_configuration_witness.count_of(xs: timings_for_mode(m: MasterSpiConfiguration))
+  let under_slave = test.claim.ice40_configuration_witness.count_of(xs: timings_for_mode(m: SlaveSpiConfiguration))
+  let total = test.claim.ice40_configuration_witness.count_of(xs: ice40_configuration_timings)
   under_master == 2 && under_slave == total && under_slave > under_master
 }
 

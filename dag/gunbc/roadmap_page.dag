@@ -472,7 +472,7 @@ fn node_work_row_view(rn: gunbc.roadmap_model.RoadmapNode, nodes: List<gunbc.roa
 fn node_li(rn: gunbc.roadmap_model.RoadmapNode, nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>, merged: List<Int>, fuel: Int) -> std.markup.Fragment {
   let view = node_work_row_view(rn: rn, nodes: nodes, edges: edges, merged: merged)
   let head = render_work_row(view: view)
-  let kids = children_of(nodes: nodes, edges: edges, parent: rn.node)
+  let kids = gunbc.roadmap_page.children_of(nodes: nodes, edges: edges, parent: rn.node)
   let child_block = if count(kids) == 0 {
     []
   } else {

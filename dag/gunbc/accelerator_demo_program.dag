@@ -90,7 +90,7 @@ fn int_list_eq(left: List<Int>, right: List<Int>) -> Bool {
             if l != r {
               false
             } else {
-              int_list_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+              gunbc.accelerator_demo_program.int_list_eq(left: left.skip(n: 1), right: right.skip(n: 1))
             }
           Absent => false
         }
@@ -100,7 +100,7 @@ fn int_list_eq(left: List<Int>, right: List<Int>) -> Bool {
 }
 
 fn relu_mul_add_op_codes_match(codes: List<Int>) -> Bool {
-  int_list_eq(left: codes, right: relu_mul_add_wire_op_codes)
+  gunbc.accelerator_demo_program.int_list_eq(left: codes, right: relu_mul_add_wire_op_codes)
 }
 
 fn pure_elementwise_ops_shape_recognizable(ops: List<ElementwiseArrayOp>) -> Bool {
@@ -108,7 +108,7 @@ fn pure_elementwise_ops_shape_recognizable(ops: List<ElementwiseArrayOp>) -> Boo
 }
 
 fn witness_relu_mul_add_program_op_codes_are_authority() -> Bool {
-  int_list_eq(
+  gunbc.accelerator_demo_program.int_list_eq(
     left: program_op_codes(program: relu_mul_add_pure_program),
     right: relu_mul_add_wire_op_codes
   )

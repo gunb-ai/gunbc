@@ -47,7 +47,7 @@ fn add_arrow_swapped_operand_body() -> v2.std.node.Node {
 
 test fn add_body_operand_order_differs() -> v2.std.logic.Bool {
   let canonical = v2.extdeps.languages.dag.dag_add_binary_body_fixture
-  let swapped = add_arrow_swapped_operand_body()
+  let swapped = v2.test.manual.add_body_producer_claim.add_arrow_swapped_operand_body()
   canonical != swapped
 }
 

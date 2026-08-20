@@ -19,7 +19,7 @@ data mod_2rx4_32g: extdeps.memory.types.DramModuleCatalogRow = extdeps.memory.ty
   part_number: "GENERIC-32G-2RX4-3200",
   manufacturer: extdeps.vendor.sk_hynix.sk_hynix,
   generation: extdeps.memory.types.dram_generation_ddr4,
-  capacity_bytes: stick_32g,
+  capacity_bytes: test.claim.node_power_envelope_witness.stick_32g,
   data_rate_mts: 3200,
   ecc: true,
   buffering: extdeps.memory.types.Registered,
@@ -43,7 +43,7 @@ data mod_1rx8_32g_impossible: extdeps.memory.types.DramModuleCatalogRow = extdep
   part_number: "FAKE-32G-1RX8-3200",
   manufacturer: extdeps.vendor.sk_hynix.sk_hynix,
   generation: extdeps.memory.types.dram_generation_ddr4,
-  capacity_bytes: stick_32g,
+  capacity_bytes: test.claim.node_power_envelope_witness.stick_32g,
   data_rate_mts: 3200,
   ecc: true,
   buffering: extdeps.memory.types.Registered,
@@ -148,7 +148,7 @@ test fn the_two_dpc_ceilings_declare_themselves_uncited() -> Bool {
 // electrically one-deep, and the only authority for which happened is the
 // PopulationOption's own coverage.
 test fn the_populated_depth_is_read_from_the_population() -> Bool {
-  product.node_power_envelope.populated_dimms_per_channel(population: sixteen_module_population) == 2
+  product.node_power_envelope.populated_dimms_per_channel(population: test.claim.node_power_envelope_witness.sixteen_module_population) == 2
     && product.node_power_envelope.populated_dimms_per_channel(population: eight_module_population) == 1
 }
 
@@ -194,7 +194,7 @@ test fn an_undersized_supply_reports_its_shortfall() -> Bool {
 
 test fn memory_bandwidth_is_derived_from_the_populated_topology() -> Bool {
   std.measure.bandwidth_count(b: product.node_power_envelope.memory_bandwidth(context: altrad8ud_context, population: eight_module_population)) == 204800000000
-    && std.measure.bandwidth_count(b: product.node_power_envelope.memory_bandwidth(context: mt_collins_context, population: sixteen_module_population)) == 187712000000
+    && std.measure.bandwidth_count(b: product.node_power_envelope.memory_bandwidth(context: mt_collins_context, population: test.claim.node_power_envelope_witness.sixteen_module_population)) == 187712000000
 }
 
 // A single-rank module cannot interleave, so it does not reach the bus's rated

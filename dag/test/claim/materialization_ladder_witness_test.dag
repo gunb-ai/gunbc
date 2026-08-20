@@ -78,7 +78,7 @@ test fn authored_duplication_in_shared_frame_is_error() -> Bool {
     providers: [root_content_provider(id: "sccache")],
     cost_floor_exempt: no_cost_floor_exemptions
   )
-  let flagged = count_matching(vs: vs, matched: v => verdict_is_authored_duplication(v: v, identity: "cargo-release-build", site_count: 2)) == 1
+  let flagged = test.claim.materialization_ladder_witness.count_matching(vs: vs, matched: v => verdict_is_authored_duplication(v: v, identity: "cargo-release-build", site_count: 2)) == 1
   flagged && !materialization_ladder_holds(
     demands: two_steps_same_job(),
     providers: [root_content_provider(id: "sccache")],
@@ -92,7 +92,7 @@ test fn cross_frame_duplicate_discharged_by_covering_provider() -> Bool {
     providers: [root_content_provider(id: "sccache")],
     cost_floor_exempt: no_cost_floor_exemptions
   )
-  let discharged = count_matching(vs: vs, matched: v => verdict_is_discharged_by(v: v, identity: "cargo-release-build", provider_id: "sccache")) == 1
+  let discharged = test.claim.materialization_ladder_witness.count_matching(vs: vs, matched: v => verdict_is_discharged_by(v: v, identity: "cargo-release-build", provider_id: "sccache")) == 1
   discharged && materialization_ladder_holds(
     demands: three_jobs_same_build(),
     providers: [root_content_provider(id: "sccache")],
@@ -106,7 +106,7 @@ test fn obligation_without_provider_is_typed_refusal() -> Bool {
     providers: no_cache_providers,
     cost_floor_exempt: no_cost_floor_exemptions
   )
-  let refused = count_matching(vs: vs, matched: v => verdict_is_refused_no_provider(v: v, identity: "cargo-release-build")) == 1
+  let refused = test.claim.materialization_ladder_witness.count_matching(vs: vs, matched: v => verdict_is_refused_no_provider(v: v, identity: "cargo-release-build")) == 1
   refused && !materialization_ladder_holds(
     demands: three_jobs_same_build(),
     providers: no_cache_providers,
@@ -127,7 +127,7 @@ test fn provider_scope_too_narrow_is_refused() -> Bool {
     providers: [narrow],
     cost_floor_exempt: no_cost_floor_exemptions
   )
-  count_matching(vs: vs, matched: v => verdict_is_refused_scope_too_narrow(v: v, provider_id: "job-local-cache")) == 1
+  test.claim.materialization_ladder_witness.count_matching(vs: vs, matched: v => verdict_is_refused_scope_too_narrow(v: v, provider_id: "job-local-cache")) == 1
 }
 
 test fn existence_keyed_provider_is_refused() -> Bool {
@@ -143,7 +143,7 @@ test fn existence_keyed_provider_is_refused() -> Bool {
     providers: [build_if_absent],
     cost_floor_exempt: no_cost_floor_exemptions
   )
-  count_matching(vs: vs, matched: v => verdict_is_refused_existence_keyed(v: v, provider_id: "build-if-absent")) == 1
+  test.claim.materialization_ladder_witness.count_matching(vs: vs, matched: v => verdict_is_refused_existence_keyed(v: v, provider_id: "build-if-absent")) == 1
 }
 
 fn single_demand_under_retry() -> List<std.materialization_ladder.FrameDemand> {
@@ -156,13 +156,13 @@ test fn declared_replay_frame_obligates_up_front() -> Bool {
     providers: no_cache_providers,
     cost_floor_exempt: no_cost_floor_exemptions
   )
-  let refused = count_matching(vs: unprepared, matched: v => verdict_is_refused_no_provider(v: v, identity: "expensive-stage")) == 1
+  let refused = test.claim.materialization_ladder_witness.count_matching(vs: unprepared, matched: v => verdict_is_refused_no_provider(v: v, identity: "expensive-stage")) == 1
   let prepared = materialization_ladder(
     demands: single_demand_under_retry(),
     providers: [root_content_provider(id: "checkpoint-store")],
     cost_floor_exempt: no_cost_floor_exemptions
   )
-  let discharged = count_matching(vs: prepared, matched: v => verdict_is_discharged_by(v: v, identity: "expensive-stage", provider_id: "checkpoint-store")) == 1
+  let discharged = test.claim.materialization_ladder_witness.count_matching(vs: prepared, matched: v => verdict_is_discharged_by(v: v, identity: "expensive-stage", provider_id: "checkpoint-store")) == 1
   refused && discharged
 }
 
@@ -176,7 +176,7 @@ test fn unbounded_siblings_frame_obligates_up_front() -> Bool {
     providers: no_cache_providers,
     cost_floor_exempt: no_cost_floor_exemptions
   )
-  let refused = count_matching(vs: unprepared, matched: v => verdict_is_refused_no_provider(v: v, identity: "cargo-release-build")) == 1
+  let refused = test.claim.materialization_ladder_witness.count_matching(vs: unprepared, matched: v => verdict_is_refused_no_provider(v: v, identity: "cargo-release-build")) == 1
   refused && materialization_ladder_holds(
     demands: single_demand_under_fleet(),
     providers: [root_content_provider(id: "sccache")],
@@ -197,7 +197,7 @@ test fn fresh_effect_duplication_is_exempt_not_cached() -> Bool {
     providers: no_cache_providers,
     cost_floor_exempt: no_cost_floor_exemptions
   )
-  let exempt = count_matching(vs: vs, matched: v => verdict_is_exempt_fresh(v: v, identity: "cgroup-peak-measurement")) == 1
+  let exempt = test.claim.materialization_ladder_witness.count_matching(vs: vs, matched: v => verdict_is_exempt_fresh(v: v, identity: "cgroup-peak-measurement")) == 1
   exempt && materialization_ladder_holds(
     demands: duplicated_measurement(),
     providers: no_cache_providers,
@@ -218,7 +218,7 @@ test fn world_read_without_envelope_is_refused() -> Bool {
     providers: [root_content_provider(id: "dns-cache")],
     cost_floor_exempt: no_cost_floor_exemptions
   )
-  count_matching(vs: vs, matched: v => verdict_is_refused_unmodeled_world_read(v: v, identity: "dns-lookup")) == 1
+  test.claim.materialization_ladder_witness.count_matching(vs: vs, matched: v => verdict_is_refused_unmodeled_world_read(v: v, identity: "dns-lookup")) == 1
 }
 
 test fn world_read_with_declared_envelope_is_discharged() -> Bool {
@@ -232,7 +232,7 @@ test fn world_read_with_declared_envelope_is_discharged() -> Bool {
 test fn single_pure_demand_is_accepted_recompute() -> Bool {
   let one = [demand(identity: "one-off-transform", site: [wf(), job(name: "ci"), step(name: "emit")], nature: PureComputation)]
   let vs = materialization_ladder(demands: one, providers: no_cache_providers, cost_floor_exempt: no_cost_floor_exemptions)
-  let accepted = count_matching(vs: vs, matched: v => verdict_is_accepted_single_recompute(v: v, identity: "one-off-transform")) == 1
+  let accepted = test.claim.materialization_ladder_witness.count_matching(vs: vs, matched: v => verdict_is_accepted_single_recompute(v: v, identity: "one-off-transform")) == 1
   accepted && materialization_ladder_holds(demands: one, providers: no_cache_providers, cost_floor_exempt: no_cost_floor_exemptions)
 }
 
@@ -251,7 +251,7 @@ test fn zero_demand_pure_declaration_is_dead_computation() -> Bool {
   ]
   let demands = [demand(identity: "cargo-release-build", site: [wf(), job(name: "ci"), step(name: "build")], nature: PureComputation)]
   let vs = ladder_zero_demand_verdicts(declared: declared, demands: demands)
-  let dead = count_matching(vs: vs, matched: v => verdict_is_dead_computation(v: v, identity: "unused-transform")) == 1
+  let dead = test.claim.materialization_ladder_witness.count_matching(vs: vs, matched: v => verdict_is_dead_computation(v: v, identity: "unused-transform")) == 1
   dead && ((vs |> count) == 1)
 }
 
@@ -261,8 +261,8 @@ test fn zero_demand_effect_is_the_use_not_dead() -> Bool {
     std.materialization_ladder.DeclaredComputation { identity: "cgroup-peak-measurement", frame: [wf(), job(name: "ci")], nature: FreshEffect }
   ]
   let vs = ladder_zero_demand_verdicts(declared: declared, demands: [])
-  let deploy_ok = count_matching(vs: vs, matched: v => verdict_is_accepted_effect_is_the_use(v: v, identity: "deploy-dashboard")) == 1
-  let measure_ok = count_matching(vs: vs, matched: v => verdict_is_accepted_effect_is_the_use(v: v, identity: "cgroup-peak-measurement")) == 1
+  let deploy_ok = test.claim.materialization_ladder_witness.count_matching(vs: vs, matched: v => verdict_is_accepted_effect_is_the_use(v: v, identity: "deploy-dashboard")) == 1
+  let measure_ok = test.claim.materialization_ladder_witness.count_matching(vs: vs, matched: v => verdict_is_accepted_effect_is_the_use(v: v, identity: "cgroup-peak-measurement")) == 1
   deploy_ok && measure_ok
 }
 
@@ -273,16 +273,16 @@ fn rust_value_providers() -> List<std.materialization_ladder.CacheProvider> {
 }
 
 test fn value_single_take_no_borrows_is_moved() -> Bool {
-  let u = usage(identity: "graph", consumers: [edge(access: ConsumeAccess, site: "call:emit")])
+  let u = usage(identity: "graph", consumers: [test.claim.materialization_ladder_witness.edge(access: ConsumeAccess, site: "call:emit")])
   let v = value_materialization(usage: u, providers: rust_value_providers())
   value_verdict_is_moved(v: v, identity: "graph") && value_materialization_is_green(v: v)
 }
 
 test fn value_plural_readonly_is_shared_by_reference() -> Bool {
   let u = usage(identity: "config", consumers: [
-    edge(access: ReadAccess, site: "call:render"),
-    edge(access: ReadAccess, site: "call:validate"),
-    edge(access: ProjectAccess, site: "field:port")
+    test.claim.materialization_ladder_witness.edge(access: ReadAccess, site: "call:render"),
+    test.claim.materialization_ladder_witness.edge(access: ReadAccess, site: "call:validate"),
+    test.claim.materialization_ladder_witness.edge(access: ProjectAccess, site: "field:port")
   ])
   let v = value_materialization(usage: u, providers: rust_value_providers())
   value_verdict_is_shared_by_reference(v: v, identity: "config", provider_id: "rust-reference", reader_count: 3)
@@ -290,8 +290,8 @@ test fn value_plural_readonly_is_shared_by_reference() -> Bool {
 
 test fn value_take_with_borrows_is_priced_demotion_to_copy() -> Bool {
   let u = usage(identity: "acc", consumers: [
-    edge(access: ReadAccess, site: "call:report"),
-    edge(access: ConsumeAccess, site: "call:finish")
+    test.claim.materialization_ladder_witness.edge(access: ReadAccess, site: "call:report"),
+    test.claim.materialization_ladder_witness.edge(access: ConsumeAccess, site: "call:finish")
   ])
   let v = value_materialization(usage: u, providers: rust_value_providers())
   value_verdict_is_demoted_to_copy(v: v, identity: "acc", copies: 1)
@@ -299,9 +299,9 @@ test fn value_take_with_borrows_is_priced_demotion_to_copy() -> Bool {
 
 test fn value_fold_carry_excluded_from_plurality_but_blocks_move() -> Bool {
   let u = usage(identity: "fold-acc", consumers: [
-    edge(access: CarryAccess, site: "fold:step-1"),
-    edge(access: CarryAccess, site: "fold:step-2"),
-    edge(access: ConsumeAccess, site: "fold:final")
+    test.claim.materialization_ladder_witness.edge(access: CarryAccess, site: "fold:step-1"),
+    test.claim.materialization_ladder_witness.edge(access: CarryAccess, site: "fold:step-2"),
+    test.claim.materialization_ladder_witness.edge(access: ConsumeAccess, site: "fold:final")
   ])
   let v = value_materialization(usage: u, providers: rust_value_providers())
   value_verdict_is_demoted_to_copy(v: v, identity: "fold-acc", copies: 1)
@@ -309,8 +309,8 @@ test fn value_fold_carry_excluded_from_plurality_but_blocks_move() -> Bool {
 
 test fn value_double_take_is_affine_refusal_not_a_caching_opportunity() -> Bool {
   let u = usage(identity: "payload", consumers: [
-    edge(access: ConsumeAccess, site: "call:send"),
-    edge(access: ConsumeAccess, site: "call:archive")
+    test.claim.materialization_ladder_witness.edge(access: ConsumeAccess, site: "call:send"),
+    test.claim.materialization_ladder_witness.edge(access: ConsumeAccess, site: "call:archive")
   ])
   let v = value_materialization(usage: u, providers: rust_value_providers())
   value_verdict_is_refused_affine(v: v, identity: "payload", take_count: 2) && !value_materialization_is_green(v: v)
@@ -318,8 +318,8 @@ test fn value_double_take_is_affine_refusal_not_a_caching_opportunity() -> Bool 
 
 test fn value_reference_share_requires_the_carrier_capability() -> Bool {
   let u = usage(identity: "config", consumers: [
-    edge(access: ReadAccess, site: "call:render"),
-    edge(access: ReadAccess, site: "call:validate")
+    test.claim.materialization_ladder_witness.edge(access: ReadAccess, site: "call:render"),
+    test.claim.materialization_ladder_witness.edge(access: ReadAccess, site: "call:validate")
   ])
   let v = value_materialization(usage: u, providers: no_cache_providers)
   value_verdict_is_refused_needing_reference(v: v, identity: "config") && !value_materialization_is_green(v: v)
@@ -327,8 +327,8 @@ test fn value_reference_share_requires_the_carrier_capability() -> Bool {
 
 test fn value_demotion_requires_declared_copy_provider() -> Bool {
   let u = usage(identity: "acc", consumers: [
-    edge(access: ReadAccess, site: "call:report"),
-    edge(access: ConsumeAccess, site: "call:finish")
+    test.claim.materialization_ladder_witness.edge(access: ReadAccess, site: "call:report"),
+    test.claim.materialization_ladder_witness.edge(access: ConsumeAccess, site: "call:finish")
   ])
   let v = value_materialization(usage: u, providers: [rust_reference_provider()])
   value_verdict_is_refused_needing_copy(v: v, identity: "acc") && !value_materialization_is_green(v: v)
@@ -346,7 +346,7 @@ test fn reference_provider_cannot_discharge_isolation_obligation() -> Bool {
     providers: [rust_reference_provider()],
     cost_floor_exempt: no_cost_floor_exemptions
   )
-  count_matching(vs: vs, matched: v => verdict_is_refused_no_provider(v: v, identity: "cargo-release-build")) == 1
+  test.claim.materialization_ladder_witness.count_matching(vs: vs, matched: v => verdict_is_refused_no_provider(v: v, identity: "cargo-release-build")) == 1
 }
 
 test fn below_cost_floor_duplication_is_typed_acceptance() -> Bool {
@@ -355,7 +355,7 @@ test fn below_cost_floor_duplication_is_typed_acceptance() -> Bool {
     providers: no_cache_providers,
     cost_floor_exempt: ["rustup-pin"]
   )
-  let accepted = count_matching(vs: vs, matched: v => verdict_is_accepted_below_cost_floor(v: v, identity: "rustup-pin")) == 1
+  let accepted = test.claim.materialization_ladder_witness.count_matching(vs: vs, matched: v => verdict_is_accepted_below_cost_floor(v: v, identity: "rustup-pin")) == 1
   let red_without_roster = !materialization_ladder_holds(
     demands: duplicated_trivial_step(),
     providers: no_cache_providers,
@@ -374,7 +374,7 @@ test fn conflicting_natures_on_one_identity_are_refused() -> Bool {
     providers: no_cache_providers,
     cost_floor_exempt: no_cost_floor_exemptions
   )
-  let refused = count_matching(vs: vs, matched: v => verdict_is_refused_nature_conflict(v: v, identity: "probe-metric")) == 1
+  let refused = test.claim.materialization_ladder_witness.count_matching(vs: vs, matched: v => verdict_is_refused_nature_conflict(v: v, identity: "probe-metric")) == 1
   let red = !materialization_ladder_holds(
     demands: conflicted,
     providers: no_cache_providers,
@@ -413,7 +413,7 @@ test fn ineligible_provider_first_does_not_mask_eligible_one() -> Bool {
     providers: [unobserved_root_provider(id: "unobserved"), root_content_provider(id: "sccache")],
     cost_floor_exempt: no_cost_floor_exemptions
   )
-  count_matching(vs: vs, matched: v => verdict_is_discharged_by(v: v, identity: "cargo-release-build", provider_id: "sccache")) == 1
+  test.claim.materialization_ladder_witness.count_matching(vs: vs, matched: v => verdict_is_discharged_by(v: v, identity: "cargo-release-build", provider_id: "sccache")) == 1
 }
 
 test fn eligible_provider_first_gives_the_same_verdict() -> Bool {
@@ -422,7 +422,7 @@ test fn eligible_provider_first_gives_the_same_verdict() -> Bool {
     providers: [root_content_provider(id: "sccache"), unobserved_root_provider(id: "unobserved")],
     cost_floor_exempt: no_cost_floor_exemptions
   )
-  count_matching(vs: vs, matched: v => verdict_is_discharged_by(v: v, identity: "cargo-release-build", provider_id: "sccache")) == 1
+  test.claim.materialization_ladder_witness.count_matching(vs: vs, matched: v => verdict_is_discharged_by(v: v, identity: "cargo-release-build", provider_id: "sccache")) == 1
 }
 
 test fn persistent_unbounded_only_refuses_with_the_unbounded_cause() -> Bool {
@@ -431,7 +431,7 @@ test fn persistent_unbounded_only_refuses_with_the_unbounded_cause() -> Bool {
     providers: [unbounded_root_provider(id: "grows-forever")],
     cost_floor_exempt: no_cost_floor_exemptions
   )
-  let refused = count_matching(vs: vs, matched: v => verdict_is_refused_retention_unbounded(v: v, provider_id: "grows-forever")) == 1
+  let refused = test.claim.materialization_ladder_witness.count_matching(vs: vs, matched: v => verdict_is_refused_retention_unbounded(v: v, provider_id: "grows-forever")) == 1
   refused && !materialization_ladder_holds(
     demands: three_jobs_same_build(),
     providers: [unbounded_root_provider(id: "grows-forever")],
@@ -445,7 +445,7 @@ test fn persistent_unobserved_only_refuses_with_the_unobserved_cause() -> Bool {
     providers: [unobserved_root_provider(id: "no-ceiling-cited")],
     cost_floor_exempt: no_cost_floor_exemptions
   )
-  let refused = count_matching(vs: vs, matched: v => verdict_is_refused_retention_unobserved(v: v, provider_id: "no-ceiling-cited")) == 1
+  let refused = test.claim.materialization_ladder_witness.count_matching(vs: vs, matched: v => verdict_is_refused_retention_unobserved(v: v, provider_id: "no-ceiling-cited")) == 1
   refused && !materialization_ladder_holds(
     demands: three_jobs_same_build(),
     providers: [unobserved_root_provider(id: "no-ceiling-cited")],

@@ -116,11 +116,11 @@ test fn witness_unreadable_budget_falls_back_serial() -> Bool {
 }
 
 test fn witness_nextest_flag_spelling() -> Bool {
-  join_space(xs: cargo_nextest_build_jobs_flag(count: 8)) == "--build-jobs 8"
+  test.claim.ci_compile_jobs_witness.join_space(xs: cargo_nextest_build_jobs_flag(count: 8)) == "--build-jobs 8"
 }
 
 test fn witness_build_flag_spelling() -> Bool {
-  join_space(xs: cargo_build_jobs_flag(count: 8)) == "--jobs 8"
+  test.claim.ci_compile_jobs_witness.join_space(xs: cargo_build_jobs_flag(count: 8)) == "--jobs 8"
 }
 
 test fn witness_count_or_serial_passes_measured_count() -> Bool {
@@ -133,6 +133,6 @@ test fn witness_count_or_serial_refuse_falls_to_serial() -> Bool {
 
 test fn witness_live_rust_gate_uses_slot_budget_lanes() -> Bool {
   let expected = concat("--build-jobs ", to_string(live_derived_jobs()))
-  join_space(xs: rust_gate_build_jobs_args()) == expected
+  test.claim.ci_compile_jobs_witness.join_space(xs: rust_gate_build_jobs_args()) == expected
 }
 

@@ -68,7 +68,7 @@ fn wedged_worker_observation() -> gunbc.runner_broker_progress_watchdog.RunnerWo
 }
 
 fn wedged_snapshot(act_at: std.types.Timestamp) -> gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
-  let slot = fixture_slot(host: operator_host_srv1, index: 1)
+  let slot = test.claim.runner_connectivity_recovery_witness.fixture_slot(host: operator_host_srv1, index: 1)
   let inc = fixture_incarnation(slot: slot, pid: 4242, start: "80000000")
   gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
     slot: slot,
@@ -91,7 +91,7 @@ fn wedged_snapshot(act_at: std.types.Timestamp) -> gunbc.runner_connectivity_rec
 }
 
 fn connected_snapshot(act_at: std.types.Timestamp, pid: Int, start: String) -> gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
-  let slot = fixture_slot(host: operator_host_srv1, index: 1)
+  let slot = test.claim.runner_connectivity_recovery_witness.fixture_slot(host: operator_host_srv1, index: 1)
   let inc = fixture_incarnation(slot: slot, pid: pid, start: start)
   gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
     slot: slot,
@@ -114,8 +114,8 @@ fn connected_snapshot(act_at: std.types.Timestamp, pid: Int, start: String) -> g
 }
 
 test fn wedged_slot_requests_incarnation_replace() -> Bool {
-  let act = act_ts(s: "2026-08-06T20:00:00Z")
-  let snap = wedged_snapshot(act_at: act)
+  let act = test.claim.runner_connectivity_recovery_witness.act_ts(s: "2026-08-06T20:00:00Z")
+  let snap = test.claim.runner_connectivity_recovery_witness.wedged_snapshot(act_at: act)
   match decide_runner_connectivity_action_for_snapshot(
     snap: snap,
     prior: snap,
@@ -130,7 +130,7 @@ test fn wedged_slot_requests_incarnation_replace() -> Bool {
 }
 
 test fn connected_slot_is_noop() -> Bool {
-  let act = act_ts(s: "2026-08-06T20:00:00Z")
+  let act = test.claim.runner_connectivity_recovery_witness.act_ts(s: "2026-08-06T20:00:00Z")
   let snap = connected_snapshot(act_at: act, pid: 5000, start: "90000000")
   action_is_noop(
     action: decide_runner_connectivity_action_for_snapshot(
@@ -144,8 +144,8 @@ test fn connected_slot_is_noop() -> Bool {
 }
 
 test fn remotely_busy_slot_refuses_restart() -> Bool {
-  let act = act_ts(s: "2026-08-06T20:00:00Z")
-  let slot = fixture_slot(host: operator_host_srv1, index: 2)
+  let act = test.claim.runner_connectivity_recovery_witness.act_ts(s: "2026-08-06T20:00:00Z")
+  let slot = test.claim.runner_connectivity_recovery_witness.fixture_slot(host: operator_host_srv1, index: 2)
   let inc = fixture_incarnation(slot: slot, pid: 1111, start: "70000000")
   let snap = gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
     slot: slot,
@@ -175,11 +175,11 @@ test fn remotely_busy_slot_refuses_restart() -> Bool {
 }
 
 test fn stale_observation_refuses_restart() -> Bool {
-  let snap = wedged_snapshot(act_at: act_ts(s: "2026-08-06T20:00:00Z"))
+  let snap = test.claim.runner_connectivity_recovery_witness.wedged_snapshot(act_at: test.claim.runner_connectivity_recovery_witness.act_ts(s: "2026-08-06T20:00:00Z"))
   match decide_runner_connectivity_action_for_snapshot(
     snap: snap,
     prior: snap,
-    act_at: act_ts(s: "2026-08-06T20:05:00Z"),
+    act_at: test.claim.runner_connectivity_recovery_witness.act_ts(s: "2026-08-06T20:05:00Z"),
     reach: HostReachAdmitted,
     allow_replace: true,
   ) {
@@ -190,10 +190,10 @@ test fn stale_observation_refuses_restart() -> Bool {
 }
 
 test fn degraded_fleet_allows_only_canary_replace() -> Bool {
-  let act = act_ts(s: "2026-08-06T20:00:00Z")
-  let s1 = wedged_snapshot(act_at: act)
+  let act = test.claim.runner_connectivity_recovery_witness.act_ts(s: "2026-08-06T20:00:00Z")
+  let s1 = test.claim.runner_connectivity_recovery_witness.wedged_snapshot(act_at: act)
   let s2 = gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
-    slot: fixture_slot(host: operator_host_srv1, index: 2),
+    slot: test.claim.runner_connectivity_recovery_witness.fixture_slot(host: operator_host_srv1, index: 2),
     local: s1.local,
     remote: s1.remote,
     broker: s1.broker,
@@ -234,9 +234,9 @@ test fn degraded_fleet_allows_only_canary_replace() -> Bool {
 }
 
 test fn srv3_reach_refused_while_srv1_continues() -> Bool {
-  let act = act_ts(s: "2026-08-06T20:00:00Z")
-  let srv1 = wedged_snapshot(act_at: act)
-  let srv3_slot = fixture_slot(host: operator_host_srv3, index: 1)
+  let act = test.claim.runner_connectivity_recovery_witness.act_ts(s: "2026-08-06T20:00:00Z")
+  let srv1 = test.claim.runner_connectivity_recovery_witness.wedged_snapshot(act_at: act)
+  let srv3_slot = test.claim.runner_connectivity_recovery_witness.fixture_slot(host: operator_host_srv3, index: 1)
   let srv3 = gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
     slot: srv3_slot,
     local: gunbc.runner_connectivity_recovery.RunnerLocalObservation {
@@ -278,8 +278,8 @@ test fn srv3_reach_refused_while_srv1_continues() -> Bool {
 }
 
 test fn postcondition_verifies_new_incarnation_and_remote_online() -> Bool {
-  let act = act_ts(s: "2026-08-06T20:00:00Z")
-  let slot = fixture_slot(host: operator_host_srv1, index: 1)
+  let act = test.claim.runner_connectivity_recovery_witness.act_ts(s: "2026-08-06T20:00:00Z")
+  let slot = test.claim.runner_connectivity_recovery_witness.fixture_slot(host: operator_host_srv1, index: 1)
   let prior = fixture_incarnation(slot: slot, pid: 4242, start: "80000000")
   let after_local = gunbc.runner_connectivity_recovery.RunnerLocalObservation {
     incarnation: fixture_incarnation(slot: slot, pid: 5151, start: "91000000"),
@@ -304,8 +304,8 @@ test fn postcondition_verifies_new_incarnation_and_remote_online() -> Bool {
 }
 
 test fn postcondition_fails_when_prior_process_survives() -> Bool {
-  let act = act_ts(s: "2026-08-06T20:00:00Z")
-  let slot = fixture_slot(host: operator_host_srv1, index: 1)
+  let act = test.claim.runner_connectivity_recovery_witness.act_ts(s: "2026-08-06T20:00:00Z")
+  let slot = test.claim.runner_connectivity_recovery_witness.fixture_slot(host: operator_host_srv1, index: 1)
   let prior = fixture_incarnation(slot: slot, pid: 4242, start: "80000000")
   let after_local = gunbc.runner_connectivity_recovery.RunnerLocalObservation {
     incarnation: prior,
@@ -330,7 +330,7 @@ test fn postcondition_fails_when_prior_process_survives() -> Bool {
 }
 
 test fn rerun_after_successful_replace_is_noop() -> Bool {
-  let act = act_ts(s: "2026-08-06T20:00:00Z")
+  let act = test.claim.runner_connectivity_recovery_witness.act_ts(s: "2026-08-06T20:00:00Z")
   let snap = connected_snapshot(act_at: act, pid: 5151, start: "91000000")
   action_is_noop(
     action: decide_runner_connectivity_action_for_snapshot(
@@ -344,7 +344,7 @@ test fn rerun_after_successful_replace_is_noop() -> Bool {
 }
 
 test fn control_plane_burst_classifies_degraded() -> Bool {
-  let act = act_ts(s: "2026-08-06T20:00:00Z")
+  let act = test.claim.runner_connectivity_recovery_witness.act_ts(s: "2026-08-06T20:00:00Z")
   let snap = connected_snapshot(act_at: act, pid: 1, start: "1")
   let burst = gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
     slot: snap.slot,
@@ -367,10 +367,10 @@ test fn control_plane_burst_classifies_degraded() -> Bool {
 }
 
 test fn fleet_plan_enforces_per_host_replace_cap() -> Bool {
-  let act = act_ts(s: "2026-08-06T20:00:00Z")
-  let s1 = wedged_snapshot(act_at: act)
+  let act = test.claim.runner_connectivity_recovery_witness.act_ts(s: "2026-08-06T20:00:00Z")
+  let s1 = test.claim.runner_connectivity_recovery_witness.wedged_snapshot(act_at: act)
   let s2 = gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
-    slot: fixture_slot(host: operator_host_srv1, index: 2),
+    slot: test.claim.runner_connectivity_recovery_witness.fixture_slot(host: operator_host_srv1, index: 2),
     local: s1.local,
     remote: s1.remote,
     broker: s1.broker,
@@ -380,7 +380,7 @@ test fn fleet_plan_enforces_per_host_replace_cap() -> Bool {
     last_restart_at: Absent,
   }
   let s3 = gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
-    slot: fixture_slot(host: operator_host_srv1, index: 3),
+    slot: test.claim.runner_connectivity_recovery_witness.fixture_slot(host: operator_host_srv1, index: 3),
     local: s1.local,
     remote: s1.remote,
     broker: s1.broker,
@@ -411,8 +411,8 @@ test fn fleet_plan_enforces_per_host_replace_cap() -> Bool {
 }
 
 test fn offline_with_recent_broker_progress_refuses_replace() -> Bool {
-  let act = act_ts(s: "2026-08-06T20:00:00Z")
-  let slot = fixture_slot(host: operator_host_srv1, index: 4)
+  let act = test.claim.runner_connectivity_recovery_witness.act_ts(s: "2026-08-06T20:00:00Z")
+  let slot = test.claim.runner_connectivity_recovery_witness.fixture_slot(host: operator_host_srv1, index: 4)
   let inc = fixture_incarnation(slot: slot, pid: 3333, start: "50000000")
   let snap = gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
     slot: slot,
@@ -446,9 +446,9 @@ test fn offline_with_recent_broker_progress_refuses_replace() -> Bool {
 }
 
 test fn reobservation_refuses_when_act_at_advances_after_decision_receipt() -> Bool {
-  let prior = wedged_snapshot(act_at: act_ts(s: "2026-08-06T20:00:00Z"))
-  let act = act_ts(s: "2026-08-06T20:05:00Z")
-  let snap = wedged_snapshot(act_at: act)
+  let prior = test.claim.runner_connectivity_recovery_witness.wedged_snapshot(act_at: test.claim.runner_connectivity_recovery_witness.act_ts(s: "2026-08-06T20:00:00Z"))
+  let act = test.claim.runner_connectivity_recovery_witness.act_ts(s: "2026-08-06T20:05:00Z")
+  let snap = test.claim.runner_connectivity_recovery_witness.wedged_snapshot(act_at: act)
   match decide_runner_connectivity_action_for_snapshot(
     snap: snap,
     prior: prior,

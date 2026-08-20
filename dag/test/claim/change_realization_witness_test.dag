@@ -78,7 +78,7 @@ test fn w_host_resource_address_preserved_is_in_place() -> Bool {
     c: classify_change(
       subject: gunbc.change_realization.HostResourceSubject,
       subject_label: "srv4/build-cache" as std.types.NonEmptyStr,
-      continuity: address_continuity(from: "gunbc-cache.service", to: "gunbc-cache.service", address_eq: str_eq),
+      continuity: address_continuity(from: "gunbc-cache.service", to: "gunbc-cache.service", address_eq: test.claim.change_realization_witness.str_eq),
       declared_intermediates: none,
     ),
     expected_in_place: true,
@@ -90,7 +90,7 @@ test fn w_host_resource_address_changed_is_staged_replacement() -> Bool {
     c: classify_change(
       subject: gunbc.change_realization.HostResourceSubject,
       subject_label: "srv4/build-cache" as std.types.NonEmptyStr,
-      continuity: address_continuity(from: "gunbc-cache.service", to: "gunbc-buildcache.service", address_eq: str_eq),
+      continuity: address_continuity(from: "gunbc-cache.service", to: "gunbc-buildcache.service", address_eq: test.claim.change_realization_witness.str_eq),
       declared_intermediates: Present {
         value: one_intermediate(step: gunbc.change_realization.RetirePriorEndpoint { endpoint: "/run/sccache.sock" as std.types.NonEmptyStr })
       },

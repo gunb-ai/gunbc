@@ -27,7 +27,7 @@ fn describe(cond: Condition) -> String {
 
 fn main() -> String {
   let temp = Temperature { celsius: 25.0 }
-  let f = to_fahrenheit(temp: temp)
+  let f = examples.interp_test.to_fahrenheit(temp: temp)
   let cond = Rainy { mm_per_hour: 5.0 }
   let desc = describe(cond: cond)
   let nums = [1, 2, 3, 4, 5]

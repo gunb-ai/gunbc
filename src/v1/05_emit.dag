@@ -488,7 +488,7 @@ fn render_named_type_base(n: v1.std.core.Node, target: v1.compiler.artifact.Rend
 fn render_node_type(n: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, shared_types: Set<String>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   let tn = authored_name_at(source_indices: source_indices, node: n)
   let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
-  let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
+  let n_is_type_var = if n.inferred != none { v1.compiler.emit.is_type_variable(inferred: n.inferred.value) } else { false }
 
   if (n_is_type_var || n_is_error) && n.children |> count == 0 {
     let is_named_type_var = match n.inferred {
@@ -1466,12 +1466,12 @@ fn hex_digit_char(d: Int) -> String {
 
 fn int_to_upper_hex_inner(n: Int, acc: String) -> String {
   if n == 0 { acc }
-  else { int_to_upper_hex_inner(n: n / 16, acc: concat(hex_digit_char(d: n % 16), acc)) }
+  else { v1.compiler.emit.int_to_upper_hex_inner(n: n / 16, acc: concat(hex_digit_char(d: n % 16), acc)) }
 }
 
 fn int_to_upper_hex(n: Int) -> String {
   if n == 0 { "0" }
-  else { int_to_upper_hex_inner(n: n, acc: "") }
+  else { v1.compiler.emit.int_to_upper_hex_inner(n: n, acc: "") }
 }
 
 fn escape_emoji_codepoints_inner(s: String, pos: Int, n: Int, acc: String, prefix: String, suffix: String) -> String {
@@ -1480,7 +1480,7 @@ fn escape_emoji_codepoints_inner(s: String, pos: Int, n: Int, acc: String, prefi
     let ch_str = char_at(s: s, pos: pos)
     let cp = code_point(c: ch_str)
     let next_acc = if is_emoji_ident(ch: cp) {
-      concat(acc, prefix, int_to_upper_hex(n: cp), suffix)
+      concat(acc, prefix, v1.compiler.emit.int_to_upper_hex(n: cp), suffix)
     } else {
       concat(acc, ch_str)
     }

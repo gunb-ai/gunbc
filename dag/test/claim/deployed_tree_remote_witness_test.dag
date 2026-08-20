@@ -120,28 +120,28 @@ fn member() -> extdeps.git.GitRemoteUrlMember {
 // follow a setter which reported no error at all — a mismatched read-back and an absent one. Those
 // are precisely the states a "did the command exit zero" check would call converged.
 test fn only_an_exact_read_back_reports_success() -> Bool {
-  exit_is_success(e: gunbc.deployed_tree_remote.deployed_tree_remote_exit(outcome: gunbc.deployed_tree_remote.RemoteAlreadyConverged { member: member() }))
-    && exit_is_success(e: gunbc.deployed_tree_remote.deployed_tree_remote_exit(
+  test.claim.deployed_tree_remote_witness.exit_is_success(e: gunbc.deployed_tree_remote.deployed_tree_remote_exit(outcome: gunbc.deployed_tree_remote.RemoteAlreadyConverged { member: member() }))
+    && test.claim.deployed_tree_remote_witness.exit_is_success(e: gunbc.deployed_tree_remote.deployed_tree_remote_exit(
       outcome: gunbc.deployed_tree_remote.RemoteConverged {
         member: member(),
         previous: extdeps.git.GitRemoteUrlAbsent { at: other_at() },
       },
     ))
-    && !exit_is_success(e: gunbc.deployed_tree_remote.deployed_tree_remote_exit(
+    && !test.claim.deployed_tree_remote_witness.exit_is_success(e: gunbc.deployed_tree_remote.deployed_tree_remote_exit(
       outcome: gunbc.deployed_tree_remote.RemoteReadBackMismatched {
         at: other_at(),
         expected: "https://github.com/gunb-ai/gunbc.git" as std.types.NonEmptyStr,
         observed: "https://example.invalid/other.git" as std.types.NonEmptyStr,
       },
     ))
-    && !exit_is_success(e: gunbc.deployed_tree_remote.deployed_tree_remote_exit(outcome: gunbc.deployed_tree_remote.RemoteReadBackAbsent { at: other_at() }))
-    && !exit_is_success(e: gunbc.deployed_tree_remote.deployed_tree_remote_exit(
+    && !test.claim.deployed_tree_remote_witness.exit_is_success(e: gunbc.deployed_tree_remote.deployed_tree_remote_exit(outcome: gunbc.deployed_tree_remote.RemoteReadBackAbsent { at: other_at() }))
+    && !test.claim.deployed_tree_remote_witness.exit_is_success(e: gunbc.deployed_tree_remote.deployed_tree_remote_exit(
       outcome: gunbc.deployed_tree_remote.RemoteSetRefused { at: other_at(), stderr: "denied" },
     ))
-    && !exit_is_success(e: gunbc.deployed_tree_remote.deployed_tree_remote_exit(
+    && !test.claim.deployed_tree_remote_witness.exit_is_success(e: gunbc.deployed_tree_remote.deployed_tree_remote_exit(
       outcome: gunbc.deployed_tree_remote.RemoteRepositoryUnusable { at: other_at(), exit_code: 128, stderr: "fatal" },
     ))
-    && !exit_is_success(e: gunbc.deployed_tree_remote.deployed_tree_remote_exit(
+    && !test.claim.deployed_tree_remote_witness.exit_is_success(e: gunbc.deployed_tree_remote.deployed_tree_remote_exit(
       outcome: gunbc.deployed_tree_remote.RemoteReadBackRefused { at: other_at(), exit_code: 7, stderr: "?" },
     ))
 }

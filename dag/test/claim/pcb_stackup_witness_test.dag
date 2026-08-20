@@ -34,15 +34,15 @@ data four_layer: product.pcb.stackup.Stackup = product.pcb.stackup.Stackup {
 }
 
 test fn w_layer_counts_derive_from_the_ply_sequence() -> Bool {
-  stackup_copper_layer_count(s: four_layer) == 4
-    && stackup_dielectric_layer_count(s: four_layer) == 3
+  stackup_copper_layer_count(s: test.claim.pcb_stackup_witness.four_layer) == 4
+    && stackup_dielectric_layer_count(s: test.claim.pcb_stackup_witness.four_layer) == 3
 }
 
 // THE COUNTS DIFFER BY EXACTLY ONE, ALWAYS, and that is the arithmetic consequence of the shape:
 // N plies means N dielectrics and N+1 coppers. A flat-list model could produce any pair of counts,
 // so this pins that the copper-terminated alternating structure is what is being counted.
 test fn w_copper_always_exceeds_dielectric_by_one() -> Bool {
-  stackup_copper_layer_count(s: four_layer) == stackup_dielectric_layer_count(s: four_layer) + 1
+  stackup_copper_layer_count(s: test.claim.pcb_stackup_witness.four_layer) == stackup_dielectric_layer_count(s: test.claim.pcb_stackup_witness.four_layer) + 1
     && stackup_copper_layer_count(s: single_layer) == stackup_dielectric_layer_count(s: single_layer) + 1
 }
 
@@ -57,11 +57,11 @@ test fn w_a_single_sided_board_is_representable() -> Bool {
 }
 
 test fn w_total_thickness_sums_copper_and_dielectric() -> Bool {
-  micrometer_count(m: stackup_total_thickness(s: four_layer)) == 17 + (100 + 17) + (100 + 17) + (100 + 17)
+  micrometer_count(m: stackup_total_thickness(s: test.claim.pcb_stackup_witness.four_layer)) == 17 + (100 + 17) + (100 + 17) + (100 + 17)
 }
 
 test fn w_symmetric_profile_is_recognised() -> Bool {
-  stackup_is_copper_balanced(s: four_layer)
+  stackup_is_copper_balanced(s: test.claim.pcb_stackup_witness.four_layer)
 }
 
 // RED control: symmetry is a real measurement, not a predicate that always agrees. Thickening one
@@ -92,8 +92,8 @@ data all_signal: product.pcb.stackup.Stackup = product.pcb.stackup.Stackup {
 }
 
 test fn w_plane_count_is_not_layer_count() -> Bool {
-  stackup_plane_layer_count(s: four_layer) == 2
-    && stackup_has_a_reference_plane(s: four_layer)
+  stackup_plane_layer_count(s: test.claim.pcb_stackup_witness.four_layer) == 2
+    && stackup_has_a_reference_plane(s: test.claim.pcb_stackup_witness.four_layer)
     && stackup_plane_layer_count(s: all_signal) == 0
     && !stackup_has_a_reference_plane(s: all_signal)
     && stackup_copper_layer_count(s: all_signal) == 4
@@ -110,7 +110,7 @@ test fn w_a_mixed_layer_counts_as_reference_copper() -> Bool {
 // A well-formed board admits, and the admitted value carries the stackup it judged rather than a
 // fresh one — a verdict detached from its subject would be a name, not evidence.
 test fn w_a_wellformed_stackup_admits_and_carries_its_subject() -> Bool {
-  match admit_stackup(s: four_layer, authority: stackup_authority) {
+  match admit_stackup(s: test.claim.pcb_stackup_witness.four_layer, authority: stackup_authority) {
     StackupAdmitted { admitted: a } =>
       stackup_copper_layer_count(s: admitted_stackup_body(a: a)) == 4
         && stackup_plane_layer_count(s: admitted_stackup_body(a: a)) == 2
@@ -172,7 +172,7 @@ test fn w_red_a_zero_thickness_dielectric_alone_is_refused() -> Bool {
 // compile-time fact, so the discriminating evidence for it is that no such construction exists
 // anywhere in the tree rather than an arm this witness can execute.
 test fn w_an_established_capability_requires_an_admitted_stackup() -> Bool {
-  match admit_stackup(s: four_layer, authority: stackup_authority) {
+  match admit_stackup(s: test.claim.pcb_stackup_witness.four_layer, authority: stackup_authority) {
     StackupRefused { causes: _ } => false
     StackupAdmitted { admitted: a } =>
       match establish_stackup_capability(a: a) {

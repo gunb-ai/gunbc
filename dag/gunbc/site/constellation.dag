@@ -48,32 +48,32 @@ fn constellation_edge_lines(stars: List<LayerStar>, edges: List<LayerImportEdge>
     let from = star_by_key(stars: stars, key: e.from_key)
     let to = star_by_key(stars: stars, key: e.to_key)
     extdeps.browser.Element { tag: "line", attributes: [
-      sattr(name: "x1", value: to_string(from.x)),
-      sattr(name: "y1", value: to_string(from.y)),
-      sattr(name: "x2", value: to_string(to.x)),
-      sattr(name: "y2", value: to_string(to.y)),
-      sattr(name: "class", value: "sky-edge"),
-      sattr(name: "stroke-width", value: "1"),
+      gunbc.site.constellation.sattr(name: "x1", value: to_string(from.x)),
+      gunbc.site.constellation.sattr(name: "y1", value: to_string(from.y)),
+      gunbc.site.constellation.sattr(name: "x2", value: to_string(to.x)),
+      gunbc.site.constellation.sattr(name: "y2", value: to_string(to.y)),
+      gunbc.site.constellation.sattr(name: "class", value: "sky-edge"),
+      gunbc.site.constellation.sattr(name: "stroke-width", value: "1"),
     ], children: [] }
   })
 }
 
 fn star_group(s: LayerStar) -> std.markup.Fragment {
   extdeps.browser.Element { tag: "g", attributes: [
-    sattr(name: "class", value: concat("star-g star-g-", s.key)),
+    gunbc.site.constellation.sattr(name: "class", value: concat("star-g star-g-", s.key)),
   ], children: [
     extdeps.browser.Element { tag: "circle", attributes: [
-      sattr(name: "cx", value: to_string(s.x)),
-      sattr(name: "cy", value: to_string(s.y)),
-      sattr(name: "r", value: to_string(s.radius + 7)),
-      sattr(name: "class", value: "star-halo"),
+      gunbc.site.constellation.sattr(name: "cx", value: to_string(s.x)),
+      gunbc.site.constellation.sattr(name: "cy", value: to_string(s.y)),
+      gunbc.site.constellation.sattr(name: "r", value: to_string(s.radius + 7)),
+      gunbc.site.constellation.sattr(name: "class", value: "star-halo"),
     ], children: [] },
     extdeps.browser.Element { tag: "circle", attributes: [
-      sattr(name: "cx", value: to_string(s.x)),
-      sattr(name: "cy", value: to_string(s.y)),
-      sattr(name: "r", value: to_string(s.radius)),
-      sattr(name: "class", value: concat("star star-", s.key)),
-      sattr(name: "tabindex", value: "0"),
+      gunbc.site.constellation.sattr(name: "cx", value: to_string(s.x)),
+      gunbc.site.constellation.sattr(name: "cy", value: to_string(s.y)),
+      gunbc.site.constellation.sattr(name: "r", value: to_string(s.radius)),
+      gunbc.site.constellation.sattr(name: "class", value: concat("star star-", s.key)),
+      gunbc.site.constellation.sattr(name: "tabindex", value: "0"),
     ], children: [] },
   ] }
 }
@@ -86,10 +86,10 @@ fn constellation_svg(stars: List<LayerStar>, edges: List<LayerImportEdge>) -> st
   extdeps.browser.Element {
     tag: "svg",
     attributes: [
-      sattr(name: "viewBox", value: "0 0 396 126"),
-      sattr(name: "class", value: "constellation"),
-      sattr(name: "role", value: "img"),
-      sattr(name: "aria-label", value: "the layer DAG as an asterism"),
+      gunbc.site.constellation.sattr(name: "viewBox", value: "0 0 396 126"),
+      gunbc.site.constellation.sattr(name: "class", value: "constellation"),
+      gunbc.site.constellation.sattr(name: "role", value: "img"),
+      gunbc.site.constellation.sattr(name: "aria-label", value: "the layer DAG as an asterism"),
     ],
     children: concat(
       constellation_edge_lines(stars: stars, edges: edges),
@@ -99,21 +99,21 @@ fn constellation_svg(stars: List<LayerStar>, edges: List<LayerImportEdge>) -> st
 
 fn legend_item(s: LayerStar) -> std.markup.Fragment {
   extdeps.browser.Element { tag: "li", attributes: [
-    sattr(name: "class", value: concat("legend-", s.key)),
+    gunbc.site.constellation.sattr(name: "class", value: concat("legend-", s.key)),
   ], children: [
-    extdeps.browser.Element { tag: "span", attributes: [ sattr(name: "class", value: "legend-key") ],
+    extdeps.browser.Element { tag: "span", attributes: [ gunbc.site.constellation.sattr(name: "class", value: "legend-key") ],
       children: [ std.markup.FragmentText { content: s.key } ] },
     std.markup.FragmentText { content: concat(" — ", s.claim) },
   ] }
 }
 
 fn constellation_legend(stars: List<LayerStar>) -> std.markup.Fragment {
-  extdeps.browser.Element { tag: "ul", attributes: [ sattr(name: "class", value: "legend") ],
+  extdeps.browser.Element { tag: "ul", attributes: [ gunbc.site.constellation.sattr(name: "class", value: "legend") ],
     children: map(stars, s => legend_item(s: s)) }
 }
 
 fn constellation_figure() -> std.markup.Fragment {
-  extdeps.browser.Element { tag: "figure", attributes: [ sattr(name: "class", value: "hero") ], children: [
+  extdeps.browser.Element { tag: "figure", attributes: [ gunbc.site.constellation.sattr(name: "class", value: "hero") ], children: [
     constellation_svg(stars: layer_stars, edges: layer_import_edges),
     constellation_legend(stars: layer_stars),
   ] }

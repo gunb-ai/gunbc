@@ -12,8 +12,8 @@ data tested_tree: extdeps.git.object_store.GitObjectId = extdeps.git.object_stor
 fn discovery_request() -> v2.workflow.floor_discovery.FloorDiscoveryRequest {
   v2.workflow.floor_discovery.FloorDiscoveryRequest {
     subject: v2.workflow.floor_discovery.FloorDiscoverySubject {
-      tested_commit: v2.workflow.floor_discovery.floor_discovery_commit_id(object_id: tested_commit),
-      tested_tree: v2.workflow.floor_discovery.floor_discovery_tree_id(object_id: tested_tree),
+      tested_commit: v2.workflow.floor_discovery.floor_discovery_commit_id(object_id: test.claim.floor_preparation_witness.tested_commit),
+      tested_tree: v2.workflow.floor_discovery.floor_discovery_tree_id(object_id: test.claim.floor_preparation_witness.tested_tree),
       source_roots: ["dag", "src/v2"],
       execution_authority_source_roots: ["dag", "src/v2"],
       naming_authority_identity: content_hash_atom(value: "floor-preparation-naming-fixture"),
@@ -110,7 +110,7 @@ fn probe_for(entry: v2.workflow.floor_preparation.PreparedFloorEntryRequest) -> 
 }
 
 test fn exact_prepared_artifact_set_serves() -> Bool {
-  let request = canonical_request()
+  let request = test.claim.floor_preparation_witness.canonical_request()
   match v2.workflow.floor_preparation.prepared_floor_subject_serve(
     request: request,
     probes: [probe_for(entry: entry_a()), probe_for(entry: entry_b())],
@@ -135,7 +135,7 @@ fn entries_first_entry(
 
 test fn missing_prepared_identity_refuses() -> Bool {
   match v2.workflow.floor_preparation.prepared_floor_subject_serve(
-    request: canonical_request(),
+    request: test.claim.floor_preparation_witness.canonical_request(),
     probes: [probe_for(entry: entry_a())],
   ) {
     PreparedFloorSubjectRefused { cause: cause } =>

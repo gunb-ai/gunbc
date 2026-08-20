@@ -143,7 +143,7 @@ type RoleAdmission
 fn role_admits(role: CatalogProviderRole, r: std.cache_interface.ProviderRetention) -> RoleAdmission {
   match role {
     GrowthBoundedRole => growth_admission(r: r)
-    CapacityBoundedRole => capacity_admission(c: r.capacity)
+    CapacityBoundedRole => extdeps.cache.materialization.capacity_admission(c: r.capacity)
     ExactByteBudgetRole => exact_byte_admission(c: r.capacity)
   }
 }
@@ -153,8 +153,8 @@ fn role_admits(role: CatalogProviderRole, r: std.cache_interface.ProviderRetenti
 fn growth_admission(r: std.cache_interface.ProviderRetention) -> RoleAdmission {
   match r.release_policy {
     ReleasedAtProviderScopeExit => RoleAdmitted
-    ReleasedNever => capacity_admission(c: r.capacity)
-    ReleasedManually => capacity_admission(c: r.capacity)
+    ReleasedNever => extdeps.cache.materialization.capacity_admission(c: r.capacity)
+    ReleasedManually => extdeps.cache.materialization.capacity_admission(c: r.capacity)
   }
 }
 

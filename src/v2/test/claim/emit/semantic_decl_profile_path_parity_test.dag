@@ -16,9 +16,9 @@ test fn bundle_node_profile_matches_target_emission_profile() -> Bool {
             Accepted { value: emission, diagnostics: _ } =>
               match semantic_decl_profile_lex_rules(profile: emission.enum_serialize_profile) {
                 Accepted { value: emission_lex, diagnostics: _ } =>
-                  match lex_literal(rules: direct_lex, token_class: ^rust_token_kw_enum) {
+                  match v2.test.emit.semantic_decl_profile_path_parity.lex_literal(rules: direct_lex, token_class: ^rust_token_kw_enum) {
                     Accepted { value: direct_kw, diagnostics: _ } =>
-                      match lex_literal(rules: emission_lex, token_class: ^rust_token_kw_enum) {
+                      match v2.test.emit.semantic_decl_profile_path_parity.lex_literal(rules: emission_lex, token_class: ^rust_token_kw_enum) {
                         Accepted { value: emission_kw, diagnostics: _ } => direct_kw == emission_kw
                         Rejected { diagnostics: _ } => false
                       }
@@ -39,9 +39,9 @@ test fn target_emission_lex_matches_live_for_kw_enum() -> Bool {
     Accepted { value: emission, diagnostics: _ } =>
       match semantic_decl_profile_lex_rules(profile: emission.enum_serialize_profile) {
         Accepted { value: decoded_lex, diagnostics: _ } =>
-          match lex_literal(rules: decoded_lex, token_class: ^rust_token_kw_enum) {
+          match v2.test.emit.semantic_decl_profile_path_parity.lex_literal(rules: decoded_lex, token_class: ^rust_token_kw_enum) {
             Accepted { value: decoded, diagnostics: _ } =>
-              match lex_literal(rules: rust_decl_general_lex(), token_class: ^rust_token_kw_enum) {
+              match v2.test.emit.semantic_decl_profile_path_parity.lex_literal(rules: rust_decl_general_lex(), token_class: ^rust_token_kw_enum) {
                 Accepted { value: live, diagnostics: _ } => decoded == live
                 Rejected { diagnostics: _ } => false
               }

@@ -218,7 +218,7 @@ fn first_refusal_or_net_spelling(
 ) -> SpiceProjectionRefusal? {
   match net_spelling_refusal(intent: intent, reference: reference) {
     Present { value: r } => Present { value: r }
-    Absent => first_refusal(intent: intent, bindings: bindings)
+    Absent => product.compute_board.spice_projection.first_refusal(intent: intent, bindings: bindings)
   }
 }
 

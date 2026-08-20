@@ -71,7 +71,7 @@ fn find_room(rooms: List<PlacedSpace>, identity: product.placement_supply.RoomId
   fold(rooms, init: none, f: (acc, r) =>
     match acc {
       Present { value: found } => Present { value: found }
-      Absent => if room_identity_eq(a: r.identity, b: identity) { Present { value: r } } else { none }
+      Absent => if product.spatial_world.room_identity_eq(a: r.identity, b: identity) { Present { value: r } } else { none }
     })
 }
 
@@ -85,7 +85,7 @@ fn first_duplicate_identity(rooms: List<PlacedSpace>) -> product.placement_suppl
     match acc.duplicate {
       Present { value: d } => DuplicateScan { seen: acc.seen, duplicate: Present { value: d } }
       Absent =>
-        let already = fold(acc.seen, init: false, f: (hit, s) => hit || room_identity_eq(a: s, b: r.identity))
+        let already = fold(acc.seen, init: false, f: (hit, s) => hit || product.spatial_world.room_identity_eq(a: s, b: r.identity))
         if already {
           DuplicateScan { seen: acc.seen, duplicate: Present { value: r.identity } }
         } else {
@@ -155,7 +155,7 @@ type ApplyAcc {
 
 fn without_identity(rooms: List<PlacedSpace>, identity: product.placement_supply.RoomIdentity) -> List<PlacedSpace> {
   reverse(fold(rooms, init: [], f: (acc, r) =>
-    if room_identity_eq(a: r.identity, b: identity) { acc } else { concat([r], acc) }))
+    if product.spatial_world.room_identity_eq(a: r.identity, b: identity) { acc } else { concat([r], acc) }))
 }
 
 // A MODIFICATION REPLACES IN PLACE. Removing the room and appending its replacement would perform a
@@ -165,7 +165,7 @@ fn without_identity(rooms: List<PlacedSpace>, identity: product.placement_supply
 // the change IS the representation, and an unrepresented reorder is precisely the violation of it.
 fn replace_identity(rooms: List<PlacedSpace>, identity: product.placement_supply.RoomIdentity, space: std.orthogonal_topology.EnclosedSpace) -> List<PlacedSpace> {
   reverse(fold(rooms, init: [], f: (acc, r) =>
-    if room_identity_eq(a: r.identity, b: identity) {
+    if product.spatial_world.room_identity_eq(a: r.identity, b: identity) {
       concat([PlacedSpace { identity: identity, space: space }], acc)
     } else {
       concat([r], acc)
@@ -184,12 +184,12 @@ fn apply_hunk(acc: ApplyAcc, hunk: std.change.KeyedDiffHunk<product.placement_su
     Absent =>
       match hunk {
         KeyedDiffAddedHunk { hunk_key: key, to: to } =>
-          match find_room(rooms: acc.rooms, identity: key) {
+          match product.spatial_world.find_room(rooms: acc.rooms, identity: key) {
             Present { value: _ } => ApplyAcc { rooms: acc.rooms, refusal: Present { value: VariantTargetAlreadyPresent { identity: key } } }
             Absent => ApplyAcc { rooms: concat(acc.rooms, [PlacedSpace { identity: key, space: to }]), refusal: none }
           }
         KeyedDiffRemovedHunk { hunk_key: key, from: from } =>
-          match find_room(rooms: acc.rooms, identity: key) {
+          match product.spatial_world.find_room(rooms: acc.rooms, identity: key) {
             Absent => ApplyAcc { rooms: acc.rooms, refusal: Present { value: VariantTargetMissing { identity: key } } }
             Present { value: current } =>
               if space_eq(a: current.space, b: from) {
@@ -199,7 +199,7 @@ fn apply_hunk(acc: ApplyAcc, hunk: std.change.KeyedDiffHunk<product.placement_su
               }
           }
         KeyedDiffModifiedHunk { hunk_key: key, from: from, to: to } =>
-          match find_room(rooms: acc.rooms, identity: key) {
+          match product.spatial_world.find_room(rooms: acc.rooms, identity: key) {
             Absent => ApplyAcc { rooms: acc.rooms, refusal: Present { value: VariantTargetMissing { identity: key } } }
             Present { value: current } =>
               if space_eq(a: current.space, b: from) {

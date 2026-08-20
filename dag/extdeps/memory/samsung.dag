@@ -49,7 +49,7 @@ data m386a4g40dm0_cpb_catalog: extdeps.memory.types.DramModuleCatalogRow = extde
   part_number: "M386A4G40DM0-CPB",
   manufacturer: samsung,
   generation: dram_generation_ddr4,
-  capacity_bytes: stick_capacity_bytes,
+  capacity_bytes: extdeps.memory.samsung.stick_capacity_bytes,
   data_rate_mts: 2133,
   ecc: true,
   buffering: LoadReduced,

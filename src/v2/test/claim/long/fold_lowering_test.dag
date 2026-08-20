@@ -35,7 +35,7 @@ fn locate_call(root: v2.std.node.Node) -> Optional<v2.std.node.Node> {
 }
 
 fn ingest_and_locate(source_text: String, file: v2.std.node.Symbol) -> Optional<v2.std.node.Node> {
-  match ingest(source_text: source_text, file: file) {
+  match v2.test.long.fold_lowering.ingest(source_text: source_text, file: file) {
     Absent => Absent
     Present { value: tree } => locate_call(root: tree)
   }
@@ -73,25 +73,25 @@ fn symbol_in(needle: v2.std.node.Symbol, xs: List<v2.std.node.Symbol>) -> Bool {
 }
 
 fn fold_snippet_identities() -> List<v2.std.node.Symbol> {
-  match ingest(source_text: fold_snippet, file: ^fold_probe_file) {
+  match v2.test.long.fold_lowering.ingest(source_text: fold_snippet, file: ^fold_probe_file) {
     Absent => std.algebra.Empty
     Present { value: tree } => collect_atom_identities(n: tree, acc: std.algebra.Empty)
   }
 }
 
 test fn fold_probe_ingest_is_accepted() -> Bool {
-  match ingest(source_text: fold_snippet, file: ^fold_probe_file) {
+  match v2.test.long.fold_lowering.ingest(source_text: fold_snippet, file: ^fold_probe_file) {
     Absent => false
     Present { value: _ } => true
   }
 }
 
 test fn fold_callee_name_survives_parse() -> Bool {
-  symbol_in(needle: ^fold, xs: fold_snippet_identities())
+  v2.test.long.fold_lowering.symbol_in(needle: ^fold, xs: fold_snippet_identities())
 }
 
 test fn fold_collection_name_survives_parse() -> Bool {
-  symbol_in(needle: ^xs, xs: fold_snippet_identities())
+  v2.test.long.fold_lowering.symbol_in(needle: ^xs, xs: fold_snippet_identities())
 }
 
 test fn fold_call_lowers_to_terminating_loop() -> Bool {

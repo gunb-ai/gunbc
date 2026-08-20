@@ -104,7 +104,7 @@ test fn witness_ci_runner_grounded_access_gate_permits() -> Bool {
     fixture_actor: Present {
       value: deploy_access_privileged_fixture_actor(access: ci_deploy_srv1_access)
     },
-    fixture_host: Present { value: srv1_host_observation() }
+    fixture_host: Present { value: test.claim.grounded_principal_witness.srv1_host_observation() }
   ) {
     Permit => true
     Deny { refusal: _ } => false
@@ -117,7 +117,7 @@ test fn witness_operator_grounded_access_gate_permits() -> Bool {
     fixture_actor: Present {
       value: deploy_access_privileged_fixture_actor(access: ci_deploy_srv1_operator_access)
     },
-    fixture_host: Present { value: srv1_host_observation() }
+    fixture_host: Present { value: test.claim.grounded_principal_witness.srv1_host_observation() }
   ) {
     Permit => true
     Deny { refusal: _ } => false

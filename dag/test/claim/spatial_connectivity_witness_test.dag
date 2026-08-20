@@ -7,10 +7,10 @@ fn site() -> std.coordinate_frame.CoordinateFrameIdentity { coordinate_frame_ide
 
 fn box(x0: Int, y0: Int, x1: Int, y1: Int) -> std.orthogonal_topology.EnclosedSpace? {
   match orthogonal_loop2(vertices: [
-    point2(frame: site(), x: x0, y: y0),
-    point2(frame: site(), x: x1, y: y0),
-    point2(frame: site(), x: x1, y: y1),
-    point2(frame: site(), x: x0, y: y1),
+    point2(frame: test.claim.spatial_connectivity_witness.site(), x: x0, y: y0),
+    point2(frame: test.claim.spatial_connectivity_witness.site(), x: x1, y: y0),
+    point2(frame: test.claim.spatial_connectivity_witness.site(), x: x1, y: y1),
+    point2(frame: test.claim.spatial_connectivity_witness.site(), x: x0, y: y1),
   ]) {
     OrthogonalRefused { cause: _ } => none
     OrthogonalReady { value: l } =>
@@ -22,7 +22,7 @@ fn box(x0: Int, y0: Int, x1: Int, y1: Int) -> std.orthogonal_topology.EnclosedSp
 }
 
 fn placed(name: String, x0: Int, y0: Int, x1: Int, y1: Int) -> product.spatial_world.PlacedSpace? {
-  match box(x0: x0, y0: y0, x1: x1, y1: y1) {
+  match test.claim.spatial_connectivity_witness.box(x0: x0, y0: y0, x1: x1, y1: y1) {
     Absent => none
     Present { value: s } => Present { value: product.spatial_world.PlacedSpace { identity: (name as product.placement_supply.RoomIdentity), space: s } }
   }
@@ -54,10 +54,10 @@ fn world_of(rooms: List<product.spatial_world.PlacedSpace?>) -> product.spatial_
 // Three rooms in a row along X. kitchen | hall | study, each meeting its neighbour on a
 // north-south wall. kitchen and study do NOT touch.
 fn terrace() -> product.spatial_world.World? {
-  world_of(rooms: [
-    placed(name: "kitchen", x0: 0, y0: 0, x1: 3000, y1: 4000),
-    placed(name: "hall", x0: 3000, y0: 0, x1: 5000, y1: 4000),
-    placed(name: "study", x0: 5000, y0: 0, x1: 8000, y1: 4000),
+  test.claim.spatial_connectivity_witness.world_of(rooms: [
+    test.claim.spatial_connectivity_witness.placed(name: "kitchen", x0: 0, y0: 0, x1: 3000, y1: 4000),
+    test.claim.spatial_connectivity_witness.placed(name: "hall", x0: 3000, y0: 0, x1: 5000, y1: 4000),
+    test.claim.spatial_connectivity_witness.placed(name: "study", x0: 5000, y0: 0, x1: 8000, y1: 4000),
   ])
 }
 

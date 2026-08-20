@@ -213,7 +213,7 @@ fn role_grants_permission(authority: RolePermissionAuthority, permission: String
   match authority {
     RolePermissionsUnobserved { cause: c } => RoleGrantUndetermined { cause: c }
     RolePermissionsObserved { role: r } =>
-      if list_contains_string(xs: r.included_permissions, needle: permission) {
+      if extdeps.cloud.gcp.iam.list_contains_string(xs: r.included_permissions, needle: permission) {
         RoleGrantsPermission
       } else {
         RoleDoesNotGrantPermission

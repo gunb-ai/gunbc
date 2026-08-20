@@ -14,7 +14,7 @@ fn committed_codex_lock_text() -> String {
 fn committed_admitted_codex_runtime_source() -> gunbc.package_delivery.AdmittedCodexRuntimeSource {
   gunbc.package_delivery.AdmittedCodexRuntimeSource {
     manifest_bytes: filesystem_read(path: codex_runtime_manifest_path as String).content,
-    lock_bytes: committed_codex_lock_text(),
+    lock_bytes: test.claim.codex_package_delivery_wet_witness_test.committed_codex_lock_text(),
   }
 }
 
@@ -28,7 +28,7 @@ fn isolated_release_parent() -> std.types.FilePath? {
 }
 
 test fn acquire_required_codex_tarball_sha512_matches_lock() -> Bool {
-  match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
+  match admit_codex_package_lock_text(text: test.claim.codex_package_delivery_wet_witness_test.committed_codex_lock_text()) {
     CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
       match codex_wrapper_lookup(graph: graph) {
         CodexWrapperUnique { node: _, artifact } => {
@@ -42,7 +42,7 @@ test fn acquire_required_codex_tarball_sha512_matches_lock() -> Bool {
               dest_dir: staging.path,
             ) {
               RegistryArtifactAdmitted { staged } =>
-                (staged.receipt.observed_digest.hex as String) == openai_codex_integrity_hex
+                (staged.receipt.observed_digest.hex as String) == test.claim.codex_package_delivery_wet_witness_test.openai_codex_integrity_hex
               _ => false
             }
           }
@@ -54,7 +54,7 @@ test fn acquire_required_codex_tarball_sha512_matches_lock() -> Bool {
 }
 
 test fn acquire_exact_target_pair_admits_wrapper_and_platform() -> Bool {
-  match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
+  match admit_codex_package_lock_text(text: test.claim.codex_package_delivery_wet_witness_test.committed_codex_lock_text()) {
     CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
       match observe_codex_npm_runtime_target() {
         CodexNpmRuntimeTargetObserved { target } =>
@@ -93,7 +93,7 @@ test fn materialize_codex_runtime_bundle_produces_native_executable_holds() -> B
     Absent => false
     Present { value: release_parent } =>
       match materialize_codex_runtime_bundle(
-        source: committed_admitted_codex_runtime_source(),
+        source: test.claim.codex_package_delivery_wet_witness_test.committed_admitted_codex_runtime_source(),
         release_parent: release_parent,
       ) {
         CodexRuntimeMaterialized { bundle } =>
@@ -138,7 +138,7 @@ fn materialize_codex_runtime_bundle_produces_native_executable_failure_receipt()
     Present { value: release_parent } =>
       codex_runtime_materialization_failure_receipt(
         outcome: materialize_codex_runtime_bundle(
-          source: committed_admitted_codex_runtime_source(),
+          source: test.claim.codex_package_delivery_wet_witness_test.committed_admitted_codex_runtime_source(),
           release_parent: release_parent,
         ),
       )
@@ -149,7 +149,7 @@ fn materialize_identical_input_twice_reuses_same_release_identity_failure_receip
   match isolated_release_parent() {
     Absent => "staging mktemp failed"
     Present { value: release_parent } => {
-      let source = committed_admitted_codex_runtime_source()
+      let source = test.claim.codex_package_delivery_wet_witness_test.committed_admitted_codex_runtime_source()
       codex_runtime_materialization_failure_receipt(
         outcome: materialize_codex_runtime_bundle(
           source: source,
@@ -164,7 +164,7 @@ test fn materialize_identical_input_twice_reuses_same_release_identity_holds() -
   match isolated_release_parent() {
     Absent => false
     Present { value: release_parent } => {
-      let source = committed_admitted_codex_runtime_source()
+      let source = test.claim.codex_package_delivery_wet_witness_test.committed_admitted_codex_runtime_source()
       match materialize_codex_runtime_bundle(
         source: source,
         release_parent: release_parent,

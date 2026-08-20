@@ -63,10 +63,10 @@ fn byte_hex_lower(v: Int) -> String {
 
 fn int_to_upper_hex_inner(n: Int, acc: String) -> String {
   if n == 0 { acc }
-  else { int_to_upper_hex_inner(n: n / 16, acc: concat(hex_digit_char_upper(d: n % 16), acc)) }
+  else { extdeps.numeric.base16.int_to_upper_hex_inner(n: n / 16, acc: concat(hex_digit_char_upper(d: n % 16), acc)) }
 }
 
 fn int_to_upper_hex(n: Int) -> String {
   if n == 0 { "0" }
-  else { int_to_upper_hex_inner(n: n, acc: "") }
+  else { extdeps.numeric.base16.int_to_upper_hex_inner(n: n, acc: "") }
 }

@@ -20,9 +20,9 @@ fn fold_list_right_field_access() -> Int {
 }
 
 fn fold_list_generic_instantiation_holds() -> Bool {
-  fold_list_sum_ints() == 6
-    && fold_list_field_access() == 3
-    && fold_list_right_field_access() == 9
+  v2.test.manual.generic_instantiation_runtime.fold_list_sum_ints() == 6
+    && v2.test.manual.generic_instantiation_runtime.fold_list_field_access() == 3
+    && v2.test.manual.generic_instantiation_runtime.fold_list_right_field_access() == 9
 }
 
 type Inner<S> { value: S }
@@ -34,13 +34,13 @@ fn chained_field<S>(o: Outer<S>) -> S {
 }
 
 fn use_chained() -> Int {
-  chained_field(o: Outer { middle: Middle { inner: Inner { value: Rec { v: 9 } } } }).v
+  v2.test.manual.generic_instantiation_runtime.chained_field(o: Outer { middle: Middle { inner: Inner { value: Rec { v: 9 } } } }).v
 }
 
 test fn generic_instantiation_fold_list_runtime_holds() -> Bool {
-  fold_list_generic_instantiation_holds()
+  v2.test.manual.generic_instantiation_runtime.fold_list_generic_instantiation_holds()
 }
 
 test fn generic_instantiation_chained_field_runtime_holds() -> Bool {
-  use_chained() == 9
+  v2.test.manual.generic_instantiation_runtime.use_chained() == 9
 }

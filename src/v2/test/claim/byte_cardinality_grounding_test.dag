@@ -35,9 +35,9 @@ fn is_rejected(o: v2.std.diagnostic.Outcome<Byte>) -> Bool {
 }
 
 test fn byte_grounding_accepts_8_bits() -> Bool {
-  is_accepted(o: byte_from_bits(bits: eight_bits(), at: byte_locus()))
+  v2.test.claim.byte_cardinality_grounding.is_accepted(o: byte_from_bits(bits: eight_bits(), at: byte_locus()))
 }
 
 test fn byte_grounding_rejects_7_bits() -> Bool {
-  is_rejected(o: byte_from_bits(bits: seven_bits(), at: byte_locus()))
+  v2.test.claim.byte_cardinality_grounding.is_rejected(o: byte_from_bits(bits: seven_bits(), at: byte_locus()))
 }

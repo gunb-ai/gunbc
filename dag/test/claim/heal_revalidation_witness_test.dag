@@ -18,7 +18,7 @@ fn produced() -> gunbc.heal_revalidation.HealOutcome {
 fn successful_coverage(head: std.types.CommitSha) -> gunbc.merge_admission.CheckCoverage {
   gunbc.merge_admission.CheckCoverageComplete {
     head: head,
-    roster: required_roster,
+    roster: test.claim.heal_revalidation_witness.required_roster,
     conclusions: [gunbc.merge_admission.CoveredGateConclusion { gate: required_gate, conclusion: Success }]
   }
 }
@@ -26,7 +26,7 @@ fn successful_coverage(head: std.types.CommitSha) -> gunbc.merge_admission.Check
 test fn heal_no_change_creates_no_revalidation_obligation() -> Bool {
   heal_revalidation_admits(
     state: heal_revalidation_initial(outcome: gunbc.heal_revalidation.HealNoChange { head: prior_head }),
-    required_roster: required_roster,
+    required_roster: test.claim.heal_revalidation_witness.required_roster,
     required_gates: [required_gate]
   )
 }
@@ -37,7 +37,7 @@ test fn heal_author_commit_required_creates_no_revalidation_obligation() -> Bool
       head: prior_head,
       author_commit_paths: [".github/workflows/ci.yml"]
     }),
-    required_roster: required_roster,
+    required_roster: test.claim.heal_revalidation_witness.required_roster,
     required_gates: [required_gate]
   )
 }
@@ -85,7 +85,7 @@ test fn accepted_dispatch_is_not_revalidation() -> Bool {
       changed_artifacts: [".github/workflows/ci.yml"],
       dispatch: gunbc.heal_revalidation.HealDispatchAccepted { healed_head: healed_head, run: "run-42" }
     },
-    required_roster: required_roster,
+    required_roster: test.claim.heal_revalidation_witness.required_roster,
     required_gates: [required_gate]
   )
 }
@@ -101,7 +101,7 @@ test fn refused_dispatch_stays_required_and_located() -> Bool {
         cause: "CreateWorkflowDispatch permission denied"
       }
     },
-    required_roster: required_roster,
+    required_roster: test.claim.heal_revalidation_witness.required_roster,
     required_gates: [required_gate]
   )
   match verdict {
@@ -126,7 +126,7 @@ test fn only_exact_healed_head_complete_coverage_admits() -> Bool {
       changed_artifacts: [".github/workflows/ci.yml"],
       coverage: successful_coverage(head: healed_head)
     },
-    required_roster: required_roster,
+    required_roster: test.claim.heal_revalidation_witness.required_roster,
     required_gates: [required_gate]
   ) && !heal_revalidation_admits(
     state: gunbc.heal_revalidation.HealRevalidationCoverageObserved {
@@ -135,7 +135,7 @@ test fn only_exact_healed_head_complete_coverage_admits() -> Bool {
       changed_artifacts: [".github/workflows/ci.yml"],
       coverage: successful_coverage(head: prior_head)
     },
-    required_roster: required_roster,
+    required_roster: test.claim.heal_revalidation_witness.required_roster,
     required_gates: [required_gate]
   )
 }

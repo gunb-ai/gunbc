@@ -12,7 +12,7 @@ fn c_run_probe_node() -> Node {
 }
 
 fn c_run_inputs() -> v2.compiler.eval.Inputs {
-  inputs_root_only(root: c_run_probe_node())
+  inputs_root_only(root: v2.test.execution.c_add_emit_host_run.c_run_probe_node())
 }
 
 fn c_run_source() -> Medium<String> {
@@ -52,15 +52,15 @@ fn c_fixed_source_row(source_text: String) -> v2.std.host_transport.EmitHostRunt
 test fn c_add_emit_host_green_run_holds() -> Bool {
   match run_emit_host(
     target: c_target_model(),
-    source: c_run_source(),
-    fixture_inputs: c_run_inputs()
+    source: v2.test.execution.c_add_emit_host_run.c_run_source(),
+    fixture_inputs: v2.test.execution.c_add_emit_host_run.c_run_inputs()
   ) {
     Accepted { value: receipt, diagnostics: _ } =>
       match receipt.logical_run {
         Accepted { value: HostLogicalRun { stdout: stdout }, diagnostics: None } =>
           match runtime_value_parse(target: c_target_model(), stdout: stdout) {
             Accepted { value: _, diagnostics: _ } =>
-              stdout.bytes == emit_host_octets_byte_string(octets: c_expected_add_stdout_octets())
+              stdout.bytes == emit_host_octets_byte_string(octets: v2.test.execution.c_add_emit_host_run.c_expected_add_stdout_octets())
             Rejected { diagnostics: _ } => false
           }
         _ => false
@@ -76,8 +76,8 @@ test fn c_add_emit_host_inject_fault_refuses_holds() -> Bool {
       match run_host_process(
         row: row,
         target: c_target_model(),
-        source: c_run_source(),
-        fixture_inputs: c_run_inputs()
+        source: v2.test.execution.c_add_emit_host_run.c_run_source(),
+        fixture_inputs: v2.test.execution.c_add_emit_host_run.c_run_inputs()
       ) {
         Accepted { value: receipt, diagnostics: _ } =>
           match receipt.logical_run {
@@ -85,7 +85,7 @@ test fn c_add_emit_host_inject_fault_refuses_holds() -> Bool {
               match runtime_value_parse(target: c_target_model(), stdout: stdout) {
                 Rejected { diagnostics: _ } => true
                 Accepted { value: _, diagnostics: _ } =>
-                  stdout.bytes != emit_host_octets_byte_string(octets: c_expected_add_stdout_octets())
+                  stdout.bytes != emit_host_octets_byte_string(octets: v2.test.execution.c_add_emit_host_run.c_expected_add_stdout_octets())
               }
             Rejected { diagnostics: _ } => false
           }
@@ -98,8 +98,8 @@ test fn c_add_emit_host_nonzero_exit_refuses_holds() -> Bool {
   match run_host_process(
     row: c_fixed_source_row(source_text: "int main(void) { return 3; }"),
     target: c_target_model(),
-    source: c_run_source(),
-    fixture_inputs: c_run_inputs()
+    source: v2.test.execution.c_add_emit_host_run.c_run_source(),
+    fixture_inputs: v2.test.execution.c_add_emit_host_run.c_run_inputs()
   ) {
     Accepted { value: receipt, diagnostics: _ } =>
       match receipt.logical_run {
@@ -114,8 +114,8 @@ test fn c_add_emit_host_byte_width_mismatch_refuses_holds() -> Bool {
   match run_host_process(
     row: c_fixed_source_row(source_text: "extern long write(int, const void *, unsigned long);\nint main(void) { unsigned char b[4] = {0, 0, 0, 0}; write(1, b, 4); return 0; }"),
     target: c_target_model(),
-    source: c_run_source(),
-    fixture_inputs: c_run_inputs()
+    source: v2.test.execution.c_add_emit_host_run.c_run_source(),
+    fixture_inputs: v2.test.execution.c_add_emit_host_run.c_run_inputs()
   ) {
     Accepted { value: receipt, diagnostics: _ } =>
       match receipt.logical_run {

@@ -10,8 +10,8 @@ fn pair_node(left: v2.std.node.Symbol, right: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      v2.std.node.Edge { label: Named { name: ^correction_left }, target: atom_node(s: left) },
-      v2.std.node.Edge { label: Named { name: ^correction_right }, target: atom_node(s: right) },
+      v2.std.node.Edge { label: Named { name: ^correction_left }, target: v2.test.diagnostic_correction.show_correct_code.atom_node(s: left) },
+      v2.std.node.Edge { label: Named { name: ^correction_right }, target: v2.test.diagnostic_correction.show_correct_code.atom_node(s: right) },
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -19,27 +19,27 @@ fn pair_node(left: v2.std.node.Symbol, right: v2.std.node.Symbol) -> Node {
 
 data complexity_correction_input: Node = pair_node(left: ^correction_bad_complexity_symbol, right: ^correction_good_complexity_symbol)
 
-data complexity_correction_expected_node: Node = atom_node(s: ^correction_good_complexity_symbol)
+data complexity_correction_expected_node: Node = v2.test.diagnostic_correction.show_correct_code.atom_node(s: ^correction_good_complexity_symbol)
 
 data falsification_complexity_diagnostic_without_correct_code: Node = complexity_correction_input
 
 data transport_correction_input: Node = pair_node(left: ^correction_drift_client_symbol, right: ^correction_drift_server_symbol)
 
-data transport_correction_expected_node: Node = atom_node(s: ^correction_shared_contract_symbol)
+data transport_correction_expected_node: Node = v2.test.diagnostic_correction.show_correct_code.atom_node(s: ^correction_shared_contract_symbol)
 
 data falsification_transport_diagnostic_without_correct_code: Node = transport_correction_input
 
-data falsification_ambiguous_boundary_without_unavailable_reason: Node = atom_node(s: ^correction_english_boundary_symbol)
+data falsification_ambiguous_boundary_without_unavailable_reason: Node = v2.test.diagnostic_correction.show_correct_code.atom_node(s: ^correction_english_boundary_symbol)
 
-data falsification_textual_whole_file_without_locus: Node = atom_node(s: ^correction_textual_whole_file_subject)
+data falsification_textual_whole_file_without_locus: Node = v2.test.diagnostic_correction.show_correct_code.atom_node(s: ^correction_textual_whole_file_subject)
 
-data falsification_textual_byte_range_without_locus: Node = atom_node(s: ^correction_textual_byte_range_subject)
+data falsification_textual_byte_range_without_locus: Node = v2.test.diagnostic_correction.show_correct_code.atom_node(s: ^correction_textual_byte_range_subject)
 
-data falsification_port_diagnostic_without_locus: Node = atom_node(s: ^correction_drift_client_symbol)
+data falsification_port_diagnostic_without_locus: Node = v2.test.diagnostic_correction.show_correct_code.atom_node(s: ^correction_drift_client_symbol)
 
-data falsification_external_contract_without_reason: Node = atom_node(s: ^correction_drift_server_symbol)
+data falsification_external_contract_without_reason: Node = v2.test.diagnostic_correction.show_correct_code.atom_node(s: ^correction_drift_server_symbol)
 
-data falsification_user_boundary_without_reason: Node = atom_node(s: ^correction_english_boundary_symbol)
+data falsification_user_boundary_without_reason: Node = v2.test.diagnostic_correction.show_correct_code.atom_node(s: ^correction_english_boundary_symbol)
 
 data claim_complexity_diagnostic_suggests_correct_code: v2.std.verification.TestClaim = v2.std.verification.DiagnosticClaim {
   label: "complexity diagnostic suggests structurally correct replacement",

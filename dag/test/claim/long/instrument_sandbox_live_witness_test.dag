@@ -14,7 +14,7 @@ fn served() -> extdeps.http.server.ServeHttpResponse {
     instance: srv2_preview_dashboard_instance(),
     handler: InstrumentSandboxPageHandler,
     params: [],
-    request: fixture_request(path: "/sandbox/instrument"),
+    request: test.claim.long.instrument_sandbox_live_witness.fixture_request(path: "/sandbox/instrument"),
     release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision,
   )
 }
@@ -26,7 +26,7 @@ fn last_segment(s: String, marker: String) -> String {
 data study_not_instrument_note: String = "The page must not describe itself as the operable instrument, and the header must not carry controls it cannot operate. The dead-control claim is checked against the MARKUP, not the whole document: the register stylesheet is inlined in a style element and legitimately contains .theme-toggle and .sound-toggle rules, so searching the raw body for those words finds the CSS and reds on a page that has no such buttons. The first version of this claim did exactly that and was wrong for a reason worth keeping — a negative substring assertion over a document that embeds its own stylesheet is testing the stylesheet."
 
 fn body_markup(r: extdeps.http.server.ServeHttpResponse) -> String {
-  last_segment(s: r.body, marker: "</style>")
+  test.claim.long.instrument_sandbox_live_witness.last_segment(s: r.body, marker: "</style>")
 }
 
 fn witness_the_instrument_path_serves_html(r: extdeps.http.server.ServeHttpResponse) -> Bool {

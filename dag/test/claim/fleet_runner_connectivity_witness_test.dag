@@ -92,14 +92,14 @@ test fn materialized_and_unit_active_widths_are_twenty_not_desired() -> Bool {
 test fn detached_count_matches_offline_registrations_on_active_slots() -> Bool {
   let roster = organization_runner_roster_evidence()
   let verdicts = connectivity_verdicts_for_active_incarnations(roster: roster)
-  count_matching(verdicts: verdicts, matched: v => connectivity_verdict_is_detached(v: v)) == 15
+  test.claim.fleet_runner_connectivity_witness.count_matching(verdicts: verdicts, matched: v => connectivity_verdict_is_detached(v: v)) == 15
 }
 
 test fn healthy_count_is_one_and_orphaned_count_is_four() -> Bool {
   let roster = organization_runner_roster_evidence()
   let verdicts = connectivity_verdicts_for_active_incarnations(roster: roster)
-  count_matching(verdicts: verdicts, matched: v => connectivity_verdict_is_healthy(v: v)) == 1
-    && count_matching(verdicts: verdicts, matched: v => connectivity_verdict_is_orphaned(v: v)) == 4
+  test.claim.fleet_runner_connectivity_witness.count_matching(verdicts: verdicts, matched: v => connectivity_verdict_is_healthy(v: v)) == 1
+    && test.claim.fleet_runner_connectivity_witness.count_matching(verdicts: verdicts, matched: v => connectivity_verdict_is_orphaned(v: v)) == 4
 }
 
 test fn local_incarnation_observation_covers_twenty_active_units() -> Bool {

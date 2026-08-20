@@ -289,7 +289,7 @@ fn string_list_contains(xs: List<String>, wanted: String) -> Bool {
 fn provider_covers_identity(p: CacheProvider, identity: String) -> Bool {
   match p.coverage {
     CoversAllComputations => true
-    CoversIdentities { identities: ids } => string_list_contains(xs: ids, wanted: identity)
+    CoversIdentities { identities: ids } => std.materialization_ladder.string_list_contains(xs: ids, wanted: identity)
   }
 }
 
@@ -330,7 +330,7 @@ fn provider_is_copy_tier(p: CacheProvider) -> Bool {
 
 fn ladder_distinct_identities(demands: List<FrameDemand>) -> List<String> {
   reverse(demands |> fold(init: [], f: fn(acc, d) {
-    if string_list_contains(xs: acc, wanted: d.identity) {
+    if std.materialization_ladder.string_list_contains(xs: acc, wanted: d.identity) {
       acc
     } else {
       concat([d.identity], acc)
@@ -444,8 +444,8 @@ type RefusedProvider {
 fn retention_admission(r: std.cache_interface.ProviderRetention) -> RetentionAdmission {
   match r.release_policy {
     ReleasedAtProviderScopeExit => RetentionAdmitted
-    ReleasedNever => capacity_admission(c: r.capacity)
-    ReleasedManually => capacity_admission(c: r.capacity)
+    ReleasedNever => std.materialization_ladder.capacity_admission(c: r.capacity)
+    ReleasedManually => std.materialization_ladder.capacity_admission(c: r.capacity)
   }
 }
 
@@ -550,7 +550,7 @@ fn group_verdict(
 ) -> LadderVerdict {
   if group_has_nature_conflict(group: group) {
     RefusedNatureConflict { identity: identity }
-  } else if string_list_contains(xs: cost_floor_exempt, wanted: identity) {
+  } else if std.materialization_ladder.string_list_contains(xs: cost_floor_exempt, wanted: identity) {
     AcceptedBelowCostFloor { identity: identity }
   } else {
     match group_nature(group: group) {

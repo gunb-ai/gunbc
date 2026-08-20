@@ -11,7 +11,7 @@ data fixture_sha_b: String = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 fn tab() -> String { from_code_point(cp: 9) }
 
 fn line_of(sha: String, ref_name: String) -> String {
-  concat(sha, concat(tab(), ref_name))
+  concat(sha, concat(test.claim.roadmap_publish_observe_witness_test.tab(), ref_name))
 }
 
 fn origin() -> std.types.NonEmptyStr { "origin" as std.types.NonEmptyStr }
@@ -34,8 +34,8 @@ fn observed_branch_count(o: gunbc.roadmap_publish.RemoteBranchObservation) -> In
 
 test fn an_advertisement_becomes_remote_branch_rows_carrying_head_shas() -> Bool {
   let o = read_ok(advertised: [
-    line_of(sha: fixture_sha_a, ref_name: "refs/heads/main"),
-    line_of(sha: fixture_sha_b, ref_name: "refs/heads/dispatch/node-a7"),
+    test.claim.roadmap_publish_observe_witness_test.line_of(sha: test.claim.roadmap_publish_observe_witness_test.fixture_sha_a, ref_name: "refs/heads/main"),
+    test.claim.roadmap_publish_observe_witness_test.line_of(sha: test.claim.roadmap_publish_observe_witness_test.fixture_sha_b, ref_name: "refs/heads/dispatch/node-a7"),
   ])
   match o {
     RemoteBranchesUnreadable { cause: _ } => false
@@ -44,7 +44,7 @@ test fn an_advertisement_becomes_remote_branch_rows_carrying_head_shas() -> Bool
         && all(branches, b => (b.remote as String) == "origin")
         && any(branches, b =>
              (b.branch as String) == "dispatch/node-a7"
-               && (b.head_sha as String) == fixture_sha_b)
+               && (b.head_sha as String) == test.claim.roadmap_publish_observe_witness_test.fixture_sha_b)
   }
 }
 
@@ -104,7 +104,7 @@ test fn the_renderer_names_every_degenerate_ref_it_was_given() -> Bool {
 
 test fn an_unreadable_advertisement_line_refuses_and_locates_itself() -> Bool {
   let o = read_ok(advertised: [
-    line_of(sha: fixture_sha_a, ref_name: "refs/heads/main"),
+    test.claim.roadmap_publish_observe_witness_test.line_of(sha: test.claim.roadmap_publish_observe_witness_test.fixture_sha_a, ref_name: "refs/heads/main"),
     "this line has no tab at all",
   ])
   match o {
@@ -123,7 +123,7 @@ test fn an_unreadable_advertisement_line_refuses_and_locates_itself() -> Bool {
 // The discriminating claim for the guard that exists because the brand does not enforce itself. RemoteBranch.branch is NonEmptyStr and `as NonEmptyStr` does not check - the compiler says so out loud, emitting `where-refinement unenforced: predicate 'non_empty'` at the cast site. So a ref advertised as exactly the heads prefix projects to the empty string and would be cast into a type whose entire content is the claim that it is not empty. Deleting the pre-cast guard turns this claim red while every other claim in this file stays green, because the empty name is well-formed at every other layer.
 test fn a_ref_projecting_to_an_empty_branch_name_refuses() -> Bool {
   let o = read_ok(advertised: [
-    line_of(sha: fixture_sha_a, ref_name: "refs/heads/"),
+    test.claim.roadmap_publish_observe_witness_test.line_of(sha: test.claim.roadmap_publish_observe_witness_test.fixture_sha_a, ref_name: "refs/heads/"),
   ])
   match o {
     RemoteBranchesRead { branches: _ } => false
@@ -140,13 +140,13 @@ test fn a_ref_projecting_to_an_empty_branch_name_refuses() -> Bool {
 
 test fn the_empty_projection_filter_returns_only_the_degenerate_ref() -> Bool {
   let refs = [
-    extdeps.git.AdvertisedRef { object_id: fixture_sha_a as std.types.CommitSha, ref_name: "refs/heads/main" },
-    extdeps.git.AdvertisedRef { object_id: fixture_sha_b as std.types.CommitSha, ref_name: "refs/heads/" },
+    extdeps.git.AdvertisedRef { object_id: test.claim.roadmap_publish_observe_witness_test.fixture_sha_a as std.types.CommitSha, ref_name: "refs/heads/main" },
+    extdeps.git.AdvertisedRef { object_id: test.claim.roadmap_publish_observe_witness_test.fixture_sha_b as std.types.CommitSha, ref_name: "refs/heads/" },
   ]
   let degenerate = advertised_refs_projecting_empty_branch(refs: refs)
   count(degenerate) == 1
-    && any(degenerate, r => (r.object_id as String) == fixture_sha_b)
-    && !any(degenerate, r => (r.object_id as String) == fixture_sha_a)
+    && any(degenerate, r => (r.object_id as String) == test.claim.roadmap_publish_observe_witness_test.fixture_sha_b)
+    && !any(degenerate, r => (r.object_id as String) == test.claim.roadmap_publish_observe_witness_test.fixture_sha_a)
     && count(advertised_refs_projecting_empty_branch(refs: [])) == 0
 }
 
@@ -161,33 +161,33 @@ fn branches_of(o: gunbc.roadmap_publish.RemoteBranchObservation) -> List<gunbc.r
 
 test fn an_advertisement_at_the_expected_head_adjudicates_as_published() -> Bool {
   let o = read_ok(advertised: [
-    line_of(sha: fixture_sha_a, ref_name: "refs/heads/dispatch/node-a7"),
+    test.claim.roadmap_publish_observe_witness_test.line_of(sha: test.claim.roadmap_publish_observe_witness_test.fixture_sha_a, ref_name: "refs/heads/dispatch/node-a7"),
   ])
   match adjudicate_remote_branch(
     branches: branches_of(o: o),
     remote: origin(),
     branch: "dispatch/node-a7" as std.types.NonEmptyStr,
-    expected_head: fixture_sha_a as std.types.CommitSha,
+    expected_head: test.claim.roadmap_publish_observe_witness_test.fixture_sha_a as std.types.CommitSha,
   ) {
     RemoteBranchAtExpectedHeadWithoutPullRequest { branch, head_sha } =>
-      (branch as String) == "dispatch/node-a7" && (head_sha as String) == fixture_sha_a
+      (branch as String) == "dispatch/node-a7" && (head_sha as String) == test.claim.roadmap_publish_observe_witness_test.fixture_sha_a
     _ => false
   }
 }
 
 test fn an_advertisement_at_another_head_adjudicates_as_diverged() -> Bool {
   let o = read_ok(advertised: [
-    line_of(sha: fixture_sha_b, ref_name: "refs/heads/dispatch/node-a7"),
+    test.claim.roadmap_publish_observe_witness_test.line_of(sha: test.claim.roadmap_publish_observe_witness_test.fixture_sha_b, ref_name: "refs/heads/dispatch/node-a7"),
   ])
   match adjudicate_remote_branch(
     branches: branches_of(o: o),
     remote: origin(),
     branch: "dispatch/node-a7" as std.types.NonEmptyStr,
-    expected_head: fixture_sha_a as std.types.CommitSha,
+    expected_head: test.claim.roadmap_publish_observe_witness_test.fixture_sha_a as std.types.CommitSha,
   ) {
     RemoteBranchHeadDiverged { branch: _, remote_head, expected_head } =>
-      (remote_head as String) == fixture_sha_b
-        && (expected_head as String) == fixture_sha_a
+      (remote_head as String) == test.claim.roadmap_publish_observe_witness_test.fixture_sha_b
+        && (expected_head as String) == test.claim.roadmap_publish_observe_witness_test.fixture_sha_a
     _ => false
   }
 }

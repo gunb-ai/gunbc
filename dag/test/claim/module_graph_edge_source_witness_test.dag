@@ -51,7 +51,7 @@ fn count_of(xs: List<String>, want: String) -> Int {
 }
 
 fn contains_str(xs: List<String>, want: String) -> Bool {
-  count_of(xs: xs, want: want) > 0
+  test.claim.module_graph_edge_source_witness.count_of(xs: xs, want: want) > 0
 }
 
 data two_source_note: String = "The discriminating half: provider_referenced is reachable ONLY through the reference producer. If the call site's reference arm were replaced by a second copy of the import arm, this edge would be absent and this reds — which is precisely the regression that reached main-adjacent review unnoticed."
@@ -59,7 +59,7 @@ data two_source_note: String = "The discriminating half: provider_referenced is 
 test fn witness_reference_only_dependency_reaches_the_union() -> Bool {
   let ref_targets = fact_targets(facts: fixture_reference_facts())
   let imp_targets = fact_targets(facts: fixture_import_facts())
-  let edge_targets = targets_of(edges: fixture_edges())
+  let edge_targets = targets_of(edges: test.claim.module_graph_edge_source_witness.fixture_edges())
   contains_str(xs: ref_targets, want: referenced_provider)
     && !contains_str(xs: imp_targets, want: referenced_provider)
     && contains_str(xs: edge_targets, want: referenced_provider)
@@ -67,26 +67,26 @@ test fn witness_reference_only_dependency_reaches_the_union() -> Bool {
 
 test fn witness_import_only_dependency_reaches_the_union() -> Bool {
   let imp_targets = fact_targets(facts: fixture_import_facts())
-  let edge_targets = targets_of(edges: fixture_edges())
+  let edge_targets = targets_of(edges: test.claim.module_graph_edge_source_witness.fixture_edges())
   contains_str(xs: imp_targets, want: imported_provider)
     && contains_str(xs: edge_targets, want: imported_provider)
 }
 
 test fn witness_every_producer_row_reaches_the_union() -> Bool {
-  let edge_targets = targets_of(edges: fixture_edges())
+  let edge_targets = targets_of(edges: test.claim.module_graph_edge_source_witness.fixture_edges())
   let produced = concat(fact_targets(facts: fixture_import_facts()),
                         fact_targets(facts: fixture_reference_facts()))
   fold(produced, init: true, f: fn(acc, t) { acc && contains_str(xs: edge_targets, want: t) })
 }
 
 test fn witness_union_has_no_duplicate_target() -> Bool {
-  let edge_targets = targets_of(edges: fixture_edges())
-  count_of(xs: edge_targets, want: imported_provider) == 1
-    && count_of(xs: edge_targets, want: referenced_provider) == 1
+  let edge_targets = targets_of(edges: test.claim.module_graph_edge_source_witness.fixture_edges())
+  test.claim.module_graph_edge_source_witness.count_of(xs: edge_targets, want: imported_provider) == 1
+    && test.claim.module_graph_edge_source_witness.count_of(xs: edge_targets, want: referenced_provider) == 1
 }
 
 test fn witness_union_carries_no_surplus_target() -> Bool {
-  let edge_targets = targets_of(edges: fixture_edges())
+  let edge_targets = targets_of(edges: test.claim.module_graph_edge_source_witness.fixture_edges())
   fold(edge_targets, init: true, f: fn(acc, t) {
     acc && (contains_str(xs: fact_targets(facts: fixture_import_facts()), want: t)
             || contains_str(xs: fact_targets(facts: fixture_reference_facts()), want: t))

@@ -170,7 +170,7 @@ test fn pdf_open_fragment_selector_conforms_to_rfc_8118() -> Bool {
 data witness_unencodable_scalar_code_points: List<Int> = [1114112]
 
 test fn uri_percent_encode_component_refuses_code_point_beyond_unicode_max() -> Bool {
-  match uri_percent_encode_code_points(code_points: witness_unencodable_scalar_code_points) {
+  match uri_percent_encode_code_points(code_points: test.claim.citation_cit1_witness.witness_unencodable_scalar_code_points) {
     UriPercentComponentRefused { cause: UriPercentEncodeUnicodeScalarOutOfRangeRefused { cp: 1114112 } } => true
     _ => false
   }
@@ -179,7 +179,7 @@ test fn uri_percent_encode_component_refuses_code_point_beyond_unicode_max() -> 
 test fn project_navigable_uri_refuses_unencodable_nameddest_value() -> Bool {
   match pdf_open_nameddest_wire_from_scalar_code_points(
     name: "plant" as std.types.NonEmptyStr,
-    code_points: witness_unencodable_scalar_code_points,
+    code_points: test.claim.citation_cit1_witness.witness_unencodable_scalar_code_points,
   ) {
     PdfProfileParameterWireRefused { parameter: p, cause: cause } =>
       match navigable_uri_projection_from_sequence_wire(

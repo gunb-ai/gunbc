@@ -8,7 +8,7 @@ fn admits(r: extdeps.programmable_logic.ice40.supply.RailRequirement, mv: Int) -
 }
 
 fn mode_admits(m: extdeps.programmable_logic.ice40.supply.Ice40ConfigurationMode, mv: Int) -> Bool {
-  admits(r: nvcm_supply_requirement(m: m), mv: mv)
+  test.claim.ice40_supply_witness.admits(r: nvcm_supply_requirement(m: m), mv: mv)
 }
 
 fn window_of(r: extdeps.programmable_logic.ice40.supply.Ice40SupplyRail) -> extdeps.programmable_logic.ice40.supply.RailRequirement? {
@@ -23,11 +23,11 @@ test fn w_the_core_window_discriminates_below_volt_grain() -> Bool {
   match window_of(r: CoreSupply) {
     Absent => false
     Present { value: w } =>
-      admits(r: w, mv: 1200)
-        && admits(r: w, mv: 1140)
-        && admits(r: w, mv: 1260)
-        && !admits(r: w, mv: 1000)
-        && !admits(r: w, mv: 1300)
+      test.claim.ice40_supply_witness.admits(r: w, mv: 1200)
+        && test.claim.ice40_supply_witness.admits(r: w, mv: 1140)
+        && test.claim.ice40_supply_witness.admits(r: w, mv: 1260)
+        && !test.claim.ice40_supply_witness.admits(r: w, mv: 1000)
+        && !test.claim.ice40_supply_witness.admits(r: w, mv: 1300)
   }
 }
 
@@ -63,7 +63,7 @@ test fn w_the_unconnected_pin_admits_no_voltage() -> Bool {
     Absent => false
     Present { value: w } =>
       match w {
-        MustBeLeftUnconnected => !admits(r: w, mv: 2500) && !admits(r: w, mv: 0)
+        MustBeLeftUnconnected => !test.claim.ice40_supply_witness.admits(r: w, mv: 2500) && !test.claim.ice40_supply_witness.admits(r: w, mv: 0)
         OperatingWindow { minimum: _, maximum: _ } => false
       }
   }
@@ -77,7 +77,7 @@ test fn w_the_io_standard_is_tighter_than_the_bank_rail() -> Bool {
   match window_of(r: BankIoSupply) {
     Absent => false
     Present { value: rail } =>
-      admits(r: rail, mv: 1800)
+      test.claim.ice40_supply_witness.admits(r: rail, mv: 1800)
         && millivolt_count(v: ice40_lvcmos33_supply.minimum) > 1800
         && millivolt_count(v: ice40_lvcmos33_supply.minimum) == 3140
         && millivolt_count(v: ice40_lvcmos18_supply.typical) == 1800
@@ -120,11 +120,11 @@ test fn w_the_pll_rail_follows_the_core_not_the_banks() -> Bool {
   match window_of(r: PllSupply) {
     Absent => false
     Present { value: pll } =>
-      admits(r: pll, mv: 1200)
-        && !admits(r: pll, mv: 3300)
+      test.claim.ice40_supply_witness.admits(r: pll, mv: 1200)
+        && !test.claim.ice40_supply_witness.admits(r: pll, mv: 3300)
         && match window_of(r: ConfigurationBankSupply) {
           Absent => false
-          Present { value: spi } => admits(r: spi, mv: 3300)
+          Present { value: spi } => test.claim.ice40_supply_witness.admits(r: spi, mv: 3300)
         }
   }
 }

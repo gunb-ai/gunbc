@@ -48,7 +48,7 @@ test fn emit_backward_selects_canonical_row_holds() -> Bool {
 }
 
 test fn ingest_forward_selects_canonical_emitted_holds() -> Bool {
-  match grammar_relation_row_token_spine_classes(row: emit_ingest_canonical_row()) {
+  match v2.test.execution.emit_ingest_grammar_relation_round_trip.grammar_relation_row_token_spine_classes(row: emit_ingest_canonical_row()) {
     Accepted { value: frontier, diagnostics: _ } =>
       match v2.compiler.ingest.grammar_relation_row_forward_selection(
         frontier: frontier,
@@ -68,7 +68,7 @@ test fn emit_then_ingest_selector_identity_holds() -> Bool {
     emitted: emit_ingest_canonical_emitted()
   ) {
     Accepted { value: row, diagnostics: _ } =>
-      match grammar_relation_row_token_spine_classes(row: row) {
+      match v2.test.execution.emit_ingest_grammar_relation_round_trip.grammar_relation_row_token_spine_classes(row: row) {
         Accepted { value: frontier, diagnostics: _ } =>
           match v2.compiler.ingest.grammar_relation_row_forward_selection(
             frontier: frontier,
@@ -85,7 +85,7 @@ test fn emit_then_ingest_selector_identity_holds() -> Bool {
 }
 
 test fn ingest_then_emit_selector_identity_holds() -> Bool {
-  match grammar_relation_row_token_spine_classes(row: emit_ingest_canonical_row()) {
+  match v2.test.execution.emit_ingest_grammar_relation_round_trip.grammar_relation_row_token_spine_classes(row: emit_ingest_canonical_row()) {
     Accepted { value: frontier, diagnostics: _ } =>
       match v2.compiler.ingest.grammar_relation_row_forward_selection(
         frontier: frontier,

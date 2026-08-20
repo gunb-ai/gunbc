@@ -11,7 +11,7 @@ data fixture_sha_b: String = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 fn tab() -> String { from_code_point(cp: 9) }
 
 fn line_of(sha: String, ref_name: String) -> String {
-  concat(sha, concat(tab(), ref_name))
+  concat(sha, concat(test.claim.git_ls_remote_witness_test.tab(), ref_name))
 }
 
 fn scanned_count(scan: extdeps.git.AdvertisedRefScan) -> Int {
@@ -22,10 +22,10 @@ fn scanned_count(scan: extdeps.git.AdvertisedRefScan) -> Int {
 }
 
 test fn an_advertisement_line_yields_its_object_id_and_ref() -> Bool {
-  match parse_advertised_ref_line(line: line_of(sha: fixture_sha_a, ref_name: "refs/heads/main")) {
+  match parse_advertised_ref_line(line: test.claim.git_ls_remote_witness_test.line_of(sha: test.claim.git_ls_remote_witness_test.fixture_sha_a, ref_name: "refs/heads/main")) {
     Absent => false
     Present { value: r } =>
-      (r.object_id as String) == fixture_sha_a && r.ref_name == "refs/heads/main"
+      (r.object_id as String) == test.claim.git_ls_remote_witness_test.fixture_sha_a && r.ref_name == "refs/heads/main"
   }
 }
 
@@ -38,8 +38,8 @@ test fn the_branch_name_is_projected_off_the_full_ref() -> Bool {
 
 test fn a_whole_advertisement_scans_to_its_rows() -> Bool {
   let scan = scan_advertised_refs(lines: [
-    line_of(sha: fixture_sha_a, ref_name: "refs/heads/main"),
-    line_of(sha: fixture_sha_b, ref_name: "refs/heads/dispatch/some-node-a7"),
+    test.claim.git_ls_remote_witness_test.line_of(sha: test.claim.git_ls_remote_witness_test.fixture_sha_a, ref_name: "refs/heads/main"),
+    test.claim.git_ls_remote_witness_test.line_of(sha: test.claim.git_ls_remote_witness_test.fixture_sha_b, ref_name: "refs/heads/dispatch/some-node-a7"),
   ])
   match scan {
     AdvertisedRefLineUnparsed { line: _, index: _ } => false
@@ -57,9 +57,9 @@ data refuse_not_skip_note: String = "The discriminating claim. A scan that DROPP
 
 test fn an_unreadable_line_refuses_rather_than_being_skipped() -> Bool {
   let scan = scan_advertised_refs(lines: [
-    line_of(sha: fixture_sha_a, ref_name: "refs/heads/main"),
+    test.claim.git_ls_remote_witness_test.line_of(sha: test.claim.git_ls_remote_witness_test.fixture_sha_a, ref_name: "refs/heads/main"),
     "this line has no tab at all",
-    line_of(sha: fixture_sha_b, ref_name: "refs/heads/other"),
+    test.claim.git_ls_remote_witness_test.line_of(sha: test.claim.git_ls_remote_witness_test.fixture_sha_b, ref_name: "refs/heads/other"),
   ])
   match scan {
     AdvertisedRefsRead { refs: _ } => false
@@ -71,8 +71,8 @@ test fn an_unreadable_line_refuses_rather_than_being_skipped() -> Bool {
 test fn a_line_with_too_many_fields_also_refuses() -> Bool {
   let scan = scan_advertised_refs(lines: [
     concat(
-      line_of(sha: fixture_sha_a, ref_name: "refs/heads/main"),
-      concat(tab(), "extra"),
+      test.claim.git_ls_remote_witness_test.line_of(sha: test.claim.git_ls_remote_witness_test.fixture_sha_a, ref_name: "refs/heads/main"),
+      concat(test.claim.git_ls_remote_witness_test.tab(), "extra"),
     ),
   ])
   match scan {
@@ -89,9 +89,9 @@ fn line_parses(line: String) -> Bool {
 }
 
 test fn an_empty_field_refuses_rather_than_minting_an_empty_sha() -> Bool {
-  let no_sha = line_parses(line: line_of(sha: "", ref_name: "refs/heads/main"))
-  let no_ref = line_parses(line: line_of(sha: fixture_sha_a, ref_name: ""))
-  let good = line_parses(line: line_of(sha: fixture_sha_a, ref_name: "refs/heads/main"))
+  let no_sha = line_parses(line: test.claim.git_ls_remote_witness_test.line_of(sha: "", ref_name: "refs/heads/main"))
+  let no_ref = line_parses(line: test.claim.git_ls_remote_witness_test.line_of(sha: test.claim.git_ls_remote_witness_test.fixture_sha_a, ref_name: ""))
+  let good = line_parses(line: test.claim.git_ls_remote_witness_test.line_of(sha: test.claim.git_ls_remote_witness_test.fixture_sha_a, ref_name: "refs/heads/main"))
   !no_sha && !no_ref && good
 }
 

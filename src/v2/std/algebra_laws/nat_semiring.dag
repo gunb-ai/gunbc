@@ -11,9 +11,9 @@ fn algebra_law_subject(algebra: v2.std.node.Symbol, inhabitant: v2.std.node.Symb
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      v2.std.node.Edge { label: Named { name: ^algebra_law_subject_algebra_field }, target: atom_node(s: algebra) },
-      v2.std.node.Edge { label: Named { name: ^algebra_law_subject_inhabitant_field }, target: atom_node(s: inhabitant) },
-      v2.std.node.Edge { label: Named { name: ^algebra_law_subject_law_field }, target: atom_node(s: law) },
+      v2.std.node.Edge { label: Named { name: ^algebra_law_subject_algebra_field }, target: v2.test.algebra_laws.nat_semiring.atom_node(s: algebra) },
+      v2.std.node.Edge { label: Named { name: ^algebra_law_subject_inhabitant_field }, target: v2.test.algebra_laws.nat_semiring.atom_node(s: inhabitant) },
+      v2.std.node.Edge { label: Named { name: ^algebra_law_subject_law_field }, target: v2.test.algebra_laws.nat_semiring.atom_node(s: law) },
     ],
     occurrence_id: SyntheticOccurrence
 }

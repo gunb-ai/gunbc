@@ -48,14 +48,14 @@ test fn gate_red_quadratic_rejects() -> Bool {
     ProbeNormalized { root: root } =>
       match accumulator_copy_compile_gate(node: root) {
         Rejected { diagnostics: d } =>
-          non_empty_contains_reason(d: d, reason: ^accumulator_copy_poly2_suspect)
+          v2.test.long.accumulator_copy_compile_gate.non_empty_contains_reason(d: d, reason: ^accumulator_copy_poly2_suspect)
         Accepted { value: _, diagnostics: _ } => false
       }
   }
 }
 
 test fn gate_green_identity_accepts_clean() -> Bool {
-  match normalized_of(source: identity_snippet) {
+  match normalized_of(source: v2.test.long.accumulator_copy_compile_gate.identity_snippet) {
     ProbeStageRejected { stage: _ } => false
     ProbeNormalized { root: root } =>
       match accumulator_copy_compile_gate(node: root) {
@@ -70,7 +70,7 @@ test fn gate_green_identity_accepts_clean() -> Bool {
 }
 
 test fn gate_refusal_ledger_counted_not_gating() -> Bool {
-  match normalized_of(source: unregistered_combiner_snippet) {
+  match normalized_of(source: v2.test.long.accumulator_copy_compile_gate.unregistered_combiner_snippet) {
     ProbeStageRejected { stage: _ } => false
     ProbeNormalized { root: root } =>
       match accumulator_copy_compile_gate(node: root) {
@@ -79,7 +79,7 @@ test fn gate_refusal_ledger_counted_not_gating() -> Bool {
           match d {
             None => false
             Some { diagnostics: ledger } =>
-              non_empty_contains_reason(
+              v2.test.long.accumulator_copy_compile_gate.non_empty_contains_reason(
                 d: ledger,
                 reason: ^combiner_unregistered_carrier_reaches
               )
@@ -109,7 +109,7 @@ test fn door_root_roster_runs_and_passes_clean_tree() -> Bool {
     mode: v2.compiler.compile.TranslateTo { target: compile_gate_target_stub }
   ) {
     Rejected { diagnostics: d } =>
-      !non_empty_contains_reason(d: d, reason: ^accumulator_copy_poly2_suspect)
+      !v2.test.long.accumulator_copy_compile_gate.non_empty_contains_reason(d: d, reason: ^accumulator_copy_poly2_suspect)
     Accepted { value: _, diagnostics: _ } => true
   }
 }

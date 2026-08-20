@@ -45,7 +45,7 @@ fn clustered_simultaneous() -> gunbc.ci_oom_reclassify.ClusteringEvidence {
 test fn witness_clustered_oom_promotes_137_to_infra_nonblocking() -> Bool {
   let before = bare_137_outcome()
   let after = reclassify_floor_outcome(o: before, oom: confirmed_cgroup_oom(), clustering: clustered_simultaneous())
-  outcome_is_structural(o: before)
+  test.claim.ci_oom_reclassify_witness.outcome_is_structural(o: before)
     && floor_outcome_blocks_merge(o: before)
     && outcome_is_infra(o: after)
     && (floor_outcome_blocks_merge(o: after) == false)
@@ -63,7 +63,7 @@ test fn witness_boot_id_reset_clustering_also_promotes() -> Bool {
 test fn witness_lone_137_no_clustering_stays_structural_blocks() -> Bool {
   let before = bare_137_outcome()
   let after = reclassify_floor_outcome(o: before, oom: confirmed_cgroup_oom(), clustering: NotClustered)
-  outcome_is_structural(o: after)
+  test.claim.ci_oom_reclassify_witness.outcome_is_structural(o: after)
     && floor_outcome_blocks_merge(o: after)
 }
 
@@ -71,7 +71,7 @@ test fn witness_no_confirmed_oom_stays_structural_blocks() -> Bool {
   let before = bare_137_outcome()
   let after = reclassify_floor_outcome(o: before, oom: no_oom(), clustering: clustered_simultaneous())
   (oom_is_confirmed(o: no_oom()) == false)
-    && outcome_is_structural(o: after)
+    && test.claim.ci_oom_reclassify_witness.outcome_is_structural(o: after)
     && floor_outcome_blocks_merge(o: after)
 }
 
@@ -94,7 +94,7 @@ test fn witness_reclassify_never_demotes_or_touches_non_137() -> Bool {
   let unchanged = reclassify_floor_outcome(o: real_compile_error, oom: no_oom(), clustering: clustered_simultaneous())
   (match no_failure { NoFailure => true  FloorFailed { class: _ } => false })
     && outcome_is_infra(o: still_infra)
-    && outcome_is_structural(o: unchanged)
+    && test.claim.ci_oom_reclassify_witness.outcome_is_structural(o: unchanged)
     && floor_outcome_blocks_merge(o: unchanged)
 }
 

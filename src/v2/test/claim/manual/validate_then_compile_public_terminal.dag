@@ -50,7 +50,7 @@ fn anchor_validate_then_compile_empty_lenses() -> v2.std.diagnostic.Outcome<v2.c
 fn anchor_validate_then_compile_rejecting_lens() -> v2.std.diagnostic.Outcome<v2.compiler.compile.Validated<v2.compiler.compile.CompileOutput>> {
   validate_then_compile(
     source: fixture_add_resolved_tree(),
-    lenses: [rejecting_lens],
+    lenses: [v2.test.manual.validate_then_compile_public_terminal.rejecting_lens],
     mode: v2.compiler.compile.TranslateTo { target: rust_target_model_stub }
   )
 }

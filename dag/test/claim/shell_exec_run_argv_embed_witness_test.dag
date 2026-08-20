@@ -19,7 +19,7 @@ test fn witness_apply_script_stays_under_argv_embed_budget() -> Bool {
 }
 
 test fn witness_shell_exec_run_uses_stdin_transport() -> Bool {
-  src_has(path: shell_exec_dag_path, needle: "stdin: script")
+  test.claim.shell_exec_run_argv_embed_witness.src_has(path: shell_exec_dag_path, needle: "stdin: script")
 }
 
 test fn witness_apply_script_requires_bash_receiver() -> Bool {
@@ -27,7 +27,7 @@ test fn witness_apply_script_requires_bash_receiver() -> Bool {
 }
 
 test fn witness_shell_exec_run_uses_bash_receiver() -> Bool {
-  src_has(path: shell_exec_dag_path, needle: "argv: [\"bash\", \"-s\"]")
-    && !src_has(path: shell_exec_dag_path, needle: "argv: [\"sh\", \"-s\"]")
+  test.claim.shell_exec_run_argv_embed_witness.src_has(path: shell_exec_dag_path, needle: "argv: [\"bash\", \"-s\"]")
+    && !test.claim.shell_exec_run_argv_embed_witness.src_has(path: shell_exec_dag_path, needle: "argv: [\"sh\", \"-s\"]")
 }
 

@@ -197,7 +197,7 @@ data lrdimm_32g: extdeps.memory.types.DramModuleCatalogRow = extdeps.memory.type
   part_number: "M386A4G40DM0-CPB",
   manufacturer: extdeps.vendor.samsung.samsung,
   generation: extdeps.memory.types.dram_generation_ddr4,
-  capacity_bytes: stick_32g,
+  capacity_bytes: test.claim.host_memory_qualification_witness_test.stick_32g,
   data_rate_mts: 2133,
   ecc: true,
   buffering: extdeps.memory.types.LoadReduced,
@@ -211,7 +211,7 @@ data rdimm_32g: extdeps.memory.types.DramModuleCatalogRow = extdeps.memory.types
   part_number: "M393A4K40DB2-CTD",
   manufacturer: extdeps.vendor.samsung.samsung,
   generation: extdeps.memory.types.dram_generation_ddr4,
-  capacity_bytes: stick_32g,
+  capacity_bytes: test.claim.host_memory_qualification_witness_test.stick_32g,
   data_rate_mts: 2666,
   ecc: true,
   buffering: extdeps.memory.types.Registered,
@@ -289,7 +289,7 @@ test fn an_unobserved_standing_implicates_nothing() -> Bool {
 // has no data buffer, cannot execute MREP, and is untouched at ANY standing.
 test fn registered_module_is_untouched_even_by_a_decoded_failure() -> Bool {
   match gunbc.host_memory_qualification.part_implication(
-    candidate: rdimm_32g,
+    candidate: test.claim.host_memory_qualification_witness_test.rdimm_32g,
     failures: [decoded_failure],
     target_board: extdeps.boards.types.AsrockRackAltrad8ud1l2t,
   ) {
@@ -300,5 +300,5 @@ test fn registered_module_is_untouched_even_by_a_decoded_failure() -> Bool {
 
 test fn only_the_load_reduced_module_executes_mrep() -> Bool {
   extdeps.memory.training.module_executes_step(module: lrdimm_32g, step: extdeps.memory.training.LrdimmDataBufferMrep)
-    && !extdeps.memory.training.module_executes_step(module: rdimm_32g, step: extdeps.memory.training.LrdimmDataBufferMrep)
+    && !extdeps.memory.training.module_executes_step(module: test.claim.host_memory_qualification_witness_test.rdimm_32g, step: extdeps.memory.training.LrdimmDataBufferMrep)
 }

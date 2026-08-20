@@ -25,27 +25,27 @@ fn retained_diagnostic() -> v2.std.diagnostic.Diagnostic {
 
 fn rejected_outcome() -> Outcome<Node> {
   v2.std.diagnostic.Rejected {
-    diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: unrelated_diagnostic(), tail: std.algebra.Empty }
+    diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: v2.test.claim.body_lowering.frontier_three_state.unrelated_diagnostic(), tail: std.algebra.Empty }
   }
 }
 
 fn clean_accept() -> Outcome<Node> {
-  v2.std.diagnostic.Accepted { value: probe_shell(), diagnostics: v2.std.diagnostic.None }
+  v2.std.diagnostic.Accepted { value: v2.test.claim.body_lowering.frontier_three_state.probe_shell(), diagnostics: v2.std.diagnostic.None }
 }
 
 fn accept_with_unrelated_diagnostic() -> Outcome<Node> {
   v2.std.diagnostic.Accepted {
-    value: probe_shell(),
-    diagnostics: v2.std.diagnostic.Some { diagnostics: diagnostics_singleton(d: unrelated_diagnostic()) }
+    value: v2.test.claim.body_lowering.frontier_three_state.probe_shell(),
+    diagnostics: v2.std.diagnostic.Some { diagnostics: diagnostics_singleton(d: v2.test.claim.body_lowering.frontier_three_state.unrelated_diagnostic()) }
   }
 }
 
 fn retention_behind_a_pending_diagnostic() -> Outcome<Node> {
   v2.std.diagnostic.Accepted {
-    value: probe_shell(),
+    value: v2.test.claim.body_lowering.frontier_three_state.probe_shell(),
     diagnostics: v2.std.diagnostic.Some {
       diagnostics: v2.std.diagnostic.NonEmptyDiagnostics {
-        head: unrelated_diagnostic(),
+        head: v2.test.claim.body_lowering.frontier_three_state.unrelated_diagnostic(),
         tail: std.algebra.Cons { head: retained_diagnostic(), tail: std.algebra.Empty }
       }
     }
@@ -81,7 +81,7 @@ test fn retention_behind_a_pending_diagnostic_is_still_retention_holds() -> Bool
 }
 
 test fn the_sole_retention_producer_reads_as_retention_holds() -> Bool {
-  disposition_name(o: body_lower_wrapper_retained_shell(shell: probe_shell())) == ^disposition_wrapper_retained
+  disposition_name(o: body_lower_wrapper_retained_shell(shell: v2.test.claim.body_lowering.frontier_three_state.probe_shell())) == ^disposition_wrapper_retained
 }
 
 test fn an_unrelated_diagnostic_does_not_manufacture_retention_holds() -> Bool {

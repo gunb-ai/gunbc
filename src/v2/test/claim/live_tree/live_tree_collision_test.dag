@@ -7,7 +7,7 @@ data live_tree_collision_note: String = "Collision regression control for the en
 
 test fn live_tree_same_named_rows_resolve_cleanly_holds() -> Bool {
   live_tree_peer_truth()
-    && match live_tree_disposition {
+    && match v2.test.claim.live_tree.live_tree_collision.live_tree_disposition {
       SubstrateInputsOnly => true
       ReadsLiveTree => false
     }

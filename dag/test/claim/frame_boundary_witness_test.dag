@@ -51,20 +51,20 @@ fn is_unmaterialized_for(a: std.frame_boundary.BoundaryAdmission, tree: std.effe
 }
 
 test fn frame_boundary_admits_covered_layer() -> Bool {
-  is_materialized_convention(
-    a: boundary_admits(required_trees: require_network, provided: net_convention_provided)
+  test.claim.frame_boundary_witness_test.is_materialized_convention(
+    a: boundary_admits(required_trees: test.claim.frame_boundary_witness_test.require_network, provided: net_convention_provided)
   )
 }
 
 test fn frame_boundary_refuses_uncovered_layer() -> Bool {
-  is_unmaterialized_for(
-    a: boundary_admits(required_trees: require_network, provided: fs_only_provided),
+  test.claim.frame_boundary_witness_test.is_unmaterialized_for(
+    a: boundary_admits(required_trees: test.claim.frame_boundary_witness_test.require_network, provided: fs_only_provided),
     tree: UriTree
   )
 }
 
 test fn frame_boundary_grade_is_meet() -> Bool {
-  is_materialized_convention(
+  test.claim.frame_boundary_witness_test.is_materialized_convention(
     a: boundary_admits(
       required_trees: require_network_and_fs,
       provided: net_construction_fs_convention_provided
@@ -75,7 +75,7 @@ test fn frame_boundary_grade_is_meet() -> Bool {
 test fn frame_boundary_full_construction_stays_construction() -> Bool {
   is_materialized_construction(
     a: boundary_admits(
-      required_trees: require_network,
+      required_trees: test.claim.frame_boundary_witness_test.require_network,
       provided: std.frame_boundary.BoundaryMaterialization {
         closures: [std.frame_boundary.BoundaryClosure { tree: UriTree, grade: LifecycleByConstruction }]
       }
@@ -90,12 +90,12 @@ test fn frame_boundary_empty_requirement_admits() -> Bool {
 }
 
 test fn frame_boundary_refusal_is_located() -> Bool {
-  is_unmaterialized_for(
-    a: boundary_admits(required_trees: require_network, provided: fs_only_provided),
+  test.claim.frame_boundary_witness_test.is_unmaterialized_for(
+    a: boundary_admits(required_trees: test.claim.frame_boundary_witness_test.require_network, provided: fs_only_provided),
     tree: UriTree
   )
-    && !is_unmaterialized_for(
-         a: boundary_admits(required_trees: require_network, provided: fs_only_provided),
+    && !test.claim.frame_boundary_witness_test.is_unmaterialized_for(
+         a: boundary_admits(required_trees: test.claim.frame_boundary_witness_test.require_network, provided: fs_only_provided),
          tree: ProcTree
        )
 }

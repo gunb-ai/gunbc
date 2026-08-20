@@ -23,23 +23,23 @@ data effect_derived_from_signature_input: Node = v2.std.node.Node {
   children: [
     v2.std.node.Edge {
       label: Named { name: ^effect_read_subject_field },
-      target: effect_subject(signature: atom_node(s: ^read_signature_symbol), body: atom_node(s: ^read_signature_symbol))
+      target: effect_subject(signature: v2.test.impossible_bug.unenumerated_effects.atom_node(s: ^read_signature_symbol), body: v2.test.impossible_bug.unenumerated_effects.atom_node(s: ^read_signature_symbol))
     },
     v2.std.node.Edge {
       label: Named { name: ^effect_write_subject_field },
-      target: effect_subject(signature: atom_node(s: ^write_signature_symbol), body: atom_node(s: ^write_signature_symbol))
+      target: effect_subject(signature: v2.test.impossible_bug.unenumerated_effects.atom_node(s: ^write_signature_symbol), body: v2.test.impossible_bug.unenumerated_effects.atom_node(s: ^write_signature_symbol))
     },
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-data explicit_reread_input: Node = effect_subject(signature: atom_node(s: ^read_signature_symbol), body: atom_node(s: ^explicit_reread_symbol))
+data explicit_reread_input: Node = effect_subject(signature: v2.test.impossible_bug.unenumerated_effects.atom_node(s: ^read_signature_symbol), body: v2.test.impossible_bug.unenumerated_effects.atom_node(s: ^explicit_reread_symbol))
 
 data falsification_redundant_read: Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Conj },
   children: [
-    v2.std.node.Edge { label: Named { name: ^effect_signature_field }, target: atom_node(s: ^read_signature_symbol) },
-    v2.std.node.Edge { label: Named { name: ^effect_body_field }, target: atom_node(s: ^read_signature_symbol) },
+    v2.std.node.Edge { label: Named { name: ^effect_signature_field }, target: v2.test.impossible_bug.unenumerated_effects.atom_node(s: ^read_signature_symbol) },
+    v2.std.node.Edge { label: Named { name: ^effect_body_field }, target: v2.test.impossible_bug.unenumerated_effects.atom_node(s: ^read_signature_symbol) },
   ],
   occurrence_id: SyntheticOccurrence
 }

@@ -8,7 +8,7 @@ data claude_agent_sdk_integrity: String = "sha512-glc7SdwPkOkLw8oxwLo9PKTdLJGqW/
 data claude_agent_sdk_integrity_hex: String = "82573b49dc0f90e90bc3ca31c0ba3d3ca4dd2c91aa5bf3c8478bab59716846d5fd625970a33b0455ce53735f84bcb4a47ebb313c9a905aa3a0a6350e4177f5a0"
 
 test fn codex_admits_measured_sha512_integrity() -> Bool {
-  match npm_decode_integrity(wire: claude_agent_sdk_integrity) {
+  match npm_decode_integrity(wire: test.claim.package_delivery_codex_integrity_witness_test.claude_agent_sdk_integrity) {
     NpmSingleSha512Integrity { digest } =>
       match npm_registry_integrity_from_decode(
         decoded: extdeps.npm.NpmSingleSha512Integrity { digest: digest },
@@ -16,7 +16,7 @@ test fn codex_admits_measured_sha512_integrity() -> Bool {
         NpmRegistryIntegrityAdmitted { integrity } =>
           match codex_admit_npm_integrity(integrity: integrity) {
             CodexNpmIntegrityAdmitted { digest: admitted } =>
-              (admitted.hex as String) == claude_agent_sdk_integrity_hex
+              (admitted.hex as String) == test.claim.package_delivery_codex_integrity_witness_test.claude_agent_sdk_integrity_hex
             _ => false
           }
         NpmRegistryIntegrityWireRefused { cause: _ } => false
@@ -55,7 +55,7 @@ test fn malformed_wire_never_reaches_codex_policy() -> Bool {
 }
 
 test fn npm_registry_artifact_derives_exact_pin_from_native_integrity() -> Bool {
-  match npm_decode_integrity(wire: claude_agent_sdk_integrity) {
+  match npm_decode_integrity(wire: test.claim.package_delivery_codex_integrity_witness_test.claude_agent_sdk_integrity) {
     NpmSingleSha512Integrity { digest } =>
       match npm_registry_integrity_from_decode(
         decoded: extdeps.npm.NpmSingleSha512Integrity { digest: digest },
@@ -77,7 +77,7 @@ test fn npm_registry_artifact_derives_exact_pin_from_native_integrity() -> Bool 
             ExactPin =>
               match pin.expected_identity {
                 Sha512Hash(pinned) =>
-                  (pinned.hex as String) == claude_agent_sdk_integrity_hex
+                  (pinned.hex as String) == test.claim.package_delivery_codex_integrity_witness_test.claude_agent_sdk_integrity_hex
                     && (pin.version as String) == "0.1.0"
                 _ => false
               }

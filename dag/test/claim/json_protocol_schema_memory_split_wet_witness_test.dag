@@ -11,18 +11,18 @@ fn committed_codex_lock_text() -> String {
 fn committed_admitted_codex_runtime_source() -> gunbc.package_delivery.AdmittedCodexRuntimeSource {
   gunbc.package_delivery.AdmittedCodexRuntimeSource {
     manifest_bytes: filesystem_read(path: gunbc.package_delivery.codex_runtime_manifest_path as String).content,
-    lock_bytes: committed_codex_lock_text(),
+    lock_bytes: test.claim.json_protocol_schema_memory_split_wet_witness_test.committed_codex_lock_text(),
   }
 }
 
 fn wet_finish_parse_largest_protocol_schema_only() -> Bool {
   gunbc.package_delivery.materialize_codex_runtime_finish_bisect_parse_largest_protocol_schema_only(
-    source: committed_admitted_codex_runtime_source(),
+    source: test.claim.json_protocol_schema_memory_split_wet_witness_test.committed_admitted_codex_runtime_source(),
   )
 }
 
 fn wet_finish_parse_canonicalize_largest_protocol_schema_only() -> Bool {
   gunbc.package_delivery.materialize_codex_runtime_finish_bisect_parse_canonicalize_largest_protocol_schema_only(
-    source: committed_admitted_codex_runtime_source(),
+    source: test.claim.json_protocol_schema_memory_split_wet_witness_test.committed_admitted_codex_runtime_source(),
   )
 }

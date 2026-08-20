@@ -521,12 +521,12 @@ fn integer_interval_bound_compare(left: IntegerIntervalBound, right: IntegerInte
     IntegerPointerWidthBound { signedness: left_signedness, endpoint: left_endpoint } =>
       match right {
         IntegerConcreteZero =>
-          ordering_invert(ordering: integer_concrete_zero_compare_to_pointer_width(
+          v2.std.integer.ordering_invert(ordering: integer_concrete_zero_compare_to_pointer_width(
             right_signedness: left_signedness,
             right_endpoint: left_endpoint
           ))
         IntegerConcreteBound { sign: right_sign, magnitude: right_magnitude } =>
-          ordering_invert(ordering: integer_concrete_bound_compare_to_pointer_width(
+          v2.std.integer.ordering_invert(ordering: integer_concrete_bound_compare_to_pointer_width(
             left_sign: right_sign,
             right_signedness: left_signedness,
             right_endpoint: left_endpoint

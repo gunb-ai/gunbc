@@ -109,7 +109,7 @@ fn string_member(xs: List<String>, x: String) -> Bool {
 }
 
 fn import_closure_add_absent(members: List<String>, candidate: String) -> List<String> {
-  if string_member(xs: members, x: candidate) {
+  if v2.lens.witness_cost_locality.string_member(xs: members, x: candidate) {
     members
   } else {
     list_snoc_item(xs: members, item: candidate)
@@ -118,7 +118,7 @@ fn import_closure_add_absent(members: List<String>, candidate: String) -> List<S
 
 fn import_closure_pass(facts: List<ModuleImportFact>, members: List<String>) -> List<String> {
   fold_list(xs: facts, empty: members, cons: fn(acc, fact) {
-    if string_member(xs: acc, x: fact.module) {
+    if v2.lens.witness_cost_locality.string_member(xs: acc, x: fact.module) {
       fold_list(xs: fact.imports, empty: acc, cons: fn(inner, im) {
         import_closure_add_absent(members: inner, candidate: im)
       })

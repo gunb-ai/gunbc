@@ -426,7 +426,7 @@ test fn the_clone_url_names_the_repository_not_a_local_alias() -> Bool {
 
 test fn a_receipt_round_trips_its_outcome_and_its_subject() -> Bool {
   match publication_receipt_decode(
-    receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
+    receipt: test.claim.roadmap_publish_witness_test.receipt_for(outcome: bound_outcome(), head: fixture_expected),
   ) {
     ReceiptUndecodable { reason: _ } => false
     ReceiptDecoded { receipt } =>
@@ -445,7 +445,7 @@ data receipt_preserves_the_binding_note: String = "THIS IS THE CLAIM THE EARLIER
 
 test fn a_bound_receipt_preserves_the_pull_request_binding() -> Bool {
   match publication_receipt_decode(
-    receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
+    receipt: test.claim.roadmap_publish_witness_test.receipt_for(outcome: bound_outcome(), head: fixture_expected),
   ) {
     ReceiptUndecodable { reason: _ } => false
     ReceiptDecoded { receipt } =>
@@ -468,7 +468,7 @@ test fn a_bound_receipt_preserves_the_pull_request_binding() -> Bool {
 
 test fn a_diverged_receipt_preserves_the_head_that_was_offered() -> Bool {
   match publication_receipt_decode(
-    receipt: receipt_for(outcome: diverged_outcome(), head: fixture_expected),
+    receipt: test.claim.roadmap_publish_witness_test.receipt_for(outcome: diverged_outcome(), head: fixture_expected),
   ) {
     ReceiptUndecodable { reason: _ } => false
     ReceiptDecoded { receipt } =>
@@ -490,12 +490,12 @@ test fn a_diverged_receipt_preserves_the_head_that_was_offered() -> Bool {
 
 test fn a_receipt_records_the_head_that_was_asked_about() -> Bool {
   match publication_receipt_decode(
-    receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
+    receipt: test.claim.roadmap_publish_witness_test.receipt_for(outcome: bound_outcome(), head: fixture_expected),
   ) {
     ReceiptUndecodable { reason: _ } => false
     ReceiptDecoded { receipt: r1 } =>
       match publication_receipt_decode(
-        receipt: receipt_for(outcome: bound_outcome(), head: fixture_older),
+        receipt: test.claim.roadmap_publish_witness_test.receipt_for(outcome: bound_outcome(), head: fixture_older),
       ) {
         ReceiptUndecodable { reason: _ } => false
         ReceiptDecoded { receipt: r2 } =>
@@ -713,7 +713,7 @@ test fn a_receipt_is_evidence_for_the_subject_it_was_written_for() -> Bool {
   is_evidence(
     e: evidence_for_subject_of(
       expected: subject_for(head: fixture_expected),
-      receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
+      receipt: test.claim.roadmap_publish_witness_test.receipt_for(outcome: bound_outcome(), head: fixture_expected),
     ),
   )
 }
@@ -721,7 +721,7 @@ test fn a_receipt_is_evidence_for_the_subject_it_was_written_for() -> Bool {
 test fn a_receipt_for_another_head_is_not_evidence_for_this_one() -> Bool {
   let e = evidence_for_subject_of(
     expected: subject_for(head: fixture_older),
-    receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
+    receipt: test.claim.roadmap_publish_witness_test.receipt_for(outcome: bound_outcome(), head: fixture_expected),
   )
   !is_evidence(e: e) && differing_field(e: e) == "expected_head"
 }
@@ -737,7 +737,7 @@ test fn a_receipt_for_another_node_is_not_evidence_for_this_one() -> Bool {
   }
   let e = evidence_for_subject_of(
     expected: expected,
-    receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
+    receipt: test.claim.roadmap_publish_witness_test.receipt_for(outcome: bound_outcome(), head: fixture_expected),
   )
   !is_evidence(e: e) && differing_field(e: e) == "node_id"
 }
@@ -753,7 +753,7 @@ test fn a_receipt_for_another_attempt_of_this_node_is_not_evidence() -> Bool {
   }
   let e = evidence_for_subject_of(
     expected: expected,
-    receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
+    receipt: test.claim.roadmap_publish_witness_test.receipt_for(outcome: bound_outcome(), head: fixture_expected),
   )
   !is_evidence(e: e) && differing_field(e: e) == "attempt_key"
 }
@@ -771,7 +771,7 @@ test fn a_receipt_about_a_repository_of_another_name_is_not_evidence() -> Bool {
   }
   let e = evidence_for_subject_of(
     expected: expected,
-    receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
+    receipt: test.claim.roadmap_publish_witness_test.receipt_for(outcome: bound_outcome(), head: fixture_expected),
   )
   !is_evidence(e: e) && differing_field(e: e) == "repository_name"
 }
@@ -793,7 +793,7 @@ test fn a_receipt_about_another_owners_repository_is_not_evidence() -> Bool {
   }
   let e = evidence_for_subject_of(
     expected: expected,
-    receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
+    receipt: test.claim.roadmap_publish_witness_test.receipt_for(outcome: bound_outcome(), head: fixture_expected),
   )
   !is_evidence(e: e) && differing_field(e: e) == "repository_owner"
 }
@@ -809,7 +809,7 @@ test fn a_receipt_against_another_base_is_not_evidence() -> Bool {
   }
   let e = evidence_for_subject_of(
     expected: expected,
-    receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
+    receipt: test.claim.roadmap_publish_witness_test.receipt_for(outcome: bound_outcome(), head: fixture_expected),
   )
   !is_evidence(e: e) && differing_field(e: e) == "expected_base"
 }
@@ -833,10 +833,10 @@ test fn an_absent_receipt_is_absent_and_present_but_unusable_ones_refuse() -> Bo
     expected: subject_for(head: fixture_expected),
     source: gunbc.roadmap_publish.ReceiptSourceUnreadable { detail: "input/output error" },
   )
-  evidence_key(e: absent) == "absent"
-    && evidence_key(e: empty) == "unreadable"
-    && evidence_key(e: garbage) == "unreadable"
-    && evidence_key(e: faulted) == "unreadable"
+  test.claim.roadmap_publish_witness_test.evidence_key(e: absent) == "absent"
+    && test.claim.roadmap_publish_witness_test.evidence_key(e: empty) == "unreadable"
+    && test.claim.roadmap_publish_witness_test.evidence_key(e: garbage) == "unreadable"
+    && test.claim.roadmap_publish_witness_test.evidence_key(e: faulted) == "unreadable"
 }
 
 fn evidence_key(e: gunbc.roadmap_publish.PublicationEvidence) -> String {

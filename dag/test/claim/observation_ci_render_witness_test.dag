@@ -118,7 +118,7 @@ test fn w_outcome_lines_carry_durations() -> Bool {
     durations: std.observation.observation_durations_wall(elapsed: std.measure.millisecond_to_nanosecond(m: std.measure.millisecond(count: 230))),
     rss: std.observation.MeasuredUnavailable { cause: "not sampled per entry" as std.types.NonEmptyStr }
   }
-  string_contains(s: gunbc.observation_ci_render.ci_event_line(event: event, basis: crawl_basis()).text, pattern: "in 230ms")
+  string_contains(s: gunbc.observation_ci_render.ci_event_line(event: event, basis: test.claim.observation_ci_render_witness_test.crawl_basis()).text, pattern: "in 230ms")
 }
 
 test fn w_sub_millisecond_duration_never_renders_as_zero() -> Bool {
@@ -128,7 +128,7 @@ test fn w_sub_millisecond_duration_never_renders_as_zero() -> Bool {
     durations: std.observation.observation_durations_wall(elapsed: std.measure.nanosecond(count: 999999)),
     rss: std.observation.MeasuredUnavailable { cause: "not sampled per entry" as std.types.NonEmptyStr }
   }
-  let text = gunbc.observation_ci_render.ci_event_line(event: event, basis: crawl_basis()).text
+  let text = gunbc.observation_ci_render.ci_event_line(event: event, basis: test.claim.observation_ci_render_witness_test.crawl_basis()).text
   string_contains(s: text, pattern: "in 999999ns") &&
   !string_contains(s: text, pattern: "in 0ms")
 }
@@ -140,7 +140,7 @@ test fn w_refusal_never_renders_inside_a_collapsed_group() -> Bool {
     durations: std.observation.observation_durations_wall(elapsed: std.measure.millisecond_to_nanosecond(m: std.measure.millisecond(count: 2472000))),
     rss: std.observation.MeasuredUnavailable { cause: "not sampled per entry" as std.types.NonEmptyStr }
   }
-  let line = gunbc.observation_ci_render.ci_event_line(event: refusal, basis: crawl_basis())
+  let line = gunbc.observation_ci_render.ci_event_line(event: refusal, basis: test.claim.observation_ci_render_witness_test.crawl_basis())
   line.attention == std.observation.Anomaly &&
   gunbc.observation_ci_render.ci_line_placement(attention: line.attention) == gunbc.observation_ci_render.OutsideGroup
 }
@@ -152,7 +152,7 @@ test fn w_routine_green_collapses_inside_a_group() -> Bool {
     durations: std.observation.observation_durations_wall(elapsed: std.measure.millisecond_to_nanosecond(m: std.measure.millisecond(count: 230))),
     rss: std.observation.MeasuredUnavailable { cause: "not sampled per entry" as std.types.NonEmptyStr }
   }
-  let line = gunbc.observation_ci_render.ci_event_line(event: green, basis: crawl_basis())
+  let line = gunbc.observation_ci_render.ci_event_line(event: green, basis: test.claim.observation_ci_render_witness_test.crawl_basis())
   line.attention == std.observation.Ambient &&
   gunbc.observation_ci_render.ci_line_placement(attention: line.attention) == gunbc.observation_ci_render.InsideCollapsedGroup &&
   gunbc.observation_ci_render.ci_collapsed_summary(green_count: 213) == "… 213 more finished cleanly"
@@ -221,7 +221,7 @@ test fn w_unmeasured_duration_names_its_cause_rather_than_vanishing() -> Bool {
     durations: std.observation.observation_durations_wall_unavailable(cause: "clock unavailable in this leg" as std.types.NonEmptyStr),
     rss: std.observation.MeasuredUnavailable { cause: "not sampled per entry" as std.types.NonEmptyStr }
   }
-  let line = gunbc.observation_ci_render.ci_event_line(event: event, basis: crawl_basis())
+  let line = gunbc.observation_ci_render.ci_event_line(event: event, basis: test.claim.observation_ci_render_witness_test.crawl_basis())
   string_contains(s: line.text, pattern: "duration unmeasured: clock unavailable in this leg")
 }
 

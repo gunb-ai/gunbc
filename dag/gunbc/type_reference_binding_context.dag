@@ -60,7 +60,7 @@ fn occurrence_binding_inputs_from_module_transport(
       transport.index.entries,
       init: [],
       f: (acc, entry) =>
-        concat([authored_order_row_from_entry(entry: entry)], acc),
+        concat([gunbc.type_reference_binding_context.authored_order_row_from_entry(entry: entry)], acc),
     )),
   }
 }

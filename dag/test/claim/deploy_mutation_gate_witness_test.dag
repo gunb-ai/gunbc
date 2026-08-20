@@ -84,7 +84,7 @@ test fn witness_right_host_unprivileged_gate_denies() -> Bool {
   match deploy_mutation_gate(
     access: ci_deploy_srv1_access,
     fixture_actor: Present { value: deploy_access_unprivileged_fixture_actor() },
-    fixture_host: Present { value: srv1_host_observation() }
+    fixture_host: Present { value: test.claim.deploy_mutation_gate_witness.srv1_host_observation() }
   ) {
     Deny { refusal: _ } => true
     Permit => false
@@ -97,7 +97,7 @@ test fn witness_right_host_privileged_gate_permits() -> Bool {
     fixture_actor: Present {
       value: deploy_access_privileged_fixture_actor(access: ci_deploy_srv1_access)
     },
-    fixture_host: Present { value: srv1_host_observation() }
+    fixture_host: Present { value: test.claim.deploy_mutation_gate_witness.srv1_host_observation() }
   ) {
     Permit => true
     Deny { refusal: _ } => false
@@ -132,7 +132,7 @@ test fn witness_right_host_unprivileged_refused_before_shell() -> Bool {
     transport: LocalShell,
     access: ci_deploy_srv1_access,
     fixture_actor: Present { value: deploy_access_unprivileged_fixture_actor() },
-    fixture_host: Present { value: srv1_host_observation() }
+    fixture_host: Present { value: test.claim.deploy_mutation_gate_witness.srv1_host_observation() }
   ) {
     NotConverged { reason: why, applied: intent } =>
       match intent.privilege_denial {
@@ -153,6 +153,6 @@ test fn witness_right_host_privileged_may_apply() -> Bool {
     fixture_actor: Present {
       value: deploy_access_privileged_fixture_actor(access: ci_deploy_srv1_access)
     },
-    fixture_host: Present { value: srv1_host_observation() }
+    fixture_host: Present { value: test.claim.deploy_mutation_gate_witness.srv1_host_observation() }
   ))
 }

@@ -30,11 +30,11 @@ fn use_site_verdict_eq(a: v2.compiler.use_site_verdict.UseSiteVerdict, b: v2.com
 }
 
 test fn use_site_verdict_round_trips_every_variant() -> Bool {
-  round_trips(verdict: MoveWhole)
-    && round_trips(verdict: Borrow)
-    && round_trips(verdict: CloneShared)
-    && round_trips(verdict: Unclassified)
-    && round_trips(verdict: v2.compiler.use_site_verdict.MoveField { field: ^seen })
+  v2.test.claim.use_site_verdict_test.round_trips(verdict: MoveWhole)
+    && v2.test.claim.use_site_verdict_test.round_trips(verdict: Borrow)
+    && v2.test.claim.use_site_verdict_test.round_trips(verdict: CloneShared)
+    && v2.test.claim.use_site_verdict_test.round_trips(verdict: Unclassified)
+    && v2.test.claim.use_site_verdict_test.round_trips(verdict: v2.compiler.use_site_verdict.MoveField { field: ^seen })
 }
 
 test fn use_site_verdict_absent_edge_is_distinguishable_from_unclassified() -> Bool {

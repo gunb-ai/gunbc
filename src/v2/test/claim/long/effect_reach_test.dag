@@ -93,7 +93,7 @@ test fn effect_reach_path_data_init_derived_host_reading_holds() -> Bool {
 test fn effect_reach_path_data_init_red_when_import_severed_holds() -> Bool {
   let c = v2.lens.effect_reach.effect_reach_classification_from_facts(
     entry_module: "fix.witness",
-    facts: fixture_severed_facts,
+    facts: v2.test.claim.long.effect_reach_test.fixture_severed_facts,
     decls: fixture_empty_decls,
     data_inits: fixture_path_data_inits
   )

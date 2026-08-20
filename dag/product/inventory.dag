@@ -588,7 +588,7 @@ fn transfer_step(
         ordinal: ordinal,
         event: event,
       )
-    Present { value: moved } => LedgerAdvanced { state: advance(state: state, distribution: moved) }
+    Present { value: moved } => LedgerAdvanced { state: product.inventory.advance(state: state, distribution: moved) }
   }
 }
 

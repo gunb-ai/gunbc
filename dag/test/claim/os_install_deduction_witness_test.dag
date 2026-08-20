@@ -140,8 +140,8 @@ test fn incomplete_not_bootable_plans_refuse_until_declared() -> Bool {
 
 test fn direct_layout_emits_storage_yaml() -> Bool {
   let ud = autoinstall_user_data(payload: witness_autoinstall_with_storage)
-  string_contains(s: ud, pattern: "layout:")
-    && string_contains(s: ud, pattern: "direct")
+  test.claim.os_install_deduction.string_contains(s: ud, pattern: "layout:")
+    && test.claim.os_install_deduction.string_contains(s: ud, pattern: "direct")
 }
 
 test fn kvm_storage_screen_with_incomplete_preflight_awaits_storage() -> Bool {

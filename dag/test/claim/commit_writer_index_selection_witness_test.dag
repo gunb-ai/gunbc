@@ -29,20 +29,20 @@ fn fallback_path() -> extdeps.git.object_store.GitPath {
 fn path_of(octets: List<std.integer.UInt8>) -> extdeps.git.object_store.GitPath {
   match git_decode_path_octets(octets: octets) {
     GitPathDecoded { path } => path
-    GitPathDecodeRefused { cause: _ } => fallback_path()
+    GitPathDecodeRefused { cause: _ } => test.claim.commit_writer_index_selection_witness.fallback_path()
   }
 }
 
 fn path_a() -> extdeps.git.object_store.GitPath {
-  path_of(octets: [97, 47, 97, 46, 100, 97, 103])
+  test.claim.commit_writer_index_selection_witness.path_of(octets: [97, 47, 97, 46, 100, 97, 103])
 }
 
 fn path_b() -> extdeps.git.object_store.GitPath {
-  path_of(octets: [98, 47, 98, 46, 100, 97, 103])
+  test.claim.commit_writer_index_selection_witness.path_of(octets: [98, 47, 98, 46, 100, 97, 103])
 }
 
 fn path_absent() -> extdeps.git.object_store.GitPath {
-  path_of(octets: [122, 47, 122, 46, 100, 97, 103])
+  test.claim.commit_writer_index_selection_witness.path_of(octets: [122, 47, 122, 46, 100, 97, 103])
 }
 
 fn entry_of(path: extdeps.git.object_store.GitPath, oid_hex: String, stage: extdeps.git.object_store.GitIndexStage) -> extdeps.git.object_store.GitIndexEntry {

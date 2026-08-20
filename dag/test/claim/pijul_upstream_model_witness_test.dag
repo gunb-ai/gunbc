@@ -59,7 +59,7 @@ fn fixture_identity(hash: extdeps.pijul.PijulChangeHash) -> extdeps.pijul.PijulC
 fn fixture_changes() -> List<extdeps.pijul.PijulRecordedChange> {
   [
     extdeps.pijul.PijulRecordedChange {
-      identity: fixture_identity(hash: pijul_change_root),
+      identity: test.claim.pijul_upstream_model_witness.fixture_identity(hash: pijul_change_root),
       dependencies: [],
       actions: [
         extdeps.pijul.PijulNewVertex {
@@ -74,7 +74,7 @@ fn fixture_changes() -> List<extdeps.pijul.PijulRecordedChange> {
       recorded_at: "provenance-only-root",
     },
     extdeps.pijul.PijulRecordedChange {
-      identity: fixture_identity(hash: pijul_change_left),
+      identity: test.claim.pijul_upstream_model_witness.fixture_identity(hash: pijul_change_left),
       dependencies: [
         extdeps.pijul.PijulDependency {
           change: pijul_change_root,
@@ -94,7 +94,7 @@ fn fixture_changes() -> List<extdeps.pijul.PijulRecordedChange> {
       recorded_at: "provenance-only-left",
     },
     extdeps.pijul.PijulRecordedChange {
-      identity: fixture_identity(hash: pijul_change_right),
+      identity: test.claim.pijul_upstream_model_witness.fixture_identity(hash: pijul_change_right),
       dependencies: [
         extdeps.pijul.PijulDependency {
           change: pijul_change_root,
@@ -326,7 +326,7 @@ test fn witness_pijul_fixture_has_no_duplicate_change_identity() -> Bool {
 }
 
 test fn witness_pijul_fixture_reference_frontier_is_clear() -> Bool {
-  match pijul_decode_projection(projection: fixture_projection()) {
+  match pijul_decode_projection(projection: test.claim.pijul_upstream_model_witness.fixture_projection()) {
     PijulDecoded { repository: _ } => true
     PijulDecodeRefused { cause: _ } => false
   }
@@ -354,7 +354,7 @@ test fn witness_pijul_fixture_state_identity_frontier_is_clear() -> Bool {
 }
 
 test fn witness_pijul_bounded_projection_decodes_with_conflict_and_partial_facts() -> Bool {
-  match pijul_decode_projection(projection: fixture_projection()) {
+  match pijul_decode_projection(projection: test.claim.pijul_upstream_model_witness.fixture_projection()) {
     PijulDecoded { repository } =>
       count(repository.state.changes) == 3
         && count(repository.state.pristine.conflicts) == 1
@@ -410,7 +410,7 @@ test fn witness_pijul_readback_rejects_perturbed_working_copy() -> Bool {
     missing_paths: [pijul_path_missing],
   }
   match pijul_assess_read_back(
-    expected: fixture_projection(),
+    expected: test.claim.pijul_upstream_model_witness.fixture_projection(),
     observation: extdeps.pijul.PijulReadBackObservation {
       pijul_version: pijul_upstream_version,
       projection: perturbed,
@@ -603,12 +603,12 @@ test fn witness_pijul_dependency_must_appear_inside_dependency_section() -> Bool
 
 test fn witness_pijul_independent_delivery_permutations_have_one_change_set() -> Bool {
   let left_then_right = pijul_plan_delivery(
-    projection: fixture_projection(),
+    projection: test.claim.pijul_upstream_model_witness.fixture_projection(),
     channel_name: "base",
     delivered: [pijul_change_left, pijul_change_right],
   )
   let right_then_left = pijul_plan_delivery(
-    projection: fixture_projection(),
+    projection: test.claim.pijul_upstream_model_witness.fixture_projection(),
     channel_name: "base",
     delivered: [pijul_change_right, pijul_change_left],
   )
@@ -629,7 +629,7 @@ test fn witness_pijul_independent_delivery_permutations_have_one_change_set() ->
 
 test fn witness_pijul_duplicate_delivery_contributes_once() -> Bool {
   match pijul_plan_delivery(
-    projection: fixture_projection(),
+    projection: test.claim.pijul_upstream_model_witness.fixture_projection(),
     channel_name: "base",
     delivered: [pijul_change_left, pijul_change_left],
   ) {
@@ -648,7 +648,7 @@ test fn witness_pijul_duplicate_delivery_contributes_once() -> Bool {
 test fn witness_pijul_missing_dependency_refuses_delivery() -> Bool {
   let base = pijul_fixture_repository()
   let dependent = extdeps.pijul.PijulRecordedChange {
-    identity: fixture_identity(hash: pijul_change_dependent),
+    identity: test.claim.pijul_upstream_model_witness.fixture_identity(hash: pijul_change_dependent),
     dependencies: [
       extdeps.pijul.PijulDependency {
         change: pijul_change_left,
@@ -685,7 +685,7 @@ test fn witness_pijul_missing_dependency_refuses_delivery() -> Bool {
 
 test fn witness_pijul_unknown_change_never_applies_as_empty() -> Bool {
   match pijul_plan_delivery(
-    projection: fixture_projection(),
+    projection: test.claim.pijul_upstream_model_witness.fixture_projection(),
     channel_name: "base",
     delivered: [pijul_change_missing],
   ) {
@@ -735,7 +735,7 @@ test fn witness_pijul_delivery_revalidates_raw_projection() -> Bool {
 test fn witness_pijul_missing_dependency_in_channel_still_refuses_delivery() -> Bool {
   let base = pijul_fixture_repository()
   let dependent = extdeps.pijul.PijulRecordedChange {
-    identity: fixture_identity(hash: pijul_change_dependent),
+    identity: test.claim.pijul_upstream_model_witness.fixture_identity(hash: pijul_change_dependent),
     dependencies: [
       extdeps.pijul.PijulDependency {
         change: pijul_change_missing,
@@ -787,7 +787,7 @@ test fn witness_pijul_missing_dependency_in_channel_still_refuses_delivery() -> 
 test fn witness_pijul_existing_channel_member_dependency_gap_refuses_delivery() -> Bool {
   let base = pijul_fixture_repository()
   let existing = extdeps.pijul.PijulRecordedChange {
-    identity: fixture_identity(hash: pijul_change_left),
+    identity: test.claim.pijul_upstream_model_witness.fixture_identity(hash: pijul_change_left),
     dependencies: [
       extdeps.pijul.PijulDependency {
         change: pijul_change_missing,
@@ -847,7 +847,7 @@ test fn witness_pijul_existing_channel_member_dependency_gap_refuses_delivery() 
 }
 
 test fn witness_pijul_duplicate_channel_member_refuses_capture() -> Bool {
-  let base = fixture_projection()
+  let base = test.claim.pijul_upstream_model_witness.fixture_projection()
   let duplicate = extdeps.pijul.PijulChannel {
     name: "main",
     state_identity: extdeps.pijul.PijulChannelStateIdentity {
@@ -872,7 +872,7 @@ test fn witness_pijul_duplicate_channel_member_refuses_capture() -> Bool {
 }
 
 test fn witness_pijul_one_state_hash_cannot_name_different_change_sets() -> Bool {
-  let projection = fixture_projection()
+  let projection = test.claim.pijul_upstream_model_witness.fixture_projection()
   let collision = extdeps.pijul.PijulChannel {
     name: "collision",
     state_identity: extdeps.pijul.PijulChannelStateIdentity {
@@ -901,7 +901,7 @@ test fn witness_pijul_one_state_hash_cannot_name_different_change_sets() -> Bool
 }
 
 test fn witness_pijul_equal_change_sets_require_one_state_identity() -> Bool {
-  let projection = fixture_projection()
+  let projection = test.claim.pijul_upstream_model_witness.fixture_projection()
   let divergent = extdeps.pijul.PijulChannel {
     name: "divergent",
     state_identity: extdeps.pijul.PijulChannelStateIdentity {
@@ -933,7 +933,7 @@ test fn witness_pijul_equal_change_sets_require_one_state_identity() -> Bool {
 test fn witness_pijul_undeclared_context_refuses_capture() -> Bool {
   let base = pijul_fixture_repository()
   let bad_change = extdeps.pijul.PijulRecordedChange {
-    identity: fixture_identity(hash: pijul_change_dependent),
+    identity: test.claim.pijul_upstream_model_witness.fixture_identity(hash: pijul_change_dependent),
     dependencies: [],
     actions: [
       extdeps.pijul.PijulNewVertex {
@@ -969,7 +969,7 @@ test fn witness_pijul_undeclared_context_refuses_capture() -> Bool {
 }
 
 test fn witness_pijul_declared_partial_change_is_not_fabricated() -> Bool {
-  let projection = fixture_projection()
+  let projection = test.claim.pijul_upstream_model_witness.fixture_projection()
   let partial_channel = extdeps.pijul.PijulChannel {
     name: "partial",
     state_identity: extdeps.pijul.PijulChannelStateIdentity {
@@ -994,7 +994,7 @@ test fn witness_pijul_declared_partial_change_is_not_fabricated() -> Bool {
 }
 
 test fn witness_pijul_graph_conflict_is_retained_without_capture_refusal() -> Bool {
-  match pijul_decode_projection(projection: fixture_projection()) {
+  match pijul_decode_projection(projection: test.claim.pijul_upstream_model_witness.fixture_projection()) {
     PijulDecoded { repository } =>
       match repository.state.pristine.conflicts |> first {
         Present {

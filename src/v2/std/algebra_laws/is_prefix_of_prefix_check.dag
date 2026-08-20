@@ -22,16 +22,16 @@ fn prefix_claim_input(ok: Bool) -> Node {
 
 data witness_prefix_empty_of_any: Bool = is_prefix_of(prefix: sym_empty(), xs: sym_ab(), eq: fn(x, y) { prefix_sym_eq(a: x, b: y) })
 
-data witness_prefix_equal_lists: Bool = is_prefix_of(prefix: sym_a(), xs: sym_a(), eq: fn(x, y) { prefix_sym_eq(a: x, b: y) })
+data witness_prefix_equal_lists: Bool = is_prefix_of(prefix: v2.test.algebra_laws.is_prefix_of_prefix_check.sym_a(), xs: v2.test.algebra_laws.is_prefix_of_prefix_check.sym_a(), eq: fn(x, y) { prefix_sym_eq(a: x, b: y) })
 
-data witness_prefix_proper_prefix: Bool = is_prefix_of(prefix: sym_a(), xs: sym_ab(), eq: fn(x, y) { prefix_sym_eq(a: x, b: y) })
+data witness_prefix_proper_prefix: Bool = is_prefix_of(prefix: v2.test.algebra_laws.is_prefix_of_prefix_check.sym_a(), xs: sym_ab(), eq: fn(x, y) { prefix_sym_eq(a: x, b: y) })
 
-data witness_prefix_non_matching: Bool = match is_prefix_of(prefix: sym_b(), xs: sym_ab(), eq: fn(x, y) { prefix_sym_eq(a: x, b: y) }) {
+data witness_prefix_non_matching: Bool = match is_prefix_of(prefix: v2.test.algebra_laws.is_prefix_of_prefix_check.sym_b(), xs: sym_ab(), eq: fn(x, y) { prefix_sym_eq(a: x, b: y) }) {
   true => false
   false => true
 }
 
-data witness_prefix_longer_than_xs: Bool = match is_prefix_of(prefix: sym_ab(), xs: sym_a(), eq: fn(x, y) { prefix_sym_eq(a: x, b: y) }) {
+data witness_prefix_longer_than_xs: Bool = match is_prefix_of(prefix: sym_ab(), xs: v2.test.algebra_laws.is_prefix_of_prefix_check.sym_a(), eq: fn(x, y) { prefix_sym_eq(a: x, b: y) }) {
   true => false
   false => true
 }

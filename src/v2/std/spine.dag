@@ -55,7 +55,7 @@ fn critical_path_depth(root: Node) -> Int {
 }
 
 fn independence_width(root: Node) -> Int {
-  reduce_or(xs: level_profile(root: root), fallback: 0, combine: int_max)
+  reduce_or(xs: level_profile(root: root), fallback: 0, combine: v2.std.spine.int_max)
 }
 
 fn spine_receipt(root: Node) -> SpineReceipt {

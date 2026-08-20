@@ -9,11 +9,11 @@ fn named_child_optional(cap: v2.std.node.Node, name: v2.std.node.Symbol) -> Opti
 }
 
 fn sequence_left_node(cap: v2.std.node.Node) -> Optional<v2.std.node.Node> {
-  named_child_optional(cap: cap, name: ^grammar_sequence_left_node_projection)
+  v2.lens.identity_captured_navigation.analyze.named_child_optional(cap: cap, name: ^grammar_sequence_left_node_projection)
 }
 
 fn sequence_right_node(cap: v2.std.node.Node) -> Optional<v2.std.node.Node> {
-  named_child_optional(cap: cap, name: ^grammar_sequence_right_node_projection)
+  v2.lens.identity_captured_navigation.analyze.named_child_optional(cap: cap, name: ^grammar_sequence_right_node_projection)
 }
 
 fn find_capture(root: v2.std.node.Node, emitted: v2.std.node.Symbol) -> Optional<v2.std.node.Node> {
@@ -33,17 +33,17 @@ fn collect_direct_captures(n: v2.std.node.Node, emitted: v2.std.node.Symbol, acc
     Present { value: id } =>
       if id == emitted {
         match parse_production_captured_child_optional(node: n) {
-          Present { value: c } => capture_list_prepend(item: c, xs: acc)
+          Present { value: c } => v2.lens.identity_captured_navigation.analyze.capture_list_prepend(item: c, xs: acc)
           Absent => acc
         }
       } else {
         fold(n.children, init: acc, f: fn(a, e) {
-          collect_direct_captures(n: e.target, emitted: emitted, acc: a)
+          v2.lens.identity_captured_navigation.analyze.collect_direct_captures(n: e.target, emitted: emitted, acc: a)
         })
       }
     Absent =>
       fold(n.children, init: acc, f: fn(a, e) {
-        collect_direct_captures(n: e.target, emitted: emitted, acc: a)
+        v2.lens.identity_captured_navigation.analyze.collect_direct_captures(n: e.target, emitted: emitted, acc: a)
       })
   }
 }
@@ -61,7 +61,7 @@ fn primary_expr_capture(node: v2.std.node.Node) -> Optional<v2.std.node.Node> {
 }
 
 fn sequence_left_symbol(cap: v2.std.node.Node) -> Optional<v2.std.node.Symbol> {
-  match sequence_left_node(cap: cap) {
+  match v2.lens.identity_captured_navigation.analyze.sequence_left_node(cap: cap) {
     Absent => Absent
     Present { value: left } => node_atom_identity_optional(node: left)
   }
@@ -85,14 +85,14 @@ fn edge_is_identity_projection(e: v2.std.node.Edge) -> Bool {
 fn collect_value_identifiers_into(n: v2.std.node.Node, acc: List<v2.std.node.Symbol>) -> List<v2.std.node.Symbol> {
   let here = match node_atom_identity_optional(node: n) {
     Present { value: id } =>
-      if dag_lex_token_symbol(sym: id) { acc } else { symbol_list_prepend(item: id, xs: acc) }
+      if dag_lex_token_symbol(sym: id) { acc } else { v2.lens.identity_captured_navigation.analyze.symbol_list_prepend(item: id, xs: acc) }
     Absent => acc
   }
   fold(n.children, init: here, f: fn(a, e) {
     if edge_is_identity_projection(e: e) {
       a
     } else {
-      collect_value_identifiers_into(n: e.target, acc: a)
+      v2.lens.identity_captured_navigation.analyze.collect_value_identifiers_into(n: e.target, acc: a)
     }
   })
 }
@@ -123,7 +123,7 @@ fn node_source_symbol(node: v2.std.node.Node, span_index: v2.std.provenance.Span
 
 // primary_expr's grammar is a Choice: caret_symbol_expr = Sequence(caret_terminal, ident_terminal) for an atom literal like ^foo, vs primary_expr_core's plain-identifier case = Sequence(ident_lexeme, suffix) for a call head like find_named_child - the SAME sequence shape, but the symbol lives on the LEFT for a plain identifier and the RIGHT for a caret-prefixed atom literal (the left is the caret token itself, dag_lex_token_symbol-true). arg_value_symbol reads the left first and, when it is literally ^dag_token_caret, resolves the right - the atom literal's real referenced symbol - via node_source_symbol (see node_source_symbol_note) rather than returning the caret token's own class symbol.
 fn caret_literal_right_symbol(value_expr: v2.std.node.Node, span_index: v2.std.provenance.SpanIndex, source_text: String) -> Optional<v2.std.node.Symbol> {
-  match sequence_right_node(cap: value_expr) {
+  match v2.lens.identity_captured_navigation.analyze.sequence_right_node(cap: value_expr) {
     Absent => Absent
     Present { value: right } => node_source_symbol(node: right, span_index: span_index, source_text: source_text)
   }
@@ -142,10 +142,10 @@ fn value_expr_symbol_from_left(
 }
 
 fn arg_value_symbol(arg_capture: v2.std.node.Node, span_index: v2.std.provenance.SpanIndex, source_text: String) -> Optional<v2.std.node.Symbol> {
-  match find_capture(root: arg_capture, emitted: ^dag_surface_primary_expr) {
+  match v2.lens.identity_captured_navigation.analyze.find_capture(root: arg_capture, emitted: ^dag_surface_primary_expr) {
     Absent => Absent
     Present { value: value_expr } =>
-      match sequence_left_symbol(cap: value_expr) {
+      match v2.lens.identity_captured_navigation.analyze.sequence_left_symbol(cap: value_expr) {
         Present { value: left_id } =>
           value_expr_symbol_from_left(
             value_expr: value_expr,
@@ -159,7 +159,7 @@ fn arg_value_symbol(arg_capture: v2.std.node.Node, span_index: v2.std.provenance
 }
 
 fn call_args_in_order(call_capture: v2.std.node.Node) -> List<v2.std.node.Node> {
-  list_reverse(xs: collect_direct_captures(n: call_capture, emitted: ^dag_surface_arg, acc: std.algebra.Empty))
+  list_reverse(xs: v2.lens.identity_captured_navigation.analyze.collect_direct_captures(n: call_capture, emitted: ^dag_surface_arg, acc: std.algebra.Empty))
 }
 
 fn arg_nth_value_symbol(
@@ -171,27 +171,27 @@ fn arg_nth_value_symbol(
   match list_at_optional(xs: call_args_in_order(call_capture: call_capture), index: index) {
     Absent => Absent
     Present { value: arg_cap } =>
-      arg_value_symbol(arg_capture: arg_cap, span_index: span_index, source_text: source_text)
+      v2.lens.identity_captured_navigation.analyze.arg_value_symbol(arg_capture: arg_cap, span_index: span_index, source_text: source_text)
   }
 }
 
 fn match_scrutinee_node(match_capture: v2.std.node.Node) -> Optional<v2.std.node.Node> {
-  match sequence_right_node(cap: match_capture) {
+  match v2.lens.identity_captured_navigation.analyze.sequence_right_node(cap: match_capture) {
     Absent => Absent
-    Present { value: after_kw } => sequence_left_node(cap: after_kw)
+    Present { value: after_kw } => v2.lens.identity_captured_navigation.analyze.sequence_left_node(cap: after_kw)
   }
 }
 
 fn match_arms_region_node(match_capture: v2.std.node.Node) -> Optional<v2.std.node.Node> {
-  match sequence_right_node(cap: match_capture) {
+  match v2.lens.identity_captured_navigation.analyze.sequence_right_node(cap: match_capture) {
     Absent => Absent
     Present { value: after_kw } =>
-      match sequence_right_node(cap: after_kw) {
+      match v2.lens.identity_captured_navigation.analyze.sequence_right_node(cap: after_kw) {
         Absent => Absent
         Present { value: after_scrutinee } =>
-          match sequence_right_node(cap: after_scrutinee) {
+          match v2.lens.identity_captured_navigation.analyze.sequence_right_node(cap: after_scrutinee) {
             Absent => Absent
-            Present { value: arms_seq } => sequence_left_node(cap: arms_seq)
+            Present { value: arms_seq } => v2.lens.identity_captured_navigation.analyze.sequence_left_node(cap: arms_seq)
           }
       }
   }
@@ -210,10 +210,10 @@ fn scrutinee_identity_navigation_call(
   span_index: v2.std.provenance.SpanIndex,
   source_text: String
 ) -> Optional<v2.std.node.Node> {
-  match find_capture(root: scrutinee, emitted: ^dag_surface_primary_expr) {
+  match v2.lens.identity_captured_navigation.analyze.find_capture(root: scrutinee, emitted: ^dag_surface_primary_expr) {
     Absent => no_identity_navigation_call()
     Present { value: cap } =>
-      match sequence_left_symbol(cap: cap) {
+      match v2.lens.identity_captured_navigation.analyze.sequence_left_symbol(cap: cap) {
         Present { value: head } =>
           if head == ^find_named_child {
             match arg_nth_value_symbol(call_capture: cap, index: 1, span_index: span_index, source_text: source_text) {
@@ -271,10 +271,10 @@ fn unclassifiable_identity_navigation_finding(match_node: v2.std.node.Node, caus
 }
 
 fn classify_identity_match(source_node: v2.std.node.Node, match_node: v2.std.node.Node, mentions: List<v2.std.node.Symbol>) -> Optional<Finding> {
-  let non_absent = fold(mentions, init: empty_symbol_list(), f: fn(acc, s) {
-    if s == ^Absent { acc } else { symbol_list_prepend(item: s, xs: acc) }
+  let non_absent = fold(mentions, init: v2.lens.identity_captured_navigation.analyze.empty_symbol_list(), f: fn(acc, s) {
+    if s == ^Absent { acc } else { v2.lens.identity_captured_navigation.analyze.symbol_list_prepend(item: s, xs: acc) }
   })
-  let non_absent_total = symbol_list_length(xs: non_absent)
+  let non_absent_total = v2.lens.identity_captured_navigation.analyze.symbol_list_length(xs: non_absent)
   let reduction_count = count_symbol(xs: non_absent, needle: ^node_atom_identity_optional)
   let remaining = non_absent_total - reduction_count
   if reduction_count == 0 {
@@ -331,7 +331,7 @@ fn identity_navigation_findings_at(node: v2.std.node.Node, span_index: v2.std.pr
                         match classify_identity_match(
                           source_node: source_call,
                           match_node: node,
-                          mentions: collect_value_identifiers_into(n: arms, acc: std.algebra.Empty)
+                          mentions: v2.lens.identity_captured_navigation.analyze.collect_value_identifiers_into(n: arms, acc: std.algebra.Empty)
                         ) {
                           Present { value: f } => std.algebra.Cons { head: f, tail: std.algebra.Empty }
                           Absent => std.algebra.Empty

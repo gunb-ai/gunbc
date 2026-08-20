@@ -71,11 +71,11 @@ fn assess_reference_binding_observation(
 ) -> ReferenceDerivedClosureAdmission {
   match observation {
     SameFileNeighbourProductionRefused { gap: _ } =>
-      refused(capability: SameFileEarlierNeighbourVisible, failure: SameFileNeighbourMissing)
+      gunbc.namespace_reference_derived_closure_admission.refused(capability: SameFileEarlierNeighbourVisible, failure: SameFileNeighbourMissing)
     SameFileNeighbourObservation { neighbour, resolution } =>
       match binding_outcome_from_resolution(resolution: resolution) {
         Absent =>
-          refused(capability: SameFileEarlierNeighbourVisible, failure: SameFileNeighbourMissing)
+          gunbc.namespace_reference_derived_closure_admission.refused(capability: SameFileEarlierNeighbourVisible, failure: SameFileNeighbourMissing)
         Present { value: binding_outcome } =>
           match binding_outcome {
             OccurrenceReferenceBindingDecided {
@@ -84,13 +84,13 @@ fn assess_reference_binding_observation(
               if binding.candidate.containment.terminal.value == neighbour.value {
                 established(capability: SameFileEarlierNeighbourVisible)
               } else {
-                refused(capability: SameFileEarlierNeighbourVisible, failure: SameFileNeighbourMissing)
+                gunbc.namespace_reference_derived_closure_admission.refused(capability: SameFileEarlierNeighbourVisible, failure: SameFileNeighbourMissing)
               }
-            _ => refused(capability: SameFileEarlierNeighbourVisible, failure: SameFileNeighbourMissing)
+            _ => gunbc.namespace_reference_derived_closure_admission.refused(capability: SameFileEarlierNeighbourVisible, failure: SameFileNeighbourMissing)
           }
       }
     SiblingBranchProductionRefused { gap: _ } =>
-      refused(capability: SiblingDecisionBranchExcluded, failure: SiblingBranchLeaked)
+      gunbc.namespace_reference_derived_closure_admission.refused(capability: SiblingDecisionBranchExcluded, failure: SiblingBranchLeaked)
     SiblingBranchObservation {
       own_branch_declaration,
       sibling_branch_declaration,
@@ -98,7 +98,7 @@ fn assess_reference_binding_observation(
     } =>
       match binding_outcome_from_resolution(resolution: resolution) {
         Absent =>
-          refused(capability: SiblingDecisionBranchExcluded, failure: SiblingBranchLeaked)
+          gunbc.namespace_reference_derived_closure_admission.refused(capability: SiblingDecisionBranchExcluded, failure: SiblingBranchLeaked)
         Present { value: binding_outcome } =>
           match binding_outcome {
             OccurrenceReferenceBindingDecided {
@@ -108,27 +108,27 @@ fn assess_reference_binding_observation(
                 && binding.candidate.containment.terminal.value != sibling_branch_declaration.value {
                 established(capability: SiblingDecisionBranchExcluded)
               } else {
-                refused(capability: SiblingDecisionBranchExcluded, failure: SiblingBranchLeaked)
+                gunbc.namespace_reference_derived_closure_admission.refused(capability: SiblingDecisionBranchExcluded, failure: SiblingBranchLeaked)
               }
-            _ => refused(capability: SiblingDecisionBranchExcluded, failure: SiblingBranchLeaked)
+            _ => gunbc.namespace_reference_derived_closure_admission.refused(capability: SiblingDecisionBranchExcluded, failure: SiblingBranchLeaked)
           }
       }
     LaterDeclarationProductionRefused { gap: _ } =>
-      refused(capability: LaterDeclarationExcluded, failure: LaterDeclarationLeaked)
+      gunbc.namespace_reference_derived_closure_admission.refused(capability: LaterDeclarationExcluded, failure: LaterDeclarationLeaked)
     LaterDeclarationObservation { later_declaration: _, resolution } =>
       match binding_outcome_from_resolution(resolution: resolution) {
         Absent =>
-          refused(capability: LaterDeclarationExcluded, failure: LaterDeclarationLeaked)
+          gunbc.namespace_reference_derived_closure_admission.refused(capability: LaterDeclarationExcluded, failure: LaterDeclarationLeaked)
         Present { value: binding_outcome } =>
           match binding_outcome {
             OccurrenceReferenceBindingDecided {
               result: OccurrenceUnbound { occurrence: _ },
             } => established(capability: LaterDeclarationExcluded)
-            _ => refused(capability: LaterDeclarationExcluded, failure: LaterDeclarationLeaked)
+            _ => gunbc.namespace_reference_derived_closure_admission.refused(capability: LaterDeclarationExcluded, failure: LaterDeclarationLeaked)
           }
       }
     DistinctHomonymProductionRefused { gap: _ } =>
-      refused(capability: DistinctSameSpelledDeclarationsPreserved, failure: DistinctDeclarationCollapsed)
+      gunbc.namespace_reference_derived_closure_admission.refused(capability: DistinctSameSpelledDeclarationsPreserved, failure: DistinctDeclarationCollapsed)
     DistinctHomonymObservation {
       first_declaration,
       second_declaration,
@@ -136,7 +136,7 @@ fn assess_reference_binding_observation(
     } =>
       match binding_outcome_from_resolution(resolution: resolution) {
         Absent =>
-          refused(capability: DistinctSameSpelledDeclarationsPreserved, failure: DistinctDeclarationCollapsed)
+          gunbc.namespace_reference_derived_closure_admission.refused(capability: DistinctSameSpelledDeclarationsPreserved, failure: DistinctDeclarationCollapsed)
         Present { value: binding_outcome } =>
           match binding_outcome {
             OccurrenceReferenceBindingDecided {
@@ -151,9 +151,9 @@ fn assess_reference_binding_observation(
                 && candidates.second.containment.terminal.value == second_declaration.value {
                 established(capability: DistinctSameSpelledDeclarationsPreserved)
               } else {
-                refused(capability: DistinctSameSpelledDeclarationsPreserved, failure: DistinctDeclarationCollapsed)
+                gunbc.namespace_reference_derived_closure_admission.refused(capability: DistinctSameSpelledDeclarationsPreserved, failure: DistinctDeclarationCollapsed)
               }
-            _ => refused(capability: DistinctSameSpelledDeclarationsPreserved, failure: DistinctDeclarationCollapsed)
+            _ => gunbc.namespace_reference_derived_closure_admission.refused(capability: DistinctSameSpelledDeclarationsPreserved, failure: DistinctDeclarationCollapsed)
           }
       }
     RepeatedMentionDependencyObservation { provider_file, projected_dependencies } =>
@@ -161,7 +161,7 @@ fn assess_reference_binding_observation(
         && file_present(xs: projected_dependencies, wanted: provider_file) {
         established(capability: RepeatedMentionsCollapseDependency)
       } else {
-        refused(capability: RepeatedMentionsCollapseDependency, failure: RepeatedMentionDuplicatedDependency)
+        gunbc.namespace_reference_derived_closure_admission.refused(capability: RepeatedMentionsCollapseDependency, failure: RepeatedMentionDuplicatedDependency)
       }
     UnrelatedLoadedFileObservation {
       provider_file,
@@ -173,7 +173,7 @@ fn assess_reference_binding_observation(
         && !file_present(xs: projected_dependencies, wanted: unrelated_loaded_file) {
         established(capability: UnrelatedLoadedFileExcluded)
       } else {
-        refused(capability: UnrelatedLoadedFileExcluded, failure: UnrelatedLoadedFileDependencyLeaked)
+        gunbc.namespace_reference_derived_closure_admission.refused(capability: UnrelatedLoadedFileExcluded, failure: UnrelatedLoadedFileDependencyLeaked)
       }
   }
 }

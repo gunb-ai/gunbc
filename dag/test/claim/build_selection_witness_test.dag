@@ -51,13 +51,13 @@ fn candidate(
 }
 
 fn cheap_build() -> product.build_selection.BuildCandidate {
-  candidate(identity: cheap_ref, label: "cheap" as std.types.NonEmptyStr, capacity: one_terabyte, cash: usd_micros(count: 1000000), builds: 31, wall_power: std.measure.watt(count: 300), bandwidth: std.measure.Bandwidth { count: 204800000000 })
+  candidate(identity: cheap_ref, label: "cheap" as std.types.NonEmptyStr, capacity: one_terabyte, cash: test.claim.build_selection_witness.usd_micros(count: 1000000), builds: 31, wall_power: std.measure.watt(count: 300), bandwidth: std.measure.Bandwidth { count: 204800000000 })
 }
 
 // Strictly worse on every funded axis than the cheap build: less memory, more
 // money, fewer builds, more power, less bandwidth.
 fn dear_build() -> product.build_selection.BuildCandidate {
-  candidate(identity: dear_ref, label: "dear" as std.types.NonEmptyStr, capacity: half_terabyte, cash: usd_micros(count: 9000000), builds: 30, wall_power: std.measure.watt(count: 400), bandwidth: std.measure.Bandwidth { count: 187712000000 })
+  candidate(identity: dear_ref, label: "dear" as std.types.NonEmptyStr, capacity: half_terabyte, cash: test.claim.build_selection_witness.usd_micros(count: 9000000), builds: 30, wall_power: std.measure.watt(count: 400), bandwidth: std.measure.Bandwidth { count: 187712000000 })
 }
 
 test fn w_the_axes_are_the_five_the_pipeline_funds() -> Bool {
@@ -84,7 +84,7 @@ test fn w_the_better_candidate_stands_on_the_frontier() -> Bool {
 // higher-is-better, the dominance above would still hold and this claim goes
 // red.
 test fn w_a_tradeoff_is_not_a_domination() -> Bool {
-  let tradeoff = candidate(identity: dear_ref, label: "tradeoff" as std.types.NonEmptyStr, capacity: half_terabyte, cash: usd_micros(count: 100000), builds: 31, wall_power: std.measure.watt(count: 300), bandwidth: std.measure.Bandwidth { count: 204800000000 })
+  let tradeoff = candidate(identity: dear_ref, label: "tradeoff" as std.types.NonEmptyStr, capacity: half_terabyte, cash: test.claim.build_selection_witness.usd_micros(count: 100000), builds: 31, wall_power: std.measure.watt(count: 300), bandwidth: std.measure.Bandwidth { count: 204800000000 })
   match product.build_selection.build_standing(subject: tradeoff, field: [cheap_build(), tradeoff], declared: std.currency.Usd) {
     ProvisionallyNonDominated { sensitivities: _ } => true
     _ => false
@@ -110,7 +110,7 @@ fn pending_build() -> product.build_selection.BuildCandidate {
         },
       },
     ],
-    cash: product.build_fulfillment.CashDerived { cash: usd_micros(count: 1) },
+    cash: product.build_fulfillment.CashDerived { cash: test.claim.build_selection_witness.usd_micros(count: 1) },
     ceiling: product.build_fulfillment.CeilingDerived { builds: 99, bottlenecks: [purchase_line()], bottleneck_units: 3168 },
   }
 }

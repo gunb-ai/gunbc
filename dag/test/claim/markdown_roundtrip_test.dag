@@ -80,7 +80,7 @@ fn perturbed_separator_spellings() -> extdeps.languages.markdown.MarkdownSpellin
 }
 
 test fn witness_roundtrip_under_perturbed_rows() -> Bool {
-  let spb = perturbed_bullet_spellings()
+  let spb = test.claim.markdown_roundtrip.perturbed_bullet_spellings()
   let restored_b = ingest_markdown_source_with(src: serialize_markdown_source_with(doc: roundtrip_core_doc(), sp: spb), sp: spb)
   let sps = perturbed_separator_spellings()
   let restored_s = ingest_markdown_source_with(src: serialize_markdown_source_with(doc: roundtrip_core_doc(), sp: sps), sp: sps)
@@ -88,7 +88,7 @@ test fn witness_roundtrip_under_perturbed_rows() -> Bool {
 }
 
 test fn witness_ingest_reads_bullet_row() -> Bool {
-  let emitted_b = serialize_markdown_source_with(doc: roundtrip_core_doc(), sp: perturbed_bullet_spellings())
+  let emitted_b = serialize_markdown_source_with(doc: roundtrip_core_doc(), sp: test.claim.markdown_roundtrip.perturbed_bullet_spellings())
   let emitted_s = serialize_markdown_source_with(doc: roundtrip_core_doc(), sp: perturbed_separator_spellings())
   !(ingest_markdown_source(src: emitted_b) == roundtrip_core_doc())
     && !(ingest_markdown_source(src: emitted_s) == roundtrip_core_doc())

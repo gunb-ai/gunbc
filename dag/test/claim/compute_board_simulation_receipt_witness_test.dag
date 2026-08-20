@@ -15,7 +15,7 @@ fn admitted() -> product.compute_board.admission.AdmittedBoardPowerInterfaceArti
 }
 
 test fn w_the_executed_verilog_is_what_the_product_emits_today() -> Bool {
-  match admitted() {
+  match test.claim.compute_board_simulation_receipt_witness.admitted() {
     Absent => false
     Present { value: adm } =>
       match project_article_to_verilog(admitted: adm, bindings: power_interlock_verilog_bindings) {
@@ -26,7 +26,7 @@ test fn w_the_executed_verilog_is_what_the_product_emits_today() -> Bool {
 }
 
 test fn w_the_executed_deck_is_what_the_product_emits_today() -> Bool {
-  match admitted() {
+  match test.claim.compute_board_simulation_receipt_witness.admitted() {
     Absent => false
     Present { value: adm } =>
       match project_article_to_ngspice_run(admitted: adm) {
@@ -41,7 +41,7 @@ test fn w_the_executed_deck_is_what_the_product_emits_today() -> Bool {
 // the shared spice_netlist construction is what makes that unwritable, and this is the executing
 // check that it stayed shared.
 test fn w_the_run_deck_contains_the_receipt_circuit() -> Bool {
-  match admitted() {
+  match test.claim.compute_board_simulation_receipt_witness.admitted() {
     Absent => false
     Present { value: adm } =>
       match project_article_to_spice(admitted: adm) {
@@ -124,21 +124,21 @@ fn terminal_member_count(nets: List<product.electrical.connectivity.ElectricalNe
 data floating_analog: product.compute_board.analog.AnalogCircuitIntent = product.compute_board.analog.AnalogCircuitIntent {
   title: power_interlock_article.analog.title,
   components: power_interlock_article.analog.components,
-  nets: without_filter_high_terminal(nets: power_interlock_article.analog.nets),
+  nets: test.claim.compute_board_simulation_receipt_witness.without_filter_high_terminal(nets: power_interlock_article.analog.nets),
 }
 
 // The fixture's premise, executed: exactly one terminal member fewer than production. Without
 // this the tests below are only about the projection if someone remembers to check that something
 // actually floats.
 test fn w_the_floating_fixture_actually_floats_exactly_one_terminal() -> Bool {
-  let produced = terminal_member_count(nets: power_interlock_article.analog.nets)
-  let floated = terminal_member_count(nets: floating_analog.nets)
+  let produced = test.claim.compute_board_simulation_receipt_witness.terminal_member_count(nets: power_interlock_article.analog.nets)
+  let floated = test.claim.compute_board_simulation_receipt_witness.terminal_member_count(nets: test.claim.compute_board_simulation_receipt_witness.floating_analog.nets)
   produced > 0 && floated == (produced - 1)
 }
 
 data floating_terminal_article: product.compute_board.article.BoardPowerInterfaceArticle = product.compute_board.article.BoardPowerInterfaceArticle {
   identity: power_interlock_article.identity,
-  analog: floating_analog,
+  analog: test.claim.compute_board_simulation_receipt_witness.floating_analog,
   model_bindings: power_interlock_article.model_bindings,
   reference_net: power_interlock_article.reference_net,
   digital_control: power_interlock_article.digital_control,
@@ -156,14 +156,14 @@ fn floating_article() -> product.compute_board.admission.AdmittedBoardPowerInter
 }
 
 test fn w_the_floating_fixture_is_admitted_so_the_test_is_about_the_projection() -> Bool {
-  match floating_article() {
+  match test.claim.compute_board_simulation_receipt_witness.floating_article() {
     Present { value: _ } => true
     Absent => false
   }
 }
 
 test fn w_both_spice_paths_refuse_the_same_article() -> Bool {
-  match floating_article() {
+  match test.claim.compute_board_simulation_receipt_witness.floating_article() {
     Absent => false
     Present { value: adm } =>
       match project_article_to_spice(admitted: adm) {
@@ -181,7 +181,7 @@ test fn w_both_spice_paths_refuse_the_same_article() -> Bool {
 // a constraint file; this asserts the product still emits exactly those bytes, so the recorded run
 // cannot drift into describing a pin assignment nobody generates.
 test fn w_the_placed_constraints_are_what_the_product_emits_today() -> Bool {
-  match admitted() {
+  match test.claim.compute_board_simulation_receipt_witness.admitted() {
     Absent => false
     Present { value: adm } =>
       match project_article_to_pin_constraints(

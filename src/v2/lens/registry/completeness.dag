@@ -56,8 +56,8 @@ fn lens_registry_completeness_under_nested_prefix(module_name: String) -> Bool {
 }
 
 fn lens_registry_completeness_excluded(module_name: String) -> Bool {
-  string_member(xs: std.roster_frontier.frontier_units(rows: lens_registry_completeness_known_infra_roster), x: module_name)
-    || string_member(xs: std.roster_frontier.frontier_units(rows: lens_registry_completeness_consolidated_roster), x: module_name)
+  v2.lens.registry.completeness.string_member(xs: std.roster_frontier.frontier_units(rows: lens_registry_completeness_known_infra_roster), x: module_name)
+    || v2.lens.registry.completeness.string_member(xs: std.roster_frontier.frontier_units(rows: lens_registry_completeness_consolidated_roster), x: module_name)
     || ends_with(s: module_name, suffix: "_test")
     || lens_registry_completeness_under_nested_prefix(module_name)
 }
@@ -84,7 +84,7 @@ fn lens_registry_completeness_unenrolled_count_from_facts(
   bound_module_paths: List<String>
 ) -> Int {
   count_where(xs: facts, predicate: fn(fact) {
-    lens_registry_completeness_is_candidate(fact.module) && !string_member(xs: bound_module_paths, x: fact.module)
+    lens_registry_completeness_is_candidate(fact.module) && !v2.lens.registry.completeness.string_member(xs: bound_module_paths, x: fact.module)
   })
 }
 

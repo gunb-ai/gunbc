@@ -24,14 +24,14 @@ fn authored_source_gate_oracle(module_source: String, name: String) -> Bool {
 fn variant_induced_parent_oracle(module_source: String, enum_name: String, variants: List<String>, variant_to_enum: Map<String, String>) -> Bool {
   variants |> any(vn =>
     match map_get(variant_to_enum, vn) {
-      Present { value: parent } => parent == enum_name && authored_source_gate_oracle(module_source: module_source, name: vn)
+      Present { value: parent } => parent == enum_name && test.claim.reference_derived_variant_induced_parent_gate_witness_test.authored_source_gate_oracle(module_source: module_source, name: vn)
       Absent => false
     }
   )
 }
 
 fn candidate_authored_oracle(module_source: String, name: String, variants: List<String>, variant_to_enum: Map<String, String>) -> Bool {
-  authored_source_gate_oracle(module_source: module_source, name: name)
+  test.claim.reference_derived_variant_induced_parent_gate_witness_test.authored_source_gate_oracle(module_source: module_source, name: name)
     || variant_induced_parent_oracle(module_source: module_source, enum_name: name, variants: variants, variant_to_enum: variant_to_enum)
 }
 
@@ -50,7 +50,7 @@ data homonym_variant_to_enum: Map<String, String> = {
 }
 
 test fn unspelled_parent_with_spelled_variant_admitted_holds() -> Bool {
-  authored_source_gate_oracle(module_source: root_k_module_source, name: "NodeKind") == false
+  test.claim.reference_derived_variant_induced_parent_gate_witness_test.authored_source_gate_oracle(module_source: root_k_module_source, name: "NodeKind") == false
     && candidate_authored_oracle(
       module_source: root_k_module_source,
       name: "NodeKind",

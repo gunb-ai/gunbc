@@ -23,9 +23,9 @@ fn planted_oid(hex: String) -> extdeps.git.object_store.GitObjectId {
 fn planted_exact_window() -> gunbc.git_diff_change_window.GitExactDiffWindow {
   git_exact_diff_window_for_verification(
     target: "origin/main" as std.types.GitRef,
-    target_generation: planted_oid(hex: planted_target_generation_hex),
-    base: planted_oid(hex: planted_base_hex),
-    head: planted_oid(hex: planted_head_hex),
+    target_generation: test.claim.diff_window_cross_seam_witness_test.planted_oid(hex: planted_target_generation_hex),
+    base: test.claim.diff_window_cross_seam_witness_test.planted_oid(hex: planted_base_hex),
+    head: test.claim.diff_window_cross_seam_witness_test.planted_oid(hex: planted_head_hex),
   )
 }
 

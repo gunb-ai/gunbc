@@ -120,7 +120,7 @@ fn observe_stage0_rust_sources(
     )
     if !baseline.success || (baseline.sha as String) == "" {
       GitObservationRefused {
-        detail: git_refusal_detail(operation: "git.Inspect.MergeBase", stderr: baseline.stderr)
+        detail: gunbc.stage0_rust_host_observation.git_refusal_detail(operation: "git.Inspect.MergeBase", stderr: baseline.stderr)
       }
     } else {
       let current_tree = git.Inspect.ListTreePathsAtRevision(
@@ -129,7 +129,7 @@ fn observe_stage0_rust_sources(
       )
       if !current_tree.success {
         GitObservationRefused {
-          detail: git_refusal_detail(
+          detail: gunbc.stage0_rust_host_observation.git_refusal_detail(
             operation: "git.Inspect.ListTreePathsAtRevision(HEAD)",
             stderr: current_tree.stderr
           )
@@ -141,7 +141,7 @@ fn observe_stage0_rust_sources(
         )
         if !prior_tree.success {
           GitObservationRefused {
-            detail: git_refusal_detail(
+            detail: gunbc.stage0_rust_host_observation.git_refusal_detail(
               operation: "git.Inspect.ListTreePathsAtRevision(merge-base)",
               stderr: prior_tree.stderr
             )
@@ -154,7 +154,7 @@ fn observe_stage0_rust_sources(
           )
           if !manifest.success {
             RustManifestReadRefused {
-              detail: git_refusal_detail(operation: "git.Core.Show(manifest)", stderr: manifest.stderr)
+              detail: gunbc.stage0_rust_host_observation.git_refusal_detail(operation: "git.Core.Show(manifest)", stderr: manifest.stderr)
             }
           } else {
             match parse_stage0_cargo_manifest_bins(manifest: manifest.content) {

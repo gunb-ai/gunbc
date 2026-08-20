@@ -42,7 +42,7 @@ fn render_rust_type_without_applied_binding(n: v1.std.core.Node, shared_types: S
     match n.children |> first {
       Present { value: elem_child } =>
         let elem_node = v1.compiler.infer_types.child_type_node(ch: elem_child)
-        let elem_is_type_var = if elem_node.inferred != none { is_type_variable(inferred: elem_node.inferred.value) } else { false }
+        let elem_is_type_var = if elem_node.inferred != none { v1.compiler.emit_rust.is_type_variable(inferred: elem_node.inferred.value) } else { false }
         if elem_is_type_var {
           emit_rust_compile_error_expr(message: "Set element type unresolved")
         } else if !rust_btree_set_element_ord_eligible(elem_node: elem_node, source_indices: source_indices, emit_info: emit_info) {
@@ -59,7 +59,7 @@ fn render_rust_type_without_applied_binding(n: v1.std.core.Node, shared_types: S
         let key_node = v1.compiler.infer_types.child_type_node(ch: key_child)
         let val_node = match n.children |> skip(1) |> first {
           Present { value: val_child } => v1.compiler.infer_types.child_type_node(ch: val_child)
-          Absent => type_variable_node(id: "map_value")
+          Absent => v1.compiler.emit_rust.type_variable_node(id: "map_value")
         }
         let key_str = render_rust_type(n: key_node, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
         let val_str = render_rust_type(n: val_node, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
@@ -1241,7 +1241,7 @@ fn type_leaf_is_unbound_in_closure_scope(name: String, generic_param_names: List
   } else {
     match v1.compiler.infer_env.lookup_type_by_name(env: env, name: name) {
       Present { value: resolved_node } =>
-        if resolved_node.inferred != none && is_type_variable(inferred: resolved_node.inferred.value) { true } else { false }
+        if resolved_node.inferred != none && v1.compiler.emit_rust.is_type_variable(inferred: resolved_node.inferred.value) { true } else { false }
       Absent => true
     }
   }
@@ -3939,7 +3939,7 @@ fn alias_rhs_nominal_shell_has_rust_authority(n: v1.std.core.Node, module_name: 
         module_index: module_index)
       )
   } else if n.connective == v1.std.core.NoConnective && n.children |> count == 0 {
-    if n.inferred != none && is_type_variable(inferred: n.inferred.value) {
+    if n.inferred != none && v1.compiler.emit_rust.is_type_variable(inferred: n.inferred.value) {
       true
     } else {
       let name = v1.std.core.authored_name_at(source_indices: source_indices, node: n)
@@ -4999,7 +4999,7 @@ fn emit_type_params_with_clone_bound(params: List<v1.std.core.Node>, clone_param
 fn is_function_type_param(param: v1.std.core.Node) -> Bool {
   let type_expr = v1.std.core.param_node_type_expr(n: param)
   let type_expr_is_var = match type_expr.inferred {
-    Present { value: inf } => is_type_variable(inferred: inf)
+    Present { value: inf } => v1.compiler.emit_rust.is_type_variable(inferred: inf)
     Absent => false
   }
   let same_source_span = param.span.file == type_expr.span.file && param.span.start == type_expr.span.start && param.span.end == type_expr.span.end
@@ -7209,7 +7209,7 @@ fn rust_empty_map_kv_type_str(map_type: v1.std.core.Node, shared_types: Set<Stri
 
 fn type_node_child_is_type_variable(c: v1.std.core.Node) -> Bool {
   let ch = v1.compiler.infer_types.child_type_node(ch: c)
-  if ch.inferred != none { is_type_variable(inferred: ch.inferred.value) } else { false }
+  if ch.inferred != none { v1.compiler.emit_rust.is_type_variable(inferred: ch.inferred.value) } else { false }
 }
 
 fn rust_btree_set_element_ord_eligible(elem_node: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> Bool {
@@ -7226,7 +7226,7 @@ fn rust_empty_set_element_type_str(set_type: v1.std.core.Node, shared_types: Set
   match set_type.children |> first {
     Present { value: elem_child } =>
       let elem_node = v1.compiler.infer_types.child_type_node(ch: elem_child)
-      let elem_is_type_var = if elem_node.inferred != none { is_type_variable(inferred: elem_node.inferred.value) } else { false }
+      let elem_is_type_var = if elem_node.inferred != none { v1.compiler.emit_rust.is_type_variable(inferred: elem_node.inferred.value) } else { false }
       let elem_is_error = if elem_node.inferred != none { v1.std.core.is_compiler_error(inferred: elem_node.inferred.value) } else { false }
       if elem_is_type_var || elem_is_error { "" }
       else if !rust_btree_set_element_ord_eligible(elem_node: elem_node, source_indices: source_indices, emit_info: emit_info) { "" }
@@ -7241,7 +7241,7 @@ fn emit_rust_empty_set_expr(set_type: v1.std.core.Node, shared_types: Set<String
   match set_type.children |> first {
     Present { value: elem_child } =>
       let elem_node = v1.compiler.infer_types.child_type_node(ch: elem_child)
-      let elem_is_type_var = if elem_node.inferred != none { is_type_variable(inferred: elem_node.inferred.value) } else { false }
+      let elem_is_type_var = if elem_node.inferred != none { v1.compiler.emit_rust.is_type_variable(inferred: elem_node.inferred.value) } else { false }
       if elem_is_type_var {
         "v1_rt::rc_empty_set::<_>()"
       } else if !rust_btree_set_element_ord_eligible(elem_node: elem_node, source_indices: source_indices, emit_info: emit_info) {
@@ -7901,7 +7901,7 @@ fn collection_element_type(receiver_type: v1.std.core.InferredNode?, shared_type
           Present { value: elem_child } =>
             let elem_node = v1.compiler.infer_types.child_type_node(ch: elem_child)
             let elem_is_error = if elem_node.inferred != none { v1.std.core.is_compiler_error(inferred: elem_node.inferred.value) } else { false }
-            let elem_is_type_var = if elem_node.inferred != none { is_type_variable(inferred: elem_node.inferred.value) } else { false }
+            let elem_is_type_var = if elem_node.inferred != none { v1.compiler.emit_rust.is_type_variable(inferred: elem_node.inferred.value) } else { false }
             if elem_is_error || elem_is_type_var || type_node_has_closure_unbound_generic_atom(n: elem_node, generic_param_names: emit_info.fn_generic_param_names, env: type_env, source_indices: source_indices) { "_" } else { render_rust_type(n: elem_node, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info) }
           Absent => "_"
         }
@@ -7918,9 +7918,9 @@ fn lambda_scope_from_children(scope: v1.compiler.infer.InferScope, params: List<
       Present { value: pn } =>
         match pn.inferred {
           Present { value: v1.std.core.Resolved { node: resolved_type } } => resolved_type
-          _ => type_variable_node(id: "lambda_param")
+          _ => v1.compiler.emit_rust.type_variable_node(id: "lambda_param")
         }
-      Absent => type_variable_node(id: "lambda_param")
+      Absent => v1.compiler.emit_rust.type_variable_node(id: "lambda_param")
     }
     v1.compiler.infer.extend_scope(scope: acc, name: param_name, resolved: param_type, provenance: std.induction.SubValueUnknown)
   )
@@ -7938,7 +7938,7 @@ fn lambda_param_type_strs(params: List<String>, param_nodes: List<v1.std.core.No
           match pn.inferred {
             Present { value: v1.std.core.Resolved { node: param_type } } =>
               let param_is_error = if param_type.inferred != none { v1.std.core.is_compiler_error(inferred: param_type.inferred.value) } else { false }
-              let param_is_type_var = if param_type.inferred != none { is_type_variable(inferred: param_type.inferred.value) } else { false }
+              let param_is_type_var = if param_type.inferred != none { v1.compiler.emit_rust.is_type_variable(inferred: param_type.inferred.value) } else { false }
               if param_is_type_var || param_is_error {
                 none
               } else if type_node_has_closure_unbound_generic_atom(n: param_type, generic_param_names: emit_info.fn_generic_param_names, env: type_env, source_indices: source_indices) {
@@ -8035,15 +8035,15 @@ fn emit_rust_fold_method_call(method_call_node: v1.std.core.Node, fold_accumulat
             Present { value: init_arg } =>
               if v1.std.core.arg_value(n: init_arg).inferred != none {
                 v1.compiler.infer_types.resolved_type(n: v1.std.core.arg_value(n: init_arg))
-              } else { type_variable_node(id: "fold_accum") }
-            Absent => type_variable_node(id: "fold_accum")
+              } else { v1.compiler.emit_rust.type_variable_node(id: "fold_accum") }
+            Absent => v1.compiler.emit_rust.type_variable_node(id: "fold_accum")
           }
       }
   }
   let acc_type_name = v1.std.core.authored_name_at(source_indices: scope.type_env.source_indices, node: acc_type_node)
   let fold_lambda_node = match args |> skip(1) |> first {
     Present { value: a } => v1.std.core.arg_value(n: a)
-    Absent => type_variable_node(id: "")
+    Absent => v1.compiler.emit_rust.type_variable_node(id: "")
   }
   let acc_param_name = match fold_lambda_node.expr_data {
     v1.std.core.ExprLambda => match v1.std.core.lambda_param_names_at(texpr: fold_lambda_node, source_indices: scope.type_env.source_indices) |> first {
@@ -8120,7 +8120,7 @@ fn emit_rust_fold_method_call(method_call_node: v1.std.core.Node, fold_accumulat
     }
   } else { emit_info }
   let acc_type_str = render_rust_type(n: acc_type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: fold_emit_info)
-  let acc_type_is_type_var = if acc_type_node.inferred != none { is_type_variable(inferred: acc_type_node.inferred.value) } else { false }
+  let acc_type_is_type_var = if acc_type_node.inferred != none { v1.compiler.emit_rust.is_type_variable(inferred: acc_type_node.inferred.value) } else { false }
   let acc_child_is_type_var = acc_type_node.children |> any(c => type_node_child_is_type_variable(c: c))
   let acc_has_unbound_type_var = type_node_has_unbound_type_variable(n: acc_type_node, generic_param_names: emit_info.fn_generic_param_names, source_indices: scope.type_env.source_indices)
   let acc_has_closure_unbound_generic = type_node_has_closure_unbound_generic_atom(n: acc_type_node, generic_param_names: emit_info.fn_generic_param_names, env: scope.type_env, source_indices: scope.type_env.source_indices)
@@ -8187,7 +8187,7 @@ fn emit_rust_sort_by_method_call(receiver: v1.std.core.Node, args: List<v1.std.c
     Present { value: v1.std.core.Resolved { node: rt } } =>
       let resolved = rt
       let elem = v1.compiler.infer_types.for_each_element_type_node(n: resolved, source_indices: scope.type_env.source_indices)
-      let elem_is_type_var = if elem.inferred != none { is_type_variable(inferred: elem.inferred.value) } else { false }
+      let elem_is_type_var = if elem.inferred != none { v1.compiler.emit_rust.is_type_variable(inferred: elem.inferred.value) } else { false }
       if elem.ident_span != none && !elem_is_type_var {
         render_rust_type(n: elem, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info)
       } else { "_" }
@@ -8620,7 +8620,7 @@ fn emit_typed_match(scrutinee: v1.std.core.Node, arms: List<v1.std.core.Node>, r
   let rc_match = analyze_rc_match(scrutinee: scrutinee, arms: arms, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: scope.type_env.source_indices)
   let match_result_type = match arms |> first {
     Present { value: first_arm } => v1.compiler.infer_types.resolved_type(n: v1.std.core.arm_body(n: first_arm))
-    Absent => type_variable_node(id: "match_result")
+    Absent => v1.compiler.emit_rust.type_variable_node(id: "match_result")
   }
   let arm_strs = arms |> map(arm => emit_typed_match_arm(arm: arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: false))
   let arms_str = arm_strs |> join(separator: "\n")
@@ -8885,7 +8885,7 @@ fn lookup_struct_field_type_name(struct_node: v1.std.core.Node, field_name: Stri
     Present { value: field_child } =>
       if field_child.inferred != none {
         let field_type = v1.compiler.infer_types.resolved_type(n: field_child)
-        let ft_is_type_var = if field_type.inferred != none { is_type_variable(inferred: field_type.inferred.value) } else { false }
+        let ft_is_type_var = if field_type.inferred != none { v1.compiler.emit_rust.is_type_variable(inferred: field_type.inferred.value) } else { false }
         if field_type.ident_span != none && !ft_is_type_var {
           Present { value: v1.std.core.authored_name_at(source_indices: source_indices, node: field_type) }
         } else { none }
@@ -8903,7 +8903,7 @@ fn lookup_struct_field_type_name(struct_node: v1.std.core.Node, field_name: Stri
                 Present { value: field_child } =>
                   if field_child.inferred != none {
                     let field_type = v1.compiler.infer_types.resolved_type(n: field_child)
-                    let ft_is_type_var = if field_type.inferred != none { is_type_variable(inferred: field_type.inferred.value) } else { false }
+                    let ft_is_type_var = if field_type.inferred != none { v1.compiler.emit_rust.is_type_variable(inferred: field_type.inferred.value) } else { false }
                     if field_type.ident_span != none && !ft_is_type_var {
                       Present { value: v1.std.core.authored_name_at(source_indices: source_indices, node: field_type) }
                     } else { none }
@@ -9114,7 +9114,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<v1.std.core.Node>, par
       let effective_parent = match context_lookup {
         Present { value: context_parent } => Present { value: context_parent }
         Absent =>
-          let rt_is_type_var = if resolved_type.inferred != none { is_type_variable(inferred: resolved_type.inferred.value) } else { false }
+          let rt_is_type_var = if resolved_type.inferred != none { v1.compiler.emit_rust.is_type_variable(inferred: resolved_type.inferred.value) } else { false }
           let rt_name = v1.std.core.qualified_last_segment(name: v1.std.core.authored_name_at(source_indices: si, node: resolved_type))
 
           if resolved_type.ident_span != none && rt_name != variant_surface_name && !rt_is_type_var && rt_name != "Error"

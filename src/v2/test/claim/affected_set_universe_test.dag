@@ -25,7 +25,7 @@ test fn affected_set_universe_gate_processes_match_declared_gates() -> Bool {
     ys: gate_discriminants(
       gates: concat(gunbc.ci_spec.gunbc_ci_gates, gunbc.ci_spec.gunbc_ci_falsifier_gates)
     ),
-    eq: symbol_eq
+    eq: v2.test.claim.affected_set_universe.symbol_eq
   )
 }
 

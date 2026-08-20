@@ -14,5 +14,5 @@ fn lookup(id: UserId) -> Int {
 
 fn main() -> Int {
   let acct = AccountId { raw: 7 }
-  lookup(id: acct)
+  examples.nominal_distinctness_witness.lookup(id: acct)
 }

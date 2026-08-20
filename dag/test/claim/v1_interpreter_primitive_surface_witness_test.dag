@@ -69,16 +69,16 @@ test fn every_row_is_unique_on_site_identity_and_spelling() -> Bool {
 
 test fn duplicate_detector_catches_a_row_repeated_under_one_identity() -> Bool {
   let planted = [
-    planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "planted_dispatch"),
-    planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "planted_dispatch"),
+    test.claim.v1_interpreter_primitive_surface_witness_test.planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "planted_dispatch"),
+    test.claim.v1_interpreter_primitive_surface_witness_test.planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "planted_dispatch"),
   ]
   count(duplicate_row_keys(rows: planted)) == 1
 }
 
 test fn duplicate_detector_admits_one_spelling_at_two_distinct_sites() -> Bool {
   let planted = [
-    planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "site_one"),
-    planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "site_two"),
+    test.claim.v1_interpreter_primitive_surface_witness_test.planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "site_one"),
+    test.claim.v1_interpreter_primitive_surface_witness_test.planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "site_two"),
   ]
   count(duplicate_row_keys(rows: planted)) == 0
 }
@@ -105,16 +105,16 @@ test fn the_two_shadowed_arm_identities_under_lookup_are_exactly_the_expected_pa
 
 test fn shadow_detector_catches_a_planted_duplicate() -> Bool {
   let planted = [
-    planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "planted_dispatch"),
-    planted_row(identity: "planted.beta", spelling: "alpha", symbol: "planted_dispatch"),
+    test.claim.v1_interpreter_primitive_surface_witness_test.planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "planted_dispatch"),
+    test.claim.v1_interpreter_primitive_surface_witness_test.planted_row(identity: "planted.beta", spelling: "alpha", symbol: "planted_dispatch"),
   ]
   !form_has_no_shadowed_spelling(rows: planted) && count(shadowed_spellings(rows: planted)) == 1
 }
 
 test fn shadow_detector_admits_a_real_alias_pair() -> Bool {
   let alias = [
-    planted_row(identity: "planted.shared", spelling: "alpha", symbol: "planted_dispatch"),
-    planted_row(identity: "planted.shared", spelling: "beta", symbol: "planted_dispatch"),
+    test.claim.v1_interpreter_primitive_surface_witness_test.planted_row(identity: "planted.shared", spelling: "alpha", symbol: "planted_dispatch"),
+    test.claim.v1_interpreter_primitive_surface_witness_test.planted_row(identity: "planted.shared", spelling: "beta", symbol: "planted_dispatch"),
   ]
   form_has_no_shadowed_spelling(rows: alias)
 }

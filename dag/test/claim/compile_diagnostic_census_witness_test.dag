@@ -19,7 +19,7 @@ data clean_call_source: String = "module census_clean\nfn sub(a: Int, b: Int) ->
 data twice_mislabeled_call_source: String = "module census_mislabel_twice\nfn sub(a: Int, b: Int) -> Int { a - b }\nfn f() -> Int { sub(a: 10, bb: 3) }\nfn g() -> Int { sub(a: 1, cc: 2) }\n"
 
 test fn census_names_the_class_that_fired() -> Bool {
-  match census_of(source: mislabeled_call_source) {
+  match test.claim.compile_diagnostic_census_witness.census_of(source: mislabeled_call_source) {
     CensusObserved { rows: rows } =>
       census_total_count(rows: census_rows_of_class(rows: rows, wanted: "CallArgumentNameUnknown")) >= 1
     CensusNotRunnable { cause: _ } => false
@@ -27,7 +27,7 @@ test fn census_names_the_class_that_fired() -> Bool {
 }
 
 test fn census_reports_blocking_severity_as_data() -> Bool {
-  match census_of(source: mislabeled_call_source) {
+  match test.claim.compile_diagnostic_census_witness.census_of(source: mislabeled_call_source) {
     CensusObserved { rows: rows } =>
       census_total_count(rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: "CallArgumentNameUnknown")) >= 1
     CensusNotRunnable { cause: _ } => false
@@ -35,14 +35,14 @@ test fn census_reports_blocking_severity_as_data() -> Bool {
 }
 
 test fn census_clean_source_observes_zero_rows() -> Bool {
-  match census_of(source: clean_call_source) {
+  match test.claim.compile_diagnostic_census_witness.census_of(source: clean_call_source) {
     CensusObserved { rows: rows } => count(rows) == 0
     CensusNotRunnable { cause: _ } => false
   }
 }
 
 fn mislabel_count(source: String) -> Int {
-  match census_of(source: source) {
+  match test.claim.compile_diagnostic_census_witness.census_of(source: source) {
     CensusObserved { rows: rows } =>
       census_total_count(rows: census_rows_of_class(rows: rows, wanted: "CallArgumentNameUnknown"))
     CensusNotRunnable { cause: _ } => 0 - 1
@@ -58,7 +58,7 @@ test fn census_counts_occurrences_not_merely_presence() -> Bool {
 data where_refinement_source: String = "module census_advisory_probe\nimport std.types { String, NonEmptyStr }\nfn tighten(s: String) -> NonEmptyStr { s as NonEmptyStr }\n"
 
 test fn census_reports_advisory_severity_as_data() -> Bool {
-  match census_of(source: where_refinement_source) {
+  match test.claim.compile_diagnostic_census_witness.census_of(source: where_refinement_source) {
     CensusObserved { rows: rows } => census_total_count(rows: census_advisory_rows(rows: rows)) >= 1
     CensusNotRunnable { cause: _ } => false
   }

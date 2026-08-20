@@ -22,15 +22,15 @@ fn is_indeterminate(v: std.observation.LedgerTailVerdict) -> Bool {
 // THE DISCRIMINATING PAIR: identical tail bytes, different producer state, different verdict. If
 // these two ever agree, the reader is deciding from the file alone and the discriminator is gone.
 test fn w_identical_torn_bytes_classify_by_producer_state_not_by_content() -> Bool {
-  let dead = verdict_of(tail: std.observation.TailIncomplete { bytes: 41 }, liveness: ProducerDead)
-  let live = verdict_of(tail: std.observation.TailIncomplete { bytes: 41 }, liveness: ProducerLive)
+  let dead = test.claim.ledger_tail_liveness_witness.verdict_of(tail: std.observation.TailIncomplete { bytes: 41 }, liveness: ProducerDead)
+  let live = test.claim.ledger_tail_liveness_witness.verdict_of(tail: std.observation.TailIncomplete { bytes: 41 }, liveness: ProducerLive)
   is_torn(v: dead) && is_pending(v: live)
 }
 
 // The third arm is its own verdict. Collapsing it into Dead reports a torn record on a healthy run;
 // collapsing it into Live hangs `explain` on a finished one.
 test fn w_RED_unknown_liveness_is_neither_torn_nor_pending() -> Bool {
-  let unknown = verdict_of(
+  let unknown = test.claim.ledger_tail_liveness_witness.verdict_of(
     tail: std.observation.TailIncomplete { bytes: 41 },
     liveness: std.observation.ProducerLivenessUnknown { cause: "explain: no child handle for this producer" }
   )
@@ -40,9 +40,9 @@ test fn w_RED_unknown_liveness_is_neither_torn_nor_pending() -> Bool {
 // A complete tail is complete regardless of liveness — the producer's state cannot make a finished
 // record unfinished.
 test fn w_RED_a_complete_tail_is_complete_under_every_liveness() -> Bool {
-  let d = verdict_of(tail: TailComplete, liveness: ProducerDead)
-  let l = verdict_of(tail: TailComplete, liveness: ProducerLive)
-  let u = verdict_of(tail: TailComplete, liveness: std.observation.ProducerLivenessUnknown { cause: "no handle" })
+  let d = test.claim.ledger_tail_liveness_witness.verdict_of(tail: TailComplete, liveness: ProducerDead)
+  let l = test.claim.ledger_tail_liveness_witness.verdict_of(tail: TailComplete, liveness: ProducerLive)
+  let u = test.claim.ledger_tail_liveness_witness.verdict_of(tail: TailComplete, liveness: std.observation.ProducerLivenessUnknown { cause: "no handle" })
   match d { TailRecordsComplete => true, _ => false }
     && match l { TailRecordsComplete => true, _ => false }
     && match u { TailRecordsComplete => true, _ => false }
@@ -51,7 +51,7 @@ test fn w_RED_a_complete_tail_is_complete_under_every_liveness() -> Bool {
 // The torn byte count is CARRIED, not discarded: the tail is where the last active occurrence
 // lives, so a reader that drops it silently is the empty-observation narrow at the file layer.
 test fn w_RED_the_torn_byte_count_survives_classification() -> Bool {
-  match verdict_of(tail: std.observation.TailIncomplete { bytes: 41 }, liveness: ProducerDead) {
+  match test.claim.ledger_tail_liveness_witness.verdict_of(tail: std.observation.TailIncomplete { bytes: 41 }, liveness: ProducerDead) {
     TailTorn { bytes: n } => n == 41
     _ => false
   }

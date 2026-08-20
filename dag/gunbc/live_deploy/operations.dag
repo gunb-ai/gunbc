@@ -7,18 +7,18 @@ fn argv_join(argv: List<String>) -> String {
 }
 
 fn privileged_command(argv: List<String>) -> String {
-  concat("sudo -n ", argv_join(argv: argv))
+  concat("sudo -n ", gunbc.live_deploy.operations.argv_join(argv: argv))
 }
 
 fn dpkg_status_command(package: std.types.NonEmptyStr) -> String {
-  argv_join(argv: dpkg_status_argv(package: package))
+  gunbc.live_deploy.operations.argv_join(argv: dpkg_status_argv(package: package))
 }
 
 fn apt_install_command(package: std.types.NonEmptyStr, privileged: Bool) -> String {
   if privileged {
     privileged_command(argv: apt_install_argv(package: package))
   } else {
-    argv_join(argv: apt_install_argv(package: package))
+    gunbc.live_deploy.operations.argv_join(argv: apt_install_argv(package: package))
   }
 }
 
@@ -26,7 +26,7 @@ fn systemctl_daemon_reload_command(privileged: Bool) -> String {
   if privileged {
     privileged_command(argv: systemctl_daemon_reload_argv())
   } else {
-    argv_join(argv: systemctl_daemon_reload_argv())
+    gunbc.live_deploy.operations.argv_join(argv: systemctl_daemon_reload_argv())
   }
 }
 
@@ -34,7 +34,7 @@ fn systemctl_enable_command(unit: std.types.NonEmptyStr, privileged: Bool) -> St
   if privileged {
     privileged_command(argv: systemctl_enable_argv(unit: unit))
   } else {
-    argv_join(argv: systemctl_enable_argv(unit: unit))
+    gunbc.live_deploy.operations.argv_join(argv: systemctl_enable_argv(unit: unit))
   }
 }
 
@@ -42,7 +42,7 @@ fn systemctl_restart_command(unit: std.types.NonEmptyStr, privileged: Bool) -> S
   if privileged {
     privileged_command(argv: systemctl_restart_argv(unit: unit))
   } else {
-    argv_join(argv: systemctl_restart_argv(unit: unit))
+    gunbc.live_deploy.operations.argv_join(argv: systemctl_restart_argv(unit: unit))
   }
 }
 
@@ -50,6 +50,6 @@ fn systemctl_disable_now_command(unit: std.types.NonEmptyStr, privileged: Bool) 
   if privileged {
     privileged_command(argv: systemctl_disable_now_argv(unit: unit))
   } else {
-    argv_join(argv: systemctl_disable_now_argv(unit: unit))
+    gunbc.live_deploy.operations.argv_join(argv: systemctl_disable_now_argv(unit: unit))
   }
 }

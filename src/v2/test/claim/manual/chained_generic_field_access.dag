@@ -10,10 +10,10 @@ fn chained_field<S>(o: Outer<S>) -> S {
 }
 
 fn use_chained() -> Int {
-  chained_field(o: Outer { middle: Middle { inner: Inner { value: Rec { v: 9 } } } }).v
+  v2.test.manual.chained_generic_field_access.chained_field(o: Outer { middle: Middle { inner: Inner { value: Rec { v: 9 } } } }).v
 }
 
-data witness_chained_generic_field: Bool = use_chained() == 9
+data witness_chained_generic_field: Bool = v2.test.manual.chained_generic_field_access.use_chained() == 9
 
 data chained_generic_field_claim_payload: Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Conj },

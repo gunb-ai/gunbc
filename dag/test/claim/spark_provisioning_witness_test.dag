@@ -70,7 +70,7 @@ fn fixture_address() -> extdeps.network.ipv4.Ipv4Address {
 
 fn fixture_intent() -> gunbc.spark_provisioning.SparkProvisioningIntent {
   spark_provisioning_intent(
-    host: fixture_host,
+    host: test.claim.spark_provisioning_witness.fixture_host,
     credentials: fixture_credentials(),
     address: fixture_address(),
     strategy: oobe_strategy(),
@@ -94,7 +94,7 @@ fn outcome_tag(o: gunbc.spark_provisioning.SparkProvisioningOutcome) -> String {
 }
 
 fn classify_tag(progress: gunbc.spark_provisioning.SparkProvisioningProgress) -> String {
-  outcome_tag(o: classify_spark_progress(
+  test.claim.spark_provisioning_witness.outcome_tag(o: classify_spark_progress(
     intent: fixture_intent(),
     phase: PhaseOperatorConfiguration,
     progress: progress
@@ -312,7 +312,7 @@ test fn spark_credentials_are_carried_never_derived() -> Bool {
     && administrator == "fixture-administrator"
     && hotspot != administrator
     && credential_secret_name(standing: CredentialMaterializationPending) == "<pending>"
-    && intent.host == fixture_host
+    && intent.host == test.claim.spark_provisioning_witness.fixture_host
     && intent.timezone == "America/New_York"
     && intent.administrator.name == "briansrls"
     && intent.license.accepted_by == intent.administrator.name
@@ -361,7 +361,7 @@ test fn spark_bootstrap_ssids_are_established_aliases() -> Bool {
   spark_bootstrap_ssid_a3ee.ssid == "spark-a3ee"
     && spark_bootstrap_ssid_3bd5.ssid == "spark-3bd5"
     && spark_bootstrap_ssid_a3ee.ssid != spark_bootstrap_ssid_3bd5.ssid
-    && (spark_bootstrap_ssid_a3ee.ssid as String) != (fixture_host as String)
+    && (spark_bootstrap_ssid_a3ee.ssid as String) != (test.claim.spark_provisioning_witness.fixture_host as String)
 }
 
 fn completion_evidence_tag(e: std.human_intervention.InterventionCompletionEvidence) -> String {

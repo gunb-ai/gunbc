@@ -62,7 +62,7 @@ fn emit_inline_scalar_text(s: String) -> String {
   } else if is_expression(s: s) {
     s
   } else if needs_double_quotes(s: s) {
-    concat(concat("\"", escape_double_quoted(s: s)), "\"")
+    concat(concat("\"", extdeps.languages.yaml.emit.escape_double_quoted(s: s)), "\"")
   } else {
     s
   }

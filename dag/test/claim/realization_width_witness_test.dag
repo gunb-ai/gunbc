@@ -23,9 +23,9 @@ fn synthetic_plan() -> RealizationPlan<std.measure.Nano> {
     target: "width-witness-target"
     objective: std.realization_schedule.RealizationObjective { goals: [] }
     schedule: [
-      [std.realization_schedule.RunnableSingleClaim { entry: gate_entry, function: compile_gate_fn, profile: runnable_resource_profile_negligible() }],
+      [std.realization_schedule.RunnableSingleClaim { entry: test.claim.realization_width_witness.gate_entry, function: test.claim.realization_width_witness.compile_gate_fn, profile: runnable_resource_profile_negligible() }],
       [
-        std.realization_schedule.RunnableSingleClaim { entry: gate_entry, function: "emit_host_gate_passes", profile: runnable_resource_profile_negligible() }
+        std.realization_schedule.RunnableSingleClaim { entry: test.claim.realization_width_witness.gate_entry, function: "emit_host_gate_passes", profile: runnable_resource_profile_negligible() }
       ]
     ]
     total: synthetic_plan_total()

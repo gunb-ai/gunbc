@@ -45,8 +45,8 @@ fn refusal_count(a: extdeps.land_pattern.types.PartAdmission) -> Int {
 }
 
 fn only_refusal_is(a: extdeps.land_pattern.types.PartAdmission, k: String) -> Bool {
-  let n = refusal_count(a: a)
-  let all_match = fold(refusals_of(a: a), init: true, f: fn(acc, r) { acc && refusal_kind(r: r) == k })
+  let n = test.claim.board_part_land_pattern_witness.refusal_count(a: a)
+  let all_match = fold(refusals_of(a: a), init: true, f: fn(acc, r) { acc && test.claim.board_part_land_pattern_witness.refusal_kind(r: r) == k })
   n == 1 && all_match
 }
 
@@ -56,10 +56,10 @@ fn only_refusal_is(a: extdeps.land_pattern.types.PartAdmission, k: String) -> Bo
 // body's terminal count, and the two pitches agree. This is a MECHANICAL join and nothing more; it
 // says the two transcriptions describe one package, not that the part suits any board role.
 test fn w_each_candidate_joins_its_own_package() -> Bool {
-  count_of(ds: land_pattern_disagreements(p: extdeps.power.ti_tps3808.tps3808g01dbvr)) == 0
-    && count_of(ds: land_pattern_disagreements(p: extdeps.power.ti_tps53688.tps53688rsbr)) == 0
-    && count_of(ds: land_pattern_disagreements(p: cdce913pwr)) == 0
-    && count_of(ds: land_pattern_disagreements(p: extdeps.network.ti_dp83867.dp83867irrgz)) == 0
+  test.claim.board_part_land_pattern_witness.count_of(ds: land_pattern_disagreements(p: extdeps.power.ti_tps3808.tps3808g01dbvr)) == 0
+    && test.claim.board_part_land_pattern_witness.count_of(ds: land_pattern_disagreements(p: extdeps.power.ti_tps53688.tps53688rsbr)) == 0
+    && test.claim.board_part_land_pattern_witness.count_of(ds: land_pattern_disagreements(p: cdce913pwr)) == 0
+    && test.claim.board_part_land_pattern_witness.count_of(ds: land_pattern_disagreements(p: extdeps.network.ti_dp83867.dp83867irrgz)) == 0
 }
 
 // AND NOT ONE OF THEM IS ADMISSIBLE, WHICH IS THE FINDING RATHER THAN A GAP IN THE TEST. A clean
@@ -73,7 +73,7 @@ test fn w_no_candidate_is_admissible_and_indexing_is_the_only_reason() -> Bool {
     && only_refusal_is(a: admit_part_candidate(p: extdeps.power.ti_tps53688.tps53688rsbr), k: "indexing")
     && only_refusal_is(a: admit_part_candidate(p: cdce913pwr), k: "indexing")
     && only_refusal_is(a: admit_part_candidate(p: extdeps.network.ti_dp83867.dp83867irrgz), k: "indexing")
-    && !is_admitted(a: admit_part_candidate(p: extdeps.network.ti_dp83867.dp83867irrgz))
+    && !test.claim.board_part_land_pattern_witness.is_admitted(a: admit_part_candidate(p: extdeps.network.ti_dp83867.dp83867irrgz))
 }
 
 // THE LAND POPULATION IS DERIVED FROM THE GEOMETRY AND EQUALS THE VENDOR'S TERMINAL COUNT. Six
@@ -115,12 +115,12 @@ data mismatched_candidate: extdeps.land_pattern.types.PartMechanicalCandidate = 
 
 test fn w_a_pattern_from_the_wrong_package_is_refused_on_every_axis() -> Bool {
   let ds = land_pattern_disagreements(p: mismatched_candidate)
-  count_of(ds: ds) == 3
+  test.claim.board_part_land_pattern_witness.count_of(ds: ds) == 3
     && has_kind(ds: ds, k: "designator")
     && has_kind(ds: ds, k: "count")
     && has_kind(ds: ds, k: "pitch")
-    && !is_admitted(a: admit_part_candidate(p: mismatched_candidate))
-    && refusal_count(a: admit_part_candidate(p: mismatched_candidate)) == 4
+    && !test.claim.board_part_land_pattern_witness.is_admitted(a: admit_part_candidate(p: mismatched_candidate))
+    && test.claim.board_part_land_pattern_witness.refusal_count(a: admit_part_candidate(p: mismatched_candidate)) == 4
 }
 
 // A SECOND RED, ISOLATING ONE AXIS. The mismatch above fails three ways at once, which would still
@@ -150,7 +150,7 @@ data undercounted_candidate: extdeps.land_pattern.types.PartMechanicalCandidate 
 
 test fn w_a_land_population_that_disagrees_with_the_package_is_refused_alone() -> Bool {
   let ds = land_pattern_disagreements(p: undercounted_candidate)
-  count_of(ds: ds) == 1 && has_kind(ds: ds, k: "count")
+  test.claim.board_part_land_pattern_witness.count_of(ds: ds) == 1 && has_kind(ds: ds, k: "count")
 }
 
 // A CITED FAMILY CAN STILL OWE ITS HOLE PATTERN, and the DDR4 socket is the live case. Its

@@ -36,7 +36,7 @@ fn directive_is_refused(d: gunbc.host_effect_realize.ConvergeDirective) -> Bool 
 
 test fn witness_shell_on_host_success_converges() -> Bool {
   reconciliation_converged(r: host_effect_apply(
-    target: host_os_target(),
+    target: test.claim.host_effect_apply_witness.host_os_target(),
     effect: gunbc.host_effect.ShellCommand { script: "true" },
     evidence: host_effect_identity_evidence,
     transport: LocalShell
@@ -45,7 +45,7 @@ test fn witness_shell_on_host_success_converges() -> Bool {
 
 test fn witness_shell_on_host_failure_fails_closed() -> Bool {
   !reconciliation_converged(r: host_effect_apply(
-    target: host_os_target(),
+    target: test.claim.host_effect_apply_witness.host_os_target(),
     effect: gunbc.host_effect.ShellCommand { script: "exit 1" },
     evidence: host_effect_identity_evidence,
     transport: LocalShell
@@ -63,7 +63,7 @@ test fn witness_redfish_on_bmc_unimplemented_fails_closed() -> Bool {
 
 test fn witness_redfish_on_hostos_typed_mismatch() -> Bool {
   !reconciliation_converged(r: host_effect_apply(
-    target: host_os_target(),
+    target: test.claim.host_effect_apply_witness.host_os_target(),
     effect: gunbc.host_effect.RedfishAction { action: GetSystem },
     evidence: host_effect_identity_evidence,
     transport: LocalShell
@@ -81,7 +81,7 @@ test fn witness_shell_on_bmc_typed_mismatch() -> Bool {
 
 test fn witness_converge_policy_redrives_not_converged() -> Bool {
   directive_is_redrive(d: host_effect_drive_directive(r: host_effect_apply(
-    target: host_os_target(),
+    target: test.claim.host_effect_apply_witness.host_os_target(),
     effect: gunbc.host_effect.ShellCommand { script: "exit 1" },
     evidence: host_effect_converge_loop_evidence,
     transport: LocalShell
@@ -90,7 +90,7 @@ test fn witness_converge_policy_redrives_not_converged() -> Bool {
 
 test fn witness_oneshot_policy_terminal_not_converged() -> Bool {
   directive_is_settled(d: host_effect_drive_directive(r: host_effect_apply(
-    target: host_os_target(),
+    target: test.claim.host_effect_apply_witness.host_os_target(),
     effect: gunbc.host_effect.ShellCommand { script: "exit 1" },
     evidence: host_effect_identity_evidence,
     transport: LocalShell
@@ -99,7 +99,7 @@ test fn witness_oneshot_policy_terminal_not_converged() -> Bool {
 
 test fn witness_incompatible_is_refused_terminal() -> Bool {
   directive_is_refused(d: host_effect_drive_directive(r: host_effect_apply(
-    target: host_os_target(),
+    target: test.claim.host_effect_apply_witness.host_os_target(),
     effect: gunbc.host_effect.RedfishAction { action: GetSystem },
     evidence: host_effect_converge_loop_evidence,
     transport: LocalShell
@@ -108,7 +108,7 @@ test fn witness_incompatible_is_refused_terminal() -> Bool {
 
 test fn witness_converged_is_settled() -> Bool {
   directive_is_settled(d: host_effect_drive_directive(r: host_effect_apply(
-    target: host_os_target(),
+    target: test.claim.host_effect_apply_witness.host_os_target(),
     effect: gunbc.host_effect.ShellCommand { script: "true" },
     evidence: host_effect_converge_loop_evidence,
     transport: LocalShell
@@ -117,7 +117,7 @@ test fn witness_converged_is_settled() -> Bool {
 
 test fn witness_ssh_shell_unreachable_fails_closed() -> Bool {
   !reconciliation_converged(r: host_effect_apply(
-    target: host_os_target(),
+    target: test.claim.host_effect_apply_witness.host_os_target(),
     effect: gunbc.host_effect.ShellCommand { script: "true" },
     evidence: host_effect_identity_evidence,
     transport: gunbc.host_effect.SshShell { ssh_host: "203.0.113.1" as std.types.NonEmptyStr }
@@ -126,7 +126,7 @@ test fn witness_ssh_shell_unreachable_fails_closed() -> Bool {
 
 test fn witness_ssh_empty_script_fails_closed() -> Bool {
   !reconciliation_converged(r: host_effect_apply(
-    target: host_os_target(),
+    target: test.claim.host_effect_apply_witness.host_os_target(),
     effect: gunbc.host_effect.ShellCommand { script: "" },
     evidence: host_effect_identity_evidence,
     transport: gunbc.host_effect.SshShell { ssh_host: "203.0.113.1" as std.types.NonEmptyStr }
@@ -135,7 +135,7 @@ test fn witness_ssh_empty_script_fails_closed() -> Bool {
 
 test fn witness_shell_failure_surfaces_captured_stdout() -> Bool {
   match host_effect_apply(
-    target: host_os_target(),
+    target: test.claim.host_effect_apply_witness.host_os_target(),
     effect: gunbc.host_effect.ShellCommand { script: "echo host-effect-preflight-marker && exit 1" },
     evidence: host_effect_identity_evidence,
     transport: LocalShell
@@ -196,7 +196,7 @@ fn fixture_srv1_host_converge() -> gunbc.host_converge.HostConverge {
 
 test fn witness_converge_plan_fail_closed_on_knob_frontier() -> Bool {
   !reconciliation_converged(r: host_effect_apply(
-    target: host_os_target(),
+    target: test.claim.host_effect_apply_witness.host_os_target(),
     effect: gunbc.host_effect.ConvergePlan { policy: fixture_srv1_host_converge() },
     evidence: host_effect_converge_loop_evidence,
     transport: LocalShell
@@ -214,7 +214,7 @@ test fn witness_converge_plan_on_bmc_typed_mismatch() -> Bool {
 
 test fn witness_converge_plan_redrives_on_frontier() -> Bool {
   directive_is_redrive(d: host_effect_drive_directive(r: host_effect_apply(
-    target: host_os_target(),
+    target: test.claim.host_effect_apply_witness.host_os_target(),
     effect: gunbc.host_effect.ConvergePlan { policy: fixture_srv1_host_converge() },
     evidence: host_effect_converge_loop_evidence,
     transport: LocalShell

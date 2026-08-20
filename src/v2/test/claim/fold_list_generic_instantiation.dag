@@ -18,7 +18,7 @@ fn fold_list_right_field_access() -> Int {
 }
 
 fn fold_list_generic_instantiation_holds() -> Bool {
-  fold_list_sum_ints() == 6
-    && fold_list_field_access() == 3
-    && fold_list_right_field_access() == 9
+  v2.test.claim.fold_list_generic_instantiation.fold_list_sum_ints() == 6
+    && v2.test.claim.fold_list_generic_instantiation.fold_list_field_access() == 3
+    && v2.test.claim.fold_list_generic_instantiation.fold_list_right_field_access() == 9
 }

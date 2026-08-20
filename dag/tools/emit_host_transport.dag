@@ -70,7 +70,7 @@ fn c_run_probe_node() -> Node {
 }
 
 fn c_run_inputs() -> v2.compiler.eval.Inputs {
-  v2.compiler.eval.inputs_root_only(root: c_run_probe_node())
+  v2.compiler.eval.inputs_root_only(root: tools.emit_host_transport.c_run_probe_node())
 }
 
 fn c_run_source() -> Medium<String> {
@@ -84,15 +84,15 @@ fn c_expected_add_stdout_octets() -> List<Int> {
 fn c_emit_host_green_holds() -> Bool {
   match v2.compiler.emit_host.run_emit_host(
     target: v2.extdeps.languages.c.c_target_model(),
-    source: c_run_source(),
-    fixture_inputs: c_run_inputs()
+    source: tools.emit_host_transport.c_run_source(),
+    fixture_inputs: tools.emit_host_transport.c_run_inputs()
   ) {
     Accepted { value: receipt, diagnostics: _ } =>
       match receipt.logical_run {
         Accepted { value: HostLogicalRun { stdout: stdout }, diagnostics: None } =>
           match v2.compiler.emit_host.runtime_value_parse(target: v2.extdeps.languages.c.c_target_model(), stdout: stdout) {
             Accepted { value: _, diagnostics: _ } =>
-              stdout.bytes == v2.compiler.emit_host.emit_host_octets_byte_string(octets: c_expected_add_stdout_octets())
+              stdout.bytes == v2.compiler.emit_host.emit_host_octets_byte_string(octets: tools.emit_host_transport.c_expected_add_stdout_octets())
             Rejected { diagnostics: _ } => false
           }
         _ => false
@@ -108,8 +108,8 @@ fn c_emit_host_inject_fault_refuses_holds() -> Bool {
       match v2.compiler.emit_host.run_host_process(
         row: row,
         target: v2.extdeps.languages.c.c_target_model(),
-        source: c_run_source(),
-        fixture_inputs: c_run_inputs()
+        source: tools.emit_host_transport.c_run_source(),
+        fixture_inputs: tools.emit_host_transport.c_run_inputs()
       ) {
         Accepted { value: receipt, diagnostics: _ } =>
           match receipt.logical_run {
@@ -117,7 +117,7 @@ fn c_emit_host_inject_fault_refuses_holds() -> Bool {
               match v2.compiler.emit_host.runtime_value_parse(target: v2.extdeps.languages.c.c_target_model(), stdout: stdout) {
                 Rejected { diagnostics: _ } => true
                 Accepted { value: _, diagnostics: _ } =>
-                  stdout.bytes != v2.compiler.emit_host.emit_host_octets_byte_string(octets: c_expected_add_stdout_octets())
+                  stdout.bytes != v2.compiler.emit_host.emit_host_octets_byte_string(octets: tools.emit_host_transport.c_expected_add_stdout_octets())
               }
             Rejected { diagnostics: _ } => false
           }

@@ -49,7 +49,7 @@ test fn witness_asset_route_serves_modeled_js() -> Bool {
   let r = roadmap_serve_invoke(
     handler: DispatchAssetHandler,
     params: [],
-    request: fixture_request(method: GET, path: roadmap_dispatch_asset_path),
+    request: test.claim.roadmap_serve_witness.fixture_request(method: GET, path: roadmap_dispatch_asset_path),
     release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision,
   )
   r.status == 200
@@ -103,12 +103,12 @@ fn fixture_request(method: std.types.HttpMethod, path: String) -> extdeps.http.s
 }
 
 test fn witness_unknown_path_folds_404_response() -> Bool {
-  let r = roadmap_serve_selection_response(sel: NoRouteMatched, request: fixture_request(method: GET, path: "/nope"), release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision)
+  let r = roadmap_serve_selection_response(sel: NoRouteMatched, request: test.claim.roadmap_serve_witness.fixture_request(method: GET, path: "/nope"), release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision)
   r.status == 404
 }
 
 test fn witness_405_response_carries_allowed() -> Bool {
-  let r = roadmap_serve_selection_response(sel: extdeps.http.server.MethodNotAllowed { allowed: [std.types.POST] }, request: fixture_request(method: GET, path: "/dispatch/x"), release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision)
+  let r = roadmap_serve_selection_response(sel: extdeps.http.server.MethodNotAllowed { allowed: [std.types.POST] }, request: test.claim.roadmap_serve_witness.fixture_request(method: GET, path: "/dispatch/x"), release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision)
   r.status == 405 && string_contains(s: r.body, pattern: "POST")
 }
 

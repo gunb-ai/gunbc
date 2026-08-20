@@ -26,7 +26,7 @@ test fn witness_modeled_unprivileged_fixture_is_denied() -> Bool {
 test fn witness_unprivileged_mutation_refused_before_shell() -> Bool {
   match host_effect_apply_gated(
     access: ci_deploy_srv1_access,
-    target: host_os_target(),
+    target: test.claim.deploy_access_privilege_witness.host_os_target(),
     effect: gunbc.host_effect.ShellCommand {
       script: concat("echo ", privilege_mutation_marker, " && exit 99")
     },
@@ -51,7 +51,7 @@ test fn witness_unprivileged_mutation_refused_before_shell() -> Bool {
 test fn witness_unprivileged_mutation_directive_is_refused_terminal() -> Bool {
   let r = host_effect_apply_gated(
     access: ci_deploy_srv1_access,
-    target: host_os_target(),
+    target: test.claim.deploy_access_privilege_witness.host_os_target(),
     effect: gunbc.host_effect.ShellCommand { script: concat("echo ", privilege_mutation_marker) },
     evidence: host_effect_identity_evidence,
     transport: LocalShell,
@@ -74,7 +74,7 @@ test fn witness_unprivileged_mutation_directive_is_refused_terminal() -> Bool {
 test fn witness_privileged_fixture_mutation_applies() -> Bool {
   reconciliation_converged(r: host_effect_apply_gated(
     access: ci_deploy_srv1_access,
-    target: host_os_target(),
+    target: test.claim.deploy_access_privilege_witness.host_os_target(),
     effect: gunbc.host_effect.ShellCommand { script: "true" },
     evidence: host_effect_identity_evidence,
     transport: LocalShell,
@@ -87,7 +87,7 @@ test fn witness_privileged_fixture_mutation_applies() -> Bool {
 test fn witness_privileged_fixture_surfaces_stdout() -> Bool {
   match host_effect_apply_gated(
     access: ci_deploy_srv1_access,
-    target: host_os_target(),
+    target: test.claim.deploy_access_privilege_witness.host_os_target(),
     effect: gunbc.host_effect.ShellCommand {
       script: concat("echo ", privilege_mutation_marker)
     },

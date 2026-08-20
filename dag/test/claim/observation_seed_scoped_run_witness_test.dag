@@ -15,7 +15,7 @@ fn module_path() -> std.types.NonEmptyStr {
 
 test fn scoped_run_pty_begin_projects_exact_overwrite_bytes_and_open_state() -> Bool {
   match scoped_run_begin_write(
-    entry_file: entry(),
+    entry_file: test.claim.observation_seed_scoped_run_witness.entry(),
     module_path: module_path(),
     function: function(),
     addressable: true,
@@ -33,7 +33,7 @@ test fn scoped_run_pty_begin_projects_exact_overwrite_bytes_and_open_state() -> 
 
 test fn scoped_run_pipe_begin_appends_without_terminal_controls() -> Bool {
   match scoped_run_begin_write(
-    entry_file: entry(),
+    entry_file: test.claim.observation_seed_scoped_run_witness.entry(),
     module_path: module_path(),
     function: function(),
     addressable: false,
@@ -48,7 +48,7 @@ test fn scoped_run_pipe_begin_appends_without_terminal_controls() -> Bool {
 
 test fn scoped_run_refused_is_persistent_append_and_closes_open_line() -> Bool {
   match scoped_run_refused_write(
-    entry_file: entry(),
+    entry_file: test.claim.observation_seed_scoped_run_witness.entry(),
     module_path: module_path(),
     function: function(),
     diagnostic: "claim returned non-Bool" as std.types.NonEmptyStr,
@@ -73,7 +73,7 @@ test fn scoped_run_refused_is_persistent_append_and_closes_open_line() -> Bool {
 
 test fn scoped_run_intrinsic_failures_ignore_unavailable_basis() -> Bool {
   match scoped_run_failed_write(
-    entry_file: entry(),
+    entry_file: test.claim.observation_seed_scoped_run_witness.entry(),
     module_path: module_path(),
     function: function(),
     error: "runtime failed" as std.types.NonEmptyStr,
@@ -86,7 +86,7 @@ test fn scoped_run_intrinsic_failures_ignore_unavailable_basis() -> Bool {
       string_contains(s: b, pattern: "failed: runtime failed") && string_contains(s: b, pattern: "\n") && n == DynamicLineClosed
   } &&
   match scoped_run_timed_out_write(
-    entry_file: entry(),
+    entry_file: test.claim.observation_seed_scoped_run_witness.entry(),
     module_path: module_path(),
     function: function(),
     basis: CpuClock,
@@ -104,7 +104,7 @@ test fn scoped_run_intrinsic_failures_ignore_unavailable_basis() -> Bool {
 
 test fn scoped_run_clean_final_appends_and_closes_dynamic_line() -> Bool {
   match scoped_run_final_write(
-    entry_file: entry(),
+    entry_file: test.claim.observation_seed_scoped_run_witness.entry(),
     module_path: module_path(),
     function: function(),
     addressable: true,
@@ -123,7 +123,7 @@ test fn scoped_run_clean_final_appends_and_closes_dynamic_line() -> Bool {
 
 test fn scoped_run_routine_measured_wall_preserves_unavailable_basis_refusal() -> Bool {
   match scoped_run_routine_measured_without_basis(
-    entry_file: entry(),
+    entry_file: test.claim.observation_seed_scoped_run_witness.entry(),
     module_path: module_path(),
     function: function(),
     elapsed: millisecond(count: 7),
@@ -137,13 +137,13 @@ test fn scoped_run_routine_measured_wall_preserves_unavailable_basis_refusal() -
 }
 
 test fn scoped_run_measured_nanosecond_precision_matrix_is_projected() -> Bool {
-  match scoped_run_refused_write_measured(entry_file: entry(), module_path: module_path(), function: function(), diagnostic: "claim returned non-Bool" as std.types.NonEmptyStr, wall: nanosecond(count: 1), addressable: false, emoji: false, prior: DynamicLineClosed) {
+  match scoped_run_refused_write_measured(entry_file: test.claim.observation_seed_scoped_run_witness.entry(), module_path: module_path(), function: function(), diagnostic: "claim returned non-Bool" as std.types.NonEmptyStr, wall: nanosecond(count: 1), addressable: false, emoji: false, prior: DynamicLineClosed) {
     ScopedRunMeasuredRefused { cause: _ } => false
     ScopedRunMeasuredProjected { bytes: one, next: one_state, wall: one_wall } =>
-      match scoped_run_refused_write_measured(entry_file: entry(), module_path: module_path(), function: function(), diagnostic: "claim returned non-Bool" as std.types.NonEmptyStr, wall: nanosecond(count: 999999), addressable: false, emoji: false, prior: DynamicLineClosed) {
+      match scoped_run_refused_write_measured(entry_file: test.claim.observation_seed_scoped_run_witness.entry(), module_path: module_path(), function: function(), diagnostic: "claim returned non-Bool" as std.types.NonEmptyStr, wall: nanosecond(count: 999999), addressable: false, emoji: false, prior: DynamicLineClosed) {
         ScopedRunMeasuredRefused { cause: _ } => false
         ScopedRunMeasuredProjected { bytes: sub_ms, next: sub_ms_state, wall: sub_ms_wall } =>
-          match scoped_run_refused_write_measured(entry_file: entry(), module_path: module_path(), function: function(), diagnostic: "claim returned non-Bool" as std.types.NonEmptyStr, wall: nanosecond(count: 1000000), addressable: false, emoji: false, prior: DynamicLineClosed) {
+          match scoped_run_refused_write_measured(entry_file: test.claim.observation_seed_scoped_run_witness.entry(), module_path: module_path(), function: function(), diagnostic: "claim returned non-Bool" as std.types.NonEmptyStr, wall: nanosecond(count: 1000000), addressable: false, emoji: false, prior: DynamicLineClosed) {
             ScopedRunMeasuredRefused { cause: _ } => false
             ScopedRunMeasuredProjected { bytes: one_ms, next: one_ms_state, wall: one_ms_wall } =>
               one_state == DynamicLineClosed && sub_ms_state == DynamicLineClosed && one_ms_state == DynamicLineClosed &&
@@ -154,7 +154,7 @@ test fn scoped_run_measured_nanosecond_precision_matrix_is_projected() -> Bool {
 }
 
 test fn scoped_run_clean_final_is_unmeasured_and_end_receipt_is_typed() -> Bool {
-  match scoped_run_final_write(entry_file: entry(), module_path: module_path(), function: function(), addressable: false, emoji: false, prior: DynamicLineClosed) {
+  match scoped_run_final_write(entry_file: test.claim.observation_seed_scoped_run_witness.entry(), module_path: module_path(), function: function(), addressable: false, emoji: false, prior: DynamicLineClosed) {
     ScopedRunWriteRefused { cause: _ } => false
     ScopedRunWriteProjected { bytes: _, next: final_state } =>
       match scoped_run_timing_receipt(wall: nanosecond(count: 1000000), seed_resolution: nanosecond(count: 999999)) {
@@ -166,7 +166,7 @@ test fn scoped_run_clean_final_is_unmeasured_and_end_receipt_is_typed() -> Bool 
 
 test fn scoped_run_propagates_terminal_state_refusal() -> Bool {
   match scoped_run_begin_write(
-    entry_file: entry(),
+    entry_file: test.claim.observation_seed_scoped_run_witness.entry(),
     module_path: module_path(),
     function: function(),
     addressable: false,
@@ -181,7 +181,7 @@ test fn scoped_run_propagates_terminal_state_refusal() -> Bool {
 
 test fn scoped_run_closes_before_deferred_diagnostics() -> Bool {
   match scoped_run_close_before_deferred_write(
-    entry_file: entry(),
+    entry_file: test.claim.observation_seed_scoped_run_witness.entry(),
     module_path: module_path(),
     function: function(),
     addressable: true,

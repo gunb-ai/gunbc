@@ -51,7 +51,7 @@ test fn branded_list_first_string_method_nonempty() -> Bool {
 }
 
 test fn branded_list_first_string_method_empty() -> Bool {
-  match empty_string_list().first() {
+  match test.claim.branded_list_first_optional_witness.empty_string_list().first() {
     Present { value: _ } => false
     Absent => true
   }
@@ -91,7 +91,7 @@ test fn branded_list_first_string_pipe_nonempty() -> Bool {
 }
 
 test fn branded_list_first_string_pipe_empty() -> Bool {
-  match empty_string_list() |> first {
+  match test.claim.branded_list_first_optional_witness.empty_string_list() |> first {
     Present { value: _ } => false
     Absent => true
   }

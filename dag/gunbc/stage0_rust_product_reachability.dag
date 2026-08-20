@@ -95,7 +95,7 @@ fn exact_paths_from_verdicts(
 ) -> List<String> {
   v2.std.algebra.fold_list(
     xs: verdicts,
-    empty: empty_string_list,
+    empty: gunbc.stage0_rust_product_reachability.empty_string_list,
     cons: fn(acc, verdict) {
       match verdict {
         ProductReachable { path: path, entry_path: entry_path } =>

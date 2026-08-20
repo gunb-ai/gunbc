@@ -44,14 +44,14 @@ test fn a_mount_occupies_an_interval_derived_from_the_cited_chassis() -> Bool {
 // truncation an earlier revision shipped and an earlier version of this claim pinned at 800.
 // It is the aperture, not the rack's external height, which no cited row carries.
 test fn one_mounted_fixture_leaves_the_rest_of_the_rack_free() -> Bool {
-  match rack_of(mounts: [rosewill_4u_asset()]) {
+  match test.claim.rack_mount_witness.rack_of(mounts: [rosewill_4u_asset()]) {
     Absent => false
     Present { value: r } => free_units(r: r) == 14 && micrometer_count(m: rack_mounting_aperture_height(r: r)) == 800100
   }
 }
 
 test fn two_hosts_stack_without_colliding() -> Bool {
-  match rack_of(mounts: [rosewill_4u_asset(), second_rosewill_4u_asset(lowest: 5)]) {
+  match test.claim.rack_mount_witness.rack_of(mounts: [rosewill_4u_asset(), second_rosewill_4u_asset(lowest: 5)]) {
     Absent => false
     Present { value: r } => free_units(r: r) == 10
   }

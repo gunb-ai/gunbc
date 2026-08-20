@@ -84,7 +84,7 @@ test fn committed_probe_receipts_feed_producers_and_grow_coverage() -> Bool {
       Present { value: v } => v == std.upsert_decision.Converged
       _ => false
     }
-    && match observe_host_phase(subject: fixture_subject(), host: operator_host_srv1, phase_label: "P0:reach-secrets-network") {
+    && match observe_host_phase(subject: test.claim.host_reach_identity_probe_witness.fixture_subject(), host: operator_host_srv1, phase_label: "P0:reach-secrets-network") {
       Present { value: v } => v == std.upsert_decision.Converged
       _ => false
     }
@@ -98,19 +98,19 @@ test fn committed_probe_receipts_feed_producers_and_grow_coverage() -> Bool {
 // The canonical seam routes each label to its producer and answers none for a label with
 // no producer row; the srv3 lease producer is preserved and still host-scoped.
 test fn observe_host_phase_routes_by_label_and_stays_fail_closed() -> Bool {
-  match observe_host_phase(subject: fixture_subject(), host: operator_host_srv3, phase_label: "prefix:os-install-actuated") {
+  match observe_host_phase(subject: test.claim.host_reach_identity_probe_witness.fixture_subject(), host: operator_host_srv3, phase_label: "prefix:os-install-actuated") {
     Present { value: _ } => true
     _ => false
   }
-    && match observe_host_phase(subject: fixture_subject(), host: operator_host_srv1, phase_label: "prefix:os-install-actuated") {
+    && match observe_host_phase(subject: test.claim.host_reach_identity_probe_witness.fixture_subject(), host: operator_host_srv1, phase_label: "prefix:os-install-actuated") {
       Present { value: _ } => false
       _ => true
     }
-    && match observe_host_phase(subject: fixture_subject(), host: operator_host_srv1, phase_label: "P1:runner-deploy-slot") {
+    && match observe_host_phase(subject: test.claim.host_reach_identity_probe_witness.fixture_subject(), host: operator_host_srv1, phase_label: "P1:runner-deploy-slot") {
       Present { value: _ } => false
       _ => true
     }
-    && match observe_host_phase(subject: fixture_subject(), host: operator_host_srv1, phase_label: "P0:host-identity-converge") {
+    && match observe_host_phase(subject: test.claim.host_reach_identity_probe_witness.fixture_subject(), host: operator_host_srv1, phase_label: "P0:host-identity-converge") {
       Present { value: v } => v == std.upsert_decision.Converged
       _ => false
     }

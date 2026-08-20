@@ -177,7 +177,7 @@ test fn w_every_attachment_layer_is_open_and_says_why() -> Bool {
       }
     }
   })
-  layers == 6 && count_of(xs: open_blockers()) == 5 && package_resolved && others_blocked
+  layers == 6 && test.claim.altra_attachment_stack_witness.count_of(xs: open_blockers()) == 5 && package_resolved && others_blocked
 }
 
 // The layers are distinguishable rather than six spellings of one thing.

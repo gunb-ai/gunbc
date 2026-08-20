@@ -110,7 +110,7 @@ test data witness_find_witness_identity_accepts: Bool = match find_witness(
   Accepted { value: fw, diagnostics: _ } => fw.candidate == identity_source_node()
   Rejected { diagnostics: _ } => false
 }
-test data witness_find_witness_non_identity_rejects: Bool = rejected_for_no_candidate(
+test data witness_find_witness_non_identity_rejects: Bool = v2.test.manual.find_witness_identity.rejected_for_no_candidate(
   o: find_witness(
     source_facts: identity_source_node(),
     candidates: candidate_set_non_identity_single(),
@@ -143,7 +143,7 @@ test data witness_find_witness_unique_only_ambiguous_rejects: Bool = rejected_fo
     multiplicity_policy: UniqueOnly
   )
 )
-test data witness_find_witness_selected_invalid_rejects: Bool = rejected_for_no_candidate(
+test data witness_find_witness_selected_invalid_rejects: Bool = v2.test.manual.find_witness_identity.rejected_for_no_candidate(
   o: find_witness(
     source_facts: identity_source_node(),
     candidates: candidate_set_identity_duplicate(),
@@ -153,7 +153,7 @@ test data witness_find_witness_selected_invalid_rejects: Bool = rejected_for_no_
     }
   )
 )
-test data witness_find_witness_user_selected_invalid_rejects: Bool = rejected_for_no_candidate(
+test data witness_find_witness_user_selected_invalid_rejects: Bool = v2.test.manual.find_witness_identity.rejected_for_no_candidate(
   o: find_witness(
     source_facts: identity_source_node(),
     candidates: candidate_set_identity_duplicate(),
@@ -208,6 +208,6 @@ test data witness_coercion_fold_identity_accepts: Bool = match coercion_fold(
   policy: v2.std.find_witness.TargetDeclaredPriority { priority: identity_source_node() }
 ) {
   Accepted { value: r, diagnostics: _ } =>
-    (r.target == identity_source_node()) && quality_is_identity(q: r.quality)
+    (r.target == identity_source_node()) && v2.test.manual.find_witness_identity.quality_is_identity(q: r.quality)
   Rejected { diagnostics: _ } => false
 }

@@ -62,7 +62,7 @@ fn migration_roster_contains(site: String) -> Bool {
   contains(
     xs: complexity_linearity_migration_debt_roster_live(),
     item: site,
-    eq: string_eq
+    eq: v2.lens.complexity_linearity_audit.string_eq
   )
 }
 

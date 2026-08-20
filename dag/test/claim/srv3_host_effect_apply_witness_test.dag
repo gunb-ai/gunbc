@@ -12,7 +12,7 @@ fn srv3_bmc_target() -> gunbc.host_effect.NodeControlPlane {
 
 test fn witness_srv3_receipt_emit_apply_converges_in_process() -> Bool {
   match host_effect_apply(
-    target: srv3_actuator_target(),
+    target: test.claim.srv3_host_effect_apply_witness.srv3_actuator_target(),
     effect: gunbc.host_effect.Srv3ReceiptEmit { lines: ["line-one", "line-two"] },
     evidence: host_effect_identity_evidence,
     transport: LocalShell,
@@ -32,7 +32,7 @@ test fn witness_srv3_receipt_emit_apply_converges_in_process() -> Bool {
 
 test fn witness_bmcweb_token_extract_ssh_transport_refuses_typed() -> Bool {
   match host_effect_apply(
-    target: srv3_actuator_target(),
+    target: test.claim.srv3_host_effect_apply_witness.srv3_actuator_target(),
     effect: Srv3BmcwebTokenExtract,
     evidence: host_effect_identity_evidence,
     transport: gunbc.host_effect.SshShell { ssh_host: "203.0.113.1" as std.types.NonEmptyStr },
@@ -73,7 +73,7 @@ test fn witness_bmcweb_session_login_argv_uses_curl_authority_not_serialize_bash
 
 test fn witness_srv3_apply_shell_failure_refuses_typed() -> Bool {
   !reconciliation_converged(r: host_effect_apply(
-    target: srv3_actuator_target(),
+    target: test.claim.srv3_host_effect_apply_witness.srv3_actuator_target(),
     effect: gunbc.host_effect.ShellCommand { script: "exit 1" },
     evidence: host_effect_identity_evidence,
     transport: LocalShell
@@ -82,7 +82,7 @@ test fn witness_srv3_apply_shell_failure_refuses_typed() -> Bool {
 
 test fn witness_srv3_apply_failure_surfaces_captured_stdout_not_fabricated() -> Bool {
   match host_effect_apply(
-    target: srv3_actuator_target(),
+    target: test.claim.srv3_host_effect_apply_witness.srv3_actuator_target(),
     effect: gunbc.host_effect.ShellCommand { script: "echo srv3-apply-red-marker && exit 1" },
     evidence: host_effect_identity_evidence,
     transport: LocalShell
@@ -96,7 +96,7 @@ test fn witness_srv3_apply_failure_surfaces_captured_stdout_not_fabricated() -> 
 
 test fn witness_srv3_apply_failure_no_fabricated_stdout() -> Bool {
   let r = host_effect_apply(
-    target: srv3_actuator_target(),
+    target: test.claim.srv3_host_effect_apply_witness.srv3_actuator_target(),
     effect: gunbc.host_effect.ShellCommand { script: "exit 1" },
     evidence: host_effect_identity_evidence,
     transport: LocalShell
@@ -119,7 +119,7 @@ test fn witness_srv3_typed_effect_on_bmc_refuses_typed() -> Bool {
 
 test fn witness_srv3_typed_reconcile_ssh_transport_refuses_typed() -> Bool {
   match host_effect_apply(
-    target: srv3_actuator_target(),
+    target: test.claim.srv3_host_effect_apply_witness.srv3_actuator_target(),
     effect: Srv3InstallMediaFetch,
     evidence: host_effect_identity_evidence,
     transport: gunbc.host_effect.SshShell { ssh_host: "203.0.113.1" as std.types.NonEmptyStr }

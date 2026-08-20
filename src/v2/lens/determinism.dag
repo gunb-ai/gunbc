@@ -64,7 +64,7 @@ fn node_callee_symbol(n: Node) -> Optional<v2.std.node.Symbol> {
 }
 
 fn local_determinism_axis(n: Node) -> std.determinism.Determinism {
-  match node_callee_symbol(n: n) {
+  match v2.lens.determinism.node_callee_symbol(n: n) {
     Present { value: sym } => match determinism_root_for_symbol(registry: determinism_root_registry, s: sym) {
       Present { value: root } => std.determinism.NonDeterministic { source: root.source }
       Absent => std.determinism.Deterministic

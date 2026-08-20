@@ -68,30 +68,30 @@ fn is_refused(a: std.access.AccessDecision) -> Bool {
 }
 
 test fn build_workspace_grant_admits_declared_reach() -> Bool {
-  is_admitted(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Write, target: ws_write_target))
-    && is_admitted(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Read, target: closure_read_target))
-    && is_admitted(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Read, target: toolchain_read_target))
+  v2.test.claim.build_workspace_grant_witness.is_admitted(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Write, target: ws_write_target))
+    && v2.test.claim.build_workspace_grant_witness.is_admitted(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Read, target: closure_read_target))
+    && v2.test.claim.build_workspace_grant_witness.is_admitted(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Read, target: toolchain_read_target))
 }
 
 test fn build_workspace_grant_admits_workspace_read() -> Bool {
-  is_admitted(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Read, target: ws_write_target))
-    && is_refused(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Read, target: repo_tree_target))
+  v2.test.claim.build_workspace_grant_witness.is_admitted(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Read, target: ws_write_target))
+    && v2.test.claim.build_workspace_grant_witness.is_refused(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Read, target: repo_tree_target))
 }
 
 test fn build_workspace_grant_refuses_undeclared_write() -> Bool {
-  is_refused(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Write, target: repo_tree_target))
-    && is_refused(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Write, target: toolchain_read_target))
-    && is_refused(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Write, target: closure_read_target))
+  v2.test.claim.build_workspace_grant_witness.is_refused(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Write, target: repo_tree_target))
+    && v2.test.claim.build_workspace_grant_witness.is_refused(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Write, target: toolchain_read_target))
+    && v2.test.claim.build_workspace_grant_witness.is_refused(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Write, target: closure_read_target))
 }
 
 test fn build_workspace_grant_refuses_live_repo_read() -> Bool {
-  is_refused(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Read, target: repo_tree_target))
-    && is_admitted(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Read, target: closure_read_target))
+  v2.test.claim.build_workspace_grant_witness.is_refused(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Read, target: repo_tree_target))
+    && v2.test.claim.build_workspace_grant_witness.is_admitted(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Read, target: closure_read_target))
 }
 
 test fn build_workspace_grant_refuses_network_by_construction() -> Bool {
-  is_refused(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Read, target: network_target))
-    && is_refused(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Write, target: network_target))
+  v2.test.claim.build_workspace_grant_witness.is_refused(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Read, target: network_target))
+    && v2.test.claim.build_workspace_grant_witness.is_refused(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Write, target: network_target))
 }
 
 test fn build_workspace_grant_refusal_is_located() -> Bool {

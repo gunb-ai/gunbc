@@ -18,26 +18,26 @@ data scenario_roster_r1: gunbc.merge_admission.GateRosterHash = merge_admission_
 data scenario_pr_x_receipt: gunbc.merge_admission.MergeAdmissionReceipt = gunbc.merge_admission.MergeAdmissionReceipt {
   pr_number: Present { value: 5933 },
   head_sha: "abc1234def5678901234567890abcd1234567890",
-  base_tree_hash: scenario_base_b0,
-  gate_roster_hash: scenario_roster_r0,
+  base_tree_hash: test.claim.merge_admission_witness.scenario_base_b0,
+  gate_roster_hash: test.claim.merge_admission_witness.scenario_roster_r0,
   conclusion: Success,
 }
 
 fn scenario_stale_base_admits_policy(policy: gunbc.merge_admission.AdmissionPolicy) -> Bool {
   policy_admits(
     policy: policy,
-    receipt: scenario_pr_x_receipt,
-    merge_target_tree_hash: scenario_base_b1,
-    current_roster_hash: scenario_roster_r0,
+    receipt: test.claim.merge_admission_witness.scenario_pr_x_receipt,
+    merge_target_tree_hash: test.claim.merge_admission_witness.scenario_base_b1,
+    current_roster_hash: test.claim.merge_admission_witness.scenario_roster_r0,
   )
 }
 
 fn scenario_stale_roster_admits_policy(policy: gunbc.merge_admission.AdmissionPolicy) -> Bool {
   policy_admits(
     policy: policy,
-    receipt: scenario_pr_x_receipt,
-    merge_target_tree_hash: scenario_base_b0,
-    current_roster_hash: scenario_roster_r1,
+    receipt: test.claim.merge_admission_witness.scenario_pr_x_receipt,
+    merge_target_tree_hash: test.claim.merge_admission_witness.scenario_base_b0,
+    current_roster_hash: test.claim.merge_admission_witness.scenario_roster_r1,
   )
 }
 
@@ -63,9 +63,9 @@ test fn keyed_receipt_blocks_stale_roster() -> Bool {
 
 test fn keyed_receipt_admits_when_fresh() -> Bool {
   receipt_is_admissible(
-    receipt: scenario_pr_x_receipt,
-    merge_target_tree_hash: scenario_base_b0,
-    current_roster_hash: scenario_roster_r0,
+    receipt: test.claim.merge_admission_witness.scenario_pr_x_receipt,
+    merge_target_tree_hash: test.claim.merge_admission_witness.scenario_base_b0,
+    current_roster_hash: test.claim.merge_admission_witness.scenario_roster_r0,
   )
 }
 

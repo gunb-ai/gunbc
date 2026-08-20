@@ -18,7 +18,7 @@ fn run_entry_capturing_stderr(entry: String, function: String) -> String {
   let root = git.Inspect.Toplevel()
   let result = gunbc.WitnessBin.Run(
     workdir: root.path,
-    bin_path: claim_batch_path(),
+    bin_path: test.claim.expectation_frontier_witness.claim_batch_path(),
     args: claim_batch_claims_argv(
       source_roots: gunbc.ci_layer_roots.witness_layer_roots,
       claims: [tools.host_prelude.ClaimRun { entry: entry, function: function }]

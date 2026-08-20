@@ -353,7 +353,7 @@ fn expression_accesses_runner_var_via_env(expression: Expression) -> Bool {
   match expression {
     ContextAccess { context: c, path: p } =>
       match c {
-        Env => string_in_list(needle: join_path(path: p), haystack: runner_provided_env_var_names)
+        Env => extdeps.github.expressions.string_in_list(needle: join_path(path: p), haystack: runner_provided_env_var_names)
         _ => false
       }
     FunctionCall { function: _, args: a } =>

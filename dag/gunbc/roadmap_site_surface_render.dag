@@ -42,9 +42,9 @@ fn healthz_surface_members(
     json_kv(key: "artifacts", value: json_object(members: [
       json_kv(key: roadmap.url_path as String, value: json_string(s: roadmap.digest.digest as String)),
       json_kv(key: dispatch.url_path as String, value: json_string(s: dispatch.digest.digest as String)),
-      served_surface_digest_kv(url_path: daily.url_path, body: daily.body),
-      served_surface_digest_kv(url_path: full.url_path, body: full.body),
-      served_surface_digest_kv(url_path: dispatch_js.url_path, body: dispatch_js.body),
+      gunbc.roadmap_site_surface_render.served_surface_digest_kv(url_path: daily.url_path, body: daily.body),
+      gunbc.roadmap_site_surface_render.served_surface_digest_kv(url_path: full.url_path, body: full.body),
+      gunbc.roadmap_site_surface_render.served_surface_digest_kv(url_path: dispatch_js.url_path, body: dispatch_js.body),
     ])),
   ]
 }

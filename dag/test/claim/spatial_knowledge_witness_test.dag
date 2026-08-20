@@ -216,14 +216,14 @@ fn style_wire_of(dimension: product.spatial_dimension.RoomDimensionKnowledge) ->
 // 1 + 2 — CONSUMING PRECISION. Same standing, same evidence, same room: only the uncertainty
 // differs, and only the coarse one is refused. This is the metrology rule actually implemented.
 fn witness_precision_decides_not_standing() -> Bool {
-  admits(dimension: measured_precise(), requirement: furniture_layout_requirement())
+  test.claim.spatial_knowledge_witness.admits(dimension: measured_precise(), requirement: furniture_layout_requirement())
     && refused_for_precision(dimension: measured_coarse(), requirement: furniture_layout_requirement())
     && standing_is(dimension: measured_coarse(), expected: SpatialClassMeasured)
 }
 
 // 3 — the same measured fact admits for furniture layout and REFUSES at egress grade.
 fn witness_same_evidence_differs_by_consuming_decision() -> Bool {
-  admits(dimension: measured_precise(), requirement: furniture_layout_requirement())
+  test.claim.spatial_knowledge_witness.admits(dimension: measured_precise(), requirement: furniture_layout_requirement())
     && refused_for_precision(dimension: measured_precise(), requirement: egress_requirement())
 }
 
@@ -242,9 +242,9 @@ fn witness_reversed_interval_refuses() -> Bool {
 // 5 — a narrow estimate satisfies a loose layout requirement; a wide one does not; and neither
 // satisfies an egress-grade requirement, which demands a measurement outright.
 fn witness_estimate_width_and_standing_both_bind() -> Bool {
-  admits(dimension: estimate_narrow(), requirement: furniture_layout_requirement())
+  test.claim.spatial_knowledge_witness.admits(dimension: estimate_narrow(), requirement: furniture_layout_requirement())
     && refused_for_precision(dimension: estimate_wide(), requirement: furniture_layout_requirement())
-    && admits(dimension: estimate_narrow(), requirement: egress_requirement()) == false
+    && test.claim.spatial_knowledge_witness.admits(dimension: estimate_narrow(), requirement: egress_requirement()) == false
 }
 
 // 6 — a hypothesis RENDERS as a hypothesis while REFUSING decision admission. Explore freely,
@@ -254,7 +254,7 @@ fn witness_hypothesis_renders_but_refuses_decisions() -> Bool {
     && style_wire_of(dimension: hypothesis_25ft()) == "stroke-dashed-hypothesis"
     && style_wire_of(dimension: hypothesis_25ft()) != style_wire_of(dimension: measured_precise())
     && refused_as_hypothesis(dimension: hypothesis_25ft())
-    && admits(dimension: hypothesis_25ft(), requirement: egress_requirement()) == false
+    && test.claim.spatial_knowledge_witness.admits(dimension: hypothesis_25ft(), requirement: egress_requirement()) == false
 }
 
 // 7 — unknown geometry creates no shape, and its refusal names the discharging obligation.
@@ -263,7 +263,7 @@ fn witness_unknown_creates_no_shape() -> Bool {
     && string_contains(s: render_wire(dimension: unknown_width()), pattern: "srv-geometry-capture")
     && string_contains(s: render_wire(dimension: unknown_width()), pattern: "<line") == false
     && refused_naming_obligation(dimension: unknown_width())
-    && admits(dimension: unknown_width(), requirement: furniture_layout_requirement()) == false
+    && test.claim.spatial_knowledge_witness.admits(dimension: unknown_width(), requirement: furniture_layout_requirement()) == false
 }
 
 // 8 — the four standings render distinguishably, which is the loop the deleted packet broke: one
@@ -285,7 +285,7 @@ fn witness_identity_survives_projection() -> Bool {
 // 10 — POSITIVE CONTROL: a real quantity is genuinely admitted AND genuinely drawn, so the suite
 // cannot pass by refusing everything, the failure mode a refusal-heavy guard is most prone to.
 fn witness_measured_admits_and_draws() -> Bool {
-  admits(dimension: measured_precise(), requirement: furniture_layout_requirement())
+  test.claim.spatial_knowledge_witness.admits(dimension: measured_precise(), requirement: furniture_layout_requirement())
     && standing_is(dimension: measured_precise(), expected: SpatialClassMeasured)
     && string_contains(s: render_wire(dimension: measured_precise()), pattern: "stroke-solid")
     && length_uncertainty_admissible(

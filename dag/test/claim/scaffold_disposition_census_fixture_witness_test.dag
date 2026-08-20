@@ -42,20 +42,20 @@ test fn scaffold_disposition_census_fixture_pool_is_nonempty() -> Bool {
 }
 
 test fn scaffold_disposition_census_oracle_qualified_names_are_unique() -> Bool {
-  v2.std.algebra.unique(xs: scaffold_disposition_census_oracle_qualified_names, eq: str_eq)
+  v2.std.algebra.unique(xs: scaffold_disposition_census_oracle_qualified_names, eq: test.claim.scaffold_disposition_census_fixture_witness_test.str_eq)
 }
 
 test fn scaffold_disposition_census_oracle_covers_every_real_data_declaration() -> Bool {
   v2.std.algebra.for_all(
     xs: scaffold_disposition_census_pool_data_qualified_names,
-    predicate: fn(qn) { contains(xs: scaffold_disposition_census_oracle_qualified_names, item: qn, eq: str_eq) }
+    predicate: fn(qn) { contains(xs: scaffold_disposition_census_oracle_qualified_names, item: qn, eq: test.claim.scaffold_disposition_census_fixture_witness_test.str_eq) }
   )
 }
 
 test fn scaffold_disposition_census_oracle_names_no_extra_declarations() -> Bool {
   v2.std.algebra.for_all(
     xs: scaffold_disposition_census_oracle_qualified_names,
-    predicate: fn(qn) { contains(xs: scaffold_disposition_census_pool_data_qualified_names, item: qn, eq: str_eq) }
+    predicate: fn(qn) { contains(xs: scaffold_disposition_census_pool_data_qualified_names, item: qn, eq: test.claim.scaffold_disposition_census_fixture_witness_test.str_eq) }
   )
 }
 
@@ -68,7 +68,7 @@ data scaffold_disposition_census_deliberately_incomplete_oracle_names: List<Stri
 test fn scaffold_disposition_census_identity_join_discriminates_incomplete_oracle_red() -> Bool {
   !v2.std.algebra.for_all(
     xs: scaffold_disposition_census_pool_data_qualified_names,
-    predicate: fn(qn) { contains(xs: scaffold_disposition_census_deliberately_incomplete_oracle_names, item: qn, eq: str_eq) }
+    predicate: fn(qn) { contains(xs: scaffold_disposition_census_deliberately_incomplete_oracle_names, item: qn, eq: test.claim.scaffold_disposition_census_fixture_witness_test.str_eq) }
   )
 }
 

@@ -12,20 +12,20 @@ fn conj2(a: Node, b: Node) -> Node {
 }
 
 data red_chain: List<Node> = [
-  conj2(a: atom(id: ^run), b: atom(id: ^gate_rust)),
-  conj2(a: atom(id: ^run), b: atom(id: ^gate_emit)),
-  conj2(a: atom(id: ^run), b: atom(id: ^gate_layer))
+  v2.test.intent_linearity.lens_unit.discriminators.conj2(a: v2.test.intent_linearity.lens_unit.discriminators.atom(id: ^run), b: v2.test.intent_linearity.lens_unit.discriminators.atom(id: ^gate_rust)),
+  v2.test.intent_linearity.lens_unit.discriminators.conj2(a: v2.test.intent_linearity.lens_unit.discriminators.atom(id: ^run), b: v2.test.intent_linearity.lens_unit.discriminators.atom(id: ^gate_emit)),
+  v2.test.intent_linearity.lens_unit.discriminators.conj2(a: v2.test.intent_linearity.lens_unit.discriminators.atom(id: ^run), b: v2.test.intent_linearity.lens_unit.discriminators.atom(id: ^gate_layer))
 ]
 
 data linear_chain_a: List<Node> = [
-  conj2(a: atom(id: ^is_if),     b: atom(id: ^s0)),
-  conj2(a: atom(id: ^is_assign), b: conj2(a: atom(id: ^skip), b: atom(id: ^s1))),
-  conj2(a: atom(id: ^is_loop),   b: conj2(a: atom(id: ^skip), b: atom(id: ^s2)))
+  v2.test.intent_linearity.lens_unit.discriminators.conj2(a: v2.test.intent_linearity.lens_unit.discriminators.atom(id: ^is_if),     b: v2.test.intent_linearity.lens_unit.discriminators.atom(id: ^s0)),
+  v2.test.intent_linearity.lens_unit.discriminators.conj2(a: v2.test.intent_linearity.lens_unit.discriminators.atom(id: ^is_assign), b: v2.test.intent_linearity.lens_unit.discriminators.conj2(a: v2.test.intent_linearity.lens_unit.discriminators.atom(id: ^skip), b: v2.test.intent_linearity.lens_unit.discriminators.atom(id: ^s1))),
+  v2.test.intent_linearity.lens_unit.discriminators.conj2(a: v2.test.intent_linearity.lens_unit.discriminators.atom(id: ^is_loop),   b: v2.test.intent_linearity.lens_unit.discriminators.conj2(a: v2.test.intent_linearity.lens_unit.discriminators.atom(id: ^skip), b: v2.test.intent_linearity.lens_unit.discriminators.atom(id: ^s2)))
 ]
 data linear_chain_b: List<Node> = [
-  conj2(a: atom(id: ^emit),  b: atom(id: ^t0)),
-  conj2(a: atom(id: ^parse), b: conj2(a: atom(id: ^wrap), b: atom(id: ^t1))),
-  conj2(a: atom(id: ^check), b: conj2(a: atom(id: ^wrap), b: atom(id: ^t2)))
+  v2.test.intent_linearity.lens_unit.discriminators.conj2(a: v2.test.intent_linearity.lens_unit.discriminators.atom(id: ^emit),  b: v2.test.intent_linearity.lens_unit.discriminators.atom(id: ^t0)),
+  v2.test.intent_linearity.lens_unit.discriminators.conj2(a: v2.test.intent_linearity.lens_unit.discriminators.atom(id: ^parse), b: v2.test.intent_linearity.lens_unit.discriminators.conj2(a: v2.test.intent_linearity.lens_unit.discriminators.atom(id: ^wrap), b: v2.test.intent_linearity.lens_unit.discriminators.atom(id: ^t1))),
+  v2.test.intent_linearity.lens_unit.discriminators.conj2(a: v2.test.intent_linearity.lens_unit.discriminators.atom(id: ^check), b: v2.test.intent_linearity.lens_unit.discriminators.conj2(a: v2.test.intent_linearity.lens_unit.discriminators.atom(id: ^wrap), b: v2.test.intent_linearity.lens_unit.discriminators.atom(id: ^t2)))
 ]
 
 test fn unroll_detected_by_registry() -> Bool {
@@ -51,8 +51,8 @@ test fn single_minimal_level_is_linear() -> Bool {
 }
 
 data dup_type_pair: List<Node> = [
-  conj2(a: atom(id: ^x86), b: atom(id: ^arm)),
-  conj2(a: atom(id: ^x86), b: atom(id: ^arm))
+  v2.test.intent_linearity.lens_unit.discriminators.conj2(a: v2.test.intent_linearity.lens_unit.discriminators.atom(id: ^x86), b: v2.test.intent_linearity.lens_unit.discriminators.atom(id: ^arm)),
+  v2.test.intent_linearity.lens_unit.discriminators.conj2(a: v2.test.intent_linearity.lens_unit.discriminators.atom(id: ^x86), b: v2.test.intent_linearity.lens_unit.discriminators.atom(id: ^arm))
 ]
 test fn dup_type_decls_redundant_through_registry() -> Bool {
   forest_is_redundant(decls: dup_type_pair)

@@ -23,18 +23,18 @@ fn is_unmaterialized_for(a: std.frame_boundary.BoundaryAdmission, tree: std.effe
 }
 
 test fn simulated_boundary_satisfies_spec() -> Bool {
-  is_materialized_convention(
+  test.claim.frame_boundary_simulated_witness_test.is_materialized_convention(
     a: boundary_admits(
-      required_trees: require_network,
-      provided: simulated_boundary(trees: require_network)
+      required_trees: test.claim.frame_boundary_simulated_witness_test.require_network,
+      provided: simulated_boundary(trees: test.claim.frame_boundary_simulated_witness_test.require_network)
     )
   )
 }
 
 test fn simulated_boundary_closes_only_given_layers() -> Bool {
-  is_unmaterialized_for(
+  test.claim.frame_boundary_simulated_witness_test.is_unmaterialized_for(
     a: boundary_admits(
-      required_trees: require_network,
+      required_trees: test.claim.frame_boundary_simulated_witness_test.require_network,
       provided: simulated_boundary(trees: [FilesystemPathTree])
     ),
     tree: UriTree
@@ -42,7 +42,7 @@ test fn simulated_boundary_closes_only_given_layers() -> Bool {
 }
 
 test fn simulated_boundary_grade_is_convention() -> Bool {
-  is_materialized_convention(
+  test.claim.frame_boundary_simulated_witness_test.is_materialized_convention(
     a: boundary_admits(
       required_trees: [UriTree, FilesystemPathTree],
       provided: simulated_boundary(trees: [UriTree, FilesystemPathTree])

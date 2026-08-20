@@ -12,7 +12,7 @@ fn plain_span(text: String) -> std.render.Span {
 
 fn one_line_frame(text: String) -> std.render.RenderFrame {
   std.render.RenderFrame {
-    lines: [std.render.Line { spans: [plain_span(text: text)], indent: 0, max_width: none }],
+    lines: [std.render.Line { spans: [test.claim.render_surface_witness.plain_span(text: text)], indent: 0, max_width: none }],
     cursor_action: Append
   }
 }
@@ -39,7 +39,7 @@ test fn w_detect_plain() -> Bool {
 }
 
 test fn w_github_wraps_group_in_workflow_commands() -> Bool {
-  let out = serialize_document(doc: sample_doc, target: GithubActions, cap: plain_cap)
+  let out = serialize_document(doc: test.claim.render_surface_witness.sample_doc, target: GithubActions, cap: plain_cap)
   string_contains(s: out, pattern: "::group::host effects") &&
   string_contains(s: out, pattern: "[file] read foo.dag") &&
   string_contains(s: out, pattern: "::endgroup::") &&
@@ -47,7 +47,7 @@ test fn w_github_wraps_group_in_workflow_commands() -> Bool {
 }
 
 test fn w_plain_terminal_uses_header_not_commands() -> Bool {
-  let out = serialize_document(doc: sample_doc, target: PlainTerminal, cap: plain_cap)
+  let out = serialize_document(doc: test.claim.render_surface_witness.sample_doc, target: PlainTerminal, cap: plain_cap)
   string_contains(s: out, pattern: "── host effects ──") &&
   string_contains(s: out, pattern: "[file] read foo.dag") &&
   !string_contains(s: out, pattern: "::group::") &&

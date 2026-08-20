@@ -29,7 +29,7 @@ fn roster_contains_decl_name(roster: List<gunbc.v1_complexity_decl_classificatio
     if found {
       true
     } else {
-      string_eq(a: row.decl_name, b: name)
+      gunbc.v1_complexity_decl_classification.string_eq(a: row.decl_name, b: name)
     }
   })
 }
@@ -48,7 +48,7 @@ fn every_population_fact_classified(
 }
 
 fn classification_matches_fact(c: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification, fact: v2.std.decl_index.DeclFact) -> Bool {
-  string_eq(a: c.decl_name, b: fact.name)
+  gunbc.v1_complexity_decl_classification.string_eq(a: c.decl_name, b: fact.name)
 }
 
 fn roster_name_in_population(
@@ -71,7 +71,7 @@ fn every_roster_row_matches_population(
 
 fn name_already_seen(names: List<String>, name: String) -> Bool {
   fold(names, init: false, f: fn(found, n) {
-    found || string_eq(a: n, b: name)
+    found || gunbc.v1_complexity_decl_classification.string_eq(a: n, b: name)
   })
 }
 
@@ -137,7 +137,7 @@ fn inventory_authority_carrier_matches_classification(
       fold(roster, init: false, f: fn(found, c) {
         found || (
           classification_is_authority_for_capability(c: c, capability: cap_id)
-            && string_eq(a: c.decl_name, b: row.v1_carrier.decl_name as String)
+            && gunbc.v1_complexity_decl_classification.string_eq(a: c.decl_name, b: row.v1_carrier.decl_name as String)
         )
       })
     Absent => true

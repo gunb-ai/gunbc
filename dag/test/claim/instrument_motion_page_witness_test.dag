@@ -13,7 +13,7 @@ fn motion_page_body() -> String {
   roadmap_serve_invoke(
     handler: InstrumentMotionPageHandler,
     params: [],
-    request: fixture_request(method: GET, path: instrument_motion_page_path),
+    request: test.claim.instrument_motion_page_witness.fixture_request(method: GET, path: instrument_motion_page_path),
     release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision,
   ).body
 }
@@ -22,7 +22,7 @@ fn motion_asset_body() -> String {
   roadmap_serve_invoke(
     handler: InstrumentMotionAssetHandler,
     params: [],
-    request: fixture_request(method: GET, path: instrument_motion_asset_path),
+    request: test.claim.instrument_motion_page_witness.fixture_request(method: GET, path: instrument_motion_asset_path),
     release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision,
   ).body
 }
@@ -31,7 +31,7 @@ test fn witness_motion_page_renders_through_its_route() -> Bool {
   let r = roadmap_serve_invoke(
     handler: InstrumentMotionPageHandler,
     params: [],
-    request: fixture_request(method: GET, path: instrument_motion_page_path),
+    request: test.claim.instrument_motion_page_witness.fixture_request(method: GET, path: instrument_motion_page_path),
     release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision,
   )
   let html = r.body

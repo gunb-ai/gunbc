@@ -214,7 +214,7 @@ fn dir_pattern_matches(dir: String, path: String) -> Bool {
 
 fn strip_slashes(p: String) -> String {
   let no_lead = if starts_with(p, prefix: "/") { without_prefix(s: p, prefix: "/") } else { p }
-  if ends_with(s: no_lead, suffix: "/") { without_suffix(s: no_lead, suffix: "/") } else { no_lead }
+  if ends_with(s: no_lead, suffix: "/") { gunbc.gitignore_emit.without_suffix(s: no_lead, suffix: "/") } else { no_lead }
 }
 
 fn pattern_matches(pattern: String, path: String) -> Bool {

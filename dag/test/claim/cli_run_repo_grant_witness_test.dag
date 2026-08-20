@@ -24,17 +24,17 @@ fn is_admitted(a: std.access.AccessDecision) -> Bool {
 }
 
 test fn cli_run_repo_grant_admits_in_repo_path_holds() -> Bool {
-  is_admitted(a: cli_run_repo_read_admissible(rel: in_repo_rel))
-    && is_admitted(a: cli_run_repo_write_admissible(rel: in_repo_rel))
+  test.claim.cli_run_repo_grant_witness.is_admitted(a: cli_run_repo_read_admissible(rel: in_repo_rel))
+    && test.claim.cli_run_repo_grant_witness.is_admitted(a: cli_run_repo_write_admissible(rel: in_repo_rel))
 }
 
 test fn cli_run_repo_grant_refuses_escaping_path_holds() -> Bool {
-  is_refused(a: cli_run_repo_write_admissible(rel: escaping_rel))
-    && is_refused(a: cli_run_repo_read_admissible(rel: escaping_rel))
+  test.claim.cli_run_repo_grant_witness.is_refused(a: cli_run_repo_write_admissible(rel: escaping_rel))
+    && test.claim.cli_run_repo_grant_witness.is_refused(a: cli_run_repo_read_admissible(rel: escaping_rel))
 }
 
 test fn cli_run_repo_grant_refuses_absolute_outside_holds() -> Bool {
-  is_refused(a: cli_run_repo_write_admissible(rel: absolute_outside))
+  test.claim.cli_run_repo_grant_witness.is_refused(a: cli_run_repo_write_admissible(rel: absolute_outside))
 }
 
 test fn cli_run_repo_grant_refusal_is_located() -> Bool {

@@ -18,7 +18,7 @@ test fn witness_linux_page_size_uniform_on_deploy_architectures() -> Bool {
 }
 
 test fn witness_rust_const_mirrors_authority() -> Bool {
-  let src = filesystem_read(path: v1_interpreter_source_path)
+  let src = filesystem_read(path: test.claim.exec_arg_limit_witness.v1_interpreter_source_path)
   let expected = to_string(byte_size_count(b: host_exec_arg_max_strlen))
   string_contains(
     s: src.content,

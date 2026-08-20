@@ -268,7 +268,7 @@ fn is_enforced(e: gunbc.ci_floor_measurement.OomdEnforcementEvidence) -> Bool {
 }
 
 test fn witness_reconcile_good_read_enforces() -> Bool {
-  is_enforced(e: oomd_evidence_from_reconciliation(r: reconcile_oomd(read: managed_observed_read(), req: test_thresholds())))
+  test.claim.oomd_install_grounding_witness.is_enforced(e: oomd_evidence_from_reconciliation(r: reconcile_oomd(read: managed_observed_read(), req: test_thresholds())))
 }
 
 test fn witness_reconcile_good_read_converges() -> Bool {
@@ -276,11 +276,11 @@ test fn witness_reconcile_good_read_converges() -> Bool {
 }
 
 test fn witness_absent_read_is_fail_closed() -> Bool {
-  !is_enforced(e: gunbc_oomd_install_evidence())
+  !test.claim.oomd_install_grounding_witness.is_enforced(e: gunbc_oomd_install_evidence())
 }
 
 test fn witness_fleet_evidence_seam_fail_closed() -> Bool {
-  !is_enforced(e: gunbc_oomd_fleet_evidence(req: test_thresholds()))
+  !test.claim.oomd_install_grounding_witness.is_enforced(e: gunbc_oomd_fleet_evidence(req: test_thresholds()))
 }
 
 test fn witness_membership_check_contract_passes_with_sessions_in_slice() -> Bool {

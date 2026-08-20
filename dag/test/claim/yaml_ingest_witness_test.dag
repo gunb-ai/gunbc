@@ -11,7 +11,7 @@ fn round_trips(v: extdeps.languages.yaml.types.YamlValue) -> Bool {
 }
 
 test fn witness_scalar_mapping_round_trips() -> Bool {
-  round_trips(v: yaml_mapping(entries: [
+  test.claim.yaml_ingest_witness.round_trips(v: yaml_mapping(entries: [
     kv(key: "name", value: yaml_string(s: "ci")),
     kv(key: "fetch-depth", value: yaml_int(n: 0)),
     kv(key: "quoted", value: yaml_bool(b: true))
@@ -19,7 +19,7 @@ test fn witness_scalar_mapping_round_trips() -> Bool {
 }
 
 test fn witness_nested_sequence_of_mappings_round_trips() -> Bool {
-  round_trips(v: yaml_mapping(entries: [
+  test.claim.yaml_ingest_witness.round_trips(v: yaml_mapping(entries: [
     kv(key: "jobs", value: yaml_sequence(elements: [
       yaml_mapping(entries: [
         kv(key: "uses", value: yaml_string(s: "actions/checkout@v4")),
@@ -32,13 +32,13 @@ test fn witness_nested_sequence_of_mappings_round_trips() -> Bool {
 }
 
 test fn witness_block_literal_round_trips() -> Bool {
-  round_trips(v: yaml_mapping(entries: [
+  test.claim.yaml_ingest_witness.round_trips(v: yaml_mapping(entries: [
     kv(key: "run", value: yaml_string(s: "line one\nline two"))
   ]))
 }
 
 test fn witness_empty_string_scalar_round_trips() -> Bool {
-  round_trips(v: yaml_mapping(entries: [kv(key: "rustflags", value: yaml_string(s: ""))]))
+  test.claim.yaml_ingest_witness.round_trips(v: yaml_mapping(entries: [kv(key: "rustflags", value: yaml_string(s: ""))]))
 }
 
 test fn witness_empty_document_rejected() -> Bool {

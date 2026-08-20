@@ -16,7 +16,7 @@ fn schedule_contains_entry(
 ) -> Bool {
   v2.std.algebra.any(
     xs: xs,
-    predicate: fn(w) { schedule_row_matches(w: w, entry: entry, function: function) }
+    predicate: fn(w) { v2.workflow.witness_admission.schedule_row_matches(w: w, entry: entry, function: function) }
   )
 }
 
@@ -29,7 +29,7 @@ fn path_matches_any_substring(path: String, subs: List<String>) -> Bool {
 }
 
 fn consumer_for_explicit_rosters(entry: String, function: String) -> std.witness_admission.WitnessConsumerCadence {
-  if schedule_contains_entry(
+  if v2.workflow.witness_admission.schedule_contains_entry(
     xs: v2.compiler.self_host.wet_receipt_enrollment.falsifier_self_host_wet_entries(),
     entry: entry,
     function: function
@@ -39,43 +39,43 @@ fn consumer_for_explicit_rosters(entry: String, function: String) -> std.witness
     } else {
       std.witness_admission.OfflineLocalRecipe
     }
-  } else if schedule_contains_entry(
+  } else if v2.workflow.witness_admission.schedule_contains_entry(
     xs: v2.compiler.self_host.wet_receipt_enrollment.falsifier_native_cache_cold_roster(),
     entry: entry,
     function: function
   ) {
     FalsifierSelfHostWet
-  } else if schedule_contains_entry(
+  } else if v2.workflow.witness_admission.schedule_contains_entry(
     xs: gunbc.ci_layer_roots.bin_witness_wet_entries,
     entry: entry,
     function: function
   ) {
     BinWitnessWet
-  } else if schedule_contains_entry(
+  } else if v2.workflow.witness_admission.schedule_contains_entry(
     xs: gunbc.ci_layer_roots.known_red_probe_roster(),
     entry: entry,
     function: function
   ) {
     QuarantineProbeExpectRed
-  } else if schedule_contains_entry(
+  } else if v2.workflow.witness_admission.schedule_contains_entry(
     xs: v2.compiler.self_host.wet_receipt_enrollment.falsifier_self_host_wet_known_red_entries,
     entry: entry,
     function: function
   ) {
     QuarantineProbeExpectRed
-  } else if schedule_contains_entry(
+  } else if v2.workflow.witness_admission.schedule_contains_entry(
     xs: gunbc.ci_layer_roots.falsifier_rehomed_bin_wet_entries(),
     entry: entry,
     function: function
   ) {
     FalsifierRehomedBinWet
-  } else if schedule_contains_entry(
+  } else if v2.workflow.witness_admission.schedule_contains_entry(
     xs: gunbc.explicit_witness_admission.explicit_witness_admission_substrate_long_lane_roster(),
     entry: entry,
     function: function
   ) {
     FalsifierSubstrateLongLane
-  } else if schedule_contains_entry(
+  } else if v2.workflow.witness_admission.schedule_contains_entry(
     xs: gunbc.ci_layer_roots.falsifier_substrate_long_lane_entries(),
     entry: entry,
     function: function
@@ -162,12 +162,12 @@ WHY IT IS CHECKED HERE RATHER THAN FOLDED INTO THE CADENCE. WitnessConsumerCaden
 MEASURED COST OF THE OMISSION, which is why this is a correctness fix rather than an extension: 31 identities in the frozen population are enrolled on GithubActionsCiJob today. Without this check the wall would refuse witnesses that already run — a fail-closed FALSE POSITIVE, which is still a wrong answer, and it would have landed on an unrelated lane as a surprise red."
 
 fn witness_commit_roster_enrolled(entry: String, function: String) -> Bool {
-  schedule_contains_entry(
+  v2.workflow.witness_admission.schedule_contains_entry(
     xs: gunbc.commit_workflow.project_ci_floor_witness_entries(roster: gunbc.commit_workflow.commit_gate_roster),
     entry: entry,
     function: function
   )
-    || schedule_contains_entry(
+    || v2.workflow.witness_admission.schedule_contains_entry(
       xs: gunbc.commit_workflow.project_falsifier_witness_entries(roster: gunbc.commit_workflow.commit_gate_roster),
       entry: entry,
       function: function
@@ -244,7 +244,7 @@ fn frozen_path_deferral_row_functions_all_discovered(
   !v2.std.algebra.any(
     xs: row.functions,
     predicate: fn(name) {
-      !schedule_contains_entry(xs: discovered, entry: row.entry, function: name)
+      !v2.workflow.witness_admission.schedule_contains_entry(xs: discovered, entry: row.entry, function: name)
     }
   )
 }
@@ -265,7 +265,7 @@ data witness_row_excluded_two_kinds_note: String = "A witness row leaves per-PR 
 
 fn witness_row_excluded_from_discovery(entry: String, function: String) -> Bool {
   gunbc.explicit_witness_admission.explicit_witness_admission_covers(entry: entry, function: function)
-    || schedule_contains_entry(
+    || v2.workflow.witness_admission.schedule_contains_entry(
       xs: gunbc.ci_layer_roots.falsifier_substrate_long_lane_entries(),
       entry: entry,
       function: function
@@ -337,7 +337,7 @@ fn witness_admission_manifest_covers_row(entry: String, function: String) -> Boo
   contains(
     xs: witness_admission_explicit_consumer_manifest(),
     item: witness_admission_manifest_entry_key(entry: entry, function: function),
-    eq: string_eq
+    eq: v2.workflow.witness_admission.string_eq
   )
 }
 
@@ -389,11 +389,11 @@ fn witness_exclusion_explicit_roster_rows_consistent(
     xs: rows,
     predicate: fn(row) {
       (gunbc.ci_layer_roots.witness_exclusion_row_is_bin_witness_wet(row: row)
-        && !schedule_entries_cover_pattern(xs: bin_entries, pattern: row.pattern))
+        && !v2.workflow.witness_admission.schedule_entries_cover_pattern(xs: bin_entries, pattern: row.pattern))
         || (gunbc.ci_layer_roots.witness_exclusion_row_is_rehomed_bin_wet(row: row)
-            && !schedule_entries_cover_pattern(xs: rehomed_entries, pattern: row.pattern))
+            && !v2.workflow.witness_admission.schedule_entries_cover_pattern(xs: rehomed_entries, pattern: row.pattern))
         || (gunbc.ci_layer_roots.witness_exclusion_row_is_substrate_long_lane(row: row)
-            && !schedule_entries_cover_pattern(xs: substrate_long_entries, pattern: row.pattern))
+            && !v2.workflow.witness_admission.schedule_entries_cover_pattern(xs: substrate_long_entries, pattern: row.pattern))
     }
   )
 }
@@ -419,7 +419,7 @@ fn witness_exclusion_falsifier_rows_consistent_holds() -> Bool {
       xs: gunbc.ci_layer_roots.witness_exclusion_frontier,
       predicate: fn(row) {
         gunbc.ci_layer_roots.witness_exclusion_row_is_falsifier_wet(row: row)
-          && !schedule_entries_cover_pattern(
+          && !v2.workflow.witness_admission.schedule_entries_cover_pattern(
             xs: v2.compiler.self_host.wet_receipt_enrollment.falsifier_self_host_wet_entries(),
             pattern: row.pattern
           )

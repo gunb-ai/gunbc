@@ -10,7 +10,7 @@ fn census_of(source: String) -> gunbc.compile_diagnostic_census.CompileDiagnosti
 }
 
 fn unresolved_blocking_count(source: String) -> Int {
-  match census_of(source: source) {
+  match test.claim.type_ref_hit_ne_bind_measure_witness.census_of(source: source) {
     CensusObserved { rows: rows } =>
       census_total_count(
         rows: census_rows_of_class(
@@ -33,23 +33,23 @@ data row5_qualified_pool_present_source: String = "module type_ref_row5\nfn f(x:
 data row7_self_module_qualified_source: String = "module type_ref_row7\ntype LocalT = Int\nfn f(x: type_ref_row7.LocalT) -> type_ref_row7.LocalT { x }\n"
 
 test fn row1_own_import_stays_green() -> Bool {
-  unresolved_blocking_count(source: row1_own_import_source) == 0
+  test.claim.type_ref_hit_ne_bind_measure_witness.unresolved_blocking_count(source: row1_own_import_source) == 0
 }
 
 test fn row3_absent_is_blocking_unresolved_type() -> Bool {
-  unresolved_blocking_count(source: row3_absent_source) >= 1
+  test.claim.type_ref_hit_ne_bind_measure_witness.unresolved_blocking_count(source: row3_absent_source) >= 1
 }
 
 test fn row4_bare_pool_present_unreachable_matches_row3_shape() -> Bool {
-  unresolved_blocking_count(source: row4_bare_pool_present_source) >= 1
+  test.claim.type_ref_hit_ne_bind_measure_witness.unresolved_blocking_count(source: row4_bare_pool_present_source) >= 1
 }
 
 test fn row5_qualified_pool_present_unreachable_matches_row3_shape() -> Bool {
-  unresolved_blocking_count(source: row5_qualified_pool_present_source) >= 1
+  test.claim.type_ref_hit_ne_bind_measure_witness.unresolved_blocking_count(source: row5_qualified_pool_present_source) >= 1
 }
 
 test fn row7_self_module_qualified_stays_green() -> Bool {
-  unresolved_blocking_count(source: row7_self_module_qualified_source) == 0
+  test.claim.type_ref_hit_ne_bind_measure_witness.unresolved_blocking_count(source: row7_self_module_qualified_source) == 0
 }
 
 test fn charter_is_measurement_not_corpus_refusal() -> Bool {

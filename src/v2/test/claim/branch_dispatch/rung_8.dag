@@ -10,11 +10,11 @@ fn rung8_tier1_eval_run(claim: v2.std.verification.TestClaim) -> TestClaimRun<No
   )
 }
 
-data run_claim_branch_dispatch_well_formed: TestClaimRun<Node, RuntimeValue> = rung8_tier1_eval_run(claim: claim_branch_dispatch_well_formed)
+data run_claim_branch_dispatch_well_formed: TestClaimRun<Node, RuntimeValue> = v2.test.branch_dispatch.rung_8.rung8_tier1_eval_run(claim: claim_branch_dispatch_well_formed)
 
-data run_claim_branch_dispatch_equals_refl: TestClaimRun<Node, RuntimeValue> = rung8_tier1_eval_run(claim: claim_branch_dispatch_equals_refl)
+data run_claim_branch_dispatch_equals_refl: TestClaimRun<Node, RuntimeValue> = v2.test.branch_dispatch.rung_8.rung8_tier1_eval_run(claim: claim_branch_dispatch_equals_refl)
 
-data run_claim_branch_dispatch_content_hash_stable: TestClaimRun<Node, RuntimeValue> = rung8_tier1_eval_run(claim: claim_branch_dispatch_content_hash_stable)
+data run_claim_branch_dispatch_content_hash_stable: TestClaimRun<Node, RuntimeValue> = v2.test.branch_dispatch.rung_8.rung8_tier1_eval_run(claim: claim_branch_dispatch_content_hash_stable)
 
 data phase4_branch_dispatch_rung8_runtime_value_rows: List<TestClaimRun<Node, RuntimeValue>> = [
   run_claim_branch_dispatch_well_formed,

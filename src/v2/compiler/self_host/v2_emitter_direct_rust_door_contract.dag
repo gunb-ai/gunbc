@@ -49,12 +49,12 @@ fn assess_missing_translation_rule_refuses() -> DirectRustDoorAdmission {
     emitted: direct_rust_door_emitted_root,
   ) {
     Accepted { value: _, diagnostics: _ } =>
-      refused(failure: MissingRuleAcceptedDespiteGap)
+      v2.compiler.self_host.v2_emitter_direct_rust_door_contract.refused(failure: MissingRuleAcceptedDespiteGap)
     Rejected { diagnostics: r } =>
       match translate_diagnostic_reason_from_symbol(sym: r.head.reason) {
         Present { value: TargetBundleMalformed } => DirectRustDoorEstablished
-        Present { value: _ } => refused(failure: MissingRuleWrongDiagnostic)
-        Absent => refused(failure: MissingRuleDiagnosticAbsent)
+        Present { value: _ } => v2.compiler.self_host.v2_emitter_direct_rust_door_contract.refused(failure: MissingRuleWrongDiagnostic)
+        Absent => v2.compiler.self_host.v2_emitter_direct_rust_door_contract.refused(failure: MissingRuleDiagnosticAbsent)
       }
   }
 }

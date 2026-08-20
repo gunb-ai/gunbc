@@ -28,7 +28,7 @@ fn fixture_doc(nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.r
   gunbc.roadmap_document.RoadmapDocument {
     preamble: [],
     lead_lanes: [],
-    sections: [fixture_section(nodes: nodes, edges: edges)],
+    sections: [test.claim.roadmap_dispatch_actuator.fixture_section(nodes: nodes, edges: edges)],
   }
 }
 
@@ -37,7 +37,7 @@ test fn witness_tmux_session_name_prefix() -> Bool {
 }
 
 test fn witness_brief_fill_includes_node_metadata() -> Bool {
-  let node = sized_derivable(id: "brief-node", prs: [1], title: "Brief Title")
+  let node = test.claim.roadmap_dispatch_actuator.sized_derivable(id: "brief-node", prs: [1], title: "Brief Title")
   let brief = gunbc.roadmap_dispatch_actuator.fill_dispatch_brief(
     template: gunbc.roadmap_spawner.dispatch_brief_template,
     fields: gunbc.roadmap_dispatch_actuator.dispatch_brief_fields(node: node),
@@ -234,7 +234,7 @@ fn codex_tmux_command_shape_holds(
 }
 
 test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
-  let node = sized_derivable(id: "codex-selected", prs: [1], title: "Codex selected")
+  let node = test.claim.roadmap_dispatch_actuator.sized_derivable(id: "codex-selected", prs: [1], title: "Codex selected")
   match gunbc.roadmap_dispatch_actuator.dispatch_spawn_commands_for_inventory(
     instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance(),
     inventory: gunbc.dispatch_selection.fixture_inventory_codex_only_available(
@@ -316,7 +316,7 @@ test fn witness_lab_instance_moves_repo_tmux_and_codex_state_together() -> Bool 
   match gunbc.roadmap_dispatch_actuator.dispatch_spawn_commands_for_inventory(
     instance: lab,
     inventory: gunbc.dispatch_selection.fixture_inventory_codex_only_available(instance: lab),
-    node: sized_derivable(
+    node: test.claim.roadmap_dispatch_actuator.sized_derivable(
       id: "ts-dispatch-provider-events",
       prs: [],
       title: "Provider execution facts",
@@ -430,10 +430,10 @@ test fn witness_tmux_ls_parse_filters_prefix() -> Bool {
 }
 
 test fn witness_not_ready_node_refused() -> Bool {
-  let parent = sized_derivable(id: "parent", prs: [100], title: "Parent")
-  let child = sized_derivable(id: "child", prs: [200], title: "Child")
+  let parent = test.claim.roadmap_dispatch_actuator.sized_derivable(id: "parent", prs: [100], title: "Parent")
+  let child = test.claim.roadmap_dispatch_actuator.sized_derivable(id: "child", prs: [200], title: "Child")
   let edges = [gunbc.roadmap_model.RoadmapEdge { child: roadmap_dispatch_actuator_nid(s: "child"), parent: roadmap_dispatch_actuator_nid(s: "parent") }]
-  let doc = fixture_doc(nodes: [parent, child], edges: edges)
+  let doc = test.claim.roadmap_dispatch_actuator.fixture_doc(nodes: [parent, child], edges: edges)
   let ready = gunbc.roadmap_spawner.next_spawnable(doc: doc, merged: [])
   match gunbc.roadmap_dispatch_actuator.classify_dispatch_request_for_process_fingerprint(
     node: child,
@@ -449,8 +449,8 @@ test fn witness_not_ready_node_refused() -> Bool {
 }
 
 test fn witness_ready_node_permitted_without_live_session() -> Bool {
-  let node = sized_derivable(id: "ready-node", prs: [10], title: "Ready")
-  let doc = fixture_doc(nodes: [node], edges: [])
+  let node = test.claim.roadmap_dispatch_actuator.sized_derivable(id: "ready-node", prs: [10], title: "Ready")
+  let doc = test.claim.roadmap_dispatch_actuator.fixture_doc(nodes: [node], edges: [])
   let ready = gunbc.roadmap_spawner.next_spawnable(doc: doc, merged: [])
   match gunbc.roadmap_dispatch_actuator.classify_dispatch_request_for_process_fingerprint(
     node: node,
@@ -471,8 +471,8 @@ test fn witness_ready_node_permitted_without_live_session() -> Bool {
 }
 
 test fn witness_live_lease_refused() -> Bool {
-  let node = sized_derivable(id: "leased-node", prs: [11], title: "Leased")
-  let doc = fixture_doc(nodes: [node], edges: [])
+  let node = test.claim.roadmap_dispatch_actuator.sized_derivable(id: "leased-node", prs: [11], title: "Leased")
+  let doc = test.claim.roadmap_dispatch_actuator.fixture_doc(nodes: [node], edges: [])
   let ready = gunbc.roadmap_spawner.next_spawnable(doc: doc, merged: [])
   let entries = [extdeps.tmux.TmuxLsEntry { session_name: "gunbc-dispatch-leased-node", windows: 1 }]
   match gunbc.roadmap_dispatch_actuator.classify_dispatch_request_for_process_fingerprint(
@@ -534,8 +534,8 @@ test fn witness_live_sessions_panel_rows() -> Bool {
 
 test fn witness_projection_standing_refusal_specimen_holds() -> Bool {
   let entry = gunbc.roadmap_dispatch_actuator.fixture_projection_standing_refusal_tmux_entry()
-  let node = sized_derivable(id: "panel-a", prs: [12], title: "Panel")
-  let doc = fixture_doc(nodes: [node], edges: [])
+  let node = test.claim.roadmap_dispatch_actuator.sized_derivable(id: "panel-a", prs: [12], title: "Panel")
+  let doc = test.claim.roadmap_dispatch_actuator.fixture_doc(nodes: [node], edges: [])
   let ready = gunbc.roadmap_spawner.next_spawnable(doc: doc, merged: [])
   match gunbc.roadmap_dispatch_actuator.dispatch_actuator_selection(node_sizing: gunbc.roadmap_model.Unsized) {
     DispatchActuatorSelectionRefused { reason } =>
@@ -708,7 +708,7 @@ test fn witness_ticket_brief_fills_real_slots() -> Bool {
 }
 
 test fn witness_legacy_brief_still_stubs_with_title() -> Bool {
-  let node = sized_derivable(id: "brief-node", prs: [1], title: "Brief Title")
+  let node = test.claim.roadmap_dispatch_actuator.sized_derivable(id: "brief-node", prs: [1], title: "Brief Title")
   let brief = gunbc.roadmap_dispatch_actuator.filled_dispatch_brief_for_node(node: node)
   string_contains(s: brief, pattern: "Brief Title")
     && !string_contains(s: brief, pattern: "the real displaced cost")

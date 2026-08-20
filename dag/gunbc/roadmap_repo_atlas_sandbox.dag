@@ -93,11 +93,11 @@ A SECOND DEFECT DISSOLVED WITH IT. Marking the structural dot marked the CELL, s
 
 fn atlas_structure_dot(cell: gunbc.repo_atlas_projection.RepoAtlasCell) -> std.markup.Fragment {
   extdeps.browser.Element { tag: "g", attributes: [
-    sattr(name: "transform", value: atlas_cell_transform(address: cell.address)),
+    gunbc.roadmap_repo_atlas_sandbox.sattr(name: "transform", value: atlas_cell_transform(address: cell.address)),
   ], children: [
     extdeps.browser.Element { tag: "circle", attributes: [
-      sattr(name: "r", value: to_string(atlas_dot_radius)),
-      sattr(name: "class", value: atlas_cell_class(cell: cell)),
+      gunbc.roadmap_repo_atlas_sandbox.sattr(name: "r", value: to_string(atlas_dot_radius)),
+      gunbc.roadmap_repo_atlas_sandbox.sattr(name: "class", value: atlas_cell_class(cell: cell)),
     ], children: [
       extdeps.browser.Element { tag: "title", attributes: [], children: [ txt(atlas_cell_title(cell: cell)) ] },
     ] },
@@ -115,11 +115,11 @@ fn atlas_identity_list_text(identities: List<v2.lens.module_impact_query.ModuleI
 
 fn atlas_change_dot(cell: gunbc.repo_atlas_projection.RepoAtlasCell, changed: List<v2.lens.module_impact_query.ModuleIdentity>) -> std.markup.Fragment {
   extdeps.browser.Element { tag: "g", attributes: [
-    sattr(name: "transform", value: atlas_cell_transform(address: cell.address)),
+    gunbc.roadmap_repo_atlas_sandbox.sattr(name: "transform", value: atlas_cell_transform(address: cell.address)),
   ], children: [
     extdeps.browser.Element { tag: "circle", attributes: [
-      sattr(name: "r", value: to_string(atlas_dot_radius)),
-      sattr(name: "class", value: "atlas-dot atlas-dot-changed"),
+      gunbc.roadmap_repo_atlas_sandbox.sattr(name: "r", value: to_string(atlas_dot_radius)),
+      gunbc.roadmap_repo_atlas_sandbox.sattr(name: "class", value: "atlas-dot atlas-dot-changed"),
     ], children: [
       extdeps.browser.Element { tag: "title", attributes: [], children: [
         txt(concat("changed — ", atlas_identity_list_text(identities: changed))),
@@ -131,7 +131,7 @@ fn atlas_change_dot(cell: gunbc.repo_atlas_projection.RepoAtlasCell, changed: Li
 data repo_atlas_plane_note: String = "Each plane is its own SVG group so a register or a motion realization can transform one without the others. They are emitted in one document and share the coordinate frame — co-registered, not composited after the fact — which is what lets a future impulse desynchronize them the way a CRT loses hold, using the planes that already exist rather than new machinery."
 
 fn atlas_structure_plane(snapshot: gunbc.repo_atlas_projection.RepoAtlasSnapshot) -> std.markup.Fragment {
-  extdeps.browser.Element { tag: "g", attributes: [ sattr(name: "class", value: "atlas-plane atlas-plane-structure") ],
+  extdeps.browser.Element { tag: "g", attributes: [ gunbc.roadmap_repo_atlas_sandbox.sattr(name: "class", value: "atlas-plane atlas-plane-structure") ],
     children: map(snapshot.cells, c => atlas_structure_dot(cell: c)) }
 }
 
@@ -146,12 +146,12 @@ fn atlas_change_plane(snapshot: gunbc.repo_atlas_projection.RepoAtlasSnapshot, m
 
 fn atlas_impact_ring(cell: gunbc.repo_atlas_projection.RepoAtlasCell) -> std.markup.Fragment {
   extdeps.browser.Element { tag: "g", attributes: [
-    sattr(name: "transform", value: atlas_cell_transform(address: cell.address)),
+    gunbc.roadmap_repo_atlas_sandbox.sattr(name: "transform", value: atlas_cell_transform(address: cell.address)),
   ], children: [
     extdeps.browser.Element { tag: "circle", attributes: [
-      sattr(name: "r", value: to_string(atlas_dot_radius + 4)),
-      sattr(name: "class", value: "atlas-impact-ring"),
-      sattr(name: "fill", value: "none"),
+      gunbc.roadmap_repo_atlas_sandbox.sattr(name: "r", value: to_string(atlas_dot_radius + 4)),
+      gunbc.roadmap_repo_atlas_sandbox.sattr(name: "class", value: "atlas-impact-ring"),
+      gunbc.roadmap_repo_atlas_sandbox.sattr(name: "fill", value: "none"),
     ], children: [] },
   ] }
 }
@@ -162,7 +162,7 @@ fn atlas_impact_plane(snapshot: gunbc.repo_atlas_projection.RepoAtlasSnapshot) -
   match snapshot.impact {
     AtlasImpactNotComputed => []
     AtlasImpactComputed { reached: _, standing: _ } => [
-      extdeps.browser.Element { tag: "g", attributes: [ sattr(name: "class", value: "atlas-plane atlas-plane-impact") ],
+      extdeps.browser.Element { tag: "g", attributes: [ gunbc.roadmap_repo_atlas_sandbox.sattr(name: "class", value: "atlas-plane atlas-plane-impact") ],
         children: map(
           filter(snapshot.cells, c => atlas_cell_any_impacted(cell: c, impact: snapshot.impact)),
           c => atlas_impact_ring(cell: c)) }
@@ -171,14 +171,14 @@ fn atlas_impact_plane(snapshot: gunbc.repo_atlas_projection.RepoAtlasSnapshot) -
 }
 
 fn atlas_glass_plane() -> std.markup.Fragment {
-  extdeps.browser.Element { tag: "g", attributes: [ sattr(name: "class", value: "atlas-plane atlas-plane-glass") ],
+  extdeps.browser.Element { tag: "g", attributes: [ gunbc.roadmap_repo_atlas_sandbox.sattr(name: "class", value: "atlas-plane atlas-plane-glass") ],
     children: [
       extdeps.browser.Element { tag: "circle", attributes: [
-        sattr(name: "cx", value: to_string(atlas_svg_center)),
-        sattr(name: "cy", value: to_string(atlas_svg_center)),
-        sattr(name: "r", value: to_string(atlas_ring_radius(ring: 15) + 16)),
-        sattr(name: "class", value: "atlas-glass-edge"),
-        sattr(name: "fill", value: "none"),
+        gunbc.roadmap_repo_atlas_sandbox.sattr(name: "cx", value: to_string(atlas_svg_center)),
+        gunbc.roadmap_repo_atlas_sandbox.sattr(name: "cy", value: to_string(atlas_svg_center)),
+        gunbc.roadmap_repo_atlas_sandbox.sattr(name: "r", value: to_string(atlas_ring_radius(ring: 15) + 16)),
+        gunbc.roadmap_repo_atlas_sandbox.sattr(name: "class", value: "atlas-glass-edge"),
+        gunbc.roadmap_repo_atlas_sandbox.sattr(name: "fill", value: "none"),
       ], children: [] },
     ] }
 }
@@ -192,12 +192,12 @@ fn atlas_svg(snapshot: gunbc.repo_atlas_projection.RepoAtlasSnapshot) -> std.mar
   extdeps.browser.Element {
     tag: "svg",
     attributes: [
-      sattr(name: "viewBox", value: concat("0 0 ", concat(to_string(atlas_svg_extent),
+      gunbc.roadmap_repo_atlas_sandbox.sattr(name: "viewBox", value: concat("0 0 ", concat(to_string(atlas_svg_extent),
         concat(" ", to_string(atlas_svg_extent))))),
-      sattr(name: "class", value: "atlas"),
-      sattr(name: "role", value: "img"),
-      sattr(name: "aria-label", value: "the .dag module population as a ring atlas"),
-      sattr(name: "tabindex", value: "0"),
+      gunbc.roadmap_repo_atlas_sandbox.sattr(name: "class", value: "atlas"),
+      gunbc.roadmap_repo_atlas_sandbox.sattr(name: "role", value: "img"),
+      gunbc.roadmap_repo_atlas_sandbox.sattr(name: "aria-label", value: "the .dag module population as a ring atlas"),
+      gunbc.roadmap_repo_atlas_sandbox.sattr(name: "tabindex", value: "0"),
     ],
     children: concat(
       concat(
@@ -289,7 +289,7 @@ fn atlas_changes_readout(snapshot: gunbc.repo_atlas_projection.RepoAtlasSnapshot
               txt(concat("unprojected changes — ", concat(to_string(unprojected.length()),
                 " path(s) carry a change this snapshot cannot place"))),
             ]),
-            Element { tag: "ul", attributes: [ sattr(name: "class", value: "atlas-unprojected-list") ],
+            Element { tag: "ul", attributes: [ gunbc.roadmap_repo_atlas_sandbox.sattr(name: "class", value: "atlas-unprojected-list") ],
               children: map(unprojected, u => el("li", [ txt(atlas_unprojected_text(change: u)) ])) },
           ]) ]
       })
@@ -315,7 +315,7 @@ fn atlas_subject_text(subject: gunbc.repo_atlas_projection.AtlasSubject) -> Stri
 data repo_atlas_occupancy_absent_note: String = "The page states the absence of agent occupancy out loud rather than simply omitting it. A viewer arriving at a repo atlas expecting to see where agents are working must not read 'no dots lit' as 'nobody is working' — the honest statement is that the channel does not exist yet."
 
 fn atlas_legend() -> std.markup.Fragment {
-  extdeps.browser.Element { tag: "ul", attributes: [ sattr(name: "class", value: "atlas-legend") ], children: [
+  extdeps.browser.Element { tag: "ul", attributes: [ gunbc.roadmap_repo_atlas_sandbox.sattr(name: "class", value: "atlas-legend") ], children: [
     el("li", [ txt("dim dot — a structural module cell") ]),
     el("li", [ txt("denser dot — several modules share this cell; neither displaces the other") ]),
     el("li", [ txt("bright dot — directly changed, from a real SCM comparison") ]),
@@ -434,7 +434,7 @@ fn cls(name: String) -> extdeps.languages.css.selectors.SelectorSubject {
 fn atlas_rules() -> List<gunbc.design.material.BuildRule> {
   [
     gunbc.design.material.StaticRule {
-      selector: cls(name: "atlas"),
+      selector: gunbc.roadmap_repo_atlas_sandbox.cls(name: "atlas"),
       decls: [
         decl(prop: Display, value: "block"),
         decl(prop: Width, value: "100%"),
@@ -443,28 +443,28 @@ fn atlas_rules() -> List<gunbc.design.material.BuildRule> {
       ],
     },
     gunbc.design.material.StaticRule {
-      selector: cls(name: "atlas-dot"),
+      selector: gunbc.roadmap_repo_atlas_sandbox.cls(name: "atlas-dot"),
       decls: [
         decl(prop: Fill, value: role_var(r: FigureRole)),
         decl(prop: Opacity, value: "0.45"),
       ],
     },
     gunbc.design.material.StaticRule {
-      selector: cls(name: "atlas-dot-shared"),
+      selector: gunbc.roadmap_repo_atlas_sandbox.cls(name: "atlas-dot-shared"),
       decls: [
         decl(prop: Stroke, value: role_var(r: FigureRole)),
         decl(prop: extdeps.languages.css.properties.RawProperty { name: "stroke-width" }, value: "1"),
       ],
     },
     gunbc.design.material.StaticRule {
-      selector: cls(name: "atlas-dot-changed"),
+      selector: gunbc.roadmap_repo_atlas_sandbox.cls(name: "atlas-dot-changed"),
       decls: [
         decl(prop: Fill, value: role_var(r: FigureLitRole)),
         decl(prop: Opacity, value: "1"),
       ],
     },
     gunbc.design.material.StaticRule {
-      selector: cls(name: "atlas-impact-ring"),
+      selector: gunbc.roadmap_repo_atlas_sandbox.cls(name: "atlas-impact-ring"),
       decls: [
         decl(prop: Stroke, value: role_var(r: FigureEdgeRole)),
         decl(prop: extdeps.languages.css.properties.RawProperty { name: "stroke-width" }, value: "1"),
@@ -472,7 +472,7 @@ fn atlas_rules() -> List<gunbc.design.material.BuildRule> {
       ],
     },
     gunbc.design.material.StaticRule {
-      selector: cls(name: "atlas-glass-edge"),
+      selector: gunbc.roadmap_repo_atlas_sandbox.cls(name: "atlas-glass-edge"),
       decls: [
         decl(prop: Stroke, value: role_var(r: BorderRole)),
         decl(prop: extdeps.languages.css.properties.RawProperty { name: "stroke-width" }, value: "1"),
@@ -480,7 +480,7 @@ fn atlas_rules() -> List<gunbc.design.material.BuildRule> {
       ],
     },
     gunbc.design.material.StaticRule {
-      selector: cls(name: "atlas-readout"),
+      selector: gunbc.roadmap_repo_atlas_sandbox.cls(name: "atlas-readout"),
       decls: [
         decl(prop: FontFamily, value: scale_var(t: font_mono)),
         decl(prop: FontSize, value: scale_var(t: text_12)),
@@ -488,15 +488,15 @@ fn atlas_rules() -> List<gunbc.design.material.BuildRule> {
       ],
     },
     gunbc.design.material.StaticRule {
-      selector: cls(name: "atlas-readout-refused"),
+      selector: gunbc.roadmap_repo_atlas_sandbox.cls(name: "atlas-readout-refused"),
       decls: [ decl(prop: Color, value: role_var(r: TextRole)) ],
     },
     gunbc.design.material.StaticRule {
-      selector: cls(name: "atlas-readout-absent"),
+      selector: gunbc.roadmap_repo_atlas_sandbox.cls(name: "atlas-readout-absent"),
       decls: [ decl(prop: Color, value: role_var(r: TextRole)) ],
     },
     gunbc.design.material.StaticRule {
-      selector: cls(name: "atlas-legend"),
+      selector: gunbc.roadmap_repo_atlas_sandbox.cls(name: "atlas-legend"),
       decls: [
         decl(prop: FontFamily, value: scale_var(t: font_mono)),
         decl(prop: FontSize, value: scale_var(t: text_12)),
@@ -505,7 +505,7 @@ fn atlas_rules() -> List<gunbc.design.material.BuildRule> {
       ],
     },
     gunbc.design.material.StaticRule {
-      selector: cls(name: "atlas-unprojected-list"),
+      selector: gunbc.roadmap_repo_atlas_sandbox.cls(name: "atlas-unprojected-list"),
       decls: [
         decl(prop: FontFamily, value: scale_var(t: font_mono)),
         decl(prop: FontSize, value: scale_var(t: text_12)),

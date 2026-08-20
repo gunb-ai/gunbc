@@ -22,7 +22,7 @@ fn derived_op(name: String, method: std.types.HttpMethod, path: std.http_path.Pa
 
 fn derived_raw_is_read(name: String, method: std.types.HttpMethod, raw: String) -> Bool {
   match parse_path_template(raw: raw) {
-    ParsedPathTemplate { template: path } => is_read(shape: derived_op(name: name, method: method, path: path).shape)
+    ParsedPathTemplate { template: path } => test.claim.effects_witness_test.is_read(shape: derived_op(name: name, method: method, path: path).shape)
     MalformedPathTemplate => false
   }
 }

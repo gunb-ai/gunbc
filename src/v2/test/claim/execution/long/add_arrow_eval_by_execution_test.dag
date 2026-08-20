@@ -407,7 +407,7 @@ fn add_arrow_swapped_add_arrow() -> v2.std.node.Node {
       v2.std.node.Edge { label: v2.std.node.Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
       v2.std.node.Edge { label: v2.std.node.Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
       v2.std.node.Edge { label: v2.std.node.Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
-      v2.std.node.Edge { label: v2.std.node.Named { name: ^arrow_body_edge }, target: add_arrow_swapped_operand_body() }
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^arrow_body_edge }, target: v2.test.long.add_arrow_eval_by_execution.add_arrow_swapped_operand_body() }
     ]
   }
 }

@@ -53,7 +53,7 @@ fn ingest(source_text: String, file: v2.std.node.Symbol) -> v2.std.optional.Opti
 }
 
 fn findings_of(source_text: String, file: v2.std.node.Symbol) -> v2.std.optional.Optional<List<v2.lens.complexity_accumulator_copy.Finding>> {
-  match ingest(source_text: source_text, file: file) {
+  match v2.test.long.accumulator_copy_fold_analysis.ingest(source_text: source_text, file: file) {
     Absent => Absent
     Present { value: tree } => Present { value: v2.lens.complexity_accumulator_copy.analyze.accumulator_copy_findings(root: tree) }
   }
@@ -138,7 +138,7 @@ test fn nested_call_head_cannot_masquerade_as_bare_name() -> Bool {
 }
 
 test fn unregistered_combiner_reached_by_carrier_refuses() -> Bool {
-  match findings_of(source_text: unregistered_combiner_snippet, file: ^unreg_file) {
+  match findings_of(source_text: v2.test.long.accumulator_copy_fold_analysis.unregistered_combiner_snippet, file: ^unreg_file) {
     Absent => false
     Present { value: fs } =>
       v2.lens.complexity_accumulator_copy.analyze.findings_have_refusal_cause(fs: fs, cause: ^combiner_unregistered_carrier_reaches)
@@ -209,7 +209,7 @@ fn rebuilt_edge(e: v2.std.node.Edge) -> v2.std.node.Edge {
 fn break_mystery_head(n: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: n.kind,
-    children: v2.std.algebra.list_reverse(xs: fold(n.children, init: no_edges(), f: fn(acc, e) {
+    children: v2.std.algebra.list_reverse(xs: fold(n.children, init: v2.test.long.accumulator_copy_fold_analysis.no_edges(), f: fn(acc, e) {
       edge_list_prepend(item: rebuilt_edge(e: e), xs: acc)
     })),
     occurrence_id: n.occurrence_id
@@ -217,7 +217,7 @@ fn break_mystery_head(n: v2.std.node.Node) -> v2.std.node.Node {
 }
 
 test fn unreadable_call_head_with_carrier_port_refuses() -> Bool {
-  match ingest(source_text: unregistered_combiner_snippet, file: ^brokenhead_file) {
+  match v2.test.long.accumulator_copy_fold_analysis.ingest(source_text: v2.test.long.accumulator_copy_fold_analysis.unregistered_combiner_snippet, file: ^brokenhead_file) {
     Absent => false
     Present { value: tree } =>
       v2.lens.complexity_accumulator_copy.analyze.findings_have_refusal_cause(
@@ -256,21 +256,21 @@ test fn projection_call_carrier_is_classified() -> Bool {
 }
 
 test fn quadratic_ingest_has_lowered_loop() -> Bool {
-  match ingest(source_text: quadratic_snippet, file: ^quad_file) {
+  match v2.test.long.accumulator_copy_fold_analysis.ingest(source_text: quadratic_snippet, file: ^quad_file) {
     Absent => false
     Present { value: tree } => v2.lens.complexity_accumulator_copy.analyze.tree_contains_lowered_loop(root: tree)
   }
 }
 
 test fn quadratic_ingest_has_no_surface_fold_call() -> Bool {
-  match ingest(source_text: quadratic_snippet, file: ^quad_file) {
+  match v2.test.long.accumulator_copy_fold_analysis.ingest(source_text: quadratic_snippet, file: ^quad_file) {
     Absent => false
     Present { value: tree } => !v2.lens.complexity_accumulator_copy.analyze.tree_contains_surface_fold_call(root: tree)
   }
 }
 
 test fn identity_fold_has_no_finding() -> Bool {
-  match findings_of(source_text: identity_snippet, file: ^ident_file) {
+  match findings_of(source_text: v2.test.long.accumulator_copy_fold_analysis.identity_snippet, file: ^ident_file) {
     Absent => false
     Present { value: fs } => is_empty_findings(fs: fs)
   }
@@ -284,13 +284,13 @@ test fn out_of_iteration_append_is_out_of_domain() -> Bool {
 }
 
 test fn report_counters_state_the_domain() -> Bool {
-  match ingest(source_text: quadratic_snippet, file: ^quad_file) {
+  match v2.test.long.accumulator_copy_fold_analysis.ingest(source_text: quadratic_snippet, file: ^quad_file) {
     Absent => false
     Present { value: tree } =>
       let r = v2.lens.complexity_accumulator_copy.analyze.accumulator_copy_report(root: tree)
       (r.folds_seen == 1) && (r.carriers_bound == 1)
   }
-    && match ingest(source_text: named_step_snippet, file: ^namedstep_file) {
+    && match v2.test.long.accumulator_copy_fold_analysis.ingest(source_text: named_step_snippet, file: ^namedstep_file) {
       Absent => false
       Present { value: tree } =>
         let r = v2.lens.complexity_accumulator_copy.analyze.accumulator_copy_report(root: tree)

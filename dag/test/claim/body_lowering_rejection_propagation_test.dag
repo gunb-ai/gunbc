@@ -13,7 +13,7 @@ fn emitted_shell(id: v2.std.node.Symbol) -> Node {
     children: [
       v2.std.node.Edge {
         label: v2.std.node.Named { name: ^grammar_production_identity_node_projection },
-        target: atom_node(id: id)
+        target: gunbc.test.claim.body_lowering_rejection_propagation_test.atom_node(id: id)
       }
     ]
   )
@@ -24,8 +24,8 @@ fn diagnostic_reason(d: v2.std.diagnostic.Diagnostic) -> v2.std.node.Symbol {
 }
 
 fn all_reasons(d: v2.std.diagnostic.NonEmptyDiagnostics) -> List<v2.std.node.Symbol> {
-  v2.std.algebra.fold_list(xs: d.tail, empty: [diagnostic_reason(d: d.head)], cons: fn(acc, item) {
-    concat(acc, [diagnostic_reason(d: item)])
+  v2.std.algebra.fold_list(xs: d.tail, empty: [gunbc.test.claim.body_lowering_rejection_propagation_test.diagnostic_reason(d: d.head)], cons: fn(acc, item) {
+    concat(acc, [gunbc.test.claim.body_lowering_rejection_propagation_test.diagnostic_reason(d: item)])
   })
 }
 
@@ -59,7 +59,7 @@ fn accepted_reasons(id: v2.std.node.Symbol) -> List<v2.std.node.Symbol> {
   match finish(id: id) {
     Accepted { value: _, diagnostics: d } =>
       match d {
-        Some { diagnostics: ne } => all_reasons(d: ne)
+        Some { diagnostics: ne } => gunbc.test.claim.body_lowering_rejection_propagation_test.all_reasons(d: ne)
         v2.std.diagnostic.None => []
       }
     Rejected { diagnostics: _ } => []
@@ -73,8 +73,8 @@ fn accepted_reasons(id: v2.std.node.Symbol) -> List<v2.std.node.Symbol> {
 test fn genuine_rejection_leaves_the_seam_rejected() -> Bool {
   match finish(id: ^dag_surface_expr) {
     Rejected { diagnostics: d } =>
-      reasons_contain(reasons: all_reasons(d: d), sym: ^body_lowering_reason_unsupported_form)
-        && (reasons_contain(reasons: all_reasons(d: d), sym: ^body_lowering_reason_wrapper_retained_emitted) == false)
+      gunbc.test.claim.body_lowering_rejection_propagation_test.reasons_contain(reasons: gunbc.test.claim.body_lowering_rejection_propagation_test.all_reasons(d: d), sym: ^body_lowering_reason_unsupported_form)
+        && (gunbc.test.claim.body_lowering_rejection_propagation_test.reasons_contain(reasons: gunbc.test.claim.body_lowering_rejection_propagation_test.all_reasons(d: d), sym: ^body_lowering_reason_wrapper_retained_emitted) == false)
     Accepted { value: _, diagnostics: _ } => false
   }
 }
@@ -89,7 +89,7 @@ test fn unregistered_producer_lands_on_the_accepted_arm() -> Bool {
 }
 
 test fn unregistered_producer_still_retains() -> Bool {
-  reasons_contain(
+  gunbc.test.claim.body_lowering_rejection_propagation_test.reasons_contain(
     reasons: accepted_reasons(id: ^probe_unregistered_surface_form),
     sym: ^body_lowering_reason_wrapper_retained_emitted
   )

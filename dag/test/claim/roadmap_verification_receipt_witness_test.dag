@@ -48,8 +48,8 @@ data head_a: std.types.CommitSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as
 data head_b: std.types.CommitSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as std.types.CommitSha
 
 test fn complete_exact_head_receipt_constructs_and_matches() -> Bool {
-  let expected = subject_at(head: head_a)
-  let receipt = exact_head_receipt(head: head_a)
+  let expected = subject_at(head: test.claim.roadmap_verification_receipt_witness_test.head_a)
+  let receipt = exact_head_receipt(head: test.claim.roadmap_verification_receipt_witness_test.head_a)
   match verification_evidence_for(
     expected: expected,
     source: gunbc.roadmap_verification_receipt.ExactHeadVerificationReceipt { receipt: receipt },
@@ -66,16 +66,16 @@ test fn complete_exact_head_receipt_constructs_and_matches() -> Bool {
 
 test fn passed_receipt_for_old_head_refuses_to_move_new_head_lamp() -> Bool {
   let evidence = verification_evidence_for(
-    expected: subject_at(head: head_b),
+    expected: subject_at(head: test.claim.roadmap_verification_receipt_witness_test.head_b),
     source: gunbc.roadmap_verification_receipt.ExactHeadVerificationReceipt {
-      receipt: exact_head_receipt(head: head_a),
+      receipt: exact_head_receipt(head: test.claim.roadmap_verification_receipt_witness_test.head_a),
     },
   )
   match evidence {
     VerificationEvidenceForAnotherSubject { field, expected, found } =>
       (field as String) == "head_sha"
-        && expected == (head_b as String)
-        && found == (head_a as String)
+        && expected == (test.claim.roadmap_verification_receipt_witness_test.head_b as String)
+        && found == (test.claim.roadmap_verification_receipt_witness_test.head_a as String)
         && !verification_evidence_moves_lamp(evidence: evidence)
     _ => false
   }
@@ -83,7 +83,7 @@ test fn passed_receipt_for_old_head_refuses_to_move_new_head_lamp() -> Bool {
 
 test fn attempt_level_pass_is_typed_legacy_and_never_evidence() -> Bool {
   let evidence = verification_evidence_for(
-    expected: subject_at(head: head_a),
+    expected: subject_at(head: test.claim.roadmap_verification_receipt_witness_test.head_a),
     source: gunbc.roadmap_verification_receipt.LegacyAttemptValidationReceipt { verdict_key: "passed" },
   )
   match evidence {
@@ -101,14 +101,14 @@ test fn one_attempt_addresses_multiple_heads_without_overwrite() -> Bool {
     instance: instance,
     node_id: "exact-head-node" as std.types.NonEmptyStr as gunbc.roadmap_model.RoadmapNodeId,
     attempt_key: "feedfacefeedface",
-    head_sha: head_a as String,
+    head_sha: test.claim.roadmap_verification_receipt_witness_test.head_a as String,
     window_identity_hex: absent_identity,
   )
   let path_b = dispatch_attempt_verification_receipt_path_for_instance(
     instance: instance,
     node_id: "exact-head-node" as std.types.NonEmptyStr as gunbc.roadmap_model.RoadmapNodeId,
     attempt_key: "feedfacefeedface",
-    head_sha: head_b as String,
+    head_sha: test.claim.roadmap_verification_receipt_witness_test.head_b as String,
     window_identity_hex: absent_identity,
   )
   path_a != path_b
@@ -123,7 +123,7 @@ test fn one_attempt_addresses_multiple_heads_without_overwrite() -> Bool {
 }
 
 test fn exact_head_receipt_round_trips_through_json_codec() -> Bool {
-  let receipt = exact_head_receipt(head: head_a)
+  let receipt = exact_head_receipt(head: test.claim.roadmap_verification_receipt_witness_test.head_a)
   let wire = verification_receipt_json(receipt: receipt)
   match verification_receipt_decode(receipt: wire) {
     VerificationReceiptDecoded { receipt: decoded } =>
@@ -141,7 +141,7 @@ test fn exact_head_receipt_round_trips_through_json_codec() -> Bool {
 
 test fn change_window_refused_verdict_round_trips_through_json_codec() -> Bool {
   let receipt = gunbc.roadmap_verification_receipt.VerificationReceipt {
-    subject: subject_at(head: head_a),
+    subject: subject_at(head: test.claim.roadmap_verification_receipt_witness_test.head_a),
     oracle_identity: content_hash_of_value(value: "pinned-oracle"),
     executions: [],
     verdict: gunbc.roadmap_validation_oracle.ValidationRefused {

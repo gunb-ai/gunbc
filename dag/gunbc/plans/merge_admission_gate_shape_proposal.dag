@@ -60,7 +60,7 @@ fn section_signoff() -> List<std.markdown.MarkdownBlock> {
 }
 
 fn merge_admission_gate_shape_proposal_body() -> List<std.markdown.MarkdownBlock> {
-  concat([status_block()], concat(section_proposed_actuator(), section_signoff()))
+  concat([gunbc.plans.merge_admission_gate_shape_proposal.status_block()], concat(section_proposed_actuator(), section_signoff()))
 }
 
 data merge_admission_gate_shape_proposal_plan: gunbc.plan.Plan = gunbc.plan.Plan {

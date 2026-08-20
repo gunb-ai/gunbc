@@ -11,11 +11,11 @@ data arbitrary_english_prose_input: Node = v2.std.node.Node {
   children: [
     v2.std.node.Edge {
       label: Named { name: ^english_boundary_field },
-      target: atom_node(s: ^english_ingest_boundary_symbol)
+      target: v2.test.boundary.english_ingest_fail_closed.atom_node(s: ^english_ingest_boundary_symbol)
     },
     v2.std.node.Edge {
       label: Named { name: ^english_payload_field },
-      target: atom_node(s: ^english_arbitrary_prose_symbol)
+      target: v2.test.boundary.english_ingest_fail_closed.atom_node(s: ^english_arbitrary_prose_symbol)
     },
   ],
   occurrence_id: SyntheticOccurrence
@@ -26,11 +26,11 @@ data english_shape_b_docs_input: Node = v2.std.node.Node {
   children: [
     v2.std.node.Edge {
       label: Named { name: ^english_typed_value_field },
-      target: atom_node(s: ^english_typed_value_symbol)
+      target: v2.test.boundary.english_ingest_fail_closed.atom_node(s: ^english_typed_value_symbol)
     },
     v2.std.node.Edge {
       label: Named { name: ^english_walker_field },
-      target: atom_node(s: ^english_doc_walker_symbol)
+      target: v2.test.boundary.english_ingest_fail_closed.atom_node(s: ^english_doc_walker_symbol)
     },
   ],
   occurrence_id: SyntheticOccurrence
@@ -41,11 +41,11 @@ data english_shape_b_docs_output: Node = v2.std.node.Node {
   children: [
     v2.std.node.Edge {
       label: Named { name: ^english_typed_value_field },
-      target: atom_node(s: ^english_typed_value_symbol)
+      target: v2.test.boundary.english_ingest_fail_closed.atom_node(s: ^english_typed_value_symbol)
     },
     v2.std.node.Edge {
       label: Named { name: ^english_output_field },
-      target: atom_node(s: ^english_prose_output_symbol)
+      target: v2.test.boundary.english_ingest_fail_closed.atom_node(s: ^english_prose_output_symbol)
     },
   ],
   occurrence_id: SyntheticOccurrence

@@ -484,27 +484,27 @@ fn residue_row(path: v2.std.text.String, reason: v2.std.text.String, dissolution
 }
 
 data rust_source_lifecycle_residue_rows: List<RustSourceLifecycleRow> = [
-  residue_row(
+  gunbc.stage0_rust_source_lifecycle_scaffold.residue_row(
     path: "src/v1/stage0/src/cssl_seed_linked_closure_assembly.rs",
     reason: residue_cssl_assembly_reason,
     dissolution: residue_cssl_assembly_dissolution
   ),
-  residue_row(
+  gunbc.stage0_rust_source_lifecycle_scaffold.residue_row(
     path: "src/v1/stage0/src/module_path_index/mod.rs",
     reason: residue_module_path_index_reason,
     dissolution: residue_module_path_index_dissolution
   ),
-  residue_row(
+  gunbc.stage0_rust_source_lifecycle_scaffold.residue_row(
     path: "src/v1/stage0/src/module_path_index/index.rs",
     reason: residue_module_path_index_reason,
     dissolution: residue_module_path_index_dissolution
   ),
-  residue_row(
+  gunbc.stage0_rust_source_lifecycle_scaffold.residue_row(
     path: "src/v1/stage0/src/module_path_index/parsed_dag_file.rs",
     reason: residue_module_path_index_reason,
     dissolution: residue_module_path_index_dissolution
   ),
-  residue_row(
+  gunbc.stage0_rust_source_lifecycle_scaffold.residue_row(
     path: "src/v1/stage0_core/src/lib.rs",
     reason: residue_stage0_core_lib_reason,
     dissolution: residue_stage0_core_lib_dissolution

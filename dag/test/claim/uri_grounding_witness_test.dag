@@ -14,7 +14,7 @@ test fn w_uri_wire_reconstructs_url() -> Bool {
 
 test fn w_nonempty_str_html_url_holds() -> Bool {
   let url = "https://github.com/gunb-ai/gunbc/pull/1"
-  string_contains(url, pattern: "github.com")
+  test.claim.uri_grounding_witness.string_contains(url, pattern: "github.com")
 }
 
 // Local since the falsifier witness that used to declare it was deleted with the CI wipe

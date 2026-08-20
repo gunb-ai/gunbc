@@ -419,7 +419,7 @@ test fn refusal_quoting_passed_does_not_decode_as_passed() -> Bool {
 data truncated_receipt_note: String = "Self-review catch, mirroring the control the admission receipt already carries: a prefix match alone was never the claim. A receipt truncated mid-write — the ordinary outcome of a belt killed while writing it — carries the passed prefix verbatim and is still not a passed receipt, because the document does not parse. Without the parse guard this fixture decodes as passed, which is a fabricated green produced by an interrupted write rather than by any validation."
 
 test fn truncated_receipt_with_passed_prefix_is_not_passed() -> Bool {
-  let genuine = receipt_for(verdict: gunbc.roadmap_validation_oracle.ValidationPassed {
+  let genuine = test.claim.roadmap_validation_oracle_witness_test.receipt_for(verdict: gunbc.roadmap_validation_oracle.ValidationPassed {
     command: "gunbc run --claim-run",
     oracle_identity: pinned_identity(),
   })
@@ -732,14 +732,14 @@ test fn verify_lamp_stays_pending_without_a_receipt() -> Bool {
 }
 
 test fn verify_lamp_completes_only_on_a_passed_receipt() -> Bool {
-  verify_lamp_state(receipt: receipt_for(verdict: gunbc.roadmap_validation_oracle.ValidationPassed {
+  verify_lamp_state(receipt: test.claim.roadmap_validation_oracle_witness_test.receipt_for(verdict: gunbc.roadmap_validation_oracle.ValidationPassed {
     command: "gunbc run --claim-run",
     oracle_identity: pinned_identity(),
   })) == "complete"
 }
 
 test fn verify_lamp_shows_a_refusal_as_refused_not_failed() -> Bool {
-  let refused = verify_lamp_state(receipt: receipt_for(
+  let refused = verify_lamp_state(receipt: test.claim.roadmap_validation_oracle_witness_test.receipt_for(
     verdict: gunbc.roadmap_validation_oracle.ValidationRefused {
       cause: gunbc.roadmap_validation_oracle.ValidationOracleMoved {
         expected: pinned_identity(),
@@ -749,7 +749,7 @@ test fn verify_lamp_shows_a_refusal_as_refused_not_failed() -> Bool {
       },
     },
   ))
-  let failed = verify_lamp_state(receipt: receipt_for(
+  let failed = verify_lamp_state(receipt: test.claim.roadmap_validation_oracle_witness_test.receipt_for(
     verdict: gunbc.roadmap_validation_oracle.ValidationFailed {
       command: "gunbc run --claim-run",
       exit_code: 1,
@@ -766,7 +766,7 @@ test fn verify_lamp_shows_cross_family_refusal_as_refused_not_moved() -> Bool {
       hex: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" as std.content_hash.Sha256DigestHex,
     },
   )
-  verify_lamp_state(receipt: receipt_for(
+  verify_lamp_state(receipt: test.claim.roadmap_validation_oracle_witness_test.receipt_for(
     verdict: gunbc.roadmap_validation_oracle.ValidationRefused {
       cause: gunbc.roadmap_validation_oracle.ValidationOracleCrossFamilyIdentityIncomparable {
         expected: expected,
@@ -779,8 +779,8 @@ test fn verify_lamp_shows_cross_family_refusal_as_refused_not_moved() -> Bool {
 data not_run_receipt_note: String = "review 45271. The receipt-presence seam used to ask whether the receipt TEXT was empty, which answered the same way for three different worlds — no file, an unreadable file, an empty one — and then ran the validation and overwrote whatever was there. Absent and unreadable have opposite correct actions, so dispatch now writes a not-run receipt and absence stops being a state the seam has to interpret. These assert the two halves that makes true: a not-run receipt is DISTINGUISHABLE from every recorded verdict (so the belt can tell 'never ran' from 'already ran' without consulting the filesystem's error string), and it reads as pending at the lamp rather than as a verdict."
 
 test fn not_run_receipt_is_distinct_from_every_recorded_verdict() -> Bool {
-  let not_run = receipt_for(verdict: ValidationNotRun)
-  let passed = receipt_for(verdict: gunbc.roadmap_validation_oracle.ValidationPassed {
+  let not_run = test.claim.roadmap_validation_oracle_witness_test.receipt_for(verdict: ValidationNotRun)
+  let passed = test.claim.roadmap_validation_oracle_witness_test.receipt_for(verdict: gunbc.roadmap_validation_oracle.ValidationPassed {
     command: "gunbc run --claim-run",
     oracle_identity: pinned_identity(),
   })
@@ -791,7 +791,7 @@ test fn not_run_receipt_is_distinct_from_every_recorded_verdict() -> Bool {
 }
 
 test fn not_run_receipt_reads_as_pending_not_as_a_verdict() -> Bool {
-  verify_lamp_state(receipt: receipt_for(verdict: ValidationNotRun)) == "pending"
+  verify_lamp_state(receipt: test.claim.roadmap_validation_oracle_witness_test.receipt_for(verdict: ValidationNotRun)) == "pending"
 }
 
 test fn verify_lamp_refuses_a_foreign_receipt_document() -> Bool {

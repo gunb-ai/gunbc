@@ -10,7 +10,7 @@ fn cls(name: String) -> extdeps.languages.css.selectors.SelectorSubject {
 fn tuner_control_rules() -> List<gunbc.design.material.BuildRule> {
   [
     gunbc.design.material.StaticRule {
-      selector: cls(name: instrument_depth_btn_class),
+      selector: gunbc.roadmap_instrument_tuner.cls(name: instrument_depth_btn_class),
       decls: [
         decl(prop: FontFamily, value: scale_var(t: font_mono)),
         decl(prop: FontSize, value: scale_var(t: text_12)),
@@ -23,13 +23,13 @@ fn tuner_control_rules() -> List<gunbc.design.material.BuildRule> {
       ],
     },
     gunbc.design.material.StaticRule {
-      selector: cls(name: join([instrument_depth_btn_class, ".is-active"], "")),
+      selector: gunbc.roadmap_instrument_tuner.cls(name: join([instrument_depth_btn_class, ".is-active"], "")),
       decls: [
         decl(prop: Border, value: join(["1px solid ", role_var(r: FocusRole)], "")),
       ],
     },
     gunbc.design.material.StaticRule {
-      selector: cls(name: instrument_mode_btn_class),
+      selector: gunbc.roadmap_instrument_tuner.cls(name: instrument_mode_btn_class),
       decls: [
         decl(prop: FontFamily, value: scale_var(t: font_mono)),
         decl(prop: FontSize, value: scale_var(t: text_12)),
@@ -42,13 +42,13 @@ fn tuner_control_rules() -> List<gunbc.design.material.BuildRule> {
       ],
     },
     gunbc.design.material.StaticRule {
-      selector: cls(name: join([instrument_mode_btn_class, ".is-active"], "")),
+      selector: gunbc.roadmap_instrument_tuner.cls(name: join([instrument_mode_btn_class, ".is-active"], "")),
       decls: [
         decl(prop: Border, value: join(["1px solid ", role_var(r: FocusRole)], "")),
       ],
     },
     gunbc.design.material.StaticRule {
-      selector: cls(name: instrument_subject_class),
+      selector: gunbc.roadmap_instrument_tuner.cls(name: instrument_subject_class),
       decls: [
         decl(prop: Display, value: "flex"),
         decl(prop: Gap, value: scale_var(t: space_6)),
@@ -57,7 +57,7 @@ fn tuner_control_rules() -> List<gunbc.design.material.BuildRule> {
       ],
     },
     gunbc.design.material.StaticRule {
-      selector: cls(name: join([instrument_subject_class, ".instrument-subject-selected"], "")),
+      selector: gunbc.roadmap_instrument_tuner.cls(name: join([instrument_subject_class, ".instrument-subject-selected"], "")),
       decls: [
         decl(prop: Border, value: join(["1px solid ", role_var(r: FocusRole)], "")),
       ],
@@ -105,7 +105,7 @@ fn render_reading(label: String, r: gunbc.design.instrument_audition.ProgramRead
   match r {
     ReadingNoSubject => fragment_row(cells: [ fragment_cell(s: label), fragment_cell(s: "no subject selected") ])
     ReadingProgramShape { remaining } =>
-      fragment_row(cells: [ fragment_cell(s: label), fragment_cell(s: "whole program"), fragment_cell(s: remaining_text(r: remaining)) ])
+      fragment_row(cells: [ fragment_cell(s: label), fragment_cell(s: "whole program"), fragment_cell(s: gunbc.roadmap_instrument_tuner.remaining_text(r: remaining)) ])
     ReadingOutcomeStatus { name, node, accepted, open_fronts } => fragment_row(cells: [
       fragment_cell(s: label),
       fragment_cell(s: name),
@@ -114,7 +114,7 @@ fn render_reading(label: String, r: gunbc.design.instrument_audition.ProgramRead
       fragment_cell(s: join([to_string(open_fronts), " open fronts"], "")),
     ])
     ReadingOutcomeRemaining { name, remaining } =>
-      fragment_row(cells: [ fragment_cell(s: label), fragment_cell(s: name), fragment_cell(s: remaining_text(r: remaining)) ])
+      fragment_row(cells: [ fragment_cell(s: label), fragment_cell(s: name), fragment_cell(s: gunbc.roadmap_instrument_tuner.remaining_text(r: remaining)) ])
     ReadingConstraint { subject, kind, headline, in_flight, depth } => fragment_row(cells: [
       fragment_cell(s: label),
       fragment_cell(s: join([kind, " constraint"], "")),
@@ -148,7 +148,7 @@ fn reading_row(view: gunbc.roadmap_program_view.V1DeletionProgramView, camera: g
     ],
     if initial { [] } else { [ attr(name: "hidden", value: "") ] },
   ), [
-    render_reading(
+    gunbc.roadmap_instrument_tuner.render_reading(
       label: label,
       r: read_camera(camera: camera, view: view),
     ),

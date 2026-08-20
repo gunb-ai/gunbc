@@ -31,12 +31,12 @@ test fn stop_pane_parse_holds() -> Bool {
 
 test fn stop_gate_kills_only_proven_selected_provider() -> Bool {
   let provider_obs = tmux_session_observation_with_panes(
-    scope: scope(), entries: [entry()],
+    scope: scope(), entries: [test.claim.dispatch_stop_witness.entry()],
     panes: [gunbc.roadmap_dispatch_actuator.TmuxPaneEntry { session_name: "gunbc-dispatch-ts-authority-converge", command: "node" }])
   let sleep_obs = tmux_session_observation_with_panes(
-    scope: scope(), entries: [entry()],
+    scope: scope(), entries: [test.claim.dispatch_stop_witness.entry()],
     panes: [gunbc.roadmap_dispatch_actuator.TmuxPaneEntry { session_name: "gunbc-dispatch-ts-authority-converge", command: "sleep" }])
-  let blind_obs = tmux_session_observation_with_panes(scope: scope(), entries: [entry()], panes: [])
+  let blind_obs = tmux_session_observation_with_panes(scope: scope(), entries: [test.claim.dispatch_stop_witness.entry()], panes: [])
   let absent_obs = tmux_session_observation_with_panes(scope: scope(), entries: [], panes: [])
   return match dispatch_stop_gate(scope: scope(), obs: provider_obs) {
     StopPermitted { session_name: sn } => sn == "gunbc-dispatch-ts-authority-converge"

@@ -110,31 +110,31 @@ test fn w_red_flat_rate_would_overstate_at_the_top_band() -> Bool {
 }
 
 test fn w_matrix_10k_users() -> Bool {
-  w_total_equals(quote: aws_quote, users: 10000, expected_micros: 474800000)
-    && w_total_equals(quote: azure_lrs_quote, users: 10000, expected_micros: 448900000)
-    && w_total_equals(quote: r2_quote, users: 10000, expected_micros: 16620000)
-    && w_total_equals(quote: wasabi_quote, users: 10000, expected_micros: 7990000)
-    && w_total_equals(quote: storj_quote, users: 10000, expected_micros: 42000000)
+  test.claim.scm_provider_matrix_witness.w_total_equals(quote: test.claim.scm_provider_matrix_witness.aws_quote, users: 10000, expected_micros: 474800000)
+    && test.claim.scm_provider_matrix_witness.w_total_equals(quote: azure_lrs_quote, users: 10000, expected_micros: 448900000)
+    && test.claim.scm_provider_matrix_witness.w_total_equals(quote: test.claim.scm_provider_matrix_witness.r2_quote, users: 10000, expected_micros: 16620000)
+    && test.claim.scm_provider_matrix_witness.w_total_equals(quote: test.claim.scm_provider_matrix_witness.wasabi_quote, users: 10000, expected_micros: 7990000)
+    && test.claim.scm_provider_matrix_witness.w_total_equals(quote: test.claim.scm_provider_matrix_witness.storj_quote, users: 10000, expected_micros: 42000000)
 }
 
 test fn w_matrix_100k_users() -> Bool {
-  w_total_equals(quote: aws_quote, users: 100000, expected_micros: 4549200000)
-    && w_total_equals(quote: r2_quote, users: 100000, expected_micros: 166200000)
-    && w_total_equals(quote: wasabi_quote, users: 100000, expected_micros: 79900000)
-    && w_total_equals(quote: storj_quote, users: 100000, expected_micros: 420000000)
+  test.claim.scm_provider_matrix_witness.w_total_equals(quote: test.claim.scm_provider_matrix_witness.aws_quote, users: 100000, expected_micros: 4549200000)
+    && test.claim.scm_provider_matrix_witness.w_total_equals(quote: test.claim.scm_provider_matrix_witness.r2_quote, users: 100000, expected_micros: 166200000)
+    && test.claim.scm_provider_matrix_witness.w_total_equals(quote: test.claim.scm_provider_matrix_witness.wasabi_quote, users: 100000, expected_micros: 79900000)
+    && test.claim.scm_provider_matrix_witness.w_total_equals(quote: test.claim.scm_provider_matrix_witness.storj_quote, users: 100000, expected_micros: 420000000)
 }
 
 test fn w_matrix_1m_users_crosses_tier_boundaries() -> Bool {
-  w_total_equals(quote: aws_quote, users: 1000000, expected_micros: 31322400000)
-    && w_total_equals(quote: r2_quote, users: 1000000, expected_micros: 1662000000)
-    && w_total_equals(quote: wasabi_quote, users: 1000000, expected_micros: 799000000)
-    && w_total_equals(quote: storj_quote, users: 1000000, expected_micros: 4200000000)
+  test.claim.scm_provider_matrix_witness.w_total_equals(quote: test.claim.scm_provider_matrix_witness.aws_quote, users: 1000000, expected_micros: 31322400000)
+    && test.claim.scm_provider_matrix_witness.w_total_equals(quote: test.claim.scm_provider_matrix_witness.r2_quote, users: 1000000, expected_micros: 1662000000)
+    && test.claim.scm_provider_matrix_witness.w_total_equals(quote: test.claim.scm_provider_matrix_witness.wasabi_quote, users: 1000000, expected_micros: 799000000)
+    && test.claim.scm_provider_matrix_witness.w_total_equals(quote: test.claim.scm_provider_matrix_witness.storj_quote, users: 1000000, expected_micros: 4200000000)
 }
 
 test fn w_tiering_makes_aws_sublinear_across_magnitudes() -> Bool {
-  match total_at(quote: aws_quote, users: 100000) {
+  match total_at(quote: test.claim.scm_provider_matrix_witness.aws_quote, users: 100000) {
     Present { value: at_100k } =>
-      match total_at(quote: aws_quote, users: 1000000) {
+      match total_at(quote: test.claim.scm_provider_matrix_witness.aws_quote, users: 1000000) {
         Present { value: at_1m } =>
           (at_1m < (at_100k * 10)) && (at_1m > (at_100k * 6))
         _ => false
@@ -144,9 +144,9 @@ test fn w_tiering_makes_aws_sublinear_across_magnitudes() -> Bool {
 }
 
 test fn w_flat_rate_vendors_stay_exactly_linear() -> Bool {
-  match total_at(quote: wasabi_quote, users: 100000) {
+  match total_at(quote: test.claim.scm_provider_matrix_witness.wasabi_quote, users: 100000) {
     Present { value: at_100k } =>
-      match total_at(quote: wasabi_quote, users: 1000000) {
+      match total_at(quote: test.claim.scm_provider_matrix_witness.wasabi_quote, users: 1000000) {
         Present { value: at_1m } => at_1m == (at_100k * 10)
         _ => false
       }

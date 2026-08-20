@@ -67,7 +67,7 @@ fn find_room(rooms: List<product.spatial_world.PlacedSpace>, identity: product.p
   fold(rooms, init: none, f: (acc, r) =>
     match acc {
       Present { value: found } => Present { value: found }
-      Absent => if room_identity_eq(a: r.identity, b: identity) { Present { value: r } } else { none }
+      Absent => if product.spatial_edit.room_identity_eq(a: r.identity, b: identity) { Present { value: r } } else { none }
     })
 }
 
@@ -145,7 +145,7 @@ fn raised_space(current: std.orthogonal_topology.EnclosedSpace, high: Int) -> Ed
 // ONE EDIT, ONE HUNK, AND THE HUNK'S `from` COMES FROM THE BASE. An add is the only arm that does not
 // read the base for a value, and it is the only one that refuses when the room IS there.
 fn edit_to_hunk(base: product.spatial_world.World, e: RoomEdit) -> EditConstruction<KeyedDiffHunk<RoomIdentity, EnclosedSpace>> {
-  let current = find_room(rooms: world_rooms(w: base), identity: edit_subject(e: e))
+  let current = product.spatial_edit.find_room(rooms: world_rooms(w: base), identity: edit_subject(e: e))
   match e {
     AddRoom { identity: i, space: s } =>
       match current {
@@ -179,7 +179,7 @@ fn edit_to_hunk(base: product.spatial_world.World, e: RoomEdit) -> EditConstruct
 }
 
 fn count_edits_for(edits: List<RoomEdit>, wanted: product.placement_supply.RoomIdentity) -> Int {
-  fold(edits, init: 0, f: (n, e) => if room_identity_eq(a: edit_subject(e: e), b: wanted) { n + 1 } else { n })
+  fold(edits, init: 0, f: (n, e) => if product.spatial_edit.room_identity_eq(a: edit_subject(e: e), b: wanted) { n + 1 } else { n })
 }
 
 fn first_double_edit(edits: List<RoomEdit>) -> product.placement_supply.RoomIdentity? {

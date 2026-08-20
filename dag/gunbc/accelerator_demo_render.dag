@@ -67,7 +67,7 @@ fn project_plan_view(
     placement_label: render_placement(placement: kernel_placement)
     target_medium: target_medium
     contract_label: render_numerical_contract(contract: contract)
-    fidelity_label: render_decode_fidelity(fidelity: fidelity)
+    fidelity_label: gunbc.accelerator_demo_render.render_decode_fidelity(fidelity: fidelity)
   }
 }
 

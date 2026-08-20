@@ -947,11 +947,11 @@ fn admission_evicted_keys(a: ProviderAdmission) -> List<std.content_hash.Content
   admission_fold(
     a: a,
     admitted: (s, e) => e,
-    kind_mismatch_write: (r, f) => no_evicted_keys,
-    wrong_artifact_write: (k, fk) => no_evicted_keys,
-    wrong_content_write: (r, o) => no_evicted_keys,
-    incomplete_write: m => no_evicted_keys,
-    budget_exhausted: (n, b) => no_evicted_keys
+    kind_mismatch_write: (r, f) => std.materialization_provider.no_evicted_keys,
+    wrong_artifact_write: (k, fk) => std.materialization_provider.no_evicted_keys,
+    wrong_content_write: (r, o) => std.materialization_provider.no_evicted_keys,
+    incomplete_write: m => std.materialization_provider.no_evicted_keys,
+    budget_exhausted: (n, b) => std.materialization_provider.no_evicted_keys
   )
 }
 

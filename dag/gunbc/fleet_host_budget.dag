@@ -117,7 +117,7 @@ fn overhead_claim(overhead: std.measure.ByteSize) -> product.budget_tree.BudgetC
 fn child_node(name: String, b: std.measure.ByteSize) -> product.budget_tree.BudgetNode {
   product.budget_tree.BudgetNode {
     name: name,
-    appropriation: appropriation_of(b: b),
+    appropriation: gunbc.fleet_host_budget.appropriation_of(b: b),
     claims: [],
     children: [],
   }
@@ -145,7 +145,7 @@ fn host_allocation_tree(
 ) -> product.budget_tree.BudgetNode {
   product.budget_tree.BudgetNode {
     name: "host_allocation",
-    appropriation: appropriation_of(b: host),
+    appropriation: gunbc.fleet_host_budget.appropriation_of(b: host),
     claims: [overhead_claim(overhead: overhead)],
     children: [
       child_node(name: "runner_pool", b: runner_pool),
@@ -198,7 +198,7 @@ fn runner_slice_cap(host: std.measure.ByteSize, overhead: std.measure.ByteSize, 
 fn runner_slice_node(runner_slice: std.measure.ByteSize, runner_baseline: std.measure.ByteSize) -> product.budget_tree.BudgetNode {
   product.budget_tree.BudgetNode {
     name: "runner_slice",
-    appropriation: appropriation_of(b: runner_slice),
+    appropriation: gunbc.fleet_host_budget.appropriation_of(b: runner_slice),
     claims: [],
     children: [child_node(name: "runner_idle_baseline", b: runner_baseline)],
   }
@@ -216,7 +216,7 @@ fn fleet_host_budget_tree(
 ) -> product.budget_tree.BudgetNode {
   product.budget_tree.BudgetNode {
     name: name,
-    appropriation: appropriation_of(b: host),
+    appropriation: gunbc.fleet_host_budget.appropriation_of(b: host),
     claims: [overhead_claim(overhead: overhead)],
     children: [
       child_node(name: "session_worstcase_reservation", b: session_slice),

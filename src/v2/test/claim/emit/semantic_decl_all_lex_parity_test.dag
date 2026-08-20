@@ -21,16 +21,16 @@ fn lex_pair_matches(token_class: v2.std.node.Symbol) -> Bool {
 }
 
 test fn all_lex_rows_match() -> Bool {
-  lex_pair_matches(token_class: ^rust_token_derive_struct)
-    && lex_pair_matches(token_class: ^rust_token_derive_struct_copy)
-    && lex_pair_matches(token_class: ^rust_token_derive_enum)
-    && lex_pair_matches(token_class: ^rust_token_derive_enum_copy)
-    && lex_pair_matches(token_class: ^rust_token_kw_struct)
-    && lex_pair_matches(token_class: ^rust_token_kw_enum)
-    && lex_pair_matches(token_class: ^rust_token_generic_lt)
-    && lex_pair_matches(token_class: ^rust_token_generic_gt)
-    && lex_pair_matches(token_class: ^rust_token_lbrace)
-    && lex_pair_matches(token_class: ^rust_token_colon)
-    && lex_pair_matches(token_class: ^rust_token_comma)
-    && lex_pair_matches(token_class: ^rust_token_rbrace)
+  v2.test.emit.semantic_decl_all_lex_parity.lex_pair_matches(token_class: ^rust_token_derive_struct)
+    && v2.test.emit.semantic_decl_all_lex_parity.lex_pair_matches(token_class: ^rust_token_derive_struct_copy)
+    && v2.test.emit.semantic_decl_all_lex_parity.lex_pair_matches(token_class: ^rust_token_derive_enum)
+    && v2.test.emit.semantic_decl_all_lex_parity.lex_pair_matches(token_class: ^rust_token_derive_enum_copy)
+    && v2.test.emit.semantic_decl_all_lex_parity.lex_pair_matches(token_class: ^rust_token_kw_struct)
+    && v2.test.emit.semantic_decl_all_lex_parity.lex_pair_matches(token_class: ^rust_token_kw_enum)
+    && v2.test.emit.semantic_decl_all_lex_parity.lex_pair_matches(token_class: ^rust_token_generic_lt)
+    && v2.test.emit.semantic_decl_all_lex_parity.lex_pair_matches(token_class: ^rust_token_generic_gt)
+    && v2.test.emit.semantic_decl_all_lex_parity.lex_pair_matches(token_class: ^rust_token_lbrace)
+    && v2.test.emit.semantic_decl_all_lex_parity.lex_pair_matches(token_class: ^rust_token_colon)
+    && v2.test.emit.semantic_decl_all_lex_parity.lex_pair_matches(token_class: ^rust_token_comma)
+    && v2.test.emit.semantic_decl_all_lex_parity.lex_pair_matches(token_class: ^rust_token_rbrace)
 }

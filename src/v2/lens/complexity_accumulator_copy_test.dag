@@ -50,7 +50,7 @@ fn is_absent(o: Optional<v2.lens.complexity_accumulator_copy.Finding>) -> Bool {
 
 test fn red_list_append_left_is_suspect() -> Bool {
   is_suspect(
-    o: classify(
+    o: v2.test.lens_complexity_accumulator_copy.classify(
       combiner: ^list_append,
       ports: [bare(s: ^acc), bare(s: ^item)],
       carriers: [^acc]
@@ -60,7 +60,7 @@ test fn red_list_append_left_is_suspect() -> Bool {
 
 test fn red_list_snoc_left_is_suspect() -> Bool {
   is_suspect(
-    o: classify(
+    o: v2.test.lens_complexity_accumulator_copy.classify(
       combiner: ^list_snoc_item,
       ports: [bare(s: ^acc), bare(s: ^item)],
       carriers: [^acc]
@@ -70,7 +70,7 @@ test fn red_list_snoc_left_is_suspect() -> Bool {
 
 test fn red_map_merge_overlay_is_suspect() -> Bool {
   is_suspect(
-    o: classify(
+    o: v2.test.lens_complexity_accumulator_copy.classify(
       combiner: ^map_merge,
       ports: [bare(s: ^base), bare(s: ^acc)],
       carriers: [^acc]
@@ -80,7 +80,7 @@ test fn red_map_merge_overlay_is_suspect() -> Bool {
 
 test fn noncarrier_name_in_copied_port_refuses_may_alias() -> Bool {
   refuses_with(
-    o: classify(
+    o: v2.test.lens_complexity_accumulator_copy.classify(
       combiner: ^list_append,
       ports: [bare(s: ^item), bare(s: ^acc)],
       carriers: [^acc]
@@ -91,7 +91,7 @@ test fn noncarrier_name_in_copied_port_refuses_may_alias() -> Bool {
 
 test fn map_merge_noncarrier_overlay_refuses_may_alias() -> Bool {
   refuses_with(
-    o: classify(
+    o: v2.test.lens_complexity_accumulator_copy.classify(
       combiner: ^map_merge,
       ports: [bare(s: ^acc), bare(s: ^other)],
       carriers: [^acc]
@@ -102,7 +102,7 @@ test fn map_merge_noncarrier_overlay_refuses_may_alias() -> Bool {
 
 test fn pure_literal_in_copied_port_is_provably_fresh() -> Bool {
   is_absent(
-    o: classify(
+    o: v2.test.lens_complexity_accumulator_copy.classify(
       combiner: ^list_append,
       ports: [PortPureLiteral, bare(s: ^acc)],
       carriers: [^acc]
@@ -112,7 +112,7 @@ test fn pure_literal_in_copied_port_is_provably_fresh() -> Bool {
 
 test fn computed_copied_port_refuses() -> Bool {
   refuses_with(
-    o: classify(
+    o: v2.test.lens_complexity_accumulator_copy.classify(
       combiner: ^list_append,
       ports: [v2.lens.complexity_accumulator_copy.PortComputedExpression { mentions: [] }, bare(s: ^item)],
       carriers: [^acc]
@@ -123,7 +123,7 @@ test fn computed_copied_port_refuses() -> Bool {
 
 test fn computed_mention_of_carrier_reaching_unregistered_combiner_refuses() -> Bool {
   refuses_with(
-    o: classify(
+    o: v2.test.lens_complexity_accumulator_copy.classify(
       combiner: ^mystery,
       ports: [v2.lens.complexity_accumulator_copy.PortComputedExpression { mentions: [^wrapped, ^acc] }],
       carriers: [^acc]
@@ -133,7 +133,7 @@ test fn computed_mention_of_carrier_reaching_unregistered_combiner_refuses() -> 
 }
 
 test fn computed_without_carrier_mention_at_unregistered_combiner_is_clean() -> Bool {
-  match classify(
+  match v2.test.lens_complexity_accumulator_copy.classify(
     combiner: ^mystery,
     ports: [v2.lens.complexity_accumulator_copy.PortComputedExpression { mentions: [^wrapped, ^item] }],
     carriers: [^acc]
@@ -145,7 +145,7 @@ test fn computed_without_carrier_mention_at_unregistered_combiner_is_clean() -> 
 
 test fn missing_copied_port_refuses() -> Bool {
   refuses_with(
-    o: classify(
+    o: v2.test.lens_complexity_accumulator_copy.classify(
       combiner: ^list_append,
       ports: [PortMissing, bare(s: ^item)],
       carriers: [^acc]
@@ -153,14 +153,14 @@ test fn missing_copied_port_refuses() -> Bool {
     cause: ^copied_port_argument_missing
   )
     && refuses_with(
-      o: classify(combiner: ^list_append, ports: [], carriers: [^acc]),
+      o: v2.test.lens_complexity_accumulator_copy.classify(combiner: ^list_append, ports: [], carriers: [^acc]),
       cause: ^copied_port_argument_missing
     )
 }
 
 test fn unregistered_combiner_reached_by_carrier_refuses() -> Bool {
   refuses_with(
-    o: classify(
+    o: v2.test.lens_complexity_accumulator_copy.classify(
       combiner: ^mystery_op,
       ports: [bare(s: ^item), bare(s: ^acc)],
       carriers: [^acc]
@@ -171,7 +171,7 @@ test fn unregistered_combiner_reached_by_carrier_refuses() -> Bool {
 
 test fn unregistered_combiner_without_carrier_is_out_of_scope() -> Bool {
   is_absent(
-    o: classify(
+    o: v2.test.lens_complexity_accumulator_copy.classify(
       combiner: ^mystery_op,
       ports: [bare(s: ^item), bare(s: ^other)],
       carriers: [^acc]

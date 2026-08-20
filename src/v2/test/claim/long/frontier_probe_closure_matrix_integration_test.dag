@@ -27,21 +27,21 @@ fn fp_matrix_closure_subject_matching_digest(
 }
 
 fn fp_matrix_below_cap_complete_subject() -> v2.compiler.self_host.frontier_probe.FrontierProbeIngestSubject {
-  fp_matrix_closure_subject_matching_digest(
+  v2.test.long.frontier_probe_closure_matrix_integration.fp_matrix_closure_subject_matching_digest(
     refs: std.algebra.Cons {
-      head: fp_matrix_ref_a(),
+      head: v2.test.long.frontier_probe_closure_matrix_integration.fp_matrix_ref_a(),
       tail: std.algebra.Empty
     },
     coverage: SourceRootCoverageComplete,
     ingest_read_count: 1,
-    entry: fp_matrix_ref_a()
+    entry: v2.test.long.frontier_probe_closure_matrix_integration.fp_matrix_ref_a()
   )
 }
 
 fn fp_matrix_second_root_subject() -> v2.compiler.self_host.frontier_probe.FrontierProbeIngestSubject {
-  fp_matrix_closure_subject_matching_digest(
+  v2.test.long.frontier_probe_closure_matrix_integration.fp_matrix_closure_subject_matching_digest(
     refs: std.algebra.Cons {
-      head: fp_matrix_ref_a(),
+      head: v2.test.long.frontier_probe_closure_matrix_integration.fp_matrix_ref_a(),
       tail: std.algebra.Cons { head: fp_matrix_ref_v2(), tail: std.algebra.Empty }
     },
     coverage: SourceRootCoverageComplete,

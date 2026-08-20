@@ -78,7 +78,7 @@ test fn module_storage_path_projection_holds() -> Bool {
     Accepted { value: index, diagnostics: _ } =>
       match module_storage_path_for_module(
         index: index,
-        module: msb_fixture_qn
+        module: v2.test.long.module_storage_binding_derivation.msb_fixture_qn
       ) {
         Absent => false
         Present { value: p } => p == msb_v2_path

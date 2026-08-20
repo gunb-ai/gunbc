@@ -128,7 +128,7 @@ fn admit_mount(acc: MountAdmission, rack: extdeps.rack.types.RackCatalogRow, m: 
           match found {
             Present { value: r } => Present { value: r }
             Absent =>
-              if asset_eq(a: other.asset, b: m.asset) {
+              if product.rack_mount.asset_eq(a: other.asset, b: m.asset) {
                 Present { value: AssetMountedTwice { asset: m.asset } }
               } else if mounts_collide(a: other, b: m) {
                 Present {

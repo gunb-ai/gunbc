@@ -46,7 +46,7 @@ test fn witness_home_html_emit() -> Bool {
 }
 
 test fn witness_browse_html_emit() -> Bool {
-  js_site_page_html(page: js_site_pages().skip(n: 1).first()) == expected_browse_html
+  js_site_page_html(page: js_site_pages().skip(n: 1).first()) == test.claim.js_site_emit.expected_browse_html
 }
 
 test fn witness_about_html_emit() -> Bool {
@@ -75,7 +75,7 @@ test fn witness_committed_home_html() -> Bool {
 }
 
 test fn witness_committed_browse_html() -> Bool {
-  artifact_matches_emit(path: js_site_html_artifact_path(id: Browse), expected: expected_browse_html)
+  artifact_matches_emit(path: js_site_html_artifact_path(id: Browse), expected: test.claim.js_site_emit.expected_browse_html)
 }
 
 test fn witness_committed_about_html() -> Bool {

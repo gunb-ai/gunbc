@@ -24,7 +24,7 @@ fn sample() -> extdeps.systemd.unit_file.SystemdUnitFile {
 // systemd failures or permanent false diffs. So the claim is equality with a literal written out
 // here independently of the serializer's own composition.
 test fn a_unit_file_serializes_to_exactly_these_bytes() -> Bool {
-  extdeps.systemd.unit_file.serialize_systemd_unit_file(file: sample()) ==
+  extdeps.systemd.unit_file.serialize_systemd_unit_file(file: test.claim.systemd_unit_file_witness_test.sample()) ==
     "[Unit]\nDescription=gunbc Spark serving\nAfter=network-online.target\n\n[Service]\nType=simple\nExecStart=/opt/x/bin/ollama serve\nRestart=on-failure\n\n[Install]\nWantedBy=default.target\n"
 }
 
@@ -32,13 +32,13 @@ test fn a_unit_file_serializes_to_exactly_these_bytes() -> Bool {
 // truncated last line. It is also load-bearing for convergence: the observed-vs-rendered byte
 // comparison would differ forever against every correctly written file on disk.
 test fn the_rendered_unit_file_ends_with_a_newline() -> Bool {
-  ends_with(s: extdeps.systemd.unit_file.serialize_systemd_unit_file(file: sample()), suffix: "default.target\n")
+  ends_with(s: extdeps.systemd.unit_file.serialize_systemd_unit_file(file: test.claim.systemd_unit_file_witness_test.sample()), suffix: "default.target\n")
 }
 
 // Section order is systemd's, and it is asserted rather than assumed: the sections are three
 // separate fields, so nothing about the record's shape forces the emission order.
 test fn sections_are_emitted_in_unit_service_install_order() -> Bool {
-  let out = extdeps.systemd.unit_file.serialize_systemd_unit_file(file: sample())
+  let out = extdeps.systemd.unit_file.serialize_systemd_unit_file(file: test.claim.systemd_unit_file_witness_test.sample())
   starts_with(s: out, prefix: "[Unit]\n")
     && string_contains(out, "\n[Service]\n")
     && string_contains(out, "\n[Install]\n")

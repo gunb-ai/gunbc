@@ -313,9 +313,9 @@ data supported_needs_a_receipt_note: String = "The seam claim, and it is now a c
 fn witness_only_a_derived_qualification_reaches_supported() -> Bool {
   signed_verdict_of(s: gunbc.capability_binding.TapOutcome { receipt: a_receipt(peak: 3100, latency: 40) }) == "supported"
     && signed_verdict_of(s: gunbc.capability_binding.TapOutcome { receipt: a_receipt(peak: 1900, latency: 40) }) == "degraded"
-    && verdict_of(s: gunbc.capability_binding.SamplesObserved { receipt: a_receipt(peak: 2600, latency: 40) }) == "degraded"
-    && verdict_of(s: gunbc.capability_binding.HollowSamplesObserved { count: 12 }) == "degraded"
-    && verdict_of(s: gunbc.capability_binding.NoSamplesObserved { lifecycle: LifecycleActivated }) == "degraded"
+    && test.claim.capability_binding_witness.verdict_of(s: gunbc.capability_binding.SamplesObserved { receipt: a_receipt(peak: 2600, latency: 40) }) == "degraded"
+    && test.claim.capability_binding_witness.verdict_of(s: gunbc.capability_binding.HollowSamplesObserved { count: 12 }) == "degraded"
+    && test.claim.capability_binding_witness.verdict_of(s: gunbc.capability_binding.NoSamplesObserved { lifecycle: LifecycleActivated }) == "degraded"
 }
 
 fn witness_a_rejected_tap_carries_its_typed_causes() -> Bool {
@@ -357,7 +357,7 @@ fn witness_red_a_negative_control_above_the_floor_rejects() -> Bool {
 
 fn witness_red_provisional_thresholds_cannot_authorize_support() -> Bool {
   let good = a_receipt(peak: 3100, latency: 40)
-  verdict_of(s: gunbc.capability_binding.TapOutcome { receipt: good }) == "qualified-against-provisional-requirement"
+  test.claim.capability_binding_witness.verdict_of(s: gunbc.capability_binding.TapOutcome { receipt: good }) == "qualified-against-provisional-requirement"
     && signed_verdict_of(s: gunbc.capability_binding.TapOutcome { receipt: good }) == "supported"
     && !row_supports_a_durable_claim(r: gunbc.capability_binding.CapabilityVerdictRow {
          binding: an_observation(s: gunbc.capability_binding.TapOutcome { receipt: good }).binding,
@@ -398,10 +398,10 @@ fn witness_red_an_unobserved_latency_refuses_rather_than_passing() -> Bool {
 }
 
 fn witness_every_obstacle_reaches_unavailable_with_its_own_typed_cause() -> Bool {
-  verdict_of(s: InterfaceUnavailable) == "unavailable"
-    && verdict_of(s: PolicyRefused) == "unavailable"
-    && verdict_of(s: PermissionRefused) == "unavailable"
-    && verdict_of(s: HardwareUnavailable) == "unavailable"
+  test.claim.capability_binding_witness.verdict_of(s: InterfaceUnavailable) == "unavailable"
+    && test.claim.capability_binding_witness.verdict_of(s: PolicyRefused) == "unavailable"
+    && test.claim.capability_binding_witness.verdict_of(s: PermissionRefused) == "unavailable"
+    && test.claim.capability_binding_witness.verdict_of(s: HardwareUnavailable) == "unavailable"
     && match derive_capability_verdict(o: an_observation(s: gunbc.capability_binding.BackendConnectionRefused { error_name: "NotReadableError" })) {
          CapabilityUnavailable { obstacle } => obstacle_key(o: obstacle) == "backend-connection-refused"
          CapabilitySupported { receipt } => false
@@ -412,10 +412,10 @@ fn witness_every_obstacle_reaches_unavailable_with_its_own_typed_cause() -> Bool
 }
 
 fn witness_red_an_unexercised_binding_is_not_a_failure() -> Bool {
-  verdict_of(s: BindingStreamUnobserved) == "unobserved"
-    && verdict_of(s: BindingStreamUnobserved) != verdict_of(s: HardwareUnavailable)
-    && verdict_of(s: BindingStreamUnobserved) !=
-         verdict_of(s: gunbc.capability_binding.NoSamplesObserved { lifecycle: LifecycleActivationUnobserved })
+  test.claim.capability_binding_witness.verdict_of(s: BindingStreamUnobserved) == "unobserved"
+    && test.claim.capability_binding_witness.verdict_of(s: BindingStreamUnobserved) != test.claim.capability_binding_witness.verdict_of(s: HardwareUnavailable)
+    && test.claim.capability_binding_witness.verdict_of(s: BindingStreamUnobserved) !=
+         test.claim.capability_binding_witness.verdict_of(s: gunbc.capability_binding.NoSamplesObserved { lifecycle: LifecycleActivationUnobserved })
 }
 
 data lifecycle_carried_note: String = "The two silences stay distinguishable in the neutral layer: an activated sensor that never read is a different key from a stream whose activation was never observed."

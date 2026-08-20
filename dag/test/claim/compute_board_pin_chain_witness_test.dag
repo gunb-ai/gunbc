@@ -14,7 +14,7 @@ fn project(
   bindings: List<product.compute_board.verilog_projection.VerilogBinding>,
   assignments: List<product.compute_board.device_binding.DevicePinAssignment>
 ) -> String {
-  match admitted() {
+  match test.claim.compute_board_pin_chain_witness.admitted() {
     Absent => "NOT-ADMITTED"
     Present { value: adm } =>
       match project_article_to_pin_constraints(
@@ -35,7 +35,7 @@ fn project(
 data expected_pin_constraints: String = "set_io conditioned_good 1\nset_io fault 2\nset_io power_permit 3\nset_io reset_release 4\n"
 
 test fn w_the_production_pin_constraints_emit_exact_bytes() -> Bool {
-  let emitted = project(bindings: power_interlock_verilog_bindings, assignments: interlock_pin_assignments)
+  let emitted = test.claim.compute_board_pin_chain_witness.project(bindings: power_interlock_verilog_bindings, assignments: interlock_pin_assignments)
   emitted == expected_pin_constraints
 }
 
@@ -52,7 +52,7 @@ data respelled_bindings: List<product.compute_board.verilog_projection.VerilogBi
 ]
 
 test fn w_a_respelled_port_moves_the_constraint_file() -> Bool {
-  let respelled = project(bindings: respelled_bindings, assignments: interlock_pin_assignments)
+  let respelled = test.claim.compute_board_pin_chain_witness.project(bindings: respelled_bindings, assignments: interlock_pin_assignments)
   respelled != expected_pin_constraints
     && respelled == "set_io cond_good_renamed 1\nset_io fault 2\nset_io power_permit 3\nset_io reset_release 4\n"
 }
@@ -70,7 +70,7 @@ fn refusal_is(r: product.compute_board.device_binding.PinChainRefusal, wanted: S
 }
 
 fn refuses_naming(assignments: List<product.compute_board.device_binding.DevicePinAssignment>, wanted: String) -> Bool {
-  match admitted() {
+  match test.claim.compute_board_pin_chain_witness.admitted() {
     Absent => false
     Present { value: adm } =>
       match project_article_to_pin_constraints(
@@ -81,7 +81,7 @@ fn refuses_naming(assignments: List<product.compute_board.device_binding.DeviceP
       ) {
         PinConstraintsEmitted { receipt: _ } => false
         PinConstraintsRefused { causes: cs } =>
-          fold(concat([cs.first], cs.rest), init: false, f: fn(acc, r) { acc || refusal_is(r: r, wanted: wanted) })
+          fold(concat([cs.first], cs.rest), init: false, f: fn(acc, r) { acc || test.claim.compute_board_pin_chain_witness.refusal_is(r: r, wanted: wanted) })
       }
   }
 }
@@ -91,7 +91,7 @@ fn refuses_naming(assignments: List<product.compute_board.device_binding.DeviceP
 test fn w_a_pin_the_package_does_not_have_refuses() -> Bool {
   roster_admits_pin(r: icestorm_hx1k_tq144_roster, pin: "1")
     && !roster_admits_pin(r: icestorm_hx1k_tq144_roster, pin: "5")
-    && refuses_naming(
+    && test.claim.compute_board_pin_chain_witness.refuses_naming(
       assignments: [
         product.compute_board.device_binding.DevicePinAssignment { signal: conditioned_good_signal, pin: "5" },
         product.compute_board.device_binding.DevicePinAssignment { signal: fault_signal, pin: "2" },
@@ -105,7 +105,7 @@ test fn w_a_pin_the_package_does_not_have_refuses() -> Bool {
 // Two signals on one pin is a short at the package boundary; place-and-route would refuse it, but
 // only after an artifact has been generated and handed over.
 test fn w_two_signals_on_one_pin_refuse() -> Bool {
-  refuses_naming(
+  test.claim.compute_board_pin_chain_witness.refuses_naming(
     assignments: [
       product.compute_board.device_binding.DevicePinAssignment { signal: conditioned_good_signal, pin: "1" },
       product.compute_board.device_binding.DevicePinAssignment { signal: fault_signal, pin: "1" },
@@ -120,7 +120,7 @@ test fn w_two_signals_on_one_pin_refuse() -> Bool {
 // list order. A verdict decided by which row was authored first is the accident this repository
 // has now closed in four places.
 test fn w_one_signal_on_two_pins_refuses() -> Bool {
-  refuses_naming(
+  test.claim.compute_board_pin_chain_witness.refuses_naming(
     assignments: [
       product.compute_board.device_binding.DevicePinAssignment { signal: conditioned_good_signal, pin: "1" },
       product.compute_board.device_binding.DevicePinAssignment { signal: conditioned_good_signal, pin: "7" },
@@ -133,7 +133,7 @@ test fn w_one_signal_on_two_pins_refuses() -> Bool {
 }
 
 test fn w_a_pin_for_a_signal_the_article_never_declared_refuses() -> Bool {
-  refuses_naming(
+  test.claim.compute_board_pin_chain_witness.refuses_naming(
     assignments: [
       product.compute_board.device_binding.DevicePinAssignment { signal: conditioned_good_signal, pin: "1" },
       product.compute_board.device_binding.DevicePinAssignment { signal: fault_signal, pin: "2" },
@@ -149,7 +149,7 @@ test fn w_a_pin_for_a_signal_the_article_never_declared_refuses() -> Bool {
 // can see a signal nobody assigned — the emitted file would simply not mention it and the tool
 // would place it somewhere. This is the arm that needs the opposite walk.
 test fn w_a_declared_signal_with_no_pin_refuses() -> Bool {
-  refuses_naming(
+  test.claim.compute_board_pin_chain_witness.refuses_naming(
     assignments: [
       product.compute_board.device_binding.DevicePinAssignment { signal: conditioned_good_signal, pin: "1" },
       product.compute_board.device_binding.DevicePinAssignment { signal: fault_signal, pin: "2" },
@@ -162,7 +162,7 @@ test fn w_a_declared_signal_with_no_pin_refuses() -> Bool {
 // An empty assignment list refuses once per declared signal rather than once overall: four
 // missing pins are four defects, and collapsing them into one cause would hide three of them.
 test fn w_every_unassigned_signal_is_its_own_cause() -> Bool {
-  match admitted() {
+  match test.claim.compute_board_pin_chain_witness.admitted() {
     Absent => false
     Present { value: adm } =>
       match project_article_to_pin_constraints(
@@ -182,7 +182,7 @@ test fn w_every_unassigned_signal_is_its_own_cause() -> Bool {
 // many assignments touched the collision rather than how many collisions there were. Counting is
 // what makes that visible: naming the cause passes either way.
 test fn w_a_doubled_pin_is_reported_once() -> Bool {
-  match admitted() {
+  match test.claim.compute_board_pin_chain_witness.admitted() {
     Absent => false
     Present { value: adm } =>
       match project_article_to_pin_constraints(
@@ -207,7 +207,7 @@ test fn w_a_doubled_pin_is_reported_once() -> Bool {
 // two. Both directions are counted because a deduplication that only ran on one axis would pass
 // the test above and still double-report here.
 test fn w_a_doubled_signal_is_reported_once() -> Bool {
-  match admitted() {
+  match test.claim.compute_board_pin_chain_witness.admitted() {
     Absent => false
     Present { value: adm } =>
       match project_article_to_pin_constraints(

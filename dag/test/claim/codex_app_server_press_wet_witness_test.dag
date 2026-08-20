@@ -12,7 +12,7 @@ fn committed_codex_lock_text() -> String {
 fn committed_admitted_codex_runtime_source() -> gunbc.package_delivery.AdmittedCodexRuntimeSource {
   gunbc.package_delivery.AdmittedCodexRuntimeSource {
     manifest_bytes: filesystem_read(path: codex_runtime_manifest_path as String).content,
-    lock_bytes: committed_codex_lock_text(),
+    lock_bytes: test.claim.codex_app_server_press_wet_witness_test.committed_codex_lock_text(),
   }
 }
 
@@ -24,7 +24,7 @@ test fn press_account_trip_yields_standing_or_typed_refusal_never_turn_started_h
     false
   } else {
     match materialize_codex_runtime_bundle(
-      source: committed_admitted_codex_runtime_source(),
+      source: test.claim.codex_app_server_press_wet_witness_test.committed_admitted_codex_runtime_source(),
       release_parent: release_tmp.path,
     ) {
       CodexRuntimeMaterialized { bundle } => {
@@ -95,7 +95,7 @@ fn press_account_trip_yields_standing_or_typed_refusal_never_turn_started_failur
   } else {
     codex_runtime_materialization_failure_receipt(
       outcome: materialize_codex_runtime_bundle(
-        source: committed_admitted_codex_runtime_source(),
+        source: test.claim.codex_app_server_press_wet_witness_test.committed_admitted_codex_runtime_source(),
         release_parent: release_tmp.path,
       ),
     )

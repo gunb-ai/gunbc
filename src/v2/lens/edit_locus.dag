@@ -46,7 +46,7 @@ fn node_eq(left: Node, right: Node) -> Bool {
 }
 
 fn push_locus_if_absent(acc: std.algebra.FreeMonoid<Node>, locus: Node) -> std.algebra.FreeMonoid<Node> {
-  if count_equal(xs: acc, item: locus, eq: node_eq) == 0 {
+  if count_equal(xs: acc, item: locus, eq: v2.lens.edit_locus.node_eq) == 0 {
     list_append(left: acc, right: std.algebra.Cons { head: locus, tail: std.algebra.Empty })
   } else {
     acc

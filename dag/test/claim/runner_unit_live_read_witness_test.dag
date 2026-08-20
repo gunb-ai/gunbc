@@ -13,7 +13,7 @@ fn fixture_unit() -> String {
 fn fixture_memory_max_target() -> gunbc.host_converge.ConvergeTarget {
   gunbc.host_converge.PerSlotMemoryCap {
     dropin_path: gunbc_runner_per_slot_dropin_path,
-    instance_glob: runner_instance_glob(host: fixture_host()),
+    instance_glob: runner_instance_glob(host: test.claim.runner_unit_live_read_witness.fixture_host()),
     property: systemd_memory_max_property,
     bytes_value: to_string(byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)),
   }
@@ -22,7 +22,7 @@ fn fixture_memory_max_target() -> gunbc.host_converge.ConvergeTarget {
 fn fixture_swap_max_target() -> gunbc.host_converge.ConvergeTarget {
   gunbc.host_converge.PerSlotMemoryCap {
     dropin_path: gunbc_runner_per_slot_swap_dropin_path,
-    instance_glob: runner_instance_glob(host: fixture_host()),
+    instance_glob: runner_instance_glob(host: test.claim.runner_unit_live_read_witness.fixture_host()),
     property: systemd_memory_swap_max_property,
     bytes_value: to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_swap_max)),
   }
@@ -42,7 +42,7 @@ fn matching_swap_max_row() -> gunbc.runner_unit_live_read.RunnerUnitLiveReadRow 
 fn fixture_high_target() -> gunbc.host_converge.ConvergeTarget {
   gunbc.host_converge.PerSlotMemoryCap {
     dropin_path: gunbc_runner_per_slot_high_dropin_path,
-    instance_glob: runner_instance_glob(host: fixture_host()),
+    instance_glob: runner_instance_glob(host: test.claim.runner_unit_live_read_witness.fixture_host()),
     property: systemd_memory_high_property,
     bytes_value: to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_high)),
   }
@@ -176,7 +176,7 @@ test fn witness_target_bytes_value_is_single_authority() -> Bool {
   let read = runner_unit_live_read_typed(row: drift_memory_max_row())
   let target = gunbc.host_converge.PerSlotMemoryCap {
     dropin_path: gunbc_runner_per_slot_dropin_path,
-    instance_glob: runner_instance_glob(host: fixture_host()),
+    instance_glob: runner_instance_glob(host: test.claim.runner_unit_live_read_witness.fixture_host()),
     property: systemd_memory_max_property,
     bytes_value: "30000000000",
   }

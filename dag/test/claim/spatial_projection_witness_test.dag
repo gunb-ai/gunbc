@@ -24,7 +24,7 @@ fn box(frame: std.coordinate_frame.CoordinateFrameIdentity, x0: Int, y0: Int, x1
 }
 
 fn placed(name: String, frame: std.coordinate_frame.CoordinateFrameIdentity, x0: Int, y0: Int, x1: Int, y1: Int, low: Int, high: Int) -> product.spatial_world.PlacedSpace? {
-  match box(frame: frame, x0: x0, y0: y0, x1: x1, y1: y1, low: low, high: high) {
+  match test.claim.spatial_projection_witness.box(frame: frame, x0: x0, y0: y0, x1: x1, y1: y1, low: low, high: high) {
     Absent => none
     Present { value: s } => Present { value: product.spatial_world.PlacedSpace { identity: (name as product.placement_supply.RoomIdentity), space: s } }
   }
@@ -46,7 +46,7 @@ fn world_of(a: product.spatial_world.PlacedSpace?, b: product.spatial_world.Plac
 }
 
 fn view_of(kind: std.planar_projection.ProjectionKind, source: std.coordinate_frame.CoordinateFrameIdentity) -> std.planar_projection.ProjectionView? {
-  match named_projection_view(kind: kind, source_frame: source, view_frame: page()) {
+  match named_projection_view(kind: kind, source_frame: source, view_frame: test.claim.spatial_projection_witness.page()) {
     ProjectionRefused { cause: _ } => none
     ProjectionReady { value: v } => Present { value: v }
   }
@@ -54,18 +54,18 @@ fn view_of(kind: std.planar_projection.ProjectionKind, source: std.coordinate_fr
 
 // Two rooms side by side on one floor: disjoint footprints, same heights.
 fn side_by_side() -> product.spatial_world.World? {
-  world_of(
-    a: placed(name: "kitchen", frame: site(), x0: 0, y0: 0, x1: 3000, y1: 4000, low: 0, high: 2400),
-    b: placed(name: "hall", frame: site(), x0: 4000, y0: 0, x1: 6000, y1: 4000, low: 0, high: 2400),
+  test.claim.spatial_projection_witness.world_of(
+    a: test.claim.spatial_projection_witness.placed(name: "kitchen", frame: test.claim.spatial_projection_witness.site(), x0: 0, y0: 0, x1: 3000, y1: 4000, low: 0, high: 2400),
+    b: test.claim.spatial_projection_witness.placed(name: "hall", frame: test.claim.spatial_projection_witness.site(), x0: 4000, y0: 0, x1: 6000, y1: 4000, low: 0, high: 2400),
   )
 }
 
 // One room directly above the other: identical footprints, disjoint vertical ranges. Legal in the
 // world model, and the case a plan's depth ordering exists to resolve.
 fn stacked() -> product.spatial_world.World? {
-  world_of(
-    a: placed(name: "ground", frame: site(), x0: 0, y0: 0, x1: 3000, y1: 4000, low: 0, high: 2400),
-    b: placed(name: "upper", frame: site(), x0: 0, y0: 0, x1: 3000, y1: 4000, low: 2400, high: 4800),
+  test.claim.spatial_projection_witness.world_of(
+    a: test.claim.spatial_projection_witness.placed(name: "ground", frame: test.claim.spatial_projection_witness.site(), x0: 0, y0: 0, x1: 3000, y1: 4000, low: 0, high: 2400),
+    b: test.claim.spatial_projection_witness.placed(name: "upper", frame: test.claim.spatial_projection_witness.site(), x0: 0, y0: 0, x1: 3000, y1: 4000, low: 2400, high: 4800),
   )
 }
 
@@ -74,24 +74,24 @@ fn stacked() -> product.spatial_world.World? {
 // contends. The L is the only non-rectangular fixture in this witness and it exists for exactly this
 // reason.
 fn notched() -> product.spatial_world.World? {
-  match l_shape() {
+  match test.claim.spatial_projection_witness.l_shape() {
     Absent => none
     Present { value: l } =>
-      world_of(
+      test.claim.spatial_projection_witness.world_of(
         a: Present { value: product.spatial_world.PlacedSpace { identity: ("l-room" as product.placement_supply.RoomIdentity), space: l } },
-        b: placed(name: "notch-room", frame: site(), x0: 1600, y0: 1600, x1: 2900, y1: 2900, low: 0, high: 2400),
+        b: test.claim.spatial_projection_witness.placed(name: "notch-room", frame: test.claim.spatial_projection_witness.site(), x0: 1600, y0: 1600, x1: 2900, y1: 2900, low: 0, high: 2400),
       )
   }
 }
 
 fn l_shape() -> std.orthogonal_topology.EnclosedSpace? {
   match orthogonal_loop2(vertices: [
-    point2(frame: site(), x: 0, y: 0),
-    point2(frame: site(), x: 3000, y: 0),
-    point2(frame: site(), x: 3000, y: 1500),
-    point2(frame: site(), x: 1500, y: 1500),
-    point2(frame: site(), x: 1500, y: 3000),
-    point2(frame: site(), x: 0, y: 3000),
+    point2(frame: test.claim.spatial_projection_witness.site(), x: 0, y: 0),
+    point2(frame: test.claim.spatial_projection_witness.site(), x: 3000, y: 0),
+    point2(frame: test.claim.spatial_projection_witness.site(), x: 3000, y: 1500),
+    point2(frame: test.claim.spatial_projection_witness.site(), x: 1500, y: 1500),
+    point2(frame: test.claim.spatial_projection_witness.site(), x: 1500, y: 3000),
+    point2(frame: test.claim.spatial_projection_witness.site(), x: 0, y: 3000),
   ]) {
     OrthogonalRefused { cause: _ } => none
     OrthogonalReady { value: l } =>
@@ -106,7 +106,7 @@ fn scene_of(w: product.spatial_world.World?, kind: std.planar_projection.Project
   match w {
     Absent => none
     Present { value: world_value } =>
-      match view_of(kind: kind, source: site()) {
+      match test.claim.spatial_projection_witness.view_of(kind: kind, source: test.claim.spatial_projection_witness.site()) {
         Absent => none
         Present { value: v } =>
           match project_world(w: world_value, v: v) {
@@ -239,13 +239,13 @@ test fn an_elevation_of_adjacent_rooms_orders_without_refusing() -> Bool {
 // A world whose geometry lives in a frame the camera does not read has no projection, and the
 // refusal names the projection layer's cause rather than being re-spelled here.
 test fn a_world_in_another_frame_has_no_projection() -> Bool {
-  match world_of(
-    a: placed(name: "kitchen", frame: other_site(), x0: 0, y0: 0, x1: 3000, y1: 4000, low: 0, high: 2400),
-    b: placed(name: "hall", frame: other_site(), x0: 4000, y0: 0, x1: 6000, y1: 4000, low: 0, high: 2400),
+  match test.claim.spatial_projection_witness.world_of(
+    a: test.claim.spatial_projection_witness.placed(name: "kitchen", frame: other_site(), x0: 0, y0: 0, x1: 3000, y1: 4000, low: 0, high: 2400),
+    b: test.claim.spatial_projection_witness.placed(name: "hall", frame: other_site(), x0: 4000, y0: 0, x1: 6000, y1: 4000, low: 0, high: 2400),
   ) {
     Absent => false
     Present { value: w } =>
-      match view_of(kind: PlanFromAbove, source: site()) {
+      match test.claim.spatial_projection_witness.view_of(kind: PlanFromAbove, source: test.claim.spatial_projection_witness.site()) {
         Absent => false
         Present { value: v } =>
           match project_world(w: w, v: v) {

@@ -20,7 +20,7 @@ fn string_eq(a: String, b: String) -> Bool {
 }
 
 fn add_unseen_key(acc: FreeMonoid<String>, key: String) -> FreeMonoid<String> {
-  if contains(xs: acc, item: key, eq: string_eq) {
+  if contains(xs: acc, item: key, eq: v2.lens.fact_cardinality.string_eq) {
     acc
   } else {
     list_snoc_item(xs: acc, item: key)

@@ -5,21 +5,21 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 test fn srv3_dnsmasq_is_proxy_dhcp_uefi_http_boot() -> Bool {
   let conf = install_server_dnsmasq_conf(spec: srv3_install_server_spec)
-  string_contains(s: conf, pattern: "port=0")
-    && string_contains(s: conf, pattern: "dhcp-range=192.168.1.0,proxy")
-    && string_contains(s: conf, pattern: "dhcp-option-force=tag:efihttp,60,HTTPClient")
+  test.claim.srv3_install_server_emit.string_contains(s: conf, pattern: "port=0")
+    && test.claim.srv3_install_server_emit.string_contains(s: conf, pattern: "dhcp-range=192.168.1.0,proxy")
+    && test.claim.srv3_install_server_emit.string_contains(s: conf, pattern: "dhcp-option-force=tag:efihttp,60,HTTPClient")
 }
 
 test fn srv3_dnsmasq_arch_code_is_rfc4578_grounded() -> Bool {
   let conf = install_server_dnsmasq_conf(spec: srv3_install_server_spec)
-  string_contains(s: conf, pattern: "dhcp-match=set:efihttp,option:client-arch,19")
-    && !string_contains(s: conf, pattern: "option:client-arch,16")
-    && !string_contains(s: conf, pattern: "option:client-arch,0")
+  test.claim.srv3_install_server_emit.string_contains(s: conf, pattern: "dhcp-match=set:efihttp,option:client-arch,19")
+    && !test.claim.srv3_install_server_emit.string_contains(s: conf, pattern: "option:client-arch,16")
+    && !test.claim.srv3_install_server_emit.string_contains(s: conf, pattern: "option:client-arch,0")
 }
 
 test fn srv3_dnsmasq_boot_target_projects_uri_and_bootloader() -> Bool {
   let conf = install_server_dnsmasq_conf(spec: srv3_install_server_spec)
-  string_contains(s: conf, pattern: "dhcp-boot=tag:efihttp,https://install.srv3.lan/ubuntu-24.04/grubnetaa64.efi")
+  test.claim.srv3_install_server_emit.string_contains(s: conf, pattern: "dhcp-boot=tag:efihttp,https://install.srv3.lan/ubuntu-24.04/grubnetaa64.efi")
 }
 
 test fn rfc4578_client_arch_mapping_is_grounded() -> Bool {

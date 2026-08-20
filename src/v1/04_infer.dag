@@ -901,7 +901,7 @@ fn set_element_type_from_receiver(receiver_type: v1.std.core.Node, scope: v1.com
 
 fn set_element_type_is_concrete(elem: v1.std.core.Node) -> Bool {
   match elem.inferred {
-    Present { value: inf } => !is_type_variable(inferred: inf)
+    Present { value: inf } => !v1.compiler.infer.is_type_variable(inferred: inf)
     Absent => true
   }
 }
@@ -2637,7 +2637,7 @@ fn annotate_pattern_parent_enums(pattern: v1.std.core.MatchPattern, scrutinee_su
           let scrutinee_name = v1.std.core.authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_scrut_node)
           let optional_cardinality_subject = resolved_scrut_node.return_cardinality == v1.std.core.CardOptional && scrutinee_name != "Optional"
           let optional_coproduct_subject = scrutinee_name == "Optional" && (variant_name == "Present" || variant_name == "Absent")
-          let witness_container_subject = is_witness_type_name(name: scrutinee_name) && (variant_name == "Holds" || variant_name == "Violates")
+          let witness_container_subject = v1.compiler.infer.is_witness_type_name(name: scrutinee_name) && (variant_name == "Holds" || variant_name == "Violates")
           if (optional_cardinality_subject || optional_coproduct_subject) && (variant_name == "Present" || variant_name == "Absent") {
             Present { value: "Optional" }
           } else if witness_container_subject {
@@ -2726,7 +2726,7 @@ fn extend_scope_match_bound(scope: v1.compiler.infer.InferScope, name: String, r
 
 fn extend_scope_with_params(scope: v1.compiler.infer.InferScope, params: List<String>) -> v1.compiler.infer.InferScope {
   let new_locals = fold(params, init: scope.locals, f: (acc, p) =>
-    map_insert(acc, p, v1.compiler.infer_env.TypeBinding { name: p, resolved: type_variable_node(id: "lambda_param"), provenance: std.induction.SubValueUnknown })
+    map_insert(acc, p, v1.compiler.infer_env.TypeBinding { name: p, resolved: v1.compiler.infer.type_variable_node(id: "lambda_param"), provenance: std.induction.SubValueUnknown })
   )
   let new_body_locals = fold(params, init: scope.body_locals, f: (acc, p) =>
     map_insert(acc, p, true)
@@ -2987,7 +2987,7 @@ fn qualified_service_projection(dotted: String, scope: v1.compiler.infer.InferSc
           children: [],
           inferred: Present { value: v1.std.core.Resolved { node: v1.compiler.infer_types.nominal_type_ref(name: leaf) } },
           span: span,
-          name_span: kernel_span(name: leaf)
+          name_span: v1.compiler.infer.kernel_span(name: leaf)
         )) }
       } else { none }
   }
@@ -3022,7 +3022,7 @@ fn qualified_value_projection(texpr: v1.std.core.Node, scope: v1.compiler.infer.
                 children: [],
                 inferred: Present { value: v1.std.core.Resolved { node: value_type } },
                 span: span,
-                name_span: kernel_span(name: spine.dotted)
+                name_span: v1.compiler.infer.kernel_span(name: spine.dotted)
               )) }
           }
       }
@@ -3311,7 +3311,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: v1.compiler.infer.InferScope,
           let formal_lookup = value_params |> skip(pair.first) |> first
           let formal_raw = match formal_lookup {
             Present { value: p } => v1.std.core.param_node_type_expr(n: p)
-            Absent => type_variable_node(id: "callable_param")
+            Absent => v1.compiler.infer.type_variable_node(id: "callable_param")
           }
           let has_formal = match formal_lookup { Present { value: _ } => true  Absent => false }
           let formal_param_type = substitute_generics(n: formal_raw, subst: st.subst, source_indices: scope.type_env.source_indices)
@@ -3731,7 +3731,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: v1.compiler.infer.InferScope,
                       children: mc_args,
                       inferred: none,
                       span: span,
-                      name_span: kernel_span(name: dotted)
+                      name_span: v1.compiler.infer.kernel_span(name: dotted)
                     ),
                     scope: scope,
                     expected: expected
@@ -4141,7 +4141,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: v1.compiler.infer.InferScope,
             let param_prov = if pair.first == (lam_params |> count) - 1 { elem_prov } else { std.induction.SubValueUnknown }
             match exp.params |> skip(pair.first) |> first {
               Present { value: cp } => extend_scope(scope: acc, name: pair.second, resolved: v1.std.core.param_node_type_expr(n: cp), provenance: param_prov)
-              Absent => extend_scope(scope: acc, name: pair.second, resolved: type_variable_node(id: "callable_param"), provenance: param_prov)
+              Absent => extend_scope(scope: acc, name: pair.second, resolved: v1.compiler.infer.type_variable_node(id: "callable_param"), provenance: param_prov)
             }
           )
         } else if lam_params |> count == 1 {
@@ -4156,7 +4156,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: v1.compiler.infer.InferScope,
             if pair.first == (lam_params |> count) - 1 {
               extend_scope(scope: acc, name: pair.second, resolved: exp, provenance: param_prov)
             } else {
-              extend_scope(scope: acc, name: pair.second, resolved: type_variable_node(id: "lambda_param"), provenance: param_prov)
+              extend_scope(scope: acc, name: pair.second, resolved: v1.compiler.infer.type_variable_node(id: "lambda_param"), provenance: param_prov)
             }
           )
         }
@@ -4457,7 +4457,7 @@ fn infer_variant_constructor_call(func_name: String, call_args: List<v1.std.core
                             name: "0",
                             value: payload_expr,
                             span: payload_expr.span,
-                            name_span: kernel_span(name: "0")
+                            name_span: v1.compiler.infer.kernel_span(name: "0")
                           )
                           Present { value: infer_record_lit(
                             type_name: Present { value: func_name },
@@ -4489,7 +4489,7 @@ fn infer_variant_constructor_call(func_name: String, call_args: List<v1.std.core
 }
 
 fn is_deferred_field_access_base(n: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv) -> Bool {
-  if n.inferred != none && is_type_variable(inferred: n.inferred.value) { true }
+  if n.inferred != none && v1.compiler.infer.is_type_variable(inferred: n.inferred.value) { true }
   else if n.connective == v1.std.core.NoConnective && n.children |> count == 0 && n.inferred == none {
     let name = v1.std.core.authored_name_at(source_indices: env.source_indices, node: n)
     match v1.compiler.infer_env.lookup_type_by_name(env: env, name: name) {
@@ -4572,7 +4572,7 @@ fn record_field_type_is_unresolved_param(field: v1.std.core.Node, param_names: L
     Present { value: ft } =>
       if ft.connective == v1.std.core.NoConnective && ft.children |> count == 0 {
         match ft.inferred {
-          Present { value: inf } => is_type_variable(inferred: inf)
+          Present { value: inf } => v1.compiler.infer.is_type_variable(inferred: inf)
           Absent =>
             let fname = v1.std.core.authored_name_at(source_indices: env.source_indices, node: ft)
             let in_params = param_names |> any(pn => pn == fname)
@@ -6389,7 +6389,7 @@ fn annotate_descent(body: v1.std.core.Node, ctx: v1.compiler.infer.DescentContex
       }
     ExprMethodCall { method_semantics: ms } =>
       let mname = v1.std.core.expr_method_name_at(texpr: body, source_indices: ctx.type_env.source_indices)
-      let elem_position = method_callback_element_position(semantics: ms)
+      let elem_position = v1.compiler.infer.method_callback_element_position(semantics: ms)
       if elem_position != none {
         let raw_receiver = v1.std.core.method_receiver(texpr: body)
         let receiver = match raw_receiver.expr_data {
@@ -7506,7 +7506,7 @@ fn param_is_generic_decl(p: v1.std.core.Node, source_indices: Map<String, v1.std
   let pname = v1.std.core.param_node_name_at(n: p, source_indices: source_indices)
   let tname = type_node_label(n: pt, source_indices: source_indices)
   let type_expr_is_var = match pt.inferred {
-    Present { value: inf } => is_type_variable(inferred: inf)
+    Present { value: inf } => v1.compiler.infer.is_type_variable(inferred: inf)
     Absent => false
   }
 
@@ -8485,20 +8485,20 @@ fn build_type_env(module: v1.compiler.resolve.ResolvedModule, parent_index: Map<
     init: empty_map(),
     f: (acc, name) => map_insert(acc, v1.std.core.intern(table: intern_table, s: name).id, v1.compiler.infer_env.TypeBinding {
       name: name,
-      resolved: v1.std.core.Node { name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: v1.std.core.NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData },
+      resolved: v1.std.core.Node { name: name, span: v1.compiler.infer.kernel_span(name: name), ident_span: Present { value: v1.compiler.infer.kernel_span(name: name) }, children: [], connective: v1.std.core.NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData },
       provenance: std.induction.SubValueUnknown
     })
   )
-  let unit_span = kernel_span(name: "Unit")
+  let unit_span = v1.compiler.infer.kernel_span(name: "Unit")
   let kernel_bindings = map_insert(kernel_bindings_base, v1.std.core.intern(table: intern_table, s: "Unit").id, v1.compiler.infer_env.TypeBinding {
     name: "Unit",
     resolved: v1.std.core.Node { name: "Unit", span: unit_span, ident_span: Present { value: unit_span }, children: [], connective: v1.std.core.Conj, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData },
     provenance: std.induction.SubValueUnknown
   })
-  let present_value_field = v1.std.core.Node { name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: v1.std.core.NoConnective, params: [], inferred: Present { value: v1.std.core.TypeVariable { id: "present_value" } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
-  let present_variant = v1.std.core.Node { name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: v1.std.core.NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
-  let absent_variant = v1.std.core.Node { name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: v1.std.core.NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
-  let kernel_optional = v1.std.core.Node { name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: v1.std.core.Disj, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
+  let present_value_field = v1.std.core.Node { name: "value", span: v1.compiler.infer.kernel_span(name: "value"), ident_span: Present { value: v1.compiler.infer.kernel_span(name: "value") }, children: [], connective: v1.std.core.NoConnective, params: [], inferred: Present { value: v1.std.core.TypeVariable { id: "present_value" } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
+  let present_variant = v1.std.core.Node { name: "Present", span: v1.compiler.infer.kernel_span(name: "Present"), ident_span: Present { value: v1.compiler.infer.kernel_span(name: "Present") }, children: [present_value_field], connective: v1.std.core.NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
+  let absent_variant = v1.std.core.Node { name: "Absent", span: v1.compiler.infer.kernel_span(name: "Absent"), ident_span: Present { value: v1.compiler.infer.kernel_span(name: "Absent") }, children: [], connective: v1.std.core.NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
+  let kernel_optional = v1.std.core.Node { name: "Optional", span: v1.compiler.infer.kernel_span(name: "Optional"), ident_span: Present { value: v1.compiler.infer.kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: v1.std.core.Disj, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, v1.std.core.intern(table: intern_table, s: "Optional").id, v1.compiler.infer_env.TypeBinding { name: "Optional", resolved: kernel_optional, provenance: std.induction.SubValueUnknown })
 
   let node_fields = v1.compiler.infer_env.inductive_fields_list_to_map(fields: std.node.compiler_inductive_fields)
@@ -8634,12 +8634,12 @@ fn build_type_env_unresolved(module: v1.compiler.resolve.ResolvedModule, parent_
   let kernel_bindings = fold(
     map_keys(std.types.kernel_type_set),
     init: empty_map(),
-    f: (acc, name) => map_insert(acc, v1.std.core.intern(table: intern_table, s: name).id, v1.compiler.infer_env.TypeBinding { name: name, resolved: v1.std.core.Node { name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: v1.std.core.NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }, provenance: std.induction.SubValueUnknown })
+    f: (acc, name) => map_insert(acc, v1.std.core.intern(table: intern_table, s: name).id, v1.compiler.infer_env.TypeBinding { name: name, resolved: v1.std.core.Node { name: name, span: v1.compiler.infer.kernel_span(name: name), ident_span: Present { value: v1.compiler.infer.kernel_span(name: name) }, children: [], connective: v1.std.core.NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }, provenance: std.induction.SubValueUnknown })
   )
-  let present_value_field = v1.std.core.Node { name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: v1.std.core.NoConnective, params: [], inferred: Present { value: v1.std.core.TypeVariable { id: "present_value" } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
-  let present_variant = v1.std.core.Node { name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: v1.std.core.NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
-  let absent_variant = v1.std.core.Node { name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: v1.std.core.NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
-  let kernel_optional = v1.std.core.Node { name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: v1.std.core.Disj, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
+  let present_value_field = v1.std.core.Node { name: "value", span: v1.compiler.infer.kernel_span(name: "value"), ident_span: Present { value: v1.compiler.infer.kernel_span(name: "value") }, children: [], connective: v1.std.core.NoConnective, params: [], inferred: Present { value: v1.std.core.TypeVariable { id: "present_value" } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
+  let present_variant = v1.std.core.Node { name: "Present", span: v1.compiler.infer.kernel_span(name: "Present"), ident_span: Present { value: v1.compiler.infer.kernel_span(name: "Present") }, children: [present_value_field], connective: v1.std.core.NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
+  let absent_variant = v1.std.core.Node { name: "Absent", span: v1.compiler.infer.kernel_span(name: "Absent"), ident_span: Present { value: v1.compiler.infer.kernel_span(name: "Absent") }, children: [], connective: v1.std.core.NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
+  let kernel_optional = v1.std.core.Node { name: "Optional", span: v1.compiler.infer.kernel_span(name: "Optional"), ident_span: Present { value: v1.compiler.infer.kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: v1.std.core.Disj, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, v1.std.core.intern(table: intern_table, s: "Optional").id, v1.compiler.infer_env.TypeBinding { name: "Optional", resolved: kernel_optional, provenance: std.induction.SubValueUnknown })
   let kernel = v1.compiler.infer_env.TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: v1.compiler.infer_env.str_bindings_from_bindings(bindings: kernel_bindings), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), symbol_index: v1.compiler.infer_env.empty_symbol_index() }
 
@@ -9458,20 +9458,20 @@ fn compiler_kernel_type_env(source_indices: Map<String, v1.std.core.NewlineIndex
     init: empty_map(),
     f: (acc, name) => map_insert(acc, v1.std.core.intern(table: intern_table, s: name).id, v1.compiler.infer_env.TypeBinding {
       name: name,
-      resolved: v1.std.core.Node { name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: v1.std.core.NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData },
+      resolved: v1.std.core.Node { name: name, span: v1.compiler.infer.kernel_span(name: name), ident_span: Present { value: v1.compiler.infer.kernel_span(name: name) }, children: [], connective: v1.std.core.NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData },
       provenance: std.induction.SubValueUnknown
     })
   )
-  let unit_span = kernel_span(name: "Unit")
+  let unit_span = v1.compiler.infer.kernel_span(name: "Unit")
   let kernel_bindings = map_insert(kernel_bindings_base, v1.std.core.intern(table: intern_table, s: "Unit").id, v1.compiler.infer_env.TypeBinding {
     name: "Unit",
     resolved: v1.std.core.Node { name: "Unit", span: unit_span, ident_span: Present { value: unit_span }, children: [], connective: v1.std.core.Conj, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData },
     provenance: std.induction.SubValueUnknown
   })
-  let present_value_field = v1.std.core.Node { name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: v1.std.core.NoConnective, params: [], inferred: Present { value: v1.std.core.TypeVariable { id: "present_value" } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
-  let present_variant = v1.std.core.Node { name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: v1.std.core.NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
-  let absent_variant = v1.std.core.Node { name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: v1.std.core.NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
-  let kernel_optional = v1.std.core.Node { name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: v1.std.core.Disj, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
+  let present_value_field = v1.std.core.Node { name: "value", span: v1.compiler.infer.kernel_span(name: "value"), ident_span: Present { value: v1.compiler.infer.kernel_span(name: "value") }, children: [], connective: v1.std.core.NoConnective, params: [], inferred: Present { value: v1.std.core.TypeVariable { id: "present_value" } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
+  let present_variant = v1.std.core.Node { name: "Present", span: v1.compiler.infer.kernel_span(name: "Present"), ident_span: Present { value: v1.compiler.infer.kernel_span(name: "Present") }, children: [present_value_field], connective: v1.std.core.NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
+  let absent_variant = v1.std.core.Node { name: "Absent", span: v1.compiler.infer.kernel_span(name: "Absent"), ident_span: Present { value: v1.compiler.infer.kernel_span(name: "Absent") }, children: [], connective: v1.std.core.NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
+  let kernel_optional = v1.std.core.Node { name: "Optional", span: v1.compiler.infer.kernel_span(name: "Optional"), ident_span: Present { value: v1.compiler.infer.kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: v1.std.core.Disj, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, v1.std.core.intern(table: intern_table, s: "Optional").id, v1.compiler.infer_env.TypeBinding { name: "Optional", resolved: kernel_optional, provenance: std.induction.SubValueUnknown })
   let node_fields = v1.compiler.infer_env.inductive_fields_list_to_map(fields: std.node.compiler_inductive_fields)
   let kernel_recursive_types = map_keys(std.node.compiler_recursive_types) |> map(name => v1.std.core.intern(table: intern_table, s: name).id)

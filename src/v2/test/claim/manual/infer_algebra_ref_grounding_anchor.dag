@@ -24,7 +24,7 @@ fn anchor_computation_node() -> Node {
 }
 }
 
-data algebra_ref_bare_atom_is_ungrounded: Bool = !algebra_ref_is_grounded(algebra: anchor_atom_node(s: ^anchor_algebra_ungrounded_sym))
+data algebra_ref_bare_atom_is_ungrounded: Bool = !algebra_ref_is_grounded(algebra: v2.test.manual.infer_algebra_ref_grounding_anchor.anchor_atom_node(s: ^anchor_algebra_ungrounded_sym))
 
 data algebra_ref_conj_is_grounded: Bool = algebra_ref_is_grounded(algebra: anchor_conj_node())
 
@@ -34,15 +34,15 @@ fn anchor_inferred_facts_bare_atom_algebra() -> v2.compiler.inferred_tree.Inferr
   v2.compiler.inferred_tree.InferredFacts {
     grounding: v2.compiler.inferred_tree.DerivedGrounding {
       grounding: v2.std.constraints.CanonicalGrounding {
-        node: anchor_atom_node(s: ^anchor_resolved_type_sym),
+        node: v2.test.manual.infer_algebra_ref_grounding_anchor.anchor_atom_node(s: ^anchor_resolved_type_sym),
         witness: v2.std.constraints.CanonicalGroundingWitness {
           structural: v2.std.witness.StructuralPropertyWitness {
             property: ^constraint_property_being_canonical,
-            evidence: anchor_atom_node(s: ^anchor_algebra_ungrounded_sym)
+            evidence: v2.test.manual.infer_algebra_ref_grounding_anchor.anchor_atom_node(s: ^anchor_algebra_ungrounded_sym)
           },
           closedness: v2.std.witness.StructuralPropertyWitness {
             property: ^constraint_property_candidate_set_closedness,
-            evidence: anchor_atom_node(s: ^anchor_resolved_type_sym)
+            evidence: v2.test.manual.infer_algebra_ref_grounding_anchor.anchor_atom_node(s: ^anchor_resolved_type_sym)
           }
         }
       }
@@ -56,4 +56,4 @@ fn anchor_inferred_facts_bare_atom_algebra() -> v2.compiler.inferred_tree.Inferr
   }
 }
 
-data anchor_canonical_grounding_rejects_bare_atom: Outcome<v2.std.constraints.CanonicalGrounding> = canonical_grounding_from_inferred_facts(node: anchor_atom_node(s: ^anchor_resolved_type_sym), facts: anchor_inferred_facts_bare_atom_algebra())
+data anchor_canonical_grounding_rejects_bare_atom: Outcome<v2.std.constraints.CanonicalGrounding> = canonical_grounding_from_inferred_facts(node: v2.test.manual.infer_algebra_ref_grounding_anchor.anchor_atom_node(s: ^anchor_resolved_type_sym), facts: anchor_inferred_facts_bare_atom_algebra())

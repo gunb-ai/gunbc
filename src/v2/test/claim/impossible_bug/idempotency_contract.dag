@@ -11,18 +11,18 @@ fn idempotency_contract(body: Node) -> Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      v2.std.node.Edge { label: Named { name: ^idempotency_position_field }, target: atom_node(s: ^idempotent_position_symbol) },
+      v2.std.node.Edge { label: Named { name: ^idempotency_position_field }, target: v2.test.impossible_bug.idempotency_contract.atom_node(s: ^idempotent_position_symbol) },
       v2.std.node.Edge { label: Named { name: ^idempotency_body_field }, target: body },
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-data idempotent_inhabitant_input: Node = idempotency_contract(body: atom_node(s: ^idempotent_effect_symbol))
+data idempotent_inhabitant_input: Node = idempotency_contract(body: v2.test.impossible_bug.idempotency_contract.atom_node(s: ^idempotent_effect_symbol))
 
-data falsification_nonidempotent_in_idempotent_position: Node = idempotency_contract(body: atom_node(s: ^non_idempotent_effect_symbol))
+data falsification_nonidempotent_in_idempotent_position: Node = idempotency_contract(body: v2.test.impossible_bug.idempotency_contract.atom_node(s: ^non_idempotent_effect_symbol))
 
-data falsification_repeated_append_in_idempotent_position: Node = idempotency_contract(body: atom_node(s: ^repeated_append_effect_symbol))
+data falsification_repeated_append_in_idempotent_position: Node = idempotency_contract(body: v2.test.impossible_bug.idempotency_contract.atom_node(s: ^repeated_append_effect_symbol))
 
 data claim_idempotent_inhabitant_passes: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "idempotent algebra inhabitant accepts idempotent structure",

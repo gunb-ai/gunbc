@@ -16,30 +16,30 @@ fn compose2(a: Node, b: Node) -> Node {
 }
 
 data nickname_pair: List<Node> = [
-  disj2(a: atom(id: ^x86), b: atom(id: ^arm)),
-  disj2(a: atom(id: ^x86), b: atom(id: ^arm))
+  disj2(a: v2.test.structural_similarity.lens_unit.discriminators.atom(id: ^x86), b: v2.test.structural_similarity.lens_unit.discriminators.atom(id: ^arm)),
+  disj2(a: v2.test.structural_similarity.lens_unit.discriminators.atom(id: ^x86), b: v2.test.structural_similarity.lens_unit.discriminators.atom(id: ^arm))
 ]
 
 data width_family: List<Node> = [
-  compose2(a: atom(id: ^int), b: atom(id: ^w8)),
-  compose2(a: atom(id: ^int), b: atom(id: ^w16)),
-  compose2(a: atom(id: ^int), b: atom(id: ^w32))
+  compose2(a: v2.test.structural_similarity.lens_unit.discriminators.atom(id: ^int), b: v2.test.structural_similarity.lens_unit.discriminators.atom(id: ^w8)),
+  compose2(a: v2.test.structural_similarity.lens_unit.discriminators.atom(id: ^int), b: v2.test.structural_similarity.lens_unit.discriminators.atom(id: ^w16)),
+  compose2(a: v2.test.structural_similarity.lens_unit.discriminators.atom(id: ^int), b: v2.test.structural_similarity.lens_unit.discriminators.atom(id: ^w32))
 ]
 
 data distinct_decls: List<Node> = [
-  atom(id: ^unit),
-  disj2(a: atom(id: ^a), b: atom(id: ^b)),
-  compose2(a: atom(id: ^int), b: atom(id: ^w8))
+  v2.test.structural_similarity.lens_unit.discriminators.atom(id: ^unit),
+  disj2(a: v2.test.structural_similarity.lens_unit.discriminators.atom(id: ^a), b: v2.test.structural_similarity.lens_unit.discriminators.atom(id: ^b)),
+  compose2(a: v2.test.structural_similarity.lens_unit.discriminators.atom(id: ^int), b: v2.test.structural_similarity.lens_unit.discriminators.atom(id: ^w8))
 ]
 
 data near_but_divergent: List<Node> = [
-  compose2(a: atom(id: ^int), b: atom(id: ^w8)),
-  compose2(a: atom(id: ^int), b: compose2(a: atom(id: ^ptr), b: atom(id: ^w16))),
-  compose2(a: atom(id: ^int), b: atom(id: ^w32))
+  compose2(a: v2.test.structural_similarity.lens_unit.discriminators.atom(id: ^int), b: v2.test.structural_similarity.lens_unit.discriminators.atom(id: ^w8)),
+  compose2(a: v2.test.structural_similarity.lens_unit.discriminators.atom(id: ^int), b: compose2(a: v2.test.structural_similarity.lens_unit.discriminators.atom(id: ^ptr), b: v2.test.structural_similarity.lens_unit.discriminators.atom(id: ^w16))),
+  compose2(a: v2.test.structural_similarity.lens_unit.discriminators.atom(id: ^int), b: v2.test.structural_similarity.lens_unit.discriminators.atom(id: ^w32))
 ]
 
 data single_decl: List<Node> = [
-  disj2(a: atom(id: ^x), b: atom(id: ^y))
+  disj2(a: v2.test.structural_similarity.lens_unit.discriminators.atom(id: ^x), b: v2.test.structural_similarity.lens_unit.discriminators.atom(id: ^y))
 ]
 
 test fn nickname_pair_is_similar() -> Bool {

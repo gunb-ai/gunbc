@@ -93,11 +93,11 @@ data field_access_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.com
 
 test fn field_access_emit_holds() -> Bool {
   match target_serialize_source_from_model(
-    target: field_access_target_model,
+    target: v2.test.manual.field_access_emit.field_access_target_model,
     emitted: field_access_emitted_root
   ) {
     Accepted { value: authority, diagnostics: ad } =>
-      match emit(tree: field_access_inferred_tree, target: field_access_target_model) {
+      match emit(tree: field_access_inferred_tree, target: v2.test.manual.field_access_emit.field_access_target_model) {
         Accepted { value: source, diagnostics: d } =>
           (source == authority) && (d == v2.std.diagnostic.None) && (ad == v2.std.diagnostic.None)
         Rejected { diagnostics: _ } => false
@@ -108,7 +108,7 @@ test fn field_access_emit_holds() -> Bool {
 
 test fn field_access_grammar_inverse_holds() -> Bool {
   match grammar_inverse_source_validated(
-    target: field_access_target_model,
+    target: v2.test.manual.field_access_emit.field_access_target_model,
     emitted: field_access_emitted_root
   ) {
     Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
@@ -128,7 +128,7 @@ test fn field_access_ingest_via_coerce_matches_canonical() -> Bool {
   match coerce_grounded_node(
     source: field_access_emitted_root,
     tree: field_access_inferred_tree,
-    target: field_access_target_model
+    target: v2.test.manual.field_access_emit.field_access_target_model
   ) {
     Accepted { value: result, diagnostics: d } =>
       (result.target == dag_fixture_emitted_field_access_fn)

@@ -97,15 +97,15 @@ fn is_refused(a: std.access.AccessDecision) -> Bool {
 }
 
 test fn build_transport_admits_well_formed() -> Bool {
-  is_admitted(a: build_transport_admissible(transport: well_formed_transport))
+  v2.test.claim.build_transport_admission_witness.is_admitted(a: build_transport_admissible(transport: well_formed_transport))
 }
 
 test fn build_transport_refuses_escaping_write() -> Bool {
-  is_refused(a: build_transport_admissible(transport: escaping_transport))
+  v2.test.claim.build_transport_admission_witness.is_refused(a: build_transport_admissible(transport: escaping_transport))
 }
 
 test fn build_transport_refuses_absolute_write() -> Bool {
-  is_refused(a: build_transport_admissible(transport: absolute_transport))
+  v2.test.claim.build_transport_admission_witness.is_refused(a: build_transport_admissible(transport: absolute_transport))
 }
 
 test fn build_transport_refusal_is_located() -> Bool {
@@ -119,7 +119,7 @@ test fn build_transport_refusal_is_located() -> Bool {
 }
 
 test fn build_transport_admits_dotdot_substring() -> Bool {
-  is_admitted(a: build_transport_admissible(transport: dotdot_substring_transport))
+  v2.test.claim.build_transport_admission_witness.is_admitted(a: build_transport_admissible(transport: dotdot_substring_transport))
     && rel_path_is_workspace_contained(p: "foo..bar")
     && !rel_path_is_workspace_contained(p: "../escape")
     && !rel_path_is_workspace_contained(p: "a/../b")
@@ -127,8 +127,8 @@ test fn build_transport_admits_dotdot_substring() -> Bool {
 }
 
 test fn build_transport_refuses_escaping_arg() -> Bool {
-  is_refused(a: build_transport_admissible(transport: escaping_arg_transport))
-    && is_admitted(a: build_transport_admissible(transport: contained_arg_transport))
+  v2.test.claim.build_transport_admission_witness.is_refused(a: build_transport_admissible(transport: escaping_arg_transport))
+    && v2.test.claim.build_transport_admission_witness.is_admitted(a: build_transport_admissible(transport: contained_arg_transport))
 }
 
 test fn build_transport_projection_boundary() -> Bool {

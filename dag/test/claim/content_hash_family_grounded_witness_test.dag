@@ -6,12 +6,12 @@ data witness_note: String = "feature:content-hash-family-grounded Phase A — fa
 data witness_sha256_hex: String = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
 fn witness_sha256_row() -> std.content_hash.Sha256Digest {
-  std.content_hash.Sha256Digest { hex: witness_sha256_hex as std.content_hash.Sha256DigestHex }
+  std.content_hash.Sha256Digest { hex: test.claim.content_hash_family_grounded_witness.witness_sha256_hex as std.content_hash.Sha256DigestHex }
 }
 
 fn witness_oci_sha256_row() -> extdeps.container.oci.digest.OciContentDigest {
   oci_content_digest_from_validated_sha256(
-    digest: std.content_hash.Sha256Digest { hex: witness_sha256_hex as std.content_hash.Sha256DigestHex },
+    digest: std.content_hash.Sha256Digest { hex: test.claim.content_hash_family_grounded_witness.witness_sha256_hex as std.content_hash.Sha256DigestHex },
   )
 }
 data tool_pin_fixture: extdeps.pin.Pin<extdeps.tools.CliTool> = extdeps.pin.Pin {
@@ -45,7 +45,7 @@ test fn content_hash_cited_sha256_literals_validate() -> Bool {
     && content_hash_cited_sha256_literal_validates(
       hex: "5e34d05421f9491747bc11c68b1a7f5029b0aefb18eb9166935ac52be45fb299",
     )
-    && content_hash_cited_sha256_literal_validates(hex: witness_sha256_hex)
+    && content_hash_cited_sha256_literal_validates(hex: test.claim.content_hash_family_grounded_witness.witness_sha256_hex)
 }
 
 fn content_hash_cited_sha256_literal_validates(hex: String) -> Bool {

@@ -267,7 +267,7 @@ fn json_optional_inferred_node_ref(value: InferredNode?, key_to_id: Map<String, 
 
 fn json_optional_span(value: std.types.SourceSpan?) -> String {
   match value {
-    Present { value: inner } => serialize_span(span: inner)
+    Present { value: inner } => v1.compiler.compile.serialize_span(span: inner)
     Absent => "null"
   }
 }
@@ -368,7 +368,7 @@ fn serialize_import_node(imp: v1.std.core.Node, source_indices: Map<String, v1.s
   concat(
     "{\"module_path\": ", json_quote(s: authored_name_at(source_indices: source_indices, node: imp)),
     ", \"names\": ", names_json,
-    ", \"span\": ", serialize_span(span: imp.span),
+    ", \"span\": ", v1.compiler.compile.serialize_span(span: imp.span),
     "}")
 }
 
@@ -388,7 +388,7 @@ fn serialize_literal(value: std.syntax.LiteralValue) -> String {
     LitFloat { value: inner } =>
       concat("{\"kind\": \"LitFloat\", \"value\": ", json_quote(s: inner), "}")
     LitBool { value: inner } =>
-      concat("{\"kind\": \"LitBool\", \"value\": ", json_bool(value: inner), "}")
+      concat("{\"kind\": \"LitBool\", \"value\": ", v1.compiler.compile.json_bool(value: inner), "}")
     LitNull => "{\"kind\": \"LitNull\"}"
     LitSymbol { value: inner } =>
       concat("{\"kind\": \"LitSymbol\", \"value\": ", json_quote(s: inner), "}")
@@ -694,7 +694,7 @@ fn serialize_inferred_node_ref(inferred: InferredNode, key_to_id: Map<String, St
     CompilerError { message: message, span: span } =>
       concat(
         "{\"kind\": \"CompilerError\", \"message\": ", json_quote(s: message),
-        ", \"span\": ", serialize_span(span: span),
+        ", \"span\": ", v1.compiler.compile.serialize_span(span: span),
         "}")
     TypeVariable { id: id } =>
       concat("{\"kind\": \"TypeVariable\", \"id\": ", json_quote(s: id), "}")
@@ -705,7 +705,7 @@ fn serialize_resource_use(resource_use: v1.std.core.Node, source_indices: Map<St
   concat(
     "{\"name\": ", json_quote(s: resource_use_name_at(n: resource_use, source_indices: source_indices)),
     ", \"resource\": ", serialize_node_ref(node: resource_use_resource(n: resource_use), key_to_id: key_to_id),
-    ", \"span\": ", serialize_span(span: resource_use.span),
+    ", \"span\": ", v1.compiler.compile.serialize_span(span: resource_use.span),
     "}")
 }
 
@@ -716,7 +716,7 @@ fn serialize_field(field: v1.std.core.Node, source_indices: Map<String, v1.std.c
     ", \"cardinality\": ", json_quote(s: cardinality_name(value: field_node_cardinality(n: field))),
     ", \"default_value\": ", json_optional_node_ref(value: field_node_default_value(n: field), key_to_id: key_to_id),
     ", \"from_key\": ", json_optional_string(value: field_node_from_key(n: field, source_indices: source_indices)),
-    ", \"span\": ", serialize_span(span: field_node_span(n: field)),
+    ", \"span\": ", v1.compiler.compile.serialize_span(span: field_node_span(n: field)),
     "}")
 }
 
@@ -725,7 +725,7 @@ fn serialize_param(param: v1.std.core.Node, source_indices: Map<String, v1.std.c
     "{\"name\": ", json_quote(s: param_node_name_at(n: param, source_indices: source_indices)),
     ", \"type_expr\": ", serialize_node_ref(node: param_node_type_expr(n: param), key_to_id: key_to_id),
     ", \"default_value\": ", json_optional_node_ref(value: param_node_default_value(n: param), key_to_id: key_to_id),
-    ", \"span\": ", serialize_span(span: param_node_span(n: param)),
+    ", \"span\": ", v1.compiler.compile.serialize_span(span: param_node_span(n: param)),
     "}")
 }
 
@@ -758,7 +758,7 @@ fn serialize_node_record(node: v1.std.core.Node, source_indices: Map<String, v1.
   concat(
     "{\"name\": ", json_quote(s: authored_name_at(source_indices: source_indices, node: node)),
     ", \"imports\": ", serialize_module_imports_json(node: node, source_indices: source_indices),
-    ", \"span\": ", serialize_span(span: node.span),
+    ", \"span\": ", v1.compiler.compile.serialize_span(span: node.span),
     ", \"ident_span\": ", json_optional_span(value: node.ident_span),
     ", \"children\": ", json_list(items: node.children |> map(child => serialize_node_ref(node: child, key_to_id: key_to_id))),
     ", \"connective\": ",
@@ -776,8 +776,8 @@ fn serialize_node_record(node: v1.std.core.Node, source_indices: Map<String, v1.
     ", \"transport\": ", json_optional_node_ref(value: node.transport, key_to_id: key_to_id),
     ", \"properties\": ", json_list(items: node.properties |> map(prop => serialize_field_init(field_init: prop, source_indices: source_indices, key_to_id: key_to_id))),
     ", \"type_annotation\": ", json_optional_node_ref(value: node.type_annotation, key_to_id: key_to_id),
-    ", \"is_self_recursive\": ", json_bool(value: node.is_self_recursive),
-    ", \"has_non_tail_self_call\": ", json_bool(value: node.has_non_tail_self_call),
+    ", \"is_self_recursive\": ", v1.compiler.compile.json_bool(value: node.is_self_recursive),
+    ", \"has_non_tail_self_call\": ", v1.compiler.compile.json_bool(value: node.has_non_tail_self_call),
     ", \"expr_data\": ", serialize_expr_data(expr_node: node, source_indices: source_indices, key_to_id: key_to_id),
     "}")
 }
@@ -804,7 +804,7 @@ fn serialize_diagnostic(diagnostic: v1.std.core.ErrorNode) -> String {
   concat(
     "{\"severity\": ", json_quote(s: severity),
     ", \"message\": ", json_quote(s: diagnostic_to_message(d: diagnostic.diagnostic)),
-    ", \"span\": ", serialize_span(span: diagnostic_to_span(d: diagnostic.diagnostic)),
+    ", \"span\": ", v1.compiler.compile.serialize_span(span: diagnostic_to_span(d: diagnostic.diagnostic)),
     ", \"module_name\": ", json_optional_string(value: Present { value: diagnostic.module_name }),
     ", \"category\": ", "null",
     "}")
@@ -993,7 +993,7 @@ fn front_end_sources(sources: List<v1.compiler.compile.SourceFile>) -> v1.compil
   let parse_diagnostics = collect_diagnostics(parse_results: parse_results)
   let module_inputs = parsed.module_inputs
   let source_indices = fold(newline_indices, init: empty_map(), f: (acc, si) => map_insert(acc, si.file, si))
-  let occurrence_transport = merge_occurrence_transports(
+  let occurrence_transport = v1.compiler.compile.merge_occurrence_transports(
     transports: module_inputs |> map(input =>
       module_occurrence_input_transport(input: input)
     )
@@ -1087,7 +1087,7 @@ fn parse_census_fill_sources(sources: List<v1.compiler.compile.SourceFile>) -> v
     ),
     newline_indices: parsed.newline_indices,
     diagnostics: concat(collect_diagnostics(parse_results: parse_results), parsed.annotation_diagnostics),
-    occurrence_transport: merge_occurrence_transports(
+    occurrence_transport: v1.compiler.compile.merge_occurrence_transports(
       transports: module_inputs |> map(input =>
         module_occurrence_input_transport(input: input)
       )

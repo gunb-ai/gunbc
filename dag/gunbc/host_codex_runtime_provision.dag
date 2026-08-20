@@ -48,7 +48,7 @@ func materialize_codex_runtime_on_local_host() -> std.process.ProcessExit
       )
     Present { value: placement } =>
       match materialize_codex_runtime_bundle(
-        source: committed_admitted_codex_runtime_source(),
+        source: gunbc.host_codex_runtime_provision.committed_admitted_codex_runtime_source(),
         release_parent: placement.runtime_release_root,
       ) {
         CodexRuntimeMaterialized { bundle: _ } => ExitSuccess

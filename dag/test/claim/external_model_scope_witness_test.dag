@@ -56,13 +56,13 @@ fn red_generic_browser_module() -> extdeps.external_authority.DeclaredScopeFacts
   extdeps.external_authority.DeclaredScopeFacts {
     module: "extdeps.browser",
     scope: synthetic_scope(
-      subject_ref: subject(module_path: "extdeps.browser.chromium", decl_name: "chromium"),
+      subject_ref: test.claim.external_model_scope_witness.subject(module_path: "extdeps.browser.chromium", decl_name: "chromium"),
       locator: "www.chromium.org/developers"
     ),
     product_fact_subjects: [
-      subject(module_path: "extdeps.browser.google_chrome", decl_name: "google_chrome"),
-      subject(module_path: "extdeps.browser.firefox", decl_name: "firefox"),
-      subject(module_path: "extdeps.browser.apple_safari", decl_name: "apple_safari")
+      test.claim.external_model_scope_witness.subject(module_path: "extdeps.browser.google_chrome", decl_name: "google_chrome"),
+      test.claim.external_model_scope_witness.subject(module_path: "extdeps.browser.firefox", decl_name: "firefox"),
+      test.claim.external_model_scope_witness.subject(module_path: "extdeps.browser.apple_safari", decl_name: "apple_safari")
     ],
     consumer_coverage_rows: []
   }
@@ -85,11 +85,11 @@ test fn red_consumer_coverage_in_upstream_incoherent() -> Bool {
   let m = extdeps.external_authority.DeclaredScopeFacts {
     module: "extdeps.browser.chromium",
     scope: synthetic_scope(
-      subject_ref: subject(module_path: "extdeps.browser.chromium", decl_name: "chromium"),
+      subject_ref: test.claim.external_model_scope_witness.subject(module_path: "extdeps.browser.chromium", decl_name: "chromium"),
       locator: "www.chromium.org/developers"
     ),
-    product_fact_subjects: [subject(module_path: "extdeps.browser.chromium", decl_name: "chromium")],
-    consumer_coverage_rows: [coverage_row(module_path: "extdeps.browser.chromium", decl_name: "served_surface_chromium_support_state")]
+    product_fact_subjects: [test.claim.external_model_scope_witness.subject(module_path: "extdeps.browser.chromium", decl_name: "chromium")],
+    consumer_coverage_rows: [test.claim.external_model_scope_witness.coverage_row(module_path: "extdeps.browser.chromium", decl_name: "served_surface_chromium_support_state")]
   }
   match external_model_scope_decision(m: m) {
     ScopeCoherent => false
@@ -105,7 +105,7 @@ fn green_portfolio() -> List<extdeps.external_authority.DeclaredScopeFacts> {
     extdeps.external_authority.DeclaredScopeFacts {
       module: "extdeps.whatwg.html_navigation",
       scope: synthetic_scope(
-        subject_ref: subject(module_path: "extdeps.whatwg.html_navigation", decl_name: "whatwg_html_standard"),
+        subject_ref: test.claim.external_model_scope_witness.subject(module_path: "extdeps.whatwg.html_navigation", decl_name: "whatwg_html_standard"),
         locator: "html.spec.whatwg.org/multipage/browsing-the-web.html"
       ),
       product_fact_subjects: [],
@@ -114,19 +114,19 @@ fn green_portfolio() -> List<extdeps.external_authority.DeclaredScopeFacts> {
     extdeps.external_authority.DeclaredScopeFacts {
       module: "extdeps.browser.chromium",
       scope: synthetic_scope(
-        subject_ref: subject(module_path: "extdeps.browser.chromium", decl_name: "chromium"),
+        subject_ref: test.claim.external_model_scope_witness.subject(module_path: "extdeps.browser.chromium", decl_name: "chromium"),
         locator: "www.chromium.org/developers"
       ),
-      product_fact_subjects: [subject(module_path: "extdeps.browser.chromium", decl_name: "chromium")],
+      product_fact_subjects: [test.claim.external_model_scope_witness.subject(module_path: "extdeps.browser.chromium", decl_name: "chromium")],
       consumer_coverage_rows: []
     },
     extdeps.external_authority.DeclaredScopeFacts {
       module: "extdeps.browser.firefox",
       scope: synthetic_scope(
-        subject_ref: subject(module_path: "extdeps.browser.firefox", decl_name: "firefox"),
+        subject_ref: test.claim.external_model_scope_witness.subject(module_path: "extdeps.browser.firefox", decl_name: "firefox"),
         locator: "www.mozilla.org/en-US/firefox/releases/"
       ),
-      product_fact_subjects: [subject(module_path: "extdeps.browser.firefox", decl_name: "firefox")],
+      product_fact_subjects: [test.claim.external_model_scope_witness.subject(module_path: "extdeps.browser.firefox", decl_name: "firefox")],
       consumer_coverage_rows: []
     }
   ]
@@ -136,8 +136,8 @@ fn green_downstream_roster() -> extdeps.external_authority.DownstreamSupportRost
   extdeps.external_authority.DownstreamSupportRoster {
     module: "gunbc.served_surface_browser_support",
     coverage_rows: [
-      coverage_row(module_path: "gunbc.served_surface_browser_support", decl_name: "chromium_observed_receipt"),
-      coverage_row(module_path: "gunbc.served_surface_browser_support", decl_name: "firefox_unobserved_obligation")
+      test.claim.external_model_scope_witness.coverage_row(module_path: "gunbc.served_surface_browser_support", decl_name: "chromium_observed_receipt"),
+      test.claim.external_model_scope_witness.coverage_row(module_path: "gunbc.served_surface_browser_support", decl_name: "firefox_unobserved_obligation")
     ]
   }
 }
@@ -166,8 +166,8 @@ test fn adopted_vendor_scopes_coherent_by_execution() -> Bool {
   decision_coherent(d: external_model_scope_portfolio_decision(mods: [ms, at]))
     && (external_model_scope_citations(scope: extdeps.vendor.microsoft.extdeps_model_scope) |> count) == 1
     && (external_model_scope_citations(scope: extdeps.vendor.atlassian.extdeps_model_scope) |> count) == 1
-    && external_subject_ref_eq(a: ms_subject, b: subject(module_path: "extdeps.vendor.microsoft", decl_name: "microsoft"))
-    && external_subject_ref_eq(a: at_subject, b: subject(module_path: "extdeps.vendor.atlassian", decl_name: "atlassian"))
+    && external_subject_ref_eq(a: ms_subject, b: test.claim.external_model_scope_witness.subject(module_path: "extdeps.vendor.microsoft", decl_name: "microsoft"))
+    && external_subject_ref_eq(a: at_subject, b: test.claim.external_model_scope_witness.subject(module_path: "extdeps.vendor.atlassian", decl_name: "atlassian"))
     && extdeps.vendor.microsoft.extdeps_model_scope.first_citation.uri.locator == "www.sec.gov/cgi-bin/browse-edgar?CIK=MSFT"
     && extdeps.vendor.atlassian.extdeps_model_scope.first_citation.uri.locator == "www.sec.gov/cgi-bin/browse-edgar?CIK=TEAM"
 }
@@ -188,7 +188,7 @@ fn read_manifest_rows() -> List<String> {
 }
 
 test fn manifest_rows_nonempty_floor() -> Bool {
-  (read_manifest_rows() |> count) > 150
+  (test.claim.external_model_scope_witness.read_manifest_rows() |> count) > 150
 }
 
 fn roster_path_resolves(path: String) -> Bool {
@@ -197,7 +197,7 @@ fn roster_path_resolves(path: String) -> Bool {
 }
 
 test fn roster_paths_resolve_on_disk() -> Bool {
-  let union = concat(scope_carrier_paths, concat(scope_machinery_exempt_paths, read_manifest_rows()))
+  let union = concat(scope_carrier_paths, concat(scope_machinery_exempt_paths, test.claim.external_model_scope_witness.read_manifest_rows()))
   all(union, p => roster_path_resolves(path: p))
 }
 
@@ -234,24 +234,24 @@ test fn red_membership_arm_refuses_file_this_change_adds() -> Bool {
   let verdict = scope_placement_membership_verdict(
     observation: gunbc.extdeps_scope_frontier.AddedPathsObserved { paths: ["dag/extdeps/browser/opera.dag"] }
   )
-  !exit_is_success(e: verdict)
-    && string_contains(s: exit_reason_of(e: verdict), pattern: "dag/extdeps/browser/opera.dag")
-    && string_contains(s: exit_reason_of(e: verdict), pattern: "THIS CHANGE")
+  !test.claim.external_model_scope_witness.exit_is_success(e: verdict)
+    && string_contains(s: test.claim.external_model_scope_witness.exit_reason_of(e: verdict), pattern: "dag/extdeps/browser/opera.dag")
+    && string_contains(s: test.claim.external_model_scope_witness.exit_reason_of(e: verdict), pattern: "THIS CHANGE")
 }
 
 test fn membership_arm_admits_an_empty_change_set() -> Bool {
-  exit_is_success(
+  test.claim.external_model_scope_witness.exit_is_success(
     e: scope_placement_membership_verdict(observation: gunbc.extdeps_scope_frontier.AddedPathsObserved { paths: [] })
   )
 }
 
 test fn red_membership_arm_refuses_unreadable_observation() -> Bool {
-  !exit_is_success(e: scope_placement_membership_verdict(observation: DiffObserveFailed))
-    && !exit_is_success(e: scope_placement_membership_verdict(observation: DiffParseTruncated))
+  !test.claim.external_model_scope_witness.exit_is_success(e: scope_placement_membership_verdict(observation: DiffObserveFailed))
+    && !test.claim.external_model_scope_witness.exit_is_success(e: scope_placement_membership_verdict(observation: DiffParseTruncated))
 }
 
 test fn green_membership_arm_admits_rostered_addition() -> Bool {
-  exit_is_success(
+  test.claim.external_model_scope_witness.exit_is_success(
     e: scope_placement_membership_verdict(
       observation: gunbc.extdeps_scope_frontier.AddedPathsObserved { paths: ["dag/extdeps/vendor/microsoft.dag", "dag/extdeps/uri.dag"] }
     )
@@ -259,13 +259,13 @@ test fn green_membership_arm_admits_rostered_addition() -> Bool {
 }
 
 test fn red_freeze_arm_refuses_unreadable_observation() -> Bool {
-  !exit_is_success(e: scope_placement_freeze_verdict(observation: DiffObserveFailed))
-    && !exit_is_success(e: scope_placement_freeze_verdict(observation: DiffParseTruncated))
+  !test.claim.external_model_scope_witness.exit_is_success(e: scope_placement_freeze_verdict(observation: DiffObserveFailed))
+    && !test.claim.external_model_scope_witness.exit_is_success(e: scope_placement_freeze_verdict(observation: DiffParseTruncated))
 }
 
 test fn failure_reason_is_empty_only_on_success() -> Bool {
-  exit_reason_of(e: ExitSuccess) == ""
-    && exit_reason_of(
+  test.claim.external_model_scope_witness.exit_reason_of(e: ExitSuccess) == ""
+    && test.claim.external_model_scope_witness.exit_reason_of(
          e: scope_placement_membership_verdict(
            observation: gunbc.extdeps_scope_frontier.AddedPathsObserved { paths: ["dag/extdeps/browser/opera.dag"] }
          )
@@ -296,7 +296,7 @@ fn remove_only_exit_is_success(observation: gunbc.extdeps_scope_frontier.Manifes
 }
 
 test fn red_manifest_remove_only_refuses_added_row() -> Bool {
-  let observation = manifest_line_observation(diff_text: synthetic_manifest_add_diff())
+  let observation = manifest_line_observation(diff_text: test.claim.external_model_scope_witness.synthetic_manifest_add_diff())
   match observation {
     ManifestLinesAdded { rows: rows } =>
       (rows |> count) == 1
@@ -373,7 +373,7 @@ test fn red_manifest_deletion_refuses_through_parser() -> Bool {
 }
 
 test fn frontier_rosters_are_disjoint() -> Bool {
-  let manifest = read_manifest_rows()
+  let manifest = test.claim.external_model_scope_witness.read_manifest_rows()
   all(scope_carrier_paths, p => !strings_contain(xs: scope_machinery_exempt_paths, s: p) && !strings_contain(xs: manifest, s: p))
     && all(scope_machinery_exempt_paths, p => !strings_contain(xs: manifest, s: p))
 }

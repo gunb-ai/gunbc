@@ -202,7 +202,7 @@ fn evidence_duplicate_causes(
   let end_state = fold(
     rows,
     init: ConsumerDupState { seen: [], causes: acc },
-    f: fn(state, e) { evidence_dup_step(state: state, key: evidence_key(e: e)) },
+    f: fn(state, e) { evidence_dup_step(state: state, key: gunbc.replacement_cut.evidence_key(e: e)) },
   )
   end_state.causes
 }

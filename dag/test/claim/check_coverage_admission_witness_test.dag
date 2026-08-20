@@ -87,7 +87,7 @@ test fn stopped_coverage_preserves_unexecuted_population_and_cause() -> Bool {
 
 test fn stale_coverage_refuses() -> Bool {
   !test.claim.check_coverage_admission_witness.admits(coverage: gunbc.merge_admission.CheckCoverageStale {
-    observed_head: prior_head,
+    observed_head: test.claim.check_coverage_admission_witness.prior_head,
     required_head: required_head,
     observed_roster: prior_roster,
     required_roster: required_roster
@@ -96,7 +96,7 @@ test fn stale_coverage_refuses() -> Bool {
 
 test fn complete_old_head_refuses() -> Bool {
   !test.claim.check_coverage_admission_witness.admits(coverage: gunbc.merge_admission.CheckCoverageComplete {
-    head: prior_head,
+    head: test.claim.check_coverage_admission_witness.prior_head,
     roster: required_roster,
     conclusions: [passed(gate: gate_a), passed(gate: gate_b)]
   })

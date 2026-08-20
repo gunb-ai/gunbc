@@ -10,19 +10,19 @@ fn rung8_tier1_eval_run(claim: v2.std.verification.TestClaim) -> TestClaimRun<No
   )
 }
 
-data run_claim_nat_add_left_identity: TestClaimRun<Node, RuntimeValue> = rung8_tier1_eval_run(claim: v2.test.algebra_laws.nat_semiring.claim_nat_add_left_identity)
+data run_claim_nat_add_left_identity: TestClaimRun<Node, RuntimeValue> = v2.test.nat_semiring.rung_8.rung8_tier1_eval_run(claim: v2.test.algebra_laws.nat_semiring.claim_nat_add_left_identity)
 
-data run_claim_nat_add_right_identity: TestClaimRun<Node, RuntimeValue> = rung8_tier1_eval_run(claim: v2.test.algebra_laws.nat_semiring.claim_nat_add_right_identity)
+data run_claim_nat_add_right_identity: TestClaimRun<Node, RuntimeValue> = v2.test.nat_semiring.rung_8.rung8_tier1_eval_run(claim: v2.test.algebra_laws.nat_semiring.claim_nat_add_right_identity)
 
-data run_claim_nat_add_associativity: TestClaimRun<Node, RuntimeValue> = rung8_tier1_eval_run(claim: v2.test.algebra_laws.nat_semiring.claim_nat_add_associativity)
+data run_claim_nat_add_associativity: TestClaimRun<Node, RuntimeValue> = v2.test.nat_semiring.rung_8.rung8_tier1_eval_run(claim: v2.test.algebra_laws.nat_semiring.claim_nat_add_associativity)
 
-data run_claim_nat_mul_left_identity: TestClaimRun<Node, RuntimeValue> = rung8_tier1_eval_run(claim: v2.test.algebra_laws.nat_semiring.claim_nat_mul_left_identity)
+data run_claim_nat_mul_left_identity: TestClaimRun<Node, RuntimeValue> = v2.test.nat_semiring.rung_8.rung8_tier1_eval_run(claim: v2.test.algebra_laws.nat_semiring.claim_nat_mul_left_identity)
 
-data run_claim_nat_mul_annihilator: TestClaimRun<Node, RuntimeValue> = rung8_tier1_eval_run(claim: v2.test.algebra_laws.nat_semiring.claim_nat_mul_annihilator)
+data run_claim_nat_mul_annihilator: TestClaimRun<Node, RuntimeValue> = v2.test.nat_semiring.rung_8.rung8_tier1_eval_run(claim: v2.test.algebra_laws.nat_semiring.claim_nat_mul_annihilator)
 
-data run_claim_nat_mul_associativity: TestClaimRun<Node, RuntimeValue> = rung8_tier1_eval_run(claim: v2.test.algebra_laws.nat_semiring.claim_nat_mul_associativity)
+data run_claim_nat_mul_associativity: TestClaimRun<Node, RuntimeValue> = v2.test.nat_semiring.rung_8.rung8_tier1_eval_run(claim: v2.test.algebra_laws.nat_semiring.claim_nat_mul_associativity)
 
-data run_claim_nat_add_wrong_identity_falsifies_law: TestClaimRun<Node, RuntimeValue> = rung8_tier1_eval_run(claim: claim_nat_add_wrong_identity_falsifies_law)
+data run_claim_nat_add_wrong_identity_falsifies_law: TestClaimRun<Node, RuntimeValue> = v2.test.nat_semiring.rung_8.rung8_tier1_eval_run(claim: claim_nat_add_wrong_identity_falsifies_law)
 
 data phase1_nat_semiring_rung8_runtime_value_rows: List<TestClaimRun<Node, RuntimeValue>> = [
   run_claim_nat_add_left_identity,

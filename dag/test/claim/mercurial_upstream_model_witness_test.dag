@@ -444,7 +444,7 @@ fn projection_with_publishing(
 }
 
 fn mercurial_fixture_repository() -> extdeps.mercurial.MercurialRepositoryState? {
-  match mercurial_decode_projection(projection: fixture_projection()) {
+  match mercurial_decode_projection(projection: test.claim.mercurial_upstream_model_witness.fixture_projection()) {
     MercurialDecoded { repository } => Present { value: repository }
     MercurialDecodeRefused { cause: _ } => Absent
     MercurialRepositoryUnavailable { reason: _ } => Absent
@@ -579,7 +579,7 @@ test fn witness_mercurial_empty_inaccessible_projection_stays_unavailable() -> B
 }
 
 test fn witness_mercurial_fixture_decodes_and_projects_without_loss() -> Bool {
-  match mercurial_decode_projection(projection: fixture_projection()) {
+  match mercurial_decode_projection(projection: test.claim.mercurial_upstream_model_witness.fixture_projection()) {
     MercurialDecodeRefused { cause: _ } => false
     MercurialRepositoryUnavailable { reason: _ } => false
     MercurialDecoded { repository } =>
@@ -680,7 +680,7 @@ test fn witness_mercurial_copy_metadata_stays_on_file_revision() -> Bool {
 }
 
 test fn witness_mercurial_undeclared_copy_source_refuses() -> Bool {
-  let projection = fixture_projection()
+  let projection = test.claim.mercurial_upstream_model_witness.fixture_projection()
   let projection_contents = fixture_projection_contents()
   let broken = extdeps.mercurial.MercurialFileRevision {
     node: hg_file_executable,
@@ -715,7 +715,7 @@ test fn witness_mercurial_undeclared_copy_source_refuses() -> Bool {
 }
 
 test fn witness_mercurial_declared_missing_copy_source_stays_partial_not_fabricated() -> Bool {
-  let projection = fixture_projection()
+  let projection = test.claim.mercurial_upstream_model_witness.fixture_projection()
   let projection_contents = fixture_projection_contents()
   let partial = extdeps.mercurial.MercurialFileRevision {
     node: hg_file_executable,
@@ -844,7 +844,7 @@ test fn witness_mercurial_publishing_and_secret_exchange_rules_remain_distinct()
 
 test fn witness_mercurial_missing_phase_refuses() -> Bool {
   let invalid = projection_with_phases(
-    projection: fixture_projection(),
+    projection: test.claim.mercurial_upstream_model_witness.fixture_projection(),
     phases: [
       extdeps.mercurial.MercurialPhaseWireEntry { changeset: hg_c0, phase: "public" },
       extdeps.mercurial.MercurialPhaseWireEntry { changeset: hg_c1, phase: "draft" },
@@ -860,7 +860,7 @@ test fn witness_mercurial_missing_phase_refuses() -> Bool {
 
 test fn witness_mercurial_duplicate_phase_refuses() -> Bool {
   let invalid = projection_with_phases(
-    projection: fixture_projection(),
+    projection: test.claim.mercurial_upstream_model_witness.fixture_projection(),
     phases: [
       extdeps.mercurial.MercurialPhaseWireEntry { changeset: hg_c0, phase: "public" },
       extdeps.mercurial.MercurialPhaseWireEntry { changeset: hg_c1, phase: "draft" },
@@ -878,7 +878,7 @@ test fn witness_mercurial_duplicate_phase_refuses() -> Bool {
 
 test fn witness_mercurial_phase_monotonicity_violation_refuses() -> Bool {
   let invalid = projection_with_phases(
-    projection: fixture_projection(),
+    projection: test.claim.mercurial_upstream_model_witness.fixture_projection(),
     phases: [
       extdeps.mercurial.MercurialPhaseWireEntry { changeset: hg_c0, phase: "draft" },
       extdeps.mercurial.MercurialPhaseWireEntry { changeset: hg_c1, phase: "public" },
@@ -904,7 +904,7 @@ test fn witness_mercurial_evolution_metadata_is_orthogonal_to_portable_history()
     Present { value: with_evolution } =>
       match mercurial_decode_projection(
         projection: projection_with_evolution(
-          projection: fixture_projection(),
+          projection: test.claim.mercurial_upstream_model_witness.fixture_projection(),
           evolution: MercurialEvolutionNotEnabled,
         ),
       ) {
@@ -918,7 +918,7 @@ test fn witness_mercurial_evolution_metadata_is_orthogonal_to_portable_history()
 
 test fn witness_mercurial_unknown_manifest_flag_refuses() -> Bool {
   let invalid = projection_with_manifests(
-    projection: fixture_projection(),
+    projection: test.claim.mercurial_upstream_model_witness.fixture_projection(),
     manifests: [
       extdeps.mercurial.MercurialManifestWire {
         node: hg_manifest,
@@ -941,7 +941,7 @@ test fn witness_mercurial_unknown_manifest_flag_refuses() -> Bool {
 
 test fn witness_mercurial_unknown_phase_refuses() -> Bool {
   let invalid = projection_with_phases(
-    projection: fixture_projection(),
+    projection: test.claim.mercurial_upstream_model_witness.fixture_projection(),
     phases: [extdeps.mercurial.MercurialPhaseWireEntry { changeset: hg_c2, phase: "published" }],
   )
   match mercurial_decode_projection(projection: invalid) {
@@ -964,7 +964,7 @@ test fn witness_mercurial_missing_parent_refuses() -> Bool {
     description: "right",
   }
   let invalid = projection_with_changesets(
-    projection: fixture_projection(),
+    projection: test.claim.mercurial_upstream_model_witness.fixture_projection(),
     changesets: append(
       projection_contents.changesets |> filter(c => !(c.node == hg_c2)),
       items: [broken],
@@ -990,7 +990,7 @@ test fn witness_mercurial_duplicate_changeset_parent_refuses() -> Bool {
     description: "right",
   }
   let invalid = projection_with_changesets(
-    projection: fixture_projection(),
+    projection: test.claim.mercurial_upstream_model_witness.fixture_projection(),
     changesets: append(
       projection_contents.changesets |> filter(c => !(c.node == hg_c2)),
       items: [duplicate_parent],
@@ -1017,7 +1017,7 @@ test fn witness_mercurial_changeset_self_parent_refuses_as_cycle() -> Bool {
     description: "right",
   }
   let invalid = projection_with_changesets(
-    projection: fixture_projection(),
+    projection: test.claim.mercurial_upstream_model_witness.fixture_projection(),
     changesets: append(
       projection_contents.changesets |> filter(c => !(c.node == hg_c2)),
       items: [self_parent],
@@ -1053,7 +1053,7 @@ test fn witness_mercurial_multi_revision_changeset_cycle_refuses() -> Bool {
     description: "right",
   }
   let invalid = projection_with_changesets(
-    projection: fixture_projection(),
+    projection: test.claim.mercurial_upstream_model_witness.fixture_projection(),
     changesets: [
       extdeps.mercurial.MercurialChangeset {
         node: hg_c0,
@@ -1094,7 +1094,7 @@ test fn witness_mercurial_file_revision_cycle_refuses() -> Bool {
     content: octets_bytes(o: [114, 117, 110]),
   }
   let invalid = projection_with_file_revisions(
-    projection: fixture_projection(),
+    projection: test.claim.mercurial_upstream_model_witness.fixture_projection(),
     file_revisions: [
       cycle_regular,
       cycle_executable,
@@ -1129,7 +1129,7 @@ test fn witness_mercurial_duplicate_file_revision_parent_refuses() -> Bool {
     content: octets_bytes(o: [114, 117, 110]),
   }
   let invalid = projection_with_file_revisions(
-    projection: fixture_projection(),
+    projection: test.claim.mercurial_upstream_model_witness.fixture_projection(),
     file_revisions: append(
       fixture_file_revisions()
         |> filter(file_revision =>
@@ -1276,7 +1276,7 @@ test fn witness_mercurial_closed_branch_head_cannot_be_reported_as_open() -> Boo
 
 test fn witness_mercurial_partial_capture_does_not_invent_exact_head_set() -> Bool {
   let with_missing_head = projection_with_heads(
-    projection: fixture_projection(),
+    projection: test.claim.mercurial_upstream_model_witness.fixture_projection(),
     heads: [extdeps.mercurial.MercurialHead { changeset: hg_missing_c }],
   )
   let partial = match with_missing_head {
@@ -1312,7 +1312,7 @@ test fn witness_mercurial_two_parent_merge_decodes_with_derived_head() -> Bool {
     description: "merge",
   }
   let with_merge = projection_with_changesets(
-    projection: fixture_projection(),
+    projection: test.claim.mercurial_upstream_model_witness.fixture_projection(),
     changesets: append(
       projection_contents.changesets |> filter(c => !(c.node == hg_c2)),
       items: [merge],
@@ -1330,7 +1330,7 @@ test fn witness_mercurial_two_parent_merge_decodes_with_derived_head() -> Bool {
 
 test fn witness_mercurial_duplicate_local_revision_refuses() -> Bool {
   let invalid = projection_with_local_revisions(
-    projection: fixture_projection(),
+    projection: test.claim.mercurial_upstream_model_witness.fixture_projection(),
     local_revisions: [
       extdeps.mercurial.MercurialLocalRevisionEntry {
         revision: extdeps.mercurial.MercurialLocalRevision { value: 0 },

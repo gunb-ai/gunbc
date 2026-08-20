@@ -921,9 +921,9 @@ fn dag_spec() -> LanguageSpec {
 
 fn language_spec_for_target(target: v1.compiler.artifact.RenderTarget) -> LanguageSpec {
   match target {
-    Rust => rust_spec()
-    Go => go_spec()
-    Python => python_spec()
+    Rust => v1.compiler.languages.rust_spec()
+    Go => v1.compiler.languages.go_spec()
+    Python => v1.compiler.languages.python_spec()
     Dag => dag_spec()
   }
 }

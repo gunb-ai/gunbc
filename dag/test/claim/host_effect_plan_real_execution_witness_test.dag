@@ -11,7 +11,7 @@ fn witness_host_os_target() -> gunbc.host_effect.NodeControlPlane {
 
 fn witness_plan_ctx() -> gunbc.host_effect_plan.HostEffectPlanContext {
   gunbc.host_effect_plan.HostEffectPlanContext {
-    target: witness_host_os_target(),
+    target: test.claim.host_effect_plan_real_execution.witness_host_os_target(),
     evidence: host_effect_identity_evidence,
     transport: LocalShell,
   }
@@ -44,7 +44,7 @@ fn witness_sequential_do_plan() -> gunbc.host_effect_plan.HostEffectPlan {
 test fn host_effect_plan_shell_failure_reason_carries_exit_code_by_real_execution() -> Bool {
   match host_effect_plan_apply(
     plan: witness_single_do_false_plan(),
-    ctx: witness_plan_ctx(),
+    ctx: test.claim.host_effect_plan_real_execution.witness_plan_ctx(),
   ) {
     Converged { evidence: _, applied: _ } => false
     NotConverged { reason: r, applied: _ } => string_contains(s: r, pattern: "exit=1")
@@ -54,14 +54,14 @@ test fn host_effect_plan_shell_failure_reason_carries_exit_code_by_real_executio
 test fn host_effect_plan_shell_witness_holds_by_real_execution() -> Bool {
   reconciliation_converged(r: host_effect_plan_apply(
     plan: witness_single_do_true_plan(),
-    ctx: witness_plan_ctx(),
+    ctx: test.claim.host_effect_plan_real_execution.witness_plan_ctx(),
   ))
     && !reconciliation_converged(r: host_effect_plan_apply(
       plan: witness_single_do_false_plan(),
-      ctx: witness_plan_ctx(),
+      ctx: test.claim.host_effect_plan_real_execution.witness_plan_ctx(),
     ))
     && reconciliation_converged(r: host_effect_plan_apply(
       plan: witness_sequential_do_plan(),
-      ctx: witness_plan_ctx(),
+      ctx: test.claim.host_effect_plan_real_execution.witness_plan_ctx(),
     ))
 }

@@ -18,7 +18,7 @@ fn no_edges() -> List<v2.std.node.Edge> {
 fn kids_to_edges(kids: List<Node>) -> List<v2.std.node.Edge> {
   fold_list(
     xs: kids,
-    empty: no_edges(),
+    empty: v2.test.fn_family.lens_unit.discriminators_test.no_edges(),
     cons: fn(acc, k) { list_snoc_item(xs: acc, item: edge_of(k: k)) }
   )
 }
@@ -31,11 +31,11 @@ fn conj_of(kids: List<Node>) -> Node {
 }
 
 fn family_member(leaf: v2.std.node.Symbol) -> Node {
-  conj_of(kids: [atom_node(id: ^shared_head), conj_of(kids: [atom_node(id: leaf), atom_node(id: ^shared_tail)])])
+  conj_of(kids: [v2.test.fn_family.lens_unit.discriminators_test.atom_node(id: ^shared_head), conj_of(kids: [v2.test.fn_family.lens_unit.discriminators_test.atom_node(id: leaf), v2.test.fn_family.lens_unit.discriminators_test.atom_node(id: ^shared_tail)])])
 }
 
 fn structurally_different_def() -> Node {
-  conj_of(kids: [atom_node(id: ^shared_head), atom_node(id: ^flat_tail)])
+  conj_of(kids: [v2.test.fn_family.lens_unit.discriminators_test.atom_node(id: ^shared_head), v2.test.fn_family.lens_unit.discriminators_test.atom_node(id: ^flat_tail)])
 }
 
 test fn witness_pair_related() -> Bool {
@@ -47,7 +47,7 @@ test fn witness_structural_difference_unrelated() -> Bool {
 }
 
 test fn witness_bare_atoms_unrelated() -> Bool {
-  sigma_family_related(a: atom_node(id: ^alpha), b: atom_node(id: ^beta)) == false
+  sigma_family_related(a: v2.test.fn_family.lens_unit.discriminators_test.atom_node(id: ^alpha), b: v2.test.fn_family.lens_unit.discriminators_test.atom_node(id: ^beta)) == false
 }
 
 test fn witness_identical_defs_related() -> Bool {
@@ -89,22 +89,22 @@ fn parse_wrapped_fn_decl(body: Node) -> Node {
   node_synthetic(
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      grammar_named_edge(name: ^grammar_production_identity_node_projection, target: atom_node(id: ^dag_surface_fn_decl)),
+      grammar_named_edge(name: ^grammar_production_identity_node_projection, target: v2.test.fn_family.lens_unit.discriminators_test.atom_node(id: ^dag_surface_fn_decl)),
       grammar_named_edge(name: ^grammar_production_captured_node_projection, target: body)
     ]
   )
 }
 
 fn fn_decl_marked_subtree(leaf: v2.std.node.Symbol) -> Node {
-  parse_wrapped_fn_decl(body: conj_of(kids: [atom_node(id: leaf), atom_node(id: ^shared_tail)]))
+  parse_wrapped_fn_decl(body: conj_of(kids: [v2.test.fn_family.lens_unit.discriminators_test.atom_node(id: leaf), v2.test.fn_family.lens_unit.discriminators_test.atom_node(id: ^shared_tail)]))
 }
 
 fn synthetic_module_tree() -> Node {
   conj_of(kids: [
-    atom_node(id: ^dag_surface_module),
+    v2.test.fn_family.lens_unit.discriminators_test.atom_node(id: ^dag_surface_module),
     fn_decl_marked_subtree(leaf: ^alpha),
     fn_decl_marked_subtree(leaf: ^beta),
-    atom_node(id: ^unrelated_item)
+    v2.test.fn_family.lens_unit.discriminators_test.atom_node(id: ^unrelated_item)
   ])
 }
 
@@ -131,7 +131,7 @@ test fn witness_disjoint_decls_quiet_through_linearity_registry() -> Bool {
 }
 
 fn two_slot_member(s1: v2.std.node.Symbol, s2: v2.std.node.Symbol) -> Node {
-  conj_of(kids: [atom_node(id: ^shared_head), conj_of(kids: [atom_node(id: s1), atom_node(id: s2)])])
+  conj_of(kids: [v2.test.fn_family.lens_unit.discriminators_test.atom_node(id: ^shared_head), conj_of(kids: [v2.test.fn_family.lens_unit.discriminators_test.atom_node(id: s1), v2.test.fn_family.lens_unit.discriminators_test.atom_node(id: s2)])])
 }
 
 test fn witness_relatedness_is_transitive_across_different_slots() -> Bool {

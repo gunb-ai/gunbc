@@ -36,7 +36,7 @@ fn witness_static_table_browse_row_matches_host_contract() -> Bool {
         row.method == std.types.GET
           && path_matches_template(template: row.path_pattern, path: "/")
           && path_matches_template(template: browse_tpl, path: "/")
-          && row.body == expected_browse_html()
+          && row.body == test.claim.gunbhub_serve_witness.expected_browse_html()
           && row.content_type == gunbhub_html_content_type()
           && media_type_wire_label(m: gunbhub_html_content_type()) == "text/html; charset=utf-8"
           && row.status_on_hit == 200
@@ -66,7 +66,7 @@ fn witness_static_table_repo_path_row_is_m1_placeholder() -> Bool {
 }
 
 fn witness_browse_served_body_matches_consumer() -> Bool {
-  let expected = expected_browse_html()
+  let expected = test.claim.gunbhub_serve_witness.expected_browse_html()
   match serve_gunbhub_request(
     req: gunbc.gunbhub_serve.GunbhubServeRequest { method: GET, path: "/" }
   ) {
@@ -88,7 +88,7 @@ fn witness_browse_empty_path_also_matches() -> Bool {
   match serve_gunbhub_request(
     req: gunbc.gunbhub_serve.GunbhubServeRequest { method: GET, path: "" }
   ) {
-    Served { response: r } => r.body == expected_browse_html()
+    Served { response: r } => r.body == test.claim.gunbhub_serve_witness.expected_browse_html()
     _ => false
   }
 }

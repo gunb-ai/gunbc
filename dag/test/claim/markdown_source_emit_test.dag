@@ -118,7 +118,7 @@ fn expected_markdown() -> String {
 }
 
 test fn witness_exact_bytes() -> Bool {
-  serialize_markdown_source(doc: sample_doc()) == expected_markdown()
+  serialize_markdown_source(doc: test.claim.markdown_source_emit.sample_doc()) == expected_markdown()
 }
 
 fn code_only_doc(code: String) -> std.markdown.MarkdownDocument {
@@ -175,7 +175,7 @@ fn tiny_list_doc() -> std.markdown.MarkdownDocument {
 
 test fn witness_row_driven_bullet() -> Bool {
   let canonical = serialize_markdown_source_with(doc: tiny_list_doc(), sp: commonmark_gfm_spellings)
-  let perturbed = serialize_markdown_source_with(doc: tiny_list_doc(), sp: perturbed_bullet_spellings())
+  let perturbed = serialize_markdown_source_with(doc: tiny_list_doc(), sp: test.claim.markdown_source_emit.perturbed_bullet_spellings())
   (canonical == "- x\n") && (perturbed == "+ x\n") && !(canonical == perturbed)
 }
 

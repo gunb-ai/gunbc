@@ -198,7 +198,7 @@ fn norm3(registry: std.spatial_frame.SpatialFrameRegistry, v: std.affine_space.V
   let x = signed_frame_component_count(c: v.x)
   let y = signed_frame_component_count(c: v.y)
   let z = signed_frame_component_count(c: v.z)
-  let nonzero_axes = axis_count(value: x) + axis_count(value: y) + axis_count(value: z)
+  let nonzero_axes = std.euclidean_geometry.axis_count(value: x) + std.euclidean_geometry.axis_count(value: y) + std.euclidean_geometry.axis_count(value: z)
   if nonzero_axes <= 1 {
     match checked_int_magnitude(a: x + y + z) {
       CheckedNatOverflow { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
@@ -358,7 +358,7 @@ fn normalize3(registry: std.spatial_frame.SpatialFrameRegistry, v: std.affine_sp
   let x = signed_frame_component_count(c: v.x)
   let y = signed_frame_component_count(c: v.y)
   let z = signed_frame_component_count(c: v.z)
-  let nonzero_axes = axis_count(value: x) + axis_count(value: y) + axis_count(value: z)
+  let nonzero_axes = std.euclidean_geometry.axis_count(value: x) + std.euclidean_geometry.axis_count(value: y) + std.euclidean_geometry.axis_count(value: z)
   if nonzero_axes == 0 {
     std.affine_space.SpatialReady { value: DirectionZeroVectorHasNone }
   } else {

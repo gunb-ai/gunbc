@@ -97,7 +97,7 @@ test fn red_control_bare_identity_mention_is_flagged_suspect() -> Bool {
     scrutinee_name_sym: ^grammar_production_identity_node_projection,
     mentions: [^probe_leaked_identity_mention]
   )
-  finding_list_length(fs: fs) == 1 && any_suspect(fs: fs)
+  v2.test.lens_identity_captured_navigation.finding_list_length(fs: fs) == 1 && any_suspect(fs: fs)
 }
 
 test fn green_control_sanctioned_single_reduction_not_flagged() -> Bool {
@@ -105,7 +105,7 @@ test fn green_control_sanctioned_single_reduction_not_flagged() -> Bool {
     scrutinee_name_sym: ^grammar_production_identity_node_projection,
     mentions: [^node_atom_identity_optional, ^probe_present_binder_mention]
   )
-  finding_list_length(fs: fs) == 0
+  v2.test.lens_identity_captured_navigation.finding_list_length(fs: fs) == 0
 }
 
 test fn unrelated_scrutinee_name_not_flagged() -> Bool {
@@ -113,5 +113,5 @@ test fn unrelated_scrutinee_name_not_flagged() -> Bool {
     scrutinee_name_sym: ^grammar_production_captured_node_projection,
     mentions: [^probe_leaked_identity_mention]
   )
-  finding_list_length(fs: fs) == 0
+  v2.test.lens_identity_captured_navigation.finding_list_length(fs: fs) == 0
 }

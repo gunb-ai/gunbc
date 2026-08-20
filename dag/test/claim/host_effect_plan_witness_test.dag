@@ -11,7 +11,7 @@ fn witness_host_os_target() -> gunbc.host_effect.NodeControlPlane {
 
 fn witness_plan_ctx() -> gunbc.host_effect_plan.HostEffectPlanContext {
   gunbc.host_effect_plan.HostEffectPlanContext {
-    target: witness_host_os_target(),
+    target: test.claim.host_effect_plan_witness.witness_host_os_target(),
     evidence: host_effect_identity_evidence,
     transport: LocalShell,
   }
@@ -39,14 +39,14 @@ fn witness_if_control_flow_plan() -> gunbc.host_effect_plan.HostEffectPlan {
 test fn witness_empty_plan_refuses_fail_closed() -> Bool {
   !reconciliation_converged(r: host_effect_plan_apply(
     plan: witness_empty_plan(),
-    ctx: witness_plan_ctx(),
+    ctx: test.claim.host_effect_plan_witness.witness_plan_ctx(),
   ))
 }
 
 test fn witness_control_flow_step_refuses_fail_closed() -> Bool {
   !reconciliation_converged(r: host_effect_plan_apply(
     plan: witness_if_control_flow_plan(),
-    ctx: witness_plan_ctx(),
+    ctx: test.claim.host_effect_plan_witness.witness_plan_ctx(),
   ))
 }
 

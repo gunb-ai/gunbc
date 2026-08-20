@@ -38,7 +38,7 @@ data entry_cheap_strong: std.pareto.ParetoEntry = std.pareto.ParetoEntry {
     std.pareto.AxisReading { axis: axis_cost_id, value_micro: 100 },
     std.pareto.AxisReading { axis: axis_power_id, value_micro: 500 },
   ],
-  missing_inputs: no_missing,
+  missing_inputs: test.claim.pareto_selection_witness.no_missing,
 }
 
 data entry_dear_weak: std.pareto.ParetoEntry = std.pareto.ParetoEntry {
@@ -48,7 +48,7 @@ data entry_dear_weak: std.pareto.ParetoEntry = std.pareto.ParetoEntry {
     std.pareto.AxisReading { axis: axis_cost_id, value_micro: 200 },
     std.pareto.AxisReading { axis: axis_power_id, value_micro: 400 },
   ],
-  missing_inputs: no_missing,
+  missing_inputs: test.claim.pareto_selection_witness.no_missing,
 }
 
 // The dominated twin: SAME display label as entry_cheap_strong, DIFFERENT identity, worse
@@ -61,7 +61,7 @@ data entry_twin_dominated: std.pareto.ParetoEntry = std.pareto.ParetoEntry {
     std.pareto.AxisReading { axis: axis_cost_id, value_micro: 300 },
     std.pareto.AxisReading { axis: axis_power_id, value_micro: 300 },
   ],
-  missing_inputs: no_missing,
+  missing_inputs: test.claim.pareto_selection_witness.no_missing,
 }
 
 data entry_dear_strong: std.pareto.ParetoEntry = std.pareto.ParetoEntry {
@@ -71,7 +71,7 @@ data entry_dear_strong: std.pareto.ParetoEntry = std.pareto.ParetoEntry {
     std.pareto.AxisReading { axis: axis_cost_id, value_micro: 200 },
     std.pareto.AxisReading { axis: axis_power_id, value_micro: 600 },
   ],
-  missing_inputs: no_missing,
+  missing_inputs: test.claim.pareto_selection_witness.no_missing,
 }
 
 data entry_quote_pending: std.pareto.ParetoEntry = std.pareto.ParetoEntry {
@@ -90,7 +90,7 @@ data entry_reading_hole: std.pareto.ParetoEntry = std.pareto.ParetoEntry {
   readings: [
     std.pareto.AxisReading { axis: axis_cost_id, value_micro: 50 },
   ],
-  missing_inputs: no_missing,
+  missing_inputs: test.claim.pareto_selection_witness.no_missing,
 }
 
 // Two readings on ONE axis identity - the duplicate the pair must refuse rather than take
@@ -103,7 +103,7 @@ data entry_double_reading: std.pareto.ParetoEntry = std.pareto.ParetoEntry {
     std.pareto.AxisReading { axis: axis_cost_id, value_micro: 999 },
     std.pareto.AxisReading { axis: axis_power_id, value_micro: 700 },
   ],
-  missing_inputs: no_missing,
+  missing_inputs: test.claim.pareto_selection_witness.no_missing,
 }
 
 // The CLEAN field for the domination and trade-off controls; the holed field adds the

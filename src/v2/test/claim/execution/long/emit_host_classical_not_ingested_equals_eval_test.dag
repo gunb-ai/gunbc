@@ -12,7 +12,7 @@ fn ingested_find_arrow_in_module(root: v2.std.node.Node) -> Optional<v2.std.node
       fold(root.children, init: Absent, f: fn(acc, e) {
         match acc {
           Present { value: _ } => acc
-          Absent => ingested_find_arrow_in_module(root: e.target)
+          Absent => v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_find_arrow_in_module(root: e.target)
         }
       })
   }
@@ -40,9 +40,9 @@ fn ingested_resolved_module_from_source(source: String) -> v2.std.diagnostic.Out
 
 fn ingested_arrow_from_source(source: String) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   v2.std.diagnostic.bind_outcome(
-    o: ingested_resolved_module_from_source(source: source),
+    o: v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_resolved_module_from_source(source: source),
     f: fn(resolved) {
-      match ingested_find_arrow_in_module(root: resolved) {
+      match v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_find_arrow_in_module(root: resolved) {
         Present { value: arrow } => v2.std.diagnostic.outcome_accepted(value: arrow)
         Absent =>
           v2.std.diagnostic.outcome_rejected(
@@ -54,7 +54,7 @@ fn ingested_arrow_from_source(source: String) -> v2.std.diagnostic.Outcome<v2.st
 }
 fn ingested_canonical_inferred_tree_from_source(source: String) -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   v2.std.diagnostic.bind_outcome(
-    o: ingested_arrow_from_source(source: source),
+    o: v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_arrow_from_source(source: source),
     f: fn(arrow) {
       v2.compiler.infer.infer(tree: arrow)
     }
@@ -75,7 +75,7 @@ fn ingested_classical_not_staging_facts_lookup(
 
 fn ingested_staging_inferred_tree_from_source(source: String) -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   v2.std.diagnostic.bind_outcome(
-    o: ingested_arrow_from_source(source: source),
+    o: v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_arrow_from_source(source: source),
     f: fn(arrow) {
       v2.std.diagnostic.bind_outcome(
         o: v2.compiler.infer.infer(tree: arrow),
@@ -98,7 +98,7 @@ fn ingested_staging_inferred_tree_from_source(source: String) -> v2.std.diagnost
 
 fn ingested_emit_shape_frontier_tree_from_source(source: String) -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   v2.std.diagnostic.bind_outcome(
-    o: ingested_arrow_from_source(source: source),
+    o: v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_arrow_from_source(source: source),
     f: fn(arrow) {
       v2.std.diagnostic.outcome_accepted(
         value: v2.compiler.inferred_tree.InferredTree {
@@ -116,7 +116,7 @@ fn ingested_emit_shape_frontier_tree_from_source(source: String) -> v2.std.diagn
 
 fn ingested_wet_emit_eval_composed_tree_from_source(source: String) -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   v2.std.diagnostic.bind_outcome(
-    o: ingested_arrow_from_source(source: source),
+    o: v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_arrow_from_source(source: source),
     f: fn(arrow) {
       v2.std.diagnostic.bind_outcome(
         o: v2.compiler.infer.infer(tree: arrow),
@@ -164,14 +164,14 @@ fn ingested_classical_not_diagnostic(reason: v2.std.node.Symbol, node: v2.std.no
 }
 
 fn ingested_resolves(source: String) -> Bool {
-  match ingested_resolved_module_from_source(source: source) {
+  match v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_resolved_module_from_source(source: source) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
 fn ingested_arrow_has_match_body(source: String) -> Bool {
-  match ingested_arrow_from_source(source: source) {
+  match v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_arrow_from_source(source: source) {
     Accepted { value: arrow, diagnostics: _ } =>
       match v2.std.node_query.find_arrow_body_child(root: arrow) {
         Accepted { value: body, diagnostics: _ } =>
@@ -515,7 +515,7 @@ test fn ingested_classical_not_emit_accepts_holds() -> Bool {
 }
 
 test fn ingested_classical_not_real_infer_holds() -> Bool {
-  match ingested_arrow_from_source(source: ingested_classical_not_source) {
+  match v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_arrow_from_source(source: ingested_classical_not_source) {
     Accepted { value: arrow, diagnostics: _ } =>
       match v2.compiler.infer.infer(tree: arrow) {
         Accepted { value: _, diagnostics: _ } => true

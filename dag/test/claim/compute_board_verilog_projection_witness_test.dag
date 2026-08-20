@@ -35,7 +35,7 @@ fn emitted_source(intent: product.compute_board.digital_control.DigitalControlIn
 data expected_interlock_verilog: String = "module board_power_interlock (\n  input  wire conditioned_good,\n  input  wire fault,\n  output wire power_permit,\n  output wire reset_release\n);\n  assign power_permit = (conditioned_good & ~fault);\n  assign reset_release = (conditioned_good & power_permit);\nendmodule\n"
 
 test fn w_interlock_emits_exact_verilog_bytes() -> Bool {
-  emitted_source(intent: board_power_interlock_intent) == expected_interlock_verilog
+  emitted_source(intent: board_power_interlock_intent) == test.claim.compute_board_verilog_projection_witness.expected_interlock_verilog
 }
 
 // THE DIFFERENTIAL CONTROL the direction asks for: change the fault sense in the ARTICLE and
@@ -58,7 +58,7 @@ data active_low_fault_intent: product.compute_board.digital_control.DigitalContr
 test fn w_fault_polarity_change_changes_emitted_bytes() -> Bool {
   let flipped = emitted_source(intent: active_low_fault_intent)
   flipped != ""
-    && flipped != expected_interlock_verilog
+    && flipped != test.claim.compute_board_verilog_projection_witness.expected_interlock_verilog
     && string_contains(s: flipped, pattern: "assign power_permit = (conditioned_good & fault);")
     && !string_contains(s: flipped, pattern: "~fault")
     && string_contains(s: emitted_source(intent: board_power_interlock_intent), pattern: "~fault")
@@ -125,7 +125,7 @@ test fn w_spelling_with_a_forbidden_character_refuses() -> Bool {
 // refusals above are discriminating rather than a checker that rejects everything.
 test fn w_production_bindings_are_admitted() -> Bool {
   match test.claim.compute_board_verilog_projection_witness.project(intent: board_power_interlock_intent, bindings: power_interlock_verilog_bindings) {
-    VerilogModuleEmitted { receipt: r } => r.source == expected_interlock_verilog
+    VerilogModuleEmitted { receipt: r } => r.source == test.claim.compute_board_verilog_projection_witness.expected_interlock_verilog
     VerilogProjectionRefused { cause: _ } => false
   }
 }

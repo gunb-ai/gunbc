@@ -317,7 +317,7 @@ fn resolve_method_receiver_type(receiver_type: v1.std.core.Node, env: v1.compile
 }
 
 fn resolve_scrutinee_type_node_seen(env: v1.compiler.infer_env.TypeEnv, n: v1.std.core.Node, seen: Map<String, Bool>) -> v1.std.core.Node {
-  let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
+  let n_is_type_var = if n.inferred != none { v1.compiler.infer_lookup.is_type_variable(inferred: n.inferred.value) } else { false }
   if n_is_type_var { return n }
   let normed = v1.compiler.infer_types.normalize_access_type_node(n: n)
   if normed.connective == NoConnective && normed.children |> count > 0 && normed.inferred != none {

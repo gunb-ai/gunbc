@@ -39,7 +39,7 @@ fn ts_field_access_emit_accepts() -> v2.std.diagnostic.Outcome<extdeps.communica
     ),
     f: fn(tokens) {
       serialize_concrete_syntax_tokens_to_source(
-        target: field_access_target_model(),
+        target: v2.test.manual.typescript_field_access_emit.field_access_target_model(),
         tokens: tokens
       )
     }

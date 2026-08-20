@@ -44,7 +44,7 @@ fn count_not_in_roster(names: List<String>, roster: List<String>) -> Int {
     xs: names,
     empty: 0,
     cons: fn(count, name) {
-      if list_contains_str(xs: roster, target: name) { count } else { count + 1 }
+      if v2.lens.inert_carrier.list_contains_str(xs: roster, target: name) { count } else { count + 1 }
     }
   )
 }
@@ -54,7 +54,7 @@ fn count_stale_roster(roster: List<String>, inert_names: List<String>) -> Int {
     xs: roster,
     empty: 0,
     cons: fn(count, entry) {
-      if list_contains_str(xs: inert_names, target: entry) { count } else { count + 1 }
+      if v2.lens.inert_carrier.list_contains_str(xs: inert_names, target: entry) { count } else { count + 1 }
     }
   )
 }

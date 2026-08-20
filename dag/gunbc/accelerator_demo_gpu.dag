@@ -56,7 +56,7 @@ fn render_gpu_fidelity_receipt(receipt: GpuFidelityReceipt) -> String {
           concat(
             " device_precision=",
             concat(
-              render_decode_fidelity(fidelity: receipt.device_precision_fidelity),
+              gunbc.accelerator_demo_gpu.render_decode_fidelity(fidelity: receipt.device_precision_fidelity),
               concat(" status=", render_gpu_execution_status(status: receipt.status))
             )
           )

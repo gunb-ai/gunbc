@@ -63,7 +63,7 @@ test fn matching_pinned_tool_is_admitted_with_zero_hunks() -> Bool {
     request: gunbc.tool_readiness.PinnedToolReadinessRequest { pin: rustfmt_pin },
     frontier: [witness_unpinned_frontier_row],
     context: context(rows: [
-      observed(tool_name: "rustfmt", identity: expected_rustfmt_identity),
+      test.claim.tool_readiness_witness.observed(tool_name: "rustfmt", identity: expected_rustfmt_identity),
     ]),
   ) {
     gunbc.tool_readiness.PinnedAdmitted { pin: admitted, plan: plan } =>
@@ -80,7 +80,7 @@ test fn digest_mismatch_refuses_and_frontier_cannot_bypass_it() -> Bool {
     request: gunbc.tool_readiness.PinnedToolReadinessRequest { pin: rustfmt_pin },
     frontier: [witness_unpinned_frontier_row],
     context: context(rows: [
-      observed(tool_name: "rustfmt", identity: other_rustfmt_identity),
+      test.claim.tool_readiness_witness.observed(tool_name: "rustfmt", identity: other_rustfmt_identity),
     ]),
   )
   match readiness {
@@ -115,7 +115,7 @@ test fn unchanged_tracked_pin_still_refuses_integrity() -> Bool {
     request: gunbc.tool_readiness.PinnedToolReadinessRequest { pin: tracked_rustfmt_pin },
     frontier: [witness_unpinned_frontier_row],
     context: context(rows: [
-      observed(tool_name: "rustfmt", identity: expected_rustfmt_identity),
+      test.claim.tool_readiness_witness.observed(tool_name: "rustfmt", identity: expected_rustfmt_identity),
     ]),
   ) {
     gunbc.tool_readiness.PinnedRefused { refusals: rows } =>
@@ -143,16 +143,16 @@ test fn unrelated_tool_identity_does_not_change_rustfmt_readiness() -> Bool {
     request: gunbc.tool_readiness.PinnedToolReadinessRequest { pin: rustfmt_pin },
     frontier: [],
     context: context(rows: [
-      observed(tool_name: "cargo", identity: unrelated_cargo_identity_a),
-      observed(tool_name: "rustfmt", identity: expected_rustfmt_identity),
+      test.claim.tool_readiness_witness.observed(tool_name: "cargo", identity: unrelated_cargo_identity_a),
+      test.claim.tool_readiness_witness.observed(tool_name: "rustfmt", identity: expected_rustfmt_identity),
     ]),
   )
   let after = gunbc.tool_readiness.tool_readiness(
     request: gunbc.tool_readiness.PinnedToolReadinessRequest { pin: rustfmt_pin },
     frontier: [],
     context: context(rows: [
-      observed(tool_name: "cargo", identity: unrelated_cargo_identity_b),
-      observed(tool_name: "rustfmt", identity: expected_rustfmt_identity),
+      test.claim.tool_readiness_witness.observed(tool_name: "cargo", identity: unrelated_cargo_identity_b),
+      test.claim.tool_readiness_witness.observed(tool_name: "rustfmt", identity: expected_rustfmt_identity),
     ]),
   )
   match before {
@@ -201,8 +201,8 @@ test fn duplicate_observed_tool_identity_refuses_located_and_counted() -> Bool {
     request: gunbc.tool_readiness.PinnedToolReadinessRequest { pin: rustfmt_pin },
     frontier: [],
     context: context(rows: [
-      observed(tool_name: "rustfmt", identity: expected_rustfmt_identity),
-      observed(tool_name: "rustfmt", identity: other_rustfmt_identity),
+      test.claim.tool_readiness_witness.observed(tool_name: "rustfmt", identity: expected_rustfmt_identity),
+      test.claim.tool_readiness_witness.observed(tool_name: "rustfmt", identity: other_rustfmt_identity),
     ]),
   )
   match readiness {
@@ -228,7 +228,7 @@ test fn declared_unpinned_rustfmt_frontier_is_explicit() -> Bool {
     request: gunbc.tool_readiness.UnpinnedToolReadinessRequest { tool: extdeps.tools.rustfmt.rustfmt_cli_tool },
     frontier: [witness_unpinned_frontier_row],
     context: context(rows: [
-      observed(tool_name: "rustfmt", identity: other_rustfmt_identity),
+      test.claim.tool_readiness_witness.observed(tool_name: "rustfmt", identity: other_rustfmt_identity),
     ]),
   ) {
     gunbc.tool_readiness.UnpinnedFrontier { row: row, observed: observation } =>
@@ -245,7 +245,7 @@ test fn unlisted_unpinned_tool_refuses() -> Bool {
     request: gunbc.tool_readiness.UnpinnedToolReadinessRequest { tool: extdeps.tools.rustfmt.rustfmt_cli_tool },
     frontier: [],
     context: context(rows: [
-      observed(tool_name: "rustfmt", identity: other_rustfmt_identity),
+      test.claim.tool_readiness_witness.observed(tool_name: "rustfmt", identity: other_rustfmt_identity),
     ]),
   ) {
     gunbc.tool_readiness.PinnedRefused { refusals: rows } =>
@@ -269,7 +269,7 @@ test fn duplicate_unpinned_frontier_rows_refuse() -> Bool {
       witness_unpinned_frontier_row,
     ],
     context: context(rows: [
-      observed(tool_name: "rustfmt", identity: other_rustfmt_identity),
+      test.claim.tool_readiness_witness.observed(tool_name: "rustfmt", identity: other_rustfmt_identity),
     ]),
   ) {
     gunbc.tool_readiness.PinnedRefused { refusals: rows } =>

@@ -41,7 +41,7 @@ fn cls(name: String) -> extdeps.languages.css.selectors.SelectorSubject {
 fn motion_rules() -> List<gunbc.design.material.BuildRule> {
   [
     gunbc.design.material.StaticRule {
-      selector: cls(name: motion_plate_class),
+      selector: gunbc.roadmap_instrument_motion.cls(name: motion_plate_class),
       decls: [
         decl(prop: Display, value: "block"),
         decl(prop: Padding, value: scale_var(t: space_6)),
@@ -52,7 +52,7 @@ fn motion_rules() -> List<gunbc.design.material.BuildRule> {
       ],
     },
     gunbc.design.material.StaticRule {
-      selector: cls(name: motion_tap_btn_class),
+      selector: gunbc.roadmap_instrument_motion.cls(name: motion_tap_btn_class),
       decls: [
         decl(prop: Padding, value: scale_var(t: space_2)),
         decl(prop: Border, value: concat("1px solid ", role_var(r: BorderRole))),
@@ -65,7 +65,7 @@ fn motion_rules() -> List<gunbc.design.material.BuildRule> {
       ],
     },
     gunbc.design.material.StaticRule {
-      selector: cls(name: motion_receipt_class),
+      selector: gunbc.roadmap_instrument_motion.cls(name: motion_receipt_class),
       decls: [
         decl(prop: Display, value: "grid"),
         decl(prop: Gap, value: scale_var(t: space_2)),
@@ -233,7 +233,7 @@ fn coverage_section() -> std.markup.Fragment {
       el("h2", [ txt("coverage obligations") ]),
       instrument_note(s: "Obligations, not support claims. A deferred target names the consumer whose arrival is its trigger; a target nobody has a reason to reach has no row at all, because an empty space is more honest than a placeholder."),
     ],
-    map(coverage_targets, t => coverage_row(t: t))))
+    map(coverage_targets, t => gunbc.roadmap_instrument_motion.coverage_row(t: t))))
 }
 
 fn motion_main() -> std.markup.Fragment {

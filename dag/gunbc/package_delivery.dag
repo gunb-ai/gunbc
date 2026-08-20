@@ -645,12 +645,12 @@ fn admit_codex_selected_node(
                 cause: "platform cpu expectation missing" as std.types.NonEmptyStr,
               }
             Present { value: cpu_v } =>
-              if list_contains_str(xs: node.metadata.platform.os, needle: os_v) == false {
+              if gunbc.package_delivery.list_contains_str(xs: node.metadata.platform.os, needle: os_v) == false {
                 CodexSelectedNodeIdentityRefused {
                   lock_node_key: lock_node_key,
                   cause: "platform os metadata does not match selected target" as std.types.NonEmptyStr,
                 }
-              } else if list_contains_str(xs: node.metadata.platform.cpu, needle: cpu_v) == false {
+              } else if gunbc.package_delivery.list_contains_str(xs: node.metadata.platform.cpu, needle: cpu_v) == false {
                 CodexSelectedNodeIdentityRefused {
                   lock_node_key: lock_node_key,
                   cause: "platform cpu metadata does not match selected target" as std.types.NonEmptyStr,

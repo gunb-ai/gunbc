@@ -77,7 +77,7 @@ service ebay.OAuth {
       method: POST,
       path: "/identity/v1/oauth2/token",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: { grant_type: client_credentials_grant_type, scope: scope }
+      body: { grant_type: extdeps.ebay.oauth.client_credentials_grant_type, scope: scope }
     }
     response {
       200 => EbayOAuthTokenResponse

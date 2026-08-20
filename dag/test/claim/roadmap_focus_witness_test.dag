@@ -120,7 +120,7 @@ fn fixture_focus() -> gunbc.roadmap_focus.RoadmapFocus {
 
 test fn synthetic_closure_pulls_transitive_cross_lane_prerequisites() -> Bool {
   let pulled = focus_prerequisite_ids(
-    focus: fixture_focus(), nodes: fixture_nodes(), edges: fixture_edges(),
+    focus: fixture_focus(), nodes: test.claim.roadmap_focus_witness_test.fixture_nodes(), edges: test.claim.roadmap_focus_witness_test.fixture_edges(),
   )
   count(pulled) == 3
     && any(pulled, p => p == "b3")
@@ -130,16 +130,16 @@ test fn synthetic_closure_pulls_transitive_cross_lane_prerequisites() -> Bool {
 
 test fn synthetic_visible_set_is_lane_plus_pulled() -> Bool {
   count(focus_visible_nodes(
-    focus: fixture_focus(), nodes: fixture_nodes(), edges: fixture_edges(),
+    focus: fixture_focus(), nodes: test.claim.roadmap_focus_witness_test.fixture_nodes(), edges: test.claim.roadmap_focus_witness_test.fixture_edges(),
   )) == 4
 }
 
 test fn synthetic_no_visible_node_has_a_hidden_prerequisite() -> Bool {
   let vis = focus_visible_nodes(
-    focus: fixture_focus(), nodes: fixture_nodes(), edges: fixture_edges(),
+    focus: fixture_focus(), nodes: test.claim.roadmap_focus_witness_test.fixture_nodes(), edges: test.claim.roadmap_focus_witness_test.fixture_edges(),
   )
   all(
-    fixture_edges() |> filter(e => any(vis, n => (n.node as String) == (e.child as String))),
+    test.claim.roadmap_focus_witness_test.fixture_edges() |> filter(e => any(vis, n => (n.node as String) == (e.child as String))),
     e => any(vis, n => (n.node as String) == (e.parent as String)),
   )
 }
@@ -147,17 +147,17 @@ test fn synthetic_no_visible_node_has_a_hidden_prerequisite() -> Bool {
 test fn synthetic_focus_with_no_external_prerequisite_pulls_nothing() -> Bool {
   count(focus_prerequisite_ids(
     focus: gunbc.roadmap_focus.FocusOnOwners { label: "lane b", owners: ["lane-b"] },
-    nodes: fixture_nodes(),
-    edges: fixture_edges(),
+    nodes: test.claim.roadmap_focus_witness_test.fixture_nodes(),
+    edges: test.claim.roadmap_focus_witness_test.fixture_edges(),
   )) == 0
 }
 
 test fn synthetic_notice_names_every_pulled_prerequisite() -> Bool {
   let notice = focus_notice(
-    focus: fixture_focus(), nodes: fixture_nodes(), edges: fixture_edges(),
+    focus: fixture_focus(), nodes: test.claim.roadmap_focus_witness_test.fixture_nodes(), edges: test.claim.roadmap_focus_witness_test.fixture_edges(),
   )
   all(
-    focus_prerequisite_ids(focus: fixture_focus(), nodes: fixture_nodes(), edges: fixture_edges()),
+    focus_prerequisite_ids(focus: fixture_focus(), nodes: test.claim.roadmap_focus_witness_test.fixture_nodes(), edges: test.claim.roadmap_focus_witness_test.fixture_edges()),
     id => string_contains(s: notice, pattern: id),
   )
 }

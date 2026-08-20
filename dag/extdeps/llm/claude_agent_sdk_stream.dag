@@ -119,11 +119,11 @@ fn claude_sdk_control_response_parser_drop_holds(
   subprocess_raw_types: List<String>,
   sdk_parsed_types: List<String>
 ) -> Bool {
-  list_contains_string(
+  extdeps.llm.claude_agent_sdk_stream.list_contains_string(
     items: subprocess_raw_types,
     needle: claude_stream_event_type_control_response
   )
-    && !list_contains_string(
+    && !extdeps.llm.claude_agent_sdk_stream.list_contains_string(
       items: sdk_parsed_types,
       needle: claude_stream_event_type_control_response
     )

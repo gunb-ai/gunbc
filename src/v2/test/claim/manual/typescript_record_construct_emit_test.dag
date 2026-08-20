@@ -64,7 +64,7 @@ fn ts_record_construct_emit_accepts(
     ),
     f: fn(tokens) {
       serialize_concrete_syntax_tokens_to_source(
-        target: record_construct_target_model(),
+        target: v2.test.manual.typescript_record_construct_emit.record_construct_target_model(),
         tokens: tokens
       )
     }

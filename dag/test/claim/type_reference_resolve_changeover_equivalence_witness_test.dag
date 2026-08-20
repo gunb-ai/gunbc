@@ -10,7 +10,7 @@ fn census_of(source: String) -> gunbc.compile_diagnostic_census.CompileDiagnosti
 }
 
 fn unresolved_blocking_count(source: String) -> Int {
-  match census_of(source: source) {
+  match test.claim.type_reference_resolve_changeover_equivalence_witness_test.census_of(source: source) {
     CensusObserved { rows: rows } =>
       census_total_count(
         rows: census_rows_of_class(
@@ -31,15 +31,15 @@ data cross_module_pool_homonym_consumer_source: String = "module equiv_consumer_
 data irrelevant_import_control_source: String = "module equiv_irrelevant_import\n\nimport std.types { String }\n\nfn use_type(x: std.content_hash.ContentHash) -> std.content_hash.ContentHash { x }\n"
 
 test fn cross_module_import_reachable_stays_green() -> Bool {
-  unresolved_blocking_count(source: cross_module_consumer_import_reachable_source) == 0
+  test.claim.type_reference_resolve_changeover_equivalence_witness_test.unresolved_blocking_count(source: cross_module_consumer_import_reachable_source) == 0
 }
 
 test fn cross_module_pool_homonym_without_import_is_fail_closed_red() -> Bool {
-  unresolved_blocking_count(source: cross_module_pool_homonym_consumer_source) >= 1
+  test.claim.type_reference_resolve_changeover_equivalence_witness_test.unresolved_blocking_count(source: cross_module_pool_homonym_consumer_source) >= 1
 }
 
 test fn irrelevant_import_does_not_rescue_pool_homonym_red() -> Bool {
-  unresolved_blocking_count(source: irrelevant_import_control_source) >= 1
+  test.claim.type_reference_resolve_changeover_equivalence_witness_test.unresolved_blocking_count(source: irrelevant_import_control_source) >= 1
 }
 
 test fn pr_b_hardening_note_carries_equivalence_and_fail_closed_obligations() -> Bool {

@@ -82,7 +82,7 @@ fn fixture_admission(
     realization: realization,
     capability_version: capability_version,
     perturbation_generation: 7,
-    readback_subject: fixture_subject,
+    readback_subject: test.claim.state_durability_witness.fixture_subject,
   }
 }
 
@@ -137,7 +137,7 @@ fn fixture_before_readback(
   std.state_durability.StateBeforeReadbackReceipt {
     perturbation_receipt_id: receipt_id,
     target: fixture_target,
-    subject: fixture_subject,
+    subject: test.claim.state_durability_witness.fixture_subject,
     state_digest: digest,
     observed_at: 1000,
   }
@@ -150,7 +150,7 @@ fn fixture_after_readback(
   std.state_durability.StateAfterReadbackReceipt {
     perturbation_receipt_id: receipt_id,
     target: fixture_target,
-    subject: fixture_subject,
+    subject: test.claim.state_durability_witness.fixture_subject,
     state_digest: digest,
     observed_after_perturbation_completion: positive_millisecond(
       count: positive_measure_count(predecessor: 29),
@@ -195,7 +195,7 @@ fn fixture_evidence(
 }
 
 fn matching_evidence() -> std.state_durability.StateDurabilityEvidence<test.claim.state_durability_witness.FixtureTarget, test.claim.state_durability_witness.FixtureReadbackSubject> {
-  fixture_evidence(
+  test.claim.state_durability_witness.fixture_evidence(
     admission: current_admission(),
     boundary: fixture_boundary,
     readback_receipt_id: "fixture-perturbation",
@@ -384,7 +384,7 @@ test fn capability_definition_change_invalidates_old_receipt() -> Bool {
 }
 
 test fn wrong_boundary_receipt_reaches_typed_mismatch_arm() -> Bool {
-  let wrong = fixture_evidence(
+  let wrong = test.claim.state_durability_witness.fixture_evidence(
     admission: current_admission(),
     boundary: fixture_wrong_boundary,
     readback_receipt_id: "fixture-perturbation",
@@ -411,7 +411,7 @@ test fn wrong_boundary_receipt_reaches_typed_mismatch_arm() -> Bool {
 }
 
 test fn readbacks_must_link_the_perturbation_receipt() -> Bool {
-  let wrong = fixture_evidence(
+  let wrong = test.claim.state_durability_witness.fixture_evidence(
     admission: current_admission(),
     boundary: fixture_boundary,
     readback_receipt_id: "unrelated-perturbation",
@@ -444,7 +444,7 @@ test fn activation_receipt_is_scoped_to_the_admitted_digest() -> Bool {
     capability_version: fixture_capability_version,
     desired: fixture_digest_b,
   )
-  let wrong = fixture_evidence(
+  let wrong = test.claim.state_durability_witness.fixture_evidence(
     admission: current_admission(),
     boundary: fixture_boundary,
     readback_receipt_id: "fixture-perturbation",
@@ -471,7 +471,7 @@ test fn activation_receipt_is_scoped_to_the_admitted_digest() -> Bool {
 }
 
 test fn semantically_similar_but_digest_different_state_refuses() -> Bool {
-  let wrong = fixture_evidence(
+  let wrong = test.claim.state_durability_witness.fixture_evidence(
     admission: current_admission(),
     boundary: fixture_boundary,
     readback_receipt_id: "fixture-perturbation",

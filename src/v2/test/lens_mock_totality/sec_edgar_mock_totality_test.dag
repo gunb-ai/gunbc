@@ -31,14 +31,14 @@ fn omits_edgar_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> 
   omit_consumer_handles(
     case: case,
     omit_keys: sec_edgar_red_omit_keys,
-    total_consumer_handles: real_consumer_handles
+    total_consumer_handles: v2.test.lens_mock_totality.sec_edgar_mock_totality.real_consumer_handles
   )
 }
 
 test fn sec_edgar_mock_consumer_is_total_holds() -> Bool {
   mock_totality_green_holds(
     published: extdeps.sec.mock_corpus.sec_edgar_published_mock_corpus,
-    consumer_handles: real_consumer_handles
+    consumer_handles: v2.test.lens_mock_totality.sec_edgar_mock_totality.real_consumer_handles
   )
 }
 

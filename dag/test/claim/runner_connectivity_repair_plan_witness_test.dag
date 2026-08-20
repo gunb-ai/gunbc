@@ -12,7 +12,7 @@ fn fixture_slot() -> gunbc.build_cache_instance.RunnerSlotIdentity {
 }
 
 fn wedged_snapshot(act: std.types.Timestamp) -> gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
-  let slot = fixture_slot()
+  let slot = test.claim.runner_connectivity_repair_plan_witness.fixture_slot()
   let inc = gunbc.runner_connectivity_recovery.RunnerLocalIncarnation {
     slot: slot,
     process: gunbc.build_cache_instance.ProcessIdentity {
@@ -50,8 +50,8 @@ fn wedged_snapshot(act: std.types.Timestamp) -> gunbc.runner_connectivity_recove
 }
 
 test fn replace_action_projects_five_step_repair_sequence() -> Bool {
-  let act = act_ts(s: "2026-08-06T20:00:00Z")
-  let snap = wedged_snapshot(act: act)
+  let act = test.claim.runner_connectivity_repair_plan_witness.act_ts(s: "2026-08-06T20:00:00Z")
+  let snap = test.claim.runner_connectivity_repair_plan_witness.wedged_snapshot(act: act)
   let action = decide_runner_connectivity_action_for_snapshot(
     snap: snap,
     prior: snap,
@@ -91,8 +91,8 @@ test fn replace_action_projects_five_step_repair_sequence() -> Bool {
 }
 
 test fn noop_action_projects_empty_repair_plan() -> Bool {
-  let act = act_ts(s: "2026-08-06T20:00:00Z")
-  let snap = wedged_snapshot(act: act)
+  let act = test.claim.runner_connectivity_repair_plan_witness.act_ts(s: "2026-08-06T20:00:00Z")
+  let snap = test.claim.runner_connectivity_repair_plan_witness.wedged_snapshot(act: act)
   let connected = gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
     slot: snap.slot,
     local: snap.local,

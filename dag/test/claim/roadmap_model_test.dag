@@ -16,7 +16,7 @@ fn verdict_is_drifted(v: gunbc.roadmap_status.DriftVerdict) -> Bool {
   match v { Drifted => true  Clean => false  Underivable => false }
 }
 test fn witness_child_has_parent() -> Bool {
-  match roadmap_primary_parent(edges: edges(), node: roadmap_model_child_node) {
+  match roadmap_primary_parent(edges: test.claim.roadmap_model.edges(), node: roadmap_model_child_node) {
     UnderParent { parent: p } => p == parent_node
     TopLevel => false
   }
@@ -35,11 +35,11 @@ test fn witness_multi_parent_dependencies_are_not_flattened() -> Bool {
 }
 
 test fn witness_orphan_is_top_level() -> Bool {
-  is_top_level(edges: edges(), node: orphan_node)
+  is_top_level(edges: test.claim.roadmap_model.edges(), node: orphan_node)
 }
 
 test fn witness_parent_is_top_level() -> Bool {
-  is_top_level(edges: edges(), node: parent_node)
+  is_top_level(edges: test.claim.roadmap_model.edges(), node: parent_node)
 }
 
 data existing_docs: List<String> = [

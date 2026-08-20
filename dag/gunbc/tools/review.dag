@@ -86,7 +86,7 @@ func review_pr(
   owner: String,
   repo: String,
   pr_number: Int,
-  model: String = default_model
+  model: String = gunbc.tools.review.default_model
 ) -> { reviewed: Bool, comment_url: String } {
 
   pr = github.Pulls.Get(
@@ -102,7 +102,7 @@ func review_pr(
     repo: repo,
     pull_number: pr_number
   )
-  already_done = has_review_at_sha(reviews: existing.reviews, sha: pr.pr.head.sha)
+  already_done = gunbc.tools.review.has_review_at_sha(reviews: existing.reviews, sha: pr.pr.head.sha)
 
   diff = github.Pulls.Diff(
     auth_token: "",
@@ -160,7 +160,7 @@ func review_cycle(
 
   upsert_tagged_cron_tab(
     tag: "review-agent",
-    schedule: render_cron_schedule(cron_schedule),
+    schedule: render_cron_schedule(gunbc.tools.review.cron_schedule),
     command: "/Users/briansrls/gunbc/target/review-codegen/review-agent review-cycle",
     log_path: "/Users/briansrls/.local/share/gunbc-review/logs/cron.log"
   )
@@ -173,7 +173,7 @@ func review_cycle(
   )
 
   results = for pr in open_prs.pulls {
-    review_pr(
+    gunbc.tools.review.review_pr(
       owner: owner,
       repo: repo,
       pr_number: pr.number

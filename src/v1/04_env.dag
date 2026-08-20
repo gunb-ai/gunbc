@@ -82,7 +82,7 @@ fn empty_type_env() -> v1.compiler.infer_env.TypeEnv {
     source_indices: empty_map(),
     intern_table: empty_intern_table(),
     source_visible_names: empty_map(),
-    symbol_index: empty_symbol_index()
+    symbol_index: v1.compiler.infer_env.empty_symbol_index()
   }
 }
 
@@ -134,7 +134,7 @@ fn symbol_index_insert(index: v1.compiler.infer_env.SymbolIndex, qualified_name:
 fn symbol_index_insert_decl(index: v1.compiler.infer_env.SymbolIndex, module_path: String, binding: v1.compiler.infer_env.TypeBinding) -> v1.compiler.infer_env.SymbolIndex {
   SymbolIndex {
     entries: map_insert(index.entries, concat(module_path, ".", binding.name), binding.resolved),
-    global_bare: symbol_index_track_global_bare(global_bare: index.global_bare, module_path: module_path, binding: binding),
+    global_bare: v1.compiler.infer_env.symbol_index_track_global_bare(global_bare: index.global_bare, module_path: module_path, binding: binding),
     services: index.services
   }
 }
@@ -480,7 +480,7 @@ fn lookup_qualified_module_projection(env: v1.compiler.infer_env.TypeEnv, name: 
   match contains(name, ".") {
     false => Absent
     true =>
-      match symbol_index_lookup(index: env.symbol_index, qualified_name: name) {
+      match v1.compiler.infer_env.symbol_index_lookup(index: env.symbol_index, qualified_name: name) {
         Present { value: resolved } =>
           Present {
             value: v1.compiler.infer_env.TypeBinding {
@@ -907,7 +907,7 @@ fn type_ref_measure_binding_authority(env: v1.compiler.infer_env.TypeEnv, name: 
   } else if contains(name, ".") {
     let prefix = qualified_all_but_last(name: name)
     if type_ref_module_path_is_containment_prefix(ancestor: prefix, descendant: env.module_path) {
-      match symbol_index_lookup(index: env.symbol_index, qualified_name: name) {
+      match v1.compiler.infer_env.symbol_index_lookup(index: env.symbol_index, qualified_name: name) {
         Present { value: _ } => true
         Absent => false
       }

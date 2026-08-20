@@ -381,7 +381,7 @@ data foreign_attempt_receipt: product.fabric.execution.Receipt<std.types.NonEmpt
 }
 
 fn admission_label(r: product.fabric.execution.Receipt<std.types.NonEmptyStr>) -> std.types.NonEmptyStr {
-  match product.fabric.execution.admit_receipt_for_grant(r: r, g: fixture_grant) {
+  match product.fabric.execution.admit_receipt_for_grant(r: r, g: test.claim.fabric_terminal_contract_witness.fixture_grant) {
     ReceiptAdmissible => "admissible"
     ReceiptFromDifferentLease => "different-lease"
     ReceiptFromDifferentAttempt => "different-attempt"
@@ -425,7 +425,7 @@ test fn a_receipt_from_the_granted_lease_is_admissible() -> Bool {
         completed_at: "2026-08-18T01:00:00Z",
       },
     },
-    g: fixture_grant,
+    g: test.claim.fabric_terminal_contract_witness.fixture_grant,
   ) {
     ReceiptAdmissible => true
     ReceiptFromDifferentLease => false

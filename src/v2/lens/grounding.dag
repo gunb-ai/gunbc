@@ -99,7 +99,7 @@ fn compute_layer_excluded(
 }
 
 fn str_starts_with(s: String, prefix: String) -> Bool {
-  is_prefix_of(prefix: prefix, xs: s, eq: char_eq)
+  is_prefix_of(prefix: prefix, xs: s, eq: v2.lens.grounding.char_eq)
 }
 
 fn name_has_unrecognized_prefix(name: String) -> Bool {

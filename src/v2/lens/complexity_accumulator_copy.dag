@@ -32,13 +32,13 @@ fn some_finding(f: Finding) -> Optional<Finding> {
 
 fn any_symbol_in(needles: List<v2.std.node.Symbol>, xs: List<v2.std.node.Symbol>) -> Bool {
   fold(needles, init: false, f: fn(acc, n) {
-    if acc { true } else { symbol_in(needle: n, xs: xs) }
+    if acc { true } else { v2.lens.complexity_accumulator_copy.symbol_in(needle: n, xs: xs) }
   })
 }
 
 fn port_carries_carrier(p: PortReading, carriers: List<v2.std.node.Symbol>) -> Bool {
   match p {
-    PortBareName { name: n } => symbol_in(needle: n, xs: carriers)
+    PortBareName { name: n } => v2.lens.complexity_accumulator_copy.symbol_in(needle: n, xs: carriers)
     PortPureLiteral => false
     PortComputedExpression { mentions: ms } => any_symbol_in(needles: ms, xs: carriers)
     PortMissing => false
@@ -104,7 +104,7 @@ fn resolve_port_reading(reading: PortReading, bindings: List<LetBinding>) -> Por
 fn classify_copied_port(at: Node, reading: PortReading, carriers: List<v2.std.node.Symbol>) -> Optional<Finding> {
   match reading {
     PortBareName { name: n } =>
-      if symbol_in(needle: n, xs: carriers) {
+      if v2.lens.complexity_accumulator_copy.symbol_in(needle: n, xs: carriers) {
         some_finding(f: Poly2Suspect { at: at, cost: poly_two_cost(n: at) })
       } else {
         some_finding(f: Unclassifiable { at: at, cause: ^copied_port_name_may_alias })

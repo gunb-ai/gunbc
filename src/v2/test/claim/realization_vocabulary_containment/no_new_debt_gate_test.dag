@@ -49,23 +49,23 @@ fn list_contains_str(xs: List<String>, target: String) -> Bool {
 }
 
 test fn ts0_census_roadmap_component_edge_is_grandfathered_holds() -> Bool {
-  edge_in_grandfathered_roster(edge: ts0_census_roadmap_component_edge)
+  v2.test.realization_vocabulary_containment.no_new_debt_gate.edge_in_grandfathered_roster(edge: ts0_census_roadmap_component_edge)
 }
 
 test fn ts0_census_theme_transition_edge_is_grandfathered_holds() -> Bool {
-  edge_in_grandfathered_roster(edge: ts0_census_theme_transition_edge)
+  v2.test.realization_vocabulary_containment.no_new_debt_gate.edge_in_grandfathered_roster(edge: ts0_census_theme_transition_edge)
 }
 
 test fn ts0_census_node_http_server_emit_edge_is_grandfathered_holds() -> Bool {
-  edge_in_grandfathered_roster(edge: ts0_census_node_http_server_emit_edge)
+  v2.test.realization_vocabulary_containment.no_new_debt_gate.edge_in_grandfathered_roster(edge: ts0_census_node_http_server_emit_edge)
 }
 
 test fn ts0_census_effect_plan_bash_materialize_edge_is_grandfathered_holds() -> Bool {
-  edge_in_grandfathered_roster(edge: ts0_census_effect_plan_bash_materialize_edge)
+  v2.test.realization_vocabulary_containment.no_new_debt_gate.edge_in_grandfathered_roster(edge: ts0_census_effect_plan_bash_materialize_edge)
 }
 
 test fn ts0_census_build_step_edge_is_grandfathered_holds() -> Bool {
-  edge_in_grandfathered_roster(edge: ts0_census_build_step_edge)
+  v2.test.realization_vocabulary_containment.no_new_debt_gate.edge_in_grandfathered_roster(edge: ts0_census_build_step_edge)
 }
 
 data ts0_frozen_roadmap_component_fact: List<v2.std.layer.LayerImportFact> = [
@@ -183,11 +183,11 @@ test fn ts0_frozen_population_containment_holds_holds() -> Bool {
 }
 
 test fn ts0_grandfathered_edge_keys_use_exact_edge_identity_holds() -> Bool {
-  list_contains_str(
+  v2.test.realization_vocabulary_containment.no_new_debt_gate.list_contains_str(
     xs: realization_vocab_grandfathered_edge_keys(),
     target: "dag/gunbc/roadmap_component.dag -> extdeps.languages.typescript.program"
   )
-    && list_contains_str(
+    && v2.test.realization_vocabulary_containment.no_new_debt_gate.list_contains_str(
       xs: realization_vocab_grandfathered_edge_keys(),
       target: "src/v2/workflow/effect_plan_bash_materialize.dag -> v2.extdeps.languages.bash_build"
     )

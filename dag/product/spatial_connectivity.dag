@@ -99,7 +99,7 @@ fn find_room(w: product.spatial_world.World, identity: product.placement_supply.
   fold(world_rooms(w: w), init: none, f: (acc, r) =>
     match acc {
       Present { value: found } => Present { value: found }
-      Absent => if room_identity_eq(a: r.identity, b: identity) { Present { value: r } } else { none }
+      Absent => if product.spatial_connectivity.room_identity_eq(a: r.identity, b: identity) { Present { value: r } } else { none }
     })
 }
 
@@ -145,7 +145,7 @@ fn admit_opening(w: product.spatial_world.World, o: Opening) -> ConnectivityCons
   if o.along_low >= o.along_high || o.sill >= o.head {
     ConnectivityRefused { cause: OpeningHasNoArea { opening: o.identity } }
   } else {
-    if room_identity_eq(a: o.first, b: o.second) {
+    if product.spatial_connectivity.room_identity_eq(a: o.first, b: o.second) {
       ConnectivityRefused { cause: OpeningJoinsRoomToItself { identity: o.first } }
     } else {
       match product.spatial_connectivity.find_room(w: w, identity: o.first) {
@@ -239,7 +239,7 @@ fn opening_plan(w: product.spatial_world.World, openings: List<Opening>) -> Conn
 fn plan_openings(p: OpeningPlan) -> List<Opening> { p.openings }
 
 fn contains_room(rooms: List<product.placement_supply.RoomIdentity>, wanted: product.placement_supply.RoomIdentity) -> Bool {
-  fold(rooms, init: false, f: (hit, r) => hit || room_identity_eq(a: r, b: wanted))
+  fold(rooms, init: false, f: (hit, r) => hit || product.spatial_connectivity.room_identity_eq(a: r, b: wanted))
 }
 
 // ONE RELAXATION: every opening with exactly one end already reached brings the other end in. An

@@ -17,7 +17,7 @@ fn ready_node(id: String) -> gunbc.roadmap_model.RoadmapNode {
 }
 
 fn frontier_ready(ids: List<String>) -> gunbc.roadmap_spawner.SpawnFrontier {
-  gunbc.roadmap_spawner.SpawnFrontier { ready: map(ids, id => ready_node(id: id)), upcoming: [], done: [], superseded: [] }
+  gunbc.roadmap_spawner.SpawnFrontier { ready: map(ids, id => test.claim.roadmap_belt_witness.ready_node(id: id)), upcoming: [], done: [], superseded: [] }
 }
 
 fn cap(n: Int) -> gunbc.roadmap_belt.BeltCapacity { gunbc.roadmap_belt.BeltCapacity { max_concurrent: n } }
@@ -125,7 +125,7 @@ test fn witness_reconcile_spawns_ready_missing_session() -> Bool {
 
 test fn witness_reconcile_noop_when_ready_and_live() -> Bool {
   let f = frontier_ready(ids: ["a"])
-  let r = belt_reconcile(state: gunbc.roadmap_belt.Running, frontier: f, live: [live_session(node_id: "a", verdict: Converged)], cap: cap(n: 3))
+  let r = belt_reconcile(state: gunbc.roadmap_belt.Running, frontier: f, live: [test.claim.roadmap_belt_witness.live_session(node_id: "a", verdict: Converged)], cap: cap(n: 3))
   belt_reconcile_spawn_count(r: r) == 0
     && belt_reconcile_teardown_count(r: r) == 0
     && belt_reconcile_refusal_count(r: r) == 0
@@ -133,7 +133,7 @@ test fn witness_reconcile_noop_when_ready_and_live() -> Bool {
 
 test fn witness_reconcile_reaps_owned_done_session() -> Bool {
   let f = frontier_ready(ids: ["a"])
-  let r = belt_reconcile(state: gunbc.roadmap_belt.Running, frontier: f, live: [live_session(node_id: "z", verdict: Converged)], cap: cap(n: 3))
+  let r = belt_reconcile(state: gunbc.roadmap_belt.Running, frontier: f, live: [test.claim.roadmap_belt_witness.live_session(node_id: "z", verdict: Converged)], cap: cap(n: 3))
   belt_reconcile_teardown_count(r: r) == 1
     && tears_down_node(r: r, id: "z")
     && belt_reconcile_spawn_count(r: r) == 1
@@ -143,13 +143,13 @@ test fn witness_reconcile_reaps_owned_done_session() -> Bool {
 
 test fn witness_reconcile_reaps_drifted_owned_session() -> Bool {
   let f = frontier_ready(ids: [])
-  let r = belt_reconcile(state: gunbc.roadmap_belt.Running, frontier: f, live: [live_session(node_id: "z", verdict: Drifted)], cap: cap(n: 3))
+  let r = belt_reconcile(state: gunbc.roadmap_belt.Running, frontier: f, live: [test.claim.roadmap_belt_witness.live_session(node_id: "z", verdict: Drifted)], cap: cap(n: 3))
   belt_reconcile_teardown_count(r: r) == 1 && tears_down_node(r: r, id: "z")
 }
 
 test fn witness_r5_refuses_foreign_teardown() -> Bool {
   let f = frontier_ready(ids: ["a"])
-  let r = belt_reconcile(state: gunbc.roadmap_belt.Running, frontier: f, live: [live_session(node_id: "z", verdict: Conflict)], cap: cap(n: 3))
+  let r = belt_reconcile(state: gunbc.roadmap_belt.Running, frontier: f, live: [test.claim.roadmap_belt_witness.live_session(node_id: "z", verdict: Conflict)], cap: cap(n: 3))
   belt_reconcile_teardown_count(r: r) == 0
     && !tears_down_node(r: r, id: "z")
     && belt_reconcile_refusal_count(r: r) == 1
@@ -158,7 +158,7 @@ test fn witness_r5_refuses_foreign_teardown() -> Bool {
 
 test fn witness_r5_refuses_nameonly_teardown() -> Bool {
   let f = frontier_ready(ids: [])
-  let r = belt_reconcile(state: gunbc.roadmap_belt.Running, frontier: f, live: [live_session(node_id: "z", verdict: UnknownRefused)], cap: cap(n: 3))
+  let r = belt_reconcile(state: gunbc.roadmap_belt.Running, frontier: f, live: [test.claim.roadmap_belt_witness.live_session(node_id: "z", verdict: UnknownRefused)], cap: cap(n: 3))
   belt_reconcile_teardown_count(r: r) == 0 && belt_reconcile_refusal_count(r: r) == 1
 }
 
@@ -170,7 +170,7 @@ test fn witness_reconcile_capacity_defers_surfaced() -> Bool {
 
 test fn witness_reconcile_paused_no_actions() -> Bool {
   let f = frontier_ready(ids: ["a", "b"])
-  let r = belt_reconcile(state: gunbc.roadmap_belt.Paused, frontier: f, live: [live_session(node_id: "z", verdict: Converged)], cap: cap(n: 3))
+  let r = belt_reconcile(state: gunbc.roadmap_belt.Paused, frontier: f, live: [test.claim.roadmap_belt_witness.live_session(node_id: "z", verdict: Converged)], cap: cap(n: 3))
   belt_reconcile_spawn_count(r: r) == 0
     && belt_reconcile_teardown_count(r: r) == 0
     && belt_reconcile_refusal_count(r: r) == 0
@@ -178,7 +178,7 @@ test fn witness_reconcile_paused_no_actions() -> Bool {
 
 test fn witness_reconcile_status_json_shape() -> Bool {
   let f = frontier_ready(ids: ["a"])
-  let j = belt_reconcile_status_json(state: gunbc.roadmap_belt.Running, frontier: f, live: [live_session(node_id: "z", verdict: Conflict)], cap: cap(n: 3))
+  let j = belt_reconcile_status_json(state: gunbc.roadmap_belt.Running, frontier: f, live: [test.claim.roadmap_belt_witness.live_session(node_id: "z", verdict: Conflict)], cap: cap(n: 3))
   string_contains(s: j, pattern: "roadmap-belt-reconcile/v1")
     && string_contains(s: j, pattern: "would_teardown")
     && string_contains(s: j, pattern: "refusal_count")

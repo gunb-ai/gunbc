@@ -272,7 +272,7 @@ test fn observed_tool_identity_missing_and_duplicate_refuse() -> Bool {
 data witness_sha256_hex: String = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
 test fn resolved_build_context_identity_refuses_sha256_observed_tool() -> Bool {
-  let sha256_identity = match sha256_hex_digest(hex: witness_sha256_hex) {
+  let sha256_identity = match sha256_hex_digest(hex: test.claim.artifact_store_witness.witness_sha256_hex) {
     Present { value: digest } => as_content_hash_cryptographic(digest: digest)
     Absent =>
       as_content_hash_structural(structural: content_hash_atom(value: "witness-setup-failed"))

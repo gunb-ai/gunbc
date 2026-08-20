@@ -44,7 +44,7 @@ fn source_findings(source_text: String) -> Optional<List<Finding>> {
 }
 
 fn ingest_findings(path: String) -> Optional<List<Finding>> {
-  source_findings(source_text: filesystem_read(path: path).content)
+  v2.lens.complexity_accumulator_copy.roster_gate.source_findings(source_text: filesystem_read(path: path).content)
 }
 
 fn count_matching(fs: List<Finding>, pred: fn(Finding) -> Bool) -> Int {
@@ -54,13 +54,13 @@ fn count_matching(fs: List<Finding>, pred: fn(Finding) -> Bool) -> Int {
 }
 
 fn file_verdict(path: String, refusal_ceiling: Int) -> RosterVerdict {
-  match ingest_findings(path: path) {
+  match v2.lens.complexity_accumulator_copy.roster_gate.ingest_findings(path: path) {
     Absent => RosterIngestRegressed
     Present { value: fs } =>
-      if count_matching(fs: fs, pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_suspect) > 0 {
+      if v2.lens.complexity_accumulator_copy.roster_gate.count_matching(fs: fs, pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_suspect) > 0 {
         RosterSuspectFound
       } else {
-        let refusals = count_matching(fs: fs, pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_refusal)
+        let refusals = v2.lens.complexity_accumulator_copy.roster_gate.count_matching(fs: fs, pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_refusal)
         if refusals > refusal_ceiling {
           RosterRatchetExceeded { refusals: refusals, ceiling: refusal_ceiling }
         } else {
@@ -71,21 +71,21 @@ fn file_verdict(path: String, refusal_ceiling: Int) -> RosterVerdict {
 }
 
 fn file_suspect_count(path: String) -> Int {
-  match ingest_findings(path: path) {
+  match v2.lens.complexity_accumulator_copy.roster_gate.ingest_findings(path: path) {
     Absent => -1
-    Present { value: fs } => count_matching(fs: fs, pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_suspect)
+    Present { value: fs } => v2.lens.complexity_accumulator_copy.roster_gate.count_matching(fs: fs, pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_suspect)
   }
 }
 
 fn file_refusal_count(path: String) -> Int {
-  match ingest_findings(path: path) {
+  match v2.lens.complexity_accumulator_copy.roster_gate.ingest_findings(path: path) {
     Absent => -1
-    Present { value: fs } => count_matching(fs: fs, pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_refusal)
+    Present { value: fs } => v2.lens.complexity_accumulator_copy.roster_gate.count_matching(fs: fs, pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_refusal)
   }
 }
 
 fn file_gate(path: String, refusal_ceiling: Int) -> Bool {
-  match file_verdict(path: path, refusal_ceiling: refusal_ceiling) {
+  match v2.lens.complexity_accumulator_copy.roster_gate.file_verdict(path: path, refusal_ceiling: refusal_ceiling) {
     RosterClean => true
     RosterIngestRegressed => false
     RosterSuspectFound => false
@@ -94,9 +94,9 @@ fn file_gate(path: String, refusal_ceiling: Int) -> Bool {
 }
 
 fn source_has_suspect(source_text: String) -> Bool {
-  match source_findings(source_text: source_text) {
+  match v2.lens.complexity_accumulator_copy.roster_gate.source_findings(source_text: source_text) {
     Absent => false
     Present { value: fs } =>
-      count_matching(fs: fs, pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_suspect) > 0
+      v2.lens.complexity_accumulator_copy.roster_gate.count_matching(fs: fs, pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_suspect) > 0
   }
 }

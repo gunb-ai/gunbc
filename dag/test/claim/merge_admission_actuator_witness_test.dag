@@ -10,8 +10,8 @@ data scenario_roster_r1: gunbc.merge_admission.GateRosterHash = merge_admission_
 data scenario_pr_x_receipt: gunbc.merge_admission.MergeAdmissionReceipt = gunbc.merge_admission.MergeAdmissionReceipt {
   pr_number: Present { value: 5933 },
   head_sha: "abc1234def5678901234567890abcd1234567890",
-  base_tree_hash: scenario_base_b0,
-  gate_roster_hash: scenario_roster_r0,
+  base_tree_hash: test.claim.merge_admission_actuator_witness.scenario_base_b0,
+  gate_roster_hash: test.claim.merge_admission_actuator_witness.scenario_roster_r0,
   conclusion: Success,
 }
 
@@ -21,9 +21,9 @@ test fn enforcement_policy_is_keyed_receipt() -> Bool {
 
 test fn enforcement_denies_stale_base_verdict() -> Bool {
   match classify_merge_admission_verdict(
-    receipt: scenario_pr_x_receipt,
-    merge_target_tree_hash: scenario_base_b1,
-    current_roster_hash: scenario_roster_r0,
+    receipt: test.claim.merge_admission_actuator_witness.scenario_pr_x_receipt,
+    merge_target_tree_hash: test.claim.merge_admission_actuator_witness.scenario_base_b1,
+    current_roster_hash: test.claim.merge_admission_actuator_witness.scenario_roster_r0,
   ) {
     MergeDeniedStaleBase => true
     MergeAdmitted => false
@@ -36,9 +36,9 @@ test fn enforcement_denies_stale_base_verdict() -> Bool {
 
 test fn enforcement_denies_stale_roster_verdict() -> Bool {
   match classify_merge_admission_verdict(
-    receipt: scenario_pr_x_receipt,
-    merge_target_tree_hash: scenario_base_b0,
-    current_roster_hash: scenario_roster_r1,
+    receipt: test.claim.merge_admission_actuator_witness.scenario_pr_x_receipt,
+    merge_target_tree_hash: test.claim.merge_admission_actuator_witness.scenario_base_b0,
+    current_roster_hash: test.claim.merge_admission_actuator_witness.scenario_roster_r1,
   ) {
     MergeDeniedStaleRoster => true
     MergeAdmitted => false
@@ -51,9 +51,9 @@ test fn enforcement_denies_stale_roster_verdict() -> Bool {
 
 test fn enforcement_admits_fresh_verdict() -> Bool {
   match classify_merge_admission_verdict(
-    receipt: scenario_pr_x_receipt,
-    merge_target_tree_hash: scenario_base_b0,
-    current_roster_hash: scenario_roster_r0,
+    receipt: test.claim.merge_admission_actuator_witness.scenario_pr_x_receipt,
+    merge_target_tree_hash: test.claim.merge_admission_actuator_witness.scenario_base_b0,
+    current_roster_hash: test.claim.merge_admission_actuator_witness.scenario_roster_r0,
   ) {
     MergeAdmitted => true
     MergeDeniedStaleBase => false
@@ -67,15 +67,15 @@ test fn enforcement_admits_fresh_verdict() -> Bool {
 test fn enforcement_denies_skipped_fresh_receipt() -> Bool {
   let receipt = gunbc.merge_admission.MergeAdmissionReceipt {
     pr_number: Present { value: 5933 },
-    head_sha: scenario_pr_x_receipt.head_sha,
-    base_tree_hash: scenario_base_b0,
-    gate_roster_hash: scenario_roster_r0,
+    head_sha: test.claim.merge_admission_actuator_witness.scenario_pr_x_receipt.head_sha,
+    base_tree_hash: test.claim.merge_admission_actuator_witness.scenario_base_b0,
+    gate_roster_hash: test.claim.merge_admission_actuator_witness.scenario_roster_r0,
     conclusion: Skipped,
   }
   match classify_merge_admission_verdict(
     receipt: receipt,
-    merge_target_tree_hash: scenario_base_b0,
-    current_roster_hash: scenario_roster_r0,
+    merge_target_tree_hash: test.claim.merge_admission_actuator_witness.scenario_base_b0,
+    current_roster_hash: test.claim.merge_admission_actuator_witness.scenario_roster_r0,
   ) {
     MergeDeniedNotSuccess => true
     MergeDeniedWrongAttempt => false
@@ -89,15 +89,15 @@ test fn enforcement_denies_skipped_fresh_receipt() -> Bool {
 test fn enforcement_denies_failure_fresh_receipt() -> Bool {
   let receipt = gunbc.merge_admission.MergeAdmissionReceipt {
     pr_number: Present { value: 5933 },
-    head_sha: scenario_pr_x_receipt.head_sha,
-    base_tree_hash: scenario_base_b0,
-    gate_roster_hash: scenario_roster_r0,
+    head_sha: test.claim.merge_admission_actuator_witness.scenario_pr_x_receipt.head_sha,
+    base_tree_hash: test.claim.merge_admission_actuator_witness.scenario_base_b0,
+    gate_roster_hash: test.claim.merge_admission_actuator_witness.scenario_roster_r0,
     conclusion: Failure,
   }
   match classify_merge_admission_verdict(
     receipt: receipt,
-    merge_target_tree_hash: scenario_base_b0,
-    current_roster_hash: scenario_roster_r0,
+    merge_target_tree_hash: test.claim.merge_admission_actuator_witness.scenario_base_b0,
+    current_roster_hash: test.claim.merge_admission_actuator_witness.scenario_roster_r0,
   ) {
     MergeDeniedNotSuccess => true
     MergeDeniedWrongAttempt => false
@@ -110,9 +110,9 @@ test fn enforcement_denies_failure_fresh_receipt() -> Bool {
 
 test fn enforcement_red_on_revert_stale_base() -> Bool {
   let fresh = match classify_merge_admission_verdict(
-    receipt: scenario_pr_x_receipt,
-    merge_target_tree_hash: scenario_base_b0,
-    current_roster_hash: scenario_roster_r0,
+    receipt: test.claim.merge_admission_actuator_witness.scenario_pr_x_receipt,
+    merge_target_tree_hash: test.claim.merge_admission_actuator_witness.scenario_base_b0,
+    current_roster_hash: test.claim.merge_admission_actuator_witness.scenario_roster_r0,
   ) {
     MergeAdmitted => true
     MergeDeniedStaleBase => false
@@ -122,9 +122,9 @@ test fn enforcement_red_on_revert_stale_base() -> Bool {
     MergeDeniedSubjectMismatch => false
   }
   let stale = match classify_merge_admission_verdict(
-    receipt: scenario_pr_x_receipt,
-    merge_target_tree_hash: scenario_base_b1,
-    current_roster_hash: scenario_roster_r0,
+    receipt: test.claim.merge_admission_actuator_witness.scenario_pr_x_receipt,
+    merge_target_tree_hash: test.claim.merge_admission_actuator_witness.scenario_base_b1,
+    current_roster_hash: test.claim.merge_admission_actuator_witness.scenario_roster_r0,
   ) {
     MergeDeniedStaleBase => true
     MergeAdmitted => false
@@ -139,13 +139,13 @@ test fn enforcement_red_on_revert_stale_base() -> Bool {
 test fn activation_deferred_blocks_merge_false_for_stale() -> Bool {
   (gating_is_enforced(s: merge_freshness_gating_status) == false)
     && merge_admission_would_block(
-      receipt: scenario_pr_x_receipt,
-      merge_target_tree_hash: scenario_base_b1,
-      current_roster_hash: scenario_roster_r0,
+      receipt: test.claim.merge_admission_actuator_witness.scenario_pr_x_receipt,
+      merge_target_tree_hash: test.claim.merge_admission_actuator_witness.scenario_base_b1,
+      current_roster_hash: test.claim.merge_admission_actuator_witness.scenario_roster_r0,
     )
     && (merge_admission_blocks_merge(
-      receipt: scenario_pr_x_receipt,
-      merge_target_tree_hash: scenario_base_b1,
-      current_roster_hash: scenario_roster_r0,
+      receipt: test.claim.merge_admission_actuator_witness.scenario_pr_x_receipt,
+      merge_target_tree_hash: test.claim.merge_admission_actuator_witness.scenario_base_b1,
+      current_roster_hash: test.claim.merge_admission_actuator_witness.scenario_roster_r0,
     ) == false)
 }

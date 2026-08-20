@@ -26,7 +26,7 @@ test fn witness_dpkg_status_argv_matches_transport_row() -> Bool {
       ]
     )
   )
-  argv_join(argv: helper) == argv_join(argv: transport)
+  test.claim.live_deploy.operations_witness.argv_join(argv: helper) == test.claim.live_deploy.operations_witness.argv_join(argv: transport)
 }
 
 test fn witness_apt_install_argv_matches_transport_row() -> Bool {
@@ -41,65 +41,65 @@ test fn witness_apt_install_argv_matches_transport_row() -> Bool {
       ]
     )
   )
-  argv_join(argv: helper) == argv_join(argv: transport)
+  test.claim.live_deploy.operations_witness.argv_join(argv: helper) == test.claim.live_deploy.operations_witness.argv_join(argv: transport)
 }
 
 test fn witness_systemctl_restart_argv_matches_transport_row() -> Bool {
   let helper = systemctl_restart_argv(unit: gunbc_roadmap_unit_name)
   let transport = v2.std.operation_argv.operation_argv_tokens_or_refusal_label(
     m: shell_materialize_operation_argv(
-      systemctl_path,
-      systemctl_service,
+      test.claim.live_deploy.operations_witness.systemctl_path,
+      test.claim.live_deploy.operations_witness.systemctl_service,
       "Restart",
       [
         v2.std.operation_argv.operation_argv_bind_text(name: "unit", text: gunbc_roadmap_unit_name as String)
       ]
     )
   )
-  argv_join(argv: helper) == argv_join(argv: transport)
+  test.claim.live_deploy.operations_witness.argv_join(argv: helper) == test.claim.live_deploy.operations_witness.argv_join(argv: transport)
 }
 
 test fn witness_systemctl_disable_now_argv_matches_transport_row() -> Bool {
   let helper = systemctl_disable_now_argv(unit: gunbc_roadmap_unit_name)
   let transport = v2.std.operation_argv.operation_argv_tokens_or_refusal_label(
     m: shell_materialize_operation_argv(
-      systemctl_path,
-      systemctl_service,
+      test.claim.live_deploy.operations_witness.systemctl_path,
+      test.claim.live_deploy.operations_witness.systemctl_service,
       "DisableNow",
       [
         v2.std.operation_argv.operation_argv_bind_text(name: "unit", text: gunbc_roadmap_unit_name as String)
       ]
     )
   )
-  argv_join(argv: helper) == argv_join(argv: transport)
+  test.claim.live_deploy.operations_witness.argv_join(argv: helper) == test.claim.live_deploy.operations_witness.argv_join(argv: transport)
 }
 
 test fn witness_systemctl_daemon_reload_argv_matches_transport_row() -> Bool {
   let helper = systemctl_daemon_reload_argv()
   let transport = v2.std.operation_argv.operation_argv_tokens_or_refusal_label(
     m: shell_materialize_operation_argv(
-      systemctl_path,
-      systemctl_service,
+      test.claim.live_deploy.operations_witness.systemctl_path,
+      test.claim.live_deploy.operations_witness.systemctl_service,
       "DaemonReload",
       []
     )
   )
-  argv_join(argv: helper) == argv_join(argv: transport)
+  test.claim.live_deploy.operations_witness.argv_join(argv: helper) == test.claim.live_deploy.operations_witness.argv_join(argv: transport)
 }
 
 test fn witness_systemctl_enable_argv_matches_transport_row() -> Bool {
   let helper = systemctl_enable_argv(unit: gunbc_roadmap_unit_name)
   let transport = v2.std.operation_argv.operation_argv_tokens_or_refusal_label(
     m: shell_materialize_operation_argv(
-      systemctl_path,
-      systemctl_service,
+      test.claim.live_deploy.operations_witness.systemctl_path,
+      test.claim.live_deploy.operations_witness.systemctl_service,
       "Enable",
       [
         v2.std.operation_argv.operation_argv_bind_text(name: "unit", text: gunbc_roadmap_unit_name as String)
       ]
     )
   )
-  argv_join(argv: helper) == argv_join(argv: transport)
+  test.claim.live_deploy.operations_witness.argv_join(argv: helper) == test.claim.live_deploy.operations_witness.argv_join(argv: transport)
 }
 
 test fn witness_dpkg_status_command_matches_transport() -> Bool {

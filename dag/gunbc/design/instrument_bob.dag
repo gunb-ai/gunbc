@@ -140,7 +140,7 @@ fn advance_descent_evidence(s: BobState, dt_ms: std.types.Milliseconds) -> std.t
     BobSettled => Strict
     BobRinging => {
       let before = bob_amplitude_milli(s: s)
-      let after = bob_amplitude_milli(s: advance(s: s, dt_ms: dt_ms))
+      let after = bob_amplitude_milli(s: gunbc.design.instrument_bob.advance(s: s, dt_ms: dt_ms))
       if after < before {
         Strict
       } else if after == before {
@@ -297,7 +297,7 @@ fn bob_frames_from(s: BobState, interval_ms: std.types.Milliseconds, budget: Int
       budget_allowed: budget_allowed,
     }
   } else {
-    let next = advance(s: s, dt_ms: interval_ms)
+    let next = gunbc.design.instrument_bob.advance(s: s, dt_ms: interval_ms)
     let frame = bob_frame_of(s: next)
     match next.phase {
       BobSettled => BobSequenceSettled { frames: [frame] }

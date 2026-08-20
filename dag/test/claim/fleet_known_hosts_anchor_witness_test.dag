@@ -26,11 +26,11 @@ fn row(host: String, endpoint: String, key: String) -> gunbc.fleet_host_key_enro
 // registry -- and before canonicalization they were two, because the identity was a function of the
 // list's traversal rather than of the enrollments it denotes.
 fn forward_rows() -> List<gunbc.fleet_host_key_enrollment.KnownHostKeyRow> {
-  [row(host: "a", endpoint: "alpha", key: "AAAA"), row(host: "b", endpoint: "bravo", key: "BBBB"), row(host: "c", endpoint: "charlie", key: "CCCC")]
+  [test.claim.fleet_known_hosts_anchor_witness_test.row(host: "a", endpoint: "alpha", key: "AAAA"), test.claim.fleet_known_hosts_anchor_witness_test.row(host: "b", endpoint: "bravo", key: "BBBB"), test.claim.fleet_known_hosts_anchor_witness_test.row(host: "c", endpoint: "charlie", key: "CCCC")]
 }
 
 fn reversed_rows() -> List<gunbc.fleet_host_key_enrollment.KnownHostKeyRow> {
-  [row(host: "c", endpoint: "charlie", key: "CCCC"), row(host: "b", endpoint: "bravo", key: "BBBB"), row(host: "a", endpoint: "alpha", key: "AAAA")]
+  [test.claim.fleet_known_hosts_anchor_witness_test.row(host: "c", endpoint: "charlie", key: "CCCC"), test.claim.fleet_known_hosts_anchor_witness_test.row(host: "b", endpoint: "bravo", key: "BBBB"), test.claim.fleet_known_hosts_anchor_witness_test.row(host: "a", endpoint: "alpha", key: "AAAA")]
 }
 
 fn identities_agree(left: List<gunbc.fleet_host_key_enrollment.KnownHostKeyRow>, right: List<gunbc.fleet_host_key_enrollment.KnownHostKeyRow>) -> Bool {
@@ -58,7 +58,7 @@ test fn w_reordered_registry_is_the_same_registry() -> Bool {
 test fn w_a_different_registry_is_a_different_registry() -> Bool {
   !identities_agree(
     left: forward_rows(),
-    right: [row(host: "a", endpoint: "alpha", key: "DDDD"), row(host: "b", endpoint: "bravo", key: "BBBB"), row(host: "c", endpoint: "charlie", key: "CCCC")],
+    right: [test.claim.fleet_known_hosts_anchor_witness_test.row(host: "a", endpoint: "alpha", key: "DDDD"), test.claim.fleet_known_hosts_anchor_witness_test.row(host: "b", endpoint: "bravo", key: "BBBB"), test.claim.fleet_known_hosts_anchor_witness_test.row(host: "c", endpoint: "charlie", key: "CCCC")],
   )
 }
 
@@ -68,8 +68,8 @@ test fn w_a_different_registry_is_a_different_registry() -> Bool {
 // certifying a widened trust set.
 test fn w_duplicate_endpoint_refuses() -> Bool {
   match known_hosts_endpoint_conflict(rows: [
-    row(host: "a", endpoint: "alpha", key: "AAAA"),
-    row(host: "impostor", endpoint: "alpha", key: "EVIL"),
+    test.claim.fleet_known_hosts_anchor_witness_test.row(host: "a", endpoint: "alpha", key: "AAAA"),
+    test.claim.fleet_known_hosts_anchor_witness_test.row(host: "impostor", endpoint: "alpha", key: "EVIL"),
   ]) {
     Present { value: _ } => true
     Absent => false

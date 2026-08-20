@@ -118,11 +118,11 @@ fn mounted_assets(r: product.rack_mount.RackInstance) -> List<product.placement_
 }
 
 fn contains_asset(assets: List<product.placement_supply.PhysicalAssetIdentity>, wanted: product.placement_supply.PhysicalAssetIdentity) -> Bool {
-  fold(assets, init: false, f: (hit, a) => hit || asset_eq(a: a, b: wanted))
+  fold(assets, init: false, f: (hit, a) => hit || product.rack_power.asset_eq(a: a, b: wanted))
 }
 
 fn count_loads_for(loads: List<AssetLoad>, wanted: product.placement_supply.PhysicalAssetIdentity) -> Int {
-  fold(loads, init: 0, f: (n, l) => if asset_eq(a: asset_load_subject(l: l), b: wanted) { n + 1 } else { n })
+  fold(loads, init: 0, f: (n, l) => if product.rack_power.asset_eq(a: asset_load_subject(l: l), b: wanted) { n + 1 } else { n })
 }
 
 // BOTH DIRECTIONS OF THE JOIN, and they are separate scans because they are separate failures with

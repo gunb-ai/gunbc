@@ -196,7 +196,7 @@ data front_door_default_subject: String = "v2.lens.module_graph"
 data front_door_render_cost_note: String = "front_door_nodes() is evaluated ONCE per report and threaded into render_reading. An earlier draft called it inside the per-reached-module fold, which recomputed the live module-declaration facts once per reached module - the copied-accumulator cost shape DESIGN 6 forbids regardless of realized n, and on a corpus-sized reading that is hundreds of live fact scans for one report."
 
 fn dependents_of_module_graph_report() -> String {
-  render_reading(
+  tools.module_impact_query_front_door.render_reading(
     subject: front_door_default_subject,
     reading: dependents_of_module(module_name: front_door_default_subject),
     nodes: front_door_nodes()
@@ -204,7 +204,7 @@ fn dependents_of_module_graph_report() -> String {
 }
 
 fn dependents_of_path_report() -> String {
-  render_reading(
+  tools.module_impact_query_front_door.render_reading(
     subject: "src/v2/lens/module_graph.dag",
     reading: dependents_of_path(path: "src/v2/lens/module_graph.dag"),
     nodes: front_door_nodes()

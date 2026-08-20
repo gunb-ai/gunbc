@@ -25,9 +25,9 @@ fn star3(a: Node, b: Node, c: Node) -> Node {
   )
 }
 
-fn chain_fixture() -> Node { chain1(child: chain1(child: atom(sym: ^x))) }
+fn chain_fixture() -> Node { chain1(child: chain1(child: v2.test.spine.spine_receipt_witness.atom(sym: ^x))) }
 
-fn star_fixture() -> Node { star3(a: atom(sym: ^x), b: atom(sym: ^y), c: atom(sym: ^z)) }
+fn star_fixture() -> Node { star3(a: v2.test.spine.spine_receipt_witness.atom(sym: ^x), b: v2.test.spine.spine_receipt_witness.atom(sym: ^y), c: v2.test.spine.spine_receipt_witness.atom(sym: ^z)) }
 
 test fn serial_chain_has_depth_three() -> Bool {
   critical_path_depth(root: chain_fixture()) == 3

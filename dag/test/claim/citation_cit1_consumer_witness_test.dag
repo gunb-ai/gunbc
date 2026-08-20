@@ -89,7 +89,7 @@ test fn x86_64_abi_syscall_convention_uri_uses_physical_page_125() -> Bool {
 test fn x86_64_abi_consumer_refuses_unencodable_nameddest_navigable_uri() -> Bool {
   match x86_64_abi_pdf_navigable_uri_from_nameddest_scalar_code_points(
     name: "plant" as std.types.NonEmptyStr,
-    code_points: witness_unencodable_scalar_code_points,
+    code_points: test.claim.citation_cit1_consumer_witness.witness_unencodable_scalar_code_points,
   ) {
     X86_64AbiPdfNavigableUriRefused {
       cause: PdfOpenParameterPercentEncodeRefusedFromSafe {

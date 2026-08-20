@@ -12,7 +12,7 @@ data fresh_leak_facts: List<v2.std.layer.LayerImportFact> = [
 ]
 
 test fn fresh_non_edge_import_is_leak_holds() -> Bool {
-  meta_exec_leak_count_canonical(facts: fresh_leak_facts) == 1
+  meta_exec_leak_count_canonical(facts: v2.test.meta_exec_confinement.lens_unit.discriminators.fresh_leak_facts) == 1
 }
 
 data edge_import_facts: List<v2.std.layer.LayerImportFact> = [
@@ -24,7 +24,7 @@ data edge_import_facts: List<v2.std.layer.LayerImportFact> = [
 ]
 
 test fn realization_edge_import_is_not_leak_holds() -> Bool {
-  meta_exec_leak_count_canonical(facts: edge_import_facts) == 0
+  meta_exec_leak_count_canonical(facts: v2.test.meta_exec_confinement.lens_unit.discriminators.edge_import_facts) == 0
 }
 
 data rostered_import_facts: List<v2.std.layer.LayerImportFact> = [
@@ -39,12 +39,12 @@ data synthetic_roster: List<String> = ["dag/gunbc/_perturb_rostered_meta_exec.da
 
 // Parameterized on a SYNTHETIC roster, not meta_exec_leak_count_canonical: the canonical roster is empty as of the 3 -> 0 shrink, so a canonical-roster spelling of this discriminator would pass for the wrong reason (no row to exempt) and would silently stop discriminating. The pair below is the real content — the same fact is exempt under a roster naming it and a leak under one that does not.
 test fn rostered_consumer_import_is_not_leak_holds() -> Bool {
-  meta_exec_leak_count(facts: rostered_import_facts, roster: synthetic_roster) == 0
-    && meta_exec_leak_count(facts: rostered_import_facts, roster: []) == 1
+  meta_exec_leak_count(facts: v2.test.meta_exec_confinement.lens_unit.discriminators.rostered_import_facts, roster: synthetic_roster) == 0
+    && meta_exec_leak_count(facts: v2.test.meta_exec_confinement.lens_unit.discriminators.rostered_import_facts, roster: []) == 1
 }
 
 test fn empty_canonical_roster_grants_no_exception_holds() -> Bool {
-  meta_exec_leak_count_canonical(facts: rostered_import_facts) == 1
+  meta_exec_leak_count_canonical(facts: v2.test.meta_exec_confinement.lens_unit.discriminators.rostered_import_facts) == 1
 }
 
 data de_rostered_import_facts: List<v2.std.layer.LayerImportFact> = [

@@ -24,7 +24,7 @@ fn synthetic_nonliteral_text(text: String) -> std.types.NonEmptyStr {
 }
 
 fn synthetic_empty_condition(text: String) -> std.dissolution.DissolutionCondition {
-  std.dissolution.unbound_dissolution(description: synthetic_nonliteral_text(text: text))
+  std.dissolution.unbound_dissolution(description: v2.test.claim.witness_exclusion_reconciliation_test.synthetic_nonliteral_text(text: text))
 }
 
 fn synthetic_row(pattern: String) -> gunbc.ci_layer_roots.WitnessExclusionRow {
@@ -50,7 +50,7 @@ test fn witness_exclusion_red_control_bare_nickname_row_reds() -> Bool {
         pattern: "synthetic_nickname.dag",
         classification: std.witness_admission.OfflineLocalRecipe,
         reason: "",
-        dissolution: synthetic_empty_condition(text: "")
+        dissolution: v2.test.claim.witness_exclusion_reconciliation_test.synthetic_empty_condition(text: "")
       }
     ]
   ) == false

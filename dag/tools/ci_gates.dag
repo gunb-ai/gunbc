@@ -22,7 +22,7 @@ fn run_spec_gate(g: gunbc.ci_gate.Gate) -> std.process.ProcessExit {
 
 fn run_gate_list(gates: List<gunbc.ci_gate.Gate>) -> std.process.ProcessExit {
   fold(gates, init: std.process.ExitSuccess, f: fn(acc, g) {
-    if exit_ok(e: acc) { run_spec_gate(g: g) } else { acc }
+    if tools.ci_gates.exit_ok(e: acc) { run_spec_gate(g: g) } else { acc }
   })
 }
 

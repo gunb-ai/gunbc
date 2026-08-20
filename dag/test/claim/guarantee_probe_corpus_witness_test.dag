@@ -101,7 +101,7 @@ test fn probe_set_digest_is_stable() -> Bool {
 }
 
 test fn call_mislabel_red_refuses_blocking_call_argument_name_unknown() -> Bool {
-  let census = census_of(source: call_mislabel_source)
+  let census = test.claim.guarantee_probe_corpus_witness_test.census_of(source: call_mislabel_source)
   match active_probe_row(probe: call_mislabel_red_probe) {
     Present { value: row } =>
       probe_row_expectation_holds(census: census, row: row)
@@ -114,7 +114,7 @@ test fn call_mislabel_red_refuses_blocking_call_argument_name_unknown() -> Bool 
 }
 
 test fn call_surplus_red_refuses_blocking_call_positional_surplus() -> Bool {
-  let census = census_of(source: call_surplus_source)
+  let census = test.claim.guarantee_probe_corpus_witness_test.census_of(source: call_surplus_source)
   match active_probe_row(probe: call_surplus_red_probe) {
     Present { value: row } => probe_row_expectation_holds(census: census, row: row)
     Absent => false
@@ -122,7 +122,7 @@ test fn call_surplus_red_refuses_blocking_call_positional_surplus() -> Bool {
 }
 
 test fn call_deficit_red_refuses_blocking_call_positional_deficit() -> Bool {
-  let census = census_of(source: call_deficit_source)
+  let census = test.claim.guarantee_probe_corpus_witness_test.census_of(source: call_deficit_source)
   match active_probe_row(probe: call_deficit_red_probe) {
     Present { value: row } =>
       probe_row_expectation_holds(census: census, row: row)
@@ -137,13 +137,13 @@ test fn call_deficit_red_refuses_blocking_call_positional_deficit() -> Bool {
 test fn call_shape_green_control_has_zero_diagnostics() -> Bool {
   match active_probe_row(probe: call_shape_green_probe) {
     Present { value: row } =>
-      probe_row_expectation_holds(census: census_of(source: call_shape_green_source), row: row)
+      probe_row_expectation_holds(census: test.claim.guarantee_probe_corpus_witness_test.census_of(source: call_shape_green_source), row: row)
     Absent => false
   }
 }
 
 test fn call_duplicate_red_refuses_blocking_call_argument_duplicate() -> Bool {
-  let census = census_of(source: call_duplicate_red_source)
+  let census = test.claim.guarantee_probe_corpus_witness_test.census_of(source: call_duplicate_red_source)
   match active_probe_row(probe: call_duplicate_red_probe) {
     Present { value: row } =>
       probe_row_expectation_holds(census: census, row: row)
@@ -156,7 +156,7 @@ test fn call_duplicate_red_refuses_blocking_call_argument_duplicate() -> Bool {
 }
 
 test fn call_duplicate_mixed_positional_named_red_refuses_blocking_call_argument_duplicate() -> Bool {
-  let census = census_of(source: call_duplicate_mixed_red_source)
+  let census = test.claim.guarantee_probe_corpus_witness_test.census_of(source: call_duplicate_mixed_red_source)
   match census_blocking_count_for_class(census: census, wanted: "CallArgumentDuplicate") {
     Present { value: n } => n >= 1
     Absent => false
@@ -164,7 +164,7 @@ test fn call_duplicate_mixed_positional_named_red_refuses_blocking_call_argument
 }
 
 test fn call_duplicate_named_then_positional_red_refuses_blocking_call_argument_duplicate() -> Bool {
-  let census = census_of(source: call_duplicate_named_then_positional_red_source)
+  let census = test.claim.guarantee_probe_corpus_witness_test.census_of(source: call_duplicate_named_then_positional_red_source)
   match census_blocking_count_for_class(census: census, wanted: "CallArgumentDuplicate") {
     Present { value: n } => n >= 1
     Absent => false
@@ -174,13 +174,13 @@ test fn call_duplicate_named_then_positional_red_refuses_blocking_call_argument_
 test fn call_duplicate_green_control_has_zero_diagnostics() -> Bool {
   match active_probe_row(probe: call_duplicate_green_probe) {
     Present { value: row } =>
-      probe_row_expectation_holds(census: census_of(source: call_duplicate_green_source), row: row)
+      probe_row_expectation_holds(census: test.claim.guarantee_probe_corpus_witness_test.census_of(source: call_duplicate_green_source), row: row)
     Absent => false
   }
 }
 
 test fn call_duplicate_two_anonymous_positional_params_never_collide() -> Bool {
-  let census = census_of(source: call_duplicate_green_source)
+  let census = test.claim.guarantee_probe_corpus_witness_test.census_of(source: call_duplicate_green_source)
   match census_any_count_for_class(census: census, wanted: "CallArgumentDuplicate") {
     Present { value: n } => n == 0
     Absent => true
@@ -188,7 +188,7 @@ test fn call_duplicate_two_anonymous_positional_params_never_collide() -> Bool {
 }
 
 test fn call_duplicate_red_does_not_satisfy_mislabel_or_surplus_expectation() -> Bool {
-  let census = census_of(source: call_duplicate_red_source)
+  let census = test.claim.guarantee_probe_corpus_witness_test.census_of(source: call_duplicate_red_source)
   match active_probe_row(probe: call_duplicate_red_probe) {
     Present { value: dup_row } =>
       match active_probe_row(probe: call_mislabel_red_probe) {
@@ -207,7 +207,7 @@ test fn call_duplicate_red_does_not_satisfy_mislabel_or_surplus_expectation() ->
 }
 
 test fn method_missing_red_refuses_blocking_method_not_found() -> Bool {
-  let census = census_of(source: method_missing_source)
+  let census = test.claim.guarantee_probe_corpus_witness_test.census_of(source: method_missing_source)
   match active_probe_row(probe: method_missing_red_probe) {
     Present { value: row } =>
       probe_row_expectation_holds(census: census, row: row)
@@ -222,13 +222,13 @@ test fn method_missing_red_refuses_blocking_method_not_found() -> Bool {
 test fn method_green_control_has_zero_diagnostics() -> Bool {
   match active_probe_row(probe: method_green_probe) {
     Present { value: row } =>
-      probe_row_expectation_holds(census: census_of(source: method_green_source), row: row)
+      probe_row_expectation_holds(census: test.claim.guarantee_probe_corpus_witness_test.census_of(source: method_green_source), row: row)
     Absent => false
   }
 }
 
 test fn conformance_scalar_red_refuses_blocking_type_mismatch() -> Bool {
-  let census = census_of(source: conformance_scalar_red_source)
+  let census = test.claim.guarantee_probe_corpus_witness_test.census_of(source: conformance_scalar_red_source)
   match active_probe_row(probe: conformance_scalar_red_probe) {
     Present { value: row } =>
       probe_row_expectation_holds(census: census, row: row)
@@ -243,13 +243,13 @@ test fn conformance_scalar_red_refuses_blocking_type_mismatch() -> Bool {
 test fn conformance_green_control_has_zero_diagnostics() -> Bool {
   match active_probe_row(probe: conformance_green_probe) {
     Present { value: row } =>
-      probe_row_expectation_holds(census: census_of(source: conformance_green_source), row: row)
+      probe_row_expectation_holds(census: test.claim.guarantee_probe_corpus_witness_test.census_of(source: conformance_green_source), row: row)
     Absent => false
   }
 }
 
 test fn sole_constructor_forged_literal_red_refuses() -> Bool {
-  let census = census_of(source: sole_ctor_forged_source)
+  let census = test.claim.guarantee_probe_corpus_witness_test.census_of(source: sole_ctor_forged_source)
   match active_probe_row(probe: sole_ctor_forged_red_probe) {
     Present { value: row } =>
       probe_row_expectation_holds(census: census, row: row)
@@ -264,13 +264,13 @@ test fn sole_constructor_forged_literal_red_refuses() -> Bool {
 test fn sole_constructor_sanctioned_mint_green_control_has_zero_diagnostics() -> Bool {
   match active_probe_row(probe: sole_ctor_green_probe) {
     Present { value: row } =>
-      probe_row_expectation_holds(census: census_of(source: sole_ctor_green_source), row: row)
+      probe_row_expectation_holds(census: test.claim.guarantee_probe_corpus_witness_test.census_of(source: sole_ctor_green_source), row: row)
     Absent => false
   }
 }
 
 test fn sole_constructor_cross_module_cast_red_refuses() -> Bool {
-  let census = census_of(source: sole_ctor_cast_source)
+  let census = test.claim.guarantee_probe_corpus_witness_test.census_of(source: sole_ctor_cast_source)
   match active_probe_row(probe: sole_ctor_cast_red_probe) {
     Present { value: row } =>
       probe_row_expectation_holds(census: census, row: row)
@@ -283,7 +283,7 @@ test fn sole_constructor_cross_module_cast_red_refuses() -> Bool {
 }
 
 test fn sole_constructor_unadmitted_caller_red_refuses() -> Bool {
-  let census = census_of(source: sole_ctor_unadmitted_caller_source)
+  let census = test.claim.guarantee_probe_corpus_witness_test.census_of(source: sole_ctor_unadmitted_caller_source)
   match active_probe_row(probe: sole_ctor_unadmitted_caller_red_probe) {
     Present { value: row } =>
       probe_row_expectation_holds(census: census, row: row)
@@ -298,13 +298,13 @@ test fn sole_constructor_unadmitted_caller_red_refuses() -> Bool {
 test fn sole_constructor_admitted_caller_green_control_has_zero_diagnostics() -> Bool {
   match active_probe_row(probe: sole_ctor_admitted_caller_green_probe) {
     Present { value: row } =>
-      probe_row_expectation_holds(census: census_of(source: sole_ctor_admitted_caller_source), row: row)
+      probe_row_expectation_holds(census: test.claim.guarantee_probe_corpus_witness_test.census_of(source: sole_ctor_admitted_caller_source), row: row)
     Absent => false
   }
 }
 
 test fn sole_constructor_mint_fn_hole_still_compile_clean() -> Bool {
-  let census = census_of(source: sole_ctor_mint_fn_hole_source)
+  let census = test.claim.guarantee_probe_corpus_witness_test.census_of(source: sole_ctor_mint_fn_hole_source)
   match active_probe_row(probe: sole_ctor_mint_fn_hole_probe) {
     Present { value: row } =>
       match census {
@@ -318,7 +318,7 @@ test fn sole_constructor_mint_fn_hole_still_compile_clean() -> Bool {
 }
 
 test fn sole_constructor_forged_red_does_not_satisfy_green_expectation() -> Bool {
-  let census = census_of(source: sole_ctor_forged_source)
+  let census = test.claim.guarantee_probe_corpus_witness_test.census_of(source: sole_ctor_forged_source)
   match active_probe_row(probe: sole_ctor_forged_red_probe) {
     Present { value: red_row } =>
       match active_probe_row(probe: sole_ctor_green_probe) {
@@ -336,7 +336,7 @@ test fn migrated_receipt_joins_its_v1_compile_path() -> Bool {
     Present { value: row } =>
       let receipt = build_v1_compile_receipt(
         row: row,
-        census: census_of(source: call_mislabel_source),
+        census: test.claim.guarantee_probe_corpus_witness_test.census_of(source: call_mislabel_source),
         subject_revision: synthetic_program_subject_revision(source: call_mislabel_source),
         harness_revision: witness_harness_revision(probe: row.probe),
       )
@@ -348,7 +348,7 @@ test fn migrated_receipt_joins_its_v1_compile_path() -> Bool {
 }
 
 test fn blocking_refusal_observation_is_a_verdict() -> Bool {
-  let census = census_of(source: method_missing_source)
+  let census = test.claim.guarantee_probe_corpus_witness_test.census_of(source: method_missing_source)
   match active_v1_compile_probe_row(probe: method_missing_red_probe) {
     Present { value: row } =>
       let receipt = build_v1_compile_receipt(
@@ -372,7 +372,7 @@ test fn green_control_observation_is_accepted_clean() -> Bool {
     Present { value: row } =>
       let receipt = build_v1_compile_receipt(
         row: row,
-        census: census_of(source: call_shape_green_source),
+        census: test.claim.guarantee_probe_corpus_witness_test.census_of(source: call_shape_green_source),
         subject_revision: synthetic_program_subject_revision(source: call_shape_green_source),
         harness_revision: witness_harness_revision(probe: row.probe),
       )
@@ -416,7 +416,7 @@ test fn probe_ids_are_canonically_ordered() -> Bool {
 }
 
 test fn mislabel_red_does_not_satisfy_surplus_expectation() -> Bool {
-  let census = census_of(source: call_mislabel_source)
+  let census = test.claim.guarantee_probe_corpus_witness_test.census_of(source: call_mislabel_source)
   match active_probe_row(probe: call_mislabel_red_probe) {
     Present { value: mislabel_row } =>
       match active_probe_row(probe: call_surplus_red_probe) {
@@ -430,7 +430,7 @@ test fn mislabel_red_does_not_satisfy_surplus_expectation() -> Bool {
 }
 
 test fn surplus_red_does_not_satisfy_mislabel_expectation() -> Bool {
-  let census = census_of(source: call_surplus_source)
+  let census = test.claim.guarantee_probe_corpus_witness_test.census_of(source: call_surplus_source)
   match active_probe_row(probe: call_surplus_red_probe) {
     Present { value: surplus_row } =>
       match active_probe_row(probe: call_mislabel_red_probe) {
@@ -444,7 +444,7 @@ test fn surplus_red_does_not_satisfy_mislabel_expectation() -> Bool {
 }
 
 test fn green_control_fails_blocking_refusal_expectation() -> Bool {
-  let census = census_of(source: call_shape_green_source)
+  let census = test.claim.guarantee_probe_corpus_witness_test.census_of(source: call_shape_green_source)
   match active_probe_row(probe: call_shape_green_probe) {
     Present { value: green_row } =>
       match active_probe_row(probe: call_mislabel_red_probe) {
@@ -458,13 +458,13 @@ test fn green_control_fails_blocking_refusal_expectation() -> Bool {
 }
 
 test fn observation_fold_routes_blocking_refusal() -> Bool {
-  let obs = probe_observation_from_census(census: census_of(source: call_mislabel_source))
+  let obs = probe_observation_from_census(census: test.claim.guarantee_probe_corpus_witness_test.census_of(source: call_mislabel_source))
   observation_is_blocking_refusal(o: obs, wanted: "CallArgumentNameUnknown" as std.types.NonEmptyStr)
     && !observation_is_clean(o: obs)
 }
 
 test fn wrong_expectation_does_not_fabricate_clean_receipt() -> Bool {
-  let census = census_of(source: call_mislabel_source)
+  let census = test.claim.guarantee_probe_corpus_witness_test.census_of(source: call_mislabel_source)
   match active_probe_row(probe: call_mislabel_red_probe) {
     Present { value: registry_row } =>
       match active_v1_compile_probe_row(probe: call_mislabel_red_probe) {
@@ -554,7 +554,7 @@ test fn receipt_probe_set_digest_matches_executed_probe_set() -> Bool {
       let executed = executed_probe_ids_for_probe(probe: row.probe)
       let receipt = build_v1_compile_receipt(
         row: row,
-        census: census_of(source: call_mislabel_source),
+        census: test.claim.guarantee_probe_corpus_witness_test.census_of(source: call_mislabel_source),
         subject_revision: synthetic_program_subject_revision(source: call_mislabel_source),
         harness_revision: witness_harness_revision(probe: row.probe),
       )

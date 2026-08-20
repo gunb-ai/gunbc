@@ -18,7 +18,7 @@ fn rack_of(mounts: List<product.rack_mount.ChassisMount>) -> product.rack_mount.
   }
 }
 
-fn two_host_rack() -> product.rack_mount.RackInstance? { rack_of(mounts: [mount(asset: host_a(), lowest: 1), mount(asset: host_b(), lowest: 5)]) }
+fn two_host_rack() -> product.rack_mount.RackInstance? { test.claim.rack_power_witness.rack_of(mounts: [mount(asset: host_a(), lowest: 1), mount(asset: host_b(), lowest: 5)]) }
 
 fn feed() -> product.rack_power.PowerFeed {
   power_feed(identity: ("pdu-01" as product.placement_supply.PhysicalAssetIdentity), catalog: extdeps.power.eaton_tripp_lite.eaton_tripp_lite_rs_1215_family_catalog)

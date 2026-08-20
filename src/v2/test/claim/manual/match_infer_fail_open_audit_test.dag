@@ -6,7 +6,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 fn diagnostics_contain_reason(d: v2.std.diagnostic.Diagnostics, reason: v2.std.node.Symbol) -> Bool {
   match d {
     None => false
-    Some { diagnostics: nes } => non_empty_diagnostics_contain_reason(nes: nes, reason: reason)
+    Some { diagnostics: nes } => v2.test.manual.match_infer_fail_open_audit.non_empty_diagnostics_contain_reason(nes: nes, reason: reason)
   }
 }
 

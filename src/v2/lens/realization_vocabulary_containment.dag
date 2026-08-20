@@ -224,7 +224,7 @@ fn path_has_any_prefix(prefixes: List<String>, path: String) -> Bool {
   fold_list(
     xs: prefixes,
     empty: false,
-    cons: fn(acc, p) { acc || is_prefix_of(prefix: p, xs: path, eq: char_eq) }
+    cons: fn(acc, p) { acc || is_prefix_of(prefix: p, xs: path, eq: v2.lens.realization_vocabulary_containment.char_eq) }
   )
 }
 
@@ -247,8 +247,8 @@ type RealizationVocabularySet {
 }
 
 fn module_is_in_vocab(module: String, vocab: RealizationVocabularySet) -> Bool {
-  list_contains_str(xs: vocab.modules, target: module)
-    || path_has_any_prefix(prefixes: vocab.module_prefixes, path: module)
+  v2.lens.realization_vocabulary_containment.list_contains_str(xs: vocab.modules, target: module)
+    || v2.lens.realization_vocabulary_containment.path_has_any_prefix(prefixes: vocab.module_prefixes, path: module)
 }
 
 fn target_ast_vocabulary() -> RealizationVocabularySet {
@@ -286,7 +286,7 @@ fn module_is_target_ast_vocab(module: String) -> Bool {
 }
 
 fn path_is_realization_edge(path: String) -> Bool {
-  path_has_any_prefix(prefixes: realization_edge_path_prefixes, path: path)
+  v2.lens.realization_vocabulary_containment.path_has_any_prefix(prefixes: realization_edge_path_prefixes, path: path)
 }
 
 // The target-AST binding of the general predicate. It DELEGATES rather than
@@ -349,7 +349,7 @@ fn is_vocab_leak_in(
   exempt_edges: List<RealizationVocabImportEdge>
 ) -> Bool {
   module_is_in_vocab(module: fact.import_module, vocab: vocab)
-    && (path_has_any_prefix(prefixes: edge_prefixes, path: fact.path) == false)
+    && (v2.lens.realization_vocabulary_containment.path_has_any_prefix(prefixes: edge_prefixes, path: fact.path) == false)
     && (realization_vocab_edge_in(
       edges: exempt_edges,
       edge: realization_vocab_edge_from_fact(fact: fact)

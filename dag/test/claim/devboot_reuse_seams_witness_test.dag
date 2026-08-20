@@ -36,7 +36,7 @@ fn probe_subject(profile: String) -> gunbc.devboot.subject.BuildSubject? {
 
 // THE POSITIVE CONTROL. A stored record that is exactly this subject's rendering matches it. Without this, the refusal witnesses below would all pass on a comparison that answered SubjectDiffers unconditionally -- which is precisely the defect this seam shipped with once: an equality against a blob carrying an appended digest could never match, and every caller refused a request identical to the one that produced it.
 test fn a_record_holding_exactly_this_subject_matches() -> Bool {
-  match probe_subject(profile: "release") {
+  match test.claim.devboot_reuse_seams_witness.probe_subject(profile: "release") {
     Absent => false
     Present { value: subject } =>
       match stored_subject_match(record_text: render_build_subject(subject: subject), subject: subject) {
@@ -48,7 +48,7 @@ test fn a_record_holding_exactly_this_subject_matches() -> Bool {
 
 // THE PREFIX CASE, PINNED RED. This is the exact false match the comparison was changed to prevent: the request's rendering is a strict PREFIX of the stored record, which is what happens whenever the stored subject carries an axis the request does not. Under prefix matching this answered SubjectMatches and the requester asking for LESS received a binary built with configuration it never asked for. The suffix here stands for any appended axis; what the witness pins is that being a prefix is not being equal.
 test fn a_record_whose_subject_extends_this_one_refuses() -> Bool {
-  match probe_subject(profile: "release") {
+  match test.claim.devboot_reuse_seams_witness.probe_subject(profile: "release") {
     Absent => false
     Present { value: subject } =>
       match stored_subject_match(
@@ -63,10 +63,10 @@ test fn a_record_whose_subject_extends_this_one_refuses() -> Bool {
 
 // A DIFFERENT SUBJECT REFUSES. Two subjects differing in one axis must not match each other; profile is the axis varied because it participates in the rendering and in the digest, so a comparison that ignored it would be caught here rather than at the store.
 test fn a_record_for_a_different_profile_refuses() -> Bool {
-  match probe_subject(profile: "release") {
+  match test.claim.devboot_reuse_seams_witness.probe_subject(profile: "release") {
     Absent => false
     Present { value: released } =>
-      match probe_subject(profile: "dev") {
+      match test.claim.devboot_reuse_seams_witness.probe_subject(profile: "dev") {
         Absent => false
         Present { value: dev } =>
           match stored_subject_match(record_text: render_build_subject(subject: dev), subject: released) {
@@ -79,7 +79,7 @@ test fn a_record_for_a_different_profile_refuses() -> Bool {
 
 // AN EMPTY RECORD REFUSES. A store that answered nothing -- a pruned ref, an unreadable blob -- must not read as agreement. An empty string is a prefix of everything, so under the old comparison this was the widest false match available.
 test fn an_empty_record_refuses() -> Bool {
-  match probe_subject(profile: "release") {
+  match test.claim.devboot_reuse_seams_witness.probe_subject(profile: "release") {
     Absent => false
     Present { value: subject } =>
       match stored_subject_match(record_text: "", subject: subject) {

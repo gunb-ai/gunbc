@@ -200,14 +200,14 @@ test fn floor_discovery_producer_empty_transport_red_control() -> Bool {
 }
 
 test fn floor_discovery_scan_test_fn_decl_holds() -> Bool {
-  list_contains_string(
+  test.claim.floor_discovery_hand_rust_equivalence_witness.list_contains_string(
     xs: v2.workflow.floor_naming_hygiene.floor_discovery_scan_test_decl_names(content: fixture_test_fn_content),
     needle: fixture_witness_function
   )
 }
 
 test fn floor_discovery_scan_test_data_decl_holds() -> Bool {
-  list_contains_string(
+  test.claim.floor_discovery_hand_rust_equivalence_witness.list_contains_string(
     xs: v2.workflow.floor_naming_hygiene.floor_discovery_scan_test_decl_names(content: fixture_test_data_content),
     needle: "floor_discovery_data_fixture"
   )

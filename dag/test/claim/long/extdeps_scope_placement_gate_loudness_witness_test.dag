@@ -18,7 +18,7 @@ fn exit_is_failure(e: std.process.ProcessExit) -> Bool {
 }
 
 fn reason_names_all(exit: std.process.ProcessExit, markers: List<String>) -> Bool {
-  let reason = exit_reason_of(e: exit)
+  let reason = test.claim.long.extdeps_scope_placement_gate_loudness_witness.exit_reason_of(e: exit)
   reason != "" && all(markers, m => string_contains(s: reason, pattern: m))
 }
 
@@ -61,7 +61,7 @@ test fn red_membership_fixture_names_change_and_path() -> Bool {
 }
 
 test fn red_freeze_fixture_names_manifest_smuggling() -> Bool {
-  let probe = read_manifest_rows().first()
+  let probe = test.claim.long.extdeps_scope_placement_gate_loudness_witness.read_manifest_rows().first()
   reason_names_all(
     exit: scope_placement_freeze_verdict(
       observation: gunbc.extdeps_scope_frontier.AddedPathsObserved { paths: [probe] }
@@ -88,7 +88,7 @@ fn synthetic_manifest_add_diff() -> String {
 }
 
 test fn red_manifest_lines_added_fixture_names_row() -> Bool {
-  let observation = manifest_line_observation(diff_text: synthetic_manifest_add_diff())
+  let observation = manifest_line_observation(diff_text: test.claim.long.extdeps_scope_placement_gate_loudness_witness.synthetic_manifest_add_diff())
   match observation {
     ManifestLinesAdded { rows: rows } =>
       (rows |> count) == 1
@@ -129,7 +129,7 @@ test fn red_failure_reason_never_empty_on_refusal() -> Bool {
       observation: gunbc.extdeps_scope_frontier.AddedPathsObserved { paths: ["dag/extdeps/browser/opera.dag"] }
     )
   )
-    && exit_reason_of(
+    && test.claim.long.extdeps_scope_placement_gate_loudness_witness.exit_reason_of(
          e: scope_placement_membership_verdict(
            observation: gunbc.extdeps_scope_frontier.AddedPathsObserved { paths: ["dag/extdeps/browser/opera.dag"] }
          )

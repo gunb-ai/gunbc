@@ -200,8 +200,8 @@ fn string_in_list(items: List<String>, wanted: String) -> Bool {
 fn string_lists_identity_join(expected: List<String>, observed: List<String>) -> Bool {
   !(string_list_has_duplicate(items: expected))
     && !(string_list_has_duplicate(items: observed))
-    && expected |> all(e => string_in_list(items: observed, wanted: e))
-    && observed |> all(o => string_in_list(items: expected, wanted: o))
+    && expected |> all(e => gunbc.source_admission_selection.string_in_list(items: observed, wanted: e))
+    && observed |> all(o => gunbc.source_admission_selection.string_in_list(items: expected, wanted: o))
 }
 
 fn active_source_identity_eq(left: ActiveSourceIdentity, right: ActiveSourceIdentity) -> Bool {

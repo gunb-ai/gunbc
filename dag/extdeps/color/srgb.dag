@@ -152,8 +152,8 @@ fn srgb8_to_hsl_projection_for_max(c: Srgb8, maxv: Int, denom: Int) -> HslProjec
   let rs = (c.r * denom) / maxv
   let gs = (c.g * denom) / maxv
   let bs = (c.b * denom) / maxv
-  let maxc = imax(a: imax(a: rs, b: gs), b: bs)
-  let minc = imin(a: imin(a: rs, b: gs), b: bs)
+  let maxc = extdeps.color.srgb.imax(a: extdeps.color.srgb.imax(a: rs, b: gs), b: bs)
+  let minc = extdeps.color.srgb.imin(a: extdeps.color.srgb.imin(a: rs, b: gs), b: bs)
   let delta = maxc - minc
   let l_scaled = (maxc + minc) / 2
   let light_pct = pct_round_from_scaled(v_scaled: l_scaled)

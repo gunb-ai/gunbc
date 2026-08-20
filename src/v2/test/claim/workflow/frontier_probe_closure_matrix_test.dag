@@ -48,21 +48,21 @@ fn fp_matrix_closure_subject_matching_digest(
 }
 
 fn fp_matrix_duplicate_closure_subject() -> v2.compiler.self_host.frontier_probe.FrontierProbeIngestSubject {
-  fp_matrix_closure_subject_matching_digest(
+  v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_closure_subject_matching_digest(
     refs: std.algebra.Cons {
-      head: fp_matrix_ref_a(),
-      tail: std.algebra.Cons { head: fp_matrix_ref_a(), tail: std.algebra.Empty }
+      head: v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_ref_a(),
+      tail: std.algebra.Cons { head: v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_ref_a(), tail: std.algebra.Empty }
     },
     coverage: SourceRootCoverageComplete,
     ingest_read_count: 2,
-    entry: fp_matrix_ref_a()
+    entry: v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_ref_a()
   )
 }
 
 fn fp_matrix_entry_not_in_refs_subject() -> v2.compiler.self_host.frontier_probe.FrontierProbeIngestSubject {
-  fp_matrix_closure_subject_matching_digest(
+  v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_closure_subject_matching_digest(
     refs: std.algebra.Cons {
-      head: fp_matrix_ref_a(),
+      head: v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_ref_a(),
       tail: std.algebra.Empty
     },
     coverage: SourceRootCoverageComplete,
@@ -72,21 +72,21 @@ fn fp_matrix_entry_not_in_refs_subject() -> v2.compiler.self_host.frontier_probe
 }
 
 fn fp_matrix_count_mismatch_subject() -> v2.compiler.self_host.frontier_probe.FrontierProbeIngestSubject {
-  fp_matrix_closure_subject_matching_digest(
+  v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_closure_subject_matching_digest(
     refs: std.algebra.Cons {
-      head: fp_matrix_ref_a(),
+      head: v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_ref_a(),
       tail: std.algebra.Cons { head: fp_matrix_ref_b(), tail: std.algebra.Empty }
     },
     coverage: SourceRootCoverageComplete,
     ingest_read_count: 3,
-    entry: fp_matrix_ref_a()
+    entry: v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_ref_a()
   )
 }
 
 fn fp_matrix_rows_missing_coverage_subject() -> v2.compiler.self_host.frontier_probe.FrontierProbeIngestSubject {
-  fp_matrix_closure_subject_matching_digest(
+  v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_closure_subject_matching_digest(
     refs: std.algebra.Cons {
-      head: fp_matrix_ref_a(),
+      head: v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_ref_a(),
       tail: std.algebra.Empty
     },
     coverage: v2.compiler.source_authority.SourceRootRowsMissing {
@@ -94,31 +94,31 @@ fn fp_matrix_rows_missing_coverage_subject() -> v2.compiler.self_host.frontier_p
       produced_row_count: 0
     },
     ingest_read_count: 1,
-    entry: fp_matrix_ref_a()
+    entry: v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_ref_a()
   )
 }
 
 fn fp_matrix_manifest_absent_subject() -> v2.compiler.self_host.frontier_probe.FrontierProbeIngestSubject {
-  fp_matrix_closure_subject_matching_digest(
+  v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_closure_subject_matching_digest(
     refs: std.algebra.Cons {
-      head: fp_matrix_ref_a(),
+      head: v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_ref_a(),
       tail: std.algebra.Empty
     },
     coverage: SourceRootManifestAbsent,
     ingest_read_count: 1,
-    entry: fp_matrix_ref_a()
+    entry: v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_ref_a()
   )
 }
 
 fn fp_matrix_elided_incomplete_refs_subject() -> v2.compiler.self_host.frontier_probe.FrontierProbeIngestSubject {
-  fp_matrix_closure_subject_matching_digest(
+  v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_closure_subject_matching_digest(
     refs: std.algebra.Cons {
-      head: fp_matrix_ref_a(),
+      head: v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_ref_a(),
       tail: std.algebra.Empty
     },
     coverage: v2.compiler.source_authority.SourceRootManifestElided { read_count: 91, cap: 64 },
     ingest_read_count: 1,
-    entry: fp_matrix_ref_a()
+    entry: v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_ref_a()
   )
 }
 
@@ -127,22 +127,22 @@ fn fp_matrix_wrong_hash_ref() -> v2.compiler.source_authority.SourceRef {
 }
 
 fn fp_matrix_storage_hash_conflict_subject() -> v2.compiler.self_host.frontier_probe.FrontierProbeIngestSubject {
-  fp_matrix_closure_subject_matching_digest(
+  v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_closure_subject_matching_digest(
     refs: std.algebra.Cons {
-      head: fp_matrix_ref_a(),
+      head: v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_ref_a(),
       tail: std.algebra.Cons { head: fp_matrix_wrong_hash_ref(), tail: std.algebra.Empty }
     },
     coverage: SourceRootCoverageComplete,
     ingest_read_count: 2,
-    entry: fp_matrix_ref_a()
+    entry: v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_ref_a()
   )
 }
 
 fn fp_matrix_substituted_refs_digest() -> v2.compiler.source_authority.DiscoveredSourceRefsDigest {
   discovered_source_refs_digest_for_refs(
     refs: std.algebra.Cons {
-      head: fp_matrix_ref_a(),
-      tail: std.algebra.Cons { head: fp_matrix_ref_a(), tail: std.algebra.Empty }
+      head: v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_ref_a(),
+      tail: std.algebra.Cons { head: v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_ref_a(), tail: std.algebra.Empty }
     }
   )
 }
@@ -151,11 +151,11 @@ fn fp_matrix_forged_closure_subject() -> v2.compiler.self_host.frontier_probe.Fr
   frontier_probe_discovered_closure_subject_for_matrix(
     closure: v2.compiler.source_authority.FrontierProbeDiscoveredClosure {
       refs: std.algebra.Cons {
-        head: fp_matrix_ref_a(),
+        head: v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_ref_a(),
         tail: std.algebra.Cons { head: fp_matrix_ref_b(), tail: std.algebra.Empty }
       },
       population_digest: fp_matrix_substituted_refs_digest(),
-      entry: fp_matrix_ref_a()
+      entry: v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_ref_a()
     },
     coverage: SourceRootCoverageComplete,
     ingest_read_count: 2

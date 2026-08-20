@@ -11,7 +11,7 @@ fn complexity_contract(body: Node) -> Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      v2.std.node.Edge { label: Named { name: ^complexity_bound_field }, target: atom_node(s: ^complexity_contract_symbol) },
+      v2.std.node.Edge { label: Named { name: ^complexity_bound_field }, target: v2.test.impossible_bug.suboptimal_complexity.atom_node(s: ^complexity_contract_symbol) },
       v2.std.node.Edge { label: Named { name: ^complexity_body_field }, target: body },
     ],
     occurrence_id: SyntheticOccurrence
@@ -28,9 +28,9 @@ fn expected_complexity_rejection(input: Node, reason: v2.std.node.Symbol, correc
   )
 }
 
-data within_bound_input: Node = complexity_contract(body: atom_node(s: ^complexity_body_linear_symbol))
+data within_bound_input: Node = complexity_contract(body: v2.test.impossible_bug.suboptimal_complexity.atom_node(s: ^complexity_body_linear_symbol))
 
-data falsification_overcost_against_structural_bound: Node = complexity_contract(body: atom_node(s: ^complexity_body_quadratic_symbol))
+data falsification_overcost_against_structural_bound: Node = complexity_contract(body: v2.test.impossible_bug.suboptimal_complexity.atom_node(s: ^complexity_body_quadratic_symbol))
 
 data claim_within_structural_bound_passes: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "complexity bound accepts lens-derived in-bound body",
@@ -52,7 +52,7 @@ data claim_overcost_against_structural_bound_violates: v2.std.verification.TestC
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
-data falsification_cost_contradicts_inhabitance: Node = complexity_contract(body: atom_node(s: ^complexity_body_contradictory_inhabitant_symbol))
+data falsification_cost_contradicts_inhabitance: Node = complexity_contract(body: v2.test.impossible_bug.suboptimal_complexity.atom_node(s: ^complexity_body_contradictory_inhabitant_symbol))
 
 data claim_cost_contradicts_inhabitance_caught: v2.std.verification.TestClaim = v2.std.verification.DiagnosticClaim {
   label: "complexity inhabitance rejects contradictory body cost",

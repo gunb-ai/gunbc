@@ -35,7 +35,7 @@ fn box_top(title: String, width: Int, tier: std.symbols.Tier) -> std.render.Line
   let tr = glyph_for(id: BoxCornerTopRight, tier: tier)
   let prefix = concat(glyph_for(id: BoxCornerTopLeft, tier: tier), concat(hz, concat(" ", concat(title, " "))))
   let dashes = width - string_display_width(s: prefix) - string_display_width(s: tr)
-  line_of(span: dim_span(text: concat(prefix, concat(repeat_string(s: hz, n: dashes), tr))))
+  gunbc.ci_render.line_of(span: dim_span(text: concat(prefix, concat(repeat_string(s: hz, n: dashes), tr))))
 }
 
 fn box_bottom(width: Int, tier: std.symbols.Tier) -> std.render.Line {
@@ -43,14 +43,14 @@ fn box_bottom(width: Int, tier: std.symbols.Tier) -> std.render.Line {
   let bl = glyph_for(id: BoxCornerBottomLeft, tier: tier)
   let br = glyph_for(id: BoxCornerBottomRight, tier: tier)
   let dashes = width - string_display_width(s: bl) - string_display_width(s: br)
-  line_of(span: dim_span(text: concat(bl, concat(repeat_string(s: hz, n: dashes), br))))
+  gunbc.ci_render.line_of(span: dim_span(text: concat(bl, concat(repeat_string(s: hz, n: dashes), br))))
 }
 
 fn box_content_line(text: String, width: Int, tier: std.symbols.Tier) -> std.render.Line {
   let v = glyph_for(id: BoxVertical, tier: tier)
   let inner_budget = width - (2 * string_display_width(s: v)) - 2
   let inner = pad_to(text: truncate_text(text: text, max_width: inner_budget), width: inner_budget)
-  line_of(span: plain_span(text: concat(v, concat(" ", concat(inner, concat(" ", v))))))
+  gunbc.ci_render.line_of(span: gunbc.ci_render.plain_span(text: concat(v, concat(" ", concat(inner, concat(" ", v))))))
 }
 
 fn boxed_frame(title: String, body: List<String>, width: Int, tier: std.symbols.Tier) -> std.render.RenderFrame {
@@ -143,7 +143,7 @@ fn box_content_line_hot(text: String, width: Int, tier: std.symbols.Tier, hot: B
   let inner_budget = width - (2 * string_display_width(s: v)) - 2
   let inner = pad_to(text: truncate_text(text: marked, max_width: inner_budget), width: inner_budget)
   let painted = if hot && color { concat(ansi_red_code, concat(inner, ansi_reset_code)) } else { inner }
-  line_of(span: plain_span(text: concat(v, concat(" ", concat(painted, concat(" ", v))))))
+  gunbc.ci_render.line_of(span: gunbc.ci_render.plain_span(text: concat(v, concat(" ", concat(painted, concat(" ", v))))))
 }
 
 fn hot_content_lines(body: List<String>, hot_count: Int, width: Int, tier: std.symbols.Tier, color: Bool) -> List<std.render.Line> {

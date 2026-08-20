@@ -184,11 +184,11 @@ fn section_5() -> List<std.markdown.MarkdownBlock> {
 }
 
 fn wave2_prep_design_body() -> List<std.markdown.MarkdownBlock> {
-  concat([status_block()],
-    concat(section_1(),
-      concat(section_2(),
-        concat(section_3(),
-          concat(section_4(), section_5())))))
+  concat([gunbc.plans.wave2_prep_design.status_block()],
+    concat(gunbc.plans.wave2_prep_design.section_1(),
+      concat(gunbc.plans.wave2_prep_design.section_2(),
+        concat(gunbc.plans.wave2_prep_design.section_3(),
+          concat(gunbc.plans.wave2_prep_design.section_4(), gunbc.plans.wave2_prep_design.section_5())))))
 }
 
 data wave2_prep_design_plan: gunbc.plan.Plan = gunbc.plan.Plan {

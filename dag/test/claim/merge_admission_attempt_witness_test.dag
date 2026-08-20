@@ -57,7 +57,7 @@ fn receipt_fx(attempt: gunbc.merge_admission_subject.WalkAttemptId, tree: extdep
 test fn matching_attempt_and_subject_with_fresh_base_admits() -> Bool {
   match classify_merge_admission_verdict_v2(
     current_attempt_id: attempt_a(),
-    tested_subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
+    tested_subject: test.claim.merge_admission_attempt_witness.subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
     receipt: receipt_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
     merge_target_tree_hash: base_tree_fx(),
     current_roster_hash: roster_fx(),
@@ -85,7 +85,7 @@ test fn synthetic_changed_roster_receipt_refuses_against_live_roster() -> Bool {
   (synthetic_changed_roster_hash() != current_gate_roster_hash)
     && match classify_merge_admission_verdict_v2(
       current_attempt_id: attempt_a(),
-      tested_subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
+      tested_subject: test.claim.merge_admission_attempt_witness.subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
       receipt: synthetic_changed_roster_receipt(),
       merge_target_tree_hash: base_tree_fx(),
       current_roster_hash: current_gate_roster_hash,
@@ -102,7 +102,7 @@ test fn synthetic_changed_roster_receipt_refuses_against_live_roster() -> Bool {
 test fn synthetic_changed_roster_receipt_admits_when_revision_is_current() -> Bool {
   match classify_merge_admission_verdict_v2(
     current_attempt_id: attempt_a(),
-    tested_subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
+    tested_subject: test.claim.merge_admission_attempt_witness.subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
     receipt: synthetic_changed_roster_receipt(),
     merge_target_tree_hash: base_tree_fx(),
     current_roster_hash: synthetic_changed_roster_hash(),
@@ -127,7 +127,7 @@ test fn current_roster_receipt_admits_against_live_roster() -> Bool {
   }
   match classify_merge_admission_verdict_v2(
     current_attempt_id: attempt_a(),
-    tested_subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
+    tested_subject: test.claim.merge_admission_attempt_witness.subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
     receipt: receipt,
     merge_target_tree_hash: base_tree_fx(),
     current_roster_hash: current_gate_roster_hash,
@@ -144,7 +144,7 @@ test fn current_roster_receipt_admits_against_live_roster() -> Bool {
 test fn foreign_attempt_refuses_as_wrong_attempt() -> Bool {
   let v = classify_merge_admission_verdict_v2(
     current_attempt_id: attempt_a(),
-    tested_subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
+    tested_subject: test.claim.merge_admission_attempt_witness.subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
     receipt: receipt_fx(attempt: attempt_b(), tree: base_tree_fx(), head: head_sha_fx),
     merge_target_tree_hash: base_tree_fx(),
     current_roster_hash: roster_fx(),
@@ -163,7 +163,7 @@ test fn wrong_attempt_precedes_every_other_refusal() -> Bool {
   }
   match classify_merge_admission_verdict_v2(
     current_attempt_id: attempt_a(),
-    tested_subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
+    tested_subject: test.claim.merge_admission_attempt_witness.subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
     receipt: r,
     merge_target_tree_hash: base_tree_fx(),
     current_roster_hash: roster_fx(),
@@ -175,7 +175,7 @@ data subject_binding_discriminating_note: String = "The two rows below are the o
 test fn receipt_head_that_differs_from_the_captured_subject_refuses() -> Bool {
   let v = classify_merge_admission_verdict_v2(
     current_attempt_id: attempt_a(),
-    tested_subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
+    tested_subject: test.claim.merge_admission_attempt_witness.subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
     receipt: receipt_fx(attempt: attempt_a(), tree: base_tree_fx(), head: other_head_sha_fx),
     merge_target_tree_hash: base_tree_fx(),
     current_roster_hash: roster_fx(),
@@ -186,7 +186,7 @@ test fn receipt_head_that_differs_from_the_captured_subject_refuses() -> Bool {
 test fn receipt_base_tree_that_differs_from_the_captured_subject_refuses() -> Bool {
   match classify_merge_admission_verdict_v2(
     current_attempt_id: attempt_a(),
-    tested_subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
+    tested_subject: test.claim.merge_admission_attempt_witness.subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
     receipt: receipt_fx(attempt: attempt_a(), tree: base_tree_stale_fx(), head: head_sha_fx),
     merge_target_tree_hash: base_tree_stale_fx(),
     current_roster_hash: roster_fx(),
@@ -196,7 +196,7 @@ test fn receipt_base_tree_that_differs_from_the_captured_subject_refuses() -> Bo
 test fn subject_from_another_attempt_refuses_even_with_a_matching_receipt() -> Bool {
   match classify_merge_admission_verdict_v2(
     current_attempt_id: attempt_a(),
-    tested_subject: subject_fx(attempt: attempt_b(), tree: base_tree_fx(), head: head_sha_fx),
+    tested_subject: test.claim.merge_admission_attempt_witness.subject_fx(attempt: attempt_b(), tree: base_tree_fx(), head: head_sha_fx),
     receipt: receipt_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
     merge_target_tree_hash: base_tree_fx(),
     current_roster_hash: roster_fx(),
@@ -206,7 +206,7 @@ test fn subject_from_another_attempt_refuses_even_with_a_matching_receipt() -> B
 test fn subject_bound_receipt_on_an_advanced_target_is_stale_not_mismatched() -> Bool {
   match classify_merge_admission_verdict_v2(
     current_attempt_id: attempt_a(),
-    tested_subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
+    tested_subject: test.claim.merge_admission_attempt_witness.subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
     receipt: receipt_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
     merge_target_tree_hash: base_tree_stale_fx(),
     current_roster_hash: roster_fx(),
@@ -282,7 +282,7 @@ test fn receipt_wire_with_a_malformed_pr_line_refuses_the_whole_receipt() -> Boo
 }
 
 test fn subject_wire_with_a_trailing_line_refuses() -> Bool {
-  let good = render_tested_subject_wire(subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx))
+  let good = render_tested_subject_wire(subject: test.claim.merge_admission_attempt_witness.subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx))
   match parse_tested_subject_wire(text: concat(good, "\ntrailing")) {
     Present { value: _ } => false
     Absent => true
@@ -290,7 +290,7 @@ test fn subject_wire_with_a_trailing_line_refuses() -> Bool {
 }
 
 test fn tested_subject_wire_roundtrips() -> Bool {
-  let subj = subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx)
+  let subj = test.claim.merge_admission_attempt_witness.subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx)
   match parse_tested_subject_wire(text: render_tested_subject_wire(subject: subj)) {
     Present { value: parsed } =>
       ((parsed.attempt_id as String) == attempt_a_raw)
@@ -314,7 +314,7 @@ test fn tested_subject_wire_bytes_are_unchanged_by_subject_defusion() -> Bool {
     Absent => false
     Present { value: pre_defusion_tree } =>
       render_tested_subject_wire(
-        subject: subject_fx(attempt: attempt_a(), tree: pre_defusion_tree, head: head_sha_fx)
+        subject: test.claim.merge_admission_attempt_witness.subject_fx(attempt: attempt_a(), tree: pre_defusion_tree, head: head_sha_fx)
       ) == concat(
         "gunbc.merge_admission_tested_subject.v1\n12345-1-ci\norigin/main\nsha1:1111111111111111111111111111111111111111\n",
         head_sha_fx
@@ -323,7 +323,7 @@ test fn tested_subject_wire_bytes_are_unchanged_by_subject_defusion() -> Bool {
 }
 
 test fn subject_wire_refused_by_receipt_parser_and_vice_versa() -> Bool {
-  let subj = render_tested_subject_wire(subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx))
+  let subj = render_tested_subject_wire(subject: test.claim.merge_admission_attempt_witness.subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx))
   let rec = render_receipt_wire_v2(receipt: receipt_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx))
   match parse_receipt_wire_v2(text: subj) { Present { value: _ } => false  Absent => true }
     && match parse_tested_subject_wire(text: rec) { Present { value: _ } => false  Absent => true }

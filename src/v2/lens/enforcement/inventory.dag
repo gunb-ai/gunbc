@@ -560,8 +560,8 @@ fn witness_admission_inventory_row_for_exclusion_row(
     primary_cadence: row.classification,
     cadence_rows: cadence_scheduling_rows_for_primary(
       primary: row.classification,
-      ci_enrolled: schedule_entries_cover_pattern(xs: ci_entries, pattern: row.pattern),
-      prepush_enrolled: schedule_entries_cover_pattern(xs: prepush_entries, pattern: row.pattern)
+      ci_enrolled: v2.lens.enforcement.inventory.schedule_entries_cover_pattern(xs: ci_entries, pattern: row.pattern),
+      prepush_enrolled: v2.lens.enforcement.inventory.schedule_entries_cover_pattern(xs: prepush_entries, pattern: row.pattern)
     )
   }
 }

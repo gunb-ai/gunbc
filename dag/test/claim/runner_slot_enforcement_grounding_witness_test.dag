@@ -34,7 +34,7 @@ fn drift_read() -> ShowEffectiveRead<gunbc.ci_floor_measurement.RunnerSliceCapEf
 }
 
 fn apply_fixture() -> gunbc.runner_slot_enforcement.RunnerSlotApplyEffect {
-  runner_slot_apply_effect(slot_unit: fixture_slot(), expected_cap: fixture_expected_cap())
+  runner_slot_apply_effect(slot_unit: test.claim.runner_slot_enforcement_grounding_witness.fixture_slot(), expected_cap: fixture_expected_cap())
 }
 
 fn evidence_for(read: ShowEffectiveRead<gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness>) -> gunbc.runner_slot_enforcement.RunnerSlotEnforcement {
@@ -50,7 +50,7 @@ fn converges_for(read: ShowEffectiveRead<gunbc.ci_floor_measurement.RunnerSliceC
 }
 
 test fn witness_matching_read_grounds_enforced() -> Bool {
-  is_enforced(e: evidence_for(read: matching_read()))
+  test.claim.runner_slot_enforcement_grounding_witness.is_enforced(e: evidence_for(read: matching_read()))
 }
 
 test fn witness_matching_read_converges() -> Bool {
@@ -58,7 +58,7 @@ test fn witness_matching_read_converges() -> Bool {
 }
 
 test fn witness_unbounded_read_stays_unenforced() -> Bool {
-  !is_enforced(e: evidence_for(read: unbounded_read()))
+  !test.claim.runner_slot_enforcement_grounding_witness.is_enforced(e: evidence_for(read: unbounded_read()))
 }
 
 test fn witness_unbounded_read_does_not_converge() -> Bool {
@@ -66,7 +66,7 @@ test fn witness_unbounded_read_does_not_converge() -> Bool {
 }
 
 test fn witness_drift_read_stays_unenforced() -> Bool {
-  !is_enforced(e: evidence_for(read: drift_read()))
+  !test.claim.runner_slot_enforcement_grounding_witness.is_enforced(e: evidence_for(read: drift_read()))
 }
 
 test fn witness_drift_read_does_not_converge() -> Bool {
@@ -74,37 +74,37 @@ test fn witness_drift_read_does_not_converge() -> Bool {
 }
 
 test fn witness_absent_read_is_fail_closed() -> Bool {
-  !is_enforced(e: gunbc_runner_slot_enforcement_committed(expected_cap: fixture_expected_cap()))
+  !test.claim.runner_slot_enforcement_grounding_witness.is_enforced(e: gunbc_runner_slot_enforcement_committed(expected_cap: fixture_expected_cap()))
 }
 
 test fn witness_committed_read_is_absent() -> Bool {
-  !is_enforced(e: runner_slot_enforcement_evidence(
-    slot_unit: fixture_slot(),
+  !test.claim.runner_slot_enforcement_grounding_witness.is_enforced(e: runner_slot_enforcement_evidence(
+    slot_unit: test.claim.runner_slot_enforcement_grounding_witness.fixture_slot(),
     expected_cap: fixture_expected_cap(),
     read: gunbc.fleet_show_effective_read.gunbc_fleet_runner_slice_cap_show_effective_read
   ))
 }
 
 test fn witness_uncapped_per_slot_unit_refuses_enforcement() -> Bool {
-  !is_enforced(e: runner_slot_enforcement_from_unit_read(
+  !test.claim.runner_slot_enforcement_grounding_witness.is_enforced(e: runner_slot_enforcement_from_unit_read(
     read: runner_unit_live_read_typed(row: gunbc_srv1_runner_unit_live_read_fixture)
   ))
 }
 
 test fn witness_per_slot_committed_uses_allocation_authority_cap() -> Bool {
   byte_size_count(b: fixture_expected_cap()) == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
-    && !is_enforced(e: gunbc_runner_per_slot_enforcement_committed())
+    && !test.claim.runner_slot_enforcement_grounding_witness.is_enforced(e: gunbc_runner_per_slot_enforcement_committed())
 }
 
 test fn witness_matching_per_slot_unit_read_grounds_enforced() -> Bool {
   let row = gunbc.runner_unit_live_read.RunnerUnitLiveReadRow {
-    unit: fixture_slot(),
+    unit: test.claim.runner_slot_enforcement_grounding_witness.fixture_slot(),
     memory_max_raw: to_string(byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)),
     memory_swap_max_raw: "0",
     memory_high_raw: "infinity",
     memory_current_raw: "",
     probed_at: "2026-07-14",
   }
-  is_enforced(e: runner_slot_enforcement_from_unit_read(read: runner_unit_live_read_typed(row: row)))
+  test.claim.runner_slot_enforcement_grounding_witness.is_enforced(e: runner_slot_enforcement_from_unit_read(read: runner_unit_live_read_typed(row: row)))
 }
 

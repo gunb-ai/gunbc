@@ -68,8 +68,8 @@ fn derisk_emit_accepts(src: String) -> Bool {
 }
 
 test fn self_host_frontier_emit_ownership_miss_accepts() -> Bool {
-  derisk_emit_accepts(src: src_single_arm_match)
-    && derisk_infer_accepts(src: src_single_arm_match)
+  derisk_emit_accepts(src: v2.test.long.self_host_module_emit_derisk.src_single_arm_match)
+    && derisk_infer_accepts(src: v2.test.long.self_host_module_emit_derisk.src_single_arm_match)
 }
 
 test fn self_host_frontier_emit_two_user_types_accepts() -> Bool {
@@ -85,27 +85,27 @@ data src_two_user_types: String = "module derisk_pilot\n\ntype Flag = On | Off\n
 data src_multi_arm_match: String = "module derisk_pilot\n\ntype Flag = On | Off\n\nfn flip(f: Flag) -> Flag { match f { On => Off, Off => On } }\n"
 
 test fn self_host_frontier_parse_module_header_holds() -> Bool {
-  derisk_assemble_accepts(src: src_module_header)
+  derisk_assemble_accepts(src: v2.test.long.self_host_module_emit_derisk.src_module_header)
 }
 
 test fn self_host_frontier_parse_type_decl_holds() -> Bool {
-  derisk_assemble_accepts(src: src_type_decl)
+  derisk_assemble_accepts(src: v2.test.long.self_host_module_emit_derisk.src_type_decl)
 }
 
 test fn self_host_frontier_parse_fn_simple_body_holds() -> Bool {
-  derisk_assemble_accepts(src: src_fn_simple_body)
+  derisk_assemble_accepts(src: v2.test.long.self_host_module_emit_derisk.src_fn_simple_body)
 }
 
 test fn self_host_frontier_parse_single_arm_match_holds() -> Bool {
-  derisk_assemble_accepts(src: src_single_arm_match)
+  derisk_assemble_accepts(src: v2.test.long.self_host_module_emit_derisk.src_single_arm_match)
 }
 
 test fn self_host_frontier_infer_single_arm_module_holds() -> Bool {
-  derisk_infer_accepts(src: src_single_arm_match)
+  derisk_infer_accepts(src: v2.test.long.self_host_module_emit_derisk.src_single_arm_match)
 }
 
 test fn self_host_frontier_parse_multi_arm_match_holds() -> Bool {
-  derisk_assemble_accepts(src: src_multi_arm_match)
-    && derisk_infer_accepts(src: src_multi_arm_match)
+  derisk_assemble_accepts(src: v2.test.long.self_host_module_emit_derisk.src_multi_arm_match)
+    && derisk_infer_accepts(src: v2.test.long.self_host_module_emit_derisk.src_multi_arm_match)
 }
 

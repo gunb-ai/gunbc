@@ -19,7 +19,7 @@ fn owner_fixture() -> gunbc.build_cache_instance.ProcessIdentity {
 fn observed_with_context(ctx: gunbc.build_cache_instance.EndpointOwnerContext) -> gunbc.build_cache_instance.BuildCacheEndpointObservation {
   gunbc.build_cache_instance.EndpointOwnerObserved {
     instance: srv1_ci_instance_fixture(),
-    owner: owner_fixture(),
+    owner: test.claim.build_cache_placement_observation.owner_fixture(),
     executable: "/usr/local/bin/sccache" as std.types.NonEmptyStr,
     principal: "ghrunner" as std.types.NonEmptyStr,
     owner_context: ctx,

@@ -10,7 +10,7 @@ fn string_eq(a: String, b: String) -> Bool {
 }
 
 fn operation_key_in_omit_set(case: std.hermetic_replay.PublishedMockCase, omit_keys: List<String>) -> Bool {
-  contains(xs: omit_keys, item: case.operation_key, eq: string_eq)
+  contains(xs: omit_keys, item: case.operation_key, eq: v2.test.lens_mock_totality.witness_template.string_eq)
 }
 
 fn omit_consumer_handles(

@@ -80,13 +80,13 @@ test fn witness_structural_not_swallowed_as_infra() -> Bool {
     && reason_blocks_merge(reason: gate)
     && reason_blocks_merge(reason: drift)
     && reason_blocks_merge(reason: oom_structural)
-    && outcome_is_structural(o: classify_floor_exit(e: std.process.ExitFailure { code: 137, reason: oom_structural }))
+    && test.claim.ci_failure_class_witness.outcome_is_structural(o: classify_floor_exit(e: std.process.ExitFailure { code: 137, reason: oom_structural }))
     && floor_exit_blocks_merge(e: std.process.ExitFailure { code: 137, reason: oom_structural })
 }
 
 test fn witness_bare_exit_137_fails_closed() -> Bool {
   let bare = std.process.ExitFailure { code: 137, reason: "Process completed with exit code 137." }
-  outcome_is_structural(o: classify_floor_exit(e: bare))
+  test.claim.ci_failure_class_witness.outcome_is_structural(o: classify_floor_exit(e: bare))
     && floor_exit_blocks_merge(e: bare)
 }
 

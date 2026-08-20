@@ -22,7 +22,7 @@ fn fifth_root_iterate(y: Int, target: Int, fuel: Int) -> Int {
   if fuel <= 0 {
     y
   } else {
-    let y_safe = imax(a: y, b: 1)
+    let y_safe = extdeps.accessibility.wcag_contrast.imax(a: y, b: 1)
     let y4 = y_safe * y_safe * y_safe * y_safe
     let next = (4 * y_safe + target / y4) / 5
     fifth_root_iterate(y: next, target: target, fuel: fuel - 1)
@@ -107,14 +107,14 @@ fn srgb8_contrast_at_least(a: extdeps.color.srgb.Srgb8, b: extdeps.color.srgb.Sr
 }
 
 fn contrast_at_least_hundredths(lum_a_scaled: Int, lum_b_scaled: Int, threshold_hundredths: Int) -> Bool {
-  let hi = imax(a: lum_a_scaled, b: lum_b_scaled)
-  let lo = imin(a: lum_a_scaled, b: lum_b_scaled)
+  let hi = extdeps.accessibility.wcag_contrast.imax(a: lum_a_scaled, b: lum_b_scaled)
+  let lo = extdeps.accessibility.wcag_contrast.imin(a: lum_a_scaled, b: lum_b_scaled)
   100 * (hi + 500) >= threshold_hundredths * (lo + 500)
 }
 
 fn contrast_ratio_x100(lum_a_scaled: Int, lum_b_scaled: Int) -> Int {
-  let hi = imax(a: lum_a_scaled, b: lum_b_scaled)
-  let lo = imin(a: lum_a_scaled, b: lum_b_scaled)
+  let hi = extdeps.accessibility.wcag_contrast.imax(a: lum_a_scaled, b: lum_b_scaled)
+  let lo = extdeps.accessibility.wcag_contrast.imin(a: lum_a_scaled, b: lum_b_scaled)
   ((hi + 500) * 100) / (lo + 500)
 }
 

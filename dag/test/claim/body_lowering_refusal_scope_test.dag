@@ -28,11 +28,11 @@ test fn census_refusal_does_not_reach_a_non_batch_subject_RED() -> Bool {
 }
 
 test fn census_refusal_reaches_a_batch_subject() -> Bool {
-  cause_of(s: refusal_standing_of(s: batch_subject, cause: ^census_refused_at_world)) == ^census_refused_at_world
+  cause_of(s: refusal_standing_of(s: gunbc.test.claim.body_lowering_refusal_scope_test.batch_subject, cause: ^census_refused_at_world)) == ^census_refused_at_world
 }
 
 test fn census_refusal_cause_is_carried_not_fixed() -> Bool {
-  cause_of(s: refusal_standing_of(s: batch_subject, cause: ^census_refused_at_reconciliation)) == ^census_refused_at_reconciliation
+  cause_of(s: refusal_standing_of(s: gunbc.test.claim.body_lowering_refusal_scope_test.batch_subject, cause: ^census_refused_at_reconciliation)) == ^census_refused_at_reconciliation
 }
 
 test fn specimen_class_keeps_its_own_cause_under_refusal() -> Bool {

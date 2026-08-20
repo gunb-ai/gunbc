@@ -15,15 +15,15 @@ fn tpl(raw: String) -> std.http_path.PathTemplate {
 fn probe_table() -> extdeps.http.server.ServedRouteTable<test.claim.http_serve_route_witness.ProbeHandler> {
   extdeps.http.server.ServedRouteTable {
     routes: [
-      extdeps.http.server.DynamicRoute { method: std.types.GET, path_pattern: tpl(raw: "/"), handler: ProbePage },
+      extdeps.http.server.DynamicRoute { method: std.types.GET, path_pattern: test.claim.http_serve_route_witness.tpl(raw: "/"), handler: ProbePage },
       extdeps.http.server.StaticRoute { route: extdeps.http.server.ServedStaticRoute {
         method: GET,
-        path_pattern: tpl(raw: "/healthz"),
+        path_pattern: test.claim.http_serve_route_witness.tpl(raw: "/healthz"),
         body: "ok",
         content_type: text_html_utf8,
         status_on_hit: 200,
       } },
-      extdeps.http.server.DynamicRoute { method: std.types.POST, path_pattern: tpl(raw: "/dispatch/\{node_id\}"), handler: ProbeDispatch },
+      extdeps.http.server.DynamicRoute { method: std.types.POST, path_pattern: test.claim.http_serve_route_witness.tpl(raw: "/dispatch/\{node_id\}"), handler: ProbeDispatch },
     ]
   }
 }
@@ -92,8 +92,8 @@ test fn witness_unknown_path_folds_404() -> Bool {
 test fn witness_first_match_wins_on_overlap() -> Bool {
   let overlap = extdeps.http.server.ServedRouteTable {
     routes: [
-      extdeps.http.server.DynamicRoute { method: GET, path_pattern: tpl(raw: "/a/\{x\}"), handler: ProbePage },
-      extdeps.http.server.DynamicRoute { method: GET, path_pattern: tpl(raw: "/a/b"), handler: ProbeDispatch },
+      extdeps.http.server.DynamicRoute { method: GET, path_pattern: test.claim.http_serve_route_witness.tpl(raw: "/a/\{x\}"), handler: ProbePage },
+      extdeps.http.server.DynamicRoute { method: GET, path_pattern: test.claim.http_serve_route_witness.tpl(raw: "/a/b"), handler: ProbeDispatch },
     ]
   }
   selected_dynamic_is(sel: serve_select_route(table: overlap, method: GET, path: "/a/b"), want_dispatch: false)
@@ -189,7 +189,7 @@ fn matcher_accepts(template: std.http_path.PathTemplate, path: String) -> Bool {
 }
 
 fn parity_on_template(raw: String) -> Bool {
-  let t = tpl(raw: raw)
+  let t = test.claim.http_serve_route_witness.tpl(raw: raw)
   let re = emit_path_template_regex_source(template: t)
   fold(parity_corpus(), init: true, f: (acc, p) =>
     acc && (matcher_accepts(template: t, path: p) == regex_source_accepts(re: re, path: p))

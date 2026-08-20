@@ -28,7 +28,7 @@ data fixture_dimm: extdeps.memory.types.DramModuleCatalogRow = extdeps.memory.ty
   part_number: "GENERIC-32G-2RX4-3200",
   manufacturer: extdeps.vendor.sk_hynix.sk_hynix,
   generation: extdeps.memory.types.dram_generation_ddr4,
-  capacity_bytes: stick_32g,
+  capacity_bytes: test.claim.build_fulfillment_witness.stick_32g,
   data_rate_mts: 3200,
   ecc: true,
   buffering: extdeps.memory.types.Registered,
@@ -99,7 +99,7 @@ fn qualified_events(identity: product.inventory.InventoryLotIdentity, quantity: 
 // Sixty-two processors on the shelf, a dual-socket recipe, nothing else
 // constraining: the ceiling is thirty-one, and sixty processors make it thirty.
 fn cpu_lot(quantity: std.nat.Nat) -> product.inventory.ProcurementLot {
-  lot_of(identity: cpu_lot_identity(), label: "processors, shelf stock" as std.types.NonEmptyStr, quantity: quantity, landed: usd_micros(count: 620000000))
+  lot_of(identity: cpu_lot_identity(), label: "processors, shelf stock" as std.types.NonEmptyStr, quantity: quantity, landed: test.claim.build_fulfillment_witness.usd_micros(count: 620000000))
 }
 
 fn dimm_lot(quantity: std.nat.Nat, landed: std.measure.MoneyOnce) -> product.inventory.ProcurementLot {
@@ -115,7 +115,7 @@ fn dual_socket_recipe() -> product.build_fulfillment.NodeRecipe {
     baseboard: mt_collins_ref,
     baseboard_label: "Ampere Mt. Collins" as std.types.NonEmptyStr,
     memory_module: dimm_ref,
-    population: sixteen_module_population,
+    population: test.claim.build_fulfillment_witness.sixteen_module_population,
     inclusions: [],
   }
 }
@@ -129,7 +129,7 @@ fn single_socket_recipe() -> product.build_fulfillment.NodeRecipe {
     baseboard: altrad8ud_ref,
     baseboard_label: "ASRock Rack ALTRAD8UD-1L2T" as std.types.NonEmptyStr,
     memory_module: dimm_ref,
-    population: eight_module_population,
+    population: test.claim.build_fulfillment_witness.eight_module_population,
     inclusions: [],
   }
 }
@@ -144,7 +144,7 @@ fn owned_row(part: std.decl_ref.DeclarationRef, lot: product.inventory.Procureme
 }
 
 fn board_lot() -> product.inventory.ProcurementLot {
-  lot_of(identity: board_lot_identity(), label: "baseboards, shelf stock" as std.types.NonEmptyStr, quantity: 4, landed: usd_micros(count: 4000000))
+  lot_of(identity: board_lot_identity(), label: "baseboards, shelf stock" as std.types.NonEmptyStr, quantity: 4, landed: test.claim.build_fulfillment_witness.usd_micros(count: 4000000))
 }
 
 fn market_row(part: std.decl_ref.DeclarationRef, units: std.nat.Nat, unit_price: std.measure.MoneyOnce) -> product.build_fulfillment.SupplyRow {
@@ -165,7 +165,7 @@ fn market_row(part: std.decl_ref.DeclarationRef, units: std.nat.Nat, unit_price:
 // correct, and is exercised on its own below rather than left to contaminate
 // the arithmetic claims.
 fn board_row() -> product.build_fulfillment.SupplyRow {
-  market_row(part: mt_collins_ref, units: 4000, unit_price: usd_micros(count: 1000000))
+  market_row(part: mt_collins_ref, units: 4000, unit_price: test.claim.build_fulfillment_witness.usd_micros(count: 1000000))
 }
 
 fn board_row_not_offered() -> product.build_fulfillment.SupplyRow {
@@ -205,7 +205,7 @@ test fn w_single_socket_bom_is_not_multiplied() -> Bool {
 test fn w_owned_stock_resolves_to_a_reservation_against_the_lot() -> Bool {
   let rows = [
     owned_row(part: q8030_ref, lot: cpu_lot(quantity: 62), quantity: 62),
-    market_row(part: dimm_ref, units: 64, unit_price: usd_micros(count: 90000000)),
+    market_row(part: dimm_ref, units: 64, unit_price: test.claim.build_fulfillment_witness.usd_micros(count: 90000000)),
     board_row_not_offered(),
   ]
   fold(product.build_fulfillment.resolve_build(recipe: dual_socket_recipe(), rows: rows), init: false, f: fn(acc, r) {
@@ -245,14 +245,14 @@ fn broken_ledger_row(events: std.types.List<product.inventory.InventoryEvent>) -
     owned: product.build_fulfillment.OwnedLots { offerings: [product.build_fulfillment.LotOffering { lot: cpu_lot(quantity: 62), events: events }] },
     market: product.build_fulfillment.MarketDepthCited {
       units_available: 100,
-      unit_price: usd_micros(count: 400000000),
+      unit_price: test.claim.build_fulfillment_witness.usd_micros(count: 400000000),
       authority: fixture_market_authority,
     },
   }
 }
 
 fn refuses_with_unreconciled_ledger(events: std.types.List<product.inventory.InventoryEvent>) -> Bool {
-  let rows = [broken_ledger_row(events: events), market_row(part: dimm_ref, units: 64, unit_price: usd_micros(count: 90000000)), board_row()]
+  let rows = [broken_ledger_row(events: events), market_row(part: dimm_ref, units: 64, unit_price: test.claim.build_fulfillment_witness.usd_micros(count: 90000000)), board_row()]
   fold(product.build_fulfillment.resolve_build(recipe: dual_socket_recipe(), rows: rows), init: false, f: fn(acc, r) {
     match r {
       LineRefused { line: _, cause: c } =>
@@ -293,7 +293,7 @@ test fn w_two_lots_offering_one_component_refuse_rather_than_picking() -> Bool {
     },
     market: product.build_fulfillment.MarketNotOffered,
   }
-  let rows = [two, market_row(part: dimm_ref, units: 64, unit_price: usd_micros(count: 90000000)), board_row()]
+  let rows = [two, market_row(part: dimm_ref, units: 64, unit_price: test.claim.build_fulfillment_witness.usd_micros(count: 90000000)), board_row()]
   fold(product.build_fulfillment.resolve_build(recipe: dual_socket_recipe(), rows: rows), init: false, f: fn(acc, r) {
     match r {
       LineRefused { line: _, cause: c } =>
@@ -308,7 +308,7 @@ test fn w_two_lots_offering_one_component_refuse_rather_than_picking() -> Bool {
 test fn w_insufficient_owned_stock_falls_through_to_the_market() -> Bool {
   let rows = [
     owned_row(part: q8030_ref, lot: cpu_lot(quantity: 1), quantity: 1),
-    market_row(part: dimm_ref, units: 64, unit_price: usd_micros(count: 90000000)),
+    market_row(part: dimm_ref, units: 64, unit_price: test.claim.build_fulfillment_witness.usd_micros(count: 90000000)),
     board_row_not_offered(),
   ]
   fold(product.build_fulfillment.resolve_build(recipe: dual_socket_recipe(), rows: rows), init: false, f: fn(acc, r) {
@@ -333,7 +333,7 @@ test fn w_unread_compatibility_is_pending_evidence_not_a_purchase() -> Bool {
     owned: product.build_fulfillment.NoOwnedLot,
     market: product.build_fulfillment.MarketDepthCited {
       units_available: 400,
-      unit_price: usd_micros(count: 90000000),
+      unit_price: test.claim.build_fulfillment_witness.usd_micros(count: 90000000),
       authority: fixture_market_authority,
     },
   }
@@ -362,12 +362,12 @@ test fn w_included_processors_draw_no_stock_and_no_cash() -> Bool {
     baseboard: mt_collins_ref,
     baseboard_label: "Ampere Mt. Collins" as std.types.NonEmptyStr,
     memory_module: dimm_ref,
-    population: sixteen_module_population,
+    population: test.claim.build_fulfillment_witness.sixteen_module_population,
     inclusions: [product.build_fulfillment.SystemInclusion { role: product.build_fulfillment.Processor, part: q8030_ref, quantity_included: 2 }],
   }
   let rows = [
     owned_row(part: q8030_ref, lot: cpu_lot(quantity: 62), quantity: 62),
-    market_row(part: dimm_ref, units: 64, unit_price: usd_micros(count: 90000000)),
+    market_row(part: dimm_ref, units: 64, unit_price: test.claim.build_fulfillment_witness.usd_micros(count: 90000000)),
     board_row_not_offered(),
   ]
   let resolutions = product.build_fulfillment.resolve_build(recipe: recipe, rows: rows)
@@ -388,7 +388,7 @@ test fn w_included_processors_draw_no_stock_and_no_cash() -> Bool {
 test fn w_without_the_inclusion_the_same_processors_are_drawn() -> Bool {
   let rows = [
     owned_row(part: q8030_ref, lot: cpu_lot(quantity: 62), quantity: 62),
-    market_row(part: dimm_ref, units: 64, unit_price: usd_micros(count: 90000000)),
+    market_row(part: dimm_ref, units: 64, unit_price: test.claim.build_fulfillment_witness.usd_micros(count: 90000000)),
     board_row_not_offered(),
   ]
   let draws = product.build_fulfillment.owned_stock_consumed(resolutions: product.build_fulfillment.resolve_build(recipe: dual_socket_recipe(), rows: rows))
@@ -400,12 +400,12 @@ test fn w_without_the_inclusion_the_same_processors_are_drawn() -> Bool {
 test fn w_resolution_is_invariant_under_supply_order() -> Bool {
   let a = [
     owned_row(part: q8030_ref, lot: cpu_lot(quantity: 62), quantity: 62),
-    market_row(part: dimm_ref, units: 64, unit_price: usd_micros(count: 90000000)),
+    market_row(part: dimm_ref, units: 64, unit_price: test.claim.build_fulfillment_witness.usd_micros(count: 90000000)),
     board_row_not_offered(),
   ]
   let b = [
     board_row_not_offered(),
-    market_row(part: dimm_ref, units: 64, unit_price: usd_micros(count: 90000000)),
+    market_row(part: dimm_ref, units: 64, unit_price: test.claim.build_fulfillment_witness.usd_micros(count: 90000000)),
     owned_row(part: q8030_ref, lot: cpu_lot(quantity: 62), quantity: 62),
   ]
   let la = labels_of(rows: a)
@@ -427,7 +427,7 @@ test fn w_duplicate_supply_row_refuses() -> Bool {
   let rows = [
     owned_row(part: q8030_ref, lot: cpu_lot(quantity: 62), quantity: 62),
     owned_row(part: q8030_ref, lot: cpu_lot(quantity: 62), quantity: 62),
-    market_row(part: dimm_ref, units: 64, unit_price: usd_micros(count: 90000000)),
+    market_row(part: dimm_ref, units: 64, unit_price: test.claim.build_fulfillment_witness.usd_micros(count: 90000000)),
     board_row_not_offered(),
   ]
   fold(product.build_fulfillment.resolve_build(recipe: dual_socket_recipe(), rows: rows), init: false, f: fn(acc, r) {
@@ -459,7 +459,7 @@ test fn w_absent_supply_row_refuses_rather_than_reporting_missing() -> Bool {
 test fn w_cash_counts_purchases_only_and_owned_draws_report_zero_cash() -> Bool {
   let rows = [
     owned_row(part: q8030_ref, lot: cpu_lot(quantity: 62), quantity: 62),
-    market_row(part: dimm_ref, units: 64, unit_price: usd_micros(count: 90000000)),
+    market_row(part: dimm_ref, units: 64, unit_price: test.claim.build_fulfillment_witness.usd_micros(count: 90000000)),
     board_row(),
   ]
   let resolutions = product.build_fulfillment.resolve_build(recipe: dual_socket_recipe(), rows: rows)
@@ -475,7 +475,7 @@ test fn w_cash_counts_purchases_only_and_owned_draws_report_zero_cash() -> Bool 
 test fn w_a_build_with_no_purchases_reads_its_own_arm_not_a_zero() -> Bool {
   let rows = [
     owned_row(part: q8030_ref, lot: cpu_lot(quantity: 62), quantity: 62),
-    owned_row(part: dimm_ref, lot: dimm_lot(quantity: 64, landed: usd_micros(count: 640000000)), quantity: 64),
+    owned_row(part: dimm_ref, lot: dimm_lot(quantity: 64, landed: test.claim.build_fulfillment_witness.usd_micros(count: 640000000)), quantity: 64),
     owned_row(part: mt_collins_ref, lot: board_lot(), quantity: 4),
   ]
   let resolutions = product.build_fulfillment.resolve_build(recipe: dual_socket_recipe(), rows: rows)
@@ -491,7 +491,7 @@ test fn w_a_build_with_no_purchases_reads_its_own_arm_not_a_zero() -> Bool {
 test fn w_an_unfillable_line_refuses_the_cash_answer() -> Bool {
   let rows = [
     owned_row(part: q8030_ref, lot: cpu_lot(quantity: 62), quantity: 62),
-    market_row(part: dimm_ref, units: 64, unit_price: usd_micros(count: 90000000)),
+    market_row(part: dimm_ref, units: 64, unit_price: test.claim.build_fulfillment_witness.usd_micros(count: 90000000)),
     board_row_not_offered(),
   ]
   match product.build_fulfillment.incremental_cash_now(resolutions: product.build_fulfillment.resolve_build(recipe: dual_socket_recipe(), rows: rows), declared_currency: std.currency.Usd) {
@@ -525,7 +525,7 @@ test fn w_cross_currency_purchase_refuses_rather_than_summing() -> Bool {
 test fn w_basis_is_exact_under_a_named_policy() -> Bool {
   let rows = [
     owned_row(part: q8030_ref, lot: cpu_lot(quantity: 62), quantity: 62),
-    market_row(part: dimm_ref, units: 64, unit_price: usd_micros(count: 90000000)),
+    market_row(part: dimm_ref, units: 64, unit_price: test.claim.build_fulfillment_witness.usd_micros(count: 90000000)),
     board_row_not_offered(),
   ]
   let draws = product.build_fulfillment.owned_stock_consumed(resolutions: product.build_fulfillment.resolve_build(recipe: dual_socket_recipe(), rows: rows))
@@ -541,7 +541,7 @@ test fn w_basis_is_exact_under_a_named_policy() -> Bool {
 // division could not place — and 666,666*3 + 2 is exactly what was paid, which a
 // floor alone would not be.
 test fn w_inexact_allocation_retains_its_remainder() -> Bool {
-  let odd_lot = lot_of(identity: cpu_lot_identity(), label: "odd lot" as std.types.NonEmptyStr, quantity: 3, landed: usd_micros(count: 1000000))
+  let odd_lot = lot_of(identity: cpu_lot_identity(), label: "odd lot" as std.types.NonEmptyStr, quantity: 3, landed: test.claim.build_fulfillment_witness.usd_micros(count: 1000000))
   let rows = [
     product.build_fulfillment.SupplyRow {
       part: q8030_ref,
@@ -549,7 +549,7 @@ test fn w_inexact_allocation_retains_its_remainder() -> Bool {
       owned: product.build_fulfillment.OwnedLots { offerings: [product.build_fulfillment.LotOffering { lot: odd_lot, events: qualified_events(identity: cpu_lot_identity(), quantity: 3) }] },
       market: product.build_fulfillment.MarketNotOffered,
     },
-    market_row(part: dimm_ref, units: 64, unit_price: usd_micros(count: 90000000)),
+    market_row(part: dimm_ref, units: 64, unit_price: test.claim.build_fulfillment_witness.usd_micros(count: 90000000)),
     board_row_not_offered(),
   ]
   let draws = product.build_fulfillment.owned_stock_consumed(resolutions: product.build_fulfillment.resolve_build(recipe: dual_socket_recipe(), rows: rows))
@@ -578,7 +578,7 @@ test fn w_unsettled_landed_cost_refuses_the_basis_rather_than_reading_zero() -> 
       owned: product.build_fulfillment.OwnedLots { offerings: [product.build_fulfillment.LotOffering { lot: unsettled, events: qualified_events(identity: cpu_lot_identity(), quantity: 62) }] },
       market: product.build_fulfillment.MarketNotOffered,
     },
-    market_row(part: dimm_ref, units: 64, unit_price: usd_micros(count: 90000000)),
+    market_row(part: dimm_ref, units: 64, unit_price: test.claim.build_fulfillment_witness.usd_micros(count: 90000000)),
     board_row_not_offered(),
   ]
   let draws = product.build_fulfillment.owned_stock_consumed(resolutions: product.build_fulfillment.resolve_build(recipe: dual_socket_recipe(), rows: rows))
@@ -593,8 +593,8 @@ test fn w_unsettled_landed_cost_refuses_the_basis_rather_than_reading_zero() -> 
 fn ceiling_builds(cpu_units: std.nat.Nat) -> Int {
   let rows = [
     owned_row(part: q8030_ref, lot: cpu_lot(quantity: cpu_units), quantity: cpu_units),
-    market_row(part: dimm_ref, units: 4000, unit_price: usd_micros(count: 90000000)),
-    market_row(part: mt_collins_ref, units: 4000, unit_price: usd_micros(count: 1000000)),
+    market_row(part: dimm_ref, units: 4000, unit_price: test.claim.build_fulfillment_witness.usd_micros(count: 90000000)),
+    market_row(part: mt_collins_ref, units: 4000, unit_price: test.claim.build_fulfillment_witness.usd_micros(count: 1000000)),
   ]
   match product.build_fulfillment.max_constructible(recipe: dual_socket_recipe(), rows: rows) {
     CeilingDerived { builds: b, bottlenecks: _, bottleneck_units: _ } => b
@@ -609,8 +609,8 @@ test fn w_sixty_two_processors_ceiling_thirty_one_and_sixty_gives_thirty() -> Bo
 test fn w_the_ceiling_names_the_line_that_stops_the_next_build() -> Bool {
   let rows = [
     owned_row(part: q8030_ref, lot: cpu_lot(quantity: 62), quantity: 62),
-    market_row(part: dimm_ref, units: 4000, unit_price: usd_micros(count: 90000000)),
-    market_row(part: mt_collins_ref, units: 4000, unit_price: usd_micros(count: 1000000)),
+    market_row(part: dimm_ref, units: 4000, unit_price: test.claim.build_fulfillment_witness.usd_micros(count: 90000000)),
+    market_row(part: mt_collins_ref, units: 4000, unit_price: test.claim.build_fulfillment_witness.usd_micros(count: 1000000)),
   ]
   match product.build_fulfillment.max_constructible(recipe: dual_socket_recipe(), rows: rows) {
     CeilingDerived { builds: b, bottlenecks: bs, bottleneck_units: u } =>
@@ -634,7 +634,7 @@ test fn w_unread_market_depth_refuses_the_ceiling() -> Bool {
       owned: product.build_fulfillment.NoOwnedLot,
       market: product.build_fulfillment.MarketDepthUnread { obligation: "no depth read for this module at any distributor" as std.types.NonEmptyStr },
     },
-    market_row(part: mt_collins_ref, units: 4000, unit_price: usd_micros(count: 1000000)),
+    market_row(part: mt_collins_ref, units: 4000, unit_price: test.claim.build_fulfillment_witness.usd_micros(count: 1000000)),
   ]
   match product.build_fulfillment.max_constructible(recipe: dual_socket_recipe(), rows: rows) {
     CeilingRefused { cause: c } => match c { CeilingDepthUnread { part: _, obligation: _ } => true, _ => false }
@@ -675,7 +675,7 @@ test fn w_a_fully_included_build_is_unconstrained_by_any_line() -> Bool {
     baseboard: mt_collins_ref,
     baseboard_label: "Ampere Mt. Collins" as std.types.NonEmptyStr,
     memory_module: dimm_ref,
-    population: sixteen_module_population,
+    population: test.claim.build_fulfillment_witness.sixteen_module_population,
     inclusions: [
       product.build_fulfillment.SystemInclusion { role: product.build_fulfillment.Processor, part: q8030_ref, quantity_included: 2 },
       product.build_fulfillment.SystemInclusion { role: product.build_fulfillment.Baseboard, part: mt_collins_ref, quantity_included: 1 },
@@ -726,7 +726,7 @@ test fn w_basis_across_lots_in_two_currencies_refuses() -> Bool {
 // POSITIVE CONTROL: the same two lots landed in ONE currency sum, so the
 // refusal above is about the currencies and not about drawing two lots.
 test fn w_basis_across_two_lots_in_one_currency_sums() -> Bool {
-  let usd_dimm_lot = dimm_lot(quantity: 64, landed: usd_micros(count: 640000000))
+  let usd_dimm_lot = dimm_lot(quantity: 64, landed: test.claim.build_fulfillment_witness.usd_micros(count: 640000000))
   let rows = [
     owned_row(part: q8030_ref, lot: cpu_lot(quantity: 62), quantity: 62),
     owned_row(part: dimm_ref, lot: usd_dimm_lot, quantity: 64),

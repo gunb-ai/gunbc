@@ -78,7 +78,7 @@ fn occurrence_binding_inputs_from_transport(
       transport.index.entries,
       init: [],
       f: (acc, entry) =>
-        concat([authored_order_row_from_entry(entry: entry)], acc),
+        concat([v1.gunbc.occurrence_binding_parser_walk.authored_order_row_from_entry(entry: entry)], acc),
     )),
   }
 }

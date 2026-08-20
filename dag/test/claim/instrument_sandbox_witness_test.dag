@@ -68,8 +68,8 @@ fn witness_the_emission_var_occurs_inside_every_theme_block() -> Bool {
   let css = instrument_emission_root_css_for(role: audition_subject_role())
   let v = emission_var_ref(i: AuditionHero)
   let day_block = first_segment(s: css, marker: ":root[data-theme=")
-  let media_block = last_segment(s: css, marker: "@media (prefers-color-scheme:")
-  let alt_block = first_segment(s: last_segment(s: css, marker: ":root[data-theme="), marker: "@media")
+  let media_block = test.claim.instrument_sandbox_witness.last_segment(s: css, marker: "@media (prefers-color-scheme:")
+  let alt_block = first_segment(s: test.claim.instrument_sandbox_witness.last_segment(s: css, marker: ":root[data-theme="), marker: "@media")
   string_contains(s: day_block, pattern: v)
     && string_contains(s: alt_block, pattern: v)
     && string_contains(s: media_block, pattern: v)
@@ -129,8 +129,8 @@ fn focused_camera(m: gunbc.design.instrument_camera.ProgramMode, d: gunbc.design
 data program_grain_witness_note: String = "The claim review 48719 found missing. With a subject FOCUSED, the program detent must still read the whole program's shape — before the fix read_camera_at routed a focused DepthProgram into read_line_view, whose DepthProgram arm was byte-identical to its DepthOutcome one, so the page rendered outcome-grain numbers under a program label. This reds on that exact behaviour: it demands the program's own remaining (open_fronts 7), which the collapsed reader could not produce because it only ever saw the line's 1."
 
 fn witness_the_program_detent_reads_program_grain_even_when_focused() -> Bool {
-  let status = read_camera(camera: focused_camera(m: ModeStatus, d: DepthProgram), view: fixture_view())
-  let remaining = read_camera(camera: focused_camera(m: ModeRemaining, d: DepthProgram), view: fixture_view())
+  let status = read_camera(camera: focused_camera(m: ModeStatus, d: DepthProgram), view: test.claim.instrument_sandbox_witness.fixture_view())
+  let remaining = read_camera(camera: focused_camera(m: ModeRemaining, d: DepthProgram), view: test.claim.instrument_sandbox_witness.fixture_view())
   match status {
     ReadingProgramShape { remaining: rs } => rs.open_fronts == 7 && rs.startable_now == 5
     ReadingNoSubject => false
@@ -156,7 +156,7 @@ fn witness_the_program_detent_reads_program_grain_even_when_focused() -> Bool {
 data outcome_grain_still_line_scoped_note: String = "The other half of the same law, so the fix cannot be satisfied by making EVERY depth answer program-grain: at outcome depth the reading must still be the LINE's shape (open_fronts 1), not the program's 7."
 
 fn witness_red_the_outcome_detent_still_reads_the_line() -> Bool {
-  match read_camera(camera: focused_camera(m: ModeRemaining, d: DepthOutcome), view: fixture_view()) {
+  match read_camera(camera: focused_camera(m: ModeRemaining, d: DepthOutcome), view: test.claim.instrument_sandbox_witness.fixture_view()) {
     ReadingOutcomeRemaining { name, remaining: r } => r.open_fronts == 1 && name == "Compiler fixed point"
     ReadingNoSubject => false
     ReadingProgramShape { remaining: rs } => false

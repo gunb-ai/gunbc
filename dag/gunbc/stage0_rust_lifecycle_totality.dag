@@ -38,7 +38,7 @@ fn raw_disposition_authority_paths() -> List<String> {
 fn exact_duplicate_paths_within_authority(paths: List<String>) -> List<String> {
   v2.std.algebra.fold_list(
     xs: paths,
-    empty: empty_string_list,
+    empty: gunbc.stage0_rust_lifecycle_totality.empty_string_list,
     cons: fn(acc, path) {
       if path_occurrence_count(paths: paths, target: path) > 1
         && !path_in_list(path: path, paths: acc) {

@@ -30,7 +30,7 @@ fn synthetic_nonliteral_text(text: String) -> std.types.NonEmptyStr {
 }
 
 fn synthetic_empty_condition(text: String) -> std.dissolution.DissolutionCondition {
-  unbound_dissolution(description: synthetic_nonliteral_text(text: text))
+  unbound_dissolution(description: test.claim.non_fold_residue_frontier.synthetic_nonliteral_text(text: text))
 }
 
 test fn non_fold_residue_frontier_red_control_empty_trigger_reds() -> Bool {
@@ -38,7 +38,7 @@ test fn non_fold_residue_frontier_red_control_empty_trigger_reds() -> Bool {
     row: std.roster_frontier.FrontierRow {
       subject: std.roster_frontier.PathSubject { path: "synthetic.dag::f" },
       reason: "a reason without a trigger is not a frontier row",
-      dissolution: synthetic_empty_condition(text: "")
+      dissolution: test.claim.non_fold_residue_frontier.synthetic_empty_condition(text: "")
     }
   )
   verdict == false

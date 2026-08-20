@@ -110,7 +110,7 @@ func review_pr(
   pr_owner: String = owner,
   pr_repo: String = repo,
   pr_number: Int,
-  model: String = default_model,
+  model: String = gunbc.tools.review_codex.default_model,
   reasoning_effort: String = default_reasoning_effort
 ) -> { reviewed: Bool } {
 
@@ -127,7 +127,7 @@ func review_pr(
     repo: pr_repo,
     pull_number: pr_number
   )
-  already_done = has_review_at_sha(reviews: existing.reviews, sha: pr.pr.head.sha)
+  already_done = gunbc.tools.review_codex.has_review_at_sha(reviews: existing.reviews, sha: pr.pr.head.sha)
 
   prior_comments_raw = github.Pulls.ListComments(
     auth_token: github_auth,
@@ -178,7 +178,7 @@ func review_cycle(
 
   upsert_tagged_cron_tab(
     tag: cron_tag,
-    schedule: render_cron_schedule(cron_schedule),
+    schedule: render_cron_schedule(gunbc.tools.review_codex.cron_schedule),
     command: "dag run --source-root dag --function gunbc.tools.review_codex.review_cycle",
     log_path: "/Users/briansrls/.local/share/gunbc-review/logs/cron.log"
   )
@@ -191,7 +191,7 @@ func review_cycle(
   )
 
   results = for pr in open_prs.pulls {
-    review_pr(
+    gunbc.tools.review_codex.review_pr(
       pr_owner: cycle_owner,
       pr_repo: cycle_repo,
       pr_number: pr.number

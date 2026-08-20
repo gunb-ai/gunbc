@@ -42,7 +42,7 @@ fn dedupe_nonempty_strings(items: List<String>) -> List<String> {
 fn collect_type_node_import_surface_names(n: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<String> {
   let peeled = normalize_access_type_node(n: n)
   let name = authored_name_at(source_indices: source_indices, node: peeled)
-  let is_tv = if peeled.inferred != none { is_type_variable(inferred: peeled.inferred.value) } else { false }
+  let is_tv = if peeled.inferred != none { v1.compiler.infer_emit_info.is_type_variable(inferred: peeled.inferred.value) } else { false }
   let own = if name != "" && name != "Dynamic" && !is_tv { [name] } else { [] }
   let child_names = peeled.children |> flat_map(ch =>
     collect_type_node_import_surface_names(n: child_type_node(ch: ch), source_indices: source_indices)
@@ -337,7 +337,7 @@ fn build_field_type_map(children: List<v1.std.core.Node>, source_indices: Map<St
     match child.inferred {
       Present { value: Resolved { node: ft } } =>
         let resolved_name = authored_name_at(source_indices: source_indices, node: normalize_access_type_node(n: ft))
-        let ft_is_type_var = if ft.inferred != none { is_type_variable(inferred: ft.inferred.value) } else { false }
+        let ft_is_type_var = if ft.inferred != none { v1.compiler.infer_emit_info.is_type_variable(inferred: ft.inferred.value) } else { false }
         let key = authored_name_at(source_indices: source_indices, node: child)
         let surface_names = collect_type_node_import_surface_names(n: ft, source_indices: source_indices)
         let next_field_types = if resolved_name != "" && !ft_is_type_var && resolved_name != "Dynamic" {

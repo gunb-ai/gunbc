@@ -44,7 +44,7 @@ fn witness_struct_field_by_value(sym: v2.std.node.Symbol) -> Node {
     children: [
       v2.std.node.Edge {
         label: Named { name: ^member },
-        target: witness_type_atom(sym: sym),
+        target: v2.test.claim.c_compilation_unit_witness.witness_type_atom(sym: sym),
       }
     ]
   )
@@ -61,11 +61,11 @@ fn witness_struct_field_by_pointer(sym: v2.std.node.Symbol) -> Node {
           children: [
             v2.std.node.Edge {
               label: Named { name: ^domain },
-              target: witness_type_atom(sym: sym),
+              target: v2.test.claim.c_compilation_unit_witness.witness_type_atom(sym: sym),
             },
             v2.std.node.Edge {
               label: Named { name: ^codomain },
-              target: witness_type_atom(sym: witness_type_int),
+              target: v2.test.claim.c_compilation_unit_witness.witness_type_atom(sym: v2.test.claim.c_compilation_unit_witness.witness_type_int),
             }
           ]
         ),
@@ -80,7 +80,7 @@ fn witness_point_struct_conj_body() -> Node {
     children: [
       v2.std.node.Edge {
         label: Named { name: ^x },
-        target: witness_type_atom(sym: witness_type_int),
+        target: v2.test.claim.c_compilation_unit_witness.witness_type_atom(sym: v2.test.claim.c_compilation_unit_witness.witness_type_int),
       }
     ]
   )
@@ -94,25 +94,25 @@ fn witness_fn_taking_point_by_value() -> Node {
     children: [
       v2.std.node.Edge {
         label: Named { name: ^domain },
-        target: witness_type_atom(sym: witness_type_point),
+        target: v2.test.claim.c_compilation_unit_witness.witness_type_atom(sym: v2.test.claim.c_compilation_unit_witness.witness_type_point),
       },
       v2.std.node.Edge {
         label: Named { name: ^codomain },
-        target: witness_type_atom(sym: witness_type_int),
+        target: v2.test.claim.c_compilation_unit_witness.witness_type_atom(sym: v2.test.claim.c_compilation_unit_witness.witness_type_int),
       }
     ]
   )
 }
 
 fn witness_exports_for_c() -> List<Node> {
-  [witness_fn_taking_point_by_value()]
+  [v2.test.claim.c_compilation_unit_witness.witness_fn_taking_point_by_value()]
 }
 
 fn witness_type_defs_for_c() -> List<v2.std.compilers.compilation_unit.ModuleTypeDefinitionRow> {
   [
     v2.std.compilers.compilation_unit.ModuleTypeDefinitionRow {
-      identity: witness_type_point,
-      definition: witness_point_struct_conj_body(),
+      identity: v2.test.claim.c_compilation_unit_witness.witness_type_point,
+      definition: v2.test.claim.c_compilation_unit_witness.witness_point_struct_conj_body(),
     }
   ]
 }
@@ -128,19 +128,19 @@ fn witness_triangle_dag() -> v2.std.compilers.compilation_unit.ModuleDag {
     exports: empty_map()
       |> map_insert(witness_mod_a, std.algebra.Empty)
       |> map_insert(witness_mod_b, std.algebra.Empty)
-      |> map_insert(witness_mod_c, witness_exports_for_c()),
+      |> map_insert(witness_mod_c, v2.test.claim.c_compilation_unit_witness.witness_exports_for_c()),
     type_definitions: empty_map()
       |> map_insert(witness_mod_a, std.algebra.Empty)
       |> map_insert(witness_mod_b, std.algebra.Empty)
-      |> map_insert(witness_mod_c, witness_type_defs_for_c()),
+      |> map_insert(witness_mod_c, v2.test.claim.c_compilation_unit_witness.witness_type_defs_for_c()),
   }
 }
 
 fn witness_two_unit_assignment() -> Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId> {
   empty_map()
-    |> map_insert(witness_mod_a, witness_unit_one)
-    |> map_insert(witness_mod_b, witness_unit_one)
-    |> map_insert(witness_mod_c, witness_unit_two)
+    |> map_insert(witness_mod_a, v2.test.claim.c_compilation_unit_witness.witness_unit_one)
+    |> map_insert(witness_mod_b, v2.test.claim.c_compilation_unit_witness.witness_unit_one)
+    |> map_insert(witness_mod_c, v2.test.claim.c_compilation_unit_witness.witness_unit_two)
 }
 
 fn witness_mutual_recursive_dag() -> v2.std.compilers.compilation_unit.ModuleDag {
@@ -258,8 +258,8 @@ fn witness_link_cyclic_assignment() -> Map<v2.std.compilers.compilation_unit.Mod
 
 fn witness_partition_fold_two_units() -> List<v2.std.compilers.compilation_unit.CompilationUnit> {
   match c_partition_fold_outcome(
-    module_dag: witness_triangle_dag(),
-    assignment: witness_two_unit_assignment()
+    module_dag: v2.test.claim.c_compilation_unit_witness.witness_triangle_dag(),
+    assignment: v2.test.claim.c_compilation_unit_witness.witness_two_unit_assignment()
   ) {
     PartitionFoldOk { units: units } => units
     PartitionFoldRefused { cause: _ } => []
@@ -267,19 +267,19 @@ fn witness_partition_fold_two_units() -> List<v2.std.compilers.compilation_unit.
 }
 
 test fn witness_r3_header_source_object_paths() -> Bool {
-  c_unit_header_path(unit_id: witness_unit_one) == "cu-one.h"
-    && c_unit_source_path(unit_id: witness_unit_one) == "cu-one.c"
-    && c_unit_object_path(unit_id: witness_unit_one) == "cu-one.o"
+  c_unit_header_path(unit_id: v2.test.claim.c_compilation_unit_witness.witness_unit_one) == "cu-one.h"
+    && c_unit_source_path(unit_id: v2.test.claim.c_compilation_unit_witness.witness_unit_one) == "cu-one.c"
+    && c_unit_object_path(unit_id: v2.test.claim.c_compilation_unit_witness.witness_unit_one) == "cu-one.o"
 }
 
 test fn witness_r3_include_directive_per_dep() -> Bool {
-  c_include_directive_for_dep(dep_id: witness_unit_two) == "#include \"cu-two.h\""
+  c_include_directive_for_dep(dep_id: v2.test.claim.c_compilation_unit_witness.witness_unit_two) == "#include \"cu-two.h\""
 }
 
 test fn witness_r3_spelling_from_partition_fold() -> Bool {
-  let units = witness_partition_fold_two_units()
-  let point_def = witness_point_struct_conj_body()
-  match partition_unit_by_id(units: units, unit_id: witness_unit_two) {
+  let units = v2.test.claim.c_compilation_unit_witness.witness_partition_fold_two_units()
+  let point_def = v2.test.claim.c_compilation_unit_witness.witness_point_struct_conj_body()
+  match partition_unit_by_id(units: units, unit_id: v2.test.claim.c_compilation_unit_witness.witness_unit_two) {
     Present { value: unit } =>
       let spelling = c_translation_unit_spelling(unit: unit, units: units)
       (spelling.header_path == "cu-two.h")
@@ -292,15 +292,15 @@ test fn witness_r3_spelling_from_partition_fold() -> Bool {
 }
 
 test fn witness_r3_unit_one_spelling_paths() -> Bool {
-  let units = witness_partition_fold_two_units()
-  match partition_unit_by_id(units: units, unit_id: witness_unit_one) {
+  let units = v2.test.claim.c_compilation_unit_witness.witness_partition_fold_two_units()
+  match partition_unit_by_id(units: units, unit_id: v2.test.claim.c_compilation_unit_witness.witness_unit_one) {
     Present { value: unit } =>
       let spelling = c_translation_unit_spelling(unit: unit, units: units)
       (spelling.header_path == "cu-one.h")
         && (spelling.source_path == "cu-one.c")
         && (spelling.object_path == "cu-one.o")
         && (spelling.include_directives == ["#include \"cu-two.h\""])
-        && (spelling.include_closure == [witness_unit_one, witness_unit_two])
+        && (spelling.include_closure == [v2.test.claim.c_compilation_unit_witness.witness_unit_one, v2.test.claim.c_compilation_unit_witness.witness_unit_two])
     Absent => false
   }
 }
@@ -343,8 +343,8 @@ test fn witness_r4_accepts_module_scc_split_across_units() -> Bool {
 }
 
 test fn witness_r4_accepts_triangle_module_scc_split() -> Bool {
-  let dag = witness_triangle_dag()
-  let assignment = witness_two_unit_assignment()
+  let dag = v2.test.claim.c_compilation_unit_witness.witness_triangle_dag()
+  let assignment = v2.test.claim.c_compilation_unit_witness.witness_two_unit_assignment()
   match c_partition_fold_outcome(module_dag: dag, assignment: assignment) {
     PartitionFoldOk { units: units } =>
       match c_validate_partition_r4(
@@ -396,8 +396,8 @@ test fn witness_r4_accepts_pointer_type_cycle_across_units() -> Bool {
 
 test fn witness_partition_fold_outcome_refuses_zero_closure_fuel() -> Bool {
   match partition_fold_outcome_with_closure_fuel(
-    module_dag: witness_triangle_dag(),
-    assignment: witness_two_unit_assignment(),
+    module_dag: v2.test.claim.c_compilation_unit_witness.witness_triangle_dag(),
+    assignment: v2.test.claim.c_compilation_unit_witness.witness_two_unit_assignment(),
     closure_fuel: 0
   ) {
     PartitionFoldRefused {
@@ -409,8 +409,8 @@ test fn witness_partition_fold_outcome_refuses_zero_closure_fuel() -> Bool {
 
 test fn witness_partition_fold_compat_wrapper_not_receipt_path() -> Bool {
   match partition_fold_outcome(
-    module_dag: witness_triangle_dag(),
-    assignment: witness_two_unit_assignment()
+    module_dag: v2.test.claim.c_compilation_unit_witness.witness_triangle_dag(),
+    assignment: v2.test.claim.c_compilation_unit_witness.witness_two_unit_assignment()
   ) {
     PartitionFoldOk { units: units } => (units |> count) == 2
     PartitionFoldRefused { cause: _ } => false
@@ -421,8 +421,8 @@ test fn witness_partition_fold_compat_wrapper_not_receipt_path() -> Bool {
 data c_spelling_safety_witness_note: String = "C-realization spelling controls for review 2026-08-01 finding 1. CompilationUnitId is a branded NonEmptyStr with NO spelling law, so ../peer, a/b, a-backslash-b, embedded CR/LF/NUL and the double-quote character all inhabit it and previously reached .h/.c/.o paths verbatim, with the header path concatenated between the include directive open-quote and close-quote. These controls execute against c_translation_unit_basename (the reversible encoder), not against the brand. Four acceptance axes, all executed: encoding-or-refusal for each hostile codepoint; the cu-one positive control that must stay byte-unchanged; injectivity, proven by escaping the percent marker itself so no unencoded id can collide with an encoded one (two distinct ids can never contend for one .o); and a C-source control proving the rendered include remains exactly one directive with no embedded newline and no premature string termination."
 
 test fn witness_c_basename_positive_control_unchanged() -> Bool {
-  (c_translation_unit_basename(unit_id: witness_unit_one) as String) == "cu-one"
-    && c_unit_header_path(unit_id: witness_unit_one) == "cu-one.h"
+  (c_translation_unit_basename(unit_id: v2.test.claim.c_compilation_unit_witness.witness_unit_one) as String) == "cu-one"
+    && c_unit_header_path(unit_id: v2.test.claim.c_compilation_unit_witness.witness_unit_one) == "cu-one.h"
 }
 
 test fn witness_c_basename_encodes_slash() -> Bool {

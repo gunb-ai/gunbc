@@ -23,7 +23,7 @@ fn capitalize_first(s: String) -> String {
       |> enumerate
       |> map(pair =>
         if pair.first == 0 {
-          to_upper_char(ch: pair.second)
+          gunbc.v1_interpreter_dispatch_emit.to_upper_char(ch: pair.second)
         } else {
           from_code_point(cp: pair.second)
         })
@@ -34,7 +34,7 @@ fn capitalize_first(s: String) -> String {
 fn to_pascal_segment(segment: String) -> String {
   segment
     |> split(delimiter: "_")
-    |> map(part => capitalize_first(s: part))
+    |> map(part => gunbc.v1_interpreter_dispatch_emit.capitalize_first(s: part))
     |> join(separator: "")
 }
 
@@ -106,11 +106,11 @@ fn distinct_strings(xs: List<String>) -> List<String> {
 }
 
 fn distinct_identities(rows: List<gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm>) -> List<String> {
-  distinct_strings(xs: rows |> map(r => concat(r.arm.identity, "")))
+  gunbc.v1_interpreter_dispatch_emit.distinct_strings(xs: rows |> map(r => concat(r.arm.identity, "")))
 }
 
 fn distinct_spellings(rows: List<gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm>) -> List<String> {
-  distinct_strings(xs: rows |> map(r => concat(r.authored_spelling, "")))
+  gunbc.v1_interpreter_dispatch_emit.distinct_strings(xs: rows |> map(r => concat(r.authored_spelling, "")))
 }
 
 fn rust_variant_for_row(row: gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm) -> String {
@@ -118,11 +118,11 @@ fn rust_variant_for_row(row: gunbc.v1_interpreter_primitive_surface.InterpreterP
 }
 
 fn distinct_rust_variants(rows: List<gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm>) -> List<String> {
-  distinct_strings(xs: rows |> map(r => rust_variant_for_row(row: r)))
+  gunbc.v1_interpreter_dispatch_emit.distinct_strings(xs: rows |> map(r => rust_variant_for_row(row: r)))
 }
 
 fn known_dispatch_emit_site_keys(rows: List<gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm>) -> List<String> {
-  distinct_strings(xs: rows |> map(r => roster_site_key(row: r)))
+  gunbc.v1_interpreter_dispatch_emit.distinct_strings(xs: rows |> map(r => roster_site_key(row: r)))
 }
 
 fn dispatch_emit_site_key_is_emittable(rows: List<gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm>, site_key: String) -> Bool {
@@ -223,7 +223,7 @@ fn site_lookup_name(site: gunbc.v1_interpreter_primitive_surface.InterpreterDisp
 
 fn render_lookup_match_rows(rows: List<gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm>, enum_name: String) -> String {
   v2.std.algebra.fold_list(rows, empty: "", cons: fn(acc, row) {
-    let escaped = escape_rust_string_literal_body(s: concat(row.authored_spelling, ""))
+    let escaped = gunbc.v1_interpreter_dispatch_emit.escape_rust_string_literal_body(s: concat(row.authored_spelling, ""))
     let variant = rust_variant_for_row(row: row)
     let line = concat(
       "        \"",
@@ -257,7 +257,7 @@ fn render_identity_arm_rows(rows: List<gunbc.v1_interpreter_primitive_surface.In
     let variant = arm_identity_to_rust_variant(identity: identity)
     let line = concat(
       "    (\"",
-      escape_rust_string_literal_body(s: identity),
+      gunbc.v1_interpreter_dispatch_emit.escape_rust_string_literal_body(s: identity),
       "\") => { ",
       qualified_enum_variant(enum_name: enum_name, variant: variant),
       " };"

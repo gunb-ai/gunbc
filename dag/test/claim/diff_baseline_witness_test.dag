@@ -25,9 +25,9 @@ fn planted_diff_window() -> gunbc.git_diff_change_window.GitDiffWindowObservatio
     value: gunbc.git_diff_change_window.GitDiffWindowObserved {
       window: git_exact_diff_window_for_verification(
         target: "origin/main" as std.types.GitRef,
-        target_generation: planted_oid(hex: planted_target_generation_sha),
-        base: planted_oid(hex: planted_merge_base_sha),
-        head: planted_oid(hex: planted_head_sha),
+        target_generation: test.claim.diff_baseline_witness.planted_oid(hex: planted_target_generation_sha),
+        base: test.claim.diff_baseline_witness.planted_oid(hex: planted_merge_base_sha),
+        head: test.claim.diff_baseline_witness.planted_oid(hex: planted_head_sha),
       )
     }
   }

@@ -64,7 +64,7 @@ fn bool_text_with_target(target: v2.std.compilers.target_model.TargetModel) -> v
           projection: emission.surface,
           name: ^Bool,
           params: std.algebra.Empty,
-          coproduct: bool_coproduct()
+          coproduct: v2.test.emit.semantic_decl_serialize_parity.bool_coproduct()
         ),
         f: fn(surface) {
           serialize_surface_with_target(
@@ -87,7 +87,7 @@ test fn same_tokens_decoded_bindings_match_live_bindings() -> Bool {
             projection: emission.surface,
             name: ^Bool,
             params: std.algebra.Empty,
-            coproduct: bool_coproduct()
+            coproduct: v2.test.emit.semantic_decl_serialize_parity.bool_coproduct()
           ) {
             Accepted { value: surface, diagnostics: _ } =>
               match grammar_relation_row_for_emitted(
@@ -143,7 +143,7 @@ test fn same_tokens_decoded_lex_matches_live_lex() -> Bool {
             projection: emission.surface,
             name: ^Bool,
             params: std.algebra.Empty,
-            coproduct: bool_coproduct()
+            coproduct: v2.test.emit.semantic_decl_serialize_parity.bool_coproduct()
           ) {
             Accepted { value: surface, diagnostics: _ } =>
               match grammar_relation_row_for_emitted(
@@ -267,7 +267,7 @@ test fn generic_row_profile_matches_golden() -> Bool {
         projection: emission.surface,
         name: ^Bool,
         params: std.algebra.Empty,
-        coproduct: bool_coproduct()
+        coproduct: v2.test.emit.semantic_decl_serialize_parity.bool_coproduct()
       ) {
         Accepted { value: surface, diagnostics: _ } =>
           match semantic_decl_serialize_target(

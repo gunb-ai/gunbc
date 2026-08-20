@@ -15,7 +15,7 @@ fn string_list_contains(xs: List<String>, needle: String) -> Bool {
 
 fn lists_have_same_members(a: List<String>, b: List<String>) -> Bool {
   (length(xs: a) == length(xs: b))
-    && fold_list(xs: a, empty: true, cons: fn(ok, x) { ok && string_list_contains(xs: b, needle: x) })
+    && fold_list(xs: a, empty: true, cons: fn(ok, x) { ok && v2.test.claim.self_host.crate_layout_witness.string_list_contains(xs: b, needle: x) })
 }
 
 fn witness_generated_pub_mod_block_matches_registrations_holds() -> Bool {
@@ -45,7 +45,7 @@ fn witness_generated_has_no_phantom_registration_holds() -> Bool {
     xs: gunbc.stage0_crate_layout_generated.generated_pub_mod_basenames,
     empty: true,
     cons: fn(ok, basename) {
-      ok && string_list_contains(xs: hand_maintained_pub_mod_basenames(), needle: basename)
+      ok && v2.test.claim.self_host.crate_layout_witness.string_list_contains(xs: hand_maintained_pub_mod_basenames(), needle: basename)
     }
   )
 }

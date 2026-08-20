@@ -101,20 +101,20 @@ test fn effect_grant_position_under_witnesses() -> Bool {
 }
 
 test fn effect_grant_admission_witnesses() -> Bool {
-  is_admitted(a: admit_effect(env: write_only_env, verb: Write, target: workspace_file))
-    && is_refused(a: admit_effect(env: write_only_env, verb: Write, target: outside_workspace))
-    && is_refused(a: admit_effect(env: write_only_env, verb: Read, target: workspace_file))
-    && is_refused(a: admit_effect(env: write_only_env, verb: Write, target: bmc_uri))
-    && is_refused(a: admit_effect(env: empty_env, verb: Write, target: workspace_file))
+  test.claim.effect_grant_witness_test.is_admitted(a: admit_effect(env: write_only_env, verb: Write, target: workspace_file))
+    && test.claim.effect_grant_witness_test.is_refused(a: admit_effect(env: write_only_env, verb: Write, target: outside_workspace))
+    && test.claim.effect_grant_witness_test.is_refused(a: admit_effect(env: write_only_env, verb: Read, target: workspace_file))
+    && test.claim.effect_grant_witness_test.is_refused(a: admit_effect(env: write_only_env, verb: Write, target: bmc_uri))
+    && test.claim.effect_grant_witness_test.is_refused(a: admit_effect(env: empty_env, verb: Write, target: workspace_file))
 }
 
 test fn effect_grant_execute_admission_witnesses() -> Bool {
-  is_admitted(a: admit_effect(env: execute_only_env, verb: Execute, target: apt_get_target))
-    && is_refused(a: admit_effect(env: execute_only_env, verb: Execute, target: other_bin_target))
-    && is_refused(a: admit_effect(env: execute_only_env, verb: Write, target: apt_get_target))
-    && is_refused(a: admit_effect(env: execute_only_env, verb: Read, target: apt_get_target))
-    && is_refused(a: admit_effect(env: write_only_env, verb: Execute, target: apt_get_target))
-    && is_refused(a: admit_effect(env: empty_env, verb: Execute, target: apt_get_target))
+  test.claim.effect_grant_witness_test.is_admitted(a: admit_effect(env: execute_only_env, verb: Execute, target: apt_get_target))
+    && test.claim.effect_grant_witness_test.is_refused(a: admit_effect(env: execute_only_env, verb: Execute, target: other_bin_target))
+    && test.claim.effect_grant_witness_test.is_refused(a: admit_effect(env: execute_only_env, verb: Write, target: apt_get_target))
+    && test.claim.effect_grant_witness_test.is_refused(a: admit_effect(env: execute_only_env, verb: Read, target: apt_get_target))
+    && test.claim.effect_grant_witness_test.is_refused(a: admit_effect(env: write_only_env, verb: Execute, target: apt_get_target))
+    && test.claim.effect_grant_witness_test.is_refused(a: admit_effect(env: empty_env, verb: Execute, target: apt_get_target))
 }
 
 test fn effect_grant_execute_refusal_is_located_witnesses() -> Bool {

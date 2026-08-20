@@ -348,7 +348,7 @@ test fn the_x64_sku_refuses_on_the_q8030() -> Bool {
     policy: FullChannelRequiredForSellableRunner,
     cpu: altra_q8030_catalog,
     profile: x64_standard_profile,
-    modules: [rdimm_32g(), rdimm_64g()],
+    modules: [test.claim.memory_provisioning_witness_test.rdimm_32g(), rdimm_64g()],
   ) {
     ProfileCapacityRefused { profile_label, cause } =>
       profile_label == "x64-standard"
@@ -398,7 +398,7 @@ test fn an_arm_sku_refuses_on_an_x64_processor() -> Bool {
     policy: FullChannelRequiredForSellableRunner,
     cpu: extdeps.cpu.amd.ryzen_9_7950x3d_catalog,
     profile: arm_value_profile,
-    modules: [rdimm_32g()],
+    modules: [test.claim.memory_provisioning_witness_test.rdimm_32g()],
   ) {
     ProfileCapacityRefused { profile_label, cause } =>
       match cause {
@@ -422,7 +422,7 @@ test fn a_matching_architecture_still_derives() -> Bool {
     policy: FullChannelRequiredForSellableRunner,
     cpu: altra_q8030_catalog,
     profile: arm_value_profile,
-    modules: [rdimm_32g(), rdimm_64g()],
+    modules: [test.claim.memory_provisioning_witness_test.rdimm_32g(), rdimm_64g()],
   ) {
     ProfileCapacitiesDerived { capacities, declined_by_policy } => count(capacities) == 2
     ProfileCapacityRefused { profile_label, cause } => false
@@ -475,7 +475,7 @@ test fn one_incompatible_module_refuses_the_whole_offer() -> Bool {
     geometry: asrock_altrad8ud_1l2t_geometry,
     policy: FullChannelRequiredForSellableRunner,
     required: byte_size(count: 192 * gb),
-    modules: [rdimm_32g(), rdimm_32g_ddr5()],
+    modules: [test.claim.memory_provisioning_witness_test.rdimm_32g(), rdimm_32g_ddr5()],
   ) {
     PopulationDerivationRefused { board_label, cause } =>
       match cause {
@@ -617,7 +617,7 @@ test fn the_documented_four_module_shape_is_declined_not_invalid() -> Bool {
     geometry: asrock_altrad8ud_1l2t_geometry,
     policy: FullChannelRequiredForSellableRunner,
     required: byte_size(count: 192 * gb),
-    modules: [rdimm_32g()],
+    modules: [test.claim.memory_provisioning_witness_test.rdimm_32g()],
   ) {
     PopulationsDerived { options, declined_by_policy } =>
       count(options) == 1
@@ -666,7 +666,7 @@ test fn a_board_without_a_cited_population_table_refuses_the_permissive_policy()
     geometry: supermicro_r12spd_a_geometry,
     policy: AnyBoardDocumentedPopulation,
     required: byte_size(count: 192 * gb),
-    modules: [rdimm_32g()],
+    modules: [test.claim.memory_provisioning_witness_test.rdimm_32g()],
   ) {
     PopulationDerivationRefused { board_label, cause } =>
       board_label == "Supermicro R12SPD-A"
@@ -695,7 +695,7 @@ test fn the_same_uncited_board_derives_under_the_full_channel_policy() -> Bool {
     geometry: supermicro_r12spd_a_geometry,
     policy: FullChannelRequiredForSellableRunner,
     required: byte_size(count: 192 * gb),
-    modules: [rdimm_32g()],
+    modules: [test.claim.memory_provisioning_witness_test.rdimm_32g()],
   ) {
     PopulationsDerived { options, declined_by_policy } =>
       count(options) == 2
@@ -737,7 +737,7 @@ test fn a_2dpc_board_reaches_a_target_the_1dpc_board_cannot() -> Bool {
     policy: FullChannelRequiredForSellableRunner,
     cpu: altra_max_m12830_catalog,
     profile: arm_memory_profile,
-    modules: [rdimm_32g()],
+    modules: [test.claim.memory_provisioning_witness_test.rdimm_32g()],
   ) {
     ProfileCapacityRefused { profile_label, cause } =>
       match cause {
@@ -751,7 +751,7 @@ test fn a_2dpc_board_reaches_a_target_the_1dpc_board_cannot() -> Bool {
                   policy: FullChannelRequiredForSellableRunner,
                   cpu: altra_max_m12830_catalog,
                   profile: arm_memory_profile,
-                  modules: [rdimm_32g()],
+                  modules: [test.claim.memory_provisioning_witness_test.rdimm_32g()],
                 ) {
                   ProfileCapacitiesDerived { capacities, declined_by_policy } =>
                     count(capacities) == 1 && any(capacities, c => c.dimm_count == 16)
@@ -866,7 +866,7 @@ test fn an_undeclared_basis_refuses_the_capacity_derivation() -> Bool {
       guaranteed_memory_per_entitlement: extdeps.ci_runner.types.QuotedWithoutBasis { numeral: 3, unit_label: "GB" },
       consulted_benchmarks: [ubicloud_arm_benchmark],
     },
-    modules: [rdimm_32g(), rdimm_64g()],
+    modules: [test.claim.memory_provisioning_witness_test.rdimm_32g(), rdimm_64g()],
   ) {
     ProfileCapacityRefused { profile_label, cause } =>
       match cause {
@@ -904,7 +904,7 @@ test fn an_unstated_entitlement_refuses_through_the_fold() -> Bool {
       guaranteed_memory_per_entitlement: extdeps.ci_runner.types.QuotedDecimalGigabytes { value: gigabyte(count: 3) },
       consulted_benchmarks: [ubicloud_arm_benchmark],
     },
-    modules: [rdimm_32g()],
+    modules: [test.claim.memory_provisioning_witness_test.rdimm_32g()],
   ) {
     ProfileCapacityRefused { profile_label, cause } =>
       match cause {
@@ -976,7 +976,7 @@ test fn the_fan_out_answers_once_per_sku_and_refuses_the_x64_one() -> Bool {
     policy: FullChannelRequiredForSellableRunner,
     cpu: altra_q6430_catalog,
     profiles: declared_product_profiles(),
-    modules: [rdimm_32g(), rdimm_64g()],
+    modules: [test.claim.memory_provisioning_witness_test.rdimm_32g(), rdimm_64g()],
   )
   count(results) == 3
     && count(filter(results, r => match r {
@@ -1006,7 +1006,7 @@ test fn full_channel_populations_are_topology_derived() -> Bool {
     geometry: asrock_altrad8ud_1l2t_geometry,
     policy: FullChannelRequiredForSellableRunner,
     required: byte_size(count: 192 * gb),
-    modules: [rdimm_32g()],
+    modules: [test.claim.memory_provisioning_witness_test.rdimm_32g()],
   ) {
     PopulationsDerived { options, declined_by_policy } =>
       count(options) == 1
@@ -1031,7 +1031,7 @@ test fn the_population_names_its_overshoot() -> Bool {
     geometry: asrock_altrad8ud_1l2t_geometry,
     policy: FullChannelRequiredForSellableRunner,
     required: byte_size(count: 192 * gb),
-    modules: [rdimm_32g()],
+    modules: [test.claim.memory_provisioning_witness_test.rdimm_32g()],
   ) {
     PopulationsDerived { options, declined_by_policy } =>
       !any(options, o => byte_size_count(b: o.total_bytes) != 256 * gb)

@@ -32,11 +32,11 @@ fn list_contains_string(xs: List<String>, needle: String) -> Bool {
 }
 
 fn is_pure_eval_authority_module(path: String) -> Bool {
-  list_contains_string(xs: pure_eval_authority_modules, needle: path)
+  gunbc.interpreter_kernel_model.list_contains_string(xs: pure_eval_authority_modules, needle: path)
 }
 
 fn is_pinned_host_physics_stage0_file(basename: String) -> Bool {
-  list_contains_string(xs: pinned_host_physics_stage0_files, needle: basename)
+  gunbc.interpreter_kernel_model.list_contains_string(xs: pinned_host_physics_stage0_files, needle: basename)
 }
 
 fn interpreter_kernel_d_phase_is_model_only() -> Bool {

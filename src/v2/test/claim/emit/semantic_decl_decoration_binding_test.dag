@@ -31,7 +31,7 @@ test fn nullary_bool_uses_enum_copy_derive_binding() -> Bool {
     Accepted { value: emission, diagnostics: _ } =>
       match target_semantic_decl_coproduct_decoration_lines(
         projection: emission.surface,
-        coproduct: bool_coproduct()
+        coproduct: v2.test.emit.semantic_decl_decoration_binding_test.bool_coproduct()
       ) {
         Accepted { value: lines, diagnostics: _ } =>
           !is_empty(xs: lines) && lines_use_enum_copy_binding(lines: lines)

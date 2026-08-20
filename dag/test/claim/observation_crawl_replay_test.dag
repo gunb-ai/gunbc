@@ -51,7 +51,7 @@ fn observation_crawl_after_block() -> String {
       transition: std.observation.Concluded { outcome: Done },
       durations: observation_durations_wall(elapsed: millisecond_to_nanosecond(m: millisecond(count: 230))),
       rss: std.observation.MeasuredUnavailable { cause: "not sampled per entry" as std.types.NonEmptyStr }
-    }, basis: crawl_basis()), tier: Emoji),
+    }, basis: test.claim.observation_crawl_replay_test.crawl_basis()), tier: Emoji),
     ci_collapsed_summary(green_count: 213),
     ci_render_line(line: crawl_heartbeat_at(minute: 29, rss: 16106717184, swap: 34359738368, psi: 533), tier: Emoji),
     ci_render_line(line: crawl_heartbeat_at(minute: 33, rss: 16107200512, swap: 34359738368, psi: 901), tier: Emoji),

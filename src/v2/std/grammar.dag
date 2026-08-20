@@ -2425,7 +2425,7 @@ fn grammar_relation_row_forward_token_spine_selection(
         selection: grammar_relation_row_forward_select(
           rules: rules,
           row_matches: fn(row) {
-            match grammar_relation_row_token_spine_classes(row: row) {
+            match v2.std.grammar.grammar_relation_row_token_spine_classes(row: row) {
               v2.std.diagnostic.Rejected { diagnostics: _ } => false
               v2.std.diagnostic.Accepted { value: spine, diagnostics: _ } =>
                 v2.std.algebra.zip_eq(a: frontier, b: spine, eq: fn(x, y) { x == y })

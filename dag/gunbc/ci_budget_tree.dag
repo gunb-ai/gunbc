@@ -46,18 +46,18 @@ fn ci_host_overhead_claim(offer: gunbc.ci_fleet.ComputeOffer) -> product.budget_
 fn host_budget_tree_at(name: String, offer: gunbc.ci_fleet.ComputeOffer, session_slice: std.measure.ByteSize) -> product.budget_tree.BudgetNode {
   product.budget_tree.BudgetNode {
     name: name,
-    appropriation: appropriation_of(b: host_ram_of(offer: offer)),
+    appropriation: gunbc.ci_budget_tree.appropriation_of(b: host_ram_of(offer: offer)),
     claims: [ci_host_overhead_claim(offer: offer)],
     children: [
       product.budget_tree.BudgetNode {
         name: "gha_runner_pool",
-        appropriation: appropriation_of(b: runner_pool_bytes_at(offer: offer, session_slice: session_slice)),
+        appropriation: gunbc.ci_budget_tree.appropriation_of(b: runner_pool_bytes_at(offer: offer, session_slice: session_slice)),
         claims: [],
         children: []
       },
       product.budget_tree.BudgetNode {
         name: "dashboard_session_pool",
-        appropriation: appropriation_of(b: session_slice),
+        appropriation: gunbc.ci_budget_tree.appropriation_of(b: session_slice),
         claims: [],
         children: []
       }

@@ -25,7 +25,7 @@ fn node_eq(a: Node, b: Node) -> Bool {
 }
 fn chain_eq(a: FreeMonoid<Node>, b: FreeMonoid<Node>) -> Bool {
   (length(xs: a) == length(xs: b))
-    && zip_eq(a: a, b: b, eq: fn(x, y) { node_eq(a: x, b: y) })
+    && zip_eq(a: a, b: b, eq: fn(x, y) { v2.test.execution.fold_assembly_round_trip.node_eq(a: x, b: y) })
 }
 
 fn expansion_equals(form: Node, expected: FreeMonoid<Node>) -> Bool {
@@ -48,20 +48,20 @@ fn expansion_accepted_but_differs(form: Node, expected: FreeMonoid<Node>) -> Boo
 }
 
 data gate_chain: List<Node> = [
-  conj3(a: atom(id: ^run), b: atom(id: ^gate_rust),  c: atom(id: ^acc0)),
-  conj3(a: atom(id: ^run), b: atom(id: ^gate_emit),  c: atom(id: ^acc1)),
-  conj3(a: atom(id: ^run), b: atom(id: ^gate_layer), c: atom(id: ^acc2))
+  v2.test.execution.fold_assembly_round_trip.conj3(a: v2.test.execution.fold_assembly_round_trip.atom(id: ^run), b: v2.test.execution.fold_assembly_round_trip.atom(id: ^gate_rust),  c: v2.test.execution.fold_assembly_round_trip.atom(id: ^acc0)),
+  v2.test.execution.fold_assembly_round_trip.conj3(a: v2.test.execution.fold_assembly_round_trip.atom(id: ^run), b: v2.test.execution.fold_assembly_round_trip.atom(id: ^gate_emit),  c: v2.test.execution.fold_assembly_round_trip.atom(id: ^acc1)),
+  v2.test.execution.fold_assembly_round_trip.conj3(a: v2.test.execution.fold_assembly_round_trip.atom(id: ^run), b: v2.test.execution.fold_assembly_round_trip.atom(id: ^gate_layer), c: v2.test.execution.fold_assembly_round_trip.atom(id: ^acc2))
 ]
 
 data divergent_chain: List<Node> = [
-  conj2(a: atom(id: ^is_if),     b: atom(id: ^stmt_first)),
-  conj2(a: atom(id: ^is_assign), b: conj2(a: atom(id: ^skip), b: atom(id: ^stmt_first))),
-  conj2(a: atom(id: ^is_loop),   b: conj2(a: atom(id: ^skip), b: atom(id: ^stmt_first)))
+  v2.test.execution.fold_assembly_round_trip.conj2(a: v2.test.execution.fold_assembly_round_trip.atom(id: ^is_if),     b: v2.test.execution.fold_assembly_round_trip.atom(id: ^stmt_first)),
+  v2.test.execution.fold_assembly_round_trip.conj2(a: v2.test.execution.fold_assembly_round_trip.atom(id: ^is_assign), b: v2.test.execution.fold_assembly_round_trip.conj2(a: v2.test.execution.fold_assembly_round_trip.atom(id: ^skip), b: v2.test.execution.fold_assembly_round_trip.atom(id: ^stmt_first))),
+  v2.test.execution.fold_assembly_round_trip.conj2(a: v2.test.execution.fold_assembly_round_trip.atom(id: ^is_loop),   b: v2.test.execution.fold_assembly_round_trip.conj2(a: v2.test.execution.fold_assembly_round_trip.atom(id: ^skip), b: v2.test.execution.fold_assembly_round_trip.atom(id: ^stmt_first)))
 ]
 
 data short_chain: List<Node> = [
-  conj3(a: atom(id: ^run), b: atom(id: ^gate_rust), c: atom(id: ^acc0)),
-  conj3(a: atom(id: ^run), b: atom(id: ^gate_emit), c: atom(id: ^acc1))
+  v2.test.execution.fold_assembly_round_trip.conj3(a: v2.test.execution.fold_assembly_round_trip.atom(id: ^run), b: v2.test.execution.fold_assembly_round_trip.atom(id: ^gate_rust), c: v2.test.execution.fold_assembly_round_trip.atom(id: ^acc0)),
+  v2.test.execution.fold_assembly_round_trip.conj3(a: v2.test.execution.fold_assembly_round_trip.atom(id: ^run), b: v2.test.execution.fold_assembly_round_trip.atom(id: ^gate_emit), c: v2.test.execution.fold_assembly_round_trip.atom(id: ^acc1))
 ]
 
 fn round_trips(steps: FreeMonoid<Node>) -> Bool {
@@ -69,20 +69,20 @@ fn round_trips(steps: FreeMonoid<Node>) -> Bool {
 }
 
 test fn gate_chain_round_trips() -> Bool {
-  round_trips(steps: gate_chain)
+  v2.test.execution.fold_assembly_round_trip.round_trips(steps: gate_chain)
 }
 test fn divergent_chain_round_trips() -> Bool {
-  round_trips(steps: divergent_chain)
+  v2.test.execution.fold_assembly_round_trip.round_trips(steps: divergent_chain)
 }
 test fn short_chain_round_trips() -> Bool {
-  round_trips(steps: short_chain)
+  v2.test.execution.fold_assembly_round_trip.round_trips(steps: short_chain)
 }
 
 fn apply_recovers_step(template: Node, step: Node) -> Bool {
-  node_eq(a: apply_fills(template: template, fills: extract_fillings(template: template, element: step)), b: step)
+  v2.test.execution.fold_assembly_round_trip.node_eq(a: apply_fills(template: template, fills: extract_fillings(template: template, element: step)), b: step)
 }
 test fn apply_inverts_extract_on_gate_step() -> Bool {
-  apply_recovers_step(template: anti_unify_chain(steps: gate_chain).template, step: conj3(a: atom(id: ^run), b: atom(id: ^gate_emit), c: atom(id: ^acc1)))
+  apply_recovers_step(template: anti_unify_chain(steps: gate_chain).template, step: v2.test.execution.fold_assembly_round_trip.conj3(a: v2.test.execution.fold_assembly_round_trip.atom(id: ^run), b: v2.test.execution.fold_assembly_round_trip.atom(id: ^gate_emit), c: v2.test.execution.fold_assembly_round_trip.atom(id: ^acc1)))
 }
 
 test fn fold_form_has_exactly_one_template_edge() -> Bool {
@@ -91,7 +91,7 @@ test fn fold_form_has_exactly_one_template_edge() -> Bool {
 
 fn outcome_node_is(o: v2.std.diagnostic.Outcome<Node>, expected: Node) -> Bool {
   match o {
-    Accepted { value: t, diagnostics: _ } => node_eq(a: t, b: expected)
+    Accepted { value: t, diagnostics: _ } => v2.test.execution.fold_assembly_round_trip.node_eq(a: t, b: expected)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -103,14 +103,14 @@ test fn fold_form_template_is_the_kernel_template() -> Bool {
 }
 
 fn fills_eq(a: FreeMonoid<Node>, b: FreeMonoid<Node>) -> Bool {
-  (length(xs: a) == length(xs: b)) && zip_eq(a: a, b: b, eq: fn(x, y) { node_eq(a: x, b: y) })
+  (length(xs: a) == length(xs: b)) && zip_eq(a: a, b: b, eq: fn(x, y) { v2.test.execution.fold_assembly_round_trip.node_eq(a: x, b: y) })
 }
 fn per_element_eq(a: FreeMonoid<FreeMonoid<Node>>, b: FreeMonoid<FreeMonoid<Node>>) -> Bool {
   (length(xs: a) == length(xs: b)) && zip_eq(a: a, b: b, eq: fn(x, y) { fills_eq(a: x, b: y) })
 }
 test fn fold_form_preserves_per_element_fills() -> Bool {
   match fold_per_element_of(fold_form: assemble_fold(g: anti_unify_chain(steps: gate_chain))) {
-    Accepted { value: pe, diagnostics: _ } => per_element_eq(a: pe, b: anti_unify_chain(steps: gate_chain).per_element)
+    Accepted { value: pe, diagnostics: _ } => v2.test.execution.fold_assembly_round_trip.per_element_eq(a: pe, b: anti_unify_chain(steps: gate_chain).per_element)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -120,11 +120,11 @@ fn corrupted_per_element() -> FreeMonoid<FreeMonoid<Node>> {
     xs: list_snoc_item(
       xs: list_snoc_item(
         xs: freemonoid_empty(),
-        item: list_snoc_item(xs: list_snoc_item(xs: freemonoid_empty(), item: atom(id: ^WRONG)), item: atom(id: ^acc0))
+        item: list_snoc_item(xs: list_snoc_item(xs: freemonoid_empty(), item: v2.test.execution.fold_assembly_round_trip.atom(id: ^WRONG)), item: v2.test.execution.fold_assembly_round_trip.atom(id: ^acc0))
       ),
-      item: list_snoc_item(xs: list_snoc_item(xs: freemonoid_empty(), item: atom(id: ^gate_emit)), item: atom(id: ^acc1))
+      item: list_snoc_item(xs: list_snoc_item(xs: freemonoid_empty(), item: v2.test.execution.fold_assembly_round_trip.atom(id: ^gate_emit)), item: v2.test.execution.fold_assembly_round_trip.atom(id: ^acc1))
     ),
-    item: list_snoc_item(xs: list_snoc_item(xs: freemonoid_empty(), item: atom(id: ^gate_layer)), item: atom(id: ^acc2))
+    item: list_snoc_item(xs: list_snoc_item(xs: freemonoid_empty(), item: v2.test.execution.fold_assembly_round_trip.atom(id: ^gate_layer)), item: v2.test.execution.fold_assembly_round_trip.atom(id: ^acc2))
   )
 }
 fn corrupted_fold_form() -> Node {
@@ -178,7 +178,7 @@ fn arity_mismatch_form() -> Node {
     template: anti_unify_chain(steps: gate_chain).template,
     per_element: list_snoc_item(
       xs: freemonoid_empty(),
-      item: list_snoc_item(xs: freemonoid_empty(), item: atom(id: ^only_one_fill))
+      item: list_snoc_item(xs: freemonoid_empty(), item: v2.test.execution.fold_assembly_round_trip.atom(id: ^only_one_fill))
     )
   })
 }

@@ -9,7 +9,7 @@ fn publication_grant_path() -> extdeps.git.object_store.GitPath {
     97, 116, 105, 111, 110, 95, 103, 114, 97, 110, 116, 46, 100, 97, 103,
   ]) {
     GitPathDecoded { path } => path
-    GitPathDecodeRefused { cause: _ } => fallback_path()
+    GitPathDecodeRefused { cause: _ } => test.claim.commit_writer_admission_witness.fallback_path()
   }
 }
 
@@ -20,7 +20,7 @@ fn fixture_path() -> extdeps.git.object_store.GitPath {
     95, 102, 105, 120, 116, 117, 114, 101, 46, 100, 97, 103,
   ]) {
     GitPathDecoded { path } => path
-    GitPathDecodeRefused { cause: _ } => fallback_path()
+    GitPathDecodeRefused { cause: _ } => test.claim.commit_writer_admission_witness.fallback_path()
   }
 }
 
@@ -271,9 +271,9 @@ test fn non_default_git_conflict_marker_size_refuses() -> Bool {
 test fn tracked_test_fixture_bound_to_same_path_and_blob_admits() -> Bool {
   let storage = module_storage_for(artifact: fixture_artifact())
   let observation = gunbc.commit_workflow.CompleteStagedCommitObservation {
-    index: [normal_index_entry(path: fixture_path(), oid: blob_oid())],
+    index: [normal_index_entry(path: test.claim.commit_writer_admission_witness.fixture_path(), oid: blob_oid())],
     blobs: [classified_text_blob(
-      path: fixture_path(),
+      path: test.claim.commit_writer_admission_witness.fixture_path(),
       oid: blob_oid(),
       text: "<<<<<<< HEAD\nleft\n=======\nright\n>>>>>>> origin/main\n",
       grammar: marker_grammar(size: 7),

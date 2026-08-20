@@ -133,7 +133,7 @@ fn plain_item_for(rn: gunbc.roadmap_model.RoadmapNode, edges: List<gunbc.roadmap
 
 fn task_item_for(rn: gunbc.roadmap_model.RoadmapNode, nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>, merged: List<Int>, fuel: Int) -> std.markdown.MarkdownTaskItem {
   let para = std.markdown.ParagraphBlock { inlines: concat(node_inlines(rn: rn, edges: edges), signoff_suffix_inlines(rn: rn, merged: merged)) }
-  let kids = if fuel > 0 { children_of(nodes: nodes, edges: edges, parent: rn.node) } else { [] }
+  let kids = if fuel > 0 { gunbc.roadmap_emit.children_of(nodes: nodes, edges: edges, parent: rn.node) } else { [] }
   let blocks = if count(kids) > 0 {
     concat([para], nodes_to_blocks(items: kids, nodes: nodes, edges: edges, merged: merged, fuel: fuel - 1))
   } else {

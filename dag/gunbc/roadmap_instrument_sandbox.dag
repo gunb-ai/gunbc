@@ -79,7 +79,7 @@ fn cls(name: String) -> extdeps.languages.css.selectors.SelectorSubject {
 
 fn audition_card_rule(i: gunbc.design.instrument_audition.AuditionIntensity) -> gunbc.design.material.BuildRule {
   gunbc.design.material.StaticRule {
-    selector: cls(name: audition_card_class(i: i)),
+    selector: gunbc.roadmap_instrument_sandbox.cls(name: audition_card_class(i: i)),
     decls: [
       decl(prop: BoxShadow, value: concat("var(--", concat(audition_emission_var(i: i), ")"))),
       decl(prop: Border, value: join(["1px solid ", role_var(r: BorderRole)], "")),
@@ -99,7 +99,7 @@ fn impulse_translate_value(p: gunbc.design.instrument_physical.InstrumentPrefere
 
 fn instrument_frame_rule(p: gunbc.design.instrument_physical.InstrumentPreference) -> gunbc.design.material.BuildRule {
   gunbc.design.material.ResponseRule {
-    subject: cls(name: instrument_frame_class),
+    subject: gunbc.roadmap_instrument_sandbox.cls(name: instrument_frame_class),
     shape: SelfResponse,
     trigger: OnActive,
     transition_props: "transform",
@@ -118,7 +118,7 @@ fn instrument_frame_rule(p: gunbc.design.instrument_physical.InstrumentPreferenc
 fn instrument_layout_rules() -> List<gunbc.design.material.BuildRule> {
   [
     gunbc.design.material.StaticRule {
-      selector: cls(name: instrument_row_class),
+      selector: gunbc.roadmap_instrument_sandbox.cls(name: instrument_row_class),
       decls: [
         decl(prop: Display, value: "flex"),
         decl(prop: Gap, value: scale_var(t: space_6)),
@@ -126,7 +126,7 @@ fn instrument_layout_rules() -> List<gunbc.design.material.BuildRule> {
       ],
     },
     gunbc.design.material.StaticRule {
-      selector: cls(name: instrument_cell_class),
+      selector: gunbc.roadmap_instrument_sandbox.cls(name: instrument_cell_class),
       decls: [
         decl(prop: FontFamily, value: scale_var(t: font_mono)),
         decl(prop: FontSize, value: scale_var(t: text_12)),
@@ -134,11 +134,11 @@ fn instrument_layout_rules() -> List<gunbc.design.material.BuildRule> {
       ],
     },
     gunbc.design.material.StaticRule {
-      selector: cls(name: instrument_note_class),
+      selector: gunbc.roadmap_instrument_sandbox.cls(name: instrument_note_class),
       decls: [decl(prop: Color, value: role_var(r: TextDimRole))],
     },
     gunbc.design.material.StaticRule {
-      selector: cls(name: instrument_refusal_class),
+      selector: gunbc.roadmap_instrument_sandbox.cls(name: instrument_refusal_class),
       decls: [
         decl(prop: Color, value: role_var(r: TextRole)),
         decl(prop: Border, value: join(["1px dashed ", role_var(r: BorderRole)], "")),
@@ -258,7 +258,7 @@ fn render_reading(label: String, r: gunbc.design.instrument_audition.ProgramRead
   match r {
     ReadingNoSubject => fragment_row(cells: [ fragment_cell(s: label), fragment_cell(s: "no subject selected") ])
     ReadingProgramShape { remaining } =>
-      fragment_row(cells: [ fragment_cell(s: label), fragment_cell(s: "whole program"), fragment_cell(s: remaining_text(r: remaining)) ])
+      fragment_row(cells: [ fragment_cell(s: label), fragment_cell(s: "whole program"), fragment_cell(s: gunbc.roadmap_instrument_sandbox.remaining_text(r: remaining)) ])
     ReadingOutcomeStatus { name, node, accepted, open_fronts } => fragment_row(cells: [
       fragment_cell(s: label),
       fragment_cell(s: name),
@@ -267,7 +267,7 @@ fn render_reading(label: String, r: gunbc.design.instrument_audition.ProgramRead
       fragment_cell(s: join([to_string(open_fronts), " open fronts"], "")),
     ])
     ReadingOutcomeRemaining { name, remaining } =>
-      fragment_row(cells: [ fragment_cell(s: label), fragment_cell(s: name), fragment_cell(s: remaining_text(r: remaining)) ])
+      fragment_row(cells: [ fragment_cell(s: label), fragment_cell(s: name), fragment_cell(s: gunbc.roadmap_instrument_sandbox.remaining_text(r: remaining)) ])
     ReadingConstraint { subject, kind, headline, in_flight, depth } => fragment_row(cells: [
       fragment_cell(s: label),
       fragment_cell(s: join([kind, " constraint"], "")),
@@ -291,7 +291,7 @@ fn render_reading(label: String, r: gunbc.design.instrument_audition.ProgramRead
 }
 
 fn reading_at(view: gunbc.roadmap_program_view.V1DeletionProgramView, d: gunbc.design.instrument_camera.ProgramDepth, m: gunbc.design.instrument_camera.ProgramMode) -> std.markup.Fragment {
-  render_reading(
+  gunbc.roadmap_instrument_sandbox.render_reading(
     label: join([program_depth_key(d: d), " / ", program_mode_key(m: m)], ""),
     r: read_camera(
       camera: camera_set_mode(c: camera_step_to(d: d), m: m),

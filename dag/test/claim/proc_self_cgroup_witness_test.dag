@@ -24,28 +24,28 @@ data cgroup_shell_witness_note: String = "Compile-time witnesses route through v
 data cross_realization_fixture_law_note: String = "The four canonical fixtures are the closed subject universe for parser-vs-bash agreement. Each law row asserts only the parser-side tag; the wet execution witnesses in proc_self_cgroup_real_execution_witness join the same tags after shell.Exec.Run."
 
 test fn cross_realization_fixture_law_missing_holds() -> Bool {
-  match unified_membership_outcome_tag_from_content(content: fixture_missing_unified) {
+  match unified_membership_outcome_tag_from_content(content: test.claim.proc_self_cgroup_witness.fixture_missing_unified) {
     OutcomeTagMissing => true
     _ => false
   }
 }
 
 test fn cross_realization_fixture_law_ambiguous_holds() -> Bool {
-  match unified_membership_outcome_tag_from_content(content: fixture_unified_duplicate) {
+  match unified_membership_outcome_tag_from_content(content: test.claim.proc_self_cgroup_witness.fixture_unified_duplicate) {
     OutcomeTagAmbiguous => true
     _ => false
   }
 }
 
 test fn cross_realization_fixture_law_malformed_holds() -> Bool {
-  match unified_membership_outcome_tag_from_content(content: fixture_malformed_no_colon) {
+  match unified_membership_outcome_tag_from_content(content: test.claim.proc_self_cgroup_witness.fixture_malformed_no_colon) {
     OutcomeTagMalformed => true
     _ => false
   }
 }
 
 test fn cross_realization_fixture_law_observed_holds() -> Bool {
-  match unified_membership_outcome_tag_from_content(content: fixture_unified_colon_in_path) {
+  match unified_membership_outcome_tag_from_content(content: test.claim.proc_self_cgroup_witness.fixture_unified_colon_in_path) {
     OutcomeTagObserved { relative_path: path } =>
       path as String == "/user.slice/job:build/session.scope"
     _ => false
@@ -84,7 +84,7 @@ test fn proc_self_cgroup_unified_single_membership_holds() -> Bool {
 }
 
 test fn proc_self_cgroup_colon_in_path_not_truncated_holds() -> Bool {
-  match read_unified_cgroup_membership(content: fixture_unified_colon_in_path) {
+  match read_unified_cgroup_membership(content: test.claim.proc_self_cgroup_witness.fixture_unified_colon_in_path) {
     CurrentCgroupObserved { relative_path: path } =>
       path as String == "/user.slice/job:build/session.scope"
     MembershipMissing => false
@@ -94,7 +94,7 @@ test fn proc_self_cgroup_colon_in_path_not_truncated_holds() -> Bool {
 }
 
 test fn proc_self_cgroup_missing_is_distinct_holds() -> Bool {
-  match read_unified_cgroup_membership(content: fixture_missing_unified) {
+  match read_unified_cgroup_membership(content: test.claim.proc_self_cgroup_witness.fixture_missing_unified) {
     MembershipMissing => true
     CurrentCgroupObserved { relative_path: _ } => false
     MembershipAmbiguous { first: _, second: _ } => false
@@ -103,7 +103,7 @@ test fn proc_self_cgroup_missing_is_distinct_holds() -> Bool {
 }
 
 test fn proc_self_cgroup_ambiguous_is_distinct_holds() -> Bool {
-  match read_unified_cgroup_membership(content: fixture_unified_duplicate) {
+  match read_unified_cgroup_membership(content: test.claim.proc_self_cgroup_witness.fixture_unified_duplicate) {
     MembershipAmbiguous { first: f, second: s } =>
       (f as String == "/first.path") && (s as String == "/second.path")
     MembershipMissing => false
@@ -113,7 +113,7 @@ test fn proc_self_cgroup_ambiguous_is_distinct_holds() -> Bool {
 }
 
 test fn proc_self_cgroup_malformed_is_distinct_holds() -> Bool {
-  match read_unified_cgroup_membership(content: fixture_malformed_no_colon) {
+  match read_unified_cgroup_membership(content: test.claim.proc_self_cgroup_witness.fixture_malformed_no_colon) {
     MembershipMalformed { cause: ProcSelfCgroupLineMissingColon } => true
     MembershipMissing => false
     MembershipAmbiguous { first: _, second: _ } => false
@@ -146,15 +146,15 @@ test fn proc_self_cgroup_line_parse_splits_on_second_colon_only_holds() -> Bool 
 }
 
 test fn proc_self_cgroup_three_refusal_states_are_distinct_holds() -> Bool {
-  (match read_unified_cgroup_membership(content: fixture_missing_unified) {
+  (match read_unified_cgroup_membership(content: test.claim.proc_self_cgroup_witness.fixture_missing_unified) {
     MembershipMissing => true
     _ => false
   })
-    && (match read_unified_cgroup_membership(content: fixture_unified_duplicate) {
+    && (match read_unified_cgroup_membership(content: test.claim.proc_self_cgroup_witness.fixture_unified_duplicate) {
       MembershipAmbiguous { first: _, second: _ } => true
       _ => false
     })
-    && (match read_unified_cgroup_membership(content: fixture_malformed_no_colon) {
+    && (match read_unified_cgroup_membership(content: test.claim.proc_self_cgroup_witness.fixture_malformed_no_colon) {
       MembershipMalformed { cause: _ } => true
       _ => false
     })
@@ -165,55 +165,55 @@ test fn bash_assign_from_content_matches_record_for_observed_holds() -> Bool {
   v2.extdeps.languages.bash_proc_self_cgroup.bash_membership_assign_from_content(
     content: fixture_unified_single,
     walk_var: cgroup_walk_var,
-    mount_root: cgroup_mount_root,
+    mount_root: test.claim.proc_self_cgroup_witness.cgroup_mount_root,
   ) == v2.extdeps.languages.bash_proc_self_cgroup.bash_membership_assign_from_record(
     record: record,
     walk_var: cgroup_walk_var,
-    mount_root: cgroup_mount_root,
+    mount_root: test.claim.proc_self_cgroup_witness.cgroup_mount_root,
   )
 }
 
 test fn bash_assign_from_content_refuses_missing_holds() -> Bool {
   v2.extdeps.languages.bash_proc_self_cgroup.bash_membership_assign_from_content(
-    content: fixture_missing_unified,
+    content: test.claim.proc_self_cgroup_witness.fixture_missing_unified,
     walk_var: cgroup_walk_var,
-    mount_root: cgroup_mount_root,
+    mount_root: test.claim.proc_self_cgroup_witness.cgroup_mount_root,
   ) == v2.extdeps.languages.bash_proc_self_cgroup.bash_membership_assign_from_record(
     record: MembershipMissing,
     walk_var: cgroup_walk_var,
-    mount_root: cgroup_mount_root,
+    mount_root: test.claim.proc_self_cgroup_witness.cgroup_mount_root,
   )
 }
 
 test fn bash_assign_from_content_refuses_ambiguous_holds() -> Bool {
-  let record = read_unified_cgroup_membership(content: fixture_unified_duplicate)
+  let record = read_unified_cgroup_membership(content: test.claim.proc_self_cgroup_witness.fixture_unified_duplicate)
   match record {
     MembershipAmbiguous { first: _, second: _ } =>
       v2.extdeps.languages.bash_proc_self_cgroup.bash_membership_assign_from_content(
-        content: fixture_unified_duplicate,
+        content: test.claim.proc_self_cgroup_witness.fixture_unified_duplicate,
         walk_var: cgroup_walk_var,
-        mount_root: cgroup_mount_root,
+        mount_root: test.claim.proc_self_cgroup_witness.cgroup_mount_root,
       ) == v2.extdeps.languages.bash_proc_self_cgroup.bash_membership_assign_from_record(
         record: record,
         walk_var: cgroup_walk_var,
-        mount_root: cgroup_mount_root,
+        mount_root: test.claim.proc_self_cgroup_witness.cgroup_mount_root,
       )
     _ => false
   }
 }
 
 test fn bash_assign_from_content_refuses_malformed_holds() -> Bool {
-  let record = read_unified_cgroup_membership(content: fixture_malformed_no_colon)
+  let record = read_unified_cgroup_membership(content: test.claim.proc_self_cgroup_witness.fixture_malformed_no_colon)
   match record {
     MembershipMalformed { cause: _ } =>
       v2.extdeps.languages.bash_proc_self_cgroup.bash_membership_assign_from_content(
-        content: fixture_malformed_no_colon,
+        content: test.claim.proc_self_cgroup_witness.fixture_malformed_no_colon,
         walk_var: cgroup_walk_var,
-        mount_root: cgroup_mount_root,
+        mount_root: test.claim.proc_self_cgroup_witness.cgroup_mount_root,
       ) == v2.extdeps.languages.bash_proc_self_cgroup.bash_membership_assign_from_record(
         record: record,
         walk_var: cgroup_walk_var,
-        mount_root: cgroup_mount_root,
+        mount_root: test.claim.proc_self_cgroup_witness.cgroup_mount_root,
       )
     _ => false
   }
@@ -223,7 +223,7 @@ test fn bash_assign_from_source_has_no_grep_c_or_head_or_widen_holds() -> Bool {
   let cmd = v2.extdeps.languages.bash_proc_self_cgroup.bash_membership_assign_from_source(
     cgroup_source: "/proc/self/cgroup",
     walk_var: cgroup_walk_var,
-    mount_root: cgroup_mount_root,
+    mount_root: test.claim.proc_self_cgroup_witness.cgroup_mount_root,
   )
   !string_contains(s: cmd, pattern: "grep -c")
     && !string_contains(s: cmd, pattern: "head -1")
@@ -235,7 +235,7 @@ test fn bash_assign_from_source_preserves_refusal_markers_holds() -> Bool {
   let cmd = v2.extdeps.languages.bash_proc_self_cgroup.bash_membership_assign_from_source(
     cgroup_source: "/proc/self/cgroup",
     walk_var: cgroup_walk_var,
-    mount_root: cgroup_mount_root,
+    mount_root: test.claim.proc_self_cgroup_witness.cgroup_mount_root,
   )
   string_contains(s: cmd, pattern: "cgroup_membership=malformed")
     && string_contains(s: cmd, pattern: "cgroup_membership=missing")
@@ -244,7 +244,7 @@ test fn bash_assign_from_source_preserves_refusal_markers_holds() -> Bool {
 
 data cgroup_locate_spec: std.path_intent.NearestAncestorContaining = std.path_intent.NearestAncestorContaining {
   start: std.path_intent.PathRefStart { name: cgroup_walk_var },
-  stop_before: cgroup_mount_root,
+  stop_before: test.claim.proc_self_cgroup_witness.cgroup_mount_root,
   relative_entry: std.types.FilePathParts { segments: ["memory.peak"] },
   expected_kind: RegularFile,
 }

@@ -17,9 +17,9 @@ fn conj2(a: Node, b: Node) -> Node {
   )
 }
 
-fn dup_fixture() -> Node { conj2(a: atom(sym: ^x), b: atom(sym: ^x)) }
+fn dup_fixture() -> Node { v2.test.materialize.materialize_witness.conj2(a: v2.test.materialize.materialize_witness.atom(sym: ^x), b: v2.test.materialize.materialize_witness.atom(sym: ^x)) }
 
-fn distinct_fixture() -> Node { conj2(a: atom(sym: ^x), b: atom(sym: ^y)) }
+fn distinct_fixture() -> Node { v2.test.materialize.materialize_witness.conj2(a: v2.test.materialize.materialize_witness.atom(sym: ^x), b: v2.test.materialize.materialize_witness.atom(sym: ^y)) }
 
 test fn duplicate_subtree_is_one_redundant_computation() -> Bool {
   materialize_redundant_computation_count(root: dup_fixture()) == 1

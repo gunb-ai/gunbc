@@ -42,7 +42,7 @@ fn int_list_eq(left: List<Int>, right: List<Int>) -> Bool {
             if l != r {
               false
             } else {
-              int_list_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+              gunbc.accelerator_demo_realize.int_list_eq(left: left.skip(n: 1), right: right.skip(n: 1))
             }
           Absent => false
         }
@@ -78,7 +78,7 @@ fn differential_harness_for_program(
 ) -> DifferentialVerdict {
   let oracle = gunbc.accelerator_demo_eval.eval_accelerator_program(program: program, a: a, b: b, c: c)
   let kernel = eval_program_via_kernel(program: program, a: a, b: b, c: c)
-  if int_list_eq(left: oracle, right: kernel) {
+  if gunbc.accelerator_demo_realize.int_list_eq(left: oracle, right: kernel) {
     BitExact
   } else {
     Mismatch
@@ -119,7 +119,7 @@ fn witness_integer_differential_bit_exact_on_fixture() -> Bool {
 }
 
 fn witness_oracle_matches_expected_fixture() -> Bool {
-  int_list_eq(
+  gunbc.accelerator_demo_realize.int_list_eq(
     left: gunbc.accelerator_demo_eval.eval_accelerator_program(
       program: relu_mul_add_pure_program,
       a: demo_fixture_a(),
@@ -137,11 +137,11 @@ fn witness_kernel_matches_expected_fixture() -> Bool {
     b: demo_fixture_b(),
     c: demo_fixture_c()
   )
-  int_list_eq(left: kernel, right: demo_fixture_expected())
+  gunbc.accelerator_demo_realize.int_list_eq(left: kernel, right: demo_fixture_expected())
 }
 
 fn witness_differential_would_red_on_wrong_golden() -> Bool {
-  !int_list_eq(
+  !gunbc.accelerator_demo_realize.int_list_eq(
     left: gunbc.accelerator_demo_eval.eval_accelerator_program(
       program: relu_mul_add_pure_program,
       a: demo_fixture_a(),
@@ -171,7 +171,7 @@ fn witness_float_oracle_empty_on_noncanonical_ops_shape() -> Bool {
 }
 
 fn witness_program_and_simd_wire_op_codes_single_authority() -> Bool {
-  int_list_eq(
+  gunbc.accelerator_demo_realize.int_list_eq(
     left: gunbc.accelerator_demo_program.program_op_codes(program: relu_mul_add_pure_program),
     right: extdeps.languages.simd.kernel.relu_mul_add_wire_op_codes
   )

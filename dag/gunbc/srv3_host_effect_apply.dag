@@ -25,7 +25,7 @@ fn srv3_host_effect_apply(
   effect: gunbc.host_effect.HostEffect,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   host_effect_apply(
-    target: srv3_actuator_target(),
+    target: gunbc.srv3_host_effect_apply.srv3_actuator_target(),
     effect: effect,
     evidence: host_effect_identity_evidence,
     transport: LocalShell,
@@ -39,7 +39,7 @@ fn srv3_install_media_fetch_apply() -> std.realization_reconcile.Reconciliation<
 fn srv3_seeded_install_media_toolchain_ensure_apply() -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   host_effect_apply_gated(
     access: srv3_seeded_install_media_toolchain_ensure_deploy_access,
-    target: srv3_actuator_target(),
+    target: gunbc.srv3_host_effect_apply.srv3_actuator_target(),
     effect: Srv3SeededInstallMediaToolchainEnsure,
     evidence: host_effect_identity_evidence,
     transport: srv3_seeded_install_media_toolchain_ensure_deploy_access.transport,

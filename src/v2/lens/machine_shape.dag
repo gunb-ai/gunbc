@@ -73,7 +73,7 @@ fn local_machine_shape_findings(n: Node, module_qn: Optional<v2.std.qualified_na
   if module_allows_machine_shape_literal(qn: module_qn) {
     []
   } else {
-    match node_callee_symbol(n: n) {
+    match v2.lens.machine_shape.node_callee_symbol(n: n) {
       Present { value: sym } =>
         if sym == ^MachineShape {
           [machine_shape_unsanctioned_construction_diagnostic(n: n)]

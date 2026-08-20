@@ -109,11 +109,11 @@ fn key_source_node(key_source: SubstrateKeySource) -> Node {
         children: [
           v2.std.node.Edge {
             label: Named { name: ^key_source_path_param_field },
-            target: atom_node(s: ^key_source_path_param_field)
+            target: v2.std.effects.atom_node(s: ^key_source_path_param_field)
           },
           v2.std.node.Edge {
             label: Named { name: ^key_source_path_param_value_field },
-            target: atom_node(s: p)
+            target: v2.std.effects.atom_node(s: p)
           },
         ],
         occurrence_id: SyntheticOccurrence
@@ -124,11 +124,11 @@ fn key_source_node(key_source: SubstrateKeySource) -> Node {
         children: [
           v2.std.node.Edge {
             label: Named { name: ^key_source_input_field_field },
-            target: atom_node(s: ^key_source_input_field_field)
+            target: v2.std.effects.atom_node(s: ^key_source_input_field_field)
           },
           v2.std.node.Edge {
             label: Named { name: ^key_source_input_value_field },
-            target: atom_node(s: f)
+            target: v2.std.effects.atom_node(s: f)
           },
         ],
         occurrence_id: SyntheticOccurrence
@@ -142,7 +142,7 @@ fn keyed_shape_node(variant_marker: v2.std.node.Symbol, key_source: SubstrateKey
     children: [
       v2.std.node.Edge {
         label: Named { name: variant_marker },
-        target: atom_node(s: variant_marker)
+        target: v2.std.effects.atom_node(s: variant_marker)
       },
       v2.std.node.Edge {
         label: Named { name: ^idempotent_operation_key_source_field },
@@ -155,7 +155,7 @@ fn keyed_shape_node(variant_marker: v2.std.node.Symbol, key_source: SubstrateKey
 
 fn effect_shape_node(shape: std.effects.EffectShape<SubstrateKeySource>) -> Node {
   match shape {
-    std.effects.ReadEffect => atom_node(s: ^effect_shape_variant_read)
+    std.effects.ReadEffect => v2.std.effects.atom_node(s: ^effect_shape_variant_read)
     UpsertEffect { key_source: key_source } =>
       keyed_shape_node(variant_marker: ^effect_shape_variant_upsert, key_source: key_source)
     DeleteEffect { key_source: key_source } =>
@@ -164,11 +164,11 @@ fn effect_shape_node(shape: std.effects.EffectShape<SubstrateKeySource>) -> Node
       match cause {
         CreateIfAbsent { key_source: key_source } =>
           keyed_shape_node(variant_marker: ^effect_shape_variant_create_if_absent, key_source: key_source)
-        std.effects.PostAlways => atom_node(s: ^effect_shape_variant_create_always)
-        KeylessFallback { method: method } => atom_node(s: ^effect_shape_variant_create_keyless)
+        std.effects.PostAlways => v2.std.effects.atom_node(s: ^effect_shape_variant_create_always)
+        KeylessFallback { method: method } => v2.std.effects.atom_node(s: ^effect_shape_variant_create_keyless)
       }
-    std.effects.AppendEffect => atom_node(s: ^effect_shape_variant_append)
-    std.effects.ExecuteEffect => atom_node(s: ^effect_shape_variant_execute)
+    std.effects.AppendEffect => v2.std.effects.atom_node(s: ^effect_shape_variant_append)
+    std.effects.ExecuteEffect => v2.std.effects.atom_node(s: ^effect_shape_variant_execute)
   }
 }
 
@@ -178,7 +178,7 @@ fn classified_idempotent_effect_node(shape: std.effects.EffectShape<SubstrateKey
     children: [
       v2.std.node.Edge {
         label: Named { name: ^effect_shape_is_idempotent_field },
-        target: atom_node(s: ^effect_shape_is_idempotent_field)
+        target: v2.std.effects.atom_node(s: ^effect_shape_is_idempotent_field)
       },
       v2.std.node.Edge {
         label: Named { name: ^effect_shape_inner_field },
@@ -195,7 +195,7 @@ fn idempotent_operation_ref_node(operation: IdempotentOperationRef) -> Node {
     children: [
       v2.std.node.Edge {
         label: Named { name: ^idempotent_operation_callable_field },
-        target: atom_node(s: operation.callable)
+        target: v2.std.effects.atom_node(s: operation.callable)
       },
     ],
     occurrence_id: SyntheticOccurrence

@@ -22,7 +22,7 @@ fn fixture_index_entry(
     projection: std.occurrence_identity.OccurrenceProjection {
       occurrence: occurrence,
       authored_name: authored_name,
-      diagnostic_span: fixture_span(),
+      diagnostic_span: test.claim.namespace_reference_derived_closure_contract.fixture_span(),
     },
     containment: containment,
   }
@@ -33,42 +33,42 @@ fn fixture_transport() -> std.occurrence_identity.OccurrenceTransport {
   let second = oid(value: 2)
   let later = oid(value: 3)
   let reference = oid(value: 10)
-  let first_path = fixture_path(ancestor: oid(value: 20), terminal: first)
-  let second_path = fixture_path(ancestor: oid(value: 21), terminal: second)
-  let later_path = fixture_path(ancestor: oid(value: 22), terminal: later)
-  let reference_path = fixture_path(ancestor: oid(value: 23), terminal: reference)
+  let first_path = test.claim.namespace_reference_derived_closure_contract.fixture_path(ancestor: oid(value: 20), terminal: first)
+  let second_path = test.claim.namespace_reference_derived_closure_contract.fixture_path(ancestor: oid(value: 21), terminal: second)
+  let later_path = test.claim.namespace_reference_derived_closure_contract.fixture_path(ancestor: oid(value: 22), terminal: later)
+  let reference_path = test.claim.namespace_reference_derived_closure_contract.fixture_path(ancestor: oid(value: 23), terminal: reference)
   std.occurrence_identity.OccurrenceTransport {
     index: std.occurrence_identity.OccurrenceIndex { entries: [
-      fixture_index_entry(occurrence: first, authored_name: "x", containment: first_path),
-      fixture_index_entry(occurrence: second, authored_name: "x", containment: second_path),
-      fixture_index_entry(occurrence: later, authored_name: "x", containment: later_path),
-      fixture_index_entry(occurrence: reference, authored_name: "x", containment: reference_path),
+      test.claim.namespace_reference_derived_closure_contract.fixture_index_entry(occurrence: first, authored_name: "x", containment: first_path),
+      test.claim.namespace_reference_derived_closure_contract.fixture_index_entry(occurrence: second, authored_name: "x", containment: second_path),
+      test.claim.namespace_reference_derived_closure_contract.fixture_index_entry(occurrence: later, authored_name: "x", containment: later_path),
+      test.claim.namespace_reference_derived_closure_contract.fixture_index_entry(occurrence: reference, authored_name: "x", containment: reference_path),
     ] },
     declarations: [
       std.occurrence_identity.DeclarationOccurrence {
         occurrence: first,
         containment: first_path,
         category: LexicalValueOccurrence,
-        diagnostic_span: fixture_span(),
+        diagnostic_span: test.claim.namespace_reference_derived_closure_contract.fixture_span(),
       },
       std.occurrence_identity.DeclarationOccurrence {
         occurrence: second,
         containment: second_path,
         category: LexicalValueOccurrence,
-        diagnostic_span: fixture_span(),
+        diagnostic_span: test.claim.namespace_reference_derived_closure_contract.fixture_span(),
       },
       std.occurrence_identity.DeclarationOccurrence {
         occurrence: later,
         containment: later_path,
         category: LexicalValueOccurrence,
-        diagnostic_span: fixture_span(),
+        diagnostic_span: test.claim.namespace_reference_derived_closure_contract.fixture_span(),
       },
     ],
     references: [std.occurrence_identity.ReferenceOccurrence {
       occurrence: reference,
       containment: reference_path,
       category: LexicalValueOccurrence,
-      diagnostic_span: fixture_span(),
+      diagnostic_span: test.claim.namespace_reference_derived_closure_contract.fixture_span(),
     }],
   }
 }

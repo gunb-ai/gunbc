@@ -258,25 +258,25 @@ fn scan_token(source: SourceRef, pos: TokPos, ch: Int) -> ScanResult {
     source_code_point(source: source, pos: pos.pos + 1)
   } else { 0 }
 
-  if ch == 61 && next_ch == 62 { return emit(pos: pos, shape: ShFatArrow, text: "=>", len: 2, file: source.file) }
-  if ch == 45 && next_ch == 62 { return emit(pos: pos, shape: ShArrow, text: "->", len: 2, file: source.file) }
-  if ch == 61 && next_ch == 61 { return emit(pos: pos, shape: ShEqEq, text: "==", len: 2, file: source.file) }
-  if ch == 33 && next_ch == 61 { return emit(pos: pos, shape: ShNe, text: "!=", len: 2, file: source.file) }
-  if ch == 60 && next_ch == 61 { return emit(pos: pos, shape: ShLe, text: "<=", len: 2, file: source.file) }
-  if ch == 62 && next_ch == 61 { return emit(pos: pos, shape: ShGe, text: ">=", len: 2, file: source.file) }
-  if ch == 38 && next_ch == 38 { return emit(pos: pos, shape: ShAnd, text: "&&", len: 2, file: source.file) }
-  if ch == 124 && next_ch == 124 { return emit(pos: pos, shape: ShOr, text: "||", len: 2, file: source.file) }
-  if ch == 124 && next_ch == 62 { return emit(pos: pos, shape: ShPipeArrow, text: "|>", len: 2, file: source.file) }
-  if ch == 124 { return emit(pos: pos, shape: ShPipe, text: "|", len: 1, file: source.file) }
-  if ch == 63 && next_ch == 63 { return emit(pos: pos, shape: ShNullCoalesce, text: "??", len: 2, file: source.file) }
-  if ch == 46 && next_ch == 46 { return emit(pos: pos, shape: ShDotDot, text: "..", len: 2, file: source.file) }
+  if ch == 61 && next_ch == 62 { return v1.compiler.tokenize.emit(pos: pos, shape: ShFatArrow, text: "=>", len: 2, file: source.file) }
+  if ch == 45 && next_ch == 62 { return v1.compiler.tokenize.emit(pos: pos, shape: ShArrow, text: "->", len: 2, file: source.file) }
+  if ch == 61 && next_ch == 61 { return v1.compiler.tokenize.emit(pos: pos, shape: ShEqEq, text: "==", len: 2, file: source.file) }
+  if ch == 33 && next_ch == 61 { return v1.compiler.tokenize.emit(pos: pos, shape: ShNe, text: "!=", len: 2, file: source.file) }
+  if ch == 60 && next_ch == 61 { return v1.compiler.tokenize.emit(pos: pos, shape: ShLe, text: "<=", len: 2, file: source.file) }
+  if ch == 62 && next_ch == 61 { return v1.compiler.tokenize.emit(pos: pos, shape: ShGe, text: ">=", len: 2, file: source.file) }
+  if ch == 38 && next_ch == 38 { return v1.compiler.tokenize.emit(pos: pos, shape: ShAnd, text: "&&", len: 2, file: source.file) }
+  if ch == 124 && next_ch == 124 { return v1.compiler.tokenize.emit(pos: pos, shape: ShOr, text: "||", len: 2, file: source.file) }
+  if ch == 124 && next_ch == 62 { return v1.compiler.tokenize.emit(pos: pos, shape: ShPipeArrow, text: "|>", len: 2, file: source.file) }
+  if ch == 124 { return v1.compiler.tokenize.emit(pos: pos, shape: ShPipe, text: "|", len: 1, file: source.file) }
+  if ch == 63 && next_ch == 63 { return v1.compiler.tokenize.emit(pos: pos, shape: ShNullCoalesce, text: "??", len: 2, file: source.file) }
+  if ch == 46 && next_ch == 46 { return v1.compiler.tokenize.emit(pos: pos, shape: ShDotDot, text: "..", len: 2, file: source.file) }
 
-  if ch == 61 { return emit(pos: pos, shape: ShEq, text: "=", len: 1, file: source.file) }
-  if ch == 60 { return emit(pos: pos, shape: ShLt, text: "<", len: 1, file: source.file) }
-  if ch == 62 { return emit(pos: pos, shape: ShGt, text: ">", len: 1, file: source.file) }
-  if ch == 45 { return emit(pos: pos, shape: ShMinus, text: "-", len: 1, file: source.file) }
-  if ch == 33 { return emit(pos: pos, shape: ShBang, text: "!", len: 1, file: source.file) }
-  if ch == 63 { return emit(pos: pos, shape: ShQuestion, text: "?", len: 1, file: source.file) }
+  if ch == 61 { return v1.compiler.tokenize.emit(pos: pos, shape: ShEq, text: "=", len: 1, file: source.file) }
+  if ch == 60 { return v1.compiler.tokenize.emit(pos: pos, shape: ShLt, text: "<", len: 1, file: source.file) }
+  if ch == 62 { return v1.compiler.tokenize.emit(pos: pos, shape: ShGt, text: ">", len: 1, file: source.file) }
+  if ch == 45 { return v1.compiler.tokenize.emit(pos: pos, shape: ShMinus, text: "-", len: 1, file: source.file) }
+  if ch == 33 { return v1.compiler.tokenize.emit(pos: pos, shape: ShBang, text: "!", len: 1, file: source.file) }
+  if ch == 63 { return v1.compiler.tokenize.emit(pos: pos, shape: ShQuestion, text: "?", len: 1, file: source.file) }
 
   if ch == 123 {
     let new_depth = if count(pos.interp_depth) > 0 {
@@ -299,8 +299,8 @@ fn scan_token(source: SourceRef, pos: TokPos, ch: Int) -> ScanResult {
 
   let ch_text = source_char(source: source, pos: pos.pos)
   match lookup(single_punct, key: ch_text) {
-    Present { value: sh } => emit(pos: pos, shape: sh, text: ch_text, len: 1, file: source.file)
-    Absent => emit(pos: pos, shape: ShUnknown, text: ch_text, len: 1, file: source.file)
+    Present { value: sh } => v1.compiler.tokenize.emit(pos: pos, shape: sh, text: ch_text, len: 1, file: source.file)
+    Absent => v1.compiler.tokenize.emit(pos: pos, shape: ShUnknown, text: ch_text, len: 1, file: source.file)
   }
 }
 

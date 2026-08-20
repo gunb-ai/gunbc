@@ -201,7 +201,7 @@ fn requirement_refusal(
   capabilities: SparkHostCapabilityObservation,
   requirement: ServingRequirement,
 ) -> ServingRequirementRefusal? {
-  match observation_for(capabilities: capabilities, requirement: requirement) {
+  match gunbc.spark_serving_realization.observation_for(capabilities: capabilities, requirement: requirement) {
     CapabilityPresent { evidence: _ } => none
     CapabilityRefused { cause: why } => Present {
       value: ServingRequirementRefusal {
@@ -276,7 +276,7 @@ fn identity_contract_refusal(
   let admissible = intent_admissible_process_identities(intent: intent)
   let intersects = fold(deliverable, init: false, f: fn(acc, d) {
     if acc { true } else {
-      fold(admissible, init: false, f: fn(inner, a) { if inner { true } else { process_identity_eq(left: d, right: a) } })
+      fold(admissible, init: false, f: fn(inner, a) { if inner { true } else { gunbc.spark_serving_realization.process_identity_eq(left: d, right: a) } })
     }
   })
   if intersects { none } else {

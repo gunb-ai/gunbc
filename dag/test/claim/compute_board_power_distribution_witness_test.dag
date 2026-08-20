@@ -30,7 +30,7 @@ fn refuses_naming(i: product.compute_board.power_distribution.BoardPowerIntent, 
   match admit_power_intent(intent: i) {
     PowerIntentAdmitted { intent: _ } => false
     PowerIntentRefused { causes: cs } =>
-      fold(cs, init: false, f: fn(acc, r) { acc || refusal_kind(r: r) == wanted })
+      fold(cs, init: false, f: fn(acc, r) { acc || test.claim.compute_board_power_distribution_witness.refusal_kind(r: r) == wanted })
   }
 }
 
@@ -43,16 +43,16 @@ fn with_rails(rs: List<product.compute_board.power_distribution.BoardSupplyRail>
   }
 }
 
-data core_rail_ok: product.compute_board.power_distribution.BoardSupplyRail = product.compute_board.power_distribution.BoardSupplyRail { rail: CoreSupply, net: net_identity(design: fixture_design, local_identity: "vcc_core"), nominal: millivolt(count: 1200) }
-data pll_rail_ok: product.compute_board.power_distribution.BoardSupplyRail = product.compute_board.power_distribution.BoardSupplyRail { rail: PllSupply, net: net_identity(design: fixture_design, local_identity: "vcc_pll"), nominal: millivolt(count: 1200) }
-data bank_rail_ok: product.compute_board.power_distribution.BoardSupplyRail = product.compute_board.power_distribution.BoardSupplyRail { rail: BankIoSupply, net: net_identity(design: fixture_design, local_identity: "vccio_3v3"), nominal: millivolt(count: 3300) }
-data spi_rail_ok: product.compute_board.power_distribution.BoardSupplyRail = product.compute_board.power_distribution.BoardSupplyRail { rail: ConfigurationBankSupply, net: net_identity(design: fixture_design, local_identity: "vccio_3v3"), nominal: millivolt(count: 3300) }
-data nvcm_rail_ok: product.compute_board.power_distribution.BoardSupplyRail = product.compute_board.power_distribution.BoardSupplyRail { rail: NvcmProgrammingSupply, net: net_identity(design: fixture_design, local_identity: "vccio_3v3"), nominal: millivolt(count: 3300) }
+data core_rail_ok: product.compute_board.power_distribution.BoardSupplyRail = product.compute_board.power_distribution.BoardSupplyRail { rail: CoreSupply, net: net_identity(design: test.claim.compute_board_power_distribution_witness.fixture_design, local_identity: "vcc_core"), nominal: millivolt(count: 1200) }
+data pll_rail_ok: product.compute_board.power_distribution.BoardSupplyRail = product.compute_board.power_distribution.BoardSupplyRail { rail: PllSupply, net: net_identity(design: test.claim.compute_board_power_distribution_witness.fixture_design, local_identity: "vcc_pll"), nominal: millivolt(count: 1200) }
+data bank_rail_ok: product.compute_board.power_distribution.BoardSupplyRail = product.compute_board.power_distribution.BoardSupplyRail { rail: BankIoSupply, net: net_identity(design: test.claim.compute_board_power_distribution_witness.fixture_design, local_identity: "vccio_3v3"), nominal: millivolt(count: 3300) }
+data spi_rail_ok: product.compute_board.power_distribution.BoardSupplyRail = product.compute_board.power_distribution.BoardSupplyRail { rail: ConfigurationBankSupply, net: net_identity(design: test.claim.compute_board_power_distribution_witness.fixture_design, local_identity: "vccio_3v3"), nominal: millivolt(count: 3300) }
+data nvcm_rail_ok: product.compute_board.power_distribution.BoardSupplyRail = product.compute_board.power_distribution.BoardSupplyRail { rail: NvcmProgrammingSupply, net: net_identity(design: test.claim.compute_board_power_distribution_witness.fixture_design, local_identity: "vccio_3v3"), nominal: millivolt(count: 3300) }
 
 // THE POSITIVE CONTROL, and it is the board this repository is actually building. Without it every
 // refusal below is satisfied by a check that refuses everything.
 test fn w_the_reference_supply_design_is_admitted() -> Bool {
-  admits(i: reference_power_intent)
+  test.claim.compute_board_power_distribution_witness.admits(i: reference_power_intent)
     && power_refusal_count(cs: power_causes(intent: reference_power_intent)) == 0
 }
 
@@ -60,43 +60,43 @@ test fn w_the_reference_supply_design_is_admitted() -> Bool {
 // and a legal bank voltage; on VCC it is half a volt over maximum. This is the check that a
 // per-board "is this a sensible voltage" intuition cannot make.
 test fn w_a_core_rail_outside_the_window_refuses() -> Bool {
-  let bad = product.compute_board.power_distribution.BoardSupplyRail { rail: CoreSupply, net: net_identity(design: fixture_design, local_identity: "vcc_core"), nominal: millivolt(count: 1800) }
-  refuses_naming(i: with_rails(rs: [bad, pll_rail_ok, bank_rail_ok, spi_rail_ok, nvcm_rail_ok]), wanted: "OutsideWindow")
+  let bad = product.compute_board.power_distribution.BoardSupplyRail { rail: CoreSupply, net: net_identity(design: test.claim.compute_board_power_distribution_witness.fixture_design, local_identity: "vcc_core"), nominal: millivolt(count: 1800) }
+  test.claim.compute_board_power_distribution_witness.refuses_naming(i: with_rails(rs: [bad, pll_rail_ok, bank_rail_ok, spi_rail_ok, nvcm_rail_ok]), wanted: "OutsideWindow")
 }
 
 // AND THE SAME VOLTAGE IS FINE ON A BANK, which is what makes the test above a statement about
 // the rail rather than about the number 1800.
 test fn w_the_same_voltage_is_admissible_on_a_different_rail() -> Bool {
-  let bank_18 = product.compute_board.power_distribution.BoardSupplyRail { rail: BankIoSupply, net: net_identity(design: fixture_design, local_identity: "vccio_1v8"), nominal: millivolt(count: 1800) }
+  let bank_18 = product.compute_board.power_distribution.BoardSupplyRail { rail: BankIoSupply, net: net_identity(design: test.claim.compute_board_power_distribution_witness.fixture_design, local_identity: "vccio_1v8"), nominal: millivolt(count: 1800) }
   let banks_18 = product.compute_board.power_distribution.BoardPowerIntent {
     configuration_mode: reference_power_intent.configuration_mode,
     rails: [core_rail_ok, pll_rail_ok, bank_18, spi_rail_ok, nvcm_rail_ok],
-    banks: [product.compute_board.power_distribution.BankAssignment { bank: 0, use: product.compute_board.power_distribution.BankDrivesStandard { standard: ice40_lvcmos18_supply }, supplied_by: net_identity(design: fixture_design, local_identity: "vccio_1v8") }],
+    banks: [product.compute_board.power_distribution.BankAssignment { bank: 0, use: product.compute_board.power_distribution.BankDrivesStandard { standard: ice40_lvcmos18_supply }, supplied_by: net_identity(design: test.claim.compute_board_power_distribution_witness.fixture_design, local_identity: "vccio_1v8") }],
     deliberately_unconnected: reference_power_intent.deliberately_unconnected,
   }
-  admits(i: banks_18)
+  test.claim.compute_board_power_distribution_witness.admits(i: banks_18)
 }
 
 // THE BANK STANDARD IS A SEPARATE CHECK FROM THE RAIL. A 1.8 V bank rail is inside the device's
 // bank envelope, so every rail check passes; a bank driving LVCMOS 3.3 from it is nevertheless out
 // of spec. A board verified only against rails would ship with outputs that do not meet levels.
 test fn w_a_bank_standard_its_rail_cannot_reach_refuses() -> Bool {
-  let bank_18 = product.compute_board.power_distribution.BoardSupplyRail { rail: BankIoSupply, net: net_identity(design: fixture_design, local_identity: "vccio_1v8"), nominal: millivolt(count: 1800) }
+  let bank_18 = product.compute_board.power_distribution.BoardSupplyRail { rail: BankIoSupply, net: net_identity(design: test.claim.compute_board_power_distribution_witness.fixture_design, local_identity: "vccio_1v8"), nominal: millivolt(count: 1800) }
   let mismatched = product.compute_board.power_distribution.BoardPowerIntent {
     configuration_mode: reference_power_intent.configuration_mode,
     rails: [core_rail_ok, pll_rail_ok, bank_18, spi_rail_ok, nvcm_rail_ok],
-    banks: [product.compute_board.power_distribution.BankAssignment { bank: 0, use: product.compute_board.power_distribution.BankDrivesStandard { standard: ice40_lvcmos33_supply }, supplied_by: net_identity(design: fixture_design, local_identity: "vccio_1v8") }],
+    banks: [product.compute_board.power_distribution.BankAssignment { bank: 0, use: product.compute_board.power_distribution.BankDrivesStandard { standard: ice40_lvcmos33_supply }, supplied_by: net_identity(design: test.claim.compute_board_power_distribution_witness.fixture_design, local_identity: "vccio_1v8") }],
     deliberately_unconnected: reference_power_intent.deliberately_unconnected,
   }
-  refuses_naming(i: mismatched, wanted: "BankStandard")
-    && !refuses_naming(i: mismatched, wanted: "OutsideWindow")
+  test.claim.compute_board_power_distribution_witness.refuses_naming(i: mismatched, wanted: "BankStandard")
+    && !test.claim.compute_board_power_distribution_witness.refuses_naming(i: mismatched, wanted: "OutsideWindow")
 }
 
 // THE CONFIGURATION MODE REACHES THE BOARD CHECK. Under slave SPI a 1.8 V VPP_2V5 is legal; under
 // master SPI the same board is refused, because that mode raises the minimum to 2.30 V. Both
 // directions are asserted, so a check that ignored the mode could not pass this.
 test fn w_the_configuration_mode_decides_the_nvcm_rail() -> Bool {
-  let nvcm_18 = product.compute_board.power_distribution.BoardSupplyRail { rail: NvcmProgrammingSupply, net: net_identity(design: fixture_design, local_identity: "vccio_1v8"), nominal: millivolt(count: 1800) }
+  let nvcm_18 = product.compute_board.power_distribution.BoardSupplyRail { rail: NvcmProgrammingSupply, net: net_identity(design: test.claim.compute_board_power_distribution_witness.fixture_design, local_identity: "vccio_1v8"), nominal: millivolt(count: 1800) }
   let base = [core_rail_ok, pll_rail_ok, bank_rail_ok, spi_rail_ok, nvcm_18]
   let under_slave = product.compute_board.power_distribution.BoardPowerIntent {
     configuration_mode: SlaveSpiConfiguration,
@@ -110,17 +110,17 @@ test fn w_the_configuration_mode_decides_the_nvcm_rail() -> Bool {
     banks: reference_power_intent.banks,
     deliberately_unconnected: reference_power_intent.deliberately_unconnected,
   }
-  admits(i: under_slave) && refuses_naming(i: under_master, wanted: "OutsideWindow")
+  test.claim.compute_board_power_distribution_witness.admits(i: under_slave) && test.claim.compute_board_power_distribution_witness.refuses_naming(i: under_master, wanted: "OutsideWindow")
 }
 
 // A PIN THE VENDOR SAYS TO LEAVE UNCONNECTED, CONNECTED TO A PERFECTLY REASONABLE RAIL, IS ITS OWN
 // REFUSAL. It is not an out-of-window one: there is no window, and reporting a range violation
 // would send someone looking for the right voltage when there is none.
 test fn w_building_a_rail_for_an_unconnected_pin_refuses_distinctly() -> Bool {
-  let fast = product.compute_board.power_distribution.BoardSupplyRail { rail: FastProgrammingSupply, net: net_identity(design: fixture_design, local_identity: "vccio_3v3"), nominal: millivolt(count: 3300) }
+  let fast = product.compute_board.power_distribution.BoardSupplyRail { rail: FastProgrammingSupply, net: net_identity(design: test.claim.compute_board_power_distribution_witness.fixture_design, local_identity: "vccio_3v3"), nominal: millivolt(count: 3300) }
   let connected = with_rails(rs: [core_rail_ok, pll_rail_ok, bank_rail_ok, spi_rail_ok, nvcm_rail_ok, fast])
-  refuses_naming(i: connected, wanted: "BuiltUnconnected")
-    && !refuses_naming(i: connected, wanted: "OutsideWindow")
+  test.claim.compute_board_power_distribution_witness.refuses_naming(i: connected, wanted: "BuiltUnconnected")
+    && !test.claim.compute_board_power_distribution_witness.refuses_naming(i: connected, wanted: "OutsideWindow")
 }
 
 // A MISSING RAIL AND A DELIBERATELY OMITTED ONE ARE DIFFERENT STATES. Dropping the PLL supply
@@ -128,31 +128,31 @@ test fn w_building_a_rail_for_an_unconnected_pin_refuses_distinctly() -> Bool {
 // declaration the two are the same absence and the check cannot tell an oversight from a decision.
 test fn w_an_undeclared_omission_refuses_where_a_declared_one_does_not() -> Bool {
   let missing_pll = with_rails(rs: [core_rail_ok, bank_rail_ok, spi_rail_ok, nvcm_rail_ok])
-  refuses_naming(i: missing_pll, wanted: "NotBuilt")
-    && admits(i: reference_power_intent)
+  test.claim.compute_board_power_distribution_witness.refuses_naming(i: missing_pll, wanted: "NotBuilt")
+    && test.claim.compute_board_power_distribution_witness.admits(i: reference_power_intent)
 }
 
 // TWO RAILS AT ONE VOLTAGE ON TWO NETS SATISFY EVERY WINDOW AND STILL VIOLATE THE VENDOR. This is
 // the constraint no per-rail check can see, and it is why a rail carries a net identity rather
 // than only a voltage: with voltages alone the two designs are indistinguishable.
 test fn w_like_voltage_rails_on_separate_supplies_refuse() -> Bool {
-  let split_spi = product.compute_board.power_distribution.BoardSupplyRail { rail: ConfigurationBankSupply, net: net_identity(design: fixture_design, local_identity: "vcc_spi_separate"), nominal: millivolt(count: 3300) }
+  let split_spi = product.compute_board.power_distribution.BoardSupplyRail { rail: ConfigurationBankSupply, net: net_identity(design: test.claim.compute_board_power_distribution_witness.fixture_design, local_identity: "vcc_spi_separate"), nominal: millivolt(count: 3300) }
   let split = with_rails(rs: [core_rail_ok, pll_rail_ok, bank_rail_ok, split_spi, nvcm_rail_ok])
-  refuses_naming(i: split, wanted: "SeparateSupplies")
-    && !refuses_naming(i: split, wanted: "OutsideWindow")
+  test.claim.compute_board_power_distribution_witness.refuses_naming(i: split, wanted: "SeparateSupplies")
+    && !test.claim.compute_board_power_distribution_witness.refuses_naming(i: split, wanted: "OutsideWindow")
 }
 
 // AND THE SAME PAIR AT DIFFERENT VOLTAGES ON DIFFERENT NETS IS FINE, which is what makes the test
 // above a statement about like voltages rather than a blanket ban on separate nets.
 test fn w_unlike_voltage_rails_may_sit_on_separate_supplies() -> Bool {
-  let bank_18 = product.compute_board.power_distribution.BoardSupplyRail { rail: BankIoSupply, net: net_identity(design: fixture_design, local_identity: "vccio_1v8"), nominal: millivolt(count: 1800) }
+  let bank_18 = product.compute_board.power_distribution.BoardSupplyRail { rail: BankIoSupply, net: net_identity(design: test.claim.compute_board_power_distribution_witness.fixture_design, local_identity: "vccio_1v8"), nominal: millivolt(count: 1800) }
   let mixed = product.compute_board.power_distribution.BoardPowerIntent {
     configuration_mode: reference_power_intent.configuration_mode,
     rails: [core_rail_ok, pll_rail_ok, bank_18, spi_rail_ok, nvcm_rail_ok],
-    banks: [product.compute_board.power_distribution.BankAssignment { bank: 0, use: product.compute_board.power_distribution.BankDrivesStandard { standard: ice40_lvcmos18_supply }, supplied_by: net_identity(design: fixture_design, local_identity: "vccio_1v8") }],
+    banks: [product.compute_board.power_distribution.BankAssignment { bank: 0, use: product.compute_board.power_distribution.BankDrivesStandard { standard: ice40_lvcmos18_supply }, supplied_by: net_identity(design: test.claim.compute_board_power_distribution_witness.fixture_design, local_identity: "vccio_1v8") }],
     deliberately_unconnected: reference_power_intent.deliberately_unconnected,
   }
-  admits(i: mixed)
+  test.claim.compute_board_power_distribution_witness.admits(i: mixed)
 }
 
 // A BANK POINTING AT A NET NO RAIL SUPPLIES IS ITS OWN REFUSAL, not silence. The alternative is a
@@ -162,27 +162,27 @@ test fn w_a_bank_on_an_undeclared_net_refuses() -> Bool {
   let orphan = product.compute_board.power_distribution.BoardPowerIntent {
     configuration_mode: reference_power_intent.configuration_mode,
     rails: [core_rail_ok, pll_rail_ok, bank_rail_ok, spi_rail_ok, nvcm_rail_ok],
-    banks: [product.compute_board.power_distribution.BankAssignment { bank: 0, use: product.compute_board.power_distribution.BankDrivesStandard { standard: ice40_lvcmos33_supply }, supplied_by: net_identity(design: fixture_design, local_identity: "vccio_nowhere") }],
+    banks: [product.compute_board.power_distribution.BankAssignment { bank: 0, use: product.compute_board.power_distribution.BankDrivesStandard { standard: ice40_lvcmos33_supply }, supplied_by: net_identity(design: test.claim.compute_board_power_distribution_witness.fixture_design, local_identity: "vccio_nowhere") }],
     deliberately_unconnected: reference_power_intent.deliberately_unconnected,
   }
-  refuses_naming(i: orphan, wanted: "BankUnsupplied")
+  test.claim.compute_board_power_distribution_witness.refuses_naming(i: orphan, wanted: "BankUnsupplied")
 }
 
 // CAUSES ACCUMULATE RATHER THAN STOPPING AT THE FIRST. A board with an out-of-window core rail, a
 // missing PLL supply and a bank on a net nobody declared has three independent problems, and
 // reporting one would send someone round the loop three times.
 test fn w_independent_power_defects_are_all_reported() -> Bool {
-  let bad_core = product.compute_board.power_distribution.BoardSupplyRail { rail: CoreSupply, net: net_identity(design: fixture_design, local_identity: "vcc_core"), nominal: millivolt(count: 1800) }
+  let bad_core = product.compute_board.power_distribution.BoardSupplyRail { rail: CoreSupply, net: net_identity(design: test.claim.compute_board_power_distribution_witness.fixture_design, local_identity: "vcc_core"), nominal: millivolt(count: 1800) }
   let broken = product.compute_board.power_distribution.BoardPowerIntent {
     configuration_mode: reference_power_intent.configuration_mode,
     rails: [bad_core, bank_rail_ok, spi_rail_ok, nvcm_rail_ok],
-    banks: [product.compute_board.power_distribution.BankAssignment { bank: 0, use: product.compute_board.power_distribution.BankDrivesStandard { standard: ice40_lvcmos33_supply }, supplied_by: net_identity(design: fixture_design, local_identity: "vccio_nowhere") }],
+    banks: [product.compute_board.power_distribution.BankAssignment { bank: 0, use: product.compute_board.power_distribution.BankDrivesStandard { standard: ice40_lvcmos33_supply }, supplied_by: net_identity(design: test.claim.compute_board_power_distribution_witness.fixture_design, local_identity: "vccio_nowhere") }],
     deliberately_unconnected: reference_power_intent.deliberately_unconnected,
   }
   power_refusal_count(cs: power_causes(intent: broken)) == 3
-    && refuses_naming(i: broken, wanted: "OutsideWindow")
-    && refuses_naming(i: broken, wanted: "NotBuilt")
-    && refuses_naming(i: broken, wanted: "BankUnsupplied")
+    && test.claim.compute_board_power_distribution_witness.refuses_naming(i: broken, wanted: "OutsideWindow")
+    && test.claim.compute_board_power_distribution_witness.refuses_naming(i: broken, wanted: "NotBuilt")
+    && test.claim.compute_board_power_distribution_witness.refuses_naming(i: broken, wanted: "BankUnsupplied")
 }
 
 // THE VENDOR'S UNUSED-BANK CONSTRAINT, AND THE REASON THESE THREE TESTS EXIST. The constraint row
@@ -203,9 +203,9 @@ fn with_ok_rails_and_banks(bs: List<product.compute_board.power_distribution.Ban
 // THE POSITIVE CONTROL. An unused bank tied to core satisfies the constraint, so the check is not
 // simply refusing every unused bank — which a refusal-only test could not distinguish.
 test fn w_an_unused_bank_tied_to_core_is_admitted() -> Bool {
-  admits(i: with_ok_rails_and_banks(bs: [
-    product.compute_board.power_distribution.BankAssignment { bank: 0, use: product.compute_board.power_distribution.BankDrivesStandard { standard: ice40_lvcmos33_supply }, supplied_by: net_identity(design: fixture_design, local_identity: "vccio_3v3") },
-    product.compute_board.power_distribution.BankAssignment { bank: 1, use: BankUnused, supplied_by: net_identity(design: fixture_design, local_identity: "vcc_core") },
+  test.claim.compute_board_power_distribution_witness.admits(i: with_ok_rails_and_banks(bs: [
+    product.compute_board.power_distribution.BankAssignment { bank: 0, use: product.compute_board.power_distribution.BankDrivesStandard { standard: ice40_lvcmos33_supply }, supplied_by: net_identity(design: test.claim.compute_board_power_distribution_witness.fixture_design, local_identity: "vccio_3v3") },
+    product.compute_board.power_distribution.BankAssignment { bank: 1, use: BankUnused, supplied_by: net_identity(design: test.claim.compute_board_power_distribution_witness.fixture_design, local_identity: "vcc_core") },
   ]))
 }
 
@@ -213,9 +213,9 @@ test fn w_an_unused_bank_tied_to_core_is_admitted() -> Bool {
 // electrically reasonable, satisfies every window, and violates the vendor constraint. Before this
 // change it was admitted.
 test fn w_an_unused_bank_not_tied_to_core_refuses() -> Bool {
-  refuses_naming(i: with_ok_rails_and_banks(bs: [
-    product.compute_board.power_distribution.BankAssignment { bank: 0, use: product.compute_board.power_distribution.BankDrivesStandard { standard: ice40_lvcmos33_supply }, supplied_by: net_identity(design: fixture_design, local_identity: "vccio_3v3") },
-    product.compute_board.power_distribution.BankAssignment { bank: 1, use: BankUnused, supplied_by: net_identity(design: fixture_design, local_identity: "vccio_3v3") },
+  test.claim.compute_board_power_distribution_witness.refuses_naming(i: with_ok_rails_and_banks(bs: [
+    product.compute_board.power_distribution.BankAssignment { bank: 0, use: product.compute_board.power_distribution.BankDrivesStandard { standard: ice40_lvcmos33_supply }, supplied_by: net_identity(design: test.claim.compute_board_power_distribution_witness.fixture_design, local_identity: "vccio_3v3") },
+    product.compute_board.power_distribution.BankAssignment { bank: 1, use: BankUnused, supplied_by: net_identity(design: test.claim.compute_board_power_distribution_witness.fixture_design, local_identity: "vccio_3v3") },
   ]), wanted: "UnusedNotCore")
 }
 
@@ -227,8 +227,8 @@ test fn w_an_unused_bank_refuses_when_the_core_rail_is_not_built() -> Bool {
   let no_core = product.compute_board.power_distribution.BoardPowerIntent {
     configuration_mode: reference_power_intent.configuration_mode,
     rails: [pll_rail_ok, bank_rail_ok, spi_rail_ok, nvcm_rail_ok],
-    banks: [product.compute_board.power_distribution.BankAssignment { bank: 0, use: BankUnused, supplied_by: net_identity(design: fixture_design, local_identity: "vccio_3v3") }],
+    banks: [product.compute_board.power_distribution.BankAssignment { bank: 0, use: BankUnused, supplied_by: net_identity(design: test.claim.compute_board_power_distribution_witness.fixture_design, local_identity: "vccio_3v3") }],
     deliberately_unconnected: [CoreSupply, FastProgrammingSupply],
   }
-  refuses_naming(i: no_core, wanted: "UnusedCoreMissing")
+  test.claim.compute_board_power_distribution_witness.refuses_naming(i: no_core, wanted: "UnusedCoreMissing")
 }

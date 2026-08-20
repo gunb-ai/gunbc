@@ -18,36 +18,36 @@ data fixture_both_axes_closure: List<String> = ["fix.subject", "fix.corpus_reade
 fn verdict_of(closure: List<String>) -> v2.lens.witness_cost_locality.WitnessCostLocality {
   witness_cost_locality(
     closure_modules: closure,
-    ambient_read_carriers: fixture_carriers,
+    ambient_read_carriers: v2.test.claim.witness_cost_locality_test.fixture_carriers,
     pipeline_stages: fixture_stages
   )
 }
 
 test fn unit_closure_is_local() -> Bool {
-  locality_is_local(verdict: verdict_of(closure: fixture_unit_closure))
+  locality_is_local(verdict: v2.test.claim.witness_cost_locality_test.verdict_of(closure: v2.test.claim.witness_cost_locality_test.fixture_unit_closure))
 }
 
 test fn corpus_reading_closure_couples_on_data_breadth() -> Bool {
-  let v = verdict_of(closure: fixture_reading_closure)
+  let v = v2.test.claim.witness_cost_locality_test.verdict_of(closure: fixture_reading_closure)
   couples_on_data_breadth(verdict: v) && !couples_on_layer_depth(verdict: v)
 }
 
 test fn single_stage_closure_stays_local() -> Bool {
-  locality_is_local(verdict: verdict_of(closure: fixture_one_stage_closure))
+  locality_is_local(verdict: v2.test.claim.witness_cost_locality_test.verdict_of(closure: fixture_one_stage_closure))
 }
 
 test fn round_trip_closure_couples_on_layer_depth() -> Bool {
-  let v = verdict_of(closure: fixture_round_trip_closure)
+  let v = v2.test.claim.witness_cost_locality_test.verdict_of(closure: fixture_round_trip_closure)
   couples_on_layer_depth(verdict: v) && !couples_on_data_breadth(verdict: v)
 }
 
 test fn both_axes_closure_couples_on_both() -> Bool {
-  let v = verdict_of(closure: fixture_both_axes_closure)
+  let v = v2.test.claim.witness_cost_locality_test.verdict_of(closure: fixture_both_axes_closure)
   couples_on_data_breadth(verdict: v) && couples_on_layer_depth(verdict: v)
 }
 
 test fn red_control_spanning_closure_is_not_local() -> Bool {
-  locality_is_local(verdict: verdict_of(closure: fixture_round_trip_closure)) == false
+  locality_is_local(verdict: v2.test.claim.witness_cost_locality_test.verdict_of(closure: fixture_round_trip_closure)) == false
 }
 
 data fixture_two_hop_facts: List<v2.lens.witness_cost_locality.ModuleImportFact> = [
@@ -72,17 +72,17 @@ fn facts_verdict(facts: List<v2.lens.witness_cost_locality.ModuleImportFact>) ->
   witness_cost_locality_from_facts(
     entry_module: "fix.entry",
     facts: facts,
-    ambient_read_carriers: fixture_carriers,
+    ambient_read_carriers: v2.test.claim.witness_cost_locality_test.fixture_carriers,
     pipeline_stages: fixture_stages
   )
 }
 
 test fn two_hop_carrier_couples_on_data_breadth() -> Bool {
-  couples_on_data_breadth(verdict: facts_verdict(facts: fixture_two_hop_facts))
+  couples_on_data_breadth(verdict: facts_verdict(facts: v2.test.claim.witness_cost_locality_test.fixture_two_hop_facts))
 }
 
 test fn severed_mid_hop_is_local() -> Bool {
-  locality_is_local(verdict: facts_verdict(facts: fixture_severed_facts))
+  locality_is_local(verdict: facts_verdict(facts: v2.test.claim.witness_cost_locality_test.fixture_severed_facts))
 }
 
 test fn cyclic_facts_terminate_and_still_reach_carrier() -> Bool {
@@ -90,11 +90,11 @@ test fn cyclic_facts_terminate_and_still_reach_carrier() -> Bool {
 }
 
 fn coupled_fixture_verdict() -> v2.lens.witness_cost_locality.WitnessCostLocality {
-  verdict_of(closure: fixture_reading_closure)
+  v2.test.claim.witness_cost_locality_test.verdict_of(closure: fixture_reading_closure)
 }
 
 test fn declared_corpus_input_routes_scheduled_even_when_reachability_is_local() -> Bool {
-  let a = per_pr_admission(verdict: verdict_of(closure: fixture_unit_closure), envelope: DeclaredCorpusInput)
+  let a = per_pr_admission(verdict: v2.test.claim.witness_cost_locality_test.verdict_of(closure: v2.test.claim.witness_cost_locality_test.fixture_unit_closure), envelope: DeclaredCorpusInput)
   admission_is_continuous(admission: a) == false
 }
 
@@ -103,7 +103,7 @@ test fn declared_bounded_fixture_overrides_coupled_reachability() -> Bool {
 }
 
 test fn undeclared_local_admits_continuous() -> Bool {
-  admission_is_continuous(admission: per_pr_admission(verdict: verdict_of(closure: fixture_unit_closure), envelope: EnvelopeUndeclared))
+  admission_is_continuous(admission: per_pr_admission(verdict: v2.test.claim.witness_cost_locality_test.verdict_of(closure: v2.test.claim.witness_cost_locality_test.fixture_unit_closure), envelope: EnvelopeUndeclared))
 }
 
 test fn red_control_undeclared_coupled_never_rides_continuous() -> Bool {

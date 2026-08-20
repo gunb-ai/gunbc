@@ -9,15 +9,15 @@ data claude_agent_sdk_integrity: String = "sha512-glc7SdwPkOkLw8oxwLo9PKTdLJGqW/
 data claude_agent_sdk_integrity_hex: String = "82573b49dc0f90e90bc3ca31c0ba3d3ca4dd2c91aa5bf3c8478bab59716846d5fd625970a33b0455ce53735f84bcb4a47ebb313c9a905aa3a0a6350e4177f5a0"
 
 test fn npm_sri_parses_measured_claude_agent_sdk_integrity_exact_hex() -> Bool {
-  match npm_decode_integrity(wire: claude_agent_sdk_integrity) {
+  match npm_decode_integrity(wire: test.claim.npm_sri_witness_test.claude_agent_sdk_integrity) {
     NpmSingleSha512Integrity { digest } =>
-      (digest.hex as String) == claude_agent_sdk_integrity_hex
+      (digest.hex as String) == test.claim.npm_sri_witness_test.claude_agent_sdk_integrity_hex
     _ => false
   }
 }
 
 test fn npm_sri_refuses_structural_expectation() -> Bool {
-  match npm_decode_integrity(wire: claude_agent_sdk_integrity) {
+  match npm_decode_integrity(wire: test.claim.npm_sri_witness_test.claude_agent_sdk_integrity) {
     NpmSingleSha512Integrity { digest } =>
       match compare_content_hash(
         left: as_content_hash_sha512(digest: digest),
@@ -55,7 +55,7 @@ test fn npm_sri_refuses_wrong_decoded_length() -> Bool {
 }
 
 test fn npm_sri_refuses_noncanonical_overpadding() -> Bool {
-  let overpadded = concat(claude_agent_sdk_integrity, "=")
+  let overpadded = concat(test.claim.npm_sri_witness_test.claude_agent_sdk_integrity, "=")
   match npm_decode_integrity(wire: overpadded) {
     NpmIntegrityMalformed { reason } =>
       (reason as String) == "sha512 base64 payload is noncanonical"

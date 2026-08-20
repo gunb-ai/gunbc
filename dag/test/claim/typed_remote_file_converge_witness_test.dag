@@ -126,34 +126,34 @@ fn classify(succeeded: Bool, stdout: String, stderr: String) -> gunbc.typed_remo
 
 // The positive control. Without it every refusal below would pass on a function that never converges.
 test fn destination_holding_the_declared_bytes_converges() -> Bool {
-  converged(c: classify(succeeded: true, stdout: subject_content, stderr: ""))
+  converged(c: test.claim.typed_remote_file_converge_witness_test.classify(succeeded: true, stdout: subject_content, stderr: ""))
 }
 
 // THE CLAIM THIS ARM EXISTS FOR: a successful write whose destination holds something else. This is
 // exactly what a zero exit from the writing process cannot distinguish, and why RemoteExecAccepted
 // was never convergence.
 test fn destination_holding_other_bytes_refuses() -> Bool {
-  !converged(c: classify(succeeded: true, stdout: "[Unit]\nDescription=something else\n", stderr: ""))
+  !converged(c: test.claim.typed_remote_file_converge_witness_test.classify(succeeded: true, stdout: "[Unit]\nDescription=something else\n", stderr: ""))
 }
 
 // Truncation is the failure a digest-free "it wrote ok" check misses most often.
 test fn a_truncated_destination_refuses() -> Bool {
-  !converged(c: classify(succeeded: true, stdout: "[Unit]\nDescription=gunbc serving\n", stderr: ""))
+  !converged(c: test.claim.typed_remote_file_converge_witness_test.classify(succeeded: true, stdout: "[Unit]\nDescription=gunbc serving\n", stderr: ""))
 }
 
 // Exact comparison, deliberately: normalizing trailing whitespace would let a real difference pass.
 test fn a_destination_differing_only_in_trailing_bytes_refuses() -> Bool {
-  !converged(c: classify(succeeded: true, stdout: concat(subject_content, "\n"), stderr: ""))
+  !converged(c: test.claim.typed_remote_file_converge_witness_test.classify(succeeded: true, stdout: concat(subject_content, "\n"), stderr: ""))
 }
 
 // An empty read on a zero exit is not evidence of an empty file being correct — it is not the
 // declared content, so it refuses by the same comparison rather than by a special case.
 test fn an_empty_destination_refuses() -> Bool {
-  !converged(c: classify(succeeded: true, stdout: "", stderr: ""))
+  !converged(c: test.claim.typed_remote_file_converge_witness_test.classify(succeeded: true, stdout: "", stderr: ""))
 }
 
 test fn an_unreadable_destination_refuses_and_is_located_to_read_back() -> Bool {
-  let c = classify(succeeded: false, stdout: "", stderr: "cat: No such file or directory")
+  let c = test.claim.typed_remote_file_converge_witness_test.classify(succeeded: false, stdout: "", stderr: "cat: No such file or directory")
   !converged(c: c) && refusal_step(c: c) == "read-back"
     && string_contains(
       match c { gunbc.typed_remote_file_write.TypedRemoteFileConverged { path: _, mode: _ } => "" gunbc.typed_remote_file_write.TypedRemoteFileConvergenceRefused { step: _, reason: r } => r },

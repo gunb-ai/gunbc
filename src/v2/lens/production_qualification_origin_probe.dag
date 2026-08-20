@@ -92,7 +92,7 @@ fn site_row_already_present(
   v2.std.algebra.any(
     xs: sites,
     predicate: fn(row) {
-      string_eq(a: row.qualified_name, b: qualified_name)
+      v2.lens.production_qualification_origin_probe.string_eq(a: row.qualified_name, b: qualified_name)
         && v2.compiler.self_host.emitter_producer_provenance.emission_qualification_eq(
           left: row.qualification_axis,
           right: axis
@@ -133,7 +133,7 @@ fn atom_collect_init(n: v2.std.node.Node) -> AtomCollectState {
 fn atom_collect_step(acc: AtomCollectState, _edge: v2.std.node.Edge, child: AtomCollectState) -> AtomCollectState {
   let atoms = match v2.std.grammar.node_atom_identity_optional(node: child.node) {
     Present { value: sym } =>
-      if v2.std.algebra.contains(xs: acc.atoms, item: sym, eq: symbol_eq) {
+      if v2.std.algebra.contains(xs: acc.atoms, item: sym, eq: v2.lens.production_qualification_origin_probe.symbol_eq) {
         acc.atoms
       } else {
         v2.std.algebra.list_snoc_item(xs: acc.atoms, item: sym)
@@ -144,14 +144,14 @@ fn atom_collect_step(acc: AtomCollectState, _edge: v2.std.node.Edge, child: Atom
 }
 
 fn atom_collect_algebra() -> v2.std.node.NodeFold<AtomCollectState> {
-  v2.std.node.NodeFold { init: atom_collect_init, step: atom_collect_step }
+  v2.std.node.NodeFold { init: v2.lens.production_qualification_origin_probe.atom_collect_init, step: atom_collect_step }
 }
 
 fn atom_identities_in_node(node: v2.std.node.Node) -> List<v2.std.node.Symbol> {
-  let from_descendants = v2.std.node.fold_node(n: node, algebra: atom_collect_algebra()).atoms
+  let from_descendants = v2.std.node.fold_node(n: node, algebra: v2.lens.production_qualification_origin_probe.atom_collect_algebra()).atoms
   match v2.std.grammar.node_atom_identity_optional(node: node) {
     Present { value: sym } =>
-      if v2.std.algebra.contains(xs: from_descendants, item: sym, eq: symbol_eq) {
+      if v2.std.algebra.contains(xs: from_descendants, item: sym, eq: v2.lens.production_qualification_origin_probe.symbol_eq) {
         from_descendants
       } else {
         v2.std.algebra.list_snoc_item(xs: from_descendants, item: sym)
@@ -162,8 +162,8 @@ fn atom_identities_in_node(node: v2.std.node.Node) -> List<v2.std.node.Symbol> {
 
 fn node_contains_atom_text(node: v2.std.node.Node, wanted: String) -> Bool {
   v2.std.algebra.any(
-    xs: atom_identities_in_node(node: node),
-    predicate: fn(sym) { string_eq(a: v2.std.compilers.lexing.symbol_lexeme(sym: sym), b: wanted) }
+    xs: v2.lens.production_qualification_origin_probe.atom_identities_in_node(node: node),
+    predicate: fn(sym) { v2.lens.production_qualification_origin_probe.string_eq(a: v2.std.compilers.lexing.symbol_lexeme(sym: sym), b: wanted) }
   )
 }
 
@@ -177,7 +177,7 @@ fn callee_collect_init(n: v2.std.node.Node) -> CalleeCollectState {
 }
 
 fn maybe_snoc_callee_text(callees: List<String>, text: String) -> List<String> {
-  if v2.std.algebra.contains(xs: callees, item: text, eq: string_eq) {
+  if v2.std.algebra.contains(xs: callees, item: text, eq: v2.lens.production_qualification_origin_probe.string_eq) {
     callees
   } else {
     v2.std.algebra.list_snoc_item(xs: callees, item: text)
@@ -230,7 +230,7 @@ fn callee_collect_algebra() -> v2.std.node.NodeFold<CalleeCollectState> {
 
 fn callees_from_atom_scan(node: v2.std.node.Node) -> List<String> {
   v2.std.algebra.fold_list(
-    xs: atom_identities_in_node(node: node),
+    xs: v2.lens.production_qualification_origin_probe.atom_identities_in_node(node: node),
     empty: empty_string_list,
     cons: fn(acc, sym) {
       maybe_snoc_callee_text(callees: acc, text: v2.std.compilers.lexing.symbol_lexeme(sym: sym))
@@ -247,7 +247,7 @@ fn callees_from_node(node: v2.std.node.Node) -> List<String> {
 }
 
 fn decl_contains_callee(decl: v2.std.fn_index.FnArrowDecl, callee: String) -> Bool {
-  v2.std.algebra.contains(xs: callees_from_node(node: decl.output), item: callee, eq: string_eq)
+  v2.std.algebra.contains(xs: v2.lens.production_qualification_origin_probe.callees_from_node(node: decl.output), item: callee, eq: v2.lens.production_qualification_origin_probe.string_eq)
 }
 
 fn decl_contains_atom(decl: v2.std.fn_index.FnArrowDecl, atom: String) -> Bool {
@@ -514,7 +514,7 @@ fn structural_red_control_live_fixture_mint_site_discovered(
   v2.std.algebra.any(
     xs: derived_production_qualification_mint_sites_live(),
     predicate: fn(row) {
-      string_eq(a: row.qualified_name, b: live_qualified_name)
+      v2.lens.production_qualification_origin_probe.string_eq(a: row.qualified_name, b: live_qualified_name)
         && production_qualification_origin_eq(
           left: row.evidence_origin,
           right: FixtureDerived

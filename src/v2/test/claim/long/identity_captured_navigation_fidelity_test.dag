@@ -28,7 +28,7 @@ fn first_is_under_claimed_edge(xs: List<v2.lens.dependency_fidelity.FidelityDisc
 }
 
 test fn suspect_finding_projects_to_exactly_one_under_claimed_edge() -> Bool {
-  match v2.lens.identity_captured_navigation.roster_gate.source_findings(source_text: planted_identity_escape_snippet) {
+  match v2.lens.identity_captured_navigation.roster_gate.source_findings(source_text: v2.test.long.identity_captured_navigation_fidelity.planted_identity_escape_snippet) {
     Absent => false
     Present { value: fs } =>
       let discrepancies = identity_captured_navigation_as_fidelity_discrepancies(findings: fs)
@@ -37,7 +37,7 @@ test fn suspect_finding_projects_to_exactly_one_under_claimed_edge() -> Bool {
 }
 
 test fn sanctioned_reader_projects_to_zero_discrepancies() -> Bool {
-  match v2.lens.identity_captured_navigation.roster_gate.source_findings(source_text: sanctioned_reader_probe_snippet) {
+  match v2.lens.identity_captured_navigation.roster_gate.source_findings(source_text: v2.test.long.identity_captured_navigation_fidelity.sanctioned_reader_probe_snippet) {
     Absent => false
     Present { value: fs } =>
       discrepancy_count(xs: identity_captured_navigation_as_fidelity_discrepancies(findings: fs)) == 0

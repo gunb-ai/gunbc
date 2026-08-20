@@ -9,7 +9,7 @@ fn page() -> std.coordinate_frame.CoordinateFrameIdentity { coordinate_frame_ide
 fn elsewhere() -> std.coordinate_frame.CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 9) }
 
 fn view_of(kind: std.planar_projection.ProjectionKind) -> std.planar_projection.ProjectionView? {
-  match named_projection_view(kind: kind, source_frame: site(), view_frame: page()) {
+  match named_projection_view(kind: kind, source_frame: test.claim.planar_projection_witness.site(), view_frame: test.claim.planar_projection_witness.page()) {
     ProjectionRefused { cause: _ } => none
     ProjectionReady { value: v } => Present { value: v }
   }
@@ -19,7 +19,7 @@ fn view_of(kind: std.planar_projection.ProjectionKind) -> std.planar_projection.
 // the page. Asserting them is asserting the projection itself, which is why every camera claim below
 // reads columns rather than only checking that construction succeeded.
 fn column_is(kind: std.planar_projection.ProjectionKind, axis: Int, u: Int, v: Int) -> Bool {
-  match view_of(kind: kind) {
+  match test.claim.planar_projection_witness.view_of(kind: kind) {
     Absent => false
     Present { value: view } =>
       axis_image_u(m: view_map(v: view), axis_index: axis) == u
@@ -28,10 +28,10 @@ fn column_is(kind: std.planar_projection.ProjectionKind, axis: Int, u: Int, v: I
 }
 
 fn projected(kind: std.planar_projection.ProjectionKind, x: Int, y: Int, z: Int) -> std.planar_projection.ViewPoint2? {
-  match view_of(kind: kind) {
+  match test.claim.planar_projection_witness.view_of(kind: kind) {
     Absent => none
     Present { value: view } =>
-      match project_point(v: view, p: point3(frame: site(), x: x, y: y, z: z)) {
+      match project_point(v: view, p: point3(frame: test.claim.planar_projection_witness.site(), x: x, y: y, z: z)) {
         ProjectionRefused { cause: _ } => none
         ProjectionReady { value: p } => Present { value: p }
       }
@@ -39,10 +39,10 @@ fn projected(kind: std.planar_projection.ProjectionKind, x: Int, y: Int, z: Int)
 }
 
 fn depth_of(kind: std.planar_projection.ProjectionKind, x: Int, y: Int, z: Int) -> Int? {
-  match view_of(kind: kind) {
+  match test.claim.planar_projection_witness.view_of(kind: kind) {
     Absent => none
     Present { value: view } =>
-      match projection_depth(v: view, p: point3(frame: site(), x: x, y: y, z: z)) {
+      match projection_depth(v: view, p: point3(frame: test.claim.planar_projection_witness.site(), x: x, y: y, z: z)) {
         ProjectionRefused { cause: _ } => none
         ProjectionReady { value: d } => Present { value: d }
       }
@@ -113,13 +113,13 @@ test fn the_dimetric_places_a_point_by_its_derived_columns() -> Bool {
 // A plan and an elevation are drawn to scale; an axonometric view is not, and the difference is
 // decided by the columns rather than by the name of the projection.
 test fn only_the_scale_preserving_views_report_millimetre_page_units() -> Bool {
-  match view_of(kind: PlanFromAbove) {
+  match test.claim.planar_projection_witness.view_of(kind: PlanFromAbove) {
     Absent => false
     Present { value: plan } =>
-      match view_of(kind: ElevationFromSouth) {
+      match test.claim.planar_projection_witness.view_of(kind: ElevationFromSouth) {
         Absent => false
         Present { value: elev } =>
-          match view_of(kind: Dimetric2To1FromAboveEastNorth) {
+          match test.claim.planar_projection_witness.view_of(kind: Dimetric2To1FromAboveEastNorth) {
             Absent => false
             Present { value: iso } =>
               view_units_are_millimetres(m: view_map(v: plan))
@@ -131,7 +131,7 @@ test fn only_the_scale_preserving_views_report_millimetre_page_units() -> Bool {
 }
 
 test fn a_plan_page_coordinate_reads_back_as_millimetres() -> Bool {
-  match view_of(kind: PlanFromAbove) {
+  match test.claim.planar_projection_witness.view_of(kind: PlanFromAbove) {
     Absent => false
     Present { value: plan } =>
       match projected(kind: PlanFromAbove, x: 3000, y: 4000, z: 0) {
@@ -151,7 +151,7 @@ test fn a_plan_page_coordinate_reads_back_as_millimetres() -> Bool {
 // reading, and the refusal names the offending axis image rather than saying only that some axis was
 // foreshortened.
 test fn an_axonometric_page_coordinate_refuses_to_read_as_millimetres() -> Bool {
-  match view_of(kind: Dimetric2To1FromAboveEastNorth) {
+  match test.claim.planar_projection_witness.view_of(kind: Dimetric2To1FromAboveEastNorth) {
     Absent => false
     Present { value: iso } =>
       match projected(kind: Dimetric2To1FromAboveEastNorth, x: 1000, y: 0, z: 0) {
@@ -179,8 +179,8 @@ test fn a_camera_looking_along_its_up_reference_refuses() -> Bool {
   match projection_view(
     direction: view_axis_triple(x: 0, y: 0, z: 0 - 1),
     up_reference: view_axis_triple(x: 0, y: 0, z: 1),
-    source_frame: site(),
-    view_frame: page(),
+    source_frame: test.claim.planar_projection_witness.site(),
+    view_frame: test.claim.planar_projection_witness.page(),
   ) {
     ProjectionReady { value: _ } => false
     ProjectionRefused { cause: c } =>
@@ -198,8 +198,8 @@ test fn a_camera_with_no_direction_refuses_before_the_cross_product() -> Bool {
   match projection_view(
     direction: view_axis_triple(x: 0, y: 0, z: 0),
     up_reference: view_axis_triple(x: 0, y: 0, z: 1),
-    source_frame: site(),
-    view_frame: page(),
+    source_frame: test.claim.planar_projection_witness.site(),
+    view_frame: test.claim.planar_projection_witness.page(),
   ) {
     ProjectionReady { value: _ } => false
     ProjectionRefused { cause: c } =>
@@ -217,7 +217,7 @@ test fn a_camera_with_no_direction_refuses_before_the_cross_product() -> Bool {
 // spatial operation applies, reported through the same SpatialFrameRefusal carrier rather than a
 // second frame-mismatch vocabulary invented here.
 test fn a_point_from_another_frame_has_no_projection() -> Bool {
-  match view_of(kind: PlanFromAbove) {
+  match test.claim.planar_projection_witness.view_of(kind: PlanFromAbove) {
     Absent => false
     Present { value: plan } =>
       match project_point(v: plan, p: point3(frame: elsewhere(), x: 1, y: 2, z: 3)) {
@@ -238,10 +238,10 @@ test fn a_point_from_another_frame_has_no_projection() -> Bool {
 // terms, so a point at the representable maximum on two axes has no page position; the arm reports
 // the overflow that actually occurred rather than a coordinate that has silently gone negative.
 test fn a_page_coordinate_that_cannot_be_represented_refuses() -> Bool {
-  match view_of(kind: Dimetric2To1FromAboveEastNorth) {
+  match test.claim.planar_projection_witness.view_of(kind: Dimetric2To1FromAboveEastNorth) {
     Absent => false
     Present { value: iso } =>
-      match project_point(v: iso, p: point3(frame: site(), x: int_inclusive_max(), y: int_inclusive_max(), z: 0)) {
+      match project_point(v: iso, p: point3(frame: test.claim.planar_projection_witness.site(), x: int_inclusive_max(), y: int_inclusive_max(), z: 0)) {
         ProjectionReady { value: _ } => false
         ProjectionRefused { cause: c } =>
           match c {
@@ -258,7 +258,7 @@ test fn a_page_coordinate_that_cannot_be_represented_refuses() -> Bool {
 // The depth of a point in another frame is refused for the same reason its position is: an answer
 // would be a number computed from coordinates that mean something else.
 test fn depth_is_refused_across_frames_too() -> Bool {
-  match view_of(kind: PlanFromAbove) {
+  match test.claim.planar_projection_witness.view_of(kind: PlanFromAbove) {
     Absent => false
     Present { value: plan } =>
       match projection_depth(v: plan, p: point3(frame: elsewhere(), x: 1, y: 2, z: 3)) {

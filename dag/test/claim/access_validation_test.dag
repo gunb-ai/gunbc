@@ -69,28 +69,28 @@ data sample_file: extdeps.access.posix.FilePermissions = {
 }
 
 test fn posix_owner_can_read() -> Bool {
-  decision_is_permit(d: posix_decide(request: {
+  test.claim.access_validation.decision_is_permit(d: posix_decide(request: {
     subject: { uid: 1000, gid: 1000 }, action: PosixRead, object: sample_file,
     context: std.access.AccessContext { value: TestAccessContext {} }, evidence: std.access.AccessEvidence { value: TestAccessEvidence {} }
   }))
 }
 
 test fn posix_owner_cannot_execute() -> Bool {
-  decision_is_deny(d: posix_decide(request: {
+  test.claim.access_validation.decision_is_deny(d: posix_decide(request: {
     subject: { uid: 1000, gid: 1000 }, action: PosixExecute, object: sample_file,
     context: std.access.AccessContext { value: TestAccessContext {} }, evidence: std.access.AccessEvidence { value: TestAccessEvidence {} }
   }))
 }
 
 test fn posix_group_can_read() -> Bool {
-  decision_is_permit(d: posix_decide(request: {
+  test.claim.access_validation.decision_is_permit(d: posix_decide(request: {
     subject: { uid: 2000, gid: 1000 }, action: PosixRead, object: sample_file,
     context: std.access.AccessContext { value: TestAccessContext {} }, evidence: std.access.AccessEvidence { value: TestAccessEvidence {} }
   }))
 }
 
 test fn posix_other_cannot_read() -> Bool {
-  decision_is_deny(d: posix_decide(request: {
+  test.claim.access_validation.decision_is_deny(d: posix_decide(request: {
     subject: { uid: 2000, gid: 2000 }, action: PosixRead, object: sample_file,
     context: std.access.AccessContext { value: TestAccessContext {} }, evidence: std.access.AccessEvidence { value: TestAccessEvidence {} }
   }))
@@ -136,21 +136,21 @@ data sample_rbac: extdeps.access.rbac.RbacPolicy = {
 }
 
 test fn rbac_editor_can_write() -> Bool {
-  decision_is_permit(d: rbac_decide(policy: sample_rbac, request: {
+  test.claim.access_validation.decision_is_permit(d: rbac_decide(policy: sample_rbac, request: {
     subject: "alice", action: "write", object: "doc1",
     context: std.access.AccessContext { value: TestAccessContext {} }, evidence: std.access.AccessEvidence { value: TestAccessEvidence {} }
   }))
 }
 
 test fn rbac_viewer_cannot_write() -> Bool {
-  decision_is_deny(d: rbac_decide(policy: sample_rbac, request: {
+  test.claim.access_validation.decision_is_deny(d: rbac_decide(policy: sample_rbac, request: {
     subject: "bob", action: "write", object: "doc1",
     context: std.access.AccessContext { value: TestAccessContext {} }, evidence: std.access.AccessEvidence { value: TestAccessEvidence {} }
   }))
 }
 
 test fn rbac_viewer_can_read() -> Bool {
-  decision_is_permit(d: rbac_decide(policy: sample_rbac, request: {
+  test.claim.access_validation.decision_is_permit(d: rbac_decide(policy: sample_rbac, request: {
     subject: "bob", action: "read", object: "doc1",
     context: std.access.AccessContext { value: TestAccessContext {} }, evidence: std.access.AccessEvidence { value: TestAccessEvidence {} }
   }))

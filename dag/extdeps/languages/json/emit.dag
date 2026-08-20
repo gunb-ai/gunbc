@@ -83,7 +83,7 @@ fn escape_json_string(s: String) -> String {
 }
 
 fn quote_json_string(s: String) -> String {
-  concat("\"", concat(escape_json_string(s: s), "\""))
+  concat("\"", concat(extdeps.languages.json.emit.escape_json_string(s: s), "\""))
 }
 
 fn serialize_json_string(s: String) -> String {

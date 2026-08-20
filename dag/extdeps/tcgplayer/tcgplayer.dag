@@ -45,7 +45,7 @@ data client_credentials_grant_type: std.types.NonEmptyStr = "client_credentials"
 
 service tcgplayer.Auth {
   config {
-    endpoint: production_api_base
+    endpoint: extdeps.tcgplayer.tcgplayer.production_api_base
 
     retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503] }
   }
@@ -65,7 +65,7 @@ service tcgplayer.Auth {
       method: POST,
       path: "/token",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: { grant_type: client_credentials_grant_type, client_id: client_id, client_secret: client_secret }
+      body: { grant_type: extdeps.tcgplayer.tcgplayer.client_credentials_grant_type, client_id: client_id, client_secret: client_secret }
     }
     response {
       200 => TcgplayerTokenResponse

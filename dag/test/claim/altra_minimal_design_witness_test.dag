@@ -41,7 +41,7 @@ fn refuses_naming(d: product.altra_motherboard.minimal_design.AltraMinimalMother
   match admit_design(d: d) {
     DesignAdmitted { design: _ } => false
     DesignRefused { causes: cs } =>
-      fold(concat([cs.first], cs.rest), init: false, f: fn(acc, r) { acc || refusal_is(r: r, wanted: wanted) })
+      fold(concat([cs.first], cs.rest), init: false, f: fn(acc, r) { acc || test.claim.altra_minimal_design_witness.refusal_is(r: r, wanted: wanted) })
   }
 }
 

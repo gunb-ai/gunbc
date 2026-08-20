@@ -1026,7 +1026,7 @@ fn absorb_account_trip_line(
       Present { value: parsed } =>
         match json_object_unique_member(v: parsed, key: "id") {
           JsonMemberFound { value: idv } =>
-            match json_rpc_id_as_int(v: idv) {
+            match gunbc.codex_app_server_press.json_rpc_id_as_int(v: idv) {
               Absent =>
                 push_unknown_digest(
                   acc: acc,

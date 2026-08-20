@@ -37,7 +37,7 @@ fn ingested_find_arrow_in_module(root: v2.std.node.Node) -> Optional<v2.std.node
       fold(root.children, init: Absent, f: fn(acc, e) {
         match acc {
           Present { value: _ } => acc
-          Absent => ingested_find_arrow_in_module(root: e.target)
+          Absent => v2.compiler.ingested_fixture_arrows.ingested_find_arrow_in_module(root: e.target)
         }
       })
   }
@@ -65,9 +65,9 @@ fn ingested_resolved_module_from_source(source: String, file: v2.std.node.Symbol
 
 fn ingested_arrow_from_source(source: String, file: v2.std.node.Symbol) -> Outcome<v2.std.node.Node> {
   bind_outcome(
-    o: ingested_resolved_module_from_source(source: source, file: file),
+    o: v2.compiler.ingested_fixture_arrows.ingested_resolved_module_from_source(source: source, file: file),
     f: fn(resolved) {
-      match ingested_find_arrow_in_module(root: resolved) {
+      match v2.compiler.ingested_fixture_arrows.ingested_find_arrow_in_module(root: resolved) {
         Present { value: arrow } =>
           if well_formed(n: arrow) {
             outcome_accepted(value: arrow)
@@ -92,91 +92,91 @@ fn ingested_arrow_from_source(source: String, file: v2.std.node.Symbol) -> Outco
 }
 
 fn ingested_add_arrow_with_body() -> Outcome<v2.std.node.Node> {
-  ingested_arrow_from_source(
+  v2.compiler.ingested_fixture_arrows.ingested_arrow_from_source(
     source: ingested_add_module_source,
     file: ^ingested_fixture_add_file
   )
 }
 
 fn ingested_add_arrow_with_body_swapped_operands() -> Outcome<v2.std.node.Node> {
-  ingested_arrow_from_source(
+  v2.compiler.ingested_fixture_arrows.ingested_arrow_from_source(
     source: ingested_add_swapped_operands_module_source,
     file: ^ingested_fixture_add_swapped_file
   )
 }
 
 fn ingested_pick_if_arrow_with_body() -> Outcome<v2.std.node.Node> {
-  ingested_arrow_from_source(
+  v2.compiler.ingested_fixture_arrows.ingested_arrow_from_source(
     source: ingested_pick_module_source,
     file: ^ingested_fixture_pick_file
   )
 }
 
 fn ingested_pick_if_arrow_with_body_swapped_arms() -> Outcome<v2.std.node.Node> {
-  ingested_arrow_from_source(
+  v2.compiler.ingested_fixture_arrows.ingested_arrow_from_source(
     source: ingested_pick_swapped_arms_module_source,
     file: ^ingested_fixture_pick_swapped_file
   )
 }
 
 fn ingested_pick_if_arrow_with_body_false_condition() -> Outcome<v2.std.node.Node> {
-  ingested_arrow_from_source(
+  v2.compiler.ingested_fixture_arrows.ingested_arrow_from_source(
     source: ingested_pick_false_module_source,
     file: ^ingested_fixture_pick_false_file
   )
 }
 
 fn ingested_loop_arrow_with_body() -> Outcome<v2.std.node.Node> {
-  ingested_arrow_from_source(
+  v2.compiler.ingested_fixture_arrows.ingested_arrow_from_source(
     source: ingested_loop_module_source,
     file: ^ingested_fixture_loop_file
   )
 }
 
 fn ingested_loop_arrow_with_body_wrong_value() -> Outcome<v2.std.node.Node> {
-  ingested_arrow_from_source(
+  v2.compiler.ingested_fixture_arrows.ingested_arrow_from_source(
     source: ingested_loop_wrong_value_module_source,
     file: ^ingested_fixture_loop_wrong_file
   )
 }
 
 fn ingested_bind_arrow_with_body() -> Outcome<v2.std.node.Node> {
-  ingested_arrow_from_source(
+  v2.compiler.ingested_fixture_arrows.ingested_arrow_from_source(
     source: ingested_bind_module_source,
     file: ^ingested_fixture_bind_file
   )
 }
 
 fn ingested_bind_arrow_with_body_wrong_value() -> Outcome<v2.std.node.Node> {
-  ingested_arrow_from_source(
+  v2.compiler.ingested_fixture_arrows.ingested_arrow_from_source(
     source: ingested_bind_wrong_value_module_source,
     file: ^ingested_fixture_bind_wrong_file
   )
 }
 
 fn ingested_match_arrow_with_body() -> Outcome<v2.std.node.Node> {
-  ingested_arrow_from_source(
+  v2.compiler.ingested_fixture_arrows.ingested_arrow_from_source(
     source: ingested_match_module_source,
     file: ^ingested_fixture_match_file
   )
 }
 
 fn ingested_match_arrow_with_body_swapped_arms() -> Outcome<v2.std.node.Node> {
-  ingested_arrow_from_source(
+  v2.compiler.ingested_fixture_arrows.ingested_arrow_from_source(
     source: ingested_match_swapped_arms_module_source,
     file: ^ingested_fixture_match_swapped_file
   )
 }
 
 fn ingested_id_arrow_with_body() -> Outcome<v2.std.node.Node> {
-  ingested_arrow_from_source(
+  v2.compiler.ingested_fixture_arrows.ingested_arrow_from_source(
     source: ingested_id_module_source,
     file: ^ingested_fixture_id_file
   )
 }
 
 fn ingested_zero_arrow_with_body() -> Outcome<v2.std.node.Node> {
-  ingested_arrow_from_source(
+  v2.compiler.ingested_fixture_arrows.ingested_arrow_from_source(
     source: ingested_zero_module_source,
     file: ^ingested_fixture_zero_file
   )

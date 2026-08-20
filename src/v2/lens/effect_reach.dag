@@ -28,7 +28,7 @@ fn is_path_like_lexeme(text: String) -> Bool {
 }
 
 fn callee_text_is_host_sink(text: String) -> Bool {
-  v2.std.algebra.contains(xs: v2.std.effect_reach.effect_reach_host_sink_callee_symbols_v0, item: text, eq: string_eq)
+  v2.std.algebra.contains(xs: v2.std.effect_reach.effect_reach_host_sink_callee_symbols_v0, item: text, eq: v2.lens.effect_reach.string_eq)
 }
 
 fn decl_module_prefix(mod_path: String) -> String {
@@ -36,25 +36,25 @@ fn decl_module_prefix(mod_path: String) -> String {
 }
 
 fn decl_belongs_to_module(decl: v2.std.fn_index.FnArrowDecl, mod_path: String) -> Bool {
-  starts_with(s: decl.qualified_name, prefix: decl_module_prefix(mod_path: mod_path))
-    || string_eq(a: decl.qualified_name, b: mod_path)
+  starts_with(s: decl.qualified_name, prefix: v2.lens.effect_reach.decl_module_prefix(mod_path: mod_path))
+    || v2.lens.effect_reach.string_eq(a: decl.qualified_name, b: mod_path)
 }
 
 fn decls_in_module(decls: List<v2.std.fn_index.FnArrowDecl>, mod_path: String) -> List<v2.std.fn_index.FnArrowDecl> {
   v2.std.algebra.filter(
     xs: decls,
-    predicate: fn(decl) { decl_belongs_to_module(decl: decl, mod_path: mod_path) }
+    predicate: fn(decl) { v2.lens.effect_reach.decl_belongs_to_module(decl: decl, mod_path: mod_path) }
   )
 }
 
 fn decls_in_modules(decls: List<v2.std.fn_index.FnArrowDecl>, modules: List<String>) -> List<v2.std.fn_index.FnArrowDecl> {
-  v2.std.algebra.fold_list(xs: modules, empty: empty_decl_list, cons: fn(acc, mod_path) {
-    v2.std.algebra.list_append(left: acc, right: decls_in_module(decls: decls, mod_path: mod_path))
+  v2.std.algebra.fold_list(xs: modules, empty: v2.lens.effect_reach.empty_decl_list, cons: fn(acc, mod_path) {
+    v2.std.algebra.list_append(left: acc, right: v2.lens.effect_reach.decls_in_module(decls: decls, mod_path: mod_path))
   })
 }
 
 fn data_init_belongs_to_modules(decl: v2.std.data_index.DataInitDecl, modules: List<String>) -> Bool {
-  v2.std.algebra.any(xs: modules, predicate: fn(m) { string_eq(a: decl.module, b: m) })
+  v2.std.algebra.any(xs: modules, predicate: fn(m) { v2.lens.effect_reach.string_eq(a: decl.module, b: m) })
 }
 
 fn data_inits_in_modules(
@@ -80,15 +80,15 @@ fn data_init_fp_matches_path(decl: v2.std.data_index.DataInitDecl, path: String)
 }
 
 fn sink_kind_for_callee(callee_text: String) -> v2.std.effect_reach.HostEffectSinkKind {
-  if string_eq(a: callee_text, b: "Read")
-    || string_eq(a: callee_text, b: "Filesystem.Read") {
+  if v2.lens.effect_reach.string_eq(a: callee_text, b: "Read")
+    || v2.lens.effect_reach.string_eq(a: callee_text, b: "Filesystem.Read") {
     v2.std.effect_reach.FilesystemReadSink
-  } else if string_eq(a: callee_text, b: "WitnessBin.Run")
-    || string_eq(a: callee_text, b: "gunbc.WitnessBin.Run") {
+  } else if v2.lens.effect_reach.string_eq(a: callee_text, b: "WitnessBin.Run")
+    || v2.lens.effect_reach.string_eq(a: callee_text, b: "gunbc.WitnessBin.Run") {
     v2.std.effect_reach.WitnessBinRunSink
-  } else if string_eq(a: callee_text, b: "Run")
-    || string_eq(a: callee_text, b: "shell.Exec.Run")
-    || string_eq(a: callee_text, b: "Exec.Run") {
+  } else if v2.lens.effect_reach.string_eq(a: callee_text, b: "Run")
+    || v2.lens.effect_reach.string_eq(a: callee_text, b: "shell.Exec.Run")
+    || v2.lens.effect_reach.string_eq(a: callee_text, b: "Exec.Run") {
     v2.std.effect_reach.ShellExecRunSink
   } else {
     v2.std.effect_reach.UnknownHostEffectSink
@@ -100,8 +100,8 @@ fn flow_eq(a: v2.std.effect_reach.EffectReachFlow, b: v2.std.effect_reach.Effect
     EffectReachFlow { sink: sa, path_literal: pa, init_literal_fp: fpa } =>
       match b {
         EffectReachFlow { sink: sb, path_literal: pb, init_literal_fp: fpb } =>
-          string_eq(a: pa, b: pb)
-            && string_eq(a: fpa, b: fpb)
+          v2.lens.effect_reach.string_eq(a: pa, b: pb)
+            && v2.lens.effect_reach.string_eq(a: fpa, b: fpb)
             && sink_kind_eq(a: sa, b: sb)
       }
   }
@@ -141,9 +141,9 @@ fn path_literal_from_lexeme(
   param_names: List<String>,
   data_inits: List<v2.std.data_index.DataInitDecl>
 ) -> String {
-  if is_path_like_lexeme(text: text) {
+  if v2.lens.effect_reach.is_path_like_lexeme(text: text) {
     text
-  } else if v2.std.algebra.contains(xs: param_names, item: text, eq: string_eq) {
+  } else if v2.std.algebra.contains(xs: param_names, item: text, eq: v2.lens.effect_reach.string_eq) {
     ""
   } else {
     v2.std.algebra.fold_list(xs: data_inits, empty: "", cons: fn(acc, decl) {
@@ -155,7 +155,7 @@ fn path_literal_from_lexeme(
         } else {
           ""
         }
-      } else if string_eq(a: decl.name, b: text) && data_init_is_path_literal(decl: decl) {
+      } else if v2.lens.effect_reach.string_eq(a: decl.name, b: text) && data_init_is_path_literal(decl: decl) {
         decl.name
       } else {
         acc
@@ -165,7 +165,7 @@ fn path_literal_from_lexeme(
 }
 
 fn positional_child_targets(node: v2.std.node.Node) -> List<v2.std.node.Node> {
-  fold(node.children, init: empty_node_list, f: fn(acc, e) {
+  fold(node.children, init: v2.lens.effect_reach.empty_node_list, f: fn(acc, e) {
     match e.label {
       v2.std.node.Positional => v2.std.algebra.list_snoc_item(xs: acc, item: e.target)
       Named { name: _ } => acc
@@ -185,7 +185,7 @@ fn arg_symbols_from_nodes(nodes: List<v2.std.node.Node>) -> List<v2.std.node.Sym
 fn tail_nodes(xs: List<v2.std.node.Node>) -> List<v2.std.node.Node> {
   match v2.std.algebra.list_tail(xs: xs) {
     TailFound { tail: t } => t
-    v2.std.algebra.TailAbsent => empty_node_list
+    v2.std.algebra.TailAbsent => v2.lens.effect_reach.empty_node_list
   }
 }
 
@@ -225,7 +225,7 @@ fn flows_from_call_node(
   param_names: List<String>,
   data_inits: List<v2.std.data_index.DataInitDecl>
 ) -> List<v2.std.effect_reach.EffectReachFlow> {
-  let targets = positional_child_targets(node: node)
+  let targets = v2.lens.effect_reach.positional_child_targets(node: node)
   match v2.std.algebra.list_head(xs: targets) {
     HeadFound { value: callee_node } =>
       match v2.std.grammar.node_atom_identity_optional(node: callee_node) {
@@ -234,7 +234,7 @@ fn flows_from_call_node(
           if callee_text_is_host_sink(text: callee_text) {
             flows_from_sink_call(
               callee_text: callee_text,
-              args: arg_symbols_from_nodes(nodes: tail_nodes(xs: targets)),
+              args: v2.lens.effect_reach.arg_symbols_from_nodes(nodes: v2.lens.effect_reach.tail_nodes(xs: targets)),
               param_names: param_names,
               data_inits: data_inits
             )
@@ -259,7 +259,7 @@ fn atom_collect_init(n: v2.std.node.Node) -> AtomCollectState {
 fn atom_collect_step(acc: AtomCollectState, _edge: v2.std.node.Edge, child: AtomCollectState) -> AtomCollectState {
   let atoms = match v2.std.grammar.node_atom_identity_optional(node: child.node) {
     Present { value: sym } =>
-      if v2.std.algebra.contains(xs: acc.atoms, item: sym, eq: symbol_eq) {
+      if v2.std.algebra.contains(xs: acc.atoms, item: sym, eq: v2.lens.effect_reach.symbol_eq) {
         acc.atoms
       } else {
         v2.std.algebra.list_snoc_item(xs: acc.atoms, item: sym)
@@ -270,14 +270,14 @@ fn atom_collect_step(acc: AtomCollectState, _edge: v2.std.node.Edge, child: Atom
 }
 
 fn atom_collect_algebra() -> v2.std.node.NodeFold<AtomCollectState> {
-  v2.std.node.NodeFold { init: atom_collect_init, step: atom_collect_step }
+  v2.std.node.NodeFold { init: v2.lens.effect_reach.atom_collect_init, step: atom_collect_step }
 }
 
 fn atom_identities_in_node(node: v2.std.node.Node) -> List<v2.std.node.Symbol> {
-  let from_descendants = v2.std.node.fold_node(n: node, algebra: atom_collect_algebra()).atoms
+  let from_descendants = v2.std.node.fold_node(n: node, algebra: v2.lens.effect_reach.atom_collect_algebra()).atoms
   match v2.std.grammar.node_atom_identity_optional(node: node) {
     Present { value: sym } =>
-      if v2.std.algebra.contains(xs: from_descendants, item: sym, eq: symbol_eq) {
+      if v2.std.algebra.contains(xs: from_descendants, item: sym, eq: v2.lens.effect_reach.symbol_eq) {
         from_descendants
       } else {
         v2.std.algebra.list_snoc_item(xs: from_descendants, item: sym)
@@ -294,7 +294,7 @@ fn literal_path_flows_from_atoms(
     let text = v2.std.compilers.lexing.symbol_lexeme(sym: sym)
     let path = path_literal_from_lexeme(
       text: text,
-      param_names: empty_string_list,
+      param_names: v2.lens.effect_reach.empty_string_list,
       data_inits: data_inits
     )
     if path != "" {
@@ -341,7 +341,7 @@ fn flow_scan_step(acc: FlowScanState, _edge: v2.std.node.Edge, child: FlowScanSt
     data_inits: acc.data_inits
   )
   let from_literals = literal_path_flows_from_atoms(
-    atoms: atom_identities_in_node(node: child.node),
+    atoms: v2.lens.effect_reach.atom_identities_in_node(node: child.node),
     data_inits: acc.data_inits
   )
   FlowScanState {
@@ -366,7 +366,7 @@ fn flow_scan_algebra(
 }
 
 fn param_names_of(decl: v2.std.fn_index.FnArrowDecl) -> List<String> {
-  v2.std.algebra.fold_list(xs: decl.params, empty: empty_string_list, cons: fn(acc, p) {
+  v2.std.algebra.fold_list(xs: decl.params, empty: v2.lens.effect_reach.empty_string_list, cons: fn(acc, p) {
     v2.std.algebra.list_snoc_item(xs: acc, item: v2.std.compilers.lexing.symbol_lexeme(sym: p.name))
   })
 }
@@ -389,7 +389,7 @@ fn flows_in_node(
         data_inits: data_inits
       ),
       right: literal_path_flows_from_atoms(
-        atoms: atom_identities_in_node(node: node),
+        atoms: v2.lens.effect_reach.atom_identities_in_node(node: node),
         data_inits: data_inits
       )
     )
@@ -398,13 +398,13 @@ fn flows_in_node(
 
 fn callees_from_node(node: v2.std.node.Node) -> List<String> {
   v2.std.algebra.fold_list(
-    xs: atom_identities_in_node(node: node),
-    empty: empty_string_list,
+    xs: v2.lens.effect_reach.atom_identities_in_node(node: node),
+    empty: v2.lens.effect_reach.empty_string_list,
     cons: fn(acc, sym) {
       let text = v2.std.compilers.lexing.symbol_lexeme(sym: sym)
-      if callee_text_is_host_sink(text: text) || is_path_like_lexeme(text: text) {
+      if callee_text_is_host_sink(text: text) || v2.lens.effect_reach.is_path_like_lexeme(text: text) {
         acc
-      } else if v2.std.algebra.contains(xs: acc, item: text, eq: string_eq) {
+      } else if v2.std.algebra.contains(xs: acc, item: text, eq: v2.lens.effect_reach.string_eq) {
         acc
       } else {
         v2.std.algebra.list_snoc_item(xs: acc, item: text)
@@ -414,11 +414,11 @@ fn callees_from_node(node: v2.std.node.Node) -> List<String> {
 }
 
 fn fn_arrow_decl_eq(a: v2.std.fn_index.FnArrowDecl, b: v2.std.fn_index.FnArrowDecl) -> Bool {
-  string_eq(a: a.qualified_name, b: b.qualified_name)
+  v2.lens.effect_reach.string_eq(a: a.qualified_name, b: b.qualified_name)
 }
 
 fn decl_in_list(decl: v2.std.fn_index.FnArrowDecl, xs: List<v2.std.fn_index.FnArrowDecl>) -> Bool {
-  v2.std.algebra.any(xs: xs, predicate: fn(d) { fn_arrow_decl_eq(a: d, b: decl) })
+  v2.std.algebra.any(xs: xs, predicate: fn(d) { v2.lens.effect_reach.fn_arrow_decl_eq(a: d, b: decl) })
 }
 
 fn decls_matching_callee(
@@ -427,15 +427,15 @@ fn decls_matching_callee(
   callee: String
 ) -> List<v2.std.fn_index.FnArrowDecl> {
   v2.std.algebra.filter(
-    xs: decls_in_modules(decls: decls, modules: modules),
-    predicate: fn(decl) { string_eq(a: decl.name, b: callee) }
+    xs: v2.lens.effect_reach.decls_in_modules(decls: decls, modules: modules),
+    predicate: fn(decl) { v2.lens.effect_reach.string_eq(a: decl.name, b: callee) }
   )
 }
 
 fn tail_decls(xs: List<v2.std.fn_index.FnArrowDecl>) -> List<v2.std.fn_index.FnArrowDecl> {
   match v2.std.algebra.list_tail(xs: xs) {
     TailFound { tail: t } => t
-    v2.std.algebra.TailAbsent => empty_decl_list
+    v2.std.algebra.TailAbsent => v2.lens.effect_reach.empty_decl_list
   }
 }
 
@@ -448,9 +448,9 @@ fn call_reachable_decls_go(
   match v2.std.algebra.list_head(xs: seeds) {
     v2.std.algebra.HeadAbsent => reached
     HeadFound { value: seed } =>
-      let rest = tail_decls(xs: seeds)
-      if decl_in_list(decl: seed, xs: reached) {
-        call_reachable_decls_go(
+      let rest = v2.lens.effect_reach.tail_decls(xs: seeds)
+      if v2.lens.effect_reach.decl_in_list(decl: seed, xs: reached) {
+        v2.lens.effect_reach.call_reachable_decls_go(
           seeds: rest,
           closure_modules: closure_modules,
           decls: decls,
@@ -458,18 +458,18 @@ fn call_reachable_decls_go(
         )
       } else {
         let next_reached = v2.std.algebra.list_snoc_item(xs: reached, item: seed)
-        let callees = callees_from_node(node: seed.output)
-        let callee_decls = v2.std.algebra.fold_list(xs: callees, empty: empty_decl_list, cons: fn(acc, callee) {
+        let callees = v2.lens.effect_reach.callees_from_node(node: seed.output)
+        let callee_decls = v2.std.algebra.fold_list(xs: callees, empty: v2.lens.effect_reach.empty_decl_list, cons: fn(acc, callee) {
           v2.std.algebra.list_append(
             left: acc,
-            right: decls_matching_callee(
+            right: v2.lens.effect_reach.decls_matching_callee(
               decls: decls,
               modules: closure_modules,
               callee: callee
             )
           )
         })
-        call_reachable_decls_go(
+        v2.lens.effect_reach.call_reachable_decls_go(
           seeds: v2.std.algebra.list_append(left: rest, right: callee_decls),
           closure_modules: closure_modules,
           decls: decls,
@@ -484,11 +484,11 @@ fn call_reachable_decls(
   closure_modules: List<String>,
   decls: List<v2.std.fn_index.FnArrowDecl>
 ) -> List<v2.std.fn_index.FnArrowDecl> {
-  call_reachable_decls_go(
-    seeds: decls_in_module(decls: decls, mod_path: entry_module),
+  v2.lens.effect_reach.call_reachable_decls_go(
+    seeds: v2.lens.effect_reach.decls_in_module(decls: decls, mod_path: entry_module),
     closure_modules: closure_modules,
     decls: decls,
-    reached: empty_decl_list
+    reached: v2.lens.effect_reach.empty_decl_list
   )
 }
 
@@ -501,7 +501,7 @@ fn flows_from_reachable_decls(
       left: acc,
       right: flows_in_node(
         node: decl.output,
-        param_names: param_names_of(decl: decl),
+        param_names: v2.lens.effect_reach.param_names_of(decl: decl),
         data_inits: data_inits
       )
     )
@@ -538,7 +538,7 @@ fn effect_reach_classification_from_facts(
   data_inits: List<v2.std.data_index.DataInitDecl>
 ) -> v2.std.effect_reach.EffectReachClassification {
   let closure_modules = v2.lens.witness_cost_locality.witness_import_closure(root: entry_module, facts: facts)
-  let reachable = call_reachable_decls(
+  let reachable = v2.lens.effect_reach.call_reachable_decls(
     entry_module: entry_module,
     closure_modules: closure_modules,
     decls: decls
@@ -579,7 +579,7 @@ fn classification_is_local(classification: v2.std.effect_reach.EffectReachClassi
 }
 
 fn derived_host_reading(classification: v2.std.effect_reach.EffectReachClassification) -> Bool {
-  !classification_is_local(classification: classification)
+  !v2.lens.effect_reach.classification_is_local(classification: classification)
 }
 
 fn flow_touched_by_path(flow: v2.std.effect_reach.EffectReachFlow, path: String) -> Bool {

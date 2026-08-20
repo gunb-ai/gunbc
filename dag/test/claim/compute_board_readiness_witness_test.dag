@@ -30,7 +30,7 @@ fn three_contact_map() -> extdeps.cpu.ampere_altra_package.PackageContactMap {
   extdeps.cpu.ampere_altra_package.PackageContactMap {
     socket: altra_fclga_socket,
     contacts: [contact(designator: "A1"), contact(designator: "A2"), contact(designator: "A3")],
-    authority: witness_authority,
+    authority: test.claim.compute_board_readiness_witness.witness_authority,
   }
 }
 
@@ -38,7 +38,7 @@ fn duplicated_contact_map() -> extdeps.cpu.ampere_altra_package.PackageContactMa
   extdeps.cpu.ampere_altra_package.PackageContactMap {
     socket: altra_fclga_socket,
     contacts: [contact(designator: "A1"), contact(designator: "A2"), contact(designator: "A1")],
-    authority: witness_authority,
+    authority: test.claim.compute_board_readiness_witness.witness_authority,
   }
 }
 
@@ -168,7 +168,7 @@ fn decoupling_component() -> product.compute_board.composition.ComponentInstance
       product.compute_board.composition.ImposedByComponent {
         by: "U1",
         requirement: "supply decoupling required by the processor's power delivery specification",
-        authority: witness_authority,
+        authority: test.claim.compute_board_readiness_witness.witness_authority,
       }
     ],
     provisions: [],

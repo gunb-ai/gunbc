@@ -76,7 +76,7 @@ fn readback_active_complete() -> gunbc.spark_serving_loaded_release.SparkServing
     host: "srv5",
     unit_outcome: SparkServingUnitActive,
     runtime_version: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
-    runtime_release_asset_digest: witness_runtime_release_asset_digest_present(hex: witness_required_release_asset_digest_hex),
+    runtime_release_asset_digest: witness_runtime_release_asset_digest_present(hex: test.claim.spark_serving_observe_witness_test.witness_required_release_asset_digest_hex),
     model_name: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: "gpt-oss" },
     model_tag: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: "20b" },
     model_manifest_digest: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: witness_model_digest },
@@ -155,7 +155,7 @@ test fn version_json_positive_parses_reported_version() -> Bool {
 test fn runtime_receipt_json_positive_parses_asset_digest() -> Bool {
   match spark_serving_parse_runtime_receipt_json(stdout: witness_runtime_receipt_json_positive) {
     SparkServingReadbackPresent { value: hex } =>
-      hex == witness_required_release_asset_digest_hex
+      hex == test.claim.spark_serving_observe_witness_test.witness_required_release_asset_digest_hex
     SparkServingReadbackAbsent => false
     SparkServingReadbackRefused { cause: _ } => false
   }
@@ -173,7 +173,7 @@ test fn runtime_receipt_probe_success_populates_digest_field() -> Bool {
     },
   ) {
     SparkServingReadbackPresent { value: hex } =>
-      hex == witness_required_release_asset_digest_hex
+      hex == test.claim.spark_serving_observe_witness_test.witness_required_release_asset_digest_hex
     SparkServingReadbackAbsent => false
     SparkServingReadbackRefused { cause: _ } => false
   }
@@ -206,7 +206,7 @@ test fn different_runtime_version_refuses_loaded_identity() -> Bool {
     host: "srv6",
     unit_outcome: SparkServingUnitActive,
     runtime_version: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: "0.11.0-rc1" },
-    runtime_release_asset_digest: witness_runtime_release_asset_digest_present(hex: witness_required_release_asset_digest_hex),
+    runtime_release_asset_digest: witness_runtime_release_asset_digest_present(hex: test.claim.spark_serving_observe_witness_test.witness_required_release_asset_digest_hex),
     model_name: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: "gpt-oss" },
     model_tag: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: "20b" },
     model_manifest_digest: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: witness_model_digest },
@@ -223,7 +223,7 @@ test fn different_runtime_version_refuses_observation() -> Bool {
     host: "srv6",
     unit_outcome: SparkServingUnitActive,
     runtime_version: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: "10.11.0" },
-    runtime_release_asset_digest: witness_runtime_release_asset_digest_present(hex: witness_required_release_asset_digest_hex),
+    runtime_release_asset_digest: witness_runtime_release_asset_digest_present(hex: test.claim.spark_serving_observe_witness_test.witness_required_release_asset_digest_hex),
     model_name: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: "gpt-oss" },
     model_tag: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: "20b" },
     model_manifest_digest: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: witness_model_digest },
@@ -385,7 +385,7 @@ test fn unobserved_nvidia_driver_refuses_active_observation() -> Bool {
     host: "srv5",
     unit_outcome: SparkServingUnitActive,
     runtime_version: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
-    runtime_release_asset_digest: witness_runtime_release_asset_digest_present(hex: witness_required_release_asset_digest_hex),
+    runtime_release_asset_digest: witness_runtime_release_asset_digest_present(hex: test.claim.spark_serving_observe_witness_test.witness_required_release_asset_digest_hex),
     model_name: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: "gpt-oss" },
     model_tag: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: "20b" },
     model_manifest_digest: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: witness_model_digest },
@@ -404,7 +404,7 @@ test fn driver_too_old_refuses_active_observation() -> Bool {
     host: "srv5",
     unit_outcome: SparkServingUnitActive,
     runtime_version: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
-    runtime_release_asset_digest: witness_runtime_release_asset_digest_present(hex: witness_required_release_asset_digest_hex),
+    runtime_release_asset_digest: witness_runtime_release_asset_digest_present(hex: test.claim.spark_serving_observe_witness_test.witness_required_release_asset_digest_hex),
     model_name: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: "gpt-oss" },
     model_tag: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: "20b" },
     model_manifest_digest: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: witness_model_digest },
@@ -423,7 +423,7 @@ test fn driver_too_old_report_is_not_success() -> Bool {
     host: "srv5",
     unit_outcome: SparkServingUnitActive,
     runtime_version: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
-    runtime_release_asset_digest: witness_runtime_release_asset_digest_present(hex: witness_required_release_asset_digest_hex),
+    runtime_release_asset_digest: witness_runtime_release_asset_digest_present(hex: test.claim.spark_serving_observe_witness_test.witness_required_release_asset_digest_hex),
     model_name: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: "gpt-oss" },
     model_tag: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: "20b" },
     model_manifest_digest: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: witness_model_digest },

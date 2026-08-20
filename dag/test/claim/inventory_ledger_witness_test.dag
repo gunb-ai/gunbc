@@ -26,7 +26,7 @@ fn ten_unit_lot() -> product.inventory.ProcurementLot {
     catalog: product.inventory.CatalogRowExact { row: decl_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_max_m12830_thermal_limits") },
     display_label: "Ampere Altra Max M128-30, tray" as std.types.NonEmptyStr,
     quantity_acquired: 10,
-    landed_cost: product.inventory.LandedCostRecorded { cost: usd_micros(count: 1000003) },
+    landed_cost: product.inventory.LandedCostRecorded { cost: test.claim.inventory_ledger_witness.usd_micros(count: 1000003) },
   }
 }
 
@@ -434,7 +434,7 @@ test fn w_landed_cost_sums_within_one_currency_and_refuses_across() -> Bool {
     catalog: product.inventory.CatalogRowExact { row: decl_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_max_m12830_thermal_limits") },
     display_label: "Ampere Altra Max M128-30, tray" as std.types.NonEmptyStr,
     quantity_acquired: 5,
-    landed_cost: product.inventory.LandedCostRecorded { cost: usd_micros(count: 500000) },
+    landed_cost: product.inventory.LandedCostRecorded { cost: test.claim.inventory_ledger_witness.usd_micros(count: 500000) },
   }
   let euro_lot = product.inventory.ProcurementLot {
     identity: second_lot_identity(),

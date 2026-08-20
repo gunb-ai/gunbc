@@ -57,7 +57,7 @@ test fn witness_nullary_reflection_accepts_imported_named_coproduct_through_gene
       bag_eq(
         xs: imported_derive_trait_discriminants(inhabitants: inhabitants),
         ys: coproduct_arm_keys(type_name: reflect_imported_derive_trait_type),
-        eq: symbol_eq
+        eq: v2.test.manual.coproduct_reflection_conformance.symbol_eq
       )
     Rejected { diagnostics: _ } => false
   }
@@ -89,9 +89,9 @@ test fn witness_nullary_reflection_rejects_requested_a_with_context_b() -> Bool 
 
 test fn witness_connective_behavior_arm_sets_are_distinct() -> Bool {
   !bag_eq(
-    xs: coproduct_arm_keys(type_name: reflect_connective_type),
-    ys: coproduct_arm_keys(type_name: reflect_behavior_type),
-    eq: symbol_eq
+    xs: coproduct_arm_keys(type_name: v2.test.manual.coproduct_reflection_conformance.reflect_connective_type),
+    ys: coproduct_arm_keys(type_name: v2.test.manual.coproduct_reflection_conformance.reflect_behavior_type),
+    eq: v2.test.manual.coproduct_reflection_conformance.symbol_eq
   )
 }
 
@@ -104,7 +104,7 @@ fn nullary_inhabitant_discriminants(inhabitants: List<v2.std.node.Behavior>) -> 
 }
 
 fn symbol_in_list(sym: v2.std.node.Symbol, xs: List<v2.std.node.Symbol>) -> Bool {
-  fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || symbol_eq(a: x, b: sym) })
+  fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || v2.test.manual.coproduct_reflection_conformance.symbol_eq(a: x, b: sym) })
 }
 
 fn all_inhabitant_discriminants_are_reflected_arms(
@@ -118,15 +118,15 @@ fn all_inhabitant_discriminants_are_reflected_arms(
 
 test fn witness_behavior_nullary_inhabitant_set_matches_arm_keys() -> Bool {
   match coproduct_nullary_inhabitants(
-    type_name: reflect_behavior_type,
+    type_name: v2.test.manual.coproduct_reflection_conformance.reflect_behavior_type,
     discriminant_of: behavior_discriminant
   ) {
     Accepted { value: inhabitants, diagnostics: _ } =>
-      let keys = coproduct_arm_keys(type_name: reflect_behavior_type)
+      let keys = coproduct_arm_keys(type_name: v2.test.manual.coproduct_reflection_conformance.reflect_behavior_type)
       bag_eq(
         xs: nullary_inhabitant_discriminants(inhabitants: inhabitants),
         ys: keys,
-        eq: symbol_eq
+        eq: v2.test.manual.coproduct_reflection_conformance.symbol_eq
       ) && all_inhabitant_discriminants_are_reflected_arms(
         inhabitants: inhabitants,
         arm_keys: keys
@@ -137,7 +137,7 @@ test fn witness_behavior_nullary_inhabitant_set_matches_arm_keys() -> Bool {
 
 test fn witness_connective_nullary_inhabitants_fail_closed() -> Bool {
   match coproduct_nullary_inhabitants(
-    type_name: reflect_connective_type,
+    type_name: v2.test.manual.coproduct_reflection_conformance.reflect_connective_type,
     discriminant_of: connective_discriminant
   ) {
     Accepted { value: _, diagnostics: _ } => false

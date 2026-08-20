@@ -105,12 +105,12 @@ test fn witness_one_principal_wears_different_local_names_and_uids() -> Bool {
   let g5 = ground_posix_principal(
     intent: fleet_principal_intent(key: FleetAccountAutomation),
     standing: gunbc.fleet_posix_accounts.AccountAllocated { allocation: a5 },
-    observation: Present { value: observed(a: a5, name: "lumen" as extdeps.access.posix.PosixLoginName, uid: 1500) },
+    observation: Present { value: test.claim.posix_principal_allocation_witness.observed(a: a5, name: "lumen" as extdeps.access.posix.PosixLoginName, uid: 1500) },
   )
   let g6 = ground_posix_principal(
     intent: fleet_principal_intent(key: FleetAccountAutomation),
     standing: gunbc.fleet_posix_accounts.AccountAllocated { allocation: a6 },
-    observation: Present { value: observed(a: a6, name: "cobalt" as extdeps.access.posix.PosixLoginName, uid: 1732) },
+    observation: Present { value: test.claim.posix_principal_allocation_witness.observed(a: a6, name: "cobalt" as extdeps.access.posix.PosixLoginName, uid: 1732) },
   )
   let n5 = match grounded_name(o: g5) { Present { value: v } => v, Absent => "none" as std.types.NonEmptyStr }
   let n6 = match grounded_name(o: g6) { Present { value: v } => v, Absent => "none" as std.types.NonEmptyStr }
@@ -165,12 +165,12 @@ test fn witness_observation_contradicting_allocation_is_drift() -> Bool {
   let name_drift = ground_posix_principal(
     intent: fleet_principal_intent(key: FleetAccountAutomation),
     standing: gunbc.fleet_posix_accounts.AccountAllocated { allocation: a },
-    observation: Present { value: observed(a: a, name: "somethingelse" as extdeps.access.posix.PosixLoginName, uid: 1500) },
+    observation: Present { value: test.claim.posix_principal_allocation_witness.observed(a: a, name: "somethingelse" as extdeps.access.posix.PosixLoginName, uid: 1500) },
   )
   let uid_drift = ground_posix_principal(
     intent: fleet_principal_intent(key: FleetAccountAutomation),
     standing: gunbc.fleet_posix_accounts.AccountAllocated { allocation: a },
-    observation: Present { value: observed(a: a, name: "lumen" as extdeps.access.posix.PosixLoginName, uid: 1999) },
+    observation: Present { value: test.claim.posix_principal_allocation_witness.observed(a: a, name: "lumen" as extdeps.access.posix.PosixLoginName, uid: 1999) },
   )
   outcome_is_drift(o: name_drift) && outcome_is_drift(o: uid_drift)
 }
@@ -262,7 +262,7 @@ test fn witness_observation_from_another_host_is_drift() -> Bool {
   outcome_is_drift(o: ground_posix_principal(
     intent: fleet_principal_intent(key: FleetAccountAutomation),
     standing: gunbc.fleet_posix_accounts.AccountAllocated { allocation: a5 },
-    observation: Present { value: observed(a: a6, name: "lumen" as extdeps.access.posix.PosixLoginName, uid: 1500) },
+    observation: Present { value: test.claim.posix_principal_allocation_witness.observed(a: a6, name: "lumen" as extdeps.access.posix.PosixLoginName, uid: 1500) },
   ))
 }
 

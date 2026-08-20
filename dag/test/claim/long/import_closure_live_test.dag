@@ -26,11 +26,11 @@ fn string_eq(a: String, b: String) -> Bool {
 }
 
 fn set_subset(xs: FreeMonoid<String>, ys: FreeMonoid<String>) -> Bool {
-  v2.std.algebra.for_all(xs: xs, predicate: fn(x) { contains(xs: ys, item: x, eq: string_eq) })
+  v2.std.algebra.for_all(xs: xs, predicate: fn(x) { contains(xs: ys, item: x, eq: test.claim.long.import_closure_live.string_eq) })
 }
 
 fn set_equal(xs: FreeMonoid<String>, ys: FreeMonoid<String>) -> Bool {
-  set_subset(xs: xs, ys: ys) && set_subset(xs: ys, ys: xs)
+  test.claim.long.import_closure_live.set_subset(xs: xs, ys: ys) && test.claim.long.import_closure_live.set_subset(xs: ys, ys: xs)
 }
 
 fn declared_paths() -> FreeMonoid<String> {
@@ -42,7 +42,7 @@ fn declared_without_entry() -> FreeMonoid<String> {
     xs: declared_paths(),
     empty: v2.lens.module_graph.no_paths,
     cons: fn(acc, p) {
-      if string_eq(a: p, b: conformance_entry) {
+      if test.claim.long.import_closure_live.string_eq(a: p, b: test.claim.long.import_closure_live.conformance_entry) {
         acc
       } else {
         v2.std.algebra.list_snoc_item(xs: acc, item: p)
@@ -56,12 +56,12 @@ fn declared_with_bogus() -> FreeMonoid<String> {
 }
 
 fn derived_conformance_closure() -> FreeMonoid<String> {
-  v2.lens.module_graph.import_closure_live(entry_path: conformance_entry, pool_roots: gunbc.ci_layer_roots.witness_layer_roots)
+  v2.lens.module_graph.import_closure_live(entry_path: test.claim.long.import_closure_live.conformance_entry, pool_roots: gunbc.ci_layer_roots.witness_layer_roots)
 }
 
 test fn dag_import_closure_live_witness_bundle_holds() -> Bool {
   let derived = derived_conformance_closure()
-  set_equal(xs: derived, ys: declared_paths())
-    && set_equal(xs: derived, ys: declared_without_entry()) == false
-    && set_equal(xs: derived, ys: declared_with_bogus()) == false
+  test.claim.long.import_closure_live.set_equal(xs: derived, ys: declared_paths())
+    && test.claim.long.import_closure_live.set_equal(xs: derived, ys: declared_without_entry()) == false
+    && test.claim.long.import_closure_live.set_equal(xs: derived, ys: declared_with_bogus()) == false
 }

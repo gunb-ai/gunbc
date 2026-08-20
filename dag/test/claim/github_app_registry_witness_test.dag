@@ -159,11 +159,11 @@ fn observed_grant(perms: List<extdeps.github.app.GitHubAppPermission>) -> gunbc.
 test fn witness_app_grant_cannot_rescue_actions_job_credential() -> Bool {
   let control_plane = observed_grant(perms: full_workflow_grant)
   !credential_authorizes(
-    authority: live_heal_push_authority(),
+    authority: test.claim.github_app_registry.live_heal_push_authority(),
     control_plane: control_plane,
     effect: workflow_advance_effect
   ) && credential_authorizes(
-    authority: live_heal_push_authority(),
+    authority: test.claim.github_app_registry.live_heal_push_authority(),
     control_plane: control_plane,
     effect: ordinary_advance_effect
   ) && credential_authorizes(
@@ -176,7 +176,7 @@ test fn witness_app_grant_cannot_rescue_actions_job_credential() -> Bool {
 test fn witness_actions_token_refusal_is_kind_not_grant() -> Bool {
   let control_plane = observed_grant(perms: full_workflow_grant)
   let unsatisfied = unsatisfied_capabilities(
-    authority: live_heal_push_authority(),
+    authority: test.claim.github_app_registry.live_heal_push_authority(),
     control_plane: control_plane,
     effect: workflow_advance_effect
   )
@@ -809,7 +809,7 @@ test fn witness_dispatch_and_push_credentials_differ_in_outcome() -> Bool {
     control_plane: control_plane,
     effect: dispatch_effect
   ) && !credential_authorizes(
-    authority: live_heal_push_authority(),
+    authority: test.claim.github_app_registry.live_heal_push_authority(),
     control_plane: control_plane,
     effect: workflow_advance_effect
   )

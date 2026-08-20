@@ -76,8 +76,8 @@ fn reference_first_refusal_diagnostic(refusals: List<ReferenceIngestRefusal>) ->
 }
 
 fn reference_fact_eq(a: ReferenceResolutionFact, b: ReferenceResolutionFact) -> Bool {
-  string_eq(a: a.path, b: b.path)
-    && string_eq(a: a.reference_module, b: b.reference_module)
+  v2.lens.reference_deps.string_eq(a: a.path, b: b.path)
+    && v2.lens.reference_deps.string_eq(a: a.reference_module, b: b.reference_module)
 }
 
 fn reference_snoc_fact_unique(
@@ -306,7 +306,7 @@ fn reference_declared_module_prefix_facts(
       empty: exact,
       cons: fn(a, fact) {
         let decl_qn = qualified_name_from_dotted_string(dotted: fact.module)
-        if is_prefix_of(prefix: decl_qn, xs: ref_qn, eq: symbol_eq) {
+        if is_prefix_of(prefix: decl_qn, xs: ref_qn, eq: v2.lens.reference_deps.symbol_eq) {
           reference_snoc_fact_unique(
             acc: a,
             fact: ReferenceResolutionFact {
@@ -353,7 +353,7 @@ fn reference_paths_from_import_edges(
     xs: edges,
     empty: acc,
     cons: fn(a, edge) {
-      v2.lens.coverage.dedupe_snoc(acc: a, item: edge.path, eq: string_eq)
+      v2.lens.coverage.dedupe_snoc(acc: a, item: edge.path, eq: v2.lens.reference_deps.string_eq)
     }
   )
 }
@@ -366,7 +366,7 @@ fn reference_paths_from_module_declarations(
     xs: nodes,
     empty: acc,
     cons: fn(a, node) {
-      v2.lens.coverage.dedupe_snoc(acc: a, item: node.path, eq: string_eq)
+      v2.lens.coverage.dedupe_snoc(acc: a, item: node.path, eq: v2.lens.reference_deps.string_eq)
     }
   )
 }
@@ -391,7 +391,7 @@ fn reference_corpus_paths_live(
   fold_list(
     xs: v2.lens.enforcement.grammar_coverage.grammar_coverage_distinct_rel_paths(facts: decl_facts(pool_roots: pool_roots)),
     empty: from_imports,
-    cons: fn(acc, path) { v2.lens.coverage.dedupe_snoc(acc: acc, item: path, eq: string_eq) }
+    cons: fn(acc, path) { v2.lens.coverage.dedupe_snoc(acc: acc, item: path, eq: v2.lens.reference_deps.string_eq) }
   )
 }
 
@@ -646,7 +646,7 @@ fn reference_neighbor_paths_from_facts(
           if reference_path_excluded(path: referenced_path, exclude_substrings: exclude_substrings) {
             a
           } else {
-            v2.lens.coverage.dedupe_snoc(acc: a, item: referenced_path, eq: string_eq)
+            v2.lens.coverage.dedupe_snoc(acc: a, item: referenced_path, eq: v2.lens.reference_deps.string_eq)
           }
         Absent => a
       }
@@ -757,7 +757,7 @@ fn reference_import_facts_at_path(
     xs: import_edges,
     empty: acc,
     cons: fn(a, edge) {
-      if string_eq(a: edge.path, b: rel_path) {
+      if v2.lens.reference_deps.string_eq(a: edge.path, b: rel_path) {
         reference_snoc_fact_unique(acc: a, fact: import_edge_to_reference_fact(edge: edge))
       } else {
         a

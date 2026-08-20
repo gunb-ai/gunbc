@@ -243,7 +243,7 @@ test fn source_admission_partial_walk_refuses_not_observed_with_fewer_rows() -> 
     ) {
       Absent => false
       Present { value: receipt } =>
-        refusal_is(
+        test.claim.source_admission_selection_witness.refusal_is(
           sel: select_source_admission(
             evaluating_merge_tree: true,
             base_tree: trees.base,
@@ -270,7 +270,7 @@ test fn source_admission_not_merge_tree_refuses() -> Bool {
     ) {
       Absent => false
       Present { value: receipt } =>
-        refusal_is(
+        test.claim.source_admission_selection_witness.refusal_is(
           sel: select_source_admission(
             evaluating_merge_tree: false,
             base_tree: trees.base,
@@ -295,7 +295,7 @@ test fn source_admission_missing_base_receipt_refuses_not_incremental_empty() ->
       head_mechanism: gunbc.source_admission_selection.MechanismIdentityComputed { computed: mechanism_a() },
       head_manifest: observed_from_files(files: [file_beta()]),
     )
-    refusal_is(sel: sel, wanted: BaseReceiptAbsent)
+    test.claim.source_admission_selection_witness.refusal_is(sel: sel, wanted: BaseReceiptAbsent)
       && source_admission_is_incremental(sel: sel) == false
       && source_admission_is_unchanged_noop(sel: sel) == false
   })
@@ -310,7 +310,7 @@ test fn source_admission_production_unobservable_refuses_even_with_fixture_recei
     ) {
       Absent => false
       Present { value: receipt } =>
-        refusal_is(
+        test.claim.source_admission_selection_witness.refusal_is(
           sel: select_with_receipt(
             trees: trees,
             receipt: receipt,
@@ -493,7 +493,7 @@ test fn source_admission_receipt_tree_mismatch_refuses() -> Bool {
     ) {
       Absent => false
       Present { value: receipt } =>
-        refusal_is(
+        test.claim.source_admission_selection_witness.refusal_is(
           sel: select_source_admission(
             evaluating_merge_tree: true,
             base_tree: trees.base,

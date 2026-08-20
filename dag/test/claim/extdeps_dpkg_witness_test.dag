@@ -21,7 +21,7 @@ fn witness_dpkg_status_argv_matches_transport_row() -> Bool {
       [v2.std.operation_argv.operation_argv_bind_text(name: "package", text: package_tailscale as String)]
     )
   )
-  argv_join(argv: helper) == argv_join(argv: transport)
+  test.claim.extdeps_dpkg_witness.argv_join(argv: helper) == test.claim.extdeps_dpkg_witness.argv_join(argv: transport)
 }
 
 test fn extdeps_dpkg_status_argv_holds() -> Bool {
@@ -29,5 +29,5 @@ test fn extdeps_dpkg_status_argv_holds() -> Bool {
 }
 
 test fn extdeps_dpkg_status_argv_RED_wrong_package_golden() -> Bool {
-  argv_join(argv: dpkg_status_argv(package: package_tailscale)) != "dpkg -s nodejs"
+  test.claim.extdeps_dpkg_witness.argv_join(argv: dpkg_status_argv(package: package_tailscale)) != "dpkg -s nodejs"
 }

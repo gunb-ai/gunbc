@@ -64,13 +64,13 @@ fn witness_the_page_exposes_only_mvp_depth_controls() -> Bool {
 }
 
 fn witness_exactly_one_initial_reading_row_is_visible_in_html() -> Bool {
-  let initial_html = serialize_fragment(frag: reading_row(view: fixture_view(), camera: camera_initial))
+  let initial_html = serialize_fragment(frag: reading_row(view: test.claim.instrument_tuner_witness.fixture_view(), camera: camera_initial))
   let hidden_camera = gunbc.design.instrument_camera.ProgramCamera {
     depth: DepthFront,
     mode: camera_initial.mode,
     focus: camera_initial.focus,
   }
-  let hidden_html = serialize_fragment(frag: reading_row(view: fixture_view(), camera: hidden_camera))
+  let hidden_html = serialize_fragment(frag: reading_row(view: test.claim.instrument_tuner_witness.fixture_view(), camera: hidden_camera))
   string_contains(s: initial_html, pattern: "data-reading-key")
     && !string_contains(s: initial_html, pattern: "hidden")
     && string_contains(s: hidden_html, pattern: "hidden")

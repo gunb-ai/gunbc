@@ -12,7 +12,7 @@ fn committed_codex_lock_text() -> String {
 }
 
 test fn committed_codex_lock_parses_v3_roster() -> Bool {
-  match npm_decode_package_lock_text(text: committed_codex_lock_text()) {
+  match npm_decode_package_lock_text(text: test.claim.codex_package_lock_parse_witness_test.committed_codex_lock_text()) {
     NpmPackageLockParsed { manager: _, nodes, unsupported, graph } =>
       count(unsupported) == 0
         && count(nodes) == 8
@@ -24,7 +24,7 @@ test fn committed_codex_lock_parses_v3_roster() -> Bool {
 }
 
 test fn committed_codex_lock_admits_under_codex_profile() -> Bool {
-  match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
+  match admit_codex_package_lock_text(text: test.claim.codex_package_lock_parse_witness_test.committed_codex_lock_text()) {
     CodexPackageLockAdmitted { graph: _, nodes, registry_artifacts } =>
       count(registry_artifacts) == 7 && count(nodes) == 8
     CodexPackageLockParseFailed { cause: _ } => false
@@ -34,19 +34,19 @@ test fn committed_codex_lock_admits_under_codex_profile() -> Bool {
 }
 
 test fn openai_codex_wrapper_selected_by_exact_lock_node_key() -> Bool {
-  match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
+  match admit_codex_package_lock_text(text: test.claim.codex_package_lock_parse_witness_test.committed_codex_lock_text()) {
     CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
       match codex_wrapper_lookup(graph: graph) {
         CodexWrapperUnique { node: _, artifact } =>
           (artifact.version as String) == "0.146.0"
             && match codex_admit_npm_integrity(integrity: artifact.expected_integrity) {
               CodexNpmIntegrityAdmitted { digest } =>
-                (digest.hex as String) == openai_codex_integrity_hex
+                (digest.hex as String) == test.claim.codex_package_lock_parse_witness_test.openai_codex_integrity_hex
                   && match npm_registry_artifact_pin(artifact: artifact).selection {
                     ExactPin =>
                       match npm_registry_artifact_pin(artifact: artifact).expected_identity {
                         Sha512Hash(pinned) =>
-                          (pinned.hex as String) == openai_codex_integrity_hex
+                          (pinned.hex as String) == test.claim.codex_package_lock_parse_witness_test.openai_codex_integrity_hex
                         _ => false
                       }
                     _ => false
@@ -60,7 +60,7 @@ test fn openai_codex_wrapper_selected_by_exact_lock_node_key() -> Bool {
 }
 
 test fn linux_arm64_exact_closure_is_wrapper_plus_platform_lock_node() -> Bool {
-  match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
+  match admit_codex_package_lock_text(text: test.claim.codex_package_lock_parse_witness_test.committed_codex_lock_text()) {
     CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
       match codex_map_uname_to_npm_target(kernel: "Linux", machine: "aarch64") {
         CodexNpmRuntimeTargetObserved { target } =>
@@ -83,7 +83,7 @@ test fn linux_arm64_exact_closure_is_wrapper_plus_platform_lock_node() -> Bool {
 }
 
 test fn selected_node_with_install_script_refuses() -> Bool {
-  match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
+  match admit_codex_package_lock_text(text: test.claim.codex_package_lock_parse_witness_test.committed_codex_lock_text()) {
     CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
       match codex_wrapper_lookup(graph: graph) {
         CodexWrapperUnique { node, artifact } => {
@@ -128,7 +128,7 @@ test fn selected_node_with_install_script_refuses() -> Bool {
 }
 
 test fn selected_node_wrong_version_keeps_key_but_refuses() -> Bool {
-  match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
+  match admit_codex_package_lock_text(text: test.claim.codex_package_lock_parse_witness_test.committed_codex_lock_text()) {
     CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
       match codex_wrapper_lookup(graph: graph) {
         CodexWrapperUnique { node, artifact } => {
@@ -159,7 +159,7 @@ test fn selected_node_wrong_version_keeps_key_but_refuses() -> Bool {
 }
 
 test fn selected_node_wrong_optional_keeps_key_but_refuses() -> Bool {
-  match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
+  match admit_codex_package_lock_text(text: test.claim.codex_package_lock_parse_witness_test.committed_codex_lock_text()) {
     CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
       match codex_wrapper_lookup(graph: graph) {
         CodexWrapperUnique { node, artifact } =>
@@ -183,7 +183,7 @@ test fn selected_node_wrong_optional_keeps_key_but_refuses() -> Bool {
 }
 
 test fn selected_platform_wrong_os_keeps_key_but_refuses() -> Bool {
-  match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
+  match admit_codex_package_lock_text(text: test.claim.codex_package_lock_parse_witness_test.committed_codex_lock_text()) {
     CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
       match codex_map_uname_to_npm_target(kernel: "Linux", machine: "aarch64") {
         CodexNpmRuntimeTargetObserved { target } =>
@@ -235,7 +235,7 @@ test fn non_registry_locator_refuses_before_fetch() -> Bool {
 }
 
 test fn archive_digest_admission_matches_and_mismatches() -> Bool {
-  match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
+  match admit_codex_package_lock_text(text: test.claim.codex_package_lock_parse_witness_test.committed_codex_lock_text()) {
     CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
       match codex_wrapper_lookup(graph: graph) {
         CodexWrapperUnique { node: _, artifact } =>
@@ -290,12 +290,12 @@ test fn lockfile_v2_text_refuses() -> Bool {
 
 test fn admitted_and_executed_lock_bytes_disagree_when_forked() -> Bool {
   admitted_and_executed_lock_bytes_agree(
-    admitted_lock_bytes: committed_codex_lock_text(),
+    admitted_lock_bytes: test.claim.codex_package_lock_parse_witness_test.committed_codex_lock_text(),
     executed_lock_bytes: "{\"lockfileVersion\":3,\"packages\":{}}",
   ) == false
     && admitted_and_executed_lock_bytes_agree(
-      admitted_lock_bytes: committed_codex_lock_text(),
-      executed_lock_bytes: committed_codex_lock_text(),
+      admitted_lock_bytes: test.claim.codex_package_lock_parse_witness_test.committed_codex_lock_text(),
+      executed_lock_bytes: test.claim.codex_package_lock_parse_witness_test.committed_codex_lock_text(),
     )
 }
 

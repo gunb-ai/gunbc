@@ -24,38 +24,38 @@ fn param_value(m: extdeps.uri_path.PathTemplateMatch, name: String) -> String {
 }
 
 test fn witness_literal_hit() -> Bool {
-  matched(m: match_path_template(template: tpl(raw: "/roadmap"), path: "/roadmap"))
+  matched(m: match_path_template(template: test.claim.uri_path_match_witness.tpl(raw: "/roadmap"), path: "/roadmap"))
 }
 
 test fn witness_param_binds_segment() -> Bool {
-  let m = match_path_template(template: tpl(raw: "/dispatch/\{node_id\}"), path: "/dispatch/2-dispatch-actuator")
+  let m = match_path_template(template: test.claim.uri_path_match_witness.tpl(raw: "/dispatch/\{node_id\}"), path: "/dispatch/2-dispatch-actuator")
   matched(m: m) && param_value(m: m, name: "node_id") == "2-dispatch-actuator"
 }
 
 test fn witness_root_template_matches_only_root() -> Bool {
-  matched(m: match_path_template(template: tpl(raw: "/"), path: "/"))
-    && !matched(m: match_path_template(template: tpl(raw: "/"), path: "/roadmap"))
+  matched(m: match_path_template(template: test.claim.uri_path_match_witness.tpl(raw: "/"), path: "/"))
+    && !matched(m: match_path_template(template: test.claim.uri_path_match_witness.tpl(raw: "/"), path: "/roadmap"))
 }
 
 test fn witness_literal_miss_refuses() -> Bool {
-  !matched(m: match_path_template(template: tpl(raw: "/roadmap"), path: "/healthz"))
+  !matched(m: match_path_template(template: test.claim.uri_path_match_witness.tpl(raw: "/roadmap"), path: "/healthz"))
 }
 
 test fn witness_segment_count_miss_refuses() -> Bool {
-  !matched(m: match_path_template(template: tpl(raw: "/dispatch/\{node_id\}"), path: "/dispatch"))
-    && !matched(m: match_path_template(template: tpl(raw: "/dispatch/\{node_id\}"), path: "/dispatch/a/b"))
+  !matched(m: match_path_template(template: test.claim.uri_path_match_witness.tpl(raw: "/dispatch/\{node_id\}"), path: "/dispatch"))
+    && !matched(m: match_path_template(template: test.claim.uri_path_match_witness.tpl(raw: "/dispatch/\{node_id\}"), path: "/dispatch/a/b"))
 }
 
 test fn witness_trailing_slash_refuses_regex_parity() -> Bool {
-  !matched(m: match_path_template(template: tpl(raw: "/roadmap"), path: "/roadmap/"))
+  !matched(m: match_path_template(template: test.claim.uri_path_match_witness.tpl(raw: "/roadmap"), path: "/roadmap/"))
 }
 
 test fn witness_empty_segment_never_binds_regex_parity() -> Bool {
-  !matched(m: match_path_template(template: tpl(raw: "/dispatch/\{node_id\}"), path: "/dispatch//x"))
+  !matched(m: match_path_template(template: test.claim.uri_path_match_witness.tpl(raw: "/dispatch/\{node_id\}"), path: "/dispatch//x"))
 }
 
 test fn witness_query_string_stripped() -> Bool {
-  let m = match_path_template(template: tpl(raw: "/dispatch/\{node_id\}"), path: "/dispatch/abc?force=1")
+  let m = match_path_template(template: test.claim.uri_path_match_witness.tpl(raw: "/dispatch/\{node_id\}"), path: "/dispatch/abc?force=1")
   matched(m: m) && param_value(m: m, name: "node_id") == "abc"
 }
 

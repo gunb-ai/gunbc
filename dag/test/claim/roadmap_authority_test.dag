@@ -36,7 +36,7 @@ fn digest_or_zero(rn: gunbc.roadmap_model.RoadmapNode) -> std.content_hash.Fnv1a
 }
 
 fn declared_node(id: String) -> List<gunbc.roadmap_model.RoadmapNode> {
-  nodes() |> filter(n => n.node == id)
+  test.claim.roadmap_authority.nodes() |> filter(n => n.node == id)
 }
 
 fn receipt_fixture(node: String, digest: std.content_hash.Fnv1a64Structural) -> gunbc.roadmap_model.RoadmapAcceptanceReceipt {
@@ -81,11 +81,11 @@ fn undelivered_receipt_fixture(rn: gunbc.roadmap_model.RoadmapNode) -> gunbc.roa
 }
 
 fn id_exists(id: gunbc.roadmap_model.RoadmapNodeId) -> Bool {
-  nodes() |> any(n => n.node == id)
+  test.claim.roadmap_authority.nodes() |> any(n => n.node == id)
 }
 
 fn id_count(id: gunbc.roadmap_model.RoadmapNodeId) -> Int {
-  nodes() |> filter(n => n.node == id) |> count
+  test.claim.roadmap_authority.nodes() |> filter(n => n.node == id) |> count
 }
 
 fn active_id_exists(id: gunbc.roadmap_model.RoadmapNodeId) -> Bool {
@@ -93,20 +93,20 @@ fn active_id_exists(id: gunbc.roadmap_model.RoadmapNodeId) -> Bool {
 }
 
 fn edge_exists(child: String, parent: String) -> Bool {
-  edges() |> any(e => e.child == child && e.parent == parent)
+  test.claim.roadmap_authority.edges() |> any(e => e.child == child && e.parent == parent)
 }
 
 fn node_has_carrier_path(path: String) -> Bool {
-  nodes() |> any(n => n.carriers |> any(p => p.path == path))
+  test.claim.roadmap_authority.nodes() |> any(n => n.carriers |> any(p => p.path == path))
 }
 
 fn node_count_with_carrier_path(path: String) -> Int {
-  nodes() |> filter(n => n.carriers |> any(p => p.path == path)) |> count
+  test.claim.roadmap_authority.nodes() |> filter(n => n.carriers |> any(p => p.path == path)) |> count
 }
 
 fn mechanical_graph() -> std.graph.CallGraph {
   std.graph.CallGraph {
-    edges: edges() |> map(e => std.graph.GraphEdge {
+    edges: test.claim.roadmap_authority.edges() |> map(e => std.graph.GraphEdge {
       caller: e.parent as String,
       callee: e.child as String,
     }),
@@ -114,7 +114,7 @@ fn mechanical_graph() -> std.graph.CallGraph {
 }
 
 fn node_names() -> List<String> {
-  nodes() |> map(n => n.node as String)
+  test.claim.roadmap_authority.nodes() |> map(n => n.node as String)
 }
 
 fn ticket_fields_complete(ticket: gunbc.roadmap_status.TicketFields) -> Bool {
@@ -182,25 +182,25 @@ fn red_ticket(done: Bool) -> gunbc.roadmap_status.RoadmapItem {
 }
 
 test fn witness_declared_graph_has_justified_size() -> Bool {
-  count(nodes()) > 0 && count(edges()) > 0
+  count(test.claim.roadmap_authority.nodes()) > 0 && count(test.claim.roadmap_authority.edges()) > 0
     && count(active_nodes()) > 0 && count(active_edges()) > 0
 }
 
 test fn witness_declared_node_ids_are_unique() -> Bool {
-  all(nodes(), n => id_count(id: n.node) == 1)
+  all(test.claim.roadmap_authority.nodes(), n => id_count(id: n.node) == 1)
 }
 
 test fn witness_every_edge_endpoint_exists() -> Bool {
-  all(edges(), e => id_exists(id: e.child) && id_exists(id: e.parent))
+  all(test.claim.roadmap_authority.edges(), e => id_exists(id: e.child) && id_exists(id: e.parent))
 }
 
 test fn witness_declared_graph_is_mechanically_acyclic() -> Bool {
-  all(edges(), e => !(e.parent == e.child))
+  all(test.claim.roadmap_authority.edges(), e => !(e.parent == e.child))
     && !graph_has_multi_node_scc(names: node_names(), graph: mechanical_graph())
 }
 
 test fn witness_every_declared_row_is_complete_unsigned_ticket() -> Bool {
-  all(nodes(), n => active_node_admissible(n: n))
+  all(test.claim.roadmap_authority.nodes(), n => active_node_admissible(n: n))
 }
 
 data live_state_count_transcription_note: String = "NO LIVE-STATE COUNT PINS IN THIS FILE, deliberately, and the deleted ones are named so the class does not creep back. Removed: `count(accepted) == 8` here, and `\"63 declared · 8 accepted · 55 active\"` in test.claim.long.roadmap_page_witness. Both TRANSCRIBED a number nobody decided — they mirrored whatever the live authority happened to hold, so authoring any correct roadmap row redded them (observed twice; the second was PR #7463, whose only content was two new rows). A pin like that reports 'the roadmap changed', which is not a defect, while the reviewer's habit becomes editing the number to match — a check satisfied by editing the declaration, which DESIGN §5 names as the tell that validation stood where construction was available. THE DISTINCTION THAT DECIDES WHETHER A COUNT MAY STAY: does the number come from a fixture the test CONSTRUCTS, or from live corpus state? test.claim.roadmap_altitude_witness renders `doc_html(nodes: [done_signed_node(), open_node()])` and asserts `1 open · 1 done` — that is the renderer computing from two known inputs, so it is a specification and it stays; deleting it would remove real coverage. Same for the observation render witnesses over replayed fixture blocks, and for structural counts that encode a design fact rather than a population (two workflow lamps, three static routes). WHAT SURVIVED THE DELETION HERE, and why nothing was lost: this witness's actual invariant is the RELATIONSHIP `count(active_nodes()) == count(nodes()) - count(accepted)`, which is magnitude-independent and still asserted; the eight per-id acceptance assertions also stay, because they pin WHICH acceptances exist and a dropped one is real history loss (scm_prerequisite_acceptance_note). Only the magnitude went. Replacing it with `string_contains(page, roadmap_counts_label())` was considered and rejected as the vacuous form — both sides derive from the same function, so it asserts the page contains what the page computed (operator ruling 2026-07-30: no vacuous or tautological testing)."
@@ -219,7 +219,7 @@ test fn witness_active_set_is_declared_minus_accepted() -> Bool {
         && (accepted |> any(a => a == "2-claim-indexed-evidence"))
         && (accepted |> any(a => a == "2-scm-compatibility-shape"))
         && (accepted |> any(a => a == "2-scm-p0-landing-spine"))
-        && count(active_nodes()) == count(nodes()) - count(accepted)
+        && count(active_nodes()) == count(test.claim.roadmap_authority.nodes()) - count(accepted)
         && all(active_nodes(), n => !(accepted |> any(a => a == n.node)))
         && all(accepted, a => id_exists(id: a))
   }
@@ -240,7 +240,7 @@ test fn witness_accepted_parents_precede_dependents() -> Bool {
   match live_accepted_node_ids() {
     Absent => false
     Present { value: accepted } =>
-      all(accepted, a => all(roadmap_parent_ids(edges: edges(), node: a), p => accepted |> any(x => x == p)))
+      all(accepted, a => all(roadmap_parent_ids(edges: test.claim.roadmap_authority.edges(), node: a), p => accepted |> any(x => x == p)))
   }
 }
 
@@ -276,7 +276,7 @@ test fn witness_unexecuted_or_undelivered_evidence_refuses_acceptance() -> Bool 
 
 test fn witness_receipt_for_unknown_node_accepts_nothing() -> Bool {
   let ghost = receipt_fixture(node: "no-such-roadmap-node", digest: tchash(s: "0000000000000000"))
-  all(nodes(), n => !node_accepted(receipts: [ghost], rn: n))
+  all(test.claim.roadmap_authority.nodes(), n => !node_accepted(receipts: [ghost], rn: n))
 }
 
 data acceptance_receipt_continuity_witness_note: String = "THE WALL AGAINST SILENT RECEIPT DELETION (acceptance_receipt_continuity_wall_note). roadmap_acceptance_event_history loads from dag/gunbc/roadmap_acceptance_event_history.jsonl; roadmap_acceptance_receipts projects live receipts only. Live git-observed integrity executes in test.claim.roadmap_receipt_continuity_live_witness (ReadsLiveTree, bin_witness_wet_entries). RED controls in test.claim.roadmap_receipt_continuity_acceptance plant deleted events, prefix law, empty-prior bypass discriminant, digest-field mutation, wrong prior digest, revocation while live, duplicate revocations, exact revocation admit, criteria rewrite, git-refusal observation, and typed projection refusal chain."
@@ -385,22 +385,22 @@ test fn witness_superseded_row_cannot_reenter_active_graph() -> Bool {
 }
 
 test fn witness_active_sizes_are_intentional_and_nonuniform() -> Bool {
-  all(nodes(), n => match n.sizing {
+  all(test.claim.roadmap_authority.nodes(), n => match n.sizing {
     Sized { intricacy: _, volume: _, repo: _, acceptance: ManualAcceptance } => true
     _ => false
   })
-    && any(nodes(), n => match n.sizing {
+    && any(test.claim.roadmap_authority.nodes(), n => match n.sizing {
       Sized { intricacy: IntricacyLow, volume: VolumeSmall, repo: _, acceptance: _ } => true
       _ => false
     })
-    && any(nodes(), n => match n.sizing {
+    && any(test.claim.roadmap_authority.nodes(), n => match n.sizing {
       Sized { intricacy: IntricacyHigh, volume: VolumeLarge, repo: _, acceptance: _ } => true
       _ => false
     })
 }
 
 test fn witness_authority_contains_no_mutable_execution_ledger() -> Bool {
-  all(nodes(), n => match n.line {
+  all(test.claim.roadmap_authority.nodes(), n => match n.line {
     TicketLine { done: _, ticket } =>
       count(ticket.updates) == 0
         && ticket.authored_on == ""
@@ -652,7 +652,7 @@ test fn witness_projection_is_active_only() -> Bool {
 data execution_frontier_witness_note: String = "The execution-contract frontier is a COUNT, and these claims pin both of its halves. Before the first binding the count was zero — dispatch_environment_admit refused on every node, so nothing below Env in the workflow had ever executed end to end and the whole seven-segment strip was unreachable in production. A binding is therefore the gate for every downstream receipt, and an unwitnessed one could regress to zero silently (the way it already did once, when the 2026-07-27 authority refresh deleted the node that carried the prior contract and no claim noticed). The first claim proves the bound node yields a real contract rather than the fail-closed variant; the second proves the platform/task capability JOIN actually happens at admission — 8 fixed dispatch mechanics plus the one capability this contract's validation derives — which is the fact that turns a contract into an admissible environment; the third is the frontier itself, and it is the RED-shaped one: it fails if a binding is lost AND it fails if a second node is bound without this roster being updated, so the count in roadmap_execution_contract_frontier_note cannot silently drift from the authority it describes."
 
 fn bound_execution_contract_for(id: String) -> gunbc.roadmap_execution_contract.WorkItemExecutionContract {
-  match nodes()
+  match test.claim.roadmap_authority.nodes()
     |> filter(n => (n.node as String) == id)
     |> map(n => n.execution)
     |> first {
@@ -678,7 +678,7 @@ test fn witness_bound_contract_joins_platform_and_task_capabilities() -> Bool {
 
 test fn witness_every_binding_carries_a_validation() -> Bool {
   all(
-    nodes() |> filter(n => match n.execution {
+    test.claim.roadmap_authority.nodes() |> filter(n => match n.execution {
         ExecutionContractUnspecified => false
         ExecutionContract { validations: _, extra_capabilities: _ } => true
       }),

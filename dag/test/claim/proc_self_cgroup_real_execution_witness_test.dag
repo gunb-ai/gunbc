@@ -41,7 +41,7 @@ fn run_membership_assign_shell_fails(body: String, marker: String, content: Stri
       success: result.success,
       stderr: result.stderr,
       stdout: result.stdout,
-      mount_root: cgroup_mount_root,
+      mount_root: test.claim.proc_self_cgroup_real_execution_witness.cgroup_mount_root,
     )
 }
 
@@ -50,8 +50,8 @@ fn run_membership_assign_observed(dir: String, content: String, expected_abs: St
   let seeded = write_cgroup_fixture(dir: dir, name: "cgroup", content: content)
   let body = v2.extdeps.languages.bash_proc_self_cgroup.bash_membership_assign_from_source(
     cgroup_source: path,
-    walk_var: cgroup_walk_var,
-    mount_root: cgroup_mount_root,
+    walk_var: test.claim.proc_self_cgroup_real_execution_witness.cgroup_walk_var,
+    mount_root: test.claim.proc_self_cgroup_real_execution_witness.cgroup_mount_root,
   )
   let result = shell.Exec.Run(
     script: retained_runtime(
@@ -68,7 +68,7 @@ fn run_membership_assign_observed(dir: String, content: String, expected_abs: St
       success: result.success,
       stderr: result.stderr,
       stdout: result.stdout,
-      mount_root: cgroup_mount_root,
+      mount_root: test.claim.proc_self_cgroup_real_execution_witness.cgroup_mount_root,
     )
 }
 
@@ -76,18 +76,18 @@ test fn bash_assign_from_source_refuses_missing_shell_holds() -> Bool {
   let dir = shell.Mktemp.Dir()
   let body = v2.extdeps.languages.bash_proc_self_cgroup.bash_membership_assign_from_source(
     cgroup_source: cgroup_fixture_path(dir: dir.path as String, name: "cgroup"),
-    walk_var: cgroup_walk_var,
-    mount_root: cgroup_mount_root,
+    walk_var: test.claim.proc_self_cgroup_real_execution_witness.cgroup_walk_var,
+    mount_root: test.claim.proc_self_cgroup_real_execution_witness.cgroup_mount_root,
   )
   let seeded = write_cgroup_fixture(
     dir: dir.path as String,
     name: "cgroup",
-    content: fixture_missing_unified,
+    content: test.claim.proc_self_cgroup_real_execution_witness.fixture_missing_unified,
   )
   let refused = run_membership_assign_shell_fails(
     body: body,
     marker: "cgroup_membership=missing",
-    content: fixture_missing_unified,
+    content: test.claim.proc_self_cgroup_real_execution_witness.fixture_missing_unified,
   )
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   dir.success && seeded && refused && cleaned.success
@@ -97,18 +97,18 @@ test fn bash_assign_from_source_refuses_ambiguous_shell_holds() -> Bool {
   let dir = shell.Mktemp.Dir()
   let body = v2.extdeps.languages.bash_proc_self_cgroup.bash_membership_assign_from_source(
     cgroup_source: cgroup_fixture_path(dir: dir.path as String, name: "cgroup"),
-    walk_var: cgroup_walk_var,
-    mount_root: cgroup_mount_root,
+    walk_var: test.claim.proc_self_cgroup_real_execution_witness.cgroup_walk_var,
+    mount_root: test.claim.proc_self_cgroup_real_execution_witness.cgroup_mount_root,
   )
   let seeded = write_cgroup_fixture(
     dir: dir.path as String,
     name: "cgroup",
-    content: fixture_unified_duplicate,
+    content: test.claim.proc_self_cgroup_real_execution_witness.fixture_unified_duplicate,
   )
   let refused = run_membership_assign_shell_fails(
     body: body,
     marker: "cgroup_membership=ambiguous",
-    content: fixture_unified_duplicate,
+    content: test.claim.proc_self_cgroup_real_execution_witness.fixture_unified_duplicate,
   )
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   dir.success && seeded && refused && cleaned.success
@@ -118,18 +118,18 @@ test fn bash_assign_from_source_refuses_malformed_shell_holds() -> Bool {
   let dir = shell.Mktemp.Dir()
   let body = v2.extdeps.languages.bash_proc_self_cgroup.bash_membership_assign_from_source(
     cgroup_source: cgroup_fixture_path(dir: dir.path as String, name: "cgroup"),
-    walk_var: cgroup_walk_var,
-    mount_root: cgroup_mount_root,
+    walk_var: test.claim.proc_self_cgroup_real_execution_witness.cgroup_walk_var,
+    mount_root: test.claim.proc_self_cgroup_real_execution_witness.cgroup_mount_root,
   )
   let seeded = write_cgroup_fixture(
     dir: dir.path as String,
     name: "cgroup",
-    content: fixture_malformed_no_colon,
+    content: test.claim.proc_self_cgroup_real_execution_witness.fixture_malformed_no_colon,
   )
   let refused = run_membership_assign_shell_fails(
     body: body,
     marker: "cgroup_membership=malformed",
-    content: fixture_malformed_no_colon,
+    content: test.claim.proc_self_cgroup_real_execution_witness.fixture_malformed_no_colon,
   )
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   dir.success && seeded && refused && cleaned.success
@@ -139,7 +139,7 @@ test fn bash_assign_from_source_observed_shell_holds() -> Bool {
   let dir = shell.Mktemp.Dir()
   let observed = run_membership_assign_observed(
     dir: dir.path as String,
-    content: fixture_unified_colon_in_path,
+    content: test.claim.proc_self_cgroup_real_execution_witness.fixture_unified_colon_in_path,
     expected_abs: "/sys/fs/cgroup/user.slice/job:build/session.scope",
   )
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)

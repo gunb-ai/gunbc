@@ -143,7 +143,7 @@ data no_paths: FreeMonoid<String> = []
 data no_import_facts: List<ImportResolutionFact> = []
 
 fn add_unseen(acc: FreeMonoid<String>, item: String) -> FreeMonoid<String> {
-  if contains(xs: acc, item: item, eq: string_eq) {
+  if contains(xs: acc, item: item, eq: v2.lens.module_graph.string_eq) {
     acc
   } else {
     list_snoc_item(xs: acc, item: item)
@@ -177,7 +177,7 @@ fn build_module_to_path(nodes: List<ModuleDeclarationFact>) -> Map<String, Strin
 }
 
 fn snoc_unseen_list(acc: List<String>, item: String) -> List<String> {
-  if contains(xs: acc, item: item, eq: string_eq) {
+  if contains(xs: acc, item: item, eq: v2.lens.module_graph.string_eq) {
     acc
   } else {
     list_snoc_item(xs: acc, item: item)
@@ -250,7 +250,7 @@ fn build_import_adjacency(
 }
 
 fn bfs_absorb_neighbor(state: ImportClosureBfsState, path: String) -> ImportClosureBfsState {
-  if contains(xs: state.reached, item: path, eq: string_eq) {
+  if contains(xs: state.reached, item: path, eq: v2.lens.module_graph.string_eq) {
     state
   } else {
     ImportClosureBfsState {
@@ -367,7 +367,7 @@ fn strip_leading_dot_slash(s: String) -> String {
 fn path_matches_touched(closure_path: String, touched_path: String) -> Bool {
   let file = strip_leading_dot_slash(closure_path)
   let target = strip_leading_dot_slash(touched_path)
-  string_eq(a: file, b: target)
+  v2.lens.module_graph.string_eq(a: file, b: target)
     || ends_with(s: file, suffix: target)
     || ends_with(s: target, suffix: file)
 }

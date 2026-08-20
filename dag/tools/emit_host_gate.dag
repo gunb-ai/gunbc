@@ -24,7 +24,7 @@ fn join_space(parts: List<String>) -> String {
 }
 
 fn smoke_verdict_line(rust: Bool, python: Bool, go: Bool, ts: Bool, node_http: Bool, c: Bool) -> String {
-  concat("emit-host smoke verdicts: ", join_space(parts: [
+  concat("emit-host smoke verdicts: ", tools.emit_host_gate.join_space(parts: [
     smoke_verdict(name: "rust", ok: rust),
     smoke_verdict(name: "python", ok: python),
     smoke_verdict(name: "go", ok: go),

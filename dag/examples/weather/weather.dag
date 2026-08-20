@@ -37,7 +37,7 @@ fn describe_condition(cond: Condition) -> String {
 }
 
 fn daily_summary(forecast: Forecast) -> String {
-  let high_f = to_fahrenheit(temp: forecast.high)
+  let high_f = examples.weather.to_fahrenheit(temp: forecast.high)
   let desc = describe_condition(cond: forecast.condition)
   concat(forecast.location, ": ", desc, ", high ", to_string(value: high_f), "°F")
 }

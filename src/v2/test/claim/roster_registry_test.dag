@@ -16,7 +16,7 @@ fn synthetic_nonliteral_text(text: String) -> std.types.NonEmptyStr {
 }
 
 fn synthetic_empty_condition(text: String) -> std.dissolution.DissolutionCondition {
-  std.dissolution.unbound_dissolution(description: synthetic_nonliteral_text(text: text))
+  std.dissolution.unbound_dissolution(description: v2.test.claim.roster_registry_test.synthetic_nonliteral_text(text: text))
 }
 
 fn synthetic_registration(membership: gunbc.roster_registry.GroupMembership) -> gunbc.roster_registry.RosterRegistration {
@@ -47,7 +47,7 @@ fn empty_trigger_registration() -> gunbc.roster_registry.RosterRegistration {
   synthetic_registration(
     membership: DeclaredFrontier {
       reason: "a reason without a trigger is not a frontier row",
-      dissolution: synthetic_empty_condition(text: "")
+      dissolution: v2.test.claim.roster_registry_test.synthetic_empty_condition(text: "")
     }
   )
 }

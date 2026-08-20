@@ -988,7 +988,7 @@ fn parse_nonterminal_memoized_core(
           }
         Violates { diagnostic: _ } =>
           let table_miss = parse_table_record_miss(table: table_at_lookup)
-          let inner = parse_expr(
+          let inner = v2.compiler.parse.parse_expr(
             expr: production.expression,
             tokens: tokens,
             all_tokens: all_tokens,
@@ -2311,7 +2311,7 @@ fn parse_production_memo_stats(
     Holds { value: production } =>
       let prov = parse_prov_initial()
       let table = parse_table_for_production(validated: validated, all_tokens: tokens)
-      match parse_expr(
+      match v2.compiler.parse.parse_expr(
         expr: production.expression,
         tokens: tokens,
         all_tokens: tokens,
@@ -2339,7 +2339,7 @@ fn parse_production_prepared(
     Holds { value: production } =>
       let prov = parse_prov_initial()
       let table = parse_table_for_production_analyzed(validated: validated, analysis: analysis, all_tokens: tokens)
-      match parse_expr(
+      match v2.compiler.parse.parse_expr(
         expr: production.expression,
         tokens: tokens,
         all_tokens: tokens,
@@ -2486,7 +2486,7 @@ fn parse_module(tokens: v2.std.compilers.lexing.TokenStream, grammar: v2.std.gra
 }
 
 fn parse(tokens: v2.std.compilers.lexing.TokenStream, grammar: v2.std.grammar.ParseGrammar) -> v2.std.diagnostic.Outcome<v2.std.grammar.ParseTree> {
-  match parse_module(tokens: tokens, grammar: grammar) {
+  match v2.compiler.parse.parse_module(tokens: tokens, grammar: grammar) {
     v2.std.diagnostic.Accepted { value: artifact, diagnostics: d } =>
       v2.std.diagnostic.Accepted { value: artifact.tree, diagnostics: d }
     v2.std.diagnostic.Rejected { diagnostics: r } =>

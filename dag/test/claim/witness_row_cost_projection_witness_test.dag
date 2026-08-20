@@ -62,7 +62,7 @@ fn row_wall_ms_count(row: gunbc.witness_row_cost.WitnessCostReceiptRow) -> std.n
 
 fn two_events_project_one_exact_tsv_row_holds() -> Bool {
   let entry = sample_entry()
-  let decl = sample_decl(name: "fast_witness")
+  let decl = test.claim.witness_row_cost_projection.sample_decl(name: "fast_witness")
   let resolve = witness_wall_ms(count: 100)
   let eval_wall = witness_wall_ms(count: 20)
   let eval = witness_eval_ms(count: 20)
@@ -96,7 +96,7 @@ fn two_events_project_one_exact_tsv_row_holds() -> Bool {
 
 fn missing_parent_resolve_refuses_holds() -> Bool {
   let entry = sample_entry()
-  let decl = sample_decl(name: "orphan_witness")
+  let decl = test.claim.witness_row_cost_projection.sample_decl(name: "orphan_witness")
   let events: List<std.observation.ObservationEvent> = [
     witness_cost_declaration_event(
       entry: entry,
@@ -114,7 +114,7 @@ fn missing_parent_resolve_refuses_holds() -> Bool {
 
 fn multiple_parent_resolve_refuses_holds() -> Bool {
   let entry = sample_entry()
-  let decl = sample_decl(name: "ambiguous_parent")
+  let decl = test.claim.witness_row_cost_projection.sample_decl(name: "ambiguous_parent")
   let events: List<std.observation.ObservationEvent> = [
     witness_cost_entry_resolve_event(entry: entry, resolve: witness_wall_ms(count: 100)),
     witness_cost_entry_resolve_event(entry: entry, resolve: witness_wall_ms(count: 200)),
@@ -134,8 +134,8 @@ fn multiple_parent_resolve_refuses_holds() -> Bool {
 
 fn resolve_wall_is_shared_not_divided_holds() -> Bool {
   let entry = sample_entry()
-  let d1 = sample_decl(name: "w1")
-  let d2 = sample_decl(name: "w2")
+  let d1 = test.claim.witness_row_cost_projection.sample_decl(name: "w1")
+  let d2 = test.claim.witness_row_cost_projection.sample_decl(name: "w2")
   let resolve = witness_wall_ms(count: 100)
   let events: List<std.observation.ObservationEvent> = [
     witness_cost_entry_resolve_event(entry: entry, resolve: resolve),
@@ -156,8 +156,8 @@ fn resolve_wall_is_shared_not_divided_holds() -> Bool {
 
 fn refused_outcome_distinct_from_failed_in_projection_holds() -> Bool {
   let entry = sample_entry()
-  let d_refused = sample_decl(name: "refused_w")
-  let d_failed = sample_decl(name: "failed_w")
+  let d_refused = test.claim.witness_row_cost_projection.sample_decl(name: "refused_w")
+  let d_failed = test.claim.witness_row_cost_projection.sample_decl(name: "failed_w")
   let events: List<std.observation.ObservationEvent> = [
     witness_cost_entry_resolve_event(entry: entry, resolve: witness_wall_ms(count: 50)),
     witness_cost_declaration_event(
@@ -202,7 +202,7 @@ fn refused_outcome_distinct_from_failed_in_projection_holds() -> Bool {
 
 fn w2_ambient_suppress_retains_complete_receipt_row_holds() -> Bool {
   let entry = sample_entry()
-  let decl = sample_decl(name: "ambient_w")
+  let decl = test.claim.witness_row_cost_projection.sample_decl(name: "ambient_w")
   let eval = witness_eval_ms(count: 5)
   let resolve = witness_wall_ms(count: 10)
   let witness_event = witness_cost_declaration_event(
@@ -246,7 +246,7 @@ fn rss_unavailable_carries_cause_on_modeled_events_holds() -> Bool {
 
 fn malformed_nested_resolve_event_refuses_holds() -> Bool {
   let entry = sample_entry()
-  let decl = sample_decl("nested")
+  let decl = test.claim.witness_row_cost_projection.sample_decl("nested")
   let nested = witness_cost_nested_resolve_under_declaration_event(
     entry: entry,
     declaration: decl,
@@ -285,7 +285,7 @@ fn malformed_nested_resolve_event_refuses_holds() -> Bool {
 
 fn typed_event_role_extract_classifies_entry_and_declaration_holds() -> Bool {
   let entry = sample_entry()
-  let decl = sample_decl("role")
+  let decl = test.claim.witness_row_cost_projection.sample_decl("role")
   let parent = witness_cost_entry_resolve_event(entry: entry, resolve: witness_wall_ms(count: 1))
   let child = witness_cost_declaration_event(
     entry: entry,
@@ -309,7 +309,7 @@ fn typed_event_role_extract_classifies_entry_and_declaration_holds() -> Bool {
 
 fn duplicate_declaration_identity_refuses_holds() -> Bool {
   let entry = sample_entry()
-  let decl = sample_decl("duplicate")
+  let decl = test.claim.witness_row_cost_projection.sample_decl("duplicate")
   let events: List<std.observation.ObservationEvent> = [
     witness_cost_entry_resolve_event(entry: entry, resolve: witness_wall_ms(count: 10)),
     witness_cost_declaration_event(entry: entry, declaration: decl, eval: witness_eval_ms(count: 1), outcome: Done),
@@ -400,9 +400,9 @@ fn native_seed_events_preserve_order_outcome_and_perturbation_holds() -> Bool {
 
 fn exact_nanosecond_projection_and_same_millisecond_order_holds() -> Bool {
   let entry = sample_entry()
-  let one = sample_decl(name: "one_ns")
-  let sub_ms = sample_decl(name: "sub_ms")
-  let one_ms = sample_decl(name: "one_ms")
+  let one = test.claim.witness_row_cost_projection.sample_decl(name: "one_ns")
+  let sub_ms = test.claim.witness_row_cost_projection.sample_decl(name: "sub_ms")
+  let one_ms = test.claim.witness_row_cost_projection.sample_decl(name: "one_ms")
   let events: List<std.observation.ObservationEvent> = [
     witness_cost_entry_resolve_event(entry: entry, resolve: nanosecond(count: 7)),
     witness_cost_declaration_event(
@@ -516,7 +516,7 @@ fn timed_out_red_control_is_neither_done_nor_failed_holds() -> Bool {
 
 fn row_carries_both_clocks_and_does_not_confuse_them_holds() -> Bool {
   let entry = sample_entry()
-  let decl = sample_decl(name: "two_clock_witness")
+  let decl = test.claim.witness_row_cost_projection.sample_decl(name: "two_clock_witness")
   let events: List<std.observation.ObservationEvent> = [
     witness_cost_entry_resolve_event(entry: entry, resolve: witness_wall_ms(count: 100)),
     witness_cost_declaration_event(
@@ -543,7 +543,7 @@ fn row_carries_both_clocks_and_does_not_confuse_them_holds() -> Bool {
 
 fn wall_only_row_reports_cpu_absent_rather_than_zero_holds() -> Bool {
   let entry = sample_entry()
-  let decl = sample_decl(name: "wall_only_witness")
+  let decl = test.claim.witness_row_cost_projection.sample_decl(name: "wall_only_witness")
   let events: List<std.observation.ObservationEvent> = [
     witness_cost_entry_resolve_event(entry: entry, resolve: witness_wall_ms(count: 100)),
     witness_cost_declaration_event(
@@ -568,7 +568,7 @@ fn wall_only_row_reports_cpu_absent_rather_than_zero_holds() -> Bool {
 
 fn eval_with_no_wall_clock_refuses_rather_than_projecting_holds() -> Bool {
   let entry = sample_entry()
-  let decl = sample_decl(name: "cpu_only_witness")
+  let decl = test.claim.witness_row_cost_projection.sample_decl(name: "cpu_only_witness")
   let events: List<std.observation.ObservationEvent> = [
     witness_cost_entry_resolve_event(entry: entry, resolve: witness_wall_ms(count: 100)),
     witness_cost_declaration_event(

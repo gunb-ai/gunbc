@@ -35,7 +35,7 @@ fn sample_decl(name: String) -> std.decl_ref.DeclarationRef {
 fn sample_row(name: String, eval_ms: std.nat.Nat) -> gunbc.witness_row_cost.WitnessCostReceiptRow {
   gunbc.witness_row_cost.WitnessCostReceiptRow {
     entry: "dag/test/claim/witness_row_cost_migration_disclosure_witness_test.dag" as std.types.NonEmptyStr,
-    declaration: sample_decl(name: name),
+    declaration: test.claim.witness_row_cost_migration_disclosure.sample_decl(name: name),
     eval: observation_durations_wall(
       elapsed: millisecond_to_nanosecond(m: millisecond(count: eval_ms))
     ),

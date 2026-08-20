@@ -24,41 +24,41 @@ fn fixture_row(label: String, payload: String) -> std.keyed_row.KeyedRow<String,
 
 fn fixture_rows_a() -> List<KeyedRow<String, test.claim.keyed_delta_fold_witness.FixtureVal>> {
   [
-    fixture_row(label: "alpha", payload: "one"),
-    fixture_row(label: "beta", payload: "two"),
+    test.claim.keyed_delta_fold_witness.fixture_row(label: "alpha", payload: "one"),
+    test.claim.keyed_delta_fold_witness.fixture_row(label: "beta", payload: "two"),
   ]
 }
 
 fn fixture_rows_b() -> List<KeyedRow<String, test.claim.keyed_delta_fold_witness.FixtureVal>> {
   [
-    fixture_row(label: "alpha", payload: "one"),
-    fixture_row(label: "beta", payload: "three"),
+    test.claim.keyed_delta_fold_witness.fixture_row(label: "alpha", payload: "one"),
+    test.claim.keyed_delta_fold_witness.fixture_row(label: "beta", payload: "three"),
   ]
 }
 
 fn fixture_rows_reordered_b() -> List<KeyedRow<String, test.claim.keyed_delta_fold_witness.FixtureVal>> {
   [
-    fixture_row(label: "beta", payload: "three"),
-    fixture_row(label: "alpha", payload: "one"),
+    test.claim.keyed_delta_fold_witness.fixture_row(label: "beta", payload: "three"),
+    test.claim.keyed_delta_fold_witness.fixture_row(label: "alpha", payload: "one"),
   ]
 }
 
 fn fixture_rows_added() -> List<KeyedRow<String, test.claim.keyed_delta_fold_witness.FixtureVal>> {
   concat(
     fixture_rows_a(),
-    [fixture_row(label: "gamma", payload: "new")]
+    [test.claim.keyed_delta_fold_witness.fixture_row(label: "gamma", payload: "new")]
   )
 }
 
 fn fixture_rows_removed() -> List<KeyedRow<String, test.claim.keyed_delta_fold_witness.FixtureVal>> {
-  [fixture_row(label: "alpha", payload: "one")]
+  [test.claim.keyed_delta_fold_witness.fixture_row(label: "alpha", payload: "one")]
 }
 
 fn fixture_modified_hunk() -> std.change.KeyedPatch<String, test.claim.keyed_delta_fold_witness.FixtureVal> {
   keyed_two_way_diff(
     left: fixture_rows_a(),
     right: fixture_rows_b(),
-    key_eq: fixture_key_eq,
+    key_eq: test.claim.keyed_delta_fold_witness.fixture_key_eq,
     value_eq: fixture_val_eq,
   )
 }
@@ -67,7 +67,7 @@ fn fixture_added_hunk() -> std.change.KeyedPatch<String, test.claim.keyed_delta_
   keyed_two_way_diff(
     left: fixture_rows_a(),
     right: fixture_rows_added(),
-    key_eq: fixture_key_eq,
+    key_eq: test.claim.keyed_delta_fold_witness.fixture_key_eq,
     value_eq: fixture_val_eq,
   )
 }
@@ -76,7 +76,7 @@ fn fixture_removed_hunk() -> std.change.KeyedPatch<String, test.claim.keyed_delt
   keyed_two_way_diff(
     left: fixture_rows_a(),
     right: fixture_rows_removed(),
-    key_eq: fixture_key_eq,
+    key_eq: test.claim.keyed_delta_fold_witness.fixture_key_eq,
     value_eq: fixture_val_eq,
   )
 }
@@ -86,7 +86,7 @@ test fn witness_patch_monoid_left_identity() -> Bool {
   keyed_patches_equal(
     left: keyed_patch_append(left: monoid.identity, right: fixture_modified_hunk()),
     right: fixture_modified_hunk(),
-    key_eq: fixture_key_eq,
+    key_eq: test.claim.keyed_delta_fold_witness.fixture_key_eq,
     value_eq: fixture_val_eq,
   )
 }
@@ -96,7 +96,7 @@ test fn witness_patch_monoid_right_identity() -> Bool {
   keyed_patches_equal(
     left: keyed_patch_append(left: fixture_modified_hunk(), right: monoid.identity),
     right: fixture_modified_hunk(),
-    key_eq: fixture_key_eq,
+    key_eq: test.claim.keyed_delta_fold_witness.fixture_key_eq,
     value_eq: fixture_val_eq,
   )
 }
@@ -108,7 +108,7 @@ test fn witness_patch_monoid_associativity() -> Bool {
   keyed_patches_equal(
     left: keyed_patch_append(left: keyed_patch_append(left: a, right: b), right: c),
     right: keyed_patch_append(left: a, right: keyed_patch_append(left: b, right: c)),
-    key_eq: fixture_key_eq,
+    key_eq: test.claim.keyed_delta_fold_witness.fixture_key_eq,
     value_eq: fixture_val_eq,
   )
 }
@@ -120,7 +120,7 @@ test fn witness_patch_fold_matches_diff() -> Bool {
         keyed_two_way_diff(
           left: fixture_rows_a(),
           right: fixture_rows_b(),
-          key_eq: fixture_key_eq,
+          key_eq: test.claim.keyed_delta_fold_witness.fixture_key_eq,
           value_eq: fixture_val_eq,
         ),
       ],
@@ -128,27 +128,27 @@ test fn witness_patch_fold_matches_diff() -> Bool {
     right: keyed_two_way_diff(
       left: fixture_rows_a(),
       right: fixture_rows_b(),
-      key_eq: fixture_key_eq,
+      key_eq: test.claim.keyed_delta_fold_witness.fixture_key_eq,
       value_eq: fixture_val_eq,
     ),
-    key_eq: fixture_key_eq,
+    key_eq: test.claim.keyed_delta_fold_witness.fixture_key_eq,
     value_eq: fixture_val_eq,
   )
 }
 
 test fn witness_three_way_patch_monoid_identity() -> Bool {
-  let monoid = keyed_three_way_patch_monoid(key_eq: fixture_key_eq, value_eq: fixture_val_eq)
+  let monoid = keyed_three_way_patch_monoid(key_eq: test.claim.keyed_delta_fold_witness.fixture_key_eq, value_eq: fixture_val_eq)
   let patch = keyed_three_way_fold(
     base: fixture_rows_a(),
     observed: fixture_rows_a(),
     desired: fixture_rows_b(),
-    key_eq: fixture_key_eq,
+    key_eq: test.claim.keyed_delta_fold_witness.fixture_key_eq,
     value_eq: fixture_val_eq,
   )
   list_length(items: keyed_three_way_patch_append(
     left: monoid.identity,
     right: patch,
-    key_eq: fixture_key_eq,
+    key_eq: test.claim.keyed_delta_fold_witness.fixture_key_eq,
     value_eq: fixture_val_eq,
   ).entries) == list_length(items: patch.entries)
 }
@@ -220,11 +220,11 @@ test fn witness_diff_identity_law() -> Bool {
     left: keyed_two_way_diff(
       left: fixture_rows_a(),
       right: fixture_rows_a(),
-      key_eq: fixture_key_eq,
+      key_eq: test.claim.keyed_delta_fold_witness.fixture_key_eq,
       value_eq: fixture_val_eq,
     ),
     right: keyed_patch_empty(),
-    key_eq: fixture_key_eq,
+    key_eq: test.claim.keyed_delta_fold_witness.fixture_key_eq,
     value_eq: fixture_val_eq,
   )
 }
@@ -234,11 +234,11 @@ test fn witness_apply_diff_law_modified() -> Bool {
     left: keyed_apply_two_way_diff(
       left: fixture_rows_a(),
       right: fixture_rows_b(),
-      key_eq: fixture_key_eq,
+      key_eq: test.claim.keyed_delta_fold_witness.fixture_key_eq,
       value_eq: fixture_val_eq,
     ),
     right: fixture_rows_b(),
-    key_eq: fixture_key_eq,
+    key_eq: test.claim.keyed_delta_fold_witness.fixture_key_eq,
     value_eq: fixture_val_eq,
   )
 }
@@ -248,18 +248,18 @@ test fn witness_apply_added_is_upsert() -> Bool {
   let once = keyed_apply_patch(
     rows: fixture_rows_a(),
     patch: patch,
-    key_eq: fixture_key_eq,
+    key_eq: test.claim.keyed_delta_fold_witness.fixture_key_eq,
   )
   let twice = keyed_apply_patch(
     rows: once,
     patch: patch,
-    key_eq: fixture_key_eq,
+    key_eq: test.claim.keyed_delta_fold_witness.fixture_key_eq,
   )
   list_length(items: once) == list_length(items: twice)
     && keyed_rows_snapshot_equal(
       left: once,
       right: twice,
-      key_eq: fixture_key_eq,
+      key_eq: test.claim.keyed_delta_fold_witness.fixture_key_eq,
       value_eq: fixture_val_eq,
     )
 }
@@ -269,11 +269,11 @@ test fn witness_apply_diff_law_added() -> Bool {
     left: keyed_apply_two_way_diff(
       left: fixture_rows_a(),
       right: fixture_rows_added(),
-      key_eq: fixture_key_eq,
+      key_eq: test.claim.keyed_delta_fold_witness.fixture_key_eq,
       value_eq: fixture_val_eq,
     ),
     right: fixture_rows_added(),
-    key_eq: fixture_key_eq,
+    key_eq: test.claim.keyed_delta_fold_witness.fixture_key_eq,
     value_eq: fixture_val_eq,
   )
 }
@@ -283,11 +283,11 @@ test fn witness_apply_diff_law_removed() -> Bool {
     left: keyed_apply_two_way_diff(
       left: fixture_rows_a(),
       right: fixture_rows_removed(),
-      key_eq: fixture_key_eq,
+      key_eq: test.claim.keyed_delta_fold_witness.fixture_key_eq,
       value_eq: fixture_val_eq,
     ),
     right: fixture_rows_removed(),
-    key_eq: fixture_key_eq,
+    key_eq: test.claim.keyed_delta_fold_witness.fixture_key_eq,
     value_eq: fixture_val_eq,
   )
 }
@@ -297,11 +297,11 @@ test fn witness_inverse_retract_law_modified() -> Bool {
     left: keyed_retract_two_way_diff(
       left: fixture_rows_a(),
       right: fixture_rows_b(),
-      key_eq: fixture_key_eq,
+      key_eq: test.claim.keyed_delta_fold_witness.fixture_key_eq,
       value_eq: fixture_val_eq,
     ),
     right: fixture_rows_a(),
-    key_eq: fixture_key_eq,
+    key_eq: test.claim.keyed_delta_fold_witness.fixture_key_eq,
     value_eq: fixture_val_eq,
   )
 }
@@ -311,11 +311,11 @@ test fn witness_inverse_retract_law_added() -> Bool {
     left: keyed_retract_two_way_diff(
       left: fixture_rows_a(),
       right: fixture_rows_added(),
-      key_eq: fixture_key_eq,
+      key_eq: test.claim.keyed_delta_fold_witness.fixture_key_eq,
       value_eq: fixture_val_eq,
     ),
     right: fixture_rows_a(),
-    key_eq: fixture_key_eq,
+    key_eq: test.claim.keyed_delta_fold_witness.fixture_key_eq,
     value_eq: fixture_val_eq,
   )
 }
@@ -325,11 +325,11 @@ test fn witness_inverse_retract_law_removed() -> Bool {
     left: keyed_retract_two_way_diff(
       left: fixture_rows_a(),
       right: fixture_rows_removed(),
-      key_eq: fixture_key_eq,
+      key_eq: test.claim.keyed_delta_fold_witness.fixture_key_eq,
       value_eq: fixture_val_eq,
     ),
     right: fixture_rows_a(),
-    key_eq: fixture_key_eq,
+    key_eq: test.claim.keyed_delta_fold_witness.fixture_key_eq,
     value_eq: fixture_val_eq,
   )
 }
@@ -339,7 +339,7 @@ test fn witness_unchanged_rows_emit_no_hunk() -> Bool {
     patch: keyed_two_way_diff(
       left: fixture_rows_a(),
       right: fixture_rows_a(),
-      key_eq: fixture_key_eq,
+      key_eq: test.claim.keyed_delta_fold_witness.fixture_key_eq,
       value_eq: fixture_val_eq,
     ),
   ) == 0
@@ -350,16 +350,16 @@ test fn witness_reorder_invariance() -> Bool {
     left: keyed_two_way_diff(
       left: fixture_rows_a(),
       right: fixture_rows_b(),
-      key_eq: fixture_key_eq,
+      key_eq: test.claim.keyed_delta_fold_witness.fixture_key_eq,
       value_eq: fixture_val_eq,
     ),
     right: keyed_two_way_diff(
       left: fixture_rows_a(),
       right: fixture_rows_reordered_b(),
-      key_eq: fixture_key_eq,
+      key_eq: test.claim.keyed_delta_fold_witness.fixture_key_eq,
       value_eq: fixture_val_eq,
     ),
-    key_eq: fixture_key_eq,
+    key_eq: test.claim.keyed_delta_fold_witness.fixture_key_eq,
     value_eq: fixture_val_eq,
   )
 }
@@ -487,7 +487,7 @@ test fn witness_three_way_fold_omits_unchanged() -> Bool {
     base: fixture_rows_a(),
     observed: fixture_rows_a(),
     desired: fixture_rows_b(),
-    key_eq: fixture_key_eq,
+    key_eq: test.claim.keyed_delta_fold_witness.fixture_key_eq,
     value_eq: fixture_val_eq,
   )
   list_length(items: patch.entries) == 1
@@ -501,7 +501,7 @@ test fn witness_identity_law_red_control() -> Bool {
     patch: keyed_two_way_diff(
       left: fixture_rows_a(),
       right: fixture_rows_b(),
-      key_eq: fixture_key_eq,
+      key_eq: test.claim.keyed_delta_fold_witness.fixture_key_eq,
       value_eq: fixture_val_eq,
     ),
   ) != 0

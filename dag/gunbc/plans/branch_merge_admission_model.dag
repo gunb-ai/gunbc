@@ -149,13 +149,13 @@ fn section_6() -> List<std.markdown.MarkdownBlock> {
 }
 
 fn branch_merge_admission_model_body() -> List<std.markdown.MarkdownBlock> {
-  concat([status_block()],
+  concat([gunbc.plans.branch_merge_admission_model.status_block()],
     concat(section_0(),
-      concat(section_1(),
-        concat(section_2(),
-          concat(section_3(),
-            concat(section_4(),
-              concat(section_5(), section_6())))))))
+      concat(gunbc.plans.branch_merge_admission_model.section_1(),
+        concat(gunbc.plans.branch_merge_admission_model.section_2(),
+          concat(gunbc.plans.branch_merge_admission_model.section_3(),
+            concat(gunbc.plans.branch_merge_admission_model.section_4(),
+              concat(gunbc.plans.branch_merge_admission_model.section_5(), section_6())))))))
 }
 
 data branch_merge_admission_model_plan: gunbc.plan.Plan = gunbc.plan.Plan {

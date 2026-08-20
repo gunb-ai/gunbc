@@ -172,7 +172,7 @@ test data witness_verify_witness_distinct_node_accepts: Bool = match verify_witn
   Accepted { value: _, diagnostics: _ } => true
   Rejected { diagnostics: _ } => false
 }
-test data witness_find_witness_wrong_arity_rejects: Bool = rejected_for_no_candidate(
+test data witness_find_witness_wrong_arity_rejects: Bool = v2.test.manual.find_witness_distinct_node_zip_fold.rejected_for_no_candidate(
   o: find_witness(
     source_facts: distinct_source_add_node(),
     candidates: distinct_wrong_arity_candidate_set(),
@@ -180,7 +180,7 @@ test data witness_find_witness_wrong_arity_rejects: Bool = rejected_for_no_candi
     multiplicity_policy: UniqueOnly
   )
 )
-test data witness_find_witness_wrong_subtree_rejects: Bool = rejected_for_no_candidate(
+test data witness_find_witness_wrong_subtree_rejects: Bool = v2.test.manual.find_witness_distinct_node_zip_fold.rejected_for_no_candidate(
   o: find_witness(
     source_facts: distinct_source_add_node(),
     candidates: distinct_wrong_subtree_candidate_set(),
@@ -215,6 +215,6 @@ test data witness_coercion_fold_distinct_node_accepts: Bool = match coercion_fol
   policy: v2.std.find_witness.TargetDeclaredPriority { priority: distinct_target_add_node() }
 ) {
   Accepted { value: r, diagnostics: _ } =>
-    (r.target == distinct_target_add_node()) && (quality_is_exact(q: r.quality) || quality_is_identity(q: r.quality))
+    (r.target == distinct_target_add_node()) && (quality_is_exact(q: r.quality) || v2.test.manual.find_witness_distinct_node_zip_fold.quality_is_identity(q: r.quality))
   Rejected { diagnostics: _ } => false
 }

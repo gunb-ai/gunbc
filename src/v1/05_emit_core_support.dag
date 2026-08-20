@@ -96,7 +96,7 @@ fn to_snake(name: String) -> String {
 
 fn to_screaming_snake(name: String) -> String {
   let snake = to_snake(name: name)
-  snake |> chars |> map(ch => to_upper_char(ch: ch)) |> join(separator: "")
+  snake |> chars |> map(ch => v1.compiler.emit_core_support.to_upper_char(ch: ch)) |> join(separator: "")
 }
 
 fn is_upper(ch: Int) -> Bool {
@@ -125,7 +125,7 @@ fn to_upper_char(ch: Int) -> String {
 
 fn sanitize_service_name(name: String) -> String {
   let parts = name |> split(delimiter: ".")
-  let pascal_parts = parts |> map(p => capitalize_first(s: p))
+  let pascal_parts = parts |> map(p => v1.compiler.emit_core_support.capitalize_first(s: p))
   pascal_parts |> join(separator: "")
 }
 
@@ -136,7 +136,7 @@ fn capitalize_first(s: String) -> String {
   } else {
     chars_list |> enumerate |> map(pair =>
       if pair.first == 0 {
-        to_upper_char(ch: pair.second)
+        v1.compiler.emit_core_support.to_upper_char(ch: pair.second)
       } else {
         from_code_point(cp: pair.second)
       }
@@ -151,7 +151,7 @@ fn service_var_name(service_name: String) -> String {
 fn to_pascal(name: String) -> String {
   let snake = to_snake(name: name)
   let parts = snake |> split(delimiter: "_")
-  let pascal_parts = parts |> map(p => capitalize_first(s: p))
+  let pascal_parts = parts |> map(p => v1.compiler.emit_core_support.capitalize_first(s: p))
   pascal_parts |> join(separator: "")
 }
 

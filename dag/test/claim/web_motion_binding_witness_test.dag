@@ -40,7 +40,7 @@ data discredited_probe_note: String = "THE 2026-08-05 PROBE, RECONSTRUCTED FIELD
 
 fn discredited_probe_observation() -> gunbc.web_motion_binding.WebMotionObservation {
   gunbc.web_motion_binding.WebMotionObservation {
-    host: probe_subject(),
+    host: test.claim.web_motion_binding_witness.probe_subject(),
     provider: DeviceMotionEventProvider,
     browsing_context: BrowsingContextUnobserved,
     secure_context: SecureContextYes,
@@ -70,7 +70,7 @@ fn witness_the_probe_left_six_axes_unread_and_no_window() -> Bool {
   let o = discredited_probe_observation()
   unobserved_axis_count(o: o) == 6
     && !observation_is_decisive(o: o)
-    && !host_identity_is_exact(h: probe_subject())
+    && !host_identity_is_exact(h: test.claim.web_motion_binding_witness.probe_subject())
     && permission_method_exposure_key(e: PermissionMethodAbsent) == "request-permission-method-absent"
 }
 
@@ -83,7 +83,7 @@ fn witness_red_silence_never_projects_to_an_absent_sensor() -> Bool {
 
 fn observation_with_stream(s: gunbc.web_motion_binding.MotionStreamState) -> gunbc.web_motion_binding.WebMotionObservation {
   gunbc.web_motion_binding.WebMotionObservation {
-    host: probe_subject(),
+    host: test.claim.web_motion_binding_witness.probe_subject(),
     provider: LinearAccelerationSensorProvider,
     browsing_context: TopLevelContext,
     secure_context: SecureContextYes,

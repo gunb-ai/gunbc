@@ -158,7 +158,7 @@ fn census_of(rows: List<WitnessClassRow>) -> WitnessClassCensus {
 }
 
 fn census_accounts_for_every_row(rows: List<WitnessClassRow>) -> Bool {
-  let c = census_of(rows: rows)
+  let c = gunbc.witness_execution_class.census_of(rows: rows)
   c.total == length_of(rows)
     && c.native_required + c.native_live_observation + c.effect_obligation + c.interpreter_subject + c.native_blocked == c.total
 }

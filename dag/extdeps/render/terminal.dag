@@ -108,7 +108,7 @@ fn serialize_line(line: std.render.Line, cap: std.render.RenderCapability) -> St
   let pad = repeat_string(s: " ", n: line.indent * 4)
   let body = fold(line.spans,
     init: "",
-    f: (acc, span) => concat(acc, serialize_span(span: span, cap: cap))
+    f: (acc, span) => concat(acc, extdeps.render.terminal.serialize_span(span: span, cap: cap))
   )
   concat(pad, body)
 }

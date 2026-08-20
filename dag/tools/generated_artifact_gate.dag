@@ -52,7 +52,7 @@ func generated_artifact_drift_failure_receipt() -> String {
 
 func main_wet() -> std.process.ProcessExit {
   fold(committed_generated_artifacts(), init: ExitSuccess, f: fn(acc, a) {
-    if exit_ok(e: acc) {
+    if tools.generated_artifact_gate.exit_ok(e: acc) {
       match artifact_generate(a: a) {
         ArtifactGenerationRefused { reason } => exit_failure(reason: concat(concat("generation refused for ", artifact_path(a: a)), concat(": ", reason)))
         ArtifactGenerated { content } => {

@@ -14,8 +14,8 @@ fn diagnostic_reason(d: v2.std.diagnostic.Diagnostic) -> v2.std.node.Symbol {
 }
 
 fn all_reasons(d: v2.std.diagnostic.NonEmptyDiagnostics) -> List<v2.std.node.Symbol> {
-  v2.std.algebra.fold_list(xs: d.tail, empty: [diagnostic_reason(d: d.head)], cons: fn(acc, item) {
-    concat(acc, [diagnostic_reason(d: item)])
+  v2.std.algebra.fold_list(xs: d.tail, empty: [gunbc.tools.frontier_ingestion_probe.diagnostic_reason(d: d.head)], cons: fn(acc, item) {
+    concat(acc, [gunbc.tools.frontier_ingestion_probe.diagnostic_reason(d: item)])
   })
 }
 
@@ -118,11 +118,11 @@ fn frontend_stage_eq(a: FrontendStage, b: FrontendStage) -> Bool {
 }
 
 fn classify_normalize_diagnostics(d: v2.std.diagnostic.NonEmptyDiagnostics) -> FrontendStage {
-  let rs = all_reasons(d: d)
-  if reasons_contain(reasons: rs, sym: ^namespace_graft_body_dissolved_refused) {
+  let rs = gunbc.tools.frontier_ingestion_probe.all_reasons(d: d)
+  if gunbc.tools.frontier_ingestion_probe.reasons_contain(reasons: rs, sym: ^namespace_graft_body_dissolved_refused) {
     NormalizeGraftRefused
-  } else if reasons_contain(reasons: rs, sym: ^body_lowering_reason_wrapper_retained_emitted)
-    && reasons_contain(reasons: rs, sym: ^normalize_reason_post_normalize_not_well_formed) {
+  } else if gunbc.tools.frontier_ingestion_probe.reasons_contain(reasons: rs, sym: ^body_lowering_reason_wrapper_retained_emitted)
+    && gunbc.tools.frontier_ingestion_probe.reasons_contain(reasons: rs, sym: ^normalize_reason_post_normalize_not_well_formed) {
     NormalizeRetained
   } else {
     NormalizeOther
@@ -164,7 +164,7 @@ fn classify_after_lex(
   ) {
     Rejected { diagnostics: _ } => ParseRefused
     Accepted { value: parsed, diagnostics: _ } =>
-      match v2.compiler.normalize.normalize(parse_tree: artifact_tree(artifact: parsed)) {
+      match v2.compiler.normalize.normalize(parse_tree: gunbc.tools.frontier_ingestion_probe.artifact_tree(artifact: parsed)) {
         Accepted { value: _, diagnostics: _ } => NormalizeAccepted
         Rejected { diagnostics: d } => classify_normalize_diagnostics(d: d)
       }

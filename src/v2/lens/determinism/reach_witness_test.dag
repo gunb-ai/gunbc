@@ -115,19 +115,19 @@ test fn determinism_gate_rejects_map_values_reach() -> Bool {
 }
 
 test fn determinism_gate_accepts_clean_tree() -> Bool {
-  gate_accepts(o: determinism_compile_gate(node: clean_call_fixture()))
+  v2.test.lens_determinism.reach_witness.gate_accepts(o: determinism_compile_gate(node: clean_call_fixture()))
 }
 
 test fn determinism_gate_accepts_unrelated_keys_call() -> Bool {
-  gate_accepts(o: determinism_compile_gate(node: unrelated_same_named_call_fixture(callee: ^keys)))
+  v2.test.lens_determinism.reach_witness.gate_accepts(o: determinism_compile_gate(node: unrelated_same_named_call_fixture(callee: ^keys)))
 }
 
 test fn determinism_gate_accepts_unrelated_values_call() -> Bool {
-  gate_accepts(o: determinism_compile_gate(node: unrelated_same_named_call_fixture(callee: ^values)))
+  v2.test.lens_determinism.reach_witness.gate_accepts(o: determinism_compile_gate(node: unrelated_same_named_call_fixture(callee: ^values)))
 }
 
 test fn determinism_gate_accepts_sorted_map_keys_sibling() -> Bool {
-  gate_accepts(o: determinism_compile_gate(node: sorted_map_keys_call_fixture()))
+  v2.test.lens_determinism.reach_witness.gate_accepts(o: determinism_compile_gate(node: sorted_map_keys_call_fixture()))
 }
 
 test fn determinism_gate_rejects_nested_map_keys_in_subtree() -> Bool {

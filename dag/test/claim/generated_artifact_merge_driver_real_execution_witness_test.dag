@@ -26,7 +26,7 @@ fn witness_repo_file(repo: std.types.FilePath, name: String) -> String {
 }
 
 fn write_witness_generated_projection(repo: std.types.FilePath, content: String) -> Bool {
-  Filesystem.Write(path: witness_repo_file(repo: repo, name: witness_generated_path), content: content).success
+  Filesystem.Write(path: test.claim.generated_artifact_merge_driver_real_execution.witness_repo_file(repo: repo, name: witness_generated_path), content: content).success
 }
 
 fn seed_witness_repository(repo: std.types.FilePath, driver_value: String) -> Bool {
@@ -39,11 +39,11 @@ fn seed_witness_repository(repo: std.types.FilePath, driver_value: String) -> Bo
     value: driver_value,
   ).success
   let script = Filesystem.Write(
-    path: witness_repo_file(repo: repo, name: witness_driver_script_name),
+    path: test.claim.generated_artifact_merge_driver_real_execution.witness_repo_file(repo: repo, name: witness_driver_script_name),
     content: expected_generated_artifact_merge_driver_sh(regen_command: ci_heal_author_commit_regen_command),
   ).success
   let attributes = Filesystem.Write(
-    path: witness_repo_file(repo: repo, name: ".gitattributes"),
+    path: test.claim.generated_artifact_merge_driver_real_execution.witness_repo_file(repo: repo, name: ".gitattributes"),
     content: witness_gitattributes,
   ).success
   let seeded = write_witness_generated_projection(repo: repo, content: witness_base_content)
@@ -63,18 +63,18 @@ fn commit_witness_side(repo: std.types.FilePath, branch: String, start_point: st
 }
 
 fn observe_witness_merge(repo: std.types.FilePath, ours_touches_artifact: Bool) -> MergeDivergenceObservation {
-  let theirs = commit_witness_side(repo: repo, branch: "theirs", start_point: "base" as std.types.GitRef, content: witness_theirs_content)
+  let theirs = test.claim.generated_artifact_merge_driver_real_execution.commit_witness_side(repo: repo, branch: "theirs", start_point: "base" as std.types.GitRef, content: witness_theirs_content)
   let ours_branch = git.Core.CheckoutNewBranchAtInRepo(repo: repo, branch: "ours", start_point: "base" as std.types.GitRef).exit_code
   let ours_written = if ours_touches_artifact {
     write_witness_generated_projection(repo: repo, content: witness_ours_content)
   } else {
-    Filesystem.Write(path: witness_repo_file(repo: repo, name: "unrelated.txt"), content: witness_ours_content).success
+    Filesystem.Write(path: test.claim.generated_artifact_merge_driver_real_execution.witness_repo_file(repo: repo, name: "unrelated.txt"), content: witness_ours_content).success
   }
   let ours_staged = git.Core.AddAllInRepo(repo: repo).exit_code
   let ours_committed = git.Core.CommitInRepo(repo: repo, message: "ours").exit_code
   let merged = git.Core.MergeNoEditInRepo(repo: repo, branch: "theirs", expect: OutcomeIsData)
   let unmerged = git.Core.LsFilesUnmergedInRepo(repo: repo, path: witness_generated_path)
-  let after = Filesystem.Read(path: witness_repo_file(repo: repo, name: witness_generated_path))
+  let after = Filesystem.Read(path: test.claim.generated_artifact_merge_driver_real_execution.witness_repo_file(repo: repo, name: witness_generated_path))
   MergeDivergenceObservation {
     merge_exit_code: merged.exit_code,
     unmerged_stage_count: count(unmerged.entries),
@@ -86,7 +86,7 @@ fn observe_witness_merge(repo: std.types.FilePath, ours_touches_artifact: Bool) 
 fn observe_generated_artifact_merge(driver_value: String, ours_touches_artifact: Bool) -> MergeDivergenceObservation {
   let dir = shell.Mktemp.Dir()
   let repo = dir.path
-  let seeded = seed_witness_repository(repo: repo, driver_value: driver_value)
+  let seeded = test.claim.generated_artifact_merge_driver_real_execution.seed_witness_repository(repo: repo, driver_value: driver_value)
   let observed = observe_witness_merge(repo: repo, ours_touches_artifact: ours_touches_artifact)
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   MergeDivergenceObservation {

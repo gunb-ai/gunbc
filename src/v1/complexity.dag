@@ -144,7 +144,7 @@ fn method_callback_element_position(method_semantics: MethodSemantics?) -> Int? 
 
 fn iteration_element_name(method_semantics: MethodSemantics?, lambda: v1.std.core.Node, si: Map<String, v1.std.core.NewlineIndex>) -> String? {
   let params = lambda_param_names_at(texpr: lambda, source_indices: si)
-  match method_callback_element_position(method_semantics: method_semantics) {
+  match v1.compiler.complexity.method_callback_element_position(method_semantics: method_semantics) {
     Present { value: pos } => params |> skip(pos) |> first
     Absent => none
   }

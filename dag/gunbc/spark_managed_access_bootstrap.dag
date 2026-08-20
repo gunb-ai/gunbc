@@ -93,7 +93,7 @@ fn derive_spark_managed_access_standing(
 ) -> SparkManagedAccessStanding {
   let managed = gunbc.fleet_posix_accounts.PosixAccountOccurrence { host: host, principal: FleetAccountAutomation }
   let bootstrap = gunbc.fleet_posix_accounts.PosixAccountOccurrence { host: host, principal: FleetAccountOperator }
-  match observation_for(observations: observations, host: host, login: spark_managed_executor_login as std.types.NonEmptyStr) {
+  match gunbc.spark_managed_access_bootstrap.observation_for(observations: observations, host: host, login: spark_managed_executor_login as std.types.NonEmptyStr) {
     Present { value: m } =>
       if m.authenticated {
         ManagedAccessGrounded { occurrence: managed }
@@ -101,7 +101,7 @@ fn derive_spark_managed_access_standing(
         ManagedAccessBootstrapRequired { host: host, missing: managed, bootstrap_transport: bootstrap }
       }
     Absent =>
-      match observation_for(observations: observations, host: host, login: spark_operator_bootstrap_login as std.types.NonEmptyStr) {
+      match gunbc.spark_managed_access_bootstrap.observation_for(observations: observations, host: host, login: spark_operator_bootstrap_login as std.types.NonEmptyStr) {
         Present { value: b } =>
           if b.authenticated {
             ManagedAccessBootstrapRequired { host: host, missing: managed, bootstrap_transport: bootstrap }

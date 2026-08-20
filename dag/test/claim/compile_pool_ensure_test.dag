@@ -37,9 +37,9 @@ fn ensure_for(
 }
 
 test fn witness_undeclared_topology_refuses() -> Bool {
-  let a = ensure_for(
+  let a = test.claim.compile_pool_ensure.ensure_for(
     topology: CompilePoolInRunnerSlots,
-    sizing: sized(),
+    sizing: test.claim.compile_pool_ensure.sized(),
     cache_placement: ServerPlacementAbsent,
     observed: gunbc.host_compile_pool.CompilePoolSliceAbsent { slice_unit: gunbc_managed_compile_pool_slice },
   )
@@ -47,9 +47,9 @@ test fn witness_undeclared_topology_refuses() -> Bool {
 }
 
 test fn witness_unknown_cache_placement_refuses_before_slice_mutation() -> Bool {
-  let a = ensure_for(
+  let a = test.claim.compile_pool_ensure.ensure_for(
     topology: gunbc.fleet_host_budget.CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
-    sizing: sized(),
+    sizing: test.claim.compile_pool_ensure.sized(),
     cache_placement: gunbc.build_cache_instance.ServerPlacementUnknown { detail: "owner cgroup unclassifiable" as std.types.NonEmptyStr },
     observed: gunbc.host_compile_pool.CompilePoolSliceAbsent { slice_unit: gunbc_managed_compile_pool_slice },
   )
@@ -57,9 +57,9 @@ test fn witness_unknown_cache_placement_refuses_before_slice_mutation() -> Bool 
 }
 
 test fn witness_an_absent_slice_is_admitted_with_rendered_lines() -> Bool {
-  let a = ensure_for(
+  let a = test.claim.compile_pool_ensure.ensure_for(
     topology: gunbc.fleet_host_budget.CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
-    sizing: sized(),
+    sizing: test.claim.compile_pool_ensure.sized(),
     cache_placement: ServerPlacementAbsent,
     observed: gunbc.host_compile_pool.CompilePoolSliceAbsent { slice_unit: gunbc_managed_compile_pool_slice },
   )
@@ -74,9 +74,9 @@ test fn witness_an_absent_slice_is_admitted_with_rendered_lines() -> Bool {
 }
 
 test fn witness_a_matching_slice_is_converged_and_emits_nothing() -> Bool {
-  let a = ensure_for(
+  let a = test.claim.compile_pool_ensure.ensure_for(
     topology: gunbc.fleet_host_budget.CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
-    sizing: sized(),
+    sizing: test.claim.compile_pool_ensure.sized(),
     cache_placement: gunbc.build_cache_instance.ServerManagedUnitOwned { unit: "gunbc-build-cache-ci.service" as std.types.NonEmptyStr },
     observed: observed_converged(),
   )
@@ -84,9 +84,9 @@ test fn witness_a_matching_slice_is_converged_and_emits_nothing() -> Bool {
 }
 
 test fn witness_an_undersized_observed_slice_is_admitted_for_resize() -> Bool {
-  let a = ensure_for(
+  let a = test.claim.compile_pool_ensure.ensure_for(
     topology: gunbc.fleet_host_budget.CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
-    sizing: sized(),
+    sizing: test.claim.compile_pool_ensure.sized(),
     cache_placement: ServerPlacementAbsent,
     observed: gunbc.host_compile_pool.CompilePoolSliceObserved {
       slice_unit: gunbc_managed_compile_pool_slice,
@@ -101,9 +101,9 @@ test fn witness_an_undersized_observed_slice_is_admitted_for_resize() -> Bool {
 }
 
 test fn witness_a_differently_named_slice_refuses() -> Bool {
-  let a = ensure_for(
+  let a = test.claim.compile_pool_ensure.ensure_for(
     topology: gunbc.fleet_host_budget.CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
-    sizing: sized(),
+    sizing: test.claim.compile_pool_ensure.sized(),
     cache_placement: ServerPlacementAbsent,
     observed: gunbc.host_compile_pool.CompilePoolSliceObserved {
       slice_unit: "other.slice" as std.types.NonEmptyStr,
@@ -118,7 +118,7 @@ test fn witness_a_differently_named_slice_refuses() -> Bool {
 }
 
 test fn witness_unresolved_sizing_refuses() -> Bool {
-  let a = ensure_for(
+  let a = test.claim.compile_pool_ensure.ensure_for(
     topology: gunbc.fleet_host_budget.CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
     sizing: gunbc.fleet_host_budget.CompilePoolUnresolved { reason: "jobserver config citation absent" },
     cache_placement: ServerPlacementAbsent,

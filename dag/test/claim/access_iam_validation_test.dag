@@ -52,7 +52,7 @@ data iam_access_policy: std.access.AccessPolicy<IamPrincipal, S3Action, std.type
 }
 
 test fn iam_internal_prefix_mfa_permits() -> Bool {
-  decision_is_permit(d: iam_decide(request: {
+  test.claim.access_iam_validation.decision_is_permit(d: iam_decide(request: {
     subject: { arn: "arn:aws:iam::1:user/alice", source_locality: product.network_topology.Lan, mfa_present: true },
     action: { operation: "s3:extdeps.object_storage.GetObject", prefix: "reports/" }, object: "arn:aws:s3:::bucket/reports/q3.csv",
     context: std.access.AccessContext { value: IamRequestContext {} }, evidence: std.access.AccessEvidence { value: IamRequestEvidence {} }
@@ -60,7 +60,7 @@ test fn iam_internal_prefix_mfa_permits() -> Bool {
 }
 
 test fn iam_external_source_denies() -> Bool {
-  decision_is_deny(d: iam_decide(request: {
+  test.claim.access_iam_validation.decision_is_deny(d: iam_decide(request: {
     subject: { arn: "arn:aws:iam::1:user/alice", source_locality: product.network_topology.Internet, mfa_present: true },
     action: { operation: "s3:extdeps.object_storage.GetObject", prefix: "reports/" }, object: "arn:aws:s3:::bucket/reports/q3.csv",
     context: std.access.AccessContext { value: IamRequestContext {} }, evidence: std.access.AccessEvidence { value: IamRequestEvidence {} }
@@ -68,7 +68,7 @@ test fn iam_external_source_denies() -> Bool {
 }
 
 test fn iam_wrong_prefix_denies() -> Bool {
-  decision_is_deny(d: iam_decide(request: {
+  test.claim.access_iam_validation.decision_is_deny(d: iam_decide(request: {
     subject: { arn: "arn:aws:iam::1:user/alice", source_locality: product.network_topology.Lan, mfa_present: true },
     action: { operation: "s3:extdeps.object_storage.GetObject", prefix: "secrets/" }, object: "arn:aws:s3:::bucket/secrets/key.pem",
     context: std.access.AccessContext { value: IamRequestContext {} }, evidence: std.access.AccessEvidence { value: IamRequestEvidence {} }
@@ -76,7 +76,7 @@ test fn iam_wrong_prefix_denies() -> Bool {
 }
 
 test fn iam_no_mfa_denies() -> Bool {
-  decision_is_deny(d: iam_decide(request: {
+  test.claim.access_iam_validation.decision_is_deny(d: iam_decide(request: {
     subject: { arn: "arn:aws:iam::1:user/alice", source_locality: product.network_topology.Lan, mfa_present: false },
     action: { operation: "s3:extdeps.object_storage.GetObject", prefix: "reports/" }, object: "arn:aws:s3:::bucket/reports/q3.csv",
     context: std.access.AccessContext { value: IamRequestContext {} }, evidence: std.access.AccessEvidence { value: IamRequestEvidence {} }

@@ -8,7 +8,7 @@ fn site() -> std.coordinate_frame.CoordinateFrameIdentity { coordinate_frame_ide
 // The world's spaces are millimetre-framed, which is what makes a cubic-millimetre volume a true
 // label rather than an assumed one.
 fn mm_registry() -> std.spatial_frame.SpatialFrameRegistry {
-  match register_frame(r: empty_frame_registry(), identity: site(), length_scale: Milli) {
+  match register_frame(r: empty_frame_registry(), identity: test.claim.spatial_world_witness.site(), length_scale: Milli) {
     FrameRegistered { frame: f } => registry_with(r: empty_frame_registry(), f: f)
     FrameRegistrationRefused { cause: _ } => empty_frame_registry()
   }
@@ -16,10 +16,10 @@ fn mm_registry() -> std.spatial_frame.SpatialFrameRegistry {
 
 fn rect(x0: Int, y0: Int, x1: Int, y1: Int) -> std.orthogonal_topology.EnclosedSpace? {
   match orthogonal_loop2(vertices: [
-    point2(frame: site(), x: x0, y: y0),
-    point2(frame: site(), x: x1, y: y0),
-    point2(frame: site(), x: x1, y: y1),
-    point2(frame: site(), x: x0, y: y1),
+    point2(frame: test.claim.spatial_world_witness.site(), x: x0, y: y0),
+    point2(frame: test.claim.spatial_world_witness.site(), x: x1, y: y0),
+    point2(frame: test.claim.spatial_world_witness.site(), x: x1, y: y1),
+    point2(frame: test.claim.spatial_world_witness.site(), x: x0, y: y1),
   ]) {
     OrthogonalRefused { cause: _ } => none
     OrthogonalReady { value: l } =>
@@ -31,7 +31,7 @@ fn rect(x0: Int, y0: Int, x1: Int, y1: Int) -> std.orthogonal_topology.EnclosedS
 }
 
 fn placed(name: String, x0: Int, y0: Int, x1: Int, y1: Int) -> product.spatial_world.PlacedSpace? {
-  match rect(x0: x0, y0: y0, x1: x1, y1: y1) {
+  match test.claim.spatial_world_witness.rect(x0: x0, y0: y0, x1: x1, y1: y1) {
     Absent => none
     Present { value: s } => Present { value: product.spatial_world.PlacedSpace { identity: (name as product.placement_supply.RoomIdentity), space: s } }
   }
@@ -51,8 +51,8 @@ fn rooms_of(a: product.spatial_world.PlacedSpace?, b: product.spatial_world.Plac
   }
 }
 
-fn kitchen() -> product.spatial_world.PlacedSpace? { placed(name: "kitchen", x0: 0, y0: 0, x1: 3000, y1: 3000) }
-fn hall() -> product.spatial_world.PlacedSpace? { placed(name: "hall", x0: 3000, y0: 0, x1: 6000, y1: 3000) }
+fn kitchen() -> product.spatial_world.PlacedSpace? { test.claim.spatial_world_witness.placed(name: "kitchen", x0: 0, y0: 0, x1: 3000, y1: 3000) }
+fn hall() -> product.spatial_world.PlacedSpace? { test.claim.spatial_world_witness.placed(name: "hall", x0: 3000, y0: 0, x1: 6000, y1: 3000) }
 
 fn two_room_world() -> product.spatial_world.World? {
   match rooms_of(a: kitchen(), b: hall()) {
@@ -66,16 +66,16 @@ fn two_room_world() -> product.spatial_world.World? {
 }
 
 fn volume_of(w: product.spatial_world.World) -> Int {
-  match world_total_volume(registry: mm_registry(), w: w) {
+  match world_total_volume(registry: test.claim.spatial_world_witness.mm_registry(), w: w) {
     WorldRefused { cause: _ } => 0 - 1
     WorldReady { value: v } => cubic_millimeter_count(m: v)
   }
 }
 
 test fn a_world_joins_identity_to_geometry_and_sums_its_rooms() -> Bool {
-  match two_room_world() {
+  match test.claim.spatial_world_witness.two_room_world() {
     Absent => false
-    Present { value: w } => world_room_count(w: w) == 2 && volume_of(w: w) == 2 * 9000000 * 2400
+    Present { value: w } => world_room_count(w: w) == 2 && test.claim.spatial_world_witness.volume_of(w: w) == 2 * 9000000 * 2400
   }
 }
 
@@ -83,7 +83,7 @@ test fn a_world_joins_identity_to_geometry_and_sums_its_rooms() -> Bool {
 // different places are different rooms, and the same identity twice is refused even when the two
 // shapes are legal on their own.
 test fn duplicate_room_identity_refuses() -> Bool {
-  match rooms_of(a: kitchen(), b: placed(name: "kitchen", x0: 3000, y0: 0, x1: 6000, y1: 3000)) {
+  match rooms_of(a: kitchen(), b: test.claim.spatial_world_witness.placed(name: "kitchen", x0: 3000, y0: 0, x1: 6000, y1: 3000)) {
     Absent => false
     Present { value: rooms } =>
       match world(rooms: rooms) {
@@ -97,7 +97,7 @@ test fn duplicate_room_identity_refuses() -> Bool {
 // The geometry wall is not re-implemented here; it is the complex's, reached through the world
 // mint and reported with the lower layer's own cause.
 test fn overlapping_rooms_refuse_through_the_geometry_layer() -> Bool {
-  match rooms_of(a: kitchen(), b: placed(name: "pantry", x0: 1000, y0: 1000, x1: 4000, y1: 2000)) {
+  match rooms_of(a: kitchen(), b: test.claim.spatial_world_witness.placed(name: "pantry", x0: 1000, y0: 1000, x1: 4000, y1: 2000)) {
     Absent => false
     Present { value: rooms } =>
       match world(rooms: rooms) {
@@ -123,23 +123,23 @@ fn realized_room_count(v: product.spatial_world.WorldVariant) -> Int {
 }
 
 test fn an_empty_delta_realizes_to_the_base() -> Bool {
-  match two_room_world() {
+  match test.claim.spatial_world_witness.two_room_world() {
     Absent => false
     Present { value: base } =>
       let v = world_variant(base: base, delta: empty_patch())
       realized_room_count(v: v) == 2
         && match realize_variant(v: v) {
              WorldRefused { cause: _ } => false
-             WorldReady { value: w } => volume_of(w: w) == volume_of(w: base)
+             WorldReady { value: w } => test.claim.spatial_world_witness.volume_of(w: w) == test.claim.spatial_world_witness.volume_of(w: base)
            }
   }
 }
 
 test fn adding_a_room_through_a_delta_extends_the_world_and_leaves_the_base_alone() -> Bool {
-  match two_room_world() {
+  match test.claim.spatial_world_witness.two_room_world() {
     Absent => false
     Present { value: base } =>
-      match rect(x0: 0, y0: 3000, x1: 3000, y1: 6000) {
+      match test.claim.spatial_world_witness.rect(x0: 0, y0: 3000, x1: 3000, y1: 6000) {
         Absent => false
         Present { value: study } =>
           let v = world_variant(
@@ -155,13 +155,13 @@ test fn adding_a_room_through_a_delta_extends_the_world_and_leaves_the_base_alon
 // realization by the same geometry authority a hand-built world meets, so there is no route to an
 // overlapping world through the variant path.
 test fn a_delta_that_makes_rooms_overlap_refuses_at_realization() -> Bool {
-  match two_room_world() {
+  match test.claim.spatial_world_witness.two_room_world() {
     Absent => false
     Present { value: base } =>
       match kitchen() {
         Absent => false
         Present { value: current } =>
-          match rect(x0: 2000, y0: 0, x1: 5000, y1: 3000) {
+          match test.claim.spatial_world_witness.rect(x0: 2000, y0: 0, x1: 5000, y1: 3000) {
             Absent => false
             Present { value: widened } =>
               let v = world_variant(
@@ -189,13 +189,13 @@ test fn a_delta_that_makes_rooms_overlap_refuses_at_realization() -> Bool {
 // delta computed against a different base refuses instead of overwriting. This is the fact an
 // upsert collapse discards, and the reason std.change's modified arm carries `from` at all.
 test fn a_delta_computed_against_a_stale_base_refuses() -> Bool {
-  match two_room_world() {
+  match test.claim.spatial_world_witness.two_room_world() {
     Absent => false
     Present { value: base } =>
-      match rect(x0: 0, y0: 0, x1: 2500, y1: 2500) {
+      match test.claim.spatial_world_witness.rect(x0: 0, y0: 0, x1: 2500, y1: 2500) {
         Absent => false
         Present { value: stale_from } =>
-          match rect(x0: 0, y0: 0, x1: 2000, y1: 2000) {
+          match test.claim.spatial_world_witness.rect(x0: 0, y0: 0, x1: 2000, y1: 2000) {
             Absent => false
             Present { value: to } =>
               let v = world_variant(
@@ -218,7 +218,7 @@ test fn a_delta_computed_against_a_stale_base_refuses() -> Bool {
 // Neither absent-target arm absorbs: removing what is not there is not a no-op and adding what is
 // already there is not a replace. Both would let a delta from another base apply cleanly.
 test fn absent_and_present_targets_refuse_rather_than_absorbing() -> Bool {
-  match two_room_world() {
+  match test.claim.spatial_world_witness.two_room_world() {
     Absent => false
     Present { value: base } =>
       match kitchen() {
@@ -250,7 +250,7 @@ test fn absent_and_present_targets_refuse_rather_than_absorbing() -> Bool {
 }
 
 test fn removing_a_room_shrinks_the_realized_world_only() -> Bool {
-  match two_room_world() {
+  match test.claim.spatial_world_witness.two_room_world() {
     Absent => false
     Present { value: base } =>
       match hall() {
@@ -268,10 +268,10 @@ test fn removing_a_room_shrinks_the_realized_world_only() -> Bool {
 // Two variants over ONE base are independent because neither owns the base's rooms - the base is
 // shared and unmodified, which is the property a copy-and-edit representation cannot offer.
 test fn two_variants_over_one_base_do_not_see_each_other() -> Bool {
-  match two_room_world() {
+  match test.claim.spatial_world_witness.two_room_world() {
     Absent => false
     Present { value: base } =>
-      match rect(x0: 0, y0: 3000, x1: 3000, y1: 6000) {
+      match test.claim.spatial_world_witness.rect(x0: 0, y0: 3000, x1: 3000, y1: 6000) {
         Absent => false
         Present { value: study } =>
           match hall() {
@@ -298,7 +298,7 @@ fn rect_from(vs: List<std.affine_space.Point2>) -> std.orthogonal_topology.Enclo
   }
 }
 
-fn corner(x: Int, y: Int) -> std.affine_space.Point2 { point2(frame: site(), x: x, y: y) }
+fn corner(x: Int, y: Int) -> std.affine_space.Point2 { point2(frame: test.claim.spatial_world_witness.site(), x: x, y: y) }
 
 // THE SAME REGION WRITTEN THREE WAYS. orthogonal_loop2 keeps the caller's vertex sequence, choosing
 // neither a canonical start nor a canonical winding, so a positional comparison called these three
@@ -332,7 +332,7 @@ test fn modifying_a_room_preserves_the_room_order() -> Bool {
   match rooms_of(a: kitchen(), b: hall()) {
     Absent => false
     Present { value: two } =>
-      match placed(name: "study", x0: 0, y0: 3000, x1: 3000, y1: 6000) {
+      match test.claim.spatial_world_witness.placed(name: "study", x0: 0, y0: 3000, x1: 3000, y1: 6000) {
         Absent => false
         Present { value: st } =>
           match world(rooms: concat(two, [st])) {
@@ -341,7 +341,7 @@ test fn modifying_a_room_preserves_the_room_order() -> Bool {
               match hall() {
                 Absent => false
                 Present { value: h } =>
-                  match rect(x0: 3000, y0: 0, x1: 5500, y1: 3000) {
+                  match test.claim.spatial_world_witness.rect(x0: 3000, y0: 0, x1: 5500, y1: 3000) {
                     Absent => false
                     Present { value: narrower } =>
                       let v = world_variant(
@@ -368,13 +368,13 @@ fn room_names(w: product.spatial_world.World) -> String {
 }
 
 test fn space_equality_is_structural_and_frame_aware() -> Bool {
-  match rect(x0: 0, y0: 0, x1: 3000, y1: 3000) {
+  match test.claim.spatial_world_witness.rect(x0: 0, y0: 0, x1: 3000, y1: 3000) {
     Absent => false
     Present { value: a } =>
-      match rect(x0: 0, y0: 0, x1: 3000, y1: 3000) {
+      match test.claim.spatial_world_witness.rect(x0: 0, y0: 0, x1: 3000, y1: 3000) {
         Absent => false
         Present { value: b } =>
-          match rect(x0: 0, y0: 0, x1: 3001, y1: 3000) {
+          match test.claim.spatial_world_witness.rect(x0: 0, y0: 0, x1: 3001, y1: 3000) {
             Absent => false
             Present { value: c } => space_eq(a: a, b: b) && !space_eq(a: a, b: c)
           }

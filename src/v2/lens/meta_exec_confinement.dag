@@ -44,18 +44,18 @@ fn path_has_any_prefix(prefixes: List<String>, path: String) -> Bool {
   fold_list(
     xs: prefixes,
     empty: false,
-    cons: fn(acc, p) { acc || is_prefix_of(prefix: p, xs: path, eq: char_eq) }
+    cons: fn(acc, p) { acc || is_prefix_of(prefix: p, xs: path, eq: v2.lens.meta_exec_confinement.char_eq) }
   )
 }
 
 fn path_is_meta_exec_realization_edge(path: String) -> Bool {
-  path_has_any_prefix(prefixes: meta_exec_realization_edge_path_prefixes, path: path)
+  v2.lens.meta_exec_confinement.path_has_any_prefix(prefixes: meta_exec_realization_edge_path_prefixes, path: path)
 }
 
 fn is_meta_exec_confinement_leak(fact: v2.std.layer.LayerImportFact, roster: List<String>) -> Bool {
   fact.import_module == target_meta_exec_module
     && (path_is_meta_exec_realization_edge(path: fact.path) == false)
-    && (list_contains_str(xs: roster, target: fact.path) == false)
+    && (v2.lens.meta_exec_confinement.list_contains_str(xs: roster, target: fact.path) == false)
 }
 
 fn scan_facts_for_leaks(
@@ -158,7 +158,7 @@ fn meta_exec_stale_roster_entries(
     xs: roster,
     empty: empty_meta_exec_path_list,
     cons: fn(acc, entry) {
-      if list_contains_str(xs: live_leak_paths, target: entry) {
+      if v2.lens.meta_exec_confinement.list_contains_str(xs: live_leak_paths, target: entry) {
         acc
       } else {
         list_snoc_item(xs: acc, item: entry)

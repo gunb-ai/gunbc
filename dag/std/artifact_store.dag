@@ -246,5 +246,5 @@ fn store_put_is_admitted(outcome: std.artifact_store.StorePutOutcome) -> Bool {
 }
 
 fn store_put_evicted_keys(outcome: std.artifact_store.StorePutOutcome) -> List<std.content_hash.ContentHash> {
-  store_put_fold(outcome: outcome, admitted: (s, e) => e, did_not_fit: (a, b) => no_evicted_keys)
+  store_put_fold(outcome: outcome, admitted: (s, e) => e, did_not_fit: (a, b) => std.artifact_store.no_evicted_keys)
 }

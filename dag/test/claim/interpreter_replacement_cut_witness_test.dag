@@ -52,16 +52,16 @@ fn count_matching(causes: List<gunbc.replacement_cut.CutRefusalCause>, p: fn(gun
 
 // The plan refuses, and that is the authored outcome rather than a defect.
 test fn interpreter_cut_plan_refuses_with_open_decisions() -> Bool {
-  let causes = causes_of(admission: gunbc.interpreter_replacement_cut.interpreter_cut_admission())
+  let causes = test.claim.interpreter_replacement_cut_witness_test.causes_of(admission: gunbc.interpreter_replacement_cut.interpreter_cut_admission())
   list_length(items: causes) == 4
-    && count_matching(causes: causes, p: is_undecided_consumer) == 1
-    && count_matching(causes: causes, p: is_uncovered_surviving) == 3
+    && test.claim.interpreter_replacement_cut_witness_test.count_matching(causes: causes, p: is_undecided_consumer) == 1
+    && test.claim.interpreter_replacement_cut_witness_test.count_matching(causes: causes, p: is_uncovered_surviving) == 3
 }
 
 // Every cause is one of the two open-decision classes. Any other class is an
 // authoring defect in the row, not a fact about the world.
 test fn every_refusal_cause_is_an_open_decision_not_a_defect() -> Bool {
-  let causes = causes_of(admission: gunbc.interpreter_replacement_cut.interpreter_cut_admission())
+  let causes = test.claim.interpreter_replacement_cut_witness_test.causes_of(admission: gunbc.interpreter_replacement_cut.interpreter_cut_admission())
   fold(
     causes,
     init: true,
@@ -126,7 +126,7 @@ test fn retiring_with_x_needs_no_coverage_authority() -> Bool {
     && count_consumers(rows: rows, p: is_retire) == 5
     && count_consumers(rows: rows, p: is_replaced) == 1
     && causeless == 6
-    && list_length(items: causes_of(admission: gunbc.interpreter_replacement_cut.interpreter_cut_admission()))
+    && list_length(items: test.claim.interpreter_replacement_cut_witness_test.causes_of(admission: gunbc.interpreter_replacement_cut.interpreter_cut_admission()))
        == list_length(items: rows) - causeless
 }
 

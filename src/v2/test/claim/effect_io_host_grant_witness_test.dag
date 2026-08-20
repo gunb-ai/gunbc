@@ -41,7 +41,7 @@ test fn effect_io_host_locator_position_uses_hash_identity_holds() -> Bool {
 }
 
 test fn effect_io_host_hermetic_write_outside_grant_holds() -> Bool {
-  is_refused(
+  v2.test.claim.effect_io_host_grant_witness.is_refused(
     a: effect_io_host_write_admissible(
       env: effect_io_host_envelope(mode: Hermetic, backend: HttpResourceBackend),
       locator: sample_locator
@@ -50,7 +50,7 @@ test fn effect_io_host_hermetic_write_outside_grant_holds() -> Bool {
 }
 
 test fn effect_io_host_wet_write_admitted_holds() -> Bool {
-  is_admitted(
+  v2.test.claim.effect_io_host_grant_witness.is_admitted(
     a: effect_io_host_write_admissible(
       env: effect_io_host_envelope(mode: Wet, backend: HttpResourceBackend),
       locator: sample_locator
@@ -72,7 +72,7 @@ test fn effect_io_host_hermetic_refusal_is_located() -> Bool {
 }
 
 test fn effect_io_host_write_refuses_backend_mismatch_holds() -> Bool {
-  is_refused(
+  v2.test.claim.effect_io_host_grant_witness.is_refused(
     a: effect_io_host_write_admissible(
       env: effect_io_host_envelope(mode: Wet, backend: HttpResourceBackend),
       locator: mismatched_backend_locator

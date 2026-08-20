@@ -87,7 +87,7 @@ fn float_body_compare_semantic_total(a: FloatBody, b: FloatBody) -> std.algebra.
               fb: fb,
             )
             match sa {
-              true => ordering_invert(o: mag)
+              true => v2.std.float.ordering_invert(o: mag)
               false => mag
             }
           }

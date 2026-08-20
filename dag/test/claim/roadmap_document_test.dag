@@ -35,7 +35,7 @@ fn status_node() -> gunbc.roadmap_model.RoadmapNode {
 fn roadmap_document_child_node() -> gunbc.roadmap_model.RoadmapNode {
   gunbc.roadmap_model.RoadmapNode {
     identity: "rnfx_ABYCNZ3BDSY98CHYC51T" as gunbc.roadmap_model.RoadmapNodeIdentity,
-    node: child_id,
+    node: test.claim.roadmap_document.child_id,
     line: gunbc.roadmap_status.AuthoredLine { done: false, content: "**host-fed status bridge**" },
     carriers: [],
     sizing: Unsized,
@@ -57,7 +57,7 @@ fn expansion_section() -> gunbc.roadmap_document.RoadmapSection {
     elements: [section_group(
       label: "",
       nodes: [status_node(), roadmap_document_child_node()],
-      edges: [gunbc.roadmap_model.RoadmapEdge { child: child_id, parent: status_id }],
+      edges: [gunbc.roadmap_model.RoadmapEdge { child: test.claim.roadmap_document.child_id, parent: status_id }],
     )],
   }
 }
@@ -70,7 +70,7 @@ fn preamble() -> List<std.markdown.MarkdownBlock> {
 }
 
 fn authority() -> gunbc.roadmap_document.RoadmapDocument {
-  gunbc.roadmap_document.RoadmapDocument { preamble: preamble(), lead_lanes: [], sections: [lockdown_section(), expansion_section()] }
+  gunbc.roadmap_document.RoadmapDocument { preamble: test.claim.roadmap_document.preamble(), lead_lanes: [], sections: [lockdown_section(), expansion_section()] }
 }
 
 fn emit_roadmap(merged: List<Int>) -> String {
@@ -78,33 +78,33 @@ fn emit_roadmap(merged: List<Int>) -> String {
 }
 
 test fn witness_preamble_first() -> Bool {
-  let out = emit_roadmap(merged: [5491])
+  let out = test.claim.roadmap_document.emit_roadmap(merged: [5491])
   string_contains(s: out, pattern: "# ROADMAP")
     && string_contains(s: out, pattern: "Generated from .dag authority")
 }
 
 test fn witness_both_sections() -> Bool {
-  let out = emit_roadmap(merged: [5491])
+  let out = test.claim.roadmap_document.emit_roadmap(merged: [5491])
   string_contains(s: out, pattern: "## 0. Fail-closed lock-down")
     && string_contains(s: out, pattern: "## 6. Expansion")
 }
 
 test fn witness_authored_evidence_awaiting_signoff() -> Bool {
-  let out = emit_roadmap(merged: [5491])
+  let out = test.claim.roadmap_document.emit_roadmap(merged: [5491])
   string_contains(s: out, pattern: "[ ] **fail-open audit**")
     && string_contains(s: out, pattern: "[plan](docs/plans/fail-closed-lockdown.md)")
     && string_contains(s: out, pattern: "⏳ awaiting sign-off")
 }
 
 test fn witness_derived_merged_awaiting_signoff() -> Bool {
-  let out = emit_roadmap(merged: [5491])
+  let out = test.claim.roadmap_document.emit_roadmap(merged: [5491])
   string_contains(s: out, pattern: "[ ] **PR-checkbox status**")
     && string_contains(s: out, pattern: "⏳ awaiting sign-off")
     && !string_contains(s: out, pattern: "[x] **PR-checkbox status**")
 }
 
 test fn witness_derived_unchecked_when_unmerged() -> Bool {
-  let out = emit_roadmap(merged: [])
+  let out = test.claim.roadmap_document.emit_roadmap(merged: [])
   string_contains(s: out, pattern: "[ ] **PR-checkbox status**")
     && !string_contains(s: out, pattern: "[x] **PR-checkbox status**")
 }
@@ -127,10 +127,10 @@ fn expected_roadmap() -> String {
 }
 
 test fn witness_exact_bytes() -> Bool {
-  emit_roadmap(merged: [5491]) == expected_roadmap()
+  test.claim.roadmap_document.emit_roadmap(merged: [5491]) == expected_roadmap()
 }
 
 test fn witness_drift_receipt() -> Bool {
-  emit_roadmap(merged: [5491]) == expected_roadmap()
-    && !(emit_roadmap(merged: []) == expected_roadmap())
+  test.claim.roadmap_document.emit_roadmap(merged: [5491]) == expected_roadmap()
+    && !(test.claim.roadmap_document.emit_roadmap(merged: []) == expected_roadmap())
 }

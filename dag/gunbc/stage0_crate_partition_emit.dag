@@ -18,7 +18,7 @@ fn render_partition_nested_string_list(xs: List<String>) -> String {
     "[\n",
     concat(
       v2.std.algebra.fold_list(xs, empty: "", cons: fn(acc, item) {
-        let line = concat("        \"", escape_dag_string_body(s: item), "\"")
+        let line = concat("        \"", gunbc.stage0_crate_partition_emit.escape_dag_string_body(s: item), "\"")
         if acc == "" {
           line
         } else {
@@ -33,8 +33,8 @@ fn render_partition_nested_string_list(xs: List<String>) -> String {
 fn render_partition_crate_row(row: v2.workflow.rust_crate_partition.Stage0PartitionCrateRow) -> String {
   concat(
     "    GeneratedPartitionCrateRow {\n",
-    "      package_name: \"", escape_dag_string_body(s: row.package_name), "\",\n",
-    "      crate_dir: \"", escape_dag_string_body(s: row.crate_dir), "\",\n",
+    "      package_name: \"", gunbc.stage0_crate_partition_emit.escape_dag_string_body(s: row.package_name), "\",\n",
+    "      crate_dir: \"", gunbc.stage0_crate_partition_emit.escape_dag_string_body(s: row.crate_dir), "\",\n",
     "      kind: ", render_partition_crate_kind(row: row), ",\n",
     "      modules: ", render_partition_nested_string_list(xs: row.modules), ",\n",
     "      reexport_packages: ", render_partition_nested_string_list(xs: row.reexport_packages), ",\n",

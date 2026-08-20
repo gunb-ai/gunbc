@@ -34,7 +34,7 @@ test fn emission_rules_match_rust_rules_for_generic_surface() -> Bool {
         projection: emission.surface,
         name: ^Bool,
         params: std.algebra.Empty,
-        coproduct: bool_coproduct()
+        coproduct: v2.test.emit.semantic_decl_rules_parity_test.bool_coproduct()
       ) {
         Accepted { value: surface, diagnostics: _ } =>
           tokens_for_rules(surface: surface, rules: emission.enum_translation_rules)

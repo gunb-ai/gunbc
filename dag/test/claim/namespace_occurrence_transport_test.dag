@@ -29,7 +29,7 @@ fn fixture_index_entry(
       authored_name: authored_name,
       diagnostic_span: span,
     },
-    containment: fixture_path(
+    containment: test.claim.namespace_occurrence_transport_test.fixture_path(
       ancestors: std.algebra.Empty,
       terminal: occurrence
     ),
@@ -49,10 +49,10 @@ fn fixture_unique_index_entries(
         next: next + 1,
         remaining: remaining - 1
       ),
-      fixture_index_entry(
+      test.claim.namespace_occurrence_transport_test.fixture_index_entry(
         occurrence: occurrence,
         authored_name: "same",
-        span: fixture_span(
+        span: test.claim.namespace_occurrence_transport_test.fixture_span(
           file: "occurrence-validator-scale.dag",
           start: next,
           end: next + 1
@@ -80,15 +80,15 @@ test fn namespace_occurrence_equal_text_mints_distinct_ids_holds() -> Bool {
     alloc: occurrence_id_allocator_initial()
   )
   let second = alloc_occurrence_id(alloc: first.alloc)
-  let first_entry = fixture_index_entry(
+  let first_entry = test.claim.namespace_occurrence_transport_test.fixture_index_entry(
     occurrence: first.id,
     authored_name: "same",
-    span: fixture_span(file: "a.dag", start: 1, end: 5)
+    span: test.claim.namespace_occurrence_transport_test.fixture_span(file: "a.dag", start: 1, end: 5)
   )
-  let second_entry = fixture_index_entry(
+  let second_entry = test.claim.namespace_occurrence_transport_test.fixture_index_entry(
     occurrence: second.id,
     authored_name: "same",
-    span: fixture_span(file: "b.dag", start: 40, end: 44)
+    span: test.claim.namespace_occurrence_transport_test.fixture_span(file: "b.dag", start: 40, end: 44)
   )
   first_entry.projection.authored_name ==
     second_entry.projection.authored_name &&
@@ -100,11 +100,11 @@ test fn namespace_occurrence_equal_text_mints_distinct_ids_holds() -> Bool {
 
 test fn namespace_occurrence_typed_categories_refuse_cross_role_holds() -> Bool {
   let occurrence = std.occurrence_identity.OccurrenceId { value: 4 }
-  let span = fixture_span(file: "typed.dag", start: 7, end: 8)
+  let span = test.claim.namespace_occurrence_transport_test.fixture_span(file: "typed.dag", start: 7, end: 8)
   let transport = std.occurrence_identity.OccurrenceTransport {
     index: std.occurrence_identity.OccurrenceIndex {
       entries: [
-        fixture_index_entry(
+        test.claim.namespace_occurrence_transport_test.fixture_index_entry(
           occurrence: occurrence,
           authored_name: "x",
           span: span
@@ -114,7 +114,7 @@ test fn namespace_occurrence_typed_categories_refuse_cross_role_holds() -> Bool 
     declarations: [
       std.occurrence_identity.DeclarationOccurrence {
         occurrence: occurrence,
-        containment: fixture_path(
+        containment: test.claim.namespace_occurrence_transport_test.fixture_path(
           ancestors: std.algebra.Empty,
           terminal: occurrence
         ),
@@ -125,7 +125,7 @@ test fn namespace_occurrence_typed_categories_refuse_cross_role_holds() -> Bool 
     references: [
       std.occurrence_identity.ReferenceOccurrence {
         occurrence: occurrence,
-        containment: fixture_path(
+        containment: test.claim.namespace_occurrence_transport_test.fixture_path(
           ancestors: std.algebra.Empty,
           terminal: occurrence
         ),
@@ -149,10 +149,10 @@ test fn namespace_occurrence_typed_categories_refuse_cross_role_holds() -> Bool 
 
 test fn namespace_occurrence_missing_and_duplicate_identity_refuse_holds() -> Bool {
   let occurrence = std.occurrence_identity.OccurrenceId { value: 9 }
-  let span = fixture_span(file: "refusal.dag", start: 2, end: 3)
+  let span = test.claim.namespace_occurrence_transport_test.fixture_span(file: "refusal.dag", start: 2, end: 3)
   let declaration = std.occurrence_identity.DeclarationOccurrence {
     occurrence: occurrence,
-    containment: fixture_path(
+    containment: test.claim.namespace_occurrence_transport_test.fixture_path(
       ancestors: std.algebra.Empty,
       terminal: occurrence
     ),
@@ -164,7 +164,7 @@ test fn namespace_occurrence_missing_and_duplicate_identity_refuse_holds() -> Bo
     declarations: [declaration],
     references: [],
   }
-  let entry = fixture_index_entry(
+  let entry = test.claim.namespace_occurrence_transport_test.fixture_index_entry(
     occurrence: occurrence,
     authored_name: "x",
     span: span
@@ -196,7 +196,7 @@ test fn namespace_occurrence_missing_and_duplicate_identity_refuse_holds() -> Bo
 test fn namespace_occurrence_index_terminal_mismatch_refuses_holds() -> Bool {
   let occurrence = std.occurrence_identity.OccurrenceId { value: 41 }
   let mismatched_terminal = std.occurrence_identity.OccurrenceId { value: 42 }
-  let span = fixture_span(
+  let span = test.claim.namespace_occurrence_transport_test.fixture_span(
     file: "occurrence-index-terminal-mismatch.dag",
     start: 4,
     end: 5
@@ -210,7 +210,7 @@ test fn namespace_occurrence_index_terminal_mismatch_refuses_holds() -> Bool {
             authored_name: "same",
             diagnostic_span: span,
           },
-          containment: fixture_path(
+          containment: test.claim.namespace_occurrence_transport_test.fixture_path(
             ancestors: std.algebra.Empty,
             terminal: mismatched_terminal
           ),
@@ -236,7 +236,7 @@ test fn namespace_occurrence_index_terminal_mismatch_refuses_holds() -> Bool {
 test fn namespace_occurrence_ancestor_path_mismatch_refuses_holds() -> Bool {
   let occurrence = std.occurrence_identity.OccurrenceId { value: 43 }
   let ancestor = std.occurrence_identity.OccurrenceId { value: 99 }
-  let span = fixture_span(
+  let span = test.claim.namespace_occurrence_transport_test.fixture_span(
     file: "occurrence-ancestor-path-mismatch.dag",
     start: 6,
     end: 7
@@ -244,7 +244,7 @@ test fn namespace_occurrence_ancestor_path_mismatch_refuses_holds() -> Bool {
   let transport = std.occurrence_identity.OccurrenceTransport {
     index: std.occurrence_identity.OccurrenceIndex {
       entries: [
-        fixture_index_entry(
+        test.claim.namespace_occurrence_transport_test.fixture_index_entry(
           occurrence: occurrence,
           authored_name: "same",
           span: span
@@ -279,14 +279,14 @@ test fn namespace_occurrence_ancestor_path_mismatch_refuses_holds() -> Bool {
 
 test fn namespace_occurrence_duplicate_declaration_rows_refuse_holds() -> Bool {
   let occurrence = std.occurrence_identity.OccurrenceId { value: 45 }
-  let span = fixture_span(
+  let span = test.claim.namespace_occurrence_transport_test.fixture_span(
     file: "occurrence-duplicate-declaration.dag",
     start: 8,
     end: 9
   )
   let declaration = std.occurrence_identity.DeclarationOccurrence {
     occurrence: occurrence,
-    containment: fixture_path(
+    containment: test.claim.namespace_occurrence_transport_test.fixture_path(
       ancestors: std.algebra.Empty,
       terminal: occurrence
     ),
@@ -296,7 +296,7 @@ test fn namespace_occurrence_duplicate_declaration_rows_refuse_holds() -> Bool {
   let transport = std.occurrence_identity.OccurrenceTransport {
     index: std.occurrence_identity.OccurrenceIndex {
       entries: [
-        fixture_index_entry(
+        test.claim.namespace_occurrence_transport_test.fixture_index_entry(
           occurrence: occurrence,
           authored_name: "same",
           span: span
@@ -321,14 +321,14 @@ test fn namespace_occurrence_duplicate_declaration_rows_refuse_holds() -> Bool {
 
 test fn namespace_occurrence_duplicate_reference_rows_refuse_holds() -> Bool {
   let occurrence = std.occurrence_identity.OccurrenceId { value: 46 }
-  let span = fixture_span(
+  let span = test.claim.namespace_occurrence_transport_test.fixture_span(
     file: "occurrence-duplicate-reference.dag",
     start: 10,
     end: 11
   )
   let reference = std.occurrence_identity.ReferenceOccurrence {
     occurrence: occurrence,
-    containment: fixture_path(
+    containment: test.claim.namespace_occurrence_transport_test.fixture_path(
       ancestors: std.algebra.Empty,
       terminal: occurrence
     ),
@@ -338,7 +338,7 @@ test fn namespace_occurrence_duplicate_reference_rows_refuse_holds() -> Bool {
   let transport = std.occurrence_identity.OccurrenceTransport {
     index: std.occurrence_identity.OccurrenceIndex {
       entries: [
-        fixture_index_entry(
+        test.claim.namespace_occurrence_transport_test.fixture_index_entry(
           occurrence: occurrence,
           authored_name: "same",
           span: span
@@ -468,7 +468,7 @@ fn callable_reference_count(
 fn equal_text_span(
   occurrence: std.occurrence_identity.OccurrenceId
 ) -> std.types.SourceSpan {
-  fixture_span(
+  test.claim.namespace_occurrence_transport_test.fixture_span(
     file: "occurrence-equal-text.dag",
     start: occurrence.value,
     end: occurrence.value + 1
@@ -482,7 +482,7 @@ fn fixture_declaration(
 ) -> std.occurrence_identity.DeclarationOccurrence {
   std.occurrence_identity.DeclarationOccurrence {
     occurrence: occurrence,
-    containment: fixture_path(ancestors: std.algebra.Empty, terminal: occurrence),
+    containment: test.claim.namespace_occurrence_transport_test.fixture_path(ancestors: std.algebra.Empty, terminal: occurrence),
     category: category,
     diagnostic_span: span,
   }
@@ -495,7 +495,7 @@ fn fixture_reference(
 ) -> std.occurrence_identity.ReferenceOccurrence {
   std.occurrence_identity.ReferenceOccurrence {
     occurrence: occurrence,
-    containment: fixture_path(ancestors: std.algebra.Empty, terminal: occurrence),
+    containment: test.claim.namespace_occurrence_transport_test.fixture_path(ancestors: std.algebra.Empty, terminal: occurrence),
     category: category,
     diagnostic_span: span,
   }
@@ -512,37 +512,37 @@ test fn w_namespace_occurrence_transport_mints_distinct_equal_text() -> Bool {
   let transport = std.occurrence_identity.OccurrenceTransport {
     index: std.occurrence_identity.OccurrenceIndex {
       entries: [
-        fixture_index_entry(
+        test.claim.namespace_occurrence_transport_test.fixture_index_entry(
           occurrence: left_decl.id,
           authored_name: "left",
           span: equal_text_span(occurrence: left_decl.id)
         ),
-        fixture_index_entry(
+        test.claim.namespace_occurrence_transport_test.fixture_index_entry(
           occurrence: left_param.id,
           authored_name: "x",
           span: equal_text_span(occurrence: left_param.id)
         ),
-        fixture_index_entry(
+        test.claim.namespace_occurrence_transport_test.fixture_index_entry(
           occurrence: left_body.id,
           authored_name: "x",
           span: equal_text_span(occurrence: left_body.id)
         ),
-        fixture_index_entry(
+        test.claim.namespace_occurrence_transport_test.fixture_index_entry(
           occurrence: right_decl.id,
           authored_name: "right",
           span: equal_text_span(occurrence: right_decl.id)
         ),
-        fixture_index_entry(
+        test.claim.namespace_occurrence_transport_test.fixture_index_entry(
           occurrence: right_param.id,
           authored_name: "x",
           span: equal_text_span(occurrence: right_param.id)
         ),
-        fixture_index_entry(
+        test.claim.namespace_occurrence_transport_test.fixture_index_entry(
           occurrence: right_callee.id,
           authored_name: "left",
           span: equal_text_span(occurrence: right_callee.id)
         ),
-        fixture_index_entry(
+        test.claim.namespace_occurrence_transport_test.fixture_index_entry(
           occurrence: right_arg.id,
           authored_name: "x",
           span: equal_text_span(occurrence: right_arg.id)
@@ -641,7 +641,7 @@ fn fixture_ancestored_declaration(
   category: std.occurrence_identity.OccurrenceCategory,
   span: std.types.SourceSpan
 ) -> AncestoredDeclarationFixture {
-  let containment = fixture_path(ancestors: ancestors, terminal: occurrence)
+  let containment = test.claim.namespace_occurrence_transport_test.fixture_path(ancestors: ancestors, terminal: occurrence)
   AncestoredDeclarationFixture {
     entry: std.occurrence_identity.OccurrenceIndexEntry {
       projection: std.occurrence_identity.OccurrenceProjection {
@@ -661,7 +661,7 @@ fn fixture_ancestored_declaration(
 }
 
 fn pattern_binder_span(base: Int, offset: Int) -> std.types.SourceSpan {
-  fixture_span(
+  test.claim.namespace_occurrence_transport_test.fixture_span(
     file: "pattern-binder-fixture.dag",
     start: base + offset,
     end: base + offset + 1
@@ -680,7 +680,7 @@ fn direct_binder_pattern_transport(base: Int) -> std.occurrence_identity.Occurre
   std.occurrence_identity.OccurrenceTransport {
     index: std.occurrence_identity.OccurrenceIndex {
       entries: [
-        fixture_index_entry(
+        test.claim.namespace_occurrence_transport_test.fixture_index_entry(
           occurrence: arm,
           authored_name: "arm",
           span: pattern_binder_span(base: base, offset: 0)
@@ -717,7 +717,7 @@ fn field_binder_pattern_transport(
   std.occurrence_identity.OccurrenceTransport {
     index: std.occurrence_identity.OccurrenceIndex {
       entries: [
-        fixture_index_entry(
+        test.claim.namespace_occurrence_transport_test.fixture_index_entry(
           occurrence: arm,
           authored_name: "arm",
           span: pattern_binder_span(base: base, offset: 0)
@@ -759,7 +759,7 @@ fn nested_binder_pattern_transport(base: Int) -> std.occurrence_identity.Occurre
   std.occurrence_identity.OccurrenceTransport {
     index: std.occurrence_identity.OccurrenceIndex {
       entries: [
-        fixture_index_entry(
+        test.claim.namespace_occurrence_transport_test.fixture_index_entry(
           occurrence: arm,
           authored_name: "arm",
           span: pattern_binder_span(base: base, offset: 0)

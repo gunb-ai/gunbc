@@ -52,7 +52,7 @@ fn chain_reading(
     seeds: seeds,
     direction: v2.lens.module_impact_query.DependentsOf,
     edges: chain_edges,
-    nodes: fixture_nodes,
+    nodes: test.claim.module_impact_query_witness_test.fixture_nodes,
     import_facts: chain_import_facts,
     admissions: admissions
   )
@@ -75,7 +75,7 @@ test fn witness_dependencies_of_is_the_opposite_direction() -> Bool {
     seeds: [mod_a],
     direction: v2.lens.module_impact_query.DependenciesOf,
     edges: chain_edges,
-    nodes: fixture_nodes,
+    nodes: test.claim.module_impact_query_witness_test.fixture_nodes,
     import_facts: chain_import_facts,
     admissions: unrelated_admission_only
   )
@@ -98,20 +98,20 @@ test fn witness_core_is_keyed_on_module_identity_not_path() -> Bool {
 }
 
 test fn witness_path_adapter_projects_a_file_question_to_semantic_seeds() -> Bool {
-  let seeds = v2.lens.module_impact_query.impact_seeds_for_path(nodes: fixture_nodes, path: "fixture/a.dag")
+  let seeds = v2.lens.module_impact_query.impact_seeds_for_path(nodes: test.claim.module_impact_query_witness_test.fixture_nodes, path: "fixture/a.dag")
   v2.std.algebra.count_where(xs: seeds, predicate: fn(_) { true }) == 1
     && v2.std.algebra.any(xs: seeds, predicate: fn(m) { m.name == "m.a" })
 }
 
 test fn witness_path_adapter_invents_no_seed_for_an_unknown_path() -> Bool {
   v2.std.algebra.count_where(
-    xs: v2.lens.module_impact_query.impact_seeds_for_path(nodes: fixture_nodes, path: "fixture/nowhere.dag"),
+    xs: v2.lens.module_impact_query.impact_seeds_for_path(nodes: test.claim.module_impact_query_witness_test.fixture_nodes, path: "fixture/nowhere.dag"),
     predicate: fn(_) { true }
   ) == 0
 }
 
 test fn witness_paths_project_back_for_presentation() -> Bool {
-  let paths = v2.lens.module_impact_query.impact_paths_for_module(nodes: fixture_nodes, module_id: mod_a)
+  let paths = v2.lens.module_impact_query.impact_paths_for_module(nodes: test.claim.module_impact_query_witness_test.fixture_nodes, module_id: mod_a)
   v2.std.algebra.count_where(xs: paths, predicate: fn(_) { true }) == 1
     && v2.std.algebra.contains(xs: paths, item: "fixture/a.dag", eq: fn(x, y) { x == y })
 }
@@ -157,7 +157,7 @@ test fn witness_undeclared_target_lands_as_a_typed_cause() -> Bool {
     seeds: [mod_a],
     direction: v2.lens.module_impact_query.DependenciesOf,
     edges: undeclared_target_edges,
-    nodes: fixture_nodes,
+    nodes: test.claim.module_impact_query_witness_test.fixture_nodes,
     import_facts: chain_import_facts,
     admissions: pool_independence_established
   )
@@ -183,7 +183,7 @@ test fn witness_declared_but_absent_target_is_not_silently_dropped() -> Bool {
     seeds: [mod_a],
     direction: v2.lens.module_impact_query.DependenciesOf,
     edges: declared_but_absent_edges,
-    nodes: fixture_nodes,
+    nodes: test.claim.module_impact_query_witness_test.fixture_nodes,
     import_facts: chain_import_facts,
     admissions: pool_independence_established
   )
@@ -202,7 +202,7 @@ test fn witness_pool_mismatch_forbids_an_exact_standing() -> Bool {
     seeds: [mod_a],
     direction: v2.lens.module_impact_query.DependenciesOf,
     edges: declared_but_absent_edges,
-    nodes: fixture_nodes,
+    nodes: test.claim.module_impact_query_witness_test.fixture_nodes,
     import_facts: chain_import_facts,
     admissions: pool_independence_established
   )
@@ -233,7 +233,7 @@ fn cycle_reading(facts: List<v2.lens.module_graph.ImportResolutionFact>) -> v2.l
     seeds: [mod_a],
     direction: v2.lens.module_impact_query.DependenciesOf,
     edges: cycle_edges,
-    nodes: fixture_nodes,
+    nodes: test.claim.module_impact_query_witness_test.fixture_nodes,
     import_facts: facts,
     admissions: unrelated_admission_only
   )
@@ -297,7 +297,7 @@ fn two_disjoint_cycles_reading() -> v2.lens.module_impact_query.ImpactReading {
     seeds: [mod_a, mod_c],
     direction: v2.lens.module_impact_query.DependenciesOf,
     edges: two_disjoint_cycle_edges,
-    nodes: fixture_nodes,
+    nodes: test.claim.module_impact_query_witness_test.fixture_nodes,
     import_facts: two_disjoint_cycle_import_facts,
     admissions: unrelated_admission_only
   )
@@ -359,7 +359,7 @@ fn surface_outcome(
     changed_paths: changed,
     departed_paths: departed,
     edges: chain_edges,
-    nodes: fixture_nodes,
+    nodes: test.claim.module_impact_query_witness_test.fixture_nodes,
     import_facts: chain_import_facts,
     admissions: unrelated_admission_only
   )
@@ -483,7 +483,7 @@ fn forward_closure_of(entry: v2.lens.module_impact_query.ModuleIdentity) -> List
     seeds: [entry],
     direction: v2.lens.module_impact_query.DependenciesOf,
     edges: chain_edges,
-    nodes: fixture_nodes,
+    nodes: test.claim.module_impact_query_witness_test.fixture_nodes,
     import_facts: chain_import_facts,
     admissions: unrelated_admission_only
   ).reached
@@ -494,7 +494,7 @@ fn reverse_consumers_of(target: v2.lens.module_impact_query.ModuleIdentity) -> L
     seeds: [target],
     direction: v2.lens.module_impact_query.DependentsOf,
     edges: chain_edges,
-    nodes: fixture_nodes,
+    nodes: test.claim.module_impact_query_witness_test.fixture_nodes,
     import_facts: chain_import_facts,
     admissions: unrelated_admission_only
   ).reached
