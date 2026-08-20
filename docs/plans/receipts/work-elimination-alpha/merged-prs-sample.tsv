@@ -1,0 +1,61 @@
+pr_number	created_at	merged_at	admitted_unit_minutes	additions	deletions	changed_lines	changed_files	title
+8531	2026-08-19T07:00:18Z	2026-08-19T16:24:37Z	564.3	506	6	512	2	Emit per-identity RequiredFloorDisposition and a LongHomeStorageAgreement diagnostic
+8532	2026-08-19T07:00:49Z	2026-08-19T07:27:55Z	27.1	1	39	40	3	Restore `cargo check --all-targets`: drop the test importing a deleted module
+8533	2026-08-19T07:15:06Z	2026-08-19T16:24:50Z	549.7	432	55	487	4	Split required-floor cost policy from safety deadline (BUDGET POLICY CUT)
+8535	2026-08-19T07:45:05Z	2026-08-19T21:10:11Z	805.1	150	23	173	2	Name the boundary between shell -> dag and CLI-authority: argv is not the authority, and CLI invocation is not the universal effect model
+8537	2026-08-19T08:15:27Z	2026-08-19T16:22:28Z	487.0	555	198	753	12	T7: gate lookup_checkpoint on declaration identity, not bare name
+8538	2026-08-19T08:24:53Z	2026-08-19T20:15:09Z	710.3	443	0	443	1	Design note: a .dag-native SCM — model, vocabulary, and first executable slice
+8539	2026-08-19T08:34:18Z	2026-08-19T16:22:52Z	468.6	733	38	771	10	Row 1b: derive Clone bound for call-forwarding fn/impl signatures
+8540	2026-08-19T08:38:08Z	2026-08-19T16:25:04Z	466.9	255	8	263	1	Fix cross-claim prepare_grammar memo leaking Symbols across InterpContexts (#8505)
+8542	2026-08-19T09:11:37Z	2026-08-19T20:37:23Z	685.8	41	11	52	2	LanguageModel.canonical_symbols may be a decorative field: resolve accepts a tree whose root atom was removed from the prelude set (gunbc#8505 probe A class 4)
+8543	2026-08-19T10:12:29Z	2026-08-19T17:05:08Z	412.6	3660	1003	4663	21	I-3: inventory-aware build fulfillment, and the two selection islands deleted at the root
+8546	2026-08-19T12:38:18Z	2026-08-19T17:00:38Z	262.3	2	0	2	1	Retire RecordLiteralTarget on source evidence: the downstream needs a name identity, not a field list
+8547	2026-08-19T16:40:42Z	2026-08-19T20:44:04Z	243.4	269	37	306	4	Module index: a header-bearing parse failure refuses typed instead of panicking
+8549	2026-08-19T16:55:58Z	2026-08-19T21:35:56Z	280.0	881	9	890	7	Close the argv representation-ambiguity class at the seam, and correct two gates that claim enforcement they no longer have
+8550	2026-08-19T16:56:39Z	2026-08-19T21:02:38Z	246.0	664	0	664	2	Fabric recut program: the six carriers survive, the layer underneath is replaced
+8553	2026-08-19T17:11:22Z	2026-08-19T19:55:22Z	164.0	114	60	174	6	Fabric Cut A: extract LeaseEpoch into std.temporal_effect and migrate all HeldLease consumers
+8556	2026-08-19T17:38:17Z	2026-08-19T18:17:52Z	39.6	30	15	45	1	Fix main: demote two byte-offset rows whose fixtures are unrepresentable in i64 (#8505 follow-up)
+8559	2026-08-19T18:10:52Z	2026-08-19T21:02:44Z	171.9	2	2	4	2	DESIGN §2 attributes StorageDevice to the wrong module, in the sentence whose point is citation
+8560	2026-08-19T18:34:06Z	2026-08-19T19:55:29Z	81.4	86	206	292	18	Cut B: delete product.compute_fabric at the root; Shape and HardRequirements move to product.fabric.work
+8562	2026-08-19T18:41:54Z	2026-08-19T19:58:17Z	76.4	434	11	445	3	Restore the serve socket seam as a frozen quarry route; keep converge refusing
+8564	2026-08-19T19:15:28Z	2026-08-19T21:02:13Z	106.8	6	3	9	3	Cut C: route the one live workflow emitter back through the runner-selection seam
+8565	2026-08-19T19:37:22Z	2026-08-19T21:14:36Z	97.2	386	36	422	1	prepare_grammar cross-claim memo: key on symbol text, not interner ordinals
+8566	2026-08-19T19:41:46Z	2026-08-19T21:45:39Z	123.9	2	2	4	2	ATTRIBUTION-3: decide SharedFillDisposition for three quarantined witness identities
+8567	2026-08-19T19:42:22Z	2026-08-19T19:58:31Z	16.1	1	1	2	1	Carry the exclusion widening into the second, dormant tree-sync pin
+8569	2026-08-19T19:49:55Z	2026-08-19T21:15:51Z	85.9	5	1	6	1	Derive the tree-sync exclude flags from their authority instead of a fourth hand-transcription
+8570	2026-08-19T19:52:15Z	2026-08-19T21:31:12Z	99.0	354	215	569	2	Emitter flattens nested constructor patterns: classify_arrow_body_form's Conj arm is unreachable in emitted Rust — a silent wrong answer, not a warning
+8571	2026-08-19T19:57:19Z	2026-08-19T20:10:42Z	13.4	3	1	4	2	Repair the two main reds the Wave A restore surfaced (#8503 fallout)
+8573	2026-08-19T20:18:48Z	2026-08-19T22:25:14Z	126.4	282	498	780	15	Cut the blue/green pair to one deployment on one port
+8575	2026-08-19T21:02:35Z	2026-08-19T23:30:48Z	148.2	65	53	118	4	FIRSTTOUCH-1: transport_script_wall_compile_red -- live_tree_disposition correction, and a terminal admission finding (not a restoration)
+8576	2026-08-19T21:10:12Z	2026-08-20T02:58:17Z	348.1	1817	3	1820	6	First production CI binding: the fabric authorizes and produces the witness run
+8579	2026-08-19T21:33:28Z	2026-08-19T23:12:32Z	99.1	82	6	88	2	infer: classify scalar-shaped builtin method args instead of defaulting to element_type
+8581	2026-08-19T21:42:50Z	2026-08-19T23:13:23Z	90.5	37	239	276	4	Re-promote the 35-claim parse-reaching cohort: the residue's release trigger fired at #8565
+8582	2026-08-19T21:55:57Z	2026-08-19T23:45:11Z	109.2	695	126	821	10	SHELL-DAG: NBD proxy — observe-side port/unit read-back on cited extdeps.systemd, retire the systemd-run WitnessBin scaffold
+8583	2026-08-19T22:17:42Z	2026-08-19T23:45:57Z	88.2	615	191	806	13	Migrate host-hygiene reaper and liveness onto typed observation; delete host_hygiene_*_script
+8584	2026-08-19T22:18:28Z	2026-08-20T00:56:03Z	157.6	354	7	361	4	PREEMPTION-1: model truthfully that the safety deadline cannot interrupt an opaque host call
+8586	2026-08-19T22:24:37Z	2026-08-20T00:55:25Z	150.8	4	19	23	1	bmc_netboot_serve: dissolve two hand-rolled heredoc bridge sites into command_runner
+8587	2026-08-19T22:25:01Z	2026-08-20T01:39:05Z	194.1	65	596	661	6	The last two files blocking required-regen, and the nine seed oracles no behavioral receipt can link without
+8589	2026-08-19T22:26:21Z	2026-08-20T00:52:26Z	146.1	203	0	203	1	Census: all 41 v2 compiler modules measured at one pinned SHA
+8590	2026-08-19T22:33:35Z	2026-08-20T03:12:09Z	278.6	232	116	348	15	srv3 host_effect_realize: typed argv over SSH/FleetSsh for the six surviving shell-string helpers
+8591	2026-08-19T22:35:56Z	2026-08-19T23:12:39Z	36.7	89	51	140	2	symbol_index: resolve fully-qualified constructor calls to the direct_call_shape wall
+8592	2026-08-19T22:41:00Z	2026-08-20T00:58:31Z	137.5	118	63	181	5	v1 infer: use each method arg's own declared parameter type, not the receiver's element_type
+8593	2026-08-19T22:41:47Z	2026-08-20T03:12:44Z	270.9	664	141	805	11	Local argv cut, the constructor wall it needs, and the inert-admit_callers finding
+8594	2026-08-19T22:43:46Z	2026-08-19T23:19:19Z	35.5	22	5	27	3	v1_maintenance_standing: add DefectRepairDiagnosticsMayMove admitted class
+8595	2026-08-19T22:52:54Z	2026-08-19T23:45:33Z	52.6	251	416	667	6	Typed observe/materialize/read-back for ProvisionCodexRuntime; delete host_codex_runtime_provision_script.dag
+8596	2026-08-19T22:54:42Z	2026-08-20T01:53:03Z	178.3	297	37	334	8	Model the SSH nested command-string target: argv -> shell -> one RFC 4254 command string
+8598	2026-08-19T23:15:09Z	2026-08-20T01:51:59Z	156.8	245	309	554	10	SHELL-DAG: build-cache provisioning cluster — typed observe/ensure/read-back, delete host_build_cache_provision_script
+8599	2026-08-19T23:15:19Z	2026-08-19T23:46:10Z	30.9	2	43	45	2	Delete converge_cli_applied_knob_count fabricated-fallback dispatch
+8600	2026-08-19T23:18:53Z	2026-08-20T01:52:30Z	153.6	61	2	63	2	host_converge_realize: refuse multi-knob script concatenation
+8603	2026-08-20T00:00:38Z	2026-08-20T01:29:39Z	89.0	113	0	113	1	required-regen: discriminating REDs for the drift arms, which had none
+8604	2026-08-20T00:02:59Z	2026-08-20T04:04:28Z	241.5	516	0	516	1	gap-analysis: file two diagnostic-channel defect rows (no rung authored)
+8607	2026-08-20T00:39:52Z	2026-08-20T01:40:07Z	60.2	58	11	69	3	make_span: preserve file information when combining token spans
+8608	2026-08-20T00:55:30Z	2026-08-20T01:39:58Z	44.5	42	1	43	3	where-refinement wall: recognize Symbol literals as string-predicate evidence
+8609	2026-08-20T01:14:15Z	2026-08-20T01:55:27Z	41.2	223	1	224	4	Prepare the publication directory with the attempt, and stop erasing the spawn cause
+8610	2026-08-20T01:15:10Z	2026-08-20T01:42:49Z	27.6	37	20	57	3	v1_maintenance_standing: re-amend to the operator's purpose-based v1 rule
+8611	2026-08-20T01:19:10Z	2026-08-20T03:40:04Z	140.9	0	53	53	2	chore: strip scratch content-sync debris left unstripped by #8592
+8612	2026-08-20T01:38:26Z	2026-08-20T02:19:41Z	41.2	39	10	49	2	Settle the census's misfiled-bucket question by measurement; delete the dead import it names
+8615	2026-08-20T01:46:47Z	2026-08-20T02:20:42Z	33.9	3	4	7	2	Retire dead affected-set provenance-producer citations from the falsifier cadence roster
+8616	2026-08-20T01:50:15Z	2026-08-20T02:20:53Z	30.6	43	15	58	3	fleet_converge: typed refuse-to-compare for SubjectHostMismatch, not a bare String !=
+8620	2026-08-20T02:20:45Z	2026-08-20T04:48:32Z	147.8	542	471	1013	35	Six behavior interpreters: identity field replaces fn-reflection
+8622	2026-08-20T02:30:19Z	2026-08-20T03:55:41Z	85.4	624	3	627	10	Re-emit the deploy actuation: nothing has deployed srv1 or advanced the fleet ref since the floor cut
+8637	2026-08-20T04:41:18Z	2026-08-20T05:17:24Z	36.1	72	27	99	6	Four .dag defects surfaced by running the required-regen fold to two generations
