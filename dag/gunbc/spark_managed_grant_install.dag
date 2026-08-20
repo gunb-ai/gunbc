@@ -44,6 +44,7 @@ import gunbc.spark_managed_grant_reconcile {
   spark_managed_grant_dropin_name,
   spark_managed_grant_dropin_path,
   spark_managed_grant_sudoers_content,
+  spark_managed_grant_sudoers_content,
 }
 import std.resources { Network }
 import product.placement_supply { HostIdentity }
@@ -234,8 +235,23 @@ fn spark_grant_install_transport(
   }
 }
 
+// THE ROOT OF TRUST HAS A NAME, because it is not a defect and must not read as one. Privilege
+// cannot be self-granted: installing a sudoers entry needs sudo, so no principal this process can
+// reach is able to seed the first grant. Every converged system has this floor -- what varies is
+// whether it is named once or rediscovered as a confusing error each time.
+//
+// The distinction that matters to whoever reads the receipt: seeding the root of trust is a ONE-TIME
+// human act, and it is categorically different from a human performing the operation on every run.
+// After the seed, the process installs, reboots and reconciles by itself. Rendering this as
+// "argv exit=1 stderr=sudo: a password is required" told a reader neither of those things, which is
+// how a bounded one-time act came to look like an unbounded manual dependency.
 type SparkGrantInstallOutcome
-  = SparkGrantInstallExecuted {
+  = SparkGrantInstallBlockedOnRootOfTrust {
+      host: HostIdentity
+      grant: SparkManagedGrant
+      principal: NonEmptyStr
+    }
+  | SparkGrantInstallExecuted {
       host: HostIdentity
       grant: SparkManagedGrant
       standings: List<RemoteStepStanding>
@@ -266,13 +282,16 @@ func spark_grant_install_execute(
           cause: "the plan would install a sudoers drop-in before validating it, which can lock every privileged operation on the host" as NonEmptyStr,
         }
       } else {
-        SparkGrantInstallExecuted {
-          host: host,
-          grant: g,
-          standings: spark_serving_run_step_sequence(
+        {
+          let standings = spark_serving_run_step_sequence(
             steps: spark_grant_install_steps(plan: plan),
             transport: spark_grant_install_transport(context: context, host: host, principal: principal),
-          ),
+          )
+          if spark_grant_standings_demanded_a_password(standings: standings) {
+            SparkGrantInstallBlockedOnRootOfTrust { host: host, grant: g, principal: principal }
+          } else {
+            SparkGrantInstallExecuted { host: host, grant: g, standings: standings }
+          }
         }
       }
   }
@@ -284,14 +303,47 @@ func spark_grant_install_execute(
 // end. Convergence is re-established by the next observation, never by this exit code.
 fn spark_grant_install_succeeded(outcome: SparkGrantInstallOutcome) -> Bool {
   match outcome {
+    SparkGrantInstallBlockedOnRootOfTrust { host: _, grant: _, principal: _ } => false
     SparkGrantInstallNotAttempted { host: _, grant: _, cause: _ } => false
     SparkGrantInstallExecuted { host: _, grant: _, standings: st } =>
       spark_serving_step_sequence_failed(standings: st) == false
   }
 }
 
+// SUDO SAYING "a password is required" TO THE INSTALLER IS THE ROOT-OF-TRUST SIGNAL, and it is read
+// off sudo's own diagnostic rather than the exit code: exit 1 is also what a malformed sudoers file
+// or a missing staged path produces, and those have entirely different remedies.
+fn spark_grant_standings_demanded_a_password(standings: List<RemoteStepStanding>) -> Bool {
+  match spark_grant_install_first_failure_cause(standings: standings) {
+    Absent => false
+    Present { value: c } => string_contains(c, "a password is required")
+  }
+}
+
+// The exact one-time act, spelled out so nobody has to reconstruct it from a failure. It names the
+// grantee, the command, and the file -- every field the reconcile already holds -- so the seed and
+// the thing it seeds cannot drift apart.
+fn spark_grant_root_of_trust_instruction(grant: SparkManagedGrant) -> String {
+  join([
+    "ONE-TIME ROOT-OF-TRUST SEED, on the host, by a human with root: write ",
+    spark_managed_grant_dropin_path(grant: grant) as String,
+    " containing exactly: ", trim(s: spark_managed_grant_sudoers_content(grant: grant)),
+    " -- validate it with `visudo -c -f` before placing it, own it root:root mode 0440. ",
+    "After this one act the process installs, reboots and reconciles every later grant by itself: ",
+    "privilege cannot be self-granted, so this is the floor, not a step that repeats.",
+  ], "")
+}
+
 fn spark_grant_install_outcome_wire(outcome: SparkGrantInstallOutcome) -> String {
   match outcome {
+    SparkGrantInstallBlockedOnRootOfTrust { host: h, grant: g, principal: p } =>
+      join([
+        "grant-install host=", h as String,
+        " grant=", spark_managed_grant_wire(grant: g) as String,
+        " BLOCKED-ON-ROOT-OF-TRUST installer=", p as String,
+        " -- sudo refused the installing principal too, so no principal this process can reach may seed the first grant\n    ",
+        spark_grant_root_of_trust_instruction(grant: g), "\n",
+      ], "")
     SparkGrantInstallNotAttempted { host: h, grant: g, cause: c } =>
       join([
         "grant-install host=", h as String,

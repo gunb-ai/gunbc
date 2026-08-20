@@ -20,7 +20,14 @@ import gunbc.spark_managed_grant_install {
   SparkGrantInstallNotAttempted,
   spark_grant_install_run_succeeded,
   spark_grant_install_run_text,
+  spark_grant_install_outcome_wire,
+  spark_grant_root_of_trust_instruction,
+  spark_grant_standings_demanded_a_password,
+  SparkGrantInstallBlockedOnRootOfTrust,
 }
+import gunbc.remote_operation { RemoteStepFailed, RemoteArgvExecution }
+import gunbc.typed_argv_exec { TypedArgvExecConverged }
+import extdeps.ssh.session { SshSessionExecResult }
 import gunbc.remote_operation { remote_operation_argv, remote_operation_label }
 
 // The installing principal, which is deliberately NOT the grantee: an account cannot install its own
@@ -171,4 +178,75 @@ test fn staging_follows_the_installing_principal_not_the_grantee() -> Bool {
   as_installer != as_grantee
     && string_contains(as_installer, "/home/briansrls/")
     && !string_contains(as_installer, "gunbc-automation")
+}
+
+// THE ROOT OF TRUST IS ITS OWN OUTCOME, not a generic failure. Privilege cannot be self-granted, so
+// sudo refusing the INSTALLING principal is a floor rather than a defect -- and rendering it as
+// "argv exit=1 stderr=sudo: a password is required" told a reader neither that it was the floor nor
+// what the one-time remedy was, which is how a bounded human act reads as an unbounded one.
+test fn a_password_demand_at_the_installer_is_the_root_of_trust_arm() -> Bool {
+  let text = spark_grant_install_outcome_wire(outcome: SparkGrantInstallBlockedOnRootOfTrust {
+    host: "srv6",
+    grant: RebootThisHost,
+    principal: installer(),
+  })
+  string_contains(text, "BLOCKED-ON-ROOT-OF-TRUST")
+    && string_contains(text, "ONE-TIME")
+    && string_contains(text, "/etc/sudoers.d/gunbc-reboot")
+    && string_contains(text, "not a step that repeats")
+}
+
+// It refuses like any other unfinished install: naming the floor never converts it into success.
+test fn the_root_of_trust_arm_still_refuses() -> Bool {
+  !spark_grant_install_run_succeeded(run: SparkGrantInstallRun {
+    standing_report: "grant-standing host=srv6 converged=false\n",
+    outcomes: [SparkGrantInstallBlockedOnRootOfTrust {
+      host: "srv6",
+      grant: RebootThisHost,
+      principal: installer(),
+    }],
+  })
+}
+
+// THE SEED AND THE THING IT SEEDS CANNOT DRIFT, because the instruction is built from the same rows
+// the installer writes. A hand-written instruction would be a second representation of the sudoers
+// content, and the first edit to the grant would leave a human following stale directions.
+test fn the_instruction_is_derived_from_the_same_rows_the_installer_writes() -> Bool {
+  fold(spark_managed_grant_population, init: true, f: fn(acc, g) {
+    acc && string_contains(
+      spark_grant_root_of_trust_instruction(grant: g),
+      spark_managed_grant_sudoers_command(grant: g) as String,
+    )
+  })
+}
+
+// Read off sudo's own diagnostic, not the exit code: exit 1 is also what a malformed sudoers file
+// or a missing staged path produces, and those have entirely different remedies.
+test fn only_the_password_demand_selects_the_root_of_trust_arm() -> Bool {
+  spark_grant_standings_demanded_a_password(standings: [
+    RemoteStepFailed {
+      identity: "validate-gunbc-reboot" as NonEmptyStr,
+      execution: RemoteArgvExecution {
+        outcome: TypedArgvExecConverged {
+          result: SshSessionExecResult {
+            exit_code: 1, success: false, stdout: "",
+            stderr: "sudo: a password is required",
+          },
+        },
+      },
+    },
+  ])
+    && !spark_grant_standings_demanded_a_password(standings: [
+         RemoteStepFailed {
+           identity: "validate-gunbc-reboot" as NonEmptyStr,
+           execution: RemoteArgvExecution {
+             outcome: TypedArgvExecConverged {
+               result: SshSessionExecResult {
+                 exit_code: 1, success: false, stdout: "",
+                 stderr: "visudo: /home/briansrls/.gunbc-staged-sudoers-gunbc-reboot: parse error near line 1",
+               },
+             },
+           },
+         },
+       ])
 }
