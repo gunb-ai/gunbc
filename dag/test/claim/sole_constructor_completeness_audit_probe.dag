@@ -162,3 +162,60 @@ test fn f10_neither_direct_order_independent() -> Bool {
   violation_count(source: f10_neither_direct_ab_source, wanted: "SoleConstructorViolation")
     == violation_count(source: f10_neither_direct_ba_source, wanted: "SoleConstructorViolation")
 }
+
+// ---------------------------------------------------------------------------
+// Addendum form 11: does the wall fire at a SECOND, DIFFERENT concrete type
+// argument of the same generic sole_constructor carrier - not just Int (the
+// existing f9 uses Int; this instantiates a locally-declared non-Int record
+// as T, to rule out the wall holding only because prior uses were monomorphic).
+// ---------------------------------------------------------------------------
+data f11_generic_poly_second_type_source: String = "module probe_f11_generic_poly\nimport std.interval { OrderedClosedInterval }\ntype ProbeMarker { x: Int }\nfn forged() -> OrderedClosedInterval<ProbeMarker> {\n  OrderedClosedInterval { low: ProbeMarker { x: 1 }, high: ProbeMarker { x: 2 } }\n}\n"
+
+test fn f11_generic_carrier_second_type_arg_refuses() -> Bool {
+  violation_count(source: f11_generic_poly_second_type_source, wanted: "SoleConstructorViolation") >= 1
+}
+
+// ---------------------------------------------------------------------------
+// Addendum form 11b: BOTH instantiations forged in the SAME probe module, to
+// confirm the wall fires independently per call site rather than only on
+// the first occurrence encountered (a distinct order-dependence risk from
+// form 10 - order across USES of one generic type, not across type DECLS).
+// ---------------------------------------------------------------------------
+data f11b_generic_poly_both_source: String = "module probe_f11b_generic_poly_both\nimport std.interval { OrderedClosedInterval }\ntype ProbeMarker { x: Int }\nfn forged_int() -> OrderedClosedInterval<Int> { OrderedClosedInterval { low: 5, high: 1 } }\nfn forged_marker() -> OrderedClosedInterval<ProbeMarker> {\n  OrderedClosedInterval { low: ProbeMarker { x: 1 }, high: ProbeMarker { x: 2 } }\n}\n"
+
+test fn f11b_generic_carrier_both_type_args_each_refuse() -> Bool {
+  violation_count(source: f11b_generic_poly_both_source, wanted: "SoleConstructorViolation") >= 2
+}
+
+// ---------------------------------------------------------------------------
+// Addendum item 2: sole_constructor confines WHO writes the literal/cast; it
+// says nothing about WHAT predicate the sanctioned mint enforces. std.interval
+// closed_interval takes `le: fn(T, T) -> Bool` as a CALLER-SUPPLIED parameter,
+// not a validator fixed by the declaring module. This probe drives the fully
+// sanctioned, sole_constructor-confined route (no diagnostic, no violation)
+// with a deliberately-broken caller-supplied predicate and low > high, and
+// EXECUTES it (not just compile-checks it) to see whether the confined mint
+// still emits an IntervalReady whose invariant is violated.
+// ---------------------------------------------------------------------------
+import std.interval { closed_interval, IntervalConstruction, IntervalReady, IntervalRefused }
+
+fn always_true_le(a: Int, b: Int) -> Bool { true }
+
+test fn f12_caller_supplied_validator_defeats_ordering_invariant() -> Bool {
+  match closed_interval(low: 10, high: 1, le: always_true_le) {
+    IntervalReady { interval: iv } => true
+    IntervalRefused { reason: _ } => false
+  }
+}
+
+// Green control: an honest predicate on the same reversed bounds is refused
+// by closed_interval's own logic (not by sole_constructor) - confirms f12's
+// result is about validator identity, not a broken harness.
+fn honest_le(a: Int, b: Int) -> Bool { a <= b }
+
+test fn f12b_honest_validator_control_refuses_reversed_bounds() -> Bool {
+  match closed_interval(low: 10, high: 1, le: honest_le) {
+    IntervalReady { interval: _ } => false
+    IntervalRefused { reason: _ } => true
+  }
+}
