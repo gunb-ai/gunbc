@@ -42,7 +42,7 @@ fn malformed_entry_name() -> v2.std.qualified_name.QualifiedName {
 }
 
 fn roots_with_malformed_entry() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
-  bind_outcome(o: admit_normalized_tree(root: malformed_root_node(), diagnostics: None), f: fn(a) {
+  bind_outcome(o: admit_normalized_tree(root: malformed_root_node(), diagnostics: v2.std.diagnostic.None), f: fn(a) {
     outcome_accepted(value: std.algebra.Cons { head: a, tail: std.algebra.Empty })
   })
 }

@@ -84,7 +84,7 @@ fn quad_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.normalized_t
       tail: std.algebra.Empty
     }
   },
-    diagnostics: None
+    diagnostics: v2.std.diagnostic.None
   )
 }
 

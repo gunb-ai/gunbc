@@ -389,7 +389,7 @@ fn run_host_process_admitted(
                 ProcessTerminationUnobserved =>
                   v2.std.witness.Violates { diagnostic: emit_host_exit_not_ok_diagnostic() }
               },
-              diagnostics: None
+              diagnostics: v2.std.diagnostic.None
             }
           }
           v2.std.diagnostic.Accepted {

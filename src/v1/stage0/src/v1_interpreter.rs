@@ -12713,7 +12713,7 @@ macro_rules! v1_builtin_arms {
                             .iter()
                             .map(|v| {
                                 let d = format!("{:?}", v);
-                                match d.char_indices().nth(120) {
+                                match d.char_indices().nth(400) {
                                     Some((cut, _)) => format!("{}...", &d[..cut]),
                                     None => d,
                                 }

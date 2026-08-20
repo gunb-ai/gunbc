@@ -83,7 +83,7 @@ fn module_unavailable_diagnostic(reason: v2.std.node.Symbol, module_file: v2.std
 }
 
 fn outcome_accepted<T>(value: T) -> v2.std.diagnostic.Outcome<T> {
-  v2.std.diagnostic.Accepted { value: value, diagnostics: None }
+  v2.std.diagnostic.Accepted { value: value, diagnostics: v2.std.diagnostic.None }
 }
 fn outcome_rejected<T>(d: v2.std.diagnostic.Diagnostic) -> v2.std.diagnostic.Outcome<T> {
   v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }

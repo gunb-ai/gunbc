@@ -165,7 +165,7 @@ fn bind_eval_bind_value(
   } else {
     bound
   }
-  v2.std.diagnostic.Accepted { value: touched, diagnostics: None }
+  v2.std.diagnostic.Accepted { value: touched, diagnostics: v2.std.diagnostic.None }
 }
 
 fn bind_eval_interpretation() -> v2.std.runtime.InterpretationAlgebra {

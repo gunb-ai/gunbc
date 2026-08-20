@@ -108,7 +108,7 @@ fn program_termination_proof() -> v2.std.cardinality.TerminationProof {
 
 fn program_allocate_literal(node: v2.std.node.Node, _env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   if node == program_literal_one() {
-    v2.std.diagnostic.Accepted { value: program_int_one_value(), diagnostics: None }
+    v2.std.diagnostic.Accepted { value: program_int_one_value(), diagnostics: v2.std.diagnostic.None }
   } else if node == program_literal_two() {
     v2.std.diagnostic.Accepted {
       value: v2.std.runtime.RuntimePrimitive {
@@ -117,14 +117,14 @@ fn program_allocate_literal(node: v2.std.node.Node, _env: v2.std.runtime.Evaluat
           bytes: [program_byte(), program_byte()]
         }
       },
-      diagnostics: None
+      diagnostics: v2.std.diagnostic.None
     }
   } else if node == program_kw_true() {
-    v2.std.diagnostic.Accepted { value: program_bool_value(is_true: true), diagnostics: None }
+    v2.std.diagnostic.Accepted { value: program_bool_value(is_true: true), diagnostics: v2.std.diagnostic.None }
   } else if node == program_kw_false() {
-    v2.std.diagnostic.Accepted { value: program_bool_value(is_true: false), diagnostics: None }
+    v2.std.diagnostic.Accepted { value: program_bool_value(is_true: false), diagnostics: v2.std.diagnostic.None }
   } else if node == program_locator_literal || node == program_payload_literal {
-    v2.std.diagnostic.Accepted { value: program_unit_value(), diagnostics: None }
+    v2.std.diagnostic.Accepted { value: program_unit_value(), diagnostics: v2.std.diagnostic.None }
   } else {
     v2.std.diagnostic.Rejected {
       diagnostics: v2.std.diagnostic.diagnostics_singleton(
@@ -139,7 +139,7 @@ fn program_nth_child(node: v2.std.node.Node, wanted: Int) -> v2.std.diagnostic.O
     Present { value: child } =>
       match child {
         v2.std.node.Edge { label: _, target: arm } =>
-          v2.std.diagnostic.Accepted { value: extdeps.vendor.arm.arm, diagnostics: None }
+          v2.std.diagnostic.Accepted { value: extdeps.vendor.arm.arm, diagnostics: v2.std.diagnostic.None }
       }
     Absent =>
       v2.std.diagnostic.Rejected {
@@ -217,7 +217,7 @@ fn program_bind_value(
   _value: v2.std.runtime.RuntimeValue,
   env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.EvaluationEnvironment> {
-  v2.std.diagnostic.Accepted { value: env, diagnostics: None }
+  v2.std.diagnostic.Accepted { value: env, diagnostics: v2.std.diagnostic.None }
 }
 
 fn program_interpretation() -> v2.std.runtime.InterpretationAlgebra {

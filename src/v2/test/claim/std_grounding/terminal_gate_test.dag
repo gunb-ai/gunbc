@@ -13,11 +13,11 @@ fn terminal_gate_receipt(status: v2.std.grounding.HostVerdictSurfaceExecutionSta
       target: rust_target_model(),
       source_text: "",
       exit: v2.std.host_run.HostExit {
-        outcome: v2.std.diagnostic.Accepted { value: v2.std.witness.Holds { value: v2.std.host_run.ExitOk { code: 0 } }, diagnostics: None }
+        outcome: v2.std.diagnostic.Accepted { value: v2.std.witness.Holds { value: v2.std.host_run.ExitOk { code: 0 } }, diagnostics: v2.std.diagnostic.None }
       },
       logical_run: v2.std.diagnostic.Accepted {
         value: v2.std.host_run.HostLogicalRun { stdout: v2.std.host_run.HostRunStdout { bytes: terminal_gate_empty_bytes() } },
-        diagnostics: None
+        diagnostics: v2.std.diagnostic.None
       },
       stderr_bytes: terminal_gate_empty_bytes(),
       build_log: v2.std.host_run.BuildLog { lines: [] },

@@ -52,7 +52,7 @@ test fn retention_is_found_past_the_diagnostic_head_RED() -> Bool {
 }
 
 test fn a_clean_root_is_admitted_positive_control() -> Bool {
-  (v2.test.claim.normalized_tree_admission.is_rejected(o: admit_normalized_tree(root: v2.test.claim.normalized_tree_admission.probe_shell(), diagnostics: None)) == false)
+  (v2.test.claim.normalized_tree_admission.is_rejected(o: admit_normalized_tree(root: v2.test.claim.normalized_tree_admission.probe_shell(), diagnostics: v2.std.diagnostic.None)) == false)
 }
 
 test fn an_unrelated_diagnostic_does_not_refuse_RED() -> Bool {

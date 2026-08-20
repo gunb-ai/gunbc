@@ -88,7 +88,7 @@ fn pbf_cross_file_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.no
       tail: std.algebra.Empty
     }
   },
-    diagnostics: None
+    diagnostics: v2.std.diagnostic.None
   )
 }
 
@@ -139,7 +139,7 @@ fn pbf_unbound_atom_tree() -> Node {
 }
 
 fn pbf_resolve_unbound_symbol_rejects() -> Bool {
-  match admit_normalized_tree(root: pbf_unbound_atom_tree(), diagnostics: None) {
+  match admit_normalized_tree(root: pbf_unbound_atom_tree(), diagnostics: v2.std.diagnostic.None) {
     Rejected { diagnostics: _ } => false
     Accepted { value: admitted_tree, diagnostics: _ } =>
   match v2.compiler.resolve.resolve(
@@ -201,7 +201,7 @@ fn pbf_ambiguous_import_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compi
       }
     }
   },
-    diagnostics: None
+    diagnostics: v2.std.diagnostic.None
   )
 }
 

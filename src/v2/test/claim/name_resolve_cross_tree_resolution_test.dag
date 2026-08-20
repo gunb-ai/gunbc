@@ -133,7 +133,7 @@ fn ct_dag_same_tree_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.
       tail: std.algebra.Empty
     }
   },
-    diagnostics: None
+    diagnostics: v2.std.diagnostic.None
   )
 }
 
@@ -175,7 +175,7 @@ fn ct_v2_same_tree_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.n
       tail: std.algebra.Empty
     }
   },
-    diagnostics: None
+    diagnostics: v2.std.diagnostic.None
   )
 }
 
@@ -215,7 +215,7 @@ fn ct_cross_tree_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.nor
       tail: std.algebra.Empty
     }
   },
-    diagnostics: None
+    diagnostics: v2.std.diagnostic.None
   )
 }
 
@@ -269,7 +269,7 @@ fn ct_dag_to_v2_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.norm
       tail: std.algebra.Empty
     }
   },
-    diagnostics: None
+    diagnostics: v2.std.diagnostic.None
   )
 }
 

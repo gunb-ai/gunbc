@@ -122,5 +122,5 @@ data refinement_affected_set: v2.std.change.AffectedSet = v2.std.change.Affected
 data refinement_recompute_plan: v2.std.change.RecomputePlan = v2.std.change.RecomputePlan {
   affected: refinement_affected_set,
   layers: topological_layers(graph_node: dependency_projection_subgraph),
-  diagnostic: v2.std.diagnostic.Accepted { value: ^dependency_recompute_ok, diagnostics: None }
+  diagnostic: v2.std.diagnostic.Accepted { value: ^dependency_recompute_ok, diagnostics: v2.std.diagnostic.None }
 }

@@ -178,7 +178,7 @@ fn mlf_family_primary_agreements(
   emit_match_eval_verdict_is_pass(
     run: run_test_claim_from_source_emit_vs_eval_cached(
       subject: emit_match_eval_subject(tree: match_tree),
-      source_outcome: v2.std.diagnostic.Accepted { value: source, diagnostics: None },
+      source_outcome: v2.std.diagnostic.Accepted { value: source, diagnostics: v2.std.diagnostic.None },
       target: rust_match_loop_fold_family_target_model_staging(),
       workspace_dir: workspace,
       run_args: rust_family_member_run_args(member_id: "match")
@@ -187,7 +187,7 @@ fn mlf_family_primary_agreements(
     && emit_loop_eval_verdict_is_pass(
       run: run_test_claim_from_source_emit_vs_eval_cached(
         subject: emit_loop_eval_subject(tree: loop_tree),
-        source_outcome: v2.std.diagnostic.Accepted { value: source, diagnostics: None },
+        source_outcome: v2.std.diagnostic.Accepted { value: source, diagnostics: v2.std.diagnostic.None },
         target: rust_match_loop_fold_family_target_model_staging(),
         workspace_dir: workspace,
         run_args: rust_family_member_run_args(member_id: "loop")
@@ -196,7 +196,7 @@ fn mlf_family_primary_agreements(
     && emit_fold_eval_verdict_is_pass(
       run: run_test_claim_from_source_emit_vs_eval_cached(
         subject: emit_fold_eval_subject(root: v2.test.emit.fold_call_closure_fixture.fold_fixture_param_canonical_arrow),
-        source_outcome: v2.std.diagnostic.Accepted { value: source, diagnostics: None },
+        source_outcome: v2.std.diagnostic.Accepted { value: source, diagnostics: v2.std.diagnostic.None },
         target: rust_match_loop_fold_family_target_model_staging(),
         workspace_dir: workspace,
         run_args: rust_family_member_run_args(member_id: "fold")
@@ -212,7 +212,7 @@ fn mlf_family_alt_loop_mismatch(
   emit_loop_eval_verdict_is_fail(
     run: run_test_claim_from_source_emit_vs_eval_cached(
       subject: emit_loop_eval_subject(tree: loop_alt),
-      source_outcome: v2.std.diagnostic.Accepted { value: source, diagnostics: None },
+      source_outcome: v2.std.diagnostic.Accepted { value: source, diagnostics: v2.std.diagnostic.None },
       target: rust_match_loop_fold_family_target_model_staging(),
       workspace_dir: workspace,
       run_args: rust_family_member_run_args(member_id: "loop")

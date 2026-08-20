@@ -76,7 +76,7 @@ fn fc_with_roots(
 }
 
 fn fc_admitted(n: Node) -> v2.std.diagnostic.Outcome<v2.compiler.normalized_tree.NormalizedTree> {
-  admit_normalized_tree(root: n, diagnostics: None)
+  admit_normalized_tree(root: n, diagnostics: v2.std.diagnostic.None)
 }
 
 fn fc_duplicate_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {

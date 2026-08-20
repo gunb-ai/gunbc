@@ -67,7 +67,7 @@ fn arrow_body_form_zero_arrow_fixture() -> Optional<Node> {
 // arm FAILS the witness rather than skipping it — an unadmittable fixture is a defect in
 // the fixture, not a reason to report green.
 fn abf_admitted_add_arrow_tree() -> v2.std.diagnostic.Outcome<v2.compiler.normalized_tree.NormalizedTree> {
-  admit_normalized_tree(root: dag_add_arrow_with_body_node(), diagnostics: None)
+  admit_normalized_tree(root: dag_add_arrow_with_body_node(), diagnostics: v2.std.diagnostic.None)
 }
 
 test fn arrow_body_form_eval_value_vertical_holds() -> Bool {

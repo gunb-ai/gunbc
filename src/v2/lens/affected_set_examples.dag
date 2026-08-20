@@ -121,7 +121,7 @@ data affected_set_example_read: v2.lens.affected_set.AffectedSetRead = v2.lens.a
 
 fn affected_set_example_post_edit_accepts(dag: v2.lens.affected_set.Dag, edit: v2.std.node.Edit) -> v2.lens.affected_set.AffectedPostEditDagRead {
   v2.lens.affected_set.AffectedPostEditDagRead {
-    outcome: v2.std.diagnostic.Accepted { value: dag, diagnostics: None }
+    outcome: v2.std.diagnostic.Accepted { value: dag, diagnostics: v2.std.diagnostic.None }
   }
 }
 
