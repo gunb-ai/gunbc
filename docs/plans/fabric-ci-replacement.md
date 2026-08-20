@@ -679,11 +679,71 @@ whose minimum is zero.
 
 ### The asymmetry that is the business
 
-We rent by the hour and sell by the minute. That is not an accident to be normalised away — it *is*
-the margin, and it means the fabric must express **two different billing rules on the two sides of
+**We rent by the hour and sell by the minute.** That is not an accident to be normalised away — it
+*is* the margin, and it means the fabric must express **two different billing rules on the two sides of
 the same execution**: the supplier's rule on the offer we consume, and our rule on the offer we
 publish. A model that assumes one billing rule per fabric cannot represent the arbitrage it exists
 to run.
 
 Namespace's customer-facing rule is worth copying on our own side: minimum one minute, next 15
 seconds rounded **down**. Customer-favourable, nearly free, and legible.
+
+### The affordability arm is also dimensionally incoherent
+
+Verifying the paragraph above against the landed code found a second defect, independent of the
+minimum quantum and simpler:
+
+```
+fn offer_quote_amount(q: OfferQuote) -> MoneyAmountMicro {
+  match q {
+    QuotedPerSecond(r) => r.amount     // MoneyRate<PerSecond>
+    QuotedPerHour(r)   => r.amount     // MoneyRate<PerHour>
+    QuotedFlatPerGrant(r) => r.amount  // MoneyRate<Once>
+  }
+}
+```
+
+It **strips the unit off a rate and returns it as a total**. The eligibility arm then compares that
+against `maximum_buy_order: MoneyAmountMicro`, which `demand.dag` defines as *"the ceiling on a
+single grant"* — a total. So the fold compares a rate to a total, and compares per-second and
+per-hour quotes against the same ceiling **as if they were the same number**: an offer quoted per
+hour and an offer quoted per second with identical `amount` fields are indistinguishable to the
+arm, a 3600x error with no refusal.
+
+`std/measure.dag` had the distinction and the fold discarded it — `MoneyRate<PerSecond>`,
+`MoneyRate<PerHour>` and `MoneyRate<Once>` are three types, and `offer_quote_amount` erases the
+parameter that separates them. This is worse than the quantum gap because the carrier already
+exists: no new modeling is needed to refuse, only to stop erasing. It is the §5 tell exactly —
+the arm is satisfiable while the realization lies.
+
+### Acquisition is a third concept, not a case of placement
+
+Product direction, on this section: every arm of `OfferQuote` and the whole eligibility fold assume
+an offer is **existing capacity we choose among**. Renting is not that — it **creates** capacity,
+so the minimum billable quantum is also a **minimum acquisition commitment**. You cannot buy five
+minutes of a Hetzner server; you buy an hour, speculatively, before knowing whether demand to fill
+it arrives.
+
+So there are **three** decisions, not two:
+
+| concept | question | where the hourly minimum bites |
+| --- | --- | --- |
+| placement | which offer serves this demand | not here |
+| pricing | what it costs and what we charge | quantum and rounding, per side |
+| **acquisition / host lifecycle** | **when to rent, how long to hold, when to release** | **here** |
+
+Holding a rented host idle is pure loss; releasing it early wastes paid time; releasing and
+re-acquiring inside one hour pays twice for the same hour. None of that is expressible today, and
+it is the exact machinery that converts a negative spread at low occupancy into the margin at
+saturation.
+
+**Recorded as a named third concept specifically so it is not absorbed into placement**, which is
+where it would naturally and wrongly land — placement chooses among offers, acquisition
+manufactures one at a cost floor of an hour. Not built in this slice.
+
+### What "correct enough" means here
+
+Per the operator's steer this is a make-money lane: the model must be correct enough to **bill
+honestly**, not complete. That bounds the above to rate + quantum + rounding + minimum on both
+sides, plus a named placeholder for acquisition. The dimensional defect is not in that bound — it
+is a live wrong answer in landed code, and it is cheap, so it is fixed on its own terms.
