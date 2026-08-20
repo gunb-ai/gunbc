@@ -773,6 +773,7 @@ test fn w_every_verdict_arm_renders_a_distinct_token() -> Bool {
   let t4 = ci_witness_outcome_token(verdict: WitnessBudgetRefused)
   let t5 = ci_witness_outcome_token(verdict: WitnessHostToolUnresolved)
   let t6 = ci_witness_outcome_token(verdict: WitnessKnownRed)
+  let t7 = ci_witness_outcome_token(verdict: WitnessRouteGap)
   t0 != t1
     && t0 != t2
     && t0 != t3
@@ -794,4 +795,11 @@ test fn w_every_verdict_arm_renders_a_distinct_token() -> Bool {
     && t4 != t5
     && t4 != t6
     && t5 != t6
+    && t0 != t7
+    && t1 != t7
+    && t2 != t7
+    && t3 != t7
+    && t4 != t7
+    && t5 != t7
+    && t6 != t7
 }

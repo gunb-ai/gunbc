@@ -15,10 +15,10 @@
 
 use std::rc::Rc;
 use v1_compiler::v1_compiler_emit_rust::emit_none_keyword_for_resolved_type;
-use v1_compiler::v1_std_core::{make_span, Cardinality, Connective, ExprData, InferredNode, Node};
+use v1_compiler::v1_std_core::{no_span, Cardinality, Connective, ExprData, InferredNode, Node};
 
 fn node_with_cardinality(cardinality: Cardinality) -> Rc<Node> {
-    let span = make_span(0, 0);
+    let span = no_span();
     Rc::new(Node {
         name: "T".to_string(),
         ident: None,

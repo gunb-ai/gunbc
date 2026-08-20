@@ -13,6 +13,7 @@ import std.realization_reconcile {
 }
 import gunbc.live_deploy.readiness {
   HealthzEffectiveRead,
+  HealthzBodyRead,
   reconcile_service_ready_read_for_bundle,
   live_deploy_service_ready_once_for_bundle,
   show_healthz_read_fixture_healthy,
@@ -35,7 +36,7 @@ data witness_stale_artifact_digest_hex: String = "0000000000000000"
 fn fresh_surface_read_grounds_for_bundle(bundle: RoadmapSiteSurfaceBundle) -> Bool {
   fresh_surface_read_grounds(
     bundle: bundle,
-    read: HealthzEffectiveRead { body: bundle.healthz_body, probe_error: "" },
+    read: HealthzBodyRead { body: bundle.healthz_body },
   )
 }
 
@@ -86,7 +87,7 @@ fn stale_surface_read_does_not_ground_for_bundle(
   )
   stale_surface_read_does_not_ground(bundle: bundle, stale_body: stale_body)
     && match ground_service_ready_from_healthz_with_bundle(
-      read: HealthzEffectiveRead { body: stale_body, probe_error: "" },
+      read: HealthzBodyRead { body: stale_body },
       bundle: bundle,
       expected_revision: release_revision,
       expected_surface_identity: bundle.bundle_identity,
