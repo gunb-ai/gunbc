@@ -3,6 +3,7 @@ module gunbc.seed_growth_admission
 import gunbc.roadmap_authority { observation_scoped_run_seed_growth_justification }
 import gunbc.seed_growth { SeedGrowthJustification }
 import gunbc.stage0_rust_host_observation { stage0_rust_observation_seed_growth_justification }
+import gunbc.whole_corpus_compile_admission { whole_corpus_compile_seed_growth_justification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, RealizationDispatch, Scaffold, SingleAuthority }
 import std.keyed_roster { path_occurrence_count }
@@ -37,7 +38,7 @@ type SeedGrowthChangeDisposition
 
 data seed_growth_forward_freeze_policy_note: String = "FORWARD-FREEZE POLICY (enforceable now). Every PR that adds hand-written src/v1 Rust MUST enumerate: exact item identity, .dag authority, why Rust is still needed, owning lane, deletion trigger, current boundary, hand-item delta, and hand-LOC delta. Unenumerated hand growth is a stop-line — no netting deletions against additions. Generated Rust is exempt only with generation-authority proof (gunbc.stage0_emit_plan_generated generated_stage0_files or gunbc.generated_artifact). This module's G1 join is the mechanical backstop once rust_item_host_observation supplies diff populations; until then the closed roster + witness tests enforce roster honesty."
 
-data seed_growth_justification_roster_note: String = "CLOSED ROSTER of every SeedGrowthJustification row in the corpus. G1 joins new/modified hand items against this list. Rows are authored beside the obligation they declare; the roster is derived by enumeration, never by grep. Today: stage0_rust_observation_seed_growth_justification (gunbc.stage0_rust_host_observation) and observation_scoped_run_seed_growth_justification (gunbc.roadmap_authority). Each new justification adds one row here AND one data row in its owning module."
+data seed_growth_justification_roster_note: String = "CLOSED ROSTER of every SeedGrowthJustification row in the corpus. G1 joins new/modified hand items against this list. Rows are authored beside the obligation they declare; the roster is derived by enumeration, never by grep. Today: stage0_rust_observation_seed_growth_justification (gunbc.stage0_rust_host_observation), observation_scoped_run_seed_growth_justification (gunbc.roadmap_authority) and whole_corpus_compile_seed_growth_justification (gunbc.whole_corpus_compile_admission). Each new justification adds one row here AND one data row in its owning module."
 
 // UNCITABLE ITEMS (prose-only until std.decl_ref gains ImplMethod). stage0_rust_observation_seed_growth_justification documents one: impl std::fmt::Display for Stage0CargoBinManifestParseRefusal in v1_compiler.cli_run — seven hand items, six citable DeclarationRef rows. G1 reports uncitable_items separately; they do NOT satisfy the forward-freeze enumeration via DeclarationRef alone.
 data seed_growth_admission_join_scaffold: Disposition = Scaffold {
@@ -67,7 +68,8 @@ data seed_growth_admission_g0_population_note: String = "G0 CENSUS HOST (scripts
 fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
   [
     stage0_rust_observation_seed_growth_justification,
-    observation_scoped_run_seed_growth_justification()
+    observation_scoped_run_seed_growth_justification(),
+    whole_corpus_compile_seed_growth_justification
   ]
 }
 
@@ -78,10 +80,19 @@ fn seed_growth_justification_well_formed(j: SeedGrowthJustification) -> Bool {
     && length(xs: j.hand_authored_declarations) > 0
 }
 
+// DERIVED FROM THE ROSTER, NOT RE-LISTED BESIDE IT. This appended the two known
+// justifications' declarations by name, which made it a SECOND enumeration of the roster one
+// function above — and the two could disagree silently: adding a third row to
+// seed_growth_justification_roster left its declarations invisible here, so the duplicate
+// check and the G1 join would both have passed over items that were, by every other reading,
+// enrolled. Folding the roster makes that state unwritable rather than caught, which is the
+// construction-over-validation direction (DESIGN section 5) and is what the roster note
+// already asks for when it says the roster is derived by enumeration and never by grep.
 fn seed_growth_roster_all_declarations() -> List<DeclarationRef> {
-  list_append(
-    left: stage0_rust_observation_seed_growth_justification.hand_authored_declarations,
-    right: observation_scoped_run_seed_growth_justification().hand_authored_declarations
+  fold_list(
+    xs: seed_growth_justification_roster(),
+    empty: [] as List<DeclarationRef>,
+    cons: fn(acc, j) { list_append(left: acc, right: j.hand_authored_declarations) }
   )
 }
 

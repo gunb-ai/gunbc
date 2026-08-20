@@ -30,7 +30,7 @@ import v1.std.core {
   lambda_param_names_at, foreach_collection, foreach_body, method_receiver, method_arg_nodes,
   match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base,
   index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value,
-  binop_left, binop_right, make_span, with_required_cardinality, Connective, Conj, Disj,
+  binop_left, binop_right, no_span, with_required_cardinality, Connective, Conj, Disj,
   NoConnective, Cardinality, Required, CardOptional, is_rest_transport, is_shell_transport,
   is_file_transport, empty_intern_table
 }
@@ -1319,7 +1319,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
 }
 
 fn type_variable_node(id: String) -> Node {
-  Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
