@@ -31,7 +31,7 @@ import v1.std.core {
   Cardinality, Required, CardOptional,
   ErrorNode, make_error_node, is_error_diagnostic, diagnostic_to_span,
   FrontierOccurrenceKey, diagnostic_frontier_occurrence_key,
-  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference,
+  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference,
   CallArgumentNameUnknown, CallPositionalSurplus, CallPositionalDeficit, CallNamedArgOnFunctionValue, CallArgumentDuplicate,
   resource_use_name_at, resource_use_resource,
   is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
@@ -914,6 +914,62 @@ fn rejects_string_for_optional_coproduct_field(expected: Node, got: Node, source
   let expected_is_optional_coproduct = expected.return_cardinality == CardOptional && expected_resolved.connective == Disj
   let got_is_string = node_type_shape(n: got, source_indices: source_indices) == "Primitive(String)" || authored_name_at(source_indices: source_indices, node: got) == "String"
   expected_is_optional_coproduct && got_is_string
+}
+
+data bare_none_construction_wall_note: String = "CONSTRUCTION WALL (DESIGN 4b): the bare name `None` carries absence and NOTHING else, so a construction position whose declared field type cannot carry absence must refuse it rather than adopt whichever `None` variant happens to be in scope. MEASURED HOLE this closes, on the pre-wall binary: with `type Diags = None | Some \{ n: Int \}` in scope, `Holder \{ n: None \}` for `n: Int` and `ListHolder \{ xs: None \}` for `xs: List<Int>` compiled with ZERO blocking diagnostics and emitted `n: Rc::new(Diags::None)` / `xs: Rc::new(Diags::None)` — a Rust program the declared types refute, produced silently. WHY THIS SLICE AND NOT THE GENERAL CONFORMANCE RULE: conformance_unjudged_live_hole_note records five successive attempts at a general named-vs-named refusal, each of which red correct code because the produced side carries no separable type identity. A bare `None` reference needs no produced-side identity — it is a SYNTACTIC form whose only meaning is absence — so admissibility is decided entirely from the DECLARED side, which is exactly why this class is decidable where the general one is not. ADMISSION is deliberately two-armed and nothing else: optional cardinality (the `T?` carrier), or a coproduct that declares a `None` variant at its own level (std.cache_interface AuthScope, v2.std.diagnostic Diagnostics — the two live carriers). A qualified `Owner.None` is not a bare reference and is not judged here. COVERAGE BOUNDARY, stated rather than left to be found: the wall fires only where the field s declared type is known at this site; a field whose declared type does not resolve is not judged, which is the check s precision frontier and not a failure arm."
+
+fn field_declared_type_is_identified(ft: Node, scope: InferScope) -> Bool {
+  let required = match lookup_type_for(env: scope.type_env, node: with_required_cardinality(n: ft)) {
+    Present { value: resolved } => resolved
+    Absent => with_required_cardinality(n: ft)
+  }
+  authored_name_at(source_indices: scope.type_env.source_indices, node: required) != ""
+}
+
+fn field_type_admits_bare_none(ft: Node, scope: InferScope) -> Bool {
+  let required = match lookup_type_for(env: scope.type_env, node: with_required_cardinality(n: ft)) {
+    Present { value: resolved } => resolved
+    Absent => with_required_cardinality(n: ft)
+  }
+  let expanded = expand_scrut_type_for_variant_lookup(scrut_node: required, env: scope.type_env)
+  let declares_none_variant = expanded.connective == Disj
+    && has_child_named(n: expanded, name: "None", source_indices: scope.type_env.source_indices)
+  ft.return_cardinality == CardOptional || declares_none_variant
+}
+
+fn expr_is_bare_none_reference(texpr: Node, scope: InferScope) -> Bool {
+  match texpr.expr_data {
+    ExprVar { binding_kind: _ } =>
+      expr_var_name_at(texpr: texpr, source_indices: scope.type_env.source_indices) == "None"
+    _ => false
+  }
+}
+
+fn bare_none_field_construction_diags(
+  fi: Node,
+  fi_name: String,
+  field_declared_type: Node?,
+  type_name_for_message: String,
+  scope: InferScope
+) -> List<ErrorNode> {
+  match field_declared_type {
+    Absent => []
+    Present { value: ft } =>
+      let value_expr = field_init_node_value(n: fi)
+      if expr_is_bare_none_reference(texpr: value_expr, scope: scope)
+        && field_declared_type_is_identified(ft: ft, scope: scope)
+        && field_type_admits_bare_none(ft: ft, scope: scope) == false {
+        [make_error_node(
+          diagnostic: BareNoneNotAdmittedByFieldType {
+            field: fi_name,
+            type_name: type_name_for_message,
+            declared_type: node_type_shape(n: ft, source_indices: scope.type_env.source_indices),
+            span: value_expr.span
+          },
+          module_name: scope.module_name
+        )]
+      } else { [] }
+  }
 }
 
 fn field_type_is_optional_coproduct(ft: Node, env: TypeEnv) -> Bool {
@@ -5332,7 +5388,13 @@ fn infer_record_lit_structural(type_name: String?, field_inits: List<Node>, span
     FieldInferResult {
       typed_field: make_field_init_node(name: fi_name, value: ar_typed, span: fi.span, name_span: node_name_span(n: fi)),
       infer_result: ar,
-      diagnostics: concat(concat(ar_diags, field_type_diags), unknown_field_diags)
+      diagnostics: concat(concat(concat(ar_diags, field_type_diags), unknown_field_diags), bare_none_field_construction_diags(
+        fi: fi,
+        fi_name: fi_name,
+        field_declared_type: field_declared_type,
+        type_name_for_message: tn_str,
+        scope: scope
+      ))
     }
   )
   let typed_fields = fi_infer_results |> map(fir => fir.typed_field)
