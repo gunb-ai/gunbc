@@ -184,11 +184,17 @@ jobs:
           set -euo pipefail
           umask 077
           CRED_FILE="$RUNNER_TEMP/spark-administrator-credential"
-          cleanup() { rm -f "$CRED_FILE"; }
+          cleanup() { rm -f "$CRED_FILE" "$RUNNER_TEMP/spark-administrator-response.json"; }
           trap cleanup EXIT
-          curl -sSf -H "Authorization: Bearer $WIF_ACCESS_TOKEN" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access" | python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(sys.stdin)["payload"]["data"]))' > "$CRED_FILE"
+          RESP_FILE="$RUNNER_TEMP/spark-administrator-response.json"
+          HTTP_CODE="$(curl -sS -o "$RESP_FILE" -w '%{http_code}' -H "Authorization: Bearer $WIF_ACCESS_TOKEN" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access" || echo 000)"
+          if [ "$HTTP_CODE" = 403 ]; then echo "SparkAdministratorCredentialForbidden: this run's WIF identity lacks roles/secretmanager.secretAccessor on projects/gunbai-secrets/secrets/spark-administrator-password/versions/1; the secret is not readable by this principal, which is an access grant and not a missing secret. Contacting NO host." >&2; exit 1; fi
+          if [ "$HTTP_CODE" = 404 ]; then echo "SparkAdministratorCredentialAbsent: projects/gunbai-secrets/secrets/spark-administrator-password/versions/1 does not exist; the modeled reference names a version Secret Manager does not hold. Contacting NO host." >&2; exit 1; fi
+          if [ "$HTTP_CODE" != 200 ]; then echo "SparkAdministratorCredentialFetchFailed: HTTP $HTTP_CODE from projects/gunbai-secrets/secrets/spark-administrator-password/versions/1; contacting NO host." >&2; exit 1; fi
+          python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$CRED_FILE"
+          rm -f "$RESP_FILE"
           chmod 600 "$CRED_FILE"
-          if [ ! -s "$CRED_FILE" ]; then echo "SparkAdministratorCredentialEmpty: projects/gunbai-secrets/secrets/spark-administrator-password/versions/1 produced no payload; contacting NO host" >&2; exit 1; fi
+          if [ ! -s "$CRED_FILE" ]; then echo "SparkAdministratorCredentialEmpty: projects/gunbai-secrets/secrets/spark-administrator-password/versions/1 returned 200 with an empty payload, which is an enrolled-but-blank secret and never a blank password; contacting NO host" >&2; exit 1; fi
           trap - EXIT
           echo "GUNBC_SPARK_BOOTSTRAP_CREDENTIAL_FILE=$CRED_FILE" >> "$GITHUB_ENV"
           echo "spark-admin-credential: materialized from projects/gunbai-secrets/secrets/spark-administrator-password/versions/1 to a 0600 run-local file; the PATH is exported, the credential is not"

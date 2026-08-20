@@ -585,6 +585,13 @@ fn gunbc_ci_fleet_key_agent_script() -> String {
 // authorizes it cannot name different versions. There is no fingerprint check as there is for the
 // key: a password has no derivable public half to compare against, so the identity evidence is
 // sudo's own accept-or-reject, which the privileged step classifies as its own outcome.
+//
+// THE HTTP STATUS IS CLASSIFIED, NOT COLLAPSED, and the first cut of this step got that wrong in a
+// way that cost a run to discover. It piped `curl -sSf` straight into a decoder and checked the file
+// size afterwards, so a 403 surfaced as a JSON decode traceback followed by "produced no payload" --
+// a sentence that is true of the file and false about the world. Forbidden, absent, and
+// enrolled-but-blank have three different remedies: grant the run's identity secretAccessor, author
+// the secret, or fix its contents. None of them is discoverable from an empty file.
 data gunbc_ci_spark_admin_credential_shell_emit_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
@@ -602,11 +609,17 @@ fn gunbc_ci_spark_admin_credential_script() -> String {
     "set -euo pipefail\n",
     "umask 077\n",
     "CRED_FILE=\"$RUNNER_TEMP/spark-administrator-credential\"\n",
-    "cleanup() { rm -f \"$CRED_FILE\"; }\n",
+    "cleanup() { rm -f \"$CRED_FILE\" \"$RUNNER_TEMP/spark-administrator-response.json\"; }\n",
     "trap cleanup EXIT\n",
-    "curl -sSf -H \"Authorization: Bearer $WIF_ACCESS_TOKEN\" \"", secret_ref_access_url(ref: spark_administrator_password_secret_ref), "\" | python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(sys.stdin)[\"payload\"][\"data\"]))' > \"$CRED_FILE\"\n",
+    "RESP_FILE=\"$RUNNER_TEMP/spark-administrator-response.json\"\n",
+    "HTTP_CODE=\"$(curl -sS -o \"$RESP_FILE\" -w '%\{http_code}' -H \"Authorization: Bearer $WIF_ACCESS_TOKEN\" \"", secret_ref_access_url(ref: spark_administrator_password_secret_ref), "\" || echo 000)\"\n",
+    "if [ \"$HTTP_CODE\" = 403 ]; then echo \"SparkAdministratorCredentialForbidden: this run's WIF identity lacks roles/secretmanager.secretAccessor on ", secret_ref_version_resource(ref: spark_administrator_password_secret_ref), "; the secret is not readable by this principal, which is an access grant and not a missing secret. Contacting NO host.\" >&2; exit 1; fi\n",
+    "if [ \"$HTTP_CODE\" = 404 ]; then echo \"SparkAdministratorCredentialAbsent: ", secret_ref_version_resource(ref: spark_administrator_password_secret_ref), " does not exist; the modeled reference names a version Secret Manager does not hold. Contacting NO host.\" >&2; exit 1; fi\n",
+    "if [ \"$HTTP_CODE\" != 200 ]; then echo \"SparkAdministratorCredentialFetchFailed: HTTP $HTTP_CODE from ", secret_ref_version_resource(ref: spark_administrator_password_secret_ref), "; contacting NO host.\" >&2; exit 1; fi\n",
+    "python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))[\"payload\"][\"data\"]))' \"$RESP_FILE\" > \"$CRED_FILE\"\n",
+    "rm -f \"$RESP_FILE\"\n",
     "chmod 600 \"$CRED_FILE\"\n",
-    "if [ ! -s \"$CRED_FILE\" ]; then echo \"SparkAdministratorCredentialEmpty: ", secret_ref_version_resource(ref: spark_administrator_password_secret_ref), " produced no payload; contacting NO host\" >&2; exit 1; fi\n",
+    "if [ ! -s \"$CRED_FILE\" ]; then echo \"SparkAdministratorCredentialEmpty: ", secret_ref_version_resource(ref: spark_administrator_password_secret_ref), " returned 200 with an empty payload, which is an enrolled-but-blank secret and never a blank password; contacting NO host\" >&2; exit 1; fi\n",
     "trap - EXIT\n",
     "echo \"", spark_grant_credential_path_env as String, "=$CRED_FILE\" >> \"$GITHUB_ENV\"\n",
     "echo \"spark-admin-credential: materialized from ", secret_ref_version_resource(ref: spark_administrator_password_secret_ref), " to a 0600 run-local file; the PATH is exported, the credential is not\"\n",
