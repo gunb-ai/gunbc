@@ -237,7 +237,7 @@ test fn design_witness_path_authority_observation_not_emitted_as_shell() -> Bool
   ) && !string_contains(
     s: build_cache_provision_script_body(
       instance: ci_cache_instance(host: "srv1"),
-      arch_token: "aarch64" as NonEmptyStr,
+      arch_token: "aarch64" as std.types.NonEmptyStr,
       digest: sccache_release_0_15_0.digest_aarch64,
     ),
     pattern: "command -v sccache",

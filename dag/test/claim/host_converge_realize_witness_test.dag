@@ -57,12 +57,12 @@ test fn witness_empty_host_converge_refuses() -> Bool {
   }
 }
 
-fn fixture_per_slot_memory_cap_knob(name: String, dropin_path: String) -> ConvergeKnob {
-  ConvergeKnob {
+fn fixture_per_slot_memory_cap_knob(name: String, dropin_path: String) -> gunbc.host_converge.ConvergeKnob {
+  gunbc.host_converge.ConvergeKnob {
     slice: RunnerSlice,
     name: name,
     desired: "1073741824",
-    target: PerSlotMemoryCap {
+    target: gunbc.host_converge.PerSlotMemoryCap {
       dropin_path: dropin_path,
       instance_glob: "actions-runner@*.service",
       property: systemd_memory_max_property,
@@ -74,7 +74,7 @@ fn fixture_per_slot_memory_cap_knob(name: String, dropin_path: String) -> Conver
 }
 
 test fn witness_single_implemented_knob_still_interprets() -> Bool {
-  match interpret_host_converge(host_converge: HostConverge {
+  match interpret_host_converge(host_converge: gunbc.host_converge.HostConverge {
     identity: operator_host_srv3,
     knobs: [fixture_per_slot_memory_cap_knob(name: "cap_a", dropin_path: "/etc/systemd/system/a.d/mem.conf")],
     membership: NoMembershipProbe,
@@ -85,7 +85,7 @@ test fn witness_single_implemented_knob_still_interprets() -> Bool {
 }
 
 test fn witness_multi_knob_script_concatenation_is_refused_not_silently_run() -> Bool {
-  match interpret_host_converge(host_converge: HostConverge {
+  match interpret_host_converge(host_converge: gunbc.host_converge.HostConverge {
     identity: operator_host_srv3,
     knobs: [
       fixture_per_slot_memory_cap_knob(name: "cap_a", dropin_path: "/etc/systemd/system/a.d/mem.conf"),

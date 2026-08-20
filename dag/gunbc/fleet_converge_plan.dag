@@ -53,7 +53,7 @@ fn fleet_converge_member_set_fingerprint(
   )
 }
 
-fn fleet_converge_apply_subject_host_matches(planned_host: NonEmptyStr, observed_host: NonEmptyStr) -> Bool {
+fn fleet_converge_apply_subject_host_matches(planned_host: std.types.NonEmptyStr, observed_host: std.types.NonEmptyStr) -> Bool {
   planned_host == observed_host
 }
 

@@ -45,7 +45,7 @@ test fn design_witness_default_effect_is_codex_runtime() -> Bool {
 }
 
 test fn design_witness_toolchain_kind_maps_to_effect() -> Bool {
-  match host_toolchain_ensure_effect(kind: CodexRuntime, host: "srv1" as HostIdentity) {
+  match host_toolchain_ensure_effect(kind: CodexRuntime, host: "srv1" as product.placement_supply.HostIdentity) {
     ProvisionCodexRuntime {} => true
     _ => false
   }

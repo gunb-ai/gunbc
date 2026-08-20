@@ -268,14 +268,14 @@ type ClaimPreemptionReachability =
 // call, not by which CLAIMS happen to call them today, so the population does not grow by a claim
 // being added or removed; it grows only when a DIFFERENT operation is found to share this shape,
 // which is a new finding, not a declaration.
-fn opaque_host_call_grandfather_population() -> v2.std.collection.List<String> {
-  v2.std.algebra.Cons {
+fn opaque_host_call_grandfather_population() -> std.types.List<String> {
+  std.algebra.Cons {
     head: "compile_dag_rust_emit_check",
-    tail: v2.std.algebra.Empty {}
+    tail: std.algebra.Empty {}
   }
 }
 
-fn string_in_grandfather_population(needle: String, population: v2.std.collection.List<String>) -> Bool {
+fn string_in_grandfather_population(needle: String, population: std.types.List<String>) -> Bool {
   match population {
     Empty {} => false
     Cons { head: h, tail: t } =>

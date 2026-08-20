@@ -29,7 +29,7 @@ data posix_shell_model_scope: extdeps.external_authority.ExternalModelScope = ex
   further_citations: []
 }
 
-data extdeps_model_scope: ExternalModelScope = posix_shell_model_scope
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = posix_shell_model_scope
 
 data posix_single_quote_citation_note: String = "IEEE 1003.1-2017 section 2.2.2 (Single-Quotes): 'A single-quote shall preserve the literal value of each character within the single-quotes. A single-quote cannot occur within single-quotes.' That sentence is a complete correctness proof for posix_single_quote's encoding -- wrap the word in single quotes, and represent each embedded single quote as the four characters quote-backslash-quote-quote (close the quoting, emit an escaped literal quote via backslash, reopen the quoting) -- for every byte sequence, with no metacharacter table and no word-expansion model. This function moved here from v2.extdeps.languages.bash bash_single_quote (operator finding, 2026-08-19): the encoding is a POSIX shell command language fact, not a bash-specific one -- GNU Bash and gunbc.remote_shell_command both cite it for the same reason, so the rule has one home matching its one cited authority, and a bash-specific change to Bash's own emitter can no longer silently invalidate a POSIX claim made outside that module."
 
