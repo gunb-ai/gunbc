@@ -14,7 +14,7 @@ use crate::v1_std_core::Connective::NoConnective;
 use crate::v1_std_core::ExprData::NoExprData;
 use crate::v1_std_core::InferredNode::{Resolved, TypeVariable};
 pub use crate::v1_std_core::{
-    bool_type, hash_type, int_type, make_span, string_type, unit_type, with_optional_cardinality,
+    bool_type, hash_type, int_type, no_span, string_type, unit_type, with_optional_cardinality,
 };
 pub use crate::v1_std_core::{Cardinality, Connective, ErrorNode, ExprData, InferredNode, Node};
 use crate::NonEmptyBTreeSet;
@@ -44,7 +44,7 @@ pub fn filesystem_read_result_type() -> Rc<Node> {
 pub fn type_variable_node(id: String) -> Rc<Node> {
     Rc::new(Node {
         name: "".to_string(),
-        span: make_span(0, 0),
+        span: no_span(),
         ident_span: None,
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
