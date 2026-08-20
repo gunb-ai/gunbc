@@ -40,15 +40,30 @@ fn t_quote(amount: MoneyAmountMicro, currency: CurrencyCode) -> OfferQuote {
   QuotedFlatPerGrant(MoneyRate { amount: amount, currency: currency })
 }
 
-// The owned-fleet offer: a ZERO quote, which is a supply-side fact and not an
-// exemption from the price check. See supply.dag's note -- a zero-quoted offer
-// is still an offer that could have been sold to someone else.
+// THE OWNED-FLEET OFFER IS QUOTED AT ITS OPPORTUNITY COST, NOT AT ZERO.
+//
+// An owned hour's MARGINAL CASH COST is genuinely 0.00 -- spending it adds
+// nothing to the invoice. Its OPPORTUNITY COST is what that hour could have been
+// sold for, which is never zero for capacity anyone would pay for. Selection
+// must read the second: an owned hour entering selection at 0.00 outbids every
+// paying customer, so self-CI would always win and the arbitrage would be
+// defeated by the very mechanism meant to run it.
+//
+// This fixture previously quoted 0 and asserted eligibility, with a comment
+// above it saying a zero quote is not an exemption from the price check -- while
+// the value handed to the check was zero, so it cleared every ceiling. The
+// comment stated the principle the fixture violated.
+//
+// OfferQuote is still a SINGLE scalar, so nothing yet forces this to be the
+// opportunity cost rather than the cash cost; that is the open carrier gap, and
+// pricing the fixture correctly is what keeps the first consumer from hardening
+// the wrong reading while the carrier is built.
 fn t_fleet_offer() -> Offer<NonEmptyStr> {
   t_offer(
     threads: hardware_thread_count(count: 128),
     caps: "gunbc.capabilities.linux-rust-toolchain",
     trust: "gunbc.trust.internal-fleet",
-    quote: t_quote(amount: money_amount_micro(count: 0), currency: Usd),
+    quote: t_quote(amount: money_amount_micro(count: 40), currency: Usd),
   )
 }
 
@@ -326,6 +341,30 @@ test fn a_per_grant_total_under_the_ceiling_is_still_eligible() -> Bool {
       quote: t_quote(amount: money_amount_micro(count: 6), currency: Usd),
     ),
     maximum_buy_order: money_amount_micro(count: 1000),
+    budget_currency: Usd,
+  ))
+}
+
+// SELF-CI DOES NOT OUTBID BY CONSTRUCTION. The owned fleet is priced at its
+// opportunity cost, so a demand whose ceiling sits below that price cannot claim
+// it -- the hour goes to whoever values it more. This is the witness that would
+// have been unwritable while the fleet quoted zero: at zero it clears every
+// ceiling, so no ceiling can refuse it and the arm has no discriminating input.
+test fn an_owned_hour_priced_at_opportunity_cost_can_be_outbid() -> Bool {
+  !eligible(e: floor_offer_eligibility(
+    offer: t_fleet_offer(),
+    maximum_buy_order: money_amount_micro(count: 39),
+    budget_currency: Usd,
+  ))
+}
+
+// The control for the row above: the same owned-fleet offer IS eligible to a
+// demand willing to pay its opportunity cost. Without this, refusing at 39 is
+// equally explained by the fleet offer having become ineligible outright.
+test fn an_owned_hour_is_eligible_to_a_demand_that_meets_its_price() -> Bool {
+  eligible(e: floor_offer_eligibility(
+    offer: t_fleet_offer(),
+    maximum_buy_order: money_amount_micro(count: 40),
     budget_currency: Usd,
   ))
 }

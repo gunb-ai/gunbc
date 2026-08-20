@@ -771,3 +771,70 @@ honestly**, not complete. That bounds the above to rate + quantum + rounding + m
 sides, plus a named placeholder for acquisition. The dimensional defect was not in that bound — it
 was a live wrong answer in landed code and cheap to fix, so it was fixed on its own terms rather
 than scheduled.
+
+## 21. An offer carries two costs, and selection uses the second
+
+Product ruling (2026-08-20), which lands on the carrier this branch is shaping.
+
+| cost | what it is | when it is zero |
+| --- | --- | --- |
+| **marginal cash cost** | what spending this hour adds to the invoice | genuinely `0.00` for an owned hour, **and** for the remainder of a rented hour already bought |
+| **opportunity cost** | what that hour could have been sold for | never zero for capacity anyone would pay for |
+
+**Selection reads opportunity cost.** Cash cost is a books-and-margin fact, not a placement input.
+An owned hour entering selection at `0.00` outbids everything, so self-CI would always beat a
+paying customer — the arbitrage defeated by the mechanism meant to run it. The cut applies
+uniformly, which is the tell that it is right: a rented host inside its paid hour has the same
+shape as an owned one, and nothing special-cases ownership.
+
+### The correction this makes to `supply.dag`
+
+The note landed earlier reads: *"the zero is a supply-side fact, the opportunity cost is a
+demand-side question."* The second half is **wrong on homing**. Opportunity cost is what the hour
+could have been sold for — a fact about the supply, carried on the offer as its second cost. The
+note identified the right hazard (a zero quote is not an exemption from the price check) and put
+the remedy in the wrong layer. Corrected rather than quietly reworded, because the sentence was
+cited in a commit message and in a message upstream.
+
+### The first consumer encoded the forbidden shape
+
+`t_fleet_offer` quoted the owned fleet at **0** and `fleet_offer_is_eligible_for_the_floor`
+asserted it clears — an owned hour entering selection at `0.00`, exactly what the ruling forbids.
+The comment directly above it asserted that a zero quote *"is not an exemption from the price
+check"* while the value handed to the check was zero, so it cleared every ceiling. **The comment
+stated the principle the fixture violated.**
+
+Fixed on this branch: the fleet offer is quoted at its opportunity cost, and two witnesses pin the
+consequence — `an_owned_hour_priced_at_opportunity_cost_can_be_outbid` (a demand below that price
+cannot claim the hour) with its control `an_owned_hour_is_eligible_to_a_demand_that_meets_its_price`
+(so the refusal is a price refusal, not the offer having become ineligible outright). **The first
+of those was unwritable while the fleet quoted zero** — at zero it clears every ceiling, so no
+ceiling can refuse it and the arm has no discriminating input. That is the sharpest statement of
+why the fixture mattered: the wrong price did not merely misprice, it erased the test.
+
+`OfferQuote` remains a **single** scalar, so nothing yet *forces* it to be the opportunity cost
+rather than the cash cost. That is the open carrier gap; pricing the fixture correctly keeps the
+first consumer from hardening the wrong reading while the carrier is built.
+
+### Cost is a step function in time, not a scalar — and that is the multiplexing mechanism
+
+A rented host has **zero marginal cash cost for the remainder of its paid hour** and a full hour's
+cost the instant it crosses the boundary. That converts the hourly minimum from a tax into a
+**schedulable fact**: work landing inside an already-paid hour is free, so the fabric can prefer
+it — and that preference *is* the multiplexing mechanism §20 called for, rather than a separate
+policy bolted beside it.
+
+It is also why an offer needs a **lifetime**, not just a rate. So the billing carrier grows one
+axis beyond §20: **rate + quantum + rounding + minimum, per side, plus a lifetime and a two-arm
+cost.** This is the part that is expensive to retrofit and load-bearing for honest billing, so it
+is in scope; the demand-derivative provisioning algorithm behind it is explicitly a later cut and
+does not start.
+
+### Recorded for later, not now
+
+Provisioning as a rate-of-change problem — baseline demand served by cheap long-horizon supply,
+volatile demand by elastic short-horizon — **grounded in baseload-vs-peaking from power markets**
+rather than minting fresh vocabulary (§3: cite the real framework, do not re-coin it). And the
+provisioning judgment removed into a once-ratified algorithm, whose corollary is that every
+provisioning decision must emit a **receipt naming the inputs that drove it**, or "the fabric
+decided" is unfalsifiable.
