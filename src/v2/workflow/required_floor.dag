@@ -11,18 +11,48 @@ import std.types { NonEmptyStr }
 
 // IDENTITY-GRAINED FLOOR DISPOSITION RECEIPT (operator ruling 2026-08-19).
 //
-// Every executable claim the fold plans gets exactly one `RequiredFloorDisposition`, keyed by
-// its qualified `module.function` identity. This is the single authority for that fact: the
-// host loop in `v1_compiler.cli_run` `run_required_floor` computes admission by testing a
-// claim's authored module name against `long_home_prefixes()` above and whether it reads the
-// live tree, then REALIZES the arm this type already names — it does not invent a second
-// admission concept. A `Declined*` arm here is a fact about why a claim's identity is excluded
-// from the executed roster; it is never itself the mechanism deciding execution order or
-// eligibility for a DIFFERENT gate.
+// Every discovered site gets exactly one `RequiredFloorDisposition`, keyed by its qualified
+// `module.function` identity. This is the single authority for that fact: the host loop in
+// `v1_compiler.cli_run` `run_required_floor` computes admission by testing a claim's authored
+// module name against `long_home_prefixes()` above, then REALIZES the arm this type already
+// names — it does not invent a second admission concept. A `Declined*` arm here is a fact about
+// why a site's identity is excluded from the executed roster; it is never itself the mechanism
+// deciding execution order or eligibility for a DIFFERENT gate.
+//
+// `DeclinedLiveTree` IS DELETED (2026-08-20, WITNESS EXECUTION CLOSURE), and it is deleted at
+// the root rather than narrowed, because what it rested on stopped being true and nothing
+// re-derived it.
+//
+// WHAT IT WAS: a site whose FILE declared `data live_tree_disposition: LiveTreeDisposition =
+// ReadsLiveTree` was declined, on the premise that reaching the live tree implies "cannot run
+// in the hermetic frame this floor runs". 778 identities across 112 files sat in that arm, and
+// since the floor cut left `claim_executor --required-floor` as the only witness-executing
+// consumer in the tree, they had no executing consumer at all — discovered every run, never
+// run, for as long as the arm existed.
+//
+// WHY THE PREMISE WAS STALE: hermetic mode carries the checkout-read carve-out
+// (`v1_interpreter` `hermetic_checkout_read_disposition_under`), under which a
+// `Filesystem.Read` of a path proven under the checkout root is INPUT access — the commit is
+// the run's deterministic input — and not a host effect. That carve-out landed AFTER
+// `live_tree_disposition` was authored. From that day "reads the live tree" no longer implied
+// "cannot run hermetically", and the decline was a prediction standing where the interpreter
+// already decides the same question exactly, per identity, at the effect boundary.
+//
+// WHAT REPLACES IT: nothing here. Every non-long identity is routed and executed, its route
+// carried by the claim that runs it (`RequiredFloorClaim.execution_mode` — one route per
+// identity, not a second vocabulary restating it), and the interpreter's own typed
+// `HermeticHostEffectRefused` classifies the residue that genuinely has no hermetic arm. That
+// residue reaches the receipt as `RequiredFloorOutcome.route_gap`, which BLOCKS: a claim that
+// never reached its subject is not green, and it is not a failure either — the two have
+// different remedies and are reported apart.
+//
+// A NOTE ON WHAT DID *NOT* MOVE: `live_tree_disposition` itself is not deleted and is not
+// deprecated. It remains the declaration `reads_live_tree_effective` reads for AFFECTED-SET
+// SELECTION ELIGIBILITY, which is a different question from "can this execute" and keeps its
+// own single authority. What is deleted is the floor's forked, syntactic second copy of it.
 type RequiredFloorDisposition =
     Planned
   | DeclinedLongModule { matched_prefix: String }
-  | DeclinedLiveTree
 
 // LONG-HOME STORAGE HYGIENE — A DIAGNOSTIC, NEVER AN ADMISSION INPUT.
 //

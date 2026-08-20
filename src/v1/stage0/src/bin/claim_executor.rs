@@ -10526,7 +10526,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                     "required-floor: planned={} executed={} terminal={} passed={} \
                      known_red_held={} failed={} stale_quarantine={} \
                      interrupted_before_verdict={} completed_over_cost_requirement={} \
-                     host_tool_unresolved={} over_cost_line_diagnostic={}",
+                     host_tool_unresolved={} route_gap={} over_cost_line_diagnostic={}",
                     outcome.claims_planned,
                     outcome.claims_executed,
                     outcome.receipt_identities,
@@ -10537,12 +10537,13 @@ fn run() -> Result<ExitCode, ExitCode> {
                     outcome.interrupted_before_verdict.len(),
                     outcome.completed_over_cost_requirement.len(),
                     outcome.host_tool_unresolved.len(),
+                    outcome.route_gap.len(),
                     outcome.over_cost_line_diagnostic
                 );
                 for failure in &outcome.failures {
                     eprintln!("required-floor: FAIL {failure}");
                 }
-                // FIVE CAUSES, FIVE COUNTS, ONE STOPPED LINE. All five refuse the run, and
+                // SIX CAUSES, SIX COUNTS, ONE STOPPED LINE. All six refuse the run, and
                 // they are reported apart because their remedies differ: a FAIL is a defect to
                 // fix, a STALE-QUARANTINE is a fix that already landed and a roster row to
                 // delete, an INTERRUPTED-BEFORE-VERDICT is an undecided claim whose real cost
@@ -10550,7 +10551,9 @@ fn run() -> Result<ExitCode, ExitCode> {
                 // COMPLETED-OVER-COST-REQUIREMENT is a claim that reached a verdict and then
                 // was found to cost too much (an exact measurement, not a bound), and a
                 // HOST-TOOL-UNRESOLVED is an infra gap to provision (never a witness-cost
-                // chase). Summing them into `failed` would make an un-quarantine
+                // chase), and a ROUTE-GAP is a claim that never reached its subject because
+                // its execution route has no arm for a host effect it reached for — remedied by
+                // supplying a route, never by editing the witness. Summing them into `failed` would make an un-quarantine
                 // indistinguishable from a regression in the alert signature, which is the
                 // conflation `std.witness_admission` rules out. Splitting the former
                 // `budget_refused` collection in two makes it visible whether a stopped run
@@ -10569,11 +10572,15 @@ fn run() -> Result<ExitCode, ExitCode> {
                 for unresolved in &outcome.host_tool_unresolved {
                     eprintln!("required-floor: HOST-TOOL-UNRESOLVED {unresolved}");
                 }
+                for gap in &outcome.route_gap {
+                    eprintln!("required-floor: ROUTE-GAP {gap}");
+                }
                 if outcome.failures.is_empty()
                     && outcome.stale_quarantine.is_empty()
                     && outcome.interrupted_before_verdict.is_empty()
                     && outcome.completed_over_cost_requirement.is_empty()
                     && outcome.host_tool_unresolved.is_empty()
+                    && outcome.route_gap.is_empty()
                 {
                     Ok(ExitCode::SUCCESS)
                 } else {

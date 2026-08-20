@@ -7452,6 +7452,20 @@ pub enum ClaimOutcome {
         name: String,
         probed: Vec<String>,
     },
+    /// THE ROUTE HAD NO ARM. The claim reached a host effect that its EXECUTION ROUTE cannot
+    /// realize, so it never reached its subject and produced no verdict.
+    ///
+    /// Typed here for exactly the reason `TimedOut` is (see its comment above): the same event
+    /// used to arrive as `RuntimeError` carrying `InterpError`'s prose, so any consumer
+    /// partitioning on the outcome saw a missing route as an ordinary failure on the subject.
+    /// Those are different facts with different remedies — a failure says the witness is wrong,
+    /// a route gap says the witness was never given a way to run — and the required floor's
+    /// answer to the ambiguity was to decline the whole live-tree population rather than
+    /// execute it.
+    HostEffectRefused {
+        operation: String,
+        ground: v1_interpreter::HermeticEffectGround,
+    },
 }
 
 /// Which clock a completed claim's cost is judged on. Operator ruling 2026-08-19 (BUDGET
@@ -15878,6 +15892,9 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
             v1_interpreter::InterpError::HostToolUnresolved { name, probed } => {
                 ClaimOutcome::HostToolUnresolved { name, probed }
             }
+            v1_interpreter::InterpError::HermeticHostEffectRefused { operation, ground } => {
+                ClaimOutcome::HostEffectRefused { operation, ground }
+            }
             v1_interpreter::InterpError::EvalBudgetExceeded { cpu_ms, budget_ms } => {
                 ClaimOutcome::TimedOut {
                     elapsed_ms: cpu_ms,
@@ -16064,6 +16081,44 @@ enum ExpectedRedArm {
     /// Enrolled but the host tool chain could not resolve a required binary. NOT a budget
     /// refusal — no subject verdict, no cost lower bound, remedy is infra not witness cost.
     HostToolUnresolved,
+    /// Enrolled, but the EXECUTION ROUTE it was given has no arm for a host effect it reached
+    /// for. A sibling of `HostToolUnresolved`, not of `Held`: enrollment asserts an expected
+    /// VERDICT, and a claim that never reached its subject produced none. Its remedy is a
+    /// route (publish the mock case, author the `mock_response`, or supply a wet lane), never
+    /// a change to the witness's assertion.
+    HostEffectRefused,
+}
+
+/// One label per `HermeticEffectGround`, in one place. The ground names the REMEDY, so a
+/// caller that re-spells it per site is re-deriving the remedy per site.
+fn hermetic_effect_ground_label(ground: &v1_interpreter::HermeticEffectGround) -> &'static str {
+    match ground {
+        v1_interpreter::HermeticEffectGround::UnpublishedMockCase { .. } => {
+            "no published mock case for a corpus-governed service"
+        }
+        v1_interpreter::HermeticEffectGround::NoMockResponse => {
+            "operation declares no mock_response"
+        }
+        v1_interpreter::HermeticEffectGround::FilesystemRemoval => {
+            "filesystem removal has no mock arm; only a wet route can run it"
+        }
+    }
+}
+
+/// The seam between the hand-Rust interpreter carrier and the `.dag`-modeled roster-join
+/// carrier for the same closed ground. Total in both directions by construction — adding an
+/// arm to either side fails to compile here rather than falling through to a default.
+fn hermetic_effect_ground_verdict(
+    ground: &v1_interpreter::HermeticEffectGround,
+) -> crate::v1_compiler_expected_red_roster_join::HermeticEffectGround {
+    use crate::v1_compiler_expected_red_roster_join::HermeticEffectGround as Modeled;
+    match ground {
+        v1_interpreter::HermeticEffectGround::UnpublishedMockCase { .. } => {
+            Modeled::UnpublishedMockCase
+        }
+        v1_interpreter::HermeticEffectGround::NoMockResponse => Modeled::NoMockResponse,
+        v1_interpreter::HermeticEffectGround::FilesystemRemoval => Modeled::FilesystemRemoval,
+    }
 }
 
 fn expected_red_arm(outcome: &ClaimOutcome) -> ExpectedRedArm {
@@ -16081,6 +16136,7 @@ fn expected_red_arm(outcome: &ClaimOutcome) -> ExpectedRedArm {
             ExpectedRedArm::Held
         }
         ClaimOutcome::HostToolUnresolved { .. } => ExpectedRedArm::HostToolUnresolved,
+        ClaimOutcome::HostEffectRefused { .. } => ExpectedRedArm::HostEffectRefused,
     }
 }
 
@@ -18444,6 +18500,16 @@ pub fn project_witness_cost_receipt(
                         str_value(format!(
                             "host tool unresolved: {name:?} (probed: {})",
                             probed.join(", ")
+                        )),
+                    ));
+                    "witness_cost_seed_refused_event"
+                }
+                ClaimOutcome::HostEffectRefused { operation, ground } => {
+                    args.push((
+                        Some("error".to_string()),
+                        str_value(format!(
+                            "hermetic route has no arm for {operation} ({})",
+                            hermetic_effect_ground_label(ground)
                         )),
                     ));
                     "witness_cost_seed_refused_event"
@@ -24231,6 +24297,15 @@ fn run_discovery_rows(
                 name,
                 probed.join(", ")
             )),
+            ClaimOutcome::HostEffectRefused { operation, ground } => {
+                summary.failures.push(format!(
+                    "{} ({}) hermetic route has no arm for {}: {}",
+                    row.function,
+                    row.entry,
+                    operation,
+                    hermetic_effect_ground_label(ground)
+                ))
+            }
             // Rendered so the elapsed value is never mistaken for a completed duration:
             // the row was killed AT the budget, so this is a ceiling, not a cost. The
             // clock (cpu vs wall) is named because the two have different remedies.
@@ -39432,16 +39507,15 @@ pub struct RequiredFloorClaim {
 /// enum's shape must track it rather than the reverse.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RequiredFloorDisposition {
-    /// Admitted into `claims`: the module's authored name did not match a long-home prefix and
-    /// the module does not declare `ReadsLiveTree`.
+    /// Admitted into `claims`: the module's authored name did not match a long-home prefix.
+    /// The identity's EXECUTION ROUTE is then `RequiredFloorClaim.execution_mode` — one route
+    /// per identity, carried by the claim that runs it, so there is no second vocabulary here
+    /// restating what the claim already says.
     Planned,
     /// Declined because the module's AUTHORED name (read from its own source, never its path)
     /// matches a `long_home_prefixes()` entry. Carries the exact prefix that matched, which the
     /// former bare `long_declined` counter discarded.
     DeclinedLongModule { matched_prefix: String },
-    /// Declined because the module declares `LiveTreeDisposition = ReadsLiveTree` and cannot
-    /// execute in the hermetic frame this floor runs.
-    DeclinedLiveTree,
 }
 
 /// One identity's `RequiredFloorDisposition`, keyed by the qualified `module.function` name so
@@ -39561,6 +39635,15 @@ pub struct RequiredFloorOutcome {
     pub completed_over_cost_requirement: Vec<String>,
     /// Host tool could not be resolved — infra undecided, not budget-refused.
     pub host_tool_unresolved: Vec<String>,
+    /// THE ROUTE HAD NO ARM — a sixth blocking cause, and the one this floor previously
+    /// answered by not executing the population at all.
+    ///
+    /// A claim reached a host effect its execution route cannot realize. It produced no verdict,
+    /// so it is not a failure; it consumed no meaningful cost, so it is not a budget outcome;
+    /// and its remedy is a route, not a fix to the witness. It BLOCKS, because the alternative
+    /// — counting a claim that never ran as green — is exactly the specification-without-
+    /// execution DESIGN §5 forbids, one level up from where the decline used to hide it.
+    pub route_gap: Vec<String>,
     pub over_warn: usize,
     /// DIAGNOSTIC ONLY, NEVER ADMISSION. A `VerdictReached` claim whose exact cost (on the
     /// `RequiredFloorCostBasis` clock) exceeded `required_floor_claim_cost_line_ms`, per
@@ -39587,12 +39670,6 @@ pub struct InventoryWitnessFile {
     pub path: String,
     pub module_path: String,
     pub functions: Vec<String>,
-    /// Whether the module declares `LiveTreeDisposition = ReadsLiveTree`.
-    ///
-    /// Read from the module's own source, at column zero, the same way `test fn` is — an
-    /// AUTHORED declaration, not a path or a directory. A witness that declares it reaches the
-    /// live tree, so it cannot execute in the hermetic frame this floor runs.
-    pub reads_live_tree: bool,
 }
 
 /// Decide whether ONE admitted file is a witness site, from the bytes preparation is holding
@@ -39628,18 +39705,37 @@ fn witness_file_from_source(
     if functions.is_empty() {
         return None;
     }
-    // Same scan, same column-zero rule as `test fn` above: a module-scope `data` whose value is
-    // `ReadsLiveTree`. Indented occurrences are inside bodies and are not declarations.
-    let reads_live_tree = content.lines().any(|line| {
-        line.starts_with("data ")
-            && line.contains("LiveTreeDisposition")
-            && line.contains("ReadsLiveTree")
-    });
+    // THE FORKED SECOND COMPUTATION OF `reads_live_tree` USED TO BE HERE, and deleting it is
+    // the point of this change rather than a tidy-up beside it.
+    //
+    // One fact — does this entry depend on live tree state — was computed by TWO methods in
+    // this one binary: this column-zero TEXT SCAN for a `data … LiveTreeDisposition …
+    // ReadsLiveTree` line, and `reads_live_tree_effective`, which reads the same declaration
+    // and then falls through to `effect_reach_derived_reads_live_tree_for_entry`, a SEMANTIC
+    // reachability derivation over the entry's import closure. A syntactic scan and an
+    // effect-reach derivation cannot agree except by coincidence — they disagree as a function
+    // of the import graph — so this was not two defaults that happened to differ, it was one
+    // fact with two authorities (DESIGN §3).
+    //
+    // AND THE FLOOR HAD NO BUSINESS ASKING THE QUESTION AT ALL. The scan's answer decided
+    // whether an identity was EXECUTED, on the premise that reaching the live tree implies
+    // "cannot run in the hermetic frame". That premise is stale: hermetic mode carries the
+    // checkout-read carve-out (`v1_interpreter`, `hermetic_checkout_read_disposition_under`),
+    // under which a `Filesystem.Read` of a path proven under the checkout root is INPUT access
+    // — the commit is the run's input — not a host effect. The carve-out landed after
+    // `live_tree_disposition` was authored, and nobody re-derived the decline that rested on
+    // it. So a file-grain authored boolean was PREDICTING an answer the interpreter already
+    // decides exactly, per identity, at the effect boundary.
+    //
+    // The prediction is deleted. Every discovered identity is now routed and executed, and the
+    // interpreter's own typed `HermeticHostEffectRefused` is the honest per-identity
+    // classifier for the residue that genuinely has no hermetic arm. `reads_live_tree_effective`
+    // survives untouched as the single authority for the question it was built for —
+    // affected-set selection eligibility — which is a different question from "can this run".
     Some(InventoryWitnessFile {
         path: path.replace('\\', "/"),
         module_path: module_path.to_string(),
         functions,
-        reads_live_tree,
     })
 }
 
@@ -40436,7 +40532,6 @@ pub fn run_required_floor(
     let mut claims: Vec<RequiredFloorClaim> = Vec::new();
     let mut planned_identities: HashSet<String> = HashSet::new();
     let mut long_declined = 0usize;
-    let mut live_declined = 0usize;
     let mut sites_offered = 0usize;
     let mut disposition_rows: Vec<RequiredFloorDispositionRow> = Vec::new();
     let mut storage_agreement_rows: Vec<LongHomeStorageAgreementRow> = Vec::new();
@@ -40465,14 +40560,6 @@ pub fn run_required_floor(
                             .expect("long_home is true only when matched_prefix is Some")
                             .clone(),
                     },
-                });
-                continue;
-            }
-            if file.reads_live_tree {
-                live_declined += 1;
-                disposition_rows.push(RequiredFloorDispositionRow {
-                    identity,
-                    disposition: RequiredFloorDisposition::DeclinedLiveTree,
                 });
                 continue;
             }
@@ -40508,15 +40595,39 @@ pub fn run_required_floor(
             });
         }
     }
+    // THE PARTITION OVER THE OFFERED POPULATION, CHECKED — not merely reported for a reader to
+    // add up.
+    //
+    // `claims_planned` is the POST-decline number, and the terminal invariant downstream
+    // (`ClaimIdentityCountsDisagree`) compares planned == executed == receipted. Every one of
+    // those three is measured after the projection has already dropped whatever it dropped, so
+    // the run's own honesty check could not see what it lost: a projection that declined a
+    // thousand identities and one that declined none produce identically healthy-looking
+    // triples. This is the missing invariant on the other side of that seam — the offered
+    // population must be exactly the routed population plus the declined one — and it is
+    // stated where the loop that could violate it runs.
+    //
+    // It cannot fail today, because the loop takes exactly one arm per site. That is the point:
+    // it is the construction's own statement of what it guarantees, and it fails loudly the
+    // first time an edit adds a third arm that quietly swallows rows, which is precisely how
+    // the live-tree decline arrived and stayed invisible.
+    if sites_offered != claims.len() + long_declined {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=SitePartitionInexact offered={sites_offered} \
+             routed={} declined_long={long_declined} — every discovered site must be either \
+             routed to a claim or declined with a stated disposition; a gap here is a roster \
+             that narrowed without saying so",
+            claims.len()
+        ));
+    }
     eprintln!(
         "[floor-phase] phase=site-projection state=completed wall_ms={} sites={} files={} \
-         claims={} declined_long={} declined_live={}",
+         claims={} declined_long={}",
         projection_started.elapsed().as_millis(),
         sites_offered,
         files.len(),
         claims.len(),
-        long_declined,
-        live_declined
+        long_declined
     );
 
     // THE EXPECTED-RED ROSTER, read from its .dag authority in the policy module's frame — it
@@ -40709,6 +40820,7 @@ pub fn run_required_floor(
         interrupted_before_verdict: Vec::new(),
         completed_over_cost_requirement: Vec::new(),
         host_tool_unresolved: Vec::new(),
+        route_gap: Vec::new(),
         over_warn: 0,
         over_cost_line_diagnostic: 0,
         failures: Vec::new(),
@@ -40776,6 +40888,7 @@ pub fn run_required_floor(
     let mut known_red_budget_refused: usize = 0;
     let mut known_red_passed_over_budget: usize = 0;
     let mut known_red_host_tool_unresolved: usize = 0;
+    let mut known_red_host_effect_refused: usize = 0;
     let mut expected_red_seen: HashSet<String> = HashSet::new();
     let mut claim_rss_kb_max: u64 = 0;
     let mut claim_rss_kb_max_row = String::new();
@@ -41094,6 +41207,30 @@ pub fn run_required_floor(
                     ));
                     continue;
                 }
+                // A ROUTE GAP IS NOT AGREEMENT, for the same reason the two arms above are not.
+                // Enrollment asserts an expected VERDICT; a claim whose route had no arm for a
+                // host effect never reached its subject and produced none. Holding it would let
+                // an enrollment silently cover a witness that has not run since the day it was
+                // enrolled — the failure this whole lane exists to close.
+                ExpectedRedArm::HostEffectRefused => {
+                    known_red_host_effect_refused += 1;
+                    let detail = match &result {
+                        ClaimOutcome::HostEffectRefused { operation, ground } => format!(
+                            "hermetic route has no arm for {operation}: {}",
+                            hermetic_effect_ground_label(ground)
+                        ),
+                        other => format!("{other:?}"),
+                    };
+                    outcome.route_gap.push(format!(
+                        "{} is enrolled as expected-red but ROUTE-GAPPED, not failed: {}. \
+                         Enrollment asserts an expected verdict; a claim that never reached its \
+                         subject produced none. Supply the route (publish the mock case, author \
+                         the mock_response, or enroll the identity in a wet lane) — do not read \
+                         this as the enrolled failure.",
+                        claim.qualified, detail
+                    ));
+                    continue;
+                }
                 ExpectedRedArm::Held => {
                     known_red_held += 1;
                     continue;
@@ -41121,6 +41258,20 @@ pub fn run_required_floor(
                 name,
                 probed.join(", ")
             )),
+            // NOT A FAILURE, AND NOT GREEN. A route gap goes to its own blocking collection
+            // rather than to `failures`, because reporting it as a failure says the witness is
+            // wrong about its subject when the witness was never given a way to reach it — and
+            // the two have different remedies. It still stops the line.
+            ClaimOutcome::HostEffectRefused { operation, ground } => {
+                outcome.route_gap.push(format!(
+                    "{} never reached its subject: the hermetic route has no arm for {} ({}). \
+                     Supply the route — publish the mock case, author the mock_response, or \
+                     enroll the identity in a wet lane — or the claim is discovered and not run.",
+                    claim.qualified,
+                    operation,
+                    hermetic_effect_ground_label(&ground)
+                ));
+            }
             ClaimOutcome::TimedOut {
                 elapsed_ms,
                 budget_ms,
@@ -41318,18 +41469,21 @@ pub fn run_required_floor(
             + known_red_budget_refused
             + known_red_passed_over_budget
             + known_red_host_tool_unresolved
+            + known_red_host_effect_refused
             != expected_red_roster.len()
     {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=ExpectedRedPartitionInexact held={} now_passing={} \
-             budget_refused={} passed_over_budget={} host_tool_unresolved={} roster={} — every \
-             enrolled identity must be exactly one of held, now-passing, budget-refused, \
-             passed-over-budget, or host-tool-unresolved",
+             budget_refused={} passed_over_budget={} host_tool_unresolved={} \
+             host_effect_refused={} roster={} — every enrolled identity must be exactly one of \
+             held, now-passing, budget-refused, passed-over-budget, host-tool-unresolved, or \
+             host-effect-refused",
             known_red_held,
             known_red_now_passing,
             known_red_budget_refused,
             known_red_passed_over_budget,
             known_red_host_tool_unresolved,
+            known_red_host_effect_refused,
             expected_red_roster.len()
         ));
     }
@@ -41442,14 +41596,13 @@ fn required_floor_disposition_label(disposition: &RequiredFloorDisposition) -> &
     match disposition {
         RequiredFloorDisposition::Planned => "planned",
         RequiredFloorDisposition::DeclinedLongModule { .. } => "declined_long_module",
-        RequiredFloorDisposition::DeclinedLiveTree => "declined_live_tree",
     }
 }
 
 fn required_floor_disposition_matched_prefix(disposition: &RequiredFloorDisposition) -> &str {
     match disposition {
         RequiredFloorDisposition::DeclinedLongModule { matched_prefix } => matched_prefix,
-        RequiredFloorDisposition::Planned | RequiredFloorDisposition::DeclinedLiveTree => "",
+        RequiredFloorDisposition::Planned => "",
     }
 }
 
@@ -41465,21 +41618,18 @@ fn write_required_floor_disposition_tsv(
         .map_err(|e| format!("write_required_floor_disposition_tsv: create {path}: {e}"))?;
     let mut planned = 0usize;
     let mut declined_long = 0usize;
-    let mut declined_live = 0usize;
     for row in rows {
         match &row.disposition {
             RequiredFloorDisposition::Planned => planned += 1,
             RequiredFloorDisposition::DeclinedLongModule { .. } => declined_long += 1,
-            RequiredFloorDisposition::DeclinedLiveTree => declined_live += 1,
         }
     }
     writeln!(
         file,
-        "# summary\ttotal={}\tplanned={}\tdeclined_long_module={}\tdeclined_live_tree={}",
+        "# summary\ttotal={}\tplanned={}\tdeclined_long_module={}",
         rows.len(),
         planned,
-        declined_long,
-        declined_live
+        declined_long
     )
     .map_err(|e| format!("write_required_floor_disposition_tsv: write {path}: {e}"))?;
     writeln!(file, "identity\tdisposition\tmatched_prefix")
@@ -41682,10 +41832,6 @@ mod required_floor_disposition_and_storage_agreement_law {
                     matched_prefix: "test.claim.long.".to_string(),
                 },
             },
-            RequiredFloorDispositionRow {
-                identity: "m.three.c".to_string(),
-                disposition: RequiredFloorDisposition::DeclinedLiveTree,
-            },
         ];
 
         write_required_floor_disposition_tsv(&path_str, &rows).expect("write tsv");
@@ -41693,19 +41839,17 @@ mod required_floor_disposition_and_storage_agreement_law {
         let _ = std::fs::remove_dir_all(&dir);
 
         let lines: Vec<&str> = content.lines().collect();
-        assert_eq!(lines.len(), 5, "summary + header + 3 rows: {lines:?}");
+        assert_eq!(lines.len(), 4, "summary + header + 2 rows: {lines:?}");
         assert!(lines[0].starts_with("# summary"));
-        assert!(lines[0].contains("total=3"));
+        assert!(lines[0].contains("total=2"));
         assert!(lines[0].contains("planned=1"));
         assert!(lines[0].contains("declined_long_module=1"));
-        assert!(lines[0].contains("declined_live_tree=1"));
         assert_eq!(lines[1], "identity\tdisposition\tmatched_prefix");
         assert_eq!(lines[2], "m.one.a\tplanned\t");
         assert_eq!(
             lines[3],
             "test.claim.long.two.b\tdeclined_long_module\ttest.claim.long."
         );
-        assert_eq!(lines[4], "m.three.c\tdeclined_live_tree\t");
     }
 
     #[test]
@@ -41770,6 +41914,12 @@ fn witness_eval_verdict_from_claim_outcome(
             crate::v1_compiler_expected_red_roster_join::WitnessEvalVerdict::HostToolUnresolved {
                 name: name.clone(),
                 probed: std::rc::Rc::new(probed.iter().cloned().collect::<im::Vector<_>>()),
+            }
+        }
+        ClaimOutcome::HostEffectRefused { operation, ground } => {
+            crate::v1_compiler_expected_red_roster_join::WitnessEvalVerdict::HostEffectRefused {
+                operation: operation.clone(),
+                ground: hermetic_effect_ground_verdict(ground),
             }
         }
         ClaimOutcome::TimedOut {
