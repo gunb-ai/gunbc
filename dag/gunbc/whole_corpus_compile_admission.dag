@@ -1,0 +1,94 @@
+module gunbc.whole_corpus_compile_admission
+
+import std.types { Int, String, NonEmptyStr, Bool }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.host_budget_source {
+  HostBudgetResolution,
+  HostBudgetResolved,
+  HostBudgetUnreadable,
+  HostBudgetSource,
+  host_budget_source_label,
+}
+
+data whole_corpus_compile_admission_authority_disposition: Disposition = Terminal {
+  reason: "Single authority for the arm-time admission of a WHOLE-CORPUS compile against the host memory budget gunbc.host_budget_source already models. The budget half and the source half were both modeled; the JOIN between them and the decision to start the run was not, which is the defect this module closes. Its sibling for the floor walk is gunbc.runner_slot_allocation gunbc_floor_minimum_viable_armed_budget, enforced by claim_executor at arm time as a fail-fast refusal on a provably doomed walk; nothing played that role for the compile instrument, and this module is that role, derived the same way from a measured demand figure."
+}
+
+data whole_corpus_compile_unjoined_observation_note: String = "THE OBSERVATION EXISTED, WAS CORRECT, AND WAS JOINED TO NOTHING — which is why the fix is a join and not a bigger machine. v1_compiler.cli_run typed_module_cache_cap derives an entry cap from the host budget once per index and, when the budget source is degraded, prints [floor-drain] degraded_budget_source: cap=<n> source=<label>. That line is a write-only eprintln: no consumer reads it, no admission decision reads the budget it was derived from, and the process then starts a whole-corpus resolve whose resident set exceeds what that budget can hold.\n\nA run that knows its budget and starts a job it cannot hold is not resource-starved, it is UN-JOINED. Resource-starved is answered by a larger machine; un-joined produces the identical failure on the larger machine one corpus-growth later. DESIGN section 5 names the failure shape exactly: the deficit's frequency is zero by construction, so it never ranks for fixing, and the cost arrives as a dead process instead of a diagnostic.\n\nHOW IT ARRIVES, and why it is worse than a crash: the kill is SIGKILL. There is no diagnostic, no partial-result marker, and a harness that greps the captured output for a count reads ZERO — a fabricated zero indistinguishable from a real one. The session that found this had a harness printing only the grep result and would have published 'the corpus carries 0 rows of class X'; echoing the exit status explicitly is the only thing that stopped it. Every corpus-wide count taken over a run whose exit status was not recorded is unattributed for the same reason, and that is a standing reading rule rather than a fact about one night."
+
+data whole_corpus_compile_observed_kill_receipt_note: String = "MEASURED, TWICE, ON THE BUILDBUDDY REMOTE-EXECUTION RUNNER (session stern-heron-695, 2026-08-19/20). The instrument is the one v1.compiler.04_infer method_existence_wall_note names as the whole-corpus instrument — gunbc compile --source-root dag --source-root src/v2 --target dag — and which that row contrasts against a narrow --entry run that reported clean while twelve real sites sat outside its closure. Invocations a39713da-8cfb-415d-a8f6-1e0ef150d075 (at 517fdac4dd) and 13cf8d2e-173a-42d2-9a56-101bb3332740 (at 0456098671) both ended 'Killed' with EXIT=137. The BUILD succeeded in about four minutes each time; the COMPILE died. Reproducible, not a flake.\n\nTHE CAP LINE IS THE PREDICTION, AND ITS UNITS ARE ENTRIES, NOT BYTES. The second run printed, immediately before dying: [floor-drain] degraded_budget_source: cap=1675 source=/proc/meminfo MemAvailable (no private cgroup memory.max/memory.high found). 1675 is a MODULE-ENTRY count, not a megabyte figure — the reporting session read it as '1675 MB' and derived from that a '~1.6 GiB runner', which is corrected here rather than inherited. cli_run derives cap as budget_bytes / TYPED_MODULE_BYTES_PER_ENTRY_ESTIMATE (3 MiB) clamped to [100, 4000], and 1675 sits strictly inside that clamp, so the reading INVERTS EXACTLY: MemAvailable on that runner was in [5269094400, 5272240128) bytes — about 4.9 GiB, not 1.6. THE ROUTING INVERSION SURVIVES THE CORRECTION and is the operator-facing half: the session container carries a 31 GiB cgroup cap while the remote-execution runner answered with under 5 GiB, and remote is the DEFAULT route, so a memory-bound job is sent to the small machine automatically.\n\nWHY THE CORRECTION MAKES THE JOIN MORE URGENT RATHER THAN LESS. Against the measured demand below the deficit is of order one to two gibibytes, not a factor of four — and a deficit that small is exactly the one a bigger machine appears to fix. An un-joined instrument that gets a bigger machine survives to fail again, silently, on the next corpus growth. That is the whole argument for landing a refusal rather than a requisition."
+
+data whole_corpus_compile_measured_demand_note: String = "WHERE THE THRESHOLD COMES FROM, AND WHY IT IS NOT A NUMBER FROM THIS TREE (DESIGN section 5 test-oracle rule: a merge-blocking literal must be grounded in a controlled fixture, an external or versioned authority, or a policy budget — and a measurement copied from the current tree is not an oracle).\n\nThe authority is two dated CI receipts in docs/plans/compile-clean-whole-tree-time-diagnosis.md, both UNCENSORED in the sense gunbc.runner_slot_allocation gunbc_floor_measured_peak_is_uncensored demands: run 29828873976 on an unconstrained slot (memory.high=none) peaked at about 6.3 GiB at emit.done, and run 29834202745 on a proper 15 GiB/16 GiB slot peaked at about 6.2 GiB with swap=0. Neither peak sits at its own armed line, so neither is a throttle pin being mistaken for demand.\n\nTHE GRAIN IS THE RECEIPT'S GRAIN, ROUNDED IN THE FAIL-CLOSED DIRECTION. Those receipts carry one decimal place, so manufacturing a byte-exact threshold from them would be inventing precision the measurement does not have. The declared figure is the higher reading rounded UP to whole-gibibyte grain — 7 GiB — because for a DEMAND figure rounding up refuses the marginal case and rounding down admits it.\n\nWHAT THIS IS A PROXY FOR, STATED RATHER THAN ELIDED: the two receipts measure the compile-clean whole-tree pass on the floor route (claim_executor installing the receipt), not gunbc compile's own emit leg. It is the closest measured figure for the same whole-tree closure and it is used as a LOWER bound on demand, which is the direction that keeps the proxy honest — if the compile route wants more, this threshold under-refuses, which is exactly the status quo and not a regression it introduces.\n\nSTALENESS IS DECLARED, NOT HIDDEN. The receipts are 2026-07-21 and the corpus has grown since; a demand figure does not shrink with corpus growth, so the honest reading is that 7 GiB is a floor under today's demand rather than an estimate of it. RE-MEASURE TRIGGER: a dated uncensored whole-tree peak taken on the compile route itself replaces both the figure and this note's proxy clause. Deliberately NOT done by scaling the old peak by a module count — the relationship between corpus size and peak resident set is unmeasured, and a fabricated scaling law would be a heuristic standing where a measurement was available (DESIGN section 4)."
+
+data whole_corpus_compile_rung_note: String = "RUNG: MITIGATABLE, and saying so is load-bearing because the neighbouring claim would be inflation. What this admission does is convert a SILENT SIGKILL — which sits below the ladder entirely, being a fabricated zero rather than any rung of it — into a typed, located, exit-1 refusal that names the two disagreeing quantities, the budget, its source, and a remedy. That is containment of harm at a boundary, not prevention of the state.\n\nWHAT IT DOES NOT CLAIM: an admitted budget is NOT certified sufficient. The threshold is a lower bound on demand taken on a different route at an older tree, so admission means 'not provably doomed', never 'will fit'. A run that clears this and dies anyway is a re-measure trigger, not a defect in the refusal.\n\nNEXT-RUNG TRIGGER: a per-run resident-set prediction derived from the compile's own declared inputs rather than a fleet-wide constant, at which point the admission becomes a real fit predicate and can climb toward mechanical prevention. Until then the class is declared here rather than left to be rediscovered."
+
+data whole_corpus_compile_scope_note: String = "SCOPED COMPILES REACH NO ADMISSION ARM AT ALL, and the asymmetry is the remedy the refusal names. gunbc compile --entry <file> narrows to one module's reference-derived closure and was measured to fit on the very runner that killed the whole-corpus run (exit 0 on src/v2/std/node.dag, same invocation session). Its resident working set is that closure, not the whole tree, so a whole-tree demand figure is the wrong denominator for it and applying one would refuse runs that demonstrably succeed.\n\nAn unasked question, not an all-clear: a scoped compile is not admitted by this module, it is outside its subject. If scoped compiles later need their own bound it will be a different measurement with a different demand figure, never this one reused at a discount."
+
+// The demand figure: the higher of the two uncensored 2026-07-21 CI peaks (run 29828873976,
+// ~6.3 GiB at emit.done), rounded up to whole-gibibyte grain. See
+// whole_corpus_compile_measured_demand_note for the grain argument and the re-measure trigger.
+fn whole_corpus_compile_measured_peak_demand() -> ByteSize {
+  byte_size(7516192768)
+}
+
+type WholeCorpusCompileAdmission
+  = WholeCorpusCompileAdmitted { budget: ByteSize, required: ByteSize }
+  | WholeCorpusCompileRefusedBudgetBelowMeasuredDemand {
+      budget: ByteSize,
+      required: ByteSize,
+      source: NonEmptyStr,
+    }
+  | WholeCorpusCompileRefusedBudgetUnreadable { reason: NonEmptyStr }
+
+fn whole_corpus_compile_admission_at_budget(
+  bytes: ByteSize,
+  source: HostBudgetSource
+) -> WholeCorpusCompileAdmission {
+  if byte_size_count(b: bytes) < byte_size_count(b: whole_corpus_compile_measured_peak_demand()) {
+    WholeCorpusCompileRefusedBudgetBelowMeasuredDemand {
+      budget: bytes,
+      required: whole_corpus_compile_measured_peak_demand(),
+      source: host_budget_source_label(s: source),
+    }
+  } else {
+    WholeCorpusCompileAdmitted {
+      budget: bytes,
+      required: whole_corpus_compile_measured_peak_demand(),
+    }
+  }
+}
+
+fn whole_corpus_compile_admission(budget: HostBudgetResolution) -> WholeCorpusCompileAdmission {
+  match budget {
+    HostBudgetUnreadable { reason: r } => WholeCorpusCompileRefusedBudgetUnreadable { reason: r }
+    HostBudgetResolved { source: s, bytes: b } =>
+      whole_corpus_compile_admission_at_budget(bytes: b, source: s)
+  }
+}
+
+fn whole_corpus_compile_admits(a: WholeCorpusCompileAdmission) -> Bool {
+  match a {
+    WholeCorpusCompileAdmitted { budget: _, required: _ } => true
+    WholeCorpusCompileRefusedBudgetBelowMeasuredDemand { budget: _, required: _, source: _ } => false
+    WholeCorpusCompileRefusedBudgetUnreadable { reason: _ } => false
+  }
+}
+
+// The budget the BuildBuddy runner actually answered with, recovered exactly from the
+// cap=1675 line that run printed (see whole_corpus_compile_observed_kill_receipt_note): the
+// low end of the [5269094400, 5272240128) interval that division admits. Every value in the
+// interval produces the same cap and the same verdict here.
+data whole_corpus_compile_observed_runner_budget_lower_bound: ByteSize = byte_size(5269094400)
+
+data whole_corpus_compile_seed_mirror_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.whole_corpus_compile_admission",
+    decl_name: "whole_corpus_compile_admission",
+    field: WholeDeclaration
+  }
+}
+
+data whole_corpus_compile_seed_mirror_note: String = "v1 HAND-REALIZES THIS, FOR THE SAME BOOTSTRAP REASON gunbc.host_budget_source host_budget_source_seed_mirror_note gives and no other: the decision runs BEFORE any .dag value could exist, because it is the decision about whether resolving the corpus may begin at all. It cannot be a value obtained by resolving the corpus. The seed mirror is v1_compiler.memory_governor whole_corpus_compile_admission over the same budget authority read_host_budget_bytes, joined at v1_compiler main.rs's Compile arm immediately after the module index is built — the first point the run has a corpus and the last point before whole-tree file contents are held resident. DISSOLVE-ON: the same emit path that retires the seed's other budget mirrors (DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES, DECLARED_FLOOR_MINIMUM_VIABLE_ARMED_BUDGET_BYTES), at which point these rows are read rather than mirrored. Until then this module is the authority a reviewer checks the seed against, and — as that sibling note already records for its own constants — nothing executes that check."

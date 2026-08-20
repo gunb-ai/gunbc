@@ -1,0 +1,88 @@
+module test.claim.whole_corpus_compile_admission_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.host_budget_source {
+  HostBudgetResolution,
+  HostBudgetResolved,
+  HostBudgetUnreadable,
+  BudgetSourceMemAvailable,
+  BudgetSourceCgroupMemoryHigh,
+}
+import gunbc.whole_corpus_compile_admission {
+  WholeCorpusCompileAdmitted,
+  WholeCorpusCompileRefusedBudgetBelowMeasuredDemand,
+  WholeCorpusCompileRefusedBudgetUnreadable,
+  whole_corpus_compile_admission,
+  whole_corpus_compile_admits,
+  whole_corpus_compile_measured_peak_demand,
+  whole_corpus_compile_observed_runner_budget_lower_bound,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_subject_note: String = "BOTH ARMS STAND ON INDEPENDENTLY MEASURED MACHINES, which is what makes the pair fail for a reason worth knowing in either direction rather than restating its own input.\n\nThe REFUSING budget is the one the BuildBuddy remote-execution runner actually answered with on invocation 13cf8d2e-173a-42d2-9a56-101bb3332740, the run that was SIGKILLed at exit 137. It is not chosen to make the assertion true: it is recovered from the cap=1675 line that run printed, by inverting the integer division cli_run performs.\n\nThe ADMITTING budget is gunbc.runner_slot_allocation's declared per-slot memory.high, which is what the fleet runner CI actually runs this instrument on reports. So a refusal that stopped firing would mean the measured doomed run had become admissible, and an admission that stopped holding would mean CI's own runner had been refused — two different regressions, each with its own arm here."
+
+fn observed_doomed_budget() -> HostBudgetResolution {
+  HostBudgetResolved {
+    source: BudgetSourceMemAvailable,
+    bytes: whole_corpus_compile_observed_runner_budget_lower_bound,
+  }
+}
+
+fn fleet_runner_slot_budget() -> HostBudgetResolution {
+  HostBudgetResolved {
+    source: BudgetSourceCgroupMemoryHigh {
+      cgroup_dir: "/sys/fs/cgroup/system.slice/system-actions-runner.slice/actions-runner@srv1-01.service" as NonEmptyStr,
+    },
+    bytes: byte_size(16106127360),
+  }
+}
+
+test fn the_budget_that_was_sigkilled_refuses_and_names_its_source() -> Bool {
+  match whole_corpus_compile_admission(budget: observed_doomed_budget()) {
+    WholeCorpusCompileRefusedBudgetBelowMeasuredDemand {
+      budget: b,
+      required: r,
+      source: s,
+    } => byte_size_count(b: b) == 5269094400
+      && byte_size_count(b: r) == 7516192768
+      && (s as String) == "/proc/meminfo MemAvailable"
+    WholeCorpusCompileAdmitted { budget: _, required: _ } => false
+    WholeCorpusCompileRefusedBudgetUnreadable { reason: _ } => false
+  }
+}
+
+test fn the_runner_ci_actually_uses_is_admitted() -> Bool {
+  whole_corpus_compile_admits(a: whole_corpus_compile_admission(budget: fleet_runner_slot_budget()))
+}
+
+test fn admission_is_tight_at_the_measured_demand() -> Bool {
+  let demand = byte_size_count(b: whole_corpus_compile_measured_peak_demand())
+  whole_corpus_compile_admits(
+    a: whole_corpus_compile_admission(
+      budget: HostBudgetResolved { source: BudgetSourceMemAvailable, bytes: byte_size(demand) }
+    )
+  )
+    && !whole_corpus_compile_admits(
+      a: whole_corpus_compile_admission(
+        budget: HostBudgetResolved {
+          source: BudgetSourceMemAvailable,
+          bytes: byte_size(demand - 1),
+        }
+      )
+    )
+}
+
+test fn an_unreadable_budget_refuses_rather_than_admitting_the_widest_cap() -> Bool {
+  match whole_corpus_compile_admission(
+    budget: HostBudgetUnreadable {
+      reason: "no modeled host memory source answered on this platform" as NonEmptyStr,
+    }
+  ) {
+    WholeCorpusCompileRefusedBudgetUnreadable { reason: r } => !((r as String) == "")
+    WholeCorpusCompileAdmitted { budget: _, required: _ } => false
+    WholeCorpusCompileRefusedBudgetBelowMeasuredDemand { budget: _, required: _, source: _ } => false
+  }
+}

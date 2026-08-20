@@ -221,6 +221,112 @@ pub fn floor_budget_below_minimum_footprint(budget: Option<u64>) -> Option<Strin
     }
 }
 
+/// Measured whole-tree compile demand — the threshold a whole-corpus compile is admitted
+/// against. SCAFFOLD (§7 seed-retained HAND-RUST; authority
+/// `gunbc.whole_corpus_compile_admission` `whole_corpus_compile_measured_peak_demand`),
+/// the same shape and the same reason as `DECLARED_FLOOR_MINIMUM_VIABLE_ARMED_BUDGET_BYTES`
+/// above: the decision runs before any `.dag` value could exist, because it is the decision
+/// about whether resolving the corpus may begin.
+///
+/// Basis: two dated, uncensored CI receipts in
+/// `docs/plans/compile-clean-whole-tree-time-diagnosis.md` — run 29828873976 on an
+/// unconstrained slot peaked at ~6.3 GiB at `emit.done`, run 29834202745 on a 15 GiB/16 GiB
+/// slot peaked at ~6.2 GiB with swap=0. Neither sits at its own armed line, so neither is a
+/// throttle pin. The receipts carry one decimal place, so the declared figure is the higher
+/// reading rounded UP to whole-gibibyte grain: for a DEMAND figure, rounding up refuses the
+/// marginal case and rounding down admits it.
+///
+/// dissolve-on: the emit path that retires this seed's other budget mirrors; re-measure
+/// trigger: a dated uncensored whole-tree peak taken on the `gunbc compile` route itself.
+pub const DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES: u64 = 7_516_192_768;
+
+/// Arm-time admission for a WHOLE-CORPUS compile — the seed mirror of
+/// `gunbc.whole_corpus_compile_admission` `whole_corpus_compile_admission`.
+///
+/// It exists because the budget was already read and already printed and was joined to
+/// nothing: `cli_run::typed_module_cache_cap` emits `[floor-drain] degraded_budget_source`
+/// and the process then starts a resolve it cannot hold. Measured twice on the BuildBuddy
+/// remote-execution runner (invocations a39713da-8cfb-415d-a8f6-1e0ef150d075 and
+/// 13cf8d2e-173a-42d2-9a56-101bb3332740): SIGKILL, exit 137, no diagnostic — so a harness
+/// grepping the captured output reads a fabricated zero rather than a failure.
+///
+/// What it does NOT claim: an admitted budget is not certified sufficient. The threshold is
+/// a lower bound on demand taken on a neighbouring route at an older tree, so admission
+/// means "not provably doomed" (mitigatable, §4b), never "will fit".
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WholeCorpusCompileAdmission {
+    Admitted {
+        budget_bytes: u64,
+        required_bytes: u64,
+    },
+    RefusedBudgetBelowMeasuredDemand {
+        budget_bytes: u64,
+        required_bytes: u64,
+        source: String,
+    },
+    RefusedBudgetUnreadable {
+        source: String,
+    },
+}
+
+pub fn whole_corpus_compile_admission(
+    budget: Option<u64>,
+    source: &str,
+) -> WholeCorpusCompileAdmission {
+    let Some(budget_bytes) = budget else {
+        return WholeCorpusCompileAdmission::RefusedBudgetUnreadable {
+            source: source.to_string(),
+        };
+    };
+    let required_bytes = DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES;
+    if budget_bytes < required_bytes {
+        WholeCorpusCompileAdmission::RefusedBudgetBelowMeasuredDemand {
+            budget_bytes,
+            required_bytes,
+            source: source.to_string(),
+        }
+    } else {
+        WholeCorpusCompileAdmission::Admitted {
+            budget_bytes,
+            required_bytes,
+        }
+    }
+}
+
+impl WholeCorpusCompileAdmission {
+    /// `Some(diagnostic)` on either refusal arm, `None` when admitted. The diagnostic names
+    /// the two quantities that disagree, the budget and its source, and the scoped `--entry`
+    /// narrowing measured to fit on the same runner — a refusal that proposes no remedy is a
+    /// stopped line nobody can restart.
+    pub fn refusal_diagnostic(&self) -> Option<String> {
+        match self {
+            WholeCorpusCompileAdmission::Admitted { .. } => None,
+            WholeCorpusCompileAdmission::RefusedBudgetBelowMeasuredDemand {
+                budget_bytes,
+                required_bytes,
+                source,
+            } => Some(format!(
+                "WholeCorpusCompileBudgetBelowMeasuredDemand: host memory budget={budget_bytes} \
+                 bytes (source={source}) is below the measured whole-tree compile demand of \
+                 {required_bytes} bytes (CI receipts 29828873976 / 29834202745, \
+                 gunbc.whole_corpus_compile_admission). Refusing to start a run that is provably \
+                 below measured demand — the previous behaviour was to start it and be SIGKILLed, \
+                 which reports as a silent exit-137 zero rather than a diagnostic, so any count \
+                 grepped from such a run is a memorial to a killed process. Remedy: scope the \
+                 compile with --entry <file.dag>, or run it where a larger budget is readable."
+            )),
+            WholeCorpusCompileAdmission::RefusedBudgetUnreadable { source } => Some(format!(
+                "WholeCorpusCompileBudgetUnreadable: no modeled host memory source answered \
+                 ({source}), so the bound on a whole-corpus compile is UNKNOWN. Refusing rather \
+                 than admitting against the widest cap available — an unbounded resolve on an \
+                 unbounded host is the OOM-kill this arm exists to prevent. Declare one with \
+                 GUNBC_MEMORY_BUDGET_BYTES, or model this platform's memory source \
+                 (dag/gunbc/host_budget_source.dag)."
+            )),
+        }
+    }
+}
+
 /// Cap an uncapped-host MemAvailable sample at the declared runner-slot throttle
 /// line. Returns `(budget, capped)` where `capped` is true when `avail` exceeded
 /// the declaration.
@@ -483,5 +589,66 @@ mod tests {
         let (small, capped_small) = uncapped_host_budget_from_mem_available(8_000_000_000);
         assert_eq!(small, 8_000_000_000);
         assert!(!capped_small);
+    }
+
+    /// The discriminating RED: the budget the BuildBuddy runner actually answered with on
+    /// the run that was SIGKILLed (recovered from its own `cap=1675` line — see
+    /// `gunbc.whole_corpus_compile_admission`), paired with the fleet runner slot's declared
+    /// `memory.high`, which is what the machine CI runs this instrument on reports. Both
+    /// arms stand on independently measured machines, so each fails for its own reason: the
+    /// refusal ceasing to fire means the doomed run became admissible, and the admission
+    /// ceasing to hold means CI's own runner is being refused.
+    #[test]
+    fn whole_corpus_compile_refuses_the_budget_that_was_sigkilled_and_admits_the_ci_runner() {
+        let doomed =
+            whole_corpus_compile_admission(Some(5_269_094_400), "/proc/meminfo MemAvailable");
+        assert!(matches!(
+            doomed,
+            WholeCorpusCompileAdmission::RefusedBudgetBelowMeasuredDemand { .. }
+        ));
+        let msg = doomed.refusal_diagnostic().expect("refusal must diagnose");
+        assert!(msg.contains("WholeCorpusCompileBudgetBelowMeasuredDemand"));
+        assert!(msg.contains("/proc/meminfo MemAvailable"));
+        assert!(msg.contains("--entry"));
+
+        let ci_slot = whole_corpus_compile_admission(
+            Some(DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES),
+            "cgroup memory.high",
+        );
+        assert!(matches!(
+            ci_slot,
+            WholeCorpusCompileAdmission::Admitted { .. }
+        ));
+        assert!(ci_slot.refusal_diagnostic().is_none());
+    }
+
+    #[test]
+    fn whole_corpus_compile_admission_is_tight_at_the_measured_demand() {
+        let at = whole_corpus_compile_admission(
+            Some(DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES),
+            "env GUNBC_MEMORY_BUDGET_BYTES",
+        );
+        assert!(at.refusal_diagnostic().is_none());
+        let one_short = whole_corpus_compile_admission(
+            Some(DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES - 1),
+            "env GUNBC_MEMORY_BUDGET_BYTES",
+        );
+        assert!(one_short.refusal_diagnostic().is_some());
+    }
+
+    /// An unreadable budget refuses rather than admitting against the widest cap available —
+    /// the arm `host_budget_source_no_fallback_arm_note` records as having OOM-killed the
+    /// witness corpus twice when it was a `.unwrap_or(CEIL)`.
+    #[test]
+    fn whole_corpus_compile_unreadable_budget_refuses_rather_than_widening() {
+        let unreadable = whole_corpus_compile_admission(None, "unreadable: no modeled source");
+        assert!(matches!(
+            unreadable,
+            WholeCorpusCompileAdmission::RefusedBudgetUnreadable { .. }
+        ));
+        assert!(unreadable
+            .refusal_diagnostic()
+            .expect("refusal must diagnose")
+            .contains("WholeCorpusCompileBudgetUnreadable"));
     }
 }
