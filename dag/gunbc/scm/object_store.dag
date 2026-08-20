@@ -91,11 +91,28 @@ fn store_contains(store: ObjectStore, identity: ObjectId) -> Bool {
 // present is the same content by definition of a content address, so re-storing returns the store
 // unchanged. This is what lets the same object appear at many positions in one program while being
 // stored once -- content is fungible, positions are not.
-fn put_object(store: ObjectStore, record: ObjectRecord) -> ObjectStore {
+// NO CALLER CAN INTRODUCE A RECORD. This used to be a public `put_object(store, record)` taking a
+// record whose `identity` field was supplied by the caller and unrelated to its `kind`/`children` --
+// so a record could be stored under a lying key and every later checkout would faithfully return the
+// lie. That is not a validation gap to be patched with a check: a check would concede the forged
+// pairing is writable and then re-state, at admission, the derivation the store already performs.
+// So the insert is private to the one function that DERIVES the key, and the only other way an entry
+// enters a store is to be copied from a store that already holds it.
+fn insert_derived(store: ObjectStore, record: ObjectRecord) -> ObjectStore {
   if store_contains(store: store, identity: record.identity) {
     store
   } else {
     ObjectStore { objects: concat(store.objects, [record]) }
+  }
+}
+
+// Grafting an entry between stores cannot forge, because it can only move a pairing that some
+// earlier store_node already derived. This is what lets a caller build a deliberately INCOMPLETE
+// closure -- a root without its children -- without ever being able to build a DISHONEST one.
+fn copy_object(from: ObjectStore, to: ObjectStore, identity: ObjectId) -> ObjectStore {
+  match find_object(store: from, identity: identity) {
+    Absent => to
+    Present { value: record } => insert_derived(store: to, record: record)
   }
 }
 
@@ -119,7 +136,7 @@ fn store_node(store: ObjectStore, n: Node) -> StoreResult {
   })
   let identity = content_hash(n: n)
   StoreResult {
-    store: put_object(
+    store: insert_derived(
       store: acc.store,
       record: ObjectRecord { identity: identity, kind: n.kind, children: acc.edges },
     ),
