@@ -1,6 +1,7 @@
 module extdeps.shell.exec
 
-import std.types { String }
+import std.types { String, Int, Bool, NonEmptyStr }
+import v2.std.compilers.cli_surface { ProcessArgvExpansion }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.exec_arg_limit { host_exec_arg_max_strlen }
@@ -52,6 +53,35 @@ data shell_exec_check_argv_embed_note: String = "shell.Exec.Check transport: arg
 
 data shell_exec_transport_ceiling_authority: ByteSize = host_exec_arg_max_strlen
 
+// THE LOCAL PROCESS-ARGV SEAM (shell.Exec.RunArgv, declared in the service below).
+//
+// Run is argv ["bash", "-s"] with the script on stdin -- the heredoc path -- so every local
+// ArgvCommand in the corpus renders its argv to quoted TEXT and hands that text to a shell, which
+// parses it back into an argument vector. The seed does Command::new(&argv[0]).args(&argv[1..]) at
+// the far end regardless, so the round trip through shell quoting buys nothing and costs the one
+// thing argv-as-serialization exists to stop: a re-parse where the boundary between arguments is
+// inferred from text instead of carried.
+//
+// THE PROGRAM IS NOT AN ARGUMENT, which is why RunArgv takes it as a separate input rather than as
+// the first element of the expansion. execve takes the executable and the argument vector as
+// distinct parameters; conflating them is the same state-space collapse this lane keeps removing.
+// And with the program separate and NonEmptyStr, an EMPTY argv is unconstructible -- there is
+// always an argv[0], so the unspawnable empty vector has no representation here rather than being
+// refused after the fact.
+//
+// NO success: Bool FIELD, DELIBERATELY. `success` is not an observation, it is a POLICY judgement
+// about one -- jq exits 4 to mean "no output" and 1 to mean "false result", neither of which is
+// failure. A Bool beside stdout forces every caller to re-derive that judgement from a field that
+// already threw the information away, and lets a refusal read as empty output. So the wire carries
+// the honest triple -- a wire returns scalars, it cannot return a coproduct -- and the typed
+// outcome is decoded immediately above it by classify_process_observation against a policy the
+// caller declares. That is the pattern already landed for jq (jq_classify_observation /
+// JqExitPolicy / JqOutcome), reused rather than re-coined.
+//
+// The argv IS the expansion, spliced one word per CliArgument, with no shell between the carrier
+// and the process: nothing is quoted, joined, or re-parsed. A nonzero exit is DATA, not an error --
+// refusing there would hard-code one exit policy into the seam and make every legitimate nonzero
+// convention unreachable.
 service shell.Exec {
   operation Run {
     input { script: TransportScript }
@@ -76,6 +106,28 @@ service shell.Exec {
     }
   }
 
+  operation RunArgv {
+    input { program: NonEmptyStr, arguments: ProcessArgvExpansion }
+
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+
+    transport shell {
+      argv: [program, arguments]
+    }
+
+    exit {
+      0 => Unit
+      nonzero => Unit
+    }
+    mock_response {
+      0 => { exit_code: 0, stdout: "", stderr: "" } "hermetic shell.Exec.RunArgv success"
+    }
+  }
+
   operation Check {
     input { command: TransportScript }
     output { exists: Bool from "exit_success" }
@@ -89,5 +141,80 @@ service shell.Exec {
     mock_response {
       0 => { exists: true } "hermetic shell.Exec.Check success"
     }
+  }
+}
+
+// -------------------------------------------------------------------------------------------
+// DECODING THE OBSERVATION, immediately above the wire.
+//
+// The seam returns three scalars because that is what a process gives back. Correlating them is
+// a decision, and it belongs in one place rather than at each of the twenty-five call sites that
+// currently do it by hand.
+// -------------------------------------------------------------------------------------------
+
+type ProcessObservation {
+  exit_code: Int
+  stdout: String
+  stderr: String
+}
+
+fn process_observation(exit_code: Int, stdout: String, stderr: String) -> ProcessObservation {
+  ProcessObservation { exit_code: exit_code, stdout: stdout, stderr: stderr }
+}
+
+// CONVERGENCE OWED, declared rather than left for someone to notice. extdeps.tools.jq carries
+// JqOutcome / JqExitPolicy / jq_classify_observation, which are this same pair specialized to one
+// tool -- JqOutputPresent, JqOutputAbsent, JqExecutionRefused against the general variants above.
+// Two names for one concept is the nicknaming DESIGN section 3 forbids, and the correct end state
+// is that jq's policy becomes a ProcessExitPolicy row (its 4-means-absent rule is a third variant
+// this type does not yet carry) and JqOutcome dissolves into ProcessOutcome.
+//
+// It is NOT done in this change, and the reason is scope rather than difficulty: jq's classifier
+// is landed, reviewed and consumed by witnesses, so folding it in belongs with the consumer
+// migration that motivates it rather than inside the operation that models the seam.
+// DISSOLVE-ON: the first consumer migrated onto RunArgv, at which point both classifiers have a
+// live caller and the merge is a refactor with execution behind it rather than a speculative one.
+
+// WHAT THE CALLER WANTS FROM THE PROCESS, which is the thing a bare Bool cannot say. Callers of
+// the current run_shell_command_capture split into two populations that a success flag renders
+// identically: those for whom stdout IS the product (ssh-keyscan, ssh-keygen -lf) and those for
+// whom the exit status is the product. For the first, "refused" and "produced nothing" are
+// different answers with different remedies, and a refusal that reads as empty output is the
+// fabricated plausible output DESIGN forbids -- an empty string is a legitimate value, so nothing
+// downstream can tell it apart from a failure.
+type ProcessOutcome
+  = ProcessOutputPresent { text: String }
+  | ProcessOutputAbsent
+  | ProcessRefused { exit_code: Int, stderr: String }
+
+// The policy is DECLARED by the caller because there is no universal one -- that is the whole
+// reason `success` is not a field on the operation. ExitZeroSucceeds is the ordinary convention;
+// ExitZeroOrOneSucceeds covers the diff/grep family where 1 means "no match" rather than failure.
+type ProcessExitPolicy
+  = ExitZeroSucceeds
+  | ExitZeroOrOneSucceeds
+
+fn process_exit_is_admitted(policy: ProcessExitPolicy, exit_code: Int) -> Bool {
+  match policy {
+    ExitZeroSucceeds => exit_code == 0
+    ExitZeroOrOneSucceeds => (exit_code == 0) || (exit_code == 1)
+  }
+}
+
+// An admitted exit with empty stdout is ABSENT, not present-and-empty. That distinction is the
+// point of the coproduct: a caller matching on ProcessOutputPresent cannot silently receive the
+// empty string where a refusal occurred, because a refusal is not that variant.
+fn classify_process_observation(
+  policy: ProcessExitPolicy,
+  observation: ProcessObservation
+) -> ProcessOutcome {
+  if process_exit_is_admitted(policy: policy, exit_code: observation.exit_code) {
+    if observation.stdout == "" {
+      ProcessOutputAbsent
+    } else {
+      ProcessOutputPresent { text: observation.stdout }
+    }
+  } else {
+    ProcessRefused { exit_code: observation.exit_code, stderr: observation.stderr }
   }
 }

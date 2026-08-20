@@ -881,6 +881,581 @@ than argued.
    ladder-probe-corpus class/path identities, at which point the Evidence cells name the
    executing probe the way the parse-separator row already names `tidy-deer-730`'s.
 
+**Rows 11–17 are one class, and the class is the finding.** They were opened separately
+   over one night's auditing and read as four unrelated defects until the fourth arrived; what
+   they share is not a subsystem but a *property*. Each is a diagnostic channel that **reports
+   something other than what it appears to report**, and in every case the misreport is silent
+   and plausible — there is no arm, no count, and no shape difference between the true output
+   and the false one. A `Bool` that fired for one of three reasons looks exactly like a `Bool`
+   that fired for the reason you assumed; a byte offset rendered `file:29073-29163` looks
+   exactly like a line range; a fixture emptied of its subject passes exactly like one that
+   still carries it; a filter keyed on location-presence reports a population exactly like one
+   that reports the whole. **Why the family matters more than the rows:** these are the channel
+   by which every *other* guarantee in this document is observed, so a defect here is not one
+   more error class — it is a discount applied to the evidence for all of them, and it applies
+   silently. The §4b obligation to derive a rung from executed measurement assumes the
+   measurement channel is faithful; where it is not, a derived rung is as transcribed as a
+   stored one. **One member differs in kind and the distinction is load-bearing.** Rows 11–13
+   *degrade* information — the channel is under-informative, and a careful reader who knows the
+   defect can compensate. Row 15 *inverts the selection*: it reports exactly the rows nobody can
+   act on and conceals exactly the rows carrying a file and byte span, so it is actively
+   anti-correlated with usefulness rather than merely lossy. A reader cannot out-think that by
+   being careful — the receipt is `proud-crane-845`'s no-tail conclusion, correct on the data
+   the instrument showed and wrong about the corpus, because the tail is precisely what the
+   instrument hid. **The standing rule this family produces** (`royal-hawk-392`, generalizing a
+   weaker rule that raw lines beat a summary): *raw-not-summary is necessary and not sufficient,
+   because rawness is relative to the instrument that emitted the lines.* A summary visibly
+   collapses codes into categories someone chose; raw output carries the same selection
+   invisibly, precisely because rawness reads as absence of processing. **Ceiling and trigger
+   are per-row below**; what the class adds is that a repair to any one of them leaves the
+   property intact in the others, so they should be prioritized as a channel-fidelity program
+   rather than picked off by whoever trips over one.
+
+11. **The emit-check oracle collapses three arms into one `Bool`** (opened 2026-08-19;
+   measured by `swift-moth-294` reading `cli_run.rs` `compile_dag_rust_emit_check_uncached`).
+   The function returns `false` from three structurally distinct arms — hard diagnostics
+   nonzero · the requested file absent from `result.files` · the includes/excludes **content**
+   assertion failed — and discards which one fired. **Harm:** every consumer must
+   hand-establish the mechanism, so the honest reading of any red is "one of three things
+   happened", and a *stale realization* is indistinguishable from a *misaimed test* and from a
+   *broken emitter*. **Live cost already paid:** a session gave a confident mechanism account
+   of a CI red that their evidence could not establish — arm 3 is exactly the shape a stale
+   seed produces — and caught it themselves only on reading the implementation. The sharper
+   half is second-order: a coordinator's own record of this instrument listed **two** arms, so
+   every positive control recommended against it that day covered arm 2 alone. A conflated
+   oracle does not merely mislead its readers; it silently narrows what anyone thinks to
+   control for. **Ceiling — structurally impossible, and it is a construction fix rather than a
+   validation one:** the arm is KNOWN at the return site and thrown away, so a typed outcome
+   does not add a check, it stops the loss. **Next trigger:** replace the `Bool` return with a
+   typed outcome carrying the arm; consumers then read the arm instead of inferring it. Small
+   change, large readability gain on every future emit witness.
+   **AMENDED 2026-08-20, by measurement: it is three arms PLUS A LIVENESS PRECONDITION, and the
+   precondition is the dangerous part.** Establishing the arm on a live red found that a
+   *compiler crash* produces the same observable surface as a legitimate arm 2 — the first
+   replication attempt returned `compile_exit=101`, `FILE_FOUND=no`, nothing emitted, which
+   reads as a clean arm-2 result and would have been reported as one. The actual cause was a
+   panic in `repo_relative_path_normalized`, which refuses a source root outside the workspace
+   root, because the probe module had been placed in `/tmp`. So **`FILE_FOUND=no` is arm 2 ONLY
+   IF THE COMPILER RAN**, and arm 2 needs its own liveness control — a positive control through
+   the identical invocation on a known-good in-tree module — before it can be claimed at all. A
+   typed outcome must therefore distinguish *did not emit this file* from *did not run*, or it
+   reproduces the same conflation one level in.
+   **A second finding from the same run, and it is the reason per-arm typing is not sufficient
+   on its own:** the arm was established as arm 3, and the *mechanism inside* the arm was still
+   wrong. The predicted tripwire — an EXCLUDE on the bounded item header `struct
+   FreeMonoidSupplementalStruct<T: Clone>` — **passes**. The header was already bare before the
+   change. What actually fails is three other assertions: two INCLUDEs for hand-written `Debug`
+   and `PartialEq` impls, and an EXCLUDE on `#[derive(Debug`. The missing mechanism is
+   hand-written impls, not a bound on the item. A per-assertion verdict caught that; a per-arm
+   verdict would not have. The general shape is that **a well-formed account can be correct at
+   the level it is checked and wrong one level down** — arm-vs-`Bool` caught the first level,
+   per-string-vs-arm caught the second — which argues for reporting the failing assertion, not
+   merely the failing arm. No rung is authored here — the
+   rung is the thing that must be DERIVED from executed measurement (§1c, and the Stage 0
+   carrier `gunbc.guarantee_measurement` deliberately stores none).
+
+12. **`SourceSpan` carries untyped magnitudes, so a byte offset renders as a line number**
+   (opened 2026-08-19; **relocated one layer down before filing** — see the correction note).
+   `dag/std/types.dag` `SourceSpan` declares `start: Int` and `end: Int`. Nothing in the type
+   says what unit they are: byte offset, character offset and line number are all inhabitants
+   of `Int` and the type admits all three identically. The producer fills bytes, the general
+   diagnostic renderer prints `file:START-END` — a form universally read as a line range — and
+   no mechanism can catch the disagreement, because there is no unit present to disagree with.
+   **Observed:** the in-body annotation refusal rendered
+   `(src/v1/trait_derive_emit.dag:29073-29163)` against a file of 1407 lines / 62288 bytes;
+   byte 29073 lands on line 478. **Harm:** confidently located and WRONG, in a format
+   indistinguishable from a correct citation. An absent location announces its absence and
+   sends the reader looking; a plausible wrong one does not — the reader finds the file ended
+   long ago and concludes the diagnostic or the path is broken, never that the answer is a few
+   lines from what they wanted. That is fabricated plausible output (§5) in the one channel
+   whose entire function is to be believed. **Distinguishing:** the cited value exceeds the
+   file's line count (here twentyfold); `head -c N file | wc -l` lands within a line or two of
+   the true site. **Population:** 17 files construct `SourceSpan` — bounded and countable.
+   **Ceiling — structurally impossible, and PROVEN ATTAINABLE IN THIS REPO:**
+   `src/v2/test/claim/long/a4_opacity_test.dag` compiles three sources through
+   `compile_ingest_staging` and asserts refusal of `ByteOffset`-for-`CharOffset` AND
+   `CharOffset`-for-`ByteOffset`, with an accepting same-type control. The capability is
+   demonstrated, not speculative — this is not a wall-after-grounding. **Two precisions that
+   change the fix, both easy to get wrong:** (i) the witness executes the **record-wrapper**
+   form (`type ByteOffset { value: Int }`), NOT the `where brand(..)` refinement form, despite
+   one of its test identities being *named* `a4_opacity_same_brand_accepts` — brands are
+   separately known to be unenforced at acceptance positions, so adopting the brand spelling
+   because it reads more elegantly would land a change that looks like the climb and enforces
+   nothing, which is the rung inflation §4b calls worse than sitting low; (ii) **that witness
+   does not currently execute** — it is a `witness_deferral_freeze` member under
+   `LegacyFrozenPathDeferral`, which the coverage gate deliberately never admits as covered, so
+   the capability is proven *in source* and unexercised *in the present tree*. **Next trigger:**
+   declare the unit types in the record-wrapper form and give `SourceSpan.start`/`.end` those
+   types instead of `Int`; the renderer then either consults `build_newline_index`
+   (`src/v1/00_core.dag`, which already carries `offsets` and `char_codes`, so byte-to-line is
+   already modeled and simply not consulted) or names its unit. **Blast radius:** every
+   diagnostic carrying a `SourceSpan`, i.e. the general renderer.
+   **The class is GROWING, not static — a second instance landed the same day, in a NEW module**
+   (review 53871 on gunbc#8527): `src/v1/expected_red_roster_join.dag` declares
+   `BudgetExceeded { elapsed_ms: Int, budget_ms: Int, ... }` — Duration-semantic fields as bare
+   `Int`, ported from hand-Rust `u64`/`u128`, with no `feature:` or dissolve-on row, at the exact
+   moment `std.measure.Duration` was available to ground them. Same shape one domain over:
+   nothing prevents a caller passing seconds, a count, or the other field. That matters for how
+   this row is priced — the 17 `SourceSpan` construction sites are inherited debt, but new
+   modules are still extending the class, so the population is not a fixed backlog waiting for a
+   sweep. Any fix that grounds only the existing sites leaves the authoring path open.
+   **The §3 reading, which is the durable half:** the compiler emitted a POSITIONAL citation
+   about its own input at a moment when the declaration NAME was in hand — the diagnostic knows
+   it sits inside a declaration body, that is its entire complaint. §3's cite-the-symbol rule
+   was written against human prose; this is a machine-side instance in the compiler's own
+   diagnostic channel, and its argument applies unchanged.
+   **Correction note, kept rather than silently fixed:** this row was first reported — and
+   relayed onward by a second session — as a defect in `dag/std/source_annotation.dag`. That
+   module is clean: `annotation_attachment_refusal_message` returns only the sentence, the
+   refusal variants carry `origin: SourceSpan`, and the header at
+   `annotation_attachment_refusal_origin` explicitly reasons that a consumer should ASK for the
+   origin rather than store a second copy. The symptom was right and the attribution was one
+   layer too shallow; it is recorded here because two readers repeated it before the formatter
+   was read.
+
+13. **§4c comment-placement cannot be swept by text grep, and three shapes are therefore
+   UNKNOWN** (opened 2026-08-19; two sessions, independently sampled). A bot commit landed an
+   11-line rationale comment inside a fold lambda body in `04_infer.dag`
+   `symbol_index_insert_unique_disj_variant_aliases`, which blocked `required-regen`
+   **corpus-wide** with 11 §4c refusals and sat on main undetected — self-compile and regen are
+   not live gates under the CI rung-drop, so it surfaced only because someone needed regen for
+   an unrelated reason. Relocated verbatim to module-item grain in `10542cb3bb4`.
+   **What IS established, as a controlled zero:** a sweep for the exact shape that fired —
+   *indented* `//` lines across `dag/` and `src/` — returns **0**, and the zero is readable
+   because the instrument carries controls in both directions: it finds 22,429 column-0
+   comments, and it detects a planted violation of that shape in a temp copy.
+   **What is NOT established, and cannot be by this method:** trailing `//` after code on the
+   same line, block-comment `/* */` forms, and column-0 comments in a between-items position
+   §4c refuses for a different reason. A text grep returned 225 and 75 hits for the first two;
+   **both are essentially all false positive**, independently sampled by two sessions at 6 and 8
+   hits respectively with not one instance of comment syntax among them — every hit was inside
+   a string literal. **The reason is structural rather than incidental, which is why no better
+   filter exists:** this corpus's job is to carry other languages' syntax as data. Emitters hold
+   target-language comments as template strings (`extdeps/languages/rust/emit.dag`), witnesses
+   hold `.dag` source as fixtures (`compiler_tests_rust.dag`, and
+   `dag_line_comment_annotation_channel_test` which is *literally* a comment-annotation
+   fixture), goldens hold generated do-not-hand-edit banners
+   (`gunbc/stage0_crate_layout_emit.dag`), plan rows hold `CodeBlock.code`, and an rsync pattern
+   holds `objects/pack/*.keep`. A regex for comment syntax over a corpus built to carry syntax
+   as data is measuring the wrong thing **by construction**.
+   **Status is UNKNOWN-with-a-named-reason, deliberately, and that is a real state rather than a
+   gap:** reporting 0 or reporting 225 would both be fabrications in opposite directions, and
+   the 225 would be the more expensive one — it would send someone to audit 225 string
+   literals. §5's objection to the absorbing fallback is exactly that ⊥-as-ignorance gets
+   rendered as a verdict; this row declines to render it as either.
+   **Next trigger:** a lens over `Node` with string-literal awareness, which is the only
+   instrument that can separate comment syntax from carried data. **Priority: file, do not
+   staff** — the class that actually fired is covered by the controlled zero above.
+   **A standing measurement rule falls out of this one, and it inverts the common intuition:**
+   a ZERO looks like nothing and therefore invites a control; a NONZERO looks like a finding and
+   therefore does not. That is backwards. A false nonzero is strictly more expensive than a
+   false zero — a false zero costs an unnoticed gap, a false nonzero manufactures work at
+   phantom sites *and* discredits every number reported beside it — and it is self-reinforcing,
+   because a count that arrives looking like evidence invites explanation rather than doubt.
+   **Control the instrument before reading the number, and sample a nonzero before reporting
+   it.** Note also that cheap-to-RUN is not cheap-to-BELIEVE: the marginal cost of one more
+   grep is near zero, but the marginal cost of an uncontrolled grep is unbounded once its
+   number enters the record. Cost scales with instruments, not with keystrokes.
+
+14. **A fixture can be emptied of the subject it exists to exhibit, and its test still passes**
+   (opened 2026-08-20; found on the namespace-cut branch, filed here rather than with that
+   incident because the CLASS is the same subject as items 11-13 — a channel reporting something
+   other than what it appears to report). **Invalid state:** a test carrying source-as-data whose
+   carried data no longer contains the construct the test is named for, while every assertion
+   still passes. **Discovery vector:** a scripted rename silently rewrote 51 string literals, of
+   which **46 were bare-to-qualified** and therefore invisible to any check comparing strings
+   that already contain dots — a bulk edit transforms CODE, where names are checked so a bad one
+   is loud, and it transforms STRING LITERALS, which are data and emit no diagnostic anywhere.
+   One rewrite moved a roster identity to a **homonym** — main carries both a discoverable
+   `test fn` and a plain lens fn named `non_fold_residue_clean_holds`, so the enrolled identity
+   moved from the executable one to the unexecutable one and the roster count stayed 306 on both
+   sides. Another would have rewritten bare target-language spellings carried as emitter data
+   (`"Node"`, `"Outcome"` in `src/v2/extdeps/languages/rust.dag`) into qualified `.dag` paths,
+   **emitting a `.dag` path as a Rust type name** — invalid Rust from a compiler that believed
+   it was correct. **Harm, and why it is distinct from the well-known weak-assertion case:** this
+   is a non-discriminating control arriving through DATA rather than through the assertion.
+   Every review habit, every RED-control discipline and every rung-honesty rule in this document
+   watches what a test ASSERTS. Nothing watches whether the fixture still CONTAINS its subject,
+   so the test keeps asserting true things about a specimen that no longer exhibits the property
+   under test. **The codemod is only one vector.** The same end state is reachable without any
+   bulk edit — a witness shrunk to fit a budget, a fixture simplified during a refactor, an
+   import removed because it looked unused — and the §4b witness-cost thread already records the
+   adjacent case where relocating an over-budget witness deleted the evidence while retaining
+   the file. **Distinguishing facts:** the test passes; the assertions are individually correct;
+   the fixture no longer contains the construct named in the test identity; counts over the
+   enclosing roster are unchanged. **Ceiling — mechanically preventable now, with a plausible
+   route to structurally impossible, and the two must not be conflated.** Preventable now: a
+   test whose fixture carries source can assert, as its first act, that the carried source
+   exhibits its subject — a positive control on the SPECIMEN rather than on the outcome. That is
+   validation and it is cheap. Structurally impossible would require the fixture to be *derived
+   from* the construct it exhibits rather than carrying an independently editable copy, at which
+   point an empty fixture has no representation; that is a real but much larger change and it is
+   not claimed here. **Next trigger:** the cheap half — establish whether a specimen-level
+   positive control can be expressed against the existing carried-source fixtures, and if so
+   whether it can be made a condition of admission rather than an author's option. **Immediate
+   operational rule, independent of any of the above:** after a bulk edit, **default to
+   restore-first** — any string literal a codemod touched is damage until proven otherwise —
+   and for each branch-only identity `a.b.C`, check whether main's *same file* carried bare
+   `"C"` as a complete literal. That is the detector for the 46-of-51 class and nobody writes it
+   by default.
+
+15. **The diagnostic reporting filter is INVERTED: it emits the unactionable rows and
+   suppresses the located ones** (opened 2026-08-20; measured by `stern-tern-636`, relayed by
+   `royal-hawk-392`, second run by `stern-tern-636` from a different entry byte-identical except
+   the header). Counting at diagnostic **construction** rather than at **report** splits one
+   population three ways: **72 constructed · 46 reported · 26 hidden**, where the reported set is
+   *exactly* the rows whose `file` field is the `<synthetic>` sentinel and the hidden set is
+   *exactly* the rows carrying a real file and a byte span. The selection predicate is
+   location-presence and nothing else. **Harm:** the channel spends the reader's entire attention
+   on the half nobody can act on and conceals the half that carries offsets — so all five type-pair
+   shapes other than `NonEmptyStr <- String` (including two *refinement-to-refinement* pairs) are
+   invisible in the reported output, across five files that never appear in it. This is the one
+   member of the class above that **inverts** rather than degrades: a degraded channel is
+   under-informative and a careful reader can compensate; an inverted one is anti-correlated with
+   usefulness and cannot be out-thought. **Receipt that it cannot:** `proud-crane-845` concluded
+   there was no tail and retracted it — the conclusion was correct on the data the instrument
+   showed, and wrong about the corpus, because the tail is precisely what the instrument hides.
+   **Provenance, carried deliberately:** the `<synthetic>` sentinel is verified in tree
+   (`src/v1/00_core.dag` constructs `SourceSpan { file: "<synthetic>", .. }`), so the predicate is
+   keyed on a genuine marker rather than on absent text; the 72/46/26 counts are **not** verified
+   here — they require the regen path the mirror hold forbids, and rest on a construction-site
+   count plus one independent corpus-wide control. Anyone repeating the split downstream carries
+   that provenance with it. **Attribution is open and its test is designed** (`swift-moth-294`):
+   the five diagnosed files are **byte-identical by blob hash** from census pin `90b1e4e7ff` to
+   main across 27 commits, with `04_infer.dag` and its mirror as controls that *do* differ — so
+   the subjects are invariant and any diagnostic difference across SHAs is attributable entirely
+   to compiler behaviour, the source-changed confound eliminated by construction rather than
+   bounded by judgement. The test is **three-armed, not two**: pin · `76e96333af` (#8579 hardcode
+   live) · main — because a two-point test cannot distinguish *pre-existing* from *suppressed by
+   #8579 and now resurfacing*, and suppression is precisely what a fail-open hardcode produces.
+   **THE TYPE-PAIR BREAKDOWN ABOVE IS A CENSUS OF EVIDENCE SHAPES, NOT OF FAILURE CLASSES** (added
+   2026-08-20 on `stern-heron-695`'s reading; cross-tab by execution pending). The ten pairs are
+   grouped by *formal ← actual*, and the failure class is not a type pair — it is which branch of
+   `where_refinement_diags_for_predicate` the value lands in. **That axis was already in the data:**
+   `src/v1/00_core.dag` `WhereRefinementUnenforced` carries a `reason: String` that is a closed sum
+   of exactly five deferral strings, declared as such by
+   `where_refinement_deferral_reason_scaffold_note` — *"a closed-string sum enrolled in
+   `is_where_refinement_unenforced_advisory_reason`; any unlisted reason fails closed blocking."*
+   The diagnostic names its own class and the census grouped on the subject instead. **Why it
+   matters more than a relabelling:** #8608's fix edits the literal-extraction arm, and the 21
+   remaining rows are NON-literal expressions — parameters, field accesses, call results — so
+   `expr_is_any_literal` is false and they never reach the extractor at all. A per-arm fallback
+   chain would have been **inert for five of six arms**. Predicted decomposition, to be confirmed
+   or refuted: 2 a decidable wall (`lower_hex_40` implies `non_empty`, but the checker compares
+   predicate NAMES so the implication is invisible) · 5 corpus modeling debt with no compiler
+   change · 4 path-sensitive refinement · 2 needing `join`'s monoid modeled · 2 generic
+   instantiation, unread. **The error shape is the same one this row already records, in a second
+   place:** a property of the SUBJECT read as a property of the FAILURE — twice in one night, by
+   lanes with no contact.
+
+   **ROOT CAUSE FOUND AND ALREADY REPAIRED — and it is not a filter** (2026-08-20, found while
+   verifying an unrelated measurement base; the row above is preserved because the *reporter's*
+   selection rule is described correctly, but its cause was not). `src/v1/00_core.dag` declares
+   `fn make_span(start, end) -> SourceSpan { file: "<synthetic>", .. }` — **a constructor with no
+   file parameter that substitutes the sentinel for the argument it cannot accept.** Diagnostics
+   built from a *combined* span (start from one token, end from another) therefore lost their file
+   while keeping correct offsets; diagnostics built from a single token's span kept it. That is why
+   the split was *exactly* location-presence and why every hidden row carried a real file — not a
+   filter selecting, **a constructor destroying.** `b0b061764e3` (#8607, merged 2026-08-19 21:40)
+   repairs it by switching two parse call sites to `make_file_span`, and its own message names the
+   population independently: *"46-72 refinement diagnostics across the corpus went unlocated because
+   file information was discarded even though byte offsets were correct and positions were
+   recoverable."* **DENOMINATOR ESTABLISHED, AND ITS SUBJECT NAMED (resolved 2026-08-20).** The
+   truncation concern below was raised and is now **withdrawn**: exit status was captured on ten
+   completed compiles across five dispatches, `exit=1` throughout — a completed compile refusing on
+   blocking diagnostics — with `137` (SIGKILL) and `124` (the `timeout 800` guard) excluded on
+   every arm, and no pipe in the capture, so `$?` is the process's own status. Four separate builds
+   on four separate runners produced identical ten-pair distributions; a truncation would have to
+   stop at the same point four times on four machines. **THE SUBJECT MATTERS AS MUCH AS THE EXIT
+   CODE AND IS STATED HERE SO NO READER INFERS IT:** these figures are **entry-scoped** — one
+   import closure resolved through the `run` verb — NOT corpus-wide. A corpus-wide grep over the
+   same class yields a different and larger candidate population, and comparing the two produces an
+   apparent contradiction that is purely a denominator. That is the dated-measurement trap on the
+   SPACE axis rather than the time axis, and it cost an hour here before it was recognised. Every
+   figure in this row carries both its revision and its subject for that reason. **The original
+   provisional flag, preserved because the rule it produced outlives it:** The post-repair figures below come from one run whose COMPILE-step
+   exit status has not been printed. A sibling whole-root compile was `Killed` at EXIT=137 on the
+   same infrastructure while its dispatch still reported 0, because redirect-then-echo does not
+   propagate status — and *a process killed partway through a corpus compile does not produce
+   zero, it produces a truncated population indistinguishable from a complete one.* The specific
+   reason for suspicion: 46 of 46 recovered with residue EXACTLY zero, on a population three lanes
+   independently predicted would be non-zero, is as consistent with a run that stopped before
+   reaching the residue-bearing files as with a clean result. **Standing rule adopted from this:
+   any command reporting a count must print the exit status OF THE PROCESS THAT PRODUCED THE
+   COUNT, beside the count — not the dispatch's status.** What survives regardless is
+   source-derived and decidable; what does not survive is the denominator. **THE PARTITION SUMS TO 51, NOT 52, AND THE UNACCOUNTED ROW IS THE ONE THAT CANNOT
+   BE REDISCOVERED.** 46 caret-literal + 3 `sym` + 2 `boundary_tag` = 51 against 52 measured in
+   that file. The missing row is almost certainly the DEGENERATE-SPAN one — the earlier census
+   recorded 22 precisely located plus 4 module-only, one of which was this module. That is not an
+   ordinary off-by-one: **the missing row is precisely the row with no span identity**, findable
+   only by enclosing fn, so if the partition is acted on as covering all 52 it is dropped silently
+   and permanently rather than resurfacing later. Supporting arithmetic (not a measurement): the 5
+   Symbol rows match the symbol-keyed list exactly — `canonical_hash_of_connective`,
+   `canonical_hash_of_edge_label`, `symbol_identity_digest`,
+   `byte_offset_cache_digest_ineligible_hash`, `byte_offset_cache_key_fingerprint` — and 46 + 5 + 1
+   = 52. **NARROWED, AND THE NARROWING IS SHARPER THAN THE GAP:** `content_hash_atom(` occurs
+   exactly 51 times in that file (verified at `origin/main`), so the partition is COMPLETE over
+   `content_hash_atom` call sites and the 52nd row is **not a missed member — it is a DIFFERENT
+   REFINED POSITION.** The candidate is in the same file and visible:
+   `content_hash_combine_structural(` at 5 sites and `combine_hash(` at 53. Different function,
+   different formal, so it could never appear in a `content_hash_atom` census however carefully
+   that census was run — which is why an off-by-one here is a category gap rather than an arithmetic
+   one. **STANDING OBLIGATION, recorded in these terms deliberately:** whatever the regen retires,
+   the degenerate-span row is carried as its own NAMED obligation keyed by ENCLOSING FN, never as a
+   residual of a count. A row that can only be named one way gets named that way once, while
+   someone still knows it exists. **What would settle the composition outright is a per-file ×
+   per-type-pair CROSS-TAB**, which no one holds: the two dimensions were captured as separate
+   aggregates and never joined. **Two aggregates side by side are not a cross-tab, and the gap
+   between them is exactly where a row can live undetected** — the fourth instance of this axis
+   error in one investigation, and the first committed by the measuring instrument rather than by a
+   reader of it. No rerun is dispatched for it: the population closes on regen and the one row that
+   does not close is now named. **A SECOND
+   CORRECTION ALREADY LANDED ON THE FRAMING BELOW:** a source partition of the 52 shows 46 of them are
+   `content_hash_atom(value: ^caret literal)` — the #8608 class exactly, *already fixed in
+   authority* and inert only because that fix is unmirrored. So the file is not the unit of repair;
+   **the regen is** — one change retires 46 rows across every file at once. Both the corpus-sweep
+   framing and the one-file framing were wrong for the same reason: **both count DIAGNOSTICS, which
+   are distributed by where values FLOW, not by where the defect LIVES.** Counting ROOTS makes it
+   one landed fix plus one named capability. Same shape as the type-pair axis error one level up,
+   and both times the misleading grouping was the one that looked most like a natural unit of work.
+
+   **MEASURED AFTER THE REPAIR (`swift-moth-294`, four-arm pinned run; arms built by
+   `git checkout -B <name> <sha>` so no branch-merge could pin their mirrors): THE 46 WERE ONE
+   FILE.** At main tip the synthetic count is **zero** and all 72 rows are located, with every
+   previously-unlocated row resolving to `src/v2/std/node.dag` — 52 rows there, 6 already located
+   plus 46 recovered. So the population described as *"46-72 refinement diagnostics across the
+   corpus"* — #8607's own commit message — was never corpus-wide. **The author of the fix made the
+   same misreading, from the same broken artifact:** the constructor that destroyed the file field
+   hid the CONCENTRATION as well as the location, and it misled the one person who understood the
+   mechanism well enough to repair it. That is the defect's last damage on its way out, and it is
+   why the remaining repair is one file and 52 sites rather than the corpus sweep the work was
+   being scoped as. The attribution is verified rather than assumed — `module` and `file` fields
+   populated by different paths agreeing on all 52; 52 DISTINCT `(start,end)` pairs, so not one
+   site counted 52 times; offsets 22970–51589 against a 51825-byte file, in range with the maximum
+   just under the size; and spacing sequential and tight (23032, 23082, 23140, 23199), consistent
+   with consecutive declarations rather than a fabricated constant. **THE OPERATIVE STATE OF THIS CLASS AS OF #8607: THE REPORTER IS BLIND AND THE CLASS
+   IS AT 72.** Combine the measurement above (main tip: 72 constructed, **zero** `<synthetic>`) with the
+   filter rule this row establishes (the reporter shows *exactly* the rows whose file field is
+   `<synthetic>` and hides every row that carries one) and the consequence is that **the reporter now
+   prints zero rows while all 72 mismatches still exist.** Nothing was repaired. The class went silent
+   because the constructor stopped destroying the file field, and the reporter only ever displayed what
+   the constructor had broken — **a fail-open wearing the appearance of a fix**, and one that would
+   otherwise have been discovered months later as a class everyone believed closed. The 72-constructed /
+   0-synthetic figure is MEASURED; the unpatched reporter's output is INFERRED from the filter rule, and a
+   confirming run reading ordinary diagnostic output with the instrument OFF is cheap and still owed — if
+   it prints refinement rows, the filter rule is wrong. **Standing consequence, binding rather than
+   precautionary: a quiet reporter is not a closed class.** This is also why the row's `Next trigger`
+   below is not satisfied by #8607: locating the diagnostics moved them from *reported* to *censored*
+   without changing how many exist, so the trigger — report an unlocated diagnostic AS unlocated instead
+   of reporting only those — is now the difference between a silent class and a visible one.
+   **#8607 changed LOCATEDNESS ONLY** — the ten type pairs are identical count-for-count across all four arms, so it recovered
+   no diagnostics and suppressed none. Combined with the pin/`#8579`/main arms: all 72 rows are
+   pre-existing and nothing in the `#8579`→`#8592`→`#8607` sequence introduced or removed one.
+   **A prediction of a non-zero residue, registered as falsifiable beforehand, was refuted** — the
+   reasoning (40-odd unconverted callers, ten in `04_types`) was sound for a corpus-wide population
+   and the population was never corpus-wide. **Consequence for every measurement in this row:** the
+   72/46/26 split is a property of the corpus *before* that merge, not of the corpus. Post-#8607 runs should show substantially
+   more located rows, and a reader comparing them to these numbers is seeing a fix, not a regression.
+   **Ceiling:** structurally impossible. **Why the defect looked survivable, and this is the part that generalizes:** a span
+   with a *missing* file would have refused somewhere. A span carrying the STRING `"<synthetic>"`
+   is well-formed, flows through every consumer, and renders as a plausible location — the
+   fabricated-plausible-output failure (§5), committed by a span constructor. The sentinel is not
+   a lesser form of absence; it is absence wearing the costume of a value, which is precisely what
+   let 46 rows travel to a reporter and be read as a policy decision. **Next trigger — the residue,
+   which is what survives the repair:** `make_span` still fabricates `"<synthetic>"` for any future
+   caller, so the invalid state
+   remains writable and the class sits at *mitigatable* on that axis rather than repaired; the climb
+   is a span constructor that cannot be called without a file, at which point the sentinel has no
+   constructor rather than a discouraged one. **The residue is now sized, and it is denominated in the MIRROR, not the
+   authority — the running binary executes the mirror.** At `origin/main`: authority
+   `src/v1/*.dag` carries 56 `make_span` occurrences (58 before #8607; the delta of 2 is that
+   fix, so 56 is already post-fix and subtracting again double-charges it); the GENERATED mirror
+   carries 57. **TWO OF THE THREE LEGS THAT ONCE SUPPORTED THIS ARE RETRACTED, INCLUDING THE ONE
+   THIS DOCUMENT CALLED STRONGEST.** An aggregate `make_span` count and a per-file join of each
+   generated mirror to the authority its own line 2 declares (six of seven pairs zero, the whole
+   delta in `v1_compiler_parse.rs`) were both cited here as independent corroboration. **Neither is
+   evidence: a symbol-count difference across the emission boundary is not a drift test**, because
+   emission is not obligated to preserve occurrence counts, so a delta cannot be separated from
+   drift by counting alone. Seven rows of an unsound test is one unsound test. **A first attempt to
+   explain the delta AS emission arithmetic is itself withdrawn, and the correction matters:**
+   decomposing the regenerated file gives 3 = 1 `pub use` import + 2 calls, against the authority's
+   2 call sites — **so emission IS 1:1 for this symbol**, and the committed-to-regenerated gap is
+   not arithmetic at all, it is exactly the missing `call_span` site. The join's conclusion was
+   therefore ACCIDENTALLY RIGHT, which does not restore the method: an unsound test that happens to
+   agree with a sound one is still unsound, and the distinction has to be held or the method returns
+   the next time it agrees. **And the digit itself was an occurrence count masquerading as a call
+   count** — `grep -c 'make_file_span'` on the committed mirror returns 2, of which line 72 is the
+   `pub use` import and line 11623 is THE ONLY CALL. Committed call sites: 1. Authority: 2. The
+   correction that briefly reported 2-vs-2 would have restored the appearance of doneness on the
+   one file where doneness is the illusion — worse than the error it corrected. **Standing clause:
+   count CALL SITES (`foo(`), never string occurrences, and PRINT THE MATCHING LINES so a reader can
+   see what was counted.** **What survives is the METHOD, not the inference:** pairing a mirror to the
+   authority its own header declares — rather than by filename or by aggregate — remains the
+   correct way to identify the pair, and the third clause of that rule (classify the residue that
+   matched no form; a member can be *authority contradicted elsewhere*, not merely undeclared)
+   stands. **THE FINDING ITSELF IS UNAFFECTED, because it never rested on the counts.** Its two
+   sound legs are a SITE-LEVEL observation — `call_span` still calling `make_span` at a named site
+   in the committed mirror, immune to emission arithmetic — and `required-regen` refusing on that
+   file independently, which is the only sound form of the test: committed versus REGENERATED, same
+   representation, same emitter, one variable. Recorded at length because the retracted legs were
+   the most-cited artifact in the investigation, and a reader meeting the finding later would
+   otherwise inherit the unsound support along with the sound. **A hand-file bucket was proposed and WITHDRAWN**: 22 further
+   `make_span` sites live in non-generated files, but 18 are `make_span(0, 0)` — a null span has
+   no file to lose, so the fabricated-plausible-location harm does not apply — and the rest are
+   the test asserting the distinction (one named `make_file_span_distinct_from_make_span`). Its
+   repair obligation is approximately zero. **What that withdrawal leaves is a binding design
+   constraint on the climb, not a residue:** those 18 callers want a NULL-SPAN constructor and
+   reach for the file-losing one because it is the one that takes two arguments. So the
+   unwritability change must ship a null-span sibling in the same diff, or 18 call sites have
+   nowhere to go and the refactor is unmergeable on contact. Every count here carries the revision
+   it was measured at, because a count adjusted for a change already contained in the tree it was
+   measured on is indistinguishable from a correct one. **Recorded because it is a routing fact and not only a technical one:**
+   #8607 was authored, reviewed and merged by a lane outside this investigation, naming the same
+   46-72 population independently, while this row's instruments were being built to characterize
+   it. Two lanes converged on one defect from opposite directions and neither knew; the hours spent
+   on the instrument were spent against a fix already sitting on main. Nobody was wrong — the fleet
+   had no channel that would have surfaced it, which is the actual finding.
+
+16. **The regen refusal receipt reports NOT-COMPUTED as MEASURED-AND-CLEAN** (opened 2026-08-20;
+   measured by `snappy-eagle-615` reading `required_regen_host.rs` `run_required_regen` control
+   flow, confirmed in tree). `validate_compared_populations` returns `Some(reason)` whenever the
+   emitted and committed basename sets differ, and that arm **returns early** — so
+   `compare_generated_surfaces` is never called and **no content comparison runs at all**. The
+   population gate is a hard fail-fast ahead of every content check, not a parallel signal. The
+   receipt written on that path then asserts, as facts, five values nothing computed, and they are
+   **not equally bad**. `first_generation_equal` and `fixed_point_equal` are set to **`false`** —
+   and a Bool has no arm for *not measured*, so `false` reads as **measured and unequal**: the
+   receipt asserts a negative RESULT for a comparison that never ran. The other three are at least
+   self-describing to a careful reader — both digests carry the literal sentinel
+   `"refused:population"`, and `changed_paths` is an **actually-empty** `Vec` rather than a typed
+   absence. **The compounding is the real harm:** this receipt shape was live *while* the
+   population gate was masking content drift, so a reader held a receipt asserting
+   `fixed_point_equal=false` — measured, unequal — produced by a run that compared nothing. Two
+   defects that individually mislead, composed into an artifact that is confidently wrong in the
+   format designed to be believed. **Harm:** a receipt reader — including
+   anything keying off `changed_paths.is_empty()` — cannot distinguish **no drift** from **drift
+   never checked**, and the two have opposite remedies. **Measured consequence:** at
+   `9b29509e5c9` the mirror `infer_method_args_with_fold` was carrying **six parameters against
+   the authority's seven** (the missing `arg_contract: DeclaredArgContract`), and that drift was
+   in the emitted set, comparable, and simply never compared — masked behind a two-file population
+   mismatch unrelated to it. **This is the class DESIGN names as the absorbing fallback's mirror,
+   the empty-observation narrow** (⊥-as-answer conflated with ⊥-as-ignorance) and it is the
+   strictly worse direction: a widen is merely expensive, a narrow is silently uncovered. It is
+   also distinct from rows 11–15 in *where* it sits — those are reporting channels, this is a
+   **receipt**, the artifact whose entire purpose is to be believed later by a reader who did not
+   watch the run. **Ceiling:** structurally impossible — a receipt for a comparison that did not
+   run has no honest values to carry, so the refusal arm should construct a *different type* with
+   no digest, equality or changed-path fields, rather than the same record filled with sentinels.
+   **Next trigger:** `RegenReceipt` splits into computed and refused variants, at which point the
+   `"refused:population"` sentinel and the two fabricated `false`s become unwritable rather than
+   discouraged. **Under the convergence model the operator ruled for (2026-08-20) that split is not
+   optional:** a *converged* verdict and a *could-not-determine* must not inhabit one Bool, which is
+   the same hazard on the read-back side — a converged verdict derived from the staged candidate
+   rather than the committed tree would report success while the committed files stayed stale.
+
+17. **A generated file declares its own provenance in a comment no consumer reads** (opened
+   2026-08-20; found by `stern-tern-636` in a candidate tree, after `royal-hawk-392` and this
+   session both mis-inferred the opposite from style). 129 of 167 files under
+   `src/v1/stage0/src/` open with `// Generated by v1 compiler -- do not edit.` and a
+   `// Source module:` line. **Nothing reads either.** `v1_compiler_parse.rs` — carrying both
+   lines — was hand-edited under #8607, landed applying ONE of that change's two call sites
+   (authority `make_file_span(` = 2, mirror = 1; `call_span` still calls `make_span`), passed
+   every check, and was then cited as the fix by three sessions including this one twice.
+   **Harm:** the running compiler still fabricates `"<synthetic>"` on the caret-call arm while
+   the tree reads as repaired — and *half-applied is worse than either pole, because it reads as
+   done.* **The class is specification-without-execution in its purest form:** the file states a
+   machine-checkable claim about itself, in a format designed to be read, and no machine reads
+   it. **Why style could not settle it, which is the reusable part:** both prior readings argued
+   from a nine-line import reflow that "no human performs for a two-line edit." **A reflow proves
+   a FORMATTER ran, not that the EMITTER ran** — `rustfmt` stands between author and committed
+   bytes, so any hand edit acquires the emitter's formatting, and the signature read as a
+   fingerprint is applied by a third party to both suspects. Two sessions agreeing on one unsound
+   inference is not two pieces of evidence. The discriminator that *did* settle it is structural
+   and came from running the generator: true emission hoists
+   `pub use crate::v1_std_core::make_file_span;` onto its own line and leaves the grouped `use`
+   without it; the committed file has the grouped form. **Rule: do not infer provenance from
+   style — compare against what the producer actually produces.** **Ceiling:** structurally
+   impossible; a generated artifact that cannot be hand-authored without detection is a
+   content-addressed identity question, not a comment. **Method note — attribution by mechanism from a confounded arm.** The measurement
+   that established #8607's effect contained BOTH #8607 and #8608, so on its face it could not
+   separate them. It separated them without a rerun: #8608 touched ZERO stage0 mirror files, the
+   diagnostics are constructed in code compiled into the binary, and **an authority-only change
+   cannot alter the behaviour of a binary built from an unchanged mirror.** The confound was
+   dissolved by a property of the artifacts rather than by another arm. The same run then
+   confirmed it by execution — the 5 Symbol rows #8608 targets are identical across arms that do
+   and do not contain it — so the fix is demonstrably inert *in the binary* while genuinely landed
+   *in the authority*: two true statements about different artifacts, which is the per-module
+   authority-state rule arriving as a number rather than a principle. Recorded as a technique
+   because the alternative was rerunning a four-arm measurement to break a confound that the
+   file list already answered. A companion control: the arms' commit-presence matrix is a monotone
+   staircase (lower-triangular), which cannot arise if a reset landed on the wrong tree —
+   retro-validating arm construction from data already collected. **Next trigger:** any consumer at
+   all reads the declaration — the nearest is the regen convergence model's observe step, whose
+   `MembershipPlan` reports this file as `MemberChanged` by construction. **Note the interaction,
+   because the remedy erases its own evidence:** convergence repairs the drift and destroys the
+   only trace that a generated file was ever hand-authored, so it closes the instance and leaves
+   the class exactly where it is.
+
+18. **A where-refinement advisory computes its expected-type-at-position independently of
+   the method-arg contract #8592 corrected** (measured 2026-08-20, still-pike-216, while
+   landing #8592's permanent RED — see #8625). `WhereRefinementUnenforced` (the coproduct
+   variant in `src/v1/00_core.dag`) is produced by a second diagnostic-generation pass,
+   `where_refinement_unenforced_error` in `src/v1/04_infer.dag`, running independently of
+   `declared_arg_types_for_method` (`src/v1/04_lookup.dag`) and `infer_method_args_with_fold`
+   (`src/v1/04_infer.dag`) — the pair #8592 corrected so each method argument infers against
+   its declared parameter contract rather than the receiver's element type. The two live in
+   different modules and answer the same question — "what type/refinement is expected at this
+   argument position" — with no shared authority, which is exactly why nothing forces them
+   to agree: a DESIGN §3 duplicate-authority violation, not a standalone false-positive
+   nuisance. Evidence, by direct execution on a single binary (not a FIXED/BASELINE
+   differential): the fixture `probe(items: List<NonEmptyStr>, ...) { items.get(n: 0) }`
+   compiles clean of blocking errors but emits an advisory —
+   `where-refinement unenforced: predicate ... on 'Product(NonEmptyStr)' ... non-literal
+   value at refined position` — pointing at the `0` literal, even though the emitted Rust
+   (`items.clone().get((0) as usize).cloned()`) is correct: `0` is properly cast to `usize`
+   per `get`'s declared Int contract. Nothing wrong propagates; the advisory is spurious on
+   this fixture. **Scope, stated precisely:** this establishes the advisory is spurious on
+   the fixture actually run; it does not establish a corpus-wide population. A search of
+   `dag/` and `src/v2/` for literal-index `List<T>.get` call sites outside test fixtures
+   returned zero matches (2026-08-20), so no live-cost population is claimed here — the
+   defect class is real and reachable (any literal-index `get` call reaches it), but its
+   current corpus incidence is zero, not "every caller." Ceiling: decidable and groundable
+   once `where_refinement_unenforced_error` and `declared_arg_types_for_method` share an
+   authority for "expected type/refinement at an argument position" — a *wall after
+   grounding* (§5), not yet a wall now. No rung is claimed; per the "file the rows, omit the
+   rung" ruling (#8604), no `rung found at:` field is authored here. Filed separately from
+   #8604 (operator/session ruling, smart-ram-730, 2026-08-20: #8604 was at a settled,
+   5-approval head and this row's evidence was executed by a different session, so it
+   travels with the person who ran it) and cross-referenced from #8604's closing paragraph
+   as a fourth member of that diagnostic-channel family.
+
+19. **`explicit_witness_admission`'s `known_red_probe` is an inert lens against the required
+   floor — rung `mitigatable`** (measured 2026-08-20, gunbc#8625/#8627). Traced
+   `explicit_witness_admission_pairs()`'s one consumption site in `cli_run.rs`
+   (`deferred_discovery_rows`, ~line 18861): it feeds only a diagnostic `DeferredDiscoveryRow`
+   receipt. `v2.workflow.required_floor`'s discovery-exclusion inputs are `long_home_prefixes()`
+   and `ReadsLiveTree` alone; `known_red_held` — the required floor's actual known-red
+   pass/fail counter — is driven solely by `v2.workflow.floor_expected_red.floor_expected_red_roster`
+   (`cli_run.rs` ~line 40514–40575, single write site ~line 41086). Neither reads
+   `explicit_witness_admission` at all. `known_red_probe`'s `expected: ExpectAssertionFalse`
+   field is asserted in `.dag` data with zero read sites in `cli_run.rs` outside test code, and
+   its `QuarantineProbeExpectRed` cadence tag names the falsifier as intended consumer — deleted
+   in the 2026-08-15 floor cut (see "Building & checks" in DESIGN.md), so the row's own
+   documented consumer no longer exists. **The honest present-tense description of a
+   `known_red_probe` row today is documentation, not a hold**: it records that a witness is
+   expected red and why, readable by a human or a future consumer, but nothing in the required
+   floor's pass/fail path reads it. It is coverage by illusion in the exact §6 shape — the
+   machinery exists, nothing gates on it, and its presence reads as real coverage to anyone who
+   greps for the row, worse here because the consumer it names was actively deleted rather than
+   merely never built. **Ceiling and trigger:** decidable and grounded once a consumer is
+   authored to join `known_red_probe` rows against required-floor discovery/hold decisions (or
+   the row is re-scoped to state plainly that it is documentation); until then this sits at
+   `mitigatable`, i.e. review diligence must independently notice a `known_red_probe` row is not
+   protection, exactly as `v2.workflow.floor_expected_red.floor_expected_red_roster` is. **Not
+   a call to build that consumer now** — gunbc#8625/#8627's actual known-red hold was
+   discharged by enrolling in `floor_expected_red_roster` directly (operator ruling,
+   deep-ant-102, 2026-08-20: no new mechanism), which is the one live authority for this case.
+
 ## 12. Proposed sequencing (reconciled with the independent review; for operator sign-off)
 
 **(2026-07-31 restructure.)** The canonical dependency order now lives in the roadmap

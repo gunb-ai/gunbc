@@ -249,23 +249,23 @@ fn meet_join_eval_choose_arm(
 
 fn meet_join_eval_interpretation() -> InterpretationAlgebra {
   InterpretationAlgebra {
-    value: ValueInterpreter { allocate_literal: meet_join_eval_allocate_literal },
-    transform: TransformInterpreter { call_primitive: meet_join_eval_call_primitive },
-    branch: BranchInterpreter { choose_branch: meet_join_eval_choose_branch },
-    loop: LoopInterpreter { step_loop: meet_join_eval_step_loop },
-    bind: BindInterpreter { bind_value: meet_join_eval_bind_value },
-    match: MatchInterpreter { choose_arm: meet_join_eval_choose_arm }
+    value: ValueInterpreter { allocate_literal: meet_join_eval_allocate_literal, identity: ^meet_join_eval_allocate_literal },
+    transform: TransformInterpreter { call_primitive: meet_join_eval_call_primitive, identity: ^meet_join_eval_call_primitive },
+    branch: BranchInterpreter { choose_branch: meet_join_eval_choose_branch, identity: ^meet_join_eval_choose_branch },
+    loop: LoopInterpreter { step_loop: meet_join_eval_step_loop, identity: ^meet_join_eval_step_loop },
+    bind: BindInterpreter { bind_value: meet_join_eval_bind_value, identity: ^meet_join_eval_bind_value },
+    match: MatchInterpreter { choose_arm: meet_join_eval_choose_arm, identity: ^meet_join_eval_choose_arm }
   }
 }
 
 fn meet_join_eval_structure_witness() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
-    allocate_literal: ^meet_join_eval_allocate_literal_sym,
-    call_primitive: ^meet_join_eval_call_primitive_sym,
-    choose_branch: ^meet_join_eval_choose_branch_sym,
-    step_loop: ^meet_join_eval_step_loop_sym,
-    bind_value: ^meet_join_eval_bind_value_sym,
-    choose_arm: ^meet_join_eval_choose_arm_sym
+    allocate_literal: ^meet_join_eval_allocate_literal,
+    call_primitive: ^meet_join_eval_call_primitive,
+    choose_branch: ^meet_join_eval_choose_branch,
+    step_loop: ^meet_join_eval_step_loop,
+    bind_value: ^meet_join_eval_bind_value,
+    choose_arm: ^meet_join_eval_choose_arm
   }
 }
 

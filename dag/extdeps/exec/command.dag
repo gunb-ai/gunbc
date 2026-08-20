@@ -3,6 +3,15 @@ module extdeps.exec.command
 import std.types { NonEmptyStr, String, List, Int }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.posix.shell_command_language { posix_single_quote }
+import gunbc.remote_shell_command {
+  RemoteExecCommandInterpretation,
+  RemoteExecCommandOutcome,
+  RemoteExecCommandBuilt,
+  RemoteExecCommandRefused,
+  RemoteExecCommandRefusalCause,
+  remote_exec_command_string,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -15,9 +24,11 @@ type ArgvCommand {
   argv: List<String>
 }
 
+data ssh_exec_interpretation_note: String = "SshExec now carries the target's RemoteExecCommandInterpretation as a field, not an inferred fact: DESIGN §5 construction-over-validation -- whether the far side hands the RFC 4254 command string to a POSIX shell is a per-deployment implementation fact (gunbc.remote_shell_command remote_exec_command_interpretation_note), so the caller who knows which deployment it is targeting must declare it rather than command_over_transport guessing from the target string. A target this module cannot classify names Unknown explicitly; command_over_transport then refuses rather than picking a default (operator directive, 2026-08-19)."
+
 type CommandTransport
   = LocalExec
-  | SshExec { ssh_target: NonEmptyStr }
+  | SshExec { ssh_target: NonEmptyStr, interpretation: RemoteExecCommandInterpretation }
 
 data sshpass_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -58,16 +69,30 @@ fn scp_command(local_path: NonEmptyStr, remote_target: NonEmptyStr) -> ArgvComma
   }
 }
 
-fn command_over_transport(command: ArgvCommand, transport: CommandTransport) -> ArgvCommand {
+data command_over_transport_composition_note: String = "The SshExec arm no longer does append(ssh_exec_prefix, command.argv): that concatenated an outer local ssh/sshpass argv with an inner remote-shell argv as if they were one target's words, which is wrong in KIND (gunbc.remote_shell_command remote_exec_command_string_note) -- RFC 4254 section 6.5 carries the remote program as ONE command string, not a suffixed argv. The inner ArgvCommand is now folded through remote_exec_command_string into that one NonEmptyStr, cited to IEEE 1003.1-2017 section 2.2.2, and carried as the SINGLE final element of the outer ssh argv -- a composition of two targets, never a flattening of one into the other. Quoting stays a property of the interpretation arm named on SshExec, never of the transport itself: LocalExec never quotes anything, and an Unknown interpretation refuses here exactly as it refuses inside remote_exec_command_string, rather than this function inventing its own default."
+
+type CommandOverTransportOutcome
+  = CommandOverTransportBuilt { command: ArgvCommand }
+  | CommandOverTransportRefused { cause: RemoteExecCommandRefusalCause }
+
+fn command_over_transport(command: ArgvCommand, transport: CommandTransport) -> CommandOverTransportOutcome {
   match transport {
-    LocalExec => command
-    SshExec { ssh_target: t } =>
-      ArgvCommand { argv: append(ssh_exec_prefix(target: t), items: command.argv) }
+    LocalExec => CommandOverTransportBuilt { command: command }
+    SshExec { ssh_target: t, interpretation: interp } =>
+      match remote_exec_command_string(argv: map(command.argv, a => a as NonEmptyStr), interpretation: interp) {
+        RemoteExecCommandRefused { cause: c } => CommandOverTransportRefused { cause: c }
+        RemoteExecCommandBuilt { command: s } =>
+          CommandOverTransportBuilt {
+            command: ArgvCommand { argv: append(ssh_exec_prefix(target: t), items: [s as String]) }
+          }
+      }
   }
 }
 
+data shell_quote_provenance_note: String = "shell_quote delegates to extdeps.posix.shell_command_language posix_single_quote (operator finding, 2026-08-19): this was an independently hand-rolled THIRD copy of the single-quote wrap-and-escape encoding already consolidated once from v2.extdeps.languages.bash into the POSIX authority, and cited there against IEEE 1003.1-2017 section 2.2.2 -- split(s, delimiter: \"'\") then join with \"'\\''\" is the same operation as replace(s, \"'\", \"'\\''\"), so this is a pure internal-implementation swap: byte-identical output, unchanged signature, no diff for any of shell_command_render's 13+ existing consumers. DESIGN §2/§3: one escaping fact, one authority."
+
 fn shell_quote(arg: String) -> String {
-  join(["'", join(split(s: arg, delimiter: "'"), "'\\''"), "'"], "")
+  posix_single_quote(spelling: arg)
 }
 
 fn shell_command_render(command: ArgvCommand) -> String {
