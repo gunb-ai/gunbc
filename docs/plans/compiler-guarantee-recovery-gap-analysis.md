@@ -1183,8 +1183,20 @@ than argued.
    reaching the residue-bearing files as with a clean result. **Standing rule adopted from this:
    any command reporting a count must print the exit status OF THE PROCESS THAT PRODUCED THE
    COUNT, beside the count — not the dispatch's status.** What survives regardless is
-   source-derived and decidable; what does not survive is the denominator. **A SECOND CORRECTION
-   ALREADY LANDED ON THE FRAMING BELOW:** a source partition of the 52 shows 46 of them are
+   source-derived and decidable; what does not survive is the denominator. **THE PARTITION SUMS TO 51, NOT 52, AND THE UNACCOUNTED ROW IS THE ONE THAT CANNOT
+   BE REDISCOVERED.** 46 caret-literal + 3 `sym` + 2 `boundary_tag` = 51 against 52 measured in
+   that file. The missing row is almost certainly the DEGENERATE-SPAN one — the earlier census
+   recorded 22 precisely located plus 4 module-only, one of which was this module. That is not an
+   ordinary off-by-one: **the missing row is precisely the row with no span identity**, findable
+   only by enclosing fn, so if the partition is acted on as covering all 52 it is dropped silently
+   and permanently rather than resurfacing later. Supporting arithmetic (not a measurement): the 5
+   Symbol rows match the symbol-keyed list exactly — `canonical_hash_of_connective`,
+   `canonical_hash_of_edge_label`, `symbol_identity_digest`,
+   `byte_offset_cache_digest_ineligible_hash`, `byte_offset_cache_key_fingerprint` — and 46 + 5 + 1
+   = 52. **What would settle it is a per-file × per-type-pair CROSS-TAB**, which no one holds: the
+   two dimensions were captured as separate aggregates and never joined. That is the same axis
+   error this row already records, committed by the instrument that measured it. **A SECOND
+   CORRECTION ALREADY LANDED ON THE FRAMING BELOW:** a source partition of the 52 shows 46 of them are
    `content_hash_atom(value: ^caret literal)` — the #8608 class exactly, *already fixed in
    authority* and inert only because that fix is unmirrored. So the file is not the unit of repair;
    **the regen is** — one change retires 46 rows across every file at once. Both the corpus-sweep
