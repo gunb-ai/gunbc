@@ -1143,13 +1143,24 @@ than argued.
    recoverable."* **Consequence for every measurement in this row:** the 72/46/26 split is a property
    of the corpus *before* that merge, not of the corpus. Post-#8607 runs should show substantially
    more located rows, and a reader comparing them to these numbers is seeing a fix, not a regression.
-   **Ceiling:** structurally impossible. **Next trigger — the residue, which is what survives the
-   repair:** `make_span` still fabricates `"<synthetic>"` for any future caller, so the invalid state
+   **Ceiling:** structurally impossible. **Why the defect looked survivable, and this is the part that generalizes:** a span
+   with a *missing* file would have refused somewhere. A span carrying the STRING `"<synthetic>"`
+   is well-formed, flows through every consumer, and renders as a plausible location — the
+   fabricated-plausible-output failure (§5), committed by a span constructor. The sentinel is not
+   a lesser form of absence; it is absence wearing the costume of a value, which is precisely what
+   let 46 rows travel to a reporter and be read as a policy decision. **Next trigger — the residue,
+   which is what survives the repair:** `make_span` still fabricates `"<synthetic>"` for any future
+   caller, so the invalid state
    remains writable and the class sits at *mitigatable* on that axis rather than repaired; the climb
    is a span constructor that cannot be called without a file, at which point the sentinel has no
    constructor rather than a discouraged one. Secondarily, the count of genuinely-unlocatable rows
    remaining after #8607 has never been measured, and that residue — not the 46 — is the real
-   remaining population.
+   remaining population. **Recorded because it is a routing fact and not only a technical one:**
+   #8607 was authored, reviewed and merged by a lane outside this investigation, naming the same
+   46-72 population independently, while this row's instruments were being built to characterize
+   it. Two lanes converged on one defect from opposite directions and neither knew; the hours spent
+   on the instrument were spent against a fix already sitting on main. Nobody was wrong — the fleet
+   had no channel that would have surfaced it, which is the actual finding.
 
 16. **The regen refusal receipt reports NOT-COMPUTED as MEASURED-AND-CLEAN** (opened 2026-08-20;
    measured by `snappy-eagle-615` reading `required_regen_host.rs` `run_required_regen` control
