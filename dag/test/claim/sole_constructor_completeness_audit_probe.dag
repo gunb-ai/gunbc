@@ -1,0 +1,164 @@
+module test.claim.sole_constructor_completeness_audit_probe
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_rows_of_class,
+  census_total_count
+}
+import std.types { String, Bool, Int }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+fn violation_count(source: String, wanted: String) -> Int {
+  match census_of(source: source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: wanted))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Form 1: record literal in RETURN position (cross-module, sealed fixture type)
+// ---------------------------------------------------------------------------
+data f1_return_source: String = "module probe_f1_return\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\nfn forged() -> LocalValidated { LocalValidated { n: 999 } }\n"
+
+test fn f1_record_lit_return_position_refuses() -> Bool {
+  violation_count(source: f1_return_source, wanted: "SoleConstructorViolation") >= 1
+}
+
+// ---------------------------------------------------------------------------
+// Form 2: record literal in LET-BINDING position
+// ---------------------------------------------------------------------------
+data f2_let_source: String = "module probe_f2_let\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\nfn forged() -> Int {\n  let x: LocalValidated = LocalValidated { n: 999 }\n  x.n\n}\n"
+
+test fn f2_record_lit_let_binding_refuses() -> Bool {
+  violation_count(source: f2_let_source, wanted: "SoleConstructorViolation") >= 1
+}
+
+// ---------------------------------------------------------------------------
+// Form 3: record literal as a CALL ARGUMENT
+// ---------------------------------------------------------------------------
+data f3_call_arg_source: String = "module probe_f3_call_arg\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\nfn take(v: LocalValidated) -> Int { v.n }\nfn forged() -> Int { take(v: LocalValidated { n: 999 }) }\n"
+
+test fn f3_record_lit_call_arg_refuses() -> Bool {
+  violation_count(source: f3_call_arg_source, wanted: "SoleConstructorViolation") >= 1
+}
+
+// ---------------------------------------------------------------------------
+// Form 4: record literal as a LIST-LITERAL ELEMENT
+// ---------------------------------------------------------------------------
+data f4_list_source: String = "module probe_f4_list\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\nimport std.types { List }\nfn forged() -> List<LocalValidated> { [LocalValidated { n: 999 }] }\n"
+
+test fn f4_record_lit_list_element_refuses() -> Bool {
+  violation_count(source: f4_list_source, wanted: "SoleConstructorViolation") >= 1
+}
+
+// ---------------------------------------------------------------------------
+// Form 5: record literal nested inside ANOTHER record's field-init value
+// ---------------------------------------------------------------------------
+data f5_nested_source: String = "module probe_f5_nested\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\ntype Wrapper { v: LocalValidated }\nfn forged() -> Wrapper { Wrapper { v: LocalValidated { n: 999 } } }\n"
+
+test fn f5_record_lit_nested_field_init_refuses() -> Bool {
+  violation_count(source: f5_nested_source, wanted: "SoleConstructorViolation") >= 1
+}
+
+// ---------------------------------------------------------------------------
+// Form 6: record literal as the result of an IF/ELSE branch
+// ---------------------------------------------------------------------------
+data f6_branch_source: String = "module probe_f6_branch\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\nfn forged(flag: Bool) -> LocalValidated {\n  if flag { LocalValidated { n: 1 } } else { LocalValidated { n: 2 } }\n}\n"
+
+test fn f6_record_lit_branch_result_refuses() -> Bool {
+  violation_count(source: f6_branch_source, wanted: "SoleConstructorViolation") >= 1
+}
+
+// ---------------------------------------------------------------------------
+// Form 7: cast as a CALL ARGUMENT
+// ---------------------------------------------------------------------------
+data f7_cast_call_arg_source: String = "module probe_f7_cast_call_arg\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\nfn take(v: LocalValidated) -> Int { v.n }\nfn forged() -> Int { take(v: 7 as LocalValidated) }\n"
+
+test fn f7_cast_call_arg_refuses() -> Bool {
+  violation_count(source: f7_cast_call_arg_source, wanted: "SoleConstructorViolation") >= 1
+}
+
+// ---------------------------------------------------------------------------
+// Form 8: cast as a LIST-LITERAL ELEMENT
+// ---------------------------------------------------------------------------
+data f8_cast_list_source: String = "module probe_f8_cast_list\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\nimport std.types { List }\nfn forged() -> List<LocalValidated> { [7 as LocalValidated] }\n"
+
+test fn f8_cast_list_element_refuses() -> Bool {
+  violation_count(source: f8_cast_list_source, wanted: "SoleConstructorViolation") >= 1
+}
+
+// ---------------------------------------------------------------------------
+// Form 9: GENERIC refinement carrier - forged record literal at a concrete
+// type argument, cross-module (std.interval.OrderedClosedInterval<T>)
+// ---------------------------------------------------------------------------
+data f9_generic_literal_source: String = "module probe_f9_generic_literal\nimport std.interval { OrderedClosedInterval }\nfn forged() -> OrderedClosedInterval<Int> { OrderedClosedInterval { low: 5, high: 1 } }\n"
+
+test fn f9_generic_carrier_record_lit_refuses() -> Bool {
+  violation_count(source: f9_generic_literal_source, wanted: "SoleConstructorViolation") >= 1
+}
+
+// ---------------------------------------------------------------------------
+// Form 10: GENERIC refinement carrier reached via CAST
+// ---------------------------------------------------------------------------
+data f9b_generic_cast_source: String = "module probe_f9b_generic_cast\nimport std.interval { OrderedClosedInterval }\nfn forged(x: Int) -> OrderedClosedInterval<Int> { x as OrderedClosedInterval<Int> }\n"
+
+test fn f9b_generic_carrier_cast_refuses() -> Bool {
+  violation_count(source: f9b_generic_cast_source, wanted: "SoleConstructorViolation") >= 1
+}
+
+// ---------------------------------------------------------------------------
+// Generic carrier GREEN control: the sanctioned in-module mint, called
+// cross-module, must stay zero-diagnostics.
+// ---------------------------------------------------------------------------
+data f9_generic_green_source: String = "module probe_f9_generic_green\nimport std.interval { degenerate_interval }\nfn legal() -> Int { 1 }\nfn legal_mint() -> Bool {\n  let iv = degenerate_interval(point: 5)\n  true\n}\n"
+
+test fn f9_generic_carrier_green_control_clean() -> Bool {
+  violation_count(source: f9_generic_green_source, wanted: "SoleConstructorViolation") == 0
+}
+
+// ---------------------------------------------------------------------------
+// Order-dependence probe: two modules declare a bare-name-identical type
+// `DupShape`, one sole_constructor, one not (test.fixture.sole_constructor_order_probe
+// .sealed_variant / .open_variant). One probe module directly-selects the
+// SEALED one by name and merely transitively imports the open one; a sibling
+// probe swaps which is directly-selected. A third pair imports BOTH bare
+// (no braces - transitive presence only, neither directly selected) in
+// opposite declaration order, to test whether resolution of an unqualified
+// bare-name construction depends on import statement order.
+// ---------------------------------------------------------------------------
+data f10_direct_select_sealed_source: String = "module probe_f10_direct_sealed\nimport test.fixture.sole_constructor_order_probe.sealed_variant { DupShape }\nimport test.fixture.sole_constructor_order_probe.open_variant\nfn forged() -> DupShape { DupShape { tag: 999 } }\n"
+
+test fn f10_direct_selected_sealed_type_refuses() -> Bool {
+  violation_count(source: f10_direct_select_sealed_source, wanted: "SoleConstructorViolation") >= 1
+}
+
+data f10_direct_select_open_source: String = "module probe_f10_direct_open\nimport test.fixture.sole_constructor_order_probe.open_variant { DupShape }\nimport test.fixture.sole_constructor_order_probe.sealed_variant\nfn forged() -> DupShape { DupShape { tag: 999 } }\n"
+
+test fn f10_direct_selected_open_type_is_clean() -> Bool {
+  violation_count(source: f10_direct_select_open_source, wanted: "SoleConstructorViolation") == 0
+}
+
+data f10_neither_direct_ab_source: String = "module probe_f10_neither_ab\nimport test.fixture.sole_constructor_order_probe.sealed_variant\nimport test.fixture.sole_constructor_order_probe.open_variant\nfn forged() -> Bool {\n  let x = DupShape { tag: 999 }\n  true\n}\n"
+
+data f10_neither_direct_ba_source: String = "module probe_f10_neither_ba\nimport test.fixture.sole_constructor_order_probe.open_variant\nimport test.fixture.sole_constructor_order_probe.sealed_variant\nfn forged() -> Bool {\n  let x = DupShape { tag: 999 }\n  true\n}\n"
+
+test fn f10_neither_direct_ab_at_least_one_violation() -> Bool {
+  violation_count(source: f10_neither_direct_ab_source, wanted: "SoleConstructorViolation") >= 1
+}
+
+test fn f10_neither_direct_ba_at_least_one_violation() -> Bool {
+  violation_count(source: f10_neither_direct_ba_source, wanted: "SoleConstructorViolation") >= 1
+}
+
+test fn f10_neither_direct_order_independent() -> Bool {
+  violation_count(source: f10_neither_direct_ab_source, wanted: "SoleConstructorViolation")
+    == violation_count(source: f10_neither_direct_ba_source, wanted: "SoleConstructorViolation")
+}
