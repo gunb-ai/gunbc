@@ -44,7 +44,6 @@ import extdeps.languages.rust.emit {
   rust_serde_rename_all_snake_case, rust_serde_rename_all_screaming_snake_case,
   HigherOrderMethodSpec, rust_higher_order_methods
 }
-import std.trait_derive_shape { }
 import extdeps.cargo_version { render_cargo_package_header_prefix }
 import gunbc.stage0_crate_layout_generated { generated_pub_mod_block }
 import gunbc.rust_decl_type_overlay { rust_decl_type_container_overlay_is_admitted }
