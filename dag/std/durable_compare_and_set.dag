@@ -69,16 +69,24 @@ type CasReadableSlot<T>
 // One slot's committed content. It deliberately does NOT carry the slot key.
 //
 // It used to. That made the key a fact stored twice — once on the attempt and
-// once on the observed version — and two copies of one fact can disagree:
-// cas_decide compared generations only, so an attempt on key A against an
-// observation of key B with a coincidentally equal generation committed A. The
-// module's own text promises a caller can distinguish losing a race from
-// addressing the wrong slot, and that case was the second.
+// once on the observed version — and two copies of one fact can disagree,
+// which was a live wrong-slot commit path because cas_decide compared
+// generations only. Deleting the duplicate was right and DESIGN 3 is the
+// reason.
 //
-// A refusal arm would have caught it. Deleting the duplicate means there is
-// nothing to catch: an observation is of the slot the attempt names, because
-// no other slot can be described. Construction over validation (DESIGN 5), and
-// one fact in one place (DESIGN 3).
+// CORRECTION, and it matters because the earlier wording claimed more than the
+// code delivers: deleting the key did NOT make a wrong-slot commit
+// unconstructible. An unkeyed observation describes NO slot, which is not the
+// same as describing THE slot the attempt names. cas_decide_readable never
+// reads attempt.key, so an observation actually read from slot B still commits
+// to slot A when the generations agree. What the deletion removed is the
+// EVIDENCE of that mismatch, not its possibility — and it is weaker in one
+// respect than what preceded it, because a refusal arm could have caught the
+// disagreement while two copies existed and nothing can catch it now.
+//
+// The relation between an observation and the slot it was read from is
+// therefore OUTSIDE THE MODELED GUARANTEE at this layer, exactly like the
+// content/digest pairing below. See key_relation_boundary_note.
 type CasSlotVersion<T> {
   generation: CasGeneration
   content: ContentHash
@@ -215,6 +223,31 @@ fn cas_decide<T>(
     CasObservedReadable { readable: r } => cas_decide_readable(attempt: attempt, readable: r)
   }
 }
+
+// BOUNDARY OBLIGATION, DECLARED — the observation-to-slot relation.
+//
+// CasAttempt carries `key`, and no decision in this module reads it. The fold
+// cannot: an unkeyed CasReadableSlot carries nothing to compare the key
+// against, so the relation "this observation was read from the slot this
+// attempt names" is unrepresentable here rather than merely unchecked.
+//
+// The existence of CasAttempt.key is itself the proof that the guarantee is
+// not free. "Only one slot can be described" would hold only for a store with
+// exactly one global slot — and such a store would not need the field.
+//
+// Sealing it requires the store, which owns the read: either a store-minted
+// bound observation whose key relation a caller cannot forge, or folding read
+// and conditional-write into ONE store-owned operation so no caller ever
+// supplies an observation separately. The second is the shape the realization
+// should take: compare_and_set(attempt) -> CasOutcome, with the store reading
+// attempt.key itself.
+//
+// Candidate wall: `sole_constructor`, so only the store can mint the bound
+// observation. Until then this is observed and refused at the store boundary,
+// never proven here — and the witness
+// `the_decision_is_invariant_under_the_attempt_key` keeps the gap executable
+// rather than leaving it as prose. That control dissolves into the
+// construction evidence when a bound observation makes the pairing unformable.
 
 // BOUNDARY OBLIGATION, DECLARED — not a rung, and not fixable here.
 //

@@ -168,3 +168,40 @@ test fn the_same_expectation_that_was_refused_when_unreadable_commits_when_absen
     outcome: cas_decide(attempt: proposal(expected: ExpectSlotAbsent), observed: CasObservedReadable { readable: CasReadableAbsent })
   ) == 1
 }
+
+// THE GAP, MADE EXECUTABLE. This asserts the defect, not the fix.
+//
+// cas_decide never reads attempt.key, so two attempts differing ONLY in which
+// slot they name produce identical outcomes against one observation. That is
+// precisely the wrong-slot commit: an observation actually read from slot B
+// commits to slot A when the generations agree.
+//
+// It is enrolled deliberately, while the defect is still constructible, so the
+// boundary obligation in std.durable_compare_and_set is executable rather than
+// prose. When the store mints a bound observation and the pairing becomes
+// unformable, THIS WITNESS MUST STOP COMPILING — that is the signal the
+// relation was sealed, and it dissolves into the construction evidence under
+// the same 4b rule that retired the helpers' unreadable arms.
+//
+// A green here is not a safety claim. It is the receipt for a declared gap.
+fn attempt_for(key: NonEmptyStr) -> CasAttempt<NonEmptyStr> {
+  cas_attempt(
+    key: key,
+    expected: ExpectSlotGeneration { generation: 7 },
+    proposed: "proposed-state" as NonEmptyStr,
+    proposed_content: content_hash_of_value(value: "proposed-state" as NonEmptyStr),
+  )
+}
+
+test fn the_decision_is_invariant_under_the_attempt_key() -> Bool {
+  let for_slot_a = cas_decide(
+    attempt: attempt_for(key: "slot-a" as NonEmptyStr),
+    observed: occupied_at_seven,
+  )
+  let for_slot_b = cas_decide(
+    attempt: attempt_for(key: "slot-b" as NonEmptyStr),
+    observed: occupied_at_seven,
+  )
+  committed_generation_of(outcome: for_slot_a) == 8
+    && committed_generation_of(outcome: for_slot_b) == 8
+}
