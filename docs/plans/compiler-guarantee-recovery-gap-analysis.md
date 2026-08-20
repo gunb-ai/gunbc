@@ -1396,7 +1396,40 @@ than argued.
    only trace that a generated file was ever hand-authored, so it closes the instance and leaves
    the class exactly where it is.
 
-18. **`explicit_witness_admission`'s `known_red_probe` is an inert lens against the required
+18. **A where-refinement advisory computes its expected-type-at-position independently of
+   the method-arg contract #8592 corrected** (measured 2026-08-20, still-pike-216, while
+   landing #8592's permanent RED — see #8625). `WhereRefinementUnenforced` (the coproduct
+   variant in `src/v1/00_core.dag`) is produced by a second diagnostic-generation pass,
+   `where_refinement_unenforced_error` in `src/v1/04_infer.dag`, running independently of
+   `declared_arg_types_for_method` (`src/v1/04_lookup.dag`) and `infer_method_args_with_fold`
+   (`src/v1/04_infer.dag`) — the pair #8592 corrected so each method argument infers against
+   its declared parameter contract rather than the receiver's element type. The two live in
+   different modules and answer the same question — "what type/refinement is expected at this
+   argument position" — with no shared authority, which is exactly why nothing forces them
+   to agree: a DESIGN §3 duplicate-authority violation, not a standalone false-positive
+   nuisance. Evidence, by direct execution on a single binary (not a FIXED/BASELINE
+   differential): the fixture `probe(items: List<NonEmptyStr>, ...) { items.get(n: 0) }`
+   compiles clean of blocking errors but emits an advisory —
+   `where-refinement unenforced: predicate ... on 'Product(NonEmptyStr)' ... non-literal
+   value at refined position` — pointing at the `0` literal, even though the emitted Rust
+   (`items.clone().get((0) as usize).cloned()`) is correct: `0` is properly cast to `usize`
+   per `get`'s declared Int contract. Nothing wrong propagates; the advisory is spurious on
+   this fixture. **Scope, stated precisely:** this establishes the advisory is spurious on
+   the fixture actually run; it does not establish a corpus-wide population. A search of
+   `dag/` and `src/v2/` for literal-index `List<T>.get` call sites outside test fixtures
+   returned zero matches (2026-08-20), so no live-cost population is claimed here — the
+   defect class is real and reachable (any literal-index `get` call reaches it), but its
+   current corpus incidence is zero, not "every caller." Ceiling: decidable and groundable
+   once `where_refinement_unenforced_error` and `declared_arg_types_for_method` share an
+   authority for "expected type/refinement at an argument position" — a *wall after
+   grounding* (§5), not yet a wall now. No rung is claimed; per the "file the rows, omit the
+   rung" ruling (#8604), no `rung found at:` field is authored here. Filed separately from
+   #8604 (operator/session ruling, smart-ram-730, 2026-08-20: #8604 was at a settled,
+   5-approval head and this row's evidence was executed by a different session, so it
+   travels with the person who ran it) and cross-referenced from #8604's closing paragraph
+   as a fourth member of that diagnostic-channel family.
+
+19. **`explicit_witness_admission`'s `known_red_probe` is an inert lens against the required
    floor — rung `mitigatable`** (measured 2026-08-20, gunbc#8625/#8627). Traced
    `explicit_witness_admission_pairs()`'s one consumption site in `cli_run.rs`
    (`deferred_discovery_rows`, ~line 18861): it feeds only a diagnostic `DeferredDiscoveryRow`
