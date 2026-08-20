@@ -156,7 +156,7 @@ fn admitted_optional_nonempty(value: String?) -> std.types.NonEmptyStr? {
   }
 }
 
-fn first_refusal(left: BuildSubjectRefusalCause?, right: BuildSubjectRefusalCause?) -> BuildSubjectRefusalCause? {
+fn gunbc.devboot.subject.first_refusal(left: BuildSubjectRefusalCause?, right: BuildSubjectRefusalCause?) -> BuildSubjectRefusalCause? {
   match left {
     Present { value: cause } => Present { value: cause }
     Absent => right
@@ -178,13 +178,13 @@ fn environment_refusal(
   cargo_config: List<RawCargoConfigEntry>,
   platform_c_library: extdeps.gnu.libc.PlatformCLibrary,
 ) -> BuildSubjectRefusalCause? {
-  first_refusal(
+  gunbc.devboot.subject.first_refusal(
     left: platform_c_library_refusal(library: platform_c_library),
-    right: first_refusal(
+    right: gunbc.devboot.subject.first_refusal(
     left: scan_rustflags(flags: rustflags),
-    right: first_refusal(
+    right: gunbc.devboot.subject.first_refusal(
       left: optional_nonempty_refusal(value: linker, cause: LinkerEmpty),
-      right: first_refusal(
+      right: gunbc.devboot.subject.first_refusal(
         left: optional_nonempty_refusal(value: sysroot, cause: SysrootEmpty),
         right: scan_cargo_config(entries: cargo_config),
       ),
@@ -218,9 +218,9 @@ fn admit_build_subject(
   cargo_config: List<RawCargoConfigEntry>,
   platform_c_library: extdeps.gnu.libc.PlatformCLibrary,
 ) -> BuildSubjectAdmission {
-  match first_refusal(
+  match gunbc.devboot.subject.first_refusal(
     left: scalar_refusal(package: package, profile: profile),
-    right: first_refusal(
+    right: gunbc.devboot.subject.first_refusal(
       left: fold(
         features,
         init: FeatureScan { seen: [], refusal: none },

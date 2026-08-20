@@ -52,7 +52,7 @@ fn unsized_node(id: String) -> gunbc.roadmap_model.RoadmapNode {
   }
 }
 
-fn observation(id: String, cell: gunbc.roadmap_forecast.SizingCell, duration_ms: Int) -> gunbc.roadmap_forecast.CycleTimeObservation {
+fn test.claim.roadmap_forecast_witness.observation(id: String, cell: gunbc.roadmap_forecast.SizingCell, duration_ms: Int) -> gunbc.roadmap_forecast.CycleTimeObservation {
   gunbc.roadmap_forecast.CycleTimeObservation {
     node: id as gunbc.roadmap_model.RoadmapNodeId,
     sizing_cell: cell,
@@ -70,9 +70,9 @@ fn fixture_cell() -> gunbc.roadmap_forecast.SizingCell {
 
 fn fixture_observations() -> List<gunbc.roadmap_forecast.CycleTimeObservation> {
   [
-    observation(id: "history-a", cell: fixture_cell(), duration_ms: 10),
-    observation(id: "history-b", cell: fixture_cell(), duration_ms: 20),
-    observation(id: "history-c", cell: fixture_cell(), duration_ms: 30),
+    test.claim.roadmap_forecast_witness.observation(id: "history-a", cell: fixture_cell(), duration_ms: 10),
+    test.claim.roadmap_forecast_witness.observation(id: "history-b", cell: fixture_cell(), duration_ms: 20),
+    test.claim.roadmap_forecast_witness.observation(id: "history-c", cell: fixture_cell(), duration_ms: 30),
   ]
 }
 
@@ -318,7 +318,7 @@ test fn witness_zero_cycle_time_observation_refuses_before_headroom() -> Bool {
   match schedule_forecast(
     nodes: [n],
     edges: [],
-    observations: [observation(id: n.node, cell: fixture_cell(), duration_ms: 0)],
+    observations: [test.claim.roadmap_forecast_witness.observation(id: n.node, cell: fixture_cell(), duration_ms: 0)],
     history_refusals: [],
     population_exclusions: [],
     assumptions: assumptions(),

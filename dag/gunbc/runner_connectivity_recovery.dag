@@ -140,7 +140,7 @@ fn recovery_runner_slot_unit_name(slot: gunbc.build_cache_instance.RunnerSlotIde
   ) as std.types.NonEmptyStr
 }
 
-fn process_identity_eq(a: gunbc.build_cache_instance.ProcessIdentity, b: gunbc.build_cache_instance.ProcessIdentity) -> Bool {
+fn gunbc.runner_connectivity_recovery.process_identity_eq(a: gunbc.build_cache_instance.ProcessIdentity, b: gunbc.build_cache_instance.ProcessIdentity) -> Bool {
   (a.boot_id as String) == (b.boot_id as String)
     && a.pid == b.pid
     && (a.start_time as String) == (b.start_time as String)
@@ -366,7 +366,7 @@ fn decide_wedged_runner_connectivity_action(
   let slot = snap.slot
   if !watchdog.registration_grace_elapsed {
     RunnerRepairRefused { slot: slot, cause: RegistrationGraceNotElapsed }
-  } else if !process_identity_eq(
+  } else if !gunbc.runner_connectivity_recovery.process_identity_eq(
     a: snap.local.incarnation.process,
     b: prior.local.incarnation.process,
   ) {
@@ -546,7 +546,7 @@ fn verify_incarnation_replace_postcondition(
   after_remote: RunnerRemoteObservation,
   expected_labels: List<String>,
 ) -> IncarnationReplacePostcondition {
-  if process_identity_eq(a: prior.process, b: after_local.incarnation.process) {
+  if gunbc.runner_connectivity_recovery.process_identity_eq(a: prior.process, b: after_local.incarnation.process) {
     ReplacePostconditionFailed {
       slot: slot,
       reason: "prior local process identity still present after restart" as std.types.NonEmptyStr,

@@ -49,7 +49,7 @@ fn depth_of(kind: std.planar_projection.ProjectionKind, x: Int, y: Int, z: Int) 
   }
 }
 
-fn at(p: std.planar_projection.ViewPoint2?, u: Int, v: Int) -> Bool {
+fn test.claim.planar_projection_witness.at(p: std.planar_projection.ViewPoint2?, u: Int, v: Int) -> Bool {
   match p {
     Absent => false
     Present { value: q } => q.u == u && q.v == v && q.view.occurrence == 2
@@ -65,7 +65,7 @@ test fn a_plan_images_east_right_north_up_and_collapses_height() -> Bool {
 }
 
 test fn a_plan_places_a_point_at_its_own_horizontal_coordinates() -> Bool {
-  at(p: projected(kind: PlanFromAbove, x: 3000, y: 4000, z: 2400), u: 3000, v: 4000)
+  test.claim.planar_projection_witness.at(p: projected(kind: PlanFromAbove, x: 3000, y: 4000, z: 2400), u: 3000, v: 4000)
 }
 
 // Depth increases AWAY from the camera, so under a plan a higher point is nearer and its depth is
@@ -107,7 +107,7 @@ test fn the_dimetric_columns_follow_from_its_camera() -> Bool {
 }
 
 test fn the_dimetric_places_a_point_by_its_derived_columns() -> Bool {
-  at(p: projected(kind: Dimetric2To1FromAboveEastNorth, x: 1000, y: 2000, z: 3000), u: 1000, v: 3000)
+  test.claim.planar_projection_witness.at(p: projected(kind: Dimetric2To1FromAboveEastNorth, x: 1000, y: 2000, z: 3000), u: 1000, v: 3000)
 }
 
 // A plan and an elevation are drawn to scale; an axonometric view is not, and the difference is

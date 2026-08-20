@@ -95,7 +95,7 @@ fn opening_identity_eq(a: OpeningIdentity, b: OpeningIdentity) -> Bool {
   (a as String) == (b as String)
 }
 
-fn find_room(w: product.spatial_world.World, identity: product.placement_supply.RoomIdentity) -> product.spatial_world.PlacedSpace? {
+fn product.spatial_connectivity.find_room(w: product.spatial_world.World, identity: product.placement_supply.RoomIdentity) -> product.spatial_world.PlacedSpace? {
   fold(world_rooms(w: w), init: none, f: (acc, r) =>
     match acc {
       Present { value: found } => Present { value: found }
@@ -148,10 +148,10 @@ fn admit_opening(w: product.spatial_world.World, o: Opening) -> ConnectivityCons
     if room_identity_eq(a: o.first, b: o.second) {
       ConnectivityRefused { cause: OpeningJoinsRoomToItself { identity: o.first } }
     } else {
-      match find_room(w: w, identity: o.first) {
+      match product.spatial_connectivity.find_room(w: w, identity: o.first) {
         Absent => ConnectivityRefused { cause: OpeningRoomMissing { identity: o.first } }
         Present { value: ra } =>
-          match find_room(w: w, identity: o.second) {
+          match product.spatial_connectivity.find_room(w: w, identity: o.second) {
             Absent => ConnectivityRefused { cause: OpeningRoomMissing { identity: o.second } }
             Present { value: rb } =>
               if !rooms_share_any_wall(a: ra.space, b: rb.space) {
@@ -262,7 +262,7 @@ fn relax_once(reached: List<product.placement_supply.RoomIdentity>, openings: Li
 // more rounds would have to visit some room twice, and revisiting reaches nothing new. The world's
 // room list is what the fold iterates, which is why the bound cannot drift from the thing it bounds.
 fn reachable_from(w: product.spatial_world.World, p: OpeningPlan, start: product.placement_supply.RoomIdentity) -> ConnectivityConstruction<List<product.placement_supply.RoomIdentity>> {
-  match find_room(w: w, identity: start) {
+  match product.spatial_connectivity.find_room(w: w, identity: start) {
     Absent => ConnectivityRefused { cause: ReachabilityEndpointMissing { identity: start, role: TraversalStart } }
     Present { value: _ } =>
       ConnectivityReady {
@@ -276,7 +276,7 @@ fn rooms_are_connected(w: product.spatial_world.World, p: OpeningPlan, from: pro
   match reachable_from(w: w, p: p, start: from) {
     ConnectivityRefused { cause: c } => ConnectivityRefused { cause: c }
     ConnectivityReady { value: reached } =>
-      match find_room(w: w, identity: to) {
+      match product.spatial_connectivity.find_room(w: w, identity: to) {
         Absent => ConnectivityRefused { cause: ReachabilityEndpointMissing { identity: to, role: TraversalTarget } }
         Present { value: _ } => ConnectivityReady { value: contains_room(rooms: reached, wanted: to) }
       }

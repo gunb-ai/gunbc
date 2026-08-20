@@ -13,7 +13,7 @@ data bad_interlock_bindings: List<product.compute_board.verilog_projection.Veril
   product.compute_board.verilog_projection.VerilogBinding { signal: "never_declared" as product.compute_board.digital_control.SignalName, symbol: ^probe_never_declared, spelling: "never_declared" },
 ]
 
-fn project(intent: product.compute_board.digital_control.DigitalControlIntent, bindings: List<product.compute_board.verilog_projection.VerilogBinding>) -> product.compute_board.verilog_projection.VerilogProjection {
+fn test.claim.compute_board_verilog_projection_witness.project(intent: product.compute_board.digital_control.DigitalControlIntent, bindings: List<product.compute_board.verilog_projection.VerilogBinding>) -> product.compute_board.verilog_projection.VerilogProjection {
   project_intent_to_verilog(article_identity: witness_article_identity, intent: intent, bindings: bindings)
 }
 
@@ -21,7 +21,7 @@ fn project(intent: product.compute_board.digital_control.DigitalControlIntent, b
 // against expected bytes asserts non-emptiness first — otherwise a refusal would make an
 // inequality claim vacuously true, which is the absorbing arm one level up in the oracle.
 fn emitted_source(intent: product.compute_board.digital_control.DigitalControlIntent) -> String {
-  match project(intent: intent, bindings: power_interlock_verilog_bindings) {
+  match test.claim.compute_board_verilog_projection_witness.project(intent: intent, bindings: power_interlock_verilog_bindings) {
     VerilogModuleEmitted { receipt: r } => r.source
     VerilogProjectionRefused { cause: _ } => ""
   }
@@ -101,7 +101,7 @@ data spaced_spelling_bindings: List<product.compute_board.verilog_projection.Ver
 ]
 
 fn refused_with_spelling(intent: product.compute_board.digital_control.DigitalControlIntent, bindings: List<product.compute_board.verilog_projection.VerilogBinding>, expected: String) -> Bool {
-  match project(intent: intent, bindings: bindings) {
+  match test.claim.compute_board_verilog_projection_witness.project(intent: intent, bindings: bindings) {
     VerilogProjectionRefused { cause: c } =>
       match c {
         SignalSpellingNotAdmissible { signal: _, spelling: sp } => sp == expected
@@ -124,7 +124,7 @@ test fn w_spelling_with_a_forbidden_character_refuses() -> Bool {
 // The POSITIVE control for the same mechanism: the production bindings are admissible, so the
 // refusals above are discriminating rather than a checker that rejects everything.
 test fn w_production_bindings_are_admitted() -> Bool {
-  match project(intent: board_power_interlock_intent, bindings: power_interlock_verilog_bindings) {
+  match test.claim.compute_board_verilog_projection_witness.project(intent: board_power_interlock_intent, bindings: power_interlock_verilog_bindings) {
     VerilogModuleEmitted { receipt: r } => r.source == expected_interlock_verilog
     VerilogProjectionRefused { cause: _ } => false
   }
@@ -153,7 +153,7 @@ data doubly_spelled_bindings_reversed: List<product.compute_board.verilog_projec
 ]
 
 fn refuses_as_duplicate(bindings: List<product.compute_board.verilog_projection.VerilogBinding>) -> Bool {
-  match project(intent: board_power_interlock_intent, bindings: bindings) {
+  match test.claim.compute_board_verilog_projection_witness.project(intent: board_power_interlock_intent, bindings: bindings) {
     VerilogProjectionRefused { cause: c } =>
       match c {
         DuplicateSignalBinding { signal: s } => (s as String) == "conditioned_good"

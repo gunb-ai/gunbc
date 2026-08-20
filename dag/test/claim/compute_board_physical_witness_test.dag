@@ -80,7 +80,7 @@ fn refusal_is(r: product.pcb.physical.PhysicalRefusal, wanted: String) -> Bool {
   }
 }
 
-fn refuses_naming(placements: List<product.pcb.physical.ComponentPlacement>, wanted: String) -> Bool {
+fn test.claim.compute_board_physical_witness.refuses_naming(placements: List<product.pcb.physical.ComponentPlacement>, wanted: String) -> Bool {
   match article_with(placements: placements) {
     Absent => false
     Present { value: a } =>
@@ -106,7 +106,7 @@ test fn w_a_coherent_placement_is_admitted() -> Bool {
 // interesting case: a check that tested only the origin would pass it, and the part would be
 // half in air. The extent is what has to be contained.
 test fn w_a_part_that_does_not_fit_inside_the_outline_refuses() -> Bool {
-  refuses_naming(
+  test.claim.compute_board_physical_witness.refuses_naming(
     placements: [placement(id: "u1", x: 90000, y: 5000)],
     wanted: "PlacementNotWithinOutline"
   )
@@ -115,7 +115,7 @@ test fn w_a_part_that_does_not_fit_inside_the_outline_refuses() -> Bool {
 // TWO PARTS IN THE SAME PLACE. Twenty-millimetre bodies five millimetres apart share interior
 // area, which is a collision no fabricator can build.
 test fn w_two_parts_sharing_area_refuse() -> Bool {
-  refuses_naming(
+  test.claim.compute_board_physical_witness.refuses_naming(
     placements: [
       placement(id: "u1", x: 5000, y: 5000),
       placement(id: "u2", x: 10000, y: 5000),
@@ -139,7 +139,7 @@ test fn w_touching_bodies_do_not_register_as_overlapping() -> Bool {
 }
 
 test fn w_a_repeated_placement_identity_refuses() -> Bool {
-  refuses_naming(
+  test.claim.compute_board_physical_witness.refuses_naming(
     placements: [
       placement(id: "u1", x: 5000, y: 5000),
       placement(id: "u1", x: 50000, y: 5000),
@@ -167,7 +167,7 @@ test fn w_one_defect_is_reported_once() -> Bool {
 }
 
 test fn w_a_placement_in_another_frame_refuses() -> Bool {
-  refuses_naming(
+  test.claim.compute_board_physical_witness.refuses_naming(
     placements: [
       product.pcb.physical.ComponentPlacement {
         identity: "u1",
