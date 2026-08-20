@@ -41838,16 +41838,10 @@ pub fn run_required_regen_fixed_point(
     required_regen_host::run_required_regen_fixed_point(receipt_rel, pass1_digest)
 }
 
-pub use required_regen_host::GeneratedDriftMeasurement;
-
-/// The emit-and-compare half of regen with NO equality verdict attached, for the mirror-drift
-/// gate. Exposed beside `run_required_regen` rather than inside it because the two answer
-/// different questions off one measurement; see `GeneratedDriftMeasurement`.
+/// The emitted generated surface, keyed by basename, off the SAME `measure_generated_surface`
+/// producer the regen path uses -- so the bytes a behavioural receipt compiles are the bytes
+/// regen compared. A second emit here would be a second producer of the candidate itself.
 pub use required_regen_host::emitted_generated_sources;
-
-pub fn measure_generated_drift() -> Result<GeneratedDriftMeasurement, String> {
-    required_regen_host::measure_generated_drift()
-}
 
 /// The authority's own declared module path, for consumers outside this module.
 ///
