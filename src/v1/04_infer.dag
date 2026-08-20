@@ -3090,6 +3090,13 @@ fn derive_element_provenance(coll_expr: Node, elem_type: Node, scope: InferScope
   }
 }
 
+// MIRROR DESYNC, measured 2026-08-20 against origin/main 9b29509e5c9: the committed stage0
+// projection (src/v1/stage0/src/v1_compiler_infer.rs::infer_method_args_with_fold) has 6
+// parameters, missing this signature's 7th, `arg_contract: DeclaredArgContract` (dag:
+// arg_contract x5, mirror: x0), and the mirror body still calls
+// scalar_shaped_builtin_method_arg_type, an identifier absent from this authority (dag: x0,
+// mirror: x2). `claim_executor --required-regen` at that same commit reported the two-file
+// required-regen population mismatch but did not flag this fn as generated-surface drift.
 fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fold_info: ArgInferResult?, fold_acc_type: Node, element_type: Node, elem_provenance: SubValueRelation, arg_contract: DeclaredArgContract, scope: InferScope) -> List<ArgInferResult> {
   let is_fold = method_name_is(opt: method_name, expected: "fold")
   method_args |> enumerate |> map(idx_pair =>
