@@ -1076,7 +1076,22 @@ pub fn instantiate_algebra_type(
                 });
                 let rb = instantiate_algebra_type(r.clone(), base.clone(), source_indices.clone());
                 Rc::new(KernelTypeBuild {
-                    ty: make_callable_type(param_nodes.clone(), rb.ty.clone()),
+                    ty: make_callable_type(
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for pn in param_nodes.clone().iter().cloned() {
+                                __result.push(make_param_node(
+                                    "_".to_string(),
+                                    pn.clone(),
+                                    None,
+                                    no_span(),
+                                    no_span(),
+                                ));
+                            }
+                            __result
+                        }),
+                        rb.ty.clone(),
+                    ),
                     diagnostics: v1_rt::concat(param_diags.clone(), rb.diagnostics.clone()),
                 })
             }

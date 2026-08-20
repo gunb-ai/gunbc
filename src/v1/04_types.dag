@@ -397,7 +397,7 @@ fn instantiate_algebra_type(template: AlgebraTypeTemplate, base: Node, source_in
       let param_nodes = param_bs |> map(b => b.ty)
       let rb = instantiate_algebra_type(template: r, base: base, source_indices: source_indices)
       KernelTypeBuild {
-        ty: make_callable_type(func_params: param_nodes, ret: rb.ty),
+        ty: make_callable_type(func_params: param_nodes |> map(pn => make_param_node(name: "_", type_expr: pn, default_value: none, span: no_span(), name_span: no_span())), ret: rb.ty),
         diagnostics: concat(param_diags, rb.diagnostics)
       }
   }

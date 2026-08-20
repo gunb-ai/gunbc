@@ -209,22 +209,28 @@ fn add_arrow_eval_choose_first_arm(node: Node, _value: RuntimeValue, _env: Evalu
 fn add_arrow_eval_lazy_arm_interpretation() -> InterpretationAlgebra {
   InterpretationAlgebra {
     value: ValueInterpreter {
-      allocate_literal: v2_eval_allocate_literal
+      allocate_literal: v2_eval_allocate_literal,
+      identity: ^v2_eval_allocate_literal
     },
     transform: TransformInterpreter {
-      call_primitive: add_arrow_eval_call_primitive
+      call_primitive: add_arrow_eval_call_primitive,
+      identity: ^add_arrow_eval_call_primitive
     },
     branch: BranchInterpreter {
-      choose_branch: add_arrow_eval_choose_first_arm
+      choose_branch: add_arrow_eval_choose_first_arm,
+      identity: ^add_arrow_eval_choose_first_arm
     },
     loop: LoopInterpreter {
-      step_loop: add_arrow_eval_step_loop
+      step_loop: add_arrow_eval_step_loop,
+      identity: ^add_arrow_eval_step_loop
     },
     bind: BindInterpreter {
-      bind_value: add_arrow_eval_bind_value
+      bind_value: add_arrow_eval_bind_value,
+      identity: ^add_arrow_eval_bind_value
     },
     match: MatchInterpreter {
-      choose_arm: runtime_reject_match_arm
+      choose_arm: runtime_reject_match_arm,
+      identity: ^runtime_reject_match_arm
     }
   }
 }
@@ -805,12 +811,12 @@ fn add_arrow_eval_step_loop_continue(node: Node, _env: EvaluationEnvironment) ->
 
 fn add_arrow_eval_lazy_arm_loop_interpretation() -> InterpretationAlgebra {
   InterpretationAlgebra {
-    value: ValueInterpreter { allocate_literal: v2_eval_allocate_literal },
-    transform: TransformInterpreter { call_primitive: add_arrow_eval_call_primitive },
-    branch: BranchInterpreter { choose_branch: add_arrow_eval_choose_first_arm },
-    loop: LoopInterpreter { step_loop: add_arrow_eval_step_loop_continue },
-    bind: BindInterpreter { bind_value: add_arrow_eval_bind_value },
-    match: MatchInterpreter { choose_arm: runtime_reject_match_arm }
+    value: ValueInterpreter { allocate_literal: v2_eval_allocate_literal, identity: ^v2_eval_allocate_literal },
+    transform: TransformInterpreter { call_primitive: add_arrow_eval_call_primitive, identity: ^add_arrow_eval_call_primitive },
+    branch: BranchInterpreter { choose_branch: add_arrow_eval_choose_first_arm, identity: ^add_arrow_eval_choose_first_arm },
+    loop: LoopInterpreter { step_loop: add_arrow_eval_step_loop_continue, identity: ^add_arrow_eval_step_loop_continue },
+    bind: BindInterpreter { bind_value: add_arrow_eval_bind_value, identity: ^add_arrow_eval_bind_value },
+    match: MatchInterpreter { choose_arm: runtime_reject_match_arm, identity: ^runtime_reject_match_arm }
   }
 }
 

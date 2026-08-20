@@ -17,7 +17,6 @@ pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "pre_push.rs",
     "census_exclude_derive.rs",
     "derived_realization_schedule.rs",
-    "v1_compiler_expected_red_roster_join.rs",
     "memory_governor.rs",
     "std_lens_verdict.rs",
     "v2_compiler_body_producer.rs",
