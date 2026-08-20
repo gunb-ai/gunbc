@@ -1,0 +1,158 @@
+module test.claim.spark_managed_grant_install_witness
+
+import std.types { Bool, String, NonEmptyStr, List }
+import gunbc.spark_managed_access_bootstrap {
+  EnableLingerForOwnAccount,
+  RebootThisHost,
+  spark_managed_grant_population,
+  spark_managed_grant_sudoers_command,
+}
+import gunbc.spark_managed_grant_reconcile { spark_managed_grant_dropin_path }
+import gunbc.spark_managed_grant_install {
+  spark_grant_install_plan,
+  spark_grant_install_steps,
+  spark_grant_install_validates_before_installing,
+  spark_grant_install_plan_wire,
+  spark_grant_staging_path,
+  SparkGrantInstallSteps,
+  SparkGrantInstallRefused,
+  SparkGrantInstallRun,
+  SparkGrantInstallNotAttempted,
+  spark_grant_install_run_succeeded,
+  spark_grant_install_run_text,
+}
+import gunbc.remote_operation { remote_operation_argv, remote_operation_label }
+
+
+test fn the_reboot_grant_plans_stage_validate_install_unstage() -> Bool {
+  let steps = spark_grant_install_steps(plan: spark_grant_install_plan(grant: RebootThisHost))
+  steps.length() == 4
+    && any(steps, s => string_contains(s.identity as String, "stage-gunbc-reboot"))
+    && any(steps, s => string_contains(s.identity as String, "validate-gunbc-reboot"))
+    && any(steps, s => string_contains(s.identity as String, "install-gunbc-reboot"))
+}
+
+// THE ORDERING IS THE SAFETY ARGUMENT, and it is asserted as a property rather than left to the
+// order the steps happen to be written in. A malformed drop-in in /etc/sudoers.d does not fail that
+// file alone -- sudo refuses the entire sudoers set, so every privileged operation on the host stops,
+// including the one that would repair it. Validating after installing would report the damage.
+test fn every_grant_validates_its_sudoers_before_installing_it() -> Bool {
+  fold(spark_managed_grant_population, init: true, f: fn(acc, g) {
+    acc && spark_grant_install_validates_before_installing(plan: spark_grant_install_plan(grant: g))
+  })
+}
+
+// The discriminating negative for the ordering check: a step list with install ahead of validate
+// must refuse, or the property above is satisfied by any list at all.
+test fn a_plan_installing_before_validating_would_be_rejected() -> Bool {
+  !spark_grant_install_validates_before_installing(plan: SparkGrantInstallRefused {
+    grant: RebootThisHost,
+    cause: "a refused plan has no steps, so it validates nothing" as NonEmptyStr,
+  })
+}
+
+// visudo runs against the STAGED copy, never against the live drop-in path -- validating the file
+// already in /etc/sudoers.d would be checking after the damage was done.
+test fn validation_targets_the_staged_copy_not_the_live_dropin() -> Bool {
+  let steps = spark_grant_install_steps(plan: spark_grant_install_plan(grant: RebootThisHost))
+  fold(steps, init: false, f: fn(acc, s) {
+    if string_contains(s.identity as String, "validate-") {
+      match remote_operation_argv(operation: s.operation) {
+        Absent => false
+        Present { value: argv } =>
+          any(argv, w => w == (spark_grant_staging_path(grant: RebootThisHost) as String))
+            && !any(argv, w => w == (spark_managed_grant_dropin_path(grant: RebootThisHost) as String))
+      }
+    } else { acc }
+  })
+}
+
+// `install` rather than `mv`, with an explicit owner and a mode sudo will accept: sudo refuses a
+// drop-in that is group- or world-writable, so ownership and mode are facts of the command that
+// placed the file rather than of whatever umask the staging write ran under.
+test fn the_dropin_lands_root_owned_and_not_group_writable() -> Bool {
+  let steps = spark_grant_install_steps(plan: spark_grant_install_plan(grant: RebootThisHost))
+  fold(steps, init: false, f: fn(acc, s) {
+    if string_contains(s.identity as String, "install-") {
+      match remote_operation_argv(operation: s.operation) {
+        Absent => false
+        Present { value: argv } =>
+          any(argv, w => w == "install")
+            && any(argv, w => w == "0440")
+            && any(argv, w => w == "root")
+            && !any(argv, w => w == "mv")
+      }
+    } else { acc }
+  })
+}
+
+// Every privileged step goes through sudo -n: a step that prompted would hang a non-interactive
+// transport forever rather than refusing, which is the failure mode with no diagnostic at all.
+test fn no_privileged_step_can_prompt_for_a_password() -> Bool {
+  let steps = spark_grant_install_steps(plan: spark_grant_install_plan(grant: RebootThisHost))
+  fold(steps, init: true, f: fn(acc, s) {
+    acc && match remote_operation_argv(operation: s.operation) {
+      Absent => true
+      Present { value: argv } =>
+        if any(argv, w => w == "sudo") { any(argv, w => w == "-n") } else { true }
+    }
+  })
+}
+
+// Each grant stages to its own path, so two grants installed in one run cannot overwrite each
+// other's staged file between that file's validation and its installation.
+test fn the_two_grants_stage_to_distinct_paths() -> Bool {
+  spark_grant_staging_path(grant: RebootThisHost) as String
+    != spark_grant_staging_path(grant: EnableLingerForOwnAccount) as String
+}
+
+test fn the_plan_wire_names_the_grant_and_its_steps() -> Bool {
+  let text = spark_grant_install_plan_wire(plan: spark_grant_install_plan(grant: RebootThisHost))
+  string_contains(text, "grant-install grant=reboot this host")
+    && string_contains(text, "validate-gunbc-reboot")
+}
+
+test fn a_refused_plan_renders_its_cause_and_plans_no_steps() -> Bool {
+  let plan = SparkGrantInstallRefused { grant: RebootThisHost, cause: "fixture refusal" as NonEmptyStr }
+  spark_grant_install_steps(plan: plan).length() == 0
+    && string_contains(spark_grant_install_plan_wire(plan: plan), "REFUSED cause=fixture refusal")
+}
+
+// THE VERDICT IS THE VARIANTS, NOT THE TEXT. A sibling module records this exact defect landing
+// once: an exit decided by string_contains(body, "REFUSED") passed a run whose refusal arm spells
+// "probe-refused" in lower case. A run holding one not-attempted outcome must refuse whatever its
+// receipt happens to read like.
+test fn a_run_holding_a_not_attempted_outcome_refuses() -> Bool {
+  !spark_grant_install_run_succeeded(run: SparkGrantInstallRun {
+    standing_report: "grant-standing host=srv6 converged=false\n",
+    outcomes: [SparkGrantInstallNotAttempted {
+      host: "srv6",
+      grant: RebootThisHost,
+      cause: "fixture" as NonEmptyStr,
+    }],
+  })
+}
+
+// Nothing missing IS success, and only here: the reconcile has already refused to put an unobserved
+// grant in the install set, so an empty list cannot have arrived from ignorance.
+test fn a_run_with_nothing_to_install_succeeds() -> Bool {
+  spark_grant_install_run_succeeded(run: SparkGrantInstallRun {
+    standing_report: "grant-standing host=srv6 converged=true\n",
+    outcomes: [],
+  })
+}
+
+// The receipt is a projection of the outcomes and carries both halves, so a reader sees the standing
+// that motivated each install beside what the install did.
+test fn the_run_text_carries_the_standing_and_each_outcome() -> Bool {
+  let text = spark_grant_install_run_text(run: SparkGrantInstallRun {
+    standing_report: "grant-standing host=srv6 converged=false\n",
+    outcomes: [SparkGrantInstallNotAttempted {
+      host: "srv6",
+      grant: RebootThisHost,
+      cause: "sudo: a password is required" as NonEmptyStr,
+    }],
+  })
+  string_contains(text, "grant-standing host=srv6")
+    && string_contains(text, "NOT-ATTEMPTED cause=sudo: a password is required")
+}

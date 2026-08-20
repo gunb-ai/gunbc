@@ -694,6 +694,36 @@ fn gunbc_ci_spark_serving_reboot_invoke() -> String {
   )
 }
 
+data gunbc_ci_spark_grant_install_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "gunbc_ci_spark_grant_install_invoke",
+    field: WholeDeclaration
+  }
+}
+
+data gunbc_ci_spark_grant_install_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_spark_grant_install_invoke — foreign-executor shell invoking spark_grant_install_ci_wet (reads the grant standing at a NAMED target and installs only the grants measured missing, staging and validating each sudoers drop-in before it is placed) with SPARK_CONVERGE_TARGET env; DISSOLVES WHEN bash-emit binds the step to orchestration emit over typed WitnessBin.Run")
+
+fn gunbc_ci_spark_grant_install_invoke() -> String {
+  concat(
+    concat("# ", concat(dissolution_description(condition: gunbc_ci_spark_grant_install_shell_emit_dissolution_trigger), "\n")),
+    concat(
+      concat(
+        concat("ROOT=", ci_repo_root_shell(), "\n"),
+        gunbc_run_shell(
+          source_roots: witness_layer_roots,
+          entry: "dag/gunbc/spark_managed_grant_install.dag",
+          function: "spark_grant_install_ci_wet",
+          rooted: true,
+          claim_run: false
+        )
+      ),
+      "\ncat \"$ROOT/target/spark-grant-install-receipt.txt\""
+    )
+  )
+}
+
 data gunbc_ci_spark_serving_observe_shell_emit_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {

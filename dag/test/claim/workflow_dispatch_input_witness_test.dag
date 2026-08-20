@@ -92,12 +92,13 @@ fn mode_input_has_choice_options(v: YamlValue) -> Bool {
                   fold(fields, init: false, f: fn(has_opts, field) {
                     has_opts || (field.key == "options" && match field.value {
                       YamlSequence { elements: opts } =>
-                        length(opts) == 5
+                        length(opts) == 6
                           && any(opts, o => match o { YamlString { value } => value == "plan"  _ => false })
                           && any(opts, o => match o { YamlString { value } => value == "apply"  _ => false })
                           && any(opts, o => match o { YamlString { value } => value == "spark_linger"  _ => false })
                           && any(opts, o => match o { YamlString { value } => value == "spark_observe"  _ => false })
                           && any(opts, o => match o { YamlString { value } => value == "spark_reboot"  _ => false })
+                          && any(opts, o => match o { YamlString { value } => value == "spark_grants"  _ => false })
                       YamlNull => false
                       YamlBool { value: _ } => false
                       YamlInt { lexeme: _ } => false

@@ -33,6 +33,7 @@ import gunbc.ci_spec {
   gunbc_ci_spark_serving_converge_slice_invoke,
   gunbc_ci_spark_serving_observe_invoke,
   gunbc_ci_spark_serving_reboot_invoke,
+  gunbc_ci_spark_grant_install_invoke,
   gunbc_fleet_converge_plan_artifact_name,
   gunbc_ci_fleet_converge_plan_artifact_hash_env_name,
 }
@@ -47,7 +48,7 @@ data fleet_converge_enrolled_host_options: List<String> = ["srv1", "srv2", "srv3
 
 data fleet_converge_spark_target_options: List<String> = ["srv5", "srv6"]
 
-data fleet_converge_mode_options: List<String> = ["plan", "apply", "spark_linger", "spark_observe", "spark_reboot"]
+data fleet_converge_mode_options: List<String> = ["plan", "apply", "spark_linger", "spark_observe", "spark_reboot", "spark_grants"]
 
 data fleet_converge_host_runner_expression: String = "${{ fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.host)) }}"
 
@@ -86,6 +87,8 @@ data fleet_converge_spark_linger_step_if: String = "github.event.inputs.mode == 
 data fleet_converge_spark_observe_step_if: String = "github.event.inputs.mode == 'spark_observe'"
 
 data fleet_converge_spark_reboot_step_if: String = "github.event.inputs.mode == 'spark_reboot'"
+
+data fleet_converge_spark_grants_step_if: String = "github.event.inputs.mode == 'spark_grants'"
 
 fn fleet_converge_plan_upload_step() -> Step {
   UsesStep {
@@ -203,6 +206,24 @@ fn fleet_converge_spark_reboot_step() -> Step {
   }
 }
 
+fn fleet_converge_spark_grants_step() -> Step {
+  RunStep {
+    name: Present { value: "Spark managed grant reconcile (installs only the grants measured missing at the named target)" },
+    id: Present { value: "spark_grants" },
+    run: gunbc_ci_spark_grant_install_invoke(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: "SPARK_CONVERGE_TARGET", value: yaml_string(s: "${{ github.event.inputs.target }}")),
+      ]
+    },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_spark_grants_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
+  }
+}
+
 fn fleet_converge_spark_observe_step() -> Step {
   RunStep {
     name: Present { value: "Spark serving observation (read-only: unit state, runtime version, model tags, driver)" },
@@ -244,6 +265,7 @@ fn fleet_converge_job() -> Job {
         fleet_converge_plan_download_step(),
         fleet_converge_apply_step(),
         fleet_converge_spark_linger_step(),
+        fleet_converge_spark_grants_step(),
         fleet_converge_spark_observe_step(),
         fleet_converge_spark_reboot_step(),
         ci_fleet_key_agent_cleanup_step(),

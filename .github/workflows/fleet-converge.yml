@@ -10,7 +10,7 @@ on:
       mode:
         description: plan shows membership hunks; apply executes a prior plan artifact; spark_linger enables linger on target spark via FleetSsh typed argv from executor; spark_observe is a read-only observation of both Sparks
         required: true
-        options: [plan, apply, spark_linger, spark_observe, spark_reboot]
+        options: [plan, apply, spark_linger, spark_observe, spark_reboot, spark_grants]
         type: choice
       target:
         description: Spark target host for spark_linger mode (srv5 or srv6)
@@ -234,6 +234,17 @@ jobs:
           SPARK_CONVERGE_TARGET: ${{ github.event.inputs.target }}
           SPARK_CONVERGE_EXECUTE: 1
         if: github.event.inputs.mode == 'spark_linger'
+        timeout-minutes: 60
+      - name: Spark managed grant reconcile (installs only the grants measured missing at the named target)
+        id: spark_grants
+        run: |
+          # 🟡 dissolve-on: gunbc_ci_spark_grant_install_invoke — foreign-executor shell invoking spark_grant_install_ci_wet (reads the grant standing at a NAMED target and installs only the grants measured missing, staging and validating each sudoers drop-in before it is placed) with SPARK_CONVERGE_TARGET env; DISSOLVES WHEN bash-emit binds the step to orchestration emit over typed WitnessBin.Run
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark_managed_grant_install.dag --function spark_grant_install_ci_wet
+          cat "$ROOT/target/spark-grant-install-receipt.txt"
+        env:
+          SPARK_CONVERGE_TARGET: ${{ github.event.inputs.target }}
+        if: github.event.inputs.mode == 'spark_grants'
         timeout-minutes: 60
       - name: "Spark serving observation (read-only: unit state, runtime version, model tags, driver)"
         id: spark_observe

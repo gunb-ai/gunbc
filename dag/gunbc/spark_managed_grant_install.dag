@@ -1,0 +1,443 @@
+module gunbc.spark_managed_grant_install
+
+import std.types { String, NonEmptyStr, List, Bool, FilePath }
+import std.algebra { trim }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.clock_read { clock_now_probed_at }
+import gunbc.spark_serving_credential_locus {
+  prepare_spark_serving_agent_context,
+  SparkServingContextReady,
+  SparkServingContextRefused,
+}
+import gunbc.fleet_multi_principal_probe {
+  spark_converge_target_selection,
+  SparkConvergeTargetSingle,
+  SparkConvergeTargetAllObserveOnly,
+  SparkConvergeTargetRefused,
+}
+import gunbc.file_access { FileTreeScope }
+import gunbc.remote_operation { PlannedRemoteStep, RemoteOperation, RemoteArgv, RemoteFileBytes }
+import gunbc.typed_remote_file_write {
+  RemoteFileModeOwnerReadWrite,
+  typed_remote_file_write_seal,
+  TypedRemoteFileWriteAdmitted,
+  TypedRemoteFileWriteAdmissionRefused,
+}
+import gunbc.fleet_known_hosts_anchor { portable_remote_words, portable_remote_words_strings }
+import gunbc.spark_managed_access_bootstrap {
+  SparkManagedGrant,
+  spark_managed_grant_wire,
+  spark_managed_executor_login,
+  SparkGrantOutcome,
+  GrantEnumerated,
+  GrantAbsent,
+  GrantProbeRefused,
+  spark_operator_bootstrap_login,
+}
+import gunbc.host_effect_realize { run_typed_argv_transport }
+import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.spark_managed_grant_reconcile {
+  spark_managed_grants_to_install,
+  spark_managed_grant_report,
+  spark_managed_grant_dropin_name,
+  spark_managed_grant_dropin_path,
+  spark_managed_grant_sudoers_content,
+}
+import gunbc.spark_serving_runtime_receipt { spark_serving_executor_home }
+import std.resources { Network }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.host_effect_realize { HostEffectTransport, FleetSsh }
+import gunbc.remote_operation { RemoteStepStanding, remote_step_failure_cause }
+import gunbc.spark_serving_converge_apply {
+  spark_serving_run_step_sequence,
+  spark_serving_step_sequence_failed,
+  spark_serving_step_sequence_wire,
+}
+
+// INSTALLING THE GRANT THE RECONCILE FOUND MISSING, which is the step that turns a receipt naming a
+// gap into a process that closes it. Until this existed the only way a grant reached a host was an
+// operator at a keyboard -- out-of-band actuation, manual application not committed as source, and
+// the reason the reboot leg had no remedy but to ask a human.
+//
+// SUDOERS IS VALIDATED BEFORE IT IS INSTALLED, not after, and this ordering is the whole safety
+// argument. A malformed drop-in file in /etc/sudoers.d does not fail that file alone: sudo refuses
+// to parse the entire sudoers set and every privileged operation on the host stops, including the
+// one that would repair it. So `visudo -c -f` runs against the STAGED copy, and the file reaches
+// /etc/sudoers.d only after sudo itself has said it parses. A validation that ran afterwards would
+// be reporting the damage rather than preventing it.
+//
+// The file lands via `install` rather than `mv` because sudo refuses to read a drop-in that is
+// group- or world-writable, and ownership and mode are then facts of the command that placed it
+// rather than of whatever umask the staging write happened to run under.
+
+type SparkGrantInstallPlan
+  = SparkGrantInstallSteps { grant: SparkManagedGrant, first: PlannedRemoteStep, more: List<PlannedRemoteStep> }
+  | SparkGrantInstallRefused { grant: SparkManagedGrant, cause: NonEmptyStr }
+
+fn spark_grant_staging_path(grant: SparkManagedGrant) -> FilePath {
+  join([
+    spark_serving_executor_home as String, "/.gunbc-staged-sudoers-",
+    spark_managed_grant_dropin_name(grant: grant) as String,
+  ], "") as FilePath
+}
+
+fn spark_grant_install_step_identity(grant: SparkManagedGrant, phase: String) -> NonEmptyStr {
+  join([phase, "-", spark_managed_grant_dropin_name(grant: grant) as String], "") as NonEmptyStr
+}
+
+fn spark_grant_admit_argv(identity: NonEmptyStr, raws: List<String>) -> PlannedRemoteStep? {
+  match portable_remote_words(raws: raws) {
+    Absent => none
+    Present { value: words } => Present {
+      value: PlannedRemoteStep {
+        identity: identity,
+        operation: RemoteArgv { argv: portable_remote_words_strings(words: words) },
+      },
+    }
+  }
+}
+
+fn spark_grant_install_plan(grant: SparkManagedGrant) -> SparkGrantInstallPlan {
+  let staged = spark_grant_staging_path(grant: grant)
+  match typed_remote_file_write_seal(
+    path: staged,
+    content: spark_managed_grant_sudoers_content(grant: grant),
+    allowed_scope: FileTreeScope { root_path: spark_serving_executor_home as NonEmptyStr },
+  ) {
+    TypedRemoteFileWriteAdmissionRefused { cause: why } =>
+      SparkGrantInstallRefused { grant: grant, cause: why }
+    TypedRemoteFileWriteAdmitted { write: w } => {
+      let stage = PlannedRemoteStep {
+        identity: spark_grant_install_step_identity(grant: grant, phase: "stage"),
+        operation: RemoteFileBytes { write: w, mode: RemoteFileModeOwnerReadWrite },
+      }
+      match spark_grant_admit_argv(
+        identity: spark_grant_install_step_identity(grant: grant, phase: "validate"),
+        raws: ["sudo", "-n", "visudo", "-c", "-f", staged as String],
+      ) {
+        Absent =>
+          SparkGrantInstallRefused {
+            grant: grant,
+            cause: "the sudoers validation argv is not portable under the far-side re-parse" as NonEmptyStr,
+          }
+        Present { value: validate } =>
+          match spark_grant_admit_argv(
+            identity: spark_grant_install_step_identity(grant: grant, phase: "install"),
+            raws: [
+              "sudo", "-n", "install", "-m", "0440", "-o", "root", "-g", "root",
+              staged as String,
+              spark_managed_grant_dropin_path(grant: grant) as String,
+            ],
+          ) {
+            Absent =>
+              SparkGrantInstallRefused {
+                grant: grant,
+                cause: "the sudoers install argv is not portable under the far-side re-parse" as NonEmptyStr,
+              }
+            Present { value: install } =>
+              match spark_grant_admit_argv(
+                identity: spark_grant_install_step_identity(grant: grant, phase: "unstage"),
+                raws: ["rm", "-f", staged as String],
+              ) {
+                Absent =>
+                  SparkGrantInstallRefused {
+                    grant: grant,
+                    cause: "the staging cleanup argv is not portable under the far-side re-parse" as NonEmptyStr,
+                  }
+                Present { value: unstage } =>
+                  SparkGrantInstallSteps {
+                    grant: grant,
+                    first: stage,
+                    more: [validate, install, unstage],
+                  }
+              }
+          }
+      }
+    }
+  }
+}
+
+fn spark_grant_install_steps(plan: SparkGrantInstallPlan) -> List<PlannedRemoteStep> {
+  match plan {
+    SparkGrantInstallRefused { grant: _, cause: _ } => []
+    SparkGrantInstallSteps { grant: _, first: f, more: m } => concat([f], m)
+  }
+}
+
+// VALIDATION PRECEDES INSTALLATION, asserted as a property of the plan rather than left to the order
+// the steps happen to be written in. A plan that installed first would be one edit away and would
+// look identical in a diff.
+// A single forward scan carrying one state, because the question is about ORDER and a pair of
+// independent "was it seen" flags cannot answer it: both are true either way round.
+//   0 = neither seen yet · 1 = validate seen · 2 = install reached before any validate (refuses)
+fn spark_grant_install_validates_before_installing(plan: SparkGrantInstallPlan) -> Bool {
+  fold(
+    map(spark_grant_install_steps(plan: plan), s => s.identity as String),
+    init: 0,
+    f: fn(state, id) {
+      if state == 2 {
+        2
+      } else if string_contains(id, "validate-") {
+        1
+      } else if string_contains(id, "install-") && state == 0 {
+        2
+      } else {
+        state
+      }
+    },
+  ) == 1
+}
+
+fn spark_grant_install_plan_wire(plan: SparkGrantInstallPlan) -> String {
+  match plan {
+    SparkGrantInstallRefused { grant: g, cause: c } =>
+      join([
+        "  grant-install grant=", spark_managed_grant_wire(grant: g) as String,
+        " REFUSED cause=", c as String, "\n",
+      ], "")
+    SparkGrantInstallSteps { grant: g, first: _, more: _ } =>
+      join([
+        "  grant-install grant=", spark_managed_grant_wire(grant: g) as String,
+        " steps=", join(map(spark_grant_install_steps(plan: plan), s => s.identity as String), ","),
+        "\n",
+      ], "")
+  }
+}
+
+// ── Actuation ───────────────────────────────────────────────────────────────────────────────────
+
+// THE PRINCIPAL IS A PARAMETER OF THE PLAN, not a constant of this module, because installing a
+// grant is exactly the operation the grantee cannot perform for itself. The automation account holds
+// enable-linger and nothing else, so it can neither write /etc/sudoers.d nor run visudo; a bootstrap
+// that assumed otherwise would fail with a password demand and no statement of who could have done
+// it instead. Naming the transport principal makes "who installs privilege" a modeled fact rather
+// than an assumption buried in a target constructor.
+fn spark_grant_install_transport(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+  principal: NonEmptyStr,
+) -> HostEffectTransport {
+  FleetSsh {
+    target: SshTarget {
+      endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
+      principal: principal,
+    },
+    context: context,
+  }
+}
+
+type SparkGrantInstallOutcome
+  = SparkGrantInstallExecuted {
+      host: HostIdentity
+      grant: SparkManagedGrant
+      standings: List<RemoteStepStanding>
+    }
+  | SparkGrantInstallNotAttempted {
+      host: HostIdentity
+      grant: SparkManagedGrant
+      cause: NonEmptyStr
+    }
+
+func spark_grant_install_execute(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+  principal: NonEmptyStr,
+  grant: SparkManagedGrant,
+) -> SparkGrantInstallOutcome
+  uses net: Network
+{
+  let plan = spark_grant_install_plan(grant: grant)
+  match plan {
+    SparkGrantInstallRefused { grant: g, cause: c } =>
+      SparkGrantInstallNotAttempted { host: host, grant: g, cause: c }
+    SparkGrantInstallSteps { grant: g, first: _, more: _ } =>
+      if spark_grant_install_validates_before_installing(plan: plan) == false {
+        SparkGrantInstallNotAttempted {
+          host: host,
+          grant: g,
+          cause: "the plan would install a sudoers drop-in before validating it, which can lock every privileged operation on the host" as NonEmptyStr,
+        }
+      } else {
+        SparkGrantInstallExecuted {
+          host: host,
+          grant: g,
+          standings: spark_serving_run_step_sequence(
+            steps: spark_grant_install_steps(plan: plan),
+            transport: spark_grant_install_transport(context: context, host: host, principal: principal),
+          ),
+        }
+      }
+  }
+}
+
+// A SEQUENCE THAT HALTED IS NOT AN INSTALL. The steps stage, validate, install and unstage; any halt
+// leaves the drop-in absent and the staged file behind, and reporting that as installed would put a
+// grant in the receipt that the host does not hold -- the exact confusion the reconcile exists to
+// end. Convergence is re-established by the next observation, never by this exit code.
+fn spark_grant_install_succeeded(outcome: SparkGrantInstallOutcome) -> Bool {
+  match outcome {
+    SparkGrantInstallNotAttempted { host: _, grant: _, cause: _ } => false
+    SparkGrantInstallExecuted { host: _, grant: _, standings: st } =>
+      spark_serving_step_sequence_failed(standings: st) == false
+  }
+}
+
+fn spark_grant_install_outcome_wire(outcome: SparkGrantInstallOutcome) -> String {
+  match outcome {
+    SparkGrantInstallNotAttempted { host: h, grant: g, cause: c } =>
+      join([
+        "grant-install host=", h as String,
+        " grant=", spark_managed_grant_wire(grant: g) as String,
+        " NOT-ATTEMPTED cause=", c as String, "\n",
+      ], "")
+    SparkGrantInstallExecuted { host: h, grant: g, standings: st } =>
+      join([
+        "grant-install host=", h as String,
+        " grant=", spark_managed_grant_wire(grant: g) as String,
+        " steps=", spark_serving_step_sequence_wire(standings: st),
+        match spark_grant_install_first_failure_cause(standings: st) {
+          Absent => ""
+          Present { value: c } => join([" cause=", c], "")
+        },
+        "\n",
+      ], "")
+  }
+}
+
+fn spark_grant_install_first_failure_cause(standings: List<RemoteStepStanding>) -> String? {
+  fold(standings, init: none, f: fn(acc, st) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => remote_step_failure_cause(standing: st)
+    }
+  })
+}
+
+// ── The entry ───────────────────────────────────────────────────────────────────────────────────
+
+data spark_grant_install_receipt_path: String = "target/spark-grant-install-receipt.txt"
+
+data spark_grant_install_ci_attempt_raw: String = "spark-grant-install-ci"
+
+// THE GAP IS MEASURED BEFORE IT IS CLOSED, on the same run, and only the measured-missing grants are
+// installed. Installing the whole desired population unconditionally would be cheaper to write and
+// would be the absorbing fallback: it cannot tell a host that needs one grant from a host we could
+// not read at all, and it would rewrite a correct drop-in on every run so no receipt could ever say
+// nothing was needed.
+type SparkGrantInstallRun {
+  standing_report: String
+  outcomes: List<SparkGrantInstallOutcome>
+}
+
+func spark_grant_install_host(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+  principal: NonEmptyStr,
+) -> SparkGrantInstallRun
+  uses net: Network
+{
+  let outcome = spark_grant_probe_outcome(context: context, host: host)
+  SparkGrantInstallRun {
+    standing_report: spark_managed_grant_report(host: host, outcome: outcome),
+    outcomes: map(spark_managed_grants_to_install(outcome: outcome), g =>
+      spark_grant_install_execute(context: context, host: host, principal: principal, grant: g)),
+  }
+}
+
+fn spark_grant_install_run_text(run: SparkGrantInstallRun) -> String {
+  join(concat(
+    [run.standing_report],
+    map(run.outcomes, o => spark_grant_install_outcome_wire(outcome: o)),
+  ), "")
+}
+
+// THE VERDICT COMES FROM THE VARIANTS, never from the receipt text. This module'"'"'s sibling records
+// exactly this defect landing once already: an exit status decided by string_contains(body,
+// "REFUSED") passed a run whose refusal arm spells "probe-refused" in lower case. Text is a
+// projection of the outcomes; a projection cannot be the thing decided upon.
+//
+// An empty outcome list is SUCCESS here and only here: it means the reconcile found nothing missing,
+// which the standing report states in its own words. The reconcile has already refused to put an
+// unobserved grant in the install set, so "nothing to install" cannot arrive from ignorance.
+fn spark_grant_install_run_succeeded(run: SparkGrantInstallRun) -> Bool {
+  fold(run.outcomes, init: true, f: fn(acc, o) {
+    acc && spark_grant_install_succeeded(outcome: o)
+  })
+}
+
+// The grant reading, taken through the transport that will do the installing rather than a separate
+// one: a standing measured as one principal and acted on as another is two facts wearing one name.
+func spark_grant_probe_outcome(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+) -> SparkGrantOutcome
+  uses net: Network
+{
+  match run_typed_argv_transport(
+    argv: ["sudo", "-n", "-l"],
+    transport: spark_grant_install_transport(
+      context: context,
+      host: host,
+      principal: spark_managed_executor_login as NonEmptyStr,
+    ),
+  ) {
+    TypedArgvExecRefused { reason: why } => GrantProbeRefused { cause: why }
+    TypedArgvExecConverged { result: r } =>
+      if r.success {
+        GrantEnumerated { listing: r.stdout }
+      } else {
+        GrantAbsent { detail: join(["exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
+      }
+  }
+}
+
+// THE INSTALL NAMES ITS TARGET OR IT DOES NOT RUN, the same rule the reboot probe applies to itself
+// and for the same reason: writing sudoers across a whole fleet from an unset variable is a fan-out
+// nobody asked for, and the observe entry's all-hosts arm exists for reading, not writing.
+func spark_grant_install_ci_wet() -> ProcessExit
+  uses net: Network
+{
+  match prepare_spark_serving_agent_context(attempt_raw: spark_grant_install_ci_attempt_raw) {
+    SparkServingContextRefused { cause: cause } => exit_failure(reason: cause)
+    SparkServingContextReady { context: context, receipt: context_receipt } =>
+      match spark_converge_target_selection(execute_apply: true) {
+        SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
+        SparkConvergeTargetAllObserveOnly =>
+          exit_failure(
+            reason: "spark_grant_install_ci_wet: SPARK_CONVERGE_TARGET names no host, and installing sudoers must never fan out across the fleet from an unset variable",
+          )
+        SparkConvergeTargetSingle { host: only } => {
+          let now = clock_now_probed_at()
+          let run = spark_grant_install_host(
+            context: context,
+            host: only,
+            principal: spark_grant_install_principal(),
+          )
+          let body = join([
+            "spark_grant_install_ci_wet probed_at=", now as String, "\n",
+            context_receipt,
+            spark_grant_install_run_text(run: run),
+          ], "")
+          let w = Filesystem.Write(path: spark_grant_install_receipt_path, content: body)
+          if w.success == false {
+            exit_failure(reason: join(["grant install receipt write failed: ", w.error], ""))
+          } else if spark_grant_install_run_succeeded(run: run) == false {
+            exit_failure(reason: body)
+          } else {
+            ExitSuccess
+          }
+        }
+      }
+  }
+}
+
+// WHICH PRINCIPAL INSTALLS PRIVILEGE, stated once. The automation account is the GRANTEE and cannot
+// install its own sudoers entries, so the honest default is the operator account the bootstrap model
+// already names as the transport for privileged effects. If that account cannot do it either, the
+// run refuses with sudo's own diagnostic rather than leaving a human to guess who could.
+fn spark_grant_install_principal() -> NonEmptyStr {
+  spark_operator_bootstrap_login as NonEmptyStr
+}
