@@ -1,6 +1,8 @@
 module test.claim.live_deploy.deployed_tree_observation_witness
 
 import std.types { String, NonEmptyStr, List, Bool }
+import extdeps.git
+import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_eq }
 import gunbc.fleet_known_hosts_anchor { portable_remote_words }
 import gunbc.live_deploy.deployed_tree_observation {
   deployed_tree_revision_argv,
@@ -9,6 +11,16 @@ import gunbc.live_deploy.deployed_tree_observation {
   TrackedMatchesCommit,
   TrackedModified,
   deployed_tracked_state_of,
+  DeployedTreeObservation,
+  DeployedTreeObserved,
+  DeployedTreeUnobservable,
+  DeployedTreeStanding,
+  DeployedTreeConverged,
+  DeployedTreeRevisionDrifted,
+  DeployedTreeModifiedAtRevision,
+  DeployedTreeStandingUnobserved,
+  deployed_tree_standing,
+  deployed_tree_standing_is_converged,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -100,5 +112,130 @@ test fn witness_a_deleted_tracked_path_reads_as_modified() -> Bool {
   match deployed_tracked_state_of(porcelain: " D .claude/settings.json") {
     TrackedMatchesCommit => false
     TrackedModified { porcelain: _ } => true
+  }
+}
+
+fn oid_a() -> GitObjectId? {
+  git_object_id_from_untagged_hex(hex: "8a472fff9e9000600e33cc3559ecfad4ba55e3a3")
+}
+
+fn oid_b() -> GitObjectId? {
+  git_object_id_from_untagged_hex(hex: "1111111111111111111111111111111111111111")
+}
+
+// The two hexes must actually decode and must actually differ, or every standing witness below is
+// asserting about Absent and passes for the wrong reason.
+test fn witness_the_two_probe_revisions_decode_and_differ() -> Bool {
+  match oid_a() {
+    Absent => false
+    Present { value: a } =>
+      match oid_b() {
+        Absent => false
+        Present { value: b } => !git_object_id_eq(left: a, right: b)
+      }
+  }
+}
+
+fn standing_for(desired: GitObjectId, obs: DeployedTreeObservation) -> DeployedTreeStanding {
+  deployed_tree_standing(desired: desired, observation: obs)
+}
+
+test fn witness_matching_revision_and_clean_tree_is_the_only_converged_arm() -> Bool {
+  match oid_a() {
+    Absent => false
+    Present { value: a } =>
+      deployed_tree_standing_is_converged(
+        standing: standing_for(
+          desired: a,
+          obs: DeployedTreeObserved { revision: a, tracked: TrackedMatchesCommit },
+        ),
+      )
+  }
+}
+
+// THE ARM THE REVISION-ONLY STANDING CANNOT EXPRESS. Same commit, edited tracked files: not
+// converged, and not drifted either.
+test fn witness_right_revision_with_modifications_is_not_converged_and_not_drifted() -> Bool {
+  match oid_a() {
+    Absent => false
+    Present { value: a } =>
+      match standing_for(
+        desired: a,
+        obs: DeployedTreeObserved {
+          revision: a,
+          tracked: TrackedModified { porcelain: "M dag/gunbc/ci_spec.dag" as NonEmptyStr },
+        },
+      ) {
+        DeployedTreeModifiedAtRevision { revision: _, porcelain: body } =>
+          body as String == "M dag/gunbc/ci_spec.dag"
+        DeployedTreeConverged { revision: _ } => false
+        DeployedTreeRevisionDrifted { desired: _, local: _ } => false
+        DeployedTreeStandingUnobserved { cause: _ } => false
+      }
+  }
+}
+
+test fn witness_a_different_revision_reports_drift_carrying_both_sides() -> Bool {
+  match oid_a() {
+    Absent => false
+    Present { value: a } =>
+      match oid_b() {
+        Absent => false
+        Present { value: b } =>
+          match standing_for(
+            desired: a,
+            obs: DeployedTreeObserved { revision: b, tracked: TrackedMatchesCommit },
+          ) {
+            DeployedTreeRevisionDrifted { desired: d, local: l } =>
+              git_object_id_eq(left: d, right: a) && git_object_id_eq(left: l, right: b)
+            DeployedTreeConverged { revision: _ } => false
+            DeployedTreeModifiedAtRevision { revision: _, porcelain: _ } => false
+            DeployedTreeStandingUnobserved { cause: _ } => false
+          }
+      }
+  }
+}
+
+// DRIFT DOMINATES: a tree on the wrong commit AND modified reports drift, because the modification
+// state is a fact about a revision nobody asked for.
+test fn witness_drift_dominates_modification() -> Bool {
+  match oid_a() {
+    Absent => false
+    Present { value: a } =>
+      match oid_b() {
+        Absent => false
+        Present { value: b } =>
+          match standing_for(
+            desired: a,
+            obs: DeployedTreeObserved {
+              revision: b,
+              tracked: TrackedModified { porcelain: "M x" as NonEmptyStr },
+            },
+          ) {
+            DeployedTreeRevisionDrifted { desired: _, local: _ } => true
+            DeployedTreeConverged { revision: _ } => false
+            DeployedTreeModifiedAtRevision { revision: _, porcelain: _ } => false
+            DeployedTreeStandingUnobserved { cause: _ } => false
+          }
+      }
+  }
+}
+
+// UNOBSERVED IS NEVER SATISFIED. Could-not-look rendered as nothing-is-wrong is the empty-observation
+// narrow, and it is the arm most likely to be quietly admitted by a caller re-deriving good-enough.
+test fn witness_unobservable_is_not_converged_and_keeps_its_cause() -> Bool {
+  match oid_a() {
+    Absent => false
+    Present { value: a } =>
+      match standing_for(desired: a, obs: DeployedTreeUnobservable { cause: "ssh refused" }) {
+        DeployedTreeStandingUnobserved { cause: c } =>
+          c == "ssh refused"
+            && !deployed_tree_standing_is_converged(
+              standing: standing_for(desired: a, obs: DeployedTreeUnobservable { cause: "ssh refused" }),
+            )
+        DeployedTreeConverged { revision: _ } => false
+        DeployedTreeRevisionDrifted { desired: _, local: _ } => false
+        DeployedTreeModifiedAtRevision { revision: _, porcelain: _ } => false
+      }
   }
 }

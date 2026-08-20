@@ -3,7 +3,7 @@ module gunbc.live_deploy.deployed_tree_observation
 import std.types { String, NonEmptyStr, List, Bool }
 import std.algebra { trim }
 import extdeps.git
-import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
+import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_eq }
 import extdeps.ssh.session { SshSessionExecResult }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.host_effect_realize {
@@ -159,5 +159,60 @@ fn observe_deployed_tree(locus: DeployedTreeLocus) -> DeployedTreeObservation {
             }
         }
       }
+  }
+}
+
+// FOUR ARMS, AND THE THIRD IS WHY THIS EXISTS. `gunbc.fleet_desired_observe` `fleet_revision_standing`
+// compares revisions and nothing else, so a deployed tree sitting at the admitted commit with edited
+// tracked files reads as CONVERGED there. It is not: its revision agrees while its bytes do not, and
+// the whole point of publishing a tree is the bytes. That state gets its own arm here rather than
+// being folded into drift, because the remedies differ -- drift is answered by moving to another
+// commit, modification by restoring the one already named.
+type DeployedTreeStanding
+  = DeployedTreeConverged { revision: GitObjectId }
+  | DeployedTreeRevisionDrifted { desired: GitObjectId, local: GitObjectId }
+  | DeployedTreeModifiedAtRevision { revision: GitObjectId, porcelain: NonEmptyStr }
+  | DeployedTreeStandingUnobserved { cause: String }
+
+// DRIFT DOMINATES MODIFICATION, and the reason is about meaning rather than precedence. The
+// modification state answers "do the bytes match THE COMMIT THE TREE IS ON". When that commit is not
+// the admitted one, a clean answer and a dirty answer are both statements about a revision nobody
+// asked for, so reporting either as the standing would attach a true fact to the wrong subject.
+// Drift is therefore reported first and the modification state is not consulted -- not because it is
+// less important, but because at that point it is not evidence about the question.
+//
+// A PURE FOLD: observation and desired revision in, standing out, no effect. The effectful read
+// stays at the call site, which is what lets a witness drive every arm through the real decision
+// without a host -- the same extraction the belt revision gate needed before its arms could be
+// tested at all.
+fn deployed_tree_standing(
+  desired: GitObjectId,
+  observation: DeployedTreeObservation,
+) -> DeployedTreeStanding {
+  match observation {
+    DeployedTreeUnobservable { cause: c } => DeployedTreeStandingUnobserved { cause: c }
+    DeployedTreeObserved { revision: local, tracked: tracked } =>
+      if !git_object_id_eq(left: desired, right: local) {
+        DeployedTreeRevisionDrifted { desired: desired, local: local }
+      } else {
+        match tracked {
+          TrackedMatchesCommit => DeployedTreeConverged { revision: local }
+          TrackedModified { porcelain: body } =>
+            DeployedTreeModifiedAtRevision { revision: local, porcelain: body }
+        }
+      }
+  }
+}
+
+// ONE PREDICATE FOR THE ONLY QUESTION AN ACTUATOR MAY ASK, so no caller re-derives "is this good
+// enough" from the arms and quietly admits a third state. Exactly one arm is publication-satisfied;
+// every other arm, including the unobserved one, is not -- an unobserved standing treated as
+// satisfied would be the empty-observation narrow, could-not-look rendered as nothing-is-wrong.
+fn deployed_tree_standing_is_converged(standing: DeployedTreeStanding) -> Bool {
+  match standing {
+    DeployedTreeConverged { revision: _ } => true
+    DeployedTreeRevisionDrifted { desired: _, local: _ } => false
+    DeployedTreeModifiedAtRevision { revision: _, porcelain: _ } => false
+    DeployedTreeStandingUnobserved { cause: _ } => false
   }
 }
