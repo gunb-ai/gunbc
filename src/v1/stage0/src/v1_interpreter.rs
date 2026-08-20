@@ -1097,7 +1097,7 @@ pub enum InterpError {
 
 /// WHY THE HERMETIC ROUTE HAS NO ARM FOR ONE OPERATION. Closed, and each arm names a
 /// different remedy — see `InterpError::HermeticHostEffectRefused`.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HermeticEffectGround {
     /// The service is corpus-governed and no published mock case names this operation.
     /// `published_cases` carries the cases that DO exist for the service, so the refusal

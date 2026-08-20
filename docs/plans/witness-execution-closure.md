@@ -122,3 +122,20 @@ own admission question, and this change deliberately does not open it.
 The `long.` decline is untouched: it is an operator-ruled cost quarantine on a different axis,
 and 538 identities remain in it with no executing consumer. That is the *other* half of the
 hidden population, and this change does not close it.
+
+## The adjacent residue, named rather than left to be rediscovered
+
+`run_required_floor` consults `floor_prepared_subject_exclusions()` **and nothing else** — the
+`witness_exclusion_frontier` rosters have no consumer on this path, which that function's own
+comment records after a session added rows to them and measured `modules_excluded=2` unchanged.
+
+Three of its five entries exist for **exactly the route-gap reason** — an operation carrying no
+`mock_response`, so "the hermetic floor refuses it and one refusing member fails the run." That
+is the same defect this change removes, one layer over: a **file-grain, uncounted exclusion**
+where an identity-grain typed disposition belongs. And it is strictly worse than a route gap,
+because an excluded module leaves the prepared subject entirely — it is not even typechecked —
+whereas a route-gapped identity stays in the subject, executes, and reports.
+
+Converting those entries into `floor_route_gap` rows is the obvious next step and is deliberately
+**not** in this change: it should follow the measurement that proves the route-gap mechanism
+behaves as designed on the population it was built for, not precede it.
