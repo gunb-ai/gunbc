@@ -168,24 +168,25 @@ fn emit_eval_bind_value(_key: EnvironmentBindingKey, _value: RuntimeValue, env: 
 
 fn emit_eval_interpretation(call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> Outcome<RuntimeValue>) -> InterpretationAlgebra {
   InterpretationAlgebra {
-    value: ValueInterpreter { allocate_literal: emit_eval_allocate_literal },
-    transform: TransformInterpreter { call_primitive: call_primitive },
-    branch: BranchInterpreter { choose_branch: emit_eval_choose_branch },
-    loop: LoopInterpreter { step_loop: emit_eval_step_loop },
-    bind: BindInterpreter { bind_value: emit_eval_bind_value },
+    value: ValueInterpreter { allocate_literal: emit_eval_allocate_literal, identity: ^emit_eval_allocate_literal },
+    transform: TransformInterpreter { call_primitive: call_primitive, identity: ^call_primitive },
+    branch: BranchInterpreter { choose_branch: emit_eval_choose_branch, identity: ^emit_eval_choose_branch },
+    loop: LoopInterpreter { step_loop: emit_eval_step_loop, identity: ^emit_eval_step_loop },
+    bind: BindInterpreter { bind_value: emit_eval_bind_value, identity: ^emit_eval_bind_value },
     match: MatchInterpreter {
-      choose_arm: runtime_reject_match_arm
+      choose_arm: runtime_reject_match_arm,
+      identity: ^runtime_reject_match_arm
     }
   }
 }
 
 fn emit_eval_structure_witness() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
-    allocate_literal: ^emit_eval_allocate_literal_sym,
-    call_primitive: ^emit_eval_call_primitive_sym,
-    choose_branch: ^emit_eval_choose_branch_sym,
-    step_loop: ^emit_eval_step_loop_sym,
-    bind_value: ^emit_eval_bind_value_sym,
+    allocate_literal: ^emit_eval_allocate_literal,
+    call_primitive: ^emit_eval_call_primitive,
+    choose_branch: ^emit_eval_choose_branch,
+    step_loop: ^emit_eval_step_loop,
+    bind_value: ^emit_eval_bind_value,
     choose_arm: ^runtime_reject_match_arm
   }
 }

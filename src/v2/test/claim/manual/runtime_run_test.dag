@@ -176,22 +176,22 @@ fn runtime_run_bind_value(
 
 fn runtime_run_interpretation() -> InterpretationAlgebra {
   InterpretationAlgebra {
-    value: ValueInterpreter { allocate_literal: runtime_run_allocate_literal },
-    transform: TransformInterpreter { call_primitive: runtime_run_reject_primitive },
-    branch: BranchInterpreter { choose_branch: runtime_run_reject_branch },
-    loop: LoopInterpreter { step_loop: runtime_run_reject_loop },
-    bind: BindInterpreter { bind_value: runtime_run_bind_value },
-    match: MatchInterpreter { choose_arm: runtime_reject_match_arm }
+    value: ValueInterpreter { allocate_literal: runtime_run_allocate_literal, identity: ^runtime_run_allocate_literal },
+    transform: TransformInterpreter { call_primitive: runtime_run_reject_primitive, identity: ^runtime_run_reject_primitive },
+    branch: BranchInterpreter { choose_branch: runtime_run_reject_branch, identity: ^runtime_run_reject_branch },
+    loop: LoopInterpreter { step_loop: runtime_run_reject_loop, identity: ^runtime_run_reject_loop },
+    bind: BindInterpreter { bind_value: runtime_run_bind_value, identity: ^runtime_run_bind_value },
+    match: MatchInterpreter { choose_arm: runtime_reject_match_arm, identity: ^runtime_reject_match_arm }
   }
 }
 
 fn runtime_run_structure_witness() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
-    allocate_literal: ^runtime_run_allocate_literal_sym,
-    call_primitive: ^runtime_run_reject_primitive_sym,
-    choose_branch: ^runtime_run_reject_branch_sym,
-    step_loop: ^runtime_run_reject_loop_sym,
-    bind_value: ^runtime_run_bind_value_sym,
+    allocate_literal: ^runtime_run_allocate_literal,
+    call_primitive: ^runtime_run_reject_primitive,
+    choose_branch: ^runtime_run_reject_branch,
+    step_loop: ^runtime_run_reject_loop,
+    bind_value: ^runtime_run_bind_value,
     choose_arm: ^runtime_reject_match_arm
   }
 }

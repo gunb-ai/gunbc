@@ -388,22 +388,22 @@ fn lazy_arm_bind_value(
 
 fn lazy_arm_interpretation() -> InterpretationAlgebra {
   InterpretationAlgebra {
-    value: ValueInterpreter { allocate_literal: lazy_arm_allocate_literal },
-    transform: TransformInterpreter { call_primitive: lazy_arm_call_primitive },
-    branch: BranchInterpreter { choose_branch: lazy_arm_choose_branch },
-    loop: LoopInterpreter { step_loop: lazy_arm_step_loop },
-    bind: BindInterpreter { bind_value: lazy_arm_bind_value },
-    match: MatchInterpreter { choose_arm: runtime_reject_match_arm }
+    value: ValueInterpreter { allocate_literal: lazy_arm_allocate_literal, identity: ^lazy_arm_allocate_literal },
+    transform: TransformInterpreter { call_primitive: lazy_arm_call_primitive, identity: ^lazy_arm_call_primitive },
+    branch: BranchInterpreter { choose_branch: lazy_arm_choose_branch, identity: ^lazy_arm_choose_branch },
+    loop: LoopInterpreter { step_loop: lazy_arm_step_loop, identity: ^lazy_arm_step_loop },
+    bind: BindInterpreter { bind_value: lazy_arm_bind_value, identity: ^lazy_arm_bind_value },
+    match: MatchInterpreter { choose_arm: runtime_reject_match_arm, identity: ^runtime_reject_match_arm }
   }
 }
 
 fn lazy_arm_interpretation_structure_witness() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
-    allocate_literal: ^lazy_arm_allocate_literal_sym,
-    call_primitive: ^lazy_arm_call_primitive_sym,
-    choose_branch: ^lazy_arm_choose_branch_sym,
-    step_loop: ^lazy_arm_step_loop_sym,
-    bind_value: ^lazy_arm_bind_value_sym,
+    allocate_literal: ^lazy_arm_allocate_literal,
+    call_primitive: ^lazy_arm_call_primitive,
+    choose_branch: ^lazy_arm_choose_branch,
+    step_loop: ^lazy_arm_step_loop,
+    bind_value: ^lazy_arm_bind_value,
     choose_arm: ^runtime_reject_match_arm
   }
 }
