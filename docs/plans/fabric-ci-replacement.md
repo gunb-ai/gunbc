@@ -838,3 +838,64 @@ rather than minting fresh vocabulary (§3: cite the real framework, do not re-co
 provisioning judgment removed into a once-ratified algorithm, whose corollary is that every
 provisioning decision must emit a **receipt naming the inputs that drove it**, or "the fabric
 decided" is unfalsifiable.
+
+## 22. The review tell, and the class underneath it
+
+### Review tell: a fixture at an absorbing extreme erases the arm
+
+Stated here rather than only in the commit that fixed it, because it is a **reviewer's question**,
+not an incident.
+
+> A fixture priced at an absorbing extreme silently deletes the arm's discriminating power, and the
+> suite still goes green because every remaining witness is a positive control.
+
+Zero was this instance; the class is any extreme that absorbs one side of a comparison — an
+unbounded ceiling, an empty roster, a ⊤ budget, a deadline at infinity. The arm still executes, still
+carries typed diagnostics, still *looks* exercised, and its discriminating half is dead **with
+nothing reporting it, because a deleted test cannot fail.**
+
+**The question to ask of any refusal arm:** with the fixtures as they stand, can a witness be
+written that makes this arm *fire*? If not, the arm is untested however many witnesses reference it.
+`an_owned_hour_priced_at_opportunity_cost_can_be_outbid` was unwritable while the fleet quoted zero —
+that is the sharpest form of the tell: the wrong fixture did not weaken the test, it made the test
+inexpressible.
+
+### The class underneath: a richer-named carrier where a structural guarantee was needed
+
+Three defects on this branch are **one defect in three modules**, per the meta review:
+
+| instance | the name that carried | the guarantee that was needed |
+| --- | --- | --- |
+| `LeaseEpoch` as a fence (§10) | an epoch number | durable single-writer serialization |
+| `FloorRunRefusal` homed in gunbc (§18) | a typed refusal | fungibility owned by the fabric |
+| `offer_quote_amount` (§20) | `MoneyAmountMicro` | the unit that separates a rate from a total |
+
+DESIGN.md §4b already states the principle — *"richer type names are not safety; a brand, wrapper,
+or `Validated<T>` is cosmetic until construction and acceptance enforce the distinction."* What is
+missing is not the rule but its **reader**. Per §3 and §6 the response to a third instance is to
+promote the class, not to fix a fourth site in a fourth module.
+
+**And it is a measured review gap, not a suspicion.** Three times on this branch the prose stated the
+principle correctly while the value violated it — architecture inside a capability string, a rate
+compared as a total, a fixture at zero — and **review approved all three**. None is visible at the
+name-and-shape layer, which is the layer structural review reads. §20 already records the sharpest
+instance: review 53896 approved the affordability arm *by name* as *"split arms with typed
+diagnostics — no absorbing fallback"* while it compared a rate to a total. More rounds of the same
+review shape will not catch this class.
+
+**Next trigger:** the lens lands **between this PR and the cutover PR**, because durable
+single-writer CAS is the exact next place the class can bite — a `CasToken` type name standing where
+a durable compare-and-set was needed is the same defect with worse consequences.
+
+### Merge state, corrected
+
+An earlier report of *"two APPROVEs"* was wrong and is corrected here rather than left standing.
+`dashboard-ops reviews 8576` is the source of truth: **8 approve verdicts, 1 distinct provider**
+(`claude`), so `meets_two_approval_rule: false` at 1/2, with checks pending. Repeated approvals from
+one provider do not compose, and the count of approve verdicts is not the readiness number.
+
+### Meta verdict
+
+`SHIP_WITH_DEBT` — merge this fold, cut the actual cutover as a separate PR, and land the
+richer-name-as-guarantee lens between them. That matches §15's independent finding that the cutover
+PR cannot merge itself, reached from the ruleset rather than from the review loop.
