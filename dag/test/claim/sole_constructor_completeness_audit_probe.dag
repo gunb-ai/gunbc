@@ -235,3 +235,23 @@ test fn f12b_honest_validator_control_refuses_reversed_bounds() -> Bool {
     IntervalRefused { reason: _ } => true
   }
 }
+
+// ---------------------------------------------------------------------------
+// Form: VARIANT construction of a sole_constructor COPRODUCT (not a record).
+// f1-f4 (and every prior probe) forge a plain sole_constructor RECORD via a
+// record literal. This probe asks whether forging one VARIANT of a
+// sole_constructor coproduct, from outside its declaring module, reaches
+// sole_constructor_construction_diags at all - by EXECUTION, not by trusting
+// the source comment claiming only ExprCast and record-literal inference
+// reach the check. Fixture: test.fixture.sole_constructor_variant_probe.definer
+// declares `type SealedChoice sole_constructor = SealedA { n: Int } | SealedB { s: String }`.
+// ---------------------------------------------------------------------------
+data f13_variant_construction_source: String = "module probe_f13_variant_forge\nimport test.fixture.sole_constructor_variant_probe.definer { SealedChoice, SealedA }\nfn forged() -> SealedChoice {\n  SealedA { n: 999 }\n}\n"
+
+fn f13_diag_variant_count() -> Int {
+  violation_count(source: f13_variant_construction_source, wanted: "SoleConstructorViolation")
+}
+
+test fn f13_variant_construction_refuses() -> Bool {
+  violation_count(source: f13_variant_construction_source, wanted: "SoleConstructorViolation") >= 1
+}
