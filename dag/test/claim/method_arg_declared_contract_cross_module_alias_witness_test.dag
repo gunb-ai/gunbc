@@ -1,0 +1,38 @@
+module test.claim.method_arg_declared_contract_cross_module_alias_witness_test
+
+data method_arg_declared_contract_cross_module_alias_note: String = "PERMANENT REGRESSION CONTROL, companion to method_arg_declared_contract_witness_test.dag (#8592). Landed per dashboard node adhoc-28a6f804-3cd, reconciling #8572 and #8579, handoff repair from deep-ant-102.\n\nCORRECTED UNDERSTANDING FROM DIRECT EXECUTION. ContractUnavailable is not a silent-accept path: lookup_structural_method's Absent arm produces a hard, blocking diagnostic (\"no declared argument contract is available for this method call; refusing rather than substituting the receiver element type\") unconditionally, regardless of whether the actual call argument would have type-checked -- confirmed by direct compile of a genuinely-unavailable-contract fixture (a non-callable field called with call syntax), which refuses today with exactly that diagnostic. So the defect this repair closes is an OVER-REFUSAL, not a silent accept: a receiver's method exposed via a field whose declared type is an alias to a fn type, where the alias's declaring module differs from the call site's module, wrongly hit ContractUnavailable and refused a well-typed call outright, because declared_arg_types_for_method had no expand_field_type parameter and so never expanded the still-unexpanded alias-reference node (params.count == 0 on the raw field type) before reading its params. Fixed, expand_field_type resolves the cross-module alias to its real fn(Int) -> Int shape, params.count becomes > 0, and a well-typed call against that real contract compiles clean instead of being wrongly refused.\n\nWHAT IS ASSERTED. test.fixture.cross_module_alias_handler.definer (dag/test/fixture/cross_module_alias_handler/definer.dag, a real on-disk fixture module, following the sole_constructor_sealed fixture-pair pattern -- compile_dag_rust_emit_check resolves a single virtual module against the real corpus, so the alias's declaring module must be real, not inline) declares `type Handler = fn(Int) -> Int` and `type Boxed { handler: Handler }`. The virtual fixture module fixture.cross_module_call, a DIFFERENT module from definer, imports Boxed and calls `.handler(...)` on a Boxed value with a well-typed Int argument. compile_dag_rust_emit_check must SUCCEED (return true, no blocking diagnostic) on this fixture: the cross-module alias must actually expand to its real Int parameter so the well-typed call is accepted rather than wrongly refused as ContractUnavailable. Confirmed by direct execution against the repaired stage0 mirror: this fixture compiles clean.\n\nCOMPANION CONTROL, UNCHANGED BEHAVIOR. The genuinely-unavailable case is untouched by this repair and must keep refusing: a receiver whose method resolves to neither an algebra template nor a callable field (an ordinary non-callable field accessed with call syntax) must still hit ContractUnavailable and still produce the hard diagnostic -- the ContractUnavailable refusal ITSELF is not relaxed, only its mis-triggering on genuinely-expandable cross-module aliases. Confirmed by direct execution: this companion fixture refuses today with the same ContractUnavailable diagnostic, both before and after this repair, because it never reaches expand_field_type in either version (the field is not fn-typed at all, so callable.params is never the trigger).\n\ndissolve-on: none -- executing evidence DESIGN section 4b requires stay enrolled permanently once a class climbs a rung, so a future edit to declared_arg_types_for_method or expand_field_type cannot silently regress this class."
+
+fn method_arg_cross_module_alias_fixture_source() -> String {
+  "module fixture.cross_module_call\n\nimport test.fixture.cross_module_alias_handler.definer { Boxed }\n\nfn probe(b: Boxed, good_arg: Int) -> Int {\n  b.handler(good_arg)\n}\n"
+}
+
+// The discriminating RED (pre-repair): declared_arg_types_for_method could not
+// expand the cross-module alias without a TypeEnv, so it answered ContractUnavailable
+// and wrongly refused this well-typed call outright. Fixed, expand_field_type resolves
+// the alias's real Int parameter and the well-typed call compiles clean.
+test fn w_method_arg_infers_against_cross_module_alias_contract_test() -> Bool {
+  compile_dag_rust_emit_check(
+    method_arg_cross_module_alias_fixture_source(),
+    "src/fixture_cross_module_call.rs",
+    [],
+    []
+  )
+}
+
+fn method_arg_contract_unavailable_fixture_source() -> String {
+  "module fixture.contract_unavailable_probe\n\ntype Plain {\n  count: Int\n}\n\nfn probe(p: Plain, bad_arg: Int) -> Int {\n  p.count(bad_arg)\n}\n"
+}
+
+// Companion control: a non-callable field called with call syntax has no algebra
+// template and no callable field type -- ContractUnavailable is genuinely correct here,
+// and this repair must not relax that refusal. This fixture must keep refusing
+// (hard diagnostic) unchanged by the repair; it is enrolled to prove the
+// ContractUnavailable boundary itself was not widened.
+test fn w_method_arg_contract_unavailable_boundary_unchanged_test() -> Bool {
+  !compile_dag_rust_emit_check(
+    method_arg_contract_unavailable_fixture_source(),
+    "src/fixture_contract_unavailable_probe.rs",
+    [],
+    []
+  )
+}
