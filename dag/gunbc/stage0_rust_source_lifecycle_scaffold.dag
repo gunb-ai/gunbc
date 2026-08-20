@@ -592,7 +592,7 @@ fn witness_fixture_tracked_paths() -> std.types.List<String> {
   )
 }
 
-fn witness_observation_covering_lifecycle_plus_extra(extra_path: String) -> gunbc.stage0_rust_host_observation.RustManifestObserved {
+fn witness_observation_covering_lifecycle_plus_extra(extra_path: String) -> gunbc.stage0_rust_host_observation.RustSourceHostObservation {
   let classified = observed_classified_repo_paths(
     file_grain_paths: witness_fixture_tracked_paths()
   )
@@ -605,7 +605,7 @@ fn witness_observation_covering_lifecycle_plus_extra(extra_path: String) -> gunb
   }
 }
 
-fn witness_hand_maintained_growth_observation() -> gunbc.stage0_rust_host_observation.RustManifestObserved {
+fn witness_hand_maintained_growth_observation() -> gunbc.stage0_rust_host_observation.RustSourceHostObservation {
   let prior_file_grain = list_concat_unique(
     acc: witness_generated_stage0_fixture_paths,
     items: residue_lifecycle_repo_paths()
@@ -625,7 +625,7 @@ fn witness_hand_maintained_growth_observation() -> gunbc.stage0_rust_host_observ
   }
 }
 
-fn witness_honest_minimal_observation_ok() -> gunbc.stage0_rust_host_observation.RustManifestObserved {
+fn witness_honest_minimal_observation_ok() -> gunbc.stage0_rust_host_observation.RustSourceHostObservation {
   let classified = observed_classified_repo_paths(
     file_grain_paths: witness_fixture_tracked_paths()
   )
@@ -652,7 +652,7 @@ fn first_classified_repo_path(classified: std.types.List<String>) -> String {
   )
 }
 
-fn witness_duplicate_tracked_observation() -> gunbc.stage0_rust_host_observation.RustManifestObserved {
+fn witness_duplicate_tracked_observation() -> gunbc.stage0_rust_host_observation.RustSourceHostObservation {
   let classified = observed_classified_repo_paths(
     file_grain_paths: witness_fixture_tracked_paths()
   )

@@ -1,6 +1,6 @@
 module v2.test.long.cwc_resolution_probe
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data cwc_src_type_two: String = "module probe\ntype T = A | B\n"
 data cwc_src_type_three: String = "module probe\ntype T = A | B | C\n"
@@ -42,7 +42,7 @@ test fn cwc_norm_three_variant_accepts() -> Bool {
 fn cwc_tree_has_disj(n: Node) -> Bool {
   fold_node(
     n: n,
-    algebra: NodeFold {
+    algebra: v2.std.node.NodeFold {
       init: fn(node) {
         match node.kind {
           TypeNode { connective: Disj } => true
@@ -63,7 +63,7 @@ fn cwc_tree_has_disj(n: Node) -> Bool {
 fn cwc_disj_arm_count(n: Node) -> Int {
   fold_node(
     n: n,
-    algebra: NodeFold {
+    algebra: v2.std.node.NodeFold {
       init: fn(node) {
         match node.kind {
           TypeNode { connective: Disj } => count(node.children)
