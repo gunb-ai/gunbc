@@ -1,0 +1,312 @@
+module v2.test.manual.resolve_compile_anchor
+
+import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_roots, admit_normalized_tree }
+import v2.compiler.name_resolve {
+  Admission,
+  Import,
+  ImportVisible,
+  ResolutionSubject,
+  resolve_with_admission_policy
+}
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.compiler.resolve { resolve, ResolvedTree }
+import v2.extdeps.languages.dag {
+  dag_grammar_atom,
+  dag_language_model_surface_empty_prelude,
+  dag_language_model_void,
+  dag_named_edge
+}
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { fold_list_node }
+import v2.std.diagnostic {
+  Accepted,
+  None,
+  Outcome,
+  Rejected
+}
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Bind,
+  ComputationNode,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  TypeNode,
+  SyntheticOccurrence
+}
+import v2.std.qualified_name { QualifiedName }
+import v2.std.resolution_policy { ImportScoped }
+
+fn service_atom_conj_tree() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode {
+            connective: Atom { identity: ^dag_c3_surface_sugar_service }
+          },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn anchor_resolve_service_atom_via_canonical_symbols() -> Outcome<ResolvedTree> {
+  resolve(
+    tree: service_atom_conj_tree(),
+    lm: dag_language_model_void()
+  )
+}
+
+fn anchor_resolve_empty_prelude_service_atom() -> Outcome<ResolvedTree> {
+  resolve(
+    tree: service_atom_conj_tree(),
+    lm: dag_language_model_surface_empty_prelude()
+  )
+}
+
+fn anchor_resolve_multi_edge_conj_via_canonical_symbols() -> Outcome<ResolvedTree> {
+  match admit_normalized_tree(
+    root: Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        Edge {
+          label: Named { name: ^anchor_decl_first },
+          target: Node {
+            kind: TypeNode {
+              connective: Atom { identity: ^dag_c3_surface_sugar_service }
+            },
+            children: [],
+            occurrence_id: SyntheticOccurrence
+          }
+        },
+        Edge {
+          label: Named { name: ^anchor_decl_second },
+          target: Node {
+            kind: TypeNode {
+              connective: Atom { identity: ^dag_c3_surface_sugar_type }
+            },
+            children: [],
+            occurrence_id: SyntheticOccurrence
+          }
+        }
+      ],
+      occurrence_id: SyntheticOccurrence
+},
+    diagnostics: None
+  ) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: t, diagnostics: _ } => resolve(tree: t, lm: dag_language_model_void())
+  }
+}
+
+fn anchor_resolve_bind_binder_use() -> Outcome<ResolvedTree> {
+  match admit_normalized_tree(
+    root: Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        Edge {
+          label: Named { name: ^anchor_decl_first },
+          target: Node {
+            kind: ComputationNode { behavior: Bind },
+            children: [
+              Edge {
+                label: Positional,
+                target: Node {
+                  kind: TypeNode {
+                    connective: Atom { identity: ^dag_c3_surface_sugar_fn }
+                  },
+                  children: [],
+                  occurrence_id: SyntheticOccurrence
+                }
+              },
+              Edge {
+                label: Positional,
+                target: Node {
+                  kind: TypeNode {
+                    connective: Atom { identity: ^dag_c3_surface_sugar_service }
+                  },
+                  children: [],
+                  occurrence_id: SyntheticOccurrence
+                }
+              },
+              Edge {
+                label: Positional,
+                target: Node {
+                  kind: TypeNode {
+                    connective: Atom { identity: ^dag_c3_surface_sugar_fn }
+                  },
+                  children: [],
+                  occurrence_id: SyntheticOccurrence
+                }
+              }
+            ],
+            occurrence_id: SyntheticOccurrence
+          }
+        }
+      ],
+      occurrence_id: SyntheticOccurrence
+},
+    diagnostics: None
+  ) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: t, diagnostics: _ } => resolve(tree: t, lm: dag_language_model_void())
+  }
+}
+
+fn resolve_imported_qn_node() -> Node {
+  fold_list_node(
+    xs: Cons { head: ^anchor_imported_path_segment, tail: Empty },
+    item_node: fn(sym) {
+      Node {
+        kind: TypeNode { connective: Atom { identity: sym } },
+        children: [],
+        occurrence_id: SyntheticOccurrence
+}
+    }
+  )
+}
+
+fn resolve_imported_module_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: ^dag_surface_module_header,
+        target: dag_grammar_atom(id: ^dag_surface_module_header)
+      ),
+      dag_named_edge(
+        name: ^dag_surface_module_header_qualified_name,
+        target: resolve_imported_qn_node()
+      ),
+      Edge {
+        label: Named { name: ^anchor_imported_decl },
+        target: Node {
+          kind: TypeNode {
+            connective: Atom { identity: ^dag_c3_surface_sugar_service }
+          },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn resolve_subject_qn_node() -> Node {
+  fold_list_node(
+    xs: Cons { head: ^anchor_subject_path_segment, tail: Empty },
+    item_node: fn(sym) {
+      Node {
+        kind: TypeNode { connective: Atom { identity: sym } },
+        children: [],
+        occurrence_id: SyntheticOccurrence
+}
+    }
+  )
+}
+
+fn resolve_subject_module_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: ^dag_surface_module_header,
+        target: dag_grammar_atom(id: ^dag_surface_module_header)
+      ),
+      dag_named_edge(
+        name: ^dag_surface_module_header_qualified_name,
+        target: resolve_subject_qn_node()
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn resolve_subject_module_root_with_import_use() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: ^dag_surface_module_header,
+        target: dag_grammar_atom(id: ^dag_surface_module_header)
+      ),
+      dag_named_edge(
+        name: ^dag_surface_module_header_qualified_name,
+        target: resolve_subject_qn_node()
+      ),
+      Edge {
+        label: Named { name: ^anchor_subject_import_use },
+        target: resolve_imported_use_tree()
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn resolve_subject_name() -> QualifiedName {
+  Cons { head: ^anchor_subject_path_segment, tail: Empty }
+}
+
+fn resolve_roots_single_import() -> Outcome<FreeMonoid<NormalizedTree>> {
+  admit_normalized_roots(
+    roots: Cons {
+    head: resolve_subject_module_root_with_import_use(),
+    tail: Cons {
+      head: resolve_imported_module_root(),
+      tail: Empty
+    }
+  },
+    diagnostics: None
+  )
+}
+
+fn resolve_imported_use_tree() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^anchor_imported_decl } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn resolve_import_target() -> QualifiedName {
+  Cons { head: ^anchor_imported_path_segment, tail: Empty }
+}
+
+test fn resolve_with_admission_imported_binding_accepts() -> Bool {
+  match resolve_roots_single_import() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: admitted, diagnostics: _ } =>
+    match resolve_with_admission_policy(
+      lm: dag_language_model_surface_empty_prelude(),
+      roots: admitted,
+      admission: Admission {
+        subject: ResolutionSubject {
+          name: resolve_subject_name()
+        },
+        imports: Cons {
+          head: Import {
+            target: resolve_import_target(),
+            visibility: ImportVisible
+          },
+          tail: Empty
+        }
+      },
+      index: source_root_index_empty(),
+      active_roots: Empty,
+      policy: ImportScoped
+    ) {
+      Accepted { value: _, diagnostics: _ } => true
+      Rejected { diagnostics: _ } => false
+    }
+  }
+}

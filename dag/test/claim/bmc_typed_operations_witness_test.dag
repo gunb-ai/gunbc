@@ -14,6 +14,7 @@ import extdeps.bmc.openbmc_fan_control {
   OpenBmcPathRefused,
   OpenBmcSensorServicesObserved,
   OpenBmcSensorValueAbsent,
+  OpenBmcSensorValueObserved,
   OpenBmcSensorValueRefused,
   OpenBmcTachAtOrAboveThreshold,
   OpenBmcTachBelowThreshold,
@@ -33,6 +34,7 @@ import extdeps.bmc.openbmc_fan_control {
   openbmc_service_active_result,
   openbmc_zone_failsafe_result,
 }
+import extdeps.tools.jq { JqExecutionRefused, JqOutputAbsent, JqOutputPresent }
 import extdeps.ssh.password_session { PasswordSshExecResult }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure { byte_size_count, rpm, rpm_count }
@@ -83,11 +85,15 @@ test fn failed_threshold_transport_cannot_become_threshold_unstated() -> Bool {
   }
 }
 
+// These two took `success: Bool` and an untyped `value`/`stderr` triple until the sensor path moved
+// onto the jq invocation layer. They now state the SAME two requirements against the typed jq
+// outcome: a refusal must not decay into absence, and an empty successful projection must not decay
+// into a refusal. The requirement is unchanged; only what carries it is, which is why these are
+// re-enrolled rather than retired (DESIGN section 3 -- evidence for a surviving claim survives the
+// representation that used to hold it).
 test fn failed_sensor_projection_cannot_become_absent() -> Bool {
   match openbmc_sensor_integer_projection_result(
-    success: false,
-    value: "",
-    stderr: "malformed OpenBMC JSON",
+    outcome: JqExecutionRefused { exit_code: 2, stderr: "malformed OpenBMC JSON" },
   ) {
     OpenBmcSensorValueRefused { reason } => reason == "malformed OpenBMC JSON"
     _ => false
@@ -96,11 +102,20 @@ test fn failed_sensor_projection_cannot_become_absent() -> Bool {
 
 test fn successful_empty_sensor_projection_is_absent() -> Bool {
   match openbmc_sensor_integer_projection_result(
-    success: true,
-    value: "",
-    stderr: "",
+    outcome: JqOutputAbsent,
   ) {
     OpenBmcSensorValueAbsent => true
+    _ => false
+  }
+}
+
+// The third state, which the old triple could not express at all: a PRESENT projection carrying a
+// number is an observation. Added with the migration because the outcome type made it stateable.
+test fn present_numeric_sensor_projection_is_observed() -> Bool {
+  match openbmc_sensor_integer_projection_result(
+    outcome: JqOutputPresent { text: "42" },
+  ) {
+    OpenBmcSensorValueObserved { value } => value == 42
     _ => false
   }
 }

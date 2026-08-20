@@ -24,7 +24,7 @@ fn leaf_node(cap: std.nat.Nat) -> BudgetNode {
   BudgetNode { name: "host", appropriation: appr(n: cap), claims: sample_claims(), children: [] }
 }
 
-fn child_node(cap: std.nat.Nat) -> BudgetNode {
+fn budget_tree_child_node(cap: std.nat.Nat) -> BudgetNode {
   BudgetNode { name: "c", appropriation: appr(n: cap), claims: sample_claims(), children: [] }
 }
 
@@ -49,12 +49,12 @@ test fn witness_conservation_residue_lens() -> Bool {
 }
 
 test fn witness_tree_conservation_recursive() -> Bool {
-  node_conserves(node: root_with(child: child_node(cap: 120)))
-    && !node_conserves(node: root_with(child: child_node(cap: 100)))
+  node_conserves(node: root_with(child: budget_tree_child_node(cap: 120)))
+    && !node_conserves(node: root_with(child: budget_tree_child_node(cap: 100)))
 }
 
 test fn witness_divide_once() -> Bool {
-  let two_children = [child_node(cap: 100), child_node(cap: 100)]
+  let two_children = [budget_tree_child_node(cap: 100), budget_tree_child_node(cap: 100)]
   let tight = BudgetNode { name: "r", appropriation: appr(n: 150), claims: [], children: two_children }
   let roomy = BudgetNode { name: "r", appropriation: appr(n: 250), claims: [], children: two_children }
   return !node_conserves_local(node: tight) && node_conserves_local(node: roomy)

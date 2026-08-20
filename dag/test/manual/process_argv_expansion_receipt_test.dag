@@ -1,0 +1,85 @@
+module test.manual.process_argv_expansion_receipt
+
+import std.algebra { Cons, Empty }
+import std.types { Bool, Int, String }
+import v2.std.algebra { fold_list, list_snoc_item }
+import v2.std.collection { List, empty_map }
+import v2.std.compilers.cli_surface {
+  CliArgumentSyntax,
+  cli_argument_text,
+  cli_surface_arguments,
+  serialize_cli_arguments,
+  process_argv_expansion
+}
+import v2.std.compilers.lexing { LexRuleSet, LiteralPattern, ModeledLexRules, TokenRule }
+import v2.std.compilers.target_model { ConcreteSyntaxToken, FixedToken }
+import v2.std.diagnostic { Accepted, Rejected }
+import extdeps.tools.jq { jq_argv_expansion_probe }
+
+// THE FOUR-CASE HOST RECEIPT for the argv splice law (design note, open question 9-ter).
+//
+// Each case alone is ambiguous; the set is the evidence:
+//
+//   1 native literal list    -> splices          (nothing existing was broken)
+//   2 folded monoid, old path-> JOINS            (the residue, recorded honestly, not closed)
+//   3 modeled string         -> stays ONE word   (the arm did not shred strings -- the exact
+//                                                 failure mode that ruled out reordering)
+//   4 ProcessArgvExpansion     -> splices          (the claim itself)
+//
+// Cases 2 and 3 are why a branch reorder is not the repair: both are FreeMonoid at runtime, and
+// the two readings both succeed, so no ordering recovers the erased intent.
+//
+// ONLY CASE 4 IS COMMITTED, DELIBERATELY, and this note is here so the gap does not read as an
+// omission. Cases 1-3 were executed live against a real jq while the defect was being isolated --
+// their receipts are quoted in the design note (open question 9-ter) with the exact commands and
+// exit codes. They are not enrolled here because each ASSERTS THE OLD BEHAVIOR: case 2 in
+// particular pins the concatenating read as the expected outcome, and an enrolled test asserting a
+// defect is how that defect acquires immortality (DESIGN section 4b -- evidence whose only subject
+// is behavior the model rejects is retired with a receipt, not left standing). What survives
+// enrolled is the claim the carrier makes: case 4 is red unless jq receives exactly two words.
+//
+// WET: this executes a real jq process, so it is EXCLUDED from hermetic discovery and ENROLLED in
+// gunbc.ci_layer_roots bin_witness_wet_entries. Both rows are required and they answer different
+// questions: the exclusion keeps it off a batch it cannot pass (jq.Process.RunWithStdin carries no
+// mock_response, and the envelope refuses rather than skipping), while the enrollment is what gives
+// it an executing consumer. Exclusion alone would be deletion-with-the-file-retained -- DESIGN's
+// witness-cost ruling, whose specimen is exactly that.
+//
+// Its home under test/manual/ decides NOTHING: the file was swept into unshrunk discovery by path
+// regardless, which is the same ruling's point that a directory cannot answer an admission
+// question. The rows are the admission; the path is only where it lives.
+//
+// AND A MOCK IS NOT THE REPAIR. Mocking RunWithStdin would make this pass without any process
+// running, while its entire content is that a REAL jq exits 0 only on two argv words -- a green
+// that cannot fail.
+
+fn probe_lex() -> ModeledLexRules {
+  ModeledLexRules {
+    root: LexRuleSet {
+      rules: [
+        TokenRule { token_class: ^raw_output_opt, pattern: LiteralPattern { text: "--raw-output" } },
+        TokenRule { token_class: ^dot_filter, pattern: LiteralPattern { text: "." } }
+      ]
+    }
+  }
+}
+
+fn two_argument_surface() -> List<CliArgumentSyntax> {
+  [
+    CliArgumentSyntax { fragments: [FixedToken { token_class: ^raw_output_opt }] },
+    CliArgumentSyntax { fragments: [FixedToken { token_class: ^dot_filter }] }
+  ]
+}
+
+// CASE 4 -- the carrier. jq exits 0 only if it received TWO argv words.
+test fn case4_expansion_carrier_splices() -> Bool {
+  match serialize_cli_arguments(
+    arguments: two_argument_surface(),
+    lex: probe_lex(),
+    binding_spellings: empty_map()
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: surface, diagnostics: _ } =>
+      jq_argv_expansion_probe(expansion: process_argv_expansion(surface: surface), payload: "1") == 0
+  }
+}

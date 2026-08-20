@@ -1,0 +1,134 @@
+module product.fabric.supply
+
+import std.types { Timestamp, Int }
+import std.measure { MoneyAmountMicro, MoneyPerSecond, MoneyPerHour, MoneyOnce }
+import std.currency { CurrencyCode }
+import product.fabric.identity { FabricIdentity, OfferKey }
+import product.fabric.demand { ObservationReceiptRef }
+import product.fabric.work { Shape, CapabilityManifestRef, TrustDomainRef }
+
+// An Offer is a supplier's statement of capacity it is willing to sell. Owned
+// capacity and rented capacity are ONE type: what differs is the evidence behind
+// the statement, not the kind of thing being stated.
+
+// Observed and quoted supply differ in their evidence, not in their type, and
+// minting two Offer types would fork the selection fold that must compare
+// them. ObservedSupply is a measurement - this host has three free slots right
+// now, and here is the receipt. QuotedSupply is a standing willingness to sell
+// - this supplier will provide up to N of this shape at this rate until this
+// time, and here is the quote. Bottomless cloud supply is a QuotedSupply with
+// a large quantity bound, never an unbounded one: an offer without a bound
+// cannot be conserved against, and infinite supply is a claim no supplier
+// actually makes. The fields the decision consumes - quantity bound,
+// readiness, validity, normalized quote - stay SURFACED on the offer rather
+// than hidden inside the evidence; the evidence proves those values, it does
+// not replace them.
+// An owned offer carries an EXPLICIT ZERO quote and creates a zero-valued
+// money reservation, rather than carrying no quote at all. Absence must never
+// be interpreted as free. The predecessor model made cost_quote optional and
+// every owned host used the absent arm, so a consumer reading it could not
+// distinguish costs nothing from nobody priced this - and the safe reading of
+// the second is not zero. Requiring the amount means a supplier whose price is
+// genuinely unknown has to say so in a way the selection fold can refuse,
+// instead of being silently treated as the cheapest offer available.
+// A quote is std.measure's MoneyRate at the period the supplier bills in,
+// never a second money-per-period record. MoneyRate already carries the amount
+// and the currency and already makes the period a type argument, so a rate at
+// one period is not assignable where another is expected -- which is exactly
+// the property a price needs, and the reason an earlier version of this file
+// minting its own carrier was a fork rather than a specialization. That
+// version's stated defence was that folding the unit into the measure would
+// make two rates addable; MoneyRate does not fold it into the measure, so the
+// defence described a carrier that does not exist.
+//
+// The runtime coproduct is here for a reason the type parameter cannot serve:
+// selection ranks offers billed on different bases against each other, so they
+// must inhabit one roster, and Offer<P, PerHour> and Offer<P, PerSecond> would
+// be different types. Discriminating at the value level keeps the roster
+// homogeneous while keeping the periods unaddable, since reaching either
+// amount requires naming which period it is.
+//
+// Normalizing a supplier's published terms into one of these is the supplier
+// binding's work, and so are billing quantum, rounding, minimum charge, fixed
+// and setup charges, caps, and when billing starts and stops. The core
+// compares normalized quotes; it does not model any supplier's tariff.
+
+type OfferQuote =
+  | QuotedPerSecond(MoneyPerSecond)
+  | QuotedPerHour(MoneyPerHour)
+  | QuotedFlatPerGrant(MoneyOnce)
+
+fn offer_quote_amount(q: OfferQuote) -> MoneyAmountMicro {
+  match q {
+    QuotedPerSecond(r) => r.amount
+    QuotedPerHour(r) => r.amount
+    QuotedFlatPerGrant(r) => r.amount
+  }
+}
+
+fn offer_quote_currency(q: OfferQuote) -> CurrencyCode {
+  match q {
+    QuotedPerSecond(r) => r.currency
+    QuotedPerHour(r) => r.currency
+    QuotedFlatPerGrant(r) => r.currency
+  }
+}
+
+type OfferEvidence
+  = ObservedSupply { observed_at: Timestamp, receipt: ObservationReceiptRef }
+  | QuotedSupply {
+      quoted_at: Timestamp,
+      valid_until: Timestamp,
+      receipt: ObservationReceiptRef,
+    }
+
+type Offer<P> {
+  id: FabricIdentity<P, OfferKey>
+  executor: P
+  shape: Shape
+  capabilities: CapabilityManifestRef
+  trust_domain: TrustDomainRef
+  quantity_bound: Int
+  ready_at: Timestamp
+  quote: OfferQuote
+  evidence: OfferEvidence
+}
+
+// An Offer carries no remaining_capacity field. Remaining capacity is DERIVED
+// as the allocatable bound minus the sum of active grant claims against that
+// offer, and deriving it is precisely what makes atomic grant issuance
+// conserve supply. A stored remainder is a second representation of the grant
+// set: it can disagree with the grants that actually exist, and the
+// disagreement is invisible until two grants have already been issued against
+// capacity that existed only in a stale field.
+// Selection is a named policy with one implementation. The interface is named so
+// a second policy is a second instantiation rather than an edit to ExecutionGrant or to
+// the clearing fold; if adding one later requires touching a core carrier, the
+// axis was never real.
+
+// The policy is an axis with exactly one instantiation today: cheapest
+// fungible with delay valuation. The ORDER of its filters is load-bearing and
+// is not a performance detail. Fungibility is decided FIRST - which offers can
+// satisfy this work's shape, capabilities and trust domain, with price not
+// consulted - so that price can never rescue an offer that cannot run the
+// work. Affordability is decided SECOND: within the demand's reservation price
+// and maximum buy order, with budget remaining. Cheapest is decided LAST, over
+// the survivors, comparing provider charge plus valued availability delay,
+// with a stable deterministic tie-break. This is a posted-offer market and not
+// an auction: suppliers publish asks, each demand carries a buyer reservation
+// price, and the fabric takes the cheapest admissible ask. No clearing-price
+// machinery exists because none is needed to make that decision.
+// Rented supply being selected only after owned supply is exhausted is a
+// CONSEQUENCE of cheapest-admissible-ask, never a fallback arm, and the
+// distinction decides whether cost can run away. A fallback is a failure arm
+// that widens when the preferred path is unavailable, and it hides the deficit
+// that triggered it. Here nothing widens: owned capacity at an explicit zero
+// quote is simply the cheapest admissible ask while any remains, and when none
+// remains the same fold evaluates the same predicate over the remaining asks.
+// If no ask is admissible - budget exhausted, every ask above the reservation
+// price or the maximum buy order, no offer fungible - the outcome is a typed
+// refusal or a demand that stays pending. It is never a degraded execution
+// path, and there is no arm to reach for one.
+
+type SelectionPolicy =
+  | CheapestFungibleWithDelayValuation

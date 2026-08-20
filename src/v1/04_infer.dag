@@ -1563,10 +1563,15 @@ fn where_refinement_diags_for_predicate(
               )]
             }
         }
-      Absent => [where_refinement_unenforced_error(
-        predicate: pname, formal: formal, reason: "non-literal value at refined position",
-        span: span, module_name: module_name, source_indices: source_indices
-      )]
+      Absent =>
+        if expr_is_any_literal(expr: value_expr) {
+          refinement_refusal
+        } else {
+          [where_refinement_unenforced_error(
+            predicate: pname, formal: formal, reason: "non-literal value at refined position",
+            span: span, module_name: module_name, source_indices: source_indices
+          )]
+        }
     }
   } else if where_refinement_is_string_literal_predicate(pred_name: pname) {
     match expr_literal_string_optional(expr: value_expr) {
@@ -1579,10 +1584,15 @@ fn where_refinement_diags_for_predicate(
             span: span, module_name: module_name, source_indices: source_indices
           )]
         }
-      Absent => [where_refinement_unenforced_error(
-        predicate: pname, formal: formal, reason: "non-literal value at refined position",
-        span: span, module_name: module_name, source_indices: source_indices
-      )]
+      Absent =>
+        if expr_is_any_literal(expr: value_expr) {
+          refinement_refusal
+        } else {
+          [where_refinement_unenforced_error(
+            predicate: pname, formal: formal, reason: "non-literal value at refined position",
+            span: span, module_name: module_name, source_indices: source_indices
+          )]
+        }
     }
   } else if where_refinement_is_deferred_predicate(pred_name: pname) {
     [where_refinement_unenforced_error(
@@ -1688,12 +1698,7 @@ fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: Typ
   if formal.connective == Arrow || actual.connective == Arrow || (actual.children |> count) > 0 {
     false
   } else {
-    let formal_base = if formal.connective == Conj && formal.type_annotation != none && (formal.children |> count) == 1 {
-      match formal.children |> first {
-        Present { value: refinement_base } => refinement_base
-        Absent => formal
-      }
-    } else { formal }
+    let formal_base = peel_where_refinement_base(ty: formal, type_env: type_env)
     let actual_name = authored_name_at(source_indices: source_indices, node: actual)
     if is_kernel_type(name: actual_name) == false || actual_name == "Unit" {
       false
@@ -3146,9 +3151,56 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
           lambda_param_provenance: nf_prov_map
         }
       } else { scope }
-      infer_arg_with_element_type(arg: a, element_type: element_type, scope: nf_scope)
+      if is_lambda_expr(e: nf_lam_value) {
+        infer_arg_with_element_type(arg: a, element_type: element_type, scope: nf_scope)
+      } else {
+        match scalar_shaped_builtin_method_arg_type(method_name: method_name) {
+          Present { value: declared_type } =>
+            infer_arg_with_element_type(arg: a, element_type: declared_type, scope: nf_scope)
+          Absent =>
+            infer_arg_with_element_type(arg: a, element_type: element_type, scope: nf_scope)
+        }
+      }
     }
   )
+}
+
+// Interim classification standing in for a per-method parameter contract
+// that does not yet exist anywhere in the tree (the corpus run this fix
+// shipped with found no such authority to cite). The terminal shape is one
+// authority naming each builtin method's parameter shape once -- arity,
+// per-position type -- which this function and every other consumer reads,
+// replacing this inline name list. Dissolves when that authority lands and
+// this match is rewritten to look each method up in it instead of naming
+// five methods by string.
+//
+// The Absent arm intentionally still defaults to element_type rather than
+// refusing: this same fold's "method" position also receives qualified
+// variant-constructor calls whose symbol_index_lookup misses at the
+// ExprMethodCall seam (direct_call_shape_wall_note names this fallthrough
+// as deliberate -- "the method-call path... is the method wall's
+// territory," left uncovered). That population's real parameter types come
+// from the constructor's declared field shapes, not from a collection's
+// element_type or an Int refinement, and only the missing per-method
+// parameter-contract authority above can classify it correctly. Refusing
+// it here -- as an earlier version of this function did -- surfaced a
+// pre-existing silent mistype as a hard compile break across every
+// unrelated call site that happens to route through this bridge (measured:
+// dozens of sites in host_effect_realize.dag, fleet_workflow_steps.dag,
+// generated_artifact_gate.dag and others, none of them skip/take/at/nth/
+// index calls). That is refusing an undecided, ungrounded population
+// rather than the decided one this fix actually grounds -- the DESIGN §5
+// "wall after grounding" distinction, not a wall this fix can build now.
+fn scalar_shaped_builtin_method_arg_type(method_name: String?) -> Node? {
+  match method_name {
+    Present { value: mn } =>
+      if mn == "skip" || mn == "take" || mn == "at" || mn == "nth" || mn == "index" {
+        Present { value: int_type }
+      } else {
+        none
+      }
+    Absent => none
+  }
 }
 
 fn is_lambda_expr(e: Node) -> Bool {
@@ -8294,21 +8346,38 @@ fn symbol_index_insert_unique_disj_variant_aliases(
   fold(items, init: index, f: (acc, item) =>
     match item.connective {
       Disj =>
+        let tname = authored_name_at(source_indices: source_indices, node: item)
         fold(item.children, init: acc, f: (a2, child) =>
           let vname = authored_name_at(source_indices: source_indices, node: child)
+          // Unconditional fully-qualified insertion, ahead of the uniqueness-gated 2-segment
+          // aliases below: `module_path.TypeName.variant_name` disambiguates by construction
+          // (a variant name is unique within one Disj, and a TypeName is unique within one
+          // module), so it needs no corpus-wide uniqueness check the way the bare `module_path.
+          // variant_name` shortcut does. This closes the population-A gap named in
+          // direct_call_shape_wall_note: a qualified constructor call site like
+          // `gunbc.WitnessBin.Run(...)` builds exactly this 3-segment dotted name
+          // (ExprMethodCall's qualified_direct_call gate, and func_sig_from_global_bare's
+          // borrowed_census_decl, both call symbol_index_lookup on it) and previously found
+          // nothing, falling through to the generic method-call bridge instead of the
+          // direct_call_shape_diags wall.
+          let a2_qualified = symbol_index_insert(
+            index: a2,
+            qualified_name: concat(concat(module_path, ".", tname), ".", vname),
+            resolved: item
+          )
           match map_get(counts, vname) {
             Present { value: 1 } =>
               match map_get(corpus_variant_counts, vname) {
                 Present { value: 1 } =>
                   if map_get(corpus_item_counts, vname) != none || overlay_skips_kernel_name(name: vname) {
                     symbol_index_insert(
-                      index: a2,
+                      index: a2_qualified,
                       qualified_name: concat(module_path, ".", vname),
                       resolved: item
                     )
                   } else {
                   symbol_index_insert_decl(
-                    index: a2,
+                    index: a2_qualified,
                     module_path: module_path,
                     binding: TypeBinding {
                       name: vname,
@@ -8319,12 +8388,12 @@ fn symbol_index_insert_unique_disj_variant_aliases(
                   }
                 _ =>
                   symbol_index_insert(
-                    index: a2,
+                    index: a2_qualified,
                     qualified_name: concat(module_path, ".", vname),
                     resolved: item
                   )
               }
-            _ => a2
+            _ => a2_qualified
           }
         )
       _ => acc
@@ -9647,14 +9716,15 @@ fn build_enum_variant_shape_sets(modules: List<TypedModule>, type_summaries: Map
 fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
   let init = EmitInfoBuildState {
     type_summaries: empty_map(),
-    type_decl_items: empty_map()
+    type_decl_items: empty_map(),
+    fn_decl_items: empty_map()
   }
   let built_raw = modules |> fold(init: init, f: (state, typed_module) =>
     typed_module.items |> fold(init: state, f: (inner_state, item) =>
       add_emit_item_summary(state: inner_state, item: item, source_indices: typed_module.type_env.source_indices)
     )
   )
-  let built = EmitInfoBuildState { type_summaries: close_fn_fields(summaries: built_raw.type_summaries), type_decl_items: built_raw.type_decl_items }
+  let built = EmitInfoBuildState { type_summaries: close_fn_fields(summaries: built_raw.type_summaries), type_decl_items: built_raw.type_decl_items, fn_decl_items: built_raw.fn_decl_items }
   let all_recursive = modules |> fold(init: empty_set(), f: (acc, m) =>
     fold(map_keys(m.type_env.recursive_type_set), init: acc, f: (inner, ident) =>
       set_insert(inner, intern_str(table: m.type_env.intern_table, id: ident))
@@ -9665,6 +9735,7 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
   EmitGraphInfo {
     type_summaries: built.type_summaries,
     type_decl_items: built.type_decl_items,
+    fn_decl_items: built.fn_decl_items,
     recursive_type_set: all_recursive,
     fielded_variants: variant_shapes.fielded,
     positional_payload_variants: variant_shapes.positional_payload,

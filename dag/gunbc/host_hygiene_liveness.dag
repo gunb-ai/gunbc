@@ -134,7 +134,7 @@ fn reconcile_fleet_listening(
 data gunbc_host_hygiene_liveness_bound: Second = second(1800)
 
 data gunbc_host_hygiene_liveness_show_effective_read: ShowEffectiveRead<List<SlotListeningVerdict>> = ReadAbsent {
-  reason: "no live per-slot journal read has run on the fleet hosts yet; pure .dag model, the live verify is the later increment"
+  reason: "this is the pure/CI-hermetic default read (deliberately never observed — this .dag has no shell transport and CI's floor is hermetic-only); the live per-slot journal read runs through gunbc.host_hygiene_liveness_observe.gunbc_host_hygiene_liveness_live_evidence(), which this module does not import to avoid a cycle back onto its own decision core"
 }
 
 fn gunbc_host_hygiene_liveness_evidence() -> Reconciliation<String, FleetListeningEvidence> {

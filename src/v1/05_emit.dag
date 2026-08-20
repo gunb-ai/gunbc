@@ -34,7 +34,7 @@ import v1.compiler.infer_types { resolved_type, child_type_node, emit_map_has, n
 
 import std.types { is_container_type, container_template_algebra }
 
-import v1.compiler.coercion { coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast, literal_suffix }
+import v1.compiler.coercion { coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast, literal_suffix, type_reference_decl_file }
 
 import v1.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 
@@ -505,7 +505,7 @@ fn emit_literal(value: LiteralValue, target: RenderTarget) -> String {
   match value {
     LitStr { value: s } =>
 
-      let suffix = match literal_suffix(target: target, dag_name: "String") {
+      let suffix = match literal_suffix(target: target, dag_name: "String", decl_file: "") {
         Present { value: sfx } => sfx
         Absent => emit_error_expr(message: "missing TypeCheckpoint for String literal suffix", target: target)
       }
@@ -515,9 +515,9 @@ fn emit_literal(value: LiteralValue, target: RenderTarget) -> String {
     LitBool { value: b } => if b { emit_keyword(key: "true", target: target) } else { emit_keyword(key: "false", target: target) }
     LitNull => emit_keyword(key: "null", target: target)
     LitSymbol { value: s } =>
-      let suffix = match literal_suffix(target: target, dag_name: "Symbol") {
+      let suffix = match literal_suffix(target: target, dag_name: "Symbol", decl_file: "") {
         Present { value: sfx } => sfx
-        Absent => match literal_suffix(target: target, dag_name: "String") {
+        Absent => match literal_suffix(target: target, dag_name: "String", decl_file: "") {
           Present { value: sfx } => sfx
           Absent => emit_error_expr(message: "missing TypeCheckpoint for Symbol literal suffix", target: target)
         }
@@ -574,7 +574,7 @@ fn named_type_vars_in_node(n: Node) -> List<String> {
 
 fn render_named_type_base(n: Node, target: RenderTarget, source_indices: Map<String, NewlineIndex>) -> String {
   let tn = authored_name_at(source_indices: source_indices, node: n)
-  let base = coerce_primitive_type(target: target, dag_name: tn)
+  let base = coerce_primitive_type(target: target, dag_name: tn, decl_file: type_reference_decl_file(n: n))
   let explicit_params = n.params |> map(p => render_node_type(n: param_node_type_expr(n: p), target: target, shared_types: empty_set(), source_indices: source_indices))
   let inferred_params = if explicit_params |> count == 0 { named_type_vars_in_node(n: n) } else { [] }
   let param_names = concat(explicit_params, inferred_params)
@@ -597,7 +597,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
       _ => false
     }
     if n_is_type_var && is_named_type_var {
-      return coerce_primitive_type(target: target, dag_name: tn)
+      return coerce_primitive_type(target: target, dag_name: tn, decl_file: type_reference_decl_file(n: n))
     }
     let label = if n_is_error { "CompilerError" } else { "TypeVariable" }
     let spec = language_spec(target: target)
@@ -656,7 +656,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
     if n.type_annotation != none {
       let refined_str = match n.children |> first {
         Present { value: base } => render_node_type(n: base, target: target, shared_types: shared_types, source_indices: source_indices)
-        Absent => coerce_primitive_type(target: target, dag_name: "Refined")
+        Absent => coerce_primitive_type(target: target, dag_name: "Refined", decl_file: "")
       }
       return refined_str
     }
@@ -714,11 +714,11 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
     } else if param_count > 0 {
       let param_strs = n.params |> map(p => render_node_type(n: param_node_type_expr(n: p), target: target, shared_types: shared_types, source_indices: source_indices))
       let spec = language_spec(target: target)
-      concat(coerce_primitive_type(target: target, dag_name: tn), spec.type_arg_open, param_strs |> join(separator: ", "), spec.type_arg_close)
+      concat(coerce_primitive_type(target: target, dag_name: tn, decl_file: type_reference_decl_file(n: n)), spec.type_arg_open, param_strs |> join(separator: ", "), spec.type_arg_close)
     } else if tn == tuple_type_name {
       render_tuple_parts(parts: [], target: target)
     } else {
-      coerce_primitive_type(target: target, dag_name: tn)
+      coerce_primitive_type(target: target, dag_name: tn, decl_file: type_reference_decl_file(n: n))
     }
     let bare_str = if shared { wrap_shared_type(target: target, inner: base) } else { base }
     return bare_str
@@ -747,7 +747,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
     let base = if is_container {
       emit_container(kind: to_snake(name: tn), inner: child_str, target: target)
     } else {
-      let type_base = coerce_primitive_type(target: target, dag_name: tn)
+      let type_base = coerce_primitive_type(target: target, dag_name: tn, decl_file: type_reference_decl_file(n: n))
       let spec = language_spec(target: target)
       concat(type_base, spec.type_arg_open, child_str, spec.type_arg_close)
     }
@@ -759,7 +759,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
     let multi_tuple_str = render_tuple_parts(parts: child_strs, target: target)
     return multi_tuple_str
   }
-  let type_base = coerce_primitive_type(target: target, dag_name: tn)
+  let type_base = coerce_primitive_type(target: target, dag_name: tn, decl_file: type_reference_decl_file(n: n))
   let args_joined = child_strs |> join(separator: ", ")
   let spec = language_spec(target: target)
   let base = concat(type_base, spec.type_arg_open, args_joined, spec.type_arg_close)
