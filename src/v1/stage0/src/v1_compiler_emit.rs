@@ -341,7 +341,9 @@ pub fn emit_simple_expr(
                     let mut __result = Vec::new();
                     for child in expr.children.clone().iter().cloned() {
                         __result.push(match (*child.expr_data.clone()).clone() {
-                            ExprData::ExprLiteral { ref value, .. } => {
+                            ExprData::ExprLiteral { ref value, .. }
+                                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+                            {
                                 let LiteralValue::LitStr { value: text, .. } = value.as_ref()
                                 else {
                                     unreachable!()
@@ -4136,7 +4138,9 @@ pub fn extract_string_interp_parts(expr: Rc<Node>) -> Rc<Vec<Rc<StringPart>>> {
         let mut __result = Vec::new();
         for child in expr.children.clone().iter().cloned() {
             __result.push(match (*child.expr_data.clone()).clone() {
-                ExprData::ExprLiteral { ref value, .. } => {
+                ExprData::ExprLiteral { ref value, .. }
+                    if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+                {
                     let LiteralValue::LitStr { value: text, .. } = value.as_ref() else {
                         unreachable!()
                     };

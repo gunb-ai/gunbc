@@ -7,7 +7,7 @@ data fleet_converge_plan_cli_note: String = "Wet CLI for on-demand fleet converg
 // MAIN CLOSED THIS ONE AND THIS BRANCH DOES NOT RE-OPEN IT. The optional return IS the next-rung
 // repair this lane named -- an unreadable hostname is now Absent rather than a String that looks
 // like a hostname, both plan and apply refuse on Absent, and the subject comparison routes through
-// a typed authority over two std.types.NonEmptyStr values instead of a bare String equality that two
+// a typed authority over two NonEmptyStr values instead of a bare String equality that two
 // coincident non-observations could satisfy. The defeated-guard defect is fixed, not surfaced.
 //
 // WHAT CHANGED HERE IS ONLY THE PROBE'S INPUT SHAPE. main derived Absent from `!run.success ||

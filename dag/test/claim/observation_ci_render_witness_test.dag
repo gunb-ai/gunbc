@@ -428,7 +428,7 @@ test fn w_RED_the_summary_duration_is_labelled_work_not_elapsed_wall() -> Bool {
   string_contains(s: line, pattern: "work")
 }
 
-// The seed reads `gunbc.output_policy.routine_rollup_folds`, not the Optional it derives from, so this is the pair that
+// The seed reads `routine_rollup_folds`, not the Optional it derives from, so this is the pair that
 // keeps the two from drifting apart: the Bool must agree with the grain at every verbosity. A
 // witness on the Optional alone would have stayed green through the defect that shipped — the seed
 // was calling a function with the wrong parameter and reading the resulting error as `false`.
@@ -462,7 +462,7 @@ fn proj_folds_at_batch(e: std.observation.ObservationEvent) -> Bool {
 
 // The seed transports this verdict instead of restating the rule, so it has to AGREE with the
 // projection it stands in for — that agreement is the whole reason the Rust arm stopped being a
-// second representation. Asserted in both directions against gunbc.observation_ci_render.ci_routine_projection itself.
+// second representation. Asserted in both directions against ci_routine_projection itself.
 test fn w_the_transported_fold_verdict_agrees_with_the_projection() -> Bool {
   let pass_event = proj_event(subject: proj_leaf_subject(entry: "dag/a.dag"), transition: std.observation.Concluded { outcome: std.observation.Done })
   let fail_event = proj_event(subject: proj_leaf_subject(entry: "dag/b.dag"), transition: std.observation.Concluded { outcome: std.observation.Failed { error: "x", output: "" } })
@@ -531,7 +531,7 @@ test fn w_witness_claim_line_from_entry_path_holds() -> Bool {
     && string_contains(s: text, pattern: "FAILED in 1 seconds")
 }
 
-// Pins the 90s minute-switch boundary shared by gunbc.observation_ci_render.ci_human_elapsed and the Rust mirror.
+// Pins the 90s minute-switch boundary shared by ci_human_elapsed and the Rust mirror.
 test fn w_witness_claim_duration_minute_switch_boundary_holds() -> Bool {
   let just_under = gunbc.observation_ci_render.ci_witness_claim_result_text(
     subject: "test.claim.foo",

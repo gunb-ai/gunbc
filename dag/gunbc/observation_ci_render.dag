@@ -53,7 +53,7 @@ fn ci_human_elapsed(d: std.measure.Nanosecond) -> String {
 
 data ci_human_duration_note: String = "A second duration projection beside gunbc.ci_render.format_duration is deliberate and is not a fork: that one is the COMPACT technical form for receipt boxes and timing tables (230ms, 41s), this one is the SENTENCE form for arm's-length prose (10 minutes). Same fact, two surfaces, chosen by the tone contract rather than by taste. If a third caller wants a third spelling, that is the signal to unify them behind one carrier with a declared style axis rather than to add a fourth."
 
-// std.observation.ObservationEvent retains exact std.measure.Nanosecond wall time through classification and ordering. Arm's-length lines keep existing std.measure.millisecond-and-larger spelling byte-stable, while a sub-std.measure.millisecond event prints its exact std.measure.nanosecond count instead of fabricating 0ms. The floor conversion is confined to this named presentation boundary.
+// ObservationEvent retains exact Nanosecond wall time through classification and ordering. Arm's-length lines keep existing millisecond-and-larger spelling byte-stable, while a sub-millisecond event prints its exact nanosecond count instead of fabricating 0ms. The floor conversion is confined to this named presentation boundary.
 fn ci_measured_bytes_text(m: std.observation.Measured<std.measure.ByteSize>) -> String {
   match m {
     std.observation.MeasuredValue { value: b } => ci_human_bytes(b: b)
@@ -378,7 +378,7 @@ fn ci_run_summary_glyph(summary: FloorRunSummary) -> std.symbols.SymbolId {
   }
 }
 
-// The run summary keeps std.observation.Refused and std.observation.Failed apart, because a summary that collapses them undoes at the last line exactly what the outcome sum spends the model establishing. A run that only refused stopped deliberately and its glyph says so; a run carrying any failure is broken, and breakage dominates the summary glyph because it is the stronger claim about the run. Both counts appear in the text either way, so the glyph chooses emphasis and never hides a number.
+// The run summary keeps Refused and Failed apart, because a summary that collapses them undoes at the last line exactly what the outcome sum spends the model establishing. A run that only refused stopped deliberately and its glyph says so; a run carrying any failure is broken, and breakage dominates the summary glyph because it is the stronger claim about the run. Both counts appear in the text either way, so the glyph chooses emphasis and never hides a number.
 fn ci_run_summary_line(summary: FloorRunSummary) -> RenderedLine {
   let problems = summary.refusals + summary.failures
   RenderedLine {
@@ -501,7 +501,7 @@ fn ci_rollup_measurement_note(rollup: std.observation.ObservationRollup) -> Stri
 //
 // Peak renders only when a batch-scoped reading exists. The seed cannot supply one: its only
 // memory fact is the PROCESS high-water mark, which is monotone over the whole run, so attributing
-// it to a batch reported `peak 11.5 GiB` beside a four-std.measure.millisecond single-witness batch — a real
+// it to a batch reported `peak 11.5 GiB` beside a four-millisecond single-witness batch — a real
 // number located on the wrong subject, which DESIGN section 5 treats as the same defect class as a
 // wrong number. Absence is disclosed by ci_rollup_measurement_note rather than filled in.
 fn ci_rollup_peak_text(rollup: std.observation.ObservationRollup) -> String {
@@ -533,8 +533,8 @@ fn ci_batch_summary_line(rollup: std.observation.ObservationRollup) -> RenderedL
 
 // The duration crosses as the std.measure carrier, never a bare std.nat.Nat named `*_nanos`. Wrapping it
 // immediately inside the body would NOT discharge that — the PARAMETER surface is what a caller can
-// get wrong, and a caller passing milliseconds into a `work_nanos: std.nat.Nat` would have typechecked. The
-// seed constructs no carrier of its own: it calls `std.measure.nanosecond(count:)` across the interpreter
+// get wrong, and a caller passing milliseconds into a `work_nanos: Nat` would have typechecked. The
+// seed constructs no carrier of its own: it calls `nanosecond(count:)` across the interpreter
 // boundary and passes the result back in, so the constructor stays the single authority (a record
 // built in Rust would have forked it). Same shape as gunbc.floor_component_receipt's surface.
 //

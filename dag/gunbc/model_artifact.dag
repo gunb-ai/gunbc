@@ -73,7 +73,7 @@ fn model_artifact_from_observed_digest(publisher: std.types.NonEmptyStr, observe
 // PRODUCED_IDENTITY IS A Sha256Digest, NOT A ContentHash, and the witness is what forced it. The
 // first version took the union, and the lineage claim FAILED: a tuned identity minted by
 // content_hash_of_value lands in the Fnv1a64 structural family, a stock identity comes off an ollama
-// digest in the extdeps.crypto.hash.Sha256 family, and comparing them yields ContentHashCrossFamilyIncomparable -- so
+// digest in the Sha256 family, and comparing them yields ContentHashCrossFamilyIncomparable -- so
 // "is the loaded model the tuned one we asked for" was not merely false, it was UNANSWERABLE.
 //
 // That is the cross-family wall doing exactly its job, and the lesson is about this domain rather

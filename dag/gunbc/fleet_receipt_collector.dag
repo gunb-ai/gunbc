@@ -3,7 +3,7 @@ module gunbc.fleet_receipt_collector
 
 // Operator verdict join 5 (2026-08-09): the receipts hosts PUBLISH were consumed by
 // nothing — converge wrote /opt/gunbc/receipts/<host>-converge-receipt.txt and
-// gunbc.fleet_convergence_verdict.fleet_convergence_verdict folded over whatever list a caller handed it, with no
+// fleet_convergence_verdict folded over whatever list a caller handed it, with no
 // collector in between, so the fold's NotConverged came from an empty registry rather
 // than from observed state. This module is that collector: read each fleet host's
 // published receipt at the modeled endpoint, PARSE it through one typed grammar (the
@@ -22,7 +22,7 @@ type CollectedHostReceipt
 
 // Forward grammar lives in converge_cli_receipt_line; this is the backward read of the
 // SAME line shape: "converge-receipt host=H applied=N drifted=N verdict=V". A missing
-// prefix, missing field, or unknown verdict label refuses (gunbc.host_converge.Absent), never guesses.
+// prefix, missing field, or unknown verdict label refuses (Absent), never guesses.
 fn parse_converge_receipt_line(line: String) -> gunbc.fleet_converge_cli.ConvergeCliReceipt? {
   let tokens = split(s: std.algebra.trim(s: line), delimiter: " ")
   if length(tokens) == 5
@@ -84,8 +84,8 @@ fn drop_prefix(s: String, prefix: String) -> String {
 
 // Review 50817: decode each label to ITS verdict constructor directly. An earlier
 // revision routed drifted/absent through converge_verdict(effective: "", expected:
-// label), which returns gunbc.host_converge.Absent whenever effective is empty — silently re-classifying a
-// published gunbc.host_converge.Drifted as gunbc.host_converge.Absent on collection, exactly the state-space conflation the
+// label), which returns Absent whenever effective is empty — silently re-classifying a
+// published Drifted as Absent on collection, exactly the state-space conflation the
 // header forbids (different remedies: run the converge vs build the observation).
 fn parse_converge_verdict_label(label: String) -> gunbc.host_converge.ConvergeVerdict? {
   if label == "converged" {
@@ -104,7 +104,7 @@ fn parse_converge_verdict_label(label: String) -> gunbc.host_converge.ConvergeVe
 }
 
 // One host's collection: cat the published receipt over the typed argv seam at the
-// modeled endpoint. Wire refusal or transport failure -> gunbc.host_converge.Absent with the cause; a first
+// modeled endpoint. Wire refusal or transport failure -> Absent with the cause; a first
 // line that does not decode -> Unparseable carrying the exact bytes.
 fn collect_host_receipt(host: String) -> gunbc.fleet_receipt_collector.CollectedHostReceipt {
   match gunbc.fleet_reach_endpoint.fleet_probe_target_for(host: host) {
@@ -143,8 +143,8 @@ fn receipt_first_line(raw: String) -> String? {
 // b1 converged-must-be-backed discriminator is testable hermetically with synthetic bytes.
 // A converged line-1 verdict is admitted as Collected ONLY when the receipt also carries an
 // observed revision cell; otherwise it is ConvergedUnbacked (refused from the fold), never
-// laundered into the registry as converged. gunbc.host_converge.Drifted/absent verdicts do not require the
-// observed cell (they are not claiming convergence). Empty stdout -> gunbc.host_converge.Absent; an undecodable
+// laundered into the registry as converged. Drifted/absent verdicts do not require the
+// observed cell (they are not claiming convergence). Empty stdout -> Absent; an undecodable
 // first line -> Unparseable (contradiction-shaped, never absence).
 fn classify_receipt_stdout(host: String, raw: String) -> gunbc.fleet_receipt_collector.CollectedHostReceipt {
   match receipt_first_line(raw: raw) {
@@ -221,7 +221,7 @@ data fleet_collect_receipt_path: String = "target/fleet-converge-collect-receipt
 // one enrollment authority / §5 no ambient trust): the collector runs in its OWN
 // isolated main-push job with a fresh ephemeral HOME and WIF-materialized key but no
 // durable known_hosts, so it MUST materialize the pinned enrolled-only config before
-// its SSH legs — otherwise gunbc.fleet_host_key_enrollment.fleet_host_key_enroll_apply's StrictHostKeyChecking-yes pin
+// its SSH legs — otherwise fleet_host_key_enroll_apply's StrictHostKeyChecking-yes pin
 // never lands here and the collector's ssh either refuses or falls back to ambient
 // known_hosts (the exact anchor hole the pin closes for the probe). Call it FIRST and
 // carry its readback in the collect receipt, mirroring the probe entry.

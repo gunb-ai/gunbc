@@ -164,7 +164,7 @@ fn materialize_artifact_wet(
 }
 
 // The projection into the generation carrier. ArtifactMaterialized is reachable from
-// exactly one arm, and only through v2.compiler.self_host.generation.observed_artifact_digest, whose argument is a
+// exactly one arm, and only through observed_artifact_digest, whose argument is a
 // Sha512Digest that existed only because sha512sum reported it for this path.
 fn artifact_identity_of(outcome: ArtifactMaterializationOutcome) -> v2.compiler.self_host.generation.GeneratedArtifactIdentity {
   match outcome {

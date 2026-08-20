@@ -421,7 +421,7 @@ fn gunbc_ci_fleet_reach_probe_invoke() -> String {
 // briansrls, ghrunner, root) — hostname + sudo -n -l, no writes. Rides the same probe
 // job so it reuses the one WIF/agent materialization (gunbc_ci_fleet_key_agent_script);
 // fleet_multi_principal_probe_wet uses typed_argv_probe_over_ssh over SSH_AUTH_SOCK, not
-// a std.measure.second Secret Manager fetch from gunbc run. Its receipt is a separate file.
+// a second Secret Manager fetch from gunbc run. Its receipt is a separate file.
 data gunbc_ci_multi_principal_probe_shell_emit_dissolution_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_multi_principal_probe_invoke — concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.fleet_multi_principal_probe fleet_multi_principal_probe_wet plus a cat of the typed receipt; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the step to orchestration emit over the typed gunbc.WitnessBin.Run route")
 
 fn gunbc_ci_multi_principal_probe_invoke() -> String {
@@ -470,7 +470,7 @@ data gunbc_ci_fleet_key_agent_shell_emit_dissolution_trigger: std.dissolution.Di
 //    could leave the key on disk with no exported PID for the outer cleanup to find.
 // #4 SECRET-IDENTITY VERIFICATION — before ssh-add, derive the public key from the fetched
 //    private material (ssh-keygen -y) and its fingerprint (ssh-keygen -lf) and compare to
-//    the modeled gunbc.fleet_ssh_access.fleet_automation_ssh_key_fingerprint. A wrong secret VERSION is then a
+//    the modeled fleet_automation_ssh_key_fingerprint. A wrong secret VERSION is then a
 //    located ProbeCredentialIdentityMismatch that CONTACTS NO HOST, never a downstream
 //    host-auth failure. The comparison is against the repo's single fingerprint authority.
 fn gunbc_ci_fleet_key_agent_script() -> String {
@@ -513,10 +513,10 @@ fn gunbc_ci_fleet_key_agent_cleanup_script() -> String {
 // otherwise "had zero callers, a disconnected mechanism". That step lived in `ci.yml`,
 // which #8283 deleted, so the wire returned to being exactly the disconnected mechanism it
 // was added to prevent: measured at deletion, `gunbc_ci_fleet_timer_install_invoke` had no
-// consumer but the `std.decl_ref.DeclarationRef` inside its own `std.disposition.Scaffold` row, and
+// consumer but the `DeclarationRef` inside its own `Scaffold` row, and
 // `fleet_timer_self_install` appears in neither surviving workflow.
 //
-// Its registered `std.disposition.Scaffold` and unbound `std.dissolution.DissolutionCondition` go with it. Both described a
+// Its registered `Scaffold` and unbound `DissolutionCondition` go with it. Both described a
 // concat-built foreign-executor shell awaiting bash-emit; deleting the emitter discharges
 // the obligation instead of carrying it, and an unbound condition whose subject no longer
 // exists can never report itself fired.

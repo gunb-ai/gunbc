@@ -179,7 +179,7 @@ data g2_union_corpus_facts: List<v2.lens.witness_cost_locality.ModuleImportFact>
   }
 ]
 
-// The one named live integration for this module: a single call to v2.std.fn_index.fn_arrow_decl_facts_live()
+// The one named live integration for this module: a single call to fn_arrow_decl_facts_live()
 // (a whole-tree scan) grounds every G2 roster-gate assertion below. Three tests used to each
 // call it independently against the identical entry/facts/carrier_homes triple, paying the
 // live scan three times for one fixed input — DESIGN §5 witness-cost-derives-from-purpose

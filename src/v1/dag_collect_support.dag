@@ -115,7 +115,7 @@ fn literal_value_fingerprint(value: std.syntax.LiteralValue) -> String {
 
 // match_pattern is a SubValueField (v1.std.core node_field_roles) carrying the
 // match-arm/field-binding semantics; the pattern's own Node subtrees
-// (Bind.declaration, v1.std.core.VariantPattern.field_bindings) must be folded in
+// (Bind.declaration, VariantPattern.field_bindings) must be folded in
 // recursively or two arms/bindings differing only by pattern collapse to the
 // same fingerprint.
 fn match_pattern_fingerprint_rec(pattern: MatchPattern?) -> String {

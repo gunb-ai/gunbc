@@ -1,9 +1,9 @@
 module v2.extdeps.formats.spice
 
 
-// A SPICE IDENTIFIER CARRIES ITS OWN SPELLING. It was a substrate v2.std.node.Symbol, and the only route
-// from a v2.std.node.Symbol to text in this module was a five-entry table covering r1/c1/v1/n1/n2 — so a deck
-// naming anything else emitted v2.std.optional.Absent, which spice_emit then rendered as the empty string. That
+// A SPICE IDENTIFIER CARRIES ITS OWN SPELLING. It was a substrate Symbol, and the only route
+// from a Symbol to text in this module was a five-entry table covering r1/c1/v1/n1/n2 — so a deck
+// naming anything else emitted Absent, which spice_emit then rendered as the empty string. That
 // is not a bounded profile, it is a fixture: the emitter worked for exactly the netlist the test
 // declared. The spelling now travels with the name, and nothing has to be extended to name a
 // sixth node.

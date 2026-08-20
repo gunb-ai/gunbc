@@ -3,6 +3,7 @@
 
 use self::ConstructorDeclarationLookup::*;
 use self::DeclarationLookupFailure::*;
+use self::DeclaredArgContract::*;
 use crate::std_algebra::AlgebraTypeTemplate::{ContainerOf, ReceiverSelf};
 use crate::std_algebra::CollectionSizeEffect::*;
 use crate::std_algebra::ContainerSource::{Named, SameAsReceiver};
@@ -34,9 +35,9 @@ use crate::v1_compiler_infer_sigs::FuncSigLookup::{
 };
 pub use crate::v1_compiler_infer_sigs::{FuncSigLookup, ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v1_compiler_infer_types::{
-    child_type_node, emit_map_has, enrich_kernel_type, is_declared_container_alias_spelling,
-    kernel_profile_lookup, method_receiver_element_node, node_is_keyed_collection,
-    node_is_set_collection, nominal_type_ref, normalize_access_type_node,
+    child_type_node, emit_map_has, enrich_kernel_type, instantiate_algebra_type,
+    is_declared_container_alias_spelling, kernel_profile_lookup, method_receiver_element_node,
+    node_is_keyed_collection, node_is_set_collection, nominal_type_ref, normalize_access_type_node,
     reground_alias_carrier_identity,
 };
 use crate::v1_rt;
@@ -989,6 +990,98 @@ pub fn lookup_structural_method(
                     })
                 }
             }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum DeclaredArgContract {
+    ContractKnown { types: Rc<Vec<Rc<Node>>> },
+    MethodUnresolved,
+    ContractUnavailable,
+}
+impl DeclaredArgContract {
+    pub fn types(&self) -> Rc<Vec<Rc<Node>>> {
+        match self {
+            DeclaredArgContract::ContractKnown { types: __val, .. } => __val.clone(),
+            DeclaredArgContract::MethodUnresolved => panic!("no types on unit variant"),
+            DeclaredArgContract::ContractUnavailable => panic!("no types on unit variant"),
+        }
+    }
+}
+
+pub fn declared_arg_types_for_method(
+    receiver_type: Rc<Node>,
+    method_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<DeclaredArgContract> {
+    {
+        let lookup = lookup_structural_method(
+            receiver_type.clone(),
+            method_name.clone(),
+            source_indices.clone(),
+        );
+        match lookup.resolution.clone() {
+            None => Rc::new(DeclaredArgContract::MethodUnresolved),
+            Some(mfr) => match mfr.algebra_template.clone() {
+                Some(t) => {
+                    let first_is_self = match t.param_types.clone().first().cloned() {
+                        Some(tp) => match (*tp.clone()).clone() {
+                            AlgebraTypeTemplate::ReceiverSelf => true,
+                            _ => false,
+                        },
+                        None => false,
+                    };
+                    let non_receiver_templates = if first_is_self.clone() {
+                        Rc::new(
+                            t.param_types
+                                .clone()
+                                .iter()
+                                .cloned()
+                                .skip(1 as usize)
+                                .collect::<Vec<_>>(),
+                        )
+                    } else {
+                        t.param_types.clone()
+                    };
+                    Rc::new(DeclaredArgContract::ContractKnown {
+                        types: Rc::new({
+                            let mut __result = Vec::new();
+                            for tp in non_receiver_templates.clone().iter().cloned() {
+                                __result.push(
+                                    instantiate_algebra_type(
+                                        tp.clone(),
+                                        receiver_type.clone(),
+                                        source_indices.clone(),
+                                    )
+                                    .ty
+                                    .clone(),
+                                );
+                            }
+                            __result
+                        }),
+                    })
+                }
+                None => match mfr.field_node.clone().inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: callable, .. }) => {
+                        if ((callable.params.clone().len() as i64) > 0) {
+                            Rc::new(DeclaredArgContract::ContractKnown {
+                                types: Rc::new({
+                                    let mut __result = Vec::new();
+                                    for p in callable.params.clone().iter().cloned() {
+                                        __result.push(param_node_type_expr(p.clone()));
+                                    }
+                                    __result
+                                }),
+                            })
+                        } else {
+                            Rc::new(DeclaredArgContract::ContractUnavailable)
+                        }
+                    }
+                    _ => Rc::new(DeclaredArgContract::ContractUnavailable),
+                },
+            },
         }
     }
 }

@@ -240,7 +240,7 @@ type GrammarProduction {
 // A grammar's error-recovery sync tokens are finite and known at authoring time — every producer in
 // the corpus writes either an empty set or a literal list of keyword classes. Carrying them as
 // `std.types.Set<v2.std.node.Symbol>` made them a POINTWISE-POWER characteristic function (`std.types` grounds
-// `std.types.Set<element> = PointwisePower<element>`), which is the right grounding for a set in general and
+// `Set<element> = PointwisePower<element>`), which is the right grounding for a set in general and
 // the wrong carrier for six literal keywords: a characteristic function cannot be enumerated, so
 // the whole grammar value became unhashable through this one field.
 //
@@ -250,7 +250,7 @@ type GrammarProduction {
 // language in the corpus and not only `.dag`. The measured consequence was a full ~12s grammar
 // preparation on every parse, including of an empty module.
 //
-// The field is therefore the enumeration it always was. `std.types.Set` keeps its grounding untouched; what
+// The field is therefore the enumeration it always was. `Set` keeps its grounding untouched; what
 // changed is that this field stopped borrowing a power-set to carry a list.
 type GrammarRoot {
   start: v2.std.node.Symbol

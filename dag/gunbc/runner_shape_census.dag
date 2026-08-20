@@ -31,7 +31,7 @@ fn shapes_for(rows: List<extdeps.ci_runner.types.RunnerShapeRow>, provider: std.
 //
 // The reading is a quotient of two figures in the vendor's OWN quoted unit, so
 // it needs no byte-basis conversion — 48 GB over 16 vCPU is 3 GB per vCPU
-// whichever G is meant, and the result is carried as a extdeps.ci_runner.types.QuotedByteMagnitude in
+// whichever G is meant, and the result is carried as a QuotedByteMagnitude in
 // that same unit rather than as a scale-free number. What it does need is for the provider's sizes to
 // AGREE, and one surveyed provider's do not: GitHub's arm64 sizes are mostly
 // four GB per vCPU but include a 5-vCPU/14 GB size and a 64-vCPU/208 GB size.

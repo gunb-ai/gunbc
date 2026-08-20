@@ -1319,31 +1319,17 @@ fn observe_protocol_schema_identity(
   if made.success == false {
     none
   } else {
-    let script = retained_foreign(
-      body: concat(
-        "'",
-        concat(
-          native_executable as String,
-          concat(
-            "' app-server generate-json-schema -o '",
-            concat(schema_dir as String, "'"),
-          ),
-        ),
-      ),
-      reason: "Codex generate-json-schema observation pending typed WitnessBin argv enrollment" as std.types.NonEmptyStr,
+    let gen = codex_app_server.Cli.GenerateJsonSchema(
+      executable: extdeps.llm.codex_app_server.CodexAppServerExecutable { path: native_executable },
+      output_dir: schema_dir,
     )
-    let gen = shell.Exec.Run(script: script)
     if gen.success == false {
       none
     } else {
-      let list_script = retained_foreign(
-        body: concat(
-          "find '",
-          concat(schema_dir as String, "' -type f -name '*.json' | sort"),
-        ),
-        reason: "Protocol schema bundle file list pending typed Find enrollment" as std.types.NonEmptyStr,
+      let listed = shell.Find.FilesByNameSorted(
+        root: schema_dir,
+        name_glob: "*.json" as std.types.NonEmptyStr,
       )
-      let listed = shell.Exec.Run(script: list_script)
       if listed.success == false {
         none
       } else {
@@ -1635,41 +1621,48 @@ fn validate_existing_codex_runtime_release(
 
 data codex_runtime_release_publish_note: String = "Publication uses a UNIQUE same-parent staging directory (mktemp -d .<hex>.publishing.XXXXXX), never a deterministic .<hex>.publishing path. Tree-identity scratch (materialized-tree.canonical) is ALWAYS outside the publishing/release tree — passed as scratch_dir — so validation cannot plant a file into the tree it is measuring. Final install is GNU mv -T (no-target-directory): equivalent to renameat2(RENAME_NOREPLACE) for directories on Linux — never nests into an existing winner. On AlreadyExists, delete the contender staging tree and validate the winner with the same external scratch."
 
+// `emptied.success == false` and `moved.success == false` are NOT the same state (review
+// on #8621): the former means the mktemp placeholder was not empty -- something else wrote
+// into a name this call believed was exclusively its own, an exclusivity violation with no
+// established remedy -- while the latter is an ordinary move refusal (destination exists,
+// cross-device, permissions) against a placeholder this call knows is empty and its own.
+// Collapsing both to one Bool, which the pre-typed shell script necessarily did (one exit
+// code), is the state-space conflation DESIGN lists under recurring failure modes; the typed
+// operations below create the distinction, so it is kept to the caller rather than discarded
+// at the binding. The recursive-force cleanup therefore only runs on the move-refusal arm --
+// not-empty is left untouched rather than swept, since rm -rf on a placeholder this call does
+// not own would destroy whatever the other writer put there.
+type UniquePublishingRelocateOutcome
+  = UniquePublishingRelocateReady {
+      path: FilePath
+    }
+  | UniquePublishingPlaceholderNotEmpty
+  | UniquePublishingRelocateRefused
+
 fn relocate_build_root_to_unique_publishing(
   build_root: std.types.FilePath,
   parent: std.types.FilePath,
   hex: String,
-) -> std.types.FilePath? {
+) -> UniquePublishingRelocateOutcome {
   let template = concat(
     parent as String,
     concat("/.", concat(hex, ".publishing.XXXXXX")),
   ) as std.types.FilePath
   let staged = shell.Mktemp.DirWithTemplate(template: template)
   if staged.success == false {
-    none
+    UniquePublishingRelocateRefused
   } else {
-    let script = retained_foreign(
-      body: concat(
-        "rmdir '",
-        concat(
-          staged.path as String,
-          concat(
-            "' && mv -T '",
-            concat(
-              build_root as String,
-              concat("' '", concat(staged.path as String, "'")),
-            ),
-          ),
-        ),
-      ),
-      reason: "Exclusive unique publishing relocate: rmdir mktemp placeholder then mv -T build root onto that name" as std.types.NonEmptyStr,
-    )
-    let run = shell.Exec.Run(script: script)
-    if run.success == false {
-      let _ = shell.Remove.RecursiveForce(path: staged.path)
-      none
+    let emptied = shell.Remove.EmptyDirectory(path: staged.path)
+    if emptied.success == false {
+      UniquePublishingPlaceholderNotEmpty
     } else {
-      Present { value: staged.path }
+      let moved = shell.Move.NoReplaceDirectory(source: build_root, destination: staged.path)
+      if moved.success == false {
+        let _ = shell.Remove.RecursiveForce(path: staged.path)
+        UniquePublishingRelocateRefused
+      } else {
+        UniquePublishingRelocateReady { path: staged.path }
+      }
     }
   }
 }
@@ -1678,17 +1671,7 @@ fn rename_publishing_noreplace(
   publishing: std.types.FilePath,
   dest: std.types.FilePath,
 ) -> Bool {
-  let script = retained_foreign(
-    body: concat(
-      "mv -T '",
-      concat(
-        publishing as String,
-        concat("' '", concat(dest as String, "'")),
-      ),
-    ),
-    reason: "Atomic no-nest publication rename (GNU mv -T / renameat2 RENAME_NOREPLACE equivalent for dirs)" as std.types.NonEmptyStr,
-  )
-  shell.Exec.Run(script: script).success
+  shell.Move.NoReplaceDirectory(source: publishing, destination: dest).success
 }
 
 fn codex_runtime_release_ready_with_current_link(
@@ -1759,11 +1742,15 @@ fn release_codex_runtime_bundle_immutable(
             parent: parent,
             hex: hex,
           ) {
-            Absent =>
+            UniquePublishingPlaceholderNotEmpty =>
+              CodexRuntimeReleaseFailed {
+                cause: "unique publishing staging placeholder was not empty (exclusivity violation, not swept)" as NonEmptyStr,
+              }
+            UniquePublishingRelocateRefused =>
               CodexRuntimeReleaseFailed {
                 cause: "unique publishing staging relocate refused" as std.types.NonEmptyStr,
               }
-            Present { value: publishing } =>
+            UniquePublishingRelocateReady { path: publishing } =>
               if write_codex_runtime_receipt_sidecar(
                 release_root: publishing,
                 receipt_identity: receipt.receipt_identity,
@@ -2478,20 +2465,10 @@ fn finish_bisect_generate_protocol_schema_dir(
   if made.success == false {
     false
   } else {
-    let script = retained_foreign(
-      body: concat(
-        "'",
-        concat(
-          native_executable as String,
-          concat(
-            "' app-server generate-json-schema -o '",
-            concat(schema_dir as String, "'"),
-          ),
-        ),
-      ),
-      reason: "Protocol schema interpreter bisect generate-json-schema pending typed WitnessBin argv enrollment" as std.types.NonEmptyStr,
-    )
-    shell.Exec.Run(script: script).success
+    codex_app_server.Cli.GenerateJsonSchema(
+      executable: extdeps.llm.codex_app_server.CodexAppServerExecutable { path: native_executable },
+      output_dir: schema_dir,
+    ).success
   }
 }
 

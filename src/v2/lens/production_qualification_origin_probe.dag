@@ -351,7 +351,7 @@ fn count_derived_fixture_origin_mint_sites(
   count_derived_mint_sites_with_origin(sites: sites, origin: FixtureDerived)
 }
 
-// Closed-subject oracle (DESIGN §5): structural_red_control_planted_decl carries exactly one FixtureDerived v2.compiler.self_host.emitter_producer_provenance.SourceProduced row by construction — independent of v2.std.fn_index.fn_arrow_decl_facts_live() population.
+// Closed-subject oracle (DESIGN §5): structural_red_control_planted_decl carries exactly one FixtureDerived SourceProduced row by construction — independent of fn_arrow_decl_facts_live() population.
 data production_qualification_planted_fixture_origin_oracle_count: Int = 1
 
 data production_qualification_live_scope_fixture_origin_policy_note: String = "Live-scope policy (DESIGN §5, review 48255): G2 fn-arrow marshal does not yet surface mint callees on live fixture fns in the witness entry closure, so known_fixture_origin_mint_surface_count_in_scope() reads zero today — documented expectation, NOT an executing tree-copied equality oracle. Discriminating signal is the planted closed-subject oracle (production_qualification_planted_fixture_origin_oracle_count). Frontier: witness_live_scope_fixture_origin_discoverable_in_entry_closure_reds (explicit_witness_admission) expects live FixtureDerived discovery once marshal exposes callee atoms — greens when count > 0, then row deletes and a closed-subject expected population or monotone debt contract may enroll."

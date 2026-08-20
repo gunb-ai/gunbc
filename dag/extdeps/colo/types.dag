@@ -37,7 +37,7 @@ type ColoFacilityRow {
   facility_note: std.types.NonEmptyStr
 }
 
-// Power as a retail colocation offer states it. std.measure.Watt allocations and breakered feeds are
+// Power as a retail colocation offer states it. Watt allocations and breakered feeds are
 // different commercial objects: an allocation is a cap the provider meters or polices, a
 // feed is a circuit whose usable share is set by the continuous-load derating the consumer
 // applies. An offer that states neither is PowerUnread, never a guessed figure; an offer

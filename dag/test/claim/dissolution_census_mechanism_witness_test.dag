@@ -1,7 +1,7 @@
 module test.claim.dissolution_census_mechanism_witness_test
 
 // Mechanism half of the dissolution-census split (DESIGN.md "witness cost
-// derives from purpose", operator ruling 2026-08-04): std.roster_frontier.fold_frontier_expiry's
+// derives from purpose", operator ruling 2026-08-04): fold_frontier_expiry's
 // bound/pending/fired/unbound classification proven on a planted roster, so
 // this file never imports gunbc.census_closure_frontier or the ~20-module
 // extdeps fan-in it concatenates. The breadth-preserving half stays the

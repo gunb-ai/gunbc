@@ -5,7 +5,7 @@ module test.claim.long.dissolution_census_witness_test
 // fold_frontier_expiry mechanism and the construction-wall checks are proven
 // on a planted fixture, per-PR, in
 // test.claim.dissolution_census_mechanism_witness_test. This file carries
-// only the properties whose subject IS the live gunbc.census_closure_frontier.census_closure_frontier_rows
+// only the properties whose subject IS the live census_closure_frontier_rows
 // roster and cannot be proven on synthetic data. Enrolled on the falsifier
 // FalsifierSubstrateLongLane cadence (gunbc.ci_layer_roots
 // falsifier_substrate_long_lane_rows), not per-PR fast-lane discovery.

@@ -7,14 +7,14 @@ module product.inventory
 // is admissible. It answers NOTHING about which lots a particular operator owns — this module is
 // deliberately row-free, and concrete lot rows are a separate downstream fact.
 //
-// Reuse, never fork (DESIGN section 3): product.placement_supply.ProcurementReceiptIdentity and product.placement_supply.PhysicalAssetIdentity are
+// Reuse, never fork (DESIGN section 3): ProcurementReceiptIdentity and PhysicalAssetIdentity are
 // imported from product.placement_supply, which already models the physical placement seam this
 // module hands stock to on installation; catalog rows are cited by std.decl_ref std.decl_ref.DeclarationRef,
 // which is also how std.pareto keys identity, so no eq or display is re-minted here; money is
 // std.measure std.measure.MoneyOnce; lot identity is std.minted_identity std.minted_identity.MintedId over this module's own
 // subject marker.
 //
-// Grain (DESIGN section 2, deep): fungible stock lives at LOT grain. A product.placement_supply.PhysicalAssetIdentity
+// Grain (DESIGN section 2, deep): fungible stock lives at LOT grain. A PhysicalAssetIdentity
 // appears only where an individual unit genuinely becomes distinguishable — installation, where
 // the unit acquires a placement and a serial. Carrying an asset identity per unit before that
 // would be inventing a distinction the world does not yet make.

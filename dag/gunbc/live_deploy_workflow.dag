@@ -157,7 +157,7 @@ fn live_deploy_advance_fleet_desired_step() -> extdeps.github.actions.Step {
 // pull-requests, no issues, no actions, no id_token.
 //
 // This annotation sits here rather than beside the permissions field because DESIGN section 4c
-// models annotations at MODULE-ITEM grain only; the first cut put it inside the extdeps.github.expressions.Job body and the
+// models annotations at MODULE-ITEM grain only; the first cut put it inside the Job body and the
 // floor refused the module outright (run 32324870744). A comment is not free-floating prose that
 // can live wherever it reads best -- it attaches to a declaration, and inside a body there is no
 // declaration for it to attach to.

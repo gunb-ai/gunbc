@@ -4840,7 +4840,7 @@ fn dag_formal_production_fn_bind() -> v2.std.grammar.FormalProduction {
 
 // Delimiting discipline for this target: .dag is ML-style -- if c then a else b.
 // All three keywords are really lexed, and the else arm ENDS the expression, so
-// there is no closing token, and v2.std.compilers.target_model.ConditionalSelfDelimiting carries no field in
+// there is no closing token, and ConditionalSelfDelimiting carries no field in
 // which one could be invented. The loop form is self-delimiting for the same
 // reason.
 fn dag_value_expression_projection() -> v2.std.compilers.target_model.TargetValueExpressionProjection {

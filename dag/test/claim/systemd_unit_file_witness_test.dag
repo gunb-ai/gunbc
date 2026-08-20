@@ -86,7 +86,7 @@ test fn installable_and_not_installable_render_differently() -> Bool {
 
 // ── The directive names are systemd's, and each is pinned to a distinct constant ────────────────
 
-// `extdeps.systemd.unit_file.ServiceType` renders as `Type=`, NOT `extdeps.systemd.unit_file.ServiceType=`. The variant is named for what it is in the
+// `ServiceType` renders as `Type=`, NOT `ServiceType=`. The variant is named for what it is in the
 // model; the wire name is systemd's. Nothing but an assertion on the literal catches a variant whose
 // constructor name leaked into the emitted bytes.
 test fn service_type_renders_as_the_type_directive() -> Bool {
@@ -115,7 +115,7 @@ test fn each_install_directive_renders_its_own_systemd_name() -> Bool {
       == "extdeps.systemd.unit_file.RequiredBy=b"
 }
 
-// An `extdeps.systemd.unit_file.Environment=` value legitimately contains `=`. Splitting on the first separator is the obvious
+// An `Environment=` value legitimately contains `=`. Splitting on the first separator is the obvious
 // wrong implementation, and this pins the whole assignment through.
 test fn an_environment_assignment_keeps_its_own_equals_sign() -> Bool {
   extdeps.systemd.unit_file.systemd_service_directive_line(
@@ -167,8 +167,8 @@ test fn the_live_belt_timer_serializes_to_exactly_its_deployed_bytes() -> Bool {
   ) == "[Unit]\nDescription=gunbc roadmap belt tick cadence\n\n[Timer]\nUnit=gunbc-srv1-green-belt.service\nOnBootSec=2min\nOnUnitInactiveSec=60s\nAccuracySec=5s\n\n[Install]\nWantedBy=timers.target\n"
 }
 
-// `extdeps.systemd.unit_file.TimerUnit` renders as `Unit=`, not `extdeps.systemd.unit_file.TimerUnit=` — the same variant-name-versus-wire-name trap
-// `extdeps.systemd.unit_file.ServiceType` carries, and the one most likely to leak here because [Unit] is also a section name.
+// `TimerUnit` renders as `Unit=`, not `TimerUnit=` — the same variant-name-versus-wire-name trap
+// `ServiceType` carries, and the one most likely to leak here because [Unit] is also a section name.
 test fn the_timer_unit_directive_renders_as_the_bare_unit_key() -> Bool {
   extdeps.systemd.unit_file.systemd_timer_directive_line(directive: extdeps.systemd.unit_file.TimerUnit { target: "a.service" as std.types.NonEmptyStr })
     == "Unit=a.service"
@@ -199,7 +199,7 @@ test fn persistent_renders_systemds_own_boolean_spelling() -> Bool {
 }
 
 // The three service directives added for the live fleet units. `User=`/`Group=` are the pair whose
-// variant names had to differ from their wire names, so a leak shows up as `extdeps.systemd.unit_file.ServiceUser=`.
+// variant names had to differ from their wire names, so a leak shows up as `ServiceUser=`.
 test fn the_added_service_directives_render_their_own_systemd_names() -> Bool {
   extdeps.systemd.unit_file.systemd_service_directive_line(directive: extdeps.systemd.unit_file.ServiceUser { name: "briansrls" as std.types.NonEmptyStr })
     == "User=briansrls"
@@ -210,7 +210,7 @@ test fn the_added_service_directives_render_their_own_systemd_names() -> Bool {
     ) == "extdeps.systemd.unit_file.EnvironmentFile=/etc/x.env"
 }
 
-// `extdeps.systemd.unit_file.EnvironmentFile=` is not a spelling of `extdeps.systemd.unit_file.Environment=`. One names a file, the other carries an
+// `EnvironmentFile=` is not a spelling of `Environment=`. One names a file, the other carries an
 // assignment, and a renderer that fused them would silently turn a path into a variable named by it.
 test fn environment_and_environment_file_are_distinct_directives() -> Bool {
   extdeps.systemd.unit_file.systemd_service_directive_line(directive: extdeps.systemd.unit_file.EnvironmentFile { path: "/etc/x.env" as std.types.NonEmptyStr })

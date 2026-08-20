@@ -2873,7 +2873,9 @@ pub fn is_list_shrink_expr(
                 && match method_arg_nodes(expr.clone()).first().cloned() {
                     Some(arg_node) => {
                         match (*arg_value(arg_node.clone()).expr_data.clone()).clone() {
-                            ExprData::ExprLiteral { ref value, .. } => {
+                            ExprData::ExprLiteral { ref value, .. }
+                                if matches!(value.as_ref(), LiteralValue::LitInt { .. }) =>
+                            {
                                 let LiteralValue::LitInt { value: n, .. } = value.as_ref() else {
                                     unreachable!()
                                 };
@@ -2903,7 +2905,9 @@ pub fn is_generalized_shrink(expr: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIn
                 && match method_arg_nodes(expr.clone()).first().cloned() {
                     Some(arg_node) => {
                         match (*arg_value(arg_node.clone()).expr_data.clone()).clone() {
-                            ExprData::ExprLiteral { ref value, .. } => {
+                            ExprData::ExprLiteral { ref value, .. }
+                                if matches!(value.as_ref(), LiteralValue::LitInt { .. }) =>
+                            {
                                 let LiteralValue::LitInt { value: n, .. } = value.as_ref() else {
                                     unreachable!()
                                 };
@@ -4215,7 +4219,9 @@ pub fn is_arithmetic_descent_expr(
                 } => {
                     ((expr_var_name_at(left.clone(), si.clone()) == param_name.clone())
                         && match (*right.expr_data.clone()).clone() {
-                            ExprData::ExprLiteral { ref value, .. } => {
+                            ExprData::ExprLiteral { ref value, .. }
+                                if matches!(value.as_ref(), LiteralValue::LitInt { .. }) =>
+                            {
                                 let LiteralValue::LitInt { value: n, .. } = value.as_ref() else {
                                     unreachable!()
                                 };

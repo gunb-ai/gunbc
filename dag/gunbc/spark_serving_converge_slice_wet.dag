@@ -364,7 +364,7 @@ func spark_serving_converge_slice_wet() -> std.process.ProcessExit
 // non-zero exit aborts before the step cats the file, so carrying the body here is what keeps
 // the evidence in the log on exactly the runs that need it most.
 //
-// gunbc.design.interaction.Receipt emission for an ALREADY-SELECTED host population. Selection refuses upstream, so
+// Receipt emission for an ALREADY-SELECTED host population. Selection refuses upstream, so
 // this fold never has to decide what "no target" means — the only way to reach it with the
 // full host list is the observe-only arm.
 fn spark_serving_converge_slice_emit_receipt(

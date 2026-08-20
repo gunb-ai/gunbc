@@ -191,7 +191,7 @@ fn citation_is_current(c: CitationCurrency) -> Bool {
 // "dedicated I/O" sat unreconciled here against the data sheet's 96 for one reason: the repository
 // was citing a 2017 revision that did not carry the row which relates them. The current revision
 // does. Its Pin Information Summary states Total General Purpose Single Ended I/O = 96 and Total
-// Dedicated extdeps.github.expressions.Inputs = 2 for this column, and 96 + 2 is the product table's 98 exactly. So the
+// Dedicated Inputs = 2 for this column, and 96 + 2 is the product table's 98 exactly. So the
 // third inclusion rule was never a contradiction; it was a sum across two rows this repository had
 // not read, and the remedy was to go and read the current document rather than to model harder.
 data vendor_total_io_from_datasheet_rows: PopulationProjection = PopulationProjection {

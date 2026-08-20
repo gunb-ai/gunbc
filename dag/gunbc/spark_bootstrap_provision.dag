@@ -604,7 +604,7 @@ fn spark_cell_in(c: extdeps.cloud.gcp.iam.GcpIamBindingCell, xs: List<extdeps.cl
   gcp_cell_in(c: c, xs: xs)
 }
 
-// gunbc.bootstrap.Ownership is asked at CELL grain too. A model that owns (member M, role accessor) does not
+// Ownership is asked at CELL grain too. A model that owns (member M, role accessor) does not
 // thereby own (member M, role admin): the second may have been granted by someone else for a
 // reason this model cannot see, so removing it would be acting outside our authority even though
 // the member is one we recognise.

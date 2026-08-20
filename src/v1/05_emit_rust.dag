@@ -2931,8 +2931,13 @@ fn collect_value_emit_type_surface_names(n: v1.std.core.Node, source_indices: Ma
       record_lit_ref_names(n: n, source_indices: source_indices, type_summaries: type_summaries, variant_to_enum: variant_to_enum)
     v1.std.core.ExprMatch => collect_match_pattern_parent_enums(expr: n, source_indices: source_indices, emit_info: emit_info)
     _ =>
-      let from_inferred = emit_inferred_type_leaf_name(n: n, source_indices: source_indices)
-      let from_inferred_list = if from_inferred != "" { [from_inferred] } else { [] }
+      let from_inferred_list = match n.inferred {
+        Present { value: v1.std.core.Resolved { node: rt } } =>
+          let is_optional = rt.return_cardinality == v1.std.core.CardOptional
+          let peeled_rt = if is_optional { v1.std.core.with_required_cardinality(n: rt) } else { rt }
+          v1.compiler.infer_emit_info.collect_type_node_import_surface_names(n: peeled_rt, source_indices: source_indices)
+        _ => []
+      }
       let nm = v1.std.core.authored_name_at(source_indices: source_indices, node: n)
       let from_variant = match map_get(variant_to_enum, nm) {
         Present { value: parent } => if parent != "" { [parent] } else { [] }
@@ -8349,6 +8354,9 @@ fn emit_rust_generic_method_call(method_name: String, receiver: v1.std.core.Node
     let recv_str = emit_typed_expr_base(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
     let arg_strs = args |> map(a => emit_cloned_arg(texpr: v1.std.core.arg_value(n: a), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
     concat("(", recv_str, ".", v1.compiler.emit.emit_ident(name: function_name, target: v1.compiler.artifact.Rust), ")(", arg_strs |> join(separator: ", "), ")")
+  } else if map_contains_key(extdeps.languages.rust.emit.rt_functions(), function_name) == false {
+    let spec = v1.compiler.emit_core_support.language_spec(target: v1.compiler.artifact.Rust)
+    v1.compiler.emit_core_support.apply_type_template1(template: spec.error_type_template, arg0: concat("method ", function_name, " is neither a resolved callable receiver field nor a registered v1_rt bridge function"))
   } else {
   let recv_str = if rust_runtime_bridge_passes_receiver_by_ref(function_name: function_name) {
     concat("&", emit_typed_expr_base(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))

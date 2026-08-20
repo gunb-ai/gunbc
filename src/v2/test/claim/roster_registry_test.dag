@@ -5,7 +5,7 @@ module v2.test.claim.roster_registry_test
 
 
 // Constructs the empty condition through the NON-LITERAL path deliberately.
-// The literal form `std.dissolution.unbound_dissolution(description: "")` is refused at compile
+// The literal form `unbound_dissolution(description: "")` is refused at compile
 // now that the parameter is NonEmptyStr -- that is the wall. Refinement at
 // non-literal positions is still deferred, and that gap is exactly what the
 // downstream well-formedness guard defends, so this control has to reach it

@@ -5,7 +5,7 @@ module v2.test.lens_cost.disj_max
 // agrees on a zero first operand: taking the max and keeping the first child both yield the
 // second child, so a Disj whose cheap arm is a bare Atom cannot distinguish max from
 // first-child-wins. Wrapping it in a Transform makes the cheap arm cost unit — still strictly
-// dominated by the v2.std.node.Cardinality arm, so this witness's claim is unchanged — while a rule that
+// dominated by the Cardinality arm, so this witness's claim is unchanged — while a rule that
 // keeps the first alternative now answers unit instead of linear (verified by mutation,
 // gunbc#8505).
 data disj_max_cheap_body: v2.std.node.Node = v2.std.node.Node {

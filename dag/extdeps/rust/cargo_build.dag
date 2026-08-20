@@ -10,6 +10,8 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 
 data cargo_compile_env: Map<String, String> = empty_map()
 
+data cargo_test_with_cwd_env_note: String = "cargo.Build.TestWithCwdEnv: env composes cwd (-C) and process env vars (leading VAR=val argv words) into ONE argv vector, matching the shell.Find.Files precedent of argv-native env -C workdir substitution — no shell is needed to chain a cd/export prefix onto a cargo invocation (SHELL-DAG dissolution of the interpreter_dispatch_bijection_real_roster_transport retained_foreign multi-line script: set -euo pipefail; cd; export; two cargo test invocations, now two sequential typed calls with caller-side short-circuit)."
+
 fn cargo_build_jobs_flag(count: Int) -> List<String> {
   ["--jobs", to_string(count)]
 }
@@ -87,6 +89,22 @@ service cargo.Build {
     exit {
       0 => Unit
       101 => String "Tests failed"
+    }
+  }
+
+  operation TestWithCwdEnv {
+    input { workdir: FilePath, cargo_bin: NonEmptyStr, env: List<String> = [], extra_args: List<String> = [] }
+    output {
+      success: Bool from "exit_success"
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["env", "-C", "{workdir}", env, "{cargo_bin}", "test", extra_args] }
+    exit {
+      0 => Unit
+      101 => String "Tests failed"
+      nonzero => String "cargo test error"
     }
   }
 

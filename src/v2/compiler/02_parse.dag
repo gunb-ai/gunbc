@@ -1062,7 +1062,7 @@ fn compute_nullable_round(root: v2.std.grammar.GrammarRoot, ns: std.types.Set<v2
   )
 }
 
-// THE CONVERGENCE MEASURE. `std.types.Set` is a `PointwisePower` — a characteristic function — so two sets
+// THE CONVERGENCE MEASURE. `Set` is a `PointwisePower` — a characteristic function — so two sets
 // cannot be compared directly, and the fixpoint cannot stop by testing `next == previous`. It can
 // stop on a MONOTONE MEASURE instead: `compute_nullable_step` only ever inserts, so the number of
 // productions the set admits rises until the round adds nothing, and equal counts across a round

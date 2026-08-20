@@ -2,7 +2,7 @@ module test.fixture.floor_expected_red_coherence.severed_chunk_fixture
 
 
 // Mimics floor_expected_red.dag's chunk/aggregator shape at fixture scale: several
-// chunk_NN functions, each a pure nested std.algebra.Cons/std.algebra.Empty literal chain of string-literal
+// chunk_NN functions, each a pure nested Cons/Empty literal chain of string-literal
 // identities, plus a hand-authored aggregator that links them by call. This specimen
 // deliberately severs chunk_severed from the aggregator — chunk_severed is declared
 // and its body authors two identities, but no call to it appears in

@@ -31,7 +31,7 @@ test fn linger_slice_enable_linger_remote_argv_is_portable_word_list() -> Bool {
   }
 }
 
-// THE FUSION CONTROL. Before the command-sequence repair, gunbc.spark_serving_converge_realize.realize_spark_serving_install_effect_commands
+// THE FUSION CONTROL. Before the command-sequence repair, realize_spark_serving_install_effect_commands
 // appended argv WORDS across effects, so two effects produced ONE argv with the second command's
 // words as trailing operands of the first. Nothing refused it, because every word is individually
 // portable. Two of the same effect is the smallest input that exhibits it with the single arm that

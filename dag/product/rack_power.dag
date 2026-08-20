@@ -35,7 +35,7 @@ module product.rack_power
 // admission takes the derated capacity and this note is replaced by the citation.
 
 // A DECLARED ASSUMPTION, NOT A CITED FACT, and it is a distinct carrier so it cannot be passed where
-// a measured quantity is expected. extdeps.languages.css.values.Percent because power factor is a ratio and this keeps the
+// a measured quantity is expected. Percent because power factor is a ratio and this keeps the
 // comparison in integers; the range is open at neither end - zero would mean a load drawing current
 // and no power, and above one hundred is not a power factor at all.
 type DeclaredPowerFactor sole_constructor {

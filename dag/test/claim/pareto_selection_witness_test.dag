@@ -2,7 +2,7 @@ module test.claim.pareto_selection_witness
 
 // SYNTHETIC FIXTURES ONLY. The spine is domain-blind, so its witness plants exact entries
 // and asserts exact standings - including the refusal arms a real corpus may not exercise
-// on the day the wall matters. Identity is a std.decl_ref.DeclarationRef pointing at the fixture row
+// on the day the wall matters. Identity is a DeclarationRef pointing at the fixture row
 // itself; display labels are deliberately reused across distinct identities to prove the
 // label carries no authority.
 
@@ -199,7 +199,7 @@ fn witness_not_dominated(s: std.pareto.ParetoStanding) -> Bool {
   }
 }
 
-// CONTROL 1. Strict domination lands std.pareto.DominatedBy with EVERY dominator named BY IDENTITY
+// CONTROL 1. Strict domination lands DominatedBy with EVERY dominator named BY IDENTITY
 // and its winning axes carried as axis identities: cheap-strong beats dear-weak on both
 // axes, dear-strong beats it on power alone, and the fold reports both rather than
 // latching whichever the field order presented first. The label derivation renders the

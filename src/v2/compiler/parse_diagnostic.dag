@@ -1,7 +1,7 @@
 module v2.compiler.parse_diagnostic
 
 
-// ParseDiagnosticEvidence is parse-stage evidence orthogonal to the universal gunbc.output_policy.Diagnostic carrier. Grammar-choice overlap rows live here — never on Correction, Locus, or gunbc.output_policy.Diagnostic itself.
+// ParseDiagnosticEvidence is parse-stage evidence orthogonal to the universal Diagnostic carrier. Grammar-choice overlap rows live here — never on Correction, Locus, or Diagnostic itself.
 type ParseDiagnosticEvidence
   = NoParseDiagnosticEvidence
   | GrammarChoiceAmbiguityEvidence { row: v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow }

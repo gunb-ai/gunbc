@@ -1956,7 +1956,7 @@ fn rust_staging_lex() -> v2.std.compilers.lexing.LexRules {
 // Spellings for the value-expression families whose shapes are already
 // self-closing, so the production target can serialize them without a
 // hand-authored declaration scaffold supplying their punctuation.
-// closure_nop is deliberately empty: v2.std.compilers.target_model.TargetClosureShape requires an `open`
+// closure_nop is deliberately empty: TargetClosureShape requires an `open`
 // between the leading pipe and the parameters, and Rust writes nothing there.
 // Every spelling below was fixed by compiling the composed text with rustc
 // before it was written here, not by reading it back off the emitter.

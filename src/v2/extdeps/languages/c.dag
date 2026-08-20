@@ -1151,7 +1151,7 @@ fn c_type_decl_target_model() -> v2.std.compilers.target_model.TargetModel {
 // FIRST, each parameter is TYPE then NAME with no label separator, and there is no
 // return arrow. C is statement-sequenced, so the scaffold carries a return token
 // before the body and a terminator after it. The compiler is not edited to support
-// v2.std.algebra.any of this -- C supplies its own renderer and its own spellings.
+// any of this -- C supplies its own renderer and its own spellings.
 fn c_produced_type_tokens(type_node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match type_node.kind {
     TypeNode { connective: v2.std.node.Atom { identity: id } } =>

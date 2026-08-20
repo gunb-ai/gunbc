@@ -51,6 +51,27 @@ type CodexAppServerExecutable {
   path: std.types.FilePath
 }
 
+// The `generate-json-schema` subcommand is a separate invocation of the SAME executable this
+// module cites the protocol schema from (codex_app_server_subject_note) — it is the tool this
+// module's method vocabulary was derived from, not a different product surface.
+service codex_app_server.Cli {
+  operation GenerateJsonSchema {
+    input { executable: CodexAppServerExecutable, output_dir: FilePath }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: ["{executable.path}", "app-server", "generate-json-schema", "-o", "{output_dir}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "codex app-server generate-json-schema failed"
+    }
+  }
+}
+
 data codex_app_server_request_line_emit_note: String = "Request lines are BUILT through extdeps.languages.json.emit, not hand-authored as escaped string literals (review 50540). The literals they replace carried their own JSON grammar — braces, quoting and separators spelled out in \\{ and \\\" escapes — which is a second JSON representation sitting beside the module that already owns one (DESIGN §3 dual representation), and it is the representation that cannot escape a value: a method name or client field containing a quote would have produced a malformed frame with nothing to refuse it. serialize_json applies the escaping, so the wire bytes are a consequence of the modeled value rather than of an author getting the backslashes right."
 
 fn codex_app_server_jsonrpc_request(id: Int, method: String, params: extdeps.languages.json.emit.JsonValue) -> std.types.NonEmptyStr {

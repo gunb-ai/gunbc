@@ -20,7 +20,7 @@ module gunbc.deployed_tree_remote
 // observation the belt makes every sixty seconds.
 //
 // Writing one derived key cannot reintroduce the leak the whitelist closed: the value is projected
-// from `gunbc.repository.gunbc_repository` through `extdeps.github.github.github_https_clone_url`, a public HTTPS URL that is a function
+// from `gunbc_repository` through `github_https_clone_url`, a public HTTPS URL that is a function
 // of owner and name. Nothing upstream of it is a secret, and no file is copied from the runner.
 
 data deployed_tree_remote_name: extdeps.git.GitRemoteName = "origin" as extdeps.git.GitRemoteName

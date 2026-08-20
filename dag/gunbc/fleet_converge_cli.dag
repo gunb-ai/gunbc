@@ -440,7 +440,7 @@ fn converge_cli_verify_run(host: String) -> ConvergeCliReceipt {
   }
 }
 
-// gunbc.design.interaction.Receipt publication (CONVERGE-0 loop leg): on the SELF route — the per-host timer's
+// Receipt publication (CONVERGE-0 loop leg): on the SELF route — the per-host timer's
 // route, where the deployment guarantees the host layout exists — the receipt line is
 // WRITTEN to the declared receipts path before being printed, so a fold-side observation
 // job can read the host's last converge standing without a new commit. Publication uses

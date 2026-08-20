@@ -231,7 +231,7 @@ fn emit_belt_timer_unit_doc(spec: gunbc.live_deploy.spec.DeploymentSpec) -> std.
 // establishes -- concretely THIRD, before the belt timer that depends on the remote, not last
 // (see deployment_tree_remote_unit_name's header for why last was wrong).
 //
-// The extdeps.systemd.unit_file.ExecStart names the tree explicitly rather than deriving it, because a host can run two slots
+// The ExecStart names the tree explicitly rather than deriving it, because a host can run two slots
 // and the unit of one slot must not converge the other's tree.
 fn emit_tree_remote_unit_doc(spec: gunbc.live_deploy.spec.DeploymentSpec) -> std.layout.Doc {
   let svc = spec.service
@@ -280,9 +280,9 @@ fn apply_belt_service_unit_write_step(spec: gunbc.live_deploy.spec.DeploymentSpe
 // verdict=absent (fleet_converge_cli converge_cli_revision_verdict RevisionUnobserved). Running
 // as the repo owner is exactly what the sibling serve/belt/tree-sync units already do
 // (emit_systemd_unit_doc / emit_belt_service_unit_doc: User=+Group=svc.service_user).
-// gunbc.design.interaction.Receipt *publication* (superseding a stale root-owned file) is atomic rename in
+// Receipt *publication* (superseding a stale root-owned file) is atomic rename in
 // gunbc.fleet_converge_cli (gunbc.host_layout fleet_converge_receipt_atomic_publish_note).
-// gunbc.design.interaction.Receipt *directory bootstrap* (existence + service-principal ownership) is on deploy, but NOT
+// Receipt *directory bootstrap* (existence + service-principal ownership) is on deploy, but NOT
 // here: this member's apply arm is a retirement poison (the cadence is on-demand via
 // fleet-converge.yml plan/apply, sleek-heron-218), so the bootstrap it used to carry has not run
 // on any fresh instance root since that retirement. It rides BeltTimerUnit apply against the

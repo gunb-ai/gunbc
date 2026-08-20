@@ -1,18 +1,24 @@
 module test.manual.command_runner_local_argv_receipt
 
-// THE DISCRIMINATING RECEIPT FOR THE LOCAL ARGV CUT.
+
+// THE DISCRIMINATING RECEIPT FOR command_runner's TRANSPORT-AGNOSTIC RUN SITE.
 //
-// WHAT IT DISCRIMINATES, which is the only thing that makes it worth running. The local path used
-// to render argv to text and hand it to bash, which split it back apart on whitespace. It now goes
-// word-for-word to the process. A test that merely runs a command green proves nothing about that
-// change -- it would be equally green with the bash hop restored. So the subject is an argument
-// that the two paths DISAGREE about: one containing a space.
+// WHAT IT DISCRIMINATES, which is the only thing that makes it worth running. The run site used
+// to render an ArgvCommand to quoted text and hand it to bash, which split it back apart on
+// whitespace -- and for a time carried a per-transport `match` at the call site that duplicated
+// the dispatch command_over_transport already performs. Both are gone: run_shell_command_capture
+// now asks command_over_transport ONCE for the outer ArgvCommand (LocalExec is the identity;
+// SshExec already folds the remote program into one RFC 4254 string) and hands that argv,
+// word-for-word, straight to shell.Exec.RunArgv -- no shell, no re-parse, no transport match. A
+// test that merely runs a command green proves nothing about that change -- it would be equally
+// green with the bash hop restored. So the subject is an argument the two paths DISAGREE about:
+// one containing a space.
 //
 //   argv:            ["printf", "%s|", "a b"]
 //   direct exec:     one operand "a b"          -> stdout "a b|"
 //   via a shell:     two operands "a" and "b"   -> stdout "a|b|"
 //
-// If this ever reads "a|b|", the local path has reached a shell again and the cut has silently
+// If this ever reads "a|b|", the run site has reached a shell again and the collapse has silently
 // regressed. That is the failure this file exists to make loud.
 //
 // WHY IT IS WET AND NOT ENROLLED. Hermetic evaluation replays an operation's declared
@@ -102,5 +108,21 @@ test fn zero_exit_with_output_is_present() -> Bool {
     ProcessOutputPresent { text: t } => t == "value"
     ProcessOutputAbsent => false
     ProcessRefused { exit_code: _, stderr: _ } => false
+  }
+}
+
+// Empty argv refuses rather than defaulting -- a command with no words names no program to
+// execute. This exercises the HeadAbsent arm inside command_over_transport's caller directly
+// (never reaching a process at all), which nonzero_exit_printing_nothing_is_refused_not_absent
+// above does not: that test's argv is nonempty and its ProcessRefused comes from a real exit
+// code, not from the empty-argv guard.
+test fn empty_argv_refuses() -> Bool {
+  match run_shell_command_capture(
+    command: ArgvCommand { argv: [] },
+    transport: LocalExec,
+  ) {
+    ProcessRefused { exit_code: _, stderr: _ } => true
+    ProcessOutputAbsent => false
+    ProcessOutputPresent { text: _ } => false
   }
 }

@@ -9,7 +9,7 @@ module gunbc.fleet_converge_timer
 // next firing reads the admitted ref (catch-up is a property of following the ref, plus
 // Persistent= for missed calendar firings). This module is the SINGLE authority for the
 // unit names, cadence, and unit CONTENT — the emitted files derive from these rows, so
-// a hand-edited unit is drift against this authority, not a std.measure.second truth.
+// a hand-edited unit is drift against this authority, not a second truth.
 //
 // Timer shape is the design doc's Option A (OnCalendar + Persistent=true + jitter):
 // Persistent only functions with OnCalendar (systemd ignores it on monotonic timers),

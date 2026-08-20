@@ -3,11 +3,11 @@ module gunbc.spark_serving_unit_render
 
 // THE ONE PLACE A SPARK SERVING UNIT BECOMES BYTES.
 //
-// `gunbc.spark_serving_install_paths.SparkServingUserUnitSpec` is deliberately typed fields and NOT systemd INI syntax -- its own
+// `SparkServingUserUnitSpec` is deliberately typed fields and NOT systemd INI syntax -- its own
 // authority note says so. That left a gap rather than a decision: nothing could turn the spec into a
 // file, so `WriteUserUnitFile` had no bytes to deliver and the unit member had nothing to be
 // observed against. The missing piece was never gunbc's to invent, because spelling `[Service]` and
-// `extdeps.systemd.unit_file.ExecStart=` here would have made this module a second systemd authority (§3). It belongs to
+// `ExecStart=` here would have made this module a second systemd authority (§3). It belongs to
 // `extdeps.systemd.unit_file`, which is cited to systemd.unit(5) and systemd.service(5); this module
 // only maps gunbc's typed fields onto it.
 //

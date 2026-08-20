@@ -14,7 +14,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 // inhabits; it does NOT enumerate providers, dispatch among them, or hold any
 // provider's rows. Adding a provider is a new module beside its peers, never
 // an edit here — which is also why provider identity below is a
-// std.decl_ref.DeclarationRef into the provider's own module rather than a variant of a
+// DeclarationRef into the provider's own module rather than a variant of a
 // central enum that every new provider would have to widen.
 
 // WHAT ONE UNIT OF ADVERTISED CPU ACTUALLY IS. A published "vCPU" is not one
@@ -103,14 +103,14 @@ fn quoted_unit_label(quoted: QuotedByteMagnitude) -> std.types.NonEmptyStr {
   }
 }
 
-// ONE PUBLISHED RUNNER SIZE. vcpus is a std.measure.HardwareThreadCount rather than a bare
-// std.nat.Nat, matching what the CPU side of this repo already carries
+// ONE PUBLISHED RUNNER SIZE. vcpus is a HardwareThreadCount rather than a bare
+// Nat, matching what the CPU side of this repo already carries
 // (UbicloudRunnerCatalogRow.vcpus, CpuModelCatalogRow.threads) — a shared shape
 // is the wrong place to downgrade a unit those rows already model.
 //
 // The entitlement axis above says what one of these is BACKED BY; it does not
 // change what is being counted, which is advertised hardware threads either
-// way. Conversion to a bare std.nat.Nat happens only at the arithmetic boundary in the
+// way. Conversion to a bare Nat happens only at the arithmetic boundary in the
 // census fold.
 type RunnerShapeRow {
   provider: std.decl_ref.DeclarationRef

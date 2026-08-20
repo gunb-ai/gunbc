@@ -7,7 +7,7 @@ module v2.workflow.floor_expected_red_coherence
 // aggregator stayed well-formed, and the roster stayed non-empty, so nothing observed
 // that identities had silently stopped being evaluated. This module reads the SAME
 // declaration facts the corpus already exposes and asserts two things a hand-authored
-// std.algebra.Cons chain cannot assert of itself: every identity a chunk body authors is present
+// Cons chain cannot assert of itself: every identity a chunk body authors is present
 // in the evaluated roster, and every declared chunk function is actually called from
 // the aggregator body — both at identity/lexeme grain, never by count.
 

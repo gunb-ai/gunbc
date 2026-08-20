@@ -337,7 +337,7 @@ test fn the_dimm_lot_holds_all_thirty_two_sticks_awaiting_receipt() -> Bool {
 }
 
 // THE RED THAT KEEPS THE INTENT HONEST. Appending the four eight-stick reservations the plan calls
-// for is REFUSED, and refused for the exact reason that matters: there is no product.inventory.Available stock to
+// for is REFUSED, and refused for the exact reason that matters: there is no Available stock to
 // move, because the sticks are in transit. This is why the per-host figures are carried as an
 // intent and not as ledger events - the ledger would not have accepted them, and a model that
 // recorded them anyway would be asserting an allocation of stock nobody has.

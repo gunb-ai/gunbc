@@ -38,7 +38,7 @@ data fixture_empty_data_inits: List<v2.std.data_index.DataInitDecl> = []
 // it costs a whole-tree scan for zero signal (DESIGN §5 witness-cost-derives-from-purpose:
 // a test is not entitled to arbitrary computation merely because it is a test). Only the
 // one named live integration below (effect_reach_live_03_normalize_witness_derived_host_reading_holds)
-// legitimately reads v2.std.fn_index.fn_arrow_decl_facts_live().
+// legitimately reads fn_arrow_decl_facts_live().
 data fixture_empty_decls: List<v2.std.fn_index.FnArrowDecl> = []
 
 data fixture_prose_facts: List<v2.lens.witness_cost_locality.ModuleImportFact> = [

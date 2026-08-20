@@ -215,8 +215,8 @@ test fn scaffold_observed_manifest_parse_refusal_surfaces_typed_cause() -> Bool 
 }
 
 // Constructs the empty condition through the NON-LITERAL path deliberately.
-// The literal form `std.dissolution.unbound_dissolution(description: "")` is now refused at
-// compile (the parameter is std.types.NonEmptyStr), which is the wall. Refinement at
+// The literal form `unbound_dissolution(description: "")` is now refused at
+// compile (the parameter is NonEmptyStr), which is the wall. Refinement at
 // non-literal positions is still deferred, so that gap is exactly what the
 // downstream well-formedness guard defends -- and this control has to reach it
 // through the gap in order to keep proving the guard works (DESIGN 4b(4):

@@ -126,7 +126,7 @@ test fn lt_refusal_causes_are_distinct() -> v2.std.logic.Bool {
 }
 
 // Every layer transitions to itself as identity, and -- the half that matters -- identity is not
-// what the function answers for anything else. A mutation returning v2.std.compilers.target_model.LayerTransitionIdentity
+// what the function answers for anything else. A mutation returning LayerTransitionIdentity
 // unconditionally passes the first three conjuncts and dies on the last three.
 test fn lt_identity_is_not_the_default() -> v2.std.logic.Bool {
   lt_is_identity(

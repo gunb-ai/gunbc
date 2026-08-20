@@ -1,7 +1,7 @@
 module tools.interpreter_dispatch_bijection_real_roster_transport
 
 
-data interpreter_dispatch_bijection_real_roster_transport_note: String = "R1 closeout item TWO real-crate bijection receipt (gunbc#7825): executes the two #[ignore] integration tests in src/v1/stage0/tests/interpreter_dispatch_bijection_real_roster_red.rs via shell.Exec.Run with RUSTC_WRAPPER cleared — real git clone, real gunbc run main_wet regen, real cargo build -p v1-compiler on the clone. cargo.Build.Test routes through ctrl-build remote in this environment and is intentionally not used here. Claim-A compile-red siblings stay in the default local cargo test run; this transport is the falsifier_self_host_wet enrollment path for claim-B."
+data interpreter_dispatch_bijection_real_roster_transport_note: String = "R1 closeout item TWO real-crate bijection receipt (gunbc#7825): executes the two #[ignore] integration tests in src/v1/stage0/tests/interpreter_dispatch_bijection_real_roster_red.rs via two sequential cargo.Build.TestWithCwdEnv calls (env -C <clone root> RUSTC_WRAPPER= CTRL_BUILD_MODE=local CARGO_BUILD_JOBS=4 <cargo_bin> test ..., short-circuiting on the first failure) — real git clone, real gunbc run main_wet regen, real cargo build -p v1-compiler on the clone. Migrated off a hand-built retained_foreign multi-line bash script (set -euo pipefail; cd; export; two invocations) onto typed argv (SHELL-DAG dissolution). cargo.Build.Test (the bare, no-cwd operation) routes through ctrl-build remote in this environment and is intentionally not used here. Claim-A compile-red siblings stay in the default local cargo test run; this transport is the falsifier_self_host_wet enrollment path for claim-B."
 
 data interpreter_dispatch_bijection_real_roster_memory_envelope_note: String = "MEMORY PREDICTION (Lane D, 2026-08-06; construction pin still-bat-561 msg_e79bf117). WITNESS NEEDS: per direction — git clone --local (no target/), gunbc run main_wet on the clone (pre-built release gunbc), cold release cargo build -p v1-compiler --lib in the clone; two directions sequential so peak is max(per-direction). DOMINANT PEAK: in-clone cold rustc lib build. CONSTRUCTION: transport shell exports CARGO_BUILD_JOBS=4 before both cargo test invocations so the fleet-measured premise (jobs=4) is the executed premise — not a note beside an unenforced conditional. ANCHORS: gunbc_ci_native_bundle_batch_clamp_basis_note cgroup peak 11940978688 B (~11.1 GiB, cold cargo, jobs=4); v1 width-1 floor 10.7 GiB cgroup under 15 GiB throttle; claim_batch resolve ~2.4 GiB before shell. PREDICTED PEAK on falsifier runner slot: ~10–12 GiB cgroup, ~4–5 GiB headroom under gunbc_runner_slot_desired().memory_max (16 GiB kill / 15 GiB high; live read falsifier 31047744902 srv3-03). VERDICT: fits the declared slot under pinned jobs=4. STACKING RISK (fleet memory-tight tonight): batch-1 discovery co-residency ~5–6 GiB before batch-2 wet rows. LOCAL SIGKILL CONTROL: claim_batch --wet killed host-tree cargo test compile at 97s before clone+build (children-max-rss 2.7 GiB); same host completed direction-1 through clone+build in 346s wall — kill is not clone peak evidence. WALL ROUTED TO OPERATOR (not solved here): ~692s whole transport vs gunbc_falsifier_self_host_wet_receipt_wall_budget 600s — basis and regime below in dashboard routing; witness not shrunk."
 
@@ -19,23 +19,19 @@ data real_roster_placement_requirement: gunbc.cargo_execution_placement.CargoSub
     },
   }
 
-fn interpreter_dispatch_bijection_real_roster_red_shell(root: String, cargo_bin: String) -> String {
-  concat(
-    "set -euo pipefail\nexport CARGO_BUILD_JOBS=4\n",
-    concat(
-      "cd ",
-      concat(
-        root,
-        concat(
-          "\n",
-          concat(
-            concat("env RUSTC_WRAPPER= CTRL_BUILD_MODE=local CARGO_BUILD_JOBS=4 ", concat(cargo_bin, " test -p v1-compiler --test interpreter_dispatch_bijection_real_roster_red --release -- --ignored --exact w_red_real_roster_row_with_no_real_handler_arm_refuses_compile\n")),
-            concat("env RUSTC_WRAPPER= CTRL_BUILD_MODE=local CARGO_BUILD_JOBS=4 ", concat(cargo_bin, " test -p v1-compiler --test interpreter_dispatch_bijection_real_roster_red --release -- --ignored --exact w_red_real_handler_arm_with_no_real_roster_row_refuses_compile\n"))
-          )
-        )
-      )
-    )
-  )
+data real_roster_test_env: List<String> = [
+  "RUSTC_WRAPPER=",
+  "CTRL_BUILD_MODE=local",
+  "CARGO_BUILD_JOBS=4",
+]
+
+fn real_roster_test_extra_args(exact_test_name: String) -> List<String> {
+  [
+    "-p", "v1-compiler",
+    "--test", "interpreter_dispatch_bijection_real_roster_red",
+    "--release",
+    "--", "--ignored", "--exact", exact_test_name,
+  ]
 }
 
 // ONE observation, and no probe order. The former shell named /opt/cargo/bin/cargo
@@ -84,18 +80,38 @@ fn real_roster_cargo_decision() -> gunbc.cargo_execution_placement.CargoPlacemen
 // the clone failed, or the compile wrongly SUCCEEDED when the test requires it to refuse
 // were indistinguishable, so the failure could not be triaged and therefore could not be
 // ranked or owned.
-fn real_roster_cargo_run(cargo_bin: String) -> gunbc.cargo_execution_placement.CargoInvocationOutcome {
-  let root = git.Inspect.Toplevel()
-  let run = shell.Exec.Run(
-    script: retained_foreign(
-      body: interpreter_dispatch_bijection_real_roster_red_shell(root: root.path, cargo_bin: cargo_bin),
-      reason: "interpreter dispatch bijection real roster cargo integration tests"
-    )
+fn real_roster_cargo_test_run(root: std.types.FilePath, cargo_bin: std.types.NonEmptyStr, exact_test_name: std.types.String) -> gunbc.cargo_execution_placement.CargoInvocationOutcome {
+  let run = cargo.Build.TestWithCwdEnv(
+    workdir: root,
+    cargo_bin: cargo_bin,
+    env: real_roster_test_env,
+    extra_args: real_roster_test_extra_args(exact_test_name: exact_test_name),
   )
   if run.success {
     CargoInvocationPassed
   } else {
     gunbc.cargo_execution_placement.CargoInvocationFailed { exit_code: run.exit_code, cause: run.stderr }
+  }
+}
+
+// Two sequential invocations, short-circuiting after the first failure — the structured
+// equivalent of `set -euo pipefail` chaining two commands: the second only runs when the
+// first passed, and a failure reports which of the two rows it came from.
+fn real_roster_cargo_run(cargo_bin: std.types.String) -> gunbc.cargo_execution_placement.CargoInvocationOutcome {
+  let root = git.Inspect.Toplevel()
+  let first = real_roster_cargo_test_run(
+    root: root.path,
+    cargo_bin: cargo_bin as std.types.NonEmptyStr,
+    exact_test_name: "w_red_real_roster_row_with_no_real_handler_arm_refuses_compile",
+  )
+  if gunbc.cargo_execution_placement.cargo_outcome_holds(o: first) == false {
+    first
+  } else {
+    real_roster_cargo_test_run(
+      root: root.path,
+      cargo_bin: cargo_bin as std.types.NonEmptyStr,
+      exact_test_name: "w_red_real_handler_arm_with_no_real_roster_row_refuses_compile",
+    )
   }
 }
 

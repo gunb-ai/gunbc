@@ -6,7 +6,7 @@ data gi_artifact_baseline_hex: String = "8f31919534d1585a005d999df89eea61ae2aee3
 data gi_artifact_moved_hex: String = "f316fd8378b70362bcac957857fd6dd68292084d75a44bcdaaac7a113384ad78e6412513a229f7fdb0204a113fa17cb876304eb478d9099296a49ad209954edd"
 
 // An artifact identity is reachable ONLY through the validating mint. An unparseable
-// digest yields v2.compiler.self_host.generation.ArtifactNotMaterialized rather than a fabricated one, which admission
+// digest yields ArtifactNotMaterialized rather than a fabricated one, which admission
 // then refuses by name — the honest arm, and strictly better than a green axis
 // derived from bytes nobody observed.
 fn gi_artifact(hex: String) -> v2.compiler.self_host.generation.GeneratedArtifactIdentity {
@@ -337,7 +337,7 @@ fn gi_ordered(roster: v2.compiler.self_host.generation.SourceClosureRoster) -> B
 // FORGERY CONTROL. Text that is not a valid SHA-512 digest cannot become a
 // materialized artifact. Before ObservedArtifactDigest was sole_constructor over a
 // validated digest, the axis was typed as the structural Hash that
-// v2.std.node.symbol_identity_digest mints from ANY symbol, so an artifact identity could be
+// symbol_identity_digest mints from ANY symbol, so an artifact identity could be
 // authored with no build, no file and no observation behind it.
 test fn unobserved_text_cannot_become_a_materialized_artifact() -> Bool {
   match gi_artifact(hex: "not-a-digest") {

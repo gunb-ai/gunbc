@@ -109,7 +109,7 @@ fn on_pareto_front(verdicts: List<DominanceVerdict>) -> Bool {
 // standings back; the fold knows nothing about the domain.
 //
 // IDENTITY IS STRUCTURAL, NEVER A RENDERED LABEL (review ruling 2026-08-18): a candidate
-// and an axis are each named by a std.decl_ref.DeclarationRef - the domain declaration the row projects -
+// and an axis are each named by a DeclarationRef - the domain declaration the row projects -
 // and display_label is presentation only. Two entries sharing a label still compare; a
 // duplicate identity in the axes or the field REFUSES (a duplicate would otherwise be
 // silently skipped as self-comparison or first-one-wins, the sentinel-through-presence-test

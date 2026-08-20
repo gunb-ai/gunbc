@@ -91,7 +91,7 @@ fn synthetic_cadence_gate_row() -> gunbc.commit_workflow.CommitCheckEnrollment {
 // the regen root cut and it WAS the whole gate/witness asymmetry, so this row can no longer
 // demonstrate the asymmetry — nothing can. It is re-pointed at the per-PR floor and keeps the
 // claim that survives: a gate riding an executing surface is correctly enrolled, paired against
-// synthetic_bare_deenrolled_gate_row on gunbc.commit_workflow.GitPrePushHook, which is not.
+// synthetic_bare_deenrolled_gate_row on GitPrePushHook, which is not.
 fn synthetic_enrolled_gate_row() -> gunbc.commit_workflow.CommitCheckEnrollment {
   gunbc.commit_workflow.CommitCheckEnrollment {
     check: gunbc.commit_workflow.CommitSpecGate { gate: gunbc.ci_gate.GeneratedArtifactDriftGate },

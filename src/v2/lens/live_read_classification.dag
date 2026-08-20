@@ -1,7 +1,7 @@
 module v2.lens.live_read_classification
 
 // THE IMPORT THIS MODULE'S BARE REFERENCES WERE RELYING ON THE POOL TO SUPPLY. Every call to
-// v2.lens.witness_cost_locality.witness_import_closure here resolved only when some unrelated module elsewhere in the assembled
+// witness_import_closure here resolved only when some unrelated module elsewhere in the assembled
 // closure had already pulled v2.lens.witness_cost_locality in — the pool-membership coincidence
 // DESIGN records as the import-strip Class B failure. Under a whole-tree compile no such module
 // does, and the three call sites refuse. Named from the definer, as v2.lens.effect_reach already
