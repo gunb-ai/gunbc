@@ -9,10 +9,8 @@ import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
   dag_language_model,
-  parse_production_emitted_identity_optional,
-  parse_subtree_find_production_captured
+  parse_production_emitted_identity_optional
 }
-import std.algebra { Cons, Empty }
 import v2.std.optional {
   Absent,
   Optional,
@@ -21,38 +19,12 @@ import v2.std.optional {
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node {
-  Atom,
   ComputationNode,
   Node,
-  Transform,
-  TypeNode,
-  node_synthetic
-}
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
+  Transform
 }
 
 data body_lowering_projection_source: String = "module proj\n\nfn f(acc: Int, x: Int) -> Int {\n  helper.step(a: acc, b: x)\n}\n"
-
-fn body_lowering_bool_node(pass: Bool) -> Node {
-  if pass {
-    node_synthetic(
-      kind: TypeNode { connective: Atom { identity: ^body_lowering_proj_pass } },
-      children: []
-    )
-  } else {
-    node_synthetic(
-      kind: TypeNode { connective: Atom { identity: ^body_lowering_proj_fail } },
-      children: []
-    )
-  }
-}
 
 fn body_lowering_find_postfix_expr(root: Node) -> Optional<Node> {
   match parse_production_emitted_identity_optional(node: root) {
@@ -93,7 +65,7 @@ fn body_lowering_parsed_module() -> Optional<Node> {
   }
 }
 
-fn body_lowering_projection_lowers_to_transform() -> Bool {
+test fn body_lowering_projection_lowers_to_transform() -> Bool {
   match body_lowering_parsed_module() {
     Absent => false
     Present { value: tree } =>
@@ -122,7 +94,7 @@ fn body_lowering_projection_lowers_to_transform() -> Bool {
 
 data body_lowering_field_access_source: String = "module fa\n\nfn f(x: Int) -> Int { x.field }\n"
 
-fn body_lowering_field_access_postfix_rejects() -> Bool {
+test fn body_lowering_field_access_postfix_rejects() -> Bool {
   let lm = dag_language_model()
   match tokenize(
     text: body_lowering_field_access_source,
@@ -150,7 +122,7 @@ fn body_lowering_field_access_postfix_rejects() -> Bool {
   }
 }
 
-fn body_lowering_normalize_accepts_projection_module() -> Bool {
+test fn body_lowering_normalize_accepts_projection_module() -> Bool {
   let lm = dag_language_model()
   match tokenize(
     text: body_lowering_projection_source,
@@ -170,26 +142,3 @@ fn body_lowering_normalize_accepts_projection_module() -> Bool {
   }
 }
 
-data claim_body_lowering_projection_lowers_to_transform: TestClaim = EqualsClaim {
-  label: "manual/body-lowering-projection: helper.step(a,b) lowers to canonical Transform (Stage B cross-decl)",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: body_lowering_bool_node(pass: body_lowering_projection_lowers_to_transform()),
-  rhs: body_lowering_bool_node(pass: true),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data claim_body_lowering_projection_normalize_accepts: TestClaim = EqualsClaim {
-  label: "manual/body-lowering-projection: projection module normalizes without refusal",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: body_lowering_bool_node(pass: body_lowering_normalize_accepts_projection_module()),
-  rhs: body_lowering_bool_node(pass: true),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data claim_body_lowering_field_access_postfix_rejects: TestClaim = EqualsClaim {
-  label: "manual/body-lowering-projection: bare x.field refuses (general-body-producer-design §3 residue #2)",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: body_lowering_bool_node(pass: body_lowering_field_access_postfix_rejects()),
-  rhs: body_lowering_bool_node(pass: true),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
