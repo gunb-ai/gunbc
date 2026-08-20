@@ -48,6 +48,7 @@ import gunbc.stage0_crate_layout_generated { generated_pub_mod_block }
 import gunbc.rust_decl_type_overlay { rust_decl_type_container_overlay_is_admitted }
 import gunbc.stage0_emitted_population_manifest {
   emitted_population_manifest_basename,
+  emitted_population_manifest_line_prefix,
   emitted_population_manifest_line_separator
 }
 import v1.compiler.languages {
@@ -2566,10 +2567,13 @@ fn emitted_population_manifest_path() -> String {
 
 fn emit_emitted_population_manifest(files: List<TextFile>) -> TextFile {
   let declared = concat(files |> map(f => f.path), [emitted_population_manifest_path()])
+  let lines = declared
+    |> sort_by(path => path)
+    |> map(path => concat(emitted_population_manifest_line_prefix, path))
   TextFile {
     path: emitted_population_manifest_path(),
     content: concat(
-      declared |> sort_by(path => path) |> join(separator: emitted_population_manifest_line_separator),
+      lines |> join(separator: emitted_population_manifest_line_separator),
       emitted_population_manifest_line_separator
     )
   }
