@@ -47,17 +47,17 @@ fn bmc_netboot_serve_command_text_unwrap(plan: BmcNetbootServePlan) -> String {
   }
 }
 
+// The inner busybox command is now ONE RFC 4254 command string carried as ssh's final
+// argument (extdeps.exec.command command_over_transport_composition_note), not a suffix
+// of separately-quoted argv members after the target -- so the old wrong-in-kind shape
+// ('root@...' '/tmp/netboot/busybox' 'httpd' ...) must NOT appear, and the escaped-quote
+// marker from re-quoting the already-quoted inner string for the LOCAL shell must.
 test fn serve_command_one_shape_two_transports() -> Bool {
   let local = shell_command_render(command: bmc_netboot_serve_command_local(plan: srv4_bmc_netboot_serve_plan))
   let over_bmc = bmc_netboot_serve_command_text_unwrap(plan: srv4_bmc_netboot_serve_plan)
   string_contains(s: local, pattern: "'/tmp/netboot/busybox' 'httpd' '-p' '8080' '-h' '/tmp/netboot'")
     && string_contains(s: over_bmc, pattern: "'sshpass' '-e' 'ssh'")
     && string_contains(s: over_bmc, pattern: "'root@192.168.1.195'")
-    // The inner busybox command is now ONE RFC 4254 command string carried as ssh's final
-    // argument (extdeps.exec.command command_over_transport_composition_note), not a suffix
-    // of separately-quoted argv members after the target -- so the old wrong-in-kind shape
-    // ('root@...' '/tmp/netboot/busybox' 'httpd' ...) must NOT appear, and the escaped-quote
-    // marker from re-quoting the already-quoted inner string for the LOCAL shell must.
     && string_contains(s: over_bmc, pattern: "'\\''") == true
     && string_contains(s: over_bmc, pattern: "'root@192.168.1.195' '/tmp/netboot/busybox' 'httpd'") == false
 }
