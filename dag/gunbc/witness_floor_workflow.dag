@@ -300,8 +300,31 @@ fn witness_floor_v1_parse_step() -> Step {
 // change every step in the job declares what it actually needs rather than inheriting its
 // position. Order is now free to change again without silently rewiring any step's condition,
 // which is the property that made the original ordering a hazard rather than a preference.
+//
+// MEASURED CORRECTION, run 32323690924. The paragraph above was right about the hazard and wrong
+// about the remedy, and CI refused the remedy rather than any reasoning catching it. On that run
+// the build succeeded, so `steps.build_witness_fold.outcome == 'success'` evaluated TRUE -- and
+// the floor reported `skipped` anyway, behind a regen failure. The reason is that declaring an
+// `if` does not, on its own, displace the implicit `success()`: GitHub substitutes the author's
+// expression for the default ONLY when that expression contains a status function
+// (`success()`, `failure()`, `always()`, `cancelled()`). A bare `steps.*.outcome` comparison is
+// not one, so the default is silently CONJOINED rather than replaced, and every condition below
+// still read `success() && <declared>`. The declaration was decorative: the floor remained
+// wired to regen's verdict, and the 9,008-witness silencing described above happened on the
+// first run that exercised it.
+//
+// So each condition carries `!cancelled()` -- a status function, which is what actually performs
+// the substitution -- rather than `always()`, because a cancelled run should stop, and only a
+// FAILED earlier step must not propagate. The discriminator worth keeping: a precondition that
+// reads correctly is not evidence that it binds. The tell here was a step skipping while its
+// own stated condition was true, which is visible only by reading the step's outcome beside the
+// condition's operands, never from the workflow text.
+fn witness_step_status_guard() -> String {
+  "!cancelled() && "
+}
+
 fn witness_floor_precondition() -> String {
-  "steps.build_witness_fold.outcome == 'success'"
+  concat(witness_step_status_guard(), "steps.build_witness_fold.outcome == 'success'")
 }
 
 fn witness_floor_run_step() -> Step {
@@ -374,7 +397,7 @@ fn witness_floor_run_step() -> Step {
 // of an undeclared condition to a declared one, NOT a climb -- nothing here checks that a
 // future step keeps declaring its precondition rather than inheriting one.
 fn witness_regen_precondition() -> String {
-  "steps.build_witness_fold.outcome == 'success'"
+  concat(witness_step_status_guard(), "steps.build_witness_fold.outcome == 'success'")
 }
 
 // The fixed-point step's precondition is the REGEN step, not the build, and this is measured
@@ -386,7 +409,7 @@ fn witness_regen_precondition() -> String {
 // refuse for a missing receipt, reporting a receipt-plumbing failure where the real event is
 // that regen did not get far enough to write one.
 fn witness_regen_fixed_point_precondition() -> String {
-  "steps.required_regen.outcome == 'success'"
+  concat(witness_step_status_guard(), "steps.required_regen.outcome == 'success'")
 }
 
 fn witness_required_regen_script() -> String {

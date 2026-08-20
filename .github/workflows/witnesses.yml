@@ -40,14 +40,14 @@ jobs:
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/claim_executor" --required-regen --source-root "$ROOT/dag" --source-root "$ROOT/src/v2"
-        if: steps.build_witness_fold.outcome == 'success'
+        if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
       - name: "Regen determinism: G0 emit reproduces itself on a second pass"
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/claim_executor" --required-regen-fixed-point --source-root "$ROOT/dag" --source-root "$ROOT/src/v2"
-        if: steps.required_regen.outcome == 'success'
+        if: "!cancelled() && steps.required_regen.outcome == 'success'"
       - name: All witnesses (one prepared subject, one fold)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/claim_executor" --required-floor --source-root "$ROOT/dag" --source-root "$ROOT/src/v2"
-        if: steps.build_witness_fold.outcome == 'success'
+        if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
