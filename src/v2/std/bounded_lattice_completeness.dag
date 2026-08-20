@@ -157,9 +157,7 @@ fn infer_bounded_lattice_consumer_gate(
 }
 
 fn partial_bounded_lattice_instances_in_tree(tree: v2.std.node.Node) -> std.types.List<v2.std.node.Node> {
-  v2.std.node.fold_node(
-    n: tree,
-    algebra: v2.std.node.NodeFold {
+  let alg: v2.std.node.NodeFold<std.types.List<v2.std.node.Node>> = v2.std.node.NodeFold {
       init: fn(n0) {
         match bounded_lattice_instance_completeness(instance: n0) {
           BoundedLatticePartial { missing: _ } => [n0]
@@ -177,5 +175,5 @@ fn partial_bounded_lattice_instances_in_tree(tree: v2.std.node.Node) -> std.type
         )
       }
     }
-  )
+  v2.std.node.fold_node(n: tree, algebra: alg)
 }

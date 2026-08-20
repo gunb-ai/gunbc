@@ -58,9 +58,7 @@ fn mandatory_tag_region_applies(region: MandatoryTagRegion, dotted: String) -> B
 }
 
 fn mandatory_tag_subtree_atoms(n: v2.std.node.Node) -> std.types.List<v2.std.node.Symbol> {
-  v2.std.node.fold_node(
-    n: n,
-    algebra: v2.std.node.NodeFold {
+  let alg: v2.std.node.NodeFold<std.types.List<v2.std.node.Symbol>> = v2.std.node.NodeFold {
       init: fn(n0) {
         match n0.kind {
           v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } } => [s]
@@ -69,13 +67,11 @@ fn mandatory_tag_subtree_atoms(n: v2.std.node.Node) -> std.types.List<v2.std.nod
       },
       step: fn(acc, _edge, child) { concat(acc, child) }
     }
-  )
+  v2.std.node.fold_node(n: n, algebra: alg)
 }
 
 fn mandatory_tag_subtree_has_production(n: v2.std.node.Node, want: v2.std.node.Symbol) -> Bool {
-  v2.std.node.fold_node(
-    n: n,
-    algebra: v2.std.node.NodeFold {
+  let alg: v2.std.node.NodeFold<Bool> = v2.std.node.NodeFold {
       init: fn(n0) {
         match v2.extdeps.languages.dag.parse_production_emitted_identity_optional(node: n0) {
           Present { value: id } => id == want
@@ -84,7 +80,7 @@ fn mandatory_tag_subtree_has_production(n: v2.std.node.Node, want: v2.std.node.S
       },
       step: fn(acc, _edge, child) { acc || child }
     }
-  )
+  v2.std.node.fold_node(n: n, algebra: alg)
 }
 
 fn mandatory_tag_node_production_is(n: v2.std.node.Node, want: v2.std.node.Symbol) -> Bool {
@@ -394,13 +390,11 @@ fn mandatory_tag_module_findings(n: v2.std.node.Node) -> std.types.List<v2.std.d
 
 // A dag_surface_module wrapper whose qualified name cannot be read contributes no region findings here - machine_shape parity, not an absorbing arm: name resolution over the same tree refuses malformed module headers upstream of every root lens, so the nameless-wrapper arm is unreachable on a tree that reached the lens roster; keying region membership on a fabricated name would be the fabricated-plausible-output trap the arm avoids.
 fn mandatory_tag_findings(root: v2.std.node.Node) -> std.types.List<v2.std.diagnostic.Diagnostic> {
-  v2.std.node.fold_node(
-    n: root,
-    algebra: v2.std.node.NodeFold {
+  let alg: v2.std.node.NodeFold<std.types.List<v2.std.diagnostic.Diagnostic>> = v2.std.node.NodeFold {
       init: fn(n0) { mandatory_tag_module_findings(n: n0) },
       step: fn(acc, _edge, child) { concat(acc, child) }
     }
-  )
+  v2.std.node.fold_node(n: root, algebra: alg)
 }
 
 fn mandatory_tag_findings_count(root: v2.std.node.Node) -> Int {

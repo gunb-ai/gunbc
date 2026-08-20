@@ -3764,7 +3764,7 @@ fn translate_import_production_to_carrier(import_node: v2.std.node.Node) -> v2.s
           v2.std.diagnostic.outcome_accepted(
             value: v2.extdeps.languages.dag.emit_import_decl_emitted_node(
               qualified_name: qn_node,
-              import_block: v2.std.optional.Present { value: block_node }
+              import_block: Present { value: block_node }
             )
           )
         }

@@ -71,7 +71,7 @@ fn node_skeleton_edge_targets(node: v2.std.node.Node) -> std.types.List<v2.std.n
 fn node_skeleton_marshal_atom_lexemes(node: v2.std.node.Node) -> std.types.List<SkeletonMarshalAtomLexeme> {
   let child_lexemes = v2.std.algebra.fold_list_right(
     xs: node_skeleton_edge_targets(node: node),
-    empty: Empty,
+    empty: std.algebra.Empty,
     snoc: fn(acc, child) {
       v2.std.algebra.fold_list_right(
         xs: node_skeleton_marshal_atom_lexemes(node: child),
@@ -166,9 +166,7 @@ fn skeleton_edge_is_construction_spelling(e: v2.std.node.Edge) -> Bool {
 }
 
 fn skeleton_atom_lexeme_census_fold(n: v2.std.node.Node) -> AtomLexemeCensus {
-  v2.std.node.fold_node(
-    n: n,
-    algebra: v2.std.node.NodeFold {
+  let alg: v2.std.node.NodeFold<AtomLexemeCensus> = v2.std.node.NodeFold {
       init: fn(n0) {
         match n0.kind {
           v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } } =>
@@ -203,7 +201,7 @@ fn skeleton_atom_lexeme_census_fold(n: v2.std.node.Node) -> AtomLexemeCensus {
         }
       }
     }
-  )
+  v2.std.node.fold_node(n: n, algebra: alg)
 }
 
 fn node_skeleton_authored_non_construction_atom_lexemes(node: v2.std.node.Node) -> std.types.List<SkeletonMarshalAtomLexeme> {

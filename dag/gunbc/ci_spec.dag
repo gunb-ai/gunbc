@@ -202,14 +202,14 @@ fn ci_retry_body_run(command: String) -> v2.std.orchestration.Run {
   v2.std.orchestration.Run {
     command: command,
     env: [],
-    redirect: v2.std.collection.Absent,
-    capture: v2.std.collection.Absent
+    redirect: Absent,
+    capture: Absent
   }
 }
 
 fn ci_retry_exhausted_pipeline() -> v2.std.orchestration.Pipeline {
   v2.std.orchestration.Pipeline {
-    steps: [v2.std.orchestration.Do { run: v2.std.orchestration.Run { command: "exit 1", env: [], redirect: v2.std.collection.Absent, capture: v2.std.collection.Absent } }],
+    steps: [v2.std.orchestration.Do { run: v2.std.orchestration.Run { command: "exit 1", env: [], redirect: Absent, capture: Absent } }],
     on_failure: v2.std.orchestration.FailFast
   }
 }
@@ -337,7 +337,7 @@ fn scheduler_invoke_with(spec: CiSpec, plan_function: gunbc.cli_invoke.PlanFunct
     source_roots: gunbc.ci_layer_roots.witness_layer_roots,
     plan_entry: floor_plan_entry,
     plan_function: plan_function,
-    notice_title: v2.std.collection.Present { value: spec.notice_title },
+    notice_title: Present { value: spec.notice_title },
     rooted: true
   )
 }
