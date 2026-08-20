@@ -81,10 +81,12 @@ the plan says increment 1 is "in this PR" — is CLOSED, not merged**; and then 
 implementation. Increment 1's *core* did land by some other route (`build_movable_set` today filters
 on `make_decision(usage) == SoleOwner` and admits params via `param_names`, as described).
 
-> **So the plan is not merely stale. It describes as WIRED a mechanism a later merged PR
-> deliberately removed, and has said so in main since 2026-07-05** — worse than an un-updated plan,
-> because a reader who greps the symbols finds nothing and concludes the plan was aspirational, when
-> it is a description of code that ran and was withdrawn.
+> **The divergence survives with its character changed.** The plan accurately described the `.dag`
+> template state **when written** — it did not overclaim. A later **deliberate, reasoned** deletion
+> never propagated to it. The shape is: **plan accurate at authoring → machinery deleted by #6307
+> with a stated operator-directed reason → plan never updated, still says "wired" six weeks on.**
+> That is a **documentation-propagation failure, not a decision failure** — weaker than an earlier
+> revision of this document claimed, and true.
 
 ### What was deleted — both designs derived here, already written
 
@@ -110,29 +112,42 @@ fn record_field_use_site(acc, name, field, span_start, in_capture: Bool) -> Move
 
 **Both designs independently derived during this investigation were in those 150 lines.**
 
-### Why it was deleted — OPEN, three readings
+### Why it was deleted — SETTLED: an operator-directed dissolution
 
-**The commit states what it deleted, not why.** Its bullet is *"Persistent carriers: lists+sets ->
-im_rc Vector/OrdSet; delete clone-fallback guard + per-site move licenses"*; the body's rationale
-paragraphs are all about the clone-fallback guard, none about licensing.
+**An earlier revision of this document called the reason unstated and offered three readings, one
+backed by a pattern argument that a reasoned obsolescence would have updated the plan in the same
+pass. ALL OF THAT IS RETRACTED.** The reason is stated — in **PR #6307's body**, not the commit
+message, which is why a commit-message search concluded it was absent.
 
-1. **im_rc made licensing unnecessary.** The guard and the licensing both existed to avoid expensive
-   clones — the guard by refusing them, the licensing by proving them unneeded. If persistent
-   carriers made clones cheap, both lose their motivation together, which would explain an atomic
-   deletion the commit felt no need to justify. *Consistent with everything read here; not confirmed.*
-2. **im_rc made licensing unsound** — if the carrier change altered what a whole-value use site means.
-3. **The two could not be landed together** — which the word *"atomic"* in the title equally
-   supports. **Weakened by the diff:** a pure deletion with no replacement and no re-add attempt in
-   six weeks is not what a deferred landing looks like.
+> The compiled runtime realized containers as `Rc<std HashMap/Vec/BTreeSet>` while the interpreter
+> already used persistent structures — a §3 model↔realization fork whose cost surfaced as the
+> cold-compile quadratic (tier-100 ≈ 24 min, >85% CPU in `Rc::make_mut` deep-clones). **Six
+> mechanisms existed to protect that representation** … per operator directive (factory model,
+> atomic + delete so nothing anchors future work):
+> **Deleted**: … per-site move licenses … — **template-only machinery the seed never shipped,
+> deleted before regen could materialize it.** `build_movable_set`/`analyze_ownership` (the
+> proof-based ownership model proper) **are kept**.
 
-**Evidence against the comfortable reading (1):** a *reasoned* obsolescence would plausibly have
-updated the plan in the same pass. It did not — the plan still says "wired" six weeks on. That is a
-pattern argument, not proof, and it points away from *deliberate and reasoned* toward *expedient
-during a large migration, never revisited*. **The absence of a stated reason is itself evidence
-about the kind of decision it was.**
+**"Never shipped" verified, with a positive control.** At `3a1b87d6e08^` the licensing symbols
+appear in 4 `.dag` templates, the plan, and one v2 file — and in **zero** stage0 mirrors. The same
+query for the *kept* symbol `build_movable_set` **does** find
+`src/v1/stage0/src/v1_compiler_{ownership,emit_rust}.rs`, so the zero is a real absence rather than a
+broken query: **that code never executed, in any tree.**
 
-**Which one holds decides whether re-implementing it is correct or reintroduces a bug** — and the
-150 lines are recoverable, so the question is worth answering before anyone rewrites them.
+**The answer is "unnecessary", and it is the good kind.** Persistent carriers made the state those
+six mechanisms guarded **unrepresentable**, so they dissolved together — DESIGN §4b meta-obligation 4
+executed correctly (a climb deletes the lower-rung production machinery it obsoletes rather than
+accumulating it beside the proof), with the proof-based model explicitly **kept**, which is what
+distinguishes a dissolution from a rollback. Deliberate, reasoned, operator-directed, documented.
+
+**Method note, this being the third correction to this section:** reasoning about a silence requires
+first *establishing* the silence. The commit message was quiet; the PR body was not. A search
+covering one and not the other established only where it had looked.
+
+**Consequence for the "recoverable implementation" above:** those 150 lines are a recoverable
+**design**, not proven-working code — templates that never ran. Anyone reviving them owes the
+execution the original never had, and owes the prior question first: **the representation those
+mechanisms protected no longer exists.**
 
 ## 3. POPULATION BOUND — at most 446 of 775 clone sites
 
@@ -157,7 +172,8 @@ membership, so it bounds the *consequence* rather than observing the *cause*. **
 > **IT IS ALSO NOT A COST MEASURE, and an earlier draft of this document wrongly made it one.** That
 > draft paired the 446 with the plan's cost denomination — whole-tree `compile --target dag` at
 > ~72 min, ~85–90% emit, `Rc::make_mut` copy-on-writing whole containers, O(n²). **That denomination
-> is PRE-`im_rc`.** The live carriers are persistent —
+> is PRE-`im_rc` — and #6307 states the quadratic **WAS** the `Rc<std …>` representation, which the
+> migration removed, so that figure is **RETIRED**, not merely inapplicable.** The live carriers are persistent —
 > `use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec}` — on which a clone is a
 > **refcount bump with structural sharing**, not a deep copy. Joining the two silently re-inflates
 > cheap clones into expensive ones. The 446 bounds clone **sites**; it says nothing about what they
