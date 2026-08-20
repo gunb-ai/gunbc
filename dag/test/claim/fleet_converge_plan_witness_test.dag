@@ -1,7 +1,6 @@
 module test.claim.fleet_converge_plan_witness
 
-
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data witness_host_srv1: std.types.NonEmptyStr = "srv1" as std.types.NonEmptyStr
 
@@ -12,7 +11,7 @@ test fn timer_retirement_plan_shows_refused_removal_for_foreign_cap() -> Bool {
     dropin_path: "/etc/systemd/system/foo.service.d/99-foreign.conf" as std.types.NonEmptyStr,
     content: "[Service]\nMemoryMax=1\n",
   }
-  match fleet_converge_plan_artifact(
+  match gunbc.fleet_converge_plan.fleet_converge_plan_artifact(
     host: witness_host_srv1,
     prior_generation: 0,
     observed_timers: [],
@@ -29,32 +28,32 @@ test fn timer_retirement_plan_lists_removed_legacy_timer() -> Bool {
   let observed = [
     gunbc.fleet_converge_plan.TimerRetirementMember { unit_name: "ctrl-fleet-converge.timer" as std.types.NonEmptyStr },
   ]
-  let plan = timer_retirement_plan(observed: observed)
+  let plan = gunbc.fleet_converge_plan.timer_retirement_plan(observed: observed)
   any(plan.actions, a => match a { MemberRemoved { at: _, from: m } => m.unit_name as String == "ctrl-fleet-converge.timer"  _ => false })
 }
 
 test fn plan_artifact_hash_is_stable_for_fixed_observation() -> Bool {
   let observed_cap = gunbc.host_axis_caps.CapMember {
-    dropin_path: gunbc_runner_per_slot_dropin_path as std.types.NonEmptyStr,
+    dropin_path: gunbc.host_converge.gunbc_runner_per_slot_dropin_path as std.types.NonEmptyStr,
     content: "[Service]\nMemoryMax=15032385536\n",
   }
-  match fleet_converge_plan_artifact(
+  match gunbc.fleet_converge_plan.fleet_converge_plan_artifact(
     host: witness_host_srv1,
     prior_generation: 3,
     observed_timers: [],
     observed_caps: [observed_cap],
   ) {
     Present { value: a1 } =>
-      match fleet_converge_plan_artifact(
+      match gunbc.fleet_converge_plan.fleet_converge_plan_artifact(
         host: witness_host_srv1,
         prior_generation: 3,
         observed_timers: [],
         observed_caps: [observed_cap],
       ) {
         Present { value: a2 } =>
-          match fleet_converge_plan_artifact_hash(artifact: a1) {
+          match gunbc.fleet_converge_plan.fleet_converge_plan_artifact_hash(artifact: a1) {
             Present { value: h1 } =>
-              match fleet_converge_plan_artifact_hash(artifact: a2) {
+              match gunbc.fleet_converge_plan.fleet_converge_plan_artifact_hash(artifact: a2) {
                 Present { value: h2 } => h1 == h2
                 Absent => false
               }
@@ -68,10 +67,10 @@ test fn plan_artifact_hash_is_stable_for_fixed_observation() -> Bool {
 
 test fn observed_baseline_cas_refuses_after_drift() -> Bool {
   let observed_cap = gunbc.host_axis_caps.CapMember {
-    dropin_path: gunbc_runner_per_slot_dropin_path as std.types.NonEmptyStr,
+    dropin_path: gunbc.host_converge.gunbc_runner_per_slot_dropin_path as std.types.NonEmptyStr,
     content: "[Service]\nMemoryMax=15032385536\n",
   }
-  match fleet_converge_plan_artifact(
+  match gunbc.fleet_converge_plan.fleet_converge_plan_artifact(
     host: witness_host_srv1,
     prior_generation: 0,
     observed_timers: [],
@@ -79,10 +78,10 @@ test fn observed_baseline_cas_refuses_after_drift() -> Bool {
   ) {
     Present { value: artifact } => {
       let drifted = gunbc.host_axis_caps.CapMember {
-        dropin_path: gunbc_runner_per_slot_dropin_path as std.types.NonEmptyStr,
+        dropin_path: gunbc.host_converge.gunbc_runner_per_slot_dropin_path as std.types.NonEmptyStr,
         content: "[Service]\nMemoryMax=17179869184\n",
       }
-      !fleet_converge_observed_baseline_matches(
+      !gunbc.fleet_converge_plan.fleet_converge_observed_baseline_matches(
         host: witness_host_srv1,
         observed_baseline_hex: artifact.observed_baseline_hex,
         observed_timers: [],
@@ -94,7 +93,7 @@ test fn observed_baseline_cas_refuses_after_drift() -> Bool {
 }
 
 test fn plan_body_names_subject_host_and_generation() -> Bool {
-  match fleet_converge_plan_artifact(
+  match gunbc.fleet_converge_plan.fleet_converge_plan_artifact(
     host: witness_host_srv1,
     prior_generation: 4,
     observed_timers: [],
@@ -112,17 +111,17 @@ test fn plan_body_names_subject_host_and_generation() -> Bool {
 
 test fn cross_host_apply_refuses_subject_identity() -> Bool {
   let observed_cap = gunbc.host_axis_caps.CapMember {
-    dropin_path: gunbc_runner_per_slot_dropin_path as std.types.NonEmptyStr,
+    dropin_path: gunbc.host_converge.gunbc_runner_per_slot_dropin_path as std.types.NonEmptyStr,
     content: "[Service]\nMemoryMax=15032385536\n",
   }
-  match fleet_converge_plan_artifact(
+  match gunbc.fleet_converge_plan.fleet_converge_plan_artifact(
     host: witness_host_srv1,
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [observed_cap],
   ) {
     Present { value: artifact } =>
-      !fleet_converge_apply_subject_admits(
+      !gunbc.fleet_converge_plan.fleet_converge_apply_subject_admits(
         planned_subject: artifact.subject,
         observed_host: witness_host_srv2,
         observed_timers: [],
@@ -134,26 +133,26 @@ test fn cross_host_apply_refuses_subject_identity() -> Bool {
 
 test fn same_host_different_generation_changes_plan_hash() -> Bool {
   let observed_cap = gunbc.host_axis_caps.CapMember {
-    dropin_path: gunbc_runner_per_slot_dropin_path as std.types.NonEmptyStr,
+    dropin_path: gunbc.host_converge.gunbc_runner_per_slot_dropin_path as std.types.NonEmptyStr,
     content: "[Service]\nMemoryMax=15032385536\n",
   }
-  match fleet_converge_plan_artifact(
+  match gunbc.fleet_converge_plan.fleet_converge_plan_artifact(
     host: witness_host_srv1,
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [observed_cap],
   ) {
     Present { value: gen0 } =>
-      match fleet_converge_plan_artifact(
+      match gunbc.fleet_converge_plan.fleet_converge_plan_artifact(
         host: witness_host_srv1,
         prior_generation: 1,
         observed_timers: [],
         observed_caps: [observed_cap],
       ) {
         Present { value: gen1 } =>
-          match fleet_converge_plan_artifact_hash(artifact: gen0) {
+          match gunbc.fleet_converge_plan.fleet_converge_plan_artifact_hash(artifact: gen0) {
             Present { value: h0 } =>
-              match fleet_converge_plan_artifact_hash(artifact: gen1) {
+              match gunbc.fleet_converge_plan.fleet_converge_plan_artifact_hash(artifact: gen1) {
                 Present { value: h1 } => h0 != h1
                 Absent => false
               }
@@ -168,17 +167,17 @@ test fn same_host_different_generation_changes_plan_hash() -> Bool {
 test fn second_concurrent_apply_refuses_generation_gate() -> Bool {
   let prior = 5
   let planned = 6
-  fleet_converge_apply_generation_admits(prior_generation: prior, store_generation: prior)
-    && !fleet_converge_apply_generation_admits(prior_generation: prior, store_generation: planned)
-    && fleet_converge_apply_generation_stale(planned_generation: planned, store_generation: planned)
+  gunbc.fleet_converge_plan.fleet_converge_apply_generation_admits(prior_generation: prior, store_generation: prior)
+    && !gunbc.fleet_converge_plan.fleet_converge_apply_generation_admits(prior_generation: prior, store_generation: planned)
+    && gunbc.fleet_converge_plan.fleet_converge_apply_generation_stale(planned_generation: planned, store_generation: planned)
 }
 
 test fn member_set_fingerprint_mismatch_refuses_identity() -> Bool {
   let observed_cap = gunbc.host_axis_caps.CapMember {
-    dropin_path: gunbc_runner_per_slot_dropin_path as std.types.NonEmptyStr,
+    dropin_path: gunbc.host_converge.gunbc_runner_per_slot_dropin_path as std.types.NonEmptyStr,
     content: "[Service]\nMemoryMax=15032385536\n",
   }
-  match fleet_converge_plan_artifact(
+  match gunbc.fleet_converge_plan.fleet_converge_plan_artifact(
     host: witness_host_srv1,
     prior_generation: 0,
     observed_timers: [],
@@ -186,11 +185,11 @@ test fn member_set_fingerprint_mismatch_refuses_identity() -> Bool {
   ) {
     Present { value: artifact } => {
       let drifted = gunbc.host_axis_caps.CapMember {
-        dropin_path: gunbc_runner_per_slot_dropin_path as std.types.NonEmptyStr,
+        dropin_path: gunbc.host_converge.gunbc_runner_per_slot_dropin_path as std.types.NonEmptyStr,
         content: "[Service]\nMemoryMax=17179869184\n",
       }
-      !fleet_converge_member_set_fingerprint_matches(
-        planned_fingerprint_text: serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String,
+      !gunbc.fleet_converge_plan.fleet_converge_member_set_fingerprint_matches(
+        planned_fingerprint_text: std.content_hash.serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String,
         host: witness_host_srv1,
         observed_timers: [],
         observed_caps: [drifted],
@@ -201,36 +200,36 @@ test fn member_set_fingerprint_mismatch_refuses_identity() -> Bool {
 }
 
 test fn plan_content_hash_path_is_apply_interlock_sidecar() -> Bool {
-  fleet_converge_plan_content_hash_path == "/tmp/fleet-converge-plan/plan_content.hex"
+  gunbc.fleet_converge_plan.fleet_converge_plan_content_hash_path == "/tmp/fleet-converge-plan/plan_content.hex"
 }
 
 test fn plan_cli_surfaces_content_hash_for_apply_dispatch() -> Bool {
-  string_contains(s: fleet_converge_plan_cli_note, pattern: "plan_content.hex")
-    && string_contains(s: fleet_converge_plan_cli_note, pattern: "plan_artifact_hash")
-    && string_contains(s: fleet_converge_plan_cli_note, pattern: "apply.sh")
+  string_contains(s: gunbc.fleet_converge_plan_cli.fleet_converge_plan_cli_note, pattern: "plan_content.hex")
+    && string_contains(s: gunbc.fleet_converge_plan_cli.fleet_converge_plan_cli_note, pattern: "plan_artifact_hash")
+    && string_contains(s: gunbc.fleet_converge_plan_cli.fleet_converge_plan_cli_note, pattern: "apply.sh")
 }
 
 test fn bundle_hash_binds_apply_shell_not_plan_body_only() -> Bool {
-  match fleet_converge_plan_artifact(
+  match gunbc.fleet_converge_plan.fleet_converge_plan_artifact(
     host: witness_host_srv1,
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [],
   ) {
     Present { value: artifact } =>
-      match fleet_converge_plan_bundle_digest_hex(
+      match gunbc.fleet_converge_plan.fleet_converge_plan_bundle_digest_hex(
         plan_body: artifact.plan_body,
         apply_shell: artifact.apply_shell,
         spark_typed_actions_wire: "",
       ) {
         Present { value: hex } =>
-          fleet_converge_plan_bundle_matches(
+          gunbc.fleet_converge_plan.fleet_converge_plan_bundle_matches(
             plan_body: artifact.plan_body,
             apply_shell: artifact.apply_shell,
             spark_typed_actions_wire: "",
             claimed_hex: hex as String,
           )
-            && !fleet_converge_plan_bundle_matches(
+            && !gunbc.fleet_converge_plan.fleet_converge_plan_bundle_matches(
               plan_body: artifact.plan_body,
               apply_shell: concat(artifact.apply_shell, "# tamper"),
               spark_typed_actions_wire: "",
@@ -243,50 +242,58 @@ test fn bundle_hash_binds_apply_shell_not_plan_body_only() -> Bool {
 }
 
 test fn parse_nonneg_generation_refuses_corrupt_and_negative() -> Bool {
-  match fleet_converge_parse_nonneg_generation_text(content: "42") {
+  match gunbc.fleet_converge_plan.fleet_converge_parse_nonneg_generation_text(content: "42") {
     Present { value: n } => n == 42
     Absent => false
   }
-    && match fleet_converge_parse_nonneg_generation_text(content: "") {
+    && match gunbc.fleet_converge_plan.fleet_converge_parse_nonneg_generation_text(content: "") {
       Absent => true
       Present { value: _ } => false
     }
-    && match fleet_converge_parse_nonneg_generation_text(content: "-1") {
+    && match gunbc.fleet_converge_plan.fleet_converge_parse_nonneg_generation_text(content: "-1") {
       Absent => true
       Present { value: _ } => false
     }
-    && match fleet_converge_parse_nonneg_generation_text(content: "abc") {
+    && match gunbc.fleet_converge_plan.fleet_converge_parse_nonneg_generation_text(content: "abc") {
       Absent => true
       Present { value: _ } => false
     }
 }
 
 test fn generation_from_store_content_missing_is_zero_corrupt_refuses() -> Bool {
-  match fleet_converge_generation_from_store_content(store_present: false, content: "") {
+  match gunbc.fleet_converge_plan.fleet_converge_generation_from_store_content(store_present: false, content: "") {
     Present { value: 0 } => true
     _ => false
   }
-    && match fleet_converge_generation_from_store_content(store_present: true, content: "garbage") {
+    && match gunbc.fleet_converge_plan.fleet_converge_generation_from_store_content(store_present: true, content: "garbage") {
       Absent => true
       Present { value: _ } => false
     }
 }
 
 test fn locked_apply_script_serializes_generation_under_flock() -> Bool {
-  let script = fleet_converge_locked_apply_script(
+  let script = gunbc.fleet_converge_plan.fleet_converge_locked_apply_script(
     prior_generation: 4,
     planned_generation: 5,
-    apply_shell_path: fleet_converge_plan_apply_shell_path,
+    apply_shell_path: gunbc.fleet_converge_plan.fleet_converge_plan_apply_shell_path,
   )
   string_contains(s: script, pattern: "flock -x")
     && string_contains(s: script, pattern: "[ \"$CURRENT\" != \"4\" ]")
     && string_contains(s: script, pattern: "LeaseGenerationStale planned=5")
     && string_contains(s: script, pattern: "LeaseGenerationStale")
-    && string_contains(s: script, pattern: fleet_converge_plan_apply_shell_path)
+    && string_contains(s: script, pattern: gunbc.fleet_converge_plan.fleet_converge_plan_apply_shell_path)
+}
+
+test fn subject_host_matches_same_host() -> Bool {
+  gunbc.fleet_converge_plan.fleet_converge_apply_subject_host_matches(planned_host: witness_host_srv1, observed_host: witness_host_srv1)
+}
+
+test fn subject_host_matches_refuses_cross_host() -> Bool {
+  !gunbc.fleet_converge_plan.fleet_converge_apply_subject_host_matches(planned_host: witness_host_srv1, observed_host: witness_host_srv2)
 }
 
 test fn apply_shell_carries_dissolve_on_marker_not_host_gate() -> Bool {
-  match fleet_converge_plan_artifact(
+  match gunbc.fleet_converge_plan.fleet_converge_plan_artifact(
     host: witness_host_srv1,
     prior_generation: 0,
     observed_timers: [],

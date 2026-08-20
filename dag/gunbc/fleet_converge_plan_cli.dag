@@ -1,45 +1,48 @@
 module gunbc.fleet_converge_plan_cli
 
-
 data fleet_converge_plan_spark_typed_actions_wire_path: String = "/tmp/fleet-converge-plan/spark_serving_typed_actions.wire"
 
-data fleet_converge_plan_cli_note: String = "Wet CLI for on-demand fleet converge plan/apply (sleek-heron-218). Plan observes the host, runs membership_reconcile once, names the subject (host + member-set fingerprint), mints a std.temporal_effect LeaseEpoch generation in the artifact, and writes the human-readable plan plus apply.sh. plan_content.hex is the Fnv1a64Structural bundle digest of plan.txt + apply.sh + spark_serving_typed_actions.wire (empty wire on non-Spark hosts); on success plan_wet prints plan.txt then that digest for workflow_dispatch plan_artifact_hash. Apply re-observes subject identity and observed-baseline fingerprint in .dag, refuses unless on-disk plan.txt + apply.sh + spark wire match plan_content.hex, then runs fleet_converge_locked_apply_script under flock. Generation store reads refuse corrupt or negative values; a missing store file is generation 0."
+data fleet_converge_plan_cli_note: String = "Wet CLI for on-demand fleet converge plan/apply (sleek-heron-218). Plan observes the host, runs membership_reconcile once, names the subject (host + member-set fingerprint), mints a std.temporal_effect LeaseEpoch generation in the artifact, and writes the human-readable plan plus apply.sh. plan_content.hex is the Fnv1a64Structural bundle digest of plan.txt + apply.sh + spark_serving_typed_actions.wire (empty wire on non-Spark hosts); on success plan_wet prints plan.txt then that digest for workflow_dispatch plan_artifact_hash. Apply re-observes subject identity and observed-baseline fingerprint in .dag, refuses unless on-disk plan.txt + apply.sh + spark wire match plan_content.hex, then runs fleet_converge_locked_apply_script under flock. Generation store reads refuse corrupt or negative values; a missing store file is generation 0. Subject host is a typed observation (observe_host_short_wet returns NonEmptyStr?, Absent when the hostname probe did not succeed or returned empty output): both plan and apply refuse outright on Absent rather than folding a failed probe into an empty String, and the SubjectHostMismatch check itself routes through fleet_converge_apply_subject_host_matches on two NonEmptyStr values (gunbc.fleet_converge_plan) — the same authority fleet_converge_apply_subject_admits uses — never a bare String != that two coincident non-observations (both hosts probed empty) could satisfy by accident."
 
-func observe_host_short_wet() -> String
-  uses net: std.cache_interface.Network
+func observe_host_short_wet() -> std.types.NonEmptyStr?
+  uses net: std.resources.Network
 {
-  trim(
-    s: run_shell_command_capture(
-      command: extdeps.exec.command.ArgvCommand { argv: ["hostname", "-s"] },
-      transport: LocalExec,
-    ).stdout,
+  let run = gunbc.command_runner.run_shell_command_capture(
+    command: extdeps.exec.command.ArgvCommand { argv: ["hostname", "-s"] },
+    transport: extdeps.exec.command.LocalExec,
   )
+  let trimmed = std.algebra.trim(s: run.stdout)
+  if !run.success || trimmed == "" {
+    none
+  } else {
+    Present { value: trimmed as std.types.NonEmptyStr }
+  }
 }
 
 func observe_generation_store_wet() -> Int?
   uses net: std.cache_interface.Network
 {
-  let read = Filesystem.Read(path: fleet_converge_generation_store_path)
-  fleet_converge_generation_from_store_content(store_present: read.success, content: read.content)
+  let read = extdeps.filesystem.filesystem_io.Filesystem.Read(path: gunbc.fleet_converge_plan.fleet_converge_generation_store_path)
+  gunbc.fleet_converge_plan.fleet_converge_generation_from_store_content(store_present: read.success, content: read.content)
 }
 
-func observe_timer_members_wet() -> List<gunbc.fleet_converge_plan.TimerRetirementMember>
+func observe_timer_members_wet() -> std.types.List<gunbc.fleet_converge_plan.TimerRetirementMember>
   uses net: std.cache_interface.Network
 {
-  let legacy = timer_retirement_observed_legacy_srv1()
+  let legacy = gunbc.fleet_converge_plan.timer_retirement_observed_legacy_srv1()
   filter(legacy, m =>
-    run_shell_command_capture(
+    gunbc.command_runner.run_shell_command_capture(
       command: extdeps.exec.command.ArgvCommand { argv: ["test", "-f", concat("/etc/systemd/system/", m.unit_name as String)] },
-      transport: LocalExec,
+      transport: extdeps.exec.command.LocalExec,
     ).success
   )
 }
 
-func observe_cap_members_wet() -> List<gunbc.host_axis_caps.CapMember>
+func observe_cap_members_wet() -> std.types.List<gunbc.host_axis_caps.CapMember>
   uses net: std.cache_interface.Network
 {
-  flat_map(caps_managed_dropin_paths, path => {
-    let read = Filesystem.Read(path: path as String)
+  flat_map(gunbc.host_axis_caps.caps_managed_dropin_paths, path => {
+    let read = extdeps.filesystem.filesystem_io.Filesystem.Read(path: path as String)
     if read.success {
       [gunbc.host_axis_caps.CapMember { dropin_path: path, content: read.content }]
     } else {
@@ -51,66 +54,69 @@ func observe_cap_members_wet() -> List<gunbc.host_axis_caps.CapMember>
 func fleet_converge_plan_wet() -> std.process.ProcessExit
   uses net: std.cache_interface.Network
 {
-  let host_short = observe_host_short_wet()
-  let host = host_short as std.types.NonEmptyStr
+  match observe_host_short_wet() {
+    Absent =>
+      std.process.exit_failure(reason: "fleet_converge_plan: HostObservationFailed — hostname probe did not succeed or returned empty output, refuse to plan")
+    Present { value: host } => {
+  let host_short = host as String
   match observe_generation_store_wet() {
     Absent =>
-      exit_failure(reason: "fleet_converge_plan: generation store unreadable or corrupt — refuse, do not coerce to 0")
+      std.process.exit_failure(reason: "fleet_converge_plan: generation store unreadable or corrupt — refuse, do not coerce to 0")
     Present { value: prior_generation } => {
   let observed_timers = observe_timer_members_wet()
   let observed_caps = observe_cap_members_wet()
-  match fleet_converge_plan_artifact(
+  match gunbc.fleet_converge_plan.fleet_converge_plan_artifact(
     host: host,
     prior_generation: prior_generation,
     observed_timers: observed_timers,
     observed_caps: observed_caps,
   ) {
     Absent =>
-      exit_failure(reason: "fleet_converge_plan: observed baseline is not Fnv1a64Structural — plan refused")
+      std.process.exit_failure(reason: "fleet_converge_plan: observed baseline is not Fnv1a64Structural — plan refused")
     Present { value: artifact } =>
-      match fleet_converge_plan_bundle_digest_hex(
+      match gunbc.fleet_converge_plan.fleet_converge_plan_bundle_digest_hex(
         plan_body: artifact.plan_body,
         apply_shell: artifact.apply_shell,
-        spark_typed_actions_wire: fleet_converge_spark_serving_typed_actions_wire(
+        spark_typed_actions_wire: gunbc.fleet_converge_plan.fleet_converge_spark_serving_typed_actions_wire(
           rows: artifact.spark_serving_typed_actions,
         ),
       ) {
         Absent =>
-          exit_failure(reason: "fleet_converge_plan: plan bundle hash is not Fnv1a64Structural — plan refused")
+          std.process.exit_failure(reason: "fleet_converge_plan: plan bundle hash is not Fnv1a64Structural — plan refused")
         Present { value: content_hash } => {
           let planned_generation = prior_generation + 1
-          let spark_wire = fleet_converge_spark_serving_typed_actions_wire(
+          let spark_wire = gunbc.fleet_converge_plan.fleet_converge_spark_serving_typed_actions_wire(
             rows: artifact.spark_serving_typed_actions,
           )
-          let mkdir = run_shell_commands(
-            commands: [extdeps.exec.command.ArgvCommand { argv: ["mkdir", "-p", fleet_converge_plan_artifact_dir] }],
-            transport: LocalExec,
+          let mkdir = gunbc.command_runner.run_shell_commands(
+            commands: [extdeps.exec.command.ArgvCommand { argv: ["mkdir", "-p", gunbc.fleet_converge_plan.fleet_converge_plan_artifact_dir] }],
+            transport: extdeps.exec.command.LocalExec,
           )
           match mkdir {
             ExitFailure { code: _, reason: why } =>
-              exit_failure(reason: concat("fleet_converge_plan: mkdir refused: ", why))
+              std.process.exit_failure(reason: concat("fleet_converge_plan: mkdir refused: ", why))
             ExitSuccess => {
-              let w_plan = Filesystem.Write(path: fleet_converge_plan_body_path, content: artifact.plan_body)
-              let w_base = Filesystem.Write(
-                path: fleet_converge_plan_baseline_hex_path,
+              let w_plan = extdeps.filesystem.filesystem_io.Filesystem.Write(path: gunbc.fleet_converge_plan.fleet_converge_plan_body_path, content: artifact.plan_body)
+              let w_base = extdeps.filesystem.filesystem_io.Filesystem.Write(
+                path: gunbc.fleet_converge_plan.fleet_converge_plan_baseline_hex_path,
                 content: artifact.observed_baseline_hex,
               )
-              let w_hash = Filesystem.Write(path: fleet_converge_plan_content_hash_path, content: content_hash)
-              let w_apply = Filesystem.Write(path: fleet_converge_plan_apply_shell_path, content: artifact.apply_shell)
-              let w_host = Filesystem.Write(path: fleet_converge_plan_subject_host_path, content: host_short)
-              let w_gen = Filesystem.Write(
-                path: fleet_converge_plan_generation_path,
+              let w_hash = extdeps.filesystem.filesystem_io.Filesystem.Write(path: gunbc.fleet_converge_plan.fleet_converge_plan_content_hash_path, content: content_hash)
+              let w_apply = extdeps.filesystem.filesystem_io.Filesystem.Write(path: gunbc.fleet_converge_plan.fleet_converge_plan_apply_shell_path, content: artifact.apply_shell)
+              let w_host = extdeps.filesystem.filesystem_io.Filesystem.Write(path: gunbc.fleet_converge_plan.fleet_converge_plan_subject_host_path, content: host_short)
+              let w_gen = extdeps.filesystem.filesystem_io.Filesystem.Write(
+                path: gunbc.fleet_converge_plan.fleet_converge_plan_generation_path,
                 content: to_string(planned_generation),
               )
-              let w_prior = Filesystem.Write(
-                path: fleet_converge_plan_prior_generation_path,
+              let w_prior = extdeps.filesystem.filesystem_io.Filesystem.Write(
+                path: gunbc.fleet_converge_plan.fleet_converge_plan_prior_generation_path,
                 content: to_string(prior_generation),
               )
-              let w_member_fp = Filesystem.Write(
-                path: fleet_converge_plan_member_set_fp_path,
-                content: serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String,
+              let w_member_fp = extdeps.filesystem.filesystem_io.Filesystem.Write(
+                path: gunbc.fleet_converge_plan.fleet_converge_plan_member_set_fp_path,
+                content: std.content_hash.serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String,
               )
-              let w_spark_wire = Filesystem.Write(
+              let w_spark_wire = extdeps.filesystem.filesystem_io.Filesystem.Write(
                 path: fleet_converge_plan_spark_typed_actions_wire_path,
                 content: spark_wire,
               )
@@ -123,16 +129,16 @@ func fleet_converge_plan_wet() -> std.process.ProcessExit
                 && w_prior.success
                 && w_member_fp.success
                 && w_spark_wire.success {
-                run_shell_commands(
+                gunbc.command_runner.run_shell_commands(
                   commands: [
-                    extdeps.exec.command.ArgvCommand { argv: ["chmod", "0755", fleet_converge_plan_apply_shell_path] },
-                    extdeps.exec.command.ArgvCommand { argv: ["cat", fleet_converge_plan_body_path] },
-                    extdeps.exec.command.ArgvCommand { argv: ["cat", fleet_converge_plan_content_hash_path] },
+                    extdeps.exec.command.ArgvCommand { argv: ["chmod", "0755", gunbc.fleet_converge_plan.fleet_converge_plan_apply_shell_path] },
+                    extdeps.exec.command.ArgvCommand { argv: ["cat", gunbc.fleet_converge_plan.fleet_converge_plan_body_path] },
+                    extdeps.exec.command.ArgvCommand { argv: ["cat", gunbc.fleet_converge_plan.fleet_converge_plan_content_hash_path] },
                   ],
-                  transport: LocalExec,
+                  transport: extdeps.exec.command.LocalExec,
                 )
               } else {
-                exit_failure(reason: "fleet_converge_plan: artifact write refused")
+                std.process.exit_failure(reason: "fleet_converge_plan: artifact write refused")
               }
             }
           }
@@ -141,20 +147,22 @@ func fleet_converge_plan_wet() -> std.process.ProcessExit
     }
   }
   }
+    }
+  }
 }
 
 func fleet_converge_apply_wet() -> std.process.ProcessExit
   uses net: std.cache_interface.Network
 {
-  let read_plan = Filesystem.Read(path: fleet_converge_plan_body_path)
-  let read_base = Filesystem.Read(path: fleet_converge_plan_baseline_hex_path)
-  let read_host = Filesystem.Read(path: fleet_converge_plan_subject_host_path)
-  let read_prior = Filesystem.Read(path: fleet_converge_plan_prior_generation_path)
-  let read_gen = Filesystem.Read(path: fleet_converge_plan_generation_path)
-  let read_member_fp = Filesystem.Read(path: fleet_converge_plan_member_set_fp_path)
-  let read_apply = Filesystem.Read(path: fleet_converge_plan_apply_shell_path)
-  let read_hash = Filesystem.Read(path: fleet_converge_plan_content_hash_path)
-  let read_spark_wire = Filesystem.Read(path: fleet_converge_plan_spark_typed_actions_wire_path)
+  let read_plan = extdeps.filesystem.filesystem_io.Filesystem.Read(path: gunbc.fleet_converge_plan.fleet_converge_plan_body_path)
+  let read_base = extdeps.filesystem.filesystem_io.Filesystem.Read(path: gunbc.fleet_converge_plan.fleet_converge_plan_baseline_hex_path)
+  let read_host = extdeps.filesystem.filesystem_io.Filesystem.Read(path: gunbc.fleet_converge_plan.fleet_converge_plan_subject_host_path)
+  let read_prior = extdeps.filesystem.filesystem_io.Filesystem.Read(path: gunbc.fleet_converge_plan.fleet_converge_plan_prior_generation_path)
+  let read_gen = extdeps.filesystem.filesystem_io.Filesystem.Read(path: gunbc.fleet_converge_plan.fleet_converge_plan_generation_path)
+  let read_member_fp = extdeps.filesystem.filesystem_io.Filesystem.Read(path: gunbc.fleet_converge_plan.fleet_converge_plan_member_set_fp_path)
+  let read_apply = extdeps.filesystem.filesystem_io.Filesystem.Read(path: gunbc.fleet_converge_plan.fleet_converge_plan_apply_shell_path)
+  let read_hash = extdeps.filesystem.filesystem_io.Filesystem.Read(path: gunbc.fleet_converge_plan.fleet_converge_plan_content_hash_path)
+  let read_spark_wire = extdeps.filesystem.filesystem_io.Filesystem.Read(path: fleet_converge_plan_spark_typed_actions_wire_path)
   if !read_plan.success
     || !read_base.success
     || !read_host.success
@@ -164,73 +172,78 @@ func fleet_converge_apply_wet() -> std.process.ProcessExit
     || !read_apply.success
     || !read_hash.success
     || !read_spark_wire.success {
-    exit_failure(reason: "fleet_converge_apply: plan artifact missing — run plan first")
+    std.process.exit_failure(reason: "fleet_converge_apply: plan artifact missing — run plan first")
   } else {
-    let host_short = observe_host_short_wet()
-    let observed_host = trim(s: read_host.content) as std.types.NonEmptyStr
-    match fleet_converge_parse_nonneg_generation_text(content: read_prior.content) {
+    match observe_host_short_wet() {
       Absent =>
-        exit_failure(reason: "fleet_converge_apply: prior_generation artifact corrupt — refuse, do not coerce to 0")
+        std.process.exit_failure(reason: "fleet_converge_apply: HostObservationFailed — hostname probe did not succeed or returned empty output, refuse to compare subject host")
+      Present { value: observed_host } => {
+    let planned_host = std.algebra.trim(s: read_host.content) as std.types.NonEmptyStr
+    match gunbc.fleet_converge_plan.fleet_converge_parse_nonneg_generation_text(content: read_prior.content) {
+      Absent =>
+        std.process.exit_failure(reason: "fleet_converge_apply: prior_generation artifact corrupt — refuse, do not coerce to 0")
       Present { value: prior_generation } =>
-        match fleet_converge_parse_nonneg_generation_text(content: read_gen.content) {
+        match gunbc.fleet_converge_plan.fleet_converge_parse_nonneg_generation_text(content: read_gen.content) {
           Absent =>
-            exit_failure(reason: "fleet_converge_apply: planned_generation artifact corrupt — refuse, do not coerce to 0")
+            std.process.exit_failure(reason: "fleet_converge_apply: planned_generation artifact corrupt — refuse, do not coerce to 0")
           Present { value: planned_generation } => {
-            if trim(s: host_short) != trim(s: read_host.content) {
-              exit_failure(
+            if !gunbc.fleet_converge_plan.fleet_converge_apply_subject_host_matches(planned_host: planned_host, observed_host: observed_host) {
+              std.process.exit_failure(
                 reason: concat(
                   "fleet_converge_apply: SubjectHostMismatch planned=",
-                  trim(s: read_host.content),
-                  concat(" observed=", host_short),
+                  planned_host as String,
+                  concat(" observed=", observed_host as String),
                 ),
               )
             } else {
               let observed_timers = observe_timer_members_wet()
               let observed_caps = observe_cap_members_wet()
-              if !fleet_converge_member_set_fingerprint_matches(
+              if !gunbc.fleet_converge_plan.fleet_converge_member_set_fingerprint_matches(
                 planned_fingerprint_text: read_member_fp.content,
                 host: observed_host,
                 observed_timers: observed_timers,
                 observed_caps: observed_caps,
               ) {
-                exit_failure(reason: "fleet_converge_apply: SubjectIdentityMismatch — member set drifted since plan")
-              } else if !fleet_converge_observed_baseline_matches(
+                std.process.exit_failure(reason: "fleet_converge_apply: SubjectIdentityMismatch — member set drifted since plan")
+              } else if !gunbc.fleet_converge_plan.fleet_converge_observed_baseline_matches(
                 host: observed_host,
-                observed_baseline_hex: trim(s: read_base.content),
+                observed_baseline_hex: std.algebra.trim(s: read_base.content),
                 observed_timers: observed_timers,
                 observed_caps: observed_caps,
               ) {
-                exit_failure(reason: "fleet_converge_apply: ObservedBaselineMismatch — host drifted since plan; rerun plan and review")
-              } else if !fleet_converge_plan_bundle_matches(
+                std.process.exit_failure(reason: "fleet_converge_apply: ObservedBaselineMismatch — host drifted since plan; rerun plan and review")
+              } else if !gunbc.fleet_converge_plan.fleet_converge_plan_bundle_matches(
                 plan_body: read_plan.content,
                 apply_shell: read_apply.content,
-                spark_typed_actions_wire: trim(s: read_spark_wire.content),
+                spark_typed_actions_wire: std.algebra.trim(s: read_spark_wire.content),
                 claimed_hex: read_hash.content,
               ) {
-                exit_failure(
+                std.process.exit_failure(
                   reason: "fleet_converge_apply: PlanArtifactHashMismatch — the plan.txt + apply.sh + spark_serving_typed_actions.wire bundle does not match plan_content.hex (a plan artifact minted before the typed-actions wire joined the bundle will not match)",
                 )
               } else {
-                run_shell_commands(
+                gunbc.command_runner.run_shell_commands(
                   commands: [
                     extdeps.exec.command.ArgvCommand {
                       argv: [
                         "bash",
                         "-c",
-                        fleet_converge_locked_apply_script(
+                        gunbc.fleet_converge_plan.fleet_converge_locked_apply_script(
                           prior_generation: prior_generation,
                           planned_generation: planned_generation,
-                          apply_shell_path: fleet_converge_plan_apply_shell_path,
+                          apply_shell_path: gunbc.fleet_converge_plan.fleet_converge_plan_apply_shell_path,
                         ),
                       ],
                     },
                   ],
-                  transport: LocalExec,
+                  transport: extdeps.exec.command.LocalExec,
                 )
               }
             }
           }
         }
       }
+      }
+    }
   }
 }

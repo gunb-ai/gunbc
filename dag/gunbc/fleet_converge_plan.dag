@@ -53,14 +53,18 @@ fn fleet_converge_member_set_fingerprint(
   )
 }
 
+fn fleet_converge_apply_subject_host_matches(planned_host: NonEmptyStr, observed_host: NonEmptyStr) -> Bool {
+  planned_host == observed_host
+}
+
 fn fleet_converge_apply_subject_admits(
   planned_subject: FleetConvergePlanSubject,
   observed_host: std.types.NonEmptyStr,
   observed_timers: std.types.List<TimerRetirementMember>,
   observed_caps: std.types.List<gunbc.host_axis_caps.CapMember>,
 ) -> Bool {
-  planned_subject.host == observed_host
-    && std.content_hash.compare_content_hash(
+  fleet_converge_apply_subject_host_matches(planned_host: planned_subject.host, observed_host: observed_host)
+    && compare_content_hash(
       left: planned_subject.member_set_fingerprint,
       right: fleet_converge_member_set_fingerprint(
         host: observed_host,

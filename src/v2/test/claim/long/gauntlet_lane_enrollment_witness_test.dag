@@ -49,14 +49,13 @@ fn substrate_long_lane_contains(f: v2.std.text.String) -> Bool {
   v2.std.algebra.any(gunbc.ci_layer_roots.falsifier_substrate_long_lane_rows, row => row.function == f)
 }
 
+data provenance_producer_rows_deleted_not_rehomed_note: String = "Three identities formerly asserted here — lens_affected_set_provenance_producer_rejects_malformed_ingest_holds, _rejects_beyond_surface_ingest_holds, _coverage_receipt_holds — are REMOVED, not corrected in place, because they no longer name anything a rehome claim can be made about. Commit 60fa7b248f (2026-08-17) deleted src/v2/lens/affected_set/provenance_producer.dag and src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag whole, dispositioned RETIRED WITH THE MACHINERY: 'a witness whose subject no longer exists cannot be re-enrolled against anything.' Asserting these three names are cadence-enrolled was therefore unwitnessable from that commit forward — no roster row and no source file can name them — and this witness was silently RED for it, which is the actual '3 of 7 unenrolled' failure this file exists to prevent from going unnoticed. dag/gunbc/commit_workflow.dag provenance_wall_cadence_rehome_risk is retired in the same change with the full disposition. Re-adding these three assertions is correct again only if the provenance-producer lens itself is rebuilt and re-enrolled — at which point it needs a fresh claim naming the new home, not this one resurrected."
+
 test fn witness_rehomed_rows_are_cadence_enrolled() -> Bool {
   let entries = gunbc.commit_workflow.live_roster_falsifier_witness_entries()
   substrate_long_lane_contains(f: "wave1_gate1_d_census_subsumption_witness_holds")
     && falsifier_entries_contain(entries: entries, f: "wave1_gate1_d_ingested_bind_executes_witness_holds")
     && falsifier_entries_contain(entries: entries, f: "wave1_gate1_d_ingested_loop_executes_witness_holds")
-    && falsifier_entries_contain(entries: entries, f: "lens_affected_set_provenance_producer_rejects_malformed_ingest_holds")
-    && falsifier_entries_contain(entries: entries, f: "lens_affected_set_provenance_producer_rejects_beyond_surface_ingest_holds")
-    && falsifier_entries_contain(entries: entries, f: "lens_affected_set_provenance_producer_coverage_receipt_holds")
     && falsifier_entries_contain(entries: entries, f: "witness_parse_binding_fidelity_distinct_identifiers_holds")
 }
 

@@ -1,6 +1,5 @@
 module gunbc.provider_wire_evidence
 
-
 data provider_wire_evidence_note: String = "Durable private wire evidence for provider account-standing captures. Publication is exclusive under an evidence root: 0700 directory → unique same-directory temporary file → write raw bytes → SHA-512 → hardlink to content-addressed name (fails closed if a concurrent writer already published a different object at that hex) → independent digest read-back → 0600 retained object → remove temporary. byte_count is ByteSize (std.measure) over the UTF-8 code-unit length of the retained String carrier (substrate String length), not a separate host byte-count observation."
 
 data process_exit_observation_divergence_note: String = "ProcessExitObservation models shell.Exec transport facts (success bool + optional exit_code), not std.process.ProcessExit (ExitSuccess | ExitFailure with code and reason). Press receipt exit semantics live in gunbc.codex_app_server_press.ProviderProcessExit (parsed sentinel mux vs observation-failed). Converge on shell→intent typed stdio transport (docs/plans/shell-intent-emit-realization-design.md) — this observation carrier deletes when typed stdio replaces sentinel reparsing."
@@ -116,7 +115,7 @@ fn retain_private_evidence_bytes_detailed(
             cause: "private evidence staging write failed" as std.types.NonEmptyStr,
           }
         } else {
-          match sha512sum_observe_file(path: staging) {
+          match extdeps.tools.sha512sum.sha512sum_observe_file(path: staging) {
             Sha512FileObservationRefused { cause: cause } => {
               let _ = shell.Remove.RecursiveForce(path: staging)
               PrivateEvidenceBytesRetentionRefused { cause: cause }
@@ -125,7 +124,7 @@ fn retain_private_evidence_bytes_detailed(
               let dest_path = private_evidence_object_path(root: root, hex: digest.hex) as std.types.FilePath
               let existing = shell.Test.IsFile(path: dest_path)
               if existing.is_file {
-                match sha512sum_observe_file(path: dest_path) {
+                match extdeps.tools.sha512sum.sha512sum_observe_file(path: dest_path) {
                   Sha512FileObservationRefused { cause: cause } => {
                     let _ = shell.Remove.RecursiveForce(path: staging)
                     PrivateEvidenceBytesRetentionRefused { cause: cause }
@@ -142,8 +141,8 @@ fn retain_private_evidence_bytes_detailed(
                           root: root,
                           content_address_hex: digest.hex,
                         },
-                        content_digest: as_content_hash_sha512(digest: digest),
-                        byte_count: byte_size(count: string_length(s: bytes)),
+                        content_digest: std.content_hash.as_content_hash_sha512(digest: digest),
+                        byte_count: std.measure.byte_size(count: string_length(s: bytes)),
                       }
                     }
                   }
@@ -153,7 +152,7 @@ fn retain_private_evidence_bytes_detailed(
                 dest: dest_path,
               ) == false {
                 let _ = shell.Remove.RecursiveForce(path: staging)
-                match sha512sum_observe_file(path: dest_path) {
+                match extdeps.tools.sha512sum.sha512sum_observe_file(path: dest_path) {
                   Sha512FileObserved { digest: winner } =>
                     if (winner.hex as String) == (digest.hex as String) {
                       PrivateEvidenceBytesRetained {
@@ -161,8 +160,8 @@ fn retain_private_evidence_bytes_detailed(
                           root: root,
                           content_address_hex: digest.hex,
                         },
-                        content_digest: as_content_hash_sha512(digest: digest),
-                        byte_count: byte_size(count: string_length(s: bytes)),
+                        content_digest: std.content_hash.as_content_hash_sha512(digest: digest),
+                        byte_count: std.measure.byte_size(count: string_length(s: bytes)),
                       }
                     } else {
                       PrivateEvidenceBytesRetentionRefused {
@@ -173,7 +172,7 @@ fn retain_private_evidence_bytes_detailed(
                     PrivateEvidenceBytesRetentionRefused { cause: cause }
                 }
               } else {
-                match sha512sum_observe_file(path: dest_path) {
+                match extdeps.tools.sha512sum.sha512sum_observe_file(path: dest_path) {
                   Sha512FileObservationRefused { cause: cause } =>
                     PrivateEvidenceBytesRetentionRefused { cause: cause }
                   Sha512FileObserved { digest: readback } =>
@@ -187,8 +186,8 @@ fn retain_private_evidence_bytes_detailed(
                           root: root,
                           content_address_hex: digest.hex,
                         },
-                        content_digest: as_content_hash_sha512(digest: digest),
-                        byte_count: byte_size(count: string_length(s: bytes)),
+                        content_digest: std.content_hash.as_content_hash_sha512(digest: digest),
+                        byte_count: std.measure.byte_size(count: string_length(s: bytes)),
                       }
                     }
                 }
