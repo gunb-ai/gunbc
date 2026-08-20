@@ -1617,7 +1617,8 @@ fn v1_emit_struct_from_capability_table(
   has_fn_fields: Bool,
   map_key_required: Bool,
   generic_param_names: List<String>,
-  source_indices: Map<String, NewlineIndex>
+  source_indices: Map<String, NewlineIndex>,
+  carrier_param_needs_clone: Bool
 ) -> StructCapabilityEmit {
   let field_type_exprs = children |> map(f => child_type_node(ch: f))
   let fm_params = if has_fn_fields || map_key_required
@@ -1656,7 +1657,7 @@ fn v1_emit_struct_from_capability_table(
         kernel_int_arithmetic_traits(),
         ReprDeriveElemKernelInt
       ) {
-      rust_supplemental_impls_group_completion()
+      rust_supplemental_impls_group_completion(carrier_param_needs_clone: carrier_param_needs_clone)
     } else {
       ""
     }

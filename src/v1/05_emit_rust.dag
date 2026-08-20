@@ -5194,6 +5194,33 @@ fn emit_item_type_params_with_clone_bounds(item_name: String, params: List<Node>
   }
 }
 
+// The SINGLE well-formedness fact the GroupCompletion supplemental impls need, read from the same
+// record `emit_item_type_params_with_clone_bounds` reads (`clone_bounded_type_params`) rather than
+// re-derived beside it. Rust REQUIRES an impl's generics to satisfy the type's own bounds, so
+// `struct S<M: Clone>` with `impl<M> Neg for S<M>` cannot compile: the item header and the impl
+// header are ONE decision rendered twice, which makes single authority the construction answer
+// here rather than a style preference.
+//
+// What crosses into `extdeps.languages.rust.emit` is this Bool — a compiler fact about the
+// carrier's declaration. The SPELLING (`Clone`, the trait paths, the where-clauses) stays in
+// extdeps, so the §3 duty is intact. It is deliberately NOT routed through
+// `spelling.where_bounds`: that field carries the OP's own requirement (a fact about `Neg`/`Add`),
+// and the carrier bound is a fact about `GroupCompletion` — merging them would recreate the fused
+// flag this change exists to split, and the two have different lifetimes (a new op row changes
+// where_bounds and never changes the carrier's WF bound).
+//
+// KNOWN ASYMMETRY, named rather than fixed here: the item header is rendered compiler-side
+// (`emit_item_type_params_with_clone_bounds`) while the impl header is rendered in extdeps, so the
+// tree answers "where does a Rust bound get spelled" two different ways. Out of scope for this
+// change.
+fn v1_carrier_param_needs_clone_bound(item_name: String, generic_param_names: List<String>, emit_info: EmitGraphInfo) -> Bool {
+  (v1_item_clone_bounded_param_names(
+    item_name: item_name,
+    generic_param_names: generic_param_names,
+    bounds: emit_info.clone_bounded_type_params
+  ) |> count) > 0
+}
+
 fn emit_item_clone_bound_refusal(item: Node, item_name: String, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
   if (item.params |> count) == 0 {
     ""
@@ -5211,6 +5238,22 @@ fn emit_item_clone_bound_refusal(item: Node, item_name: String, emit_info: EmitG
   }
 }
 
+// Struct header bareness is keyed on the FIELD-DERIVED property, not on `impl_bodies` being
+// nonempty. `emit_item_type_params_with_clone_bounds` reads `clone_bounded_type_params`, the
+// WELL-FORMEDNESS fixpoint — "does NAMING G<A..> require P: Clone" — which is exactly "does some
+// field's type require this parameter to carry a bound".
+//
+// A supplemental impl discharges the DERIVE obligation (cloning G) and CANNOT discharge a field's
+// well-formedness obligation, so `impl_bodies != ""` was a CORRELATE of the real property that
+// happened to agree on the cases Row 1a was measured against. It disagreed on
+// `AmbiguousBindingCandidates<N>`, whose field `Rc<BindingCandidate<N>>` needs `N: Clone` to be
+// nameable at all: the emitted header went bare and rustc refused with E0277. The discriminating
+// oracle is the committed mirror, which main emits as `<N: Clone>` — a prior-release baseline
+// produced by a DIFFERENT emitter than the one under test, not a literal copied from this tree.
+//
+// An exception clause would have made the correlate agree on one more case; deriving from the
+// field-level record makes the question go away. `has_fn_fields` is retained because a callable
+// field is a genuinely different carrier shape, not a correlate of the bound question.
 fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo, wire_contract_item: Node?, data_items: Map<String, List<Node>>, module_items: List<Node>, imports: List<Node>) -> String {
   let item_text = authored_name(env: env, node: item)
   let is_product = is_product_type(n: item)
@@ -5224,9 +5267,14 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
       has_fn_fields: has_fn_fields,
       map_key_required: set_contains(emit_info.map_key_required_type_names, item_text),
       generic_param_names: item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices)),
-      source_indices: env.source_indices
+      source_indices: env.source_indices,
+      carrier_param_needs_clone: v1_carrier_param_needs_clone_bound(
+        item_name: item_text,
+        generic_param_names: item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices)),
+        emit_info: emit_info
+      )
     )
-    let type_params = if capability_surface.impl_bodies == "" && !has_fn_fields {
+    let type_params = if !has_fn_fields {
       emit_item_type_params_with_clone_bounds(item_name: item_text, params: item.params, emit_info: emit_info, source_indices: env.source_indices)
     } else {
       emit_type_params(params: item.params, source_indices: env.source_indices)
@@ -5343,7 +5391,12 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
     has_fn_fields: has_fn_fields,
     map_key_required: set_contains(emit_info.map_key_required_type_names, name),
     generic_param_names: generic_param_names,
-    source_indices: env.source_indices
+    source_indices: env.source_indices,
+    carrier_param_needs_clone: v1_carrier_param_needs_clone_bound(
+      item_name: name,
+      generic_param_names: generic_param_names,
+      emit_info: emit_info
+    )
   )
   if children |> count == 0 {
     concat(surface.derive_attr, "\n", rust_visibility_prefix(), rust_items().struct_keyword, " ", name, type_params, ";")

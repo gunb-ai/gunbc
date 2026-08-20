@@ -2734,6 +2734,7 @@ pub fn v1_emit_struct_from_capability_table(
     map_key_required: bool,
     generic_param_names: Rc<Vec<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    carrier_param_needs_clone: bool,
 ) -> Rc<StructCapabilityEmit> {
     {
         let field_type_exprs = Rc::new({
@@ -2823,7 +2824,7 @@ pub fn v1_emit_struct_from_capability_table(
                             ReprGroundingDeriveElemShape::ReprDeriveElemKernelInt,
                         ))
                     {
-                        rust_supplemental_impls_group_completion()
+                        rust_supplemental_impls_group_completion(carrier_param_needs_clone.clone())
                     } else {
                         "".to_string()
                     };

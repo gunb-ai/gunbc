@@ -12777,6 +12777,20 @@ pub fn emit_item_type_params_with_clone_bounds(
     }
 }
 
+pub fn v1_carrier_param_needs_clone_bound(
+    item_name: String,
+    generic_param_names: Rc<Vec<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> bool {
+    ((v1_item_clone_bounded_param_names(
+        item_name.clone(),
+        generic_param_names.clone(),
+        emit_info.clone_bounded_type_params.clone(),
+    )
+    .len() as i64)
+        > 0)
+}
+
 pub fn emit_item_clone_bound_refusal(
     item: Rc<Node>,
     item_name: String,
@@ -12837,10 +12851,22 @@ pub fn emit_type_def_from_connective(
                         __result
                     }),
                     env.source_indices.clone(),
+                    v1_carrier_param_needs_clone_bound(
+                        item_text.clone(),
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for p in item.params.clone().iter().cloned() {
+                                __result.push(generic_param_name_at(
+                                    p.clone(),
+                                    env.source_indices.clone(),
+                                ));
+                            }
+                            __result
+                        }),
+                        emit_info.clone(),
+                    ),
                 );
-                let type_params = if ((capability_surface.impl_bodies.clone() == "".to_string())
-                    && !has_fn_fields.clone())
-                {
+                let type_params = if !has_fn_fields.clone() {
                     emit_item_type_params_with_clone_bounds(
                         item_text.clone(),
                         item.params.clone(),
@@ -13223,6 +13249,11 @@ pub fn emit_struct_from_children(
             v1_rt::set_contains(&emit_info.map_key_required_type_names.clone(), name.clone()),
             generic_param_names.clone(),
             env.source_indices.clone(),
+            v1_carrier_param_needs_clone_bound(
+                name.clone(),
+                generic_param_names.clone(),
+                emit_info.clone(),
+            ),
         );
         if ((children.clone().len() as i64) == 0) {
             v1_rt::concat(
