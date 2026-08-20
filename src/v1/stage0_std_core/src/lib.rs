@@ -96,9 +96,6 @@ pub mod std_checked_arithmetic;
 #[path = "../../stage0/src/std_induction.rs"]
 pub mod std_induction;
 #[rustfmt::skip]
-#[path = "../../stage0/src/std_iteration.rs"]
-pub mod std_iteration;
-#[rustfmt::skip]
 #[path = "../../stage0/src/std_graph.rs"]
 pub mod std_graph;
 #[rustfmt::skip]

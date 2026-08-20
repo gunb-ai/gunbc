@@ -12,8 +12,9 @@ import v2.std.diagnostic {
   Unavailable,
   port_locus
 }
-import v2.std.node { Node, OccurrenceId, Symbol }
+import v2.std.node { Node, Symbol }
 import v2.std.optional { Absent, Present }
+import std.occurrence_identity { OccurrenceId }
 import v2.std.witness { Holds, Violates, Witness, witness_from_optional }
 
 type OriginEvent

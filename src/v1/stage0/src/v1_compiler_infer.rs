@@ -7071,6 +7071,15 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
                         recv_rt.clone(),
                         method_name.clone(),
                         scope.type_env.clone().source_indices.clone(),
+                        |n| {
+                            expand_type_for_field_access(
+                                n.clone(),
+                                scope.type_env.clone(),
+                                scope.module_name.clone(),
+                            )
+                            .resolved
+                            .clone()
+                        },
                     );
                     let mc_arg_infer_results = infer_method_args_with_fold(
                         mc_method_name.clone(),
