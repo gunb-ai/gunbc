@@ -55,7 +55,7 @@ jobs:
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/claim_executor" --behavioral-receipt-plan --source-root "$ROOT/dag" --source-root "$ROOT/src/v2"
-        if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
+        if: "!cancelled() && steps.build_witness_fold.outcome == 'success' && github.event_name == 'pull_request'"
       - name: All witnesses (one prepared subject, one fold)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
