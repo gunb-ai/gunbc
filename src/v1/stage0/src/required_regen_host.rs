@@ -638,7 +638,7 @@ fn git_head_sha(workspace: &Path) -> Result<String, String> {
         .map_err(|e| format!("git rev-parse HEAD: {e}"))?;
     if !output.status.success() {
         return Err(format!(
-            "rustfmt {label}: {}",
+            "git rev-parse HEAD: {}",
             String::from_utf8_lossy(&output.stderr)
         ));
     }
