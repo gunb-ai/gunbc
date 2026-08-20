@@ -1,0 +1,116 @@
+module test.claim.seed_mirror_constant_lens_witness_test
+
+import extdeps.filesystem.filesystem_io
+import std.measure { byte_size_count }
+import gunbc.typed_module_cache_capacity {
+  typed_module_bytes_per_entry_estimate,
+  typed_module_cache_entries_floor,
+  typed_module_cache_entries_ceiling,
+}
+import gunbc.runner_slot_allocation {
+  gunbc_floor_minimum_viable_armed_budget,
+  gunbc_runner_slot_desired,
+}
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data seed_mirror_constant_lens_note: String = "THE MECHANISM TWO SEED-MIRROR NOTES NAMED AND NOBODY BUILT. gunbc.typed_module_cache_capacity typed_module_cache_capacity_seed_mirror_note and gunbc.host_budget_source host_budget_source_seed_mirror_note each asked for 'one lens reading the seed's constants against their cited rows', and each scoped it slightly differently -- neither subset was the union, which is two partial specifications of one mechanism and the section 3 shape in its own right. This module is the union.\n\nWHY IT IS NOT A CHANGE DETECTOR. The expected value is never written here. Every assertion derives its literal from the imported authority row and renders it, so editing this file cannot satisfy it and editing the authority row moves the expectation automatically. That is the distinction the 2026-08-01 test-oracle ruling draws: the oracle is an independently governed authority, not a measurement copied from the tree under test. The failure mode it replaces is live in this very corpus -- host_budget_source_witness_test constructed its expectation with the mirror value retyped, so it greened whichever way the mirror went.\n\nWHY THE SEED LITERALS ARE CANONICAL DECIMAL. A mirror constant's whole job is to equal its authority, and an equality that a reader cannot decide by looking is not one. 3 * 1024 * 1024 and 13_958_643_712 are the same values written so that no join can reach them, so the in-scope constants are written as plain decimal and the lens refuses any it cannot parse rather than skipping it.\n\nWHY CITATION IS THE ENROLLMENT ACT. Of the five constants in scope exactly one carried no citation, and that one is the one that drifted eleven days (DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES, seed 13958643712 against an authority of 16106127360 since 936f451446 / #8388, 2026-08-17). An uncited constant is not merely unchecked, it is unreachable: nothing joins it to anything. So the marker is what enrolls a constant, and seed_mirror_reach_note states exactly how far that reaches and where it stops -- read that row before citing this one for coverage.\n\nWHY THERE IS NO PLANTED CONTROL. Four of the five rows matched at authorship and one did not, so the discriminating RED and its positive control are the same table read at the same commit, from live data. A synthetic mismatch would prove only that the lens can fire; this proves the class is not hypothetical as well. If a future reading shows all five green, the four matching rows remain the control -- perturb any authority row and its assertion must go red."
+
+data seed_read_has_no_success_arm_note: String = "WHY THERE IS NO READ-FAILURE ARM, and why its absence is not a narrow. The seed's filesystem_read primitive returns FilesystemReadResult, declared in v1_method filesystem_read_result_type and emitted by v1.runtime_rust rt_filesystem, and that record carries EXACTLY ONE field: content. There is no success or error field to branch on -- the service-level Filesystem.Read operation is a different carrier with a different shape, and reading its three-field contract onto this primitive would cite the wrong authority. This module learned that by refusing: an earlier revision branched on r.success and the compiler answered 'no field success on type FilesystemReadResult', which is the fail-closed refusal working.\n\nWHAT HAPPENS ON FAILURE: rt_filesystem calls read_to_string with unwrap_or_else(|e| panic!), so an absent or unreadable seed file aborts the run loudly rather than presenting as a passing check. Empty content fails every assertion here, since no expected literal is the empty string. So both failure modes are non-green without a guard, and adding one would be machinery with no producer -- a scaffold defending a state the type cannot express. The reasoning and the owed modeling gap (a caller cannot distinguish absent from unreadable from empty, and that dissolves when the primitive returns an outcome instead of panicking) are dag/tools/frontier_ingestion_probe frontier_read_refusal_disposition_note's, cited rather than re-derived."
+
+data cli_run_seed_path: String = "src/v1/stage0/src/cli_run.rs"
+data memory_governor_seed_path: String = "src/v1/stage0/src/memory_governor.rs"
+
+data seed_mirror_marker: String = "SEED MIRROR of `"
+
+data seed_mirror_reach_note: String = "THE ROSTER IS FOLDED, NOT RE-LISTED, AND THAT IS THE CORRECTION THAT MATTERS. An earlier revision of this module enumerated five assertions by hand and conjoined five hardcoded symbol names, and its PR claimed that an uncited in-scope constant REFUSES rather than skips. That claim was false in the direction that matters: 'in scope' was whatever someone had remembered to type here, so a new seed mirror constant was neither checked NOR refused -- invisible, exactly like the drift this module exists to catch. neat-bee-14 read the diff and refuted the sentence; the defect is the same shape they had just repaired in seed_growth_roster_all_declarations, where re-listed rows made a third justification's declarations invisible to the duplicate check while every other reading called them enrolled.\n\nWHAT MAKES THE REACH REAL NOW is a two-way join rather than a count. Forward: every row in seed_mirror_constant_rows must find its declaration and its authority symbol in the seed. Backward: the number of marker occurrences in each seed file must equal the number of roster rows homed in that file. Rows are distinct and each must be present, so counts agreeing means no marked constant exists that the roster does not carry -- set equality, not a count comparison standing in for one. The backward count is not the tree-copied literal the 2026-08-01 oracle ruling forbids either: it is derived by folding this module's own roster, so automating it does not collapse the assertion to measure() == measure(). Add a sixth marked constant without a row and the backward arm reds.\n\nWHAT IS STILL NOT REACHED, stated rather than left to be discovered: a seed constant carrying NO marker at all is invisible to both arms. The marker is the enrollment act, so this raises the bar from 'someone remembered to edit a list in another file' to 'someone marked the declaration where they wrote it' -- a real climb, and not the same as a census of every const in the seed. NEXT-RUNG TRIGGER: a Rust-declaration-level census that enumerates candidate mirror constants from the seed's own syntax instead of from a marker convention, at which point the marker becomes redundant and this roster derives rather than being authored."
+
+data seed_mirror_lens_floor_execution_note: String = "THIS LENS IS STILL DISCOVERED AND DECLINED, AND ITS STATED REASON FOR BEING SO IS FALSE. Those are two different corrections and only the second one has landed. What the paragraph this replaces said: THIS LENS IS DISCOVERED AND DECLINED, IT DOES NOT RUN IN CI, and a live-tree reader cannot participate in the hermetic fold BY CONSTRUCTION. The first two are STILL TRUE. The third was already false when written, and it is the reason the first two were true -- so the fact survives and the mechanism it was attributed to does not.\n\nTHE MEASUREMENT IS PRESERVED BECAUSE IT IS STILL THE RECEIPT, and it is what made this module's own situation decidable at all. Measured on gunbc#8638, floor run 32337765205 at 4806220c04 against run 32333231183 at the same base: site-projection reported claims=9782 declined_long=538 declined_live=782, and the base reported claims=9782 declined_long=538 declined_live=778. Adding this module moved declined_live by exactly +4 -- its four witnesses -- and moved claims by ZERO. That 778 is the population the 2026-08-20 witness-execution-closure change addresses, and this note's own four rows were four of it.\n\nWHY THE BY-CONSTRUCTION CLAIM WAS FALSE. Hermetic mode carries the checkout-read carve-out (v1_interpreter, the Filesystem.Read arm guarded by hermetic_checkout_read_disposition): a read whose path the disposition CONFIRMS sits under the checkout root, with no .git or target component below it, dispatches to a REAL read -- the commit is the run's deterministic input, so it is input access and not a host effect. Reading committed .rs files is exactly that case. So a live-tree reader of committed sources could always have participated; what excluded it was not the hermetic fold but a separate, file-grain prediction in the floor's site projection (RequiredFloorDisposition.DeclinedLiveTree, fed by a text scan for this file's own live_tree_disposition row) that had stopped agreeing with what the interpreter actually does. That arm is deleted at the root.\n\nTHE DECLARATION BELOW STAYS ReadsLiveTree AND IS STILL NOT A LIE. It is read by reads_live_tree_effective for AFFECTED-SET SELECTION ELIGIBILITY, which asks whether this entry's result depends on live tree state -- a different question from whether it can execute, and one this module genuinely answers yes to. The old note's dilemma (declare SubstrateInputsOnly to buy execution, or stay honest and lose it) was created entirely by the floor conflating those two questions. With the conflation gone the dilemma is gone: the honest declaration no longer costs execution, and nothing is bought by a false one.\n\nTHE RUNG DOES NOT CLIMB YET, AND SAYING OTHERWISE WOULD BE THE INFLATION SECTION 4b CALLS WORSE THAN SITTING LOW. It stays MITIGATABLE. The old note's next-rung trigger -- an executing consumer for the declined-live population -- is now known to be reachable by deleting one stale prediction rather than by building a lane, and it has been demonstrated by execution on a branch (floor run 32345970386: the decline deleted, ~783 identities admitted, 626 PASS, these four rows among the executing population). But the deletion is NOT on main: it also admits 55 blockers, 6 witnesses that do not resolve and 49 in a cost tail, which are staged behind their own owners. A rung claimed on a change that has not landed is exactly the inflation that keeps a class from ranking for climbing, so this note reports the trigger as REACHABLE AND MEASURED, not as fired. WHAT THE FIRST EXECUTION DOES NOT ESTABLISH, recorded by this module's author (stern-heron-695) rather than inferred by the session that ran it, because the distinction is about evidence GRADE and is easy to lose. When these four rows first executed they PASSED -- and that is not evidence the lens catches drift. The drift it was built for (DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES, 13958643712 -> 16106127360) had already been corrected in gunbc#8635, and the lens was authored BEHIND that correction. So the pass is the lens agreeing with a tree that had just been made to agree with itself.\n\nThe lens's discriminating power therefore rests on its AUTHORED NEGATIVE CONTROL -- perturb the value and the forward arm reds, add a marked constant with no roster row and the backward arm reds, each failing exactly one assertion and a different one -- and NOT on any live catch. A check that has only ever agreed with a tree its author had just reconciled has been tested against itself and not yet against the world. That is the same shape this module was built to flag one layer down, so it is stated here rather than left for a reader to discover that `first execution: PASS` was doing no work. The first execution on MAIN, when the decline is deleted, is the run that would begin to answer it.\n\nThe residual survives untouched: a seed constant carrying NO marker at all remains invisible to both arms, so the next-rung trigger stays a Rust-declaration-level census enumerating candidate mirror constants from the seed's own syntax rather than from a marker convention. The eleven-day drift these rows were built for would be caught the day the decline is deleted; an unmarked constant's drift still would not.\n\nONE RESIDUAL RISK THE CLIMB CREATES, recorded because it is the honest rung rather than the flattering one (stern-heron-695, verifying this correction at symbol grain rather than accepting it). The carve-out this lens now executes through binds its root to the PROCESS CWD -- hermetic_checkout_read_disposition passes the cwd to hermetic_checkout_read_disposition_under, justified by a runner contract stated in a doc comment (claim_batch and claim_executor both run from the repo root), not by anything structural. These four rows carry repo-relative literal paths. If any executor ever folds witnesses from a cwd that is NOT the checkout root, the reads stop being confirmed checkout inputs, fall through to the mock and fail-closed machinery, and these rows red for a reason that has nothing to do with seed drift. So the mechanically-preventable rung above is conditional on that contract holding, and the contract is a comment rather than a wall. Its own next-rung trigger: the input root is derived from the discovered checkout rather than from the process cwd, at which point the condition disappears instead of being remembered."
+
+
+data seed_mirror_pending_sixth_row_note: String = "ONE KNOWN IN-SCOPE CONSTANT IS DELIBERATELY NOT ENROLLED YET, recorded here because the obligation would otherwise live only in a cross-session conversation and die with the sessions holding it. gunbc#8635 adds DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES to memory_governor, authority gunbc.whole_corpus_compile_admission whole_corpus_compile_measured_peak_demand, value 7516192768. It belongs in seed_mirror_constant_rows as a sixth row and is not there.\n\nWHY IT IS UNMARKED RATHER THAN MERELY UNROSTERED, because the two are different and only one is safe. The backward arm reds when a MARKED constant has no roster row, so a marked constant landing on main before its row would red the floor for the interval between the two merges -- a cross-PR coupling this module's own mechanism creates. neat-bee-14 therefore removed the marker prefix from that doc comment deliberately, leaving the constant unmarked and invisible to both arms, which is the honest state while no row exists. It is not an oversight and must not be 'fixed' by adding the marker alone: MARKER AND ROW LAND TOGETHER, in whichever PR is second.\n\nTHAT CONSTANT IS ALSO THE LIVE SPECIMEN OF THIS MODULE'S RESIDUAL -- a seed constant with a real authority row, no marker, and therefore no coverage. If it is still unmarked well after both PRs have landed, that is the residual biting rather than this plan working, and it should be read that way rather than as everything being fine because nothing is red."
+
+type SeedMirrorRow {
+  seed_path: String
+  decl_prefix: String
+  authority_symbol: String
+  expected: Int
+}
+
+fn seed_mirror_constant_rows() -> List<SeedMirrorRow> {
+  [
+    SeedMirrorRow {
+      seed_path: cli_run_seed_path,
+      decl_prefix: "const TYPED_MODULE_BYTES_PER_ENTRY_ESTIMATE: u64 = ",
+      authority_symbol: "typed_module_bytes_per_entry_estimate",
+      expected: byte_size_count(b: typed_module_bytes_per_entry_estimate),
+    },
+    SeedMirrorRow {
+      seed_path: cli_run_seed_path,
+      decl_prefix: "const TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR: usize = ",
+      authority_symbol: "typed_module_cache_entries_floor",
+      expected: typed_module_cache_entries_floor,
+    },
+    SeedMirrorRow {
+      seed_path: cli_run_seed_path,
+      decl_prefix: "const TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL: usize = ",
+      authority_symbol: "typed_module_cache_entries_ceiling",
+      expected: typed_module_cache_entries_ceiling,
+    },
+    SeedMirrorRow {
+      seed_path: memory_governor_seed_path,
+      decl_prefix: "pub const DECLARED_FLOOR_MINIMUM_VIABLE_ARMED_BUDGET_BYTES: u64 = ",
+      authority_symbol: "gunbc_floor_minimum_viable_armed_budget",
+      expected: byte_size_count(b: gunbc_floor_minimum_viable_armed_budget),
+    },
+    SeedMirrorRow {
+      seed_path: memory_governor_seed_path,
+      decl_prefix: "pub const DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES: u64 = ",
+      authority_symbol: "gunbc_runner_slot_desired",
+      expected: byte_size_count(b: gunbc_runner_slot_desired().memory_high),
+    },
+  ]
+}
+
+fn seed_text(path: String) -> String {
+  filesystem_read(path: path).content
+}
+
+fn row_value_matches(row: SeedMirrorRow) -> Bool {
+  string_contains(
+    s: seed_text(path: row.seed_path),
+    pattern: concat(row.decl_prefix, concat(to_string(row.expected), ";")),
+  )
+}
+
+fn seed_marker_occurrences(path: String) -> Int {
+  list_length(items: seed_text(path: path) |> split(delimiter: seed_mirror_marker)) - 1
+}
+
+fn rows_homed_in(path: String) -> Int {
+  fold(seed_mirror_constant_rows(), init: 0, f: fn(acc, r) {
+    if r.seed_path == path { acc + 1 } else { acc }
+  })
+}
+
+test fn seed_mirror_lens_can_read_both_seed_files() -> Bool {
+  string_length(s: seed_text(path: cli_run_seed_path)) > 0
+    && string_length(s: seed_text(path: memory_governor_seed_path)) > 0
+}
+
+test fn every_seed_mirror_row_matches_its_authority() -> Bool {
+  fold(seed_mirror_constant_rows(), init: true, f: fn(acc, r) { acc && row_value_matches(row: r) })
+}
+
+test fn every_seed_mirror_row_cites_its_authority_symbol() -> Bool {
+  fold(seed_mirror_constant_rows(), init: true, f: fn(acc, r) {
+    acc && string_contains(s: seed_text(path: r.seed_path), pattern: r.authority_symbol)
+  })
+}
+
+test fn no_marked_seed_constant_is_missing_from_the_roster() -> Bool {
+  seed_marker_occurrences(path: cli_run_seed_path) == rows_homed_in(path: cli_run_seed_path)
+    && seed_marker_occurrences(path: memory_governor_seed_path)
+      == rows_homed_in(path: memory_governor_seed_path)
+}

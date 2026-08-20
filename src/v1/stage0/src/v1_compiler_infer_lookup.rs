@@ -16,6 +16,8 @@ pub use crate::std_algebra::{
 };
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
+pub use crate::std_syntax::BinOp;
+use crate::std_syntax::BinOp::*;
 pub use crate::v1_compiler_infer_emit_info::{
     build_enum_field_summaries, build_struct_field_summaries,
 };
@@ -45,12 +47,15 @@ use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
+use crate::v1_std_core::ExprData::*;
 use crate::v1_std_core::FieldAccessStyle::OptionalUnwrap;
 use crate::v1_std_core::FieldValueShape::{OptionalValue, PlainValue};
 use crate::v1_std_core::InferredNode::{Resolved, TypeVariable};
+use crate::v1_std_core::MatchPattern::*;
 use crate::v1_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
 };
+use crate::v1_std_core::UnaryOpKind::*;
 pub use crate::v1_std_core::{
     authored_name_at, error_type, find_child_named, has_child_named, param_node_type_expr,
     preserve_outer_optional_cardinality, qualified_last_segment, with_optional_cardinality,
@@ -60,6 +65,7 @@ pub use crate::v1_std_core::{
     Cardinality, Connective, ErrorNode, FieldAccessStyle, FieldSummary, FieldValueShape,
     InferredNode, MethodSemantics, NewlineIndex, Node,
 };
+pub use crate::v1_std_core::{ExprData, MatchPattern, UnaryOpKind};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -1028,6 +1034,7 @@ pub fn declared_arg_types_for_method(
     receiver_type: Rc<Node>,
     method_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    expand_field_type: impl Fn(Rc<Node>) -> Rc<Node> + Clone,
 ) -> Rc<DeclaredArgContract> {
     {
         let lookup = lookup_structural_method(
@@ -1078,11 +1085,16 @@ pub fn declared_arg_types_for_method(
                 }
                 None => match mfr.field_node.clone().inferred.clone().as_deref().cloned() {
                     Some(InferredNode::Resolved { node: callable, .. }) => {
-                        if ((callable.params.clone().len() as i64) > 0) {
+                        let expanded = if ((callable.params.clone().len() as i64) > 0) {
+                            callable.clone()
+                        } else {
+                            expand_field_type(callable.clone())
+                        };
+                        if ((expanded.params.clone().len() as i64) > 0) {
                             Rc::new(DeclaredArgContract::ContractKnown {
                                 types: Rc::new({
                                     let mut __result = Vec::new();
-                                    for p in callable.params.clone().iter().cloned() {
+                                    for p in expanded.params.clone().iter().cloned() {
                                         __result.push(param_node_type_expr(p.clone()));
                                     }
                                     __result
