@@ -245,7 +245,7 @@ fn cas_decide<T>(
 // Candidate wall: `sole_constructor`, so only the store can mint the bound
 // observation. Until then this is observed and refused at the store boundary,
 // never proven here — and the witness
-// `the_decision_is_invariant_under_the_attempt_key` keeps the gap executable
+// `known_gap_attempt_key_unconsumed_red_here_means_the_gap_was_closed` keeps the gap executable
 // rather than leaving it as prose. That control dissolves into the
 // construction evidence when a bound observation makes the pairing unformable.
 

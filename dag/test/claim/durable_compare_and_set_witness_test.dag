@@ -169,21 +169,33 @@ test fn the_same_expectation_that_was_refused_when_unreadable_commits_when_absen
   ) == 1
 }
 
-// THE GAP, MADE EXECUTABLE. This asserts the defect, not the fix.
+// KNOWN GAP, MADE EXECUTABLE. THIS TEST ASSERTS THE DEFECT, NOT THE FIX.
 //
-// cas_decide never reads attempt.key, so two attempts differing ONLY in which
-// slot they name produce identical outcomes against one observation. That is
-// precisely the wrong-slot commit: an observation actually read from slot B
-// commits to slot A when the generations agree.
+// IF THIS WITNESS IS RED, THE GAP WAS CLOSED. THAT IS THE SUCCESS CONDITION.
+// The correct response is to DELETE this witness and record the climb. Do NOT
+// adjust the expectation to make it pass again — doing so would silently
+// delete the wall in the same motion that landed it, and the deletion would
+// look like a routine test fixup in the diff.
 //
-// It is enrolled deliberately, while the defect is still constructible, so the
-// boundary obligation in std.durable_compare_and_set is executable rather than
-// prose. When the store mints a bound observation and the pairing becomes
-// unformable, THIS WITNESS MUST STOP COMPILING — that is the signal the
-// relation was sealed, and it dissolves into the construction evidence under
-// the same 4b rule that retired the helpers' unreadable arms.
+// What it asserts: cas_decide never reads attempt.key, so two attempts
+// differing ONLY in which slot they name produce identical outcomes against
+// one observation. That is the wrong-slot commit — an observation actually
+// read from slot B commits to slot A when the generations agree. It is
+// enrolled while the defect is still constructible so the boundary obligation
+// in std.durable_compare_and_set is executable rather than prose.
 //
-// A green here is not a safety claim. It is the receipt for a declared gap.
+// WHY THIS IS NOT AN EXPECTING-RED ENROLLMENT, which would be the better home
+// because a fix would turn it GREEN instead of red: an expecting-red witness
+// must assert the DESIRED behaviour — that an attempt for slot A refuses an
+// observation read from slot B. That sentence is unwritable here. A
+// CasReadableSlot carries nothing naming the slot it came from, so "an
+// observation from B" has no representation at this interface. The gap is
+// unobservable in exactly the way that makes the desired assertion
+// inexpressible, which is why the only executable form is a green one
+// asserting the defect. The name below carries the warning because a failure
+// line shows the name and nothing else.
+//
+// A green here is NOT a safety claim. It is the receipt for a declared gap.
 fn attempt_for(key: NonEmptyStr) -> CasAttempt<NonEmptyStr> {
   cas_attempt(
     key: key,
@@ -193,7 +205,7 @@ fn attempt_for(key: NonEmptyStr) -> CasAttempt<NonEmptyStr> {
   )
 }
 
-test fn the_decision_is_invariant_under_the_attempt_key() -> Bool {
+test fn known_gap_attempt_key_unconsumed_red_here_means_the_gap_was_closed() -> Bool {
   let for_slot_a = cas_decide(
     attempt: attempt_for(key: "slot-a" as NonEmptyStr),
     observed: occupied_at_seven,
