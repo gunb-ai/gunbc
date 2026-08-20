@@ -82,6 +82,7 @@ pub enum Scale {
     One,
     Sixty,
     RackUnitHeight,
+    SquareFootArea,
     ArcsecondAngle,
     DegreeAngle,
     TurnAngle,
@@ -111,6 +112,7 @@ pub fn scale_exponent(s: Scale) -> Option<i64> {
         Scale::TurnAngle => None,
         Scale::Sixty => None,
         Scale::RackUnitHeight => None,
+        Scale::SquareFootArea => None,
         Scale::Kilo => Some(3),
         Scale::Mega => Some(6),
         Scale::Giga => Some(9),
@@ -144,7 +146,15 @@ pub fn minutes_per_hour() -> Nat {
 }
 
 pub fn milliseconds_per_second() -> Nat {
+    milli_per_unit()
+}
+
+pub fn milli_per_unit() -> Nat {
     1000
+}
+
+pub fn mega_factor() -> Nat {
+    (1000 * 1000)
 }
 
 pub fn time_scale_factor_seconds(s: Scale) -> Option<Nat> {
@@ -155,6 +165,7 @@ pub fn time_scale_factor_seconds(s: Scale) -> Option<Nat> {
         Scale::TurnAngle => None,
         Scale::Sixty => Some(seconds_per_minute()),
         Scale::RackUnitHeight => None,
+        Scale::SquareFootArea => None,
         Scale::Atto => None,
         Scale::Femto => None,
         Scale::Pico => None,
@@ -192,6 +203,7 @@ pub fn memory_scale_factor_bytes(s: Scale) -> Option<Nat> {
         Scale::TurnAngle => None,
         Scale::Sixty => None,
         Scale::RackUnitHeight => None,
+        Scale::SquareFootArea => None,
         Scale::Kilo => None,
         Scale::Mega => None,
         Scale::Giga => None,
@@ -284,6 +296,19 @@ pub type Mebibyte = Rc<Measure<(), (), i64>>;
 
 pub type Gibibyte = Rc<Measure<(), (), i64>>;
 
+pub type Gigabyte = Rc<Measure<(), (), i64>>;
+
+pub fn gigabyte(count: Nat) -> Gigabyte {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn gigabyte_count(g: Gigabyte) -> Nat {
+    measure_count(g.clone())
+}
+
 pub fn mebibyte(count: Nat) -> Mebibyte {
     Rc::new(Measure {
         count: count.clone(),
@@ -318,6 +343,8 @@ pub fn bits_per_byte() -> Nat {
 
 pub type Hertz = Rc<Measure<(), (), i64>>;
 
+pub type MegatransfersPerSecond = Rc<Measure<(), (), i64>>;
+
 pub type HardwareThreadCount = Rc<Measure<(), (), i64>>;
 
 pub type CharacterCount = Rc<Measure<(), (), i64>>;
@@ -347,6 +374,8 @@ pub type SquareMillimeter = Rc<Measure<(), (), i64>>;
 pub type CubicMillimeter = Rc<Measure<(), (), i64>>;
 
 pub type SquareMeter = Rc<Measure<(), (), i64>>;
+
+pub type SquareFoot = Rc<Measure<(), (), i64>>;
 
 pub type CubicMeter = Rc<Measure<(), (), i64>>;
 
@@ -538,6 +567,10 @@ pub fn milliwatt(count: Nat) -> Milliwatt {
     })
 }
 
+pub fn milliwatt_to_watt_floor(w: Milliwatt) -> Watt {
+    watt((milliwatt_count(w.clone()) / milli_per_unit()))
+}
+
 pub fn milliwatt_count(w: Milliwatt) -> Nat {
     measure_count(w.clone())
 }
@@ -695,6 +728,9 @@ pub fn money_rate_billing_unit_note() -> String {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PerSecond(pub std::marker::PhantomData<()>);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PerMinute(pub std::marker::PhantomData<()>);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -713,6 +749,8 @@ pub struct MoneyRate<P> {
     pub _phantom: std::marker::PhantomData<P>,
 }
 
+pub type MoneyPerSecond = Rc<MoneyRate<PerSecond>>;
+
 pub type MoneyPerMinute = Rc<MoneyRate<PerMinute>>;
 
 pub type MoneyPerHour = Rc<MoneyRate<PerHour>>;
@@ -720,6 +758,16 @@ pub type MoneyPerHour = Rc<MoneyRate<PerHour>>;
 pub type MoneyPerMonth = Rc<MoneyRate<PerMonth>>;
 
 pub type MoneyOnce = Rc<MoneyRate<Once>>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PerKilowattHour(pub std::marker::PhantomData<()>);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PerSquareFootYear(pub std::marker::PhantomData<()>);
+
+pub type MoneyPerKilowattHour = Rc<MoneyRate<PerKilowattHour>>;
+
+pub type MoneyPerSquareFootYear = Rc<MoneyRate<PerSquareFootYear>>;
 
 pub fn money_rate_carrier_representation_note() -> String {
     thread_local! {
@@ -747,6 +795,14 @@ pub fn money_per_month_micros(q: MoneyPerMonth) -> Nat {
 }
 
 pub fn money_once_micros(q: MoneyOnce) -> Nat {
+    money_rate_micros(q.clone())
+}
+
+pub fn money_per_kilowatt_hour_micros(q: MoneyPerKilowattHour) -> Nat {
+    money_rate_micros(q.clone())
+}
+
+pub fn money_per_sqft_year_micros(q: MoneyPerSquareFootYear) -> Nat {
     money_rate_micros(q.clone())
 }
 
@@ -812,11 +868,33 @@ pub fn bit_width_count(b: BitWidth) -> Nat {
     measure_count(b.clone())
 }
 
+pub fn square_foot(count: Nat) -> SquareFoot {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn square_foot_count(a: SquareFoot) -> Nat {
+    measure_count(a.clone())
+}
+
 pub fn hertz(count: Nat) -> Hertz {
     Rc::new(Measure {
         count: count.clone(),
         _phantom: std::marker::PhantomData,
     })
+}
+
+pub fn megatransfers_per_second(count: Nat) -> MegatransfersPerSecond {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn megatransfers_per_second_count(r: MegatransfersPerSecond) -> Nat {
+    measure_count(r.clone())
 }
 
 pub fn hertz_count(h: Hertz) -> Nat {
@@ -1408,6 +1486,8 @@ pub struct One;
 pub struct Sixty;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RackUnitHeight;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SquareFootArea;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ArcsecondAngle;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

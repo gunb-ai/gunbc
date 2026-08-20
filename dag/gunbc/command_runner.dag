@@ -2,7 +2,7 @@ module gunbc.command_runner
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.types { List, String, NonEmptyStr }
+import std.types { List, String, NonEmptyStr, Bool }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import extdeps.exec.command {
@@ -12,7 +12,6 @@ import extdeps.exec.command {
   command_over_transport,
   CommandOverTransportBuilt,
   CommandOverTransportRefused,
-  shell_command_render,
 }
 import gunbc.remote_shell_command {
   RemoteExecCommandRefusalCause,
@@ -20,8 +19,14 @@ import gunbc.remote_shell_command {
   SimpleCommandArgvRefused,
 }
 import extdeps.shell
-import gunbc.shell_bash_runner { shell_exec_via_bash }
-import gunbc.retained_shell_script { retained_runtime }
+import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import std.algebra { Empty }
+import v2.std.compilers.cli_surface { cli_surface_of_literal_words, process_argv_expansion }
+import extdeps.shell.exec {
+  ExitZeroSucceeds, process_exit_is_admitted,
+  ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused,
+  process_observation, classify_process_observation,
+}
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -34,31 +39,41 @@ data command_runner_scaffold: Disposition = Scaffold {
   }
 }
 
-data command_runner_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: run_shell_command — generic ArgvCommand runner routes the typed extdeps.exec.command shape through shell.Exec.Run via the shell_bash_runner heredoc transport; DISSOLVES WHEN host_effect_apply binds ArgvCommand execution as a typed transport handler and dag/gunbc/command_runner.dag retires its shell_exec_via_bash glue")
+data command_runner_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: run_shell_command / run_shell_command_capture -- BOTH ARMS ARE NOW DONE, not just the local one. CORRECTED (this row previously said only the local arm routed straight at shell.Exec.RunArgv and that the SSH arm's nested command-string target was owned by another lane; that target landed in extdeps.exec.command command_over_transport (RFC 4254 fold, cited IEEE 1003.1-2017 section 2.2.2), which makes SshExec produce a plain, directly-executable outer ArgvCommand exactly as LocalExec's identity arm always did). With both arms yielding one plain ArgvCommand, re-deciding transport at this run site was re-answering a question command_over_transport already answered (DESIGN section 3: dispatch belongs at one seam). The per-transport match is deleted; both run_shell_command and run_shell_command_capture ask command_over_transport once, then hand the resulting argv straight to shell.Exec.RunArgv -- no TransportScript, no shell, no shell_command_render/shell_exec_via_bash/retained_runtime hop, for either transport. Measured before rewriting: command_runner remains the ONLY module that turns an ArgvCommand into a local process; the other ArgvCommand consumers reach shell_command_render for TEXT emission (githooks), a different destination. DISSOLVES WHEN host_effect_apply binds ArgvCommand execution as a typed transport handler and this module retires run_shell_command / run_shell_command_capture in its favor -- host_effect_apply exists (gunbc.host_effect_realize) but reaches zero ArgvCommand occurrences today, so that binding is still unbuilt.")
 
-func run_shell_command(command: ArgvCommand, transport: CommandTransport) -> ProcessExit
-  uses net: Network
-{
-  match command_over_transport(command: command, transport: transport) {
-    CommandOverTransportRefused { cause: c } =>
-      exit_failure(reason: concat("command_over_transport refused: ", command_over_transport_refusal_reason(cause: c)))
-    CommandOverTransportBuilt { command: over } =>
-      let rendered = shell_command_render(command: over)
-      let run = shell.Exec.Run(
-        script: retained_runtime(
-          body: shell_exec_via_bash(body: rendered),
-          reason: "generic ArgvCommand runner heredoc transport, pending the typed host_effect_apply argv handler" as NonEmptyStr,
-        )
-      )
-      if run.success {
-        ExitSuccess
-      } else {
-        exit_failure(reason: concat("command failed: ", run.stderr))
-      }
-  }
-}
+// RUNG: mitigatable. ssh overloads exit code 255 for its own transport failures (unreachable
+// host, auth failure, connection reset), which classify_process_observation (extdeps.shell.exec)
+// cannot distinguish by exit code alone from a remote command that legitimately exits 255 on its
+// own terms -- both fold into one ProcessRefused { exit_code: 255, .. }. This collapse makes that
+// the direct, un-mediated SshExec path (no intervening bash heredoc hop remains to obscure it);
+// it does not introduce the collision, which was already latent in classify_process_observation.
+// Harm is contained -- ProcessRefused is a typed, located refusal either way, never a silent wrong
+// answer -- so the class does not fall below the floor; it simply cannot yet tell the two causes
+// apart. ACCEPTED, NOT FIXED: disambiguating via ssh's stderr text is rejected, not deferred --
+// stderr is prose from an external process, and matching on it is exactly the heuristic DESIGN
+// section 4/5 rules out where a richer source exists in principle but is unbuilt.
+data ssh_exit_255_conflation_dissolution: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: run_shell_command_capture over SshExec -- transport is KNOWN at command_over_transport's call site, so an SshExec-transported ProcessRefused { exit_code: 255 } is distinguishable IN PRINCIPLE from a LocalExec one, and wants its own typed ProcessOutcome variant (a policy parallel to ExitZeroSucceeds) rather than sharing ProcessRefused with every other nonzero exit. The richer source is in-band remote status -- the remote side reporting its own exit through stdout instead of this caller trusting ssh's own process exit code -- not stderr-sniffing, which stays rejected as a heuristic. NOT BUILT HERE: this row names the trigger, it does not build the variant. DISSOLVES WHEN a real caller of run_shell_command_capture retries on SshExec -- retrying an unreachable host and retrying a command that actually ran and exited 255 are opposite, non-idempotent-risk-bearing decisions, so building the structural arm before a consumer exists to prove the distinction against would be speculative modeling, not grounded modeling (DESIGN section 4: a heuristic is never necessary in a closed system, but neither is a structural arm with nothing to hold it accountable).")
 
-data command_over_transport_refusal_reason_note: String = "Renders RemoteExecCommandRefusalCause (gunbc.remote_shell_command) into a diagnostic String for ProcessExit -- the only refusal this generic runner can hit today is RemoteExecInterpretationUnknown, since every SshExec constructed in-tree names a determined interpretation (openssh_login_shell_interpretation / openbmc_dropbear_interpretation); the cause stays a match over the full type rather than a partial one so a newly added cause fails to compile here instead of falling through silently (DESIGN 4b: no untracked stall)."
+// WHAT GUARDS THIS, AND WHAT DOES NOT -- read before assuming the property below is enforced.
+//
+// The property "the local path reaches no shell" is established by execution, wet, against a real
+// process: test/manual/command_runner_local_argv_receipt_test.dag runs printf against an operand
+// containing a space and asserts the one-argument reading arrives while the shell-split reading
+// does not. It passes. It is also EXCLUDED FROM THE FLOOR, so CI does not run it, and after this
+// lands someone reintroducing a render-and-bash hop on this arm gets NO SIGNAL from CI.
+//
+// The exclusion is structural rather than convenient: hermetic evaluation replays an operation's
+// declared mock_response and never constructs an argv, so how the words reach the process is not
+// observable hermetically at all. A hermetic version of that receipt could only assert the mock,
+// which is specification-without-execution -- it would look like coverage while proving nothing.
+//
+// RUNG: mitigatable. The invalid state (argv re-split by a shell) is writable, and the mechanism
+// that detects it does not execute in CI. NEXT-RUNG TRIGGER: a wet lane that executes
+// floor-excluded receipts, at which point this row's evidence enrolls and the class climbs to
+// mechanically preventable. Stated here rather than left to be inferred from a passing receipt,
+// because a green test that nothing runs is exactly the inert evidence DESIGN calls a lie.
+
+data command_over_transport_refusal_reason_note: String = "Renders RemoteExecCommandRefusalCause (gunbc.remote_shell_command) into a diagnostic String -- the only refusal this generic runner can hit today is RemoteExecInterpretationUnknown, since every SshExec constructed in-tree names a determined interpretation (openssh_login_shell_interpretation / openbmc_dropbear_interpretation); the cause stays a match over the full type rather than a partial one so a newly added cause fails to compile here instead of falling through silently (DESIGN 4b: no untracked stall)."
 
 fn command_over_transport_refusal_reason(cause: RemoteExecCommandRefusalCause) -> String {
   match cause {
@@ -69,41 +84,200 @@ fn command_over_transport_refusal_reason(cause: RemoteExecCommandRefusalCause) -
   }
 }
 
-// Capture variant (CONVERGE acceptance, host-key enrollment): same admitted transport,
-// but the caller receives the process observation instead of a collapsed ProcessExit —
-// for wet observations whose PRODUCT is the stdout (ssh-keyscan, ssh-keygen -lf).
-// Success/stdout/stderr travel together so a refusal cannot be read as empty output.
-type ShellCaptureResult {
-  success: Bool
-  stdout: String
-  stderr: String
-}
-
-func run_shell_command_capture(command: ArgvCommand, transport: CommandTransport) -> ShellCaptureResult
+// THE RUN SITE NO LONGER MATCHES ON TRANSPORT.
+//
+// command_over_transport is transport-agnostic AT ITS OUTPUT: LocalExec is the identity, and
+// SshExec folds the inner command through remote_exec_command_string into ONE RFC-4254-conformant
+// command string carried as the final word of an outer sshpass/ssh argv
+// (extdeps.exec.command command_over_transport_composition_note). Either way the result is one
+// plain ArgvCommand of local-machine words. Re-deciding which transport built it here would be
+// re-answering a question command_over_transport already answered (DESIGN section 3: dispatch
+// belongs at one seam, never duplicated at its consumer).
+//
+// So there is exactly one execution path: ask command_over_transport once, decompose the
+// resulting argv into program + operand words, and hand them straight to shell.Exec.RunArgv --
+// no shell, no quoting, no re-parse on this machine. For LocalExec the words go directly to the
+// named binary; for SshExec they go directly to sshpass/ssh, whose own single final argument
+// already carries the correctly composed and quoted remote command string. Nothing about that
+// composition depends on running it through a local shell first, which is why the former
+// SSH-only shell_command_render / shell_exec_via_bash / retained_runtime heredoc hop is gone.
+//
+// EMPTY ARGV REFUSES rather than defaulting. A command with no words names no program to
+// execute, and inventing one would be the fabricated output DESIGN section 5 forbids.
+// command_over_transport never produces an empty argv on either arm (SshExec always prepends
+// sshpass/ssh/target/opts), so this arm is reachable only from a caller-constructed empty
+// ArgvCommand on LocalExec.
+//
+// THE BUILT/REFUSED DISTINCTION SURVIVES THE COLLAPSE, on purpose, as its own match arm rather
+// than being folded into the exit-code decision below. A command that command_over_transport could
+// not even BUILD (today, only RemoteExecInterpretationUnknown -- an SshExec whose remote shell
+// dialect this runner refuses to assume) is NOT the same state as a command that reached a real
+// process and exited nonzero: nothing ran in the first case, and treating it as though something
+// ran and failed would erase that distinction. CommandOverTransportRefused therefore short-circuits
+// to exit_failure directly and never reaches shell.Exec.RunArgv or the exit-code check at all.
+//
+// THE LocalExec ARM'S SHAPE BELOW IS THIS COLLAPSE'S OWN, not a preserved inheritance. Nothing
+// about #8593's earlier LocalExec-only cut constrained what this run site had to look like once
+// SshExec joined it through the same seam.
+func run_shell_command(command: ArgvCommand, transport: CommandTransport) -> ProcessExit
   uses net: Network
 {
   match command_over_transport(command: command, transport: transport) {
     CommandOverTransportRefused { cause: c } =>
-      ShellCaptureResult {
-        success: false,
-        stdout: "",
+      exit_failure(reason: concat("command_over_transport refused: ", command_over_transport_refusal_reason(cause: c)))
+    CommandOverTransportBuilt { command: over } =>
+      match list_head(xs: over.argv) {
+        HeadAbsent =>
+          exit_failure(reason: "empty argv: a command with no words names no program to execute")
+        HeadFound { value: program } => {
+          let run = shell.Exec.RunArgv(
+            program: program as NonEmptyStr,
+            arguments: process_argv_expansion(
+              surface: cli_surface_of_literal_words(words: argv_operands(command: over))
+            ),
+          )
+          if process_exit_is_admitted(policy: ExitZeroSucceeds, exit_code: run.exit_code) {
+            ExitSuccess
+          } else {
+            exit_failure(reason: concat("command failed: ", run.stderr))
+          }
+        }
+      }
+  }
+}
+
+// The operands are everything after the program. A missing tail is the one-word command, whose
+// operand list is empty -- not an error, and not the same state as an empty argv.
+fn argv_operands(command: ArgvCommand) -> List<String> {
+  match list_tail(xs: command.argv) {
+    TailAbsent => Empty
+    TailFound { tail: rest } => rest
+  }
+}
+
+// Capture variant (CONVERGE acceptance, host-key enrollment): same admitted transport,
+// but the caller receives the process observation instead of a collapsed ProcessExit —
+// for wet observations whose PRODUCT is the stdout (ssh-keyscan, ssh-keygen -lf).
+// Success/stdout/stderr travel together so a refusal cannot be read as empty output.
+
+// SPAWN FAILURE IS ALREADY FAIL-CLOSED, and this is the transport fact that decides what the
+// capture surface can and cannot say. Measured wet against the real local path: a command whose
+// program does not exist does NOT come back as a failed result. It REFUSES the evaluation with a
+// typed diagnostic naming the program and the OS error --
+//   failed to execute 'no_such_binary': No such file or directory (os error 2)
+// -- so no result record is produced at all.
+//
+// TWO CONSEQUENCES, and the second is the useful one.
+//
+// There is no unspawnable-versus-ran distinction for this surface to model. A fourth "not spawned"
+// variant would be an uninhabited arm that every consumer must handle and none can ever reach, so
+// it is deliberately absent.
+//
+// AND A CALLER CANNOT PROBE FOR A BINARY'S EXISTENCE BY TRYING TO RUN IT. The attempt does not
+// return an answer; it stops the line. Presence must be asked of something that exists -- spawn a
+// shell and let `command -v` report -- rather than spawning the candidate and interpreting the
+// wreckage. That is why a separate presence probe has to exist, and it is a boundary fact about
+// the transport rather than a limitation of this module.
+//
+// THE BUILT/REFUSED DISTINCTION SURVIVES HERE TOO, and stays distinguishable from an ordinary
+// failed run even though both terminate in the same ProcessRefused variant: a build refusal
+// carries the sentinel exit_code: 0 - 1, which no real process exit code is, while a command that
+// reached shell.Exec.RunArgv and exited nonzero carries that process's own exit_code. A caller
+// matching on exit_code, not just the variant, can still tell "never ran" from "ran and failed".
+//
+// THE SPAWN-REFUSAL ASYMMETRY SURVIVES THE COLLAPSE, and it survives because the collapse never
+// touched what program each arm names -- only how the resulting argv reaches the process. LocalExec
+// names a CALLER-SUPPLIED program, so the spawn-failure arm above is reachable on it: a typo'd or
+// missing binary refuses the evaluation, as described. SshExec's local-machine program is always
+// sshpass/ssh (extdeps.exec.command ssh_exec_prefix) -- present by construction wherever an SshExec
+// value exists at all -- so that arm cannot hit an unspawnable-local-program refusal the same way.
+// Both facts are real properties of the two transports, not an accident of the old per-transport
+// match; collapsing the run site onto one path must not read as making the arms symmetric where
+// they are not.
+//
+// THE SSH EXIT-255 COLLISION IS ACCEPTED, NOT RESOLVED, and stays that way here: ssh overloads
+// exit 255 for its own transport failures, indistinguishable by exit code alone from a remote
+// command that legitimately exits 255 on its own terms, so both arrive here as one
+// ProcessRefused { exit_code: 255, .. }. ProcessRefused.stderr carries ssh's message as prose
+// ONLY -- readable by a human debugging a failure, never matched on by a caller, since a retry
+// policy branching on unparsed prose would treat "host unreachable" and "command ran and exited
+// 255" as the same case when they demand OPPOSITE responses. Full disposition, rung, and
+// dissolution trigger: ssh_exit_255_conflation_dissolution, above.
+//
+// WHAT THE CAPTURE SURFACE RETURNS, and why it is a coproduct rather than a record.
+// ShellCaptureResult carried success: Bool beside stdout: String, which made two states that a
+// caller cannot tell apart: a program that RAN AND FAILED printing nothing, and one that RAN AND
+// SUCCEEDED printing nothing. Both are stdout == "". Correlating them was the caller's duty, and
+// measured across the live sites, EIGHT of them did not perform it -- they read stdout and acted
+// on the empty string as though it were an answer. That is the empty-observation narrow: not a
+// widen, its mirror, and it was live in production at eight sites.
+//
+// The coproduct makes the failure unignorable: output is reachable ONLY through the variant that
+// carries it, so a caller cannot read text without having confronted the arm where there is none.
+func run_shell_command_capture(command: ArgvCommand, transport: CommandTransport) -> ProcessOutcome
+  uses net: Network
+{
+  match command_over_transport(command: command, transport: transport) {
+    CommandOverTransportRefused { cause: c } =>
+      ProcessRefused {
+        exit_code: 0 - 1,
         stderr: concat("command_over_transport refused: ", command_over_transport_refusal_reason(cause: c)),
       }
     CommandOverTransportBuilt { command: over } =>
-      let rendered = shell_command_render(command: over)
-      let run = shell.Exec.Run(
-        script: retained_runtime(
-          body: shell_exec_via_bash(body: rendered),
-          reason: "generic ArgvCommand capture runner heredoc transport, pending the typed host_effect_apply argv handler" as NonEmptyStr,
-        )
-      )
-      ShellCaptureResult { success: run.success, stdout: run.stdout, stderr: run.stderr }
+      match list_head(xs: over.argv) {
+        HeadAbsent =>
+          ProcessRefused {
+            exit_code: 0 - 1,
+            stderr: "empty argv: a command with no words names no program to execute",
+          }
+        HeadFound { value: program } => {
+          let run = shell.Exec.RunArgv(
+            program: program as NonEmptyStr,
+            arguments: process_argv_expansion(
+              surface: cli_surface_of_literal_words(words: argv_operands(command: over))
+            ),
+          )
+          classify_process_observation(
+            policy: ExitZeroSucceeds,
+            observation: process_observation(
+              exit_code: run.exit_code,
+              stdout: run.stdout,
+              stderr: run.stderr,
+            ),
+          )
+        }
+      }
+  }
+}
+
+// Did the process do its job? Callers whose product is the EXIT STATUS rather than the output ask
+// this instead of matching all three arms -- `test -f` has no stdout anyone wants, and forcing it
+// through an output-bearing variant would add a field it cannot answer. This is not a flattening
+// helper for output-consuming callers: it deliberately cannot reach the text.
+fn process_outcome_admitted(outcome: ProcessOutcome) -> Bool {
+  match outcome {
+    ProcessOutputPresent { text: _ } => true
+    ProcessOutputAbsent => true
+    ProcessRefused { exit_code: _, stderr: _ } => false
+  }
+}
+
+// A receipt line's text, and it is NOT a flattening back to the conflated shape. The three arms
+// render to three DISTINGUISHABLE strings: a refusal can never be mistaken for empty output, which
+// is the exact property the old record lacked. Use it only where the value is being written into
+// human-readable text; a caller that uses the value AS DATA -- a path, a hostname -- must match the
+// arms itself, because "(refused: ...)" is a fine thing to print and a catastrophic thing to open.
+fn process_outcome_receipt_text(outcome: ProcessOutcome) -> String {
+  match outcome {
+    ProcessOutputPresent { text: t } => trim(s: t)
+    ProcessOutputAbsent => "(no output)"
+    ProcessRefused { exit_code: _, stderr: e } => join(["(refused: ", trim(s: e), ")"], "")
   }
 }
 
 // Receipt owner probe — admitted under command_runner_scaffold until
 // extdeps.filesystem.filesystem_io carries typed owner observation.
-fn stat_owner_name_capture(path: String) -> ShellCaptureResult {
+fn stat_owner_name_capture(path: String) -> ProcessOutcome {
   run_shell_command_capture(
     command: ArgvCommand { argv: ["stat", "-c", "%U", path] },
     transport: LocalExec,
