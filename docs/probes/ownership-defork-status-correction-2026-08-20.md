@@ -86,6 +86,30 @@ on `make_decision(usage) == SoleOwner` and admits params via `param_names`, as d
 > because a reader who greps the symbols finds nothing and concludes the plan was aspirational, when
 > it is a description of code that ran and was withdrawn.
 
+### What was deleted — both designs derived here, already written
+
+`git show 3a1b87d6e08 -- src/v1/ownership.dag`: **150 deletions, ZERO additions, one file.** Not a
+rewrite, not a migration to another module — pure excision, with no follow-up in the six weeks since.
+
+```
+type LiveState { name, whole: Bool, any_field: Bool, fields: Set<String> }
+type MoveLicenseAccum { live: Map<String, LiveState>, licensed: … }
+fn move_site_key(name: String, span_start: Int) -> String
+fn record_whole_use_site(acc, name, span_start, in_capture: Bool) -> MoveLicenseAccum
+  let movable_here = !in_capture && span_start != 0 && !st.whole && !st.any_field
+fn record_field_use_site(acc, name, field, span_start, in_capture: Bool) -> MoveLicenseAccum
+```
+
+- **`move_site_key(name, span_start)` is span-keyed occurrence identity** — the "construction fix"
+  for the flat name-keyed bindings map, proposed during this investigation as a wider-better cleanup
+  nobody had done. It had been written and deleted six weeks earlier.
+- **`in_capture` is a parameter of both recorders** — the lambda-binder-vs-free-variable distinction
+  also derived here, already threaded through, with captures poisoning licensing exactly as the
+  plan's guard paragraph describes.
+- **`span_start != 0`** is the fail-closed synthetic-node guard the plan names.
+
+**Both designs independently derived during this investigation were in those 150 lines.**
+
 ### Why it was deleted — OPEN, three readings
 
 **The commit states what it deleted, not why.** Its bullet is *"Persistent carriers: lists+sets ->
@@ -97,10 +121,18 @@ paragraphs are all about the clone-fallback guard, none about licensing.
    carriers made clones cheap, both lose their motivation together, which would explain an atomic
    deletion the commit felt no need to justify. *Consistent with everything read here; not confirmed.*
 2. **im_rc made licensing unsound** — if the carrier change altered what a whole-value use site means.
-3. **The two could not be landed together** — which the word *"atomic"* in the title equally supports.
+3. **The two could not be landed together** — which the word *"atomic"* in the title equally
+   supports. **Weakened by the diff:** a pure deletion with no replacement and no re-add attempt in
+   six weeks is not what a deferred landing looks like.
 
-**Which one holds decides whether re-implementing it is correct or reintroduces a bug.** The next
-read is `3a1b87d6e08`'s diff against `ownership.dag` — not more reasoning about its message.
+**Evidence against the comfortable reading (1):** a *reasoned* obsolescence would plausibly have
+updated the plan in the same pass. It did not — the plan still says "wired" six weeks on. That is a
+pattern argument, not proof, and it points away from *deliberate and reasoned* toward *expedient
+during a large migration, never revisited*. **The absence of a stated reason is itself evidence
+about the kind of decision it was.**
+
+**Which one holds decides whether re-implementing it is correct or reintroduces a bug** — and the
+150 lines are recoverable, so the question is worth answering before anyone rewrites them.
 
 ## 3. POPULATION BOUND — at most 446 of 775 clone sites
 
@@ -130,6 +162,16 @@ membership, so it bounds the *consequence* rather than observing the *cause*. **
 > **refcount bump with structural sharing**, not a deep copy. Joining the two silently re-inflates
 > cheap clones into expensive ones. The 446 bounds clone **sites**; it says nothing about what they
 > cost.
+>
+> **And do not over-correct into "clones are cheap now" either.** That holds for the **persistent
+> carriers specifically** — `im` `Vector`/`OrdSet`/`HashMap`. A clone of a `String`, a record, a
+> tuple, or any non-persistent `T` is still a real copy, and **nothing in the 446 distinguishes
+> carrier clones from value clones.** The post-`im_rc` cost of these sites has **never been
+> measured**, in either direction.
+>
+> **Two partitions would answer two different questions, and they are not the same query:** by
+> **cloned type** (persistent carrier vs value) answers *cost*; by **single-use vs multi-use**
+> answers *recoverability*.
 
 **What it does not settle:** whether `movable` is **inert** (near-empty — coverage by illusion) or
 merely **partial**. The delta measures the consequence and cannot separate them; that needs set
