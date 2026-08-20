@@ -982,8 +982,8 @@ record was found in `coproduct_reflection.rs`.
 
 *Validator-identity forgeability (addendum, confirmed by execution, orthogonal to
 `sole_constructor` itself) — a real completeness gap in the roadmap's planned mitigation,
-not in `sole_constructor` as scoped.* `std.interval`'s `closed_interval` and
-`src/v2/std/refinement.dag`'s `refine` both accept a caller-supplied predicate
+not in `sole_constructor` as scoped.* `std.interval` `closed_interval` and
+`v2.std.refinement` `refine` both accept a caller-supplied predicate
 (`le: fn(T,T)->Bool` / `Validation<B>.admits`). Executed: `closed_interval(low: 10, high: 1,
 le: always_true_le)` — a deliberately-broken caller-supplied predicate — returns
 `IntervalReady` (accepted) despite `low > high`; the same call with an honest predicate
@@ -1075,8 +1075,8 @@ corpus currently contains, not a fact the wall itself enforces.
    which one the author's own `import … { Name }` explicitly selected. `Refined<B>` is NOT
    cleared for a blanket `sole_constructor` landing until this hole is closed (a local-declares-
    first carve-out, mirroring the sibling gate, is the indicated fix) or the roadmap accepts the
-   residual risk explicitly. Separately CONFIRMED BY EXECUTION: `04_infer`'s `closed_interval`
-   and `src/v2/std/refinement.dag`'s `refine` both accept a caller-supplied validator predicate,
+   residual risk explicitly. Separately CONFIRMED BY EXECUTION: `std.interval` `closed_interval`
+   and `v2.std.refinement` `refine` both accept a caller-supplied validator predicate,
    so `sole_constructor` alone — even fully applied — cannot make a refinement carrier's
    accepted values honor their nominal invariant; the caller can supply a validator that always
    admits. Separately CONFIRMED HOLE BY EXECUTION: variant construction of a
