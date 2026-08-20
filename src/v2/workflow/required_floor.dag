@@ -2,9 +2,12 @@ module v2.workflow.required_floor
 
 import v2.std.algebra { Cons, Empty }
 import v2.std.collection { List }
-import v2.std.logic { Bool }
+import v2.std.logic { Bool, True, False }
 import v2.std.text { String }
+import v2.std.integer { Int, int_gt }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.types { NonEmptyStr }
 
 // IDENTITY-GRAINED FLOOR DISPOSITION RECEIPT (operator ruling 2026-08-19).
 //
@@ -177,12 +180,29 @@ fn long_home_prefixes() -> List<String> {
 // For a Hermetic pure in-process claim, CPU protects against runaway evaluation while wall
 // protects against a blocked or descheduled process -- different jobs, so the wall limit is
 // independently derived and LOOSER than the CPU limit, so ordinary host scheduling cannot
-// preempt a computation that is still inside its CPU envelope. Whichever deadline fires first,
-// the occurrence is a `SafetyInterrupted` claim and BOTH limits are recorded on it (the ruling's
-// `cpu_safety_limit`/`wall_safety_limit` pair) -- neither limit is a cost allowance, and crossing
-// either blocks. Both remain TEMPORARY restoration-envelope values, not re-founded permanent
-// ceilings, and both are deliberately far above where any ordinary witness should land (measured
-// per-witness median ~1ms) so neither should fire against a healthy claim.
+// preempt a computation that is still inside its CPU envelope. TEMPORARY restoration-envelope
+// values, not re-founded permanent ceilings, and both are deliberately far above where any
+// ordinary witness should land (measured per-witness median ~1ms) so neither should fire against
+// a healthy claim.
+//
+// THE GUARANTEE, REWRITTEN RATHER THAN ANNOTATED (PREEMPTION-1, operator-directed, 2026-08-19;
+// reworked on gunbc#8584 per royal-hawk-392's REWORK): these two limits are cooperatively
+// observed while interpreted execution keeps reaching `eval_expr`'s own stride-poll checkpoints
+// -- they are NOT hard bounds across an opaque host operation unless that operation separately
+// carries a deadline-aware contract or a killable process boundary. Whichever deadline a poll
+// DOES observe crossing raises a genuinely terminal-before-verdict occurrence
+// (`ClaimSafetyOutcome.SafetyInterrupted`, below); a claim whose cost accrues where no poll can
+// land instead completes and is classified `CompletedPastSafetyLimit`, which blocks identically
+// (`claim_safety_outcome_blocks`) but is never mislabeled as an interrupt it did not receive. The
+// typed model -- `ClaimPreemptionReachability`, `ClaimSafetyOutcome`, `claim_safety_outcome`,
+// `claim_safety_outcome_blocks`, the migration wall, and the §4b rung drop -- is declared further
+// down this file rather than described here in prose a second time; the measured receipt behind
+// it (floor run 32301212975, `root_d_checkpoint_scalar_declared_arity_witness_holds` reaching a
+// verdict at 60317ms CPU against this module's 5000ms `required_floor_claim_cpu_safety_limit_ms`,
+// twelve times over and uninterrupted, not a first occurrence -- 2792-2855ms isolated per
+// docs/plans/witness-cost-first-touch-attribution.md) is what that model derives
+// `CompletedPastSafetyLimit { preemption: OpaqueHostCallUnbounded { operation:
+// "compile_dag_rust_emit_check" } }` FROM, not a claim this comment makes independently of it.
 //
 // A completed claim's cost is judged on exactly one clock, chosen by the witness's PURPOSE and
 // never by measurement -- `v2.workflow.required_floor`'s claims execute Hermetic (pure in-process
@@ -222,6 +242,224 @@ fn required_floor_claim_wall_safety_limit_ms() -> Int {
   10000
 }
 
-fn required_floor_claim_warn_ms() -> Int {
-  100
+// THE WARN TIER IS DELETED (2026-08-20). It is not lowered, not re-derived from the envelope,
+// and not retained as a nonblocking console diagnostic.
+//
+// A first attempt on this branch DID derive it (a fifth of the CPU safety limit) on the reading
+// that the defect was the number. That reading was wrong and is recorded here rather than
+// quietly replaced: the defect was the TIER. A warning is not a terminal disposition — a claim
+// either reaches a verdict within its requirement or it refuses, and DESIGN §5 rules that a
+// failure arm must refuse rather than widen. "Over a threshold, reported, allowed to finish" is
+// neither arm; it is an observation with no remedy attached, and deriving a better threshold for
+// it would have kept a second quasi-limit in the console beside the two that actually decide
+// anything. Re-pinning and deriving are both answers to the wrong question.
+//
+// WHAT IT COST WHILE IT STOOD: the value was a bare `100` while the safety envelope moved to
+// 5000ms CPU / 10000ms wall, so it fired on the MEDIAN witness — several hundred `[floor-witness-slow]`
+// lines per run, each reporting that an ordinary row was ordinary (measured on run 32324402687's
+// console, where ordinary rows land at 100-600ms). A signal whose frequency is one by
+// construction carries no information, and it buried the terminal lines a reader is there for.
+//
+// WHAT IT NEVER BOUGHT: `RequiredFloorOutcome.over_warn` was incremented on every crossing and
+// READ BY NOTHING — no gate, no summary, no artifact. The tier's whole output was console volume.
+//
+// The two safety deadlines survive unchanged and remain the only claim-level limits; the
+// completed-cost line remains diagnostic-only. The tier-ordering refusal that stood beside them
+// (`ClaimBudgetTiersInverted`) is deleted with the tier: it existed solely to keep the warn below
+// the tighter deadline, and CPU and wall are independent axes rather than ordered tiers, so with
+// the warn gone there is no ordering left to violate.
+
+// PREEMPTION-1 TYPED MODEL (operator-directed, 2026-08-19; reworked on gunbc#8584 per
+// royal-hawk-392's REWORK, which correctly held that a prose note is not the model S1 asked
+// for -- everything above this point that reads as a description of the residue is now backed
+// by the carriers below, with a real derivation and a real consumer, not a comment restating
+// itself as done). THE GUARANTEE TEXT ITSELF IS REWRITTEN, not merely annotated:
+// `required_floor_claim_cpu_safety_limit_ms` / `_wall_safety_limit_ms` are limits COOPERATIVELY
+// OBSERVED while interpreted execution keeps returning to `eval_expr`'s own stride poll. They
+// are NOT hard bounds across an opaque host operation unless that operation separately carries
+// a deadline-aware contract or a killable process boundary -- neither of which
+// `compile_dag_rust_emit_check` has today.
+
+// WHICH REACHABILITY ONE CLAIM HAS, closed and named rather than left implicit per-occurrence.
+// A claim either stays inside `eval_expr`'s own poll loop for its whole duration
+// (`CooperativelyPollable` -- the case the two safety limits above genuinely protect), or it
+// crosses into a synchronous native `free_call.*` arm that never re-enters `eval_expr` while it
+// runs (`OpaqueHostCallUnbounded`, naming the operation). These are exactly the two mechanisms
+// `std.evaluation_budget` `evaluation_budget_opaque_host_call_note` and this module's own prior
+// comment already described in prose; this type is what the ruling asked that prose become.
+type ClaimPreemptionReachability =
+    CooperativelyPollable
+  | OpaqueHostCallUnbounded { operation: String }
+
+// THE ONE CLOSED, NO-GROWTH POPULATION of opaque host operations grandfathered under a per-claim
+// safety guarantee TODAY, and it is exhaustive rather than illustrative: `compile_dag_rust_emit_check`
+// is the only native `free_call.*` arm this corpus has measured reaching CPU cost the safety poll
+// cannot see (root_d_checkpoint_scalar_declared_arity_witness_holds, floor run 32301212975,
+// 60317ms against a 5000ms `required_floor_claim_cpu_safety_limit_ms`). This is the population
+// the §4b rung-drop below reads -- named by the operations actually found reaching an opaque host
+// call, not by which CLAIMS happen to call them today, so the population does not grow by a claim
+// being added or removed; it grows only when a DIFFERENT operation is found to share this shape,
+// which is a new finding, not a declaration.
+fn opaque_host_call_grandfather_population() -> List<String> {
+  Cons {
+    head: "compile_dag_rust_emit_check",
+    tail: Empty {}
+  }
+}
+
+fn string_in_grandfather_population(needle: String, population: List<String>) -> Bool {
+  match population {
+    Empty {} => false
+    Cons { head: h, tail: t } =>
+      if needle == h {
+        true
+      } else {
+        string_in_grandfather_population(needle: needle, population: t)
+      }
+  }
+}
+
+// THE MIGRATION WALL. A NEW opaque host operation brought under a per-claim safety guarantee
+// must REFUSE (`false`, never a diagnostic that lets the run continue): nothing about the two
+// safety-limit constants above makes an arbitrary native call deadline-aware, and admitting a
+// second ungoverned operation by silence would repeat, for a second operation, the exact defect
+// this file exists to name for the first. An EXISTING member of
+// `opaque_host_call_grandfather_population` is admitted (`true`) with no growth to the
+// population that admits it -- it derives `OpaqueHostCallUnbounded` rather than a fictitious
+// hard-bound standing (see `claim_safety_outcome` below), never a refusal, because refusing it
+// today would refuse the whole corpus of claims that already, honestly, exercise it.
+fn claim_preemption_admission(preemption: ClaimPreemptionReachability) -> Bool {
+  match preemption {
+    CooperativelyPollable => true
+    OpaqueHostCallUnbounded { operation: op } =>
+      string_in_grandfather_population(needle: op, population: opaque_host_call_grandfather_population())
+  }
+}
+
+// THE THREE-WAY OUTCOME THE RULING NAMED, replacing the binary `ClaimTerminality` this module's
+// prose used to describe as though a third state did not need its own arm. `SafetyInterrupted`
+// is reserved for a claim the poll genuinely stopped before a verdict -- it must never be the
+// label for a claim that ran to completion, however far over its limit, because "terminal" and
+// "interrupted" are different facts and conflating them is exactly the relabeling this ruling
+// forbids. `CompletedPastSafetyLimit` names the other terminal-but-over-limit case and carries
+// its `ClaimPreemptionReachability`, so a reader can tell WHY the poll never had a chance to fire
+// without re-deriving it from a comment.
+type ClaimSafetyOutcome =
+    CompletedWithinSafetyLimits
+  | SafetyInterrupted {
+      raised_by: String
+      elapsed_cpu_at_least: Int
+      elapsed_wall_at_least: Int
+    }
+  | CompletedPastSafetyLimit {
+      observed_cpu: Int
+      observed_wall: Int
+      preemption: ClaimPreemptionReachability
+    }
+
+// FLAT-SCALAR MILLISECOND FIELDS, DECLARED AS A BOUNDED GAP RATHER THAN SILENTLY LEFT (review
+// 53860 on gunbc#8584, BLOCKING on `observed_cpu_ms`/`observed_wall_ms`/`cpu_limit_ms`/
+// `wall_limit_ms` and the `ClaimSafetyOutcome` fields derived from them). The finding is correct
+// on the merits and matches this repository's own sibling precedent: `std.evaluation_budget`
+// (the caller-agnostic kernel this module's constants already cite) carries the identical
+// domain -- a cooperative deadline observed in milliseconds -- through `std.measure`
+// `Nanosecond`/`PositiveMillisecond`, never a bare `_ms: Int`. It is not fixed inline here
+// because `std.measure` `Millisecond = Measure<Time, Milli, std.nat.Nat>` is built on v1's
+// host-backed `Nat`, while this module's own `Int`/`Nat` (`v2.std.integer`, `v2.std.nat`) are
+// v2's inductive Peano tower (`Nat = Zero | Succ { prev: Nat }`, verified in
+// `src/v2/std/nat.dag`) -- and no bridge between the two numeric towers is established anywhere
+// in this corpus today. Converting these four fields under an unrelated CI-fix pass would mean
+// authoring that bridge for the first time, unverified, exactly the class of silent
+// cross-representation mismatch this repository's own incident history warns against (a prior
+// PR read cleanly and mismatched a carrier seal at runtime). Recorded as a typed obligation
+// rather than a prose promise so it cannot decay into an unmarked scaffold.
+data flat_scalar_millisecond_fields_dissolve_on: DissolutionCondition = unbound_dissolution(
+  description: "dissolve-on: ClaimSafetyOutcome's observed_cpu/observed_wall/elapsed_cpu_at_least/elapsed_wall_at_least and claim_safety_outcome's observed_cpu_ms/observed_wall_ms/cpu_limit_ms/wall_limit_ms parameters convert from bare Int to std.measure Millisecond once a verified Int/Nat conversion exists between v2's inductive Peano tower (v2.std.integer.Int = GroupCompletion<v2.std.nat.Nat>) and the host-backed Nat std.measure is built on (per review 53860 on gunbc#8584)." as NonEmptyStr,
+)
+
+// THE DERIVATION. `reached_verdict` is the one fact that decides between `SafetyInterrupted` and
+// the two completed arms -- never the observed costs, which is what keeps a claim that merely
+// ran long from being misreported as interrupted, and a claim that was genuinely cut off from
+// being misreported as complete. `preemption` and `raised_by` are supplied by the caller (the
+// reachability fact and the trigger are observed at the interpreter boundary this module does
+// not itself reach into) rather than guessed here.
+fn claim_safety_outcome(
+  reached_verdict: Bool,
+  observed_cpu_ms: Int,
+  observed_wall_ms: Int,
+  cpu_limit_ms: Int,
+  wall_limit_ms: Int,
+  raised_by: String,
+  preemption: ClaimPreemptionReachability,
+) -> ClaimSafetyOutcome {
+  match reached_verdict {
+    false =>
+      SafetyInterrupted {
+        raised_by: raised_by,
+        elapsed_cpu_at_least: observed_cpu_ms,
+        elapsed_wall_at_least: observed_wall_ms,
+      }
+    true =>
+      if int_gt(a: observed_cpu_ms, b: cpu_limit_ms) {
+        CompletedPastSafetyLimit {
+          observed_cpu: observed_cpu_ms,
+          observed_wall: observed_wall_ms,
+          preemption: preemption,
+        }
+      } else {
+        if int_gt(a: observed_wall_ms, b: wall_limit_ms) {
+          CompletedPastSafetyLimit {
+            observed_cpu: observed_cpu_ms,
+            observed_wall: observed_wall_ms,
+            preemption: preemption,
+          }
+        } else {
+          CompletedWithinSafetyLimits
+        }
+      }
+  }
+}
+
+// §4b RUNG DROP, DECLARED (operator-directed, 2026-08-19; PREEMPTION-1).
+//
+// PREVIOUS CLAIMED RUNG: mechanically preventable -- the two safety-limit constants above were
+// described (in this module's own prior prose and in `ClaimTerminality`'s Rust doc comment) as
+// though arming them made ANY claim's cost, wherever it accrued, reliably interruptible.
+//
+// ACTUAL CURRENT RUNG: mitigatable, and only for the `CooperativelyPollable` arm of
+// `ClaimPreemptionReachability`. For a claim whose cost accrues inside an
+// `OpaqueHostCallUnbounded` operation the two limits are not even mitigatable -- they observe
+// nothing and block nothing at the moment the cost accrues; the harm is caught only after the
+// fact, once the claim completes, through `RequiredFloorOutcome.completed_over_cost_requirement`
+// (a `CompletedPastSafetyLimit` occurrence, per `claim_safety_outcome_blocks` below, blocking
+// exactly as a genuine interrupt would).
+//
+// BOUNDED POPULATION, DERIVED FROM HOST-OPERATION INVOCATION REACH, NOT HAND-LISTED BY CLAIM
+// IDENTITY: `opaque_host_call_grandfather_population()` above. It is a population of OPERATIONS,
+// not of claims -- naming `root_d_checkpoint_scalar_declared_arity_witness_holds` here would be
+// exactly the hand-authored, non-derived population the ruling rejected, because the next claim
+// to reach `compile_dag_rust_emit_check` would be uncovered by a list keyed on identity rather
+// than on the operation it reaches. Any claim reaching a listed operation is, by that reach
+// alone, in the dropped population; `claim_preemption_admission` is the decidable membership
+// test over it, and it is exhaustive today at exactly one member.
+//
+// RESTORATION TRIGGER: this rung restores to mechanically preventable for the
+// `OpaqueHostCallUnbounded` population when `compile_dag_rust_emit_check` (or any future member
+// of the grandfather population) gains a deadline-aware contract or runs behind a killable
+// process/worker boundary -- per `ClaimPreemptionReachability`'s own doc comment and
+// v1_interpreter's `eval_expr` comment naming worker isolation, not a budget, as what would bound
+// it unconditionally. Until then this rung is the honest one, and S2 (building that boundary) is
+// out of scope for this model.
+//
+// BINDING CONSTRAINT: NO AMOUNT OF LATER COMPLETION CONVERTS A MISSED INTERRUPT INTO SUCCESSFUL
+// ENFORCEMENT. `CompletedPastSafetyLimit` blocks exactly as `SafetyInterrupted` does -- a
+// consumer that only checks for `SafetyInterrupted` before deciding admission reproduces the
+// silent-completion defect this whole model exists to close. This predicate is the one place
+// that fact is asserted, so a caller cannot rediscover it (or get it wrong) per call site.
+fn claim_safety_outcome_blocks(outcome: ClaimSafetyOutcome) -> Bool {
+  match outcome {
+    CompletedWithinSafetyLimits => false
+    SafetyInterrupted { raised_by: _, elapsed_cpu_at_least: _, elapsed_wall_at_least: _ } => true
+    CompletedPastSafetyLimit { observed_cpu: _, observed_wall: _, preemption: _ } => true
+  }
 }

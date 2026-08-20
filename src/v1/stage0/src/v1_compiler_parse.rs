@@ -40,6 +40,7 @@ pub use crate::std_syntax::{
 pub use crate::std_types::SourceSpan;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+pub use crate::v1_std_core::make_file_span;
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{InternalError, ParseError};
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
@@ -11618,7 +11619,8 @@ pub fn parse_caret_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
             Some(TokenShape::ShIdent) => {
                 let spelling = next.clone().unwrap().text.clone();
                 let end_span = token_span(next.clone());
-                let lit_span = make_span(span.start.clone(), end_span.end.clone());
+                let lit_span =
+                    make_file_span(span.file.clone(), span.start.clone(), end_span.end.clone());
                 Rc::new(ExprResult {
                     expr: make_expr_node(
                         Rc::new(ExprData::ExprLiteral {
@@ -11655,7 +11657,8 @@ pub fn parse_caret_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                         err: r2.err.clone(),
                     });
                 }
-                let call_span = make_span(
+                let call_span = make_file_span(
+                    span.file.clone(),
                     span.start.clone(),
                     r2.token.clone().span.clone().end.clone(),
                 );

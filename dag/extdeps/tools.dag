@@ -64,8 +64,10 @@ fn install_hint(sources: List<InstallSource>) -> String {
   sources |> map(s => one_hint(source: s)) |> join(separator: " | ")
 }
 
+data resolve_posix_command_v_migration_note: String = "Migrated off shell.Which.Check to shell.PosixCommandV.Check (crisp-wren-896, PR #8590): no fleet host's OperatingSystemSurface carries a package-set authority, our own CI/falsifier runner included, so `which`'s external-binary presence was never an established fact here either, and command -v's weaker, dominant POSIX-shell assumption holds everywhere `which` did. UNLIKE the other four migrated call sites, this function reads .path as a resolved filesystem path rather than keying on .exists alone, so TWO hazards genuinely apply here rather than being ruled out: (1) command -v prints the bare NAME rather than a resolved path when the probed command is a shell builtin or alias, not an external binary -- every tool.name this resolves is expected to be an external binary (coreutils, rustup, apt, brew, or a GitHub-release install), so this is not believed to bite in practice, but it is not structurally excluded the way it is for the four .exists-only sites; (2) under WET execution PosixCommandV.Check.path comes back as a bare stdout String rather than a real Optional, so the Present/Absent match below relies on the same Value::Null / Optional realization straddle (DESIGN open thread) that gunbc.host_cli_dependency's which_path_realization_limit_note and gunbc.roadmap_belt_actuate's belt_program_available_note document -- this function has no current live caller in the tree (verified by grep, PR #8590), so the straddle is undischarged debt rather than an observed WET failure."
+
 func resolve(tool: CliTool) -> ResolveResult {
-  let check = shell.Which.Check(command: tool.name)
+  let check = shell.PosixCommandV.Check(command: tool.name)
   match check.path {
     Present { value: p } => Resolved { resolved: { tool: tool, path: p } }
     Absent => NotFound { tool: tool, hint: install_hint(sources: tool.installable_via) }

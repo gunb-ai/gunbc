@@ -11,7 +11,6 @@ import extdeps.tools.sha512sum {
   Sha512FileObserved,
   Sha512FileObservationRefused,
 }
-import gunbc.retained_shell_script { retained_foreign }
 
 data provider_wire_evidence_note: String = "Durable private wire evidence for provider account-standing captures. Publication is exclusive under an evidence root: 0700 directory → unique same-directory temporary file → write raw bytes → SHA-512 → hardlink to content-addressed name (fails closed if a concurrent writer already published a different object at that hex) → independent digest read-back → 0600 retained object → remove temporary. byte_count is ByteSize (std.measure) over the UTF-8 code-unit length of the retained String carrier (substrate String length), not a separate host byte-count observation."
 

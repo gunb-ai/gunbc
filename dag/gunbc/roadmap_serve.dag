@@ -87,7 +87,6 @@ import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
   DashboardObserveOnly, DashboardActuating,
   srv1_live_dashboard_instance,
-  srv1_green_dashboard_instance,
   srv1_lab_dashboard_instance,
   srv2_preview_dashboard_instance,
   srv2_lab_dashboard_instance,
@@ -674,20 +673,6 @@ fn roadmap_serve_handle(
   ))
 }
 
-fn roadmap_serve_handle_srv1_green(
-  method: String,
-  path: String,
-  body: String,
-  release_revision: CommitSha,
-) -> ServeWireResponse {
-  serve_wire_response(r: roadmap_serve_respond_for_instance(
-    instance: srv1_green_dashboard_instance(),
-    method_label: method,
-    path: path,
-    body: body,
-    release_revision: release_revision,
-  ))
-}
 
 fn roadmap_serve_handle_srv1_lab(
   method: String,
