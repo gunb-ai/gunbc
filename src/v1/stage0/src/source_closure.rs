@@ -1,10 +1,32 @@
 //! Parse-then-derive closure assembly: which source files belong in a compile.
 //!
-//! This replaces the import-driven closure builders (`extract_imports` and its
-//! four forked copies) and the pre-parse byte scanners in `cli_run`
-//! (`referenced_module_paths_in_text`). It is homed here, outside `cli_run.rs`,
-//! deliberately: that file is being deleted wholesale on a sibling lane, and
-//! closure assembly must survive that cut.
+//! WHAT THIS ACTUALLY IS, CORRECTED 2026-08-20 BY AN EXECUTED CONSUMER CENSUS.
+//! This header used to say it REPLACES the import-driven closure builders and
+//! the pre-parse byte scanners in `cli_run`. That was false, and false in the
+//! direction that costs the most: it replaced nothing. `cli_run` still assembles
+//! closures with `referenced_module_paths_in_text` -- the very text scan the next
+//! paragraph argues against -- and four `bin/` witnesses still carry their own
+//! forked `resolve_imports_transitively`. This module's only consumer is
+//! `whole_tree_wiring_enum_test`, through
+//! `helpers::resolve_imports_transitively_with_source_roots`. (Its sibling
+//! `helpers::resolve_imports_transitively` has zero callers -- named because a
+//! census that reports the wrong entry point is the defect this note corrects.)
+//!
+//! So this is a FIFTH implementation, not a consolidation, and a header claiming
+//! to be the live authority is worse than one claiming nothing: a fix aimed at
+//! "the closure builder" lands here and changes no shipped behavior, which has
+//! already happened on this branch. The reasoning below is sound and the code is
+//! exercised -- what was wrong was the status, so the status is what changed.
+//!
+//! RUNG: mitigatable. One test executes it; nothing makes the production path
+//! use it, and nothing detects that it does not.
+//!
+//! NEXT-RUNG TRIGGER: point `cli_run`'s closure assembly at `closure_for_entry`
+//! and delete `referenced_module_paths_in_text` with the four `bin/` forks in the
+//! same motion -- the §3 replacement-migration cut, one authority ending at its
+//! root rather than a sixth implementation being added beside it. That is a live
+//! change to the compile path and does not belong in the import cut; it is named
+//! here so the next reader inherits the obligation instead of the false claim.
 //!
 //! WHY NOT A TEXT SCAN. `referenced_module_paths_in_text` runs BEFORE parsing
 //! and longest-matches dotted identifiers against a module-name index, so it
@@ -34,7 +56,7 @@
 //! the bound edges only) and belongs with the resolver, not here.
 //!
 //! MIGRATION. This is seed Rust because a new `.dag` module needs the two-round
-//! regen bootstrap and regen is suspended for the duration of the import cut.
+//! regen bootstrap, which was suspended while the import cut was in flight.
 //! The shape is deliberately fold-like so it moves to `.dag` with a thin host
 //! seam for the filesystem read.
 

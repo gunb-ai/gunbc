@@ -1153,14 +1153,6 @@ mod process_workspace_root_tests {
     }
 
     #[test]
-    fn compile_clean_unlisted_import_census_scaffold_marker_is_declared() {
-        assert_eq!(
-            super::CLI_RUN_COMPILE_CLEAN_UNLISTED_IMPORT_CENSUS_SCAFFOLD_MARKER,
-            "cli_run_compile_clean_unlisted_import_census"
-        );
-    }
-
-    #[test]
     fn compile_clean_shard_entry_paths_fast_scaffold_marker_is_declared() {
         assert_eq!(
             super::CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER,
@@ -4813,18 +4805,17 @@ pub fn compile_clean_whole_tree_hard_diagnostics() -> Result<im::Vector<Rc<Error
         .collect())
 }
 
-// DELETE WHEN dissolved: `compile_clean_unlisted_import_census` bin,
-// `UnlistedImportBindingSource`, `classify_unlisted_import_binding_source`,
-// `compile_clean_unlisted_import_census`, and related census helpers (~150 LOC).
-// Receipt: `rg cli_run_compile_clean_unlisted_import_census src/v1/stage0` == 1 until deletion;
-// namespace-only lane (docs/plans/namespace-resolution-design.md).
-pub(crate) const CLI_RUN_COMPILE_CLEAN_UNLISTED_IMPORT_CENSUS_SCAFFOLD_MARKER: &str =
-    "cli_run_compile_clean_unlisted_import_census";
-
 // INTERIM hand-Rust scaffold (issue 11 / §7): dispatch input for the namespace flip.
 // DISSOLVES WHEN import grammar deleted and binding-source modeled in substrate.
 
-/// Binding-source attribution for the UnlistedImportUse census (issue 11).
+/// Binding-source attribution. The `UnlistedImportUse` census this was minted for
+/// is DELETED 2026-08-20 with its subject: there are no imports, so there is no
+/// unlisted one. What survives is the type of an honest "not observed" on two live
+/// receipts (`DeclaredImportClosureBindingObserved`, `CrossModuleBindingReceipt`),
+/// both of which construct `None` because the import-era classifier is retired and
+/// neither fabricates a source in its place. It is therefore inhabited only by
+/// absence today; the variants are kept because a resolution-grain binding source is
+/// a real fact the resolver could report, not because anything reports one now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum UnlistedImportBindingSource {
     ListedImport,
@@ -4840,16 +4831,6 @@ impl UnlistedImportBindingSource {
             Self::DefinerResolvable => "definer-resolvable",
         }
     }
-}
-
-/// One attributed row of the UnlistedImportUse census.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UnlistedImportCensusRow {
-    pub file: String,
-    pub referenced_name: String,
-    pub referencing_module: String,
-    pub definer_module: Option<String>,
-    pub binding_source: UnlistedImportBindingSource,
 }
 
 fn compile_clean_whole_tree_resolved(
