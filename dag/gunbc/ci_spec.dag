@@ -46,7 +46,6 @@ import gunbc.heal_push_plan {
 }
 import gunbc.ci_failure_class { infra_retry_grep_alternation }
 import gunbc.ci_deploy_access { DeployAccess, ci_deploy_srv1_access }
-import gunbc.fleet_main_revision { fleet_desired_ref_name }
 import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
 import gunbc.merge_admission_produce {
   ci_repo_root_shell,
@@ -870,32 +869,18 @@ fn gunbc_ci_authorized_key_enroll_invoke() -> String {
   )
 }
 
-data gunbc_ci_advance_fleet_desired_shell_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci_spec",
-    decl_name: "gunbc_ci_advance_fleet_desired_script",
-    field: WholeDeclaration
-  }
-}
-
-data gunbc_ci_advance_fleet_desired_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_advance_fleet_desired_script — concat-built foreign-executor (GitHub Actions run:) CAS ref advance (git ls-remote + push --force-with-lease onto gunbc.fleet_main_revision fleet_desired_ref_name); DISSOLVES WHEN the SCM ref-update realization lands as the typed git.Core CAS service op (membership-diff spine classify_change SCM-ref arm) invoked via host_effect_apply")
-
-fn gunbc_ci_advance_fleet_desired_script() -> String {
-  join([
-    "# ", dissolution_description(condition: gunbc_ci_advance_fleet_desired_shell_emit_dissolution_trigger), "\n",
-    "set -eu\n",
-    "DESIRED_REF=", fleet_desired_ref_name, "\n",
-    "CURRENT=$(git ls-remote origin \"$DESIRED_REF\" | cut -f1)\n",
-    "if [ -z \"$CURRENT\" ]; then\n",
-    "git push origin \"$GITHUB_SHA:$DESIRED_REF\"\n",
-    "echo \"[fleet-desired] created $DESIRED_REF -> $GITHUB_SHA\"\n",
-    "else\n",
-    "git push --force-with-lease=\"$DESIRED_REF:$CURRENT\" origin \"$GITHUB_SHA:$DESIRED_REF\"\n",
-    "echo \"[fleet-desired] advanced $DESIRED_REF: $CURRENT -> $GITHUB_SHA (CAS expected-prior held)\"\n",
-    "fi\n",
-  ], "")
-}
+// gunbc_ci_advance_fleet_desired_script, its Scaffold disposition and its dissolution
+// trigger were DELETED HERE with the deploy workflow authority. The function rendered a
+// shell CAS advance -- git ls-remote, then a bare `git push origin "$GITHUB_SHA:$DESIRED_REF"`
+// on the create branch with no lease at all -- and its only two consumers were
+// gunbc.live_deploy_workflow and that module's witness file, both deleted in the same cut.
+//
+// It is not preserved for a future actuator. gunbc.fleet_desired_admission is the admitted
+// replacement: it advances the ref only behind a modeled decision over a completed floor
+// run, and renders the push from typed values rather than from $GITHUB_SHA. Keeping a
+// function that can still emit the raw form would leave the unsafe spelling one call site
+// away from returning, which is the same leaf-versus-root error that let the deleted
+// workflow regenerate itself.
 
 data gunbc_ci_srv1_tasks_observation_shell_emit_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
