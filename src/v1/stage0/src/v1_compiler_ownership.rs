@@ -3,6 +3,8 @@
 
 use self::EdgeKind::*;
 use self::OwnershipDecision::*;
+use self::UseContext::*;
+use self::UsePosition::*;
 pub use crate::std_syntax::BinOp;
 use crate::std_syntax::BinOp::*;
 pub use crate::v1_compiler_emit_core_support::to_string;
@@ -13,8 +15,8 @@ use crate::v1_std_core::ExprData::{
     ExprBlock, ExprCall, ExprError, ExprFieldAccess, ExprForEach, ExprIf, ExprLambda, ExprLet,
     ExprLiteral, ExprMatch, ExprMethodCall, ExprRecordLit, ExprReturn, ExprVar, NoExprData,
 };
+use crate::v1_std_core::FieldValueShape::*;
 use crate::v1_std_core::InferredNode::Resolved;
-pub use crate::v1_std_core::MatchPattern;
 use crate::v1_std_core::MatchPattern::*;
 use crate::v1_std_core::VarBindingKind::{FunctionValueBinding, LocalValueBinding};
 pub use crate::v1_std_core::{
@@ -26,6 +28,7 @@ pub use crate::v1_std_core::{
 pub use crate::v1_std_core::{
     Cardinality, ExprData, InferredNode, NewlineIndex, Node, VarBindingKind,
 };
+pub use crate::v1_std_core::{FieldValueShape, MatchPattern};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -42,11 +45,54 @@ pub enum EdgeKind {
     Projected,
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum UsePosition {
+    TailPosition,
+    NonTailPosition,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum UseContext {
+    PlainValueUse,
+    CallArgumentUse,
+    MethodReceiverUse,
+    MethodArgumentUse,
+    FieldProjectionUse,
+    FoldThreadUse,
+    LambdaBodyUse,
+    ForEachCollectionUse,
+    ForEachBodyUse,
+    ScrutineeUse,
+    ConditionUse,
+    LetValueUse,
+    BlockNonFinalUse,
+    MatchArmUse,
+    IfBranchUse,
+    LetBodyUse,
+    BlockFinalUse,
+    UnclassifiedContextUse,
+}
+
+pub fn edge_kind_for_position(position: UsePosition) -> EdgeKind {
+    match position.clone() {
+        UsePosition::TailPosition => EdgeKind::Consumed,
+        UsePosition::NonTailPosition => EdgeKind::Read,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EdgeClassification {
     pub kind: EdgeKind,
     pub site: String,
     pub span_start: i64,
+    pub position: UsePosition,
+    pub context: UseContext,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -163,12 +209,16 @@ pub fn record_use(
     site: String,
     binding_kind: Option<Rc<VarBindingKind>>,
     span_start: i64,
+    position: UsePosition,
+    context: UseContext,
 ) -> Rc<UsageAccum> {
     {
         let edge = Rc::new(EdgeClassification {
             kind: kind.clone(),
             site: site.clone(),
             span_start: span_start.clone(),
+            position: position.clone(),
+            context: context.clone(),
         });
         let existing = match v1_rt::map_get(&accum.bindings.clone(), name.clone()) {
             Some(usage) => usage.clone(),
@@ -283,7 +333,8 @@ pub fn merge_branch_usages(
 pub fn walk_expr(
     accum: Rc<UsageAccum>,
     texpr: Rc<Node>,
-    in_tail: bool,
+    position: UsePosition,
+    context: UseContext,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<UsageAccum> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -292,25 +343,21 @@ pub fn walk_expr(
                 binding_kind: bk, ..
             } => {
                 let n = expr_var_name_at(texpr.clone(), si.clone());
-                if in_tail.clone() {
-                    record_use(
-                        accum.clone(),
-                        n.clone(),
-                        EdgeKind::Consumed,
-                        "return".to_string(),
-                        bk.clone(),
-                        texpr.span.clone().start.clone(),
-                    )
-                } else {
-                    record_use(
-                        accum.clone(),
-                        n.clone(),
-                        EdgeKind::Read,
-                        "read".to_string(),
-                        bk.clone(),
-                        texpr.span.clone().start.clone(),
-                    )
-                }
+                let kind = edge_kind_for_position(position.clone());
+                let site = match position.clone() {
+                    UsePosition::TailPosition => "return".to_string(),
+                    UsePosition::NonTailPosition => "read".to_string(),
+                };
+                record_use(
+                    accum.clone(),
+                    n.clone(),
+                    kind.clone(),
+                    site.clone(),
+                    bk.clone(),
+                    texpr.span.clone().start.clone(),
+                    position.clone(),
+                    context.clone(),
+                )
             }
             ExprData::ExprLiteral { value: _, .. } => accum.clone(),
             ExprData::ExprFieldAccess { .. } => {
@@ -328,9 +375,17 @@ pub fn walk_expr(
                             v1_rt::concat(".".to_string(), f.clone()),
                             bk.clone(),
                             texpr.span.clone().start.clone(),
+                            UsePosition::NonTailPosition,
+                            UseContext::FieldProjectionUse,
                         )
                     }
-                    _ => walk_expr(accum.clone(), base_node.clone(), false, si.clone()),
+                    _ => walk_expr(
+                        accum.clone(),
+                        base_node.clone(),
+                        UsePosition::NonTailPosition,
+                        UseContext::FieldProjectionUse,
+                        si.clone(),
+                    ),
                 }
             }
             ExprData::ExprCall { .. } => {
@@ -363,11 +418,17 @@ pub fn walk_expr(
                                             "fold_init".to_string(),
                                             bk.clone(),
                                             ia_val.span.clone().start.clone(),
+                                            UsePosition::NonTailPosition,
+                                            UseContext::FoldThreadUse,
                                         )
                                     }
-                                    _ => {
-                                        walk_expr(accum.clone(), ia_val.clone(), false, si.clone())
-                                    }
+                                    _ => walk_expr(
+                                        accum.clone(),
+                                        ia_val.clone(),
+                                        UsePosition::NonTailPosition,
+                                        UseContext::FoldThreadUse,
+                                        si.clone(),
+                                    ),
                                 }
                             }
                             None => accum.clone(),
@@ -384,7 +445,13 @@ pub fn walk_expr(
                         non_init.clone().iter().cloned().fold(
                             threaded_accum.clone(),
                             |acc: Rc<UsageAccum>, a: Rc<Node>| {
-                                walk_expr(acc, arg_value(a.clone()), false, si.clone())
+                                walk_expr(
+                                    acc,
+                                    arg_value(a.clone()),
+                                    UsePosition::NonTailPosition,
+                                    UseContext::CallArgumentUse,
+                                    si.clone(),
+                                )
                             },
                         )
                     }
@@ -392,7 +459,13 @@ pub fn walk_expr(
                     texpr.children.clone().iter().cloned().fold(
                         accum.clone(),
                         |acc: Rc<UsageAccum>, a: Rc<Node>| {
-                            walk_expr(acc, arg_value(a.clone()), false, si.clone())
+                            walk_expr(
+                                acc,
+                                arg_value(a.clone()),
+                                UsePosition::NonTailPosition,
+                                UseContext::CallArgumentUse,
+                                si.clone(),
+                            )
                         },
                     )
                 }
@@ -403,7 +476,13 @@ pub fn walk_expr(
                 let mname = expr_method_name_at(texpr.clone(), si.clone());
                 if (mname.clone() == "fold".to_string()) {
                     {
-                        let recv_accum = walk_expr(accum.clone(), recv.clone(), false, si.clone());
+                        let recv_accum = walk_expr(
+                            accum.clone(),
+                            recv.clone(),
+                            UsePosition::NonTailPosition,
+                            UseContext::MethodReceiverUse,
+                            si.clone(),
+                        );
                         let init_arg = Rc::new({
                             let mut __result = Vec::new();
                             for a in mc_args.clone().iter().cloned() {
@@ -430,12 +509,15 @@ pub fn walk_expr(
                                             "fold_init".to_string(),
                                             bk.clone(),
                                             ia_val.span.clone().start.clone(),
+                                            UsePosition::NonTailPosition,
+                                            UseContext::FoldThreadUse,
                                         )
                                     }
                                     _ => walk_expr(
                                         recv_accum.clone(),
                                         ia_val.clone(),
-                                        false,
+                                        UsePosition::NonTailPosition,
+                                        UseContext::FoldThreadUse,
                                         si.clone(),
                                     ),
                                 }
@@ -454,7 +536,13 @@ pub fn walk_expr(
                         let walked = non_init.clone().iter().cloned().fold(
                             threaded_accum.clone(),
                             |acc: Rc<UsageAccum>, a: Rc<Node>| {
-                                walk_expr(acc, arg_value(a.clone()), false, si.clone())
+                                walk_expr(
+                                    acc,
+                                    arg_value(a.clone()),
+                                    UsePosition::NonTailPosition,
+                                    UseContext::MethodArgumentUse,
+                                    si.clone(),
+                                )
                             },
                         );
                         Rc::new(UsageAccum {
@@ -468,11 +556,23 @@ pub fn walk_expr(
                     }
                 } else {
                     {
-                        let recv_accum = walk_expr(accum.clone(), recv.clone(), false, si.clone());
+                        let recv_accum = walk_expr(
+                            accum.clone(),
+                            recv.clone(),
+                            UsePosition::NonTailPosition,
+                            UseContext::MethodReceiverUse,
+                            si.clone(),
+                        );
                         mc_args.clone().iter().cloned().fold(
                             recv_accum.clone(),
                             |acc: Rc<UsageAccum>, a: Rc<Node>| {
-                                walk_expr(acc, arg_value(a.clone()), false, si.clone())
+                                walk_expr(
+                                    acc,
+                                    arg_value(a.clone()),
+                                    UsePosition::NonTailPosition,
+                                    UseContext::MethodArgumentUse,
+                                    si.clone(),
+                                )
                             },
                         )
                     }
@@ -481,7 +581,13 @@ pub fn walk_expr(
             ExprData::ExprMatch => {
                 let scrut = match_scrutinee(texpr.clone());
                 let arm_nodes = match_arm_nodes(texpr.clone());
-                let s_accum = walk_expr(accum.clone(), scrut.clone(), false, si.clone());
+                let s_accum = walk_expr(
+                    accum.clone(),
+                    scrut.clone(),
+                    UsePosition::NonTailPosition,
+                    UseContext::ScrutineeUse,
+                    si.clone(),
+                );
                 let seed = branch_seed(s_accum.clone());
                 let branch_accums = Rc::new({
                     let mut __result = Vec::new();
@@ -489,7 +595,8 @@ pub fn walk_expr(
                         __result.push(walk_expr(
                             seed.clone(),
                             arm_body(arm_node.clone()),
-                            in_tail.clone(),
+                            position.clone(),
+                            UseContext::MatchArmUse,
                             si.clone(),
                         ));
                     }
@@ -500,11 +607,29 @@ pub fn walk_expr(
             ExprData::ExprIf => {
                 let c = if_condition(texpr.clone());
                 let t = if_then_branch(texpr.clone());
-                let c_accum = walk_expr(accum.clone(), c.clone(), false, si.clone());
+                let c_accum = walk_expr(
+                    accum.clone(),
+                    c.clone(),
+                    UsePosition::NonTailPosition,
+                    UseContext::ConditionUse,
+                    si.clone(),
+                );
                 let seed = branch_seed(c_accum.clone());
-                let t_accum = walk_expr(seed.clone(), t.clone(), in_tail.clone(), si.clone());
+                let t_accum = walk_expr(
+                    seed.clone(),
+                    t.clone(),
+                    position.clone(),
+                    UseContext::IfBranchUse,
+                    si.clone(),
+                );
                 let e_accum = match if_else_branch(texpr.clone()) {
-                    Some(eb) => walk_expr(seed.clone(), eb.clone(), in_tail.clone(), si.clone()),
+                    Some(eb) => walk_expr(
+                        seed.clone(),
+                        eb.clone(),
+                        position.clone(),
+                        UseContext::IfBranchUse,
+                        si.clone(),
+                    ),
                     None => seed.clone(),
                 };
                 merge_branch_usages(
@@ -514,9 +639,21 @@ pub fn walk_expr(
             }
             ExprData::ExprLet => {
                 let v = let_value(texpr.clone());
-                let v_accum = walk_expr(accum.clone(), v.clone(), false, si.clone());
+                let v_accum = walk_expr(
+                    accum.clone(),
+                    v.clone(),
+                    UsePosition::NonTailPosition,
+                    UseContext::LetValueUse,
+                    si.clone(),
+                );
                 match let_body(texpr.clone()) {
-                    Some(b) => walk_expr(v_accum.clone(), b.clone(), in_tail.clone(), si.clone()),
+                    Some(b) => walk_expr(
+                        v_accum.clone(),
+                        b.clone(),
+                        position.clone(),
+                        UseContext::LetBodyUse,
+                        si.clone(),
+                    ),
                     None => v_accum.clone(),
                 }
             }
@@ -551,14 +688,21 @@ pub fn walk_expr(
                         .fold(
                             accum.clone(),
                             |acc: Rc<UsageAccum>, p: (i64, Rc<Node>)| {
-                                walk_expr(acc, p.1.clone(), false, si.clone())
+                                walk_expr(
+                                    acc,
+                                    p.1.clone(),
+                                    UsePosition::NonTailPosition,
+                                    UseContext::BlockNonFinalUse,
+                                    si.clone(),
+                                )
                             },
                         );
                         match ss.clone().last().cloned() {
                             Some(last_expr) => walk_expr(
                                 init_accum.clone(),
                                 last_expr.clone(),
-                                in_tail.clone(),
+                                position.clone(),
+                                UseContext::BlockFinalUse,
                                 si.clone(),
                             ),
                             None => init_accum.clone(),
@@ -569,12 +713,24 @@ pub fn walk_expr(
             ExprData::ExprReturn => texpr.children.clone().iter().cloned().fold(
                 accum.clone(),
                 |acc: Rc<UsageAccum>, child: Rc<Node>| {
-                    walk_expr(acc, child.clone(), true, si.clone())
+                    walk_expr(
+                        acc,
+                        child.clone(),
+                        UsePosition::TailPosition,
+                        UseContext::PlainValueUse,
+                        si.clone(),
+                    )
                 },
             ),
             ExprData::ExprLambda => {
                 let body = lambda_body(texpr.clone());
-                let inner = walk_expr(empty_usage_accum(), body.clone(), false, si.clone());
+                let inner = walk_expr(
+                    empty_usage_accum(),
+                    body.clone(),
+                    UsePosition::NonTailPosition,
+                    UseContext::LambdaBodyUse,
+                    si.clone(),
+                );
                 let binding_merged = Rc::new(v1_rt::map_values(&inner.bindings.clone()))
                     .iter()
                     .cloned()
@@ -588,6 +744,8 @@ pub fn walk_expr(
                                 "lambda-capture".to_string(),
                                 None,
                                 0,
+                                UsePosition::NonTailPosition,
+                                UseContext::LambdaBodyUse,
                             )
                         },
                     );
@@ -602,9 +760,21 @@ pub fn walk_expr(
             }
             ExprData::ExprForEach => {
                 let coll = foreach_collection(texpr.clone());
-                let coll_accum = walk_expr(accum.clone(), coll.clone(), false, si.clone());
+                let coll_accum = walk_expr(
+                    accum.clone(),
+                    coll.clone(),
+                    UsePosition::NonTailPosition,
+                    UseContext::ForEachCollectionUse,
+                    si.clone(),
+                );
                 let body = foreach_body(texpr.clone());
-                let inner = walk_expr(empty_usage_accum(), body.clone(), false, si.clone());
+                let inner = walk_expr(
+                    empty_usage_accum(),
+                    body.clone(),
+                    UsePosition::NonTailPosition,
+                    UseContext::LambdaBodyUse,
+                    si.clone(),
+                );
                 let binding_merged = Rc::new(v1_rt::map_values(&inner.bindings.clone()))
                     .iter()
                     .cloned()
@@ -618,6 +788,8 @@ pub fn walk_expr(
                                 "foreach-capture".to_string(),
                                 None,
                                 0,
+                                UsePosition::NonTailPosition,
+                                UseContext::ForEachBodyUse,
                             )
                         },
                     );
@@ -633,7 +805,13 @@ pub fn walk_expr(
             _ => texpr.children.clone().iter().cloned().fold(
                 accum.clone(),
                 |acc: Rc<UsageAccum>, child: Rc<Node>| {
-                    walk_expr(acc, child.clone(), false, si.clone())
+                    walk_expr(
+                        acc,
+                        child.clone(),
+                        UsePosition::NonTailPosition,
+                        UseContext::UnclassifiedContextUse,
+                        si.clone(),
+                    )
                 },
             ),
         }
@@ -1265,7 +1443,13 @@ pub fn analyze_ownership(
                 }
             },
         );
-        let result = walk_expr(initial.clone(), body.clone(), true, si.clone());
+        let result = walk_expr(
+            initial.clone(),
+            body.clone(),
+            UsePosition::TailPosition,
+            UseContext::PlainValueUse,
+            si.clone(),
+        );
         let binding_list = Rc::new(v1_rt::map_values(&result.bindings.clone()));
         let decisions = Rc::new({
             let mut __result = Vec::new();
@@ -1298,3 +1482,43 @@ pub struct Read;
 pub struct Threaded;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Projected;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TailPosition;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NonTailPosition;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PlainValueUse;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CallArgumentUse;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct MethodReceiverUse;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct MethodArgumentUse;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FieldProjectionUse;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FoldThreadUse;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct LambdaBodyUse;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ForEachCollectionUse;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ForEachBodyUse;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ScrutineeUse;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ConditionUse;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct LetValueUse;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct BlockNonFinalUse;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct MatchArmUse;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct IfBranchUse;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct LetBodyUse;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct BlockFinalUse;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UnclassifiedContextUse;

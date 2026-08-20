@@ -25,10 +25,64 @@ import v1.compiler.emit_core_support { to_string }
 
 type EdgeKind = Consumed | Read | Threaded | Projected
 
+// TWO ORTHOGONAL FACTS, deliberately not one carrier.
+//
+// EdgeKind is the ownership DEMAND at a use, and outside tail position this walk does not
+// determine it: `f(x)`, `S { a: x }` and `xs.len()` are indistinguishable to it, so all three
+// classify as `Read`. `Read` is therefore the else-branch of a tail test, not a finding that the
+// use borrows -- reading it as one licenses a borrow where an owned value is required, which is
+// the use-after-move direction. A carrier may claim only what every path constructing it entails.
+//
+// `position` answers "is this the enclosing function's tail?" and must PROPAGATE through
+// tail-preserving constructs (match arms, if branches, let bodies, block-final expressions).
+// `context` answers "what syntactic parent encloses this use?" and is set by the IMMEDIATE
+// parent, never propagated. Merging them is what makes the merged value meaningless: with one
+// carrier, `f(match x { A => y, B => z })` records `y` as a call argument, because propagating
+// the tail fact drags the grandparent's context along with it. Split, each is well-defined at
+// every site.
+type UsePosition = TailPosition | NonTailPosition
+
+// UnclassifiedContextUse is the ONE arm meaning "not determined", and it is spelled that way on
+// purpose: folding it into PlainValueUse would restate, one level down, the exact defect this type
+// exists to remove -- ignorance wearing the name of a finding. It is also the arm to WATCH, since a
+// rising count there locates expression forms the walk never learned to classify.
+type UseContext
+  = PlainValueUse
+  | CallArgumentUse
+  | MethodReceiverUse
+  | MethodArgumentUse
+  | FieldProjectionUse
+  | FoldThreadUse
+  | LambdaBodyUse
+  | ForEachCollectionUse
+  | ForEachBodyUse
+  | ScrutineeUse
+  | ConditionUse
+  | LetValueUse
+  | BlockNonFinalUse
+  | MatchArmUse
+  | IfBranchUse
+  | LetBodyUse
+  | BlockFinalUse
+  | UnclassifiedContextUse
+
+// Kind depends on POSITION ALONE, exactly as the `in_tail` test it replaces. Behaviour-preserving
+// by construction: the increment names the state space, it does not narrow it. Narrowing a context
+// to a borrow demands evidence that the context cannot consume -- which a method receiver
+// (`into_iter`) and a call argument do not have.
+fn edge_kind_for_position(position: UsePosition) -> EdgeKind {
+  match position {
+    TailPosition => Consumed
+    NonTailPosition => Read
+  }
+}
+
 type EdgeClassification {
   kind: EdgeKind
   site: String
   span_start: Int
+  position: UsePosition
+  context: UseContext
 }
 
 type BindingUsage {
@@ -83,8 +137,8 @@ fn empty_usage_accum() -> UsageAccum {
   UsageAccum { bindings: empty_map(), fold_call_nodes: [], touched: [] }
 }
 
-fn record_use(accum: UsageAccum, name: String, kind: EdgeKind, site: String, binding_kind: VarBindingKind?, span_start: Int) -> UsageAccum {
-  let edge = EdgeClassification { kind: kind, site: site, span_start: span_start }
+fn record_use(accum: UsageAccum, name: String, kind: EdgeKind, site: String, binding_kind: VarBindingKind?, span_start: Int, position: UsePosition, context: UseContext) -> UsageAccum {
+  let edge = EdgeClassification { kind: kind, site: site, span_start: span_start, position: position, context: context }
   let existing = match map_get(accum.bindings, name) {
     Present { value: usage } => usage
     Absent => BindingUsage { name: name, binding_kind: none, consumers: [] }
@@ -136,15 +190,16 @@ fn merge_branch_usages(base: UsageAccum, branches: List<UsageAccum>) -> UsageAcc
   }
 }
 
-fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, NewlineIndex>) -> UsageAccum {
+fn walk_expr(accum: UsageAccum, texpr: Node, position: UsePosition, context: UseContext, si: Map<String, NewlineIndex>) -> UsageAccum {
   match texpr.expr_data {
     ExprVar { binding_kind: bk } =>
       let n = expr_var_name_at(texpr: texpr, source_indices: si)
-      if in_tail {
-        record_use(accum: accum, name: n, kind: Consumed, site: "return", binding_kind: bk, span_start: texpr.span.start)
-      } else {
-        record_use(accum: accum, name: n, kind: Read, site: "read", binding_kind: bk, span_start: texpr.span.start)
+      let kind = edge_kind_for_position(position: position)
+      let site = match position {
+        TailPosition => "return"
+        NonTailPosition => "read"
       }
+      record_use(accum: accum, name: n, kind: kind, site: site, binding_kind: bk, span_start: texpr.span.start, position: position, context: context)
 
     ExprLiteral { value: _ } => accum
 
@@ -154,8 +209,8 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
         ExprVar { binding_kind: bk } =>
           let vn = expr_var_name_at(texpr: base_node, source_indices: si)
           let f = field_access_field_at(texpr: texpr, source_indices: si)
-          record_use(accum: accum, name: vn, kind: Projected, site: concat(".", f), binding_kind: bk, span_start: texpr.span.start)
-        _ => walk_expr(accum: accum, texpr: base_node, in_tail: false, si: si)
+          record_use(accum: accum, name: vn, kind: Projected, site: concat(".", f), binding_kind: bk, span_start: texpr.span.start, position: NonTailPosition, context: FieldProjectionUse)
+        _ => walk_expr(accum: accum, texpr: base_node, position: NonTailPosition, context: FieldProjectionUse, si: si)
       }
 
     ExprCall =>
@@ -168,18 +223,18 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
             match ia_val.expr_data {
               ExprVar { binding_kind: bk } =>
                 let vn = expr_var_name_at(texpr: ia_val, source_indices: si)
-                record_use(accum: accum, name: vn, kind: Threaded, site: "fold_init", binding_kind: bk, span_start: ia_val.span.start)
-              _ => walk_expr(accum: accum, texpr: ia_val, in_tail: false, si: si)
+                record_use(accum: accum, name: vn, kind: Threaded, site: "fold_init", binding_kind: bk, span_start: ia_val.span.start, position: NonTailPosition, context: FoldThreadUse)
+              _ => walk_expr(accum: accum, texpr: ia_val, position: NonTailPosition, context: FoldThreadUse, si: si)
             }
           Absent => accum
         }
         let non_init = texpr.children |> filter(a => authored_name_at(source_indices: si, node: a) != "init")
         non_init |> fold(init: threaded_accum, f: (acc, a) =>
-          walk_expr(accum: acc, texpr: arg_value(n: a), in_tail: false, si: si)
+          walk_expr(accum: acc, texpr: arg_value(n: a), position: NonTailPosition, context: CallArgumentUse, si: si)
         )
       } else {
         texpr.children |> fold(init: accum, f: (acc, a) =>
-          walk_expr(accum: acc, texpr: arg_value(n: a), in_tail: false, si: si)
+          walk_expr(accum: acc, texpr: arg_value(n: a), position: NonTailPosition, context: CallArgumentUse, si: si)
         )
       }
 
@@ -188,7 +243,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
       let mc_args = method_arg_nodes(texpr: texpr)
       let mname = expr_method_name_at(texpr: texpr, source_indices: si)
       if mname == "fold" {
-        let recv_accum = walk_expr(accum: accum, texpr: recv, in_tail: false, si: si)
+        let recv_accum = walk_expr(accum: accum, texpr: recv, position: NonTailPosition, context: MethodReceiverUse, si: si)
         let init_arg = mc_args |> filter(a => authored_name_at(source_indices: si, node: a) == "init") |> first
         let threaded_accum = match init_arg {
           Present { value: ia } =>
@@ -196,50 +251,50 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
             match ia_val.expr_data {
               ExprVar { binding_kind: bk } =>
                 let vn = expr_var_name_at(texpr: ia_val, source_indices: si)
-                record_use(accum: recv_accum, name: vn, kind: Threaded, site: "fold_init", binding_kind: bk, span_start: ia_val.span.start)
-              _ => walk_expr(accum: recv_accum, texpr: ia_val, in_tail: false, si: si)
+                record_use(accum: recv_accum, name: vn, kind: Threaded, site: "fold_init", binding_kind: bk, span_start: ia_val.span.start, position: NonTailPosition, context: FoldThreadUse)
+              _ => walk_expr(accum: recv_accum, texpr: ia_val, position: NonTailPosition, context: FoldThreadUse, si: si)
             }
           Absent => recv_accum
         }
         let non_init = mc_args |> filter(a => authored_name_at(source_indices: si, node: a) != "init")
         let walked = non_init |> fold(init: threaded_accum, f: (acc, a) =>
-          walk_expr(accum: acc, texpr: arg_value(n: a), in_tail: false, si: si)
+          walk_expr(accum: acc, texpr: arg_value(n: a), position: NonTailPosition, context: MethodArgumentUse, si: si)
         )
         UsageAccum { bindings: walked.bindings, fold_call_nodes: list_push(walked.fold_call_nodes, texpr), touched: walked.touched }
       } else {
-        let recv_accum = walk_expr(accum: accum, texpr: recv, in_tail: false, si: si)
+        let recv_accum = walk_expr(accum: accum, texpr: recv, position: NonTailPosition, context: MethodReceiverUse, si: si)
         mc_args |> fold(init: recv_accum, f: (acc, a) =>
-          walk_expr(accum: acc, texpr: arg_value(n: a), in_tail: false, si: si)
+          walk_expr(accum: acc, texpr: arg_value(n: a), position: NonTailPosition, context: MethodArgumentUse, si: si)
         )
       }
 
     ExprMatch =>
       let scrut = match_scrutinee(texpr: texpr)
       let arm_nodes = match_arm_nodes(texpr: texpr)
-      let s_accum = walk_expr(accum: accum, texpr: scrut, in_tail: false, si: si)
+      let s_accum = walk_expr(accum: accum, texpr: scrut, position: NonTailPosition, context: ScrutineeUse, si: si)
       let seed = branch_seed(from: s_accum)
       let branch_accums = arm_nodes |> map(arm_node =>
-        walk_expr(accum: seed, texpr: arm_body(n: arm_node), in_tail: in_tail, si: si)
+        walk_expr(accum: seed, texpr: arm_body(n: arm_node), position: position, context: MatchArmUse, si: si)
       )
       merge_branch_usages(base: s_accum, branches: branch_accums)
 
     ExprIf =>
       let c = if_condition(texpr: texpr)
       let t = if_then_branch(texpr: texpr)
-      let c_accum = walk_expr(accum: accum, texpr: c, in_tail: false, si: si)
+      let c_accum = walk_expr(accum: accum, texpr: c, position: NonTailPosition, context: ConditionUse, si: si)
       let seed = branch_seed(from: c_accum)
-      let t_accum = walk_expr(accum: seed, texpr: t, in_tail: in_tail, si: si)
+      let t_accum = walk_expr(accum: seed, texpr: t, position: position, context: IfBranchUse, si: si)
       let e_accum = match if_else_branch(texpr: texpr) {
-        Present { value: eb } => walk_expr(accum: seed, texpr: eb, in_tail: in_tail, si: si)
+        Present { value: eb } => walk_expr(accum: seed, texpr: eb, position: position, context: IfBranchUse, si: si)
         Absent => seed
       }
       merge_branch_usages(base: c_accum, branches: [t_accum, e_accum])
 
     ExprLet =>
       let v = let_value(texpr: texpr)
-      let v_accum = walk_expr(accum: accum, texpr: v, in_tail: false, si: si)
+      let v_accum = walk_expr(accum: accum, texpr: v, position: NonTailPosition, context: LetValueUse, si: si)
       match let_body(texpr: texpr) {
-        Present { value: b } => walk_expr(accum: v_accum, texpr: b, in_tail: in_tail, si: si)
+        Present { value: b } => walk_expr(accum: v_accum, texpr: b, position: position, context: LetBodyUse, si: si)
         Absent => v_accum
       }
 
@@ -251,41 +306,41 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
         let init_accum = ss |> enumerate
           |> filter(p => p.first < ss_count - 1)
           |> fold(init: accum, f: (acc, p) =>
-            walk_expr(accum: acc, texpr: p.second, in_tail: false, si: si)
+            walk_expr(accum: acc, texpr: p.second, position: NonTailPosition, context: BlockNonFinalUse, si: si)
           )
         match ss |> last {
           Present { value: last_expr } =>
-            walk_expr(accum: init_accum, texpr: last_expr, in_tail: in_tail, si: si)
+            walk_expr(accum: init_accum, texpr: last_expr, position: position, context: BlockFinalUse, si: si)
           Absent => init_accum
         }
       }
 
     ExprReturn =>
       texpr.children |> fold(init: accum, f: (acc, child) =>
-        walk_expr(accum: acc, texpr: child, in_tail: true, si: si)
+        walk_expr(accum: acc, texpr: child, position: TailPosition, context: PlainValueUse, si: si)
       )
 
     ExprLambda =>
       let body = lambda_body(texpr: texpr)
-      let inner = walk_expr(accum: empty_usage_accum(), texpr: body, in_tail: false, si: si)
+      let inner = walk_expr(accum: empty_usage_accum(), texpr: body, position: NonTailPosition, context: LambdaBodyUse, si: si)
       let binding_merged = inner.bindings |> map_values |> fold(init: accum, f: (acc, usage) =>
-        record_use(accum: acc, name: usage.name, kind: Read, site: "lambda-capture", binding_kind: none, span_start: 0)
+        record_use(accum: acc, name: usage.name, kind: Read, site: "lambda-capture", binding_kind: none, span_start: 0, position: NonTailPosition, context: LambdaBodyUse)
       )
       UsageAccum { bindings: binding_merged.bindings, fold_call_nodes: binding_merged.fold_call_nodes |> concat(inner.fold_call_nodes), touched: binding_merged.touched }
 
     ExprForEach =>
       let coll = foreach_collection(texpr: texpr)
-      let coll_accum = walk_expr(accum: accum, texpr: coll, in_tail: false, si: si)
+      let coll_accum = walk_expr(accum: accum, texpr: coll, position: NonTailPosition, context: ForEachCollectionUse, si: si)
       let body = foreach_body(texpr: texpr)
-      let inner = walk_expr(accum: empty_usage_accum(), texpr: body, in_tail: false, si: si)
+      let inner = walk_expr(accum: empty_usage_accum(), texpr: body, position: NonTailPosition, context: LambdaBodyUse, si: si)
       let binding_merged = inner.bindings |> map_values |> fold(init: coll_accum, f: (acc, usage) =>
-        record_use(accum: acc, name: usage.name, kind: Read, site: "foreach-capture", binding_kind: none, span_start: 0)
+        record_use(accum: acc, name: usage.name, kind: Read, site: "foreach-capture", binding_kind: none, span_start: 0, position: NonTailPosition, context: ForEachBodyUse)
       )
       UsageAccum { bindings: binding_merged.bindings, fold_call_nodes: binding_merged.fold_call_nodes |> concat(inner.fold_call_nodes), touched: binding_merged.touched }
 
     _ =>
       texpr.children |> fold(init: accum, f: (acc, child) =>
-        walk_expr(accum: acc, texpr: child, in_tail: false, si: si)
+        walk_expr(accum: acc, texpr: child, position: NonTailPosition, context: UnclassifiedContextUse, si: si)
       )
   }
 }
@@ -575,7 +630,7 @@ fn analyze_ownership(func_name: String, params: List<Node>, body: Node, si: Map<
       touched: acc.touched
     }
   )
-  let result = walk_expr(accum: initial, texpr: body, in_tail: true, si: si)
+  let result = walk_expr(accum: initial, texpr: body, position: TailPosition, context: PlainValueUse, si: si)
 
   let binding_list = result.bindings |> map_values
   let decisions = binding_list |> map(usage => make_decision(usage: usage))

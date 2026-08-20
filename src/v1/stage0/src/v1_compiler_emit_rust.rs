@@ -108,8 +108,6 @@ pub use crate::v1_compiler_languages::{
     visibility_for_target, wrap_shared_type,
 };
 pub use crate::v1_compiler_languages::{ItemKeywords, TestConventions, VisibilitySpec};
-pub use crate::v1_compiler_ownership::EdgeKind;
-use crate::v1_compiler_ownership::EdgeKind::*;
 pub use crate::v1_compiler_ownership::OwnershipProof;
 pub use crate::v1_compiler_ownership::{
     analyze_ownership, analyze_single_fold, build_movable_set, build_read_only_params,
