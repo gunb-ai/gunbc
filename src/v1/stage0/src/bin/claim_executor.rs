@@ -19851,6 +19851,46 @@ fn behavioral_receipt_census(source_roots: &[String]) -> Result<bool, String> {
         // assumed. Three times now a node-shape assumption has been wrong and each time the cost
         // was a whole measurement built on it; the shape is cheap to report and there is no reason
         // for the next reader of this output to have to re-derive it.
+        // WHAT DISTINGUISHES A TYPE DECLARATION FROM A FUNCTION OR A DATA ROW, printed for one
+        // module rather than assumed. The reader must filter on a property of the node; every
+        // previous attempt to name one from memory has been wrong.
+        if let Some(src) = modules.get("std.pareto") {
+            if let Ok(node) = parse_dag_module_node("std.pareto.dag", src) {
+                let authored: std::collections::HashSet<String> = src
+                    .lines()
+                    .filter_map(|l| l.trim_start().strip_prefix("type "))
+                    .filter_map(|r| {
+                        r.split(|c: char| c.is_whitespace() || c == '{' || c == '=')
+                            .find(|t| !t.is_empty())
+                            .map(str::to_string)
+                    })
+                    .collect();
+                let mut shapes: std::collections::BTreeMap<String, (usize, Vec<String>)> =
+                    std::collections::BTreeMap::new();
+                for c in node.children.iter() {
+                    let key = format!(
+                        "is_type={} conn={:?} body={} params={} inferred={} children={}",
+                        authored.contains(&c.name),
+                        c.connective,
+                        c.body.is_some(),
+                        c.params.len(),
+                        c.inferred.is_some(),
+                        c.children.len()
+                    );
+                    let e = shapes.entry(key).or_insert((0, Vec::new()));
+                    e.0 += 1;
+                    if e.1.len() < 3 {
+                        e.1.push(c.name.clone());
+                    }
+                }
+                for (k, (n, ex)) in &shapes {
+                    eprintln!(
+                        "receipt-census:   CHILDSHAPE {n:4}  {k}  e.g. {}",
+                        ex.join(", ")
+                    );
+                }
+            }
+        }
         if let Some((m, _, _, missed)) = worst.iter().find(|(m, _, _, _)| m == "std.pareto") {
             if let Some(src) = modules.get(m) {
                 if let Ok(node) = parse_dag_module_node(&format!("{m}.dag"), src) {
