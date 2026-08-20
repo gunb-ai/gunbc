@@ -1497,8 +1497,13 @@ than argued.
    discharged by enrolling in `floor_expected_red_roster` directly (operator ruling,
    deep-ant-102, 2026-08-20: no new mechanism), which is the one live authority for this case.
 
-20. **Reconstruction doors, umbrella.** Two functions build a typed `Value::Record`/
-   `Value::Variant` from serialized observations that are never accepted against the expected declaration and its invariant, outside any construction call site (an earlier revision said "untrusted bytes", which overstates it: a recorded fixture DOES carry outer operation, input-hash, input-equality and freshness checks — what is missing is semantic acceptance of the response against the current program declaration, not provenance checking), and this queue
+20. **Reconstruction doors, umbrella.** Two interpreter reconstruction mechanisms admit serialized
+   observations without completing semantic acceptance: fixture replay reconstructs NOMINALLY TAGGED records or
+   variants without declaration admission, while REST JSON projection constructs a DECLARATION-SHAPED output
+   record — no variant — without accepting each field value against its declared type and invariant. (An earlier
+   revision said both build a "typed `Value::Record`/`Value::Variant`", which over-granted twice: "typed" claims
+   an admission the fixture decoder never performs — the tag is carried, not checked — and only the fixture
+   decoder produces variants at all.) Both sit outside any construction call site. (A further earlier revision called the input "untrusted bytes", which overstates it: a recorded fixture DOES carry outer operation, input-hash, input-equality and freshness checks — what is missing is semantic acceptance of the response against the current program declaration, not provenance checking.) This queue
    item covers both — but external review (2026-08-20) found they are **different mechanisms
    that need separate rows**, corrected here as 20a/20b rather than one joint claim: 20a
    (`value_from_fixture_json`) mints a nominally tagged value **without ever establishing the
@@ -1540,7 +1545,7 @@ than argued.
    Record arm reads a `__type` string out of the fixture JSON verbatim, interns it, reads
    whatever field names the same JSON object happens to carry, and returns
    `Value::Record { type_name, fields }` — no lookup against any declared type, no
-   `sole_constructor` check, no refinement-predicate evaluation. Its Variant arm does the
+   `sole_constructor` consultation, no refinement-predicate evaluation — the `sole_constructor` half is a SOURCE-INSPECTION finding, not an executed one: this item's probes ran a `NonEmptyStr` refinement and two fabricated undeclared nominal identities, and executed no interpreter reconstruction case against a declared sealed carrier. Its Variant arm does the
    same plus an equally unchecked `__variant` string. `src/v1/stage0/src/v1_interpreter.rs`
    calls this on `fixture.response` during hermetic replay, so the door is reached on the
    ordinary replay path, not a corner case.
@@ -1565,8 +1570,11 @@ than argued.
        exists in either source root), `id.value` set to `"whatever-value"`,
        `witness_id_equals_whatever`. **Observed: PASS, exit 0.** The decoder manufactures a
        `Value::Record` of a type the program never declared — there is no invariant to
-       violate here because there is no type to check against; this is a strictly worse
-       finding than Case 2's predicate bypass.
+       violate here because there is no type to check against. This is a SEPARATE, BROADER nominal-admission
+       defect rather than another instance of the refinement failure — an earlier revision called it "strictly
+       worse" than Case 2, which is an unsupported ordering: one violates a real declared invariant on an
+       ordinary value path, the other shows the decoder's nominal admission set includes identities absent from
+       the program. Different defects, not ranked ones.
      - *Case 4, Variant-arm fabrication:* `response` replaced wholesale with a
        `{"__tag":"Variant","__type":"TotallyFabricatedVariantType_NeverDeclaredAnywhere",
        "__variant":"BogusCaseNeverDeclared","fields":{"id":{"__tag":"Str","value":"variant-value"}}}`
@@ -1633,8 +1641,12 @@ than argued.
    GitHub push event — and those fixtures are not idle: numerous `.dag` witness tests under
    `dag/test/claim/` name `dag/test/fixture` as their fixture store, so the door executes
    during ordinary witness-test replay, not only under ad hoc probing. 20b's REST-projection
-   door is reached straightforwardly externally: any production `transport rest` service
-   dispatch during a wet run hits it directly, no repo-committed intermediary at all.
+   door is reached straightforwardly externally: any wet REST dispatch that takes the JSON
+   response-projection branch reaches it directly, with no repo-committed intermediary at all. NOT every REST dispatch:
+   this row establishes a few paragraphs below that the branch is FORMAT-dependent — `Json` routes to `map_response_to_value_json`
+   (20b) while `Text` routes to `map_response_to_value` (unmeasured here). An earlier revision said "any production
+   `transport rest` service dispatch ... hits it directly", which silently reinstated the transport-based split this
+   row explicitly withdraws.
 
    **The two doors' Case-2-class findings have different reachability stories, and
    collapsing them would overstate 20a.** 20b's Case 2 needed *no* tampering whatsoever: an
