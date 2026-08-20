@@ -162,13 +162,13 @@ pub use crate::v1_std_core::{
     let_body, let_value, make_arg_node, make_error_node, make_expr_node, make_named_expr_node,
     match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_imports,
     module_items, no_span, param_node_default_value, param_node_name_at, param_node_type_expr,
-    qualified_last_segment, record_lit_type_name_at, resource_use_name_at, resource_use_resource,
-    return_value, service_config_auth, service_config_auth_input, service_config_auth_source,
-    service_config_endpoint, slice_base, slice_end, slice_start, transport_auth_basic,
-    transport_auth_header_name, transport_auth_token, transport_base_url, transport_env,
-    transport_has_auth, transport_headers, transport_method, transport_path_template,
-    transport_query, transport_request_body, transport_response_format, transport_stdin,
-    transport_tls_posture, tuple_type_name, with_required_cardinality,
+    qualified_last_segment, record_lit_named_field_value_optional, record_lit_type_name_at,
+    resource_use_name_at, resource_use_resource, return_value, service_config_auth,
+    service_config_auth_input, service_config_auth_source, service_config_endpoint, slice_base,
+    slice_end, slice_start, transport_auth_basic, transport_auth_header_name, transport_auth_token,
+    transport_base_url, transport_env, transport_has_auth, transport_headers, transport_method,
+    transport_path_template, transport_query, transport_request_body, transport_response_format,
+    transport_stdin, transport_tls_posture, tuple_type_name, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     CallSemantics, Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData,
@@ -30681,6 +30681,74 @@ pub fn build_data_body_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<HashMap<St
     )
 }
 
+pub fn workflow_default_fold_depth_limit() -> i64 {
+    8
+}
+
+pub fn fold_constant_default_expr(
+    expr: Rc<Node>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    data_body_index: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    depth: i64,
+) -> Option<Rc<Node>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if (depth.clone() > workflow_default_fold_depth_limit()) {
+            None
+        } else {
+            match (*expr.expr_data.clone()).clone() {
+                ExprData::ExprVar {
+                    binding_kind: _, ..
+                } => {
+                    let var_name = authored_name_at(source_indices.clone(), expr.clone());
+                    match lookup_item(registry.clone(), var_name.clone()) {
+                        Some(info) => match info.kind.clone() {
+                            ItemKind::DataItem => {
+                                match v1_rt::map_get(&data_body_index, var_name.clone()) {
+                                    Some(body) => fold_constant_default_expr(
+                                        body.clone(),
+                                        registry.clone(),
+                                        data_body_index.clone(),
+                                        source_indices.clone(),
+                                        (depth.clone() + 1),
+                                    ),
+                                    None => None,
+                                }
+                            }
+                            _ => None,
+                        },
+                        None => None,
+                    }
+                }
+                ExprData::ExprFieldAccess { summary: _, .. } => match fold_constant_default_expr(
+                    field_access_base(expr.clone()),
+                    registry.clone(),
+                    data_body_index.clone(),
+                    source_indices.clone(),
+                    (depth.clone() + 1),
+                ) {
+                    Some(base) => match record_lit_named_field_value_optional(
+                        base.clone(),
+                        field_access_field_at(expr.clone(), source_indices.clone()),
+                        source_indices.clone(),
+                    ) {
+                        Some(field_value) => fold_constant_default_expr(
+                            field_value.clone(),
+                            registry.clone(),
+                            data_body_index.clone(),
+                            source_indices.clone(),
+                            (depth.clone() + 1),
+                        ),
+                        None => None,
+                    },
+                    None => None,
+                },
+                _ => Some(expr.clone()),
+            }
+        }
+    })
+}
+
 pub fn resolve_param_default(
     param: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
@@ -30688,27 +30756,15 @@ pub fn resolve_param_default(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     match param_node_default_value(param.clone()) {
-        Some(dv) => match (*dv.expr_data.clone()).clone() {
-            ExprData::ExprLiteral { value: _, .. } => extract_literal_string(dv.clone()),
-            ExprData::ExprVar {
-                binding_kind: _, ..
-            } => match lookup_item(
-                registry.clone(),
-                authored_name_at(source_indices.clone(), dv.clone()),
-            ) {
-                Some(info) => match info.kind.clone() {
-                    ItemKind::DataItem => match v1_rt::map_get(
-                        &data_body_index,
-                        authored_name_at(source_indices.clone(), dv.clone()),
-                    ) {
-                        Some(body) => extract_literal_string(body.clone()),
-                        None => None,
-                    },
-                    _ => None,
-                },
-                None => None,
-            },
-            _ => None,
+        Some(dv) => match fold_constant_default_expr(
+            dv.clone(),
+            registry.clone(),
+            data_body_index.clone(),
+            source_indices.clone(),
+            0,
+        ) {
+            Some(folded) => extract_literal_string(folded.clone()),
+            None => None,
         },
         None => None,
     }
