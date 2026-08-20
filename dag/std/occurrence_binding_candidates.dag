@@ -2215,15 +2215,30 @@ fn reference_derived_provider_files_for_assembled_closure(
   closure: AssembledCrossFileBindingClosure
 ) -> ReferenceDerivedProviderFilesForAssembledClosure {
   match reference_derived_dependency_projection_for_assembled_closure(closure: closure) {
-    AssembledClosureDependencyProjectionReady {
-      projection: ReferenceDerivedDependencyProjectionReady {
-        file_dependencies: dependencies,
-        binding_provenance: _,
-        bound_population: _,
-      },
-    } =>
-      ReferenceDerivedProviderFilesForAssembledClosureReady {
-        provider_files: dependencies |> map(edge => edge.provider_file),
+    AssembledClosureDependencyProjectionReady { projection: projection } =>
+      match projection {
+        ReferenceDerivedDependencyProjectionReady {
+          file_dependencies: dependencies,
+          binding_provenance: _,
+          bound_population: _,
+        } =>
+          ReferenceDerivedProviderFilesForAssembledClosureReady {
+            provider_files: dependencies |> map(edge => edge.provider_file),
+          }
+        ReferenceDerivedDependencyProjectionBindingRefused { population: population } =>
+          ReferenceDerivedProviderFilesForAssembledClosureRefused {
+            refusal: AssembledClosureDependencyProjectionBindingRefused { population: population },
+          }
+        ReferenceDerivedDependencyProjectionFileRefused {
+          first_failure: first_failure,
+          more_failures: more_failures,
+        } =>
+          ReferenceDerivedProviderFilesForAssembledClosureRefused {
+            refusal: AssembledClosureDependencyProjectionFileRefused {
+              first_failure: first_failure,
+              more_failures: more_failures,
+            },
+          }
       }
     AssembledClosureDependencyProjectionRefused { refusal: refusal } =>
       ReferenceDerivedProviderFilesForAssembledClosureRefused { refusal: refusal }
@@ -2270,20 +2285,39 @@ fn reference_derived_clause_e_production_from_assembled_closure(
       consumer_file: consumer_file,
     } =>
       match reference_derived_dependency_projection_for_assembled_closure(closure: closure) {
-        AssembledClosureDependencyProjectionReady {
-          projection: ReferenceDerivedDependencyProjectionReady {
-            binding_provenance: provenances,
-            file_dependencies: dependencies,
-            bound_population: bound_population,
-          },
-        } =>
-          ReferenceDerivedClauseEProductionReady {
-            projection: ReferenceDerivedDependencyProjectionReady {
+        AssembledClosureDependencyProjectionReady { projection: projection } =>
+          match projection {
+            ReferenceDerivedDependencyProjectionReady {
               binding_provenance: provenances,
               file_dependencies: dependencies,
               bound_population: bound_population,
-            },
-            consumer_file: consumer_file,
+            } =>
+              ReferenceDerivedClauseEProductionReady {
+                projection: ReferenceDerivedDependencyProjectionReady {
+                  binding_provenance: provenances,
+                  file_dependencies: dependencies,
+                  bound_population: bound_population,
+                },
+                consumer_file: consumer_file,
+              }
+            ReferenceDerivedDependencyProjectionBindingRefused { population: population } =>
+              ReferenceDerivedClauseEProductionRefused {
+                refusal: ReferenceDerivedClauseEProductionProjectionRefused {
+                  refusal: AssembledClosureDependencyProjectionBindingRefused { population: population },
+                },
+              }
+            ReferenceDerivedDependencyProjectionFileRefused {
+              first_failure: first_failure,
+              more_failures: more_failures,
+            } =>
+              ReferenceDerivedClauseEProductionRefused {
+                refusal: ReferenceDerivedClauseEProductionProjectionRefused {
+                  refusal: AssembledClosureDependencyProjectionFileRefused {
+                    first_failure: first_failure,
+                    more_failures: more_failures,
+                  },
+                },
+              }
           }
         AssembledClosureDependencyProjectionRefused { refusal: refusal } =>
           ReferenceDerivedClauseEProductionRefused {

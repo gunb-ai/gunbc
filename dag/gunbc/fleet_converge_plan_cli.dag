@@ -7,7 +7,7 @@ import std.algebra { trim }
 import std.content_hash { serialize_content_hash }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, LocalExec }
-import gunbc.command_runner { run_shell_command_capture, run_shell_commands }
+import gunbc.command_runner { run_shell_command_capture, run_shell_commands, process_outcome_admitted }
 import gunbc.host_axis_caps { CapMember, caps_managed_dropin_paths }
 import gunbc.fleet_converge_plan {
   TimerRetirementMember,
@@ -23,6 +23,7 @@ import gunbc.fleet_converge_plan {
   fleet_converge_plan_artifact_dir,
   fleet_converge_plan_content_hash,
   fleet_converge_observed_baseline_matches,
+  fleet_converge_apply_subject_host_matches,
   fleet_converge_member_set_fingerprint_matches,
   timer_retirement_observed_legacy_srv1,
   fleet_converge_generation_store_path,
@@ -40,17 +41,36 @@ import gunbc.spark_serving_execution_schedule {
 
 data fleet_converge_plan_spark_typed_actions_wire_path: String = "/tmp/fleet-converge-plan/spark_serving_typed_actions.wire"
 
-data fleet_converge_plan_cli_note: String = "Wet CLI for on-demand fleet converge plan/apply (sleek-heron-218). Plan observes the host, runs membership_reconcile once, names the subject (host + member-set fingerprint), mints a std.temporal_effect LeaseEpoch generation in the artifact, and writes the human-readable plan plus apply.sh. plan_content.hex is the Fnv1a64Structural bundle digest of plan.txt + apply.sh + spark_serving_typed_actions.wire (empty wire on non-Spark hosts); on success plan_wet prints plan.txt then that digest for workflow_dispatch plan_artifact_hash. Apply re-observes subject identity and observed-baseline fingerprint in .dag, refuses unless on-disk plan.txt + apply.sh + spark wire match plan_content.hex, then runs fleet_converge_locked_apply_script under flock. Generation store reads refuse corrupt or negative values; a missing store file is generation 0."
+data fleet_converge_plan_cli_note: String = "Wet CLI for on-demand fleet converge plan/apply (sleek-heron-218). Plan observes the host, runs membership_reconcile once, names the subject (host + member-set fingerprint), mints a std.temporal_effect LeaseEpoch generation in the artifact, and writes the human-readable plan plus apply.sh. plan_content.hex is the Fnv1a64Structural bundle digest of plan.txt + apply.sh + spark_serving_typed_actions.wire (empty wire on non-Spark hosts); on success plan_wet prints plan.txt then that digest for workflow_dispatch plan_artifact_hash. Apply re-observes subject identity and observed-baseline fingerprint in .dag, refuses unless on-disk plan.txt + apply.sh + spark wire match plan_content.hex, then runs fleet_converge_locked_apply_script under flock. Generation store reads refuse corrupt or negative values; a missing store file is generation 0. Subject host is a typed observation (observe_host_short_wet returns NonEmptyStr?, Absent when the hostname probe did not succeed or returned empty output): both plan and apply refuse outright on Absent rather than folding a failed probe into an empty String, and the SubjectHostMismatch check itself routes through fleet_converge_apply_subject_host_matches on two NonEmptyStr values (gunbc.fleet_converge_plan) — the same authority fleet_converge_apply_subject_admits uses — never a bare String != that two coincident non-observations (both hosts probed empty) could satisfy by accident."
 
-func observe_host_short_wet() -> String
+// MAIN CLOSED THIS ONE AND THIS BRANCH DOES NOT RE-OPEN IT. The optional return IS the next-rung
+// repair this lane named -- an unreadable hostname is now Absent rather than a String that looks
+// like a hostname, both plan and apply refuse on Absent, and the subject comparison routes through
+// a typed authority over two NonEmptyStr values instead of a bare String equality that two
+// coincident non-observations could satisfy. The defeated-guard defect is fixed, not surfaced.
+//
+// WHAT CHANGED HERE IS ONLY THE PROBE'S INPUT SHAPE. main derived Absent from `!run.success ||
+// trimmed == ""`, reading a record this branch deletes; the same judgment now reads the arms of
+// ProcessOutcome. The three arms map to exactly the two states main distinguished, so the behaviour
+// is preserved rather than re-decided: Refused and Absent are both non-observations, and a Present
+// arm whose text trims empty is still Absent, because ProcessOutputPresent means the process wrote
+// bytes -- not that those bytes name a host.
+func observe_host_short_wet() -> NonEmptyStr?
   uses net: Network
 {
-  trim(
-    s: run_shell_command_capture(
-      command: ArgvCommand { argv: ["hostname", "-s"] },
-      transport: LocalExec,
-    ).stdout,
-  )
+  match run_shell_command_capture(
+    command: ArgvCommand { argv: ["hostname", "-s"] },
+    transport: LocalExec,
+  ) {
+    ProcessOutputPresent { text: t } =>
+      if trim(s: t) == "" {
+        none
+      } else {
+        Present { value: trim(s: t) as NonEmptyStr }
+      }
+    ProcessOutputAbsent => none
+    ProcessRefused { exit_code: _, stderr: _ } => none
+  }
 }
 
 func observe_generation_store_wet() -> Int?
@@ -65,10 +85,10 @@ func observe_timer_members_wet() -> List<TimerRetirementMember>
 {
   let legacy = timer_retirement_observed_legacy_srv1()
   filter(legacy, m =>
-    run_shell_command_capture(
+    process_outcome_admitted(outcome: run_shell_command_capture(
       command: ArgvCommand { argv: ["test", "-f", concat("/etc/systemd/system/", m.unit_name as String)] },
       transport: LocalExec,
-    ).success
+    ))
   )
 }
 
@@ -88,8 +108,11 @@ func observe_cap_members_wet() -> List<CapMember>
 func fleet_converge_plan_wet() -> ProcessExit
   uses net: Network
 {
-  let host_short = observe_host_short_wet()
-  let host = host_short as NonEmptyStr
+  match observe_host_short_wet() {
+    Absent =>
+      exit_failure(reason: "fleet_converge_plan: HostObservationFailed — hostname probe did not succeed or returned empty output, refuse to plan")
+    Present { value: host } => {
+  let host_short = host as String
   match observe_generation_store_wet() {
     Absent =>
       exit_failure(reason: "fleet_converge_plan: generation store unreadable or corrupt — refuse, do not coerce to 0")
@@ -179,6 +202,8 @@ func fleet_converge_plan_wet() -> ProcessExit
     }
   }
   }
+    }
+  }
 }
 
 func fleet_converge_apply_wet() -> ProcessExit
@@ -204,8 +229,11 @@ func fleet_converge_apply_wet() -> ProcessExit
     || !read_spark_wire.success {
     exit_failure(reason: "fleet_converge_apply: plan artifact missing — run plan first")
   } else {
-    let host_short = observe_host_short_wet()
-    let observed_host = trim(s: read_host.content) as NonEmptyStr
+    match observe_host_short_wet() {
+      Absent =>
+        exit_failure(reason: "fleet_converge_apply: HostObservationFailed — hostname probe did not succeed or returned empty output, refuse to compare subject host")
+      Present { value: observed_host } => {
+    let planned_host = trim(s: read_host.content) as NonEmptyStr
     match fleet_converge_parse_nonneg_generation_text(content: read_prior.content) {
       Absent =>
         exit_failure(reason: "fleet_converge_apply: prior_generation artifact corrupt — refuse, do not coerce to 0")
@@ -214,12 +242,12 @@ func fleet_converge_apply_wet() -> ProcessExit
           Absent =>
             exit_failure(reason: "fleet_converge_apply: planned_generation artifact corrupt — refuse, do not coerce to 0")
           Present { value: planned_generation } => {
-            if trim(s: host_short) != trim(s: read_host.content) {
+            if !fleet_converge_apply_subject_host_matches(planned_host: planned_host, observed_host: observed_host) {
               exit_failure(
                 reason: concat(
                   "fleet_converge_apply: SubjectHostMismatch planned=",
-                  trim(s: read_host.content),
-                  concat(" observed=", host_short),
+                  planned_host as String,
+                  concat(" observed=", observed_host as String),
                 ),
               )
             } else {
@@ -272,5 +300,7 @@ func fleet_converge_apply_wet() -> ProcessExit
           }
         }
       }
+      }
+    }
   }
 }

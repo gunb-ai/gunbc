@@ -83,6 +83,11 @@ pub fn run_required_regen(
     }
 
     let sync = compare_generated_surfaces(&stage0_src, &emitted, &committed_basenames)?;
+    // verify_hand_maintained writes scratch normalize files into candidate_dir; on a clean
+    // tree nothing has created that directory yet (write_emitted_tree does so later), so it
+    // must exist before this call.
+    fs::create_dir_all(&candidate_dir)
+        .map_err(|e| format!("create {}: {e}", candidate_dir.display()))?;
     let hand = verify_hand_maintained(&emitted, &stage0_src, &candidate_dir)?;
 
     let committed_digest =
@@ -217,14 +222,29 @@ fn generated_basenames_from_emit(emitted: &HashMap<String, String>) -> Vec<Strin
             // Basename, not the emit key: `committed_generated_basenames` keys on
             // `file_name()`, and emit keys carry a `src/` prefix. Comparing the two
             // key spaces made every file mismatch in both directions.
-            let basename = Path::new(path)
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or(path);
-            names.insert(basename.to_string());
+            names.insert(emit_path_basename(path).to_string());
         }
     }
     names.into_iter().collect()
+}
+
+// Emit keys are the target-relative artifact path (e.g. "src/cli_run.rs" for
+// every Rust module — see rust_source_root()); committed-tree comparisons key
+// on the bare basename. This is the single place that bridges the two, so
+// every consumer below compares/looks up on equal footing instead of each
+// re-deriving its own normalization (or, as before, silently comparing
+// "src/x.rs" against "x.rs" as unequal strings for the whole corpus).
+fn emit_path_basename(path: &str) -> &str {
+    Path::new(path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(path)
+}
+
+fn lookup_emitted<'a>(emitted: &'a HashMap<String, String>, basename: &str) -> Option<&'a String> {
+    emitted
+        .get(&format!("src/{basename}"))
+        .or_else(|| emitted.get(basename))
 }
 
 fn committed_generated_basenames(stage0_src: &Path) -> Result<Vec<String>, String> {
@@ -344,11 +364,7 @@ fn regen_refusal_outcome(
 }
 
 fn is_hand_maintained_path(path: &str) -> bool {
-    let basename = Path::new(path)
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or(path);
-    HAND_MAINTAINED_STAGE0_FILES.contains(&basename)
+    HAND_MAINTAINED_STAGE0_FILES.contains(&emit_path_basename(path))
 }
 
 fn compare_generated_surfaces(
@@ -359,14 +375,26 @@ fn compare_generated_surfaces(
     let mut drifted = Vec::new();
     for basename in generated_basenames {
         let committed_path = stage0_src.join(basename);
-        let committed = normalize_generated_source(
-            &fs::read_to_string(&committed_path)
-                .map_err(|e| format!("read committed {}: {e}", committed_path.display()))?,
-        )?;
-        let candidate = emitted
-            .get(basename)
+        // The committed side is read RAW and compared against exactly the bytes
+        // `write_emitted_tree` puts in the candidate tree -- `normalize_generated_source(emitted)`.
+        // It previously normalized the committed side too, which made the comparison
+        // `normalize(normalize(emitted))` vs `normalize(emitted)` once a candidate had been
+        // installed. That is only an identity if rustfmt is idempotent, and it is not:
+        // measured 2026-08-20, `v1_compiler_infer.rs` reformats on a second pass (a
+        // `let ... = if (long_receiver_chain)` splits differently), so the fold reported the
+        // same single file as drifted at generation 2, 3 and 4 with the candidate on disk
+        // BYTE-IDENTICAL to the committed file it was compared against. No number of
+        // generations could clear it: the check had no reachable green, and the only way to
+        // silence it was to hand-edit the mirror -- validation standing where construction was
+        // available (DESIGN 5). Comparing against the written artifact makes "install the
+        // candidate" a guaranteed remedy by construction, and makes the two derivations of the
+        // candidate one fact rather than two (DESIGN 3).
+        let committed = fs::read_to_string(&committed_path)
+            .map_err(|e| format!("read committed {}: {e}", committed_path.display()))?;
+        let candidate = lookup_emitted(emitted, basename)
             .ok_or_else(|| format!("emit missing generated file {basename}"))?;
-        let candidate_norm = normalize_generated_source(candidate)?;
+        let candidate_norm = normalize_generated_source(candidate)
+            .map_err(|e| format!("normalize candidate {basename}: {e}"))?;
         if committed != candidate_norm {
             drifted.push(basename.clone());
         }
@@ -414,11 +442,17 @@ fn write_emitted_tree(dest_src: &Path, emitted: &HashMap<String, String>) -> Res
     }
     fs::create_dir_all(dest_src).map_err(|e| format!("create {}: {e}", dest_src.display()))?;
     for (path, content) in emitted {
-        let out_path = dest_src.join(path);
-        if let Some(parent) = out_path.parent() {
-            fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
-        }
-        let normalized = normalize_generated_source(content)?;
+        let out_path = dest_src.join(emit_path_basename(path));
+        // Only `.rs` surfaces are the generated-Rust population this comparator reasons
+        // about (see committed_generated_basenames / generated_basenames_from_emit); a
+        // non-Rust emitted artifact (e.g. Cargo.toml from the crate-layout emit) is not
+        // rustfmt-normalizable and is written through verbatim.
+        let normalized = if emit_path_basename(path).ends_with(".rs") {
+            normalize_generated_source(content)
+                .map_err(|e| format!("normalize emitted {path}: {e}"))?
+        } else {
+            content.clone()
+        };
         fs::write(&out_path, normalized)
             .map_err(|e| format!("write {}: {e}", out_path.display()))?;
     }
@@ -487,7 +521,8 @@ fn tree_digest_for_basenames(
         let path = src_dir.join(name);
         let content = fs::read_to_string(&path)
             .map_err(|e| format!("read {label} {}: {e}", path.display()))?;
-        let norm = normalize_generated_source(&content)?;
+        let norm = normalize_generated_source(&content)
+            .map_err(|e| format!("normalize {label} {name}: {e}"))?;
         payload.push_str(name);
         payload.push('\0');
         payload.push_str(&digest_label(norm.as_bytes()));
@@ -505,10 +540,10 @@ fn tree_digest_from_map(
     }
     let mut payload = String::new();
     for name in basenames {
-        let content = emitted
-            .get(name)
+        let content = lookup_emitted(emitted, name)
             .ok_or_else(|| format!("emit missing {name} for digest"))?;
-        let norm = normalize_generated_source(content)?;
+        let norm = normalize_generated_source(content)
+            .map_err(|e| format!("normalize candidate {name}: {e}"))?;
         payload.push_str(name);
         payload.push('\0');
         payload.push_str(&digest_label(norm.as_bytes()));
@@ -517,8 +552,45 @@ fn tree_digest_from_map(
     Ok(digest_label(payload.as_bytes()))
 }
 
+/// Maximum rustfmt passes taken while seeking the formatter's fixed point. Exceeding it is a
+/// typed refusal, never a silent "good enough" -- a widened failure arm here would be exactly the
+/// absorbing fallback DESIGN 5 forbids, and it would restore the unclosable state below.
+const NORMALIZE_FIXED_POINT_MAX_PASSES: usize = 8;
+
+/// Run rustfmt to a FIXED POINT, not once.
+///
+/// rustfmt is not idempotent. Measured 2026-08-20 on `v1_compiler_infer.rs`: a
+/// `let x = if (long.receiver.chain)` re-splits on a second pass. A single pass therefore puts
+/// this repository's two gates in direct contradiction on such a file, because they consume
+/// different passes of the same formatter:
+///
+///   * `cargo fmt --all --check` (pre-commit, and the fmt gate) demands pass N+1 of whatever is
+///     committed -- it re-formats the file in place;
+///   * `write_emitted_tree` wrote pass 1 of the emitted bytes, and `compare_generated_surfaces`
+///     compares against exactly those bytes.
+///
+/// Satisfying either one broke the other, in a loop with no exit: install the candidate and fmt
+/// rewrites it; run fmt and regen reports drift. The only state satisfying both simultaneously is
+/// a FIXED POINT of rustfmt, so that is what the emitted artifact must be -- then `cargo fmt` is a
+/// no-op on it by definition, and byte-comparing the committed file against it is exact.
+///
+/// This is construction rather than validation (DESIGN 5): the disagreement is not detected and
+/// reported, it is made unrepresentable, because the artifact is written in the one form both
+/// consumers agree on. Iterating here rather than teaching the comparator to tolerate a second
+/// pass is deliberate -- tolerance would have to be granted to the fmt gate too, and a tolerance
+/// shared by two gates is a hole in both.
 fn normalize_generated_source(content: &str) -> Result<String, String> {
-    normalize_generated_source_attempt(content)
+    let mut current = normalize_generated_source_attempt(content)?;
+    for _ in 1..NORMALIZE_FIXED_POINT_MAX_PASSES {
+        let next = normalize_generated_source_attempt(&current)?;
+        if next == current {
+            return Ok(current);
+        }
+        current = next;
+    }
+    Err(format!(
+        "rustfmt did not reach a fixed point in {NORMALIZE_FIXED_POINT_MAX_PASSES} passes"
+    ))
 }
 
 fn normalize_generated_source_attempt(content: &str) -> Result<String, String> {

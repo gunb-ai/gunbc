@@ -303,22 +303,22 @@ fn program_bind_value(
 
 fn program_interpretation() -> InterpretationAlgebra {
   InterpretationAlgebra {
-    value: ValueInterpreter { allocate_literal: program_allocate_literal },
-    transform: TransformInterpreter { call_primitive: program_reject_primitive },
-    branch: BranchInterpreter { choose_branch: program_choose_branch },
-    loop: LoopInterpreter { step_loop: program_step_loop },
-    bind: BindInterpreter { bind_value: program_bind_value },
-    match: MatchInterpreter { choose_arm: runtime_reject_match_arm }
+    value: ValueInterpreter { allocate_literal: program_allocate_literal, identity: ^program_allocate_literal },
+    transform: TransformInterpreter { call_primitive: program_reject_primitive, identity: ^program_reject_primitive },
+    branch: BranchInterpreter { choose_branch: program_choose_branch, identity: ^program_choose_branch },
+    loop: LoopInterpreter { step_loop: program_step_loop, identity: ^program_step_loop },
+    bind: BindInterpreter { bind_value: program_bind_value, identity: ^program_bind_value },
+    match: MatchInterpreter { choose_arm: runtime_reject_match_arm, identity: ^runtime_reject_match_arm }
   }
 }
 
 fn program_structure_witness() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
-    allocate_literal: ^program_allocate_literal_sym,
-    call_primitive: ^program_reject_primitive_sym,
-    choose_branch: ^program_choose_branch_sym,
-    step_loop: ^program_step_loop_sym,
-    bind_value: ^program_bind_value_sym,
+    allocate_literal: ^program_allocate_literal,
+    call_primitive: ^program_reject_primitive,
+    choose_branch: ^program_choose_branch,
+    step_loop: ^program_step_loop,
+    bind_value: ^program_bind_value,
     choose_arm: ^runtime_reject_match_arm
   }
 }

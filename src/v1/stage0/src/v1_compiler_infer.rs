@@ -92,16 +92,20 @@ use crate::v1_compiler_infer_lookup::ConstructorDeclarationLookup::{
     NotAdmissionBearingReference,
 };
 use crate::v1_compiler_infer_lookup::DeclarationLookupFailure::DeclarationNotIndexedAtQualifiedName;
-pub use crate::v1_compiler_infer_lookup::{
-    field_summary_for_type, func_decl_binding_for_call, func_sig_if_resolved,
-    global_bare_callable_node, lookup_coproduct_common_field_node, lookup_field_type_node,
-    lookup_func_sig, lookup_in_scope, lookup_structural_method, map_key_type_in_env,
-    map_value_type_in_env, product_field_result_type, resolve_known_method_node,
-    resolve_method_receiver_type, resolve_scrutinee_type_node, set_element_type_in_env,
+use crate::v1_compiler_infer_lookup::DeclaredArgContract::{
+    ContractKnown, ContractUnavailable, MethodUnresolved,
 };
 pub use crate::v1_compiler_infer_lookup::{
-    ConstructorDeclarationLookup, DeclarationLookupFailure, ExactDeclarationIdentity,
-    KnownMethodResolution,
+    declared_arg_types_for_method, field_summary_for_type, func_decl_binding_for_call,
+    func_sig_if_resolved, global_bare_callable_node, lookup_coproduct_common_field_node,
+    lookup_field_type_node, lookup_func_sig, lookup_in_scope, lookup_structural_method,
+    map_key_type_in_env, map_value_type_in_env, product_field_result_type,
+    resolve_known_method_node, resolve_method_receiver_type, resolve_scrutinee_type_node,
+    set_element_type_in_env,
+};
+pub use crate::v1_compiler_infer_lookup::{
+    ConstructorDeclarationLookup, DeclarationLookupFailure, DeclaredArgContract,
+    ExactDeclarationIdentity, KnownMethodResolution,
 };
 pub use crate::v1_compiler_infer_method::{
     builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type,
@@ -209,6 +213,7 @@ pub use crate::v1_std_core::{
     type_name_compatible, unaryop_operand, unit_type, with_optional_cardinality,
     with_required_cardinality,
 };
+pub use crate::v1_std_core::{expr_is_any_literal, expr_literal_symbol_optional};
 pub use crate::v1_std_core::{
     CallSemantics, Cardinality, CompilerDiagnostic, Connective, DeclRefCoords, DeclaredFuncEnv,
     DeclaredFuncSig, ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine, FieldAccessStyle,
@@ -2350,45 +2355,64 @@ pub fn where_refinement_diags_for_predicate(
                         }
                     }
                 },
-                None => Rc::new(vec![where_refinement_unenforced_error(
-                    pname.clone(),
-                    formal.clone(),
-                    "non-literal value at refined position".to_string(),
-                    span.clone(),
-                    module_name.clone(),
-                    source_indices.clone(),
-                )]),
+                None => {
+                    if expr_is_any_literal(value_expr.clone()) {
+                        refinement_refusal
+                    } else {
+                        Rc::new(vec![where_refinement_unenforced_error(
+                            pname.clone(),
+                            formal.clone(),
+                            "non-literal value at refined position".to_string(),
+                            span.clone(),
+                            module_name.clone(),
+                            source_indices.clone(),
+                        )])
+                    }
+                }
             }
         } else {
             if where_refinement_is_string_literal_predicate(pname.clone()) {
-                match expr_literal_string_optional(value_expr.clone()) {
-                    Some(v) => {
-                        match decidable_where_string_predicate_holds(pname.clone(), v.clone()) {
-                            Some(holds) => {
-                                if !holds.clone() {
-                                    refinement_refusal
-                                } else {
-                                    Rc::new(vec![])
+                {
+                    let string_literal_value =
+                        match expr_literal_string_optional(value_expr.clone()) {
+                            Some(v) => Some(v.clone()),
+                            None => expr_literal_symbol_optional(value_expr.clone()),
+                        };
+                    match string_literal_value.clone() {
+                        Some(v) => {
+                            match decidable_where_string_predicate_holds(pname.clone(), v.clone()) {
+                                Some(holds) => {
+                                    if !holds.clone() {
+                                        refinement_refusal
+                                    } else {
+                                        Rc::new(vec![])
+                                    }
                                 }
+                                None => Rc::new(vec![where_refinement_unenforced_error(
+                                    pname.clone(),
+                                    formal.clone(),
+                                    "string predicate not implemented".to_string(),
+                                    span.clone(),
+                                    module_name.clone(),
+                                    source_indices.clone(),
+                                )]),
                             }
-                            None => Rc::new(vec![where_refinement_unenforced_error(
-                                pname.clone(),
-                                formal.clone(),
-                                "string predicate not implemented".to_string(),
-                                span.clone(),
-                                module_name.clone(),
-                                source_indices.clone(),
-                            )]),
+                        }
+                        None => {
+                            if expr_is_any_literal(value_expr.clone()) {
+                                refinement_refusal
+                            } else {
+                                Rc::new(vec![where_refinement_unenforced_error(
+                                    pname.clone(),
+                                    formal.clone(),
+                                    "non-literal value at refined position".to_string(),
+                                    span.clone(),
+                                    module_name.clone(),
+                                    source_indices.clone(),
+                                )])
+                            }
                         }
                     }
-                    None => Rc::new(vec![where_refinement_unenforced_error(
-                        pname.clone(),
-                        formal.clone(),
-                        "non-literal value at refined position".to_string(),
-                        span.clone(),
-                        module_name.clone(),
-                        source_indices.clone(),
-                    )]),
                 }
             } else {
                 if where_refinement_is_deferred_predicate(pname.clone()) {
@@ -2557,17 +2581,7 @@ pub fn kernel_value_declared_type_mismatch(
         false
     } else {
         {
-            let formal_base = if (((formal.connective.clone() == Connective::Conj)
-                && (formal.type_annotation.clone() != None))
-                && ((formal.children.clone().len() as i64) == 1))
-            {
-                match formal.children.clone().first().cloned() {
-                    Some(refinement_base) => refinement_base.clone(),
-                    None => formal.clone(),
-                }
-            } else {
-                formal.clone()
-            };
+            let formal_base = peel_where_refinement_base(formal.clone(), type_env.clone());
             let actual_name = authored_name_at(source_indices.clone(), actual.clone());
             if ((is_kernel_type(actual_name.clone()) == false)
                 || (actual_name.clone() == "Unit".to_string()))
@@ -2804,12 +2818,30 @@ pub fn structured_application_site_type_mismatch(
 ) -> bool {
     match (*actual_expr.expr_data.clone()).clone() {
         ExprData::ExprRecordLit { parent_enum: _, .. } => {
-            let source_indices = scope.type_env.clone().source_indices.clone();
-            let formal_peeled = peel_nominal_alias_identity(
+            structured_application_site_type_mismatch_with_peeled(
                 formal.clone(),
-                scope.type_env.clone(),
-                scope.module_name.clone(),
-            );
+                peel_nominal_alias_identity(
+                    formal.clone(),
+                    scope.type_env.clone(),
+                    scope.module_name.clone(),
+                ),
+                actual_expr.clone(),
+                scope.clone(),
+            )
+        }
+        _ => false,
+    }
+}
+
+pub fn structured_application_site_type_mismatch_with_peeled(
+    formal: Rc<Node>,
+    formal_peeled: Rc<Node>,
+    actual_expr: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    match (*actual_expr.expr_data.clone()).clone() {
+        ExprData::ExprRecordLit { parent_enum: _, .. } => {
+            let source_indices = scope.type_env.clone().source_indices.clone();
             if type_node_is_callable(formal_peeled.clone()) {
                 false
             } else {
@@ -3090,8 +3122,9 @@ pub fn direct_call_structured_application_mismatch_diags(
                         match app.matched_arg.clone() {
                             Some(ta) => {
                                 let actual_expr = arg_value(ta.clone());
-                                if (structured_application_site_type_mismatch(
+                                if (structured_application_site_type_mismatch_with_peeled(
                                     formal_subst.clone(),
+                                    formal.clone(),
                                     actual_expr.clone(),
                                     scope.clone(),
                                 )
@@ -5325,6 +5358,7 @@ pub fn infer_method_args_with_fold(
     fold_acc_type: Rc<Node>,
     element_type: Rc<Node>,
     elem_provenance: Rc<SubValueRelation>,
+    arg_contract: Rc<DeclaredArgContract>,
     scope: Rc<InferScope>,
 ) -> Rc<Vec<Rc<ArgInferResult>>> {
     {
@@ -5344,176 +5378,113 @@ pub fn infer_method_args_with_fold(
             .cloned()
             {
                 __result.push({
-                    let a = idx_pair.1.clone();
-                    let idx = idx_pair.0.clone();
-                    let is_init_arg = (arg_has_name(
-                        a.clone(),
-                        "init".to_string(),
-                        scope.type_env.clone().source_indices.clone(),
-                    ) || ((arg_name_at(
-                        a.clone(),
-                        scope.type_env.clone().source_indices.clone(),
-                    ) == None)
-                        && (idx.clone() == 0)));
-                    if ((is_fold.clone() && (fold_info.clone() != None)) && is_init_arg.clone()) {
-                        match fold_info.clone() {
-                            Some(fi) => fi.clone(),
-                            None => infer_arg_with_element_type(
-                                a.clone(),
-                                element_type.clone(),
-                                scope.clone(),
-                            ),
-                        }
-                    } else {
-                        if (is_fold.clone() && (fold_info.clone() != None)) {
-                            {
-                                let fold_params = Rc::new(vec![
-                                    make_param_node(
-                                        "acc".to_string(),
-                                        fold_acc_type.clone(),
-                                        None,
-                                        no_span(),
-                                        no_span(),
-                                    ),
-                                    make_param_node(
-                                        "elem".to_string(),
-                                        element_type.clone(),
-                                        None,
-                                        no_span(),
-                                        no_span(),
-                                    ),
-                                ]);
-                                let fold_callable = Rc::new(Node {
-                                    name: "".to_string(),
-                                    span: no_span(),
-                                    ident_span: None,
-                                    children: Rc::new(vec![]),
-                                    connective: Connective::NoConnective,
-                                    params: fold_params.clone(),
-                                    inferred: None,
-                                    return_cardinality: Cardinality::Required,
-                                    uses: Rc::new(vec![]),
-                                    body: None,
-                                    transport: None,
-                                    properties: Rc::new(vec![]),
-                                    type_annotation: None,
-                                    is_self_recursive: false,
-                                    has_non_tail_self_call: false,
-                                    match_pattern: None,
-                                    expr_data: Rc::new(ExprData::NoExprData),
-                                    ident: None,
-                                });
-                                let lam_value = arg_value(a.clone());
-                                let prov_map = match (*elem_provenance.clone()).clone() {
-                                    SubValueRelation::SubValueUnknown => {
-                                        v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>()
-                                    }
-                                    _ => v1_rt::rc_map_insert(
-                                        v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
-                                        "elem".to_string(),
-                                        elem_provenance.clone(),
-                                    ),
-                                };
-                                let fold_scope = Rc::new(InferScope {
-                                    type_env: scope.type_env.clone(),
-                                    func_env: scope.func_env.clone(),
-                                    locals: scope.locals.clone(),
-                                    body_locals: scope.body_locals.clone(),
-                                    match_bound_names: scope.match_bound_names.clone(),
-                                    module_name: scope.module_name.clone(),
-                                    service_registry: scope.service_registry.clone(),
-                                    item_registry: scope.item_registry.clone(),
-                                    caller_decl_name: scope.caller_decl_name.clone(),
-                                    lambda_param_provenance: prov_map.clone(),
-                                });
-                                let ar = infer_expr(
-                                    lam_value.clone(),
-                                    fold_scope.clone(),
-                                    Some(fold_callable.clone()),
-                                );
-                                Rc::new(ArgInferResult {
-                                    typed_arg: make_arg_node(
-                                        arg_name_at(
-                                            a.clone(),
-                                            scope.type_env.clone().source_indices.clone(),
-                                        ),
-                                        ar.typed.clone(),
-                                        a.span.clone(),
-                                        a.span.clone(),
-                                    ),
-                                    diagnostics: ar.diagnostics.clone(),
-                                })
-                            }
+            let a = idx_pair.1.clone();
+let idx = idx_pair.0.clone();
+let is_init_arg = (arg_has_name(a.clone(), "init".to_string(), scope.type_env.clone().source_indices.clone()) || ((arg_name_at(a.clone(), scope.type_env.clone().source_indices.clone()) == None) && (idx.clone() == 0)));
+if ((is_fold.clone() && (fold_info.clone() != None)) && is_init_arg.clone()) {
+                match fold_info.clone() {
+    Some(fi) => fi.clone(),
+    None => infer_arg_with_element_type(a.clone(), element_type.clone(), scope.clone()),
+}
+            } else {
+                if (is_fold.clone() && (fold_info.clone() != None)) {
+                    {
+                        let fold_params = Rc::new(vec![make_param_node("acc".to_string(), fold_acc_type.clone(), None, no_span(), no_span()), make_param_node("elem".to_string(), element_type.clone(), None, no_span(), no_span())]);
+let fold_callable = Rc::new(Node {
+    name: "".to_string(),
+    span: no_span(),
+    ident_span: None,
+    children: Rc::new(vec![]),
+    connective: Connective::NoConnective,
+    params: fold_params.clone(),
+    inferred: None,
+    return_cardinality: Cardinality::Required,
+    uses: Rc::new(vec![]),
+    body: None,
+    transport: None,
+    properties: Rc::new(vec![]),
+    type_annotation: None,
+    is_self_recursive: false,
+    has_non_tail_self_call: false,
+    match_pattern: None,
+    expr_data: Rc::new(ExprData::NoExprData),
+    ident: None,
+});
+let lam_value = arg_value(a.clone());
+let prov_map = match (*elem_provenance.clone()).clone() {
+    SubValueRelation::SubValueUnknown => v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
+    _ => v1_rt::rc_map_insert(v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(), "elem".to_string(), elem_provenance.clone()),
+};
+let fold_scope = Rc::new(InferScope {
+    type_env: scope.type_env.clone(),
+    func_env: scope.func_env.clone(),
+    locals: scope.locals.clone(),
+    body_locals: scope.body_locals.clone(),
+    match_bound_names: scope.match_bound_names.clone(),
+    module_name: scope.module_name.clone(),
+    service_registry: scope.service_registry.clone(),
+    item_registry: scope.item_registry.clone(),
+    caller_decl_name: scope.caller_decl_name.clone(),
+    lambda_param_provenance: prov_map.clone(),
+});
+let ar = infer_expr(lam_value.clone(), fold_scope.clone(), Some(fold_callable.clone()));
+Rc::new(ArgInferResult {
+    typed_arg: make_arg_node(arg_name_at(a.clone(), scope.type_env.clone().source_indices.clone()), ar.typed.clone(), a.span.clone(), a.span.clone()),
+    diagnostics: ar.diagnostics.clone(),
+})
+}
+                } else {
+                    {
+                        let nf_lam_value = arg_value(a.clone());
+let nf_prov_map = match (*elem_provenance.clone()).clone() {
+    SubValueRelation::SubValueUnknown => v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
+    _ => v1_rt::rc_map_insert(v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(), "elem".to_string(), elem_provenance.clone()),
+};
+let nf_scope = if is_lambda_expr(nf_lam_value.clone()) {
+                            Rc::new(InferScope {
+    type_env: scope.type_env.clone(),
+    func_env: scope.func_env.clone(),
+    locals: scope.locals.clone(),
+    body_locals: scope.body_locals.clone(),
+    match_bound_names: scope.match_bound_names.clone(),
+    module_name: scope.module_name.clone(),
+    service_registry: scope.service_registry.clone(),
+    item_registry: scope.item_registry.clone(),
+    caller_decl_name: scope.caller_decl_name.clone(),
+    lambda_param_provenance: nf_prov_map.clone(),
+})
                         } else {
-                            {
-                                let nf_lam_value = arg_value(a.clone());
-                                let nf_prov_map = match (*elem_provenance.clone()).clone() {
-                                    SubValueRelation::SubValueUnknown => {
-                                        v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>()
-                                    }
-                                    _ => v1_rt::rc_map_insert(
-                                        v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
-                                        "elem".to_string(),
-                                        elem_provenance.clone(),
-                                    ),
-                                };
-                                let nf_scope = if is_lambda_expr(nf_lam_value.clone()) {
-                                    Rc::new(InferScope {
-                                        type_env: scope.type_env.clone(),
-                                        func_env: scope.func_env.clone(),
-                                        locals: scope.locals.clone(),
-                                        body_locals: scope.body_locals.clone(),
-                                        match_bound_names: scope.match_bound_names.clone(),
-                                        module_name: scope.module_name.clone(),
-                                        service_registry: scope.service_registry.clone(),
-                                        item_registry: scope.item_registry.clone(),
-                                        caller_decl_name: scope.caller_decl_name.clone(),
-                                        lambda_param_provenance: nf_prov_map.clone(),
-                                    })
-                                } else {
-                                    scope.clone()
-                                };
-                                if is_lambda_expr(nf_lam_value.clone()) {
-                                    infer_arg_with_element_type(
-                                        a.clone(),
-                                        element_type.clone(),
-                                        nf_scope.clone(),
-                                    )
-                                } else {
-                                    match scalar_shaped_builtin_method_arg_type(method_name.clone())
-                                    {
-                                        Some(declared_type) => infer_arg_with_element_type(
-                                            a.clone(),
-                                            declared_type,
-                                            nf_scope.clone(),
-                                        ),
-                                        None => infer_arg_with_element_type(
-                                            a.clone(),
-                                            element_type.clone(),
-                                            nf_scope.clone(),
-                                        ),
-                                    }
-                                }
-                            }
-                        }
-                    }
-                });
+                            scope.clone()
+                        };
+match (*arg_contract.clone()).clone() {
+    DeclaredArgContract::MethodUnresolved => infer_arg_with_element_type(a.clone(), element_type.clone(), nf_scope.clone()),
+    DeclaredArgContract::ContractUnavailable => {
+                            let ar = infer_expr(nf_lam_value.clone(), nf_scope.clone(), None);
+let contract_diag = categorized_error("no declared argument contract is available for this method call; refusing rather than substituting the receiver element type".to_string(), a.span.clone(), nf_scope.module_name.clone(), "method-arg-contract-unavailable".to_string());
+Rc::new(ArgInferResult {
+    typed_arg: make_arg_node(arg_name_at(a.clone(), nf_scope.type_env.clone().source_indices.clone()), ar.typed.clone(), a.span.clone(), a.span.clone()),
+    diagnostics: v1_rt::concat(ar.diagnostics.clone(), Rc::new(vec![contract_diag.clone()])),
+})
+},
+    DeclaredArgContract::ContractKnown { types: declared_types, .. } => match declared_types.clone().iter().cloned().skip(idx.clone() as usize).next() {
+    Some(declared_type) => infer_arg_with_element_type(a.clone(), declared_type.clone(), nf_scope.clone()),
+    None => {
+                            let ar = infer_expr(nf_lam_value.clone(), nf_scope.clone(), None);
+let contract_diag = categorized_error("no declared argument contract is available at this parameter position; refusing rather than substituting the receiver element type".to_string(), a.span.clone(), nf_scope.module_name.clone(), "method-arg-contract-unavailable".to_string());
+Rc::new(ArgInferResult {
+    typed_arg: make_arg_node(arg_name_at(a.clone(), nf_scope.type_env.clone().source_indices.clone()), ar.typed.clone(), a.span.clone(), a.span.clone()),
+    diagnostics: v1_rt::concat(ar.diagnostics.clone(), Rc::new(vec![contract_diag.clone()])),
+})
+},
+},
+}
+}
+                }
+            }
+});
             }
             __result
         })
-    }
-}
-
-pub fn scalar_shaped_builtin_method_arg_type(method_name: Option<String>) -> Option<Rc<Node>> {
-    match method_name {
-        Some(mn) => {
-            if mn == "skip" || mn == "take" || mn == "at" || mn == "nth" || mn == "index" {
-                Some(int_type())
-            } else {
-                None
-            }
-        }
-        None => None,
     }
 }
 
@@ -6190,6 +6161,7 @@ pub fn infer_expr_body(
                                                 call_fold_acc_type.clone(),
                                                 elem_type.clone(),
                                                 call_elem_provenance.clone(),
+                                                Rc::new(DeclaredArgContract::MethodUnresolved),
                                                 scope.clone(),
                                             );
                                             v1_rt::concat(
@@ -7095,6 +7067,11 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
                         recv_elem_type.clone(),
                         scope.clone(),
                     );
+                    let mc_arg_contract = declared_arg_types_for_method(
+                        recv_rt.clone(),
+                        method_name.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                    );
                     let mc_arg_infer_results = infer_method_args_with_fold(
                         mc_method_name.clone(),
                         mc_args.clone(),
@@ -7102,6 +7079,7 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
                         fold_acc_type.clone(),
                         recv_elem_type.clone(),
                         mc_elem_provenance.clone(),
+                        mc_arg_contract.clone(),
                         scope.clone(),
                     );
                     let typed_mc_args = Rc::new({
@@ -8061,7 +8039,17 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
                 {
                     let exp = expected.clone().unwrap();
                     if ((exp.params.clone().len() as i64) > 0) {
-                        Some(callable_inferred(exp.clone()))
+                        {
+                            let declared_ret = resolved_type(exp.clone());
+                            if is_fully_resolved(
+                                declared_ret.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            ) {
+                                Some(declared_ret.clone())
+                            } else {
+                                None
+                            }
+                        }
                     } else {
                         None
                     }
@@ -16643,17 +16631,17 @@ pub fn symbol_index_insert_unique_disj_variant_aliases(
                             acc.clone(),
                             |a2: Rc<SymbolIndex>, child: Rc<Node>| {
                                 let vname = authored_name_at(source_indices.clone(), child.clone());
-                                // Unconditional fully-qualified insertion, ahead of the
-                                // uniqueness-gated 2-segment aliases below — see the matching
-                                // comment on the .dag authority (symbol_index_insert_unique_disj_variant_aliases).
                                 let a2_qualified = symbol_index_insert(
-                                    a2.clone(),
+                                    a2,
                                     v1_rt::concat(
                                         v1_rt::concat(
-                                            v1_rt::concat(module_path.clone(), ".".to_string()),
-                                            tname.clone(),
+                                            v1_rt::concat(
+                                                v1_rt::concat(module_path.clone(), ".".to_string()),
+                                                tname.clone(),
+                                            ),
+                                            ".".to_string(),
                                         ),
-                                        v1_rt::concat(".".to_string(), vname.clone()),
+                                        vname.clone(),
                                     ),
                                     item.clone(),
                                 );

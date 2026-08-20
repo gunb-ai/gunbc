@@ -1,0 +1,396 @@
+module test.claim.fabric_witness_run
+
+// The subject is ELIGIBILITY, so every witness here is a refusal or one of the
+// controls that prove refusal is not the only reachable arm. A suite that only
+// proved the happy path would establish that an offer can be accepted, which was
+// never in doubt; what is in doubt is that it CANNOT be accepted when the
+// executor does not satisfy the work, or when the demand cannot afford it.
+
+fn t_source() -> SourceManifestRef {
+  "gunbc.source.test-commit"
+}
+
+fn t_max_buy() -> MoneyAmountMicro {
+  money_amount_micro(count: 1000000)
+}
+
+fn t_offer(
+  threads: HardwareThreadCount,
+  caps: CapabilityManifestRef,
+  trust: TrustDomainRef,
+  quote: OfferQuote,
+) -> Offer<NonEmptyStr> {
+  Offer {
+    id: FabricIdentity { principal: "gunbc", key: "offer-srv1" },
+    executor: "gunbc",
+    shape: Shape { hard: HardRequirements { threads: threads } },
+    capabilities: caps,
+    trust_domain: trust,
+    quantity_bound: 1,
+    ready_at: "2026-08-19T00:00:00Z",
+    quote: quote,
+    evidence: ObservedSupply {
+      observed_at: "2026-08-19T00:00:00Z",
+      receipt: "gunbc.observation.fleet-1",
+    },
+  }
+}
+
+fn t_quote(amount: MoneyAmountMicro, currency: CurrencyCode) -> OfferQuote {
+  QuotedFlatPerGrant(MoneyRate { amount: amount, currency: currency })
+}
+
+// THE OWNED-FLEET OFFER CARRIES AN ASKING PRICE, NOT AN OPPORTUNITY COST.
+//
+// An owned hour's marginal cash cost is not zero -- power and cooling are
+// incurred by the act of running, so they are a real dispatch input -- and its
+// OPPORTUNITY COST is not a field on the offer at all: what an hour could
+// otherwise have earned depends on which OTHER demands could use it, so it
+// belongs to the assignment evaluation, not to the supply row. An earlier
+// revision of this comment claimed the quote WAS the opportunity cost; that was
+// wrong in the same way the fold below is limited, and both are recorded rather
+// than quietly reworded.
+//
+// What this scalar honestly is: the supplier-side ASKING PRICE for one grant.
+// The fold compares it to what the demand will pay. That is AFFORDABILITY
+// SCREENING and it is not selection -- nothing here chooses among several
+// eligible offers, and choosing would need the interval, tariff, commitment
+// state and alternative uses that no carrier holds yet.
+fn t_fleet_offer() -> Offer<NonEmptyStr> {
+  t_offer(
+    threads: hardware_thread_count(count: 128),
+    caps: "gunbc.capabilities.linux-rust-toolchain",
+    trust: "gunbc.trust.internal-fleet",
+    quote: t_quote(amount: money_amount_micro(count: 40), currency: Usd),
+  )
+}
+
+fn eligible(e: OfferEligibility) -> Bool {
+  match e {
+    OfferEligible => true
+    ShapeNotCovered { required_threads: _, offered_threads: _ } => false
+    TrustDomainMismatch { required: _, offered: _ } => false
+    CapabilitiesNotOffered { required: _, offered: _ } => false
+    RateQuoteNotPriceableAgainstGrantCeiling { quoted: _ } => false
+    QuoteExceedsMaximumBuyOrder { quoted: _, maximum: _ } => false
+    QuoteCurrencyMismatch { quoted: _, budgeted: _ } => false
+  }
+}
+
+fn floor_eligibility(offer: Offer<NonEmptyStr>) -> OfferEligibility {
+  floor_offer_eligibility(offer: offer, maximum_buy_order: t_max_buy(), budget_currency: Usd)
+}
+
+// CONTROLS. Without these, every refusal below is satisfied by a fold that
+// refuses unconditionally -- the shape a wall takes when it is actually a brick.
+
+test fn fleet_offer_is_eligible_for_the_floor() -> Bool {
+  eligible(e: floor_eligibility(offer: t_fleet_offer()))
+}
+
+// The shape wall is an INEQUALITY. An offer larger than the requirement must
+// still be eligible; one that rejected a bigger machine would be a bug wearing
+// a wall's clothing.
+test fn larger_offer_is_still_eligible() -> Bool {
+  eligible(e: floor_eligibility(offer: t_offer(
+    threads: hardware_thread_count(count: 256),
+    caps: "gunbc.capabilities.linux-rust-toolchain",
+    trust: "gunbc.trust.internal-fleet",
+    quote: t_quote(amount: money_amount_micro(count: 0), currency: Usd),
+  )))
+}
+
+// DISCRIMINATING REDS -- capability side.
+
+// A host outside the declared trust domain must be refused even when it is
+// larger and cheaper: capacity does not substitute for trust.
+test fn foreign_trust_domain_refuses_despite_ample_capacity() -> Bool {
+  match floor_eligibility(offer: t_offer(
+    threads: hardware_thread_count(count: 1024),
+    caps: "gunbc.capabilities.linux-rust-toolchain",
+    trust: "gunbc.trust.public-cloud",
+    quote: t_quote(amount: money_amount_micro(count: 0), currency: Usd),
+  )) {
+    TrustDomainMismatch { required: _, offered: _ } => true
+    OfferEligible => false
+    ShapeNotCovered { required_threads: _, offered_threads: _ } => false
+    CapabilitiesNotOffered { required: _, offered: _ } => false
+    RateQuoteNotPriceableAgainstGrantCeiling { quoted: _ } => false
+    QuoteExceedsMaximumBuyOrder { quoted: _, maximum: _ } => false
+    QuoteCurrencyMismatch { quoted: _, budgeted: _ } => false
+  }
+}
+
+test fn missing_capabilities_refuse() -> Bool {
+  !eligible(e: floor_eligibility(offer: t_offer(
+    threads: hardware_thread_count(count: 128),
+    caps: "gunbc.capabilities.linux-x86_64-no-toolchain",
+    trust: "gunbc.trust.internal-fleet",
+    quote: t_quote(amount: money_amount_micro(count: 0), currency: Usd),
+  )))
+}
+
+test fn insufficient_threads_refuse() -> Bool {
+  !eligible(e: floor_eligibility(offer: t_offer(
+    threads: hardware_thread_count(count: 2),
+    caps: "gunbc.capabilities.linux-rust-toolchain",
+    trust: "gunbc.trust.internal-fleet",
+    quote: t_quote(amount: money_amount_micro(count: 0), currency: Usd),
+  )))
+}
+
+// DISCRIMINATING REDS -- price side. These are the arm that makes gunbc's own
+// CI an ordinary priced demand rather than an always-admitted path. The fleet
+// offer above quotes zero and still goes THROUGH this check; these prove the
+// check is reachable and can refuse.
+
+test fn quote_above_the_maximum_buy_order_refuses() -> Bool {
+  match floor_eligibility(offer: t_offer(
+    threads: hardware_thread_count(count: 128),
+    caps: "gunbc.capabilities.linux-rust-toolchain",
+    trust: "gunbc.trust.internal-fleet",
+    quote: t_quote(amount: money_amount_micro(count: 9000000), currency: Usd),
+  )) {
+    QuoteExceedsMaximumBuyOrder { quoted: _, maximum: _ } => true
+    OfferEligible => false
+    ShapeNotCovered { required_threads: _, offered_threads: _ } => false
+    TrustDomainMismatch { required: _, offered: _ } => false
+    CapabilitiesNotOffered { required: _, offered: _ } => false
+    RateQuoteNotPriceableAgainstGrantCeiling { quoted: _ } => false
+    QuoteCurrencyMismatch { quoted: _, budgeted: _ } => false
+  }
+}
+
+// Affordability and capability are SEPARATE arms with different remedies --
+// raise the buy order, or find another supplier -- so a currency mismatch must
+// not be reported as an ordinary over-budget refusal.
+test fn foreign_currency_quote_refuses_distinctly() -> Bool {
+  match floor_eligibility(offer: t_offer(
+    threads: hardware_thread_count(count: 128),
+    caps: "gunbc.capabilities.linux-rust-toolchain",
+    trust: "gunbc.trust.internal-fleet",
+    quote: t_quote(amount: money_amount_micro(count: 1), currency: Eur),
+  )) {
+    QuoteCurrencyMismatch { quoted: _, budgeted: _ } => true
+    OfferEligible => false
+    ShapeNotCovered { required_threads: _, offered_threads: _ } => false
+    TrustDomainMismatch { required: _, offered: _ } => false
+    CapabilitiesNotOffered { required: _, offered: _ } => false
+    RateQuoteNotPriceableAgainstGrantCeiling { quoted: _ } => false
+    QuoteExceedsMaximumBuyOrder { quoted: _, maximum: _ } => false
+  }
+}
+
+// THE CEILING COMPARISON IS STRICT, AND THIS PINS THAT BOUNDARY. A zero-quoted
+// offer clears a zero budget because zero is not GREATER than zero.
+//
+// This witness previously called t_fleet_offer() and asserted the same thing,
+// with a comment reading "free capacity is affordable to a zero budget". That
+// premise was true while the fleet fixture quoted zero and became FALSE the
+// moment it was repriced -- 40 against a ceiling of 0 refuses -- so the witness
+// went red on a claim nobody had reread. It now uses its OWN zero-quoted offer,
+// because the property under test is the strictness of the comparison and has
+// nothing to do with the fleet.
+fn t_free_offer() -> Offer<NonEmptyStr> {
+  t_offer(
+    threads: hardware_thread_count(count: 128),
+    caps: "gunbc.capabilities.linux-rust-toolchain",
+    trust: "gunbc.trust.internal-fleet",
+    quote: t_quote(amount: money_amount_micro(count: 0), currency: Usd),
+  )
+}
+
+test fn a_zero_quote_clears_a_zero_ceiling_because_the_comparison_is_strict() -> Bool {
+  eligible(e: floor_offer_eligibility(
+    offer: t_free_offer(),
+    maximum_buy_order: money_amount_micro(count: 0),
+    budget_currency: Usd,
+  ))
+}
+
+// The control that keeps the row above from being satisfied by a fold that
+// admits everything: one micro over the ceiling refuses.
+test fn one_micro_over_a_zero_ceiling_refuses() -> Bool {
+  !eligible(e: floor_offer_eligibility(
+    offer: t_offer(
+      threads: hardware_thread_count(count: 128),
+      caps: "gunbc.capabilities.linux-rust-toolchain",
+      trust: "gunbc.trust.internal-fleet",
+      quote: t_quote(amount: money_amount_micro(count: 1), currency: Usd),
+    ),
+    maximum_buy_order: money_amount_micro(count: 0),
+    budget_currency: Usd,
+  ))
+}
+
+// THE COMMAND. Derived facts, not restatements.
+
+test fn floor_argv_carries_every_declared_source_root() -> Bool {
+  let argv = floor_run_command().argv
+  all(witness_layer_roots, r => any(argv, a => a == r))
+    && length(xs: argv) == 2 + 2 * length(xs: witness_layer_roots)
+}
+
+test fn fabric_argv_and_workflow_step_agree_on_source_roots() -> Bool {
+  let argv = floor_run_command().argv
+  all(witness_layer_roots, r => any(argv, a => a == r))
+    && string_contains(s: witness_floor_run_script(), pattern: "--required-floor")
+    && all(witness_layer_roots, r =>
+         string_contains(s: witness_floor_run_script(), pattern: concat("--source-root \"$ROOT/", concat(r, "\""))))
+}
+
+test fn floor_inputs_manifest_ref_folds_the_same_authority() -> Bool {
+  floor_inputs_manifest_ref() == "gunbc.floor.inputs.source-roots:dag+src/v2"
+}
+
+// The floor and the v1 parse gate are TWO steps, so a receipt can say which one
+// failed. That distinction is what gunbc#8466 -> #8519 paid to learn.
+test fn floor_contract_keeps_the_parse_gate_as_its_own_step() -> Bool {
+  length(xs: floor_work_contract(source: t_source()).steps) == 2
+}
+
+// THE FLOOR IS AN ORDINARY PRICED DEMAND. These pin the two properties that,
+// if they drift, silently turn gunbc's CI back into a privileged path -- which
+// is invisible precisely because everything keeps working when it happens.
+
+// Reuse is disabled for the cutover, and it is disabled ON THE DEMAND. If this
+// ever reads true while the floor's purity is unproven, an identical tree stops
+// re-running and today's Actions behaviour has been changed by a policy edit
+// nobody made deliberately.
+test fn floor_demand_requires_a_new_attempt() -> Bool {
+  let s = floor_satisfaction_requirement()
+  s.new_attempt_required && !s.terminal_receipt_may_satisfy
+}
+
+// Step reuse stays permitted: a materialization provider may accelerate a rerun.
+// That is not the same claim as "the step completed", and the two must not
+// collapse -- a build cache making the second attempt faster is not a receipt.
+test fn floor_demand_still_permits_step_reuse() -> Bool {
+  floor_satisfaction_requirement().step_reuse_permitted
+}
+
+// The buy terms carry a real ceiling that the eligibility fold reads. This is
+// the join between "the floor is priced" and "the price is checked": a demand
+// whose maximum buy order is below an offer's quote must not be eligible for it,
+// and that must hold through the floor's own terms rather than only through the
+// hand-built ones above.
+test fn floor_buy_terms_ceiling_is_the_one_eligibility_reads() -> Bool {
+  let terms = floor_buy_terms(
+    account: "gunbc.budget.ci",
+    reservation_price: money_amount_micro(count: 0),
+    maximum_buy_order: money_amount_micro(count: 5),
+  )
+  !eligible(e: floor_offer_eligibility(
+    offer: t_offer(
+      threads: hardware_thread_count(count: 128),
+      caps: "gunbc.capabilities.linux-rust-toolchain",
+      trust: "gunbc.trust.internal-fleet",
+      quote: t_quote(amount: money_amount_micro(count: 6), currency: Usd),
+    ),
+    maximum_buy_order: terms.maximum_buy_order,
+    budget_currency: terms.currency,
+  ))
+}
+
+// priority_class must not become a privilege escape. This asserts the floor
+// carries an ordinary class string and nothing structural distinguishes it from
+// any other demand's -- there is no field here that could admit an unaffordable
+// demand.
+test fn floor_admission_carries_no_privilege_field() -> Bool {
+  let terms = floor_admission_terms(
+    buy: floor_buy_terms(
+      account: "gunbc.budget.ci",
+      reservation_price: money_amount_micro(count: 0),
+      maximum_buy_order: money_amount_micro(count: 5),
+    ),
+    deadline: none,
+  )
+  terms.priority_class == "gunbc.ci.floor"
+}
+
+// THE DISCRIMINATING PAIR FOR THE DIMENSIONAL DEFECT. maximum_buy_order is the
+// ceiling on a single grant -- a TOTAL -- and an hourly rate is not one. Before
+// the fix, the fold read .amount off the rate and compared it to the ceiling, so
+// an hourly quote of 1 against a ceiling of 1000 was ADMITTED: the offer would
+// bill 1 per hour for an unbounded number of hours, and nothing refused. This
+// witness goes red against that fold and green only once the rate arms refuse.
+test fn an_hourly_rate_is_not_priceable_against_a_per_grant_ceiling() -> Bool {
+  !eligible(e: floor_offer_eligibility(
+    offer: t_offer(
+      threads: hardware_thread_count(count: 128),
+      caps: "gunbc.capabilities.linux-rust-toolchain",
+      trust: "gunbc.trust.internal-fleet",
+      quote: QuotedPerHour(MoneyRate { amount: money_amount_micro(count: 1), currency: Usd }),
+    ),
+    maximum_buy_order: money_amount_micro(count: 1000),
+    budget_currency: Usd,
+  ))
+}
+
+// The same amount quoted per SECOND and per HOUR differ by 3600x in fact and
+// were indistinguishable to the old fold, which compared the bare scalar. Both
+// must refuse for the same reason -- neither is a per-grant total -- so this
+// asserts the erasure is gone rather than merely that one arm was special-cased.
+test fn per_second_and_per_hour_quotes_both_refuse_rather_than_comparing_equal() -> Bool {
+  let per_second = floor_offer_eligibility(
+    offer: t_offer(
+      threads: hardware_thread_count(count: 128),
+      caps: "gunbc.capabilities.linux-rust-toolchain",
+      trust: "gunbc.trust.internal-fleet",
+      quote: QuotedPerSecond(MoneyRate { amount: money_amount_micro(count: 1), currency: Usd }),
+    ),
+    maximum_buy_order: money_amount_micro(count: 1000),
+    budget_currency: Usd,
+  )
+  let per_hour = floor_offer_eligibility(
+    offer: t_offer(
+      threads: hardware_thread_count(count: 128),
+      caps: "gunbc.capabilities.linux-rust-toolchain",
+      trust: "gunbc.trust.internal-fleet",
+      quote: QuotedPerHour(MoneyRate { amount: money_amount_micro(count: 1), currency: Usd }),
+    ),
+    maximum_buy_order: money_amount_micro(count: 1000),
+    budget_currency: Usd,
+  )
+  !eligible(e: per_second) && !eligible(e: per_hour)
+}
+
+// THE POSITIVE CONTROL FOR THE REFUSAL. A per-grant total under the ceiling is
+// still eligible, so the arm above refuses rates specifically and has not simply
+// made every priced offer ineligible -- which would pass both reds above while
+// destroying the fold.
+test fn a_per_grant_total_under_the_ceiling_is_still_eligible() -> Bool {
+  eligible(e: floor_offer_eligibility(
+    offer: t_offer(
+      threads: hardware_thread_count(count: 128),
+      caps: "gunbc.capabilities.linux-rust-toolchain",
+      trust: "gunbc.trust.internal-fleet",
+      quote: t_quote(amount: money_amount_micro(count: 6), currency: Usd),
+    ),
+    maximum_buy_order: money_amount_micro(count: 1000),
+    budget_currency: Usd,
+  ))
+}
+
+// SELF-CI IS NOT FREE BY CONSTRUCTION. The owned fleet carries an asking price,
+// so a demand whose ceiling sits below it cannot claim the hour. This is the witness that would
+// have been unwritable while the fleet quoted zero: at zero it clears every
+// ceiling, so no ceiling can refuse it and the arm has no discriminating input.
+test fn an_owned_hour_with_an_asking_price_can_be_outbid() -> Bool {
+  !eligible(e: floor_offer_eligibility(
+    offer: t_fleet_offer(),
+    maximum_buy_order: money_amount_micro(count: 39),
+    budget_currency: Usd,
+  ))
+}
+
+// The control for the row above: the same owned-fleet offer IS eligible to a
+// demand willing to pay its asking price. Without this, refusing at 39 is
+// equally explained by the fleet offer having become ineligible outright.
+test fn an_owned_hour_is_eligible_to_a_demand_that_meets_its_asking_price() -> Bool {
+  eligible(e: floor_offer_eligibility(
+    offer: t_fleet_offer(),
+    maximum_buy_order: money_amount_micro(count: 40),
+    budget_currency: Usd,
+  ))
+}
