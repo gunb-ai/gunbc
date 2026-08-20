@@ -4901,6 +4901,32 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         return Ok(result);
     }
 
+    // A HOST-REALIZED SEAM IS REACHED BY ITS DECLARATION, NOT BY ITS SPELLING.
+    // The interception table is keyed on the bare name a caller writes after importing
+    // the symbol, so a caller naming the same declaration by its full address --
+    // std.algebra.trim rather than an imported trim -- misses every arm and falls
+    // through to the .dag body. For an ordinary function that is harmless. For these
+    // two it is not: their bodies are DIVERGENT SEAMS (`1 / 0`), authored to be
+    // unreachable precisely because the host owns the semantics, so falling through
+    // does not compute a worse answer, it traps. That is why this is routing and not
+    // a convenience alias: the qualified spelling names the same declaration, and the
+    // declaration says the host realizes it.
+    //
+    // Enumerated rather than derived by stripping any qualifier. A blanket last-segment
+    // retry would route EVERY qualified call whose final segment happens to name a
+    // builtin, and `get`, `concat` and their neighbours are ordinary function names --
+    // 516 names in this corpus are declared in more than one module. That would hijack a
+    // real declaration whose qualified spelling names it unambiguously. The population
+    // here is instead the intersection of two closed sets: `.dag` declarations that are
+    // host seams, and the names the dispatch table actually carries an arm for. Five
+    // further seams have no arm and are deliberately absent -- routing them would resolve
+    // to nothing.
+    if let Some(bare) = host_realized_seam_bare_name(&func_name) {
+        if let Some(result) = eval_builtin(bare, &args, ctx)? {
+            return Ok(result);
+        }
+    }
+
     let fn_node = if let Some(node) = ctx.lookup_fn(&func_name) {
         node.clone()
     } else {
@@ -12075,6 +12101,28 @@ fn emit_host_run_transport_in_workspace(
         build_log,
         false,
     ))
+}
+
+/// Qualified spellings of the `.dag` declarations whose body is the divergent
+/// pure-dag seam and whose semantics the host owns. Authority for the seam itself is
+/// `std.bytes` pure_dag_seam_unreachable_typing_note and `std.algebra`
+/// trim_free_function_authority_note; this is the routing that lets a caller name
+/// either one by its full address.
+fn host_realized_seam_bare_name(spelling: &str) -> Option<&'static str> {
+    match spelling {
+        "extdeps.languages.simd.kernel.contiguous_loop_elementwise_kernel" => {
+            Some("contiguous_loop_elementwise_kernel")
+        }
+        "extdeps.languages.simd.kernel.contiguous_loop_elementwise_float_kernel" => {
+            Some("contiguous_loop_elementwise_float_kernel")
+        }
+        "std.bytes.bytes_octets" => Some("bytes_octets"),
+        "std.encoding.utf8_decode_bytes" => Some("utf8_decode_bytes"),
+        "std.algebra.trim" => Some("trim"),
+        "std.bytes.octets_bytes" => Some("octets_bytes"),
+        "std.bytes.utf8_encode_bytes" => Some("utf8_encode_bytes"),
+        _ => None,
+    }
 }
 
 fn eval_builtin(
