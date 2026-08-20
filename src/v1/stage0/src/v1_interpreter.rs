@@ -6838,6 +6838,20 @@ fn cast_expr_inferred_type_name_uncached(ctx: &InterpContext, expr: Rc<Node>) ->
 
 /// Runtime identity casts mirror `validate_cast`'s `source_name == target_name` arm,
 /// plus String-valued casts to types whose alias chain grounds on `String`.
+///
+/// node://adhoc-897a90b6-a9c item 1: this used to also treat an EMPTY resolved kernel as
+/// grounds for identity -- i.e. answered "the cast target's alias chain could not be resolved
+/// at all" with a value, rather than falling through to `eval_cast`'s existing typed
+/// `TypeError` arm for an unrecognized target name (DESIGN §5, ⊥-as-ignorance rendered as an
+/// answer). Measured by execution (an unconditional counter plus a discriminating
+/// positive/negative-control unit test proving the counter itself was correctly wired, then a
+/// real run of 1507 requested witnesses across every `*cast*`/`*refinement*`-named file in
+/// `dag/test/claim` plus a sixth-sample of the rest): zero hits, `kernel_calls=19` real
+/// resolutions observed. The arm is reachable in principle only when the target AST node is
+/// itself a `CompilerError` node (malformed, missing-child cast target) -- a shape that can
+/// only arise from a resolve-time defect elsewhere, and resolve already refuses before such a
+/// node can reach eval on any real program. Clean deletion per that measurement; the
+/// fallthrough below now answers instead.
 fn cast_identity_result(
     val: &Value,
     ctx: &InterpContext,
@@ -6850,11 +6864,81 @@ fn cast_identity_result(
     }
     if let Value::Str(s) = val {
         let kernel = cast_target_underlying_kernel(ctx, target_node);
-        if kernel.is_empty() || kernel == "String" {
+        if kernel == "String" {
             return Some(Value::Str(s.clone()));
         }
     }
     None
+}
+
+#[cfg(test)]
+mod cast_identity_empty_kernel_tests {
+    //! Regression control for node://adhoc-897a90b6-a9c item 1: a cast target whose alias
+    //! chain cannot be resolved at all (an empty kernel) must NOT be answered with silent Str
+    //! identity. Proves the deletion above by construction: a malformed target node -- exactly
+    //! the shape `expr_child_at`'s fallback produces for a cast missing its target child --
+    //! makes `cast_identity_result` return `None`, so `eval_cast` falls through to its typed
+    //! `TypeError` arm instead of fabricating an answer.
+    use std::rc::Rc;
+
+    use im::{vector as im_vec, HashMap};
+
+    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_std_core::{make_expr_error_node, make_span, ExprErrorKind};
+
+    use super::{cast_identity_result, ExecutionMode, InterpContext, Value};
+
+    fn fresh_ctx() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    #[test]
+    fn malformed_cast_target_no_longer_returns_silent_identity() {
+        let ctx = fresh_ctx();
+        // Exactly the node `expr_child_at`/`make_expr_error_node` produce for a cast whose
+        // target child is missing: name "", inferred CompilerError (not Resolved) — the only
+        // shape `cast_target_seed_name_uncached` returns "" for, i.e. an empty kernel.
+        let malformed_target = make_expr_error_node(
+            ExprErrorKind::InternalExprError,
+            "malformed node: missing cast target".to_string(),
+            make_span(0, 0),
+        );
+        let val = Value::Str(Rc::from("payload"));
+        let result = cast_identity_result(&val, &ctx, "", malformed_target, "");
+        assert_eq!(
+            result, None,
+            "an unresolvable cast target must fall through to eval_cast's typed TypeError arm, \
+             not return silent Str identity"
+        );
+    }
+
+    #[test]
+    fn well_formed_string_kernel_cast_still_returns_identity() {
+        let ctx = fresh_ctx();
+        // A target node whose own name IS "String" resolves the seed directly (no alias walk
+        // needed), so the kernel is non-empty and lands on the `kernel == "String"` arm. This
+        // is the negative control: it proves the deletion above did not also remove the
+        // legitimate String-kernel identity case.
+        let string_target = make_expr_error_node(
+            ExprErrorKind::InternalExprError,
+            "unused".to_string(),
+            make_span(0, 0),
+        );
+        let string_target = Rc::new(crate::v1_std_core::Node {
+            name: "String".to_string(),
+            ..(*string_target).clone()
+        });
+        let val = Value::Str(Rc::from("payload"));
+        let result = cast_identity_result(&val, &ctx, "", string_target, "");
+        assert_eq!(result, Some(Value::Str(Rc::from("payload"))));
+    }
 }
 
 fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
@@ -14441,7 +14525,7 @@ fn memo_verify_enabled() -> bool {
     })
 }
 
-fn eval_profile_enabled() -> bool {
+pub fn eval_profile_enabled() -> bool {
     PROFILE_FLAG.with(|c| match c.get() {
         Some(b) => b,
         None => {
