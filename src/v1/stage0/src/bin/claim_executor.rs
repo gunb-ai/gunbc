@@ -19671,7 +19671,7 @@ fn behavioral_receipt_census(source_roots: &[String]) -> Result<bool, String> {
     let mut by_blocker: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     let mut types_declared_total = 0usize;
     let mut types_read_total = 0usize;
-    let mut type_reader_gaps: Vec<(String, usize, usize)> = Vec::new();
+    let mut type_reader_gaps: Vec<(String, usize, usize, Vec<String>)> = Vec::new();
 
     for (module_path, mirror) in &roster {
         let Some(source) = modules.get(module_path) else {
@@ -19703,15 +19703,29 @@ fn behavioral_receipt_census(source_roots: &[String]) -> Result<bool, String> {
         // disagreement means the type reader missed a form. That is not hypothetical: Node ranked
         // 798 as "undeclared anywhere in corpus" while src/v1/00_core.dag declares it plainly, and
         // nothing in the output said the reader had skipped it.
-        let type_lines = source
+        // The authored names, not just a count: the count says a form was missed, the NAMES say
+        // which declarations, and only the second is actionable without guessing.
+        let authored: Vec<String> = source
             .lines()
-            .filter(|l| l.trim_start().starts_with("type "))
-            .count();
-        let types_read = type_decls_from_module(&node).len();
+            .filter_map(|l| l.trim_start().strip_prefix("type "))
+            .filter_map(|rest| {
+                rest.split(|c: char| c.is_whitespace() || c == '{' || c == '=')
+                    .find(|t| !t.is_empty())
+                    .map(str::to_string)
+            })
+            .collect();
+        let read = type_decls_from_module(&node);
+        let type_lines = authored.len();
+        let types_read = read.len();
         types_declared_total += type_lines;
         types_read_total += types_read;
-        if type_lines != types_read {
-            type_reader_gaps.push((module_path.clone(), type_lines, types_read));
+        let missed: Vec<String> = authored
+            .iter()
+            .filter(|n| !read.contains_key(*n))
+            .cloned()
+            .collect();
+        if !missed.is_empty() {
+            type_reader_gaps.push((module_path.clone(), type_lines, types_read, missed));
         }
         eprintln!(
             "receipt-census: {module_path} parsed={} derivable={} calls={} refused={} type_lines={type_lines} types_read={types_read}",
@@ -19765,9 +19779,12 @@ fn behavioral_receipt_census(source_roots: &[String]) -> Result<bool, String> {
              authors, so every refusal naming those types is measuring THIS READER, not the corpus"
         );
         let mut worst = type_reader_gaps.clone();
-        worst.sort_by(|a, b| (b.1 - b.2).cmp(&(a.1 - a.2)));
-        for (m, lines, read) in worst.iter().take(12) {
-            eprintln!("receipt-census:   GAP {m} type_lines={lines} types_read={read}");
+        worst.sort_by(|a, b| b.3.len().cmp(&a.3.len()));
+        for (m, lines, read, missed) in worst.iter().take(12) {
+            eprintln!(
+                "receipt-census:   GAP {m} type_lines={lines} types_read={read} missed={}",
+                missed.join(", ")
+            );
         }
     }
     eprintln!("receipt-census: refusals ranked by the type responsible");
