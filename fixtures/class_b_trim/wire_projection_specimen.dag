@@ -1,9 +1,5 @@
 module test.claim.class_b_trim_wire_projection_specimen
 
-import std.types { String, Bool }
-import std.algebra { trim }
-import extdeps.filesystem.filesystem_io { Filesystem }
-
 // The discriminating specimen for the service-op wire-projection class registered on
 // extdeps.shell.exec service_op_string_wire_projection_method_fork_note and
 // gunbc.plans.model_realization_fork.
@@ -27,11 +23,11 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 data class_b_trim_wire_projection_specimen_note: String = "Class B trim wire-projection specimen: the method form on a service-op String wire field (Filesystem.Read content: String from \"content\") against the free-call control on the same value. Discriminates whether the wire projection mints the type node the extdeps output declaration names. Pairs with monoid_specimen.dag, which pins the neighbouring and still-correct fact that trim does not attach to a collection monoid receiver."
 
 fn wire_field_method_form(path: String) -> String {
-  let read = Filesystem.Read(path: path)
+  let read = extdeps.filesystem.filesystem_io.Filesystem.Read(path: path)
   read.content.trim()
 }
 
 fn wire_field_free_call(path: String) -> String {
-  let read = Filesystem.Read(path: path)
-  trim(read.content)
+  let read = extdeps.filesystem.filesystem_io.Filesystem.Read(path: path)
+  std.algebra.trim(read.content)
 }

@@ -505,3 +505,17 @@ fn claim_safety_outcome_blocks(outcome: ClaimSafetyOutcome) -> Bool {
     CompletedPastSafetyLimit { observed_cpu: _, observed_wall: _, preemption: _ } => true
   }
 }
+
+// The host evaluates the roster in THIS module's frame, and a frame's scope is the
+// module's closure. With the import statement gone, a comment naming the roster is
+// not an edge -- only a reference is. This delegating function is that reference,
+// and it is the exact shape the note above contemplates ("called through the policy
+// module's own delegating edge rather than by reaching across the graph"). It adds
+// no second authority: it produces nothing and forwards to the roster that does.
+fn required_floor_expected_red_roster() -> std.types.List<String> {
+  v2.workflow.floor_expected_red.floor_expected_red_roster()
+}
+
+fn required_floor_route_gap_roster() -> std.types.List<String> {
+  v2.workflow.floor_route_gap.floor_route_gap_roster()
+}

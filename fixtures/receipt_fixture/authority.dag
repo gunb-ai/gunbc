@@ -1,8 +1,5 @@
 module receipt.fixture
 
-import std.types { Int }
-import std.logic { Bool }
-
 type Band = Low | Mid | High
 
 fn band_of(level: Int) -> Band {

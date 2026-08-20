@@ -3491,7 +3491,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
       )
       let typed_arg_nodes = typed_args
       if sig != none {
-        let v1.compiler.infer_types.resolved_type = match sig {
+        let resolved_type = match sig {
           Present { value: s } => substitute_generics(n: s.inferred, subst: call_subst, source_indices: scope.type_env.source_indices)
           Absent => v1.std.core.error_type
         }
@@ -3526,7 +3526,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
           typed: v1.std.core.make_named_expr_node(
             name: func_name, expr_data: v1.std.core.ExprCall { call_semantics: Present { value: v1.std.core.PlainCallSemantics }, descent_evidence: none },
             children: typed_arg_nodes,
-            inferred: Present { value: v1.std.core.Resolved { node: v1.compiler.infer_types.resolved_type } },
+            inferred: Present { value: v1.std.core.Resolved { node: resolved_type } },
             span: span,
             name_span: v1.std.core.node_name_span(n: texpr)
           ),
@@ -3537,7 +3537,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
           Present { value: ta } => v1.compiler.infer_types.resolved_type(n: v1.std.core.arg_value(n: ta))
           Absent => v1.std.core.unit_type
         }
-        let v1.std.core.method_receiver = match typed_args |> first {
+        let method_receiver = match typed_args |> first {
           Present { value: ta } => v1.std.core.arg_value(n: ta)
           Absent => internal_expr_error_node(message: "method bridge missing receiver", span: span)
         }
@@ -3552,7 +3552,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
           v1.compiler.infer_lookup.KnownMethodResolution { semantics: none, result_type: none, diagnostics: [] }
         } else {
           v1.compiler.infer_lookup.resolve_known_method_node(
-            receiver: v1.std.core.method_receiver,
+            receiver: method_receiver,
             receiver_type: v1.compiler.infer_lookup.resolve_method_receiver_type(receiver_type: first_arg_type, env: scope.type_env),
             method_name: func_name,
             fold_accumulator_type: if call_fold_info != none { Present { value: refined_call_fold_acc_type } } else { none },
@@ -3563,7 +3563,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
         let callee_is_body_binding = map_has(scope.body_locals, func_name)
         let is_known_method = !callee_is_body_binding && method_resolution.result_type != none
         if is_known_method && typed_args |> count > 0 {
-          let receiver = v1.std.core.method_receiver
+          let receiver = method_receiver
           let remaining = typed_args |> skip(1)
           let base_result_type = match method_resolution.result_type {
             Present { value: mt } => mt
@@ -3790,7 +3790,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
               Present { value: ct } => ct
               Absent => v1.std.core.error_type
             }
-            let v1.compiler.infer_types.resolved_type = match callable_type.inferred {
+            let resolved_type = match callable_type.inferred {
               Present { value: v1.std.core.Resolved { node: ret } } => ret
               _ => v1.std.core.error_type
             }
@@ -3798,7 +3798,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
               typed: v1.std.core.make_named_expr_node(
                 name: func_name, expr_data: v1.std.core.ExprCall { call_semantics: Present { value: if callee_is_body_binding { v1.std.core.FunctionValueCallSemantics } else { v1.std.core.PlainCallSemantics } }, descent_evidence: none },
                 children: typed_arg_nodes,
-                inferred: Present { value: v1.std.core.Resolved { node: v1.compiler.infer_types.resolved_type } },
+                inferred: Present { value: v1.std.core.Resolved { node: resolved_type } },
                 span: span,
                 name_span: v1.std.core.node_name_span(n: texpr)
               ),
@@ -3813,7 +3813,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
                 Present { value: _ } => none
                 Absent => v1.compiler.infer_lookup.global_bare_callable_node(type_env: scope.type_env, name: func_name)
               }
-              let v1.compiler.infer_types.resolved_type = match type_match {
+              let resolved_type = match type_match {
                 Present { value: tn } => tn
                 Absent => match global_bare_callable {
                   Present { value: gnode } =>
@@ -3843,7 +3843,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
                 typed: v1.std.core.make_named_expr_node(
                   name: func_name, expr_data: v1.std.core.ExprCall { call_semantics: Present { value: v1.std.core.PlainCallSemantics }, descent_evidence: none },
                   children: typed_arg_nodes,
-                  inferred: Present { value: v1.std.core.Resolved { node: v1.compiler.infer_types.resolved_type } },
+                  inferred: Present { value: v1.std.core.Resolved { node: resolved_type } },
                   span: span,
                   name_span: v1.std.core.node_name_span(n: texpr)
                 ),
@@ -5499,14 +5499,14 @@ fn maybe_insert_output_field_relation(acc: Map<String, std.induction.SubValueRel
 fn maybe_insert_match_field_relation(fp_acc: Map<String, std.induction.SubValueRelation>, pname: String, field_label: String, vname: String, scrut_rel: std.induction.SubValueRelation?, param_types: Map<String, String>, type_env: v1.compiler.infer_env.TypeEnv) -> Map<String, std.induction.SubValueRelation> {
   match scrut_rel {
     Present { value: rel } =>
-      let v1.compiler.infer_env.lookup_type = match rel {
+      let lookup_type = match rel {
         PreservedValue => match map_get(param_types, pname) { Present { value: t } => t  Absent => "" }
         StrictSubValue { field: f, factor: _ } => f.element_type
         IteratedSubValue { field: f } => f.element_type
         _ => ""
       }
-      if v1.compiler.infer_env.lookup_type != "" {
-        let ind_fields = v1.compiler.infer_env.inductive_fields_for(env: type_env, type_name: v1.compiler.infer_env.lookup_type)
+      if lookup_type != "" {
+        let ind_fields = v1.compiler.infer_env.inductive_fields_for(env: type_env, type_name: lookup_type)
         let matching = ind_fields |> filter(f => f.field_name == field_label && (f.variant_name == vname || f.variant_name == "")) |> first
         match matching {
           Present { value: ind_field } => map_insert(fp_acc, pname, std.induction.compose_sub_value(base: rel, field: ind_field))
