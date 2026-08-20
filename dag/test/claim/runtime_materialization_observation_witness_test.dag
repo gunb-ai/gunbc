@@ -1,7 +1,7 @@
 module test.claim.runtime_materialization_observation_witness_test
 
 import std.types { Bool, NonEmptyStr, String, List }
-import gunbc.spark_serving_observe { spark_serving_runtime_materialization_receipt_probe_argv }
+import gunbc.spark.serving_observe { spark_serving_runtime_materialization_receipt_probe_argv }
 import gunbc.ollama_runtime_bundle {
   RuntimeMaterializationObservation,
   RuntimeMaterializationAbsent,

@@ -1,14 +1,14 @@
 module test.claim.spark_serving_model_materialization_witness
 
 import std.types { Bool, String, NonEmptyStr, Int, List }
-import gunbc.spark_serving_terminal_health { spark_serving_health_request_body }
-import gunbc.spark_serving_converge_realize {
+import gunbc.spark.serving_terminal_health { spark_serving_health_request_body }
+import gunbc.spark.serving_converge_realize {
   spark_serving_materialize_model_artifact_steps,
   spark_serving_checksum_line,
   SparkServingInstallRemoteCommandsPresent,
   SparkServingInstallRemoteCommandsRefused,
 }
-import gunbc.spark_serving_install_paths {
+import gunbc.spark.serving_install_paths {
   spark_serving_registry_manifest_url,
   spark_serving_registry_blob_url,
   spark_serving_staged_blob_path,

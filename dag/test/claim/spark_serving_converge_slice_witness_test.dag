@@ -19,11 +19,11 @@ import gunbc.fleet_converge_plan {
   fleet_converge_plan_artifact_bundle_admits,
   fleet_converge_plan_spark_typed_actions_consistency_admits,
 }
-import gunbc.spark_serving_execution_schedule {
+import gunbc.spark.serving_execution_schedule {
   scheduled_rows_empty,
   scheduled_rows_list,
 }
-import gunbc.spark_serving_converge_plan {
+import gunbc.spark.serving_converge_plan {
   spark_serving_fleet_converge_plan_artifact,
   SparkServingPlanArtifactReady,
   SparkServingPlanArtifactRefused,
@@ -31,10 +31,10 @@ import gunbc.spark_serving_converge_plan {
   spark_serving_linger_membership_plan,
   spark_serving_frozen_linger_effect,
 }
-import gunbc.spark_serving_release {
+import gunbc.spark.serving_release {
   SparkServingRelease,
 }
-import gunbc.spark_serving_desired {
+import gunbc.spark.serving_desired {
   SparkServingDesiredAdmitted,
   SparkServingDesiredRefused,
   spark_serving_desired_admission,
@@ -49,7 +49,7 @@ import gunbc.ollama_runtime_bundle {
   RuntimeExecutableMissing,
   ollama_runtime_materialization_identity_for_required_release,
 }
-import gunbc.spark_serving_membership {
+import gunbc.spark.serving_membership {
   spark_serving_user_unit_state_digest,
   spark_serving_member,
   spark_serving_member_key,
@@ -59,7 +59,7 @@ import gunbc.spark_serving_membership {
 import gunbc.ownership { Owned }
 import gunbc.remote_operation { RemoteOperation, RemoteArgv }
 import std.types { List }
-import gunbc.spark_serving_observed_members {
+import gunbc.spark.serving_observed_members {
   SparkServingObservedMemberProjection,
   SparkServingUnitManagerState,
   UserUnitManagerEnabled,
@@ -73,7 +73,7 @@ import gunbc.spark_serving_observed_members {
   spark_serving_observed_members,
 }
 import product.placement_supply { HostIdentity }
-import gunbc.spark_serving_converge_slice_wet {
+import gunbc.spark.serving_converge_slice_wet {
   render_observed_linger,
   spark_serving_slice_verdict_is_converged,
   spark_serving_slice_verdict_noop_converged,
@@ -84,12 +84,12 @@ import gunbc.spark_serving_converge_slice_wet {
   LingerObserved,
   LingerUnobserved,
 }
-import gunbc.spark_serving_converge_apply {
+import gunbc.spark.serving_converge_apply {
   spark_serving_apply_reads_frozen_typed_rows,
   SparkServingFrozenApplied,
   SparkServingFrozenApplyRefused,
 }
-import gunbc.spark_serving_converge_realize {
+import gunbc.spark.serving_converge_realize {
   spark_serving_enable_linger_remote_argv,
   spark_serving_enable_linger_argv_matches_expected,
   realize_spark_serving_install_effect_commands,
@@ -100,9 +100,9 @@ import gunbc.spark_serving_converge_realize {
   SparkServingInstallRemoteCommandsRefused,
 }
 import gunbc.remote_operation { remote_operations_argv_only, remote_operation_count }
-import gunbc.spark_serving_desired { spark_serving_automation_principal_login }
-import gunbc.spark_serving_unit_identity { spark_serving_unit_name }
-import gunbc.spark_serving_realization { EnableLingerForOwnAccount, ReloadUserManager, EnableUserUnit, RunContainerAsOwnUser }
+import gunbc.spark.serving_desired { spark_serving_automation_principal_login }
+import gunbc.spark.serving_unit_identity { spark_serving_unit_name }
+import gunbc.spark.serving_realization { EnableLingerForOwnAccount, ReloadUserManager, EnableUserUnit, RunContainerAsOwnUser }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -511,7 +511,7 @@ test fn reload_user_manager_is_user_scope_and_carries_no_sudo() -> Bool {
   }
 }
 
-// The unit name is asserted against gunbc.spark_serving_unit_identity, NOT against a literal
+// The unit name is asserted against gunbc.spark.serving_unit_identity, NOT against a literal
 // repeated here. A literal would pass while the enabled unit and the observed unit drifted apart,
 // which is the single-authority failure this grounding exists to prevent.
 test fn enable_user_unit_targets_the_unit_identity_authority() -> Bool {

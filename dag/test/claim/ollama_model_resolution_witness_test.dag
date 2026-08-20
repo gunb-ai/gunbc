@@ -10,7 +10,7 @@ import gunbc.ollama_model_resolution {
   gpt_oss_20b_manifest_digest_2026_08_19,
   gpt_oss_20b_manifest_digest_2026_08_12,
 }
-import gunbc.spark_serving_desired { spark_serving_desired_model_artifact }
+import gunbc.spark.serving_desired { spark_serving_desired_model_artifact }
 import gunbc.model_artifact { ModelArtifact, model_artifact_provenance_label }
 
 // The join that makes the repin real rather than declared: desired state's artifact identity IS the

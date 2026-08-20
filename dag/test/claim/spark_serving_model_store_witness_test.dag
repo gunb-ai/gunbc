@@ -27,15 +27,15 @@ import gunbc.ollama_runtime_bundle {
   RuntimeMaterializationComplete,
   ollama_runtime_materialization_identity_for_required_release,
 }
-import gunbc.spark_serving_release {
+import gunbc.spark.serving_release {
   SparkServingRelease,
 }
-import gunbc.spark_serving_desired {
+import gunbc.spark.serving_desired {
   spark_serving_desired_admission,
   SparkServingDesiredAdmitted,
   SparkServingDesiredRefused,
 }
-import gunbc.spark_serving_observed_members {
+import gunbc.spark.serving_observed_members {
   spark_serving_observed_members,
   spark_serving_projection_supports_empty_replan,
   SparkServingObservedMembers,
@@ -44,7 +44,7 @@ import gunbc.spark_serving_observed_members {
   UnitActivityRunning,
   LingerObservedEnabled,
 }
-import gunbc.spark_serving_observe { spark_serving_classify_model_store, spark_serving_model_blob_digest_argv }
+import gunbc.spark.serving_observe { spark_serving_classify_model_store, spark_serving_model_blob_digest_argv }
 
 import product.placement_supply { HostIdentity }
 

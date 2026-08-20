@@ -25,28 +25,28 @@ import gunbc.ollama_runtime_bundle {
   RuntimeExecutableMissing,
   ollama_runtime_materialization_identity_for_required_release,
 }
-import gunbc.spark_serving_membership { spark_serving_membership_reconcile, spark_serving_user_unit_state_digest }
-import gunbc.spark_serving_execution_schedule {
+import gunbc.spark.serving_membership { spark_serving_membership_reconcile, spark_serving_user_unit_state_digest }
+import gunbc.spark.serving_execution_schedule {
   SparkServingScheduleFrozen,
   SparkServingScheduleRefused,
   spark_serving_freeze_execution_schedule,
   spark_serving_frozen_schedule_order,
   scheduled_rows_list,
 }
-import gunbc.spark_serving_release {
+import gunbc.spark.serving_release {
   RuntimeArtifactIdentity,
   SparkServingReleaseIdentity,
   SparkServingOccurrence,
   SparkServingRelease,
 }
-import gunbc.spark_serving_membership {
+import gunbc.spark.serving_membership {
   SparkServingMember,
   SparkServingMemberAt,
   SparkServingResourceAddress,
   SparkServingRuntimeRootAddress,
   spark_serving_desired_members,
 }
-import gunbc.spark_serving_observed_members {
+import gunbc.spark.serving_observed_members {
   SparkServingObservedUnitState,
   UserUnitStateObserved,
   UserUnitStateAbsent,
@@ -63,7 +63,7 @@ import gunbc.spark_serving_observed_members {
   spark_serving_activity_was_observed,
   spark_serving_observed_unit_activity_members,
 }
-import gunbc.spark_serving_converge_plan {
+import gunbc.spark.serving_converge_plan {
   SparkServingTypedActionProjection,
   SparkServingTypedActionsProjected,
   SparkServingTypedActionsRefused,
@@ -79,17 +79,17 @@ import gunbc.spark_serving_converge_plan {
   SparkServingPlanArtifactRefused,
   spark_serving_fleet_converge_plan_artifact,
 }
-import gunbc.spark_serving_member_realization {
+import gunbc.spark.serving_member_realization {
   spark_serving_install_effects_for_add,
   spark_serving_user_unit_install_effects,
 }
-import gunbc.spark_serving_realization {
+import gunbc.spark.serving_realization {
   ServingInstallEffect,
   EnableUserUnit,
   WriteUserUnitFile,
   ReloadUserManager,
 }
-import gunbc.spark_serving_desired {
+import gunbc.spark.serving_desired {
   SparkServingDesiredAdmission,
   SparkServingDesiredAdmitted,
   SparkServingDesiredRefused,

@@ -2,15 +2,15 @@ module test.claim.spark_grant_privileged_operation_witness
 
 import std.types { Bool, String, NonEmptyStr, List }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
-import gunbc.spark_bootstrap_credential {
+import gunbc.spark.bootstrap_credential {
   SparkCredentialStanding,
   CredentialMaterialized,
   CredentialMaterializationPending,
 }
-import gunbc.spark_managed_access_bootstrap { RebootThisHost, spark_managed_grant_population, spark_managed_grant_sudoers_command }
+import gunbc.spark.managed_access_bootstrap { RebootThisHost, spark_managed_grant_population, spark_managed_grant_sudoers_command }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
 import gunbc.fleet_known_hosts_anchor { portable_remote_words }
-import gunbc.spark_grant_privileged_operation {
+import gunbc.spark.grant_privileged_operation {
   spark_sudo_prompt_sentinel,
   OperatorBootstrapCredentialLease,
   spark_bootstrap_credential_lease,

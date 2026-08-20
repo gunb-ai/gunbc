@@ -39,10 +39,10 @@ import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, 
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
 import product.placement_supply { HostIdentity }
 import gunbc.auth.access_token_source { GcloudPrintToken }
-import gunbc.spark_credential_workflow { run_with_materialized_fleet_ssh_binding }
+import gunbc.spark.credential_workflow { run_with_materialized_fleet_ssh_binding }
 import gunbc.fleet_ssh_access { fleet_automation_ssh_key, fleet_automation_ssh_key_fingerprint }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
-import gunbc.spark_managed_access_bootstrap {
+import gunbc.spark.managed_access_bootstrap {
   PrincipalReachObservation,
   SparkManagedAccessStanding,
   ManagedAccessGrounded,
@@ -58,8 +58,8 @@ import gunbc.spark_managed_access_bootstrap {
   spark_operator_bootstrap_login,
   spark_bootstrap_plan_effects,
 }
-import gunbc.spark_managed_grant_reconcile { spark_managed_grant_report }
-import gunbc.spark_managed_access_bootstrap { SparkGrantOutcome, GrantEnumerated, GrantAbsent, GrantProbeRefused }
+import gunbc.spark.managed_grant_reconcile { spark_managed_grant_report }
+import gunbc.spark.managed_access_bootstrap { SparkGrantOutcome, GrantEnumerated, GrantAbsent, GrantProbeRefused }
 import product.placement_supply { HostIdentity }
 
 // READ-ONLY measurement (parent msg_e767a783): before anyone grants new access, measure

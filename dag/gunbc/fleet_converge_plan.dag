@@ -36,7 +36,7 @@ import gunbc.membership_reconcile {
   membership_refusal_count,
 }
 import gunbc.ownership { Ownership, Owned }
-import gunbc.spark_serving_execution_schedule { ScheduledRows, scheduled_rows_empty, scheduled_rows_list }
+import gunbc.spark.serving_execution_schedule { ScheduledRows, scheduled_rows_empty, scheduled_rows_list }
 import gunbc.fleet_converge_timer {
   fleet_converge_service_unit_name,
   fleet_converge_timer_unit_name,
@@ -64,12 +64,12 @@ import gunbc.host_converge {
   systemd_tasks_max_property,
 }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
-import gunbc.spark_serving_membership {
+import gunbc.spark.serving_membership {
   SparkServingMember,
   SparkServingMemberAt,
   spark_serving_member_key,
 }
-import gunbc.spark_serving_realization { ServingInstallEffect, EnableLingerForOwnAccount }
+import gunbc.spark.serving_realization { ServingInstallEffect, EnableLingerForOwnAccount }
 import gunbc.remote_operation {
   PlannedRemoteStep, RemoteOperation, remote_operation_label, remote_operations_wire }
 

@@ -1,7 +1,7 @@
 module test.claim.spark_serving_unit_observation_witness_test
 
 import std.types { Bool, String, NonEmptyStr }
-import gunbc.spark_serving_observed_members {
+import gunbc.spark.serving_observed_members {
   SparkServingUnitManagerState,
   UserUnitManagerEnabled,
   UserUnitManagerDisabled,
@@ -16,15 +16,15 @@ import gunbc.spark_serving_observed_members {
   spark_serving_user_unit_is_enabled_argv,
   spark_serving_unit_state_was_observed,
 }
-import gunbc.spark_serving_membership { spark_serving_user_unit_state_digest }
-import gunbc.spark_serving_unit_render {
+import gunbc.spark.serving_membership { spark_serving_user_unit_state_digest }
+import gunbc.spark.serving_unit_render {
   spark_serving_user_unit_content_identity,
   spark_serving_user_unit_content_wire,
   spark_serving_desired_user_unit_content_identity,
   spark_serving_desired_user_unit_text,
 }
 import std.materialization_ladder { string_list_contains }
-import gunbc.spark_serving_install_paths { spark_serving_user_unit_path }
+import gunbc.spark.serving_install_paths { spark_serving_user_unit_path }
 
 fn digest_of(state: SparkServingObservedUnitState) -> String {
   match state {

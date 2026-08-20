@@ -1,8 +1,8 @@
 module gunbc.ci_spec
 import extdeps.cloud.gcp.secret_ref { secret_ref_access_url, secret_ref_version_resource }
-import gunbc.spark_credential_workflow { spark_administrator_password_secret_ref }
-import gunbc.spark_grant_privileged_operation { spark_grant_credential_path_env }
-import gunbc.spark_bootstrap_provision { spark_bootstrap_cloud_principal_member }
+import gunbc.spark.credential_workflow { spark_administrator_password_secret_ref }
+import gunbc.spark.grant_privileged_operation { spark_grant_credential_path_env }
+import gunbc.spark.bootstrap_provision { spark_bootstrap_cloud_principal_member }
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
@@ -596,7 +596,7 @@ fn gunbc_ci_fleet_key_agent_script() -> String {
 // A 403 DOES NOT ESTABLISH THAT THE SECRET EXISTS, and the second cut of this step claimed it did:
 // "an access grant and not a missing secret". Secret Manager answers 403 both for a version that
 // exists and is not readable and for one that does not exist -- it hides existence from principals
-// who may not read it. gunbc.spark_bootstrap_provision already records exactly this ambiguity about
+// who may not read it. gunbc.spark.bootstrap_provision already records exactly this ambiguity about
 // exactly this API, having been burned by reading an empty testIamPermissions response as proof of
 // denial rather than of nothing. So the refusal states the ambiguity and gives the remedy that
 // covers both arms, rather than picking the arm that happens to fit the current guess.
@@ -759,7 +759,7 @@ fn gunbc_ci_spark_serving_reboot_invoke() -> String {
         concat("ROOT=", ci_repo_root_shell(), "\n"),
         gunbc_run_shell(
           source_roots: witness_layer_roots,
-          entry: "dag/gunbc/spark_serving_reboot_probe.dag",
+          entry: "dag/gunbc/spark/serving_reboot_probe.dag",
           function: "spark_serving_reboot_ci_wet",
           rooted: true,
           claim_run: false
@@ -789,7 +789,7 @@ fn gunbc_ci_spark_grant_install_invoke() -> String {
         concat("ROOT=", ci_repo_root_shell(), "\n"),
         gunbc_run_shell(
           source_roots: witness_layer_roots,
-          entry: "dag/gunbc/spark_managed_grant_install.dag",
+          entry: "dag/gunbc/spark/managed_grant_install.dag",
           function: "spark_grant_install_ci_wet",
           rooted: true,
           claim_run: false
@@ -819,7 +819,7 @@ fn gunbc_ci_spark_serving_observe_invoke() -> String {
         concat("ROOT=", ci_repo_root_shell(), "\n"),
         gunbc_run_shell(
           source_roots: witness_layer_roots,
-          entry: "dag/gunbc/spark_serving_observe.dag",
+          entry: "dag/gunbc/spark/serving_observe.dag",
           function: "spark_serving_observe_ci_wet",
           rooted: true,
           claim_run: false
@@ -838,7 +838,7 @@ fn gunbc_ci_spark_serving_converge_slice_invoke() -> String {
         concat("ROOT=", ci_repo_root_shell(), "\n"),
         gunbc_run_shell(
           source_roots: witness_layer_roots,
-          entry: "dag/gunbc/spark_serving_converge_slice_wet.dag",
+          entry: "dag/gunbc/spark/serving_converge_slice_wet.dag",
           function: "spark_serving_converge_slice_ci_wet",
           rooted: true,
           claim_run: false

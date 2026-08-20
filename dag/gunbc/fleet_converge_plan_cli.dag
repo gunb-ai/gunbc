@@ -35,7 +35,7 @@ import gunbc.fleet_converge_plan {
   fleet_converge_plan_content_hash_path,
   fleet_converge_spark_serving_typed_actions_wire,
 }
-import gunbc.spark_serving_execution_schedule {
+import gunbc.spark.serving_execution_schedule {
   scheduled_rows_list,
 }
 

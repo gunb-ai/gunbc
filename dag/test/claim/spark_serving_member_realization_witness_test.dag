@@ -9,7 +9,7 @@ import gunbc.membership_reconcile {
   MemberEffect,
   EffectReplace,
 }
-import gunbc.spark_serving_membership {
+import gunbc.spark.serving_membership {
   SparkServingMember,
   SparkServingMemberAt,
   SparkServingResourceAddress,
@@ -22,12 +22,12 @@ import gunbc.spark_serving_membership {
   spark_serving_serving_principal,
   spark_serving_primary_model_slot,
 }
-import gunbc.spark_serving_member_realization {
+import gunbc.spark.serving_member_realization {
   spark_serving_install_effects_for_member_effect,
   spark_serving_install_effects_for_member_action,
   spark_serving_install_effects_include,
 }
-import gunbc.spark_serving_realization {
+import gunbc.spark.serving_realization {
   ServingInstallEffect,
   InstallOwnedRuntimeClosure,
   WriteUserUnitFile,

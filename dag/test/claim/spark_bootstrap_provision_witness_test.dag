@@ -4,7 +4,7 @@ module test.claim.spark_bootstrap_provision_witness
 // reached by bare reference through pool coincidence -- must now be named too. That is the correct
 // direction (a witness should carry its own edge to its subject), but the transition is abrupt:
 // one import turned every bare reference into "no such function".
-import gunbc.spark_bootstrap_provision {
+import gunbc.spark.bootstrap_provision {
   SparkCredentialKind, FactoryHotspotCredential, AdministratorCredential,
   SparkCredentialOccurrence, spark_srv5, spark_srv6, spark_credential_occurrence,
   spark_credential_population, spark_occurrence_eq, spark_credential_kind_eq,

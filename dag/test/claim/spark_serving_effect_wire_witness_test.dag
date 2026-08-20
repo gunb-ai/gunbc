@@ -2,7 +2,7 @@ module test.claim.spark_serving_effect_wire_witness
 
 import std.logic { Bool }
 import gunbc.fleet_converge_plan { fleet_converge_spark_serving_effect_wire }
-import gunbc.spark_serving_realization {
+import gunbc.spark.serving_realization {
   EnableLingerForOwnAccount,
   EnableSystemUnit,
   EnableUserUnit,

@@ -1,8 +1,8 @@
 module test.claim.spark_serving_runtime_install_witness
 
 import std.types { String, List, Bool, NonEmptyStr }
-import gunbc.spark_serving_realization { InstallOwnedRuntimeClosure, MaterializeModelArtifact }
-import gunbc.spark_serving_converge_realize {
+import gunbc.spark.serving_realization { InstallOwnedRuntimeClosure, MaterializeModelArtifact }
+import gunbc.spark.serving_converge_realize {
   SparkServingInstallRemoteCommandsPresent,
   SparkServingInstallRemoteCommandsRefused,
   realize_spark_serving_install_effect_command,

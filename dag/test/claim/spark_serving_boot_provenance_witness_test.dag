@@ -3,7 +3,7 @@ module test.claim.spark_serving_boot_provenance_witness
 import std.types { Bool, String, NonEmptyStr, Int }
 import extdeps.ssh.session { SshSessionExecResult }
 import gunbc.fleet_known_hosts_anchor { portable_remote_words }
-import gunbc.spark_serving_boot_provenance {
+import gunbc.spark.serving_boot_provenance {
   spark_serving_active_enter_probe_argv,
   spark_serving_uptime_probe_argv,
   spark_serving_classify_boot_provenance,

@@ -2,7 +2,7 @@ module test.claim.spark_serving_durability_witness
 
 import std.types { Bool, String, NonEmptyStr, List, Int }
 import extdeps.ssh.session { SshSessionExecResult }
-import gunbc.spark_serving_durability {
+import gunbc.spark.serving_durability {
   spark_serving_boot_id_probe_argv,
   spark_serving_boot_identity_from_probe,
   spark_serving_reboot_transition,

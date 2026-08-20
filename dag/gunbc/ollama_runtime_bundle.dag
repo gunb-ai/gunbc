@@ -12,7 +12,7 @@ import extdeps.ollama.binary_release {
 }
 import extdeps.archive.format { ArchiveCompressionCodec, Gzip, Zstd }
 
-data ollama_runtime_bundle_note: String = "Release-bundled Ollama runtime closure identity at ollama_required_release (extdeps.ollama.binary_release). Produces the RuntimeArtifactIdentity.closure_digest consumed by gunbc.spark_serving_release. Materialization binds through gunbc.package_delivery per #8225 — this module derives identity only; it does not install."
+data ollama_runtime_bundle_note: String = "Release-bundled Ollama runtime closure identity at ollama_required_release (extdeps.ollama.binary_release). Produces the RuntimeArtifactIdentity.closure_digest consumed by gunbc.spark.serving_release. Materialization binds through gunbc.package_delivery per #8225 — this module derives identity only; it does not install."
 
 // THE CODEC, NOT THE DISTRIBUTION SUFFIX. The suffix is a filename convention -- `.tgz` and
 // `.tar.gz` are one codec spelled two ways and unpack identically -- so hashing it would split one

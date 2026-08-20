@@ -1,19 +1,19 @@
 module test.claim.spark_serving_write_unit_operation_witness_test
 
 import std.types { Bool, String, List, Int }
-import gunbc.spark_serving_realization {
+import gunbc.spark.serving_realization {
   ServingInstallEffect,
   WriteUserUnitFile,
   EnableLingerForOwnAccount,
   RunContainerAsOwnUser,
 }
-import gunbc.spark_serving_converge_realize {
+import gunbc.spark.serving_converge_realize {
   SparkServingInstallRemoteCommandsVerdict,
   SparkServingInstallRemoteCommandsPresent,
   SparkServingInstallRemoteCommandsRefused,
   realize_spark_serving_install_effect_commands,
 }
-import gunbc.spark_serving_desired { spark_serving_automation_principal_login }
+import gunbc.spark.serving_desired { spark_serving_automation_principal_login }
 import gunbc.remote_operation {
   RemoteOperation,
   RemoteArgv,
@@ -32,10 +32,10 @@ import gunbc.typed_remote_file_write {
   RemoteFileModeOwnerReadWrite,
 }
 import std.types { NonEmptyStr }
-import gunbc.spark_serving_runtime_receipt { spark_serving_executor_home }
+import gunbc.spark.serving_runtime_receipt { spark_serving_executor_home }
 import gunbc.file_access { FileTreeScope }
-import gunbc.spark_serving_unit_render { spark_serving_desired_user_unit_text }
-import gunbc.spark_serving_install_paths { spark_serving_user_unit_path, spark_serving_user_unit_dir }
+import gunbc.spark.serving_unit_render { spark_serving_desired_user_unit_text }
+import gunbc.spark.serving_install_paths { spark_serving_user_unit_path, spark_serving_user_unit_dir }
 
 // Position-wise kind, so an ordering claim asserts WHERE each kind sits rather than only how many
 // of each exist. A count-only claim is satisfied by any permutation, including the one that puts the

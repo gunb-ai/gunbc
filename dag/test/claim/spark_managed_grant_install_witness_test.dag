@@ -1,15 +1,15 @@
 module test.claim.spark_managed_grant_install_witness
 
 import std.types { Bool, String, NonEmptyStr, List }
-import gunbc.spark_managed_access_bootstrap {
+import gunbc.spark.managed_access_bootstrap {
   EnableLingerForOwnAccount,
   RebootThisHost,
   spark_managed_grant_population,
   spark_managed_grant_sudoers_command,
 }
-import gunbc.spark_managed_grant_reconcile { spark_managed_grant_dropin_path }
+import gunbc.spark.managed_grant_reconcile { spark_managed_grant_dropin_path }
 import extdeps.cloud.gcp.secret_ref { secret_ref_version_resource }
-import gunbc.spark_managed_grant_install {
+import gunbc.spark.managed_grant_install {
   spark_grant_install_plan,
   spark_grant_install_operation_labels,
   cleanup_grant_staging_argv,
@@ -41,8 +41,8 @@ import gunbc.remote_operation {
   RemoteStepCompleted,
   RemoteStepFailed,
 }
-import gunbc.spark_bootstrap_credential { CredentialMaterializationPending, CredentialMaterialized }
-import gunbc.spark_grant_privileged_operation {
+import gunbc.spark.bootstrap_credential { CredentialMaterializationPending, CredentialMaterialized }
+import gunbc.spark.grant_privileged_operation {
   OperatorBootstrapCredentialLease,
   spark_bootstrap_credential_lease,
   CredentialNotEnrolled,

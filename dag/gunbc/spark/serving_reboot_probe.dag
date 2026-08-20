@@ -1,0 +1,208 @@
+module gunbc.spark.serving_reboot_probe
+
+import std.types { String, NonEmptyStr, List, Bool, Int }
+import std.algebra { trim }
+import product.placement_supply { HostIdentity }
+import extdeps.ssh.session { SshSessionExecResult }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext }
+import gunbc.spark.serving_credential_locus {
+  prepare_spark_serving_agent_context,
+  spark_serving_slice_transport,
+  SparkServingContextReady,
+  SparkServingContextRefused,
+}
+import gunbc.fleet_multi_principal_probe {
+  spark_converge_target_selection,
+  SparkConvergeTargetSingle,
+  SparkConvergeTargetAllObserveOnly,
+  SparkConvergeTargetRefused,
+}
+import gunbc.host_effect_realize { run_typed_argv_transport }
+import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.spark.managed_access_bootstrap { spark_managed_grant_argv, RebootThisHost }
+import gunbc.clock_read { clock_now_probed_at }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+
+// REBOOTING IS A DURABILITY PROBE, NOT A CONVERGE REMEDY, and the distinction is the whole reason
+// this lives in its own module rather than as a thirteenth ServingInstallEffect.
+//
+// No membership diff ever asks for a reboot. Nothing about a host's declared state is repaired by
+// power-cycling it, and a reconcile that emitted one would be actuating on a subject it does not
+// model. What a reboot answers is a different question -- does the declared state SURVIVE one --
+// and that question is asked by an operator about the fleet, not by the plan about a member.
+//
+// SO THE RECEIPT IS NOT THIS STEP. This entry issues the reboot and reports what the far side said;
+// it establishes nothing about durability by itself. The evidence is the CONVERGE that runs after
+// the host comes back: an empty replan plus a fresh generation, against desired state nobody edited
+// in between. A step that claimed durability from its own exit code would be reporting that a
+// command was accepted, which is not the fact anyone wants.
+//
+// WHY ENABLEMENT IS WHAT IT TESTS. Before activity and enablement were separate members, a reboot
+// was the ONLY thing that could distinguish them: `enable --now` left a unit running and enabled,
+// and a unit that was merely started looked identical until the power cycle. Splitting them made the
+// distinction observable without rebooting -- and this probe is what proves the split describes
+// reality rather than merely modelling it.
+type SparkServingRebootOutcome
+  = SparkServingRebootIssued {
+      host: HostIdentity
+      exit_code: Int
+      stderr: String
+    }
+  | SparkServingRebootRejected {
+      host: HostIdentity
+      exit_code: Int
+      stderr: String
+    }
+  | SparkServingRebootNotAttempted {
+      host: HostIdentity
+      cause: NonEmptyStr
+    }
+
+// `systemctl reboot` rather than `reboot`: the former asks the init system to take the system down
+// through its ordered shutdown transaction, which is what a serving host with a user manager and an
+// enabled unit needs; `reboot` on a systemd host is a compatibility shim for the same call anyway,
+// and naming the shim would be naming a nickname for the operation.
+//
+// `sudo -n` and no interactive fallback: the automation account escalates non-interactively or the
+// step refuses, exactly as the linger effect does. A reboot that prompted for a password would hang
+// a job rather than fail it.
+// DERIVED FROM THE GRANT, never spelled again here. The sudoers command the bootstrap installs and
+// the argv this actuator runs are one fact; writing `sudo -n systemctl reboot` a second time would
+// be the fork that lets the two drift until a rejected reboot looks like a host problem.
+fn spark_serving_reboot_argv() -> List<String> {
+  spark_managed_grant_argv(grant: RebootThisHost)
+}
+
+// THE CONNECTION DYING IS THE EXPECTED OUTCOME AND IS NOT INTERPRETED HERE.
+//
+// A host that reboots tears down the ssh session mid-command, so the client can report success, a
+// non-zero status, or a transport-level error depending on how far the shutdown got before the
+// socket closed. None of those distinguish "the reboot happened" from "the command was rejected" --
+// only the host coming back does. So this records the raw answer and does NOT classify it as
+// success or failure, which is the arm where an absorbing "it probably worked" would otherwise live.
+fn spark_serving_issue_reboot(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+) -> SparkServingRebootOutcome {
+  match run_typed_argv_transport(
+    argv: spark_serving_reboot_argv(),
+    transport: spark_serving_slice_transport(context: context, host: host),
+  ) {
+    TypedArgvExecRefused { reason: why } =>
+      SparkServingRebootNotAttempted {
+        host: host,
+        cause: join(["transport refused the reboot leg, it was never attempted: ", why], "") as NonEmptyStr,
+      }
+    TypedArgvExecConverged { result: r } =>
+      if spark_serving_reboot_was_rejected_outright(result: r) {
+        SparkServingRebootRejected {
+          host: host,
+          exit_code: r.exit_code,
+          stderr: trim(s: r.stderr),
+        }
+      } else {
+        SparkServingRebootIssued {
+          host: host,
+          exit_code: r.exit_code,
+          stderr: trim(s: r.stderr),
+        }
+      }
+  }
+}
+
+// THE ONE CASE THE AMBIGUITY ARGUMENT DOES NOT COVER, and this arm exists because the first version
+// of this module returned SUCCESS over it. srv6 answered `sudo: a password is required` with exit 1,
+// and the step went green: the reboot had been definitively refused BEFORE the command ran, the host
+// was certainly still up, and the probe reported that it had done its job. That is the absorbing
+// fallback in its purest form -- an unknowable outcome used to excuse a knowable one.
+//
+// A privilege refusal is decidable: sudo rejected the escalation, so `systemctl reboot` never
+// executed and no shutdown was begun. The connection cannot have died from a reboot that did not
+// start, so nothing about it is ambiguous. It refuses.
+//
+// The discrimination is on sudo's own diagnostic rather than on the exit code, because exit 1 is
+// also what a half-completed shutdown can produce -- the exit code is exactly the signal that cannot
+// tell these apart, which is why the ambiguity argument was reached for in the first place.
+fn spark_serving_reboot_was_rejected_outright(result: SshSessionExecResult) -> Bool {
+  string_contains(result.stderr, "a password is required")
+    || string_contains(result.stderr, "is not allowed to execute")
+    || string_contains(result.stderr, "no tty present")
+}
+
+fn spark_serving_reboot_outcome_wire(outcome: SparkServingRebootOutcome) -> String {
+  match outcome {
+    SparkServingRebootRejected { host: h, exit_code: code, stderr: err } =>
+      join([
+        "reboot-rejected host=", h as String,
+        " ssh_exit=", to_string(code),
+        " stderr=", err,
+        " -- escalation was refused, so `systemctl reboot` never ran and the host is still up\n",
+      ], "")
+    SparkServingRebootNotAttempted { host: h, cause: c } =>
+      join(["reboot-not-attempted host=", h as String, " cause=", c as String, "\n"], "")
+    SparkServingRebootIssued { host: h, exit_code: code, stderr: err } =>
+      join([
+        "reboot-issued host=", h as String,
+        " ssh_exit=", to_string(code),
+        " stderr=", err,
+        " -- durability is NOT established by this line; the receipt is the post-reboot converge\n",
+      ], "")
+  }
+}
+
+// A reboot was attempted exactly when the transport carried the argv. That is the only thing this
+// entry can honestly answer, and it is deliberately weaker than "the host rebooted".
+fn spark_serving_reboot_was_attempted(outcome: SparkServingRebootOutcome) -> Bool {
+  match outcome {
+    SparkServingRebootIssued { host: _, exit_code: _, stderr: _ } => true
+    SparkServingRebootRejected { host: _, exit_code: _, stderr: _ } => false
+    SparkServingRebootNotAttempted { host: _, cause: _ } => false
+  }
+}
+
+data spark_serving_reboot_receipt_path: String = "target/spark-serving-reboot-receipt.txt"
+
+data spark_serving_reboot_ci_attempt_raw: String = "spark-serving-reboot-ci"
+
+func spark_serving_reboot_ci_wet() -> ProcessExit {
+  match prepare_spark_serving_agent_context(attempt_raw: spark_serving_reboot_ci_attempt_raw) {
+    SparkServingContextRefused { cause: cause } => exit_failure(reason: cause)
+    SparkServingContextReady { context: context, receipt: context_receipt } =>
+      spark_serving_reboot_with_context(context: context, context_receipt: context_receipt)
+  }
+}
+
+// A REBOOT NAMES ITS TARGET OR IT DOES NOT RUN. The converge entry has an all-hosts arm for
+// observation, and inheriting that here would let an unset variable power-cycle the whole fleet --
+// so the fan-out arm refuses rather than widening, which is the same rule the mutating converge
+// applies to itself.
+func spark_serving_reboot_with_context(
+  context: FleetSshExecutionContext,
+  context_receipt: String,
+) -> ProcessExit {
+  let now = clock_now_probed_at()
+  match spark_converge_target_selection(execute_apply: true) {
+    SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
+    SparkConvergeTargetAllObserveOnly =>
+      exit_failure(
+        reason: "spark_serving_reboot_ci_wet: SPARK_CONVERGE_TARGET names no host, and a reboot must never fan out across the fleet from an unset variable",
+      )
+    SparkConvergeTargetSingle { host: only } => {
+      let outcome = spark_serving_issue_reboot(context: context, host: only)
+      let body = join([
+        "spark_serving_reboot_ci_wet probed_at=", now as String, "\n",
+        context_receipt,
+        spark_serving_reboot_outcome_wire(outcome: outcome),
+      ], "")
+      let w = Filesystem.Write(path: spark_serving_reboot_receipt_path, content: body)
+      if w.success == false {
+        exit_failure(reason: join(["reboot receipt write failed: ", w.error], ""))
+      } else if spark_serving_reboot_was_attempted(outcome: outcome) == false {
+        exit_failure(reason: body)
+      } else {
+        ExitSuccess
+      }
+    }
+  }
+}

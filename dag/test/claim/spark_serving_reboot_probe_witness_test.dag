@@ -2,7 +2,7 @@ module test.claim.spark_serving_reboot_probe_witness
 
 import std.types { Bool, String, NonEmptyStr, Int }
 import extdeps.ssh.session { SshSessionExecResult }
-import gunbc.spark_serving_reboot_probe {
+import gunbc.spark.serving_reboot_probe {
   spark_serving_reboot_argv,
   spark_serving_reboot_was_rejected_outright,
   spark_serving_reboot_was_attempted,
