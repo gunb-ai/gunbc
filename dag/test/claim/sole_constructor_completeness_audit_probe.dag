@@ -163,6 +163,22 @@ test fn f10_neither_direct_order_independent() -> Bool {
     == violation_count(source: f10_neither_direct_ba_source, wanted: "SoleConstructorViolation")
 }
 
+// Diagnostic (non-claim, printed value): exact integer counts behind the f10
+// battery's Bool verdicts, to distinguish CensusNotRunnable (-1) from a real
+// wrong count.
+fn f10_diag_direct_sealed_count() -> Int {
+  violation_count(source: f10_direct_select_sealed_source, wanted: "SoleConstructorViolation")
+}
+fn f10_diag_direct_open_count() -> Int {
+  violation_count(source: f10_direct_select_open_source, wanted: "SoleConstructorViolation")
+}
+fn f10_diag_neither_ab_count() -> Int {
+  violation_count(source: f10_neither_direct_ab_source, wanted: "SoleConstructorViolation")
+}
+fn f10_diag_neither_ba_count() -> Int {
+  violation_count(source: f10_neither_direct_ba_source, wanted: "SoleConstructorViolation")
+}
+
 // ---------------------------------------------------------------------------
 // Addendum form 11: does the wall fire at a SECOND, DIFFERENT concrete type
 // argument of the same generic sole_constructor carrier - not just Int (the
