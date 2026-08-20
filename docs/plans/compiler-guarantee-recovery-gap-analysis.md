@@ -1173,9 +1173,26 @@ than argued.
    caller, so the invalid state
    remains writable and the class sits at *mitigatable* on that axis rather than repaired; the climb
    is a span constructor that cannot be called without a file, at which point the sentinel has no
-   constructor rather than a discouraged one. Secondarily, the count of genuinely-unlocatable rows
-   remaining after #8607 has never been measured, and that residue — not the 46 — is the real
-   remaining population. **Recorded because it is a routing fact and not only a technical one:**
+   constructor rather than a discouraged one. **The residue is now sized, and it is denominated in the MIRROR, not the
+   authority — the running binary executes the mirror.** At `origin/main`: authority
+   `src/v1/*.dag` carries 56 `make_span` occurrences (58 before #8607; the delta of 2 is that
+   fix, so 56 is already post-fix and subtracting again double-charges it); the GENERATED mirror
+   carries 57. **The +1 is localized, not aggregate:** joining each generated mirror to the
+   authority its own line 2 declares gives six of seven pairs at exactly zero, with the entire
+   delta in `v1_compiler_parse.rs` (22 vs 21) — the exact file and direction of #8607's unapplied
+   `call_span`. Three instruments with no shared step now agree: a diff read locating line 11660,
+   an aggregate count, and a per-file join. An offsetting explanation would need a nonzero pair
+   somewhere and there is none. **A hand-file bucket was proposed and WITHDRAWN**: 22 further
+   `make_span` sites live in non-generated files, but 18 are `make_span(0, 0)` — a null span has
+   no file to lose, so the fabricated-plausible-location harm does not apply — and the rest are
+   the test asserting the distinction (one named `make_file_span_distinct_from_make_span`). Its
+   repair obligation is approximately zero. **What that withdrawal leaves is a binding design
+   constraint on the climb, not a residue:** those 18 callers want a NULL-SPAN constructor and
+   reach for the file-losing one because it is the one that takes two arguments. So the
+   unwritability change must ship a null-span sibling in the same diff, or 18 call sites have
+   nowhere to go and the refactor is unmergeable on contact. Every count here carries the revision
+   it was measured at, because a count adjusted for a change already contained in the tree it was
+   measured on is indistinguishable from a correct one. **Recorded because it is a routing fact and not only a technical one:**
    #8607 was authored, reviewed and merged by a lane outside this investigation, naming the same
    46-72 population independently, while this row's instruments were being built to characterize
    it. Two lanes converged on one defect from opposite directions and neither knew; the hours spent
