@@ -264,11 +264,6 @@ fn measure_generated_surface(
     })
 }
 
-/// Every arm here REFUSES. There is deliberately no arm that reports "no drift" because the
-/// measurement could not be taken — an emit that produced zero files, or a population the two
-/// sides disagree about, is ignorance, and rendering ignorance as the clean verdict is the
-/// empty-observation narrow DESIGN names: strictly worse than widening, because a widen is
-/// merely expensive and a narrow is silently uncovered.
 /// The emitted generated surface, keyed by basename.
 ///
 /// Routed through the SAME `measure_generated_surface` the drift gate and the regen path use, so
@@ -313,6 +308,11 @@ pub fn emitted_generated_sources() -> Result<HashMap<String, String>, String> {
     Ok(out)
 }
 
+/// Every arm here REFUSES. There is deliberately no arm that reports "no drift" because the
+/// measurement could not be taken — an emit that produced zero files, or a population the two
+/// sides disagree about, is ignorance, and rendering ignorance as the clean verdict is the
+/// empty-observation narrow DESIGN names: strictly worse than widening, because a widen is
+/// merely expensive and a narrow is silently uncovered.
 pub fn measure_generated_drift() -> Result<GeneratedDriftMeasurement, String> {
     let workspace = workspace_root();
     let stage0_src = workspace.join("src/v1/stage0/src");

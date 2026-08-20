@@ -19795,17 +19795,22 @@ fn behavioral_receipt_census(source_roots: &[String]) -> Result<bool, String> {
                 if let Ok(node) = parse_dag_module_node(&format!("{m}.dag"), src) {
                     for name in missed {
                         match node.children.iter().find(|c| &c.name == name) {
-                            Some(c) => eprintln!(
-                                "receipt-census:   SHAPE {m}::{name} connective={:?} children={} \
-                                 first_child_children={}",
-                                c.connective,
-                                c.children.len(),
-                                c.children
-                                    .iter()
-                                    .next()
-                                    .map(|f| f.children.len())
-                                    .unwrap_or(0)
-                            ),
+                            Some(c) => {
+                                let f = c.children.iter().next();
+                                eprintln!(
+                                    "receipt-census:   SHAPE {m}::{name} connective={:?} \
+                                     children={} | field name={:?} children={} conn={:?} \
+                                     type_annotation={:?} inferred={}",
+                                    c.connective,
+                                    c.children.len(),
+                                    f.map(|f| f.name.clone()),
+                                    f.map(|f| f.children.len()).unwrap_or(0),
+                                    f.map(|f| f.connective.clone()),
+                                    f.and_then(|f| f.type_annotation.as_ref())
+                                        .map(|t| t.name.clone()),
+                                    f.map(|f| f.inferred.is_some()).unwrap_or(false)
+                                )
+                            }
                             None => eprintln!(
                                 "receipt-census:   SHAPE {m}::{name} — NO module child carries \
                                  this name; the declaration is not where the reader looks"
