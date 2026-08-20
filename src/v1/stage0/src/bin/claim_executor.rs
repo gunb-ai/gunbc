@@ -10509,14 +10509,13 @@ fn run() -> Result<ExitCode, ExitCode> {
             &regen_receipt_path,
         ) {
             Ok(outcome) => {
-                // Both values here ARE measured by this pass, so they print unqualified. The
-                // accessors return Option because the sibling variant does not measure them; a
-                // None on this path would mean the first pass built the wrong variant, so it
-                // prints as `unmeasured` rather than defaulting to a plausible-looking value.
-                // Read through accessors rather than by matching the variant: the
+                // Both values here ARE measured by this pass, so they print unqualified. Read
+                // through accessors rather than by matching the variant: the
                 // `required_regen_host` module is private to `cli_run`, so the type is usable here
-                // but not nameable. `None` would mean the first pass built the wrong variant, so
-                // it prints `unmeasured` rather than defaulting to a plausible-looking value.
+                // but not nameable. The accessors return Option because the sibling variant does
+                // not measure these fields; a `None` on this path would mean the first pass built
+                // the wrong variant, so it prints `unmeasured` rather than defaulting to a
+                // plausible-looking value.
                 let fge = outcome
                     .receipt
                     .first_generation_equal()
