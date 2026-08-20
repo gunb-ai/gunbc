@@ -95,6 +95,14 @@ import gunbc.spark_serving_release {
   SparkServingObservationRefused,
 }
 import gunbc.spark_serving_unit_identity { spark_serving_unit_name }
+import gunbc.spark_serving_boot_provenance {
+  spark_serving_active_enter_probe_argv,
+  spark_serving_uptime_probe_argv,
+  spark_serving_classify_boot_provenance,
+  spark_serving_boot_provenance_wire,
+  SparkServingBootProvenance,
+  BootProvenanceUnobserved,
+}
 import gunbc.spark_serving_observed_members {
   spark_serving_observed_members,
   SparkServingObservedMemberProjection,
@@ -226,6 +234,8 @@ fn spark_serving_observe_host_via_locus(
     tags: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_tags_probe_words),
     nvidia_driver: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_nvidia_driver_probe_words),
     runtime_receipt: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_runtime_materialization_receipt_probe_argv()),
+    active_enter: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_active_enter_probe_argv()),
+    uptime: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_uptime_probe_argv()),
   )
   derive_spark_serving_observation(readback: readback)
 }
@@ -393,6 +403,8 @@ fn spark_serving_readback_from_probe_results(
   tags: SshSessionExecResult?,
   nvidia_driver: SshSessionExecResult?,
   runtime_receipt: SshSessionExecResult?,
+  active_enter: SshSessionExecResult?,
+  uptime: SshSessionExecResult?,
 ) -> SparkServingReadback {
   let tags_fields = spark_serving_tags_fields_from_probe(probe: tags)
   SparkServingReadback {
@@ -408,6 +420,24 @@ fn spark_serving_readback_from_probe_results(
     model_manifest_digest: tags_fields.model_manifest_digest,
     nvidia_driver: spark_serving_nvidia_driver_field_from_probe(probe: nvidia_driver),
     bind_address: SparkServingReadbackAbsent,
+    boot_provenance: spark_serving_boot_provenance_from_probes(active_enter: active_enter, uptime: uptime),
+  }
+}
+
+// A probe leg that never ran is UNOBSERVED, never a verdict that the unit failed to come up with the
+// boot. Collapsing an absent leg into a durability failure would manufacture the exact finding this
+// observation exists to report honestly.
+fn spark_serving_boot_provenance_from_probes(
+  active_enter: SshSessionExecResult?,
+  uptime: SshSessionExecResult?,
+) -> SparkServingBootProvenance {
+  match active_enter {
+    Absent => BootProvenanceUnobserved { cause: "ActiveEnterTimestampMonotonic probe leg did not run" as NonEmptyStr }
+    Present { value: enter } =>
+      match uptime {
+        Absent => BootProvenanceUnobserved { cause: "/proc/uptime probe leg did not run" as NonEmptyStr }
+        Present { value: up } => spark_serving_classify_boot_provenance(active_enter: enter, uptime: up)
+      }
   }
 }
 
@@ -421,6 +451,7 @@ fn spark_serving_readback_line(readback: SparkServingReadback) -> String {
     " model_tag=", spark_serving_readback_field_label(field: readback.model_tag),
     " model_digest=", spark_serving_readback_field_label(field: readback.model_manifest_digest),
     " nvidia_driver=", spark_serving_readback_field_label(field: readback.nvidia_driver),
+    " ", spark_serving_boot_provenance_wire(p: readback.boot_provenance),
     "\n",
   ], "")
 }
@@ -452,6 +483,8 @@ fn spark_serving_observe_host(
     host: host,
     raw_words: spark_serving_runtime_materialization_receipt_probe_argv(),
   )
+  let active_enter = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_active_enter_probe_argv())
+  let uptime = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_uptime_probe_argv())
   let readback = spark_serving_readback_from_probe_results(
     host: host,
     load_state: load_state,
@@ -460,6 +493,8 @@ fn spark_serving_observe_host(
     tags: tags,
     nvidia_driver: nvidia_driver,
     runtime_receipt: runtime_receipt,
+    active_enter: active_enter,
+    uptime: uptime,
   )
   derive_spark_serving_observation(readback: readback)
 }

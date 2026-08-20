@@ -35,6 +35,7 @@ type SystemdUnitProperty
   | TasksMax
   | TasksCurrent
   | ControlGroup
+  | ActiveEnterTimestampMonotonic
 
 fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
   match property {
@@ -46,6 +47,7 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     TasksMax => "TasksMax" as NonEmptyStr
     TasksCurrent => "TasksCurrent" as NonEmptyStr
     ControlGroup => "ControlGroup" as NonEmptyStr
+    ActiveEnterTimestampMonotonic => "ActiveEnterTimestampMonotonic" as NonEmptyStr
   }
 }
 
