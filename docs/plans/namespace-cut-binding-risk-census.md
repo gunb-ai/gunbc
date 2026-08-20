@@ -8,11 +8,32 @@
 
 **Status:** built and run, 2026-08-17.
 **Tool:** `tools/namespace_cut/binding_identity_oracle.py` (materializes both trees from git refs itself).
-**Receipt:** `tools/namespace_cut/binding_risk_census_receipt.json` — every row, plus pinned provenance.
+**Receipt: DELETED 2026-08-20, and this document is now a reading of nothing it can cite.**
+The two census receipts (`binding_risk_census_receipt.json`, `occurrence_index_receipt.json`,
+11.5 MB and 545,775 lines between them — 81% of this branch's entire diff) are removed.
+They had no executing consumer: nothing but this prose ever read them, and
+`is_edit_manifest: false` on the larger one says it drove no edit either.
+
+THE TERMINAL ORACLE THIS DOCUMENT SAID IT WAS NOT NOW EXISTS. The header below is
+explicit that a global-declarer-uniqueness census does not license merge, and that the
+real oracle needs both resolvers run. That is what the required-floor now does on a
+pinned subject: `planned == executed == terminal` witness outcomes at a named SHA and
+subject digest. An executed measurement supersedes a static census, so keeping the
+census beside it would be two answers to one question with the weaker one 11.5 MB long.
+
+AND THE WEAKER ONE IS WEAKER THAN IT LOOKS: both receipts are REGEX-DERIVED
+(`"grain": "one row per bare occurrence (regex-derived)"`). Regex instruments over this
+corpus were measured wrong repeatedly on 2026-08-20 — one census read 74,864 rewrites
+where the real defect population was a few hundred, and a qualified-reference checker
+needed four rounds of false-positive removal (2,450 -> 978 -> 451 -> 398 -> 17) before
+its number described the tree rather than its own regex. Committed as a `receipt`, that
+class of number acquires the standing of evidence without the execution to earn it.
 **Reproduce:** `python3 tools/namespace_cut/binding_identity_oracle.py e095c27543a HEAD out.json`
 
-Numbers below are from an earlier tree and are superseded by the receipt; the
-receipt is the authority, this prose is a reading of it.
+Numbers below are from an earlier tree, were superseded by the receipt, and the receipt
+is now deleted — so TREAT EVERY FIGURE IN THIS DOCUMENT AS UNVERIFIABLE. The reasoning
+is kept because it is independently useful (see the next section on why a diagnostic
+count is the wrong instrument); the counts are not evidence and must not be quoted.
 
 ## Why a count of diagnostics is the wrong instrument
 
