@@ -812,6 +812,33 @@ than argued.
    (`Refined<B>`), every construction form, interaction with `module_skips_direct_call_arg_check`.
    The capability ceiling's status — and the cardinality wall's first candidate
    (`type Refined<B> sole_constructor`) — both hang on this audit.
+   **One construction form measured (ARM 3, executed receipt, findings-only):** the Rust
+   emission target. `extdeps.uri` `UriValidatedScalar` is `sole_constructor` with a single
+   sanctioned mint, `uri_validated_scalar_construction`, whose fixed law refuses surrogate
+   and out-of-range code points; the `.dag` wall refuses a cross-module record literal for
+   it at compile time (`SoleConstructorViolation`). The stage0 Rust mirror of that same
+   module emits it as `pub struct UriValidatedScalar { pub admitted_cp: i64 }` deriving
+   `serde::Serialize, serde::Deserialize`. Executed against the emitted target
+   (`src/v1/stage0/tests/uri_scalar_forgery_receipt.rs`, run 2026-08-20 via a fresh remote
+   BuildBuddy dispatch with a bogus-flag reachability control that failed as required): a
+   direct Rust struct literal for the refused surrogate value `55296` (0xD800) compiles with
+   no wall at all, and `serde_json::from_value::<UriValidatedScalar>` **admits** `55296`
+   (surrogate-refused), `-1` and `1114112` (out-of-range-refused) — every value the `.dag`
+   mint refuses — while the positive control `65` is admitted on both sides, so this is not
+   a wholesale serde failure. Two independent forgery routes into a type whose only declared
+   consumer, `uri_percent_encode_admitted_scalar_wire`, accepts `UriValidatedScalar` and
+   nothing upstream of it. **Reading against §4b:** the capability ceiling for this carrier
+   on the source→`.dag`-acceptance path is unaffected (that wall holds); on the
+   source→Rust-emission path it is **below floor, not merely below ceiling** — a value the
+   modeled system refuses is silently constructible and flows to the carrier's sole declared
+   consumer with no typed, located refusal at all, which is exactly the class §5 forbids
+   outright rather than ranks on the ladder. This is a genuine unmeasured completeness gap
+   this audit item names, not a repair — no change lands to `extdeps.uri`, the emitter, or
+   the derive roster in the PR carrying this receipt; the repair (omit `Deserialize`, emit a
+   validating one, or seal the field behind `TryFrom`) is a separate design decision. The
+   receipt's assertions are the discriminating RED (documenting the forgeries admitted
+   today) and, per §4b's dissolution-on-climb rule, remain enrolled as the regression control
+   once a repair lands — they flip from "admits" to "refuses" rather than being deleted.
 1b. **Author the missing Tier 1 RED controls** (new, and the cheapest item here). They never
    existed. Start with the cardinality archetype, method existence, and declared-return
    conformance — each a three-line `.dag` program with an expected-error acceptance criterion,
