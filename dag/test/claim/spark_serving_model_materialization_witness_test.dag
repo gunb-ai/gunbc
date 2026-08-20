@@ -1,6 +1,7 @@
 module test.claim.spark_serving_model_materialization_witness
 
 import std.types { Bool, String, NonEmptyStr, Int, List }
+import gunbc.spark_serving_terminal_health { spark_serving_health_request_body }
 import gunbc.spark_serving_converge_realize {
   spark_serving_materialize_model_artifact_steps,
   spark_serving_checksum_line,
@@ -138,4 +139,26 @@ test fn the_checksum_line_is_in_the_form_sha256sum_reads() -> Bool {
 // drift for a week.
 test fn the_materializer_never_shells_out_to_ollama_pull() -> Bool {
   !any(step_argvs(), a => any(a, w => w == "pull"))
+}
+
+// THE HEALTH REQUEST BODY MUST BE WRITTEN BY THE SAME SEQUENCE THAT WILL READ IT. The probe passes
+// `--data @<path>` to curl, and nothing wrote that path: the scratch directory was created and the
+// file never was, so the generation probe could only ever fail with curl exit 26 on a freshly
+// provisioned host. It did, on srv5's first real convergence, and the run reported
+// "the endpoint answered its version but served nothing" -- a true sentence about a probe that had
+// no request to send. A consumer with no producer is not a check; it is a guaranteed refusal.
+test fn the_materialization_writes_the_health_request_body_it_will_later_read() -> Bool {
+  match spark_serving_materialize_model_artifact_steps() {
+    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+    SparkServingInstallRemoteCommandsPresent { steps: steps } =>
+      any(steps, s => (s.identity as String) == "write-health-request-body")
+  }
+}
+
+// It is written BEFORE anything that could read it, and it names the model the plan selected rather
+// than a literal: a request body naming a different model than the one materialized would probe a
+// model that is not there and report the host sick.
+test fn the_written_body_names_the_desired_model() -> Bool {
+  string_contains(spark_serving_health_request_body(), "gpt-oss:20b")
+    && string_contains(spark_serving_health_request_body(), "\"stream\":false")
 }
