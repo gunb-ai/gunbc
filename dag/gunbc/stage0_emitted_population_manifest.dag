@@ -1,0 +1,30 @@
+module gunbc.stage0_emitted_population_manifest
+
+import std.types { String }
+
+// THE NAME OF THE ARTIFACT IN WHICH THE EMITTER DECLARES THE POPULATION IT PRODUCED.
+//
+// This module exists to hold ONE string, and that is the point rather than an accident of
+// factoring. The manifest has two ends -- `v1.compiler.emit_rust` writes it and
+// `gunbc.stage0_rust_host_observation` reads it -- and if each spelled the basename itself,
+// the artifact would have two names for one file, which is the nicknaming failure DESIGN 3
+// names and the exact class the manifest exists to end. A shared leaf module is the smallest
+// carrier that lets both ends resolve the same symbol without the reader importing the whole
+// emitter's closure to get at one literal.
+//
+// ONLY THE BASENAME IS SHARED, DELIBERATELY. The two ends compose different roots because they
+// address different spaces: the emitter writes target-relative (under `rust_source_root()`,
+// i.e. `src/`), the observation addresses repository-relative (under `stage0_package_root`,
+// i.e. `src/v1/stage0/`). Hoisting a single "path" here would force one of them to hold a path
+// in a space it does not speak, so the shared fact is the part that is genuinely one fact.
+data emitted_population_manifest_basename: String = "emitted_population.txt"
+
+// The manifest's line grammar, stated once for the same reason the basename is.
+//
+// The emitter renders the population as `join(paths, "\n")` and the observation recovers it as
+// `split(content, "\n")` -- one grammar read in both directions (DESIGN 4), the structural
+// inverse rather than a second parser. That is why the artifact is line-delimited text and not,
+// say, a generated Rust const: recovering a list from Rust source would require PARSING it, and
+// a text-parse standing in for a modeled fact is precisely what this lane spent the day
+// deleting (gunbc#8690, cssl_assemble's seed lib.rs oracle).
+data emitted_population_manifest_line_separator: String = "\n"
