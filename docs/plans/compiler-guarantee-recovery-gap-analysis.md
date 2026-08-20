@@ -1705,10 +1705,15 @@ than argued.
    only, so multi-line and nested declarations are missed, and this session has not
    independently re-verified deduplication at `(module, service, operation, field)` grain —
    both are directions the 22 could move in either direction, so **it is not stated as a lower
-   bound**; and **none of the 22 was executed** — they are declarations sitting on the path
-   20a/20b's executed evidence demonstrates is unchecked, which is an inference from the
-   mechanism, not a per-field measurement. Write it as: 22 declared fields sit on a path
-   proven unchecked, not "22 fields are bypassed."
+   bound**; and **none of the 22 was executed** — **and their path membership was never classified.** An occurrence
+   may belong to the executed fixture-replay path, the executed REST-JSON path, or the
+   UNMEASURED Text path, and this scan does not say which; some may never be fixture-replayed
+   at all. So the supported statement is narrow: the scan found 22 candidate `where`-refined
+   output-field occurrences at intended `(module, service, operation, field)` grain, none
+   executed and none classified by path. **That is a QUARRY POPULATION, not exposure
+   evidence.** An earlier revision concluded "22 declared fields sit on a path proven
+   unchecked", which does not follow — it silently assigns every occurrence to a door whose
+   evidence is executed, including any that belong only to the unmeasured Text path.
 
    **What repair is NOT in this item, and why.** This item is measurement only — no change to
    `value_from_fixture_json`, `map_response_to_value_json`, `dispatch_rest`,
@@ -1718,13 +1723,18 @@ than argued.
    coupling DESIGN §5 warns against (construction and validation are different obligations,
    and conflating "I found it" with "I fixed it" in one diff removes the operator's ability to
    review either independently). What repair would have to establish, without this item
-   designing it further: reconstruction must either (a) resolve `__type`/`__variant` against a
-   real declaration and refuse — typed, located — when it cannot, so the decoder's admission
-   set is bounded by what the program actually declared, or (b) be an explicitly declared
-   boundary that observes an externally-sourced value and refuses it against its target's
-   refinement predicate before it enters the typed `Value` space at all (the §4b "outside the
-   modeled guarantee" column, held at a declared boundary rather than silently inherited as
-   trusted). Either shape must still pass a DISCRIMINATING INVALID case exactly like
+   designing it further — and stated PER DOOR as CONJUNCTIONS, because an earlier revision
+   offered two interchangeable global shapes ("either (a) resolve `__type`/`__variant` ... or
+   (b) be a declared boundary"), which is the menu-instead-of-conjunction error #8661 had to
+   correct in its own repair note: satisfying one item there would leave the others open.
+   **20a (fixture replay)** needs nominal declaration admission AND schema / variant-membership
+   admission AND per-field type-and-invariant acceptance. **20b (REST JSON projection)** already
+   has the declared shape, so it separately needs declared field type AND typed conversion AND
+   refinement / sealed-constructor acceptance AND a missing-/extra-field policy. **The Text
+   path** is unmeasured here and needs its own equivalent acceptance receipt before anything is
+   claimed about it. Either door may additionally be realized as an explicitly declared §4b
+   boundary that refuses an externally-sourced value before it enters the typed `Value` space —
+   that is a realization choice, not a substitute for the conjunctions above. Any shape must still pass a DISCRIMINATING INVALID case exactly like
    this item's Case 2 and a fabricated-type case exactly like Case 3 — this item's executed probe
    cases are what "the fix actually closes the door" should be checked against, not a new,
    separately invented test.

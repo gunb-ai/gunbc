@@ -2,7 +2,7 @@ module test.claim.reconstruction_door_rest_probe
 
 import std.types { NonEmptyStr }
 
-// Reconstruction-door probe (ARM 2 / audit queue item 20). Declares a REST
+// Reconstruction-door probe (audit queue item 20b, REST JSON projection; was labelled "ARM 2"). Declares a REST
 // service whose `id` output is a refined `NonEmptyStr`, deliberately with NO
 // `mock_response` — claim_batch's default hermetic-mock mode refuses without
 // one, which forces the `--record` path to dispatch a genuine HTTP request

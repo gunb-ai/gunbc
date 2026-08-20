@@ -2,7 +2,7 @@ module test.claim.reconstruction_door_fixture_probe
 
 import std.types { NonEmptyStr }
 
-// Reconstruction-door probe (ARM 1 / audit queue item 20). Declares a service
+// Reconstruction-door probe (audit queue item 20a, stored-fixture replay; was labelled "ARM 1"). Declares a service
 // whose `id` output is a refined `NonEmptyStr`. Run under `--record` once,
 // then run each `witness_*` function under `--hermetic` against the SAME
 // on-disk fixture, tampered per case as documented in
