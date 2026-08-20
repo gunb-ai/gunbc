@@ -346,4 +346,4 @@ fn reference_part_roles_include(rows: List<MtJadeReferencePartRow>, wanted: Refe
   fold(rows, init: false, f: fn(acc, r) { acc || r.role == wanted })
 }
 
-data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = mt_jade_model_scope
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.ocp.mt_jade.subject.mt_jade_model_scope

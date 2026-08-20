@@ -62,7 +62,7 @@ fn handshake_includes_slave_start(chain: List<extdeps.ocp.mt_jade.platform.Platf
 // to refuse.
 test fn w_the_model_scope_points_at_the_reference_platform_row() -> Bool {
   external_subject_ref_eq(
-    a: mt_jade_model_scope.subject,
+    a: extdeps.ocp.mt_jade.subject.mt_jade_model_scope.subject,
     b: expected_mt_jade_subject_ref,
   )
     && match mt_jade_reference_platform.revision {
@@ -72,7 +72,7 @@ test fn w_the_model_scope_points_at_the_reference_platform_row() -> Bool {
     && mt_jade_specification_publication_date.year == 2021
     && mt_jade_specification_publication_date.month == 9
     && mt_jade_specification_publication_date.day == 17
-    && (mt_jade_model_scope.first_citation.uri.locator as String) == "www.opencompute.org/documents/open-compute-specification-mt-jade-rev-1-0-pdf-1"
+    && (extdeps.ocp.mt_jade.subject.mt_jade_model_scope.first_citation.uri.locator as String) == "www.opencompute.org/documents/open-compute-specification-mt-jade-rev-1-0-pdf-1"
 }
 
 // THE PLATFORM MODULE MUST CARRY THE SAME TYPED SUBJECT EDGE, NOT ONLY A SHARED URI IMPORT.

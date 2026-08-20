@@ -3,7 +3,7 @@ module extdeps.cpu.ampere_altra_package_contacts
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = ampere_altra_rev_a1_datasheet_authority
 
-data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = ampere_altra_package_model_scope
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.cpu.ampere_altra_package.ampere_altra_package_model_scope
 
 // Classified contacts are DERIVED from the transcribed Table 4 rows by the classifier in
 // extdeps.cpu.ampere_altra_package — not pre-baked in a generator.

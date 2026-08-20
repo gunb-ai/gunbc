@@ -8,7 +8,7 @@ fn citation_count_of_bash_scope() -> Int {
 }
 
 fn citation_count_of_posix_scope() -> Int {
-  fold(posix_shell_model_scope.further_citations, init: 0, f: fn(acc, _c) { acc + 1 })
+  fold(extdeps.posix.shell_command_language.posix_shell_model_scope.further_citations, init: 0, f: fn(acc, _c) { acc + 1 })
 }
 
 test fn red_bash_scope_no_longer_cites_a_second_governed_subject() -> Bool {
@@ -16,7 +16,7 @@ test fn red_bash_scope_no_longer_cites_a_second_governed_subject() -> Bool {
 }
 
 test fn posix_is_its_own_subject_with_its_own_grounding() -> Bool {
-  declaration_ref_eq(a: posix_shell_model_scope.subject.declaration, b: posix_shell_subject_ref)
+  declaration_ref_eq(a: extdeps.posix.shell_command_language.posix_shell_model_scope.subject.declaration, b: posix_shell_subject_ref)
     && citation_count_of_posix_scope() == 0
 }
 

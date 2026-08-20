@@ -3,7 +3,7 @@ module extdeps.cpu.ampere_altra_package_table4_raw
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = ampere_altra_rev_a1_datasheet_authority
 
-data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = ampere_altra_package_model_scope
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.cpu.ampere_altra_package.ampere_altra_package_model_scope
 
 // ONE-SHOT HAND TRANSCRIPTION — authoritative source data committed directly in .dag; no
 // mechanical regenerator exists on this branch. Electrical classification is derived by

@@ -119,7 +119,7 @@ data registered_language_targets: List<std.language_target_identity.LanguageTarg
     disposition: TargetActive
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: std.language_target_identity.ExternalGrounding { scope: python_language_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: extdeps.languages.python.subject.python_language_model_scope },
     disposition: TargetActive
   },
   std.language_target_identity.LanguageTargetRegistration {
@@ -147,47 +147,47 @@ data registered_language_targets: List<std.language_target_identity.LanguageTarg
     disposition: std.language_target_identity.TargetParked { reason: "P2 second compiled general target; frontier row records the TargetModel as a skeleton needing buildout, so no work is in progress" }
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: std.language_target_identity.ExternalGrounding { scope: llvm_ir_language_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: extdeps.languages.llvm_ir.subject.llvm_ir_language_model_scope },
     disposition: std.language_target_identity.TargetParked { reason: "P2 backend/validator profile; frontier row records no committed TargetModel" }
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: std.language_target_identity.ExternalGrounding { scope: webassembly_language_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: extdeps.languages.wasm.subject.webassembly_language_model_scope },
     disposition: std.language_target_identity.TargetParked { reason: "P2 backend/runtime profile; a TargetModel exists but bar-c is unreachable until the wasmtime runtime row is configured" }
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: std.language_target_identity.ExternalGrounding { scope: lean_language_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: extdeps.languages.lean.subject.lean_language_model_scope },
     disposition: std.language_target_identity.TargetParked { reason: "P2 proof/checker profile; frontier row records no committed TargetModel, and the expression spine it would stress is itself unbuilt" }
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: std.language_target_identity.ExternalGrounding { scope: ptx_language_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: extdeps.languages.ptx.subject.ptx_language_model_scope },
     disposition: std.language_target_identity.TargetParked { reason: "P1 accelerator seam, but deliberately last in that seam: the existing plan orders CPU fused-kernel oracle then PTX validation then CUDA execution, so PTX is not startable work today" }
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: std.language_target_identity.ExternalGrounding { scope: java_language_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: extdeps.languages.java.subject.java_language_model_scope },
     disposition: std.language_target_identity.TargetParked { reason: "P3 confirm-only fan-out; earns a slot only after the compiled-family self-host proof lands" }
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: std.language_target_identity.ExternalGrounding { scope: kotlin_language_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: extdeps.languages.kotlin.subject.kotlin_language_model_scope },
     disposition: std.language_target_identity.TargetParked { reason: "P3 confirm-only fan-out; same gate as Java" }
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: std.language_target_identity.ExternalGrounding { scope: swift_language_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: extdeps.languages.swift.subject.swift_language_model_scope },
     disposition: std.language_target_identity.TargetParked { reason: "P3 confirm-only fan-out; same gate as Java" }
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: std.language_target_identity.ExternalGrounding { scope: jsx_language_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: extdeps.languages.jsx.subject.jsx_language_model_scope },
     disposition: std.language_target_identity.TargetDecisionPending { decision_id: "jsx registry role — independently supported target medium, or syntax capability of the web/ECMAScript path (see jsx_registry_role_note)" }
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: std.language_target_identity.ExternalGrounding { scope: riscv_isa_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: extdeps.languages.riscv.subject.riscv_isa_model_scope },
     disposition: std.language_target_identity.TargetParked { reason: "P3 ISA target; registered because its authority verified, but the surface that would consume it fuses three ISAs and must be decomposed first" }
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: std.language_target_identity.ExternalGrounding { scope: json_format_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: extdeps.languages.json.subject.json_format_model_scope },
     disposition: TargetMaintenanceOnly
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: std.language_target_identity.ExternalGrounding { scope: yaml_format_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: extdeps.languages.yaml.subject.yaml_format_model_scope },
     disposition: TargetMaintenanceOnly
   },
   std.language_target_identity.LanguageTargetRegistration {
@@ -226,22 +226,22 @@ data css_language_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.c
 data ecmascript_language_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.ecmascript.subject.ecmascript_language_model_scope.subject.declaration
 data go_language_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.go.subject.go_language_model_scope.subject.declaration
 data html_language_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.html.subject.html_language_model_scope.subject.declaration
-data java_language_subject_ref: std.decl_ref.DeclarationRef = java_language_model_scope.subject.declaration
-data json_format_subject_ref: std.decl_ref.DeclarationRef = json_format_model_scope.subject.declaration
-data jsx_language_subject_ref: std.decl_ref.DeclarationRef = jsx_language_model_scope.subject.declaration
-data kotlin_language_subject_ref: std.decl_ref.DeclarationRef = kotlin_language_model_scope.subject.declaration
-data lean_language_subject_ref: std.decl_ref.DeclarationRef = lean_language_model_scope.subject.declaration
-data llvm_ir_language_subject_ref: std.decl_ref.DeclarationRef = llvm_ir_language_model_scope.subject.declaration
+data java_language_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.java.subject.java_language_model_scope.subject.declaration
+data json_format_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.json.subject.json_format_model_scope.subject.declaration
+data jsx_language_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.jsx.subject.jsx_language_model_scope.subject.declaration
+data kotlin_language_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.kotlin.subject.kotlin_language_model_scope.subject.declaration
+data lean_language_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.lean.subject.lean_language_model_scope.subject.declaration
+data llvm_ir_language_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.llvm_ir.subject.llvm_ir_language_model_scope.subject.declaration
 data commonmark_format_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.markdown.subject.commonmark_format_model_scope.subject.declaration
-data ptx_language_subject_ref: std.decl_ref.DeclarationRef = ptx_language_model_scope.subject.declaration
-data python_language_subject_ref: std.decl_ref.DeclarationRef = python_language_model_scope.subject.declaration
-data riscv_isa_subject_ref: std.decl_ref.DeclarationRef = riscv_isa_model_scope.subject.declaration
+data ptx_language_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.ptx.subject.ptx_language_model_scope.subject.declaration
+data python_language_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.python.subject.python_language_model_scope.subject.declaration
+data riscv_isa_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.riscv.subject.riscv_isa_model_scope.subject.declaration
 data rust_language_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.rust.subject.rust_language_model_scope.subject.declaration
 data spice_netlist_language_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.spice.subject.spice_netlist_language_model_scope.subject.declaration
 
 data ngspice_simulator_subject_ref: std.decl_ref.DeclarationRef = extdeps.simulators.ngspice.subject.ngspice_simulator_model_scope.subject.declaration
 
-data icarus_verilog_simulator_subject_ref: std.decl_ref.DeclarationRef = icarus_verilog_simulator_model_scope.subject.declaration
+data icarus_verilog_simulator_subject_ref: std.decl_ref.DeclarationRef = extdeps.simulators.icarus_verilog.subject.icarus_verilog_simulator_model_scope.subject.declaration
 
 data target_runtime_binding_note: String = "WHICH RUNTIME EXECUTES A TARGET IS A SEPARATE FACT FROM WHAT THE TARGET IS (cursor review 48122, P0). Fusing them is what made ngspice look like a language: the registry registered the simulator, gave it the netlist's file extensions, and joined it to a surface that models a generic SpiceNetlist. Split here into two subjects plus this binding, so the medium can gain a second runtime without either subject changing — which is the whole test of whether the split was real. A binding is NOT a support claim: it says which tool WOULD execute this target, not that any execution receipt exists. SPICE's frontier row is bar-b, meaning the witness compares emitted text to a golden file and never runs ngspice at all, so this binding is precisely the thing an execution receipt would later discharge. THIS BINDING ALSO CARRIES THE DIALECT FACT, which belongs here and not on either subject's scope (cursor review 48361). SPICE has no normative netlist specification, so the readable authority for the concrete syntax this repository would emit is the ngspice manual — but that manual is ngspice's own governing document, and citing it on the SPICE medium's scope would claim one upstream grounds another. An earlier revision did exactly that and re-forked the fact this split had just separated. The binding is the honest home: it names both subjects by reference, each keeping its own authority, and says which runtime's dialect an emission would target. That is why a support claim for SPICE must resolve THROUGH this binding to state a dialect, rather than reading one off the medium's citation list."
 
@@ -264,11 +264,11 @@ data target_runtime_bindings: List<TargetRuntimeBinding> = [
 fn target_runtime_binding_count() -> Int {
   fold(target_runtime_bindings, init: 0, f: fn(acc, b) { acc + 1 })
 }
-data swift_language_subject_ref: std.decl_ref.DeclarationRef = swift_language_model_scope.subject.declaration
+data swift_language_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.swift.subject.swift_language_model_scope.subject.declaration
 data typescript_language_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.typescript.subject.typescript_language_model_scope.subject.declaration
 data verilog_language_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.verilog.subject.verilog_language_model_scope.subject.declaration
-data webassembly_language_subject_ref: std.decl_ref.DeclarationRef = webassembly_language_model_scope.subject.declaration
-data yaml_format_subject_ref: std.decl_ref.DeclarationRef = yaml_format_model_scope.subject.declaration
+data webassembly_language_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.wasm.subject.webassembly_language_model_scope.subject.declaration
+data yaml_format_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.yaml.subject.yaml_format_model_scope.subject.declaration
 
 data english_subject_ref: std.decl_ref.DeclarationRef = english_formal_sentence_authority
 
