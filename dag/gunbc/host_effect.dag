@@ -3,7 +3,6 @@ module gunbc.host_effect
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import std.types { String, Int, NonEmptyStr, List }
 import std.content_hash { ContentHash }
-import std.cache_identity { CacheInterfaceId }
 import std.access { AccessDecision }
 import std.disposition { Disposition, RealizationDispatch, Scaffold, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -19,7 +18,7 @@ import extdeps.llm.codex_app_server_stdio_session { CodexAppServerStdioSessionIn
 import gunbc.fleet_intent { ComputeHost }
 import gunbc.host_converge { HostConverge }
 import gunbc.live_deploy.spec { DeploymentSpec, DeploymentDependencyStep }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.build_cache_instance { RunnerSlotIdentity, BuildCacheInstance }
 import extdeps.github.actions_runner { ActionsRunnerRelease, ActionsRunnerBinaryArtifact }
 import gunbc.runner_incarnation { LocalRunnerSlotIncarnation }
 import gunbc.runner_lifecycle { RunnerReplacementCause }
@@ -41,7 +40,7 @@ type HostEffect =
   | RedfishAction { action: RedfishSystemAction }
   | ConvergePlan { policy: HostConverge }
   | OsInstallActuatorToolchainEnsure {}
-  | ProvisionBuildCache { catalog_id: CacheInterfaceId }
+  | EnsureBuildCacheInstance { desired: BuildCacheInstance }
   | ProvisionCodexRuntime {}
   | SetHostnameCas { hostnamectl_path: NonEmptyStr, base: DnsLabel, desired: DnsLabel }
   | ReadEffectivePosixPrincipal { read: EffectivePosixPrincipalRead }
