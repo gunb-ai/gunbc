@@ -164,14 +164,32 @@ fn offer_covers_shape(offered: Shape, needed: Shape) -> Bool {
   hardware_thread_count_value(t: offered.hard.threads) >= hardware_thread_count_value(t: needed.hard.threads)
 }
 
-// A ZERO-QUOTED OFFER IS STILL AN OFFER THAT COULD HAVE BEEN SOLD TO SOMEONE
-// ELSE. That sentence is the whole arbitrage, and it is on this carrier because
-// this is where the mistake is available to make: the zero is a SUPPLY-SIDE
-// FACT, the opportunity cost is a DEMAND-SIDE QUESTION, and reading the first as
-// answering the second is exactly what makes an always-admitted path invisible.
-// An owned-fleet offer quoting zero is not free capacity; it is capacity whose
-// price we chose not to charge ourselves, and the demand must still clear it or
-// the opportunity cost of running our own work stops being computable.
+// AN OFFER CARRIES TWO COSTS AND SELECTION READS THE SECOND.
+//
+//   MARGINAL CASH COST  what spending this hour adds to the invoice. Genuinely
+//                       zero for an owned hour, AND for the remainder of a
+//                       rented hour already bought.
+//   OPPORTUNITY COST    what that hour could have been sold for. Never zero for
+//                       capacity anyone would pay for.
+//
+// An owned hour entering selection at zero outbids every paying customer, so
+// self-CI would always win and the arbitrage would be defeated by the mechanism
+// meant to run it. The cut applies uniformly, which is the tell that it is
+// right: a rented host inside its paid hour has the same shape as an owned one,
+// and nothing here special-cases ownership.
+//
+// An earlier revision of this note said the zero is a supply-side fact while the
+// opportunity cost is a DEMAND-SIDE QUESTION. The hazard it named was right and
+// the homing was wrong: what an hour could have been sold for is a fact about
+// the SUPPLY, carried on the offer beside its cash cost. Corrected in place
+// rather than reworded, because the sentence was cited downstream.
+//
+// THE CARRIER IS NOT YET HERE. OfferQuote is a single scalar, so nothing forces
+// the quote to be the opportunity cost rather than the cash cost -- the two-arm
+// cost, the offer lifetime, and the time-indexed step function that makes an
+// already-paid hour free are the open work. Until they land this fold prices
+// whatever single number the offer carries, and the obligation sits on whoever
+// constructs the offer to make that number the opportunity cost.
 //
 // So this fold takes BuyTerms and applies them whatever the quote is. There is
 // no arm that skips the price check because the quote was zero, and there is no
