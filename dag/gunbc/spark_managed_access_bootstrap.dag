@@ -90,6 +90,15 @@ fn observation_for(
 // account is THE managed executor is a modeling decision, and a bootstrap that adopted whatever
 // automation-looking account it found would be inferring intent from the host.
 data spark_managed_executor_login: String = "gunbc-automation"
+
+// THE HOME OF A NAMED PRINCIPAL, derived because on these hosts every one of these accounts is a
+// /home account and the alternative is a second per-account table saying so. It is a function of the
+// login rather than a constant, which is the distinction that failed once: staging a file for the
+// INSTALLING principal into the GRANTEE's home is a permission error at the far side, and reads as a
+// broken installer rather than as the wrong account being named.
+fn spark_managed_principal_home(login: NonEmptyStr) -> NonEmptyStr {
+  join(["/home/", login as String], "") as NonEmptyStr
+}
 data spark_operator_bootstrap_login: String = "briansrls"
 
 // DERIVING THE STANDING. Absence of an observation is ManagedAccessUnobserved, never

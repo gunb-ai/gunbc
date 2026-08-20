@@ -23,9 +23,13 @@ import gunbc.spark_managed_grant_install {
 }
 import gunbc.remote_operation { remote_operation_argv, remote_operation_label }
 
+// The installing principal, which is deliberately NOT the grantee: an account cannot install its own
+// sudoers entries, and the fixtures below would pass against either if the two were the same string.
+fn installer() -> NonEmptyStr { "briansrls" as NonEmptyStr }
+
 
 test fn the_reboot_grant_plans_stage_validate_install_unstage() -> Bool {
-  let steps = spark_grant_install_steps(plan: spark_grant_install_plan(grant: RebootThisHost))
+  let steps = spark_grant_install_steps(plan: spark_grant_install_plan(grant: RebootThisHost, principal: installer()))
   steps.length() == 4
     && any(steps, s => string_contains(s.identity as String, "stage-gunbc-reboot"))
     && any(steps, s => string_contains(s.identity as String, "validate-gunbc-reboot"))
@@ -38,7 +42,7 @@ test fn the_reboot_grant_plans_stage_validate_install_unstage() -> Bool {
 // including the one that would repair it. Validating after installing would report the damage.
 test fn every_grant_validates_its_sudoers_before_installing_it() -> Bool {
   fold(spark_managed_grant_population, init: true, f: fn(acc, g) {
-    acc && spark_grant_install_validates_before_installing(plan: spark_grant_install_plan(grant: g))
+    acc && spark_grant_install_validates_before_installing(plan: spark_grant_install_plan(grant: g, principal: installer()))
   })
 }
 
@@ -54,13 +58,13 @@ test fn a_plan_installing_before_validating_would_be_rejected() -> Bool {
 // visudo runs against the STAGED copy, never against the live drop-in path -- validating the file
 // already in /etc/sudoers.d would be checking after the damage was done.
 test fn validation_targets_the_staged_copy_not_the_live_dropin() -> Bool {
-  let steps = spark_grant_install_steps(plan: spark_grant_install_plan(grant: RebootThisHost))
+  let steps = spark_grant_install_steps(plan: spark_grant_install_plan(grant: RebootThisHost, principal: installer()))
   fold(steps, init: false, f: fn(acc, s) {
     if string_contains(s.identity as String, "validate-") {
       match remote_operation_argv(operation: s.operation) {
         Absent => false
         Present { value: argv } =>
-          any(argv, w => w == (spark_grant_staging_path(grant: RebootThisHost) as String))
+          any(argv, w => w == (spark_grant_staging_path(grant: RebootThisHost, principal: installer()) as String))
             && !any(argv, w => w == (spark_managed_grant_dropin_path(grant: RebootThisHost) as String))
       }
     } else { acc }
@@ -71,7 +75,7 @@ test fn validation_targets_the_staged_copy_not_the_live_dropin() -> Bool {
 // drop-in that is group- or world-writable, so ownership and mode are facts of the command that
 // placed the file rather than of whatever umask the staging write ran under.
 test fn the_dropin_lands_root_owned_and_not_group_writable() -> Bool {
-  let steps = spark_grant_install_steps(plan: spark_grant_install_plan(grant: RebootThisHost))
+  let steps = spark_grant_install_steps(plan: spark_grant_install_plan(grant: RebootThisHost, principal: installer()))
   fold(steps, init: false, f: fn(acc, s) {
     if string_contains(s.identity as String, "install-") {
       match remote_operation_argv(operation: s.operation) {
@@ -89,7 +93,7 @@ test fn the_dropin_lands_root_owned_and_not_group_writable() -> Bool {
 // Every privileged step goes through sudo -n: a step that prompted would hang a non-interactive
 // transport forever rather than refusing, which is the failure mode with no diagnostic at all.
 test fn no_privileged_step_can_prompt_for_a_password() -> Bool {
-  let steps = spark_grant_install_steps(plan: spark_grant_install_plan(grant: RebootThisHost))
+  let steps = spark_grant_install_steps(plan: spark_grant_install_plan(grant: RebootThisHost, principal: installer()))
   fold(steps, init: true, f: fn(acc, s) {
     acc && match remote_operation_argv(operation: s.operation) {
       Absent => true
@@ -102,12 +106,12 @@ test fn no_privileged_step_can_prompt_for_a_password() -> Bool {
 // Each grant stages to its own path, so two grants installed in one run cannot overwrite each
 // other's staged file between that file's validation and its installation.
 test fn the_two_grants_stage_to_distinct_paths() -> Bool {
-  spark_grant_staging_path(grant: RebootThisHost) as String
-    != spark_grant_staging_path(grant: EnableLingerForOwnAccount) as String
+  spark_grant_staging_path(grant: RebootThisHost, principal: installer()) as String
+    != spark_grant_staging_path(grant: EnableLingerForOwnAccount, principal: installer()) as String
 }
 
 test fn the_plan_wire_names_the_grant_and_its_steps() -> Bool {
-  let text = spark_grant_install_plan_wire(plan: spark_grant_install_plan(grant: RebootThisHost))
+  let text = spark_grant_install_plan_wire(plan: spark_grant_install_plan(grant: RebootThisHost, principal: installer()))
   string_contains(text, "grant-install grant=reboot this host")
     && string_contains(text, "validate-gunbc-reboot")
 }
@@ -155,4 +159,16 @@ test fn the_run_text_carries_the_standing_and_each_outcome() -> Bool {
   })
   string_contains(text, "grant-standing host=srv6")
     && string_contains(text, "NOT-ATTEMPTED cause=sudo: a password is required")
+}
+
+// THE DISCRIMINATING NEGATIVE FOR THE STAGING HOME, and it is the defect that actually shipped: the
+// path came from a constant naming the grantee's home, so a run connecting as the operator wrote
+// into the automation account's directory and got Permission denied. Staging must follow the
+// principal doing the writing, and asserting the two differ is what makes the constant unwritable.
+test fn staging_follows_the_installing_principal_not_the_grantee() -> Bool {
+  let as_installer = spark_grant_staging_path(grant: RebootThisHost, principal: installer()) as String
+  let as_grantee = spark_grant_staging_path(grant: RebootThisHost, principal: "gunbc-automation" as NonEmptyStr) as String
+  as_installer != as_grantee
+    && string_contains(as_installer, "/home/briansrls/")
+    && !string_contains(as_installer, "gunbc-automation")
 }

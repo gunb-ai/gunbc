@@ -29,6 +29,7 @@ import gunbc.spark_managed_access_bootstrap {
   SparkManagedGrant,
   spark_managed_grant_wire,
   spark_managed_executor_login,
+  spark_managed_principal_home,
   SparkGrantOutcome,
   GrantEnumerated,
   GrantAbsent,
@@ -44,7 +45,6 @@ import gunbc.spark_managed_grant_reconcile {
   spark_managed_grant_dropin_path,
   spark_managed_grant_sudoers_content,
 }
-import gunbc.spark_serving_runtime_receipt { spark_serving_executor_home }
 import std.resources { Network }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
@@ -77,9 +77,14 @@ type SparkGrantInstallPlan
   = SparkGrantInstallSteps { grant: SparkManagedGrant, first: PlannedRemoteStep, more: List<PlannedRemoteStep> }
   | SparkGrantInstallRefused { grant: SparkManagedGrant, cause: NonEmptyStr }
 
-fn spark_grant_staging_path(grant: SparkManagedGrant) -> FilePath {
+// STAGED IN THE INSTALLER'"'"'S OWN HOME, not the grantee'"'"'s. The first cut of this took the executor
+// home as a constant, so a run connecting as the operator tried to write into the automation
+// account'"'"'s directory and got Permission denied at the far side -- a failure that reads as a broken
+// installer rather than as the wrong account being named. Whose home it is follows from who is doing
+// the writing, which is exactly the fact the transport principal already carries.
+fn spark_grant_staging_path(grant: SparkManagedGrant, principal: NonEmptyStr) -> FilePath {
   join([
-    spark_serving_executor_home as String, "/.gunbc-staged-sudoers-",
+    spark_managed_principal_home(login: principal) as String, "/.gunbc-staged-sudoers-",
     spark_managed_grant_dropin_name(grant: grant) as String,
   ], "") as FilePath
 }
@@ -100,12 +105,12 @@ fn spark_grant_admit_argv(identity: NonEmptyStr, raws: List<String>) -> PlannedR
   }
 }
 
-fn spark_grant_install_plan(grant: SparkManagedGrant) -> SparkGrantInstallPlan {
-  let staged = spark_grant_staging_path(grant: grant)
+fn spark_grant_install_plan(grant: SparkManagedGrant, principal: NonEmptyStr) -> SparkGrantInstallPlan {
+  let staged = spark_grant_staging_path(grant: grant, principal: principal)
   match typed_remote_file_write_seal(
     path: staged,
     content: spark_managed_grant_sudoers_content(grant: grant),
-    allowed_scope: FileTreeScope { root_path: spark_serving_executor_home as NonEmptyStr },
+    allowed_scope: FileTreeScope { root_path: spark_managed_principal_home(login: principal) },
   ) {
     TypedRemoteFileWriteAdmissionRefused { cause: why } =>
       SparkGrantInstallRefused { grant: grant, cause: why }
@@ -249,7 +254,7 @@ func spark_grant_install_execute(
 ) -> SparkGrantInstallOutcome
   uses net: Network
 {
-  let plan = spark_grant_install_plan(grant: grant)
+  let plan = spark_grant_install_plan(grant: grant, principal: principal)
   match plan {
     SparkGrantInstallRefused { grant: g, cause: c } =>
       SparkGrantInstallNotAttempted { host: host, grant: g, cause: c }
