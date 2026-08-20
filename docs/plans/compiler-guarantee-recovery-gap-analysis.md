@@ -1457,7 +1457,7 @@ than argued.
    deep-ant-102, 2026-08-20: no new mechanism), which is the one live authority for this case.
 
 20. **Reconstruction doors, umbrella.** Two functions build a typed `Value::Record`/
-   `Value::Variant` from untrusted bytes outside any construction call site, and this queue
+   `Value::Variant` from serialized observations that are never accepted against the expected declaration and its invariant, outside any construction call site (an earlier revision said "untrusted bytes", which overstates it: a recorded fixture DOES carry outer operation, input-hash, input-equality and freshness checks — what is missing is semantic acceptance of the response against the current program declaration, not provenance checking), and this queue
    item covers both — but external review (2026-08-20) found they are **different mechanisms
    that need separate rows**, corrected here as 20a/20b rather than one joint claim: 20a
    (`value_from_fixture_json`) mints a nominally tagged value **without ever establishing the
@@ -1475,7 +1475,10 @@ than argued.
 
    **Background — why this needed its own audit.** An earlier pass over the emitted-Rust
    `#[derive(Deserialize)]` door found it writable but structurally unreached in the current
-   corpus, and closed. That pass's own trace showed a recorded fixture decodes first into
+   corpus, and closed. **That conclusion is SUPERSEDED and is retained here only as the history that
+   motivated this audit:** gunbc#8661 later executed the emitted-Rust door against a production
+   `sole_constructor` carrier and found it forgeable, so "structurally unreached" is no longer the
+   standing verdict on that target. Emitted-target realization is carried independently there, not here. That pass's own trace showed a recorded fixture decodes first into
    untyped `serde_json::Value` — but stopped there; it did not follow what the v1 interpreter
    does with that untyped value next. It converts it into a *typed* runtime `Value` itself,
    in `src/v1/stage0/src/recorded_fixture.rs` `value_from_fixture_json`, which nobody had
@@ -1579,7 +1582,7 @@ than argued.
    (`map_response_to_value`) were read from source, not driven by a constructed executing
    case. Named here as source-level evidence only; no rung claim rests on them.
 
-   **ARM 3 — exposure, both doors are reached by bytes this repo does not author, and the
+   **Production reachability and declaration-surface survey — both doors are reached by bytes this repo does not author, and the (RENAMED: this section was called "ARM 3", which now unambiguously denotes the emitted-Rust/serde path carried by gunbc#8661 — a cross-PR identity collision)
    two doors reach that exposure differently.** 20a's fixture-replay door is reached by
    *repo-committed but externally-sourced* bytes: `dag/test/fixture/` carries JSON files
    recorded from real external effects — a live GCP OAuth token refresh
@@ -1668,13 +1671,13 @@ than argued.
    boundary that observes an externally-sourced value and refuses it against its target's
    refinement predicate before it enters the typed `Value` space at all (the §4b "outside the
    modeled guarantee" column, held at a declared boundary rather than silently inherited as
-   trusted). Either shape must still pass a predicate-violating positive case exactly like
-   this item's Case 2 and a fabricated-type case exactly like Case 3 — this item's four probe
+   trusted). Either shape must still pass a DISCRIMINATING INVALID case exactly like
+   this item's Case 2 and a fabricated-type case exactly like Case 3 — this item's executed probe
    cases are what "the fix actually closes the door" should be checked against, not a new,
    separately invented test.
 
    **Open question, raised here for the operator/reviewer rather than decided in this item:**
-   should these four probe cases (three fixture-door, two REST-door) be enrolled as permanent
+   should these probe cases — SIX executions in total (three discriminating fixture-door findings plus one fixture positive control; one discriminating REST-door finding plus one REST positive control), or FOUR if counting discriminating invalid cases only; an earlier revision said "four ... (three fixture-door, two REST-door)", which cannot be both — be enrolled as permanent
    §4b regression controls once a wall lands, per the "dissolution on climb" meta-obligation
    (the discriminating RED and its positive control stay enrolled as the executing evidence a
    higher rung stays real)? The right end state is clearly enrollment — an unenrolled
