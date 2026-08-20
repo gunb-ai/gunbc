@@ -58,6 +58,7 @@ fn eligible(e: OfferEligibility) -> Bool {
     ShapeNotCovered { required_threads: _, offered_threads: _ } => false
     TrustDomainMismatch { required: _, offered: _ } => false
     CapabilitiesNotOffered { required: _, offered: _ } => false
+    RateQuoteNotPriceableAgainstGrantCeiling { quoted: _ } => false
     QuoteExceedsMaximumBuyOrder { quoted: _, maximum: _ } => false
     QuoteCurrencyMismatch { quoted: _, budgeted: _ } => false
   }
@@ -101,6 +102,7 @@ test fn foreign_trust_domain_refuses_despite_ample_capacity() -> Bool {
     OfferEligible => false
     ShapeNotCovered { required_threads: _, offered_threads: _ } => false
     CapabilitiesNotOffered { required: _, offered: _ } => false
+    RateQuoteNotPriceableAgainstGrantCeiling { quoted: _ } => false
     QuoteExceedsMaximumBuyOrder { quoted: _, maximum: _ } => false
     QuoteCurrencyMismatch { quoted: _, budgeted: _ } => false
   }
@@ -141,6 +143,7 @@ test fn quote_above_the_maximum_buy_order_refuses() -> Bool {
     ShapeNotCovered { required_threads: _, offered_threads: _ } => false
     TrustDomainMismatch { required: _, offered: _ } => false
     CapabilitiesNotOffered { required: _, offered: _ } => false
+    RateQuoteNotPriceableAgainstGrantCeiling { quoted: _ } => false
     QuoteCurrencyMismatch { quoted: _, budgeted: _ } => false
   }
 }
@@ -160,6 +163,7 @@ test fn foreign_currency_quote_refuses_distinctly() -> Bool {
     ShapeNotCovered { required_threads: _, offered_threads: _ } => false
     TrustDomainMismatch { required: _, offered: _ } => false
     CapabilitiesNotOffered { required: _, offered: _ } => false
+    RateQuoteNotPriceableAgainstGrantCeiling { quoted: _ } => false
     QuoteExceedsMaximumBuyOrder { quoted: _, maximum: _ } => false
   }
 }
@@ -260,4 +264,68 @@ test fn floor_admission_carries_no_privilege_field() -> Bool {
     deadline: none,
   )
   terms.priority_class == "gunbc.ci.floor"
+}
+
+// THE DISCRIMINATING PAIR FOR THE DIMENSIONAL DEFECT. maximum_buy_order is the
+// ceiling on a single grant -- a TOTAL -- and an hourly rate is not one. Before
+// the fix, the fold read .amount off the rate and compared it to the ceiling, so
+// an hourly quote of 1 against a ceiling of 1000 was ADMITTED: the offer would
+// bill 1 per hour for an unbounded number of hours, and nothing refused. This
+// witness goes red against that fold and green only once the rate arms refuse.
+test fn an_hourly_rate_is_not_priceable_against_a_per_grant_ceiling() -> Bool {
+  !eligible(e: floor_offer_eligibility(
+    offer: t_offer(
+      threads: hardware_thread_count(count: 128),
+      caps: "gunbc.capabilities.linux-rust-toolchain",
+      trust: "gunbc.trust.internal-fleet",
+      quote: QuotedPerHour(MoneyRate { amount: money_amount_micro(count: 1), currency: Usd }),
+    ),
+    maximum_buy_order: money_amount_micro(count: 1000),
+    budget_currency: Usd,
+  ))
+}
+
+// The same amount quoted per SECOND and per HOUR differ by 3600x in fact and
+// were indistinguishable to the old fold, which compared the bare scalar. Both
+// must refuse for the same reason -- neither is a per-grant total -- so this
+// asserts the erasure is gone rather than merely that one arm was special-cased.
+test fn per_second_and_per_hour_quotes_both_refuse_rather_than_comparing_equal() -> Bool {
+  let per_second = floor_offer_eligibility(
+    offer: t_offer(
+      threads: hardware_thread_count(count: 128),
+      caps: "gunbc.capabilities.linux-rust-toolchain",
+      trust: "gunbc.trust.internal-fleet",
+      quote: QuotedPerSecond(MoneyRate { amount: money_amount_micro(count: 1), currency: Usd }),
+    ),
+    maximum_buy_order: money_amount_micro(count: 1000),
+    budget_currency: Usd,
+  )
+  let per_hour = floor_offer_eligibility(
+    offer: t_offer(
+      threads: hardware_thread_count(count: 128),
+      caps: "gunbc.capabilities.linux-rust-toolchain",
+      trust: "gunbc.trust.internal-fleet",
+      quote: QuotedPerHour(MoneyRate { amount: money_amount_micro(count: 1), currency: Usd }),
+    ),
+    maximum_buy_order: money_amount_micro(count: 1000),
+    budget_currency: Usd,
+  )
+  !eligible(e: per_second) && !eligible(e: per_hour)
+}
+
+// THE POSITIVE CONTROL FOR THE REFUSAL. A per-grant total under the ceiling is
+// still eligible, so the arm above refuses rates specifically and has not simply
+// made every priced offer ineligible -- which would pass both reds above while
+// destroying the fold.
+test fn a_per_grant_total_under_the_ceiling_is_still_eligible() -> Bool {
+  eligible(e: floor_offer_eligibility(
+    offer: t_offer(
+      threads: hardware_thread_count(count: 128),
+      caps: "gunbc.capabilities.linux-rust-toolchain",
+      trust: "gunbc.trust.internal-fleet",
+      quote: t_quote(amount: money_amount_micro(count: 6), currency: Usd),
+    ),
+    maximum_buy_order: money_amount_micro(count: 1000),
+    budget_currency: Usd,
+  ))
 }

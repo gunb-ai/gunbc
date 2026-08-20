@@ -158,6 +158,7 @@ type OfferEligibility
   | CapabilitiesNotOffered { required: CapabilityManifestRef, offered: CapabilityManifestRef }
   | QuoteExceedsMaximumBuyOrder { quoted: MoneyAmountMicro, maximum: MoneyAmountMicro }
   | QuoteCurrencyMismatch { quoted: CurrencyCode, budgeted: CurrencyCode }
+  | RateQuoteNotPriceableAgainstGrantCeiling { quoted: MoneyAmountMicro }
 
 fn offer_covers_shape(offered: Shape, needed: Shape) -> Bool {
   hardware_thread_count_value(t: offered.hard.threads) >= hardware_thread_count_value(t: needed.hard.threads)
@@ -175,6 +176,23 @@ fn offer_covers_shape(offered: Shape, needed: Shape) -> Bool {
 // So this fold takes BuyTerms and applies them whatever the quote is. There is
 // no arm that skips the price check because the quote was zero, and there is no
 // parameter that admits a privileged demand.
+
+// THE CEILING IS A PER-GRANT TOTAL AND A RATE IS NOT ONE. maximum_buy_order is
+// declared on the demand side as the ceiling on a SINGLE GRANT, so only a quote
+// that is itself a per-grant total can be compared to it. QuotedPerSecond and
+// QuotedPerHour are MoneyRate<PerSecond> and MoneyRate<PerHour>: pricing either
+// against a grant ceiling needs an expected duration, which no carrier here has,
+// and reading .amount off them erases the very type parameter that distinguishes
+// them -- so a per-hour and a per-second quote with equal amounts would compare
+// identically against the same ceiling, a 3600x error admitted in silence.
+//
+// This arm therefore REFUSES the rate quotes rather than comparing them. It is
+// deliberately not a widen: the refusal is typed and carries the amount it could
+// not price, so the frequency of "we were offered a rate we cannot yet price" is
+// countable rather than absorbed into OfferEligible. It dissolves when the offer
+// carries its billing rule -- quantum, rounding, minimum charge -- and the demand
+// carries an expected duration, at which point pricing a rate becomes total and
+// this variant has nothing left to refuse.
 
 // The budget ceiling arrives as SCALARS rather than as demand.BuyTerms, because
 // supply must not import demand -- a backward edge this module already carries
@@ -198,12 +216,15 @@ fn offer_eligibility_for<P>(
     }
   } else if offer_quote_currency(q: offer.quote) != budget_currency {
     QuoteCurrencyMismatch { quoted: offer_quote_currency(q: offer.quote), budgeted: budget_currency }
-  } else if money_amount_micro_count(m: offer_quote_amount(q: offer.quote)) > money_amount_micro_count(m: maximum_buy_order) {
-    QuoteExceedsMaximumBuyOrder {
-      quoted: offer_quote_amount(q: offer.quote),
-      maximum: maximum_buy_order,
-    }
   } else {
-    OfferEligible
+    match offer.quote {
+      QuotedPerSecond(r) => RateQuoteNotPriceableAgainstGrantCeiling { quoted: r.amount }
+      QuotedPerHour(r) => RateQuoteNotPriceableAgainstGrantCeiling { quoted: r.amount }
+      QuotedFlatPerGrant(r) => if money_amount_micro_count(m: r.amount) > money_amount_micro_count(m: maximum_buy_order) {
+        QuoteExceedsMaximumBuyOrder { quoted: r.amount, maximum: maximum_buy_order }
+      } else {
+        OfferEligible
+      }
+    }
   }
 }
