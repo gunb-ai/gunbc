@@ -124,20 +124,23 @@ test fn the_deploy_toolchain_step_disables_the_shared_home_cache() -> Bool {
 // checks that the advance is REACHED THROUGH the modeled decision, which is a
 // stronger statement than a ref name appearing in a file, and would have been
 // silently satisfied by neither a literal ref nor a hand-built push.
+//
+// The conjuncts below, in order: both jobs can START AT ALL (toolchain ahead of
+// the first cargo in each); the deploy job cannot touch the fleet ref BY ANY
+// ROUTE (no ref name, no lease, no push at all -- the negative is over the whole
+// document rather than over one step, so a re-added step under any name fails
+// it); and the advance exists ONLY BEHIND the modeled admission decision.
 test fn the_deploy_and_admission_workflows_form_one_safe_cut() -> Bool {
   let deploy = expected_deploy_yml()
   let admit = expected_fleet_desired_yml()
   let deploy_before_cargo = split(s: deploy, delimiter: "cargo build").first()
   let admit_before_cargo = split(s: admit, delimiter: "cargo build").first()
 
-  // both jobs can start at all
   string_contains(s: deploy_before_cargo, pattern: "setup-rust-toolchain")
     && string_contains(s: admit_before_cargo, pattern: "setup-rust-toolchain")
-    // the deploy job cannot touch the fleet ref by any route
     && !string_contains(s: deploy, pattern: "refs/fleet/desired")
     && !string_contains(s: deploy, pattern: "force-with-lease")
     && !string_contains(s: deploy, pattern: "git push")
-    // and the advance exists only behind the modeled admission decision
     && string_contains(s: admit, pattern: "admit_fleet_desired_from_floor_event_wet")
     && string_contains(s: admit, pattern: "fleet-desired-authorized-push.sh")
     && !string_contains(s: admit, pattern: "force-with-lease")
