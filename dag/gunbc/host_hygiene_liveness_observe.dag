@@ -1,0 +1,131 @@
+module gunbc.host_hygiene_liveness_observe
+
+data gunbc_host_hygiene_liveness_observe_scope_disposition: std.disposition.Disposition = std.disposition.Terminal {
+  reason: "The OBSERVE half of the liveness vertical (brief: split observe from mutate). Runs LocalShell only: unit enumeration reuses gunbc.systemctl_list_units's all-states seam (the same one-op, different-binding move the reaper observe module uses — a listener slot is worth checking whether active, inactive, or failed, since a failed slot is exactly the outage this exists to catch), and the journal read goes through the new extdeps.systemd.Journalctl.UnitLog typed op rather than a piped `journalctl | grep | tail` shell body. Marker-matching (last 'Listening for Jobs' line) and freshness (age against extdeps.clock's typed Clock.UnixMillis read) are pure .dag folds over one typed stdout read, replacing what the deleted host_hygiene_liveness_script.dag did as one hand-written pipeline in a single shell body."
+}
+
+data host_hygiene_listening_marker: String = "Listening for Jobs"
+
+fn host_hygiene_journal_lines(stdout: String) -> std.types.List<String> {
+  filter(map(split(s: trim(stdout), delimiter: "\n"), l => trim(l)), l => l != "")
+}
+
+fn host_hygiene_journal_matching_lines(stdout: String) -> std.types.List<String> {
+  filter(host_hygiene_journal_lines(stdout: stdout), l => string_contains(s: l, pattern: host_hygiene_listening_marker))
+}
+
+// journalctl -o short-unix prints "SECONDS.MICROSECONDS host proc[pid]: msg" — the first
+// whitespace field is the epoch stamp; the fractional part is dropped the same way the
+// deleted script's `last_int=$\{last%%.*}` did.
+fn host_hygiene_line_epoch_field(line: String) -> String {
+  split(s: trim(line), delimiter: " ").first()
+}
+
+fn host_hygiene_epoch_field_whole_seconds(field: String) -> Int? {
+  parse_int(s: split(s: field, delimiter: ".").first())
+}
+
+type SlotListeningReadOutcome
+  = SlotListeningRead { observation: gunbc.host_hygiene_liveness.SlotListeningObservation }
+  | SlotListeningReadRefused { unit: std.types.NonEmptyStr, cause: String }
+
+fn host_hygiene_slot_listening_age(unit: std.types.NonEmptyStr, last_epoch_secs: Int, now_epoch_secs: Int) -> SlotListeningReadOutcome {
+  if now_epoch_secs < last_epoch_secs {
+    SlotListeningReadRefused { unit: unit, cause: "journal timestamp is in the future relative to the observed clock read" }
+  } else {
+    SlotListeningRead {
+      observation: gunbc.host_hygiene_liveness.ListeningObserved { unit: unit, age: second(count: now_epoch_secs - last_epoch_secs) },
+    }
+  }
+}
+
+fn host_hygiene_observe_slot_listening(unit: std.types.NonEmptyStr, now_epoch_secs: Int) -> SlotListeningReadOutcome {
+  let result = systemd.Journalctl.UnitLog(unit: unit)
+  if !result.success {
+    SlotListeningReadRefused { unit: unit, cause: "journalctl transport failed" }
+  } else {
+    let matches = host_hygiene_journal_matching_lines(stdout: result.stdout)
+    if length(matches) == 0 {
+      SlotListeningRead { observation: gunbc.host_hygiene_liveness.ListeningNeverSeen { unit: unit } }
+    } else {
+      let last_line = matches.skip(n: length(matches) - 1).first()
+      match host_hygiene_epoch_field_whole_seconds(field: host_hygiene_line_epoch_field(line: last_line)) {
+        Absent =>
+          SlotListeningRead {
+            observation: gunbc.host_hygiene_liveness.ListeningReadInaccessible {
+              unit: unit,
+              detail: "unparseable journal timestamp on the matched 'Listening for Jobs' line" as std.types.NonEmptyStr,
+            },
+          }
+        Present { value: last_epoch_secs } => host_hygiene_slot_listening_age(unit: unit, last_epoch_secs: last_epoch_secs, now_epoch_secs: now_epoch_secs)
+      }
+    }
+  }
+}
+
+type FleetListeningObserveReceipt
+  = FleetListeningObserved { outcomes: std.types.List<SlotListeningReadOutcome> }
+  | FleetListeningObserveRefused { cause: String }
+
+fn observe_all_slot_listening() -> FleetListeningObserveReceipt {
+  match extdeps.clock.clock_unix_millis_read() {
+    ClockUnixMillisRefused { detail: d } => FleetListeningObserveRefused { cause: concat("clock read refused: ", d) }
+    ClockUnixMillisObserved { millis: now_ms } =>
+      match gunbc.systemctl_list_units.systemctl_list_units_all_states(instance_glob: host_hygiene_liveness_instance_glob) {
+        Absent => FleetListeningObserveRefused { cause: "unit enumeration refused (systemctl list-units transport)" }
+        Present { value: units } =>
+          if length(units) == 0 {
+            FleetListeningObserveRefused { cause: "unit enumeration returned zero actions-runner@* units — refusing an empty observation rather than reporting a vacuous receipt" }
+          } else {
+            FleetListeningObserved { outcomes: map(units, u => host_hygiene_observe_slot_listening(unit: u, now_epoch_secs: now_ms / 1000)) }
+          }
+      }
+  }
+}
+
+data host_hygiene_liveness_instance_glob: std.types.NonEmptyStr = gunbc.host_converge.gunbc_runner_all_slots_unit_glob as std.types.NonEmptyStr
+
+fn slot_listening_read_outcome_observation(o: SlotListeningReadOutcome) -> gunbc.host_hygiene_liveness.SlotListeningObservation? {
+  match o {
+    SlotListeningRead { observation: obs } => Present { value: obs }
+    SlotListeningReadRefused { unit: _, cause: _ } => none
+  }
+}
+
+// Mirrors gunbc.host_hygiene_reaper_observe.residual_fleet_observed_slots: any single-unit
+// read refusal refuses the WHOLE fleet observation rather than narrowing to the units that
+// happened to answer — the empty-observation-narrow failure mode DESIGN section 5 names.
+fn fleet_observed_listening_slots(outcomes: std.types.List<SlotListeningReadOutcome>) -> std.types.List<gunbc.host_hygiene_liveness.SlotListeningObservation>? {
+  let observed = fold(outcomes, init: [], f: fn(acc, o) {
+    match slot_listening_read_outcome_observation(o: o) {
+      Present { value: obs } => concat(acc, [obs])
+      Absent => acc
+    }
+  })
+  let refused = filter(outcomes, o => match slot_listening_read_outcome_observation(o: o) { Absent => true, Present { value: _ } => false })
+  if length(refused) > 0 { none } else { Present { value: observed } }
+}
+
+fn gunbc_host_hygiene_liveness_live_show_effective_read() -> std.realization_reconcile.ShowEffectiveRead<std.types.List<gunbc.host_hygiene_liveness.SlotListeningVerdict>> {
+  match observe_all_slot_listening() {
+    FleetListeningObserveRefused { cause: why } => std.realization_reconcile.ReadAbsent { reason: why }
+    FleetListeningObserved { outcomes: outs } =>
+      match fleet_observed_listening_slots(outcomes: outs) {
+        Absent => std.realization_reconcile.ReadAbsent { reason: "one or more slot journal reads refused; refusing the whole observation rather than reporting a narrowed one" }
+        Present { value: obs_list } =>
+          std.realization_reconcile.ReadObserved {
+            value: map(obs_list, obs => gunbc.host_hygiene_liveness.slot_listening_verdict(obs: obs, bound: gunbc.host_hygiene_liveness.gunbc_host_hygiene_liveness_bound)),
+          }
+      }
+  }
+}
+
+// UNEXECUTED-IN-CI: issues real `systemctl list-units` / `journalctl` / `date` reads
+// against the local host. CI's floor is hermetic-only (eval_mock_response replays each
+// declared op's mock_response and never constructs or runs argv), so nothing in CI ever
+// calls this — provable in CI only through ReadAbsent/DoesNotGround structural paths and
+// the mock-backed per-op reads exercised elsewhere. Trigger to promote this claim: a
+// wet/live CI lane exists for this repo (none does today).
+fn gunbc_host_hygiene_liveness_live_evidence() -> std.realization_reconcile.Reconciliation<String, gunbc.host_hygiene_liveness.FleetListeningEvidence> {
+  gunbc.host_hygiene_liveness.reconcile_fleet_listening(read: gunbc_host_hygiene_liveness_live_show_effective_read())
+}

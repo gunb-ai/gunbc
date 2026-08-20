@@ -1,0 +1,73 @@
+module gunbc.host_hygiene_reaper_remediate
+
+data gunbc_host_hygiene_reaper_remediate_scope_disposition: std.disposition.Disposition = std.disposition.Terminal {
+  reason: "The MUTATE half of the reaper vertical (brief: split observe from mutate — a reaper that mutates on a misread IS the harm). The BOUND is structural, not a literal check in a script body: every effect this module can describe carries a `unit: NonEmptyStr` it did not choose — residual_reap_effect_for takes a ResidualSlotObservation the OBSERVE vertical already vetted (host_hygiene_reaper_observe.observe_residual_slot), and the override directory an effect touches is producible only through host_hygiene_reaper_observe.host_hygiene_override_dir_for_unit, a pure function of that same vetted unit. This module recomputes residual_reap_action(obs) INTERNALLY from gunbc.host_hygiene_reaper's single decision authority rather than accepting a caller-supplied ResidualReapAction — the only path to a KillOccupantAndRemoveOverride or RemoveOverrideDirEffect is through that one vetted function, never through gunbc.host_hygiene_reaper's permanent RED-control residual_reap_action_absorbing_fallback_widen_sketch fixture, which this module never imports."
+}
+
+type ResidualReapEffect
+  = NoEffect { unit: std.types.NonEmptyStr }
+  | RemoveOverrideDirEffect { unit: std.types.NonEmptyStr, dir: std.types.NonEmptyStr }
+  | TerminateOccupantsAndRemoveOverrideEffect { unit: std.types.NonEmptyStr, pids: std.types.List<std.types.NonEmptyStr>, dir: std.types.NonEmptyStr }
+  | ReapEffectRefused { unit: std.types.NonEmptyStr, cause: gunbc.host_hygiene_reaper.ReapRefusalCause }
+
+fn residual_reap_effect_for(obs: gunbc.host_hygiene_reaper.ResidualSlotObservation, occupant_pids: std.types.List<std.types.NonEmptyStr>) -> ResidualReapEffect {
+  match gunbc.host_hygiene_reaper.residual_reap_action(obs: obs) {
+    NoActionNeeded => NoEffect { unit: obs.unit }
+    RemoveOverrideOnly => RemoveOverrideDirEffect {
+      unit: obs.unit,
+      dir: gunbc.host_hygiene_reaper_observe.host_hygiene_override_dir_for_unit(unit: obs.unit),
+    }
+    KillOccupantAndRemoveOverride => TerminateOccupantsAndRemoveOverrideEffect {
+      unit: obs.unit,
+      pids: occupant_pids,
+      dir: gunbc.host_hygiene_reaper_observe.host_hygiene_override_dir_for_unit(unit: obs.unit),
+    }
+    ReapRefused { cause: c } => ReapEffectRefused { unit: obs.unit, cause: c }
+  }
+}
+
+fn residual_reap_effect_for_outcome(o: gunbc.host_hygiene_reaper_observe.ResidualSlotObserveOutcome) -> ResidualReapEffect? {
+  match o {
+    ResidualSlotObserved { slot: s, occupant_pids: p } => Present { value: residual_reap_effect_for(obs: s, occupant_pids: p) }
+    ResidualSlotObserveRefused { unit: _, cause: _ } => none
+  }
+}
+
+type ResidualReapApplyOutcome
+  = ResidualReapApplied { unit: std.types.NonEmptyStr }
+  | ResidualReapApplyRefused { unit: std.types.NonEmptyStr, cause: String }
+
+fn apply_terminate_occupants(pids: std.types.List<std.types.NonEmptyStr>) -> Bool {
+  let results = map(pids, pid => posix.Signal.TerminateProcess(pid: pid).success)
+  length(filter(results, r => !r)) == 0
+}
+
+// UNEXECUTED-IN-CI: issues real `kill -TERM` / `rm -rf` effects against the local host.
+// CI's floor is hermetic-only and neither posix.Signal.TerminateProcess nor
+// shell.Remove.RecursiveForce carries a mock_response for the latter (extdeps/shell.dag
+// has zero mock_response blocks corpus-wide, confirmed against the live file) — this
+// function is reachable only from the wet/live entrypoint, never from a `test fn`, so
+// ordinary hermetic per-PR discovery never refuses on it and never executes it either.
+// Trigger to promote this claim: a wet/live CI lane exists for this repo (none does today).
+fn apply_residual_reap_effect(effect: ResidualReapEffect) -> ResidualReapApplyOutcome {
+  match effect {
+    NoEffect { unit: u } => ResidualReapApplied { unit: u }
+    ReapEffectRefused { unit: u, cause: _ } => ResidualReapApplied { unit: u }
+    RemoveOverrideDirEffect { unit: u, dir: dir } =>
+      if shell.Remove.RecursiveForce(path: dir as std.types.FilePath).success {
+        ResidualReapApplied { unit: u }
+      } else {
+        ResidualReapApplyRefused { unit: u, cause: "rm -rf of stale system.control override dir failed" }
+      }
+    TerminateOccupantsAndRemoveOverrideEffect { unit: u, pids: pids, dir: dir } =>
+      if apply_terminate_occupants(pids: pids) {
+        if shell.Remove.RecursiveForce(path: dir as std.types.FilePath).success {
+          ResidualReapApplied { unit: u }
+        } else {
+          ResidualReapApplyRefused { unit: u, cause: "occupant termination succeeded but rm -rf of override dir failed" }
+        }
+      } else {
+        ResidualReapApplyRefused { unit: u, cause: "one or more kill -TERM occupant signals failed" }
+      }
+  }
+}

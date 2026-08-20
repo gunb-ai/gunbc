@@ -1,14 +1,12 @@
 module gunbc.host_effect_realize
 
-
-
 type TypedReconcileKind = TypedReconcileFetch | TypedReconcileRemaster
 
 type ResolvedHostEffectCell =
     ShellOnHost { node: gunbc.fleet_intent.ComputeHost, script: gunbc.retained_shell_script.RetainedShellScript }
   | RedfishOnBmc { node: gunbc.fleet_intent.ComputeHost, action: extdeps.bmc.types.RedfishSystemAction }
   | ConvergeOnHost { node: gunbc.fleet_intent.ComputeHost, host_converge: gunbc.host_converge.HostConverge }
-  | TypedReconcileOnHost { node: gunbc.fleet_intent.ComputeHost, kind: gunbc.host_effect_realize.TypedReconcileKind }
+  | TypedReconcileOnHost { node: gunbc.fleet_intent.ComputeHost, kind: TypedReconcileKind }
   | OsInstallActuatorToolchainOnHost { node: gunbc.fleet_intent.ComputeHost }
   | ProvisionBuildCacheOnHost { node: gunbc.fleet_intent.ComputeHost, catalog_id: String }
   | ProvisionCodexRuntimeOnHost { node: gunbc.fleet_intent.ComputeHost }
@@ -24,7 +22,7 @@ type ResolvedHostEffectCell =
       intent: extdeps.llm.codex_app_server_stdio_session.CodexAppServerStdioSessionIntent,
       lease_key: std.types.NonEmptyStr,
     }
-  | ReceiptEmitOnHost { node: gunbc.fleet_intent.ComputeHost, lines: List<String> }
+  | ReceiptEmitOnHost { node: gunbc.fleet_intent.ComputeHost, lines: std.types.List<String> }
   | BootOnceReadBackSleepOnHost { node: gunbc.fleet_intent.ComputeHost }
   | SeededInstallMediaToolchainOnHost { node: gunbc.fleet_intent.ComputeHost }
   | BmcwebSessionLoginOnHost { node: gunbc.fleet_intent.ComputeHost }
@@ -32,7 +30,7 @@ type ResolvedHostEffectCell =
   | EffectivePrincipalReadOnHost { node: gunbc.fleet_intent.ComputeHost, read: extdeps.access.posix_effective_principal.EffectivePosixPrincipalRead }
   | SudoNopasswdExecuteProbeOnHost { node: gunbc.fleet_intent.ComputeHost, probe: extdeps.sudo.nopasswd_execute_probe.SudoNopasswdExecuteProbeShape }
   | SudoNopasswdGrantListProbeOnHost { node: gunbc.fleet_intent.ComputeHost, probe: extdeps.sudo.nopasswd_execute_probe.SudoNopasswdGrantListProbeShape }
-  | LiveDeployApplyOnHost { node: gunbc.fleet_intent.ComputeHost, spec: gunbc.live_deploy.spec.DeploymentSpec, candidate: gunbc.live_deploy.candidate.CandidateRelease }
+  | LiveDeployApplyOnHost { node: gunbc.fleet_intent.ComputeHost, spec: gunbc.live_deploy.spec.DeploymentSpec, candidate: CandidateRelease }
   | LiveDeployRetractOnHost { node: gunbc.fleet_intent.ComputeHost, spec: gunbc.live_deploy.spec.DeploymentSpec }
   | LiveDeployEnsureDependencyOnHost { node: gunbc.fleet_intent.ComputeHost, dep: gunbc.live_deploy.spec.DeploymentDependencyStep }
   | LiveDeployDigestReadbackOnHost { node: gunbc.fleet_intent.ComputeHost, port: Int }
@@ -69,7 +67,7 @@ fn converge_plan_identity_mismatch_reason(node: gunbc.fleet_intent.ComputeHost, 
   )
 }
 
-fn resolve_host_effect_cell(target: gunbc.host_effect.NodeControlPlane, effect: gunbc.host_effect.HostEffect) -> gunbc.host_effect_realize.ResolvedHostEffectCell {
+fn resolve_host_effect_cell(target: gunbc.host_effect.NodeControlPlane, effect: gunbc.host_effect.HostEffect) -> ResolvedHostEffectCell {
   match target {
     HostOs { node: n } =>
       match effect {
@@ -102,7 +100,7 @@ fn resolve_host_effect_cell(target: gunbc.host_effect.NodeControlPlane, effect: 
             ShellCommand { script: s } =>
               ShellOnHost {
                 node: n,
-                script: retained_srvn(body: s, reason: "host_effect ShellCommand raw-script leaf (anemic String terminal, DESIGN section 5)"),
+                script: gunbc.retained_shell_script.retained_srvn(body: s, reason: "host_effect ShellCommand raw-script leaf (anemic String terminal, DESIGN section 5)"),
               }
             RedfishAction { action: _ } =>
               IncompatibleCell { reason: "host_effect: RedfishAction is out-of-band (Redfish) and cannot target HostOs (in-band shell/systemd); target BmcController instead. Typed mismatch via total fold, DESIGN section 5." }
@@ -269,7 +267,7 @@ type ShellExecObserved {
   stderr: String
 }
 
-fn shell_exec_failure_reason_headered(observed: gunbc.host_effect_realize.ShellExecObserved, header: String) -> String {
+fn shell_exec_failure_reason_headered(observed: ShellExecObserved, header: String) -> String {
   if observed.stdout == "" && observed.stderr == "" {
     header
   } else {
@@ -280,7 +278,7 @@ fn shell_exec_failure_reason_headered(observed: gunbc.host_effect_realize.ShellE
   }
 }
 
-fn shell_exec_failure_reason(observed: gunbc.host_effect_realize.ShellExecObserved) -> String {
+fn shell_exec_failure_reason(observed: ShellExecObserved) -> String {
   shell_exec_failure_reason_headered(
     observed: observed,
     header: concat(
@@ -291,7 +289,7 @@ fn shell_exec_failure_reason(observed: gunbc.host_effect_realize.ShellExecObserv
 }
 
 fn srv3_shell_reconcile(
-  observed: gunbc.host_effect_realize.ShellExecObserved,
+  observed: ShellExecObserved,
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   let grounding = if observed.success {
@@ -304,14 +302,14 @@ fn srv3_shell_reconcile(
         ),
       }
     }
-  reconcile_grounded(
+  std.realization_reconcile.reconcile_grounded(
     apply_effect: intent,
     show_read: std.realization_reconcile.ReadObserved { value: observed },
     grounding: grounding
   )
 }
 
-fn host_effect_join_lines(lines: List<String>) -> String {
+fn host_effect_join_lines(lines: std.types.List<String>) -> String {
   fold(
     lines,
     init: "",
@@ -320,11 +318,11 @@ fn host_effect_join_lines(lines: List<String>) -> String {
 }
 
 fn realize_receipt_emit_on_host(
-  lines: List<String>,
+  lines: std.types.List<String>,
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   srv3_shell_reconcile(
-    observed: gunbc.host_effect_realize.ShellExecObserved {
+    observed: ShellExecObserved {
       exit_code: 0,
       success: true,
       stdout: host_effect_join_lines(lines: lines),
@@ -338,8 +336,8 @@ fn realize_boot_once_read_back_sleep_body(
   transport: gunbc.host_effect.HostEffectTransport,
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
-  let seconds = to_string(second_count(s: srv3_boot_once_apply_read_back_sleep))
-  let success = match srv3_tool_bin_path(tool_name: sleep_cli_tool.name, transport: transport) {
+  let seconds = to_string(std.measure.second_count(s: gunbc.srv3_boot_once_cd.srv3_boot_once_apply_read_back_sleep))
+  let success = match srv3_tool_bin_path(tool_name: extdeps.tools.sleep.sleep_cli_tool.name, transport: transport) {
     Present { value: sleep_path } =>
       srv3_transport_witness_bin_success(
         transport: transport,
@@ -350,7 +348,7 @@ fn realize_boot_once_read_back_sleep_body(
     Absent => false
   }
   srv3_shell_reconcile(
-    observed: gunbc.host_effect_realize.ShellExecObserved {
+    observed: ShellExecObserved {
       exit_code: if success { 0 } else { 1 },
       success: success,
       stdout: "",
@@ -387,32 +385,32 @@ fn srv3_seeded_install_media_toolchain_receipt_line(outcome: std.types.NonEmptyS
   concat(
     concat("InstallMediaRemasterToolchainReceipt: outcome=", outcome as String),
     concat(
-      concat(" tool=", xorriso_cli_tool.name as String),
-      concat(" package=", package_xorriso as String),
+      concat(" tool=", extdeps.tools.xorriso.xorriso_cli_tool.name as String),
+      concat(" package=", extdeps.apt.package_xorriso as String),
     ),
   )
 }
 
 fn srv3_seeded_install_media_toolchain_privileged_apt_install_is_gated() -> Bool {
-  let args = srv3_actuator_toolchain_privileged_apt_install_args(package: package_xorriso)
-  args == ["-n", apt_get_binary_path as String, "install", "-y", package_xorriso as String]
+  let args = srv3_actuator_toolchain_privileged_apt_install_args(package: extdeps.apt.package_xorriso)
+  args == ["-n", extdeps.apt.apt_get_binary_path as String, "install", "-y", extdeps.apt.package_xorriso as String]
 }
 
 fn realize_seeded_install_media_toolchain_ensure_body(
   transport: gunbc.host_effect.HostEffectTransport,
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
-  let was_present = srv3_apt_tool_present(tool_name: xorriso_cli_tool.name, transport: transport) && srv3_apt_tool_version_ok(tool_name: xorriso_cli_tool.name, transport: transport)
+  let was_present = srv3_apt_tool_present(tool_name: extdeps.tools.xorriso.xorriso_cli_tool.name, transport: transport) && srv3_apt_tool_version_ok(tool_name: extdeps.tools.xorriso.xorriso_cli_tool.name, transport: transport)
   let ensure_ok = srv3_ensure_apt_tool(
-    tool_name: xorriso_cli_tool.name,
-    package: package_xorriso,
+    tool_name: extdeps.tools.xorriso.xorriso_cli_tool.name,
+    package: extdeps.apt.package_xorriso,
     require_version_probe: true,
     transport: transport,
   )
   let outcome = if was_present { "Present" } else { "Installed" }
   let stdout = srv3_seeded_install_media_toolchain_receipt_line(outcome: outcome as std.types.NonEmptyStr)
   srv3_shell_reconcile(
-    observed: gunbc.host_effect_realize.ShellExecObserved {
+    observed: ShellExecObserved {
       exit_code: if ensure_ok { 0 } else { 1 },
       success: ensure_ok,
       stdout: stdout,
@@ -449,12 +447,12 @@ fn realize_bmcweb_session_login_body(
   transport: gunbc.host_effect.HostEffectTransport,
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
-  let curl_args = bmcweb_session_login_curl_args(
-    bmc_host: asrock_srv3_live_bmc_host,
-    request_body_file: srv3_bmcweb_login_body_path as std.types.NonEmptyStr,
-    response_path: srv3_bmcweb_login_response_path as std.types.NonEmptyStr,
+  let curl_args = extdeps.bmc.webui.nbd_proxy_serve.bmcweb_session_login_curl_args(
+    bmc_host: extdeps.boards.asrock_rack.asrock_srv3_live_bmc_host,
+    request_body_file: gunbc.srv3_actuate_shell_paths.srv3_bmcweb_login_body_path as std.types.NonEmptyStr,
+    response_path: gunbc.srv3_actuate_shell_paths.srv3_bmcweb_login_response_path as std.types.NonEmptyStr,
   )
-  let success = match srv3_tool_bin_path(tool_name: curl_cli_tool.name, transport: transport) {
+  let success = match srv3_tool_bin_path(tool_name: extdeps.tools.curl.curl_cli_tool.name, transport: transport) {
     Present { value: curl_path } =>
       srv3_transport_witness_bin_success(
         transport: transport,
@@ -465,7 +463,7 @@ fn realize_bmcweb_session_login_body(
     Absent => false
   }
   srv3_shell_reconcile(
-    observed: gunbc.host_effect_realize.ShellExecObserved {
+    observed: ShellExecObserved {
       exit_code: if success { 0 } else { 1 },
       success: success,
       stdout: "",
@@ -523,13 +521,13 @@ type BmcwebTokenExtraction =
   | BmcwebTokenExtracted { token: std.types.NonEmptyStr }
   | BmcwebTokenExtractRefused { reason: String }
 
-fn bmcweb_token_extract_jq_args(response_path: String) -> List<String> {
+fn bmcweb_token_extract_jq_args(response_path: String) -> std.types.List<String> {
   ["-e", "-r", ".token", response_path]
 }
 
-fn bmcweb_token_extraction_verdict(jq_success: Bool, jq_stdout: String) -> gunbc.host_effect_realize.BmcwebTokenExtraction {
+fn bmcweb_token_extraction_verdict(jq_success: Bool, jq_stdout: String) -> BmcwebTokenExtraction {
   if jq_success {
-    let token = trim(s: jq_stdout)
+    let token = std.algebra.trim(s: jq_stdout)
     if token == "" {
       BmcwebTokenExtractRefused {
         reason: "host_effect_apply: Srv3BmcwebTokenExtract jq -e exited zero but produced no token text for `.token` in the bmcweb login response; fail-closed, no token file written.",
@@ -547,18 +545,18 @@ fn bmcweb_token_extraction_verdict(jq_success: Bool, jq_stdout: String) -> gunbc
 fn realize_bmcweb_token_extract_body(
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
-  match srv3_tool_bin_path(tool_name: jq_cli_tool.name, transport: LocalShell) {
+  match srv3_tool_bin_path(tool_name: extdeps.tools.jq.jq_cli_tool.name, transport: gunbc.host_effect.LocalShell) {
     Present { value: jq_path } => {
       let jq_run = gunbc.WitnessBin.Run(
         workdir: "/",
         bin_path: jq_path,
-        args: bmcweb_token_extract_jq_args(response_path: srv3_bmcweb_login_response_path),
+        args: bmcweb_token_extract_jq_args(response_path: gunbc.srv3_actuate_shell_paths.srv3_bmcweb_login_response_path),
       )
       match bmcweb_token_extraction_verdict(jq_success: jq_run.success, jq_stdout: jq_run.stdout) {
         BmcwebTokenExtracted { token: token } => {
-          let write = Filesystem.Write(path: srv3_bmcweb_token_path, content: token as String)
+          let write = Filesystem.Write(path: gunbc.srv3_actuate_shell_paths.srv3_bmcweb_token_path, content: token as String)
           srv3_shell_reconcile(
-            observed: gunbc.host_effect_realize.ShellExecObserved {
+            observed: ShellExecObserved {
               exit_code: if write.success { 0 } else { 1 },
               success: write.success,
               stdout: "",
@@ -573,7 +571,7 @@ fn realize_bmcweb_token_extract_body(
         }
         BmcwebTokenExtractRefused { reason: why } =>
           srv3_shell_reconcile(
-            observed: gunbc.host_effect_realize.ShellExecObserved {
+            observed: ShellExecObserved {
               exit_code: 1,
               success: false,
               stdout: "",
@@ -585,7 +583,7 @@ fn realize_bmcweb_token_extract_body(
     }
     Absent =>
       srv3_shell_reconcile(
-        observed: gunbc.host_effect_realize.ShellExecObserved {
+        observed: ShellExecObserved {
           exit_code: 1,
           success: false,
           stdout: "",
@@ -624,7 +622,7 @@ fn realize_bmcweb_token_extract_on_host(
 data toolchain_ensure_reconcile_located_note: String = "The refusal names the effect that produced it. This fold was written for OsInstallActuatorToolchainEnsure and hardcoded that effect in its failure header; when ProvisionBuildCache started reusing it (P1b:build-cache-provision), every build-cache refusal reported itself as an OS-install-actuator failure — a located diagnostic pointing at the wrong location, which is the §5 'typed, located' bar failing at the second half. The header is now a parameter supplied by each realize arm."
 
 fn toolchain_ensure_reconcile(
-  observed: gunbc.host_effect_realize.ShellExecObserved,
+  observed: ShellExecObserved,
   intent: gunbc.host_effect.HostEffectIntent,
   effect_label: String,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
@@ -645,7 +643,7 @@ fn toolchain_ensure_reconcile(
         ),
       }
     }
-  reconcile_grounded(
+  std.realization_reconcile.reconcile_grounded(
     apply_effect: intent,
     show_read: std.realization_reconcile.ReadObserved { value: observed },
     grounding: grounding
@@ -653,7 +651,7 @@ fn toolchain_ensure_reconcile(
 }
 
 fn srv3_toolchain_ensure_reconcile(
-  observed: gunbc.host_effect_realize.ShellExecObserved,
+  observed: ShellExecObserved,
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   toolchain_ensure_reconcile(
@@ -664,7 +662,7 @@ fn srv3_toolchain_ensure_reconcile(
 }
 
 fn provision_build_cache_reconcile(
-  observed: gunbc.host_effect_realize.ShellExecObserved,
+  observed: ShellExecObserved,
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   toolchain_ensure_reconcile(
@@ -674,31 +672,187 @@ fn provision_build_cache_reconcile(
   )
 }
 
-fn provision_codex_runtime_reconcile(
-  observed: gunbc.host_effect_realize.ShellExecObserved,
+data provision_codex_runtime_typed_step_note: String = "ProvisionCodexRuntime observe/materialize/read-back replaced the concat-built bash body of the now-deleted host_codex_runtime_provision_script.dag with three typed single-command steps: LocalShell dispatches through the existing typed argv services gunbc.WitnessBin.Run (observe/read-back) and gunbc.Cli.Run (materialize) — argv arrays, not a shell string, so there is no branching or receipt-marker text to construct or parse; SshShell/FleetSsh dispatch through run_typed_argv_transport with the same argv shape built by gunbc.host_codex_runtime_provision_verdict codex_runtime_observe_argv and gunbc.cli_invoke gunbc_run_transport_argv. The mkdir-release-parent step the old shell body ran before materialize is dropped: gunbc.package_delivery release_codex_runtime_bundle_immutable already runs shell.Mkdir.Parents on release_parent inside materialize_codex_runtime_bundle's own call chain, so a second mkdir ahead of it was redundant work (DESIGN §2), not preserved behavior. Read-back reuses the observe step verbatim — 'we ran materialize' is never treated as 'it is installed'; only a second successful --version probe that satisfies codex_runtime_version_identity_satisfied converges."
+
+type CodexRuntimeStepResult
+  = CodexRuntimeStepRan { observed: ShellExecObserved }
+  | CodexRuntimeStepRefused { reason: String }
+
+fn codex_runtime_typed_argv_step(
+  argv: std.types.List<String>,
+  transport: gunbc.host_effect.HostEffectTransport,
+) -> CodexRuntimeStepResult {
+  match run_typed_argv_transport(argv: argv, transport: transport) {
+    TypedArgvExecConverged { result: r } =>
+      CodexRuntimeStepRan {
+        observed: ShellExecObserved { exit_code: r.exit_code, success: r.success, stdout: r.stdout, stderr: r.stderr },
+      }
+    TypedArgvExecRefused { reason: why } => CodexRuntimeStepRefused { reason: why }
+  }
+}
+
+fn codex_runtime_observe_step(
+  transport: gunbc.host_effect.HostEffectTransport,
+  executable: std.types.FilePath,
+) -> CodexRuntimeStepResult {
+  match transport {
+    LocalShell => {
+      let r = gunbc.WitnessBin.Run(workdir: "/" as std.types.FilePath, bin_path: executable, args: ["--version"])
+      CodexRuntimeStepRan {
+        observed: ShellExecObserved { exit_code: r.exit_code, success: r.success, stdout: r.stdout, stderr: r.stderr },
+      }
+    }
+    SshShell { ssh_host: _ } =>
+      codex_runtime_typed_argv_step(
+        argv: gunbc.host_codex_runtime_provision_verdict.codex_runtime_observe_argv(executable: executable as String),
+        transport: transport,
+      )
+    FleetSsh { target: _, context: _ } =>
+      codex_runtime_typed_argv_step(
+        argv: gunbc.host_codex_runtime_provision_verdict.codex_runtime_observe_argv(executable: executable as String),
+        transport: transport,
+      )
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      CodexRuntimeStepRefused {
+        reason: "host_effect_apply: ProvisionCodexRuntime cannot use EmitArtifactThenThinRun transport; typed mismatch.",
+      }
+  }
+}
+
+data codex_runtime_materialize_source_roots: std.types.List<String> = ["dag", "src/v2"]
+data codex_runtime_materialize_entry: String = "dag/gunbc/host_codex_runtime_provision.dag"
+data codex_runtime_materialize_function: String = "materialize_codex_runtime_on_local_host"
+
+fn codex_runtime_materialize_step(
+  transport: gunbc.host_effect.HostEffectTransport,
+  gunbc_binary: std.types.FilePath,
+  gunbc_repo: std.types.FilePath,
+) -> CodexRuntimeStepResult {
+  match transport {
+    LocalShell => {
+      let r = gunbc.Cli.Run(
+        workdir: gunbc_repo,
+        bin_path: gunbc_binary,
+        source_roots: codex_runtime_materialize_source_roots,
+        entry: codex_runtime_materialize_entry,
+        function: codex_runtime_materialize_function,
+        claim_run: false,
+      )
+      CodexRuntimeStepRan {
+        observed: ShellExecObserved { exit_code: r.exit_code, success: r.success, stdout: r.stdout, stderr: r.stderr },
+      }
+    }
+    SshShell { ssh_host: _ } =>
+      codex_runtime_typed_argv_step(
+        argv: concat(
+          [gunbc_binary as String],
+          gunbc.cli_invoke.gunbc_run_transport_argv(
+            source_roots: codex_runtime_materialize_source_roots,
+            entry: codex_runtime_materialize_entry,
+            function: codex_runtime_materialize_function,
+            claim_run: false,
+          ),
+        ),
+        transport: transport,
+      )
+    FleetSsh { target: _, context: _ } =>
+      codex_runtime_typed_argv_step(
+        argv: concat(
+          [gunbc_binary as String],
+          gunbc.cli_invoke.gunbc_run_transport_argv(
+            source_roots: codex_runtime_materialize_source_roots,
+            entry: codex_runtime_materialize_entry,
+            function: codex_runtime_materialize_function,
+            claim_run: false,
+          ),
+        ),
+        transport: transport,
+      )
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      CodexRuntimeStepRefused {
+        reason: "host_effect_apply: ProvisionCodexRuntime cannot use EmitArtifactThenThinRun transport; typed mismatch.",
+      }
+  }
+}
+
+fn provision_codex_runtime_refuse(
+  host: product.placement_supply.HostIdentity,
+  observed: CodexRuntimeObservation,
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
-  match provision_codex_runtime_target_host(effect_intent: intent) {
-    Absent =>
+  match gunbc.host_codex_runtime_provision_verdict.provision_codex_runtime_verdict(host: host, observed: observed) {
+    ProvisionConverged { executable: _, version_line: _ } =>
       std.realization_reconcile.NotConverged {
-        reason: "host_effect_apply: ProvisionCodexRuntime reconcile requires HostOs target with a fleet host identity; fail-closed.",
+        reason: "host_effect_apply: ProvisionCodexRuntime verdict unexpectedly converged from a refusal-classified observation; fail-closed.",
         applied: intent,
       }
-    Present { value: host } =>
-      match provision_codex_runtime_verdict_from_shell(
+    ProvisionRefused { cause: _, reason: reason } =>
+      std.realization_reconcile.NotConverged { reason: reason as String, applied: intent }
+  }
+}
+
+fn provision_codex_runtime_reconcile(
+  host: product.placement_supply.HostIdentity,
+  executable: std.types.FilePath,
+  gunbc_binary: std.types.FilePath,
+  gunbc_repo: std.types.FilePath,
+  transport: gunbc.host_effect.HostEffectTransport,
+  intent: gunbc.host_effect.HostEffectIntent,
+) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
+  match codex_runtime_observe_step(transport: transport, executable: executable) {
+    CodexRuntimeStepRefused { reason: why } =>
+      provision_codex_runtime_refuse(
         host: host,
-        success: observed.success,
-        stdout: observed.stdout,
-        stderr: observed.stderr,
-      ) {
-        ProvisionConverged { executable: _, version_line: _ } =>
-          toolchain_ensure_reconcile(
-            observed: observed,
-            intent: intent,
-            effect_label: "ProvisionCodexRuntime",
-          )
-        ProvisionRefused { cause: _, reason: reason } =>
-          std.realization_reconcile.NotConverged { reason: reason as String, applied: intent }
+        observed: gunbc.host_codex_runtime_provision_verdict.CodexRuntimeTransportRefused { reason: why },
+        intent: intent,
+      )
+    CodexRuntimeStepRan { observed: observe_result } =>
+      if observe_result.success && gunbc.package_delivery.codex_runtime_version_identity_satisfied(combined_output: observe_result.stdout) {
+        toolchain_ensure_reconcile(observed: observe_result, intent: intent, effect_label: "ProvisionCodexRuntime")
+      } else {
+        match codex_runtime_materialize_step(transport: transport, gunbc_binary: gunbc_binary, gunbc_repo: gunbc_repo) {
+          CodexRuntimeStepRefused { reason: why } =>
+            provision_codex_runtime_refuse(
+              host: host,
+              observed: gunbc.host_codex_runtime_provision_verdict.CodexRuntimeTransportRefused { reason: why },
+              intent: intent,
+            )
+          CodexRuntimeStepRan { observed: materialize_result } =>
+            if !materialize_result.success {
+              provision_codex_runtime_refuse(
+                host: host,
+                observed: gunbc.host_codex_runtime_provision_verdict.CodexRuntimeMaterializationFailed { reason: materialize_result.stderr },
+                intent: intent,
+              )
+            } else {
+              match codex_runtime_observe_step(transport: transport, executable: executable) {
+                CodexRuntimeStepRefused { reason: why } =>
+                  provision_codex_runtime_refuse(
+                    host: host,
+                    observed: gunbc.host_codex_runtime_provision_verdict.CodexRuntimeTransportRefused { reason: why },
+                    intent: intent,
+                  )
+                CodexRuntimeStepRan { observed: read_back_result } =>
+                  if read_back_result.success
+                    && gunbc.package_delivery.codex_runtime_version_identity_satisfied(combined_output: read_back_result.stdout)
+                  {
+                    toolchain_ensure_reconcile(
+                      observed: read_back_result,
+                      intent: intent,
+                      effect_label: "ProvisionCodexRuntime",
+                    )
+                  } else {
+                    provision_codex_runtime_refuse(
+                      host: host,
+                      observed: gunbc.host_codex_runtime_provision_verdict.CodexRuntimeIdentityMismatch {
+                        observed_output: concat(read_back_result.stdout, concat(" ", read_back_result.stderr)),
+                      },
+                      intent: intent,
+                    )
+                  }
+              }
+            }
+        }
       }
   }
 }
@@ -721,7 +875,7 @@ fn realize_provision_codex_runtime_body(
         applied: effect_intent,
       }
     Present { value: host } =>
-      match codex_bundled_executable_for_host(host: host) {
+      match gunbc.host_layout.codex_bundled_executable_for_host(host: host) {
         Absent =>
           std.realization_reconcile.NotConverged {
             reason: join(
@@ -735,7 +889,7 @@ fn realize_provision_codex_runtime_body(
             applied: effect_intent,
           }
         Present { value: executable } =>
-          match provider_runtime_placement_for_host(host: host) {
+          match gunbc.host_layout.provider_runtime_placement_for_host(host: host) {
             Absent =>
               std.realization_reconcile.NotConverged {
                 reason: join(
@@ -748,20 +902,15 @@ fn realize_provision_codex_runtime_body(
                 ),
                 applied: effect_intent,
               }
-            Present { value: placement } =>
-              let observed = run_shell_transport(
-                script: retained_srvn(
-                  body: codex_runtime_provision_shell_script(
-                    executable: executable as String,
-                    release_parent: placement.runtime_release_root as String,
-                    gunbc_binary: srv1_gunbc_serve_binary as String,
-                    gunbc_repo: srv1_gunbc_repo_root as String,
-                  ),
-                  reason: "ProvisionCodexRuntime observe/ensure/read-back shell transport",
-                ),
+            Present { value: _ } =>
+              provision_codex_runtime_reconcile(
+                host: host,
+                executable: executable,
+                gunbc_binary: gunbc.host_layout.srv1_gunbc_serve_binary,
+                gunbc_repo: gunbc.host_layout.srv1_gunbc_repo_root,
                 transport: transport,
+                intent: effect_intent,
               )
-              provision_codex_runtime_reconcile(observed: observed, intent: effect_intent)
           }
       }
   }
@@ -804,7 +953,7 @@ fn realize_provision_codex_runtime(
 
 data srv3_join_shell_words_controlled_args_note: String = "SshShell argv composer for toolchain transport helpers only; callers must pass controlled literals (package names, modeled paths) — no shell-quoting until typed argv dispatch lands."
 
-fn srv3_join_shell_words(words: List<String>) -> String {
+fn srv3_join_shell_words(words: std.types.List<String>) -> String {
   fold(
     words,
     init: "",
@@ -826,7 +975,7 @@ fn srv3_transport_witness_bin_success(
   transport: gunbc.host_effect.HostEffectTransport,
   workdir: String,
   bin_path: String,
-  args: List<String>,
+  args: std.types.List<String>,
 ) -> Bool {
   match transport {
     LocalShell =>
@@ -841,9 +990,9 @@ fn srv3_transport_witness_bin_success(
           if argv == "" { bin_path } else { concat(bin_path, concat(" ", argv)) },
         )
       }
-      ssh_session_exec(host: h, command: cmd as std.types.NonEmptyStr).success
+      extdeps.ssh.session.ssh_session_exec(host: h, command: cmd as std.types.NonEmptyStr).success
     }
-    FleetSsh { target: _, context: _ } => fleet_ssh_leaf_unmigrated_refused()
+    FleetSsh { target: _, context: _ } => gunbc.host_effect.fleet_ssh_leaf_unmigrated_refused()
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       srv3_actuator_toolchain_emit_artifact_transport_helper_refused()
   }
@@ -853,8 +1002,8 @@ fn srv3_transport_test_executable(path: String, transport: gunbc.host_effect.Hos
   match transport {
     LocalShell => shell.Test.IsExecutable(path: path).executable
     SshShell { ssh_host: h } =>
-      ssh_session_exec(host: h, command: concat("test -x ", path) as std.types.NonEmptyStr).success
-    FleetSsh { target: _, context: _ } => fleet_ssh_leaf_unmigrated_refused()
+      extdeps.ssh.session.ssh_session_exec(host: h, command: concat("test -x ", path) as std.types.NonEmptyStr).success
+    FleetSsh { target: _, context: _ } => gunbc.host_effect.fleet_ssh_leaf_unmigrated_refused()
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       srv3_actuator_toolchain_emit_artifact_transport_helper_refused()
   }
@@ -864,11 +1013,11 @@ fn srv3_apt_tool_present(tool_name: std.types.NonEmptyStr, transport: gunbc.host
   match transport {
     LocalShell => shell.Which.Check(command: tool_name).exists
     SshShell { ssh_host: h } =>
-      ssh_session_exec(
+      extdeps.ssh.session.ssh_session_exec(
         host: h,
         command: concat("command -v ", tool_name as String) as std.types.NonEmptyStr,
       ).success
-    FleetSsh { target: _, context: _ } => fleet_ssh_leaf_unmigrated_refused()
+    FleetSsh { target: _, context: _ } => gunbc.host_effect.fleet_ssh_leaf_unmigrated_refused()
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       srv3_actuator_toolchain_emit_artifact_transport_helper_refused()
   }
@@ -888,18 +1037,18 @@ fn srv3_tool_bin_path(tool_name: std.types.NonEmptyStr, transport: gunbc.host_ef
       }
     }
     SshShell { ssh_host: h } => {
-      let result = ssh_session_exec(
+      let result = extdeps.ssh.session.ssh_session_exec(
         host: h,
         command: concat("command -v ", tool_name as String) as std.types.NonEmptyStr,
       )
       if result.success {
-        let tool_path = trim(result.stdout)
+        let tool_path = std.algebra.trim(result.stdout)
         if tool_path == "" { none } else { Present { value: tool_path } }
       } else {
         none
       }
     }
-    FleetSsh { target: _, context: _ } => fleet_ssh_leaf_unmigrated_refused()
+    FleetSsh { target: _, context: _ } => gunbc.host_effect.fleet_ssh_leaf_unmigrated_refused()
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       srv3_actuator_toolchain_emit_artifact_transport_helper_refused_opt()
   }
@@ -935,10 +1084,10 @@ fn srv3_chown_directory_to_current_user(path: String, transport: gunbc.host_effe
       }
     }
     SshShell { ssh_host: h } => {
-      let uid = ssh_session_exec(host: h, command: "id -u" as std.types.NonEmptyStr)
-      let gid = ssh_session_exec(host: h, command: "id -g" as std.types.NonEmptyStr)
+      let uid = extdeps.ssh.session.ssh_session_exec(host: h, command: "id -u" as std.types.NonEmptyStr)
+      let gid = extdeps.ssh.session.ssh_session_exec(host: h, command: "id -g" as std.types.NonEmptyStr)
       if uid.success && gid.success {
-        let owner = concat(trim(uid.stdout), concat(":", trim(gid.stdout)))
+        let owner = concat(std.algebra.trim(uid.stdout), concat(":", std.algebra.trim(gid.stdout)))
         srv3_transport_witness_bin_success(
           transport: transport,
           workdir: "/",
@@ -949,7 +1098,7 @@ fn srv3_chown_directory_to_current_user(path: String, transport: gunbc.host_effe
         false
       }
     }
-    FleetSsh { target: _, context: _ } => fleet_ssh_leaf_unmigrated_refused()
+    FleetSsh { target: _, context: _ } => gunbc.host_effect.fleet_ssh_leaf_unmigrated_refused()
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       srv3_actuator_toolchain_emit_artifact_transport_helper_refused()
   }
@@ -964,10 +1113,10 @@ fn srv3_privileged_apt_install(package: std.types.NonEmptyStr, transport: gunbc.
   )
 }
 
-fn srv3_actuator_toolchain_privileged_apt_install_args(package: std.types.NonEmptyStr) -> List<String> {
+fn srv3_actuator_toolchain_privileged_apt_install_args(package: std.types.NonEmptyStr) -> std.types.List<String> {
   [
     "-n",
-    apt_get_binary_path as String,
+    extdeps.apt.apt_get_binary_path as String,
     "install",
     "-y",
     package as String,
@@ -975,15 +1124,15 @@ fn srv3_actuator_toolchain_privileged_apt_install_args(package: std.types.NonEmp
 }
 
 fn srv3_actuator_toolchain_websocat_release_download_url() -> String {
-  websocat_github_release_download_url(
-    tag: websocat_github_tag,
-    asset: websocat_asset_aarch64,
+  extdeps.tools.websocat.websocat_github_release_download_url(
+    tag: extdeps.tools.websocat.websocat_github_tag,
+    asset: extdeps.tools.websocat.websocat_asset_aarch64,
   )
 }
 
 fn srv3_actuator_toolchain_realizer_apt_install_is_privileged_gated() -> Bool {
-  let args = srv3_actuator_toolchain_privileged_apt_install_args(package: package_curl)
-  args == ["-n", apt_get_binary_path as String, "install", "-y", package_curl as String]
+  let args = srv3_actuator_toolchain_privileged_apt_install_args(package: extdeps.apt.package_curl)
+  args == ["-n", extdeps.apt.apt_get_binary_path as String, "install", "-y", extdeps.apt.package_curl as String]
 }
 
 fn srv3_actuator_toolchain_realizer_websocat_uses_github_release_not_apt() -> Bool {
@@ -991,11 +1140,11 @@ fn srv3_actuator_toolchain_realizer_websocat_uses_github_release_not_apt() -> Bo
     s: srv3_actuator_toolchain_websocat_release_download_url(),
     pattern: "github.com/vi/websocat/releases/download/",
   )
-    && string_contains(s: websocat_install_path as String, pattern: gunbc_bin_dir as String)
+    && string_contains(s: extdeps.tools.websocat.websocat_install_path as String, pattern: extdeps.bmc.os_install_actuator_toolchain.gunbc_bin_dir as String)
 }
 
 fn srv3_actuator_toolchain_realizer_websocat_installs_to_modeled_path_with_namespace_upsert() -> Bool {
-  string_contains(s: websocat_install_path as String, pattern: concat(gunbc_bin_dir as String, "/"))
+  string_contains(s: extdeps.tools.websocat.websocat_install_path as String, pattern: concat(extdeps.bmc.os_install_actuator_toolchain.gunbc_bin_dir as String, "/"))
 }
 
 fn srv3_ensure_apt_tool(
@@ -1016,13 +1165,13 @@ fn srv3_ensure_apt_tool(
 }
 
 fn srv3_ensure_websocat(transport: gunbc.host_effect.HostEffectTransport) -> Bool {
-  let install_path = websocat_install_path as String
+  let install_path = extdeps.tools.websocat.websocat_install_path as String
   if srv3_transport_test_executable(path: install_path, transport: transport) {
     true
   } else {
-    match srv3_tool_bin_path(tool_name: curl_cli_tool.name, transport: transport) {
+    match srv3_tool_bin_path(tool_name: extdeps.tools.curl.curl_cli_tool.name, transport: transport) {
       Present { value: curl_path } => {
-        let bin_dir = gunbc_bin_dir as String
+        let bin_dir = extdeps.bmc.os_install_actuator_toolchain.gunbc_bin_dir as String
         let url = srv3_actuator_toolchain_websocat_release_download_url()
         let mkdir = srv3_transport_witness_bin_success(
           transport: transport,
@@ -1059,20 +1208,20 @@ fn srv3_realize_os_install_actuator_toolchain_ensure_body(
   effect_intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   let curl_ok = srv3_ensure_apt_tool(
-    tool_name: curl_cli_tool.name,
-    package: package_curl,
+    tool_name: extdeps.tools.curl.curl_cli_tool.name,
+    package: extdeps.apt.package_curl,
     require_version_probe: true,
     transport: transport,
   )
   let nbdkit_ok = srv3_ensure_apt_tool(
-    tool_name: nbdkit_cli_tool.name,
-    package: package_nbdkit,
+    tool_name: extdeps.tools.nbdkit.nbdkit_cli_tool.name,
+    package: extdeps.apt.package_nbdkit,
     require_version_probe: true,
     transport: transport,
   )
   let socat_ok = srv3_ensure_apt_tool(
-    tool_name: socat_cli_tool.name,
-    package: package_socat,
+    tool_name: extdeps.tools.socat.socat_cli_tool.name,
+    package: extdeps.apt.package_socat,
     require_version_probe: false,
     transport: transport,
   )
@@ -1137,7 +1286,7 @@ data provision_build_cache_arch_derivation_note: String = "The provisioning scri
 fn provision_build_cache_host_arch(effect_intent: gunbc.host_effect.HostEffectIntent) -> extdeps.toolchain.types.Architecture? {
   match effect_intent.target {
     HostOs { node: host } =>
-      match compute_host_primary_cpu(host: host) {
+      match gunbc.fleet_intent.compute_host_primary_cpu(host: host) {
         Present { value: cpu } => Present { value: cpu.catalog.architecture }
         Absent => none
       }
@@ -1156,15 +1305,15 @@ fn realize_provision_build_cache_body(
         applied: effect_intent,
       }
     Present { value: arch } =>
-      match sccache_release_arch_token(arch: arch) {
+      match extdeps.cache.sccache.sccache_release_arch_token(arch: arch) {
         Absent =>
           std.realization_reconcile.NotConverged {
             reason: join(
               [
                 "host_effect_apply: ProvisionBuildCache refused — the cited sccache release ",
-                sccache_release_0_15_0.version as String,
+                extdeps.cache.sccache.sccache_release_0_15_0.version as String,
                 " publishes no musl tarball for architecture ",
-                architecture_diagnostic_name(arch: arch) as String,
+                extdeps.toolchain.types.architecture_diagnostic_name(arch: arch) as String,
                 "; fail-closed, no default arch.",
               ],
               "",
@@ -1172,13 +1321,13 @@ fn realize_provision_build_cache_body(
             applied: effect_intent,
           }
         Present { value: token } =>
-          match sccache_release_digest(rel: sccache_release_0_15_0, arch: arch) {
+          match extdeps.cache.sccache.sccache_release_digest(rel: extdeps.cache.sccache.sccache_release_0_15_0, arch: arch) {
             Absent =>
               std.realization_reconcile.NotConverged {
                 reason: join(
                   [
                     "host_effect_apply: ProvisionBuildCache refused — no pinned sha256 in the cited release row for architecture ",
-                    architecture_diagnostic_name(arch: arch) as String,
+                    extdeps.toolchain.types.architecture_diagnostic_name(arch: arch) as String,
                     "; fail-closed, never install unverified.",
                   ],
                   "",
@@ -1187,8 +1336,8 @@ fn realize_provision_build_cache_body(
               }
             Present { value: digest } => {
               let observed = run_shell_transport(
-                script: retained_srvn(
-                  body: build_cache_provision_shell_script(arch_token: token, digest: digest),
+                script: gunbc.retained_shell_script.retained_srvn(
+                  body: gunbc.host_build_cache_provision_script.build_cache_provision_shell_script(arch_token: token, digest: digest),
                   reason: "srvN build-cache provisioning (sccache daemon ensure)",
                 ),
                 transport: transport,
@@ -1205,7 +1354,7 @@ fn realize_provision_build_cache(
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   match effect_intent.effect {
     ProvisionBuildCache { catalog_id: id } =>
-      match provision_build_cache_catalog_gate_verdict(catalog_id: id) {
+      match gunbc.host_build_cache_catalog_gate.provision_build_cache_catalog_gate_verdict(catalog_id: id) {
         ProvisionBuildCacheCatalogRefused { reason: reason } =>
           std.realization_reconcile.NotConverged { reason: reason as String, applied: effect_intent }
         ProvisionBuildCacheCatalogRealizable =>
@@ -1242,10 +1391,10 @@ fn realize_provision_build_cache(
 
 fn provision_build_cache_witness_intent() -> gunbc.host_effect.HostEffectIntent {
   gunbc.host_effect.HostEffectIntent {
-    target: gunbc.host_effect.HostOs { node: srv1_host },
-    effect: gunbc.host_effect.ProvisionBuildCache { catalog_id: sccache_local_id },
-    evidence: host_effect_identity_evidence,
-    transport: LocalShell,
+    target: gunbc.host_effect.HostOs { node: gunbc.fleet_intent.srv1_host },
+    effect: gunbc.host_effect.ProvisionBuildCache { catalog_id: extdeps.cache.sccache.sccache_local_id },
+    evidence: gunbc.host_effect.host_effect_identity_evidence,
+    transport: gunbc.host_effect.LocalShell,
     privilege_denial: none,
   }
 }
@@ -1254,7 +1403,7 @@ data provision_build_cache_arch_unknown_fixture_note: String = "A host the fleet
 
 fn provision_build_cache_arch_unknown_host_fixture() -> gunbc.fleet_intent.ComputeHost {
   gunbc.fleet_intent.ComputeHost {
-    identity: srv1_host.identity,
+    identity: gunbc.fleet_intent.srv1_host.identity,
     baseboard: none,
     processors: [],
     memory: [],
@@ -1266,15 +1415,15 @@ fn provision_build_cache_arch_unknown_host_fixture() -> gunbc.fleet_intent.Compu
 fn provision_build_cache_arch_unknown_intent_fixture() -> gunbc.host_effect.HostEffectIntent {
   gunbc.host_effect.HostEffectIntent {
     target: gunbc.host_effect.HostOs { node: provision_build_cache_arch_unknown_host_fixture() },
-    effect: gunbc.host_effect.ProvisionBuildCache { catalog_id: sccache_local_id },
-    evidence: host_effect_identity_evidence,
-    transport: LocalShell,
+    effect: gunbc.host_effect.ProvisionBuildCache { catalog_id: extdeps.cache.sccache.sccache_local_id },
+    evidence: gunbc.host_effect.host_effect_identity_evidence,
+    transport: gunbc.host_effect.LocalShell,
     privilege_denial: none,
   }
 }
 
 fn provision_build_cache_reconcile_shell_observed(
-  observed: gunbc.host_effect_realize.ShellExecObserved,
+  observed: ShellExecObserved,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   provision_build_cache_reconcile(
     observed: observed,
@@ -1282,10 +1431,10 @@ fn provision_build_cache_reconcile_shell_observed(
   )
 }
 
-fn run_shell_transport(script: gunbc.retained_shell_script.RetainedShellScript, transport: gunbc.host_effect.HostEffectTransport) -> gunbc.host_effect_realize.ShellExecObserved {
+fn run_shell_transport(script: gunbc.retained_shell_script.RetainedShellScript, transport: gunbc.host_effect.HostEffectTransport) -> ShellExecObserved {
   match transport {
     LocalShell => {
-      let result = shell.Exec.Run(script: retained_shell_script_to_transport(rss: script), expect: OutcomeIsData)
+      let result = shell.Exec.Run(script: gunbc.retained_shell_script.retained_shell_script_to_transport(rss: script), expect: gunbc.output_policy.OutcomeIsData)
       ShellExecObserved {
         exit_code: result.exit_code,
         success: result.success,
@@ -1302,7 +1451,7 @@ fn run_shell_transport(script: gunbc.retained_shell_script.RetainedShellScript, 
           stderr: "",
         }
       } else {
-        let result = ssh_session_exec_script(host: h, script: script.body)
+        let result = extdeps.ssh.session.ssh_session_exec_script(host: h, script: script.body)
         ShellExecObserved {
           exit_code: result.exit_code,
           success: result.success,
@@ -1336,16 +1485,16 @@ fn run_shell_transport(script: gunbc.retained_shell_script.RetainedShellScript, 
 }
 
 fn realize_converge_in_process(host_converge: gunbc.host_converge.HostConverge, intent: gunbc.host_effect.HostEffectIntent) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
-  match interpret_host_converge(host_converge: host_converge) {
+  match gunbc.host_converge_realize.interpret_host_converge(host_converge: host_converge) {
     ConvergeHostRefused { reason: why } =>
       std.realization_reconcile.NotConverged { reason: why, applied: intent }
     ConvergeHostInterpreted { knob_count: n, stdout: out } =>
       if n == 0 {
-        std.realization_reconcile.NotConverged { reason: converge_host_no_knobs_reason, applied: intent }
+        std.realization_reconcile.NotConverged { reason: gunbc.host_converge_realize.converge_host_no_knobs_reason, applied: intent }
       } else {
-        let observed = run_shell_transport(script: retained_srvn(body: out, reason: "host converge in-process apply (interpreted knob script)"), transport: LocalShell)
+        let observed = run_shell_transport(script: gunbc.retained_shell_script.retained_srvn(body: out, reason: "host converge in-process apply (interpreted knob script)"), transport: gunbc.host_effect.LocalShell)
         if observed.success {
-          reconcile_grounded(
+          std.realization_reconcile.reconcile_grounded(
             apply_effect: intent,
             show_read: std.realization_reconcile.ReadObserved { value: observed.stdout },
             grounding: std.realization_reconcile.Grounds { evidence: gunbc.host_effect.ConvergePlanApplied { exit_code: observed.exit_code, stdout: observed.stdout } }
@@ -1363,7 +1512,7 @@ fn realize_converge_in_process(host_converge: gunbc.host_converge.HostConverge, 
 fn realize_converge_on_host(host_converge: gunbc.host_converge.HostConverge, transport: gunbc.host_effect.HostEffectTransport, intent: gunbc.host_effect.HostEffectIntent) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   match transport {
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      match gunbc_apply_mode_for_host(host: host_converge.identity) {
+      match gunbc.host_converge.gunbc_apply_mode_for_host(host: host_converge.identity) {
         FreshStandup =>
           std.realization_reconcile.NotConverged {
             reason: "host_effect_apply: EmitArtifactThenThinRun fresh-standup bootstrap+thin-run is fail-closed Unimplemented until bootstrap_fragment_script_carrier_scaffold and thin_invocation_argv_carrier_scaffold dissolve via bash-emit (#5828 / shell-emission slice 1+2).",
@@ -1388,9 +1537,9 @@ fn realize_converge_on_host(host_converge: gunbc.host_converge.HostConverge, tra
 }
 
 fn realize_install_media_fetch_in_process(intent: gunbc.host_effect.HostEffectIntent) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
-  match install_media_fetch_reconcile(artifact: srv3_ubuntu_install_media_artifact) {
+  match extdeps.provisioning.ubuntu_install_media_fetch.install_media_fetch_reconcile(artifact: gunbc.srv3_ubuntu_install_media_artifact.srv3_ubuntu_install_media_artifact) {
     InstallMediaFetchAlreadyPresent { path: p } =>
-      reconcile_grounded(
+      std.realization_reconcile.reconcile_grounded(
         apply_effect: intent,
         show_read: std.realization_reconcile.ReadObserved { value: p as String },
         grounding: std.realization_reconcile.Grounds {
@@ -1401,7 +1550,7 @@ fn realize_install_media_fetch_in_process(intent: gunbc.host_effect.HostEffectIn
         }
       )
     InstallMediaFetchFetched { path: p, mirror_url: u } =>
-      reconcile_grounded(
+      std.realization_reconcile.reconcile_grounded(
         apply_effect: intent,
         show_read: std.realization_reconcile.ReadObserved { value: p as String },
         grounding: std.realization_reconcile.Grounds {
@@ -1417,9 +1566,9 @@ fn realize_install_media_fetch_in_process(intent: gunbc.host_effect.HostEffectIn
 }
 
 fn realize_install_media_remaster_in_process(intent: gunbc.host_effect.HostEffectIntent) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
-  match install_media_remaster_reconcile(artifact: srv3_seeded_install_media_artifact) {
+  match extdeps.provisioning.ubuntu_seeded_install_media_remaster.install_media_remaster_reconcile(artifact: gunbc.srv3_seeded_install_media_artifact.srv3_seeded_install_media_artifact) {
     InstallMediaRemasterAlreadyPresent { path: p } =>
-      reconcile_grounded(
+      std.realization_reconcile.reconcile_grounded(
         apply_effect: intent,
         show_read: std.realization_reconcile.ReadObserved { value: p as String },
         grounding: std.realization_reconcile.Grounds {
@@ -1430,7 +1579,7 @@ fn realize_install_media_remaster_in_process(intent: gunbc.host_effect.HostEffec
         }
       )
     InstallMediaRemasterRemastered { path: p } =>
-      reconcile_grounded(
+      std.realization_reconcile.reconcile_grounded(
         apply_effect: intent,
         show_read: std.realization_reconcile.ReadObserved { value: p as String },
         grounding: std.realization_reconcile.Grounds {
@@ -1445,7 +1594,7 @@ fn realize_install_media_remaster_in_process(intent: gunbc.host_effect.HostEffec
   }
 }
 
-fn realize_srv3_typed_reconcile(kind: gunbc.host_effect_realize.TypedReconcileKind, transport: gunbc.host_effect.HostEffectTransport, intent: gunbc.host_effect.HostEffectIntent) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
+fn realize_srv3_typed_reconcile(kind: TypedReconcileKind, transport: gunbc.host_effect.HostEffectTransport, intent: gunbc.host_effect.HostEffectIntent) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   match transport {
     LocalShell =>
       match kind {
@@ -1471,7 +1620,7 @@ fn realize_srv3_typed_reconcile(kind: gunbc.host_effect_realize.TypedReconcileKi
 }
 
 fn reconcile_shell_exec_observed(
-  observed: gunbc.host_effect_realize.ShellExecObserved,
+  observed: ShellExecObserved,
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   let grounding = if observed.success {
@@ -1479,7 +1628,7 @@ fn reconcile_shell_exec_observed(
     } else {
       std.realization_reconcile.DoesNotGround { reason: shell_exec_failure_reason(observed: observed) }
     }
-  reconcile_grounded(
+  std.realization_reconcile.reconcile_grounded(
     apply_effect: intent,
     show_read: std.realization_reconcile.ReadObserved { value: observed },
     grounding: grounding
@@ -1493,7 +1642,7 @@ fn reconcile_ssh_argv_exec_outcome(
   match outcome {
     TypedArgvExecConverged { result: r } =>
       reconcile_shell_exec_observed(
-        observed: gunbc.host_effect_realize.ShellExecObserved {
+        observed: ShellExecObserved {
           exit_code: r.exit_code,
           success: r.success,
           stdout: r.stdout,
@@ -1509,7 +1658,7 @@ fn reconcile_ssh_argv_exec_outcome(
 data run_typed_argv_transport_authority_note: String = "Executor→target typed remote argv transport binding (codex_runtime_converge_local_shell_locus dissolve-on class; review 51883). SshShell routes through typed_argv_exec_over_ssh on the transport endpoint; FleetSsh routes through typed_argv_exec_over_fleet_ssh with sealed context. LocalShell refuses — remote argv requires a transport that names the target host. Shell script bodies use host_effect_realize run_shell_transport instead."
 
 fn run_typed_argv_transport(
-  argv: List<String>,
+  argv: std.types.List<String>,
   transport: gunbc.host_effect.HostEffectTransport,
 ) -> gunbc.typed_argv_exec.TypedArgvExecOutcome {
   match transport {
@@ -1518,9 +1667,9 @@ fn run_typed_argv_transport(
         reason: "run_typed_argv_transport: LocalShell has no remote target — use SshShell or FleetSsh when executor and subject host differ",
       }
     SshShell { ssh_host: h } =>
-      typed_argv_exec_over_ssh(host: h, argv: argv)
+      gunbc.typed_argv_exec.typed_argv_exec_over_ssh(host: h, argv: argv)
     FleetSsh { target: t, context: c } =>
-      typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv)
+      gunbc.typed_argv_exec.typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       gunbc.typed_argv_exec.TypedArgvExecRefused {
         reason: "run_typed_argv_transport: EmitArtifactThenThinRun is not a typed argv transport",
@@ -1533,12 +1682,12 @@ fn realize_effective_principal_read_on_host(
   transport: gunbc.host_effect.HostEffectTransport,
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
-  let argv = posix_effective_principal_read_argv()
+  let argv = extdeps.access.posix_effective_principal_read_op.posix_effective_principal_read_argv()
   match transport {
     LocalShell => {
-      let result = effective_posix_principal_read(read: read)
+      let result = extdeps.access.posix_effective_principal_read_op.effective_posix_principal_read(read: read)
       reconcile_shell_exec_observed(
-        observed: gunbc.host_effect_realize.ShellExecObserved {
+        observed: ShellExecObserved {
           exit_code: result.exit_code,
           success: result.success,
           stdout: result.stdout,
@@ -1549,12 +1698,12 @@ fn realize_effective_principal_read_on_host(
     }
     SshShell { ssh_host: h } =>
       reconcile_ssh_argv_exec_outcome(
-        outcome: typed_argv_exec_over_ssh(host: h, argv: argv),
+        outcome: gunbc.typed_argv_exec.typed_argv_exec_over_ssh(host: h, argv: argv),
         intent: intent,
       )
     FleetSsh { target: t, context: c } =>
       reconcile_ssh_argv_exec_outcome(
-        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv),
+        outcome: gunbc.typed_argv_exec.typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv),
         intent: intent,
       )
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
@@ -1570,12 +1719,12 @@ fn realize_sudo_nopasswd_execute_probe_on_host(
   transport: gunbc.host_effect.HostEffectTransport,
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
-  let argv = sudo_nopasswd_execute_probe_argv(probe: probe)
+  let argv = extdeps.sudo.nopasswd_execute_probe_check_op.sudo_nopasswd_execute_probe_argv(probe: probe)
   match transport {
     LocalShell => {
       let result = sudo.NopasswdExecuteProbe.Check(probe: probe)
       reconcile_shell_exec_observed(
-        observed: gunbc.host_effect_realize.ShellExecObserved {
+        observed: ShellExecObserved {
           exit_code: if result.success { 0 } else { 1 },
           success: result.success,
           stdout: "",
@@ -1586,12 +1735,12 @@ fn realize_sudo_nopasswd_execute_probe_on_host(
     }
     SshShell { ssh_host: h } =>
       reconcile_ssh_argv_exec_outcome(
-        outcome: typed_argv_exec_over_ssh(host: h, argv: argv),
+        outcome: gunbc.typed_argv_exec.typed_argv_exec_over_ssh(host: h, argv: argv),
         intent: intent,
       )
     FleetSsh { target: t, context: c } =>
       reconcile_ssh_argv_exec_outcome(
-        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv),
+        outcome: gunbc.typed_argv_exec.typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv),
         intent: intent,
       )
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
@@ -1608,9 +1757,9 @@ fn sudo_nopasswd_grant_list_observed(
   query_success: Bool,
   stdout: String,
   stderr: String,
-) -> gunbc.host_effect_realize.ShellExecObserved {
+) -> ShellExecObserved {
   let admitted = query_success
-    && sudo_nopasswd_grant_list_admits_probe(listing: stdout, probe: probe)
+    && extdeps.sudo.nopasswd_execute_probe_check_op.sudo_nopasswd_grant_list_admits_probe(listing: stdout, probe: probe)
   let observed_exit_code = if admitted {
     0
   } else if exit_code == 0 {
@@ -1653,7 +1802,7 @@ fn realize_sudo_nopasswd_grant_list_probe_on_host(
   transport: gunbc.host_effect.HostEffectTransport,
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
-  let argv = sudo_nopasswd_grant_list_argv()
+  let argv = extdeps.sudo.nopasswd_execute_probe_check_op.sudo_nopasswd_grant_list_argv()
   match transport {
     LocalShell => {
       let result = sudo.NopasswdGrantList.Read()
@@ -1671,13 +1820,13 @@ fn realize_sudo_nopasswd_grant_list_probe_on_host(
     SshShell { ssh_host: h } =>
       reconcile_sudo_nopasswd_grant_list_outcome(
         probe: probe,
-        outcome: typed_argv_exec_over_ssh(host: h, argv: argv),
+        outcome: gunbc.typed_argv_exec.typed_argv_exec_over_ssh(host: h, argv: argv),
         intent: intent,
       )
     FleetSsh { target: t, context: c } =>
       reconcile_sudo_nopasswd_grant_list_outcome(
         probe: probe,
-        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv),
+        outcome: gunbc.typed_argv_exec.typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv),
         intent: intent,
       )
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
@@ -1700,7 +1849,7 @@ fn realize_set_hostname_cas_on_host(
   transport: gunbc.host_effect.HostEffectTransport,
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
-  match hostname_set_cas(
+  match gunbc.hostname_set.hostname_set_cas(
     hostnamectl_path: hostnamectl_path,
     transport: transport,
     base: base,
@@ -1708,7 +1857,7 @@ fn realize_set_hostname_cas_on_host(
   ) {
     HostnameSetCasApplied =>
       reconcile_shell_exec_observed(
-        observed: gunbc.host_effect_realize.ShellExecObserved {
+        observed: ShellExecObserved {
           exit_code: 0,
           success: true,
           stdout: desired as String,
@@ -1741,15 +1890,15 @@ fn realize_hostname_read_on_host(
   transport: gunbc.host_effect.HostEffectTransport,
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
-  match hostname_short_read(transport: transport) {
+  match gunbc.hostname_read.hostname_short_read(transport: transport) {
     HostnameShortCaptured { value: name } =>
       reconcile_shell_exec_observed(
-        observed: gunbc.host_effect_realize.ShellExecObserved { exit_code: 0, success: true, stdout: name, stderr: "" },
+        observed: ShellExecObserved { exit_code: 0, success: true, stdout: name, stderr: "" },
         intent: intent,
       )
     HostnameShortCaptureRefused { reason: why } =>
       reconcile_shell_exec_observed(
-        observed: gunbc.host_effect_realize.ShellExecObserved {
+        observed: ShellExecObserved {
           exit_code: 1,
           success: false,
           stdout: "",
@@ -1773,7 +1922,7 @@ fn realize_codex_supervised_worker_turn_on_host(
       applied: intent_record,
     }
   } else {
-    match host_effect_codex_supervised_turn_apply(
+    match gunbc.host_effect_codex_supervised_turn.host_effect_codex_supervised_turn_apply(
       intent: intent,
       lease_key: lease_key,
       client_command_id: cmd_id_read.content as std.types.NonEmptyStr,
@@ -1785,7 +1934,7 @@ fn realize_codex_supervised_worker_turn_on_host(
         exit_code: code,
       } =>
         reconcile_shell_exec_observed(
-          observed: gunbc.host_effect_realize.ShellExecObserved {
+          observed: ShellExecObserved {
             exit_code: code,
             success: code == 0,
             stdout: out,
@@ -1805,13 +1954,13 @@ fn realize_nbd_proxy_session_on_host(
   transport: gunbc.host_effect.HostEffectTransport,
   intent_record: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
-  let binding = host_effect_nbd_proxy_serve_session_binding(intent: intent, lease_key: lease_key)
-  match host_effect_nbd_proxy_serve_apply(binding: binding, transport: transport) {
+  let binding = gunbc.host_effect_nbd_proxy_serve.host_effect_nbd_proxy_serve_session_binding(intent: intent, lease_key: lease_key)
+  match gunbc.host_effect_nbd_proxy_serve.host_effect_nbd_proxy_serve_apply(binding: binding, transport: transport) {
     NbdProxyServeApplyConverged { stdout: out } =>
-      reconcile_grounded(
+      std.realization_reconcile.reconcile_grounded(
         apply_effect: intent_record,
         show_read: std.realization_reconcile.ReadObserved {
-          value: gunbc.host_effect_realize.ShellExecObserved {
+          value: ShellExecObserved {
             exit_code: 0,
             success: true,
             stdout: out,
@@ -1851,7 +2000,7 @@ fn live_deploy_apply_candidate_locus_refusal(transport: gunbc.host_effect.HostEf
 
 fn realize_live_deploy_apply_on_host(
   spec: gunbc.live_deploy.spec.DeploymentSpec,
-  candidate: gunbc.live_deploy.candidate.CandidateRelease,
+  candidate: CandidateRelease,
   transport: gunbc.host_effect.HostEffectTransport,
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
@@ -1860,10 +2009,10 @@ fn realize_live_deploy_apply_on_host(
     std.realization_reconcile.NotConverged { reason: locus_refusal, applied: intent }
   } else {
     realize_shell_on_host(
-      script: retained_srvn(
-        body: live_deploy_apply_script_for(
+      script: gunbc.retained_shell_script.retained_srvn(
+        body: gunbc.live_deploy.emit.live_deploy_apply_script_for(
           spec: spec,
-          revision: gunbc.live_deploy.emit.RevisionBoundAtEmission { revision: candidate.revision },
+          revision: RevisionBoundAtEmission { revision: candidate.revision },
         ),
         reason: "live_deploy apply (unit install + start)",
       ),
@@ -1879,8 +2028,8 @@ fn realize_live_deploy_retract_on_host(
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   realize_shell_on_host(
-    script: retained_srvn(
-      body: live_deploy_retract_script_for(spec: spec),
+    script: gunbc.retained_shell_script.retained_srvn(
+      body: gunbc.live_deploy.emit.live_deploy_retract_script_for(spec: spec),
       reason: "live_deploy retract (unit teardown)",
     ),
     transport: transport,
@@ -1894,8 +2043,8 @@ fn realize_live_deploy_ensure_dependency_on_host(
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   realize_shell_on_host(
-    script: retained_srvn(
-      body: deployment_ensure_dependency_script(dep: dep),
+    script: gunbc.retained_shell_script.retained_srvn(
+      body: gunbc.live_deploy.emit.deployment_ensure_dependency_script(dep: dep),
       reason: "live_deploy ensure dependency",
     ),
     transport: transport,
@@ -1909,8 +2058,8 @@ fn realize_live_deploy_digest_readback_on_host(
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   realize_shell_on_host(
-    script: retained_srvn(
-      body: roadmap_site_digest_readback_script(port: port),
+    script: gunbc.retained_shell_script.retained_srvn(
+      body: gunbc.roadmap_static_site.roadmap_site_digest_readback_script(port: port),
       reason: "live_deploy digest readback probe",
     ),
     transport: transport,
@@ -1970,23 +2119,23 @@ fn host_effect_apply(target: gunbc.host_effect.NodeControlPlane, effect: gunbc.h
     LiveDeployDigestReadbackOnHost { node: _, port: p } =>
       realize_live_deploy_digest_readback_on_host(port: p, transport: transport, intent: intent)
     EnsureActionsRunnerReleaseOnHost { node: _, runner_release: _ } =>
-      runner_lifecycle_realize_ensure_actions_runner_release(intent: intent)
+      gunbc.runner_lifecycle_realize.runner_lifecycle_realize_ensure_actions_runner_release(intent: intent)
     EnsureRunnerSlotDirectoryOnHost { node: _, slot: _, artifact: _ } =>
-      runner_lifecycle_realize_ensure_runner_slot_directory(intent: intent)
+      gunbc.runner_lifecycle_realize.runner_lifecycle_realize_ensure_runner_slot_directory(intent: intent)
     EnsureRunnerJitWrapperOnHost { node: _, host_label: _ } =>
-      runner_lifecycle_realize_ensure_runner_jit_wrapper(intent: intent)
+      gunbc.runner_lifecycle_realize.runner_lifecycle_realize_ensure_runner_jit_wrapper(intent: intent)
     EnsureRunnerSystemdTemplateOnHost { node: _, host_label: _ } =>
-      runner_lifecycle_realize_ensure_runner_systemd_template(intent: intent)
+      gunbc.runner_lifecycle_realize.runner_lifecycle_realize_ensure_runner_systemd_template(intent: intent)
     EnsureRunnerMemoryCapsOnHost { node: _, slot: _ } =>
-      runner_lifecycle_realize_ensure_runner_memory_caps(intent: intent)
+      gunbc.runner_lifecycle_realize.runner_lifecycle_realize_ensure_runner_memory_caps(intent: intent)
     ActivateRunnerSlotOnHost { node: _, slot: _ } =>
-      runner_lifecycle_realize_activate_runner_slot(intent: intent)
+      gunbc.runner_lifecycle_realize.runner_lifecycle_realize_activate_runner_slot(intent: intent)
     ReplaceRunnerIncarnationOnHost { node: _, from: _, cause: _ } =>
-      runner_lifecycle_realize_replace_runner_incarnation(intent: intent)
+      gunbc.runner_lifecycle_realize.runner_lifecycle_realize_replace_runner_incarnation(intent: intent)
     ObserveRunnerLocalStateOnHost { node: _, slot: _ } =>
-      runner_lifecycle_realize_observe_runner_local_state(intent: intent)
+      gunbc.runner_lifecycle_realize.runner_lifecycle_realize_observe_runner_local_state(intent: intent)
     ObserveGitHubRunnerRegistrationOnHost { node: _, slot: _, organization: _ } =>
-      runner_lifecycle_realize_observe_github_runner_registration(intent: intent)
+      gunbc.runner_lifecycle_realize.runner_lifecycle_realize_observe_github_runner_registration(intent: intent)
     RedfishOnBmc { node: _, action: _ } =>
       std.realization_reconcile.NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
     IncompatibleCell { reason: why } => std.realization_reconcile.NotConverged { reason: why, applied: intent }
@@ -1998,7 +2147,7 @@ fn host_effect_privilege_verdict(
   fixture_actor: gunbc.ci_deploy_access.DeployAccessActor?
 ) -> std.access.AccessDecision {
   match fixture_actor {
-    Present { value: actor } => deploy_access_check(access: access, actor: actor)
+    Present { value: actor } => gunbc.ci_deploy_access.deploy_access_check(access: access, actor: actor)
     Absent => deploy_access_check_observed(access: access)
   }
 }
@@ -2014,7 +2163,7 @@ fn deploy_access_shell_apply_success_stdout(
   match host_effect_apply(
     target: deploy_access_host_target(access: access),
     effect: effect,
-    evidence: host_effect_read_evidence,
+    evidence: gunbc.host_effect.host_effect_read_evidence,
     transport: access.transport,
   ) {
     Converged { evidence: e, applied: _ } =>
@@ -2034,9 +2183,9 @@ fn deploy_access_shell_apply_success_stdout(
 fn deploy_access_observed_principal(access: gunbc.ci_deploy_access.DeployAccess) -> std.types.NonEmptyStr? {
   match deploy_access_shell_apply_success_stdout(
     access: access,
-    effect: deploy_access_read_principal_effect(),
+    effect: gunbc.ci_deploy_access.deploy_access_read_principal_effect(),
   ) {
-    Present { value: stdout } => deploy_access_principal_line(success: true, stdout: stdout)
+    Present { value: stdout } => gunbc.ci_deploy_access.deploy_access_principal_line(success: true, stdout: stdout)
     Absent => Absent
   }
 }
@@ -2044,7 +2193,7 @@ fn deploy_access_observed_principal(access: gunbc.ci_deploy_access.DeployAccess)
 fn deploy_access_sudo_check_cmd(access: gunbc.ci_deploy_access.DeployAccess, cmd: gunbc.ci_deploy_access.PrivilegedCommand) -> Bool {
   match deploy_access_shell_apply_success_stdout(
     access: access,
-    effect: deploy_access_sudo_probe_effect(cmd: cmd),
+    effect: gunbc.ci_deploy_access.deploy_access_sudo_probe_effect(cmd: cmd),
   ) {
     Present { value: _ } => true
     Absent => false
@@ -2074,12 +2223,12 @@ fn deploy_access_observed_actor(access: gunbc.ci_deploy_access.DeployAccess) -> 
 
 fn deploy_access_check_observed(access: gunbc.ci_deploy_access.DeployAccess) -> std.access.AccessDecision {
   match deploy_access_observed_actor(access: access) {
-    Present { value: actor } => deploy_access_check(access: access, actor: actor)
+    Present { value: actor } => gunbc.ci_deploy_access.deploy_access_check(access: access, actor: actor)
     Absent =>
-      access_policy_refusal(
+      std.access.access_policy_refusal(
         profile: "deploy-access-observation", subject: "unobserved", action: "execute", object: "host-effect",
         reason: concat(
-            deploy_access_refusal_prefix,
+            gunbc.ci_deploy_access.deploy_access_refusal_prefix,
             " — could not observe principal (ReadEffectivePosixPrincipal failed)"
           ),
       )
@@ -2148,30 +2297,30 @@ fn host_effect_apply_gated(
         LiveDeployDigestReadbackOnHost { node: _, port: p } =>
           realize_live_deploy_digest_readback_on_host(port: p, transport: transport, intent: intent)
         EnsureActionsRunnerReleaseOnHost { node: _, runner_release: _ } =>
-          runner_lifecycle_realize_ensure_actions_runner_release(intent: intent)
+          gunbc.runner_lifecycle_realize.runner_lifecycle_realize_ensure_actions_runner_release(intent: intent)
         EnsureRunnerSlotDirectoryOnHost { node: _, slot: _, artifact: _ } =>
-          runner_lifecycle_realize_ensure_runner_slot_directory(intent: intent)
+          gunbc.runner_lifecycle_realize.runner_lifecycle_realize_ensure_runner_slot_directory(intent: intent)
         EnsureRunnerJitWrapperOnHost { node: _, host_label: _ } =>
-          runner_lifecycle_realize_ensure_runner_jit_wrapper(intent: intent)
+          gunbc.runner_lifecycle_realize.runner_lifecycle_realize_ensure_runner_jit_wrapper(intent: intent)
         EnsureRunnerSystemdTemplateOnHost { node: _, host_label: _ } =>
-          runner_lifecycle_realize_ensure_runner_systemd_template(intent: intent)
+          gunbc.runner_lifecycle_realize.runner_lifecycle_realize_ensure_runner_systemd_template(intent: intent)
         EnsureRunnerMemoryCapsOnHost { node: _, slot: _ } =>
-          runner_lifecycle_realize_ensure_runner_memory_caps(intent: intent)
+          gunbc.runner_lifecycle_realize.runner_lifecycle_realize_ensure_runner_memory_caps(intent: intent)
         ActivateRunnerSlotOnHost { node: _, slot: _ } =>
-          runner_lifecycle_realize_activate_runner_slot(intent: intent)
+          gunbc.runner_lifecycle_realize.runner_lifecycle_realize_activate_runner_slot(intent: intent)
         ReplaceRunnerIncarnationOnHost { node: _, from: _, cause: _ } =>
-          runner_lifecycle_realize_replace_runner_incarnation(intent: intent)
+          gunbc.runner_lifecycle_realize.runner_lifecycle_realize_replace_runner_incarnation(intent: intent)
         ObserveRunnerLocalStateOnHost { node: _, slot: _ } =>
-          runner_lifecycle_realize_observe_runner_local_state(intent: intent)
+          gunbc.runner_lifecycle_realize.runner_lifecycle_realize_observe_runner_local_state(intent: intent)
         ObserveGitHubRunnerRegistrationOnHost { node: _, slot: _, organization: _ } =>
-          runner_lifecycle_realize_observe_github_runner_registration(intent: intent)
+          gunbc.runner_lifecycle_realize.runner_lifecycle_realize_observe_github_runner_registration(intent: intent)
         RedfishOnBmc { node: _, action: _ } =>
           std.realization_reconcile.NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
         IncompatibleCell { reason: why } => std.realization_reconcile.NotConverged { reason: why, applied: intent }
       }
     Deny { refusal: _ } =>
       std.realization_reconcile.NotConverged {
-        reason: deploy_access_decision_reason(d: verdict),
+        reason: gunbc.ci_deploy_access.deploy_access_decision_reason(d: verdict),
         applied: gunbc.host_effect.HostEffectIntent {
           target: target,
           effect: effect,
@@ -2185,55 +2334,55 @@ fn host_effect_apply_gated(
 
 type ConvergeDirective = Settled | ReDrive | Refused { reason: String }
 
-fn not_converged_directive(drive: gunbc.host_effect.Drive) -> gunbc.host_effect_realize.ConvergeDirective {
+fn not_converged_directive(drive: gunbc.host_effect.Drive) -> ConvergeDirective {
   match drive {
     OneShot => Settled
     ConvergeLoop => ReDrive
   }
 }
 
-fn host_effect_drive_directive(r: std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence>) -> gunbc.host_effect_realize.ConvergeDirective {
+fn host_effect_drive_directive(r: std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence>) -> ConvergeDirective {
   match r {
     Converged { evidence: _, applied: _ } => Settled
     NotConverged { reason: why, applied: intent } =>
       match intent.privilege_denial {
-        Present { value: Deny { refusal: _ } } => Refused { reason: why }
-        Present { value: Permit } => not_converged_directive(drive: host_effect_drive(intent: intent))
+        Present { value: std.access.Deny { refusal: _ } } => Refused { reason: why }
+        Present { value: std.access.Permit } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
         Absent =>
           match resolve_host_effect_cell(target: intent.target, effect: intent.effect) {
             IncompatibleCell { reason: inner_why } => Refused { reason: inner_why }
-            ShellOnHost { node: _, script: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            ConvergeOnHost { node: _, host_converge: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            TypedReconcileOnHost { node: _, kind: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            OsInstallActuatorToolchainOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            ProvisionBuildCacheOnHost { node: _, catalog_id: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            ProvisionCodexRuntimeOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            HostnameOnHost { node: _, hostnamectl_path: _, base: _, desired: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            HostnameReadOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            NbdProxySessionOnHost { node: _, intent: _, lease_key: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            CodexSupervisedWorkerTurnOnHost { node: _, intent: _, lease_key: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            ReceiptEmitOnHost { node: _, lines: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            BootOnceReadBackSleepOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            SeededInstallMediaToolchainOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            BmcwebSessionLoginOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            BmcwebTokenExtractOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            EffectivePrincipalReadOnHost { node: _, read: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            SudoNopasswdExecuteProbeOnHost { node: _, probe: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            SudoNopasswdGrantListProbeOnHost { node: _, probe: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            LiveDeployApplyOnHost { node: _, spec: _, candidate: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            LiveDeployRetractOnHost { node: _, spec: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            LiveDeployEnsureDependencyOnHost { node: _, dep: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            LiveDeployDigestReadbackOnHost { node: _, port: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            EnsureActionsRunnerReleaseOnHost { node: _, runner_release: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            EnsureRunnerSlotDirectoryOnHost { node: _, slot: _, artifact: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            EnsureRunnerJitWrapperOnHost { node: _, host_label: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            EnsureRunnerSystemdTemplateOnHost { node: _, host_label: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            EnsureRunnerMemoryCapsOnHost { node: _, slot: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            ActivateRunnerSlotOnHost { node: _, slot: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            ReplaceRunnerIncarnationOnHost { node: _, from: _, cause: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            ObserveRunnerLocalStateOnHost { node: _, slot: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            ObserveGitHubRunnerRegistrationOnHost { node: _, slot: _, organization: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            RedfishOnBmc { node: _, action: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            ShellOnHost { node: _, script: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
+            ConvergeOnHost { node: _, host_converge: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
+            TypedReconcileOnHost { node: _, kind: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
+            OsInstallActuatorToolchainOnHost { node: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
+            ProvisionBuildCacheOnHost { node: _, catalog_id: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
+            ProvisionCodexRuntimeOnHost { node: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
+            HostnameOnHost { node: _, hostnamectl_path: _, base: _, desired: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
+            HostnameReadOnHost { node: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
+            NbdProxySessionOnHost { node: _, intent: _, lease_key: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
+            CodexSupervisedWorkerTurnOnHost { node: _, intent: _, lease_key: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
+            ReceiptEmitOnHost { node: _, lines: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
+            BootOnceReadBackSleepOnHost { node: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
+            SeededInstallMediaToolchainOnHost { node: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
+            BmcwebSessionLoginOnHost { node: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
+            BmcwebTokenExtractOnHost { node: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
+            EffectivePrincipalReadOnHost { node: _, read: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
+            SudoNopasswdExecuteProbeOnHost { node: _, probe: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
+            SudoNopasswdGrantListProbeOnHost { node: _, probe: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
+            LiveDeployApplyOnHost { node: _, spec: _, candidate: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
+            LiveDeployRetractOnHost { node: _, spec: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
+            LiveDeployEnsureDependencyOnHost { node: _, dep: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
+            LiveDeployDigestReadbackOnHost { node: _, port: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
+            EnsureActionsRunnerReleaseOnHost { node: _, runner_release: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
+            EnsureRunnerSlotDirectoryOnHost { node: _, slot: _, artifact: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
+            EnsureRunnerJitWrapperOnHost { node: _, host_label: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
+            EnsureRunnerSystemdTemplateOnHost { node: _, host_label: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
+            EnsureRunnerMemoryCapsOnHost { node: _, slot: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
+            ActivateRunnerSlotOnHost { node: _, slot: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
+            ReplaceRunnerIncarnationOnHost { node: _, from: _, cause: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
+            ObserveRunnerLocalStateOnHost { node: _, slot: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
+            ObserveGitHubRunnerRegistrationOnHost { node: _, slot: _, organization: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
+            RedfishOnBmc { node: _, action: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
           }
       }
   }

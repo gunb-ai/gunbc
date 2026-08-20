@@ -1,0 +1,32 @@
+module extdeps.posix.signal
+
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/kill.html"
+  }
+}
+
+// TerminateProcess sends SIGTERM only. The reaper's bound is at the CALLER (residual
+// reap only ever names a pid it read out of an inactive unit's own cgroup.procs, per
+// gunbc.host_hygiene_reaper_remediate) rather than at the signal — this service does not
+// widen to SIGKILL, does not accept an arbitrary signal name, and does not accept a
+// process group or -1/0 pid, which is the shape that turns "kill one pid" into "kill
+// everything the caller can reach".
+service posix.Signal {
+  operation TerminateProcess {
+    input { pid: std.types.NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["kill", "-TERM", "{pid}"] }
+    exit {
+      0 => Unit
+      nonzero => String "kill -TERM failed"
+    }
+    mock_response {
+      0 => { success: true, stderr: "" } "hermetic posix.Signal.TerminateProcess"
+    }
+  }
+}

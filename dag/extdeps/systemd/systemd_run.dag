@@ -1,0 +1,37 @@
+module extdeps.systemd.systemd_run
+
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
+    locator: "www.freedesktop.org/software/systemd/man/latest/systemd-run.html"
+  }
+}
+
+data systemd_run_authority: extdeps.external_authority.ExternalAuthority = extdeps_external_authority_anchor
+
+fn systemd_run_transient_unit_argv(unit: std.types.NonEmptyStr, command_argv: std.types.List<String>) -> std.types.List<String> {
+  fold(
+    command_argv,
+    init: ["systemd-run", concat("--unit=", unit as String), "--collect", "--"],
+    f: (acc, arg) => list_push(acc, arg),
+  )
+}
+
+service systemd.SystemdRun {
+  operation RunTransient {
+    input { unit: std.types.NonEmptyStr, command_argv: std.types.List<String> }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemd-run", "--unit={unit}", "--collect", "--", command_argv] }
+    exit {
+      0 => Unit
+      nonzero => String "systemd-run transient unit start failed"
+    }
+    mock_response {
+      0 => { success: true, stdout: "Running as unit: demo.service", stderr: "" } "hermetic systemd.SystemdRun.RunTransient"
+    }
+  }
+}

@@ -1,0 +1,36 @@
+module extdeps.systemd.journalctl
+
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
+    locator: "man7.org/linux/man-pages/man1/journalctl.1.html"
+  }
+}
+
+// UnitLog reads the raw journal, unfiltered. Filtering for a specific marker line
+// (gunbc.host_hygiene_liveness_observe's "Listening for Jobs" scan) and computing
+// freshness are pure .dag folds over stdout, not a second grep/tail spliced into the
+// argv — the piped `journalctl -u X | grep -F ... | tail -1` shell body this operation
+// replaces did in one hand-written string what the typed model now does as two named,
+// independently testable functions over one typed read.
+service systemd.Journalctl {
+  operation UnitLog {
+    input { unit: std.types.NonEmptyStr }
+    output {
+      stdout: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["journalctl", "-u", "{unit}", "--no-pager", "-o", "short-unix"] }
+    exit {
+      0 => Unit
+      nonzero => String "journalctl failed"
+    }
+    mock_response {
+      0 => {
+        stdout: "1734000000.000000 srv1 actions-runner[1234]: Listening for Jobs\n",
+        success: true,
+      } "hermetic systemd.Journalctl.UnitLog"
+    }
+  }
+}

@@ -1,8 +1,6 @@
 module gunbc.fleet_converge_cli
 
-
-
-data gunbc_converge_cli_stage0_receiver_disposition: std.disposition.Disposition = Terminal {
+data gunbc_converge_cli_stage0_receiver_disposition: Disposition = Terminal {
   reason: "THERE IS NO STAGE0 RECEIVER, AND THERE WILL NOT BE ONE — that is the terminal state this row records, not a gap awaiting repair. Corrected 2026-08-16 (PR #8286, review 52676) when the cli-run driver cut deleted cli_run handle_converge: until then this row named that handler as the live argv transport, so a canonical disposition asserted a terminal hand-Rust route that no longer existed. The stale half was not the arm but the reason — DESIGN §3's stale-citation class, in a carrier the cut itself falsified.
 
 WHY TERMINAL SURVIVES THE DELETION. Transport is a handler, one of N, never a fact about the interface (DESIGN §3), so removing the stage0 CLI transport does not demote this .dag interface — it removes one binding. All interpretation, the byte-locked receipt grammar, and every typed refusal cause remain modeled here and in gunbc.host_converge / gunbc.fleet_converge_apply, exactly as before; what changed is only which host reaches them.
@@ -49,14 +47,14 @@ type ConvergeCliReceipt {
   host: String
   applied: Int
   drifted: Int
-  verdict: gunbc.host_converge.ConvergeVerdict
+  verdict: ConvergeVerdict
   reason: ConvergeCliRefusalCause?
 }
 
 fn converge_cli_receipt_line(r: ConvergeCliReceipt) -> String {
   concat(
     concat(concat("converge-receipt host=", r.host), concat(" applied=", to_string(r.applied))),
-    concat(concat(" drifted=", to_string(r.drifted)), concat(" verdict=", converge_verdict_label(v: r.verdict)))
+    concat(concat(" drifted=", to_string(r.drifted)), concat(" verdict=", gunbc.host_converge.converge_verdict_label(v: r.verdict)))
   )
 }
 
@@ -65,10 +63,10 @@ fn converge_cli_receipt_converged(r: ConvergeCliReceipt) -> Bool {
 }
 
 fn converge_cli_is_fleet_compute_host(host: String) -> Bool {
-  host == (operator_host_srv1 as String)
-    || host == (operator_host_srv2 as String)
-    || host == (operator_host_srv3 as String)
-    || host == (operator_host_srv4 as String)
+  host == (gunbc.fleet_intent_network.operator_host_srv1 as String)
+    || host == (gunbc.fleet_intent_network.operator_host_srv2 as String)
+    || host == (gunbc.fleet_intent_network.operator_host_srv3 as String)
+    || host == (gunbc.fleet_intent_network.operator_host_srv4 as String)
 }
 
 // Provider-runtime cadence (Option A): srv1–srv4 fleet compute converge runs reconcile the
@@ -81,11 +79,11 @@ fn converge_cli_is_fleet_compute_host(host: String) -> Bool {
 data codex_runtime_converge_local_shell_locus_note: String = "ProvisionCodexRuntime on the converge adjunct uses LocalShell — the observe/ensure/read-back script runs on the machine executing gunbc, not on a named remote host. Production cadence is the per-host timer (`gunbc converge --host self` resolves kernel hostname before routing). Named-host converge from another machine (e.g. converge_cli_run(\"srv2\") on srv1) must refuse until transport selects SshShell per target (review 51883; dissolve-on: fleet_ssh transport binding for ProvisionCodexRuntime, same class as realize_provision_build_cache SshShell arms)."
 
 fn converge_kernel_short_hostname_from_content(raw: String) -> String {
-  trim(s: raw)
+  std.algebra.trim(s: raw)
 }
 
 fn converge_local_kernel_short_hostname() -> String {
-  match hostname_short_read_local() {
+  match gunbc.hostname_read.hostname_short_read_local() {
     HostnameShortCaptured { value: v } => v
     HostnameShortCaptureRefused { reason: _ } => ""
   }
@@ -122,14 +120,14 @@ fn converge_provider_runtime_codex_receipt(host: String) -> ConvergeCliReceipt? 
         },
       }
     } else {
-    match fleet_compute_host_for_identity(identity: host as product.placement_supply.HostIdentity) {
+    match gunbc.fleet_converge_apply.fleet_compute_host_for_identity(identity: host as product.placement_supply.HostIdentity) {
       Present { value: compute_host } =>
         Present {
-          value: match host_effect_apply(
+          value: match gunbc.host_effect_realize.host_effect_apply(
             target: gunbc.host_effect.HostOs { node: compute_host },
             effect: gunbc.host_effect.ProvisionCodexRuntime {},
-            evidence: host_effect_identity_evidence,
-            transport: LocalShell,
+            evidence: gunbc.host_effect.host_effect_identity_evidence,
+            transport: gunbc.host_effect.LocalShell,
           ) {
             Converged { evidence: _, applied: _ } =>
               ConvergeCliReceipt {
@@ -162,7 +160,7 @@ fn converge_cli_receipt_join_steps(primary: ConvergeCliReceipt, adjunct: Converg
     host: primary.host,
     applied: primary.applied + adjunct.applied,
     drifted: primary.drifted + adjunct.drifted,
-    verdict: converge_verdict_meet(a: primary.verdict, b: adjunct.verdict),
+    verdict: gunbc.host_converge.converge_verdict_meet(a: primary.verdict, b: adjunct.verdict),
     reason: match primary.reason {
       Present { value: _ } => primary.reason
       Absent => adjunct.reason
@@ -171,14 +169,14 @@ fn converge_cli_receipt_join_steps(primary: ConvergeCliReceipt, adjunct: Converg
 }
 
 fn converge_cli_codex_runtime_knob_registered_for_host(host: product.placement_supply.HostIdentity) -> Bool {
-  match fleet_converge_policy() {
+  match gunbc.host_converge.fleet_converge_policy() {
     ConvergePolicyDerived { hosts: hosts } =>
       match host_converge_for_identity(hosts: hosts, identity: host) {
         Present { value: hc } =>
           fold(
             hc.knobs,
             init: false,
-            f: (acc, knob) => acc || knob.name == codex_runtime_bundle_knob(host: host).name,
+            f: (acc, knob) => acc || knob.name == gunbc.host_converge.codex_runtime_bundle_knob(host: host).name,
           )
         Absent => false
       }
@@ -186,51 +184,12 @@ fn converge_cli_codex_runtime_knob_registered_for_host(host: product.placement_s
   }
 }
 
-fn host_converge_for_identity(hosts: List<gunbc.host_converge.HostConverge>, identity: product.placement_supply.HostIdentity) -> gunbc.host_converge.HostConverge? {
-  find_by_identity(hosts, identity: identity, key: fn(h) { h.identity })
-}
-
-fn converge_cli_applied_knob_count(intent: gunbc.host_effect.HostEffectIntent, fallback: Int) -> Int {
-  match intent.effect {
-    ConvergePlan { policy: p } => p.knobs.length()
-    ShellCommand { script: _ } => fallback
-    RedfishAction { action: _ } => fallback
-    SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } => fallback
-    ReadEffectivePosixPrincipal { read: _ } => fallback
-    SudoNopasswdExecuteProbe { probe: _ } => fallback
-    SudoNopasswdGrantListProbe { probe: _ } => fallback
-    OsInstallActuatorToolchainEnsure {} => fallback
-    ProvisionBuildCache { catalog_id: _ } => fallback
-    ProvisionCodexRuntime {} => fallback
-    CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => fallback
-    Srv3InstallMediaFetch => fallback
-    Srv3SeededInstallMediaRemaster => fallback
-    Srv3SeededInstallMediaToolchainEnsure => fallback
-    Srv3BmcwebSessionLogin => fallback
-    Srv3BmcwebTokenExtract => fallback
-    Srv3NbdProxyServe { intent: _, lease_key: _ } => fallback
-    Srv3BootOnceReadBackSleep => fallback
-    Srv3ReceiptEmit { lines: _ } => fallback
-    HostIdentityShortHostnameRead => fallback
-    LiveDeployApply { spec: _, candidate: _ } => fallback
-    LiveDeployRetract { spec: _ } => fallback
-    LiveDeployEnsureDependency { dep: _ } => fallback
-    LiveDeployDigestReadback { port: _ } => fallback
-    DeployAccessPreflight {} => fallback
-    EnsureActionsRunnerRelease { runner_release: _ } => fallback
-    EnsureRunnerSlotDirectory { slot: _, artifact: _ } => fallback
-    EnsureRunnerJitWrapper { host_label: _ } => fallback
-    EnsureRunnerSystemdTemplate { host_label: _ } => fallback
-    EnsureRunnerMemoryCaps { slot: _ } => fallback
-    ActivateRunnerSlot { slot: _ } => fallback
-    ReplaceRunnerIncarnation { from: _, cause: _ } => fallback
-    ObserveRunnerLocalState { slot: _ } => fallback
-    ObserveGitHubRunnerRegistration { slot: _, organization: _ } => fallback
-  }
+fn host_converge_for_identity(hosts: List<HostConverge>, identity: product.placement_supply.HostIdentity) -> HostConverge? {
+  gunbc.host_converge.find_by_identity(hosts, identity: identity, key: fn(h) { h.identity })
 }
 
 fn converge_cli_routes_to_slice1(host: String) -> Bool {
-  host == (operator_host_srv1 as String) || host == (operator_host_srv3 as String)
+  host == (gunbc.fleet_intent_network.operator_host_srv1 as String) || host == (gunbc.fleet_intent_network.operator_host_srv3 as String)
 }
 
 // APPLICABILITY, total over the fleet (operator verdict on PR 8045, join 3): every
@@ -287,10 +246,10 @@ fn fleet_converge_applicability(host: String) -> FleetConvergeApplicability {
   if converge_cli_routes_to_slice1(host: host) {
     ConvergeSlice1Route
   } else {
-    if host == (operator_host_srv2 as String) || host == (operator_host_srv4 as String) {
+    if host == (gunbc.fleet_intent_network.operator_host_srv2 as String) || host == (gunbc.fleet_intent_network.operator_host_srv4 as String) {
       ConvergeKnobFrontier
     } else {
-      if host == (operator_host_srv5 as String) || host == (operator_host_srv6 as String) {
+      if host == (gunbc.fleet_intent_network.operator_host_srv5 as String) || host == (gunbc.fleet_intent_network.operator_host_srv6 as String) {
         ConvergeSparkRoute { access: spark_managed_access_standing(host: host) }
       } else {
         ConvergeOutsideFleet
@@ -300,24 +259,24 @@ fn fleet_converge_applicability(host: String) -> FleetConvergeApplicability {
 }
 
 fn converge_cli_slice1_srv3_receipt() -> ConvergeCliReceipt {
-  let result = host_converge_slice1_converge_srv3()
-  if host_converge_slice1_host_result_all_valid(result: result) {
+  let result = gunbc.host_converge_slice1.host_converge_slice1_converge_srv3()
+  if gunbc.host_converge_slice1.host_converge_slice1_host_result_all_valid(result: result) {
     ConvergeCliReceipt {
-      host: operator_host_srv3 as String,
-      applied: host_converge_slice1_host_result_applied_count(result: result),
+      host: gunbc.fleet_intent_network.operator_host_srv3 as String,
+      applied: gunbc.host_converge_slice1.host_converge_slice1_host_result_applied_count(result: result),
       drifted: 0,
       verdict: VerdictConverged,
       reason: none,
     }
   } else {
     ConvergeCliReceipt {
-      host: operator_host_srv3 as String,
-      applied: host_converge_slice1_host_result_applied_count(result: result),
+      host: gunbc.fleet_intent_network.operator_host_srv3 as String,
+      applied: gunbc.host_converge_slice1.host_converge_slice1_host_result_applied_count(result: result),
       drifted: 0,
       verdict: Absent,
       reason: Present {
         value: KnobFrontier {
-          reason: match host_converge_slice1_host_result_refusal_reason(result: result) {
+          reason: match gunbc.host_converge_slice1.host_converge_slice1_host_result_refusal_reason(result: result) {
             Present { value: why } => why
             Absent => "host_converge_slice1: srv3 multi-unit convergence receipt validity gate failed"
           },
@@ -328,7 +287,7 @@ fn converge_cli_slice1_srv3_receipt() -> ConvergeCliReceipt {
 }
 
 fn converge_cli_slice1_receipt(host: String) -> ConvergeCliReceipt {
-  if host == (operator_host_srv3 as String) {
+  if host == (gunbc.fleet_intent_network.operator_host_srv3 as String) {
     converge_cli_slice1_srv3_receipt()
   } else {
     converge_cli_slice1_srv1_receipt()
@@ -336,11 +295,11 @@ fn converge_cli_slice1_receipt(host: String) -> ConvergeCliReceipt {
 }
 
 fn converge_cli_slice1_srv1_receipt() -> ConvergeCliReceipt {
-  match host_converge_slice1_converge_loop() {
+  match gunbc.host_converge_slice1.host_converge_slice1_converge_loop() {
     HostConvergeSlice1Converged { applied_knobs: n, receipt: r } =>
-      if host_converge_slice1_receipt_is_valid(receipt: r) {
+      if gunbc.host_converge_slice1.host_converge_slice1_receipt_is_valid(receipt: r) {
         ConvergeCliReceipt {
-          host: operator_host_srv1 as String,
+          host: gunbc.fleet_intent_network.operator_host_srv1 as String,
           applied: n,
           drifted: 0,
           verdict: VerdictConverged,
@@ -348,7 +307,7 @@ fn converge_cli_slice1_srv1_receipt() -> ConvergeCliReceipt {
         }
       } else {
         ConvergeCliReceipt {
-          host: operator_host_srv1 as String,
+          host: gunbc.fleet_intent_network.operator_host_srv1 as String,
           applied: 0,
           drifted: 0,
           verdict: Absent,
@@ -360,9 +319,9 @@ fn converge_cli_slice1_srv1_receipt() -> ConvergeCliReceipt {
         }
       }
     HostConvergeSlice1TasksConverged { applied_knobs: n, receipt: r } =>
-      if host_converge_slice1_tasks_receipt_is_valid(receipt: r) {
+      if gunbc.host_converge_slice1.host_converge_slice1_tasks_receipt_is_valid(receipt: r) {
         ConvergeCliReceipt {
-          host: operator_host_srv1 as String,
+          host: gunbc.fleet_intent_network.operator_host_srv1 as String,
           applied: n,
           drifted: 0,
           verdict: VerdictConverged,
@@ -370,7 +329,7 @@ fn converge_cli_slice1_srv1_receipt() -> ConvergeCliReceipt {
         }
       } else {
         ConvergeCliReceipt {
-          host: operator_host_srv1 as String,
+          host: gunbc.fleet_intent_network.operator_host_srv1 as String,
           applied: 0,
           drifted: 0,
           verdict: Absent,
@@ -383,7 +342,7 @@ fn converge_cli_slice1_srv1_receipt() -> ConvergeCliReceipt {
       }
     HostConvergeSlice1Refused { reason: why } =>
       ConvergeCliReceipt {
-        host: operator_host_srv1 as String,
+        host: gunbc.fleet_intent_network.operator_host_srv1 as String,
         applied: 0,
         drifted: 0,
         verdict: Absent,
@@ -392,14 +351,14 @@ fn converge_cli_slice1_srv1_receipt() -> ConvergeCliReceipt {
   }
 }
 
-fn converge_cli_receipt_for_host(host_converge: gunbc.host_converge.HostConverge) -> ConvergeCliReceipt {
-  match converge_apply_for_host(host_converge: host_converge, transport: LocalShell) {
+fn converge_cli_receipt_for_host(host_converge: HostConverge) -> ConvergeCliReceipt {
+  match gunbc.fleet_converge_apply.converge_apply_for_host(host_converge: host_converge, transport: gunbc.host_effect.LocalShell) {
     Present { value: r } =>
       match r {
-        Converged { evidence: _, applied: intent } =>
+        Converged { evidence: _, applied: _ } =>
           ConvergeCliReceipt {
             host: host_converge.identity as String,
-            applied: converge_cli_applied_knob_count(intent: intent, fallback: host_converge.knobs.length()),
+            applied: host_converge.knobs.length(),
             drifted: 0,
             verdict: VerdictConverged,
             reason: none,
@@ -430,7 +389,7 @@ type ConvergeCliOutput {
   reason: String?
 }
 
-fn converge_cli_receipt_from_memory_cap_verify(host: String, result: gunbc.host_runner_memory_cap_verify.RunnerMemoryCapVerifyRunResult) -> ConvergeCliReceipt {
+fn converge_cli_receipt_from_memory_cap_verify(host: String, result: RunnerMemoryCapVerifyRunResult) -> ConvergeCliReceipt {
   match result {
     RunnerMemoryCapVerifyObserved { receipt: r } =>
       ConvergeCliReceipt {
@@ -452,7 +411,7 @@ fn converge_cli_receipt_from_memory_cap_verify(host: String, result: gunbc.host_
 }
 
 fn converge_cli_routes_to_memory_cap_verify(host: String) -> Bool {
-  match runner_memory_host_converge(host: host as product.placement_supply.HostIdentity) {
+  match gunbc.host_runner_memory_provision.runner_memory_host_converge(host: host as product.placement_supply.HostIdentity) {
     Present { value: _ } => true
     Absent => false
   }
@@ -462,7 +421,7 @@ fn converge_cli_verify_run(host: String) -> ConvergeCliReceipt {
   if converge_cli_routes_to_memory_cap_verify(host: host) {
     converge_cli_receipt_from_memory_cap_verify(
       host: host,
-      result: runner_memory_cap_verify_run(host: host as product.placement_supply.HostIdentity)
+      result: gunbc.host_runner_memory_cap_verify.runner_memory_cap_verify_run(host: host as product.placement_supply.HostIdentity)
     )
   } else {
     ConvergeCliReceipt {
@@ -493,24 +452,24 @@ fn converge_cli_verify_run(host: String) -> ConvergeCliReceipt {
 // Non-self routes (operator/CI supervised runs against a named host) are unchanged —
 // no write is attempted, because nothing guarantees the receipts directory there.
 fn fleet_converge_receipt_path(host: String) -> String {
-  join([fleet_converge_receipt_dir, "/", host, "-converge-receipt.txt"], "")
+  join([gunbc.host_layout.fleet_converge_receipt_dir, "/", host, "-converge-receipt.txt"], "")
 }
 
 // Same directory as the published receipt — POSIX rename permission is on the directory,
 // not the file being replaced, so a root-owned stale receipt from the pre-b1 unit user
 // can be superseded without elevation when the service principal owns the directory.
 fn fleet_converge_receipt_staging_path(host: String) -> String {
-  join([fleet_converge_receipt_dir, "/", host, "-converge-receipt.staging"], "")
+  join([gunbc.host_layout.fleet_converge_receipt_dir, "/", host, "-converge-receipt.staging"], "")
 }
 
 fn converge_cli_atomic_receipt_write(host: String, content: String) -> String? {
   let staging = fleet_converge_receipt_staging_path(host: host)
   let final_path = fleet_converge_receipt_path(host: host)
-  let w = Filesystem.Write(path: staging, content: content)
+  let w = extdeps.filesystem.filesystem_io.Filesystem.Write(path: staging, content: content)
   if !w.success {
     Present { value: concat("gunbc converge: receipt staging write failed — ", w.error) }
   } else {
-    let moved = shell.Move.File(source: staging as std.types.FilePath, destination: final_path as std.types.FilePath)
+    let moved = shell.Move.File(source: staging as FilePath, destination: final_path as FilePath)
     if moved.success {
       none
     } else {
@@ -528,17 +487,17 @@ data converge_cli_receipt_owner_readback_required: Bool = true
 data converge_cli_receipt_owner_readback_interim_note: String = "Owner readback uses command_runner stat_owner_name_capture (command_runner_scaffold) until extdeps.filesystem.filesystem_io carries a typed owner observation; then converge_cli_receipt_owner_readback routes through that extdep."
 
 fn converge_cli_expected_receipt_owner_name() -> String {
-  fleet_posix_operator_user.name
+  gunbc.fleet_posix_accounts.fleet_posix_operator_user.name
 }
 
 fn converge_cli_receipt_owner_readback(host: String) -> String? {
   let path = fleet_converge_receipt_path(host: host)
   let expected = converge_cli_expected_receipt_owner_name()
-  let r = stat_owner_name_capture(path: path)
+  let r = gunbc.command_runner.stat_owner_name_capture(path: path)
   if !r.success {
-    Present { value: concat("gunbc converge: receipt owner read-back refused (stat): ", trim(s: r.stderr)) }
+    Present { value: concat("gunbc converge: receipt owner read-back refused (stat): ", std.algebra.trim(s: r.stderr)) }
   } else {
-    let owner = trim(s: r.stdout)
+    let owner = std.algebra.trim(s: r.stdout)
     if owner == expected {
       none
     } else {
@@ -611,7 +570,7 @@ fn converge_cli_publish(out: ConvergeCliOutput, resolved: String, revision_line:
 // ConvergeVerdict enum that knob-only convergence uses and would never emit. That the enum
 // cannot carry this without burdening an unrelated consumer is itself the dual-representation
 // smell one rung up (the enum doing two jobs) — named here, not fixed here.
-fn converge_cli_revision_verdict(standing: gunbc.fleet_desired_observe.FleetRevisionStanding) -> gunbc.host_converge.ConvergeVerdict {
+fn converge_cli_revision_verdict(standing: gunbc.fleet_desired_observe.FleetRevisionStanding) -> ConvergeVerdict {
   match standing {
     RevisionConverged { revision: _ } => VerdictConverged
     RevisionDrifted { desired: _, local: _ } => Drifted
@@ -624,7 +583,7 @@ fn converge_cli_receipt_join_revision(r: ConvergeCliReceipt, standing: gunbc.fle
     host: r.host,
     applied: r.applied,
     drifted: r.drifted,
-    verdict: converge_verdict_meet(a: r.verdict, b: converge_cli_revision_verdict(standing: standing)),
+    verdict: gunbc.host_converge.converge_verdict_meet(a: r.verdict, b: converge_cli_revision_verdict(standing: standing)),
     reason: r.reason,
   }
 }
@@ -636,9 +595,9 @@ fn converge_cli_revision_reason(standing: gunbc.fleet_desired_observe.FleetRevis
       Present {
         value: join([
           "gunbc converge: revision drift — desired ",
-          git_object_id_wire_hex(oid: d) as String,
+          extdeps.git.object_store.git_object_id_wire_hex(oid: d) as String,
           ", local tree at ",
-          git_object_id_wire_hex(oid: l) as String,
+          extdeps.git.object_store.git_object_id_wire_hex(oid: l) as String,
           "; tree-sync is the catch-up realization",
         ], ""),
       }
@@ -650,13 +609,13 @@ fn converge_cli_revision_reason(standing: gunbc.fleet_desired_observe.FleetRevis
 fn converge_cli_revision_line(standing: gunbc.fleet_desired_observe.FleetRevisionStanding) -> String {
   match standing {
     RevisionConverged { revision: r } =>
-      concat("converge-revision observed=", git_object_id_wire_hex(oid: r) as String)
+      concat("converge-revision observed=", extdeps.git.object_store.git_object_id_wire_hex(oid: r) as String)
     RevisionDrifted { desired: d, local: l } =>
       join([
         "converge-revision drift desired=",
-        git_object_id_wire_hex(oid: d) as String,
+        extdeps.git.object_store.git_object_id_wire_hex(oid: d) as String,
         " local=",
-        git_object_id_wire_hex(oid: l) as String,
+        extdeps.git.object_store.git_object_id_wire_hex(oid: l) as String,
       ], "")
     RevisionUnobserved { cause: c } => concat("converge-revision unobserved cause=", c)
   }
@@ -666,7 +625,7 @@ fn converge_cli_output(host: String) -> ConvergeCliOutput {
   if host == "self" {
     let resolved = converge_cli_resolve_self(host: host)
     let r = converge_cli_run(host: resolved)
-    let standing = fleet_revision_standing(repo: srv1_gunbc_repo_root)
+    let standing = gunbc.fleet_desired_observe.fleet_revision_standing(repo: gunbc.host_layout.srv1_gunbc_repo_root)
     let joint = converge_cli_receipt_join_revision(r: r, standing: standing)
     let base_reason = match r.reason {
       Present { value: cause } => Present { value: converge_cli_refusal_message(cause: cause) }
@@ -751,7 +710,7 @@ fn converge_cli_run(host: String) -> ConvergeCliReceipt {
 }
 
 fn converge_cli_run_host_knobs(host: String) -> ConvergeCliReceipt {
-  match fleet_converge_policy() {
+  match gunbc.host_converge.fleet_converge_policy() {
     ConvergePolicyUnsound { reason: why } =>
       ConvergeCliReceipt {
         host: host,

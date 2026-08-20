@@ -36,3 +36,34 @@ fn systemctl_list_units_active_services(instance_glob: std.types.NonEmptyStr) ->
     Absent => none
   }
 }
+
+// A dead-slot reaper or a liveness check that only ever asked systemctl for "active"
+// units could never see the inactive/failed unit it exists to look at — the ordinary
+// systemctl default this module's other function inherits from ListUnits. systemctl
+// accepts a comma-joined --state list in one argv (no --all flag needed, and no second
+// ListUnits operation to keep parallel with this one): this is the SAME declared
+// operation, called with a different `state` binding, not a new op.
+data systemctl_list_units_all_states: String = "active,inactive,failed"
+
+fn systemctl_list_units_all_states_local(instance_glob: NonEmptyStr) -> String? {
+  let result = systemd.Systemctl.ListUnits(pattern: instance_glob, state: systemctl_list_units_all_states)
+  if result.success {
+    Present { value: result.stdout }
+  } else {
+    none
+  }
+}
+
+fn systemctl_list_units_all_states(instance_glob: NonEmptyStr) -> List<NonEmptyStr>? {
+  match systemctl_list_units_all_states_local(instance_glob: instance_glob) {
+    Present { value: stdout } =>
+      let trimmed = trim(stdout)
+      if trimmed == "" {
+        Present { value: [] }
+      } else {
+        let lines = filter(split(s: trimmed, delimiter: "\n"), systemctl_list_units_line_nonempty)
+        Present { value: map(lines, systemctl_list_units_line_as_unit) }
+      }
+    Absent => none
+  }
+}

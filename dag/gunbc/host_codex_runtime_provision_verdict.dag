@@ -1,20 +1,21 @@
 module gunbc.host_codex_runtime_provision_verdict
 
+data host_codex_runtime_provision_verdict_authority_note: String = "Verdict fold lives here — not in gunbc.host_codex_runtime_provision — so gunbc.host_effect_realize can consume provision_codex_runtime_verdict without importing host_toolchain_ensure (host_codex_runtime_provision -> host_toolchain_ensure -> host_effect_realize would cycle). Mirrors host_build_cache_catalog_gate beside host_build_cache_provision.\n\nOBSERVATION IS TYPED, NOT SHELL TEXT: this module used to classify a combined_output String against printf'd CodexRuntimeProvisionReceipt markers (observe=absent / ensure=FAILED / read_back=FAILED) produced by a hand-rolled bash if/grep/printf body in the now-deleted host_codex_runtime_provision_script.dag. gunbc.host_effect_realize now runs the observe/materialize/read-back sequence as three typed single-command argv executions (observe/read-back via this module's own codex_runtime_observe_argv, materialize via gunbc.cli_invoke gunbc_run_transport_argv or gunbc.Cli.Run) and constructs CodexRuntimeObservation directly from each step's typed exit code / stdout — there is no receipt-marker string to parse or fail to recognize, so the former CodexRuntimeShellOutputUnrecognized / RefusalShellOutputUnrecognized fallback class has no remaining reachable cause and is retired with the shell body it existed to classify."
 
-data host_codex_runtime_provision_verdict_authority_note: String = "Verdict fold and shell-output classification live here — not in gunbc.host_codex_runtime_provision — so gunbc.host_effect_realize can consume provision_codex_runtime_verdict_from_shell without importing host_toolchain_ensure (host_codex_runtime_provision -> host_toolchain_ensure -> host_effect_realize would cycle). Mirrors host_build_cache_catalog_gate beside host_build_cache_provision."
+fn codex_runtime_observe_argv(executable: String) -> std.types.List<String> {
+  [executable, "--version"]
+}
 
 type CodexRuntimeObservation
   = CodexRuntimeIdentityOk { version_line: String }
-  | CodexRuntimeAbsent
-  | CodexRuntimeMaterializationFailed { combined_output: String }
-  | CodexRuntimeIdentityMismatch { combined_output: String }
-  | CodexRuntimeShellOutputUnrecognized { combined_output: String }
+  | CodexRuntimeMaterializationFailed { reason: String }
+  | CodexRuntimeIdentityMismatch { observed_output: String }
+  | CodexRuntimeTransportRefused { reason: String }
 
 type CodexRuntimeProvisionRefusal
-  = RefusalRuntimeAbsent
-  | RefusalIdentityMismatch
+  = RefusalIdentityMismatch
   | RefusalMaterializationFailed
-  | RefusalShellOutputUnrecognized
+  | RefusalTransport
   | RefusalHostUnsupported
 
 type CodexRuntimeProvisionVerdict
@@ -25,7 +26,7 @@ fn provision_codex_runtime_verdict(
   host: product.placement_supply.HostIdentity,
   observed: CodexRuntimeObservation,
 ) -> CodexRuntimeProvisionVerdict {
-  match codex_bundled_executable_for_host(host: host) {
+  match gunbc.host_layout.codex_bundled_executable_for_host(host: host) {
     Absent =>
       ProvisionRefused {
         cause: RefusalHostUnsupported,
@@ -38,53 +39,34 @@ fn provision_codex_runtime_verdict(
       match observed {
         CodexRuntimeIdentityOk { version_line: line } =>
           ProvisionConverged { executable: executable, version_line: line }
-        CodexRuntimeAbsent =>
-          ProvisionRefused {
-            cause: RefusalRuntimeAbsent,
-            reason: concat(
-              "host_codex_runtime_provision: bundled Codex executable absent at ",
-              executable as String,
-              "; fail-closed, no dispatch fallback",
-            ) as std.types.NonEmptyStr,
-          }
-        CodexRuntimeMaterializationFailed { combined_output: out } =>
+        CodexRuntimeMaterializationFailed { reason: why } =>
           ProvisionRefused {
             cause: RefusalMaterializationFailed,
             reason: concat(
               "host_codex_runtime_provision: codex runtime materialization failed during ensure; observed: ",
-              out,
+              why,
             ) as std.types.NonEmptyStr,
           }
-        CodexRuntimeIdentityMismatch { combined_output: out } =>
+        CodexRuntimeIdentityMismatch { observed_output: out } =>
           ProvisionRefused {
             cause: RefusalIdentityMismatch,
             reason: concat(
               concat(
                 "host_codex_runtime_provision: bundled Codex identity did not realize ",
-                codex_runtime_version_identity_marker(),
+                gunbc.package_delivery.codex_runtime_version_identity_marker(),
               ),
               concat("; observed: ", out),
             ) as std.types.NonEmptyStr,
           }
-        CodexRuntimeShellOutputUnrecognized { combined_output: out } =>
+        CodexRuntimeTransportRefused { reason: why } =>
           ProvisionRefused {
-            cause: RefusalShellOutputUnrecognized,
+            cause: RefusalTransport,
             reason: concat(
-              "host_codex_runtime_provision: codex runtime shell output did not match any known provision receipt shape; observed: ",
-              out,
+              "host_codex_runtime_provision: typed argv transport refused the codex runtime provision sequence; observed: ",
+              why,
             ) as std.types.NonEmptyStr,
           }
       }
-  }
-}
-
-fn codex_runtime_absent_refuses_fail_closed() -> Bool {
-  match provision_codex_runtime_verdict(
-    host: "srv1" as product.placement_supply.HostIdentity,
-    observed: CodexRuntimeAbsent,
-  ) {
-    ProvisionRefused { cause: RefusalRuntimeAbsent, reason: _ } => true
-    ProvisionConverged { executable: _, version_line: _ } => false
   }
 }
 
@@ -92,11 +74,12 @@ fn codex_runtime_materialization_failed_refuses_fail_closed() -> Bool {
   match provision_codex_runtime_verdict(
     host: "srv1" as product.placement_supply.HostIdentity,
     observed: CodexRuntimeMaterializationFailed {
-      combined_output: "CodexRuntimeProvisionReceipt: ensure=FAILED" as String,
+      reason: "materialize_codex_runtime_on_local_host exited nonzero" as String,
     },
   ) {
     ProvisionRefused { cause: RefusalMaterializationFailed, reason: _ } => true
     ProvisionConverged { executable: _, version_line: _ } => false
+    ProvisionRefused { cause: _, reason: _ } => false
   }
 }
 
@@ -104,12 +87,13 @@ fn codex_runtime_identity_mismatch_refuses_fail_closed() -> Bool {
   match provision_codex_runtime_verdict(
     host: "srv1" as product.placement_supply.HostIdentity,
     observed: CodexRuntimeIdentityMismatch {
-      combined_output: "codex-cli 0.133.0" as String,
+      observed_output: "codex-cli 0.133.0" as String,
     },
   ) {
     ProvisionRefused { cause: RefusalIdentityMismatch, reason: reason } =>
-      string_contains(s: reason as String, pattern: codex_runtime_version_identity_marker())
+      string_contains(s: reason as String, pattern: gunbc.package_delivery.codex_runtime_version_identity_marker())
     ProvisionConverged { executable: _, version_line: _ } => false
+    ProvisionRefused { cause: _, reason: _ } => false
   }
 }
 
@@ -117,65 +101,35 @@ fn codex_runtime_identity_ok_converges() -> Bool {
   match provision_codex_runtime_verdict(
     host: "srv1" as product.placement_supply.HostIdentity,
     observed: CodexRuntimeIdentityOk {
-      version_line: codex_runtime_version_identity_marker(),
+      version_line: gunbc.package_delivery.codex_runtime_version_identity_marker(),
     },
   ) {
     ProvisionConverged { executable: _, version_line: line } =>
-      line == codex_runtime_version_identity_marker()
+      line == gunbc.package_delivery.codex_runtime_version_identity_marker()
     ProvisionRefused { cause: _, reason: _ } => false
   }
 }
 
-fn codex_runtime_shell_output_unrecognized_refuses_fail_closed() -> Bool {
+fn codex_runtime_transport_refused_refuses_fail_closed() -> Bool {
   match provision_codex_runtime_verdict(
     host: "srv1" as product.placement_supply.HostIdentity,
-    observed: CodexRuntimeShellOutputUnrecognized {
-      combined_output: "unexpected transport failure" as String,
+    observed: CodexRuntimeTransportRefused {
+      reason: "typed_argv: argv token outside portable allowlist" as String,
     },
   ) {
-    ProvisionRefused { cause: RefusalShellOutputUnrecognized, reason: _ } => true
+    ProvisionRefused { cause: RefusalTransport, reason: _ } => true
     ProvisionConverged { executable: _, version_line: _ } => false
+    ProvisionRefused { cause: _, reason: _ } => false
   }
 }
 
-fn codex_runtime_shell_combined_output(stdout: String, stderr: String) -> String {
-  if stderr == "" {
-    stdout
-  } else if stdout == "" {
-    stderr
-  } else {
-    concat(concat(stdout, "\n"), stderr)
+fn codex_runtime_host_unsupported_refuses_fail_closed() -> Bool {
+  match provision_codex_runtime_verdict(
+    host: "an-unknown-host" as product.placement_supply.HostIdentity,
+    observed: CodexRuntimeIdentityOk { version_line: gunbc.package_delivery.codex_runtime_version_identity_marker() },
+  ) {
+    ProvisionRefused { cause: RefusalHostUnsupported, reason: _ } => true
+    ProvisionConverged { executable: _, version_line: _ } => false
+    ProvisionRefused { cause: _, reason: _ } => false
   }
-}
-
-fn codex_runtime_observation_from_shell_output(
-  success: Bool,
-  combined_output: String,
-) -> CodexRuntimeObservation {
-  if success && codex_runtime_version_identity_satisfied(combined_output: combined_output) {
-    CodexRuntimeIdentityOk { version_line: codex_runtime_version_identity_marker() }
-  } else if string_contains(s: combined_output, pattern: "ensure=FAILED") {
-    CodexRuntimeMaterializationFailed { combined_output: combined_output }
-  } else if string_contains(s: combined_output, pattern: "read_back=FAILED") {
-    CodexRuntimeIdentityMismatch { combined_output: combined_output }
-  } else if string_contains(s: combined_output, pattern: "observe=absent") {
-    CodexRuntimeAbsent
-  } else {
-    CodexRuntimeShellOutputUnrecognized { combined_output: combined_output }
-  }
-}
-
-fn provision_codex_runtime_verdict_from_shell(
-  host: product.placement_supply.HostIdentity,
-  success: Bool,
-  stdout: String,
-  stderr: String,
-) -> CodexRuntimeProvisionVerdict {
-  provision_codex_runtime_verdict(
-    host: host,
-    observed: codex_runtime_observation_from_shell_output(
-      success: success,
-      combined_output: codex_runtime_shell_combined_output(stdout: stdout, stderr: stderr),
-    ),
-  )
 }

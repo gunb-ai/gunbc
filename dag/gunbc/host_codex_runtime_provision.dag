@@ -18,6 +18,8 @@ fn provision_codex_runtime_effect() -> gunbc.host_effect.HostEffect {
   gunbc.host_effect.ProvisionCodexRuntime {}
 }
 
+data codex_runtime_provision_argv_note: String = "The observe/read-back argv builder (codex_runtime_observe_argv) lives in gunbc.host_codex_runtime_provision_verdict, not here — this module imports gunbc.host_toolchain_ensure, and host_toolchain_ensure imports gunbc.host_effect_realize, so an argv builder consumed by host_effect_realize cannot live in this module without a gunbc.host_effect_realize -> gunbc.host_codex_runtime_provision -> gunbc.host_toolchain_ensure -> gunbc.host_effect_realize cycle. gunbc.host_effect_realize runs observe, materialize, then read-back as three typed single-command steps: LocalShell dispatches through the existing typed argv services gunbc.WitnessBin.Run (observe/read-back) and gunbc.Cli.Run (materialize, argv built inline from gunbc.cli_invoke gunbc_run_transport_argv against materialize_codex_runtime_on_local_host below); SshShell/FleetSsh dispatch codex_runtime_observe_argv (and the equivalent materialize argv) through run_typed_argv_transport. Branching (does the version match? did materialize fail?) is decided in .dag from the typed exec result (exit code, stdout) by gunbc.host_effect_realize / gunbc.host_codex_runtime_provision_verdict, not by shell if/grep/printf receipt markers. There is no standalone mkdir-release-parent argv: materialize_codex_runtime_bundle's own call chain (release_codex_runtime_bundle_immutable) already runs shell.Mkdir.Parents on release_parent, so a duplicate pre-step would be redundant work."
+
 fn provision_codex_runtime_routes_through_host_effect_apply() -> Bool {
   match host_codex_runtime_provision_realize_scaffold {
     Scaffold {

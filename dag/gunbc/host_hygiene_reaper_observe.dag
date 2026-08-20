@@ -1,0 +1,146 @@
+module gunbc.host_hygiene_reaper_observe
+
+data gunbc_host_hygiene_reaper_observe_scope_disposition: std.disposition.Disposition = std.disposition.Terminal {
+  reason: "The OBSERVE half of the reaper vertical (brief: split observe from mutate — a reaper that mutates on a misread IS the harm, so observation must land first and be provable independent of gunbc.host_hygiene_reaper_remediate). Runs LocalShell only, mirroring the only other on-host cgroupfs reader in this tree (gunbc.srv1_tasks_preapply_observation): systemctl reads for ActiveState/ControlGroup go through the typed gunbc.systemctl_show_read seam (ActiveState added to extdeps.systemd.SystemdUnitProperty rather than minting a second read op — the wire value systemctl show -p ActiveState --value already emits is the exact wire shape parse_systemd_unit_active_state already decodes), and the cgroupfs/procfs reads are the direct filesystem_read builtin at the path SYSTEMD reports, never a hand-escaped slice path. CgroupBuildCacheServerOccupant classification stays the crude cmdline-substring scan the deleted host_hygiene_reaper_script.dag carried — refining it against BuildCacheServerPlacement is gunbc_host_hygiene_reaper_build_cache_placement_scaffold's separate, already-declared scope, not this migration's."
+}
+
+data host_hygiene_reap_instance_glob: std.types.NonEmptyStr = gunbc.host_converge.gunbc_runner_all_slots_unit_glob as std.types.NonEmptyStr
+
+data host_hygiene_cgroupfs_root: String = "/sys/fs/cgroup"
+
+data host_hygiene_build_cache_cmdline_marker: String = "sccache"
+
+fn host_hygiene_read_active_state(unit: std.types.NonEmptyStr) -> extdeps.systemd.SystemdUnitActiveState? {
+  match gunbc.systemctl_show_read.systemctl_show_property_read_local(unit: unit, property: extdeps.systemd.ActiveState) {
+    SystemdPropertyCaptured { value: raw } => extdeps.systemd.parse_systemd_unit_active_state(raw: raw)
+    SystemdPropertyCaptureRefused { reason: _ } => none
+  }
+}
+
+fn host_hygiene_read_control_group(unit: std.types.NonEmptyStr) -> String? {
+  match gunbc.systemctl_show_read.systemctl_show_property_read_local(unit: unit, property: extdeps.systemd.ControlGroup) {
+    SystemdPropertyCaptured { value: cg } => if cg == "" { none } else { Present { value: cg } }
+    SystemdPropertyCaptureRefused { reason: _ } => none
+  }
+}
+
+fn host_hygiene_read_procs(control_group: String) -> std.types.List<std.types.NonEmptyStr> {
+  let raw = filesystem_read(path: join([host_hygiene_cgroupfs_root, control_group, "/cgroup.procs"], "")).content
+  let nonempty_lines = filter(map(split(s: trim(raw), delimiter: "\n"), s => trim(s)), s => s != "")
+  map(nonempty_lines, p => p as std.types.NonEmptyStr)
+}
+
+fn host_hygiene_pid_cmdline_is_build_cache(pid: std.types.NonEmptyStr) -> Bool {
+  string_contains(
+    s: filesystem_read(path: join(["/proc/", pid as String, "/cmdline"], "")).content,
+    pattern: host_hygiene_build_cache_cmdline_marker,
+  )
+}
+
+fn host_hygiene_classify_occupant(pids: std.types.List<std.types.NonEmptyStr>) -> gunbc.host_hygiene_reaper.CgroupOccupant {
+  if length(pids) == 0 {
+    gunbc.host_hygiene_reaper.CgroupEmpty
+  } else {
+    if length(filter(pids, host_hygiene_pid_cmdline_is_build_cache)) > 0 {
+      gunbc.host_hygiene_reaper.CgroupBuildCacheServerOccupant
+    } else {
+      gunbc.host_hygiene_reaper.CgroupOrdinaryProcesses
+    }
+  }
+}
+
+data host_hygiene_override_root: String = "/etc/systemd/system.control/"
+
+fn host_hygiene_override_dir_for_unit(unit: std.types.NonEmptyStr) -> std.types.NonEmptyStr {
+  concat(host_hygiene_override_root, concat(unit as String, ".d")) as std.types.NonEmptyStr
+}
+
+fn host_hygiene_has_control_override(unit: std.types.NonEmptyStr) -> Bool {
+  shell.Test.IsDirectory(path: host_hygiene_override_dir_for_unit(unit: unit) as std.types.FilePath).is_directory
+}
+
+type ResidualSlotObserveOutcome
+  = ResidualSlotObserved { slot: gunbc.host_hygiene_reaper.ResidualSlotObservation, occupant_pids: std.types.List<std.types.NonEmptyStr> }
+  | ResidualSlotObserveRefused { unit: std.types.NonEmptyStr, cause: String }
+
+fn observe_residual_slot(unit: std.types.NonEmptyStr) -> ResidualSlotObserveOutcome {
+  match host_hygiene_read_active_state(unit: unit) {
+    Absent => ResidualSlotObserveRefused { unit: unit, cause: "ActiveState read refused or unparseable" }
+    Present { value: active_state } =>
+      match host_hygiene_read_control_group(unit: unit) {
+        Absent => ResidualSlotObserveRefused { unit: unit, cause: "ControlGroup read returned empty or refused" }
+        Present { value: cg } =>
+          let pids = host_hygiene_read_procs(control_group: cg)
+          ResidualSlotObserved {
+            slot: gunbc.host_hygiene_reaper.ResidualSlotObservation {
+              unit: unit,
+              unit_active_state: active_state,
+              occupant: host_hygiene_classify_occupant(pids: pids),
+              has_control_override: host_hygiene_has_control_override(unit: unit),
+            },
+            occupant_pids: pids,
+          }
+      }
+  }
+}
+
+type ResidualFleetObserveReceipt
+  = ResidualFleetObserved { outcomes: std.types.List<ResidualSlotObserveOutcome> }
+  | ResidualFleetObserveRefused { cause: String }
+
+fn observe_all_residual_slots() -> ResidualFleetObserveReceipt {
+  match gunbc.systemctl_list_units.systemctl_list_units_all_states(instance_glob: host_hygiene_reap_instance_glob) {
+    Absent => ResidualFleetObserveRefused { cause: "unit enumeration refused (systemctl list-units transport)" }
+    Present { value: units } =>
+      if length(units) == 0 {
+        ResidualFleetObserveRefused { cause: "unit enumeration returned zero actions-runner@* units — refusing an empty observation rather than reporting a vacuous receipt" }
+      } else {
+        ResidualFleetObserved { outcomes: map(units, u => observe_residual_slot(unit: u)) }
+      }
+  }
+}
+
+fn residual_slot_observe_outcome_slot(o: ResidualSlotObserveOutcome) -> gunbc.host_hygiene_reaper.ResidualSlotObservation? {
+  match o {
+    ResidualSlotObserved { slot: s, occupant_pids: _ } => Present { value: s }
+    ResidualSlotObserveRefused { unit: _, cause: _ } => none
+  }
+}
+
+// Any single-unit read refusal (a transport hiccup, a unit that vanished between list
+// and show) refuses the WHOLE fleet observation rather than silently dropping that
+// slot's row — DESIGN section 5's absorbing-fallback rule cuts the other way here too:
+// narrowing the population to "every unit that happened to answer" is the
+// empty-observation-narrow failure mode, not a safe partial success.
+fn residual_fleet_observed_slots(outcomes: std.types.List<ResidualSlotObserveOutcome>) -> std.types.List<gunbc.host_hygiene_reaper.ResidualSlotObservation>? {
+  let slots = fold(outcomes, init: [], f: fn(acc, o) {
+    match residual_slot_observe_outcome_slot(o: o) {
+      Present { value: s } => concat(acc, [s])
+      Absent => acc
+    }
+  })
+  let refused = filter(outcomes, o => match residual_slot_observe_outcome_slot(o: o) { Absent => true, Present { value: _ } => false })
+  if length(refused) > 0 { none } else { Present { value: slots } }
+}
+
+fn gunbc_host_hygiene_reaper_live_show_effective_read() -> std.realization_reconcile.ShowEffectiveRead<std.types.List<gunbc.host_hygiene_reaper.ResidualSlotObservation>> {
+  match observe_all_residual_slots() {
+    ResidualFleetObserveRefused { cause: why } => std.realization_reconcile.ReadAbsent { reason: why }
+    ResidualFleetObserved { outcomes: outs } =>
+      match residual_fleet_observed_slots(outcomes: outs) {
+        Absent => std.realization_reconcile.ReadAbsent { reason: "one or more residual slot reads refused; refusing the whole observation rather than reporting a narrowed one" }
+        Present { value: slots } => std.realization_reconcile.ReadObserved { value: slots }
+      }
+  }
+}
+
+// UNEXECUTED-IN-CI: this function issues real `systemctl show` / filesystem_read /
+// `test -d` reads against the local host. CI's floor is hermetic-only
+// (eval_mock_response replays each declared op's mock_response and never constructs or
+// runs argv), so nothing in CI ever calls this — the reconciliation it feeds is provable
+// in CI only through ReadAbsent/DoesNotGround structural paths and the mock-backed
+// per-op reads exercised elsewhere. Trigger to promote this claim: a wet/live CI lane
+// exists for this repo (none does today).
+fn gunbc_host_hygiene_reaper_live_evidence() -> std.realization_reconcile.Reconciliation<String, gunbc.host_hygiene_reaper.ResidualReapEvidence> {
+  gunbc.host_hygiene_reaper.reconcile_residual_reap(read: gunbc_host_hygiene_reaper_live_show_effective_read())
+}

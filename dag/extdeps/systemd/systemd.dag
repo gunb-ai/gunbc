@@ -1,9 +1,8 @@
 module extdeps.systemd
 
-
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "man7.org/linux/man-pages/man1/systemctl.1.html#is-active"
   }
 }
@@ -16,7 +15,7 @@ type SystemdUnitActiveState
   | Reloading
   | Failed
 
-data systemd_parse_label_derivation_debt: List<std.types.NonEmptyStr> = [
+data systemd_parse_label_derivation_debt: std.types.List<std.types.NonEmptyStr> = [
   "dissolve-on: when contract-driven derivation is available (§3 single authority), derive parse/label from wire contract instead of hand-rolling",
 ]
 
@@ -29,6 +28,7 @@ type SystemdUnitProperty
   | TasksMax
   | TasksCurrent
   | ControlGroup
+  | ActiveState
 
 fn systemd_unit_property_wire(property: SystemdUnitProperty) -> std.types.NonEmptyStr {
   match property {
@@ -40,6 +40,7 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> std.types.NonEmp
     TasksMax => "TasksMax" as std.types.NonEmptyStr
     TasksCurrent => "TasksCurrent" as std.types.NonEmptyStr
     ControlGroup => "ControlGroup" as std.types.NonEmptyStr
+    ActiveState => "ActiveState" as std.types.NonEmptyStr
   }
 }
 
@@ -68,7 +69,7 @@ fn parse_systemd_memory_limit_show(raw: String) -> SystemdCgroupMemoryLimit {
   if raw == "" { MemoryLimitAbsent }
   else { if raw == "infinity" { MemoryLimitUnbounded }
   else { match parse_int(s: raw) {
-    Present { value: n } => MemoryLimitBytes { bytes: byte_size(count: n) }
+    Present { value: n } => MemoryLimitBytes { bytes: std.measure.byte_size(count: n) }
     Absent => MemoryLimitAbsent
   } } }
 }
@@ -76,7 +77,7 @@ fn parse_systemd_memory_limit_show(raw: String) -> SystemdCgroupMemoryLimit {
 fn systemd_memory_limit_wire_label(lim: SystemdCgroupMemoryLimit) -> String {
   match lim {
     MemoryLimitUnbounded => "infinity"
-    MemoryLimitBytes { bytes: b } => to_string(byte_size_count(b: b))
+    MemoryLimitBytes { bytes: b } => to_string(std.measure.byte_size_count(b: b))
     MemoryLimitAbsent => ""
   }
 }

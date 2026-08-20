@@ -1,33 +1,35 @@
 module extdeps.systemd.systemctl
 
-
-
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.freedesktop.org/software/systemd/man/latest/systemctl.html"
   }
 }
 
 data systemctl_authority: extdeps.external_authority.ExternalAuthority = extdeps_external_authority_anchor
 
-fn systemctl_daemon_reload_argv() -> List<String> {
+fn systemctl_daemon_reload_argv() -> std.types.List<String> {
   ["systemctl", "daemon-reload"]
 }
 
-fn systemctl_enable_argv(unit: std.types.NonEmptyStr) -> List<String> {
+fn systemctl_enable_argv(unit: std.types.NonEmptyStr) -> std.types.List<String> {
   ["systemctl", "enable", unit as String]
 }
 
-fn systemctl_restart_argv(unit: std.types.NonEmptyStr) -> List<String> {
+fn systemctl_restart_argv(unit: std.types.NonEmptyStr) -> std.types.List<String> {
   ["systemctl", "restart", unit as String]
 }
 
-fn systemctl_disable_now_argv(unit: std.types.NonEmptyStr) -> List<String> {
+fn systemctl_disable_now_argv(unit: std.types.NonEmptyStr) -> std.types.List<String> {
   ["systemctl", "disable", "--now", unit as String]
 }
 
-fn systemctl_set_property_argv(unit: std.types.NonEmptyStr, property: std.types.NonEmptyStr, value: std.types.NonEmptyStr) -> List<String> {
+fn systemctl_stop_argv(unit: std.types.NonEmptyStr) -> std.types.List<String> {
+  ["systemctl", "stop", unit as String]
+}
+
+fn systemctl_set_property_argv(unit: std.types.NonEmptyStr, property: std.types.NonEmptyStr, value: std.types.NonEmptyStr) -> std.types.List<String> {
   [
     "systemctl",
     "set-property",
@@ -36,26 +38,26 @@ fn systemctl_set_property_argv(unit: std.types.NonEmptyStr, property: std.types.
   ]
 }
 
-fn systemctl_revert_memory_caps_argv(unit: std.types.NonEmptyStr) -> List<String> {
+fn systemctl_revert_memory_caps_argv(unit: std.types.NonEmptyStr) -> std.types.List<String> {
   ["systemctl", "revert", unit as String, "MemoryMax", "MemoryHigh"]
 }
 
-fn systemctl_show_property_argv(unit: std.types.NonEmptyStr, property: SystemdUnitProperty) -> List<String> {
+fn systemctl_show_property_argv(unit: std.types.NonEmptyStr, property: extdeps.systemd.SystemdUnitProperty) -> std.types.List<String> {
   [
     "systemctl",
     "show",
     unit as String,
-    concat("--property=", systemd_unit_property_wire(property: property) as String),
+    concat("--property=", extdeps.systemd.systemd_unit_property_wire(property: property) as String),
     "--value",
   ]
 }
 
 // LoadState is a non-numeric unit lifecycle observation, so it has its own argv authority rather than joining SystemdUnitProperty, whose shared ShowProperty mock is numeric cgroup evidence. systemctl show exits nonzero on an unreadable manager; the load-state wire value not-found is the only observation that proves an absent unit.
-fn systemctl_show_load_state_argv(unit: std.types.NonEmptyStr) -> List<String> {
+fn systemctl_show_load_state_argv(unit: std.types.NonEmptyStr) -> std.types.List<String> {
   ["systemctl", "show", unit as String, "--property=LoadState", "--value"]
 }
 
-fn systemctl_status_argv(unit: std.types.NonEmptyStr) -> List<String> {
+fn systemctl_status_argv(unit: std.types.NonEmptyStr) -> std.types.List<String> {
   ["systemctl", "status", "--no-pager", "--full", unit as String]
 }
 
@@ -128,6 +130,23 @@ service systemd.Systemctl {
     }
   }
 
+  operation Stop {
+    input { unit: std.types.NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "stop", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl stop failed"
+    }
+    mock_response {
+      0 => { success: true, stdout: "", stderr: "" } "hermetic systemd.Systemctl.Stop"
+    }
+  }
+
   operation SetProperty {
     input { unit: std.types.NonEmptyStr, property: std.types.NonEmptyStr, value: std.types.NonEmptyStr }
     output {
@@ -186,10 +205,13 @@ service systemd.Systemctl {
       3 => Unit "unit is not active"
       nonzero => String "systemctl is-active failed"
     }
+    mock_response {
+      0 => { state: "active", active: true } "hermetic systemd.Systemctl.IsActive active"
+    }
   }
 
   operation ShowProperty {
-    input { unit: std.types.NonEmptyStr, property: SystemdUnitProperty }
+    input { unit: std.types.NonEmptyStr, property: extdeps.systemd.SystemdUnitProperty }
     output {
       value: String from "stdout"
       success: Bool from "exit_success"
