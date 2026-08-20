@@ -168,7 +168,7 @@ fn diagnostics_merge(outer: v2.std.diagnostic.Diagnostics, inner: v2.std.diagnos
 }
 data diagnostics_monoid: Monoid<v2.std.diagnostic.Diagnostics> = std.algebra.Monoid {
   op: diagnostics_merge,
-  identity: None
+  identity: v2.std.diagnostic.None
 }
 data non_empty_diagnostics_semigroup: Semigroup<v2.std.diagnostic.NonEmptyDiagnostics> = std.algebra.Semigroup {
   op: non_empty_diagnostics_append

@@ -11,19 +11,19 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_t
 data witness_key: std.types.NonEmptyStr = "gunbc-owned-ci-fabric" as std.types.NonEmptyStr
 
 data occupied_at_seven: std.durable_compare_and_set.CasSlotObservation<std.types.NonEmptyStr> = std.durable_compare_and_set.CasObservedReadable {
-  readable: std.durable_compare_and_set.CasReadablePresent { version: std.durable_compare_and_set.CasSlotVersion {
+  readable: std.durable_compare_and_set.cas_readable_present(version: std.durable_compare_and_set.CasSlotVersion {
     generation: 7,
     content: content_hash_of_value(value: "state-at-seven" as std.types.NonEmptyStr),
     value: "state-at-seven" as std.types.NonEmptyStr,
-  } },
+  } ),
 }
 
 data occupied_at_nine: std.durable_compare_and_set.CasSlotObservation<std.types.NonEmptyStr> = std.durable_compare_and_set.CasObservedReadable {
-  readable: std.durable_compare_and_set.CasReadablePresent { version: std.durable_compare_and_set.CasSlotVersion {
+  readable: std.durable_compare_and_set.cas_readable_present(version: std.durable_compare_and_set.CasSlotVersion {
     generation: 9,
     content: content_hash_of_value(value: "state-at-nine" as std.types.NonEmptyStr),
     value: "state-at-nine" as std.types.NonEmptyStr,
-  } },
+  } ),
 }
 
 fn proposal(expected: std.durable_compare_and_set.CasExpectation) -> std.durable_compare_and_set.CasAttempt<std.types.NonEmptyStr> {
@@ -44,7 +44,7 @@ fn committed_generation_of(outcome: std.durable_compare_and_set.CasOutcome<std.t
 }
 
 test fn a_create_against_an_absent_slot_commits_at_the_first_generation() -> Bool {
-  let outcome = cas_decide(attempt: proposal(expected: std.durable_compare_and_set.ExpectSlotAbsent), observed: std.durable_compare_and_set.CasObservedReadable { readable: std.durable_compare_and_set.CasReadableAbsent })
+  let outcome = cas_decide(attempt: proposal(expected: std.durable_compare_and_set.ExpectSlotAbsent), observed: std.durable_compare_and_set.CasObservedReadable { readable: std.durable_compare_and_set.cas_readable_absent() })
   committed_generation_of(outcome: outcome) == 1
 }
 
@@ -123,11 +123,11 @@ test fn the_loser_of_a_race_can_commit_against_the_generation_that_won() -> Bool
 
 fn occupied_at_seven_after_winner() -> std.durable_compare_and_set.CasSlotObservation<std.types.NonEmptyStr> {
   std.durable_compare_and_set.CasObservedReadable {
-    readable: std.durable_compare_and_set.CasReadablePresent { version: std.durable_compare_and_set.CasSlotVersion {
+    readable: std.durable_compare_and_set.cas_readable_present(version: std.durable_compare_and_set.CasSlotVersion {
       generation: 8,
       content: content_hash_of_value(value: "proposed-state" as std.types.NonEmptyStr),
       value: "proposed-state" as std.types.NonEmptyStr,
-    } },
+    } ),
   }
 }
 
@@ -165,7 +165,7 @@ fn is_store_refusal(outcome: std.durable_compare_and_set.CasOutcome<std.types.No
 // and not to the expectation being unsatisfiable in general.
 test fn the_same_expectation_that_was_refused_when_unreadable_commits_when_absent() -> Bool {
   committed_generation_of(
-    outcome: cas_decide(attempt: proposal(expected: std.durable_compare_and_set.ExpectSlotAbsent), observed: std.durable_compare_and_set.CasObservedReadable { readable: std.durable_compare_and_set.CasReadableAbsent })
+    outcome: cas_decide(attempt: proposal(expected: std.durable_compare_and_set.ExpectSlotAbsent), observed: std.durable_compare_and_set.CasObservedReadable { readable: std.durable_compare_and_set.cas_readable_absent() })
   ) == 1
 }
 

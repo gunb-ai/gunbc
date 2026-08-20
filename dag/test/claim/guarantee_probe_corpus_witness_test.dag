@@ -735,8 +735,8 @@ test fn dark_suite_dispositions_cover_migrated_v1_probes() -> std.types.Bool {
     |> all(row => {
       let id = row.probe as String
       std.materialization_ladder.string_list_contains(xs: disposition_probe_ids, wanted: id)
-        || string_list_contains(xs: known_v1_migration_gap_ids, wanted: id)
-        || string_list_contains(xs: dag_native_v1_compile_probe_ids, wanted: id)
+        || std.materialization_ladder.string_list_contains(xs: known_v1_migration_gap_ids, wanted: id)
+        || std.materialization_ladder.string_list_contains(xs: dag_native_v1_compile_probe_ids, wanted: id)
     })
   let dag_native_ids_are_not_disposed_or_gaps = dag_native_v1_compile_probe_ids
     |> all(id => !std.materialization_ladder.string_list_contains(xs: disposition_probe_ids, wanted: id)

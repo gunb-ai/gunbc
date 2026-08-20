@@ -296,7 +296,7 @@ type RustMaintenanceDisposition
   | EmitFrom { authority: std.decl_ref.DeclarationRef }
   | DeleteWith { roadmap_node: gunbc.roadmap_model.RoadmapNodeId }
   | RetainedKernel { reason: String }
-  | HandScaffold { reason: NonEmptyStr, dissolution: std.dissolution.DissolutionCondition }
+  | HandScaffold { reason: std.types.NonEmptyStr, dissolution: std.dissolution.DissolutionCondition }
 
 type RustSourceLifecycleRow {
   path: String
@@ -510,7 +510,7 @@ fn residue_row(path: String, reason: String, dissolution: std.dissolution.Dissol
     path: path,
     roles: [],
     maintenance_dispositions: [
-      HandScaffold { reason: reason as NonEmptyStr, dissolution: dissolution }
+      HandScaffold { reason: reason as std.types.NonEmptyStr, dissolution: dissolution }
     ]
   }
 }
