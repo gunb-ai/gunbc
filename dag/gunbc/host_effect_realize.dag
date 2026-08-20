@@ -777,7 +777,7 @@ fn codex_runtime_materialize_step(
 
 fn provision_codex_runtime_refuse(
   host: product.placement_supply.HostIdentity,
-  observed: CodexRuntimeObservation,
+  observed: gunbc.host_codex_runtime_provision_verdict.CodexRuntimeObservation,
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   match gunbc.host_codex_runtime_provision_verdict.provision_codex_runtime_verdict(host: host, observed: observed) {
@@ -2012,7 +2012,7 @@ fn realize_live_deploy_apply_on_host(
       script: gunbc.retained_shell_script.retained_srvn(
         body: gunbc.live_deploy.emit.live_deploy_apply_script_for(
           spec: spec,
-          revision: RevisionBoundAtEmission { revision: candidate.revision },
+          revision: gunbc.live_deploy.emit.RevisionBoundAtEmission { revision: candidate.revision },
         ),
         reason: "live_deploy apply (unit install + start)",
       ),
