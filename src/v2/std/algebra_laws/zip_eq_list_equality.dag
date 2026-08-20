@@ -44,7 +44,7 @@ data claim_zip_eq_empty_empty_true: v2.std.verification.TestClaim = v2.std.verif
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: zip_eq_claim_input(ok: witness_zip_eq_empty_empty),
   expected_value: zip_eq_pass_node(),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
 data claim_zip_eq_same_single_true: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
@@ -52,7 +52,7 @@ data claim_zip_eq_same_single_true: v2.std.verification.TestClaim = v2.std.verif
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: zip_eq_claim_input(ok: witness_zip_eq_same_single),
   expected_value: zip_eq_pass_node(),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
 data claim_zip_eq_different_single_false: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
@@ -60,7 +60,7 @@ data claim_zip_eq_different_single_false: v2.std.verification.TestClaim = v2.std
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: zip_eq_claim_input(ok: witness_zip_eq_different_single),
   expected_value: zip_eq_pass_node(),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
 data claim_zip_eq_left_longer_false: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
@@ -68,7 +68,7 @@ data claim_zip_eq_left_longer_false: v2.std.verification.TestClaim = v2.std.veri
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: zip_eq_claim_input(ok: witness_zip_eq_left_longer),
   expected_value: zip_eq_pass_node(),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
 data claim_zip_eq_right_longer_false: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
@@ -76,5 +76,5 @@ data claim_zip_eq_right_longer_false: v2.std.verification.TestClaim = v2.std.ver
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: zip_eq_claim_input(ok: witness_zip_eq_right_longer),
   expected_value: zip_eq_pass_node(),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }

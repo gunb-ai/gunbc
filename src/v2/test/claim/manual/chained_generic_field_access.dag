@@ -26,5 +26,5 @@ data claim_chained_generic_field_compiles: v2.std.verification.TestClaim = v2.st
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: chained_generic_field_claim_payload,
   expected_value: chained_generic_field_claim_payload,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }

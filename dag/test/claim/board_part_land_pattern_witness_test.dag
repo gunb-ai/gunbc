@@ -108,7 +108,7 @@ test fn w_the_sot23_pitch_reconciles_the_two_printed_readings() -> Bool {
 data mismatched_candidate: extdeps.land_pattern.types.PartMechanicalCandidate = extdeps.land_pattern.types.PartMechanicalCandidate {
   ordering_part_number: "DP83867IRRGZ",
   vendor: extdeps.network.ti_dp83867.dp83867irrgz.vendor,
-  body: dp83867_rgz0048b_body,
+  body: extdeps.network.ti_dp83867.dp83867_rgz0048b_body,
   land_pattern: extdeps.clock.ti_cdce913.cdce913_pw0014a_land_pattern,
   terminal_indexing: extdeps.network.ti_dp83867.dp83867irrgz.terminal_indexing,
 }
@@ -224,7 +224,7 @@ fn owes_its_geometry(p: extdeps.land_pattern.types.CatalogPartIdentity) -> Bool 
 
 test fn w_every_unread_document_row_owes_its_geometry() -> Bool {
   owes_its_geometry(p: extdeps.storage.amphenol_mdt420m01001.mdt420m01001)
-    && owes_its_geometry(p: at24cm02)
+    && owes_its_geometry(p: extdeps.memory.microchip_at24cm02.at24cm02)
     && owes_its_geometry(p: mx25l25673g)
     && owes_its_geometry(p: ftsh_105_01_l_dv)
 }
@@ -233,7 +233,7 @@ test fn w_every_unread_document_row_owes_its_geometry() -> Bool {
 // be trusted.
 test fn w_the_unread_rows_carry_their_part_numbers() -> Bool {
   (extdeps.storage.amphenol_mdt420m01001.mdt420m01001.ordering_part_number as String) == "MDT420M01001"
-    && (at24cm02.ordering_part_number as String) == "AT24CM02"
+    && (extdeps.memory.microchip_at24cm02.at24cm02.ordering_part_number as String) == "AT24CM02"
     && (mx25l25673g.ordering_part_number as String) == "MX25L25673G"
     && (ftsh_105_01_l_dv.ordering_part_number as String) == "FTSH-105-01-L-DV"
 }
@@ -244,7 +244,7 @@ test fn w_the_unread_rows_carry_their_part_numbers() -> Bool {
 // tree already had to get right in the other direction.
 test fn w_the_four_new_vendors_are_four_distinct_entities() -> Bool {
   let a = extdeps.storage.amphenol_mdt420m01001.mdt420m01001.vendor.legal_name as String
-  let m = at24cm02.vendor.legal_name as String
+  let m = extdeps.memory.microchip_at24cm02.at24cm02.vendor.legal_name as String
   let x = mx25l25673g.vendor.legal_name as String
   let s = ftsh_105_01_l_dv.vendor.legal_name as String
   !(a == m) && !(a == x) && !(a == s) && !(m == x) && !(m == s) && !(x == s)

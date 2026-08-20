@@ -420,5 +420,5 @@ data claim_cost_valuation: v2.std.verification.TestClaim = v2.std.verification.E
   } else {
     synthetic_leaf(identity: ^valuation_claim_failed)
   },
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }

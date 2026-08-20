@@ -456,7 +456,7 @@ fn envelope_from_package_body(b: extdeps.land_pattern.types.PackageBodyDimension
 }
 
 data host_phy_envelope: ComponentEnvelopeStanding = envelope_from_package_body(
-  b: dp83867_rgz0048b_body,
+  b: extdeps.network.ti_dp83867.dp83867_rgz0048b_body,
   source: decl_ref(module_path: "extdeps.network.ti_dp83867", decl_name: "dp83867_rgz0048b_body"),
 )
 

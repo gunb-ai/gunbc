@@ -35,7 +35,7 @@ data claim_division_by_zero_total_or_proven_safe: v2.std.verification.TestClaim 
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: total_division_input,
   expected_value: total_division_input,
-  classification: v2.std.verification.TestClassification { tier: Tier2, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier2, layer: v2.std.verification.Unit }
 }
 
 data claim_oob_index_total_or_proven_safe: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
@@ -43,7 +43,7 @@ data claim_oob_index_total_or_proven_safe: v2.std.verification.TestClaim = v2.st
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: checked_index_input,
   expected_value: checked_index_input,
-  classification: v2.std.verification.TestClassification { tier: Tier2, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier2, layer: v2.std.verification.Unit }
 }
 
 data claim_unproven_division_rejected: v2.std.verification.TestClaim = v2.std.verification.DiagnosticClaim {
@@ -57,7 +57,7 @@ data claim_unproven_division_rejected: v2.std.verification.TestClaim = v2.std.ve
         correction: v2.std.diagnostic.Suggested { node: total_division_input }
       }
     ),
-  classification: v2.std.verification.TestClassification { tier: Tier2, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier2, layer: v2.std.verification.Unit }
 }
 
 data claim_unproven_oob_index_rejected: v2.std.verification.TestClaim = v2.std.verification.DiagnosticClaim {
@@ -71,7 +71,7 @@ data claim_unproven_oob_index_rejected: v2.std.verification.TestClaim = v2.std.v
         correction: v2.std.diagnostic.Suggested { node: checked_index_input }
       }
     ),
-  classification: v2.std.verification.TestClassification { tier: Tier2, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier2, layer: v2.std.verification.Unit }
 }
 
 data claim_force_unwrap_count_zero: v2.std.verification.TestClaim = v2.std.verification.DiagnosticClaim {
@@ -85,5 +85,5 @@ data claim_force_unwrap_count_zero: v2.std.verification.TestClaim = v2.std.verif
         correction: v2.std.diagnostic.Suggested { node: total_unwrap_input }
       }
     ),
-  classification: v2.std.verification.TestClassification { tier: Tier2, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier2, layer: v2.std.verification.Unit }
 }

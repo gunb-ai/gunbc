@@ -49,7 +49,7 @@ data claim_effect_derived_from_signature: v2.std.verification.TestClaim = v2.std
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: effect_derived_from_signature_input,
   expected_value: effect_derived_from_signature_input,
-  classification: v2.std.verification.TestClassification { tier: Tier2, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier2, layer: v2.std.verification.Unit }
 }
 
 data claim_explicit_reread_passes: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
@@ -57,7 +57,7 @@ data claim_explicit_reread_passes: v2.std.verification.TestClaim = v2.std.verifi
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: explicit_reread_input,
   expected_value: explicit_reread_input,
-  classification: v2.std.verification.TestClassification { tier: Tier2, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier2, layer: v2.std.verification.Unit }
 }
 
 data claim_redundant_read_caught: v2.std.verification.TestClaim = v2.std.verification.DiagnosticClaim {
@@ -71,5 +71,5 @@ data claim_redundant_read_caught: v2.std.verification.TestClaim = v2.std.verific
         correction: v2.std.diagnostic.Suggested { node: explicit_reread_input }
       }
     ),
-  classification: v2.std.verification.TestClassification { tier: Tier2, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier2, layer: v2.std.verification.Unit }
 }

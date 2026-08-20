@@ -76,7 +76,7 @@ test fn bootstrap_generator_has_conj_dag_input_surface() -> Bool {
   match bootstrap_claim_generator_for_manual_anchor(key: ManualLbeConjDagSurface) {
     Accepted { value: g, diagnostics: _ } =>
       g.kind == TestClaimCompilesClaimVariant &&
-        g.classification == v2.std.verification.TestClassification { tier: Tier1, layer: Unit } &&
+        g.classification == v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit } &&
         g.anchor == manual_claim_anchor(anchor: ManualLbeConjDagSurface) &&
         language_behavior_generator_uses_conj_dag_input(g: g)
     Rejected { diagnostics: _ } => false

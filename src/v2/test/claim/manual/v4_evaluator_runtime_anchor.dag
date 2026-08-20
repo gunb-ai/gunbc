@@ -71,7 +71,7 @@ data claim_v4_evaluator_runtime_bundle: v2.std.verification.TestClaim = v2.std.v
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: v2_evaluator_witness_claim_input(ok: witness_v4_evaluator_runtime_identity && witness_v4_evaluator_model_core_wired && witness_v4_evaluator_interpretation_reinstantiation_eq && witness_v4_evaluator_interpretation_fresh_call_eq),
   expected_value: v2_eval_unit_type_node(),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
 data claim_v4_evaluator_semantics_fail_closed: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
@@ -79,7 +79,7 @@ data claim_v4_evaluator_semantics_fail_closed: v2.std.verification.TestClaim = v
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: v2_evaluator_witness_claim_input(ok: witness_v4_evaluator_semantics_fail_closed),
   expected_value: v2_eval_unit_type_node(),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
 data claim_v4_evaluator_transfer_fail_closed: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
@@ -87,5 +87,5 @@ data claim_v4_evaluator_transfer_fail_closed: v2.std.verification.TestClaim = v2
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: v2_evaluator_witness_claim_input(ok: witness_v4_evaluator_transfer_fail_closed),
   expected_value: v2_eval_unit_type_node(),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }

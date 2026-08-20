@@ -155,31 +155,31 @@ fn idempotent_operation_run_non_pass(row: v2.std.diagnostic.Outcome<v2.compiler.
 data generated_read_idempotent_operation_claim: v2.std.diagnostic.Outcome<v2.std.verification.TestClaim> = v2.lens.testgen.testgen_emit_idempotent_operation_claim(
   label: v2.lens.testgen.idempotent_label_read,
   subject: v2.std.effects.sample_read_subject,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 )
 
 data generated_upsert_idempotent_operation_claim: v2.std.diagnostic.Outcome<v2.std.verification.TestClaim> = v2.lens.testgen.testgen_emit_idempotent_operation_claim(
   label: v2.lens.testgen.idempotent_label_upsert,
   subject: v2.std.effects.sample_upsert_subject,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 )
 
 data generated_delete_idempotent_operation_claim: v2.std.diagnostic.Outcome<v2.std.verification.TestClaim> = v2.lens.testgen.testgen_emit_idempotent_operation_claim(
   label: v2.lens.testgen.idempotent_label_delete,
   subject: v2.std.effects.sample_delete_subject,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 )
 
 data generated_create_if_absent_idempotent_operation_claim: v2.std.diagnostic.Outcome<v2.std.verification.TestClaim> = v2.lens.testgen.testgen_emit_idempotent_operation_claim(
   label: v2.lens.testgen.idempotent_label_create_if_absent,
   subject: v2.std.effects.sample_create_if_absent_subject,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 )
 
 data generated_label_only_idempotent_skip: v2.std.diagnostic.Outcome<v2.std.verification.TestClaim> = v2.lens.testgen.testgen_emit_idempotent_operation_claim(
   label: "generated/idempotent_operation: skip label-only inhabitance without composable body",
   subject: v2.std.effects.sample_label_only_subject,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 )
 
 fn generated_label_only_skip_is_rejected() -> Bool {

@@ -174,7 +174,7 @@ data claim_lens_effect_depends_on_runtime_verdict: v2.std.verification.TestClaim
   anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: lens_effect_marker_node(marker: ^effect_claim_pass_symbol),
   rhs: effect_depends_on_claim_expected_node(),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
 data subject_lens_effect_depends_on_runtime_verdict: v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node> = v2.compiler.eval.eval_test_claim_subject(

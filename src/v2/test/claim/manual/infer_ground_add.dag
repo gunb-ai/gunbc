@@ -125,7 +125,7 @@ fn infer_receipt_claim(case: InferReceiptCase) -> v2.std.verification.TestClaim 
         anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
         input: input,
         expected_rejection: r,
-        classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+        classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
       }
     InferCompilesReceiptCase {
       label: label,
@@ -138,7 +138,7 @@ fn infer_receipt_claim(case: InferReceiptCase) -> v2.std.verification.TestClaim 
         anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
         input: input,
         expected_value: v,
-        classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+        classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
       }
   }
 }

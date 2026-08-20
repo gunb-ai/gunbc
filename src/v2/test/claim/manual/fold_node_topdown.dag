@@ -80,7 +80,7 @@ data claim_fold_node_topdown_compiles: v2.std.verification.TestClaim = v2.std.ve
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: topdown_leaf(),
   expected_value: topdown_leaf(),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
 data claim_fold_node_topdown_leaf_returns_init: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
@@ -88,7 +88,7 @@ data claim_fold_node_topdown_leaf_returns_init: v2.std.verification.TestClaim = 
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: topdown_ok_node(ok: witness_leaf_returns_init),
   expected_value: topdown_expected(),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
 data claim_fold_node_topdown_one_child_depth: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
@@ -96,7 +96,7 @@ data claim_fold_node_topdown_one_child_depth: v2.std.verification.TestClaim = v2
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: topdown_ok_node(ok: witness_one_child_max_depth_is_one),
   expected_value: topdown_expected(),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
 data claim_fold_node_topdown_chain_depth: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
@@ -104,7 +104,7 @@ data claim_fold_node_topdown_chain_depth: v2.std.verification.TestClaim = v2.std
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: topdown_ok_node(ok: witness_two_level_chain_max_depth_is_two),
   expected_value: topdown_expected(),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
 data claim_fold_node_topdown_edge_dispatch: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
@@ -112,5 +112,5 @@ data claim_fold_node_topdown_edge_dispatch: v2.std.verification.TestClaim = v2.s
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: topdown_ok_node(ok: witness_child_context_dispatches_on_edge),
   expected_value: topdown_expected(),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }

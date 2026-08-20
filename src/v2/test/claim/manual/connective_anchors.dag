@@ -72,7 +72,7 @@ fn arity_rejection_claim(label: String, input: Node, anchor: v2.std.verification
     expected_rejection: diagnostics_singleton(
       d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: input)
     ),
-    classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+    classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
   }
 }
 
@@ -81,7 +81,7 @@ data claim_conj_empty_compiles: v2.std.verification.TestClaim = v2.std.verificat
   anchor: manual_claim_anchor(anchor: ManualTcConjEmpty),
   input: stub_empty_conj,
   expected_value: stub_empty_conj,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
 data claim_disj_empty_compiles: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
@@ -89,7 +89,7 @@ data claim_disj_empty_compiles: v2.std.verification.TestClaim = v2.std.verificat
   anchor: manual_claim_anchor(anchor: ManualTcDisjEmpty),
   input: stub_empty_disj,
   expected_value: stub_empty_disj,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
 data claim_arrow_two_conj_compiles: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
@@ -97,7 +97,7 @@ data claim_arrow_two_conj_compiles: v2.std.verification.TestClaim = v2.std.verif
   anchor: manual_claim_anchor(anchor: ManualTcArrowTwoConj),
   input: stub_arrow_pair,
   expected_value: stub_arrow_pair,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
 data claim_cardinality_empty_rejected: v2.std.verification.TestClaim = arity_rejection_claim(
@@ -147,5 +147,5 @@ data claim_conj_equals_refl: v2.std.verification.TestClaim = v2.std.verification
   anchor: manual_claim_anchor(anchor: ManualTcConjEqualsRefl),
   lhs: stub_empty_conj,
   rhs: stub_empty_conj,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }

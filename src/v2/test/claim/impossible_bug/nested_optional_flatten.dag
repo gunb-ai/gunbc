@@ -39,7 +39,7 @@ data claim_optional_chaining_no_double_unwrap: v2.std.verification.TestClaim = v
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: flattened_optional_input,
   expected_value: flattened_optional_input,
-  classification: v2.std.verification.TestClassification { tier: Tier2, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier2, layer: v2.std.verification.Unit }
 }
 
 data claim_optional_double_unwrap_rejected: v2.std.verification.TestClaim = v2.std.verification.DiagnosticClaim {
@@ -53,7 +53,7 @@ data claim_optional_double_unwrap_rejected: v2.std.verification.TestClaim = v2.s
         correction: v2.std.diagnostic.Suggested { node: flattened_optional_input }
       }
     ),
-  classification: v2.std.verification.TestClassification { tier: Tier2, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier2, layer: v2.std.verification.Unit }
 }
 
 data claim_nested_optional_collapses: v2.std.verification.TestClaim = v2.std.verification.DiagnosticClaim {
@@ -67,5 +67,5 @@ data claim_nested_optional_collapses: v2.std.verification.TestClaim = v2.std.ver
         correction: v2.std.diagnostic.Suggested { node: flattened_optional_input }
       }
     ),
-  classification: v2.std.verification.TestClassification { tier: Tier2, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier2, layer: v2.std.verification.Unit }
 }

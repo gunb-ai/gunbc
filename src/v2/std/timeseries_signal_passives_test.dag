@@ -48,5 +48,5 @@ data claim_timeseries_signal_module_compiles: v2.std.verification.TestClaim = v2
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: GroundReference,
   expected_value: GroundReference,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }

@@ -37,7 +37,7 @@ data claim_within_structural_bound_passes: v2.std.verification.TestClaim = v2.st
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: within_bound_input,
   expected_value: within_bound_input,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
 data claim_overcost_against_structural_bound_violates: v2.std.verification.TestClaim = v2.std.verification.DiagnosticClaim {
@@ -49,7 +49,7 @@ data claim_overcost_against_structural_bound_violates: v2.std.verification.TestC
     reason: ^impossible_bug_reason_suboptimal_complexity,
     correction: within_bound_input
   ),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
 data falsification_cost_contradicts_inhabitance: Node = complexity_contract(body: atom_node(s: ^complexity_body_contradictory_inhabitant_symbol))
@@ -63,5 +63,5 @@ data claim_cost_contradicts_inhabitance_caught: v2.std.verification.TestClaim = 
     reason: ^impossible_bug_reason_suboptimal_inhabitance,
     correction: within_bound_input
   ),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }

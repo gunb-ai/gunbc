@@ -61,7 +61,7 @@ data non_perturbed_red_over_green_input: v2.std.verification.TestClaim = v2.std.
       correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
     }
   ),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
 data non_perturbed_control_unit: List<v2.std.verification.TestClaim> = [

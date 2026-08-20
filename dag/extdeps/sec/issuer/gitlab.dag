@@ -20,5 +20,5 @@ data gitlab_issuer_catalog: extdeps.sec.types.IssuerCatalogRow = extdeps.sec.typ
   registrant_name: "Gitlab Inc.",
   primary_ticker: gitlab_ticker,
   exchange: Nasdaq,
-  vendor: gitlab,
+  vendor: extdeps.vendor.gitlab,
 }

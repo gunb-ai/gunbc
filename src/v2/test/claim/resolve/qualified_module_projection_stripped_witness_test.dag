@@ -16,5 +16,5 @@ data claim_qualified_module_projection_stripped_compiles: v2.std.verification.Te
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: qmp_stripped_fixture_subject,
   expected_value: qmp_stripped_fixture_subject,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }

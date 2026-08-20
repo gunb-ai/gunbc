@@ -73,5 +73,5 @@ data claim_bounded_summation: v2.std.verification.TestClaim = v2.std.verificatio
       occurrence_id: SyntheticOccurrence
     }
   },
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }

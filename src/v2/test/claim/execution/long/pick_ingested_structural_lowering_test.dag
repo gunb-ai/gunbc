@@ -269,7 +269,7 @@ fn pick_eval_claim(input: v2.std.node.Node, expected: v2.std.node.Node) -> v2.st
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     input: input,
     expected_value: expected,
-    classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+    classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
   }
 }
 

@@ -186,7 +186,7 @@ data claim_namespace_graft_empty_qn_refused: v2.std.verification.TestClaim = v2.
       ^ng_bool_true
     }
   ),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
 test fn namespace_graft_empty_qn_refused_holds() -> Bool {
@@ -221,7 +221,7 @@ data claim_namespace_graft_dual_position_refused: v2.std.verification.TestClaim 
       ^ng_bool_true
     }
   ),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
 test fn namespace_graft_dual_position_refused_holds() -> Bool {

@@ -96,7 +96,7 @@ fn platform_firmware_role_upstream(role: PlatformFirmwareRole) -> PlatformRoleUp
     HostUefiFirmware =>
       UpstreamCited { subject: extdeps.firmware.tianocore_edk2.subject.tianocore_edk2_model_scope.subject.declaration }
     BaseboardManagementFirmware =>
-      UpstreamCited { subject: openbmc_model_scope.subject.declaration }
+      UpstreamCited { subject: extdeps.firmware.openbmc.subject.openbmc_model_scope.subject.declaration }
     SystemControlProcessorFirmware =>
       UpstreamNotModelledHere { reason: "Ampere system control processor firmware has no cited subject module in this repository yet; extdeps.ampere carries only an SCP diagnostic surface" }
     BoardProgrammableLogic =>

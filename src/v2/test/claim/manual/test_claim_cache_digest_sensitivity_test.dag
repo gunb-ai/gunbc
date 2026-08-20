@@ -48,7 +48,7 @@ fn tcc_cache_stub_claim() -> v2.std.verification.TestClaim {
   v2.std.verification.CompilesClaim {
     label: "manual/test_claim_cache: digest sensitivity scaffold",
     anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
-    classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
+    classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit },
     input: tcc_cache_pass_node(),
     expected_value: tcc_cache_pass_node()
   }
@@ -85,7 +85,7 @@ fn tcc_cache_diagnostic_claim(expected_reason: v2.std.node.Symbol) -> v2.std.ver
   v2.std.verification.DiagnosticClaim {
     label: "manual/test_claim_cache: diagnostic claim hash scaffold",
     anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
-    classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
+    classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit },
     input: tcc_cache_root(),
     expected_rejection: v2.std.diagnostic.diagnostics_singleton(
       d: v2.std.diagnostic.Diagnostic {
@@ -104,7 +104,7 @@ test fn tcc_cache_compiles_equals_same_nodes_claim_hash_differs() -> Bool {
     c: v2.std.verification.CompilesClaim {
       label: "manual/test_claim_cache: compiles shape",
       anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
-      classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
+      classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit },
       input: node_x,
       expected_value: node_y
     }
@@ -112,7 +112,7 @@ test fn tcc_cache_compiles_equals_same_nodes_claim_hash_differs() -> Bool {
     c: v2.std.verification.EqualsClaim {
       label: "manual/test_claim_cache: equals shape",
       anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
-      classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
+      classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit },
       lhs: node_x,
       rhs: node_y
     }
@@ -530,7 +530,7 @@ fn tcc_cache_diagnostic_tail_bag_claim(label_suffix: String, tail: std.types.Lis
   v2.std.verification.DiagnosticClaim {
     label: label_suffix,
     anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
-    classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
+    classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit },
     input: tcc_cache_root(),
     expected_rejection: v2.std.diagnostic.NonEmptyDiagnostics {
       head: v2.std.diagnostic.Diagnostic {
@@ -573,7 +573,7 @@ test fn tcc_cache_correction_variant_domain_claim_hash_differs() -> Bool {
     c: v2.std.verification.DiagnosticClaim {
       label: "manual/test_claim_cache: suggested vs unavailable correction domain",
       anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
-      classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
+      classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit },
       input: tcc_cache_root(),
       expected_rejection: v2.std.diagnostic.diagnostics_singleton(
         d: v2.std.diagnostic.Diagnostic {
@@ -587,7 +587,7 @@ test fn tcc_cache_correction_variant_domain_claim_hash_differs() -> Bool {
     c: v2.std.verification.DiagnosticClaim {
       label: "manual/test_claim_cache: unavailable ambiguous intent correction",
       anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
-      classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
+      classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit },
       input: tcc_cache_root(),
       expected_rejection: v2.std.diagnostic.diagnostics_singleton(
         d: v2.std.diagnostic.Diagnostic {
@@ -605,7 +605,7 @@ test fn tcc_cache_locus_variant_domain_claim_hash_differs() -> Bool {
     c: v2.std.verification.DiagnosticClaim {
       label: "manual/test_claim_cache: node locus domain",
       anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
-      classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
+      classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit },
       input: tcc_cache_root(),
       expected_rejection: v2.std.diagnostic.diagnostics_singleton(
         d: v2.std.diagnostic.Diagnostic {
@@ -619,7 +619,7 @@ test fn tcc_cache_locus_variant_domain_claim_hash_differs() -> Bool {
     c: v2.std.verification.DiagnosticClaim {
       label: "manual/test_claim_cache: port locus domain",
       anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
-      classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
+      classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit },
       input: tcc_cache_root(),
       expected_rejection: v2.std.diagnostic.diagnostics_singleton(
         d: v2.std.diagnostic.Diagnostic {

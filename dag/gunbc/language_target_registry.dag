@@ -111,7 +111,7 @@ data registered_language_targets: List<std.language_target_identity.LanguageTarg
     disposition: TargetActive
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: std.language_target_identity.ExternalGrounding { scope: css_language_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: extdeps.languages.css.subject.css_language_model_scope },
     disposition: TargetActive
   },
   std.language_target_identity.LanguageTargetRegistration {
@@ -123,7 +123,7 @@ data registered_language_targets: List<std.language_target_identity.LanguageTarg
     disposition: TargetActive
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: std.language_target_identity.ExternalGrounding { scope: verilog_language_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: extdeps.languages.verilog.subject.verilog_language_model_scope },
     disposition: TargetActive
   },
   std.language_target_identity.LanguageTargetRegistration {
@@ -135,11 +135,11 @@ data registered_language_targets: List<std.language_target_identity.LanguageTarg
     disposition: std.language_target_identity.TargetGovernedByContracts { contract_ids: ["v2.compiler.self_host.emitter_producer_provenance"] }
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: std.language_target_identity.ExternalGrounding { scope: ecmascript_language_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: extdeps.languages.ecmascript.subject.ecmascript_language_model_scope },
     disposition: std.language_target_identity.TargetDecisionPending { decision_id: "docs/plans/language-support-completion-design.md#7 decision 1 — ECMAScript authority" }
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: std.language_target_identity.ExternalGrounding { scope: cpp_language_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: extdeps.languages.cpp.subject.cpp_language_model_scope },
     disposition: std.language_target_identity.TargetDecisionPending { decision_id: "docs/plans/language-support-completion-design.md#7 decision 2 — C++ profile" }
   },
   std.language_target_identity.LanguageTargetRegistration {
@@ -191,7 +191,7 @@ data registered_language_targets: List<std.language_target_identity.LanguageTarg
     disposition: TargetMaintenanceOnly
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: std.language_target_identity.ExternalGrounding { scope: commonmark_format_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: extdeps.languages.markdown.subject.commonmark_format_model_scope },
     disposition: TargetMaintenanceOnly
   },
   std.language_target_identity.LanguageTargetRegistration {
@@ -221,9 +221,9 @@ data english_formal_sentence_authority: std.decl_ref.DeclarationRef = std.decl_r
 data dag_subject_ref: std.decl_ref.DeclarationRef = dag_syntax_authority
 
 data c_language_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.c.subject.c_language_model_scope.subject.declaration
-data cpp_language_subject_ref: std.decl_ref.DeclarationRef = cpp_language_model_scope.subject.declaration
-data css_language_subject_ref: std.decl_ref.DeclarationRef = css_language_model_scope.subject.declaration
-data ecmascript_language_subject_ref: std.decl_ref.DeclarationRef = ecmascript_language_model_scope.subject.declaration
+data cpp_language_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.cpp.subject.cpp_language_model_scope.subject.declaration
+data css_language_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.css.subject.css_language_model_scope.subject.declaration
+data ecmascript_language_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.ecmascript.subject.ecmascript_language_model_scope.subject.declaration
 data go_language_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.go.subject.go_language_model_scope.subject.declaration
 data html_language_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.html.subject.html_language_model_scope.subject.declaration
 data java_language_subject_ref: std.decl_ref.DeclarationRef = java_language_model_scope.subject.declaration
@@ -232,7 +232,7 @@ data jsx_language_subject_ref: std.decl_ref.DeclarationRef = jsx_language_model_
 data kotlin_language_subject_ref: std.decl_ref.DeclarationRef = kotlin_language_model_scope.subject.declaration
 data lean_language_subject_ref: std.decl_ref.DeclarationRef = lean_language_model_scope.subject.declaration
 data llvm_ir_language_subject_ref: std.decl_ref.DeclarationRef = llvm_ir_language_model_scope.subject.declaration
-data commonmark_format_subject_ref: std.decl_ref.DeclarationRef = commonmark_format_model_scope.subject.declaration
+data commonmark_format_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.markdown.subject.commonmark_format_model_scope.subject.declaration
 data ptx_language_subject_ref: std.decl_ref.DeclarationRef = ptx_language_model_scope.subject.declaration
 data python_language_subject_ref: std.decl_ref.DeclarationRef = python_language_model_scope.subject.declaration
 data riscv_isa_subject_ref: std.decl_ref.DeclarationRef = riscv_isa_model_scope.subject.declaration
@@ -266,7 +266,7 @@ fn target_runtime_binding_count() -> Int {
 }
 data swift_language_subject_ref: std.decl_ref.DeclarationRef = swift_language_model_scope.subject.declaration
 data typescript_language_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.typescript.subject.typescript_language_model_scope.subject.declaration
-data verilog_language_subject_ref: std.decl_ref.DeclarationRef = verilog_language_model_scope.subject.declaration
+data verilog_language_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.verilog.subject.verilog_language_model_scope.subject.declaration
 data webassembly_language_subject_ref: std.decl_ref.DeclarationRef = webassembly_language_model_scope.subject.declaration
 data yaml_format_subject_ref: std.decl_ref.DeclarationRef = yaml_format_model_scope.subject.declaration
 

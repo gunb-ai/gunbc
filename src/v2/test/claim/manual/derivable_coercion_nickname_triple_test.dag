@@ -118,7 +118,7 @@ data claim_task_id_surfaces_distinct: v2.std.verification.TestClaim = v2.std.ver
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: derivable_coercion_claim_lhs(ok: witness_task_id_surfaces_distinct),
   rhs: derivable_coercion_pass_node(),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
 data claim_crux_substrate_gap: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
@@ -126,7 +126,7 @@ data claim_crux_substrate_gap: v2.std.verification.TestClaim = v2.std.verificati
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: derivable_coercion_claim_lhs(ok: !witness_crux_substrate_gap),
   rhs: derivable_coercion_pass_node(),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
 data claim_matrix_widening_accepts_siblings_and_wrong_core: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
@@ -134,7 +134,7 @@ data claim_matrix_widening_accepts_siblings_and_wrong_core: v2.std.verification.
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: derivable_coercion_claim_lhs(ok: witness_matrix_widening_api_to_db_accepts && witness_matrix_widening_api_to_wire_accepts && witness_matrix_widening_db_to_wire_accepts && witness_matrix_widening_api_to_account_id_accepts),
   rhs: derivable_coercion_pass_node(),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
 test data witness_claim_task_id_surfaces_distinct: Bool = match run_test_claim_assert(

@@ -134,5 +134,5 @@ data claim_namespace_graft_marker_strip_fill_equivalent: v2.std.verification.Tes
       ^ms_bool_false
     }
   ),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }

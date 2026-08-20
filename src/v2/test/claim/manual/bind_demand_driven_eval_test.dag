@@ -276,7 +276,7 @@ fn bind_eval_run(body: v2.std.node.Node, expected: v2.std.node.Node) -> v2.std.d
           anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
           input: call,
           expected_value: expected,
-          classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+          classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
         },
         context: bind_eval_context(),
         tree: tree,

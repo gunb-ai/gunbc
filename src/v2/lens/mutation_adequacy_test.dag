@@ -17,7 +17,7 @@ fn green_claim() -> v2.std.verification.TestClaim {
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     input: node_a(),
     expected_value: node_a(),
-    classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+    classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
   }
 }
 
@@ -33,7 +33,7 @@ fn red_claim() -> v2.std.verification.TestClaim {
         correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
       }
     ),
-    classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+    classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
   }
 }
 

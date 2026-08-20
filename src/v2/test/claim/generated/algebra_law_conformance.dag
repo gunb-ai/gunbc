@@ -84,7 +84,7 @@ data generated_nat_add_left_identity_claim: Outcome<v2.std.verification.TestClai
     result: nat_add(a: t19_generated_nat_zero_value(), b: t19_generated_nat_one_value())
   ),
   rhs: t19_generated_nat_one(),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 )
 
 data generated_nat_add_associativity_claim: Outcome<v2.std.verification.TestClaim> = testgen_emit_algebra_law_claim(
@@ -114,7 +114,7 @@ data generated_nat_add_associativity_claim: Outcome<v2.std.verification.TestClai
       b: nat_add(a: t19_generated_nat_two_value(), b: t19_generated_nat_three_value())
     )
   ),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 )
 
 data generated_nat_mul_annihilator_claim: Outcome<v2.std.verification.TestClaim> = testgen_emit_algebra_law_claim(
@@ -126,7 +126,7 @@ data generated_nat_mul_annihilator_claim: Outcome<v2.std.verification.TestClaim>
     result: nat_mul(a: t19_generated_nat_zero_value(), b: t19_generated_nat_three_value())
   ),
   rhs: t19_generated_nat_zero(),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 )
 
 fn generated_algebra_law_claim_rows() -> List<Outcome<v2.std.verification.TestClaim>> {

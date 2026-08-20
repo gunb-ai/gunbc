@@ -152,7 +152,7 @@ fn lbe_emit_rejection_sentinel_claim(
     anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
     input: mock.snapshot.input_node,
     expected_rejection: expected,
-    classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+    classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
   }
 }
 

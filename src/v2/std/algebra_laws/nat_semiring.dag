@@ -45,7 +45,7 @@ data nat_mul_associativity_input: Node = nat_mul_law(law: ^law_nat_mul_associati
 data falsification_nat_add_wrong_identity: Node = nat_add_law(law: ^nat_law_wrong_identity_symbol)
 
 fn accepted_claim(label: String, anchor: v2.std.verification.ManualAnchorKey, input: Node) -> v2.std.verification.TestClaim {
-  v2.std.verification.EqualsClaim { label: label, anchor: manual_claim_anchor(anchor: anchor), lhs: input, rhs: input, classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit  }
+  v2.std.verification.EqualsClaim { label: label, anchor: manual_claim_anchor(anchor: anchor), lhs: input, rhs: input, classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit  }
   }
 }
 
@@ -96,5 +96,5 @@ data claim_nat_add_wrong_identity_falsifies_law: v2.std.verification.TestClaim =
         correction: v2.std.diagnostic.Suggested { node: nat_add_left_identity_input }
       }
     ),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }

@@ -6,7 +6,7 @@ data claim_nat_add_left_identity: v2.std.verification.TestClaim = v2.std.verific
   anchor: manual_claim_anchor(anchor: ManualNatAddLeftIdentity),
   input: v2.test.manual.connective_anchors.stub_empty_conj,
   expected_value: v2.test.manual.connective_anchors.stub_empty_conj,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
 data claim_nat_add_right_identity: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
@@ -14,7 +14,7 @@ data claim_nat_add_right_identity: v2.std.verification.TestClaim = v2.std.verifi
   anchor: manual_claim_anchor(anchor: ManualNatAddRightIdentity),
   input: v2.test.manual.connective_anchors.stub_empty_conj,
   expected_value: v2.test.manual.connective_anchors.stub_empty_conj,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
 data claim_nat_add_associativity: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
@@ -22,7 +22,7 @@ data claim_nat_add_associativity: v2.std.verification.TestClaim = v2.std.verific
   anchor: manual_claim_anchor(anchor: ManualNatAddAssociativity),
   input: v2.test.manual.connective_anchors.stub_empty_conj,
   expected_value: v2.test.manual.connective_anchors.stub_empty_conj,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
 data claim_nat_mul_left_identity: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
@@ -30,7 +30,7 @@ data claim_nat_mul_left_identity: v2.std.verification.TestClaim = v2.std.verific
   anchor: manual_claim_anchor(anchor: ManualNatMulLeftIdentity),
   input: v2.test.manual.connective_anchors.stub_empty_conj,
   expected_value: v2.test.manual.connective_anchors.stub_empty_conj,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
 data claim_nat_mul_annihilator: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
@@ -38,7 +38,7 @@ data claim_nat_mul_annihilator: v2.std.verification.TestClaim = v2.std.verificat
   anchor: manual_claim_anchor(anchor: ManualNatMulAnnihilator),
   input: v2.test.manual.connective_anchors.stub_empty_conj,
   expected_value: v2.test.manual.connective_anchors.stub_empty_conj,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
 data claim_nat_mul_associativity: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
@@ -46,5 +46,5 @@ data claim_nat_mul_associativity: v2.std.verification.TestClaim = v2.std.verific
   anchor: manual_claim_anchor(anchor: ManualNatMulAssociativity),
   input: v2.test.manual.connective_anchors.stub_empty_conj,
   expected_value: v2.test.manual.connective_anchors.stub_empty_conj,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }

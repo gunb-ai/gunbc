@@ -46,7 +46,7 @@ data claim_loop_linear_bound_well_formed: v2.std.verification.TestClaim = v2.std
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: loop_linear_bound_bool_node(ok: witness_loop_linear_bound_well_formed),
   expected_value: loop_linear_bound_pass_node(),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
 data claim_loop_linear_bound_equals_refl: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
@@ -54,7 +54,7 @@ data claim_loop_linear_bound_equals_refl: v2.std.verification.TestClaim = v2.std
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: loop_linear_bound_subject,
   rhs: loop_linear_bound_subject,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
 data loop_linear_bound_subject_rebuilt: Node = v2.std.node.Node {
@@ -81,5 +81,5 @@ data claim_loop_linear_bound_content_hash_stable: v2.std.verification.TestClaim 
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: loop_linear_bound_bool_node(ok: witness_loop_linear_bound_content_hash_stable),
   expected_value: loop_linear_bound_pass_node(),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }

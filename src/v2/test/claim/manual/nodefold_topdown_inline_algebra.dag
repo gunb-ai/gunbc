@@ -44,7 +44,7 @@ data claim_nodefold_topdown_inline_algebra_compiles: v2.std.verification.TestCla
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: my_leaf(),
   expected_value: my_leaf(),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
 data claim_nodefold_topdown_inline_field_access: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
@@ -52,5 +52,5 @@ data claim_nodefold_topdown_inline_field_access: v2.std.verification.TestClaim =
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: my_leaf(),
   expected_value: my_leaf(),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }

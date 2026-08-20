@@ -29,7 +29,7 @@ data claim_idempotent_inhabitant_passes: v2.std.verification.TestClaim = v2.std.
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: idempotent_inhabitant_input,
   expected_value: idempotent_inhabitant_input,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
 data claim_repeated_append_in_idempotent_position_caught: v2.std.verification.TestClaim = v2.std.verification.DiagnosticClaim {
@@ -43,7 +43,7 @@ data claim_repeated_append_in_idempotent_position_caught: v2.std.verification.Te
         correction: v2.std.diagnostic.Suggested { node: idempotent_inhabitant_input }
       }
     ),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
 data claim_nonidempotent_in_idempotent_position_caught: v2.std.verification.TestClaim = v2.std.verification.DiagnosticClaim {
@@ -57,5 +57,5 @@ data claim_nonidempotent_in_idempotent_position_caught: v2.std.verification.Test
         correction: v2.std.diagnostic.Suggested { node: idempotent_inhabitant_input }
       }
     ),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }

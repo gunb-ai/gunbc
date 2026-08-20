@@ -282,7 +282,7 @@ test fn w_serving_cost_ordering_pure_play_above_platform() -> Bool {
 }
 
 test fn w_gitlab_fact_families_share_one_entity() -> Bool {
-  (extdeps.sec.issuer.gitlab_facts.gitlab_facts_subject.vendor.legal_name == gitlab_subscription_subject.legal_name)
+  (extdeps.sec.issuer.gitlab_facts.gitlab_facts_subject.vendor.legal_name == extdeps.pricing.gitlab_subscription.gitlab_subscription_subject.legal_name)
     && (cik_padded_digits(cik: extdeps.sec.issuer.gitlab_facts.gitlab_facts_subject.cik) == "0001653482")
     && (extdeps.sec.issuer.gitlab_facts.gitlab_facts_subject.registrant_name == "Gitlab Inc.")
 }
@@ -296,7 +296,7 @@ test fn w_issuer_subjects_are_distinct_entities() -> Bool {
 }
 
 test fn w_red_wrong_issuer_subject_fails_the_entity_edge() -> Bool {
-  !(extdeps.sec.issuer.microsoft_facts.microsoft_facts_subject.vendor.legal_name == gitlab_subscription_subject.legal_name)
+  !(extdeps.sec.issuer.microsoft_facts.microsoft_facts_subject.vendor.legal_name == extdeps.pricing.gitlab_subscription.gitlab_subscription_subject.legal_name)
 }
 
 test fn w_red_atlassian_cost_element_is_not_normalized() -> Bool {

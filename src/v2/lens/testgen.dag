@@ -346,7 +346,7 @@ fn testgen_emit_refinement_preservation_claim(
             xs: refined_base(r: subject.refined)
           ),
           rhs: refinement_preservation_list_node(xs: subject.original),
-          classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
+          classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit },
         },
         diagnostics: v2.std.diagnostic.None,
       }
@@ -433,7 +433,7 @@ fn testgen_emit_language_behavior_equivalence_claim(
           anchor: manual_claim_anchor(anchor: anchor),
           input: snap.input_node,
           expected_value: snap.expected_value,
-          classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
+          classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit },
         },
         diagnostics: v2.std.diagnostic.None,
       }
@@ -444,7 +444,7 @@ fn testgen_emit_language_behavior_equivalence_claim(
           anchor: manual_claim_anchor(anchor: anchor),
           input: snap.input_node,
           expected_value: snap.expected_value,
-          classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
+          classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit },
         },
         diagnostics: v2.std.diagnostic.None,
       }
@@ -455,7 +455,7 @@ fn testgen_emit_language_behavior_equivalence_claim(
           anchor: manual_claim_anchor(anchor: anchor),
           input: snap.input_node,
           expected_value: snap.expected_value,
-          classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
+          classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit },
         },
         diagnostics: v2.std.diagnostic.None,
       }
@@ -987,7 +987,7 @@ fn testgen_emit_witness_validity_claim(
           label: label,
           anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
           input: input_node,
-          classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
+          classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
         },
         diagnostics: v2.std.diagnostic.None
       }
@@ -999,7 +999,7 @@ fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenCon
   [
     Generator {
       kind: TestClaimCompilesClaimVariant,
-      classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
+      classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit },
       anchor: manual_claim_anchor(anchor: ManualLbeConjDagSurface),
       slot: LanguageBehaviorEquivalence {
         subject: lbe_subject_conj_dag_surface(),
@@ -1010,7 +1010,7 @@ fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenCon
     },
     Generator {
       kind: TestClaimCompilesClaimVariant,
-      classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
+      classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit },
       anchor: manual_claim_anchor(anchor: ManualLbeDisjDagSurface),
       slot: LanguageBehaviorEquivalence {
         subject: lbe_subject_disj_dag_surface(),
@@ -1021,7 +1021,7 @@ fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenCon
     },
     Generator {
       kind: TestClaimCompilesClaimVariant,
-      classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
+      classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit },
       anchor: manual_claim_anchor(anchor: ManualLbeTransformDagSurface),
       slot: LanguageBehaviorEquivalence {
         subject: lbe_subject_transform_dag_surface(),
@@ -1220,7 +1220,7 @@ fn testgen_algebra_law_generator_from_nat_obligation(
       v2.std.diagnostic.Accepted {
         value: Generator {
           kind: TestClaimEqualsClaimVariant,
-          classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
+          classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit },
           anchor: manual_claim_anchor(anchor: anchor),
           slot: AlgebraLaw {
             subject: algebra_law_subject_from_nat_obligation(o: obligation),
@@ -1469,7 +1469,7 @@ fn testgen_emit_coproduct_exhaustiveness_claim(
       expected_rejection: diagnostics_singleton(
         d: coproduct_exhaustiveness_diagnostic(input: input)
       ),
-      classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
+      classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit },
     },
     diagnostics: v2.std.diagnostic.None,
   }
@@ -1485,7 +1485,7 @@ fn coproduct_exhaustiveness_generator(
   )
   Generator {
     kind: TestClaimDiagnosticClaimVariant,
-    classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
+    classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit },
     anchor: generated_claim_anchor(anchor: anchor),
     slot: DiagnosticExhaustiveness {
       coproduct_type: coproduct_type,
@@ -1585,7 +1585,7 @@ fn testgen_emit_cross_representation_equality_claim(
       rhs: cross_representation_representation_node(
         identity: cross_representation_anchor_native_realization(anchor: anchor)
       ),
-      classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
+      classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit },
     },
     diagnostics: v2.std.diagnostic.None,
   }
@@ -1601,7 +1601,7 @@ fn cross_representation_equality_generator(
   )
   Generator {
     kind: TestClaimEqualsClaimVariant,
-    classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
+    classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit },
     anchor: generated_claim_anchor(anchor: anchor),
     slot: CrossRepresentationEquality {
       modeled_coproduct: modeled_coproduct,
