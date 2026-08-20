@@ -224,6 +224,16 @@ type FleetCloudPrincipalAllocationStanding
 // branch obtained a token as this service account with no key, no pasted credential and no gcloud,
 // and probed its own permissions. The reported allocation is therefore confirmed by an observation
 // this session can cite: run 31335059188 at head 6b79d061c4a.
+// The member string, projected from the standing so a consumer naming the principal in a diagnostic
+// reads the one authority rather than spelling a service-account address a second time.
+fn spark_bootstrap_cloud_principal_member() -> String {
+  match fleet_cloud_principal_standing() {
+    CloudPrincipalAllocated { principal: _, member: m, readback: _ } => m
+    CloudPrincipalReported { principal: _, reported_member: m, source: _ } => m
+    CloudPrincipalUnallocated { principal: _ } => "the run's WIF identity (no allocated member is recorded)"
+  }
+}
+
 fn fleet_cloud_principal_standing() -> FleetCloudPrincipalAllocationStanding {
   CloudPrincipalAllocated {
     principal: FleetCloudConvergencePrincipal { role: FleetCloudConvergence {} },

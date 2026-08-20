@@ -2,6 +2,7 @@ module gunbc.ci_spec
 import extdeps.cloud.gcp.secret_ref { secret_ref_access_url, secret_ref_version_resource }
 import gunbc.spark_credential_workflow { spark_administrator_password_secret_ref }
 import gunbc.spark_grant_privileged_operation { spark_grant_credential_path_env }
+import gunbc.spark_bootstrap_provision { spark_bootstrap_cloud_principal_member }
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
@@ -589,9 +590,16 @@ fn gunbc_ci_fleet_key_agent_script() -> String {
 // THE HTTP STATUS IS CLASSIFIED, NOT COLLAPSED, and the first cut of this step got that wrong in a
 // way that cost a run to discover. It piped `curl -sSf` straight into a decoder and checked the file
 // size afterwards, so a 403 surfaced as a JSON decode traceback followed by "produced no payload" --
-// a sentence that is true of the file and false about the world. Forbidden, absent, and
-// enrolled-but-blank have three different remedies: grant the run's identity secretAccessor, author
-// the secret, or fix its contents. None of them is discoverable from an empty file.
+// a sentence true of the file and false about the world. Unreadable and enrolled-but-blank have
+// different remedies, and neither is discoverable from an empty file.
+//
+// A 403 DOES NOT ESTABLISH THAT THE SECRET EXISTS, and the second cut of this step claimed it did:
+// "an access grant and not a missing secret". Secret Manager answers 403 both for a version that
+// exists and is not readable and for one that does not exist -- it hides existence from principals
+// who may not read it. gunbc.spark_bootstrap_provision already records exactly this ambiguity about
+// exactly this API, having been burned by reading an empty testIamPermissions response as proof of
+// denial rather than of nothing. So the refusal states the ambiguity and gives the remedy that
+// covers both arms, rather than picking the arm that happens to fit the current guess.
 data gunbc_ci_spark_admin_credential_shell_emit_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
@@ -613,8 +621,8 @@ fn gunbc_ci_spark_admin_credential_script() -> String {
     "trap cleanup EXIT\n",
     "RESP_FILE=\"$RUNNER_TEMP/spark-administrator-response.json\"\n",
     "HTTP_CODE=\"$(curl -sS -o \"$RESP_FILE\" -w '%\{http_code}' -H \"Authorization: Bearer $WIF_ACCESS_TOKEN\" \"", secret_ref_access_url(ref: spark_administrator_password_secret_ref), "\" || echo 000)\"\n",
-    "if [ \"$HTTP_CODE\" = 403 ]; then echo \"SparkAdministratorCredentialForbidden: this run's WIF identity lacks roles/secretmanager.secretAccessor on ", secret_ref_version_resource(ref: spark_administrator_password_secret_ref), "; the secret is not readable by this principal, which is an access grant and not a missing secret. Contacting NO host.\" >&2; exit 1; fi\n",
-    "if [ \"$HTTP_CODE\" = 404 ]; then echo \"SparkAdministratorCredentialAbsent: ", secret_ref_version_resource(ref: spark_administrator_password_secret_ref), " does not exist; the modeled reference names a version Secret Manager does not hold. Contacting NO host.\" >&2; exit 1; fi\n",
+    "if [ \"$HTTP_CODE\" = 403 ]; then echo \"SparkAdministratorCredentialUnreadable: ", secret_ref_version_resource(ref: spark_administrator_password_secret_ref), " answered 403 to ", spark_bootstrap_cloud_principal_member(), ". Secret Manager returns 403 both when a version exists and is not readable AND when it does not exist, so this run cannot tell those apart -- REMEDY EITHER WAY: confirm the version exists and grant that principal roles/secretmanager.secretAccessor on it. Contacting NO host.\" >&2; exit 1; fi\n",
+    "if [ \"$HTTP_CODE\" = 404 ]; then echo \"SparkAdministratorCredentialAbsent: ", secret_ref_version_resource(ref: spark_administrator_password_secret_ref), " answered 404; the modeled reference names a version Secret Manager does not hold. Contacting NO host.\" >&2; exit 1; fi\n",
     "if [ \"$HTTP_CODE\" != 200 ]; then echo \"SparkAdministratorCredentialFetchFailed: HTTP $HTTP_CODE from ", secret_ref_version_resource(ref: spark_administrator_password_secret_ref), "; contacting NO host.\" >&2; exit 1; fi\n",
     "python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))[\"payload\"][\"data\"]))' \"$RESP_FILE\" > \"$CRED_FILE\"\n",
     "rm -f \"$RESP_FILE\"\n",
