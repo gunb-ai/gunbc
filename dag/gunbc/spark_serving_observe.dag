@@ -177,10 +177,22 @@ data spark_serving_nvidia_driver_probe_words: List<String> = [
   "nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader",
 ]
 
+// THE READBACK TRAVELS WITH THE OBSERVATION, and it is not bookkeeping. The observation line says
+// only observed/absent/refused plus a release digest; every fact the derivation CONSUMED to reach
+// that verdict -- unit outcome, runtime version, model digest, and now boot provenance -- lived on
+// the readback and was dropped on the floor. So the wet receipt could report a host as observed
+// while staying silent on whether its unit would survive a power cycle, which is exactly the
+// question the run was dispatched to answer. A field with a witness and no wet reader is a carrier,
+// not an observation.
+type SparkServingHostObservation {
+  readback: SparkServingReadback
+  observation: SparkServingObservation
+}
+
 type SparkServingObservationReport
   = SparkServingObservationsProduced {
-      first: SparkServingObservation,
-      more: List<SparkServingObservation>,
+      first: SparkServingHostObservation,
+      more: List<SparkServingHostObservation>,
     }
   | SparkServingObservationReportRefused { cause: NonEmptyStr }
 
@@ -225,7 +237,7 @@ fn spark_serving_probe_leg_via_locus(
 fn spark_serving_observe_host_via_locus(
   context: FleetSshExecutionContext,
   host: HostIdentity,
-) -> SparkServingObservation {
+) -> SparkServingHostObservation {
   let readback = spark_serving_readback_from_probe_results(
     host: host,
     load_state: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_load_state_probe_words()),
@@ -237,7 +249,10 @@ fn spark_serving_observe_host_via_locus(
     active_enter: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_active_enter_probe_argv()),
     uptime: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_uptime_probe_argv()),
   )
-  derive_spark_serving_observation(readback: readback)
+  SparkServingHostObservation {
+    readback: readback,
+    observation: derive_spark_serving_observation(readback: readback),
+  }
 }
 
 fn spark_serving_probe_leg(
@@ -496,18 +511,21 @@ fn spark_serving_observe_host(
     active_enter: active_enter,
     uptime: uptime,
   )
-  derive_spark_serving_observation(readback: readback)
+  SparkServingHostObservation {
+    readback: readback,
+    observation: derive_spark_serving_observation(readback: readback),
+  }
 }
 
 fn spark_serving_observations_from_hosts(
   context: FleetSshExecutionContext,
   hosts: List<HostIdentity>,
-) -> List<SparkServingObservation> {
+) -> List<SparkServingHostObservation> {
   map(hosts, h => spark_serving_observe_host(context: context, host: h))
 }
 
 fn spark_serving_observation_report_from_observations(
-  observations: List<SparkServingObservation>,
+  observations: List<SparkServingHostObservation>,
 ) -> SparkServingObservationReport? {
   if observations.length() == 0 {
     none
@@ -554,7 +572,10 @@ fn spark_serving_observation_report_text(
       join(concat([
         [join(["spark serving observe probed_at=", probed_at, " attempt_raw=", attempt_raw, "\n"], "")],
         [materialization_receipt],
-        map(concat([f], m), obs => spark_serving_observation_line(observation: obs)),
+        map(concat([f], m), ho => join([
+          spark_serving_readback_line(readback: ho.readback),
+          spark_serving_observation_line(observation: ho.observation),
+        ], "")),
       ], []), "")
   }
 }
@@ -580,8 +601,8 @@ fn spark_serving_all_observations_succeeded(observations: List<SparkServingObser
 fn spark_serving_observation_report_succeeded(report: SparkServingObservationReport) -> Bool {
   match report {
     SparkServingObservationsProduced { first: f, more: m } =>
-      spark_serving_observation_succeeded(observation: f)
-        && spark_serving_all_observations_succeeded(observations: m)
+      spark_serving_observation_succeeded(observation: f.observation)
+        && spark_serving_all_observations_succeeded(observations: map(m, ho => ho.observation))
     SparkServingObservationReportRefused { cause: _ } => false
   }
 }
@@ -613,8 +634,8 @@ fn spark_serving_all_observations_were_made(observations: List<SparkServingObser
 fn spark_serving_report_observations_were_made(report: SparkServingObservationReport) -> Bool {
   match report {
     SparkServingObservationsProduced { first: f, more: m } =>
-      spark_serving_observation_was_made(observation: f)
-        && spark_serving_all_observations_were_made(observations: m)
+      spark_serving_observation_was_made(observation: f.observation)
+        && spark_serving_all_observations_were_made(observations: map(m, ho => ho.observation))
     SparkServingObservationReportRefused { cause: _ } => false
   }
 }

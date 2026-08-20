@@ -46,6 +46,8 @@ import gunbc.spark_serving_observe {
   spark_serving_observation_report_from_observations,
   spark_serving_readback_line,
   spark_serving_boot_provenance_from_probes,
+  SparkServingHostObservation,
+  spark_serving_observation_report_text,
 }
 import gunbc.spark_serving_runtime_receipt {
   spark_serving_parse_runtime_receipt_json,
@@ -466,17 +468,23 @@ test fn observation_report_refused_is_not_success() -> Bool {
   )
 }
 
+// The report carries readback + observation together; these fixtures only vary the observation, so
+// the readback is a fixed bare one and the wrapping stays out of every assertion below.
+fn ho(observation: SparkServingObservation) -> SparkServingHostObservation {
+  SparkServingHostObservation { readback: readback_absent(), observation: observation }
+}
+
 test fn per_host_refusal_report_is_not_success() -> Bool {
   match derive_spark_serving_observation(readback: readback_active_complete()) {
     SparkServingObserved { host: _, loaded_release: loaded } =>
       !spark_serving_observation_report_succeeded(
         report: SparkServingObservationsProduced {
-          first: SparkServingObserved { host: "srv5", loaded_release: loaded },
+          first: ho(observation: SparkServingObserved { host: "srv5", loaded_release: loaded }),
           more: [
-            SparkServingObservationRefused {
+            ho(observation: SparkServingObservationRefused {
               host: "srv6",
               cause: "gunbc-spark-serving.service is inactive" as NonEmptyStr,
-            },
+            }),
           ],
         },
       )
@@ -541,7 +549,7 @@ test fn driver_too_old_report_is_not_success() -> Bool {
     SparkServingObservationRefused { host: h, cause: c } =>
       !spark_serving_observation_report_succeeded(
         report: SparkServingObservationsProduced {
-          first: SparkServingObservationRefused { host: h, cause: c },
+          first: ho(observation: SparkServingObservationRefused { host: h, cause: c }),
           more: [],
         },
       )
@@ -612,12 +620,12 @@ test fn absent_observation_was_made_though_it_did_not_succeed() -> Bool {
 test fn report_with_a_refused_host_refuses_even_when_a_sibling_answered() -> Bool {
   spark_serving_report_observations_were_made(
     report: SparkServingObservationsProduced {
-      first: SparkServingAbsent { host: "srv5" },
+      first: ho(observation: SparkServingAbsent { host: "srv5" }),
       more: [
-        SparkServingObservationRefused {
+        ho(observation: SparkServingObservationRefused {
           host: "srv6",
           cause: "ssh exec refused" as NonEmptyStr,
-        },
+        }),
       ],
     },
   ) == false
@@ -626,8 +634,8 @@ test fn report_with_a_refused_host_refuses_even_when_a_sibling_answered() -> Boo
 test fn report_of_two_bare_hosts_counts_as_observed() -> Bool {
   spark_serving_report_observations_were_made(
     report: SparkServingObservationsProduced {
-      first: SparkServingAbsent { host: "srv5" },
-      more: [SparkServingAbsent { host: "srv6" }],
+      first: ho(observation: SparkServingAbsent { host: "srv5" }),
+      more: [ho(observation: SparkServingAbsent { host: "srv6" })],
     },
   )
 }
@@ -696,4 +704,23 @@ test fn an_absent_boot_probe_leg_is_unobserved_at_the_wiring() -> Bool {
     UnitStartedAfterBoot { active_enter_monotonic_us: _, uptime_us: _ } => false
     UnitNotActiveAtAll => false
   }
+}
+
+// THE WET RECEIPT IS THE CONSUMER, and this witness exists because the first version of this work
+// had none: the field was required, witnessed, and rendered by a function the emitted report never
+// called, so a canary run reported a host observed and said nothing about durability. Asserting on
+// the report TEXT is the difference between a fact that reaches the operator and one that does not.
+test fn the_emitted_report_text_carries_boot_provenance_per_host() -> Bool {
+  let text = spark_serving_observation_report_text(
+    report: SparkServingObservationsProduced {
+      first: ho(observation: SparkServingAbsent { host: "srv5" }),
+      more: [ho(observation: SparkServingAbsent { host: "srv6" })],
+    },
+    probed_at: "2026-08-20T00:00:00Z",
+    attempt_raw: "fixture",
+    materialization_receipt: "",
+  )
+  string_contains(text, "boot-provenance=")
+    && string_contains(text, "observation host=srv5")
+    && string_contains(text, "observation host=srv6")
 }
