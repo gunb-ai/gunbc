@@ -20,6 +20,7 @@ import gunbc.file_access { FileTreeScope }
 import gunbc.remote_operation { PlannedRemoteStep, RemoteOperation, RemoteArgv, RemoteFileBytes }
 import gunbc.typed_remote_file_write {
   RemoteFileModeOwnerReadWrite,
+  TypedRemoteFileWrite,
   typed_remote_file_staging_path,
   typed_remote_file_write_seal,
   TypedRemoteFileWriteAdmitted,
@@ -61,10 +62,6 @@ import gunbc.spark_grant_privileged_operation {
   GrantSudoersInstallation,
   grant_sudoers_validation_argv,
   grant_sudoers_installation_argv,
-  observe_bootstrap_credential_presence,
-  BootstrapCredentialPresence,
-  BootstrapCredentialFilePresent,
-  BootstrapCredentialFileAbsent,
 }
 import gunbc.spark_managed_grant_reconcile {
   spark_managed_grants_to_install,
@@ -118,11 +115,51 @@ import gunbc.spark_serving_converge_apply {
 // values swappable. Giving each phase a distinct carrier is the actual wall -- the swap is a type
 // error now -- and the ordering witness stays as the control that the two carriers do not collapse
 // back into one.
-// The two unprivileged phases get their own carriers for the same reason the privileged pair did:
-// both were PlannedRemoteStep, so a plan holding them the wrong way round typechecked and would have
-// removed the file it was about to install and installed the removal's leftovers.
-type StageGrantFile { step: PlannedRemoteStep }
-type CleanupGrantStaging { step: PlannedRemoteStep }
+// THE UNPRIVILEGED PHASES CARRY THEIR OWN FACTS, not a pre-built step. An intermediate revision
+// wrapped each in a distinct name around the SAME generic PlannedRemoteStep, which stopped a field
+// swap and nothing else: StageGrantFile { step: cleanup_step } was still constructible, so the wrong
+// operation could still be run in the stage position by rewrapping rather than by swapping. A
+// nominal tag around an already-realized step is a label, not a wall. Each carrier now holds what
+// only that phase can mean -- a typed write, or the two paths to remove -- and the PlannedRemoteStep
+// is DERIVED at the execution boundary.
+//
+// RUNG, MEASURED RATHER THAN ASSUMED: this does NOT reach structural impossibility, and the reason
+// is a checker behaviour rather than a modeling choice. Swapping the two phase FIELDS is refused --
+// `expected Product(StageGrantFile), got Product(CleanupGrantStaging)`, located, nothing executed.
+// But REWRAPPING is not: constructing StageGrantFile { write: <List<String>> } typechecks and runs,
+// even though `write` is declared TypedRemoteFileWrite, a sole_constructor product of path and
+// content. Measured 2026-08-20 by mutation, against a witness that forces the field through
+// RemoteFileBytes { write: stage.write }. So named-product-against-named-product is enforced here
+// and non-product-against-named-product is not, and a claim of "the wrong operation has no
+// representation" would be inflation for the second case.
+//
+// Honest standing: phase ASSIGNMENT is structurally guaranteed against field swaps and
+// mutation-verified against rewrapping. Next-rung trigger: field-type enforcement for non-product
+// values in record construction -- at which point the rewrap mutation becomes a typecheck refusal
+// and this note collapses to one line.
+type StageGrantFile { write: TypedRemoteFileWrite }
+type CleanupGrantStaging { staged_path: NonEmptyStr, inner_staging_path: NonEmptyStr }
+
+fn stage_grant_file_step(grant: SparkManagedGrant, stage: StageGrantFile) -> PlannedRemoteStep {
+  PlannedRemoteStep {
+    identity: spark_grant_install_step_identity(grant: grant, phase: "stage"),
+    operation: RemoteFileBytes { write: stage.write, mode: RemoteFileModeOwnerReadWrite },
+  }
+}
+
+fn cleanup_grant_staging_argv(cleanup: CleanupGrantStaging) -> List<String> {
+  ["rm", "-f", cleanup.staged_path as String, cleanup.inner_staging_path as String]
+}
+
+fn cleanup_grant_staging_step(
+  grant: SparkManagedGrant,
+  cleanup: CleanupGrantStaging,
+) -> PlannedRemoteStep {
+  PlannedRemoteStep {
+    identity: spark_grant_install_step_identity(grant: grant, phase: "cleanup"),
+    operation: RemoteArgv { argv: cleanup_grant_staging_argv(cleanup: cleanup) },
+  }
+}
 
 type SparkGrantInstallPlan
   = SparkGrantInstallSteps {
@@ -172,31 +209,29 @@ fn spark_grant_install_plan(grant: SparkManagedGrant, principal: NonEmptyStr) ->
     TypedRemoteFileWriteAdmissionRefused { cause: why } =>
       SparkGrantInstallRefused { grant: grant, cause: why }
     TypedRemoteFileWriteAdmitted { write: w } => {
-      let stage = StageGrantFile {
-        step: PlannedRemoteStep {
-          identity: spark_grant_install_step_identity(grant: grant, phase: "stage"),
-          operation: RemoteFileBytes { write: w, mode: RemoteFileModeOwnerReadWrite },
-        },
+      let cleanup_phase = CleanupGrantStaging {
+        staged_path: staged as NonEmptyStr,
+        inner_staging_path: typed_remote_file_staging_path(write: w) as NonEmptyStr,
       }
       match spark_grant_admit_argv(
         identity: spark_grant_install_step_identity(grant: grant, phase: "cleanup"),
-        raws: ["rm", "-f", staged as String, typed_remote_file_staging_path(write: w)],
+        raws: cleanup_grant_staging_argv(cleanup: cleanup_phase),
       ) {
         Absent =>
           SparkGrantInstallRefused {
             grant: grant,
             cause: "the staging cleanup argv is not portable under the far-side re-parse" as NonEmptyStr,
           }
-        Present { value: cleanup_step_argv } =>
+        Present { value: _admitted } =>
           SparkGrantInstallSteps {
             grant: grant,
-            stage: stage,
+            stage: StageGrantFile { write: w },
             validate: GrantSudoersValidation { staged_path: staged as NonEmptyStr },
             install: GrantSudoersInstallation {
               staged_path: staged as NonEmptyStr,
               dropin_path: spark_managed_grant_dropin_path(grant: grant),
             },
-            cleanup: CleanupGrantStaging { step: cleanup_step_argv },
+            cleanup: cleanup_phase,
           }
       }
     }
@@ -210,13 +245,13 @@ fn spark_grant_install_operation_labels(plan: SparkGrantInstallPlan) -> List<Str
   match plan {
     SparkGrantInstallRefused { grant: _, cause: _ } => []
     SparkGrantInstallSteps {
-      grant: _, stage: st, validate: v, install: i, cleanup: c,
+      grant: g2, stage: st, validate: v, install: i, cleanup: c,
     } =>
       [
-        st.step.identity as String,
+        stage_grant_file_step(grant: g2, stage: st).identity as String,
         admitted_root_argv_label(command: grant_sudoers_validation_argv(command: v)),
         admitted_root_argv_label(command: grant_sudoers_installation_argv(command: i)),
-        c.step.identity as String,
+        cleanup_grant_staging_step(grant: g2, cleanup: c).identity as String,
       ]
   }
 }
@@ -342,6 +377,11 @@ type SparkGrantInstallOutcome
 // So the both-names half is mechanically preventable and the attempted-after-failure half sits at
 // review diligence. Next-rung trigger: a transport seam a witness can drive with a refusing staging
 // step, at which point the arm becomes executable evidence rather than a claim about this text.
+// NO AUTHORIZATION, NO HOST MUTATION -- NOT EVEN A TRANSIENT ONE. The pending standing is answered
+// before the first far-side operation, so the awaiting arm truthfully owes no cleanup: nothing was
+// staged, so nothing can be stranded. An earlier cut staged first and then discarded the cleanup
+// standing when it built that arm, while the cleanup predicate answered `true` for it
+// unconditionally -- a receipt that could not show a cleanup failure it had already caused.
 func spark_grant_install_execute(
   context: FleetSshExecutionContext,
   host: HostIdentity,
@@ -357,63 +397,74 @@ func spark_grant_install_execute(
       SparkGrantInstallNotAttempted { host: host, grant: g, cause: c }
     SparkGrantInstallSteps {
       grant: g, stage: staged_step, validate: validate_cmd, install: install_cmd, cleanup: cleanup_step,
-    } => {
-      let lease = spark_bootstrap_credential_lease(
-        host: host,
-        administrator: administrator,
-        grant: g,
-        attempt_identity: spark_grant_install_ci_attempt_raw as NonEmptyStr,
-      )
-      let transport = spark_grant_install_transport(context: context, host: host, principal: principal)
-      let staged = spark_serving_run_step_sequence(steps: [staged_step.step], transport: transport)
-      if spark_serving_step_sequence_failed(standings: staged) {
-        SparkGrantInstallExecuted {
-          host: host, grant: g, standings: staged, privileged: [],
-          readback: GrantReadbackNotAttempted,
-          cleanup: spark_grant_cleanup_standing(
-            identity: cleanup_step.step.identity,
-            standings: spark_serving_run_step_sequence(steps: [cleanup_step.step], transport: transport),
-          ),
-        }
-      } else {
-        {
-          let validated = run_privileged_step(
-            context: context, host: host, lease: lease,
-            command: grant_sudoers_validation_argv(command: validate_cmd),
+    } =>
+      match administrator {
+        CredentialMaterializationPending =>
+          SparkGrantInstallAwaitingOperatorCredential {
+            host: host, grant: g, principal: principal,
+          }
+        CredentialMaterialized { ref: _ } => {
+          let lease = spark_bootstrap_credential_lease(
+            host: host,
+            administrator: administrator,
+            grant: g,
+            attempt_identity: spark_grant_install_ci_attempt_raw as NonEmptyStr,
           )
-          if privileged_step_succeeded(outcome: validated) == false {
-            spark_grant_install_from_privileged(
-              host: host, grant: g, principal: principal, staged: staged,
-              outcomes: [validated], readback: GrantReadbackNotAttempted,
+          let transport = spark_grant_install_transport(context: context, host: host, principal: principal)
+          let cleanup_planned = cleanup_grant_staging_step(grant: g, cleanup: cleanup_step)
+          let staged = spark_serving_run_step_sequence(
+            steps: [stage_grant_file_step(grant: g, stage: staged_step)],
+            transport: transport,
+          )
+          if spark_serving_step_sequence_failed(standings: staged) {
+            SparkGrantInstallExecuted {
+              host: host, grant: g, standings: staged, privileged: [],
+              readback: GrantReadbackNotAttempted,
               cleanup: spark_grant_cleanup_standing(
-                identity: cleanup_step.step.identity,
-                standings: spark_serving_run_step_sequence(steps: [cleanup_step.step], transport: transport),
+                identity: cleanup_planned.identity,
+                standings: spark_serving_run_step_sequence(steps: [cleanup_planned], transport: transport),
               ),
-            )
+            }
           } else {
             {
-              let installed = run_privileged_step(
+              let validated = run_privileged_step(
                 context: context, host: host, lease: lease,
-                command: grant_sudoers_installation_argv(command: install_cmd),
+                command: grant_sudoers_validation_argv(command: validate_cmd),
               )
-              let readback = if privileged_step_succeeded(outcome: installed) {
-                spark_grant_read_back(context: context, host: host, grant: g)
+              if privileged_step_succeeded(outcome: validated) == false {
+                spark_grant_install_from_privileged(
+                  host: host, grant: g, principal: principal, staged: staged,
+                  outcomes: [validated], readback: GrantReadbackNotAttempted,
+                  cleanup: spark_grant_cleanup_standing(
+                    identity: cleanup_planned.identity,
+                    standings: spark_serving_run_step_sequence(steps: [cleanup_planned], transport: transport),
+                  ),
+                )
               } else {
-                GrantReadbackNotAttempted
+                {
+                  let installed = run_privileged_step(
+                    context: context, host: host, lease: lease,
+                    command: grant_sudoers_installation_argv(command: install_cmd),
+                  )
+                  let readback = if privileged_step_succeeded(outcome: installed) {
+                    spark_grant_read_back(context: context, host: host, grant: g)
+                  } else {
+                    GrantReadbackNotAttempted
+                  }
+                  spark_grant_install_from_privileged(
+                    host: host, grant: g, principal: principal, staged: staged,
+                    outcomes: [validated, installed], readback: readback,
+                    cleanup: spark_grant_cleanup_standing(
+                      identity: cleanup_planned.identity,
+                      standings: spark_serving_run_step_sequence(steps: [cleanup_planned], transport: transport),
+                    ),
+                  )
+                }
               }
-              spark_grant_install_from_privileged(
-                host: host, grant: g, principal: principal, staged: staged,
-                outcomes: [validated, installed], readback: readback,
-                cleanup: spark_grant_cleanup_standing(
-                  identity: cleanup_step.step.identity,
-                  standings: spark_serving_run_step_sequence(steps: [cleanup_step.step], transport: transport),
-                ),
-              )
             }
           }
         }
       }
-    }
   }
 }
 
@@ -732,33 +783,27 @@ fn spark_grant_install_principal() -> NonEmptyStr {
   spark_operator_bootstrap_login as NonEmptyStr
 }
 
-// THE STANDING IS DERIVED FROM AN OBSERVED MATERIALIZATION, never from the authored row. Secret
-// names are CARRIED, never derived (operator ruling 2026-08-07), and the name here is
-// spark_credential_workflow's authored reference at its explicit version -- whose own note says it
-// sits on the serving-install critical path because "widening sudoers is itself a privileged effect
-// that requires the administrator credential this lane resolves".
+// THE STANDING NAMES THE ENROLLED REFERENCE, and that is ALL it names. Secret names are CARRIED,
+// never derived (operator ruling 2026-08-07); the reference is spark_credential_workflow's authored
+// row at its explicit version, whose own note says it sits on the serving-install critical path
+// because "widening sudoers is itself a privileged effect that requires the administrator credential
+// this lane resolves".
 //
-// But naming the secret and HOLDING it are two facts, and an earlier cut of this function returned
-// CredentialMaterialized unconditionally, which asserted the second from the first. That was wrong
-// even though no unauthenticated attempt could result -- run_privileged_step still reads the file --
-// because it made the receipt claim an enrolled, materialized credential on any path that had never
-// fetched one, and it would have said so on a local run with no workflow step at all. The standing
-// now follows the observation: present bytes yield the carried reference, absent bytes stay pending,
-// and the workflow's credential step is what makes the first arm reachable.
-// The join itself is PURE and is the half worth witnessing: a present file yields the carried
-// reference and nothing else does. The effect below is only the observation it consumes.
-fn spark_grant_install_standing_from_presence(
-  presence: BootstrapCredentialPresence,
-) -> SparkCredentialStanding {
-  match presence {
-    BootstrapCredentialFilePresent =>
-      CredentialMaterialized { ref: spark_administrator_password_secret_ref }
-    BootstrapCredentialFileAbsent { cause: _ } => CredentialMaterializationPending
-  }
-}
-
-func spark_grant_install_administrator_standing() -> SparkCredentialStanding {
-  spark_grant_install_standing_from_presence(
-    presence: observe_bootstrap_credential_presence(),
-  )
+// IT IS NOT A REPORT ON THIS PROCESS'S FILE READ, and an intermediate revision made it one. That
+// revision derived the standing from an observed materialization and looked stricter; it was a
+// regression. Every unsuccessful read -- missing environment variable, unreadable file, empty
+// payload, line-bearing payload -- collapsed into pending, pending became CredentialNotEnrolled, and
+// that became "awaiting operator credential". So the located cause was destroyed one producer BEFORE
+// the arm that exists to carry it, defeating that separation in the same commit that built it. The
+// two questions are "is an exact credential enrolled" and "did this run receive its bytes", and
+// answering the first with the second is the state-space conflation this outcome model is for.
+//
+// Naming the reference unconditionally is honest AT THIS ENTRY because the workflow step that
+// precedes it does not reach a host at all unless the exact-version fetch returned 200: it exits on
+// 403, on 404, on any other status, and on an empty payload, and writes the decoded exact bytes only
+// on success. A run that bypasses that step reports "this run did not receive the enrolled
+// credential" through CredentialNotMaterialized -- which is the truth -- rather than rewriting
+// enrollment as pending.
+fn spark_grant_install_administrator_standing() -> SparkCredentialStanding {
+  CredentialMaterialized { ref: spark_administrator_password_secret_ref }
 }

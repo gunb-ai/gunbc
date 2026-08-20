@@ -12,8 +12,9 @@ import extdeps.cloud.gcp.secret_ref { secret_ref_version_resource }
 import gunbc.spark_managed_grant_install {
   spark_grant_install_plan,
   spark_grant_install_operation_labels,
+  cleanup_grant_staging_argv,
   spark_grant_cleanup_standing,
-  spark_grant_install_standing_from_presence,
+  spark_grant_install_administrator_standing,
   spark_grant_install_plan_wire,
   spark_grant_staging_path,
   SparkGrantInstallSteps,
@@ -54,8 +55,6 @@ import gunbc.spark_grant_privileged_operation {
   grant_sudoers_installation_argv,
   CredentialNotMaterialized,
   privileged_step_outcome_wire,
-  BootstrapCredentialFilePresent,
-  BootstrapCredentialFileAbsent,
 }
 
 // The installing principal, which is deliberately NOT the grantee: an account cannot install its own
@@ -177,14 +176,12 @@ test fn no_privileged_step_carries_a_credential_or_can_prompt() -> Bool {
 test fn the_plan_removes_the_staged_file() -> Bool {
   match spark_grant_install_plan(grant: RebootThisHost, principal: installer()) {
     SparkGrantInstallRefused { grant: _, cause: _ } => false
-    SparkGrantInstallSteps { grant: _, stage: _, validate: _, install: _, cleanup: c } =>
-      match remote_operation_argv(operation: c.step.operation) {
-        Absent => false
-        Present { value: argv } =>
-          any(argv, w => w == "rm")
-            && any(argv, w => w == (spark_grant_staging_path(grant: RebootThisHost, principal: installer()) as String))
-            && any(argv, w => w == concat(spark_grant_staging_path(grant: RebootThisHost, principal: installer()) as String, ".gunbc-staging"))
-      }
+    SparkGrantInstallSteps { grant: _, stage: _, validate: _, install: _, cleanup: c } => {
+      let argv = cleanup_grant_staging_argv(cleanup: c)
+      any(argv, w => w == "rm")
+        && any(argv, w => w == (spark_grant_staging_path(grant: RebootThisHost, principal: installer()) as String))
+        && any(argv, w => w == concat(spark_grant_staging_path(grant: RebootThisHost, principal: installer()) as String, ".gunbc-staging"))
+    }
   }
 }
 
@@ -404,21 +401,42 @@ test fn staging_follows_the_installing_principal_not_the_grantee() -> Bool {
 // authority resolves to the CARRIED reference, so this reds if that entry regresses to pending --
 // which is exactly the state that would make every privileged step refuse before reading a
 // credential at all, with the real cause hidden behind whatever else was failing.
-// THE PRODUCTION JOIN, controlled directly. A present credential file yields the CARRIED reference
-// and an absent one stays pending -- so the standing can never be an assertion made from the
-// authored row alone, which is what an earlier cut of this entry did.
-test fn the_production_standing_follows_the_observation_not_the_authored_row() -> Bool {
-  match spark_grant_install_standing_from_presence(presence: BootstrapCredentialFilePresent) {
+// A LOCAL READ FAILURE IS NOT AN ENROLMENT FAILURE. This is the discriminating control for a
+// regression this branch actually shipped: deriving the standing from an observed file read made
+// every missing, empty, unreadable or line-bearing payload collapse into pending -> NotEnrolled ->
+// "awaiting operator credential", destroying the located cause one producer BEFORE the arm built to
+// carry it. The enrolled reference is a fact about Secret Manager; whether this run holds the bytes
+// is a fact about this run; the receipt must not answer the second by rewriting the first.
+test fn a_local_read_failure_is_not_reported_as_an_unenrolled_credential() -> Bool {
+  let outcome = spark_grant_install_from_privileged(
+    host: "srv6", grant: RebootThisHost, principal: installer(),
+    staged: [],
+    outcomes: [CredentialNotMaterialized {
+      lease: pending_lease(),
+      cause: "fixture: the credential file named by the environment does not exist",
+    }],
+    readback: GrantReadbackNotAttempted,
+    cleanup: RemoteStepUnattempted { identity: "cleanup-fixture" as NonEmptyStr },
+  )
+  match outcome {
+    SparkGrantInstallExecuted { host: _, grant: _, standings: _, privileged: pr, readback: _, cleanup: _ } => {
+      let text = join(map(pr, o => privileged_step_outcome_wire(outcome: o)), "")
+      string_contains(text, "the credential file named by the environment does not exist")
+        && string_contains(text, "CREDENTIAL-NOT-MATERIALIZED")
+        && !string_contains(text, "CREDENTIAL-NOT-ENROLLED")
+    }
+    SparkGrantInstallAwaitingOperatorCredential { host: _, grant: _, principal: _ } => false
+    SparkGrantInstallNotAttempted { host: _, grant: _, cause: _ } => false
+  }
+}
+
+// The production entry names the exact enrolled version, and says nothing about any run's file read.
+test fn the_production_standing_is_the_exact_enrolled_version() -> Bool {
+  match spark_grant_install_administrator_standing() {
     CredentialMaterialized { ref: r } =>
       secret_ref_version_resource(ref: r)
         == "projects/gunbai-secrets/secrets/spark-administrator-password/versions/1"
         && r.version as String != "latest"
-        && match spark_grant_install_standing_from_presence(
-             presence: BootstrapCredentialFileAbsent { cause: "fixture: no credential step ran" as NonEmptyStr },
-           ) {
-             CredentialMaterializationPending => true
-             CredentialMaterialized { ref: _ } => false
-           }
     CredentialMaterializationPending => false
   }
 }

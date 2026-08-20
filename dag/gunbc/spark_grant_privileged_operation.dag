@@ -317,24 +317,6 @@ fn classify_credential_read(
   }
 }
 
-// MATERIALIZATION IS OBSERVED, NEVER INFERRED FROM AN AUTHORED REFERENCE. A SecretRef existing in
-// the corpus says which secret this lane consumes; it says nothing about whether THIS run holds its
-// bytes, and a standing built from the bare row would assert materialization on any caller that had
-// never fetched anything. This carries the observation WITHOUT the secret: the bytes are read and
-// dropped inside the match, so no caller of this function ever holds a credential, and the entry
-// that derives a standing from it cannot leak one either.
-type BootstrapCredentialPresence
-  = BootstrapCredentialFilePresent
-  | BootstrapCredentialFileAbsent { cause: NonEmptyStr }
-
-func observe_bootstrap_credential_presence() -> BootstrapCredentialPresence {
-  match read_bootstrap_credential() {
-    BootstrapCredentialReady { secret: _ } => BootstrapCredentialFilePresent
-    BootstrapCredentialNotMaterialized { cause: why } =>
-      BootstrapCredentialFileAbsent { cause: why }
-  }
-}
-
 func read_bootstrap_credential() -> BootstrapCredentialMaterialization {
   match shell.Env.Get(name: spark_grant_credential_path_env).value {
     Absent =>
