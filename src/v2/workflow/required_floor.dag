@@ -242,9 +242,32 @@ fn required_floor_claim_wall_safety_limit_ms() -> Int {
   10000
 }
 
-fn required_floor_claim_warn_ms() -> Int {
-  100
-}
+// THE WARN TIER IS DELETED (2026-08-20). It is not lowered, not re-derived from the envelope,
+// and not retained as a nonblocking console diagnostic.
+//
+// A first attempt on this branch DID derive it (a fifth of the CPU safety limit) on the reading
+// that the defect was the number. That reading was wrong and is recorded here rather than
+// quietly replaced: the defect was the TIER. A warning is not a terminal disposition — a claim
+// either reaches a verdict within its requirement or it refuses, and DESIGN §5 rules that a
+// failure arm must refuse rather than widen. "Over a threshold, reported, allowed to finish" is
+// neither arm; it is an observation with no remedy attached, and deriving a better threshold for
+// it would have kept a second quasi-limit in the console beside the two that actually decide
+// anything. Re-pinning and deriving are both answers to the wrong question.
+//
+// WHAT IT COST WHILE IT STOOD: the value was a bare `100` while the safety envelope moved to
+// 5000ms CPU / 10000ms wall, so it fired on the MEDIAN witness — several hundred `[floor-witness-slow]`
+// lines per run, each reporting that an ordinary row was ordinary (measured on run 32324402687's
+// console, where ordinary rows land at 100-600ms). A signal whose frequency is one by
+// construction carries no information, and it buried the terminal lines a reader is there for.
+//
+// WHAT IT NEVER BOUGHT: `RequiredFloorOutcome.over_warn` was incremented on every crossing and
+// READ BY NOTHING — no gate, no summary, no artifact. The tier's whole output was console volume.
+//
+// The two safety deadlines survive unchanged and remain the only claim-level limits; the
+// completed-cost line remains diagnostic-only. The tier-ordering refusal that stood beside them
+// (`ClaimBudgetTiersInverted`) is deleted with the tier: it existed solely to keep the warn below
+// the tighter deadline, and CPU and wall are independent axes rather than ordered tiers, so with
+// the warn gone there is no ordering left to violate.
 
 // PREEMPTION-1 TYPED MODEL (operator-directed, 2026-08-19; reworked on gunbc#8584 per
 // royal-hawk-392's REWORK, which correctly held that a prose note is not the model S1 asked
