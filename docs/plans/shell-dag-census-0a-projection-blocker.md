@@ -37,7 +37,7 @@ to `UnknownHostEffectSink`. The brief's disposition on it is *supersede, not ext
 reason is visible in the table above rather than in that function: the surface it reads cannot
 express the alternative.
 
-## 2. Five axes, five remedies
+## 2. Six axes, six remedies
 
 ### Axis 1 — service operations and transports are absent entirely
 
@@ -69,6 +69,27 @@ inside a dead `let` must be absent so it flags as a dead wire. Correct for wirin
 fatal here. A shell call whose result is bound and not consumed is **absent from the input**, so
 `NoStaticShellRoute` is returned for a body that contains a route.
 
+**Proven by execution, not by reading the marshal.** A fixture with two functions of identical
+shape — one binding the call and not using it, one returning it — folded through
+`fn_arrow_decl_facts_live` and the atom identities collected from each `output`:
+
+```text
+fn fixture_dead_let_shell() -> String {
+  let unused_result = fixture_sink(program: "echo DEADLETMARKER")
+  "returned-without-using-unused_result"
+}
+fn fixture_live_named_args() -> String {
+  fixture_sink2(program: "echo LIVEMARKER", args: "echo ARGSMARKER")
+}
+
+DECL probe.fixture.fixture_dead_let_shell   ATOMS: (empty)
+DECL probe.fixture.fixture_live_named_args  ATOMS: fixture_sink2 | echo LIVEMARKER | echo ARGSMARKER
+```
+
+The dead-let arm yields **nothing**: the callee identity and the program literal are both absent.
+The live arm yields both. That is the discriminating pair — same construct, opposite verdict —
+so the loss is the projection's, not the probe's.
+
 This is a structural false zero upstream of the detector. No instrument control in the brief's
 seven can catch it, because every one of them is a control over the detector, and the loss has
 already happened in the detector's input.
@@ -85,6 +106,11 @@ exact program-channel argument edge", and §4 of the seed derivation below shows
 `["sh", "-c", "command -v \"$1\"", "sh", "{command}"]` the program is the *third* element and
 `{command}` is data, while in `["sh", "-c", "{command}"]` the same-named value *is* the program.
 Positionally-erased arguments cannot distinguish those.
+
+The same executed run shows it directly. `fixture_sink2(program: "echo LIVEMARKER", args: "echo
+ARGSMARKER")` projects to `fixture_sink2 | echo LIVEMARKER | echo ARGSMARKER` — three atoms in
+authored order with **no labels**. Nothing in that output says which literal was `program:` and
+which was `args:`, and the ordering is an accident of authoring rather than a carried fact.
 
 **Remedy:** argument edges labelled with the authored argument name, and positional index
 preserved, at each call.
@@ -109,6 +135,30 @@ mention is indistinguishable from a use. That is the false-positive direction of
 
 **Remedy:** resolved declaration identity on callees, and a node-kind discriminator separating
 literal, callee, constructor and variant occurrences.
+
+### Axis 6 — the registry is the entry's import closure, not the corpus
+
+Measured rather than read: a probe folding `fn_arrow_decl_facts_live()` under
+`--source-root dag --source-root src/v2` reported **1,698** fn/func declarations. The corpus
+declares **41,965**. The surface is the *entry's loaded-module closure* — about 4% of the tree,
+and its content is whatever that entry happened to import.
+
+This is a declared frontier rather than a discovery. `v2.lens.affected_set.corpus_dependency_view`
+already guards it: `corpus_dependency_view_per_pr_substrate_ready` calls
+`fn_arrow_decl_substrate_is_whole_tree`, and when it is false
+`ensure_corpus_dependency_view_per_pr_substrate` routes to a host refusal whose message reads
+`corpus_dependency_view per-PR execution refused ... (blocked-on-#6239)`. Fail-closed, correctly.
+A census over this surface inherits that refusal.
+
+It is fatal for 0A specifically because the brief's corpus requirement is a denominator claim —
+"Scan all authored `.dag` files under the declared production roots ... No file may disappear
+through exclusion" — and here files disappear through *non-import*, silently, with no per-file
+`ParseRefused` row to count them. That is the empty-observation narrow named in DESIGN's failure
+modes: the population that was never loaded is indistinguishable from the population that carries
+no route.
+
+**Remedy:** a corpus-grain producer whose denominator is an enumerated file set, not an import
+closure.
 
 ## 3. The worked proof — `gunbc.spark_managed_access_apply`
 
@@ -208,7 +258,7 @@ literals** of `.dag` source (`pipeline_transport_emit_rest_shell_witness_test.da
 not declarations, and they belong in the brief's Test partition. They are also the exact
 false-positive shape axis 5 cannot discriminate.
 
-## 5. A specification-without-execution specimen found on the way
+## 5. The full-fidelity route: measured, and it is a third outcome
 
 The full-fidelity route does exist in `.dag`: `v2.compiler.source_authority`
 `parse_dag_source_ast` takes a `Medium<String>` to `Outcome<DagSourceAst>` where
@@ -220,14 +270,60 @@ But `parse_dag_source_ast` has **no consumer**. Its only two call sites are insi
 `canonical_dag_source_parse_print_law`, and that function's name occurs exactly once in the
 entire tree — its own definition. It has no callers at all. It is a parse/print law that nothing
 executes: DESIGN §5's specification-without-execution class, sitting in the compiler's own source
-authority. So "the route exists in `.dag`" is not evidence that it works on the real corpus, and
-measuring it is the only thing that can establish it. That specimen is worth a row wherever the
-enforcement-intent registry ends up, independent of this census.
+authority. So "the route exists in `.dag`" was not evidence that it works, and it had to be
+measured. That specimen is worth a row wherever the enforcement-intent registry ends up,
+independent of this census.
 
-The measured cost signal is adverse and is recorded here rather than left to be rediscovered:
-`v2.compiler.ingested_fixture_arrows` drives the same tokenize→parse→normalize→resolve path on
-`"module m\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"`, and its witnesses are enrolled in the
-**long** lane because that three-line fixture exceeds the 5s fast-lane eval budget
+### Correctness: it accepts real corpus files, and refuses some — with a typed reason
+
+Three arms in one run, the first a positive control so a refusal cannot be blamed on the harness:
+
+```text
+CONTROL_3LINE (the tree's own "module m / fn add" fixture)   => ACCEPTED
+REAL_SMALL    (dag/gunbc/bash_materialized_transport.dag)    => ACCEPTED
+REAL          (dag/extdeps/shell/exec.dag)                   => REJECTED
+                                                reason = parse_grammar_choice_overlap_residue
+```
+
+So the route is real — it parses authored corpus source, not just fixtures — and its failure is a
+**located, typed refusal naming a specific grammar deficiency**, not a crash or a silent wrong
+tree. That is the fail-closed shape the brief already anticipates with
+`ParseRefused { path, cause }`.
+
+It is also pointed: the file it refuses is `extdeps/shell/exec.dag`, which declares
+`shell.Exec.Run`, `RunArgv` and `Check` — the single most load-bearing file for this census. A
+census whose seed file is in the refusal set has a hole exactly where it must not have one, and
+the brief's merge bar of "zero production parse refusals" is not met by construction today.
+
+### Affordability: the axis that decides between three outcomes, not two
+
+Correctness alone would send a detector out that cannot run, so the framing of accepts-or-refuses
+was wrong and there are three outcomes: refuses (substrate cut); accepts and is affordable at
+corpus grain (projection lands first, census rebases); **accepts and is unaffordable at corpus
+grain**, which is neither.
+
+The prior cost signal is adverse: `v2.compiler.ingested_fixture_arrows` drives the same
+tokenize→parse→normalize→resolve path on `"module m\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"`
+and its witnesses are enrolled in the **long** lane for exceeding the 5s fast-lane eval budget
 (`wave1_gate1_long_witness_note`). The census subject is 3,733 `.dag` files and 761,844 lines.
-Whether the route can carry a whole-corpus census, or only a fixture-grain one, is a measurement
-and not an inference — it is the open question this finding hands back.
+Fixed overhead and per-byte cost are different curves, though, and one sample cannot separate
+them, so this is being measured as a slope over a random 40-file sample at 1 / 10 / 40 files
+(372 B, 5,332 B, 388,527 B) rather than extrapolated.
+
+### If it is unaffordable, DESIGN has already rejected this shape once
+
+Recorded here because it converts a performance observation into a repository ruling. DESIGN §6's
+lens bullet records the deletion of the corpus-wide censuses in #8140 (2026-08-11) and states the
+defect in general terms: *"the unit of computation was the world, the unit of fact was one
+module's authorship, and the price was paid by every consumer that wanted a witness roster and
+nothing else."* Its declared next-rung trigger is the seed-side shape: an authorship fact
+*"belongs on the module's own declaration, checked at ingestion where the module is parsed
+anyway — one module's facts from one module's source — rather than reconstructed corpus-wide by a
+consumer that wanted something else."*
+
+That is axis 1's remedy with a precedent and a cost argument already attached. A `ServiceItem`
+accessor plus a non-lossy body projection pays per module at the point the module is *already*
+being parsed; a corpus-wide parse fold re-parses the world on every run to answer a question about
+shell routes. If the affordability measurement lands on the third outcome, the corpus-parse route
+is the exact cost-shape defect this repository deleted machinery over, and the increment is the
+ingestion-side projection rather than a census-side fold.
