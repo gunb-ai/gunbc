@@ -1,14 +1,14 @@
 module gunbc.guarantee_probe_corpus
 
-data guarantee_probe_corpus_charter_note: std.types.String = "STAGE 1a SLICE 1 OF THE GUARANTEE SPINE (roadmap node ladder-probe-corpus): the landed wall controls from the THREE MERGED PRs gunbc#7519 (call-label-and-surplus), gunbc#7484 (method-established-surface + declared-conformance-ground-fragment), and gunbc#7485 (InferToEval self-grounding frontier) migrated onto gunbc.guarantee_measurement identities — MIGRATE, never duplicate beside the dark-suite originals. gunbc#7555 (InferToTranslate underived-refusal) is OPEN on main and introduces NO path/class/probe identities here — that lane lands its own registry rows with executing evidence when it merges. Each migrated row carries a GuaranteeClassId, GuaranteePathId, and GuaranteeProbeId; receipts name subject_revision, harness_revision, and probe_set_digest per the Stage-0 schema. guarantee_probe_dark_suite_dispositions names each Rust dark-suite witness retained until gap-analysis sec 11 item 9 finite classification — enrolled .dag probes are the floor authority; Rust copies are explicitly dispositioned, not silently parallel. This slice owns the identity registry, canonical probe ordering, and the census-to-observation bridge for the v1 compile path. v2 InferToEval executing evidence joins the registry from src/v2/test/claim/infer_self_grounding_wall_test.dag (frontier value-red and derived-green receipt joins). No disposition, no rung, no claims carrier — those arrive with ladder-claims-carrier. gunbc#7847 (call-missing-and-duplicate-wall, roadmap node rn_EXUHLON5V24YU7Z4XLJFWEZO33, duplicate-label slice) added call_duplicate_red_probe/call_duplicate_green_probe to the SAME call_label_surplus_class as #7519's mislabel/surplus rows — one seam (direct_call_shape_diags), a third refusal mode on it, not a new class. Its Rust dark-suite original is call_shape_duplicate_wall_witness, dispositioned below alongside call_shape_wall_witness."
+data guarantee_probe_corpus_charter_note: String = "STAGE 1a SLICE 1 OF THE GUARANTEE SPINE (roadmap node ladder-probe-corpus): the landed wall controls from the THREE MERGED PRs gunbc#7519 (call-label-and-surplus), gunbc#7484 (method-established-surface + declared-conformance-ground-fragment), and gunbc#7485 (InferToEval self-grounding frontier) migrated onto gunbc.guarantee_measurement identities — MIGRATE, never duplicate beside the dark-suite originals. gunbc#7555 (InferToTranslate underived-refusal) is OPEN on main and introduces NO path/class/probe identities here — that lane lands its own registry rows with executing evidence when it merges. Each migrated row carries a GuaranteeClassId, GuaranteePathId, and GuaranteeProbeId; receipts name subject_revision, harness_revision, and probe_set_digest per the Stage-0 schema. guarantee_probe_dark_suite_dispositions names each Rust dark-suite witness retained until gap-analysis sec 11 item 9 finite classification — enrolled .dag probes are the floor authority; Rust copies are explicitly dispositioned, not silently parallel. This slice owns the identity registry, canonical probe ordering, and the census-to-observation bridge for the v1 compile path. v2 InferToEval executing evidence joins the registry from src/v2/test/claim/infer_self_grounding_wall_test.dag (frontier value-red and derived-green receipt joins). No disposition, no rung, no claims carrier — those arrive with ladder-claims-carrier. gunbc#7847 (call-missing-and-duplicate-wall, roadmap node rn_EXUHLON5V24YU7Z4XLJFWEZO33, duplicate-label slice) added call_duplicate_red_probe/call_duplicate_green_probe to the SAME call_label_surplus_class as #7519's mislabel/surplus rows — one seam (direct_call_shape_diags), a third refusal mode on it, not a new class. Its Rust dark-suite original is call_shape_duplicate_wall_witness, dispositioned below alongside call_shape_wall_witness."
 
-data guarantee_probe_corpus_path_scope_note: std.types.String = "TWO LANDED PATHS IN THE CANONICAL REGISTRY: v1-compile-rust is subject_grain SyntheticProgram, acceptance_boundary CompileAccept, realization_target EmittedTarget { language: rust } — the path compile_diagnostic_census measures. v2-infer-eval is the same subject grain with acceptance_boundary InferToEval and realization_target InterpreterRealization — the path gunbc#7485's GroundingNotDerived frontier diagnostic lives on. A receipt keyed to one path must not claim coverage the other measures (DESIGN 4b minimum-across-paths discipline)."
+data guarantee_probe_corpus_path_scope_note: String = "TWO LANDED PATHS IN THE CANONICAL REGISTRY: v1-compile-rust is subject_grain SyntheticProgram, acceptance_boundary CompileAccept, realization_target EmittedTarget { language: rust } — the path compile_diagnostic_census measures. v2-infer-eval is the same subject grain with acceptance_boundary InferToEval and realization_target InterpreterRealization — the path gunbc#7485's GroundingNotDerived frontier diagnostic lives on. A receipt keyed to one path must not claim coverage the other measures (DESIGN 4b minimum-across-paths discipline)."
 
-data guarantee_probe_corpus_probe_order_note: std.types.String = "CANONICAL PROBE ORDERING OBLIGATION (probe_set_digest note): guarantee_probe_ids lists the slice-1 MIGRATED probes in stable lexicographic order by branded id string. Callers must not re-sort; the roster order here IS the probe-set digest authority for this stage."
+data guarantee_probe_corpus_probe_order_note: String = "CANONICAL PROBE ORDERING OBLIGATION (probe_set_digest note): guarantee_probe_ids lists the slice-1 MIGRATED probes in stable lexicographic order by branded id string. Callers must not re-sort; the roster order here IS the probe-set digest authority for this stage."
 
-data guarantee_probe_corpus_revision_note: std.types.String = "subject_revision and harness_revision are REQUIRED on every receipt as MeasurementRevision (GitRevision | ContentFingerprint). build_v1_compile_receipt and build_v2_infer_eval_receipt take a path-typed probe row and derive probe_set_digest from row.probe only (single-probe execution in slice 1). Until the baseline stage supplies anchor git commits, witness fixtures mint ContentFingerprint revisions from measured content: synthetic_program_subject_revision fingerprints compiled source text; synthetic_infer_eval_subject_revision_from_node fingerprints the executed Node fixture via v2.std.node.content_hash; v1_compile_harness_revision and v2_infer_eval_harness_revision fingerprint filesystem_read harness source material (v1_compile_harness_source_paths / v2_infer_eval_harness_source_paths) plus the registry row's ProbeExpectation — never symbol-name spines or prose scope notes. dissolve-on ladder-baseline stage naming real GitRevision subject_revision/harness_revision commits."
+data guarantee_probe_corpus_revision_note: String = "subject_revision and harness_revision are REQUIRED on every receipt as MeasurementRevision (GitRevision | ContentFingerprint). build_v1_compile_receipt and build_v2_infer_eval_receipt take a path-typed probe row and derive probe_set_digest from row.probe only (single-probe execution in slice 1). Until the baseline stage supplies anchor git commits, witness fixtures mint ContentFingerprint revisions from measured content: synthetic_program_subject_revision fingerprints compiled source text; synthetic_infer_eval_subject_revision_from_node fingerprints the executed Node fixture via v2.std.node.content_hash; v1_compile_harness_revision and v2_infer_eval_harness_revision fingerprint filesystem_read harness source material (v1_compile_harness_source_paths / v2_infer_eval_harness_source_paths) plus the registry row's ProbeExpectation — never symbol-name spines or prose scope notes. dissolve-on ladder-baseline stage naming real GitRevision subject_revision/harness_revision commits."
 
-fn synthetic_program_subject_revision(source: std.types.String) -> gunbc.guarantee_measurement.MeasurementRevision {
+fn synthetic_program_subject_revision(source: String) -> gunbc.guarantee_measurement.MeasurementRevision {
   gunbc.guarantee_measurement.ContentFingerprint { digest: std.content_hash.content_hash_atom(value: source as std.types.NonEmptyStr) }
 }
 
@@ -141,9 +141,9 @@ fn harness_digest_from_material_and_expectation(
   )
 }
 
-data v1_compile_harness_source_paths_note: std.types.String = "v1_compile_harness_source_paths is the measured authority for compile_dag_diagnostic_census harness revision: probe-corpus bridge, guarantee_measurement folds, census vocabulary, the host builtin seam, and the v1 CompileAccept→Rust pipeline stages whose edits change which diagnostics a synthetic subject provokes. dissolve-on ladder-baseline stage supplies GitRevision harness anchors."
+data v1_compile_harness_source_paths_note: String = "v1_compile_harness_source_paths is the measured authority for compile_dag_diagnostic_census harness revision: probe-corpus bridge, guarantee_measurement folds, census vocabulary, the host builtin seam, and the v1 CompileAccept→Rust pipeline stages whose edits change which diagnostics a synthetic subject provokes. dissolve-on ladder-baseline stage supplies GitRevision harness anchors."
 
-fn v1_compile_harness_source_paths() -> std.types.List<std.types.String> {
+fn v1_compile_harness_source_paths() -> std.types.List<String> {
   [
     "dag/gunbc/guarantee_probe_corpus.dag",
     "dag/gunbc/guarantee_measurement.dag",
@@ -158,7 +158,7 @@ fn v1_compile_harness_source_paths() -> std.types.List<std.types.String> {
   ]
 }
 
-fn v2_infer_eval_harness_source_paths() -> std.types.List<std.types.String> {
+fn v2_infer_eval_harness_source_paths() -> std.types.List<String> {
   [
     "dag/gunbc/guarantee_probe_corpus.dag",
     "dag/gunbc/guarantee_measurement.dag",
@@ -248,7 +248,7 @@ type DarkSuiteWitnessDisposition
       rust_retained_until: std.types.NonEmptyStr,
     }
 
-data guarantee_probe_dark_suite_disposition_note: std.types.String = "Slice 1 MIGRATES landed wall REDs into enrolled .dag probes without dissolving the dark Rust suite (gap-analysis sec 11 item 9 operator ruling): each row names the executing .dag probe(s), the retained Rust witness they replace on the floor, and the finite-classification gate that must disposition the Rust copy before deletion. MIGRATE never duplicate means one enrolled measurement authority per class — not silent parallel maintenance forever."
+data guarantee_probe_dark_suite_disposition_note: String = "Slice 1 MIGRATES landed wall REDs into enrolled .dag probes without dissolving the dark Rust suite (gap-analysis sec 11 item 9 operator ruling): each row names the executing .dag probe(s), the retained Rust witness they replace on the floor, and the finite-classification gate that must disposition the Rust copy before deletion. MIGRATE never duplicate means one enrolled measurement authority per class — not silent parallel maintenance forever."
 
 fn guarantee_probe_dark_suite_dispositions() -> std.types.List<DarkSuiteWitnessDisposition> {
   [
@@ -302,7 +302,7 @@ type V2InferEvalProbeRow {
 type ProbeRowResolution
   = ProbeRowResolved { row: GuaranteeProbeRow }
   | ProbeRowUnknown { wanted: gunbc.guarantee_measurement.GuaranteeProbeId }
-  | ProbeRowDuplicate { wanted: gunbc.guarantee_measurement.GuaranteeProbeId, matches: std.types.Int }
+  | ProbeRowDuplicate { wanted: gunbc.guarantee_measurement.GuaranteeProbeId, matches: Int }
 
 fn guarantee_probe_rows() -> std.types.List<GuaranteeProbeRow> {
   [
@@ -440,7 +440,7 @@ fn guarantee_probe_ids() -> std.types.List<gunbc.guarantee_measurement.Guarantee
 }
 
 fn resolve_guarantee_probe_row(rows: std.types.List<GuaranteeProbeRow>, wanted: gunbc.guarantee_measurement.GuaranteeProbeId) -> ProbeRowResolution {
-  let hits = rows |> filter(row => (row.probe as std.types.String) == (wanted as std.types.String))
+  let hits = rows |> filter(row => (row.probe as String) == (wanted as String))
   if count(hits) == 0 {
     ProbeRowUnknown { wanted: wanted }
   } else if count(hits) > 1 {
@@ -477,15 +477,15 @@ fn canonical_probe_row_resolution_refuses_duplicate_population() -> std.types.Bo
 
 fn active_probe_row(probe: gunbc.guarantee_measurement.GuaranteeProbeId) -> GuaranteeProbeRow? {
   match resolve_guarantee_probe_row(rows: guarantee_probe_rows(), wanted: probe) {
-    ProbeRowResolved { row: row } => v2.std.optional.Present { value: row }
+    ProbeRowResolved { row: row } => Present { value: row }
     ProbeRowUnknown { wanted: _ } => none
     ProbeRowDuplicate { wanted: _, matches: _ } => none
   }
 }
 
 fn v1_compile_probe_row_from_registry(row: GuaranteeProbeRow) -> V1CompileProbeRow? {
-  if (row.path as std.types.String) == (v1_compile_rust_path_id as std.types.String) {
-    v2.std.optional.Present {
+  if (row.path as String) == (v1_compile_rust_path_id as String) {
+    Present {
       value: V1CompileProbeRow {
         probe: row.probe,
         class: row.class,
@@ -498,8 +498,8 @@ fn v1_compile_probe_row_from_registry(row: GuaranteeProbeRow) -> V1CompileProbeR
 }
 
 fn v2_infer_eval_probe_row_from_registry(row: GuaranteeProbeRow) -> V2InferEvalProbeRow? {
-  if (row.path as std.types.String) == (v2_infer_eval_path_id as std.types.String) {
-    v2.std.optional.Present {
+  if (row.path as String) == (v2_infer_eval_path_id as String) {
+    Present {
       value: V2InferEvalProbeRow {
         probe: row.probe,
         class: row.class,
@@ -529,32 +529,32 @@ fn executed_probe_ids_for_probe(probe: gunbc.guarantee_measurement.GuaranteeProb
   [probe]
 }
 
-fn guarantee_probe_id_strings() -> std.types.List<std.types.String> {
+fn guarantee_probe_id_strings() -> std.types.List<String> {
   fold(
     guarantee_probe_ids(),
     init: [],
-    f: fn(acc, id) { append(acc, items: [id as std.types.String]) },
+    f: fn(acc, id) { append(acc, items: [id as String]) },
   )
 }
 
 type ProbeLexWalk {
-  prev: std.types.String?
+  prev: String?
   ok: std.types.Bool
 }
 
 fn probe_ids_are_lexicographically_ordered(ids: std.types.List<gunbc.guarantee_measurement.GuaranteeProbeId>) -> std.types.Bool {
   let walked = fold(ids, init: ProbeLexWalk { prev: none, ok: true }, f: fn(acc, id) {
-    let current = id as std.types.String
+    let current = id as String
     if !acc.ok {
       acc
     } else {
       match acc.prev {
-        Absent => ProbeLexWalk { prev: v2.std.optional.Present { value: current }, ok: true }
+        Absent => ProbeLexWalk { prev: Present { value: current }, ok: true }
         Present { value: prev } =>
           if std.string_type.string_is_lexicographically_before(left: prev, right: current) {
-            ProbeLexWalk { prev: v2.std.optional.Present { value: current }, ok: true }
+            ProbeLexWalk { prev: Present { value: current }, ok: true }
           } else {
-            ProbeLexWalk { prev: v2.std.optional.Present { value: current }, ok: false }
+            ProbeLexWalk { prev: Present { value: current }, ok: false }
           }
       }
     }
@@ -584,24 +584,24 @@ fn probe_observation_from_accepted_infer_diagnostics(diagnostics: v2.std.diagnos
   }
 }
 
-fn census_row_count(rows: std.types.List<gunbc.compile_diagnostic_census.CompileDiagnosticCensusRow>) -> std.types.Int {
+fn census_row_count(rows: std.types.List<gunbc.compile_diagnostic_census.CompileDiagnosticCensusRow>) -> Int {
   count(rows)
 }
 
-fn census_blocking_count_for_class(census: gunbc.compile_diagnostic_census.CompileDiagnosticCensus, wanted: std.types.String) -> std.types.Int? {
+fn census_blocking_count_for_class(census: gunbc.compile_diagnostic_census.CompileDiagnosticCensus, wanted: String) -> Int? {
   match census {
     CensusObserved { rows: rows } =>
-      v2.std.optional.Present {
+      Present {
         value: gunbc.compile_diagnostic_census.census_total_count(rows: gunbc.compile_diagnostic_census.census_rows_of_class(rows: gunbc.compile_diagnostic_census.census_blocking_rows(rows: rows), wanted: wanted))
       }
     CensusNotRunnable { cause: _ } => none
   }
 }
 
-fn census_any_count_for_class(census: gunbc.compile_diagnostic_census.CompileDiagnosticCensus, wanted: std.types.String) -> std.types.Int? {
+fn census_any_count_for_class(census: gunbc.compile_diagnostic_census.CompileDiagnosticCensus, wanted: String) -> Int? {
   match census {
     CensusObserved { rows: rows } =>
-      v2.std.optional.Present { value: gunbc.compile_diagnostic_census.census_total_count(rows: gunbc.compile_diagnostic_census.census_rows_of_class(rows: rows, wanted: wanted)) }
+      Present { value: gunbc.compile_diagnostic_census.census_total_count(rows: gunbc.compile_diagnostic_census.census_rows_of_class(rows: rows, wanted: wanted)) }
     CensusNotRunnable { cause: _ } => none
   }
 }
@@ -675,24 +675,24 @@ fn probe_row_observation_holds_for_row(observation: gunbc.guarantee_measurement.
 }
 
 fn receipt_matches_probe_row(receipt: gunbc.guarantee_measurement.GuaranteeMeasurementReceipt, row: GuaranteeProbeRow) -> std.types.Bool {
-  (receipt.probe as std.types.String) == (row.probe as std.types.String)
-    && (receipt.class as std.types.String) == (row.class as std.types.String)
-    && (receipt.path as std.types.String) == (row.path as std.types.String)
+  (receipt.probe as String) == (row.probe as String)
+    && (receipt.class as String) == (row.class as String)
+    && (receipt.path as String) == (row.path as String)
 }
 
 fn receipt_matches_v1_compile_probe_row(receipt: gunbc.guarantee_measurement.GuaranteeMeasurementReceipt, row: V1CompileProbeRow) -> std.types.Bool {
-  (receipt.probe as std.types.String) == (row.probe as std.types.String)
-    && (receipt.class as std.types.String) == (row.class as std.types.String)
-    && (receipt.path as std.types.String) == (v1_compile_rust_path_id as std.types.String)
+  (receipt.probe as String) == (row.probe as String)
+    && (receipt.class as String) == (row.class as String)
+    && (receipt.path as String) == (v1_compile_rust_path_id as String)
 }
 
 fn receipt_matches_v2_infer_eval_probe_row(receipt: gunbc.guarantee_measurement.GuaranteeMeasurementReceipt, row: V2InferEvalProbeRow) -> std.types.Bool {
-  (receipt.probe as std.types.String) == (row.probe as std.types.String)
-    && (receipt.class as std.types.String) == (row.class as std.types.String)
-    && (receipt.path as std.types.String) == (v2_infer_eval_path_id as std.types.String)
+  (receipt.probe as String) == (row.probe as String)
+    && (receipt.class as String) == (row.class as String)
+    && (receipt.path as String) == (v2_infer_eval_path_id as String)
 }
 
-fn observation_refused_count(o: gunbc.guarantee_measurement.ProbeObservation) -> std.types.Int {
+fn observation_refused_count(o: gunbc.guarantee_measurement.ProbeObservation) -> Int {
   gunbc.guarantee_measurement.probe_observation_fold(
     o: o,
     fold: gunbc.guarantee_measurement.ProbeObservationFold {
@@ -713,7 +713,7 @@ fn census_primary_observation(rows: std.types.List<gunbc.compile_diagnostic_cens
         gunbc.guarantee_measurement.RefusedTyped {
           diagnostic_class: r.diagnostic_class,
           count: gunbc.compile_diagnostic_census.census_total_count(
-            rows: gunbc.compile_diagnostic_census.census_rows_of_class(rows: blocking, wanted: r.diagnostic_class as std.types.String),
+            rows: gunbc.compile_diagnostic_census.census_rows_of_class(rows: blocking, wanted: r.diagnostic_class as String),
           ),
         }
       Absent => gunbc.guarantee_measurement.AcceptedClean
@@ -756,7 +756,7 @@ fn build_v1_compile_receipt(
 
 fn receipt_joins_v1_compile_path(receipt: gunbc.guarantee_measurement.GuaranteeMeasurementReceipt) -> std.types.Bool {
   match gunbc.guarantee_measurement.join_receipt_to_path(receipt: receipt, paths: guarantee_probe_paths()) {
-    ReceiptJoined { path: p } => (p.id as std.types.String) == (v1_compile_rust_path_id as std.types.String)
+    ReceiptJoined { path: p } => (p.id as String) == (v1_compile_rust_path_id as String)
     ReceiptPathUnknown { receipt_path: _ } => false
     ReceiptPathDuplicate { receipt_path: _, matches: _ } => false
   }

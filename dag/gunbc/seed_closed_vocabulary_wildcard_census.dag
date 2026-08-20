@@ -54,7 +54,7 @@ module gunbc.seed_closed_vocabulary_wildcard_census
 // catch-alls are indistinguishable at the site -- but whether the scrutinee's vocabulary
 // is closed by an authority the seed is supposed to be answerable to.
 type SeedWildcardDisposition =
-    FabricatedSubstitution { substituted: std.types.String }
+    FabricatedSubstitution { substituted: String }
   | MirrorsAuthorityArm
   | EveryFormNamed
 
@@ -62,15 +62,15 @@ type SeedWildcardDisposition =
 // value instead of refusing. Cited by SYMBOL (DESIGN section 3): the enclosing Rust
 // function and the file that declares it, never a line offset.
 type SeedWildcardSite {
-  file: std.types.String
-  symbol: std.types.String
-  vocabulary: std.types.String
-  vocabulary_authority: std.types.String
-  unhandled_forms: std.types.String
-  reachability: std.types.String
-  harm: std.types.String
+  file: String
+  symbol: String
+  vocabulary: String
+  vocabulary_authority: String
+  unhandled_forms: String
+  reachability: String
+  harm: String
   disposition: SeedWildcardDisposition
-  next_trigger: std.types.String
+  next_trigger: String
 }
 
 // REACHABILITY IS AN INFERENCE ON EVERY ROW BELOW AND IS LABELLED AS ONE. The source-form

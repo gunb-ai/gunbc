@@ -1,6 +1,6 @@
 module v2.std.host_transport
 
-type ByteString = std.types.List<v2.std.machine.Byte>
+type ByteString = std.types.List<v2.test.claim.byte_cardinality_grounding.Byte>
 
 type RelPath = String
 

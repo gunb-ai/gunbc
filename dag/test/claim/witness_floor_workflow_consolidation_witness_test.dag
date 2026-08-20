@@ -12,7 +12,7 @@ module test.claim.witness_floor_workflow_consolidation_witness_test
 //
 // Stated so a reader does not over-read the green: this is the CHEAP half of the pair.
 
-data consolidation_note: std.types.String = "The step ladder these replace was four steps: parse, regen, regen-fixed-point, floor. Each was its own process, the ORDER was a YAML list, each precondition was an `if:` naming another step's `outcome`, and the fixed-point step received pass 1's digest by re-reading the receipt FILE the regen process had written — a process boundary standing where a function call belonged, since run_required_regen_fixed_point has taken pass1_digest: Option<String> all along and CI passed None."
+data consolidation_note: String = "The step ladder these replace was four steps: parse, regen, regen-fixed-point, floor. Each was its own process, the ORDER was a YAML list, each precondition was an `if:` naming another step's `outcome`, and the fixed-point step received pass 1's digest by re-reading the receipt FILE the regen process had written — a process boundary standing where a function call belonged, since run_required_regen_fixed_point has taken pass1_digest: Option<String> all along and CI passed None."
 
 // ONE RUN STEP REACHES THE BINARY, and it names the composed mode. The negative half is what
 // makes this discriminating: if any of the three retired invocations reappears as its own step,

@@ -61,7 +61,7 @@ fn host_exit_failure_outcome(exit: v2.std.host_run.HostExit) -> v2.std.diagnosti
   match exit.outcome {
     v2.std.diagnostic.Accepted { value: v2.std.witness.Violates { diagnostic: d }, diagnostics: v2.std.diagnostic.None } =>
       v2.std.diagnostic.outcome_rejected(d: d)
-    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+    Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
     _ => v2.std.diagnostic.outcome_rejected(d: emit_host_exit_not_ok_diagnostic())
   }
 }
@@ -253,8 +253,8 @@ fn emit_host_octet_bit(octet: Int, place: Int) -> Bool {
   ((octet / place) % 2) == 1
 }
 
-fn emit_host_byte_from_octet(octet: Int) -> v2.std.machine.Byte {
-  v2.std.machine.Byte {
+fn emit_host_byte_from_octet(octet: Int) -> v2.test.claim.byte_cardinality_grounding.Byte {
+  v2.test.claim.byte_cardinality_grounding.Byte {
     bits: [
       emit_host_octet_bit(octet: octet, place: 1),
       emit_host_octet_bit(octet: octet, place: 2),
@@ -486,7 +486,7 @@ fn run_test_claim_emit_vs_eval_verdict(
       } else {
         v2.std.verdict.verdict_semantic_mismatch(
           actual: v2.std.diagnostic.Accepted { value: host_actual, diagnostics: v2.std.diagnostic.None },
-          falsification: v2.std.collection.optional_present(
+          falsification: v2.std.optional.optional_present(
             value: v2.std.test_claim_falsification.FalsificationReceipt {
               subject: subject,
               expected: exp_val,
@@ -825,7 +825,7 @@ fn run_test_claim_from_source_emit_vs_eval_cached(
 
 fn run_test_claim_module_emit_vs_eval(
   subject: v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node>,
-  module_decls: std.types.List<v2.compiler.infer.InferredTree>,
+  module_decls: std.types.List<v2.compiler.inferred_tree.InferredTree>,
   target: v2.std.compilers.target_model.TargetModel
 ) -> v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue> {
   run_test_claim_from_source_emit_vs_eval(

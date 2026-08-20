@@ -9,38 +9,38 @@ module test.claim.fabric_witness_run
 // the demand cannot afford it (affordability) -- and that the two never answer
 // for each other's question.
 
-fn t_source() -> SourceManifestRef {
+fn t_source() -> product.fabric.work.SourceManifestRef {
   "gunbc.source.test-commit"
 }
 
-fn t_max_buy() -> MoneyAmountMicro {
+fn t_max_buy() -> std.measure.MoneyAmountMicro {
   money_amount_micro(count: 1000000)
 }
 
 fn t_offer(
-  threads: HardwareThreadCount,
-  caps: CapabilityManifestRef,
-  trust: TrustDomainRef,
-  quote: OfferQuote,
-) -> Offer<NonEmptyStr> {
-  Offer {
-    id: FabricIdentity { principal: "gunbc", key: "offer-srv1" },
+  threads: std.measure.HardwareThreadCount,
+  caps: product.fabric.work.CapabilityManifestRef,
+  trust: product.fabric.work.TrustDomainRef,
+  quote: product.fabric.supply.OfferQuote,
+) -> Offer<std.types.NonEmptyStr> {
+  product.fabric.supply.Offer {
+    id: product.fabric.identity.FabricIdentity { principal: "gunbc", key: "offer-srv1" },
     executor: "gunbc",
-    shape: Shape { hard: HardRequirements { threads: threads } },
+    shape: product.fabric.work.Shape { hard: product.fabric.work.HardRequirements { threads: threads } },
     capabilities: caps,
     trust_domain: trust,
     quantity_bound: 1,
     ready_at: "2026-08-19T00:00:00Z",
     quote: quote,
-    evidence: ObservedSupply {
+    evidence: product.fabric.supply.ObservedSupply {
       observed_at: "2026-08-19T00:00:00Z",
       receipt: "gunbc.observation.fleet-1",
     },
   }
 }
 
-fn t_quote(amount: MoneyAmountMicro, currency: CurrencyCode) -> OfferQuote {
-  QuotedFlatPerGrant(MoneyRate { amount: amount, currency: currency })
+fn t_quote(amount: std.measure.MoneyAmountMicro, currency: std.currency.CurrencyCode) -> product.fabric.supply.OfferQuote {
+  product.fabric.supply.QuotedFlatPerGrant(std.measure.MoneyRate { amount: amount, currency: currency })
 }
 
 // THE OWNED-FLEET OFFER CARRIES AN ASKING PRICE, NOT AN OPPORTUNITY COST.
@@ -59,7 +59,7 @@ fn t_quote(amount: MoneyAmountMicro, currency: CurrencyCode) -> OfferQuote {
 // AFFORDABILITY SCREENING and it is not selection -- nothing here chooses among
 // several affordable offers, and choosing would need the interval, tariff,
 // commitment state and alternative uses that no carrier holds yet.
-fn t_fleet_offer() -> Offer<NonEmptyStr> {
+fn t_fleet_offer() -> Offer<std.types.NonEmptyStr> {
   t_offer(
     threads: hardware_thread_count(count: 128),
     caps: "gunbc.capabilities.linux-rust-toolchain",
@@ -68,7 +68,7 @@ fn t_fleet_offer() -> Offer<NonEmptyStr> {
   )
 }
 
-fn fungible(e: OfferFungibility) -> Bool {
+fn fungible(e: product.fabric.supply.OfferFungibility) -> Bool {
   match e {
     Fungible => true
     ShapeNotCovered { required_threads: _, offered_threads: _ } => false
@@ -82,7 +82,7 @@ fn fungible(e: OfferFungibility) -> Bool {
 // helper that only accepted the exact arm would make the floor's own duration
 // (EstimatedGrantDuration, see fabric_witness_run.dag) permanently ineligible
 // by construction, which is exactly the fusion this suite exists to keep out.
-fn affordable(a: DemandOfferAffordability) -> Bool {
+fn affordable(a: product.fabric.supply.DemandOfferAffordability) -> Bool {
   match a {
     Affordable => true
     AffordableUnderEstimate { duration_seconds: _, projected_total: _ } => true
@@ -91,11 +91,11 @@ fn affordable(a: DemandOfferAffordability) -> Bool {
   }
 }
 
-fn floor_fungibility(offer: Offer<NonEmptyStr>) -> OfferFungibility {
+fn floor_fungibility(offer: Offer<std.types.NonEmptyStr>) -> product.fabric.supply.OfferFungibility {
   floor_offer_fungibility(offer: offer)
 }
 
-fn floor_affordability(offer: Offer<NonEmptyStr>) -> DemandOfferAffordability {
+fn floor_affordability(offer: Offer<std.types.NonEmptyStr>) -> product.fabric.supply.DemandOfferAffordability {
   floor_offer_affordability(offer: offer, maximum_buy_order: t_max_buy(), budget_currency: Usd)
 }
 
@@ -206,7 +206,7 @@ test fn foreign_currency_quote_refuses_distinctly() -> Bool {
 // went red on a claim nobody had reread. It now uses its OWN zero-quoted offer,
 // because the property under test is the strictness of the comparison and has
 // nothing to do with the fleet.
-fn t_free_offer() -> Offer<NonEmptyStr> {
+fn t_free_offer() -> Offer<std.types.NonEmptyStr> {
   t_offer(
     threads: hardware_thread_count(count: 128),
     caps: "gunbc.capabilities.linux-rust-toolchain",
@@ -357,11 +357,11 @@ test fn an_hourly_rate_priced_above_its_projected_total_still_refuses() -> Bool 
       threads: hardware_thread_count(count: 128),
       caps: "gunbc.capabilities.linux-rust-toolchain",
       trust: "gunbc.trust.internal-fleet",
-      quote: QuotedPerHour(MoneyRate { amount: money_amount_micro(count: 10), currency: Usd }),
+      quote: product.fabric.supply.QuotedPerHour(std.measure.MoneyRate { amount: money_amount_micro(count: 10), currency: Usd }),
     ),
     maximum_buy_order: money_amount_micro(count: 9),
     budget_currency: Usd,
-    duration: ExactGrantDuration { seconds: second(count: 3600) },
+    duration: product.fabric.supply.ExactGrantDuration { seconds: second(count: 3600) },
   ))
 }
 
@@ -373,13 +373,13 @@ test fn an_hourly_rate_priced_above_its_projected_total_still_refuses() -> Bool 
 // refusing and one affordable, which is the erasure being gone rather than
 // merely relabelled.
 test fn per_second_and_per_hour_quotes_diverge_once_a_duration_is_supplied() -> Bool {
-  let duration = ExactGrantDuration { seconds: second(count: 3600) }
+  let duration = product.fabric.supply.ExactGrantDuration { seconds: second(count: 3600) }
   let per_second = offer_affordability_for(
     offer: t_offer(
       threads: hardware_thread_count(count: 128),
       caps: "gunbc.capabilities.linux-rust-toolchain",
       trust: "gunbc.trust.internal-fleet",
-      quote: QuotedPerSecond(MoneyRate { amount: money_amount_micro(count: 1), currency: Usd }),
+      quote: product.fabric.supply.QuotedPerSecond(std.measure.MoneyRate { amount: money_amount_micro(count: 1), currency: Usd }),
     ),
     maximum_buy_order: money_amount_micro(count: 1000),
     budget_currency: Usd,
@@ -390,7 +390,7 @@ test fn per_second_and_per_hour_quotes_diverge_once_a_duration_is_supplied() -> 
       threads: hardware_thread_count(count: 128),
       caps: "gunbc.capabilities.linux-rust-toolchain",
       trust: "gunbc.trust.internal-fleet",
-      quote: QuotedPerHour(MoneyRate { amount: money_amount_micro(count: 1), currency: Usd }),
+      quote: product.fabric.supply.QuotedPerHour(std.measure.MoneyRate { amount: money_amount_micro(count: 1), currency: Usd }),
     ),
     maximum_buy_order: money_amount_micro(count: 1000),
     budget_currency: Usd,
@@ -420,7 +420,7 @@ test fn an_hourly_offer_that_is_capable_in_currency_and_cheap_is_eligible() -> B
     threads: hardware_thread_count(count: 128),
     caps: "gunbc.capabilities.linux-rust-toolchain",
     trust: "gunbc.trust.internal-fleet",
-    quote: QuotedPerHour(MoneyRate { amount: money_amount_micro(count: 10), currency: Usd }),
+    quote: product.fabric.supply.QuotedPerHour(std.measure.MoneyRate { amount: money_amount_micro(count: 10), currency: Usd }),
   )
   fungible(e: floor_offer_fungibility(offer: offer))
     && affordable(a: floor_offer_affordability(

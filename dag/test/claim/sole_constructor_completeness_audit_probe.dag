@@ -2,11 +2,11 @@ module test.claim.sole_constructor_completeness_audit_probe
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
-fn census_of(source: std.types.String) -> gunbc.compile_diagnostic_census.CompileDiagnosticCensus {
+fn census_of(source: String) -> gunbc.compile_diagnostic_census.CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source)
 }
 
-fn violation_count(source: std.types.String, wanted: std.types.String) -> std.types.Int {
+fn violation_count(source: String, wanted: String) -> Int {
   match census_of(source: source) {
     CensusObserved { rows: rows } => gunbc.compile_diagnostic_census.census_total_count(rows: gunbc.compile_diagnostic_census.census_rows_of_class(rows: rows, wanted: wanted))
     CensusNotRunnable { cause: _ } => 0 - 1
@@ -16,7 +16,7 @@ fn violation_count(source: std.types.String, wanted: std.types.String) -> std.ty
 // ---------------------------------------------------------------------------
 // Form 1: record literal in RETURN position (cross-module, sealed fixture type)
 // ---------------------------------------------------------------------------
-data f1_return_source: std.types.String = "module probe_f1_return\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\nfn forged() -> LocalValidated { LocalValidated { n: 999 } }\n"
+data f1_return_source: String = "module probe_f1_return\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\nfn forged() -> LocalValidated { LocalValidated { n: 999 } }\n"
 
 test fn f1_record_lit_return_position_refuses() -> std.types.Bool {
   violation_count(source: f1_return_source, wanted: "SoleConstructorViolation") >= 1
@@ -25,7 +25,7 @@ test fn f1_record_lit_return_position_refuses() -> std.types.Bool {
 // ---------------------------------------------------------------------------
 // Form 2: record literal in LET-BINDING position
 // ---------------------------------------------------------------------------
-data f2_let_source: std.types.String = "module probe_f2_let\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\nfn forged() -> Int {\n  let x: LocalValidated = LocalValidated { n: 999 }\n  x.n\n}\n"
+data f2_let_source: String = "module probe_f2_let\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\nfn forged() -> Int {\n  let x: LocalValidated = LocalValidated { n: 999 }\n  x.n\n}\n"
 
 test fn f2_record_lit_let_binding_refuses() -> std.types.Bool {
   violation_count(source: f2_let_source, wanted: "SoleConstructorViolation") >= 1
@@ -34,7 +34,7 @@ test fn f2_record_lit_let_binding_refuses() -> std.types.Bool {
 // ---------------------------------------------------------------------------
 // Form 3: record literal as a CALL ARGUMENT
 // ---------------------------------------------------------------------------
-data f3_call_arg_source: std.types.String = "module probe_f3_call_arg\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\nfn take(v: LocalValidated) -> Int { v.n }\nfn forged() -> Int { take(v: LocalValidated { n: 999 }) }\n"
+data f3_call_arg_source: String = "module probe_f3_call_arg\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\nfn take(v: LocalValidated) -> Int { v.n }\nfn forged() -> Int { take(v: LocalValidated { n: 999 }) }\n"
 
 test fn f3_record_lit_call_arg_refuses() -> std.types.Bool {
   violation_count(source: f3_call_arg_source, wanted: "SoleConstructorViolation") >= 1
@@ -43,7 +43,7 @@ test fn f3_record_lit_call_arg_refuses() -> std.types.Bool {
 // ---------------------------------------------------------------------------
 // Form 4: record literal as a LIST-LITERAL ELEMENT
 // ---------------------------------------------------------------------------
-data f4_list_source: std.types.String = "module probe_f4_list\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\nimport std.types { List }\nfn forged() -> List<LocalValidated> { [LocalValidated { n: 999 }] }\n"
+data f4_list_source: String = "module probe_f4_list\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\nimport std.types { List }\nfn forged() -> List<LocalValidated> { [LocalValidated { n: 999 }] }\n"
 
 test fn f4_record_lit_list_element_refuses() -> std.types.Bool {
   violation_count(source: f4_list_source, wanted: "SoleConstructorViolation") >= 1
@@ -52,7 +52,7 @@ test fn f4_record_lit_list_element_refuses() -> std.types.Bool {
 // ---------------------------------------------------------------------------
 // Form 5: record literal nested inside ANOTHER record's field-init value
 // ---------------------------------------------------------------------------
-data f5_nested_source: std.types.String = "module probe_f5_nested\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\ntype Wrapper { v: LocalValidated }\nfn forged() -> Wrapper { Wrapper { v: LocalValidated { n: 999 } } }\n"
+data f5_nested_source: String = "module probe_f5_nested\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\ntype Wrapper { v: LocalValidated }\nfn forged() -> Wrapper { Wrapper { v: LocalValidated { n: 999 } } }\n"
 
 test fn f5_record_lit_nested_field_init_refuses() -> std.types.Bool {
   violation_count(source: f5_nested_source, wanted: "SoleConstructorViolation") >= 1
@@ -61,7 +61,7 @@ test fn f5_record_lit_nested_field_init_refuses() -> std.types.Bool {
 // ---------------------------------------------------------------------------
 // Form 6: record literal as the result of an IF/ELSE branch
 // ---------------------------------------------------------------------------
-data f6_branch_source: std.types.String = "module probe_f6_branch\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\nfn forged(flag: Bool) -> LocalValidated {\n  if flag { LocalValidated { n: 1 } } else { LocalValidated { n: 2 } }\n}\n"
+data f6_branch_source: String = "module probe_f6_branch\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\nfn forged(flag: Bool) -> LocalValidated {\n  if flag { LocalValidated { n: 1 } } else { LocalValidated { n: 2 } }\n}\n"
 
 test fn f6_record_lit_branch_result_refuses() -> std.types.Bool {
   violation_count(source: f6_branch_source, wanted: "SoleConstructorViolation") >= 1
@@ -70,7 +70,7 @@ test fn f6_record_lit_branch_result_refuses() -> std.types.Bool {
 // ---------------------------------------------------------------------------
 // Form 7: cast as a CALL ARGUMENT
 // ---------------------------------------------------------------------------
-data f7_cast_call_arg_source: std.types.String = "module probe_f7_cast_call_arg\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\nfn take(v: LocalValidated) -> Int { v.n }\nfn forged() -> Int { take(v: 7 as LocalValidated) }\n"
+data f7_cast_call_arg_source: String = "module probe_f7_cast_call_arg\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\nfn take(v: LocalValidated) -> Int { v.n }\nfn forged() -> Int { take(v: 7 as LocalValidated) }\n"
 
 test fn f7_cast_call_arg_refuses() -> std.types.Bool {
   violation_count(source: f7_cast_call_arg_source, wanted: "SoleConstructorViolation") >= 1
@@ -79,7 +79,7 @@ test fn f7_cast_call_arg_refuses() -> std.types.Bool {
 // ---------------------------------------------------------------------------
 // Form 8: cast as a LIST-LITERAL ELEMENT
 // ---------------------------------------------------------------------------
-data f8_cast_list_source: std.types.String = "module probe_f8_cast_list\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\nimport std.types { List }\nfn forged() -> List<LocalValidated> { [7 as LocalValidated] }\n"
+data f8_cast_list_source: String = "module probe_f8_cast_list\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\nimport std.types { List }\nfn forged() -> List<LocalValidated> { [7 as LocalValidated] }\n"
 
 test fn f8_cast_list_element_refuses() -> std.types.Bool {
   violation_count(source: f8_cast_list_source, wanted: "SoleConstructorViolation") >= 1
@@ -89,7 +89,7 @@ test fn f8_cast_list_element_refuses() -> std.types.Bool {
 // Form 9: GENERIC refinement carrier - forged record literal at a concrete
 // type argument, cross-module (std.interval.OrderedClosedInterval<T>)
 // ---------------------------------------------------------------------------
-data f9_generic_literal_source: std.types.String = "module probe_f9_generic_literal\nimport std.interval { OrderedClosedInterval }\nfn forged() -> OrderedClosedInterval<Int> { OrderedClosedInterval { low: 5, high: 1 } }\n"
+data f9_generic_literal_source: String = "module probe_f9_generic_literal\nimport std.interval { OrderedClosedInterval }\nfn forged() -> OrderedClosedInterval<Int> { OrderedClosedInterval { low: 5, high: 1 } }\n"
 
 test fn f9_generic_carrier_record_lit_refuses() -> std.types.Bool {
   violation_count(source: f9_generic_literal_source, wanted: "SoleConstructorViolation") >= 1
@@ -98,7 +98,7 @@ test fn f9_generic_carrier_record_lit_refuses() -> std.types.Bool {
 // ---------------------------------------------------------------------------
 // Form 10: GENERIC refinement carrier reached via CAST
 // ---------------------------------------------------------------------------
-data f9b_generic_cast_source: std.types.String = "module probe_f9b_generic_cast\nimport std.interval { OrderedClosedInterval }\nfn forged(x: Int) -> OrderedClosedInterval<Int> { x as OrderedClosedInterval<Int> }\n"
+data f9b_generic_cast_source: String = "module probe_f9b_generic_cast\nimport std.interval { OrderedClosedInterval }\nfn forged(x: Int) -> OrderedClosedInterval<Int> { x as OrderedClosedInterval<Int> }\n"
 
 test fn f9b_generic_carrier_cast_refuses() -> std.types.Bool {
   violation_count(source: f9b_generic_cast_source, wanted: "SoleConstructorViolation") >= 1
@@ -108,7 +108,7 @@ test fn f9b_generic_carrier_cast_refuses() -> std.types.Bool {
 // Generic carrier GREEN control: the sanctioned in-module mint, called
 // cross-module, must stay zero-diagnostics.
 // ---------------------------------------------------------------------------
-data f9_generic_green_source: std.types.String = "module probe_f9_generic_green\nimport std.interval { degenerate_interval }\nfn legal() -> Int { 1 }\nfn legal_mint() -> Bool {\n  let iv = degenerate_interval(point: 5)\n  true\n}\n"
+data f9_generic_green_source: String = "module probe_f9_generic_green\nimport std.interval { degenerate_interval }\nfn legal() -> Int { 1 }\nfn legal_mint() -> Bool {\n  let iv = degenerate_interval(point: 5)\n  true\n}\n"
 
 test fn f9_generic_carrier_green_control_clean() -> std.types.Bool {
   violation_count(source: f9_generic_green_source, wanted: "SoleConstructorViolation") == 0
@@ -124,21 +124,21 @@ test fn f9_generic_carrier_green_control_clean() -> std.types.Bool {
 // opposite declaration order, to test whether resolution of an unqualified
 // bare-name construction depends on import statement order.
 // ---------------------------------------------------------------------------
-data f10_direct_select_sealed_source: std.types.String = "module probe_f10_direct_sealed\nimport test.fixture.sole_constructor_order_probe.sealed_variant { DupShape }\nimport test.fixture.sole_constructor_order_probe.open_variant\nfn forged() -> DupShape { DupShape { tag: 999 } }\n"
+data f10_direct_select_sealed_source: String = "module probe_f10_direct_sealed\nimport test.fixture.sole_constructor_order_probe.sealed_variant { DupShape }\nimport test.fixture.sole_constructor_order_probe.open_variant\nfn forged() -> DupShape { DupShape { tag: 999 } }\n"
 
 test fn f10_direct_selected_sealed_type_refuses() -> std.types.Bool {
   violation_count(source: f10_direct_select_sealed_source, wanted: "SoleConstructorViolation") >= 1
 }
 
-data f10_direct_select_open_source: std.types.String = "module probe_f10_direct_open\nimport test.fixture.sole_constructor_order_probe.open_variant { DupShape }\nimport test.fixture.sole_constructor_order_probe.sealed_variant\nfn forged() -> DupShape { DupShape { tag: 999 } }\n"
+data f10_direct_select_open_source: String = "module probe_f10_direct_open\nimport test.fixture.sole_constructor_order_probe.open_variant { DupShape }\nimport test.fixture.sole_constructor_order_probe.sealed_variant\nfn forged() -> DupShape { DupShape { tag: 999 } }\n"
 
 test fn f10_direct_selected_open_type_is_clean() -> std.types.Bool {
   violation_count(source: f10_direct_select_open_source, wanted: "SoleConstructorViolation") == 0
 }
 
-data f10_neither_direct_ab_source: std.types.String = "module probe_f10_neither_ab\nimport test.fixture.sole_constructor_order_probe.sealed_variant\nimport test.fixture.sole_constructor_order_probe.open_variant\nfn forged() -> Bool {\n  let x = DupShape { tag: 999 }\n  true\n}\n"
+data f10_neither_direct_ab_source: String = "module probe_f10_neither_ab\nimport test.fixture.sole_constructor_order_probe.sealed_variant\nimport test.fixture.sole_constructor_order_probe.open_variant\nfn forged() -> Bool {\n  let x = DupShape { tag: 999 }\n  true\n}\n"
 
-data f10_neither_direct_ba_source: std.types.String = "module probe_f10_neither_ba\nimport test.fixture.sole_constructor_order_probe.open_variant\nimport test.fixture.sole_constructor_order_probe.sealed_variant\nfn forged() -> Bool {\n  let x = DupShape { tag: 999 }\n  true\n}\n"
+data f10_neither_direct_ba_source: String = "module probe_f10_neither_ba\nimport test.fixture.sole_constructor_order_probe.open_variant\nimport test.fixture.sole_constructor_order_probe.sealed_variant\nfn forged() -> Bool {\n  let x = DupShape { tag: 999 }\n  true\n}\n"
 
 test fn f10_neither_direct_ab_at_least_one_violation() -> std.types.Bool {
   violation_count(source: f10_neither_direct_ab_source, wanted: "SoleConstructorViolation") >= 1
@@ -156,16 +156,16 @@ test fn f10_neither_direct_order_independent() -> std.types.Bool {
 // Diagnostic (non-claim, printed value): exact integer counts behind the f10
 // battery's Bool verdicts, to distinguish CensusNotRunnable (-1) from a real
 // wrong count.
-fn f10_diag_direct_sealed_count() -> std.types.Int {
+fn f10_diag_direct_sealed_count() -> Int {
   violation_count(source: f10_direct_select_sealed_source, wanted: "SoleConstructorViolation")
 }
-fn f10_diag_direct_open_count() -> std.types.Int {
+fn f10_diag_direct_open_count() -> Int {
   violation_count(source: f10_direct_select_open_source, wanted: "SoleConstructorViolation")
 }
-fn f10_diag_neither_ab_count() -> std.types.Int {
+fn f10_diag_neither_ab_count() -> Int {
   violation_count(source: f10_neither_direct_ab_source, wanted: "SoleConstructorViolation")
 }
-fn f10_diag_neither_ba_count() -> std.types.Int {
+fn f10_diag_neither_ba_count() -> Int {
   violation_count(source: f10_neither_direct_ba_source, wanted: "SoleConstructorViolation")
 }
 
@@ -175,7 +175,7 @@ fn f10_diag_neither_ba_count() -> std.types.Int {
 // existing f9 uses Int; this instantiates a locally-declared non-Int record
 // as T, to rule out the wall holding only because prior uses were monomorphic).
 // ---------------------------------------------------------------------------
-data f11_generic_poly_second_type_source: std.types.String = "module probe_f11_generic_poly\nimport std.interval { OrderedClosedInterval }\ntype ProbeMarker { x: Int }\nfn forged() -> OrderedClosedInterval<ProbeMarker> {\n  OrderedClosedInterval { low: ProbeMarker { x: 1 }, high: ProbeMarker { x: 2 } }\n}\n"
+data f11_generic_poly_second_type_source: String = "module probe_f11_generic_poly\nimport std.interval { OrderedClosedInterval }\ntype ProbeMarker { x: Int }\nfn forged() -> OrderedClosedInterval<ProbeMarker> {\n  OrderedClosedInterval { low: ProbeMarker { x: 1 }, high: ProbeMarker { x: 2 } }\n}\n"
 
 test fn f11_generic_carrier_second_type_arg_refuses() -> std.types.Bool {
   violation_count(source: f11_generic_poly_second_type_source, wanted: "SoleConstructorViolation") >= 1
@@ -187,7 +187,7 @@ test fn f11_generic_carrier_second_type_arg_refuses() -> std.types.Bool {
 // the first occurrence encountered (a distinct order-dependence risk from
 // form 10 - order across USES of one generic type, not across type DECLS).
 // ---------------------------------------------------------------------------
-data f11b_generic_poly_both_source: std.types.String = "module probe_f11b_generic_poly_both\nimport std.interval { OrderedClosedInterval }\ntype ProbeMarker { x: Int }\nfn forged_int() -> OrderedClosedInterval<Int> { OrderedClosedInterval { low: 5, high: 1 } }\nfn forged_marker() -> OrderedClosedInterval<ProbeMarker> {\n  OrderedClosedInterval { low: ProbeMarker { x: 1 }, high: ProbeMarker { x: 2 } }\n}\n"
+data f11b_generic_poly_both_source: String = "module probe_f11b_generic_poly_both\nimport std.interval { OrderedClosedInterval }\ntype ProbeMarker { x: Int }\nfn forged_int() -> OrderedClosedInterval<Int> { OrderedClosedInterval { low: 5, high: 1 } }\nfn forged_marker() -> OrderedClosedInterval<ProbeMarker> {\n  OrderedClosedInterval { low: ProbeMarker { x: 1 }, high: ProbeMarker { x: 2 } }\n}\n"
 
 test fn f11b_generic_carrier_both_type_args_each_refuse() -> std.types.Bool {
   violation_count(source: f11b_generic_poly_both_source, wanted: "SoleConstructorViolation") >= 2
@@ -204,7 +204,7 @@ test fn f11b_generic_carrier_both_type_args_each_refuse() -> std.types.Bool {
 // still emits an IntervalReady whose invariant is violated.
 // ---------------------------------------------------------------------------
 
-fn always_true_le(a: std.types.Int, b: std.types.Int) -> std.types.Bool { true }
+fn always_true_le(a: Int, b: Int) -> std.types.Bool { true }
 
 test fn f12_caller_supplied_validator_defeats_ordering_invariant() -> std.types.Bool {
   match std.interval.closed_interval(low: 10, high: 1, le: always_true_le) {
@@ -216,7 +216,7 @@ test fn f12_caller_supplied_validator_defeats_ordering_invariant() -> std.types.
 // Green control: an honest predicate on the same reversed bounds is refused
 // by closed_interval's own logic (not by sole_constructor) - confirms f12's
 // result is about validator identity, not a broken harness.
-fn honest_le(a: std.types.Int, b: std.types.Int) -> std.types.Bool { a <= b }
+fn honest_le(a: Int, b: Int) -> std.types.Bool { a <= b }
 
 test fn f12b_honest_validator_control_refuses_reversed_bounds() -> std.types.Bool {
   match std.interval.closed_interval(low: 10, high: 1, le: honest_le) {
@@ -235,9 +235,9 @@ test fn f12b_honest_validator_control_refuses_reversed_bounds() -> std.types.Boo
 // reach the check. Fixture: test.fixture.sole_constructor_variant_probe.definer
 // declares `type SealedChoice sole_constructor = SealedA { n: Int } | SealedB { s: String }`.
 // ---------------------------------------------------------------------------
-data f13_variant_construction_source: std.types.String = "module probe_f13_variant_forge\nimport test.fixture.sole_constructor_variant_probe.definer { SealedChoice, SealedA }\nfn forged() -> SealedChoice {\n  SealedA { n: 999 }\n}\n"
+data f13_variant_construction_source: String = "module probe_f13_variant_forge\nimport test.fixture.sole_constructor_variant_probe.definer { SealedChoice, SealedA }\nfn forged() -> SealedChoice {\n  SealedA { n: 999 }\n}\n"
 
-fn f13_diag_variant_count() -> std.types.Int {
+fn f13_diag_variant_count() -> Int {
   violation_count(source: f13_variant_construction_source, wanted: "SoleConstructorViolation")
 }
 
@@ -250,11 +250,11 @@ test fn f13_variant_construction_refuses() -> std.types.Bool {
 // violation_count above) and reports the RAW total diagnostic count so a
 // zero SoleConstructorViolation count is read beside total row volume,
 // never in isolation.
-fn f13_diag_notrunnable_sentinel() -> std.types.Int {
+fn f13_diag_notrunnable_sentinel() -> Int {
   violation_count(source: f13_variant_construction_source, wanted: "SoleConstructorViolation")
 }
 
-fn f13_diag_total_row_count() -> std.types.Int {
+fn f13_diag_total_row_count() -> Int {
   match census_of(source: f13_variant_construction_source) {
     CensusObserved { rows: rows } => gunbc.compile_diagnostic_census.census_total_count(rows: rows)
     CensusNotRunnable { cause: _ } => 0 - 1
@@ -273,16 +273,16 @@ fn f13_diag_total_row_count() -> std.types.Int {
 // such construction path resolves at all, rather than resolving and silently
 // bypassing sole_constructor.
 // ---------------------------------------------------------------------------
-data f14_deserialize_attempt_source: std.types.String = "module probe_f14_deserialize_attempt\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\nfn forged() -> LocalValidated {\n  from_json(source: \"{ \\\"n\\\": 999 }\")\n}\n"
+data f14_deserialize_attempt_source: String = "module probe_f14_deserialize_attempt\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\nfn forged() -> LocalValidated {\n  from_json(source: \"{ \\\"n\\\": 999 }\")\n}\n"
 
-fn f14_diag_total_row_count() -> std.types.Int {
+fn f14_diag_total_row_count() -> Int {
   match census_of(source: f14_deserialize_attempt_source) {
     CensusObserved { rows: rows } => gunbc.compile_diagnostic_census.census_total_count(rows: rows)
     CensusNotRunnable { cause: _ } => 0 - 1
   }
 }
 
-fn f14_diag_sole_ctor_count() -> std.types.Int {
+fn f14_diag_sole_ctor_count() -> Int {
   violation_count(source: f14_deserialize_attempt_source, wanted: "SoleConstructorViolation")
 }
 
@@ -290,7 +290,7 @@ fn f14_diag_sole_ctor_count() -> std.types.Int {
 // Form 15: record literal in a top-level DATA-DECLARATION initializer
 // (module-scope, not inside any fn body).
 // ---------------------------------------------------------------------------
-data f15_data_init_source: std.types.String = "module probe_f15_data_init\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\ndata forged: LocalValidated = LocalValidated { n: 999 }\n"
+data f15_data_init_source: String = "module probe_f15_data_init\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\ndata forged: LocalValidated = LocalValidated { n: 999 }\n"
 
 test fn f15_record_lit_data_initializer_refuses() -> std.types.Bool {
   violation_count(source: f15_data_init_source, wanted: "SoleConstructorViolation") >= 1
@@ -300,7 +300,7 @@ test fn f15_record_lit_data_initializer_refuses() -> std.types.Bool {
 // Form 16: record literal as a MAP-LITERAL VALUE (collection-value position,
 // distinct from form 4's list-element position).
 // ---------------------------------------------------------------------------
-data f16_map_value_source: std.types.String = "module probe_f16_map_value\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\nimport std.types { Map }\ndata forged: Map<String, LocalValidated> = { \"k\": LocalValidated { n: 999 } }\n"
+data f16_map_value_source: String = "module probe_f16_map_value\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\nimport std.types { Map }\ndata forged: Map<String, LocalValidated> = { \"k\": LocalValidated { n: 999 } }\n"
 
 test fn f16_record_lit_map_value_refuses() -> std.types.Bool {
   violation_count(source: f16_map_value_source, wanted: "SoleConstructorViolation") >= 1
@@ -313,9 +313,9 @@ test fn f16_record_lit_map_value_refuses() -> std.types.Bool {
 // mint_sealed_local's admit_callers list names exactly
 // test.fixture.sole_constructor_sealed.admitted_caller admitted_mint_call.
 // ---------------------------------------------------------------------------
-data f17_unadmitted_caller_source: std.types.String = "module probe_f17_unadmitted_caller\nimport test.fixture.sole_constructor_sealed.definer { mint_sealed_local }\nfn forged() -> Int {\n  let v = mint_sealed_local(n: 999)\n  0\n}\n"
+data f17_unadmitted_caller_source: String = "module probe_f17_unadmitted_caller\nimport test.fixture.sole_constructor_sealed.definer { mint_sealed_local }\nfn forged() -> Int {\n  let v = mint_sealed_local(n: 999)\n  0\n}\n"
 
-fn f17_diag_total_row_count() -> std.types.Int {
+fn f17_diag_total_row_count() -> Int {
   match census_of(source: f17_unadmitted_caller_source) {
     CensusObserved { rows: rows } => gunbc.compile_diagnostic_census.census_total_count(rows: rows)
     CensusNotRunnable { cause: _ } => 0 - 1
@@ -338,9 +338,9 @@ test fn f17_unadmitted_caller_of_sealed_mint_refuses() -> std.types.Bool {
 // resulting census carries ZERO diagnostics of any class - the real admitted
 // call path compiles clean end to end.
 // ---------------------------------------------------------------------------
-data f18_admitted_caller_accept_source: std.types.String = "module probe_f18_admitted_caller_accept\nimport test.fixture.sole_constructor_sealed.admitted_caller { admitted_mint_call }\nfn probe() -> Int {\n  let v = admitted_mint_call(n: 1)\n  0\n}\n"
+data f18_admitted_caller_accept_source: String = "module probe_f18_admitted_caller_accept\nimport test.fixture.sole_constructor_sealed.admitted_caller { admitted_mint_call }\nfn probe() -> Int {\n  let v = admitted_mint_call(n: 1)\n  0\n}\n"
 
-fn f18_diag_total_row_count() -> std.types.Int {
+fn f18_diag_total_row_count() -> Int {
   match census_of(source: f18_admitted_caller_accept_source) {
     CensusObserved { rows: rows } => gunbc.compile_diagnostic_census.census_total_count(rows: rows)
     CensusNotRunnable { cause: _ } => 0 - 1
@@ -362,9 +362,9 @@ test fn f18_admitted_caller_accepted_clean() -> std.types.Bool {
 // test asserts the wall SHOULD fire and fails, marking the hole rather than
 // hiding it, matching f13's convention for a confirmed hole.
 // ---------------------------------------------------------------------------
-data f19_default_value_source: std.types.String = "module probe_f19_default_value\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\nfn forged(param: LocalValidated = LocalValidated { n: 999 }) -> LocalValidated {\n  param\n}\n"
+data f19_default_value_source: String = "module probe_f19_default_value\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\nfn forged(param: LocalValidated = LocalValidated { n: 999 }) -> LocalValidated {\n  param\n}\n"
 
-fn f19_diag_total_row_count() -> std.types.Int {
+fn f19_diag_total_row_count() -> Int {
   match census_of(source: f19_default_value_source) {
     CensusObserved { rows: rows } => gunbc.compile_diagnostic_census.census_total_count(rows: rows)
     CensusNotRunnable { cause: _ } => 0 - 1

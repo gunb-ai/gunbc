@@ -138,7 +138,7 @@ fn make_positive_int(value: Int, at: v2.std.diagnostic.Locus) -> v2.std.diagnost
         value: PositiveInt { refined: refined },
         diagnostics: diagnostics
       }
-    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+    Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
   }
 }
 
@@ -149,7 +149,7 @@ fn make_non_negative_int(value: Int, at: v2.std.diagnostic.Locus) -> v2.std.diag
         value: NonNegativeInt { refined: refined },
         diagnostics: diagnostics
       }
-    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+    Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
   }
 }
 
@@ -160,7 +160,7 @@ fn make_at_least_minus_one_int(value: Int, at: v2.std.diagnostic.Locus) -> v2.st
         value: AtLeastMinusOneInt { refined: refined },
         diagnostics: diagnostics
       }
-    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+    Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
   }
 }
 
@@ -171,7 +171,7 @@ fn make_at_least_minus_two_int(value: Int, at: v2.std.diagnostic.Locus) -> v2.st
         value: AtLeastMinusTwoInt { refined: refined },
         diagnostics: diagnostics
       }
-    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+    Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
   }
 }
 
@@ -182,7 +182,7 @@ fn make_exact_one_int(value: Int, at: v2.std.diagnostic.Locus) -> v2.std.diagnos
         value: ExactOneInt { refined: refined },
         diagnostics: diagnostics
       }
-    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+    Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
   }
 }
 
