@@ -8372,13 +8372,28 @@ pub fn infer_variant_constructor_call(
     name_span: Rc<SourceSpan>,
     scope: Rc<InferScope>,
 ) -> Option<Rc<InferResult>> {
-    match lookup_variant_parent_enum(scope.clone(), func_name.clone()) {
+    // A PAYLOAD-CARRYING ARM NAMED BY ITS FULL ADDRESS. The variant base this reads is
+    // keyed on the bare spelling a caller writes after importing the symbol, so
+    // `std.content_hash.Fnv1a64(payload)` misses it. That left such an arm with NO
+    // working cross-module spelling at all once import blocks were gone: bare refuses
+    // as out of scope, qualified refuses as no-such-function. Strip the qualifier and
+    // ask the base for the arm itself.
+    //
+    // This cannot hijack an unrelated declaration: it runs only where a call already
+    // failed every other resolution, and it answers None unless the last segment names
+    // a real arm of a real coproduct. A nullary arm needs no such help -- it resolves
+    // through its type -- which is why only the payload-carrying form was stranded.
+    let variant_name = match func_name.rfind('.') {
+        Some(i) => func_name[i + 1..].to_string(),
+        None => func_name.clone(),
+    };
+    match lookup_variant_parent_enum(scope.clone(), variant_name.clone()) {
         None => None,
         Some(parent_enum) => {
             let si = scope.type_env.clone().source_indices.clone();
             match lookup_type_by_name(scope.type_env.clone(), parent_enum.clone()) {
                 Some(parent_node) => {
-                    match find_child_named(parent_node.clone(), func_name.clone(), si.clone()) {
+                    match find_child_named(parent_node.clone(), variant_name.clone(), si.clone()) {
                         Some(variant_node) => {
                             if variant_has_positional_payload_shape(
                                 variant_node.clone(),
@@ -8388,7 +8403,7 @@ pub fn infer_variant_constructor_call(
                                     match call_args.clone().first().cloned() {
                                         Some(arg) => match arg_name_at(arg.clone(), si.clone()) {
                                             Some(arg_name) => {
-                                                let msg = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("positional variant constructor '".to_string(), func_name.clone()), "' does not accept named arguments (got '".to_string()), arg_name.clone()), ": ...')".to_string());
+                                                let msg = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("positional variant constructor '".to_string(), variant_name.clone()), "' does not accept named arguments (got '".to_string()), arg_name.clone()), ": ...')".to_string());
                                                 Some(Rc::new(InferResult {
                                                     typed: semantic_expr_error_node(
                                                         msg.clone(),
@@ -8410,7 +8425,7 @@ pub fn infer_variant_constructor_call(
                                                     kernel_span("0".to_string()),
                                                 );
                                                 Some(infer_record_lit(
-                                                    Some(func_name.clone()),
+                                                    Some(variant_name.clone()),
                                                     Rc::new(vec![payload_init.clone()]),
                                                     span.clone(),
                                                     name_span.clone(),
@@ -8426,7 +8441,7 @@ pub fn infer_variant_constructor_call(
                                         let arity_msg = v1_rt::concat(
                                             v1_rt::concat(
                                                 "positional variant constructor '".to_string(),
-                                                func_name.clone(),
+                                                variant_name.clone(),
                                             ),
                                             "' expects exactly one argument".to_string(),
                                         );

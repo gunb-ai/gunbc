@@ -207,7 +207,7 @@ type SourceRefContentHashStructural
 
 fn source_ref_content_hash_structural(hash: std.content_hash.ContentHash) -> SourceRefContentHashStructural {
   match hash {
-    Fnv1a64(structural) => SourceRefContentHashStructuralOk { digest: structural }
+    std.content_hash.Fnv1a64(structural) => SourceRefContentHashStructuralOk { digest: structural }
     _ => SourceRefContentHashStructuralNonFnv1a64
   }
 }

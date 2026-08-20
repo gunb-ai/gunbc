@@ -939,7 +939,7 @@ fn observe_file_sha512(path: std.types.FilePath) -> std.content_hash.Sha512Diges
 fn content_hash_sha512_hex(hash: std.content_hash.ContentHash) -> String? {
   match hash {
     Sha512Hash(digest) => Present { value: digest.hex as String }
-    Fnv1a64(_) => none
+    std.content_hash.Fnv1a64(_) => none
     Sha256Hash(_) => none
     Sha1Hash(_) => none
   }

@@ -21,9 +21,9 @@ test fn branded_list_first_content_hash_method_nonempty() -> Bool {
   match hash_list().first() {
     Present { value: h } =>
       match h {
-        Fnv1a64(left) =>
+        std.content_hash.Fnv1a64(left) =>
           match content_hash_of_value(value: "a" as std.types.NonEmptyStr) {
-            Fnv1a64(right) => content_hash_eq_structural(left: left, right: right)
+            std.content_hash.Fnv1a64(right) => content_hash_eq_structural(left: left, right: right)
             Sha256Hash(_) => false
             Sha1Hash(_) => false
             Sha512Hash(_) => false
@@ -61,9 +61,9 @@ test fn branded_list_first_content_hash_pipe_nonempty() -> Bool {
   match hash_list() |> first {
     Present { value: h } =>
       match h {
-        Fnv1a64(left) =>
+        std.content_hash.Fnv1a64(left) =>
           match content_hash_of_value(value: "a" as std.types.NonEmptyStr) {
-            Fnv1a64(right) => content_hash_eq_structural(left: left, right: right)
+            std.content_hash.Fnv1a64(right) => content_hash_eq_structural(left: left, right: right)
             Sha256Hash(_) => false
             Sha1Hash(_) => false
             Sha512Hash(_) => false

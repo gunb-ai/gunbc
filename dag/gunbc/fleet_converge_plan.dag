@@ -332,12 +332,12 @@ data fleet_converge_spark_typed_actions_wire_empty_canonical: std.types.NonEmpty
 fn fleet_converge_spark_typed_actions_wire_structural_hash(wire: String) -> std.content_hash.Fnv1a64Structural? {
   if wire == "" {
     match std.content_hash.content_hash_of_value(value: fleet_converge_spark_typed_actions_wire_empty_canonical) {
-      Fnv1a64(structural) => Present { value: structural }
+      std.content_hash.Fnv1a64(structural) => Present { value: structural }
       _ => Absent
     }
   } else {
     match std.content_hash.content_hash_of_value(value: wire as std.types.NonEmptyStr) {
-      Fnv1a64(structural) => Present { value: structural }
+      std.content_hash.Fnv1a64(structural) => Present { value: structural }
       _ => Absent
     }
   }
@@ -361,14 +361,14 @@ fn fleet_converge_plan_spark_typed_actions_consistency_admits(
 
 fn fleet_converge_plan_body_structural_hash(plan_body: String) -> std.content_hash.Fnv1a64Structural? {
   match std.content_hash.content_hash_of_value(value: plan_body as std.types.NonEmptyStr) {
-    Fnv1a64(structural) => Present { value: structural }
+    std.content_hash.Fnv1a64(structural) => Present { value: structural }
     _ => Absent
   }
 }
 
 fn fleet_converge_plan_apply_shell_structural_hash(apply_shell: String) -> std.content_hash.Fnv1a64Structural? {
   match std.content_hash.content_hash_of_value(value: apply_shell as std.types.NonEmptyStr) {
-    Fnv1a64(structural) => Present { value: structural }
+    std.content_hash.Fnv1a64(structural) => Present { value: structural }
     _ => Absent
   }
 }
@@ -668,7 +668,7 @@ fn fleet_converge_plan_artifact(
   )
   let apply_shell = fleet_converge_apply_shell(timer_plan: timer_plan)
   match std.content_hash.content_hash_of_value(value: baseline as std.types.NonEmptyStr) {
-    Fnv1a64(structural) =>
+    std.content_hash.Fnv1a64(structural) =>
       Present {
         value: FleetConvergePlanArtifact {
           subject: subject,
@@ -714,7 +714,7 @@ fn fleet_converge_observed_baseline_matches(
     observed_caps: observed_caps,
   )
   match std.content_hash.content_hash_of_value(value: baseline as std.types.NonEmptyStr) {
-    Fnv1a64(structural) => structural.digest == observed_baseline_hex
+    std.content_hash.Fnv1a64(structural) => structural.digest == observed_baseline_hex
     _ => false
   }
 }

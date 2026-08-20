@@ -457,7 +457,7 @@ fn wire_fnv1a64_content_hash_hex(hex: std.content_hash.Fnv1a64StructuralDigestHe
 
 fn admit_fnv1a64_structural(hash: std.content_hash.ContentHash) -> Fnv1a64StructuralAdmission {
   match hash {
-    Fnv1a64(s) => Fnv1a64StructuralAdmitted { digest: s }
+    std.content_hash.Fnv1a64(s) => Fnv1a64StructuralAdmitted { digest: s }
     Sha256Hash(_) => CrossFamilyContentHashRefused { family: Sha256Family }
     Sha1Hash(_) => CrossFamilyContentHashRefused { family: Sha1Family }
     Sha512Hash(_) => CrossFamilyContentHashRefused { family: Sha512Family }

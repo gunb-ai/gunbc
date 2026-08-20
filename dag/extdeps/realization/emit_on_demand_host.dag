@@ -58,7 +58,7 @@ fn emit_host_structural_identity_outcome(
   identity: std.content_hash.ContentHash,
 ) -> EmitHostStructuralIdentityOutcome {
   match identity {
-    Fnv1a64(s) => EmitHostStructuralIdentityPresent { structural: s }
+    std.content_hash.Fnv1a64(s) => EmitHostStructuralIdentityPresent { structural: s }
     Sha256Hash(_) =>
       EmitHostStructuralIdentityRefusedCrypto {
         component: component,

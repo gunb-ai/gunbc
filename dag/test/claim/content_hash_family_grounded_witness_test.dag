@@ -71,7 +71,7 @@ test fn sha1_hex_digest_refuses_invalid_hex() -> Bool {
 
 test fn structural_family_eq_is_writable() -> Bool {
   match structural_a {
-    Fnv1a64(a) => content_hash_eq_structural(left: a, right: a)
+    std.content_hash.Fnv1a64(a) => content_hash_eq_structural(left: a, right: a)
     Sha256Hash(_) => false
     Sha1Hash(_) => false
     Sha512Hash(_) => false
@@ -80,9 +80,9 @@ test fn structural_family_eq_is_writable() -> Bool {
 
 test fn structural_family_eq_distinguishes() -> Bool {
   match structural_a {
-    Fnv1a64(a) =>
+    std.content_hash.Fnv1a64(a) =>
       match structural_b {
-        Fnv1a64(b) => !content_hash_eq_structural(left: a, right: b)
+        std.content_hash.Fnv1a64(b) => !content_hash_eq_structural(left: a, right: b)
         Sha256Hash(_) => false
         Sha1Hash(_) => false
         Sha512Hash(_) => false
@@ -158,11 +158,11 @@ test fn digest_to_content_hash_bridge_accepts_valid_sha256() -> Bool {
         Sha256Hash(d1) =>
           match as_content_hash_cryptographic(digest: row) {
             Sha256Hash(d2) => content_hash_eq_cryptographic(left: d1, right: d2)
-            Fnv1a64(_) => false
+            std.content_hash.Fnv1a64(_) => false
             Sha1Hash(_) => false
             Sha512Hash(_) => false
           }
-        Fnv1a64(_) => false
+        std.content_hash.Fnv1a64(_) => false
         Sha1Hash(_) => false
         Sha512Hash(_) => false
       }
@@ -322,7 +322,7 @@ test fn git_sha1_object_id_maps_to_sha1_family() -> Bool {
             hex: "4b825dc642cb6eb9a060e54bf8d69288fbee4904" as std.content_hash.Sha1DigestHex,
           },
         )
-        Fnv1a64(_) => false
+        std.content_hash.Fnv1a64(_) => false
         Sha256Hash(_) => false
         Sha512Hash(_) => false
       }

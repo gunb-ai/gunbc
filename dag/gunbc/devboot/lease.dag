@@ -35,7 +35,7 @@ data produced_ref_namespace: String = "refs/devboot/produced/"
 // Dropping the family and keeping only the hex would let two hashes from different families produce the same ref name whenever their hex happened to coincide, which is exactly the cross-family collapse the content-hash family grounding exists to prevent. The token separates family from digest with a hyphen, so the ref namespace inherits the same cross-family distinctness the type carries.
 fn content_hash_ref_token(hash: std.content_hash.ContentHash) -> String {
   match hash {
-    Fnv1a64(s) => join(["fnv1a64-", s.digest as String], "")
+    std.content_hash.Fnv1a64(s) => join(["fnv1a64-", s.digest as String], "")
     Sha256Hash(d) => join(["sha256-", d.hex as String], "")
     Sha1Hash(d) => join(["sha1-", d.hex as String], "")
     Sha512Hash(d) => join(["sha512-", d.hex as String], "")
