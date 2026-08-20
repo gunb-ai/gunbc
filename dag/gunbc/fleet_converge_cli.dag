@@ -47,7 +47,7 @@ type ConvergeCliReceipt {
   host: String
   applied: Int
   drifted: Int
-  verdict: ConvergeVerdict
+  verdict: gunbc.host_converge.ConvergeVerdict
   reason: ConvergeCliRefusalCause?
 }
 
@@ -570,7 +570,7 @@ fn converge_cli_publish(out: ConvergeCliOutput, resolved: String, revision_line:
 // ConvergeVerdict enum that knob-only convergence uses and would never emit. That the enum
 // cannot carry this without burdening an unrelated consumer is itself the dual-representation
 // smell one rung up (the enum doing two jobs) — named here, not fixed here.
-fn converge_cli_revision_verdict(standing: gunbc.fleet_desired_observe.FleetRevisionStanding) -> ConvergeVerdict {
+fn converge_cli_revision_verdict(standing: gunbc.fleet_desired_observe.FleetRevisionStanding) -> gunbc.host_converge.ConvergeVerdict {
   match standing {
     RevisionConverged { revision: _ } => VerdictConverged
     RevisionDrifted { desired: _, local: _ } => Drifted

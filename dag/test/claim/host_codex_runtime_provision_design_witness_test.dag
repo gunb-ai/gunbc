@@ -1,6 +1,6 @@
 module test.claim.host_codex_runtime_provision_design
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn design_witness_realize_carries_scaffold() -> Bool {
   match gunbc.host_codex_runtime_provision.host_codex_runtime_provision_realize_scaffold {

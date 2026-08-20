@@ -33,7 +33,7 @@ fn systemd_run_transient_local(unit: std.types.NonEmptyStr, command_argv: std.ty
   systemd_run_transient_outcome_from_result(success: result.success, stdout: result.stdout, stderr: result.stderr)
 }
 
-fn systemd_run_transient_outcome_from_exec(outcome: TypedArgvExecOutcome) -> SystemdRunTransientOutcome {
+fn systemd_run_transient_outcome_from_exec(outcome: gunbc.typed_argv_exec.TypedArgvExecOutcome) -> SystemdRunTransientOutcome {
   match outcome {
     TypedArgvExecConverged { result: r } =>
       systemd_run_transient_outcome_from_result(success: r.success, stdout: r.stdout, stderr: r.stderr)

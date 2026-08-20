@@ -30,7 +30,7 @@ fn systemctl_stop_local(unit: std.types.NonEmptyStr) -> SystemctlStopOutcome {
   systemctl_stop_outcome_from_result(success: result.success, stdout: result.stdout, stderr: result.stderr)
 }
 
-fn systemctl_stop_outcome_from_exec(outcome: TypedArgvExecOutcome) -> SystemctlStopOutcome {
+fn systemctl_stop_outcome_from_exec(outcome: gunbc.typed_argv_exec.TypedArgvExecOutcome) -> SystemctlStopOutcome {
   match outcome {
     TypedArgvExecConverged { result: r } =>
       systemctl_stop_outcome_from_result(success: r.success, stdout: r.stdout, stderr: r.stderr)

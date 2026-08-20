@@ -30,7 +30,7 @@ type ResolvedHostEffectCell =
   | EffectivePrincipalReadOnHost { node: gunbc.fleet_intent.ComputeHost, read: extdeps.access.posix_effective_principal.EffectivePosixPrincipalRead }
   | SudoNopasswdExecuteProbeOnHost { node: gunbc.fleet_intent.ComputeHost, probe: extdeps.sudo.nopasswd_execute_probe.SudoNopasswdExecuteProbeShape }
   | SudoNopasswdGrantListProbeOnHost { node: gunbc.fleet_intent.ComputeHost, probe: extdeps.sudo.nopasswd_execute_probe.SudoNopasswdGrantListProbeShape }
-  | LiveDeployApplyOnHost { node: gunbc.fleet_intent.ComputeHost, spec: gunbc.live_deploy.spec.DeploymentSpec, candidate: CandidateRelease }
+  | LiveDeployApplyOnHost { node: gunbc.fleet_intent.ComputeHost, spec: gunbc.live_deploy.spec.DeploymentSpec, candidate: gunbc.live_deploy.candidate.CandidateRelease }
   | LiveDeployRetractOnHost { node: gunbc.fleet_intent.ComputeHost, spec: gunbc.live_deploy.spec.DeploymentSpec }
   | LiveDeployEnsureDependencyOnHost { node: gunbc.fleet_intent.ComputeHost, dep: gunbc.live_deploy.spec.DeploymentDependencyStep }
   | LiveDeployDigestReadbackOnHost { node: gunbc.fleet_intent.ComputeHost, port: Int }
@@ -2000,7 +2000,7 @@ fn live_deploy_apply_candidate_locus_refusal(transport: gunbc.host_effect.HostEf
 
 fn realize_live_deploy_apply_on_host(
   spec: gunbc.live_deploy.spec.DeploymentSpec,
-  candidate: CandidateRelease,
+  candidate: gunbc.live_deploy.candidate.CandidateRelease,
   transport: gunbc.host_effect.HostEffectTransport,
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {

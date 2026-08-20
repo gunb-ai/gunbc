@@ -118,21 +118,21 @@ test fn nbd_proxy_serve_host_role_is_nbd_server() -> Bool {
 // gunbc.systemctl_stop_run) retired the WitnessBin systemd-run/systemctl scaffolding. These witnesses
 // exercise both halves.
 
-fn nbd_proxy_observe_port_test_scope() -> ProcessPortScope {
-  ProcessPortScope {
+fn nbd_proxy_observe_port_test_scope() -> gunbc.session_lease.ProcessPortScope {
+  gunbc.session_lease.ProcessPortScope {
     listen_port: 10809,
-    expected_owner_label: "gunbc-nbd-proxy" as NonEmptyStr,
-    expected_process_fingerprint: "gunbc-nbd-proxy" as NonEmptyStr,
+    expected_owner_label: "gunbc-nbd-proxy" as std.types.NonEmptyStr,
+    expected_process_fingerprint: "gunbc-nbd-proxy" as std.types.NonEmptyStr,
   }
 }
 
 test fn nbd_proxy_observe_port_active_capture_yields_port_observed() -> Bool {
   let scope = nbd_proxy_observe_port_test_scope()
-  let unit = "nbd-proxy-srv3-nbd-proxy-10809-ws" as NonEmptyStr
+  let unit = "nbd-proxy-srv3-nbd-proxy-10809-ws" as std.types.NonEmptyStr
   match host_effect_nbd_proxy_serve_observation_from_is_active_capture(
     scope: scope,
     websocat_unit: unit,
-    capture: UnitIsActiveCaptured { state: "active" as NonEmptyStr, active: true },
+    capture: gunbc.systemctl_is_active_read.UnitIsActiveCaptured { state: "active" as std.types.NonEmptyStr, active: true },
   ) {
     PortObserved { observed_port: port, pid: p, cmdline: c, process_fingerprint: fp } =>
       port == scope.listen_port
@@ -145,11 +145,11 @@ test fn nbd_proxy_observe_port_active_capture_yields_port_observed() -> Bool {
 
 test fn nbd_proxy_observe_port_inactive_capture_yields_port_absent() -> Bool {
   let scope = nbd_proxy_observe_port_test_scope()
-  let unit = "nbd-proxy-srv3-nbd-proxy-10809-ws" as NonEmptyStr
+  let unit = "nbd-proxy-srv3-nbd-proxy-10809-ws" as std.types.NonEmptyStr
   match host_effect_nbd_proxy_serve_observation_from_is_active_capture(
     scope: scope,
     websocat_unit: unit,
-    capture: UnitIsActiveCaptured { state: "inactive" as NonEmptyStr, active: false },
+    capture: gunbc.systemctl_is_active_read.UnitIsActiveCaptured { state: "inactive" as std.types.NonEmptyStr, active: false },
   ) {
     PortAbsent => true
     _ => false
@@ -162,11 +162,11 @@ test fn nbd_proxy_observe_port_inactive_capture_yields_port_absent() -> Bool {
 // collapsing them hides a systematically-broken read-back behind a plausible-looking answer.
 test fn nbd_proxy_observe_port_capture_refusal_yields_port_observation_refused_not_answer() -> Bool {
   let scope = nbd_proxy_observe_port_test_scope()
-  let unit = "nbd-proxy-srv3-nbd-proxy-10809-ws" as NonEmptyStr
+  let unit = "nbd-proxy-srv3-nbd-proxy-10809-ws" as std.types.NonEmptyStr
   match host_effect_nbd_proxy_serve_observation_from_is_active_capture(
     scope: scope,
     websocat_unit: unit,
-    capture: UnitIsActiveCaptureRefused { reason: "typed argv shell-safe refusal" },
+    capture: gunbc.systemctl_is_active_read.UnitIsActiveCaptureRefused { reason: "typed argv shell-safe refusal" },
   ) {
     PortObservationRefused { reason: why } => (why as String) == "typed argv shell-safe refusal"
     PortAbsent => false
@@ -184,7 +184,7 @@ test fn nbd_proxy_observe_port_capture_refusal_yields_port_observation_refused_n
 
 test fn nbd_proxy_observe_port_local_shell_is_active_active_wires_through() -> Bool {
   let scope = nbd_proxy_observe_port_test_scope()
-  let unit = "nbd-proxy-srv3-nbd-proxy-10809-ws" as NonEmptyStr
+  let unit = "nbd-proxy-srv3-nbd-proxy-10809-ws" as std.types.NonEmptyStr
   match host_effect_nbd_proxy_serve_observe_port(scope: scope, transport: LocalShell, websocat_unit: unit) {
     PortObserved { observed_port: port, pid: _, cmdline: _, process_fingerprint: fp } =>
       port == scope.listen_port && fp == scope.expected_process_fingerprint
@@ -194,15 +194,15 @@ test fn nbd_proxy_observe_port_local_shell_is_active_active_wires_through() -> B
 
 test fn witness_systemd_run_transient_operation_argv_matches_authority() -> Bool {
   systemd_run_transient_operation_argv_matches_authority(
-    unit: "nbd-proxy-srv3-nbd-proxy-10809" as NonEmptyStr,
+    unit: "nbd-proxy-srv3-nbd-proxy-10809" as std.types.NonEmptyStr,
     command_argv: ["nbdkit", "-p", "10809", "file", "/var/lib/gunbc/artifacts/x.iso"],
   )
 }
 
 test fn witness_systemctl_stop_operation_argv_matches_authority() -> Bool {
-  systemctl_stop_operation_argv_matches_authority(unit: "nbd-proxy-srv3-nbd-proxy-10809" as NonEmptyStr)
+  systemctl_stop_operation_argv_matches_authority(unit: "nbd-proxy-srv3-nbd-proxy-10809" as std.types.NonEmptyStr)
 }
 
 test fn witness_systemctl_is_active_operation_argv_matches_authority() -> Bool {
-  systemctl_is_active_operation_argv_matches_authority(unit: "nbd-proxy-srv3-nbd-proxy-10809-ws" as NonEmptyStr)
+  systemctl_is_active_operation_argv_matches_authority(unit: "nbd-proxy-srv3-nbd-proxy-10809-ws" as std.types.NonEmptyStr)
 }

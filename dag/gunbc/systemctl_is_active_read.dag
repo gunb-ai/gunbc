@@ -31,7 +31,7 @@ fn systemctl_is_active_read_local(unit: std.types.NonEmptyStr) -> UnitIsActiveCa
   unit_is_active_capture_from_result(state: result.state, active: result.active)
 }
 
-fn unit_is_active_capture_from_outcome(outcome: TypedArgvExecOutcome) -> UnitIsActiveCapture {
+fn unit_is_active_capture_from_outcome(outcome: gunbc.typed_argv_exec.TypedArgvExecOutcome) -> UnitIsActiveCapture {
   match outcome {
     TypedArgvExecConverged { result: r } =>
       unit_is_active_capture_from_result(state: r.stdout, active: r.success)

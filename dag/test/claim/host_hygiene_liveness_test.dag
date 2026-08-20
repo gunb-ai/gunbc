@@ -1,21 +1,21 @@
 module test.claim.host_hygiene_liveness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data liveness_test_bound: Second = second(1800)
+data liveness_test_bound: std.measure.Second = second(1800)
 
-data liveness_test_fresh_slot: SlotListeningObservation = ListeningObserved {
-  unit: "actions-runner@srv1-01.service" as NonEmptyStr,
+data liveness_test_fresh_slot: gunbc.host_hygiene_liveness.SlotListeningObservation = gunbc.host_hygiene_liveness.ListeningObserved {
+  unit: "actions-runner@srv1-01.service" as std.types.NonEmptyStr,
   age: second(60),
 }
 
-data liveness_test_stale_slot: SlotListeningObservation = ListeningObserved {
-  unit: "actions-runner@srv1-02.service" as NonEmptyStr,
+data liveness_test_stale_slot: gunbc.host_hygiene_liveness.SlotListeningObservation = gunbc.host_hygiene_liveness.ListeningObserved {
+  unit: "actions-runner@srv1-02.service" as std.types.NonEmptyStr,
   age: second(9000),
 }
 
-data liveness_test_never_seen_slot: SlotListeningObservation = ListeningNeverSeen {
-  unit: "actions-runner@srv1-04.service" as NonEmptyStr,
+data liveness_test_never_seen_slot: gunbc.host_hygiene_liveness.SlotListeningObservation = gunbc.host_hygiene_liveness.ListeningNeverSeen {
+  unit: "actions-runner@srv1-04.service" as std.types.NonEmptyStr,
 }
 
 test fn fresh_listener_within_bound_is_healthy() -> Bool {
@@ -117,15 +117,15 @@ test fn typed_liveness_epoch_field_strips_fractional_part_like_the_deleted_scrip
 }
 
 test fn typed_liveness_age_refuses_when_journal_timestamp_is_in_the_future() -> Bool {
-  match gunbc.host_hygiene_liveness_observe.host_hygiene_slot_listening_age(unit: "actions-runner@srv1-09.service" as NonEmptyStr, last_epoch_secs: 100, now_epoch_secs: 50) {
+  match gunbc.host_hygiene_liveness_observe.host_hygiene_slot_listening_age(unit: "actions-runner@srv1-09.service" as std.types.NonEmptyStr, last_epoch_secs: 100, now_epoch_secs: 50) {
     SlotListeningReadRefused { unit: _, cause: _ } => true
     SlotListeningRead { observation: _ } => false
   }
 }
 
 test fn typed_liveness_reads_listening_for_jobs_line_via_mocked_journal() -> Bool {
-  match gunbc.host_hygiene_liveness_observe.host_hygiene_observe_slot_listening(unit: "actions-runner@srv1-01.service" as NonEmptyStr, now_epoch_secs: 1734000060) {
-    SlotListeningRead { observation: ListeningObserved { unit: _, age: a } } => a == second(60)
+  match gunbc.host_hygiene_liveness_observe.host_hygiene_observe_slot_listening(unit: "actions-runner@srv1-01.service" as std.types.NonEmptyStr, now_epoch_secs: 1734000060) {
+    SlotListeningRead { observation: gunbc.host_hygiene_liveness.ListeningObserved { unit: _, age: a } } => a == second(60)
     _ => false
   }
 }

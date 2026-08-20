@@ -45,7 +45,7 @@ fn systemctl_list_units_active_services(instance_glob: std.types.NonEmptyStr) ->
 // operation, called with a different `state` binding, not a new op.
 data systemctl_list_units_all_states: String = "active,inactive,failed"
 
-fn systemctl_list_units_all_states_local(instance_glob: NonEmptyStr) -> String? {
+fn systemctl_list_units_all_states_local(instance_glob: std.types.NonEmptyStr) -> String? {
   let result = systemd.Systemctl.ListUnits(pattern: instance_glob, state: systemctl_list_units_all_states)
   if result.success {
     Present { value: result.stdout }
@@ -54,7 +54,7 @@ fn systemctl_list_units_all_states_local(instance_glob: NonEmptyStr) -> String? 
   }
 }
 
-fn systemctl_list_units_all_states(instance_glob: NonEmptyStr) -> List<NonEmptyStr>? {
+fn systemctl_list_units_all_states(instance_glob: std.types.NonEmptyStr) -> List<std.types.NonEmptyStr>? {
   match systemctl_list_units_all_states_local(instance_glob: instance_glob) {
     Present { value: stdout } =>
       let trimmed = trim(stdout)
