@@ -19,15 +19,14 @@ import gunbc.fleet_intent {
   cost_account_from_performance_receipts,
   performance_receipts_total_time,
 }
-import std.verification { NanosecondDuration, nanosecond_duration, nanosecond_duration_count }
-import std.measure { ByteSize, byte_size, byte_size_count }
+import std.measure { ByteSize, byte_size, byte_size_count, Nanosecond, nanosecond, nanosecond_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data sample_subject: ContentHash = content_hash_of_value(value: "witness-subject-realization-measurement-keystone")
 data sample_work_shape: WorkUnitId = "witness:realization_measurement_keystone"
-data sample_wall_time: NanosecondDuration = nanosecond_duration(count: 5000000)
+data sample_wall_time: Nanosecond = nanosecond(count: 5000000)
 data sample_space_a: ByteSize = byte_size(count: 1024)
 data sample_space_b: ByteSize = byte_size(count: 2048)
 
@@ -51,8 +50,8 @@ fn witness_measured_receipt_rollup_uses_lens() -> Bool {
   )
   let total = cost_account_from_performance_receipts(receipts: [receipt])
   let rolled = cost_account_time_count(account: total)
-  let observed = nanosecond_duration_count(
-    d: performance_receipts_total_time(receipts: [receipt])
+  let observed = nanosecond_count(
+    n: performance_receipts_total_time(receipts: [receipt])
   )
   match total.basis {
     Measured => rolled == observed
