@@ -1,0 +1,39 @@
+name: fleet-desired
+on:
+  workflow_run:
+    workflows: [witnesses]
+    types: [completed]
+concurrency:
+  group: gunbc-fleet-desired-admission
+jobs:
+  admit:
+    runs-on: [self-hosted, linux, arm64, srv1]
+    timeout-minutes: 60
+    if: github.event.workflow_run.head_branch == 'main'
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Build the admission binary
+        run: |
+          cargo build --release -p v1-compiler --bin gunbc
+      - name: Stage the floor run event payload
+        run: |
+          set -eu
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          mkdir -p "$ROOT/target"
+          rm -f "$ROOT/target/fleet-desired-authorized-push.sh"
+          cp "$GITHUB_EVENT_PATH" "$ROOT/target/fleet-desired-admission-event.json"
+      - name: Decide whether the floor admits this revision
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root dag --source-root src/v2 --entry dag/gunbc/fleet_desired_admission.dag --function admit_fleet_desired_from_floor_event_wet
+      - name: Execute the authorized fleet-desired advance
+        run: |
+          set -eu
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          test -s "$ROOT/target/fleet-desired-authorized-push.sh"
+          sh "$ROOT/target/fleet-desired-authorized-push.sh"
