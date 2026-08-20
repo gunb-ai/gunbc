@@ -14,7 +14,13 @@ members = [
     # END generated stage0 crate members
     "src/v1/tests",
     # Controlled fixture for the behavioral receipt's own arms. Hand-authored, never emitted.
-    "src/v1/receipt_fixture",
+    #
+    # OUTSIDE src/v1 DELIBERATELY. `regen_source_roots()` seeds EVERY .dag under src/v1 into the
+    # stage0 compile closure, so an authority placed there is compiled and emitted and must then
+    # have a committed mirror. This fixture must never be emitted -- the whole point is that its
+    # input and its expected outcome are independently authored -- so it cannot live under a root
+    # that means "compile me".
+    "fixtures/receipt_fixture",
 ]
 
 [workspace.metadata]

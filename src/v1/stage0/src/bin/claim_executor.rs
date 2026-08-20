@@ -19698,7 +19698,7 @@ fn run_behavioral_receipt_census(source_roots: &[String]) -> Result<ExitCode, Ex
 /// discriminating RED and the positive control REMAIN ENROLLED as the executing evidence that the
 /// rung stays real.
 ///
-/// Run against a CONTROLLED FIXTURE (`src/v1/receipt_fixture`), never against the live corpus.
+/// Run against a CONTROLLED FIXTURE (`fixtures/receipt_fixture`), never against the live corpus.
 /// The fixture independently authors its own input and its own expected outcome, which is what
 /// DESIGN §5 requires of an oracle -- a measurement copied from the current tree is not one. It
 /// also means this control cannot be satisfied by a tree in which nothing happens to have changed.
@@ -19710,7 +19710,11 @@ fn run_behavioral_receipt_census(source_roots: &[String]) -> Result<ExitCode, Ex
 /// report a false green about them, so it does not speak about them at all.
 fn behavioral_receipt_selftest(source_roots: &[String]) -> Result<bool, String> {
     let workspace = v1_compiler::cli_run::workspace_root();
-    let fixture = workspace.join("src/v1/receipt_fixture");
+    // NOT under src/v1: regen seeds every .dag there into the stage0 compile closure, and this
+    // authority must never be emitted. Measured, not assumed -- placing it there made the emit
+    // produce receipt_fixture.rs with no committed mirror, and required-regen refused the whole
+    // surface as a population mismatch.
+    let fixture = workspace.join("fixtures/receipt_fixture");
     let module_path = "receipt.fixture";
     let alias = "v1_receipt_fixture";
 
