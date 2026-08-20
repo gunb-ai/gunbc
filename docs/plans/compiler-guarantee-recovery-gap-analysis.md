@@ -881,6 +881,36 @@ than argued.
    ladder-probe-corpus class/path identities, at which point the Evidence cells name the
    executing probe the way the parse-separator row already names `tidy-deer-730`'s.
 
+**Rows 11–15 are one class, and the class is the finding.** They were opened separately
+   over one night's auditing and read as four unrelated defects until the fourth arrived; what
+   they share is not a subsystem but a *property*. Each is a diagnostic channel that **reports
+   something other than what it appears to report**, and in every case the misreport is silent
+   and plausible — there is no arm, no count, and no shape difference between the true output
+   and the false one. A `Bool` that fired for one of three reasons looks exactly like a `Bool`
+   that fired for the reason you assumed; a byte offset rendered `file:29073-29163` looks
+   exactly like a line range; a fixture emptied of its subject passes exactly like one that
+   still carries it; a filter keyed on location-presence reports a population exactly like one
+   that reports the whole. **Why the family matters more than the rows:** these are the channel
+   by which every *other* guarantee in this document is observed, so a defect here is not one
+   more error class — it is a discount applied to the evidence for all of them, and it applies
+   silently. The §4b obligation to derive a rung from executed measurement assumes the
+   measurement channel is faithful; where it is not, a derived rung is as transcribed as a
+   stored one. **One member differs in kind and the distinction is load-bearing.** Rows 11–13
+   *degrade* information — the channel is under-informative, and a careful reader who knows the
+   defect can compensate. Row 15 *inverts the selection*: it reports exactly the rows nobody can
+   act on and conceals exactly the rows carrying a file and byte span, so it is actively
+   anti-correlated with usefulness rather than merely lossy. A reader cannot out-think that by
+   being careful — the receipt is `proud-crane-845`'s no-tail conclusion, correct on the data
+   the instrument showed and wrong about the corpus, because the tail is precisely what the
+   instrument hid. **The standing rule this family produces** (`royal-hawk-392`, generalizing a
+   weaker rule that raw lines beat a summary): *raw-not-summary is necessary and not sufficient,
+   because rawness is relative to the instrument that emitted the lines.* A summary visibly
+   collapses codes into categories someone chose; raw output carries the same selection
+   invisibly, precisely because rawness reads as absence of processing. **Ceiling and trigger
+   are per-row below**; what the class adds is that a repair to any one of them leaves the
+   property intact in the others, so they should be prioritized as a channel-fidelity program
+   rather than picked off by whoever trips over one.
+
 11. **The emit-check oracle collapses three arms into one `Bool`** (opened 2026-08-19;
    measured by `swift-moth-294` reading `cli_run.rs` `compile_dag_rust_emit_check_uncached`).
    The function returns `false` from three structurally distinct arms — hard diagnostics
@@ -1069,15 +1099,40 @@ than argued.
    `"C"` as a complete literal. That is the detector for the 46-of-51 class and nobody writes it
    by default.
 
-**These three classes are one class, and it is worth naming as such** (items 11 and 12, plus
-the ~48 unlocated synthetic `expected Product(NonEmptyStr), got Primitive(String)` mismatches
-opened against #8544). One diagnostic will not say WHY, one will not say WHERE, and one says
-where and is WRONG — three failure modes of the single channel whose only function is to be
-believed. The third is the worst: the first two fail loudly enough to send a reader looking
-elsewhere, while the third sends them looking *confidently* in the wrong place, which costs
-more than silence. Each needs a row whatever happens to its current instances, because fixing
-the instances removes instances and leaves the reporting defect intact for the next cause —
-which will be rarer, and equally untraceable.
+15. **The diagnostic reporting filter is INVERTED: it emits the unactionable rows and
+   suppresses the located ones** (opened 2026-08-20; measured by `stern-tern-636`, relayed by
+   `royal-hawk-392`, second run by `stern-tern-636` from a different entry byte-identical except
+   the header). Counting at diagnostic **construction** rather than at **report** splits one
+   population three ways: **72 constructed · 46 reported · 26 hidden**, where the reported set is
+   *exactly* the rows whose `file` field is the `<synthetic>` sentinel and the hidden set is
+   *exactly* the rows carrying a real file and a byte span. The selection predicate is
+   location-presence and nothing else. **Harm:** the channel spends the reader's entire attention
+   on the half nobody can act on and conceals the half that carries offsets — so all five type-pair
+   shapes other than `NonEmptyStr <- String` (including two *refinement-to-refinement* pairs) are
+   invisible in the reported output, across five files that never appear in it. This is the one
+   member of the class above that **inverts** rather than degrades: a degraded channel is
+   under-informative and a careful reader can compensate; an inverted one is anti-correlated with
+   usefulness and cannot be out-thought. **Receipt that it cannot:** `proud-crane-845` concluded
+   there was no tail and retracted it — the conclusion was correct on the data the instrument
+   showed, and wrong about the corpus, because the tail is precisely what the instrument hides.
+   **Provenance, carried deliberately:** the `<synthetic>` sentinel is verified in tree
+   (`src/v1/00_core.dag` constructs `SourceSpan { file: "<synthetic>", .. }`), so the predicate is
+   keyed on a genuine marker rather than on absent text; the 72/46/26 counts are **not** verified
+   here — they require the regen path the mirror hold forbids, and rest on a construction-site
+   count plus one independent corpus-wide control. Anyone repeating the split downstream carries
+   that provenance with it. **Attribution is open and its test is designed** (`swift-moth-294`):
+   the five diagnosed files are **byte-identical by blob hash** from census pin `90b1e4e7ff` to
+   main across 27 commits, with `04_infer.dag` and its mirror as controls that *do* differ — so
+   the subjects are invariant and any diagnostic difference across SHAs is attributable entirely
+   to compiler behaviour, the source-changed confound eliminated by construction rather than
+   bounded by judgement. The test is **three-armed, not two**: pin · `76e96333af` (#8579 hardcode
+   live) · main — because a two-point test cannot distinguish *pre-existing* from *suppressed by
+   #8579 and now resurfacing*, and suppression is precisely what a fail-open hardcode produces.
+   **Ceiling:** structurally impossible — a diagnostic whose location is absent is a distinct
+   state from one whose location is present, and a channel that cannot silently drop either has
+   no filter to invert. **Next trigger:** the report path stops predicating on location-presence
+   and carries `<synthetic>` as a typed span variant rather than a sentinel string, so an
+   unlocated diagnostic is *reported as unlocated* instead of being the only thing reported.
 
 
 ## 12. Proposed sequencing (reconciled with the independent review; for operator sign-off)
