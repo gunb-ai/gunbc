@@ -18344,6 +18344,12 @@ enum DagTypeDecl {
     ClosedNullaryEnum { variants: Vec<String> },
     /// `type DominanceTally { saw_better: Bool, saw_worse: Bool }` — a record over named fields.
     Record { fields: Vec<(String, String)> },
+    /// A closed coproduct whose variants carry payloads. NOT enumerable here — each payload needs
+    /// its own domain — but recorded as its own kind rather than left unparsed, because the two
+    /// produce the same refusal COUNT and completely different refusal MEANINGS. Reporting "not a
+    /// closed type declared by this authority" about a type that is declared and IS closed sends
+    /// the reader to close something already closed.
+    PayloadCoproduct { variant_count: usize },
 }
 
 /// Parse one `.dag` source through the GRAMMAR-OWNED parser and return its module node.
@@ -18380,8 +18386,8 @@ fn parse_dag_module_node(
     );
     if let Some(err) = parsed.result.error.clone() {
         return Err(format!(
-            "{file}: the grammar refused this source: {}",
-            err.message
+            "{file}: the grammar refused this source: {:?}",
+            err.diagnostic
         ));
     }
     parsed
