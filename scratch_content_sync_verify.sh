@@ -1,7 +1,7 @@
 set -e
 unset RUSTC_WRAPPER || true
 export RUSTC_WRAPPER=
-FULL=52c9564429d0c5166f94f703c02e6d4d90892b80
+FULL=064e50bdb016042cb3311acb1fb08ed64fd819a7
 git fetch origin "$FULL"
 git checkout --force -B mirror-verify-scratch "$FULL"
 GOT=$(git rev-parse HEAD)
