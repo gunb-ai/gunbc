@@ -19798,6 +19798,29 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<bool, String> {
     })?;
     eprintln!("behavioral-receipt: merge_base={base} head={head}");
 
+    // A BASELINE THAT IS THE HEAD IS NOT AN EMPTY SELECTION -- IT IS NO OBSERVATION AT ALL.
+    //
+    // On a push to main, `git merge-base origin/main HEAD` resolves to HEAD itself, so the diff
+    // compares the commit against itself and yields zero changed authorities. The empty-selection
+    // arm below would then report a real pass over a corpus that was never looked at. That is the
+    // empty-observation narrow DESIGN names by its live specimen -- a push whose baseline ref IS
+    // the pushed ref -- and it is the mirror of the absorbing fallback: a widen is merely
+    // expensive, a narrow is silently uncovered.
+    //
+    // `nothing changed` and `I could not see what changed` are different states with different
+    // remedies, so they get different answers. This one refuses, and it names the invocation that
+    // makes sense instead of guessing at a substitute baseline: the subject of this gate is a
+    // pull request, and a push to a branch that IS the baseline has no such subject.
+    if base == head {
+        return Err(format!(
+            "the merge base resolves to HEAD ({head}), so the diff compares this commit against \
+             itself and CANNOT observe what changed. Refusing rather than reporting the resulting \
+             zero-path observation as an empty selection: `nothing changed` and `I could not see \
+             what changed` are different states. This mode's subject is a pull request against \
+             main; invoke it there"
+        ));
+    }
+
     let changed = git_stdout(
         &workspace,
         &["diff", "--name-only", &base, &head, "--", "*.dag"],

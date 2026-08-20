@@ -618,8 +618,22 @@ fn witness_receipt_selftest_step() -> Step {
 // It binds to the BUILD, like the selftest and for the same reason: it consumes no receipt and
 // shares no state with either regen step, so binding it to them would silence it on an unrelated
 // failure.
+// ITS SUBJECT IS A PULL REQUEST, AND THE CONDITION SAYS SO (review 54102).
+//
+// This job also triggers on `push: main`, and there `git merge-base origin/main HEAD` resolves to
+// HEAD -- the diff compares the commit against itself, no authority can appear changed, and the
+// run would have passed without ever compiling a candidate. A gate that cannot fail on a trigger
+// is worse than absent on it: it reports a green nobody can distinguish from a real one.
+//
+// Both halves are closed rather than one. The mode itself now REFUSES when the baseline equals
+// the head, so a wrong invocation is loud wherever it comes from; and this condition stops the
+// wrong invocation happening on the trigger we know produces it. The condition is the
+// construction move, the refusal is the wall behind it.
 fn witness_behavioral_receipt_precondition() -> String {
-  concat(witness_step_status_guard(), "steps.build_witness_fold.outcome == 'success'")
+  concat(
+    witness_step_status_guard(),
+    "steps.build_witness_fold.outcome == 'success' && github.event_name == 'pull_request'"
+  )
 }
 
 fn witness_behavioral_receipt_script() -> String {
