@@ -200,7 +200,7 @@ fn spark_serving_fleet_converge_plan_artifact_from_rows(
       owner_fingerprint: owner_fp,
     )
     match std.content_hash.content_hash_of_value(value: baseline as std.types.NonEmptyStr) {
-      std.content_hash.Fnv1a64(structural) =>
+      Fnv1a64(structural) =>
         Present {
           value: gunbc.fleet_converge_plan.FleetConvergePlanArtifact {
             subject: subject,

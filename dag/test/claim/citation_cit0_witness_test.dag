@@ -122,7 +122,7 @@ data witness_http_access_route: extdeps.uri.Uri = extdeps.uri.Uri {
   locator: "example.test/cit0-fixture",
 }
 
-data witness_text_quote: std.citation.CitationSelector = std.citation.TextQuoteSelectorVariant(std.citation.TextQuoteSelector {
+data witness_text_quote: std.citation.CitationSelector = TextQuoteSelectorVariant(std.citation.TextQuoteSelector {
   exact: "grounded selector text" as std.types.NonEmptyStr,
   prefix: none,
   suffix: none,
@@ -135,12 +135,12 @@ data witness_citation_target: std.citation.CitationTarget<std.citation.CitationS
 
 data witness_pdf_fragment_wire: std.types.NonEmptyStr = "page=1" as std.types.NonEmptyStr
 
-data witness_pdf_fragment_selector: std.citation.CitationSelector = std.citation.FragmentSelectorVariant(std.citation.FragmentSelector {
+data witness_pdf_fragment_selector: std.citation.CitationSelector = FragmentSelectorVariant(std.citation.FragmentSelector {
   conforms_to: witness_fragment_spec_authority,
   value: witness_pdf_fragment_wire,
 })
 
-data witness_false_web_annotation_fragment_selector: std.citation.CitationSelector = std.citation.FragmentSelectorVariant(std.citation.FragmentSelector {
+data witness_false_web_annotation_fragment_selector: std.citation.CitationSelector = FragmentSelectorVariant(std.citation.FragmentSelector {
   conforms_to: web_annotation_authority,
   value: witness_pdf_fragment_wire,
 })

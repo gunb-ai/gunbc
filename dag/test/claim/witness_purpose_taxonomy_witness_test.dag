@@ -4,7 +4,7 @@ module test.claim.witness_purpose_taxonomy_witness
 data witness_purpose_taxonomy_witness_note: String = "Slice C-a: stable WitnessPurpose vocabulary only — BehavioralDiscriminator, BoundaryCrossing, PopulationTotality, ExternalFidelity, ResourceContract. TerminatingOneShot is NOT a WitnessPurpose arm; TerminatingOneShotFrontier records honest deferral (deadline and completion substrates absent) until typed carriers land. No placement, envelope, or cadence logic — those are C-b/C-c slices."
 
 fn fixture_subject_hash() -> std.content_hash.ContentHash {
-  std.content_hash.Fnv1a64(
+  Fnv1a64(
     structural_content_hash(digest: "deadbeefdeadbeef" as std.content_hash.Fnv1a64StructuralDigestHex)
   )
 }

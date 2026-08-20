@@ -123,7 +123,7 @@ fn pdf_safe_parameter_sequence_to_rfc(sequence: PdfSafeParameterSequence) -> ext
     parameters: map(
       sequence.parameters,
       parameter => match parameter {
-        SafeOpenPage(p) => extdeps.standards.rfc_8118.OpenPage(p)
+        SafeOpenPage(p) => OpenPage(p)
         SafeOpenNamedDest(d) => extdeps.standards.rfc_8118.OpenNamedDest(d)
         SafeOpenStructElem(e) => extdeps.standards.rfc_8118.OpenStructElem(e)
       },

@@ -208,7 +208,7 @@ data owned_offer: product.fabric.supply.Offer<std.types.NonEmptyStr> = product.f
   trust_domain: "fleet-owned",
   quantity_bound: 1,
   ready_at: "2026-08-18T00:00:00Z",
-  quote: product.fabric.supply.QuotedPerSecond(std.measure.MoneyRate { amount: std.measure.money_amount_micro(0), currency: std.currency.Usd }),
+  quote: QuotedPerSecond(std.measure.MoneyRate { amount: std.measure.money_amount_micro(0), currency: std.currency.Usd }),
   evidence: product.fabric.supply.ObservedSupply { observed_at: "2026-08-18T00:00:00Z", receipt: "obs-srv3-1" },
 }
 
@@ -220,7 +220,7 @@ data rented_offer: product.fabric.supply.Offer<std.types.NonEmptyStr> = product.
   trust_domain: "rented",
   quantity_bound: 64,
   ready_at: "2026-08-18T00:04:00Z",
-  quote: product.fabric.supply.QuotedPerSecond(std.measure.MoneyRate { amount: std.measure.money_amount_micro(900), currency: std.currency.Usd }),
+  quote: QuotedPerSecond(std.measure.MoneyRate { amount: std.measure.money_amount_micro(900), currency: std.currency.Usd }),
   evidence: product.fabric.supply.QuotedSupply {
     quoted_at: "2026-08-18T00:00:00Z",
     valid_until: "2026-08-18T01:00:00Z",

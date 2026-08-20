@@ -31,7 +31,7 @@ data host_compiler_closure_admission: v2.compiler.name_resolve.Admission = v2.co
 data frontier_probe_entry_source_ref: v2.compiler.source_authority.SourceRef = v2.compiler.source_authority.SourceRef {
   path: "",
   source_root: DagTree,
-  content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "0000000000000000" })
+  content_hash: Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "0000000000000000" })
 }
 
 data frontier_probe_entry_module_path: String = ""
