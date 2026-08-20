@@ -94,6 +94,27 @@ fn shell_which_check_argv(command: NonEmptyStr) -> List<String> {
   ["which", command as String]
 }
 
+data posix_command_v_semantic_note: String = "`command -v` is a POSIX shell builtin (IEEE 1003.1-2017 section 2.9.1.1, Command Search and Execution, invoked here through `sh -c` rather than by name), present wherever a POSIX-conforming shell is -- unlike shell.Which.Check's `which`, an EXTERNAL BINARY (part of debianutils on Debian/Ubuntu, not part of POSIX or a base busybox install) that may be absent on stripped appliance images, BMC firmware shells (Dropbear), or minimal containers. This operation's own assumption is not unconditional either: it still requires a POSIX shell at `sh` on the target's PATH. gunbc.fleet_intent's srv1-4 ComputeHost carries `fleet_intent_os_surface: OperatingSystemSurface { distro_or_product: none, ... }` -- no distro or package-set authority for those hosts (crisp-wren-896 finding, PR #8590) -- so neither `which`'s presence NOR a POSIX shell's presence is an established in-tree fact for this fleet. This operation only narrows which external fact the caller is trusting, from 'a specific external binary is installed' to 'a POSIX shell is on PATH', a materially smaller and more portable assumption -- not a proof. If even that narrower assumption cannot be established for a target, the honest realization is a typed refusal, not a silent fall-through inheriting this operation's result as ground truth."
+
+data posix_command_v_argv_construction_note: String = "The probed command name is carried in its OWN argv slot (`{command}` bound to the shell's trailing positional parameter), never concatenated into the `-c` script text -- the same `-c script scriptname arg1` positional-parameter binding shell.Find.FilesAndSymlinksWithMode already uses. The value never touches the string parsed as shell code, so there is no escaping table to maintain and no quoting authority this operation depends on."
+
+service shell.PosixCommandV {
+  operation Check {
+    input { command: NonEmptyStr }
+    output { exists: Bool from "exit_success", path: FilePath? from "stdout" }
+    readonly
+    transport shell { argv: ["sh", "-c", "command -v \"$1\"", "sh", "{command}"] }
+    exit {
+      0 => Unit "Command found"
+      1 => Unit "Command not found"
+    }
+  }
+}
+
+fn posix_command_v_check_argv(command: NonEmptyStr) -> List<String> {
+  ["sh", "-c", "command -v \"$1\"", "sh", command as String]
+}
+
 service shell.Test {
   operation IsExecutable {
     input { path: FilePath }

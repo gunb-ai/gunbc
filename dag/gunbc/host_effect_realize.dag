@@ -49,7 +49,7 @@ import std.realization_reconcile {
 }
 import v2.std.algebra { fold_list, list_snoc_item }
 import extdeps.shell
-import extdeps.shell { shell_which_check_argv, shell_test_is_executable_argv }
+import extdeps.shell { posix_command_v_check_argv, shell_test_is_executable_argv }
 import extdeps.shell.exec
 import extdeps.tools.id { id_uid_argv, id_gid_argv }
 import gunbc.retained_shell_script {
@@ -1122,17 +1122,17 @@ fn srv3_transport_test_executable(path: String, transport: HostEffectTransport) 
 
 fn srv3_apt_tool_present(tool_name: NonEmptyStr, transport: HostEffectTransport) -> Bool {
   match transport {
-    LocalShell => shell.Which.Check(command: tool_name).exists
+    LocalShell => shell.PosixCommandV.Check(command: tool_name).exists
     SshShell { ssh_host: h } =>
       srv3_typed_argv_outcome_success(
-        outcome: typed_argv_exec_over_ssh(host: h, argv: shell_which_check_argv(command: tool_name)),
+        outcome: typed_argv_exec_over_ssh(host: h, argv: posix_command_v_check_argv(command: tool_name)),
       )
     FleetSsh { target: t, context: c } =>
       srv3_typed_argv_outcome_success(
         outcome: typed_argv_exec_over_fleet_ssh(
           target: t,
           context: c,
-          argv: shell_which_check_argv(command: tool_name),
+          argv: posix_command_v_check_argv(command: tool_name),
         ),
       )
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
@@ -1143,7 +1143,7 @@ fn srv3_apt_tool_present(tool_name: NonEmptyStr, transport: HostEffectTransport)
 fn srv3_tool_bin_path(tool_name: NonEmptyStr, transport: HostEffectTransport) -> String? {
   match transport {
     LocalShell => {
-      let found = shell.Which.Check(command: tool_name)
+      let found = shell.PosixCommandV.Check(command: tool_name)
       if found.exists {
         match found.path {
           Present { value: tool_path } => Present { value: tool_path as String }
@@ -1155,14 +1155,14 @@ fn srv3_tool_bin_path(tool_name: NonEmptyStr, transport: HostEffectTransport) ->
     }
     SshShell { ssh_host: h } =>
       srv3_typed_argv_outcome_stdout(
-        outcome: typed_argv_exec_over_ssh(host: h, argv: shell_which_check_argv(command: tool_name)),
+        outcome: typed_argv_exec_over_ssh(host: h, argv: posix_command_v_check_argv(command: tool_name)),
       )
     FleetSsh { target: t, context: c } =>
       srv3_typed_argv_outcome_stdout(
         outcome: typed_argv_exec_over_fleet_ssh(
           target: t,
           context: c,
-          argv: shell_which_check_argv(command: tool_name),
+          argv: posix_command_v_check_argv(command: tool_name),
         ),
       )
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>

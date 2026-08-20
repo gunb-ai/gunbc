@@ -20,7 +20,7 @@ import gunbc.host_effect_realize {
 import gunbc.fleet_intent { srv1_host }
 import std.realization_reconcile { NotConverged }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.shell { shell_which_check_argv, shell_test_is_executable_argv }
+import extdeps.shell { posix_command_v_check_argv, shell_test_is_executable_argv }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -67,8 +67,9 @@ test fn actuator_toolchain_chown_args_shapes_nonroot_chown() -> Bool {
     ["-n", "/usr/bin/chown", "1000:1000", "/opt/gunbc"]
 }
 
-test fn shell_which_check_argv_shapes_a_which_invocation() -> Bool {
-  shell_which_check_argv(command: "curl" as NonEmptyStr) == ["which", "curl"]
+test fn posix_command_v_check_argv_shapes_a_command_v_invocation() -> Bool {
+  posix_command_v_check_argv(command: "curl" as NonEmptyStr) ==
+    ["sh", "-c", "command -v \"$1\"", "sh", "curl"]
 }
 
 test fn shell_test_is_executable_argv_shapes_a_test_dash_x_invocation() -> Bool {
