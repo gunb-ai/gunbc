@@ -12700,7 +12700,27 @@ macro_rules! v1_builtin_arms {
             arm "free_call.atom_identity_hash" { "atom_identity_hash" } => match $positional.as_slice() {
                 [Value::Str(s)] => Ok(Some(str_value(v1_rt::atom_identity_hash(s.to_string())))),
                 _ => Err(InterpError::TypeError {
-                    msg: "atom_identity_hash requires exactly one string argument".to_string(),
+                    // Fail-closed, and LOCATED: the bare arity/type sentence could not be
+                    // acted on because this arm is reachable from many call sites and the
+                    // class reproduced only under whole-corpus preparation, where no
+                    // smaller instrument could name the offending value. Reporting the
+                    // received shape makes the refusal diagnosable at its own frequency
+                    // (DESIGN §5 — a degradation must be typed, located and countable).
+                    msg: format!(
+                        "atom_identity_hash requires exactly one string argument; received {} positional argument(s): [{}]",
+                        $positional.len(),
+                        $positional
+                            .iter()
+                            .map(|v| {
+                                let d = format!("{:?}", v);
+                                match d.char_indices().nth(120) {
+                                    Some((cut, _)) => format!("{}...", &d[..cut]),
+                                    None => d,
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
                 }),
             },
 

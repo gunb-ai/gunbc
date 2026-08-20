@@ -9,7 +9,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
   }
 }
 
-data atlassian_facts_subject: extdeps.sec.types.IssuerCatalogRow = atlassian_issuer_catalog
+data atlassian_facts_subject: extdeps.sec.types.IssuerCatalogRow = extdeps.sec.issuer.atlassian.atlassian_issuer_catalog
 
 data atlassian_facts_provenance_note: String = "Every amount is a live pull from data.sec.gov companyconcept (2026-07-25, session gitlab-10k-scm-costs-baz90x). CIK 0001650372 verified on the EDGAR submissions API (ticker TEAM, Nasdaq, SIC 7372 Services-Prepackaged Software). Four fiscal years modeled, FY2022 through FY2025; Atlassian fiscal years end June 30. The nearest pure-play comparable to GitLab in the corpus: a developer-collaboration vendor whose products (Jira, Confluence, Bitbucket) include an SCM, sold on the same per-seat subscription shape. The face statement cross-foots exactly in all four years: Revenue - cost of revenue = GrossProfit; ResearchAndDevelopment + SellingAndMarketing + GeneralAndAdministrative = OperatingExpenses; GrossProfit - OperatingExpenses = OperatingIncomeLoss."
 

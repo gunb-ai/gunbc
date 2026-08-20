@@ -14,7 +14,7 @@ data at24cm02_note: String = "THE DOCUMENT EXISTS AND ITS GEOMETRY IS NOT TRANSC
 
 data at24cm02: extdeps.land_pattern.types.CatalogPartIdentity = extdeps.land_pattern.types.CatalogPartIdentity {
   ordering_part_number: "AT24CM02",
-  vendor: microchip_technology,
+  vendor: extdeps.vendor.microchip_technology.microchip_technology,
   board_pattern: extdeps.land_pattern.types.MountingPatternObligation {
     what_is_missing: "the package outline and recommended land pattern that datasheet DS20006197 publishes in its packaging information section, together with the ordering variant's package designator. None of it is transcribed here",
   },

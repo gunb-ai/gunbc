@@ -35,7 +35,7 @@ fn source_findings(source_text: String) -> Optional<List<Finding>> {
                   match normalize(parse_tree: artifact.tree) {
                     Rejected { diagnostics: _ } => Absent
                     Accepted { value: tree, diagnostics: _ } =>
-                      Present { value: accumulator_copy_findings(root: tree.root) }
+                      Present { value: v2.lens.complexity_accumulator_copy.analyze.accumulator_copy_findings(root: tree.root) }
                   }
               }
           }
