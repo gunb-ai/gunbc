@@ -18659,10 +18659,141 @@ impl IntPartition {
 /// `ExprBinOp` already carries its operator, `ExprLiteral` already holds a typed `LitInt`, and a
 /// rebound name is simply a different node. The tell that the old version was in the wrong layer
 /// is that its bug -- misreading `a - 1 < n` -- cannot be expressed in this one.
+/// WHY a parameter's domain could not be derived -- as a typed cause, not a sentence.
+///
+/// The census ranks refusals to decide what to ground next, and ranking needs the SUBJECT: the
+/// type, or the class of obstacle. The first revision carried only a formatted message and ranked
+/// on it, which put `x (used outside a literal comparison...)` at the top with 1500 -- every
+/// parameter in the corpus that happens to be named `x`, collapsed into one row that names no
+/// type and no work. A parameter name is not a unit of work; the string was doing double duty as
+/// an identity and as prose, and it was wrong at the identity job.
+///
+/// `describe()` is derived from this, so the sentence and the ranking key cannot disagree.
+#[derive(Clone, PartialEq, Eq, Hash)]
+enum RefusalCause {
+    UnboundedString {
+        ty: String,
+    },
+    UnboundedSequence {
+        ty: String,
+    },
+    PayloadCoproduct {
+        ty: String,
+        variants: usize,
+    },
+    TypeNotClosed {
+        ty: String,
+    },
+    ProductTooLarge {
+        ty: String,
+    },
+    NestedTooDeep {
+        ty: String,
+    },
+    /// The Int class. Keyed WITHOUT the parameter name -- the name is in the message for locating
+    /// it, never in the identity, or one class fragments into as many rows as there are spellings.
+    IntValueEscapesComparison {
+        param: String,
+    },
+    IntComparedToNonLiteral {
+        param: String,
+    },
+    IntThroughContainer,
+    IntNoBody {
+        param: String,
+    },
+    TupleBudgetExceeded {
+        param: String,
+    },
+    /// A refusal reached through a record field, carrying the field path for locating and the
+    /// UNDERLYING cause for ranking -- grounding the inner type unlocks the outer record too.
+    ViaField {
+        ty: String,
+        field: String,
+        inner: Box<RefusalCause>,
+    },
+}
+
+impl RefusalCause {
+    /// The subject the work would be done to. Ranking key: a `ViaField` ranks as its inner cause,
+    /// because the fix is the inner type and counting the wrapper separately would split one
+    /// piece of work across as many rows as there are records that embed it.
+    fn subject(&self) -> String {
+        match self {
+            RefusalCause::UnboundedString { ty }
+            | RefusalCause::UnboundedSequence { ty }
+            | RefusalCause::PayloadCoproduct { ty, .. }
+            | RefusalCause::TypeNotClosed { ty }
+            | RefusalCause::ProductTooLarge { ty }
+            | RefusalCause::NestedTooDeep { ty } => ty.clone(),
+            RefusalCause::IntValueEscapesComparison { .. } => {
+                "Int (value escapes literal comparison)".to_string()
+            }
+            RefusalCause::IntComparedToNonLiteral { .. } => {
+                "Int (compared against a non-literal)".to_string()
+            }
+            RefusalCause::IntThroughContainer => "Int (reached through a container)".to_string(),
+            RefusalCause::IntNoBody { .. } => "Int (no attached body node)".to_string(),
+            RefusalCause::TupleBudgetExceeded { .. } => {
+                format!("(combination exceeds {MAX_TUPLES_PER_FUNCTION} tuples)")
+            }
+            RefusalCause::ViaField { inner, .. } => inner.subject(),
+        }
+    }
+
+    fn describe(&self) -> String {
+        match self {
+            RefusalCause::UnboundedString { ty } => format!("{ty} (unbounded String domain)"),
+            RefusalCause::UnboundedSequence { ty } => {
+                format!("{ty} (unbounded sequence length; a length partition is not derived)")
+            }
+            RefusalCause::PayloadCoproduct { ty, variants } => format!(
+                "{ty} (closed coproduct, but {variants} variants carry payloads whose domains are \
+                 not enumerated)"
+            ),
+            RefusalCause::TypeNotClosed { ty } => {
+                format!("{ty} (not a closed type declared by this authority)")
+            }
+            RefusalCause::ProductTooLarge { ty } => format!(
+                "{ty} (record product exceeds {MAX_TUPLES_PER_FUNCTION} values; refusing rather \
+                 than sampling)"
+            ),
+            RefusalCause::NestedTooDeep { ty } => {
+                format!("{ty} (nesting deeper than the fragment enumerates)")
+            }
+            RefusalCause::IntValueEscapesComparison { param } => format!(
+                "{param} (used outside a literal comparison, so its value reaches the result and \
+                 members of one class need not agree)"
+            ),
+            RefusalCause::IntComparedToNonLiteral { param } => format!(
+                "{param} (compared against a non-literal; the partition is derived from literals, \
+                 and a comparison against another parameter or a call would need a joint partition \
+                 this fragment does not derive)"
+            ),
+            RefusalCause::IntThroughContainer => {
+                "Int (reached through a container; a partition is \
+                 derived from a parameter's own comparisons and does not follow into a field or \
+                 element)"
+                    .to_string()
+            }
+            RefusalCause::IntNoBody { param } => {
+                format!("{param} (Int parameter on a function with no attached body node)")
+            }
+            RefusalCause::TupleBudgetExceeded { param } => format!(
+                "{param} (corpus exceeds {MAX_TUPLES_PER_FUNCTION} tuples; refusing rather than \
+                 sampling)"
+            ),
+            RefusalCause::ViaField { ty, field, inner } => {
+                format!("{ty}.{field}: {}", inner.describe())
+            }
+        }
+    }
+}
+
 fn derive_int_partition(
     param: &str,
     body: &v1_compiler::v1_std_core::Node,
-) -> Result<IntPartition, String> {
+) -> Result<IntPartition, RefusalCause> {
     let mut literals = Vec::new();
     visit_int_param_occurrences(param, body, None, &mut literals)?;
     Ok(IntPartition::from_literals(literals))
@@ -18678,7 +18809,7 @@ fn visit_int_param_occurrences(
     node: &v1_compiler::v1_std_core::Node,
     enclosing: Option<(bool, &v1_compiler::v1_std_core::Node)>,
     literals: &mut Vec<i64>,
-) -> Result<(), String> {
+) -> Result<(), RefusalCause> {
     use v1_compiler::std_syntax::BinOp;
     use v1_compiler::v1_std_core::ExprData;
 
@@ -18689,16 +18820,13 @@ fn visit_int_param_occurrences(
                     literals.push(v);
                     Ok(())
                 }
-                None => Err(format!(
-                    "{param} (compared against a non-literal; the partition is derived from \
-                     literals, and a comparison against another parameter or a call would need a \
-                     joint partition this fragment does not derive)"
-                )),
+                None => Err(RefusalCause::IntComparedToNonLiteral {
+                    param: param.to_string(),
+                }),
             },
-            _ => Err(format!(
-                "{param} (used outside a literal comparison, so its value reaches the result and \
-                 members of one class need not agree)"
-            )),
+            _ => Err(RefusalCause::IntValueEscapesComparison {
+                param: param.to_string(),
+            }),
         };
     }
 
@@ -18757,11 +18885,9 @@ fn enumerate_parameter_values(
     depth: usize,
     int_partition: Option<&IntPartition>,
     module_alias: &str,
-) -> Result<ParameterDomain, String> {
+) -> Result<ParameterDomain, RefusalCause> {
     if depth > 4 {
-        return Err(format!(
-            "{ty} (nesting deeper than the fragment enumerates)"
-        ));
+        return Err(RefusalCause::NestedTooDeep { ty: ty.to_string() });
     }
     let ty = ty.trim();
     if ty == "Bool" {
@@ -18780,17 +18906,11 @@ fn enumerate_parameter_values(
                     .collect(),
                 partition: Some(p.describe()),
             }),
-            None => Err(
-                "Int (reached through a container; a partition is derived from a parameter's own \
-                 comparisons and does not follow into a field or element)"
-                    .to_string(),
-            ),
+            None => Err(RefusalCause::IntThroughContainer),
         };
     }
     if ty.starts_with("List<") {
-        return Err(format!(
-            "{ty} (unbounded sequence length; a length partition is not derived)"
-        ));
+        return Err(RefusalCause::UnboundedSequence { ty: ty.to_string() });
     }
     match types.get(ty) {
         Some(DagTypeDecl::ClosedNullaryEnum { variants }) => Ok(ParameterDomain {
@@ -18800,10 +18920,12 @@ fn enumerate_parameter_values(
                 .collect(),
             partition: None,
         }),
-        Some(DagTypeDecl::PayloadCoproduct { variant_count }) => Err(format!(
-            "{ty} (closed coproduct, but {variant_count} variants carry payloads whose domains \
-             are not enumerated)"
-        )),
+        Some(DagTypeDecl::PayloadCoproduct { variant_count }) => {
+            Err(RefusalCause::PayloadCoproduct {
+                ty: ty.to_string(),
+                variants: *variant_count,
+            })
+        }
         Some(DagTypeDecl::Record { fields }) => {
             // The record's own domain is the Cartesian product of its fields'. Built as literal
             // constructor expressions so the driver names every field, which is also what makes a
@@ -18812,7 +18934,11 @@ fn enumerate_parameter_values(
             let mut partitioned = Vec::new();
             for (fname, fty) in fields {
                 let d = enumerate_parameter_values(fty, types, depth + 1, None, module_alias)
-                    .map_err(|e| format!("{ty}.{fname}: {e}"))?;
+                    .map_err(|e| RefusalCause::ViaField {
+                        ty: ty.to_string(),
+                        field: fname.clone(),
+                        inner: Box::new(e),
+                    })?;
                 if let Some(pt) = d.partition.clone() {
                     partitioned.push(format!("{fname}: {pt}"));
                 }
@@ -18820,10 +18946,7 @@ fn enumerate_parameter_values(
                 for prefix in &acc {
                     for v in &d.values {
                         if next.len() > MAX_TUPLES_PER_FUNCTION {
-                            return Err(format!(
-                                "{ty} (record product exceeds {MAX_TUPLES_PER_FUNCTION} values; \
-                                 refusing rather than sampling)"
-                            ));
+                            return Err(RefusalCause::ProductTooLarge { ty: ty.to_string() });
                         }
                         let mut row = prefix.clone();
                         row.push((fname.clone(), v.clone()));
@@ -18849,9 +18972,9 @@ fn enumerate_parameter_values(
             })
         }
         None => Err(if ty == "String" || ty == "NonEmptyStr" {
-            format!("{ty} (unbounded String domain)")
+            RefusalCause::UnboundedString { ty: ty.to_string() }
         } else {
-            format!("{ty} (not a closed type declared by this authority)")
+            RefusalCause::TypeNotClosed { ty: ty.to_string() }
         }),
     }
 }
@@ -18936,7 +19059,7 @@ struct ModuleCorpusPlan {
     /// had never executed.
     derivable: Vec<(String, EnumeratedDomain, Vec<Vec<String>>)>,
     /// Functions that defeated derivation, each naming the type responsible.
-    refused: Vec<(String, String)>,
+    refused: Vec<(String, RefusalCause)>,
     /// `fn` lines the authority declares vs signatures actually parsed. These must agree; a gap
     /// means the parser missed a form, and reporting the pair is what stops a silent miss from
     /// reading as a module with a small surface.
@@ -19059,7 +19182,7 @@ fn plan_module_corpus(
     for sig in &sigs {
         let mut partitioned = false;
         let mut partitions = Vec::new();
-        let mut failure: Option<String> = None;
+        let mut failure: Option<RefusalCause> = None;
         // Tuples are accumulated as a Cartesian product across parameters. A zero-parameter
         // function has exactly one tuple -- the empty one -- which is a real call, not an absence.
         let mut tuples: Vec<Vec<String>> = vec![Vec::new()];
@@ -19073,9 +19196,9 @@ fn plan_module_corpus(
                 // parser did not attach is an unknown, and treating an unknown as an empty set of
                 // uses is the narrow that turns "I could not see" into "there was nothing there".
                 let Some(body) = sig.body.as_ref() else {
-                    failure = Some(format!(
-                        "{pname} (Int parameter on a function with no attached body node)"
-                    ));
+                    failure = Some(RefusalCause::IntNoBody {
+                        param: pname.clone(),
+                    });
                     break;
                 };
                 match derive_int_partition(pname, body) {
@@ -19106,10 +19229,9 @@ fn plan_module_corpus(
                         }
                     }
                     if next.len() >= MAX_TUPLES_PER_FUNCTION {
-                        failure = Some(format!(
-                            "{pname} (corpus exceeds {MAX_TUPLES_PER_FUNCTION} tuples; refusing \
-                             rather than running a subset and reporting the whole)"
-                        ));
+                        failure = Some(RefusalCause::TupleBudgetExceeded {
+                            param: pname.clone(),
+                        });
                         break;
                     }
                     tuples = next;
@@ -19499,7 +19621,7 @@ fn behavioral_receipt_census(source_roots: &[String]) -> Result<bool, String> {
         let calls: usize = plan.derivable.iter().map(|(_, _, t)| t.len()).sum();
         calls_total += calls;
         for (_f, why) in &plan.refused {
-            *by_blocker.entry(why.clone()).or_insert(0) += 1;
+            *by_blocker.entry(why.subject()).or_insert(0) += 1;
         }
         eprintln!(
             "receipt-census: {module_path} parsed={} derivable={} calls={} refused={}",
@@ -19603,7 +19725,7 @@ fn behavioral_receipt_selftest(source_roots: &[String]) -> Result<bool, String> 
         );
     }
     for (f, why) in &plan.refused {
-        eprintln!("receipt-selftest:   REFUSED {f} — {why}");
+        eprintln!("receipt-selftest:   REFUSED {f} — {}", why.describe());
     }
 
     // THE PRECONDITION THE ARMS DEPEND ON, checked before the arms rather than assumed by them.
@@ -19620,8 +19742,12 @@ fn behavioral_receipt_selftest(source_roots: &[String]) -> Result<bool, String> 
         .ok_or_else(|| {
             format!(
                 "the fixture's band_of did not derive, so arm 2 could not discriminate even if it \
-                 ran. Refusing rather than reporting a control that cannot fail. Refusals: {:?}",
+                 ran. Refusing rather than reporting a control that cannot fail. Refusals: {}",
                 plan.refused
+                    .iter()
+                    .map(|(f, w)| format!("{f}: {}", w.describe()))
+                    .collect::<Vec<_>>()
+                    .join("; ")
             )
         })?;
     if !matches!(
@@ -19848,8 +19974,9 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<bool, String> {
         }
         for (f, why) in &p.refused {
             eprintln!(
-                "behavioral-receipt:   REFUSED {}::{f} — corpus not derivable: {why}",
-                p.module_path
+                "behavioral-receipt:   REFUSED {}::{f} — corpus not derivable: {}",
+                p.module_path,
+                why.describe()
             );
         }
     }
