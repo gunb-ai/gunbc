@@ -1574,7 +1574,11 @@ fn where_refinement_diags_for_predicate(
         }
     }
   } else if where_refinement_is_string_literal_predicate(pred_name: pname) {
-    match expr_literal_string_optional(expr: value_expr) {
+    let string_literal_value = match expr_literal_string_optional(expr: value_expr) {
+      Present { value: v } => Present { value: v }
+      Absent => expr_literal_symbol_optional(expr: value_expr)
+    }
+    match string_literal_value {
       Present { value: v } =>
         match decidable_where_string_predicate_holds(pred_name: pname, value: v) {
           Present { value: holds } =>
