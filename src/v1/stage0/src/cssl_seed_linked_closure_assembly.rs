@@ -116,18 +116,28 @@ fn parse_closure_mods(lib_rs: &Path) -> Result<Vec<String>, AssemblyError> {
 /// control is `closure_compiler_mod_emit_retained_when_seed_also_has_pub_mod`, which
 /// sets up exactly this arm's precondition — a compiler-family closure member whose
 /// seed `lib.rs` DOES carry the `pub mod` line — and asserts the emitted bytes survive.
-/// It keeps its seed fixture and stays enrolled as the permanent regression control.
+/// The `repo_root` PARAMETER GOES WITH IT, and that is the point rather than tidying. It
+/// existed solely to derive `repo_root.join("src/v1/stage0/src/lib.rs")`. With it gone,
+/// assembly has no input from which the seed `lib.rs` location is derivable at all: its
+/// remaining paths are the candidate `out_dir`, the entry `.dag`, and the (already unused)
+/// std-bridge dir. So consulting the seed mod tree is not merely refused here — it has no
+/// representation, which is DESIGN 4b's top rung rather than the one below it.
 ///
-/// `_repo_root` is KEPT rather than dropped from the signature, deliberately. Dropping it
-/// would make the seed `lib.rs` structurally unreachable — a stronger rung — but it would
-/// also delete the control's subject: the test could no longer HAND assembly a repo whose
-/// seed carries the `pub mod` line, so the evidence that the arm stays gone would go with
-/// the arm. DESIGN 4b(4) dissolves the production machinery on a climb, never the
-/// executing evidence, so the parameter stays and the assertion stays real.
+/// KEEPING THE PARAMETER TO PRESERVE THE CONTROL WAS CONSIDERED AND REJECTED. DESIGN 4b(4)
+/// keeps a class's discriminating control enrolled across a climb, and on that reading the
+/// parameter had to stay so the test could still hand assembly a repo whose seed carries
+/// the line. But 4b(4) protects evidence for a state that remains DESCRIBABLE; at
+/// structural impossibility the invalid state has no constructor, and a control with no
+/// constructible subject is not evidence being preserved — it is a writable path preserved
+/// for the benefit of a check, which is the concession DESIGN 5 names outright. The
+/// evidence is not lost, it is RETARGETED: `closure_compiler_mod_stays_emit_retained` still
+/// asserts, on a constructible subject, that a compiler-family closure member keeps its
+/// emitted bytes and never becomes a `pub use v1_compiler::` re-export. That is the
+/// regression this file must not suffer again, and it is now checked without holding the
+/// door open for it.
 pub fn assemble_seed_linked_closure(
     out_dir: &Path,
     entry_dag: &Path,
-    _repo_root: &Path,
     _std_bridge_dir: &Path,
 ) -> Result<(), AssemblyError> {
     let src_dir = out_dir.join("src");
@@ -246,13 +256,19 @@ mod tests {
         fs::write(&dag, "module v2.compiler.tokenize\n").expect("dag");
         let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
         fs::create_dir_all(&bridge).expect("bridge");
-        assemble_seed_linked_closure(&out, &dag, &repo, &bridge).expect("assemble");
+        assemble_seed_linked_closure(&out, &dag, &bridge).expect("assemble");
         let kept = fs::read_to_string(out.join("src/std_error_primitives.rs")).expect("read");
         assert!(kept.contains("emitted std_error_primitives"));
     }
 
     #[test]
-    fn closure_compiler_mod_emit_retained_when_seed_also_has_pub_mod() {
+    // REGRESSION CONTROL for the deleted compiler-seed-re-export arm. Its former subject --
+    // a seed `lib.rs` carrying the same `pub mod` line -- is no longer constructible: assembly
+    // takes no repo root, so no input names the seed tree. What remains checkable, and what
+    // the arm actually broke, is that a compiler-family closure member keeps its EMITTED bytes
+    // and never becomes a `pub use v1_compiler::` re-export. `ResolvedTree` is the discriminating
+    // payload: it is the type surface a seed stub would have lacked.
+    fn closure_compiler_mod_stays_emit_retained() {
         let root = temp_fixture_root();
         let out = root.join("out");
         let src = out.join("src");
@@ -268,27 +284,13 @@ mod tests {
         )
         .expect("resolve");
         fs::write(src.join("v2_compiler_infer.rs"), "// entry\n").expect("infer");
-        let seed_src = root.join("seed/src");
-        fs::create_dir_all(&seed_src).expect("seed dir");
-        fs::write(
-            seed_src.join("lib.rs"),
-            "pub mod v2_compiler_resolve;\npub mod v2_compiler_infer;\n",
-        )
-        .expect("seed lib");
-        fs::write(seed_src.join("v2_compiler_resolve.rs"), "// seed stub\n").expect("seed");
         let repo = root.join("repo");
-        fs::create_dir_all(repo.join("src/v1/stage0/src")).expect("seed path");
-        fs::copy(
-            seed_src.join("lib.rs"),
-            repo.join("src/v1/stage0/src/lib.rs"),
-        )
-        .expect("copy");
         let dag = repo.join("src/v2/compiler/04_infer.dag");
         fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
         fs::write(&dag, "module v2.compiler.infer\n").expect("dag");
         let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
         fs::create_dir_all(&bridge).expect("bridge");
-        assemble_seed_linked_closure(&out, &dag, &repo, &bridge).expect("assemble");
+        assemble_seed_linked_closure(&out, &dag, &bridge).expect("assemble");
         let kept = fs::read_to_string(src.join("v2_compiler_resolve.rs")).expect("read");
         assert!(
             kept.contains("pub struct ResolvedTree"),
@@ -327,7 +329,7 @@ mod tests {
         fs::write(&dag, "module v2.compiler.tokenize\n").expect("dag");
         let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
         fs::create_dir_all(&bridge).expect("bridge");
-        assemble_seed_linked_closure(&out, &dag, &repo, &bridge).expect("assemble");
+        assemble_seed_linked_closure(&out, &dag, &bridge).expect("assemble");
         let kept = fs::read_to_string(src.join("v2_compiler_resolve.rs")).expect("read");
         assert!(
             kept.contains("broken_syntax"),
@@ -367,7 +369,7 @@ mod tests {
         fs::write(&dag, "module v2.compiler.self_host\n").expect("dag");
         let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
         fs::create_dir_all(&bridge).expect("bridge");
-        assemble_seed_linked_closure(&out, &dag, &repo, &bridge).expect("assemble");
+        assemble_seed_linked_closure(&out, &dag, &bridge).expect("assemble");
         let kept =
             fs::read_to_string(out.join("src/extdeps_communication_medium.rs")).expect("read");
         assert!(kept.contains("emitted extdeps_communication_medium"));
@@ -390,7 +392,7 @@ mod tests {
         fs::write(&dag, "module v2.compiler.self_host\n").expect("dag");
         let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
         fs::create_dir_all(&bridge).expect("bridge");
-        assemble_seed_linked_closure(&out, &dag, &repo, &bridge).expect("assemble");
+        assemble_seed_linked_closure(&out, &dag, &bridge).expect("assemble");
         let kept = fs::read_to_string(out.join("src/dry_run.rs")).expect("read");
         assert!(kept.contains("emitted dry_run"));
     }
@@ -412,7 +414,7 @@ mod tests {
         fs::write(&dag, "module v2.compiler.name_resolve\n").expect("dag");
         let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
         fs::create_dir_all(&bridge).expect("bridge");
-        assemble_seed_linked_closure(&out, &dag, &repo, &bridge).expect("assemble");
+        assemble_seed_linked_closure(&out, &dag, &bridge).expect("assemble");
         let kept = fs::read_to_string(out.join("src/gunbc_plans_md_helpers.rs")).expect("read");
         assert!(kept.contains("emitted gunbc_plans_md_helpers"));
     }
@@ -437,7 +439,7 @@ mod tests {
         fs::write(&dag, "module v2.compiler.emit\n").expect("dag");
         let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
         fs::create_dir_all(&bridge).expect("bridge");
-        assemble_seed_linked_closure(&out, &dag, &repo, &bridge).expect("assemble");
+        assemble_seed_linked_closure(&out, &dag, &bridge).expect("assemble");
         let kept = fs::read_to_string(out.join("src/test_claim_materialization_ladder_witness.rs"))
             .expect("read");
         assert!(kept.contains("emitted test_claim_materialization_ladder_witness"));
@@ -464,7 +466,7 @@ mod tests {
         fs::write(&dag, "module v2.compiler.tokenize\n").expect("dag");
         let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
         fs::create_dir_all(&bridge).expect("bridge");
-        let err = assemble_seed_linked_closure(&out, &dag, &repo, &bridge).unwrap_err();
+        let err = assemble_seed_linked_closure(&out, &dag, &bridge).unwrap_err();
         match err {
             AssemblyError::RefusedDep { module, reason } => {
                 assert_eq!(module, "not_a_routable_mod");
