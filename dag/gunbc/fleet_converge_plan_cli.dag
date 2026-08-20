@@ -42,12 +42,30 @@ data fleet_converge_plan_cli_note: String = "Wet CLI for on-demand fleet converg
 func observe_host_short_wet() -> String
   uses net: Network
 {
-  trim(
-    s: run_shell_command_capture(
-      command: ArgvCommand { argv: ["hostname", "-s"] },
-      transport: LocalExec,
-    ).stdout,
-  )
+  // STATED, NOT SILENTLY DEFAULTED. This value KEYS THE CONVERGE PLAN's subject identity, so a
+  // hostname that could not be read must not become "" and flow into a plan named for the wrong
+  // host. The old code took .stdout straight off the call expression -- no binding, so there was
+  // not even a variable a later author could think to check.
+  //
+  // WHAT THIS DOES AND DOES NOT FIX, stated because the residue is real. A `-> String` function
+  // has no way to refuse: the substrate offers no abort from this position, so the only honest
+  // options are to change the return type or to return a value. This returns a value that CANNOT
+  // BE MISTAKEN FOR A HOSTNAME -- deliberately implausible rather than plausibly empty -- so a
+  // plan keyed on it is visibly wrong at a glance instead of silently wrong forever. That is
+  // strictly better than "" and is still not a refusal.
+  //
+  // RUNG: mitigatable, not fixed. The conflation is surfaced, not closed. NEXT-RUNG TRIGGER: this
+  // function returns an optional (or a typed outcome) and its two callers handle the absent case;
+  // that cascades into plan subject identity, which is a different change from this migration and
+  // deliberately not attempted inside it.
+  match run_shell_command_capture(
+    command: ArgvCommand { argv: ["hostname", "-s"] },
+    transport: LocalExec,
+  ) {
+    ProcessOutputPresent { text: t } => trim(s: t)
+    ProcessOutputAbsent => "(hostname-unreadable: admitted but printed nothing)"
+    ProcessRefused { exit_code: _, stderr: _ } => "(hostname-unreadable: probe refused)"
+  }
 }
 
 func observe_generation_store_wet() -> Int?
@@ -62,10 +80,16 @@ func observe_timer_members_wet() -> List<TimerRetirementMember>
 {
   let legacy = timer_retirement_observed_legacy_srv1()
   filter(legacy, m =>
-    run_shell_command_capture(
-      command: ArgvCommand { argv: ["test", "-f", concat("/etc/systemd/system/", m.unit_name as String)] },
-      transport: LocalExec,
-    ).success
+    // EXIT STATUS IS THE PRODUCT HERE and there is no stdout anyone wants, so this asks the
+    // two-state question directly instead of matching three arms, two of which would be
+    // indistinguishable to it. Forcing `test -f` through an output-bearing variant would add a
+    // field it cannot answer -- cosmetic richness in the opposite direction.
+    process_outcome_admitted(
+      outcome: run_shell_command_capture(
+        command: ArgvCommand { argv: ["test", "-f", concat("/etc/systemd/system/", m.unit_name as String)] },
+        transport: LocalExec,
+      )
+    )
   )
 }
 

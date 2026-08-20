@@ -2,7 +2,8 @@ module test.manual.command_runner_local_argv_receipt
 
 import std.types { Bool, String }
 import extdeps.exec.command { ArgvCommand, LocalExec }
-import gunbc.command_runner { run_shell_command_capture }
+import gunbc.command_runner { run_shell_command_capture, process_outcome_receipt_text }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 
 // THE DISCRIMINATING RECEIPT FOR THE LOCAL ARGV CUT.
 //
@@ -27,27 +28,84 @@ import gunbc.command_runner { run_shell_command_capture }
 // test/manual/process_argv_expansion_receipt_test.dag is, for the same reason.
 
 test fn spaced_operand_survives_as_one_argument() -> Bool {
-  run_shell_command_capture(
-    command: ArgvCommand { argv: ["printf", "%s|", "a b"] },
-    transport: LocalExec,
-  ).stdout == "a b|"
+  process_outcome_receipt_text(
+    outcome: run_shell_command_capture(
+      command: ArgvCommand { argv: ["printf", "%s|", "a b"] },
+      transport: LocalExec,
+    )
+  ) == "a b|"
 }
 
 // The RED half of the same observation, stated as its own assertion rather than left implicit in
 // the equality above: the shell-split rendering must NOT be what comes back. Written separately so
 // a future edit that weakens the positive into something like a nonempty check still trips here.
 test fn shell_split_rendering_is_not_what_comes_back() -> Bool {
-  run_shell_command_capture(
-    command: ArgvCommand { argv: ["printf", "%s|", "a b"] },
-    transport: LocalExec,
-  ).stdout != "a|b|"
+  process_outcome_receipt_text(
+    outcome: run_shell_command_capture(
+      command: ArgvCommand { argv: ["printf", "%s|", "a b"] },
+      transport: LocalExec,
+    )
+  ) != "a|b|"
 }
 
 // Control that the runner works at all on the ordinary case, so a failure above is read as a
 // splitting regression rather than as the whole path being broken.
 test fn plain_operand_round_trips() -> Bool {
-  run_shell_command_capture(
-    command: ArgvCommand { argv: ["printf", "%s|", "plain"] },
+  process_outcome_receipt_text(
+    outcome: run_shell_command_capture(
+      command: ArgvCommand { argv: ["printf", "%s|", "plain"] },
+      transport: LocalExec,
+    )
+  ) == "plain|"
+}
+
+// THE DISCRIMINATING RED FOR THE COPRODUCT MIGRATION.
+//
+// The two states the old ShellCaptureResult could not tell apart:
+//   a program that RAN AND FAILED printing nothing   -> success=false, stdout=""
+//   a program that RAN AND SUCCEEDED printing nothing -> success=true,  stdout=""
+// Both are stdout == "". Eight live sites read stdout without consulting success, so at every one
+// of them a failure and an empty result were the same value.
+//
+// NOTE WHAT IS *NOT* BEING TESTED, because it was the first RED proposed and it proves nothing: a
+// program that does not EXIST is already distinguishable, because the transport refuses the whole
+// evaluation with a typed diagnostic naming the program and the OS error. That property holds with
+// or without this migration, so a test of it would pass against the old record too.
+//
+// These two go red if ShellCaptureResult is restored, because then both arms are stdout == "" and
+// nothing in the value distinguishes them.
+
+test fn nonzero_exit_printing_nothing_is_refused_not_absent() -> Bool {
+  match run_shell_command_capture(
+    command: ArgvCommand { argv: ["sh", "-c", "exit 3"] },
     transport: LocalExec,
-  ).stdout == "plain|"
+  ) {
+    ProcessRefused { exit_code: _, stderr: _ } => true
+    ProcessOutputAbsent => false
+    ProcessOutputPresent { text: _ } => false
+  }
+}
+
+test fn zero_exit_printing_nothing_is_absent_not_refused() -> Bool {
+  match run_shell_command_capture(
+    command: ArgvCommand { argv: ["true"] },
+    transport: LocalExec,
+  ) {
+    ProcessOutputAbsent => true
+    ProcessRefused { exit_code: _, stderr: _ } => false
+    ProcessOutputPresent { text: _ } => false
+  }
+}
+
+// The positive arm, so a failure above reads as a lost distinction rather than as everything
+// collapsing into one variant.
+test fn zero_exit_with_output_is_present() -> Bool {
+  match run_shell_command_capture(
+    command: ArgvCommand { argv: ["printf", "%s", "value"] },
+    transport: LocalExec,
+  ) {
+    ProcessOutputPresent { text: t } => t == "value"
+    ProcessOutputAbsent => false
+    ProcessRefused { exit_code: _, stderr: _ } => false
+  }
 }

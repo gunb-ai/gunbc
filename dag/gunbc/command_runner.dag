@@ -2,7 +2,7 @@ module gunbc.command_runner
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.types { List, String, NonEmptyStr }
+import std.types { List, String, NonEmptyStr, Bool }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import extdeps.exec.command {
@@ -18,7 +18,11 @@ import gunbc.retained_shell_script { retained_runtime }
 import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
 import std.algebra { Empty }
 import v2.std.compilers.cli_surface { cli_surface_of_literal_words, process_argv_expansion }
-import extdeps.shell.exec { ExitZeroSucceeds, process_exit_is_admitted }
+import extdeps.shell.exec {
+  ExitZeroSucceeds, process_exit_is_admitted,
+  ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused,
+  process_observation, classify_process_observation,
+}
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -125,41 +129,45 @@ fn argv_operands(command: ArgvCommand) -> List<String> {
 // but the caller receives the process observation instead of a collapsed ProcessExit —
 // for wet observations whose PRODUCT is the stdout (ssh-keyscan, ssh-keygen -lf).
 // Success/stdout/stderr travel together so a refusal cannot be read as empty output.
-type ShellCaptureResult {
-  success: Bool
-  stdout: String
-  stderr: String
-}
 
-// THE success FIELD IS DERIVED THROUGH A NAMED POLICY, not a bare exit_code == 0, and the
-// difference is not cosmetic. RunArgv deliberately carries no success field because success is a
-// POLICY judgement about an observation rather than part of it -- jq exits 4 to mean "no output"
-// and 1 to mean "false result", neither of which is failure. Routing through
-// process_exit_is_admitted(ExitZeroSucceeds) states which convention this runner applies, so a
-// caller needing a different one has something to change rather than a literal to discover.
+// SPAWN FAILURE IS ALREADY FAIL-CLOSED, and this is the transport fact that decides what the
+// capture surface can and cannot say. Measured wet against the real local path: a command whose
+// program does not exist does NOT come back as a failed result. It REFUSES the evaluation with a
+// typed diagnostic naming the program and the OS error --
+//   failed to execute 'no_such_binary': No such file or directory (os error 2)
+// -- so no result record is produced at all.
 //
-// WHAT THIS SHAPE STILL COLLAPSES, named rather than fixed here. "the program ran and exited
-// nonzero" and "the program could not be executed at all" both arrive as success: false. Under the
-// old bash hop those were genuinely indistinguishable -- a missing binary became the shell's exit
-// 127, which claims the process ran and exited when it never existed. Going direct removes the
-// shell that fabricated that code, so the distinction is now AVAILABLE at the transport even
-// though this record cannot express it.
+// TWO CONSEQUENCES, and the second is the useful one.
 //
-// It is not fixed in this change because it is not free: 17 of the 22 live call sites read
-// ShellCaptureResult, and the correct destination is the ProcessOutcome coproduct that already
-// exists one module away -- ProcessOutputPresent / ProcessOutputAbsent / ProcessRefused -- so the
-// repair is a caller migration and belongs with the sites it changes. Recorded here so the
-// collapse is a known state with a destination rather than an unremarked property of the record.
-func run_shell_command_capture(command: ArgvCommand, transport: CommandTransport) -> ShellCaptureResult
+// There is no unspawnable-versus-ran distinction for this surface to model. A fourth "not spawned"
+// variant would be an uninhabited arm that every consumer must handle and none can ever reach, so
+// it is deliberately absent.
+//
+// AND A CALLER CANNOT PROBE FOR A BINARY'S EXISTENCE BY TRYING TO RUN IT. The attempt does not
+// return an answer; it stops the line. Presence must be asked of something that exists -- spawn a
+// shell and let `command -v` report -- rather than spawning the candidate and interpreting the
+// wreckage. That is why a separate presence probe has to exist, and it is a boundary fact about
+// the transport rather than a limitation of this module.
+//
+// WHAT THE CAPTURE SURFACE RETURNS, and why it is a coproduct rather than a record.
+// ShellCaptureResult carried success: Bool beside stdout: String, which made two states that a
+// caller cannot tell apart: a program that RAN AND FAILED printing nothing, and one that RAN AND
+// SUCCEEDED printing nothing. Both are stdout == "". Correlating them was the caller's duty, and
+// measured across the live sites, EIGHT of them did not perform it -- they read stdout and acted
+// on the empty string as though it were an answer. That is the empty-observation narrow: not a
+// widen, its mirror, and it was live in production at eight sites.
+//
+// The coproduct makes the failure unignorable: output is reachable ONLY through the variant that
+// carries it, so a caller cannot read text without having confronted the arm where there is none.
+func run_shell_command_capture(command: ArgvCommand, transport: CommandTransport) -> ProcessOutcome
   uses net: Network
 {
   match transport {
     LocalExec =>
       match list_head(xs: command.argv) {
         HeadAbsent =>
-          ShellCaptureResult {
-            success: false,
-            stdout: "",
+          ProcessRefused {
+            exit_code: 0 - 1,
             stderr: "empty argv: a command with no words names no program to execute",
           }
         HeadFound { value: program } => {
@@ -169,11 +177,14 @@ func run_shell_command_capture(command: ArgvCommand, transport: CommandTransport
               surface: cli_surface_of_literal_words(words: argv_operands(command: command))
             ),
           )
-          ShellCaptureResult {
-            success: process_exit_is_admitted(policy: ExitZeroSucceeds, exit_code: run.exit_code),
-            stdout: run.stdout,
-            stderr: run.stderr,
-          }
+          classify_process_observation(
+            policy: ExitZeroSucceeds,
+            observation: process_observation(
+              exit_code: run.exit_code,
+              stdout: run.stdout,
+              stderr: run.stderr,
+            ),
+          )
         }
       }
     SshExec { ssh_target: _ } => {
@@ -184,14 +195,46 @@ func run_shell_command_capture(command: ArgvCommand, transport: CommandTransport
           reason: "SSH arm only: nested command-string target is owned by another lane; the local arm no longer routes here" as NonEmptyStr,
         )
       )
-      ShellCaptureResult { success: run.success, stdout: run.stdout, stderr: run.stderr }
+      classify_process_observation(
+        policy: ExitZeroSucceeds,
+        observation: process_observation(
+          exit_code: run.exit_code,
+          stdout: run.stdout,
+          stderr: run.stderr,
+        ),
+      )
     }
+  }
+}
+
+// Did the process do its job? Callers whose product is the EXIT STATUS rather than the output ask
+// this instead of matching all three arms -- `test -f` has no stdout anyone wants, and forcing it
+// through an output-bearing variant would add a field it cannot answer. This is not a flattening
+// helper for output-consuming callers: it deliberately cannot reach the text.
+fn process_outcome_admitted(outcome: ProcessOutcome) -> Bool {
+  match outcome {
+    ProcessOutputPresent { text: _ } => true
+    ProcessOutputAbsent => true
+    ProcessRefused { exit_code: _, stderr: _ } => false
+  }
+}
+
+// A receipt line's text, and it is NOT a flattening back to the conflated shape. The three arms
+// render to three DISTINGUISHABLE strings: a refusal can never be mistaken for empty output, which
+// is the exact property the old record lacked. Use it only where the value is being written into
+// human-readable text; a caller that uses the value AS DATA -- a path, a hostname -- must match the
+// arms itself, because "(refused: ...)" is a fine thing to print and a catastrophic thing to open.
+fn process_outcome_receipt_text(outcome: ProcessOutcome) -> String {
+  match outcome {
+    ProcessOutputPresent { text: t } => trim(s: t)
+    ProcessOutputAbsent => "(no output)"
+    ProcessRefused { exit_code: _, stderr: e } => join(["(refused: ", trim(s: e), ")"], "")
   }
 }
 
 // Receipt owner probe — admitted under command_runner_scaffold until
 // extdeps.filesystem.filesystem_io carries typed owner observation.
-fn stat_owner_name_capture(path: String) -> ShellCaptureResult {
+fn stat_owner_name_capture(path: String) -> ProcessOutcome {
   run_shell_command_capture(
     command: ArgvCommand { argv: ["stat", "-c", "%U", path] },
     transport: LocalExec,

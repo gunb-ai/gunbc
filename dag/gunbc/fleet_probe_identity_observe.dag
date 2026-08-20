@@ -6,7 +6,8 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, LocalExec }
-import gunbc.command_runner { run_shell_command_capture }
+import gunbc.command_runner { run_shell_command_capture, process_outcome_receipt_text }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import gunbc.fleet_ssh_access { fleet_automation_ssh_key }
 
 // Observe-first for the probe-identity decision (parent msg_156e62bd): READ-ONLY
@@ -20,25 +21,29 @@ import gunbc.fleet_ssh_access { fleet_automation_ssh_key }
 data fleet_probe_identity_receipt_path: String = "target/fleet-probe-identity-observe-receipt.txt"
 
 fn observe_capture_line(label: String, argv: List<String>) -> String {
-  let r = run_shell_command_capture(command: ArgvCommand { argv: argv }, transport: LocalExec)
-  if r.success {
-    join([label, " outcome=observed value=", trim(s: r.stdout), "\n"], "")
-  } else {
-    join([label, " outcome=refused cause=", trim(s: r.stderr), "\n"], "")
+  match run_shell_command_capture(command: ArgvCommand { argv: argv }, transport: LocalExec) {
+    ProcessOutputPresent { text: t } =>
+      join([label, " outcome=observed value=", trim(s: t), "\n"], "")
+    ProcessOutputAbsent =>
+      join([label, " outcome=observed-empty value=\n"], "")
+    ProcessRefused { exit_code: _, stderr: e } =>
+      join([label, " outcome=refused cause=", trim(s: e), "\n"], "")
   }
 }
 
 fn observe_authorized_keys_line(home: String) -> String {
   let path = concat(home, "/.ssh/authorized_keys")
-  let read = run_shell_command_capture(command: ArgvCommand { argv: ["cat", path] }, transport: LocalExec)
-  if read.success {
-    if string_contains(s: read.stdout, pattern: fleet_automation_ssh_key.material) {
+  match run_shell_command_capture(command: ArgvCommand { argv: ["cat", path] }, transport: LocalExec) {
+    ProcessOutputPresent { text: read_text } =>
+    if string_contains(s: read_text, pattern: fleet_automation_ssh_key.material) {
       join(["authorized-keys home=", home, " outcome=fleet-key-present\n"], "")
     } else {
       join(["authorized-keys home=", home, " outcome=fleet-key-absent (file readable, key material not found)\n"], "")
     }
-  } else {
-    join(["authorized-keys home=", home, " outcome=unreadable cause=", trim(s: read.stderr), "\n"], "")
+    ProcessOutputAbsent =>
+      join(["authorized-keys home=", home, " outcome=fleet-key-absent (file readable and empty)\n"], "")
+    ProcessRefused { exit_code: _, stderr: e } =>
+      join(["authorized-keys home=", home, " outcome=unreadable cause=", trim(s: e), "\n"], "")
   }
 }
 
@@ -54,13 +59,17 @@ func fleet_probe_identity_observe_wet() -> ProcessExit
     command: ArgvCommand { argv: ["sh", "-c", "echo \"$HOME\"" ] },
     transport: LocalExec,
   )
-  let ph = trim(s: passwd_home.stdout)
-  let jh = trim(s: job_home.stdout)
+  // ph and jh are USED AS PATHS below, not merely printed, so they match the arms rather than
+  // routing through the receipt-text projection: "(refused: ...)" is fine to print and wrong to
+  // open. An unreadable home yields "" here and the guarded call below skips the probe entirely
+  // rather than reading /.ssh/authorized_keys off a fabricated root.
+  let ph = match passwd_home { ProcessOutputPresent { text: t } => trim(s: t)  ProcessOutputAbsent => ""  ProcessRefused { exit_code: _, stderr: _ } => "" }
+  let jh = match job_home { ProcessOutputPresent { text: t } => trim(s: t)  ProcessOutputAbsent => ""  ProcessRefused { exit_code: _, stderr: _ } => "" }
   let body = join([
-    join(["observer user=", trim(s: user.stdout), " passwd-home=", ph, " job-home=", jh, "\n"], ""),
+    join(["observer user=", process_outcome_receipt_text(outcome: user), " passwd-home=", process_outcome_receipt_text(outcome: passwd_home), " job-home=", process_outcome_receipt_text(outcome: job_home), "\n"], ""),
     "local-host-note only the host this runner occupies is locally observable pre-auth; srv2-srv4 authorized_keys standing is PENDING-FIRST-AUTH (recorded, not assumed)\n",
-    observe_authorized_keys_line(home: ph),
-    if jh != ph { observe_authorized_keys_line(home: jh) } else { "" },
+    if ph != "" { observe_authorized_keys_line(home: ph) } else { "authorized-keys home=(passwd home unreadable) outcome=not-probed\n" },
+    if jh != ph && jh != "" { observe_authorized_keys_line(home: jh) } else { "" },
     observe_capture_line(label: "gcloud-binary", argv: ["sh", "-c", "command -v gcloud || echo absent"]),
     observe_capture_line(label: "gcloud-auth-list", argv: ["sh", "-c", "command -v gcloud >/dev/null && gcloud auth list --format=value(account) 2>&1 || echo gcloud-absent"]),
     observe_capture_line(label: "adc-env", argv: ["sh", "-c", "echo \"$\{GOOGLE_APPLICATION_CREDENTIALS:-absent}\""]),
