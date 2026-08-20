@@ -1072,6 +1072,43 @@ pub enum InterpError {
         callee: String,
         detail: String,
     },
+    /// A HOST EFFECT THAT THE HERMETIC ROUTE HAS NO ARM FOR — a fact about which EXECUTION
+    /// ROUTE the caller must supply, never a fact about the caller's verdict.
+    ///
+    /// It is its own variant for the reason `TimedOut`/`HostToolUnresolved` are their own
+    /// variants at the witness boundary: this is a route fact, and a route fact recovered by
+    /// substring-matching prose is one fact in two representations whose second copy is
+    /// re-derived from the first (DESIGN §2/§3). Before this variant the three refusal sites
+    /// below all produced `TypeError { msg: "hermetic mode: …" }`, so every consumer that
+    /// wanted to tell "this witness ASSERTED false" from "this witness was never given a route
+    /// that could run it" had to either match on the sentence or conflate them. The required
+    /// floor conflated them by not executing the population at all.
+    ///
+    /// `ground` carries WHY the hermetic route has no arm, because the remedies differ: an
+    /// unpublished mock case is closed by publishing the case, a missing `mock_response` by
+    /// authoring one, and a filesystem REMOVAL by a wet route, since removal has no mock arm
+    /// at all. Collapsing them into one sentence is the state-space conflation DESIGN's
+    /// recurring-failure list names.
+    HermeticHostEffectRefused {
+        operation: String,
+        ground: HermeticEffectGround,
+    },
+}
+
+/// WHY THE HERMETIC ROUTE HAS NO ARM FOR ONE OPERATION. Closed, and each arm names a
+/// different remedy — see `InterpError::HermeticHostEffectRefused`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HermeticEffectGround {
+    /// The service is corpus-governed and no published mock case names this operation.
+    /// `published_cases` carries the cases that DO exist for the service, so the refusal
+    /// states its own remedy rather than sending the reader to look for it.
+    UnpublishedMockCase { published_cases: Vec<String> },
+    /// The operation node carries no `mock_response` property, so the hermetic arm would
+    /// have to fabricate a Unit — the fabricated-plausible-output failure DESIGN §5 forbids.
+    NoMockResponse,
+    /// A filesystem REMOVAL. Distinct from the two above because there is no mock arm to
+    /// author: the operation's whole content is the effect, so only a wet route can run it.
+    FilesystemRemoval,
 }
 
 impl fmt::Display for InterpError {
@@ -1181,6 +1218,24 @@ impl fmt::Display for InterpError {
                 name,
                 probed.join(", ")
             ),
+            InterpError::HermeticHostEffectRefused { operation, ground } => match ground {
+                HermeticEffectGround::UnpublishedMockCase { published_cases } => write!(
+                    f,
+                    "hermetic mode: operation {operation} is not a published mock case for its \
+                     corpus-governed service \u{2014} refusing to realize (published cases: \
+                     {published_cases:?})"
+                ),
+                HermeticEffectGround::NoMockResponse => write!(
+                    f,
+                    "hermetic mode: no mock_response for operation {operation} \u{2014} refusing \
+                     to fabricate Unit"
+                ),
+                HermeticEffectGround::FilesystemRemoval => write!(
+                    f,
+                    "hermetic mode: {operation} refuses filesystem removal (no mock arm; the \
+                     operation's whole content is the effect, so only a wet route can run it)"
+                ),
+            },
             InterpError::HostToolRelativePathAmbiguous { name } => write!(
                 f,
                 "host tool relative path ambiguous at cwd-dependent boundary: {:?}",
@@ -1500,7 +1555,7 @@ mod cross_claim_memo_tests {
 
     use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
-    use crate::v1_std_core::{make_expr_node, make_span, ExprData};
+    use crate::v1_std_core::{make_expr_node, no_span, ExprData};
 
     use super::{
         list_value, store_cross_claim_pure_memo, try_cross_claim_pure_memo, ExecutionMode,
@@ -1546,7 +1601,7 @@ mod cross_claim_memo_tests {
             Rc::new(ExprData::NoExprData),
             Rc::new(im_vec![]),
             None,
-            make_span(0, 0),
+            no_span(),
         );
 
         // A non-empty List argument routes through `EvalRecomputeArgKey::ContentHash`
@@ -1615,7 +1670,7 @@ mod cross_claim_memo_tests {
             Rc::new(ExprData::NoExprData),
             Rc::new(im_vec![]),
             None,
-            make_span(0, 0),
+            no_span(),
         );
 
         let args_a = [(
@@ -1665,7 +1720,7 @@ mod cross_claim_memo_tests {
             Rc::new(ExprData::NoExprData),
             Rc::new(im_vec![]),
             None,
-            make_span(0, 0),
+            no_span(),
         );
 
         let args_a = [(
@@ -1710,7 +1765,7 @@ mod cross_claim_memo_tests {
             Rc::new(ExprData::NoExprData),
             Rc::new(im_vec![]),
             None,
-            make_span(0, 0),
+            no_span(),
         );
         let result = Value::Str(Rc::from("ok"));
 
@@ -1750,7 +1805,7 @@ mod cross_claim_memo_tests {
             Rc::new(ExprData::NoExprData),
             Rc::new(im_vec![]),
             None,
-            make_span(0, 0),
+            no_span(),
         );
         let result = Value::Str(Rc::from("ok"));
 
@@ -7837,12 +7892,11 @@ fn eval_service_call(
                 })
                 .collect();
             cases.sort();
-            return Err(InterpError::TypeError {
-                msg: format!(
-                    "hermetic mode: operation {key} is not a published mock case for \
-                     corpus-governed service {service_name} — refusing to realize \
-                     (published cases: {cases:?})"
-                ),
+            return Err(InterpError::HermeticHostEffectRefused {
+                operation: key.clone(),
+                ground: HermeticEffectGround::UnpublishedMockCase {
+                    published_cases: cases.into_iter().cloned().collect(),
+                },
             });
         }
 
@@ -11314,10 +11368,9 @@ fn eval_mock_response(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult<V
         }
     }
     let op_name = authored_name_at(ctx.si(), op_node.clone());
-    Err(InterpError::TypeError {
-        msg: format!(
-            "hermetic mode: no mock_response for operation {op_name} — refusing to fabricate Unit"
-        ),
+    Err(InterpError::HermeticHostEffectRefused {
+        operation: op_name.to_string(),
+        ground: HermeticEffectGround::NoMockResponse,
     })
 }
 
@@ -11616,10 +11669,9 @@ fn eval_emit_host_native_cache_evict_builtin(
     ctx.effect_dispatch_count
         .set(ctx.effect_dispatch_count.get().wrapping_add(1));
     if ctx.execution_mode.is_hermetic() {
-        return Err(InterpError::TypeError {
-            msg: "hermetic mode: emit_host_native_cache_evict refuses filesystem removal \
-                  (no mock arm; run wet)"
-                .to_string(),
+        return Err(InterpError::HermeticHostEffectRefused {
+            operation: "emit_host_native_cache_evict".to_string(),
+            ground: HermeticEffectGround::FilesystemRemoval,
         });
     }
     let workspace_dir =
@@ -15577,7 +15629,7 @@ mod map_shell_outputs_optional_stream_tests {
     use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
     use crate::v1_std_core::{
-        make_field_init_node, make_field_node, make_span, make_text_part_node, Cardinality,
+        make_field_init_node, make_field_node, make_text_part_node, no_span, Cardinality,
         Connective, ExprData, InferredNode, Node,
     };
 
@@ -15639,7 +15691,7 @@ mod map_shell_outputs_optional_stream_tests {
 
     fn map_optional_stream_field(exit_code: i32, from_key: &str) -> Value {
         let ctx = map_shell_outputs_test_context();
-        let span = make_span(0, 0);
+        let span = no_span();
         let str_type = bare_type_node("String", span.clone());
         let mut field = make_field_node(
             from_key.to_string(),
@@ -16071,7 +16123,7 @@ mod argv_arg_limit_test {
 
     use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
-    use crate::v1_std_core::{make_span, make_text_part_node, shell_transport_node, Node};
+    use crate::v1_std_core::{make_text_part_node, no_span, shell_transport_node, Node};
 
     use super::{
         argv_arg_limit_refusal, dispatch_shell, Env, ExecutionMode, ExpectedOutcome, InterpContext,
@@ -16090,7 +16142,7 @@ mod argv_arg_limit_test {
 
     /// `shell.Exec.Check`-shaped argv: `sh -c "<command>"` as three literal tokens.
     fn shell_check_style_transport(command: &str) -> Rc<Node> {
-        let span = make_span(0, 0);
+        let span = no_span();
         shell_transport_node(
             Rc::new(im_vec![
                 make_text_part_node("sh".to_string(), span.clone()),

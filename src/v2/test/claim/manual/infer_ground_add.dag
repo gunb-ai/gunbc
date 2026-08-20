@@ -154,22 +154,28 @@ fn infer_receipt_bind_value(
 fn infer_receipt_interpretation() -> InterpretationAlgebra {
   InterpretationAlgebra {
     value: ValueInterpreter {
-      allocate_literal: infer_receipt_allocate_literal
+      allocate_literal: infer_receipt_allocate_literal,
+      identity: ^infer_receipt_allocate_literal
     },
     transform: TransformInterpreter {
-      call_primitive: infer_receipt_call_primitive
+      call_primitive: infer_receipt_call_primitive,
+      identity: ^infer_receipt_call_primitive
     },
     branch: BranchInterpreter {
-      choose_branch: infer_receipt_choose_branch
+      choose_branch: infer_receipt_choose_branch,
+      identity: ^infer_receipt_choose_branch
     },
     loop: LoopInterpreter {
-      step_loop: infer_receipt_step_loop
+      step_loop: infer_receipt_step_loop,
+      identity: ^infer_receipt_step_loop
     },
     bind: BindInterpreter {
-      bind_value: infer_receipt_bind_value
+      bind_value: infer_receipt_bind_value,
+      identity: ^infer_receipt_bind_value
     },
     match: MatchInterpreter {
-      choose_arm: v2.std.runtime.runtime_reject_match_arm
+      choose_arm: v2.std.runtime.runtime_reject_match_arm,
+      identity: ^runtime_reject_match_arm
     }
   }
 }
@@ -214,11 +220,11 @@ fn infer_receipt_claim(case: InferReceiptCase) -> TestClaim {
 
 fn infer_receipt_interpretation_structure_witness() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
-    allocate_literal: ^infer_receipt_allocate_literal_sym,
-    call_primitive: ^infer_receipt_call_primitive_sym,
-    choose_branch: ^infer_receipt_choose_branch_sym,
-    step_loop: ^infer_receipt_step_loop_sym,
-    bind_value: ^infer_receipt_bind_value_sym,
+    allocate_literal: ^infer_receipt_allocate_literal,
+    call_primitive: ^infer_receipt_call_primitive,
+    choose_branch: ^infer_receipt_choose_branch,
+    step_loop: ^infer_receipt_step_loop,
+    bind_value: ^infer_receipt_bind_value,
     choose_arm: ^runtime_reject_match_arm
   }
 }

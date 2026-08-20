@@ -27,7 +27,7 @@ use v1_compiler::v1_compiler_infer_types::{
 use v1_compiler::v1_compiler_parse;
 use v1_compiler::v1_std_core::NewlineIndex;
 use v1_compiler::v1_std_core::{
-    default_ident_span, leaf_node_with_span, make_arm_node, make_span, with_optional_cardinality,
+    default_ident_span, leaf_node_with_span, make_arm_node, no_span, with_optional_cardinality,
     Cardinality, CompilerDiagnostic, Connective, ExprData, InferredNode, MatchPattern, Node,
     SourceSpan,
 };
@@ -179,7 +179,7 @@ fn empty_source_indices() -> Rc<HashMap<String, Rc<NewlineIndex>>> {
 }
 
 fn leaf_node(name: String) -> Rc<Node> {
-    leaf_node_with_span(name, make_span(0, 0))
+    leaf_node_with_span(name, no_span())
 }
 
 fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
@@ -187,7 +187,7 @@ fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
         Some(n) => n,
         None => kind_name.clone(),
     };
-    let sp = make_span(0, 0);
+    let sp = no_span();
     Rc::new(Node {
         name: kind_name.clone(),
         ident: None,
@@ -234,7 +234,7 @@ fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
         .expect("kernel Map should resolve K from PartialFunction profile");
     let val_name = container_param_name("Map".to_string(), 1)
         .expect("kernel Map should resolve V from PartialFunction profile");
-    let sp = make_span(0, 0);
+    let sp = no_span();
     Rc::new(Node {
         name: "Map".to_string(),
         ident: None,
@@ -347,7 +347,7 @@ fn empty_infer_scope() -> Rc<InferScope> {
 }
 
 fn sum_node(name: &str, variants: Vec<Rc<Node>>, cardinality: Cardinality) -> Rc<Node> {
-    let sp = make_span(0, 0);
+    let sp = no_span();
     Rc::new(Node {
         name: name.to_string(),
         ident: None,
@@ -778,7 +778,7 @@ fn optional_pattern_lookup_resolves_present_variant() {
 }
 
 fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant() {
-    let sp = make_span(0, 0);
+    let sp = no_span();
     let inner_present = Rc::new(Node {
         name: "Present".to_string(),
         ident: None,
@@ -902,8 +902,8 @@ fn applied_generic_type_node(type_name: &str, type_arg: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
         name: type_name.to_string(),
         ident: None,
-        span: make_span(0, 0),
-        ident_span: default_ident_span(type_name.to_string(), make_span(0, 0)),
+        span: no_span(),
+        ident_span: default_ident_span(type_name.to_string(), no_span()),
         children: Rc::new(vec![type_arg]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -1692,8 +1692,8 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
     let value_field = Rc::new(Node {
         name: "value".to_string(),
         ident: None,
-        span: make_span(0, 0),
-        ident_span: default_ident_span("value".to_string(), make_span(0, 0)),
+        span: no_span(),
+        ident_span: default_ident_span("value".to_string(), no_span()),
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -1714,8 +1714,8 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
     let box_decl = Rc::new(Node {
         name: "Box".to_string(),
         ident: None,
-        span: make_span(0, 0),
-        ident_span: default_ident_span("Box".to_string(), make_span(0, 0)),
+        span: no_span(),
+        ident_span: default_ident_span("Box".to_string(), no_span()),
         children: Rc::new(vec![value_field]),
         connective: Connective::Conj,
         params: Rc::new(vec![t_param]),

@@ -16,7 +16,7 @@ import extdeps.communication.medium { Medium }
 import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.logic { Bool }
-import v2.std.node { Node }
+import v2.std.node { Node, Symbol }
 import v2.std.runtime { EvaluationEnvironment, RuntimeValue }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -38,10 +38,11 @@ fn produced_add_module_source() -> Outcome<Medium<String>> {
 }
 
 fn produced_module_run(
-  cp: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> Outcome<RuntimeValue>
+  cp: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> Outcome<RuntimeValue>,
+  cp_identity: Symbol
 ) -> TestClaimRun<Node, RuntimeValue> {
   run_test_claim_from_source_emit_vs_eval(
-    subject: emit_eval_subject(call_primitive: cp),
+    subject: emit_eval_subject(call_primitive: cp, call_primitive_identity: cp_identity),
     source_outcome: produced_add_module_source(),
     target: rust_target_model_staging()
   )
@@ -59,10 +60,14 @@ test fn produced_module_two_distinct_fns_assemble() -> Bool {
 }
 
 test fn emit_host_produced_module_add_equals_eval_holds() -> Bool {
-  emit_eval_verdict_is_pass(run: produced_module_run(cp: emit_eval_call_primitive_five))
+  emit_eval_verdict_is_pass(
+    run: produced_module_run(cp: emit_eval_call_primitive_five, cp_identity: ^emit_eval_call_primitive_five)
+  )
 }
 
 test fn emit_host_produced_module_wrong_oracle_refuses_holds() -> Bool {
-  emit_eval_verdict_is_semantic_mismatch(run: produced_module_run(cp: emit_eval_call_primitive_six))
+  emit_eval_verdict_is_semantic_mismatch(
+    run: produced_module_run(cp: emit_eval_call_primitive_six, cp_identity: ^emit_eval_call_primitive_six)
+  )
 }
 

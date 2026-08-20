@@ -1,0 +1,71 @@
+module test.claim.transport_script_wall_compile_red
+
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data transport_script_wall_compile_red_note: String = "§5.E wall REDs (operator acceptance 2026-07-24): the two documented transport-script fake patterns, reconstructed AS WRITTEN, must FAIL TO COMPILE — not merely fail review. Each fake is compiled as an inline virtual source through compile_dag_rust_emit_check, which returns false on any hard diagnostic; the tests assert refusal (!compile). The construction wall — ShellOnHost.script retyped to the RetainedShellScript RECORD, and the free minter extdeps.shell.exec.transport_script_from_body DELETED — is what makes both fakes non-compiling. The host_language_transport_script lens never caught these (a computed concat is ComputedApplication, deliberately green); only construction closes the class. If either wall is ever loosened (record widened back to String, or the free minter reintroduced), the corresponding fake starts compiling clean, compile_dag_rust_emit_check flips to true, and the RED goes red — the wall's regression alarm."
+
+data firsttouch_1_restoration_note: String = "FIRSTTOUCH-1 (dashboard adhoc-c5b4375f-4cb, 2026-08-19) -- a finding and a disposition correction, NOT a restoration; corrected 2026-08-19 after this note's first version wrongly read a green floor run as evidence the witness now executes cheaply. This module was quarantined out of test.claim.long. and back in, twice, on two different readings of one artifact. First quarantined by #8457's blanket over-budget sweep. RESTORE WAVE A un-quarantined it, then 021d17e6a7 dropped it straight back after observing it cost 1394ms pre-quarantine (docs/plans/measurements/floor-slow-rows-2026-08-17.tsv, CI run ci) but 48963ms in the restore run with nothing about the witness changed -- 35.1x, and the commit named the mechanism without yet fixing it: compile_dag_rust_emit_check_uncached calls build_module_path_index_from_witness_roots (src/v1/stage0/src/cli_run.rs), a THREAD-LOCAL memo keyed on the default source roots -- exactly the module_path_index shared fill of the #8455 ledger (docs/plans/floor-shared-fill-ledger.md). #8470 (7e4871be86, already on this branch's main ancestry) DID fix that exact call site, warming build_module_path_index_from_witness_roots during floor preparation and naming this witness's own two RED rows in its measurement table -- but fixing a cost and being ADMITTED to pay it are two different facts, and this note's first version conflated them.
+
+The module moves out of long. here for a reason independent of cost: its long-home name asserted a quarantine reason (cost) that is no longer the operative one now that live_tree_disposition below is corrected. Carrying a stale reason beside a live one is exactly the drift the long/-versus-module-name split exists to end.
+
+THE DISPOSITION CORRECTION IS THE SUBSTANTIVE CHANGE. live_tree_disposition was declared SubstrateInputsOnly while this witness calls compile_dag_rust_emit_check, which reaches the identical build_module_path_index_from_witness_roots live-tree walk its sibling (compile_diagnostic_census_witness_test.dag) already declares ReadsLiveTree for. That sibling's census_live_tree_note had flagged this as 'either a latent mis-declaration or a judgment call' pending the falsifier cadence -- since deleted (2026-08-15 floor cut) and never adjudicated. SubstrateInputsOnly was the mis-declaration; ReadsLiveTree is declared here honestly, even though it costs admission rather than buying it.
+
+THE FINDING, terminal, not pending: v2.workflow.required_floor's admission test is long_home(module) -> DeclinedLongModule; else reads_live_tree -> DeclinedLiveTree; else Planned (src/v1/stage0/src/cli_run.rs run_required_floor, disposition_rows construction) -- an OR of two independent decline arms, not one quarantine gate. Moving this module out of test.claim.long. does not admit it: it moves the three identities straight from DeclinedLongModule into DeclinedLiveTree. Measured at identity grain -- RequiredFloorDispositionRow, the per-identity receipt that made this decidable at all -- comparing this PR's floor run against a main baseline run at the same head: claims=9686 unchanged in both, declined_long 539->536 (-3), declined_live 763->766 (+3); the exact three identities moved buckets and never became Planned. THIS WITNESS CANNOT BE ADMITTED TO THE REQUIRED FLOOR WHILE IT READS THE LIVE TREE. That is independent of #8470: the first-touch cost fix and the admission question are two separate facts about this module, and fixing the first does not touch the second.
+
+CONSEQUENCE FOR THE COST QUESTION: it cannot be closed by a floor run at all, not now and not after any further first-touch repair, because the witness is never planned into one. A standalone claim run is not a substitute measurement either -- it disables the per-floor-process memo #8470 warms, so it would measure a different, uncached quantity, not this module's floor-fold cost; using it to answer the floor question would be a fourth false reading of the same defect docs/plans/floor-shared-fill-ledger.md exists to stop people repeating. The cost question is therefore an open item with a NAMED BLOCKER -- this witness's own inadmissibility -- not a task the next session should attempt against the floor.
+
+SCALE NOTE, unrelated to this witness's own resolution but recorded where it will be seen: at the same measurement, declined_live=766 vastly outnumbers declined_long=536 (763 vs 539 pre-move). This whole lane -- three restore waves, an attribution pass, a policy cut, a night of argument across six sessions -- has been aimed entirely at the smaller of the two declined populations.
+
+CORRECTED 2026-08-20 (WITNESS EXECUTION CLOSURE), and the correction is to the REASON rather than to the fact. THE FINDING paragraph above is still true TODAY -- DeclinedLiveTree still exists and these three identities are still declined -- but its stated ground is false, and a true conclusion resting on a false premise will mislead the next person who acts on it. The premise 'THIS WITNESS CANNOT BE ADMITTED TO THE REQUIRED FLOOR WHILE IT READS THE LIVE TREE' is wrong: hermetic mode carries a checkout-read carve-out (v1_interpreter hermetic_checkout_read_disposition), under which a Filesystem.Read of a path proven under the checkout root is INPUT access -- the commit is the run's deterministic input -- and dispatches to a REAL read. Reading the live tree has not implied un-executability since that carve-out landed, which was after live_tree_disposition was authored.
+
+MEASURED, NOT ARGUED (floor run 32345970386, sha c812b9fb6d0): the decline arm was deleted on a branch and the whole population executed. Of ~783 identities admitted, 626 PASS. 157 route-gap on real host operations, and this module's own rows are NOT among them -- they complete. So the CONSEQUENCE FOR THE COST QUESTION paragraph above is also answerable now rather than blocked: these rows cost 53301ms and 6682ms CPU in that run, exact measurements of a completed claim, against a 5000ms per-witness CPU limit. That is the number this lane spent three restore waves trying and failing to obtain, and it was unobtainable only because the floor never planned the witness.
+
+WHY THE ARM IS STILL HERE. Deleting it also admits 55 blockers -- 6 witnesses that do not RESOLVE and 49 in a cost tail, this module's two among them -- and every one of the 55 is newly-admitted. The mechanism that makes the population visible landed separately, carrying none of them. The deletion is staged behind treating those 55. See docs/plans/witness-execution-closure.md.
+
+THE SCALE NOTE'S POINT IS ACCEPTED AND ACTED ON: 778 identities in the larger population against 538 in the smaller one that consumed this lane. That sentence is why the closure work exists. What did NOT change is this module's live_tree_disposition, which stays ReadsLiveTree and stays correct -- it is read by reads_live_tree_effective for AFFECTED-SET SELECTION ELIGIBILITY, a different question from 'can this execute', and the floor conflating the two is the actual defect."
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// Positive control: a clean shell service source compiles and emits src/wallctl.rs containing the argv-shaped Command invocation, so compile_dag_rust_emit_check returns true. Proves the harness is discriminating — the two false results below are genuine refusals of the fakes, not a harness that always returns false.
+fn w_control_clean_shell_service() -> Bool {
+  compile_dag_rust_emit_check(
+    "module wallctl\n\nservice shell.Run {\n  operation Exec {\n    input { script: String }\n    output { result: String }\n    transport shell { argv: [\"sh\", \"-lc\", \"\{script\}\"] }\n    mock_response {\n      0 => \"done\" \"result\"\n    }\n  }\n}\n",
+    "src/wallctl.rs",
+    ["Command::new(\"sh\")", ".arg(\"-lc\")"],
+    []
+  )
+}
+
+data red_a_note: String = "RED A — the #7064 / vivid-wolf 'build the argv properly, then join it back into a string and feed the realization edge' class. The fake hands a computed String (argv join + \" 2>/dev/null || true\") to retained_shell_script_to_transport, whose parameter is the RetainedShellScript RECORD. A String cannot fill a record position, so infer refuses (hard diagnostic) and the source does not compile. The only sanctioned route is to author a counted RetainedShellScript row (retained_srvn / retained_transport), which forces a reason + dissolve-on."
+
+fn w_red_a_string_join_into_retained_record() -> Bool {
+  compile_dag_rust_emit_check(
+    "module wallreda\n\nimport std.types { String }\nimport extdeps.shell.exec { TransportScript }\nimport gunbc.retained_shell_script { retained_shell_script_to_transport }\n\nfn argv_joined() -> String { concat(\"hostname\", concat(\" \", \"-s\")) }\n\nfn fake_join_into_record() -> TransportScript {\n  retained_shell_script_to_transport(rss: concat(argv_joined(), \" 2>/dev/null || true\"))\n}\n",
+    "src/wallreda.rs",
+    [],
+    []
+  )
+}
+
+data red_b_note: String = "RED B — #7064's exact textual pattern: transport_script_from_body(argv_join(...) + \" 2>/dev/null || true\"). The free minter is deleted from extdeps.shell.exec, so the import resolves nothing and the call is unresolved (hard diagnostic) — the source does not compile. Reintroducing the free minter would make this fake compile again and red this control."
+
+fn w_red_b_deleted_free_minter() -> Bool {
+  compile_dag_rust_emit_check(
+    "module wallredb\n\nimport std.types { String }\nimport extdeps.shell.exec { TransportScript, transport_script_from_body }\n\nfn argv_joined() -> String { concat(\"hostname\", concat(\" \", \"-s\")) }\n\nfn fake_deleted_minter() -> TransportScript {\n  transport_script_from_body(body: concat(argv_joined(), \" 2>/dev/null || true\"))\n}\n",
+    "src/wallredb.rs",
+    [],
+    []
+  )
+}
+
+test fn wall_control_clean_shell_service_compiles() -> Bool {
+  w_control_clean_shell_service()
+}
+
+test fn wall_red_string_join_into_retained_record_refuses() -> Bool {
+  !w_red_a_string_join_into_retained_record()
+}
+
+test fn wall_red_deleted_free_minter_refuses() -> Bool {
+  !w_red_b_deleted_free_minter()
+}

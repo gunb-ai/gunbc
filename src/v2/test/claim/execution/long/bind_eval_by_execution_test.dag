@@ -216,33 +216,39 @@ fn bind_bind_value(
 fn bind_interpretation() -> InterpretationAlgebra {
   InterpretationAlgebra {
     value: ValueInterpreter {
-      allocate_literal: bind_allocate_literal
+      allocate_literal: bind_allocate_literal,
+      identity: ^bind_allocate_literal
     },
     transform: TransformInterpreter {
-      call_primitive: bind_call_primitive
+      call_primitive: bind_call_primitive,
+      identity: ^bind_call_primitive
     },
     branch: BranchInterpreter {
-      choose_branch: bind_choose_branch
+      choose_branch: bind_choose_branch,
+      identity: ^bind_choose_branch
     },
     loop: LoopInterpreter {
-      step_loop: bind_step_loop
+      step_loop: bind_step_loop,
+      identity: ^bind_step_loop
     },
     bind: BindInterpreter {
-      bind_value: bind_bind_value
+      bind_value: bind_bind_value,
+      identity: ^bind_bind_value
     },
     match: MatchInterpreter {
-      choose_arm: runtime_reject_match_arm
+      choose_arm: runtime_reject_match_arm,
+      identity: ^runtime_reject_match_arm
     }
   }
 }
 
 fn bind_interpretation_structure_witness() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
-    allocate_literal: ^bind_allocate_literal_sym,
-    call_primitive: ^bind_call_primitive_sym,
-    choose_branch: ^bind_choose_branch_sym,
-    step_loop: ^bind_step_loop_sym,
-    bind_value: ^bind_bind_value_sym,
+    allocate_literal: ^bind_allocate_literal,
+    call_primitive: ^bind_call_primitive,
+    choose_branch: ^bind_choose_branch,
+    step_loop: ^bind_step_loop,
+    bind_value: ^bind_bind_value,
     choose_arm: ^runtime_reject_match_arm
   }
 }

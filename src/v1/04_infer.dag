@@ -60,7 +60,7 @@ import v1.std.core {
   make_transport_node, local_transport_node,
   Text, Interpolation,
   with_optional_cardinality, with_required_cardinality, preserve_outer_optional_cardinality,
-  no_span, make_span, NewlineIndex,
+  no_span, NewlineIndex,
   unit_type, bool_type, string_type, int_type, float_type, none_type,
   error_type,
   is_container_type, container_expected_arity,
@@ -176,6 +176,7 @@ import v1.compiler.infer_lookup {
   KnownMethodResolution,
   resolve_known_method_node, resolve_scrutinee_type_node, resolve_method_receiver_type,
   lookup_structural_method,
+  DeclaredArgContract, ContractKnown, MethodUnresolved, ContractUnavailable, declared_arg_types_for_method,
   field_summary_for_type,
   lookup_field_type_node, lookup_coproduct_common_field_node, product_field_result_type,
   map_value_type_in_env, map_key_type_in_env, set_element_type_in_env,
@@ -1574,7 +1575,11 @@ fn where_refinement_diags_for_predicate(
         }
     }
   } else if where_refinement_is_string_literal_predicate(pred_name: pname) {
-    match expr_literal_string_optional(expr: value_expr) {
+    let string_literal_value = match expr_literal_string_optional(expr: value_expr) {
+      Present { value: v } => Present { value: v }
+      Absent => expr_literal_symbol_optional(expr: value_expr)
+    }
+    match string_literal_value {
       Present { value: v } =>
         match decidable_where_string_predicate_holds(pred_name: pname, value: v) {
           Present { value: holds } =>
@@ -2833,7 +2838,7 @@ fn validate_cast(source_inferred: InferredNode?, target_name: String, span: Sour
 }
 
 fn type_variable_node(id: String) -> Node {
-  Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
@@ -3089,7 +3094,7 @@ fn derive_element_provenance(coll_expr: Node, elem_type: Node, scope: InferScope
   }
 }
 
-fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fold_info: ArgInferResult?, fold_acc_type: Node, element_type: Node, elem_provenance: SubValueRelation, scope: InferScope) -> List<ArgInferResult> {
+fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fold_info: ArgInferResult?, fold_acc_type: Node, element_type: Node, elem_provenance: SubValueRelation, arg_contract: DeclaredArgContract, scope: InferScope) -> List<ArgInferResult> {
   let is_fold = method_name_is(opt: method_name, expected: "fold")
   method_args |> enumerate |> map(idx_pair =>
     let a = idx_pair.second
@@ -3151,7 +3156,21 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
           lambda_param_provenance: nf_prov_map
         }
       } else { scope }
-      infer_arg_with_element_type(arg: a, element_type: element_type, scope: nf_scope)
+      match arg_contract {
+        MethodUnresolved => infer_arg_with_element_type(arg: a, element_type: element_type, scope: nf_scope)
+        ContractUnavailable =>
+          let ar = infer_expr(texpr: nf_lam_value, scope: nf_scope, expected: none)
+          let contract_diag = categorized_error(message: "no declared argument contract is available for this method call; refusing rather than substituting the receiver element type", span: a.span, module_name: nf_scope.module_name, category: "method-arg-contract-unavailable")
+          ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: a, source_indices: nf_scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: concat(ar.diagnostics, [contract_diag]) }
+        ContractKnown { types: declared_types } =>
+          match declared_types |> skip(idx) |> first {
+            Present { value: declared_type } => infer_arg_with_element_type(arg: a, element_type: declared_type, scope: nf_scope)
+            Absent =>
+              let ar = infer_expr(texpr: nf_lam_value, scope: nf_scope, expected: none)
+              let contract_diag = categorized_error(message: "no declared argument contract is available at this parameter position; refusing rather than substituting the receiver element type", span: a.span, module_name: nf_scope.module_name, category: "method-arg-contract-unavailable")
+              ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: a, source_indices: nf_scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: concat(ar.diagnostics, [contract_diag]) }
+          }
+      }
     }
   )
 }
@@ -3494,7 +3513,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             let first_type = resolved_type(n: first_result.typed)
             let elem_type = for_each_element_type_node(n: first_type, source_indices: scope.type_env.source_indices)
             let call_elem_provenance = derive_element_provenance(coll_expr: first_result.typed, elem_type: elem_type, scope: scope)
-            let remaining_results = infer_method_args_with_fold(method_name: call_method_name, method_args: call_method_args, fold_info: call_fold_info, fold_acc_type: call_fold_acc_type, element_type: elem_type, elem_provenance: call_elem_provenance, scope: scope)
+            let remaining_results = infer_method_args_with_fold(method_name: call_method_name, method_args: call_method_args, fold_info: call_fold_info, fold_acc_type: call_fold_acc_type, element_type: elem_type, elem_provenance: call_elem_provenance, arg_contract: MethodUnresolved, scope: scope)
             concat(
               [ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: first_arg, source_indices: scope.type_env.source_indices), value: first_result.typed, span: first_arg.span, name_span: first_arg.span), diagnostics: first_result.diagnostics }],
               remaining_results
@@ -3958,7 +3977,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Absent => error_type
       }
       let mc_elem_provenance = derive_element_provenance(coll_expr: recv_typed, elem_type: recv_elem_type, scope: scope)
-      let mc_arg_infer_results = infer_method_args_with_fold(method_name: mc_method_name, method_args: mc_args, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, elem_provenance: mc_elem_provenance, scope: scope)
+      let mc_arg_contract = declared_arg_types_for_method(receiver_type: recv_rt, method_name: method_name, source_indices: scope.type_env.source_indices, expand_field_type: n => expand_type_for_field_access(n: n, env: scope.type_env, module_name: scope.module_name).resolved)
+      let mc_arg_infer_results = infer_method_args_with_fold(method_name: mc_method_name, method_args: mc_args, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, elem_provenance: mc_elem_provenance, arg_contract: mc_arg_contract, scope: scope)
       let typed_mc_args = mc_arg_infer_results |> map(air => air.typed_arg)
       let mc_arg_diags = flat_map(mc_arg_infer_results, air => air.diagnostics)
       let mc_acc_is_under_resolved = !is_fully_resolved(n: fold_acc_type, source_indices: scope.type_env.source_indices)
@@ -4369,7 +4389,10 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let body_expected = if expected != none {
         let exp = expected.value
         if exp.params |> count > 0 {
-          Present { value: callable_inferred(n: exp) }
+          let declared_ret = resolved_type(n: exp)
+          if is_fully_resolved(n: declared_ret, source_indices: scope.type_env.source_indices) {
+            Present { value: declared_ret }
+          } else { none }
         } else { none }
       } else { none }
       let body_scope = InferScope {
@@ -8287,6 +8310,17 @@ fn corpus_item_name_counts(modules: List<ResolvedModule>, source_indices: Map<St
   corpus_item_name_counts_nodes(module_nodes: census_module_nodes(modules: modules), source_indices: source_indices)
 }
 
+// Unconditional fully-qualified insertion, ahead of the uniqueness-gated 2-segment
+// aliases below: `module_path.TypeName.variant_name` disambiguates by construction
+// (a variant name is unique within one Disj, and a TypeName is unique within one
+// module), so it needs no corpus-wide uniqueness check the way the bare `module_path.
+// variant_name` shortcut does. This closes the population-A gap named in
+// direct_call_shape_wall_note: a qualified constructor call site like
+// `gunbc.WitnessBin.Run(...)` builds exactly this 3-segment dotted name
+// (ExprMethodCall's qualified_direct_call gate, and func_sig_from_global_bare's
+// borrowed_census_decl, both call symbol_index_lookup on it) and previously found
+// nothing, falling through to the generic method-call bridge instead of the
+// direct_call_shape_diags wall.
 fn symbol_index_insert_unique_disj_variant_aliases(
   index: SymbolIndex,
   module_path: String,
@@ -8299,21 +8333,27 @@ fn symbol_index_insert_unique_disj_variant_aliases(
   fold(items, init: index, f: (acc, item) =>
     match item.connective {
       Disj =>
+        let tname = authored_name_at(source_indices: source_indices, node: item)
         fold(item.children, init: acc, f: (a2, child) =>
           let vname = authored_name_at(source_indices: source_indices, node: child)
+          let a2_qualified = symbol_index_insert(
+            index: a2,
+            qualified_name: concat(concat(module_path, ".", tname), ".", vname),
+            resolved: item
+          )
           match map_get(counts, vname) {
             Present { value: 1 } =>
               match map_get(corpus_variant_counts, vname) {
                 Present { value: 1 } =>
                   if map_get(corpus_item_counts, vname) != none || overlay_skips_kernel_name(name: vname) {
                     symbol_index_insert(
-                      index: a2,
+                      index: a2_qualified,
                       qualified_name: concat(module_path, ".", vname),
                       resolved: item
                     )
                   } else {
                   symbol_index_insert_decl(
-                    index: a2,
+                    index: a2_qualified,
                     module_path: module_path,
                     binding: TypeBinding {
                       name: vname,
@@ -8324,12 +8364,12 @@ fn symbol_index_insert_unique_disj_variant_aliases(
                   }
                 _ =>
                   symbol_index_insert(
-                    index: a2,
+                    index: a2_qualified,
                     qualified_name: concat(module_path, ".", vname),
                     resolved: item
                   )
               }
-            _ => a2
+            _ => a2_qualified
           }
         )
       _ => acc
@@ -8850,7 +8890,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
 fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> BuildTypeEnvResult {
   let intern_table = fold(map_keys(kernel_type_set), init: intern_table, f: (t, name) => intern(table: t, s: name).table)
   let intern_table = fold(["Optional"], init: intern_table, f: (t, name) => intern(table: t, s: name).table)
-  let zero_span = make_span(start: 0, end: 0)
+  let zero_span = no_span()
   let kernel_bindings = fold(
     map_keys(kernel_type_set),
     init: empty_map(),

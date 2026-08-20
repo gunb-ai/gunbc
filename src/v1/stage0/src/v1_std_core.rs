@@ -1400,8 +1400,8 @@ pub fn make_field_node(
                 "from_key".to_string(),
                 Rc::new(Node {
                     name: fk.clone(),
-                    span: make_span(0, 0),
-                    ident_span: default_ident_span(fk.clone(), make_span(0, 0)),
+                    span: no_span(),
+                    ident_span: default_ident_span(fk.clone(), no_span()),
                     children: Rc::new(vec![]),
                     connective: Connective::NoConnective,
                     params: Rc::new(vec![]),
@@ -1418,8 +1418,8 @@ pub fn make_field_node(
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 }),
-                make_span(0, 0),
-                make_span(0, 0),
+                no_span(),
+                no_span(),
             )]),
             None => Rc::new(vec![]),
         };
@@ -2364,7 +2364,7 @@ pub fn rest_transport_node(
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     {
-        let zero_span = make_span(0, 0);
+        let zero_span = no_span();
         let url_field = make_field_init_node(
             transport_url_key(),
             base_url.clone(),
@@ -2469,7 +2469,7 @@ pub fn shell_transport_node(
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
-        let zero_span = make_span(0, 0);
+        let zero_span = no_span();
         let stdin_props = match stdin.clone() {
             Some(s) => Rc::new(vec![make_field_init_node(
                 transport_stdin_key(),
@@ -2512,18 +2512,13 @@ pub fn file_transport_node(
         let path_field = make_field_init_node(
             transport_path_key(),
             base_path.clone(),
-            make_span(0, 0),
-            make_span(0, 0),
+            no_span(),
+            no_span(),
         );
         let props = match verb.clone() {
             Some(verb_expr) => Rc::new(vec![
                 path_field.clone(),
-                make_field_init_node(
-                    "verb".to_string(),
-                    verb_expr.clone(),
-                    make_span(0, 0),
-                    make_span(0, 0),
-                ),
+                make_field_init_node("verb".to_string(), verb_expr.clone(), no_span(), no_span()),
             ]),
             None => Rc::new(vec![path_field.clone()]),
         };
@@ -2590,6 +2585,42 @@ pub fn expr_literal_string_optional(expr: Rc<Node>) -> Option<String> {
             _ => None,
         },
         _ => None,
+    }
+}
+
+pub fn expr_literal_symbol_optional(expr: Rc<Node>) -> Option<String> {
+    match (*expr.expr_data.clone()).clone() {
+        ExprData::ExprLiteral { value: lit, .. } => match (*lit.clone()).clone() {
+            LiteralValue::LitSymbol { value: v, .. } => Some(v.clone()),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+pub fn expr_is_any_literal(mut expr: Rc<Node>) -> bool {
+    loop {
+        match (*expr.expr_data.clone()).clone() {
+            ExprData::ExprLiteral { value: lit, .. } => match (*lit.clone()).clone() {
+                LiteralValue::LitNull => {
+                    break false;
+                }
+                _ => {
+                    break true;
+                }
+            },
+            ExprData::ExprUnaryOp {
+                op: UnaryOpKind::Neg,
+                ..
+            } => {
+                let __tco_0 = unaryop_operand(expr);
+                expr = __tco_0;
+                continue;
+            }
+            _ => {
+                break false;
+            }
+        }
     }
 }
 
@@ -3216,7 +3247,7 @@ pub fn service_config_properties(
     retry: Option<Rc<Node>>,
 ) -> Rc<Vec<Rc<Node>>> {
     {
-        let zero_span = make_span(0, 0);
+        let zero_span = no_span();
         let ep_prop = Rc::new(vec![make_field_init_node(
             "svc_endpoint".to_string(),
             endpoint.clone(),
@@ -3720,14 +3751,14 @@ pub fn error_type() -> Rc<Node> {
             static CACHED: Rc<Node> = {
                 Rc::new(Node {
         name: "".to_string(),
-        span: make_span(0, 0),
+        span: no_span(),
         ident_span: None,
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: Some(Rc::new(InferredNode::CompilerError {
         message: "unresolved type".to_string(),
-        span: make_span(0, 0),
+        span: no_span(),
     })),
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
@@ -3749,14 +3780,6 @@ pub fn error_type() -> Rc<Node> {
     CACHED.with(|c: &Rc<Node>| c.clone())
 }
 
-pub fn make_span(start: i64, end: i64) -> Rc<SourceSpan> {
-    Rc::new(SourceSpan {
-        file: "<synthetic>".to_string(),
-        start: start.clone(),
-        end: end.clone(),
-    })
-}
-
 pub fn make_file_span(file: String, start: i64, end: i64) -> Rc<SourceSpan> {
     Rc::new(SourceSpan {
         file: file.clone(),
@@ -3766,7 +3789,11 @@ pub fn make_file_span(file: String, start: i64, end: i64) -> Rc<SourceSpan> {
 }
 
 pub fn no_span() -> Rc<SourceSpan> {
-    make_span(0, 0)
+    Rc::new(SourceSpan {
+        file: "<synthetic>".to_string(),
+        start: 0,
+        end: 0,
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]

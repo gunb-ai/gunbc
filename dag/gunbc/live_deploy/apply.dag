@@ -4,10 +4,6 @@ import gunbc.live_deploy.spec {
   DeploymentSpec,
   DeploymentDependencyStep,
   deployment_spec_srv1,
-  deployment_spec_srv1_green,
-  deployment_slot_spec,
-  deployment_retiring_slot_spec,
-  deployment_route_spec,
   deployment_plan_listen_port,
 }
 import std.types { String, CommitSha }
@@ -60,117 +56,11 @@ import gunbc.live_deploy.readiness {
 }
 import std.realization_reconcile { Reconciliation, reconciliation_converged, Converged, NotConverged }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import extdeps.tailscale.serve {
-  ServeRootMount,
-  tailscale_serve_proxy_url,
-  tailscale_serve_status_json_argv,
-  tailscale_serve_status_proxy_targets,
-}
-import extdeps.tailscale.serve
-import gunbc.typed_argv_exec {
-  typed_argv_exec_over_ssh,
-  TypedArgvExecConverged,
-  TypedArgvExecRefused,
-}
 
-type BlueGreenSlotSelection
-  = BlueGreenSlotsSelected { active: DeploymentSpec, idle: DeploymentSpec }
-  | BlueGreenSlotSelectionRefused { reason: String }
 
-type TailscaleServeStatusRead
-  = TailscaleServeStatusObserved { json: String }
-  | TailscaleServeStatusReadRefused { reason: String }
 
-fn srv1_blue_green_slot_selection(status_json: String) -> BlueGreenSlotSelection {
-  let blue = deployment_spec_srv1()
-  let green = deployment_spec_srv1_green()
-  let proxies = tailscale_serve_status_proxy_targets(status_json: status_json, mount: ServeRootMount)
-  let blue_proxy = tailscale_serve_proxy_url(endpoint: blue.names.tailscale_serve_endpoint)
-  let green_proxy = tailscale_serve_proxy_url(endpoint: green.names.tailscale_serve_endpoint)
-  let blue_hits = count(filter(proxies, p => p == blue_proxy))
-  let green_hits = count(filter(proxies, p => p == green_proxy))
-  if count(proxies) != 1 {
-    BlueGreenSlotSelectionRefused {
-      reason: concat("blue/green cutover refused: root Tailscale Serve endpoint did not carry exactly one Proxy; observed-count=", to_string(count(proxies)))
-    }
-  } else if blue_hits == 1 && green_hits == 0 {
-    BlueGreenSlotsSelected { active: blue, idle: green }
-  } else if green_hits == 1 && blue_hits == 0 {
-    BlueGreenSlotsSelected { active: green, idle: blue }
-  } else {
-    BlueGreenSlotSelectionRefused {
-      reason: "blue/green cutover refused: root Tailscale Serve Proxy names neither declared srv1 slot"
-    }
-  }
-}
+data single_deployment_note: String = "ONE DEPLOYMENT, ONE PORT. Blue/green was deleted at the root on 2026-08-19 by operator directive, and the reason is the one its own predecessor note recorded against itself: blue/green is sound for a STATELESS server, and this dashboard is stateful. The compromise it reached -- the slot owns source, binary, unit and port while dispatch worktrees, attempt evidence and the tmux server stay host-shared -- is a two-copy deployment that is only half two copies, and it cost more to reason about than the zero-downtime swap was worth for a single-operator dashboard.\n\nWHAT WENT, AS ONE POPULATION: the slot selection coproduct and its Tailscale-status read, the deploy-idle-then-flip-then-retire fold, the slot/route/retiring spec projections, and the second HostDashboardInstance. What replaces them is this: apply converges deployment_spec_srv1 IN PLACE, members in declared order, and the Tailscale mapping is an ordinary member pointing at the one port rather than a route flipped between two.\n\nWHAT IS HONESTLY LOST is the property blue/green existed to buy: a failed candidate can no longer be discovered on an idle slot while the old process keeps serving. A bad deploy now restarts the one service, and the readiness gate refuses AFTER the restart rather than before a flip -- so the failure mode is downtime, not a silent bad cutover. That trade is the point of the directive, not an oversight, and the mitigation is that every member is idempotent and a retract remains available.\n\nTHE HAZARD THIS ALSO CLOSES: two slots meant two belt timers, both enabled, sharing one dispatch-worktree root and one attempt-state root. Nothing prevented a collision except that both belts happened to be crashing; with one deployment there is one belt and the prepare/activate split it would have needed is no longer owed.\n\nA SECOND ORDERING CONSEQUENCE, named because the loss above is not the only one. Under the deleted cutover fold the route write ran AFTER the candidate slot converged, readiness gate included. The mapping is now an ordinary member, last in deployment_owned_steps and inside the mutation, so the route is asserted BEFORE live_deploy_apply_readiness_gate runs -- which is, in shape, the pre-blue/green ordering that blue_green_spec_partition_note recorded as having recreated a 502 window. It is not that defect here, because with one port the write is an idempotent re-assert of the same endpoint-to-8080 mapping rather than a redirection to an unverified process, so it opens no window beyond the restart downtime already accepted above. The residual is bounded by the realization: if the Tailscale mapping is ever applied as remove-then-add rather than as a replace, the route is briefly ABSENT while the service is unverified. That is a property of extdeps.tailscale.serve, not of this fold, and it is stated here so the ordering is a known quantity rather than something a later reader rediscovers as a surprise."
 
-fn tailscale_serve_status_read(transport: HostEffectTransport) -> TailscaleServeStatusRead {
-  let argv = concat(["tailscale"], tailscale_serve_status_json_argv())
-  match transport {
-    LocalShell => {
-      let result = tailscale.Serve.StatusJson()
-      TailscaleServeStatusObserved { json: result.stdout }
-    }
-    FleetSsh { target: t, context: _ } =>
-      TailscaleServeStatusReadRefused {
-        reason: concat("tailscale serve status is not yet migrated to the FleetSsh sealed context; the leg was NOT attempted for ", t.endpoint as String),
-      }
-    SshShell { ssh_host } =>
-      match typed_argv_exec_over_ssh(host: ssh_host, argv: argv) {
-        TypedArgvExecConverged { result } =>
-          if result.success {
-            TailscaleServeStatusObserved { json: result.stdout }
-          } else {
-            TailscaleServeStatusReadRefused { reason: concat("tailscale serve status --json over ssh failed: ", result.stderr) }
-          }
-        TypedArgvExecRefused { reason } => TailscaleServeStatusReadRefused { reason: reason }
-      }
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      TailscaleServeStatusReadRefused { reason: "blue/green slot observation refused EmitArtifactThenThinRun transport" }
-  }
-}
-
-data blue_green_cutover_order_note: String = "Operator-signed 2026-08-01: straight to blue/green, no socket-activation interim. Tailscale's currently routed root Proxy selects active and idle from the two declared HostDashboardInstance slots. The candidate mutation is the slot footprint only; its existing readiness path polls /healthz until the digest proves it serves THIS source tree and then performs the deeper roadmap asset readback. Only after both converge does the route-only spec replay the scoped root endpoint toward the candidate. Old-slot retirement is route-free and runtime-only: it stops the old serve unit and belt timer but preserves the reusable slot files, worktrees, and published attempt evidence. Full retract remains a distinct operator action with the empty-directory refusal wall. Every pre-flip refusal returns before route mutation, leaving the old process mapped and serving; a post-flip retirement failure leaves the new process mapped, so absence is not a failure arm."
-
-fn live_deploy_blue_green_cutover_with_selection(
-  selection: BlueGreenSlotSelection,
-  candidate: CandidateRelease,
-  transport: HostEffectTransport,
-  access: DeployAccess,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  match selection {
-    BlueGreenSlotSelectionRefused { reason } =>
-      NotConverged { reason: reason, applied: live_deploy_preflight_intent(access: access) }
-    BlueGreenSlotsSelected { active, idle } => {
-      let converged_slot = live_deploy_apply_via_transport(
-        spec: deployment_slot_spec(spec: idle),
-        candidate: candidate,
-        transport: transport,
-        access: access,
-      )
-      if !reconciliation_converged(r: converged_slot) {
-        converged_slot
-      } else {
-        let flip = live_deploy_apply_mutation_via_transport(
-          spec: deployment_route_spec(spec: idle),
-          candidate: candidate,
-          transport: transport,
-          access: access,
-        )
-        if !reconciliation_converged(r: flip) {
-          flip
-        } else {
-          let teardown = live_deploy_retract_via_transport(
-            spec: deployment_retiring_slot_spec(spec: active),
-            transport: transport,
-            access: access,
-          )
-          if reconciliation_converged(r: teardown) { flip } else { teardown }
-        }
-      }
-    }
-  }
-}
 
 fn live_deploy_preflight_intent(access: DeployAccess) -> HostEffectIntent {
   HostEffectIntent {
@@ -429,17 +319,12 @@ fn live_deploy_apply_srv1_with_access(
   access: DeployAccess,
   candidate: CandidateRelease,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  match tailscale_serve_status_read(transport: access.transport) {
-    TailscaleServeStatusReadRefused { reason } =>
-      NotConverged { reason: reason, applied: live_deploy_preflight_intent(access: access) }
-    TailscaleServeStatusObserved { json } =>
-      live_deploy_blue_green_cutover_with_selection(
-        selection: srv1_blue_green_slot_selection(status_json: json),
-        candidate: candidate,
-        transport: access.transport,
-        access: access,
-      )
-  }
+  live_deploy_apply_via_transport(
+    spec: deployment_spec_srv1(),
+    candidate: candidate,
+    transport: access.transport,
+    access: access,
+  )
 }
 
 data retract_carries_no_candidate_note: String = "A RETRACT OBSERVES NO CANDIDATE, WHICH IS WHY IT CANNOT FAIL FOR WANT OF ONE. It removes what this deployment owns; there is no release being installed, so there is nothing whose identity a retract could state and nothing for readiness to compare. While the revision rode on DeploymentServiceConfig this path had to construct one anyway, and worse, it called observe_candidate_release first — so a retract could refuse because git HEAD was unreadable, a condition with no bearing whatsoever on tearing down a unit.\\n\\nThe fold now passes RevisionNotInstalled, so the arm that would render an ExecStart refuses loudly instead of naming a revision this operation never had."
