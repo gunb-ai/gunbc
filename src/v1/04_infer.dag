@@ -1352,6 +1352,67 @@ fn where_refinement_predicates_equivalent(
   }
 }
 
+data where_refinement_min_length_implication_note: String = "THE FRAGMENT IS TWO PARTIAL FUNCTIONS, NOT AN IMPLICATION ENGINE, and the asymmetry between them is the entire soundness argument. Predicate implication in general is undecidable, so this decides exactly one relation and refuses outside it: a value whose refinement GUARANTEES a minimum length satisfies a formal position whose refinement DEMANDS a minimum length AND NOTHING ELSE. Provider and demander are separate partial functions over the same closed predicate vocabulary because a predicate can inhabit one side and not the other, and collapsing them into one min-length table is a FAIL-OPEN that the obvious framing walks straight into: model lower_hex_64 as min-length 64 on both sides and a formal lower_hex_64 is then satisfied by an actual lower_hex_128, since 128 >= 64 — but those predicates demand DIFFERENT EXACT LENGTHS and a 128-digit string is not a valid sha256 hex. lower_hex_N therefore appears as a PROVIDER only (it guarantees exactly N lower-hex digits, hence at least N characters) and never as a demander (it demands an exact length and a charset, neither of which a length lower bound establishes). non_empty is the only predicate in the live vocabulary that is a pure length lower bound, so it is the only demander, and it is a provider too because it demands what it guarantees. Everything outside both tables answers Absent and the caller falls through to the pre-existing name-equality path unchanged, so this widens what the wall can DECIDE and narrows nothing it already decided. oci_other_digest_algorithm and oci_other_digest_encoded are deliberately NOT providers even though their grammars happen to exclude the empty string: that fact lives in oci_digest_algorithm_wire_holds / oci_encoded_digest_syntax_valid as a consequence of a syntax walk, not as a declared constant this table could cite, and asserting a bound the predicate does not state is the fabrication DESIGN §5 forbids. The four lower_hex_N bounds ARE declared constants — each is content_hash_validate_lower_hex_length(text, expected_hex_digits: N), whose body is text.length() == N — so the number in this table is the number in the predicate, cited rather than restated. WHY THIS IS A WALL AND NOT A WIDENING: the two corpus sites it closes (std.content_hash serialize_content_hash, `s.digest as NonEmptyStr` over Fnv1a64StructuralDigestHex and `d.hex as NonEmptyStr` over Sha1DigestHex) were carrying WhereRefinementUnenforced advisories for REFUSED evidence, not absent evidence — the value's own declared type already proved the property and where_refinement_predicates_equivalent could not see it because it compares predicate NAMES for equality, and lower_hex_40 != non_empty. WHAT IS NOT STRUCTURAL, STATED AT ITS HONEST RUNG (§4b) BECAUSE A TABLE PAIR WHOSE SOUNDNESS LIVES IN PROSE DECAYS SILENTLY: nothing prevents a predicate from being enrolled in BOTH tables, and membership in both is NOT the fail-open — non_empty is deliberately in both and is sound there, because it demands exactly what it guarantees. The real enrollment condition is narrower: a predicate may take a REQUIRED row only if its entire semantics is a length lower bound and nothing else. lower_hex_64 in both tables would be unsound not because it appears twice but because it demands an exact length and a charset that a lower bound does not establish. That condition is enforced by nobody: these are two hand-written name-keyed partial functions, so a future demander row asserting more than length would fail open and no check would fire. The decided relation guaranteed >= required is mechanically enforced; the authoring discipline that populates the demander table is DILIGENCE, rung MITIGATABLE, and it is contained only by the vocabulary being closed and small. Next-rung trigger is the same dissolve-on below: once the bounds are fields on WhereRefinementPredicateKind's own declaration, a predicate states its guarantee and its demand once and the mis-enrollment has no place to be written. Dissolve-on: feature:where-refinement-predicate-coproduct — when WhereRefinementPredicateKind replaces the string classifiers, the guaranteed and required bounds become fields on the predicate's own declaration rather than two tables a reader must keep in lockstep with where_refinement_is_string_literal_predicate and decidable_where_string_predicate_holds."
+
+fn where_predicate_guaranteed_min_length(pred_name: String) -> Int? {
+  if pred_name == "non_empty" {
+    Present { value: 1 }
+  } else if pred_name == "lower_hex_16" {
+    Present { value: 16 }
+  } else if pred_name == "lower_hex_40" {
+    Present { value: 40 }
+  } else if pred_name == "lower_hex_64" {
+    Present { value: 64 }
+  } else if pred_name == "lower_hex_128" {
+    Present { value: 128 }
+  } else {
+    none
+  }
+}
+
+fn where_predicate_required_min_length(pred_name: String) -> Int? {
+  if pred_name == "non_empty" {
+    Present { value: 1 }
+  } else {
+    none
+  }
+}
+
+fn where_refinement_predicate_min_length_implies(
+  formal_pred: Node,
+  actual_pred: Node,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  match where_predicate_required_min_length(
+    pred_name: where_predicate_canonical_name(
+      pred_name: where_predicate_name_at(pred: formal_pred, source_indices: source_indices)
+    )
+  ) {
+    Present { value: required } =>
+      match where_predicate_guaranteed_min_length(
+        pred_name: where_predicate_canonical_name(
+          pred_name: where_predicate_name_at(pred: actual_pred, source_indices: source_indices)
+        )
+      ) {
+        Present { value: guaranteed } => guaranteed >= required
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn where_refinement_predicate_satisfied_by(
+  formal_pred: Node,
+  actual_pred: Node,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  where_refinement_predicates_equivalent(
+    formal_pred: formal_pred, actual_pred: actual_pred, source_indices: source_indices
+  ) || where_refinement_predicate_min_length_implies(
+    formal_pred: formal_pred, actual_pred: actual_pred, source_indices: source_indices
+  )
+}
+
 fn where_refinement_predicates_covered(
   formal_preds: List<Node>,
   actual_preds: List<Node>,
@@ -1359,7 +1420,7 @@ fn where_refinement_predicates_covered(
 ) -> Bool {
   formal_preds |> all(fp =>
     actual_preds |> any(ap =>
-      where_refinement_predicates_equivalent(
+      where_refinement_predicate_satisfied_by(
         formal_pred: fp, actual_pred: ap, source_indices: source_indices
       )
     )
