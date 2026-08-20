@@ -24,6 +24,10 @@ import gunbc.spark_grant_privileged_operation {
   CredentialRejected,
   PrivilegedCommandFailed,
   PrivilegedCommandSucceeded,
+  spark_grant_credential_path_env,
+  classify_credential_read,
+  BootstrapCredentialReady,
+  BootstrapCredentialNotMaterialized,
 }
 
 // A CARRIED name, never a derived one -- the fixture supplies it exactly as an operator would.
@@ -165,4 +169,43 @@ test fn only_a_succeeded_command_counts_as_success() -> Bool {
 test fn a_rejected_credential_is_read_from_sudos_diagnostic_not_its_exit_code() -> Bool {
   sudo_rejected_the_credential(stderr: "sudo: 1 incorrect password attempt")
     && !sudo_rejected_the_credential(stderr: "visudo: /home/briansrls/staged: parse error near line 1")
+}
+
+// THE PATH IS IN THE ENVIRONMENT, NEVER THE SECRET. An environment variable holding the credential
+// is readable by every child process the run spawns and is printed by any diagnostic that dumps the
+// environment -- and this repository's receipts do dump argv. A path is not the secret: whoever
+// cannot read the file learns nothing from knowing where it was.
+test fn the_environment_carries_a_path_and_not_a_credential() -> Bool {
+  string_contains(spark_grant_credential_path_env as String, "FILE")
+    && !string_contains(spark_grant_credential_path_env as String, "PASSWORD")
+    && !string_contains(spark_grant_credential_path_env as String, "SECRET")
+}
+
+// AN EMPTY CREDENTIAL FILE IS A FAILED MATERIALIZATION, never a blank password. Admitting it would
+// send an empty first line to sudo, which sudo would treat as a wrong password -- reporting a
+// broken fetch as a bad credential and sending the reader to re-enrol a secret that was fine.
+test fn an_empty_credential_file_is_not_a_blank_password() -> Bool {
+  match classify_credential_read(success: true, error: "", content: "  \n") {
+    BootstrapCredentialNotMaterialized { cause: c } => string_contains(c as String, "never a blank password")
+    BootstrapCredentialReady { secret: _ } => false
+  }
+}
+
+// A read that failed is its own cause, distinct from a file that was there and empty: one is a
+// missing or unreadable materialization, the other is a materialization that produced nothing.
+test fn an_unreadable_credential_file_reports_the_read_error() -> Bool {
+  match classify_credential_read(success: false, error: "No such file or directory", content: "") {
+    BootstrapCredentialNotMaterialized { cause: c } => string_contains(c as String, "No such file or directory")
+    BootstrapCredentialReady { secret: _ } => false
+  }
+}
+
+// The credential is trimmed before it reaches stdin, because a trailing newline in the file would
+// otherwise become a second line sudo never reads, and the terminating newline this code appends is
+// what ends sudo's read at all -- without it the step hangs rather than failing.
+test fn a_materialized_credential_is_trimmed_of_its_file_newline() -> Bool {
+  match classify_credential_read(success: true, error: "", content: "hunter2\n") {
+    BootstrapCredentialReady { secret: s } => s == "hunter2"
+    BootstrapCredentialNotMaterialized { cause: _ } => false
+  }
 }

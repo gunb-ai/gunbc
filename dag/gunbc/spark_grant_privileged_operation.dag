@@ -8,6 +8,18 @@ import gunbc.spark_bootstrap_credential {
   CredentialMaterialized,
   CredentialMaterializationPending,
 }
+import std.algebra { trim }
+import std.resources { Network }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.ssh.session { ssh_session_exec_portable_words_with_stdin }
+import gunbc.fleet_known_hosts_anchor {
+  FleetSshExecutionContext,
+  SshTarget,
+  shape_fleet_ssh_exec,
+  portable_remote_words,
+}
+import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.spark_managed_access_bootstrap {
   SparkManagedGrant,
   spark_managed_grant_wire,
@@ -170,5 +182,129 @@ fn privileged_step_outcome_wire(outcome: PrivilegedStepOutcome) -> String {
       ], "")
     PrivilegedCommandSucceeded { command: cmd } =>
       join(["    privileged-step ok ", admitted_root_argv_label(command: cmd), "\n"], "")
+  }
+}
+
+// ── Materializing the credential at apply, and only there ───────────────────────────────────────
+
+// THE RUN-LOCAL DELIVERY PATH, following the fleet key's own lifecycle rather than inventing a
+// second one: a CI step authenticates by WIF, reads one exact secret version, writes it to a
+// RUNNER_TEMP file at 0600, and wipes the file when the step ends. The .dag reads that path at the
+// moment it needs it and never before.
+//
+// WHY A PATH IN THE ENVIRONMENT AND NOT THE SECRET IN THE ENVIRONMENT. An environment variable
+// holding the credential is readable by every child process the run spawns and is printed by any
+// diagnostic that dumps the environment -- and this repository's receipts do dump argv. A path is
+// not the secret; whoever cannot read the file learns nothing from knowing where it was.
+data spark_grant_credential_path_env: NonEmptyStr = "GUNBC_SPARK_BOOTSTRAP_CREDENTIAL_FILE" as NonEmptyStr
+
+// The materialized credential, held only long enough to reach stdin. There is deliberately no
+// renderer for this type and no arm of any receipt that takes one: a carrier that could be printed
+// would put "is this safe to log" into whoever writes the next diagnostic.
+type BootstrapCredentialMaterialization
+  = BootstrapCredentialReady { secret: String }
+  | BootstrapCredentialNotMaterialized { cause: NonEmptyStr }
+
+// THE DECISION IS PURE AND THE EFFECT IS NOT, split so the arms are reachable by a witness at all.
+// An empty file is a FAILED MATERIALIZATION, never a blank password: admitting it would send an
+// empty first line to sudo, which sudo answers as a wrong password -- so a broken fetch would be
+// reported as a bad credential, sending the reader to re-enrol a secret that was never the problem.
+fn classify_credential_read(
+  success: Bool,
+  error: String,
+  content: String,
+) -> BootstrapCredentialMaterialization {
+  if success == false {
+    BootstrapCredentialNotMaterialized {
+      cause: join(["the materialized credential file could not be read: ", error], "") as NonEmptyStr,
+    }
+  } else if trim(s: content) == "" {
+    BootstrapCredentialNotMaterialized {
+      cause: "the materialized credential file is empty, which is a failed materialization and never a blank password" as NonEmptyStr,
+    }
+  } else {
+    BootstrapCredentialReady { secret: trim(s: content) }
+  }
+}
+
+func read_bootstrap_credential() -> BootstrapCredentialMaterialization {
+  match shell.Env.Get(name: spark_grant_credential_path_env).value {
+    Absent =>
+      BootstrapCredentialNotMaterialized {
+        cause: join([
+          "no ", spark_grant_credential_path_env as String,
+          " in the environment: the run did not materialize an administrator credential",
+        ], "") as NonEmptyStr,
+      }
+    Present { value: raw } => {
+      let path = trim(s: raw)
+      if path == "" {
+        BootstrapCredentialNotMaterialized {
+          cause: join([
+            spark_grant_credential_path_env as String, " is set but empty, which is not a path",
+          ], "") as NonEmptyStr,
+        }
+      } else {
+        let read = Filesystem.Read(path: path)
+        classify_credential_read(success: read.success, error: read.error, content: read.content)
+      }
+    }
+  }
+}
+
+// ONE PRIVILEGED STEP, CREDENTIAL ON STDIN. The password reaches exactly one place -- the stdin of
+// one ssh invocation whose argv is a closed constructor -- and the result is classified before
+// anything is rendered, so no caller ever holds both the credential and a renderer.
+//
+// sudo consumes the first line of stdin as the password. The trailing newline is what terminates its
+// read; without it sudo waits for one and the step hangs rather than failing, which is the failure
+// mode with no diagnostic at all.
+func run_privileged_step(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+  lease: OperatorBootstrapCredentialLease,
+  command: AdmittedRootArgv,
+) -> PrivilegedStepOutcome
+  uses net: Network
+{
+  match lease.administrator {
+    CredentialMaterializationPending => CredentialNotEnrolled { lease: lease }
+    CredentialMaterialized { ref: _ } =>
+      match read_bootstrap_credential() {
+        BootstrapCredentialNotMaterialized { cause: _ } => CredentialNotEnrolled { lease: lease }
+        BootstrapCredentialReady { secret: secret } =>
+          match portable_remote_words(raws: admitted_root_argv_words(command: command)) {
+            Absent =>
+              PrivilegedCommandFailed {
+                command: command,
+                exit_code: 0,
+                stderr: "the admitted root argv is not portable under the far-side shell re-parse",
+              }
+            Present { value: words } => {
+              let result = ssh_session_exec_portable_words_with_stdin(
+                client_args: shape_fleet_ssh_exec(
+                  context: context,
+                  target: SshTarget {
+                    endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
+                    principal: lease.bootstrap_principal,
+                  },
+                  words: words,
+                ),
+                stdin_payload: join([secret, "\n"], ""),
+              )
+              if result.success {
+                PrivilegedCommandSucceeded { command: command }
+              } else if sudo_rejected_the_credential(stderr: result.stderr) {
+                CredentialRejected { lease: lease }
+              } else {
+                PrivilegedCommandFailed {
+                  command: command,
+                  exit_code: result.exit_code,
+                  stderr: result.stderr,
+                }
+              }
+            }
+          }
+      }
   }
 }
