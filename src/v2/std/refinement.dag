@@ -34,14 +34,6 @@ type VacuousValidation<B> {
   vacuous: VacuousAdmits
 }
 
-fn vacuous_admits<B>(_: B) -> Bool {
-  true
-}
-
-fn validation_from_vacuous<B>(by: VacuousValidation<B>) -> Validation<B> {
-  Validation { reason: by.reason, admits: vacuous_admits }
-}
-
 type Refined<B> {
   base: B
 }
@@ -70,19 +62,19 @@ fn refined_base<B>(r: Refined<B>) -> B {
   r.base
 }
 
-fn refined_vacuous_oracle_terminal<B>(base: B, by: VacuousValidation<B>, at: Locus) -> Outcome<Refined<B>> {
-  let validation = validation_from_vacuous(by: by)
-  match refine(base: base, by: validation, at: at) {
-    Accepted { value: refined, diagnostics: _ } => Accepted { value: refined, diagnostics: None }
-    Rejected { diagnostics: rejected } => Rejected { diagnostics: rejected }
-  }
-}
-
+// refined_vacuous_stub_pack used to round-trip through refine()/Outcome and then forge Refined
+// { base } on the Rejected arm — a Rejected diagnostics never surfaces as a Rejected value, DESIGN
+// section 5's absorbing fallback. That round trip was never checking anything: VacuousAdmits has
+// exactly one inhabitant (vacuous_admits_marker), validation_from_vacuous maps every inhabitant to
+// vacuous_admits, and vacuous_admits ignores its argument and returns true unconditionally — so
+// admits(base) cannot return false for any B a caller supplies. Routing a decision with only one
+// reachable outcome through Outcome and then overriding the unreachable arm was the redundant
+// modeling (section 2) that let the forged arm hide; the fix deletes the fake decision rather than
+// making the unreachable arm "refuse", because there is no rejecting input a VacuousValidation<B>
+// can ever carry. This does not establish predicate identity for Refined<B> generally — that is the
+// carrier-redesign question tracked separately (unforgeable-construction-capability).
 fn refined_vacuous_stub_pack<B>(base: B, by: VacuousValidation<B>, at: Locus) -> Refined<B> {
-  match refined_vacuous_oracle_terminal(base: base, by: by, at: at) {
-    Accepted { value: refined, diagnostics: _ } => refined
-    Rejected { diagnostics: _ } => Refined { base: base }
-  }
+  Refined { base: base }
 }
 
 fn positive_int_admits(value: Int) -> Bool {
