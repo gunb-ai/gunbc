@@ -21,9 +21,9 @@ import gunbc.spark_managed_grant_install {
   spark_grant_install_run_succeeded,
   spark_grant_install_run_text,
   spark_grant_install_outcome_wire,
-  spark_grant_root_of_trust_instruction,
+  spark_grant_credential_requirement,
   spark_grant_standings_demanded_a_password,
-  SparkGrantInstallBlockedOnRootOfTrust,
+  SparkGrantInstallAwaitingOperatorCredential,
 }
 import gunbc.remote_operation { RemoteStepFailed, RemoteArgvExecution }
 import gunbc.typed_argv_exec { TypedArgvExecConverged }
@@ -180,27 +180,29 @@ test fn staging_follows_the_installing_principal_not_the_grantee() -> Bool {
     && !string_contains(as_installer, "gunbc-automation")
 }
 
-// THE ROOT OF TRUST IS ITS OWN OUTCOME, not a generic failure. Privilege cannot be self-granted, so
-// sudo refusing the INSTALLING principal is a floor rather than a defect -- and rendering it as
-// "argv exit=1 stderr=sudo: a password is required" told a reader neither that it was the floor nor
-// what the one-time remedy was, which is how a bounded human act reads as an unbounded one.
-test fn a_password_demand_at_the_installer_is_the_root_of_trust_arm() -> Bool {
-  let text = spark_grant_install_outcome_wire(outcome: SparkGrantInstallBlockedOnRootOfTrust {
+// THE REMEDY IS A CREDENTIAL, NEVER A RECIPE, and this witness is the wall against the defect that
+// shipped: the receipt rendered a sudoers line, a mode and a path as instructions to apply by hand.
+// Asking an operator to reproduce a frozen plan is asking them to do work convergence owns, and it
+// leaves the result unobserved by the process that needed it. So the text must name the credential
+// and must NOT contain the mutation.
+test fn the_awaiting_credential_arm_asks_for_a_credential_and_not_a_hand_mutation() -> Bool {
+  let text = spark_grant_install_outcome_wire(outcome: SparkGrantInstallAwaitingOperatorCredential {
     host: "srv6",
     grant: RebootThisHost,
     principal: installer(),
   })
-  string_contains(text, "BLOCKED-ON-ROOT-OF-TRUST")
-    && string_contains(text, "ONE-TIME")
-    && string_contains(text, "/etc/sudoers.d/gunbc-reboot")
-    && string_contains(text, "not a step that repeats")
+  string_contains(text, "AWAITING-OPERATOR-CREDENTIAL")
+    && string_contains(text, "REQUIRED: an administrator credential")
+    && string_contains(text, "/secrets/spark-srv6-bootstrap-admin")
+    && !string_contains(text, "NOPASSWD:")
+    && !string_contains(text, "visudo -c -f")
 }
 
 // It refuses like any other unfinished install: naming the floor never converts it into success.
 test fn the_root_of_trust_arm_still_refuses() -> Bool {
   !spark_grant_install_run_succeeded(run: SparkGrantInstallRun {
     standing_report: "grant-standing host=srv6 converged=false\n",
-    outcomes: [SparkGrantInstallBlockedOnRootOfTrust {
+    outcomes: [SparkGrantInstallAwaitingOperatorCredential {
       host: "srv6",
       grant: RebootThisHost,
       principal: installer(),
@@ -208,13 +210,12 @@ test fn the_root_of_trust_arm_still_refuses() -> Bool {
   })
 }
 
-// THE SEED AND THE THING IT SEEDS CANNOT DRIFT, because the instruction is built from the same rows
-// the installer writes. A hand-written instruction would be a second representation of the sudoers
-// content, and the first edit to the grant would leave a human following stale directions.
-test fn the_instruction_is_derived_from_the_same_rows_the_installer_writes() -> Bool {
+// The request names the exact grant it is authorization FOR, built from the same rows the installer
+// writes, so a credential cannot be supplied for one purpose and consumed for another.
+test fn the_credential_request_names_the_exact_grant_it_authorizes() -> Bool {
   fold(spark_managed_grant_population, init: true, f: fn(acc, g) {
     acc && string_contains(
-      spark_grant_root_of_trust_instruction(grant: g),
+      spark_grant_credential_requirement(host: "srv6", grant: g),
       spark_managed_grant_sudoers_command(grant: g) as String,
     )
   })

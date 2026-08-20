@@ -38,6 +38,8 @@ import gunbc.spark_managed_access_bootstrap {
 }
 import gunbc.host_effect_realize { run_typed_argv_transport }
 import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
+import extdeps.cloud.gcp.secret_ref { secret_ref_secret_resource }
+import gunbc.spark_bootstrap_credential { spark_bootstrap_credential_lease }
 import gunbc.spark_managed_grant_reconcile {
   spark_managed_grants_to_install,
   spark_managed_grant_report,
@@ -235,18 +237,19 @@ fn spark_grant_install_transport(
   }
 }
 
-// THE ROOT OF TRUST HAS A NAME, because it is not a defect and must not read as one. Privilege
-// cannot be self-granted: installing a sudoers entry needs sudo, so no principal this process can
-// reach is able to seed the first grant. Every converged system has this floor -- what varies is
-// whether it is named once or rediscovered as a confusing error each time.
+// AWAITING A CREDENTIAL IS NOT A FLOOR, and calling it one was the error this arm is named for. An
+// earlier revision called this BlockedOnRootOfTrust and rendered a sudoers recipe for a human to
+// apply -- reasoning that privilege cannot be self-granted, therefore the mutation must be manual.
+// The first half is true and the second does not follow: software cannot manufacture root authority,
+// but the input that resolves that is AUTHORIZATION, not MUTATION. Supplying a credential once and
+// hand-authoring host state are different acts, and only the first is unavoidable.
 //
-// The distinction that matters to whoever reads the receipt: seeding the root of trust is a ONE-TIME
-// human act, and it is categorically different from a human performing the operation on every run.
-// After the seed, the process installs, reboots and reconciles by itself. Rendering this as
-// "argv exit=1 stderr=sudo: a password is required" told a reader neither of those things, which is
-// how a bounded one-time act came to look like an unbounded manual dependency.
+// The cost of the confusion was real: the process asked an operator to reproduce a plan it had
+// already frozen, on a host it could already reach, and the result would then be unobserved by the
+// thing that needed it. This arm now means exactly "no credential was supplied", and its remedy is
+// the credential the authorization model has specified all along.
 type SparkGrantInstallOutcome
-  = SparkGrantInstallBlockedOnRootOfTrust {
+  = SparkGrantInstallAwaitingOperatorCredential {
       host: HostIdentity
       grant: SparkManagedGrant
       principal: NonEmptyStr
@@ -288,7 +291,7 @@ func spark_grant_install_execute(
             transport: spark_grant_install_transport(context: context, host: host, principal: principal),
           )
           if spark_grant_standings_demanded_a_password(standings: standings) {
-            SparkGrantInstallBlockedOnRootOfTrust { host: host, grant: g, principal: principal }
+            SparkGrantInstallAwaitingOperatorCredential { host: host, grant: g, principal: principal }
           } else {
             SparkGrantInstallExecuted { host: host, grant: g, standings: standings }
           }
@@ -303,7 +306,7 @@ func spark_grant_install_execute(
 // end. Convergence is re-established by the next observation, never by this exit code.
 fn spark_grant_install_succeeded(outcome: SparkGrantInstallOutcome) -> Bool {
   match outcome {
-    SparkGrantInstallBlockedOnRootOfTrust { host: _, grant: _, principal: _ } => false
+    SparkGrantInstallAwaitingOperatorCredential { host: _, grant: _, principal: _ } => false
     SparkGrantInstallNotAttempted { host: _, grant: _, cause: _ } => false
     SparkGrantInstallExecuted { host: _, grant: _, standings: st } =>
       spark_serving_step_sequence_failed(standings: st) == false
@@ -320,29 +323,41 @@ fn spark_grant_standings_demanded_a_password(standings: List<RemoteStepStanding>
   }
 }
 
-// The exact one-time act, spelled out so nobody has to reconstruct it from a failure. It names the
-// grantee, the command, and the file -- every field the reconcile already holds -- so the seed and
-// the thing it seeds cannot drift apart.
-fn spark_grant_root_of_trust_instruction(grant: SparkManagedGrant) -> String {
+// WHAT THE PROCESS NEEDS, NOT WHAT A HUMAN SHOULD TYPE. This function used to render the sudoers
+// line, its mode and its path as instructions to apply by hand -- and that was the defect, not the
+// wording. The unavoidable external input at this seam is AUTHORIZATION; the MUTATION is the
+// process's job, and telling an operator to reproduce a frozen plan by hand both asks them to do
+// work convergence owns and leaves the result unobserved by the thing that needed it.
+//
+// So the remedy named here is the credential the authorization model has always specified:
+// OperatorBootstrapCredentialRequired, whose own secret_purpose says one-time, through the modeled
+// secret boundary, not retained, not a serving requirement. The operator answers "may this exact
+// grant be installed on this host", and supplies a credential. They never author host state.
+fn spark_grant_credential_requirement(host: HostIdentity, grant: SparkManagedGrant) -> String {
+  let l = spark_bootstrap_credential_lease(
+    host: host,
+    grant: grant,
+    attempt_identity: spark_grant_install_ci_attempt_raw as NonEmptyStr,
+  )
   join([
-    "ONE-TIME ROOT-OF-TRUST SEED, on the host, by a human with root: write ",
-    spark_managed_grant_dropin_path(grant: grant) as String,
-    " containing exactly: ", trim(s: spark_managed_grant_sudoers_content(grant: grant)),
-    " -- validate it with `visudo -c -f` before placing it, own it root:root mode 0440. ",
-    "After this one act the process installs, reboots and reconciles every later grant by itself: ",
-    "privilege cannot be self-granted, so this is the floor, not a step that repeats.",
+    "REQUIRED: an administrator credential for ", l.bootstrap_principal as String,
+    " on ", l.host as String, ", enrolled at ", secret_ref_secret_resource(ref: l.secret),
+    ". Authorized purpose: ", l.authorized_purpose as String,
+    ". The credential is materialized only for this step, delivered over stdin, and never enters an",
+    " argv, a plan artifact, a workflow input or this receipt. Supplying it is the whole of the",
+    " external input -- the mutation itself stays inside convergence and is read back independently.",
   ], "")
 }
 
 fn spark_grant_install_outcome_wire(outcome: SparkGrantInstallOutcome) -> String {
   match outcome {
-    SparkGrantInstallBlockedOnRootOfTrust { host: h, grant: g, principal: p } =>
+    SparkGrantInstallAwaitingOperatorCredential { host: h, grant: g, principal: p } =>
       join([
         "grant-install host=", h as String,
         " grant=", spark_managed_grant_wire(grant: g) as String,
-        " BLOCKED-ON-ROOT-OF-TRUST installer=", p as String,
-        " -- sudo refused the installing principal too, so no principal this process can reach may seed the first grant\n    ",
-        spark_grant_root_of_trust_instruction(grant: g), "\n",
+        " AWAITING-OPERATOR-CREDENTIAL installer=", p as String,
+        " -- no credential was supplied, so the privileged step could not be attempted\n    ",
+        spark_grant_credential_requirement(host: h, grant: g), "\n",
       ], "")
     SparkGrantInstallNotAttempted { host: h, grant: g, cause: c } =>
       join([
