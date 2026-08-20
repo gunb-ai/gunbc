@@ -770,6 +770,36 @@ fn gunbc_ci_spark_serving_reboot_invoke() -> String {
   )
 }
 
+data gunbc_ci_spark_serving_durability_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "gunbc_ci_spark_serving_durability_invoke",
+    field: WholeDeclaration
+  }
+}
+
+data gunbc_ci_spark_serving_durability_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_spark_serving_durability_invoke — foreign-executor shell invoking spark_serving_durability_ci_wet (the whole transaction in ONE run: read the boot identity, reboot the NAMED target, poll until the identity changes, then replan and probe the generation) with SPARK_CONVERGE_TARGET env; DISSOLVES WHEN bash-emit binds the step to orchestration emit over typed WitnessBin.Run")
+
+fn gunbc_ci_spark_serving_durability_invoke() -> String {
+  concat(
+    concat("# ", concat(dissolution_description(condition: gunbc_ci_spark_serving_durability_shell_emit_dissolution_trigger), "\n")),
+    concat(
+      concat(
+        concat("ROOT=", ci_repo_root_shell(), "\n"),
+        gunbc_run_shell(
+          source_roots: witness_layer_roots,
+          entry: "dag/gunbc/spark/serving_durability_transaction.dag",
+          function: "spark_serving_durability_ci_wet",
+          rooted: true,
+          claim_run: false
+        )
+      ),
+      "\ncat \"$ROOT/target/spark-serving-durability-receipt.txt\""
+    )
+  )
+}
+
 data gunbc_ci_spark_grant_install_shell_emit_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {

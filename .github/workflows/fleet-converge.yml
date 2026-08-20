@@ -10,7 +10,7 @@ on:
       mode:
         description: plan shows membership hunks; apply executes a prior plan artifact; spark_linger enables linger on target spark via FleetSsh typed argv from executor; spark_observe is a read-only observation of both Sparks
         required: true
-        options: [plan, apply, spark_linger, spark_observe, spark_reboot, spark_grants]
+        options: [plan, apply, spark_linger, spark_observe, spark_reboot, spark_grants, spark_durability]
         type: choice
       target:
         description: Spark target host for spark_linger mode (srv5 or srv6)
@@ -289,6 +289,17 @@ jobs:
         env:
           SPARK_CONVERGE_TARGET: ${{ github.event.inputs.target }}
         if: github.event.inputs.mode == 'spark_reboot'
+        timeout-minutes: 60
+      - name: Spark serving durability transaction (boot identity before and after, in one run)
+        id: spark_durability
+        run: |
+          # 🟡 dissolve-on: gunbc_ci_spark_serving_durability_invoke — foreign-executor shell invoking spark_serving_durability_ci_wet (the whole transaction in ONE run: read the boot identity, reboot the NAMED target, poll until the identity changes, then replan and probe the generation) with SPARK_CONVERGE_TARGET env; DISSOLVES WHEN bash-emit binds the step to orchestration emit over typed WitnessBin.Run
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/serving_durability_transaction.dag --function spark_serving_durability_ci_wet
+          cat "$ROOT/target/spark-serving-durability-receipt.txt"
+        env:
+          SPARK_CONVERGE_TARGET: ${{ github.event.inputs.target }}
+        if: github.event.inputs.mode == 'spark_durability'
         timeout-minutes: 60
       - name: Remove the in-run administrator credential (never outlives the job)
         run: |

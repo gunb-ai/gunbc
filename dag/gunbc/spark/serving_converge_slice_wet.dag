@@ -290,11 +290,24 @@ fn spark_serving_terminal_health_verdict(
 // The probe runs only after this replan is empty. Probing a host that still owes writes would answer
 // a question nobody asked -- of course it does not serve, it is not built yet -- and would spend a
 // two-minute generation timeout to say so.
-fn spark_serving_applied_replan_verdict(
+// THE REPLAN IS ONE FACT WITH TWO READERS, so it is computed once and typed.
+//
+// This used to exist only as a String verdict, which was enough while the only consumer was a
+// receipt line. It is not enough now: the durability transaction needs the same replan as a COUNT,
+// because gunbc.spark.serving_durability takes pending_action_count as one of its three conjuncts.
+// Re-deriving that count beside this function would have made two replan authorities that could
+// disagree -- and disagree silently, since one renders to prose and the other to a number, so
+// nothing compares them. The typed rows are the authority; the verdict string below is a projection
+// of them, and the durability count is another.
+type SparkServingReplanRows
+  = SparkServingReplanRowsReady { rows: List<FleetConvergeSparkServingTypedAction> }
+  | SparkServingReplanRowsRefused { cause: String }
+
+fn spark_serving_replan_rows(
   context: FleetSshExecutionContext,
   host: HostIdentity,
   linger_enabled: Bool,
-) -> String {
+) -> SparkServingReplanRows {
   match spark_serving_fleet_converge_plan_artifact(
     host: host as NonEmptyStr,
     prior_generation: 0,
@@ -309,9 +322,24 @@ fn spark_serving_applied_replan_verdict(
     ),
   ) {
     SparkServingPlanArtifactRefused { cause: why } =>
-      join(["wet-applied-replan-refused ", why], "")
+      SparkServingReplanRowsRefused { cause: why }
     SparkServingPlanArtifactReady { artifact: replanned } =>
-      if length(scheduled_rows_list(scheduled: replanned.spark_serving_typed_actions)) == 0 {
+      SparkServingReplanRowsReady {
+        rows: scheduled_rows_list(scheduled: replanned.spark_serving_typed_actions),
+      }
+  }
+}
+
+fn spark_serving_applied_replan_verdict(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+  linger_enabled: Bool,
+) -> String {
+  match spark_serving_replan_rows(context: context, host: host, linger_enabled: linger_enabled) {
+    SparkServingReplanRowsRefused { cause: why } =>
+      join(["wet-applied-replan-refused ", why], "")
+    SparkServingReplanRowsReady { rows: rows } =>
+      if length(rows) == 0 {
         spark_serving_terminal_health_verdict(
           context: context,
           host: host,
@@ -320,11 +348,9 @@ fn spark_serving_applied_replan_verdict(
       } else {
         join([
           "wet-applied-replan-nonempty rows=",
-          to_string(length(scheduled_rows_list(scheduled: replanned.spark_serving_typed_actions))),
+          to_string(length(rows)),
           " -- apply executed but the host does not match the declared state; still disagreeing: ",
-          spark_serving_replan_disagreeing_addresses_wire(
-            rows: scheduled_rows_list(scheduled: replanned.spark_serving_typed_actions),
-          ),
+          spark_serving_replan_disagreeing_addresses_wire(rows: rows),
         ], "")
       }
   }
