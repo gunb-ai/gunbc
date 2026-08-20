@@ -25,6 +25,38 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+      - name: Provision Rust toolchain (single writer, install-once)
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          set -eo pipefail
+          if [ -z "$CARGO_HOME" ]; then CARGO_HOME=$HOME/.cargo; fi
+          mkdir -p "$CARGO_HOME/bin"
+          printf '%s\n' "$CARGO_HOME/bin" >> "$GITHUB_PATH"
+          PATH="$CARGO_HOME/bin:$PATH"
+          export PATH
+          if ! command -v rustup >/dev/null 2>&1; then
+            echo "toolchain provisioning refused: no rustup in $CARGO_HOME/bin" >&2
+            echo "this job does not bootstrap rustup: rustup-init rewrites every proxy in a CARGO_HOME shared by all runner slots on this host, which is the write race this step exists to remove" >&2
+            echo "provision rustup on this host out of band; that is a fleet obligation, not this workflow's" >&2
+            exit 1
+          fi
+          channel=$(grep -m1 -E '^[[:space:]]*channel' "$ROOT/rust-toolchain.toml" | tr -d ' \"' | cut -d= -f2)
+          if [ -z "$channel" ]; then
+            echo "toolchain provisioning refused: no channel row in $ROOT/rust-toolchain.toml" >&2
+            exit 1
+          fi
+          exec 9>"$CARGO_HOME/.gunbc-toolchain-install.lock"
+          flock 9
+          if rustup run "$channel" cargo --version >/dev/null 2>&1 \
+            && rustup run "$channel" rustc --version >/dev/null 2>&1 \
+            && rustup run "$channel" rustfmt --version >/dev/null 2>&1 \
+            && rustup run "$channel" cargo-clippy --version >/dev/null 2>&1; then
+            echo "toolchain $channel already complete under $CARGO_HOME; no install performed"
+          else
+            echo "toolchain $channel incomplete; installing once under the shared-home lock"
+            cd "$ROOT" && rustup toolchain install --no-self-update
+          fi
+          rustup run "$channel" rustfmt --version
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
         with:

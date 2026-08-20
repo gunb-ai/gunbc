@@ -112,6 +112,116 @@ fn witness_floor_checkout_step() -> Step {
   }
 }
 
+// THE SHARED CARGO_HOME HAS EXACTLY ONE WRITER, AND THIS STEP IS IT.
+//
+// THE DEFECT, measured rather than inferred. `setup-rust-toolchain`'s second inner step is
+// `Install rustup, if needed`, whose test is `command -v rustup`. On this fleet that test FAILS
+// on every job -- the runner's PATH does not carry `$HOME/.cargo/bin`, and the action's own
+// installer branch is what appends it -- so the branch is taken EVERY TIME and pipes
+// `sh.rustup.rs` into a home that every runner slot on the host shares. Receipt, run 32398449796
+// `Install Rust toolchain`: `info: downloading installer` / `warn: It looks like you have an
+// existing rustup settings file` / `info: skipping toolchain installation` / `Rust is installed
+// now. Great!` -- the toolchain was correctly skipped, and rustup-init still rewrote the PROXIES
+// in `$CARGO_HOME/bin`, which is the half that matters. `rustfmt` there is one of those proxies:
+// a hardlink to the rustup binary that rustup-init unlinks and re-creates.
+//
+// So every concurrent job unlinks and re-creates the same `rustfmt` file, while other jobs are
+// spawning it. Both halves of that window are observable and both were observed. ETXTBSY,
+// run 32390076311: `required-regen: refused: normalize emitted src/main.rs: spawn rustfmt: Text
+// file busy (os error 26)` -- exec of a file another process holds open for writing. ENOENT is
+// the same window read a few milliseconds earlier, between the unlink and the re-link, and it
+// surfaces through the same refusal with `os error 2`. Neither is a defect in
+// `normalize_generated_source`, and neither is repairable at the spawn: a retry there would
+// convert a fleet-level write race into an unobservable latency (DESIGN section 5, the absorbing
+// fallback -- the deficit's frequency zeroed by construction), and dropping rustfmt from
+// normalization would destroy the formatter fixed point the regen comparator is built on.
+//
+// THE REPAIR IS TO REMOVE THE WRITE, NOT TO SURVIVE IT. Two moves, and the second only bounds
+// what the first cannot eliminate:
+//
+//   1. PUT `$CARGO_HOME/bin` ON `GITHUB_PATH` OURSELVES. That is the entire reason the action's
+//      installer branch fires, so once this step runs first, `command -v rustup` succeeds and
+//      rustup-init never executes again. The proxy rewrite -- the thing that produced both
+//      errnos -- stops happening at all, on every job, rather than being serialized.
+//   2. INSTALL THE PINNED TOOLCHAIN AT MOST ONCE, UNDER AN EXCLUSIVE `flock` ON THE SHARED HOME.
+//      The lock makes concurrent installers mutually exclusive; the completeness check inside it
+//      makes the ordinary case install NOTHING, so after the first job on a host there is no
+//      writer left to exclude. `rustup toolchain install` is invoked with no toolchain argument
+//      from the repository root, so the channel AND the component list come from
+//      `rust-toolchain.toml`, which is that fact's sole authority (DESIGN section 3) -- this
+//      step does not re-spell `rustfmt` or `clippy`.
+//
+// WHAT THIS LEAVES THE ACTION DOING: nothing that writes. With the toolchain already present its
+// remaining branch is `rustup show active-toolchain || rustup toolchain install`, whose left arm
+// succeeds and short-circuits, and its `components` input is empty (visible in the same run's
+// step env), so `rustup component add` is never reached. It stays for what it is genuinely the
+// authority on -- the Rust problem matcher and the `RUSTFLAGS=-D warnings` / `CARGO_INCREMENTAL`
+// environment it exports, which nothing here duplicates.
+//
+// FAIL-CLOSED ON A MISSING RUSTUP, deliberately, because the obvious alternative is the defect.
+// If `rustup` is absent this step REFUSES with a typed, located message rather than bootstrapping
+// it -- bootstrapping is exactly the shared-home proxy rewrite being removed, and an arm that
+// re-performs the removed write whenever a precondition is unmet is that write with a condition
+// in front of it. Provisioning rustup on a host is a fleet obligation and is named as one in the
+// refusal text.
+//
+// THE RESIDUE, STATED. On the first job to see a host whose pinned toolchain is genuinely absent,
+// `rustup toolchain install` still refreshes the proxies, so the window can open once per host
+// per channel bump instead of once per job. The lock excludes other INSTALLERS from that window
+// but cannot exclude readers, so the class sits at mitigatable, not structural. Its next-rung
+// trigger is a CARGO_HOME that is not shared across slots -- per-slot, or host-provisioned
+// out of band -- at which point concurrent jobs have no common file to race on and this step's
+// lock dissolves with the sharing that motivated it.
+fn witness_floor_toolchain_provision_script() -> String {
+  concat(
+    concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
+    "set -eo pipefail
+if [ -z \"$CARGO_HOME\" ]; then CARGO_HOME=$HOME/.cargo; fi
+mkdir -p \"$CARGO_HOME/bin\"
+printf '%s\\n' \"$CARGO_HOME/bin\" >> \"$GITHUB_PATH\"
+PATH=\"$CARGO_HOME/bin:$PATH\"
+export PATH
+if ! command -v rustup >/dev/null 2>&1; then
+  echo \"toolchain provisioning refused: no rustup in $CARGO_HOME/bin\" >&2
+  echo \"this job does not bootstrap rustup: rustup-init rewrites every proxy in a CARGO_HOME shared by all runner slots on this host, which is the write race this step exists to remove\" >&2
+  echo \"provision rustup on this host out of band; that is a fleet obligation, not this workflow's\" >&2
+  exit 1
+fi
+channel=$(grep -m1 -E '^[[:space:]]*channel' \"$ROOT/rust-toolchain.toml\" | tr -d ' \\\"' | cut -d= -f2)
+if [ -z \"$channel\" ]; then
+  echo \"toolchain provisioning refused: no channel row in $ROOT/rust-toolchain.toml\" >&2
+  exit 1
+fi
+exec 9>\"$CARGO_HOME/.gunbc-toolchain-install.lock\"
+flock 9
+if rustup run \"$channel\" cargo --version >/dev/null 2>&1 \\
+  && rustup run \"$channel\" rustc --version >/dev/null 2>&1 \\
+  && rustup run \"$channel\" rustfmt --version >/dev/null 2>&1 \\
+  && rustup run \"$channel\" cargo-clippy --version >/dev/null 2>&1; then
+  echo \"toolchain $channel already complete under $CARGO_HOME; no install performed\"
+else
+  echo \"toolchain $channel incomplete; installing once under the shared-home lock\"
+  cd \"$ROOT\" && rustup toolchain install --no-self-update
+fi
+rustup run \"$channel\" rustfmt --version
+"
+  )
+}
+
+fn witness_floor_toolchain_provision_step() -> Step {
+  RunStep {
+    name: Present { value: "Provision Rust toolchain (single writer, install-once)" },
+    id: none,
+    run: witness_floor_toolchain_provision_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
 // CACHING IS DISABLED BECAUSE IT WAS DELETING OTHER JOBS' FILES MID-BUILD, and that is a
 // statement about this fleet rather than about the action.
 //
@@ -559,6 +669,7 @@ fn witness_floor_job() -> Job {
     runner: gunbc_ci_selected_runner_spec(),
     steps: [
       witness_floor_checkout_step(),
+      witness_floor_toolchain_provision_step(),
       witness_floor_toolchain_step(),
       witness_floor_build_step(),
       witness_floor_v1_parse_step(),
