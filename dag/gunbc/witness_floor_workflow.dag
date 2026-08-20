@@ -182,7 +182,7 @@ fn witness_floor_build_script() -> String {
 fn witness_floor_build_step() -> Step {
   RunStep {
     name: Present { value: "Build the witness fold" },
-    id: none,
+    id: Present { value: "build_witness_fold" },
     run: concat(witness_floor_build_script(), "\n"),
     shell: none,
     env: none,
@@ -321,6 +321,47 @@ fn witness_floor_run_step() -> Step {
 // either. Whoever builds the real G0->G1->R2 chain should prove it with a candidate-use canary:
 // swap the built candidate for a binary that prints a marker and exits nonzero, and confirm the
 // boundary observes it -- a mechanism that only recomputes through G0 stays green and is caught.
+// WHY THESE TWO STEPS DECLARE A PRECONDITION INSTEAD OF INHERITING THEIR POSITION.
+//
+// A step with no `if` inherits GitHub's default `success()`, which means the conjunction of
+// every earlier step in the job. Ordered after the witness floor, both regen steps therefore
+// carried an undeclared dependency on the floor's verdict -- and the regen claim does not
+// depend on the floor's verdict. Its actual precondition is that the binary exists.
+//
+// Two costs, and the second is the reason this is a defect rather than a preference. The
+// measurement cost: on the only run that has ever carried these steps (32312549861), both
+// report `skipped` with zero duration, because the floor went red for main's own corpus
+// defect -- a population with no relation to regen. So the regen wall cannot be measured on
+// CI at all while any unrelated floor red stands. The correctness cost: once merged, a floor
+// red DISARMS the regen gate, so the stale-mirror class this enrollment exists to catch goes
+// unchecked on exactly the runs where the tree is already known to be unhealthy -- and a
+// skipped step does not report as failing, so the check surface reads `floor red, regen fine`
+// when regen was never asked. That is the empty-observation narrow from DESIGN's failure-mode
+// list -- same class, new instance: bottom-as-answer conflated with bottom-as-ignorance, here
+// `regen did not fail` standing in for `regen was never evaluated`. The named instance in
+// DESIGN is a diff observation rendered as `nothing is affected`; this one is a skipped gate
+// rendered as an unbroken gate.
+//
+// Binding to the build step's own outcome states the real dependency: the two claims are
+// independent, they fail independently, and neither silences the other. This is a narrowing
+// of an undeclared condition to a declared one, NOT a climb -- nothing here checks that a
+// future step keeps declaring its precondition rather than inheriting one.
+fn witness_regen_precondition() -> String {
+  "steps.build_witness_fold.outcome == 'success'"
+}
+
+// The fixed-point step's precondition is the REGEN step, not the build, and this is measured
+// rather than assumed: run standalone on a clean tree it exits nonzero in under a second with
+// `refused: read receipt target/stage0-regen-receipt.json: No such file or directory`. It
+// consumes a receipt the regen step above produces, so that is a genuine data dependency and
+// the two steps are NOT peers. Binding it to the build alone would have replaced an undeclared
+// condition that was too strong with one that is too weak -- it would run on every build and
+// refuse for a missing receipt, reporting a receipt-plumbing failure where the real event is
+// that regen did not get far enough to write one.
+fn witness_regen_fixed_point_precondition() -> String {
+  "steps.required_regen.outcome == 'success'"
+}
+
 fn witness_required_regen_script() -> String {
   concat(
     concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
@@ -334,12 +375,12 @@ fn witness_required_regen_script() -> String {
 fn witness_required_regen_step() -> Step {
   RunStep {
     name: Present { value: "Regen fixed point: first generation matches committed candidate" },
-    id: none,
+    id: Present { value: "required_regen" },
     run: witness_required_regen_script(),
     shell: none,
     env: none,
     working_directory: none,
-    if_condition: none,
+    if_condition: Present { value: witness_regen_precondition() },
     continue_on_error: none,
     timeout_minutes: none
   }
@@ -363,7 +404,7 @@ fn witness_required_regen_fixed_point_step() -> Step {
     shell: none,
     env: none,
     working_directory: none,
-    if_condition: none,
+    if_condition: Present { value: witness_regen_fixed_point_precondition() },
     continue_on_error: none,
     timeout_minutes: none
   }
