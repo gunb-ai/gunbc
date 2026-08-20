@@ -349,22 +349,28 @@ fn subsumption_bind_value(
 fn subsumption_interpretation() -> InterpretationAlgebra {
   InterpretationAlgebra {
     value: ValueInterpreter {
-      allocate_literal: subsumption_allocate_literal
+      allocate_literal: subsumption_allocate_literal,
+      identity: ^subsumption_allocate_literal
     },
     transform: TransformInterpreter {
-      call_primitive: subsumption_call_primitive
+      call_primitive: subsumption_call_primitive,
+      identity: ^subsumption_call_primitive
     },
     branch: BranchInterpreter {
-      choose_branch: subsumption_choose_branch
+      choose_branch: subsumption_choose_branch,
+      identity: ^subsumption_choose_branch
     },
     loop: LoopInterpreter {
-      step_loop: subsumption_step_loop
+      step_loop: subsumption_step_loop,
+      identity: ^subsumption_step_loop
     },
     bind: BindInterpreter {
-      bind_value: subsumption_bind_value
+      bind_value: subsumption_bind_value,
+      identity: ^subsumption_bind_value
     },
     match: MatchInterpreter {
-      choose_arm: runtime_reject_match_arm
+      choose_arm: runtime_reject_match_arm,
+      identity: ^runtime_reject_match_arm
     }
   }
 }
@@ -399,11 +405,11 @@ fn subsumption_inferred_tree(root: Node) -> InferredTree {
 
 fn subsumption_interpretation_structure_witness() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
-    allocate_literal: ^subsumption_allocate_literal_sym,
-    call_primitive: ^subsumption_call_primitive_sym,
-    choose_branch: ^subsumption_choose_branch_sym,
-    step_loop: ^subsumption_step_loop_sym,
-    bind_value: ^subsumption_bind_value_sym,
+    allocate_literal: ^subsumption_allocate_literal,
+    call_primitive: ^subsumption_call_primitive,
+    choose_branch: ^subsumption_choose_branch,
+    step_loop: ^subsumption_step_loop,
+    bind_value: ^subsumption_bind_value,
     choose_arm: ^runtime_reject_match_arm
   }
 }
