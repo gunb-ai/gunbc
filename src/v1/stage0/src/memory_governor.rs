@@ -194,7 +194,7 @@ pub fn render_governor_hold_line_mirror(hold: &HoldReason, emoji: bool) -> Strin
 /// — the declared per-slot throttle line. This constant is a mirror, not an independent value:
 /// it may only move toward its authority row. Joined by
 /// `test.claim.seed_mirror_constant_lens_witness_test`.
-pub const DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES: u64 = 13_958_643_712;
+pub const DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES: u64 = 16106127360;
 
 /// SCAFFOLD (§7 seed-retained HAND-RUST — authority: `dag/gunbc/runner_slot_allocation.dag`
 /// `gunbc_floor_minimum_viable_armed_budget` = `byte_size(12884901888)`; doomed/success witness
