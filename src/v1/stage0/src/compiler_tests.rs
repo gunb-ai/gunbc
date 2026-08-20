@@ -2059,7 +2059,7 @@ mod compiler_tests {
         name: &str,
         children: Vec<std::rc::Rc<crate::v1_std_core::Node>>,
     ) -> std::rc::Rc<crate::v1_std_core::Node> {
-        let span = crate::v1_std_core::make_span(0, name.len() as i64);
+        let span = crate::v1_std_core::no_span();
         std::rc::Rc::new(crate::v1_std_core::Node {
             name: name.to_string(),
             ident: None,

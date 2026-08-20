@@ -200,7 +200,7 @@ fn parse_one_with(s: String, sp: std.markup.MarkupBracket) -> HtmlParseOneResult
         ChildrenRejected { reason } => ParseOneRejected { reason: reason }
         ParsedChildren { nodes } =>
           ParsedOne {
-            node: Element { tag: tag, attributes: attr_result.attributes, children: nodes },
+            node: std.markup.Element { tag: tag, attributes: attr_result.attributes, children: nodes },
             rest: split_result.rest,
           }
       }

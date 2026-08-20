@@ -41,9 +41,9 @@ use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
 pub use crate::v1_std_core::{
     authored_name_at, bool_type, default_ident_span, error_type, find_child_named, float_type,
     has_inferred, int_type, is_compiler_error, is_kernel_type, kernel_span, leaf_node_with_span,
-    make_error_node, make_expr_error_node, make_expr_node, make_param_node, make_span, no_span,
-    none_type, param_node_type_expr, qualified_last_segment, string_type, type_name_compatible,
-    unit_type, with_optional_cardinality, with_required_cardinality,
+    make_error_node, make_expr_error_node, make_expr_node, make_param_node, no_span, none_type,
+    param_node_type_expr, qualified_last_segment, string_type, type_name_compatible, unit_type,
+    with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode,
@@ -64,7 +64,7 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
 pub fn type_variable_node(id: String) -> Rc<Node> {
     Rc::new(Node {
         name: "".to_string(),
-        span: make_span(0, 0),
+        span: no_span(),
         ident_span: None,
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
@@ -348,13 +348,13 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
         Some(key_id) => match container_param_name("Map".to_string(), 1) {
             Some(val_id) => Some(Rc::new(Node {
                 name: "Map".to_string(),
-                span: make_span(0, 0),
-                ident_span: Some(make_span(0, 0)),
+                span: no_span(),
+                ident_span: Some(no_span()),
                 children: Rc::new(vec![
                     Rc::new(Node {
                         name: key_id.clone(),
-                        span: make_span(0, 0),
-                        ident_span: Some(make_span(0, 0)),
+                        span: no_span(),
+                        ident_span: Some(no_span()),
                         children: Rc::new(vec![]),
                         connective: Connective::NoConnective,
                         params: Rc::new(vec![]),
@@ -375,8 +375,8 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                     }),
                     Rc::new(Node {
                         name: val_id.clone(),
-                        span: make_span(0, 0),
-                        ident_span: Some(make_span(0, 0)),
+                        span: no_span(),
+                        ident_span: Some(no_span()),
                         children: Rc::new(vec![]),
                         connective: Connective::NoConnective,
                         params: Rc::new(vec![]),
@@ -421,12 +421,12 @@ pub fn bare_set_node() -> Option<Rc<Node>> {
     match container_param_name("Set".to_string(), 0) {
         Some(elem_id) => Some(Rc::new(Node {
             name: "Set".to_string(),
-            span: make_span(0, 0),
-            ident_span: Some(make_span(0, 0)),
+            span: no_span(),
+            ident_span: Some(no_span()),
             children: Rc::new(vec![Rc::new(Node {
                 name: elem_id.clone(),
-                span: make_span(0, 0),
-                ident_span: Some(make_span(0, 0)),
+                span: no_span(),
+                ident_span: Some(no_span()),
                 children: Rc::new(vec![]),
                 connective: Connective::NoConnective,
                 params: Rc::new(vec![]),
@@ -473,7 +473,7 @@ pub fn kernel_container_profile_miss_diagnostic(kind_name: String) -> Rc<ErrorNo
         make_error_node(
             Rc::new(CompilerDiagnostic::InternalError {
                 message: msg.clone(),
-                span: make_span(0, 0),
+                span: no_span(),
             }),
             "v1.compiler.infer_types".to_string(),
         )
@@ -488,14 +488,14 @@ pub fn missing_kernel_container_profile_type(kind_name: String) -> Rc<Node> {
         );
         Rc::new(Node {
             name: "".to_string(),
-            span: make_span(0, 0),
+            span: no_span(),
             ident_span: None,
             children: Rc::new(vec![]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: Some(Rc::new(InferredNode::CompilerError {
                 message: msg.clone(),
-                span: make_span(0, 0),
+                span: no_span(),
             })),
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
@@ -744,7 +744,7 @@ pub fn make_callable_type(func_params: Rc<Vec<Rc<Node>>>, ret: Rc<Node>) -> Rc<N
 pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
         name: "".to_string(),
-        span: make_span(0, 0),
+        span: no_span(),
         ident_span: None,
         children: Rc::new(vec![
             Rc::new(Node {

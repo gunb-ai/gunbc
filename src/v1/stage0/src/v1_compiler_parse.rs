@@ -69,7 +69,7 @@ pub use crate::v1_std_core::{
     is_container_type, kernel_span, leaf_node_with_span, local_transport_node, make_arg_node,
     make_arm_node, make_error_node, make_expr_error_node, make_expr_node, make_field_binding_node,
     make_field_init_node, make_field_node, make_interp_part_node, make_named_expr_node,
-    make_param_node, make_pattern_binder_declaration_node, make_resource_use_node, make_span,
+    make_param_node, make_pattern_binder_declaration_node, make_resource_use_node,
     make_text_part_node, make_variant_node, module_node, no_span, node_name_span,
     param_node_default_value, param_node_type_expr, pre_intern_tokens, rest_transport_node,
     service_config_properties, shell_transport_node, transport_auth_basic_key, transport_body_key,
@@ -683,7 +683,7 @@ pub fn parse_recovery_expr(span: Rc<SourceSpan>, message: String) -> Rc<Node> {
 }
 
 pub fn parse_recovery_placeholder() -> Rc<Node> {
-    parse_recovery_expr(make_span(0, 0), "parser recovery placeholder".to_string())
+    parse_recovery_expr(no_span(), "parser recovery placeholder".to_string())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -910,7 +910,7 @@ pub struct DescResult {
 pub fn token_span(tok: Option<Rc<Token>>) -> Rc<SourceSpan> {
     match tok.clone() {
         Some(t) => t.span.clone(),
-        None => make_span(0, 0),
+        None => no_span(),
     }
 }
 
@@ -965,7 +965,7 @@ pub fn parse_string_literal_value(tokens: Rc<TokenStream>) -> Rc<StringLitResult
                 tokens: tokens.clone(),
                 err: Some(parse_error(
                     "expected string literal".to_string(),
-                    make_span(0, 0),
+                    no_span(),
                 )),
             }),
         }
@@ -1016,7 +1016,7 @@ pub fn parse_int_literal_value(tokens: Rc<TokenStream>) -> Rc<IntLitResult> {
                 tokens: tokens.clone(),
                 err: Some(parse_error(
                     "expected integer literal".to_string(),
-                    make_span(0, 0),
+                    no_span(),
                 )),
             }),
         }
@@ -1527,7 +1527,7 @@ pub fn tok_is_question(tok: Option<Rc<Token>>) -> bool {
 pub fn tok_span(tok: Option<Rc<Token>>) -> Rc<SourceSpan> {
     match tok.clone() {
         Some(t) => t.span.clone(),
-        None => make_span(0, 0),
+        None => no_span(),
     }
 }
 
@@ -1682,7 +1682,7 @@ pub fn expect(tokens: Rc<TokenStream>, expected: Rc<ExpectedToken>) -> Rc<TokenR
                 Rc::new(TokenResult {
                     token: Rc::new(Token {
                         text: "".to_string(),
-                        span: make_span(0, 0),
+                        span: no_span(),
                         shape: TokenShape::ShEof,
                     }),
                     tokens: tokens.clone(),
@@ -4394,7 +4394,7 @@ pub fn parse_predicates_acc(
 
 pub fn parse_single_predicate(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<PredResult> {
     {
-        let zero_span = make_span(0, 0);
+        let zero_span = no_span();
         let dummy_pred = make_field_init_node(
             "".to_string(),
             make_expr_node(
@@ -6697,7 +6697,7 @@ pub fn parse_resource_config_acc(
                 err: None,
             });
         }
-        let zero_span = make_span(0, 0);
+        let zero_span = no_span();
         let r = expect_name(tokens.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ResConfigResult {
@@ -7198,7 +7198,7 @@ pub fn parse_config_fields(
                         }),
                         Rc::new(vec![]),
                         None,
-                        make_span(0, 0),
+                        no_span(),
                     ),
                 },
                 auth: auth.clone(),
@@ -7223,7 +7223,7 @@ pub fn parse_config_fields(
                     }),
                     Rc::new(vec![]),
                     None,
-                    make_span(0, 0),
+                    no_span(),
                 ),
                 auth: None,
                 auth_input: None,
@@ -7524,7 +7524,7 @@ pub fn parse_rest_fields(
                     }),
                     Rc::new(vec![]),
                     None,
-                    make_span(0, 0),
+                    no_span(),
                 ),
             };
             break Rc::new(TransportResult {
@@ -7645,8 +7645,8 @@ pub fn parse_rest_fields(
                                             let field = make_field_init_node(
                                                 fname.clone(),
                                                 r3.expr.clone(),
-                                                make_span(0, 0),
-                                                make_span(0, 0),
+                                                no_span(),
+                                                no_span(),
                                             );
                                             {
                                                 let __tco_0 = v1_rt::concat(
@@ -7846,7 +7846,7 @@ pub fn parse_file_fields(
                     }),
                     Rc::new(vec![]),
                     None,
-                    make_span(0, 0),
+                    no_span(),
                 ),
             };
             break Rc::new(TransportResult {
@@ -9384,12 +9384,7 @@ pub fn parse_mock_response_entries_acc(
             };
             let status_str = status_expr_to_str(status.clone(), ctx.source_indices.clone());
             let prop_name = v1_rt::concat("mock_".to_string(), status_str.clone());
-            let entry = make_field_init_node(
-                prop_name.clone(),
-                body.clone(),
-                make_span(0, 0),
-                make_span(0, 0),
-            );
+            let entry = make_field_init_node(prop_name.clone(), body.clone(), no_span(), no_span());
             let e = eat(desc_tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
             tokens = skip_newlines(match (*e.clone()).clone() {
                 EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
@@ -9729,7 +9724,7 @@ pub fn parse_resource_entries(
                         let fi = make_field_init_node(
                             fname.clone(),
                             r3.expr.clone(),
-                            make_span(0, 0),
+                            no_span(),
                             r.span.clone(),
                         );
                         {
@@ -12179,12 +12174,7 @@ pub fn parse_constraint_list(
                 err: r.err.clone(),
             });
         }
-        let fi = make_field_init_node(
-            kw_name.clone(),
-            r.expr.clone(),
-            make_span(0, 0),
-            make_span(0, 0),
-        );
+        let fi = make_field_init_node(kw_name.clone(), r.expr.clone(), no_span(), no_span());
         acc = v1_rt::rc_list_push(acc.clone(), fi.clone());
         match (*eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
@@ -12934,7 +12924,7 @@ pub fn parse_match_arm(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Arm
             Rc::new(MatchPattern::Wildcard),
             None,
             parse_recovery_placeholder(),
-            make_span(0, 0),
+            no_span(),
         );
         let r = parse_pattern(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
@@ -14107,7 +14097,7 @@ pub fn parse_field_init_list_acc(
 
 pub fn parse_field_init(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<FieldInitResult> {
     {
-        let zero_span = make_span(0, 0);
+        let zero_span = no_span();
         let span = token_span(token_stream_first(tokens.clone()));
         let dummy_fi = make_field_init_node(
             "".to_string(),
