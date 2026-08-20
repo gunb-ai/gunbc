@@ -4,7 +4,6 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import std.algebra { Cons, Empty }
 import v2.std.node { Symbol }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -46,33 +45,15 @@ fn repr_grounding_elem_shape_rank(shape: ReprGroundingDeriveElemShape) -> Int {
   }
 }
 
-fn target_capability_shape_row_for(
-  table: TargetCapabilityShapeTable,
-  shape: ReprGroundingDeriveElemShape
-) -> Optional<TargetCapabilityShapeRow> {
-  table.rows |> fold(init: optional_absent(), f: (acc, row) =>
-    match acc {
-      Present { value: _ } => acc
-      Absent =>
-        if repr_grounding_elem_shape_rank(shape: row.shape)
-             == repr_grounding_elem_shape_rank(shape: shape) {
-          optional_present(value: row)
-        } else {
-          optional_absent()
-        }
-    }
-  )
-}
-
 fn repr_grounding_derive_shape_has_trait(
   table: TargetCapabilityShapeTable,
   shape: ReprGroundingDeriveElemShape,
   capability_key: TargetCapabilityKey
 ) -> Bool {
-  match target_capability_shape_row_for(table: table, shape: shape) {
-    Present { value: row } => row.capabilities |> any(k => k == capability_key)
-    Absent => false
-  }
+  table.rows
+    |> any(row => repr_grounding_elem_shape_rank(shape: row.shape)
+                    == repr_grounding_elem_shape_rank(shape: shape)
+                  && (row.capabilities |> any(k => k == capability_key)))
 }
 
 fn repr_grounding_derive_completeness_predicate(

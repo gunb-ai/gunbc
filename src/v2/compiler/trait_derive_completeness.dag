@@ -1,27 +1,38 @@
 module v2.compiler.trait_derive_completeness
 
 import std.trait_derive_shape {
-  ReprDeriveClone,
-  ReprDerivePartialEq,
-  ReprDeriveEq,
-  ReprDerivePartialOrd,
-  ReprDeriveOrd,
-  ReprGroundingDeriveTrait,
-  ReprGroundingDeriveElemShape,
+  ReprDeriveElemKernelBool,
   ReprDeriveElemKernelInt,
   ReprDeriveElemKernelString,
-  ReprDeriveElemKernelBool,
   ReprDeriveElemKernelUnit,
   ReprDeriveElemNullaryEnumCopy,
   ReprDeriveElemPayloadCoproduct,
   ReprDeriveElemUnknown,
-  repr_grounding_derive_shape_has_trait,
-  repr_grounding_derive_completeness_predicate
+  ReprGroundingDeriveElemShape,
+  TargetCapabilityKey,
+  repr_grounding_derive_completeness_predicate,
+  repr_grounding_derive_shape_has_trait
 }
-import v2.std.algebra { Cons, Empty }
-import v2.std.collection { List }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.logic { Bool }
+import extdeps.languages.rust.capabilities {
+  rust_capability_shape_table
+}
+import v2.std.algebra {
+  Cons,
+  Empty
+}
+import v2.std.collection {
+  List
+}
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present
+}
+import v2.std.logic {
+  Bool
+}
 import v2.std.node {
   Atom,
   Conj,
@@ -31,12 +42,14 @@ import v2.std.node {
   SyntheticOccurrence,
   TypeNode
 }
-import v2.std.compilers.coproduct_variant_shape { coproduct_all_variants_nullary }
+import v2.std.compilers.coproduct_variant_shape {
+  coproduct_all_variants_nullary
+}
 import v2.std.compilers.target_model {
   TargetCapabilityRequirement
 }
 
-data trait_derive_completeness_note: String = "Gate-1 sub-wall #2 (#7174 narrowed 2026-07-25): v2 Node elem-shape classifier + collection-witness gate over std.trait_derive_shape. v1 emit wires (a) clone bounds on generic params, (b) coproduct-native supplemental impl blocks, and (c) serde/Debug/Ord #[derive] on named structs/enums — arm (b) detail in std.trait_derive_shape.trait_derive_shape_grounding_lane_handoff. Fail-closed: unknown shapes refuse. Dissolve-on: those three v1 emit arms + layer-boundary mock test wire through this module. TWO DECLARED RESIDUES FROM THE B1 CAPABILITY-KEYED CUTOVER (review 53861 on gunbc#8597, both correct, both named here rather than left to be rediscovered). (1) RESIDUAL PER-TARGET AUTHORITY: repr_grounding_derive_traits_for_capability keys on the three Rust capability symbols target_collection_trait_ord/_hash/_eq and answers with Rust derive-trait lists. That is the SAME per-target policy B1 evicted from v2.std.compilers.target_model, now sitting one layer up in v2.compiler rather than in extdeps.languages.rust beside the eligibility rows it belongs with. It is not a second CARRIER (the carrier is TargetCapabilityRequirement, single-authority), but it IS a second per-target ROW SET, so a non-Rust target would still edit this file. NEXT-RUNG TRIGGER: these rows migrate to extdeps.languages.rust alongside rust_collection_capability_eligibility_rows in the ReprGroundingDeriveTrait cutover (B1 PR 2), which subsumes the 16-variant derive coproduct that these lists are typed in; migrating the lists BEFORE that coproduct is keyed would just move ReprGroundingDeriveTrait into extdeps unchanged, so the two are sequenced together deliberately, not deferred by omission. (2) OBLIGATION ON Absent, PINNED BEFORE A CONSUMER EXISTS: trait_derive_completeness_gate_for_collection_requirement returns Optional, where Absent means the capability key has no declared derive-trait row -- an UNKNOWN capability, never a satisfied or an unsatisfied gate. There is no production consumer today (tests only), so this is not live fail-open. When one is wired, Absent MUST route to a typed located refusal; treating it as skip-the-gate, or folding it into TraitDeriveCompletenessSatisfied or TraitDeriveCompletenessIncomplete, would reintroduce exactly the absorbing fallback this cutover removed -- the prior code silently handed an unrecognised capability the equality trait list, and tdc_unknown_capability_refuses_rather_than_defaulting is the discriminating control that goes red if that behaviour returns."
+data trait_derive_completeness_note: String = "Gate-1 sub-wall #2 (#7174 narrowed 2026-07-25): v2 Node elem-shape classifier + collection-witness gate over std.trait_derive_shape. v1 emit wires (a) clone bounds on generic params, (b) coproduct-native supplemental impl blocks, and (c) serde/Debug/Ord #[derive] on named structs/enums — arm (b) detail in std.trait_derive_shape.trait_derive_shape_grounding_lane_handoff. Fail-closed: unknown shapes refuse. Dissolve-on: those three v1 emit arms + layer-boundary mock test wire through this module. TWO DECLARED RESIDUES FROM THE B1 CAPABILITY-KEYED CUTOVER (review 53861 on gunbc#8597, both correct, both named here rather than left to be rediscovered). (1) RESIDUAL PER-TARGET AUTHORITY: repr_grounding_derive_traits_for_capability keys on the three Rust capability symbols target_collection_trait_ord/_hash/_eq and answers with Rust derive-trait lists. That is the SAME per-target policy B1 evicted from v2.std.compilers.target_model, now sitting one layer up in v2.compiler rather than in extdeps.languages.rust beside the eligibility rows it belongs with. It is not a second CARRIER (the carrier is TargetCapabilityRequirement, single-authority), but it IS a second per-target ROW SET, so a non-Rust target would still edit this file. NEXT-RUNG TRIGGER: these rows migrate to extdeps.languages.rust alongside rust_collection_capability_eligibility_rows in the TargetCapabilityKey cutover (B1 PR 2), which subsumes the 16-variant derive coproduct that these lists are typed in; migrating the lists BEFORE that coproduct is keyed would just move TargetCapabilityKey into extdeps unchanged, so the two are sequenced together deliberately, not deferred by omission. (2) OBLIGATION ON Absent, PINNED BEFORE A CONSUMER EXISTS: trait_derive_completeness_gate_for_collection_requirement returns Optional, where Absent means the capability key has no declared derive-trait row -- an UNKNOWN capability, never a satisfied or an unsatisfied gate. There is no production consumer today (tests only), so this is not live fail-open. When one is wired, Absent MUST route to a typed located refusal; treating it as skip-the-gate, or folding it into TraitDeriveCompletenessSatisfied or TraitDeriveCompletenessIncomplete, would reintroduce exactly the absorbing fallback this cutover removed -- the prior code silently handed an unrecognised capability the equality trait list, and tdc_unknown_capability_refuses_rather_than_defaulting is the discriminating control that goes red if that behaviour returns."
 
 type TraitDeriveCompletenessGate
   = TraitDeriveCompletenessSatisfied
@@ -89,42 +102,44 @@ fn repr_grounding_derive_elem_shape(elem: Node) -> ReprGroundingDeriveElemShape 
 }
 
 fn repr_grounding_derive_trait_satisfied(
-  derive_trait: ReprGroundingDeriveTrait,
+  derive_trait: TargetCapabilityKey,
   elem: Node
 ) -> Bool {
   repr_grounding_derive_shape_has_trait(
+    table: rust_capability_shape_table(),
     shape: repr_grounding_derive_elem_shape(elem: elem),
-    derive_trait: derive_trait
+    capability_key: derive_trait
   )
 }
 
 fn repr_grounding_derive_completeness_predicate_for_elem(
-  required: List<ReprGroundingDeriveTrait>,
+  required: List<TargetCapabilityKey>,
   elem: Node
 ) -> Bool {
   repr_grounding_derive_completeness_predicate(
+    table: rust_capability_shape_table(),
     required: required,
     shape: repr_grounding_derive_elem_shape(elem: elem)
   )
 }
 
-data repr_grounding_derive_traits_ordering_capability: List<ReprGroundingDeriveTrait> = [
-  ReprDeriveOrd,
-  ReprDerivePartialOrd,
-  ReprDeriveEq,
-  ReprDerivePartialEq,
-  ReprDeriveClone
+data repr_grounding_derive_traits_ordering_capability: List<TargetCapabilityKey> = [
+  ^target_capability_ord,
+  ^target_capability_partialord,
+  ^target_capability_eq,
+  ^target_capability_partialeq,
+  ^target_capability_clone
 ]
 
-data repr_grounding_derive_traits_equality_capability: List<ReprGroundingDeriveTrait> = [
-  ReprDeriveEq,
-  ReprDerivePartialEq,
-  ReprDeriveClone
+data repr_grounding_derive_traits_equality_capability: List<TargetCapabilityKey> = [
+  ^target_capability_eq,
+  ^target_capability_partialeq,
+  ^target_capability_clone
 ]
 
 fn repr_grounding_derive_traits_for_capability(
   capability_key: Symbol
-) -> Optional<List<ReprGroundingDeriveTrait>> {
+) -> Optional<List<TargetCapabilityKey>> {
   if capability_key == ^target_collection_trait_ord {
     optional_present(value: repr_grounding_derive_traits_ordering_capability)
   } else {
@@ -142,12 +157,12 @@ fn repr_grounding_derive_traits_for_capability(
 
 fn repr_grounding_derive_traits_for_collection_requirement(
   requirement: TargetCapabilityRequirement
-) -> Optional<List<ReprGroundingDeriveTrait>> {
+) -> Optional<List<TargetCapabilityKey>> {
   repr_grounding_derive_traits_for_capability(capability_key: requirement.capability_key)
 }
 
 fn trait_derive_completeness_gate(
-  required: List<ReprGroundingDeriveTrait>,
+  required: List<TargetCapabilityKey>,
   elem: Node
 ) -> TraitDeriveCompletenessGate {
   if repr_grounding_derive_completeness_predicate_for_elem(required: required, elem: elem) {

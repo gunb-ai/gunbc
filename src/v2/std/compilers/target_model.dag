@@ -1,9 +1,32 @@
 module v2.std.compilers.target_model
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.dissolution {
+  DissolutionCondition,
+  unbound_dissolution
+}
 
-import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { Equal, Greater, Less, Ordering, TailAbsent, TailFound, any, fold_list, fold_list_node, fold_list_right, is_empty, length, list_append, list_snoc_item, list_tail }
+import std.algebra {
+  Cons,
+  Empty,
+  FreeMonoid
+}
+import v2.std.algebra {
+  Equal,
+  Greater,
+  Less,
+  Ordering,
+  TailAbsent,
+  TailFound,
+  any,
+  fold_list,
+  fold_list_node,
+  fold_list_right,
+  is_empty,
+  length,
+  list_append,
+  list_snoc_item,
+  list_tail
+}
 import v2.std.collection {
   List,
   Map,
@@ -56,7 +79,7 @@ import v2.std.find_witness {
   CandidateSet,
   PreservationPredicate,
   UniqueOnly,
-  find_witness,
+  find_witness
 }
 import v2.std.passing_candidate_fold {
   ManyPassingCandidates,
@@ -101,7 +124,9 @@ import v2.std.node {
   node_rebuild,
   SyntheticOccurrence
 }
-import v2.std.witness { StructuralPropertyWitness }
+import v2.std.witness {
+  StructuralPropertyWitness
+}
 import v2.std.node_query {
   arrow_domain_named_param_bindings,
   coproduct_nullary_inhabitant_by_discriminant,
@@ -110,19 +135,38 @@ import v2.std.node_query {
   node_labeled_child_edges,
   node_positional_child_targets
 }
-import v2.std.qualified_name { QualifiedName, qualified_name_from_node }
-import v2.std.logic { Bool }
-import v2.std.text { Char, String }
-import std.trait_derive_shape { ReprGroundingDeriveTrait }
+import v2.std.qualified_name {
+  QualifiedName,
+  qualified_name_from_node
+}
+import v2.std.logic {
+  Bool
+}
+import v2.std.text {
+  Char,
+  String
+}
+import std.trait_derive_shape {
+  TargetCapabilityKey
+}
 import v2.std.host_transport {
   EmitHostRuntimeRow,
   TargetEmitHostRuntimeRow,
   configured_emit_host_runtime_row_from_target_row
 }
-import v2.std.integer { integer_decimal_magnitude_node_to_int }
-import v2.std.fold_assembly { node_list_from_node }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, UriScheme }
+import v2.std.integer {
+  integer_decimal_magnitude_node_to_int
+}
+import v2.std.fold_assembly {
+  node_list_from_node
+}
+import extdeps.external_authority {
+  ExternalAuthority
+}
+import extdeps.uri {
+  Uri,
+  UriScheme
+}
 
 // Produced-declaration support is a TARGET-owned rendering, opaque to the compiler.
 // The compiler asks a target for a produced declaration and receives a bodied-arrow
@@ -9508,9 +9552,8 @@ data target_derive_supplemental_generic_bound_requirement_field_authority: Symbo
 data target_external_authority_field_uri_scheme: Symbol = ^target_external_authority_field_uri_scheme
 data target_external_authority_field_uri_locator: Symbol = ^target_external_authority_field_uri_locator
 
-type TargetCapabilityKey = Symbol where brand("TargetCapabilityKey")
 
-data target_capability_key_fork_state_note: String = "TargetCapabilityKey is the single brand for a named target capability. B1 PR 2 collapsed TargetDeriveTraitKey into it: that brand was not an independent authority -- every value of it in the corpus came from one producer, target_capability_key_for_derive_trait, which is discriminant(ReprGroundingDeriveTrait) -- so two brands stood over one overlapping key space in this module, which is the section 3 nickname pair. FORK NOT CLOSED, STATED PLAINLY RATHER THAN LEFT TO THE WORD COLLAPSE: std.trait_derive_shape ReprGroundingDeriveTrait still exists and still overlaps this key space on Ord, Hash, Eq and Clone. The fork went from three representations to two; it is not closed. WHY IT COULD NOT BE CLOSED HERE, measured rather than assumed: src/v1/trait_derive_emit.dag imports twenty symbols from std.trait_derive_shape, of which record_derive_traits_heap, record_derive_traits_copy, nullary_coproduct_derive_traits, symbol_wrapped_ord_carrier_derive_traits and repr_grounding_derive_completeness_predicate are the SAME declarations that v2 and dag.extdeps.languages.rust.emit consume -- not parallel copies -- and their signatures are typed in the coproduct; extdeps.languages.rust.emit rust_trait_derive_attr_from_traits additionally takes List<ReprGroundingDeriveTrait> and is imported by v1 directly. So the coproduct crosses the frozen v1 boundary through BOTH std and extdeps, and every route to migrating a consumer either changes a signature v1 shares (breaking frozen v1) or adds a keyed surface beside the coproduct in std (a dual authority, worse than the current state). Both arms refuse, which is what makes this a block rather than a preference. NEXT-RUNG TRIGGER: an operator ruling on whether a carrier migration driven by upstream retirement is admissible under the v1 freeze -- it is neither the admitted defect-repair class nor the refused feature-completion class, so the freeze vocabulary has no row for it. That ruling gates the BULK of the remaining migration, not one final re-home step; an earlier reading that placed it off the critical path was refuted by the import measurement above."
+data target_capability_key_fork_state_note: String = "TargetCapabilityKey is the SINGLE brand for a named target capability and it is declared ONCE, in std.trait_derive_shape; this module IMPORTS it. B1 collapsed two predecessors into it. TargetDeriveTraitKey was not an independent authority -- every value of it came from one producer -- so it was the section 3 nickname pair and it is gone. An earlier revision of this migration additionally left a LOCAL type TargetCapabilityKey declared here while ALSO importing the identical declaration from std.trait_derive_shape: two byte-identical brand declarations for one concept, one shadowing the other inside a single module. It compiled clean and was removed on sight. STATED AT THE STRENGTH OF THE EVIDENCE, because the temptation was to bundle it with the interpreter failure found the same hour: the duplicate declaration is a section 3 violation on its own terms, and NOTHING MEASURED SHOWS IT CAUSED A RUNTIME FAILURE -- removing it did NOT fix the NoSuchFunction, which came from the wrapper described in target_capability_key_wire_identity_note. Two defects in one migration, found in sequence, each with its own evidence."
 
 
 type TargetCapabilityRequirement {
@@ -9567,19 +9610,19 @@ type TargetCollectionRealization {
 }
 
 type TargetDeriveSupplementalGenericBoundContract {
-  derive_trait: ReprGroundingDeriveTrait
+  derive_trait: TargetCapabilityKey
   authority: ExternalAuthority
   requirements: Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet>
 }
 
 type TargetDeriveSupplementalGenericBoundRequirementWire {
   representation_parameter: Symbol
-  required_trait: ReprGroundingDeriveTrait
+  required_trait: TargetCapabilityKey
   authority: ExternalAuthority
 }
 
 type TargetDeriveSupplementalGenericBoundContractWire {
-  derive_trait: ReprGroundingDeriveTrait
+  derive_trait: TargetCapabilityKey
   authority: ExternalAuthority
   requirements: List<TargetDeriveSupplementalGenericBoundRequirementWire>
 }
@@ -9589,17 +9632,7 @@ type TargetDeriveSupplementalGenericBoundContractCatalog {
   contracts: Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority>
 }
 
-fn target_grounding_derive_trait_discriminant(
-  derive_trait: ReprGroundingDeriveTrait
-) -> Symbol {
-  discriminant(v: derive_trait)
-}
-
-fn target_capability_key_for_derive_trait(
-  derive_trait: ReprGroundingDeriveTrait
-) -> TargetCapabilityKey {
-  target_grounding_derive_trait_discriminant(derive_trait: derive_trait)
-}
+data target_capability_key_wire_identity_note: String = "There is no key-to-wire projection here and there is deliberately no function for one. When the capability key was a closed coproduct this module carried target_grounding_derive_trait_discriminant (discriminant of the variant) and target_capability_key_for_derive_trait (a second name for the same call), and the node decoder recovered the variant with coproduct_nullary_inhabitant_by_discriminant. TargetCapabilityKey is now a branded Symbol, so the key IS its own wire identity and all three collapse to the identity function. THIS WAS NOT A TIDY-UP, IT WAS A DEFECT: the wrappers survived the carrier change and kept calling discriminant on a Symbol. gunbc compile reported zero blocking errors on every affected entry; under gunbc run the interpreter could not bridge discriminant for a non-coproduct, fell back to a free-function lookup, and NoSuchFunction discriminant then surfaced in UNRELATED modules whose closure reached this one -- because target_grounding_derive_trait_discriminant was also passed as a function VALUE to coproduct_nullary_inhabitant_by_discriminant, so it was resolved eagerly rather than only when called. Section 5: a typecheck is not a consumer."
 
 fn target_derive_supplemental_generic_bound_requirement_set_empty() -> TargetDeriveSupplementalGenericBoundRequirementSet {
   empty_map()
@@ -9623,13 +9656,13 @@ fn target_derive_supplemental_generic_bound_contract_authorities_empty() -> Map<
 
 fn target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements(
   contracts: Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority>,
-  derive_trait: ReprGroundingDeriveTrait,
+  derive_trait: TargetCapabilityKey,
   authority: ExternalAuthority,
   requirements: Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet>
 ) -> Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
   map_insert(
     m: contracts,
-    key: target_capability_key_for_derive_trait(derive_trait: derive_trait),
+    key: derive_trait,
     value: TargetDeriveSupplementalGenericBoundContractAuthority {
       authority: authority,
       requirements: requirements
@@ -9639,7 +9672,7 @@ fn target_derive_supplemental_generic_bound_contract_authority_insert_with_requi
 
 fn target_derive_supplemental_generic_bound_contract_authority_insert(
   contracts: Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority>,
-  derive_trait: ReprGroundingDeriveTrait,
+  derive_trait: TargetCapabilityKey,
   authority: ExternalAuthority
 ) -> Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
   target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements(
@@ -9739,22 +9772,18 @@ fn target_external_authority_from_node(node: Node) -> Outcome<ExternalAuthority>
 
 fn target_grounding_derive_trait_from_node(
   node: Node
-) -> Outcome<ReprGroundingDeriveTrait> {
+) -> Outcome<TargetCapabilityKey> {
   bind_outcome(
     o: target_collection_node_atom_identity(node: node),
     f: fn(derive_trait_id) {
-      coproduct_nullary_inhabitant_by_discriminant(
-        type_name: ^ReprGroundingDeriveTrait,
-        discriminant_of: target_grounding_derive_trait_discriminant,
-        wanted: derive_trait_id
-      )
+      outcome_accepted(derive_trait_id)
     }
   )
 }
 
 fn target_derive_supplemental_generic_bound_requirement_wire_node(
   representation_parameter: Symbol,
-  required_trait: ReprGroundingDeriveTrait,
+  required_trait: TargetCapabilityKey,
   authority: ExternalAuthority
 ) -> Node {
   target_model_type_conj_node(
@@ -9766,9 +9795,7 @@ fn target_derive_supplemental_generic_bound_requirement_wire_node(
       target_model_named_edge(
         name: ^target_derive_supplemental_generic_bound_requirement_field_required_trait,
         target: target_model_type_atom_node(
-          identity: target_grounding_derive_trait_discriminant(
-            derive_trait: required_trait
-          )
+          identity: required_trait
         )
       ),
       target_model_named_edge(
@@ -9780,7 +9807,7 @@ fn target_derive_supplemental_generic_bound_requirement_wire_node(
 }
 
 fn target_derive_supplemental_generic_bound_contract_wire_node(
-  derive_trait: ReprGroundingDeriveTrait,
+  derive_trait: TargetCapabilityKey,
   authority: ExternalAuthority,
   requirement_nodes: List<Node>
 ) -> Node {
@@ -9789,9 +9816,7 @@ fn target_derive_supplemental_generic_bound_contract_wire_node(
       target_model_named_edge(
         name: ^target_derive_supplemental_generic_bound_contract_field_derive_trait,
         target: target_model_type_atom_node(
-          identity: target_grounding_derive_trait_discriminant(
-            derive_trait: derive_trait
-          )
+          identity: derive_trait
         )
       ),
       target_model_named_edge(
@@ -10022,9 +10047,7 @@ fn target_derive_supplemental_generic_bound_wire_requirement_apply(
             )
           )
         Present { value: _ } =>
-          let required_key = target_capability_key_for_derive_trait(
-            derive_trait: requirement.required_trait
-          )
+          let required_key = requirement.required_trait
           let parameter_requirements = target_derive_supplemental_generic_bound_contract_requirements_for_parameter(
             requirements: requirements,
             representation_parameter: requirement.representation_parameter
@@ -10080,9 +10103,7 @@ fn target_derive_supplemental_generic_bound_contract_catalog_insert_wire(
   match acc {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: catalog, diagnostics: _ } =>
-      let derive_key = target_capability_key_for_derive_trait(
-        derive_trait: row.derive_trait
-      )
+      let derive_key = row.derive_trait
       match catalog.contracts.lookup(derive_key) {
         Present { value: _ } =>
           outcome_rejected(
@@ -10264,13 +10285,13 @@ fn target_representation_choice_supplemental_generic_bound_contracts_bundle_node
 fn target_derive_supplemental_generic_bound_requirement_authority(
   contract: TargetDeriveSupplementalGenericBoundContract,
   representation_parameter: Symbol,
-  required_trait: ReprGroundingDeriveTrait
+  required_trait: TargetCapabilityKey
 ) -> Optional<ExternalAuthority> {
   match contract.requirements.lookup(representation_parameter) {
     Absent => Absent
     Present { value: requirements } =>
       match requirements.lookup(
-        target_capability_key_for_derive_trait(derive_trait: required_trait)
+        required_trait
       ) {
         Absent => Absent
         Present { value: row } => Present { value: row.authority }
@@ -10291,9 +10312,9 @@ fn target_derive_supplemental_generic_bound_contract_lookup_miss_diagnostic(
 fn target_derive_supplemental_generic_bound_contract_lookup_in_choice(
   choice: TargetRepresentationChoice,
   source_carrier: Node,
-  derive_trait: ReprGroundingDeriveTrait
+  derive_trait: TargetCapabilityKey
 ) -> Outcome<TargetDeriveSupplementalGenericBoundContract> {
-  let derive_key = target_capability_key_for_derive_trait(derive_trait: derive_trait)
+  let derive_key = derive_trait
   match choice.supplemental_generic_bound_contracts.lookup(derive_key) {
     Absent =>
       outcome_rejected(
@@ -10453,7 +10474,7 @@ fn target_collection_repr_from_node(node: Node) -> Outcome<TargetRepresentation>
 fn target_derive_supplemental_generic_bound_contract_lookup_in_realization(
   row: TargetCollectionRealization,
   elem: Node,
-  derive_trait: ReprGroundingDeriveTrait
+  derive_trait: TargetCapabilityKey
 ) -> Outcome<TargetDeriveSupplementalGenericBoundContract> {
   bind_outcome(
     o: target_collection_select_choice(

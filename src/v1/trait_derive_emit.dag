@@ -1,40 +1,59 @@
 module v1.compiler.trait_derive_emit
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.dissolution {
+  DissolutionCondition,
+  unbound_dissolution
+}
 
-import v1.compiler.emit { to_pascal }
-import v1.compiler.infer_types { child_type_node, is_coproduct_type }
+import v1.compiler.emit {
+  to_pascal
+}
+import v1.compiler.infer_types {
+  child_type_node,
+  is_coproduct_type
+}
 import v1.std.core {
-  Node, NewlineIndex, authored_name_at, generic_param_name_at, param_node_type_expr,
+  Node,
+  NewlineIndex,
+  authored_name_at,
+  generic_param_name_at,
+  param_node_type_expr,
   NoConnective
 }
 import std.trait_derive_shape {
-  ReprGroundingDeriveTrait,
-  map_key_required_derive_traits,
-  derive_traits_union,
-  ReprGroundingDeriveElemShape,
+  ReprDeriveElemKernelInt,
   ReprDeriveElemNullaryEnumCopy,
   ReprDeriveElemPayloadCoproduct,
   ReprDeriveElemSymbolWrappedOrdCarrier,
   ReprDeriveElemUnknown,
+  ReprGroundingDeriveElemShape,
+  TargetCapabilityKey,
+  derive_traits_union,
   repr_grounding_derive_completeness_predicate,
-  record_derive_traits_heap,
-  record_derive_traits_copy,
-  nullary_coproduct_derive_traits,
-  symbol_wrapped_ord_carrier_derive_traits,
-  payload_coproduct_derive_traits,
-  fn_field_derive_traits,
-  kernel_int_arithmetic_traits,
-  ReprDeriveElemKernelInt,
   repr_grounding_group_completion_carrier,
   repr_grounding_supplemental_bool_host_bridge_target
+}
+import extdeps.languages.rust.capabilities {
+  rust_capability_keys,
+  fn_field_derive_traits,
+  kernel_int_arithmetic_traits,
+  map_key_required_derive_traits,
+  nullary_coproduct_derive_traits,
+  payload_coproduct_derive_traits,
+  record_derive_traits_copy,
+  record_derive_traits_heap,
+  rust_capability_shape_table,
+  symbol_wrapped_ord_carrier_derive_traits
 }
 import extdeps.languages.rust.emit {
   rust_trait_derive_attr_from_traits,
   rust_supplemental_impls_group_completion,
   rust_supplemental_impls_bool_coproduct
 }
-import std.types { is_container_type, container_template_algebra }
+import std.types {
+  is_container_type,
+  container_template_algebra
+}
 
 data trait_derive_emit_scope_note: String = "Root-4 arm (b): v1 seed emit selects trait surface from the capability table — #[derive] attrs for shape-eligible traits, and (for GroupCompletion) pair-completion impl bodies as the realization of KernelInt arithmetic traits that cannot be #[derive]. Bool↔bool host bridge remains a separate enum-arm door (see bool dissolve-on). Also: (a) clone bounds on generic params; (c) serde/Debug/Ord #[derive] on named structs/enums."
 
@@ -136,9 +155,9 @@ fn v1_repr_grounding_derive_elem_shape_for_ord_carrier(
 // onto this fixpoint is the named next step and is deliberately not taken here, because it would move
 // emitted bytes for a population this change has not measured.
 fn v1_with_map_key_requirement(
-  base: List<ReprGroundingDeriveTrait>,
+  base: List<TargetCapabilityKey>,
   map_key_required: Bool
-) -> List<ReprGroundingDeriveTrait> {
+) -> List<TargetCapabilityKey> {
   if map_key_required {
     derive_traits_union(base: base, extra: map_key_required_derive_traits())
   } else {
@@ -317,7 +336,7 @@ fn v1_emit_struct_derives(
   } else if rust_symbol_wrapped_ord_carrier_shape_eligible(children: children, source_indices: source_indices) {
     let shape = v1_repr_grounding_derive_elem_shape_for_ord_carrier(children: children, source_indices: source_indices)
     let traits = v1_with_map_key_requirement(base: symbol_wrapped_ord_carrier_derive_traits(), map_key_required: map_key_required)
-    if repr_grounding_derive_completeness_predicate(traits, shape) {
+    if repr_grounding_derive_completeness_predicate(rust_capability_shape_table(), rust_capability_keys(traits), shape) {
       rust_trait_derive_attr_from_traits(traits)
     } else {
       v1_trait_derive_refuse("trait_derive_emit: symbol-wrapped ord carrier refused")
@@ -341,13 +360,13 @@ fn v1_emit_enum_derives(
   let payload_traits = v1_with_map_key_requirement(base: payload_coproduct_derive_traits(), map_key_required: map_key_required)
   match shape {
     ReprDeriveElemNullaryEnumCopy =>
-      if repr_grounding_derive_completeness_predicate(nullary_traits, shape) {
+      if repr_grounding_derive_completeness_predicate(rust_capability_shape_table(), rust_capability_keys(nullary_traits), shape) {
         rust_trait_derive_attr_from_traits(nullary_traits)
       } else {
         v1_trait_derive_refuse("trait_derive_emit: nullary coproduct derive completeness refused")
       }
     ReprDeriveElemPayloadCoproduct =>
-      if repr_grounding_derive_completeness_predicate(payload_traits, shape) {
+      if repr_grounding_derive_completeness_predicate(rust_capability_shape_table(), rust_capability_keys(payload_traits), shape) {
         rust_trait_derive_attr_from_traits(payload_traits)
       } else {
         v1_trait_derive_refuse("trait_derive_emit: payload coproduct derive completeness refused")
@@ -1374,7 +1393,8 @@ fn v1_emit_struct_from_capability_table(
   )
   let impl_bodies = if repr_grounding_group_completion_carrier(module_path: module_path, name: name)
     && repr_grounding_derive_completeness_predicate(
-      kernel_int_arithmetic_traits(),
+      rust_capability_shape_table(),
+      rust_capability_keys(kernel_int_arithmetic_traits()),
       ReprDeriveElemKernelInt
     ) {
     rust_supplemental_impls_group_completion()
@@ -1387,7 +1407,8 @@ fn v1_emit_struct_from_capability_table(
 fn v1_emit_enum_supplemental_impls(module_path: String, name: String) -> String {
   if repr_grounding_supplemental_bool_host_bridge_target(module_path: module_path, name: name)
     && repr_grounding_derive_completeness_predicate(
-      nullary_coproduct_derive_traits(),
+      rust_capability_shape_table(),
+      rust_capability_keys(nullary_coproduct_derive_traits()),
       ReprDeriveElemNullaryEnumCopy
     ) {
     rust_supplemental_impls_bool_coproduct()

@@ -14,8 +14,10 @@ import std.trait_derive_shape {
   TargetCapabilityShapeRow,
   TargetCapabilityShapeTable
 }
-import std.algebra { Cons, Empty }
-import v2.std.collection { List }
+import std.algebra {
+  Cons,
+  Empty
+}
 
 data rust_capabilities_note: String = "Rust and serde CAPABILITY ROWS for the B1 capability-keyed model (operator ruling 2026-08-19, option b). std.trait_derive_shape holds the AGNOSTIC half -- the TargetCapabilityKey brand, the source-shape vocabulary, and a generic table lookup parameterised by a TargetCapabilityShapeTable. THIS module holds the RUST-SPECIFIC half: the sixteen capability keys, the shape-by-capability rows, the derive-trait list builders and the emission order. A new target language adds a sibling module of rows here and edits neither the fold nor std -- DESIGN section 4: a new target language is ROWS in extdeps/languages, never an edit to the fold; section 3 puts realization-selecting dispatch peripheral, never in the interface. WHY THE COPRODUCT WAS THE WRONG CARRIER: Serialize and Deserialize are serde names, not Rust language names -- an independently versioned upstream -- and their spellings were ALREADY cited in extdeps.languages.rust.emit rust_trait_derive_spelling, so the std coproduct was a redundant KEY SET forked from a key extdeps already spelled out. This migration finishes a move someone had already started rather than opening a new one. ROW FIDELITY: the shape-by-capability rows below were extracted mechanically from the predecessor nested match and verified cell-for-cell -- 71 admitted pairs extracted against 71 in the source -- rather than re-derived by hand."
 
@@ -172,34 +174,75 @@ fn rust_capability_shape_table() -> TargetCapabilityShapeTable {
   }
 }
 
-fn record_derive_traits_heap() -> List<TargetCapabilityKey> {
+type RustCapability
+  = RustDebug
+  | RustClone
+  | RustCopy
+  | RustPartialEq
+  | RustEq
+  | RustPartialOrd
+  | RustOrd
+  | RustHash
+  | RustSerialize
+  | RustDeserialize
+  | RustAdd
+  | RustSub
+  | RustMul
+  | RustDiv
+  | RustRem
+  | RustNeg
+
+data rust_capability_alphabet_note: String = "CLOSED Rust capability alphabet. The B1 keyed contract makes TargetCapabilityKey an OPEN Symbol brand so unrelated modules can share one key space without a coproduct edit -- but an open brand cannot be matched exhaustively, and rust_trait_derive_spelling was TOTAL by exhaustive match before this migration. Deleting the coproduct outright would have traded a structural guarantee (DESIGN section 4b: no Accepted program can spell an unknown capability) for a runtime refusal, which is a rung DROP dressed as a migration. So the coproduct is RE-HOMED rather than deleted: this closed alphabet is Rust s own realization vocabulary, exhaustive at every spelling site, and rust_capability_key is the single total producer that lifts it into the shared open key space. Interface speaks keys; realization speaks the alphabet (DESIGN section 3)."
+
+fn rust_capability_key(c: RustCapability) -> TargetCapabilityKey {
+  match c {
+    RustDebug => ^target_capability_debug
+    RustClone => ^target_capability_clone
+    RustCopy => ^target_capability_copy
+    RustPartialEq => ^target_capability_partialeq
+    RustEq => ^target_capability_eq
+    RustPartialOrd => ^target_capability_partialord
+    RustOrd => ^target_capability_ord
+    RustHash => ^target_capability_hash
+    RustSerialize => ^target_capability_serialize
+    RustDeserialize => ^target_capability_deserialize
+    RustAdd => ^target_capability_add
+    RustSub => ^target_capability_sub
+    RustMul => ^target_capability_mul
+    RustDiv => ^target_capability_div
+    RustRem => ^target_capability_rem
+    RustNeg => ^target_capability_neg
+  }
+}
+
+fn record_derive_traits_heap() -> List<RustCapability> {
   Cons {
-    head: ^target_capability_debug,
+    head: RustDebug,
     tail: Cons {
-      head: ^target_capability_clone,
+      head: RustClone,
       tail: Cons {
-        head: ^target_capability_partialeq,
+        head: RustPartialEq,
         tail: Cons {
-          head: ^target_capability_serialize,
-          tail: Cons { head: ^target_capability_deserialize, tail: Empty }
+          head: RustSerialize,
+          tail: Cons { head: RustDeserialize, tail: Empty }
         }
       }
     }
   }
 }
 
-fn record_derive_traits_copy() -> List<TargetCapabilityKey> {
+fn record_derive_traits_copy() -> List<RustCapability> {
   Cons {
-    head: ^target_capability_debug,
+    head: RustDebug,
     tail: Cons {
-      head: ^target_capability_clone,
+      head: RustClone,
       tail: Cons {
-        head: ^target_capability_copy,
+        head: RustCopy,
         tail: Cons {
-          head: ^target_capability_partialeq,
+          head: RustPartialEq,
           tail: Cons {
-            head: ^target_capability_serialize,
-            tail: Cons { head: ^target_capability_deserialize, tail: Empty }
+            head: RustSerialize,
+            tail: Cons { head: RustDeserialize, tail: Empty }
           }
         }
       }
@@ -207,24 +250,24 @@ fn record_derive_traits_copy() -> List<TargetCapabilityKey> {
   }
 }
 
-fn nullary_coproduct_derive_traits() -> List<TargetCapabilityKey> {
+fn nullary_coproduct_derive_traits() -> List<RustCapability> {
   Cons {
-    head: ^target_capability_debug,
+    head: RustDebug,
     tail: Cons {
-      head: ^target_capability_clone,
+      head: RustClone,
       tail: Cons {
-        head: ^target_capability_copy,
+        head: RustCopy,
         tail: Cons {
-          head: ^target_capability_partialeq,
+          head: RustPartialEq,
           tail: Cons {
-            head: ^target_capability_eq,
+            head: RustEq,
             tail: Cons {
-              head: ^target_capability_partialord,
+              head: RustPartialOrd,
               tail: Cons {
-                head: ^target_capability_ord,
+                head: RustOrd,
                 tail: Cons {
-                  head: ^target_capability_serialize,
-                  tail: Cons { head: ^target_capability_deserialize, tail: Empty }
+                  head: RustSerialize,
+                  tail: Cons { head: RustDeserialize, tail: Empty }
                 }
               }
             }
@@ -235,22 +278,22 @@ fn nullary_coproduct_derive_traits() -> List<TargetCapabilityKey> {
   }
 }
 
-fn symbol_wrapped_ord_carrier_derive_traits() -> List<TargetCapabilityKey> {
+fn symbol_wrapped_ord_carrier_derive_traits() -> List<RustCapability> {
   Cons {
-    head: ^target_capability_debug,
+    head: RustDebug,
     tail: Cons {
-      head: ^target_capability_clone,
+      head: RustClone,
       tail: Cons {
-        head: ^target_capability_partialeq,
+        head: RustPartialEq,
         tail: Cons {
-          head: ^target_capability_eq,
+          head: RustEq,
           tail: Cons {
-            head: ^target_capability_partialord,
+            head: RustPartialOrd,
             tail: Cons {
-              head: ^target_capability_ord,
+              head: RustOrd,
               tail: Cons {
-                head: ^target_capability_serialize,
-                tail: Cons { head: ^target_capability_deserialize, tail: Empty }
+                head: RustSerialize,
+                tail: Cons { head: RustDeserialize, tail: Empty }
               }
             }
           }
@@ -260,20 +303,20 @@ fn symbol_wrapped_ord_carrier_derive_traits() -> List<TargetCapabilityKey> {
   }
 }
 
-fn fn_field_derive_traits() -> List<TargetCapabilityKey> {
-  Cons { head: ^target_capability_clone, tail: Empty }
+fn fn_field_derive_traits() -> List<RustCapability> {
+  Cons { head: RustClone, tail: Empty }
 }
 
-fn payload_coproduct_derive_traits() -> List<TargetCapabilityKey> {
+fn payload_coproduct_derive_traits() -> List<RustCapability> {
   Cons {
-    head: ^target_capability_debug,
+    head: RustDebug,
     tail: Cons {
-      head: ^target_capability_clone,
+      head: RustClone,
       tail: Cons {
-        head: ^target_capability_partialeq,
+        head: RustPartialEq,
         tail: Cons {
-          head: ^target_capability_serialize,
-          tail: Cons { head: ^target_capability_deserialize, tail: Empty }
+          head: RustSerialize,
+          tail: Cons { head: RustDeserialize, tail: Empty }
         }
       }
     }
@@ -294,20 +337,20 @@ fn payload_coproduct_derive_traits() -> List<TargetCapabilityKey> {
 // (rust_btree_set_element_ord_eligible), which is answered today by refusing at the use site rather
 // than by propagating to the declaration; unifying the two on this fn is the named next step and
 // deliberately not taken here.
-fn phantom_opaque_carrier_derive_traits() -> List<TargetCapabilityKey> {
+fn phantom_opaque_carrier_derive_traits() -> List<RustCapability> {
   Cons {
-    head: ^target_capability_debug,
+    head: RustDebug,
     tail: Cons {
-      head: ^target_capability_clone,
+      head: RustClone,
       tail: Cons {
-        head: ^target_capability_copy,
+        head: RustCopy,
         tail: Cons {
-          head: ^target_capability_partialeq,
+          head: RustPartialEq,
           tail: Cons {
-            head: ^target_capability_eq,
+            head: RustEq,
             tail: Cons {
-              head: ^target_capability_serialize,
-              tail: Cons { head: ^target_capability_deserialize, tail: Empty }
+              head: RustSerialize,
+              tail: Cons { head: RustDeserialize, tail: Empty }
             }
           }
         }
@@ -316,6 +359,35 @@ fn phantom_opaque_carrier_derive_traits() -> List<TargetCapabilityKey> {
   }
 }
 
-fn map_key_required_derive_traits() -> List<TargetCapabilityKey> {
-  Cons { head: ^target_capability_eq, tail: Cons { head: ^target_capability_hash, tail: Empty } }
+fn map_key_required_derive_traits() -> List<RustCapability> {
+  Cons { head: RustEq, tail: Cons { head: RustHash, tail: Empty } }
+}
+
+fn kernel_int_arithmetic_traits() -> List<RustCapability> {
+  Cons {
+    head: RustAdd,
+    tail: Cons {
+      head: RustSub,
+      tail: Cons {
+        head: RustMul,
+        tail: Cons {
+          head: RustDiv,
+          tail: Cons {
+            head: RustRem,
+            tail: Cons {
+              head: RustNeg,
+              tail: Cons {
+                head: RustPartialEq,
+                tail: Cons { head: RustPartialOrd, tail: Empty }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn rust_capability_keys(capabilities: List<RustCapability>) -> List<TargetCapabilityKey> {
+  capabilities |> map(c => rust_capability_key(c))
 }
