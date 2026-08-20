@@ -10340,6 +10340,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut required_regen_mode = false;
     let mut required_regen_fixed_point_mode = false;
     let mut required_mirror_drift_mode = false;
+    let mut behavioral_receipt_plan_mode = false;
     let mut regen_candidate_dir = "target/stage0-regen-candidate".to_string();
     let mut regen_receipt_path = "target/stage0-regen-receipt.json".to_string();
 
@@ -10371,6 +10372,9 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             "--required-mirror-drift" => {
                 required_mirror_drift_mode = true;
+            }
+            "--behavioral-receipt-plan" => {
+                behavioral_receipt_plan_mode = true;
             }
             "--regen-candidate-dir" => {
                 i += 1;
@@ -10464,6 +10468,10 @@ fn run() -> Result<ExitCode, ExitCode> {
     // and the absence of those flags is the point rather than an omission. `run_required_floor`
     // refuses when planned, executed and terminal identity counts disagree, so a silently short
     // roster cannot report as a pass.
+    if behavioral_receipt_plan_mode {
+        return run_behavioral_receipt_plan(&source_roots);
+    }
+
     if required_mirror_drift_mode {
         return run_required_mirror_drift(&source_roots);
     }
@@ -18210,4 +18218,636 @@ fn required_mirror_drift_verdict(source_roots: &[String]) -> Result<bool, String
     Ok(sideways.is_empty()
         && undispositioned.is_empty()
         && (stale.is_empty() || !subject_contains_main_tip))
+}
+
+// ---------------------------------------------------------------------------
+// BEHAVIORAL RECEIPT — selection and corpus-domain derivation
+// ---------------------------------------------------------------------------
+//
+// WHAT THIS ANSWERS THAT NOTHING ELSE DOES. `--required-regen` proves the committed mirrors
+// equal what the authority emits, and `--required-regen-fixed-point` proves the emit repeats.
+// Neither ever COMPILES the emitted candidate, let alone runs it: the regen host spawns exactly
+// rustfmt, rustfmt and git. So the whole promotion story rests on bytes — and DESIGN §7 says in
+// as many words that a byte-identical fixed point is NOT the goal, because matching bytes forces
+// the emitter to reproduce the seed's warts. The evidence it asks for instead is execution:
+// the emitted module compiles and is behaviorally equivalent to the seed on a discriminating
+// corpus.
+//
+// WHY THE NAIVE FORM OF THAT IS VACUOUS TODAY, and this is the whole reason the mode is shaped
+// the way it is. After the mirror convergence every emitted candidate is byte-identical to its
+// committed mirror (measured: 0 drifted of 129). Emitting both sides and diffing therefore
+// compares a program against itself — a receipt that cannot fail is not a weak receipt, it is
+// not a receipt. The question with content is the one every future authority edit raises: THE
+// AUTHORITY CHANGED AND THE EMISSION CHANGED WITH IT — is the new module still behaviorally the
+// same? That is exactly what byte-equality cannot answer, and it has content precisely when
+// candidate and seed differ.
+//
+// SELECTION IS DEMAND-DIRECTED AND DERIVED. Two compiler builds per module across 129 modules is
+// not a per-PR gate, it is a budget denominated in the corpus rather than in the change — the
+// cost shape DESIGN §5 names, where the bill grows with the repository until it breaks. So the
+// subject is the modules whose `.dag` AUTHORITY moved in this diff, and the mapping from an
+// authority to its emitted mirror is read off the mirror's own `// Source module:` header rather
+// than from any authored roster. Nothing here can be forged by editing a list.
+//
+// AND IF THE SELECTION CANNOT BE COMPUTED IT REFUSES. It does not widen to the whole population.
+// "I could not determine what changed" and "everything changed" are different states, and
+// rendering the first as the second is the absorbing fallback — nothing is missed, so it looks
+// safe, while the deficit's frequency drops to zero by construction and the cost lands on every
+// future run.
+
+/// Why a changed authority produced no receipt. Every arm is COUNTED and NAMED in the report:
+/// a module that silently produces nothing is indistinguishable from a module that passed, and
+/// that conflation is what makes an unexecuted receipt read as a green one.
+#[derive(Debug, Clone, PartialEq)]
+enum ReceiptExclusion {
+    /// The authority has no emitted mirror carrying its `// Source module:` header. Real and
+    /// legitimate for exactly three files in the generated population, each for its own reason:
+    /// `lib.rs` is the crate aggregate and is derived from the module SET rather than from any
+    /// one authority; `v1_rt.rs` is emitted by the v2 compiler, a different producer; and
+    /// `compiler_tests.rs` is a `#[cfg(test)] mod`. Named rather than skipped, because a changed
+    /// authority that maps to nothing must be visible.
+    NoEmittedMirror { module_path: String },
+    /// The authority moved but the emission did not — a comment-only or otherwise
+    /// emission-neutral edit. Nothing to compare, and that is a pass, not a gap.
+    NoEmissionChange { module_path: String },
+    /// The corpus could not be derived. Names the function and the type that defeated it, so the
+    /// refusal ranks for work instead of being a bare count.
+    CorpusNotDerivable {
+        module_path: String,
+        function: String,
+        offending_type: String,
+    },
+}
+
+/// The domain a corpus actually enumerated, reported as a DERIVED FACT rather than a label.
+///
+/// The distinction is not pedantry and it was paid for: an earlier revision of this work
+/// described a corpus as "exhaustive" when three of its seven function groups were finite-closed
+/// and four were bounded approximations of infinite domains. `Int` over a window and `List` to a
+/// bounded length have NOT covered the type — a behaviour change at length 4, or outside the
+/// window, sits in exactly the unsampled cell the whole design refuses to build for. Reporting
+/// both under one word claims a coverage that was never measured, which is the same inflation as
+/// an authored corpus arriving through a narrower door.
+///
+/// So `Exhaustive` is reserved for the finite-closed case where enumeration IS the domain, and
+/// every bounded case carries its bound in the output where a reader can see it.
+#[derive(Debug, Clone, PartialEq)]
+enum EnumeratedDomain {
+    /// Finite closed domain, fully covered: closed nullary enums, Bool, and records over them.
+    Exhaustive { cardinality: usize },
+    /// Infinite domain, enumerated to a declared bound. The bound is part of the fact.
+    BoundedToDeclaredBound { cardinality: usize, bound: String },
+}
+
+impl EnumeratedDomain {
+    fn report(&self) -> String {
+        match self {
+            EnumeratedDomain::Exhaustive { cardinality } => {
+                format!("exhaustive(|domain|={cardinality})")
+            }
+            EnumeratedDomain::BoundedToDeclaredBound { cardinality, bound } => {
+                format!("bounded(|enumerated|={cardinality}, bound={bound})")
+            }
+        }
+    }
+    fn is_exhaustive(&self) -> bool {
+        matches!(self, EnumeratedDomain::Exhaustive { .. })
+    }
+}
+
+/// A type declared by the authority, in the only two shapes the fragment can enumerate.
+#[derive(Debug, Clone)]
+enum DagTypeDecl {
+    /// `type AxisGoal = HigherIsBetter | LowerIsBetter` — a closed coproduct of NULLARY variants.
+    /// A variant carrying a payload is deliberately NOT this: it would need its payload's domain
+    /// enumerated too, and admitting it here without doing that would silently under-cover.
+    ClosedNullaryEnum { variants: Vec<String> },
+    /// `type DominanceTally { saw_better: Bool, saw_worse: Bool }` — a record over named fields.
+    Record { fields: Vec<(String, String)> },
+}
+
+/// The bound this build enumerates infinite domains to. Both are declared here as named
+/// constants rather than buried at the use site, because they are the exact numbers that make
+/// the difference between `Exhaustive` and `BoundedToDeclaredBound` in the report, and a reader
+/// deciding whether a divergence-free result means anything needs to find them.
+const INT_WINDOW_LOW: i64 = -2;
+const INT_WINDOW_HIGH: i64 = 2;
+const LIST_MAX_LEN: usize = 3;
+
+fn parse_dag_type_decls(source: &str) -> std::collections::HashMap<String, DagTypeDecl> {
+    let mut out = std::collections::HashMap::new();
+    for line in source.lines() {
+        let t = line.trim();
+        let Some(rest) = t.strip_prefix("type ") else {
+            continue;
+        };
+        // `type Name = A | B | C`  — closed coproduct
+        if let Some((name, body)) = rest.split_once('=') {
+            let name = name.trim();
+            if name.is_empty() || name.contains(char::is_whitespace) {
+                continue;
+            }
+            let variants: Vec<String> = body
+                .split('|')
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty())
+                .collect();
+            // Every variant must be a bare identifier. `Foo { .. }` carries a payload and is not
+            // in the fragment; admitting it as nullary would enumerate one value for a variant
+            // with many, which under-covers silently rather than refusing.
+            if !variants.is_empty()
+                && variants
+                    .iter()
+                    .all(|v| v.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
+            {
+                out.insert(
+                    name.to_string(),
+                    DagTypeDecl::ClosedNullaryEnum { variants },
+                );
+            }
+            continue;
+        }
+        // `type Name { field: T, field: U }` — record
+        if let Some((name, body)) = rest.split_once('{') {
+            let name = name.trim();
+            let body = body.trim_end_matches('}');
+            let mut fields = Vec::new();
+            let mut ok = true;
+            for f in body.split(',') {
+                let f = f.trim();
+                if f.is_empty() {
+                    continue;
+                }
+                match f.split_once(':') {
+                    Some((fname, fty)) => fields.push((
+                        fname.trim().to_string(),
+                        fty.trim().trim_end_matches('}').trim().to_string(),
+                    )),
+                    None => ok = false,
+                }
+            }
+            if ok && !fields.is_empty() && !name.is_empty() {
+                out.insert(name.to_string(), DagTypeDecl::Record { fields });
+            }
+        }
+    }
+    out
+}
+
+/// Derive the domain for one parameter type, or refuse naming the type that defeated it.
+///
+/// The refusal is the point of the fragment. Anything not listed here — an unbounded `String`, a
+/// function-valued parameter, a recursive type, anything reaching a host effect — REFUSES rather
+/// than being sampled. A sampled corpus would let the mode report a receipt for every module
+/// while a behaviour change hides in an unsampled cell: a receipt that USUALLY cannot fail,
+/// which is worse than a refusal, because a refusal is counted and ranks for work while a
+/// usually-passing receipt reports as done.
+fn derive_parameter_domain(
+    ty: &str,
+    types: &std::collections::HashMap<String, DagTypeDecl>,
+    depth: usize,
+) -> Result<EnumeratedDomain, String> {
+    if depth > 4 {
+        return Err(format!(
+            "{ty} (nesting deeper than the fragment enumerates)"
+        ));
+    }
+    let ty = ty.trim();
+    if ty == "Bool" {
+        return Ok(EnumeratedDomain::Exhaustive { cardinality: 2 });
+    }
+    if ty == "Int" {
+        let n = (INT_WINDOW_HIGH - INT_WINDOW_LOW + 1) as usize;
+        return Ok(EnumeratedDomain::BoundedToDeclaredBound {
+            cardinality: n,
+            bound: format!("Int in [{INT_WINDOW_LOW},{INT_WINDOW_HIGH}]"),
+        });
+    }
+    if let Some(inner) = ty.strip_prefix("List<").and_then(|s| s.strip_suffix('>')) {
+        let elem = derive_parameter_domain(inner, types, depth + 1)?;
+        let (elem_card, elem_exhaustive) = match &elem {
+            EnumeratedDomain::Exhaustive { cardinality } => (*cardinality, true),
+            EnumeratedDomain::BoundedToDeclaredBound { cardinality, .. } => (*cardinality, false),
+        };
+        // sequences of length 0..=LIST_MAX_LEN over the element domain
+        let mut total = 0usize;
+        let mut pow = 1usize;
+        for _ in 0..=LIST_MAX_LEN {
+            total = total.saturating_add(pow);
+            pow = pow.saturating_mul(elem_card.max(1));
+        }
+        let inner_note = if elem_exhaustive {
+            String::new()
+        } else {
+            format!(", element {}", elem.report())
+        };
+        return Ok(EnumeratedDomain::BoundedToDeclaredBound {
+            cardinality: total,
+            bound: format!("List length <= {LIST_MAX_LEN}{inner_note}"),
+        });
+    }
+    match types.get(ty) {
+        Some(DagTypeDecl::ClosedNullaryEnum { variants }) => Ok(EnumeratedDomain::Exhaustive {
+            cardinality: variants.len(),
+        }),
+        Some(DagTypeDecl::Record { fields }) => {
+            let mut card = 1usize;
+            let mut all_exhaustive = true;
+            let mut bounds = Vec::new();
+            for (fname, fty) in fields {
+                let d = derive_parameter_domain(fty, types, depth + 1)
+                    .map_err(|e| format!("{ty}.{fname}: {e}"))?;
+                match d {
+                    EnumeratedDomain::Exhaustive { cardinality } => {
+                        card = card.saturating_mul(cardinality)
+                    }
+                    EnumeratedDomain::BoundedToDeclaredBound { cardinality, bound } => {
+                        card = card.saturating_mul(cardinality);
+                        all_exhaustive = false;
+                        bounds.push(format!("{fname}: {bound}"));
+                    }
+                }
+            }
+            if all_exhaustive {
+                Ok(EnumeratedDomain::Exhaustive { cardinality: card })
+            } else {
+                Ok(EnumeratedDomain::BoundedToDeclaredBound {
+                    cardinality: card,
+                    bound: bounds.join("; "),
+                })
+            }
+        }
+        // NOT in the fragment. String is the common case and is named explicitly rather than
+        // falling into a generic arm, because "unbounded String" is the single most likely
+        // reason a real module refuses and the report should say so in those words.
+        None => Err(if ty == "String" || ty == "NonEmptyStr" {
+            format!("{ty} (unbounded String domain)")
+        } else {
+            format!("{ty} (not a closed type declared by this authority)")
+        }),
+    }
+}
+
+/// One function's signature as the authority declares it.
+#[derive(Debug, Clone)]
+struct DagFnSignature {
+    name: String,
+    params: Vec<(String, String)>,
+}
+
+fn parse_dag_fn_signatures(source: &str) -> Vec<DagFnSignature> {
+    let mut out = Vec::new();
+    for line in source.lines() {
+        let t = line.trim();
+        let Some(rest) = t.strip_prefix("fn ") else {
+            continue;
+        };
+        let Some((name, after)) = rest.split_once('(') else {
+            continue;
+        };
+        let name = name.trim();
+        if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+            continue;
+        }
+        // Only single-line signatures are parsed here. A multi-line signature is NOT silently
+        // skipped -- it simply does not appear, and the caller counts declared-vs-parsed so a
+        // gap between them is visible rather than being read as "this module has few functions".
+        let Some((params_src, _)) = after.split_once(')') else {
+            continue;
+        };
+        let mut params = Vec::new();
+        for p in params_src.split(',') {
+            let p = p.trim();
+            if p.is_empty() {
+                continue;
+            }
+            if let Some((pname, pty)) = p.split_once(':') {
+                params.push((pname.trim().to_string(), pty.trim().to_string()));
+            }
+        }
+        out.push(DagFnSignature {
+            name: name.to_string(),
+            params,
+        });
+    }
+    out
+}
+
+/// What the fragment can say about one module's surface.
+struct ModuleCorpusPlan {
+    module_path: String,
+    /// Functions whose every parameter domain derived, with the combined domain per function.
+    derivable: Vec<(String, EnumeratedDomain)>,
+    /// Functions that defeated derivation, each naming the type responsible.
+    refused: Vec<(String, String)>,
+    /// `fn` lines the authority declares vs signatures actually parsed. These must agree; a gap
+    /// means the parser missed a form, and reporting the pair is what stops a silent miss from
+    /// reading as a module with a small surface.
+    declared_fn_lines: usize,
+    parsed_signatures: usize,
+}
+
+/// Every `.dag` module reachable from the source roots, keyed by its declared module path.
+fn collect_dag_module_sources(
+    source_roots: &[String],
+) -> Result<std::collections::HashMap<String, String>, String> {
+    let workspace = v1_compiler::cli_run::workspace_root();
+    let mut out = std::collections::HashMap::new();
+    let mut stack: Vec<PathBuf> = source_roots.iter().map(|r| workspace.join(r)).collect();
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.extension().and_then(|e| e.to_str()) == Some("dag") {
+                if let Ok(content) = fs::read_to_string(&path) {
+                    if let Some(mp) = v1_compiler::cli_run::extract_module_path_public(&content) {
+                        out.insert(mp, content);
+                    }
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// The types VISIBLE to a module: its own declarations plus those of its transitive imports.
+///
+/// THIS RESOLVES, IT DOES NOT WIDEN, and the distinction is the whole risk of this function.
+/// Reaching further to find a declaration feels like covering more, and the refusal count can
+/// quietly drop for the wrong reason. So what is found is put through `derive_parameter_domain`
+/// UNCHANGED: a record with a `String` field still refuses, a `String where` refinement still
+/// refuses, a coproduct with payload variants still refuses. The only thing that changes is
+/// WHERE a declaration may be found — `Ordering` is `Less | Equal | Greater` whether it is
+/// declared in this module or in `std.algebra`, and refusing it for its address rather than its
+/// shape was an artifact of the implementation, not a property of the fragment.
+///
+/// The control for that claim is external and specific: `std.content_hash` refuses 26 of its 27
+/// functions before this change, and must still refuse 26 of 27 after it. If that number moves,
+/// this resolved nothing and widened something.
+fn visible_type_decls(
+    module_path: &str,
+    source: &str,
+    modules: &std::collections::HashMap<String, String>,
+) -> std::collections::HashMap<String, DagTypeDecl> {
+    let mut merged = std::collections::HashMap::new();
+    let mut seen = std::collections::HashSet::new();
+    let mut queue = vec![(module_path.to_string(), source.to_string())];
+    let mut depth_guard = 0usize;
+    while let Some((mp, src)) = queue.pop() {
+        depth_guard += 1;
+        if depth_guard > 512 || !seen.insert(mp.clone()) {
+            continue;
+        }
+        // A module's OWN declarations win: a local name shadows an imported one, and taking the
+        // import would answer with a different type than the module compiles against.
+        for (name, decl) in parse_dag_type_decls(&src) {
+            merged.entry(name).or_insert(decl);
+        }
+        for line in src.lines() {
+            let t = line.trim();
+            let Some(rest) = t.strip_prefix("import ") else {
+                continue;
+            };
+            let imported = rest
+                .split_whitespace()
+                .next()
+                .unwrap_or_default()
+                .trim_end_matches('{')
+                .trim();
+            if imported.is_empty() {
+                continue;
+            }
+            if let Some(next_src) = modules.get(imported) {
+                queue.push((imported.to_string(), next_src.clone()));
+            }
+        }
+    }
+    merged
+}
+
+/// The one entry point. An earlier revision also had a module-local planner that consulted only
+/// the types declared in the module under plan; it is DELETED rather than kept beside this one.
+/// Two resolvers over one question would answer differently for any imported type — which is the
+/// exact defect this change fixes — and keeping the narrower one available is how a caller
+/// silently gets the old answer back.
+fn plan_module_corpus(
+    module_path: &str,
+    source: &str,
+    types: &std::collections::HashMap<String, DagTypeDecl>,
+) -> ModuleCorpusPlan {
+    let sigs = parse_dag_fn_signatures(source);
+    let declared_fn_lines = source
+        .lines()
+        .filter(|l| l.trim_start().starts_with("fn "))
+        .count();
+    let mut derivable = Vec::new();
+    let mut refused = Vec::new();
+    for sig in &sigs {
+        let mut card = 1usize;
+        let mut all_exhaustive = true;
+        let mut bounds = Vec::new();
+        let mut failure: Option<String> = None;
+        for (pname, pty) in &sig.params {
+            match derive_parameter_domain(pty, types, 0) {
+                Ok(EnumeratedDomain::Exhaustive { cardinality }) => {
+                    card = card.saturating_mul(cardinality)
+                }
+                Ok(EnumeratedDomain::BoundedToDeclaredBound { cardinality, bound }) => {
+                    card = card.saturating_mul(cardinality);
+                    all_exhaustive = false;
+                    bounds.push(format!("{pname}: {bound}"));
+                }
+                Err(offending) => {
+                    failure = Some(offending);
+                    break;
+                }
+            }
+        }
+        match failure {
+            Some(offending) => refused.push((sig.name.clone(), offending)),
+            None => {
+                let domain = if all_exhaustive {
+                    EnumeratedDomain::Exhaustive { cardinality: card }
+                } else {
+                    EnumeratedDomain::BoundedToDeclaredBound {
+                        cardinality: card,
+                        bound: bounds.join("; "),
+                    }
+                };
+                derivable.push((sig.name.clone(), domain));
+            }
+        }
+    }
+    ModuleCorpusPlan {
+        module_path: module_path.to_string(),
+        derivable,
+        refused,
+        declared_fn_lines,
+        parsed_signatures: sigs.len(),
+    }
+}
+
+/// Map an authority module path to the emitted mirror that declares it as its source.
+///
+/// DERIVED, never authored: each generated file carries `// Source module: <path>` on its second
+/// line, written by the emitter. So the mapping is a property of the artifact rather than of a
+/// list someone maintains, and it cannot be forged by editing a roster. 126 of the 129 generated
+/// files carry it; the three that do not are excluded BY NAME above rather than by silence.
+fn emitted_mirror_for_module(
+    stage0_src: &std::path::Path,
+    module_path: &str,
+) -> Result<Option<String>, String> {
+    let entries =
+        fs::read_dir(stage0_src).map_err(|e| format!("read_dir {}: {e}", stage0_src.display()))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("dir entry: {e}"))?;
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+            continue;
+        }
+        let Ok(content) = fs::read_to_string(&path) else {
+            continue;
+        };
+        for line in content.lines().take(3) {
+            if let Some(declared) = line.trim().strip_prefix("// Source module: ") {
+                if declared.trim() == module_path {
+                    return Ok(Some(
+                        path.file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or_default()
+                            .to_string(),
+                    ));
+                }
+            }
+        }
+    }
+    Ok(None)
+}
+
+fn run_behavioral_receipt_plan(source_roots: &[String]) -> Result<ExitCode, ExitCode> {
+    match behavioral_receipt_plan(source_roots) {
+        Ok(true) => Ok(ExitCode::SUCCESS),
+        Ok(false) => Err(ExitCode::from(1)),
+        Err(refusal) => {
+            eprintln!("behavioral-receipt: refused: {refusal}");
+            Err(ExitCode::from(1))
+        }
+    }
+}
+
+fn behavioral_receipt_plan(source_roots: &[String]) -> Result<bool, String> {
+    let workspace = v1_compiler::cli_run::workspace_root();
+    let stage0_src = workspace.join("src/v1/stage0/src");
+
+    // BASELINE FIRST, asserted and printed, exactly as the mirror-drift gate does and for the
+    // same reason: a selection computed against an unresolvable baseline is ignorance, and the
+    // tempting fallback -- treat everything as changed -- is the absorbing arm that turns a
+    // per-change gate into a per-corpus one.
+    let head = git_stdout(&workspace, &["rev-parse", "HEAD"])?;
+    let base = git_stdout(&workspace, &["merge-base", "origin/main", "HEAD"]).map_err(|e| {
+        format!(
+            "cannot resolve the merge base against origin/main ({e}). The selection is NOT \
+             widened to the whole population in this case: `I could not determine what changed` \
+             and `everything changed` are different states, and two compiler builds per module \
+             across the corpus is a budget breach denominated in the repository rather than in \
+             the change. Fetch the base first: \
+             `git fetch --depth=200 origin main:refs/remotes/origin/main`"
+        )
+    })?;
+    eprintln!("behavioral-receipt: merge_base={base} head={head}");
+
+    let changed = git_stdout(
+        &workspace,
+        &["diff", "--name-only", &base, &head, "--", "*.dag"],
+    )?;
+    let changed: Vec<String> = changed
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+
+    // Loaded once for the whole run: the type a module compiles against may be declared in any
+    // module it transitively imports.
+    let modules = collect_dag_module_sources(source_roots)?;
+
+    let mut exclusions: Vec<ReceiptExclusion> = Vec::new();
+    let mut plans: Vec<ModuleCorpusPlan> = Vec::new();
+
+    for rel in &changed {
+        let abs = workspace.join(rel);
+        let Ok(source) = fs::read_to_string(&abs) else {
+            continue;
+        };
+        let Some(module_path) = v1_compiler::cli_run::extract_module_path_public(&source) else {
+            continue;
+        };
+        match emitted_mirror_for_module(&stage0_src, &module_path)? {
+            None => exclusions.push(ReceiptExclusion::NoEmittedMirror { module_path }),
+            Some(_mirror) => {
+                let types = visible_type_decls(&module_path, &source, &modules);
+                plans.push(plan_module_corpus(&module_path, &source, &types))
+            }
+        }
+    }
+
+    eprintln!(
+        "behavioral-receipt: changed_authorities={} selected={} excluded={}",
+        changed.len(),
+        plans.len(),
+        exclusions.len()
+    );
+    for e in &exclusions {
+        match e {
+            ReceiptExclusion::NoEmittedMirror { module_path } => eprintln!(
+                "behavioral-receipt: excluded {module_path} — no emitted mirror declares it as \
+                 its source module"
+            ),
+            ReceiptExclusion::NoEmissionChange { module_path } => eprintln!(
+                "behavioral-receipt: excluded {module_path} — authority moved, emission did not"
+            ),
+            ReceiptExclusion::CorpusNotDerivable {
+                module_path,
+                function,
+                offending_type,
+            } => eprintln!(
+                "behavioral-receipt: excluded {module_path} — corpus not derivable at \
+                 {function}: {offending_type}"
+            ),
+        }
+    }
+    for p in &plans {
+        let exhaustive = p
+            .derivable
+            .iter()
+            .filter(|(_, d)| d.is_exhaustive())
+            .count();
+        eprintln!(
+            "behavioral-receipt: {} fn_lines={} parsed={} derivable={} (exhaustive={} bounded={}) refused={}",
+            p.module_path,
+            p.declared_fn_lines,
+            p.parsed_signatures,
+            p.derivable.len(),
+            exhaustive,
+            p.derivable.len() - exhaustive,
+            p.refused.len()
+        );
+        for (f, d) in &p.derivable {
+            eprintln!(
+                "behavioral-receipt:   derivable {}::{f} {}",
+                p.module_path,
+                d.report()
+            );
+        }
+        for (f, why) in &p.refused {
+            eprintln!(
+                "behavioral-receipt:   REFUSED {}::{f} — corpus not derivable: {why}",
+                p.module_path
+            );
+        }
+    }
+    Ok(true)
 }

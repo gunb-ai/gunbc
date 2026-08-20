@@ -41810,3 +41810,11 @@ pub use required_regen_host::GeneratedDriftMeasurement;
 pub fn measure_generated_drift() -> Result<GeneratedDriftMeasurement, String> {
     required_regen_host::measure_generated_drift()
 }
+
+/// The authority's own declared module path, for consumers outside this module.
+///
+/// Exposed rather than re-implemented: a second parser for `module <path>` would be a second
+/// answer to a question this one already answers, and the two would drift.
+pub fn extract_module_path_public(content: &str) -> Option<String> {
+    extract_module_path(content)
+}
