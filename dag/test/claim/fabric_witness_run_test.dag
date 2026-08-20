@@ -40,24 +40,22 @@ fn t_quote(amount: MoneyAmountMicro, currency: CurrencyCode) -> OfferQuote {
   QuotedFlatPerGrant(MoneyRate { amount: amount, currency: currency })
 }
 
-// THE OWNED-FLEET OFFER IS QUOTED AT ITS OPPORTUNITY COST, NOT AT ZERO.
+// THE OWNED-FLEET OFFER CARRIES AN ASKING PRICE, NOT AN OPPORTUNITY COST.
 //
-// An owned hour's MARGINAL CASH COST is genuinely 0.00 -- spending it adds
-// nothing to the invoice. Its OPPORTUNITY COST is what that hour could have been
-// sold for, which is never zero for capacity anyone would pay for. Selection
-// must read the second: an owned hour entering selection at 0.00 outbids every
-// paying customer, so self-CI would always win and the arbitrage would be
-// defeated by the very mechanism meant to run it.
+// An owned hour's marginal cash cost is not zero -- power and cooling are
+// incurred by the act of running, so they are a real dispatch input -- and its
+// OPPORTUNITY COST is not a field on the offer at all: what an hour could
+// otherwise have earned depends on which OTHER demands could use it, so it
+// belongs to the assignment evaluation, not to the supply row. An earlier
+// revision of this comment claimed the quote WAS the opportunity cost; that was
+// wrong in the same way the fold below is limited, and both are recorded rather
+// than quietly reworded.
 //
-// This fixture previously quoted 0 and asserted eligibility, with a comment
-// above it saying a zero quote is not an exemption from the price check -- while
-// the value handed to the check was zero, so it cleared every ceiling. The
-// comment stated the principle the fixture violated.
-//
-// OfferQuote is still a SINGLE scalar, so nothing yet forces this to be the
-// opportunity cost rather than the cash cost; that is the open carrier gap, and
-// pricing the fixture correctly is what keeps the first consumer from hardening
-// the wrong reading while the carrier is built.
+// What this scalar honestly is: the supplier-side ASKING PRICE for one grant.
+// The fold compares it to what the demand will pay. That is AFFORDABILITY
+// SCREENING and it is not selection -- nothing here chooses among several
+// eligible offers, and choosing would need the interval, tariff, commitment
+// state and alternative uses that no carrier holds yet.
 fn t_fleet_offer() -> Offer<NonEmptyStr> {
   t_offer(
     threads: hardware_thread_count(count: 128),
@@ -183,14 +181,43 @@ test fn foreign_currency_quote_refuses_distinctly() -> Bool {
   }
 }
 
-// A priced demand with NO budget cannot clear even a zero-quoted own-fleet
-// offer... except that it can, because zero is not greater than zero. This
-// witness pins that boundary deliberately rather than leaving it to be
-// discovered: free capacity is affordable to a zero budget, and the arbitrage
-// question is about opportunity cost, which this fold does not answer.
-test fn zero_budget_still_clears_a_zero_quote() -> Bool {
+// THE CEILING COMPARISON IS STRICT, AND THIS PINS THAT BOUNDARY. A zero-quoted
+// offer clears a zero budget because zero is not GREATER than zero.
+//
+// This witness previously called t_fleet_offer() and asserted the same thing,
+// with a comment reading "free capacity is affordable to a zero budget". That
+// premise was true while the fleet fixture quoted zero and became FALSE the
+// moment it was repriced -- 40 against a ceiling of 0 refuses -- so the witness
+// went red on a claim nobody had reread. It now uses its OWN zero-quoted offer,
+// because the property under test is the strictness of the comparison and has
+// nothing to do with the fleet.
+fn t_free_offer() -> Offer<NonEmptyStr> {
+  t_offer(
+    threads: hardware_thread_count(count: 128),
+    caps: "gunbc.capabilities.linux-rust-toolchain",
+    trust: "gunbc.trust.internal-fleet",
+    quote: t_quote(amount: money_amount_micro(count: 0), currency: Usd),
+  )
+}
+
+test fn a_zero_quote_clears_a_zero_ceiling_because_the_comparison_is_strict() -> Bool {
   eligible(e: floor_offer_eligibility(
-    offer: t_fleet_offer(),
+    offer: t_free_offer(),
+    maximum_buy_order: money_amount_micro(count: 0),
+    budget_currency: Usd,
+  ))
+}
+
+// The control that keeps the row above from being satisfied by a fold that
+// admits everything: one micro over the ceiling refuses.
+test fn one_micro_over_a_zero_ceiling_refuses() -> Bool {
+  !eligible(e: floor_offer_eligibility(
+    offer: t_offer(
+      threads: hardware_thread_count(count: 128),
+      caps: "gunbc.capabilities.linux-rust-toolchain",
+      trust: "gunbc.trust.internal-fleet",
+      quote: t_quote(amount: money_amount_micro(count: 1), currency: Usd),
+    ),
     maximum_buy_order: money_amount_micro(count: 0),
     budget_currency: Usd,
   ))
@@ -345,12 +372,11 @@ test fn a_per_grant_total_under_the_ceiling_is_still_eligible() -> Bool {
   ))
 }
 
-// SELF-CI DOES NOT OUTBID BY CONSTRUCTION. The owned fleet is priced at its
-// opportunity cost, so a demand whose ceiling sits below that price cannot claim
-// it -- the hour goes to whoever values it more. This is the witness that would
+// SELF-CI IS NOT FREE BY CONSTRUCTION. The owned fleet carries an asking price,
+// so a demand whose ceiling sits below it cannot claim the hour. This is the witness that would
 // have been unwritable while the fleet quoted zero: at zero it clears every
 // ceiling, so no ceiling can refuse it and the arm has no discriminating input.
-test fn an_owned_hour_priced_at_opportunity_cost_can_be_outbid() -> Bool {
+test fn an_owned_hour_with_an_asking_price_can_be_outbid() -> Bool {
   !eligible(e: floor_offer_eligibility(
     offer: t_fleet_offer(),
     maximum_buy_order: money_amount_micro(count: 39),
@@ -359,9 +385,9 @@ test fn an_owned_hour_priced_at_opportunity_cost_can_be_outbid() -> Bool {
 }
 
 // The control for the row above: the same owned-fleet offer IS eligible to a
-// demand willing to pay its opportunity cost. Without this, refusing at 39 is
+// demand willing to pay its asking price. Without this, refusing at 39 is
 // equally explained by the fleet offer having become ineligible outright.
-test fn an_owned_hour_is_eligible_to_a_demand_that_meets_its_price() -> Bool {
+test fn an_owned_hour_is_eligible_to_a_demand_that_meets_its_asking_price() -> Bool {
   eligible(e: floor_offer_eligibility(
     offer: t_fleet_offer(),
     maximum_buy_order: money_amount_micro(count: 40),

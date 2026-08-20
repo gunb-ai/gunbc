@@ -944,3 +944,78 @@ one provider do not compose, and the count of approve verdicts is not the readin
 `SHIP_WITH_DEBT` — merge this fold, cut the actual cutover as a separate PR, and land the
 richer-name-as-guarantee lens between them. That matches §15's independent finding that the cutover
 PR cannot merge itself, reached from the ruleset rather than from the review loop.
+
+## 23. The two-cost ruling corrected, and the mirror of the erased-test tell
+
+### The ruling's stronger half is withdrawn
+
+*"Selection uses opportunity cost; cash is a books fact, never a placement input"* is **wrong**, and
+the Hetzner case refutes it:
+
+| | Hetzner paid-through slack | owned home host | opportunity alone | cash + opportunity |
+| --- | --- | --- | --- | --- |
+| **no competing demand** | cash 0, opp 0 | cash ~0.16 power/cooling, opp 0 | 0 vs 0 — a tie, cannot conclude | 0 vs 0.16 — takes the slack |
+| **a paying customer wants the interval** | cash 0, opp = foregone contribution | cash 0.16, opp 0 | — | home wins, self-CI correctly displaced |
+
+The sum handles both cases; opportunity alone handles neither. The error was **conflating sunk cost
+with marginal cash cost**: only the historical purchase is sunk, while power and cooling are
+*incurred by the act of running* and so are real dispatch inputs.
+
+**Corrected objective:** marginal cash + opportunity + transition/start + valued delay and risk,
+with historical purchase excluded from dispatch and retained for accounting. Grounded in the HM
+Treasury Green Book (sunk costs must not affect the next decision; opportunity cost of already-paid
+resources is assessed at next-best alternative use — **not** automatically a market list price and
+**not** automatically nonzero). Short horizon is **economic dispatch**, long horizon is **unit
+commitment**, and FERC fast-start rules already model commitment, startup, minimum-run and no-load
+costs — the exact address for §21's baseload-vs-peaking grounding.
+
+### Two modeling corrections that supersede §21
+
+1. **Opportunity cost is not a field on the offer.** It depends on which *other* demands could use
+   that offer, so it belongs to the **assignment evaluation** or the decision receipt. The offer
+   carries the facts costs *derive from*: availability interval, supplier tariff, billing quantum
+   and rounding, minimum charge, cap, paid-through commitment state, transition facts. Marginal
+   cash is not static either — it is a function of the requested interval against commitment state,
+   which is the staircase.
+2. **The zero arm is essential.** `OpportunityCostStanding` needs **three** arms —
+   `OpportunityCostDerived`, `NoFeasibleAlternativeUse`, `OpportunityCostUnread` carrying an
+   obligation. Without the middle, an already-paid hour that will expire idle is priced as though an
+   imaginary customer had been displaced. Without the third, unknown silently becomes zero — the
+   state-space conflation exactly.
+
+### The mirror of the erased-test tell
+
+`zero_budget_still_clears_a_zero_quote` called `t_fleet_offer()` with `maximum_buy_order: 0` and
+asserted eligible, under a comment reading *"free capacity is affordable to a zero budget"*. True
+while the fleet quoted zero; **false the moment §21 repriced it** — 40 against a ceiling of 0
+refuses. Confirmed red by execution.
+
+So the class has two directions and only one was written down:
+
+| | what moves | what it does |
+| --- | --- | --- |
+| **erased test** (§22) | a fixture sits at an absorbing extreme | the arm becomes unfireable and nothing reports it |
+| **stale premise** (here) | a fixture *changes* | a passing witness keeps asserting the old value's premise |
+
+**The review tell is different for each.** The first asks whether any witness can make the arm fire.
+The second is a rule about editing: **after changing a fixture, re-read every witness naming the old
+value in its name or its comment** — those are exactly the ones whose premise moved. `zero_budget…`
+named the old value *in its own function name*.
+
+Repaired with its own `t_free_offer` fixture, since the property under test is the strictness of the
+`>` comparison and never had anything to do with the fleet, plus
+`one_micro_over_a_zero_ceiling_refuses` as the control.
+
+### Eligibility is not selection — the scope this PR actually holds
+
+The proof that no economic selector exists here is sharp: **rate quotes are refused for want of a
+demand duration, and there is no fold choosing among multiple eligible offers on time-dependent
+facts.** Representing marginal cash, supplier price and opportunity cost as **one scalar
+distinguished only by comments** is the §22 class again — a richer name where a guarantee was
+needed.
+
+So the economic language is **removed rather than defended**. `supply.dag` now states plainly that
+the fold screens affordability and would be a lie as a selector, the quote is named an **asking
+price**, and the two witnesses that named opportunity cost are renamed to match what they test. The
+cost model lands in its own PR under the corrected objective above — which is the same narrow-next-PR
+conclusion §22 reached from two other directions.
