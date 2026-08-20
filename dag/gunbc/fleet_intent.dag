@@ -28,10 +28,9 @@ import extdeps.boards.types { ServerBaseboard }
 import gunbc.bmc_intent { BmcControlPlaneIntent, fleet_bmc_valid_state }
 import std.bmc { BmcEndpoint, Redfish }
 import std.credentials { CredentialFlow, Stored }
-import std.measure { hertz, ByteSize, byte_size, byte_size_count, Bandwidth, HardwareThreadCount, hardware_thread_count_value, Nano, measure_count }
+import std.measure { hertz, ByteSize, byte_size, byte_size_count, Bandwidth, HardwareThreadCount, hardware_thread_count_value, Nano, measure_count, Nanosecond, nanosecond }
 import std.os.types { OperatingSystemSurface, Linux, Posix, PosixProcess }
 import std.types { List, NonEmptyStr, Bool, Int, String }
-import std.verification { NanosecondDuration, nanosecond_duration }
 import std.realization_schedule { CostAccount }
 import std.realization_measurement { cost_account_measured_from_time_and_space, space_measure_list_seq }
 import std.nat { Nat }
@@ -150,7 +149,7 @@ data host_v1_interpreter_execution_surface: ExecutionSurface = ExecutionSurface 
 
 fn performance_receipt_host_single_sample(
   work_shape: WorkUnitId,
-  wall_time: NanosecondDuration,
+  wall_time: Nanosecond,
   space: ByteSize,
 ) -> PerformanceReceipt {
   PerformanceReceipt {
@@ -165,8 +164,8 @@ fn performance_receipt_host_single_sample(
   }
 }
 
-fn performance_receipts_total_time(receipts: List<PerformanceReceipt>) -> NanosecondDuration {
-  nanosecond_duration(
+fn performance_receipts_total_time(receipts: List<PerformanceReceipt>) -> Nanosecond {
+  nanosecond(
     count: fold(
       receipts,
       init: 0,

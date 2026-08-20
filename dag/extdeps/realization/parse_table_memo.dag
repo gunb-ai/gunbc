@@ -2,6 +2,7 @@ module extdeps.realization.parse_table_memo
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import v2.std.optional { Absent }
 
 import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed, CatalogCasContentEncoding }
 import std.cache_identity { CacheInterfaceId }
@@ -74,14 +75,14 @@ data parse_table_memo_facts: CacheInterfaceCatalogFacts = {
       field: "locality"
       evidence: OperatorObserved {
         note: "scoped to InterpContext; drops with evaluation — within-run memo (design-recompute-memoization §4.1)"
-        observed_at: 0
+        observed_at: Absent
       }
     },
     {
       field: "key_derivation"
       evidence: OperatorObserved {
         note: "ParseTableSubject = grammar_digest + token_stream_digest (full stream content-address incl. lexemes) + position + production"
-        observed_at: 0
+        observed_at: Absent
       }
     },
   ]
