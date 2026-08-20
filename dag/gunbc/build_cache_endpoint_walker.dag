@@ -1,0 +1,393 @@
+module gunbc.build_cache_endpoint_walker
+
+import std.types { String, NonEmptyStr, Bool, List, Int }
+import std.nat { Nat }
+import product.placement_supply { HostIdentity }
+import gunbc.host_effect { HostEffectTransport }
+import gunbc.host_effect_realize { run_typed_argv_transport }
+import gunbc.typed_argv_exec {
+  TypedArgvExecOutcome,
+  TypedArgvExecConverged,
+  TypedArgvExecRefused,
+}
+import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host }
+import gunbc.build_cache_instance {
+  BuildCacheInstance,
+  BuildCacheEndpointObservation,
+  EndpointAbsent,
+  EndpointOwnerObserved,
+  EndpointOwnershipAmbiguous,
+  EndpointObservationUnavailable,
+  EndpointObservationUnavailableReason,
+  ReachRefused,
+  ProcTableUnreadable,
+  ProcessIdentity,
+  EndpointOwnerContext,
+  OwnerInRunnerSlot,
+  OwnerInSystemdUnit,
+  OwnerContextUndecided,
+  RunnerSlotIdentity,
+  RunnerSlotLifecycle,
+  DesiredRunnerSlot,
+  RetiredRunnerSlot,
+}
+
+data build_cache_endpoint_walker_authority_note: String = "THE ONE PLACE THE /proc CHAIN IS WALKED, per gunbc.build_cache_instance endpoint_ownership_note: /proc/net/unix -> the listening socket's inode -> /proc/*/fd resolves the inode to one owning pid -> /proc/pid/\{exe,cgroup,stat\} yields executable, principal and cgroup. Every step is a single read-only argv dispatched through gunbc.host_effect_realize run_typed_argv_transport (the generic typed-argv dispatcher, not a fresh per-transport match) and every step refuses independently rather than absorbing a missing read into a neighboring arm — the empty-observation narrow this module exists to avoid is exactly a walk that cannot tell 'no listener' from 'could not read', so EndpointAbsent (step 1 found no matching listener) and EndpointObservationUnavailable{ProcTableUnreadable} (a later step could not read what step 1 proved exists) stay two different constructors all the way through, never collapsed into one 'unknown'."
+
+data proc_net_unix_read_argv: List<String> = ["cat", "/proc/net/unix"]
+
+data proc_net_unix_listening_flags_marker: String = "00010000"
+
+fn proc_pid_fd_owner_find_argv(inode: NonEmptyStr) -> List<String> {
+  [
+    "find", "/proc", "-maxdepth", "3", "-path", "/proc/*/fd/*",
+    "-lname", concat("socket:[", concat(inode as String, "]")),
+  ]
+}
+
+fn proc_pid_exe_readlink_argv(pid: Nat) -> List<String> {
+  ["readlink", "-f", concat("/proc/", concat(pid as String, "/exe"))]
+}
+
+fn proc_pid_owner_stat_argv(pid: Nat) -> List<String> {
+  ["stat", "-c", "%U", concat("/proc/", pid as String)]
+}
+
+fn proc_pid_cgroup_read_argv(pid: Nat) -> List<String> {
+  ["cat", concat("/proc/", concat(pid as String, "/cgroup"))]
+}
+
+fn proc_pid_stat_starttime_read_argv(pid: Nat) -> List<String> {
+  ["cat", concat("/proc/", concat(pid as String, "/stat"))]
+}
+
+fn proc_sys_boot_id_read_argv() -> List<String> {
+  ["cat", "/proc/sys/kernel/random/boot_id"]
+}
+
+data endpoint_walker_read_step_note: String = "ONE OUTCOME VOCABULARY FOR EVERY /proc READ. TypedArgvExecRefused (transport could not even attempt the argv) and a converged-but-unsuccessful exit are both ProcTableUnreadable at this grain: the caller only needs to know whether the line it wanted was read, and the raw exit code/stderr travel in the reason string for a human, never re-derived into a second typed axis nothing downstream consumes."
+
+type EndpointWalkerRead
+    = EndpointWalkerReadOk { stdout: String }
+    | EndpointWalkerReadFailed { detail: NonEmptyStr }
+
+func endpoint_walker_run_read(argv: List<String>, transport: HostEffectTransport) -> EndpointWalkerRead
+  uses net: Network
+{
+  match run_typed_argv_transport(argv: argv, transport: transport) {
+    TypedArgvExecRefused { reason: why } =>
+      EndpointWalkerReadFailed { detail: why as NonEmptyStr }
+    TypedArgvExecConverged { result: r } =>
+      if r.success {
+        EndpointWalkerReadOk { stdout: r.stdout }
+      } else {
+        EndpointWalkerReadFailed {
+          detail: concat(
+            "argv ", concat(join(argv, " "), concat(" exited ", concat(to_string(r.exit_code), concat(" stderr=", r.stderr)))),
+          ) as NonEmptyStr,
+        }
+      }
+  }
+}
+
+fn endpoint_walker_tokens(line: String) -> List<String> {
+  split(s: line, delimiter: " ") |> filter(t => t != "")
+}
+
+fn endpoint_walker_nth(tokens: List<String>, index: Int) -> String? {
+  if tokens.length() <= index {
+    none
+  } else {
+    Present { value: tokens.skip(n: index).first() }
+  }
+}
+
+fn endpoint_walker_strict_nat(text: String) -> Nat? {
+  match parse_int(s: text) {
+    Absent => none
+    Present { value: parsed } =>
+      if text != "" && (parsed as String) == text && parsed >= 0 {
+        Present { value: parsed }
+      } else {
+        none
+      }
+  }
+}
+
+data endpoint_walker_socket_lookup_note: String = "THE FLAGS FIELD, NOT THE PATH ALONE, SELECTS THE LISTENER: gunbc.build_cache_instance endpoint_ownership_note records that connected client-side sockets carry the same configured path, so a path match without the ACC/listening flags marker would find a client and misreport it as the server. Zero matching (path AND flags) lines means the instance has no live listener at all -- EndpointAbsent, a POSITIVE finding, never a refusal -- and more than one is impossible for a single bound path/flags pair short of a substrate corruption this walk is not the layer to diagnose, so it is folded into the same refusal as an unreadable table rather than growing a fourth top-level arm nothing downstream would consume."
+
+type UnixSocketInodeLookup
+    = UnixSocketInodeFound { inode: NonEmptyStr }
+  | UnixSocketInodeAbsent
+  | UnixSocketInodeUnreadable { detail: NonEmptyStr }
+
+fn endpoint_walker_matches_listener(tokens: List<String>, socket_path: String) -> Bool {
+  tokens.length() >= 8
+    && match endpoint_walker_nth(tokens, 3) {
+      Present { value: flags } => flags == proc_net_unix_listening_flags_marker
+      Absent => false
+    }
+    && match endpoint_walker_nth(tokens, 7) {
+      Present { value: path } => path == socket_path
+      Absent => false
+    }
+}
+
+fn endpoint_walker_socket_inode(stdout: String, socket_path: String) -> UnixSocketInodeLookup {
+  let matches = split(s: stdout, delimiter: "\n")
+    |> filter(line => endpoint_walker_matches_listener(tokens: endpoint_walker_tokens(line), socket_path: socket_path))
+  if matches.length() == 0 {
+    UnixSocketInodeAbsent
+  } else if matches.length() > 1 {
+    UnixSocketInodeUnreadable {
+      detail: concat(
+        "/proc/net/unix carried ", concat(to_string(matches.length()), " listening lines for one configured path"),
+      ) as NonEmptyStr,
+    }
+  } else {
+    match endpoint_walker_nth(endpoint_walker_tokens(matches.first()), 6) {
+      Present { value: inode } => UnixSocketInodeFound { inode: inode as NonEmptyStr }
+      Absent =>
+        UnixSocketInodeUnreadable {
+          detail: "matched listening line in /proc/net/unix had fewer than 7 fields" as NonEmptyStr,
+        }
+    }
+  }
+}
+
+data endpoint_walker_owner_pid_note: String = "THE INODE RESOLVES TO EXACTLY ONE OWNING PID OR IT REFUSES. GNU find's -lname matches the symlink TARGET so no shell glob or string interpolation ever touches an untrusted value; zero matches on an inode step 1 just proved exists is a genuine race or permission gap (ProcTableUnreadable), and more than one match is EndpointOwnershipAmbiguous -- an exact, positive fit for that existing arm, never folded into the refusal."
+
+type UnixSocketOwnerPidLookup
+    = UnixSocketOwnerPidFound { pid: Nat }
+  | UnixSocketOwnerPidAmbiguous { candidate_count: Nat }
+  | UnixSocketOwnerPidUnreadable { detail: NonEmptyStr }
+
+fn endpoint_walker_fd_path_pid(path: String) -> Nat? {
+  let segments = split(s: path, delimiter: "/") |> filter(seg => seg != "")
+  match endpoint_walker_nth(segments, 1) {
+    Present { value: pid_text } => endpoint_walker_strict_nat(pid_text)
+    Absent => none
+  }
+}
+
+fn endpoint_walker_owner_pid(stdout: String) -> UnixSocketOwnerPidLookup {
+  let candidate_lines = split(s: stdout, delimiter: "\n") |> filter(line => trim(line) != "")
+  if candidate_lines.length() == 0 {
+    UnixSocketOwnerPidUnreadable {
+      detail: "find /proc -lname resolved zero fd owners for a listening inode /proc/net/unix already reported" as NonEmptyStr,
+    }
+  } else if candidate_lines.length() > 1 {
+    UnixSocketOwnerPidAmbiguous { candidate_count: candidate_lines.length() }
+  } else {
+    match endpoint_walker_fd_path_pid(trim(candidate_lines.first())) {
+      Present { value: pid } => UnixSocketOwnerPidFound { pid: pid }
+      Absent =>
+        UnixSocketOwnerPidUnreadable {
+          detail: "find /proc -lname matched one line that did not parse as /proc/<pid>/fd/<fd>" as NonEmptyStr,
+        }
+    }
+  }
+}
+
+data endpoint_walker_cgroup_classify_note: String = "CGROUP CLASSIFICATION REUSES THE ALLOCATION AUTHORITY RATHER THAN INVENTING A SECOND ONE (DESIGN section 2/3): gunbc.runner_slot_allocation gunbc_runner_slots_per_host is already the single fact for 'how many runner slots does the fleet currently declare on this host', and gunbc.build_cache_instance runner_slot_lifecycle_note says lifecycle is decided by asking exactly that question against a slot index -- so a matched actions-runner@\{host\}-\{NN\}.service cgroup is DesiredRunnerSlot when its slot_index is within that committed width and RetiredRunnerSlot otherwise. No new width tracker is built here."
+
+data endpoint_walker_slot_suffix_digit_note: String = "gunbc.runner_lifecycle runner_slot_instance_name zero-pads single-digit slot indices (\"01\" .. \"09\"), so the suffix parse cannot reuse a strict-round-trip Nat parser (floor_component_receipt_document strict_natural_of_lexeme's own header says it deliberately rejects \"06\" — correct for a JSON numeric lexeme, wrong for a fixed-width unit-name field authored zero-padded on purpose). A digit-only scan tolerates the padding without weakening what it rejects: non-digits, a bare sign, or an empty suffix still refuse."
+
+fn endpoint_walker_all_digits(s: String) -> Bool {
+  if s == "" {
+    true
+  } else {
+    string_contains(s: "0123456789", pattern: substring(s: s, start: 0, end: 1))
+      && endpoint_walker_all_digits(s: substring(s: s, start: 1, end: s.length()))
+  }
+}
+
+fn endpoint_walker_zero_padded_nat(text: String) -> Nat? {
+  if text != "" && endpoint_walker_all_digits(s: text) {
+    match parse_int(s: text) {
+      Present { value: parsed } => if parsed >= 0 { Present { value: parsed } } else { none }
+      Absent => none
+    }
+  } else {
+    none
+  }
+}
+
+fn endpoint_walker_runner_unit_slot_index(unit_suffix: String) -> Nat? {
+  let dash_at = index_of(s: unit_suffix, pattern: "-")
+  match dash_at {
+    Absent => none
+    Present { value: i } =>
+      endpoint_walker_zero_padded_nat(substring(s: unit_suffix, start: i + 1, end: unit_suffix.length()))
+  }
+}
+
+fn endpoint_walker_runner_slot_lifecycle(slot: RunnerSlotIdentity) -> RunnerSlotLifecycle {
+  if slot.slot_index <= gunbc_runner_slots_per_host(host: slot.host) {
+    DesiredRunnerSlot
+  } else {
+    RetiredRunnerSlot
+  }
+}
+
+fn endpoint_walker_owner_context_from_cgroup(
+  host: HostIdentity,
+  intended_unit: NonEmptyStr,
+  raw_cgroup: String,
+) -> EndpointOwnerContext {
+  let cgroup_line = trim(raw_cgroup)
+  if starts_with(s: cgroup_line, prefix: "actions-runner@") {
+    let after_at = substring(s: cgroup_line, start: length(s: "actions-runner@"), end: cgroup_line.length())
+    let unit_suffix = split(s: after_at, delimiter: ".").first()
+    match endpoint_walker_runner_unit_slot_index(unit_suffix) {
+      Present { value: idx } =>
+        let slot = RunnerSlotIdentity { host: host, slot_index: idx }
+        OwnerInRunnerSlot {
+          slot: slot,
+          lifecycle: endpoint_walker_runner_slot_lifecycle(slot: slot),
+          observed_cgroup: cgroup_line as NonEmptyStr,
+        }
+      Absent =>
+        OwnerContextUndecided {
+          detail: "cgroup named an actions-runner@ unit whose suffix did not parse as {host}-{NN}" as NonEmptyStr,
+          observed_cgroup: cgroup_line as NonEmptyStr,
+        }
+    }
+  } else if string_contains(s: cgroup_line, pattern: intended_unit as String) {
+    OwnerInSystemdUnit { unit: intended_unit, observed_cgroup: cgroup_line as NonEmptyStr }
+  } else {
+    OwnerContextUndecided {
+      detail: "cgroup matched neither an actions-runner@ slot nor the instance's intended unit" as NonEmptyStr,
+      observed_cgroup: cgroup_line as NonEmptyStr,
+    }
+  }
+}
+
+data endpoint_walker_boot_id_read_note: String = "boot_id IS READ ONCE PER OBSERVATION, NOT ONCE PER FLEET: gunbc.build_cache_instance process_identity_note requires it to disambiguate a pid across reboots, and the value is host-wide rather than per-process, so one extra /proc read joins the same owner-identification pass instead of being cached or assumed stable across calls."
+
+fn endpoint_walker_owner_observation(
+  instance: BuildCacheInstance,
+  transport: HostEffectTransport,
+) -> BuildCacheEndpointObservation
+  uses net: Network
+{
+  let socket_path = match instance.endpoint {
+    SccacheServerUnixSocket { path: p } => p as String
+  }
+  match endpoint_walker_run_read(argv: proc_net_unix_read_argv, transport: transport) {
+    EndpointWalkerReadFailed { detail: d } =>
+      EndpointObservationUnavailable { instance: instance, reason: ProcTableUnreadable { detail: d } }
+    EndpointWalkerReadOk { stdout: unix_stdout } =>
+      match endpoint_walker_socket_inode(stdout: unix_stdout, socket_path: socket_path) {
+        UnixSocketInodeAbsent => EndpointAbsent { instance: instance }
+        UnixSocketInodeUnreadable { detail: d } =>
+          EndpointObservationUnavailable { instance: instance, reason: ProcTableUnreadable { detail: d } }
+        UnixSocketInodeFound { inode: inode } =>
+          match endpoint_walker_run_read(argv: proc_pid_fd_owner_find_argv(inode: inode), transport: transport) {
+            EndpointWalkerReadFailed { detail: d } =>
+              EndpointObservationUnavailable { instance: instance, reason: ProcTableUnreadable { detail: d } }
+            EndpointWalkerReadOk { stdout: find_stdout } =>
+              match endpoint_walker_owner_pid(stdout: find_stdout) {
+                UnixSocketOwnerPidUnreadable { detail: d } =>
+                  EndpointObservationUnavailable { instance: instance, reason: ProcTableUnreadable { detail: d } }
+                UnixSocketOwnerPidAmbiguous { candidate_count: n } =>
+                  EndpointOwnershipAmbiguous { instance: instance, candidate_count: n }
+                UnixSocketOwnerPidFound { pid: pid } =>
+                  endpoint_walker_resolve_owner(instance: instance, transport: transport, pid: pid)
+              }
+          }
+      }
+  }
+}
+
+fn endpoint_walker_resolve_owner(
+  instance: BuildCacheInstance,
+  transport: HostEffectTransport,
+  pid: Nat,
+) -> BuildCacheEndpointObservation
+  uses net: Network
+{
+  match endpoint_walker_run_read(argv: proc_pid_exe_readlink_argv(pid: pid), transport: transport) {
+    EndpointWalkerReadFailed { detail: d } =>
+      EndpointObservationUnavailable { instance: instance, reason: ProcTableUnreadable { detail: d } }
+    EndpointWalkerReadOk { stdout: exe_stdout } =>
+      match endpoint_walker_run_read(argv: proc_pid_owner_stat_argv(pid: pid), transport: transport) {
+        EndpointWalkerReadFailed { detail: d } =>
+          EndpointObservationUnavailable { instance: instance, reason: ProcTableUnreadable { detail: d } }
+        EndpointWalkerReadOk { stdout: owner_stdout } =>
+          match endpoint_walker_run_read(argv: proc_pid_cgroup_read_argv(pid: pid), transport: transport) {
+            EndpointWalkerReadFailed { detail: d } =>
+              EndpointObservationUnavailable { instance: instance, reason: ProcTableUnreadable { detail: d } }
+            EndpointWalkerReadOk { stdout: cgroup_stdout } =>
+              match endpoint_walker_run_read(argv: proc_pid_stat_starttime_read_argv(pid: pid), transport: transport) {
+                EndpointWalkerReadFailed { detail: d } =>
+                  EndpointObservationUnavailable { instance: instance, reason: ProcTableUnreadable { detail: d } }
+                EndpointWalkerReadOk { stdout: stat_stdout } =>
+                  match endpoint_walker_run_read(argv: proc_sys_boot_id_read_argv(), transport: transport) {
+                    EndpointWalkerReadFailed { detail: d } =>
+                      EndpointObservationUnavailable { instance: instance, reason: ProcTableUnreadable { detail: d } }
+                    EndpointWalkerReadOk { stdout: boot_id_stdout } =>
+                      let exe = trim(exe_stdout)
+                      let principal = trim(owner_stdout)
+                      let start_time = endpoint_walker_stat_starttime_field(stat_line: trim(stat_stdout))
+                      if exe == "" || principal == "" || start_time == "" {
+                        EndpointObservationUnavailable {
+                          instance: instance,
+                          reason: ProcTableUnreadable {
+                            detail: "one of /proc/pid/{exe,stat} or the owning uid resolved empty" as NonEmptyStr,
+                          },
+                        }
+                      } else {
+                        EndpointOwnerObserved {
+                          instance: instance,
+                          owner: ProcessIdentity {
+                            boot_id: trim(boot_id_stdout) as NonEmptyStr,
+                            pid: pid,
+                            start_time: start_time as NonEmptyStr,
+                          },
+                          executable: exe as NonEmptyStr,
+                          principal: principal as NonEmptyStr,
+                          owner_context: endpoint_walker_owner_context_from_cgroup(
+                            host: instance.identity.host,
+                            intended_unit: instance.intended_unit,
+                            raw_cgroup: cgroup_stdout,
+                          ),
+                          memory_limits: none,
+                          memory_events: none,
+                        }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+data endpoint_walker_stat_starttime_field_note: String = "/proc/pid/stat FIELD 22 IS START TIME, BUT THE COMM FIELD MAKES POSITIONAL SPLITTING UNSAFE: comm is the one field wrapped in parens and MAY CONTAIN SPACES, so splitting the whole line on whitespace misindexes every field after it for such a process. Splitting on the LAST ')' and tokenizing only what follows sidesteps the ambiguity without needing to parse the parenthesized name at all -- the two fields before start_time in that remainder (state, ppid) are skipped positionally, and a remainder with fewer than 20 tokens refuses rather than returning a wrong number that merely LOOKS like a start time."
+
+fn endpoint_walker_stat_starttime_field(stat_line: String) -> String {
+  let after_paren = endpoint_walker_after_last_close_paren(s: stat_line)
+  let rest_tokens = after_paren |> filter(t => t != "")
+  match endpoint_walker_nth(rest_tokens, 19) {
+    Present { value: v } => v
+    Absent => ""
+  }
+}
+
+fn endpoint_walker_after_last_close_paren(s: String) -> List<String> {
+  let pieces = split(s: s, delimiter: ")")
+  if pieces.length() <= 1 {
+    []
+  } else {
+    endpoint_walker_tokens(pieces.skip(n: pieces.length() - 1).first())
+  }
+}
+
+func build_cache_endpoint_walk(
+  instance: BuildCacheInstance,
+  transport: HostEffectTransport,
+) -> BuildCacheEndpointObservation
+  uses net: Network
+{
+  endpoint_walker_owner_observation(instance: instance, transport: transport)
+}
