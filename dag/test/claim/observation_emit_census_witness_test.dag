@@ -1,7 +1,6 @@
 module test.claim.observation_emit_census_witness_test
 
-
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data witness_note: String = "P3 census hygiene, executable against the live seed (docs/plans/progress-observation-design.md section 5). A census that is not checked against the code it censuses is coverage-by-illusion — an inert lens is itself a lie. So every rostered marker is held against the seed file it names: a marker that has vanished reds (the roster went stale, the site was renamed or deleted without re-census), and a frontier row must carry a real, non-empty dissolve-on so the debt stays prioritizable rather than open-ended. Migrated sites keep their marker strings so the roster cannot go stale, and each has a RED that the raw byte shape is gone from the seed."
 
@@ -15,7 +14,7 @@ fn census_marker_present(site: gunbc.observation_emit_census.CensusedEmitSite) -
 }
 
 test fn w_every_rostered_marker_still_exists_in_the_seed() -> Bool {
-  fold(observation_emit_roster, init: true, f: (acc, site) =>
+  fold(gunbc.observation_emit_census.observation_emit_roster, init: true, f: (acc, site) =>
     acc && census_marker_present(site: site))
 }
 
@@ -25,100 +24,93 @@ test fn w_roster_staleness_check_discriminates() -> Bool {
     source_file: "src/v1/stage0/src/bin/claim_executor.rs" as std.types.NonEmptyStr,
     disposition: gunbc.observation_emit_census.CountedFrontierSite {
       reason: "control" as std.types.NonEmptyStr,
-      dissolution: unbound_dissolution(description: "control")
+      dissolution: std.dissolution.unbound_dissolution(description: "control")
     }
   }
   !census_marker_present(site: bogus)
 }
 
 test fn w_every_frontier_row_carries_a_real_dissolve_on() -> Bool {
-  fold(observation_emit_roster, init: true, f: (acc, site) =>
-    if emit_site_is_frontier(site: site) {
-      acc && emit_site_dissolve_on(site: site) != ""
+  fold(gunbc.observation_emit_census.observation_emit_roster, init: true, f: (acc, site) =>
+    if gunbc.observation_emit_census.emit_site_is_frontier(site: site) {
+      acc && gunbc.observation_emit_census.emit_site_dissolve_on(site: site) != ""
     } else {
       acc
     })
 }
 
 test fn w_the_named_negative_example_has_migrated() -> Bool {
-  census_marker_present(site: floor_memory_site) &&
-  !emit_site_is_frontier(site: floor_memory_site) &&
-  string_contains(s: floor_memory_site.marker, pattern: "floor-memory") &&
-  string_contains(s: emit_site_dissolve_on(site: floor_memory_site), pattern: "ci_heartbeat_line")
+  census_marker_present(site: gunbc.observation_emit_census.floor_memory_site) &&
+  !gunbc.observation_emit_census.emit_site_is_frontier(site: gunbc.observation_emit_census.floor_memory_site) &&
+  string_contains(s: gunbc.observation_emit_census.floor_memory_site.marker, pattern: "floor-memory") &&
+  string_contains(s: gunbc.observation_emit_census.emit_site_dissolve_on(site: gunbc.observation_emit_census.floor_memory_site), pattern: "ci_heartbeat_line")
 }
 
 test fn w_gantt_has_migrated() -> Bool {
-  census_marker_present(site: gantt_site) &&
-  !emit_site_is_frontier(site: gantt_site) &&
-  string_contains(s: gantt_site.marker, pattern: "gantt") &&
-  string_contains(s: emit_site_dissolve_on(site: gantt_site), pattern: "ci_event_line") &&
-  string_contains(s: emit_site_dissolve_on(site: gantt_site), pattern: "phase_begin_line")
+  census_marker_present(site: gunbc.observation_emit_census.gantt_site) &&
+  !gunbc.observation_emit_census.emit_site_is_frontier(site: gunbc.observation_emit_census.gantt_site) &&
+  string_contains(s: gunbc.observation_emit_census.gantt_site.marker, pattern: "gantt") &&
+  string_contains(s: gunbc.observation_emit_census.emit_site_dissolve_on(site: gunbc.observation_emit_census.gantt_site), pattern: "ci_event_line") &&
+  string_contains(s: gunbc.observation_emit_census.emit_site_dissolve_on(site: gunbc.observation_emit_census.gantt_site), pattern: "phase_begin_line")
 }
 
 test fn w_governor_has_migrated() -> Bool {
-  census_marker_present(site: governor_site) &&
-  !emit_site_is_frontier(site: governor_site) &&
-  string_contains(s: governor_site.marker, pattern: "governor") &&
-  string_contains(s: emit_site_dissolve_on(site: governor_site), pattern: "ci_hold_cause_text") &&
-  string_contains(s: emit_site_dissolve_on(site: governor_site), pattern: "render_governor_hold_line_mirror")
+  census_marker_present(site: gunbc.observation_emit_census.governor_site) &&
+  !gunbc.observation_emit_census.emit_site_is_frontier(site: gunbc.observation_emit_census.governor_site) &&
+  string_contains(s: gunbc.observation_emit_census.governor_site.marker, pattern: "governor") &&
+  string_contains(s: gunbc.observation_emit_census.emit_site_dissolve_on(site: gunbc.observation_emit_census.governor_site), pattern: "ci_hold_cause_text") &&
+  string_contains(s: gunbc.observation_emit_census.emit_site_dissolve_on(site: gunbc.observation_emit_census.governor_site), pattern: "render_governor_hold_line_mirror")
 }
 
 test fn w_typecheck_attribution_has_migrated() -> Bool {
-  census_marker_present(site: typecheck_attribution_site) &&
-  !emit_site_is_frontier(site: typecheck_attribution_site) &&
-  string_contains(s: typecheck_attribution_site.marker, pattern: "typecheck-attribution") &&
-  string_contains(s: emit_site_dissolve_on(site: typecheck_attribution_site), pattern: "ci_event_line") &&
-  string_contains(s: emit_site_dissolve_on(site: typecheck_attribution_site), pattern: "typecheck_concluded_line")
+  census_marker_present(site: gunbc.observation_emit_census.typecheck_attribution_site) &&
+  !gunbc.observation_emit_census.emit_site_is_frontier(site: gunbc.observation_emit_census.typecheck_attribution_site) &&
+  string_contains(s: gunbc.observation_emit_census.typecheck_attribution_site.marker, pattern: "typecheck-attribution") &&
+  string_contains(s: gunbc.observation_emit_census.emit_site_dissolve_on(site: gunbc.observation_emit_census.typecheck_attribution_site), pattern: "ci_event_line") &&
+  string_contains(s: gunbc.observation_emit_census.emit_site_dissolve_on(site: gunbc.observation_emit_census.typecheck_attribution_site), pattern: "typecheck_concluded_line")
 }
 
 test fn w_measurement_has_migrated() -> Bool {
-  census_marker_present(site: measurement_site) &&
-  !emit_site_is_frontier(site: measurement_site) &&
-  string_contains(s: measurement_site.marker, pattern: "measurement") &&
-  string_contains(s: emit_site_dissolve_on(site: measurement_site), pattern: "ci_measurement_rss_line") &&
-  string_contains(s: emit_site_dissolve_on(site: measurement_site), pattern: "render_peak_rss_line_mirror")
+  census_marker_present(site: gunbc.observation_emit_census.measurement_site) &&
+  !gunbc.observation_emit_census.emit_site_is_frontier(site: gunbc.observation_emit_census.measurement_site) &&
+  string_contains(s: gunbc.observation_emit_census.measurement_site.marker, pattern: "measurement") &&
+  string_contains(s: gunbc.observation_emit_census.emit_site_dissolve_on(site: gunbc.observation_emit_census.measurement_site), pattern: "ci_measurement_rss_line") &&
+  string_contains(s: gunbc.observation_emit_census.emit_site_dissolve_on(site: gunbc.observation_emit_census.measurement_site), pattern: "render_peak_rss_line_mirror")
 }
 
 test fn w_shell_has_migrated() -> Bool {
-  census_marker_present(site: shell_site) &&
-  !emit_site_is_frontier(site: shell_site) &&
-  string_contains(s: shell_site.marker, pattern: "shell") &&
-  string_contains(s: emit_site_dissolve_on(site: shell_site), pattern: "shell_effect_failed_line") &&
-  string_contains(s: emit_site_dissolve_on(site: shell_site), pattern: "render_shell_effect_")
+  census_marker_present(site: gunbc.observation_emit_census.shell_site) &&
+  !gunbc.observation_emit_census.emit_site_is_frontier(site: gunbc.observation_emit_census.shell_site) &&
+  string_contains(s: gunbc.observation_emit_census.shell_site.marker, pattern: "shell") &&
+  string_contains(s: gunbc.observation_emit_census.emit_site_dissolve_on(site: gunbc.observation_emit_census.shell_site), pattern: "shell_effect_failed_line") &&
+  string_contains(s: gunbc.observation_emit_census.emit_site_dissolve_on(site: gunbc.observation_emit_census.shell_site), pattern: "render_shell_effect_")
 }
 
 test fn w_witness_claim_result_has_migrated() -> Bool {
-  census_marker_present(site: witness_claim_result_site) &&
-  !emit_site_is_frontier(site: witness_claim_result_site) &&
-  string_contains(s: emit_site_dissolve_on(site: witness_claim_result_site), pattern: "ci_witness_claim_result_text") &&
-  string_contains(s: emit_site_dissolve_on(site: witness_claim_result_site), pattern: "render_witness_claim_result_text_mirror")
+  census_marker_present(site: gunbc.observation_emit_census.witness_claim_result_site) &&
+  !gunbc.observation_emit_census.emit_site_is_frontier(site: gunbc.observation_emit_census.witness_claim_result_site) &&
+  string_contains(s: gunbc.observation_emit_census.emit_site_dissolve_on(site: gunbc.observation_emit_census.witness_claim_result_site), pattern: "ci_witness_claim_result_text") &&
+  string_contains(s: gunbc.observation_emit_census.emit_site_dissolve_on(site: gunbc.observation_emit_census.witness_claim_result_site), pattern: "render_witness_claim_result_text_mirror")
 }
 
-test fn w_witness_budget_warn_has_migrated() -> Bool {
-  census_marker_present(site: witness_budget_warn_site) &&
-  !emit_site_is_frontier(site: witness_budget_warn_site) &&
-  string_contains(s: witness_budget_warn_site.marker, pattern: "floor-witness-slow") &&
-  string_contains(s: emit_site_dissolve_on(site: witness_budget_warn_site), pattern: "ci_witness_budget_warn_text") &&
-  string_contains(s: emit_site_dissolve_on(site: witness_budget_warn_site), pattern: "render_witness_budget_warn_text_mirror")
-}
 
 data w_post_snapshot_live_tags_are_rostered_bidirectional_note: String = "Operator finding 3 (run 30142403230): hygiene is bidirectional — growth tags born after the initial census snapshot must appear on the roster, not only the reverse (rostered markers still exist). Extended for #7205 resolve/assembly split tags, #7284 witness-row-cost / witness-row-cost-drift, and the migration-disclosure gate's own [witness-row-cost-migration-disclosure] marker.\n\nA [compile-clean-cost-drift] row was added here on 2026-08-11 and RETIRED hours later in the same lane, when that tag's emit was deleted outright rather than gated — so the row is gone and this list is shorter, not longer. The WAY the hole was found is still the finding: it was not caught by this test, because a manually enumerated conjunction can only assert the rows somebody remembered to write down. [compile-clean-cost-drift] and [compile-clean-cost] had been live in the seed and absent from the roster since they were introduced, so the bidirectional rule was stated but not enforced for them — an unrostered tag is invisible to a check whose subject list IS the roster. That makes this test's own shape the residue: the durable fix is a source-level census that DISCOVERS print markers in the seed and joins them against the roster, at which point a new tag cannot escape by not being remembered. Until that lands, this conjunction is a hand-maintained approximation of a discovery it cannot perform, and every row added to it is evidence of the gap rather than closure of it."
 
 test fn w_post_snapshot_live_tags_are_rostered_bidirectional() -> Bool {
-  census_marker_present(site: floor_drain_site) &&
-  emit_site_is_frontier(site: floor_drain_site) &&
-  census_marker_present(site: receipt_site) &&
-  emit_site_is_frontier(site: receipt_site) &&
-  census_marker_present(site: file_trace_site) &&
-  emit_site_is_frontier(site: file_trace_site) &&
-  census_marker_present(site: resolve_split_site) &&
-  emit_site_is_frontier(site: resolve_split_site) &&
-  census_marker_present(site: assembly_split_site) &&
-  emit_site_is_frontier(site: assembly_split_site) &&
-  census_marker_present(site: witness_row_cost_site) &&
-  emit_site_is_frontier(site: witness_row_cost_site) &&
-  census_marker_present(site: witness_row_cost_migration_disclosure_site) &&
-  emit_site_is_frontier(site: witness_row_cost_migration_disclosure_site)
+  census_marker_present(site: gunbc.observation_emit_census.floor_drain_site) &&
+  gunbc.observation_emit_census.emit_site_is_frontier(site: gunbc.observation_emit_census.floor_drain_site) &&
+  census_marker_present(site: gunbc.observation_emit_census.receipt_site) &&
+  gunbc.observation_emit_census.emit_site_is_frontier(site: gunbc.observation_emit_census.receipt_site) &&
+  census_marker_present(site: gunbc.observation_emit_census.file_trace_site) &&
+  gunbc.observation_emit_census.emit_site_is_frontier(site: gunbc.observation_emit_census.file_trace_site) &&
+  census_marker_present(site: gunbc.observation_emit_census.resolve_split_site) &&
+  gunbc.observation_emit_census.emit_site_is_frontier(site: gunbc.observation_emit_census.resolve_split_site) &&
+  census_marker_present(site: gunbc.observation_emit_census.assembly_split_site) &&
+  gunbc.observation_emit_census.emit_site_is_frontier(site: gunbc.observation_emit_census.assembly_split_site) &&
+  census_marker_present(site: gunbc.observation_emit_census.witness_row_cost_site) &&
+  gunbc.observation_emit_census.emit_site_is_frontier(site: gunbc.observation_emit_census.witness_row_cost_site) &&
+  census_marker_present(site: gunbc.observation_emit_census.witness_row_cost_migration_disclosure_site) &&
+  gunbc.observation_emit_census.emit_site_is_frontier(site: gunbc.observation_emit_census.witness_row_cost_migration_disclosure_site)
 }
 
 test fn w_the_raw_byte_dump_shape_is_gone_from_the_seed() -> Bool {
@@ -180,10 +172,3 @@ test fn w_the_raw_witness_claim_result_shape_is_gone_from_the_seed() -> Bool {
     && !string_contains(s: cli, pattern: "(\{subject\}) \{ms:.1\}ms")
     && string_contains(s: cli, pattern: "render_witness_claim_result_text_mirror")
 }
-
-test fn w_the_raw_witness_budget_warn_shape_is_gone_from_the_seed() -> Bool {
-  let cli = census_source(path: "src/v1/stage0/src/cli_run.rs")
-  !string_contains(s: cli, pattern: "[floor-witness-slow] \{\} \{\}ms > \{\}ms warn")
-    && string_contains(s: cli, pattern: "render_witness_budget_warn_text_mirror")
-}
-

@@ -8,6 +8,8 @@ pub use crate::extdeps_languages_rust_emit::{
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
+pub use crate::std_syntax::BinOp;
+use crate::std_syntax::BinOp::*;
 use crate::std_trait_derive_shape::ReprGroundingDeriveElemShape::{
     ReprDeriveElemKernelInt, ReprDeriveElemNullaryEnumCopy, ReprDeriveElemPayloadCoproduct,
     ReprDeriveElemSymbolWrappedOrdCarrier, ReprDeriveElemUnknown,
@@ -27,8 +29,11 @@ pub use crate::v1_compiler_infer_types::{child_type_node, is_coproduct_type};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Connective::NoConnective;
+use crate::v1_std_core::MatchPattern::*;
+use crate::v1_std_core::UnaryOpKind::*;
 pub use crate::v1_std_core::{authored_name_at, generic_param_name_at, param_node_type_expr};
 pub use crate::v1_std_core::{Connective, NewlineIndex, Node};
+pub use crate::v1_std_core::{MatchPattern, UnaryOpKind};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
