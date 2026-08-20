@@ -1,0 +1,109 @@
+module test.claim.live_deploy_workflow_witness
+
+import std.types { Bool, String }
+import gunbc.live_deploy_workflow { expected_deploy_yml }
+import gunbc.ci_spec {
+  gunbc_ci_advance_fleet_desired_script,
+  gunbc_ci_advance_fleet_desired_shell_emit_dissolution_trigger,
+}
+import std.dissolution { dissolution_description }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE DEPLOY WORKFLOW EMITS, AND WHAT IT EMITS IS THE ACTUATION THAT WAS MISSING.
+//
+// These claims read the emitted YAML rather than the Workflow value, because the value being
+// well-formed was never in doubt -- gunbc.ci_spec described a correct deploy stage for weeks while
+// nothing performed it. What was missing is a file GitHub reads. The subject here is therefore the
+// serialized artifact.
+test fn the_deploy_workflow_emits_a_job_that_runs_the_modeled_apply() -> Bool {
+  let yml = expected_deploy_yml()
+  string_contains(s: yml, pattern: "name: deploy")
+    && string_contains(s: yml, pattern: "dag/gunbc/live_deploy/apply.dag")
+    && string_contains(s: yml, pattern: "live_deploy_apply_srv1_wet")
+}
+
+// It must run ON the host it deploys. The apply admits LocalShell with principal ghrunner and
+// refuses every other transport by construction (gunbc.host_effect_realize
+// live_deploy_apply_candidate_locus_refusal), so a workflow scheduled onto a hosted runner would
+// emit a file that can never converge -- it would refuse at the access gate on every run.
+test fn the_deploy_job_is_pinned_to_the_target_host_runner() -> Bool {
+  string_contains(s: expected_deploy_yml(), pattern: "srv1")
+}
+
+// PUSH ON MAIN, NEVER ON A PULL REQUEST. A deploy is a host mutation and a proposed change is not
+// an admitted one; a pull_request trigger would put every open branch on the production host. This
+// asserts the presence of the push trigger AND the absence of the pull_request one, because the
+// dangerous direction is the one that is easy to add by accident.
+test fn the_deploy_workflow_triggers_on_main_and_never_on_a_pull_request() -> Bool {
+  let yml = expected_deploy_yml()
+  string_contains(s: yml, pattern: "push:")
+    && string_contains(s: yml, pattern: "branches: [main]")
+    && !string_contains(s: yml, pattern: "pull_request")
+}
+
+// THE TOKEN MUST BE ABLE TO WRITE. The last step pushes refs/fleet/desired; a read-only grant
+// would 403 there, and it would do so AFTER the deploy had converged -- leaving the host serving a
+// revision the fleet does not admit, which is the precise state srv1 sat in for weeks. Asserted
+// against the emitted permission rather than the model field so a serializer that dropped it reds.
+test fn the_deploy_job_can_write_the_ref_it_advances() -> Bool {
+  string_contains(s: expected_deploy_yml(), pattern: "contents: write")
+}
+
+// THE REF ADVANCE IS A COMPARE-AND-SWAP. A blind push would silently overwrite a concurrent
+// advance; the lease turns a lost update into a failed step. Both halves are asserted: the
+// force-with-lease spelling carrying an expected-prior, and the create arm for a ref that does not
+// exist yet (force-with-lease has nothing to hold against in that case).
+//
+// Read from gunbc.ci_spec, which OWNS this script, rather than from a copy in the workflow module.
+// The first cut of this witness asserted against a re-derivation, so it would have stayed green
+// while the two spellings drifted apart -- a claim over a fork proves the fork is self-consistent
+// and nothing about the authority.
+test fn the_fleet_desired_advance_is_a_compare_and_swap() -> Bool {
+  let script = gunbc_ci_advance_fleet_desired_script()
+  string_contains(s: script, pattern: "--force-with-lease=\"$DESIRED_REF:$CURRENT\"")
+    && string_contains(s: script, pattern: "refs/fleet/desired")
+    && string_contains(s: script, pattern: "if [ -z \"$CURRENT\" ]")
+}
+
+// ORDER IS THE CLAIM, and it is the one the outage taught. The provider runtime is materialized
+// before the deploy, because a dashboard whose provider binary is absent serves but cannot
+// dispatch -- srv1's exact state. The ref advance comes last, because that ref is the belt's
+// admission gate: advancing it before the deploy converges would announce a revision as desired
+// while the host serving it is still mid-apply. A failed deploy must therefore leave the ref alone.
+//
+// Asserted by SPLITTING the emitted text at the apply step and interrogating the prefix, rather
+// than by three independent containment checks -- presence alone cannot see order, and order is
+// the whole claim. The runtime step must appear before the apply; the advance must not.
+test fn the_deploy_steps_run_in_the_order_the_outage_taught() -> Bool {
+  let yml = expected_deploy_yml()
+  let before_apply = split(s: yml, delimiter: "live_deploy_apply_srv1_wet").first()
+  string_contains(s: yml, pattern: "materialize_codex_runtime_on_local_host")
+    && string_contains(s: yml, pattern: "fleet-desired")
+    && string_contains(s: before_apply, pattern: "materialize_codex_runtime_on_local_host")
+    && !string_contains(s: before_apply, pattern: "fleet-desired")
+}
+
+// THE EMITTED WORKFLOW CONSUMES THE SHARED SCRIPT, not a look-alike. This keeps the de-fork from
+// silently regressing: a future local copy could still emit a plausible CAS advance while no longer
+// coming from the authority, and a containment check for "force-with-lease" would pass on the fork.
+//
+// The join is on the AUTHORITY'S DISSOLUTION DESCRIPTION, which only gunbc.ci_spec can produce --
+// the script prefixes itself with it, so its presence in the emitted bytes proves the emitted step
+// was rendered from that function rather than from a re-derivation. A fork would have to copy the
+// trigger too, which is the point: it would then be visibly re-declaring admitted debt it does not
+// own.
+//
+// It is NOT a join on the script text itself. The first cut asserted exactly that and went RED,
+// correctly: a run: block is emitted as a YAML block scalar, so every line is indented and the raw
+// script is not a substring of the document. That failure is kept in mind here rather than papered
+// over -- the claim now joins on a single line, which survives the indentation the serializer adds.
+test fn the_emitted_workflow_carries_the_authoritys_own_advance_script() -> Bool {
+  let yml = expected_deploy_yml()
+  let marker = dissolution_description(
+    condition: gunbc_ci_advance_fleet_desired_shell_emit_dissolution_trigger,
+  )
+  string_contains(s: yml, pattern: marker)
+    && string_contains(s: gunbc_ci_advance_fleet_desired_script(), pattern: marker)
+}

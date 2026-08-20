@@ -36,6 +36,7 @@ import v2.std.collection { List, Map, empty_map, map_insert }
 import v2.std.diagnostic { EmitDirective, Outcome, bind_outcome, outcome_accepted }
 import v2.std.orchestration { EnvBinding, EnvSet, EnvUnset, Run }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+import extdeps.posix.shell_command_language { posix_single_quote }
 import v2.std.node {
   Atom,
   Conj,
@@ -702,12 +703,10 @@ fn bash_binding_spellings() -> Map<Symbol, String> {
   map_insert(m9, ^bash_binding_exit_code_0, "0")
 }
 
-fn bash_single_quote(spelling: String) -> String {
-  concat("'", concat(replace(spelling, "'", "'\\''"), "'"))
-}
+data bash_single_quote_provenance_note: String = "Single-quote wrap-and-escape moved to extdeps.posix.shell_command_language posix_single_quote (operator finding, 2026-08-19): it is a POSIX shell command language fact, not a bash-specific one -- Bash and gunbc.remote_shell_command both cite IEEE 1003.1-2017 section 2.2.2 for the same encoding, so the rule has one home matching its one cited authority. bash_single_quote_spaced calls the imported posix_single_quote directly rather than through a bash-local re-export."
 
 fn bash_single_quote_spaced(spelling: String) -> String {
-  concat(" ", bash_single_quote(spelling: spelling))
+  concat(" ", posix_single_quote(spelling: spelling))
 }
 
 fn bash_var_ref_spelling(spelling: String) -> String {
@@ -715,7 +714,7 @@ fn bash_var_ref_spelling(spelling: String) -> String {
 }
 
 fn bash_token_class_emit_transforms() -> Map<Symbol, fn(String) -> String> {
-  let m0 = map_insert(empty_map(), ^bash_token_lit, bash_single_quote)
+  let m0 = map_insert(empty_map(), ^bash_token_lit, posix_single_quote)
   let m1 = map_insert(m0, ^bash_token_lit_spaced, bash_single_quote_spaced)
   map_insert(m1, ^bash_token_var_ref, bash_var_ref_spelling)
 }

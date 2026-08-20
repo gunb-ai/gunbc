@@ -307,26 +307,32 @@ type ExecutionSemantics {
 
 type ValueInterpreter {
   allocate_literal: fn(Node, EvaluationEnvironment) -> Outcome<RuntimeValue>
+  identity: Symbol
 }
 
 type TransformInterpreter {
   call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> Outcome<RuntimeValue>
+  identity: Symbol
 }
 
 type BranchInterpreter {
   choose_branch: fn(Node, RuntimeValue, EvaluationEnvironment) -> Outcome<Node>
+  identity: Symbol
 }
 
 type LoopInterpreter {
   step_loop: fn(Node, EvaluationEnvironment) -> Outcome<ControlTransfer>
+  identity: Symbol
 }
 
 type BindInterpreter {
   bind_value: fn(EnvironmentBindingKey, RuntimeValue, EvaluationEnvironment) -> Outcome<EvaluationEnvironment>
+  identity: Symbol
 }
 
 type MatchInterpreter {
   choose_arm: fn(Node, RuntimeValue, EvaluationEnvironment) -> Outcome<Node>
+  identity: Symbol
 }
 
 type InterpretationAlgebra {

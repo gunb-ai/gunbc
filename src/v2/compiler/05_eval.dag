@@ -73,7 +73,6 @@ import v2.std.runtime {
   effect_handler_for_kind,
   environment_binding_key_for_symbol,
   interpretation_behavior_dispatch,
-  runtime_reject_match_arm,
   runtime_value_node_projection,
   runtime_value_resolved_type
 }
@@ -179,13 +178,7 @@ import v2.extdeps.runtimes.v2_effect_io_pure {
 }
 import v2.extdeps.runtimes.v2_evaluator {
   V4EvaluatorRuntime,
-  v2_eval_allocate_literal,
-  v2_eval_bind_value,
-  v2_eval_call_primitive,
-  v2_eval_choose_branch,
   v2_eval_is_literal_shaped_node,
-  v2_eval_represent_literal,
-  v2_eval_step_loop,
   v2_evaluator_interpretation_structure_witness,
   v2_evaluator_interpretation,
   v2_evaluator_runtime
@@ -347,107 +340,51 @@ fn interpretation_structure_witness_digest(
 }
 
 fn interpretation_value_interpreter_executed_digest(v: ValueInterpreter) -> Hash {
-  if v.allocate_literal == v2_eval_allocate_literal {
-    test_claim_symbol_digest(sym: ^v2_eval_allocate_literal_sym)
-  } else if v.allocate_literal == v2_eval_represent_literal {
-    test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_fn_slot_represent_literal_tag)
-  } else {
-    test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_fn_slot_unregistered_allocate_tag)
-  }
+  test_claim_symbol_digest(sym: v.identity)
 }
 
 fn interpretation_transform_interpreter_executed_digest(t: TransformInterpreter) -> Hash {
-  if t.call_primitive == v2_eval_call_primitive {
-    test_claim_symbol_digest(sym: ^v2_eval_call_primitive_sym)
-  } else {
-    test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_fn_slot_unregistered_call_primitive_tag)
-  }
+  test_claim_symbol_digest(sym: t.identity)
 }
 
 fn interpretation_branch_interpreter_executed_digest(b: BranchInterpreter) -> Hash {
-  if b.choose_branch == v2_eval_choose_branch {
-    test_claim_symbol_digest(sym: ^v2_eval_choose_branch_sym)
-  } else {
-    test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_fn_slot_unregistered_branch_tag)
-  }
+  test_claim_symbol_digest(sym: b.identity)
 }
 
 fn interpretation_loop_interpreter_executed_digest(l: LoopInterpreter) -> Hash {
-  if l.step_loop == v2_eval_step_loop {
-    test_claim_symbol_digest(sym: ^v2_eval_step_loop_sym)
-  } else {
-    test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_fn_slot_unregistered_loop_tag)
-  }
+  test_claim_symbol_digest(sym: l.identity)
 }
 
 fn interpretation_bind_interpreter_executed_digest(b: BindInterpreter) -> Hash {
-  if b.bind_value == v2_eval_bind_value {
-    test_claim_symbol_digest(sym: ^v2_eval_bind_value_sym)
-  } else {
-    test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_fn_slot_unregistered_bind_tag)
-  }
+  test_claim_symbol_digest(sym: b.identity)
 }
 
-// match_pattern's InterpretationAlgebra sibling is the match slot: choose_arm.
-// The registered v4 evaluator wires choose_arm to runtime_reject_match_arm (Match
-// eval is unimplemented, not absent), so that is the recognized identity here,
-// same as every other slot recognizing its registered production function.
 fn interpretation_match_interpreter_executed_digest(m: MatchInterpreter) -> Hash {
-  if m.choose_arm == runtime_reject_match_arm {
-    test_claim_symbol_digest(sym: ^runtime_reject_match_arm)
-  } else {
-    test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_fn_slot_unregistered_match_tag)
-  }
+  test_claim_symbol_digest(sym: m.identity)
 }
 
 fn interpretation_value_interpreter_slot_coherent(v: ValueInterpreter, witness_sym: Symbol) -> Bool {
-  if v.allocate_literal == v2_eval_allocate_literal {
-    test_claim_symbol_digest(sym: ^v2_eval_allocate_literal_sym) == test_claim_symbol_digest(sym: witness_sym)
-  } else if v.allocate_literal == v2_eval_represent_literal {
-    test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_fn_slot_represent_literal_tag) == test_claim_symbol_digest(sym: witness_sym)
-  } else {
-    false
-  }
+  v.identity == witness_sym
 }
 
 fn interpretation_transform_interpreter_slot_coherent(t: TransformInterpreter, witness_sym: Symbol) -> Bool {
-  if t.call_primitive == v2_eval_call_primitive {
-    test_claim_symbol_digest(sym: ^v2_eval_call_primitive_sym) == test_claim_symbol_digest(sym: witness_sym)
-  } else {
-    false
-  }
+  t.identity == witness_sym
 }
 
 fn interpretation_branch_interpreter_slot_coherent(b: BranchInterpreter, witness_sym: Symbol) -> Bool {
-  if b.choose_branch == v2_eval_choose_branch {
-    test_claim_symbol_digest(sym: ^v2_eval_choose_branch_sym) == test_claim_symbol_digest(sym: witness_sym)
-  } else {
-    false
-  }
+  b.identity == witness_sym
 }
 
 fn interpretation_loop_interpreter_slot_coherent(l: LoopInterpreter, witness_sym: Symbol) -> Bool {
-  if l.step_loop == v2_eval_step_loop {
-    test_claim_symbol_digest(sym: ^v2_eval_step_loop_sym) == test_claim_symbol_digest(sym: witness_sym)
-  } else {
-    false
-  }
+  l.identity == witness_sym
 }
 
 fn interpretation_bind_interpreter_slot_coherent(b: BindInterpreter, witness_sym: Symbol) -> Bool {
-  if b.bind_value == v2_eval_bind_value {
-    test_claim_symbol_digest(sym: ^v2_eval_bind_value_sym) == test_claim_symbol_digest(sym: witness_sym)
-  } else {
-    false
-  }
+  b.identity == witness_sym
 }
 
 fn interpretation_match_interpreter_slot_coherent(m: MatchInterpreter, witness_sym: Symbol) -> Bool {
-  if m.choose_arm == runtime_reject_match_arm {
-    test_claim_symbol_digest(sym: ^runtime_reject_match_arm) == test_claim_symbol_digest(sym: witness_sym)
-  } else {
-    false
-  }
+  m.identity == witness_sym
 }
 
 fn interpretation_structure_witness_coherent(
