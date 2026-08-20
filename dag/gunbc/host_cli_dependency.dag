@@ -8,7 +8,7 @@ import v2.std.optional { Optional, Present, Absent, optional_absent, optional_pr
 
 data host_cli_dependency_authority_note: String = "Host CLI placement for wet witnesses: observe whether an executable is on PATH before attempting shell transport. A missing npm on the falsifier runner surfaced as runtime error: failed to execute npm (os error 2) and classified as WitnessRed — indistinguishable from a subject failure. This module refuses BEFORE execution with a typed wire HostDependencyAbsent with tool and hint fields that claim_executor reads structurally (falsifier recovery PR D, run 31685755058 component 6). ENROLLMENT ANSWER: codex_wet_materialization_host_cli_requirements on this module; absent npm stops as HostDependencyAbsent, never auto-install inside the witness."
 
-data which_path_realization_limit_note: String = "observe_host_cli_dependency keys on shell.Which.Check.exists (Bool from exit_success), NOT .path: under WET execution .path is a bare stdout string, not Optional, and matching it raises non-exhaustive pattern match on the healthy path — the Value::Null / Optional realization fork (DESIGN open thread). Same limit as gunbc.roadmap_belt_actuate belt_program_available_note and falsifier-recovery PR A. Resolved path is blocked until the split lands; locality is unestablished."
+data which_path_realization_limit_note: String = "observe_host_cli_dependency keys on shell.PosixCommandV.Check.exists (Bool from exit_success), NOT .path: under WET execution .path is a bare stdout string, not Optional, and matching it raises non-exhaustive pattern match on the healthy path — the Value::Null / Optional realization fork (DESIGN open thread). Same limit as gunbc.roadmap_belt_actuate belt_program_available_note and falsifier-recovery PR A. Resolved path is blocked until the split lands; locality is unestablished. (This module migrated off shell.Which.Check to shell.PosixCommandV.Check -- crisp-wren-896, PR #8590 -- because gunbc.ci_fleet's own CI/falsifier runner carries the identical distro_or_product: none as srv1-4, so the operational apt-install evidence that once justified `which` here does not establish it as a fact the typed model carries; command -v's weaker, dominant assumption holds everywhere `which` did and does not depend on that evidence.)"
 
 data falsifier_run_31685755058_wall_receipt_note: String = "Part-two wall arithmetic CONFIRMED from floor-component-receipt run 31685755058 (not inherited): component 1 cold control wall_ms=3480830 (~58.0 min, 9016 witnesses); component 6 wall_ms=2946579 (~49.1 min, 16 witnesses, npm absent WitnessRed before this PR); components 7-9 outcome=skipped failure_mode=run_incomplete wall_ms=0 witnesses=0 — never executed before the 170-minute step cap. Batch-1 cold-control cost is a separate lane; this PR does not raise deadline/swap/max-parallel."
 
@@ -29,7 +29,7 @@ type HostCliDependencyObservation
   | HostCliDependencyAbsent { tool: NonEmptyStr, hint: String }
 
 fn observe_host_cli_dependency(tool: CliTool) -> HostCliDependencyObservation {
-  let check = shell.Which.Check(command: tool.name)
+  let check = shell.PosixCommandV.Check(command: tool.name)
   if check.exists {
     HostCliDependencyPresent
   } else {

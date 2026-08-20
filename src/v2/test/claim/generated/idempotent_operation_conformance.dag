@@ -129,22 +129,28 @@ fn idempotent_operation_eval_context() -> EvalContext {
     runtime_identity: ^idempotent_operation_eval_runtime,
     interpretation: InterpretationAlgebra {
       value: ValueInterpreter {
-        allocate_literal: idempotent_operation_allocate_literal
+        allocate_literal: idempotent_operation_allocate_literal,
+        identity: ^idempotent_operation_allocate_literal
       },
       transform: TransformInterpreter {
-        call_primitive: idempotent_operation_call_primitive
+        call_primitive: idempotent_operation_call_primitive,
+        identity: ^idempotent_operation_call_primitive
       },
       branch: BranchInterpreter {
-        choose_branch: idempotent_operation_choose_branch
+        choose_branch: idempotent_operation_choose_branch,
+        identity: ^idempotent_operation_choose_branch
       },
       loop: LoopInterpreter {
-        step_loop: idempotent_operation_step_loop
+        step_loop: idempotent_operation_step_loop,
+        identity: ^idempotent_operation_step_loop
       },
       bind: BindInterpreter {
-        bind_value: idempotent_operation_bind_value
+        bind_value: idempotent_operation_bind_value,
+        identity: ^idempotent_operation_bind_value
       },
     match: MatchInterpreter {
-      choose_arm: runtime_reject_match_arm
+      choose_arm: runtime_reject_match_arm,
+      identity: ^runtime_reject_match_arm
     }
     },
     structure_witness: idempotent_operation_interpretation_structure_witness()
