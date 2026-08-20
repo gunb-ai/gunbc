@@ -362,11 +362,15 @@ fn stage0_src_direct_child_rust_path(path: String) -> Bool {
 }
 
 fn derived_generated_stage0_repo_paths(tracked_paths: List<String>) -> List<String> {
+  // Hoisted, not inlined into the predicate: non_generated_classified_repo_paths() folds
+  // three rosters through list_concat_unique, which is quadratic in its own length, and
+  // calling it per tracked path would multiply that by the whole observed tree.
+  let claimed = non_generated_classified_repo_paths()
   filter(
     xs: tracked_paths,
     predicate: fn(path) {
       stage0_src_direct_child_rust_path(path: path)
-        && !path_in_list(path: path, paths: non_generated_classified_repo_paths())
+        && !path_in_list(path: path, paths: claimed)
     }
   )
 }
