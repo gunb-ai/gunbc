@@ -195,7 +195,7 @@ fn reconcile_residual_reap(
 }
 
 data gunbc_host_hygiene_reaper_show_effective_read: ShowEffectiveRead<List<ResidualSlotObservation>> = ReadAbsent {
-  reason: "no live per-slot cgroup/system.control read has run on the fleet hosts yet; pure .dag model, the live verify is the later increment"
+  reason: "this is the pure/CI-hermetic default read (deliberately never observed — this .dag has no shell transport and CI's floor is hermetic-only); the live per-slot cgroup/system.control read runs through gunbc.host_hygiene_reaper_observe.gunbc_host_hygiene_reaper_live_evidence(), which this module does not import to avoid a cycle back onto its own decision core"
 }
 
 fn gunbc_host_hygiene_reaper_evidence() -> Reconciliation<String, ResidualReapEvidence> {

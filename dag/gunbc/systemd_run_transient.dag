@@ -1,0 +1,121 @@
+module gunbc.systemd_run_transient
+
+import std.types { String, NonEmptyStr, List, Bool }
+import extdeps.systemd.systemd_run
+import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
+import v2.std.operation_argv {
+  ArgvMaterialization,
+  ArgvMaterialized,
+  ArgvMaterializationRefused,
+  operation_argv_bind_text,
+  operation_argv_bind_text_list,
+  operation_argv_cause_label,
+}
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.typed_argv_exec {
+  typed_argv_exec_over_fleet_ssh,
+  typed_argv_exec_over_ssh,
+  typed_argv_shell_safe_refusal_argv,
+  TypedArgvExecConverged,
+  TypedArgvExecRefused,
+}
+
+data systemd_run_transient_path: String = "dag/extdeps/systemd/systemd_run.dag"
+data systemd_run_transient_service: String = "systemd.SystemdRun"
+data systemd_run_transient_operation: String = "RunTransient"
+
+type SystemdRunTransientOutcome =
+    SystemdRunTransientStarted { stdout: String }
+  | SystemdRunTransientRefused { reason: String }
+
+fn systemd_run_transient_operation_argv(unit: NonEmptyStr, command_argv: List<String>) -> ArgvMaterialization {
+  shell_materialize_operation_argv(
+    systemd_run_transient_path,
+    systemd_run_transient_service,
+    systemd_run_transient_operation,
+    [
+      operation_argv_bind_text(name: "unit", text: unit as String),
+      operation_argv_bind_text_list(name: "command_argv", items: command_argv),
+    ]
+  )
+}
+
+fn systemd_run_transient_outcome_from_result(success: Bool, stdout: String, stderr: String) -> SystemdRunTransientOutcome {
+  if success {
+    SystemdRunTransientStarted { stdout: stdout }
+  } else {
+    SystemdRunTransientRefused { reason: stderr }
+  }
+}
+
+fn systemd_run_transient_local(unit: NonEmptyStr, command_argv: List<String>) -> SystemdRunTransientOutcome {
+  let result = systemd.SystemdRun.RunTransient(unit: unit, command_argv: command_argv)
+  systemd_run_transient_outcome_from_result(success: result.success, stdout: result.stdout, stderr: result.stderr)
+}
+
+fn systemd_run_transient_outcome_from_exec(outcome: TypedArgvExecOutcome) -> SystemdRunTransientOutcome {
+  match outcome {
+    TypedArgvExecConverged { result: r } =>
+      systemd_run_transient_outcome_from_result(success: r.success, stdout: r.stdout, stderr: r.stderr)
+    TypedArgvExecRefused { reason: why } => SystemdRunTransientRefused { reason: why }
+  }
+}
+
+fn systemd_run_transient_ssh_argv(host: NonEmptyStr, argv: List<String>) -> SystemdRunTransientOutcome {
+  match typed_argv_shell_safe_refusal_argv(argv: argv) {
+    Present { value: why } => SystemdRunTransientRefused { reason: why }
+    Absent => systemd_run_transient_outcome_from_exec(outcome: typed_argv_exec_over_ssh(host: host, argv: argv))
+  }
+}
+
+fn systemd_run_transient_ssh(host: NonEmptyStr, unit: NonEmptyStr, command_argv: List<String>) -> SystemdRunTransientOutcome {
+  match systemd_run_transient_operation_argv(unit: unit, command_argv: command_argv) {
+    ArgvMaterialized { argv: argv } => systemd_run_transient_ssh_argv(host: host, argv: argv)
+    ArgvMaterializationRefused { at: _, cause: c } =>
+      SystemdRunTransientRefused { reason: operation_argv_cause_label(cause: c) }
+  }
+}
+
+fn systemd_run_transient_fleet_ssh(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  unit: NonEmptyStr,
+  command_argv: List<String>,
+) -> SystemdRunTransientOutcome {
+  match systemd_run_transient_operation_argv(unit: unit, command_argv: command_argv) {
+    ArgvMaterialized { argv: argv } =>
+      systemd_run_transient_outcome_from_exec(
+        outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv),
+      )
+    ArgvMaterializationRefused { at: _, cause: c } =>
+      SystemdRunTransientRefused { reason: operation_argv_cause_label(cause: c) }
+  }
+}
+
+fn systemd_run_transient_read(
+  transport: HostEffectTransport,
+  unit: NonEmptyStr,
+  command_argv: List<String>,
+) -> SystemdRunTransientOutcome {
+  match transport {
+    LocalShell => systemd_run_transient_local(unit: unit, command_argv: command_argv)
+    SshShell { ssh_host: h } => systemd_run_transient_ssh(host: h, unit: unit, command_argv: command_argv)
+    FleetSsh { target: t, context: c } => systemd_run_transient_fleet_ssh(target: t, context: c, unit: unit, command_argv: command_argv)
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      SystemdRunTransientRefused {
+        reason: "systemd-run transient start refused EmitArtifactThenThinRun transport",
+      }
+  }
+}
+
+fn systemd_run_transient_operation_argv_matches_authority(unit: NonEmptyStr, command_argv: List<String>) -> Bool {
+  let authority = fold(
+    command_argv,
+    init: ["systemd-run", concat("--unit=", unit as String), "--collect", "--"],
+    f: (acc, arg) => list_push(acc, arg),
+  )
+  match systemd_run_transient_operation_argv(unit: unit, command_argv: command_argv) {
+    ArgvMaterialized { argv: materialized } => join(materialized, " ") == join(authority, " ")
+    ArgvMaterializationRefused { at: _, cause: _ } => false
+  }
+}

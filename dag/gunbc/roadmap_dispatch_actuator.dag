@@ -1298,6 +1298,25 @@ fn tmux_spawn_argv(session_name: String, worktree_path: String, claude_argv: Lis
 
 data dispatch_event_pipe_seam_note: String = "tmux pipe-pane is the one foreign-executor seam in attempt capture: upstream requires a shell-command payload. TmuxPipeCommand bounds that residue. The earlier session-environment design was rejected by live execution because pipe processes did not inherit tmux set-environment values and created no file. Staging order is state directory -> idle exact-shell pane -> default-shell -> remain-on-exit -> quoted pipe -> typed provider respawn, so the first provider byte and a fast nonzero exit are both observable. The payload itself is no longer constructed here: gunbc.dispatch_pipe_pane_emit builds it as a bash AST and renders it through the signed serializer (review 44063), which is why this module now imports an EMISSION rather than joining a command: a serializer refusal has no command to hand back, so dispatch_spawn_commands_for_instance refuses the whole plan instead of staging one (review 44113)."
 
+// THE PUBLICATION DIRECTORY IS PREPARED WITH THE ATTEMPT DIRECTORY, IN ONE install -d, and the
+// reason it is here rather than on the write path is that the write path cannot create it. The
+// Filesystem.Write intrinsic is a bare write with no parent creation, and it emits its
+// `[file] write <path>` trace BEFORE attempting -- so a publication receipt written into a
+// directory that does not exist logs exactly like a successful write and fails with ENOENT, which
+// is how this went unnoticed. Measured on srv1 2026-08-19: zero of twelve attempt directories had
+// a publication/ subdirectory, and every publish pass reported failed while the journal showed the
+// write line for each one.
+//
+// It is not a deploy member either, and that distinction is the whole design point. The receipts
+// directory (gunbc.host_layout instance_receipts_dir) IS bootstrapped at apply time because there
+// is exactly one per instance; a publication directory belongs to an ATTEMPT, which is minted at
+// runtime long after any apply, so a deploy member could only ever create directories that do not
+// exist yet. The attempt's own prepare step is the earliest moment the path is known.
+//
+// install -d takes a list, so this is the same single command with a second directory rather than
+// a new step -- the attempt directory and the one subdirectory it is required to contain come into
+// existence together, and publication_receipt_directory_is_named_once_note's requirement that a
+// reader be able to LIST the directory holds from attempt birth instead of from first publish.
 fn attempt_state_prepare_argv_for_instance(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,
@@ -1312,6 +1331,11 @@ fn attempt_state_prepare_argv_for_instance(
       "-d",
       "-m", "0700",
       dispatch_attempt_state_path_for_instance(
+        instance: instance,
+        node_id: node_id,
+        attempt_key: attempt_key,
+      ),
+      dispatch_attempt_publication_dir_for_instance(
         instance: instance,
         node_id: node_id,
         attempt_key: attempt_key,
