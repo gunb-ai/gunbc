@@ -39644,6 +39644,16 @@ pub struct RequiredFloorOutcome {
     /// — counting a claim that never ran as green — is exactly the specification-without-
     /// execution DESIGN §5 forbids, one level up from where the decline used to hide it.
     pub route_gap: Vec<String>,
+    /// AN ENROLLED ROUTE GAP THAT DID NOT GAP — the roster's other direction, and the half that
+    /// makes it shrink rather than accumulate.
+    ///
+    /// A route was supplied, or the witness stopped reaching for the effect, so the enrollment
+    /// is stale. It BLOCKS for the same reason a stale expected-red row does: a repayment that
+    /// is silently absorbed is a repayment nobody is required to record, and the roster then
+    /// stops being a debt ledger and becomes a place rows go to be forgotten. Its remedy —
+    /// delete the row — is different from every other blocking cause here, which is why it is
+    /// its own collection and not folded into `route_gap`.
+    pub stale_route_gap: Vec<String>,
     pub over_warn: usize,
     /// DIAGNOSTIC ONLY, NEVER ADMISSION. A `VerdictReached` claim whose exact cost (on the
     /// `RequiredFloorCostBasis` clock) exceeded `required_floor_claim_cost_line_ms`, per
@@ -40873,6 +40883,7 @@ pub fn run_required_floor(
         completed_over_cost_requirement: Vec::new(),
         host_tool_unresolved: Vec::new(),
         route_gap: Vec::new(),
+        stale_route_gap: Vec::new(),
         over_warn: 0,
         over_cost_line_diagnostic: 0,
         failures: Vec::new(),
@@ -40941,6 +40952,11 @@ pub fn run_required_floor(
     let mut known_red_passed_over_budget: usize = 0;
     let mut known_red_host_tool_unresolved: usize = 0;
     let mut known_red_host_effect_refused: usize = 0;
+    // WHICH ENROLLED ROUTE-GAP IDENTITIES ACTUALLY GAPPED, for the reverse join below. Without
+    // it the roster is a one-way lookup that only ever asks "is this gap enrolled" and never
+    // "is this enrollment still real", which is exactly how a skip list rots.
+    let mut route_gap_seen: HashSet<String> = HashSet::new();
+    let mut route_gap_held: usize = 0;
     let mut expected_red_seen: HashSet<String> = HashSet::new();
     let mut claim_rss_kb_max: u64 = 0;
     let mut claim_rss_kb_max_row = String::new();
@@ -41273,14 +41289,24 @@ pub fn run_required_floor(
                         ),
                         other => format!("{other:?}"),
                     };
-                    outcome.route_gap.push(format!(
-                        "{} is enrolled as expected-red but ROUTE-GAPPED, not failed: {}. \
-                         Enrollment asserts an expected verdict; a claim that never reached its \
-                         subject produced none. Supply the route (publish the mock case, author \
-                         the mock_response, or enroll the identity in a wet lane) — do not read \
-                         this as the enrolled failure.",
-                        claim.qualified, detail
-                    ));
+                    // THE TWO ROSTERS ARE DIFFERENT AXES, AND THIS ROW SITS ON BOTH. Being
+                    // enrolled as expected-red says nothing about whether the floor has a route
+                    // that can run the identity, so the route-gap roster is consulted here
+                    // exactly as it is for an unenrolled row — the expected-red enrollment does
+                    // not cover the gap, and the gap does not discharge the enrollment.
+                    route_gap_seen.insert(claim.qualified.clone());
+                    if route_gap_roster.contains(claim.qualified.as_str()) {
+                        route_gap_held += 1;
+                    } else {
+                        outcome.route_gap.push(format!(
+                            "{} is enrolled as expected-red but ROUTE-GAPPED, not failed: {}. \
+                             Enrollment asserts an expected verdict; a claim that never reached \
+                             its subject produced none. Supply the route (publish the mock case, \
+                             author the mock_response, or supply a lane that can run the effect) \
+                             — do not read this as the enrolled failure.",
+                            claim.qualified, detail
+                        ));
+                    }
                     continue;
                 }
                 ExpectedRedArm::Held => {
@@ -41315,14 +41341,21 @@ pub fn run_required_floor(
             // wrong about its subject when the witness was never given a way to reach it — and
             // the two have different remedies. It still stops the line.
             ClaimOutcome::HostEffectRefused { operation, ground } => {
-                outcome.route_gap.push(format!(
-                    "{} never reached its subject: the hermetic route has no arm for {} ({}). \
-                     Supply the route — publish the mock case, author the mock_response, or \
-                     enroll the identity in a wet lane — or the claim is discovered and not run.",
-                    claim.qualified,
-                    operation,
-                    hermetic_effect_ground_label(&ground)
-                ));
+                route_gap_seen.insert(claim.qualified.clone());
+                if route_gap_roster.contains(claim.qualified.as_str()) {
+                    route_gap_held += 1;
+                } else {
+                    outcome.route_gap.push(format!(
+                        "{} never reached its subject: the hermetic route has no arm for {} \
+                         ({}). Supply the route — publish the mock case, author the \
+                         mock_response, or supply a lane that can run the effect. Enrolling the \
+                         identity in v2.workflow.floor_route_gap records the gap as known debt; \
+                         it does not make the gap acceptable.",
+                        claim.qualified,
+                        operation,
+                        hermetic_effect_ground_label(&ground)
+                    ));
+                }
             }
             ClaimOutcome::TimedOut {
                 elapsed_ms,
@@ -41476,6 +41509,46 @@ pub fn run_required_floor(
         );
     }
     outcome.known_red_held = known_red_held;
+    eprintln!(
+        "[floor-route-gap] {} enrolled identity(ies) held as route-gapped; {} unenrolled route \
+         gap(s) reported",
+        route_gap_held,
+        outcome.route_gap.len()
+    );
+    // THE ROUTE-GAP ROSTER IS A TWO-WAY JOIN, exactly as the expected-red roster is, and for
+    // exactly the same reason. Enrollment above only ever asks "is this gap enrolled". The
+    // reverse question — is every enrolled identity STILL gapping — has no consumer unless it
+    // is asked here, and without it a row survives its own repair: a route lands, the identity
+    // starts passing, and the roster keeps counting a debt that was paid.
+    //
+    // Both directions of staleness are one refusal because both have one remedy — delete the
+    // row — and separating them would ask the reader to learn two names for it. An identity
+    // that executed and did not gap, and an identity that did not execute at all (renamed,
+    // deleted, or declined), are distinguished in the message rather than in the mechanism.
+    {
+        let mut stale: Vec<&String> = route_gap_roster
+            .iter()
+            .filter(|q| !route_gap_seen.contains(*q))
+            .collect();
+        stale.sort();
+        for identity in stale {
+            let ran = receipted.contains(identity.as_str());
+            outcome.stale_route_gap.push(if ran {
+                format!(
+                    "{identity} is enrolled in v2.workflow.floor_route_gap but its route did NOT \
+                     gap — the route was supplied or the witness stopped reaching for the \
+                     effect. Delete the row; the debt is repaid."
+                )
+            } else {
+                format!(
+                    "{identity} is enrolled in v2.workflow.floor_route_gap but did not execute \
+                     at all, so no gap could be observed. It was renamed, deleted, or declined. \
+                     Delete the row or restore the identity to the routed roster — an \
+                     enrollment nothing observes is a row that can never ask to be removed."
+                )
+            });
+        }
+    }
     // THE ROSTER IS A TWO-WAY JOIN, NOT A ONE-WAY LOOKUP. Enrollment as written above only ever
     // asks "is this executing claim enrolled". The reverse question — is every enrolled identity
     // still executing — has no consumer unless it is asked here, and without it the roster rots
