@@ -7,7 +7,17 @@ import v2.extdeps.languages.dag { dag_language_model }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { fold_list, length }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.diagnostic { Accepted, None, Outcome, Rejected, outcome_accepted }
+import v2.std.diagnostic {
+  Accepted,
+  CorrectionNotModeled,
+  Diagnostic,
+  Outcome,
+  Rejected,
+  Unavailable,
+  diagnostics_singleton,
+  outcome_accepted,
+  port_locus
+}
 import v2.std.logic { Bool }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.node { Hash, Node, content_hash }
@@ -66,6 +76,18 @@ data memo_amort_ingest_bisect_add: SourceRootIngest = Cons {
   tail: Empty
 }
 
+fn memo_amort_not_single_root_rejection<T>() -> Outcome<T> {
+  Rejected {
+    diagnostics: diagnostics_singleton(
+      d: Diagnostic {
+        reason: ^memo_amort_expected_exactly_one_module_root,
+        at: port_locus(port: ^memo_amort_single_root_locus_port),
+        correction: Unavailable { reason: CorrectionNotModeled }
+      }
+    )
+  }
+}
+
 fn memo_amort_single_root_content_hash(ingest: SourceRootIngest) -> Outcome<Hash> {
   match module_roots_from_source_root_ingest(
     ingest: ingest,
@@ -76,13 +98,13 @@ fn memo_amort_single_root_content_hash(ingest: SourceRootIngest) -> Outcome<Hash
         true =>
           fold_list(
             xs: roots,
-            empty: Rejected { diagnostics: None },
+            empty: memo_amort_not_single_root_rejection(),
             cons: fn(_acc, root) {
               outcome_accepted(value: content_hash(n: root))
             }
           )
         false =>
-          Rejected { diagnostics: None }
+          memo_amort_not_single_root_rejection()
       }
     Rejected { diagnostics: d } =>
       Rejected { diagnostics: d }
