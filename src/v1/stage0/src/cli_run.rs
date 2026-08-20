@@ -40818,6 +40818,43 @@ pub fn run_required_floor(
         route_gap_roster.len()
     );
 
+    // THE TWO ROSTERS MAY NOT NAME THE SAME IDENTITY, and this refusal is the reason the split
+    // between them stays a split rather than decaying back into the conflation it was created
+    // to undo.
+    //
+    // They make CONTRADICTORY claims. Enrollment in `floor_expected_red` asserts that an
+    // identity REACHES ITS SUBJECT AND ANSWERS FALSE — a statement about a verdict. Enrollment
+    // in `floor_route_gap` asserts that it never reaches its subject at all. Both cannot be
+    // true of one identity, and the failure mode is not hypothetical: 101 identities sat in the
+    // expected-red roster for exactly this reason, held as agreed failures while producing no
+    // verdict, until the typed outcome made the difference observable. Having paid to separate
+    // them once, leaving nothing to stop them merging again would be the same defect with a
+    // longer fuse.
+    //
+    // It refuses by NAME rather than by count, because the remedy is per identity: decide which
+    // fact is true of it and delete the other row.
+    {
+        let mut both: Vec<&String> = route_gap_roster
+            .iter()
+            .filter(|q| expected_red_roster.contains(q.as_str()))
+            .collect();
+        both.sort();
+        if !both.is_empty() {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=RosterClaimsContradict count={} — these \
+                 identities are enrolled BOTH in v2.workflow.floor_expected_red (which asserts \
+                 the witness reaches its subject and answers false) AND in \
+                 v2.workflow.floor_route_gap (which asserts it never reaches its subject). Both \
+                 cannot be true. Decide which one is, and delete the other row: {}",
+                both.len(),
+                both.iter()
+                    .map(|q| q.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+    }
+
     // CONTRADICTORY-INTERSECTION WALL: `floor_expected_red_roster` (this roster — removable
     // only by an OBSERVED PASS, per its own header) and `witness_deferral_freeze`'s
     // `frozen_path_deferrals` (`LegacyFrozenPathDeferral` — admitted as NEVER EXECUTED) make
