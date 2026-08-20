@@ -1279,8 +1279,21 @@ than argued.
    without it; the committed file has the grouped form. **Rule: do not infer provenance from
    style — compare against what the producer actually produces.** **Ceiling:** structurally
    impossible; a generated artifact that cannot be hand-authored without detection is a
-   content-addressed identity question, not a comment. **Next trigger:** any consumer at all
-   reads the declaration — the nearest is the regen convergence model's observe step, whose
+   content-addressed identity question, not a comment. **Method note — attribution by mechanism from a confounded arm.** The measurement
+   that established #8607's effect contained BOTH #8607 and #8608, so on its face it could not
+   separate them. It separated them without a rerun: #8608 touched ZERO stage0 mirror files, the
+   diagnostics are constructed in code compiled into the binary, and **an authority-only change
+   cannot alter the behaviour of a binary built from an unchanged mirror.** The confound was
+   dissolved by a property of the artifacts rather than by another arm. The same run then
+   confirmed it by execution — the 5 Symbol rows #8608 targets are identical across arms that do
+   and do not contain it — so the fix is demonstrably inert *in the binary* while genuinely landed
+   *in the authority*: two true statements about different artifacts, which is the per-module
+   authority-state rule arriving as a number rather than a principle. Recorded as a technique
+   because the alternative was rerunning a four-arm measurement to break a confound that the
+   file list already answered. A companion control: the arms' commit-presence matrix is a monotone
+   staircase (lower-triangular), which cannot arise if a reset landed on the wrong tree —
+   retro-validating arm construction from data already collected. **Next trigger:** any consumer at
+   all reads the declaration — the nearest is the regen convergence model's observe step, whose
    `MembershipPlan` reports this file as `MemberChanged` by construction. **Note the interaction,
    because the remedy erases its own evidence:** convergence repairs the drift and destroys the
    only trace that a generated file was ever hand-authored, so it closes the instance and leaves
