@@ -1027,6 +1027,48 @@ than argued.
    grep is near zero, but the marginal cost of an uncontrolled grep is unbounded once its
    number enters the record. Cost scales with instruments, not with keystrokes.
 
+14. **A fixture can be emptied of the subject it exists to exhibit, and its test still passes**
+   (opened 2026-08-20; found on the namespace-cut branch, filed here rather than with that
+   incident because the CLASS is the same subject as items 11-13 — a channel reporting something
+   other than what it appears to report). **Invalid state:** a test carrying source-as-data whose
+   carried data no longer contains the construct the test is named for, while every assertion
+   still passes. **Discovery vector:** a scripted rename silently rewrote 51 string literals, of
+   which **46 were bare-to-qualified** and therefore invisible to any check comparing strings
+   that already contain dots — a bulk edit transforms CODE, where names are checked so a bad one
+   is loud, and it transforms STRING LITERALS, which are data and emit no diagnostic anywhere.
+   One rewrite moved a roster identity to a **homonym** — main carries both a discoverable
+   `test fn` and a plain lens fn named `non_fold_residue_clean_holds`, so the enrolled identity
+   moved from the executable one to the unexecutable one and the roster count stayed 306 on both
+   sides. Another would have rewritten bare target-language spellings carried as emitter data
+   (`"Node"`, `"Outcome"` in `src/v2/extdeps/languages/rust.dag`) into qualified `.dag` paths,
+   **emitting a `.dag` path as a Rust type name** — invalid Rust from a compiler that believed
+   it was correct. **Harm, and why it is distinct from the well-known weak-assertion case:** this
+   is a non-discriminating control arriving through DATA rather than through the assertion.
+   Every review habit, every RED-control discipline and every rung-honesty rule in this document
+   watches what a test ASSERTS. Nothing watches whether the fixture still CONTAINS its subject,
+   so the test keeps asserting true things about a specimen that no longer exhibits the property
+   under test. **The codemod is only one vector.** The same end state is reachable without any
+   bulk edit — a witness shrunk to fit a budget, a fixture simplified during a refactor, an
+   import removed because it looked unused — and the §4b witness-cost thread already records the
+   adjacent case where relocating an over-budget witness deleted the evidence while retaining
+   the file. **Distinguishing facts:** the test passes; the assertions are individually correct;
+   the fixture no longer contains the construct named in the test identity; counts over the
+   enclosing roster are unchanged. **Ceiling — mechanically preventable now, with a plausible
+   route to structurally impossible, and the two must not be conflated.** Preventable now: a
+   test whose fixture carries source can assert, as its first act, that the carried source
+   exhibits its subject — a positive control on the SPECIMEN rather than on the outcome. That is
+   validation and it is cheap. Structurally impossible would require the fixture to be *derived
+   from* the construct it exhibits rather than carrying an independently editable copy, at which
+   point an empty fixture has no representation; that is a real but much larger change and it is
+   not claimed here. **Next trigger:** the cheap half — establish whether a specimen-level
+   positive control can be expressed against the existing carried-source fixtures, and if so
+   whether it can be made a condition of admission rather than an author's option. **Immediate
+   operational rule, independent of any of the above:** after a bulk edit, **default to
+   restore-first** — any string literal a codemod touched is damage until proven otherwise —
+   and for each branch-only identity `a.b.C`, check whether main's *same file* carried bare
+   `"C"` as a complete literal. That is the detector for the 46-of-51 class and nobody writes it
+   by default.
+
 **These three classes are one class, and it is worth naming as such** (items 11 and 12, plus
 the ~48 unlocated synthetic `expected Product(NonEmptyStr), got Primitive(String)` mismatches
 opened against #8544). One diagnostic will not say WHY, one will not say WHERE, and one says
