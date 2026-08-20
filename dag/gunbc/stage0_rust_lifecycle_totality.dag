@@ -11,6 +11,7 @@ import gunbc.stage0_rust_host_observation {
 }
 import gunbc.stage0_rust_source_lifecycle_scaffold {
   derived_generated_stage0_repo_paths,
+  witness_generated_stage0_fixture_paths,
   disposition_authority_rows,
   lifecycle_row_well_formed,
   list_concat_unique,
@@ -261,8 +262,20 @@ fn lifecycle_decision_complete(receipt: LifecycleTotalityReceipt) -> Bool {
   }
 }
 
+// The fixture cannot derive its tracked list from the classified population any more: the
+// generated half is now a FUNCTION of the tracked list, so that would be circular -- the
+// observation would contain only what it already named and could never exercise the filter.
+// It is built the other way round, from the authored dispositions plus the scaffold's
+// synthetic generated fixture paths, which the derivation then re-finds as generated.
+fn lifecycle_totality_witness_classified_paths() -> List<String> {
+  list_concat_unique(
+    acc: witness_generated_stage0_fixture_paths,
+    items: well_formed_maintenance_disposition_paths()
+  )
+}
+
 fn lifecycle_totality_witness_observation(extra_paths: List<String>) -> RustManifestObserved {
-  let classified = derived_file_grain_classified_repo_paths()
+  let classified = lifecycle_totality_witness_classified_paths()
   RustManifestObserved {
     repository_revision: "witness-deadbeef",
     manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
