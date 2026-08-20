@@ -47,9 +47,26 @@ import std.types { String }
 // THIS WORKFLOW NO LONGER ADVANCES THE FLEET'S ADMITTED REVISION, and the paragraph that used to
 // end here explained why that advance came last: the ref is the belt's admission gate, so advancing
 // it mid-apply would tell every host a revision is desired while the host serving it is still
-// converging. That ordering argument was right and is preserved by the move rather than discarded --
-// the advance now lives in gunbc.fleet_desired_admission_workflow, which cannot run until the
-// required floor has completed, which is strictly after this workflow has finished or failed.
+// converging.
+//
+// THAT ORDERING GUARANTEE IS GONE, AND SAYING IT SURVIVED THE MOVE WOULD BE FALSE. An earlier
+// revision of this annotation claimed the admission "cannot run until the required floor has
+// completed, which is strictly after this workflow has finished or failed". There is no such
+// dependency: this workflow and the floor BOTH trigger on push to the default branch and run in
+// parallel, and nothing sequences them. The floor takes about thirty minutes against roughly ten
+// here, so in practice the admission does land later -- but this workflow's concurrency group is a
+// queue, so a deploy waiting behind another deploy can still be running when the floor completes.
+// Typical is not guaranteed, and an annotation that says "strictly" about a race is the prose half
+// of the fail-open class this module's own history is made of.
+//
+// WHY THE LOST GUARANTEE IS ACCEPTABLE RATHER THAN A REGRESSION, which is the claim that actually
+// needed making: refs/fleet/desired is a TARGET, not an observation of what is deployed.
+// gunbc.fleet_main_revision defines it as the revision hosts converge TOWARD, and the anti-entropy
+// property it buys is precisely that a host which has not yet applied it keeps serving
+// last-known-good while saying so. A host sitting behind an advanced ref reads RevisionDrifted and
+// refuses dispatch loudly, carrying both revisions -- the declared behaviour, not a silent gap. The
+// original ordering argument was defending against a SILENT window, and there is none: the failure
+// it feared is a typed refusal either way.
 //
 // What the advance emitted here could NOT do is the reason it moved. gunbc.fleet_main_revision
 // requires the desired revision to derive from merged, FLOOR-GREEN main, and the floor takes about
