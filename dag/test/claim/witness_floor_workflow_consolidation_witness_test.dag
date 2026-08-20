@@ -39,14 +39,26 @@ test fn w_no_phase_precondition_reads_another_phases_outcome() -> Bool {
     && string_contains(s: yml, pattern: "steps.build_witness_fold.outcome == 'success'")
 }
 
-// THE PARSE SWEEP STILL HAS AN EXECUTING CONSUMER. Folding a check into another process is only
-// legitimate if it still runs; a consolidation that quietly dropped a phase would look exactly
-// like a consolidation that kept it, from the step count alone. The binary is built with the
-// parse bin still declared, and the composed mode calls the same walk the bin calls.
-test fn w_the_parse_sweep_survives_the_fold() -> Bool {
+// THE RETIRED BINARY IS NO LONGER BUILT, and this replaces a claim that was quietly wrong.
+//
+// It read "the parse sweep still has an executing consumer" and asserted the yml contained
+// `--bin v1_src_dag_parse`. That used "CI compiles the standalone parse binary" as a proxy for
+// "the parse sweep still runs" -- and the two came apart the moment the consolidation landed,
+// because the sweep moved INTO the composed run while the binary stopped being invoked at all.
+// The witness was therefore pinning a surplus compile in place as a requirement, which is the
+// opposite of what it was named for. Found in review of gunbc#8647.
+//
+// WHAT THIS FILE CAN AND CANNOT DECIDE. The subject here is emitted workflow text, so it can
+// see that the retired binary is not built and that the composed mode is invoked. It CANNOT
+// see that the parse phase runs -- that lives in the binary and is established by execution
+// (`required-ci: parse OK 50 file(s) parse-clean`, run 32371293567). Naming the boundary is
+// the point: a static witness that claimed the phase runs would be asserting something its
+// subject does not contain.
+test fn w_the_retired_parse_binary_is_no_longer_built() -> Bool {
   let yml = expected_witness_floor_yml()
-  string_contains(s: yml, pattern: "--bin v1_src_dag_parse")
-    && string_contains(s: yml, pattern: "--required-ci")
+  string_contains(s: yml, pattern: "--required-ci")
+    && string_contains(s: yml, pattern: "--bin claim_executor")
+    && !string_contains(s: yml, pattern: "--bin v1_src_dag_parse")
 }
 
 // RED CONTROL ON A DIFFERENT AXIS FROM THE INVOCATIONS ABOVE: the retired steps' NAMES.

@@ -94,8 +94,23 @@ data witness_floor_concurrency_group: String = "witness-floor-${{ github.event.p
 // `gunbc` is the CLI the repository's own tooling invokes. The predecessor build job named
 // nineteen binaries, most of which this cut deleted; naming a binary that no step runs buys
 // nothing and costs a compile.
-// `v1_src_dag_parse` ADDED 2026-08-19 for the step below, which is the only thing that runs it.
-data witness_floor_required_bins: List<String> = ["claim_executor", "gunbc", "v1_src_dag_parse"]
+// `v1_src_dag_parse` was ADDED 2026-08-19 for a step that ran it, and REMOVED 2026-08-20 with
+// that step. The consolidation folded the parse sweep into `--required-ci` as an in-process
+// phase calling the same `cli_run` walk, so nothing in this job invokes the standalone binary
+// any more -- and the rule stated two lines above is exactly the one its row was breaking:
+// naming a binary that no step runs buys nothing and costs a compile.
+//
+// Caught in review of gunbc#8647 rather than by me, and the way I got it wrong is worth the
+// line: the consolidation witness I wrote ASSERTED `--bin v1_src_dag_parse` was present, using
+// "CI builds the parse bin" as a proxy for "the parse sweep survives". It is a bad proxy --
+// survival is established by the composed run EXECUTING the phase (`parse OK 50 file(s)
+// parse-clean`, run 32371293567), never by compiling a binary nothing runs -- so the witness
+// was pinning the surplus in place as a requirement.
+//
+// The binary itself stays in the tree: running the parse sweep alone is the cheapest check
+// available while editing src/v1, and it is a thin caller of the same function, not a second
+// implementation. What it no longer is, is CI's business.
+data witness_floor_required_bins: List<String> = ["claim_executor", "gunbc"]
 
 fn witness_floor_checkout_step() -> Step {
   UsesStep {
