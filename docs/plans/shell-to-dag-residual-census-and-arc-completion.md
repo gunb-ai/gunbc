@@ -174,6 +174,18 @@ These run before a gunbc runtime exists on the target, so shell is the honest lo
 
 The surviving srv\* dissolution triggers are unanimous: runtime-present raw transport dissolves into typed operations on `host_effect_apply`; the common runner `gunbc.shell_bash_runner.shell_exec_via_bash` (the `bash <<'GUNBC_BASH_EOF'` heredoc framing) dissolves when no caller passes a raw script. The former `srv3_install_diagnostic_checklist_shell_runner_dissolution_trigger` carrier was deleted with that dead reconcile/checklist subgraph; do not cite it as a live row.
 
+### C-note — a dead verdict fold discovered adjacent to A5, filed not fixed (2026-08-20)
+
+**Not a shell-residual row** — this is a dead-code finding, surfaced while working the `host_build_cache_provision_script.dag` deletion (row above) precisely because the two module names differ by one suffix (`host_build_cache_provision.dag` vs `host_build_cache_provision_script.dag`), hold unrelated concepts, and one was being edited while the other was being deleted in the same PR — a naming hazard that produced a real false-negative dependents-census answer during that PR's review. Recorded here so the next person near either file gets the warning where they stand, and so the fold is sequenced deliberately rather than appended to an unrelated vertical.
+
+`dag/gunbc/host_build_cache_provision.dag` carries a full catalog-gate/verdict fold — `BuildCacheDaemonObservation`, `provision_build_cache_verdict`, `placement_verdict`, `build_cache_provision_gate_accepts` — with **zero non-test, non-self-file callers tree-wide**, confirmed by grep on both `main` and `session/proud-swift-703` (2026-08-20). It is pre-existing dead production code; PR #8598's arm-swap touched only the two effect-constructor functions at the bottom of the file (mechanically required by the `HostEffect` rename) and did not create, fix, or reach this dead fold.
+
+Two test consumers, and they do **not** get the same disposition:
+- `dag/test/claim/host_build_cache_provision_design_witness_test.dag` — entirely dedicated to this fold (gate/verdict/classifier). Its subject disappears whole with the fold: pure deletion population, no assertion needs rehoming.
+- `dag/test/claim/build_cache_placement_observation_test.dag` — its real subject, `placement_of_endpoint_observation` (in `build_cache_endpoint_observation.dag`), is **live and unrelated to this fold**. Only its `refuses()` helper (used by 3 of 8 witnesses) reaches into the dead fold's `placement_verdict` as a convenience boolean-collapse over a `BuildCacheServerPlacement`. Deleting the fold without rehoming `refuses()` onto a live equivalent would silently drop those 3 witnesses' pass/fail assertion, not just their subject — this file is the "reaches its subject through the fold while asserting something else" case, not deletion population.
+
+No deletion has been made against this finding. Next step, when sequenced: delete `host_build_cache_provision.dag`'s fold and `host_build_cache_provision_design_witness_test.dag` whole; rehome `build_cache_placement_observation_test.dag`'s `refuses()` onto a live BuildCacheServerPlacement-refusal predicate (or inline the three call sites' match arms directly) before touching the fold, so no coverage is lost in the same motion that removes it.
+
 ### D. Oracle / scaffold retainers — NOT genuine emitters (mostly my Phase 3a work)
 
 | site | state |

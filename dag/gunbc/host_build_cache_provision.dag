@@ -1,5 +1,7 @@
 module gunbc.host_build_cache_provision
 
+data host_build_cache_provision_naming_hazard_note: String = "NAMING HAZARD, RECORD BEFORE TOUCHING EITHER FILE. This module (host_build_cache_provision.dag) and the now-deleted host_build_cache_provision_script.dag differed by one suffix, held unrelated concepts (this one a catalog-gate/verdict fold; that one a concat-shell body builder), and one was edited while the other was deleted in the SAME PR (#8598, the A5 EnsureBuildCacheInstance arm swap) -- a trap the tree itself set, not a naming choice either file made carelessly. It produced a real false-negative: a dependents-census grep answering 'does a disconnected verdict fold exist' checked the deleted file's own leftover state and reported that as though it answered the question about THIS file's fold, which was not re-grepped. The next person doing anything near either name: grep the exact module path, not the shared prefix. This module's own fold (BuildCacheDaemonObservation / provision_build_cache_verdict / placement_verdict / build_cache_provision_gate_accepts) is a separate, PRE-EXISTING dead-code finding -- zero non-test, non-self-file callers tree-wide, confirmed 2026-08-20 -- filed as its own deletion candidate in docs/plans/shell-to-dag-residual-census-and-arc-completion.md (C-note, 2026-08-20), not created or fixed by #8598 and not deleted here."
+
 import std.types { String, NonEmptyStr, Bool }
 import std.cache_identity { CacheInterfaceId }
 import std.disposition { Disposition, Scaffold, SingleAuthority, RealizationDispatch, Terminal }
