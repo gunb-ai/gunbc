@@ -1430,6 +1430,22 @@ pub fn bare_none_construction_wall_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn field_declared_type_is_identified(ft: Rc<Node>, scope: Rc<InferScope>) -> bool {
+    {
+        let required = match lookup_type_for(
+            scope.type_env.clone(),
+            with_required_cardinality(ft.clone()),
+        ) {
+            Some(resolved) => resolved.clone(),
+            None => with_required_cardinality(ft.clone()),
+        };
+        (authored_name_at(
+            scope.type_env.clone().source_indices.clone(),
+            required.clone(),
+        ) != "".to_string())
+    }
+}
+
 pub fn field_type_admits_bare_none(ft: Rc<Node>, scope: Rc<InferScope>) -> bool {
     {
         let required = match lookup_type_for(
@@ -1475,7 +1491,8 @@ pub fn bare_none_field_construction_diags(
         None => Rc::new(vec![]),
         Some(ft) => {
             let value_expr = field_init_node_value(fi.clone());
-            if (expr_is_bare_none_reference(value_expr.clone(), scope.clone())
+            if ((expr_is_bare_none_reference(value_expr.clone(), scope.clone())
+                && field_declared_type_is_identified(ft.clone(), scope.clone()))
                 && (field_type_admits_bare_none(ft.clone(), scope.clone()) == false))
             {
                 Rc::new(vec![make_error_node(

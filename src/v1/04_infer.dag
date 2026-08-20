@@ -918,6 +918,14 @@ fn rejects_string_for_optional_coproduct_field(expected: Node, got: Node, source
 
 data bare_none_construction_wall_note: String = "CONSTRUCTION WALL (DESIGN 4b): the bare name `None` carries absence and NOTHING else, so a construction position whose declared field type cannot carry absence must refuse it rather than adopt whichever `None` variant happens to be in scope. MEASURED HOLE this closes, on the pre-wall binary: with `type Diags = None | Some \{ n: Int \}` in scope, `Holder \{ n: None \}` for `n: Int` and `ListHolder \{ xs: None \}` for `xs: List<Int>` compiled with ZERO blocking diagnostics and emitted `n: Rc::new(Diags::None)` / `xs: Rc::new(Diags::None)` — a Rust program the declared types refute, produced silently. WHY THIS SLICE AND NOT THE GENERAL CONFORMANCE RULE: conformance_unjudged_live_hole_note records five successive attempts at a general named-vs-named refusal, each of which red correct code because the produced side carries no separable type identity. A bare `None` reference needs no produced-side identity — it is a SYNTACTIC form whose only meaning is absence — so admissibility is decided entirely from the DECLARED side, which is exactly why this class is decidable where the general one is not. ADMISSION is deliberately two-armed and nothing else: optional cardinality (the `T?` carrier), or a coproduct that declares a `None` variant at its own level (std.cache_interface AuthScope, v2.std.diagnostic Diagnostics — the two live carriers). A qualified `Owner.None` is not a bare reference and is not judged here. COVERAGE BOUNDARY, stated rather than left to be found: the wall fires only where the field s declared type is known at this site; a field whose declared type does not resolve is not judged, which is the check s precision frontier and not a failure arm."
 
+fn field_declared_type_is_identified(ft: Node, scope: InferScope) -> Bool {
+  let required = match lookup_type_for(env: scope.type_env, node: with_required_cardinality(n: ft)) {
+    Present { value: resolved } => resolved
+    Absent => with_required_cardinality(n: ft)
+  }
+  authored_name_at(source_indices: scope.type_env.source_indices, node: required) != ""
+}
+
 fn field_type_admits_bare_none(ft: Node, scope: InferScope) -> Bool {
   let required = match lookup_type_for(env: scope.type_env, node: with_required_cardinality(n: ft)) {
     Present { value: resolved } => resolved
@@ -949,6 +957,7 @@ fn bare_none_field_construction_diags(
     Present { value: ft } =>
       let value_expr = field_init_node_value(n: fi)
       if expr_is_bare_none_reference(texpr: value_expr, scope: scope)
+        && field_declared_type_is_identified(ft: ft, scope: scope)
         && field_type_admits_bare_none(ft: ft, scope: scope) == false {
         [make_error_node(
           diagnostic: BareNoneNotAdmittedByFieldType {
