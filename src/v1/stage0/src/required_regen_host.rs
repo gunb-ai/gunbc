@@ -135,6 +135,30 @@ impl RegenReceipt {
     }
 
     /// The referenced first-pass evidence, present only on `FixedPoint`.
+    /// The digest of the tree THIS pass emitted.
+    ///
+    /// TOTAL, unlike the accessors above, and the difference is the point: both variants
+    /// measure a candidate digest, so there is no arm that has none and no `Option` to
+    /// misread as "unmeasured". The Option-returning siblings are Option because the other
+    /// variant genuinely does not measure that fact.
+    ///
+    /// Its consumer is the composed `--required-ci` run, which hands pass 1's digest to the
+    /// fixed-point pass IN MEMORY rather than having it re-read the receipt file the previous
+    /// process wrote. `run_required_regen_fixed_point` has always taken `pass1_digest:
+    /// Option<String>`; before the phases shared a process there was no way to supply it.
+    pub fn candidate_generated_digest(&self) -> &str {
+        match self {
+            RegenReceipt::FirstGeneration {
+                candidate_generated_digest,
+                ..
+            } => candidate_generated_digest,
+            RegenReceipt::FixedPoint {
+                candidate_generated_digest,
+                ..
+            } => candidate_generated_digest,
+        }
+    }
+
     pub fn prior(&self) -> Option<&PriorReceiptRef> {
         match self {
             RegenReceipt::FirstGeneration { .. } => None,
@@ -147,6 +171,33 @@ impl RegenReceipt {
 pub struct RequiredRegenOutcome {
     pub receipt: RegenReceipt,
     pub failures: Vec<String>,
+    /// WHETHER PASS ONE ACTUALLY EMITTED, kept OFF the receipt's digest fields on purpose.
+    ///
+    /// A population refusal happens before any content comparison, so there is no first
+    /// generation to have a digest OF. The receipt still has to carry a `String` in that
+    /// position, and it carries the sentinel `refused:population` — which is why the fixed-point
+    /// handoff must not read the receipt. Reading it there would compare a real pass-two digest
+    /// against sentinel prose and report a determinism failure nobody measured: a fabricated
+    /// plausible output (DESIGN §5), and a convincing one, since the message names two digests
+    /// and looks exactly like a genuine mismatch.
+    pub first_generation: FirstGeneration,
+}
+
+/// What pass one produced, as a coproduct rather than as a string that might be a digest.
+/// `NotMeasured` has no digest field at all, so the sentinel has no route into a comparison.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FirstGeneration {
+    Measured(String),
+    NotMeasured(String),
+}
+
+/// The ONLY way the fixed-point phase learns pass one's digest. `NotMeasured` yields `None`, and
+/// phase three reports its own SKIPPED state rather than a refusal it did not observe.
+pub fn pass1_digest_for_fixed_point(outcome: &RequiredRegenOutcome) -> Option<&str> {
+    match &outcome.first_generation {
+        FirstGeneration::Measured(d) => Some(d.as_str()),
+        FirstGeneration::NotMeasured(_) => None,
+    }
 }
 
 pub fn run_required_regen(
@@ -217,6 +268,7 @@ pub fn run_required_regen(
     // `fixed_point_equal: false`, which was not a measurement at all -- the first pass never asks
     // that question, so a literal `false` asserted a negative answer where the honest content was
     // "not asked". The variant has no such field, so the placeholder is now unwritable.
+    let first_generation = FirstGeneration::Measured(candidate_digest.clone());
     let receipt = RegenReceipt::FirstGeneration {
         schema: RECEIPT_SCHEMA.to_string(),
         commit_sha,
@@ -248,7 +300,46 @@ pub fn run_required_regen(
         emitted_basenames.len()
     );
 
-    Ok(RequiredRegenOutcome { receipt, failures })
+    Ok(RequiredRegenOutcome {
+        receipt,
+        failures,
+        first_generation,
+    })
+}
+
+/// Reconcile the two available answers to "what did the first generation emit".
+///
+/// TWO SOURCES FOR ONE FACT, RECONCILED BY REFUSAL RATHER THAN BY PRECEDENCE. The receipt file
+/// is read unconditionally — the cross-tree refusal and the `PriorReceiptRef` are provenance
+/// facts only the file carries — so whenever a caller ALSO supplies the digest in memory it
+/// exists twice. The previous form was `pass1_digest.unwrap_or(prior)`, which silently preferred
+/// the argument: two representations of one fact with a precedence rule, so a disagreement
+/// decided nothing and reported nothing (DESIGN §3).
+///
+/// WHO MADE IT REACHABLE, stated because it changes whose defect this is: until the phases
+/// shared a process every caller passed `None`, so the file was the only source. The composed
+/// `--required-ci` run is what supplies the argument, so the change that creates the second
+/// source is the change that closes it.
+///
+/// AND WHAT IT IS *NOT*: this does not guard an active defect on the composed path. There,
+/// `run_required_regen` writes the receipt and returns the same digest in one pass, so the two
+/// agree by construction and this arm is unreachable. It guards the FUNCTION's contract, for a
+/// caller that supplies a digest against a receipt written by some other run at this commit —
+/// a rebuild between passes, a mutated `target/`, or a first pass that refused after writing.
+/// Extracted from the call site precisely so that claim can be tested without running a
+/// seven-minute emit to reach it.
+fn reconcile_pass1_digest(supplied: Option<String>, prior: &str) -> Result<String, String> {
+    match supplied {
+        Some(supplied) if supplied != prior => Err(format!(
+            "refusal: pass-1 digest disagreement — the caller supplied {supplied} but the \
+             receipt at this commit records {prior}. These are two answers to what the first \
+             generation emitted; the fixed-point comparison is meaningless until they agree. \
+             Re-run `claim_executor --required-regen` at this commit so the receipt and the \
+             in-memory pass agree."
+        )),
+        Some(supplied) => Ok(supplied),
+        None => Ok(prior.to_string()),
+    }
 }
 
 pub fn run_required_regen_fixed_point(
@@ -283,7 +374,7 @@ pub fn run_required_regen_fixed_point(
         ));
     }
 
-    let pass1 = pass1_digest.unwrap_or(prior.candidate_generated_digest);
+    let pass1 = reconcile_pass1_digest(pass1_digest, &prior.candidate_generated_digest)?;
     let sources = super::regen_input_sources(&workspace)?;
     let authority_digest = authority_digest_from_sources(&sources)?;
     let emitted = compile_stage0(&workspace)?;
@@ -327,7 +418,15 @@ pub fn run_required_regen_fixed_point(
         )]
     };
 
-    Ok(RequiredRegenOutcome { receipt, failures })
+    // This outcome IS the fixed-point pass; it is not anybody's first generation, and saying so
+    // is more useful than echoing a digest a later reader might hand onward.
+    Ok(RequiredRegenOutcome {
+        receipt,
+        failures,
+        first_generation: FirstGeneration::NotMeasured(
+            "this outcome is the fixed-point pass, not a first generation".to_string(),
+        ),
+    })
 }
 
 struct SyncReport {
@@ -487,12 +586,11 @@ fn regen_refusal_outcome(
 ) -> Result<RequiredRegenOutcome, String> {
     let receipt_path = workspace.join(receipt_rel);
     // A population refusal happens BEFORE any content comparison, so the digests are not
-    // "refused" values of a measurement -- there was no measurement. The sentinel string is
-    // retained rather than improved because the honest repair is a refusal variant that carries
-    // no digest fields at all, and that is a wider change than the impersonation this commit
-    // closes. Named here so it is a known residue rather than something a later reader discovers
-    // and mistakes for a measured digest: `first_generation_equal: false` below is likewise "not
-    // asked", not "asked and answered no".
+    // "refused" values of a measurement -- there was no measurement. The sentinel survives in the
+    // RECEIPT, whose fields are `String`, and `first_generation_equal: false` below is likewise
+    // "not asked" rather than "asked and answered no". What no longer survives is the sentinel's
+    // route OUT: the outcome carries `FirstGeneration::NotMeasured`, so the composed coordinator
+    // cannot hand this string to the fixed-point phase.
     let receipt = RegenReceipt::FirstGeneration {
         schema: RECEIPT_SCHEMA.to_string(),
         commit_sha,
@@ -506,7 +604,8 @@ fn regen_refusal_outcome(
     write_receipt(&receipt_path, &receipt)?;
     Ok(RequiredRegenOutcome {
         receipt,
-        failures: vec![reason],
+        failures: vec![reason.clone()],
+        first_generation: FirstGeneration::NotMeasured(reason),
     })
 }
 
@@ -935,5 +1034,95 @@ mod tests {
         fs::write(src.join("foo.rs"), "fn foo() {}\n").expect("write foo");
         verify_candidate_tree(&src, &["foo.rs".to_string()]).expect("candidate present");
         let _ = fs::remove_dir_all(&tmp);
+    }
+
+    // THE SENTINEL HAS NO ROUTE TO THE FIXED-POINT PHASE.
+    //
+    // The defect this pins, found in review of gunbc#8647: a population refusal returns `Ok`
+    // with a receipt whose digest fields hold `refused:population`. Before the typed
+    // `FirstGeneration`, the composed coordinator read the receipt, so a refusal handed that
+    // string to phase three, which compared it against a real pass-two digest and reported
+    // `fixed-point refused: pass-1 digest refused:population != pass-2 digest <real>` -- a
+    // determinism failure nobody measured, wearing the exact shape of a real one.
+    //
+    // RED, stated at what this test can actually reach: making `pass1_digest_for_fixed_point`
+    // answer from the receipt -- `Some(outcome.receipt.candidate_generated_digest())` -- fails
+    // it. What it does NOT reach is the coordinator choosing to bypass the accessor and read the
+    // receipt itself; that is one call site in `claim_executor.rs`, guarded by the comment there
+    // and by review, not by this test. Naming the gap rather than implying the test closes it.
+    #[test]
+    fn a_refused_first_generation_hands_no_digest_to_the_fixed_point() {
+        let sentinel_receipt = || RegenReceipt::FirstGeneration {
+            schema: RECEIPT_SCHEMA.to_string(),
+            commit_sha: "sha".to_string(),
+            authority_digest: "auth".to_string(),
+            committed_generated_digest: "refused:population".to_string(),
+            candidate_generated_digest: "refused:population".to_string(),
+            first_generation_equal: false,
+            changed_paths: Vec::new(),
+            candidate_artifact: "cand".to_string(),
+        };
+
+        let refused = RequiredRegenOutcome {
+            receipt: sentinel_receipt(),
+            failures: vec!["refusal: emit produced zero files".to_string()],
+            first_generation: FirstGeneration::NotMeasured(
+                "refusal: emit produced zero files".to_string(),
+            ),
+        };
+        assert_eq!(pass1_digest_for_fixed_point(&refused), None);
+        // And the sentinel IS still sitting in the receipt, which is what makes the coproduct
+        // load-bearing rather than decorative: the wrong answer is right there to be read.
+        assert_eq!(
+            refused.receipt.candidate_generated_digest(),
+            "refused:population"
+        );
+
+        // POSITIVE CONTROL: ordinary drift is not a refusal. Pass one emitted, the comparison
+        // disagreed, and the fixed point still has a subject -- skipping it there would lose a
+        // determinism signal exactly when drift makes it interesting.
+        let drifted = RequiredRegenOutcome {
+            receipt: sentinel_receipt(),
+            failures: vec!["17 file(s) drifted".to_string()],
+            first_generation: FirstGeneration::Measured("real-digest".to_string()),
+        };
+        assert_eq!(pass1_digest_for_fixed_point(&drifted), Some("real-digest"));
+    }
+
+    // LOCAL RUST RED CONTROL FOR THE DUAL-INPUT REFUSAL — local, NOT enrolled. The Rust suite
+    // has been out of CI since the 2026-07-11 operator ruling, so this executes for whoever runs
+    // it and for no gate. Said plainly because the previous heading claimed "ENROLLED", which is
+    // the rung inflation DESIGN §4b calls worse than sitting low: an unenrolled control that
+    // says it is enrolled never ranks for enrolling.
+    //
+    // The arm it guards is UNREACHABLE from the
+    // composed `--required-ci` path — there `run_required_regen` writes the receipt and returns
+    // the same digest in one pass, so the two agree by construction — which is exactly why the
+    // decision was extracted from its call site: reaching it through the real function would
+    // require a seven-minute emit, and a wall no test can reach is a wall nobody knows works.
+    //
+    // RED: restoring `pass1_digest.unwrap_or(prior)` makes the disagreement case return Ok and
+    // fails the first assertion. The None and agreeing cases are the positive controls, without
+    // which a function that refused everything would also pass.
+    #[test]
+    fn pass1_digest_disagreement_refuses_rather_than_preferring_one() {
+        let err = reconcile_pass1_digest(Some("supplied-abc".to_string()), "receipt-xyz")
+            .expect_err("two different answers to one fact must refuse");
+        assert!(
+            err.contains("supplied-abc") && err.contains("receipt-xyz"),
+            "the refusal must name BOTH values so the reader sees a contradiction rather than \
+             a comparison whose operand was chosen for them: {err}"
+        );
+
+        assert_eq!(
+            reconcile_pass1_digest(Some("same".to_string()), "same").expect("agreement is fine"),
+            "same",
+            "positive control: agreeing sources are not a refusal"
+        );
+        assert_eq!(
+            reconcile_pass1_digest(None, "from-receipt").expect("no second source, no conflict"),
+            "from-receipt",
+            "positive control: with one source the receipt is simply used"
+        );
     }
 }
