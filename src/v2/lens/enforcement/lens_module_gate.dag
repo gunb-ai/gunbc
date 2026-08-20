@@ -169,7 +169,7 @@ fn lens_module_gate_surface_for_lens_id(id: LensIdV0, module: String) -> LensInv
       projection: ProjectionNodeDag,
       verdict_authority: VerdictAsymptoticCost,
       remedy: RemedyReport,
-      admission: AdvisoryLens
+      admission: GenuinelyNewInvariant
     }
     ComplexityAccumulatorCopy => LensInvariantSurface {
       module: module,

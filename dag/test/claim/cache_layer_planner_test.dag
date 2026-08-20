@@ -3,11 +3,11 @@ module test.claim.cache_layer_planner
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data cheap_recompute: CostAccount = cost_account_measured(
-  time: nanosecond_duration(count: 1000),
+  time: nanosecond(count: 1000),
 )
 
 data expensive_recompute: CostAccount = cost_account_measured(
-  time: nanosecond_duration(count: 50000000),
+  time: nanosecond(count: 50000000),
 )
 
 data wan_deployment: CacheDeploymentBackends = CacheDeploymentBackends {

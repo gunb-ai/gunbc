@@ -608,7 +608,9 @@ data witness_floor_workflow: Workflow = {
   env: Present {
     value: [
       kv(key: "CARGO_TERM_COLOR", value: yaml_string(s: "always")),
-      kv(key: "GUNBC_EXPECTED_RED_ROSTER_JOIN", value: yaml_string(s: "expected_red_roster_join.tsv"))
+      kv(key: "GUNBC_EXPECTED_RED_ROSTER_JOIN", value: yaml_string(s: "expected_red_roster_join.tsv")),
+      kv(key: "GUNBC_REQUIRED_FLOOR_DISPOSITION", value: yaml_string(s: "required_floor_disposition.tsv")),
+      kv(key: "GUNBC_LONG_HOME_STORAGE_AGREEMENT", value: yaml_string(s: "long_home_storage_agreement.tsv"))
     ]
   },
   permissions: Present {
