@@ -1648,6 +1648,38 @@ fn belt_teardown_ok(o: BeltTeardownOutcome) -> Bool {
   }
 }
 
+// THE LOCATED CAUSE TRAVELS INTO THE RECEIPT. SpawnFailed carries node_id, step, detail and
+// provider -- four facts naming exactly which node refused, at which gate, and why -- and this fold
+// used to discard all four for the sentence "one or more spawn outcomes failed". The receipt is the
+// only durable record of a tick, so the cause was computed and then erased on every tick.
+//
+// That erasure is not a cosmetic gap; it is what made a one-command fix cost weeks. srv1's belt
+// refused every spawn from the moment the pinned Codex bundle went missing from
+// /opt/gunbc/provider-runtime/codex, and the receipt said only that something failed. Every host
+// probe an operator would reach for -- `which codex`, the tmux server, the attempt directories --
+// answers about a DIFFERENT object than the one the preflight tests (it probes the pinned bundled
+// executable by absolute path, never PATH), so the visible evidence actively pointed away from the
+// cause. DESIGN section 5 requires a failure arm to be typed, located and countable; the arm was
+// none of those once it reached the receipt.
+//
+// The reason string is now built from the failed outcomes themselves, so it names each node with
+// its gate and detail. A tick that refuses for a missing provider binary now says so in the file
+// the dashboard reads, and the dispatch button's "belt fault" caption acquires an explanation
+// instead of being a dead end.
+fn belt_spawn_failure_reason(spawn_outcomes: List<BeltSpawnOutcome>) -> String {
+  join([
+    "one or more spawn outcomes failed: ",
+    join(
+      fold(spawn_outcomes, init: [], f: (acc, o) => match o {
+        SpawnFailed { node_id: n, step: st, detail: d, provider: pv } =>
+          concat(acc, [join([n, " [", pv, "] ", st, ": ", d], "")])
+        Spawned { node_id: _, session_name: _, provider: _ } => acc
+      }),
+      "; ",
+    ),
+  ], "")
+}
+
 fn belt_spawn_pass_outcome_from(
   observe_refused: Bool,
   observe_reason: String,
@@ -1660,7 +1692,7 @@ fn belt_spawn_pass_outcome_from(
       SpawnFailed { node_id: _, step: _, detail: _, provider: _ } => true
       Spawned { node_id: _, session_name: _, provider: _ } => false
     })) > 0 {
-      BeltPassFailed { reason: "one or more spawn outcomes failed" }
+      BeltPassFailed { reason: belt_spawn_failure_reason(spawn_outcomes: spawn_outcomes) }
     } else {
       BeltPassRecorded
     }

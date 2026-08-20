@@ -325,7 +325,11 @@ fn derived_hand_maintained_stage0_repo_paths() -> List<v2.std.text.String> {
   )
 }
 
-data generated_artifact_disposition_derivation_note: v2.std.text.String = "derived_hand_maintained_stage0_repo_paths() answers ONE question: which paths must be pub-mod-declared for the crate to link (layout membership, per hand_maintained_stage0_filenames_authority_ref). It does not answer who maintains a path's contents. A layout member's maintenance disposition is DERIVED, never hand-enumerated: gunbc.generated_artifact's gunbc.generated_artifact.generated_artifact_registry is the closed, single authority over every drift-gated artifact this repo produces, and gunbc.generated_artifact.artifact_path is its per-variant path projection — the same projection generated_artifact_emit.dag's artifact_generate dispatch already reads. Any stage0-src path that is a member of that registry (generated_artifact_stage0_src_repo_paths, an identity join by gunbc.generated_artifact.artifact_path, not a filename literal) is EmitFrom the registry's real generation authority, never HandScaffold and never silently excluded by a hand-picked path. v1_interpreter_dispatch_generated.rs (V1InterpreterDispatchGeneratedRsArtifact) is the discriminating case that exposed the conflation; bootstrap_stage0_crate_layout_generated.rs (Stage0CrateLayoutGeneratedRsArtifact) is the second instance the same join surfaces — both derive from the identical registry membership check, no per-file code. derived_hand_maintained_disposition_repo_paths() is the corrected maintenance-disposition population: layout membership minus the generated-artifact-registry overlap. This is the single authority consumed by count_hand_maintained_in_tracked/count_hand_maintained_in_prior_tracked and by gunbc.stage0_rust_honest_frontier_integration's exact_hand_maintained_* joins."
+data residue_frontier_module_gap_dissolved_note: String = "v2_compiler_compile.rs, v2_compiler_program_assembly.rs and v2_compiler_source_authority.rs carried a residue_frontier_module_gap row each, whose own dissolution condition read: 'dissolve-on: the module basename appears on hand_maintained_stage0_filenames() ... and this residue row deletes.' The #8428 regen-survivability backfill (pre_existing_hand_retained_registration_backfill_note, v2.compiler.self_host.stage0_crate_layout) registered all three as SeedRetainedIntrinsicRegistration rows, so the trigger fired and the three residue rows are deleted here rather than left stale — the dissolution condition is evidence consumed, not a permission grant kept beside a state it no longer describes."
+
+data residue_cssl_hand_maintained_overlap_note: String = "cssl_seed_linked_closure_assembly.rs is BOTH a residue row here (not yet regen-emitted, dissolve-on generated_stage0_files membership) AND, since the same #8428 backfill, a hand_maintained_stage0_filenames() member (excluded from required_regen_host's compile_stage0() population comparison, since it is a CSSL-harness-compiled oracle never part of the stage0 crate's own mod tree). Its dissolution condition names generated_stage0_files membership, not hand_maintained_stage0_filenames() membership, so unlike the three dissolved rows above this one's trigger has not fired — it is a genuine, currently-necessary dual classification (residue-pending-emission AND emit-comparison-excluded), not a duplicate authority for the same fact. classified_residue_disjoint_holds is scoped to exclude this single known, named path rather than silently widening to tolerate any future collision."
+
+data generated_artifact_disposition_derivation_note: String = "derived_hand_maintained_stage0_repo_paths() answers ONE question: which paths must be pub-mod-declared for the crate to link (layout membership, per hand_maintained_stage0_filenames_authority_ref). It does not answer who maintains a path's contents. A layout member's maintenance disposition is DERIVED, never hand-enumerated: gunbc.generated_artifact's generated_artifact_registry is the closed, single authority over every drift-gated artifact this repo produces, and artifact_path is its per-variant path projection — the same projection generated_artifact_emit.dag's artifact_generate dispatch already reads. Any stage0-src path that is a member of that registry (generated_artifact_stage0_src_repo_paths, an identity join by artifact_path, not a filename literal) is EmitFrom the registry's real generation authority, never HandScaffold and never silently excluded by a hand-picked path. v1_interpreter_dispatch_generated.rs (V1InterpreterDispatchGeneratedRsArtifact) is the discriminating case that exposed the conflation; bootstrap_stage0_crate_layout_generated.rs (Stage0CrateLayoutGeneratedRsArtifact) is the second instance the same join surfaces — both derive from the identical registry membership check, no per-file code. derived_hand_maintained_disposition_repo_paths() is the corrected maintenance-disposition population: layout membership minus the generated-artifact-registry overlap. This is the single authority consumed by count_hand_maintained_in_tracked/count_hand_maintained_in_prior_tracked and by gunbc.stage0_rust_honest_frontier_integration's exact_hand_maintained_* joins."
 
 data v1_interpreter_dispatch_generated_repo_path: v2.std.text.String = stage0_src_repo_path(
   filename: "v1_interpreter_dispatch_generated.rs"
@@ -465,11 +469,7 @@ data residue_module_path_index_reason: v2.std.text.String = "hand_maintained_sta
 
 data residue_module_path_index_dissolution: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "dissolve-on: module_path_index/*.rs paths derive from hand_maintained_stage0_dirs + host census, or the directory dissolves into generated emit")
 
-data residue_frontier_module_gap_reason: v2.std.text.String = "frontier module with behavioral receipt roster row but not yet on v2.compiler.self_host.stage0_crate_layout.hand_maintained_stage0_filenames / gunbc.stage0_emit_plan_generated.generated_stage0_files join"
-
-data residue_frontier_module_gap_dissolution: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "dissolve-on: the module basename appears on v2.compiler.self_host.stage0_crate_layout.hand_maintained_stage0_filenames() or gunbc.stage0_emit_plan_generated.generated_stage0_files and this residue row deletes")
-
-data residue_stage0_core_lib_reason: v2.std.text.String = "src/v1/stage0_core/src/lib.rs exists on disk but is absent from v2.workflow.rust_crate_partition.stage0_partition_crate_rows — authority contradiction surfaced for operator resolution"
+data residue_stage0_core_lib_reason: String = "src/v1/stage0_core/src/lib.rs exists on disk but is absent from stage0_partition_crate_rows — authority contradiction surfaced for operator resolution"
 
 data residue_stage0_core_lib_dissolution: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "dissolve-on: v2.workflow.rust_crate_partition.stage0_partition_crate_rows enrolls src/v1/stage0_core OR the crate deletes")
 
@@ -503,21 +503,6 @@ data rust_source_lifecycle_residue_rows: List<RustSourceLifecycleRow> = [
     path: "src/v1/stage0/src/module_path_index/parsed_dag_file.rs",
     reason: residue_module_path_index_reason,
     dissolution: residue_module_path_index_dissolution
-  ),
-  residue_row(
-    path: "src/v1/stage0/src/v2_compiler_compile.rs",
-    reason: residue_frontier_module_gap_reason,
-    dissolution: residue_frontier_module_gap_dissolution
-  ),
-  residue_row(
-    path: "src/v1/stage0/src/v2_compiler_program_assembly.rs",
-    reason: residue_frontier_module_gap_reason,
-    dissolution: residue_frontier_module_gap_dissolution
-  ),
-  residue_row(
-    path: "src/v1/stage0/src/v2_compiler_source_authority.rs",
-    reason: residue_frontier_module_gap_reason,
-    dissolution: residue_frontier_module_gap_dissolution
   ),
   residue_row(
     path: "src/v1/stage0_core/src/lib.rs",
@@ -687,13 +672,21 @@ fn derived_generated_hand_disjoint_holds() -> Bool {
   )
 }
 
-fn classified_residue_disjoint_holds() -> Bool {
-  !v2.std.algebra.any(
+data cssl_seed_linked_closure_assembly_repo_path: String = stage0_src_repo_path(
+  filename: "cssl_seed_linked_closure_assembly.rs"
+)
+
+fn residue_hand_maintained_overlap_repo_paths() -> List<String> {
+  filter(
     xs: residue_lifecycle_repo_paths(),
     predicate: fn(residue_path) {
       v2.std.algebra.any(xs: derived_authority_join_repo_paths(), predicate: fn(derived_path) { derived_path == residue_path })
     }
   )
+}
+
+fn classified_residue_disjoint_holds() -> Bool {
+  residue_hand_maintained_overlap_repo_paths() == [cssl_seed_linked_closure_assembly_repo_path]
 }
 
 fn file_grain_paths_avoid_discovery_prefix_holds() -> Bool {

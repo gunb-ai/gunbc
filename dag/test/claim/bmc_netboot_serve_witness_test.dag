@@ -1,36 +1,49 @@
 module test.claim.bmc_netboot_serve
 
-
 test fn srv4_grub_cfg_boots_mirror_bulk_with_bmc_seed() -> Bool {
-  let cfg = bmc_netboot_grub_cfg_text(plan: srv4_bmc_netboot_serve_plan)
+  let cfg = gunbc.bmc_netboot_serve.bmc_netboot_grub_cfg_text(plan: gunbc.bmc_netboot_serve.srv4_bmc_netboot_serve_plan)
   string_contains(s: cfg, pattern: "linux /vmlinuz ip=dhcp url=https://cdimage.ubuntu.com/ubuntu/releases/24.04/release/ubuntu-24.04.3-live-server-arm64.iso autoinstall \"ds=nocloud-net;s=http://192.168.1.195:8080/nocloud/\" ---")
     && string_contains(s: cfg, pattern: "initrd /initrd")
     && string_contains(s: cfg, pattern: "set timeout=1")
 }
 
 test fn srv4_http_boot_entry_targets_bmc() -> Bool {
-  let entry = bmc_netboot_http_boot_entry(plan: srv4_bmc_netboot_serve_plan)
-  string_contains(s: uefi_http_boot_uri_wire(entry: entry), pattern: "http://192.168.1.195:8080/grubaa64.efi")
+  let entry = gunbc.bmc_netboot_serve.bmc_netboot_http_boot_entry(plan: gunbc.bmc_netboot_serve.srv4_bmc_netboot_serve_plan)
+  string_contains(s: extdeps.firmware.uefi_http_boot.uefi_http_boot_uri_wire(entry: entry), pattern: "http://192.168.1.195:8080/grubaa64.efi")
     && entry.interface_name == "eth2"
 }
 
 test fn srv4_bmc_served_seed_carries_fleet_keys() -> Bool {
-  let ud = bmc_netboot_nocloud_user_data(plan: srv4_bmc_netboot_serve_plan)
+  let ud = gunbc.bmc_netboot_serve.bmc_netboot_nocloud_user_data(plan: gunbc.bmc_netboot_serve.srv4_bmc_netboot_serve_plan)
   string_contains(s: ud, pattern: "hostname: srv4")
     && string_contains(s: ud, pattern: "allow-pw: false")
     && string_contains(s: ud, pattern: "fleet-automation@gunbc")
 }
 
+fn bmc_netboot_serve_command_text_unwrap(plan: gunbc.bmc_netboot_serve.BmcNetbootServePlan) -> String {
+  match gunbc.bmc_netboot_serve.bmc_netboot_serve_command_text(plan: plan) {
+    BmcNetbootServeCommandTextRefused { cause: _ } => "REFUSED -- test fixture expected PosixShellInterpreted, got a refusal"
+    BmcNetbootServeCommandTextBuilt { text: t } => t
+  }
+}
+
+// The inner busybox command is now ONE RFC 4254 command string carried as ssh's final
+// argument (extdeps.exec.command command_over_transport_composition_note), not a suffix
+// of separately-quoted argv members after the target -- so the old wrong-in-kind shape
+// ('root@...' '/tmp/netboot/busybox' 'httpd' ...) must NOT appear, and the escaped-quote
+// marker from re-quoting the already-quoted inner string for the LOCAL shell must.
 test fn serve_command_one_shape_two_transports() -> Bool {
-  let local = shell_command_render(command: bmc_netboot_serve_command_local(plan: srv4_bmc_netboot_serve_plan))
-  let over_bmc = bmc_netboot_serve_command_text(plan: srv4_bmc_netboot_serve_plan)
+  let local = extdeps.exec.command.shell_command_render(command: gunbc.bmc_netboot_serve.bmc_netboot_serve_command_local(plan: gunbc.bmc_netboot_serve.srv4_bmc_netboot_serve_plan))
+  let over_bmc = bmc_netboot_serve_command_text_unwrap(plan: gunbc.bmc_netboot_serve.srv4_bmc_netboot_serve_plan)
   string_contains(s: local, pattern: "'/tmp/netboot/busybox' 'httpd' '-p' '8080' '-h' '/tmp/netboot'")
     && string_contains(s: over_bmc, pattern: "'sshpass' '-e' 'ssh'")
-    && string_contains(s: over_bmc, pattern: "'root@192.168.1.195' '/tmp/netboot/busybox' 'httpd'")
+    && string_contains(s: over_bmc, pattern: "'root@192.168.1.195'")
+    && string_contains(s: over_bmc, pattern: "'\\''") == true
+    && string_contains(s: over_bmc, pattern: "'root@192.168.1.195' '/tmp/netboot/busybox' 'httpd'") == false
 }
 
 test fn srv4_scp_put_uses_shared_ssh_posture_not_a_fork() -> Bool {
-  let scp = shell_command_render(command: scp_command(
+  let scp = extdeps.exec.command.shell_command_render(command: extdeps.exec.command.scp_command(
     local_path: "/tmp/netboot/grub.cfg" as std.types.NonEmptyStr,
     remote_target: "root@192.168.1.195:/tmp/netboot/grub.cfg" as std.types.NonEmptyStr,
   ))
@@ -38,7 +51,7 @@ test fn srv4_scp_put_uses_shared_ssh_posture_not_a_fork() -> Bool {
 }
 
 test fn srv4_scp_put_never_carries_a_second_forked_posture() -> Bool {
-  let scp = shell_command_render(command: scp_command(
+  let scp = extdeps.exec.command.shell_command_render(command: extdeps.exec.command.scp_command(
     local_path: "/tmp/a" as std.types.NonEmptyStr,
     remote_target: "root@192.168.1.195:/tmp/b" as std.types.NonEmptyStr,
   ))
@@ -47,7 +60,7 @@ test fn srv4_scp_put_never_carries_a_second_forked_posture() -> Bool {
 }
 
 test fn srv4_staging_manifest_stages_rendered_grub_and_seed() -> Bool {
-  let m = bmc_netboot_staging_manifest(plan: srv4_bmc_netboot_serve_plan)
+  let m = gunbc.bmc_netboot_serve.bmc_netboot_staging_manifest(plan: gunbc.bmc_netboot_serve.srv4_bmc_netboot_serve_plan)
   let grub_ok = fold(m, init: false, f: (acc, file) =>
     acc || (string_contains(s: file.remote_path as String, pattern: "/grub.cfg")
       && match file.content {
@@ -62,5 +75,5 @@ test fn srv4_staging_manifest_stages_rendered_grub_and_seed() -> Bool {
         LocalArtifact { path: _ } => false
         FetchFromUri { source: _ } => false
       }))
-  grub_ok && seed_ok && list_length(items: m) == 7
+  grub_ok && seed_ok && std.types.list_length(items: m) == 7
 }

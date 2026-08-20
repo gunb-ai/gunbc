@@ -1,8 +1,29 @@
 module gunbc.stage0_emit_plan_generated
 
-data stage0_emit_plan_generated_note: String = "Generated projection — do not hand-edit. Authority: gunbc.stage0_emit_plan over parse-derived regen source identities. DECLARED SCAFFOLD supply; dissolve-on: generated_artifact_gate accepts v2.compiler.source_authority.ModuleStorageIndex, then the host supply deletes. Regen via dag/tools/generated_artifact_gate.dag main_wet."
+// THIS PROJECTION HAS NO PRODUCER, and the note below asserted one until 2026-08-20. Its named
+// authority `gunbc.stage0_emit_plan` is DELETED -- `gunbc.generated_projection_paths` records the
+// deletion in its own header ("One source remains after the stage0_emit_plan deletion") -- and
+// `gunbc.roster_registry` still registers this roster `ByDerivation` from that dead module. So
+// "regenerate via generated_artifact_gate main_wet" is false: main_wet leaves this file untouched,
+// which is why two rows here survived the disappearance of the thing they describe.
+//
+// THE TWO ROWS REMOVED. `gunbc_namespace_reference_derived_closure_{admission,contract}.rs` were
+// listed here as generated stage0 files and declared in the seed's lib.rs, but their `.dag`
+// authorities under dag/gunbc are no longer reachable from the src/v1 import closure, so the emit
+// has not produced them for some time and no Rust in the crate referenced them. They were the last
+// two names in `--required-regen`'s population refusal. The removal is verified rather than
+// asserted: with the two files deleted, the emitted lib.rs and the committed lib.rs differ by
+// exactly the two `pub mod` lines this change also deletes and by nothing else (measured, remote
+// runner, this branch) -- so the committed seed converges ONTO its authority's output here.
+//
+// EDITING A GENERATED FILE BY HAND IS NORMALLY THE ONE UNHEALABLE DRIFT CLASS, and this is stated
+// rather than quietly done: with the generator deleted, this file is de facto hand-maintained and
+// has been since that deletion. The honest repair is to restore a producer or to reclassify the
+// roster, and neither is this change's subject; what this change refuses to do is leave a roster
+// naming files that do not exist so that regen keeps refusing.
+data stage0_emit_plan_generated_note: String = "Projection of the stage0 emit plan. ITS PRODUCER gunbc.stage0_emit_plan IS DELETED, so it is hand-maintained in fact (see the block above); main_wet does not rewrite it. DECLARED SCAFFOLD supply; dissolve-on: generated_artifact_gate accepts v2.compiler.source_authority.ModuleStorageIndex, then the host supply deletes. Regen via dag/tools/generated_artifact_gate.dag main_wet."
 
-data generated_stage0_files: List<String> = [
+data generated_stage0_files: std.types.List<String> = [
   "compiler_tests.rs",
   "extdeps_cargo.rs",
   "extdeps_cargo_version.rs",
@@ -28,8 +49,6 @@ data generated_stage0_files: List<String> = [
   "extdeps_uri_path.rs",
   "extdeps_version.rs",
   "extdeps_version_semver.rs",
-  "gunbc_namespace_reference_derived_closure_admission.rs",
-  "gunbc_namespace_reference_derived_closure_contract.rs",
   "gunbc_rust_decl_type_overlay.rs",
   "gunbc_stage0_crate_layout_generated.rs",
   "gunbc_stage0_crate_partition_generated.rs",
@@ -134,7 +153,7 @@ data generated_stage0_files: List<String> = [
   "wt_common.rs"
 ]
 
-data generated_stage0_paths: List<String> = [
+data generated_stage0_paths: std.types.List<String> = [
   "src/v1/stage0/src/compiler_tests.rs",
   "src/v1/stage0/src/extdeps_cargo.rs",
   "src/v1/stage0/src/extdeps_cargo_version.rs",
@@ -160,8 +179,6 @@ data generated_stage0_paths: List<String> = [
   "src/v1/stage0/src/extdeps_uri_path.rs",
   "src/v1/stage0/src/extdeps_version.rs",
   "src/v1/stage0/src/extdeps_version_semver.rs",
-  "src/v1/stage0/src/gunbc_namespace_reference_derived_closure_admission.rs",
-  "src/v1/stage0/src/gunbc_namespace_reference_derived_closure_contract.rs",
   "src/v1/stage0/src/gunbc_rust_decl_type_overlay.rs",
   "src/v1/stage0/src/gunbc_stage0_crate_layout_generated.rs",
   "src/v1/stage0/src/gunbc_stage0_crate_partition_generated.rs",

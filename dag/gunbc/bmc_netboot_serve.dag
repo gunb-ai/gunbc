@@ -1,7 +1,5 @@
 module gunbc.bmc_netboot_serve
 
-
-
 type BmcNetbootServePlan {
   bmc_host: std.types.NonEmptyStr
   serve_port: std.types.Port
@@ -17,10 +15,10 @@ data srv4_bmc_netboot_serve_plan: BmcNetbootServePlan = BmcNetbootServePlan {
   netboot_dir: "/tmp/netboot",
   boot_interface: "eth2",
   bulk_iso_url: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "cdimage.ubuntu.com/ubuntu/releases/24.04/release/ubuntu-24.04.3-live-server-arm64.iso",
   },
-  autoinstall: srv4_ubuntu_autoinstall_on_iso,
+  autoinstall: gunbc.os_install.srv4_ubuntu_autoinstall_on_iso,
 }
 
 fn bmc_netboot_host_port(plan: BmcNetbootServePlan) -> std.types.NonEmptyStr {
@@ -29,19 +27,19 @@ fn bmc_netboot_host_port(plan: BmcNetbootServePlan) -> std.types.NonEmptyStr {
 
 fn bmc_netboot_uri(plan: BmcNetbootServePlan, path: std.types.NonEmptyStr) -> extdeps.uri.Uri {
   extdeps.uri.Uri {
-    scheme: Http,
+    scheme: extdeps.uri.Http,
     locator: join([bmc_netboot_host_port(plan: plan) as String, path as String], "") as std.types.NonEmptyStr,
   }
 }
 
 fn bmc_netboot_seed_datasource(plan: BmcNetbootServePlan) -> String {
-  join(["nocloud-net;s=", uri_wire(uri: bmc_netboot_uri(plan: plan, path: "/nocloud/"))], "")
+  join(["nocloud-net;s=", extdeps.uri.uri_wire(uri: bmc_netboot_uri(plan: plan, path: "/nocloud/"))], "")
 }
 
-fn bmc_netboot_kernel_cmdline(plan: BmcNetbootServePlan) -> List<extdeps.firmware.kernel_cmdline.KernelCmdlineArg> {
+fn bmc_netboot_kernel_cmdline(plan: BmcNetbootServePlan) -> std.types.List<extdeps.firmware.kernel_cmdline.KernelCmdlineArg> {
   [
     extdeps.firmware.kernel_cmdline.KernelKeyValue { key: "ip", value: "dhcp" },
-    extdeps.firmware.kernel_cmdline.KernelKeyValue { key: "url", value: uri_wire(uri: plan.bulk_iso_url) },
+    extdeps.firmware.kernel_cmdline.KernelKeyValue { key: "url", value: extdeps.uri.uri_wire(uri: plan.bulk_iso_url) },
     extdeps.firmware.kernel_cmdline.KernelFlag { name: "autoinstall" },
     extdeps.firmware.kernel_cmdline.KernelKeyValue { key: "ds", value: bmc_netboot_seed_datasource(plan: plan) },
     extdeps.firmware.kernel_cmdline.KernelFlag { name: "---" },
@@ -64,7 +62,7 @@ fn bmc_netboot_grub_config(plan: BmcNetbootServePlan) -> extdeps.bootloader.grub
 }
 
 fn bmc_netboot_grub_cfg_text(plan: BmcNetbootServePlan) -> String {
-  grub_config_render(cfg: bmc_netboot_grub_config(plan: plan))
+  extdeps.bootloader.grub.grub_config_render(cfg: bmc_netboot_grub_config(plan: plan))
 }
 
 fn bmc_netboot_http_boot_entry(plan: BmcNetbootServePlan) -> extdeps.firmware.uefi_http_boot.UefiHttpBootEntry {
@@ -76,59 +74,64 @@ fn bmc_netboot_http_boot_entry(plan: BmcNetbootServePlan) -> extdeps.firmware.ue
 }
 
 fn bmc_netboot_nocloud_user_data(plan: BmcNetbootServePlan) -> String {
-  autoinstall_user_data(payload: plan.autoinstall)
+  gunbc.os_install_emit.autoinstall_user_data(payload: plan.autoinstall)
 }
 
+data bmc_transport_interpretation_note: String = "The BMC fleet this module targets ships OpenBMC/Dropbear (gunbc.remote_shell_command openbmc_dropbear_interpretation_note), so the interpretation is a determined fact of THIS deployment, not Unknown -- named explicitly on SshExec rather than left for command_over_transport to guess (DESIGN 5)."
+
 fn bmc_transport(plan: BmcNetbootServePlan) -> extdeps.exec.command.CommandTransport {
-  extdeps.exec.command.SshExec { ssh_target: join(["root@", plan.bmc_host as String], "") as std.types.NonEmptyStr }
+  extdeps.exec.command.SshExec {
+    ssh_target: join(["root@", plan.bmc_host as String], "") as std.types.NonEmptyStr,
+    interpretation: gunbc.remote_shell_command.openbmc_dropbear_interpretation,
+  }
 }
 
 fn bmc_netboot_serve_command_local(plan: BmcNetbootServePlan) -> extdeps.exec.command.ArgvCommand {
-  busybox_httpd_command(
+  extdeps.tools.busybox.busybox_httpd_command(
     busybox_bin: bmc_netboot_staged_path(plan: plan, name: "busybox"),
     document_root: plan.netboot_dir,
     port: plan.serve_port,
   )
 }
 
-fn bmc_netboot_serve_command(plan: BmcNetbootServePlan) -> extdeps.exec.command.ArgvCommand {
-  command_over_transport(
+fn bmc_netboot_serve_command(plan: BmcNetbootServePlan) -> extdeps.exec.command.CommandOverTransportOutcome {
+  extdeps.exec.command.command_over_transport(
     command: bmc_netboot_serve_command_local(plan: plan),
     transport: bmc_transport(plan: plan),
   )
 }
 
-fn bmc_netboot_serve_command_text(plan: BmcNetbootServePlan) -> String {
-  shell_command_render(command: bmc_netboot_serve_command(plan: plan))
+type BmcNetbootServeCommandTextOutcome
+  = BmcNetbootServeCommandTextBuilt { text: String }
+  | BmcNetbootServeCommandTextRefused { cause: gunbc.remote_shell_command.RemoteExecCommandRefusalCause }
+
+fn bmc_netboot_serve_command_text(plan: BmcNetbootServePlan) -> BmcNetbootServeCommandTextOutcome {
+  match bmc_netboot_serve_command(plan: plan) {
+    CommandOverTransportRefused { cause: c } => BmcNetbootServeCommandTextRefused { cause: c }
+    CommandOverTransportBuilt { command: cmd } =>
+      BmcNetbootServeCommandTextBuilt { text: extdeps.exec.command.shell_command_render(command: cmd) }
+  }
 }
 
 fn bmc_ssh_target(plan: BmcNetbootServePlan) -> std.types.NonEmptyStr {
   join(["root@", plan.bmc_host as String], "") as std.types.NonEmptyStr
 }
 
-
 data bmc_netboot_provision_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: RealizationDispatch,
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.bmc_netboot_serve",
     decl_name: "bmc_netboot_provision_dissolution_trigger",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 
-data bmc_netboot_provision_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: bmc_netboot_provision — the staging manifest (bmc_netboot_staging_manifest) IS the driver: provision folds its BmcStagedFile rows through bmc_netboot_stage_file (LocalArtifact scp / InlineText write+scp / FetchFromUri typed refusal), so the file list has one authority and the former hand-unrolled sequence is deleted. Remaining debt is the transport: shell.Exec.Run rendering of scp_command (extdeps.exec.command, the single ssh/scp posture authority — no forked argv) on the pre-runtime BMC bootstrap window. DISSOLVES WHEN host_effect_apply binds the manifest fold as a typed staging effect and dag/gunbc/bmc_netboot_serve.dag retires its shell/scp glue")
+data bmc_netboot_provision_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: bmc_netboot_provision — the staging manifest (bmc_netboot_staging_manifest) IS the driver: provision folds its BmcStagedFile rows through bmc_netboot_stage_file (LocalArtifact scp / InlineText write+scp / FetchFromUri typed refusal), so the file list has one authority and the former hand-unrolled sequence is deleted. bmc_netboot_run_bmc and bmc_netboot_put_path no longer hand-roll their own retained_runtime/shell.Exec.Run heredoc glue (that was two bridge sites duplicating one pattern, §2/§3); both now call gunbc.command_runner.run_shell_command, the single authority for rendering an ArgvCommand+CommandTransport over the heredoc bridge — command_runner already carries its own dissolution obligation (command_runner_dissolution_trigger) for that bridge, so this module inherits rather than duplicates it. CORRECTED 2026-08-19 (this clause previously said the SshExec debt below was unchanged and out of scope; that is now false and is rewritten rather than left standing per DESIGN §3's stale-citation discipline): extdeps.exec.command command_over_transport's SshExec branch no longer composes ssh_exec_prefix ++ argv as a flat suffix. It folds the inner ArgvCommand through gunbc.remote_shell_command remote_exec_command_string into ONE RFC-4254-conformant, POSIX-single-quote-encoded command string (cited to IEEE 1003.1-2017 section 2.2.2), carried as ssh's single final argument — bmc_transport now names openbmc_dropbear_interpretation explicitly on SshExec so this fold runs, rather than refusing on Unknown. Remaining debt is scoped narrower: the heredoc bridge itself (command_runner's shell_exec_via_bash/retained_runtime hop) is unchanged. DISSOLVES WHEN host_effect_apply binds ArgvCommand execution (mkdir / scp / busybox-httpd-launch) as typed staging effects, and dag/gunbc/bmc_netboot_serve.dag retires command_runner.run_shell_command in favor of host_effect_apply")
 
-func bmc_netboot_run_bmc(plan: BmcNetbootServePlan, argv: List<String>) -> std.process.ProcessExit
+func bmc_netboot_run_bmc(plan: BmcNetbootServePlan, argv: std.types.List<String>) -> std.process.ProcessExit
   uses net: std.cache_interface.Network
 {
-  let cmd = command_over_transport(command: extdeps.exec.command.ArgvCommand { argv: argv }, transport: bmc_transport(plan: plan))
-  let run = shell.Exec.Run(
-    script: retained_runtime(
-      body: shell_exec_via_bash(body: shell_command_render(command: cmd)),
-      reason: "bmc-netboot pre-runtime bootstrap window: ssh/scp posture rendered through the heredoc transport" as std.types.NonEmptyStr,
-    )
-  )
-  if run.success { ExitSuccess } else { exit_failure(reason: concat("bmc-netboot: ", run.stderr)) }
+  gunbc.command_runner.run_shell_command(command: extdeps.exec.command.ArgvCommand { argv: argv }, transport: bmc_transport(plan: plan))
 }
 
 fn bmc_staged_file_basename(remote_path: std.types.NonEmptyStr) -> String {
@@ -143,14 +146,8 @@ func bmc_netboot_put_path(plan: BmcNetbootServePlan, local: std.types.NonEmptySt
   uses net: std.cache_interface.Network
 {
   let remote_target = join([bmc_ssh_target(plan: plan) as String, ":", remote_path as String], "") as std.types.NonEmptyStr
-  let cmd = scp_command(local_path: local, remote_target: remote_target)
-  let run = shell.Exec.Run(
-    script: retained_runtime(
-      body: shell_exec_via_bash(body: shell_command_render(command: cmd)),
-      reason: "bmc-netboot pre-runtime bootstrap window: scp staging rendered through the heredoc transport" as std.types.NonEmptyStr,
-    )
-  )
-  if run.success { ExitSuccess } else { exit_failure(reason: concat("bmc-netboot: scp failed for ", remote_path as String)) }
+  let cmd = extdeps.exec.command.scp_command(local_path: local, remote_target: remote_target)
+  gunbc.command_runner.run_shell_command(command: cmd, transport: extdeps.exec.command.LocalExec)
 }
 
 func bmc_netboot_stage_file(plan: BmcNetbootServePlan, file: BmcStagedFile) -> std.process.ProcessExit
@@ -159,7 +156,7 @@ func bmc_netboot_stage_file(plan: BmcNetbootServePlan, file: BmcStagedFile) -> s
   match file.content {
     LocalArtifact { path: p } => bmc_netboot_put_path(plan: plan, local: p, remote_path: file.remote_path)
     InlineText { text: t } => bmc_netboot_stage_inline(plan: plan, remote_path: file.remote_path, content: t)
-    FetchFromUri { source: _ } => exit_failure(
+    FetchFromUri { source: _ } => std.process.exit_failure(
       reason: concat("bmc-netboot: FetchFromUri staging has no realized transport — refusing for ", file.remote_path as String),
     )
   }
@@ -169,13 +166,12 @@ func bmc_netboot_stage_inline(plan: BmcNetbootServePlan, remote_path: std.types.
   uses net: std.cache_interface.Network
 {
   let local = join(["/tmp/gunbc-bmc-", bmc_staged_file_basename(remote_path: remote_path)], "") as std.types.NonEmptyStr
-  let w = Filesystem.Write(path: local as String, content: content)
+  let w = extdeps.filesystem.filesystem_io.Filesystem.Write(path: local as String, content: content)
   if w.success == false {
-    return exit_failure(reason: concat("bmc-netboot: local write failed for ", remote_path as String))
+    return std.process.exit_failure(reason: concat("bmc-netboot: local write failed for ", remote_path as String))
   }
   return bmc_netboot_put_path(plan: plan, local: local, remote_path: remote_path)
 }
-
 
 func bmc_netboot_provision(plan: BmcNetbootServePlan) -> std.process.ProcessExit
   uses net: std.cache_interface.Network
@@ -222,7 +218,7 @@ fn bmc_netboot_staged_path(plan: BmcNetbootServePlan, name: std.types.NonEmptySt
   join([plan.netboot_dir as String, "/", name as String], "") as std.types.NonEmptyStr
 }
 
-fn bmc_netboot_staging_manifest(plan: BmcNetbootServePlan) -> List<BmcStagedFile> {
+fn bmc_netboot_staging_manifest(plan: BmcNetbootServePlan) -> std.types.List<BmcStagedFile> {
   [
     BmcStagedFile {
       remote_path: bmc_netboot_staged_path(plan: plan, name: "busybox"),

@@ -1,27 +1,28 @@
 module gunbc.host_build_cache_provision
 
+data host_build_cache_provision_naming_hazard_note: String = "NAMING HAZARD, RECORD BEFORE TOUCHING EITHER FILE. This module (host_build_cache_provision.dag) and the now-deleted host_build_cache_provision_script.dag differed by one suffix, held unrelated concepts (this one a catalog-gate/verdict fold; that one a concat-shell body builder), and one was edited while the other was deleted in the SAME PR (#8598, the A5 EnsureBuildCacheInstance arm swap) -- a trap the tree itself set, not a naming choice either file made carelessly. It produced a real false-negative: a dependents-census grep answering 'does a disconnected verdict fold exist' checked the deleted file's own leftover state and reported that as though it answered the question about THIS file's fold, which was not re-grepped. The next person doing anything near either name: grep the exact module path, not the shared prefix. This module's own fold (BuildCacheDaemonObservation / provision_build_cache_verdict / placement_verdict / build_cache_provision_gate_accepts) is a separate, PRE-EXISTING dead-code finding -- zero non-test, non-self-file callers tree-wide, confirmed 2026-08-20 -- filed as its own deletion candidate in docs/plans/shell-to-dag-residual-census-and-arc-completion.md (C-note, 2026-08-20), not created or fixed by #8598 and not deleted here."
 
 data provision_build_cache_widen_sketch_note: String = "RED-control fixture modeling TWO forbidden widens; it must never ship as the authority verdict fold. (1) The absorbing fallback (the -u RUSTC_WRAPPER cache-drop): the live instance ci_retry_escalation_level2 was REMOVED 2026-07-23 (STEP 2) — the eagain retry now escalates to CARGO_BUILD_JOBS=1 (keep sccache) only, then fails loud via verify-build-artifacts, so no cache-drop widen remains and this fixture guards the fold against its re-introduction. (2) The PLACEMENT widen: its DaemonStatsOk arm discards the placement field, i.e. 'responsive implies converged'. That is precisely the behavior that shipped on srv1 — a lazily auto-spawned server in dead slot srv1-10's cgroup accumulated 229780 memory.max breach events and 12 oom_kills while every provision read reported converged. Re-confirmed live 2026-08-01: pid 3975946, age 31.2d, cgroup actions-runner@srv1-10.service (unit inactive+disabled, slots 01-05 are the live ones), holding LISTEN on /var/lib/ctrl/sccache-ci/server.sock, resident beside an active runner's rustc. INCIDENT CLEARED 2026-08-07 (lane_e_srv1_ci_noncompletion_root_cause_receipt): pid 3975946 no longer exists and srv1-10 is inactive+disabled; the stranded-server symptom is gone but the defect CLASS is live — srv1 now carries a young runner-owned server on an ACTIVE slot (srv1-02, ~2026-08-07), which is exactly the ServerRunnerOwned arm this fold must refuse ProvisionConverged on until ServerManagedUnitOwned lands."
 
 data lane_e_srv1_ci_noncompletion_root_cause_receipt: String = "LANE E ROOT-CAUSE RECEIPT (2026-08-06 investigation; quarantine mechanism RETIRED 2026-08-07 — see retirement paragraph). SYMPTOM CLASS INVESTIGATED: cargo check -p v1-compiler-tests --tests killed at the 15m compile-gate ceiling while still compiling v1-compiler. HARM MEASURE: count long cancelled jobs as capacity absorption, not only conclusion=failure — a 14m cancelled build costs the same slot-hours as a 15m killed build. EXECUTED EVIDENCE (historical failure): runs 31060400858 (srv1-05) and 31060543168 (srv1-01), killed at 15m mid-Compiling v1-compiler; srv1-02 build cancelled at 14m (still-bat-561 sample). SLOT DISCRIMINANT (Lane E measurement): srv1 is NOT uniformly broken — still-bat-561 measured srv1-04 build success in ~1m and srv1-03 regen success in the same window srv1-01/05 cold-killed at 15m; warm-cache fleet runs complete the compile gate in ~50s–1m. MECHANISM (load-bearing): one CI sccache endpoint per host; cache-miss compiles execute as CHILDREN OF THE SERVER PROCESS (extdeps.cache.sccache sccache_server_process_facts), so the server's cgroup bounds every compile on the host — not the slot that issued the compile. A server stranded in a retired slot's cgroup (pid 3975946 in srv1-10, 2026-08-01 receipt) exported one dead slot's memory ceiling to all live slots on cache miss. FIX AUTHORITY: ServerManagedUnitOwned on the managed compile-pool slice — ServerRunnerOwned on ANY lifecycle (active or retired) must refuse ProvisionConverged (placement_verdict, build_cache_placement_observation_test witness_both_runner_lifecycles_refuse_at_the_verdict). 2026-08-07 STATUS: INCIDENT CLEARED, NOT REPAIRED — pid 3975946 gone; surviving server on srv1 is runner-owned on ACTIVE slot srv1-02 (~90s old at observation), same ServerRunnerOwned class srv2/srv3 already carried per 2026-08-01 receipt; ephemeral runner recycle is the only reason it has not stranded again — the class can strand again the next time a slot retires while holding the server. POST-INCIDENT MEASUREMENT (still-bat-561, 45 completed runs sampled 2026-08-07, kill-shape = non-success with duration 13–18m): srv1 16 jobs / 5 non-success / 0 kill-shape; srv2 26 / 6 / 2; srv3 29 / 12 / 0; srv4 49 / 14 / 1 — srv1 has zero kill-shape failures while srv2 and srv4 still show them; host-scoped CI quarantine would route work toward hosts currently exhibiting the defect. QUARANTINE RETIREMENT: ci-fleet-admit host-label gate (PR #7889) retired rather than merged — premise expired and measurement inverted the remedy; this receipt is the durable home for the investigation."
 
-data host_build_cache_provision_scope_disposition: std.disposition.Disposition = SingleAuthority
+data host_build_cache_provision_scope_disposition: std.disposition.Disposition = std.disposition.SingleAuthority
 
 data host_build_cache_provision_realize_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: RealizationDispatch,
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect_realize",
     decl_name: "realize_provision_build_cache",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 
 data ci_sccache_opportunistic_detect_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: RealizationDispatch,
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.workflow.ci_materialization_emit",
     decl_name: "ci_sccache_provider_shell_injection",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 data build_cache_path_authority_observation_note: String = "CI and ctrl-build sessions consume the cache as bare `sccache` on PATH (RUSTC_WRAPPER=sccache), so provisioning the modeled binary is NOT sufficient — the PATH-visible sccache must BE the modeled one. A second sccache earlier in PATH (a distro package, a stale copy) is precisely the two-authority state this lane exists to remove, and it is invisible to a read-back that probes the absolute path: that read-back greens on the binary we provisioned while the compiler calls a different one. DaemonPathShadowed carries BOTH paths so the refusal is located (which binary won, which one was expected) rather than merely typed. This judgement is modeled HERE, in the verdict fold (proven by design_witness_path_shadow_refuses_fail_closed against a synthetic DaemonPathShadowed observation), not decided by the provisioning shell. Its LIVE observation is STAGED, not emitted: per the shell→dag census this module's script side is an A5 `decompose` row that must not grow its emitted shell surface, so the `command -v sccache` resolve waits for the typed-argv dissolve-on (#5828) rather than landing as hand-shell now (review 42343). The model carries the state and its refusal today; only the live producer is deferred."
@@ -166,7 +167,7 @@ fn provision_build_cache_verdict(
   catalog_id: std.cache_identity.CacheInterfaceId,
   observed: BuildCacheDaemonObservation,
 ) -> BuildCacheProvisionVerdict {
-  match provision_build_cache_catalog_gate_verdict(catalog_id: catalog_id) {
+  match gunbc.host_build_cache_catalog_gate.provision_build_cache_catalog_gate_verdict(catalog_id: catalog_id) {
     ProvisionBuildCacheCatalogRefused { reason: reason } =>
       ProvisionRefused {
         cause: RefusalCatalogUnknown,
@@ -214,19 +215,19 @@ fn provision_build_cache_verdict(
   }
 }
 
-fn provision_build_cache_effect_for_catalog(catalog_id: std.cache_identity.CacheInterfaceId) -> gunbc.host_effect.HostEffect {
-  gunbc.host_effect.ProvisionBuildCache { catalog_id: catalog_id }
+fn provision_build_cache_effect_for_host(host: product.placement_supply.HostIdentity) -> gunbc.host_effect.HostEffect {
+  gunbc.host_effect.EnsureBuildCacheInstance { desired: gunbc.build_cache_instance.ci_cache_instance(host: host) }
 }
 
-fn provision_build_cache_default_effect() -> gunbc.host_effect.HostEffect {
-  provision_build_cache_effect_for_catalog(catalog_id: sccache_local_id)
+fn provision_build_cache_default_effect(host: product.placement_supply.HostIdentity) -> gunbc.host_effect.HostEffect {
+  provision_build_cache_effect_for_host(host: host)
 }
 
 fn provision_build_cache_routes_through_host_effect_apply() -> Bool {
   match host_build_cache_provision_realize_scaffold {
     Scaffold {
-      dissolves_to: RealizationDispatch,
-      bind: DeclarationRef { module_path: m, decl_name: n, field: _ },
+      dissolves_to: std.disposition.RealizationDispatch,
+      bind: std.decl_ref.DeclarationRef { module_path: m, decl_name: n, field: _ },
     } =>
       m == "gunbc.host_effect_realize" && n == "realize_provision_build_cache"
     Terminal { reason: _ } => false
@@ -235,7 +236,7 @@ fn provision_build_cache_routes_through_host_effect_apply() -> Bool {
 
 fn daemon_absent_refuses_fail_closed() -> Bool {
   match provision_build_cache_verdict(
-    catalog_id: sccache_local_id,
+    catalog_id: extdeps.cache.sccache.sccache_local_id,
     observed: DaemonAbsent,
   ) {
     ProvisionRefused { cause: RefusalDaemonAbsent, reason: _ } => true
@@ -243,14 +244,14 @@ fn daemon_absent_refuses_fail_closed() -> Bool {
   }
 }
 
-data managed_compile_pool_slice_fixture: std.types.NonEmptyStr = gunbc_managed_compile_pool_slice
+data managed_compile_pool_slice_fixture: std.types.NonEmptyStr = gunbc.host_layout.gunbc_managed_compile_pool_slice
 
 fn stats_ok_lazy_spawned_refuses() -> Bool {
   match provision_build_cache_verdict(
-    catalog_id: sccache_local_id,
+    catalog_id: extdeps.cache.sccache.sccache_local_id,
     observed: DaemonStatsOk {
       stats_line: "compile_requests=42",
-      placement: gunbc.build_cache_instance.ServerRunnerOwned { slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot },
+      placement: gunbc.build_cache_instance.ServerRunnerOwned { slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: gunbc.build_cache_instance.RetiredRunnerSlot },
     },
   ) {
     ProvisionRefused { cause: RefusalServerRunnerOwned, reason: _ } => true
@@ -261,7 +262,7 @@ fn stats_ok_lazy_spawned_refuses() -> Bool {
 
 fn stats_ok_placement_unknown_refuses() -> Bool {
   match provision_build_cache_verdict(
-    catalog_id: sccache_local_id,
+    catalog_id: extdeps.cache.sccache.sccache_local_id,
     observed: DaemonStatsOk {
       stats_line: "compile_requests=42",
       placement: gunbc.build_cache_instance.ServerPlacementUnknown { detail: "cgroup read unavailable" },
@@ -275,20 +276,20 @@ fn stats_ok_placement_unknown_refuses() -> Bool {
 
 fn stats_ok_unit_owned_converges() -> Bool {
   match provision_build_cache_verdict(
-    catalog_id: sccache_local_id,
+    catalog_id: extdeps.cache.sccache.sccache_local_id,
     observed: DaemonStatsOk {
       stats_line: "compile_requests=42",
       placement: gunbc.build_cache_instance.ServerManagedUnitOwned { unit: managed_compile_pool_slice_fixture },
     },
   ) {
-    ProvisionConverged { catalog_id: id, stats_line: _ } => id == sccache_local_id
+    ProvisionConverged { catalog_id: id, stats_line: _ } => id == extdeps.cache.sccache.sccache_local_id
     ProvisionRefused { cause: _, reason: _ } => false
   }
 }
 
 fn misconfigured_matches_cited_fragment() -> Bool {
   string_contains(
-    s: sccache_fatal_error_log_fragment,
+    s: extdeps.cache.sccache.sccache_fatal_error_log_fragment,
     pattern: "fatal error",
   )
 }
@@ -296,8 +297,8 @@ fn misconfigured_matches_cited_fragment() -> Bool {
 func provision_build_cache(host: product.placement_supply.HostIdentity, catalog_id: std.cache_identity.CacheInterfaceId) -> std.process.ProcessExit
   uses net: std.cache_interface.Network
 {
-  match provision_build_cache_catalog_gate_verdict(catalog_id: catalog_id) {
-    ProvisionBuildCacheCatalogRefused { reason: reason } => exit_failure(reason: reason as String)
-    ProvisionBuildCacheCatalogRealizable => host_toolchain_ensure(host: host, kind: BuildCache)
+  match gunbc.host_build_cache_catalog_gate.provision_build_cache_catalog_gate_verdict(catalog_id: catalog_id) {
+    ProvisionBuildCacheCatalogRefused { reason: reason } => std.process.exit_failure(reason: reason as String)
+    ProvisionBuildCacheCatalogRealizable => gunbc.host_toolchain_ensure.host_toolchain_ensure(host: host, kind: gunbc.host_toolchain_ensure.BuildCache)
   }
 }

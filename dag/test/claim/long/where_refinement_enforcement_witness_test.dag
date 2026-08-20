@@ -356,6 +356,24 @@ fn w_wrong_kind_literal_direct_return_green() -> Bool {
   )
 }
 
+fn w_symbol_literal_call_arg_non_empty_green() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_symbol_callarg_green\nimport std.types { NonEmptyStr }\nfn takes(x: NonEmptyStr) -> Bool { true }\nfn ok() -> Bool { takes(x: ^tag) }\n",
+    "src/whereref_symbol_callarg_green.rs",
+    [],
+    []
+  )
+}
+
+fn w_empty_string_literal_call_arg_non_empty_red() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_emptystring_callarg_red\nimport std.types { NonEmptyStr }\nfn takes(x: NonEmptyStr) -> Bool { true }\nfn bad() -> Bool { takes(x: \"\") }\n",
+    "src/whereref_emptystring_callarg_red.rs",
+    [],
+    []
+  )
+}
+
 test fn where_refinement_direct_return_literal_refuses() -> Bool {
   !w_positive_int_direct_return_red()
 }
@@ -474,6 +492,14 @@ test fn where_refinement_depth2_wrong_base_type_call_arg_refuses() -> Bool {
 
 test fn where_refinement_depth2_wrong_base_type_call_arg_accepts() -> Bool {
   w_depth2_wrong_base_type_call_arg_green()
+}
+
+test fn where_refinement_symbol_literal_call_arg_accepts() -> Bool {
+  w_symbol_literal_call_arg_non_empty_green()
+}
+
+test fn where_refinement_empty_string_literal_call_arg_refuses() -> Bool {
+  !w_empty_string_literal_call_arg_non_empty_red()
 }
 
 test fn where_refinement_depth2_wrong_base_type_data_init_refuses() -> Bool {

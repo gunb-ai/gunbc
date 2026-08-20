@@ -49,8 +49,8 @@ test fn design_witness_routes_through_host_effect_apply() -> Bool {
 }
 
 test fn design_witness_default_effect_pins_sccache_catalog() -> Bool {
-  match provision_build_cache_default_effect() {
-    ProvisionBuildCache { catalog_id: id } => id == sccache_local_id
+  match provision_build_cache_default_effect(host: "srv1") {
+    EnsureBuildCacheInstance { desired: instance } => instance.implementation == sccache_local_id
     _ => false
   }
 }
@@ -236,7 +236,8 @@ test fn design_witness_path_authority_observation_not_emitted_as_shell() -> Bool
     pattern: "path_authority=SHADOWED",
   ) && !string_contains(
     s: build_cache_provision_script_body(
-      arch_token: "aarch64" as std.types.NonEmptyStr,
+      instance: ci_cache_instance(host: "srv1"),
+      arch_token: "aarch64" as NonEmptyStr,
       digest: sccache_release_0_15_0.digest_aarch64,
     ),
     pattern: "command -v sccache",
@@ -247,40 +248,7 @@ test fn design_witness_install_is_cited_not_package_manager() -> Bool {
   build_cache_install_is_cited_not_package_manager()
 }
 
-test fn design_witness_unit_execstart_matches_install_path() -> Bool {
-  build_cache_unit_execstart_matches_install_path()
-}
-
-test fn design_witness_unit_is_foreground_supervised() -> Bool {
-  build_cache_unit_is_foreground_supervised()
-}
-
-data unit_self_exiting_sketch_note: String = "RED-control fixture: the unit body EXACTLY as #7206 shipped it — foreground-supervised, and still self-exiting because sccache's default 600s idle timeout is left in place. It is a fixture, never emitted (the authority body is build_cache_systemd_user_unit_body), and it is what makes design_witness_unit_daemon_runs_until_stopped discriminating rather than tautological: the predicate is parameterized over a body, the authority body passes it, and this sketch — the shape live execution on srv3 proved dies after `Duration: 10min 8.215s` with status 0 — fails it. Without the sketch the witness would only assert that a string the same module wrote is present in the string it wrote."
-
-fn unit_self_exiting_sketch_body() -> String {
-  join([
-    "[Unit]",
-    "Description=sccache compiler cache (gunbc host standup)",
-    "After=network.target",
-    "",
-    "[Service]",
-    "Type=simple",
-    "Environment=SCCACHE_START_SERVER=1",
-    "Environment=SCCACHE_NO_DAEMON=1",
-    join(["ExecStart=", sccache_installed_binary_path], ""),
-    "Restart=on-failure",
-    "",
-    "[Install]",
-    "WantedBy=default.target",
-    "",
-  ], "\n")
-}
-
-test fn design_witness_unit_daemon_runs_until_stopped() -> Bool {
-  build_cache_unit_daemon_runs_until_stopped()
-    && !build_cache_unit_body_runs_until_stopped(body: unit_self_exiting_sketch_body())
-    && build_cache_unit_body_runs_until_stopped(body: build_cache_systemd_user_unit_body())
-}
+data build_cache_unit_construction_checks_superseded_note: String = "The unit-body-specific construction checks formerly here (execstart-matches-install-path, foreground-supervised, daemon-runs-until-stopped, plus the RED-control unit_self_exiting_sketch fixture reproducing #7206's self-exiting unit) are DROPPED, not relocated, per the A5 grain swap (ProvisionBuildCache -> EnsureBuildCacheInstance): they asserted properties of gunbc.host_build_cache_provision_script's hand-rolled build_cache_systemd_user_unit_body, which no longer exists. The same properties are now independently regression-tested against the real render, gunbc.build_cache_unit render_build_cache_unit, in test.claim.build_cache_ensure (witness_the_rendered_unit_is_foreground_supervised, witness_the_generated_unit_reproduces_the_captured_environment) — asserted against a live srv1 capture (2026-08-01) rather than a hand-authored sketch, which is a stronger oracle than this file's own string-matching RED control ever was. The incident history (#7206, srv3 2026-07-25, Duration 10min 8.215s status 0) is preserved in gunbc.build_cache_unit's own foreground_supervision_note, not duplicated here a second time."
 
 fn unsupervised_observation_fixture() -> gunbc.host_build_cache_provision.BuildCacheDaemonObservation {
   gunbc.host_build_cache_provision.DaemonUnsupervised { unit: "sccache.service", unit_state: "inactive (dead)" }

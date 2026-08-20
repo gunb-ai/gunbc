@@ -57,3 +57,46 @@ test fn witness_empty_host_converge_refuses() -> Bool {
   }
 }
 
+fn fixture_per_slot_memory_cap_knob(name: String, dropin_path: String) -> ConvergeKnob {
+  ConvergeKnob {
+    slice: RunnerSlice,
+    name: name,
+    desired: "1073741824",
+    target: PerSlotMemoryCap {
+      dropin_path: dropin_path,
+      instance_glob: "actions-runner@*.service",
+      property: systemd_memory_max_property,
+      bytes_value: "1073741824",
+    },
+    apply_mode: FreshStandup,
+    no_op: BlindApply,
+  }
+}
+
+test fn witness_single_implemented_knob_still_interprets() -> Bool {
+  match interpret_host_converge(host_converge: HostConverge {
+    identity: operator_host_srv3,
+    knobs: [fixture_per_slot_memory_cap_knob(name: "cap_a", dropin_path: "/etc/systemd/system/a.d/mem.conf")],
+    membership: NoMembershipProbe,
+  }) {
+    ConvergeHostInterpreted { knob_count: n, stdout: _ } => n == 1
+    ConvergeHostRefused { reason: _ } => false
+  }
+}
+
+test fn witness_multi_knob_script_concatenation_is_refused_not_silently_run() -> Bool {
+  match interpret_host_converge(host_converge: HostConverge {
+    identity: operator_host_srv3,
+    knobs: [
+      fixture_per_slot_memory_cap_knob(name: "cap_a", dropin_path: "/etc/systemd/system/a.d/mem.conf"),
+      fixture_per_slot_memory_cap_knob(name: "cap_b", dropin_path: "/etc/systemd/system/b.d/mem.conf"),
+    ],
+    membership: NoMembershipProbe,
+  }) {
+    ConvergeHostRefused { reason: why } =>
+      string_contains(s: why, pattern: "multi-knob script concatenation refused")
+        && string_contains(s: why, pattern: "cap_b")
+    ConvergeHostInterpreted { knob_count: _, stdout: _ } => false
+  }
+}
+

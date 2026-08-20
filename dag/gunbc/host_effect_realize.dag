@@ -8,7 +8,7 @@ type ResolvedHostEffectCell =
   | ConvergeOnHost { node: gunbc.fleet_intent.ComputeHost, host_converge: gunbc.host_converge.HostConverge }
   | TypedReconcileOnHost { node: gunbc.fleet_intent.ComputeHost, kind: TypedReconcileKind }
   | OsInstallActuatorToolchainOnHost { node: gunbc.fleet_intent.ComputeHost }
-  | ProvisionBuildCacheOnHost { node: gunbc.fleet_intent.ComputeHost, catalog_id: String }
+  | ProvisionBuildCacheOnHost { node: gunbc.fleet_intent.ComputeHost, desired: gunbc.build_cache_instance.BuildCacheInstance }
   | ProvisionCodexRuntimeOnHost { node: gunbc.fleet_intent.ComputeHost }
   | HostnameOnHost { node: gunbc.fleet_intent.ComputeHost, hostnamectl_path: std.types.NonEmptyStr, base: extdeps.dns.domain_name.DnsLabel, desired: extdeps.dns.domain_name.DnsLabel }
   | HostnameReadOnHost { node: gunbc.fleet_intent.ComputeHost }
@@ -73,8 +73,8 @@ fn resolve_host_effect_cell(target: gunbc.host_effect.NodeControlPlane, effect: 
       match effect {
         OsInstallActuatorToolchainEnsure {} =>
           OsInstallActuatorToolchainOnHost { node: n }
-        ProvisionBuildCache { catalog_id: id } =>
-          ProvisionBuildCacheOnHost { node: n, catalog_id: id }
+        EnsureBuildCacheInstance { desired: d } =>
+          ProvisionBuildCacheOnHost { node: n, desired: d }
         ProvisionCodexRuntime {} =>
           ProvisionCodexRuntimeOnHost { node: n }
         Srv3ReceiptEmit { lines: lines } =>
@@ -112,8 +112,8 @@ fn resolve_host_effect_cell(target: gunbc.host_effect.NodeControlPlane, effect: 
               }
             OsInstallActuatorToolchainEnsure {} =>
               OsInstallActuatorToolchainOnHost { node: n }
-            ProvisionBuildCache { catalog_id: id } =>
-              ProvisionBuildCacheOnHost { node: n, catalog_id: id }
+            EnsureBuildCacheInstance { desired: d } =>
+              ProvisionBuildCacheOnHost { node: n, desired: d }
             ProvisionCodexRuntime {} =>
               ProvisionCodexRuntimeOnHost { node: n }
             Srv3InstallMediaFetch => TypedReconcileOnHost { node: n, kind: TypedReconcileFetch }
@@ -178,8 +178,8 @@ fn resolve_host_effect_cell(target: gunbc.host_effect.NodeControlPlane, effect: 
       match effect {
         OsInstallActuatorToolchainEnsure {} =>
           IncompatibleCell { reason: "host_effect: OsInstallActuatorToolchainEnsure is in-band (actuator host toolchain) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-        ProvisionBuildCache { catalog_id: _ } =>
-          IncompatibleCell { reason: "host_effect: ProvisionBuildCache is in-band (per-host sccache daemon) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+        EnsureBuildCacheInstance { desired: _ } =>
+          IncompatibleCell { reason: "host_effect: EnsureBuildCacheInstance is in-band (per-host sccache daemon) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
         ProvisionCodexRuntime {} =>
           IncompatibleCell { reason: "host_effect: ProvisionCodexRuntime is in-band (per-host provider runtime bundle) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
         Srv3NbdProxyServe { intent: _, lease_key: _ } =>
@@ -195,8 +195,8 @@ fn resolve_host_effect_cell(target: gunbc.host_effect.NodeControlPlane, effect: 
               IncompatibleCell { reason: "host_effect: ConvergePlan is in-band (host OS converge) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             OsInstallActuatorToolchainEnsure {} =>
               IncompatibleCell { reason: "host_effect: OsInstallActuatorToolchainEnsure is in-band (actuator host toolchain) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            ProvisionBuildCache { catalog_id: _ } =>
-              IncompatibleCell { reason: "host_effect: ProvisionBuildCache is in-band (per-host sccache daemon) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+            EnsureBuildCacheInstance { desired: _ } =>
+              IncompatibleCell { reason: "host_effect: EnsureBuildCacheInstance is in-band (per-host sccache daemon) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             ProvisionCodexRuntime {} =>
               IncompatibleCell { reason: "host_effect: ProvisionCodexRuntime is in-band (per-host provider runtime bundle) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             Srv3InstallMediaFetch =>
@@ -668,7 +668,7 @@ fn provision_build_cache_reconcile(
   toolchain_ensure_reconcile(
     observed: observed,
     intent: intent,
-    effect_label: "ProvisionBuildCache",
+    effect_label: "EnsureBuildCacheInstance",
   )
 }
 
@@ -1281,6 +1281,163 @@ fn realize_os_install_actuator_toolchain_ensure(
   }
 }
 
+data build_cache_install_authority_note: String = "The ensure arm installs sccache by calling the cited authority extdeps.cache.sccache.sccache_install_script (pinned release, per-arch sha256 verified, landing at sccache_installed_binary_path) — it does NOT hand-roll a package-manager install. Until 2026-07-24 this module ran `sudo -n apt-get install -y sccache` and wrote a unit with ExecStart=/usr/bin/sccache, a §3 fork of the same concept: P1:runner-deploy-slot installs the pinned tarball to /usr/local/bin and then P1b:build-cache-provision pointed its unit at a path that install never creates, so the daemon could not start and the read-back refused. Both the install and the unit now read ONE path row, so the two phases cannot disagree."
+
+data build_cache_ensure_scope_swap_note: String = "This ensure body writes a SYSTEM-scope unit (/etc/systemd/system/<intended_unit>, WantedBy=multi-user.target, per render_build_cache_unit) rather than the user-scope unit (~/.config/systemd/user, enable-linger) the deleted gunbc.host_build_cache_provision_script builder used. That earlier form needed `sudo -n loginctl enable-linger \"$USER\"` to survive the provisioning ssh connection closing, which is real shell this render's system scope makes unnecessary — a `systemd --user` manager has no login to outlive when the unit is system-scoped. This is a consequence of the A5 grain swap (EnsureBuildCacheInstance { desired: BuildCacheInstance }), not an independently decided handler choice: BuildCacheInstance.intended_unit is a single row (\"gunbc-build-cache-ci.service\", WantedBy=multi-user.target) already grounded on a live srv1 capture, and the render is the single authority for the unit body, so writing it anywhere but where the render says WantedBy points is a second representation of the same fact. The install/enable/restart sequence reuses gunbc.live_deploy.operations' existing typed-argv-backed command builders (systemctl_daemon_reload_command / systemctl_enable_command / systemctl_restart_command, each privileged: true) rather than hand-spelling new sudo -n systemctl strings, matching the idiom already established in gunbc.live_deploy.emit and gunbc.host_axis_caps — a further §3 de-fork consistent with why this swap exists."
+
+fn build_cache_unit_system_path(instance: gunbc.build_cache_instance.BuildCacheInstance) -> String {
+  concat("/etc/systemd/system/", instance.intended_unit as String)
+}
+
+fn build_cache_observe_stats_body() -> String {
+  join([
+    "stats_out=\"\"",
+    "stats_rc=0",
+    join(["if [ -x '", extdeps.cache.sccache.sccache_installed_binary_path, "' ]; then"], ""),
+    join(["  stats_out=\"$('", extdeps.cache.sccache.sccache_installed_binary_path, "' --show-stats 2>&1)\" || stats_rc=$?"], ""),
+    "else",
+    "  printf '%s\\n' \"BuildCacheProvisionReceipt: observe=absent\"",
+    "  stats_rc=127",
+    "fi",
+    "if [ \"$stats_rc\" -eq 0 ]; then",
+    "  printf '%s\\n' \"BuildCacheProvisionReceipt: observe=ok\"",
+    "  printf '%s\\n' \"$stats_out\"",
+    "  exit 0",
+    "fi",
+    "",
+  ], "\n")
+}
+
+fn build_cache_fragment_word(fragment: String) -> String {
+  join(["'", fragment, "'"], "")
+}
+
+fn build_cache_fragment_words() -> String {
+  join(
+    map(extdeps.cache.sccache.sccache_misconfigured_log_fragments, f => build_cache_fragment_word(fragment: f)),
+    " ",
+  )
+}
+
+data build_cache_classify_fold_note: String = "The misconfigured-fragment classifier is a FOLD over the cited roster extdeps.cache.sccache.sccache_misconfigured_log_fragments, not one emitted branch per fragment. The roster is data the loop iterates: adding a fragment upstream changes the emitted word list and nothing else. Fragments are single-quoted as shell words, which is total only while no fragment contains a single quote — build_cache_fragment_words_are_shell_safe() is the construction check that keeps it so."
+
+fn build_cache_classify_failure_body() -> String {
+  join([
+    "observe_class=unresponsive",
+    "observe_fragment=\"\"",
+    join(["for frag in ", build_cache_fragment_words(), "; do"], ""),
+    "  if printf '%s' \"$stats_out\" | grep -Fq \"$frag\"; then",
+    "    observe_class=misconfigured",
+    "    observe_fragment=\"$frag\"",
+    "    break",
+    "  fi",
+    "done",
+    "if [ \"$observe_class\" = misconfigured ]; then",
+    "  printf '%s\\n' \"BuildCacheProvisionReceipt: observe=misconfigured fragment=$observe_fragment\"",
+    "else",
+    "  printf '%s\\n' \"BuildCacheProvisionReceipt: observe=unresponsive\"",
+    "fi",
+    "",
+  ], "\n")
+}
+
+fn build_cache_ensure_daemon_body(instance: gunbc.build_cache_instance.BuildCacheInstance, arch_token: std.types.NonEmptyStr, digest: extdeps.crypto.hash.Digest) -> String {
+  join([
+    join(["if [ ! -x '", extdeps.cache.sccache.sccache_installed_binary_path, "' ]; then"], ""),
+    extdeps.cache.sccache.sccache_install_script(rel: extdeps.cache.sccache.sccache_release_0_15_0, arch: arch_token, digest: digest),
+    "fi",
+    "_gunbc_stage=\"$(mktemp -d)\"",
+    "trap 'rm -rf \"$_gunbc_stage\"' EXIT",
+    join(["cat > \"$_gunbc_stage/", instance.intended_unit as String, "\" <<'__GUNBC_SCCACHE_UNIT__'"], ""),
+    join(gunbc.build_cache_unit.render_build_cache_unit(instance: instance), "\n"),
+    "__GUNBC_SCCACHE_UNIT__",
+    join(["sudo -n install -m 0644 \"$_gunbc_stage/", instance.intended_unit as String, "\" ", build_cache_unit_system_path(instance: instance)], ""),
+    gunbc.live_deploy.operations.systemctl_daemon_reload_command(privileged: true),
+    gunbc.live_deploy.operations.systemctl_enable_command(unit: instance.intended_unit, privileged: true),
+    gunbc.live_deploy.operations.systemctl_restart_command(unit: instance.intended_unit, privileged: true),
+    "",
+  ], "\n")
+}
+
+fn build_cache_read_back_body(binary: String) -> String {
+  join([
+    join(["if stats_out=\"$('", binary, "' --show-stats 2>&1)\"; then"], ""),
+    "  printf '%s\\n' \"BuildCacheProvisionReceipt: read_back=ok\"",
+    "  printf '%s\\n' \"$stats_out\"",
+    "  exit 0",
+    "else",
+    "  printf '%s\\n' \"BuildCacheProvisionReceipt: read_back=FAILED sccache unhealthy after ensure\"",
+    "  printf '%s\\n' \"$stats_out\"",
+    "  exit 1",
+    "fi",
+    "",
+  ], "\n")
+}
+
+fn build_cache_provision_script_body(instance: gunbc.build_cache_instance.BuildCacheInstance, arch_token: std.types.NonEmptyStr, digest: extdeps.crypto.hash.Digest) -> String {
+  join([
+    "set -euo pipefail",
+    build_cache_observe_stats_body(),
+    build_cache_classify_failure_body(),
+    "printf '%s\\n' \"BuildCacheProvisionReceipt: ensure=starting\"",
+    build_cache_ensure_daemon_body(instance: instance, arch_token: arch_token, digest: digest),
+    build_cache_read_back_body(binary: extdeps.cache.sccache.sccache_installed_binary_path),
+  ], "\n")
+}
+
+fn build_cache_provision_shell_script(instance: gunbc.build_cache_instance.BuildCacheInstance, arch_token: std.types.NonEmptyStr, digest: extdeps.crypto.hash.Digest) -> String {
+  gunbc.shell_bash_runner.shell_exec_via_bash(
+    body: build_cache_provision_script_body(instance: instance, arch_token: arch_token, digest: digest),
+  )
+}
+
+data build_cache_provision_shell_script_dissolution_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "dissolve-on: gunbc.host_effect_realize.build_cache_provision_shell_script (relocated here, unchanged in kind, from the deleted gunbc.host_build_cache_provision_script) — concat-built systemd/sccache ensure shell run over shell_exec_via_bash transport; DISSOLVES WHEN bash-emit (#5828) realizes EnsureBuildCacheInstance observe/ensure/read-back as typed host-effect argv and realize_provision_build_cache retires this shell_exec_via_bash transport.")
+
+data build_cache_provision_shell_script_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
+  dissolves_to: std.disposition.SingleAuthority,
+  bind: std.decl_ref.DeclarationRef {
+    module_path: "gunbc.host_effect_realize",
+    decl_name: "build_cache_provision_shell_script_dissolution_trigger",
+    field: std.decl_ref.WholeDeclaration,
+  }
+}
+
+fn build_cache_provision_read_back_fails_closed() -> Bool {
+  let body = build_cache_read_back_body(binary: extdeps.cache.sccache.sccache_installed_binary_path)
+  string_contains(s: body, pattern: "read_back=FAILED")
+    && string_contains(s: body, pattern: "exit 1")
+    && !string_contains(s: body, pattern: "stats_rc")
+}
+
+fn build_cache_fragment_words_are_shell_safe() -> Bool {
+  fold(
+    extdeps.cache.sccache.sccache_misconfigured_log_fragments,
+    init: true,
+    f: (acc, frag) => acc && !string_contains(s: frag, pattern: "'"),
+  )
+}
+
+fn build_cache_install_is_cited_not_package_manager() -> Bool {
+  let body = build_cache_provision_script_body(
+    instance: gunbc.build_cache_instance.ci_cache_instance(host: gunbc.fleet_intent.srv1_host.identity),
+    arch_token: "aarch64" as std.types.NonEmptyStr,
+    digest: extdeps.cache.sccache.sccache_release_0_15_0.digest_aarch64,
+  )
+  string_contains(s: body, pattern: "github.com/mozilla/sccache/releases/download/")
+    && string_contains(s: body, pattern: extdeps.cache.sccache.sccache_release_0_15_0.version as String)
+    && !string_contains(s: body, pattern: "apt-get install")
+    && !string_contains(s: body, pattern: "/usr/bin/sccache")
+}
+
+fn build_cache_classifier_covers_every_cited_fragment() -> Bool {
+  fold(
+    extdeps.cache.sccache.sccache_misconfigured_log_fragments,
+    init: true,
+    f: (acc, frag) =>
+      acc && string_contains(s: build_cache_classify_failure_body(), pattern: frag),
+  )
+}
+
 data provision_build_cache_arch_derivation_note: String = "The provisioning script is a function of the TARGET HOST's architecture, not a constant: the cited release publishes one musl tarball plus one sha256 per arch, so emitting a script at all requires knowing which. Arch comes from the effect target's own ComputeHost (compute_host_primary_cpu -> CpuFacts.architecture) and the token/digest selectors in extdeps.cache.sccache are partial over the Architecture coproduct — a host whose CPU is unreadable, or whose arch the release does not publish, yields NO script and a typed NotConverged. There is no default arch: shipping an aarch64 binary to an unlisted host is precisely the fabricated-plausible-output §5 forbids."
 
 fn provision_build_cache_host_arch(effect_intent: gunbc.host_effect.HostEffectIntent) -> extdeps.toolchain.types.Architecture? {
@@ -1295,13 +1452,14 @@ fn provision_build_cache_host_arch(effect_intent: gunbc.host_effect.HostEffectIn
 }
 
 fn realize_provision_build_cache_body(
+  instance: gunbc.build_cache_instance.BuildCacheInstance,
   transport: gunbc.host_effect.HostEffectTransport,
   effect_intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   match provision_build_cache_host_arch(effect_intent: effect_intent) {
     Absent =>
       std.realization_reconcile.NotConverged {
-        reason: "host_effect_apply: ProvisionBuildCache cannot derive a target architecture from the effect target (no primary CPU on the ComputeHost, or the target is not HostOs); fail-closed, no default arch.",
+        reason: "host_effect_apply: EnsureBuildCacheInstance cannot derive a target architecture from the effect target (no primary CPU on the ComputeHost, or the target is not HostOs); fail-closed, no default arch.",
         applied: effect_intent,
       }
     Present { value: arch } =>
@@ -1310,7 +1468,7 @@ fn realize_provision_build_cache_body(
           std.realization_reconcile.NotConverged {
             reason: join(
               [
-                "host_effect_apply: ProvisionBuildCache refused — the cited sccache release ",
+                "host_effect_apply: EnsureBuildCacheInstance refused — the cited sccache release ",
                 extdeps.cache.sccache.sccache_release_0_15_0.version as String,
                 " publishes no musl tarball for architecture ",
                 extdeps.toolchain.types.architecture_diagnostic_name(arch: arch) as String,
@@ -1326,7 +1484,7 @@ fn realize_provision_build_cache_body(
               std.realization_reconcile.NotConverged {
                 reason: join(
                   [
-                    "host_effect_apply: ProvisionBuildCache refused — no pinned sha256 in the cited release row for architecture ",
+                    "host_effect_apply: EnsureBuildCacheInstance refused — no pinned sha256 in the cited release row for architecture ",
                     extdeps.toolchain.types.architecture_diagnostic_name(arch: arch) as String,
                     "; fail-closed, never install unverified.",
                   ],
@@ -1337,7 +1495,7 @@ fn realize_provision_build_cache_body(
             Present { value: digest } => {
               let observed = run_shell_transport(
                 script: gunbc.retained_shell_script.retained_srvn(
-                  body: gunbc.host_build_cache_provision_script.build_cache_provision_shell_script(arch_token: token, digest: digest),
+                  body: build_cache_provision_shell_script(instance: instance, arch_token: token, digest: digest),
                   reason: "srvN build-cache provisioning (sccache daemon ensure)",
                 ),
                 transport: transport,
@@ -1353,37 +1511,40 @@ fn realize_provision_build_cache(
   effect_intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   match effect_intent.effect {
-    ProvisionBuildCache { catalog_id: id } =>
-      match gunbc.host_build_cache_catalog_gate.provision_build_cache_catalog_gate_verdict(catalog_id: id) {
+    EnsureBuildCacheInstance { desired: instance } =>
+      match gunbc.host_build_cache_catalog_gate.provision_build_cache_catalog_gate_verdict(catalog_id: instance.implementation) {
         ProvisionBuildCacheCatalogRefused { reason: reason } =>
           std.realization_reconcile.NotConverged { reason: reason as String, applied: effect_intent }
         ProvisionBuildCacheCatalogRealizable =>
           match effect_intent.transport {
             LocalShell =>
               realize_provision_build_cache_body(
+                instance: instance,
                 transport: effect_intent.transport,
                 effect_intent: effect_intent,
               )
             SshShell { ssh_host: _ } =>
               realize_provision_build_cache_body(
+                instance: instance,
                 transport: effect_intent.transport,
                 effect_intent: effect_intent,
               )
             FleetSsh { target: _, context: _ } =>
               realize_provision_build_cache_body(
+                instance: instance,
                 transport: effect_intent.transport,
                 effect_intent: effect_intent,
               )
             EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
               std.realization_reconcile.NotConverged {
-                reason: "host_effect_apply: ProvisionBuildCache cannot use EmitArtifactThenThinRun transport; typed mismatch.",
+                reason: "host_effect_apply: EnsureBuildCacheInstance cannot use EmitArtifactThenThinRun transport; typed mismatch.",
                 applied: effect_intent,
               }
           }
       }
     _ =>
       std.realization_reconcile.NotConverged {
-        reason: "host_effect_apply: realize_provision_build_cache requires ProvisionBuildCache effect",
+        reason: "host_effect_apply: realize_provision_build_cache requires EnsureBuildCacheInstance effect",
         applied: effect_intent,
       }
   }
@@ -1392,7 +1553,7 @@ fn realize_provision_build_cache(
 fn provision_build_cache_witness_intent() -> gunbc.host_effect.HostEffectIntent {
   gunbc.host_effect.HostEffectIntent {
     target: gunbc.host_effect.HostOs { node: gunbc.fleet_intent.srv1_host },
-    effect: gunbc.host_effect.ProvisionBuildCache { catalog_id: extdeps.cache.sccache.sccache_local_id },
+    effect: gunbc.host_effect.EnsureBuildCacheInstance { desired: gunbc.build_cache_instance.ci_cache_instance(host: gunbc.fleet_intent.srv1_host.identity) },
     evidence: gunbc.host_effect.host_effect_identity_evidence,
     transport: gunbc.host_effect.LocalShell,
     privilege_denial: none,
@@ -1415,7 +1576,9 @@ fn provision_build_cache_arch_unknown_host_fixture() -> gunbc.fleet_intent.Compu
 fn provision_build_cache_arch_unknown_intent_fixture() -> gunbc.host_effect.HostEffectIntent {
   gunbc.host_effect.HostEffectIntent {
     target: gunbc.host_effect.HostOs { node: provision_build_cache_arch_unknown_host_fixture() },
-    effect: gunbc.host_effect.ProvisionBuildCache { catalog_id: extdeps.cache.sccache.sccache_local_id },
+    effect: gunbc.host_effect.EnsureBuildCacheInstance {
+      desired: gunbc.build_cache_instance.ci_cache_instance(host: provision_build_cache_arch_unknown_host_fixture().identity),
+    },
     evidence: gunbc.host_effect.host_effect_identity_evidence,
     transport: gunbc.host_effect.LocalShell,
     privilege_denial: none,
@@ -2082,7 +2245,7 @@ fn host_effect_apply(target: gunbc.host_effect.NodeControlPlane, effect: gunbc.h
     TypedReconcileOnHost { node: _, kind: k } => realize_srv3_typed_reconcile(kind: k, transport: transport, intent: intent)
     OsInstallActuatorToolchainOnHost { node: _ } =>
       realize_os_install_actuator_toolchain_ensure(effect_intent: intent)
-    ProvisionBuildCacheOnHost { node: _, catalog_id: _ } =>
+    ProvisionBuildCacheOnHost { node: _, desired: _ } =>
       realize_provision_build_cache(effect_intent: intent)
     ProvisionCodexRuntimeOnHost { node: _ } =>
       realize_provision_codex_runtime(effect_intent: intent)
@@ -2260,7 +2423,7 @@ fn host_effect_apply_gated(
         TypedReconcileOnHost { node: _, kind: k } => realize_srv3_typed_reconcile(kind: k, transport: transport, intent: intent)
         OsInstallActuatorToolchainOnHost { node: _ } =>
           realize_os_install_actuator_toolchain_ensure(effect_intent: intent)
-        ProvisionBuildCacheOnHost { node: _, catalog_id: _ } =>
+        ProvisionBuildCacheOnHost { node: _, desired: _ } =>
           realize_provision_build_cache(effect_intent: intent)
         ProvisionCodexRuntimeOnHost { node: _ } =>
           realize_provision_codex_runtime(effect_intent: intent)
@@ -2355,7 +2518,7 @@ fn host_effect_drive_directive(r: std.realization_reconcile.Reconciliation<gunbc
             ConvergeOnHost { node: _, host_converge: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
             TypedReconcileOnHost { node: _, kind: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
             OsInstallActuatorToolchainOnHost { node: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
-            ProvisionBuildCacheOnHost { node: _, catalog_id: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
+            ProvisionBuildCacheOnHost { node: _, desired: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
             ProvisionCodexRuntimeOnHost { node: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
             HostnameOnHost { node: _, hostnamectl_path: _, base: _, desired: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))
             HostnameReadOnHost { node: _ } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))

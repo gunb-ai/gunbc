@@ -1,14 +1,5 @@
 module v1.compiler.infer_lookup
 
-
-
-
-
-
-
-
-
-
 fn is_type_variable(inferred: InferredNode) -> Bool {
   match inferred {
     TypeVariable { id: _ } => true
@@ -263,14 +254,14 @@ fn lookup_field_type_node(n: v1.std.core.Node, field_name: String, source_indice
       if is_product {
         match find_child_named(n: n, name: field_name, source_indices: source_indices) {
           Present { value: field_child } =>
-            if node_is_keyed_collection(n: n, source_indices: source_indices) && field_name == "lookup" {
+            if v1.compiler.infer_types.node_is_keyed_collection(n: n, source_indices: source_indices) && field_name == "lookup" {
               let value_child = match n.children |> skip(1) |> first {
-                Present { value: child } => child_type_node(ch: child)
-                Absent => nominal_type_ref(name: "V")
+                Present { value: child } => v1.compiler.infer_types.child_type_node(ch: child)
+                Absent => v1.compiler.infer_types.nominal_type_ref(name: "V")
               }
               Present { value: with_optional_cardinality(n: value_child) }
             } else {
-              Present { value: child_type_node(ch: field_child) }
+              Present { value: v1.compiler.infer_types.child_type_node(ch: field_child) }
             }
           Absent => none
         }
@@ -301,7 +292,7 @@ fn lookup_coproduct_common_field_node(variants: List<v1.std.core.Node>, field_na
   } else { none }
   match first_field {
     Present { value: field_child } =>
-      Present { value: child_type_node(ch: field_child) }
+      Present { value: v1.compiler.infer_types.child_type_node(ch: field_child) }
     Absent => none
   }
 }
@@ -312,12 +303,12 @@ fn resolve_scrutinee_type_node(env: v1.compiler.infer_env.TypeEnv, n: v1.std.cor
 
 fn resolve_method_receiver_type(receiver_type: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv) -> v1.std.core.Node {
   let raw_name = authored_name_at(source_indices: env.source_indices, node: receiver_type)
-  if receiver_type.connective == v1.std.core.Conj || is_declared_container_alias_spelling(name: raw_name) {
+  if receiver_type.connective == v1.std.core.Conj || v1.compiler.infer_types.is_declared_container_alias_spelling(name: raw_name) {
     receiver_type
   } else {
-    let resolved = reground_alias_carrier_identity(n: resolve_scrutinee_type_node(env: env, n: receiver_type), source_indices: env.source_indices)
+    let resolved = v1.compiler.infer_types.reground_alias_carrier_identity(n: resolve_scrutinee_type_node(env: env, n: receiver_type), source_indices: env.source_indices)
     let resolved_name = authored_name_at(source_indices: env.source_indices, node: resolved)
-    if resolved.connective == v1.std.core.Conj || (resolved_name != raw_name && is_declared_container_alias_spelling(name: resolved_name)) {
+    if resolved.connective == v1.std.core.Conj || (resolved_name != raw_name && v1.compiler.infer_types.is_declared_container_alias_spelling(name: resolved_name)) {
       resolved
     } else {
       receiver_type
@@ -328,7 +319,7 @@ fn resolve_method_receiver_type(receiver_type: v1.std.core.Node, env: v1.compile
 fn resolve_scrutinee_type_node_seen(env: v1.compiler.infer_env.TypeEnv, n: v1.std.core.Node, seen: Map<String, Bool>) -> v1.std.core.Node {
   let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
   if n_is_type_var { return n }
-  let normed = normalize_access_type_node(n: n)
+  let normed = v1.compiler.infer_types.normalize_access_type_node(n: n)
   if normed.connective == NoConnective && normed.children |> count > 0 && normed.inferred != none {
     match normed.inferred {
       Present { value: Resolved { node: target } } => preserve_outer_optional_cardinality(outer: normed, inner: resolve_scrutinee_type_node_seen(env: env, n: target, seen: seen))
@@ -347,8 +338,8 @@ fn resolve_scrutinee_type_node_seen(env: v1.compiler.infer_env.TypeEnv, n: v1.st
           }
         _ => normed
       }
-    } else if canonical != "" && emit_map_has(m: seen, key: canonical) {
-      nominal_type_ref(name: canonical)
+    } else if canonical != "" && v1.compiler.infer_types.emit_map_has(m: seen, key: canonical) {
+      v1.compiler.infer_types.nominal_type_ref(name: canonical)
     } else {
       let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
       match lookup_type_for(env: env, node: normed) {
@@ -365,10 +356,10 @@ fn resolve_scrutinee_type_node_seen(env: v1.compiler.infer_env.TypeEnv, n: v1.st
 }
 
 fn map_value_type_in_env(type_node: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv) -> v1.std.core.Node? {
-  let normed = normalize_access_type_node(n: type_node)
+  let normed = v1.compiler.infer_types.normalize_access_type_node(n: type_node)
   let resolved = resolve_scrutinee_type_node(env: env, n: normed)
-  let map_type = normalize_access_type_node(n: resolved)
-  if node_is_keyed_collection(n: map_type, source_indices: env.source_indices) && map_type.children |> count >= 2 {
+  let map_type = v1.compiler.infer_types.normalize_access_type_node(n: resolved)
+  if v1.compiler.infer_types.node_is_keyed_collection(n: map_type, source_indices: env.source_indices) && map_type.children |> count >= 2 {
     match map_type.children |> skip(1) |> first {
       Present { value: value_type } => Present { value: value_type }
       Absent => none
@@ -379,10 +370,10 @@ fn map_value_type_in_env(type_node: v1.std.core.Node, env: v1.compiler.infer_env
 }
 
 fn map_key_type_in_env(type_node: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv) -> v1.std.core.Node? {
-  let normed = normalize_access_type_node(n: type_node)
+  let normed = v1.compiler.infer_types.normalize_access_type_node(n: type_node)
   let resolved = resolve_scrutinee_type_node(env: env, n: normed)
-  let map_type = normalize_access_type_node(n: resolved)
-  if node_is_keyed_collection(n: map_type, source_indices: env.source_indices) && map_type.children |> count >= 1 {
+  let map_type = v1.compiler.infer_types.normalize_access_type_node(n: resolved)
+  if v1.compiler.infer_types.node_is_keyed_collection(n: map_type, source_indices: env.source_indices) && map_type.children |> count >= 1 {
     match map_type.children |> first {
       Present { value: key_type } => Present { value: key_type }
       Absent => none
@@ -393,10 +384,10 @@ fn map_key_type_in_env(type_node: v1.std.core.Node, env: v1.compiler.infer_env.T
 }
 
 fn set_element_type_in_env(type_node: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv) -> v1.std.core.Node? {
-  let normed = normalize_access_type_node(n: type_node)
+  let normed = v1.compiler.infer_types.normalize_access_type_node(n: type_node)
   let resolved = resolve_scrutinee_type_node(env: env, n: normed)
-  let set_type = normalize_access_type_node(n: resolved)
-  if node_is_set_collection(n: set_type, source_indices: env.source_indices) && set_type.children |> count >= 1 {
+  let set_type = v1.compiler.infer_types.normalize_access_type_node(n: resolved)
+  if v1.compiler.infer_types.node_is_set_collection(n: set_type, source_indices: env.source_indices) && set_type.children |> count >= 1 {
     match set_type.children |> first {
       Present { value: elem_type } => Present { value: elem_type }
       Absent => none
@@ -408,7 +399,7 @@ fn set_element_type_in_env(type_node: v1.std.core.Node, env: v1.compiler.infer_e
 
 fn field_summary_for_type(base_type: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv, field: String) -> v1.std.core.FieldSummary? {
   let resolved = resolve_scrutinee_type_node(env: env, n: base_type)
-  let normed = normalize_access_type_node(n: resolved)
+  let normed = v1.compiler.infer_types.normalize_access_type_node(n: resolved)
   let normed_opt = normed.return_cardinality == CardOptional
   if field == "value" && normed_opt {
     Present { value: v1.std.core.FieldSummary { access_style: OptionalUnwrap, value_shape: PlainValue } }
@@ -504,12 +495,12 @@ fn lookup_structural_method(receiver_type: v1.std.core.Node, method_name: String
     let direct = lookup_field_in_product(product: receiver_type, method_name: method_name, source_indices: source_indices)
     StructuralMethodLookup { resolution: direct, kernel_diagnostics: [] }
   } else {
-    let enriched = enrich_kernel_type(name: authored_name_at(source_indices: source_indices, node: receiver_type), base: receiver_type, source_indices: source_indices)
+    let enriched = v1.compiler.infer_types.enrich_kernel_type(name: authored_name_at(source_indices: source_indices, node: receiver_type), base: receiver_type, source_indices: source_indices)
     if enriched.ty.connective == v1.std.core.Conj && enriched.ty.children |> count > 0 {
       let base_result = lookup_field_in_product(product: enriched.ty, method_name: method_name, source_indices: source_indices)
       match base_result {
         Present { value: mfr } =>
-          let profile = kernel_profile_lookup(name: authored_name_at(source_indices: source_indices, node: receiver_type))
+          let profile = v1.compiler.infer_types.kernel_profile_lookup(name: authored_name_at(source_indices: source_indices, node: receiver_type))
           let template_match = match profile {
             Present { value: p } =>
               let templates = algebra_templates_for_profile(profile: p)
@@ -530,7 +521,39 @@ fn lookup_structural_method(receiver_type: v1.std.core.Node, method_name: String
   }
 }
 
-fn resolve_known_method_node(receiver: v1.std.core.Node, receiver_type: v1.std.core.Node, method_name: String, fold_accumulator_type: v1.std.core.Node?, service_registry: Map<String, List<v1.compiler.infer_service.OpEntry>>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.compiler.infer_lookup.KnownMethodResolution {
+type DeclaredArgContract
+  = ContractKnown { types: List<Node> }
+  | MethodUnresolved
+  | ContractUnavailable
+
+fn declared_arg_types_for_method(receiver_type: Node, method_name: String, source_indices: Map<String, NewlineIndex>) -> DeclaredArgContract {
+  let lookup = lookup_structural_method(receiver_type: receiver_type, method_name: method_name, source_indices: source_indices)
+  match lookup.resolution {
+    Absent => MethodUnresolved
+    Present { value: mfr } =>
+      match mfr.algebra_template {
+        Present { value: t } =>
+          let first_is_self = match t.param_types |> first {
+            Present { value: tp } => match tp { ReceiverSelf => true  _ => false }
+            Absent => false
+          }
+          let non_receiver_templates = if first_is_self { t.param_types |> skip(1) } else { t.param_types }
+          ContractKnown { types: non_receiver_templates |> map(tp => v1.compiler.infer_types.instantiate_algebra_type(template: tp, base: receiver_type, source_indices: source_indices).ty) }
+        Absent =>
+          match mfr.field_node.inferred {
+            Present { value: Resolved { node: callable } } =>
+              if callable.params |> count > 0 {
+                ContractKnown { types: callable.params |> map(p => param_node_type_expr(n: p)) }
+              } else {
+                ContractUnavailable
+              }
+            _ => ContractUnavailable
+          }
+      }
+  }
+}
+
+fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: String, fold_accumulator_type: Node?, service_registry: Map<String, List<OpEntry>>, source_indices: Map<String, NewlineIndex>) -> KnownMethodResolution {
 
   let tier0 = lookup_structural_method(receiver_type: receiver_type, method_name: method_name, source_indices: source_indices)
   match tier0.resolution {

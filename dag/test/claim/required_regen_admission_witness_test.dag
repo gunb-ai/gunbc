@@ -1,7 +1,14 @@
 module test.claim.required_regen_admission_witness
 
-
 data witness_note: String = "Discriminating RED controls for the required-regen admission wall: zero planned or executed populations must refuse rather than vacuously agree; a genuine match with independent denominators may admit."
+
+// The population arms above answer 'did the fold compare anything'. These answer
+// 'does the fold refuse what it was built to catch' — a committed surface whose
+// bytes disagree with the emitter is the stale-mirror class that let main's
+// v1_compiler_infer.rs sit behind its own .dag authority through #8513..#8579.
+// The refusal must NAME the drifted path, because a bare refusal cannot be
+// distinguished from a refusal fired by any of the other seven variants.
+data drift_witness_note: String = "Discriminating RED controls for the drift arms: a drifted surface, an emitted/committed population asymmetry, and an unverifiable hand-maintained row must each refuse and name their subject; hand-maintained DRIFT alone must still admit, which is what separates this wall from one that refuses on any non-match."
 
 test fn witness_zero_planned_population_refuses() -> Bool {
   match v2.workflow.required_regen.required_regen_sync_admission(
@@ -62,9 +69,106 @@ test fn witness_nonempty_matching_population_admits() -> Bool {
   }
 }
 
+test fn witness_drifted_surface_refuses_naming_the_path() -> Bool {
+  match v2.workflow.required_regen.required_regen_sync_admission(
+    generated_outcomes: [
+      v2.workflow.required_regen.SurfaceMatches { relative_path: "std_algebra.rs" },
+      v2.workflow.required_regen.SurfaceDrifted {
+        relative_path: "v1_compiler_infer.rs",
+        committed_digest: "fnv1a64:1111111111111111",
+        candidate_digest: "fnv1a64:2222222222222222"
+      }
+    ],
+    hand_outcomes: [],
+    authority_digest: "fnv1a64:deadbeefdeadbeef",
+    planned_surfaces: 2,
+    executed_surfaces: 2
+  ) {
+    RequiredRegenSyncRefused { refusals } =>
+      refusals |> any(r => match r {
+        GeneratedDrift { paths } =>
+          (paths |> any(p => p == "v1_compiler_infer.rs"))
+            && (paths |> any(p => p == "std_algebra.rs")) == false
+        _ => false
+      })
+    RequiredRegenSyncRunnable { attempt: _ } => false
+  }
+}
+
+test fn witness_surface_population_asymmetry_refuses() -> Bool {
+  match v2.workflow.required_regen.required_regen_sync_admission(
+    generated_outcomes: [
+      v2.workflow.required_regen.EmittedNotCommitted { relative_path: "brand_new_surface.rs" },
+      v2.workflow.required_regen.CommittedNotEmitted { relative_path: "deleted_surface.rs" }
+    ],
+    hand_outcomes: [],
+    authority_digest: "fnv1a64:deadbeefdeadbeef",
+    planned_surfaces: 2,
+    executed_surfaces: 2
+  ) {
+    RequiredRegenSyncRefused { refusals } =>
+      refusals |> any(r => match r {
+        GeneratedDrift { paths } =>
+          (paths |> any(p => p == "brand_new_surface.rs"))
+            && (paths |> any(p => p == "deleted_surface.rs"))
+        _ => false
+      })
+    RequiredRegenSyncRunnable { attempt: _ } => false
+  }
+}
+
+test fn witness_hand_unverifiable_refuses_naming_the_entry() -> Bool {
+  match v2.workflow.required_regen.required_regen_sync_admission(
+    generated_outcomes: [v2.workflow.required_regen.SurfaceMatches { relative_path: "std_algebra.rs" }],
+    hand_outcomes: [
+      v2.workflow.required_regen.HandUnverifiable {
+        filename: "main.rs",
+        reason: "no emitter candidate produced"
+      }
+    ],
+    authority_digest: "fnv1a64:deadbeefdeadbeef",
+    planned_surfaces: 1,
+    executed_surfaces: 1
+  ) {
+    RequiredRegenSyncRefused { refusals } =>
+      refusals |> any(r => match r {
+        HandUnverifiableRefused { entries } =>
+          entries |> any(e => string_contains(e, "main.rs"))
+            && (entries |> any(e => string_contains(e, "no emitter candidate produced")))
+        _ => false
+      })
+    RequiredRegenSyncRunnable { attempt: _ } => false
+  }
+}
+
+// The near-miss positive control. HandDrifted is one variant away from
+// HandUnverifiable and must NOT refuse: hand-maintained drift is expected on a
+// clean tree, so a wall that refused here would be refusing on any non-match and
+// the RED above would prove nothing about which distinction it draws.
+test fn witness_hand_drift_alone_admits() -> Bool {
+  match v2.workflow.required_regen.required_regen_sync_admission(
+    generated_outcomes: [v2.workflow.required_regen.SurfaceMatches { relative_path: "std_algebra.rs" }],
+    hand_outcomes: [
+      v2.workflow.required_regen.HandMatches { filename: "cli_run.rs" },
+      v2.workflow.required_regen.HandDrifted { filename: "main.rs" }
+    ],
+    authority_digest: "fnv1a64:deadbeefdeadbeef",
+    planned_surfaces: 1,
+    executed_surfaces: 1
+  ) {
+    RequiredRegenSyncRunnable { attempt: attempt } =>
+      attempt.authority_digest == "fnv1a64:deadbeefdeadbeef"
+    RequiredRegenSyncRefused { refusals: _ } => false
+  }
+}
+
 test fn witness_holds() -> Bool {
   witness_zero_planned_population_refuses()
     && witness_zero_executed_population_refuses()
     && witness_planned_executed_mismatch_refuses()
     && witness_nonempty_matching_population_admits()
+    && witness_drifted_surface_refuses_naming_the_path()
+    && witness_surface_population_asymmetry_refuses()
+    && witness_hand_unverifiable_refuses_naming_the_entry()
+    && witness_hand_drift_alone_admits()
 }

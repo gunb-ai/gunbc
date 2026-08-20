@@ -14,7 +14,6 @@
 #![recursion_limit = "256"]
 
 use im::{OrdSet as BTreeSet, Vector as Vec};
-pub mod expected_red_roster_join;
 
 pub mod extdeps_cargo;
 pub mod extdeps_cargo_version;
@@ -40,8 +39,6 @@ pub mod extdeps_uri;
 pub mod extdeps_uri_path;
 pub mod extdeps_version;
 pub mod extdeps_version_semver;
-pub mod gunbc_namespace_reference_derived_closure_admission;
-pub mod gunbc_namespace_reference_derived_closure_contract;
 pub mod gunbc_rust_decl_type_overlay;
 pub mod gunbc_stage0_crate_layout_generated;
 pub mod gunbc_stage0_crate_partition_generated;
@@ -106,6 +103,7 @@ pub mod v1_compiler_emit_core_support;
 pub mod v1_compiler_emit_go;
 pub mod v1_compiler_emit_python;
 pub mod v1_compiler_emit_rust;
+pub mod v1_compiler_expected_red_roster_join;
 pub mod v1_compiler_frontend_observation;
 pub mod v1_compiler_infer;
 pub mod v1_compiler_infer_access;

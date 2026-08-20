@@ -1,13 +1,11 @@
 module gunbc.command_runner
 
-
-
 data command_runner_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: RealizationDispatch,
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.command_runner",
     decl_name: "command_runner_dissolution_trigger",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 
@@ -16,17 +14,33 @@ data command_runner_dissolution_trigger: std.dissolution.DissolutionCondition = 
 func run_shell_command(command: extdeps.exec.command.ArgvCommand, transport: extdeps.exec.command.CommandTransport) -> std.process.ProcessExit
   uses net: std.cache_interface.Network
 {
-  let rendered = shell_command_render(command: command_over_transport(command: command, transport: transport))
-  let run = shell.Exec.Run(
-    script: retained_runtime(
-      body: shell_exec_via_bash(body: rendered),
-      reason: "generic ArgvCommand runner heredoc transport, pending the typed host_effect_apply argv handler" as std.types.NonEmptyStr,
-    )
-  )
-  if run.success {
-    ExitSuccess
-  } else {
-    exit_failure(reason: concat("command failed: ", run.stderr))
+  match extdeps.exec.command.command_over_transport(command: command, transport: transport) {
+    CommandOverTransportRefused { cause: c } =>
+      std.process.exit_failure(reason: concat("command_over_transport refused: ", command_over_transport_refusal_reason(cause: c)))
+    CommandOverTransportBuilt { command: over } =>
+      let rendered = extdeps.exec.command.shell_command_render(command: over)
+      let run = shell.Exec.Run(
+        script: gunbc.retained_shell_script.retained_runtime(
+          body: gunbc.shell_bash_runner.shell_exec_via_bash(body: rendered),
+          reason: "generic ArgvCommand runner heredoc transport, pending the typed host_effect_apply argv handler" as std.types.NonEmptyStr,
+        )
+      )
+      if run.success {
+        std.process.ExitSuccess
+      } else {
+        std.process.exit_failure(reason: concat("command failed: ", run.stderr))
+      }
+  }
+}
+
+data command_over_transport_refusal_reason_note: String = "Renders RemoteExecCommandRefusalCause (gunbc.remote_shell_command) into a diagnostic String for ProcessExit -- the only refusal this generic runner can hit today is RemoteExecInterpretationUnknown, since every SshExec constructed in-tree names a determined interpretation (openssh_login_shell_interpretation / openbmc_dropbear_interpretation); the cause stays a match over the full type rather than a partial one so a newly added cause fails to compile here instead of falling through silently (DESIGN 4b: no untracked stall)."
+
+fn command_over_transport_refusal_reason(cause: gunbc.remote_shell_command.RemoteExecCommandRefusalCause) -> String {
+  match cause {
+    RemoteExecInterpretationUnknown =>
+      "the SSH target's RemoteExecCommandInterpretation is Unknown -- refusing rather than assuming a POSIX shell on the far side"
+    SimpleCommandArgvRefused { cause: _ } =>
+      "the inner command's argv was empty"
   }
 }
 
@@ -43,14 +57,23 @@ type ShellCaptureResult {
 func run_shell_command_capture(command: extdeps.exec.command.ArgvCommand, transport: extdeps.exec.command.CommandTransport) -> ShellCaptureResult
   uses net: std.cache_interface.Network
 {
-  let rendered = shell_command_render(command: command_over_transport(command: command, transport: transport))
-  let run = shell.Exec.Run(
-    script: retained_runtime(
-      body: shell_exec_via_bash(body: rendered),
-      reason: "generic ArgvCommand capture runner heredoc transport, pending the typed host_effect_apply argv handler" as std.types.NonEmptyStr,
-    )
-  )
-  ShellCaptureResult { success: run.success, stdout: run.stdout, stderr: run.stderr }
+  match extdeps.exec.command.command_over_transport(command: command, transport: transport) {
+    CommandOverTransportRefused { cause: c } =>
+      ShellCaptureResult {
+        success: false,
+        stdout: "",
+        stderr: concat("command_over_transport refused: ", command_over_transport_refusal_reason(cause: c)),
+      }
+    CommandOverTransportBuilt { command: over } =>
+      let rendered = extdeps.exec.command.shell_command_render(command: over)
+      let run = shell.Exec.Run(
+        script: gunbc.retained_shell_script.retained_runtime(
+          body: gunbc.shell_bash_runner.shell_exec_via_bash(body: rendered),
+          reason: "generic ArgvCommand capture runner heredoc transport, pending the typed host_effect_apply argv handler" as std.types.NonEmptyStr,
+        )
+      )
+      ShellCaptureResult { success: run.success, stdout: run.stdout, stderr: run.stderr }
+  }
 }
 
 // Receipt owner probe — admitted under command_runner_scaffold until
@@ -58,16 +81,16 @@ func run_shell_command_capture(command: extdeps.exec.command.ArgvCommand, transp
 fn stat_owner_name_capture(path: String) -> ShellCaptureResult {
   run_shell_command_capture(
     command: extdeps.exec.command.ArgvCommand { argv: ["stat", "-c", "%U", path] },
-    transport: LocalExec,
+    transport: extdeps.exec.command.LocalExec,
   )
 }
 
-func run_shell_commands(commands: List<extdeps.exec.command.ArgvCommand>, transport: extdeps.exec.command.CommandTransport) -> std.process.ProcessExit
+func run_shell_commands(commands: std.types.List<extdeps.exec.command.ArgvCommand>, transport: extdeps.exec.command.CommandTransport) -> std.process.ProcessExit
   uses net: std.cache_interface.Network
 {
   fold(
     commands,
-    init: ExitSuccess,
+    init: std.process.ExitSuccess,
     f: (acc, c) => match acc {
       ExitFailure { code: _, reason: _ } => acc
       ExitSuccess => run_shell_command(command: c, transport: transport)

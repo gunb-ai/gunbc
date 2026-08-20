@@ -1,6 +1,5 @@
 module v2.extdeps.languages.bash
 
-
 fn bash_word_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
@@ -9,7 +8,7 @@ fn bash_word_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
   }
 }
 
-fn bash_conj_emitted_from_tokens(tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> v2.std.node.Node {
+fn bash_conj_emitted_from_tokens(tokens: v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: v2.std.algebra.list_flat_map(xs: tokens, f: fn(token) {
@@ -34,7 +33,7 @@ fn bash_formal_symbol_from_token(token: v2.std.compilers.target_model.ConcreteSy
   }
 }
 
-fn bash_formal_rhs_from_tokens(tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> List<v2.std.grammar.FormalGrammarSymbol> {
+fn bash_formal_rhs_from_tokens(tokens: v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> v2.std.collection.List<v2.std.grammar.FormalGrammarSymbol> {
   v2.std.algebra.list_map(xs: tokens, f: fn(token) {
     bash_formal_symbol_from_token(token: token)
   })
@@ -42,7 +41,7 @@ fn bash_formal_rhs_from_tokens(tokens: List<v2.std.compilers.target_model.Concre
 
 fn bash_formal_production_from_fixture(
   lhs: v2.std.node.Symbol,
-  tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
+  tokens: v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 ) -> v2.std.grammar.FormalProduction {
   v2.std.grammar.grammar_formal_production(
     lhs: lhs,
@@ -52,7 +51,7 @@ fn bash_formal_production_from_fixture(
 
 fn bash_lhs_exact_relation_row_witness(
   lhs: v2.std.node.Symbol,
-  tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
+  tokens: v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
   emitted: v2.std.node.Node
 ) -> v2.std.witness.Witness<v2.std.node.Node> {
   let production = bash_formal_production_from_fixture(lhs: lhs, tokens: tokens)
@@ -83,7 +82,7 @@ fn bash_empty_translation_rules_node() -> v2.std.node.Node {
 fn bash_relation_translation_rules_witness(
   rule_name: v2.std.node.Symbol,
   lhs: v2.std.node.Symbol,
-  tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
+  tokens: v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
   emitted: v2.std.node.Node
 ) -> v2.std.witness.Witness<v2.std.node.Node> {
   match bash_lhs_exact_relation_row_witness(
@@ -108,7 +107,7 @@ fn bash_relation_translation_rules_witness(
 fn bash_relation_translation_rules_node(
   rule_name: v2.std.node.Symbol,
   lhs: v2.std.node.Symbol,
-  tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
+  tokens: v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
   emitted: v2.std.node.Node
 ) -> v2.std.node.Node {
   match bash_relation_translation_rules_witness(
@@ -185,7 +184,7 @@ fn bash_or_else_with_redir_phrase() -> v2.std.compilers.lexing.LexicalPhrase {
 
 data bash_source_text: String = v2.std.compilers.lexing.phrase_to_source_text(p: bash_phrase())
 
-fn bash_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn bash_concrete_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   v2.std.compilers.target_model.phrase_to_fixed_concrete_tokens(p: bash_phrase())
 }
 
@@ -229,7 +228,7 @@ fn bash_embedded_quote_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_bound_words_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn bash_bound_words_concrete_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_var_ref, binding: ^bash_binding_var_ROOT },
     v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_lit_spaced, binding: ^bash_binding_lit_ROOT }
@@ -242,7 +241,7 @@ data bash_bound_words_emitted_command: v2.std.node.Node = bash_conj_emitted_from
 
 data bash_bound_words_source_text: String = "\"$ROOT\" 'ROOT'"
 
-fn bash_embedded_quote_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn bash_embedded_quote_concrete_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     v2.std.compilers.target_model.BoundToken {
       token_class: ^bash_token_lit,
@@ -257,7 +256,7 @@ data bash_embedded_quote_emitted_command: v2.std.node.Node = bash_conj_emitted_f
 
 data bash_embedded_quote_source_text: String = "'a'\\''b'"
 
-fn bash_source_root_ingest_gate_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn bash_source_root_ingest_gate_concrete_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   v2.std.compilers.target_model.phrase_to_fixed_concrete_tokens(p: bash_source_root_ingest_gate_phrase())
 }
 
@@ -276,7 +275,7 @@ fn bash_source_root_ingest_gate_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_and_then_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn bash_and_then_concrete_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   v2.std.compilers.target_model.phrase_to_fixed_concrete_tokens(p: bash_and_then_phrase())
 }
 
@@ -295,7 +294,7 @@ fn bash_and_then_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_or_else_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn bash_or_else_concrete_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   v2.std.compilers.target_model.phrase_to_fixed_concrete_tokens(p: bash_or_else_phrase())
 }
 
@@ -314,7 +313,7 @@ fn bash_or_else_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_with_redir_stderr_null_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn bash_with_redir_stderr_null_concrete_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   v2.std.compilers.target_model.phrase_to_fixed_concrete_tokens(p: bash_with_redir_stderr_null_phrase())
 }
 
@@ -333,7 +332,7 @@ fn bash_with_redir_stderr_null_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_pipe_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn bash_pipe_concrete_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   v2.std.compilers.target_model.phrase_to_fixed_concrete_tokens(p: bash_pipe_phrase())
 }
 
@@ -352,7 +351,7 @@ fn bash_pipe_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_or_else_with_redir_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn bash_or_else_with_redir_concrete_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   v2.std.compilers.target_model.phrase_to_fixed_concrete_tokens(p: bash_or_else_with_redir_phrase())
 }
 
@@ -436,7 +435,7 @@ fn bash_pipe_and_or_flat_wrong_phrase() -> v2.std.compilers.lexing.LexicalPhrase
   ])
 }
 
-fn bash_subshell_true_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn bash_subshell_true_concrete_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   v2.std.compilers.target_model.phrase_to_fixed_concrete_tokens(p: bash_subshell_true_phrase())
 }
 
@@ -455,7 +454,7 @@ fn bash_subshell_true_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_if_true_then_false_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn bash_if_true_then_false_concrete_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   v2.std.compilers.target_model.phrase_to_fixed_concrete_tokens(p: bash_if_true_then_false_phrase())
 }
 
@@ -474,7 +473,7 @@ fn bash_if_true_then_false_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_heredoc_simple_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn bash_heredoc_simple_concrete_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   v2.std.compilers.target_model.phrase_to_fixed_concrete_tokens(p: bash_heredoc_simple_phrase())
 }
 
@@ -493,7 +492,7 @@ fn bash_heredoc_simple_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_subshell_and_or_nested_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn bash_subshell_and_or_nested_concrete_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   v2.std.compilers.target_model.phrase_to_fixed_concrete_tokens(p: bash_subshell_and_or_nested_phrase())
 }
 
@@ -512,7 +511,7 @@ fn bash_subshell_and_or_nested_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_pipe_and_or_brace_grouped_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn bash_pipe_and_or_brace_grouped_concrete_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   v2.std.compilers.target_model.phrase_to_fixed_concrete_tokens(p: bash_pipe_and_or_brace_grouped_phrase())
 }
 
@@ -531,7 +530,7 @@ fn bash_pipe_and_or_brace_grouped_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_pipe_and_or_flat_wrong_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn bash_pipe_and_or_flat_wrong_concrete_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   v2.std.compilers.target_model.phrase_to_fixed_concrete_tokens(p: bash_pipe_and_or_flat_wrong_phrase())
 }
 
@@ -640,7 +639,7 @@ fn bash_pipe_and_or_flat_wrong_target_model() -> v2.std.compilers.target_model.T
   )
 }
 
-fn bash_binding_spellings() -> Map<v2.std.node.Symbol, String> {
+fn bash_binding_spellings() -> v2.std.collection.Map<v2.std.node.Symbol, String> {
   let m0 = v2.std.collection.map_insert(v2.std.collection.empty_map(), ^bash_binding_var_ROOT, "ROOT")
   let m1 = v2.std.collection.map_insert(m0, ^bash_binding_lit_ROOT, "ROOT")
   let m2 = v2.std.collection.map_insert(m1, ^bash_binding_lit_a_quote_b, "a'b")
@@ -654,20 +653,18 @@ fn bash_binding_spellings() -> Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(m9, ^bash_binding_exit_code_0, "0")
 }
 
-fn bash_single_quote(spelling: String) -> String {
-  concat("'", concat(replace(spelling, "'", "'\\''"), "'"))
-}
+data bash_single_quote_provenance_note: String = "Single-quote wrap-and-escape moved to extdeps.posix.shell_command_language posix_single_quote (operator finding, 2026-08-19): it is a POSIX shell command language fact, not a bash-specific one -- Bash and gunbc.remote_shell_command both cite IEEE 1003.1-2017 section 2.2.2 for the same encoding, so the rule has one home matching its one cited authority. bash_single_quote_spaced calls the imported posix_single_quote directly rather than through a bash-local re-export."
 
 fn bash_single_quote_spaced(spelling: String) -> String {
-  concat(" ", bash_single_quote(spelling: spelling))
+  concat(" ", extdeps.posix.shell_command_language.posix_single_quote(spelling: spelling))
 }
 
 fn bash_var_ref_spelling(spelling: String) -> String {
   concat("\"$", concat(spelling, "\""))
 }
 
-fn bash_token_class_emit_transforms() -> Map<v2.std.node.Symbol, fn(String) -> String> {
-  let m0 = v2.std.collection.map_insert(v2.std.collection.empty_map(), ^bash_token_lit, bash_single_quote)
+fn bash_token_class_emit_transforms() -> v2.std.collection.Map<v2.std.node.Symbol, fn(String) -> String> {
+  let m0 = v2.std.collection.map_insert(v2.std.collection.empty_map(), ^bash_token_lit, extdeps.posix.shell_command_language.posix_single_quote)
   let m1 = v2.std.collection.map_insert(m0, ^bash_token_lit_spaced, bash_single_quote_spaced)
   v2.std.collection.map_insert(m1, ^bash_token_var_ref, bash_var_ref_spelling)
 }
@@ -675,7 +672,7 @@ fn bash_token_class_emit_transforms() -> Map<v2.std.node.Symbol, fn(String) -> S
 fn bash_serialize_source_node(
   source_text_binding: v2.std.node.Symbol,
   production_binding: v2.std.node.Symbol,
-  tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
+  tokens: v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 ) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
@@ -833,7 +830,7 @@ fn bash_make_fixed_tokens_target_model(
   rules: v2.std.node.Node,
   source_literal: v2.std.node.Symbol,
   production_name: v2.std.node.Symbol,
-  tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
+  tokens: v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
   source_text: String,
   lex: v2.std.compilers.lexing.LexRules
 ) -> v2.std.compilers.target_model.TargetModel {
@@ -858,10 +855,10 @@ fn bash_make_bound_tokens_target_model(
   rules: v2.std.node.Node,
   source_literal: v2.std.node.Symbol,
   production_name: v2.std.node.Symbol,
-  tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
+  tokens: v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
   source_text: String,
   lex: v2.std.compilers.lexing.LexRules,
-  binding_spellings: Map<v2.std.node.Symbol, String>
+  binding_spellings: v2.std.collection.Map<v2.std.node.Symbol, String>
 ) -> v2.std.compilers.target_model.TargetModel {
   v2.std.compilers.target_model.target_model_make_with_emit_transforms(
     bundle: bash_target_model_bundle(
@@ -955,7 +952,7 @@ fn bash_or_else_with_redir_target_model() -> v2.std.compilers.target_model.Targe
   )
 }
 
-fn emit_directive_bash_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn emit_directive_bash_concrete_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_word_echo },
     v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_lit_spaced, binding: ^emit_directive_message },
@@ -987,7 +984,7 @@ fn emit_directive_bash_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn emit_directive_bash_message_spellings(d: v2.std.diagnostic.EmitDirective) -> Map<v2.std.node.Symbol, String> {
+fn emit_directive_bash_message_spellings(d: v2.std.diagnostic.EmitDirective) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(v2.std.collection.empty_map(), ^emit_directive_message, d.message)
 }
 
@@ -1003,7 +1000,7 @@ fn emit_directive_bash_target_model(d: v2.std.diagnostic.EmitDirective) -> v2.st
   )
 }
 
-fn emit_directive_bash_to_stdout_wrong_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn emit_directive_bash_to_stdout_wrong_concrete_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_word_echo },
     v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_lit_spaced, binding: ^emit_directive_message }
@@ -1116,8 +1113,7 @@ fn retry_eagain_bash_lex() -> v2.std.compilers.lexing.LexRules {
   ]))
 }
 
-
-fn orch_seq2_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn orch_seq2_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_seq2_left },
     v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_orch_seq_newline },
@@ -1148,7 +1144,7 @@ fn orch_seq2_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn orch_seq2_binding_spellings(left: String, right: String) -> Map<v2.std.node.Symbol, String> {
+fn orch_seq2_binding_spellings(left: String, right: String) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(
     v2.std.collection.map_insert(v2.std.collection.empty_map(), ^orch_seq2_left, left),
     ^orch_seq2_right, right
@@ -1167,7 +1163,7 @@ fn orch_seq2_target_model(left: String, right: String) -> v2.std.compilers.targe
   )
 }
 
-fn orch_retry_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn orch_retry_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_retry_seg_a },
     v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_occ1 },
@@ -1248,7 +1244,7 @@ fn orch_retry_binding_spellings(
   warn1: String,
   warn2: String,
   exhausted: String
-) -> Map<v2.std.node.Symbol, String> {
+) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(
   v2.std.collection.map_insert(
   v2.std.collection.map_insert(
@@ -1317,7 +1313,7 @@ fn orch_retry_1level_seg_f() -> String {
   "\n  fi\nfi\nrm -f \"$BUILD_LOG\"\n"
 }
 
-fn orch_retry_1level_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn orch_retry_1level_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_retry_seg_a },
     v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_1level_occ1 },
@@ -1383,7 +1379,7 @@ fn orch_retry_1level_binding_spellings(
   pattern1: String,
   warn1: String,
   exhausted: String
-) -> Map<v2.std.node.Symbol, String> {
+) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(
   v2.std.collection.map_insert(
   v2.std.collection.map_insert(
@@ -1429,7 +1425,7 @@ fn orch_retry_escalation_final_seg_or() -> String {
   " || "
 }
 
-fn orch_retry_escalation_final_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn orch_retry_escalation_final_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_escalation_final_occ },
     v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_retry_escalation_final_or },
@@ -1463,7 +1459,7 @@ fn orch_retry_escalation_final_translation_rules_node() -> v2.std.node.Node {
 fn orch_retry_escalation_final_binding_spellings(
   occ: String,
   exhausted: String
-) -> Map<v2.std.node.Symbol, String> {
+) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(
     v2.std.collection.map_insert(v2.std.collection.empty_map(), ^orch_retry_escalation_final_occ, occ),
     ^orch_retry_escalation_final_exhausted, exhausted
@@ -1510,7 +1506,7 @@ fn orch_retry_escalation_step_seg_g() -> String {
   "\n      fi\n    fi\n    rm -f \"$RETRY_LOG\""
 }
 
-fn orch_retry_escalation_step_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn orch_retry_escalation_step_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_retry_escalation_step_seg_a },
     v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_escalation_step_occ },
@@ -1579,7 +1575,7 @@ fn orch_retry_escalation_step_binding_spellings(
   warn: String,
   inner: String,
   exhausted: String
-) -> Map<v2.std.node.Symbol, String> {
+) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(
   v2.std.collection.map_insert(
   v2.std.collection.map_insert(
@@ -1621,7 +1617,7 @@ fn orch_retry_escalation_step_target_model(
   )
 }
 
-fn bash_word_pass_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn bash_word_pass_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_word_pass_spelling }
   ]
@@ -1646,7 +1642,7 @@ fn bash_word_pass_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_word_pass_binding_spellings(spelling: String) -> Map<v2.std.node.Symbol, String> {
+fn bash_word_pass_binding_spellings(spelling: String) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(v2.std.collection.empty_map(), ^bash_word_pass_spelling, spelling)
 }
 
@@ -1662,7 +1658,7 @@ fn bash_word_pass_target_model(spelling: String) -> v2.std.compilers.target_mode
   )
 }
 
-fn bash_word_cmdsubst_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn bash_word_cmdsubst_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_cmdsubst_open },
     v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_word_cmdsubst_body },
@@ -1694,7 +1690,7 @@ fn bash_word_cmdsubst_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_word_cmdsubst_binding_spellings(body: String) -> Map<v2.std.node.Symbol, String> {
+fn bash_word_cmdsubst_binding_spellings(body: String) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(v2.std.collection.empty_map(), ^bash_word_cmdsubst_body, body)
 }
 
@@ -1710,7 +1706,7 @@ fn bash_word_cmdsubst_target_model(body: String) -> v2.std.compilers.target_mode
   )
 }
 
-fn bash_stmt_subshell_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn bash_stmt_subshell_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_subshell_open },
     v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_subshell_body },
@@ -1742,7 +1738,7 @@ fn bash_stmt_subshell_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_stmt_subshell_binding_spellings(body: String) -> Map<v2.std.node.Symbol, String> {
+fn bash_stmt_subshell_binding_spellings(body: String) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(v2.std.collection.empty_map(), ^bash_stmt_subshell_body, body)
 }
 
@@ -1758,7 +1754,7 @@ fn bash_stmt_subshell_target_model(body: String) -> v2.std.compilers.target_mode
   )
 }
 
-fn bash_stmt_brace_group_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn bash_stmt_brace_group_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_brace_group_open },
     v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_brace_group_body },
@@ -1790,7 +1786,7 @@ fn bash_stmt_brace_group_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_stmt_brace_group_binding_spellings(body: String) -> Map<v2.std.node.Symbol, String> {
+fn bash_stmt_brace_group_binding_spellings(body: String) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(v2.std.collection.empty_map(), ^bash_stmt_brace_group_body, body)
 }
 
@@ -1806,7 +1802,7 @@ fn bash_stmt_brace_group_target_model(body: String) -> v2.std.compilers.target_m
   )
 }
 
-fn bash_stmt_exit_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn bash_stmt_exit_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_stmt_exit_kw },
     v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_exit_code }
@@ -1836,7 +1832,7 @@ fn bash_stmt_exit_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_stmt_exit_binding_spellings(code: String) -> Map<v2.std.node.Symbol, String> {
+fn bash_stmt_exit_binding_spellings(code: String) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(v2.std.collection.empty_map(), ^bash_stmt_exit_code, code)
 }
 
@@ -1852,7 +1848,7 @@ fn bash_stmt_exit_target_model(code: String) -> v2.std.compilers.target_model.Ta
   )
 }
 
-fn bash_stmt_assign_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn bash_stmt_assign_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_assign_name },
     v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_assign_eq },
@@ -1885,7 +1881,7 @@ fn bash_stmt_assign_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_stmt_assign_binding_spellings(name: String, value: String) -> Map<v2.std.node.Symbol, String> {
+fn bash_stmt_assign_binding_spellings(name: String, value: String) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(
     v2.std.collection.map_insert(v2.std.collection.empty_map(), ^bash_stmt_assign_name, name),
     ^bash_stmt_assign_value, value
@@ -1904,7 +1900,7 @@ fn bash_stmt_assign_target_model(name: String, value: String) -> v2.std.compiler
   )
 }
 
-fn bash_stmt_andor_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn bash_stmt_andor_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_andor_left },
     v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_andor_sp1 },
@@ -1938,7 +1934,7 @@ fn bash_stmt_andor_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_stmt_andor_binding_spellings(left: String, op: String, right: String) -> Map<v2.std.node.Symbol, String> {
+fn bash_stmt_andor_binding_spellings(left: String, op: String, right: String) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(
     v2.std.collection.map_insert(
       v2.std.collection.map_insert(v2.std.collection.empty_map(), ^bash_stmt_andor_left, left),
@@ -1960,7 +1956,7 @@ fn bash_stmt_andor_target_model(left: String, op: String, right: String) -> v2.s
   )
 }
 
-fn bash_stmt_pipe_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn bash_stmt_pipe_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_pipe_left },
     v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_pipe_sep },
@@ -1991,7 +1987,7 @@ fn bash_stmt_pipe_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_stmt_pipe_binding_spellings(left: String, right: String) -> Map<v2.std.node.Symbol, String> {
+fn bash_stmt_pipe_binding_spellings(left: String, right: String) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(
     v2.std.collection.map_insert(v2.std.collection.empty_map(), ^bash_stmt_pipe_left, left),
     ^bash_stmt_pipe_right, right
@@ -2010,7 +2006,7 @@ fn bash_stmt_pipe_target_model(left: String, right: String) -> v2.std.compilers.
   )
 }
 
-fn bash_stmt_with_redir_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn bash_stmt_with_redir_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_with_redir_stmt },
     v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_with_redir_sp },
@@ -2041,7 +2037,7 @@ fn bash_stmt_with_redir_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_stmt_with_redir_binding_spellings(stmt: String, redir: String) -> Map<v2.std.node.Symbol, String> {
+fn bash_stmt_with_redir_binding_spellings(stmt: String, redir: String) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(
     v2.std.collection.map_insert(v2.std.collection.empty_map(), ^bash_stmt_with_redir_stmt, stmt),
     ^bash_stmt_with_redir_redir, redir
@@ -2060,7 +2056,7 @@ fn bash_stmt_with_redir_target_model(stmt: String, redir: String) -> v2.std.comp
   )
 }
 
-fn bash_stmt_env_prefixed_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn bash_stmt_env_prefixed_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_envp_name },
     v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_envp_eq },
@@ -2094,7 +2090,7 @@ fn bash_stmt_env_prefixed_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_stmt_env_prefixed_binding_spellings(name: String, value: String, command: String) -> Map<v2.std.node.Symbol, String> {
+fn bash_stmt_env_prefixed_binding_spellings(name: String, value: String, command: String) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(
     v2.std.collection.map_insert(
       v2.std.collection.map_insert(v2.std.collection.empty_map(), ^bash_stmt_envp_name, name),
@@ -2116,7 +2112,7 @@ fn bash_stmt_env_prefixed_target_model(name: String, value: String, command: Str
   )
 }
 
-fn bash_stmt_env_unset_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn bash_stmt_env_unset_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_env_unset_prefix },
     v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_envp_unset_name },
@@ -2149,7 +2145,7 @@ fn bash_stmt_env_unset_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_stmt_env_unset_binding_spellings(name: String, command: String) -> Map<v2.std.node.Symbol, String> {
+fn bash_stmt_env_unset_binding_spellings(name: String, command: String) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(
     v2.std.collection.map_insert(v2.std.collection.empty_map(), ^bash_stmt_envp_unset_name, name),
     ^bash_stmt_envp_unset_command, command
@@ -2168,7 +2164,7 @@ fn bash_stmt_env_unset_target_model(name: String, command: String) -> v2.std.com
   )
 }
 
-fn bash_stmt_if_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn bash_stmt_if_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_if_kw },
     v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_if_cond },
@@ -2199,7 +2195,7 @@ fn bash_stmt_if_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_stmt_if_binding_spellings(cond: String, body: String) -> Map<v2.std.node.Symbol, String> {
+fn bash_stmt_if_binding_spellings(cond: String, body: String) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(
     v2.std.collection.map_insert(v2.std.collection.empty_map(), ^bash_stmt_if_cond, cond),
     ^bash_stmt_if_body, body
@@ -2231,7 +2227,7 @@ fn bash_stmt_if_target_model(cond: String, body: String) -> v2.std.diagnostic.Ou
 
 data bash_stmt_if_block_note: String = "Same If semantics as bash_stmt_if_tokens, spelled with real newlines around the then-body instead of the single-line \"; then \"/\"; fi\" join. Selected by orch_emit_if_step (05_emit_orchestration.dag) when the then_ Pipeline carries more than one step: the single-line row is bash-valid even then (newline is an ordinary statement separator, verified — this is not a correctness fix), but a newline-joined multi-statement body glued into the single-line row byte-diverges from a human's block-formatted expectation. Reusing bash_stmt_if_cond/bash_stmt_if_body as binding keys — same fields, a formatting realization, not a second fact."
 
-fn bash_stmt_if_block_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn bash_stmt_if_block_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_if_kw },
     v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_if_cond },
@@ -2285,7 +2281,7 @@ fn bash_stmt_if_block_target_model(cond: String, body: String) -> v2.std.diagnos
   )
 }
 
-fn bash_stmt_heredoc_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn bash_stmt_heredoc_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_heredoc_kw },
     v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_heredoc_path },
@@ -2325,7 +2321,7 @@ fn bash_stmt_heredoc_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_stmt_heredoc_binding_spellings(path: String, delimiter: String, body: String) -> Map<v2.std.node.Symbol, String> {
+fn bash_stmt_heredoc_binding_spellings(path: String, delimiter: String, body: String) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(
     v2.std.collection.map_insert(
       v2.std.collection.map_insert(
@@ -2350,7 +2346,7 @@ fn bash_stmt_heredoc_target_model(path: String, delimiter: String, body: String)
   )
 }
 
-fn bash_program_set_e_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn bash_program_set_e_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_program_set_e_kw },
     v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_program_body }
@@ -2381,7 +2377,7 @@ fn bash_program_set_e_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_program_set_e_binding_spellings(body: String) -> Map<v2.std.node.Symbol, String> {
+fn bash_program_set_e_binding_spellings(body: String) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(v2.std.collection.empty_map(), ^bash_program_body, body)
 }
 
@@ -2397,7 +2393,7 @@ fn bash_program_set_e_target_model(body: String) -> v2.std.compilers.target_mode
   )
 }
 
-fn bash_stmt_negation_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn bash_stmt_negation_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_negation_kw },
     v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_negation_inner }
@@ -2427,7 +2423,7 @@ fn bash_stmt_negation_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_stmt_negation_binding_spellings(inner: String) -> Map<v2.std.node.Symbol, String> {
+fn bash_stmt_negation_binding_spellings(inner: String) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(v2.std.collection.empty_map(), ^bash_stmt_negation_inner, inner)
 }
 
@@ -2449,7 +2445,7 @@ fn bash_redir_stderr_null_phrase() -> v2.std.compilers.lexing.LexicalPhrase {
   ])
 }
 
-fn bash_redir_stderr_null_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn bash_redir_stderr_null_concrete_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   v2.std.compilers.target_model.phrase_to_fixed_concrete_tokens(p: bash_redir_stderr_null_phrase())
 }
 
@@ -2489,7 +2485,7 @@ fn bash_redir_stdout_null_phrase() -> v2.std.compilers.lexing.LexicalPhrase {
   ])
 }
 
-fn bash_redir_stdout_null_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn bash_redir_stdout_null_concrete_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   v2.std.compilers.target_model.phrase_to_fixed_concrete_tokens(p: bash_redir_stdout_null_phrase())
 }
 
@@ -2529,7 +2525,7 @@ fn bash_redir_stdout_and_stderr_null_phrase() -> v2.std.compilers.lexing.Lexical
   ])
 }
 
-fn bash_redir_stdout_and_stderr_null_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn bash_redir_stdout_and_stderr_null_concrete_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   v2.std.compilers.target_model.phrase_to_fixed_concrete_tokens(p: bash_redir_stdout_and_stderr_null_phrase())
 }
 
@@ -2569,7 +2565,7 @@ fn bash_redir_stdout_to_stderr_phrase() -> v2.std.compilers.lexing.LexicalPhrase
   ])
 }
 
-fn bash_redir_stdout_to_stderr_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn bash_redir_stdout_to_stderr_concrete_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   v2.std.compilers.target_model.phrase_to_fixed_concrete_tokens(p: bash_redir_stdout_to_stderr_phrase())
 }
 
@@ -2603,7 +2599,7 @@ fn bash_redir_stdout_to_stderr_target_model() -> v2.std.compilers.target_model.T
   )
 }
 
-fn bash_redir_to_file_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn bash_redir_to_file_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_redir_to_file_prefix },
     v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_redir_to_file_path }
@@ -2633,7 +2629,7 @@ fn bash_redir_to_file_translation_rules_node() -> v2.std.node.Node {
   )
 }
 
-fn bash_redir_to_file_binding_spellings(path: String) -> Map<v2.std.node.Symbol, String> {
+fn bash_redir_to_file_binding_spellings(path: String) -> v2.std.collection.Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(v2.std.collection.empty_map(), ^bash_redir_to_file_path, path)
 }
 

@@ -1,12 +1,11 @@
 module gunbc.host_effect
 
-
 type HostEffect =
     ShellCommand { script: String }
   | RedfishAction { action: extdeps.bmc.types.RedfishSystemAction }
   | ConvergePlan { policy: gunbc.host_converge.HostConverge }
   | OsInstallActuatorToolchainEnsure {}
-  | ProvisionBuildCache { catalog_id: std.cache_identity.CacheInterfaceId }
+  | EnsureBuildCacheInstance { desired: gunbc.build_cache_instance.BuildCacheInstance }
   | ProvisionCodexRuntime {}
   | SetHostnameCas { hostnamectl_path: std.types.NonEmptyStr, base: extdeps.dns.domain_name.DnsLabel, desired: extdeps.dns.domain_name.DnsLabel }
   | ReadEffectivePosixPrincipal { read: extdeps.access.posix_effective_principal.EffectivePosixPrincipalRead }
@@ -26,7 +25,7 @@ type HostEffect =
       lease_key: std.types.NonEmptyStr,
     }
   | Srv3BootOnceReadBackSleep
-  | Srv3ReceiptEmit { lines: List<String> }
+  | Srv3ReceiptEmit { lines: std.types.List<String> }
   | HostIdentityShortHostnameRead
   | LiveDeployApply { spec: gunbc.live_deploy.spec.DeploymentSpec, candidate: gunbc.live_deploy.candidate.CandidateRelease }
   | LiveDeployRetract { spec: gunbc.live_deploy.spec.DeploymentSpec }
@@ -54,7 +53,7 @@ type BootstrapFragment {
 }
 
 type ThinInvocation {
-  argv: List<String>
+  argv: std.types.List<String>
 }
 
 // FleetSsh CARRIES THE SEALED EXECUTION CONTEXT, and lands beside SshShell rather than replacing it
@@ -124,23 +123,22 @@ fn fleet_ssh_leaf_unmigrated_refused() -> Bool {
   false
 }
 
-data host_effect_emit_artifact_transport_scope_disposition: std.disposition.Disposition = Terminal {
+data host_effect_emit_artifact_transport_scope_disposition: std.disposition.Disposition = std.disposition.Terminal {
   reason: "EmitArtifactThenThinRun transport mint (shell-emission slice 1+2): fresh-standup bootstrap routes through emit(intent,Bash) (bootstrap_fragment_script_carrier_scaffold dissolved); ThinInvocation.argv remains a medium-as-string scaffold until steady-state typed argv dispatch dissolves thin_invocation_argv_carrier_scaffold."
 }
 
-data bootstrap_fragment_script_carrier_scaffold: std.disposition.Disposition = Terminal {
+data bootstrap_fragment_script_carrier_scaffold: std.disposition.Disposition = std.disposition.Terminal {
   reason: "fresh-standup bootstrap emits through orch_emit_pipeline(intent,Bash) on fresh_standup_bootstrap_intent; BootstrapFragment.script is no longer a hand-spelled concat surface for the fleet-converge bootstrap arm (fleet_converge_fresh_standup_bootstrap_emit_dissolution_trigger dissolved)"
 }
 
 data thin_invocation_argv_carrier_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: RealizationDispatch,
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.fleet_converge_apply",
     decl_name: "fleet_converge_thin_invocation",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
-
 
 type HostEffectIntent {
   target: NodeControlPlane
@@ -168,12 +166,12 @@ fn host_effect_drive(intent: HostEffectIntent) -> Drive {
 
 data host_effect_converge_loop_reason: String = "converge to fixpoint — external redrive until observed state matches desired"
 
-data host_effect_identity_evidence: std.effects.IdempotencyEvidence = IdentityEffect
+data host_effect_identity_evidence: std.effects.IdempotencyEvidence = std.effects.IdentityEffect
 
-data host_effect_read_evidence: std.effects.IdempotencyEvidence = std.effects.LatticeEffect { shape: ReadEffect }
+data host_effect_read_evidence: std.effects.IdempotencyEvidence = std.effects.LatticeEffect { shape: std.effects.ReadEffect }
 
 data host_effect_converge_loop_evidence: std.effects.IdempotencyEvidence = std.effects.NonIdempotent {
-  shape: AppendEffect,
+  shape: std.effects.AppendEffect,
   reason: host_effect_converge_loop_reason,
 }
 
@@ -181,6 +179,6 @@ fn host_effect_is_converge_loop_evidence(evidence: std.effects.IdempotencyEviden
   evidence == host_effect_converge_loop_evidence
 }
 
-fn host_effect_lattice_evidence(shape: EffectShape<std.effects.KeySource>) -> std.effects.IdempotencyEvidence {
+fn host_effect_lattice_evidence(shape: std.effects.EffectShape<std.effects.KeySource>) -> std.effects.IdempotencyEvidence {
   std.effects.LatticeEffect { shape: shape }
 }

@@ -1,7 +1,5 @@
 module test.claim.roadmap_belt_actuate_witness
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
-
 fn roadmap_belt_actuate_nid(s: String) -> gunbc.roadmap_model.RoadmapNodeId { s }
 
 fn ready_node(id: String) -> gunbc.roadmap_model.RoadmapNode {
@@ -1761,4 +1759,102 @@ test fn witness_tick_multiplicity_is_a_node_fact() -> Bool {
   part.conflicted.length() == 2
     && part.running.length() == 0
     && part.stale.length() == 0
+}
+
+// ── The located spawn cause reaches the receipt ─────────────────────────────────────────────────
+//
+// THE DEFECT THIS CLOSES: SpawnFailed carries node_id, step, detail and provider, and the pass fold
+// discarded all four for the sentence "one or more spawn outcomes failed". The receipt is a tick's
+// only durable record, so the cause was computed and erased every time. On srv1 that turned a
+// missing provider binary into weeks of a dashboard saying "belt fault" with no way to ask why —
+// and the obvious host probes answer about a different object than the preflight tests, so the
+// available evidence pointed away from the cause rather than at it.
+//
+// Each conjunct names one of the four facts, so a fold that dropped any single field reds here
+// rather than passing on the other three.
+test fn a_failed_spawn_names_its_node_gate_and_detail_in_the_receipt() -> Bool {
+  match gunbc.roadmap_belt_actuate.belt_spawn_pass_outcome_from(
+    observe_refused: false,
+    observe_reason: "",
+    spawn_outcomes: [
+      gunbc.roadmap_belt_actuate.SpawnFailed {
+        node_id: "v2-emitter-direct-rust-door",
+        step: "codex-cli",
+        detail: "codex not found at the pinned bundled path",
+        provider: "codex",
+      },
+    ],
+  ) {
+    BeltPassFailed { reason: r } =>
+      string_contains(s: r, pattern: "v2-emitter-direct-rust-door")
+        && string_contains(s: r, pattern: "codex-cli")
+        && string_contains(s: r, pattern: "codex not found at the pinned bundled path")
+        && string_contains(s: r, pattern: "codex")
+    BeltPassRecorded => false
+    BeltPassDeferred { reason: _ } => false
+    BeltPassRefused { reason: _ } => false
+  }
+}
+
+// THE CONTROL, and it is the one that makes the claim above mean something. A reason string is easy
+// to satisfy by concatenating every outcome unconditionally, which would also "name the detail" of
+// a successful spawn and report failure for a tick that had none. So: an all-Spawned list must
+// reach BeltPassRecorded, with no reason at all.
+test fn a_tick_with_no_failed_spawn_records_instead_of_reporting_a_cause() -> Bool {
+  match gunbc.roadmap_belt_actuate.belt_spawn_pass_outcome_from(
+    observe_refused: false,
+    observe_reason: "",
+    spawn_outcomes: [
+      gunbc.roadmap_belt_actuate.Spawned { node_id: "n1", session_name: "s1", provider: "codex" },
+      gunbc.roadmap_belt_actuate.Spawned { node_id: "n2", session_name: "s2", provider: "codex" },
+    ],
+  ) {
+    BeltPassRecorded => true
+    BeltPassFailed { reason: _ } => false
+    BeltPassDeferred { reason: _ } => false
+    BeltPassRefused { reason: _ } => false
+  }
+}
+
+// Mixed list: the failed one is named and the succeeded one is not dragged into the cause. This is
+// what distinguishes "report the failures" from "report everything that happened".
+test fn a_mixed_tick_names_only_the_failed_spawn() -> Bool {
+  match gunbc.roadmap_belt_actuate.belt_spawn_pass_outcome_from(
+    observe_refused: false,
+    observe_reason: "",
+    spawn_outcomes: [
+      gunbc.roadmap_belt_actuate.Spawned { node_id: "healthy-node", session_name: "s1", provider: "codex" },
+      gunbc.roadmap_belt_actuate.SpawnFailed {
+        node_id: "broken-node",
+        step: "codex-auth",
+        detail: "login status exited nonzero",
+        provider: "codex",
+      },
+    ],
+  ) {
+    BeltPassFailed { reason: r } =>
+      string_contains(s: r, pattern: "broken-node")
+        && string_contains(s: r, pattern: "codex-auth")
+        && !string_contains(s: r, pattern: "healthy-node")
+    BeltPassRecorded => false
+    BeltPassDeferred { reason: _ } => false
+    BeltPassRefused { reason: _ } => false
+  }
+}
+
+// An observation refusal still wins over the spawn summary — the pre-existing arm, asserted here so
+// the new reason-building cannot quietly displace it.
+test fn an_observation_refusal_still_outranks_the_spawn_summary() -> Bool {
+  match gunbc.roadmap_belt_actuate.belt_spawn_pass_outcome_from(
+    observe_refused: true,
+    observe_reason: "tmux list refused",
+    spawn_outcomes: [
+      gunbc.roadmap_belt_actuate.SpawnFailed { node_id: "n", step: "codex-cli", detail: "d", provider: "codex" },
+    ],
+  ) {
+    BeltPassRefused { reason: r } => r == "tmux list refused"
+    BeltPassFailed { reason: _ } => false
+    BeltPassRecorded => false
+    BeltPassDeferred { reason: _ } => false
+  }
 }
