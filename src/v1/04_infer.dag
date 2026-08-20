@@ -8303,6 +8303,17 @@ fn corpus_item_name_counts(modules: List<ResolvedModule>, source_indices: Map<St
   corpus_item_name_counts_nodes(module_nodes: census_module_nodes(modules: modules), source_indices: source_indices)
 }
 
+// Unconditional fully-qualified insertion, ahead of the uniqueness-gated 2-segment
+// aliases below: `module_path.TypeName.variant_name` disambiguates by construction
+// (a variant name is unique within one Disj, and a TypeName is unique within one
+// module), so it needs no corpus-wide uniqueness check the way the bare `module_path.
+// variant_name` shortcut does. This closes the population-A gap named in
+// direct_call_shape_wall_note: a qualified constructor call site like
+// `gunbc.WitnessBin.Run(...)` builds exactly this 3-segment dotted name
+// (ExprMethodCall's qualified_direct_call gate, and func_sig_from_global_bare's
+// borrowed_census_decl, both call symbol_index_lookup on it) and previously found
+// nothing, falling through to the generic method-call bridge instead of the
+// direct_call_shape_diags wall.
 fn symbol_index_insert_unique_disj_variant_aliases(
   index: SymbolIndex,
   module_path: String,
@@ -8318,17 +8329,6 @@ fn symbol_index_insert_unique_disj_variant_aliases(
         let tname = authored_name_at(source_indices: source_indices, node: item)
         fold(item.children, init: acc, f: (a2, child) =>
           let vname = authored_name_at(source_indices: source_indices, node: child)
-          // Unconditional fully-qualified insertion, ahead of the uniqueness-gated 2-segment
-          // aliases below: `module_path.TypeName.variant_name` disambiguates by construction
-          // (a variant name is unique within one Disj, and a TypeName is unique within one
-          // module), so it needs no corpus-wide uniqueness check the way the bare `module_path.
-          // variant_name` shortcut does. This closes the population-A gap named in
-          // direct_call_shape_wall_note: a qualified constructor call site like
-          // `gunbc.WitnessBin.Run(...)` builds exactly this 3-segment dotted name
-          // (ExprMethodCall's qualified_direct_call gate, and func_sig_from_global_bare's
-          // borrowed_census_decl, both call symbol_index_lookup on it) and previously found
-          // nothing, falling through to the generic method-call bridge instead of the
-          // direct_call_shape_diags wall.
           let a2_qualified = symbol_index_insert(
             index: a2,
             qualified_name: concat(concat(module_path, ".", tname), ".", vname),
