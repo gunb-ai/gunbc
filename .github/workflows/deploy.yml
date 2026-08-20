@@ -29,7 +29,7 @@ jobs:
           "$ROOT/target/release/gunbc" run --source-root dag --source-root src/v2 --entry dag/gunbc/live_deploy/apply.dag --function live_deploy_apply_srv1_wet
       - name: Advance the admitted fleet revision
         run: |
-          # 🟡 dissolve-on: gunbc_ci_advance_fleet_desired_script — concat-built foreign-executor (GitHub Actions run:) CAS ref advance (git ls-remote + push --force-with-lease onto gunbc.fleet_main_revision fleet_desired_ref_name); DISSOLVES WHEN the SCM ref-update realization lands as the typed git.Core CAS service op (membership-diff spine classify_change SCM-ref arm) invoked via host_effect_apply
+          # 🟡 dissolve-on: gunbc_ci_advance_fleet_desired_script — concat-built foreign-executor (GitHub Actions run:) CAS ref advance (git ls-remote + push --force-with-lease onto gunbc.fleet_main_revision gunbc.fleet_main_revision.fleet_desired_ref_name); DISSOLVES WHEN the SCM ref-update realization lands as the typed git.Core CAS service op (membership-diff spine classify_change SCM-ref arm) invoked via host_effect_apply
           set -eu
           DESIRED_REF=refs/fleet/desired
           CURRENT=$(git ls-remote origin "$DESIRED_REF" | cut -f1)

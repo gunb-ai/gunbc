@@ -180,9 +180,9 @@ fn live_deploy_job() -> extdeps.github.actions.Job {
     timeout_minutes: v2.std.optional.Present { value: 90 },
     continue_on_error: none,
     concurrency: none,
-    permissions: v2.std.optional.Present {
+    permissions: Present {
       value: extdeps.github.actions.WorkflowPermissions {
-        contents: v2.std.optional.Present { value: extdeps.github.actions.PermWrite },
+        contents: Present { value: extdeps.github.actions.PermWrite },
         pull_requests: none,
         issues: none,
         actions: none,
@@ -202,7 +202,7 @@ data live_deploy_workflow: extdeps.github.actions.Workflow = extdeps.github.acti
     extdeps.github.actions.WorkflowDispatch { inputs: [] },
     extdeps.github.actions.Push { branches: [gunbc.repo_identity.gunbc_default_branch_name], paths: [] }
   ],
-  concurrency: v2.std.optional.Present {
+  concurrency: Present {
     value: extdeps.github.actions.ConcurrencyMappingQueueNotMax {
       group: live_deploy_workflow_concurrency_group,
       cancel_in_progress: none,

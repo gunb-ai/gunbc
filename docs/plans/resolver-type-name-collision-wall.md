@@ -12,7 +12,7 @@ The A1 (#5615) incident — `type 'EqualsClaim' not found in scope` on `src/v2/w
 
 Mechanism (proven by execution during the diagnosis; receipt below):
 
-- The per-module type scope (`TypeEnv.bindings`) is a `HashMap<i64, Rc<TypeBinding>>` keyed by the **interned id of the UNQUALIFIED type name** — the intern table is global, so two module-level types sharing a short name (`v2.std.verification.TestClaim` the Disj coproduct vs `std.verification.TestClaim` the Conj record) hash to the **same key**.
+- The per-module type scope (`TypeEnv.bindings`) is a `HashMap<i64, Rc<TypeBinding>>` keyed by the **interned id of the UNQUALIFIED type name** — the intern table is global, so two module-level types sharing a short name (`v2.std.verification.TestClaim` the Disj coproduct vs `v2.std.verification.TestClaim` the Conj record) hash to the **same key**.
 - `import_bindings` is assembled by folding each imported module's bindings with a blind `v1_rt::rc_map_merge` (`v1_compiler_infer.rs` ~11799 and the duplicate ~12393). **Map merge overwrites on duplicate key — last writer wins, no diagnostic.** One authority silently shadows the other.
 - Because variant-constructor registration (`build_module_context`'s `variant_fold`, ~12894) only fires for `Disj` bindings, when the **record** won the `TestClaim` slot the coproduct's constructors (`EqualsClaim`, `StructuralEqualsClaim`, …) were never registered → "not found in scope". A1 was an innocent trigger: it merely grew the test's import-closure to include `std.verification(dag)` (via `gunbc.ci_failure_class → extdeps.cache.sccache → std.cache_interface → std.verification`).
 

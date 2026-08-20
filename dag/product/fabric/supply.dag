@@ -143,15 +143,15 @@ type SelectionPolicy =
 
 type OfferEligibility
   = OfferEligible
-  | ShapeNotCovered { required_threads: HardwareThreadCount, offered_threads: HardwareThreadCount }
-  | TrustDomainMismatch { required: TrustDomainRef, offered: TrustDomainRef }
-  | CapabilitiesNotOffered { required: CapabilityManifestRef, offered: CapabilityManifestRef }
-  | QuoteExceedsMaximumBuyOrder { quoted: MoneyAmountMicro, maximum: MoneyAmountMicro }
-  | QuoteCurrencyMismatch { quoted: CurrencyCode, budgeted: CurrencyCode }
-  | RateQuoteNotPriceableAgainstGrantCeiling { quoted: MoneyAmountMicro }
+  | ShapeNotCovered { required_threads: std.measure.HardwareThreadCount, offered_threads: std.measure.HardwareThreadCount }
+  | TrustDomainMismatch { required: product.fabric.work.TrustDomainRef, offered: product.fabric.work.TrustDomainRef }
+  | CapabilitiesNotOffered { required: product.fabric.work.CapabilityManifestRef, offered: product.fabric.work.CapabilityManifestRef }
+  | QuoteExceedsMaximumBuyOrder { quoted: std.measure.MoneyAmountMicro, maximum: std.measure.MoneyAmountMicro }
+  | QuoteCurrencyMismatch { quoted: std.currency.CurrencyCode, budgeted: std.currency.CurrencyCode }
+  | RateQuoteNotPriceableAgainstGrantCeiling { quoted: std.measure.MoneyAmountMicro }
 
-fn offer_covers_shape(offered: Shape, needed: Shape) -> Bool {
-  hardware_thread_count_value(t: offered.hard.threads) >= hardware_thread_count_value(t: needed.hard.threads)
+fn offer_covers_shape(offered: product.fabric.work.Shape, needed: product.fabric.work.Shape) -> Bool {
+  std.measure.hardware_thread_count_value(t: offered.hard.threads) >= std.measure.hardware_thread_count_value(t: needed.hard.threads)
 }
 
 // THIS FOLD SCREENS AFFORDABILITY. IT DOES NOT SELECT.
@@ -192,10 +192,10 @@ fn offer_covers_shape(offered: Shape, needed: Shape) -> Bool {
 // them at the call site, which is also where they are known.
 
 fn offer_eligibility_for<P>(
-  requirements: ExecutionRequirements,
+  requirements: product.fabric.work.ExecutionRequirements,
   offer: Offer<P>,
-  maximum_buy_order: MoneyAmountMicro,
-  budget_currency: CurrencyCode,
+  maximum_buy_order: std.measure.MoneyAmountMicro,
+  budget_currency: std.currency.CurrencyCode,
 ) -> OfferEligibility {
   if requirements.trust_domain != offer.trust_domain {
     TrustDomainMismatch { required: requirements.trust_domain, offered: offer.trust_domain }
@@ -212,7 +212,7 @@ fn offer_eligibility_for<P>(
     match offer.quote {
       QuotedPerSecond(r) => RateQuoteNotPriceableAgainstGrantCeiling { quoted: r.amount }
       QuotedPerHour(r) => RateQuoteNotPriceableAgainstGrantCeiling { quoted: r.amount }
-      QuotedFlatPerGrant(r) => if money_amount_micro_count(m: r.amount) > money_amount_micro_count(m: maximum_buy_order) {
+      QuotedFlatPerGrant(r) => if std.measure.money_amount_micro_count(m: r.amount) > std.measure.money_amount_micro_count(m: maximum_buy_order) {
         QuoteExceedsMaximumBuyOrder { quoted: r.amount, maximum: maximum_buy_order }
       } else {
         OfferEligible

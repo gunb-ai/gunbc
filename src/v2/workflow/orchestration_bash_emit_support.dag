@@ -13,7 +13,7 @@ fn orch_bash_run(command: String) -> v2.std.orchestration.Run {
 }
 
 fn orch_bash_do(command: String) -> v2.std.orchestration.PipelineStep {
-  Do { run: orch_bash_run(command: command) }
+  v2.std.orchestration.Do { run: orch_bash_run(command: command) }
 }
 
 fn orch_bash_comment_line(text: String) -> v2.std.orchestration.PipelineStep {
@@ -21,7 +21,7 @@ fn orch_bash_comment_line(text: String) -> v2.std.orchestration.PipelineStep {
 }
 
 fn orch_bash_emit_pipeline(p: v2.std.orchestration.Pipeline, refused_poison: String) -> String {
-  match orch_emit_pipeline(p: p, medium: bash_orchestration_emit_medium()) {
+  match v2.compiler.emit_orchestration.orch_emit_pipeline(p: p, medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: d } =>
       match d {
         None => source.carried

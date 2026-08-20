@@ -12,7 +12,7 @@ type HostCliEnrollmentRequirement {
   provision: std.types.NonEmptyStr
 }
 
-data codex_wet_materialization_host_cli_requirements: List<HostCliEnrollmentRequirement> = [
+data codex_wet_materialization_host_cli_requirements: std.types.List<HostCliEnrollmentRequirement> = [
   HostCliEnrollmentRequirement {
     tool: "npm" as std.types.NonEmptyStr,
     provision: "apt install npm on falsifier cadence runner image" as std.types.NonEmptyStr,
@@ -23,20 +23,20 @@ type HostCliDependencyObservation
   = HostCliDependencyPresent
   | HostCliDependencyAbsent { tool: std.types.NonEmptyStr, hint: String }
 
-fn observe_host_cli_dependency(tool: CliTool) -> HostCliDependencyObservation {
+fn observe_host_cli_dependency(tool: extdeps.tools.CliTool) -> HostCliDependencyObservation {
   let check = shell.PosixCommandV.Check(command: tool.name)  if check.exists {
     HostCliDependencyPresent
   } else {
     HostCliDependencyAbsent {
       tool: tool.name,
-      hint: install_hint(sources: tool.installable_via),
+      hint: extdeps.tools.install_hint(sources: tool.installable_via),
     }
   }
 }
 
 fn cli_tool_for_enrollment_requirement(requirement: HostCliEnrollmentRequirement) -> extdeps.tools.CliTool? {
   if requirement.tool == npm_cli_tool.name {
-    Present { value: npm_cli_tool }
+    Present { value: extdeps.tools.npm.npm_cli_tool }
   } else {
     none
   }
