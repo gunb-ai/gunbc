@@ -15,7 +15,7 @@ fn wave1_gate1_d_table_fixture_arrow_accepts(o: v2.std.diagnostic.Outcome<Node>)
 }
 
 fn wave1_gate1_d_add_holds() -> Bool {
-  wave1_gate1_d_table_fixture_arrow_accepts(o: table_fixture_add_arrow_with_body())
+  wave1_gate1_d_table_fixture_arrow_accepts(o: v2.test.complexity_gate.table_fixture_add_subject_producer.table_fixture_add_arrow_with_body())
 }
 
 fn wave1_gate1_d_add_swapped_well_formed_holds() -> Bool {
@@ -23,15 +23,15 @@ fn wave1_gate1_d_add_swapped_well_formed_holds() -> Bool {
 }
 
 fn wave1_gate1_d_pick_holds() -> Bool {
-  wave1_gate1_d_table_fixture_arrow_accepts(o: table_fixture_pick_if_arrow_with_body())
+  wave1_gate1_d_table_fixture_arrow_accepts(o: v2.test.complexity_gate.table_fixture_branch_subject_producer.table_fixture_pick_if_arrow_with_body())
 }
 
 fn wave1_gate1_d_loop_holds() -> Bool {
-  wave1_gate1_d_table_fixture_arrow_accepts(o: table_fixture_loop_arrow_with_body())
+  wave1_gate1_d_table_fixture_arrow_accepts(o: v2.test.complexity_gate.table_fixture_loop_subject_producer.table_fixture_loop_arrow_with_body())
 }
 
 fn wave1_gate1_d_bind_holds() -> Bool {
-  wave1_gate1_d_table_fixture_arrow_accepts(o: table_fixture_bind_arrow_with_body())
+  wave1_gate1_d_table_fixture_arrow_accepts(o: v2.test.complexity_gate.table_fixture_bind_subject_producer.table_fixture_bind_arrow_with_body())
 }
 
 fn wave1_gate1_d_match_holds() -> Bool {

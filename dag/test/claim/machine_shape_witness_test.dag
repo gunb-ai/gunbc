@@ -26,7 +26,7 @@ fn shape_from_rtx5090_catalog() -> std.machine_shape.MachineShape {
     register_level: rtx5090_register_level,
     shared_level: rtx5090_shared_level,
     device_level: rtx5090_device_level,
-    row: nvidia_rtx_5090_catalog,
+    row: extdeps.gpu.nvidia.nvidia_rtx_5090_catalog,
   }) {
     MachineShapeOk { shape: s } => s
     MachineShapeRefused { cause: _ } => std.machine_shape.MachineShape { domains: [], edges: [] }
@@ -40,10 +40,10 @@ test fn catalog_derivation_matches_row() -> Bool {
   match machine_shape_domain_lane_count(shape: shape) {
     Present { value: lanes } =>
       hardware_thread_count_value(t: lanes) == 21760
-        && byte_size_count(b: device.capacity) == byte_size_count(b: nvidia_rtx_5090_catalog.memory.capacity)
+        && byte_size_count(b: device.capacity) == byte_size_count(b: extdeps.gpu.nvidia.nvidia_rtx_5090_catalog.memory.capacity)
         && match device.bandwidth {
           Present { value: bw } =>
-            bandwidth_count(b: bw) == bandwidth_count(b: nvidia_rtx_5090_catalog.memory_bandwidth)
+            bandwidth_count(b: bw) == bandwidth_count(b: extdeps.gpu.nvidia.nvidia_rtx_5090_catalog.memory_bandwidth)
           Absent => false
         }
     Absent => false
@@ -60,7 +60,7 @@ fn shape_from_m5_catalog() -> std.machine_shape.MachineShape {
     register_level: m5_register_level,
     shared_level: m5_shared_level,
     device_level: m5_device_level,
-    row: apple_m5_gpu_catalog,
+    row: extdeps.gpu.apple.apple_m5_gpu_catalog,
   }) {
     MachineShapeOk { shape: s } => s
     MachineShapeRefused { cause: _ } => std.machine_shape.MachineShape { domains: [], edges: [] }

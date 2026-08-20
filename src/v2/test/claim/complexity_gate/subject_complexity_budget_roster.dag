@@ -28,22 +28,22 @@ fn complexity_declared_budget_loop_linear(body: Node) -> v2.lens.complexity.Comp
 }
 
 data complexity_budget_row_table_fixture_add: LensSubjectComplexityBudgetRow = LensSubjectComplexityBudgetRow {
-  subject_producer: table_fixture_add_arrow_with_body,
+  subject_producer: v2.test.complexity_gate.table_fixture_add_subject_producer.table_fixture_add_arrow_with_body,
   declared_budget: complexity_declared_budget_constant
 }
 
 data complexity_budget_row_table_fixture_bind: LensSubjectComplexityBudgetRow = LensSubjectComplexityBudgetRow {
-  subject_producer: table_fixture_bind_arrow_with_body,
+  subject_producer: v2.test.complexity_gate.table_fixture_bind_subject_producer.table_fixture_bind_arrow_with_body,
   declared_budget: complexity_declared_budget_constant
 }
 
 data complexity_budget_row_table_fixture_branch: LensSubjectComplexityBudgetRow = LensSubjectComplexityBudgetRow {
-  subject_producer: table_fixture_pick_if_arrow_with_body,
+  subject_producer: v2.test.complexity_gate.table_fixture_branch_subject_producer.table_fixture_pick_if_arrow_with_body,
   declared_budget: complexity_declared_budget_constant
 }
 
 data complexity_budget_row_table_fixture_loop: LensSubjectComplexityBudgetRow = LensSubjectComplexityBudgetRow {
-  subject_producer: table_fixture_loop_arrow_with_body,
+  subject_producer: v2.test.complexity_gate.table_fixture_loop_subject_producer.table_fixture_loop_arrow_with_body,
   declared_budget: complexity_declared_budget_loop_linear
 }
 

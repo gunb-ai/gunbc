@@ -139,14 +139,14 @@ test fn witness_pre_commit_hook_branches_on_exit_status() -> Bool {
 }
 
 test fn witness_hand_rust_receipt_is_counted_and_named() -> Bool {
-  githooks_pre_push_fmt_transport_hand_rust_loc_delta_net == 57
+  gunbc.githooks_pre_push_fmt_transport_scaffold.githooks_pre_push_fmt_transport_hand_rust_loc_delta_net == 57
     && has(s: dissolution_description(condition: githooks_pre_push_fmt_transport_hand_rust_dissolve_trigger), p: "dissolve-on")
     && has(s: dissolution_description(condition: githooks_pre_push_fmt_transport_hand_rust_dissolve_trigger), p: "emitted crate partition")
     && has(s: dissolution_description(condition: githooks_pre_push_fmt_transport_hand_rust_dissolve_trigger), p: "NOT a census shrink")
 }
 
 test fn witness_hand_rust_receipt_names_a_live_discriminator() -> Bool {
-  githooks_pre_push_fmt_transport_test_discriminator == "witness_unavailable_recipe_never_says_drift"
+  gunbc.githooks_pre_push_fmt_transport_scaffold.githooks_pre_push_fmt_transport_test_discriminator == "witness_unavailable_recipe_never_says_drift"
 }
 
 test fn witness_pre_push_emit_states_its_own_medium_disposition() -> Bool {

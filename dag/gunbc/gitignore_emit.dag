@@ -162,7 +162,7 @@ fn project_gitignore_to_doc(groups: List<gunbc.gitignore_model.IgnoreGroup>) -> 
 }
 
 fn expected_gitignore() -> String {
-  render(doc: project_gitignore_to_doc(groups: gitignore_authority), proto: gitignore_protocol)
+  render(doc: project_gitignore_to_doc(groups: gunbc.gitignore_authority.gitignore_authority), proto: gitignore_protocol)
 }
 
 fn gitignore_drifted(committed: String) -> Bool {
@@ -174,7 +174,7 @@ fn group_patterns(g: gunbc.gitignore_model.IgnoreGroup) -> List<String> {
 }
 
 fn ignore_patterns() -> List<String> {
-  let tool_patterns = fold(gitignore_authority, init: [], f: fn(acc, g) { concat(acc, group_patterns(g: g)) })
+  let tool_patterns = fold(gunbc.gitignore_authority.gitignore_authority, init: [], f: fn(acc, g) { concat(acc, group_patterns(g: g)) })
   concat(tool_patterns, map(non_committed_artifacts(), a => generated_artifact_ignore_pattern(a: a)))
 }
 

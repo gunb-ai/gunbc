@@ -238,7 +238,7 @@ test fn w_connectivity_survives_dpmx_and_not_gerber() -> Bool {
     c: carriage_of(rows: ipc_dpmx_semantic_carriage, semantic: NetlistConnectivity)
   )
     && !carriage_is_in_format(
-      c: carriage_of(rows: gerber_semantic_carriage, semantic: NetlistConnectivity)
+      c: carriage_of(rows: extdeps.ucamco.gerber.gerber_semantic_carriage, semantic: NetlistConnectivity)
     )
 }
 

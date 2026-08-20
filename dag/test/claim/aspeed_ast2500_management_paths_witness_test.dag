@@ -49,7 +49,7 @@ fn list_contains_path(
 // THE CATALOG JOINS THE ASPEED VENDOR AUTHORITY RATHER THAN RE-TYPING THE NAME.
 test fn w_the_catalog_names_ast2500_and_the_aspeed_vendor() -> Bool {
   (aspeed_ast2500_catalog.ordering_part_number as String) == "AST2500"
-    && aspeed_ast2500_catalog.manufacturer == aspeed
+    && aspeed_ast2500_catalog.manufacturer == extdeps.vendor.aspeed.aspeed
 }
 
 // SIX PATHS, TWO MODES — THE SPLIT THE BRIEF ASKED FOR.

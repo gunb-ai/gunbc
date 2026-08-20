@@ -2,7 +2,7 @@ module test.claim.infer_occurrence_binding_scaffold_witness_test
 
 
 test fn infer_occurrence_binding_v1_adapter_scaffold_is_seed_retained() -> Bool {
-  match infer_occurrence_binding_v1_adapter_scaffold {
+  match gunbc.infer_occurrence_binding_scaffold.infer_occurrence_binding_v1_adapter_scaffold {
     Scaffold {
       dissolves_to: SingleAuthority,
       bind: DeclarationRef {
@@ -17,18 +17,18 @@ test fn infer_occurrence_binding_v1_adapter_scaffold_is_seed_retained() -> Bool 
 
 test fn infer_occurrence_binding_v1_adapter_dissolve_trigger_names_authority_and_lane() -> Bool {
   string_contains(
-    s: dissolution_description(condition: infer_occurrence_binding_v1_adapter_dissolve_trigger),
+    s: dissolution_description(condition: gunbc.infer_occurrence_binding_scaffold.infer_occurrence_binding_v1_adapter_dissolve_trigger),
     pattern: "occurrence_binding_from_candidates",
   ) &&
     string_contains(
-      s: dissolution_description(condition: infer_occurrence_binding_v1_adapter_dissolve_trigger),
+      s: dissolution_description(condition: gunbc.infer_occurrence_binding_scaffold.infer_occurrence_binding_v1_adapter_dissolve_trigger),
       pattern: "namespace-binding-kernel",
     )
 }
 
 test fn infer_occurrence_binding_v1_adapter_receipt_plan_anchor_is_checkable() -> Bool {
   string_contains(
-    s: infer_occurrence_binding_v1_adapter_receipt_plan_anchor,
+    s: gunbc.infer_occurrence_binding_scaffold.infer_occurrence_binding_v1_adapter_receipt_plan_anchor,
     pattern: "namespace-binding-kernel",
   )
 }

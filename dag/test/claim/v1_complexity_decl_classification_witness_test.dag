@@ -4,25 +4,25 @@ module test.claim.v1_complexity_decl_classification_witness_test
 data witness_note: String = "FAST-LANE structural hygiene for C0(b2): the declaration classification roster is internally consistent — distinct names, every semantic capability has an authority declaration, and every inventory authority carrier is classified as AuthorityOf at the matching decl_name. The decl_facts population join is deliberately in the long-lane companion because it pays a full witness-layer scan over a pool including src/v1."
 
 test fn w_classification_roster_names_are_distinct() -> Bool {
-  roster_names_distinct(roster: v1_complexity_decl_classification_roster)
+  roster_names_distinct(roster: gunbc.v1_complexity_decl_classification_roster.v1_complexity_decl_classification_roster)
 }
 
 test fn w_every_semantic_capability_has_authority_declaration() -> Bool {
   every_semantic_capability_has_authority(
     inventory: v1_complexity_inventory_roster,
-    roster: v1_complexity_decl_classification_roster
+    roster: gunbc.v1_complexity_decl_classification_roster.v1_complexity_decl_classification_roster
   )
 }
 
 test fn w_every_inventory_authority_carrier_is_classified() -> Bool {
   every_inventory_authority_carrier_classified(
     inventory: v1_complexity_inventory_roster,
-    roster: v1_complexity_decl_classification_roster
+    roster: gunbc.v1_complexity_decl_classification_roster.v1_complexity_decl_classification_roster
   )
 }
 
 test fn w_classification_roster_is_nonempty() -> Bool {
-  v1_complexity_decl_classification_roster_count(roster: v1_complexity_decl_classification_roster) > 0
+  v1_complexity_decl_classification_roster_count(roster: gunbc.v1_complexity_decl_classification_roster.v1_complexity_decl_classification_roster) > 0
 }
 
 data population_key_mechanism_note: String = "The MECHANISM half of the bare-name join precondition, deliberately here and not in the long-lane companion. classification_matches_fact joins a roster row to a DeclFact on bare name, which is sound only while the derived population's top-level names are distinct; population_names_distinct executes that instead of assuming it. The two witnesses below are synthetic two-element fixtures — they author their own input and their own expected answer, pay no decl_facts scan, and so belong in the per-PR lane where a regression reds immediately. Only the REAL-population reading is irreducible, and that one alone stays long-lane. This is the decomposition DESIGN requires of a live-population claim: small discriminating mechanism fixtures per PR plus the irreducible census on an enrolled cadence — the census may be irreducible, the mechanism never is. Note roster_names_distinct does NOT cover this: it constrains the AUTHORED side, and a duplicate on the DERIVED side is invisible to it."

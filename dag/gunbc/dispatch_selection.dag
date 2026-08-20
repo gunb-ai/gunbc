@@ -569,7 +569,7 @@ fn provider_inventory_for_instance(instance: gunbc.roadmap_dashboard_instance.Ho
             },
             credential: CursorLocalLoginRef,
             standing: provider_standing_inventory_unobserved(),
-            default_model: cursor_model_auto,
+            default_model: extdeps.llm.cursor_cli.cursor_model_auto,
             process_fingerprint: dispatch_cursor_process_fingerprint,
           },
         },
@@ -1072,7 +1072,7 @@ fn provider_selection_request_for_kind(kind: extdeps.llm.cli_lifecycle.ProviderK
       SelectCursor {
         profile: ProfileAutomatic,
         credential: CursorLocalLoginRef,
-        model: cursor_model_auto,
+        model: extdeps.llm.cursor_cli.cursor_model_auto,
         agent_mode: "default-edit" as std.types.NonEmptyStr,
       }
   }
@@ -1493,7 +1493,7 @@ fn fixture_inventory_codex_and_cursor_available(
             provider: cursor_instance,
             bundle: fixture_standing_bundle_cursor_capability_gap(),
           ),
-          default_model: cursor_model_auto,
+          default_model: extdeps.llm.cursor_cli.cursor_model_auto,
           process_fingerprint: dispatch_cursor_process_fingerprint,
         },
       },

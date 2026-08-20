@@ -240,13 +240,13 @@ test fn witness_deferral_freeze_commit_roster_row_is_not_frozen() -> Bool {
 data rust_realization_disposition_note: String = "THE REALIZATION IS ACCOUNTED FOR, not just the policy. The .dag carriers above are the authority, but the seed realization in cli_run.rs is several hundred hand-maintained lines in the largest such wall in the program, and a modeled policy does not exempt its realization. gunbc.cli_run_witness_deferral_freeze_scaffold carries the typed Scaffold disposition, the measured landing LOC delta and the ordered dissolution sequence; this pair keeps that registration from becoming a file nobody reads by requiring the disposition to exist and to name a dissolution."
 
 test fn witness_deferral_freeze_rust_realization_is_declared_scaffold() -> Bool {
-  match cli_run_witness_deferral_freeze_scaffold {
+  match gunbc.cli_run_witness_deferral_freeze_scaffold.cli_run_witness_deferral_freeze_scaffold {
     Scaffold { dissolves_to: _, bind: _ } => true
     _ => false
   }
 }
 
 test fn witness_deferral_freeze_rust_realization_names_a_dissolution() -> Bool {
-  !(dissolution_description(condition: cli_run_witness_deferral_freeze_dissolve_trigger) == "")
+  !(dissolution_description(condition: gunbc.cli_run_witness_deferral_freeze_scaffold.cli_run_witness_deferral_freeze_dissolve_trigger) == "")
     && !(cli_run_witness_deferral_freeze_loc_delta_basis == "")
 }

@@ -168,14 +168,14 @@ fn w_due_within_year_le_total(due: extdeps.sec.facts.FiledMonetaryFact, total: e
 
 test fn w_all_seven_years_cross_foot() -> Bool {
   w_year_cross_foots(
-    revenue: gitlab_fy2020_revenue,
+    revenue: extdeps.sec.issuer.gitlab_facts.gitlab_fy2020_revenue,
     cost_of_revenue: gitlab_fy2020_cost_of_revenue,
     gross_profit: gitlab_fy2020_gross_profit,
-    selling_and_marketing: gitlab_fy2020_selling_and_marketing,
+    selling_and_marketing: extdeps.sec.issuer.gitlab_facts.gitlab_fy2020_selling_and_marketing,
     research_and_development: gitlab_fy2020_research_and_development,
     general_and_administrative: gitlab_fy2020_general_and_administrative,
     operating_expenses_total: gitlab_fy2020_operating_expenses,
-    operating_income: gitlab_fy2020_operating_income_loss
+    operating_income: extdeps.sec.issuer.gitlab_facts.gitlab_fy2020_operating_income_loss
   )
     && w_year_cross_foots(
       revenue: gitlab_fy2021_revenue,
@@ -199,16 +199,16 @@ test fn w_all_seven_years_cross_foot() -> Bool {
     )
     && w_year_cross_foots(
       revenue: gitlab_fy2023_revenue,
-      cost_of_revenue: gitlab_fy2023_cost_of_revenue,
+      cost_of_revenue: extdeps.sec.issuer.gitlab_facts.gitlab_fy2023_cost_of_revenue,
       gross_profit: gitlab_fy2023_gross_profit,
       selling_and_marketing: gitlab_fy2023_selling_and_marketing,
       research_and_development: gitlab_fy2023_research_and_development,
       general_and_administrative: gitlab_fy2023_general_and_administrative,
       operating_expenses_total: gitlab_fy2023_operating_expenses,
-      operating_income: gitlab_fy2023_operating_income_loss
+      operating_income: extdeps.sec.issuer.gitlab_facts.gitlab_fy2023_operating_income_loss
     )
     && w_year_cross_foots(
-      revenue: gitlab_fy2024_revenue,
+      revenue: extdeps.sec.issuer.gitlab_facts.gitlab_fy2024_revenue,
       cost_of_revenue: gitlab_fy2024_cost_of_revenue,
       gross_profit: gitlab_fy2024_gross_profit,
       selling_and_marketing: gitlab_fy2024_selling_and_marketing,
@@ -228,10 +228,10 @@ test fn w_all_seven_years_cross_foot() -> Bool {
       operating_income: gitlab_fy2025_operating_income_loss
     )
     && w_year_cross_foots(
-      revenue: gitlab_fy2026_revenue,
-      cost_of_revenue: gitlab_fy2026_cost_of_revenue,
-      gross_profit: gitlab_fy2026_gross_profit,
-      selling_and_marketing: gitlab_fy2026_selling_and_marketing,
+      revenue: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_revenue,
+      cost_of_revenue: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_cost_of_revenue,
+      gross_profit: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_gross_profit,
+      selling_and_marketing: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_selling_and_marketing,
       research_and_development: gitlab_fy2026_research_and_development,
       general_and_administrative: gitlab_fy2026_general_and_administrative,
       operating_expenses_total: gitlab_fy2026_operating_expenses,
@@ -240,18 +240,18 @@ test fn w_all_seven_years_cross_foot() -> Bool {
 }
 
 test fn w_revenue_strictly_increases_every_year() -> Bool {
-  w_filed_count_increases(prev: gitlab_fy2020_revenue, next: gitlab_fy2021_revenue)
+  w_filed_count_increases(prev: extdeps.sec.issuer.gitlab_facts.gitlab_fy2020_revenue, next: gitlab_fy2021_revenue)
     && w_filed_count_increases(prev: gitlab_fy2021_revenue, next: gitlab_fy2022_revenue)
     && w_filed_count_increases(prev: gitlab_fy2022_revenue, next: gitlab_fy2023_revenue)
-    && w_filed_count_increases(prev: gitlab_fy2023_revenue, next: gitlab_fy2024_revenue)
-    && w_filed_count_increases(prev: gitlab_fy2024_revenue, next: gitlab_fy2025_revenue)
-    && w_filed_count_increases(prev: gitlab_fy2025_revenue, next: gitlab_fy2026_revenue)
+    && w_filed_count_increases(prev: gitlab_fy2023_revenue, next: extdeps.sec.issuer.gitlab_facts.gitlab_fy2024_revenue)
+    && w_filed_count_increases(prev: extdeps.sec.issuer.gitlab_facts.gitlab_fy2024_revenue, next: gitlab_fy2025_revenue)
+    && w_filed_count_increases(prev: gitlab_fy2025_revenue, next: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_revenue)
 }
 
 test fn w_sales_and_marketing_share_declines_every_year() -> Bool {
   w_share_of_revenue_declines(
-    numer_prev: gitlab_fy2020_selling_and_marketing,
-    revenue_prev: gitlab_fy2020_revenue,
+    numer_prev: extdeps.sec.issuer.gitlab_facts.gitlab_fy2020_selling_and_marketing,
+    revenue_prev: extdeps.sec.issuer.gitlab_facts.gitlab_fy2020_revenue,
     numer_next: gitlab_fy2021_selling_and_marketing,
     revenue_next: gitlab_fy2021_revenue
   )
@@ -271,60 +271,60 @@ test fn w_sales_and_marketing_share_declines_every_year() -> Bool {
       numer_prev: gitlab_fy2023_selling_and_marketing,
       revenue_prev: gitlab_fy2023_revenue,
       numer_next: gitlab_fy2024_selling_and_marketing,
-      revenue_next: gitlab_fy2024_revenue
+      revenue_next: extdeps.sec.issuer.gitlab_facts.gitlab_fy2024_revenue
     )
     && w_share_of_revenue_declines(
       numer_prev: gitlab_fy2024_selling_and_marketing,
-      revenue_prev: gitlab_fy2024_revenue,
+      revenue_prev: extdeps.sec.issuer.gitlab_facts.gitlab_fy2024_revenue,
       numer_next: gitlab_fy2025_selling_and_marketing,
       revenue_next: gitlab_fy2025_revenue
     )
     && w_share_of_revenue_declines(
       numer_prev: gitlab_fy2025_selling_and_marketing,
       revenue_prev: gitlab_fy2025_revenue,
-      numer_next: gitlab_fy2026_selling_and_marketing,
-      revenue_next: gitlab_fy2026_revenue
+      numer_next: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_selling_and_marketing,
+      revenue_next: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_revenue
     )
 }
 
 test fn w_gross_margin_high_80s_every_year() -> Bool {
-  w_gross_margin_in_series_band(revenue: gitlab_fy2020_revenue, gross_profit: gitlab_fy2020_gross_profit)
+  w_gross_margin_in_series_band(revenue: extdeps.sec.issuer.gitlab_facts.gitlab_fy2020_revenue, gross_profit: gitlab_fy2020_gross_profit)
     && w_gross_margin_in_series_band(revenue: gitlab_fy2021_revenue, gross_profit: gitlab_fy2021_gross_profit)
     && w_gross_margin_in_series_band(revenue: gitlab_fy2022_revenue, gross_profit: gitlab_fy2022_gross_profit)
     && w_gross_margin_in_series_band(revenue: gitlab_fy2023_revenue, gross_profit: gitlab_fy2023_gross_profit)
-    && w_gross_margin_in_series_band(revenue: gitlab_fy2024_revenue, gross_profit: gitlab_fy2024_gross_profit)
+    && w_gross_margin_in_series_band(revenue: extdeps.sec.issuer.gitlab_facts.gitlab_fy2024_revenue, gross_profit: gitlab_fy2024_gross_profit)
     && w_gross_margin_in_series_band(revenue: gitlab_fy2025_revenue, gross_profit: gitlab_fy2025_gross_profit)
-    && w_gross_margin_in_series_band(revenue: gitlab_fy2026_revenue, gross_profit: gitlab_fy2026_gross_profit)
+    && w_gross_margin_in_series_band(revenue: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_revenue, gross_profit: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_gross_profit)
 }
 
 test fn w_operating_income_negative_all_seven_years() -> Bool {
-  w_filed_negative(fact: gitlab_fy2020_operating_income_loss)
+  w_filed_negative(fact: extdeps.sec.issuer.gitlab_facts.gitlab_fy2020_operating_income_loss)
     && w_filed_negative(fact: gitlab_fy2021_operating_income_loss)
     && w_filed_negative(fact: gitlab_fy2022_operating_income_loss)
-    && w_filed_negative(fact: gitlab_fy2023_operating_income_loss)
+    && w_filed_negative(fact: extdeps.sec.issuer.gitlab_facts.gitlab_fy2023_operating_income_loss)
     && w_filed_negative(fact: gitlab_fy2024_operating_income_loss)
     && w_filed_negative(fact: gitlab_fy2025_operating_income_loss)
     && w_filed_negative(fact: gitlab_fy2026_operating_income_loss)
 }
 
 test fn w_net_income_negative_all_seven_years() -> Bool {
-  w_filed_negative(fact: gitlab_fy2020_net_income_loss)
+  w_filed_negative(fact: extdeps.sec.issuer.gitlab_facts.gitlab_fy2020_net_income_loss)
     && w_filed_negative(fact: gitlab_fy2021_net_income_loss)
     && w_filed_negative(fact: gitlab_fy2022_net_income_loss)
     && w_filed_negative(fact: gitlab_fy2023_net_income_loss)
-    && w_filed_negative(fact: gitlab_fy2024_net_income_loss)
-    && w_filed_negative(fact: gitlab_fy2025_net_income_loss)
+    && w_filed_negative(fact: extdeps.sec.issuer.gitlab_facts.gitlab_fy2024_net_income_loss)
+    && w_filed_negative(fact: extdeps.sec.issuer.gitlab_facts.gitlab_fy2025_net_income_loss)
     && w_filed_negative(fact: gitlab_fy2026_net_income_loss)
 }
 
 test fn w_operating_loss_narrows_fy2023_to_fy2026() -> Bool {
-  w_negative_magnitude_shrinks(prev: gitlab_fy2023_operating_income_loss, next: gitlab_fy2024_operating_income_loss)
+  w_negative_magnitude_shrinks(prev: extdeps.sec.issuer.gitlab_facts.gitlab_fy2023_operating_income_loss, next: gitlab_fy2024_operating_income_loss)
     && w_negative_magnitude_shrinks(prev: gitlab_fy2024_operating_income_loss, next: gitlab_fy2025_operating_income_loss)
     && w_negative_magnitude_shrinks(prev: gitlab_fy2025_operating_income_loss, next: gitlab_fy2026_operating_income_loss)
 }
 
 test fn w_fy2024_net_loss_exceeds_operating_loss() -> Bool {
-  match filed_negative_magnitude(fact: gitlab_fy2024_net_income_loss) {
+  match filed_negative_magnitude(fact: extdeps.sec.issuer.gitlab_facts.gitlab_fy2024_net_income_loss) {
     Present { value: net } =>
       match filed_negative_magnitude(fact: gitlab_fy2024_operating_income_loss) {
         Present { value: op } => op < net
@@ -335,14 +335,14 @@ test fn w_fy2024_net_loss_exceeds_operating_loss() -> Bool {
 }
 
 test fn w_fy2025_net_loss_below_ten_million() -> Bool {
-  match filed_negative_magnitude(fact: gitlab_fy2025_net_income_loss) {
+  match filed_negative_magnitude(fact: extdeps.sec.issuer.gitlab_facts.gitlab_fy2025_net_income_loss) {
     Present { value: net } => net < 10000000
     _ => false
   }
 }
 
 test fn w_purchase_obligations_coherent() -> Bool {
-  w_due_within_year_le_total(due: gitlab_fy2023_purchase_obligation_due_next_year, total: gitlab_fy2023_purchase_obligation)
+  w_due_within_year_le_total(due: extdeps.sec.issuer.gitlab_facts.gitlab_fy2023_purchase_obligation_due_next_year, total: gitlab_fy2023_purchase_obligation)
     && w_due_within_year_le_total(due: gitlab_fy2024_purchase_obligation_due_next_year, total: gitlab_fy2024_purchase_obligation)
     && w_due_within_year_le_total(due: gitlab_fy2025_purchase_obligation_due_next_year, total: gitlab_fy2025_purchase_obligation)
     && w_due_within_year_le_total(due: gitlab_fy2026_purchase_obligation_due_next_year, total: gitlab_fy2026_purchase_obligation)
@@ -352,17 +352,17 @@ test fn w_purchase_obligations_coherent() -> Bool {
 }
 
 test fn w_dbnrr_at_least_100_every_disclosed_year() -> Bool {
-  disclosed_rate_at_least(rate: gitlab_fy2020_dbnrr.rate, threshold_percent: 100)
+  disclosed_rate_at_least(rate: extdeps.sec.issuer.gitlab_facts.gitlab_fy2020_dbnrr.rate, threshold_percent: 100)
     && disclosed_rate_at_least(rate: gitlab_fy2021_dbnrr.rate, threshold_percent: 100)
-    && disclosed_rate_at_least(rate: gitlab_fy2022_dbnrr.rate, threshold_percent: 100)
-    && disclosed_rate_at_least(rate: gitlab_fy2023_dbnrr.rate, threshold_percent: 100)
-    && disclosed_rate_at_least(rate: gitlab_fy2024_dbnrr.rate, threshold_percent: 100)
+    && disclosed_rate_at_least(rate: extdeps.sec.issuer.gitlab_facts.gitlab_fy2022_dbnrr.rate, threshold_percent: 100)
+    && disclosed_rate_at_least(rate: extdeps.sec.issuer.gitlab_facts.gitlab_fy2023_dbnrr.rate, threshold_percent: 100)
+    && disclosed_rate_at_least(rate: extdeps.sec.issuer.gitlab_facts.gitlab_fy2024_dbnrr.rate, threshold_percent: 100)
     && disclosed_rate_at_least(rate: gitlab_fy2025_dbnrr.rate, threshold_percent: 100)
     && disclosed_rate_at_least(rate: gitlab_fy2026_dbnrr.rate, threshold_percent: 100)
 }
 
 test fn w_dbnrr_exact_era_strictly_declines() -> Bool {
-  match disclosed_rate_exact_percent(rate: gitlab_fy2024_dbnrr.rate) {
+  match disclosed_rate_exact_percent(rate: extdeps.sec.issuer.gitlab_facts.gitlab_fy2024_dbnrr.rate) {
     Present { value: p24 } =>
       match disclosed_rate_exact_percent(rate: gitlab_fy2025_dbnrr.rate) {
         Present { value: p25 } =>
@@ -377,14 +377,14 @@ test fn w_dbnrr_exact_era_strictly_declines() -> Bool {
 }
 
 test fn w_dbnrr_fy2022_disclosed_as_floor_152() -> Bool {
-  match gitlab_fy2022_dbnrr.rate {
+  match extdeps.sec.issuer.gitlab_facts.gitlab_fy2022_dbnrr.rate {
     RateLowerBoundPercent { floor_percent: f } => f == 152
     _ => false
   }
 }
 
 test fn w_customers_100k_strictly_increase() -> Bool {
-  (gitlab_fy2021_customers_100k_arr.customer_count < gitlab_fy2022_customers_100k_arr.customer_count)
+  (extdeps.sec.issuer.gitlab_facts.gitlab_fy2021_customers_100k_arr.customer_count < gitlab_fy2022_customers_100k_arr.customer_count)
     && (gitlab_fy2022_customers_100k_arr.customer_count < gitlab_fy2023_customers_100k_arr.customer_count)
     && (gitlab_fy2023_customers_100k_arr.customer_count < gitlab_fy2024_customers_100k_arr.customer_count)
     && (gitlab_fy2024_customers_100k_arr.customer_count < gitlab_fy2025_customers_100k_arr.customer_count)
@@ -429,10 +429,10 @@ test fn w_premium_price_history_coheres_with_live_list_price() -> Bool {
 
 test fn w_red_perturbed_operating_income_breaks_cross_foot() -> Bool {
   !w_year_cross_foots(
-    revenue: gitlab_fy2026_revenue,
-    cost_of_revenue: gitlab_fy2026_cost_of_revenue,
-    gross_profit: gitlab_fy2026_gross_profit,
-    selling_and_marketing: gitlab_fy2026_selling_and_marketing,
+    revenue: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_revenue,
+    cost_of_revenue: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_cost_of_revenue,
+    gross_profit: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_gross_profit,
+    selling_and_marketing: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_selling_and_marketing,
     research_and_development: gitlab_fy2026_research_and_development,
     general_and_administrative: gitlab_fy2026_general_and_administrative,
     operating_expenses_total: gitlab_fy2026_operating_expenses,
@@ -445,13 +445,13 @@ test fn w_red_perturbed_operating_income_breaks_cross_foot() -> Bool {
 }
 
 test fn w_red_reversed_revenue_pair_not_increasing() -> Bool {
-  !w_filed_count_increases(prev: gitlab_fy2026_revenue, next: gitlab_fy2025_revenue)
+  !w_filed_count_increases(prev: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_revenue, next: gitlab_fy2025_revenue)
 }
 
 test fn w_red_reversed_share_pair_not_declining() -> Bool {
   !w_share_of_revenue_declines(
-    numer_prev: gitlab_fy2026_selling_and_marketing,
-    revenue_prev: gitlab_fy2026_revenue,
+    numer_prev: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_selling_and_marketing,
+    revenue_prev: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_revenue,
     numer_next: gitlab_fy2025_selling_and_marketing,
     revenue_next: gitlab_fy2025_revenue
   )
@@ -459,7 +459,7 @@ test fn w_red_reversed_share_pair_not_declining() -> Bool {
 
 test fn w_red_perturbed_gross_profit_leaves_margin_band() -> Bool {
   !w_gross_margin_in_series_band(
-    revenue: gitlab_fy2024_revenue,
+    revenue: extdeps.sec.issuer.gitlab_facts.gitlab_fy2024_revenue,
     gross_profit: extdeps.sec.facts.FiledMonetaryFact {
       element: gitlab_fy2024_gross_profit.element,
       amount: Filed { amount: usd_whole_dollars(count: 530198000) },
@@ -469,7 +469,7 @@ test fn w_red_perturbed_gross_profit_leaves_margin_band() -> Bool {
 }
 
 test fn w_red_floor_disclosure_has_no_exact_value() -> Bool {
-  match disclosed_rate_exact_percent(rate: gitlab_fy2023_dbnrr.rate) {
+  match disclosed_rate_exact_percent(rate: extdeps.sec.issuer.gitlab_facts.gitlab_fy2023_dbnrr.rate) {
     Present { value: _ } => false
     _ => true
   }

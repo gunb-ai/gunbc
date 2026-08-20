@@ -16,7 +16,7 @@ test fn design_witness_unknown_catalog_refuses_at_gate() -> Bool {
 }
 
 test fn design_witness_known_non_sccache_catalog_refuses_at_gate() -> Bool {
-  match provision_build_cache_catalog_gate_verdict(catalog_id: gha_actions_cache_id) {
+  match provision_build_cache_catalog_gate_verdict(catalog_id: extdeps.cache.github_actions.gha_actions_cache_id) {
     ProvisionBuildCacheCatalogRefused { reason: reason } =>
       string_contains(s: reason as String, pattern: "not yet realized")
     ProvisionBuildCacheCatalogRealizable => false
@@ -25,7 +25,7 @@ test fn design_witness_known_non_sccache_catalog_refuses_at_gate() -> Bool {
 
 test fn design_witness_known_non_sccache_catalog_refuses_at_verdict() -> Bool {
   match provision_build_cache_verdict(
-    catalog_id: gha_actions_cache_id,
+    catalog_id: extdeps.cache.github_actions.gha_actions_cache_id,
     observed: gunbc.host_build_cache_provision.DaemonStatsOk {
       stats_line: "compile_requests=1",
       placement: gunbc.build_cache_instance.ServerManagedUnitOwned { unit: managed_compile_pool_slice_fixture },

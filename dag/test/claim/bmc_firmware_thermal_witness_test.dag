@@ -561,7 +561,7 @@ test fn fleet_quiet_projected_config_digest_sha256_equality_executes() -> Bool {
     content_identity: altrad8ud_openbmc_322_fleet_quiet_projected_config_content_identity,
   ) {
     ProjectedConfigDigestKnown { digest: digest } =>
-      digest == sha256_digest(hex: altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex)
+      digest == sha256_digest(hex: gunbc.bmc_fan_projection.altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex)
     ProjectedConfigDigestUnavailable => false
   }
 }
@@ -575,7 +575,7 @@ test fn fleet_quiet_projected_config_digest_hex_authority_executes() -> Bool {
     content_identity: altrad8ud_openbmc_322_fleet_quiet_projected_config_content_identity,
   ) {
     Present { value: hex } =>
-      hex == altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex
+      hex == gunbc.bmc_fan_projection.altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex
         && sha256_digest(hex: hex) == altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest
     Absent => false
   }
@@ -599,7 +599,7 @@ test fn non_fleet_quiet_curve_projected_config_digest_is_unavailable() -> Bool {
 }
 
 test fn srv4_bmc_reboot_persistence_receipt_proves_same_config_and_noop() -> Bool {
-  let receipt = srv4_bmc_fan_reboot_persistence_receipt
+  let receipt = gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt
   let classified = bmc_fan_policy_classification(
     host: srv4_host.identity,
     board: srv4_baseboard.catalog.model,
@@ -884,10 +884,10 @@ test fn srv3_fan_realization_refuses_without_a_modeled_projection() -> Bool {
 
 test fn reboot_durability_evidence_refuses_relabeled_perturbation_capability_digest() -> Bool {
   let relabeled_receipt = gunbc.fleet_bmc_observation.BmcFanRebootPersistenceReceipt {
-    evidence_scope: srv4_bmc_fan_reboot_persistence_receipt.evidence_scope,
-    host: srv4_bmc_fan_reboot_persistence_receipt.host,
-    perturbation_receipt_id: srv4_bmc_fan_reboot_persistence_receipt.perturbation_receipt_id,
-    perturbation_generation: srv4_bmc_fan_reboot_persistence_receipt.perturbation_generation,
+    evidence_scope: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.evidence_scope,
+    host: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.host,
+    perturbation_receipt_id: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.perturbation_receipt_id,
+    perturbation_generation: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.perturbation_generation,
     perturbation_capability: gunbc.bmc_fan_projection.BmcFanPolicyProjectionCapability {
       board: srv4_bmc_fan_projection_capability.board,
       firmware: srv4_bmc_fan_projection_capability.firmware,
@@ -909,26 +909,26 @@ test fn reboot_durability_evidence_refuses_relabeled_perturbation_capability_dig
       durability_boundaries: srv4_bmc_fan_projection_capability.durability_boundaries,
       required_tach_inputs: srv4_bmc_fan_projection_capability.required_tach_inputs,
     },
-    before: srv4_bmc_fan_reboot_persistence_receipt.before,
-    post_reboot_policy: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_policy,
-    reset: srv4_bmc_fan_reboot_persistence_receipt.reset,
-    bmc_down_observed: srv4_bmc_fan_reboot_persistence_receipt.bmc_down_observed,
-    bmc_returned: srv4_bmc_fan_reboot_persistence_receipt.bmc_returned,
-    bmc_down_observed_at: srv4_bmc_fan_reboot_persistence_receipt.bmc_down_observed_at,
-    bmc_returned_at: srv4_bmc_fan_reboot_persistence_receipt.bmc_returned_at,
-    host_power_before: srv4_bmc_fan_reboot_persistence_receipt.host_power_before,
-    host_power_after: srv4_bmc_fan_reboot_persistence_receipt.host_power_after,
-    host_os_ssh_reachable_throughout: srv4_bmc_fan_reboot_persistence_receipt.host_os_ssh_reachable_throughout,
-    pre_reboot_temp_soc: srv4_bmc_fan_reboot_persistence_receipt.pre_reboot_temp_soc,
-    post_reboot_temp_soc: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_temp_soc,
-    pre_reboot_tachs: srv4_bmc_fan_reboot_persistence_receipt.pre_reboot_tachs,
-    post_reboot_tachs: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_tachs,
-    post_reboot_active_config_digest: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_active_config_digest,
-    post_reboot_controller_active: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_controller_active,
-    post_reboot_zone_failsafe_active: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_zone_failsafe_active,
-    post_reboot_observer_exit_success: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_observer_exit_success,
-    post_reboot_converge_noop_exit_success: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_converge_noop_exit_success,
-    observed_at: srv4_bmc_fan_reboot_persistence_receipt.observed_at,
+    before: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.before,
+    post_reboot_policy: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_policy,
+    reset: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.reset,
+    bmc_down_observed: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.bmc_down_observed,
+    bmc_returned: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.bmc_returned,
+    bmc_down_observed_at: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.bmc_down_observed_at,
+    bmc_returned_at: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.bmc_returned_at,
+    host_power_before: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.host_power_before,
+    host_power_after: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.host_power_after,
+    host_os_ssh_reachable_throughout: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.host_os_ssh_reachable_throughout,
+    pre_reboot_temp_soc: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.pre_reboot_temp_soc,
+    post_reboot_temp_soc: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_temp_soc,
+    pre_reboot_tachs: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.pre_reboot_tachs,
+    post_reboot_tachs: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_tachs,
+    post_reboot_active_config_digest: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_active_config_digest,
+    post_reboot_controller_active: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_controller_active,
+    post_reboot_zone_failsafe_active: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_zone_failsafe_active,
+    post_reboot_observer_exit_success: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_observer_exit_success,
+    post_reboot_converge_noop_exit_success: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_converge_noop_exit_success,
+    observed_at: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.observed_at,
   }
   match bmc_fan_reboot_durability_evidence(receipt: relabeled_receipt) {
     BmcFanDurabilityEvidenceConstructionRefused {
@@ -940,10 +940,10 @@ test fn reboot_durability_evidence_refuses_relabeled_perturbation_capability_dig
 
 test fn relabeled_reboot_construction_refusal_propagates_through_classification() -> Bool {
   let relabeled_receipt = gunbc.fleet_bmc_observation.BmcFanRebootPersistenceReceipt {
-    evidence_scope: srv4_bmc_fan_reboot_persistence_receipt.evidence_scope,
-    host: srv4_bmc_fan_reboot_persistence_receipt.host,
-    perturbation_receipt_id: srv4_bmc_fan_reboot_persistence_receipt.perturbation_receipt_id,
-    perturbation_generation: srv4_bmc_fan_reboot_persistence_receipt.perturbation_generation,
+    evidence_scope: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.evidence_scope,
+    host: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.host,
+    perturbation_receipt_id: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.perturbation_receipt_id,
+    perturbation_generation: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.perturbation_generation,
     perturbation_capability: gunbc.bmc_fan_projection.BmcFanPolicyProjectionCapability {
       board: srv4_bmc_fan_projection_capability.board,
       firmware: srv4_bmc_fan_projection_capability.firmware,
@@ -959,26 +959,26 @@ test fn relabeled_reboot_construction_refusal_propagates_through_classification(
       durability_boundaries: srv4_bmc_fan_projection_capability.durability_boundaries,
       required_tach_inputs: srv4_bmc_fan_projection_capability.required_tach_inputs,
     },
-    before: srv4_bmc_fan_reboot_persistence_receipt.before,
-    post_reboot_policy: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_policy,
-    reset: srv4_bmc_fan_reboot_persistence_receipt.reset,
-    bmc_down_observed: srv4_bmc_fan_reboot_persistence_receipt.bmc_down_observed,
-    bmc_returned: srv4_bmc_fan_reboot_persistence_receipt.bmc_returned,
-    bmc_down_observed_at: srv4_bmc_fan_reboot_persistence_receipt.bmc_down_observed_at,
-    bmc_returned_at: srv4_bmc_fan_reboot_persistence_receipt.bmc_returned_at,
-    host_power_before: srv4_bmc_fan_reboot_persistence_receipt.host_power_before,
-    host_power_after: srv4_bmc_fan_reboot_persistence_receipt.host_power_after,
-    host_os_ssh_reachable_throughout: srv4_bmc_fan_reboot_persistence_receipt.host_os_ssh_reachable_throughout,
-    pre_reboot_temp_soc: srv4_bmc_fan_reboot_persistence_receipt.pre_reboot_temp_soc,
-    post_reboot_temp_soc: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_temp_soc,
-    pre_reboot_tachs: srv4_bmc_fan_reboot_persistence_receipt.pre_reboot_tachs,
-    post_reboot_tachs: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_tachs,
-    post_reboot_active_config_digest: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_active_config_digest,
-    post_reboot_controller_active: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_controller_active,
-    post_reboot_zone_failsafe_active: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_zone_failsafe_active,
-    post_reboot_observer_exit_success: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_observer_exit_success,
-    post_reboot_converge_noop_exit_success: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_converge_noop_exit_success,
-    observed_at: srv4_bmc_fan_reboot_persistence_receipt.observed_at,
+    before: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.before,
+    post_reboot_policy: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_policy,
+    reset: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.reset,
+    bmc_down_observed: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.bmc_down_observed,
+    bmc_returned: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.bmc_returned,
+    bmc_down_observed_at: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.bmc_down_observed_at,
+    bmc_returned_at: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.bmc_returned_at,
+    host_power_before: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.host_power_before,
+    host_power_after: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.host_power_after,
+    host_os_ssh_reachable_throughout: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.host_os_ssh_reachable_throughout,
+    pre_reboot_temp_soc: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.pre_reboot_temp_soc,
+    post_reboot_temp_soc: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_temp_soc,
+    pre_reboot_tachs: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.pre_reboot_tachs,
+    post_reboot_tachs: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_tachs,
+    post_reboot_active_config_digest: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_active_config_digest,
+    post_reboot_controller_active: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_controller_active,
+    post_reboot_zone_failsafe_active: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_zone_failsafe_active,
+    post_reboot_observer_exit_success: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_observer_exit_success,
+    post_reboot_converge_noop_exit_success: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_converge_noop_exit_success,
+    observed_at: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.observed_at,
   }
   let construction = bmc_fan_reboot_durability_evidence(receipt: relabeled_receipt)
   let classified = bmc_fan_policy_classification(
@@ -1144,31 +1144,31 @@ test fn linux_unsynchronized_publication_refuses_commit_barrier() -> Bool {
 
 test fn reboot_durability_evidence_refuses_non_positive_interval() -> Bool {
   let zero_duration_receipt = gunbc.fleet_bmc_observation.BmcFanRebootPersistenceReceipt {
-    evidence_scope: srv4_bmc_fan_reboot_persistence_receipt.evidence_scope,
-    host: srv4_bmc_fan_reboot_persistence_receipt.host,
-    perturbation_receipt_id: srv4_bmc_fan_reboot_persistence_receipt.perturbation_receipt_id,
-    perturbation_generation: srv4_bmc_fan_reboot_persistence_receipt.perturbation_generation,
-    perturbation_capability: srv4_bmc_fan_reboot_persistence_receipt.perturbation_capability,
-    before: srv4_bmc_fan_reboot_persistence_receipt.before,
-    post_reboot_policy: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_policy,
-    reset: srv4_bmc_fan_reboot_persistence_receipt.reset,
-    bmc_down_observed: srv4_bmc_fan_reboot_persistence_receipt.bmc_down_observed,
-    bmc_returned: srv4_bmc_fan_reboot_persistence_receipt.bmc_returned,
-    bmc_down_observed_at: srv4_bmc_fan_reboot_persistence_receipt.bmc_down_observed_at,
-    bmc_returned_at: srv4_bmc_fan_reboot_persistence_receipt.reset.observed_at,
-    host_power_before: srv4_bmc_fan_reboot_persistence_receipt.host_power_before,
-    host_power_after: srv4_bmc_fan_reboot_persistence_receipt.host_power_after,
-    host_os_ssh_reachable_throughout: srv4_bmc_fan_reboot_persistence_receipt.host_os_ssh_reachable_throughout,
-    pre_reboot_temp_soc: srv4_bmc_fan_reboot_persistence_receipt.pre_reboot_temp_soc,
-    post_reboot_temp_soc: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_temp_soc,
-    pre_reboot_tachs: srv4_bmc_fan_reboot_persistence_receipt.pre_reboot_tachs,
-    post_reboot_tachs: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_tachs,
-    post_reboot_active_config_digest: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_active_config_digest,
-    post_reboot_controller_active: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_controller_active,
-    post_reboot_zone_failsafe_active: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_zone_failsafe_active,
-    post_reboot_observer_exit_success: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_observer_exit_success,
-    post_reboot_converge_noop_exit_success: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_converge_noop_exit_success,
-    observed_at: srv4_bmc_fan_reboot_persistence_receipt.observed_at,
+    evidence_scope: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.evidence_scope,
+    host: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.host,
+    perturbation_receipt_id: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.perturbation_receipt_id,
+    perturbation_generation: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.perturbation_generation,
+    perturbation_capability: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.perturbation_capability,
+    before: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.before,
+    post_reboot_policy: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_policy,
+    reset: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.reset,
+    bmc_down_observed: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.bmc_down_observed,
+    bmc_returned: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.bmc_returned,
+    bmc_down_observed_at: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.bmc_down_observed_at,
+    bmc_returned_at: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.reset.observed_at,
+    host_power_before: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.host_power_before,
+    host_power_after: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.host_power_after,
+    host_os_ssh_reachable_throughout: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.host_os_ssh_reachable_throughout,
+    pre_reboot_temp_soc: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.pre_reboot_temp_soc,
+    post_reboot_temp_soc: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_temp_soc,
+    pre_reboot_tachs: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.pre_reboot_tachs,
+    post_reboot_tachs: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_tachs,
+    post_reboot_active_config_digest: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_active_config_digest,
+    post_reboot_controller_active: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_controller_active,
+    post_reboot_zone_failsafe_active: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_zone_failsafe_active,
+    post_reboot_observer_exit_success: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_observer_exit_success,
+    post_reboot_converge_noop_exit_success: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_converge_noop_exit_success,
+    observed_at: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.observed_at,
   }
   match bmc_fan_reboot_durability_evidence(
     receipt: zero_duration_receipt,

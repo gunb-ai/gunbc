@@ -40,7 +40,7 @@ data ctrl_session_manifest: extdeps.container.oci.manifest.ImageManifest = {
   },
   layers: [
     {
-      mediaType: media_type_oci_image_layer_v1_tar_gzip,
+      mediaType: extdeps.container.oci.media_types.media_type_oci_image_layer_v1_tar_gzip,
       digest: ctrl_session_layer0_digest,
       size: ctrl_session_layer0_size,
     },

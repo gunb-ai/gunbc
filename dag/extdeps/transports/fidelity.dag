@@ -18,7 +18,7 @@ fn transport_fidelity(tc: std.fidelity.TransportClass) -> std.fidelity.Transport
     LocalDirect    => local_direct_transport_fidelity
     InterfaceStub  => interface_stub_transport_fidelity
     ShellLocal     => shell_transport_fidelity
-    FileBoundary   => file_transport_fidelity
+    FileBoundary   => extdeps.transports.file.file_transport_fidelity
     RestNetwork    => rest_transport_fidelity
     Unknown        => unknown_transport_fidelity
   }

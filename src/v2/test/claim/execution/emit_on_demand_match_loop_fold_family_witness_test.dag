@@ -67,11 +67,11 @@ fn loop_alt_tree() -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.Inferr
 }
 
 fn fold_primary_tree() -> v2.compiler.inferred_tree.InferredTree {
-  emit_fold_eval_tree_for(root: fold_fixture_param_canonical_arrow)
+  emit_fold_eval_tree_for(root: v2.test.emit.fold_call_closure_fixture.fold_fixture_param_canonical_arrow)
 }
 
 fn fold_alt_tree() -> v2.compiler.inferred_tree.InferredTree {
-  emit_fold_eval_tree_for(root: fold_fixture_param_wrong_arrow)
+  emit_fold_eval_tree_for(root: v2.test.emit.fold_call_closure_fixture.fold_fixture_param_wrong_arrow)
 }
 
 fn mlf_family_members(
@@ -195,7 +195,7 @@ fn mlf_family_primary_agreements(
     )
     && emit_fold_eval_verdict_is_pass(
       run: run_test_claim_from_source_emit_vs_eval_cached(
-        subject: emit_fold_eval_subject(root: fold_fixture_param_canonical_arrow),
+        subject: emit_fold_eval_subject(root: v2.test.emit.fold_call_closure_fixture.fold_fixture_param_canonical_arrow),
         source_outcome: v2.std.diagnostic.Accepted { value: source, diagnostics: None },
         target: rust_match_loop_fold_family_target_model_staging(),
         workspace_dir: workspace,

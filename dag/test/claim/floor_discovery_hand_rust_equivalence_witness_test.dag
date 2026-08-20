@@ -7,7 +7,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_t
 data floor_discovery_hand_rust_equivalence_note: String = "Executes floor_discovery_producer.dag on fixtures (owned-data transport projection, filename hygiene, test-decl scan, wire-contract scan/sidecar, sidecar placement) with RED perturbation controls. Producer authority is exercised here; Rust bridge cross-checks (discover_floor_witness_roster, scan_wire_contract_decl_names) are named in gunbc.floor_discovery_scaffold and proven by cargo test sidecar_placement_hygiene_tests in cli_run.rs on the same fixture spellings."
 
 test fn floor_entry_resolution_host_boundary_is_declared() -> Bool {
-  floor_entry_resolution_host_boundary_discriminator == "resolve_workspace_entry"
+  gunbc.floor_discovery_scaffold.floor_entry_resolution_host_boundary_discriminator == "resolve_workspace_entry"
     && string_contains(
       s: floor_entry_resolution_host_boundary_note,
       pattern: "WorkspaceRootRelativeEntry",
@@ -138,15 +138,15 @@ fn floor_discovery_first_row_reads_substrate_only(rows: List<v2.workflow.floor_d
 }
 
 test fn floor_discovery_hand_rust_scaffold_binds_producer_authority() -> Bool {
-  match floor_discovery_hand_rust_scaffold {
+  match gunbc.floor_discovery_scaffold.floor_discovery_hand_rust_scaffold {
     Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
     _ => false
   }
 }
 
 test fn floor_discovery_dissolve_trigger_names_producer_authority() -> Bool {
-  string_contains(s: dissolution_description(condition: floor_discovery_dissolve_trigger), pattern: "floor_discovery_producer")
-    && string_contains(s: dissolution_description(condition: floor_discovery_dissolve_trigger), pattern: "dissolve-on")
+  string_contains(s: dissolution_description(condition: gunbc.floor_discovery_scaffold.floor_discovery_dissolve_trigger), pattern: "floor_discovery_producer")
+    && string_contains(s: dissolution_description(condition: gunbc.floor_discovery_scaffold.floor_discovery_dissolve_trigger), pattern: "dissolve-on")
 }
 
 test fn floor_discovery_surface_text_scan_scaffold_on_carrier() -> Bool {
@@ -165,7 +165,7 @@ test fn floor_discovery_surface_text_scan_scaffold_on_carrier() -> Bool {
 
 
 test fn floor_discovery_producer_entry_is_canonical() -> Bool {
-  floor_discovery_producer_entry == "src/v2/workflow/floor_discovery_producer.dag"
+  gunbc.floor_discovery_scaffold.floor_discovery_producer_entry == "src/v2/workflow/floor_discovery_producer.dag"
 }
 
 test fn floor_discovery_producer_owned_data_row_holds() -> Bool {
@@ -315,7 +315,7 @@ test fn floor_discovery_live_tree_disposition_note_sibling_not_declaration_holds
 
 test fn floor_discovery_equivalence_rust_tests_named() -> Bool {
   string_contains(
-    s: floor_discovery_equivalence_test_sidecar_misplaced,
+    s: gunbc.floor_discovery_scaffold.floor_discovery_equivalence_test_sidecar_misplaced,
     pattern: "misplaced_wire_contract_decl_drives_discover_to_err"
   ) && string_contains(
     s: floor_discovery_equivalence_test_scan_wire_contract,

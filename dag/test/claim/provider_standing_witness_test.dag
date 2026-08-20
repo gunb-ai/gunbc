@@ -162,9 +162,9 @@ test fn witness_native_bucket_rejection_blocks_automatic_draw() -> Bool {
       gunbc.provider_standing.LimitRejected {
         subject: gunbc.provider_standing.ProviderNativeLimitBucket {
           credential: LimitCredentialUnspecified,
-          native_key: codex_default_rate_limit_id,
+          native_key: extdeps.llm.codex_app_server.codex_default_rate_limit_id,
         },
-        native_token: codex_default_rate_limit_id,
+        native_token: extdeps.llm.codex_app_server.codex_default_rate_limit_id,
         reason: "rate_limit_reached" as std.types.NonEmptyStr,
       },
     ],
@@ -197,9 +197,9 @@ test fn witness_native_bucket_exhaustion_automatic_fail_closed_explicit_bengalfo
       gunbc.provider_standing.LimitExhausted {
         subject: gunbc.provider_standing.ProviderNativeLimitBucket {
           credential: LimitCredentialUnspecified,
-          native_key: codex_default_rate_limit_id,
+          native_key: extdeps.llm.codex_app_server.codex_default_rate_limit_id,
         },
-        native_token: codex_default_rate_limit_id,
+        native_token: extdeps.llm.codex_app_server.codex_default_rate_limit_id,
       },
       gunbc.provider_standing.LimitObservedAvailable {
         subject: gunbc.provider_standing.ProviderNativeLimitBucket {

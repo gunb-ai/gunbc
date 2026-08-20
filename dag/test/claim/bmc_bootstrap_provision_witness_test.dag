@@ -17,7 +17,7 @@ test fn bootstrap_bindings_least_privilege() -> Bool {
   let bs = bmc_secret_iam_bindings()
   bs.length() == 2
     && fold(bs, init: true, f: (acc, b) => acc && binding_targets_only_assimilator(b: b))
-    && fold(bs, init: false, f: (acc, b) => acc || b.role == role_secretmanager_secret_accessor)
+    && fold(bs, init: false, f: (acc, b) => acc || b.role == extdeps.cloud.gcp.iam.role_secretmanager_secret_accessor)
     && fold(bs, init: false, f: (acc, b) => acc || b.role == role_secretmanager_secret_version_adder)
 }
 

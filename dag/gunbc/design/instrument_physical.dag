@@ -120,7 +120,7 @@ data displacement_budget_note: String = "ONE ENVELOPE OVER EVERYTHING THAT MOVES
 
 TWO RULES, STATED ONCE SO THE PROSE AND THE ARITHMETIC CANNOT DISAGREE (the review's second finding: the note said 'below' while the check refused only on strictly greater, so equality was quietly admissible). Rule one: the COMPOSED total may spend the envelope fully — admitted at or below, refused strictly above — because the envelope IS the register's declared maximum plate travel and a budget you may not spend to its stated limit is a mislabelled budget. Rule two: enclosure character ALONE must stay strictly below the envelope, because character that reaches the full travel of a real focal response is exactly the imitation the amendment exists to prevent. The first rule is an ordinary ceiling; the second is the one that carries the safety claim, and they differ deliberately."
 
-data instrument_displacement_max_px: Int = attraction_travel_max_px
+data instrument_displacement_max_px: Int = gunbc.design.salience.attraction_travel_max_px
 
 fn instrument_displacement_px(p: InstrumentPreference) -> Int {
   amplitude_px(a: p.optical_jitter) +

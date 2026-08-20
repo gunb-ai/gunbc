@@ -12,7 +12,7 @@ fn srv3_nbd_proxy_serve_transport_intent() -> extdeps.bmc.webui.nbd_proxy_serve.
       slot: 0,
       index: 0,
     ),
-    iso_path: srv3_actuator_virtual_media_iso_install_path,
+    iso_path: gunbc.srv3_os_install_actuate_scope.srv3_actuator_virtual_media_iso_install_path,
     local_nbd_port: srv3_nbd_proxy_local_port,
   )
 }

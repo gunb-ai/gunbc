@@ -24,7 +24,7 @@ fn base_observations(
     },
     virtual_media: gunbc.srv3_os_install_diagnostic.BmcVirtualMediaObservation {
       inserted_or_connected: true,
-      image_or_endpoint: Present { value: srv3_actuator_virtual_media_iso_install_path },
+      image_or_endpoint: Present { value: gunbc.srv3_os_install_actuate_scope.srv3_actuator_virtual_media_iso_install_path },
       connected_to_expected_port: true,
       bmc_session_valid: true,
     },
@@ -274,7 +274,7 @@ test fn boot_once_armed_is_boot_attempt_in_progress() -> Bool {
       },
       virtual_media: gunbc.srv3_os_install_diagnostic.BmcVirtualMediaObservation {
         inserted_or_connected: true,
-        image_or_endpoint: Present { value: srv3_actuator_virtual_media_iso_install_path },
+        image_or_endpoint: Present { value: gunbc.srv3_os_install_actuate_scope.srv3_actuator_virtual_media_iso_install_path },
         connected_to_expected_port: true,
         bmc_session_valid: true,
       },

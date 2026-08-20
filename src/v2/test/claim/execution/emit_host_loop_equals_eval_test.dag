@@ -23,7 +23,7 @@ fn emit_loop_eval_composed_facts(key: Node) -> Optional<v2.compiler.inferred_tre
 }
 
 fn emit_loop_eval_producer_tree() -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
-  match table_fixture_loop_arrow_with_body() {
+  match v2.test.complexity_gate.table_fixture_loop_subject_producer.table_fixture_loop_arrow_with_body() {
     Accepted { value: root, diagnostics: _ } =>
       outcome_accepted(
         value: v2.compiler.inferred_tree.InferredTree {

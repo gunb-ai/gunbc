@@ -4,12 +4,12 @@ module test.claim.pricing_surface_witness
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_github_2core_per_hour_derived_not_stored() -> Bool {
-  let derived = per_hour_equivalent_from_per_minute(q: github_actions_linux_2core_price.per_minute)
+  let derived = per_hour_equivalent_from_per_minute(q: extdeps.pricing.github_actions.github_actions_linux_2core_price.per_minute)
   money_per_hour_micros(q: derived) == 360000
 }
 
 test fn witness_github_2core_per_hour_exceeds_aws_m7a_large_on_demand() -> Bool {
-  let github_hourly = per_hour_equivalent_from_per_minute(q: github_actions_linux_2core_price.per_minute)
+  let github_hourly = per_hour_equivalent_from_per_minute(q: extdeps.pricing.github_actions.github_actions_linux_2core_price.per_minute)
   let aws_hourly = aws_ec2_m7a_large_us_east_1.per_hour
   money_per_hour_micros(q: github_hourly) > money_per_hour_micros(q: aws_hourly)
     && money_per_hour_micros(q: github_hourly) == 360000
@@ -17,9 +17,9 @@ test fn witness_github_2core_per_hour_exceeds_aws_m7a_large_on_demand() -> Bool 
 }
 
 test fn witness_ubicloud_premium_2core_undercuts_github_2core_per_minute() -> Bool {
-  money_per_minute_micros(q: github_actions_linux_2core_price.per_minute) > money_per_minute_micros(q: ubicloud_premium_standard_2_price.per_minute)
+  money_per_minute_micros(q: extdeps.pricing.github_actions.github_actions_linux_2core_price.per_minute) > money_per_minute_micros(q: ubicloud_premium_standard_2_price.per_minute)
     && money_per_minute_micros(q: ubicloud_premium_standard_2_price.per_minute) == 1600
-    && money_per_minute_micros(q: github_actions_linux_2core_price.per_minute) == 6000
+    && money_per_minute_micros(q: extdeps.pricing.github_actions.github_actions_linux_2core_price.per_minute) == 6000
 }
 
 test fn witness_hetzner_ax41_monthly_matches_cited_price() -> Bool {

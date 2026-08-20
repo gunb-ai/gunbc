@@ -6,7 +6,7 @@ test fn complexity_contract_subjects_partition_legacy_mixed_row_holds() -> Bool 
   complexity_contract_subjects_partition_legacy_mixed_row()
     && complexity_derived_kernel_boundary_is_wall_after_grounding()
     && complexity_optimality_boundary_is_ratchet_forever()
-    && match lens_contract_complexity_derived_kernel.boundary.class {
+    && match v2.lens.enforcement.contract.lens_contract_complexity_derived_kernel.boundary.class {
       WallAfterGrounding { dissolves_to: SingleAuthority } => true
       _ => false
     }

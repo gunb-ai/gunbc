@@ -10,7 +10,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 
 data altra_classic_datasheet_authority: extdeps.external_authority.ExternalAuthority = ampere_altra_classic_rev_a1_datasheet_authority
 
-data ocp_mt_jade_specification_authority: extdeps.external_authority.ExternalAuthority = mt_jade_subject_authority_anchor
+data ocp_mt_jade_specification_authority: extdeps.external_authority.ExternalAuthority = extdeps.ocp.mt_jade.subject.mt_jade_subject_authority_anchor
 
 // THE SUBJECT IS A DESIGNATION, NOT A PART, AND THAT IS THE WHOLE POINT OF
 // THIS MODULE. ILM4926 is named by documents from two different publishers —
@@ -210,7 +210,7 @@ type PartNumberCandidate {
 data lotes_part_attestations: List<PartNumberCandidate> = [
   PartNumberCandidate {
     part_number: "AZIF0222",
-    vendor: lotes,
+    vendor: extdeps.vendor.lotes.lotes,
     claimed_referent: ClaimedLoadingMechanismWithBackplate,
     standing: PublisherOfRecord,
     authority: lotes_azif0222_product_authority,

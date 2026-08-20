@@ -32,9 +32,9 @@ fn fixture_multibucket_codex_standing_inventory(
                   gunbc.provider_standing.LimitExhausted {
                     subject: gunbc.provider_standing.ProviderNativeLimitBucket {
                       credential: LimitCredentialUnspecified,
-                      native_key: codex_default_rate_limit_id,
+                      native_key: extdeps.llm.codex_app_server.codex_default_rate_limit_id,
                     },
-                    native_token: codex_default_rate_limit_id,
+                    native_token: extdeps.llm.codex_app_server.codex_default_rate_limit_id,
                   },
                   gunbc.provider_standing.LimitObservedAvailable {
                     subject: gunbc.provider_standing.ProviderNativeLimitBucket {
@@ -214,7 +214,7 @@ test fn witness_srv2_cursor_selection_resolves() -> Bool {
     request: gunbc.dispatch_selection.SelectCursor {
       profile: ProfileAutomatic,
       credential: CursorLocalLoginRef,
-      model: cursor_model_auto,
+      model: extdeps.llm.cursor_cli.cursor_model_auto,
       agent_mode: "default-edit",
     },
     node_sizing: Unsized,
@@ -286,7 +286,7 @@ test fn witness_wrong_selection_shape_refuses() -> Bool {
     request: gunbc.dispatch_selection.SelectCursor {
       profile: ProfileAutomatic,
       credential: CursorLocalLoginRef,
-      model: cursor_model_auto,
+      model: extdeps.llm.cursor_cli.cursor_model_auto,
       agent_mode: "default-edit",
     },
     node_sizing: Unsized,
@@ -422,7 +422,7 @@ test fn witness_automatic_multibucket_native_exhaustion_refuses_join_undetermine
     node_sizing: Unsized,
   ) {
     DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
-      reason == dispatch_selection_automatic_native_bucket_join_undetermined_refusal(native_key: codex_default_rate_limit_id)
+      reason == dispatch_selection_automatic_native_bucket_join_undetermined_refusal(native_key: extdeps.llm.codex_app_server.codex_default_rate_limit_id)
     DispatchSelectionResolved { receipt: _ } => false
   }
 }

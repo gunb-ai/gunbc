@@ -11,7 +11,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 
 fn char_display_width(c: std.types.Char) -> std.unicode.types.DisplayWidth {
   let cp = c
-  let is_zero_width = contains(zero_width_codepoints, item: cp) || any(zero_width_blocks, predicate: b => in_block(cp: cp, block: b))
+  let is_zero_width = contains(extdeps.unicode.blocks.zero_width_codepoints, item: cp) || any(zero_width_blocks, predicate: b => in_block(cp: cp, block: b))
   if is_zero_width { return ZeroWidth }
   if any(wide_blocks, predicate: b => in_block(cp: cp, block: b)) { return Wide }
   return Narrow

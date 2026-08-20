@@ -2,7 +2,7 @@ module std.claim_evidence
 
 
 data claim_evidence_grounding_authorities: List<extdeps.external_authority.ExternalAuthority> = [
-  sacm_claim_evidence_authority,
+  extdeps.assurance.claim_evidence.sacm_claim_evidence_authority,
   w3c_prov_dm_authority,
   belnap_four_valued_information_authority,
 ]

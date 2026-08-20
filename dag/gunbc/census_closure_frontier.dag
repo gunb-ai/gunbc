@@ -14,7 +14,7 @@ data census_closure_count_witness_frontier_rows: List<std.roster_frontier.Fronti
 
 fn census_closure_frontier_row_groups() -> List<List<std.roster_frontier.FrontierRow>> {
   [
-    hetzner_money_rate_frontier_rows,
+    extdeps.cloud.hetzner.hetzner_money_rate_frontier_rows,
     mac_address_anemic_brand_frontier_rows,
     container_state_detail_redundant_bools_frontier_rows,
     memory_swap_unlimited_convention_frontier_rows,

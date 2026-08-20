@@ -2,7 +2,7 @@ module test.claim.uefi_boot_install_decision
 
 
 test fn srv4_diagnoses_network_needs_dhcp_and_acts() -> Bool {
-  let sit = diagnose_boot_install(env: srv4_uefi_observed_environment)
+  let sit = diagnose_boot_install(env: gunbc.srv4_uefi_observed.srv4_uefi_observed_environment)
   let is_needs_dhcp = match sit {
     NetworkUpNeedsDhcp { interface: i } => i == "eth2"
     InstallMediaReady { boot_file: _ } => false
@@ -20,7 +20,7 @@ test fn srv4_diagnoses_network_needs_dhcp_and_acts() -> Bool {
 
 test fn srv4_never_dhcps_the_link_local_nic() -> Bool {
   let action = decide_boot_install(
-    situation: diagnose_boot_install(env: srv4_uefi_observed_environment),
+    situation: diagnose_boot_install(env: gunbc.srv4_uefi_observed.srv4_uefi_observed_environment),
     goal: InstalledFleetNode,
   )
   match boot_install_commands(action: action) {

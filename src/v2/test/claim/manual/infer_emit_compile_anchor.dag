@@ -59,7 +59,7 @@ fn anchor_emit_accepts() -> Outcome<Medium<String>> {
 
 fn anchor_compile_inferred_accepts() -> Outcome<v2.compiler.compile.CompileOutput> {
   compile_inferred(
-    inferred: rust_add_inferred_tree,
+    inferred: v2.test.manual.rust_add_emit_translate.rust_add_inferred_tree,
     mode: v2.compiler.compile.TranslateTo { target: rust_add_target_model }
   )
 }

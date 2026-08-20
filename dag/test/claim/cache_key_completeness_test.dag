@@ -15,7 +15,7 @@ test fn witness_cav_no_toolchain_derives_subject_only() -> Bool {
 }
 
 test fn witness_live_resolved_graph_derives_toolchain() -> Bool {
-  let inputs = catalog_inputs_considered(kd: resolved_graph_cache_facts.key_derivation)
+  let inputs = catalog_inputs_considered(kd: extdeps.realization.resolved_graph.resolved_graph_cache_facts.key_derivation)
   catalog_has_vendor_only_key_inputs(inputs: inputs) && (inputs.length() == 2)
 }
 
@@ -106,6 +106,6 @@ test fn witness_live_catalog_holds() -> Bool {
 }
 
 test fn witness_live_resolved_graph_complete() -> Bool {
-  cache_key_derivation_complete(facts: resolved_graph_cache_facts.key_derivation)
+  cache_key_derivation_complete(facts: extdeps.realization.resolved_graph.resolved_graph_cache_facts.key_derivation)
 }
 

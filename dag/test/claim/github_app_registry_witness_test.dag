@@ -98,7 +98,7 @@ data sealed_bot_signer: gunbc.auth.github_apps.SignerCustody = signer_for(
 )
 
 data cross_app_signer: gunbc.auth.github_apps.SignerCustody = signer_for(
-  app: gunbai_ci_declared,
+  app: gunbc.auth.github_apps.gunbai_ci_declared,
   pem: gunbai_ci_app_pem_secret,
   derived: ci_key_fingerprint,
   registered: ci_key_fingerprint
@@ -118,7 +118,7 @@ data app_credential: gunbc.auth.github_credential.GitHubCredentialAuthority = gu
 }
 
 data other_app_credential: gunbc.auth.github_credential.GitHubCredentialAuthority = gunbc.auth.github_credential.ManagedAppInstallationCredential {
-  app: gunbai_ci_declared,
+  app: gunbc.auth.github_apps.gunbai_ci_declared,
   installation: bot_installation_id,
   profile: gunbc.auth.github_credential.GitHubCredentialProfileRef { name: "heal-branch-advance" }
 }
@@ -276,7 +276,7 @@ test fn witness_cross_app_signer_does_not_seal_the_selected_app() -> Bool {
   } && match sealed_bot_signer {
     SignerCustodyObserved { signer } =>
       signer_seals_app(signer: signer, app: gunbai_bot_declared)
-        && !signer_seals_app(signer: signer, app: gunbai_ci_declared)
+        && !signer_seals_app(signer: signer, app: gunbc.auth.github_apps.gunbai_ci_declared)
     _ => false
   }
 }
@@ -345,7 +345,7 @@ test fn witness_installation_readback_naming_another_app_is_unobserved() -> Bool
     },
     observed: gunbc.auth.github_apps.InstallationReadback {
       installation: installation_of(
-        app: gunbai_ci_declared,
+        app: gunbc.auth.github_apps.gunbai_ci_declared,
         installation_id: bot_installation_id,
         perms: full_workflow_grant
       )
@@ -567,11 +567,11 @@ test fn witness_workflow_path_rule_is_prefix_not_substring() -> Bool {
 }
 
 test fn witness_two_apps_are_distinct() -> Bool {
-  gunbai_bot_declared.app_id.value != gunbai_ci_declared.app_id.value
-    && gunbai_bot_declared.client_id != gunbai_ci_declared.client_id
+  gunbai_bot_declared.app_id.value != gunbc.auth.github_apps.gunbai_ci_declared.app_id.value
+    && gunbai_bot_declared.client_id != gunbc.auth.github_apps.gunbai_ci_declared.client_id
     && gunbai_bot_declared.app_id.value == 3909950
-    && gunbai_ci_declared.app_id.value == 2653532
-    && gunbai_bot_declared.owner_login == gunbai_ci_declared.owner_login
+    && gunbc.auth.github_apps.gunbai_ci_declared.app_id.value == 2653532
+    && gunbai_bot_declared.owner_login == gunbc.auth.github_apps.gunbai_ci_declared.owner_login
     && gunbai_ci_declared_installation_id.value == 104134109
 }
 
@@ -784,7 +784,7 @@ test fn witness_registration_unobserved_is_not_a_gap() -> Bool {
     app: gunbai_bot_declared,
     custody: sealed_bot_signer,
     registration: gunbc.auth.github_apps.AppRegistrationReadback {
-      app_id: gunbai_ci_declared.app_id,
+      app_id: gunbc.auth.github_apps.gunbai_ci_declared.app_id,
       requested_permissions: map(full_workflow_grant, p => as_observed_permission(p: p))
     },
     observed: gunbc.auth.github_apps.InstallationReadback { installation: installation_holding(perms: full_workflow_grant) },

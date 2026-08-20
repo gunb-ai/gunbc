@@ -13,7 +13,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 // citation, plus the formula control -- because runnable_batch_clamp_ms is still live and its
 // unit-rate arithmetic is still the thing a future clamp row will be read through.
 fn positional_clamp_row_zero() -> std.realization_schedule.RunnableBatchClamp {
-  match gunbc_ci_floor_batch_clamp_params {
+  match gunbc.ci_spec.gunbc_ci_floor_batch_clamp_params {
     Empty => gunbc_ci_compile_clean_clamp
     Cons { head: h, tail: _ } => h
   }

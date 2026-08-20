@@ -49,7 +49,7 @@ fn synthetic_push() -> extdeps.git.hooks.PrePushStdinRow {
     local_ref: "refs/heads/session/synthetic-ordinary-session",
     local_sha: synthetic_head,
     remote_ref: "refs/heads/session/synthetic-ordinary-session",
-    remote_sha: zero_sha,
+    remote_sha: extdeps.git.hooks.zero_sha,
   }
 }
 
@@ -452,7 +452,7 @@ test fn sole_publisher_refuses_push_head_mismatch() -> Bool {
     local_ref: "refs/heads/session/synthetic-ordinary-session",
     local_sha: "wrong-head" as std.types.CommitSha,
     remote_ref: "refs/heads/session/synthetic-ordinary-session",
-    remote_sha: zero_sha,
+    remote_sha: extdeps.git.hooks.zero_sha,
   }
   match admit_public_write(
     session: sole_modeled_publisher_session,

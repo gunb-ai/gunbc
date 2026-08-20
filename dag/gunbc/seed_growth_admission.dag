@@ -54,7 +54,7 @@ data seed_growth_admission_g0_population_note: String = "G0 CENSUS HOST (scripts
 
 fn seed_growth_justification_roster() -> List<gunbc.seed_growth.SeedGrowthJustification> {
   [
-    stage0_rust_observation_seed_growth_justification,
+    gunbc.stage0_rust_host_observation.stage0_rust_observation_seed_growth_justification,
     observation_scoped_run_seed_growth_justification()
   ]
 }
@@ -68,7 +68,7 @@ fn seed_growth_justification_well_formed(j: gunbc.seed_growth.SeedGrowthJustific
 
 fn seed_growth_roster_all_declarations() -> List<std.decl_ref.DeclarationRef> {
   v2.std.algebra.list_append(
-    left: stage0_rust_observation_seed_growth_justification.hand_authored_declarations,
+    left: gunbc.stage0_rust_host_observation.stage0_rust_observation_seed_growth_justification.hand_authored_declarations,
     right: observation_scoped_run_seed_growth_justification().hand_authored_declarations
   )
 }

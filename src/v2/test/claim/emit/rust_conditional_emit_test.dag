@@ -17,7 +17,7 @@ fn rust_conditional_emit_inferred_tree_for(root: Node) -> v2.compiler.inferred_t
 }
 
 fn rust_conditional_emit_producer_inferred_tree() -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
-  match table_fixture_pick_if_arrow_with_body() {
+  match v2.test.complexity_gate.table_fixture_branch_subject_producer.table_fixture_pick_if_arrow_with_body() {
     Accepted { value: root, diagnostics: d } =>
       v2.std.diagnostic.Accepted {
         value: rust_conditional_emit_inferred_tree_for(root: root),

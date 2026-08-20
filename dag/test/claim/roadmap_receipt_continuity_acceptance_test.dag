@@ -7,7 +7,7 @@ data unreadable_carrier_text_fixture: String = "{ not json"
 
 fn fixture_history() -> List<gunbc.roadmap_model.RoadmapAcceptanceEvent> {
   match load_roadmap_acceptance_event_history_from_carrier_text(
-    text: receipt_continuity_acceptance_carrier_fixture_text,
+    text: test.claim.roadmap_receipt_continuity_acceptance_fixture.receipt_continuity_acceptance_carrier_fixture_text,
   ) {
     RoadmapAcceptanceEventHistoryLoaded { events: events } => events
     RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => []
@@ -297,7 +297,7 @@ test fn witness_missing_carrier_prevents_silent_empty_authority_projection() -> 
     RoadmapAuthorityProjected { doc: doc, accepted: _ } => count(doc_all_nodes(doc: doc)) == 0
   }
     && match roadmap_authority_projection_from_carrier_text(
-      text: receipt_continuity_acceptance_carrier_fixture_text,
+      text: test.claim.roadmap_receipt_continuity_acceptance_fixture.receipt_continuity_acceptance_carrier_fixture_text,
     ) {
       RoadmapAuthorityProjected { doc: doc, accepted: _ } => count(doc_all_nodes(doc: doc)) > 0
       RoadmapAuthorityProjectionRefused { detail: _ } => false
@@ -307,7 +307,7 @@ test fn witness_missing_carrier_prevents_silent_empty_authority_projection() -> 
 test fn witness_dispatch_never_presents_empty_frontier_on_authority_refusal() -> Bool {
   let refused = gunbc.roadmap_authority.RoadmapAuthorityProjectionRefused { detail: "fixture planted projection refusal" }
   let projected = roadmap_authority_projection_from_carrier_text(
-    text: receipt_continuity_acceptance_carrier_fixture_text,
+    text: test.claim.roadmap_receipt_continuity_acceptance_fixture.receipt_continuity_acceptance_carrier_fixture_text,
   )
   let refused_dispatch = roadmap_dispatch_file_content_for_projection(proj: refused)
   string_contains(s: refused_dispatch, pattern: "fixture planted projection refusal")

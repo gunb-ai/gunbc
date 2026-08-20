@@ -38,7 +38,7 @@ test fn witness_artifact_digests_are_content_hashes() -> Bool {
 }
 
 test fn witness_healthz_route_json_ok() -> Bool {
-  roadmap_site_surface_readiness_group_holds(release_revision: deploy_witness_release_revision)
+  roadmap_site_surface_readiness_group_holds(release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision)
 }
 
 test fn witness_static_site_route_authority_paths_locked() -> Bool {

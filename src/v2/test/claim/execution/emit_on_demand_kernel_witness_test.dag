@@ -35,7 +35,7 @@ fn kernel_native_key() -> std.content_hash.ContentHash {
 fn kernel_alt_subject_tree() -> v2.compiler.inferred_tree.InferredTree {
   v2.compiler.inferred_tree.InferredTree {
     root: rust_fixture_emitted_add_fn,
-    facts: rust_add_inferred_tree.facts
+    facts: v2.test.manual.rust_add_emit_translate.rust_add_inferred_tree.facts
   }
 }
 
@@ -131,7 +131,7 @@ test fn emit_on_demand_schedule_refuses_unreadable_budget_holds() -> Bool {
 
 fn kernel_add_subject(call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> Outcome<RuntimeValue>) -> TestClaimEvalSubject<Node> {
   eval_test_claim_subject(
-    claim: emit_eval_claim(rhs_result_node: eval_add_subgraph_node),
+    claim: emit_eval_claim(rhs_result_node: v2.test.manual.eval_runtime.eval_add_subgraph_node),
     context: emit_eval_context(call_primitive: call_primitive),
     tree: emit_eval_subject_tree(),
     evaluator_pin: ^emit_eval_evaluator_pin
@@ -140,8 +140,8 @@ fn kernel_add_subject(call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnv
 
 fn kernel_add_fixture_inputs() -> v2.compiler.eval.Inputs {
   inputs_for_emit_host(
-    claim_input_root: eval_add_subgraph_node,
-    expected_eval_root: eval_add_subgraph_node,
+    claim_input_root: v2.test.manual.eval_runtime.eval_add_subgraph_node,
+    expected_eval_root: v2.test.manual.eval_runtime.eval_add_subgraph_node,
     claim_pin: ^emit_eval_evaluator_pin
   )
 }

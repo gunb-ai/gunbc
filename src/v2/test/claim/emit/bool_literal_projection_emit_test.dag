@@ -184,7 +184,7 @@ test fn production_c_bool_literal_pins_spelling_while_known_invalid_under_c17() 
         projection: c_value_expression_projection(),
         catalog: c_operator_realizations_catalog_node()
       )
-        && match c_bool_literal_stdbool_preamble_emit_disposition {
+        && match v2.extdeps.languages.c_bool_literal_emit.c_bool_literal_stdbool_preamble_emit_disposition {
           Scaffold { dissolves_to: RealizationDispatch, bind: _ } => true
           _ => false
         }

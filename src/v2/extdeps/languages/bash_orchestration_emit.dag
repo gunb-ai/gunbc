@@ -6,7 +6,7 @@ fn bash_orchestration_emit_registry_node() -> Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       bash_named_edge(
-        name: orch_construct_run_rawline,
+        name: v2.std.orchestration_emit.orch_construct_run_rawline,
         target: bash_word_pass_emitted
       ),
       bash_named_edge(
@@ -133,7 +133,7 @@ fn bash_orch_run_env_plan(r: v2.std.orchestration.Run) -> v2.std.orchestration_e
       }
     HeadAbsent =>
       v2.std.orchestration_emit.OrchRunEmitPlan {
-        construct_tag: orch_construct_run_rawline,
+        construct_tag: v2.std.orchestration_emit.orch_construct_run_rawline,
         target: bash_fold_raw_line_target_model(text: r.command)
       }
   }

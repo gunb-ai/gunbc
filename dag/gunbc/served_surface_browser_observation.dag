@@ -207,7 +207,7 @@ fn sentinel_body_502_presentation(specimen: SentinelBody502ExactSpecimen) -> Nav
 
 data playwright_chromium_151_linux_arm64_headless_navigation_run: PlaywrightChromium151DiscriminatorRun = PlaywrightChromium151DiscriminatorRun {
   environment: BrowserExecutionEnvironment {
-    chromium_build: chromium_151_0_7922_34,
+    chromium_build: extdeps.browser.chromium.chromium_151_0_7922_34,
     playwright_build: playwright_1_62_1,
     browser_binary_provenance: PlaywrightManagedChromiumDownload,
     container_userland: Debian12Bookworm,

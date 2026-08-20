@@ -50,7 +50,7 @@ test fn witness_asset_route_serves_modeled_js() -> Bool {
     handler: DispatchAssetHandler,
     params: [],
     request: fixture_request(method: GET, path: roadmap_dispatch_asset_path),
-    release_revision: deploy_witness_release_revision,
+    release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision,
   )
   r.status == 200
     && media_type_wire_label(m: r.content_type) == "text/javascript; charset=utf-8"
@@ -103,12 +103,12 @@ fn fixture_request(method: std.types.HttpMethod, path: String) -> extdeps.http.s
 }
 
 test fn witness_unknown_path_folds_404_response() -> Bool {
-  let r = roadmap_serve_selection_response(sel: NoRouteMatched, request: fixture_request(method: GET, path: "/nope"), release_revision: deploy_witness_release_revision)
+  let r = roadmap_serve_selection_response(sel: NoRouteMatched, request: fixture_request(method: GET, path: "/nope"), release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision)
   r.status == 404
 }
 
 test fn witness_405_response_carries_allowed() -> Bool {
-  let r = roadmap_serve_selection_response(sel: extdeps.http.server.MethodNotAllowed { allowed: [std.types.POST] }, request: fixture_request(method: GET, path: "/dispatch/x"), release_revision: deploy_witness_release_revision)
+  let r = roadmap_serve_selection_response(sel: extdeps.http.server.MethodNotAllowed { allowed: [std.types.POST] }, request: fixture_request(method: GET, path: "/dispatch/x"), release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision)
   r.status == 405 && string_contains(s: r.body, pattern: "POST")
 }
 
@@ -137,7 +137,7 @@ test fn witness_preview_dispatch_refuses_before_effects() -> Bool {
     method_label: "POST",
     path: "/dispatch/ts-dispatch-provider-events",
     body: "",
-    release_revision: deploy_witness_release_revision,
+    release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision,
   )
   r.status == 403
     && string_contains(s: r.body, pattern: "\"status\": \"disabled\"")
@@ -152,7 +152,7 @@ test fn witness_instance_route_names_posture_and_paths() -> Bool {
     method_label: "GET",
     path: "/instance.json",
     body: "",
-    release_revision: deploy_witness_release_revision,
+    release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision,
   )
   r.status == 200
     && string_contains(s: r.body, pattern: "\"instance_id\": \"srv2-preview-codex-feedback-v0\"")
@@ -200,7 +200,7 @@ test fn witness_unknown_method_refuses() -> Bool {
 data unknown_method_501_note: String = "review 40359: an unrecognized method label is 501 Not Implemented (RFC 9110 section 15.6.2 — the server does not implement the method at all), NEVER 405 (405 means the ROUTE exists but this method is not in its allowed set, and carries the allowed set — the MethodNotAllowed arm). The two arms must stay distinct statuses; collapsing them reds this row."
 
 test fn witness_unknown_method_folds_501_response() -> Bool {
-  let r = roadmap_serve_respond(method_label: "BREW", path: "/", body: "", release_revision: deploy_witness_release_revision)
+  let r = roadmap_serve_respond(method_label: "BREW", path: "/", body: "", release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision)
   r.status == 501 && string_contains(s: r.body, pattern: "BREW")
 }
 

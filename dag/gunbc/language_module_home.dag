@@ -12,7 +12,7 @@ type LanguageTargetHome {
 
 data language_target_homes: List<LanguageTargetHome> = [
   LanguageTargetHome {
-    target: gnu_bash_subject_ref,
+    target: gunbc.language_target_registry.gnu_bash_subject_ref,
     canonical_prefix: "dag/extdeps/languages/bash/"
   },
   LanguageTargetHome {
@@ -40,7 +40,7 @@ data language_target_homes: List<LanguageTargetHome> = [
     canonical_prefix: "dag/extdeps/languages/go/"
   },
   LanguageTargetHome {
-    target: html_language_subject_ref,
+    target: gunbc.language_target_registry.html_language_subject_ref,
     canonical_prefix: "dag/extdeps/languages/html/"
   },
   LanguageTargetHome {
@@ -127,14 +127,14 @@ data legacy_language_module_homes: List<LegacyLanguageModuleHome> = [
   LegacyLanguageModuleHome {
     file_path: "dag/extdeps/languages/html.dag",
     module_path: "extdeps.languages.html",
-    target: html_language_subject_ref,
+    target: gunbc.language_target_registry.html_language_subject_ref,
     moves_to: "dag/extdeps/languages/html/medium.dag",
     dissolution: unbound_dissolution(description: "a typed move receipt records the file at its canonical address and this row deletes")
   },
   LegacyLanguageModuleHome {
     file_path: "dag/extdeps/languages/html_fragment.dag",
     module_path: "extdeps.languages.html_fragment",
-    target: html_language_subject_ref,
+    target: gunbc.language_target_registry.html_language_subject_ref,
     moves_to: "dag/extdeps/languages/html/fragment.dag",
     dissolution: unbound_dissolution(description: "a typed move receipt records the file at its canonical address and this row deletes")
   },

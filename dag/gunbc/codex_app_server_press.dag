@@ -722,7 +722,7 @@ fn rate_limit_buckets_from_legacy_rate_limits(
             CodexRateLimitIdAbsentLegacyMirror =>
               [
                 verdict_from_rate_limits_snapshot(
-                  limit_id: codex_default_rate_limit_id,
+                  limit_id: extdeps.llm.codex_app_server.codex_default_rate_limit_id,
                   snapshot: snapshot,
                 ),
               ]
@@ -794,7 +794,7 @@ fn classification_from_codex_default_bucket(
   } else {
     match codex_bucket_verdict_for_limit_id(
       buckets: buckets,
-      limit_id: codex_default_rate_limit_id,
+      limit_id: extdeps.llm.codex_app_server.codex_default_rate_limit_id,
     ) {
       Absent => AccountStandingIncomplete
       Present { value: CodexBucketCapacityAvailable { limit_id: _ } } =>

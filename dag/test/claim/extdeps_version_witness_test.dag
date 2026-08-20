@@ -21,7 +21,7 @@ test fn w_constraint_label_preserved() -> Bool {
 }
 
 test fn w_coreutils_constraint_grounded() -> Bool {
-  min_coreutils_version == ">= 8.0"
+  extdeps.tools.gnu_coreutils.min_coreutils_version == ">= 8.0"
 }
 
 test fn w_ordering_exhaustive_match() -> Bool {

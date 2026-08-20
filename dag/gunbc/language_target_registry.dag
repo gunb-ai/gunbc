@@ -13,7 +13,7 @@ data registry_revision_note: String = "WHY THERE IS NO PINNED REVISION STAMP HER
 
 data subject_ref_derivation_note: String = "EVERY SUBJECT REF BELOW IS A PROJECTION OF ITS SCOPE, never re-authored beside it. An earlier revision declared gnu_bash_subject_ref as a hand-written DeclarationRef repeating the module path and decl name the scope already carries — two writable representations of one identity, which can disagree exactly the way target_grounding_law describes. Reading scope.subject instead makes the disagreeing state unrepresentable: there is only one place the subject is stated, and it is the carrier that also holds the citations. Verified by execution 2026-08-04 that a top-level data declaration may project a field of an imported scope, so this costs nothing."
 
-data gnu_bash_subject_ref: std.decl_ref.DeclarationRef = gnu_bash_model_scope.subject.declaration
+data gnu_bash_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.bash.subject.gnu_bash_model_scope.subject.declaration
 
 data d0_subject_registration_note: String = "D0 IS THE ROWS, AND THIS IS WHAT REPLACED THE BLOCKER NOTE THAT STOOD HERE. The previous revision recorded that registering TypeScript, C, C++, Verilog, SPICE, Python, Go, Java, Kotlin, Swift, LLVM IR, WebAssembly, PTX, machine code, Lean, SQL, HTML, CSS, ECMAScript, JSON, YAML and Markdown was impossible because the construction wall requires a TargetGrounding and NONE of them had a cited subject declaration — Bash was the only one, and it had only just been authored. Twenty-three cited subject carriers now exist under dag/extdeps/languages/*/subject.dag, each enrolled in scope_carrier_paths, and the registry registers 26 targets: 24 external plus the two project-grounded ones. THE CITATION RULE THIS BATCH FOLLOWED, because it is the whole value of the rows: every locator was FETCHED LIVE on 2026-08-04 and its title and publisher confirmed from the response before it was written down. None was recalled. Where an upstream could not be read, the target was NOT registered and the cause was recorded in unregistered_target_findings — three of them — because a plausible URL for an unverified authority would make the wall green while grounding it in nothing, which is worse than the honest absence the blocker note described."
 
@@ -99,7 +99,7 @@ data governing_contract_id_resolution_note: String = "WHY THIS ROW CARRIES A MOD
 
 data registered_language_targets: List<std.language_target_identity.LanguageTargetRegistration> = [
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: std.language_target_identity.ExternalGrounding { scope: gnu_bash_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: extdeps.languages.bash.subject.gnu_bash_model_scope },
     disposition: TargetActive
   },
   std.language_target_identity.LanguageTargetRegistration {
@@ -127,11 +127,11 @@ data registered_language_targets: List<std.language_target_identity.LanguageTarg
     disposition: TargetActive
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: std.language_target_identity.ExternalGrounding { scope: spice_netlist_language_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: extdeps.languages.spice.subject.spice_netlist_language_model_scope },
     disposition: TargetActive
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: std.language_target_identity.ExternalGrounding { scope: rust_language_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: extdeps.languages.rust.subject.rust_language_model_scope },
     disposition: std.language_target_identity.TargetGovernedByContracts { contract_ids: ["v2.compiler.self_host.emitter_producer_provenance"] }
   },
   std.language_target_identity.LanguageTargetRegistration {
@@ -236,8 +236,8 @@ data commonmark_format_subject_ref: std.decl_ref.DeclarationRef = commonmark_for
 data ptx_language_subject_ref: std.decl_ref.DeclarationRef = ptx_language_model_scope.subject.declaration
 data python_language_subject_ref: std.decl_ref.DeclarationRef = python_language_model_scope.subject.declaration
 data riscv_isa_subject_ref: std.decl_ref.DeclarationRef = riscv_isa_model_scope.subject.declaration
-data rust_language_subject_ref: std.decl_ref.DeclarationRef = rust_language_model_scope.subject.declaration
-data spice_netlist_language_subject_ref: std.decl_ref.DeclarationRef = spice_netlist_language_model_scope.subject.declaration
+data rust_language_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.rust.subject.rust_language_model_scope.subject.declaration
+data spice_netlist_language_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.spice.subject.spice_netlist_language_model_scope.subject.declaration
 
 data ngspice_simulator_subject_ref: std.decl_ref.DeclarationRef = ngspice_simulator_model_scope.subject.declaration
 

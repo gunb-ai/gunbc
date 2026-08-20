@@ -19,7 +19,7 @@ fn host_identity_assimilation_target_srv1(transport: gunbc.host_effect.HostEffec
     transport: transport,
     access: host_identity_srv1_access,
     persisted_base: gunbc_srv1_deployed_intent_v0_persisted,
-    desired: gunbc_srv1_deployed_intent_v1,
+    desired: gunbc.deployed_intent_v1.gunbc_srv1_deployed_intent_v1,
   }
 }
 

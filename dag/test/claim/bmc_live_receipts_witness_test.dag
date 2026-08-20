@@ -197,7 +197,7 @@ test fn convergence_receipt_binds_host_realizer_readback_and_live_health() -> Bo
 }
 
 test fn restart_receipt_binds_one_literal_perturbation_generation_and_readback() -> Bool {
-  let receipt = srv4_bmc_fan_reboot_persistence_receipt
+  let receipt = gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt
   receipt.host == srv4_host.identity
     && receipt.perturbation_generation == srv4_bmc_fan_perturbation_generation
     && receipt.reset.reset_type == ResetGracefulRestart

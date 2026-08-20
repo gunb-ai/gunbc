@@ -16,7 +16,7 @@ test fn w_github_error_shape_documentation_url_grounded() -> Bool {
 }
 
 test fn w_github_error_example_inhabits_url() -> Bool {
-  match github_error_example.documentation_url {
+  match extdeps.github.errors.github_error_example.documentation_url {
     Present { value: url } => url == sample_docs_url
     Absent => false
   }

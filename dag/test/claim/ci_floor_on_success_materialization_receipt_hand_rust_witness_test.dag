@@ -4,19 +4,19 @@ module test.claim.ci_floor_on_success_materialization_receipt_hand_rust_witness
 data ci_floor_on_success_materialization_receipt_hand_rust_witness_note: String = "HAND-RUST checkable receipt for #7499 blocker 6: pins the seed-retained scaffold bind, attempt-scoped path authority, and the bounded deferral (plan anchor + ROADMAP lane). Behavioral population separation (ordinary vs on-success) is cross-checked by cargo test on_success_materialization_receipt_separates_from_ordinary_floor in claim_executor.rs (PROCESS_EVAL_RECOMPUTE_TEST_LOCK)."
 
 test fn scaffold_is_seed_retained_on_path_authority() -> Bool {
-  match ci_floor_on_success_materialization_receipt_claim_executor_seed_disposition {
+  match gunbc.ci_materialization.ci_floor_on_success_materialization_receipt_claim_executor_seed_disposition {
     Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
     _ => false
   }
 }
 
 test fn attempt_scoped_path_names_attempt_id() -> Bool {
-  ci_floor_on_success_materialization_receipt_path ==
+  gunbc.ci_materialization.ci_floor_on_success_materialization_receipt_path ==
     "target/floor-attempt-<attempt_id>/floor-on-success-materialization-receipt.txt"
 }
 
 test fn scaffold_names_bounded_deferral_receipt() -> Bool {
-  !(ci_floor_on_success_materialization_receipt_claim_executor_seed_deferral == "")
+  !(gunbc.ci_materialization.ci_floor_on_success_materialization_receipt_claim_executor_seed_deferral == "")
     && !(ci_floor_on_success_materialization_receipt_claim_executor_seed_receipt_plan_anchor == "")
     && !(ci_floor_on_success_materialization_receipt_claim_executor_seed_roadmap_lane_anchor == "")
     && ci_floor_on_success_materialization_receipt_claim_executor_seed_witness_entry ==

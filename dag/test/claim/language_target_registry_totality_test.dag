@@ -25,7 +25,7 @@ test fn bash_vocabulary_surface_joins_the_bash_subject() -> Bool {
     rows: language_target_surface_census,
     registry: registered_language_targets
   ) {
-    TargetResolved { target: t } => declaration_ref_eq(a: t, b: gnu_bash_subject_ref)
+    TargetResolved { target: t } => declaration_ref_eq(a: t, b: gunbc.language_target_registry.gnu_bash_subject_ref)
     TargetSurfaceUnregistered { surface: _ } => false
     TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
     TargetNotRegistered { target: _ } => false

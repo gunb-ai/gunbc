@@ -25,7 +25,7 @@ fn project_subject() -> std.decl_ref.DeclarationRef {
 
 fn bash_registration() -> std.language_target_identity.LanguageTargetRegistration {
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: std.language_target_identity.ExternalGrounding { scope: gnu_bash_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: extdeps.languages.bash.subject.gnu_bash_model_scope },
     disposition: TargetActive
   }
 }

@@ -12,7 +12,7 @@ type BusyboxCrossBuildPlan {
 }
 
 data bmc_busybox_build_plan: BusyboxCrossBuildPlan = BusyboxCrossBuildPlan {
-  source_url: busybox_source_1_36_1_url,
+  source_url: extdeps.tools.busybox.busybox_source_1_36_1_url,
   source_tarball: "/tmp/gunbc-busybox-src.tar.bz2",
   build_dir: "/tmp/gunbc-bb-build",
   cross_compile: "arm-linux-gnueabi-",

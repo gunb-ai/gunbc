@@ -252,14 +252,14 @@ fn bind_run_passes(run: v2.std.diagnostic.Outcome<TestClaimRun<Node, RuntimeValu
 }
 
 test fn bind_source_pipeline_admits_holds() -> Bool {
-  match table_fixture_bind_arrow_with_body() {
+  match v2.test.complexity_gate.table_fixture_bind_subject_producer.table_fixture_bind_arrow_with_body() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
 test fn bind_source_driven_executes_holds() -> Bool {
-  match table_fixture_bind_arrow_with_body() {
+  match v2.test.complexity_gate.table_fixture_bind_subject_producer.table_fixture_bind_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       bind_run_passes(
         run: bind_run(
@@ -272,7 +272,7 @@ test fn bind_source_driven_executes_holds() -> Bool {
 }
 
 test fn bind_direct_runtime_holds() -> Bool {
-  match table_fixture_bind_arrow_with_body() {
+  match v2.test.complexity_gate.table_fixture_bind_subject_producer.table_fixture_bind_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } => {
       let input = bind_pick_call(callee: arrow)
       match bind_inferred_run_tree(
@@ -297,7 +297,7 @@ test fn bind_direct_runtime_holds() -> Bool {
 }
 
 test fn bind_value_perturbation_red_holds() -> Bool {
-  match table_fixture_bind_arrow_with_body() {
+  match v2.test.complexity_gate.table_fixture_bind_subject_producer.table_fixture_bind_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       bind_run_passes(
         run: bind_run(
@@ -310,7 +310,7 @@ test fn bind_value_perturbation_red_holds() -> Bool {
 }
 
 test fn bind_fixture_producer_holds() -> Bool {
-  match table_fixture_bind_arrow_with_body() {
+  match v2.test.complexity_gate.table_fixture_bind_subject_producer.table_fixture_bind_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       bind_run_passes(
         run: bind_run(

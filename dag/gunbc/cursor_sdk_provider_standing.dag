@@ -40,7 +40,7 @@ fn cursor_sdk_authentication_standing_from_probe(
 
 fn cursor_sdk_local_limit_observation() -> gunbc.provider_standing.ProviderLimitObservation {
   gunbc.provider_standing.LimitCapabilityGapUnobservable {
-    reason: cursor_sdk_local_limit_standing_reason,
+    reason: extdeps.llm.cursor_sdk_facts.cursor_sdk_local_limit_standing_reason,
   }
 }
 
@@ -75,7 +75,7 @@ fn cursor_sdk_local_provider_standing_has_usage_capability_gap(
       } else {
         match row {
           LimitCapabilityGapUnobservable { reason: reason } =>
-            reason == cursor_sdk_local_limit_standing_reason
+            reason == extdeps.llm.cursor_sdk_facts.cursor_sdk_local_limit_standing_reason
           _ => false
         }
       }

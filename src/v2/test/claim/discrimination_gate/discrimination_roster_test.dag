@@ -2,8 +2,8 @@ module v2.test.discrimination_gate.discrimination_roster
 
 
 data unit_suboptimal_complexity: List<v2.std.verification.TestClaim> = [
-  claim_within_structural_bound_passes,
-  claim_overcost_against_structural_bound_violates
+  v2.test.impossible_bug.suboptimal_complexity.claim_within_structural_bound_passes,
+  v2.test.impossible_bug.suboptimal_complexity.claim_overcost_against_structural_bound_violates
 ]
 
 data unit_nested_optional_flatten: List<v2.std.verification.TestClaim> = [
@@ -13,7 +13,7 @@ data unit_nested_optional_flatten: List<v2.std.verification.TestClaim> = [
 
 data unit_transport_type_drift: List<v2.std.verification.TestClaim> = [
   claim_shared_declaration_compiles_both_sides,
-  claim_target_contract_drift_impossible
+  v2.test.impossible_bug.transport_type_drift.claim_target_contract_drift_impossible
 ]
 
 data unit_idempotency_contract: List<v2.std.verification.TestClaim> = [
@@ -43,7 +43,7 @@ fn discrimination_subject_rows() -> List<List<v2.std.verification.TestClaim>> {
 }
 
 data all_positive_control_unit: List<v2.std.verification.TestClaim> = [
-  claim_within_structural_bound_passes
+  v2.test.impossible_bug.suboptimal_complexity.claim_within_structural_bound_passes
 ]
 
 test fn negative_control_correctly_rejected() -> Bool {
@@ -65,7 +65,7 @@ data non_perturbed_red_over_green_input: v2.std.verification.TestClaim = v2.std.
 }
 
 data non_perturbed_control_unit: List<v2.std.verification.TestClaim> = [
-  claim_within_structural_bound_passes,
+  v2.test.impossible_bug.suboptimal_complexity.claim_within_structural_bound_passes,
   non_perturbed_red_over_green_input
 ]
 
@@ -74,7 +74,7 @@ test fn non_perturbed_control_correctly_rejected() -> Bool {
 }
 
 data mixed_input_non_perturbed_control_unit: List<v2.std.verification.TestClaim> = [
-  claim_within_structural_bound_passes,
+  v2.test.impossible_bug.suboptimal_complexity.claim_within_structural_bound_passes,
   claim_optional_chaining_no_double_unwrap,
   non_perturbed_red_over_green_input
 ]

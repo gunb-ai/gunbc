@@ -39,7 +39,7 @@ fn witness_a_gentler_knock_travels_proportionally_less() -> Bool {
 data register_bound_note: String = "The bob's ceiling sits strictly under the register's attraction travel, so instrument character can never move a subject as far as a real response does. Asserted as a relationship between the two authorities rather than as two independent numbers, which is what makes a later retune of either one red rather than silently violating the law."
 
 fn witness_the_bob_stays_under_the_registers_attraction_travel() -> Bool {
-  bob_max_travel_px < attraction_travel_max_px
+  bob_max_travel_px < gunbc.design.salience.attraction_travel_max_px
     && bob_max_travel_px <= instrument_displacement_max_px
     && bob_is_within_register_bound(s: apply_impulse(i: an_impulse(magnitude: 999999), m: MotionFull))
     && bob_is_within_register_bound(s: bob_at_rest)

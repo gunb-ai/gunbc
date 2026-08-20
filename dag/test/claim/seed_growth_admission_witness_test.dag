@@ -46,13 +46,13 @@ test fn seed_growth_g0_census_host_is_scaffold_until_modeled_producer() -> Bool 
 }
 
 test fn g0_population_note_supersedes_stale_cli_run_prose() -> Bool {
-  string_contains(s: seed_growth_admission_g0_population_note, pattern: "cli_run_hollowing_plan")
-    && string_contains(s: seed_growth_admission_g0_population_note, pattern: "does NOT pin numeric literals")
+  string_contains(s: gunbc.seed_growth_admission.seed_growth_admission_g0_population_note, pattern: "cli_run_hollowing_plan")
+    && string_contains(s: gunbc.seed_growth_admission.seed_growth_admission_g0_population_note, pattern: "does NOT pin numeric literals")
 }
 
 test fn stage0_justification_rows_are_in_roster() -> Bool {
   let roster = seed_growth_roster_all_declarations()
-  let stage0 = stage0_rust_observation_seed_growth_justification.hand_authored_declarations
+  let stage0 = gunbc.stage0_rust_host_observation.stage0_rust_observation_seed_growth_justification.hand_authored_declarations
   let scoped = observation_scoped_run_seed_growth_justification().hand_authored_declarations
   (stage0 |> all(r => roster |> any(x => declaration_ref_display_key(ref: r) == declaration_ref_display_key(ref: x))))
     && (scoped |> all(r => roster |> any(x => declaration_ref_display_key(ref: r) == declaration_ref_display_key(ref: x))))

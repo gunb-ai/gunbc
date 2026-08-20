@@ -84,7 +84,7 @@ type AuditionSet {
 
 data audition_okabe_ito: AuditionSet = AuditionSet {
   set_name: "okabe-ito",
-  set: okabe_ito,
+  set: gunbc.design.catalog.okabe_ito,
   fills: [
     AuditionFillRow { key: "invite", swatch_name: "bluish_green" },
     AuditionFillRow { key: "in-progress", swatch_name: "yellow" },

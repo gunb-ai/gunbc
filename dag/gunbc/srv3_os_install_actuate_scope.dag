@@ -92,7 +92,7 @@ fn srv3_os_install_actuate_credential_resolution_is_wired() -> Bool {
 }
 
 fn srv3_os_install_actuate_credential_debt_grounds_bmc_secret_ref() -> Bool {
-  bmc_srv3_admin_secret_ref.secret == (bmc_srv3_secret_name as std.types.NonEmptyStr)
+  gunbc.assimilate.bmc_wif_delegation_chain.bmc_srv3_admin_secret_ref.secret == (bmc_srv3_secret_name as std.types.NonEmptyStr)
 }
 
 

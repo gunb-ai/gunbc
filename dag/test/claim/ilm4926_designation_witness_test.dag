@@ -217,7 +217,7 @@ test fn w_no_carried_part_claims_to_be_the_socket_body() -> Bool {
 test fn w_red_an_official_attestation_would_register_as_one() -> Bool {
   let official = extdeps.cpu_attachment.ilm4926.PartNumberCandidate {
     part_number: "SOME-PART",
-    vendor: lotes,
+    vendor: extdeps.vendor.lotes.lotes,
     claimed_referent: ClaimedSocketBody,
     standing: PublisherOfRecord,
     authority: ampere_community_lga4926_thread_authority,

@@ -30,7 +30,7 @@ data posix_shell_subject_ref: std.decl_ref.DeclarationRef = std.decl_ref.Declara
 
 data shell_conformance_facts: List<ShellConformanceFact> = [
   ShellConformanceFact {
-    implementation: gnu_bash_subject_ref,
+    implementation: gunbc.language_target_registry.gnu_bash_subject_ref,
     specification: posix_shell_subject_ref,
     degree: ConformantSupersetWithStrictMode,
     citation: gnu_bash_posix_conformance_authority

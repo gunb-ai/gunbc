@@ -19,7 +19,7 @@ test fn witness_push_before_observed_from_json() -> Bool {
 
 test fn witness_push_before_zero_sha_from_json() -> Bool {
   match push_before_from_event_json(
-    text: concat("{\"before\":\"", concat(zero_sha, "\",\"after\":\"abc\"}"))
+    text: concat("{\"before\":\"", concat(extdeps.git.hooks.zero_sha, "\",\"after\":\"abc\"}"))
   ) {
     PushBeforeZeroSha => true
     PushBeforeObserved { sha: _ } => false

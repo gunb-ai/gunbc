@@ -207,7 +207,7 @@ test fn witness_adopt_model_hash_is_stable() -> Bool {
 }
 
 test fn witness_desired_intent_from_modeled_fleet_slot() -> Bool {
-  match gunbc_srv1_deployed_intent_v1 {
+  match gunbc.deployed_intent_v1.gunbc_srv1_deployed_intent_v1 {
     Present { value: desired } => (desired.desired_hostname_short as String) == "srv1"
     Absent => false
   }
@@ -216,7 +216,7 @@ test fn witness_desired_intent_from_modeled_fleet_slot() -> Bool {
 test fn witness_desired_hostname_comes_from_allocation_not_slot_spelling() -> Bool {
   match canonical_hostname_for_fleet_slot(fleet_slot: operator_host_srv1) {
     Present { value: allocated } =>
-      match gunbc_srv1_deployed_intent_v1 {
+      match gunbc.deployed_intent_v1.gunbc_srv1_deployed_intent_v1 {
         Present { value: desired } => desired.desired_hostname_short == allocated
         Absent => false
       }
@@ -272,7 +272,7 @@ test fn witness_drift_conflict_red_no_apply_arm() -> Bool {
 
 test fn witness_precondition_conflict_blocks_mutation() -> Bool {
   let base = gunbc_srv1_deployed_intent_v0_persisted
-  match gunbc_srv1_deployed_intent_v1 {
+  match gunbc.deployed_intent_v1.gunbc_srv1_deployed_intent_v1 {
     Present { value: desired } =>
       match host_identity_observation_from_stdout(stdout: "unexpected-host", probed_at: "2026-07-02") {
         Present { value: obs } =>
@@ -287,7 +287,7 @@ test fn witness_precondition_conflict_blocks_mutation() -> Bool {
 
 test fn witness_conflict_plan_has_no_effect_script_structural_no_shell() -> Bool {
   let base = gunbc_srv1_deployed_intent_v0_persisted
-  match gunbc_srv1_deployed_intent_v1 {
+  match gunbc.deployed_intent_v1.gunbc_srv1_deployed_intent_v1 {
     Present { value: desired } =>
       match host_identity_observation_from_stdout(stdout: "unexpected-host", probed_at: "2026-07-02") {
         Present { value: obs } => {
@@ -322,9 +322,9 @@ test fn witness_converge_from_base_conflict_is_none_red() -> Bool {
     transport: srv1_host_identity_ssh_transport(),
     access: host_identity_srv1_access,
     persisted_base: gunbc_srv1_deployed_intent_v0_persisted,
-    desired: gunbc_srv1_deployed_intent_v1,
+    desired: gunbc.deployed_intent_v1.gunbc_srv1_deployed_intent_v1,
   }
-  match gunbc_srv1_deployed_intent_v1 {
+  match gunbc.deployed_intent_v1.gunbc_srv1_deployed_intent_v1 {
     Present { value: desired } =>
       match host_identity_observation_from_stdout(stdout: "unexpected-host", probed_at: "2026-07-02") {
         Present { value: obs } =>

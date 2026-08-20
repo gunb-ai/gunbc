@@ -169,7 +169,7 @@ data srv4_bmc_fan_observed_aggregate_entry: std.types.NonEmptyStr = "FAN1"
 data srv4_bmc_fan_observed_tach_inputs: List<std.types.NonEmptyStr> = ["FAN1", "FAN2", "FAN3", "FAN4"]
 
 data srv4_bmc_fan_active_config_digest: extdeps.crypto.hash.Digest = sha256_digest(
-  hex: altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex,
+  hex: gunbc.bmc_fan_projection.altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex,
 )
 
 data srv4_bmc_fan_realization_id: std.types.NonEmptyStr = "altrad8ud-openbmc-3.22.00-swampd-asrr-temp-soc-jffs2-v1"

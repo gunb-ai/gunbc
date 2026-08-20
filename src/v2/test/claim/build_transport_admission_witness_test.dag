@@ -7,7 +7,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 data build_transport_admission_witness_note: String = "Discriminating witnesses for the P-B build-transport admission decision (v2.compiler.build_transport_admission). A well-formed build transport (workspace-relative emitted files, a declared host toolchain, a workspace-produced run program) is Permit; a transport whose workspace file escapes its subtree (a `..` path or an absolute path) is a located std.access.Deny, never widened (DESIGN 5). The refusal arm is the RED control: if the escape projection or admit_effect check were dropped, admits_escaping_write would flip. The projection helper is exercised directly so the containment boundary is pinned independent of the fold. Containment is SEGMENT-decomposed (review 39707): a `..` PATH SEGMENT escapes, but a bare `..` substring inside a filename (foo..bar) does not -- pinned by build_transport_admits_dotdot_substring. Build/run reads cover the invocation ARGS too (review 39684): a WorkspacePath/ProducedArtifact arg that escapes is refused -- pinned by build_transport_refuses_escaping_arg."
 
 test fn emit_host_access_decision_seed_transport_is_declared_scaffold() -> Bool {
-  match emit_host_access_decision_seed_transport_scaffold {
+  match v2.compiler.emit_host.emit_host_access_decision_seed_transport_scaffold {
     Scaffold { dissolves_to: _, bind: bind } =>
       bind.module_path == "v1_compiler.v1_interpreter"
         && bind.decl_name == "require_permitted_transport"

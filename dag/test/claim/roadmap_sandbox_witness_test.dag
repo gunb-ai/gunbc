@@ -23,13 +23,13 @@ test fn witness_auditioner_blocks_emitted_with_derived_inks() -> Bool {
         Absent => false
       }))
     && map(audition_sets, a => a.set_name) == swatch_audition_values
-    && swatch_default_set_value == okabe_ito.name
+    && swatch_default_set_value == gunbc.design.catalog.okabe_ito.name
 }
 
 test fn witness_auditioner_missing_swatch_is_loud() -> Bool {
   let bogus = gunbc.roadmap_style.AuditionSet {
     set_name: "bogus",
-    set: okabe_ito,
+    set: gunbc.design.catalog.okabe_ito,
     fills: [ gunbc.roadmap_style.AuditionFillRow { key: "invite", swatch_name: "no-such-swatch" } ],
   }
   !audition_set_resolved(a: bogus)
@@ -61,13 +61,13 @@ test fn witness_gallery_drop_is_located_red() -> Bool {
 
 test fn witness_echo_answers_every_wire_arm() -> Bool {
   all(belt_dispatch_all_status_labels(), l => {
-    let r = roadmap_serve_respond(method_label: "POST", path: join(["/sandbox/echo?status=", l], ""), body: "", release_revision: deploy_witness_release_revision)
+    let r = roadmap_serve_respond(method_label: "POST", path: join(["/sandbox/echo?status=", l], ""), body: "", release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision)
     r.status == 200 && string_contains(s: r.body, pattern: l) && string_contains(s: r.body, pattern: "status")
   })
 }
 
 test fn witness_echo_unknown_label_refuses() -> Bool {
-  let r = roadmap_serve_respond(method_label: "POST", path: "/sandbox/echo?status=bogus", body: "", release_revision: deploy_witness_release_revision)
+  let r = roadmap_serve_respond(method_label: "POST", path: "/sandbox/echo?status=bogus", body: "", release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision)
   r.status == 400 && string_contains(s: r.body, pattern: "unknown status")
 }
 

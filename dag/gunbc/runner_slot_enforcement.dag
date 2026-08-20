@@ -93,7 +93,7 @@ fn gunbc_runner_slot_enforcement_committed(expected_cap: std.measure.ByteSize) -
   runner_slot_enforcement_evidence(
     slot_unit: gunbc_runner_slot_unit_placeholder,
     expected_cap: expected_cap,
-    read: gunbc_fleet_runner_slice_cap_show_effective_read
+    read: gunbc.fleet_show_effective_read.gunbc_fleet_runner_slice_cap_show_effective_read
   )
 }
 

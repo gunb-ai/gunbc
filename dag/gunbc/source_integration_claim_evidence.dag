@@ -31,7 +31,7 @@ fn source_binding_captured_claim(
     subject: fact.binding,
     target: fact.source_read,
     proposition: SourceBindingCaptured,
-    scope: dag_syntax_spec,
+    scope: extdeps.languages.dag.syntax.dag_syntax_spec,
     bound: fact.bound,
   }
 }
@@ -44,7 +44,7 @@ fn source_binding_admissible_claim(
     subject: fact.binding,
     target: fact.source_read,
     proposition: SourceBindingAdmissible,
-    scope: dag_syntax_spec,
+    scope: extdeps.languages.dag.syntax.dag_syntax_spec,
     bound: fact.bound,
   }
 }
@@ -63,7 +63,7 @@ fn source_binding_capture_inference(
     },
     direction: EvidenceSupports,
     inference_rule: "decoded-binding-supports-capture-only",
-    authority: dag_syntax_spec,
+    authority: extdeps.languages.dag.syntax.dag_syntax_spec,
     provenance: std.claim_evidence.EvidenceProvenance {
       entity: "decoded-source-binding",
       activity: "decode-authored-proposal",

@@ -11,8 +11,8 @@ fn language_behavior_generator_uses_conj_dag_input(g: v2.lens.testgen.Generator<
         mock == lbe_io_mock_conj_dag_surface() &&
         mock.snapshot == lbe_frozen_snapshot_conj_dag_surface() &&
         mock.snapshot.language == ^dag_language_model_surface_id &&
-        mock.snapshot.input_node == stub_empty_conj &&
-        mock.snapshot.expected_value == stub_empty_conj
+        mock.snapshot.input_node == v2.test.manual.connective_anchors.stub_empty_conj &&
+        mock.snapshot.expected_value == v2.test.manual.connective_anchors.stub_empty_conj
     _ => false
   }
 }

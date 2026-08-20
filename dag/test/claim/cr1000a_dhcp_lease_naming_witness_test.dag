@@ -29,7 +29,7 @@ data sample_static_srv3_reservation: extdeps.router.verizon_cr1000a.Cr1000aDhcpL
 
 test fn cr1000a_catalog_grounds_verizon_cr1000a() -> Bool {
   cr1000a_catalog.model_number == "CR1000A"
-    && cr1000a_catalog.manufacturer == verizon
+    && cr1000a_catalog.manufacturer == extdeps.vendor.verizon.verizon
 }
 
 test fn dhcp_lease_observation_discriminates_option_12_vs_reservation_label() -> Bool {

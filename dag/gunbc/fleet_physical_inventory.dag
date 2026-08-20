@@ -184,7 +184,7 @@ data installed_cooling_realizations: List<product.cooling_qualification.Installe
   },
 ]
 
-data rack_01_catalog_units: std.measure.RackUnit = navepoint_18u_open_frame_catalog.rack_units
+data rack_01_catalog_units: std.measure.RackUnit = extdeps.rack.navepoint.navepoint_18u_open_frame_catalog.rack_units
 
 // measure_add<Q, S> admits only operands of the SAME quantity and scale, so this sum is
 // dimensionally checked by construction — a Millimeter or a bare count cannot enter it.
@@ -194,8 +194,8 @@ fn fleet_nominal_rackmount_arithmetic_holds() -> Bool {
       a: measure_add(
         a: measure_add(
           a: measure_add(
-            a: rosewill_rsv_r4000u_catalog.rack_units,
-            b: rosewill_rsv_r4000u_catalog.rack_units,
+            a: extdeps.chassis.rosewill.rosewill_rsv_r4000u_catalog.rack_units,
+            b: extdeps.chassis.rosewill.rosewill_rsv_r4000u_catalog.rack_units,
           ),
           b: rosewill_rsv_z2600u_catalog.rack_units,
         ),
@@ -203,9 +203,9 @@ fn fleet_nominal_rackmount_arithmetic_holds() -> Bool {
       ),
       b: operator_switch_shelf_units,
     ),
-    b: eaton_tripp_lite_rs_1215_family_catalog.rack_units,
+    b: extdeps.power.eaton_tripp_lite.eaton_tripp_lite_rs_1215_family_catalog.rack_units,
   )
-  declared == nominal_rackmount_units_declared && rack_01_catalog_units == navepoint_18u_open_frame_catalog.rack_units
+  declared == nominal_rackmount_units_declared && rack_01_catalog_units == extdeps.rack.navepoint.navepoint_18u_open_frame_catalog.rack_units
 }
 
 // ---------------------------------------------------------------------------

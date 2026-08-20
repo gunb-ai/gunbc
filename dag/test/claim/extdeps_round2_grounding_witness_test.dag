@@ -123,10 +123,10 @@ test fn w_gpu_amd_label_distinct_from_nvidia() -> Bool {
 }
 
 test fn w_intel_capability_label_refuses_fail_closed() -> Bool {
-  let cap = extdeps.gpu.types.GpuComputeCapability { vendor: intel, major: 1, minor: 0 }
+  let cap = extdeps.gpu.types.GpuComputeCapability { vendor: extdeps.vendor.intel.intel, major: 1, minor: 0 }
   match gpu_compute_capability_sm_label(cap) {
     GpuCapabilityLabelOk { label: _ } => false
-    GpuCapabilityLabelRejected { reason: r } => r.vendor == intel
+    GpuCapabilityLabelRejected { reason: r } => r.vendor == extdeps.vendor.intel.intel
   }
 }
 

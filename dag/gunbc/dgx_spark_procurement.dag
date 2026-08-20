@@ -125,7 +125,7 @@ fn dgx_spark_reserved_identities() -> List<product.placement_supply.HostIdentity
 }
 
 data dgx_spark_procurement_intent: HardwareProcurementIntent = HardwareProcurementIntent {
-  vendor_catalog: nvidia_dgx_spark_4tb_catalog,
+  vendor_catalog: extdeps.systems.nvidia.nvidia_dgx_spark_4tb_catalog,
   unit_count: 2,
   reserved_identities: dgx_spark_reserved_identities(),
   ordered_note: "2x NVIDIA DGX Spark ordered. Both units arrived and are live on the operator LAN, each holding a Static, Active CR1000A reservation (spark-a3ee 192.168.1.222 and spark-3bd5 192.168.1.223, MACs ARP-confirmed). Arrival is derived by dgx_spark_arrival_standing from those observed rows. srv5/srv6 slot assignment is recorded by dgx_spark_router_binding_operator_allocation, not inferred from router labels.",

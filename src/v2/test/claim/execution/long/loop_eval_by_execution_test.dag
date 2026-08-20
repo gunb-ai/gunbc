@@ -283,14 +283,14 @@ fn loop_run_passes(run: v2.std.diagnostic.Outcome<TestClaimRun<v2.std.node.Node,
 }
 
 test fn loop_source_pipeline_admits_holds() -> Bool {
-  match table_fixture_loop_arrow_with_body() {
+  match v2.test.complexity_gate.table_fixture_loop_subject_producer.table_fixture_loop_arrow_with_body() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
 test fn loop_source_driven_executes_holds() -> Bool {
-  match table_fixture_loop_arrow_with_body() {
+  match v2.test.complexity_gate.table_fixture_loop_subject_producer.table_fixture_loop_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       loop_run_passes(
         run: loop_run(
@@ -316,7 +316,7 @@ test fn loop_source_driven_wrong_value_red_holds() -> Bool {
 }
 
 test fn loop_direct_runtime_holds() -> Bool {
-  match table_fixture_loop_arrow_with_body() {
+  match v2.test.complexity_gate.table_fixture_loop_subject_producer.table_fixture_loop_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } => {
       let input = loop_pick_call(callee: arrow)
       match loop_inferred_run_tree(
@@ -341,7 +341,7 @@ test fn loop_direct_runtime_holds() -> Bool {
 }
 
 test fn loop_value_perturbation_red_holds() -> Bool {
-  match table_fixture_loop_arrow_with_body() {
+  match v2.test.complexity_gate.table_fixture_loop_subject_producer.table_fixture_loop_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       loop_run_passes(
         run: loop_run(
@@ -354,7 +354,7 @@ test fn loop_value_perturbation_red_holds() -> Bool {
 }
 
 test fn loop_fixture_producer_holds() -> Bool {
-  match table_fixture_loop_arrow_with_body() {
+  match v2.test.complexity_gate.table_fixture_loop_subject_producer.table_fixture_loop_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       loop_run_passes(
         run: loop_run(

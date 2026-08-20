@@ -73,7 +73,7 @@ test fn w_a_buffered_soldered_topology_is_unestablished_not_withdrawn() -> Bool 
 // it survives a JEDEC revision raising the ceiling, and reds if this module ever admits a density
 // the generation cannot physically carry.
 test fn w_admitted_densities_respect_the_jedec_monolithic_ceiling() -> Bool {
-  let ceiling = byte_size_count(b: ddr4_generation_catalog.max_monolithic_die_density)
+  let ceiling = byte_size_count(b: extdeps.memory.jedec.ddr4_generation_catalog.max_monolithic_die_density)
   fold(altra_admitted_device_densities, init: true, f: fn(acc, d) {
     acc && (byte_size_count(b: d) <= ceiling)
   })

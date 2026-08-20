@@ -20,7 +20,7 @@ type Cr1000aRouterCatalogRow {
 
 data cr1000a_catalog: Cr1000aRouterCatalogRow = Cr1000aRouterCatalogRow {
   model_number: "CR1000A",
-  manufacturer: verizon,
+  manufacturer: extdeps.vendor.verizon.verizon,
 }
 
 type Cr1000aRouterStatusSnapshot {

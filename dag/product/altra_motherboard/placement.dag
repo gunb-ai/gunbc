@@ -461,7 +461,7 @@ data host_phy_envelope: ComponentEnvelopeStanding = envelope_from_package_body(
 )
 
 data power_stage_envelope: ComponentEnvelopeStanding = envelope_from_package_body(
-  b: tps53688_rsb0040a_body,
+  b: extdeps.power.ti_tps53688.tps53688_rsb0040a_body,
   source: decl_ref(module_path: "extdeps.power.ti_tps53688", decl_name: "tps53688_rsb0040a_body"),
 )
 

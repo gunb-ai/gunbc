@@ -82,7 +82,7 @@ data srv3_os_install_attempt_intent: OsInstallAttemptIntent = OsInstallAttemptIn
   target_host: operator_host_srv3,
   actuator_host: operator_host_srv1,
   bmc_endpoint: asrock_srv3_live_bmc_host,
-  iso_path: srv3_actuator_virtual_media_iso_install_path,
+  iso_path: gunbc.srv3_os_install_actuate_scope.srv3_actuator_virtual_media_iso_install_path,
   iso_content_hash: srv3_seeded_install_media_content_hash,
   expected_hostname: "srv3" as std.types.NonEmptyStr,
   boot_source: BootTargetCd,

@@ -4,10 +4,10 @@ module v2.test.formats.spice_rc_ngspice_oracle
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn spice_rc_tran_emit_ngspice_nonempty_holds() -> Bool {
-  let text = spice_emit_ngspice(netlist: spice_rc_tran_deck)
+  let text = spice_emit_ngspice(netlist: v2.test.fixture.spice_rc_tran_deck.spice_rc_tran_deck)
   (text != "") && (text != "* rc tran witness")
 }
 
 test fn spice_rc_ngspice_op_holds() -> Bool {
-  spice_emit_ngspice(netlist: spice_rc_tran_deck) == spice_rc_tran_deck_ngspice_golden
+  spice_emit_ngspice(netlist: v2.test.fixture.spice_rc_tran_deck.spice_rc_tran_deck) == spice_rc_tran_deck_ngspice_golden
 }

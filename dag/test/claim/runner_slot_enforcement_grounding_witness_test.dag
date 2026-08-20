@@ -81,7 +81,7 @@ test fn witness_committed_read_is_absent() -> Bool {
   !is_enforced(e: runner_slot_enforcement_evidence(
     slot_unit: fixture_slot(),
     expected_cap: fixture_expected_cap(),
-    read: gunbc_fleet_runner_slice_cap_show_effective_read
+    read: gunbc.fleet_show_effective_read.gunbc_fleet_runner_slice_cap_show_effective_read
   ))
 }
 

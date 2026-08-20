@@ -14,7 +14,7 @@ fn motion_page_body() -> String {
     handler: InstrumentMotionPageHandler,
     params: [],
     request: fixture_request(method: GET, path: instrument_motion_page_path),
-    release_revision: deploy_witness_release_revision,
+    release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision,
   ).body
 }
 
@@ -23,7 +23,7 @@ fn motion_asset_body() -> String {
     handler: InstrumentMotionAssetHandler,
     params: [],
     request: fixture_request(method: GET, path: instrument_motion_asset_path),
-    release_revision: deploy_witness_release_revision,
+    release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision,
   ).body
 }
 
@@ -32,7 +32,7 @@ test fn witness_motion_page_renders_through_its_route() -> Bool {
     handler: InstrumentMotionPageHandler,
     params: [],
     request: fixture_request(method: GET, path: instrument_motion_page_path),
-    release_revision: deploy_witness_release_revision,
+    release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision,
   )
   let html = r.body
   r.status == 200

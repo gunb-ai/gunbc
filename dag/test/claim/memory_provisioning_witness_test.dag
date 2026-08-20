@@ -396,7 +396,7 @@ test fn an_arm_sku_refuses_on_an_x64_processor() -> Bool {
   match derive_profile_capacity(
     geometry: asrock_altrad8ud_1l2t_geometry,
     policy: FullChannelRequiredForSellableRunner,
-    cpu: ryzen_9_7950x3d_catalog,
+    cpu: extdeps.cpu.amd.ryzen_9_7950x3d_catalog,
     profile: arm_value_profile,
     modules: [rdimm_32g()],
   ) {

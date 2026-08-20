@@ -72,7 +72,7 @@ func main() -> std.process.ProcessExit {
   let fetched = git.Core.FetchNoTags(
     remote: fetch_parts.remote,
     ref: fetch_parts.ref_name,
-    stall_deadline_seconds: merge_admission_fetch_stall_deadline_seconds
+    stall_deadline_seconds: tools.merge_admission_walk.merge_admission_fetch_stall_deadline_seconds
   )
   if !fetched.success {
     return exit_failure(reason: "merge_admission_current_context: current merge target fetch refused")

@@ -1,7 +1,7 @@
 module v2.test.manual.diagnostic_assert_eval
 
 fn diag_assert_node() -> Node {
-  stub_empty_conj
+  v2.test.manual.connective_anchors.stub_empty_conj
 }
 
 fn diag_assert_d() -> v2.std.diagnostic.Diagnostic {

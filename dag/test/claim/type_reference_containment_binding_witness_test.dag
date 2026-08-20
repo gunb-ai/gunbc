@@ -269,7 +269,7 @@ test fn control_api_non_type_occurrence_refuses_wrong_category_holds() -> Bool {
 }
 
 test fn authority_note_names_single_kernel_fold() -> Bool {
-  string_contains(s: type_reference_containment_binding_authority_note, pattern: "occurrence_binding_from_candidates")
-    && string_contains(s: type_reference_containment_binding_authority_note, pattern: "lookup_type_by_name are NOT binding")
+  string_contains(s: gunbc.type_reference_containment_binding.type_reference_containment_binding_authority_note, pattern: "occurrence_binding_from_candidates")
+    && string_contains(s: gunbc.type_reference_containment_binding.type_reference_containment_binding_authority_note, pattern: "lookup_type_by_name are NOT binding")
     && string_contains(s: type_reference_containment_binding_slice1_scope_note, pattern: "OUT OF SLICE")
 }

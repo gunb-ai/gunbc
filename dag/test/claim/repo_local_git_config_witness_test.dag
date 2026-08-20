@@ -10,7 +10,7 @@ test fn witness_desired_binding_count_holds() -> Bool {
 }
 
 test fn witness_converge_entry_is_declared() -> Bool {
-  repo_local_git_config_converge_function == "converge"
+  gunbc.repo_local_git_config.repo_local_git_config_converge_function == "converge"
     && repo_local_git_config_converge_entry == "dag/gunbc/repo_local_git_config.dag"
 }
 

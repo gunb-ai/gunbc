@@ -25,16 +25,16 @@ fn dag_refuses(rel: String) -> Bool {
 }
 
 test fn cli_run_repo_grant_hand_rust_scaffold_is_seed_retained() -> Bool {
-  match cli_run_repo_grant_hand_rust_scaffold {
+  match gunbc.cli_run_repo_grant_scaffold.cli_run_repo_grant_hand_rust_scaffold {
     Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
     _ => false
   }
 }
 
 test fn cli_run_repo_grant_dissolve_trigger_names_chunk_f() -> Bool {
-  string_contains(s: dissolution_description(condition: cli_run_repo_grant_dissolve_trigger), pattern: "Chunk F")
-    && string_contains(s: dissolution_description(condition: cli_run_repo_grant_dissolve_trigger), pattern: "cli-run-reconcile-defork")
-    && string_contains(s: dissolution_description(condition: cli_run_repo_grant_dissolve_trigger), pattern: "5-dissolve-patches")
+  string_contains(s: dissolution_description(condition: gunbc.cli_run_repo_grant_scaffold.cli_run_repo_grant_dissolve_trigger), pattern: "Chunk F")
+    && string_contains(s: dissolution_description(condition: gunbc.cli_run_repo_grant_scaffold.cli_run_repo_grant_dissolve_trigger), pattern: "cli-run-reconcile-defork")
+    && string_contains(s: dissolution_description(condition: gunbc.cli_run_repo_grant_scaffold.cli_run_repo_grant_dissolve_trigger), pattern: "5-dissolve-patches")
 }
 
 test fn cli_run_repo_grant_equivalence_dag_contained_admits_holds() -> Bool {
@@ -56,7 +56,7 @@ test fn cli_run_repo_grant_equivalence_dag_absolute_outside_refuses_holds() -> B
 
 test fn cli_run_repo_grant_equivalence_rust_tests_named() -> Bool {
   string_contains(
-    s: cli_run_repo_grant_equivalence_test_contained,
+    s: gunbc.cli_run_repo_grant_scaffold.cli_run_repo_grant_equivalence_test_contained,
     pattern: "contained_admits"
   ) &&
     string_contains(

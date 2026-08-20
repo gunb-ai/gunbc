@@ -6,18 +6,18 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 // SPARK-0 green-by-execution proof. The RED control (w_red_admission_without_evidence_refuses) is the deliverable per the brief: constructing a DgxSparkDeployment from vendor catalog data plus procurement intent alone, with no FleetLifecycleEnvelope, must REFUSE -- physical binding evidence (a real device_identity.py observation) is absent, and catalog+intent can never substitute for it. w_admission_with_real_evidence_succeeds is the positive control proving the same function admits once that evidence is supplied, so the RED control is proven to be a real discriminator and not a permanently-broken function. w_red_admission_with_wrong_tool_evidence_refuses is a second RED control (review 49032): presence of ANY FleetLifecycleEnvelope is not sufficient -- an envelope from a different tool (spark_updatectl.py, an UpdateControl observation) must also REFUSE, proving the wall discriminates on evidence identity, not mere presence. w_admission_when_envelope_host_disagrees_records_diagnostic_evidence is the SPARK-ALLOC-LAND-0 control: a disagreeing vendor host string must not block admission; it is recorded as diagnostic evidence on the admitted deployment instead. dgx_spark_catalog_row (extdeps.systems.nvidia) has no witness calling it by name but is exercised indirectly: it constructs nvidia_dgx_spark_1tb_catalog and nvidia_dgx_spark_4tb_catalog as data, and multiple witnesses above dereference both, so its body executes on every run of this file.
 test fn w_catalog_row_nests_gpu_from_grounded_authority() -> Bool {
-  nvidia_dgx_spark_1tb_catalog.gpu.model == nvidia_gb10_gpu_catalog.model
-    && nvidia_dgx_spark_1tb_catalog.gpu.model == "GB10 Blackwell GPU"
+  extdeps.systems.nvidia.nvidia_dgx_spark_1tb_catalog.gpu.model == nvidia_gb10_gpu_catalog.model
+    && extdeps.systems.nvidia.nvidia_dgx_spark_1tb_catalog.gpu.model == "GB10 Blackwell GPU"
 }
 
 test fn w_two_skus_differ_only_in_storage_capacity() -> Bool {
-  nvidia_dgx_spark_1tb_catalog.model == nvidia_dgx_spark_4tb_catalog.model
-    && nvidia_dgx_spark_1tb_catalog.soc_model == nvidia_dgx_spark_4tb_catalog.soc_model
-    && nvidia_dgx_spark_1tb_catalog.storage_capacity != nvidia_dgx_spark_4tb_catalog.storage_capacity
+  extdeps.systems.nvidia.nvidia_dgx_spark_1tb_catalog.model == extdeps.systems.nvidia.nvidia_dgx_spark_4tb_catalog.model
+    && extdeps.systems.nvidia.nvidia_dgx_spark_1tb_catalog.soc_model == extdeps.systems.nvidia.nvidia_dgx_spark_4tb_catalog.soc_model
+    && extdeps.systems.nvidia.nvidia_dgx_spark_1tb_catalog.storage_capacity != extdeps.systems.nvidia.nvidia_dgx_spark_4tb_catalog.storage_capacity
 }
 
 test fn w_heterogeneous_cpu_core_count_derives_to_twenty() -> Bool {
-  integrated_compute_system_cpu_core_count(row: nvidia_dgx_spark_4tb_catalog) == 20
+  integrated_compute_system_cpu_core_count(row: extdeps.systems.nvidia.nvidia_dgx_spark_4tb_catalog) == 20
 }
 
 test fn w_fleet_lifecycle_operation_class_distinguishes_collector_and_controller() -> Bool {
@@ -159,7 +159,7 @@ fn srv5_good_observation() -> gunbc.fleet_lifecycle_observation.FleetLifecycleOb
 test fn w_admission_with_real_evidence_succeeds() -> Bool {
   match admit_dgx_spark_deployment(
     identity: operator_host_srv5,
-    catalog: nvidia_dgx_spark_4tb_catalog,
+    catalog: extdeps.systems.nvidia.nvidia_dgx_spark_4tb_catalog,
     selection: gunbc.fleet_lifecycle_observation.ObservationUnique { observation: srv5_good_observation() },
     router_binding: synthetic_bound_binding_for(identity_host: "srv5", last_octet: 222),
   ) {
@@ -172,7 +172,7 @@ test fn w_admission_with_real_evidence_succeeds() -> Bool {
 test fn w_red_admission_without_evidence_refuses() -> Bool {
   match admit_dgx_spark_deployment(
     identity: operator_host_srv5,
-    catalog: nvidia_dgx_spark_4tb_catalog,
+    catalog: extdeps.systems.nvidia.nvidia_dgx_spark_4tb_catalog,
     selection: ObservationMissing { subject: operator_host_srv5 },
     router_binding: synthetic_bound_binding_for(identity_host: "srv5", last_octet: 222),
   ) {
@@ -206,7 +206,7 @@ test fn w_red_admission_with_wrong_tool_evidence_refuses() -> Bool {
   }
   match admit_dgx_spark_deployment(
     identity: operator_host_srv5,
-    catalog: nvidia_dgx_spark_4tb_catalog,
+    catalog: extdeps.systems.nvidia.nvidia_dgx_spark_4tb_catalog,
     selection: gunbc.fleet_lifecycle_observation.ObservationUnique { observation: o },
     router_binding: synthetic_bound_binding_for(identity_host: "srv5", last_octet: 222),
   ) {
@@ -220,7 +220,7 @@ test fn w_red_admission_with_wrong_tool_evidence_refuses() -> Bool {
 test fn w_red_admission_with_mismatched_dispatch_subject_refuses() -> Bool {
   match admit_dgx_spark_deployment(
     identity: operator_host_srv6,
-    catalog: nvidia_dgx_spark_4tb_catalog,
+    catalog: extdeps.systems.nvidia.nvidia_dgx_spark_4tb_catalog,
     selection: gunbc.fleet_lifecycle_observation.ObservationUnique { observation: srv5_good_observation() },
     router_binding: synthetic_bound_binding_for(identity_host: "srv6", last_octet: 223),
   ) {
@@ -239,7 +239,7 @@ test fn w_admission_when_envelope_host_disagrees_records_diagnostic_evidence() -
   let o = synthetic_observation(subject_host: "srv6", envelope_host: "srv5", last_octet: 223, attempt_label: "attempt-disagreeing-host")
   match admit_dgx_spark_deployment(
     identity: operator_host_srv6,
-    catalog: nvidia_dgx_spark_4tb_catalog,
+    catalog: extdeps.systems.nvidia.nvidia_dgx_spark_4tb_catalog,
     selection: gunbc.fleet_lifecycle_observation.ObservationUnique { observation: o },
     router_binding: synthetic_bound_binding_for(identity_host: "srv6", last_octet: 223),
   ) {
@@ -280,7 +280,7 @@ test fn w_red_admission_with_failed_observation_refuses() -> Bool {
   }
   match admit_dgx_spark_deployment(
     identity: operator_host_srv5,
-    catalog: nvidia_dgx_spark_4tb_catalog,
+    catalog: extdeps.systems.nvidia.nvidia_dgx_spark_4tb_catalog,
     selection: gunbc.fleet_lifecycle_observation.ObservationUnique { observation: o },
     router_binding: synthetic_bound_binding_for(identity_host: "srv5", last_octet: 222),
   ) {
@@ -297,7 +297,7 @@ test fn w_red_admission_of_unreserved_identity_refuses() -> Bool {
   let o = synthetic_observation(subject_host: "srv3", envelope_host: "srv3", last_octet: 221, attempt_label: "attempt-srv3")
   match admit_dgx_spark_deployment(
     identity: operator_host_srv3,
-    catalog: nvidia_dgx_spark_4tb_catalog,
+    catalog: extdeps.systems.nvidia.nvidia_dgx_spark_4tb_catalog,
     selection: gunbc.fleet_lifecycle_observation.ObservationUnique { observation: o },
     router_binding: synthetic_bound_binding_for(identity_host: "srv3", last_octet: 221),
   ) {
@@ -313,7 +313,7 @@ test fn w_red_admission_of_unreserved_identity_refuses() -> Bool {
 test fn w_red_admission_with_pending_router_binding_refuses() -> Bool {
   match admit_dgx_spark_deployment(
     identity: operator_host_srv5,
-    catalog: nvidia_dgx_spark_4tb_catalog,
+    catalog: extdeps.systems.nvidia.nvidia_dgx_spark_4tb_catalog,
     selection: gunbc.fleet_lifecycle_observation.ObservationUnique { observation: srv5_good_observation() },
     router_binding: gunbc.dgx_spark_procurement.SlotUnassigned { identity: operator_host_srv5 },
   ) {
@@ -329,7 +329,7 @@ test fn w_red_admission_with_mismatched_router_binding_refuses() -> Bool {
   let o = synthetic_observation(subject_host: "srv6", envelope_host: "srv6", last_octet: 223, attempt_label: "attempt-srv6")
   match admit_dgx_spark_deployment(
     identity: operator_host_srv6,
-    catalog: nvidia_dgx_spark_4tb_catalog,
+    catalog: extdeps.systems.nvidia.nvidia_dgx_spark_4tb_catalog,
     selection: gunbc.fleet_lifecycle_observation.ObservationUnique { observation: o },
     router_binding: synthetic_bound_binding_for(identity_host: "srv5", last_octet: 222),
   ) {
@@ -346,7 +346,7 @@ test fn w_red_admission_from_unreserved_endpoint_refuses() -> Bool {
   let o = synthetic_observation(subject_host: "srv5", envelope_host: "srv5", last_octet: 231, attempt_label: "attempt-wrong-endpoint")
   match admit_dgx_spark_deployment(
     identity: operator_host_srv5,
-    catalog: nvidia_dgx_spark_4tb_catalog,
+    catalog: extdeps.systems.nvidia.nvidia_dgx_spark_4tb_catalog,
     selection: gunbc.fleet_lifecycle_observation.ObservationUnique { observation: o },
     router_binding: synthetic_bound_binding_for(identity_host: "srv5", last_octet: 222),
   ) {
@@ -399,7 +399,7 @@ test fn w_red_two_attempts_for_one_subject_select_ambiguous() -> Bool {
 test fn w_red_admission_on_ambiguous_evidence_refuses() -> Bool {
   match admit_dgx_spark_deployment(
     identity: operator_host_srv5,
-    catalog: nvidia_dgx_spark_4tb_catalog,
+    catalog: extdeps.systems.nvidia.nvidia_dgx_spark_4tb_catalog,
     selection: select_observation_for_subject(
       subject: operator_host_srv5,
       observations: two_conflicting_srv5_observations(),
@@ -532,7 +532,7 @@ test fn w_red_admission_when_execution_receipt_disagrees_with_reported_rc_refuse
   }
   match admit_dgx_spark_deployment(
     identity: operator_host_srv5,
-    catalog: nvidia_dgx_spark_4tb_catalog,
+    catalog: extdeps.systems.nvidia.nvidia_dgx_spark_4tb_catalog,
     selection: gunbc.fleet_lifecycle_observation.ObservationUnique { observation: o },
     router_binding: synthetic_bound_binding_for(identity_host: "srv5", last_octet: 222),
   ) {
@@ -570,7 +570,7 @@ fn deployment_with_hardware(
 ) -> gunbc.dgx_spark_procurement.DgxSparkAdmissionOutcome {
   admit_dgx_spark_deployment(
     identity: subject_host as product.placement_supply.HostIdentity,
-    catalog: nvidia_dgx_spark_4tb_catalog,
+    catalog: extdeps.systems.nvidia.nvidia_dgx_spark_4tb_catalog,
     selection: gunbc.fleet_lifecycle_observation.ObservationUnique {
       observation: observation_with_hardware(
         subject_host: subject_host,
@@ -666,7 +666,7 @@ fn unobserved_hw_deployment(subject_host: std.types.NonEmptyStr, last_octet: Int
   )
   gunbc.dgx_spark_procurement.DgxSparkDeployment {
     identity: subject_host as product.placement_supply.HostIdentity,
-    catalog: nvidia_dgx_spark_4tb_catalog,
+    catalog: extdeps.systems.nvidia.nvidia_dgx_spark_4tb_catalog,
     observation: observation,
     router_reservation: extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseRow {
       mac_address: "00:00:00:00:00:00" as extdeps.dhcp.v4.MacAddress,

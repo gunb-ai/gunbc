@@ -8,11 +8,11 @@ fn host_b() -> product.placement_supply.PhysicalAssetIdentity { ("srv-chassis-2"
 fn absent_host() -> product.placement_supply.PhysicalAssetIdentity { ("srv-chassis-99" as product.placement_supply.PhysicalAssetIdentity) }
 
 fn mount(asset: product.placement_supply.PhysicalAssetIdentity, lowest: Int) -> product.rack_mount.ChassisMount {
-  product.rack_mount.ChassisMount { asset: asset, chassis: rosewill_rsv_r4000u_catalog, lowest_unit: lowest }
+  product.rack_mount.ChassisMount { asset: asset, chassis: extdeps.chassis.rosewill.rosewill_rsv_r4000u_catalog, lowest_unit: lowest }
 }
 
 fn rack_of(mounts: List<product.rack_mount.ChassisMount>) -> product.rack_mount.RackInstance? {
-  match rack_instance(identity: ("rack-a" as product.placement_supply.RackIdentity), catalog: navepoint_18u_open_frame_catalog, mounts: mounts) {
+  match rack_instance(identity: ("rack-a" as product.placement_supply.RackIdentity), catalog: extdeps.rack.navepoint.navepoint_18u_open_frame_catalog, mounts: mounts) {
     MountRefused { cause: _ } => none
     MountReady { value: r } => Present { value: r }
   }
@@ -21,7 +21,7 @@ fn rack_of(mounts: List<product.rack_mount.ChassisMount>) -> product.rack_mount.
 fn two_host_rack() -> product.rack_mount.RackInstance? { rack_of(mounts: [mount(asset: host_a(), lowest: 1), mount(asset: host_b(), lowest: 5)]) }
 
 fn feed() -> product.rack_power.PowerFeed {
-  power_feed(identity: ("pdu-01" as product.placement_supply.PhysicalAssetIdentity), catalog: eaton_tripp_lite_rs_1215_family_catalog)
+  power_feed(identity: ("pdu-01" as product.placement_supply.PhysicalAssetIdentity), catalog: extdeps.power.eaton_tripp_lite.eaton_tripp_lite_rs_1215_family_catalog)
 }
 
 fn pf(percent: Int) -> product.rack_power.DeclaredPowerFactor? {

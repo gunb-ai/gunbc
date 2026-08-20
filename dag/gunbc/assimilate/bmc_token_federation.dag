@@ -80,7 +80,7 @@ fn bmc_wif_principal_set() -> String { github_wif_principal_set() }
 fn bmc_wif_attribute_condition() -> String { github_wif_attribute_condition() }
 
 data bmc_assimilator_allowed_roles: List<String> = [
-  role_secretmanager_secret_accessor,
+  extdeps.cloud.gcp.iam.role_secretmanager_secret_accessor,
   role_secretmanager_secret_version_adder
 ]
 
@@ -105,7 +105,7 @@ fn bmc_secret_binding(role: String) -> SecretAccessBinding {
 }
 
 data bmc_assimilator_bindings: List<SecretAccessBinding> = [
-  bmc_secret_binding(role: role_secretmanager_secret_accessor),
+  bmc_secret_binding(role: extdeps.cloud.gcp.iam.role_secretmanager_secret_accessor),
   bmc_secret_binding(role: role_secretmanager_secret_version_adder)
 ]
 

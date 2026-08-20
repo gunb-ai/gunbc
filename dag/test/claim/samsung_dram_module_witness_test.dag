@@ -49,11 +49,11 @@ test fn required_die_density_derives_four_gigabit() -> Bool {
 }
 
 test fn four_rank_by_four_is_realizable_on_ddr4() -> Bool {
-  dram_module_is_realizable(module: m386a4g40dm0_cpb_catalog, jedec: ddr4_generation_catalog)
+  dram_module_is_realizable(module: m386a4g40dm0_cpb_catalog, jedec: extdeps.memory.jedec.ddr4_generation_catalog)
 }
 
 test fn same_capacity_at_one_rank_by_eight_is_not_realizable() -> Bool {
-  !dram_module_is_realizable(module: control_32g_1rx8, jedec: ddr4_generation_catalog)
+  !dram_module_is_realizable(module: control_32g_1rx8, jedec: extdeps.memory.jedec.ddr4_generation_catalog)
 }
 
 test fn generation_mismatch_fails_closed() -> Bool {

@@ -2,38 +2,38 @@ module v2.test.generated.witness_validity
 
 data row_witness_validity_constraint_satisfaction_holds: Outcome<v2.std.verification.TestClaim> = testgen_emit_witness_validity_claim(
     label: "witness-validity: constraint-satisfaction holds (positive)",
-    source_facts: stub_empty_conj,
-    candidate: stub_empty_conj,
+    source_facts: v2.test.manual.connective_anchors.stub_empty_conj,
+    candidate: v2.test.manual.connective_anchors.stub_empty_conj,
     predicate: v2.std.find_witness.PreservationPredicate {
-      algebra: stub_empty_conj,
+      algebra: v2.test.manual.connective_anchors.stub_empty_conj,
       preservation_rule: ^preservation_rule_constraint_satisfaction,
     },
     witness: v2.std.witness.StructuralPropertyWitness {
       property: ^preservation_rule_constraint_satisfaction,
-      evidence: stub_empty_conj,
+      evidence: v2.test.manual.connective_anchors.stub_empty_conj,
     }
   )
 
 data row_witness_validity_property_symbol_mismatch: Outcome<v2.std.verification.TestClaim> = testgen_emit_witness_validity_claim(
     label: "witness-validity: property symbol mismatch (invalid witness)",
-    source_facts: stub_empty_conj,
-    candidate: stub_empty_conj,
+    source_facts: v2.test.manual.connective_anchors.stub_empty_conj,
+    candidate: v2.test.manual.connective_anchors.stub_empty_conj,
     predicate: v2.std.find_witness.PreservationPredicate {
-      algebra: stub_empty_conj,
+      algebra: v2.test.manual.connective_anchors.stub_empty_conj,
       preservation_rule: ^preservation_rule_constraint_satisfaction,
     },
     witness: v2.std.witness.StructuralPropertyWitness {
       property: ^witness_validity_unrealized_rule,
-      evidence: stub_empty_conj,
+      evidence: v2.test.manual.connective_anchors.stub_empty_conj,
     }
   )
 
 data row_witness_validity_evidence_node_mismatch: Outcome<v2.std.verification.TestClaim> = testgen_emit_witness_validity_claim(
     label: "witness-validity: evidence node mismatch (invalid witness)",
-    source_facts: stub_empty_conj,
-    candidate: stub_empty_conj,
+    source_facts: v2.test.manual.connective_anchors.stub_empty_conj,
+    candidate: v2.test.manual.connective_anchors.stub_empty_conj,
     predicate: v2.std.find_witness.PreservationPredicate {
-      algebra: stub_empty_conj,
+      algebra: v2.test.manual.connective_anchors.stub_empty_conj,
       preservation_rule: ^preservation_rule_constraint_satisfaction,
     },
     witness: v2.std.witness.StructuralPropertyWitness {
@@ -44,14 +44,14 @@ data row_witness_validity_evidence_node_mismatch: Outcome<v2.std.verification.Te
 
 data row_witness_validity_rule_not_realized: Outcome<v2.std.verification.TestClaim> = testgen_emit_witness_validity_claim(
     label: "witness-validity: preservation rule not realized",
-    source_facts: stub_empty_conj,
-    candidate: stub_empty_conj,
+    source_facts: v2.test.manual.connective_anchors.stub_empty_conj,
+    candidate: v2.test.manual.connective_anchors.stub_empty_conj,
     predicate: v2.std.find_witness.PreservationPredicate {
-      algebra: stub_empty_conj,
+      algebra: v2.test.manual.connective_anchors.stub_empty_conj,
       preservation_rule: ^witness_validity_unrealized_rule,
     },
     witness: v2.std.witness.StructuralPropertyWitness {
       property: ^witness_validity_unrealized_rule,
-      evidence: stub_empty_conj,
+      evidence: v2.test.manual.connective_anchors.stub_empty_conj,
     }
   )

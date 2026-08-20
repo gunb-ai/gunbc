@@ -23,7 +23,7 @@ type ProviderContractTarget {
 
 data materialization_provider_targets: List<ProviderContractTarget> = [
   ProviderContractTarget {
-    cache: parse_cache_id,
+    cache: extdeps.realization.reconcile_in_process.parse_cache_id,
     cache_row: target_decl(module_path: "extdeps.realization.reconcile_in_process", decl_name: "parse_cache_facts"),
     consumer_seam: target_decl(module_path: "gunbc.plans.cli_run_hollowing_plan", decl_name: "cli_run_hollowing_plan"),
     reason: "cli_run MultiEntryIndex.parse_cache keys on file path, not content — the standing cache-impurity witness (reconcile_in_process Phase 2c); ParseModuleRequest keys on source content + compiler identity. The host seam is hollowing-plan area 2.6 (typed module cache / memo)",

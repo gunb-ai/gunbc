@@ -16,14 +16,14 @@ test fn witness_ubicloud_target_projects_catalog_label() -> Bool {
 }
 
 test fn witness_github_private_target_projects_hosted_scalar_variant() -> Bool {
-  match ci_runner_target_spec(target: gunbc.ci_runner_target.GithubHostedRunner { row: github_hosted_ubuntu_2404_arm_private_catalog }) {
+  match ci_runner_target_spec(target: gunbc.ci_runner_target.GithubHostedRunner { row: extdeps.github.hosted_runners.github_hosted_ubuntu_2404_arm_private_catalog }) {
     HostedRunner { label: l } => runner_label_string(label: l) == "ubuntu-24.04-arm"
     _ => false
   }
 }
 
 test fn witness_runner_yaml_forms_discriminate_hosted_vs_label_routed() -> Bool {
-  let hosted = runner_yaml(spec: ci_runner_target_spec(target: gunbc.ci_runner_target.GithubHostedRunner { row: github_hosted_ubuntu_2404_arm_private_catalog }))
+  let hosted = runner_yaml(spec: ci_runner_target_spec(target: gunbc.ci_runner_target.GithubHostedRunner { row: extdeps.github.hosted_runners.github_hosted_ubuntu_2404_arm_private_catalog }))
   let label_routed = runner_yaml(spec: ci_runner_target_spec(target: gunbc.ci_runner_target.UbicloudRunner { row: ubicloud_standard_16_arm_catalog }))
   hosted == yaml_string(s: "ubuntu-24.04-arm")
     && label_routed == string_list_flow(items: ["ubicloud-standard-16-arm"])
@@ -59,7 +59,7 @@ test fn witness_ubicloud_arm_family_holds_cited_ratio() -> Bool {
 }
 
 test fn witness_github_visibility_axis_discriminates() -> Bool {
-  let private_bytes = byte_size_count(b: github_hosted_ubuntu_2404_arm_private_catalog.memory_bytes)
+  let private_bytes = byte_size_count(b: extdeps.github.hosted_runners.github_hosted_ubuntu_2404_arm_private_catalog.memory_bytes)
   let public_bytes = byte_size_count(b: github_hosted_ubuntu_2404_arm_public_catalog.memory_bytes)
   private_bytes < public_bytes
 }

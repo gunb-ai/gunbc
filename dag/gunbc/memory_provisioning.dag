@@ -1103,8 +1103,8 @@ data asrock_altrad8ud_1l2t_geometry: MemoryChannelGeometry = MemoryChannelGeomet
 data supermicro_r12spd_a_geometry: MemoryChannelGeometry = MemoryChannelGeometry {
   board_label: "Supermicro R12SPD-A",
   channels: derived_channel_count(
-    dimm_slots_total: supermicro_r12spd_a_mechanical.dimm_slots_total,
-    dimms_per_channel: supermicro_r12spd_a_mechanical.dimms_per_channel,
+    dimm_slots_total: extdeps.boards.supermicro.supermicro_r12spd_a_mechanical.dimm_slots_total,
+    dimms_per_channel: extdeps.boards.supermicro.supermicro_r12spd_a_mechanical.dimms_per_channel,
   ),
   max_topology: TwoDimmsPerChannel,
   memory_generation: altra_platform_memory_generation,
@@ -1123,8 +1123,8 @@ data supermicro_r12spd_a_geometry: MemoryChannelGeometry = MemoryChannelGeometry
 data mt_collins_per_socket_geometry: MemoryChannelGeometry = MemoryChannelGeometry {
   board_label: "Ampere Mt. Collins (per socket)",
   channels: derived_channel_count(
-    dimm_slots_total: mt_collins_platform_mechanical.ddr4_dimms_per_socket,
-    dimms_per_channel: mt_collins_platform_mechanical.dimms_per_channel,
+    dimm_slots_total: extdeps.ampere.mt_collins_product_brief.platform.mt_collins_platform_mechanical.ddr4_dimms_per_socket,
+    dimms_per_channel: extdeps.ampere.mt_collins_product_brief.platform.mt_collins_platform_mechanical.dimms_per_channel,
   ),
   max_topology: TwoDimmsPerChannel,
   memory_generation: altra_platform_memory_generation,

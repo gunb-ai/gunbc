@@ -7,8 +7,8 @@ func bmc_first_contact() -> std.process.ProcessExit
   host = shell.Env.Get(name: "BMC_HOST")
   resp = redfish.Http.GetSystem(
     bmc_host: host.value as std.types.NonEmptyStr,
-    username: openbmc_factory_login.username,
-    password: openbmc_factory_login.published_password as Secret
+    username: extdeps.bmc.openbmc.openbmc_factory_login.username,
+    password: extdeps.bmc.openbmc.openbmc_factory_login.published_password as Secret
   )
 
   return if resp.success { ExitSuccess } else { exit_failure(reason: resp.body) }

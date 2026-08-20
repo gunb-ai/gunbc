@@ -14,13 +14,13 @@ data wan_deployment: std.cache_interface.CacheDeploymentBackends = std.cache_int
   available: [
     parse_table_memo_id,
     sccache_local_id,
-    buildbuddy_cas_id,
-    gha_actions_cache_id,
+    extdeps.cache.buildbuddy.buildbuddy_cas_id,
+    extdeps.cache.github_actions.gha_actions_cache_id,
   ],
 }
 
 data gha_only_deployment: std.cache_interface.CacheDeploymentBackends = std.cache_interface.CacheDeploymentBackends {
-  available: [gha_actions_cache_id],
+  available: [extdeps.cache.github_actions.gha_actions_cache_id],
 }
 
 test fn witness_cheap_recompute_skips_wan_layers() -> Bool {
@@ -32,8 +32,8 @@ test fn witness_cheap_recompute_skips_wan_layers() -> Bool {
   )
   cache_layer_plan_contains_id(plan: plan, id: parse_table_memo_id)
     && cache_layer_plan_contains_id(plan: plan, id: sccache_local_id)
-    && !cache_layer_plan_contains_id(plan: plan, id: buildbuddy_cas_id)
-    && !cache_layer_plan_contains_id(plan: plan, id: gha_actions_cache_id)
+    && !cache_layer_plan_contains_id(plan: plan, id: extdeps.cache.buildbuddy.buildbuddy_cas_id)
+    && !cache_layer_plan_contains_id(plan: plan, id: extdeps.cache.github_actions.gha_actions_cache_id)
 }
 
 test fn witness_expensive_recompute_reaches_wan_layers() -> Bool {
@@ -43,8 +43,8 @@ test fn witness_expensive_recompute_reaches_wan_layers() -> Bool {
     catalog: cache_catalog_rows,
     default_order: cache_layer_default_order,
   )
-  cache_layer_plan_contains_id(plan: plan, id: buildbuddy_cas_id)
-    && cache_layer_plan_contains_id(plan: plan, id: gha_actions_cache_id)
+  cache_layer_plan_contains_id(plan: plan, id: extdeps.cache.buildbuddy.buildbuddy_cas_id)
+    && cache_layer_plan_contains_id(plan: plan, id: extdeps.cache.github_actions.gha_actions_cache_id)
 }
 
 test fn witness_plan_orders_locality_nearest_first() -> Bool {
@@ -75,7 +75,7 @@ test fn witness_unavailable_backends_omitted() -> Bool {
     catalog: cache_catalog_rows,
     default_order: cache_layer_default_order,
   )
-  cache_layer_plan_contains_id(plan: plan, id: gha_actions_cache_id)
+  cache_layer_plan_contains_id(plan: plan, id: extdeps.cache.github_actions.gha_actions_cache_id)
     && !cache_layer_plan_contains_id(plan: plan, id: sccache_local_id)
     && !cache_layer_plan_contains_id(plan: plan, id: rustup_toolchain_store_id)
 }

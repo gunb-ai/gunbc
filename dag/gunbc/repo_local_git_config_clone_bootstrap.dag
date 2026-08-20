@@ -20,7 +20,7 @@ type RepoLocalGitConfigCloneBootstrapReceipt {
 }
 
 data repo_local_git_config_clone_bootstrap_converge_invoke_entry: String = repo_local_git_config_converge_entry
-data repo_local_git_config_clone_bootstrap_converge_invoke_function: String = repo_local_git_config_converge_function
+data repo_local_git_config_clone_bootstrap_converge_invoke_function: String = gunbc.repo_local_git_config.repo_local_git_config_converge_function
 
 fn repo_local_git_config_clone_bootstrap_enrolled_paths() -> List<String> {
   [

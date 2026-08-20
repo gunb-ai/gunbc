@@ -9,7 +9,7 @@ test fn witness_secret_homed_in_gunbai_secrets() -> Bool {
 
 test fn witness_operator_user_principal_accessor_only() -> Bool {
   operator_bindings_are_user_principal_accessor_only(bindings: operator_tailscale_acl_secret_bindings)
-    && operator_tailscale_acl_secret_bindings.first().role == role_secretmanager_secret_accessor
+    && operator_tailscale_acl_secret_bindings.first().role == extdeps.cloud.gcp.iam.role_secretmanager_secret_accessor
     && operator_principal_member() == fleet_operator_gcp_iam_member()
     && string_contains(s: operator_principal_member(), pattern: tailscale_acl_operator_email() as String)
     && tailscale_acl_operator_email() == fleet_operator_email
@@ -24,13 +24,13 @@ test fn witness_excludes_repo_scoped_wif_structurally() -> Bool {
 test fn witness_wif_binding_perturbation_reddens() -> Bool {
   let poisoned_wif = gunbc.assimilate.bmc_token_federation.SecretAccessBinding {
     member: bmc_wif_principal_set(),
-    role: role_secretmanager_secret_accessor,
+    role: extdeps.cloud.gcp.iam.role_secretmanager_secret_accessor,
     secret: tailscale_acl_ephemeral_token_secret_id as String,
     project: bmc_secrets_project_id,
   }
   let poisoned_sa = gunbc.assimilate.bmc_token_federation.SecretAccessBinding {
     member: bmc_assimilator_sa_member(),
-    role: role_secretmanager_secret_accessor,
+    role: extdeps.cloud.gcp.iam.role_secretmanager_secret_accessor,
     secret: tailscale_acl_ephemeral_token_secret_id as String,
     project: bmc_secrets_project_id,
   }

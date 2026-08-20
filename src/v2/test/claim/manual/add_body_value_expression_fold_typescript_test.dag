@@ -148,7 +148,7 @@ fn add_body_fold_tokens_accept_arrow(
 }
 
 test fn add_body_ts_fold_add_body_tokens_holds() -> Bool {
-  match table_fixture_add_arrow_with_body() {
+  match v2.test.complexity_gate.table_fixture_add_subject_producer.table_fixture_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       add_body_fold_tokens_accept_arrow(
         arrow: arrow,
@@ -167,7 +167,7 @@ test fn add_body_ts_fold_operand_swap_discriminates() -> Bool {
         target: ts_target_model(),
         expected: add_body_fold_operand_swap_body_tokens()
       )
-      && match table_fixture_add_arrow_with_body() {
+      && match v2.test.complexity_gate.table_fixture_add_subject_producer.table_fixture_add_arrow_with_body() {
         Accepted { value: canonical_arrow, diagnostics: _ } =>
           !add_body_fold_tokens_accept_arrow(
             arrow: canonical_arrow,
@@ -181,7 +181,7 @@ test fn add_body_ts_fold_operand_swap_discriminates() -> Bool {
 }
 
 test fn add_body_ts_fold_catalog_minus_discriminates() -> Bool {
-  match table_fixture_add_arrow_with_body() {
+  match v2.test.complexity_gate.table_fixture_add_subject_producer.table_fixture_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       add_body_fold_tokens_accept_arrow(
         arrow: arrow,
@@ -193,7 +193,7 @@ test fn add_body_ts_fold_catalog_minus_discriminates() -> Bool {
 }
 
 test fn add_body_ts_fold_missing_catalog_rejects() -> Bool {
-  match table_fixture_add_arrow_with_body() {
+  match v2.test.complexity_gate.table_fixture_add_subject_producer.table_fixture_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       match add_body_fold_body_tokens_for_arrow(
         arrow: arrow,

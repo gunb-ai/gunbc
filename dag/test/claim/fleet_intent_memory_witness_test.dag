@@ -24,8 +24,8 @@ test fn srv3_host_memory_derives_from_cited_population() -> Bool {
 }
 
 test fn srv3_observed_catalog_rows_are_jedec_realizable() -> Bool {
-  dram_module_is_realizable(module: hma82gr7afr8n_vk_catalog, jedec: ddr4_generation_catalog)
-    && dram_module_is_realizable(module: hma82gr7afr4n_vk_catalog, jedec: ddr4_generation_catalog)
+  dram_module_is_realizable(module: hma82gr7afr8n_vk_catalog, jedec: extdeps.memory.jedec.ddr4_generation_catalog)
+    && dram_module_is_realizable(module: hma82gr7afr4n_vk_catalog, jedec: extdeps.memory.jedec.ddr4_generation_catalog)
 }
 
 test fn srv3_population_row_bytes_match_stick_capacity() -> Bool {

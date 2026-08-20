@@ -7,7 +7,7 @@ module test.claim.decl_facts_reflection_witness_support
 // at every call site, which this cluster's rows make once each. Same facts,
 // one scan for the module instead of one per row.
 fn decl_facts_reflection_witness_support_facts() -> List<v2.std.decl_index.DeclFact> {
-  decl_facts_reflection_fixture_facts
+  test.fixture.decl_facts_reflection.witness_support.decl_facts_reflection_fixture_facts
 }
 
 fn decl_facts_reflection_lookup(qn: String) -> v2.std.data_initializer_identity.DeclFactLookup {

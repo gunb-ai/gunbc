@@ -69,8 +69,8 @@ data positive_control_note: String = "THE POSITIVE CONTROL, AND IT IS FIRST BECA
 
 test fn witness_matching_release_and_surface_grounds() -> Bool {
   match ground_body_against(
-    body: healthz_body_at_revision(revision: deploy_witness_release_revision),
-    expected_revision: deploy_witness_release_revision,
+    body: healthz_body_at_revision(revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision),
+    expected_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision,
   ) {
     Grounds { evidence: _ } => true
     DoesNotGround { reason: _ } => false
@@ -80,21 +80,21 @@ test fn witness_matching_release_and_surface_grounds() -> Bool {
 data readiness_revision_refusal_note: String = "THIS IS THE DECISION CONTROL FOR THE LAUNCHED-AS-A / DISK-BECAME-B CASE. IT IS NOT THAT CASE, AND THE EARLIER NAME CLAIMED IT WAS. What executes here is pure: a healthz body carrying revision A is compared against an admitted revision B, and the comparison must refuse with the revision cause rather than a generic one. That is the DECISION half of the property — given a process that reports A, a deploy of B does not green.\\n\\nThe PREMISE half — that a process launched at A keeps answering A after the files beneath it change — is not executed by this file and never was. It is now executed elsewhere: see live_process_identity_immutability_receipt below. This file states the decision only, and its name says so."
 
 test fn witness_readiness_refuses_when_reported_revision_is_not_the_admitted_one() -> Bool {
-  let a_body = healthz_body_at_revision(revision: deploy_witness_release_revision)
+  let a_body = healthz_body_at_revision(revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision)
   let g = ground_body_against(body: a_body, expected_revision: deploy_witness_other_release_revision)
   grounding_refuses(g: g)
     && grounding_refusal_mentions(g: g, fragment: "ProcessRevisionMismatch")
-    && grounding_refusal_mentions(g: g, fragment: deploy_witness_release_revision as String)
+    && grounding_refusal_mentions(g: g, fragment: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision as String)
     && grounding_refusal_mentions(g: g, fragment: deploy_witness_other_release_revision as String)
 }
 
 data third_revision_note: String = "THE ORDERED CASE: a third candidate C arrives while the process is still A and the disk is B. The process is unmoved by either — it reports A — so a deploy of C refuses for the same reason a deploy of B did, and the refusal names A as what is running rather than B. A mechanism that had quietly adopted the disk's answer would name B here, which is what makes this witness distinguishable from the previous one rather than a restatement of it."
 
 test fn witness_third_candidate_still_sees_launched_revision() -> Bool {
-  let a_body = healthz_body_at_revision(revision: deploy_witness_release_revision)
+  let a_body = healthz_body_at_revision(revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision)
   let g = ground_body_against(body: a_body, expected_revision: deploy_witness_third_release_revision)
   grounding_refuses(g: g)
-    && grounding_refusal_mentions(g: g, fragment: deploy_witness_release_revision as String)
+    && grounding_refusal_mentions(g: g, fragment: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision as String)
     && !grounding_refusal_mentions(g: g, fragment: deploy_witness_other_release_revision as String)
 }
 
@@ -102,7 +102,7 @@ data no_launch_identity_note: String = "NO LAUNCH IDENTITY IS A REFUSAL, NOT AN 
 
 test fn witness_body_without_release_identity_refuses() -> Bool {
   let surface_only = witness_bundle().healthz_body
-  let g = ground_body_against(body: surface_only, expected_revision: deploy_witness_release_revision)
+  let g = ground_body_against(body: surface_only, expected_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision)
   grounding_refuses(g: g)
     && grounding_refusal_mentions(g: g, fragment: "ProcessIdentityAbsent")
     && !grounding_refusal_mentions(g: g, fragment: "ServedSurfaceStale")
@@ -114,12 +114,12 @@ test fn witness_correct_artifacts_with_wrong_bundle_identity_refuses() -> Bool {
   let expected_surface = witness_bundle().bundle_identity
   let wrong_identity = std.content_hash.Fnv1a64Structural { digest: "abcdef0123456789" as std.types.NonEmptyStr }
   let body = healthz_body_at_revision_and_surface(
-    revision: deploy_witness_release_revision,
+    revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision,
     surface_bundle_identity: wrong_identity,
   )
   let g = ground_body_against_surface(
     body: body,
-    expected_revision: deploy_witness_release_revision,
+    expected_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision,
     expected_surface_identity: expected_surface,
   )
   grounding_refuses(g: g)
@@ -132,10 +132,10 @@ test fn witness_correct_artifacts_with_wrong_bundle_identity_refuses() -> Bool {
 test fn witness_correct_identity_with_one_stale_artifact_refuses() -> Bool {
   let body = join([
     "{\"status\": \"ok\", \"service\": \"gunbc-roadmap\", \"artifacts\": {\"/ROADMAP.md\": \"0000000000000000\"}, ",
-    "\"revision\": \"", deploy_witness_release_revision as String, "\", ",
+    "\"revision\": \"", test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision as String, "\", ",
     "\"surface_bundle_identity\": \"", witness_bundle().bundle_identity.digest as String, "\"}",
   ], "")
-  let g = ground_body_against(body: body, expected_revision: deploy_witness_release_revision)
+  let g = ground_body_against(body: body, expected_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision)
   grounding_refuses(g: g)
     && grounding_refusal_mentions(g: g, fragment: "ServedSurfaceStale")
     && !grounding_refusal_mentions(g: g, fragment: "ProcessSurfaceMismatch")
@@ -146,7 +146,7 @@ data surface_projection_note: String = "THE PROJECTION CHANGE, STATED AS A CLAIM
 
 test fn witness_surface_projection_ignores_identity_members() -> Bool {
   let surface_only = witness_bundle().healthz_body
-  let with_identity = healthz_body_at_revision(revision: deploy_witness_release_revision)
+  let with_identity = healthz_body_at_revision(revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision)
   let same_surface = match healthz_surface_projection(body: surface_only) {
     Absent => false
     Present { value: a } =>
@@ -163,9 +163,9 @@ test fn witness_surface_projection_ignores_identity_members() -> Bool {
 data identity_observation_note: String = "THE OBSERVATION ITSELF, BELOW THE READINESS GATE. These state that the wire form round-trips and that its refusal arms are reachable from real bodies rather than only from hand-constructed values. The malformed cases matter more than they look: an uppercase 40-digit hex string and a 39-digit one both LOOK like object names, and a validator checking only 'is it hex' or only 'is it 40 characters' accepts one of them. Both are refused, and the valid one is accepted, so the predicate is shown to discriminate rather than merely to reject."
 
 test fn witness_identity_round_trips_from_served_body() -> Bool {
-  let body = healthz_body_at_revision(revision: deploy_witness_release_revision)
+  let body = healthz_body_at_revision(revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision)
   let identity = observe_running_release_identity(healthz_body: body)
-  running_release_revision_equals(identity: identity, expected: deploy_witness_release_revision)
+  running_release_revision_equals(identity: identity, expected: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision)
     && running_release_surface_equals(identity: identity, expected: witness_bundle().bundle_identity)
     && !running_release_revision_equals(identity: identity, expected: deploy_witness_other_release_revision)
 }
@@ -197,7 +197,7 @@ test fn witness_unparseable_body_is_typed_unparseable() -> Bool {
 }
 
 test fn witness_revision_shape_validation_discriminates() -> Bool {
-  release_revision_text_valid(text: deploy_witness_release_revision as String)
+  release_revision_text_valid(text: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision as String)
     && !release_revision_text_valid(text: "0123456789ABCDEF0123456789ABCDEF01234567")
     && !release_revision_text_valid(text: "0123456789abcdef0123456789abcdef0123456")
     && !release_revision_text_valid(text: "main")

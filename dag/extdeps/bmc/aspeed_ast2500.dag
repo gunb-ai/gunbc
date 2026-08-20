@@ -62,7 +62,7 @@ type AspeedAst2500CatalogRow {
 
 data aspeed_ast2500_catalog: AspeedAst2500CatalogRow = AspeedAst2500CatalogRow {
   ordering_part_number: "AST2500",
-  manufacturer: aspeed,
+  manufacturer: extdeps.vendor.aspeed.aspeed,
   management_acquisition_paths: ast2500_management_acquisition_paths,
 }
 

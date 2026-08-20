@@ -203,7 +203,7 @@ fn altra_onboarding_plan(bmc_host: std.types.NonEmptyStr, secret_name: std.types
   BmcOnboardingPlan {
     bmc: std.bmc.BmcEndpoint { host: bmc_host, protocol: Redfish },
     redfish_system_id: asrock_altrad8ud_redfish_system_id,
-    factory_login: openbmc_factory_login,
+    factory_login: extdeps.bmc.openbmc.openbmc_factory_login,
     secret_name: secret_name,
     rotated_account_role: AccountRoleAdministrator,
     start_phase: FactoryDefault,

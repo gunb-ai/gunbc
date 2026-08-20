@@ -41,7 +41,7 @@ fn refinement_preservation_subject_base_value() -> v2.std.diagnostic.Outcome<Nod
 }
 
 data witness_refinement_preservation_subject_anchor: Bool = match refinement_preservation_subject_base_value() {
-  Accepted { value: base, diagnostics: None } => base == refinement_preservation_list_node(xs: [stub_empty_conj])
+  Accepted { value: base, diagnostics: None } => base == refinement_preservation_list_node(xs: [v2.test.manual.connective_anchors.stub_empty_conj])
   Rejected { diagnostics: _ } => false
 }
 

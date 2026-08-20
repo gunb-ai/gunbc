@@ -1,7 +1,7 @@
 module extdeps.ocp.mt_jade.platform
 
 
-data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = mt_jade_subject_authority_anchor
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.ocp.mt_jade.subject.mt_jade_subject_authority_anchor
 
 data platform_subject_edge_note: String = "PLATFORM FACTS MUST JOIN THE ENTITY THEY DESCRIBE IN THE GRAPH, NOT ONLY THE SHARED OCP LOCATOR. extdeps.ocp.mt_jade.subject owns mt_jade_reference_platform; this row is the typed subject edge that binds every mechanical, sequencing, CPLD, clock and reference-part fact in this module to that declaration — the same pattern as extdeps.sec.issuer.gitlab_facts gitlab_facts_subject."
 
@@ -284,55 +284,55 @@ data mt_jade_reference_parts: List<MtJadeReferencePartRow> = [
     ordering_part_number: "AST2500",
     vendor_label: "ASPEED",
     role: BaseboardManagementController,
-    authority: mt_jade_subject_authority_anchor,
+    authority: extdeps.ocp.mt_jade.subject.mt_jade_subject_authority_anchor,
   },
   MtJadeReferencePartRow {
     ordering_part_number: "AT24CM02",
     vendor_label: "Microchip",
     role: BootI2cEeprom,
-    authority: mt_jade_subject_authority_anchor,
+    authority: extdeps.ocp.mt_jade.subject.mt_jade_subject_authority_anchor,
   },
   MtJadeReferencePartRow {
     ordering_part_number: "MX25L25673G",
     vendor_label: "Macronix",
     role: HostQspiFlash,
-    authority: mt_jade_subject_authority_anchor,
+    authority: extdeps.ocp.mt_jade.subject.mt_jade_subject_authority_anchor,
   },
   MtJadeReferencePartRow {
     ordering_part_number: "MX66L51235FMI-10G",
     vendor_label: "Macronix",
     role: BmcSpiFlash,
-    authority: mt_jade_subject_authority_anchor,
+    authority: extdeps.ocp.mt_jade.subject.mt_jade_subject_authority_anchor,
   },
   MtJadeReferencePartRow {
     ordering_part_number: "RTL8211E",
     vendor_label: "Realtek",
     role: BmcEthernetPhy,
-    authority: mt_jade_subject_authority_anchor,
+    authority: extdeps.ocp.mt_jade.subject.mt_jade_subject_authority_anchor,
   },
   MtJadeReferencePartRow {
     ordering_part_number: "9FGV1006B",
     vendor_label: "Renesas (IDT)",
     role: PcieClockGenerator,
-    authority: mt_jade_subject_authority_anchor,
+    authority: extdeps.ocp.mt_jade.subject.mt_jade_subject_authority_anchor,
   },
   MtJadeReferencePartRow {
     ordering_part_number: "9FGL0841",
     vendor_label: "Renesas (IDT)",
     role: PcieClockBuffer,
-    authority: mt_jade_subject_authority_anchor,
+    authority: extdeps.ocp.mt_jade.subject.mt_jade_subject_authority_anchor,
   },
   MtJadeReferencePartRow {
     ordering_part_number: "92XL1231",
     vendor_label: "Renesas (IDT)",
     role: PcieClockBuffer,
-    authority: mt_jade_subject_authority_anchor,
+    authority: extdeps.ocp.mt_jade.subject.mt_jade_subject_authority_anchor,
   },
   MtJadeReferencePartRow {
     ordering_part_number: "5P35023",
     vendor_label: "Renesas (IDT)",
     role: ProgrammableClockGenerator,
-    authority: mt_jade_subject_authority_anchor,
+    authority: extdeps.ocp.mt_jade.subject.mt_jade_subject_authority_anchor,
   },
 ]
 

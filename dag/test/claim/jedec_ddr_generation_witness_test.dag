@@ -34,7 +34,7 @@ test fn generation_axis_is_decomposed() -> Bool {
 }
 
 test fn ddr4_ceiling_is_2_gib() -> Bool {
-  byte_size_count(b: ddr4_generation_catalog.max_monolithic_die_density) == 2147483648
+  byte_size_count(b: extdeps.memory.jedec.ddr4_generation_catalog.max_monolithic_die_density) == 2147483648
 }
 
 test fn ddr5_ceiling_is_8_gib() -> Bool {
@@ -53,7 +53,7 @@ test fn dispatch_selects_matching_generation() -> Bool {
 }
 
 test fn per_generation_ceiling_discriminates() -> Bool {
-  !dram_module_is_realizable(module: mod_ddr4_32g_1rx8, jedec: ddr4_generation_catalog)
+  !dram_module_is_realizable(module: mod_ddr4_32g_1rx8, jedec: extdeps.memory.jedec.ddr4_generation_catalog)
     && dram_module_is_realizable(module: mod_ddr5_32g_1rx8, jedec: ddr5_generation_catalog)
 }
 

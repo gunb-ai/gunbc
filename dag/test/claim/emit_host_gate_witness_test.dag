@@ -23,7 +23,7 @@ test fn w_ts_fixture_nonempty() -> Bool {
 }
 
 test fn w_byte_count_is_five() -> Bool {
-  byte_size_count(stdout_byte_count) == 5
+  byte_size_count(tools.emit_host_fixtures.stdout_byte_count) == 5
 }
 
 test fn w_ts_byte_count_is_four() -> Bool {

@@ -5,8 +5,8 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 fn typescript_descriptor_node_emit_host_fixture_inputs() -> v2.compiler.eval.Inputs {
   inputs_for_emit_host(
-    claim_input_root: stub_empty_conj,
-    expected_eval_root: stub_empty_conj,
+    claim_input_root: v2.test.manual.connective_anchors.stub_empty_conj,
+    expected_eval_root: v2.test.manual.connective_anchors.stub_empty_conj,
     claim_pin: ^typescript_descriptor_node_claim_pin
   )
 }

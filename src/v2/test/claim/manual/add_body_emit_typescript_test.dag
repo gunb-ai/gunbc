@@ -304,7 +304,7 @@ fn add_body_ts_inferred_tree_for(root: v2.std.node.Node) -> v2.compiler.inferred
 }
 
 fn add_body_ts_producer_inferred_tree() -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
-  match table_fixture_add_arrow_with_body() {
+  match v2.test.complexity_gate.table_fixture_add_subject_producer.table_fixture_add_arrow_with_body() {
     Accepted { value: root, diagnostics: d } =>
       v2.std.diagnostic.Accepted {
         value: add_body_ts_inferred_tree_for(root: root),

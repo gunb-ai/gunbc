@@ -49,7 +49,7 @@ fn broken_warm_native_realization() -> gunbc.ci_materialization.ResolveRealizati
   gunbc.ci_materialization.SatisfiedFromSharedPool {
     obligation: expected_obligation(id: NativeBundleEscapingEntry),
     provider: gunbc.ci_materialization.ResolveSharedPoolProvider { provider_id: "" },
-    receipt: gunbc.ci_materialization.ResolveSharedPoolReceipt { provider_id: floor_entry_walk_memo_provider_id },
+    receipt: gunbc.ci_materialization.ResolveSharedPoolReceipt { provider_id: gunbc.floor_materialization.floor_entry_walk_memo_provider_id },
   }
 }
 

@@ -14,17 +14,17 @@ data chemed_fy2025_operating_margin_ratio_low: Float = 0.1336
 data chemed_fy2025_operating_margin_ratio_high: Float = 0.1337
 
 test fn w_rollins_cik_verified_on_edgar() -> Bool {
-  cik_padded_digits(cik: rollins_cik) == "0000084839"
+  cik_padded_digits(cik: extdeps.sec.issuer.rollins.rollins_cik) == "0000084839"
 }
 
 test fn w_chemed_cik_verified_on_edgar() -> Bool {
-  cik_padded_digits(cik: chemed_cik) == "0000019584"
+  cik_padded_digits(cik: extdeps.sec.issuer.chemed.chemed_cik) == "0000019584"
 }
 
 test fn w_rollins_operating_margin_derivation_matches_filed_facts() -> Bool {
   match derive_gross_margin_ratio_from_facts(
-    revenue: rollins_fy2025_revenue,
-    gross_profit: rollins_fy2025_operating_income
+    revenue: extdeps.sec.issuer.rollins_facts.rollins_fy2025_revenue,
+    gross_profit: extdeps.sec.issuer.rollins_facts.rollins_fy2025_operating_income
   ) {
     Present { value: ratio } =>
       gross_margin_ratio_in_band(
@@ -38,8 +38,8 @@ test fn w_rollins_operating_margin_derivation_matches_filed_facts() -> Bool {
 
 test fn w_chemed_operating_margin_derivation_matches_filed_facts() -> Bool {
   match derive_gross_margin_ratio_from_facts(
-    revenue: chemed_fy2025_revenue,
-    gross_profit: chemed_fy2025_operating_income
+    revenue: extdeps.sec.issuer.chemed_facts.chemed_fy2025_revenue,
+    gross_profit: extdeps.sec.issuer.chemed_facts.chemed_fy2025_operating_income
   ) {
     Present { value: ratio } =>
       gross_margin_ratio_in_band(
@@ -52,12 +52,12 @@ test fn w_chemed_operating_margin_derivation_matches_filed_facts() -> Bool {
 }
 
 test fn w_rollins_operating_margin_red_on_perturbed_operating_income() -> Bool {
-  match filed_amount(fact: rollins_fy2025_operating_income) {
+  match filed_amount(fact: extdeps.sec.issuer.rollins_facts.rollins_fy2025_operating_income) {
     Present { value: oi } => {
       let perturbed = usd_whole_dollars(count: usd_whole_dollars_count(oi) + 1000000)
       match derive_gross_margin_ratio_from_facts(
-        revenue: rollins_fy2025_revenue,
-        gross_profit: extdeps.sec.facts.FiledMonetaryFact { element: rollins_fy2025_operating_income.element, amount: Filed { amount: perturbed }, citation: rollins_fy2025_operating_income.citation }
+        revenue: extdeps.sec.issuer.rollins_facts.rollins_fy2025_revenue,
+        gross_profit: extdeps.sec.facts.FiledMonetaryFact { element: extdeps.sec.issuer.rollins_facts.rollins_fy2025_operating_income.element, amount: Filed { amount: perturbed }, citation: extdeps.sec.issuer.rollins_facts.rollins_fy2025_operating_income.citation }
       ) {
         Present { value: ratio } =>
           !gross_margin_ratio_in_band(
@@ -73,12 +73,12 @@ test fn w_rollins_operating_margin_red_on_perturbed_operating_income() -> Bool {
 }
 
 test fn w_chemed_operating_margin_red_on_perturbed_operating_income() -> Bool {
-  match filed_amount(fact: chemed_fy2025_operating_income) {
+  match filed_amount(fact: extdeps.sec.issuer.chemed_facts.chemed_fy2025_operating_income) {
     Present { value: oi } => {
       let perturbed = usd_whole_dollars(count: usd_whole_dollars_count(oi) + 1000000)
       match derive_gross_margin_ratio_from_facts(
-        revenue: chemed_fy2025_revenue,
-        gross_profit: extdeps.sec.facts.FiledMonetaryFact { element: chemed_fy2025_operating_income.element, amount: Filed { amount: perturbed }, citation: chemed_fy2025_operating_income.citation }
+        revenue: extdeps.sec.issuer.chemed_facts.chemed_fy2025_revenue,
+        gross_profit: extdeps.sec.facts.FiledMonetaryFact { element: extdeps.sec.issuer.chemed_facts.chemed_fy2025_operating_income.element, amount: Filed { amount: perturbed }, citation: extdeps.sec.issuer.chemed_facts.chemed_fy2025_operating_income.citation }
       ) {
         Present { value: ratio } =>
           !gross_margin_ratio_in_band(

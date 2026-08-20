@@ -341,8 +341,8 @@ fn cold_realization(id: ResolveObligationIdentity, nanos: std.nat.Nat) -> Resolv
 fn warm_realization(id: ResolveObligationIdentity) -> ResolveRealization {
   SatisfiedFromSharedPool {
     obligation: expected_obligation(id: id),
-    provider: ResolveSharedPoolProvider { provider_id: floor_entry_walk_memo_provider_id },
-    receipt: ResolveSharedPoolReceipt { provider_id: floor_entry_walk_memo_provider_id },
+    provider: ResolveSharedPoolProvider { provider_id: gunbc.floor_materialization.floor_entry_walk_memo_provider_id },
+    receipt: ResolveSharedPoolReceipt { provider_id: gunbc.floor_materialization.floor_entry_walk_memo_provider_id },
   }
 }
 

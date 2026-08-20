@@ -35,11 +35,11 @@ fn plan_untitled() -> gunbc.plan.Plan {
 }
 
 test fn every_registered_plan_has_retirement() -> Bool {
-  plans_all_have_retirement(plans: all_plans)
+  plans_all_have_retirement(plans: gunbc.plan_registry.all_plans)
 }
 
 test fn every_registered_plan_is_titled() -> Bool {
-  plans_all_titled(plans: all_plans)
+  plans_all_titled(plans: gunbc.plan_registry.all_plans)
 }
 
 test fn missing_retirement_is_detected() -> Bool {

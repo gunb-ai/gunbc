@@ -13,7 +13,7 @@ fn binding_is_scoped(b: gunbc.assimilate.bmc_token_federation.SecretAccessBindin
 test fn bmc_assimilator_least_privilege_two_scoped_roles() -> Bool {
   bmc_assimilator_bindings.length() == 2
     && fold(bmc_assimilator_bindings, init: true, f: (acc, b) => acc && binding_is_scoped(b: b))
-    && fold(bmc_assimilator_bindings, init: false, f: (acc, b) => acc || b.role == role_secretmanager_secret_accessor)
+    && fold(bmc_assimilator_bindings, init: false, f: (acc, b) => acc || b.role == extdeps.cloud.gcp.iam.role_secretmanager_secret_accessor)
     && fold(bmc_assimilator_bindings, init: false, f: (acc, b) => acc || b.role == role_secretmanager_secret_version_adder)
 }
 
@@ -27,7 +27,7 @@ test fn bmc_allowlist_excludes_lockout_roles() -> Bool {
     && !bmc_role_allowed(role: "roles/secretmanager.secretVersionDestroyer")
     && !bmc_role_allowed(role: "roles/secretmanager.admin")
     && !bmc_role_allowed(role: "roles/owner")
-    && bmc_role_allowed(role: role_secretmanager_secret_accessor)
+    && bmc_role_allowed(role: extdeps.cloud.gcp.iam.role_secretmanager_secret_accessor)
     && bmc_role_allowed(role: role_secretmanager_secret_version_adder)
 }
 

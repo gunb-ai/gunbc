@@ -183,7 +183,7 @@ data runner_lifecycle_effects_scaffold: std.disposition.Disposition = std.dispos
 
 data runner_lifecycle_cited_release: extdeps.github.actions_runner.ActionsRunnerRelease = actions_runner_release_2_334_0
 
-data runner_lifecycle_ci_org: std.types.NonEmptyStr = gunbai_ci_declared.owner_login
+data runner_lifecycle_ci_org: std.types.NonEmptyStr = gunbc.auth.github_apps.gunbai_ci_declared.owner_login
 
 data runner_lifecycle_ci_installation_id: extdeps.github.app.GitHubAppInstallationId = gunbai_ci_declared_installation_id
 

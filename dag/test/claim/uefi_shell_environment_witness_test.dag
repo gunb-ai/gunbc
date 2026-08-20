@@ -7,7 +7,7 @@ test fn new_shell_commands_render() -> Bool {
 }
 
 test fn srv4_observed_env_has_link_and_windows() -> Bool {
-  let env = srv4_uefi_observed_environment
+  let env = gunbc.srv4_uefi_observed.srv4_uefi_observed_environment
   let eth0_up = fold(env.interfaces, init: false, f: (acc, i) =>
     acc || (i.name == "eth0" && (match i.media { MediaPresent => true, MediaDisconnected => false })))
   let has_windows = fold(env.boot_options, init: false, f: (acc, b) =>

@@ -31,16 +31,16 @@ test fn rust_item_identity_key_omits_empty_impl_subject() -> Bool {
 }
 
 test fn seed_growth_admission_note_cites_seed_growth_authority() -> Bool {
-  string_contains(s: seed_growth_admission_note, pattern: "gunbc.seed_growth")
-    && string_contains(s: seed_growth_admission_note, pattern: "completeness join")
+  string_contains(s: gunbc.seed_growth_admission.seed_growth_admission_note, pattern: "gunbc.seed_growth")
+    && string_contains(s: gunbc.seed_growth_admission.seed_growth_admission_note, pattern: "completeness join")
     && string_contains(s: seed_growth_justification_roster_note, pattern: "CLOSED ROSTER")
 }
 
 test fn g0_population_note_cites_census_host() -> Bool {
-  string_contains(s: seed_growth_admission_g0_population_note, pattern: "scripts/rust_item_census.py")
-    && string_contains(s: seed_growth_admission_g0_population_note, pattern: "SCAFFOLD")
-    && string_contains(s: seed_growth_admission_g0_population_note, pattern: "does NOT pin numeric literals")
-    && string_contains(s: seed_growth_admission_g0_population_note, pattern: "cli_run_hollowing_plan")
+  string_contains(s: gunbc.seed_growth_admission.seed_growth_admission_g0_population_note, pattern: "scripts/rust_item_census.py")
+    && string_contains(s: gunbc.seed_growth_admission.seed_growth_admission_g0_population_note, pattern: "SCAFFOLD")
+    && string_contains(s: gunbc.seed_growth_admission.seed_growth_admission_g0_population_note, pattern: "does NOT pin numeric literals")
+    && string_contains(s: gunbc.seed_growth_admission.seed_growth_admission_g0_population_note, pattern: "cli_run_hollowing_plan")
 }
 
 test fn rust_item_host_observation_scaffold_names_python_dissolution() -> Bool {

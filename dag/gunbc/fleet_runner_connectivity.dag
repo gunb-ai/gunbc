@@ -49,7 +49,7 @@ data incident_runner_labels: List<std.types.NonEmptyStr> = [
 ]
 
 fn github_organization_ref() -> extdeps.github.effect.GitHubOrganizationRef {
-  extdeps.github.effect.GitHubOrganizationRef { login: gunbai_ci_declared.owner_login }
+  extdeps.github.effect.GitHubOrganizationRef { login: gunbc.auth.github_apps.gunbai_ci_declared.owner_login }
 }
 
 fn incident_registration(

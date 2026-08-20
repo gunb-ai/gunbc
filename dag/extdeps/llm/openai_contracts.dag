@@ -8,7 +8,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
   }
 }
 
-data wire_contract: std.serialization.VariantEncoding = llm_snake_wire_contract
+data wire_contract: std.serialization.VariantEncoding = extdeps.llm.llm_contracts.llm_snake_wire_contract
 
 data openai_chat_message_wire_contract: std.serialization.CoproductWireContract = {
   coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.openai", decl_name: "OpenAiChatMessage", field: WholeDeclaration },

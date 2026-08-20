@@ -20,7 +20,7 @@ fn rust_literal_bind_emit_from_root(root: Node, target: v2.std.compilers.target_
 
 fn rust_literal_bind_int_emit_from_producer(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   bind_outcome(
-    o: table_fixture_bind_arrow_with_body(),
+    o: v2.test.complexity_gate.table_fixture_bind_subject_producer.table_fixture_bind_arrow_with_body(),
     f: fn(root) {
       rust_literal_bind_emit_from_root(root: root, target: target)
     }

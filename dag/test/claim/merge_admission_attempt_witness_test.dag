@@ -306,7 +306,7 @@ data tested_subject_wire_move_byte_lock_note: String = "MOVE-not-fork control fo
 data merge_admission_fetch_deadline_evaluation_witness_note: String = "Forces the live stage-2 deadline row to evaluate. A direct Int-to-Seconds cast typechecks but the interpreter cannot evaluate it; that defect reached the first production on-success run and refused refresh_current_target_and_gate before FetchNoTags. Reading the branded scalar here makes the unevaluable authoring shape red in the focused admission witness instead of after the ordinary floor."
 
 test fn merge_admission_fetch_deadline_is_a_usable_duration() -> Bool {
-  merge_admission_fetch_stall_deadline_seconds == 240
+  tools.merge_admission_walk.merge_admission_fetch_stall_deadline_seconds == 240
 }
 
 test fn tested_subject_wire_bytes_are_unchanged_by_subject_defusion() -> Bool {

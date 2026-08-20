@@ -34,8 +34,8 @@ fn witness_every_channel_off_position_is_total() -> Bool {
 }
 
 fn witness_composed_displacement_stays_under_the_register_attraction_travel() -> Bool {
-  instrument_displacement_max_px == attraction_travel_max_px
-    && instrument_displacement_px(p: preference_default) < attraction_travel_max_px
+  instrument_displacement_max_px == gunbc.design.salience.attraction_travel_max_px
+    && instrument_displacement_px(p: preference_default) < gunbc.design.salience.attraction_travel_max_px
     && match displacement_admission(p: preference_default) {
          DisplacementAdmitted { total_px } => total_px == 6
          DisplacementOverBudget { total_px, max_px } => false
@@ -46,9 +46,9 @@ fn witness_composed_displacement_stays_under_the_register_attraction_travel() ->
 fn witness_red_four_legal_channels_can_sum_to_an_illegal_instrument() -> Bool {
   match displacement_admission(p: preference_over_budget()) {
     DisplacementOverBudget { total_px, max_px } =>
-      total_px == 24 && max_px == attraction_travel_max_px
+      total_px == 24 && max_px == gunbc.design.salience.attraction_travel_max_px
     EnclosureCharacterReachesResponseTravel { character_px, max_px } =>
-      character_px == 18 && max_px == attraction_travel_max_px
+      character_px == 18 && max_px == gunbc.design.salience.attraction_travel_max_px
     DisplacementAdmitted { total_px } => false
   }
 }
@@ -100,7 +100,7 @@ fn witness_red_a_denied_permission_refuses_with_its_own_cause() -> Bool {
 fn audition_admitted(i: gunbc.design.instrument_audition.AuditionIntensity) -> Bool {
   match admit_audition(i: i, role: SalienceFocal, subject_key: "compiler-fixed-point") {
     AuditionAdmitted { intensity, emission, attraction, displacement_px } =>
-      intensity == audition_intensity_key(i: i) && displacement_px <= attraction_travel_max_px
+      intensity == audition_intensity_key(i: i) && displacement_px <= gunbc.design.salience.attraction_travel_max_px
     AuditionEmissionRefused { intensity, grant } => false
     AuditionAttractionOutsideEnvelope { intensity } => false
     AuditionDisplacementOverBudget { intensity, total_px, max_px } => false
@@ -147,22 +147,22 @@ fn witness_red_the_restrained_baseline_still_renders_at_a_supporting_role() -> B
 fn witness_red_enclosure_and_attraction_cannot_pass_separately() -> Bool {
   match admit_composed_displacement(d: compose_displacement(
     p: preference_default,
-    focal_attraction_px: attraction_travel_max_px,
+    focal_attraction_px: gunbc.design.salience.attraction_travel_max_px,
   )) {
     DisplacementOverBudget { total_px, max_px } =>
-      total_px == 6 + attraction_travel_max_px && max_px == attraction_travel_max_px
+      total_px == 6 + gunbc.design.salience.attraction_travel_max_px && max_px == gunbc.design.salience.attraction_travel_max_px
     DisplacementAdmitted { total_px } => false
     EnclosureCharacterReachesResponseTravel { character_px, max_px } => false
   }
 }
 
 fn witness_the_headroom_is_what_the_enclosure_left_unspent() -> Bool {
-  focal_attraction_headroom_px(p: preference_default) == attraction_travel_max_px - 6
+  focal_attraction_headroom_px(p: preference_default) == gunbc.design.salience.attraction_travel_max_px - 6
     && match admit_composed_displacement(d: compose_displacement(
          p: preference_default,
          focal_attraction_px: focal_attraction_headroom_px(p: preference_default),
        )) {
-         DisplacementAdmitted { total_px } => total_px == attraction_travel_max_px
+         DisplacementAdmitted { total_px } => total_px == gunbc.design.salience.attraction_travel_max_px
          DisplacementOverBudget { total_px, max_px } => false
          EnclosureCharacterReachesResponseTravel { character_px, max_px } => false
        }
@@ -170,12 +170,12 @@ fn witness_the_headroom_is_what_the_enclosure_left_unspent() -> Bool {
 
 fn witness_red_enclosure_character_alone_may_not_reach_response_travel() -> Bool {
   match admit_composed_displacement(d: gunbc.design.instrument_physical.ComposedVisualDisplacement {
-    enclosure_character_px: attraction_travel_max_px,
+    enclosure_character_px: gunbc.design.salience.attraction_travel_max_px,
     focal_attraction_px: 0,
     impulse_transient_px: 0,
   }) {
     EnclosureCharacterReachesResponseTravel { character_px, max_px } =>
-      character_px == attraction_travel_max_px && max_px == attraction_travel_max_px
+      character_px == gunbc.design.salience.attraction_travel_max_px && max_px == gunbc.design.salience.attraction_travel_max_px
     DisplacementAdmitted { total_px } => false
     DisplacementOverBudget { total_px, max_px } => false
   }

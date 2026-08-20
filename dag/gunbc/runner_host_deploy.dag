@@ -14,7 +14,7 @@ fn github_app_runner_org(config: GithubAppRunnerConfig) -> std.types.NonEmptyStr
 }
 
 data gunbc_ci_github_app: GithubAppRunnerConfig = GithubAppRunnerConfig {
-  app: gunbai_ci_declared,
+  app: gunbc.auth.github_apps.gunbai_ci_declared,
   installation_id: gunbai_ci_declared_installation_id,
   app_pem_secret: gunbai_ci_app_pem_secret,
 }

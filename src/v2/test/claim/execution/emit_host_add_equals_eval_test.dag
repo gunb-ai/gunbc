@@ -30,9 +30,9 @@ fn emit_eval_arg_is_two(value: v2.std.runtime.RuntimeValue) -> Bool {
 
 fn emit_eval_args_are_two_twos(args: List<v2.std.runtime.RuntimeValue>) -> Bool {
   if count(args) == 2 {
-    match list_nth(xs: args, wanted: 0, absent: emit_eval_diagnostic(reason: ^emit_eval_args_bad, node: eval_add_subgraph_node)) {
+    match list_nth(xs: args, wanted: 0, absent: emit_eval_diagnostic(reason: ^emit_eval_args_bad, node: v2.test.manual.eval_runtime.eval_add_subgraph_node)) {
       Holds { value: left } =>
-        match list_nth(xs: args, wanted: 1, absent: emit_eval_diagnostic(reason: ^emit_eval_args_bad, node: eval_add_subgraph_node)) {
+        match list_nth(xs: args, wanted: 1, absent: emit_eval_diagnostic(reason: ^emit_eval_args_bad, node: v2.test.manual.eval_runtime.eval_add_subgraph_node)) {
           Holds { value: right } =>
             emit_eval_arg_is_two(value: left) && emit_eval_arg_is_two(value: right)
           Violates { diagnostic: _ } => false
@@ -61,7 +61,7 @@ fn emit_eval_call_primitive_six(node: Node, args: List<v2.std.runtime.RuntimeVal
 }
 
 fn emit_eval_choose_branch(_node: Node, _value: v2.std.runtime.RuntimeValue, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<Node> {
-  v2.std.diagnostic.Accepted { value: eval_add_subgraph_node, diagnostics: v2.std.diagnostic.None }
+  v2.std.diagnostic.Accepted { value: v2.test.manual.eval_runtime.eval_add_subgraph_node, diagnostics: v2.std.diagnostic.None }
 }
 
 fn emit_eval_step_loop(_node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.ControlTransfer> {
@@ -118,7 +118,7 @@ fn emit_eval_generic_facts(node: Node) -> v2.compiler.inferred_tree.InferredFact
 }
 
 fn emit_eval_composed_facts(node: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
-  match rust_add_inferred_tree.facts.lookup(node) {
+  match v2.test.manual.rust_add_emit_translate.rust_add_inferred_tree.facts.lookup(node) {
     Present { value: f } => optional_present(value: f)
     Absent => optional_present(value: emit_eval_generic_facts(node: node))
   }
@@ -143,7 +143,7 @@ fn emit_eval_claim(rhs_result_node: Node) -> v2.std.verification.TestClaim {
 
 fn emit_eval_subject(call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> Outcome<RuntimeValue>) -> TestClaimEvalSubject<Node> {
   eval_test_claim_subject(
-    claim: emit_eval_claim(rhs_result_node: eval_add_subgraph_node),
+    claim: emit_eval_claim(rhs_result_node: v2.test.manual.eval_runtime.eval_add_subgraph_node),
     context: emit_eval_context(call_primitive: call_primitive),
     tree: emit_eval_subject_tree(),
     evaluator_pin: ^emit_eval_evaluator_pin

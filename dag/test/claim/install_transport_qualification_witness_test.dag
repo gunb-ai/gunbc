@@ -52,7 +52,7 @@ data absence_beside_unprobed: List<gunbc.install_transport_qualification.Transpo
 // defect that made the solver refuse a host whose sibling installs over exactly
 // this transport.
 test fn unprobed_requirements_are_unestablished_not_refused() -> Bool {
-  match srv3_configfs_reinstall_path_standing {
+  match gunbc.fleet_install_transport_observations.srv3_configfs_reinstall_path_standing {
     ReinstallPathUnestablished { missing_probes: m } => list_length(items: m) == 4
     ReinstallPathRefused { observed_absent: _ } => false
     ReinstallPathEstablished { qualified_by: _ } => false
@@ -64,28 +64,28 @@ test fn unprobed_requirements_are_unestablished_not_refused() -> Bool {
 // probes that were already done.
 test fn the_missing_probes_are_the_four_that_were_never_run() -> Bool {
   match transport_requirement_standing(
-    observations: srv3_configfs_transport_observations,
+    observations: gunbc.fleet_install_transport_observations.srv3_configfs_transport_observations,
     requirement: MassStorageFunctionAvailable,
   ) {
     RequirementUnobserved => true
     _ => false
   }
     && match transport_requirement_standing(
-      observations: srv3_configfs_transport_observations,
+      observations: gunbc.fleet_install_transport_observations.srv3_configfs_transport_observations,
       requirement: NbdServerReachableFromBmc,
     ) {
       RequirementUnobserved => true
       _ => false
     }
     && match transport_requirement_standing(
-      observations: srv3_configfs_transport_observations,
+      observations: gunbc.fleet_install_transport_observations.srv3_configfs_transport_observations,
       requirement: BootOverrideNamesGadgetDevice,
     ) {
       RequirementUnobserved => true
       _ => false
     }
     && match transport_requirement_standing(
-      observations: srv3_configfs_transport_observations,
+      observations: gunbc.fleet_install_transport_observations.srv3_configfs_transport_observations,
       requirement: NoForeignGadgetOrNbdAttachment,
     ) {
       RequirementUnobserved => true
@@ -97,28 +97,28 @@ test fn the_missing_probes_are_the_four_that_were_never_run() -> Bool {
 // function ignoring its input.
 test fn the_four_observed_requirements_report_present() -> Bool {
   match transport_requirement_standing(
-    observations: srv3_configfs_transport_observations,
+    observations: gunbc.fleet_install_transport_observations.srv3_configfs_transport_observations,
     requirement: ConfigfsMounted,
   ) {
     RequirementObservedPresent { observation: _ } => true
     _ => false
   }
     && match transport_requirement_standing(
-      observations: srv3_configfs_transport_observations,
+      observations: gunbc.fleet_install_transport_observations.srv3_configfs_transport_observations,
       requirement: UsbGadgetFrameworkPresent,
     ) {
       RequirementObservedPresent { observation: _ } => true
       _ => false
     }
     && match transport_requirement_standing(
-      observations: srv3_configfs_transport_observations,
+      observations: gunbc.fleet_install_transport_observations.srv3_configfs_transport_observations,
       requirement: UdcPresent,
     ) {
       RequirementObservedPresent { observation: _ } => true
       _ => false
     }
     && match transport_requirement_standing(
-      observations: srv3_configfs_transport_observations,
+      observations: gunbc.fleet_install_transport_observations.srv3_configfs_transport_observations,
       requirement: NbdClientPresent,
     ) {
       RequirementObservedPresent { observation: _ } => true
@@ -173,7 +173,7 @@ test fn no_observations_owes_every_probe_and_refuses_nothing() -> Bool {
 // as "not installed".
 test fn a_running_host_can_have_an_unestablished_reinstall_path() -> Bool {
   installed_os_is_running(standing: gunbc.install_transport_qualification.InstalledOsRunning { observed_at: 1786629600000 })
-    && match srv3_configfs_reinstall_path_standing {
+    && match gunbc.fleet_install_transport_observations.srv3_configfs_reinstall_path_standing {
       ReinstallPathUnestablished { missing_probes: _ } => true
       _ => false
     }

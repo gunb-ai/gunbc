@@ -11,7 +11,7 @@ fn complexity_declared_budget_is_rated(budget: v2.lens.complexity.ComplexityBoun
 }
 
 data complexity_budget_row_unrated_declared_budget_semantic_red: v2.test.complexity_gate.subject_complexity_budget_roster.LensSubjectComplexityBudgetRow = v2.test.complexity_gate.subject_complexity_budget_roster.LensSubjectComplexityBudgetRow {
-  subject_producer: table_fixture_add_arrow_with_body,
+  subject_producer: v2.test.complexity_gate.table_fixture_add_subject_producer.table_fixture_add_arrow_with_body,
   declared_budget: fn(body) {
     unknown_complexity()
   }

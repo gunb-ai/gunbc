@@ -183,7 +183,7 @@ test fn pin_integrity_uses_structural_family() -> Bool {
 test fn oci_descriptor_accepts_sha256_digest() -> Bool {
   match accept_descriptor(
     d: extdeps.container.oci.descriptor.OciDescriptor {
-      mediaType: media_type_oci_image_layer_v1_tar_gzip,
+      mediaType: extdeps.container.oci.media_types.media_type_oci_image_layer_v1_tar_gzip,
       digest: witness_oci_sha256_row(),
       size: 1,
     }

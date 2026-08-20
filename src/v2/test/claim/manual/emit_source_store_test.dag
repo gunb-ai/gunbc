@@ -17,7 +17,7 @@ data p3_provider: std.materialization_ladder.CacheProvider = std.materialization
 
 fn p3_key(emitter: String) -> std.content_hash.ContentHash {
   std.artifact_store.artifact_key_hash(key: std.artifact_store.ArtifactKey {
-    closure_digest: inferred_tree_digest(tree: rust_add_inferred_tree),
+    closure_digest: inferred_tree_digest(tree: v2.test.manual.rust_add_emit_translate.rust_add_inferred_tree),
     emitter_identity: emitter,
     target_language: "rust",
     toolchain: "source-artifact"
@@ -25,7 +25,7 @@ fn p3_key(emitter: String) -> std.content_hash.ContentHash {
 }
 
 fn fresh_emit_source() -> String {
-  match emit(tree: rust_add_inferred_tree, target: rust_add_target_model) {
+  match emit(tree: v2.test.manual.rust_add_emit_translate.rust_add_inferred_tree, target: rust_add_target_model) {
     Accepted { value: m, diagnostics: _ } => m.carried
     Rejected { diagnostics: _ } => ""
   }

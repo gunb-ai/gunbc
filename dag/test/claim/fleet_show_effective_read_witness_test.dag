@@ -188,7 +188,7 @@ test fn witness_srv2_grounded_receipt_lists_every_fixture_runner_unit() -> Bool 
 }
 
 test fn witness_committed_show_reads_are_fail_closed_absent() -> Bool {
-  match gunbc_fleet_runner_slice_cap_show_effective_read {
+  match gunbc.fleet_show_effective_read.gunbc_fleet_runner_slice_cap_show_effective_read {
     ReadAbsent { reason: _ } => true
     _ => false
   }

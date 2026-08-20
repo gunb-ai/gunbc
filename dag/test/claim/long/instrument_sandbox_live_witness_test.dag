@@ -15,7 +15,7 @@ fn served() -> extdeps.http.server.ServeHttpResponse {
     handler: InstrumentSandboxPageHandler,
     params: [],
     request: fixture_request(path: "/sandbox/instrument"),
-    release_revision: deploy_witness_release_revision,
+    release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision,
   )
 }
 

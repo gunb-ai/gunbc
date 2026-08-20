@@ -25,6 +25,6 @@ fn evidence_url_contains(row: std.cache_interface.CacheEvidence, fragment: Strin
 }
 
 test fn witness_sccache_local_disk_sibling_is_content_verified() -> Bool {
-  resolved_graph_cache_facts.key_derivation.content_verified_on_read
+  extdeps.realization.resolved_graph.resolved_graph_cache_facts.key_derivation.content_verified_on_read
 }
 

@@ -8,5 +8,5 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = ampere
 // Classified contacts are DERIVED from the transcribed Table 4 rows by the classifier in
 // extdeps.cpu.ampere_altra_package — not pre-baked in a generator.
 fn altra_package_contacts() -> List<extdeps.cpu.ampere_altra_package.PackageContact> {
-  contacts_from_table4(rows: altra_table4_pin_rows)
+  contacts_from_table4(rows: extdeps.cpu.ampere_altra_package_table4_raw.altra_table4_pin_rows)
 }

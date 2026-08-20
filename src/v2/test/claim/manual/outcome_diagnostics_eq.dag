@@ -4,14 +4,14 @@ module v2.test.manual.outcome_diagnostics_eq
 fn diag_eq_x() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^diag_eq_reason_x,
-    at: node_locus(node: stub_empty_conj),
+    at: node_locus(node: v2.test.manual.connective_anchors.stub_empty_conj),
     correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn diag_eq_y() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^diag_eq_reason_y,
-    at: node_locus(node: stub_empty_conj),
+    at: node_locus(node: v2.test.manual.connective_anchors.stub_empty_conj),
     correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }

@@ -207,7 +207,7 @@ test fn live_corpus_is_currently_all_body_unavailable() -> Bool {
 
 test fn unbound_contracts_remain_enumerable() -> Bool {
   unbound_contract_count() > 0
-    && lens_contract_is_unbound(c: lens_contract_complexity_derived_kernel)
+    && lens_contract_is_unbound(c: v2.lens.enforcement.contract.lens_contract_complexity_derived_kernel)
     && lens_contract_is_unbound(c: lens_contract_complexity_optimality)
     && lens_contract_is_unbound(c: lens_contract_effect_reach)
 }

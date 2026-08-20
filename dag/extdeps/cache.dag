@@ -79,12 +79,12 @@ fn cache_verified_hit_receipt<T>(
   }
 }
 
-data gha_actions_cache: extdeps.cache.types.CacheInterfaceCatalogFacts = gha_actions_cache_facts
+data gha_actions_cache: extdeps.cache.types.CacheInterfaceCatalogFacts = extdeps.cache.github_actions.gha_actions_cache_facts
 data sccache_local: extdeps.cache.types.CacheInterfaceCatalogFacts = sccache_local_facts
 data buildbuddy_cas: extdeps.cache.types.CacheInterfaceCatalogFacts = buildbuddy_cas_facts
-data cargo_target_dir: extdeps.cache.types.CacheInterfaceCatalogFacts = cargo_target_dir_facts
+data cargo_target_dir: extdeps.cache.types.CacheInterfaceCatalogFacts = extdeps.cache.cargo.cargo_target_dir_facts
 data rustup_toolchain_store: extdeps.cache.types.CacheInterfaceCatalogFacts = rustup_toolchain_store_facts
-data resolved_graph_cache: extdeps.cache.types.CacheInterfaceCatalogFacts = resolved_graph_cache_facts
+data resolved_graph_cache: extdeps.cache.types.CacheInterfaceCatalogFacts = extdeps.realization.resolved_graph.resolved_graph_cache_facts
 data parse_table_memo: extdeps.cache.types.CacheInterfaceCatalogFacts = parse_table_memo_facts
 data compile_stage_memo: extdeps.cache.types.CacheInterfaceCatalogFacts = compile_stage_memo_facts
 
@@ -94,8 +94,8 @@ data cache_catalog: List<extdeps.cache.types.CacheInterfaceCatalogFacts> = [
   buildbuddy_cas,
   cargo_target_dir,
   rustup_toolchain_store,
-  parse_cache_facts,
-  typed_module_cache_facts,
+  extdeps.realization.reconcile_in_process.parse_cache_facts,
+  extdeps.realization.reconcile_in_process.typed_module_cache_facts,
   resolved_graph_cache,
   parse_table_memo,
   compile_stage_memo_facts,
@@ -110,13 +110,13 @@ data cargo_target_dir_projected: std.cache_interface.CacheInterfaceFacts = cache
 
 data cache_layer_default_order: List<std.cache_identity.CacheInterfaceId> = [
   parse_table_memo_id,
-  parse_cache_id,
+  extdeps.realization.reconcile_in_process.parse_cache_id,
   typed_module_cache_id,
   cargo_target_dir_id,
   sccache_local_id,
   resolved_graph_cache_id,
   rustup_toolchain_store_id,
-  buildbuddy_cas_id,
-  gha_actions_cache_id,
+  extdeps.cache.buildbuddy.buildbuddy_cas_id,
+  extdeps.cache.github_actions.gha_actions_cache_id,
   compile_stage_memo_id,
 ]

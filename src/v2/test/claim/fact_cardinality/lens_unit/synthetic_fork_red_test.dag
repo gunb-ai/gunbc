@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data synthetic_fork_dag: v2.lens.fact_cardinality.FactCardinalityDeclFact = v2.lens.fact_cardinality.FactCardinalityDeclFact {
   rel_path_decl_key: "std/algebra.dag:FreeMonoid",
-  tree: Dag,
+  tree: v2.lens.affected_set.Dag,
   content_hash: "dag_free_monoid_record"
 }
 

@@ -115,7 +115,7 @@ data translate_bodyless_emission_root_with_poison_child_tree: v2.compiler.inferr
 
 fn translate_bodied_arrow_shortcut_root() -> v2.std.diagnostic.Outcome<Node> {
   bind_outcome(
-    o: table_fixture_add_arrow_with_body(),
+    o: v2.test.complexity_gate.table_fixture_add_subject_producer.table_fixture_add_arrow_with_body(),
     f: fn(arrow) {
       outcome_accepted(
         value: node_rebuild(
@@ -238,7 +238,7 @@ fn translate_refuses_underived_root(root: Node) -> Bool {
 }
 
 fn translate_refuses_underived_bodied_arrow() -> Bool {
-  match table_fixture_add_arrow_with_body() {
+  match v2.test.complexity_gate.table_fixture_add_subject_producer.table_fixture_add_arrow_with_body() {
     Accepted { value: root, diagnostics: _ } =>
       translate_refuses_underived_root_for_target(root: root, target: go_target_model())
     Rejected { diagnostics: _ } => false
@@ -326,14 +326,14 @@ test fn cross_language_compile_refuses_canonical_underived_holds() -> Bool {
 }
 
 fn translate_accepts_derived_rust_add_tree() -> Bool {
-  match translate(tree: rust_add_inferred_tree, target: rust_target_model()) {
+  match translate(tree: v2.test.manual.rust_add_emit_translate.rust_add_inferred_tree, target: rust_target_model()) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
 fn translate_derived_emit_byte_identical_to_before() -> Bool {
-  match emit(tree: rust_add_inferred_tree, target: rust_target_model()) {
+  match emit(tree: v2.test.manual.rust_add_emit_translate.rust_add_inferred_tree, target: rust_target_model()) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_source_text) && (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false

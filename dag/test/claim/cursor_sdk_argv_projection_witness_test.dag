@@ -6,7 +6,7 @@ data witness_key: std.types.NonEmptyStr = "synthetic-not-a-real-key" as std.type
 fn witness_invocation(auth: extdeps.llm.cursor_cli.CursorAuth) -> extdeps.llm.cursor_cli.CursorInvocation {
   extdeps.llm.cursor_cli.CursorInvocation {
     auth: auth,
-    model: cursor_model_auto,
+    model: extdeps.llm.cursor_cli.cursor_model_auto,
     mode: CursorDefaultEditMode,
     sandbox: CursorSandboxEnabled,
     output_format: CursorStreamJson,

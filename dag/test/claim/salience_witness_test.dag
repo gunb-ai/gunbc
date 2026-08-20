@@ -112,7 +112,7 @@ test fn witness_focal_emission_grant_carries_its_discriminator() -> Bool {
 
 test fn witness_attraction_is_bounded_and_borrows_the_register_spring() -> Bool {
   attraction_envelope(f: focal_attraction)
-    && focal_attraction.max_travel.n <= attraction_travel_max_px
+    && focal_attraction.max_travel.n <= gunbc.design.salience.attraction_travel_max_px
     && focal_attraction.activation_radius.n >= attraction_activation_min_px
     && focal_attraction.activation_radius.n <= attraction_activation_max_px
     && focal_attraction.settle.name == settle_spring.name
@@ -156,7 +156,7 @@ test fn witness_red_rem_attraction_is_not_comparable_to_a_px_bound() -> Bool {
     settle: settle_spring,
   }
   !attraction_envelope(f: rem_field)
-    && rem_field.max_travel.n <= attraction_travel_max_px
+    && rem_field.max_travel.n <= gunbc.design.salience.attraction_travel_max_px
     && rem_field.activation_radius.n >= attraction_activation_min_px
     && rem_field.activation_radius.n <= attraction_activation_max_px
     && rem_field.activation_radius.n > rem_field.max_travel.n

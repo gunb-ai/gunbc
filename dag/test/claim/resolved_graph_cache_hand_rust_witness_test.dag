@@ -5,14 +5,14 @@ module test.claim.resolved_graph_cache_hand_rust_witness
 data resolved_graph_cache_hand_rust_witness_note: String = "HAND-RUST checkable receipt (reviews 46781/46990): scaffold bind on lookup_verified_probe; full #7534 Rust census (four paths after the #8146 test-suite cutover removed three; per-path net deltas summing to loc_delta_net); consumer bridge defers to materialization_provider_consumer_hand_rust_witness_test.dag. Discriminator rows deleted 2026-08-11 (review 51152) — the module they named was removed by the test-suite cutover and a substring check over the constants proved nothing."
 
 test fn resolved_graph_cache_hand_rust_scaffold_is_seed_retained() -> Bool {
-  match resolved_graph_cache_hand_rust_scaffold {
+  match gunbc.resolved_graph_cache_hand_rust_scaffold.resolved_graph_cache_hand_rust_scaffold {
     Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
     _ => false
   }
 }
 
 test fn resolved_graph_cache_hand_rust_receipt_is_checkable() -> Bool {
-  !(dissolution_description(condition: resolved_graph_cache_hand_rust_dissolve_trigger) == "")
+  !(dissolution_description(condition: gunbc.resolved_graph_cache_hand_rust_scaffold.resolved_graph_cache_hand_rust_dissolve_trigger) == "")
     && !(resolved_graph_cache_hand_rust_receipt_plan_anchor == "")
     && !(resolved_graph_cache_hand_rust_roadmap_lane_anchor == "")
     && resolved_graph_cache_hand_rust_receipt_witness_entry ==

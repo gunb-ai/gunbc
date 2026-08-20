@@ -30,7 +30,7 @@ fn python_add_emit_perturbed_target_model() -> v2.std.compilers.target_model.Tar
 }
 
 fn python_add_emit_from_tree(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
-  emit(tree: python_add_inferred_tree, target: target)
+  emit(tree: v2.test.manual.python_add_emit_translate.python_add_inferred_tree, target: target)
 }
 
 test fn python_add_emit_holds() -> Bool {

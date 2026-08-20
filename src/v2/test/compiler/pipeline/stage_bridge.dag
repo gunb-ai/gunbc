@@ -229,7 +229,7 @@ fn pipeline_infer_add_fixture_relationship_holds() -> Bool {
 }
 
 fn pipeline_lower_add_fixture_relationship_holds() -> Bool {
-  match translate(tree: rust_add_inferred_tree, target: rust_target_model()) {
+  match translate(tree: v2.test.manual.rust_add_emit_translate.rust_add_inferred_tree, target: rust_target_model()) {
     Accepted { value: emitted, diagnostics: _ } => well_formed(n: emitted)
     Rejected { diagnostics: _ } => false
   }

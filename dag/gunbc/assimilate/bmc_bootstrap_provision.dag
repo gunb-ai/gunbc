@@ -18,7 +18,7 @@ data bmc_required_gcp_apis: List<String> = map(bmc_assimilate_service_deps, s =>
 fn bmc_secret_iam_bindings() -> List<extdeps.cloud.gcp.iam.GcpBinding> {
   [
     extdeps.cloud.gcp.iam.GcpBinding {
-      role: role_secretmanager_secret_accessor,
+      role: extdeps.cloud.gcp.iam.role_secretmanager_secret_accessor,
       members: [bmc_assimilator_sa_member()]
     },
     extdeps.cloud.gcp.iam.GcpBinding {

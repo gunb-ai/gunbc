@@ -108,7 +108,7 @@ fn orch_emit_run_core(r: v2.std.orchestration.Run, medium: v2.std.orchestration_
       bind_outcome(
         o: orch_emit_from_registry(
           medium: medium,
-          construct_tag: orch_construct_run_rawline,
+          construct_tag: v2.std.orchestration_emit.orch_construct_run_rawline,
           target: medium.realize_run_rawline(r.command)
         ),
         f: fn(m) { outcome_accepted(m.carried) }
@@ -616,7 +616,7 @@ fn orch_emit_step(s: v2.std.orchestration.PipelineStep, medium: v2.std.orchestra
       } else {
         orch_emit_from_registry(
           medium: medium,
-          construct_tag: orch_construct_run_rawline,
+          construct_tag: v2.std.orchestration_emit.orch_construct_run_rawline,
           target: medium.realize_run_rawline(concat("# ", t))
         )
       }

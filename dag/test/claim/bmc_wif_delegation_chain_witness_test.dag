@@ -43,7 +43,7 @@ test fn secret_access_step_targets_canary_not_bmc_secret() -> Bool {
   match bmc_wif_canary_delegation_chain.steps.skip(n: 3).first() {
     SecretVersionAccess { secret_ref: ref } =>
       secret_ref_secret_resource(ref: ref) == secret_ref_secret_resource(ref: wif_canary_secret_ref)
-        && secret_ref_secret_resource(ref: ref) != secret_ref_secret_resource(ref: bmc_srv3_admin_secret_ref)
+        && secret_ref_secret_resource(ref: ref) != secret_ref_secret_resource(ref: gunbc.assimilate.bmc_wif_delegation_chain.bmc_srv3_admin_secret_ref)
     _ => false
   }
 }
@@ -63,12 +63,12 @@ test fn unsigned_grant_row_count_matches_zero_derived_bindings() -> Bool {
 
 test fn secret_refs_carry_no_hash_material_they_are_pending() -> Bool {
   !secret_ref_hash_known(ref: wif_canary_secret_ref)
-    && !secret_ref_hash_known(ref: bmc_srv3_admin_secret_ref)
+    && !secret_ref_hash_known(ref: gunbc.assimilate.bmc_wif_delegation_chain.bmc_srv3_admin_secret_ref)
 }
 
 test fn secret_refs_are_free_of_credential_shaped_strings() -> Bool {
   let canary_res = secret_ref_secret_resource(ref: wif_canary_secret_ref)
-  let bmc_res = secret_ref_secret_resource(ref: bmc_srv3_admin_secret_ref)
+  let bmc_res = secret_ref_secret_resource(ref: gunbc.assimilate.bmc_wif_delegation_chain.bmc_srv3_admin_secret_ref)
   !string_contains(s: canary_res, pattern: "0penBmc")
     && !string_contains(s: bmc_res, pattern: "0penBmc")
     && !string_contains(s: canary_res, pattern: "BEGIN PRIVATE KEY")

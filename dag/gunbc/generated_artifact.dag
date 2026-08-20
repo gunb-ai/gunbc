@@ -29,7 +29,7 @@ data generated_artifact_registry: List<GeneratedArtifact> = concat(
     ),
     map(fleet_install_server_specs, s => ProxyDhcpDnsmasqArtifact { spec: s })
   ),
-  map(all_plans, pl => PlanArtifact { plan: pl })
+  map(gunbc.plan_registry.all_plans, pl => PlanArtifact { plan: pl })
 )
 
 type RepoConsumer

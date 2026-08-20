@@ -6,7 +6,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 test fn witness_catalog_admissible() -> Bool {
   catalog_admissible()
     && swatch_set_admissible(s: island_pastel)
-    && swatch_set_admissible(s: okabe_ito)
+    && swatch_set_admissible(s: gunbc.design.catalog.okabe_ito)
     && swatch_set_admissible(s: solarized)
 }
 
@@ -140,7 +140,7 @@ test fn witness_ivory_refused_despite_near_achromatic_oklch() -> Bool {
 data ivory_hsl_proxy_defect_note: String = "Teaching case: ivory (255,255,250) is refused by the HSL quiet_envelope despite perceptual near-achromatic OKLCH chroma (~0.007) — documents the HSL-proxy defect that design-register-library.md sect 10 schedules for OKLCH reground; this witness pins the defect, it does not fix it."
 
 test fn witness_cited_palette_counts() -> Bool {
-  swatches_of(s: okabe_ito).length() == 8
+  swatches_of(s: gunbc.design.catalog.okabe_ito).length() == 8
     && swatches_of(s: solarized).length() == 16
     && palette_catalog.length() == 3
 }
