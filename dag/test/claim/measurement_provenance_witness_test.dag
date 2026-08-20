@@ -1,0 +1,68 @@
+module test.claim.measurement_provenance_witness
+
+import std.types { Bool, Int }
+import std.content_hash { content_hash_of_value }
+import gunbc.measurement_provenance {
+  InstrumentConstruction, InstrumentBuilt, InstrumentConstructionFailed,
+  SubjectConstruction, SubjectRealized, SubjectConstructionFailed,
+  Observation, Observed, InstrumentNotConstructed, SubjectNotConstructed,
+  observe, observation_is_bound,
+}
+
+// WHAT THIS WITNESS COVERS. observe folds InstrumentConstruction and SubjectConstruction into
+// an Observation<Value>. The claim is that the bound arm (Observed) is reachable only when both
+// constructions succeeded — never when either failed, regardless of how plausible the value
+// handed to observe looks. This is the shape specimen (3) from the brief violated: a build
+// failure hidden behind `cargo build 2>&1 | tail -4 && next` let a downstream step report a
+// number as though the build that should have produced its subject had succeeded.
+
+fn a_built_instrument() -> InstrumentConstruction {
+  InstrumentBuilt { identity: content_hash_of_value(value: "instrument-bytes-fixture") }
+}
+
+fn a_failed_instrument() -> InstrumentConstruction {
+  InstrumentConstructionFailed {
+    detail: "cargo build exited nonzero; the pipe to `tail -4` swallowed the exit code"
+  }
+}
+
+fn a_realized_subject() -> SubjectConstruction {
+  SubjectRealized { identity: content_hash_of_value(value: "subject-tree-fixture") }
+}
+
+fn a_failed_subject() -> SubjectConstruction {
+  SubjectConstructionFailed {
+    detail: "refusing to merge unrelated histories"
+  }
+}
+
+// POSITIVE CONTROL. Without this, the RED below would be satisfied by a predicate that refuses
+// unconditionally, which is incapable of ever reporting a bound observation.
+test fn a_successful_build_and_subject_yields_a_bound_observation() -> Bool {
+  observation_is_bound(o: observe(instrument: a_built_instrument(), subject: a_realized_subject(), value: 42))
+}
+
+// THE DISCRIMINATING RED (specimen 3). A build that failed behind an unguarded pipe must not
+// let the downstream measurement be reported as bound to any instrument at all — there is no
+// identity field on InstrumentConstructionFailed for the plausible value 9 (specimen 2's own
+// shape of number: a well-formed, wrong count) to ride along with.
+test fn w_RED_a_failed_build_never_yields_a_bound_observation() -> Bool {
+  !observation_is_bound(o: observe(instrument: a_failed_instrument(), subject: a_realized_subject(), value: 9))
+}
+
+// THE SAME LAW ON THE SUBJECT HALF (specimen 4). A treatment merge that refused on a shallow
+// clone must not let the baseline's numbers be reported as though they described the treatment.
+test fn w_RED_a_failed_subject_never_yields_a_bound_observation() -> Bool {
+  !observation_is_bound(o: observe(instrument: a_built_instrument(), subject: a_failed_subject(), value: 9))
+}
+
+// A doubly-failed fold reports the instrument refusal, not a merged or widened one — asserted
+// rather than assumed, since DESIGN section 5 forbids a failure arm from absorbing a second
+// failure into silence.
+test fn a_doubly_failed_fold_reports_the_instrument_refusal() -> Bool {
+  match observe(instrument: a_failed_instrument(), subject: a_failed_subject(), value: 9) {
+    InstrumentNotConstructed { detail: _ } => true
+    SubjectNotConstructed { detail: _ } => false
+    Observed { instrument: _, subject: _, value: _ } => false
+  }
+}
