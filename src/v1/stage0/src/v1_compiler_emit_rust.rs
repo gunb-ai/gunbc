@@ -12828,6 +12828,14 @@ pub fn emit_type_def_from_connective(
                         &emit_info.map_key_required_type_names.clone(),
                         item_text.clone(),
                     ),
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for p in item.params.clone().iter().cloned() {
+                            __result
+                                .push(generic_param_name_at(p.clone(), env.source_indices.clone()));
+                        }
+                        __result
+                    }),
                     env.source_indices.clone(),
                 );
                 let type_params = if ((capability_surface.impl_bodies.clone() == "".to_string())
@@ -13213,6 +13221,7 @@ pub fn emit_struct_from_children(
             shared_types.clone(),
             has_fn_fields.clone(),
             v1_rt::set_contains(&emit_info.map_key_required_type_names.clone(), name.clone()),
+            generic_param_names.clone(),
             env.source_indices.clone(),
         );
         if ((children.clone().len() as i64) == 0) {
@@ -13738,12 +13747,14 @@ pub fn emit_rust_field_definition(
 pub fn enum_derives(
     name: String,
     children: Rc<Vec<Rc<Node>>>,
+    generic_param_names: Rc<Vec<String>>,
     emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     v1_emit_enum_derives(
         children.clone(),
         v1_rt::set_contains(&emit_info.map_key_required_type_names.clone(), name.clone()),
+        generic_param_names.clone(),
         source_indices.clone(),
     )
 }
@@ -13763,6 +13774,7 @@ pub fn emit_enum_from_children(
         let derives = enum_derives(
             name.clone(),
             children.clone(),
+            generic_param_names.clone(),
             emit_info.clone(),
             env.source_indices.clone(),
         );
@@ -13826,7 +13838,13 @@ pub fn emit_enum_from_children(
             env.clone(),
             emit_info.clone(),
         );
-        let supplemental = v1_emit_enum_supplemental_impls(env.module_path.clone(), name.clone());
+        let supplemental = v1_emit_enum_supplemental_impls(
+            env.module_path.clone(),
+            name.clone(),
+            children.clone(),
+            generic_param_names.clone(),
+            env.source_indices.clone(),
+        );
         let with_accessors = if (accessor_impl.clone() == "".to_string()) {
             enum_def.clone()
         } else {
@@ -16166,7 +16184,7 @@ pub fn emit_rust_param_type(
                     ),
                     ret_str.clone(),
                 ),
-                " + Clone".to_string(),
+                " + Clone + 'static".to_string(),
             )
         }
     } else {
