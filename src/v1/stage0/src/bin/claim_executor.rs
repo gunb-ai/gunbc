@@ -10342,6 +10342,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut required_mirror_drift_mode = false;
     let mut behavioral_receipt_plan_mode = false;
     let mut behavioral_receipt_selftest_mode = false;
+    let mut behavioral_receipt_census_mode = false;
     let mut regen_candidate_dir = "target/stage0-regen-candidate".to_string();
     let mut regen_receipt_path = "target/stage0-regen-receipt.json".to_string();
 
@@ -10379,6 +10380,9 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             "--behavioral-receipt-selftest" => {
                 behavioral_receipt_selftest_mode = true;
+            }
+            "--behavioral-receipt-census" => {
+                behavioral_receipt_census_mode = true;
             }
             "--regen-candidate-dir" => {
                 i += 1;
@@ -10472,6 +10476,10 @@ fn run() -> Result<ExitCode, ExitCode> {
     // and the absence of those flags is the point rather than an omission. `run_required_floor`
     // refuses when planned, executed and terminal identity counts disagree, so a silently short
     // roster cannot report as a pass.
+    if behavioral_receipt_census_mode {
+        return run_behavioral_receipt_census(&source_roots);
+    }
+
     if behavioral_receipt_selftest_mode {
         return run_behavioral_receipt_selftest(&source_roots);
     }
@@ -19413,6 +19421,127 @@ fn emitted_mirror_for_module(
         }
     }
     Ok(None)
+}
+
+/// THE POPULATION, AND WHAT DEFEATS IT -- a census, not a gate.
+///
+/// The differential answers ONE candidate. This answers the prior question: across every module
+/// the seed actually carries, how much of each one's surface can be covered at all, and what
+/// stands in the way of the rest. It runs no build and installs no candidate; it is the ranking
+/// input for how far to extend a mechanism that is now proven on one module, and it deliberately
+/// exits SUCCESS on any population -- a census that refused would be a gate, and nothing here
+/// establishes what the right coverage is.
+///
+/// The population is DERIVED, never authored: every emitted mirror names its authority on its
+/// second line, so the roster is a property of the artifacts. A module whose authority source is
+/// missing is REPORTED, not skipped -- a census that silently drops what it cannot read reports a
+/// smaller corpus as a cleaner one.
+fn behavioral_receipt_census(source_roots: &[String]) -> Result<bool, String> {
+    let workspace = v1_compiler::cli_run::workspace_root();
+    let stage0_src = workspace.join("src/v1/stage0/src");
+    let modules = collect_dag_module_sources(source_roots)?;
+
+    let mut roster: Vec<(String, String)> = Vec::new();
+    let entries =
+        fs::read_dir(&stage0_src).map_err(|e| format!("read_dir {}: {e}", stage0_src.display()))?;
+    for entry in entries {
+        let path = entry.map_err(|e| format!("dir entry: {e}"))?.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+            continue;
+        }
+        let Ok(content) = fs::read_to_string(&path) else {
+            continue;
+        };
+        for line in content.lines().take(3) {
+            if let Some(declared) = line.trim().strip_prefix("// Source module: ") {
+                roster.push((
+                    declared.trim().to_string(),
+                    path.file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or_default()
+                        .to_string(),
+                ));
+                break;
+            }
+        }
+    }
+    roster.sort();
+
+    let mut fns_total = 0usize;
+    let mut fns_derivable = 0usize;
+    let mut fns_refused = 0usize;
+    let mut calls_total = 0usize;
+    let mut modules_planned = 0usize;
+    let mut unreadable: Vec<String> = Vec::new();
+    // Keyed on the TYPE that defeated derivation, because that is the unit of work: grounding one
+    // type unlocks every function whose only obstacle was that type. Counting refusals instead
+    // would rank the same fix once per site.
+    let mut by_blocker: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+
+    for (module_path, mirror) in &roster {
+        let Some(source) = modules.get(module_path) else {
+            unreadable.push(module_path.clone());
+            continue;
+        };
+        let alias = format!("v1_compiler::{}", mirror.trim_end_matches(".rs"));
+        let node = parse_dag_module_node(&format!("{module_path}.dag"), source)?;
+        let types = visible_type_decls(module_path, source, &modules)?;
+        let plan = plan_module_corpus(module_path, source, &node, &types, &alias);
+        modules_planned += 1;
+        fns_total += plan.parsed_signatures;
+        fns_derivable += plan.derivable.len();
+        fns_refused += plan.refused.len();
+        let calls: usize = plan.derivable.iter().map(|(_, _, t)| t.len()).sum();
+        calls_total += calls;
+        for (_f, why) in &plan.refused {
+            *by_blocker.entry(why.clone()).or_insert(0) += 1;
+        }
+        eprintln!(
+            "receipt-census: {module_path} parsed={} derivable={} calls={} refused={}",
+            plan.parsed_signatures,
+            plan.derivable.len(),
+            calls,
+            plan.refused.len()
+        );
+    }
+
+    let mut ranked: Vec<(String, usize)> = by_blocker.into_iter().collect();
+    ranked.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+
+    eprintln!(
+        "receipt-census: modules_with_mirror={} planned={} unreadable_authority={}",
+        roster.len(),
+        modules_planned,
+        unreadable.len()
+    );
+    for m in &unreadable {
+        eprintln!("receipt-census: NO AUTHORITY SOURCE for {m} — counted, not skipped");
+    }
+    eprintln!(
+        "receipt-census: functions parsed={fns_total} derivable={fns_derivable} refused={fns_refused} calls={calls_total}"
+    );
+    eprintln!("receipt-census: refusals ranked by the type responsible");
+    for (why, n) in ranked.iter().take(40) {
+        eprintln!("receipt-census:   {n:5}  {why}");
+    }
+    if ranked.len() > 40 {
+        let tail: usize = ranked.iter().skip(40).map(|(_, n)| n).sum();
+        eprintln!(
+            "receipt-census:   {tail:5}  [{} further distinct causes, not shown]",
+            ranked.len() - 40
+        );
+    }
+    Ok(true)
+}
+
+fn run_behavioral_receipt_census(source_roots: &[String]) -> Result<ExitCode, ExitCode> {
+    match behavioral_receipt_census(source_roots) {
+        Ok(_) => Ok(ExitCode::SUCCESS),
+        Err(e) => {
+            eprintln!("receipt-census: REFUSED — {e}");
+            Err(ExitCode::from(1))
+        }
+    }
 }
 
 /// THE RECEIPT'S OWN ARMS, ENROLLED.
