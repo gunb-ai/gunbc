@@ -193,13 +193,23 @@ projection + the emitted `.gitattributes` itself).
 
 ## Lane 3 — derive stage0 output membership (gates the emitted-Rust extension)
 
-`generated_stage0_files` (dag/gunbc/stage0_emit_plan_generated.dag) is a handwritten filename
-list — the second-authority shape exactly. It becomes a derivation:
+**LANDED, BY A DIFFERENT DERIVATION THAN THIS LANE PLANNED.** `generated_stage0_files`
+was a handwritten filename list — the second-authority shape exactly — and it is now
+deleted. The derivation this lane sketched routed through the stage0 emission plan:
 
 ```text
 stage0 emission plan → produced module/file identities → canonical output paths
   → generated projection membership → Git merge attributes
 ```
+
+That route is not available: `gunbc.stage0_emit_plan` was deleted at the root by the
+regen cut (#8406), which is also what left the roster producerless. What landed instead
+is the derivation the executing host already performed — `required_regen_host`
+`committed_generated_basenames` — lifted into `.dag` as
+`gunbc.stage0_rust_source_lifecycle_scaffold derived_generated_stage0_repo_paths`: a direct-child
+`.rs` under the stage0 source root that `v2.compiler.self_host.stage0_crate_layout`
+does not claim IS generated. Same single authority, reached from the committed tree
+rather than from a plan, and it makes `.dag` and the host agree by construction.
 
 Only after this derivation lands do stage0 emitted `.rs` outputs join the
 generated-projection merge policy (lane 2's rows). Extending `.gitattributes` from the

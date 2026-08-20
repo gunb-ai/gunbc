@@ -21,7 +21,7 @@ import gunbc.extdeps_scope_frontier {
 }
 
 // THIS GATE DOES NOT CURRENTLY RUN (measured 2026-08-19): no workflow in .github/workflows/
-// references it, and the only executing CI step is `claim_executor --required-floor`. The note
+// references it, and the only executing CI step is `claim_executor --required-ci`, whose floor phase is the fold this refers to (it was `--required-floor` until the 2026-08-20 consolidation folded parse, regen and the floor into one invocation). The note
 // below calls it a "server-side per-PR wall" that "refuses" — present tense, and not true today.
 // DESIGN's "Building & checks" section already declares the floor cut's bounded rung drop and names
 // the effect gates among what is unguarded; this comment carries that fact to the module a reader
