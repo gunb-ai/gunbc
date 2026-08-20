@@ -863,7 +863,7 @@ fn realize_bmcweb_token_extract_body(
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match srv3_tool_bin_path(tool_name: jq_cli_tool.name, transport: LocalShell) {
-    Srv3ToolPathAt { path: jq_path } => {
+    Srv3TokenObserved { value: jq_path } => {
       let jq_run = gunbc.WitnessBin.Run(
         workdir: "/",
         bin_path: jq_path,
@@ -898,7 +898,7 @@ fn realize_bmcweb_token_extract_body(
           )
       }
     }
-    Srv3ToolPathAbsent =>
+    Srv3TokenAbsent =>
       srv3_shell_reconcile(
         observed: ShellExecObserved {
           exit_code: 1,
@@ -908,7 +908,7 @@ fn realize_bmcweb_token_extract_body(
         },
         intent: intent,
       )
-    Srv3ToolPathUnobserved { reason: why } =>
+    Srv3TokenUnobserved { reason: why } =>
       NotConverged {
         reason: concat(
           "host_effect_apply: Srv3BmcwebTokenExtract could not observe jq, so no extraction was attempted and no token file is claimed: ",
@@ -1282,7 +1282,7 @@ data srv3_actuator_toolchain_emit_artifact_transport_helper_note: String = "real
 // THE THREE-VALUED COLLAPSE IS CLOSED. This is where the roster of five collapse sites and six
 // consumers stood, together with its dissolution condition: "DISSOLVES WHEN the sites return an
 // observation that preserves TypedArgvExecRefused". They do now -- Srv3HostPredicate and
-// Srv3ToolPath carry Unobserved with the reason the refusal already had -- so the roster and its
+// Srv3ObservedToken carry Unobserved with the reason the refusal already had -- so the roster and its
 // shape check are deleted rather than left standing beside the thing they described.
 //
 // What the roster was right about, and what it could not make unwritable: it said a repair that
@@ -1310,24 +1310,29 @@ fn srv3_predicate_from_typed_argv(outcome: TypedArgvExecOutcome) -> Srv3HostPred
   }
 }
 
-// The same three states for a probe whose answer is a path rather than a verdict. Absent and
-// Unobserved differ in remedy: the first says install it, the second says the question was never
-// put to the host.
-type Srv3ToolPath
-  = Srv3ToolPathAt { path: String }
-  | Srv3ToolPathAbsent
-  | Srv3ToolPathUnobserved { reason: String }
+// The same three states for a probe whose answer is a VALUE rather than a verdict -- a resolved
+// tool path, a uid, a gid: whatever single token the probe printed. Absent and Unobserved differ
+// in remedy: the first says the host answered and had nothing, the second says the question was
+// never put to the host.
+//
+// Named for the token and not for the tool path, because two consumers carry numeric ids through
+// it. A carrier named Srv3ToolPath with a uid in its `path` field is a name that lies about its
+// contents, which is the §3 concern applied to a field rather than a module (review 54189).
+type Srv3ObservedToken
+  = Srv3TokenObserved { value: String }
+  | Srv3TokenAbsent
+  | Srv3TokenUnobserved { reason: String }
 
-fn srv3_tool_path_from_typed_argv(outcome: TypedArgvExecOutcome) -> Srv3ToolPath {
+fn srv3_observed_token_from_typed_argv(outcome: TypedArgvExecOutcome) -> Srv3ObservedToken {
   match outcome {
     TypedArgvExecConverged { result: r } =>
       if r.success {
         let out = trim(s: r.stdout)
-        if out == "" { Srv3ToolPathAbsent } else { Srv3ToolPathAt { path: out } }
+        if out == "" { Srv3TokenAbsent } else { Srv3TokenObserved { value: out } }
       } else {
-        Srv3ToolPathAbsent
+        Srv3TokenAbsent
       }
-    TypedArgvExecRefused { reason: why } => Srv3ToolPathUnobserved { reason: why }
+    TypedArgvExecRefused { reason: why } => Srv3TokenUnobserved { reason: why }
   }
 }
 
@@ -1440,25 +1445,25 @@ fn srv3_apt_tool_present(tool_name: NonEmptyStr, transport: HostEffectTransport)
   }
 }
 
-fn srv3_tool_bin_path(tool_name: NonEmptyStr, transport: HostEffectTransport) -> Srv3ToolPath {
+fn srv3_tool_bin_path(tool_name: NonEmptyStr, transport: HostEffectTransport) -> Srv3ObservedToken {
   match transport {
     LocalShell => {
       let found = shell.PosixCommandV.Check(command: tool_name)
       if found.exists {
         match found.path {
-          Present { value: tool_path } => Srv3ToolPathAt { path: tool_path as String }
-          Absent => Srv3ToolPathAbsent
+          Present { value: tool_path } => Srv3TokenObserved { value: tool_path as String }
+          Absent => Srv3TokenAbsent
         }
       } else {
-        Srv3ToolPathAbsent
+        Srv3TokenAbsent
       }
     }
     SshShell { ssh_host: h } =>
-      srv3_tool_path_from_typed_argv(
+      srv3_observed_token_from_typed_argv(
         outcome: typed_argv_exec_over_ssh(host: h, argv: posix_command_v_check_argv(command: tool_name)),
       )
     FleetSsh { target: t, context: c } =>
-      srv3_tool_path_from_typed_argv(
+      srv3_observed_token_from_typed_argv(
         outcome: typed_argv_exec_over_fleet_ssh(
           target: t,
           context: c,
@@ -1466,7 +1471,7 @@ fn srv3_tool_bin_path(tool_name: NonEmptyStr, transport: HostEffectTransport) ->
         ),
       )
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      Srv3ToolPathUnobserved {
+      Srv3TokenUnobserved {
         reason: "EmitArtifactThenThinRun transport has no arm that can resolve a tool path",
       }
   }
@@ -1480,9 +1485,9 @@ fn srv3_run_tool_by_name(
   transport: HostEffectTransport,
 ) -> Srv3HostPredicate {
   match srv3_tool_bin_path(tool_name: tool_name, transport: transport) {
-    Srv3ToolPathUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
-    Srv3ToolPathAbsent => Srv3PredicateFails
-    Srv3ToolPathAt { path: resolved } =>
+    Srv3TokenUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
+    Srv3TokenAbsent => Srv3PredicateFails
+    Srv3TokenObserved { value: resolved } =>
       srv3_transport_witness_bin_success(
         transport: transport,
         workdir: "/",
@@ -1494,15 +1499,15 @@ fn srv3_run_tool_by_name(
 
 fn srv3_apt_tool_version_ok(tool_name: NonEmptyStr, transport: HostEffectTransport) -> Srv3HostPredicate {
   match srv3_tool_bin_path(tool_name: tool_name, transport: transport) {
-    Srv3ToolPathAt { path: tool_path } =>
+    Srv3TokenObserved { value: tool_path } =>
       srv3_transport_witness_bin_success(
         transport: transport,
         workdir: "/",
         bin_path: tool_path,
         args: ["--version"],
       )
-    Srv3ToolPathAbsent => Srv3PredicateFails
-    Srv3ToolPathUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
+    Srv3TokenAbsent => Srv3PredicateFails
+    Srv3TokenUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
   }
 }
 
@@ -1527,15 +1532,15 @@ fn srv3_chown_directory_to_current_user(path: String, transport: HostEffectTrans
       }
     }
     SshShell { ssh_host: h } => {
-      let uid = srv3_tool_path_from_typed_argv(outcome: typed_argv_exec_over_ssh(host: h, argv: id_uid_argv()))
-      let gid = srv3_tool_path_from_typed_argv(outcome: typed_argv_exec_over_ssh(host: h, argv: id_gid_argv()))
+      let uid = srv3_observed_token_from_typed_argv(outcome: typed_argv_exec_over_ssh(host: h, argv: id_uid_argv()))
+      let gid = srv3_observed_token_from_typed_argv(outcome: typed_argv_exec_over_ssh(host: h, argv: id_gid_argv()))
       srv3_chown_with_observed_owner(uid: uid, gid: gid, path: path, transport: transport)
     }
     FleetSsh { target: t, context: c } => {
-      let uid = srv3_tool_path_from_typed_argv(
+      let uid = srv3_observed_token_from_typed_argv(
         outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: id_uid_argv()),
       )
-      let gid = srv3_tool_path_from_typed_argv(
+      let gid = srv3_observed_token_from_typed_argv(
         outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: id_gid_argv()),
       )
       srv3_chown_with_observed_owner(uid: uid, gid: gid, path: path, transport: transport)
@@ -1554,19 +1559,19 @@ fn srv3_chown_directory_to_current_user(path: String, transport: HostEffectTrans
 // What this function does now is refuse when the owner could not be OBSERVED, instead of
 // chowning to a fabricated owner or reporting a plain false.
 fn srv3_chown_with_observed_owner(
-  uid: Srv3ToolPath,
-  gid: Srv3ToolPath,
+  uid: Srv3ObservedToken,
+  gid: Srv3ObservedToken,
   path: String,
   transport: HostEffectTransport,
 ) -> Srv3HostPredicate {
   match uid {
-    Srv3ToolPathUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
-    Srv3ToolPathAbsent => Srv3PredicateFails
-    Srv3ToolPathAt { path: uid_value } =>
+    Srv3TokenUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
+    Srv3TokenAbsent => Srv3PredicateFails
+    Srv3TokenObserved { value: uid_value } =>
       match gid {
-        Srv3ToolPathUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
-        Srv3ToolPathAbsent => Srv3PredicateFails
-        Srv3ToolPathAt { path: gid_value } =>
+        Srv3TokenUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
+        Srv3TokenAbsent => Srv3PredicateFails
+        Srv3TokenObserved { value: gid_value } =>
           srv3_transport_witness_bin_success(
             transport: transport,
             workdir: "/",
@@ -1703,9 +1708,9 @@ fn srv3_ensure_websocat(transport: HostEffectTransport) -> Srv3HostPredicate {
     Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
     Srv3PredicateFails =>
       match srv3_tool_bin_path(tool_name: curl_cli_tool.name, transport: transport) {
-        Srv3ToolPathUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
-        Srv3ToolPathAbsent => Srv3PredicateFails
-        Srv3ToolPathAt { path: curl_path } => {
+        Srv3TokenUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
+        Srv3TokenAbsent => Srv3PredicateFails
+        Srv3TokenObserved { value: curl_path } => {
           let bin_dir = gunbc_bin_dir as String
           let url = srv3_actuator_toolchain_websocat_release_download_url()
           let mkdir = srv3_transport_witness_bin_success(
