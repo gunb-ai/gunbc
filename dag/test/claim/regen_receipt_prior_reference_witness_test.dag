@@ -1,0 +1,82 @@
+module test.claim.regen_receipt_prior_reference_witness
+
+import std.types { Bool, String, List }
+import gunbc.regen_receipt { RegenReceipt, PriorReceiptRef, FirstGeneration, FixedPoint, prior_reference_is_same_tree }
+
+// WHAT THIS WITNESS COVERS, AND WHAT IT DOES NOT — stated first because the gap is the point.
+//
+// COVERS: the model predicate. A FixedPoint receipt whose prior reference names a DIFFERENT tree
+// is distinguishable from one that names the same tree, decidably, from the carrier alone.
+//
+// DOES NOT COVER: the host refusal arm in required_regen_host run_required_regen_fixed_point.
+// That arm compares the on-disk prior receipt against git HEAD and returns an Err, and reaching it
+// requires planting a receipt file at target/stage0-regen-receipt.json with a chosen commit_sha
+// before invoking the binary. No witness form available here writes a file before running a
+// process, so the host arm has no executing evidence and I am not claiming otherwise. Its
+// next-rung trigger is a witness form that can stage a fixture file for a wet run; until then the
+// host arm rests on review, which is strictly weaker than this predicate does.
+//
+// The reason the predicate is worth having anyway is that it is the SAME question the host asks.
+// If the model says a cross-tree reference is detectable and the host later stops checking, the
+// disagreement is between two things that both exist, rather than a rule that lives only in one
+// unexecuted comment.
+
+data same_tree_sha: String = "bd239370923f0000000000000000000000000000"
+
+data other_tree_sha: String = "5a10ca7e01891e32f7568c3bac23878f2b3fdc5f"
+
+fn a_prior_ref(at: String) -> PriorReceiptRef {
+  PriorReceiptRef {
+    commit_sha: at,
+    committed_generated_digest: "digest-committed",
+    first_generation_equal: true,
+    changed_paths: [],
+    candidate_artifact: "target/stage0-regen-candidate"
+  }
+}
+
+fn a_fixed_point_receipt(ran_at: String, referenced_at: String) -> RegenReceipt {
+  FixedPoint {
+    commit_sha: ran_at,
+    authority_digest: "digest-authority",
+    candidate_generated_digest: "digest-candidate",
+    fixed_point_equal: true,
+    prior: a_prior_ref(at: referenced_at)
+  }
+}
+
+// POSITIVE CONTROL. Without this, the RED below is satisfied by a predicate that returns false
+// unconditionally — which is the failure mode that cost me a broken instrument earlier today, one
+// that printed the right answer while being incapable of printing any other.
+test fn a_fixed_point_receipt_referencing_its_own_tree_is_same_tree() -> Bool {
+  prior_reference_is_same_tree(
+    receipt: a_fixed_point_receipt(ran_at: same_tree_sha, referenced_at: same_tree_sha)
+  )
+}
+
+// THE DISCRIMINATING RED. This is the state the flat eight-field receipt could reach silently:
+// stamped with the tree the second pass ran against, carrying evidence measured on another. It is
+// internally consistent and schema-valid, and the ONLY thing that distinguishes it is that the
+// reference names its subject.
+test fn w_RED_a_fixed_point_receipt_referencing_another_tree_is_not_same_tree() -> Bool {
+  !prior_reference_is_same_tree(
+    receipt: a_fixed_point_receipt(ran_at: same_tree_sha, referenced_at: other_tree_sha)
+  )
+}
+
+// A FirstGeneration receipt has no prior reference to be wrong about, so the predicate is
+// vacuously true there. Asserted rather than assumed: a predicate that answered false for the
+// variant carrying no reference would refuse every first pass.
+test fn a_first_generation_receipt_has_no_cross_tree_reference() -> Bool {
+  prior_reference_is_same_tree(
+    receipt: FirstGeneration {
+      commit_sha: same_tree_sha,
+      authority_digest: "digest-authority",
+      committed_generated_digest: "digest-committed",
+      candidate_generated_digest: "digest-candidate",
+      first_generation_equal: true,
+      changed_paths: [],
+      candidate_artifact: "target/stage0-regen-candidate"
+    }
+  )
+}

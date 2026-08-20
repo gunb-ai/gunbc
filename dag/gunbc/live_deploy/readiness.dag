@@ -55,7 +55,7 @@ import gunbc.running_release_identity {
   SurfaceBundleIdentityMalformed,
   observe_running_release_identity,
 }
-import gunbc.roadmap_site_surface_types { RoadmapSiteSurfaceBundle, HealthzEffectiveRead }
+import gunbc.roadmap_site_surface_types { RoadmapSiteSurfaceBundle, HealthzEffectiveRead, HealthzBodyRead, HealthzProbeRefused }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
   deployment_spec_srv1,
@@ -111,9 +111,9 @@ fn service_ready_apply_effect_for_deploy(spec: DeploymentSpec) -> ServiceReadyAp
 
 fn healthz_effective_read_from_get(success: Bool, body: String, error: String) -> HealthzEffectiveRead {
   if success {
-    HealthzEffectiveRead { body: body, probe_error: "" }
+    HealthzBodyRead { body: body }
   } else {
-    HealthzEffectiveRead { body: "", probe_error: error }
+    HealthzProbeRefused { probe_error: error }
   }
 }
 
@@ -135,7 +135,7 @@ fn healthz_effective_read_from_outcome(outcome: TypedArgvExecOutcome) -> Healthz
         body: r.stdout,
         error: "http client GET over ssh failed"
       )
-    TypedArgvExecRefused { reason: why } => HealthzEffectiveRead { body: "", probe_error: why }
+    TypedArgvExecRefused { reason: why } => HealthzProbeRefused { probe_error: why }
   }
 }
 
@@ -157,7 +157,7 @@ fn live_deploy_healthz_get_ssh(port: Int, host: NonEmptyStr) -> HealthzEffective
   let url = live_deploy_health_url_for_port(port: port)
   let argv = http_client_get_argv(url: url)
   match typed_argv_shell_safe_refusal_argv(argv: argv) {
-    Present { value: why } => HealthzEffectiveRead { body: "", probe_error: why }
+    Present { value: why } => HealthzProbeRefused { probe_error: why }
     Absent =>
       match typed_argv_exec_over_ssh(host: host, argv: argv) {
         TypedArgvExecConverged { result: r } =>
@@ -167,7 +167,7 @@ fn live_deploy_healthz_get_ssh(port: Int, host: NonEmptyStr) -> HealthzEffective
             error: "http client GET over ssh failed"
           )
         TypedArgvExecRefused { reason: why } =>
-          HealthzEffectiveRead { body: "", probe_error: why }
+          HealthzProbeRefused { probe_error: why }
       }
   }
 }
@@ -178,8 +178,7 @@ fn live_deploy_healthz_get_for_port(port: Int, transport: HostEffectTransport) -
     SshShell { ssh_host: h } => live_deploy_healthz_get_ssh(port: port, host: h)
     FleetSsh { target: t, context: c } => live_deploy_healthz_get_fleet_ssh(port: port, target: t, context: c)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      HealthzEffectiveRead {
-        body: "",
+      HealthzProbeRefused {
         probe_error: "health probe refused EmitArtifactThenThinRun transport",
       }
   }
@@ -275,16 +274,37 @@ fn ground_service_ready_from_healthz_with_bundle(
   expected_revision: CommitSha,
   expected_surface_identity: Fnv1a64Structural,
 ) -> Grounding<ServiceReadyEvidence> {
-  if read.probe_error != "" {
-    DoesNotGround { reason: healthz_refusal_reason(cause: HealthzProbeFailed { detail: read.probe_error }) }
-  } else if !healthz_body_groundable(body: read.body) {
-    DoesNotGround { reason: healthz_refusal_reason(cause: HealthzBodyUnparseable { body: read.body }) }
+  match read {
+    HealthzProbeRefused { probe_error: detail } =>
+      DoesNotGround { reason: healthz_refusal_reason(cause: HealthzProbeFailed { detail: detail }) }
+    HealthzBodyRead { body: observed_body } =>
+      ground_service_ready_from_healthz_body(
+        body: observed_body,
+        bundle: bundle,
+        expected_revision: expected_revision,
+        expected_surface_identity: expected_surface_identity,
+      )
+  }
+}
+
+// The four stages BELOW the probe, split out so the probe arm above is a match rather than the
+// first clause of a chain. This function only ever sees a body, because only HealthzBodyRead can
+// reach it -- which is the climb: the probe stage cannot be forgotten, mis-ordered, or reached
+// past, because a refusal has no body to hand it.
+fn ground_service_ready_from_healthz_body(
+  body: String,
+  bundle: RoadmapSiteSurfaceBundle,
+  expected_revision: CommitSha,
+  expected_surface_identity: Fnv1a64Structural,
+) -> Grounding<ServiceReadyEvidence> {
+  if !healthz_body_groundable(body: body) {
+    DoesNotGround { reason: healthz_refusal_reason(cause: HealthzBodyUnparseable { body: body }) }
   } else {
-    match observe_running_release_identity(healthz_body: read.body) {
+    match observe_running_release_identity(healthz_body: body) {
       RunningReleaseUnidentified { cause: why } =>
         DoesNotGround {
           reason: healthz_refusal_reason(
-            cause: healthz_release_identity_refusal(body: read.body, cause: why)
+            cause: healthz_release_identity_refusal(body: body, cause: why)
           )
         }
       RunningReleaseIdentified { observation: obs } =>
@@ -302,21 +322,21 @@ fn ground_service_ready_from_healthz_with_bundle(
               observed: obs.surface_bundle_identity.digest as String,
             })
           }
-        } else if !roadmap_site_healthz_surface_is_current(bundle: bundle, observed_body: read.body) {
+        } else if !roadmap_site_healthz_surface_is_current(bundle: bundle, observed_body: body) {
           DoesNotGround {
             reason: healthz_refusal_reason(cause: ServedSurfaceStale {
-              observed: read.body,
+              observed: body,
               expected: bundle.healthz_body,
             })
           }
         } else {
-          Grounds { evidence: ServiceReadyEvidence { body: read.body } }
+          Grounds { evidence: ServiceReadyEvidence { body: body } }
         }
     }
   }
 }
 
-data readiness_check_order_note: String = "THE ORDER IS PROBE, PARSE, IDENTITY, REVISION, SURFACE, AND IT IS CHOSEN SO THE FIRST REFUSAL IS THE MOST LOCATING ONE. A process at the wrong revision usually also serves the wrong surface, so checking the surface first would report 'stale surface' for what is really 'the pre-restart process is still answering' — true but one inference away from the remedy. Checking the revision first names the process; checking the surface after names the rebind. Identity precedes both because a body with no readable identity cannot be compared on either axis, and reporting a surface verdict about a process we cannot identify would attribute the surface to the wrong party."
+data readiness_check_order_note: String = "THE ORDER IS PARSE, IDENTITY, REVISION, SURFACE, AND IT IS CHOSEN SO THE FIRST REFUSAL IS THE MOST LOCATING ONE. A process at the wrong revision usually also serves the wrong surface, so checking the surface first would report 'stale surface' for what is really 'the pre-restart process is still answering' — true but one inference away from the remedy. Checking the revision first names the process; checking the surface after names the rebind. Identity precedes both because a body with no readable identity cannot be compared on either axis, and reporting a surface verdict about a process we cannot identify would attribute the surface to the wrong party.\\n\\nTHIS ROW USED TO NAME FIVE STAGES AND NOW NAMES FOUR, and the missing one is the point: PROBE is no longer ordered by this note because it is no longer ordered by anything. HealthzEffectiveRead became a coproduct (gunbc.roadmap_site_surface_types), so a refused probe carries no body at all and the parse stage is unreachable from it — not checked-first, but unreachable. The four above remain ordering-by-discipline inside ground_service_ready_from_healthz_body: they are stages over ONE String, and nothing structural stops a future edit from reordering them, so this note is still doing real work for them. It is stated this way rather than deleted wholesale because a note that shrank silently would read as though the whole ordering had been made structural, which is the rung inflation DESIGN §4b calls worse than sitting low."
 
 fn ground_service_ready_from_healthz(
   read: HealthzEffectiveRead,
@@ -340,8 +360,7 @@ fn show_healthz_read_for_deploy(
   match verdict {
     Deny { refusal: _ } =>
       ReadObserved {
-        value: HealthzEffectiveRead {
-          body: "",
+        value: HealthzProbeRefused {
           probe_error: deploy_access_decision_reason(d: verdict),
         }
       }
@@ -362,7 +381,7 @@ fn show_healthz_read_fixture_healthy(
   release_revision: CommitSha,
 ) -> ShowEffectiveRead<HealthzEffectiveRead> {
   ReadObserved {
-    value: HealthzEffectiveRead {
+    value: HealthzBodyRead {
       body: healthz_body_with_release_identity(
         roadmap: bundle.roadmap_md,
         dispatch: bundle.dispatch_json,
@@ -372,7 +391,6 @@ fn show_healthz_read_fixture_healthy(
         release_revision: release_revision,
         surface_bundle_identity: bundle.bundle_identity,
       ),
-      probe_error: "",
     }
   }
 }

@@ -9,7 +9,7 @@ import test.claim.live_deploy.deploy_release_fixture {
   deploy_witness_third_release_revision,
 }
 import gunbc.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
-import gunbc.roadmap_site_surface_types { RoadmapSiteSurfaceBundle, HealthzEffectiveRead }
+import gunbc.roadmap_site_surface_types { RoadmapSiteSurfaceBundle, HealthzEffectiveRead, HealthzBodyRead }
 import gunbc.roadmap_site_surface_render { healthz_body_with_release_identity }
 import gunbc.roadmap_site_surface_expect {
   roadmap_site_healthz_surface_is_current,
@@ -74,7 +74,7 @@ fn ground_body_against_surface(
   expected_surface_identity: Fnv1a64Structural,
 ) -> Grounding<ServiceReadyEvidence> {
   ground_service_ready_from_healthz_with_bundle(
-    read: HealthzEffectiveRead { body: body, probe_error: "" },
+    read: HealthzBodyRead { body: body },
     bundle: witness_bundle(),
     expected_revision: expected_revision,
     expected_surface_identity: expected_surface_identity,

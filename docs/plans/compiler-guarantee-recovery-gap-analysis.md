@@ -159,6 +159,7 @@ unless the row says otherwise, and `Unknown` is the honest default.
 | Record completeness | **R2 measured 2026-08-01** (a record literal omitting a declared required field refuses `MissingField`, blocking, naming the field and type — the class was carried as `Unknown — unmeasured` and the measurement raises it) | R3 | judgment is per-literal; construction-side and generic-instantiation completeness are separate and the latter measures **below floor** in the row above | one-off execution 2026-08-01 via `compile_dag_diagnostic_census` on the v1 CompileAccept path, source and result in the §10 eighth-pass ledger — **NOT ENROLLED**: no probe pair for this class exists in the tree, so nothing re-runs this measurement and nothing reds if the behaviour changes (§4b meta-obligation 4; codex review 46306). Enrollment is §11 item 10 | required-field construction at every construction form |
 | Parse: list separator dropped | **Below floor — silent** (measured: `[ {a}, {b}  {c} ]` compiles with zero diagnostics — a dropped comma is a silent semantic change, two- vs three-element list; survived regen, whole-corpus compile, fixed-point verify and a 15-case matrix, caught only by a human diff read) | R3 (decidable grammar fact) | separator omission parses as element juxtaposition | tidy-deer-730 probe on gunbc#7484 + review 45347, 2026-07-31 | probe pair in the corpus; refusal in the list production (§11 item 6) |
 | Producer/consumer cardinality | **UnknownUnmeasured** (typed-rejection vs silent-degeneration split unmeasured) | R3 (seam unwritable) | forgeable carrier; no signature propagation (`sole_constructor` audit pending) | §4b | Stage-3 vertical slice |
+| Refinement predicate (`where`) enforcement at construction | **Writable-and-unverified, one row spanning both measured SOURCE-FORM paths (declared subject grain — reconstruction is NOT in this row's grain; see the scope note at the end of this cell).** Source→v1-interpretation and source→v1-Rust-emission were independently measured and found identical — zero predicate/refinement check on either, no scope split between them. `v1_interpreter` `cast_identity_result` (the `as`-cast identity path) checks only that the underlying kernel name matches; it carries no refinement/predicate concept at all. `05_emit_rust` `render_rust_alias_rhs_type` peels a refinement node to its base type before emission (`is_where_refinement_type` true branch) and discards the predicate list — a **deliberate written branch**, not incidental loss: `04_infer`'s `is_where_refinement_type`/`where_refinement_chain`/`peel_where_refinement_base` carry the predicate live through typecheck, so the data exists at the emit boundary and is thrown away there. Where safety exists today for a refined type (e.g. `PathSegment = NonEmptyStr where brand("PathSegment")`) it comes **entirely from hand-authored per-callsite guards**, not the carrier — `gunbc.merge_admission_subject` `walk_attempt_id` and `gunbc.fleet_known_hosts_anchor` `fleet_ssh_attempt_identity` (mirrored in `claim_executor.rs`) each call `path_segment_is_safe` before casting. This is DESIGN §5's named tell, validation standing where construction was available: the law is declared once (`path_segment_safety_note`) and re-stated as a check every author must remember to write, never tied to the carrier itself. One construction form already bypasses even that discipline: `FilePathParts { segments: [...] }` struct literals (`extdeps.rust.cargo` `cargo_target_source_path`/`rust_module_candidate_paths`, `extdeps.linux.proc_self_cgroup`) coerce raw strings to `PathSegment` with no predicate call at all. A targeted search for an *existing* production site where a refined-type construction actually feeds a predicate-violating value through to a consumer (not manufactured) found none: the two real branded-`PathSegment` callers both guard, and the one `FilePathParts` caller with non-literal input has zero production callers (test-fixture only). A below-floor ("silent wrongness, demonstrated") claim was raised on this evidence and explicitly withdrawn — the class is confirmed writable and the one candidate gap is confirmed currently unexercised, not confirmed violated. **SCOPE NOTE, AND IT IS LOAD-BEARING: that withdrawal is scoped to the two SOURCE-FORM paths this row measures, and it has since been overtaken on a third path that this row does not cover.** The reconstruction seam — `recorded_fixture` `value_from_fixture_json` on replay, and `map_response_to_value_json` on live REST — builds runtime records and scalars from external JSON without passing through a source record literal or cast, so neither `cast_identity_result` nor `render_rust_alias_rhs_type` is on it and neither measurement above reaches it. On THAT path below-floor is not a withdrawn hypothesis but an EXECUTED demonstration: a predicate-violating value was silently accepted and consumed, and on the live-REST arm with no tampering of any kind. **The grain of that demonstration, stated so this cell cannot be read as more than it is:** it was executed against a PURPOSE-BUILT probe service, not against a production caller. What is established is that the MECHANISM silently admits and consumes violating values on an untampered path; what is NOT established is that any production field has actually received one. The production population sitting on that path is measured only as a declaration count (output-block fields typed as a refined alias), and none of those was executed — so read it as mechanism-demonstrated, population-unmeasured, never as demonstrated-in-production. It is intended to be carried as its own row rather than folded into this one, per §4b's one-row-per-structurally-distinct-path rule. **FORWARD REFERENCE, NOT A PRESENT FACT:** that row is authored in a separate in-flight change (gunbc#8658, reconstruction doors, findings-only) and is NOT part of this document as of this cell's landing. If this row merges first, the reconstruction row is pending rather than present, and this sentence is a statement of intent — do not cite it as evidence that the reconstruction path is documented, and do not let the absence of that row be read as the path having been cleared. **Do not read this cell as the class verdict**: per §4b a class's rung is the MINIMUM across its in-scope paths, so if the enclosing class is taken as "refinement enforcement at construction" — reconstruction being a construction path — the governing rung is the reconstruction row's, not this one's. Citing this row's writable-and-unverified while that path stayed silent is exactly the inflation §4b names | R2-shaped on the Rust target (newtype + validating constructor closes construction-time) | Bounded by what the **target** can express, not by what `.dag` knows: `.dag`'s own infer stage already carries the predicate live through typecheck, so the ceiling here is a target-capability question — the bare-alias Rust realization used today has no ceiling above writable-and-unverified regardless of source-side modeling quality; nothing on either measured path ties the declared law to the carrier, so enforcement is 100% per-callsite discipline, which has a zero-frequency-until-violated failure mode (the `FilePathParts` gap is exactly this: zero frequency because it has no caller yet, not because it is guarded) | node://adhoc-897a90b6-a9c items 1–2, 2026-08-20 (merry-tern-237/fierce-ant-91): 219 `where`-declared types found in `.dag` (`grep -rn '^type .* where ' dag/`), 49 confirmed reaching Rust as bare aliases with zero predicate residue (spot-checked `std_types.rs`); emission mechanism confirmed by reading `05_emit_rust` `render_rust_alias_rhs_type` against `04_infer` `is_where_refinement_type`; interpreter path confirmed by reading `v1_interpreter` `cast_identity_result`/`eval_cast`; violation search executed against `PathSegment` construction sites corpus-wide, empty result | a Rust-target realization for refined types (newtype + validating constructor, or equivalent) that ties the declared predicate to the emitted carrier once, replacing per-callsite discipline; the `sole_constructor` completeness audit (in flight, separate lane) is the adjacent unforgeable-construction mechanism this would likely compose with |
 
 **Domain: structural safety extensions (the differentiator)**
 
@@ -267,12 +268,53 @@ independent review:
 
 Calibration examples, each verified on `main`: `NonEmptyList<T>` is
 RepresentableButForgeable; string `non_empty` where-refinement is LiteralOnlyWall; a
-nonliteral refined argument is RuntimeBoundaryOnly (five `WhereRefinementUnenforced` deferral
+nonliteral refined argument is **`Absent`** (five `WhereRefinementUnenforced` deferral
 reasons are enrolled as *advisory* — `v1.compiler.core`
-`where_refinement_deferral_reason_scaffold_note`); v2 loop termination is a ConstructionWall
+`where_refinement_deferral_reason_scaffold_note`) — **corrected 2026-08-20 from
+`RuntimeBoundaryOnly`, which was measured to be true of no kernel; see the executed row below**; v2 loop termination is a ConstructionWall
 (`v2.std.cardinality` requires a declared loop measure, fail-closed to `DescentUnknown`);
 unknown method is a fail-open Absent; host state is ExternalNotGuaranteed by the guarantee
 statement itself.
+
+**Executed correction to the nonliteral-refined-argument calibration (2026-08-20).** That
+example read `RuntimeBoundaryOnly` — *a check that fires at the runtime boundary rather than at
+compile time*. Measured across all three kernels the refinement family uses, **no refinement
+predicate is ever evaluated, on any kernel**. Three mechanisms, one outcome:
+
+| kernel | mechanism | executed evidence |
+| --- | --- | --- |
+| String | the conversion runs and is the **identity** | `"" as NonEmptyStr` evaluates successfully and returns `""` |
+| Int | the only conversion **refuses every value**, so it is never used; values arrive by *declaration* and no conversion runs | `x as EpochMs` refuses a valid `5` identically to `-1`; and `-1` reaching an `EpochMs`-declared parameter comes back `-1` unchanged |
+| collection | a sound, unforgeable wall with **zero traffic and zero declarations behind it** | `NonEmptyVec`/`NonEmptyBTreeSet` have private tuple fields so `new` is the only door, and `new` has **zero call sites** corpus-wide; **zero** refinement declarations exist over any collection base |
+
+A gate that passes everything, a gate nobody walks through, and a wall with no door behind it.
+The Int row is the one that most needs stating: *fail-closed by absence of capability* reads as
+safe, and it is not — 74 declared `: EpochMs` / `: Duration` positions against effectively zero
+casts means the refusing conversion is almost never on the path, so the predicate goes
+unevaluated by a third route rather than by a permissive one.
+
+Why this is the document's own §4b failure rather than a wording slip: one state was recorded for
+a class whose paths differ, and it was the strongest of them. In emitted Rust `NonEmptyStr` is a
+**bare alias** (`pub type NonEmptyStr = String;`), so a violation is not merely unchecked — it is
+unrepresentable as a distinction, which does not reach even the *brand* that §4b calls cosmetic.
+Each kernel needs a different remedy: String needs a carrier to exist at all; Int needs a
+conversion that can succeed; collection needs the emitter to route values through the wall that
+already exists (a plausible, **unproven** cause for the orphaned carriers is a name mismatch —
+the type mapping emits `non_empty_list` → `NonEmptyList<T>` while the emitted carriers are
+`NonEmptyVec<T>`/`NonEmptyBTreeSet<T>`, with `NonEmptyList` modeled through `Refined<List<T>>`
+rather than `where`).
+
+**Population, as a dated measurement rather than a property of the tree:** a whole-tree resolve at
+`a750b6761da` counted **3939 `WhereRefinementUnenforced` across 612 files** (of `TOTAL_ALL` 8183;
+`HARD` 0, so every hard-diagnostic census structurally reads zero for this class). Four
+pre-committed predicates passed, including a by-name planted-row control, and the count reproduced
+exactly across two dispatches on separate runners. An independent static scan — sharing no
+machinery with the resolve-time census — counts 3757 `as NonEmptyStr`, smaller in the predicted
+direction because a text scan for one spelling of one type must count strictly less than a census
+over every refinement construct. **The instrument was deleted and nothing landed, so the number is
+not reproducible without rebuilding it.** And it is an *unverified-obligation* population, not a
+defect population: the census cannot distinguish violated from unverified — the planted
+known-violated row was indistinguishable from the other 3939 in every output.
 
 This vocabulary is prose-interim: it becomes a typed enum on the claim carrier when the
 guarantee authority lands (§11), the same way `DescentEvidence` and `DecodeFidelity` model
@@ -288,7 +330,7 @@ grounding* / *ratchet forever*) stays as the orthogonal decidability axis.
 | Field typos | **PARTIAL** — concrete types checked; through a type variable, not | `v1.compiler.infer` mints `TypeVariable { id: "field_of_type_var" }` instead of refusing | wall after grounding |
 | Application arity / call shape (missing, extra, misspelled-label args) | **fail-open by construction of the walk** | `v1.compiler.infer` `direct_call_arg_mismatch_diags` is *formal-driven*: per formal it seeks a same-named arg, else falls back to the **positional** arg at the same index (a misspelled label silently binds by position if the type fits), and `Absent => []` (missing arg → no diagnostic); extra args are never visited. The `ArityMismatch` diagnostic is **type-constructor** arity ("expects N *type* arguments"), not invocation arity — invocation arity has no compile diagnostic; #6896's wall is runtime-only | wall now |
 | Non-exhaustive matches | **PARTIAL — one confirmed silent arm** | resolved coproducts have exhaustiveness machinery; but `v1.compiler.infer_patterns` `lookup_variant_in_type` / `lookup_field_in_variant` both have `PatternLookupBlocked => node_lookup_failed(diagnostics: [])` — a blocked scrutinee lookup fails with **zero diagnostics** and the pattern types as `error_type` (`PatternDynamic`, by contrast, does diagnose at these sites). "Exhaustiveness not established" is treated as success-adjacent, not refused | wall after grounding |
-| Cardinality / multiplicity (empty list into a callee that requires one) | **RepresentableButForgeable, not statically propagated** — reclassified from UNEXPRESSIBLE after independent review | Representation exists: `v2.std.refinement` `Validation<B>`/`Refined<B>`/`refine`, a `NonEmptyList<T>` manual fixture (`v2.test.claim.manual.refinement_nonempty_list` + testgen anchor), and manual value-level algebra specimens (`cardinality_fold_propagation_test` — length homomorphism over literals + runtime `refine_byte`; no binding-level propagation). Forgeable: `Refined<B>` is a public record — `refined_vacuous_stub_pack`'s `Rejected` arm literally returns `Refined { base }`, so the carrier proves nothing about validation. Not propagated: no cardinality lattice in signatures (`v2.std.cardinality` is loop-termination), `InterfaceSummary` (`dag/std/interface_summary.dag`) carries no cardinality slot, no transfer functions across `map`/`filter`/`concat`. The substrate `Cardinality` connective remains production-uninhabited and v1 forks the name onto optionality (`Required \| CardOptional`) | wall after grounding |
+| Cardinality / multiplicity (empty list into a callee that requires one) | **RepresentableButForgeable, not statically propagated** — reclassified from UNEXPRESSIBLE after independent review | Representation exists: `v2.std.refinement` `Validation<B>`/`Refined<B>`/`refine`, a `NonEmptyList<T>` manual fixture (`v2.test.claim.manual.refinement_nonempty_list` + testgen anchor), and manual value-level algebra specimens (`cardinality_fold_propagation_test` — length homomorphism over literals + runtime `refine_byte`; no binding-level propagation). Forgeable: `Refined<B>` is a public record with no `sole_constructor` seal and no predicate-identity field, so `Refined { base: x }` is a writable record literal at any call site regardless of which predicate (or none) was ever checked against `x` — confirmed live at `v2.std.artifact` `test_claim_generated_artifact`, which mints `Refined { base: Artifact {..} }` directly instead of going through `make_generated_artifact`'s `refine(...)` path in the same file. (`refined_vacuous_stub_pack`'s `Rejected` arm forging `Refined { base }` was a second, narrower instance of the same door; `v2.std.refinement` `refined_vacuous_stub_pack` is now deleted outright, together with its sole non-test consumer — `v2.test.generated.testgen_category_wishlist` `dispatched_refinement_preservation_generator`'s vacuous fallback path — in favor of `v2.lens.testgen` `refinement_preservation_subject_nonempty_list_base`, which already proves the same subject through a real `non_empty` predicate via `refine_nonempty_node_list`. Deleting the mint rather than leaving a more-honest total function is the DESIGN section 3 replacement-migration rule applied to a construction that had exactly one real caller and a correct replacement already in use elsewhere; it establishes no predicate identity and does not touch the carrier-level forgeability above.) Not propagated: no cardinality lattice in signatures (`v2.std.cardinality` is loop-termination), `InterfaceSummary` (`dag/std/interface_summary.dag`) carries no cardinality slot, no transfer functions across `map`/`filter`/`concat`. The substrate `Cardinality` connective remains production-uninhabited and v1 forks the name onto optionality (`Required \| CardOptional`) | wall after grounding |
 | Method existence | **UNENFORCED — fabricates** | `v1.compiler.infer` `method_pipe_map_keys_values_fallback` else-arm returns the *receiver type* with `kernel_diags: []`; unresolved method stamped `PlainMethodSemantics` | wall now |
 | Grounding completeness — "**not** a name-keyed table lookup" | **VIOLATED literally** | `v1.compiler.infer_method` `builtin_function_registry() -> Map<String, Node>` is a name-keyed table (~120 entries), one of ≥5 independent primitive-existence authorities | wall after grounding |
 | Circular deps / stale imports / cross-target drift | **UNVERIFIED** | not yet audited | — |
@@ -803,15 +845,449 @@ diagnostics, **verdict unchanged**. All four declare only local types over kerne
 wider pool adds no machinery they depend on; the receipts record that this was *measured* rather
 than argued.
 
+**`sole_constructor` completeness audit (2026-08-20 pass, §11 item 1a, all measured by
+execution — `gunbc run --claim-run` against a synthetic cross-module probe corpus compiled
+live via `compile_dag_diagnostic_census`, never by reading alone):**
+
+*Construction forms — CONFIRMED, wall fires uniformly for the two forms that reach it; a
+THIRD form, variant construction of a coproduct, is a CONFIRMED HOLE.* Record-literal
+construction of a cross-module sole_constructor type at every AST position tested —
+return, let-binding, call-argument, list-element, nested-field-init, branch-result — and
+cast construction at call-argument and list-element position, all refuse with
+`SoleConstructorViolation` (discriminating RED) while an in-module (sanctioned) mint of the
+same type stays clean (accepted-positive control). This is two *forms* (record literal,
+cast), not six-plus independent forms — the AST position varies, the form reaching
+`04_infer` `sole_constructor_construction_diags` does not (only `infer_record_lit` and the
+`ExprCast` arm call it). **Confirmed by execution, not by trusting that source-comment
+claim: variant construction of a `sole_constructor` COPRODUCT is unwired entirely.** Fixture
+`test.fixture.sole_constructor_variant_probe.definer` declares
+`type SealedChoice sole_constructor = SealedA { n: Int } | SealedB { s: String }`; probe f13
+forges `SealedA { n: 999 }` cross-module. Measured: zero `SoleConstructorViolation` rows AND
+zero total diagnostic rows of any class (both genuine `CensusObserved` zeros, not the `-1`
+`CensusNotRunnable` sentinel `violation_count` already distinguishes) — the synthetic module
+compiles completely cleanly while forging a sealed variant from outside its declaring file.
+Root cause matches the two-call-site finding exactly: neither the `ExprCast` arm nor
+`infer_record_lit_structural` is reached by variant-literal construction (a distinct AST
+node), so `sole_constructor_construction_diags` is never invoked for this form at all. This
+is a real, third construction form the wall does not cover, not a variant of the
+already-known order-dependence hole.
+
+*Deserialization / from_value — CONFIRMED NOT APPLICABLE: no such generic construction path
+exists in the language. The registry read is the evidence; f14 is a consistency check on
+it, not the reverse.* The load-bearing evidence is enumerating all 124 host builtins
+registered in `v1_interpreter_dispatch_generated.rs`'s dispatch table: none returns a
+generic/parametric `T` from untyped input (String/JSON/YAML) — every builtin's return type
+is a fixed concrete shape, so there is no reflection-based or serde-style mechanism in v1
+that constructs an arbitrary user-declared nominal type from external data outside of
+ordinary record-literal, cast, or (per above) variant-literal expression forms. Probe f14
+(calls a guessed `from_json`-shaped name against the sealed fixture type, cross-module;
+measured 1 total diagnostic row, 0 `SoleConstructorViolation` rows, the one row being
+name-resolution failure) does **not**, by itself, distinguish "no such path exists" from "a
+path exists under some other name I didn't guess" — a single failed guess is consistent with
+either. What actually carries the "not applicable" conclusion is the exhaustive registry
+enumeration; f14 is only a corroborating data point (confirms the guessed name specifically
+isn't the gap) on top of that closed enumeration, stated in the correct evidentiary
+direction rather than the reverse.
+
+*Emit-side reconstruction — CORRECTED 2026-08-20: this was assessed as theoretical, and a
+sibling audit (ARM 3, `docs/plans/compiler-guarantee-recovery-gap-analysis.md` §11 item 1a,
+executed by session lively-bee-274, gunbc PR #8661) proved it by execution on a production
+type instead. Checked directly in emitted Rust: the only occurrences of `SoleConstructor`
+anywhere in generated output are the compiler's own `CompilerDiagnostic` variant
+(`v1_std_core.rs`) — its match arm, span accessor, and message renderer. No emitted
+user-defined data type carries any confinement in the emitted target; emitted structs are
+plain `pub`-field records. This clause previously read the absence as "not automatically a
+defect" because nothing in ordinary self-hosting use hand-writes a violating construction
+through the emitted-struct door — that reasoning stopped at the v1 seed's own hand-written
+Rust (`v1_interpreter.rs`, `cli_run.rs`) and did not consider the GENERATED mirror itself as
+a forgery surface. ARM 3 executed against `extdeps.uri` `UriValidatedScalar` — `sole_constructor`,
+single fixed-law mint `uri_validated_scalar_construction`, refusing surrogate and
+out-of-range code points — and found its emitted mirror (`extdeps_uri.rs`) is
+`pub struct UriValidatedScalar { pub admitted_cp: i64 }` deriving `serde::Serialize,
+Deserialize`: both a direct Rust struct literal and `serde_json::from_value` admit every
+value the `.dag` mint refuses (the surrogate `55296`, `-1`, `1114112`), with a shape-control
+discriminator (`serde_shape_control_rejects_malformed_input`) proving the harness can and
+does observe a real `Err`, so those "admits" verdicts are load-bearing, not a silent-harness
+artifact. That is a confirmed forgery mechanism on a production sealed carrier's own
+generated mirror — not merely the hand-written-Rust-beside-the-mirrors surface this entry
+originally scoped to. **No production caller is established to have exercised this path** —
+the finding is that the mechanism exists and admits every refused value, not that any caller
+has forged one; `uri_percent_encode_admitted_scalar_wire` is the type's sole declared
+consumer and would receive a forged value if one reached it, but no such call site is shown
+to construct one today. Per §4b's per-path rung rule (source→interpretation,
+source→each-emission-target are independently ruled paths): the source→`.dag`-acceptance
+path is unaffected by this finding (that wall holds); the source→Rust-emission path is
+**below floor, not merely below ceiling** — a value the modeled system refuses is silently
+constructible with no typed, located refusal at all, the class §5 forbids outright. The
+hand-written-Rust-beside-the-generated-mirrors surface (ii) below remains a second, narrower
+finding about code outside `.dag`'s type system entirely; it is not superseded, only no
+longer the only finding at this row: (ii) the v1 seed carries hand-written Rust beside the
+generated mirrors (`v1_interpreter.rs`, `cli_run.rs`, and others) that sits entirely outside
+`.dag`'s type system and therefore outside `sole_constructor` with no mechanism even in
+principle — not an unwired form of an existing check, but a construction surface the check
+was never positioned to reach at all; a related door in this surface (the interpreter's
+fixture-decoder reconstruction path, `recorded_fixture` `value_from_fixture_json`) is a
+separate, ongoing audit (fierce-ant-91, not this one). This is recorded as its own ledger
+row rather than folded into the record-literal/cast finding or the deserialization finding,
+because "a form the wall doesn't cover," "a representation the wall has no jurisdiction
+over," and "the wall's own generated mirror admits what it refuses" are three different
+claims.
+
+*Remaining record-literal AST positions (module-scope data initializer, map-literal value) —
+CONFIRMED, wall holds, no new hole.* Two further positions beyond forms 1-8: f15 forges
+`LocalValidated { n: 999 }` as a top-level `data` declaration's initializer (module scope,
+outside any fn body) — refuses. f16 forges the same literal as a `Map<String,
+LocalValidated>` literal's value (collection-value position, distinct from form 4's
+list-element position) — refuses. Both reconfirm the two-call-site finding rather than
+surfacing a new form: `infer_record_lit_structural` is reached regardless of the enclosing
+declaration or collection shape, only the AST node kind (record literal vs. variant literal)
+determines whether the check fires.
+
+*A third, orthogonal mechanism (reframed, not a fourth `sole_constructor` hole) — `admit_callers`,
+CONFIRMED functioning, both arms now designed and executed.* Three orthogonal questions, three
+different answers: `sole_constructor` gates WHO MAY CONSTRUCT (declaring file — diagnostic
+`SoleConstructorViolation`); `admit_callers` gates WHO MAY CALL the mint (named decls —
+diagnostic `ConstructorCallAdmissionRefused`); the caller-supplied validator decides WHAT IS
+PROVEN, and is defeasible (the validator-identity finding below). Two enforced by distinct
+diagnostics, the third enforced by nothing — this is why a sealed-wrapper design needs all
+three (confine construction + restrict callers + fix the validator in the declaring module):
+missing any one means the other two don't cover for it. Fixture
+`test.fixture.sole_constructor_sealed.definer`'s `mint_sealed_local` restricts its callers via
+`admit_callers` to exactly `test.fixture.sole_constructor_sealed.admitted_caller`
+`admitted_mint_call`. f17 calls `mint_sealed_local` from a synthetic, necessarily-unadmitted
+probe module: refuses with `ConstructorCallAdmissionRefused` (not `SoleConstructorViolation`),
+and the census's total row count is exactly 1 — that one refusal is the *only* diagnostic the
+synthetic module produces, confirming a clean single-cause refusal rather than a cascade
+obscuring the real class. **The green half was first claimed incidentally, then corrected to a
+designed control.** The original claim — "every prior probe dispatch this session compiled the
+full fixture tree including [`admitted_caller.dag`] with zero diagnostics" — was an *observed
+absence of complaint*, never a *designed assertion*, and turned out false on inspection: every
+f1-f17 synthetic entry imports only `definer`, and `compile_dag_diagnostic_census`'s resolver
+(`resolve_virtual_source_with_imports`) pulls in only the transitive import closure of the
+synthetic entry, not the whole fixture tree — so `admitted_caller.dag` was never actually
+compiled by any prior probe in this session; the claim was assumed, not observed. f18 fixes
+this: its synthetic entry imports `test.fixture.sole_constructor_sealed.admitted_caller`
+directly and calls its exported `admitted_mint_call` — the one decl named in
+`mint_sealed_local`'s `admit_callers` list — which genuinely pulls the real fixture into the
+compile closure. Result, executed: census total diagnostic count = **0** across the whole
+compile. That is now a designed, executed accept-side control, not an incidental observation.
+
+*Default-value construction position — CONFIRMED HOLE, executed 2026-08-20 (f19).* A fourth
+open axis named in `gunbc.roadmap_authority` (generic carriers, coproduct variants, default
+values, `module_skips_direct_call_arg_check` — the first two and the fourth are addressed
+above and below; this closes the third). f19 forges `LocalValidated { n: 999 }` as a function
+parameter's declared default-value expression, cross-module
+(`fn forged(param: LocalValidated = LocalValidated { n: 999 })`): the census's total
+diagnostic row count reads **0** — the compile produces no diagnostic of any class.
+`infer_record_lit_structural` is never reached for this AST position at all; this is a
+position gap distinct in kind from the census-ambiguity hole (a name-resolution gap) and the
+variant-construction hole (an AST-form gap) — the record-literal *form* is exactly the one the
+wall otherwise covers, but this particular *position* is unwired. **Zero live exposure
+today** — targeted grep across `dag/` and `src/v2/` for every declared sole_constructor type
+used at a fn-parameter default-value site found no hits (not an exhaustive census
+methodology, same caveat as the other two holes' exposure numbers below).
+
+*Compiler-module check exemption (`module_skips_direct_call_arg_check`) — CONFIRMED does NOT
+reach `sole_constructor`, established by code read (not execution).* Read at
+`v1_compiler_infer.rs`: `module_skips_direct_call_arg_check` gates exactly one call site —
+`arg_compat_diags`, the direct-call argument *type-compatibility* judgment. Neither
+`sole_constructor_construction_diags` call site (the `ExprCast` arm, the record-literal-inference
+arm) is wrapped in that guard or conditioned on it anywhere. This matches
+`direct_call_shape_wall_note`'s own documented rationale for the exemption's scope: it exists
+for the type judgment's representation-gap false-positive classes (brand aliases, optionality,
+anonymous literals, expansion depth) — a label/identity check like `sole_constructor` has no
+representation to have a gap in, so the exemption's reason does not reach it. This retires the
+fourth roadmap axis as a **positive finding** — the exemption exists, is scoped to the argument-
+type judgment, and does not create a compiler-module bypass for `sole_constructor` — rather
+than "no exemption found."
+
+**Exposure, per hole, so a confirmed defect is never read as a confirmed victim (explicit
+ask, 2026-08-20):**
+- *Order-dependence (census-ambiguous bare name):* sole_constructor type declarations
+  corpus-wide (`dag/` + `src/v2/`, excluding this audit's own planted fixtures) = 69 names
+  (fierce-ant-91's independent count-based measurement: 70/86/zero — the 1-name delta is
+  immaterial, likely a `^type` regex-boundary difference such as a generic `<T>` line);
+  names declared more than once anywhere in that corpus = 86; intersection today = **0**.
+  Verified by two independent methods (count-based and name-list-intersection-based); the
+  intersection method was itself positive-controlled by re-including this audit's own
+  planted `DupShape` collision fixture, which the method correctly surfaced. **Zero live
+  exposure today** — the hole requires a future sole_constructor type whose bare name
+  collides with any other module-scope declaration anywhere in a consuming corpus's
+  transitive closure; nothing warns an author when that PR lands.
+- *Variant construction:* fierce-ant-91 independently measured **zero sole_constructor
+  coproducts exist in the production corpus today** (every existing sole_constructor type
+  is a plain record, `OrderedClosedInterval<T>` included). **Zero live exposure today** —
+  the hole requires a future sole_constructor type declared as a coproduct; nothing warns an
+  author when that PR lands either.
+- *Default-value construction position:* targeted grep, every declared sole_constructor type,
+  for a fn-parameter default-value use across `dag/` + `src/v2/` — **0** hits. **Zero live
+  exposure today** — the hole requires a future sole_constructor type used as a parameter's
+  declared default; nothing warns an author when that PR lands either.
+- *Deserialization:* not applicable — no such construction path exists in the language at
+  all (registry read is the evidence; f14 a corroborating check, not the proof), so this has
+  no exposure dimension; it is closed, not open-with-zero-exposure.
+- *Emit-side reconstruction — TWO findings at this row, not one, per the §10 correction above.*
+  (a) The generated mirror itself: CONFIRMED BY EXECUTION (ARM 3, PR #8661) that a production
+  sole_constructor type's own emitted struct (`extdeps.uri` `UriValidatedScalar`) admits, via
+  `serde_json::from_value` and via a direct struct literal, every value its fixed-law `.dag`
+  mint refuses. This is not measured the same way as the three within-`.dag` holes above (no
+  grep-for-a-shape count applies — the construction path is the ordinary emitted API surface
+  itself, not a rare AST position) and **no production caller is established to have exercised
+  it** — say plainly: mechanism confirmed, no confirmed victim. Below floor (silent), not
+  merely below ceiling, on the source→Rust-emission path specifically — the source→`.dag`
+  path is unaffected. (b) Hand-written Rust beside the generated mirrors: not a hole in an
+  existing wall, a construction surface the wall was never positioned to reach at all
+  (`v1_interpreter.rs`, `cli_run.rs`); the interpreter's fixture-decoder reconstruction door in
+  this surface is a separate, ongoing audit, not this one's. Recorded as its own §10 row,
+  not merged with the three within-`.dag` holes above.
+- *Validator-identity forgeability (f12/f12b, executed — `always_true_le` accepts `low: 10,
+  high: 1` via `closed_interval`, `IntervalReady`; honest `le` control correctly refuses via
+  `IntervalRefused`) — CATEGORICALLY DIFFERENT EXPOSURE SHAPE, do not flatten alongside the
+  three above.* The other three holes require an author to write an unusual, not-yet-existing
+  declaration (a sole_constructor coproduct, a colliding bare name) before the gap is live.
+  This one requires nothing new: `closed_interval`'s signature already accepts an arbitrary
+  caller-supplied predicate at all 4 of its production call sites today (fierce-ant-91's
+  count: `millimeter_le` x1, `nanosecond_le` x3, all honest — so zero exploitation today), and
+  the trigger is "pass a subtly-wrong comparator to an existing API," not "author a new
+  shape." It is also not, strictly, a `sole_constructor` completeness hole at all:
+  `sole_constructor` confines *who/where* constructs the carrier and does so correctly here;
+  this finding is that confinement alone says nothing about *what invariant* the confined
+  mint's caller-supplied predicate actually enforces. Load-bearing for the `Refined<B>`
+  roadmap design: a sealed wrapper's safety requires the validator to be **fixed by the
+  declaring module**, not caller-supplied — confinement without a fixed validator provides no
+  invariant guarantee, and `closed_interval` is the in-tree specimen proving it.
+
+**The pattern across every hole, stated as the headline finding rather than left implicit:**
+`sole_constructor` covers exactly the construction shapes the corpus happens to use today
+(plain records, census-unique names); its boundary was undocumented until this pass; and its
+current safety is a property of the corpus's current contents, not a property of the wall
+itself. Every confirmed hole here has zero live victims today, and every one of them is
+exactly one ordinary PR away from becoming real — a sole_constructor type declared as a
+coproduct, or given a bare name that collides with anything else in scope — with no
+diagnostic, warning, or review signal marking that PR as the one that lands in the gap. This
+is neither "sole_constructor is broken" (nothing accepted today is wrong) nor "sole_constructor
+holds" (its guarantee is narrower than its name claims) — it is a wall whose current
+soundness is corpus-contingent, not structural.
+
+*Generic carriers — CONFIRMED for the two forms above, on a parameterized carrier.* A
+cross-module record literal and a cross-module cast of `OrderedClosedInterval<T>`
+(`std.interval`) each refuse at a first type argument (`<Int>`) and at a second, distinct
+type argument (`<ProbeMarker>`) — both instantiations independently flagged when forged in
+the same probe module. Report this precisely as "fires for a parameterized carrier on
+cross-module record-literal and cross-module cast construction" — not as "generic carriers
+are covered" in general; no other construction route on a generic carrier was tested.
+
+*Order-dependence — CONFIRMED HOLE, root-caused and reproduced by exact integer count, not
+inferred from a Bool.* Two fixture modules each declare a bare `DupShape` — one
+`sole_constructor`, one not — making the name census-ambiguous. `04_infer`
+`type_has_sole_constructor` resolves via `04_infer` `lookup_type_by_name` with no ambiguity
+guard, unlike the sibling `presence_check_census_gate_note` gate (same file), which stands
+down on ambiguity via a local-declares-first carve-out specifically to avoid this outcome.
+Measured violation counts (expected in parens):
+- probe explicitly `import sealed_variant { DupShape }` first, `import open_variant`
+  (unqualified) second, forges `DupShape`: **0** violations (expected ≥1) — the sealed
+  type's own construction is silently missed.
+- probe explicitly `import open_variant { DupShape }` first, `import sealed_variant`
+  (unqualified) second, forges `DupShape`: **1** violation (expected 0) — the open type's
+  legitimate construction is silently flagged.
+- neither import named-selects `DupShape`; sealed-then-open plain-import order: **0**
+  violations. Open-then-sealed order: **1** violation.
+All four counts are exactly consistent with a single mechanism: resolution always returns
+whichever declaration was imported **last** (`direct_import_export_precedence_note`'s
+"later import wins" overlay), independent of which declaration the probe module's own
+`import … { Name }` clause named. This is not merely "order-dependent" in the abstract —
+it is a silent MIS-RESOLUTION, not a stand-down: unlike the sibling presence-check gate
+(which refuses to guess and skips enforcement on ambiguity), `sole_constructor`'s check does
+guess, guesses by textual import order rather than by the caller's actual reference, and
+reports zero diagnostics either way it guesses wrong. An author whose module explicitly
+imports the sealed type by name can still silently forge it if anything else in the
+transitive import closure also declares a same-named type and is imported later.
+
+*Absent resolution (`type_has_sole_constructor`'s `None => false` arm) — investigated
+separately per instruction, NOT an independent hole for the record-literal path.* Reading
+`04_infer` `infer_record_lit_structural`: when the type name does not resolve at all
+(`effective_lookup == None`), a **separate**, unconditional `bare_name_miss_diagnostic` fires
+regardless of `sole_ctor_diags` — so a record literal naming a wholly nonexistent type is
+already refused on a different, always-firing ground, and the `Absent => false` arm never
+gets a chance to silently admit anything on this path. The cast path's equivalent guarantee
+was NOT traced to the same certainty (`validate_cast` checks cast-domain compatibility, not
+general nominal-type existence, and whether some earlier type-expr-resolution pass
+independently refuses an unresolvable cast target was not confirmed this pass) — left as an
+explicit open sub-question, not asserted either way.
+
+*Compiler-module exemptions — CONFIRMED: none apply to `sole_constructor`.* The only
+compiler-module exemption found anywhere in the v1 pipeline, `04_infer`
+`module_skips_direct_call_arg_check` (the `v2.`-prefix carve-out), is confirmed by full
+read to be scoped to the direct-call-argument type-conformance wall only; neither
+`type_has_sole_constructor` nor `sole_constructor_construction_diags` references it or any
+other module-path exemption. `v2.compiler.normalized_tree` itself declares a
+`sole_constructor` type and is enforced identically to any other module.
+
+*Interpreter/runtime bypass — CONFIRMED: none found.* `v1_interpreter.rs`'s cast evaluation
+(`cast_identity_result`, `eval_cast`) is identity/passthrough with no re-check, but this is
+moot: `gunbc run` refuses evaluation entirely when the entry's transitive-import closure
+carries a blocking diagnostic, so a violating program never reaches execution. No
+reflection/deserialization builtin capable of synthesizing an arbitrary user-defined nominal
+record was found in `coproduct_reflection.rs`.
+
+*Validator-identity forgeability (addendum, confirmed by execution, orthogonal to
+`sole_constructor` itself) — a real completeness gap in the roadmap's planned mitigation,
+not in `sole_constructor` as scoped.* `std.interval` `closed_interval` and
+`v2.std.refinement` `refine` both accept a caller-supplied predicate
+(`le: fn(T,T)->Bool` / `Validation<B>.admits`). Executed: `closed_interval(low: 10, high: 1,
+le: always_true_le)` — a deliberately-broken caller-supplied predicate — returns
+`IntervalReady` (accepted) despite `low > high`; the same call with an honest predicate
+correctly returns `IntervalRefused` (control, confirms the harness measures what it claims).
+Even a fully `sole_constructor`-sealed `Refined<B>` would not close this: `sole_constructor`
+confines WHO/WHERE constructs the carrier, never WHAT predicate a sanctioned caller supplies
+through the carrier's own accepted mint path. This is a distinct invariant from the one
+`sole_constructor` completeness is scoped to answer, and the roadmap's `Refined<B>` design
+should treat it as a separate open question rather than something the construction wall
+retires.
+
+**Falsified precedent, called out as its own headline point (2026-08-20).** `OrderedClosedInterval`
+has been cited repeatedly — by this audit's own coordinator, by the `Refined<B>` design lane,
+and by an outside advisor — as "the working structural precedent: a generic sole_constructor
+carrier whose sole mint refuses the invalid reversed case." **That claim is false as stated.**
+f12 (executed, above) shows the mint only refuses when the caller supplies an honest
+comparator; a lying one is accepted with zero diagnostic. A falsified reassurance that was
+propagating unchecked across three parties is worth surfacing as its own finding, distinct
+from "a new hole was found" — it means a design decision was resting on a citation nobody had
+executed.
+
+**Centerpiece: `dag/std/interval.dag` contains its own right-shape/wrong-shape A/B for the
+SAME sealed carrier, ~16 lines apart, same author, same module — production code, no
+synthetic fixture needed.**
+- `closed_interval<T>(low, high, le: fn(T,T)->Bool)` (line 32) — the invariant is delegated
+  to a caller-supplied predicate. Confined (sole_constructor correctly walls off who/where)
+  but **unguaranteed** — f12 breaks it by supplying a dishonest `le`.
+- `degenerate_interval<T>(point: T)` (line 48) — **total**, no predicate, no failure arm,
+  returns the carrier unconditionally. `[x, x]` is ordered by reflexivity, so there is
+  nothing to check and nothing for a caller to lie about — the invariant is established by
+  construction, not by a delegated check that can be defeated.
+
+This is §4b's *structurally guaranteed* rung sitting directly beside its *mechanically
+preventable-at-best* rung, in one file, for one carrier — and nothing in either function's
+**type** distinguishes them for a reader deciding which to call or which pattern to copy for
+a new carrier. Both return `OrderedClosedInterval<T>`; only reading the body reveals which
+rung each constructor actually occupies.
+
+*Generic-carrier re-confirmation (f11/f11b, re-executed via `--claim-run` this pass):*
+PASS `f11_generic_carrier_second_type_arg_refuses`, PASS
+`f11b_generic_carrier_both_type_args_each_refuse` — record-literal and cast construction of
+`OrderedClosedInterval<T>` each refuse independently at a first (`<Int>`) and a second,
+distinct (`<ProbeMarker>`) type argument, both instantiations flagged when forged in the same
+probe module. Confirms generic-carrier coverage is real (for these two forms) and is not an
+artifact of only ever having exercised `<Int>`.
+
+*Overall verdict — REVISED 2026-08-20 to fold in ARM 3 (PR #8661): this changes the
+conclusion, not merely extends it. The audit's prior verdict was, without saying so, scoped
+to the source→`.dag`-acceptance path only; per §4b's own per-path rung rule the
+source→Rust-emission path is a distinct, independently-ruled path, and it is now confirmed
+BELOW FLOOR — silently forgeable on the emitted mirror of a production sealed type — which is
+categorically worse than any of the three within-`.dag` holes below (all three are decidable,
+zero-exposure, corpus-contingent gaps in an otherwise-real wall; the emission finding is the
+wall's complete, silent absence on an entire realization target).** `sole_constructor`
+reliably walls off record-literal and cast construction (including generic instantiation) of a
+census-UNIQUE, plain-record type, at every tested AST position (fn body, module-scope `data`
+initializer, list-element, map-value) and via the interpreter, with no compiler-module
+exemption reaching it (`module_skips_direct_call_arg_check` exists and is scoped to the
+argument-type judgment only — confirmed by code read, not execution). **On the
+source→`.dag`-acceptance path specifically**, it does NOT reliably wall off a census-AMBIGUOUS
+type name — resolution silently guesses by last-import-wins rather than refusing or consulting
+the caller's actual selection, the `presence_check_census_gate_note` precedent's exact failure
+mode, landed here without the stand-down that gate uses to avoid it (0 live exposure today,
+corpus-wide census 69/86/0); it does NOT reach variant construction of a sole_constructor
+coproduct at all — a distinct, entirely unwired AST form (0 live exposure today — zero
+sole_constructor coproducts exist in the corpus); and it does NOT reach a record literal in a
+parameter's declared default-value expression — a distinct position gap, executed via f19 (0
+live exposure today — targeted grep, no fn-parameter default-value use of any declared
+sole_constructor type found). **On the source→Rust-emission path**, it does not exist at all
+for a production sole_constructor type's own emitted mirror: ARM 3 (§10) confirmed by
+execution that `extdeps.uri` `UriValidatedScalar`'s emitted struct admits, via
+`serde_json::from_value` and a direct struct literal, every value its fixed-law mint refuses —
+no production caller is established to have exercised this, but the mechanism is real and the
+gap is silent (below floor), not a decidable zero-exposure hole among otherwise-sound coverage.
+**Two confirmed scope boundaries, complementary rather than duplicative — the SAME underlying
+claim (confinement is not an invariant guarantee) proven from opposite directions**:
+validator-identity (f12/f12b) shows a PERMISSIVE, caller-supplied validator can lie even when
+sole_constructor's own confinement holds perfectly (`closed_interval` accepts a reversed-bounds
+value under a lying comparator); the emission gap shows a FIXED, module-owned validator
+(`uri_validated_scalar_construction`'s law is not caller-supplied) is still worthless once the
+carrier crosses into a realization where confinement itself does not survive. Neither is a
+defect in `sole_constructor` as specified — the mechanism does exactly what a construction-site
+gate can do (source→`.dag` confinement) and no more; both show sealing requires confinement AND
+a fixed validator AND confinement surviving every realization target, and any one absent
+voids the guarantee regardless of the other two holding. Recommended next-rung triggers,
+kept as three SEPARATE follow-ups needing their own design decisions, not one bundled repair:
+(1) apply the same local-declares-first carve-out `presence_check_census_gate_note` documents
+(read `str_bindings` — local declarations only — before falling through to the
+import-order-overlaid `lookup_type_by_name`) for the ambiguity hole — an exact
+declaration-identity fix replacing the bare-string lookup; (2) add a variant-construction call
+site alongside the existing `ExprCast`/`infer_record_lit_structural` sites for the coproduct
+hole — joining variant construction to the same authority as the other two forms; (3) the
+emission/reconstruction door (omit `Deserialize`, emit a validating one, or seal the field
+behind `TryFrom`) for the Rust-emission gap. These three are independent because they sit on
+different paths (two within `.dag`-acceptance, one at emission) and touch different
+mechanisms (a lookup carve-out, a new AST-form call site, an emitter/derive-roster change);
+bundling them would conflate a decidable zero-exposure completeness fix with a below-floor
+production-realization repair that needs its own design review. All three are decidable fixes
+once scoped, not ratchets — the default-value position hole (executed via f19) is folded into
+trigger (1)'s sibling scope, not a fourth separate trigger, since it shares the same
+`infer_record_lit_structural`/`ExprCast` call-site mechanism as (2). Until landed, any
+`sole_constructor` carrier (existing or a planned `Refined<B>`) that is later declared as a
+coproduct, whose bare name later collides with another module-scope declaration anywhere in a
+consuming corpus's transitive closure, is later used as a parameter's declared default, or is
+emitted to Rust at all, silently loses some or all of its guarantee with no diagnostic marking
+the PR that introduces or exposes the gap — the wall's soundness today is a fact about what the
+corpus currently contains and which realization target is in play, not a fact the wall itself
+enforces end to end.
+
 ## 11. Audit queue
 
 1. ~~Recover `docs/error-examples.md`~~ **DONE — see §8b**; ~~`correctness-dimensions`~~
    **DONE — see §8c.** Still to pull: `what-falls-out`, `two-groundings`,
    `the-derived-homomorphism`.
-1a. **Audit `sole_constructor` completeness** (new, post-merge review): generic carriers
-   (`Refined<B>`), every construction form, interaction with `module_skips_direct_call_arg_check`.
-   The capability ceiling's status — and the cardinality wall's first candidate
-   (`type Refined<B> sole_constructor`) — both hang on this audit.
+1a. ~~Audit `sole_constructor` completeness~~ **MAPPED, not closed — see §10, 2026-08-20 pass
+   plus the 2026-08-20 ARM 3 fold-in (PR #8661).** The source→`.dag`-acceptance path is
+   CONFIRMED BY EXECUTION: the wall holds uniformly across every literal/cast AST position
+   tested, concrete and generic, on that path specifically. CONFIRMED HOLE BY EXECUTION: the check's own resolution
+   (`04_infer` `type_has_sole_constructor` → `04_infer` `lookup_type_by_name`) inherits full
+   import-order dependence on a census-ambiguous bare name — it does not stand down the way
+   the sibling `presence_check_census_gate_note` gate does, so it silently MIS-JUDGES rather
+   than merely stands down: a sole_constructor type's own construction can be silently missed,
+   and an open type's legitimate construction can be silently flagged, purely as a function of
+   which of two same-named declarations was imported last in the probe module — independent of
+   which one the author's own `import … { Name }` explicitly selected. `Refined<B>` is NOT
+   cleared for a blanket `sole_constructor` landing until this hole is closed (a local-declares-
+   first carve-out, mirroring the sibling gate, is the indicated fix) or the roadmap accepts the
+   residual risk explicitly. Separately CONFIRMED BY EXECUTION: `std.interval` `closed_interval`
+   and `v2.std.refinement` `refine` both accept a caller-supplied validator predicate,
+   so `sole_constructor` alone — even fully applied — cannot make a refinement carrier's
+   accepted values honor their nominal invariant; the caller can supply a validator that always
+   admits. Separately CONFIRMED HOLE BY EXECUTION: variant construction of a
+   `sole_constructor` coproduct is entirely unwired — a distinct third AST form from the
+   record-literal/cast pair, never reaching `sole_constructor_construction_diags` at all.
+   Both holes carry zero live exposure today (corpus-wide census, §10) — no existing
+   sole_constructor type is a coproduct, and no sole_constructor bare name collides with
+   another declaration today — but neither is a structural property of the wall: either
+   condition is one ordinary PR away, with no diagnostic marking that PR. SEPARATELY CONFIRMED
+   BY EXECUTION, on the source→Rust-emission path (ARM 3, session lively-bee-274, PR #8661): a
+   production `sole_constructor` type's own emitted mirror is silently forgeable. `extdeps.uri`
+   `UriValidatedScalar` (fixed-law mint, no caller-supplied validator) is emitted as a `pub`
+   struct with a `pub` field deriving `serde::Deserialize`; both a direct struct literal and
+   `serde_json::from_value` admit every value the `.dag` mint refuses, with a shape-control
+   discriminator proving the harness's `Err` path is real (so the "admits" verdicts are
+   load-bearing, not a silent-harness artifact). No production caller is established to have
+   exercised this path — mechanism confirmed, no confirmed victim — but it is below floor
+   (silent), not a decidable zero-exposure hole in an otherwise-sound wall the way the two
+   above are: the source→`.dag` path and the source→Rust-emission path are independently ruled
+   per §4b, and the wall is simply absent on the latter for this carrier. This is the complement
+   of the validator-identity finding below (a permissive caller-supplied validator defeats a
+   perfectly-confined carrier; a fixed module-owned validator is defeated by confinement not
+   surviving emission) — neither a defect in `sole_constructor` as specified, both proof that
+   confinement alone is not a sealing guarantee. Full form-by-form table, generic-carrier
+   verdict, exposure ledger, and open sub-questions in §10.
 1b. **Author the missing Tier 1 RED controls** (new, and the cheapest item here). They never
    existed. Start with the cardinality archetype, method existence, and declared-return
    conformance — each a three-line `.dag` program with an expected-error acceptance criterion,

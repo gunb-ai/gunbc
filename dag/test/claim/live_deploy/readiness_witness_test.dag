@@ -15,6 +15,8 @@ import gunbc.live_deploy.readiness {
   live_deploy_healthz_get_for_port,
   service_ready_apply_effect_for_deploy,
   HealthzEffectiveRead,
+  HealthzBodyRead,
+  HealthzProbeRefused,
 }
 import gunbc.live_deploy.service_ready {
   live_deploy_service_ready_poll_bound,
@@ -127,10 +129,7 @@ test fn witness_healthz_bad_body_not_groundable() -> Bool {
 test fn witness_ssh_mock_stdout_is_discriminating_red() -> Bool {
   !healthz_body_groundable(body: witness_ssh_mock_stdout)
     && match ground_service_ready_from_healthz(
-      read: HealthzEffectiveRead {
-        body: witness_ssh_mock_stdout,
-        probe_error: "",
-      },
+      read: HealthzBodyRead { body: witness_ssh_mock_stdout },
       expected_revision: deploy_witness_release_revision,
       expected_surface_identity: witness_expected_surface_identity(),
     ) {
@@ -163,8 +162,7 @@ test fn witness_transport_probe_targets_localhost_healthz() -> Bool {
 
 test fn witness_accept_no_response_probe_fails_fast_not_hangs() -> Bool {
   match ground_service_ready_from_healthz(
-    read: HealthzEffectiveRead {
-      body: "",
+    read: HealthzProbeRefused {
       probe_error: "curl: (28) Operation timed out after 5000 milliseconds with 0 bytes received",
     },
     expected_revision: deploy_witness_release_revision,
@@ -274,3 +272,4 @@ test fn witness_service_not_ready_refusal_shape_matches_contract() -> Bool {
     && string_contains(s: reason, pattern: "gunbc-roadmap.service")
     && string_contains(s: reason, pattern: "Active: failed (Result: exit-code)")
 }
+

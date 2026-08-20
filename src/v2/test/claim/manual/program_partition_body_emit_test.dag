@@ -15,8 +15,13 @@ import v2.std.algebra { any, fold_list, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.diagnostic {
   Accepted,
+  CorrectionNotModeled,
+  Diagnostic,
   None,
-  Rejected
+  Rejected,
+  Unavailable,
+  diagnostics_singleton,
+  node_locus
 }
 import v2.std.logic { Bool }
 import v2.std.node { Node, node_subtree_nodes }
@@ -53,7 +58,15 @@ fn program_partition_node_list_is_duplicate_free(xs: List<Node>) -> Bool {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: seen, diagnostics: _ } =>
           if program_partition_node_list_member_seen(seen: seen, needle: member) {
-            Rejected { diagnostics: None }
+            Rejected {
+              diagnostics: diagnostics_singleton(
+                d: Diagnostic {
+                  reason: ^program_partition_node_list_duplicate,
+                  at: node_locus(node: member),
+                  correction: Unavailable { reason: CorrectionNotModeled }
+                }
+              )
+            }
           } else {
             Accepted {
               value: list_snoc_item(xs: seen, item: member),

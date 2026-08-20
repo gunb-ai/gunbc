@@ -1,0 +1,99 @@
+module test.claim.witness_floor_workflow_consolidation_witness_test
+
+import std.types { Bool, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.witness_floor_workflow { expected_witness_floor_yml }
+
+// THE CI PHASES ARE THE PROGRAM'S TO SEQUENCE, NOT THE JOB'S (operator directive, 2026-08-20:
+// "i would much prefer if it was all handled within the witnesses step and within the gunbc
+// binary, not at a github actions job level").
+//
+// WHAT THESE ASSERT AND WHAT THEY CANNOT. The subject is the EMITTED workflow text, so these
+// witnesses decide the shape of what CI is asked to run. They say nothing about whether the
+// composed run then executes its four phases correctly — that is the binary's own behaviour and
+// it is not observable from here. Two separate claims, and conflating them would let a correctly
+// shaped one-step workflow stand in for evidence that the phases run.
+//
+// Stated so a reader does not over-read the green: this is the CHEAP half of the pair.
+
+data consolidation_note: String = "The step ladder these replace was four steps: parse, regen, regen-fixed-point, floor. Each was its own process, the ORDER was a YAML list, each precondition was an `if:` naming another step's `outcome`, and the fixed-point step received pass 1's digest by re-reading the receipt FILE the regen process had written — a process boundary standing where a function call belonged, since run_required_regen_fixed_point has taken pass1_digest: Option<String> all along and CI passed None."
+
+// ONE RUN STEP REACHES THE BINARY, and it names the composed mode. The negative half is what
+// makes this discriminating: if any of the three retired invocations reappears as its own step,
+// the ladder has grown back and this reds.
+test fn w_ci_invokes_one_composed_mode_not_a_step_ladder() -> Bool {
+  let yml = expected_witness_floor_yml()
+  string_contains(s: yml, pattern: "claim_executor\" --required-ci")
+    && !string_contains(s: yml, pattern: "claim_executor\" --required-floor")
+    && !string_contains(s: yml, pattern: "claim_executor\" --required-regen")
+    && !string_contains(s: yml, pattern: "target/release/v1_src_dag_parse")
+}
+
+// NO STEP'S PRECONDITION READS ANOTHER STEP'S VERDICT — except the one that guards on the BUILD,
+// which is a different fact: a step cannot run a binary that failed to compile, and that is the
+// job's business rather than the program's. What is gone is `steps.required_regen.outcome`, the
+// data dependency that now lives in the binary as an in-memory digest handoff.
+test fn w_no_phase_precondition_reads_another_phases_outcome() -> Bool {
+  let yml = expected_witness_floor_yml()
+  !string_contains(s: yml, pattern: "steps.required_regen.outcome")
+    && string_contains(s: yml, pattern: "steps.build_witness_fold.outcome == 'success'")
+}
+
+// THE REQUIRED WORKFLOW NO LONGER BUILDS THE PARSE BINARY -- scoped to this workflow, because
+// fleet-converge.yml still builds it from witness_declared_release_bins and a heading reading
+// "no longer built" would be false of the repository while true of its subject.
+//
+// This replaces a claim that was quietly wrong.
+//
+// It read "the parse sweep still has an executing consumer" and asserted the yml contained
+// `--bin v1_src_dag_parse`. That used "CI compiles the standalone parse binary" as a proxy for
+// "the parse sweep still runs" -- and the two came apart the moment the consolidation landed,
+// because the sweep moved INTO the composed run while the binary stopped being invoked at all.
+// The witness was therefore pinning a surplus compile in place as a requirement, which is the
+// opposite of what it was named for. Found in review of gunbc#8647.
+//
+// WHAT THIS FILE CAN AND CANNOT DECIDE. The subject here is emitted workflow text, so it can
+// see that the retired binary is not built and that the composed mode is invoked. It CANNOT
+// see that the parse phase runs -- that lives in the binary and is established by execution
+// (`required-ci: parse OK 50 file(s) parse-clean`, run 32371293567). Naming the boundary is
+// the point: a static witness that claimed the phase runs would be asserting something its
+// subject does not contain.
+test fn w_the_required_workflow_does_not_build_the_parse_binary() -> Bool {
+  let yml = expected_witness_floor_yml()
+  string_contains(s: yml, pattern: "--required-ci")
+    && string_contains(s: yml, pattern: "--bin claim_executor")
+    && !string_contains(s: yml, pattern: "--bin v1_src_dag_parse")
+}
+
+// RED CONTROL ON A DIFFERENT AXIS FROM THE INVOCATIONS ABOVE: the retired steps' NAMES.
+//
+// The first witness reads the run commands; this one reads the step names GitHub renders, which
+// is what a person re-adding a step would write first. The two can disagree — a step named
+// "Regen determinism" whose command was folded into the composed run would pass the command
+// check and fail this one — and that disagreement is the point of having both.
+//
+// An earlier revision of this file put a near-impossible literal here instead. It would have
+// gone green forever without ever being able to fail, which is worse than having no control:
+// a vacuous assertion reads as coverage on the roster.
+//
+// THE POSITIVE CONTROL PINS THE COMPOSED STEP'S IDENTITY, NOT ITS PHASE LIST.
+//
+// It read the full name -- "...regen determinism, witness floor" -- until the behavioral
+// receipt became a phase inside the same invocation and the step name grew to say so. That
+// reddened this witness, which is about RETIRED STEP NAMES and has nothing to say about how
+// many phases the composed run has. A control that breaks whenever an unrelated phase is
+// added is measuring the wrong thing: it makes every phase addition edit a witness that does
+// not own the fact. Keying on the step-name PREFIX keeps exactly the property this control
+// needs -- the composed step exists and was read -- and still fails loudly if the composed
+// step is removed or renamed out of its family, which is the state the negative arms below
+// exist to detect.
+test fn w_RED_the_retired_step_names_do_not_return() -> Bool {
+  let yml = expected_witness_floor_yml()
+  let positive_control = string_contains(s: yml, pattern: "Required CI:")
+  positive_control
+    && !string_contains(s: yml, pattern: "name: src/v1 .dag sources parse")
+    && !string_contains(s: yml, pattern: "Regen fixed point:")
+    && !string_contains(s: yml, pattern: "Regen determinism:")
+}
+
+data witness_live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
