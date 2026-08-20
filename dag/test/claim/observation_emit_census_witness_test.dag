@@ -201,5 +201,3 @@ test fn w_the_raw_witness_claim_result_shape_is_gone_from_the_seed() -> Bool {
     && !string_contains(s: cli, pattern: "(\{subject\}) \{ms:.1\}ms")
     && string_contains(s: cli, pattern: "render_witness_claim_result_text_mirror")
 }
-
-

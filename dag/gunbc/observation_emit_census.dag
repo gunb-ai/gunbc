@@ -144,7 +144,6 @@ data witness_row_cost_migration_disclosure_site: CensusedEmitSite = CensusedEmit
 }
 
 
-
 data observation_emit_roster: List<CensusedEmitSite> = [
   floor_memory_site,
   typecheck_attribution_site,

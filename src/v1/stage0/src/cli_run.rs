@@ -40965,7 +40965,7 @@ pub fn run_required_floor(
                 expected_red_roster.contains(claim.qualified.as_str()),
             ),
         );
-        // THE EXPECTED-RED JOIN.        // THE EXPECTED-RED JOIN. A quarantined identity is one this branch KNOWS fails; it is
+        // THE EXPECTED-RED JOIN. A quarantined identity is one this branch KNOWS fails; it is
         // enrolled by exact qualified name in `v2.workflow.floor_expected_red`, and the
         // difference from an exclusion is that it still RUNS and its outcome is still asserted.
         //
