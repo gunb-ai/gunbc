@@ -226,3 +226,22 @@ test fn the_deploy_workflow_no_longer_advances_the_fleet_revision() -> Bool {
     && !string_contains(s: yml, pattern: "refs/fleet/desired")
     && !string_contains(s: yml, pattern: "force-with-lease")
 }
+
+// deploy.yml invoked cargo on this same srv1 runner with no toolchain and exited
+// 127 on all 14 of its runs -- the actuator never once reached its own terminal
+// step. This workflow builds on that runner too, so the same omission would make
+// the admission job die before deciding anything and the fleet ref would silently
+// never advance. Both claims were observed RED against a model with the toolchain
+// step removed before being accepted green.
+test fn the_admission_workflow_installs_a_toolchain_before_its_first_cargo_invocation() -> Bool {
+  let yml = expected_fleet_desired_yml()
+  let before_cargo = split(s: yml, delimiter: "cargo build").first()
+  string_contains(s: yml, pattern: "cargo build")
+    && string_contains(s: before_cargo, pattern: "setup-rust-toolchain")
+}
+
+test fn the_admission_toolchain_step_disables_the_shared_home_cache() -> Bool {
+  let yml = expected_fleet_desired_yml()
+  let after_toolchain = split(s: yml, delimiter: "setup-rust-toolchain").last()
+  string_contains(s: after_toolchain, pattern: "cache: false")
+}

@@ -14,7 +14,7 @@ import extdeps.github.actions {
 import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
 import gunbc.repo_identity { gunbc_default_branch_name }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
-import gunbc.witness_floor_workflow { witness_floor_workflow_name }
+import gunbc.witness_floor_workflow { witness_floor_workflow_name, witness_floor_toolchain_step }
 import gunbc.fleet_desired_admission {
   fleet_desired_admission_event_payload_path,
   fleet_desired_admission_authorized_push_path,
@@ -67,6 +67,15 @@ fn fleet_desired_admission_checkout_step() -> Step {
   }
 }
 
+// The toolchain step above is load-bearing, not boilerplate. deploy.yml runs
+// cargo on this same srv1 self-hosted runner WITHOUT installing one, and has
+// therefore exited 127 on all 14 of its runs -- the modeled deploy actuator has
+// never once succeeded. This workflow builds on the same runner, so omitting the
+// step reproduces that defect exactly: the admission job would die before
+// reaching any admission decision, and the fleet ref would silently never
+// advance. It is imported from witness_floor_workflow rather than copied,
+// because it is one fact -- what a self-hosted runner needs before cargo -- with
+// several consumers (DESIGN section 3).
 fn fleet_desired_admission_build_step() -> Step {
   RunStep {
     name: Present { value: "Build the admission binary" },
@@ -162,6 +171,7 @@ fn fleet_desired_admission_job() -> Job {
     runner: gunbc_ci_deploy_srv1_runner_spec(),
     steps: [
       fleet_desired_admission_checkout_step(),
+      witness_floor_toolchain_step(),
       fleet_desired_admission_build_step(),
       fleet_desired_admission_stage_payload_step(),
       fleet_desired_admission_decide_step(),
