@@ -2,6 +2,8 @@
 // Source module: v1.compiler.resolve
 
 pub use crate::std_occurrence_identity::{OccurrenceIndex, OccurrenceTransport};
+pub use crate::std_syntax::BinOp;
+use crate::std_syntax::BinOp::*;
 pub use crate::std_types::kernel_type_set;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -9,6 +11,8 @@ use crate::v1_std_core::CompilerDiagnostic::{
     CircularDependency, DuplicateModule, MissingExport, UnresolvedImport,
 };
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
+pub use crate::v1_std_core::InferredNode;
+use crate::v1_std_core::InferredNode::*;
 pub use crate::v1_std_core::{
     authored_name_at, import_is_all, import_node, import_specific_names_at, make_error_node,
     module_imports, module_items, module_node, no_span,
