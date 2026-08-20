@@ -167,22 +167,22 @@ fn effect_io_eval_bind_value(
 
 fn effect_io_eval_interpretation() -> InterpretationAlgebra {
   InterpretationAlgebra {
-    value: ValueInterpreter { allocate_literal: effect_io_eval_allocate_literal },
-    transform: TransformInterpreter { call_primitive: effect_io_eval_reject_primitive },
-    branch: BranchInterpreter { choose_branch: effect_io_eval_reject_branch },
-    loop: LoopInterpreter { step_loop: effect_io_eval_step_loop },
-    bind: BindInterpreter { bind_value: effect_io_eval_bind_value },
-    match: MatchInterpreter { choose_arm: runtime_reject_match_arm }
+    value: ValueInterpreter { allocate_literal: effect_io_eval_allocate_literal, identity: ^effect_io_eval_allocate_literal },
+    transform: TransformInterpreter { call_primitive: effect_io_eval_reject_primitive, identity: ^effect_io_eval_reject_primitive },
+    branch: BranchInterpreter { choose_branch: effect_io_eval_reject_branch, identity: ^effect_io_eval_reject_branch },
+    loop: LoopInterpreter { step_loop: effect_io_eval_step_loop, identity: ^effect_io_eval_step_loop },
+    bind: BindInterpreter { bind_value: effect_io_eval_bind_value, identity: ^effect_io_eval_bind_value },
+    match: MatchInterpreter { choose_arm: runtime_reject_match_arm, identity: ^runtime_reject_match_arm }
   }
 }
 
 fn effect_io_eval_structure_witness() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
-    allocate_literal: ^effect_io_eval_allocate_literal_sym,
-    call_primitive: ^effect_io_eval_reject_primitive_sym,
-    choose_branch: ^effect_io_eval_reject_branch_sym,
-    step_loop: ^effect_io_eval_step_loop_sym,
-    bind_value: ^effect_io_eval_bind_value_sym,
+    allocate_literal: ^effect_io_eval_allocate_literal,
+    call_primitive: ^effect_io_eval_reject_primitive,
+    choose_branch: ^effect_io_eval_reject_branch,
+    step_loop: ^effect_io_eval_step_loop,
+    bind_value: ^effect_io_eval_bind_value,
     choose_arm: ^runtime_reject_match_arm
   }
 }

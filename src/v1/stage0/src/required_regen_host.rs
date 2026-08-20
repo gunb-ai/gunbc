@@ -375,11 +375,22 @@ fn compare_generated_surfaces(
     let mut drifted = Vec::new();
     for basename in generated_basenames {
         let committed_path = stage0_src.join(basename);
-        let committed = normalize_generated_source(
-            &fs::read_to_string(&committed_path)
-                .map_err(|e| format!("read committed {}: {e}", committed_path.display()))?,
-        )
-        .map_err(|e| format!("normalize committed {basename}: {e}"))?;
+        // The committed side is read RAW and compared against exactly the bytes
+        // `write_emitted_tree` puts in the candidate tree -- `normalize_generated_source(emitted)`.
+        // It previously normalized the committed side too, which made the comparison
+        // `normalize(normalize(emitted))` vs `normalize(emitted)` once a candidate had been
+        // installed. That is only an identity if rustfmt is idempotent, and it is not:
+        // measured 2026-08-20, `v1_compiler_infer.rs` reformats on a second pass (a
+        // `let ... = if (long_receiver_chain)` splits differently), so the fold reported the
+        // same single file as drifted at generation 2, 3 and 4 with the candidate on disk
+        // BYTE-IDENTICAL to the committed file it was compared against. No number of
+        // generations could clear it: the check had no reachable green, and the only way to
+        // silence it was to hand-edit the mirror -- validation standing where construction was
+        // available (DESIGN 5). Comparing against the written artifact makes "install the
+        // candidate" a guaranteed remedy by construction, and makes the two derivations of the
+        // candidate one fact rather than two (DESIGN 3).
+        let committed = fs::read_to_string(&committed_path)
+            .map_err(|e| format!("read committed {}: {e}", committed_path.display()))?;
         let candidate = lookup_emitted(emitted, basename)
             .ok_or_else(|| format!("emit missing generated file {basename}"))?;
         let candidate_norm = normalize_generated_source(candidate)
@@ -541,8 +552,45 @@ fn tree_digest_from_map(
     Ok(digest_label(payload.as_bytes()))
 }
 
+/// Maximum rustfmt passes taken while seeking the formatter's fixed point. Exceeding it is a
+/// typed refusal, never a silent "good enough" -- a widened failure arm here would be exactly the
+/// absorbing fallback DESIGN 5 forbids, and it would restore the unclosable state below.
+const NORMALIZE_FIXED_POINT_MAX_PASSES: usize = 8;
+
+/// Run rustfmt to a FIXED POINT, not once.
+///
+/// rustfmt is not idempotent. Measured 2026-08-20 on `v1_compiler_infer.rs`: a
+/// `let x = if (long.receiver.chain)` re-splits on a second pass. A single pass therefore puts
+/// this repository's two gates in direct contradiction on such a file, because they consume
+/// different passes of the same formatter:
+///
+///   * `cargo fmt --all --check` (pre-commit, and the fmt gate) demands pass N+1 of whatever is
+///     committed -- it re-formats the file in place;
+///   * `write_emitted_tree` wrote pass 1 of the emitted bytes, and `compare_generated_surfaces`
+///     compares against exactly those bytes.
+///
+/// Satisfying either one broke the other, in a loop with no exit: install the candidate and fmt
+/// rewrites it; run fmt and regen reports drift. The only state satisfying both simultaneously is
+/// a FIXED POINT of rustfmt, so that is what the emitted artifact must be -- then `cargo fmt` is a
+/// no-op on it by definition, and byte-comparing the committed file against it is exact.
+///
+/// This is construction rather than validation (DESIGN 5): the disagreement is not detected and
+/// reported, it is made unrepresentable, because the artifact is written in the one form both
+/// consumers agree on. Iterating here rather than teaching the comparator to tolerate a second
+/// pass is deliberate -- tolerance would have to be granted to the fmt gate too, and a tolerance
+/// shared by two gates is a hole in both.
 fn normalize_generated_source(content: &str) -> Result<String, String> {
-    normalize_generated_source_attempt(content)
+    let mut current = normalize_generated_source_attempt(content)?;
+    for _ in 1..NORMALIZE_FIXED_POINT_MAX_PASSES {
+        let next = normalize_generated_source_attempt(&current)?;
+        if next == current {
+            return Ok(current);
+        }
+        current = next;
+    }
+    Err(format!(
+        "rustfmt did not reach a fixed point in {NORMALIZE_FIXED_POINT_MAX_PASSES} passes"
+    ))
 }
 
 fn normalize_generated_source_attempt(content: &str) -> Result<String, String> {
