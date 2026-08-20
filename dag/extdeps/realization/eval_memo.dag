@@ -2,6 +2,7 @@ module extdeps.realization.eval_memo
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import v2.std.optional { Absent }
 
 import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed, CatalogCasContentEncoding }
 import std.cache_identity { CacheInterfaceId }
@@ -79,14 +80,14 @@ data eval_memo_facts: CacheInterfaceCatalogFacts = {
       field: "locality"
       evidence: OperatorObserved {
         note: "scoped to InterpContext for the resolve-side share, but EVICTED at the witness frame (eval_call_memo_frame_exit after each claim fn on batch surfaces — ctx-lifetime retention across witnesses was the 2026-07-10 20GiB-class regression); entry-cap refusals counted as memo_overflow in the floor materialization receipt"
-        observed_at: 0
+        observed_at: Absent
       }
     },
     {
       field: "key_derivation"
       evidence: OperatorObserved {
         note: "EvalRecomputeKey = fn identity x per-argument identity (scalars exact; composites recursive content hash, allocation-memoized with Weak liveness); content_verified_on_read is TRUE structurally: a hit serves only after stored argument names and values verify equal via Value equality, so a collision recomputes rather than lies"
-        observed_at: 0
+        observed_at: Absent
       }
     },
   ]
