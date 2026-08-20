@@ -27,7 +27,6 @@ import gunbc.observation_emit_census {
   witness_row_cost_site,
   witness_row_cost_migration_disclosure_site,
   witness_claim_result_site,
-  witness_budget_warn_site,
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -123,13 +122,6 @@ test fn w_witness_claim_result_has_migrated() -> Bool {
   string_contains(s: emit_site_dissolve_on(site: witness_claim_result_site), pattern: "render_witness_claim_result_text_mirror")
 }
 
-test fn w_witness_budget_warn_has_migrated() -> Bool {
-  census_marker_present(site: witness_budget_warn_site) &&
-  !emit_site_is_frontier(site: witness_budget_warn_site) &&
-  string_contains(s: witness_budget_warn_site.marker, pattern: "floor-witness-slow") &&
-  string_contains(s: emit_site_dissolve_on(site: witness_budget_warn_site), pattern: "ci_witness_budget_warn_text") &&
-  string_contains(s: emit_site_dissolve_on(site: witness_budget_warn_site), pattern: "render_witness_budget_warn_text_mirror")
-}
 
 data w_post_snapshot_live_tags_are_rostered_bidirectional_note: String = "Operator finding 3 (run 30142403230): hygiene is bidirectional — growth tags born after the initial census snapshot must appear on the roster, not only the reverse (rostered markers still exist). Extended for #7205 resolve/assembly split tags, #7284 witness-row-cost / witness-row-cost-drift, and the migration-disclosure gate's own [witness-row-cost-migration-disclosure] marker.\n\nA [compile-clean-cost-drift] row was added here on 2026-08-11 and RETIRED hours later in the same lane, when that tag's emit was deleted outright rather than gated — so the row is gone and this list is shorter, not longer. The WAY the hole was found is still the finding: it was not caught by this test, because a manually enumerated conjunction can only assert the rows somebody remembered to write down. [compile-clean-cost-drift] and [compile-clean-cost] had been live in the seed and absent from the roster since they were introduced, so the bidirectional rule was stated but not enforced for them — an unrostered tag is invisible to a check whose subject list IS the roster. That makes this test's own shape the residue: the durable fix is a source-level census that DISCOVERS print markers in the seed and joins them against the roster, at which point a new tag cannot escape by not being remembered. Until that lands, this conjunction is a hand-maintained approximation of a discovery it cannot perform, and every row added to it is evidence of the gap rather than closure of it."
 
@@ -210,9 +202,4 @@ test fn w_the_raw_witness_claim_result_shape_is_gone_from_the_seed() -> Bool {
     && string_contains(s: cli, pattern: "render_witness_claim_result_text_mirror")
 }
 
-test fn w_the_raw_witness_budget_warn_shape_is_gone_from_the_seed() -> Bool {
-  let cli = census_source(path: "src/v1/stage0/src/cli_run.rs")
-  !string_contains(s: cli, pattern: "[floor-witness-slow] \{\} \{\}ms > \{\}ms warn")
-    && string_contains(s: cli, pattern: "render_witness_budget_warn_text_mirror")
-}
 

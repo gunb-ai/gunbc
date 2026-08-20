@@ -1930,6 +1930,31 @@ thread_local! {
     > = std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
+// The memo's hit and miss counts. PROCESS-global, not thread-local, deliberately: the memo
+// itself is per-thread, so a per-thread counter read from the ledger thread would report the
+// ledger thread's own (near-zero) traffic as the whole run's — a denominator that is a
+// function of where it was read rather than of what happened.
+//
+// Why counters replaced a per-miss `eprintln!`: the trace printed a line on every MISS and
+// nothing on any HIT, so the console carried hundreds of "memo miss" lines and no denominator
+// at all. Absence of hit lines reads as "the memo never hits" when it in fact means "hits are
+// not reported" — DESIGN's empty-observation narrow, ⊥-as-answer conflated with ⊥-as-ignorance.
+// One end-of-run receipt carrying BOTH numbers is the same information at 1/N the volume, and
+// it is the first form in which the ratio is readable at all.
+static COMPILE_DAG_RUST_EMIT_CHECK_MEMO_HITS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+static COMPILE_DAG_RUST_EMIT_CHECK_MEMO_MISSES: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
+/// `(hits, misses)` for the `compile_dag_rust_emit_check` memo across the whole process.
+/// Report-only; no consumer branches on it.
+pub fn compile_dag_rust_emit_check_memo_counts() -> (u64, u64) {
+    (
+        COMPILE_DAG_RUST_EMIT_CHECK_MEMO_HITS.load(std::sync::atomic::Ordering::Relaxed),
+        COMPILE_DAG_RUST_EMIT_CHECK_MEMO_MISSES.load(std::sync::atomic::Ordering::Relaxed),
+    )
+}
+
 fn compile_dag_rust_emit_check_memo_key(
     source: &str,
     file_path: &str,
@@ -1993,13 +2018,10 @@ pub fn compile_dag_rust_emit_check(
     );
     if let Some(hit) = COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| m.borrow().get(&memo_key).copied())
     {
+        COMPILE_DAG_RUST_EMIT_CHECK_MEMO_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         return hit;
     }
-    if crate::v1_interpreter::eval_recompute_trace_enabled() {
-        eprintln!(
-            "compile_dag_rust_emit_check: memo miss key={memo_key} (content-addressed recompute)"
-        );
-    }
+    COMPILE_DAG_RUST_EMIT_CHECK_MEMO_MISSES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let verdict = compile_dag_rust_emit_check_uncached(source, file_path, includes, excludes);
     COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| m.borrow_mut().insert(memo_key, verdict));
     verdict
@@ -14626,11 +14648,56 @@ fn witness_bazel_target_label(subject: &str, function: &str) -> String {
     format!("//{}:{}", witness_claim_package_path(subject), function)
 }
 
+/// Mirror of `gunbc.observation_ci_render CiWitnessVerdict`. Arms correspond one-for-one to
+/// `ClaimOutcome`, plus `KnownRed`, which the outcome alone cannot express because enrollment is
+/// a fact about the roster rather than about the run.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CiWitnessVerdict {
+    Passed,
+    Failed,
+    NotBool,
+    RuntimeError,
+    BudgetRefused,
+    HostToolUnresolved,
+    KnownRed,
+}
+
+impl CiWitnessVerdict {
+    /// Mirror of `ci_witness_outcome_token`.
+    pub fn token(self) -> &'static str {
+        match self {
+            CiWitnessVerdict::Passed => "PASSED",
+            CiWitnessVerdict::Failed => "FAILED",
+            CiWitnessVerdict::NotBool => "NOT-BOOL",
+            CiWitnessVerdict::RuntimeError => "ERROR",
+            CiWitnessVerdict::BudgetRefused => "BUDGET-REFUSED",
+            CiWitnessVerdict::HostToolUnresolved => "TOOL-UNRESOLVED",
+            CiWitnessVerdict::KnownRed => "KNOWN-RED",
+        }
+    }
+
+    /// The projection the console needs, at the ONE site that knows both facts. `enrolled` is
+    /// roster membership in `v2.workflow.floor_expected_red`; it dominates the outcome arm only
+    /// for NON-passing outcomes, because an enrolled row that PASSES is the roster's own
+    /// stale-quarantine signal and must not be dressed as expected.
+    pub fn from_outcome(outcome: &ClaimOutcome, enrolled: bool) -> Self {
+        match outcome {
+            ClaimOutcome::Pass => CiWitnessVerdict::Passed,
+            _ if enrolled => CiWitnessVerdict::KnownRed,
+            ClaimOutcome::Fail => CiWitnessVerdict::Failed,
+            ClaimOutcome::NotBool { .. } => CiWitnessVerdict::NotBool,
+            ClaimOutcome::RuntimeError { .. } => CiWitnessVerdict::RuntimeError,
+            ClaimOutcome::TimedOut { .. } => CiWitnessVerdict::BudgetRefused,
+            ClaimOutcome::HostToolUnresolved { .. } => CiWitnessVerdict::HostToolUnresolved,
+        }
+    }
+}
+
 pub fn render_witness_claim_result_text_mirror(
     subject: &str,
     function: &str,
     wall_nanos: u128,
-    passed: bool,
+    verdict: CiWitnessVerdict,
 ) -> String {
     let label = witness_bazel_target_label(subject, function);
     let padded = if label.len() >= WITNESS_CLAIM_COLUMN_WIDTH {
@@ -14642,7 +14709,7 @@ pub fn render_witness_claim_result_text_mirror(
             " ".repeat(WITNESS_CLAIM_COLUMN_WIDTH - label.len())
         )
     };
-    let token = if passed { "PASSED" } else { "FAILED" };
+    let token = verdict.token();
     format!(
         "{padded}{token} in {}",
         crate::v1_rt::obs_human_elapsed(wall_nanos)
@@ -14656,38 +14723,12 @@ fn render_witness_claim_result_text(
     subject: &str,
     function: &str,
     wall_nanos: u128,
-    passed: bool,
+    verdict: CiWitnessVerdict,
 ) -> Option<String> {
     // Fail-closed: policy install must have run before any witness line prints.
     OBSERVATION_SOURCE_ROOTS.get()?;
     Some(render_witness_claim_result_text_mirror(
-        subject, function, wall_nanos, passed,
-    ))
-}
-
-/// Mirror of `gunbc.observation_ci_render.ci_witness_budget_warn_text`. Hot-path render
-/// for the warn-tier line (~800 rows/run): native format, no per-line interpreter eval.
-pub fn render_witness_budget_warn_text_mirror(
-    qualified: &str,
-    wall_ms: u128,
-    warn_ms: u64,
-    budget_ms: u64,
-) -> String {
-    format!(
-        "[floor-witness-slow] {qualified} {wall_ms}ms > {warn_ms}ms warn (ceiling {budget_ms}ms)"
-    )
-}
-
-/// Render one per-witness budget-warn line through the `.dag` authority.
-fn render_witness_budget_warn_text(
-    qualified: &str,
-    wall_ms: u128,
-    warn_ms: u64,
-    budget_ms: u64,
-) -> Option<String> {
-    OBSERVATION_SOURCE_ROOTS.get()?;
-    Some(render_witness_budget_warn_text_mirror(
-        qualified, wall_ms, warn_ms, budget_ms,
+        subject, function, wall_nanos, verdict,
     ))
 }
 
@@ -24015,7 +24056,7 @@ impl ShardStyle {
         subject: &str,
         _execution_leg: &str,
         wall_nanos: u128,
-        passed: bool,
+        verdict: CiWitnessVerdict,
     ) {
         if !self.stream {
             return;
@@ -24025,12 +24066,16 @@ impl ShardStyle {
         // and `observation_class_density` produced, resolved once at policy install. A pass folds
         // into the batch rollup and prints nothing; an anomaly pierces at its exact leaf, which is
         // the whole point of collapsing the routine.
-        if routine_rollup_folds() && concluded_outcome_folds(passed) {
+        // The fold still keys on PASSED-ness alone: a row that folds into the batch rollup is
+        // one that needs no attention, and every non-passing arm needs attention. Deriving the
+        // bool HERE rather than accepting one is the whole change -- the caller no longer gets
+        // to decide what the console may distinguish.
+        if routine_rollup_folds() && concluded_outcome_folds(verdict == CiWitnessVerdict::Passed) {
             return;
         }
         let ts = floor_ts();
         let tag = self.shard_tag();
-        match render_witness_claim_result_text(subject, function, wall_nanos, passed) {
+        match render_witness_claim_result_text(subject, function, wall_nanos, verdict) {
             Some(line) => {
                 if self.color {
                     eprintln!("\x1b[2m{ts}\x1b[0m {tag}{line}");
@@ -24196,12 +24241,16 @@ fn run_discovery_rows(
             outcome: outcome.clone(),
             execution_leg: execution_leg.clone(),
         });
+        // enrolled=false is a STATEMENT, not a default: this is the discovery/claim_batch path
+        // and `floor_expected_red` is a required-floor roster that is not in scope here, so no
+        // row on this path can be KNOWN-RED. The typed outcome still survives to the console,
+        // which is the part that was being lost on both paths.
         style.stream_witness(
             &row.function,
             &module_path,
             &execution_leg,
             wall_nanos,
-            matches!(outcome, ClaimOutcome::Pass),
+            CiWitnessVerdict::from_outcome(&outcome, false),
         );
         match outcome {
             ClaimOutcome::Pass => summary.passed += 1,
@@ -39413,7 +39462,6 @@ pub struct RequiredFloorClaim {
     /// calibration evidence and read only by the diagnostic `exceeds_completed_cost_line`; no
     /// admission-path code may consult it.
     pub cost_line_ms: u64,
-    pub warn_ms: u64,
 }
 
 /// The site-projection loop's one decision, per identity, kept instead of discarded into three
@@ -39555,7 +39603,6 @@ pub struct RequiredFloorOutcome {
     pub completed_over_cost_requirement: Vec<String>,
     /// Host tool could not be resolved — infra undecided, not budget-refused.
     pub host_tool_unresolved: Vec<String>,
-    pub over_warn: usize,
     /// DIAGNOSTIC ONLY, NEVER ADMISSION. A `VerdictReached` claim whose exact cost (on the
     /// `RequiredFloorCostBasis` clock) exceeded `required_floor_claim_cost_line_ms`, per
     /// `exceeds_completed_cost_line`. Counted so `ClaimTerminality`/`exceeds_completed_cost_line`
@@ -40380,24 +40427,6 @@ pub fn run_required_floor(
     let claim_wall_safety_limit_ms =
         floor_required_int(&hermetic, "required_floor_claim_wall_safety_limit_ms")?;
     let claim_cost_line_ms = floor_required_int(&hermetic, "required_floor_claim_cost_line_ms")?;
-    let claim_warn_ms = floor_required_int(&hermetic, "required_floor_claim_warn_ms")?;
-    // THE TIERS ARE ORDERED, and reading them independently cannot see that. The warn tier
-    // reports a row an order of magnitude above where an ordinary witness lands and lets it
-    // finish; the safety deadlines are what actually stop it (BUDGET POLICY CUT, 2026-08-19 —
-    // the completed-cost line never interrupts anything, so it is not a "hard ceiling" this
-    // check protects: only the two safety limits arm the interrupt clocks). The warn tier must
-    // sit strictly below the TIGHTER of the two safety limits, or it can never fire before the
-    // interrupt it is meant to precede.
-    let claim_tighter_safety_limit_ms = claim_cpu_safety_limit_ms.min(claim_wall_safety_limit_ms);
-    if claim_warn_ms >= claim_tighter_safety_limit_ms {
-        return Err(format!(
-            "REQUIRED-FLOOR REFUSAL cause=ClaimBudgetTiersInverted warn_ms={claim_warn_ms} \
-             cpu_safety_limit_ms={claim_cpu_safety_limit_ms} \
-             wall_safety_limit_ms={claim_wall_safety_limit_ms} — the warning tier must sit \
-             strictly below the tighter of the two safety deadlines or it can never fire before \
-             the interrupt it is meant to precede"
-        ));
-    }
     let long_home_prefixes: Vec<String> = {
         let value = v1_interpreter::run_in_context(
             &hermetic,
@@ -40498,7 +40527,6 @@ pub fn run_required_floor(
                 cpu_safety_limit_ms: claim_cpu_safety_limit_ms,
                 wall_safety_limit_ms: claim_wall_safety_limit_ms,
                 cost_line_ms: claim_cost_line_ms,
-                warn_ms: claim_warn_ms,
             });
         }
     }
@@ -40703,7 +40731,6 @@ pub fn run_required_floor(
         interrupted_before_verdict: Vec::new(),
         completed_over_cost_requirement: Vec::new(),
         host_tool_unresolved: Vec::new(),
-        over_warn: 0,
         over_cost_line_diagnostic: 0,
         failures: Vec::new(),
         required_floor_disposition: disposition_rows,
@@ -40922,40 +40949,23 @@ pub fn run_required_floor(
         }
         outcome.claims_executed += 1;
         receipted.insert(claim.qualified.clone());
+        // ROSTER MEMBERSHIP IS READ HERE, BEFORE THE LINE PRINTS. It used to be computed a few
+        // dozen lines below, purely to pick a counter -- so the console had already committed to
+        // FAILED by the time anything knew the row was enrolled. Moving the read above the print
+        // is the fix; the branch below still owns the counters and the receipts, and reads the
+        // same `expected_red_roster` set, so there is one authority and two consumers rather
+        // than two answers.
         style.stream_witness(
             &claim.function,
             &claim.module_path,
             "PreparedSubject",
             receipt.wall_nanos,
-            matches!(result, ClaimOutcome::Pass),
+            CiWitnessVerdict::from_outcome(
+                &result,
+                expected_red_roster.contains(claim.qualified.as_str()),
+            ),
         );
-        // THE WARNING TIER. A row an order of magnitude above where an ordinary witness lands,
-        // but under the ceiling, is reported and allowed to finish.
-        //
-        // It is a separate verdict from the hard cut because the remedies differ, and because
-        // this is the population worth acting on: a witness at the ceiling has already spent
-        // the run's full budget by the time anyone hears about it, while a witness at the
-        // warning is heading there and still cheap to fix. Reported per row and counted, so
-        // the population is observable rather than something a reader must reconstruct from
-        // timings.
-        let wall_ms = receipt.wall_nanos / 1_000_000;
-        if wall_ms > u128::from(claim.warn_ms) {
-            outcome.over_warn += 1;
-            match render_witness_budget_warn_text(
-                &claim.qualified,
-                wall_ms,
-                claim.warn_ms,
-                claim.wall_safety_limit_ms,
-            ) {
-                Some(line) => eprintln!("{line}"),
-                None => eprintln!(
-                    "::error::witness presentation unavailable: could not render budget warn \
-                     through gunbc.observation_ci_render `ci_witness_budget_warn_text` for {}",
-                    claim.qualified
-                ),
-            }
-        }
-        // THE EXPECTED-RED JOIN. A quarantined identity is one this branch KNOWS fails; it is
+        // THE EXPECTED-RED JOIN.        // THE EXPECTED-RED JOIN. A quarantined identity is one this branch KNOWS fails; it is
         // enrolled by exact qualified name in `v2.workflow.floor_expected_red`, and the
         // difference from an exclusion is that it still RUNS and its outcome is still asserted.
         //

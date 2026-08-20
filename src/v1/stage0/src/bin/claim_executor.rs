@@ -3925,7 +3925,7 @@ struct DiscoveryBatchBudgets {
 ///
 /// The fast-lane eval budget (operator ruling 2026-08-17, superseding the 5s rule of 2026-07-12;
 /// the live ceiling is `v2.workflow.required_floor` `required_floor_claim_cpu_safety_limit_ms` /
-/// `required_floor_claim_wall_safety_limit_ms` / `required_floor_claim_warn_ms` — two independent
+/// `required_floor_claim_wall_safety_limit_ms` — two independent
 /// safety deadlines per the 2026-08-19 budget policy cut's superseding correction, never
 /// transcribed here) governs the per-PR discovery corpus and its
 /// cold replays — witnesses whose own eval must stay cheap or move to a `long/` lane. A
@@ -10539,6 +10539,14 @@ fn run() -> Result<ExitCode, ExitCode> {
                     outcome.host_tool_unresolved.len(),
                     outcome.over_cost_line_diagnostic
                 );
+                // One receipt, both numbers. This replaces a per-miss trace line that had no
+                // hit counterpart, so the ratio it is really about was never readable.
+                let (memo_hits, memo_misses) =
+                    v1_compiler::cli_run::compile_dag_rust_emit_check_memo_counts();
+                eprintln!(
+                    "required-floor: compile_dag_rust_emit_check_memo hits={memo_hits} \
+                     misses={memo_misses}"
+                );
                 for failure in &outcome.failures {
                     eprintln!("required-floor: FAIL {failure}");
                 }
@@ -14813,7 +14821,7 @@ mod tests {
         source_roots: &[String],
         subject: &str,
         function: &str,
-        passed: bool,
+        variant_name: &str,
         wall_nanos: u128,
     ) -> Option<String> {
         let entry = source_roots
@@ -14840,47 +14848,15 @@ mod tests {
                     Some("function".to_string()),
                     str_value(function.to_string()),
                 ),
-                (Some("passed".to_string()), Value::Bool(passed)),
-                (Some("wall".to_string()), wall),
-            ],
-            false,
-        )
-        .ok()?;
-        match out {
-            Value::Str(s) => Some(s.to_string()),
-            _ => None,
-        }
-    }
-
-    fn run_seed_witness_budget_warn_text(
-        source_roots: &[String],
-        qualified: &str,
-        wall_ms: u64,
-        warn_ms: u64,
-        budget_ms: u64,
-    ) -> Option<String> {
-        let entry = source_roots
-            .iter()
-            .map(|r| Path::new(r).join("gunbc/observation_ci_render.dag"))
-            .find(|p| p.exists())?
-            .to_string_lossy()
-            .into_owned();
-        let (graph, indices) = resolve_entry_graph_shared(source_roots, &entry).ok()?;
-        let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
-        let wall = millisecond_value(&ctx, u128::from(wall_ms)).ok()?;
-        let warn = millisecond_value(&ctx, u128::from(warn_ms)).ok()?;
-        let budget = millisecond_value(&ctx, u128::from(budget_ms)).ok()?;
-        let out = run_in_context_with_args(
-            &ctx,
-            "ci_witness_budget_warn_text",
-            &[
                 (
-                    Some("qualified".to_string()),
-                    str_value(qualified.to_string()),
+                    Some("verdict".to_string()),
+                    Value::Variant {
+                        type_name: ctx.sym("CiWitnessVerdict"),
+                        variant_name: ctx.sym(variant_name),
+                        fields: std::rc::Rc::new(Vec::new()),
+                    },
                 ),
                 (Some("wall".to_string()), wall),
-                (Some("warn".to_string()), warn),
-                (Some("budget".to_string()), budget),
             ],
             false,
         )
@@ -14891,10 +14867,6 @@ mod tests {
         }
     }
 
-    // Wiring flip: the Rust mirror is proven byte-equal to the `.dag` oracle. The hot path
-    // cannot call the interpreter per line (~800 anomaly rows); this pin is what keeps the
-    // mirror honest. RED: changing the mirror token, padding, or bracket family fails the
-    // byte-equal assert or the legacy-shape asserts below.
     #[test]
     fn render_witness_claim_result_text_mirror_matches_seed_oracle() {
         let root = workspace_root();
@@ -14906,7 +14878,7 @@ mod tests {
             &roots,
             "test.claim.observation_ci_render_witness_test",
             "w_witness_claim_line_from_module_path_holds",
-            true,
+            "WitnessPassed",
             230_000_000,
         )
         .expect("ci_witness_claim_result_text must resolve and render");
@@ -14914,7 +14886,7 @@ mod tests {
             "test.claim.observation_ci_render_witness_test",
             "w_witness_claim_line_from_module_path_holds",
             230_000_000,
-            true,
+            v1_compiler::cli_run::CiWitnessVerdict::Passed,
         );
         assert_eq!(
             oracle, mirror,
@@ -14933,7 +14905,7 @@ mod tests {
             &roots,
             "test.claim.foo",
             "w_bar",
-            true,
+            "WitnessPassed",
             89_000_000_000,
         )
         .expect("89s boundary oracle");
@@ -14941,7 +14913,7 @@ mod tests {
             &roots,
             "test.claim.foo",
             "w_bar",
-            true,
+            "WitnessPassed",
             90_000_000_000,
         )
         .expect("90s boundary oracle");
@@ -14950,7 +14922,7 @@ mod tests {
                 "test.claim.foo",
                 "w_bar",
                 89_000_000_000,
-                true,
+                v1_compiler::cli_run::CiWitnessVerdict::Passed,
             ),
             under_boundary,
             "89s minute-switch boundary must match oracle"
@@ -14960,7 +14932,7 @@ mod tests {
                 "test.claim.foo",
                 "w_bar",
                 90_000_000_000,
-                true,
+                v1_compiler::cli_run::CiWitnessVerdict::Passed,
             ),
             at_boundary,
             "90s minute-switch boundary must match oracle"
@@ -14969,31 +14941,77 @@ mod tests {
             under_boundary.contains("89 seconds") && at_boundary.contains("1 minutes"),
             "minute-switch drift control: {under_boundary:?} vs {at_boundary:?}"
         );
-    }
 
-    #[test]
-    fn render_witness_budget_warn_text_mirror_matches_seed_oracle() {
-        let root = workspace_root();
-        let roots = vec![
-            root.join("src/v2").to_string_lossy().into_owned(),
-            root.join("dag").to_string_lossy().into_owned(),
+        // Every arm of the verdict coproduct is rendered by the mirror byte-equal to the
+        // `.dag` oracle, and every arm produces a DISTINCT token. The bool this parameter
+        // used to be could only witness two of these seven; five typed outcomes were
+        // flattened into FAILED at the call site before the renderer was ever reached.
+        // RED: collapsing any two arms to one token fails the distinctness assert;
+        // drifting one arm's spelling in either representation fails byte-equality.
+        let arms: [(&str, v1_compiler::cli_run::CiWitnessVerdict); 7] = [
+            (
+                "WitnessPassed",
+                v1_compiler::cli_run::CiWitnessVerdict::Passed,
+            ),
+            (
+                "WitnessFailed",
+                v1_compiler::cli_run::CiWitnessVerdict::Failed,
+            ),
+            (
+                "WitnessNotBool",
+                v1_compiler::cli_run::CiWitnessVerdict::NotBool,
+            ),
+            (
+                "WitnessRuntimeError",
+                v1_compiler::cli_run::CiWitnessVerdict::RuntimeError,
+            ),
+            (
+                "WitnessBudgetRefused",
+                v1_compiler::cli_run::CiWitnessVerdict::BudgetRefused,
+            ),
+            (
+                "WitnessHostToolUnresolved",
+                v1_compiler::cli_run::CiWitnessVerdict::HostToolUnresolved,
+            ),
+            (
+                "WitnessKnownRed",
+                v1_compiler::cli_run::CiWitnessVerdict::KnownRed,
+            ),
         ];
-        let oracle =
-            run_seed_witness_budget_warn_text(&roots, "test.claim.foo.w_bar", 600, 500, 1000)
-                .expect("ci_witness_budget_warn_text must resolve and render");
-        let mirror = v1_compiler::cli_run::render_witness_budget_warn_text_mirror(
-            "test.claim.foo.w_bar",
-            600,
-            500,
-            1000,
-        );
+        let mut rendered: Vec<String> = Vec::new();
+        for (variant, verdict) in arms {
+            let oracle_arm = run_seed_witness_claim_result_text(
+                &roots,
+                "test.claim.foo",
+                "w_bar",
+                variant,
+                1_000_000,
+            )
+            .unwrap_or_else(|| panic!("oracle must render {variant}"));
+            let mirror_arm = v1_compiler::cli_run::render_witness_claim_result_text_mirror(
+                "test.claim.foo",
+                "w_bar",
+                1_000_000,
+                verdict,
+            );
+            assert_eq!(
+                oracle_arm, mirror_arm,
+                "{variant}: mirror must be byte-equal to the .dag oracle"
+            );
+            rendered.push(mirror_arm);
+        }
+        let mut distinct = rendered.clone();
+        distinct.sort();
+        distinct.dedup();
         assert_eq!(
-            oracle, mirror,
-            "witness budget-warn mirror must be byte-equal to the .dag oracle"
+            distinct.len(),
+            7,
+            "every verdict arm must render a distinct line: {rendered:?}"
         );
         assert!(
-            mirror.contains("(ceiling 1000ms)") && mirror.starts_with("[floor-witness-slow]"),
-            "drift control: ceiling clause and marker required: {mirror:?}"
+            !rendered[6].contains("FAILED"),
+            "an enrolled known-red must not be spelled as FAILED: {:?}",
+            rendered[6]
         );
     }
 
