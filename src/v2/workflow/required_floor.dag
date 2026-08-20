@@ -20,9 +20,14 @@ import std.types { NonEmptyStr }
 // why a site's identity is excluded from the executed roster; it is never itself the mechanism
 // deciding execution order or eligibility for a DIFFERENT gate.
 //
-// `DeclinedLiveTree` IS DELETED (2026-08-20, WITNESS EXECUTION CLOSURE), and it is deleted at
-// the root rather than narrowed, because what it rested on stopped being true and nothing
-// re-derived it.
+// `DeclinedLiveTree` IS RETAINED HERE AND STAGED FOR DELETION AT THE ROOT. Its premise is
+// already known to be stale (below), but the deletion is a behaviour change — 782 sites move
+// from declined to executed — and it lands with the measurement that prices it, not with this
+// change. This paragraph is written in the tense of what IS, because an earlier revision of it
+// asserted the deletion as done while the Rust realization still returned the arm: the .dag
+// named two arms, `v1_compiler.cli_run` `run_required_floor` emitted three, and the header
+// claiming a completed deletion was rung inflation on the exact axis this module argues for
+// (caught by review 54035, on this PR).
 //
 // WHAT IT WAS: a site whose FILE declared `data live_tree_disposition: LiveTreeDisposition =
 // ReadsLiveTree` was declined, on the premise that reaching the live tree implies "cannot run
@@ -39,21 +44,31 @@ import std.types { NonEmptyStr }
 // "cannot run hermetically", and the decline was a prediction standing where the interpreter
 // already decides the same question exactly, per identity, at the effect boundary.
 //
-// WHAT REPLACES IT: nothing here. Every non-long identity is routed and executed, its route
-// carried by the claim that runs it (`RequiredFloorClaim.execution_mode` — one route per
-// identity, not a second vocabulary restating it), and the interpreter's own typed
-// `HermeticHostEffectRefused` classifies the residue that genuinely has no hermetic arm. That
-// residue reaches the receipt as `RequiredFloorOutcome.route_gap`, which BLOCKS: a claim that
-// never reached its subject is not green, and it is not a failure either — the two have
-// different remedies and are reported apart.
+// WHAT WILL REPLACE IT: nothing here. Once the arm is deleted, every non-long identity is
+// routed and executed, its route carried by the claim that runs it
+// (`RequiredFloorClaim.execution_mode` — one route per identity, not a second vocabulary
+// restating it), and the interpreter's own typed `HermeticHostEffectRefused` classifies the
+// residue that genuinely has no hermetic arm. That residue reaches the receipt as
+// `RequiredFloorOutcome.route_gap`, which BLOCKS: a claim that never reached its subject is
+// not green, and it is not a failure either — the two have different remedies and are
+// reported apart. THAT MECHANISM IS ALREADY LIVE IN THIS CHANGE, which is what makes the
+// deletion safe to make next: the route-gap arm, its two-way roster join, and the
+// `SitePartitionInexact` wall all execute here, over the 101 identities that reached it
+// without this arm being touched at all.
+//
+// DELETION TRIGGER: the live-tree decline is removed when the cost measurement over its 782
+// sites lands (run 32345970386 measured 626/783 passing under execution), together with the
+// `witness_file_from_source` scan the split retained beside it.
 //
 // A NOTE ON WHAT DID *NOT* MOVE: `live_tree_disposition` itself is not deleted and is not
 // deprecated. It remains the declaration `reads_live_tree_effective` reads for AFFECTED-SET
 // SELECTION ELIGIBILITY, which is a different question from "can this execute" and keeps its
-// own single authority. What is deleted is the floor's forked, syntactic second copy of it.
+// own single authority. What is staged for deletion is the floor's forked, syntactic second
+// copy of it.
 type RequiredFloorDisposition =
     Planned
   | DeclinedLongModule { matched_prefix: String }
+  | DeclinedLiveTree
 
 // LONG-HOME STORAGE HYGIENE — A DIAGNOSTIC, NEVER AN ADMISSION INPUT.
 //
