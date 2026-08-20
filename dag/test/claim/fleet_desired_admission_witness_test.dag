@@ -231,20 +231,45 @@ test fn the_admission_workflow_push_step_names_no_revision_of_its_own() -> Bool 
 // git reported nothing. The enumeration has to be re-run after every refresh for exactly this
 // reason -- the hazard was in a file neither side touched.
 
-// deploy.yml invoked cargo on this same srv1 runner with no toolchain and exited
-// 127 on all 14 of its runs -- the actuator never once reached its own terminal
-// step. This workflow builds on that runner too, so the same omission would make
-// the admission job die before deciding anything and the fleet ref would silently
-// never advance. Both claims were observed RED against a model with the toolchain
-// step removed before being accepted green.
-test fn the_admission_workflow_installs_a_toolchain_before_its_first_cargo_invocation() -> Bool {
+// WHAT THESE TWO CLAIMS ARE, STATED HONESTLY, because their first names asserted more than
+// they establish. They are TEXTUAL PROJECTION SENTINELS over the emitted yaml, not proofs
+// that a Cargo consumer is dominated by a Cargo provider.
+//
+// The motivating defect is real: deploy.yml invoked cargo on this same srv1 runner with no
+// toolchain and exited 127 on all 30 of its runs -- the actuator never once reached its own
+// terminal step -- and this workflow builds on that runner too. Both claims were observed RED
+// against a model with the toolchain step removed before being accepted green.
+//
+// But the predicate is `split(yml, "cargo build")`, and that has two unequal failure modes:
+//
+//   the literal spelling changes (for example to "$CARGO_BIN" build, which is exactly how
+//   fleet-converge.yml already invokes cargo)  ->  first conjunct false  ->  RED.
+//   A false alarm, but fail-CLOSED.
+//
+//   a second, non-literal invocation appears BEFORE the provider while a later literal one
+//   remains  ->  .first() spans both the variable invocation and the provider  ->  PASS.
+//   A false green, and fail-OPEN.
+//
+// Adding "$CARGO_BIN" to the match would not fix that; it would enlarge the set of spellings
+// the search happens to recognise and move the hole one substitution along. A text search over
+// emitted bytes cannot see what a step executes. That is the ceiling, not a gap in effort.
+//
+// RUNG: mitigatable. NEXT-RUNG TRIGGER: workflow capability closure -- a typed step operation
+// deriving CargoCapability (the derivation already exists for validations in
+// gunbc.roadmap_execution_contract) and a projection that refuses to emit a job whose derived
+// capabilities are unclosed. The permanent control then becomes structural -- a Cargo operation
+// with no dominating provider REFUSES -- which is invariant under every spelling above because
+// it never inspects one. When that lands these two claims are deleted or demoted to a byte
+// regression fixture for this particular yaml; they must not accumulate beside it as though
+// both were safety mechanisms.
+test fn the_emitted_admission_yaml_places_a_setup_action_before_its_literal_cargo_build() -> Bool {
   let yml = expected_fleet_desired_yml()
   let before_cargo = split(s: yml, delimiter: "cargo build").first()
   string_contains(s: yml, pattern: "cargo build")
     && string_contains(s: before_cargo, pattern: "setup-rust-toolchain")
 }
 
-test fn the_admission_toolchain_step_disables_the_shared_home_cache() -> Bool {
+test fn the_emitted_admission_yaml_disables_the_shared_home_cache_on_its_setup_action() -> Bool {
   let yml = expected_fleet_desired_yml()
   let after_toolchain = split(s: yml, delimiter: "setup-rust-toolchain").last()
   string_contains(s: after_toolchain, pattern: "cache: false")
