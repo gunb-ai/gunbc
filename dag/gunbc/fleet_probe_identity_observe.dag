@@ -47,6 +47,11 @@ fn observe_authorized_keys_line(home: String) -> String {
   }
 }
 
+// ph and jh are USED AS PATHS below, not merely printed, so they match the arms rather than
+// routing through the receipt-text projection: "(refused: ...)" is fine to print and wrong to
+// open. An unreadable home yields "" here and the guarded call below skips the probe entirely
+// rather than reading /.ssh/authorized_keys off a fabricated root.
+
 func fleet_probe_identity_observe_wet() -> ProcessExit
   uses net: Network
 {
@@ -59,10 +64,6 @@ func fleet_probe_identity_observe_wet() -> ProcessExit
     command: ArgvCommand { argv: ["sh", "-c", "echo \"$HOME\"" ] },
     transport: LocalExec,
   )
-  // ph and jh are USED AS PATHS below, not merely printed, so they match the arms rather than
-  // routing through the receipt-text projection: "(refused: ...)" is fine to print and wrong to
-  // open. An unreadable home yields "" here and the guarded call below skips the probe entirely
-  // rather than reading /.ssh/authorized_keys off a fabricated root.
   let ph = match passwd_home { ProcessOutputPresent { text: t } => trim(s: t)  ProcessOutputAbsent => ""  ProcessRefused { exit_code: _, stderr: _ } => "" }
   let jh = match job_home { ProcessOutputPresent { text: t } => trim(s: t)  ProcessOutputAbsent => ""  ProcessRefused { exit_code: _, stderr: _ } => "" }
   let body = join([

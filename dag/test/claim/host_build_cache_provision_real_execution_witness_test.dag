@@ -6,10 +6,8 @@ import extdeps.shell
 import gunbc.retained_shell_script { retained_runtime }
 import extdeps.filesystem.filesystem_io
 import gunbc.shell_bash_runner { shell_exec_via_bash }
-import gunbc.host_build_cache_provision_script {
-  build_cache_read_back_body,
-}
 import gunbc.host_effect_realize {
+  build_cache_read_back_body,
   provision_build_cache_reconcile_shell_observed,
   ShellExecObserved,
 }
@@ -18,7 +16,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data real_execution_home_doc: String = "Wet execution witness for ProvisionBuildCache fail-closed behaviour: it runs a real bash body against a real fake-sccache on disk. read-back — the modeled binary answers non-zero, so the reconcile must be NotConverged, never Converged/ExitSuccess; the fake lives at an explicit OFF-PATH path passed as the read-back body's `binary` argument, so this witness exercises the read-back arm on the binary this lane provisioned. The earlier PATH-shadow shell witnesses were withdrawn 2026-07-24 (review 42343): the PATH-shadow judgement is proven at the MODEL grain (host_build_cache_provision_design_witness_test.design_witness_path_shadow_refuses_fail_closed) and its live observation is staged on the typed-argv dissolve-on (#5828), not emitted as hand-shell. Excluded from hermetic discovery and enrolled in bin_witness_wet_entries — shell.Mktemp.Dir / Filesystem.Write / shell.Exec.Run have no mock_response. Transport scripts mint through the counted retained_runtime bridge (shell-to-dag section 5.E construction wall, #7184), never the deleted free-minter."
+data real_execution_home_doc: String = "Wet execution witness for EnsureBuildCacheInstance fail-closed behaviour: it runs a real bash body against a real fake-sccache on disk. read-back — the modeled binary answers non-zero, so the reconcile must be NotConverged, never Converged/ExitSuccess; the fake lives at an explicit OFF-PATH path passed as the read-back body's `binary` argument, so this witness exercises the read-back arm on the binary this lane provisioned. The earlier PATH-shadow shell witnesses were withdrawn 2026-07-24 (review 42343): the PATH-shadow judgement is proven at the MODEL grain (host_build_cache_provision_design_witness_test.design_witness_path_shadow_refuses_fail_closed) and its live observation is staged on the typed-argv dissolve-on (#5828), not emitted as hand-shell. Excluded from hermetic discovery and enrolled in bin_witness_wet_entries — shell.Mktemp.Dir / Filesystem.Write / shell.Exec.Run have no mock_response. Transport scripts mint through the counted retained_runtime bridge (shell-to-dag section 5.E construction wall, #7184), never the deleted free-minter."
 
 fn write_fake_sccache(dir_path: String, exit_code: String) -> Bool {
   let path = concat(dir_path, "/sccache")
@@ -71,7 +69,7 @@ test fn provision_read_back_failure_not_converged_by_real_execution() -> Bool {
     && match reconciled {
       NotConverged { reason: why, applied: _ } =>
         string_contains(s: why, pattern: "fail-closed")
-          && string_contains(s: why, pattern: "ProvisionBuildCache")
+          && string_contains(s: why, pattern: "EnsureBuildCacheInstance")
       Converged { evidence: _, applied: _ } => false
     }
 }

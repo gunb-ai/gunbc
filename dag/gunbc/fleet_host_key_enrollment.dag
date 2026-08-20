@@ -187,13 +187,19 @@ func verify_enrollment_outcome() -> String
   }
 }
 
+// ProcessOutputPresent already means admitted-and-non-empty, so the old
+// `scan.success && trim(scan.stdout) != ""` correlation is the variant itself rather than a
+// condition the caller must remember to write. ProcessOutputAbsent is now a NAMED outcome --
+// ssh-keyscan exiting 0 with no key is a different fact from ssh-keyscan failing, and the old
+// shape reported both as "refused" with an empty cause.
+
+// The old code fabricated a ShellCaptureResult here to stand in for a FILESYSTEM failure --
+// a process result for something that was never a process, with an invented success: false.
+// The coproduct makes that unwritable, which is the point: a write failure is not a process
+// outcome and now has to be said in its own words.
+
 fn scan_host_key_lines(host: String) -> String {
   let endpoint = fleet_probe_endpoint_for(host: host)
-  // ProcessOutputPresent already means admitted-and-non-empty, so the old
-  // `scan.success && trim(scan.stdout) != ""` correlation is the variant itself rather than a
-  // condition the caller must remember to write. ProcessOutputAbsent is now a NAMED outcome --
-  // ssh-keyscan exiting 0 with no key is a different fact from ssh-keyscan failing, and the old
-  // shape reported both as "refused" with an empty cause.
   match run_shell_command_capture(
     command: ArgvCommand { argv: ["ssh-keyscan", "-T", "5", "-t", "ed25519", endpoint] },
     transport: LocalExec,
@@ -201,10 +207,6 @@ fn scan_host_key_lines(host: String) -> String {
     ProcessOutputPresent { text: key_text } => {
       let key_file = join(["target/fleet-host-key-scan-", host, ".pub"], "")
       let w = Filesystem.Write(path: key_file, content: key_text)
-      // The old code fabricated a ShellCaptureResult here to stand in for a FILESYSTEM failure --
-      // a process result for something that was never a process, with an invented success: false.
-      // The coproduct makes that unwritable, which is the point: a write failure is not a process
-      // outcome and now has to be said in its own words.
       let fingerprint_text = if w.success {
         process_outcome_receipt_text(
           outcome: run_shell_command_capture(
@@ -355,6 +357,13 @@ fn fleet_automation_authorized_keys_line() -> String {
   ssh_public_key_line(k: fleet_automation_ssh_key)
 }
 
+// THE DEFECT THIS MIGRATION EXISTS FOR. The old test was `trim(check.stdout) == "present"`
+// with no consultation of success, so a probe that FAILED produced "" -- not "present" -- and
+// fell through to the else branch, which APPLIES. A refusal to read the file was therefore
+// indistinguishable from the key being absent, and the remedy for the two states is opposite:
+// absent means write it, unreadable means stop and say so. Matching the arms makes the third
+// state impossible to fall through: a refusal now refuses instead of mutating the file.
+
 func fleet_authorized_key_self_enroll_wet() -> ProcessExit
   uses net: Network
 {
@@ -368,12 +377,6 @@ func fleet_authorized_key_self_enroll_wet() -> ProcessExit
       command: ArgvCommand { argv: ["sh", "-c", "H=$(getent passwd \"$(whoami)\" | cut -d: -f6); grep -qxF \"$(cat target/fleet-authorized-key-line | head -1)\" \"$H/.ssh/authorized_keys\" 2>/dev/null && echo present || echo absent"] },
       transport: LocalExec,
     )
-    // THE DEFECT THIS MIGRATION EXISTS FOR. The old test was `trim(check.stdout) == "present"`
-    // with no consultation of success, so a probe that FAILED produced "" -- not "present" -- and
-    // fell through to the else branch, which APPLIES. A refusal to read the file was therefore
-    // indistinguishable from the key being absent, and the remedy for the two states is opposite:
-    // absent means write it, unreadable means stop and say so. Matching the arms makes the third
-    // state impossible to fall through: a refusal now refuses instead of mutating the file.
     match check {
       ProcessRefused { exit_code: _, stderr: ce } =>
         join(["outcome=refused cause=presence-probe refused, not applying: ", trim(s: ce)], "")

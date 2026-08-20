@@ -10,7 +10,14 @@ import extdeps.exec.command {
   CommandTransport,
   LocalExec,
   command_over_transport,
+  CommandOverTransportBuilt,
+  CommandOverTransportRefused,
   shell_command_render,
+}
+import gunbc.remote_shell_command {
+  RemoteExecCommandRefusalCause,
+  RemoteExecInterpretationUnknown,
+  SimpleCommandArgvRefused,
 }
 import extdeps.shell
 import gunbc.shell_bash_runner { shell_exec_via_bash }
@@ -56,6 +63,17 @@ data command_runner_dissolution_trigger: DissolutionCondition = unbound_dissolut
 // mechanically preventable. Stated here rather than left to be inferred from a passing receipt,
 // because a green test that nothing runs is exactly the inert evidence DESIGN calls a lie.
 
+data command_over_transport_refusal_reason_note: String = "Renders RemoteExecCommandRefusalCause (gunbc.remote_shell_command) into a diagnostic String -- the only refusal this generic runner can hit today is RemoteExecInterpretationUnknown, since every SshExec constructed in-tree names a determined interpretation (openssh_login_shell_interpretation / openbmc_dropbear_interpretation); the cause stays a match over the full type rather than a partial one so a newly added cause fails to compile here instead of falling through silently (DESIGN 4b: no untracked stall)."
+
+fn command_over_transport_refusal_reason(cause: RemoteExecCommandRefusalCause) -> String {
+  match cause {
+    RemoteExecInterpretationUnknown =>
+      "the SSH target's RemoteExecCommandInterpretation is Unknown -- refusing rather than assuming a POSIX shell on the far side"
+    SimpleCommandArgvRefused { cause: _ } =>
+      "the inner command's argv was empty"
+  }
+}
+
 // THE LOCAL ARM NO LONGER ROUND-TRIPS ARGV THROUGH A STRING.
 //
 // What it used to do, and why none of it was necessary: render the argv to quoted text, wrap the
@@ -99,20 +117,25 @@ func run_shell_command(command: ArgvCommand, transport: CommandTransport) -> Pro
           }
         }
       }
-    SshExec { ssh_target: _ } => {
-      let rendered = shell_command_render(command: command_over_transport(command: command, transport: transport))
-      let run = shell.Exec.Run(
-        script: retained_runtime(
-          body: shell_exec_via_bash(body: rendered),
-          reason: "SSH arm only: nested command-string target is owned by another lane; the local arm no longer routes here" as NonEmptyStr,
-        )
-      )
-      if run.success {
-        ExitSuccess
-      } else {
-        exit_failure(reason: concat("command failed: ", run.stderr))
+    SshExec { ssh_target: _ } =>
+      match command_over_transport(command: command, transport: transport) {
+        CommandOverTransportRefused { cause: c } =>
+          exit_failure(reason: concat("command_over_transport refused: ", command_over_transport_refusal_reason(cause: c)))
+        CommandOverTransportBuilt { command: over } => {
+          let rendered = shell_command_render(command: over)
+          let run = shell.Exec.Run(
+            script: retained_runtime(
+              body: shell_exec_via_bash(body: rendered),
+              reason: "SSH arm only: nested command-string target is owned by another lane; the local arm no longer routes here" as NonEmptyStr,
+            )
+          )
+          if run.success {
+            ExitSuccess
+          } else {
+            exit_failure(reason: concat("command failed: ", run.stderr))
+          }
+        }
       }
-    }
   }
 }
 
@@ -187,23 +210,31 @@ func run_shell_command_capture(command: ArgvCommand, transport: CommandTransport
           )
         }
       }
-    SshExec { ssh_target: _ } => {
-      let rendered = shell_command_render(command: command_over_transport(command: command, transport: transport))
-      let run = shell.Exec.Run(
-        script: retained_runtime(
-          body: shell_exec_via_bash(body: rendered),
-          reason: "SSH arm only: nested command-string target is owned by another lane; the local arm no longer routes here" as NonEmptyStr,
-        )
-      )
-      classify_process_observation(
-        policy: ExitZeroSucceeds,
-        observation: process_observation(
-          exit_code: run.exit_code,
-          stdout: run.stdout,
-          stderr: run.stderr,
-        ),
-      )
-    }
+    SshExec { ssh_target: _ } =>
+      match command_over_transport(command: command, transport: transport) {
+        CommandOverTransportRefused { cause: c } =>
+          ProcessRefused {
+            exit_code: 0 - 1,
+            stderr: concat("command_over_transport refused: ", command_over_transport_refusal_reason(cause: c)),
+          }
+        CommandOverTransportBuilt { command: over } => {
+          let rendered = shell_command_render(command: over)
+          let run = shell.Exec.Run(
+            script: retained_runtime(
+              body: shell_exec_via_bash(body: rendered),
+              reason: "SSH arm only: nested command-string target is owned by another lane; the local arm no longer routes here" as NonEmptyStr,
+            )
+          )
+          classify_process_observation(
+            policy: ExitZeroSucceeds,
+            observation: process_observation(
+              exit_code: run.exit_code,
+              stdout: run.stdout,
+              stderr: run.stderr,
+            ),
+          )
+        }
+      }
   }
 }
 

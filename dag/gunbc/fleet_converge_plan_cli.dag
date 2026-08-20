@@ -96,15 +96,16 @@ func observe_generation_store_wet() -> Int?
   fleet_converge_generation_from_store_content(store_present: read.success, content: read.content)
 }
 
+// EXIT STATUS IS THE PRODUCT HERE and there is no stdout anyone wants, so this asks the
+// two-state question directly instead of matching three arms, two of which would be
+// indistinguishable to it. Forcing `test -f` through an output-bearing variant would add a
+// field it cannot answer -- cosmetic richness in the opposite direction.
+
 func observe_timer_members_wet() -> List<TimerRetirementMember>
   uses net: Network
 {
   let legacy = timer_retirement_observed_legacy_srv1()
   filter(legacy, m =>
-    // EXIT STATUS IS THE PRODUCT HERE and there is no stdout anyone wants, so this asks the
-    // two-state question directly instead of matching three arms, two of which would be
-    // indistinguishable to it. Forcing `test -f` through an output-bearing variant would add a
-    // field it cannot answer -- cosmetic richness in the opposite direction.
     process_outcome_admitted(
       outcome: run_shell_command_capture(
         command: ArgvCommand { argv: ["test", "-f", concat("/etc/systemd/system/", m.unit_name as String)] },
