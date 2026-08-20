@@ -824,8 +824,13 @@ than argued.
    direct Rust struct literal for the refused surrogate value `55296` (0xD800) compiles with
    no wall at all, and `serde_json::from_value::<UriValidatedScalar>` **admits** `55296`
    (surrogate-refused), `-1` and `1114112` (out-of-range-refused) — every value the `.dag`
-   mint refuses — while the positive control `65` is admitted on both sides, so this is not
-   a wholesale serde failure. Two independent forgery routes into a type whose only declared
+   mint refuses. The positive control `65` (admitted by the mint) is admitted by serde too,
+   but that alone cannot discriminate a real forgery from a harness that never observes
+   `Err` at all, since it never separates the two — `serde_shape_control_rejects_malformed_input`
+   closes that hole: a non-integer `admitted_cp` and a missing `admitted_cp` field are both
+   refused by serde's own shape check, independent of the predicate, so the harness has
+   demonstrated it can and does report `Err`, which is what makes every "admits" verdict
+   above load-bearing. Two independent forgery routes into a type whose only declared
    consumer, `uri_percent_encode_admitted_scalar_wire`, accepts `UriValidatedScalar` and
    nothing upstream of it. **Reading against §4b:** the capability ceiling for this carrier
    on the source→`.dag`-acceptance path is unaffected (that wall holds); on the
@@ -837,8 +842,16 @@ than argued.
    the derive roster in the PR carrying this receipt; the repair (omit `Deserialize`, emit a
    validating one, or seal the field behind `TryFrom`) is a separate design decision. The
    receipt's assertions are the discriminating RED (documenting the forgeries admitted
-   today) and, per §4b's dissolution-on-climb rule, remain enrolled as the regression control
-   once a repair lands — they flip from "admits" to "refuses" rather than being deleted.
+   today, with a demonstrated-capable `Err` path via the shape control) and, per §4b's
+   dissolution-on-climb rule, they flip from "admits" to "refuses" rather than being deleted
+   once a repair lands — the receipt becomes the permanent regression control at that point,
+   the failing-red being the success signal that the repair landed. **UNENROLLED today, by
+   standing operator ruling, not oversight:** it is a Rust test, and the Rust suite was
+   removed from CI 2026-07-11 (`gunbc.commit_workflow`
+   `commit_gate_rust_suite_removed_disposition`, runs locally only) — no
+   `.github/workflows/*` invokes `cargo test`, so this receipt guards nothing on any future
+   PR or on main; it is executed evidence for this finding, not a live gate, and this PR
+   does not re-add `cargo test` to CI to close that gap.
 1b. **Author the missing Tier 1 RED controls** (new, and the cheapest item here). They never
    existed. Start with the cardinality archetype, method existence, and declared-return
    conformance — each a three-line `.dag` program with an expected-error acceptance criterion,
