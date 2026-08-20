@@ -145,6 +145,17 @@ fn spark_serving_uptime_microseconds(stdout: String) -> Int? {
 // unit started after boot has NOT been shown to survive one; a unit that is not active has not been
 // shown to do anything; an unobserved probe has shown nothing at all. Collapsing any of them into
 // "not durable" would report a measurement nobody took.
+// THIS IS A DIAGNOSTIC, NOT THE DURABILITY RECEIPT, and the distinction was a real error in this
+// module's first revision. A window comparison says a unit entered active NEAR boot; a correctly
+// enabled user service can legitimately enter active well after any window, because user-manager
+// start and lingering are ordered against everything else the boot is doing. A slow boot would
+// therefore report a durable host as not durable, and the tempting remedy -- widen the window --
+// is fitting a constant to a host until the check means nothing.
+//
+// gunbc.spark_serving_durability holds the terminal proof: the kernel mints a fresh boot_id every
+// boot, so a changed boot_id is the machine stating the previous boot ended rather than an inference
+// from timing. What THIS answers, and answers well, is why a host that did reboot came back
+// unconverged -- which the boot_id comparison cannot tell you.
 fn spark_serving_boot_provenance_establishes_durability(p: SparkServingBootProvenance) -> Bool {
   match p {
     UnitStartedByManagerAtBoot { active_enter_monotonic_us: _, uptime_us: _ } => true
