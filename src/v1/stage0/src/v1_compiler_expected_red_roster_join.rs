@@ -3,6 +3,7 @@
 
 use self::BudgetVerdictCompletion::*;
 use self::ExpectedRedJoinDisposition::*;
+use self::HermeticEffectGround::*;
 use self::WitnessEvalVerdict::*;
 pub use crate::v1_compiler_emit_core_support::to_string;
 use crate::v1_rt;
@@ -21,6 +22,16 @@ pub enum BudgetVerdictCompletion {
     CompletedOverBudget,
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum HermeticEffectGround {
+    UnpublishedMockCase,
+    NoMockResponse,
+    FilesystemRemoval,
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum WitnessEvalVerdict {
@@ -35,6 +46,10 @@ pub enum WitnessEvalVerdict {
     HostToolUnresolved {
         name: String,
         probed: Rc<Vec<String>>,
+    },
+    HostEffectRefused {
+        operation: String,
+        ground: HermeticEffectGround,
     },
     BudgetExceeded {
         elapsed_ms: i64,
@@ -169,6 +184,18 @@ pub struct VerdictClassification {
     pub detail: String,
 }
 
+pub fn hermetic_effect_ground_label(ground: HermeticEffectGround) -> String {
+    match ground.clone() {
+        HermeticEffectGround::UnpublishedMockCase => {
+            "no published mock case for a corpus-governed service".to_string()
+        }
+        HermeticEffectGround::NoMockResponse => "operation declares no mock_response".to_string(),
+        HermeticEffectGround::FilesystemRemoval => {
+            "filesystem removal has no mock arm; only a wet route can run it".to_string()
+        }
+    }
+}
+
 pub fn classify_verdict(verdict: Rc<WitnessEvalVerdict>) -> Rc<VerdictClassification> {
     match (*verdict.clone()).clone() {
         WitnessEvalVerdict::Passed => Rc::new(VerdictClassification {
@@ -209,6 +236,27 @@ pub fn classify_verdict(verdict: Rc<WitnessEvalVerdict>) -> Rc<VerdictClassifica
                 ),
             })
         }
+        WitnessEvalVerdict::HostEffectRefused {
+            operation, ground, ..
+        } => Rc::new(VerdictClassification {
+            disposition: Rc::new(ExpectedRedJoinDisposition::NotEvaluated {
+                reason: "host_effect_refused".to_string(),
+            }),
+            detail: v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            "hermetic route has no arm for ".to_string(),
+                            operation.clone(),
+                        ),
+                        " (".to_string(),
+                    ),
+                    hermetic_effect_ground_label(ground.clone()),
+                ),
+                ") — the witness never reached its subject, so this is a route gap, not a verdict"
+                    .to_string(),
+            ),
+        }),
         WitnessEvalVerdict::BudgetExceeded {
             elapsed_ms,
             budget_ms,
@@ -362,3 +410,9 @@ pub fn finalize_not_observed(
 pub struct Interrupted;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CompletedOverBudget;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UnpublishedMockCase;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NoMockResponse;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FilesystemRemoval;
