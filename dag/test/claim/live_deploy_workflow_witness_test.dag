@@ -2,6 +2,7 @@ module test.claim.live_deploy_workflow_witness
 
 import std.types { Bool, String }
 import gunbc.live_deploy_workflow { expected_deploy_yml }
+import gunbc.fleet_desired_admission_workflow { expected_fleet_desired_yml }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -69,4 +70,75 @@ test fn the_deploy_steps_run_in_the_order_the_outage_taught() -> Bool {
     && string_contains(s: before_apply, pattern: "materialize_codex_runtime_on_local_host")
     && !string_contains(s: yml, pattern: "refs/fleet/desired")
     && !string_contains(s: yml, pattern: "force-with-lease")
+}
+
+// THE REGRESSION CONTROL FOR A DEFECT THAT MADE THIS WORKFLOW NEVER RUN ONCE.
+//
+// The first cut of this module omitted the Rust toolchain install. The job targets a self-hosted
+// runner where cargo is NOT on the default PATH, so every deploy run from the moment the workflow
+// landed died at its first build step with `cargo: command not found`, exit 127. There was never a
+// successful deploy run, and nothing in the repository noticed: the workflow emitted, parsed,
+// registered as a generated artifact, and passed review, because every one of those checks reads
+// the artifact rather than a run of it.
+//
+// ORDER IS THE CLAIM, not presence. A toolchain step emitted AFTER the build is exactly as useless
+// as no toolchain step, and a containment check for the action name cannot tell the two apart. So
+// this splits the document at the first cargo invocation and requires the install to appear in the
+// prefix. The positive half -- that a cargo invocation exists at all -- keeps the claim from passing
+// vacuously against a document that lost its build step.
+test fn the_deploy_workflow_installs_a_toolchain_before_its_first_cargo_invocation() -> Bool {
+  let yml = expected_deploy_yml()
+  let before_cargo = split(s: yml, delimiter: "cargo build").first()
+  string_contains(s: yml, pattern: "cargo build")
+    && string_contains(s: before_cargo, pattern: "setup-rust-toolchain")
+}
+
+// cache:false travels with the step rather than being re-decided here. gunbc.witness_floor_workflow
+// records why at length: setup-rust-toolchain's default cache registers a post step whose cleanBin
+// and cleanRegistry delete against a /home/ghrunner/.cargo shared by every slot on a self-hosted
+// host, so it removes files other concurrently-running jobs are building against. That reasoning is
+// about the fleet, not about the witness floor, and it applies to this job for the same reason. A
+// hand-copied toolchain step here would very plausibly have dropped the flag as an unexplained
+// default, which is why the step is imported rather than restated -- and why this claim pins the
+// emitted flag rather than trusting the import to have carried it.
+test fn the_deploy_toolchain_step_disables_the_shared_home_cache() -> Bool {
+  let yml = expected_deploy_yml()
+  let after_toolchain = split(s: yml, delimiter: "setup-rust-toolchain").last()
+  string_contains(s: after_toolchain, pattern: "cache: false")
+}
+
+// THE INTEGRATION CLAIM. Everything else in this file, and in the admission
+// witness file, is a claim about ONE workflow. This is the only claim about the
+// PAIR, and the pair is where the hazard lived: the deploy job's ungated raw
+// GITHUB_SHA push onto the fleet ref was unreachable ONLY because cargo was
+// missing, so installing the toolchain without deleting that push would have
+// armed it. Two changes, each correct read alone, defective in composition --
+// which is exactly what no single-diff review examines. Neither source PR could
+// state this claim, because neither tree contained both halves.
+//
+// A first draft of this claim asserted that the admission workflow's yaml
+// CONTAINS refs/fleet/desired. It does not, and the reason is the property worth
+// asserting instead: the ref, the revision and the expected prior never appear in
+// the admission shell at all -- the modeled decision writes an authorized push
+// script and the shell only executes what it was handed. So the conjunct below
+// checks that the advance is REACHED THROUGH the modeled decision, which is a
+// stronger statement than a ref name appearing in a file, and would have been
+// silently satisfied by neither a literal ref nor a hand-built push.
+test fn the_deploy_and_admission_workflows_form_one_safe_cut() -> Bool {
+  let deploy = expected_deploy_yml()
+  let admit = expected_fleet_desired_yml()
+  let deploy_before_cargo = split(s: deploy, delimiter: "cargo build").first()
+  let admit_before_cargo = split(s: admit, delimiter: "cargo build").first()
+
+  // both jobs can start at all
+  string_contains(s: deploy_before_cargo, pattern: "setup-rust-toolchain")
+    && string_contains(s: admit_before_cargo, pattern: "setup-rust-toolchain")
+    // the deploy job cannot touch the fleet ref by any route
+    && !string_contains(s: deploy, pattern: "refs/fleet/desired")
+    && !string_contains(s: deploy, pattern: "force-with-lease")
+    && !string_contains(s: deploy, pattern: "git push")
+    // and the advance exists only behind the modeled admission decision
+    && string_contains(s: admit, pattern: "admit_fleet_desired_from_floor_event_wet")
+    && string_contains(s: admit, pattern: "fleet-desired-authorized-push.sh")
+    && !string_contains(s: admit, pattern: "force-with-lease")
 }

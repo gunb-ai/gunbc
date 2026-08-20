@@ -14,7 +14,7 @@ import extdeps.github.actions {
 import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
 import gunbc.repo_identity { gunbc_default_branch_name }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
-import gunbc.witness_floor_workflow { witness_floor_workflow_name, witness_floor_toolchain_step }
+import gunbc.witness_floor_workflow { witness_floor_workflow_name, self_hosted_rust_toolchain_step }
 import gunbc.fleet_desired_admission {
   fleet_desired_admission_event_payload_path,
   fleet_desired_admission_authorized_push_path,
@@ -171,7 +171,7 @@ fn fleet_desired_admission_job() -> Job {
     runner: gunbc_ci_deploy_srv1_runner_spec(),
     steps: [
       fleet_desired_admission_checkout_step(),
-      witness_floor_toolchain_step(),
+      self_hosted_rust_toolchain_step(),
       fleet_desired_admission_build_step(),
       fleet_desired_admission_stage_payload_step(),
       fleet_desired_admission_decide_step(),
